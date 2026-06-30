@@ -1,8 +1,7 @@
-# Environment (never commit real env files; only the *.example templates)
+# Environment (never commit real env files; only the *.example template)
 .env
 .env.*
 !.env.example
-!.env.prod.example
 
 # Dependencies
 node_modules/
@@ -54,6 +53,11 @@ apps/data/
 # Turbo
 .turbo/
 .gstack/
+
+# Claude Code — machine-local settings (permissions, absolute paths). launch.json
+# stays tracked (no secrets); only the *.local.json files are per-machine.
+.claude/settings.local.json
+.claude/*.local.json
 .claude/skills/ppt-master
 
 # Local-only docs (credentials etc.)
