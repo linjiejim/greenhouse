@@ -207,6 +207,13 @@ generated SQL, and commit it. **On persistent / shared databases use `migrate` o
 ./scripts/backup-db.sh            # dump to data/db/backups/ (gzipped, keeps last 10)
 ```
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, the
+quality gates, and conventions, and please follow the
+[Code of Conduct](./CODE_OF_CONDUCT.md). Found a security issue? Don't open a public
+issue — see [SECURITY.md](./SECURITY.md).
+
 ## License
 
 [MIT](./LICENSE) — © Greenhouse contributors.

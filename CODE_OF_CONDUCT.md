@@ -59,9 +59,9 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-**[INSERT CONTACT METHOD]** (e.g. a maintainer email, or a private GitHub
-Security Advisory / direct message to a maintainer).
+reported to the project maintainers responsible for enforcement at
+**[INSERT MAINTAINER EMAIL]**. (Security vulnerabilities go through a different
+channel — see [`SECURITY.md`](./SECURITY.md).)
 
 All complaints will be reviewed and investigated promptly and fairly. All
 community leaders are obligated to respect the privacy and security of the
