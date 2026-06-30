@@ -1,0 +1,11 @@
+node_modules/
+apps/mobile/
+dist/
+dist-web/
+public/
+drizzle/
+data/
+pnpm-lock.yaml
+*.md
+**/target/
+.turbo/

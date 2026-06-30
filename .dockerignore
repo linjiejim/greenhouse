@@ -1,0 +1,34 @@
+# Installed fresh inside the image
+node_modules
+**/node_modules
+
+# VCS / CI / agent scratch
+.git
+.github
+.analysis
+.husky
+.vscode
+.idea
+.conductor
+
+# Secrets — NEVER bake env into the image (compose injects via env_file)
+.env
+.env.*
+!.env.example
+
+# Not needed for the API-only external image
+public
+dist
+dist-web
+docs
+tests
+**/__tests__
+
+# Runtime data / large regeneratable assets (kept out of the build context)
+data/db
+data/uploads
+data/raw
+logs
+*.log
+
+.DS_Store

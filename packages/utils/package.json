@@ -1,0 +1,51 @@
+{
+  "name": "@greenhouse/utils",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./date": {
+      "import": "./src/date.ts",
+      "types": "./src/date.ts"
+    },
+    "./json": {
+      "import": "./src/json.ts",
+      "types": "./src/json.ts"
+    },
+    "./concurrency": {
+      "import": "./src/concurrency.ts",
+      "types": "./src/concurrency.ts"
+    },
+    "./logger": {
+      "import": "./src/logger.ts",
+      "types": "./src/logger.ts"
+    },
+    "./crypto": {
+      "import": "./src/crypto.ts",
+      "types": "./src/crypto.ts"
+    },
+    "./error": {
+      "import": "./src/error.ts",
+      "types": "./src/error.ts"
+    },
+    "./prompts": {
+      "import": "./src/prompts.ts",
+      "types": "./src/prompts.ts"
+    },
+    "./brand": {
+      "import": "./src/brand.ts",
+      "types": "./src/brand.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

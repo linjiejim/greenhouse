@@ -1,0 +1,12 @@
+name: CI
+
+# Quality gate (lint → typecheck → test) for the default branch and all PRs.
+# This workflow never deploys.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    uses: ./.github/workflows/quality-gate.yml

@@ -1,0 +1,54 @@
+# Environment (never commit real env files; only the *.example templates)
+.env
+.env.*
+!.env.example
+!.env.prod.example
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# CLI build artifacts (CLI runs via tsx on .ts sources directly)
+apps/cli/src/*.js
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Built frontend (Vite emits the hashed bundle here; nothing is committed)
+public/*
+
+dist-web/
+
+# Desktop (Electron packaged installers; dist/ is already ignored above)
+apps/desktop/release/
+
+# Database files (runtime, not source)
+data/db/
+
+# Crawled blog posts (regeneratable)
+data/raw/blog/
+
+# Downloaded PDF manuals (large, regeneratable)
+data/raw/manuals/
+
+# User uploads (runtime data)
+data/uploads/
+
+# Legacy apps/data location
+apps/data/
+
+# Turbo
+.turbo/
+.gstack/
+.claude/skills/ppt-master
+
+# Local-only docs (credentials etc.)
+docs/local/

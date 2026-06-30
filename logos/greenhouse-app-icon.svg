@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Greenhouse">
+  <title>Greenhouse</title>
+  <rect width="512" height="512" rx="112" ry="112" fill="#0D9488"/>
+  <g transform="translate(256.0 256.0) scale(3.5721) translate(-65.0 -63.0)"
+     fill="none" stroke="#FFFFFF" stroke-width="9.0" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/>
+    <path d="M22 56 L108 56"/>
+    <path d="M44 56 L44 104"/>
+    <path d="M86 56 L86 104"/>
+    <path d="M65 104 L65 84"/>
+    <path d="M65 84 C69 78 74 75 76 65 C72 69 67 77 65 84 Z"/>
+    <path d="M65 84 C61 78 56 75 54 65 C58 69 63 77 65 84 Z"/>
+  </g>
+</svg>

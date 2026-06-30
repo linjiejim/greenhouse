@@ -1,0 +1,46 @@
+{
+  "name": "@greenhouse/types",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./api": {
+      "import": "./src/api.ts",
+      "types": "./src/api.ts"
+    },
+    "./features": {
+      "import": "./src/features.ts",
+      "types": "./src/features.ts"
+    },
+    "./session": {
+      "import": "./src/session.ts",
+      "types": "./src/session.ts"
+    },
+    "./eval": {
+      "import": "./src/eval.ts",
+      "types": "./src/eval.ts"
+    },
+    "./http-client": {
+      "import": "./src/http-client.ts",
+      "types": "./src/http-client.ts"
+    },
+    "./agent-context": {
+      "import": "./src/agent-context.ts",
+      "types": "./src/agent-context.ts"
+    },
+    "./ws": {
+      "import": "./src/ws.ts",
+      "types": "./src/ws.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

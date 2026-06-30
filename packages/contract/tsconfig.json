@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // no rootDir: mobile-parity.ts type-imports apps/mobile sources (outside
+    // this package) on purpose — this package is typecheck-only, never emitted
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"]
+}

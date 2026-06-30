@@ -1,0 +1,12 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Which dependency build scripts may run. pnpm 11 reads this `allowBuilds` map from
+# pnpm-workspace.yaml — NOT package.json's old `pnpm.onlyBuiltDependencies`, which
+# pnpm 11 silently ignores. true = build (native deps that need compiling).
+# The pnpm version is pinned via `packageManager` in package.json.
+allowBuilds:
+  better-sqlite3: false # unused drizzle driver (we use postgres-js)
+  esbuild: true
+  isolated-vm: true

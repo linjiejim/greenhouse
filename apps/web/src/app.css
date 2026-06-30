@@ -1,0 +1,1162 @@
+@import 'tailwindcss';
+
+@source "../**/*.{tsx,ts}";
+
+/* ─── Custom dark variant: driven by .dark-theme class ─── */
+@custom-variant dark (&:where(.dark-theme, .dark-theme *));
+
+/* ─── Theme: Semantic color tokens mapped to CSS variables ─── */
+@theme static inline {
+  --color-surface: var(--t-surface);
+  --color-surface-raised: var(--t-surface-raised);
+  --color-surface-muted: var(--t-surface-muted);
+  --color-surface-sunken: var(--t-surface-sunken);
+
+  --color-fg: var(--t-fg);
+  --color-fg-secondary: var(--t-fg-secondary);
+  --color-fg-muted: var(--t-fg-muted);
+  --color-fg-faint: var(--t-fg-faint);
+
+  --color-edge: var(--t-edge);
+  --color-edge-strong: var(--t-edge-strong);
+
+  /* Primary brand color palette (driven by JS theme switcher) */
+  --color-primary-50: rgb(var(--primary-50));
+  --color-primary-100: rgb(var(--primary-100));
+  --color-primary-200: rgb(var(--primary-200));
+  --color-primary-300: rgb(var(--primary-300));
+  --color-primary-400: rgb(var(--primary-400));
+  --color-primary-500: rgb(var(--primary-500));
+  --color-primary-600: rgb(var(--primary-600));
+  --color-primary-700: rgb(var(--primary-700));
+  --color-primary-800: rgb(var(--primary-800));
+  --color-primary-900: rgb(var(--primary-900));
+
+  /* Semantic status colors */
+  --color-success: var(--t-success);
+  --color-success-subtle: var(--t-success-subtle);
+  --color-success-fg: var(--t-success-fg);
+
+  --color-warning: var(--t-warning);
+  --color-warning-subtle: var(--t-warning-subtle);
+  --color-warning-fg: var(--t-warning-fg);
+
+  --color-danger: var(--t-danger);
+  --color-danger-subtle: var(--t-danger-subtle);
+  --color-danger-fg: var(--t-danger-fg);
+
+  --color-info: var(--t-info);
+  --color-info-subtle: var(--t-info-subtle);
+  --color-info-fg: var(--t-info-fg);
+
+  /* Destructive action */
+  --color-destructive: var(--t-destructive);
+  --color-destructive-hover: var(--t-destructive-hover);
+
+  /* Star rating */
+  --color-star: var(--t-star);
+  --color-star-hover: var(--t-star-hover);
+
+  /* Semantic border/divide colors (for border-danger, border-success etc.) */
+  /* These use the same values as the status colors */
+
+  /* Primary semantic tokens — adapt to dark mode */
+  --color-primary-subtle: var(--t-primary-subtle);
+  --color-primary-subtle-hover: var(--t-primary-subtle-hover);
+  --color-primary-edge: var(--t-primary-edge);
+  --color-primary-fg: var(--t-primary-fg);
+  --color-primary-fg-strong: var(--t-primary-fg-strong);
+}
+
+/* ─── Light theme (default) ─── */
+:root {
+  /* Primary palette defaults — Teal (overridden by JS theme switcher) */
+  --primary-50: 240 253 250;
+  --primary-100: 204 251 241;
+  --primary-200: 153 246 228;
+  --primary-300: 94 234 212;
+  --primary-400: 45 212 191;
+  --primary-500: 20 184 166;
+  --primary-600: 13 148 136;
+  --primary-700: 15 118 110;
+  --primary-800: 17 94 89;
+  --primary-900: 19 78 74;
+
+  /* Surface */
+  --t-surface: #ffffff;
+  --t-surface-raised: #ffffff;
+  --t-surface-muted: #f3f4f6;
+  --t-surface-sunken: #f9fafb;
+
+  /* Text */
+  --t-fg: #111827;
+  --t-fg-secondary: #4b5563;
+  --t-fg-muted: #6b7280;
+  --t-fg-faint: #9ca3af;
+
+  /* Border */
+  --t-edge: #e5e7eb;
+  --t-edge-strong: #d1d5db;
+
+  /* Status: Success */
+  --t-success: #059669;
+  --t-success-subtle: #ecfdf5;
+  --t-success-fg: #065f46;
+
+  /* Status: Warning */
+  --t-warning: #d97706;
+  --t-warning-subtle: #fffbeb;
+  --t-warning-fg: #92400e;
+
+  /* Status: Danger */
+  --t-danger: #dc2626;
+  --t-danger-subtle: #fef2f2;
+  --t-danger-fg: #991b1b;
+
+  /* Destructive action */
+  --t-destructive: #dc2626;
+  --t-destructive-hover: #b91c1c;
+
+  /* Star rating */
+  --t-star: #f59e0b;
+  --t-star-hover: #d97706;
+
+  /* Status: Info */
+  --t-info: #2563eb;
+  --t-info-subtle: #eff6ff;
+  --t-info-fg: #1e40af;
+
+  /* Primary semantic (light defaults — use actual primary-50/100/200/600/700) */
+  --t-primary-subtle: rgb(var(--primary-50));
+  --t-primary-subtle-hover: rgb(var(--primary-100));
+  --t-primary-edge: rgb(var(--primary-200));
+  --t-primary-fg: rgb(var(--primary-600));
+  --t-primary-fg-strong: rgb(var(--primary-700));
+}
+
+/* ─── Dark theme: Midnight ─── */
+.dark-theme {
+  color-scheme: dark;
+
+  /* Surface */
+  --t-surface: #0f172a;
+  --t-surface-raised: #1e293b;
+  --t-surface-muted: #334155;
+  --t-surface-sunken: #0f172a;
+
+  /* Text */
+  --t-fg: #f8fafc;
+  --t-fg-secondary: #cbd5e1;
+  --t-fg-muted: #94a3b8;
+  --t-fg-faint: #64748b;
+
+  /* Border */
+  --t-edge: #334155;
+  --t-edge-strong: #475569;
+
+  /* Status: Success */
+  --t-success: #34d399;
+  --t-success-subtle: rgba(16, 185, 129, 0.12);
+  --t-success-fg: #6ee7b7;
+
+  /* Status: Warning */
+  --t-warning: #fbbf24;
+  --t-warning-subtle: rgba(245, 158, 11, 0.12);
+  --t-warning-fg: #fcd34d;
+
+  /* Status: Danger */
+  --t-danger: #f87171;
+  --t-danger-subtle: rgba(239, 68, 68, 0.12);
+  --t-danger-fg: #fca5a5;
+
+  /* Destructive action */
+  --t-destructive: #ef4444;
+  --t-destructive-hover: #f87171;
+
+  /* Star rating */
+  --t-star: #fbbf24;
+  --t-star-hover: #f59e0b;
+
+  /* Status: Info */
+  --t-info: #60a5fa;
+  --t-info-subtle: rgba(59, 130, 246, 0.12);
+  --t-info-fg: #93c5fd;
+
+  /* Primary semantic (dark — translucent overlays instead of pastel) */
+  --t-primary-subtle: rgba(var(--primary-500), 0.12);
+  --t-primary-subtle-hover: rgba(var(--primary-500), 0.2);
+  --t-primary-edge: rgba(var(--primary-500), 0.25);
+  --t-primary-fg: rgb(var(--primary-300));
+  --t-primary-fg-strong: rgb(var(--primary-200));
+}
+
+/* ─── Theme transition (smooth theme switching) ─── */
+* {
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.15s ease,
+    box-shadow 0.2s ease;
+}
+/* Opt-out for elements that shouldn't animate (inputs during typing, etc.) */
+.no-theme-transition,
+.no-theme-transition * {
+  transition: none !important;
+}
+/* Performance: skip transition on page load — JS removes this class after first paint */
+.theme-loading * {
+  transition: none !important;
+}
+
+/* ─── Scrollbar — hidden at rest, revealed only while scrolling / on hover ─── */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* Thumb is transparent by default so the bar is effectively invisible.
+   The 3px transparent border + padding-box clip shrinks the visible thumb
+   to a slim ~3px sliver for a minimal look. */
+::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border: 3px solid transparent;
+  border-radius: 9px;
+  background-clip: padding-box;
+  transition: background-color 0.18s ease;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* `.is-scrolling` is toggled by lib/scroll-activity on the scrolled element
+   while it scrolls; hover reveals the bar when the pointer is over the area. */
+.is-scrolling::-webkit-scrollbar-thumb,
+*:hover::-webkit-scrollbar-thumb {
+  background-color: var(--t-edge-strong);
+}
+.is-scrolling::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--t-fg-muted);
+}
+/* Firefox: thin overlay-style bar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.is-scrolling,
+*:hover {
+  scrollbar-color: var(--t-edge-strong) transparent;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Prose: shared base (elements styled via Tailwind @apply) ─── */
+.prose-base,
+.prose-compact {
+  @apply text-sm text-fg;
+}
+
+/* ── Links ── */
+.prose-base a,
+.prose-compact a {
+  @apply text-primary-fg underline;
+}
+
+/* ── Inline code ── */
+.prose-base code,
+.prose-compact code {
+  @apply bg-primary-subtle text-primary-fg-strong text-[0.875em] px-1.5 py-0.5 rounded;
+}
+
+/* ── Code blocks ── */
+.prose-base pre,
+.prose-compact pre {
+  @apply bg-surface-muted border border-edge rounded-lg overflow-x-auto;
+}
+.prose-base pre code,
+.prose-compact pre code {
+  @apply bg-transparent p-0 text-fg-secondary;
+}
+
+/* ── Blockquote ── */
+.prose-base blockquote,
+.prose-compact blockquote {
+  @apply border-l-3 border-primary-500 pl-4 text-primary-fg;
+}
+
+/* ── Table ── */
+.prose-base table,
+.prose-compact table {
+  border-collapse: collapse;
+  @apply w-full block overflow-x-auto;
+  -webkit-overflow-scrolling: touch;
+}
+.prose-base th,
+.prose-compact th,
+.prose-base td,
+.prose-compact td {
+  @apply border border-edge px-3 py-2 text-left;
+}
+.prose-base th,
+.prose-compact th {
+  @apply bg-surface-muted font-semibold text-fg;
+}
+
+/* ── Images ── */
+.prose-base img,
+.prose-compact img {
+  @apply max-w-full rounded-lg;
+}
+
+/* ── HR ── */
+.prose-base hr,
+.prose-compact hr {
+  @apply border-edge;
+}
+
+/* ── Lists ── */
+.prose-base ul,
+.prose-compact ul,
+.prose-base ol,
+.prose-compact ol {
+  list-style: revert;
+}
+
+/* ─── prose-base: spacious variant for wiki / docs ─── */
+.prose-base {
+  @apply leading-relaxed;
+}
+.prose-base h1 {
+  @apply text-lg font-bold text-fg mt-4 mb-2;
+}
+.prose-base h2 {
+  @apply text-base font-semibold text-fg mt-4 mb-1.5;
+}
+.prose-base h3 {
+  @apply text-[15px] font-semibold text-fg mt-3 mb-1;
+}
+.prose-base p {
+  @apply my-2;
+}
+.prose-base pre {
+  @apply p-4 my-3;
+}
+.prose-base blockquote {
+  @apply my-3;
+}
+.prose-base table {
+  @apply my-3;
+}
+.prose-base ul,
+.prose-base ol {
+  @apply pl-6 my-2;
+}
+.prose-base li {
+  @apply my-1;
+}
+.prose-base hr {
+  @apply my-6;
+}
+
+/* ─── prose-compact: tight variant for chat / agent messages ─── */
+.prose-compact {
+  @apply leading-normal;
+}
+.prose-compact h1 {
+  @apply text-base font-bold text-fg mt-2 mb-1;
+}
+.prose-compact h2 {
+  @apply text-[15px] font-semibold text-fg mt-2 mb-0.5;
+}
+.prose-compact h3 {
+  @apply text-sm font-semibold text-fg mt-1.5 mb-0.5;
+}
+.prose-compact p {
+  @apply my-1;
+}
+.prose-compact pre {
+  @apply p-3 my-2;
+}
+.prose-compact blockquote {
+  @apply my-2;
+}
+.prose-compact table {
+  @apply my-2;
+}
+.prose-compact ul,
+.prose-compact ol {
+  @apply pl-5 my-1;
+}
+.prose-compact li {
+  @apply my-0.5;
+}
+.prose-compact hr {
+  @apply my-4;
+}
+
+/* ─── Dark prose adjustments ─── */
+.dark-theme .prose-base pre,
+.dark-theme .prose-compact pre {
+  @apply bg-black/30 border-edge;
+}
+.dark-theme .prose-base pre code,
+.dark-theme .prose-compact pre code {
+  @apply text-fg;
+}
+.dark-theme .prose-base th,
+.dark-theme .prose-compact th {
+  background: rgba(255, 255, 255, 0.05);
+}
+/* Inline code outside prose */
+.dark-theme code:not(.prose-base code):not(.prose-compact code) {
+  @apply bg-primary-subtle text-primary-fg;
+}
+
+/* ─── Syntax Highlighting (lightweight) ─── */
+.hl-pre {
+  position: relative;
+}
+.hl-lang {
+  @apply absolute top-1.5 right-2 text-[10px] text-fg-faint uppercase tracking-wider select-none;
+}
+.hl-keyword {
+  @apply text-purple-600 font-medium;
+}
+.hl-string {
+  @apply text-green-700;
+}
+.hl-comment {
+  @apply text-fg-faint italic;
+}
+.hl-number {
+  @apply text-blue-600;
+}
+.dark-theme .hl-keyword {
+  color: #c4b5fd;
+}
+.dark-theme .hl-string {
+  color: #86efac;
+}
+.dark-theme .hl-number {
+  color: #93c5fd;
+}
+
+/* ─── Animations ─── */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Typewriter animation for AI-generated session titles */
+@keyframes typewriter-reveal {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.animate-typewriter {
+  animation: typewriter-reveal 0.8s steps(20, end);
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+/* ─── Overlay panel enter/exit (OverlayPanel side variant) ───
+   Desktop: the panel is anchored at the TOP-RIGHT (where the Agent nav button
+   lives), so it unfurls toward the bottom-left on open and retracts back to the
+   top-right on close — scale + a small diagonal drift + fade, transform-origin
+   pinned to that corner. Mobile: full-screen sheet slides up to open, down to
+   close. */
+@keyframes panel-pop {
+  from {
+    opacity: 0;
+    transform: translate(6px, -6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+}
+@keyframes panel-pop-out {
+  from {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(6px, -6px) scale(0.97);
+  }
+}
+@keyframes slide-down {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+@keyframes backdrop-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes backdrop-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.animate-panel-enter {
+  animation: slide-up 0.3s ease-out;
+}
+.animate-panel-exit {
+  animation: slide-down 0.25s ease-in forwards;
+}
+@media (min-width: 768px) {
+  .animate-panel-enter {
+    animation: panel-pop 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    transform-origin: top right;
+  }
+  .animate-panel-exit {
+    animation: panel-pop-out 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+    transform-origin: top right;
+  }
+}
+.animate-backdrop-fade {
+  animation: backdrop-fade 0.15s ease-out;
+}
+.animate-backdrop-fade-out {
+  animation: backdrop-fade-out 0.18s ease-in forwards;
+}
+/* Vestibular safety: collapse motion to a plain fade. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-panel-enter,
+  .animate-backdrop-fade {
+    animation: backdrop-fade 0.15s ease-out;
+  }
+  .animate-panel-exit,
+  .animate-backdrop-fade-out {
+    animation: backdrop-fade-out 0.15s ease-out forwards;
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.animate-slide-in-left {
+  animation: slide-in-left 0.25s ease-out;
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.25s ease-out;
+}
+
+@keyframes slide-out-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+.animate-slide-out-left {
+  animation: slide-out-left 0.2s ease-in forwards;
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+.animate-slide-out-right {
+  animation: slide-out-right 0.2s ease-in forwards;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+}
+.animate-toast-in {
+  animation: toast-in 0.2s ease-out;
+}
+.animate-toast-out {
+  animation: toast-out 0.15s ease-in forwards;
+}
+
+@keyframes skeleton-pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.animate-skeleton {
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+/* ─── Table row hover ─── */
+table tbody tr {
+  transition: background-color 0.1s;
+}
+table tbody tr:hover {
+  background-color: var(--t-surface-muted) !important;
+}
+
+/* ─── Utility: line-clamp ─── */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ─── Touch devices: make hover-only elements visible ─── */
+@media (hover: none) {
+  .touch-visible {
+    opacity: 1 !important;
+  }
+}
+
+/* ─── Dark theme form overrides (inputs use semantic tokens now but fallback) ─── */
+.dark-theme input,
+.dark-theme select,
+.dark-theme textarea {
+  background-color: var(--t-surface-muted) !important;
+  border-color: var(--t-edge) !important;
+  color: var(--t-fg) !important;
+}
+.dark-theme input::placeholder,
+.dark-theme textarea::placeholder {
+  color: var(--t-fg-faint) !important;
+}
+
+/* ─── Dark theme: remaining non-semantic color overrides ─── */
+
+/* --- Pastel backgrounds: too bright on dark surfaces --- */
+.dark-theme .bg-purple-50 {
+  background-color: rgba(168, 85, 247, 0.12);
+}
+.dark-theme .bg-purple-100 {
+  background-color: rgba(168, 85, 247, 0.18);
+}
+.dark-theme .bg-orange-50 {
+  background-color: rgba(249, 115, 22, 0.12);
+}
+.dark-theme .bg-orange-100 {
+  background-color: rgba(249, 115, 22, 0.18);
+}
+.dark-theme .bg-blue-50 {
+  background-color: rgba(59, 130, 246, 0.12);
+}
+.dark-theme .bg-blue-100 {
+  background-color: rgba(59, 130, 246, 0.18);
+}
+.dark-theme .bg-green-50 {
+  background-color: rgba(34, 197, 94, 0.12);
+}
+.dark-theme .bg-green-100 {
+  background-color: rgba(34, 197, 94, 0.18);
+}
+.dark-theme .bg-green-200 {
+  background-color: rgba(34, 197, 94, 0.22);
+}
+.dark-theme .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.12);
+}
+.dark-theme .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.18);
+}
+.dark-theme .bg-yellow-50 {
+  background-color: rgba(234, 179, 8, 0.12);
+}
+.dark-theme .bg-yellow-100 {
+  background-color: rgba(234, 179, 8, 0.18);
+}
+.dark-theme .bg-indigo-50,
+.dark-theme .bg-indigo-50\/50,
+.dark-theme .bg-indigo-50\/30 {
+  background-color: rgba(99, 102, 241, 0.12);
+}
+.dark-theme .bg-violet-50 {
+  background-color: rgba(139, 92, 246, 0.12);
+}
+.dark-theme .bg-violet-100 {
+  background-color: rgba(139, 92, 246, 0.18);
+}
+.dark-theme .bg-cyan-50 {
+  background-color: rgba(6, 182, 212, 0.12);
+}
+.dark-theme .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.12);
+}
+.dark-theme .bg-gray-50 {
+  background-color: var(--t-surface-muted);
+}
+.dark-theme .bg-gray-100 {
+  background-color: var(--t-surface-muted);
+}
+.dark-theme .bg-white {
+  background-color: var(--t-surface-raised);
+}
+
+/* --- Dark text colors that are too dark on dark surfaces --- */
+.dark-theme .text-purple-700,
+.dark-theme .text-purple-600 {
+  color: #c4b5fd;
+}
+.dark-theme .text-orange-700,
+.dark-theme .text-orange-600 {
+  color: #fdba74;
+}
+.dark-theme .text-green-700,
+.dark-theme .text-green-800,
+.dark-theme .text-green-900 {
+  color: #86efac;
+}
+.dark-theme .text-blue-800,
+.dark-theme .text-blue-700 {
+  color: #93c5fd;
+}
+.dark-theme .text-yellow-700 {
+  color: #fde047;
+}
+.dark-theme .text-indigo-600,
+.dark-theme .text-indigo-500 {
+  color: #a5b4fc;
+}
+.dark-theme .text-indigo-400 {
+  color: #818cf8;
+}
+.dark-theme .text-violet-700,
+.dark-theme .text-violet-600 {
+  color: #c4b5fd;
+}
+.dark-theme .text-cyan-700 {
+  color: #67e8f9;
+}
+.dark-theme .text-amber-800 {
+  color: #fcd34d;
+}
+.dark-theme .text-red-900,
+.dark-theme .text-red-800 {
+  color: #fca5a5;
+}
+.dark-theme .text-gray-700 {
+  color: var(--t-fg-secondary);
+}
+.dark-theme .text-gray-500,
+.dark-theme .text-gray-400 {
+  color: var(--t-fg-muted);
+}
+.dark-theme .text-gray-300 {
+  color: var(--t-fg-faint);
+}
+.dark-theme .text-gray-200 {
+  color: var(--t-fg-faint);
+}
+
+/* --- Dark border overrides --- */
+.dark-theme .border-purple-200,
+.dark-theme .border-purple-100 {
+  border-color: rgba(168, 85, 247, 0.25);
+}
+.dark-theme .border-orange-200,
+.dark-theme .border-orange-300 {
+  border-color: rgba(249, 115, 22, 0.25);
+}
+.dark-theme .border-green-200 {
+  border-color: rgba(34, 197, 94, 0.25);
+}
+.dark-theme .border-blue-100,
+.dark-theme .border-blue-300 {
+  border-color: rgba(59, 130, 246, 0.25);
+}
+.dark-theme .border-yellow-200 {
+  border-color: rgba(234, 179, 8, 0.25);
+}
+.dark-theme .border-indigo-200,
+.dark-theme .border-indigo-300 {
+  border-color: rgba(99, 102, 241, 0.25);
+}
+.dark-theme .border-violet-200 {
+  border-color: rgba(139, 92, 246, 0.25);
+}
+.dark-theme .border-red-100,
+.dark-theme .border-red-200,
+.dark-theme .border-red-600 {
+  border-color: rgba(239, 68, 68, 0.25);
+}
+.dark-theme .border-amber-100,
+.dark-theme .border-amber-300 {
+  border-color: rgba(245, 158, 11, 0.25);
+}
+.dark-theme .border-gray-200 {
+  border-color: var(--t-edge);
+}
+
+/* --- Diff view dark mode --- */
+.dark-theme .bg-green-50 {
+  background-color: rgba(34, 197, 94, 0.12);
+}
+.dark-theme .bg-green-200.text-green-900 {
+  background-color: rgba(34, 197, 94, 0.25);
+  color: #86efac;
+}
+.dark-theme .bg-red-200.text-red-900 {
+  background-color: rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+}
+
+/* --- Flat workbench shadow scale --- */
+.shadow-sm {
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
+}
+.shadow-md {
+  box-shadow:
+    0 3px 8px -4px rgba(15, 23, 42, 0.12),
+    0 1px 3px -2px rgba(15, 23, 42, 0.08);
+}
+.shadow-lg {
+  box-shadow:
+    0 10px 22px -16px rgba(15, 23, 42, 0.18),
+    0 4px 10px -8px rgba(15, 23, 42, 0.12);
+}
+.shadow-xl,
+.shadow-2xl {
+  box-shadow:
+    0 16px 34px -24px rgba(15, 23, 42, 0.22),
+    0 8px 18px -18px rgba(15, 23, 42, 0.16);
+}
+.dark-theme .shadow-sm {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.18);
+}
+.dark-theme .shadow-md {
+  box-shadow:
+    0 3px 8px -4px rgba(0, 0, 0, 0.28),
+    0 1px 3px -2px rgba(0, 0, 0, 0.22);
+}
+.dark-theme .shadow-lg {
+  box-shadow:
+    0 10px 22px -16px rgba(0, 0, 0, 0.38),
+    0 4px 10px -8px rgba(0, 0, 0, 0.3);
+}
+.dark-theme .shadow-xl,
+.dark-theme .shadow-2xl {
+  box-shadow:
+    0 16px 34px -24px rgba(0, 0, 0, 0.46),
+    0 8px 18px -18px rgba(0, 0, 0, 0.36);
+}
+
+/* --- Dialog/Modal dark overlay: stronger backdrop on dark --- */
+.dark-theme .bg-black\/30 {
+  background-color: rgba(0, 0, 0, 0.55);
+}
+.dark-theme .bg-black\/20 {
+  background-color: rgba(0, 0, 0, 0.45);
+}
+
+/* --- Table zebra striping --- */
+table tbody tr:nth-child(even) {
+  background-color: var(--t-surface-sunken);
+}
+.dark-theme table tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* --- Hover/focus consistency: interactive elements --- */
+.dark-theme button:focus-visible,
+.dark-theme a:focus-visible,
+.dark-theme input:focus-visible,
+.dark-theme select:focus-visible,
+.dark-theme textarea:focus-visible {
+  outline: 2px solid rgb(var(--primary-400));
+  outline-offset: 1px;
+}
+
+/* --- hover:bg-blue-100 / hover:bg-violet-100 dark fix --- */
+.dark-theme .hover\:bg-blue-100:hover {
+  background-color: rgba(59, 130, 246, 0.18);
+}
+.dark-theme .hover\:bg-violet-100:hover {
+  background-color: rgba(139, 92, 246, 0.18);
+}
+.dark-theme .hover\:bg-orange-50:hover {
+  background-color: rgba(249, 115, 22, 0.12);
+}
+.dark-theme .hover\:bg-gray-50:hover {
+  background-color: var(--t-surface-muted);
+}
+
+/* --- Empty state icon visibility in dark mode --- */
+.dark-theme .text-primary-500 {
+  color: rgb(var(--primary-400));
+}
+
+/* --- EditorJS integration styles --- */
+
+/* Editor content area padding */
+.editorjs-holder .codex-editor__redactor {
+  padding-bottom: 100px !important;
+}
+
+/* Block & toolbar fill full container width */
+.ce-block__content,
+.ce-toolbar__content {
+  max-width: 100% !important;
+}
+
+/* Links in editor content */
+.ce-block a {
+  color: rgb(var(--primary-500));
+}
+
+/*
+ * Heading styles — EditorJS renders <h1>–<h6> inside .ce-header.
+ * Without these, headings look identical to paragraphs.
+ */
+.ce-header {
+  font-weight: 700;
+  line-height: 1.3;
+}
+h1.ce-header {
+  font-size: 1.75em;
+  margin: 0.3em 0;
+}
+h2.ce-header {
+  font-size: 1.4em;
+  margin: 0.25em 0;
+}
+h3.ce-header {
+  font-size: 1.17em;
+  margin: 0.2em 0;
+}
+h4.ce-header {
+  font-size: 1.05em;
+  margin: 0.15em 0;
+}
+h5.ce-header,
+h6.ce-header {
+  font-size: 1em;
+  margin: 0.1em 0;
+}
+
+/* EditorJS list styles */
+.cdx-list {
+  padding-left: 1.5em;
+}
+.cdx-list--ordered {
+  list-style-type: decimal;
+}
+.cdx-list--unordered {
+  list-style-type: disc;
+}
+
+/*
+ * Popover / block-toolbox / inline-toolbar overflow fix.
+ *
+ * The .editorjs-container does NOT have overflow:auto.
+ * Popovers are repositioned to position:fixed via JS (setupPopoverFix in editor-field.tsx)
+ * so they escape overflow:auto ancestors (form scroll body, drawer).
+ */
+.editorjs-holder .codex-editor {
+  position: relative;
+  z-index: 1;
+}
+
+/* Popover ("add block" dropdown, block settings, etc.) — always on top */
+.ce-popover,
+.ce-inline-toolbar,
+.ce-conversion-toolbar,
+.ce-settings,
+.ct {
+  z-index: 80 !important;
+}
+
+/*
+ * When JS repositions the popover container to position:fixed,
+ * ensure it renders above all form/drawer layers (drawer is z-50).
+ */
+.ce-popover__container[style*='position: fixed'] {
+  z-index: 80 !important;
+}
+
+/* Ensure the toolbar plus / settings buttons are visible and clickable */
+.ce-toolbar {
+  z-index: 2;
+}
+
+/* EditorJS image caption — subtle style */
+.cdx-input.image-tool__caption {
+  font-size: 12px;
+  color: var(--t-fg-muted, #999);
+}
+
+/*
+ * Fullscreen mode.
+ * Applied via CSS class so the holder div stays in the same DOM position
+ * and the EditorJS instance is never destroyed/recreated.
+ */
+.editorjs-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 70 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  max-width: none !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+.editorjs-fullscreen .editorjs-body {
+  flex: 1;
+  overflow-y: auto;
+}
+.editorjs-fullscreen .editorjs-holder {
+  max-width: 900px;
+  margin: 0 auto;
+  min-height: calc(100vh - 48px);
+}
+
+/* --- Dark theme overrides for EditorJS --- */
+.dark-theme .ce-block {
+  color: var(--t-fg);
+}
+.dark-theme .ce-header {
+  color: var(--t-fg);
+}
+.dark-theme .ce-toolbar__plus,
+.dark-theme .ce-toolbar__settings-btn {
+  color: var(--t-fg-muted);
+  background: var(--t-surface-muted);
+}
+.dark-theme .ce-toolbar__plus:hover,
+.dark-theme .ce-toolbar__settings-btn:hover {
+  background: var(--t-surface-sunken);
+}
+.dark-theme .ce-inline-toolbar,
+.dark-theme .ce-conversion-toolbar,
+.dark-theme .ce-settings {
+  background: var(--t-surface-raised);
+  border-color: var(--t-edge);
+  color: var(--t-fg);
+}
+.dark-theme .ce-popover {
+  background: var(--t-surface-raised);
+  border-color: var(--t-edge);
+}
+.dark-theme .ce-popover-item__title {
+  color: var(--t-fg);
+}
+.dark-theme .ce-popover-item__icon {
+  background: var(--t-surface-muted);
+  color: var(--t-fg-secondary);
+  border-color: var(--t-edge);
+}
+.dark-theme .ce-popover-item:hover {
+  background: var(--t-surface-sunken);
+}
+.dark-theme .cdx-input {
+  border-color: var(--t-edge);
+  background: var(--t-surface-raised);
+  color: var(--t-fg);
+}
+.dark-theme .cdx-search-field {
+  background: var(--t-surface-sunken);
+  border-color: var(--t-edge);
+  color: var(--t-fg);
+}
+.dark-theme .cdx-search-field__input {
+  color: var(--t-fg);
+}
+.dark-theme .ct,
+.dark-theme .ct__content {
+  background: var(--t-surface-raised);
+  border-color: var(--t-edge);
+  color: var(--t-fg);
+}

@@ -1,0 +1,64 @@
+name: Quality gate
+
+# Reusable lint / typecheck / test gate. Called by ci.yml (main + PRs). Has no
+# triggers of its own — it only runs when another workflow `uses:` it via workflow_call.
+on:
+  workflow_call:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: greenhouse_test
+          POSTGRES_USER: greenhouse
+          POSTGRES_PASSWORD: greenhouse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U greenhouse -d greenhouse_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Build the test DB via `migrate` (NOT push) so the migration chain is
+      # exercised on every run — a broken/incomplete chain fails CI here
+      # instead of silently diverging from push.
+      - name: Apply migrations to test database
+        run: npx drizzle-kit migrate
+        env:
+          DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
+      - run: pnpm test
