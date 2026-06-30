@@ -60,7 +60,17 @@ what exists." These rules are as binding as the "add" rules:
   (`quality-gate.yml`, reusable). The test job builds the CI database via `migrate` (not push)
   so the whole migration chain is exercised on every run.
 - **E2E security suite**: `pnpm test:e2e` (needs a running API; see `tests/e2e`). Run it before
-  merging security-relevant changes (auth / v1 / permissions / tool surface).
+  merging security-relevant changes (auth / v1 / permissions / tool surface). This is the
+  **API-level** suite (vitest + `fetch`, no browser).
+- **Browser e2e (Playwright)**: `pnpm test:e2e:ui` — deterministic UI regression suite in
+  `tests/e2e-ui/` (Chromium). Covers login, chat (LLM stubbed via `page.route` on `/api/chat`
+  + the post-completion `GET /api/sessions/:id` reload), project create, and user create/delete
+  (the last is the regression guard for the `users.delete` 500 bug). `playwright.config.ts`
+  auto-starts `pnpm dev` (reuses a running one); `auth.setup.ts` creates a super test account
+  via `admin:create` then logs in, saving storage state for the authenticated specs. Locators
+  use the `data-testid` anchors on the key surfaces (login / chat / projects / users) +
+  `role=dialog` on `<Dialog>`/`<ConfirmDialog>`. Writes use a per-run `e2e-<worker>-<ts>-`
+  prefix and self-clean. This is the suite to run/extend for browser flows.
 - **Dev mode**: `pnpm dev` runs Vite dev server (web, `:3100`, HMR) + the API (`:3101`) in
   parallel. Vite proxies `/api` (incl. ws), `/public`, `/health` to the API, so the browser
   sees same-origin — open `:3100`. Production is `pnpm web:build` (Vite → repo-root `public/`,

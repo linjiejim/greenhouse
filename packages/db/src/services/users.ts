@@ -93,8 +93,8 @@ export function createUserService(db: Db) {
 
     /** Hard-delete a user and cascade related data. */
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(users).where(eq(users.id, id));
-      return (result as unknown as { rowCount: number }).rowCount > 0;
+      const result = await db.delete(users).where(eq(users.id, id)).returning();
+      return result.length > 0;
     },
   };
   return service;

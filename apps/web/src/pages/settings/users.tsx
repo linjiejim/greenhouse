@@ -456,6 +456,7 @@ export function UserManagementPanel() {
         </span>
         <Button
           size="sm"
+          data-testid="users-add"
           onClick={() => {
             setShowCreate(true);
             setError('');
@@ -473,18 +474,21 @@ export function UserManagementPanel() {
           <h4 className="text-sm font-medium text-fg">{t('settings.addNewUser')}</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Input
+              data-testid="user-email-input"
               placeholder={t('settings.emailPlaceholder')}
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
             <Input
+              data-testid="user-password-input"
               placeholder={t('settings.passwordPlaceholder')}
               type="password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
             <Input
+              data-testid="user-nickname-input"
               placeholder={t('settings.nicknamePlaceholder')}
               value={form.nickname}
               onChange={(e) => setForm({ ...form, nickname: e.target.value })}
@@ -510,7 +514,7 @@ export function UserManagementPanel() {
             <Button variant="ghost" size="sm" onClick={() => setShowCreate(false)}>
               {t('common.cancel')}
             </Button>
-            <Button size="sm" onClick={handleCreate} disabled={saving}>
+            <Button size="sm" onClick={handleCreate} disabled={saving} data-testid="user-create-submit">
               {saving ? t('common.saving') : t('common.create')}
             </Button>
           </div>
@@ -714,6 +718,7 @@ export function UserManagementPanel() {
                           </button>
                           <button
                             onClick={() => setDeleteTarget(u)}
+                            data-testid={`user-delete-${u.email}`}
                             className="text-xs text-fg-faint hover:text-danger p-1.5 rounded hover:bg-surface-muted"
                             title={t('settings.deleteUser')}
                           >

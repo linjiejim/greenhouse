@@ -66,6 +66,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
         <div className="flex bg-surface-muted rounded-lg p-0.5 mb-4">
           <button
             type="button"
+            data-testid="login-tab-team"
             onClick={() => {
               setMode('internal');
               setError('');
@@ -78,6 +79,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
           </button>
           <button
             type="button"
+            data-testid="login-tab-guest"
             onClick={() => {
               setMode('external');
               setError('');
@@ -93,6 +95,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
         {mode === 'internal' && (
           <Input
             type="email"
+            data-testid="login-email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder={t('login.emailPlaceholder')}
@@ -104,6 +107,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
 
         <Input
           type="password"
+          data-testid="login-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={mode === 'internal' ? t('login.password') : t('login.accessCode')}
@@ -115,6 +119,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
 
         <button
           type="submit"
+          data-testid="login-submit"
           disabled={loading || !password.trim() || (mode === 'internal' && !email.trim())}
           className="w-full mt-4 py-3 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >

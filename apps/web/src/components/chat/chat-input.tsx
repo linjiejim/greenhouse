@@ -279,6 +279,7 @@ export function ChatInput({
                 textareaRef.current = el;
                 if (inputRef) inputRef.current = el;
               }}
+              data-testid="chat-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -327,6 +328,7 @@ export function ChatInput({
               {isStreaming ? (
                 <Button
                   onClick={onStop}
+                  data-testid="chat-stop"
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 rounded-full p-0 text-danger hover:bg-danger-subtle border border-danger"
@@ -338,6 +340,7 @@ export function ChatInput({
               ) : (
                 <Button
                   onClick={handleSend}
+                  data-testid="chat-send"
                   disabled={!input.trim()}
                   size="icon"
                   className="h-8 w-8 rounded-full p-0"

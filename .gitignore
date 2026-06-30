@@ -7,6 +7,12 @@
 # Dependencies
 node_modules/
 
+# Playwright (browser e2e) — generated artifacts + saved auth state
+/playwright-report/
+/test-results/
+/blob-report/
+tests/e2e-ui/.auth/
+
 # Build output
 dist/
 

@@ -335,9 +335,11 @@ interface DialogProps {
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | '80' | 'full';
   noPadding?: boolean;
+  /** Stable hook for e2e/automation. Applied to the dialog panel (which also carries role="dialog"). */
+  testId?: string;
 }
 
-export function Dialog({ open, onClose, title, children, size = 'lg', noPadding }: DialogProps) {
+export function Dialog({ open, onClose, title, children, size = 'lg', noPadding, testId }: DialogProps) {
   const [isClosing, setIsClosing] = React.useState(false);
   const onCloseRef = React.useRef(onClose);
   onCloseRef.current = onClose;
@@ -378,6 +380,10 @@ export function Dialog({ open, onClose, title, children, size = 'lg', noPadding 
         onClick={handleClose}
       />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        data-testid={testId}
         className={`relative bg-surface-raised border border-edge rounded-xl shadow-xl ${noPadding ? '' : 'p-6'} w-full ${sizeClasses[size]} max-h-[90vh] flex flex-col ${isClosing ? 'animate-toast-out' : 'animate-fade-in'} mx-4`}
       >
         <div
@@ -544,6 +550,8 @@ interface ConfirmDialogProps {
   description?: string;
   confirmLabel?: string;
   confirmVariant?: 'default' | 'destructive';
+  /** Stable hook for e2e/automation; defaults to "confirm-dialog". */
+  testId?: string;
 }
 
 export function ConfirmDialog({
@@ -554,6 +562,7 @@ export function ConfirmDialog({
   description,
   confirmLabel = 'Confirm',
   confirmVariant = 'default',
+  testId = 'confirm-dialog',
 }: ConfirmDialogProps) {
   React.useEffect(() => {
     if (!open) return;
@@ -571,14 +580,25 @@ export function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
-      <div className="relative bg-surface-raised border border-edge rounded-xl shadow-xl p-5 w-full max-w-xs animate-fade-in">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        data-testid={testId}
+        className="relative bg-surface-raised border border-edge rounded-xl shadow-xl p-5 w-full max-w-xs animate-fade-in"
+      >
         <p className="text-sm text-fg-secondary mb-1 font-medium">{title}</p>
         {description && <p className="text-xs text-fg-muted mb-4">{description}</p>}
         <div className="flex gap-2 justify-end">
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose} data-testid="confirm-dialog-cancel">
             Cancel
           </Button>
-          <Button variant={confirmVariant === 'destructive' ? 'destructive' : 'default'} size="sm" onClick={onConfirm}>
+          <Button
+            variant={confirmVariant === 'destructive' ? 'destructive' : 'default'}
+            size="sm"
+            onClick={onConfirm}
+            data-testid="confirm-dialog-confirm"
+          >
             {confirmLabel}
           </Button>
         </div>

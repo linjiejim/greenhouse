@@ -235,9 +235,10 @@ function CreateProjectDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={t('projects.createProject')} size="lg">
+    <Dialog open={open} onClose={onClose} title={t('projects.createProject')} size="lg" testId="project-create-dialog">
       <div className="space-y-3">
         <Input
+          data-testid="project-name-input"
           placeholder={t('projects.projectNamePlaceholder')}
           value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -328,7 +329,7 @@ function CreateProjectDialog({
           <Button variant="ghost" size="sm" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button size="sm" onClick={handleSubmit} disabled={saving}>
+          <Button size="sm" onClick={handleSubmit} disabled={saving} data-testid="project-create-submit">
             {saving ? t('projects.creating') : t('common.create')}
           </Button>
         </div>
@@ -435,7 +436,7 @@ export function ProjectsPage() {
           <h1 className="text-base font-semibold text-fg">Projects</h1>
           {view === 'cards' && <span className="text-xs text-fg-faint">({projects.length})</span>}
         </div>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
+        <Button size="sm" onClick={() => setShowCreate(true)} data-testid="projects-new">
           <Plus size={14} className="mr-1" /> {t('projects.title')}
         </Button>
       </div>
@@ -568,7 +569,7 @@ export function ProjectsPage() {
             <div className="flex flex-col items-center justify-center py-16 text-fg-faint">
               <FolderKanban size={40} className="mb-3 text-fg-faint" />
               <p className="text-sm">No projects yet</p>
-              <Button size="sm" className="mt-3" onClick={() => setShowCreate(true)}>
+              <Button size="sm" className="mt-3" onClick={() => setShowCreate(true)} data-testid="projects-new-empty">
                 <Plus size={14} className="mr-1" /> Create your first project
               </Button>
             </div>
