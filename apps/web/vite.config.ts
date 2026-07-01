@@ -23,10 +23,22 @@ const repoRoot = resolve(import.meta.dirname, '..', '..');
 const pkg = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf-8'));
 const apiTarget = `http://localhost:${process.env.API_PORT || 3101}`;
 
+// White-label seam: the document title follows PRODUCT_NAME (default "Greenhouse"),
+// mirroring @greenhouse/utils/brand on the server — so a fork rebrands via env
+// without editing index.html. Empty/unset ⇒ identical to upstream.
+const productName = process.env.PRODUCT_NAME || 'Greenhouse';
+
 export default defineConfig({
   root: import.meta.dirname,
   base: './',
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      name: 'greenhouse-brand-title',
+      transformIndexHtml: (html) => html.replace(/<title>[\s\S]*?<\/title>/, `<title>${productName}</title>`),
+    },
+  ],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version || '0.0.0'),
     __GREENHOUSE_API_BASE_URL__: JSON.stringify(process.env.GREENHOUSE_API_BASE_URL || ''),

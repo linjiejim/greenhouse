@@ -154,6 +154,11 @@ intersected with the proxy allowlist — a tool only appears if it declares the 
 
 ## Adding a tool
 
+> Forking Greenhouse to build something private on top? See **[EXTENDING.md](./EXTENDING.md)** —
+> it documents every extension point (tools, routes, DB tables, pages, profiles, LLM providers,
+> feature flags, i18n) so a fork adds private features without editing shared files or diverging
+> from upstream.
+
 A tool is **one file + one line** — for every kind, not just stateless ones. Declare it with
 `defineTool`, give it a `create(ctx)`, set its `surface`, and add one line to `TOOL_MODULES`.
 
