@@ -57,15 +57,35 @@ export const FEATURE_FLAGS = [
   },
 ] as const satisfies readonly FeatureFlag[];
 
-/** Union of known feature keys, e.g. 'memory' | 'sync'. */
+/** Union of CORE feature keys, e.g. 'memory' | 'sync'. Fork-registered keys are
+ *  plain strings resolved at runtime (see getAllFeatureFlags), not in this union. */
 export type FeatureKey = (typeof FEATURE_FLAGS)[number]['key'];
 
-/** All registry keys as a plain string array. */
+/** All CORE registry keys as a plain string array. */
 export const FEATURE_FLAG_KEYS: readonly string[] = FEATURE_FLAGS.map((f) => f.key);
 
-/** Look up a flag's metadata by key. */
+// ─── Fork extension point ────────────────────────────────
+// @greenhouse/types is a versioned package a fork consumes over npm and cannot
+// edit, so a fork registers its private gated features (e.g. 'crm') at startup
+// via registerFeatureFlags(). Empty upstream. Consumers that must include fork
+// flags (per-user resolution, the admin toggle list) read getAllFeatureFlags();
+// getFeatureFlag/featureDefault below already do.
+
+const extensionFeatureFlags: FeatureFlag[] = [];
+
+/** Register private feature flags contributed by a downstream fork (call at startup). */
+export function registerFeatureFlags(flags: FeatureFlag[]): void {
+  extensionFeatureFlags.push(...flags);
+}
+
+/** Core flags plus any fork-registered flags. Empty-extension upstream ⇒ just core. */
+export function getAllFeatureFlags(): readonly FeatureFlag[] {
+  return extensionFeatureFlags.length ? [...FEATURE_FLAGS, ...extensionFeatureFlags] : FEATURE_FLAGS;
+}
+
+/** Look up a flag's metadata by key (core + fork-registered). */
 export function getFeatureFlag(key: string): FeatureFlag | undefined {
-  return FEATURE_FLAGS.find((f) => f.key === key);
+  return getAllFeatureFlags().find((f) => f.key === key);
 }
 
 /** Effective state for a user that has no explicit `user_features` row. */

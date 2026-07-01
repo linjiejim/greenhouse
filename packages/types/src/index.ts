@@ -62,7 +62,14 @@ export {
 
 // Feature flags (per-user experimental feature registry)
 export type { FeatureFlag, FeatureKey } from './features.js';
-export { FEATURE_FLAGS, FEATURE_FLAG_KEYS, getFeatureFlag, featureDefault } from './features.js';
+export {
+  FEATURE_FLAGS,
+  FEATURE_FLAG_KEYS,
+  getFeatureFlag,
+  featureDefault,
+  registerFeatureFlags,
+  getAllFeatureFlags,
+} from './features.js';
 
 // WebSocket message protocol
 export type { ServerWsEvent, ClientWsEvent, OnlineUser } from './ws.js';

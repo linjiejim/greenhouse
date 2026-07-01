@@ -28,7 +28,7 @@ import type { ToolMeta } from '../../lib/api';
 import { getToolIcon } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { ROLE_TONE } from '../../lib/utils';
-import { FEATURE_FLAGS } from '@greenhouse/types/features';
+import { getAllFeatureFlags } from '@greenhouse/types/features';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -301,8 +301,9 @@ export function UserManagementPanel() {
 
   // ── Feature Toggle ──────────────────────────────────
 
-  /** Known features — single source of truth: @greenhouse/types/features. */
-  const KNOWN_FEATURES = FEATURE_FLAGS.map((f) => ({ id: f.key, label: f.label, description: f.description }));
+  /** Known features — single source of truth: @greenhouse/types/features
+   *  (core + any fork-registered flags). */
+  const KNOWN_FEATURES = getAllFeatureFlags().map((f) => ({ id: f.key, label: f.label, description: f.description }));
 
   const openFeatureAssign = async (user: ManagedUser) => {
     setFeatureAssignUser(user);
