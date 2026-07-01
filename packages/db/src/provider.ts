@@ -33,6 +33,7 @@ import { createKnowledgeShareService } from './services/knowledge-shares.js';
 import { createGroupService } from './services/groups.js';
 import { createUserFeatureService } from './services/user-features.js';
 import { createUserMemoryService } from './services/user-memories.js';
+import { createExtensionServices, EXTENSION_RESET_TABLES } from './extensions.js';
 
 export function createDatabase(connectionString: string) {
   const { client, db } = createDbClient(connectionString);
@@ -63,6 +64,10 @@ export function createDatabase(connectionString: string) {
     groups: createGroupService(db),
     userFeatures: createUserFeatureService(db),
     userMemories: createUserMemoryService(db),
+
+    // Private fork services (empty upstream) — flow into the inferred
+    // DatabaseProvider type. See extensions.ts.
+    ...createExtensionServices(db),
 
     /** Health check — verifies DB connection is alive. */
     async healthCheck(): Promise<{ ok: boolean; latencyMs: number }> {
@@ -130,6 +135,8 @@ export function createDatabase(connectionString: string) {
         'llm_usage',
         'messages',
         'sessions',
+        // Private fork tables (empty upstream) — see extensions.ts.
+        ...EXTENSION_RESET_TABLES,
       ];
       const rows = (await db.execute(sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)) as any[];
       const existingSet = new Set((rows as any[]).map((r: any) => r.tablename));

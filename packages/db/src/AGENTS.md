@@ -18,6 +18,13 @@
 - 禁止在业务逻辑（API 路由、工具、CLI）中直接写 SQL
 - 禁止新增接口镜像/repo 类/多后端抽象——没有第二实现（根 AGENTS.md「禁止预留抽象」）
 
+### Fork 扩展点（下游私有表/service）
+下游 fork 新增私有域（crm、drive…）时,**只改 `extensions.ts` 一个文件**,`provider.ts`/`client.ts`/schema barrel 与上游保持字节一致、合并不冲突。**上游本仓库为空**,guard 测试锁定。
+- `extensions.ts` 导出 `createExtensionServices(db)` 与 `EXTENSION_RESET_TABLES`。`createDatabase()` 把前者 spread 进返回对象,后者拼进 `resetSchema` 表清单。
+- 因为 `DatabaseProvider = ReturnType<typeof createDatabase>`,fork 在 `createExtensionServices` 里返回的 typed service 会**自动**并入 `DatabaseProvider` 类型 —— `db.crm.*` 全类型可用,无需动态注册抽象(正因如此不违反「禁止预留抽象」:fork 就是那个真实的第二消费者)。
+- fork 的表是普通 Drizzle 表对象,service 用查询构建器 `db.select().from(crmTable)`(全仓库 service 均如此,无 `db.query.*` 关系型 API),故**无需**改 `client.ts` 的 schema 泛型。
+- fork 的迁移走 fork 自己的 drizzle 命名空间(如 `drizzle-fork/`,时间戳前缀命名),**绝不**进本包的迁移链。
+
 ### ORM：Drizzle
 - Schema 定义放在 `schema/` 目录（TypeScript，每个领域一个文件）
 - Service 实现放在 `services/`，使用 Drizzle ORM API
