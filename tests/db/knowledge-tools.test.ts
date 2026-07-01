@@ -14,8 +14,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { initDatabase, _resetProvider } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { createKnowledgeMutationTool } from '../../apps/api/src/tools/knowledge-mutation.js';
-import { createKnowledgeQueryTool } from '../../apps/api/src/tools/knowledge-query.js';
+import { createKnowledgeMutationTool } from '../../apps/api/src/tools/knowledge/knowledge-mutation.js';
+import { createKnowledgeQueryTool } from '../../apps/api/src/tools/knowledge/knowledge-query.js';
 
 const PG_URL = 'postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test';
 let db: DatabaseProvider;

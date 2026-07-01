@@ -16,21 +16,21 @@ import {
 
 describe('resolveProxyToolIds', () => {
   it('keeps only allowlisted tools from the effective set', () => {
-    const effective = ['team_knowledge', 'knowledge_mutation', 'feature_request', 'analyze_image', 'project_query'];
+    const effective = ['knowledge_query', 'knowledge_mutation', 'feature_request', 'analyze_image', 'project_query'];
     // knowledge_mutation is mutating but not opted-in → excluded;
     // feature_request is not in any proxy allowlist → excluded
-    expect(resolveProxyToolIds(effective).sort()).toEqual(['analyze_image', 'project_query', 'team_knowledge']);
+    expect(resolveProxyToolIds(effective).sort()).toEqual(['analyze_image', 'knowledge_query', 'project_query']);
   });
 
   it('further narrows by the key-scoped read allowlist when present', () => {
-    const effective = ['team_knowledge', 'analyze_image', 'compute'];
+    const effective = ['knowledge_query', 'analyze_image', 'compute'];
     const result = resolveProxyToolIds(effective, { allowedTools: ['analyze_image', 'compute', 'knowledge_mutation'] });
     expect(result.sort()).toEqual(['analyze_image', 'compute']);
   });
 
   it('treats an empty key allowlist as "no extra read narrowing"', () => {
-    const effective = ['team_knowledge', 'analyze_image'];
-    expect(resolveProxyToolIds(effective, { allowedTools: [] }).sort()).toEqual(['analyze_image', 'team_knowledge']);
+    const effective = ['knowledge_query', 'analyze_image'];
+    expect(resolveProxyToolIds(effective, { allowedTools: [] }).sort()).toEqual(['analyze_image', 'knowledge_query']);
   });
 
   it('writes are default-deny; only included when opted into allowedWriteTools', () => {
@@ -55,7 +55,7 @@ describe('resolveProxyToolIds', () => {
   });
 
   it('includes new first-class query tools as read-only tools', () => {
-    const effective = ['team_knowledge', 'project_query', 'session_query', 'knowledge_query'];
+    const effective = ['project_query', 'session_query', 'knowledge_query'];
     expect(resolveProxyToolIds(effective).sort()).toEqual([...effective].sort());
     for (const id of effective) expect(READONLY_PROXY_ALLOWLIST.has(id)).toBe(true);
   });
@@ -99,9 +99,9 @@ describe('assertWorkspaceAllowed', () => {
 
 describe('buildProxyManifest', () => {
   it('maps tool IDs to registry metadata and skips unknown IDs', () => {
-    const manifest = buildProxyManifest(['team_knowledge', 'not_a_real_tool']);
+    const manifest = buildProxyManifest(['knowledge_query', 'not_a_real_tool']);
     expect(manifest).toHaveLength(1);
-    expect(manifest[0]).toMatchObject({ id: 'team_knowledge', category: 'team', mutating: false });
+    expect(manifest[0]).toMatchObject({ id: 'knowledge_query', category: 'team', mutating: false });
     expect(typeof manifest[0].description).toBe('string');
     expect(manifest[0].description.length).toBeGreaterThan(0);
   });
@@ -127,10 +127,10 @@ describe('executeProxyTool', () => {
     },
     execute: async (input: { q: string }) => ({ echoed: input.q }),
   };
-  const registry = { team_knowledge: echo } as Record<string, unknown>;
+  const registry = { knowledge_query: echo } as Record<string, unknown>;
 
   it('rejects a tool that is not in the allowed set (403)', async () => {
-    await expect(executeProxyTool(registry, 'team_knowledge', [], { q: 'hi' })).rejects.toMatchObject({
+    await expect(executeProxyTool(registry, 'knowledge_query', [], { q: 'hi' })).rejects.toMatchObject({
       name: 'ProxyToolError',
       status: 403,
     });
@@ -138,23 +138,23 @@ describe('executeProxyTool', () => {
 
   it('returns 404 when the tool has no implementation', async () => {
     await expect(
-      executeProxyTool({}, 'team_knowledge', ['team_knowledge'], { q: 'hi' }),
+      executeProxyTool({}, 'knowledge_query', ['knowledge_query'], { q: 'hi' }),
     ).rejects.toMatchObject({ status: 404 });
   });
 
   it('validates input against the tool schema (400 on bad input)', async () => {
     await expect(
-      executeProxyTool(registry, 'team_knowledge', ['team_knowledge'], { q: 123 }),
+      executeProxyTool(registry, 'knowledge_query', ['knowledge_query'], { q: 123 }),
     ).rejects.toBeInstanceOf(ProxyToolError);
   });
 
   it('executes an allowed tool with valid input', async () => {
-    const out = await executeProxyTool(registry, 'team_knowledge', ['team_knowledge'], { q: 'nutrient' });
+    const out = await executeProxyTool(registry, 'knowledge_query', ['knowledge_query'], { q: 'nutrient' });
     expect(out).toEqual({ echoed: 'nutrient' });
   });
 
   it('maps legacy read endpoint IDs to the combined tool when the new tool is allowed', async () => {
-    const out = await executeProxyTool(registry, 'search_team_knowledge', ['team_knowledge'], { q: 'nutrient' });
+    const out = await executeProxyTool(registry, 'search_team_knowledge', ['knowledge_query'], { q: 'nutrient' });
     expect(out).toEqual({ echoed: 'nutrient' });
   });
 

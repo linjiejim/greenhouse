@@ -7,8 +7,6 @@ import { loadProfile, registerKnownTools } from '../../apps/api/src/profile.js';
 
 const KNOWN_TOOLS = [
   'knowledge_query',
-  'team_knowledge',
-  'personal_knowledge',
   'knowledge_mutation',
   'analyze_image',
   'external_search',

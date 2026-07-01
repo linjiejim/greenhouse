@@ -22,8 +22,6 @@ const KNOWN_TOOLS = [
   'ask_user',
   'compute',
   'email_manager',
-  'team_knowledge',
-  'personal_knowledge',
   'session_history',
 ];
 registerKnownTools(KNOWN_TOOLS);
@@ -72,7 +70,7 @@ describe('Profile identities', () => {
     expect(profile.name).toBe('Team Assistant');
     expect(profile.access.level).toBe('internal');
     expect(profile.access.rich_output).toBe(true);
-    expect(profile.tools).toContain('team_knowledge');
+    expect(profile.tools).toContain('knowledge_query');
   });
 
   it('team declares switchable model choices; default does not', () => {

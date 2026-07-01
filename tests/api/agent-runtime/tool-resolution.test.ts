@@ -94,7 +94,7 @@ describe('buildLazyServerTools', () => {
     expect(anon).toHaveProperty('project_manager');
     // user-scoped tools require a userId
     expect(anon).not.toHaveProperty('email_manager');
-    expect(anon).not.toHaveProperty('personal_knowledge');
+    expect(anon).not.toHaveProperty('knowledge_query');
     expect(anon).not.toHaveProperty('session_history');
   });
 
@@ -108,7 +108,7 @@ describe('buildLazyServerTools', () => {
     expect(internal).toHaveProperty('feature_request');
     expect(internal).toHaveProperty('project_manager');
     expect(internal).toHaveProperty('email_manager');
-    expect(internal).toHaveProperty('personal_knowledge');
+    expect(internal).toHaveProperty('knowledge_query');
     expect(internal).toHaveProperty('session_history');
   });
 });

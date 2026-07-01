@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createGenerateImageTool } from '../apps/api/src/tools/generate-image.js';
+import { createGenerateImageTool } from '../apps/api/src/tools/media/generate-image.js';
 
 // Mock env vars
 beforeEach(() => {
