@@ -38,6 +38,7 @@ const tools = new Hono<AppEnv>()
         name: t.name,
         brief: t.brief,
         category: t.category,
+        group: t.group,
         is_global: t.is_global,
         icon: t.icon,
       }));

@@ -70,7 +70,7 @@ Rules:
   category: 'team',
   is_global: true,
   icon: 'Calculator',
-  sort_order: 14,
+  group: 'compute',
   surface: { proxy: 'read' },
 };
 

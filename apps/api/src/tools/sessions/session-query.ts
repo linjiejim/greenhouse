@@ -6,7 +6,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 
 const sessionQuerySchema = z.object({
   action: z.enum(['list', 'search', 'get', 'messages', 'usage']).describe('Read-only session action.'),
@@ -33,7 +33,7 @@ const meta: ToolMeta = {
   category: 'team',
   is_global: true,
   icon: 'MessagesSquare',
-  sort_order: 28,
+  group: 'sessions',
   surface: { proxy: 'read', mcp: true },
 };
 

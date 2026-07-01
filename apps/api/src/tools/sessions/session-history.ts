@@ -6,7 +6,7 @@
  */
 
 import { tool } from 'ai';
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 import { z } from 'zod';
 import type { DatabaseProvider } from '@greenhouse/db';
 
@@ -41,7 +41,7 @@ This tool only accesses the current user's own sessions. Use it when:
   category: 'team',
   is_global: true,
   icon: 'History',
-  sort_order: 19,
+  group: 'sessions',
   surface: { proxy: 'read', mcp: true },
 };
 

@@ -8,11 +8,11 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createSpawnSessionTool } from '../spawn-session.js';
-import { createCallLlmTool } from '../call-llm.js';
+import { createSpawnSessionTool } from '../sessions/spawn-session.js';
+import { createCallLlmTool } from '../sessions/call-llm.js';
 import { getAllToolIds, getToolMeta } from '../registry.js';
 import { LAZY_TOOL_IDS, childSpawnToolIds } from '../../agent-runtime/tool-resolution.js';
-import { MAX_SPAWN_DEPTH } from '../spawn-session.js';
+import { MAX_SPAWN_DEPTH } from '../sessions/spawn-session.js';
 
 // ─── Fake db ─────────────────────────────────────────────
 

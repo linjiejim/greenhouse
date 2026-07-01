@@ -17,7 +17,7 @@
 
 import { tool } from 'ai';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 import { z } from 'zod';
 import type { DatabaseProvider } from '@greenhouse/db';
 
@@ -86,7 +86,7 @@ Operations: list_projects / get_project / create_project / create_task / update_
   category: 'team',
   is_global: true,
   icon: 'FolderKanban',
-  sort_order: 13,
+  group: 'projects',
 };
 
 export function createProjectManagerTool(db: DatabaseProvider, ctx: ProjectManagerContext) {

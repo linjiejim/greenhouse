@@ -83,7 +83,7 @@ Search in both Chinese and English. Key information requires confirmation from a
   category: 'team',
   is_global: true,
   icon: 'Globe',
-  sort_order: 10,
+  group: 'web',
   surface: { proxy: 'read' },
 };
 

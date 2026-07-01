@@ -8,7 +8,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 
 const projectQuerySchema = z.object({
   action: z.enum(['list', 'get', 'tasks', 'query_tasks', 'summary']).describe('Read-only project query action.'),
@@ -47,7 +47,7 @@ const meta: ToolMeta = {
   category: 'team',
   is_global: true,
   icon: 'FolderKanban',
-  sort_order: 26,
+  group: 'projects',
   surface: { proxy: 'read', mcp: true },
 };
 

@@ -10,7 +10,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 
 const projectMutationSchema = z.object({
   action: z
@@ -75,7 +75,7 @@ Every call requires explicit user confirmation via the cloud proxy (confirm:true
   category: 'team',
   is_global: true,
   icon: 'FolderPen',
-  sort_order: 27,
+  group: 'projects',
   surface: { proxy: 'write', mcp: true },
 };
 

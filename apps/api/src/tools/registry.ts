@@ -11,26 +11,28 @@
  */
 
 import type { ToolMeta, ToolCategory, ToolModule } from './define.js';
-export type { ToolCategory, ToolMeta } from './define.js';
+import { TOOL_GROUPS } from './define.js';
+export type { ToolCategory, ToolMeta, ToolGroup } from './define.js';
+export { TOOL_GROUPS } from './define.js';
 
-import { analyzeImageTool } from './analyze-image.js';
-import { askUserTool } from './ask-user.js';
-import { teamKnowledgeTool } from './team-knowledge.js';
-import { personalKnowledgeTool } from './personal-knowledge.js';
+import { analyzeImageTool } from './media/analyze-image.js';
+import { askUserTool } from './interaction/ask-user.js';
+import { teamKnowledgeTool } from './knowledge/team-knowledge.js';
+import { personalKnowledgeTool } from './knowledge/personal-knowledge.js';
 import { externalSearchTool } from './external-search/index.js';
-import { featureRequestTool } from './feature-request.js';
-import { generateImageTool } from './generate-image.js';
-import { projectManagerTool } from './project-manager.js';
-import { projectQueryTool } from './project-query.js';
-import { projectMutationTool } from './project-mutation.js';
+import { featureRequestTool } from './interaction/feature-request.js';
+import { generateImageTool } from './media/generate-image.js';
+import { projectManagerTool } from './projects/project-manager.js';
+import { projectQueryTool } from './projects/project-query.js';
+import { projectMutationTool } from './projects/project-mutation.js';
 import { computeTool } from './compute/tool.js';
-import { emailManagerTool, emailQueryTool, emailMutationTool } from './email.js';
-import { sessionHistoryTool } from './session-history.js';
-import { sessionQueryTool } from './session-query.js';
-import { spawnSessionTool } from './spawn-session.js';
-import { callLlmTool } from './call-llm.js';
-import { knowledgeQueryTool } from './knowledge-query.js';
-import { knowledgeMutationTool } from './knowledge-mutation.js';
+import { emailManagerTool, emailQueryTool, emailMutationTool } from './email/index.js';
+import { sessionHistoryTool } from './sessions/session-history.js';
+import { sessionQueryTool } from './sessions/session-query.js';
+import { spawnSessionTool } from './sessions/spawn-session.js';
+import { callLlmTool } from './sessions/call-llm.js';
+import { knowledgeQueryTool } from './knowledge/knowledge-query.js';
+import { knowledgeMutationTool } from './knowledge/knowledge-mutation.js';
 
 // ─── Catalog ─────────────────────────────────────────────
 
@@ -140,7 +142,18 @@ export function getAllToolIds(): string[] {
   return TOOL_DEFINITIONS.map((t) => t.id);
 }
 
-/** Get all tool metadata, sorted by sort_order. */
+/** Rank of each functional group for display ordering (its index in TOOL_GROUPS). */
+const GROUP_RANK = new Map(TOOL_GROUPS.map((g, i) => [g.id, i]));
+
+/**
+ * Get all tool metadata, ordered by functional group (TOOL_GROUPS order) then
+ * alphabetically by name within a group. Replaces the old sort_order ordering —
+ * to change section order, reorder TOOL_GROUPS in define.ts.
+ */
 export function getAllToolMetas(): ToolMeta[] {
-  return [...TOOL_DEFINITIONS].sort((a, b) => a.sort_order - b.sort_order);
+  return [...TOOL_DEFINITIONS].sort((a, b) => {
+    const ra = GROUP_RANK.get(a.group) ?? Number.MAX_SAFE_INTEGER;
+    const rb = GROUP_RANK.get(b.group) ?? Number.MAX_SAFE_INTEGER;
+    return ra - rb || a.name.localeCompare(b.name);
+  });
 }

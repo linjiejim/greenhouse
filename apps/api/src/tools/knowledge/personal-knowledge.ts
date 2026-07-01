@@ -14,7 +14,7 @@
  * visibility='private' + owner_user_id boundary.
  */
 
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 import { createScopedKnowledgeTool } from './knowledge-tool-base.js';
 import type { DatabaseProvider } from '@greenhouse/db';
 
@@ -36,7 +36,7 @@ This tool only ever returns the current user's own private docs — it cannot ac
   category: 'team',
   is_global: true,
   icon: 'BookOpen',
-  sort_order: 18,
+  group: 'knowledge',
 };
 
 export function createPersonalKnowledgeTool(db: DatabaseProvider, ctx: PersonalKnowledgeContext) {

@@ -103,7 +103,7 @@ greenhouse/
 │   │   └── src/
 │   │       ├── routes/       # HTTP routes (one file per resource)
 │   │       ├── auth/         # token, middleware, password, api-key, crypto, features
-│   │       ├── tools/        # agent tools (one file per tool, defineTool)
+│   │       ├── tools/        # agent tools grouped by domain (knowledge/ projects/ email/ sessions/ media/ …), each defineTool
 │   │       ├── agent-runtime/# tool proxy, MCP auth, lazy tool resolution, run-agent
 │   │       ├── llm/          # completion / title / memory / relay-proxy (consumes agent-core)
 │   │       ├── profiles/     # agent profiles in TS (defineProfile: default.ts/team.ts + *.prompt.md)

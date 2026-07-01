@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 
 const knowledgeQuerySchema = z.object({
   action: z
@@ -38,7 +38,7 @@ const meta: ToolMeta = {
   category: 'team',
   is_global: true,
   icon: 'BookOpen',
-  sort_order: 29,
+  group: 'knowledge',
   surface: { proxy: 'read', mcp: true },
 };
 

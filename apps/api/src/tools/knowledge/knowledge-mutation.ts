@@ -13,8 +13,8 @@ import { safeJsonParse } from '@greenhouse/utils/json';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { defineTool, type ToolMeta } from './define.js';
-import { resolveKbAccess, canWrite, canArchive } from '../knowledge-access.js';
+import { defineTool, type ToolMeta } from '../define.js';
+import { resolveKbAccess, canWrite, canArchive } from '../../knowledge-access.js';
 
 const knowledgeMutationSchema = z.object({
   action: z
@@ -157,7 +157,7 @@ Editors (granted editor role) may create/update/patch/append/restore; archiving 
   category: 'team',
   is_global: true,
   icon: 'BookPlus',
-  sort_order: 30,
+  group: 'knowledge',
   surface: { proxy: 'write', mcp: true },
 };
 

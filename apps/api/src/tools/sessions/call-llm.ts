@@ -14,8 +14,8 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { getModelEntry, createModelFromConfig, buildProviderOptions } from '@greenhouse/agent-core';
 import type { ModelConfig } from '@greenhouse/agent-core';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { resolveProfileAsync } from '../profile.js';
-import { defineTool, type ToolMeta } from './define.js';
+import { resolveProfileAsync } from '../../profile.js';
+import { defineTool, type ToolMeta } from '../define.js';
 
 const callLlmSchema = z.object({
   prompt: z.string().min(1).describe('The full instruction + content for this one-shot LLM call.'),
@@ -74,7 +74,7 @@ This is one round with no tools — for any task that needs tools or multiple st
   category: 'team',
   is_global: true,
   icon: 'Sparkles',
-  sort_order: 31,
+  group: 'sessions',
 };
 
 export function createCallLlmTool(db: DatabaseProvider, ctx: CallLlmContext) {

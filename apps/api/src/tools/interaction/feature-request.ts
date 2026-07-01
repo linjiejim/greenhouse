@@ -12,7 +12,7 @@
 
 import { tool } from 'ai';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 import { z } from 'zod';
 import type { DatabaseProvider } from '@greenhouse/db';
 
@@ -54,7 +54,7 @@ Admin can list/update all requests; regular users can create new requests.`,
   category: 'team',
   is_global: true,
   icon: 'Lightbulb',
-  sort_order: 11,
+  group: 'interaction',
 };
 
 export function createFeatureRequestTool(db: DatabaseProvider, ctx: FeatureRequestContext) {

@@ -3,7 +3,7 @@
  * (Name kept for backward compatibility with existing imports.)
  *
  * Features:
- * - Tools grouped by category (Public / Team / Admin)
+ * - Tools grouped by functional domain (Knowledge / Projects / Email / …)
  * - Auto-generated slug display (read-only)
  * - System prompt character counter (xxx / 8000)
  * - Capabilities (quick actions) editor with icon picker
@@ -158,15 +158,17 @@ export function ProfileEditorDrawer({
     }
   }, [open, profile]);
 
-  // Group tools by category
+  // Group tools by functional domain. availableTools arrives already ordered by
+  // group (then name) from /api/tools, so a Map preserves that section order.
   const toolGroups = useMemo(() => {
-    const groups: Record<string, ToolMeta[]> = { public: [], team: [], admin: [] };
+    const groups = new Map<string, ToolMeta[]>();
     const search = toolSearch.toLowerCase();
     for (const t of availableTools) {
       if (search && !t.name.toLowerCase().includes(search) && !t.id.toLowerCase().includes(search)) continue;
-      const cat = t.category || 'public';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(t);
+      const g = t.group || 'other';
+      const bucket = groups.get(g);
+      if (bucket) bucket.push(t);
+      else groups.set(g, [t]);
     }
     return groups;
   }, [availableTools, toolSearch]);
@@ -267,9 +269,15 @@ export function ProfileEditorDrawer({
   };
 
   const groupLabels: Record<string, string> = {
-    public: 'Public',
-    team: 'Team',
-    admin: 'Admin',
+    knowledge: 'Knowledge',
+    projects: 'Projects & Tasks',
+    email: 'Email',
+    sessions: 'Sessions & Delegation',
+    web: 'Web & Search',
+    media: 'Media',
+    compute: 'Compute',
+    interaction: 'Interaction',
+    other: 'Other',
   };
 
   return (
@@ -511,14 +519,13 @@ export function ProfileEditorDrawer({
           </div>
 
           <div className="border border-edge rounded-lg max-h-56 overflow-y-auto">
-            {(['public', 'team', 'admin'] as const).map((cat) => {
-              const tools = toolGroups[cat];
+            {[...toolGroups.entries()].map(([groupId, tools]) => {
               if (!tools || tools.length === 0) return null;
               return (
-                <div key={cat}>
+                <div key={groupId}>
                   <div className="px-3 py-1.5 bg-surface-sunken border-b border-edge sticky top-0 z-[1]">
                     <span className="text-[10px] font-semibold text-fg-faint uppercase tracking-wider">
-                      {groupLabels[cat]}
+                      {groupLabels[groupId] ?? groupId}
                     </span>
                   </div>
                   {tools.map((tool) => {

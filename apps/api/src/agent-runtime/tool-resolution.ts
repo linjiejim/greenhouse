@@ -13,7 +13,7 @@
 import type { DatabaseProvider } from '@greenhouse/db';
 import { resolveUserTools, selectTools } from '../agent.js';
 import type { ToolRegistry } from '../agent.js';
-import { MAX_SPAWN_DEPTH } from '../tools/spawn-session.js';
+import { MAX_SPAWN_DEPTH } from '../tools/sessions/spawn-session.js';
 import { LAZY_TOOL_MODULES } from '../tools/registry.js';
 import type { ToolContext } from '../tools/define.js';
 import type { AgentProfile } from '../profile.js';

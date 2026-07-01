@@ -8,8 +8,8 @@
 
 import { describe, it, expect } from 'vitest';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { createTeamKnowledgeTool } from '../team-knowledge.js';
-import { createPersonalKnowledgeTool } from '../personal-knowledge.js';
+import { createTeamKnowledgeTool } from '../knowledge/team-knowledge.js';
+import { createPersonalKnowledgeTool } from '../knowledge/personal-knowledge.js';
 
 interface Doc {
   doc_id: string;

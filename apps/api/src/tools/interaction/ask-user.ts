@@ -11,7 +11,7 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 
 // ─── Metadata (co-located with the implementation) ───────
 const meta: ToolMeta = {
@@ -23,7 +23,7 @@ Present clarifying questions as structured options to help users quickly choose.
   category: 'public',
   is_global: true,
   icon: 'ClipboardList',
-  sort_order: 5,
+  group: 'interaction',
   presentation: 'artifact', // renders as the interactive AskUserCard in the message body
 };
 

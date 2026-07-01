@@ -18,7 +18,7 @@ vi.mock('@greenhouse/db', async (importOriginal) => {
 });
 
 import { buildMcpServer, toMcpInputSchema, MCP_EXPOSED_TOOL_IDS } from '../mcp.js';
-import { createEmailQueryTool, createEmailMutationTool } from '../../tools/email.js';
+import { createEmailQueryTool, createEmailMutationTool } from '../../tools/email/index.js';
 import type { ToolRegistry } from '../../agent.js';
 import { resolveProxyToolIds } from '../../agent-runtime/tool-proxy.js';
 import type { ProxyToolManifestEntry } from '../../agent-runtime/tool-proxy.js';

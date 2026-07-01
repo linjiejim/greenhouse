@@ -14,12 +14,12 @@
 
 import { tool } from 'ai';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 import { logger } from '@greenhouse/utils/logger';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
-import { putUpload, getUpload } from '../storage/uploads.js';
+import { putUpload, getUpload } from '../../storage/uploads.js';
 
 // ─── Config from env ─────────────────────────────────────
 
@@ -311,7 +311,7 @@ Suitable for product concept art, blog illustrations, social media assets, etc.`
   category: 'team',
   is_global: true,
   icon: 'Palette',
-  sort_order: 12,
+  group: 'media',
   presentation: 'artifact', // generated image renders inline in the message body
 };
 

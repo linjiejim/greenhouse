@@ -8,7 +8,7 @@
  * the only team-specific configuration is the visibility='team' boundary.
  */
 
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 import { createScopedKnowledgeTool } from './knowledge-tool-base.js';
 import type { DatabaseProvider } from '@greenhouse/db';
 
@@ -25,7 +25,7 @@ This tool is internal-only and must never be exposed to public/external users.`,
   category: 'team',
   is_global: true,
   icon: 'Library',
-  sort_order: 16,
+  group: 'knowledge',
   surface: { proxy: 'read', mcp: true },
 };
 

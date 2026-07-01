@@ -23,6 +23,31 @@ import type { AgentProfile } from '../profile.js';
 
 export type ToolCategory = 'public' | 'team' | 'admin' | 'local';
 
+/**
+ * Functional domain a tool belongs to — the axis the UI groups by. This is
+ * ORTHOGONAL to `category` (an audience/permission axis: who may hold the tool).
+ * `category` answers "who", `group` answers "what it does". Drives the section
+ * grouping in the profile editor and the ordering from `getAllToolMetas`.
+ */
+export type ToolGroup = 'knowledge' | 'projects' | 'email' | 'sessions' | 'web' | 'media' | 'compute' | 'interaction';
+
+/**
+ * Display order + human labels for the functional groups — the SINGLE source of
+ * truth for how tools are sectioned and ordered. `getAllToolMetas` sorts by this
+ * order (then alphabetically by name within a group). Replaces the old
+ * hand-tuned per-tool `sort_order`: to reorder sections, reorder this array.
+ */
+export const TOOL_GROUPS: readonly { id: ToolGroup; label: string }[] = [
+  { id: 'knowledge', label: 'Knowledge' },
+  { id: 'projects', label: 'Projects & Tasks' },
+  { id: 'email', label: 'Email' },
+  { id: 'sessions', label: 'Sessions & Delegation' },
+  { id: 'web', label: 'Web & Search' },
+  { id: 'media', label: 'Media' },
+  { id: 'compute', label: 'Compute' },
+  { id: 'interaction', label: 'Interaction' },
+];
+
 export interface ToolMeta {
   id: string; // code name, e.g. 'external_search'
   name: string; // display name, e.g. 'Web Search'
@@ -31,7 +56,7 @@ export interface ToolMeta {
   category: ToolCategory;
   is_global: boolean; // true = default-on for internal users without assignment
   icon: string; // Lucide icon name
-  sort_order: number;
+  group: ToolGroup; // functional domain — the axis the UI groups/orders by
   /**
    * How this tool's result is surfaced in the chat UI:
    * - 'trace' (default) — a row inside the collapsible "N tool calls" block.

@@ -15,12 +15,12 @@
 
 import { tool, generateText } from 'ai';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 import { logger } from '@greenhouse/utils/logger';
 import { z } from 'zod';
 import { extname } from 'node:path';
 import { getDb } from '@greenhouse/db';
-import { getUpload } from '../storage/uploads.js';
+import { getUpload } from '../../storage/uploads.js';
 
 const VISION_PROMPT = `You are analyzing an image the user attached to their message.
 
@@ -119,7 +119,7 @@ When the user attaches images, you MUST call this tool for each image before res
   category: 'public',
   is_global: true,
   icon: 'Image',
-  sort_order: 4,
+  group: 'media',
   surface: { proxy: 'read' },
 };
 

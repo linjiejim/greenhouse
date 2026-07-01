@@ -17,12 +17,12 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { logger } from '@greenhouse/utils/logger';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { resolveProfileAsync, enrichSystemPrompt, type AgentProfile } from '../profile.js';
-import { sanitizeForPrompt } from '../security.js';
-import { runAgentInSession, type AgentGenerate, type RunAgentResult } from '../agent-runtime/run-agent.js';
-import type { ToolRegistry } from '../agent.js';
-import { connectionManager } from '../ws/connection-manager.js';
-import { defineTool, type ToolMeta } from './define.js';
+import { resolveProfileAsync, enrichSystemPrompt, type AgentProfile } from '../../profile.js';
+import { sanitizeForPrompt } from '../../security.js';
+import { runAgentInSession, type AgentGenerate, type RunAgentResult } from '../../agent-runtime/run-agent.js';
+import type { ToolRegistry } from '../../agent.js';
+import { connectionManager } from '../../ws/connection-manager.js';
+import { defineTool, type ToolMeta } from '../define.js';
 
 /** Max session lineage depth: a top-level session (0) → child (1) → grandchild (2). */
 export const MAX_SPAWN_DEPTH = 2;
@@ -102,7 +102,7 @@ The child sees ONLY the prompt you give it (not this conversation), binds to you
   category: 'team',
   is_global: true,
   icon: 'GitBranch',
-  sort_order: 32,
+  group: 'sessions',
   presentation: 'artifact',
 };
 

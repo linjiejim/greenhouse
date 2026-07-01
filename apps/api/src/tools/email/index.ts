@@ -20,10 +20,10 @@
 
 import { tool } from 'ai';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { defineTool, type ToolMeta } from './define.js';
+import { defineTool, type ToolMeta } from '../define.js';
 import { z } from 'zod';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { createEmailClient } from '../email/index.js';
+import { createEmailClient } from '../../email/index.js';
 import {
   sanitizeEmailForLLM,
   sanitizeEmailListForLLM,
@@ -31,7 +31,7 @@ import {
   consumeDraftToken,
   findLatestDraft,
   validateEmailAddresses,
-} from '../email/security.js';
+} from '../../email/security.js';
 import { logger } from '@greenhouse/utils/logger';
 
 export interface EmailManagerContext {
@@ -122,7 +122,7 @@ Workflow: draft_email → get draft_token + show confirm UI → user confirms �
   category: 'team',
   is_global: true,
   icon: 'Mail',
-  sort_order: 15,
+  group: 'email',
 };
 
 // ─── Split-tool metadata (read-only query / write) for the proxy + MCP surface ──
@@ -136,7 +136,7 @@ const queryMeta: ToolMeta = {
   category: 'team',
   is_global: false,
   icon: 'Mail',
-  sort_order: 16,
+  group: 'email',
   surface: { proxy: 'read', mcp: true },
 };
 const mutationMeta: ToolMeta = {
@@ -158,7 +158,7 @@ Workflow: draft_email → show preview to user → user confirms → send_email(
   category: 'team',
   is_global: false,
   icon: 'Mail',
-  sort_order: 17,
+  group: 'email',
   surface: { proxy: 'write', mcp: true },
 };
 
