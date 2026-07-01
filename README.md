@@ -2,6 +2,13 @@
   <img src="logos/greenhouse-logo.png" alt="Greenhouse" width="440" />
 </p>
 
+<p align="center">
+  <a href="https://greenhouse.linjiejim.com"><img alt="Website" src="https://img.shields.io/badge/website-greenhouse.linjiejim.com-0d9488"></a>
+  <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0d9488.svg"></a>
+  <a href="https://github.com/linjiejim/greenhouse/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/linjiejim/greenhouse/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/linjiejim/greenhouse/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/linjiejim/greenhouse?style=social"></a>
+</p>
+
 **An open-source, AI-native enterprise agent workbench.** One command to self-host, members
 log in with accounts (no app to install), and every capability is also callable by external
 agents over [MCP](https://modelcontextprotocol.io/). Admins author tools in code that
@@ -163,7 +170,7 @@ export const myTool = defineTool({
     category: 'team',
     is_global: true,
     icon: 'Wrench',
-    sort_order: 100,
+    group: 'compute', // functional domain (one of TOOL_GROUPS in define.ts) — how the UI sections tools
     surface: {
       proxy: 'read',   // 'read' (no confirm) | 'write' (confirm-gated) | 'none'
       mcp: true,       // also expose over /api/mcp
