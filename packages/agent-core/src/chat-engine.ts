@@ -10,9 +10,12 @@
  * database dependency).
  */
 
-import { streamText, stepCountIs } from 'ai';
+import { streamText, stepCountIs, wrapLanguageModel } from 'ai';
 import type { StreamTextResult, ToolSet } from 'ai';
+import type { LanguageModelV3 } from '@ai-sdk/provider';
 import { createModelFromConfig, buildProviderOptions, applyModelOverride, type ModelConfig } from './model.js';
+import { getProviderMiddleware } from './provider-extensions.js';
+import { getToolOutputSummarizer } from './tool-stream-hooks.js';
 import { injectTimeContext } from './time-context.js';
 import { isLocalToolMarker } from './local-tool-marker.js';
 import type { PipelineStep, Reference } from '@greenhouse/types/session';
@@ -66,6 +69,11 @@ export interface ChatEngineResult {
  * Uses actual registered tool names (knowledge_query, etc.)
  */
 export function summarizeOutput(toolName: string, output: Record<string, unknown>): unknown {
+  // Fork-registered summarizers take precedence — see tool-stream-hooks.ts (empty
+  // upstream, so the core cases below apply unchanged).
+  const custom = getToolOutputSummarizer(toolName);
+  if (custom) return custom(output);
+
   switch (toolName) {
     case 'knowledge_query':
       if (output.action === 'search') {
@@ -115,7 +123,13 @@ export async function createChatStreamAsync(input: ChatEngineInput): Promise<{
   const modelConfig = modelOverride ? applyModelOverride(profile.model, modelOverride) : { ...profile.model };
 
   // ── Create model ──
-  const model = await createModelFromConfig(modelConfig);
+  // A fork may register per-provider middleware (e.g. a DeepSeek/DSML interceptor)
+  // via registerProviderMiddleware() — see provider-extensions.ts (empty upstream).
+  // createModelFromConfig always yields a LanguageModelV3 at runtime (direct or
+  // fallback wrapper); the cast bridges the SDK's broad LanguageModel union.
+  const rawModel = await createModelFromConfig(modelConfig);
+  const middleware = getProviderMiddleware(modelConfig.provider);
+  const model = middleware ? wrapLanguageModel({ model: rawModel as LanguageModelV3, middleware }) : rawModel;
 
   // ── Prepare messages with time context ──
   const enrichedMessages = injectTimeContext(messages).map((m) => ({

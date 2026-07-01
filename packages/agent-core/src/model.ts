@@ -16,6 +16,7 @@
 import type { LanguageModel } from 'ai';
 import type { LanguageModelV3, LanguageModelV3CallOptions } from '@ai-sdk/provider';
 import { getAvailableProviders, getModelEntry, findModelIdByProviderModel } from './registry.js';
+import { getProviderFactory, getProviderOptionsBuilder } from './provider-extensions.js';
 import { logger } from '@greenhouse/utils/logger';
 
 // ─── Model Config Types ──────────────────────────────────
@@ -92,11 +93,17 @@ async function createModelDirect(
       return createOpenAI({ apiKey, baseURL }).chat(model);
     }
 
-    // To add a native provider (anthropic, google, …): install its @ai-sdk/* SDK
-    // and add a case here.
-
-    default:
-      throw new Error(`Unknown model provider: "${provider}". Supported: openai, openai-compatible`);
+    // Native providers (anthropic, google, deepseek, …) are added by a downstream
+    // fork via registerProviderFactory() — see provider-extensions.ts. The fork
+    // installs the @ai-sdk/* SDK in its own code; the kernel stays OpenAI-only.
+    default: {
+      const factory = getProviderFactory(provider);
+      if (factory) return factory({ model, apiKey, baseUrl });
+      throw new Error(
+        `Unknown model provider: "${provider}". Supported: openai, openai-compatible ` +
+          `(plus any fork-registered provider — see provider-extensions.ts)`,
+      );
+    }
   }
 }
 
@@ -227,10 +234,12 @@ export function resolveModelChoice(config: ModelConfig, override?: string | null
 /**
  * Build provider-specific options (AI SDK `providerOptions`) from model config.
  *
- * No-op now that the kernel is OpenAI-compatible only — there are no
- * provider-specific options to inject. Kept as a seam so callers stay unchanged
- * and a future native provider can re-populate it.
+ * No-op for the built-in OpenAI-compatible providers. A downstream fork can
+ * inject provider-specific options (e.g. DeepSeek reasoning) by registering a
+ * builder for its provider via registerProviderOptionsBuilder() — see
+ * provider-extensions.ts. Empty upstream ⇒ returns undefined unchanged.
  */
-export function buildProviderOptions(_config: ModelConfig): any {
-  return undefined;
+export function buildProviderOptions(config: ModelConfig): any {
+  const builder = getProviderOptionsBuilder(config.provider);
+  return builder ? builder(config) : undefined;
 }

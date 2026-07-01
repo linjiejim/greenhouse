@@ -26,6 +26,18 @@ export type { ModelConfig, ModelOptions, ModelChoice } from './model.js';
 export { getModelEntry, getModelIds, getAvailableProviders, findModelIdByProviderModel } from './registry.js';
 export type { ProviderEntry, ModelEntry } from './registry.js';
 
+// Fork extension seams — re-add native providers / per-tool summaries downstream
+// without editing this package (registries are empty upstream).
+export {
+  registerProviderFactory,
+  registerProviderOptionsBuilder,
+  registerProviderMiddleware,
+  listRegisteredProviders,
+} from './provider-extensions.js';
+export type { ProviderFactory, ProviderFactoryArgs, ProviderOptionsBuilder } from './provider-extensions.js';
+export { registerToolOutputSummarizer } from './tool-stream-hooks.js';
+export type { ToolOutputSummarizer } from './tool-stream-hooks.js';
+
 // Cross-host conventions
 export { injectTimeContext } from './time-context.js';
 export { createLocalMarker, isLocalToolMarker } from './local-tool-marker.js';
