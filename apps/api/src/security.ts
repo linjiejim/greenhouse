@@ -81,6 +81,16 @@ function isAllowedCorsOrigin(origin: string): boolean {
   return getAllowedCorsOrigins().has(origin);
 }
 
+// ─── CSP connect-src ─────────────────────────────────────
+// The CSP allows XHR/fetch/websocket to 'self' only by default. A fork whose
+// modules call external origins (OAuth token endpoints, mail APIs, etc.) adds
+// them via the CSP_CONNECT_SRC env var (space- or comma-separated) — no code edit.
+const CSP_CONNECT_SRC_EXTRA: string = (process.env.CSP_CONNECT_SRC || '')
+  .split(/[\s,]+/)
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .join(' ');
+
 /**
  * Allow cross-origin API access only from the origins the operator declares in
  * CORS_ALLOWED_ORIGINS. Clients store bearer tokens in localStorage, so no
@@ -220,7 +230,7 @@ export async function securityHeadersMiddleware(c: Context, next: Next) {
       "img-src 'self' data: blob:",
       "media-src 'self' blob:",
       "frame-src 'self'",
-      "connect-src 'self'",
+      `connect-src 'self'${CSP_CONNECT_SRC_EXTRA ? ' ' + CSP_CONNECT_SRC_EXTRA : ''}`,
     ].join('; '),
   );
 

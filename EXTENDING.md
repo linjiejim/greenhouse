@@ -27,8 +27,13 @@ Every extension point is guarded by a test that pins it **empty in this repo**, 
 | S9 | custom chat card for a tool output | `apps/web/src/components/tool-call/artifact-renderers.ts` | `ARTIFACT_RENDERERS` |
 | S10 | Global-Agent page context (URL → PageContext) | `apps/web/src/lib/context-resolvers.ts` | `registerUrlContextResolver` |
 | S11 | pipeline-step summary for a tool | *(fork startup code)* | `registerToolOutputSummarizer()` from `@greenhouse/agent-core` |
+| G0 | **wire the runtime hooks at startup** | `apps/api/src/bootstrap.extensions.ts` + `apps/web/src/bootstrap.extensions.ts` | `bootstrapForkExtensions()` (api) — the call-site for every `register*()` below |
+| G1 | upload storage backend (S3 / COS) | `apps/api/src/storage/extensions.ts` | `registerStorageDriver()` |
+| G2 | email connector (Gmail / Outlook) | `apps/api/src/email/extensions.ts` | `registerEmailConnector(provider, factory)` |
+| G3 | public (auth-skipped) path — OAuth callbacks | `apps/api/src/auth/extensions.ts` | `EXTENSION_PUBLIC_PATHS` / `EXTENSION_PUBLIC_PATH_PREFIXES` |
+| G5 | CSP `connect-src` for external origins | *(env)* | `CSP_CONNECT_SRC` (space/comma-separated) — no code edit |
 
-For runtime hooks (S3, S7, S11) call the `register*()` functions **once at startup**, before the first request — from `apps/api/src/index.ts`'s `main()` (server) or the web app's bootstrap.
+**Startup wiring (G0):** the `*.extensions.*` **array** seams are auto-imported by their central file — no wiring needed. The **runtime `register*()`** seams (S3, S5-i18n, S7, S10, S11, G1, G2) must be *called* at startup: put every API call inside `bootstrapForkExtensions()` in `apps/api/src/bootstrap.extensions.ts` (invoked at the start of `main()`), and every web call in `apps/web/src/bootstrap.extensions.ts` (imported first by `app.tsx`). This is the one place a fork wires them — `index.ts` / `app.tsx` stay untouched.
 
 DB migrations for private tables live in the **fork's own** drizzle namespace (e.g. `drizzle-fork/`, timestamp-prefixed filenames) — never in this package's `drizzle/` chain.
 

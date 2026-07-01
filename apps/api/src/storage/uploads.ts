@@ -13,6 +13,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { resolve, extname } from 'node:path';
 import { UPLOADS_DIR } from '../paths.js';
+import { getStorageDriver } from './extensions.js';
 
 export interface StoredObject {
   buffer: Buffer;
@@ -36,21 +37,33 @@ function ensureLocalDir(): void {
   if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-/** Persist an object to local disk. */
-export async function putUpload(id: string, buffer: Buffer, _contentType: string): Promise<void> {
+/** Persist an object — via the registered storage driver if any, else local disk. */
+export async function putUpload(id: string, buffer: Buffer, contentType: string): Promise<void> {
+  const driver = getStorageDriver();
+  if (driver) return driver.put(id, buffer, contentType);
   ensureLocalDir();
   writeFileSync(resolve(UPLOADS_DIR, id), buffer);
 }
 
-/** Fetch an object, or null if it does not exist on disk. */
+/** Fetch an object, or null if it does not exist. */
 export async function getUpload(id: string): Promise<StoredObject | null> {
+  const driver = getStorageDriver();
+  if (driver) return driver.get(id);
   const filePath = resolve(UPLOADS_DIR, id);
   if (!existsSync(filePath)) return null;
   return { buffer: readFileSync(filePath), contentType: contentTypeForId(id) };
 }
 
-/** Delete an object from local disk (no-op if absent). */
+/** Delete an object (no-op if absent). */
 export async function deleteUpload(id: string): Promise<void> {
+  const driver = getStorageDriver();
+  if (driver) return driver.delete(id);
   const filePath = resolve(UPLOADS_DIR, id);
   if (existsSync(filePath)) unlinkSync(filePath);
+}
+
+/** A presigned URL for direct client access, when the driver supports it (else null). */
+export async function presignUpload(id: string): Promise<string | null> {
+  const driver = getStorageDriver();
+  return (await driver?.presignGet?.(id)) ?? null;
 }

@@ -7,6 +7,10 @@
  */
 
 import './app.css';
+// Fork runtime web extensions (URL context resolvers, locale messages). No-op
+// upstream — see bootstrap.extensions.ts. Imported first so registrations run
+// before the app renders.
+import './bootstrap.extensions';
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ChatPage } from './pages/chat';

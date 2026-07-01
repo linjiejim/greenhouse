@@ -65,6 +65,7 @@ import { emailRoutes } from './routes/email.js';
 import { initScheduler } from './scheduler/index.js';
 import { createTasksRoute } from './routes/tasks.js';
 import { mountExtraRoutes } from './routes/extensions.js';
+import { bootstrapForkExtensions } from './bootstrap.extensions.js';
 // ws CJS/ESM interop — use namespace import for reliable access
 import * as _ws from 'ws';
 const WsServer = _ws.WebSocketServer ?? (_ws as any).default?.WebSocketServer;
@@ -213,6 +214,9 @@ const PORT = parseInt(process.env.API_PORT ?? '3000', 10);
 
 async function main() {
   assertAuthEnv(); // fail fast: auth enabled ⇒ TOKEN_SIGNING_KEY must be set
+  // Wire fork runtime extensions (providers, connectors, storage, flags,
+  // summarizers) before anything uses them. No-op upstream — see bootstrap.extensions.ts.
+  bootstrapForkExtensions();
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
 
   const toolRegistry = createToolRegistry(dbProvider);

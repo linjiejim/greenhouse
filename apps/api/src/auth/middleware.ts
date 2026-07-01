@@ -11,6 +11,7 @@ import type { Context, Next } from 'hono';
 import { validateAccessToken, isAuthEnabled } from './token.js';
 import type { AuthUser, UserRole } from './token.js';
 import { userHasFeature } from './features.js';
+import { EXTENSION_PUBLIC_PATHS, EXTENSION_PUBLIC_PATH_PREFIXES } from './extensions.js';
 
 // Re-export for convenience
 export type { AuthUser, UserRole };
@@ -25,8 +26,11 @@ const PUBLIC_PATHS = new Set([
   '/health',
 ]);
 
-function isPublicPath(path: string): boolean {
+export function isPublicPath(path: string): boolean {
   if (PUBLIC_PATHS.has(path)) return true;
+  // Fork-contributed public paths (empty upstream) — e.g. OAuth callbacks. See auth/extensions.ts.
+  if (EXTENSION_PUBLIC_PATHS.includes(path)) return true;
+  if (EXTENSION_PUBLIC_PATH_PREFIXES.some((p) => path.startsWith(p))) return true;
   // Frontend static assets — Vite emits the hashed bundle under /assets/* (base './').
   if (path === '/' || path === '/favicon.ico' || path.startsWith('/public/') || path.startsWith('/assets/'))
     return true;

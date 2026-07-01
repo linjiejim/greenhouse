@@ -11,6 +11,7 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { decryptToken, encryptToken, isEncryptionConfigured } from '../auth/crypto.js';
 import { ImapSmtpClient } from './imap/client.js';
 import type { IEmailClient, ImapCredentials } from './types.js';
+import { getEmailConnector } from './extensions.js';
 import { nowIso } from '@greenhouse/utils/date';
 
 /** Max email accounts per user. */
@@ -32,9 +33,12 @@ export function encryptCredentials(creds: ImapCredentials): string {
 }
 
 /**
- * Create an email client for a given account.
+ * Create an email client for a given account. A fork connector (registered for a
+ * non-`imap` provider — see extensions.ts) takes precedence; otherwise IMAP/SMTP.
  */
-export async function createEmailClient(_db: DatabaseProvider, account: EmailAccountRow): Promise<IEmailClient> {
+export async function createEmailClient(db: DatabaseProvider, account: EmailAccountRow): Promise<IEmailClient> {
+  const connector = getEmailConnector(account.provider);
+  if (connector) return connector(db, account);
   const creds = decryptCredentials(account.credentials);
   return new ImapSmtpClient(creds, account.display_name ?? undefined);
 }
@@ -49,8 +53,11 @@ export async function testEmailConnection(
   try {
     const client = await createEmailClient(db, account);
 
-    if (client instanceof ImapSmtpClient) {
-      const result = await client.testConnection();
+    // Duck-typed so a fork connector (not an ImapSmtpClient) can expose the same
+    // testConnection contract; ImapSmtpClient satisfies it, so IMAP is unchanged.
+    const testable = client as { testConnection?: () => Promise<{ ok: boolean; error?: string }> };
+    if (typeof testable.testConnection === 'function') {
+      const result = await testable.testConnection();
       if (result.ok) {
         await db.emailAccounts.update(account.id, {
           status: 'active',
@@ -66,7 +73,9 @@ export async function testEmailConnection(
       return result;
     }
 
-    return { ok: false, error: 'Unknown provider' };
+    // Connector without a test capability — assume configured.
+    await db.emailAccounts.update(account.id, { status: 'active', error_message: null, last_synced_at: nowIso() });
+    return { ok: true };
   } catch (err) {
     const msg = toErrorMessage(err);
     await db.emailAccounts.update(account.id, {
