@@ -64,6 +64,7 @@ import toolsRoutes from './routes/tools.js';
 import { emailRoutes } from './routes/email.js';
 import { initScheduler } from './scheduler/index.js';
 import { createTasksRoute } from './routes/tasks.js';
+import { mountExtraRoutes } from './routes/extensions.js';
 // ws CJS/ESM interop — use namespace import for reliable access
 import * as _ws from 'ws';
 const WsServer = _ws.WebSocketServer ?? (_ws as any).default?.WebSocketServer;
@@ -223,6 +224,10 @@ async function main() {
   // this callback surface out of the static module graph and the contract)
   const { createClientToolsRoute } = await import('./routes/client-tools.js');
   app.route('/api/client-tools', createClientToolsRoute());
+
+  // Mount fork-contributed private routes (empty upstream). Also outside the
+  // AppType contract — see routes/extensions.ts.
+  mountExtraRoutes(app, toolRegistry);
 
   // Start task scheduler
   const scheduler = initScheduler(toolRegistry);

@@ -31,11 +31,12 @@ import { spawnSessionTool } from './sessions/spawn-session.js';
 import { callLlmTool } from './sessions/call-llm.js';
 import { knowledgeQueryTool } from './knowledge/knowledge-query.js';
 import { knowledgeMutationTool } from './knowledge/knowledge-mutation.js';
+import { EXTENSION_TOOL_MODULES } from './extensions.js';
 
 // ─── Catalog ─────────────────────────────────────────────
 
-/** All single-purpose tools — metadata co-located in each file via defineTool. */
-const TOOL_MODULES: ToolModule[] = [
+/** Core single-purpose tools — metadata co-located in each file via defineTool. */
+const CORE_TOOL_MODULES: ToolModule[] = [
   analyzeImageTool,
   askUserTool,
   externalSearchTool,
@@ -55,6 +56,15 @@ const TOOL_MODULES: ToolModule[] = [
   knowledgeQueryTool,
   knowledgeMutationTool,
 ];
+
+/**
+ * The full module list every aggregate view is derived from: core tools plus any
+ * private tools a downstream fork contributes via ./extensions.ts (empty
+ * upstream). Splicing the fork's modules in HERE means the derived metadata,
+ * global/public sets and the proxy/MCP allowlists all include them automatically
+ * — the fork never edits this file. See tools/extensions.ts.
+ */
+const TOOL_MODULES: ToolModule[] = [...CORE_TOOL_MODULES, ...EXTENSION_TOOL_MODULES];
 
 /** Static tools (constructed once from the shared db) — drives createToolRegistry. */
 export const STATIC_TOOL_MODULES: ToolModule[] = TOOL_MODULES.filter((m) => m.kind === 'static');
