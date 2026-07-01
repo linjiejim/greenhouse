@@ -24,6 +24,7 @@ import type { AccessConfig, Capability } from '@greenhouse/types/profile-manifes
 
 import defaultProfile from './profiles/default.js';
 import teamProfile from './profiles/team.js';
+import { EXTENSION_SYSTEM_PROFILES } from './profiles/extensions.js';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -81,10 +82,13 @@ function assertKnownTools(profile: AgentProfile): void {
 
 // ─── System Profile Registry (TS modules) ─────────────────
 
-const SYSTEM_PROFILES = new Map<string, AgentProfile>([
-  [defaultProfile.id, defaultProfile],
-  [teamProfile.id, teamProfile],
-]);
+// Core profiles + any private profiles a downstream fork contributes via
+// profiles/extensions.ts (empty upstream). Splicing here means loadProfile /
+// listProfileIds / resolveProfile all see fork profiles — the fork never edits
+// this file.
+const SYSTEM_PROFILES = new Map<string, AgentProfile>(
+  [defaultProfile, teamProfile, ...EXTENSION_SYSTEM_PROFILES].map((p) => [p.id, p]),
+);
 
 const LEGACY_TEAM_PROFILE_IDS = new Set([
   'researcher',

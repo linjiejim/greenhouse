@@ -26,7 +26,8 @@
 These are the seams a downstream fork uses to add private features WITHOUT editing shared registry files, so those files stay byte-identical to upstream and never conflict on sync. **Upstream (this repo) ships each one empty** — guard tests pin that (an OSS build must contain zero private tools/routes).
 - **Private tools** → `tools/extensions.ts` (`EXTENSION_TOOL_MODULES`). The fork adds tool modules there; `registry.ts` splices them into the catalog before deriving metadata + the proxy/MCP allowlists, so a private tool with `meta.surface` is auto-exposed. Never edit `registry.ts` to add a tool.
 - **Private routes** → `routes/extensions.ts` (`EXTRA_ROUTES` + `mountExtraRoutes`). The fork pushes `{ path, create, use }` entries; they mount in `main()` after the typed chain and are intentionally **outside** the `AppType` contract (same as `/api/client-tools`) — the fork calls them with plain `fetch`. Never edit `mountRoutes()` to add a private route.
-- Convention: contribute private code as NEW files under `tools/<domain>/` or `routes/`, then reference them from the matching `extensions.ts`. If a private need forces an edit to a shared file, that's a signal to add/extend a seam upstream, not to patch downstream.
+- **Private system profiles** → `profiles/extensions.ts` (`EXTENSION_SYSTEM_PROFILES`). The fork adds `defineProfile(...)` results there; `profile.ts` splices them into `SYSTEM_PROFILES` so they're loadable/listable/resolvable, and a private profile may reference private tools (validated against the live catalog). Never edit `profile.ts`.
+- Convention: contribute private code as NEW files under `tools/<domain>/`, `routes/`, or `profiles/`, then reference them from the matching `extensions.ts`. If a private need forces an edit to a shared file, that's a signal to add/extend a seam upstream, not to patch downstream.
 
 ### Auth module (`auth/`)
 - All auth logic lives in `auth/` (token, middleware, password, api-key, crypto, features).
