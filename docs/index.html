@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Greenhouse — an organization's shared AI brain</title>
+<meta name="description" content="Open-source, AI-native agent workbench. Self-host in one command. One tool layer powers your team's chat, your app's agent, and any external agent over MCP." />
+<link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<meta name="theme-color" content="#0d9488" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://greenhouse.linjiejim.com/" />
+<meta property="og:title" content="Greenhouse — an organization's shared AI brain" />
+<meta property="og:description" content="Open-source, AI-native agent workbench. Self-host in one command. One tool layer powers your team's chat, your app's agent, and any external agent over MCP." />
+<meta property="og:image" content="https://greenhouse.linjiejim.com/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Greenhouse — an organization's shared AI brain" />
+<meta name="twitter:description" content="Open-source, AI-native agent workbench. One tool layer for your team, your app, and any MCP client." />
+<meta name="twitter:image" content="https://greenhouse.linjiejim.com/og.png" />
+<link rel="stylesheet" href="./tailwind.css" />
+<style>
+  @font-face{ font-family:'Inter'; font-style:normal; font-weight:400 800; font-display:swap; src:url('./fonts/inter-var.woff2') format('woff2'); }
+  @font-face{ font-family:'JetBrains Mono'; font-style:normal; font-weight:400 500; font-display:swap; src:url('./fonts/jbmono-var.woff2') format('woff2'); }
+  body{ -webkit-font-smoothing:antialiased; }
+  .grid-bg{
+    background-image:
+      linear-gradient(to right, rgba(13,148,136,.06) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(13,148,136,.06) 1px, transparent 1px);
+    background-size: 48px 48px;
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 80%);
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 80%);
+  }
+  .glow{ background: radial-gradient(60% 60% at 50% 0%, rgba(20,184,166,.12), transparent 70%); }
+  .card-shadow{ box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 12px 32px -12px rgba(15,23,42,.10); }
+  .soft-shadow{ box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+</style>
+</head>
+<body class="bg-white font-sans text-ink antialiased">
+
+<!-- NAV -->
+<header class="sticky top-0 z-40 border-b border-edge/70 bg-white/80 backdrop-blur">
+  <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+    <a href="#top" class="flex items-center gap-2.5">
+      <svg viewBox="9 7 112 112" class="h-7 w-7 text-brand-600" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/><path d="M22 56 L108 56"/>
+          <path d="M44 56 L44 104"/><path d="M86 56 L86 104"/><path d="M65 104 L65 84"/>
+          <path d="M65 84 C69 78 74 75 76 65 C72 69 67 77 65 84 Z"/>
+          <path d="M65 84 C61 78 56 75 54 65 C58 69 63 77 65 84 Z"/>
+        </g>
+      </svg>
+      <span class="text-[17px] font-bold tracking-tight">Greenhouse</span>
+    </a>
+    <nav class="hidden items-center gap-7 text-sm font-medium text-ink-soft md:flex">
+      <a href="#thesis" class="hover:text-brand-700">Why</a>
+      <a href="#tool-layer" class="hover:text-brand-700">Tool layer</a>
+      <a href="#features" class="hover:text-brand-700">Features</a>
+      <a href="#selfhost" class="hover:text-brand-700">Self-host</a>
+    </nav>
+    <div class="flex items-center gap-3">
+      <a href="https://github.com/linjiejim/greenhouse" class="hidden items-center gap-2 rounded-lg border border-edge-strong px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:bg-gray-50 sm:flex">
+        <svg viewBox="0 0 16 16" class="h-4 w-4" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        Star
+      </a>
+      <a href="#selfhost" class="rounded-lg bg-brand-600 px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700">Get started</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- HERO -->
+<section class="relative overflow-hidden">
+  <div class="absolute inset-0 grid-bg"></div>
+  <div class="absolute inset-x-0 top-0 h-[420px] glow"></div>
+  <div class="relative mx-auto grid max-w-6xl items-center gap-14 px-6 pb-20 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:pt-24">
+    <div>
+      <div class="mb-5 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700">
+        <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
+        Open source · MIT · self-hosted
+      </div>
+      <h1 class="text-[2.7rem] font-extrabold leading-[1.05] tracking-tight text-ink sm:text-[3.4rem]">
+        Put the agent at the<br><span class="text-brand-600">center</span> of your organization.
+      </h1>
+      <p class="mt-6 max-w-xl text-lg leading-relaxed text-ink-soft">
+        Greenhouse is an open-source, AI-native agent workbench you self-host in one command. One shared
+        tool layer powers your team's chat, your app's own agent, and any external agent over MCP —
+        <span class="font-semibold text-ink">add a capability by writing one file.</span>
+      </p>
+      <div class="mt-8 flex flex-wrap items-center gap-3">
+        <a href="https://github.com/linjiejim/greenhouse" class="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700">
+          Star on GitHub
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a href="#thesis" class="inline-flex items-center gap-2 rounded-xl border border-edge-strong bg-white px-5 py-3 text-sm font-semibold text-ink-soft transition hover:bg-gray-50">
+          Read the philosophy
+        </a>
+      </div>
+      <div class="mt-7 inline-flex items-center gap-3 rounded-xl border border-edge bg-gray-50 px-4 py-2.5 font-mono text-[13px] text-ink-soft">
+        <span class="select-none text-brand-600">$</span>
+        <span>git clone greenhouse &amp;&amp; docker compose up -d</span>
+      </div>
+    </div>
+
+    <!-- HERO PRODUCT MOCK: generative UI -->
+    <div class="relative">
+      <div class="rounded-2xl border border-edge bg-white card-shadow">
+        <div class="flex items-center gap-2 border-b border-edge px-4 py-2.5">
+          <span class="h-2.5 w-2.5 rounded-full bg-red-300"></span>
+          <span class="h-2.5 w-2.5 rounded-full bg-amber-300"></span>
+          <span class="h-2.5 w-2.5 rounded-full bg-green-300"></span>
+          <span class="ml-2 text-xs font-medium text-ink-faint">Greenhouse · Team Assistant</span>
+        </div>
+        <div class="space-y-3 p-4 text-sm">
+          <div class="flex justify-end">
+            <div class="max-w-[80%] rounded-2xl rounded-br-sm bg-brand-600 px-3.5 py-2 text-white">How are this quarter's projects tracking?</div>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <div class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-600">
+              <svg viewBox="9 7 112 112" class="h-4 w-4"><g fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/><path d="M22 56 L108 56"/></g></svg>
+            </div>
+            <div class="min-w-0 flex-1 space-y-2.5">
+              <p class="text-ink-soft">Pulled from <span class="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[12px] text-brand-700">project_query</span>. Here's the status across active projects:</p>
+              <!-- generative table -->
+              <div class="overflow-hidden rounded-xl border border-edge">
+                <table class="w-full text-[12.5px]">
+                  <thead class="bg-gray-50 text-left text-ink-mut">
+                    <tr><th class="px-3 py-2 font-medium">Project</th><th class="px-3 py-2 font-medium">Owner</th><th class="px-3 py-2 font-medium">Status</th></tr>
+                  </thead>
+                  <tbody class="divide-y divide-edge">
+                    <tr><td class="px-3 py-2">LetPot v2 launch</td><td class="px-3 py-2 text-ink-mut">Maya</td><td class="px-3 py-2"><span class="rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700">On track</span></td></tr>
+                    <tr><td class="px-3 py-2">Supply chain</td><td class="px-3 py-2 text-ink-mut">Ken</td><td class="px-3 py-2"><span class="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">At risk</span></td></tr>
+                    <tr><td class="px-3 py-2">Q3 hiring</td><td class="px-3 py-2 text-ink-mut">Aria</td><td class="px-3 py-2"><span class="rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700">On track</span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <!-- generative confirm -->
+              <div class="rounded-xl border border-brand-200 bg-brand-50/60 p-3">
+                <p class="text-[13px] text-ink-soft">Post this summary to <span class="font-semibold text-ink">#leadership</span>?</p>
+                <div class="mt-2.5 flex gap-2">
+                  <button class="rounded-lg bg-brand-600 px-3 py-1.5 text-[12.5px] font-semibold text-white">Confirm &amp; send</button>
+                  <button class="rounded-lg border border-edge-strong bg-white px-3 py-1.5 text-[12.5px] font-medium text-ink-soft">Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="absolute -bottom-3 -left-3 -z-10 h-full w-full rounded-2xl border border-brand-200 bg-brand-50/40"></div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST STRIP -->
+<section class="border-y border-edge bg-gray-50/60">
+  <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-10 gap-y-3 px-6 py-5 text-sm text-ink-mut">
+    <span class="font-medium text-ink-soft">Works with</span>
+    <span>Any OpenAI-compatible model</span><span class="text-edge-strong">·</span>
+    <span>Claude</span><span class="text-edge-strong">·</span>
+    <span>Cursor</span><span class="text-edge-strong">·</span>
+    <span>Any MCP client</span><span class="text-edge-strong">·</span>
+    <span class="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">Built by agents, for agents</span>
+  </div>
+</section>
+
+<!-- THESIS -->
+<section id="thesis" class="mx-auto max-w-4xl px-6 py-24 text-center">
+  <p class="text-sm font-semibold uppercase tracking-widest text-brand-600">The idea</p>
+  <h2 class="mx-auto mt-4 max-w-3xl text-3xl font-extrabold leading-tight tracking-tight text-ink sm:text-[2.6rem]">
+    The agent <span class="text-brand-600">is</span> the product — not a feature bolted on the side.
+  </h2>
+  <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft">
+    Most AI tooling stops at personal productivity: great for one developer locally, but the moment it
+    enters an organization the whole layer that matters is missing — unified management, data permissions,
+    audit, collaboration. Greenhouse fills exactly that gap. It's not another clever agent; it's the
+    <span class="font-semibold text-ink">manageable foundation an agent platform stands on.</span>
+  </p>
+  <blockquote class="mx-auto mt-10 max-w-2xl border-l-2 border-brand-400 pl-5 text-left text-lg italic leading-relaxed text-ink-soft">
+    If the agent is the center of the organization, then the center of the product should be a tool layer.
+    The tools your team uses in chat are the same tools you expose to Claude or Cursor. Adding a capability
+    is writing one file.
+  </blockquote>
+</section>
+
+<!-- ONE FILE THREE SURFACES -->
+<section id="tool-layer" class="border-y border-edge bg-gray-50/60">
+  <div class="mx-auto max-w-6xl px-6 py-24">
+    <div class="mx-auto max-w-2xl text-center">
+      <p class="text-sm font-semibold uppercase tracking-widest text-brand-600">The tool layer</p>
+      <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">One definition. Three entry points.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-ink-soft">
+        Declare a tool once with <span class="font-mono text-[15px] text-brand-700">defineTool</span> and add one line to the registry.
+        It appears everywhere — automatically. No three separate lists drifting apart.
+      </p>
+    </div>
+
+    <div class="mt-14 grid items-center gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+      <!-- code -->
+      <div class="overflow-hidden rounded-2xl border border-edge bg-[#0c1512] card-shadow">
+        <div class="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
+          <span class="h-2.5 w-2.5 rounded-full bg-white/20"></span><span class="h-2.5 w-2.5 rounded-full bg-white/20"></span><span class="h-2.5 w-2.5 rounded-full bg-white/20"></span>
+          <span class="ml-2 font-mono text-[12px] text-white/40">tools/my-tool.ts</span>
+        </div>
+        <pre class="overflow-x-auto p-4 font-mono text-[12.5px] leading-relaxed text-emerald-50/90"><span class="text-teal-300">export const</span> myTool = <span class="text-teal-300">defineTool</span>({
+  meta: {
+    id: <span class="text-amber-200">'my_tool'</span>,
+    brief: <span class="text-amber-200">'one-line summary'</span>,
+    category: <span class="text-amber-200">'team'</span>,
+    surface: {
+      proxy: <span class="text-amber-200">'read'</span>,  <span class="text-white/35">// read | write | none</span>
+      mcp: <span class="text-teal-300">true</span>,      <span class="text-white/35">// expose over MCP</span>
+    },
+  },
+  kind: <span class="text-amber-200">'static'</span>,
+  create: (ctx) => tool({ <span class="text-white/35">/* … */</span> }),
+});</pre>
+      </div>
+
+      <!-- diagram -->
+      <div class="rounded-2xl border border-edge bg-white p-7 card-shadow">
+        <div class="mx-auto mb-6 w-fit rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-center">
+          <p class="font-mono text-[12px] text-brand-700">one tool = one file</p>
+          <p class="text-sm font-semibold text-ink">The shared tool layer</p>
+        </div>
+        <div class="relative mx-auto mb-6 h-8 w-px bg-edge-strong"></div>
+        <div class="grid grid-cols-3 gap-3 text-center">
+          <div class="rounded-xl border border-edge bg-gray-50 p-3">
+            <div class="mx-auto mb-2 grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-600">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <p class="text-[13px] font-semibold text-ink">Team chat</p>
+            <p class="mt-0.5 text-[11.5px] text-ink-mut">members, in-app</p>
+          </div>
+          <div class="rounded-xl border border-edge bg-gray-50 p-3">
+            <div class="mx-auto mb-2 grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-600">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <p class="text-[13px] font-semibold text-ink">Agent API</p>
+            <p class="mt-0.5 text-[11.5px] text-ink-mut">/api/agent</p>
+          </div>
+          <div class="rounded-xl border border-edge bg-gray-50 p-3">
+            <div class="mx-auto mb-2 grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-600">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3" stroke-linecap="round"/></svg>
+            </div>
+            <p class="text-[13px] font-semibold text-ink">MCP server</p>
+            <p class="mt-0.5 text-[11.5px] text-ink-mut">Claude · Cursor</p>
+          </div>
+        </div>
+        <p class="mt-6 rounded-lg bg-gray-50 px-3 py-2 text-center text-[12.5px] text-ink-mut">
+          Permissions only <span class="font-semibold text-ink">narrow</span>, never widen — every surface is a subset of the user's own access.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GENERATIVE UI -->
+<section class="mx-auto max-w-6xl px-6 py-24">
+  <div class="grid items-center gap-12 lg:grid-cols-2">
+    <div>
+      <p class="text-sm font-semibold uppercase tracking-widest text-brand-600">Generative UI</p>
+      <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">Messages aren't just text.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-ink-soft">
+        When an answer carries a table, a chart, or an action to confirm, the chat upgrades it into a real
+        component — sortable tables, charts, file cards, confirm buttons. The agent only ever speaks text;
+        the interface decides how it's rendered.
+      </p>
+      <p class="mt-4 text-lg leading-relaxed text-ink-soft">
+        And those buttons aren't just for show: a click feeds straight back into the step where the agent
+        paused — <span class="font-semibold text-ink">weaving human approval into the agent's loop.</span>
+      </p>
+      <ul class="mt-6 space-y-2.5 text-[15px] text-ink-soft">
+        <li class="flex items-center gap-2.5"><span class="grid h-5 w-5 place-items-center rounded-full bg-brand-50 text-brand-600"><svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Sortable, searchable data tables</li>
+        <li class="flex items-center gap-2.5"><span class="grid h-5 w-5 place-items-center rounded-full bg-brand-50 text-brand-600"><svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Charts — bar, line, pie, radar</li>
+        <li class="flex items-center gap-2.5"><span class="grid h-5 w-5 place-items-center rounded-full bg-brand-50 text-brand-600"><svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Confirm buttons that resume the agent</li>
+        <li class="flex items-center gap-2.5"><span class="grid h-5 w-5 place-items-center rounded-full bg-brand-50 text-brand-600"><svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>File &amp; preview cards (html, pdf, image)</li>
+      </ul>
+    </div>
+    <div class="space-y-4">
+      <div class="rounded-2xl border border-edge bg-white p-5 card-shadow">
+        <p class="mb-3 text-[13px] font-medium text-ink-mut">Revenue by quarter</p>
+        <div class="flex h-40 items-end gap-3">
+          <div class="flex-1 rounded-t-md bg-brand-200" style="height:45%"></div>
+          <div class="flex-1 rounded-t-md bg-brand-300" style="height:62%"></div>
+          <div class="flex-1 rounded-t-md bg-brand-400" style="height:78%"></div>
+          <div class="flex-1 rounded-t-md bg-brand-600" style="height:96%"></div>
+        </div>
+        <div class="mt-2 flex justify-between text-[11px] text-ink-faint"><span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span></div>
+      </div>
+      <div class="flex gap-3">
+        <div class="flex-1 rounded-xl border border-edge bg-white p-3 soft-shadow">
+          <div class="flex items-center gap-2 text-ink-soft"><svg class="h-4 w-4 text-brand-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke-linejoin="round"/><path d="M14 2v6h6" stroke-linejoin="round"/></svg><span class="text-[12.5px] font-medium">spec.pdf</span></div>
+        </div>
+        <div class="flex-1 rounded-xl border border-edge bg-white p-3 soft-shadow">
+          <div class="flex items-center gap-2 text-ink-soft"><svg class="h-4 w-4 text-brand-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21" stroke-linejoin="round"/></svg><span class="text-[12.5px] font-medium">preview.png</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PERMISSIONS / TRUST -->
+<section class="border-y border-edge bg-gray-50/60">
+  <div class="mx-auto max-w-6xl px-6 py-24">
+    <div class="mx-auto max-w-2xl text-center">
+      <p class="text-sm font-semibold uppercase tracking-widest text-brand-600">Trust boundary</p>
+      <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">Safe to point at your whole org.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-ink-soft">
+        Permissions live in one place — the tool layer — and they only ever subtract. That's the boundary
+        that makes it safe to open your organization's capabilities to an outside agent.
+      </p>
+    </div>
+    <div class="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+      <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V7a5 5 0 0 1 10 0v4" stroke-linecap="round"/><rect x="4" y="11" width="16" height="10" rx="2"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">Only narrow, never widen</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">An agent gets a subset of its user's permissions — it can never gain a capability the user doesn't have.</p>
+      </div>
+      <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">Writes need a human</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">Mutating actions are deny-by-default. Every write is confirm-gated and logged to an audit trail.</p>
+      </div>
+      <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6z" stroke-linejoin="round"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">Fail-closed by design</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">No access password set? The server refuses to start. No "forgot to configure it, now everything's open."</p>
+      </div>
+      <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 3.5a3 3 0 0 1 0 7M21 20a6 6 0 0 0-4-5.6" stroke-linecap="round"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">Roles &amp; isolation</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">Super · team · external, with per-user flags. Public windows touch only public data; internal stays internal.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROFILES -->
+<section class="mx-auto max-w-6xl px-6 py-24">
+  <div class="grid items-center gap-12 lg:grid-cols-2">
+    <div class="order-2 lg:order-1">
+      <div class="rounded-2xl border border-edge bg-white p-6 card-shadow">
+        <div class="grid grid-cols-3 gap-4">
+          <div class="rounded-xl border border-edge bg-gray-50 p-4 text-center">
+            <div class="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-full bg-brand-100 text-brand-700 text-lg font-bold">RX</div>
+            <p class="text-[13px] font-semibold text-ink">Research Analyst</p>
+            <p class="text-[11px] text-ink-mut">deep · web search</p>
+          </div>
+          <div class="rounded-xl border border-edge bg-gray-50 p-4 text-center">
+            <div class="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-full bg-amber-100 text-amber-700 text-lg font-bold">PM</div>
+            <p class="text-[13px] font-semibold text-ink">Project Lead</p>
+            <p class="text-[11px] text-ink-mut">tasks · gantt</p>
+          </div>
+          <div class="rounded-xl border-2 border-brand-300 bg-brand-50 p-4 text-center">
+            <div class="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-full bg-brand-600 text-white text-lg font-bold">+</div>
+            <p class="text-[13px] font-semibold text-ink">Fork &amp; share</p>
+            <p class="text-[11px] text-brand-700">make it yours</p>
+          </div>
+        </div>
+        <div class="mt-4 rounded-xl bg-gray-50 p-3.5 text-[12.5px] text-ink-mut">
+          <span class="font-mono text-brand-700">automation</span> · run this profile's prompt every morning at 8:00
+        </div>
+      </div>
+    </div>
+    <div class="order-1 lg:order-2">
+      <p class="text-sm font-semibold uppercase tracking-widest text-brand-600">Agent profiles</p>
+      <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">Distill best practices into virtual coworkers.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-ink-soft">
+        A profile is a face, a name, a system prompt, a chosen subset of tools, and a few quick actions —
+        one person's way of doing a job, compressed into a reusable unit. Share it org-wide with one flag;
+        anyone can fork it and ship a better version.
+      </p>
+      <p class="mt-4 text-lg leading-relaxed text-ink-soft">
+        Pair it with <span class="font-semibold text-ink">automations</span> — a cron schedule that runs a profile's
+        prompt on its own — and the daily standup report or morning data sweep runs itself. The longer a team
+        uses it, the stronger its bench of virtual coworkers gets. It compounds.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURE GRID -->
+<section id="features" class="border-y border-edge bg-gray-50/60">
+  <div class="mx-auto max-w-6xl px-6 py-24">
+    <div class="mx-auto max-w-2xl text-center">
+      <p class="text-sm font-semibold uppercase tracking-widest text-brand-600">One platform</p>
+      <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">Everything shares the same tool layer.</h2>
+    </div>
+    <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <!-- card -->
+      <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">Chat</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">Streaming agent, selectable profiles, tool-call traces, memory, image analysis &amp; generation, shareable sessions.</p>
+      </div>
+      <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke-linecap="round"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke-linejoin="round"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">Knowledge base</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">Team, personal &amp; shared docs. Rich-text editor, Markdown-first, full-text search, version history, group sharing.</p>
+      </div>
+      <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">Projects</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">Projects &amp; tasks with board, gantt, and tree views, members, comments, and an activity log.</p>
+      </div>
+      <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">Automations</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">Cron-scheduled agent runs — execute a prompt against a profile on a recurring schedule.</p>
+      </div>
+      <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-7 7c0 3 2 4 2 7h10c0-3 2-4 2-7a7 7 0 0 0-7-7zM9 21h6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">Memory</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">Persistent per-user facts extracted from conversations and reused as context.</p>
+      </div>
+      <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">Email <span class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-mut">optional</span></h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">IMAP/SMTP connector — search, read, draft, and send from the agent, with injection-safe handling.</p>
+      </div>
+      <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7z" stroke-linejoin="round"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">LLM gateway + BYOK</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">Members reach admin-managed models through a server-side relay — no personal key needed — or bring their own.</p>
+      </div>
+      <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3" stroke-linecap="round"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">MCP server + proxy</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">Expose the workbench's tools to any external agent over standard MCP or the structured /api/agent proxy.</p>
+      </div>
+      <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
+        <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" stroke-linecap="round"/></svg></div>
+        <h3 class="text-base font-semibold text-ink">Global agent</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-mut">The agent can drive the web UI — navigate and prefill — through client-declared actions.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BUILT BY AGENTS -->
+<section class="mx-auto max-w-4xl px-6 py-24 text-center">
+  <p class="text-sm font-semibold uppercase tracking-widest text-brand-600">Meta</p>
+  <h2 class="mx-auto mt-4 max-w-2xl text-3xl font-extrabold leading-tight tracking-tight text-ink sm:text-[2.4rem]">
+    A product for agents — built by agents.
+  </h2>
+  <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft">
+    The implementation is almost entirely agent-written; the top-level design is human-held. Every layer
+    ships an <span class="font-mono text-[15px] text-brand-700">AGENTS.md</span> spelling out its conventions,
+    boundaries, and domain rules — the harness for the agent that builds it. There's even an anti-entropy
+    section: delete-and-cascade discipline, no duplicate implementations, declared capabilities must be real.
+  </p>
+  <p class="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-ink-mut">
+    A product agents use should be a product agents can keep building. Those turn out to be the same capability.
+  </p>
+</section>
+
+<!-- SELF HOST -->
+<section id="selfhost" class="border-y border-edge bg-gray-50/60">
+  <div class="mx-auto max-w-5xl px-6 py-24">
+    <div class="mx-auto max-w-2xl text-center">
+      <p class="text-sm font-semibold uppercase tracking-widest text-brand-600">Self-host</p>
+      <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">One command. Your infrastructure.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-ink-soft">
+        A single container serves the API and the SPA. Postgres, a one-shot migration, done. Members log in
+        with accounts — there's no app to install.
+      </p>
+    </div>
+    <div class="mt-12 overflow-hidden rounded-2xl border border-edge bg-[#0c1512] card-shadow">
+      <div class="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
+        <span class="h-2.5 w-2.5 rounded-full bg-white/20"></span><span class="h-2.5 w-2.5 rounded-full bg-white/20"></span><span class="h-2.5 w-2.5 rounded-full bg-white/20"></span>
+        <span class="ml-2 font-mono text-[12px] text-white/40">deploy</span>
+      </div>
+      <pre class="overflow-x-auto p-5 font-mono text-[13px] leading-relaxed text-emerald-50/90"><span class="text-white/35"># 1. configure secrets + your LLM endpoint</span>
+cp .env.example .env &amp;&amp; ./scripts/gen-secrets.sh
+
+<span class="text-white/35"># 2. bring it up — Postgres, migrate, API + SPA</span>
+docker compose up -d --build
+
+<span class="text-white/35"># 3. create the first super-admin</span>
+docker compose exec api pnpm admin:create
+<span class="text-teal-300">→</span> app at http://localhost:3000</pre>
+    </div>
+    <div class="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-ink-mut">
+      <span class="font-medium text-ink-soft">Stack</span>
+      <span>Hono</span><span class="text-edge-strong">·</span>
+      <span>React 19 + Vite</span><span class="text-edge-strong">·</span>
+      <span>PostgreSQL 16 + Drizzle</span><span class="text-edge-strong">·</span>
+      <span>Any OpenAI-compatible LLM</span><span class="text-edge-strong">·</span>
+      <span>Node 22</span>
+    </div>
+  </div>
+</section>
+
+<!-- WHO -->
+<section class="mx-auto max-w-6xl px-6 py-24">
+  <div class="grid gap-6 md:grid-cols-2">
+    <div class="rounded-2xl border border-edge bg-white p-8 card-shadow">
+      <div class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <h3 class="text-xl font-bold text-ink">Teams going AI-native</h3>
+      <p class="mt-2 text-[15px] leading-relaxed text-ink-soft">Use it as the foundation for an internal platform — open your tools and data top-down, hand members a day-one agent that solves real work.</p>
+    </div>
+    <div class="rounded-2xl border border-edge bg-white p-8 card-shadow">
+      <div class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <h3 class="text-xl font-bold text-ink">Developers &amp; builders</h3>
+      <p class="mt-2 text-[15px] leading-relaxed text-ink-soft">Read it as a reference implementation of how an agent platform fits together — tool layer, permissions, generative UI, MCP — then extend it your way.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="relative overflow-hidden border-t border-edge">
+  <div class="absolute inset-0 grid-bg opacity-70"></div>
+  <div class="relative mx-auto max-w-3xl px-6 py-24 text-center">
+    <svg viewBox="9 7 112 112" class="mx-auto mb-6 h-12 w-12 text-brand-600" aria-hidden="true">
+      <g fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/><path d="M22 56 L108 56"/>
+        <path d="M44 56 L44 104"/><path d="M86 56 L86 104"/><path d="M65 104 L65 84"/>
+        <path d="M65 84 C69 78 74 75 76 65 C72 69 67 77 65 84 Z"/>
+        <path d="M65 84 C61 78 56 75 54 65 C58 69 63 77 65 84 Z"/>
+      </g>
+    </svg>
+    <h2 class="text-4xl font-extrabold tracking-tight text-ink sm:text-5xl">Clone it. Write your first tool.</h2>
+    <p class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-ink-soft">
+      Greenhouse is an answer to what "the agent at the center of an organization" actually looks like — and an invitation.
+    </p>
+    <div class="mt-9 flex flex-wrap items-center justify-center gap-3">
+      <a href="https://github.com/linjiejim/greenhouse" class="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3.5 text-base font-semibold text-white transition hover:bg-brand-700">
+        <svg viewBox="0 0 16 16" class="h-5 w-5" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        Star on GitHub
+      </a>
+      <a href="#selfhost" class="inline-flex items-center gap-2 rounded-xl border border-edge-strong bg-white px-6 py-3.5 text-base font-semibold text-ink-soft transition hover:bg-gray-50">Read the docs</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- FOOTER -->
+<footer class="border-t border-edge bg-white">
+  <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-10 sm:flex-row">
+    <div class="flex items-center gap-2.5">
+      <svg viewBox="9 7 112 112" class="h-6 w-6 text-brand-600" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/><path d="M22 56 L108 56"/><path d="M44 56 L44 104"/><path d="M86 56 L86 104"/></g></svg>
+      <span class="text-sm font-semibold text-ink">Greenhouse</span>
+      <span class="text-sm text-ink-faint">— an organization's shared AI brain</span>
+    </div>
+    <div class="flex items-center gap-6 text-sm text-ink-mut">
+      <a href="https://github.com/linjiejim/greenhouse" class="hover:text-brand-700">GitHub</a>
+      <a href="#" class="hover:text-brand-700">Docs</a>
+      <a href="#" class="hover:text-brand-700">Philosophy</a>
+      <span class="text-ink-faint">MIT</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
