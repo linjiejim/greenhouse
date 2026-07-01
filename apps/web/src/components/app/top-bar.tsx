@@ -17,7 +17,7 @@ import { SessionTagsInline, TagSelector } from '../session-tags';
 import type { SessionTag } from '../../lib/api';
 import * as api from '../../lib/api';
 
-type Route = 'chat' | 'history' | 'settings' | 'projects' | 'inbox' | 'design' | 'knowledge';
+type Route = 'chat' | 'history' | 'settings' | 'projects' | 'inbox' | 'design' | 'knowledge' | (string & {});
 
 interface TopBarProps {
   route: Route;

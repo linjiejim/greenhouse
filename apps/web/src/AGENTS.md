@@ -143,7 +143,9 @@ stores/
 下游 fork 用这些接缝新增私有功能，**不改共享注册文件**，从而这些文件与上游保持一致、合并不冲突。**上游本仓库每个接缝都为空**，由 guard 测试锁定。
 - **私有工具的聊天卡片渲染** → `components/tool-call/artifact-renderers.ts`（`ARTIFACT_RENDERERS`）。fork 加 `{ match, render }` 项；`body-artifacts.tsx` 在核心 case 之后消费它们，让私有工具输出渲染成行内卡片，无需改 `body-artifacts.tsx`。
 - **Global-Agent 页面上下文（URL→PageContext）** → `lib/context-resolvers.ts`（`registerUrlContextResolver`）。fork 为其私有路由（如 `#/crm/...`）注册解析器；`agent-context.tsx` 的 `resolveUrlContext` 对核心 switch 未覆盖的路由回退到该注册表。`PageContext.type` 含 `(string & {})` 成员，故 fork 类型无需改中央 union。
-- **主页面 / 设置面板挂载**（`app.tsx` 的 Route union + 懒加载 + 渲染分支、`settings/index.tsx` 面板分支）目前仍是硬编码，是 S8 页面注册表接缝的待办项——新增私有页面暂时仍需改 `app.tsx`。
+- **私有顶级页面（主 Tab）** → `lib/page-registry.tsx`（`EXTRA_PAGES`）。fork 声明 `{ key, navLabel, navIcon, showInNav, render }`；`app.tsx` 的 `parseRoute`/主渲染 + `app.tsx`/`app-sidebar.tsx` 的 navItems 都消费它（`extraPageKeys`/`getExtraPage`/`extraNavItems`），三处 `Route` 类型加了 `(string & {})` 成员。页面自行做角色门控（同核心页）。
+- **私有设置分区 + 面板** → `lib/nav-registry.extensions.ts`（`EXTENSION_SETTINGS_SECTIONS`，splice 进 `settingsSections`，级联到所有派生列表）+ `pages/settings/panels.extensions.tsx`（`EXTENSION_SETTINGS_PANELS`，`settings/index.tsx` 在核心 switch 后 `findSettingsPanel(key)`）。两者配套：前者给侧栏入口+路由，后者挂载面板组件。
+- **私有 i18n** → `lib/i18n` 的 `registerLocaleMessages(locale, msgs)`（启动时调用）。`t()` 对核心 key 未命中时回退到 fork 命名空间（再回退 en，再回退 key 本身）；`t` 形参含 `(string & {})`，fork key 是普通字符串（不在 `TranslationKey` 联合里）。
 
 ### 样式规范
 - **Tailwind v4（编译模式）**——CSS 入口：`app.css`（由 `app.tsx` import），经 `@tailwindcss/vite` 插件构建，打进 `public/assets/index-*.css`

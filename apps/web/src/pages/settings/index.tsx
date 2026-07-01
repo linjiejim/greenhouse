@@ -29,6 +29,7 @@ import { MemoryPanel } from './memory';
 import { GroupsPanel } from './groups';
 import { LlmGatewayAdminPanel } from './admin-llm-gateway';
 import { McpKeysPanel } from './mcp-keys';
+import { findSettingsPanel } from './panels.extensions';
 
 // ─── Sub-module helpers ─────────────────────────────────
 
@@ -81,6 +82,8 @@ export function SettingsPage({ subPath }: { subPath: string }) {
           {effectiveModule === 'groups' && <GroupsPanel />}
           {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
           {effectiveModule === 'memory' && <MemoryPanel />}
+          {/* Private fork panels (empty upstream) — see panels.extensions.tsx. */}
+          {findSettingsPanel(effectiveModule)?.render()}
         </div>
       </div>
     </ModulePageShell>

@@ -37,6 +37,19 @@ export type TranslationKey = FlatKeys<LocaleMessages>;
 
 const locales: Record<Locale, LocaleMessages> = { en, zh: zh as unknown as LocaleMessages };
 
+// ─── Fork extension point (locale messages) ──────────────
+// @greenhouse i18n key parity is TS-enforced on the core en/zh objects. A
+// downstream fork registers its private-module translations at startup via
+// registerLocaleMessages(locale, namespaceObject); t() falls back to these when a
+// key misses the core messages (then to en, then to the key itself). Empty
+// upstream. Fork keys are plain strings — not in the core TranslationKey union.
+const extensionMessages: Partial<Record<Locale, Record<string, unknown>>> = {};
+
+/** Register private-module translations contributed by a downstream fork. */
+export function registerLocaleMessages(locale: Locale, messages: Record<string, unknown>): void {
+  extensionMessages[locale] = { ...(extensionMessages[locale] ?? {}), ...messages };
+}
+
 export const LOCALE_OPTIONS: Array<{ value: Locale; label: string; nativeLabel: string }> = [
   { value: 'en', label: 'English', nativeLabel: 'English' },
   { value: 'zh', label: 'Chinese (Simplified)', nativeLabel: '简体中文' },
@@ -70,7 +83,7 @@ function storeLocale(locale: Locale) {
 // Translation helper (non-React usage)
 // ---------------------------------------------------------------------------
 
-function resolve(messages: LocaleMessages, key: string): string {
+function resolve(messages: Record<string, unknown>, key: string): string {
   const parts = key.split('.');
   let current: unknown = messages;
   for (const part of parts) {
@@ -81,6 +94,23 @@ function resolve(messages: LocaleMessages, key: string): string {
     }
   }
   return typeof current === 'string' ? current : key;
+}
+
+/** Resolve a key against core messages, then fork extension messages (this
+ *  locale → en), then the key itself. Empty extensions upstream ⇒ core only. */
+function resolveKey(locale: Locale, key: string): string {
+  const core = resolve(locales[locale] ?? locales.en, key);
+  if (core !== key) return core;
+  const ext = extensionMessages[locale];
+  if (ext) {
+    const r = resolve(ext, key);
+    if (r !== key) return r;
+  }
+  if (locale !== 'en' && extensionMessages.en) {
+    const r = resolve(extensionMessages.en, key);
+    if (r !== key) return r;
+  }
+  return key;
 }
 
 function interpolate(template: string, params?: Record<string, string | number>): string {
@@ -95,7 +125,9 @@ function interpolate(template: string, params?: Record<string, string | number>)
 interface I18nContextValue {
   locale: Locale;
   setLocale: (locale: Locale) => void;
-  t: (key: TranslationKey, params?: Record<string, string | number>) => string;
+  // Core keys keep autocomplete; `(string & {})` lets a fork pass its own
+  // registered keys (see registerLocaleMessages).
+  t: (key: TranslationKey | (string & {}), params?: Record<string, string | number>) => string;
 }
 
 const I18nContext = createContext<I18nContextValue>({
@@ -138,9 +170,8 @@ export function I18nProvider({ children, initialLocale, onLocaleChange }: I18nPr
   }, [initialLocale]);
 
   const t = useCallback(
-    (key: TranslationKey, params?: Record<string, string | number>): string => {
-      const messages = locales[locale] ?? locales.en;
-      const raw = resolve(messages, key);
+    (key: TranslationKey | (string & {}), params?: Record<string, string | number>): string => {
+      const raw = resolveKey(locale, key);
       return interpolate(raw, params);
     },
     [locale],

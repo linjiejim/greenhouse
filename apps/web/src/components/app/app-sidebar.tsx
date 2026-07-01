@@ -33,8 +33,9 @@ import {
   PinnedSectionCollapsed,
   KnowledgeNavPanel,
 } from './sidebar-panels';
+import { extraNavItems } from '../../lib/page-registry';
 
-type Route = 'chat' | 'history' | 'settings' | 'projects' | 'inbox' | 'design' | 'knowledge';
+type Route = 'chat' | 'history' | 'settings' | 'projects' | 'inbox' | 'design' | 'knowledge' | (string & {});
 
 interface AppSidebarProps {
   route: Route;
@@ -71,6 +72,7 @@ export function AppSidebar({
     { key: 'chat', label: t('app.chat'), icon: MessageCircle, visible: true },
     { key: 'projects', label: t('app.projects'), icon: FolderKanban, visible: !isExternal },
     { key: 'knowledge', label: t('app.knowledge'), icon: BookOpen, visible: !isExternal },
+    ...extraNavItems({ isExternal, userRole }),
   ];
   const visibleNavItems = navItems.filter((item) => item.visible);
 

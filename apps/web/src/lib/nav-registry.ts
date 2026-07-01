@@ -10,6 +10,7 @@
 
 import { Mail, Users, MessageSquare, ClipboardList, Key, Palette, Zap, BarChart3, Bot, Cloud, Brain } from './icons';
 import type { LucideIcon } from './icons';
+import { EXTENSION_SETTINGS_SECTIONS } from './nav-registry.extensions';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -209,6 +210,8 @@ export const settingsSections: SettingsNavSection[] = [
   { key: 'workspace', label: 'Workspace', items: SETTINGS_WORKSPACE },
   { key: 'administration', label: 'Administration', requireRole: ['super'], items: SETTINGS_ADMIN },
   { key: 'labs', label: 'Labs', requireRole: ['super'], items: SETTINGS_LABS },
+  // Private fork sections (empty upstream) — see nav-registry.extensions.ts.
+  ...EXTENSION_SETTINGS_SECTIONS,
 ];
 
 /** Flat list of every settings module across all sections. */

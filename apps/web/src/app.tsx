@@ -33,6 +33,7 @@ import { initTheme } from './lib/theme';
 import { initScrollActivity } from './lib/scroll-activity';
 import { I18nProvider, useT, getStoredLocale } from './lib/i18n';
 import type { Locale } from './lib/i18n';
+import { getExtraPage, extraPageKeys, extraNavItems } from './lib/page-registry';
 
 // Initialize theme from localStorage on app load
 initTheme();
@@ -41,7 +42,9 @@ initScrollActivity();
 
 // ─── Router ──────────────────────────────────────────────
 
-type Route = 'chat' | 'history' | 'settings' | 'projects' | 'inbox' | 'design' | 'knowledge';
+// Core routes keep literal typing; `(string & {})` admits fork page keys
+// registered via ./lib/page-registry (see extraPageKeys).
+type Route = 'chat' | 'history' | 'settings' | 'projects' | 'inbox' | 'design' | 'knowledge' | (string & {});
 
 interface ParsedRoute {
   route: Route;
@@ -72,7 +75,9 @@ function parseRoute(hash: string): ParsedRoute {
   }
 
   const route = (
-    ['chat', 'history', 'settings', 'projects', 'inbox', 'design', 'knowledge'].includes(topLevel) ? topLevel : 'chat'
+    ['chat', 'history', 'settings', 'projects', 'inbox', 'design', 'knowledge', ...extraPageKeys()].includes(topLevel)
+      ? topLevel
+      : 'chat'
   ) as Route;
   const subPath = segments.slice(1).join('/');
   return { route, subPath, params: new URLSearchParams(query || '') };
@@ -232,11 +237,12 @@ function AppShell({ route, subPath, params }: AppShellProps) {
     window.location.hash = `#/chat?session=${sessionId}`;
   }, []);
 
-  // Navigation items for mobile drawer
+  // Navigation items for mobile drawer (+ fork pages that opt into the nav)
   const navItems: Array<{ key: Route; label: string; icon: LucideIcon; visible: boolean }> = [
     { key: 'chat', label: t('app.chat'), icon: MessageCircle, visible: true },
     { key: 'projects', label: t('app.projects'), icon: FolderKanban, visible: !isExternal },
     { key: 'knowledge', label: t('app.knowledge'), icon: BookOpen, visible: !isExternal },
+    ...extraNavItems({ isExternal, userRole }),
   ];
 
   return (
@@ -386,6 +392,8 @@ function AppShell({ route, subPath, params }: AppShellProps) {
                     {t('app.noPermission')}
                   </div>
                 )}
+                {/* Private fork pages (empty upstream) — see lib/page-registry. */}
+                {getExtraPage(route)?.render({ subPath, params, userRole, isExternal })}
               </main>
             </Suspense>
           </ErrorBoundary>
