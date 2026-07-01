@@ -63,12 +63,11 @@ export interface ChatEngineResult {
 
 /**
  * Produce a compact summary of tool output for pipeline storage.
- * Uses actual registered tool names (knowledge_query, team_knowledge, etc.)
+ * Uses actual registered tool names (knowledge_query, etc.)
  */
 export function summarizeOutput(toolName: string, output: Record<string, unknown>): unknown {
   switch (toolName) {
     case 'knowledge_query':
-    case 'team_knowledge':
       if (output.action === 'search') {
         return { action: 'search', found: output.found, query: output.query };
       }
@@ -245,7 +244,7 @@ export function processStreamPart(part: any, collectors: StreamCollectors): void
       });
 
       // Track knowledge-base search relevance scores (keyed by doc_id).
-      const isKnowledgeTool = part.toolName === 'knowledge_query' || part.toolName === 'team_knowledge';
+      const isKnowledgeTool = part.toolName === 'knowledge_query';
       if (isKnowledgeTool && toolOutput.action === 'search' && toolOutput.results) {
         for (const result of toolOutput.results as Array<{ doc_id?: string; relevance?: number }>) {
           if (result.doc_id && result.relevance != null) {

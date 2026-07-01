@@ -19,7 +19,6 @@ import { READONLY_PROXY_ALLOWLIST, MUTATING_PROXY_ALLOWLIST, MCP_EXPOSED_TOOL_ID
 
 // The frozen invariant. Order-independent — compared as sorted arrays / sets.
 const EXPECTED_READONLY = [
-  'team_knowledge',
   'external_search',
   'compute',
   'analyze_image',
@@ -35,7 +34,6 @@ const EXPECTED_MUTATING = ['project_mutation', 'knowledge_mutation', 'email_muta
 const EXPECTED_MCP = [
   'knowledge_query',
   'knowledge_mutation',
-  'team_knowledge',
   'project_query',
   'project_mutation',
   'email_query',

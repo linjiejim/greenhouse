@@ -90,7 +90,7 @@ Tool metadata is **co-located in each tool's file**. A tool declares itself with
 - Tool set = `resolveEffectiveTools(user, profile)` ∩ the proxy allowlist — the proxy can only **narrow** permissions, never widen them.
 - **The system prompt never dynamically lists the tool set**: tool definitions (name/description/schema) are already delivered to the model natively via `tools[]`; injecting "the user's tool names" into the prompt inevitably drifts from the real registered set. `resolveEffectiveTools` returns only the narrowed `effectiveTools`. Exception: a profile YAML's `system_prompt` **may** carry usage policy for tools (e.g. "search before get"), but only for tools that profile guarantees exist.
 - The allowlists live in `agent-runtime/tool-proxy.ts` but are **derived from `meta.surface`** (re-exported from `registry.ts`):
-  - `READONLY_PROXY_ALLOWLIST` — read tools (e.g. `team_knowledge`, `project_query`, `session_query`, `knowledge_query`).
+  - `READONLY_PROXY_ALLOWLIST` — read tools (e.g. `project_query`, `session_query`, `knowledge_query`).
   - `MUTATING_PROXY_ALLOWLIST` — write tools (e.g. `project_mutation`, `knowledge_mutation`, `email_mutation`).
 - **Write tools default DENY**: a write call must be in the write allowlist, the caller's write permission must include it, and every call must carry `confirm:true`, else 400. Every call writes an agent audit row.
 

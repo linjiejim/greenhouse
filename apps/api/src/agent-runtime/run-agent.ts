@@ -165,7 +165,7 @@ export function extractPipelineAndReferences(steps: any[]): {
       // Extract citations from knowledge-base docs actually read (action=get).
       // Knowledge search returns candidate lists; only a doc that was opened
       // becomes a citation, so we collect on the 'get' branch keyed by doc_id.
-      const isKnowledgeTool = toolName === 'knowledge_query' || toolName === 'team_knowledge';
+      const isKnowledgeTool = toolName === 'knowledge_query';
       if (
         isKnowledgeTool &&
         toolOutput?.action === 'get' &&
@@ -191,7 +191,6 @@ function summarizeInput(toolName: string, input: Record<string, unknown>): unkno
   if (!input || typeof input !== 'object') return {};
   switch (toolName) {
     case 'knowledge_query':
-    case 'team_knowledge':
       return input.action === 'get'
         ? { action: input.action ?? '', doc_id: input.doc_id ?? '' }
         : { action: input.action ?? '', query: input.query ?? '' };

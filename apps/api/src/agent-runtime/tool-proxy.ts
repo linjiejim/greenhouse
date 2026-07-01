@@ -207,10 +207,11 @@ function normalizeLegacyToolCall(toolId: string, input: unknown): { toolId: stri
   switch (toolId) {
     case 'search_team_knowledge':
     case 'search_greenhouse_doc':
-      return { toolId: 'team_knowledge', input: { ...inputObj, action: 'search' } };
+      // Legacy MCP names → unified knowledge_query (scope defaults to 'team').
+      return { toolId: 'knowledge_query', input: { ...inputObj, action: 'search' } };
     case 'get_team_knowledge':
     case 'get_greenhouse_doc':
-      return { toolId: 'team_knowledge', input: { ...inputObj, action: 'get' } };
+      return { toolId: 'knowledge_query', input: { ...inputObj, action: 'get' } };
     default:
       return { toolId, input };
   }

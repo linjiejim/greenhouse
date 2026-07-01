@@ -77,7 +77,6 @@ describe('lazy catalog + per-request construction (guard)', () => {
       'email_manager',
       'email_query',
       'email_mutation',
-      'personal_knowledge',
       'session_history',
       'project_query',
       'project_mutation',

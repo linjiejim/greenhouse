@@ -249,7 +249,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
     );
 
     // Inject per-request lazy server tools (feature_request, project_manager,
-    // email_manager, personal_knowledge, session_history) — shared logic.
+    // email_manager, knowledge_query, session_history) — shared logic.
     Object.assign(
       tools,
       buildLazyServerTools(getDb(), effectiveTools, {
@@ -371,7 +371,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                       output: Record<string, unknown>;
                     }>) {
                       if (
-                        (tr.toolName === 'knowledge_query' || tr.toolName === 'team_knowledge') &&
+                        tr.toolName === 'knowledge_query' &&
                         (tr.output as any)?.action === 'get' &&
                         tr.output &&
                         !(tr.output as any).error

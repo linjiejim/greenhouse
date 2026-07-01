@@ -381,8 +381,6 @@ export const TOOL_ICONS: Record<string, LucideIcon> = {
   feature_request: Lightbulb,
   generate_image: Palette,
   project_manager: FolderKanban,
-  team_knowledge: Library,
-  personal_knowledge: BookOpen,
   email_manager: Mail,
   compute: Calculator,
 };
@@ -407,7 +405,6 @@ export const TOOL_BRIEFS: Record<string, string> = {
   feature_request: 'Submit and manage feature requests',
   generate_image: 'Generate images from text descriptions',
   project_manager: 'Create and manage projects & tasks',
-  team_knowledge: 'Search and read internal team knowledge documents',
   email_manager: 'Read, search and send emails from bound accounts',
   compute: 'Execute code for precise data analysis & calculations',
 };

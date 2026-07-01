@@ -17,8 +17,6 @@ export { TOOL_GROUPS } from './define.js';
 
 import { analyzeImageTool } from './media/analyze-image.js';
 import { askUserTool } from './interaction/ask-user.js';
-import { teamKnowledgeTool } from './knowledge/team-knowledge.js';
-import { personalKnowledgeTool } from './knowledge/personal-knowledge.js';
 import { externalSearchTool } from './external-search/index.js';
 import { featureRequestTool } from './interaction/feature-request.js';
 import { generateImageTool } from './media/generate-image.js';
@@ -40,8 +38,6 @@ import { knowledgeMutationTool } from './knowledge/knowledge-mutation.js';
 const TOOL_MODULES: ToolModule[] = [
   analyzeImageTool,
   askUserTool,
-  teamKnowledgeTool,
-  personalKnowledgeTool,
   externalSearchTool,
   featureRequestTool,
   generateImageTool,

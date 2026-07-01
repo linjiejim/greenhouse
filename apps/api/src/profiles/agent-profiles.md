@@ -43,23 +43,21 @@
 
 ### 团队知识库工具
 
-`team` profile 可使用内部团队知识库工具：
+`team` profile 通过统一的 `knowledge_query`（只读）+ `knowledge_mutation`（写，confirm-gated）访问 `knowledge_base`：
 
-- `team_knowledge` — 搜索/读取 `knowledge_base` **团队**文档（scope=`shared`，status=`published`，visibility=`team`）
-  - `action="search"`：按关键词搜索团队文档（仅 `visibility=team`，不会命中任何用户的个人文档）
-  - `action="get"`：读取团队文档完整 Markdown 内容（非 `visibility=team` 一律视为 not found）
-- `personal_knowledge` — 搜索/读取**当前用户本人**的个人文档（scope=`shared`，visibility=`private`，按 `owner_user_id` 隔离）
-  - per-request 工具，需要 `userId`（在 tool-resolution 注入），匿名/外部用户不装配
-  - `action="search"`：按关键词搜索本人个人笔记/草稿
-  - `action="get"`：读取本人个人文档；非本人或非 private 一律视为 not found
+- `knowledge_query` — 只读，per-request 工具，需要 internal user（`userId` 在 tool-resolution 注入），匿名/外部用户不装配。
+  - `action`：`search` / `get` / `list` / `versions`（`versions` 查文档改动历史，便于 restore 前确认）。
+  - `scope=team`：搜索/读取团队文档（`visibility=team`，`status=published`）；非 `team` 一律视为 not found，不会命中任何用户的个人文档。
+  - `scope=personal`：搜索/读取**当前用户本人**的个人文档（`visibility=private`，按 `owner_user_id` 隔离）；非本人或非 private 一律视为 not found。
+  - `scope=shared`：他人直接或通过分组分享给当前用户的私有文档。
   - 定位：个人知识库即用户的**长期记忆**（可编辑、带版本回溯），用于沉淀业务/项目上下文与偏好，供未来会话回溯。
     Web 端写入走知识库 UI 编辑器；Desktop/CLI Agent 走 confirm-gated `knowledge_mutation`（见下）。
 
 安全边界：
 
-- 两个工具都只出现在 internal/team 能力中；`default` public profile 不包含。
+- `knowledge_query` / `knowledge_mutation` 只出现在 internal/team 能力中；`default` public profile 不包含。
 - 外部 `/v1/chat` 不应接触 `knowledge_base` 内部文档。
-- `team_knowledge` 与 `personal_knowledge` 通过 `visibility`/`owner_user_id` 严格隔离：团队搜索不泄漏个人文档，个人工具不返回他人或团队内容。
+- 各 scope 通过 `visibility`/`owner_user_id` 严格隔离：team 搜索不泄漏个人文档，personal 不返回他人或团队内容。
 
 ## Agent Proxy cloud tools（`/api/agent/*` 与 `/api/mcp`）
 
