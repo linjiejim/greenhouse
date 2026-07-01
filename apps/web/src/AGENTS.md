@@ -139,6 +139,12 @@ stores/
 - 新页面在 `lib/context-providers/` 添加 provider 文件并在 `index.ts` 中导入
 - 页面组件使用 `enrichPageContext()` 添加 URL 之外的数据（如 title、email）
 
+### Fork 扩展点（下游个性化）
+下游 fork 用这些接缝新增私有功能，**不改共享注册文件**，从而这些文件与上游保持一致、合并不冲突。**上游本仓库每个接缝都为空**，由 guard 测试锁定。
+- **私有工具的聊天卡片渲染** → `components/tool-call/artifact-renderers.ts`（`ARTIFACT_RENDERERS`）。fork 加 `{ match, render }` 项；`body-artifacts.tsx` 在核心 case 之后消费它们，让私有工具输出渲染成行内卡片，无需改 `body-artifacts.tsx`。
+- **Global-Agent 页面上下文（URL→PageContext）** → `lib/context-resolvers.ts`（`registerUrlContextResolver`）。fork 为其私有路由（如 `#/crm/...`）注册解析器；`agent-context.tsx` 的 `resolveUrlContext` 对核心 switch 未覆盖的路由回退到该注册表。`PageContext.type` 含 `(string & {})` 成员，故 fork 类型无需改中央 union。
+- **主页面 / 设置面板挂载**（`app.tsx` 的 Route union + 懒加载 + 渲染分支、`settings/index.tsx` 面板分支）目前仍是硬编码，是 S8 页面注册表接缝的待办项——新增私有页面暂时仍需改 `app.tsx`。
+
 ### 样式规范
 - **Tailwind v4（编译模式）**——CSS 入口：`app.css`（由 `app.tsx` import），经 `@tailwindcss/vite` 插件构建，打进 `public/assets/index-*.css`
 - **语义化颜色 token**——使用自动适配明暗主题的语义 class：

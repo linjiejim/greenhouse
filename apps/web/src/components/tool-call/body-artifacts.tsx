@@ -20,6 +20,7 @@ import { Spinner } from '../ui';
 import { useT } from '../../lib/i18n';
 import { UpdatePageResultCard } from './update-page-card';
 import { AskUserCard, type AskUserData } from '../chat/ask-user-card';
+import { findArtifactRenderer } from './artifact-renderers';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -80,7 +81,8 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
       // rejections (depth/confirm/profile — error but no child) fall to trace.
       return !out || !!out.child_session_id;
     default:
-      return false;
+      // Fork-contributed renderers (empty upstream) — see artifact-renderers.ts.
+      return !!findArtifactRenderer(call as ArtifactCall);
   }
 }
 
@@ -146,8 +148,11 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
     case 'spawn_session':
       return <SpawnSessionCard call={call} ctx={ctx} />;
 
-    default:
-      return null;
+    default: {
+      // Fork-contributed renderers (empty upstream) — see artifact-renderers.ts.
+      const renderer = findArtifactRenderer(call);
+      return renderer ? renderer.render(call, ctx) : null;
+    }
   }
 }
 

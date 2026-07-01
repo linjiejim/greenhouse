@@ -16,11 +16,16 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 
 // Import and init all frontend context-providers (triggers registration)
 import '../lib/context-providers';
+import { resolveExtraUrlContext } from '../lib/context-resolvers';
 
 // ─── Types ───────────────────────────────────────────────
 
 export interface PageContext {
-  type: 'chat' | 'history' | 'feature-request-list' | 'project-list' | 'project-detail';
+  // Core page types plus `(string & {})` so a downstream fork can contribute its
+  // own page types (e.g. 'crm') via registerUrlContextResolver without editing
+  // this union. The `(string & {})` member keeps literal autocomplete for the
+  // core types while accepting any string. See lib/context-resolvers.ts.
+  type: 'chat' | 'history' | 'feature-request-list' | 'project-list' | 'project-detail' | (string & {});
   slug?: string;
   title?: string;
   category?: string;
@@ -30,6 +35,8 @@ export interface PageContext {
   totalPending?: number;
   projectId?: number;
   projectTitle?: string;
+  /** Fork route sub-path segment (e.g. a private module id). Set by fork resolvers. */
+  module?: string;
 }
 
 export interface AgentContextValue {
@@ -72,9 +79,11 @@ export interface AgentContextValue {
 
 /**
  * Parse the current hash route into a base PageContext.
- * This is the SINGLE place that maps URLs to context types.
+ * Core routes are handled by the switch below; any other route falls through to
+ * the fork resolver registry (lib/context-resolvers.ts) — empty upstream.
+ * Exported for unit testing.
  */
-function resolveUrlContext(hash: string): PageContext | null {
+export function resolveUrlContext(hash: string): PageContext | null {
   const cleaned = hash.replace(/^#\/?/, '');
   const [path, query] = cleaned.split('?');
   const segments = path.split('/').filter(Boolean);
@@ -106,7 +115,8 @@ function resolveUrlContext(hash: string): PageContext | null {
       return null;
 
     default:
-      return null;
+      // Fork-contributed routes (empty upstream) — see lib/context-resolvers.ts.
+      return resolveExtraUrlContext(route, subPath, params);
   }
 }
 
