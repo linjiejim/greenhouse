@@ -207,4 +207,9 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
   });
 }
 
-export const knowledgeQueryTool = defineTool({ meta, kind: 'lazy' });
+export const knowledgeQueryTool = defineTool({
+  meta,
+  kind: 'lazy',
+  requires: { user: 'internal' },
+  create: (ctx) => createKnowledgeQueryTool(ctx.db, { userId: ctx.userId }),
+});

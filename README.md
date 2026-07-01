@@ -147,7 +147,10 @@ intersected with the proxy allowlist — a tool only appears if it declares the 
 
 ## Adding a tool
 
-A tool is one file. Declare it with `defineTool`, set its `surface`, and register it:
+A tool is **one file + one line** — for every kind, not just stateless ones. Declare it with
+`defineTool`, give it a `create(ctx)`, set its `surface`, and add one line to `TOOL_MODULES`.
+
+A **static** tool needs nothing per request (only the shared `db`):
 
 ```ts
 // apps/api/src/tools/my-tool.ts
@@ -167,13 +170,29 @@ export const myTool = defineTool({
     },
   },
   kind: 'static',
-  create: (db) => tool({ /* description, inputSchema, execute */ }),
+  create: (ctx) => tool({ /* description, inputSchema, execute — uses ctx.db */ }),
 });
 ```
 
-Then add one line to `TOOL_MODULES` in `apps/api/src/tools/registry.ts`. The registry derives
-the read/write proxy allowlists and the MCP-exposed set directly from each tool's
-`meta.surface` — there are no hand-maintained id lists. The tool is now reachable in chat,
+A **lazy** tool needs request context (the calling user / the session). Declare what it needs
+with `requires`; the runtime builds it per request, passes a `ctx` carrying those fields, and
+enforces `requires` as the access guard (no permission checks wired anywhere else):
+
+```ts
+export const myUserTool = defineTool({
+  meta: {
+    /* … same shape … */
+  },
+  kind: 'lazy',
+  requires: { user: 'internal' }, // 'optional' | 'required' | 'internal'  (+ session?, registry?)
+  create: (ctx) => createMyUserTool(ctx.db, { userId: ctx.userId }),
+});
+```
+
+Then add one line to `TOOL_MODULES` in `apps/api/src/tools/registry.ts`. That's it — no other
+edits, including for lazy tools. The registry derives the read/write proxy allowlists, the
+MCP-exposed set, and the lazy build list directly from each module's `meta.surface` / `kind` /
+`requires` — there are no hand-maintained id lists. The tool is now reachable in chat,
 `/api/agent`, and `/api/mcp`.
 
 Optional modules are gated by per-user feature flags: add an entry to

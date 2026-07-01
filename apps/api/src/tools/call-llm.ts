@@ -159,4 +159,10 @@ export function createCallLlmTool(db: DatabaseProvider, ctx: CallLlmContext) {
   });
 }
 
-export const callLlmTool = defineTool({ meta, kind: 'lazy' });
+export const callLlmTool = defineTool({
+  meta,
+  kind: 'lazy',
+  requires: { user: 'internal', session: true },
+  create: (ctx) =>
+    createCallLlmTool(ctx.db, { userId: ctx.userId, sessionId: ctx.sessionId!, profileId: ctx.profileId ?? null }),
+});

@@ -48,6 +48,13 @@ interface ProfileFormData {
   avatar_color: string;
   avatar_accessories: string[];
   avatar_leafStyle: LeafStyle;
+  // Safe model knobs + behavior ('' = inherit base)
+  model_thinking: '' | 'on' | 'off';
+  model_temperature: string;
+  model_max_tokens: string;
+  default_language: string;
+  greeting: string;
+  suggested_followups: string; // newline-separated
 }
 
 interface ProfileEditorDrawerProps {
@@ -83,6 +90,12 @@ export function ProfileEditorDrawer({
     avatar_color: 'forest',
     avatar_accessories: [] as string[],
     avatar_leafStyle: 'normal' as LeafStyle,
+    model_thinking: '',
+    model_temperature: '',
+    model_max_tokens: '',
+    default_language: '',
+    greeting: '',
+    suggested_followups: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -107,6 +120,14 @@ export function ProfileEditorDrawer({
           avatar_color: (profile as any).avatar?.color || 'forest',
           avatar_accessories: (profile as any).avatar?.accessories || [],
           avatar_leafStyle: (profile as any).avatar?.leafStyle || 'normal',
+          model_thinking:
+            profile.model_options?.thinking === undefined ? '' : profile.model_options.thinking ? 'on' : 'off',
+          model_temperature:
+            profile.model_options?.temperature != null ? String(profile.model_options.temperature) : '',
+          model_max_tokens: profile.model_options?.max_tokens != null ? String(profile.model_options.max_tokens) : '',
+          default_language: profile.default_language || '',
+          greeting: profile.greeting || '',
+          suggested_followups: (profile.suggested_followups || []).join('\n'),
         });
         setShowCapabilities((profile.capabilities?.length ?? 0) > 0);
       } else {
@@ -122,6 +143,12 @@ export function ProfileEditorDrawer({
           avatar_color: 'forest',
           avatar_accessories: [],
           avatar_leafStyle: 'normal' as LeafStyle,
+          model_thinking: '',
+          model_temperature: '',
+          model_max_tokens: '',
+          default_language: '',
+          greeting: '',
+          suggested_followups: '',
         });
         setShowCapabilities(false);
       }
@@ -201,6 +228,15 @@ export function ProfileEditorDrawer({
     setSaving(true);
     setError('');
     try {
+      const modelOptions: { thinking?: boolean; temperature?: number; max_tokens?: number } = {};
+      if (form.model_thinking) modelOptions.thinking = form.model_thinking === 'on';
+      if (form.model_temperature !== '') modelOptions.temperature = parseFloat(form.model_temperature);
+      if (form.model_max_tokens !== '') modelOptions.max_tokens = parseInt(form.model_max_tokens, 10);
+      const followups = form.suggested_followups
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 4);
       const input: CustomProfileInput = {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
@@ -215,6 +251,10 @@ export function ProfileEditorDrawer({
           accessories: form.avatar_accessories,
           leafStyle: form.avatar_leafStyle,
         },
+        model_options: Object.keys(modelOptions).length ? modelOptions : undefined,
+        default_language: form.default_language.trim() || undefined,
+        greeting: form.greeting.trim() || undefined,
+        suggested_followups: followups.length ? followups : undefined,
       };
 
       const editId = profile ? parseInt(profile.id.replace('custom:', ''), 10) : undefined;
@@ -552,6 +592,82 @@ export function ProfileEditorDrawer({
             size="sm"
           />
           <p className="text-[10px] text-fg-faint mt-1">Maximum tool call iterations per response</p>
+        </div>
+
+        {/* Model options */}
+        <div>
+          <label className="text-sm font-medium text-fg-secondary block mb-1">Model options</label>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <span className="text-[10px] text-fg-faint block mb-1">Thinking</span>
+              <Select
+                value={form.model_thinking}
+                onChange={(e) => setForm({ ...form, model_thinking: e.target.value as '' | 'on' | 'off' })}
+              >
+                <option value="">Inherit</option>
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </Select>
+            </div>
+            <div>
+              <span className="text-[10px] text-fg-faint block mb-1">Temperature</span>
+              <Input
+                type="number"
+                value={form.model_temperature}
+                placeholder="inherit"
+                onChange={(e) => setForm({ ...form, model_temperature: e.target.value })}
+                size="sm"
+              />
+            </div>
+            <div>
+              <span className="text-[10px] text-fg-faint block mb-1">Max tokens</span>
+              <Input
+                type="number"
+                value={form.model_max_tokens}
+                placeholder="inherit"
+                onChange={(e) => setForm({ ...form, model_max_tokens: e.target.value })}
+                size="sm"
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-fg-faint mt-1">
+            Override the base model's sampling. Empty = inherit from the base profile.
+          </p>
+        </div>
+
+        {/* Default language */}
+        <div>
+          <label className="text-sm font-medium text-fg-secondary block mb-1">Default language</label>
+          <Input
+            value={form.default_language}
+            placeholder="e.g. English, 中文 — blank follows the user"
+            onChange={(e) => setForm({ ...form, default_language: e.target.value })}
+          />
+        </div>
+
+        {/* Greeting */}
+        <div>
+          <label className="text-sm font-medium text-fg-secondary block mb-1">Greeting</label>
+          <Textarea
+            value={form.greeting}
+            placeholder="Shown on the empty chat screen before the first message."
+            rows={2}
+            onChange={(e) => setForm({ ...form, greeting: e.target.value })}
+          />
+        </div>
+
+        {/* Suggested follow-ups */}
+        <div>
+          <label className="text-sm font-medium text-fg-secondary block mb-1">Suggested follow-ups</label>
+          <Textarea
+            value={form.suggested_followups}
+            placeholder={'One per line (max 4)\nSummarize the latest report\nDraft a follow-up email'}
+            rows={3}
+            onChange={(e) => setForm({ ...form, suggested_followups: e.target.value })}
+          />
+          <p className="text-[10px] text-fg-faint mt-1">
+            One per line, up to 4. Shown as quick prompts on the empty chat screen.
+          </p>
         </div>
 
         {/* Shared toggle */}

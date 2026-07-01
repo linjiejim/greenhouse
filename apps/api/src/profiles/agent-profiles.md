@@ -7,6 +7,10 @@
 | `default` | Greenhouse Assistant | Cloud `/api/chat` | public / external | 对外通用助手，基于知识库作答。 |
 | `team` | Team Assistant | Cloud `/api/chat` | internal | 内部团队助手；工具由用户权限/分配控制。 |
 
+系统 profile 用 TS 编写（`default.ts` / `team.ts` + 同名 `*.prompt.md`），经 `defineProfile()` 用
+`systemProfileSchema` 校验；用户自建 profile 存 DB（见下）。两者字段形状以
+`@greenhouse/types/profile-manifest`（zod）为**唯一真相源**——增删可配置字段只改这份 schema。
+
 > 约定：按用户权限动态装配的工具（`knowledge_mutation`、`project_mutation` 等）的使用/确认/展示规则写在工具自身的 `description`（随 function definition 下发），profile prompt 不复述，避免工具未装配时留下死指令。
 
 ## 模型切换策略（model.choices）
@@ -63,6 +67,24 @@
 
 - Read-only cloud tools：`project_query`、`session_query`、`knowledge_query`（`action`：search/get/list/**versions**；`scope`：public/team/personal/**shared**——shared = 别人共享给我的私有文档；回滚前先查版本号）。
 - Mutating cloud tools：`project_mutation`、`knowledge_mutation`。`knowledge_mutation` 的 `action`：`knowledge.create_doc` / `knowledge.update_doc` / `knowledge.archive_doc` / `knowledge.restore_version`（按版本号回滚，回滚也记录为新版本）/ `knowledge.share_doc` / `knowledge.unshare_doc`（对个人文档授权给指定用户或 `group:<id>` 小组，`share_role`=reader|editor）。被授予 editor 的人可改/回滚；归档与共享仅 owner。这些工具只通过 mutating proxy allowlist 暴露，每次调用必须带 `confirm:true` 并写入 agent audit。个人 scope 严格限定为当前用户本人文档。
+
+## Custom Profiles（用户自建）
+
+内部用户在 Settings → My Profiles 创建 / Fork。存储为 `custom_profiles` 表：关系列
+（`user_id`/`slug`/`name`/`is_shared`/`base_profile_id`/`forked_from`/时间戳）+ 单个 `data` jsonb
+（`ProfileData` manifest payload，加字段免迁移）。引用名 `custom:{id}`，`resolveProfileAsync()` 把它
+合成出运行时 `AgentProfile`：model / access 继承 `base_profile_id`（`default` 或 `team`）。
+
+可配置字段（`profileManifestSchema` 安全子集，**不含** `access` / 原始 `model` / `apiKey`）：
+
+- 基本：`name`、`description`、`system_prompt`（≤8000，落库前 `sanitizeForPrompt`）、`tools`
+  （运行时收窄到用户权限）、`max_steps`、`tool_choice`、`capabilities`、`avatar`。
+- 模型：`model_options`（`thinking` / `temperature` / `max_tokens`，合并到 base 的 options）、
+  `model_choice_ids`（可切换模型子集，∩ `base.choices`；base 无 choices 则钉死）。
+- 行为：`default_language`（解析时追加“回复语言”指令）、`greeting`、`suggested_followups`
+  （空态欢迎语 / 建议追问，前端渲染）。
+
+`is_shared`（部署内分享，仅 super 可设）是关系列、不属于 manifest。
 
 ## Removed / Legacy IDs
 

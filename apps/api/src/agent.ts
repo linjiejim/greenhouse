@@ -7,13 +7,6 @@
 
 import type { DatabaseProvider } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
-import { createLocalTools } from './tools/local/index.js';
-export { createFeatureRequestTool } from './tools/index.js';
-export type { FeatureRequestContext } from './tools/index.js';
-export { createProjectManagerTool } from './tools/index.js';
-export type { ProjectManagerContext } from './tools/index.js';
-export { createEmailManagerTool } from './tools/index.js';
-export type { EmailManagerContext } from './tools/index.js';
 import type { AgentProfile } from './profile.js';
 import { enrichSystemPrompt, registerKnownTools } from './profile.js';
 import { getGlobalToolIds, getPublicToolIds, getAllToolIds, STATIC_TOOL_MODULES } from './tools/registry.js';
@@ -78,17 +71,16 @@ export function createToolRegistry(db: DatabaseProvider): ToolRegistry {
 
   // Static tools — built once from the shared db, derived from the catalog. Adding
   // a static tool is just exporting a `defineTool({ kind: 'static', create })`
-  // module; no edit here. (Lazy/per-request tools — feature_request,
-  // knowledge_*, etc. — are injected per-request in buildLazyServerTools/chat route.)
+  // module; no edit here. (Lazy/per-request tools — feature_request, knowledge_*,
+  // etc. — are injected per-request in buildLazyServerTools/the chat route.)
+  // Static tools read only ctx.db; the other context fields are placeholders.
+  const staticCtx = { db, userId: 'system', userRole: 'super' };
   for (const mod of STATIC_TOOL_MODULES) {
-    registry[mod.meta.id] = mod.create!(db);
+    registry[mod.meta.id] = mod.create!(staticCtx);
   }
 
-  // Register local tools (Desktop-only, client-side execution)
-  Object.assign(registry, createLocalTools());
-
-  // Whitelist every known tool name (static + lazy + special + local) for profile
-  // validation, derived from the single catalog — no parallel hand-maintained list.
+  // Whitelist every known tool name (static + lazy) for profile validation,
+  // derived from the single catalog — no parallel hand-maintained list.
   registerKnownTools(getAllToolIds());
 
   return registry;

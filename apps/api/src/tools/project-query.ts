@@ -164,4 +164,9 @@ export function createProjectQueryTool(db: DatabaseProvider, ctx: ProjectQueryCo
   });
 }
 
-export const projectQueryTool = defineTool({ meta, kind: 'lazy' });
+export const projectQueryTool = defineTool({
+  meta,
+  kind: 'lazy',
+  requires: { user: 'internal' },
+  create: (ctx) => createProjectQueryTool(ctx.db, { userId: ctx.userId, userRole: ctx.userRole }),
+});

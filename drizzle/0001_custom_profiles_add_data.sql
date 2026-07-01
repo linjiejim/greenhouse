@@ -1,0 +1,1 @@
+ALTER TABLE "custom_profiles" ADD COLUMN "data" jsonb;

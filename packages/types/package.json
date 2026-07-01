@@ -35,10 +35,17 @@
     "./ws": {
       "import": "./src/ws.ts",
       "types": "./src/ws.ts"
+    },
+    "./profile-manifest": {
+      "import": "./src/profile-manifest.ts",
+      "types": "./src/profile-manifest.ts"
     }
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

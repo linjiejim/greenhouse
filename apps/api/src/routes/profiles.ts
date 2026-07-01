@@ -11,6 +11,9 @@
  * GET  /api/profiles/:id              — 获取 Profile 详情（含 24h/7d 分时段用量）
  * POST /api/profiles/reload           — 清除缓存并重新加载所有 Profile 配置
  * GET  /api/profiles/usage/summary    — 全局 LLM 用量汇总（按 profile/caller 维度）
+ *
+ * Validation is driven by `profileManifestSchema` (the single source of truth);
+ * tool access + is_shared remain permission-checked here.
  */
 
 import { Hono } from 'hono';
@@ -23,13 +26,13 @@ import {
   resolveProfileAsync,
   type AgentProfile,
 } from '../profile.js';
+import { profileManifestSchema, type ProfileData } from '@greenhouse/types/profile-manifest';
 import { getDb } from '@greenhouse/db';
 import type { CustomProfileRow } from '@greenhouse/db';
 import { getAuthUser } from '../auth/middleware.js';
 import { getAllToolIds, getGlobalToolIds } from '../tools/registry.js';
 import { sanitizeForPrompt } from '../security.js';
 import { logger } from '@greenhouse/utils/logger';
-import { safeJsonParse } from '@greenhouse/utils/json';
 import type { AppEnv } from '../app-env.js';
 
 const MAX_CUSTOM_PROFILES_PER_USER = 20;
@@ -42,7 +45,7 @@ function slugify(name: string): string {
     name
       .toLowerCase()
       .replace(/[\s_]+/g, '-')
-      .replace(/[^a-z0-9\u4e00-\u9fff-]/g, '')
+      .replace(/[^a-z0-9一-鿿-]/g, '')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '')
       .slice(0, 50) || 'profile'
@@ -54,8 +57,51 @@ function getValidBaseIds(): string[] {
   return [...CUSTOM_BASE_PROFILE_IDS];
 }
 
+/** Strip the relational columns off a manifest, leaving the jsonb `data` payload (system prompt sanitized). */
+function manifestToData(m: ReturnType<typeof profileManifestSchema.parse>): ProfileData {
+  const { slug: _slug, name: _name, base_profile_id: _bp, ...rest } = m;
+  return { ...rest, system_prompt: sanitizeForPrompt(rest.system_prompt) };
+}
+
+/** Validate tool names against the registry + the user's allowed set. Returns an error string or null. */
+async function checkTools(tools: string[], authUser: { id: string; role: string }): Promise<string | null> {
+  const allTools = getAllToolIds();
+  const invalid = tools.filter((t) => !allTools.includes(t));
+  if (invalid.length > 0) return `Unknown tools: ${invalid.join(', ')}`;
+  if (authUser.role !== 'super') {
+    const globalTools = getGlobalToolIds();
+    const assignedTools = await getDb().userTools.getTools(authUser.id);
+    const userAllowed = new Set([...globalTools, ...assignedTools]);
+    const unauthorized = tools.filter((t) => !userAllowed.has(t));
+    if (unauthorized.length > 0) return `You don't have access to these tools: ${unauthorized.join(', ')}`;
+  }
+  return null;
+}
+
+/**
+ * Validate model_choice_ids ⊆ the base profile's switchable choices. Returns an
+ * error string or null. Empty/undefined means "inherit all base choices" and is
+ * always valid. Without this, unknown ids are silently dropped at resolve time
+ * (and an all-invalid selection would collapse the switcher to no choices).
+ */
+function checkModelChoices(choiceIds: string[] | undefined, baseId: string): string | null {
+  if (!choiceIds || choiceIds.length === 0) return null;
+  const base = loadAllProfiles().find((p) => p.id === baseId);
+  const baseChoices = base?.model.choices ?? [];
+  if (baseChoices.length === 0) {
+    return `Base profile "${baseId}" has a fixed model and offers no model choices to select`;
+  }
+  const valid = new Set(baseChoices.map((ch) => ch.id));
+  const invalid = choiceIds.filter((id) => !valid.has(id));
+  if (invalid.length > 0) {
+    return `Invalid model choices: ${invalid.join(', ')}. Available: ${baseChoices.map((ch) => ch.id).join(', ')}`;
+  }
+  return null;
+}
+
 /** Format a custom profile row for API response, deriving model config from base profile. */
 function formatCustomProfile(row: CustomProfileRow, baseProfileMap?: Map<string, AgentProfile>) {
+  const data = row.data;
   // Derive model config (incl. switchable choices) from base profile
   let model: { provider: string; model: string } | undefined;
   let modelChoices: Array<{ id: string; label: string; description?: string }> = [];
@@ -63,26 +109,37 @@ function formatCustomProfile(row: CustomProfileRow, baseProfileMap?: Map<string,
     const base = baseProfileMap.get(row.base_profile_id || 'default') ?? baseProfileMap.get('default');
     if (base) {
       model = { provider: base.model.provider, model: base.model.model };
-      modelChoices = base.model.choices ?? [];
+      const baseChoices = base.model.choices ?? [];
+      // Effective choices = base ∩ user-selected (empty selection → inherit all base choices).
+      modelChoices =
+        data.model_choice_ids && data.model_choice_ids.length > 0
+          ? baseChoices.filter((c) => data.model_choice_ids!.includes(c.id))
+          : baseChoices;
     }
   }
   return {
     id: `custom:${row.id}`,
     slug: row.slug,
     name: row.name,
-    description: row.description,
+    description: data.description ?? null,
     base_profile_id: row.base_profile_id,
-    tools: safeJsonParse(row.tools, []) as string[],
-    system_prompt: row.system_prompt,
-    capabilities: safeJsonParse(row.capabilities, []) as Array<{ icon: string; label: string; prompt: string }>,
-    max_steps: row.max_steps,
+    tools: data.tools,
+    system_prompt: data.system_prompt,
+    capabilities: data.capabilities ?? [],
+    max_steps: data.max_steps,
+    tool_choice: data.tool_choice,
     is_shared: row.is_shared,
     is_custom: true,
     user_id: row.user_id,
     forked_from: row.forked_from || null,
     created_at: row.created_at,
     updated_at: row.updated_at,
-    avatar: safeJsonParse(row.avatar, {}),
+    avatar: data.avatar ?? {},
+    model_options: data.model_options ?? {},
+    model_choice_ids: data.model_choice_ids ?? [],
+    default_language: data.default_language ?? null,
+    greeting: data.greeting ?? null,
+    suggested_followups: data.suggested_followups ?? [],
     model_choices: modelChoices,
     ...(model ? { model } : {}),
   };
@@ -161,50 +218,29 @@ const profiles = new Hono<AppEnv>()
     }
 
     const body = await c.req.json();
-    const { name, description, base_profile_id, tools, system_prompt, capabilities, max_steps, is_shared, avatar } =
-      body;
+    const parsed = profileManifestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid profile' }, 400);
+    }
+    const m = parsed.data;
 
-    // Validation
-    if (!name || typeof name !== 'string' || name.trim().length === 0) {
-      return c.json({ error: 'Name is required' }, 400);
-    }
-    if (!system_prompt || typeof system_prompt !== 'string' || system_prompt.trim().length === 0) {
-      return c.json({ error: 'System prompt is required' }, 400);
-    }
-    if (system_prompt.trim().length > 8000) {
-      return c.json({ error: 'System prompt must be 8000 characters or less' }, 400);
-    }
-    if (!Array.isArray(tools)) {
-      return c.json({ error: 'Tools must be an array' }, 400);
-    }
-
-    // Validate base profile exists
+    // Validate base profile
     const validBases = getValidBaseIds();
-    const baseId = normalizeProfileId(base_profile_id || 'default') || 'default';
+    const baseId = normalizeProfileId(m.base_profile_id) || 'default';
     if (!isValidCustomBaseProfileId(baseId)) {
       return c.json({ error: `Invalid base profile: ${baseId}. Must be one of: ${validBases.join(', ')}` }, 400);
     }
 
-    // Validate tools are within user's allowed set
-    const allTools = getAllToolIds();
-    const invalidTools = tools.filter((t: string) => !allTools.includes(t));
-    if (invalidTools.length > 0) {
-      return c.json({ error: `Unknown tools: ${invalidTools.join(', ')}` }, 400);
-    }
+    // Validate tools are within registry + the user's allowed set
+    const toolError = await checkTools(m.tools, authUser);
+    if (toolError) return c.json({ error: toolError }, toolError.startsWith('Unknown') ? 400 : 403);
 
-    // Check if user has access to the requested tools
-    if (authUser.role !== 'super') {
-      const globalTools = getGlobalToolIds();
-      const assignedTools = await getDb().userTools.getTools(authUser.id);
-      const userAllowed = new Set([...globalTools, ...assignedTools]);
-      const unauthorized = tools.filter((t: string) => !userAllowed.has(t));
-      if (unauthorized.length > 0) {
-        return c.json({ error: `You don't have access to these tools: ${unauthorized.join(', ')}` }, 403);
-      }
-    }
+    // Validate model choices are offered by the base profile
+    const choiceError = checkModelChoices(m.model_choice_ids, baseId);
+    if (choiceError) return c.json({ error: choiceError }, 400);
 
-    // Only super can set is_shared
-    const shared = authUser.role === 'super' ? (is_shared ?? false) : false;
+    // Only super can share
+    const shared = authUser.role === 'super' ? Boolean(body.is_shared) : false;
 
     // Check limit
     const count = await getDb().customProfiles.countByUser(authUser.id);
@@ -212,22 +248,16 @@ const profiles = new Hono<AppEnv>()
       return c.json({ error: `Maximum ${MAX_CUSTOM_PROFILES_PER_USER} custom profiles per user` }, 400);
     }
 
-    // Generate slug
-    const slug = slugify(name.trim());
+    const slug = slugify(m.name);
 
     try {
       const row = await getDb().customProfiles.create({
         slug,
         user_id: authUser.id,
-        name: name.trim(),
-        description: description?.trim() || undefined,
+        name: m.name,
         base_profile_id: baseId,
-        tools,
-        system_prompt: sanitizeForPrompt(system_prompt.trim()),
-        capabilities: capabilities || [],
-        max_steps: max_steps || 12,
         is_shared: shared,
-        avatar: avatar || {},
+        data: manifestToData(m),
       });
 
       logger.info(`[Profile] ✅ Custom profile created: custom:${row.id} (${row.name}) by ${authUser.id}`);
@@ -253,11 +283,8 @@ const profiles = new Hono<AppEnv>()
       return c.json({ error: 'source_profile_id is required' }, 400);
     }
 
-    // Load source profile
-    let sourcePrompt: string;
-    let sourceTools: string[];
-    let sourceCapabilities: Array<{ icon: string; label: string; prompt: string }>;
-    let sourceMaxSteps: number;
+    // Load source profile into a manifest-data payload
+    let sourceData: ProfileData;
     let sourceName: string;
     let baseProfileId: string;
 
@@ -275,14 +302,7 @@ const profiles = new Hono<AppEnv>()
       if (sourceRow.user_id !== authUser.id && !sourceRow.is_shared && authUser.role !== 'super') {
         return c.json({ error: 'Access denied to source profile' }, 403);
       }
-      sourcePrompt = sourceRow.system_prompt;
-      sourceTools = safeJsonParse(sourceRow.tools, []) as string[];
-      sourceCapabilities = safeJsonParse(sourceRow.capabilities, []) as Array<{
-        icon: string;
-        label: string;
-        prompt: string;
-      }>;
-      sourceMaxSteps = sourceRow.max_steps;
+      sourceData = sourceRow.data;
       sourceName = sourceRow.name;
       baseProfileId = isValidCustomBaseProfileId(normalizeProfileId(sourceRow.base_profile_id) ?? '')
         ? (normalizeProfileId(sourceRow.base_profile_id) as string)
@@ -294,10 +314,13 @@ const profiles = new Hono<AppEnv>()
       if (!source) {
         return c.json({ error: `Source system profile not found: ${source_profile_id}` }, 404);
       }
-      sourcePrompt = source.system_prompt;
-      sourceTools = source.tools;
-      sourceCapabilities = source.capabilities || [];
-      sourceMaxSteps = source.max_steps ?? 12;
+      sourceData = {
+        system_prompt: source.system_prompt,
+        tools: source.tools,
+        max_steps: source.max_steps ?? 12,
+        tool_choice: source.tool_choice ?? 'auto',
+        capabilities: source.capabilities ?? [],
+      };
       sourceName = source.name;
       baseProfileId = isValidCustomBaseProfileId(source.id) ? source.id : 'team'; // preset forks use team model config
     }
@@ -311,7 +334,7 @@ const profiles = new Hono<AppEnv>()
       const assignedTools = await getDb().userTools.getTools(authUser.id);
       userAllowed = new Set([...globalTools, ...assignedTools]);
     }
-    const effectiveTools = sourceTools.filter((t) => userAllowed.has(t));
+    const effectiveTools = sourceData.tools.filter((t) => userAllowed.has(t));
 
     // Check profile count limit
     const count = await getDb().customProfiles.countByUser(authUser.id);
@@ -328,18 +351,14 @@ const profiles = new Hono<AppEnv>()
         slug,
         user_id: authUser.id,
         name: forkName,
-        description: `Forked from ${source_profile_id}`,
         base_profile_id: baseProfileId,
-        tools: effectiveTools,
-        system_prompt: sourcePrompt,
-        capabilities: sourceCapabilities,
-        max_steps: sourceMaxSteps,
         is_shared: false,
         forked_from: source_profile_id,
+        data: { ...sourceData, tools: effectiveTools, description: `Forked from ${source_profile_id}` },
       });
 
       logger.info(
-        `[Profile] \u2699\uFE0F Custom profile forked: custom:${row.id} (${row.name}) from ${source_profile_id} by ${authUser.id}`,
+        `[Profile] ⚙️ Custom profile forked: custom:${row.id} (${row.name}) from ${source_profile_id} by ${authUser.id}`,
       );
       const baseMap = new Map(loadAllProfiles().map((p) => [p.id, p]));
       return c.json(formatCustomProfile(row, baseMap), 201);
@@ -364,7 +383,8 @@ const profiles = new Hono<AppEnv>()
       return c.json({ error: 'Access denied' }, 403);
     }
 
-    return c.json(formatCustomProfile(row));
+    const baseMap = new Map(loadAllProfiles().map((p) => [p.id, p]));
+    return c.json(formatCustomProfile(row, baseMap));
   })
   /** PUT /api/profiles/custom/:id — update custom profile */
   .put('/custom/:id', async (c) => {
@@ -381,62 +401,46 @@ const profiles = new Hono<AppEnv>()
     }
 
     const body = await c.req.json();
-    const updates: any = {};
+    // Merge the patch onto the current manifest, then validate the whole thing.
+    // (Full-merge avoids partial-schema default landmines: an absent key keeps
+    // its current value instead of being reset to a schema default.)
+    const current = { name: row.name, base_profile_id: row.base_profile_id, ...row.data };
+    const parsed = profileManifestSchema.safeParse({ ...current, ...body });
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid profile' }, 400);
+    }
+    const m = parsed.data;
 
-    if (body.name !== undefined) updates.name = body.name.trim();
-    if (body.description !== undefined) updates.description = body.description?.trim() || null;
-    if (body.base_profile_id !== undefined) {
-      const normalizedBase = normalizeProfileId(body.base_profile_id);
-      if (!normalizedBase || !isValidCustomBaseProfileId(normalizedBase)) {
-        return c.json(
-          { error: `Invalid base profile: ${body.base_profile_id}. Must be one of: ${getValidBaseIds().join(', ')}` },
-          400,
-        );
-      }
-      updates.base_profile_id = normalizedBase;
+    const baseId = normalizeProfileId(m.base_profile_id) || 'default';
+    if (!isValidCustomBaseProfileId(baseId)) {
+      return c.json(
+        { error: `Invalid base profile: ${m.base_profile_id}. Must be one of: ${getValidBaseIds().join(', ')}` },
+        400,
+      );
     }
-    if (body.tools !== undefined) {
-      if (!Array.isArray(body.tools)) return c.json({ error: 'Tools must be an array' }, 400);
-      const allTools = getAllToolIds();
-      const invalidTools = body.tools.filter((t: string) => !allTools.includes(t));
-      if (invalidTools.length > 0) {
-        return c.json({ error: `Unknown tools: ${invalidTools.join(', ')}` }, 400);
-      }
-      // Validate user has access to these tools
-      if (authUser.role !== 'super') {
-        const globalTools = getGlobalToolIds();
-        const assignedTools = await getDb().userTools.getTools(authUser.id);
-        const userAllowed = new Set([...globalTools, ...assignedTools]);
-        const unauthorized = body.tools.filter((t: string) => !userAllowed.has(t));
-        if (unauthorized.length > 0) {
-          return c.json({ error: `You don't have access to these tools: ${unauthorized.join(', ')}` }, 403);
-        }
-      }
-      updates.tools = body.tools;
-    }
-    if (body.system_prompt !== undefined) {
-      if (typeof body.system_prompt !== 'string' || body.system_prompt.trim().length === 0) {
-        return c.json({ error: 'System prompt cannot be empty' }, 400);
-      }
-      if (body.system_prompt.trim().length > 8000) {
-        return c.json({ error: 'System prompt must be 8000 characters or less' }, 400);
-      }
-      updates.system_prompt = sanitizeForPrompt(body.system_prompt.trim());
-    }
-    if (body.capabilities !== undefined) updates.capabilities = body.capabilities;
-    if (body.max_steps !== undefined) updates.max_steps = body.max_steps;
+
+    const toolError = await checkTools(m.tools, authUser);
+    if (toolError) return c.json({ error: toolError }, toolError.startsWith('Unknown') ? 400 : 403);
+
+    const choiceError = checkModelChoices(m.model_choice_ids, baseId);
+    if (choiceError) return c.json({ error: choiceError }, 400);
+
+    const updates: Parameters<ReturnType<typeof getDb>['customProfiles']['update']>[1] = {
+      name: m.name,
+      base_profile_id: baseId,
+      data: manifestToData(m),
+    };
+    // is_shared is privileged (super only) and not part of the manifest
     if (body.is_shared !== undefined && authUser.role === 'super') {
-      updates.is_shared = body.is_shared;
-    }
-    if (body.avatar !== undefined) {
-      updates.avatar = body.avatar;
+      updates.is_shared = Boolean(body.is_shared);
     }
 
     const updated = await getDb().customProfiles.update(id, updates);
     if (!updated) return c.json({ error: 'Update failed' }, 500);
 
     logger.info(`[Profile] ✏️ Custom profile updated: custom:${id} by ${authUser.id}`);
-    return c.json(formatCustomProfile(updated));
+    const baseMap = new Map(loadAllProfiles().map((p) => [p.id, p]));
+    return c.json(formatCustomProfile(updated, baseMap));
   })
   /** DELETE /api/profiles/custom/:id — delete custom profile */
   .delete('/custom/:id', async (c) => {

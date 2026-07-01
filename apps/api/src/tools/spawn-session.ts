@@ -274,4 +274,16 @@ export function createSpawnSessionTool(db: DatabaseProvider, ctx: SpawnSessionCo
   });
 }
 
-export const spawnSessionTool = defineTool({ meta, kind: 'lazy' });
+export const spawnSessionTool = defineTool({
+  meta,
+  kind: 'lazy',
+  requires: { user: 'internal', session: true, registry: true },
+  create: (ctx) =>
+    createSpawnSessionTool(ctx.db, {
+      userId: ctx.userId,
+      userRole: ctx.userRole,
+      parentSessionId: ctx.sessionId!,
+      parentProfileId: ctx.profileId ?? null,
+      assembleChildTools: ctx.assembleChildTools!,
+    }),
+});

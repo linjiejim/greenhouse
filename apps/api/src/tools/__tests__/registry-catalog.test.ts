@@ -1,13 +1,16 @@
 /**
- * Tests for the catalog-driven registry assembly: the static tool factories and
- * the known-tool name list are derived from a single source (TOOL_MODULES), not
- * from parallel hand-maintained lists. Guards against a static module missing its
- * `create`, and against createToolRegistry drifting from the catalog.
+ * Tests for the catalog-driven registry assembly: the static factories, the lazy
+ * catalog, and the known-tool name list are all derived from a single source
+ * (TOOL_MODULES), not from parallel hand-maintained lists. Guards against a
+ * static module missing its `create`, a lazy module missing its
+ * `create`/`requires`, and createToolRegistry / LAZY_TOOL_IDS drifting from the
+ * catalog.
  */
 
 import { describe, it, expect } from 'vitest';
 import { createToolRegistry } from '../../agent.js';
-import { STATIC_TOOL_MODULES, getAllToolIds, getToolMeta } from '../registry.js';
+import { STATIC_TOOL_MODULES, LAZY_TOOL_MODULES, getAllToolIds, getToolMeta, TOOL_DEFINITIONS } from '../registry.js';
+import { LAZY_TOOL_IDS } from '../../agent-runtime/tool-resolution.js';
 import type { DatabaseProvider } from '@greenhouse/db';
 
 // Construction only captures db in closures (execute runs later), so a bare stub
@@ -33,16 +36,12 @@ describe('catalog-driven registry', () => {
       expect(typeof reg[mod.meta.id].execute).toBe('function');
     }
 
-    // Desktop OS local tools were removed — none are wired into the registry.
-    expect(reg.local_shell).toBeUndefined();
-    expect(reg.local_file_read).toBeUndefined();
-
     // Lazy/per-request tools are NOT in the static registry (injected per-request).
     expect(reg.feature_request).toBeUndefined();
     expect(reg.knowledge_query).toBeUndefined();
   });
 
-  it('getAllToolIds covers static + lazy + special + local with no duplicates', () => {
+  it('getAllToolIds covers static + lazy with no duplicates', () => {
     const ids = getAllToolIds();
     expect(new Set(ids).size).toBe(ids.length); // no dupes
 
@@ -51,9 +50,55 @@ describe('catalog-driven registry', () => {
       'analyze_image', // static
       'feature_request', // lazy
       'knowledge_mutation', // lazy
-      'local_shell', // special/local
     ]) {
       expect(ids, `missing ${id}`).toContain(id);
     }
+  });
+});
+
+describe('lazy catalog + per-request construction (guard)', () => {
+  it('every lazy module declares both create and requires', () => {
+    expect(LAZY_TOOL_MODULES.length).toBeGreaterThan(0);
+    for (const mod of LAZY_TOOL_MODULES) {
+      expect(mod.kind).toBe('lazy');
+      expect(typeof mod.create, `lazy tool ${mod.meta.id} missing create`).toBe('function');
+      expect(mod.requires, `lazy tool ${mod.meta.id} missing requires`).toBeTruthy();
+    }
+  });
+
+  it('LAZY_TOOL_IDS is derived from the lazy catalog (no hand-maintained drift)', () => {
+    expect([...LAZY_TOOL_IDS].sort()).toEqual(LAZY_TOOL_MODULES.map((m) => m.meta.id).sort());
+  });
+
+  it('lazy catalog matches the known per-request tool set (behavior lock)', () => {
+    const KNOWN_LAZY = [
+      'feature_request',
+      'project_manager',
+      'email_manager',
+      'email_query',
+      'email_mutation',
+      'personal_knowledge',
+      'session_history',
+      'project_query',
+      'project_mutation',
+      'session_query',
+      'knowledge_query',
+      'knowledge_mutation',
+      'spawn_session',
+      'call_llm',
+    ];
+    expect(LAZY_TOOL_MODULES.map((m) => m.meta.id).sort()).toEqual([...KNOWN_LAZY].sort());
+  });
+
+  it('static and lazy id sets are disjoint and together cover the catalog', () => {
+    const staticIds = STATIC_TOOL_MODULES.map((m) => m.meta.id);
+    const lazyIds = LAZY_TOOL_MODULES.map((m) => m.meta.id);
+    for (const id of staticIds) expect(lazyIds).not.toContain(id);
+    expect([...staticIds, ...lazyIds].sort()).toEqual([...getAllToolIds()].sort());
+  });
+
+  it('every meta.id is unique across the catalog', () => {
+    const ids = TOOL_DEFINITIONS.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });

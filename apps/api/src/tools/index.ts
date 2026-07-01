@@ -33,7 +33,3 @@ export { createEmailManagerTool } from './email.js';
 export type { EmailManagerContext } from './email.js';
 export { createSessionHistoryTool } from './session-history.js';
 export type { SessionHistoryContext } from './session-history.js';
-
-// ── Local Tools (Desktop-only) ────────────────────────────
-export { createLocalTools, LOCAL_TOOL_IDS, isLocalToolMarker } from './local/index.js';
-export type { LocalToolMarker } from './local/index.js';

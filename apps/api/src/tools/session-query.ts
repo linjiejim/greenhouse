@@ -129,4 +129,9 @@ export function createSessionQueryTool(db: DatabaseProvider, ctx: SessionQueryCo
   });
 }
 
-export const sessionQueryTool = defineTool({ meta, kind: 'lazy' });
+export const sessionQueryTool = defineTool({
+  meta,
+  kind: 'lazy',
+  requires: { user: 'internal' },
+  create: (ctx) => createSessionQueryTool(ctx.db, { userId: ctx.userId, userRole: ctx.userRole }),
+});

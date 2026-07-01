@@ -63,7 +63,7 @@
 
 ### Tool system
 
-Tool metadata is **co-located in each tool's file**. A tool declares itself with `defineTool({ meta, kind, create? })` (`tools/define.ts`); `meta.description` is passed straight to `tool({ description })`. `tools/registry.ts` is just a barrel — it imports each module and lists it in `TOOL_MODULES`, from which it derives everything else; there are no hand-maintained parallel id lists.
+Tool metadata is **co-located in each tool's file**. A tool declares itself with `defineTool({ meta, kind, requires?, create })` (`tools/define.ts`); `meta.description` is passed straight to `tool({ description })`. `tools/registry.ts` is just a barrel — it imports each module and lists it in `TOOL_MODULES`, from which it derives everything else (static factories, the lazy catalog, `LAZY_TOOL_IDS`, the proxy/MCP allowlists); there are no hand-maintained parallel id lists.
 
 - `meta.surface` is the **single declarative source** for proxy / MCP exposure:
   - `proxy: 'read'` → in `READONLY_PROXY_ALLOWLIST` (callable, no confirm).
@@ -71,13 +71,16 @@ Tool metadata is **co-located in each tool's file**. A tool declares itself with
   - `proxy: 'none'` (or omitted) → not proxied; chat-only.
   - `mcp: true` → also in `MCP_EXPOSED_TOOL_IDS` (must also have a `proxy` value).
   `registry.ts` builds these three sets by filtering `TOOL_DEFINITIONS` on `meta.surface` — change the metadata, the allowlists follow.
-- `kind`: `static` (has `create`, joins the shared registry built by `createToolRegistry`) / `lazy` (no `create`, assembled per-request in `buildLazyServerTools`) / `special` / `local`.
+- `create(ctx: ToolContext)` builds the tool. **Static** tools read only `ctx.db` and are built once in `createToolRegistry`. **Lazy** tools read request-scoped fields (`userId` / `sessionId` / …) and are built per-request in `buildLazyServerTools`.
+- `kind`: `static` (no `requires`) / `lazy` (declares `requires`).
+- `requires` (lazy only) is the **declarative access guard** the runtime enforces before building the tool — the same guard that used to be a hand-written if-ladder:
+  - `user: 'optional'` (anonymous ok) | `'required'` (a userId) | `'internal'` (a non-external userId).
+  - `session: true` (needs a sessionId) · `registry: true` (gets the `assembleChildTools` closure; `spawn_session` only — the raw registry is never handed to a tool).
 
-**Adding a tool** = one file + one line:
-1. In the tool's file, `export const xxxTool = defineTool({ meta, kind, create })`; set `meta.surface` to expose it over proxy/MCP.
+**Adding a tool** = one file + one line, for **every** kind (static or lazy):
+1. In the tool's file, `export const xxxTool = defineTool({ meta, kind, requires?, create })`; set `meta.surface` to expose it over proxy/MCP.
 2. Add an import + array entry in `TOOL_MODULES` in `tools/registry.ts`.
-3. Lazy tools additionally register in `agent-runtime/tool-resolution.ts` (`LAZY_TOOL_IDS` + `buildLazyServerTools`).
-`createToolRegistry` / `registerKnownTools` / the proxy + MCP allowlists are all derived automatically.
+`createToolRegistry` / `buildLazyServerTools` / `registerKnownTools` / `LAZY_TOOL_IDS` / the proxy + MCP allowlists are all derived automatically — a lazy tool **no longer** needs a second registration in `tool-resolution.ts`.
 
 ### Agent tool proxy (`/api/agent/*`)
 - A stable cloud capability layer letting programmatic clients reach cloud data through structured tools. Route: `routes/agent-tools.ts`:

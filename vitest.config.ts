@@ -10,6 +10,7 @@ export default defineConfig({
       '@greenhouse/types/http-client': resolve(__dirname, 'packages/types/src/http-client.ts'),
       '@greenhouse/types/agent-context': resolve(__dirname, 'packages/types/src/agent-context.ts'),
       '@greenhouse/types/features': resolve(__dirname, 'packages/types/src/features.ts'),
+      '@greenhouse/types/profile-manifest': resolve(__dirname, 'packages/types/src/profile-manifest.ts'),
       '@greenhouse/types': resolve(__dirname, 'packages/types/src/index.ts'),
       '@greenhouse/utils/date': resolve(__dirname, 'packages/utils/src/date.ts'),
       '@greenhouse/utils/json': resolve(__dirname, 'packages/utils/src/json.ts'),

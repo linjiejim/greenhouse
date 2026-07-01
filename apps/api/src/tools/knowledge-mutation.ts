@@ -344,4 +344,9 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
   });
 }
 
-export const knowledgeMutationTool = defineTool({ meta, kind: 'lazy' });
+export const knowledgeMutationTool = defineTool({
+  meta,
+  kind: 'lazy',
+  requires: { user: 'internal' },
+  create: (ctx) => createKnowledgeMutationTool(ctx.db, { userId: ctx.userId }),
+});

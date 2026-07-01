@@ -1,11 +1,16 @@
-/** Tests for consolidated Agent Profiles. */
+/** Tests for consolidated Agent Profiles (TS profile modules + manifest schema). */
 
 import { describe, it, expect } from 'vitest';
-import { resolve } from 'node:path';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { parse as parseYaml } from 'yaml';
+import {
+  loadAllProfiles,
+  loadProfile,
+  resolveProfile,
+  resolveProfileAsync,
+  clearProfileCache,
+  registerKnownTools,
+  isValidCustomBaseProfileId,
+} from '../../apps/api/src/profile.js';
 
-const PROFILES_DIR = resolve(import.meta.dirname, '../../apps/api/src/profiles');
 const KNOWN_TOOLS = [
   'knowledge_query',
   'knowledge_mutation',
@@ -21,29 +26,18 @@ const KNOWN_TOOLS = [
   'personal_knowledge',
   'session_history',
 ];
-
-function loadProfile(id: string) {
-  const filePath = resolve(PROFILES_DIR, `${id}.yaml`);
-  if (!existsSync(filePath)) return null;
-  return parseYaml(readFileSync(filePath, 'utf-8'));
-}
+registerKnownTools(KNOWN_TOOLS);
 
 describe('All profiles: structural validation', () => {
-  const profileFiles = readdirSync(PROFILES_DIR).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
+  const all = loadAllProfiles();
 
   it('has exactly 2 system profiles', () => {
-    expect(profileFiles.length).toBe(2);
-    expect(profileFiles.map((f) => f.replace(/\.ya?ml$/, '')).sort()).toEqual(['default', 'team']);
+    expect(all.map((p) => p.id).sort()).toEqual(['default', 'team']);
   });
 
-  for (const file of profileFiles) {
-    const id = file.replace(/\.ya?ml$/, '');
-    describe(`Profile: ${id}`, () => {
-      const profile = loadProfile(id);
-      if (!profile) return;
-
+  for (const profile of all) {
+    describe(`Profile: ${profile.id}`, () => {
       it('has required fields', () => {
-        expect(profile.id).toBe(id);
         expect(profile.name).toBeDefined();
         expect(profile.system_prompt).toBeDefined();
         expect(profile.model?.id).toBeDefined();
@@ -67,25 +61,28 @@ describe('All profiles: structural validation', () => {
 
 describe('Profile identities', () => {
   it('default is public', () => {
-    const profile = loadProfile('default')!;
+    const profile = loadProfile('default');
     expect(profile.name).toBe('Greenhouse Assistant');
     expect(profile.access.level).toBe('public');
     expect(profile.tools).toContain('knowledge_query');
   });
 
   it('team is internal with rich output', () => {
-    const profile = loadProfile('team')!;
+    const profile = loadProfile('team');
     expect(profile.name).toBe('Team Assistant');
     expect(profile.access.level).toBe('internal');
     expect(profile.access.rich_output).toBe(true);
     expect(profile.tools).toContain('team_knowledge');
   });
+
+  it('team declares switchable model choices; default does not', () => {
+    expect(loadProfile('team').model.choices?.map((c) => c.id)).toEqual(['flash', 'pro']);
+    expect(loadProfile('default').model.choices).toBeUndefined();
+  });
 });
 
 describe('Profile module loading and legacy compatibility', () => {
-  it('loadAllProfiles returns 2 system profiles', async () => {
-    const { loadAllProfiles, clearProfileCache, registerKnownTools } = await import('../../apps/api/src/profile.js');
-    registerKnownTools(KNOWN_TOOLS);
+  it('loadAllProfiles returns 2 system profiles', () => {
     clearProfileCache();
     expect(
       loadAllProfiles()
@@ -94,23 +91,19 @@ describe('Profile module loading and legacy compatibility', () => {
     ).toEqual(['default', 'team']);
   });
 
-  it('maps legacy preset IDs to team', async () => {
-    const { resolveProfile, clearProfileCache } = await import('../../apps/api/src/profile.js');
-    clearProfileCache();
+  it('maps legacy preset IDs to team', () => {
     expect(resolveProfile('researcher').id).toBe('team');
     expect(resolveProfile('cc-analyzer').id).toBe('team');
   });
 
-  it('validates custom base profile IDs', async () => {
-    const { isValidCustomBaseProfileId } = await import('../../apps/api/src/profile.js');
+  it('validates custom base profile IDs', () => {
     expect(isValidCustomBaseProfileId('default')).toBe(true);
     expect(isValidCustomBaseProfileId('team')).toBe(true);
     expect(isValidCustomBaseProfileId('desktop')).toBe(false);
     expect(isValidCustomBaseProfileId('researcher')).toBe(false);
   });
 
-  it('resolveProfileAsync handles custom malformed IDs', async () => {
-    const { resolveProfileAsync } = await import('../../apps/api/src/profile.js');
+  it('resolveProfileAsync rejects malformed custom IDs', async () => {
     await expect(resolveProfileAsync('custom:abc')).rejects.toThrow(/Invalid custom profile ID/);
   });
 });

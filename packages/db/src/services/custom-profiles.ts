@@ -1,45 +1,42 @@
 /**
  * Custom profile service — user-created custom Agent profiles (PostgreSQL).
+ *
+ * Storage shape: relational shell columns (id/user_id/slug/name/is_shared/
+ * base_profile_id/forked_from/timestamps) + a single `data` jsonb column
+ * holding the rest of the manifest (`ProfileData`). Callers pass/receive the
+ * already-parsed `data` object — no JSON string columns.
  */
 
 import { eq, or, asc, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
+import type { ProfileData } from '@greenhouse/types/profile-manifest';
 
 import type { Db } from '../client.js';
 import * as schema from '../schema/index.js';
 import type { CustomProfileRow } from '../schema/custom-profile.js';
 
-export interface CustomProfileInput {
+export interface CustomProfileCreate {
   slug: string;
   user_id: string;
   name: string;
-  description?: string;
   base_profile_id?: string;
-  tools: string[];
-  system_prompt: string;
-  capabilities?: Array<{ icon: string; label: string; prompt: string }>;
-  max_steps?: number;
   is_shared?: boolean;
-  avatar?: Record<string, unknown>;
-  forked_from?: string;
+  forked_from?: string | null;
+  data: ProfileData;
 }
 
-export interface CustomProfileUpdateInput {
+export interface CustomProfileUpdate {
   name?: string;
-  description?: string | null;
   base_profile_id?: string;
-  tools?: string[];
-  system_prompt?: string;
-  capabilities?: Array<{ icon: string; label: string; prompt: string }>;
-  max_steps?: number;
   is_shared?: boolean;
-  avatar?: Record<string, unknown>;
+  /** Full replacement of the manifest payload (the route merges before calling). */
+  data?: ProfileData;
 }
 
 /** User-created custom agent profiles. */
 export function createCustomProfileService(db: Db) {
   const service = {
-    async create(input: CustomProfileInput): Promise<CustomProfileRow> {
+    async create(input: CustomProfileCreate): Promise<CustomProfileRow> {
       const now = nowIso();
       const [row] = await db
         .insert(schema.customProfiles)
@@ -47,15 +44,10 @@ export function createCustomProfileService(db: Db) {
           slug: input.slug,
           user_id: input.user_id,
           name: input.name,
-          description: input.description ?? null,
           base_profile_id: input.base_profile_id ?? 'default',
-          tools: JSON.stringify(input.tools),
-          system_prompt: input.system_prompt,
-          capabilities: JSON.stringify(input.capabilities ?? []),
-          max_steps: input.max_steps ?? 12,
           is_shared: input.is_shared ?? false,
-          avatar: JSON.stringify(input.avatar ?? {}),
           forked_from: input.forked_from ?? null,
+          data: input.data,
           created_at: now,
           updated_at: now,
         })
@@ -86,17 +78,12 @@ export function createCustomProfileService(db: Db) {
         .orderBy(asc(schema.customProfiles.name));
     },
 
-    async update(id: number, updates: CustomProfileUpdateInput): Promise<CustomProfileRow | undefined> {
+    async update(id: number, updates: CustomProfileUpdate): Promise<CustomProfileRow | undefined> {
       const values: Record<string, unknown> = { updated_at: nowIso() };
       if (updates.name !== undefined) values.name = updates.name;
-      if (updates.description !== undefined) values.description = updates.description;
       if (updates.base_profile_id !== undefined) values.base_profile_id = updates.base_profile_id;
-      if (updates.tools !== undefined) values.tools = JSON.stringify(updates.tools);
-      if (updates.system_prompt !== undefined) values.system_prompt = updates.system_prompt;
-      if (updates.capabilities !== undefined) values.capabilities = JSON.stringify(updates.capabilities);
-      if (updates.max_steps !== undefined) values.max_steps = updates.max_steps;
       if (updates.is_shared !== undefined) values.is_shared = updates.is_shared;
-      if (updates.avatar !== undefined) values.avatar = JSON.stringify(updates.avatar);
+      if (updates.data !== undefined) values.data = updates.data;
 
       const [row] = await db
         .update(schema.customProfiles)

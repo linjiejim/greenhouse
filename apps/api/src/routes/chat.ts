@@ -31,15 +31,6 @@ import { persistChatResult } from '../chat-persist.js';
 import { generateSessionTitle } from '../llm/title.js';
 import { readSessionContext, renderSessionContext } from '../session-context.js';
 
-interface LocalSkillIndexItem {
-  slug: string;
-  name: string;
-  description?: string;
-  source?: string;
-  version?: string;
-  globs?: string[];
-}
-
 // ─── Route Factory ───────────────────────────────────────
 
 export function createChatRoute(toolRegistry: ToolRegistry) {
@@ -58,7 +49,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
       profile_id?: string;
       model_override?: string;
       workspace_id?: string; // active workspace for per-user proxy
-      local_skill_index?: LocalSkillIndexItem[]; // Desktop-provided local skill metadata only
       client_actions?: ClientActionDescriptor[]; // frontend UI actions available on the current screen
     };
 
@@ -304,7 +294,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
       userId,
       body.context_hint,
       memoryEnabled,
-      body.local_skill_index,
     );
 
     if (sessionContextBlock) {
@@ -571,7 +560,6 @@ async function buildSystemPromptWithUserNotes(
   userId: string | null,
   contextHint?: string,
   memoryEnabled?: boolean,
-  localSkillIndex?: LocalSkillIndexItem[],
 ): Promise<string> {
   let userInfo = context?.userInfo;
 
@@ -618,43 +606,5 @@ async function buildSystemPromptWithUserNotes(
     prompt += `\n\n## ${contextHint}\n`;
   }
 
-  const localSkillsBlock = formatLocalSkillsPrompt(localSkillIndex);
-  if (localSkillsBlock) {
-    prompt += `\n\n${localSkillsBlock}`;
-  }
-
   return prompt;
-}
-
-function formatLocalSkillsPrompt(skills?: LocalSkillIndexItem[]): string {
-  if (!skills?.length) return '';
-
-  const cleaned = skills
-    .filter((skill) => typeof skill.slug === 'string' && typeof skill.name === 'string')
-    .slice(0, 50)
-    .map((skill) => {
-      const slug = sanitizeForPrompt(skill.slug).slice(0, 128);
-      const name = sanitizeForPrompt(skill.name).slice(0, 128);
-      const description = sanitizeForPrompt(skill.description ?? '').slice(0, 500);
-      const version = skill.version ? ` v${sanitizeForPrompt(skill.version).slice(0, 32)}` : '';
-      const source = skill.source ? ` [${sanitizeForPrompt(skill.source).slice(0, 32)}]` : '';
-      const globs =
-        Array.isArray(skill.globs) && skill.globs.length > 0
-          ? ` globs: ${skill.globs
-              .slice(0, 5)
-              .map((g) => sanitizeForPrompt(g).slice(0, 80))
-              .join(', ')}`
-          : '';
-      return `- ${slug}: ${name}${version}${source}${description ? ` — ${description}` : ''}${globs}`;
-    });
-
-  if (cleaned.length === 0) return '';
-
-  return (
-    `## Available Local Skills\n` +
-    `The Desktop client has discovered these local SKILL.md skills. ` +
-    `Use local_skill_view({ slug }) to load a skill only when it is relevant to the current task. ` +
-    `Do not assume a skill's full instructions until you have loaded it.\n` +
-    cleaned.join('\n')
-  );
 }

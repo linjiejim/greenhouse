@@ -47,4 +47,9 @@ export function createPersonalKnowledgeTool(db: DatabaseProvider, ctx: PersonalK
   });
 }
 
-export const personalKnowledgeTool = defineTool({ meta, kind: 'lazy' });
+export const personalKnowledgeTool = defineTool({
+  meta,
+  kind: 'lazy',
+  requires: { user: 'required' },
+  create: (ctx) => createPersonalKnowledgeTool(ctx.db, { userId: ctx.userId }),
+});

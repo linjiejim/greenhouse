@@ -37,4 +37,4 @@ export function createTeamKnowledgeTool(db: DatabaseProvider) {
   });
 }
 
-export const teamKnowledgeTool = defineTool({ meta, kind: 'static', create: createTeamKnowledgeTool });
+export const teamKnowledgeTool = defineTool({ meta, kind: 'static', create: (ctx) => createTeamKnowledgeTool(ctx.db) });

@@ -8,6 +8,20 @@
       "when": 1782766535571,
       "tag": "0000_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782835070624,
+      "tag": "0001_custom_profiles_add_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782835092272,
+      "tag": "0002_custom_profiles_drop_legacy",
+      "breakpoints": true
     }
   ]
 }

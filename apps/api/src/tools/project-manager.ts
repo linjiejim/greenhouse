@@ -377,4 +377,9 @@ export function createProjectManagerTool(db: DatabaseProvider, ctx: ProjectManag
   });
 }
 
-export const projectManagerTool = defineTool({ meta, kind: 'lazy' });
+export const projectManagerTool = defineTool({
+  meta,
+  kind: 'lazy',
+  requires: { user: 'optional' },
+  create: (ctx) => createProjectManagerTool(ctx.db, { userId: ctx.userId, userRole: ctx.userRole }),
+});

@@ -24,7 +24,7 @@ The current schema has 35 tables, grouped by domain below.
 | **user_features** | Per-user feature flags (`user_id × feature`, `enabled`, `config`); unique `(user_id, feature)` |
 | **user_memories** | Persistent user facts extracted from conversations (`category` preference/fact/behavior, `confidence`, access tracking) |
 | **user_prompts** | Quick prompts / slash commands; personal or global (`is_global`, super-created) |
-| **custom_profiles** | User-created agent profiles (system prompt + tools + base model config); `base_profile_id` ∈ `default`/`team`; unique `(user_id, slug)` |
+| **custom_profiles** | User-created agent profiles. Relational shell (`user_id`/`slug`/`name`/`is_shared`/`base_profile_id`/`forked_from`) + a single `data` jsonb holding the rest of the manifest (`ProfileData` from `@greenhouse/types/profile-manifest` — adding a config field needs no migration); `base_profile_id` ∈ `default`/`team`; unique `(user_id, slug)` |
 
 ## Sessions & chat
 
@@ -214,10 +214,9 @@ erDiagram
         text slug
         text name
         text base_profile_id "default/team"
-        text tools "JSON"
-        text system_prompt
-        int max_steps
         bool is_shared
+        text forked_from "nullable"
+        jsonb data "ProfileData manifest payload"
     }
     sessions {
         text id PK

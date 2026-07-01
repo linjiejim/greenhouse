@@ -123,4 +123,9 @@ export function createSessionHistoryTool(db: DatabaseProvider, ctx: SessionHisto
   });
 }
 
-export const sessionHistoryTool = defineTool({ meta, kind: 'lazy' });
+export const sessionHistoryTool = defineTool({
+  meta,
+  kind: 'lazy',
+  requires: { user: 'internal' },
+  create: (ctx) => createSessionHistoryTool(ctx.db, { userId: ctx.userId }),
+});

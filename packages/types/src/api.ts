@@ -33,6 +33,12 @@ export interface Profile {
   tool_choice?: string;
   system_prompt?: string;
   capabilities?: ProfileCapability[];
+  // Safe declarative config (custom profiles)
+  model_options?: { thinking?: boolean; temperature?: number; max_tokens?: number };
+  model_choice_ids?: string[];
+  default_language?: string | null;
+  greeting?: string | null;
+  suggested_followups?: string[];
   usage?: ProfileUsage | null;
   // Custom profile fields
   is_custom?: boolean;

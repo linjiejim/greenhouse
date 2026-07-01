@@ -17,6 +17,7 @@
  */
 
 import type { DatabaseProvider } from '@greenhouse/db';
+import type { AgentProfile } from '../profile.js';
 
 // ─── Metadata ────────────────────────────────────────────
 
@@ -63,29 +64,83 @@ export interface ToolMeta {
 /**
  * How a tool is constructed, so the catalog can wire it without a separate
  * hand-maintained list:
- * - 'static'  — built once in the shared registry from just the db (or nothing).
- * - 'lazy'    — built per-request because it needs user context; wired in
- *               buildLazyServerTools / the chat route, not the static registry.
- * - 'special' — bespoke construction outside the static registry.
- * - 'local'   — Desktop client-executed tool, built via createLocalTools().
+ * - 'static' — built ONCE in the shared registry; needs nothing per-request
+ *   (only `db`, available at startup). No `requires`.
+ * - 'lazy'   — built PER-REQUEST because it needs request context (the calling
+ *   user / the session / …). Declares that context via `requires`; the generic
+ *   builder (`buildLazyServerTools`) constructs it — no hand-maintained wiring.
  */
-export type ToolKind = 'static' | 'lazy' | 'special' | 'local';
+export type ToolKind = 'static' | 'lazy';
 
 /** A `tool()` instance from the `ai` SDK. Kept loose to avoid leaking generics. */
 export type AiTool = unknown;
+
+/** A built tool set, keyed by tool id. Structural — avoids importing agent.ts. */
+export type ToolRegistryShape = Record<string, unknown>;
+
+/**
+ * Everything a tool's `create` may receive. Static tools read only `ctx.db`;
+ * lazy tools additionally read the request-scoped fields they declared in
+ * `requires`. `userId` is ALWAYS a string — 'anonymous' when there is no
+ * authenticated user (only `user: 'optional'` tools are built in that case).
+ *
+ * The raw tool registry is deliberately NOT exposed here; the one tool that
+ * needs to assemble a child tool set (spawn_session) gets the narrow
+ * `assembleChildTools` closure instead, so a tool can never reach the full set.
+ */
+export interface ToolContext {
+  db: DatabaseProvider;
+  userId: string;
+  userRole: string;
+  sessionId?: string;
+  profileId?: string | null;
+  workspaceId?: string | null;
+  /**
+   * Builds a child session's tool set (only for spawn_session). Provided by the
+   * lazy builder when a tool declares `requires.registry`, so this file needn't
+   * import the resolution layer.
+   */
+  assembleChildTools?: (args: {
+    childSessionId: string;
+    profile: AgentProfile;
+    depth: number;
+  }) => Promise<ToolRegistryShape> | ToolRegistryShape;
+}
+
+/**
+ * What request context a 'lazy' tool needs. The generic builder enforces these
+ * BEFORE constructing the tool — the SAME guards the old hand-written if-ladder
+ * applied, now declared next to the tool:
+ * - user: 'optional' → built even for anonymous (userId defaults to 'anonymous').
+ * - user: 'required' → needs an authenticated userId.
+ * - user: 'internal' → needs an authenticated, non-external userId.
+ * - session: true    → needs a sessionId (session-scoped tools).
+ * - registry: true   → needs the shared registry (gets `assembleChildTools`).
+ */
+export interface ToolRequirements {
+  user?: 'optional' | 'required' | 'internal';
+  session?: boolean;
+  registry?: boolean;
+}
 
 export interface ToolModule {
   meta: ToolMeta;
   kind: ToolKind;
   /**
-   * Factory for 'static' tools — receives the shared db. Omitted for lazy/
-   * special/local tools, whose construction needs request context and stays in
-   * its existing call site (buildLazyServerTools, chat route, createLocalTools).
+   * Builds the tool from context. Static tools read only `ctx.db`; lazy tools
+   * read the request-scoped fields they declared in `requires`. Both kinds set
+   * this — a lazy module sets it together with `requires`.
    */
-  create?: (db: DatabaseProvider) => AiTool;
+  create?: (ctx: ToolContext) => AiTool;
+  /** Present on 'lazy' tools — the request context they need (see ToolRequirements). */
+  requires?: ToolRequirements;
 }
 
-/** Identity helper — gives each tool module a precise type while co-locating meta. */
-export function defineTool<T extends ToolModule>(mod: T): T {
+/**
+ * Identity helper — co-locates a tool's metadata with its construction. Typed as
+ * `ToolModule` (not generic) so the `create` callback's `ctx` is contextually
+ * typed as `ToolContext` in every tool file without a per-file type import.
+ */
+export function defineTool(mod: ToolModule): ToolModule {
   return mod;
 }

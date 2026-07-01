@@ -1318,6 +1318,10 @@ function ProfileEmptyState({
   const t = useT();
   const capabilities = profile?.capabilities;
   const hasCaps = capabilities && capabilities.length > 0;
+  const greeting = profile?.greeting?.trim();
+  const followups = (profile?.suggested_followups ?? []).filter((f) => f && f.trim());
+  const hasFollowups = followups.length > 0;
+  const FollowupIcon = resolveCapabilityIcon('HelpCircle');
 
   return (
     <div className="flex flex-col md:flex-row items-center md:items-center justify-center gap-6 md:gap-12 py-6 md:py-10 px-2 md:px-6 max-w-4xl mx-auto">
@@ -1338,32 +1342,48 @@ function ProfileEmptyState({
         {!profile?.description && (
           <p className="text-sm text-fg-faint max-w-[240px] leading-snug">{t('chat.defaultDescription')}</p>
         )}
+        {greeting && <p className="text-sm text-fg-secondary max-w-[240px] leading-snug mt-2 italic">“{greeting}”</p>}
       </div>
 
-      {/* Right — Capabilities / suggested questions */}
-      {hasCaps && (
+      {/* Right — Capabilities + suggested follow-ups */}
+      {(hasCaps || hasFollowups) && (
         <div className="w-full md:flex-1 md:max-w-xl">
           <p className="text-[11px] font-medium text-fg-faint uppercase tracking-wider mb-2.5 text-center md:text-left">
             {t('chat.tryAsking')}
           </p>
           <div className="flex flex-col gap-1">
-            {capabilities.map((cap, i) => {
-              const Icon = resolveCapabilityIcon(cap.icon);
-              return (
-                <button
-                  key={i}
-                  onClick={() => onPromptClick(cap.prompt)}
-                  className="w-full text-left px-3 py-2 rounded-xl border border-transparent hover:border-edge hover:bg-surface-raised/70 transition-colors text-sm text-fg-secondary flex items-center gap-3 group"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-surface-muted group-hover:bg-primary-subtle flex items-center justify-center flex-shrink-0 transition-colors">
-                    <Icon size={14} className="text-fg-faint group-hover:text-primary-fg transition-colors" />
-                  </div>
-                  <span className="min-w-0 truncate" title={cap.label}>
-                    {cap.label}
-                  </span>
-                </button>
-              );
-            })}
+            {hasCaps &&
+              capabilities.map((cap, i) => {
+                const Icon = resolveCapabilityIcon(cap.icon);
+                return (
+                  <button
+                    key={`cap-${i}`}
+                    onClick={() => onPromptClick(cap.prompt)}
+                    className="w-full text-left px-3 py-2 rounded-xl border border-transparent hover:border-edge hover:bg-surface-raised/70 transition-colors text-sm text-fg-secondary flex items-center gap-3 group"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-surface-muted group-hover:bg-primary-subtle flex items-center justify-center flex-shrink-0 transition-colors">
+                      <Icon size={14} className="text-fg-faint group-hover:text-primary-fg transition-colors" />
+                    </div>
+                    <span className="min-w-0 truncate" title={cap.label}>
+                      {cap.label}
+                    </span>
+                  </button>
+                );
+              })}
+            {followups.map((fu, i) => (
+              <button
+                key={`fu-${i}`}
+                onClick={() => onPromptClick(fu)}
+                className="w-full text-left px-3 py-2 rounded-xl border border-transparent hover:border-edge hover:bg-surface-raised/70 transition-colors text-sm text-fg-secondary flex items-center gap-3 group"
+              >
+                <div className="w-7 h-7 rounded-lg bg-surface-muted group-hover:bg-primary-subtle flex items-center justify-center flex-shrink-0 transition-colors">
+                  <FollowupIcon size={14} className="text-fg-faint group-hover:text-primary-fg transition-colors" />
+                </div>
+                <span className="min-w-0 truncate" title={fu}>
+                  {fu}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
       )}

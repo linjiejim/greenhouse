@@ -106,7 +106,7 @@ greenhouse/
 │   │       ├── tools/        # agent tools (one file per tool, defineTool)
 │   │       ├── agent-runtime/# tool proxy, MCP auth, lazy tool resolution, run-agent
 │   │       ├── llm/          # completion / title / memory / relay-proxy (consumes agent-core)
-│   │       ├── profiles/     # agent profile YAML (default, team)
+│   │       ├── profiles/     # agent profiles in TS (defineProfile: default.ts/team.ts + *.prompt.md)
 │   │       ├── scheduler/    # cron scheduler + executor (automations)
 │   │       ├── email/        # IMAP/SMTP client + security
 │   │       ├── storage/      # upload storage (local disk)

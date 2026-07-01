@@ -156,4 +156,10 @@ export function createFeatureRequestTool(db: DatabaseProvider, ctx: FeatureReque
   });
 }
 
-export const featureRequestTool = defineTool({ meta, kind: 'lazy' });
+export const featureRequestTool = defineTool({
+  meta,
+  kind: 'lazy',
+  requires: { user: 'optional' },
+  create: (ctx) =>
+    createFeatureRequestTool(ctx.db, { userId: ctx.userId, userRole: ctx.userRole, sessionId: ctx.sessionId }),
+});

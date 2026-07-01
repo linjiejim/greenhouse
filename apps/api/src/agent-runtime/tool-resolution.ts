@@ -6,52 +6,25 @@
  * (session-authenticated) and `/api/agent/*` (API-key authenticated) so the two
  * never fork their permission logic.
  *
- * NOTE: the Desktop local-tool bridge is intentionally NOT handled here — it
+ * NOTE: the browser client-action bridge is intentionally NOT handled here — it
  * carries route-specific UX (NDJSON bridge writers) and stays in the chat route.
  */
 
 import type { DatabaseProvider } from '@greenhouse/db';
-import {
-  resolveUserTools,
-  selectTools,
-  createFeatureRequestTool,
-  createProjectManagerTool,
-  createEmailManagerTool,
-} from '../agent.js';
+import { resolveUserTools, selectTools } from '../agent.js';
 import type { ToolRegistry } from '../agent.js';
-import { createSpawnSessionTool, MAX_SPAWN_DEPTH } from '../tools/spawn-session.js';
-import { createCallLlmTool } from '../tools/call-llm.js';
-import { createPersonalKnowledgeTool } from '../tools/personal-knowledge.js';
-import { createSessionHistoryTool } from '../tools/session-history.js';
-import { createProjectQueryTool } from '../tools/project-query.js';
-import { createProjectMutationTool } from '../tools/project-mutation.js';
-import { createSessionQueryTool } from '../tools/session-query.js';
-import { createKnowledgeQueryTool } from '../tools/knowledge-query.js';
-import { createKnowledgeMutationTool } from '../tools/knowledge-mutation.js';
-import { createEmailQueryTool, createEmailMutationTool } from '../tools/email.js';
+import { MAX_SPAWN_DEPTH } from '../tools/spawn-session.js';
+import { LAZY_TOOL_MODULES } from '../tools/registry.js';
+import type { ToolContext } from '../tools/define.js';
 import type { AgentProfile } from '../profile.js';
 
 /**
- * Tool IDs resolved per-request rather than from the base registry. The base
- * `selectTools()` pass must exclude these so it doesn't log misleading
- * "not found in registry" warnings.
+ * Tool IDs built per-request (the 'lazy' catalog) rather than from the static
+ * registry — derived from each module's `kind`, no hand-maintained list. The
+ * base `selectTools()` pass excludes these so it doesn't log misleading
+ * "not found in registry" warnings. Single source: LAZY_TOOL_MODULES.
  */
-export const LAZY_TOOL_IDS = new Set([
-  'feature_request',
-  'project_manager',
-  'email_manager',
-  'email_query',
-  'email_mutation',
-  'personal_knowledge',
-  'session_history',
-  'project_query',
-  'project_mutation',
-  'session_query',
-  'knowledge_query',
-  'knowledge_mutation',
-  'spawn_session',
-  'call_llm',
-]);
+export const LAZY_TOOL_IDS = new Set<string>(LAZY_TOOL_MODULES.map((m) => m.meta.id));
 
 /**
  * Tool ids a child session may hold at a given lineage depth. spawn_session is
@@ -119,123 +92,95 @@ export interface LazyServerToolContext {
 }
 
 /**
- * Assemble the per-request lazy *server* tools that both the chat route and the
- * agent proxy share (feature_request, project_manager, email_manager,
- * personal_knowledge, session_history).
+ * Assemble the per-request lazy *server* tools shared by the chat route, the
+ * agent proxy, and the MCP route.
  *
- * Returns a partial registry the caller merges into its tool set. Does NOT
- * include local tools.
+ * Data-driven: it loops the lazy catalog and builds each tool the caller is
+ * entitled to, enforcing that tool's declared `requires` — the SAME guards the
+ * old hand-written if-ladder applied, now co-located with each tool:
+ * - user 'required' → a real userId; 'internal' → a real, non-external userId.
+ * - session        → a sessionId (session-scoped tools: call_llm, spawn_session).
+ * - registry       → the shared registry, surfaced to the tool as
+ *                    `assembleChildTools` (spawn_session) — never the raw set.
+ *
+ * Adding a lazy tool needs NO edit here: just export a
+ * `defineTool({ kind:'lazy', requires, create })` module and list it in the
+ * catalog. Returns a partial registry the caller merges into its tool set.
  */
 export function buildLazyServerTools(
   db: DatabaseProvider,
   effectiveTools: string[],
   ctx: LazyServerToolContext,
 ): ToolRegistry {
-  const { userId, userRole, sessionId } = ctx;
   const tools: ToolRegistry = {};
+  const hasUser = !!ctx.userId;
+  const isInternal = hasUser && ctx.userId !== 'external';
 
-  if (effectiveTools.includes('feature_request')) {
-    tools.feature_request = createFeatureRequestTool(db, {
-      userId: userId ?? 'anonymous',
-      userRole,
-      sessionId: sessionId ?? undefined,
-    });
-  }
-  if (effectiveTools.includes('project_manager')) {
-    tools.project_manager = createProjectManagerTool(db, {
-      userId: userId ?? 'anonymous',
-      userRole,
-    });
-  }
-  if (effectiveTools.includes('email_manager') && userId) {
-    tools.email_manager = createEmailManagerTool(db, { userId });
-  }
-  // Split read/write email tools for the proxy/MCP surface. The MCP route derives
-  // them from the user's email_manager grant (see resolveMcpContext) rather than
-  // standalone per-user assignment.
-  if (effectiveTools.includes('email_query') && userId) {
-    tools.email_query = createEmailQueryTool(db, { userId });
-  }
-  if (effectiveTools.includes('email_mutation') && userId) {
-    tools.email_mutation = createEmailMutationTool(db, { userId });
-  }
-  if (effectiveTools.includes('personal_knowledge') && userId) {
-    tools.personal_knowledge = createPersonalKnowledgeTool(db, { userId });
-  }
-  // session_history is available to all internal users (independent of memory feature)
-  if (effectiveTools.includes('session_history') && userId && userId !== 'external') {
-    tools.session_history = createSessionHistoryTool(db, { userId });
-  }
-  if (userId && userId !== 'external') {
-    if (effectiveTools.includes('project_query')) {
-      tools.project_query = createProjectQueryTool(db, { userId, userRole });
-    }
-    if (effectiveTools.includes('project_mutation')) {
-      tools.project_mutation = createProjectMutationTool(db, { userId, userRole });
-    }
-    if (effectiveTools.includes('session_query')) {
-      tools.session_query = createSessionQueryTool(db, { userId, userRole });
-    }
-    if (effectiveTools.includes('knowledge_query')) {
-      tools.knowledge_query = createKnowledgeQueryTool(db, { userId });
-    }
-    if (effectiveTools.includes('knowledge_mutation')) {
-      tools.knowledge_mutation = createKnowledgeMutationTool(db, { userId });
-    }
-  }
+  for (const mod of LAZY_TOOL_MODULES) {
+    if (!mod.create || !mod.requires) continue;
+    if (!effectiveTools.includes(mod.meta.id)) continue;
 
-  // ── Session orchestration tools (session-scoped) ──
-  // call_llm and spawn_session only make sense inside a running session: call_llm
-  // audits to it, spawn_session links children to it. The stateless proxy/MCP
-  // surfaces pass no sessionId, so these never activate there.
-  if (userId && userId !== 'external' && sessionId) {
-    const uid = userId;
-    const parentSessionId = sessionId;
-    if (effectiveTools.includes('call_llm')) {
-      tools.call_llm = createCallLlmTool(db, {
-        userId: uid,
-        sessionId: parentSessionId,
-        profileId: ctx.profileId ?? null,
-      });
-    }
-    if (effectiveTools.includes('spawn_session') && ctx.toolRegistry) {
-      const toolRegistry = ctx.toolRegistry;
-      tools.spawn_session = createSpawnSessionTool(db, {
-        userId: uid,
-        userRole,
-        parentSessionId,
-        parentProfileId: ctx.profileId ?? null,
-        // Assemble a child's tools through the SAME resolution path as a top-level
-        // session — so the child's set is always ⊆ the caller's permissions — and
-        // strip spawn_session once the depth cap is reached to bound recursion.
-        assembleChildTools: async ({ childSessionId, profile, depth }) => {
-          const { effectiveTools: childEff } = await resolveEffectiveTools({
-            userId: uid,
-            userRole,
-            profile,
-            profileId: profile.id,
-          });
-          const ids = childSpawnToolIds(childEff, depth);
-          const childTools = selectTools(
-            toolRegistry,
-            ids.filter((t) => !LAZY_TOOL_IDS.has(t)),
-          );
-          Object.assign(
-            childTools,
-            buildLazyServerTools(db, ids, {
-              userId: uid,
-              userRole,
-              sessionId: childSessionId,
-              workspaceId: ctx.workspaceId,
-              profileId: profile.id,
-              toolRegistry,
-            }),
-          );
-          return childTools;
-        },
-      });
-    }
+    const req = mod.requires;
+    // User tier — identical to the previous per-tool guards.
+    if (req.user === 'required' && !hasUser) continue;
+    if (req.user === 'internal' && !isInternal) continue;
+    // Session / registry tiers — session-scoped + orchestration tools.
+    if (req.session && !ctx.sessionId) continue;
+    if (req.registry && !ctx.toolRegistry) continue;
+
+    const toolCtx: ToolContext = {
+      db,
+      // 'optional'-tier tools accept anonymous; every other tier passed its gate
+      // only with a real user, so this fallback never masks a missing id.
+      userId: ctx.userId ?? 'anonymous',
+      userRole: ctx.userRole,
+      sessionId: ctx.sessionId,
+      profileId: ctx.profileId ?? null,
+      workspaceId: ctx.workspaceId ?? null,
+      assembleChildTools:
+        req.registry && ctx.toolRegistry ? makeAssembleChildTools(db, ctx, ctx.toolRegistry) : undefined,
+    };
+    tools[mod.meta.id] = mod.create(toolCtx);
   }
 
   return tools;
+}
+
+/**
+ * Build the depth-capped child-tool assembler handed to spawn_session. Kept here
+ * (not in the tool file) so the assembler can recurse through the SAME resolution
+ * path — child tool sets stay ⊆ the caller's permissions, and spawn_session is
+ * stripped at the depth cap. The tool only ever sees this closure, never the raw
+ * registry.
+ */
+function makeAssembleChildTools(
+  db: DatabaseProvider,
+  ctx: LazyServerToolContext,
+  toolRegistry: ToolRegistry,
+): NonNullable<ToolContext['assembleChildTools']> {
+  return async ({ profile, depth, childSessionId }) => {
+    const { effectiveTools: childEff } = await resolveEffectiveTools({
+      userId: ctx.userId,
+      userRole: ctx.userRole,
+      profile,
+      profileId: profile.id,
+    });
+    const ids = childSpawnToolIds(childEff, depth);
+    const childTools = selectTools(
+      toolRegistry,
+      ids.filter((t) => !LAZY_TOOL_IDS.has(t)),
+    );
+    Object.assign(
+      childTools,
+      buildLazyServerTools(db, ids, {
+        userId: ctx.userId,
+        userRole: ctx.userRole,
+        sessionId: childSessionId,
+        workspaceId: ctx.workspaceId,
+        profileId: profile.id,
+        toolRegistry,
+      }),
+    );
+    return childTools;
+  };
 }

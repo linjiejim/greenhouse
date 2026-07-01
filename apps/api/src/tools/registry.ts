@@ -7,9 +7,6 @@
  * public id sets, known-tool names, the static tool factories) from one array —
  * no parallel hand-maintained id lists, no glob/side-effect self-registration.
  *
- * One tool group keeps CENTRAL metadata by design (see SPECIAL_METAS below):
- * local_* (homogeneous Desktop client tools resolved dynamically by id).
- *
  * Frontend fetches metadata via GET /api/tools.
  */
 
@@ -65,116 +62,13 @@ const TOOL_MODULES: ToolModule[] = [
 export const STATIC_TOOL_MODULES: ToolModule[] = TOOL_MODULES.filter((m) => m.kind === 'static');
 
 /**
- * Multi-variant / dynamically-keyed tools keep CENTRAL metadata by design:
- * - local_*: homogeneous Desktop client tools resolved dynamically by id.
+ * Lazy tools (built per-request from context) — drives buildLazyServerTools and
+ * the derived LAZY_TOOL_IDS set. Replaces the old hand-maintained id list.
  */
-const SPECIAL_METAS: ToolMeta[] = [
-  {
-    id: 'local_file_read',
-    name: 'Read File',
-    brief: 'Read local file content',
-    description: `Read a file from the local filesystem. Supports text files.
-Path must be within the user's authorized directories.
-Returns file content as text. Binary files return an error.
-Use offset and limit for large files.`,
-    category: 'local',
-    is_global: false,
-    icon: 'FileText',
-    sort_order: 40,
-  },
-  {
-    id: 'local_file_write',
-    name: 'Write File',
-    brief: 'Create or modify local files',
-    description: `Write content to a local file. Creates parent directories if needed.
-In 'ask' mode, requires user confirmation before writing.
-In 'explore' mode, this tool is disabled.`,
-    category: 'local',
-    is_global: false,
-    icon: 'FilePen',
-    sort_order: 41,
-  },
-  {
-    id: 'local_file_search',
-    name: 'Search Files',
-    brief: 'Search file contents with regex/glob patterns',
-    description: `Search for text patterns in local files using grep-style matching.
-Supports regex patterns, glob filters, and directory scoping.
-Returns matching lines with file paths and line numbers.`,
-    category: 'local',
-    is_global: false,
-    icon: 'SearchCode',
-    sort_order: 42,
-  },
-  {
-    id: 'local_shell',
-    name: 'Shell',
-    brief: 'Execute shell commands on the local machine',
-    description: `Execute a shell command in the local terminal.
-Dangerous commands are blocked (rm -rf /, sudo, etc.).
-In 'ask' mode, displays the command and waits for user approval.
-In 'explore' mode, only read-only commands are allowed (ls, cat, grep, find, git status, etc.).
-Returns stdout, stderr, and exit code.`,
-    category: 'local',
-    is_global: false,
-    icon: 'Terminal',
-    sort_order: 43,
-  },
-  {
-    id: 'local_clipboard',
-    name: 'Clipboard',
-    brief: 'Read from or write to system clipboard',
-    description: `Access the system clipboard.
-Actions: read (get current clipboard text), write (set clipboard text).`,
-    category: 'local',
-    is_global: false,
-    icon: 'Clipboard',
-    sort_order: 44,
-  },
-  {
-    id: 'local_compute',
-    name: 'Local Compute',
-    brief: 'Execute code locally with full language support',
-    description: `Execute code on the local machine with full access to installed runtimes.
-Supported languages: javascript (node), python3, bash.
-The code runs in a subprocess with access to local packages and tools.
-Timeout: 30 seconds. Output captured from stdout/stderr.
-Use this for data processing, script execution, and development tasks.`,
-    category: 'local',
-    is_global: false,
-    icon: 'Code',
-    sort_order: 45,
-  },
-  {
-    id: 'local_skill_list',
-    name: 'List Skills',
-    brief: 'List local SKILL.md skills available on the Desktop client',
-    description: `List local Agent Skills discovered by the Desktop client.
-Returns only lightweight metadata such as slug, name, description, source, version, and glob hints.
-Use this when you need to know which local skills are available before deciding whether to load one.
-For full instructions, call local_skill_view with the skill slug.`,
-    category: 'local',
-    is_global: false,
-    icon: 'Sparkles',
-    sort_order: 46,
-  },
-  {
-    id: 'local_skill_view',
-    name: 'View Skill',
-    brief: 'Load a local skill instruction file on demand',
-    description: `Read a local SKILL.md file or a referenced supporting text file from a local skill directory.
-Use this only when a listed skill is relevant to the user's current task.
-Default path is SKILL.md. You may pass a relative path (for example references/guide.md) if the loaded skill instructs you to read it.
-This tool is read-only and cannot execute scripts. Script execution remains governed by local_shell/local_compute permissions.`,
-    category: 'local',
-    is_global: false,
-    icon: 'BookOpen',
-    sort_order: 47,
-  },
-];
+export const LAZY_TOOL_MODULES: ToolModule[] = TOOL_MODULES.filter((m) => m.kind === 'lazy');
 
 /** Single source of truth for all tool metadata. */
-export const TOOL_DEFINITIONS: ToolMeta[] = [...TOOL_MODULES.map((m) => m.meta), ...SPECIAL_METAS];
+export const TOOL_DEFINITIONS: ToolMeta[] = TOOL_MODULES.map((m) => m.meta);
 
 // ─── Proxy / MCP exposure (derived from each tool's declarative `meta.surface`) ──
 //

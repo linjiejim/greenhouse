@@ -386,6 +386,21 @@ export function createEmailMutationTool(db: DatabaseProvider, ctx: EmailManagerC
   });
 }
 
-export const emailManagerTool = defineTool({ meta, kind: 'lazy' });
-export const emailQueryTool = defineTool({ meta: queryMeta, kind: 'lazy' });
-export const emailMutationTool = defineTool({ meta: mutationMeta, kind: 'lazy' });
+export const emailManagerTool = defineTool({
+  meta,
+  kind: 'lazy',
+  requires: { user: 'required' },
+  create: (ctx) => createEmailManagerTool(ctx.db, { userId: ctx.userId }),
+});
+export const emailQueryTool = defineTool({
+  meta: queryMeta,
+  kind: 'lazy',
+  requires: { user: 'required' },
+  create: (ctx) => createEmailQueryTool(ctx.db, { userId: ctx.userId }),
+});
+export const emailMutationTool = defineTool({
+  meta: mutationMeta,
+  kind: 'lazy',
+  requires: { user: 'required' },
+  create: (ctx) => createEmailMutationTool(ctx.db, { userId: ctx.userId }),
+});

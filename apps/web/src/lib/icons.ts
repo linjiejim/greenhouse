@@ -385,13 +385,6 @@ export const TOOL_ICONS: Record<string, LucideIcon> = {
   personal_knowledge: BookOpen,
   email_manager: Mail,
   compute: Calculator,
-  // Local tools (Desktop)
-  local_file_read: FileText,
-  local_file_write: Pencil,
-  local_file_search: Search,
-  local_shell: Terminal,
-  local_clipboard: ClipboardCopy,
-  local_compute: Code,
 };
 
 /** Get the Lucide icon for a tool name. */

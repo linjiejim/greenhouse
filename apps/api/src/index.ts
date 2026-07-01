@@ -32,7 +32,7 @@ import { initDatabase } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { createToolRegistry, type ToolRegistry } from './agent.js';
 import type { AppEnv } from './app-env.js';
-import { listProfileIds, startProfileWatcher } from './profile.js';
+import { listProfileIds } from './profile.js';
 import { authMiddleware, requireSuper, requireInternal } from './auth/middleware.js';
 import { assertAuthEnv } from './auth/token.js';
 import { corsMiddleware, rateLimitMiddleware, securityHeadersMiddleware } from './security.js';
@@ -223,8 +223,6 @@ async function main() {
   // this callback surface out of the static module graph and the contract)
   const { createClientToolsRoute } = await import('./routes/client-tools.js');
   app.route('/api/client-tools', createClientToolsRoute());
-
-  startProfileWatcher();
 
   // Start task scheduler
   const scheduler = initScheduler(toolRegistry);

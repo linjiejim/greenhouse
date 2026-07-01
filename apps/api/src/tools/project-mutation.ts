@@ -192,4 +192,9 @@ export function createProjectMutationTool(db: DatabaseProvider, ctx: ProjectMuta
   });
 }
 
-export const projectMutationTool = defineTool({ meta, kind: 'lazy' });
+export const projectMutationTool = defineTool({
+  meta,
+  kind: 'lazy',
+  requires: { user: 'internal' },
+  create: (ctx) => createProjectMutationTool(ctx.db, { userId: ctx.userId, userRole: ctx.userRole }),
+});

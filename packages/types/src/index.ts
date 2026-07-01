@@ -75,3 +75,18 @@ export type {
   QuickAction,
   ContextProviderDescriptor,
 } from './agent-context.js';
+
+// Agent profile manifest — TYPES ONLY here so the web bundle never pulls in
+// zod. Server code imports the schema *values* from '@greenhouse/types/profile-manifest'.
+export type {
+  Capability,
+  AvatarConfig,
+  ModelOptions,
+  ModelChoice,
+  AccessConfig,
+  ModelConfigInput,
+  ProfileManifest,
+  ProfileData,
+  SystemProfile,
+  CustomBaseProfileId,
+} from './profile-manifest.js';

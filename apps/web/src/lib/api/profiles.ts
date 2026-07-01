@@ -41,6 +41,12 @@ export interface CustomProfileInput {
   max_steps?: number;
   is_shared?: boolean;
   avatar?: { color?: string; accessories?: string[]; leafStyle?: string };
+  // Safe declarative config
+  model_options?: { thinking?: boolean; temperature?: number; max_tokens?: number };
+  model_choice_ids?: string[];
+  default_language?: string;
+  greeting?: string;
+  suggested_followups?: string[];
 }
 
 export async function fetchCustomProfiles(): Promise<Profile[]> {

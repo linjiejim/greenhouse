@@ -1,41 +1,41 @@
 /**
- * Agent Profile — load, validate, and resolve YAML profile definitions.
+ * Agent Profile — resolve and serve profile definitions.
  *
- * Profiles define: identity, model config, tool subset, system prompt, and behavior.
- * Located in src/api/profiles/*.yaml
+ * Two representations, ONE schema (`@greenhouse/types/profile-manifest`):
+ * - System profiles: authored in TS via `defineProfile()` (profiles/*.ts),
+ *   validated by `systemProfileSchema`. Registered statically below.
+ * - Custom profiles: user rows in `custom_profiles` (a relational shell + a
+ *   `data` jsonb manifest payload), resolved against their system base.
  *
- * Features:
- * - YAML-based profile definitions
- * - Tool name validation against known registry
- * - In-memory cache with file watcher for dev hot-reload
+ * The runtime contract consumed across the codebase is `AgentProfile`.
  */
 
-import { readFileSync, readdirSync, existsSync, watch } from 'node:fs';
 import { logger } from '@greenhouse/utils/logger';
 import { composeRichOutput } from '@greenhouse/utils/prompts';
-import { resolve, join } from 'node:path';
-import { parse as parseYaml } from 'yaml';
-
-// ─── Types ───────────────────────────────────────────────
 
 // Model config types are owned by the agent kernel; re-exported here so the
 // many profile consumers keep importing them from profile.js unchanged.
 export type { ModelConfig, ModelOptions, ModelChoice } from '@greenhouse/agent-core';
-import type { ModelConfig, ModelOptions, ModelChoice } from '@greenhouse/agent-core';
-import { getModelEntry } from '@greenhouse/agent-core';
+import type { ModelConfig } from '@greenhouse/agent-core';
 
-export interface ProfileCapability {
-  icon: string; // Lucide icon name (e.g. "Search", "Globe")
-  label: string; // Short label for display
-  prompt: string; // Prompt to fill into input when clicked
-}
+// Profile shape is owned by the shared manifest schema (single source of truth).
+import { CUSTOM_BASE_PROFILE_IDS } from '@greenhouse/types/profile-manifest';
+import type { AccessConfig, Capability } from '@greenhouse/types/profile-manifest';
 
-export interface AccessConfig {
-  level: 'public' | 'internal' | 'admin' | 'hidden'; // access tier
-  requires_session: boolean; // must use session mode (not stateless)
-  rich_output: boolean; // inject rich output formatting guide
-}
+import defaultProfile from './profiles/default.js';
+import teamProfile from './profiles/team.js';
 
+// ─── Types ───────────────────────────────────────────────
+
+export type { AccessConfig } from '@greenhouse/types/profile-manifest';
+export type ProfileCapability = Capability;
+export { CUSTOM_BASE_PROFILE_IDS };
+
+/**
+ * Resolved profile used at runtime. Structurally a superset-compatible view of
+ * `SystemProfile`; custom profiles are resolved into this same shape. New
+ * fields are OPTIONAL so the existing consumers stay unchanged.
+ */
 export interface AgentProfile {
   id: string;
   name: string;
@@ -49,43 +49,42 @@ export interface AgentProfile {
   tool_choice?: 'auto' | 'none' | 'required'; // default: "auto"
   capabilities?: ProfileCapability[]; // UI display capabilities
   version?: string; // last modified date (e.g. "2026-05-21")
+  // ── Safe declarative config (custom profiles) ──
+  default_language?: string;
+  greeting?: string;
+  suggested_followups?: string[];
 }
 
-// ─── Known Tools (for validation) ────────────────────────
+// ─── Known Tools (for validation, driven by the registry) ─
 
-const KNOWN_TOOLS = new Set([
-  'analyze_image',
-  'external_search',
-  'feature_request',
-  'generate_image',
-  'project_manager',
-  'ask_user',
-  'knowledge_query',
-  'knowledge_mutation',
-  'team_knowledge',
-  'personal_knowledge',
-  'email_manager',
-  'session_history',
-  'compute',
-]);
+let KNOWN_TOOLS = new Set<string>();
 
 /**
  * Bulk-register tool names from the tool registry.
  * Called once at startup by `createToolRegistry()` in agent.ts.
- * After this call, KNOWN_TOOLS is driven entirely by the registry.
+ * Until then the set is empty and tool-name validation is skipped.
  */
 export function registerKnownTools(names: string[]): void {
-  KNOWN_TOOLS.clear();
-  for (const name of names) KNOWN_TOOLS.add(name);
+  KNOWN_TOOLS = new Set(names);
 }
 
-// ─── Profile Directory ───────────────────────────────────
+function assertKnownTools(profile: AgentProfile): void {
+  if (KNOWN_TOOLS.size === 0) return; // registry not registered yet
+  const unknown = profile.tools.filter((t) => !KNOWN_TOOLS.has(t));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Profile "${profile.id}" references unknown tools: ${unknown.join(', ')}. ` +
+        `Available tools: ${[...KNOWN_TOOLS].join(', ')}`,
+    );
+  }
+}
 
-const PROFILES_DIR = resolve(import.meta.dirname, 'profiles');
+// ─── System Profile Registry (TS modules) ─────────────────
 
-// ─── Loader ──────────────────────────────────────────────
-
-const profileCache = new Map<string, AgentProfile>();
+const SYSTEM_PROFILES = new Map<string, AgentProfile>([
+  [defaultProfile.id, defaultProfile],
+  [teamProfile.id, teamProfile],
+]);
 
 const LEGACY_TEAM_PROFILE_IDS = new Set([
   'researcher',
@@ -95,8 +94,6 @@ const LEGACY_TEAM_PROFILE_IDS = new Set([
   'ops-analyst',
   'cc-analyzer',
 ]);
-
-export const CUSTOM_BASE_PROFILE_IDS = ['default', 'team'] as const;
 
 /** Map removed/legacy interactive profile IDs to their canonical replacement. */
 export function normalizeProfileId(profileId?: string | null): string | undefined {
@@ -110,12 +107,7 @@ export function isValidCustomBaseProfileId(profileId: string): boolean {
 }
 
 /**
- * Load a single profile by ID (filename without extension).
- * Throws if the profile doesn't exist or is invalid.
- */
-/**
  * Validate that a profile ID is safe (no path traversal or special characters).
- * Profile IDs must be alphanumeric with hyphens/underscores only.
  */
 function validateProfileId(id: string): void {
   if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
@@ -123,78 +115,64 @@ function validateProfileId(id: string): void {
   }
 }
 
+/**
+ * Load a single system profile by ID. Throws if it doesn't exist.
+ */
 export function loadProfile(id: string): AgentProfile {
   validateProfileId(id);
-
-  if (profileCache.has(id)) {
-    return profileCache.get(id)!;
-  }
-
-  const filePath = join(PROFILES_DIR, `${id}.yaml`);
-  if (!existsSync(filePath)) {
+  const profile = SYSTEM_PROFILES.get(id);
+  if (!profile) {
     throw new Error(`Profile not found: "${id}"`);
   }
-
-  const raw = readFileSync(filePath, 'utf-8');
-  const parsed = parseYaml(raw);
-  const profile = validateProfile(parsed, id);
-
-  profileCache.set(id, profile);
+  assertKnownTools(profile);
   return profile;
 }
 
-/**
- * Load all available profiles from the profiles directory.
- */
+/** Load all system profiles. */
 export function loadAllProfiles(): AgentProfile[] {
-  if (!existsSync(PROFILES_DIR)) return [];
-
-  const files = readdirSync(PROFILES_DIR).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
-
-  const profiles: AgentProfile[] = [];
-  for (const file of files) {
-    const id = file.replace(/\.ya?ml$/, '');
-    try {
-      profiles.push(loadProfile(id));
-    } catch (err) {
-      logger.warn(`[Profile] ⚠️ Skipping invalid profile "${id}": ${err instanceof Error ? err.message : err}`);
-    }
-  }
-  return profiles;
+  return [...SYSTEM_PROFILES.values()];
 }
 
-/**
- * List profile IDs (without loading full content).
- */
+/** List system profile IDs. */
 export function listProfileIds(): string[] {
-  if (!existsSync(PROFILES_DIR)) return [];
-  return readdirSync(PROFILES_DIR)
-    .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
-    .map((f) => f.replace(/\.ya?ml$/, ''));
+  return [...SYSTEM_PROFILES.keys()];
 }
 
-/**
- * Get the default profile (always "default").
- */
+/** Get the default profile (always "default"). */
 export function getDefaultProfile(): AgentProfile {
   return loadProfile('default');
 }
 
 /**
- * Resolve profile by ID, falling back to "default" if not specified.
- * Supports custom profiles with "custom:{id}" format.
+ * Resolve profile by ID, falling back to "default". Synchronous path handles
+ * only system profiles; use resolveProfileAsync for `custom:*` IDs.
  */
 export function resolveProfile(profileId?: string | null): AgentProfile {
   const normalized = normalizeProfileId(profileId);
   if (!normalized || normalized === 'default') {
     return getDefaultProfile();
   }
-  // Custom profiles are resolved async — this synchronous path only handles system profiles
   return loadProfile(normalized);
 }
 
+/** Merge a custom profile's safe model knobs onto its base model config. */
+function mergeCustomModel(
+  base: ModelConfig,
+  modelOptions?: { thinking?: boolean; temperature?: number; max_tokens?: number },
+  choiceIds?: string[],
+): ModelConfig {
+  const options = modelOptions ? { ...base.options, ...modelOptions } : base.options;
+  // Narrow switchable choices to the user-selected subset (⊆ base.choices).
+  // No selection → inherit base choices. A base without choices stays pinned.
+  const choices =
+    choiceIds && choiceIds.length > 0 && base.choices
+      ? base.choices.filter((c) => choiceIds.includes(c.id))
+      : base.choices;
+  return { ...base, options, choices };
+}
+
 /**
- * Resolve profile by ID, with async support for custom profiles from DB.
+ * Resolve profile by ID, with async support for custom profiles from the DB.
  * Use this instead of resolveProfile() when custom:* IDs may be passed.
  */
 export async function resolveProfileAsync(profileId?: string | null): Promise<AgentProfile> {
@@ -217,7 +195,7 @@ export async function resolveProfileAsync(profileId?: string | null): Promise<Ag
       return getDefaultProfile();
     }
 
-    // Load base profile for model config (fall back to default if base is invalid)
+    // Load base profile for model + access ceiling (fall back if base invalid)
     let baseProfile: AgentProfile;
     try {
       const normalizedBase = normalizeProfileId(row.base_profile_id) ?? 'default';
@@ -225,35 +203,46 @@ export async function resolveProfileAsync(profileId?: string | null): Promise<Ag
     } catch {
       baseProfile = getDefaultProfile();
     }
-    const tools: string[] = JSON.parse(row.tools);
-    const capabilities = JSON.parse(row.capabilities || '[]');
+
+    const data = row.data;
+    // default_language is enforced by appending a controlled directive (the
+    // stored prompt stays clean for editing).
+    let system_prompt = data.system_prompt;
+    if (data.default_language) {
+      system_prompt += `\n\n## Response Language\nAlways respond in ${data.default_language} unless the user explicitly requests another language.`;
+    }
 
     return {
       id: normalized,
       name: row.name,
-      description: row.description ?? undefined,
+      description: data.description,
       hidden: false,
       access: {
         level: 'internal',
         requires_session: false,
         rich_output: baseProfile.access.rich_output,
       },
-      model: baseProfile.model,
-      tools,
-      system_prompt: row.system_prompt,
-      max_steps: row.max_steps,
-      tool_choice: 'auto',
-      capabilities: capabilities.length > 0 ? capabilities : undefined,
+      model: mergeCustomModel(baseProfile.model, data.model_options, data.model_choice_ids),
+      tools: data.tools,
+      system_prompt,
+      max_steps: data.max_steps,
+      tool_choice: data.tool_choice ?? 'auto',
+      capabilities: data.capabilities && data.capabilities.length > 0 ? data.capabilities : undefined,
+      default_language: data.default_language,
+      greeting: data.greeting,
+      suggested_followups: data.suggested_followups,
     };
   }
 
   return loadProfile(normalized);
 }
 
-/**
- * Clear the profile cache (useful for hot-reload in dev).
- */
-/** Callbacks to notify when profile cache is cleared (avoids circular deps). */
+// ─── Cache hooks (kept for the /reload endpoint + consumers) ──
+//
+// System profiles are static TS modules now, so there is no file cache to
+// clear; clearProfileCache still fires registered callbacks for consumers that
+// rebuild derived state.
+
 const onClearCallbacks: Array<() => void> = [];
 
 /** Register a callback that runs when the profile cache is cleared. */
@@ -261,23 +250,20 @@ export function onProfileCacheClear(cb: () => void): void {
   onClearCallbacks.push(cb);
 }
 
-/**
- * Clear the profile cache (useful for hot-reload in dev).
- */
+/** Fire cache-clear callbacks (no-op for the now-static profile registry). */
 export function clearProfileCache(): void {
-  profileCache.clear();
   for (const cb of onClearCallbacks) cb();
 }
 
-// ─── Access Control Helpers (derived from profile YAML) ──
+// ─── Access Control Helpers (derived from profiles) ──────
 
-/**
- * Get profile IDs with the given access level.
- * Scans all loaded profiles — call after loadAllProfiles().
- */
+/** Get profile IDs with the given access level. */
 export function getProfileIdsByLevel(level: AccessConfig['level']): Set<string> {
-  const all = loadAllProfiles();
-  return new Set(all.filter((p) => p.access.level === level).map((p) => p.id));
+  return new Set(
+    loadAllProfiles()
+      .filter((p) => p.access.level === level)
+      .map((p) => p.id),
+  );
 }
 
 /** Profiles safe for public/anonymous access (level=public). */
@@ -285,177 +271,34 @@ export function getPublicProfileIds(): Set<string> {
   return getProfileIdsByLevel('public');
 }
 
-/** Profiles requiring session mode (admin + hidden). */
+/** Profiles requiring session mode. */
 export function getAdminProfileIds(): Set<string> {
-  const all = loadAllProfiles();
-  return new Set(all.filter((p) => p.access.requires_session).map((p) => p.id));
+  return new Set(
+    loadAllProfiles()
+      .filter((p) => p.access.requires_session)
+      .map((p) => p.id),
+  );
 }
 
 /** Profiles that receive rich output guide. */
 export function getRichOutputProfileIds(): Set<string> {
-  const all = loadAllProfiles();
-  return new Set(all.filter((p) => p.access.rich_output).map((p) => p.id));
+  return new Set(
+    loadAllProfiles()
+      .filter((p) => p.access.rich_output)
+      .map((p) => p.id),
+  );
 }
 
 // ─── Rich Output Prompt Enrichment ───────────────────────
-//
-// The rich-output rendering rules live in @greenhouse/utils/prompts so the desktop
-// Pi runtime (packages/desktop-agent-runtime) can share the exact same guide —
-// the frontend message component is identical across web and desktop.
 
 /**
  * Enrich a profile's system prompt with the rich output formatting guide.
- * Applies to any profile with `access.rich_output: true` (team, desktop) — these
- * also get the confirm-button block. Default (rich_output: false) is unchanged.
+ * Applies to any profile with `access.rich_output: true` — these also get the
+ * confirm-button block. Default (rich_output: false) is unchanged.
  */
 export function enrichSystemPrompt(profile: AgentProfile): string {
   if (!profile.access.rich_output) {
     return profile.system_prompt;
   }
-
   return profile.system_prompt + '\n' + composeRichOutput({ confirm: true });
-}
-
-// ─── File Watcher (dev hot-reload) ───────────────────────
-
-let watcherActive = false;
-
-/**
- * Start watching the profiles directory for changes.
- * On any change, clears the cache so next load picks up new content.
- * Call once at server startup in dev mode.
- */
-export function startProfileWatcher(): void {
-  if (watcherActive) return;
-  if (!existsSync(PROFILES_DIR)) return;
-
-  try {
-    const watcher = watch(PROFILES_DIR, { persistent: false }, (eventType, filename) => {
-      if (filename && (filename.endsWith('.yaml') || filename.endsWith('.yml'))) {
-        const id = filename.replace(/\.ya?ml$/, '');
-        profileCache.delete(id);
-        logger.info(`[Profile] 🔄 Reloaded: ${id} (${eventType})`);
-      }
-    });
-
-    // Don't let the watcher prevent process exit
-    watcher.unref();
-    watcherActive = true;
-    logger.info(`[Profile] 👁️ Watching ${PROFILES_DIR} for changes`);
-  } catch (err) {
-    logger.warn(`[Profile] ⚠️ Could not start file watcher: ${err instanceof Error ? err.message : err}`);
-  }
-}
-
-// ─── Validation ──────────────────────────────────────────
-
-function validateProfile(raw: unknown, fileId: string): AgentProfile {
-  if (!raw || typeof raw !== 'object') {
-    throw new Error(`Profile "${fileId}" is empty or not an object`);
-  }
-
-  const obj = raw as Record<string, unknown>;
-
-  // Required fields
-  const id = (obj.id as string) || fileId;
-  const name = obj.name as string;
-  if (!name) throw new Error(`Profile "${fileId}" missing required field: name`);
-
-  const system_prompt = obj.system_prompt as string;
-  if (!system_prompt) throw new Error(`Profile "${fileId}" missing required field: system_prompt`);
-
-  // Model config
-  const modelRaw = obj.model as Record<string, unknown> | undefined;
-  if (!modelRaw) throw new Error(`Profile "${fileId}" missing required field: model`);
-
-  const rawOpts = modelRaw.options as Record<string, unknown> | undefined;
-  const modelOptions: ModelOptions | undefined = rawOpts
-    ? {
-        ...rawOpts,
-        thinking: rawOpts.thinking as boolean | undefined,
-        temperature: rawOpts.temperature as number | undefined,
-        max_tokens: rawOpts.max_tokens as number | undefined,
-      }
-    : undefined;
-
-  const modelId = modelRaw.id as string | undefined;
-
-  // Optional model choices — the set of registry models the user may switch
-  // between for this profile. No choices = model pinned, overrides ignored.
-  const rawChoices = modelRaw.choices as Array<Record<string, unknown>> | undefined;
-  let choices: ModelChoice[] | undefined;
-  if (rawChoices !== undefined) {
-    if (!Array.isArray(rawChoices)) {
-      throw new Error(`Profile "${fileId}" model.choices must be an array`);
-    }
-    choices = rawChoices.map((ch) => {
-      const cid = ch.id as string;
-      if (!cid || !getModelEntry(cid)) {
-        throw new Error(`Profile "${fileId}" model.choices references unknown registry model: "${cid}"`);
-      }
-      return {
-        id: cid,
-        label: (ch.label as string) || cid,
-        ...(ch.description ? { description: ch.description as string } : {}),
-      };
-    });
-  }
-
-  const model: ModelConfig = {
-    id: modelId,
-    provider: (modelRaw.provider as string) || 'openai-compatible', // OpenAI-compatible is the only bundled protocol
-    model: (modelRaw.model as string) || (modelId ?? 'default'), // placeholder when using registry id
-    baseUrl: modelRaw.baseUrl as string | undefined,
-    apiKey: modelRaw.apiKey as string | undefined,
-    options: modelOptions,
-    ...(choices ? { choices } : {}),
-  };
-
-  // Access config (declarative access control from YAML)
-  const accessRaw = obj.access as Record<string, unknown> | undefined;
-  const access: AccessConfig = {
-    level: (accessRaw?.level as AccessConfig['level']) ?? 'internal',
-    requires_session: (accessRaw?.requires_session as boolean) ?? false,
-    rich_output: (accessRaw?.rich_output as boolean) ?? false,
-  };
-
-  // Tools — validate against known registry
-  const tools = (obj.tools as string[]) ?? [];
-  if (!Array.isArray(tools)) {
-    throw new Error(`Profile "${fileId}" tools must be an array of strings`);
-  }
-
-  const unknownTools = tools.filter((t) => !KNOWN_TOOLS.has(t));
-  if (unknownTools.length > 0) {
-    throw new Error(
-      `Profile "${fileId}" references unknown tools: ${unknownTools.join(', ')}. ` +
-        `Available tools: ${[...KNOWN_TOOLS].join(', ')}`,
-    );
-  }
-
-  // Capabilities (optional — for UI display)
-  const rawCapabilities = obj.capabilities as Array<Record<string, unknown>> | undefined;
-  const capabilities =
-    rawCapabilities
-      ?.map((c) => ({
-        icon: (c.icon as string) || 'Lightbulb',
-        label: (c.label as string) || '',
-        prompt: (c.prompt as string) || '',
-      }))
-      .filter((c) => c.label && c.prompt) || undefined;
-
-  return {
-    id,
-    name,
-    description: obj.description as string | undefined,
-    hidden: (obj.hidden as boolean) ?? false,
-    access,
-    model,
-    tools,
-    system_prompt,
-    max_steps: (obj.max_steps as number) ?? 8,
-    tool_choice: (obj.tool_choice as 'auto' | 'none' | 'required') ?? 'auto',
-    capabilities,
-    version: (obj.version as string) ?? undefined,
-  };
 }
