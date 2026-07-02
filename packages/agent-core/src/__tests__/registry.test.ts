@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { getModelEntry, getModelIds, getAvailableProviders, findModelIdByProviderModel } from '../registry.js';
 
-const ENV_KEYS = ['LLM_API_KEY', 'LLM_BASE_URL', 'LLM_MODEL', 'LLM_MODEL_PRO'] as const;
+const ENV_KEYS = ['LLM_API_KEY', 'LLM_BASE_URL', 'LLM_MODEL', 'LLM_MODEL_PRO', 'LLM_MODEL_TITLE'] as const;
 
 describe('Model Registry (env-derived, openai-compatible)', () => {
   let saved: Record<string, string | undefined>;
@@ -26,11 +26,25 @@ describe('Model Registry (env-derived, openai-compatible)', () => {
     }
   });
 
-  it('exposes default/flash/pro logical ids', () => {
+  it('exposes default/flash/pro/title logical ids', () => {
     const ids = getModelIds();
     expect(ids).toContain('default');
     expect(ids).toContain('flash');
     expect(ids).toContain('pro');
+    expect(ids).toContain('title');
+  });
+
+  it('lets LLM_MODEL_TITLE override the title model while others stay on LLM_MODEL', () => {
+    process.env.LLM_MODEL = 'main-model';
+    process.env.LLM_MODEL_TITLE = 'light-model';
+    expect(getModelEntry('default')!.providers[0].model).toBe('main-model');
+    expect(getModelEntry('flash')!.providers[0].model).toBe('main-model');
+    expect(getModelEntry('title')!.providers[0].model).toBe('light-model');
+  });
+
+  it('title defaults to LLM_MODEL when LLM_MODEL_TITLE is unset', () => {
+    process.env.LLM_MODEL = 'only-model';
+    expect(getModelEntry('title')!.providers[0].model).toBe('only-model');
   });
 
   it('resolves all ids to the configured openai-compatible upstream', () => {

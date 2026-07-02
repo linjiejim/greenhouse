@@ -5,7 +5,7 @@
  * The kernel speaks ONE wire protocol: OpenAI-compatible. A deployment points
  * `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` at any OpenAI-compatible endpoint
  * (OpenAI, DeepSeek's OpenAI endpoint, a local Ollama `/v1`, a gateway, …) and
- * every logical id (`default`, `flash`, `pro`) resolves to it.
+ * every logical id (`default`, `flash`, `pro`, `title`) resolves to it.
  *
  * The registry is built lazily (read on each call), not frozen at import time:
  * dotenv loads inside the api entrypoint, after this module is first imported,
@@ -48,6 +48,7 @@ function buildRegistry(): Record<string, ModelEntry> {
   const baseUrl = process.env.LLM_BASE_URL || undefined;
   const model = process.env.LLM_MODEL || DEFAULT_MODEL;
   const proModel = process.env.LLM_MODEL_PRO || model;
+  const titleModel = process.env.LLM_MODEL_TITLE || model;
 
   const entry = (m: string, name: string): ModelEntry => ({
     name,
@@ -69,6 +70,11 @@ function buildRegistry(): Record<string, ModelEntry> {
     // LLM_MODEL_PRO.
     flash: entry(model, model),
     pro: entry(proModel, proModel),
+    // Dedicated id for auto-title generation. Point LLM_MODEL_TITLE at a light,
+    // NON-reasoning model: a reasoning model spends its output budget on
+    // reasoning tokens and can return empty content, yielding blank titles.
+    // Defaults to LLM_MODEL when unset.
+    title: entry(titleModel, titleModel),
   };
 }
 

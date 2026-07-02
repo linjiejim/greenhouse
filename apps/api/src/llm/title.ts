@@ -26,11 +26,25 @@ const MAX_TITLE_LENGTH = 30;
 /** Fallback title length when LLM fails. */
 const FALLBACK_LENGTH = 50;
 
-/** Model config: use flash via registry for speed and cost efficiency. */
+/**
+ * Output token budget. Must be generous: reasoning models (e.g. DeepSeek's
+ * reasoner-class endpoints) spend `reasoning_tokens` against this budget before
+ * emitting any content. Too low → reasoning exhausts the budget, `content`
+ * comes back empty with finish_reason=length, and the title is blank.
+ * Even at this size a heavy reasoning model may exhaust it on a complex prompt;
+ * the empty-title guard below is the real safety net.
+ */
+const MAX_OUTPUT_TOKENS = 1024;
+
+/**
+ * Model config: use the dedicated `title` registry id (LLM_MODEL_TITLE, falls
+ * back to LLM_MODEL). Point it at a light, non-reasoning model — reasoning
+ * models burn the output budget on thinking and return empty content.
+ */
 const TITLE_MODEL_CONFIG: ModelConfig = {
-  id: 'flash',
+  id: 'title',
   provider: 'openai-compatible',
-  model: 'flash', // placeholder — resolved via registry id above
+  model: 'title', // placeholder — resolved via registry id above
   apiKey: 'LLM_API_KEY',
 };
 
@@ -67,11 +81,14 @@ export async function generateSessionTitle(userMessage: string): Promise<string>
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: truncated }],
       temperature: 0.3,
-      maxOutputTokens: 60,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
       maxRetries: 1,
     });
 
-    const title = cleanTitle(result.text);
+    // A successful call can still yield empty/garbage text (e.g. a reasoning
+    // model that spent its whole budget on reasoning_tokens). Never persist an
+    // empty title — fall back to the truncated user message.
+    const title = cleanTitle(result.text) || fallbackTitle(userMessage);
 
     logger.info('[title-gen] Generated', { title });
 
