@@ -65,10 +65,15 @@ export function setThemeMode(mode: ThemeMode): void {
   applyResolved(resolveDark(mode));
 }
 
-/** Initialize theme from stored preference on app load. */
-export function initTheme(): void {
-  const mode = getThemeMode();
-  // Persist the migrated value so legacy palette keys are rewritten once.
+/**
+ * Initialize theme from stored preference on app load.
+ *
+ * `defaultMode` applies only when the user has never chosen a mode (nothing
+ * stored): the web app keeps 'system'; the browser extension passes 'light'.
+ */
+export function initTheme(defaultMode: ThemeMode = 'system'): void {
+  const mode = localStorage.getItem(STORAGE_KEY) === null ? defaultMode : getThemeMode();
+  // Persist the migrated (or defaulted) value so it is rewritten once.
   if (localStorage.getItem(STORAGE_KEY) !== mode) localStorage.setItem(STORAGE_KEY, mode);
   applyResolved(resolveDark(mode));
 

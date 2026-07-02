@@ -5,7 +5,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Select, Spinner, StatusDot } from '@greenhouse/ui/components/ui';
-import { History, Plus, Send, CircleStop, FileText, BookOpen } from '@greenhouse/ui/lib/icons';
+import { History, Plus, Send, CircleStop, FileText, BookOpen, Sun, Moon } from '@greenhouse/ui/lib/icons';
+import { setThemeMode } from '@greenhouse/ui/lib/theme';
 import { useT } from '@greenhouse/ui/lib/i18n';
 import { useChat } from './use-chat';
 import { Messages } from './messages';
@@ -109,6 +110,7 @@ export function ChatView() {
           ))}
           {profiles.length === 0 && <option value={profileId}>{profileId}</option>}
         </Select>
+        <ThemeToggle />
         <button
           className="rounded p-1 text-fg-secondary hover:bg-surface-muted"
           title={t('panel.history')}
@@ -209,6 +211,25 @@ export function ChatView() {
         </>
       )}
     </div>
+  );
+}
+
+/** Quick light/dark flip; the options page keeps the full light/dark/system select. */
+function ThemeToggle() {
+  const t = useT();
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark-theme'));
+  return (
+    <button
+      className="rounded p-1 text-fg-secondary hover:bg-surface-muted"
+      title={dark ? t('panel.themeLight') : t('panel.themeDark')}
+      onClick={() => {
+        const next = !dark;
+        setDark(next);
+        setThemeMode(next ? 'dark' : 'light');
+      }}
+    >
+      {dark ? <Sun size={16} /> : <Moon size={16} />}
+    </button>
   );
 }
 

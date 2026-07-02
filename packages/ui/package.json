@@ -112,7 +112,8 @@
       "import": "./src/lib/wiki-diff.ts",
       "types": "./src/lib/wiki-diff.ts"
     },
-    "./styles/tokens.css": "./src/styles/tokens.css"
+    "./styles/tokens.css": "./src/styles/tokens.css",
+    "./styles/components.css": "./src/styles/components.css"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

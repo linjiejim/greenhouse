@@ -1,8 +1,10 @@
 @import 'tailwindcss';
 
-/* Design tokens (semantic colors, light/dark values) are shared with the web
-   app via @greenhouse/ui. */
+/* Design tokens (semantic colors, light/dark values) and shared component
+   styles (prose/markdown, syntax highlighting, animations) come from
+   @greenhouse/ui — same pixels as the web app. */
 @import '@greenhouse/ui/styles/tokens.css';
+@import '@greenhouse/ui/styles/components.css';
 @source './**/*.{tsx,ts}';
 /* Scan the shared UI kit too so the utility classes its components use
    survive Tailwind's tree-shaking. */

@@ -1,0 +1,256 @@
+/* ─── @greenhouse/ui shared component styles ─────────────────────────────────
+ *
+ * Prose (markdown) variants, syntax highlighting and keyframe animations that
+ * the shared UI kit's components rely on (RichMarkdown, Dialog, toast, ...).
+ * Consumed alongside tokens.css by every Greenhouse frontend:
+ *   @import '@greenhouse/ui/styles/tokens.css';
+ *   @import '@greenhouse/ui/styles/components.css';
+ * Uses Tailwind @apply — the importing app's Tailwind build must @source scan
+ * packages/ui/src (both apps already do).
+ */
+
+/* ─── Prose: shared base (elements styled via Tailwind @apply) ─── */
+.prose-base,
+.prose-compact {
+  @apply text-sm text-fg;
+}
+
+/* ── Links ── */
+.prose-base a,
+.prose-compact a {
+  @apply text-primary-fg underline;
+}
+
+/* ── Inline code ── */
+.prose-base code,
+.prose-compact code {
+  @apply bg-primary-subtle text-primary-fg-strong text-[0.875em] px-1.5 py-0.5 rounded;
+}
+
+/* ── Code blocks ── */
+.prose-base pre,
+.prose-compact pre {
+  @apply bg-surface-muted border border-edge rounded-lg overflow-x-auto;
+}
+.prose-base pre code,
+.prose-compact pre code {
+  @apply bg-transparent p-0 text-fg-secondary;
+}
+
+/* ── Blockquote ── */
+.prose-base blockquote,
+.prose-compact blockquote {
+  @apply border-l-3 border-primary-500 pl-4 text-primary-fg;
+}
+
+/* ── Table ── */
+.prose-base table,
+.prose-compact table {
+  border-collapse: collapse;
+  @apply w-full block overflow-x-auto;
+  -webkit-overflow-scrolling: touch;
+}
+.prose-base th,
+.prose-compact th,
+.prose-base td,
+.prose-compact td {
+  @apply border border-edge px-3 py-2 text-left;
+}
+.prose-base th,
+.prose-compact th {
+  @apply bg-surface-muted font-semibold text-fg;
+}
+
+/* ── Images ── */
+.prose-base img,
+.prose-compact img {
+  @apply max-w-full rounded-lg;
+}
+
+/* ── HR ── */
+.prose-base hr,
+.prose-compact hr {
+  @apply border-edge;
+}
+
+/* ── Lists ── */
+.prose-base ul,
+.prose-compact ul,
+.prose-base ol,
+.prose-compact ol {
+  list-style: revert;
+}
+
+/* ─── prose-base: spacious variant for wiki / docs ─── */
+.prose-base {
+  @apply leading-relaxed;
+}
+.prose-base h1 {
+  @apply text-lg font-bold text-fg mt-4 mb-2;
+}
+.prose-base h2 {
+  @apply text-base font-semibold text-fg mt-4 mb-1.5;
+}
+.prose-base h3 {
+  @apply text-[15px] font-semibold text-fg mt-3 mb-1;
+}
+.prose-base p {
+  @apply my-2;
+}
+.prose-base pre {
+  @apply p-4 my-3;
+}
+.prose-base blockquote {
+  @apply my-3;
+}
+.prose-base table {
+  @apply my-3;
+}
+.prose-base ul,
+.prose-base ol {
+  @apply pl-6 my-2;
+}
+.prose-base li {
+  @apply my-1;
+}
+.prose-base hr {
+  @apply my-6;
+}
+
+/* ─── prose-compact: tight variant for chat / agent messages ─── */
+.prose-compact {
+  @apply leading-normal;
+}
+.prose-compact h1 {
+  @apply text-base font-bold text-fg mt-2 mb-1;
+}
+.prose-compact h2 {
+  @apply text-[15px] font-semibold text-fg mt-2 mb-0.5;
+}
+.prose-compact h3 {
+  @apply text-sm font-semibold text-fg mt-1.5 mb-0.5;
+}
+.prose-compact p {
+  @apply my-1;
+}
+.prose-compact pre {
+  @apply p-3 my-2;
+}
+.prose-compact blockquote {
+  @apply my-2;
+}
+.prose-compact table {
+  @apply my-2;
+}
+.prose-compact ul,
+.prose-compact ol {
+  @apply pl-5 my-1;
+}
+.prose-compact li {
+  @apply my-0.5;
+}
+.prose-compact hr {
+  @apply my-4;
+}
+
+/* ─── Dark prose adjustments ─── */
+.dark-theme .prose-base pre,
+.dark-theme .prose-compact pre {
+  @apply bg-black/30 border-edge;
+}
+.dark-theme .prose-base pre code,
+.dark-theme .prose-compact pre code {
+  @apply text-fg;
+}
+.dark-theme .prose-base th,
+.dark-theme .prose-compact th {
+  background: rgba(255, 255, 255, 0.05);
+}
+/* Inline code outside prose */
+.dark-theme code:not(.prose-base code):not(.prose-compact code) {
+  @apply bg-primary-subtle text-primary-fg;
+}
+
+/* ─── Syntax Highlighting (lightweight) ─── */
+.hl-pre {
+  position: relative;
+}
+.hl-lang {
+  @apply absolute top-1.5 right-2 text-[10px] text-fg-faint uppercase tracking-wider select-none;
+}
+.hl-keyword {
+  @apply text-purple-600 font-medium;
+}
+.hl-string {
+  @apply text-green-700;
+}
+.hl-comment {
+  @apply text-fg-faint italic;
+}
+.hl-number {
+  @apply text-blue-600;
+}
+.dark-theme .hl-keyword {
+  color: #c4b5fd;
+}
+.dark-theme .hl-string {
+  color: #86efac;
+}
+.dark-theme .hl-number {
+  color: #93c5fd;
+}
+
+/* ─── Animations ─── */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Typewriter animation for AI-generated session titles */
+@keyframes typewriter-reveal {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.animate-typewriter {
+  animation: typewriter-reveal 0.8s steps(20, end);
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}

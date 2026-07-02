@@ -67,6 +67,8 @@ export const zh = {
     stop: '停止',
     newChat: '新会话',
     history: '历史会话',
+    themeLight: '切换到浅色',
+    themeDark: '切换到深色',
     noHistory: '还没有会话。',
     untitled: '未命名',
   },

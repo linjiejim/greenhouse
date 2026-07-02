@@ -6,7 +6,7 @@ import { I18nProvider } from '@greenhouse/ui/lib/i18n';
 import { initTheme } from '@greenhouse/ui/lib/theme';
 import { SidePanelApp } from './app';
 
-initTheme();
+initTheme('light');
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

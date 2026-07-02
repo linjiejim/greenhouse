@@ -77,6 +77,8 @@ export const en = {
     stop: 'Stop',
     newChat: 'New conversation',
     history: 'History',
+    themeLight: 'Switch to light',
+    themeDark: 'Switch to dark',
     noHistory: 'No conversations yet.',
     untitled: 'Untitled',
   },
