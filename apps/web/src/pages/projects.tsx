@@ -427,20 +427,21 @@ export function ProjectsPage() {
     loadUsers();
   }, [loadUsers]);
 
+  // The create button now lives in the sidebar "PROJECTS" header; it opens this page's dialog via an event.
+  useEffect(() => {
+    const handler = () => setShowCreate(true);
+    window.addEventListener('projects:create', handler);
+    return () => window.removeEventListener('projects:create', handler);
+  }, []);
+
+  // Reload our own list and notify the sidebar panel after a project is created.
+  const handleCreated = useCallback(() => {
+    loadProjects();
+    window.dispatchEvent(new CustomEvent('projects:changed'));
+  }, [loadProjects]);
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-edge bg-surface-raised">
-        <div className="flex items-center gap-2">
-          <FolderKanban size={18} className="text-primary-fg" />
-          <h1 className="text-base font-semibold text-fg">Projects</h1>
-          {view === 'cards' && <span className="text-xs text-fg-faint">({projects.length})</span>}
-        </div>
-        <Button size="sm" onClick={() => setShowCreate(true)} data-testid="projects-new">
-          <Plus size={14} className="mr-1" /> {t('projects.title')}
-        </Button>
-      </div>
-
       {/* Toolbar: View Switch + Filters */}
       <div className="flex items-center gap-2 px-4 md:px-6 py-2 border-b border-edge bg-surface-sunken/50 flex-wrap">
         {/* View toggle */}
@@ -605,7 +606,7 @@ export function ProjectsPage() {
       <CreateProjectDialog
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        onCreated={loadProjects}
+        onCreated={handleCreated}
         users={users}
       />
     </div>

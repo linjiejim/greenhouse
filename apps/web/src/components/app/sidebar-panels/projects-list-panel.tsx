@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Spinner, SearchInput } from '../../ui';
 import { authFetch } from '../../../lib/auth';
-import { Lock } from '../../../lib/icons';
+import { Lock, Plus } from '../../../lib/icons';
 
 interface ProjectSummary {
   id: number;
@@ -51,6 +51,13 @@ export function ProjectsListPanel({ collapsed }: ProjectsListPanelProps) {
     loadProjects();
   }, [loadProjects]);
 
+  // Reload when a project is created/changed elsewhere (e.g. the create dialog on the Projects page).
+  useEffect(() => {
+    const handler = () => loadProjects();
+    window.addEventListener('projects:changed', handler);
+    return () => window.removeEventListener('projects:changed', handler);
+  }, [loadProjects]);
+
   if (collapsed) return null;
 
   const filtered = searchQuery
@@ -59,8 +66,17 @@ export function ProjectsListPanel({ collapsed }: ProjectsListPanelProps) {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="px-3 py-2 flex-shrink-0">
+      <div className="px-3 py-2 flex-shrink-0 flex items-center justify-between">
         <span className="text-xs font-medium text-fg-muted uppercase tracking-wide">Projects</span>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('projects:create'))}
+          className="h-5 w-5 flex items-center justify-center rounded text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
+          title="New project"
+          aria-label="New project"
+          data-testid="projects-new"
+        >
+          <Plus size={14} />
+        </button>
       </div>
 
       {/* Search */}
