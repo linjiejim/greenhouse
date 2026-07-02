@@ -71,5 +71,11 @@ export const zh = {
     themeDark: '切换到深色',
     noHistory: '还没有会话。',
     untitled: '未命名',
+
+    actionConfirmTitle: '助手请求操作当前页面',
+    actionClick: '点击「{target}」',
+    actionType: '在「{target}」中输入：{text}',
+    actionAllow: '允许',
+    actionDeny: '拒绝',
   },
 };

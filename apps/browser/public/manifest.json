@@ -18,6 +18,6 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["storage", "sidePanel", "scripting", "activeTab"],
+  "permissions": ["storage", "sidePanel", "scripting", "activeTab", "tabs"],
   "optional_host_permissions": ["http://*/*", "https://*/*"]
 }

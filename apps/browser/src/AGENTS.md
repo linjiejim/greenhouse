@@ -35,9 +35,10 @@ src/
   401-triggered refresh; on a dead refresh token the background clears the slot
   and every page falls back to the login flow via `storage.onChanged`.
 - **Permissions**: keep the static permission set minimal (`storage`,
-  `sidePanel`, `scripting`, `activeTab`). Host access to the instance is
-  requested at connect time via `optional_host_permissions` — never add
-  `<all_urls>` to `host_permissions`.
+  `sidePanel`, `scripting`, `activeTab`, `tabs` — the last one powers
+  `browser_list_tabs`/automation tab metadata). Host access is requested at
+  connect time via `optional_host_permissions` — never add `<all_urls>` to
+  `host_permissions`.
 - **No resident content scripts.** Page context is read on demand with
   `chrome.scripting.executeScript` (`src/lib/page-context.ts`): the user's
   selection is the context (selection-as-context), full-page text only on the
@@ -54,3 +55,21 @@ src/
 - **i18n**: extension keys live in `src/i18n/{en,zh}.ts` (keep both in sync);
   they register through `registerCoreLocaleMessages` — same fallback chain as
   the web app.
+- **Browser automation = client actions.** Every chat turn advertises the
+  `browser_*` tool descriptors (`src/lib/browser-actions.ts`, pure data —
+  descriptor-contract tests in `browser-actions.test.ts`) via `/api/chat`'s
+  `client_actions`; the server pauses the agent step on a `local-tool-request`
+  stream event and the panel executes it (`src/lib/browser-tools.ts`) then
+  POSTs `/api/client-tools/result`. Conventions:
+  - Read/navigate actions (`list_tabs`, `open_tab`, `read_page`,
+    `get_elements`, `scroll`, `wait`) run automatically; **`browser_click` and
+    `browser_type` ALWAYS require per-action user approval** (confirm card in
+    `chat-view.tsx`, target element highlighted on the page first). Never ship
+    an interaction write outside `CONFIRM_ACTIONS`.
+  - Injected functions are serialized by `chrome.scripting` — they must be
+    fully self-contained (no captured module scope). The element indexer pins
+    live nodes on `window.__ghAgentElements`; navigation invalidates indices
+    and executors return a stale-index error the model recovers from by
+    re-listing. Top frame only (no iframe/shadow-DOM piercing) — known limit.
+  - Element-list approach inspired by nanobrowser (Apache-2.0); independent
+    implementation, no vendored code.

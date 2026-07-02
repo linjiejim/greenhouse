@@ -5,7 +5,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Select, Spinner, StatusDot } from '@greenhouse/ui/components/ui';
-import { History, Plus, Send, CircleStop, FileText, BookOpen, Sun, Moon } from '@greenhouse/ui/lib/icons';
+import { History, Plus, Send, CircleStop, FileText, BookOpen, Sun, Moon, ShieldAlert } from '@greenhouse/ui/lib/icons';
 import { setThemeMode } from '@greenhouse/ui/lib/theme';
 import { useT } from '@greenhouse/ui/lib/i18n';
 import { useChat } from './use-chat';
@@ -166,6 +166,8 @@ export function ChatView() {
             />
           )}
 
+          {chat.pendingAction && <ActionConfirmCard action={chat.pendingAction} />}
+
           {chat.error && (
             <p className="mx-3 mb-1 rounded border border-danger bg-danger-subtle px-2 py-1 text-xs text-danger-fg">
               {chat.error}
@@ -210,6 +212,43 @@ export function ChatView() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * Per-action approval gate for browser automation writes (click / type). The
+ * target element is highlighted on the page while this card is visible; the
+ * executor stays paused until the user answers (or the turn ends → deny).
+ */
+function ActionConfirmCard({ action }: { action: NonNullable<ReturnType<typeof useChat>['pendingAction']> }) {
+  const t = useT();
+  const target = action.targetText || '…';
+  return (
+    <div className="mx-3 mb-2 rounded-lg border border-warning bg-warning-subtle p-3 text-sm">
+      <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-warning-fg">
+        <ShieldAlert size={14} /> {t('panel.actionConfirmTitle')}
+      </p>
+      <p className="break-words text-fg">
+        {action.toolId === 'browser_type'
+          ? t('panel.actionType', { target, text: action.inputText ?? '' })
+          : t('panel.actionClick', { target })}
+      </p>
+      {action.pageUrl && <p className="mt-0.5 truncate text-[11px] text-fg-faint">{action.pageUrl}</p>}
+      <div className="mt-2 flex gap-2">
+        <button
+          className="rounded-md bg-primary-600 px-3 py-1 text-xs font-medium text-white hover:bg-primary-700"
+          onClick={() => action.resolve(true)}
+        >
+          {t('panel.actionAllow')}
+        </button>
+        <button
+          className="rounded-md border border-edge-strong px-3 py-1 text-xs text-fg-secondary hover:bg-surface-muted"
+          onClick={() => action.resolve(false)}
+        >
+          {t('panel.actionDeny')}
+        </button>
+      </div>
     </div>
   );
 }

@@ -81,5 +81,12 @@ export const en = {
     themeDark: 'Switch to dark',
     noHistory: 'No conversations yet.',
     untitled: 'Untitled',
+
+    // Browser automation confirm gate
+    actionConfirmTitle: 'Assistant wants to act on this page',
+    actionClick: 'Click "{target}"',
+    actionType: 'Type into "{target}": {text}',
+    actionAllow: 'Allow',
+    actionDeny: 'Deny',
   },
 };
