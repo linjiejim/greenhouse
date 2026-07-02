@@ -99,15 +99,17 @@ For local dev you can start only Postgres from the same file: `docker compose up
 ### Example dataset (`pnpm seed`)
 
 `data/examples/` holds a de-identified reference dataset (fictional company "Greenhouse") —
-one JSONL file per table, imported by `apps/api/src/cli/seed.ts` (`pnpm seed`). It exists to
-explore/validate a fresh install and covers Tiers 1–3 (identity, knowledge base, projects,
-chat, and power features). **`pnpm seed` calls `resetSchema()` first — it wipes all rows;
-never run it against a DB with real data.** When you add/rename a table or change a column that
-the dataset populates, update the matching `data/examples/<table>.json` and its
-[`README.md`](data/examples/README.md), and add the table to `LOAD_ORDER` in `seed.ts` (FK-safe
-order). Auth secrets are never baked in: `users.json` carries a plaintext `password` hashed at
-load; `api_clients`/`llm_upstreams`/`email_accounts` (instance-secret-encrypted) are not
-seeded.
+one JSONL file per table, imported by `apps/api/src/cli/admin/seed.ts` (`pnpm seed`, i.e.
+`pnpm admin seed`). It exists to explore/validate a fresh install and covers Tiers 1–3
+(identity, knowledge base, projects, chat, and power features). **On a non-empty DB `pnpm seed`
+refuses** and prints the choices: `--reset` (calls `resetSchema()` to wipe all rows first — a
+destructive action gated behind typing the DB name, or `--yes` to skip) or `--keep` (load on
+top). On an empty DB it just loads. When you add/rename a table or change a column that the
+dataset populates, update the matching `data/examples/<table>.json` and its
+[`README.md`](data/examples/README.md), and add the table to `LOAD_ORDER` in `admin/seed.ts`
+(FK-safe order). Auth secrets are never baked in: `users.json` carries a plaintext `password`
+hashed at load; `api_clients`/`llm_upstreams`/`email_accounts` (instance-secret-encrypted) are
+not seeded.
 
 ## Project structure (pnpm monorepo)
 
@@ -127,7 +129,8 @@ greenhouse/
 │   │       ├── scheduler/    # cron scheduler + executor (automations)
 │   │       ├── email/        # IMAP/SMTP client + security
 │   │       ├── storage/      # upload storage (local disk)
-│   │       └── cli/          # CLI entrypoints (chat, admin-create)
+│   │       └── cli/          # admin console: admin.ts dispatcher + admin/* (users, tools,
+│   │                         #   profiles, sessions, seed, db, doctor, api-client); + chat.ts
 │   └── web/              # React SPA — pages, components, lib, stores
 │       └── src/
 │           ├── pages/        # page components

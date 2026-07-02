@@ -97,11 +97,13 @@ cp .env.example .env && ./scripts/gen-secrets.sh   # fills the required random s
 # 4. Apply the migration chain
 pnpm drizzle-kit migrate
 
-# 5. Create the first super-admin
+# 5. Create the first super-admin — or skip to step 6 to load the demo dataset instead
 pnpm admin:create
 
-# 6. (optional) Load the example dataset to explore the app with realistic content
-pnpm seed        # ⚠️ wipes existing rows, then loads data/examples/
+# 6. (optional) Instead of a bare admin, load the example dataset (it bundles demo
+#    admins) to explore with realistic content. Fresh DB: no flag needed. To re-seed
+#    a populated DB, use `pnpm seed --reset` (wipes first, asks to confirm).
+pnpm seed
 
 # 7. Run the dev servers (Vite web :3100 + API :3000, Vite proxies /api → api)
 pnpm dev
@@ -119,6 +121,14 @@ frontend changes hot-reload.
 > validate every major feature. Every seeded user logs in with the password `greenhouse`
 > (e.g. `maya@greenhouse.example`). See [`data/examples/README.md`](data/examples/README.md).
 > `pnpm seed` replaces `pnpm admin:create` for a demo install — it seeds its own admin.
+> On a non-empty database it refuses unless you pass `--reset` (wipe first) or `--keep`
+> (load on top).
+
+> **Admin console** — `pnpm admin <command>` is the dev/ops entry point for a self-hosted
+> instance, all in-process (no running server needed): `users` (list / show / create),
+> `tools`, `profiles`, `sessions` (browse + dump a transcript for debugging), `stats`,
+> `seed`, `db reset`, `api-client` (mint/list keys), and `doctor` (env + DB readiness check).
+> Run `pnpm admin` for the full command list.
 
 ## One-command Docker deploy
 

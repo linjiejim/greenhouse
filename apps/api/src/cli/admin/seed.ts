@@ -1,36 +1,30 @@
 /**
- * CLI: Seed the database with the example dataset in `data/examples/`.
+ * `admin seed` — load the example dataset in `data/examples/`.
  *
- * Usage:
- *   pnpm seed                 # wipe + load the full example dataset
- *   pnpm seed --keep          # load without wiping first (may hit unique clashes)
- *   pnpm seed --password foo  # override the shared demo password (default: greenhouse)
+ *   pnpm admin seed              # empty DB: load. non-empty DB: refuse & explain.
+ *   pnpm admin seed --reset      # wipe ALL data first, then load (double-confirm)
+ *   pnpm admin seed --keep       # load on top of existing rows (may clash)
+ *   pnpm admin seed --password p # override the shared demo password (default: greenhouse)
+ *   pnpm admin seed --reset --yes  # skip the confirmation (scripts/CI)
  *
  * Each file in `data/examples/` is named after a table and holds JSONL — one JSON
- * object per line. Files load in a fixed FK-safe order (see LOAD_ORDER). Rows may
- * use native arrays/objects for JSON-as-text columns; they are stringified on the
- * way in. `users.json` rows carry a plaintext `password` (not `password_hash`);
- * it is scrypt-hashed here so every demo account shares one known password.
- *
- * The importer talks to Postgres through the same `@greenhouse/db` provider the
- * app uses (`resetSchema` + `executeRaw`), so it stays in lockstep with the
+ * object per line, loaded in a fixed FK-safe order (LOAD_ORDER). Rows may use
+ * native arrays/objects for JSON-as-text columns; they are stringified on the way
+ * in. `users.json` rows carry a plaintext `password`; it is scrypt-hashed here so
+ * every demo account shares one known password. Runs through the same provider
+ * the app uses (`resetSchema` + `executeRaw`), so it stays in lockstep with the
  * migration chain — run `npx drizzle-kit migrate` first on a fresh database.
  */
 
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { config } from 'dotenv';
 import { sql } from 'drizzle-orm';
-import { DATA_DIR, ENV_FILE } from '../paths.js';
-
-config({ path: ENV_FILE });
-
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://greenhouse:greenhouse@localhost:5432/greenhouse';
-
-import { initDatabase } from '@greenhouse/db';
-import { hashPassword } from '../auth/password.js';
+import chalk from 'chalk';
+import { DATA_DIR } from '../../paths.js';
+import { hashPassword } from '../../auth/password.js';
 import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
 import { PRODUCT_NAME } from '@greenhouse/utils/brand';
+import { openDb, parseFlags, flagStr, flagBool, confirmExact, heading, dim, dbName } from './shared.js';
 
 const EXAMPLES_DIR = resolve(DATA_DIR, 'examples');
 
@@ -106,27 +100,47 @@ function buildInsert(table: string, row: Row) {
   return sql`INSERT INTO ${sql.identifier(table)} (${sql.join(idents, sql`, `)}) VALUES (${sql.join(values, sql`, `)})`;
 }
 
-async function main() {
-  const args = process.argv.slice(2);
-  const keep = args.includes('--keep');
-  const pwIdx = args.indexOf('--password');
-  const demoPassword = pwIdx >= 0 ? (args[pwIdx + 1] ?? 'greenhouse') : 'greenhouse';
+export async function run(args: string[]): Promise<number> {
+  const { flags } = parseFlags(args);
+  const keep = flagBool(flags, 'keep');
+  const reset = flagBool(flags, 'reset');
+  const yes = flagBool(flags, 'yes');
+  const demoPassword = flagStr(flags, 'password') ?? 'greenhouse';
 
   if (!existsSync(EXAMPLES_DIR)) {
-    console.error(`No example dataset found at ${EXAMPLES_DIR}`);
-    process.exit(1);
+    console.error(chalk.red(`No example dataset found at ${EXAMPLES_DIR}`));
+    return 1;
   }
 
-  console.log(`\n🌱 ${PRODUCT_NAME} — seeding from ${EXAMPLES_DIR}\n`);
+  const db = await openDb();
+  await db.initSchema(); // fail fast if the schema hasn't been migrated
 
-  const db = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
-  // Fail fast if the schema hasn't been migrated yet.
-  await db.initSchema();
+  // Guard: a non-empty database needs an explicit strategy.
+  const userCount = await db.users.count();
+  if (userCount > 0 && !keep && !reset) {
+    console.log(chalk.yellow(`⚠ Database "${dbName()}" already has data (${userCount} user(s)).`));
+    console.log('  Re-run with one of:');
+    console.log(`    ${chalk.bold('--reset')}  wipe ALL data first, then seed  ${chalk.red('(destructive)')}`);
+    console.log(`    ${chalk.bold('--keep')}   load example rows on top ${dim('(may hit unique clashes)')}`);
+    return 1;
+  }
 
+  if (reset && userCount > 0 && !yes) {
+    console.log(
+      chalk.red.bold(`\n⚠ This PERMANENTLY DELETES all data in "${dbName()}" (${userCount} users) before seeding.`),
+    );
+    const ok = await confirmExact(`Type the database name "${chalk.bold(dbName())}" to confirm: `, dbName());
+    if (!ok) {
+      console.log('Cancelled.');
+      return 1;
+    }
+  }
+
+  console.log(heading(`${PRODUCT_NAME} — seeding from ${EXAMPLES_DIR}`));
   const passwordHash = await hashPassword(demoPassword);
 
   if (!keep) {
-    console.log('• wiping existing rows (resetSchema)…');
+    console.log(dim('• wiping existing rows (resetSchema)…'));
     await db.resetSchema();
   }
 
@@ -137,7 +151,7 @@ async function main() {
 
     const rows = readJsonl(file);
     if (rows.length === 0) {
-      console.log(`• ${table}: (empty)`);
+      console.log(dim(`• ${table}: (empty)`));
       continue;
     }
 
@@ -157,8 +171,7 @@ async function main() {
       await db.executeRaw(buildInsert(table, row));
     }
 
-    // Realign the serial sequence so future app inserts don't collide with our
-    // explicit ids.
+    // Realign the serial sequence so future app inserts don't collide with ours.
     if (hasNumericId) {
       await db.executeRaw(
         sql.raw(`SELECT setval(pg_get_serial_sequence('${table}', 'id'), (SELECT MAX(id) FROM ${table}), true)`),
@@ -169,14 +182,8 @@ async function main() {
     console.log(`• ${table}: ${rows.length} rows`);
   }
 
-  console.log(`\n✅ seeded ${totalRows} rows across ${LOAD_ORDER.length} tables.`);
-  console.log(`   Demo login password for every seeded user: "${demoPassword}"`);
-  console.log(`   Try: super admin → maya@greenhouse.example\n`);
-
-  await db.close();
+  console.log(chalk.green(`\n✓ seeded ${totalRows} rows across ${LOAD_ORDER.length} tables.`));
+  console.log(dim(`  Demo login password for every seeded user: "${demoPassword}"`));
+  console.log(dim('  Try: super admin → maya@greenhouse.example'));
+  return 0;
 }
-
-main().catch((err) => {
-  console.error('Fatal:', err);
-  process.exit(1);
-});
