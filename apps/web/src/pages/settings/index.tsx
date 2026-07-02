@@ -6,7 +6,7 @@
  * - Personal: Automation, My Prompts, My Agents
  * - Workspace: Groups, Cloud Email
  * - Administration (super only): Users, AI Gateway, MCP Access, System Agents, Agent Usages, Feature Requests
- * - Labs (super only, beta): Memory
+ * - Labs (super only, beta): Memory, Branding Studio
  */
 
 import React from 'react';
@@ -29,6 +29,7 @@ import { MemoryPanel } from './memory';
 import { GroupsPanel } from './groups';
 import { LlmGatewayAdminPanel } from './admin-llm-gateway';
 import { McpKeysPanel } from './mcp-keys';
+import { BrandingStudioPanel } from './branding-studio';
 import { findSettingsPanel } from './panels.extensions';
 
 // ─── Sub-module helpers ─────────────────────────────────
@@ -82,6 +83,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
           {effectiveModule === 'groups' && <GroupsPanel />}
           {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
           {effectiveModule === 'memory' && <MemoryPanel />}
+          {effectiveModule === 'branding' && <BrandingStudioPanel />}
           {/* Private fork panels (empty upstream) — see panels.extensions.tsx. */}
           {findSettingsPanel(effectiveModule)?.render()}
         </div>

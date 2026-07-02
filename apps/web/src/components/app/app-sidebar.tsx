@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppLogo } from '../ui';
+import { BRANDING } from '../../lib/branding.extensions';
 import { SidebarAccountMenu } from './user-menu';
 import {
   MessageCircle,
@@ -214,7 +215,7 @@ export function AppSidebar({
           {/* Column 2: Title */}
           <div className="flex flex-col min-w-0 flex-1 gap-0.5">
             <a href="#/chat" className="hover:opacity-80 transition-opacity">
-              <span className="font-semibold text-fg text-sm leading-tight">Greenhouse</span>
+              <span className="font-semibold text-fg text-sm leading-tight">{BRANDING.productName}</span>
             </a>
           </div>
 

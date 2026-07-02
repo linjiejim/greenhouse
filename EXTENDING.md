@@ -21,7 +21,7 @@ Every extension point is guarded by a test that pins it **empty in this repo**, 
 | S4-db | DB table + service (typed `db.x.*`) | `packages/db/src/extensions.ts` | `createExtensionServices` + `EXTENSION_RESET_TABLES` (flow into the inferred `DatabaseProvider`) |
 | S4-profile | system profile | `apps/api/src/profiles/extensions.ts` | `EXTENSION_SYSTEM_PROFILES` |
 | S5 | settings nav section / translations | `apps/web/src/lib/nav-registry.extensions.ts` / `registerLocaleMessages` | `EXTENSION_SETTINGS_SECTIONS` / i18n fallback |
-| S6 | branding | *(env)* | `PRODUCT_NAME`, `CORS_ALLOWED_ORIGINS`, storage/vision env — no code edit |
+| S6 | branding (name / logo / theme tokens) | `apps/web/src/branding.extensions.tsx` + `apps/web/src/branding.css` + *(env)* | `BRANDING` (product name + logo mark); design-token CSS overrides — generate with Settings → Branding Studio (super) and paste into `branding.css`; `PRODUCT_NAME` env sets the document title + `BRANDING` default; replace `public/favicon.*` assets. Env-only knobs: `CORS_ALLOWED_ORIGINS`, storage/vision env |
 | S7 | feature flag | *(fork startup code)* | `registerFeatureFlags()` from `@greenhouse/types` |
 | S8 | top-level page + settings panel | `apps/web/src/lib/page-registry.tsx` + `apps/web/src/pages/settings/panels.extensions.tsx` | `EXTRA_PAGES` / `findSettingsPanel` |
 | S9 | custom chat card for a tool output | `apps/web/src/components/tool-call/artifact-renderers.ts` | `ARTIFACT_RENDERERS` |

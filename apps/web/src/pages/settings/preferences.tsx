@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { Button, Textarea } from '../../components/ui';
 import { authFetch } from '../../lib/auth';
 import { Sparkles, Palette, Globe } from '../../lib/icons';
-import { THEMES, applyTheme, getActiveTheme } from '../../lib/theme';
+import { ThemeModeSelector } from '../../components/app/theme-mode-selector';
 import { useI18n, LOCALE_OPTIONS } from '../../lib/i18n';
 import { useAuthStore } from '../../stores';
 
@@ -21,13 +21,11 @@ export function PreferencesPanel() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTheme, setActiveTheme] = useState(getActiveTheme());
 
   useEffect(() => {
     setNotes(currentUser?.notes ?? '');
     setSaved(false);
     setError(null);
-    setActiveTheme(getActiveTheme());
   }, [currentUser?.notes]);
 
   const handleSave = async () => {
@@ -96,48 +94,13 @@ export function PreferencesPanel() {
 
       {/* Theme + Language — each on its own full-width row */}
       <div className="space-y-6">
-        {/* Theme Selector — compact grid */}
+        {/* Theme Mode — light / dark / system */}
         <section>
           <label className="flex items-center gap-2 text-sm font-medium text-fg-secondary mb-2.5">
             <Palette size={14} className="text-primary-fg" />
             {t('preferences.theme')}
           </label>
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
-            {THEMES.map((theme) => {
-              const isActive = activeTheme === theme.key;
-              const rgb500 = theme.primary[500];
-              const previewColor = `rgb(${rgb500})`;
-              return (
-                <button
-                  key={theme.key}
-                  type="button"
-                  onClick={() => {
-                    applyTheme(theme.key);
-                    setActiveTheme(theme.key);
-                  }}
-                  className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-all ${
-                    isActive
-                      ? 'border-primary-500 bg-primary-subtle/50 shadow-sm'
-                      : 'border-edge hover:border-edge-strong hover:bg-surface-sunken'
-                  }`}
-                >
-                  <div
-                    className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] ${
-                      theme.dark ? 'ring-1 ring-gray-300' : ''
-                    }`}
-                    style={{ backgroundColor: previewColor }}
-                  >
-                    <span className="drop-shadow-sm">{theme.emoji}</span>
-                  </div>
-                  <span
-                    className={`text-[10px] font-medium leading-tight truncate ${isActive ? 'text-primary-fg-strong' : 'text-fg-secondary'}`}
-                  >
-                    {theme.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <ThemeModeSelector />
         </section>
 
         {/* Language Selector */}

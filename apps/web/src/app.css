@@ -1,9 +1,20 @@
 @import 'tailwindcss';
 
-@source "../**/*.{tsx,ts}";
-
-/* ─── Custom dark variant: driven by .dark-theme class ─── */
-@custom-variant dark (&:where(.dark-theme, .dark-theme *));
+/* Design tokens (semantic colors, light/dark values) live in @greenhouse/ui —
+   shared with any future non-web shell. Forks still override in branding.css. */
+/* ─── @greenhouse/ui design tokens ───────────────────────────────────────────
+ *
+ * Single source of the semantic color tokens shared by every Greenhouse
+ * frontend. Consumed by the web app via `@import '@greenhouse/ui/styles/tokens.css'`
+ * in apps/web/src/app.css (and by future shells the same way).
+ *
+ * - `@theme static inline` maps Tailwind v4 utility colors onto the CSS vars.
+ * - `:root` holds the light defaults; `.dark-theme` holds the dark overrides
+ *   (JS only toggles the class — see @greenhouse/ui/lib/theme).
+ * - Downstream forks override the raw `--primary-*` / `--t-*` vars in the
+ *   app-level branding.css seam; keep token VALUES out of JS so that cascade
+ *   always wins.
+ */
 
 /* ─── Theme: Semantic color tokens mapped to CSS variables ─── */
 @theme static inline {
@@ -20,7 +31,7 @@
   --color-edge: var(--t-edge);
   --color-edge-strong: var(--t-edge-strong);
 
-  /* Primary brand color palette (driven by JS theme switcher) */
+  /* Primary brand color palette (RGB triplets; fork-overridable in branding.css) */
   --color-primary-50: rgb(var(--primary-50));
   --color-primary-100: rgb(var(--primary-100));
   --color-primary-200: rgb(var(--primary-200));
@@ -70,7 +81,7 @@
 
 /* ─── Light theme (default) ─── */
 :root {
-  /* Primary palette defaults — Teal (overridden by JS theme switcher) */
+  /* Primary palette — Teal upstream default (override in branding.css) */
   --primary-50: 240 253 250;
   --primary-100: 204 251 241;
   --primary-200: 153 246 228;
@@ -189,6 +200,14 @@
   --t-primary-fg: rgb(var(--primary-300));
   --t-primary-fg-strong: rgb(var(--primary-200));
 }
+
+@source "../**/*.{tsx,ts}";
+/* The shared UI kit's components live outside this app — scan them too so the
+   utility classes they use survive Tailwind's tree-shaking. */
+@source "../../../packages/ui/src/**/*.{tsx,ts}";
+
+/* ─── Custom dark variant: driven by .dark-theme class ─── */
+@custom-variant dark (&:where(.dark-theme, .dark-theme *));
 
 /* ─── Theme transition (smooth theme switching) ─── */
 * {

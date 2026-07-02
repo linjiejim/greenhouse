@@ -1,0 +1,21 @@
+/*
+ * Downstream-fork branding overrides (S6 seam) — EMPTY upstream (comments only).
+ *
+ * Loaded after app.css, so plain CSS-variable redefinitions here win the
+ * cascade. Paste the block exported by Settings → Branding Studio (super only),
+ * or hand-write overrides for any token defined in app.css.
+ *
+ * Brand palette shades (--primary-50 … --primary-900) are RGB triplets;
+ * --t-* tokens are regular CSS colors. Light-mode values go in `:root`,
+ * dark-mode values in `.dark-theme`:
+ *
+ *   :root {
+ *     --primary-500: 20 184 166;
+ *     --t-surface: #ffffff;
+ *   }
+ *   .dark-theme {
+ *     --t-surface: #0f172a;
+ *   }
+ *
+ * Keep this file comment-only in the open-source repo — a guard test pins it.
+ */

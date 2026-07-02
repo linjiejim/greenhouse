@@ -134,10 +134,34 @@ export default {
     invalidPassword: 'Invalid password',
   },
 
+  // Branding Studio (super only)
+  brandingStudio: {
+    intro:
+      'Tune the brand palette and design tokens with live preview, then export the CSS overrides into src/branding.css of your fork. Nothing is saved on the server — this page only previews and exports.',
+    brandColor: 'Brand color',
+    brandColorHint: 'One color generates the whole primary-50…900 palette (OKLCH ramp).',
+    palettePreview: 'Palette preview',
+    tokens: 'Design tokens',
+    tokensHint: 'Edits apply to the mode being previewed — switch preview mode to edit the other set.',
+    groupSurface: 'Surfaces',
+    groupText: 'Text',
+    groupBorder: 'Borders',
+    previewMode: 'Preview mode',
+    exportTitle: 'Export CSS overrides',
+    exportHint: 'Paste this block into apps/web/src/branding.css in your fork.',
+    copy: 'Copy',
+    copied: 'Copied',
+    reset: 'Reset preview',
+    noChanges: 'No changes yet — pick a brand color or edit a token to build the export.',
+  },
+
   // Preferences
   preferences: {
     title: 'Preferences',
     theme: 'Theme',
+    themeLight: 'Light',
+    themeDark: 'Dark',
+    themeSystem: 'System',
     language: 'Language',
     personalNotes: 'Personal Notes',
     notesHint:

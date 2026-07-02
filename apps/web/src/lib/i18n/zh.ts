@@ -142,10 +142,34 @@ const zh: Messages = {
     invalidPassword: '密码错误',
   },
 
+  // 品牌工作台（仅超级管理员）
+  brandingStudio: {
+    intro:
+      '实时预览品牌色板与设计 token 的调整，调好后导出 CSS 覆盖块，粘贴到 fork 的 src/branding.css。本页面只做预览和导出，不会在服务端保存任何内容。',
+    brandColor: '品牌色',
+    brandColorHint: '一个颜色生成整套 primary-50…900 色板（OKLCH 色阶）。',
+    palettePreview: '色板预览',
+    tokens: '设计 Token',
+    tokensHint: '编辑作用于当前预览的模式——切换预览模式可编辑另一套。',
+    groupSurface: '表面',
+    groupText: '文字',
+    groupBorder: '边框',
+    previewMode: '预览模式',
+    exportTitle: '导出 CSS 覆盖',
+    exportHint: '把这段粘贴到 fork 的 apps/web/src/branding.css。',
+    copy: '复制',
+    copied: '已复制',
+    reset: '重置预览',
+    noChanges: '暂无改动——选择品牌色或编辑 token 后生成导出内容。',
+  },
+
   // 偏好设置
   preferences: {
     title: '偏好设置',
     theme: '主题',
+    themeLight: '浅色',
+    themeDark: '深色',
+    themeSystem: '跟随系统',
     language: '语言',
     personalNotes: '个人备注',
     notesHint: '您的备注将注入到 AI Agent 的上下文中，用于个性化回复。例如：您的角色、语言偏好、沟通风格或关注领域。',

@@ -7,6 +7,9 @@
  */
 
 import './app.css';
+// Fork branding token overrides (S6) — comment-only upstream. Imported after
+// app.css so redefinitions win the cascade.
+import './branding.css';
 // Fork runtime web extensions (URL context resolvers, locale messages). No-op
 // upstream — see bootstrap.extensions.ts. Imported first so registrations run
 // before the app renders.

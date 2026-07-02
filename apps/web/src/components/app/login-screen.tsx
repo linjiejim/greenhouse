@@ -7,6 +7,7 @@ import { Input, AppLogo } from '../ui';
 import { loginInternal, loginExternal } from '../../lib/auth';
 import type { AuthenticatedUser } from '../../lib/auth';
 import { useT } from '../../lib/i18n';
+import { BRANDING } from '../../lib/branding.extensions';
 
 export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser) => void }) {
   const t = useT();
@@ -58,7 +59,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
           <div className="flex justify-center">
             <AppLogo size="xl" logoOnly />
           </div>
-          <h1 className="text-xl font-semibold text-fg mt-2">{t('login.title')}</h1>
+          <h1 className="text-xl font-semibold text-fg mt-2">{BRANDING.productName}</h1>
           <p className="text-sm text-fg-muted mt-1">{t('login.subtitle')}</p>
         </div>
 

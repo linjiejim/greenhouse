@@ -202,6 +202,16 @@ const SETTINGS_LABS: NavModule[] = [
     implemented: true,
     requireRole: ['super'],
   },
+  {
+    id: 'settings.branding',
+    label: 'Branding Studio',
+    icon: Palette,
+    path: '#/settings/branding',
+    parent: 'settings',
+    description: 'Preview brand tokens and export CSS overrides for forks',
+    implemented: true,
+    requireRole: ['super'],
+  },
 ];
 
 export const settingsSections: SettingsNavSection[] = [
