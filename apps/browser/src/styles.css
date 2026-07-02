@@ -1,0 +1,17 @@
+@import 'tailwindcss';
+
+/* Design tokens (semantic colors, light/dark values) are shared with the web
+   app via @greenhouse/ui. */
+@import '@greenhouse/ui/styles/tokens.css';
+@source './**/*.{tsx,ts}';
+/* Scan the shared UI kit too so the utility classes its components use
+   survive Tailwind's tree-shaking. */
+@source '../../../packages/ui/src/**/*.{tsx,ts}';
+
+/* Dark variant driven by the .dark-theme class (same convention as the web app). */
+@custom-variant dark (&:where(.dark-theme, .dark-theme *));
+
+body {
+  background-color: var(--t-surface);
+  color: var(--t-fg);
+}

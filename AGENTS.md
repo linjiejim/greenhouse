@@ -114,6 +114,8 @@ seeded.
 ```
 greenhouse/
 ├── apps/
+│   ├── browser/          # Chrome extension (MV3) — side panel + options, thin client of a
+│   │                     #   self-hosted instance (login + token refresh); see its src/AGENTS.md
 │   ├── api/              # Hono backend — routes, agent runtime, auth, security, scheduler
 │   │   └── src/
 │   │       ├── routes/       # HTTP routes (one file per resource)
@@ -162,6 +164,7 @@ greenhouse/
 | `@greenhouse/contract` | `packages/contract/` | Typed API contract (AppType + hc; **type-only import of `@greenhouse/api`**) |
 | `@greenhouse/api` | `apps/api/` | Backend app |
 | `@greenhouse/web` | `apps/web/` | Frontend app |
+| `@greenhouse/browser` | `apps/browser/` | Chrome extension (MV3) — consumes `@greenhouse/ui` |
 
 ### Import conventions
 

@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Greenhouse Companion",
+  "version": "0.1.0",
+  "description": "Context-aware companion for your self-hosted Greenhouse — ask with page context, search and grow your knowledge base.",
+  "minimum_chrome_version": "114",
+  "action": {
+    "default_title": "Greenhouse"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["storage", "sidePanel", "scripting", "activeTab"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"]
+}
