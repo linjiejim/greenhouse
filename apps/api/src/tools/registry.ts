@@ -24,6 +24,7 @@ import { projectManagerTool } from './projects/project-manager.js';
 import { projectQueryTool } from './projects/project-query.js';
 import { projectMutationTool } from './projects/project-mutation.js';
 import { computeTool } from './compute/tool.js';
+import { exportTableTool } from './files/export-table.js';
 import { emailManagerTool, emailQueryTool, emailMutationTool } from './email/index.js';
 import { sessionHistoryTool } from './sessions/session-history.js';
 import { sessionQueryTool } from './sessions/session-query.js';
@@ -42,6 +43,7 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   externalSearchTool,
   featureRequestTool,
   generateImageTool,
+  exportTableTool,
   projectManagerTool,
   projectQueryTool,
   projectMutationTool,

@@ -11,7 +11,8 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 import { validateMagicBytes } from '../security.js';
-import { putUpload, getUpload } from '../storage/uploads.js';
+import { putUpload, getUpload, deleteUpload, isExpired, expiryOf, isInlineId } from '../storage/uploads.js';
+import { verifyObjectSignature } from '../storage/presign.js';
 import type { AppEnv } from '../app-env.js';
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -84,6 +85,40 @@ const upload = new Hono<AppEnv>()
     });
   })
   /**
+   * GET /api/upload/signed/:id — serve an object via a presigned (HMAC-signed,
+   * expiring) URL, no bearer auth. Mimics an S3/COS presigned GET so the local
+   * object-storage driver's presignGet path is verifiable end-to-end. Public via
+   * the /api/upload/ prefix allowlist; access is gated by the signature + deadline.
+   */
+  .get('/signed/:id', async (c) => {
+    const id = c.req.param('id');
+    if (id.includes('/') || id.includes('..') || id.includes('\\')) {
+      return c.json({ error: 'Invalid file ID' }, 400);
+    }
+    const expSec = Number(c.req.query('exp'));
+    const sig = c.req.query('sig') ?? '';
+    if (!verifyObjectSignature(id, expSec, sig)) {
+      return c.json({ error: 'invalid or missing signature' }, 403);
+    }
+    // Reject on either the URL's own deadline or the object's encoded expiry.
+    if (Date.now() / 1000 > expSec || isExpired(id)) {
+      if (isExpired(id)) void deleteUpload(id).catch(() => {});
+      return c.json({ error: 'expired' }, 410);
+    }
+    let signedObj;
+    try {
+      signedObj = await getUpload(id);
+    } catch (err) {
+      logger.error(`[Upload] ❌ Failed to read signed ${id}: ${toErrorMessage(err)}`);
+      return c.json({ error: 'Failed to read file' }, 500);
+    }
+    if (!signedObj) return c.json({ error: 'File not found' }, 404);
+    c.header('Content-Type', signedObj.contentType);
+    c.header('Cache-Control', 'private, no-store');
+    if (!isInlineId(id)) c.header('Content-Disposition', 'attachment');
+    return c.body(Uint8Array.from(signedObj.buffer).buffer);
+  })
+  /**
    * GET /api/upload/:id — serve uploaded image
    */
   .get('/:id', async (c) => {
@@ -92,6 +127,14 @@ const upload = new Hono<AppEnv>()
     // Security: sanitize filename (no path traversal)
     if (id.includes('/') || id.includes('..') || id.includes('\\')) {
       return c.json({ error: 'Invalid file ID' }, 400);
+    }
+
+    // Expiring exports (exp_<epoch>_…) refuse service past their deadline; the FE
+    // renders an "expired" state, and this 410 is the enforcement for direct links.
+    // Lazily reap the dead object so it doesn't linger on disk / in the bucket.
+    if (isExpired(id)) {
+      void deleteUpload(id).catch(() => {});
+      return c.json({ error: 'expired' }, 410);
     }
 
     let obj;
@@ -106,7 +149,14 @@ const upload = new Hono<AppEnv>()
     }
 
     c.header('Content-Type', obj.contentType);
-    c.header('Cache-Control', 'public, max-age=86400');
+    // Expiring exports may hold sensitive data and outlive their link — keep them
+    // out of shared caches so a cached copy can't be served after expiry. Images
+    // stay long-lived + publicly cacheable.
+    c.header('Cache-Control', expiryOf(id) !== null ? 'private, no-store' : 'public, max-age=86400');
+    // Force a download for non-inline types (csv/xlsx/…). No filename here on
+    // purpose: a filename in this header would override the FE's <a download>
+    // (which carries the friendly, Unicode-safe name for same-origin links).
+    if (!isInlineId(id)) c.header('Content-Disposition', 'attachment');
     // Hand Hono a freshly-backed ArrayBuffer (Node Buffer<ArrayBufferLike> isn't
     // assignable to c.body's overloads).
     return c.body(Uint8Array.from(obj.buffer).buffer);

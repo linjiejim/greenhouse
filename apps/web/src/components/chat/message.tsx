@@ -8,7 +8,7 @@ import { RichMarkdown } from '../rich-markdown';
 import { MessageActions } from './message-actions';
 import { ExportPdfButton } from '../pdf-export';
 import { ToolCallRenderer } from '../tool-call/index';
-import { BodyArtifacts, partitionCalls } from '../tool-call/body-artifacts';
+import { BodyArtifacts, MessageAttachments, partitionCalls } from '../tool-call/body-artifacts';
 import { PipelineStageChart } from './pipeline-stage-chart';
 import type { PipelineStep } from './pipeline-viewer';
 import { estimateCost } from '../../lib/api';
@@ -305,6 +305,19 @@ function MessageBubbleImpl(props: MessageProps) {
   // Cost estimation
   const cost = hasMetrics ? estimateCost({ inputTokens, outputTokens, cachedTokens }) : null;
 
+  // Shared ctx for artifact cards — the inline block above the prose and the
+  // file/media attachments rendered below it.
+  const artifactCtx = {
+    content,
+    onViewWiki: openKnowledgeDoc,
+    onViewSource: (id: string) => openKnowledgeDoc(id),
+    onAskUserSubmit,
+    askUserSubmitted: hasFollowUpUserMessage,
+    onOpenSession: (id: string) => {
+      window.location.hash = `#/chat?session=${id}`;
+    },
+  };
+
   return (
     <div className="animate-fade-in space-y-2">
       <div className="max-w-[90%] min-w-0 group/actions">
@@ -345,22 +358,9 @@ function MessageBubbleImpl(props: MessageProps) {
           </div>
         )}
 
-        {/* Body artifacts — the ask_user form, page-update diffs, generated images. */}
-        {artifactCalls.length > 0 && (
-          <BodyArtifacts
-            calls={artifactCalls}
-            ctx={{
-              content,
-              onViewWiki: openKnowledgeDoc,
-              onViewSource: (id) => openKnowledgeDoc(id),
-              onAskUserSubmit,
-              askUserSubmitted: hasFollowUpUserMessage,
-              onOpenSession: (id) => {
-                window.location.hash = `#/chat?session=${id}`;
-              },
-            }}
-          />
-        )}
+        {/* Body artifacts (above prose) — the ask_user form, page-update diffs. File/
+            media artifacts render at the bottom via <MessageAttachments>. */}
+        {artifactCalls.length > 0 && <BodyArtifacts calls={artifactCalls} ctx={artifactCtx} />}
 
         {/* Main content — flush, no bubble */}
         <div className="relative">
@@ -414,6 +414,9 @@ function MessageBubbleImpl(props: MessageProps) {
             />
           </div>
         </div>
+
+        {/* File/media attachments — download cards & generated files — at the message bottom. */}
+        {artifactCalls.length > 0 && <MessageAttachments calls={artifactCalls} ctx={artifactCtx} />}
 
         {/* References (clickable) — single-line, collapsible */}
         {(hasRefs || hasExternalSources) &&

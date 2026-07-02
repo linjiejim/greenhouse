@@ -751,6 +751,13 @@ export default {
     open: 'Open',
   },
 
+  // Generated file download card (export_table, etc.)
+  exportFile: {
+    download: 'Download',
+    expired: 'Expired',
+    expiredHint: 'This download link has expired. Ask again to regenerate the file.',
+  },
+
   // Chat message actions
   messageActions: {
     translateToChinese: 'Translate to Chinese',

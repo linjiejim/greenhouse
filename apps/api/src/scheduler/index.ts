@@ -16,6 +16,7 @@ import { getDb } from '@greenhouse/db';
 import { executeTask, executeTaskInSession } from './executor.js';
 import { logger } from '@greenhouse/utils/logger';
 import { startMemoryJob, stopMemoryJob } from './memory-job.js';
+import { startUploadsSweep, stopUploadsSweep } from './uploads-sweep-job.js';
 import type { ToolRegistry } from '../agent.js';
 import type { ScheduledTaskRow } from '@greenhouse/db';
 
@@ -51,6 +52,7 @@ export class TaskScheduler {
 
     // System-level jobs
     startMemoryJob();
+    startUploadsSweep();
   }
 
   /**
@@ -191,6 +193,7 @@ export class TaskScheduler {
     }
     this.jobs.clear();
     stopMemoryJob();
+    stopUploadsSweep();
   }
 
   /**

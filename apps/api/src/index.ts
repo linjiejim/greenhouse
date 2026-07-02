@@ -66,6 +66,7 @@ import { initScheduler } from './scheduler/index.js';
 import { createTasksRoute } from './routes/tasks.js';
 import { mountExtraRoutes } from './routes/extensions.js';
 import { bootstrapForkExtensions } from './bootstrap.extensions.js';
+import { maybeRegisterLocalStorageDriver } from './storage/local-driver.js';
 // ws CJS/ESM interop — use namespace import for reliable access
 import * as _ws from 'ws';
 const WsServer = _ws.WebSocketServer ?? (_ws as any).default?.WebSocketServer;
@@ -217,6 +218,9 @@ async function main() {
   // Wire fork runtime extensions (providers, connectors, storage, flags,
   // summarizers) before anything uses them. No-op upstream — see bootstrap.extensions.ts.
   bootstrapForkExtensions();
+  // Dev/verification: register a disk-backed object-storage driver (with presigned
+  // URLs) when STORAGE_DRIVER=local — no-op otherwise, and never overrides a fork's.
+  maybeRegisterLocalStorageDriver();
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
 
   const toolRegistry = createToolRegistry(dbProvider);

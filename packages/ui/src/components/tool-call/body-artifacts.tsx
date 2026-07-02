@@ -99,11 +99,21 @@ export function partitionCalls<T extends { name: string; output?: unknown }>(
   return { trace, artifacts };
 }
 
+/**
+ * File/media artifacts (downloadable exports, generated images) — rendered as
+ * attachments at the BOTTOM of the message (via <MessageAttachments>), kept out of
+ * the top <BodyArtifacts> block.
+ */
+export function isMediaArtifact(call: { name: string }): boolean {
+  return call.name === 'export_table' || call.name === 'generate_image';
+}
+
 // ─── Renderer ────────────────────────────────────────────
 
 export function BodyArtifacts({ calls, ctx }: { calls: ArtifactCall[]; ctx: ArtifactCtx }) {
   const artifacts = calls.filter((c) => {
-    if (!isArtifactCall(c)) return false;
+    // File/media artifacts render at the bottom via <MessageAttachments>, not here.
+    if (!isArtifactCall(c) || isMediaArtifact(c)) return false;
     // Defer the interactive ask_user form until the turn is committed (see `streaming`).
     if (ctx.streaming && (c.output as Record<string, unknown> | undefined)?.type === 'ask_user') {
       return false;
@@ -115,6 +125,31 @@ export function BodyArtifacts({ calls, ctx }: { calls: ArtifactCall[]; ctx: Arti
   return (
     <div className="space-y-2 mb-3">
       {artifacts.map((call, i) => (
+        <BodyArtifactItem key={i} call={call} ctx={ctx} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * File/media attachments — download cards and generated files — rendered at the
+ * BOTTOM of an assistant message (below the prose). A generated image already
+ * embedded in the prose renders inline there, so it is skipped here.
+ */
+export function MessageAttachments({ calls, ctx }: { calls: ArtifactCall[]; ctx: ArtifactCtx }) {
+  const items = calls.filter((c) => {
+    if (!isArtifactCall(c) || !isMediaArtifact(c)) return false;
+    if (c.name === 'generate_image') {
+      const url = (c.output as Record<string, unknown> | undefined)?.url as string | undefined;
+      if (url && ctx.content?.includes(url)) return false; // already inline in the prose
+    }
+    return true;
+  });
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mt-3 space-y-2">
+      {items.map((call, i) => (
         <BodyArtifactItem key={i} call={call} ctx={ctx} />
       ))}
     </div>
@@ -330,10 +365,11 @@ function ExportFileCard({ out }: { out: Record<string, unknown> }) {
           download={filename}
           target="_blank"
           rel="noopener noreferrer"
-          className={`${CARD_ACTION_BTN} inline-flex items-center gap-1`}
+          title={t('exportFile.download')}
+          aria-label={t('exportFile.download')}
+          className="flex-shrink-0 inline-flex items-center justify-center rounded-md border border-edge p-1.5 text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
         >
-          <Download className="h-3.5 w-3.5" />
-          {t('exportFile.download')}
+          <Download className="h-4 w-4" />
         </a>
       )}
     </div>

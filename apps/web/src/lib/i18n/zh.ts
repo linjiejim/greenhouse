@@ -746,6 +746,13 @@ const zh: Messages = {
     open: '打开',
   },
 
+  // 生成文件下载卡片（export_table 等）
+  exportFile: {
+    download: '下载',
+    expired: '已过期',
+    expiredHint: '下载链接已过期，重新提问即可再次生成文件。',
+  },
+
   // 聊天消息操作
   messageActions: {
     translateToChinese: '翻译为中文',
