@@ -3,9 +3,9 @@
  *
  * CRUD for scheduled tasks + manual trigger + execution history.
  *
- * Permission: internal+ (member, admin, super).
- * Members can only use profiles assigned to them.
- * Admin/super can use any profile.
+ * Permission: internal+ (member, super).
+ * Internal users can use any non-hidden profile (same rule as chat);
+ * hidden profiles are super-only.
  */
 
 import { Hono } from 'hono';
@@ -58,16 +58,18 @@ function validateTimezone(tz: string): boolean {
 }
 
 /**
- * Team members may only use profiles assigned to them (or public ones).
+ * Same access rule as chat (checkCloudProfileAccess in chat.ts): internal users
+ * (team/super) may use any non-hidden profile; hidden is super-only.
+ * The user_profiles assignment table only applies to external users — it must
+ * not gate internal members here (they never have rows in it).
  * Returns an error message, or null when access is allowed.
  * Shared by POST / (create) and PUT /:id (profile_id change) — keep in sync.
+ * Exported for tests.
  */
-async function checkProfileAccess(user: AuthUser, profileId: string): Promise<string | null> {
-  if (user.role !== 'team') return null;
-  const hasAccess = await getDb().userProfiles.hasProfile(user.id, profileId);
+export function checkProfileAccess(user: AuthUser, profileId: string): string | null {
   const profile = resolveProfile(profileId);
-  if (!hasAccess && profile.access.level !== 'public') {
-    return `Profile "${profileId}" is not assigned to your account`;
+  if (user.role !== 'super' && profile.access.level === 'hidden') {
+    return `Profile "${profileId}" is not available`;
   }
   return null;
 }
@@ -170,7 +172,7 @@ export function createTasksRoute(_toolRegistry: ToolRegistry) {
           return c.json({ error: `Profile "${profileId}" not found` }, 400);
         }
 
-        const accessError = await checkProfileAccess(user, profileId);
+        const accessError = checkProfileAccess(user, profileId);
         if (accessError) {
           return c.json({ error: accessError }, 403);
         }
@@ -313,7 +315,7 @@ export function createTasksRoute(_toolRegistry: ToolRegistry) {
           }
           // Same gate as POST — without this, a member could create a task on a
           // permitted profile and then switch it to an unauthorized one.
-          const accessError = await checkProfileAccess(user, body.profile_id);
+          const accessError = checkProfileAccess(user, body.profile_id);
           if (accessError) {
             return c.json({ error: accessError }, 403);
           }
