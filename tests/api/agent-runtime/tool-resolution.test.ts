@@ -12,7 +12,7 @@ import {
   buildLazyServerTools,
   LAZY_TOOL_IDS,
 } from '../../../apps/api/src/agent-runtime/tool-resolution.js';
-import { getGlobalToolIds, getAllToolIds } from '../../../apps/api/src/tools/registry.js';
+import { getGlobalToolIds, getAllToolIds, getSuperToolIds } from '../../../apps/api/src/tools/registry.js';
 import type { AgentProfile } from '../../../apps/api/src/profile.js';
 
 // Minimal AgentProfile factory — resolveEffectiveTools only reads access.level,
@@ -110,5 +110,20 @@ describe('buildLazyServerTools', () => {
     expect(internal).toHaveProperty('email_manager');
     expect(internal).toHaveProperty('knowledge_query');
     expect(internal).toHaveProperty('session_history');
+  });
+
+  it('never builds a super-only tool for a non-super caller, even if it is in the id list', () => {
+    // admin_analytics is category 'super' / requires.user 'super'. A team user must
+    // not get it built even when it is present in the requested id list.
+    expect(getSuperToolIds()).toContain('admin_analytics');
+    const team = buildLazyServerTools(db, allLazy, { userId: 'u1', userRole: 'team' });
+    expect(team).not.toHaveProperty('admin_analytics');
+    const ext = buildLazyServerTools(db, allLazy, { userId: 'external', userRole: 'external' });
+    expect(ext).not.toHaveProperty('admin_analytics');
+  });
+
+  it('builds super-only tools for a super caller', () => {
+    const superTools = buildLazyServerTools(db, allLazy, { userId: 's1', userRole: 'super' });
+    expect(superTools).toHaveProperty('admin_analytics');
   });
 });

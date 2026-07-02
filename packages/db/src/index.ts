@@ -39,6 +39,7 @@ export * from './services/feature-requests.js';
 export * from './services/projects.js';
 export * from './services/api-clients.js';
 export * from './services/api-audit.js';
+export * from './services/admin-analytics.js';
 export * from './services/llm-gateway.js';
 export * from './services/user-prompts.js';
 export * from './services/session-shares.js';

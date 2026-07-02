@@ -277,6 +277,7 @@ export function ProfileEditorDrawer({
     media: 'Media',
     compute: 'Compute',
     interaction: 'Interaction',
+    admin: 'Admin & Analytics',
     other: 'Other',
   };
 

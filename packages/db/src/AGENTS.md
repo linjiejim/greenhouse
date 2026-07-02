@@ -17,6 +17,7 @@
 - service 是返回对象字面量的工厂函数 `createXxxService(db: Db)`（`Db` 来自 `client.ts`）；对象内自调用用 `const service = {...}; return service;` 模式（不要 `this`）
 - 禁止在业务逻辑（API 路由、工具、CLI）中直接写 SQL
 - 禁止新增接口镜像/repo 类/多后端抽象——没有第二实现（根 AGENTS.md「禁止预留抽象」）
+- **`adminAnalytics` service（super 管理分析专用）的隐私铁律**：所有方法都是固定白名单列的聚合，**永不 SELECT** 消息内容、`sessions.title`（title 由对话生成，等同内容）、或 `llm_calls` 的 `input`/`output`/`system`。**不提供任意/原始查询方法**——super 只能看计数/token/时延/错误串，看不到任何用户（内部或外部）说了什么。扩展此 service 时保持该约束；隐私线锁定在 `tests/db/admin-analytics-repo.test.ts`。
 
 ### Fork 扩展点（下游私有表/service）
 下游 fork 新增私有域（crm、drive…）时,**只改 `extensions.ts` 一个文件**,`provider.ts`/`client.ts`/schema barrel 与上游保持字节一致、合并不冲突。**上游本仓库为空**,guard 测试锁定。

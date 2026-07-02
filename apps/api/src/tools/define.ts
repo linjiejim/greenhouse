@@ -21,7 +21,16 @@ import type { AgentProfile } from '../profile.js';
 
 // ─── Metadata ────────────────────────────────────────────
 
-export type ToolCategory = 'public' | 'team' | 'admin' | 'local';
+/**
+ * Audience/permission axis: WHO may hold a tool. Aligned with `users.role`:
+ * - 'public' → everyone, including external/anonymous callers (v1/chat).
+ * - 'team'   → internal users (super + team).
+ * - 'super'  → super-admins only. Never default-on, never user-assignable, never
+ *   proxy/MCP-exposed; gated by role at resolution AND at execution.
+ * (Distinct from profile-manifest `level` — that's per-profile visibility, not
+ * per-tool audience — and from `users.role`, an identity, not an audience.)
+ */
+export type ToolCategory = 'public' | 'team' | 'super';
 
 /**
  * Functional domain a tool belongs to — the axis the UI groups by. This is
@@ -29,7 +38,16 @@ export type ToolCategory = 'public' | 'team' | 'admin' | 'local';
  * `category` answers "who", `group` answers "what it does". Drives the section
  * grouping in the profile editor and the ordering from `getAllToolMetas`.
  */
-export type ToolGroup = 'knowledge' | 'projects' | 'email' | 'sessions' | 'web' | 'media' | 'compute' | 'interaction';
+export type ToolGroup =
+  | 'knowledge'
+  | 'projects'
+  | 'email'
+  | 'sessions'
+  | 'web'
+  | 'media'
+  | 'compute'
+  | 'interaction'
+  | 'admin';
 
 /**
  * Display order + human labels for the functional groups — the SINGLE source of
@@ -46,6 +64,7 @@ export const TOOL_GROUPS: readonly { id: ToolGroup; label: string }[] = [
   { id: 'media', label: 'Media' },
   { id: 'compute', label: 'Compute' },
   { id: 'interaction', label: 'Interaction' },
+  { id: 'admin', label: 'Admin & Analytics' },
 ];
 
 export interface ToolMeta {
@@ -139,11 +158,14 @@ export interface ToolContext {
  * - user: 'optional' → built even for anonymous (userId defaults to 'anonymous').
  * - user: 'required' → needs an authenticated userId.
  * - user: 'internal' → needs an authenticated, non-external userId.
+ * - user: 'super'    → needs role === 'super' (super-admin-only tools). The build
+ *   guard is one of TWO gates — the tool's `execute` must re-check the role too
+ *   (defense in depth), since a stale/forged context must never expose it.
  * - session: true    → needs a sessionId (session-scoped tools).
  * - registry: true   → needs the shared registry (gets `assembleChildTools`).
  */
 export interface ToolRequirements {
-  user?: 'optional' | 'required' | 'internal';
+  user?: 'optional' | 'required' | 'internal' | 'super';
   session?: boolean;
   registry?: boolean;
 }

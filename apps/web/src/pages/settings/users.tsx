@@ -857,14 +857,16 @@ export function UserManagementPanel() {
           <div className="space-y-3">
             <p className="text-xs text-fg-muted">{t('settings.toolAssignHint')}</p>
             <div className="max-h-[70vh] overflow-y-auto space-y-1">
-              {(['public', 'team', 'admin'] as const).map((cat) => {
+              {/* Super-category tools are super-admin-only and never user-assignable,
+                  so they're intentionally omitted from the assignment picker. */}
+              {(['public', 'team'] as const).map((cat) => {
                 const catTools = allTools.filter((t) => t.category === cat);
                 if (catTools.length === 0) return null;
                 return (
                   <div key={cat} className="mb-2">
                     <div className="px-1 pt-2 pb-1">
                       <span className="text-[10px] font-semibold text-fg-faint uppercase tracking-wider">
-                        {cat === 'public' ? t('settings.publicGlobal') : cat === 'team' ? 'Team' : 'Admin'}
+                        {cat === 'public' ? t('settings.publicGlobal') : 'Team'}
                       </span>
                     </div>
                     <div className="space-y-0.5">

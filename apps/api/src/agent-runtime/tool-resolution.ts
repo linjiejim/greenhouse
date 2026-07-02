@@ -124,6 +124,9 @@ export function buildLazyServerTools(
     // User tier — identical to the previous per-tool guards.
     if (req.user === 'required' && !hasUser) continue;
     if (req.user === 'internal' && !isInternal) continue;
+    // Super-admin-only tools: never build for a non-super caller. This is the
+    // build-time gate; the tool's execute re-checks role (defense in depth).
+    if (req.user === 'super' && ctx.userRole !== 'super') continue;
     // Session / registry tiers — session-scoped + orchestration tools.
     if (req.session && !ctx.sessionId) continue;
     if (req.registry && !ctx.toolRegistry) continue;

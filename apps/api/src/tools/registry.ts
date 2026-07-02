@@ -32,6 +32,7 @@ import { spawnSessionTool } from './sessions/spawn-session.js';
 import { callLlmTool } from './sessions/call-llm.js';
 import { knowledgeQueryTool } from './knowledge/knowledge-query.js';
 import { knowledgeMutationTool } from './knowledge/knowledge-mutation.js';
+import { adminAnalyticsTool } from './admin/admin-analytics.js';
 import { EXTENSION_TOOL_MODULES } from './extensions.js';
 
 // ─── Catalog ─────────────────────────────────────────────
@@ -57,6 +58,7 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   callLlmTool,
   knowledgeQueryTool,
   knowledgeMutationTool,
+  adminAnalyticsTool,
 ];
 
 /**
@@ -143,6 +145,17 @@ export function getPublicToolIds(): string[] {
 /** Get tools by category. */
 export function getToolsByCategory(category: ToolCategory): ToolMeta[] {
   return TOOL_DEFINITIONS.filter((t) => t.category === category);
+}
+
+/**
+ * Get the super-admin-only tool IDs. These are gated by `users.role === 'super'`
+ * and must never reach a non-super user — not as a default-on tool, not via a
+ * `user_tools` assignment. `resolveUserTools` subtracts this set from every
+ * non-super allow-set as the resolution-layer half of the role gate (the
+ * build-time `requires.user: 'super'` guard is the other half).
+ */
+export function getSuperToolIds(): string[] {
+  return TOOL_DEFINITIONS.filter((t) => t.category === 'super').map((t) => t.id);
 }
 
 /** Get all tool IDs. */

@@ -9,7 +9,13 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import type { AgentProfile } from './profile.js';
 import { enrichSystemPrompt, registerKnownTools } from './profile.js';
-import { getGlobalToolIds, getPublicToolIds, getAllToolIds, STATIC_TOOL_MODULES } from './tools/registry.js';
+import {
+  getGlobalToolIds,
+  getPublicToolIds,
+  getAllToolIds,
+  getSuperToolIds,
+  STATIC_TOOL_MODULES,
+} from './tools/registry.js';
 import { getDb } from '@greenhouse/db';
 
 // Re-export model factory from llm/ layer
@@ -32,8 +38,8 @@ export interface ToolResolution {
  * Resolve the effective tool set for a user.
  *
  * - external/anonymous: public-audience default-on tools only (getPublicToolIds)
- * - super: all tools
- * - member/admin: global_tools ∪ assigned_tools (from user_tools table)
+ * - super: all tools (including super-category admin tools)
+ * - team: (global_tools ∪ assigned_tools) minus super-category tools
  * All allowed tools are active — no user-side toggle.
  *
  * @param userId - null for external/anonymous users
@@ -51,12 +57,15 @@ export async function resolveUserTools(userId: string | null, userRole: string):
     // appear in an external user's allow-set or tool-aware system prompt).
     allowedTools = getPublicToolIds();
   } else if (userRole === 'super') {
-    // Super: all tools
+    // Super: all tools, including super-category admin tools.
     allowedTools = getAllToolIds();
   } else {
-    // team: global default-on tools + per-user assigned tools (no 'admin' role exists)
+    // team: global default-on tools + per-user assigned tools. Super-category
+    // tools are subtracted unconditionally — even a stray `user_tools` row can
+    // never hand a team user an admin tool (resolution-layer half of the gate).
     const assignedTools = await getDb().userTools.getTools(userId);
-    allowedTools = [...new Set([...globalToolIds, ...assignedTools])];
+    const superTools = new Set(getSuperToolIds());
+    allowedTools = [...new Set([...globalToolIds, ...assignedTools])].filter((id) => !superTools.has(id));
   }
 
   return { allowedTools, activeTools: allowedTools };

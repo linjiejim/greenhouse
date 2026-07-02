@@ -8,13 +8,22 @@
 import { rpc } from './client';
 
 /** Functional domain a tool belongs to — the axis the UI sections by (mirrors the API's ToolGroup). */
-export type ToolGroup = 'knowledge' | 'projects' | 'email' | 'sessions' | 'web' | 'media' | 'compute' | 'interaction';
+export type ToolGroup =
+  | 'knowledge'
+  | 'projects'
+  | 'email'
+  | 'sessions'
+  | 'web'
+  | 'media'
+  | 'compute'
+  | 'interaction'
+  | 'admin';
 
 export interface ToolMeta {
   id: string;
   name: string;
   brief: string;
-  category: 'public' | 'team' | 'admin' | 'local';
+  category: 'public' | 'team' | 'super';
   group: ToolGroup;
   is_global: boolean;
   icon: string;

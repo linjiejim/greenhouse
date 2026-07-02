@@ -20,6 +20,7 @@ import { createFeatureRequestService } from './services/feature-requests.js';
 import { createProjectService } from './services/projects.js';
 import { createApiClientService } from './services/api-clients.js';
 import { createApiAuditService } from './services/api-audit.js';
+import { createAdminAnalyticsService } from './services/admin-analytics.js';
 import { createLlmUpstreamService, createLlmGatewayModelService } from './services/llm-gateway.js';
 import { createUserPromptService } from './services/user-prompts.js';
 import { createSessionShareService } from './services/session-shares.js';
@@ -50,6 +51,7 @@ export function createDatabase(connectionString: string) {
     projects: createProjectService(db),
     apiClients: createApiClientService(db),
     apiAudit: createApiAuditService(db),
+    adminAnalytics: createAdminAnalyticsService(db),
     llmUpstreams: createLlmUpstreamService(db),
     llmGatewayModels: createLlmGatewayModelService(db),
     userPrompts: createUserPromptService(db),

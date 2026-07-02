@@ -88,8 +88,10 @@ Tool metadata is **co-located in each tool's file**. A tool declares itself with
 - `create(ctx: ToolContext)` builds the tool. **Static** tools read only `ctx.db` and are built once in `createToolRegistry`. **Lazy** tools read request-scoped fields (`userId` / `sessionId` / …) and are built per-request in `buildLazyServerTools`.
 - `kind`: `static` (no `requires`) / `lazy` (declares `requires`).
 - `requires` (lazy only) is the **declarative access guard** the runtime enforces before building the tool — the same guard that used to be a hand-written if-ladder:
-  - `user: 'optional'` (anonymous ok) | `'required'` (a userId) | `'internal'` (a non-external userId).
+  - `user: 'optional'` (anonymous ok) | `'required'` (a userId) | `'internal'` (a non-external userId) | `'super'` (role `super` only).
   - `session: true` (needs a sessionId) · `registry: true` (gets the `assembleChildTools` closure; `spawn_session` only — the raw registry is never handed to a tool).
+- **`meta.category` is the audience axis, aligned with `users.role`:** `'public'` (everyone incl. external/v1-chat) · `'team'` (internal users) · `'super'` (super-admins only). It's distinct from profile-manifest `level` (per-profile visibility) and from `users.role` (an identity, not an audience).
+- **Super-admin-only tools** (`category: 'super'` + `requires.user: 'super'`) are gated at **three layers** (defense in depth): `resolveUserTools` subtracts `getSuperToolIds()` from every non-super allow-set (so even a stray `user_tools` row can't grant one); `buildLazyServerTools` skips them for non-super callers; and the tool's own `execute` re-checks `ctx.userRole === 'super'`. They must set **no `surface`** (never proxy/MCP-exposed) and are omitted from the tool-assignment UI (not user-assignable). Reference impl: `tools/admin/admin-analytics.ts` (read-only usage/activity/external-API analytics; its DB queries live in `packages/db` `adminAnalytics` and never return message content, session titles, or `llm_calls` input/output — the privacy line is enforced in the service, not the caller).
 
 **Adding a tool** = one file + one line, for **every** kind (static or lazy):
 1. In the tool's file, `export const xxxTool = defineTool({ meta, kind, requires?, create })`; set `meta.surface` to expose it over proxy/MCP.

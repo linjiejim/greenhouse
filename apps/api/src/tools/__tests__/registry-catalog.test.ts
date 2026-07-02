@@ -85,6 +85,7 @@ describe('lazy catalog + per-request construction (guard)', () => {
       'knowledge_mutation',
       'spawn_session',
       'call_llm',
+      'admin_analytics',
     ];
     expect(LAZY_TOOL_MODULES.map((m) => m.meta.id).sort()).toEqual([...KNOWN_LAZY].sort());
   });
