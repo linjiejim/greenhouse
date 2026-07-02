@@ -11,13 +11,9 @@ import type { PipelineStep } from '@greenhouse/types/session';
 // PipelineStep is the canonical wire type emitted by the server.
 export type { PipelineStep };
 
-export interface StreamingToolCall {
-  id: string;
-  name: string;
-  input: string;
-  output?: unknown;
-  status: 'calling' | 'done';
-}
+// Canonical definition moved to @greenhouse/ui with the streaming bubble.
+import type { StreamingToolCall } from '@greenhouse/ui/components/chat/streaming-message-bubble';
+export type { StreamingToolCall };
 
 // ─── Tool display helpers ────────────────────────────────
 

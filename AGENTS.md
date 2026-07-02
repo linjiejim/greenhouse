@@ -139,6 +139,8 @@ greenhouse/
 │   ├── utils/            # shared helpers (date, json, concurrency, logger, crypto, error)
 │   ├── db/              # database layer — Drizzle schema + domain services (types inferred)
 │   ├── knowledge-editor/ # KB editor single source: Tiptap schema + server Markdown↔Tiptap JSON
+│   ├── ui/               # shared presentational UI kit (React) — atoms, markdown/blocks,
+│   │                     #   tool-call cards, sprouty, theme tokens CSS, i18n mechanism
 │   └── contract/         # typed API contract — re-exports apps/api's AppType + hc (web client)
 ├── drizzle/              # migration files (single source of truth for the schema)
 ├── scripts/             # gen-secrets.sh, backup-db.sh
@@ -156,6 +158,7 @@ greenhouse/
 | `@greenhouse/utils` | `packages/utils/` | Shared helpers |
 | `@greenhouse/db` | `packages/db/` | Database layer |
 | `@greenhouse/knowledge-editor` | `packages/knowledge-editor/` | KB editor: Tiptap schema + Markdown↔Tiptap JSON |
+| `@greenhouse/ui` | `packages/ui/` | Shared UI kit (React, presentational only — no stores/router). Old `apps/web` paths re-export from it |
 | `@greenhouse/contract` | `packages/contract/` | Typed API contract (AppType + hc; **type-only import of `@greenhouse/api`**) |
 | `@greenhouse/api` | `apps/api/` | Backend app |
 | `@greenhouse/web` | `apps/web/` | Frontend app |

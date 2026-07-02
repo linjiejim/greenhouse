@@ -62,6 +62,8 @@ greenhouse/
 │   ├── utils/                # Shared helpers (date, json, crypto, logger, concurrency)
 │   ├── db/                   # Database layer — Drizzle schema + domain services
 │   ├── knowledge-editor/     # Tiptap schema + server-side Markdown ↔ Tiptap JSON
+│   ├── ui/                   # Shared React UI kit (atoms, markdown renderers, tool-call
+│   │                         #   cards, design tokens, i18n mechanism)
 │   └── contract/             # Typed API contract — re-exports the API's AppType + hc
 │                             #   (single source for the web's typed client)
 ├── drizzle/                  # Migration files (the single source of truth for the schema)

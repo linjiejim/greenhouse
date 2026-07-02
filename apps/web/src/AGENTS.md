@@ -1,5 +1,23 @@
 ## 前端规则
 
+### 共享 UI 包（`@greenhouse/ui`，2026-07 起）
+
+低耦合的展示层组件已抽到 `packages/ui`（`@greenhouse/ui`），供未来的浏览器扩展等
+其他前端复用：`components/ui.tsx` 原子组件（AppLogo 除外）、`markdown.tsx` /
+`rich-markdown.tsx` + `components/blocks/`、`components/tool-call/`、
+`ask-user-card` / `reasoning-panel` / `streaming-message-bubble`、`sprouty/`，以及
+`lib/` 的 icons / utils / api-base / theme / stream-utils / stream-events /
+diff-words / wiki-diff 与 i18n **机制**（词条 en.ts/zh.ts 留在本 app，由
+`lib/i18n/index.ts` 启动时 `registerCoreLocaleMessages` 注册）。
+
+- **旧路径全部保留为 re-export shim**——app 内代码继续 `import { Button } from
+  '../components/ui'` 即可，新代码也不必直连 `@greenhouse/ui`。
+- **包内纪律**：`packages/ui` 只放展示组件（props/callbacks），禁止引入 zustand
+  store、hash router、`lib/api/` 客户端；有这类耦合的组件留在本 app。
+- 设计 token CSS 在 `packages/ui/src/styles/tokens.css`（`app.css` `@import` 它）；
+  `app.css` 的 `@source` 同时扫描 `packages/ui/src`，保证包内组件用到的 Tailwind
+  工具类被编译。
+
 ### 设计系统
 
 **图标：Lucide React**
@@ -141,7 +159,7 @@ stores/
 
 ### Fork 扩展点（下游个性化）
 下游 fork 用这些接缝新增私有功能，**不改共享注册文件**，从而这些文件与上游保持一致、合并不冲突。**上游本仓库每个接缝都为空**，由 guard 测试锁定。
-- **私有工具的聊天卡片渲染** → `components/tool-call/artifact-renderers.ts`（`ARTIFACT_RENDERERS`）。fork 加 `{ match, render }` 项；`body-artifacts.tsx` 在核心 case 之后消费它们，让私有工具输出渲染成行内卡片，无需改 `body-artifacts.tsx`。
+- **私有工具的聊天卡片渲染** → `packages/ui/src/components/tool-call/artifact-renderers.ts`（`ARTIFACT_RENDERERS`，随 tool-call 组件移入 `@greenhouse/ui`；web 旧路径是 re-export shim）。fork 加 `{ match, render }` 项；`body-artifacts.tsx` 在核心 case 之后消费它们，让私有工具输出渲染成行内卡片，无需改 `body-artifacts.tsx`。
 - **Global-Agent 页面上下文（URL→PageContext）** → `lib/context-resolvers.ts`（`registerUrlContextResolver`）。fork 为其私有路由（如 `#/crm/...`）注册解析器；`agent-context.tsx` 的 `resolveUrlContext` 对核心 switch 未覆盖的路由回退到该注册表。`PageContext.type` 含 `(string & {})` 成员，故 fork 类型无需改中央 union。
 - **私有顶级页面（主 Tab）** → `lib/page-registry.tsx`（`EXTRA_PAGES`）。fork 声明 `{ key, navLabel, navIcon, showInNav, render }`；`app.tsx` 的 `parseRoute`/主渲染 + `app.tsx`/`app-sidebar.tsx` 的 navItems 都消费它（`extraPageKeys`/`getExtraPage`/`extraNavItems`），三处 `Route` 类型加了 `(string & {})` 成员。页面自行做角色门控（同核心页）。
 - **私有设置分区 + 面板** → `lib/nav-registry.extensions.ts`（`EXTENSION_SETTINGS_SECTIONS`，splice 进 `settingsSections`，级联到所有派生列表）+ `pages/settings/panels.extensions.tsx`（`EXTENSION_SETTINGS_PANELS`，`settings/index.tsx` 在核心 switch 后 `findSettingsPanel(key)`）。两者配套：前者给侧栏入口+路由，后者挂载面板组件。
@@ -159,10 +177,11 @@ stores/
   - **禁止使用 `bg-white`、`text-gray-*`、`border-gray-*`、`bg-gray-*`、`bg-red-*`、`text-red-*`**——始终用上述语义 token
   - 开关/Toggle 圆点用 `bg-surface-raised` 替代 `bg-white`
 - 主色：基于 CSS 变量的 `primary-*` 色板（如 `primary-500`、`primary-600`）
-  - 主题定义在 `lib/theme.ts`，通过 CSS 自定义属性应用
+  - **所有 token（`--primary-*`、`--t-*`）定义在 `packages/ui/src/styles/tokens.css`（由 `app.css` `@import`）**：`:root` = light，`.dark-theme` = dark；`branding.css` 是下游 fork 的覆盖层（S6 seam，上游仅注释，`lib/branding.test.ts` 守卫）
   - **禁止硬编码颜色名**（如 `teal-500`、`emerald-500`）——始终用 `primary-*` 或语义 token（`text-success`、`bg-success-subtle`）
-  - 可用主题：Teal Garden、Forest、Ocean、Blossom、Harvest、Rose、Midnight（暗色）、Deep Ocean（暗色）、AMOLED Black（暗色）
-- 暗色模式：通过 CSS 变量自动切换——不需要 `dark:` 前缀。切换主题 = 切换 `--t-*` 变量值
+  - 主题模式：light / dark / system 三选（`lib/theme.ts`，localStorage 持久化，旧多主题 key 自动迁移）；JS 只切 `.dark-theme` class，**不写 token 值**——否则内联样式会压过 fork 的 CSS 覆盖
+  - 品牌（产品名 / Logo mark）走 `lib/branding.extensions.tsx`（S6 seam）；品牌 token 调整用 Settings → Branding Studio（super）实时预览并导出 CSS
+- 暗色模式：通过 CSS 变量自动切换——不需要 `dark:` 前缀
 - 主题过渡：bg/border/color 平滑 0.2s；`theme-loading` class 在首次渲染时抑制动画
 - 动画：`animate-fade-in`、`animate-slide-up`、`animate-slide-in-left/right`、`animate-toast-in/out`、`animate-skeleton`
 - 间距：`px-3 md:px-4` 区块、`p-3` 卡片、`gap-2` flex
