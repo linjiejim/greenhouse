@@ -71,11 +71,11 @@ what exists." These rules are as binding as the "add" rules:
   use the `data-testid` anchors on the key surfaces (login / chat / projects / users) +
   `role=dialog` on `<Dialog>`/`<ConfirmDialog>`. Writes use a per-run `e2e-<worker>-<ts>-`
   prefix and self-clean. This is the suite to run/extend for browser flows.
-- **Dev mode**: `pnpm dev` runs Vite dev server (web, `:3100`, HMR) + the API (`:3101`) in
+- **Dev mode**: `pnpm dev` runs Vite dev server (web, `:3100`, HMR) + the API (`:3000`) in
   parallel. Vite proxies `/api` (incl. ws), `/public`, `/health` to the API, so the browser
-  sees same-origin — open `:3100`. Ports are overridable via the shell env (dev only):
-  `WEB_PORT` (Vite) and `API_PORT` (API + proxy target), e.g. `WEB_PORT=4000 API_PORT=4001 pnpm dev`.
-  Production is `pnpm web:build` (Vite → repo-root `public/`,
+  sees same-origin — open `:3100`. Ports are overridable via `WEB_PORT` (Vite) and `API_PORT`
+  (API + proxy target), read from repo-root `.env` (shell vars take precedence) — Vite loads
+  `.env` via `loadEnv`. Production is `pnpm web:build` (Vite → repo-root `public/`,
   `base:'./'`), served directly by the API (`/` serves `public/index.html`, `/assets/*` static).
 
 ## Deploy (one-command Docker)

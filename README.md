@@ -103,15 +103,16 @@ pnpm admin:create
 # 6. (optional) Load the example dataset to explore the app with realistic content
 pnpm seed        # ⚠️ wipes existing rows, then loads data/examples/
 
-# 7. Run the dev servers (Vite web :3100 + API :3101, Vite proxies /api → api)
+# 7. Run the dev servers (Vite web :3100 + API :3000, Vite proxies /api → api)
 pnpm dev
 ```
 
 Open http://localhost:3100. Backend changes require a restart (the API has no `--watch`);
 frontend changes hot-reload.
 
-> **Custom ports** — if `:3100`/`:3101` clash with something, set them in the shell:
-> `WEB_PORT=4000 API_PORT=4001 pnpm dev` (the web dev proxy follows `API_PORT`).
+> **Custom ports** — if `:3100`/`:3000` clash with something, set `WEB_PORT` /
+> `API_PORT` in `.env` (or as shell vars, which take precedence); the web dev
+> proxy follows `API_PORT`. E.g. `WEB_PORT=4400` + `API_PORT=4401`.
 
 > **Example dataset** — `pnpm seed` loads a small, de-identified fictional company
 > (users, knowledge base, projects, chats, automations, sharing) so you can experience and

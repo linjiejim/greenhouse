@@ -5,7 +5,16 @@
       "name": "greenhouse",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["dev"],
-      "port": 3100
+      "port": 4400
+    },
+    {
+      "name": "greenhouse-verify",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "STORAGE_DRIVER=local EXPORT_PRESIGN_THRESHOLD_BYTES=0 API_PORT=4411 WEB_PORT=4410 pnpm dev"
+      ],
+      "port": 4410
     },
     {
       "name": "docs-landing",
