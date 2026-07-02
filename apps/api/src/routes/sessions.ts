@@ -21,7 +21,7 @@ import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
 import { getAuthUser } from '../auth/middleware.js';
 import type { AuthUser } from '../auth/middleware.js';
-import type { SessionRow } from '../session.js';
+import type { SessionRow, SessionChannel } from '../session.js';
 import { generateSessionTitle } from '../llm/title.js';
 import { normalizeProfileId, resolveProfileAsync } from '../profile.js';
 import { parseSessionContext, readSessionContext, writeSessionContext } from '../session-context.js';
@@ -73,7 +73,11 @@ const sessions = new Hono<AppEnv>()
       title?: string;
       profile_id?: string;
       context?: unknown;
+      channel?: string;
     };
+    // Only 'browser' (extension side panel) may be claimed by clients; every
+    // other channel value is server-assigned elsewhere and defaults to 'web'.
+    const channel = body.channel === 'browser' ? 'browser' : undefined;
     const requestedProfileId = normalizeProfileId(body.profile_id) || 'default';
     const profile = await resolveProfileAsync(requestedProfileId).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
@@ -95,7 +99,7 @@ const sessions = new Hono<AppEnv>()
       }
     }
 
-    let session = await getDb().sessions.create(body.title, requestedProfileId, authUser.id);
+    let session = await getDb().sessions.create(body.title, requestedProfileId, authUser.id, undefined, channel);
 
     // Optional structured session context (device/grower/plants...) at creation
     if (body.context !== undefined && body.context !== null) {
@@ -155,19 +159,24 @@ const sessions = new Hono<AppEnv>()
     const offset = parseInt(c.req.query('offset') ?? '0', 10);
     const includeEval = c.req.query('include_eval') === '1';
     const tagId = c.req.query('tag_id') ? parseInt(c.req.query('tag_id')!, 10) : undefined;
+    // Optional channel filter (e.g. 'browser' — the extension side panel lists
+    // only its own channel). Channel-scoped queries are always self-only.
+    const channelQuery = c.req.query('channel') as SessionChannel | undefined;
 
     // super sees all; admin/member see only their own + shared sessions
-    const userId = authUser.role === 'super' ? undefined : authUser.id;
+    const userId = channelQuery ? authUser.id : authUser.role === 'super' ? undefined : authUser.id;
 
-    const list = await getDb().sessions.list({ status, limit, offset, includeEval, userId });
+    const list = await getDb().sessions.list({ status, limit, offset, includeEval, userId, channel: channelQuery });
 
     // Sessions shared with the current user (shared_with = me OR __team__).
     // Computed for every role so we can flag "shared with me" rows consistently.
     const sharedSessionIds = await getDb().sessionShares.getSharedSessionIds(authUser.id);
     const sharedIdSet = new Set(sharedSessionIds);
 
-    // For non-super users, also include sessions shared with them
-    if (userId) {
+    // For non-super users, also include sessions shared with them.
+    // Channel-scoped queries skip the shared/organized backfills — they exist
+    // for the web sidebar; a channel list is just "my sessions on <channel>".
+    if (userId && !channelQuery) {
       if (sharedSessionIds.length > 0) {
         const existingIds = new Set(list.map((s) => s.id));
         const missingIds = sharedSessionIds.filter((id) => !existingIds.has(id));
@@ -191,7 +200,7 @@ const sessions = new Hono<AppEnv>()
     // (an old or shared session the user filed/pinned must still surface).
     // Mirrors the shared-session backfill above; access-checked inline so a
     // session un-shared after being organized (an orphan membership) drops out.
-    const organizedIds = await getDb().sessionGroups.getOrganizedSessionIds(authUser.id);
+    const organizedIds = channelQuery ? [] : await getDb().sessionGroups.getOrganizedSessionIds(authUser.id);
     if (organizedIds.length > 0) {
       const existingIds = new Set(list.map((s) => s.id));
       const missingIds = organizedIds.filter((id) => !existingIds.has(id));

@@ -17,7 +17,7 @@ export const sessions = pgTable(
     profile_id: text('profile_id').notNull().default('default'),
     user_id: text('user_id'),
     app_id: text('app_id'),
-    channel: text('channel').notNull().default('web'), // 'web' | 'api' | 'a2a' | 'task' | 'subagent'
+    channel: text('channel').notNull().default('web'), // 'web' | 'api' | 'a2a' | 'task' | 'subagent' | 'browser'
     // When this session was spawned by another session (via the spawn_session
     // tool), this points at the parent. Top-level sessions leave it null. Lineage
     // depth is tracked in metadata.spawn_depth.

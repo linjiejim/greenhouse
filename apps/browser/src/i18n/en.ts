@@ -54,6 +54,30 @@ export const en = {
     notConnectedHint: 'Connect the extension to your Greenhouse instance to start asking with page context.',
     openSettings: 'Open settings',
     connected: 'Connected',
-    chatComingSoon: 'Chat with page context lands in the next milestone — the connection is ready.',
+
+    // Selection context card
+    currentPage: 'Current page',
+    selectedChars: '{count} chars selected',
+    noSelectionHint: 'Select text on the page to use it as context; otherwise only the URL and title ride along.',
+    selectionPreview: 'Preview selection',
+    needsAccess: 'Reading the selection needs access to this site.',
+    allowSite: 'Allow this site',
+    allowAllSites: 'Allow all sites',
+
+    // Conversation
+    emptyHint: 'Ask with page context, or start with a quick action.',
+    summarizePage: 'Summarize this page',
+    summarizePrompt: 'Summarize the key points of this page.',
+    relatedKnowledge: 'Find related knowledge',
+    relatedPrompt: 'Search the knowledge base for anything related to this page and summarize what we already know.',
+    reasoning: 'Reasoning',
+    askSelection: 'Ask about the selection…',
+    askAnything: 'Ask anything…',
+    send: 'Send',
+    stop: 'Stop',
+    newChat: 'New conversation',
+    history: 'History',
+    noHistory: 'No conversations yet.',
+    untitled: 'Untitled',
   },
 };

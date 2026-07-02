@@ -38,8 +38,19 @@ src/
   `sidePanel`, `scripting`, `activeTab`). Host access to the instance is
   requested at connect time via `optional_host_permissions` — never add
   `<all_urls>` to `host_permissions`.
-- **No resident content scripts.** Page context (M2+) is read on demand with
-  `chrome.scripting.executeScript` under `activeTab`.
+- **No resident content scripts.** Page context is read on demand with
+  `chrome.scripting.executeScript` (`src/lib/page-context.ts`): the user's
+  selection is the context (selection-as-context), full-page text only on the
+  explicit "summarize page" quick action. Context rides in `/api/chat`'s
+  per-turn `context_hint` — it is never stored in the conversation.
+- **Sessions are server-side on the `'browser'` channel** (`src/lib/sessions.ts`):
+  created lazily on first send via `POST /api/sessions {channel:'browser'}`,
+  listed with `GET /api/sessions?channel=browser`. The web app can continue
+  them; the panel's history list shows only this channel.
+- **Chat rendering reuses the shared kit** (`src/sidepanel/messages.tsx`):
+  `StreamingMessageBubble` for the in-flight turn, `RichMarkdown` +
+  `ToolCallRenderer` + `BodyArtifacts` for committed turns, stream accumulation
+  via `handleStreamEvent` from `@greenhouse/types` (`src/sidepanel/use-chat.ts`).
 - **i18n**: extension keys live in `src/i18n/{en,zh}.ts` (keep both in sync);
   they register through `registerCoreLocaleMessages` — same fallback chain as
   the web app.

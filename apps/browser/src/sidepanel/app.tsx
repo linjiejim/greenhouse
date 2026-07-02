@@ -1,12 +1,13 @@
 /**
- * Side panel — M1 shows connection state; the chat surface lands in M2.
+ * Side panel — auth gate + chat view.
  */
 
 import React from 'react';
-import { Button, EmptyState, Spinner, StatusDot } from '@greenhouse/ui/components/ui';
+import { Button, EmptyState, Spinner } from '@greenhouse/ui/components/ui';
 import { Unplug } from '@greenhouse/ui/lib/icons';
 import { useI18n } from '@greenhouse/ui/lib/i18n';
 import { useAuth } from '../lib/use-auth';
+import { ChatView } from './chat-view';
 
 export function SidePanelApp() {
   const { t } = useI18n();
@@ -33,16 +34,5 @@ export function SidePanelApp() {
     );
   }
 
-  return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-center gap-2 border-b border-edge px-3 py-2 text-sm">
-        <StatusDot color="success" size="sm" />
-        <span className="font-medium">{auth.user.nickname}</span>
-        <span className="ml-auto truncate font-mono text-[11px] text-fg-faint">{new URL(auth.baseUrl).host}</span>
-      </header>
-      <div className="flex flex-1 items-center justify-center p-6 text-center">
-        <p className="text-sm text-fg-muted">{t('panel.chatComingSoon')}</p>
-      </div>
-    </div>
-  );
+  return <ChatView />;
 }
