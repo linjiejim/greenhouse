@@ -209,6 +209,45 @@ export function createKnowledgeBaseService(db: Db) {
       return !!row;
     },
 
+    /**
+     * Bulk-rename a team "space" (KB category) and every nested descendant.
+     * Space is a `/`-delimited path stored in `meta.space`; renaming `eng` →
+     * `engineering` also re-paths `eng/backend` → `engineering/backend` so the
+     * subtree moves as a whole.
+     *
+     * Metadata-only by design: it does NOT snapshot a version per doc (versions
+     * track title/content, not meta — a rename would only add identical-content
+     * noise). Scoped to team docs (`visibility='team'`); personal spaces are
+     * never touched. Docs with no explicit space are treated as `general`.
+     * Returns the number of documents moved.
+     */
+    async renameSpace(from: string, to: string, changedBy?: string | null): Promise<number> {
+      const currentSpace = sql`COALESCE(meta::jsonb ->> 'space', 'general')`;
+      const result = await db.execute(sql`
+        UPDATE knowledge_base
+        SET meta = jsonb_set(
+              meta::jsonb,
+              '{space}',
+              to_jsonb(
+                CASE
+                  WHEN ${currentSpace} = ${from} THEN ${to}::text
+                  ELSE ${to} || substring(${currentSpace} from length(${from}::text) + 1)
+                END
+              )
+            )::text,
+            updated_at = ${nowIso()},
+            updated_by = ${changedBy ?? null}
+        WHERE scope = 'shared'
+          AND visibility = 'team'
+          AND (
+            ${currentSpace} = ${from}
+            OR left(${currentSpace}, length(${from}::text) + 1) = ${from} || '/'
+          )
+        RETURNING id
+      `);
+      return (result as any[]).length;
+    },
+
     async get(docId: string, scope = 'shared'): Promise<KnowledgeDocRow | undefined> {
       const conditions = and(eq(knowledgeBase.doc_id, docId), eq(knowledgeBase.scope, scope));
 

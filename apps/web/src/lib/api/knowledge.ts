@@ -149,6 +149,21 @@ export async function revokeKnowledgeShare(id: number, target: string): Promise<
   }
 }
 
+/**
+ * Bulk-rename a team space (KB category) and every nested descendant
+ * (`eng` → `engineering` also moves `eng/backend`). Returns the number of
+ * documents moved.
+ */
+export async function renameKnowledgeSpace(from: string, to: string): Promise<number> {
+  const res = await rpc.api.knowledge.spaces.rename.$post({ json: { from, to } });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error((data && 'error' in data && data.error) || 'Failed to rename space');
+  }
+  const data = await res.json();
+  return 'count' in data ? data.count : 0;
+}
+
 export async function searchKnowledgeDocs(query: string, limit = 10): Promise<KnowledgeSearchResult[]> {
   const res = await rpc.api.knowledge.search.$get({ query: buildQuery({ q: query, limit }) });
   if (!res.ok) throw new Error('searchKnowledgeDocs failed: ' + res.status);

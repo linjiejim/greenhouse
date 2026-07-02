@@ -39,6 +39,10 @@
     "./brand": {
       "import": "./src/brand.ts",
       "types": "./src/brand.ts"
+    },
+    "./id": {
+      "import": "./src/id.ts",
+      "types": "./src/id.ts"
     }
   },
   "scripts": {

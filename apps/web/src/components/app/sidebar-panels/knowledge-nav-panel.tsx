@@ -4,12 +4,13 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { FolderOpen, Lock, ChevronDown, Plus, Share2 } from '../../../lib/icons';
+import { FolderOpen, Folder, Lock, ChevronDown, ChevronRight, Plus, Share2, Edit3, Check, X } from '../../../lib/icons';
 import type { LucideIcon } from '../../../lib/icons';
-import { Spinner } from '../../../components/ui';
+import { Spinner, toast } from '../../../components/ui';
 import { useKnowledgeStore } from '../../../stores';
 import { useT } from '../../../lib/i18n';
-import { listKnowledgeDocs } from '../../../lib/api/knowledge';
+import { listKnowledgeDocs, renameKnowledgeSpace } from '../../../lib/api/knowledge';
+import { buildSpaceTree, normalizeSpacePath, isSpaceInSubtree, type SpaceNode } from '../../../lib/knowledge-spaces';
 import type { KnowledgeDoc } from '@greenhouse/types/api';
 
 const COLLAPSED_KEYS = {
@@ -44,6 +45,7 @@ export function KnowledgeNavPanel({ activeModule, collapsed }: KnowledgeNavPanel
   const t = useT();
   const activeSection = resolveSection(activeModule);
   const docsVersion = useKnowledgeStore((s) => s.version);
+  const bump = useKnowledgeStore((s) => s.bump);
 
   // Internal docs state (team visibility)
   const [internalDocs, setInternalDocs] = useState<KnowledgeDoc[]>([]);
@@ -83,17 +85,14 @@ export function KnowledgeNavPanel({ activeModule, collapsed }: KnowledgeNavPanel
     };
   }, [docsVersion]);
 
-  // Spaces derived from internal docs
-  const spaces = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const doc of internalDocs) {
-      const space = doc.space || 'general';
-      map.set(space, (map.get(space) || 0) + 1);
-    }
-    return Array.from(map.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [internalDocs]);
+  // Spaces derived from internal docs — a nested tree keyed by the `/`-delimited path.
+  const spaceTree = useMemo(() => buildSpaceTree(internalDocs), [internalDocs]);
+
+  // Tree UI state: which space subtrees are collapsed, and inline-rename buffer.
+  const [collapsedSpaces, setCollapsedSpaces] = useState<Set<string>>(() => new Set());
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
 
   const setCollapsed = useCallback((section: Section, value: boolean) => {
     const setters = {
@@ -121,6 +120,66 @@ export function KnowledgeNavPanel({ activeModule, collapsed }: KnowledgeNavPanel
     [internalCollapsed, personalCollapsed, sharedCollapsed, setCollapsed],
   );
 
+  const toggleSpaceCollapsed = useCallback((path: string) => {
+    setCollapsedSpaces((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const startRename = useCallback((path: string) => {
+    setRenamingPath(path);
+    setRenameValue(path);
+  }, []);
+
+  const cancelRename = useCallback(() => {
+    setRenamingPath(null);
+    setRenameValue('');
+  }, []);
+
+  const submitRename = useCallback(async () => {
+    if (renamingPath === null) return;
+    const from = renamingPath;
+    const to = normalizeSpacePath(renameValue);
+    if (!renameValue.trim() || to === from) {
+      cancelRename();
+      return;
+    }
+    setRenameSaving(true);
+    try {
+      const count = await renameKnowledgeSpace(from, to);
+      toast(t('knowledge.spaceRenamed', { count }), 'success');
+      // If the current view is inside the renamed subtree, follow the move so the
+      // main pane doesn't get stranded on a now-empty old-space listing.
+      const prefix = '#/knowledge/internal/';
+      if (window.location.hash.startsWith(prefix)) {
+        const rest = window.location.hash.slice(prefix.length);
+        const slash = rest.indexOf('/');
+        const token = slash === -1 ? rest : rest.slice(0, slash);
+        const tail = slash === -1 ? '' : rest.slice(slash);
+        let decoded = token;
+        try {
+          decoded = decodeURIComponent(token);
+        } catch {
+          /* malformed — compare the raw token */
+        }
+        const cur = normalizeSpacePath(decoded);
+        if (isSpaceInSubtree(cur, from)) {
+          const moved = cur === from ? to : to + cur.slice(from.length);
+          window.location.hash = prefix + encodeURIComponent(moved) + tail;
+        }
+      }
+      cancelRename();
+      bump();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : t('knowledge.renameSpaceFailed'), 'error');
+    } finally {
+      setRenameSaving(false);
+    }
+  }, [renamingPath, renameValue, cancelRename, bump, t]);
+
   if (collapsed) return null;
 
   const navigate = (path: string) => {
@@ -137,6 +196,118 @@ export function KnowledgeNavPanel({ activeModule, collapsed }: KnowledgeNavPanel
     const current = window.location.hash.replace(/^#\/?/, '');
     const target = path.replace(/^#\/?/, '');
     return current === target || current.startsWith(target + '/');
+  };
+
+  // Recursive tree row. A plain render fn (not a component) so the inline-rename
+  // <input> keeps focus across parent re-renders. Indentation scales with depth;
+  // the badge shows the whole-subtree doc count.
+  const renderSpaceNode = (node: SpaceNode, depth: number): React.ReactNode => {
+    const hasChildren = node.children.length > 0;
+    const isNodeCollapsed = collapsedSpaces.has(node.path);
+    const routePath = `#/knowledge/internal/${encodeURIComponent(node.path)}`;
+    const active = isActive(routePath);
+    const renaming = renamingPath === node.path;
+    const indent = { paddingLeft: `${depth * 14 + 8}px` };
+
+    return (
+      <div key={node.path}>
+        {renaming ? (
+          <div className="flex items-center gap-1 py-0.5 pr-1" style={indent}>
+            <input
+              autoFocus
+              value={renameValue}
+              disabled={renameSaving}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void submitRename();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  cancelRename();
+                }
+              }}
+              className="flex-1 min-w-0 bg-surface-sunken border border-primary rounded px-2 py-1 text-xs text-fg focus:outline-none"
+            />
+            {/* onMouseDown preventDefault keeps the input from blurring before the click fires. */}
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void submitRename()}
+              disabled={renameSaving}
+              title={t('common.save')}
+              className="flex-shrink-0 text-fg-faint hover:text-primary-fg rounded p-0.5 disabled:opacity-50"
+            >
+              <Check size={13} />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={cancelRename}
+              disabled={renameSaving}
+              title={t('common.cancel')}
+              className="flex-shrink-0 text-fg-faint hover:text-fg rounded p-0.5 disabled:opacity-50"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        ) : (
+          <div
+            className={`group w-full flex items-center gap-1.5 pr-2 py-1.5 rounded-md text-xs transition-colors ${
+              active
+                ? 'bg-primary-subtle text-primary-fg-strong font-medium'
+                : 'text-fg-secondary hover:text-fg hover:bg-surface-sunken'
+            }`}
+            style={indent}
+          >
+            {hasChildren ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleSpaceCollapsed(node.path);
+                }}
+                title={isNodeCollapsed ? t('common.expand') : t('common.collapse')}
+                className="flex-shrink-0 text-fg-faint hover:text-fg rounded"
+              >
+                <ChevronRight
+                  size={12}
+                  className={`transition-transform duration-200 ${isNodeCollapsed ? '' : 'rotate-90'}`}
+                />
+              </button>
+            ) : (
+              <span className="w-3 flex-shrink-0" />
+            )}
+            <button
+              type="button"
+              onClick={() => navigate(routePath)}
+              className="flex items-center gap-2 flex-1 min-w-0 text-left"
+            >
+              {hasChildren ? (
+                <Folder size={14} className={active ? 'text-primary-fg' : 'text-fg-faint'} />
+              ) : (
+                <FolderOpen size={14} className={active ? 'text-primary-fg' : 'text-fg-faint'} />
+              )}
+              <span className="flex-1 truncate">{node.name}</span>
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                startRename(node.path);
+              }}
+              title={t('knowledge.renameSpace')}
+              className="opacity-0 group-hover:opacity-100 touch-visible flex-shrink-0 text-fg-faint hover:text-fg rounded p-0.5 transition-opacity"
+            >
+              <Edit3 size={12} />
+            </button>
+            <span className="text-[10px] text-fg-faint flex-shrink-0">{node.total}</span>
+          </div>
+        )}
+        {hasChildren && !isNodeCollapsed && node.children.map((child) => renderSpaceNode(child, depth + 1))}
+      </div>
+    );
   };
 
   return (
@@ -156,24 +327,15 @@ export function KnowledgeNavPanel({ activeModule, collapsed }: KnowledgeNavPanel
         />
 
         {!internalCollapsed && (
-          <div className="space-y-0.5 pl-2">
+          <div className="space-y-0.5">
             {docsLoading ? (
               <div className="flex justify-center py-2">
                 <Spinner className="h-4 w-4" />
               </div>
-            ) : spaces.length === 0 ? (
+            ) : spaceTree.length === 0 ? (
               <div className="px-3 py-1.5 text-[11px] text-fg-faint">{t('knowledge.noDocs')}</div>
             ) : (
-              spaces.map((sp) => (
-                <NavItem
-                  key={sp.name}
-                  icon={FolderOpen}
-                  label={sp.name}
-                  badge={sp.count}
-                  active={isActive(`#/knowledge/internal/${sp.name}`)}
-                  onClick={() => navigate(`#/knowledge/internal/${sp.name}`)}
-                />
-              ))
+              spaceTree.map((node) => renderSpaceNode(node, 0))
             )}
           </div>
         )}
@@ -330,34 +492,5 @@ function SectionHeader({
         <ChevronDown size={12} className={`transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`} />
       </button>
     </div>
-  );
-}
-
-function NavItem({
-  icon: Icon,
-  label,
-  badge,
-  active,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  badge?: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs transition-colors ${
-        active
-          ? 'bg-primary-subtle text-primary-fg-strong font-medium'
-          : 'text-fg-secondary hover:text-fg hover:bg-surface-sunken'
-      }`}
-    >
-      <Icon size={14} className={active ? 'text-primary-fg' : 'text-fg-faint'} />
-      <span className="flex-1 text-left truncate">{label}</span>
-      {badge !== undefined && <span className="text-[10px] text-fg-faint flex-shrink-0">{badge}</span>}
-    </button>
   );
 }

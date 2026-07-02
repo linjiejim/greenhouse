@@ -8,3 +8,4 @@ export { runWithConcurrency } from './concurrency.js';
 export { logger } from './logger.js';
 export { toErrorMessage } from './error.js';
 export { PRODUCT_NAME } from './brand.js';
+export { randomDocId } from './id.js';

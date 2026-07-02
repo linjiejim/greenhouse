@@ -200,6 +200,7 @@ Always import these — don't reimplement:
 | `decrypt(ciphertext, key)` | `@greenhouse/utils/crypto` | AES-256-GCM decrypt |
 | `parseHexKey(hex, label?)` | `@greenhouse/utils/crypto` | Validate + parse a 64-char hex key |
 | `toErrorMessage(err)` | `@greenhouse/utils/error` | Normalize an unknown error to a readable string |
+| `randomDocId(prefix?)` | `@greenhouse/utils/id` | Random opaque doc id (`doc-1a2b3c4d`); ids are system-assigned, never title-derived |
 
 ## Auth & permissions
 

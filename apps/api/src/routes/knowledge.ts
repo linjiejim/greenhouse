@@ -8,6 +8,7 @@
  * DELETE /api/knowledge/docs/:id                      — 归档文档（软删除）
  * GET    /api/knowledge/docs/:id/versions             — 获取文档版本历史
  * POST   /api/knowledge/docs/:id/versions/:v/restore  — 回滚到指定版本（记录为新版本）
+ * POST   /api/knowledge/spaces/rename                 — 批量重命名团队 space（含嵌套子树）
  * POST   /api/knowledge/docs/generate                 — AI 生成文档草稿
  * POST   /api/knowledge/docs/:id/ai/rewrite           — AI 改写当前文档
  * POST   /api/knowledge/docs/:id/enrich               — AI 生成 summary/questions/topics/tags
@@ -26,6 +27,7 @@ import { getDb } from '@greenhouse/db';
 import type { KnowledgeDocRow, KnowledgeDocVersionRow, KnowledgeShareRole } from '@greenhouse/db';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { logger } from '@greenhouse/utils/logger';
+import { randomDocId } from '@greenhouse/utils/id';
 import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
 import { getAuthUser } from '../auth/middleware.js';
 import { checkPromptInjection, sanitizeForPrompt } from '../security.js';
@@ -57,18 +59,6 @@ interface KnowledgeEnrichResult {
   questions: string[];
   topics: string[];
   tags: string[];
-}
-
-function slugify(input: string): string {
-  const ascii = input
-    .trim()
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-    .slice(0, 80);
-  return ascii || `doc-${Date.now()}`;
 }
 
 function normalizeVisibility(value: unknown): Visibility {
@@ -134,10 +124,27 @@ function groupTarget(groupId: number): string {
   return `group:${groupId}`;
 }
 
+/**
+ * Canonicalize a KB space path. Spaces are `/`-delimited to express nesting
+ * (`eng/backend`); this trims each segment, drops empties (collapsing `//` and
+ * stray slashes), and falls back to `general`. Applied on every write so the
+ * stored value is always the canonical form the nav tree groups by.
+ */
+function normalizeSpacePath(raw: string): string {
+  return (
+    raw
+      .split('/')
+      .map((seg) => seg.trim())
+      .filter(Boolean)
+      .join('/') || 'general'
+  );
+}
+
 function buildMeta(space: unknown, meta: unknown): Record<string, unknown> {
   const base =
     typeof meta === 'object' && meta !== null && !Array.isArray(meta) ? { ...(meta as Record<string, unknown>) } : {};
-  base.space = typeof space === 'string' && space.trim() ? space.trim() : (base.space as string) || 'general';
+  const raw = typeof space === 'string' && space.trim() ? space : (base.space as string) || 'general';
+  base.space = normalizeSpacePath(raw);
   return base;
 }
 
@@ -216,10 +223,11 @@ const knowledgeRoutes = new Hono<AppEnv>()
     if (!title) return c.json({ error: 'title is required' }, 400);
 
     const content = String(body.content_markdown ?? body.content ?? '');
-    const explicitSlug = String(body.slug || body.doc_id || '').trim();
-    const slug = slugify(explicitSlug || title);
-    const existing = await getDb().knowledgeBase.get(slug, 'shared');
-    if (existing) return c.json({ error: 'slug already exists', slug }, 409);
+    // Doc ids are system-assigned and random — never derived from the title, so
+    // behaviour is identical for every language. Retry on the astronomically
+    // unlikely collision rather than surfacing an error.
+    let slug = randomDocId();
+    while (await getDb().knowledgeBase.get(slug, 'shared')) slug = randomDocId();
 
     const row = await getDb().knowledgeBase.create({
       doc_id: slug,
@@ -268,8 +276,7 @@ const knowledgeRoutes = new Hono<AppEnv>()
     const body = await c.req.json().catch(() => ({}));
 
     const updates: Record<string, unknown> = {};
-    if (body.slug !== undefined || body.doc_id !== undefined)
-      updates.doc_id = slugify(String(body.slug ?? body.doc_id));
+    // doc_id is immutable once assigned — keeps URLs and agent references stable.
     if (body.title !== undefined) updates.title = String(body.title).trim();
     const contentChanged = body.content_markdown !== undefined || body.content !== undefined;
     if (contentChanged) {
@@ -342,6 +349,26 @@ const knowledgeRoutes = new Hono<AppEnv>()
     const restored = await getDb().knowledgeBase.restoreVersion(id, version, user.id);
     if (!restored) return c.json({ error: 'Version not found' }, 404);
     return c.json({ doc: { ...docToApi(restored), access } });
+  })
+  // ─── Spaces (team KB categories) ─────────────────────────
+  //
+  // Spaces aren't a first-class table — they're the `/`-delimited `meta.space`
+  // path on each team doc, grouped into a tree in the nav. Renaming a space is a
+  // bulk metadata move over every doc in that subtree. Team docs are
+  // collaborative (any internal user can edit), so any internal user may rename.
+
+  .post('/spaces/rename', async (c) => {
+    const user = getAuthUser(c);
+    const body = await c.req.json().catch(() => ({}));
+    if (typeof body.from !== 'string' || !body.from.trim()) return c.json({ error: 'from is required' }, 400);
+    if (typeof body.to !== 'string' || !body.to.trim()) return c.json({ error: 'to is required' }, 400);
+    const from = normalizeSpacePath(body.from);
+    const to = normalizeSpacePath(body.to);
+    if (from === to) return c.json({ error: 'from and to are the same space' }, 400);
+
+    const count = await getDb().knowledgeBase.renameSpace(from, to, user.id);
+    logger.info('[Knowledge] space renamed', { from, to, count, by: user.id });
+    return c.json({ success: true, from, to, count });
   })
   // ─── Sharing (private docs) ──────────────────────────────
 
@@ -471,7 +498,7 @@ const knowledgeRoutes = new Hono<AppEnv>()
       responseFormat: 'json',
     });
 
-    result.slug = slugify(result.slug || result.title);
+    result.slug = randomDocId();
     result.questions = normalizeStringArray(result.questions);
     result.topics = normalizeStringArray(result.topics);
     result.tags = normalizeStringArray(result.tags);

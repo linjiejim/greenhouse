@@ -117,9 +117,8 @@ export default {
     agentPanel: 'Global Agent (⌘K)',
   },
 
-  // Login
+  // Login (product name comes from the branding seam, not i18n)
   login: {
-    title: 'Greenhouse',
     subtitle: 'Sign in to continue',
     teamLogin: 'Team Login',
     guestAccess: 'Guest Access',
@@ -132,6 +131,21 @@ export default {
     emailRequired: 'Email is required',
     loginFailed: 'Login failed',
     invalidPassword: 'Invalid password',
+  },
+
+  // Preferences
+  preferences: {
+    title: 'Preferences',
+    theme: 'Theme',
+    themeLight: 'Light',
+    themeDark: 'Dark',
+    themeSystem: 'System',
+    language: 'Language',
+    personalNotes: 'Personal Notes',
+    notesHint:
+      "Your notes will be injected into the AI Agent's context so it can personalize responses for you. For example: your role, preferred language, communication style, or areas of focus.",
+    notesPlaceholder: 'e.g.\nI am a product manager.\nPlease respond in Chinese.\nKeep answers concise and technical.',
+    charactersRemaining: '{count} characters remaining',
   },
 
   // Branding Studio (super only)
@@ -153,21 +167,6 @@ export default {
     copied: 'Copied',
     reset: 'Reset preview',
     noChanges: 'No changes yet — pick a brand color or edit a token to build the export.',
-  },
-
-  // Preferences
-  preferences: {
-    title: 'Preferences',
-    theme: 'Theme',
-    themeLight: 'Light',
-    themeDark: 'Dark',
-    themeSystem: 'System',
-    language: 'Language',
-    personalNotes: 'Personal Notes',
-    notesHint:
-      "Your notes will be injected into the AI Agent's context so it can personalize responses for you. For example: your role, preferred language, communication style, or areas of focus.",
-    notesPlaceholder: 'e.g.\nI am a product manager.\nPlease respond in Chinese.\nKeep answers concise and technical.',
-    charactersRemaining: '{count} characters remaining',
   },
 
   // Chat
@@ -398,6 +397,7 @@ export default {
     personalKb: 'Personal Knowledge Base',
     sharedWithMe: 'Shared with me',
     newDoc: 'New Document',
+    renameSpace: 'Rename category',
     noDocs: 'No documents yet',
     noPersonalDocs: 'No personal documents yet',
     noSharedDocs: 'No shared documents yet',
@@ -437,9 +437,7 @@ export default {
     visTeam: 'Team (internal)',
     visPrivate: 'Private (personal)',
     fieldStatus: 'Status',
-    advancedOptions: 'Advanced (Slug, Space, Tags, Summary — auto-filled when left blank)',
-    fieldSlug: 'Slug',
-    slugPlaceholder: 'Auto-generated from title if left blank',
+    advancedOptions: 'Advanced (Space, Tags, Summary — auto-filled when left blank)',
     fieldSpace: 'Space',
     fieldTags: 'Tags, comma separated',
     fieldSummary: 'Summary',
@@ -450,12 +448,18 @@ export default {
     noVersions: 'No versions yet.',
     currentTag: '(current)',
     updatedReason: 'Updated',
-    compareToCurrent: 'Compare to current version',
+    viewChange: 'View this change',
     restoreToVersion: 'Restore to this version',
-    versionDiffLabel: 'v{version} → current content',
-    sameAsCurrent: 'Same as current content.',
     restoredToVersion: 'Restored to v{version}',
     restoreFailed: 'Restore failed',
+    initialVersion: 'Initial version',
+    fieldContent: 'Content',
+    charsWord: 'chars',
+    diffInline: 'Inline',
+    diffSplit: 'Split',
+    beforeLabel: 'Before',
+    afterLabel: 'After',
+    noContentChange: 'No text change (metadata only)',
     // Share dialog
     shareDocTitle: 'Share Document',
     sharingLabel: 'Sharing:',
@@ -485,6 +489,8 @@ export default {
     archiveFailed: 'Failed to archive document',
     restoreDocFailed: 'Failed to restore document',
     createFailed: 'Failed to create document',
+    spaceRenamed: 'Category renamed — {count} docs moved',
+    renameSpaceFailed: 'Failed to rename category',
   },
 
   // Session groups (per-user conversation folders + Pinned)

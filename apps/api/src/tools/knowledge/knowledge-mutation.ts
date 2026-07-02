@@ -6,11 +6,11 @@
  * every call.
  */
 
-import { randomUUID } from 'node:crypto';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { toErrorMessage } from '@greenhouse/utils/error';
+import { randomDocId } from '@greenhouse/utils/id';
 import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { defineTool, type ToolMeta } from '../define.js';
@@ -82,15 +82,6 @@ type KnowledgeMutationInput = z.infer<typeof knowledgeMutationSchema>;
 
 export interface KnowledgeMutationContext {
   userId: string;
-}
-
-function makeDocId(title: string): string {
-  const slug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48);
-  return `${slug || 'doc'}-${randomUUID().slice(0, 8)}`;
 }
 
 function docScope(scope: 'team' | 'personal') {
@@ -176,7 +167,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
           if (!input.title) return { action: input.action, error: 'title is required' };
           if (!input.content) return { action: input.action, error: 'content is required' };
 
-          const docId = input.doc_id || makeDocId(input.title);
+          const docId = input.doc_id || randomDocId();
           const existing = await db.knowledgeBase.get(docId, dbScope);
           if (existing) return { action: input.action, error: `Document already exists: ${docId}` };
 

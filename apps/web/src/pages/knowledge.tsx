@@ -30,6 +30,7 @@ import {
 import { useKnowledgeStore } from '../stores';
 import { useT } from '../lib/i18n';
 import { safeParse, timeAgo, formatDate } from '../lib/utils';
+import { isSpaceInSubtree, normalizeSpacePath } from '../lib/knowledge-spaces';
 import {
   Archive,
   ChevronDown,
@@ -55,7 +56,6 @@ import {
 interface EditorState {
   id?: number;
   title: string;
-  slug: string;
   space: string;
   visibility: 'team' | 'private';
   status: 'draft' | 'published';
@@ -66,7 +66,6 @@ interface EditorState {
 
 const emptyEditor = (visibility: 'team' | 'private' = 'team'): EditorState => ({
   title: '',
-  slug: '',
   space: 'general',
   visibility,
   status: 'published',
@@ -75,22 +74,10 @@ const emptyEditor = (visibility: 'team' | 'private' = 'team'): EditorState => ({
   value: { markdown: '', json: '{}' },
 });
 
-function slugify(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9一-鿿]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-    .slice(0, 80);
-}
-
 function docToEditor(doc: KnowledgeDoc): EditorState {
   return {
     id: doc.id,
     title: doc.title,
-    slug: doc.slug,
     space: doc.space || 'general',
     visibility: doc.visibility,
     status: doc.status === 'draft' ? 'draft' : 'published',
@@ -98,6 +85,15 @@ function docToEditor(doc: KnowledgeDoc): EditorState {
     summary: doc.summary || '',
     value: { markdown: doc.content_markdown || '', json: doc.content_json || '{}' },
   };
+}
+
+/** Decode a URL space token, tolerating a malformed `%` (falls back to raw). */
+function safeDecodeSpace(token: string): string {
+  try {
+    return decodeURIComponent(token);
+  } catch {
+    return token;
+  }
 }
 
 function parseTags(tagsText: string): string[] {
@@ -120,8 +116,13 @@ export function KnowledgePage({ subPath = '', basePath = '#/knowledge' }: Knowle
   const rest = segments.slice(1).join('/');
 
   switch (section) {
-    case 'internal':
-      return <InternalDocsView space={segments[1] || ''} docSlug={segments.slice(2).join('/')} basePath={basePath} />;
+    case 'internal': {
+      // The hash router doesn't decode segments, and a nested space travels as a
+      // single `%2F`-encoded token — decode + canonicalize it here. Empty stays
+      // empty (the internal landing lists every team doc).
+      const space = segments[1] ? normalizeSpacePath(safeDecodeSpace(segments[1])) : '';
+      return <InternalDocsView space={space} docSlug={segments.slice(2).join('/')} basePath={basePath} />;
+    }
     case 'personal':
       return <PersonalDocsView docSlug={rest} basePath={basePath} />;
     case 'shared':
@@ -233,7 +234,7 @@ function DocsScopeView({
         setDocs(
           isShared
             ? all
-            : all.filter((d) => d.visibility === scope && (!isTeam || !space || (d.space || 'general') === space)),
+            : all.filter((d) => d.visibility === scope && (!isTeam || !space || isSpaceInSubtree(d.space, space))),
         ),
       )
       .catch(() => toast(t('knowledge.loadFailed'), 'error'))
@@ -276,7 +277,6 @@ function DocsScopeView({
     try {
       const payload = {
         title: editor.title.trim(),
-        slug: editor.slug.trim() || slugify(editor.title),
         content_markdown: editor.value.markdown,
         content_json: editor.value.json,
         space: editor.space || 'general',
@@ -538,7 +538,6 @@ function NewDocView({ basePath, defaultVisibility }: { basePath: string; default
     try {
       const payload = {
         title: editor.title.trim(),
-        slug: editor.slug.trim() || slugify(editor.title),
         content_markdown: editor.value.markdown,
         content_json: editor.value.json,
         space: editor.space || 'general',
@@ -684,14 +683,11 @@ function EditorView({
 
 function EditorInline({ editor, onChange }: { editor: EditorState; onChange: (state: EditorState) => void }) {
   const t = useT();
-  // Advanced fields (Slug/Space/Tags/Summary) all have sensible auto-defaults, so
+  // Advanced fields (Space/Tags/Summary) all have sensible auto-defaults, so
   // they stay collapsed to keep the form approachable. Auto-expand when editing a
   // doc that already has custom values, so they aren't hidden/forgotten.
   const hasAdvancedValues = Boolean(
-    editor.tagsText.trim() ||
-    editor.summary.trim() ||
-    (editor.space && editor.space !== 'general') ||
-    (editor.slug && editor.slug !== slugify(editor.title)),
+    editor.tagsText.trim() || editor.summary.trim() || (editor.space && editor.space !== 'general'),
   );
   const [showAdvanced, setShowAdvanced] = useState(hasAdvancedValues);
 
@@ -702,7 +698,7 @@ function EditorInline({ editor, onChange }: { editor: EditorState; onChange: (st
         <span className="text-xs font-medium text-fg-muted">{t('knowledge.fieldTitle')}</span>
         <Input
           value={editor.title}
-          onChange={(e) => onChange({ ...editor, title: e.target.value, slug: editor.slug || slugify(e.target.value) })}
+          onChange={(e) => onChange({ ...editor, title: e.target.value })}
           placeholder={t('knowledge.titlePlaceholder')}
         />
       </label>
@@ -729,7 +725,7 @@ function EditorInline({ editor, onChange }: { editor: EditorState; onChange: (st
         </label>
       </div>
 
-      {/* Advanced (optional) — Slug/Space/Tags/Summary all auto-fill when left blank. */}
+      {/* Advanced (optional) — Space/Tags/Summary all auto-fill when left blank. */}
       <div className="border-t border-edge pt-2">
         <button
           type="button"
@@ -742,14 +738,6 @@ function EditorInline({ editor, onChange }: { editor: EditorState; onChange: (st
         </button>
         {showAdvanced && (
           <div className="grid md:grid-cols-2 gap-3 mt-3">
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-fg-muted">{t('knowledge.fieldSlug')}</span>
-              <Input
-                value={editor.slug}
-                onChange={(e) => onChange({ ...editor, slug: slugify(e.target.value) })}
-                placeholder={t('knowledge.slugPlaceholder')}
-              />
-            </label>
             <label className="space-y-1">
               <span className="text-xs font-medium text-fg-muted">{t('knowledge.fieldSpace')}</span>
               <Input

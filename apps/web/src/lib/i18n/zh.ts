@@ -125,9 +125,8 @@ const zh: Messages = {
     agentPanel: 'Global Agent (⌘K)',
   },
 
-  // 登录
+  // 登录（产品名来自 branding seam，不走 i18n）
   login: {
-    title: 'Greenhouse',
     subtitle: '登录以继续',
     teamLogin: '团队登录',
     guestAccess: '访客访问',
@@ -140,6 +139,20 @@ const zh: Messages = {
     emailRequired: '请输入邮箱',
     loginFailed: '登录失败',
     invalidPassword: '密码错误',
+  },
+
+  // 偏好设置
+  preferences: {
+    title: '偏好设置',
+    theme: '主题',
+    themeLight: '浅色',
+    themeDark: '深色',
+    themeSystem: '跟随系统',
+    language: '语言',
+    personalNotes: '个人备注',
+    notesHint: '您的备注将注入到 AI Agent 的上下文中，用于个性化回复。例如：您的角色、语言偏好、沟通风格或关注领域。',
+    notesPlaceholder: '例如：\n我是产品经理。\n请用中文回复。\n回答尽量简洁、偏技术向。',
+    charactersRemaining: '剩余 {count} 个字符',
   },
 
   // 品牌工作台（仅超级管理员）
@@ -161,20 +174,6 @@ const zh: Messages = {
     copied: '已复制',
     reset: '重置预览',
     noChanges: '暂无改动——选择品牌色或编辑 token 后生成导出内容。',
-  },
-
-  // 偏好设置
-  preferences: {
-    title: '偏好设置',
-    theme: '主题',
-    themeLight: '浅色',
-    themeDark: '深色',
-    themeSystem: '跟随系统',
-    language: '语言',
-    personalNotes: '个人备注',
-    notesHint: '您的备注将注入到 AI Agent 的上下文中，用于个性化回复。例如：您的角色、语言偏好、沟通风格或关注领域。',
-    notesPlaceholder: '例如：\n我是产品经理。\n请用中文回复。\n回答尽量简洁、偏技术向。',
-    charactersRemaining: '剩余 {count} 个字符',
   },
 
   // 聊天
@@ -403,6 +402,7 @@ const zh: Messages = {
     personalKb: '个人知识库',
     sharedWithMe: '共享给我',
     newDoc: '新建文档',
+    renameSpace: '重命名分类',
     noDocs: '暂无文档',
     noPersonalDocs: '暂无个人文档',
     noSharedDocs: '暂无共享文档',
@@ -439,9 +439,7 @@ const zh: Messages = {
     visTeam: 'Team（内部）',
     visPrivate: 'Private（个人）',
     fieldStatus: '状态',
-    advancedOptions: '高级选项（Slug、Space、标签、摘要 — 留空自动填充）',
-    fieldSlug: 'Slug',
-    slugPlaceholder: '留空按标题自动生成',
+    advancedOptions: '高级选项（Space、标签、摘要 — 留空自动填充）',
     fieldSpace: 'Space',
     fieldTags: '标签（逗号分隔）',
     fieldSummary: '摘要',
@@ -451,12 +449,18 @@ const zh: Messages = {
     noVersions: '暂无历史版本。',
     currentTag: '(当前)',
     updatedReason: '已更新',
-    compareToCurrent: '对比当前版本',
+    viewChange: '查看本次改动',
     restoreToVersion: '恢复到此版本',
-    versionDiffLabel: 'v{version} → 当前内容',
-    sameAsCurrent: '与当前内容相同。',
     restoredToVersion: '已恢复到 v{version}',
     restoreFailed: '恢复失败',
+    initialVersion: '初始版本',
+    fieldContent: '正文',
+    charsWord: '字符',
+    diffInline: '行内',
+    diffSplit: '并排',
+    beforeLabel: '改前',
+    afterLabel: '改后',
+    noContentChange: '无正文变更（仅元数据）',
     shareDocTitle: '共享文档',
     sharingLabel: '共享：',
     sharedWith: '已共享给',
@@ -484,6 +488,8 @@ const zh: Messages = {
     archiveFailed: '归档文档失败',
     restoreDocFailed: '恢复文档失败',
     createFailed: '创建文档失败',
+    spaceRenamed: '分类已重命名 —— 移动了 {count} 篇文档',
+    renameSpaceFailed: '重命名分类失败',
   },
 
   // 会话分组（每用户私有的会话文件夹 + 置顶）
