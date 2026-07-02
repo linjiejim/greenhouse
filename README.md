@@ -96,7 +96,10 @@ pnpm drizzle-kit migrate
 # 5. Create the first super-admin
 pnpm admin:create
 
-# 6. Run the dev servers (Vite web :3100 + API :3101, Vite proxies /api → api)
+# 6. (optional) Load the example dataset to explore the app with realistic content
+pnpm seed        # ⚠️ wipes existing rows, then loads data/examples/
+
+# 7. Run the dev servers (Vite web :3100 + API :3101, Vite proxies /api → api)
 pnpm dev
 ```
 
@@ -105,6 +108,12 @@ frontend changes hot-reload.
 
 > **Custom ports** — if `:3100`/`:3101` clash with something, set them in the shell:
 > `WEB_PORT=4000 API_PORT=4001 pnpm dev` (the web dev proxy follows `API_PORT`).
+
+> **Example dataset** — `pnpm seed` loads a small, de-identified fictional company
+> (users, knowledge base, projects, chats, automations, sharing) so you can experience and
+> validate every major feature. Every seeded user logs in with the password `greenhouse`
+> (e.g. `maya@greenhouse.example`). See [`data/examples/README.md`](data/examples/README.md).
+> `pnpm seed` replaces `pnpm admin:create` for a demo install — it seeds its own admin.
 
 ## One-command Docker deploy
 

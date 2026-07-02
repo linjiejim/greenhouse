@@ -96,6 +96,19 @@ docker compose exec api pnpm admin:create          # first super-admin
 For local dev you can start only Postgres from the same file: `docker compose up -d postgres`
 (bound to `127.0.0.1:5432`, not internet-exposed).
 
+### Example dataset (`pnpm seed`)
+
+`data/examples/` holds a de-identified reference dataset (fictional company "Greenhouse") —
+one JSONL file per table, imported by `apps/api/src/cli/seed.ts` (`pnpm seed`). It exists to
+explore/validate a fresh install and covers Tiers 1–3 (identity, knowledge base, projects,
+chat, and power features). **`pnpm seed` calls `resetSchema()` first — it wipes all rows;
+never run it against a DB with real data.** When you add/rename a table or change a column that
+the dataset populates, update the matching `data/examples/<table>.json` and its
+[`README.md`](data/examples/README.md), and add the table to `LOAD_ORDER` in `seed.ts` (FK-safe
+order). Auth secrets are never baked in: `users.json` carries a plaintext `password` hashed at
+load; `api_clients`/`llm_upstreams`/`email_accounts` (instance-secret-encrypted) are not
+seeded.
+
 ## Project structure (pnpm monorepo)
 
 ```

@@ -1,0 +1,8 @@
+{"id":1,"project_id":1,"user_id":"usr_priya","action":"created_project","detail":"Created project \"Website Relaunch\"","created_at":"2026-04-28T10:00:00Z"}
+{"id":2,"project_id":1,"task_id":2,"user_id":"usr_sam","action":"completed_task","detail":"Marked \"Draft hero section\" as done","created_at":"2026-06-24T15:00:00Z"}
+{"id":3,"project_id":2,"user_id":"usr_priya","action":"created_project","detail":"Created project \"Q3 Product Launch\"","created_at":"2026-05-25T11:00:00Z"}
+{"id":4,"project_id":2,"task_id":6,"user_id":"usr_leo","action":"status_changed","detail":"Moved \"Ship self-serve dashboards\" from todo to in_progress","created_at":"2026-06-01T10:00:00Z"}
+{"id":5,"project_id":2,"task_id":11,"user_id":"usr_priya","action":"completed_task","detail":"Marked \"Beta customer outreach\" as done","created_at":"2026-06-19T16:00:00Z"}
+{"id":6,"project_id":2,"user_id":"usr_priya","action":"added_member","detail":"Added Leo Martins to the project","created_at":"2026-05-25T11:05:00Z"}
+{"id":7,"project_id":3,"user_id":"usr_leo","action":"created_project","detail":"Created project \"SOC 2 Compliance\"","created_at":"2026-06-20T09:00:00Z"}
+{"id":8,"project_id":3,"task_id":14,"user_id":"usr_maya","action":"completed_task","detail":"Marked \"Choose external auditor\" as done","created_at":"2026-06-28T12:00:00Z"}

@@ -1,0 +1,5 @@
+{"id":1,"user_id":"usr_maya","feature":"memory","enabled":true,"config":{},"granted_by":"usr_maya","created_at":"2026-05-01T09:00:00Z","updated_at":"2026-05-01T09:00:00Z"}
+{"id":2,"user_id":"usr_leo","feature":"memory","enabled":true,"config":{},"granted_by":"usr_maya","created_at":"2026-05-01T09:00:00Z","updated_at":"2026-05-01T09:00:00Z"}
+{"id":3,"user_id":"usr_sam","feature":"memory","enabled":true,"config":{},"granted_by":"usr_maya","created_at":"2026-05-15T10:00:00Z","updated_at":"2026-05-15T10:00:00Z"}
+{"id":4,"user_id":"usr_priya","feature":"memory","enabled":true,"config":{},"granted_by":"usr_maya","created_at":"2026-05-05T10:00:00Z","updated_at":"2026-05-05T10:00:00Z"}
+{"id":5,"user_id":"usr_leo","feature":"sync","enabled":true,"config":{},"granted_by":"usr_maya","created_at":"2026-06-01T09:00:00Z","updated_at":"2026-06-01T09:00:00Z"}

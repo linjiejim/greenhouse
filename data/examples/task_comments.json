@@ -1,0 +1,6 @@
+{"id":1,"task_id":1,"user_id":"usr_priya","content":"Let's make sure the headline leads with the benefit, per the brand voice guide.","created_at":"2026-06-16T10:00:00Z"}
+{"id":2,"task_id":1,"user_id":"usr_sam","content":"Agreed — first draft of the hero is in review, rest coming this week.","created_at":"2026-06-18T14:30:00Z"}
+{"id":3,"task_id":6,"user_id":"usr_maya","content":"This is the make-or-break feature for Q3. Flag blockers early.","created_at":"2026-06-05T09:00:00Z"}
+{"id":4,"task_id":8,"user_id":"usr_leo","content":"Blocked on the builder UI shape — need the final state schema before I wire the query engine.","created_at":"2026-06-28T12:00:00Z"}
+{"id":5,"task_id":11,"user_id":"usr_priya","content":"Got 12 beta customers signed up — over target. 🎉","created_at":"2026-06-19T16:05:00Z"}
+{"id":6,"task_id":12,"user_id":"usr_leo","content":"Draft gap analysis started. Encryption-at-rest and audit logging look solid; access reviews need work.","created_at":"2026-07-01T09:00:00Z"}

@@ -11,6 +11,7 @@
     "web:build": "pnpm --filter @greenhouse/web build",
     "web:dev": "pnpm --filter @greenhouse/web dev",
     "admin:create": "tsx apps/api/src/cli/admin-create.ts",
+    "seed": "tsx apps/api/src/cli/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
