@@ -103,6 +103,9 @@ pnpm dev
 Open http://localhost:3100. Backend changes require a restart (the API has no `--watch`);
 frontend changes hot-reload.
 
+> **Custom ports** — if `:3100`/`:3101` clash with something, set them in the shell:
+> `WEB_PORT=4000 API_PORT=4001 pnpm dev` (the web dev proxy follows `API_PORT`).
+
 ## One-command Docker deploy
 
 The bundled `docker-compose.yml` runs Postgres, a one-shot migration job, and the API

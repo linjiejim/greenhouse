@@ -1,9 +1,10 @@
 /**
  * Vite config for the Greenhouse web UI.
  *
- * Dev: Vite dev server on :3100 with HMR, proxying /api (+ websocket), /public
- * and /health to the API server on :3101 (see root `pnpm dev`). Same-origin from
- * the browser's POV, so authFetch/ws keep working without CORS.
+ * Dev: Vite dev server on :3100 (override with WEB_PORT) with HMR, proxying
+ * /api (+ websocket), /public and /health to the API server on :3101 (override
+ * with API_PORT — the proxy target follows it; see root `pnpm dev`). Same-origin
+ * from the browser's POV, so authFetch/ws keep working without CORS.
  *
  * Build: emits the hashed bundle into the repo-root `public/` (where the API
  * static server, the Electron packaging step and the hot-update publisher all
@@ -44,7 +45,7 @@ export default defineConfig({
     __GREENHOUSE_API_BASE_URL__: JSON.stringify(process.env.GREENHOUSE_API_BASE_URL || ''),
   },
   server: {
-    port: 3100,
+    port: Number(process.env.WEB_PORT) || 3100,
     strictPort: true,
     proxy: {
       '/api': { target: apiTarget, changeOrigin: true, ws: true },
