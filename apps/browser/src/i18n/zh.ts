@@ -87,7 +87,7 @@ export const zh = {
     modeAsk: '每次询问',
     modeAskHint: '每次点击和输入都需确认。',
     modeAuto: '自动',
-    modeAutoHint: '自动执行；仅危险操作（密码、支付、提交表单）才确认。',
+    modeAutoHint: '自动执行；仅危险操作才需确认。',
     modeYolo: '本站放开全部（YOLO）',
     modeYoloHint: '在 {host} 上不再询问、直接执行。',
     modeYoloNoHost: '打开普通网页后可启用。',

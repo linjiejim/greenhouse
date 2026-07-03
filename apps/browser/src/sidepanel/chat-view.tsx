@@ -126,16 +126,6 @@ export function ChatView() {
           ))}
           {profiles.length === 0 && <option value={profileId}>{profileId}</option>}
         </Select>
-        <AutomationMenu
-          mode={chat.mode}
-          onModeChange={chat.setMode}
-          host={hostOf(pageCtx?.url)}
-          yolo={pageCtx?.url ? chat.yoloSites.has(hostOf(pageCtx.url) ?? '') : false}
-          onYoloChange={(on) => {
-            const h = hostOf(pageCtx?.url);
-            if (h) chat.toggleYolo(h, on);
-          }}
-        />
         <ThemeToggle />
         <button
           className="rounded p-1 text-fg-secondary hover:bg-surface-muted"
@@ -202,6 +192,16 @@ export function ChatView() {
 
           <div className="border-t border-edge p-3">
             <div className="flex items-end gap-2">
+              <AutomationMenu
+                mode={chat.mode}
+                onModeChange={chat.setMode}
+                host={hostOf(pageCtx?.url)}
+                yolo={pageCtx?.url ? chat.yoloSites.has(hostOf(pageCtx.url) ?? '') : false}
+                onYoloChange={(on) => {
+                  const h = hostOf(pageCtx?.url);
+                  if (h) chat.toggleYolo(h, on);
+                }}
+              />
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -340,14 +340,14 @@ function AutomationMenu({
   return (
     <div ref={ref} className="relative">
       <button
-        className={`rounded p-1 hover:bg-surface-muted ${tone}`}
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-edge-strong hover:bg-surface-muted ${tone}`}
         title={t('panel.automationMode')}
         onClick={() => setOpen((v) => !v)}
       >
         <Icon size={16} />
       </button>
       {open && (
-        <div className="absolute right-0 z-10 mt-1 w-60 rounded-lg border border-edge bg-surface p-1 text-sm shadow-lg">
+        <div className="absolute bottom-full left-0 z-10 mb-1 w-80 rounded-lg border border-edge bg-surface p-1 text-sm shadow-lg">
           <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-fg-faint">
             {t('panel.automationMode')}
           </p>

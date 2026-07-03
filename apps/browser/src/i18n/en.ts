@@ -98,7 +98,7 @@ export const en = {
     modeAsk: 'Ask every time',
     modeAskHint: 'Confirm every click and typing action.',
     modeAuto: 'Auto',
-    modeAutoHint: 'Run automatically; only confirm risky actions (passwords, payments, form submits).',
+    modeAutoHint: 'Run automatically; only confirm risky actions.',
     modeYolo: 'YOLO on this site',
     modeYoloHint: 'Run everything on {host} without asking.',
     modeYoloNoHost: 'Open a normal web page to enable.',
