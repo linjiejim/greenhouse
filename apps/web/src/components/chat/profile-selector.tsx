@@ -12,7 +12,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bot, ChevronDown, Check, X } from '../../lib/icons';
 import { getToolIcon, getToolBrief } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
-import { SproutyAvatar } from '../sprouty/index.js';
+import { SproutyFace } from '../sprouty/index.js';
 import { OverlayPanel } from '../app/overlay-panel';
 import type { SproutyVariant, LeafStyle } from '../sprouty/index.js';
 import { SPECIALIST_AVATARS } from '../sprouty/index.js';
@@ -249,7 +249,7 @@ function renderProfileRow(
             : 'border border-transparent hover:bg-surface-sunken'
       }`}
     >
-      <SproutyAvatar {...profileToSprouty(p)} state="idle" size="xs" animate={isHovered} />
+      <SproutyFace {...profileToSprouty(p)} state="idle" size="xs" animate={isHovered} />
       <span className="flex-1 min-w-0 overflow-hidden">
         <span
           className={`text-[13px] leading-tight font-medium truncate block ${isSelected ? 'text-primary-fg-strong' : 'text-fg-secondary'}`}
@@ -414,7 +414,7 @@ function ProfilePickerDrawer({
         }`}
       >
         <div className="mt-0.5 flex-shrink-0">
-          <SproutyAvatar {...profileToSprouty(p)} state="idle" size="sm" />
+          <SproutyFace {...profileToSprouty(p)} state="idle" size="sm" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
@@ -529,7 +529,7 @@ export function ProfileSelector({
           readonly ? 'text-fg-muted cursor-default' : 'text-primary-fg-strong hover:bg-primary-subtle cursor-pointer'
         }`}
       >
-        <SproutyAvatar {...profileToSprouty(selectedProfile)} state="idle" size="xs" animate={false} />
+        <SproutyFace {...profileToSprouty(selectedProfile)} state="idle" size="xs" animate={false} />
         <span className="truncate max-w-[200px]">{selectedProfile.name}</span>
         {!readonly && profiles.length > 1 && (
           <ChevronDown size={12} className={`flex-shrink-0 transition-transform ${showPicker ? 'rotate-180' : ''}`} />

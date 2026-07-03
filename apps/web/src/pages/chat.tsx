@@ -11,7 +11,7 @@ import { MessageFeedback } from '../components/chat/message-feedback';
 import { ChatInput } from '../components/chat/chat-input';
 import type { PendingImage } from '../components/chat/chat-input';
 import { ProfileSelector, profileToSprouty } from '../components/chat/profile-selector';
-import { SproutyAvatar } from '../components/sprouty/index.js';
+import { SproutyFace } from '../components/sprouty/index.js';
 import { useAgentContext } from '../components/agent-context';
 import { useSessionManager } from '../lib/session-manager';
 import { useUIStore, useAuthStore, useProfileStore } from '../stores';
@@ -1089,6 +1089,7 @@ export function ChatPage({ initialSessionId, userRole }: { initialSessionId?: st
                     onConfirmAction={msg.role === 'assistant' ? handleSend : undefined}
                     hasFollowUpUserMessage={hasFollowUpUserMessage}
                     previousUserMessage={previousUserMsg}
+                    agentAvatar={activeProfileMeta ? profileToSprouty(activeProfileMeta) : undefined}
                   />
                 );
               })}
@@ -1130,7 +1131,10 @@ export function ChatPage({ initialSessionId, userRole }: { initialSessionId?: st
 
         {/* Error */}
         {error && (
-          <div className="px-4 py-2 bg-danger-subtle border-t border-danger text-xs text-danger">⚠️ {error}</div>
+          <div className="px-4 py-2 bg-danger-subtle border-t border-danger text-xs text-danger flex items-center gap-2">
+            <SproutyFace state="error" size={22} className="flex-shrink-0" />
+            <span>{error}</span>
+          </div>
         )}
 
         {/* Input — read-only for non-owners of shared sessions, but keep feedback visible */}
@@ -1327,7 +1331,7 @@ function ProfileEmptyState({
     <div className="flex flex-col md:flex-row items-center md:items-center justify-center gap-6 md:gap-12 py-6 md:py-10 px-2 md:px-6 max-w-4xl mx-auto">
       {/* Left — Avatar + identity */}
       <div className="flex flex-col items-center text-center flex-shrink-0">
-        <SproutyAvatar
+        <SproutyFace
           {...profileToSprouty(profile || ({ id: 'default', name: '', tools: [] } as any))}
           state="idle"
           size="xl"

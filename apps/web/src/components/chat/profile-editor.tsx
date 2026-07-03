@@ -13,7 +13,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Button, Dialog, Input, Textarea, Select, Spinner } from '../ui';
 import { Globe, X, Plus, Trash2, ChevronDown, ChevronUp, Maximize2, CAPABILITY_ICON_LIST } from '../../lib/icons';
 import { getToolIcon, getToolBrief } from '../../lib/icons';
-import { SproutyAvatar, COLOR_PRESETS, ACCESSORIES, LEAF_STYLES } from '../sprouty/index.js';
+import { SproutyFace, COLOR_PRESETS, ACCESSORIES, LEAF_STYLES } from '../sprouty/index.js';
 import type { Profile, ToolMeta, CustomProfileInput } from '../../lib/api';
 import type { LeafStyle } from '../sprouty/index.js';
 
@@ -321,7 +321,7 @@ export function ProfileEditorDrawer({
 
         {/* Avatar Preview + Color Picker */}
         <div className="flex flex-col items-center gap-3 p-4 bg-surface-sunken rounded-xl">
-          <SproutyAvatar
+          <SproutyFace
             variant="custom"
             color={form.avatar_color}
             accessories={form.avatar_accessories}

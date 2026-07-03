@@ -12,7 +12,7 @@
 import React from 'react';
 import { X } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
-import { SproutyAvatar } from '../sprouty/index.js';
+import { SproutyFace } from '../sprouty/index.js';
 import { profileToSprouty } from './profile-selector';
 
 interface ComposerChipsProps {
@@ -31,7 +31,7 @@ export function ComposerChips({ profile, onRemoveProfile, extra }: ComposerChips
     <div className="px-3 pt-3 pb-1 flex flex-wrap items-center gap-1.5">
       {profile && (
         <Pill onRemove={onRemoveProfile} label={profile.name} title={`Agent: ${profile.name}`}>
-          <SproutyAvatar {...profileToSprouty(profile)} state="idle" size="xs" animate={false} />
+          <SproutyFace {...profileToSprouty(profile)} state="idle" size="xs" animate={false} />
         </Pill>
       )}
       {extra}

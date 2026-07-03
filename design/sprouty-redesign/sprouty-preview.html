@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sprouty · flat SVG expressions</title>
+<style>
+  :root {
+    --bg: #faf6ea;
+    --card: #fffdf6;
+    --edge: #ece3cf;
+    --fg: #33501f;
+    --fg-soft: #6b7a56;
+  }
+  body.bg-white { --bg:#ffffff; --card:#f7f8f5; --edge:#e6e8e2; --fg:#2b3a1e; --fg-soft:#6b7563; }
+  body.bg-dark  { --bg:#171b14; --card:#20261c; --edge:#333b2b; --fg:#dfe9cf; --fg-soft:#93a381; }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    transition: background .3s ease, color .3s ease;
+    padding: 32px 24px 64px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+  header h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: .5px; }
+  header p { margin: 0; color: var(--fg-soft); font-size: 14px; line-height: 1.6; }
+
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 22px 0 26px; }
+  .btn {
+    appearance: none; border: 1px solid var(--edge); background: var(--card); color: var(--fg);
+    font: inherit; font-size: 13px; padding: 8px 14px; border-radius: 999px; cursor: pointer;
+    transition: transform .08s ease, border-color .2s ease;
+  }
+  .btn:hover { border-color: #a4d65e; }
+  .btn:active { transform: translateY(1px); }
+  .tag { font-size: 12px; color: var(--fg-soft); margin-left: auto; }
+
+  /* Hero */
+  .hero {
+    display: flex; align-items: center; gap: 28px; background: var(--card);
+    border: 1px solid var(--edge); border-radius: 20px; padding: 24px 28px; margin-bottom: 30px;
+  }
+  .hero-art { width: 190px; height: 190px; flex: 0 0 auto; display: grid; place-items: center; overflow: visible; }
+  .hero-meta h2 { margin: 0 0 6px; font-size: 22px; letter-spacing: 1px; }
+  .hero-meta p { margin: 0; color: var(--fg-soft); font-size: 14px; line-height: 1.7; }
+
+  /* Grid — mirrors the reference 3×3 sheet */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .cell {
+    appearance: none; border: 1px solid var(--edge); background: var(--card); color: var(--fg);
+    border-radius: 18px; padding: 14px 8px 12px; cursor: pointer; font: inherit;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    transition: transform .12s ease, border-color .2s ease, box-shadow .2s ease;
+  }
+  .cell:hover { transform: translateY(-3px); border-color: #a4d65e; box-shadow: 0 8px 24px -14px rgba(51,80,31,.35); }
+  .cell .art { width: 150px; height: 150px; display: grid; place-items: center; overflow: visible; }
+  .cell .lbl { font-size: 13px; font-weight: 700; letter-spacing: 1.2px; color: var(--fg); }
+
+  /* Size ladder — proves small-size legibility */
+  .ladder { display: flex; align-items: flex-end; gap: 26px; margin-top: 34px; padding: 20px 24px;
+            background: var(--card); border: 1px solid var(--edge); border-radius: 18px; flex-wrap: wrap; }
+  .ladder-title { width: 100%; font-size: 13px; color: var(--fg-soft); margin-bottom: 4px; }
+  .ladder-item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .ladder-item span { font-size: 11px; color: var(--fg-soft); }
+  .ladder-item .art { overflow: visible; display: grid; place-items: center; }
+
+  footer { margin-top: 30px; color: var(--fg-soft); font-size: 12.5px; line-height: 1.7; }
+  code { background: rgba(120,140,90,.14); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+
+  svg { display: block; }
+
+  /* ─── animation ─────────────────────────────────────────── */
+  .char { transform-box: fill-box; transform-origin: 50% 95%; }
+  .m-breathe     { animation: breathe 3.4s ease-in-out infinite; }
+  .m-breatheSlow { animation: breatheSlow 4.6s ease-in-out infinite; }
+  .m-hop         { animation: hop 1.3s ease-in-out infinite; }
+  .m-shake       { animation: shake .5s ease-in-out infinite; }
+  .m-thinkbob    { animation: thinkbob 3.8s ease-in-out infinite; }
+
+  .leaves   { transform-box: fill-box; transform-origin: 50% 100%; animation: sway 3.6s ease-in-out infinite; }
+  .eye      { transform-box: fill-box; transform-origin: center; animation: blink 4.6s infinite; }
+  .waveArm  { transform-box: fill-box; transform-origin: 100% 100%; animation: wave 1.5s ease-in-out infinite; }
+  .thumbArm { transform-box: fill-box; transform-origin: 50% 100%; animation: thumbbob 1.4s ease-in-out infinite; }
+  .beat     { transform-box: fill-box; transform-origin: center; animation: beat 1s ease-in-out infinite; }
+  .fx-i     { transform-box: fill-box; transform-origin: center; }
+
+  @keyframes breathe     { 0%,100%{transform:translateY(0) scale(1,1)} 50%{transform:translateY(-1.5px) scale(1.012,.988)} }
+  @keyframes breatheSlow { 0%,100%{transform:translateY(0) scale(1,1)} 50%{transform:translateY(-2px) scale(1.008,.99)} }
+  @keyframes hop { 0%,60%,100%{transform:translateY(0) scale(1,1)} 20%{transform:translateY(-12px) scale(.97,1.04)} 42%{transform:translateY(0) scale(1.04,.96)} }
+  @keyframes shake { 0%,100%{transform:translateX(0) rotate(0)} 20%{transform:translateX(-2.5px) rotate(-1.6deg)} 60%{transform:translateX(2.5px) rotate(1.6deg)} }
+  @keyframes thinkbob { 0%,100%{transform:rotate(0)} 50%{transform:rotate(-3.2deg)} }
+  @keyframes sway { 0%,100%{transform:rotate(-4deg)} 50%{transform:rotate(4deg)} }
+  @keyframes blink { 0%,92%,100%{transform:scaleY(1)} 96%{transform:scaleY(.1)} }
+  @keyframes wave { 0%,100%{transform:rotate(3deg)} 25%{transform:rotate(-14deg)} 50%{transform:rotate(7deg)} 75%{transform:rotate(-14deg)} }
+  @keyframes thumbbob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+  @keyframes beat { 0%,100%{transform:scale(1)} 50%{transform:scale(1.18)} }
+  @keyframes floatUp { 0%{opacity:0;transform:translateY(5px) scale(.6)} 25%{opacity:1} 100%{opacity:0;transform:translateY(-16px) scale(1)} }
+  @keyframes drift { 0%{opacity:0;transform:translate(0,5px) scale(.7)} 25%{opacity:1} 100%{opacity:0;transform:translate(8px,-15px) scale(1.1)} }
+  @keyframes twinkle { 0%,100%{opacity:.2;transform:scale(.7)} 50%{opacity:1;transform:scale(1)} }
+  @keyframes tear { 0%{opacity:0;transform:translateY(-2px)} 20%{opacity:1} 100%{opacity:0;transform:translateY(12px)} }
+  @keyframes pop { 0%{opacity:0;transform:scale(.4)} 40%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(1.15)} }
+
+  body.paused svg * { animation: none !important; }
+  @media (prefers-reduced-motion: reduce) { svg * { animation: none !important; } }
+</style>
+</head>
+<body class="bg-cream">
+<div class="wrap">
+  <header>
+    <h1>🌱 Sprouty — 扁平 SVG 表情系统</h1>
+    <p>忠实还原设计稿 <code>B-expressions-states.png</code>：纯扁平矢量、统一描边、9 种表情/状态，全部用 CSS 动画驱动。点任意一个看放大 + 动效说明。</p>
+  </header>
+
+  <div class="toolbar">
+    <button class="btn" id="toggleAnim">⏸ 暂停动画</button>
+    <button class="btn" id="toggleBg">🎨 背景：米色</button>
+    <span class="tag">viewBox 0 0 200 200 · 无位图 · 可无损缩放</span>
+  </div>
+
+  <section class="hero">
+    <div class="hero-art" id="hero-art"></div>
+    <div class="hero-meta">
+      <h2 id="hero-name">IDLE</h2>
+      <p id="hero-desc"></p>
+    </div>
+  </section>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="ladder">
+    <div class="ladder-title">小尺寸辨识度（头像常用 24–48px）— 描边扁平在小尺寸也立得住：</div>
+    <div id="ladder"></div>
+  </div>
+
+  <footer>
+    表情 → Agent 状态映射：<code>idle→IDLE</code> · <code>thinking→THINKING</code> · <code>responding→RESPONDING</code> · <code>done→DONE</code> · <code>error→ERROR</code>，另加 <code>SLEEP / LOVE / THUMBS-UP / SURPRISE</code> 用于反馈与暖场时刻。<br/>
+    这套 SVG 可直接替换现有 canvas 版 <code>SproutyAvatar</code>，并与分支里的 <code>sprouty-face-svg.ts</code> 收敛为同一套渲染。
+  </footer>
+</div>
+
+<script>
+// ─── palette (tuned to the reference sheet) ───────────────
+const C = {
+  body:'#a4d65e', belly:'#edf6cf', leaf:'#8fce5e', vein:'#4f8f2e', ol:'#33501f',
+  eye:'#22302a', blush:'#f3a6ac', heart:'#ff6f8f', spark:'#ffd24a',
+  zzz:'#7f97ad', tear:'#7fc7e8', mouth:'#c14a63', tongue:'#e07a92'
+};
+const EYEY = 105, LX = 81, RX = 119, MY = 120, BROW = 89;
+
+const EXPR = {
+  idle:      { motion:'breathe' },
+  thinking:  { motion:'thinkbob' },
+  responding:{ motion:'breathe' },
+  done:      { motion:'hop' },
+  error:     { motion:'breathe', tilt:'rotate(-4 100 152)' },
+  sleep:     { motion:'breatheSlow', tilt:'rotate(-8 100 152) translate(0 3)' },
+  love:      { motion:'breathe' },
+  thumb:     { motion:'breathe' },
+  surprise:  { motion:'shake' },
+};
+const LABELS = { idle:'IDLE', thinking:'THINKING', responding:'RESPONDING', done:'DONE', error:'ERROR', sleep:'SLEEP', love:'LOVE', thumb:'CHEER', surprise:'SURPRISE' };
+const DESC = {
+  idle:'空闲 · 轻呼吸 + 偶尔眨眼 + 头顶叶子微摆',
+  thinking:'思考中 · 手托下巴 + 思考气泡 + 缓慢侧倾沉思',
+  responding:'回复中 · 挥手打招呼 + 张嘴微笑',
+  done:'完成 · 眯眼大笑 + 星光闪烁 + 开心轻跳',
+  error:'出错 · 担心眉 + 汗滴滑落 + 身体轻微侧倾',
+  sleep:'休眠 · 慢呼吸 + 侧躺 + zzz 飘起',
+  love:'喜欢 · 爱心眼跳动 + 张嘴笑 + 双手捧脸',
+  thumb:'鼓舞 · 眨眼 + 举拳上下晃动，加油打气',
+  surprise:'惊讶 · 瞪大眼 + 张嘴 + 抖动 + 感叹线',
+};
+
+// ─── geometry helpers ─────────────────────────────────────
+function heartPath(x, y, s) {
+  return `M${x} ${y+s*0.35} C${x-s*0.55} ${y-s*0.45} ${x-s*1.2} ${y+s*0.15} ${x} ${y+s*1.1} C${x+s*1.2} ${y+s*0.15} ${x+s*0.55} ${y-s*0.45} ${x} ${y+s*0.35} Z`;
+}
+function leafFrom(bx, by, deg, L, W) {
+  const th = deg * Math.PI / 180;
+  const dx = Math.sin(th), dy = -Math.cos(th);   // base → tip direction
+  const px = Math.cos(th), py = Math.sin(th);     // width axis (perpendicular)
+  const r = v => Math.round(v * 10) / 10;
+  const tx = r(bx + L * dx), ty = r(by + L * dy);
+  const mx = bx + 0.52 * L * dx, my = by + 0.52 * L * dy;
+  const c1x = r(mx + (W / 2) * px), c1y = r(my + (W / 2) * py);
+  const c2x = r(mx - (W / 2) * px), c2y = r(my - (W / 2) * py);
+  return `<path d="M${r(bx)} ${r(by)} Q${c1x} ${c1y} ${tx} ${ty} Q${c2x} ${c2y} ${r(bx)} ${r(by)} Z" fill="${C.leaf}" stroke="${C.ol}" stroke-width="2.6" stroke-linejoin="round"/>`
+    + `<path d="M${r(bx)} ${r(by)} L${tx} ${ty}" fill="none" stroke="${C.vein}" stroke-width="1.8" stroke-linecap="round"/>`;
+}
+function sprout() {
+  // Stem tip at ~(100,50); both leaf blades root there so they visibly touch the stem.
+  return `<g class="leaves">`
+    + `<path d="M100 67 C99 59 99 54 100 50" fill="none" stroke="${C.ol}" stroke-width="6" stroke-linecap="round"/>`
+    + `<path d="M100 67 C99 59 99 54 100 50" fill="none" stroke="${C.leaf}" stroke-width="3" stroke-linecap="round"/>`
+    + leafFrom(99, 52, -40, 27, 15) + leafFrom(101, 52, 40, 27, 15)
+    + `</g>`;
+}
+function feet() {
+  return `<ellipse cx="84" cy="166" rx="12" ry="8" fill="${C.body}" stroke="${C.ol}" stroke-width="3.2"/>`
+       + `<ellipse cx="116" cy="166" rx="12" ry="8" fill="${C.body}" stroke="${C.ol}" stroke-width="3.2"/>`;
+}
+function body() { return `<ellipse cx="100" cy="116" rx="58" ry="54" fill="${C.body}" stroke="${C.ol}" stroke-width="4"/>`; }
+function belly() { return `<ellipse cx="100" cy="149" rx="31" ry="19" fill="${C.belly}"/>`; }
+
+function restArmL() { return `<ellipse cx="48" cy="132" rx="9" ry="12" transform="rotate(16 48 132)" fill="${C.body}" stroke="${C.ol}" stroke-width="3.2"/>`; }
+function restArmR() { return `<ellipse cx="152" cy="132" rx="9" ry="12" transform="rotate(-16 152 132)" fill="${C.body}" stroke="${C.ol}" stroke-width="3.2"/>`; }
+function handsUp() {
+  return `<ellipse cx="56" cy="121" rx="10" ry="12" transform="rotate(-20 56 121)" fill="${C.body}" stroke="${C.ol}" stroke-width="3.2"/>`
+       + `<ellipse cx="144" cy="121" rx="10" ry="12" transform="rotate(20 144 121)" fill="${C.body}" stroke="${C.ol}" stroke-width="3.2"/>`;
+}
+function errorHand() { return `<ellipse cx="57" cy="121" rx="9" ry="11" transform="rotate(-16 57 121)" fill="${C.body}" stroke="${C.ol}" stroke-width="3.2"/>`; }
+function waveArm(anim) {
+  const g = `<path d="M56 124 Q45 111 44 100" fill="none" stroke="${C.ol}" stroke-width="14" stroke-linecap="round"/>`
+    + `<path d="M56 124 Q45 111 44 100" fill="none" stroke="${C.body}" stroke-width="9" stroke-linecap="round"/>`
+    + `<circle cx="43" cy="99" r="9.5" fill="${C.body}" stroke="${C.ol}" stroke-width="3.2"/>`;
+  return anim ? `<g class="waveArm">${g}</g>` : g;
+}
+function thinkArm() {
+  // Hand resting under the chin (pondering), nudged left.
+  const p = "M60 132 Q71 133 81 129";
+  return `<path d="${p}" fill="none" stroke="${C.ol}" stroke-width="14" stroke-linecap="round"/>`
+    + `<path d="${p}" fill="none" stroke="${C.body}" stroke-width="9" stroke-linecap="round"/>`
+    + `<circle cx="82" cy="128" r="8" fill="${C.body}" stroke="${C.ol}" stroke-width="3.2"/>`;
+}
+function thumbArm(anim) {
+  // Raised rounded fist (no finger) — bobs up/down to cheer.
+  const g = `<path d="M56 124 Q47 111 46 100" fill="none" stroke="${C.ol}" stroke-width="14" stroke-linecap="round"/>`
+    + `<path d="M56 124 Q47 111 46 100" fill="none" stroke="${C.body}" stroke-width="9" stroke-linecap="round"/>`
+    + `<circle cx="45" cy="99" r="10" fill="${C.body}" stroke="${C.ol}" stroke-width="3.2"/>`;
+  return anim ? `<g class="thumbArm">${g}</g>` : g;
+}
+
+// ─── eyes / brows / mouths ────────────────────────────────
+function eye(cx, o) {
+  o = o || {};
+  const dy = o.look === 'up' ? -1.5 : 0;
+  const hlr = o.teary ? 3.4 : 2.8;
+  const inner = `<ellipse cx="${cx}" cy="${EYEY+dy}" rx="8.2" ry="9.6" fill="${C.eye}"/>`
+    + `<circle cx="${cx-2.8}" cy="${EYEY-4+dy}" r="${hlr}" fill="#fff"/>`
+    + (o.teary ? `<circle cx="${cx+3}" cy="${EYEY+2+dy}" r="1.6" fill="#fff" opacity=".8"/>` : '');
+  return o.blink ? `<g class="eye">${inner}</g>` : inner;
+}
+function happyEye(cx) { return `<path d="M${cx-9} ${EYEY+3} Q${cx} ${EYEY-6} ${cx+9} ${EYEY+3}" fill="none" stroke="${C.ol}" stroke-width="3" stroke-linecap="round"/>`; }
+function sleepEye(cx) { return `<path d="M${cx-8} ${EYEY-1} Q${cx} ${EYEY+6} ${cx+8} ${EYEY-1}" fill="none" stroke="${C.ol}" stroke-width="2.6" stroke-linecap="round"/>`; }
+function winkEye(cx) { return `<path d="M${cx-9} ${EYEY+2} Q${cx} ${EYEY-7} ${cx+9} ${EYEY+2}" fill="none" stroke="${C.ol}" stroke-width="3" stroke-linecap="round"/>`; }
+function wideEye(cx) {
+  return `<ellipse cx="${cx}" cy="${EYEY}" rx="8.4" ry="10" fill="#fff" stroke="${C.ol}" stroke-width="2.6"/>`
+    + `<ellipse cx="${cx}" cy="${EYEY+1.5}" rx="3.4" ry="3.8" fill="${C.eye}"/>`;
+}
+function heartEye(cx) { return `<g class="beat"><path fill="${C.heart}" d="${heartPath(cx, EYEY+1, 8.5)}"/></g>`; }
+function brows(style) {
+  if (style === 'worried')
+    return `<path d="M${LX-9} ${BROW+1} Q${LX-1} ${BROW-4} ${LX+8} ${BROW-4}" fill="none" stroke="${C.ol}" stroke-width="2.4" stroke-linecap="round"/>`
+         + `<path d="M${RX+9} ${BROW+1} Q${RX+1} ${BROW-4} ${RX-8} ${BROW-4}" fill="none" stroke="${C.ol}" stroke-width="2.4" stroke-linecap="round"/>`;
+  if (style === 'raised')
+    return `<path d="M${LX-8} ${BROW-4} Q${LX} ${BROW-9} ${LX+8} ${BROW-4}" fill="none" stroke="${C.ol}" stroke-width="2.4" stroke-linecap="round"/>`
+         + `<path d="M${RX-8} ${BROW-4} Q${RX} ${BROW-9} ${RX+8} ${BROW-4}" fill="none" stroke="${C.ol}" stroke-width="2.4" stroke-linecap="round"/>`;
+  return '';
+}
+function blush(strong) {
+  const rx = strong ? 9 : 8, ry = strong ? 6 : 5.2;
+  return `<ellipse cx="65" cy="117" rx="${rx}" ry="${ry}" fill="${C.blush}"/><ellipse cx="135" cy="117" rx="${rx}" ry="${ry}" fill="${C.blush}"/>`;
+}
+function mouthSmile() { return `<path d="M89 ${MY} Q100 ${MY+9} 111 ${MY}" fill="none" stroke="${C.ol}" stroke-width="2.6" stroke-linecap="round"/>`; }
+function mouthOpen()  { return `<path d="M91 ${MY-1} Q100 ${MY+11} 109 ${MY-1} Q100 ${MY+4} 91 ${MY-1} Z" fill="${C.mouth}" stroke="${C.ol}" stroke-width="2.2" stroke-linejoin="round"/>`; }
+function mouthLaugh() { return `<path d="M86 ${MY-2} Q100 ${MY+2} 114 ${MY-2} Q112 ${MY+16} 100 ${MY+17} Q88 ${MY+16} 86 ${MY-2} Z" fill="${C.mouth}" stroke="${C.ol}" stroke-width="2.4" stroke-linejoin="round"/><path d="M92 ${MY+9} Q100 ${MY+17} 108 ${MY+9} Z" fill="${C.tongue}"/>`; }
+function mouthThink() { return `<path d="M92 ${MY} Q100 ${MY+6} 108 ${MY}" fill="none" stroke="${C.ol}" stroke-width="2.6" stroke-linecap="round"/>`; }
+function mouthWavy()  { return `<path d="M91 ${MY+1} Q95 ${MY-3} 99 ${MY+1} Q104 ${MY+5} 109 ${MY+1}" fill="none" stroke="${C.ol}" stroke-width="2.6" stroke-linecap="round"/>`; }
+function mouthO()     { return `<ellipse cx="100" cy="${MY+2}" rx="6" ry="7.5" fill="${C.mouth}" stroke="${C.ol}" stroke-width="2.4"/>`; }
+function mouthSleep() { return `<ellipse cx="100" cy="${MY+1}" rx="5" ry="4" fill="none" stroke="${C.ol}" stroke-width="2.2"/>`; }
+
+// ─── floating effects ─────────────────────────────────────
+function star(x, y, r, d) {
+  return `<path class="fx-i" style="animation:twinkle 1.6s ${d}s infinite" d="M${x} ${y-r} L${x+r*0.3} ${y-r*0.3} L${x+r} ${y} L${x+r*0.3} ${y+r*0.3} L${x} ${y+r} L${x-r*0.3} ${y+r*0.3} L${x-r} ${y} L${x-r*0.3} ${y-r*0.3} Z" fill="${C.spark}"/>`;
+}
+function fxFor(expr) {
+  switch (expr) {
+    case 'done':
+      return star(42,74,7,0) + star(158,70,6,.5) + star(150,150,5,.9) + star(46,148,4,1.3);
+    case 'error':
+      return `<path class="fx-i" style="animation:tear 1.7s 0s infinite" d="M140 92 Q145 98 140 103 Q135 98 140 92 Z" fill="${C.tear}"/>`;
+    case 'sleep':
+      return `<text class="fx-i" style="animation:drift 2.4s 0s infinite" x="136" y="96" font-size="14" font-weight="700" fill="${C.zzz}" font-family="sans-serif">z</text>`
+           + `<text class="fx-i" style="animation:drift 2.4s .6s infinite" x="149" y="82" font-size="18" font-weight="700" fill="${C.zzz}" font-family="sans-serif">z</text>`
+           + `<text class="fx-i" style="animation:drift 2.4s 1.2s infinite" x="163" y="66" font-size="22" font-weight="700" fill="${C.zzz}" font-family="sans-serif">Z</text>`;
+    case 'thinking':
+      return `<circle class="fx-i" style="animation:twinkle 2s 0s infinite" cx="60" cy="80" r="3.5" fill="none" stroke="${C.ol}" stroke-width="2.4"/>`
+           + `<circle class="fx-i" style="animation:twinkle 2s .45s infinite" cx="49" cy="65" r="5" fill="none" stroke="${C.ol}" stroke-width="2.6"/>`;
+    case 'love':
+      return `<path class="fx-i" style="animation:floatUp 2.4s 0s infinite" d="${heartPath(150,98,7)}" fill="${C.heart}"/>`
+           + `<path class="fx-i" style="animation:floatUp 2.4s 1s infinite" d="${heartPath(52,102,5)}" fill="#ff8aa4"/>`;
+    case 'surprise':
+      return `<line class="fx-i" style="animation:pop .9s 0s infinite" x1="63" y1="60" x2="55" y2="50" stroke="${C.ol}" stroke-width="3.2" stroke-linecap="round"/>`
+           + `<line class="fx-i" style="animation:pop .9s .12s infinite" x1="100" y1="46" x2="100" y2="34" stroke="${C.ol}" stroke-width="3.2" stroke-linecap="round"/>`
+           + `<line class="fx-i" style="animation:pop .9s .24s infinite" x1="137" y1="60" x2="145" y2="50" stroke="${C.ol}" stroke-width="3.2" stroke-linecap="round"/>`;
+    default: return '';
+  }
+}
+
+// ─── compose ──────────────────────────────────────────────
+function face(expr) {
+  switch (expr) {
+    case 'thinking':   return eye(LX,{look:'up'}) + eye(RX,{look:'up'}) + blush() + mouthThink();
+    case 'responding': return eye(LX,{blink:true}) + eye(RX,{blink:true}) + blush() + mouthOpen();
+    case 'done':       return happyEye(LX) + happyEye(RX) + blush(true) + mouthLaugh();
+    case 'error':      return brows('worried') + eye(LX,{look:'up',teary:true}) + eye(RX,{look:'up',teary:true}) + blush(true) + mouthWavy();
+    case 'sleep':      return sleepEye(LX) + sleepEye(RX) + blush() + mouthSleep();
+    case 'love':       return heartEye(LX) + heartEye(RX) + blush(true) + mouthOpen();
+    case 'thumb':      return eye(LX,{}) + winkEye(RX) + blush() + mouthOpen();
+    case 'surprise':   return brows('raised') + wideEye(LX) + wideEye(RX) + blush() + mouthO();
+    case 'idle':
+    default:           return eye(LX,{blink:true}) + eye(RX,{blink:true}) + blush() + mouthSmile();
+  }
+}
+function behindArms(expr) {
+  if (expr === 'idle' || expr === 'sleep') return restArmL() + restArmR();
+  if (expr === 'responding' || expr === 'thinking' || expr === 'thumb' || expr === 'error') return restArmR();
+  return '';
+}
+function frontArms(expr, anim) {
+  switch (expr) {
+    case 'responding': return waveArm(anim);
+    case 'thinking':   return thinkArm();
+    case 'thumb':      return thumbArm(anim);
+    case 'error':      return errorHand();
+    case 'done': case 'love': case 'surprise': return handsUp();
+    default: return '';
+  }
+}
+
+function buildSvg(expr, animate) {
+  animate = animate !== false;
+  const cfg = EXPR[expr] || EXPR.idle;
+  const inner = sprout() + feet() + behindArms(expr) + body() + belly() + face(expr) + frontArms(expr, animate);
+  const fx = fxFor(expr);
+  const motion = animate ? ` m-${cfg.motion}` : '';
+  const wrapOpen = cfg.tilt ? `<g transform="${cfg.tilt}">` : '<g>';
+  return `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" style="overflow:visible" role="img" aria-label="Sprouty ${LABELS[expr]}">`
+    + `${wrapOpen}<g class="char${motion}">${inner}</g><g class="fx">${fx}</g></g></svg>`;
+}
+
+// ─── page wiring ──────────────────────────────────────────
+const ORDER = ['idle','thinking','responding','done','error','sleep','love','thumb','surprise'];
+
+const grid = document.getElementById('grid');
+ORDER.forEach(e => {
+  const b = document.createElement('button');
+  b.className = 'cell';
+  b.innerHTML = `<div class="art">${buildSvg(e)}</div><div class="lbl">${LABELS[e]}</div>`;
+  b.onclick = () => setHero(e);
+  grid.appendChild(b);
+});
+
+function setHero(e) {
+  document.getElementById('hero-art').innerHTML = buildSvg(e);
+  document.getElementById('hero-name').textContent = LABELS[e];
+  document.getElementById('hero-desc').textContent = DESC[e];
+}
+setHero('idle');
+
+const ladder = document.getElementById('ladder');
+[24, 32, 48, 64, 96].forEach(px => {
+  const d = document.createElement('div');
+  d.className = 'ladder-item';
+  d.innerHTML = `<div class="art" style="width:${px}px;height:${px}px">${buildSvg('idle')}</div><span>${px}px</span>`;
+  ladder.appendChild(d);
+});
+
+const bTog = document.getElementById('toggleAnim');
+bTog.onclick = () => {
+  const paused = document.body.classList.toggle('paused');
+  bTog.textContent = paused ? '▶ 播放动画' : '⏸ 暂停动画';
+};
+const bgs = [['bg-cream','米色'], ['bg-white','白色'], ['bg-dark','深色']];
+let bgi = 0;
+const bBg = document.getElementById('toggleBg');
+bBg.onclick = () => {
+  document.body.classList.remove(bgs[bgi][0]);
+  bgi = (bgi + 1) % bgs.length;
+  document.body.classList.add(bgs[bgi][0]);
+  bBg.textContent = `🎨 背景：${bgs[bgi][1]}`;
+};
+</script>
+</body>
+</html>

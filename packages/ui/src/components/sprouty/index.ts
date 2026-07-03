@@ -1,5 +1,12 @@
-export { SproutyAvatar } from './sprouty-avatar.js';
-export type { SproutyAvatarProps, SproutyExpression } from './sprouty-avatar.js';
+export { SproutyFace } from './sprouty-face.js';
+export type { SproutyFaceProps } from './sprouty-face.js';
+export {
+  buildSproutyFaceSvg,
+  ensureSproutyFaceStyles,
+  FACE_STATE_MAP,
+  SPROUTY_FACE_EXPRESSIONS,
+  type SproutyFaceExpr,
+} from './sprouty-face-svg.js';
 export {
   SPROUTY_SIZES,
   COLOR_PRESETS,

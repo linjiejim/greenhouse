@@ -5,14 +5,14 @@
  * Esc dismiss) but lists agent profiles. Selecting a profile switches the active
  * profile for the chat and surfaces it as a pill in the composer.
  *
- * Reuses profileToSprouty + SproutyAvatar from profile-selector so the avatar
+ * Reuses profileToSprouty + SproutyFace from profile-selector so the avatar
  * styling stays consistent with the toolbar picker.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bot, Check } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
-import { SproutyAvatar } from '../sprouty/index.js';
+import { SproutyFace } from '../sprouty/index.js';
 import { profileToSprouty } from './profile-selector';
 import { PopoverWrapper } from './popover-wrapper';
 
@@ -120,7 +120,7 @@ export function MentionPopover({
                 isSelected ? 'bg-primary-subtle text-primary-fg-strong' : 'text-fg hover:bg-surface-muted'
               }`}
             >
-              <SproutyAvatar {...profileToSprouty(p)} state="idle" size="xs" animate={isSelected} />
+              <SproutyFace {...profileToSprouty(p)} state="idle" size="xs" animate={isSelected} />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-medium truncate" title={p.name}>
                   {p.name}

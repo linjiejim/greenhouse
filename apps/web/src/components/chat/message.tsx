@@ -32,6 +32,8 @@ import { SelectionPopover } from './selection-popover';
 import { NoteInputDialog } from './note-input-dialog';
 import { UserMessageContent } from './user-message-content';
 import { ReasoningPanel } from './reasoning-panel';
+import { SproutyFace } from '../sprouty/index.js';
+import type { SproutyVariant } from '../sprouty/index.js';
 import { dedupe } from './annotations';
 export { StreamingMessageBubble } from './streaming-message-bubble';
 import { useT } from '../../lib/i18n';
@@ -89,6 +91,8 @@ interface MessageProps {
   hasFollowUpUserMessage?: boolean;
   /** Previous user message content — used as fullscreen dialog title */
   previousUserMessage?: string;
+  /** Agent avatar (from profileToSprouty) — a small "done" Sprouty on the completed bubble. */
+  agentAvatar?: { variant?: SproutyVariant; color?: string; accessories?: string[]; leafStyle?: string };
 }
 
 // ─── Grounding / confidence badges: DORMANT ──────────────
@@ -141,6 +145,7 @@ function MessageBubbleImpl(props: MessageProps) {
     onConfirmAction,
     hasFollowUpUserMessage,
     previousUserMessage,
+    agentAvatar,
   } = props;
 
   const [showReasoning, setShowReasoning] = useState(false);
@@ -323,6 +328,7 @@ function MessageBubbleImpl(props: MessageProps) {
       <div className="max-w-[90%] min-w-0 group/actions">
         {/* Action bar */}
         <div className="flex items-center gap-3 mb-1.5">
+          <SproutyFace {...(agentAvatar ?? {})} state="done" size={20} animate={false} title="Agent" />
           {reasoning && (
             <button
               onClick={() => setShowReasoning(!showReasoning)}

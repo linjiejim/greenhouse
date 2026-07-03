@@ -9,7 +9,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button, Badge, Spinner, ConfirmDialog, EmptyState, ListToolbar, toast } from '../../components/ui';
 import { Plus, Pencil, Trash2, Globe, GitFork, Bot } from '../../lib/icons';
-import { SproutyAvatar } from '../../components/sprouty/index.js';
+import { SproutyFace } from '../../components/sprouty/index.js';
 import { profileToSprouty, isSpecialistProfile } from '../../components/chat/profile-selector';
 import * as api from '../../lib/api';
 import { useAuthStore, useProfileStore } from '../../stores';
@@ -141,7 +141,7 @@ export function MyProfilesPage() {
                   onClick={() => handleFork(p.id)}
                   className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-edge bg-surface-raised hover:border-primary-edge hover:bg-primary-subtle/30 transition-colors text-left group"
                 >
-                  <SproutyAvatar {...profileToSprouty(p)} state="idle" size="xs" animate={false} />
+                  <SproutyFace {...profileToSprouty(p)} state="idle" size="xs" animate={false} />
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-medium text-fg-secondary truncate">{p.name}</div>
                     <div className="text-[10px] text-fg-faint">{p.tools.length} tools</div>
@@ -184,7 +184,7 @@ export function MyProfilesPage() {
                     <tr key={p.id} className="hover:bg-surface-sunken transition-colors">
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2">
-                          <SproutyAvatar
+                          <SproutyFace
                             variant="custom"
                             color={(p as any).avatar?.color}
                             accessories={(p as any).avatar?.accessories}

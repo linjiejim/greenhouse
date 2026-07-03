@@ -8,7 +8,7 @@ import { RichMarkdown } from '../rich-markdown';
 import { ToolCallRenderer } from '../tool-call/index';
 import { BodyArtifacts, partitionCalls } from '../tool-call/body-artifacts';
 import { MessageSquare, ChevronDown } from '../../lib/icons';
-import { SproutyAvatar } from '../sprouty/index.js';
+import { SproutyFace } from '../sprouty/index.js';
 import { ReasoningPanel } from './reasoning-panel';
 
 /** A tool call as accumulated from the NDJSON stream. Canonical definition —
@@ -148,7 +148,7 @@ export function StreamingMessageBubble({ text, reasoning, toolCalls, isStreaming
         {/* Initial loading — Sprouty thinking */}
         {isStreaming && !text && !reasoning && toolCalls.length === 0 && (
           <div className="flex items-center gap-2 px-3 py-2">
-            <SproutyAvatar state="thinking" size="sm" animate />
+            <SproutyFace state="thinking" size={30} />
             <span className="text-xs text-fg-faint animate-pulse">Thinking…</span>
           </div>
         )}
