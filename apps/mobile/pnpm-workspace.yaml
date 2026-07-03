@@ -1,0 +1,9 @@
+# Isolation barrier — makes pnpm treat apps/mobile as its own workspace root so
+# it never walks up to the repo workspace (whose store must not host this app's
+# React-19/RN dependency graph; leaked root-store symlinks hit Metro's blockList
+# → red-screen "Unable to resolve" errors on device).
+#
+# This matters because tools (expo CLI's dependency check) run plain
+# `pnpm install` here, and pnpm 11 ignores project-level .npmrc settings like
+# ignore-workspace — a workspace file is the only barrier it always respects.
+packages: []
