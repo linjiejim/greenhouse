@@ -2,6 +2,11 @@
 
 _Last updated: 2026-07-03_
 
+> **Hosted copy (use this URL in the Web Store listing):**
+> https://greenhouse.linjiejim.com/privacy/
+> Source: [`docs/privacy/index.html`](../../docs/privacy/index.html). This
+> Markdown file is the plain-text mirror; keep the two in sync.
+
 Greenhouse Bridge is a browser extension that connects the web page you are
 viewing to **your own self-hosted Greenhouse instance**. You choose the server
 by entering its URL and signing in with your Greenhouse account. The extension

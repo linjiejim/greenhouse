@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Greenhouse Bridge — Privacy Policy</title>
+<meta name="description" content="Privacy policy for the Greenhouse Bridge browser extension. Self-hosted, no third-party data flow, no telemetry." />
+<meta name="robots" content="index,follow" />
+<link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+<link rel="apple-touch-icon" href="../apple-touch-icon.png" />
+<meta name="theme-color" content="#0d9488" />
+<style>
+  @font-face{ font-family:'Inter'; font-style:normal; font-weight:400 800; font-display:swap; src:url('../fonts/inter-var.woff2') format('woff2'); }
+  :root{
+    --brand:#0d9488; --brand-700:#0f766e;
+    --ink:#111827; --ink-soft:#374151; --ink-mut:#6b7280; --edge:#e5e7eb; --bg:#ffffff; --bg-soft:#f8fafc;
+  }
+  *{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    margin:0; background:var(--bg); color:var(--ink-soft);
+    font-family:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased; line-height:1.7; font-size:16px;
+  }
+  html[lang^="zh"] body{ font-family:'Inter','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif; }
+  .wrap{ max-width:760px; margin:0 auto; padding:56px 24px 96px; }
+  header.brand{ display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+  header.brand svg{ width:40px; height:40px; color:var(--brand); flex:none; }
+  header.brand .name{ font-weight:700; font-size:20px; color:var(--ink); letter-spacing:-.01em; }
+  h1{ color:var(--ink); font-size:30px; line-height:1.25; letter-spacing:-.02em; margin:20px 0 4px; }
+  .updated{ color:var(--ink-mut); font-size:14px; margin:0 0 28px; }
+  h2{ color:var(--ink); font-size:19px; margin:36px 0 10px; letter-spacing:-.01em; }
+  p{ margin:12px 0; }
+  ul{ margin:12px 0; padding-left:22px; }
+  li{ margin:7px 0; }
+  a{ color:var(--brand-700); }
+  code{ background:var(--bg-soft); border:1px solid var(--edge); border-radius:5px; padding:1px 6px; font-family:ui-monospace,'JetBrains Mono',monospace; font-size:.9em; }
+  strong{ color:var(--ink); }
+  .lead{ font-size:17px; color:var(--ink-soft); }
+  hr{ border:0; border-top:1px solid var(--edge); margin:36px 0; }
+  .foot{ color:var(--ink-mut); font-size:14px; }
+  .foot a{ color:var(--ink-mut); }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="brand">
+      <svg viewBox="12 16 106 96" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/>
+        <path d="M22 56 L108 56"/>
+        <path d="M44 56 L44 104"/>
+        <path d="M86 56 L86 104"/>
+        <path d="M65 104 L65 84"/>
+        <path d="M65 84 C69 78 74 75 76 65 C72 69 67 77 65 84 Z"/>
+        <path d="M65 84 C61 78 56 75 54 65 C58 69 63 77 65 84 Z"/>
+      </svg>
+      <span class="name">Greenhouse Bridge</span>
+    </header>
+
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: 2026-07-03</p>
+
+    <p class="lead">
+      Greenhouse Bridge is a browser extension that connects the web page you are
+      viewing to <strong>your own self-hosted Greenhouse instance</strong>. You
+      choose the server by entering its URL and signing in with your Greenhouse
+      account. The extension has no backend of its own and is not operated as a
+      service by anyone else — all data flows only between your browser and the
+      server <strong>you</strong> configure.
+    </p>
+
+    <h2>What the extension accesses</h2>
+    <ul>
+      <li>
+        <strong>Page content you act on.</strong> When you ask a question with
+        page context, or an assistant action reads or operates a tab, the
+        extension reads that page's URL, title, your current text selection, and
+        — only for actions you trigger — the page's text and interactive
+        elements. This is read on demand via a one-shot injected script; there is
+        <strong>no resident content script</strong> running in the background on
+        your pages.
+      </li>
+      <li>
+        <strong>Your Greenhouse credentials.</strong> Your email and password are
+        sent <strong>only</strong> to the server URL you entered, to obtain a
+        login token. <strong>The password is never stored</strong> by the
+        extension. Only the returned access/refresh tokens and your server URL are
+        kept in the browser's local extension storage.
+      </li>
+    </ul>
+
+    <h2>Where data goes</h2>
+    <ul>
+      <li>
+        Page context, chat messages, and automation results are sent
+        <strong>only</strong> to the Greenhouse server you configured, to produce
+        assistant responses. They are processed and stored according to
+        <strong>your</strong> server's configuration, which you or your
+        organization control.
+      </li>
+      <li>
+        The extension does <strong>not</strong> send any data to the extension's
+        authors, to Anthropic, or to analytics services, ad networks, or any
+        other third party. There is <strong>no telemetry</strong>.
+      </li>
+    </ul>
+
+    <h2>What is stored locally</h2>
+    <p>In <code>chrome.storage.local</code>, on your device only:</p>
+    <ul>
+      <li>your Greenhouse server URL,</li>
+      <li>access and refresh tokens (not your password),</li>
+      <li>UI preferences (language, theme, automation permission mode, and the
+        list of sites you granted “YOLO”/no-confirm automation to).</li>
+    </ul>
+    <p>Signing out — or removing the extension — clears these.</p>
+
+    <h2>Permissions and why</h2>
+    <ul>
+      <li><strong>Host access</strong> (requested per site, at connect time) — to
+        read the selection and, for actions you trigger, operate the page you are
+        on.</li>
+      <li><strong><code>tabs</code></strong> — to list and open tabs when you ask
+        the assistant to automate browsing.</li>
+      <li><strong><code>scripting</code> / <code>activeTab</code></strong> — to
+        run the one-shot page reads and actions.</li>
+      <li><strong><code>storage</code></strong> — to keep the items listed
+        above.</li>
+      <li><strong><code>sidePanel</code></strong> — to show the assistant
+        panel.</li>
+    </ul>
+    <p>
+      Automation writes (clicking, typing) always require your confirmation unless
+      you explicitly switch a site to Auto or per-site YOLO mode. Knowledge-base
+      writes always ask for confirmation before saving.
+    </p>
+
+    <h2>Data retention &amp; deletion</h2>
+    <p>
+      The extension keeps no server-side records of its own. Conversations and any
+      knowledge you save live on the Greenhouse server you configured; manage or
+      delete them there. Local tokens and preferences are removed when you sign
+      out or uninstall.
+    </p>
+
+    <h2>Contact</h2>
+    <p>Questions about this policy: <a href="mailto:linjiejim@gmail.com">linjiejim@gmail.com</a></p>
+
+    <hr />
+    <p class="foot">
+      <a href="https://greenhouse.linjiejim.com/">← Greenhouse</a>
+    </p>
+  </main>
+</body>
+</html>
