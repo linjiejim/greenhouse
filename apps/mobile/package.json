@@ -1,0 +1,51 @@
+{
+  "name": "@greenhouse/mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "web": "expo start --web",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~56.0.13",
+    "@gorhom/bottom-sheet": "^5.2.14",
+    "expo": "~56.0.8",
+    "expo-clipboard": "~56.0.3",
+    "expo-constants": "~56.0.16",
+    "expo-dev-client": "~56.0.18",
+    "expo-haptics": "~56.0.3",
+    "expo-image-manipulator": "~56.0.20",
+    "expo-image-picker": "~56.0.19",
+    "expo-linking": "~56.0.13",
+    "expo-router": "~56.2.8",
+    "expo-secure-store": "~56.0.4",
+    "expo-status-bar": "~56.0.4",
+    "expo-system-ui": "~56.0.5",
+    "lucide-react-native": "^0.460.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-gesture-handler": "~2.31.1",
+    "react-native-keyboard-controller": "^1.21.9",
+    "react-native-reanimated": "4.3.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.25.2",
+    "react-native-svg": "15.15.4",
+    "react-native-web": "~0.21.0",
+    "react-native-worklets": "0.8.3",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/react": "~19.2.16",
+    "eslint": "^10.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.62.1"
+  }
+}

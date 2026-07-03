@@ -118,6 +118,8 @@ greenhouse/
 ├── apps/
 │   ├── browser/          # Chrome extension (MV3) — side panel + options, thin client of a
 │   │                     #   self-hosted instance (login + token refresh); see its src/AGENTS.md
+│   ├── mobile/           # Expo (React Native) app — chat + knowledge (read-only) + settings.
+│   │                     #   NOT a workspace member (isolated install); see its AGENTS.md
 │   ├── api/              # Hono backend — routes, agent runtime, auth, security, scheduler
 │   │   └── src/
 │   │       ├── routes/       # HTTP routes (one file per resource)
@@ -168,6 +170,7 @@ greenhouse/
 | `@greenhouse/api` | `apps/api/` | Backend app |
 | `@greenhouse/web` | `apps/web/` | Frontend app |
 | `@greenhouse/browser` | `apps/browser/` | Chrome extension (MV3) — consumes `@greenhouse/ui` |
+| `@greenhouse/mobile` | `apps/mobile/` | Expo mobile app — **not** a workspace member (own lockfile, `pnpm mobile:install`); vendors its types |
 
 ### Import conventions
 
@@ -185,6 +188,7 @@ Detailed rules live next to the code:
 | Database | [packages/db/src/AGENTS.md](./packages/db/src/AGENTS.md) | Service pattern, PostgreSQL, Drizzle, migrations |
 | Backend API | [apps/api/src/AGENTS.md](./apps/api/src/AGENTS.md) | Routes, auth, security, tool system, v1/gateway/MCP |
 | Frontend | [apps/web/src/AGENTS.md](./apps/web/src/AGENTS.md) | Design system, components, styling, i18n |
+| Mobile | [apps/mobile/AGENTS.md](./apps/mobile/AGENTS.md) | Expo app — workspace isolation, vendored types, theme/i18n rules |
 | Agent profiles | [apps/api/src/profiles/agent-profiles.md](./apps/api/src/profiles/agent-profiles.md) | Profiles, model switching, tool scoping |
 | LLM / Agent kernel | `packages/agent-core/` + `apps/api/src/llm/` | Kernel (model factory/registry, chat-engine) in the package; completion/title/memory/relay consumers in api |
 

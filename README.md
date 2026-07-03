@@ -55,8 +55,10 @@ greenhouse/
 │   ├── api/                  # Hono backend — routes, agent runtime, auth, scheduler;
 │   │                         #   also serves the built web SPA at `/`
 │   ├── web/                  # React + Vite single-page app (hash router)
-│   └── browser/              # Chrome extension (MV3) — connect to your instance,
-│                             #   side-panel companion (build: pnpm -F @greenhouse/browser build)
+│   ├── browser/              # Chrome extension (MV3) — connect to your instance,
+│   │                         #   side-panel companion (build: pnpm -F @greenhouse/browser build)
+│   └── mobile/               # Expo (React Native) app — chat, knowledge base (read-only),
+│                             #   settings; isolated install (pnpm mobile:install, then pnpm mobile)
 ├── packages/
 │   ├── agent-core/           # Agent kernel — streamText loop, OpenAI-compatible model
 │   │                         #   factory + registry (no DB dependency)

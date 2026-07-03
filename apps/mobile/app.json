@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Greenhouse",
+    "slug": "greenhouse-mobile",
+    "scheme": "greenhouse",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.greenhouse.mobile"
+    },
+    "android": {
+      "package": "app.greenhouse.mobile"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

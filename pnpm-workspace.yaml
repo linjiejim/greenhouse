@@ -1,6 +1,11 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  # The Expo mobile app is intentionally NOT a workspace member: its React-Native
+  # / React-19 dependency graph would otherwise hoist @types/react@19 into the
+  # shared store and break the React-18-typed web/api typecheck. It has its own
+  # isolated install (run `pnpm install --ignore-workspace` in apps/mobile).
+  - '!apps/mobile'
 
 # Which dependency build scripts may run. pnpm 11 reads this `allowBuilds` map from
 # pnpm-workspace.yaml — NOT package.json's old `pnpm.onlyBuiltDependencies`, which
