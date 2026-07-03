@@ -7,7 +7,7 @@ export const zh = {
   },
 
   options: {
-    title: 'Greenhouse 伴侣',
+    title: 'Greenhouse Bridge',
     subtitle: '连接你自部署的 Greenhouse 实例。',
 
     connection: '连接',
@@ -60,6 +60,8 @@ export const zh = {
     summarizePrompt: '请总结这个页面的核心要点。',
     relatedKnowledge: '查相关知识',
     relatedPrompt: '在知识库中检索与当前页面相关的内容，并总结我们已有的沉淀。',
+    saveToKnowledge: '存入知识库',
+    saveToKnowledgePrompt: '请总结这个页面的要点，并以清晰的标题存入我的个人知识库。',
     reasoning: '思考过程',
     askSelection: '就选中内容提问…',
     askAnything: '随便问点什么…',
@@ -91,5 +93,12 @@ export const zh = {
     modeYolo: '本站放开全部（YOLO）',
     modeYoloHint: '在 {host} 上不再询问、直接执行。',
     modeYoloNoHost: '打开普通网页后可启用。',
+
+    // 知识写回确认卡
+    knowledgeCreateTitle: '存入知识库？',
+    knowledgeAppendTitle: '追加到知识库文档？',
+    knowledgeScopePersonal: '个人',
+    knowledgeScopeTeam: '团队（共享）',
+    knowledgeSave: '保存',
   },
 };

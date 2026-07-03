@@ -10,7 +10,7 @@ export const en = {
   },
 
   options: {
-    title: 'Greenhouse Companion',
+    title: 'Greenhouse Bridge',
     subtitle: 'Connect to your self-hosted Greenhouse instance.',
 
     // Connection card
@@ -70,6 +70,9 @@ export const en = {
     summarizePrompt: 'Summarize the key points of this page.',
     relatedKnowledge: 'Find related knowledge',
     relatedPrompt: 'Search the knowledge base for anything related to this page and summarize what we already know.',
+    saveToKnowledge: 'Save this page to knowledge',
+    saveToKnowledgePrompt:
+      'Summarize the key points of this page and save them to my personal knowledge base with a clear title.',
     reasoning: 'Reasoning',
     askSelection: 'Ask about the selection…',
     askAnything: 'Ask anything…',
@@ -102,5 +105,12 @@ export const en = {
     modeYolo: 'YOLO on this site',
     modeYoloHint: 'Run everything on {host} without asking.',
     modeYoloNoHost: 'Open a normal web page to enable.',
+
+    // Knowledge write-back confirm card
+    knowledgeCreateTitle: 'Save to knowledge base?',
+    knowledgeAppendTitle: 'Append to a knowledge doc?',
+    knowledgeScopePersonal: 'Personal',
+    knowledgeScopeTeam: 'Team (shared)',
+    knowledgeSave: 'Save',
   },
 };

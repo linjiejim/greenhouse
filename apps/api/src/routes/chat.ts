@@ -11,6 +11,7 @@ import { getDb } from '@greenhouse/db';
 import { selectTools, buildSystemPrompt } from '../agent.js';
 import type { AgentContext, ToolRegistry } from '../agent.js';
 import { LAZY_TOOL_IDS, resolveEffectiveTools, buildLazyServerTools } from '../agent-runtime/tool-resolution.js';
+import { MUTATING_PROXY_ALLOWLIST } from '../tools/registry.js';
 import { createLocalToolBridge } from '../tools/local/bridge.js';
 import type { LocalToolBridge } from '../tools/local/bridge.js';
 import { sanitizeClientActions, createClientActionTools } from '../tools/client-actions.js';
@@ -50,6 +51,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
       model_override?: string;
       workspace_id?: string; // active workspace for per-user proxy
       client_actions?: ClientActionDescriptor[]; // frontend UI actions available on the current screen
+      omit_write_tools?: boolean; // client provides its own confirm-gated write path (browser extension)
     };
 
     const { context } = body;
@@ -260,6 +262,14 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         toolRegistry,
       }),
     );
+
+    // Clients that carry their own confirm-gated write path (the browser
+    // extension routes knowledge writes through /api/agent + a per-action
+    // confirm card) opt out of the inline mutating tools, so the model can't
+    // perform an unconfirmed write in this stream. Reads are unaffected.
+    if (body.omit_write_tools) {
+      for (const id of MUTATING_PROXY_ALLOWLIST) delete tools[id];
+    }
 
     // Check memory feature gate (cached for prompt injection below)
     let memoryEnabled = false;

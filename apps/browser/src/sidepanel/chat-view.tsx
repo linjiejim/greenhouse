@@ -19,6 +19,7 @@ import {
   Gauge,
   Zap,
   Check,
+  Save,
 } from '@greenhouse/ui/lib/icons';
 import type { AutomationMode } from '../lib/automation-prefs';
 import { hostOf } from '../lib/automation-prefs';
@@ -160,6 +161,7 @@ export function ChatView() {
 
           {isEmpty ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+              <BridgeLogo />
               <p className="text-sm text-fg-muted">{t('panel.emptyHint')}</p>
               <button
                 className="flex items-center gap-2 rounded-full border border-edge-strong px-3 py-1.5 text-xs text-fg-secondary hover:bg-surface-muted"
@@ -173,6 +175,12 @@ export function ChatView() {
               >
                 <BookOpen size={13} /> {t('panel.relatedKnowledge')}
               </button>
+              <button
+                className="flex items-center gap-2 rounded-full border border-edge-strong px-3 py-1.5 text-xs text-fg-secondary hover:bg-surface-muted"
+                onClick={() => void sendWithContext(t('panel.saveToKnowledgePrompt'), { fullPage: true })}
+              >
+                <Save size={13} /> {t('panel.saveToKnowledge')}
+              </button>
             </div>
           ) : (
             <Messages
@@ -183,6 +191,7 @@ export function ChatView() {
           )}
 
           {chat.pendingAction && <ActionConfirmCard action={chat.pendingAction} />}
+          {chat.pendingKnowledge && <KnowledgeConfirmCard pending={chat.pendingKnowledge} />}
 
           {chat.error && (
             <p className="mx-3 mb-1 rounded border border-danger bg-danger-subtle px-2 py-1 text-xs text-danger-fg">
@@ -294,6 +303,70 @@ function ActionConfirmCard({ action }: { action: NonNullable<ReturnType<typeof u
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Knowledge write-back approval — shown before the assistant saves anything to
+ * the knowledge base. Always appears (writes are never silent); on approve the
+ * write goes through the confirm-gated agent proxy.
+ */
+function KnowledgeConfirmCard({ pending }: { pending: NonNullable<ReturnType<typeof useChat>['pendingKnowledge']> }) {
+  const t = useT();
+  return (
+    <div className="mx-3 mb-2 rounded-lg border border-primary-300 bg-primary-50 p-3 text-sm dark:border-primary-800 dark:bg-primary-950">
+      <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-primary-700 dark:text-primary-300">
+        <Save size={14} />
+        {pending.mode === 'append' ? t('panel.knowledgeAppendTitle') : t('panel.knowledgeCreateTitle')}
+      </p>
+      {pending.title && <p className="font-medium text-fg">{pending.title}</p>}
+      <p className="mt-0.5 text-[11px] text-fg-faint">
+        {pending.scope === 'team' ? t('panel.knowledgeScopeTeam') : t('panel.knowledgeScopePersonal')}
+        {pending.docId ? ` · ${pending.docId}` : ''}
+      </p>
+      <p className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap break-words text-xs text-fg-muted">
+        {pending.content.slice(0, 600)}
+        {pending.content.length > 600 ? '…' : ''}
+      </p>
+      <div className="mt-2 flex gap-2">
+        <button
+          className="rounded-md bg-primary-600 px-3 py-1 text-xs font-medium text-white hover:bg-primary-700"
+          onClick={() => pending.resolve(true)}
+        >
+          {t('panel.knowledgeSave')}
+        </button>
+        <button
+          className="rounded-md border border-edge-strong px-3 py-1 text-xs text-fg-secondary hover:bg-surface-muted"
+          onClick={() => pending.resolve(false)}
+        >
+          {t('panel.actionDeny')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Greenhouse house-glyph mark, shown on the empty new-conversation screen. */
+function BridgeLogo() {
+  return (
+    <svg
+      viewBox="12 16 106 96"
+      className="mb-1 h-12 w-12 text-primary-600"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z" />
+      <path d="M22 56 L108 56" />
+      <path d="M44 56 L44 104" />
+      <path d="M86 56 L86 104" />
+      <path d="M65 104 L65 84" />
+      <path d="M65 84 C69 78 74 75 76 65 C72 69 67 77 65 84 Z" />
+      <path d="M65 84 C61 78 56 75 54 65 C58 69 63 77 65 84 Z" />
+    </svg>
   );
 }
 

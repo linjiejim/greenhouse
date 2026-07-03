@@ -11,6 +11,7 @@ import { readNdjsonStream } from '@greenhouse/ui/lib/stream-utils';
 import type { StreamingEvent } from '@greenhouse/ui/lib/stream-events';
 import { authFetch } from './auth';
 import { BROWSER_ACTION_DESCRIPTORS } from './browser-actions';
+import { KNOWLEDGE_ACTION_DESCRIPTOR } from './knowledge-actions';
 
 export async function* streamChat(opts: {
   sessionId: string;
@@ -25,10 +26,14 @@ export async function* streamChat(opts: {
       session_id: opts.sessionId,
       messages: [{ role: 'user', content: opts.message }],
       ...(opts.contextHint ? { context_hint: opts.contextHint } : {}),
-      // Advertise the browser automation actions every turn; the backend turns
-      // them into tools whose execution round-trips back to this panel via
-      // `local-tool-request` events (executed in lib/browser-tools.ts).
-      client_actions: BROWSER_ACTION_DESCRIPTORS,
+      // Advertise the browser automation actions + the knowledge write-back
+      // action every turn; the backend turns them into tools whose execution
+      // round-trips back to this panel via `local-tool-request` events
+      // (executed in lib/browser-tools.ts / lib/knowledge-tools.ts).
+      client_actions: [...BROWSER_ACTION_DESCRIPTORS, KNOWLEDGE_ACTION_DESCRIPTOR],
+      // The panel owns the only (confirm-gated) write path, so the inline
+      // mutating tools must not be offered in the stream.
+      omit_write_tools: true,
     }),
     signal: opts.signal,
   });

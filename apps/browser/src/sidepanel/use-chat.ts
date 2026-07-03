@@ -12,6 +12,8 @@ import type { StreamingToolCall } from '@greenhouse/ui/components/chat/streaming
 import type { ToolCall } from '@greenhouse/ui/components/tool-call';
 import { streamChat, postToolResult } from '../lib/chat';
 import { executeBrowserAction, type ConfirmRequest } from '../lib/browser-tools';
+import { executeKnowledgeAction, type KnowledgeConfirmRequest } from '../lib/knowledge-tools';
+import { KNOWLEDGE_ACTION_NAME } from '../lib/knowledge-actions';
 import {
   decideAction,
   getMode,
@@ -45,6 +47,11 @@ export interface PendingAction extends ConfirmRequest {
   allowThisSession: () => void;
 }
 
+/** A knowledge write awaiting the user's approval in the panel. */
+export interface PendingKnowledge extends KnowledgeConfirmRequest {
+  resolve: (allowed: boolean) => void;
+}
+
 function tryParseJson(raw: string): unknown {
   try {
     return JSON.parse(raw);
@@ -60,9 +67,11 @@ export function useChat(profileId: string) {
   const [title, setTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [pendingKnowledge, setPendingKnowledge] = useState<PendingKnowledge | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  // Live resolver for the pending confirm — so stop/new-chat can decline it.
+  // Live resolvers for pending confirms — so stop/new-chat can decline them.
   const pendingResolveRef = useRef<((allowed: boolean) => void) | null>(null);
+  const pendingKnowledgeResolveRef = useRef<((allowed: boolean) => void) | null>(null);
 
   // ── Automation permission policy ──
   const [mode, setModeState] = useState<AutomationMode>('ask');
@@ -118,6 +127,19 @@ export function useChat(profileId: string) {
     });
   }, []);
 
+  /** Confirm gate for knowledge writes — always asks (writes are never silent). */
+  const requestKnowledgeConfirm = useCallback((req: KnowledgeConfirmRequest): Promise<boolean> => {
+    return new Promise<boolean>((resolvePromise) => {
+      const finish = (allowed: boolean) => {
+        pendingKnowledgeResolveRef.current = null;
+        setPendingKnowledge(null);
+        resolvePromise(allowed);
+      };
+      pendingKnowledgeResolveRef.current = finish;
+      setPendingKnowledge({ ...req, resolve: finish });
+    });
+  }, []);
+
   const send = useCallback(
     async (text: string, contextHint?: string) => {
       setError(null);
@@ -166,12 +188,15 @@ export function useChat(profileId: string) {
             },
             onToolResult: (id, _toolName, output) => upsertCall(id, { output, status: 'done' }),
             onLocalToolRequest: (toolCallId, toolId, params) => {
-              // Browser automation round-trip: execute locally (click/type gated
-              // by requestConfirm), then post the result to resume the agent.
+              // Client-action round-trip: execute locally (writes gated by a
+              // confirm card), then post the result to resume the agent.
               // Fire-and-forget — the stream stays paused server-side until the
               // result arrives, so the read loop must keep running.
               void (async () => {
-                const result = await executeBrowserAction(toolId, params, requestConfirm);
+                const result =
+                  toolId === KNOWLEDGE_ACTION_NAME
+                    ? await executeKnowledgeAction(params, requestKnowledgeConfirm, profileId)
+                    : await executeBrowserAction(toolId, params, requestConfirm);
                 await postToolResult(sid!, {
                   toolCallId,
                   output: 'output' in result ? result.output : null,
@@ -196,8 +221,9 @@ export function useChat(profileId: string) {
         }
       } finally {
         abortRef.current = null;
-        // A confirm card must not outlive its turn (stopped/errored streams).
+        // Confirm cards must not outlive their turn (stopped/errored streams).
         pendingResolveRef.current?.(false);
+        pendingKnowledgeResolveRef.current?.(false);
         // Materialize whatever streamed (even on abort/error) into the list.
         if (buffers.text || buffers.toolCalls.length > 0 || buffers.reasoning) {
           setMessages((prev) => [
@@ -218,7 +244,7 @@ export function useChat(profileId: string) {
         setStreaming(null);
       }
     },
-    [sessionId, profileId, requestConfirm],
+    [sessionId, profileId, requestConfirm, requestKnowledgeConfirm],
   );
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
@@ -260,6 +286,7 @@ export function useChat(profileId: string) {
     title,
     error,
     pendingAction,
+    pendingKnowledge,
     mode,
     setMode,
     yoloSites,

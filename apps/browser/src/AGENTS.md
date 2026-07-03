@@ -9,6 +9,9 @@ renders.
 
 ```
 public/manifest.json   # static MV3 manifest, copied verbatim into dist/
+public/icons/          # app icons (16/32/48/128/512) rendered from assets/icon.svg
+assets/icon.svg        # icon source — re-render PNGs with rsvg-convert on change
+PRIVACY.md             # privacy policy (store listing requires a hosted copy)
 sidepanel.html         # side panel entry (React)
 options.html           # options page entry (React)
 src/
@@ -19,6 +22,10 @@ src/
 ├── sidepanel/         # main panel UI
 └── styles.css         # tailwind v4 + @greenhouse/ui tokens.css
 ```
+
+Product name is **Greenhouse Bridge** (manifest `name`, i18n `options.title`,
+page `<title>`s — keep in sync). Re-render icons with
+`for s in 16 32 48 128 512; do rsvg-convert -w $s -h $s assets/icon.svg -o public/icons/icon-$s.png; done`.
 
 ## Rules
 
@@ -85,3 +92,12 @@ src/
     re-listing. Top frame only (no iframe/shadow-DOM piercing) — known limit.
   - Element-list approach inspired by nanobrowser (Apache-2.0); independent
     implementation, no vendored code.
+- **Knowledge write-back = a confirm-gated client action.** `save_to_knowledge`
+  (`lib/knowledge-actions.ts`) is advertised alongside the browser actions, but
+  it does NOT run in the page — its executor (`lib/knowledge-tools.ts`) POSTs to
+  the confirm-gated agent proxy `/api/agent/tools/knowledge_mutation/call` with
+  `confirm:true`. Every save shows a `KnowledgeConfirmCard` first (writes are
+  never silent). The chat request sends `omit_write_tools: true` so the inline
+  `knowledge_mutation` (and other `MUTATING_PROXY_ALLOWLIST` tools) are stripped
+  server-side — this client action is the single, always-confirmed write path.
+  Do not remove `omit_write_tools`, or the model could write without a card.
