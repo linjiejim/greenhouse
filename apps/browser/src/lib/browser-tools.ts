@@ -22,6 +22,7 @@
  */
 
 import { CONFIRM_ACTIONS } from './browser-actions';
+import { isSensitiveHost, hostOf as hostFromUrl, type ActionSignals } from './automation-prefs';
 
 const READ_PAGE_LIMIT = 15_000;
 const MAX_ELEMENTS = 120;
@@ -36,9 +37,15 @@ export interface ConfirmRequest {
   inputText?: string;
   /** URL of the page the action runs on. */
   pageUrl?: string;
+  /** Danger signals used by the panel's permission policy (Auto mode). */
+  signals: ActionSignals;
 }
 
-/** Panel-provided gate: resolve true to allow, false to decline. */
+/**
+ * Panel-provided gate: given the action + its danger signals, resolve true to
+ * allow, false to decline. The panel applies the Ask/Auto/YOLO policy here —
+ * this module just gathers the signals and asks.
+ */
 export type ConfirmFn = (req: ConfirmRequest) => Promise<boolean>;
 
 export type ActionResult = { output: unknown } | { error: string };
@@ -138,7 +145,22 @@ function highlightElementInPage(index: number) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80);
-  return { ok: true as const, text };
+  // Danger facts for the panel's Auto-mode policy.
+  const input = el as HTMLInputElement;
+  const type = (input.type || '').toLowerCase();
+  const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
+  const inForm = !!(input.form || el.closest('form'));
+  const isSubmitButton =
+    (el.tagName === 'BUTTON' && (input.type === 'submit' || !el.getAttribute('type'))) ||
+    (el.tagName === 'INPUT' && (type === 'submit' || type === 'image'));
+  return {
+    ok: true as const,
+    text,
+    isPassword: type === 'password',
+    isPayment: autocomplete.startsWith('cc-'),
+    inForm,
+    isSubmitButton,
+  };
 }
 
 function clickElementInPage(index: number) {
@@ -354,11 +376,19 @@ async function run(toolId: string, params: Record<string, unknown>, confirm: Con
       if (!hl.result.ok) return { error: STALE_INDEX_ERROR };
 
       if (CONFIRM_ACTIONS.has(toolId)) {
+        const pressEnter = params.press_enter === true;
+        const willSubmit = hl.result.isSubmitButton || (toolId === 'browser_type' && pressEnter && hl.result.inForm);
         const allowed = await confirm({
           toolId,
           targetText: hl.result.text,
           inputText: toolId === 'browser_type' ? String(params.text ?? '') : undefined,
           pageUrl: tab.url,
+          signals: {
+            isPassword: hl.result.isPassword,
+            isPayment: hl.result.isPayment,
+            willSubmit,
+            isSensitiveDomain: isSensitiveHost(hostFromUrl(tab.url)),
+          },
         });
         if (!allowed) {
           return { error: 'User declined this action. Do not retry — ask the user how to proceed instead.' };

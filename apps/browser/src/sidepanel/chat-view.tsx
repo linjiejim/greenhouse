@@ -5,7 +5,23 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Select, Spinner, StatusDot } from '@greenhouse/ui/components/ui';
-import { History, Plus, Send, CircleStop, FileText, BookOpen, Sun, Moon, ShieldAlert } from '@greenhouse/ui/lib/icons';
+import {
+  History,
+  Plus,
+  Send,
+  CircleStop,
+  FileText,
+  BookOpen,
+  Sun,
+  Moon,
+  ShieldAlert,
+  Shield,
+  Gauge,
+  Zap,
+  Check,
+} from '@greenhouse/ui/lib/icons';
+import type { AutomationMode } from '../lib/automation-prefs';
+import { hostOf } from '../lib/automation-prefs';
 import { setThemeMode } from '@greenhouse/ui/lib/theme';
 import { useT } from '@greenhouse/ui/lib/i18n';
 import { useChat } from './use-chat';
@@ -110,6 +126,16 @@ export function ChatView() {
           ))}
           {profiles.length === 0 && <option value={profileId}>{profileId}</option>}
         </Select>
+        <AutomationMenu
+          mode={chat.mode}
+          onModeChange={chat.setMode}
+          host={hostOf(pageCtx?.url)}
+          yolo={pageCtx?.url ? chat.yoloSites.has(hostOf(pageCtx.url) ?? '') : false}
+          onYoloChange={(on) => {
+            const h = hostOf(pageCtx?.url);
+            if (h) chat.toggleYolo(h, on);
+          }}
+        />
         <ThemeToggle />
         <button
           className="rounded p-1 text-fg-secondary hover:bg-surface-muted"
@@ -235,7 +261,16 @@ function ActionConfirmCard({ action }: { action: NonNullable<ReturnType<typeof u
           : t('panel.actionClick', { target })}
       </p>
       {action.pageUrl && <p className="mt-0.5 truncate text-[11px] text-fg-faint">{action.pageUrl}</p>}
-      <div className="mt-2 flex gap-2">
+      {(action.signals.isPassword || action.signals.isPayment || action.signals.willSubmit) && (
+        <p className="mt-1 text-[11px] font-medium text-warning-fg">
+          {action.signals.isPassword
+            ? t('panel.actionRiskPassword')
+            : action.signals.isPayment
+              ? t('panel.actionRiskPayment')
+              : t('panel.actionRiskSubmit')}
+        </p>
+      )}
+      <div className="mt-2 flex flex-wrap gap-2">
         <button
           className="rounded-md bg-primary-600 px-3 py-1 text-xs font-medium text-white hover:bg-primary-700"
           onClick={() => action.resolve(true)}
@@ -248,7 +283,112 @@ function ActionConfirmCard({ action }: { action: NonNullable<ReturnType<typeof u
         >
           {t('panel.actionDeny')}
         </button>
+        {action.host && (
+          <button
+            className="rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-surface-muted hover:text-fg-secondary"
+            onClick={action.allowThisSession}
+            title={action.host}
+          >
+            {t('panel.actionAllowSession')}
+          </button>
+        )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Automation permission menu — global Ask/Auto mode plus a per-site YOLO
+ * toggle for the current page's host. Read actions always run; this controls
+ * only the click/type write gate.
+ */
+function AutomationMenu({
+  mode,
+  onModeChange,
+  host,
+  yolo,
+  onYoloChange,
+}: {
+  mode: AutomationMode;
+  onModeChange: (m: AutomationMode) => void;
+  host?: string;
+  yolo: boolean;
+  onYoloChange: (on: boolean) => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const effective: 'ask' | 'auto' | 'yolo' = yolo ? 'yolo' : mode;
+  const Icon = effective === 'yolo' ? Zap : effective === 'auto' ? Gauge : Shield;
+  const tone = effective === 'yolo' ? 'text-danger-fg' : effective === 'auto' ? 'text-warning-fg' : 'text-fg-secondary';
+
+  const rows: Array<{ key: AutomationMode; icon: typeof Shield; label: string; hint: string }> = [
+    { key: 'ask', icon: Shield, label: t('panel.modeAsk'), hint: t('panel.modeAskHint') },
+    { key: 'auto', icon: Gauge, label: t('panel.modeAuto'), hint: t('panel.modeAutoHint') },
+  ];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        className={`rounded p-1 hover:bg-surface-muted ${tone}`}
+        title={t('panel.automationMode')}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Icon size={16} />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-10 mt-1 w-60 rounded-lg border border-edge bg-surface p-1 text-sm shadow-lg">
+          <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-fg-faint">
+            {t('panel.automationMode')}
+          </p>
+          {rows.map((r) => (
+            <button
+              key={r.key}
+              className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-surface-muted"
+              onClick={() => onModeChange(r.key)}
+            >
+              <r.icon size={15} className="mt-0.5 shrink-0 text-fg-secondary" />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1 font-medium text-fg">
+                  {r.label}
+                  {mode === r.key && <Check size={13} className="text-primary-600" />}
+                </span>
+                <span className="block text-[11px] text-fg-faint">{r.hint}</span>
+              </span>
+            </button>
+          ))}
+          <div className="my-1 border-t border-edge" />
+          <label
+            className={`flex items-start gap-2 rounded-md px-2 py-1.5 ${host ? 'cursor-pointer hover:bg-surface-muted' : 'opacity-50'}`}
+          >
+            <Zap size={15} className="mt-0.5 shrink-0 text-danger-fg" />
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center justify-between gap-1 font-medium text-fg">
+                {t('panel.modeYolo')}
+                <input
+                  type="checkbox"
+                  checked={yolo}
+                  disabled={!host}
+                  onChange={(e) => onYoloChange(e.target.checked)}
+                />
+              </span>
+              <span className="block truncate text-[11px] text-fg-faint">
+                {host ? t('panel.modeYoloHint', { host }) : t('panel.modeYoloNoHost')}
+              </span>
+            </span>
+          </label>
+        </div>
+      )}
     </div>
   );
 }

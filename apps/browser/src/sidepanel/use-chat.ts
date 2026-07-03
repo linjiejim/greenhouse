@@ -6,12 +6,21 @@
  * @greenhouse/types, mirroring how the web app accumulates buffers.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { handleStreamEvent } from '@greenhouse/ui/lib/stream-events';
 import type { StreamingToolCall } from '@greenhouse/ui/components/chat/streaming-message-bubble';
 import type { ToolCall } from '@greenhouse/ui/components/tool-call';
 import { streamChat, postToolResult } from '../lib/chat';
 import { executeBrowserAction, type ConfirmRequest } from '../lib/browser-tools';
+import {
+  decideAction,
+  getMode,
+  setMode as persistMode,
+  getYoloSites,
+  setYoloSite,
+  hostOf,
+  type AutomationMode,
+} from '../lib/automation-prefs';
 import { createSession, getSessionMessages, type BrowserSession } from '../lib/sessions';
 
 export interface ChatMessage {
@@ -29,7 +38,11 @@ export interface StreamingState {
 
 /** A browser action awaiting the user's approval in the panel. */
 export interface PendingAction extends ConfirmRequest {
+  /** Host of the page (for the "don't ask again on this site" action). */
+  host?: string;
   resolve: (allowed: boolean) => void;
+  /** Allow, and don't ask again for this host for the rest of the conversation. */
+  allowThisSession: () => void;
 }
 
 function tryParseJson(raw: string): unknown {
@@ -51,16 +64,57 @@ export function useChat(profileId: string) {
   // Live resolver for the pending confirm — so stop/new-chat can decline it.
   const pendingResolveRef = useRef<((allowed: boolean) => void) | null>(null);
 
-  /** Confirm gate handed to the browser-action executor: renders as a card in the panel. */
+  // ── Automation permission policy ──
+  const [mode, setModeState] = useState<AutomationMode>('ask');
+  const [yoloSites, setYoloSites] = useState<Set<string>>(new Set());
+  // Read inside requestConfirm (stable identity) without stale closures.
+  const modeRef = useRef(mode);
+  const yoloRef = useRef(yoloSites);
+  modeRef.current = mode;
+  yoloRef.current = yoloSites;
+  // "Don't ask again this site" grants — session-scoped, never persisted.
+  const sessionAllowedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    void getMode().then(setModeState);
+    void getYoloSites().then(setYoloSites);
+  }, []);
+
+  const setMode = useCallback((m: AutomationMode) => {
+    setModeState(m);
+    void persistMode(m);
+  }, []);
+
+  const toggleYolo = useCallback((host: string, on: boolean) => {
+    void setYoloSite(host, on).then(setYoloSites);
+  }, []);
+
+  /**
+   * Confirm gate handed to the browser-action executor. Applies the Ask/Auto/
+   * YOLO policy: only renders a card when the policy says to ask; otherwise
+   * resolves immediately.
+   */
   const requestConfirm = useCallback((req: ConfirmRequest): Promise<boolean> => {
+    const host = hostOf(req.pageUrl);
+    const decision = decideAction(modeRef.current, host, req.signals, yoloRef.current, sessionAllowedRef.current);
+    if (decision === 'allow') return Promise.resolve(true);
+
     return new Promise<boolean>((resolvePromise) => {
-      const resolve = (allowed: boolean) => {
+      const finish = (allowed: boolean) => {
         pendingResolveRef.current = null;
         setPendingAction(null);
         resolvePromise(allowed);
       };
-      pendingResolveRef.current = resolve;
-      setPendingAction({ ...req, resolve });
+      pendingResolveRef.current = finish;
+      setPendingAction({
+        ...req,
+        host,
+        resolve: finish,
+        allowThisSession: () => {
+          if (host) sessionAllowedRef.current.add(host);
+          finish(true);
+        },
+      });
     });
   }, []);
 
@@ -176,6 +230,8 @@ export function useChat(profileId: string) {
     setSessionId(null);
     setTitle(null);
     setError(null);
+    // "Don't ask again this session" grants are scoped to one conversation.
+    sessionAllowedRef.current = new Set();
   }, []);
 
   const loadSession = useCallback(async (session: BrowserSession) => {
@@ -197,5 +253,20 @@ export function useChat(profileId: string) {
     );
   }, []);
 
-  return { messages, streaming, sessionId, title, error, pendingAction, send, stop, newConversation, loadSession };
+  return {
+    messages,
+    streaming,
+    sessionId,
+    title,
+    error,
+    pendingAction,
+    mode,
+    setMode,
+    yoloSites,
+    toggleYolo,
+    send,
+    stop,
+    newConversation,
+    loadSession,
+  };
 }

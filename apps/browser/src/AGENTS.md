@@ -62,10 +62,22 @@ src/
   stream event and the panel executes it (`src/lib/browser-tools.ts`) then
   POSTs `/api/client-tools/result`. Conventions:
   - Read/navigate actions (`list_tabs`, `open_tab`, `read_page`,
-    `get_elements`, `scroll`, `wait`) run automatically; **`browser_click` and
-    `browser_type` ALWAYS require per-action user approval** (confirm card in
-    `chat-view.tsx`, target element highlighted on the page first). Never ship
-    an interaction write outside `CONFIRM_ACTIONS`.
+    `get_elements`, `scroll`, `wait`) run automatically. Write actions
+    (`browser_click` / `browser_type`, the `CONFIRM_ACTIONS` set) go through
+    the permission policy in `lib/automation-prefs.ts` — never route a write
+    around it. The executor ALWAYS gathers danger signals + highlights the
+    target, then calls the panel gate; the gate decides confirm vs auto-run:
+    - **Ask** (default): confirm every write.
+    - **Auto**: auto-run ordinary writes; still confirm DANGEROUS ones
+      (password/payment field, form submit, sensitive-domain host — signals
+      computed in `browser-tools.ts` + `isSensitiveHost`).
+    - **per-site YOLO**: a host the user opted into runs everything without
+      asking (overrides mode). Toggled from the header automation menu.
+    - "Allow, don't ask again this site" grants are conversation-scoped (memory
+      ref in `use-chat.ts`, cleared on new chat) — never persisted; only global
+      mode + YOLO host set persist in `chrome.storage.local`.
+    - `decideAction` is pure — keep the policy there and unit-tested
+      (`automation-prefs.test.ts`), not scattered across UI.
   - Injected functions are serialized by `chrome.scripting` — they must be
     fully self-contained (no captured module scope). The element indexer pins
     live nodes on `window.__ghAgentElements`; navigation invalidates indices

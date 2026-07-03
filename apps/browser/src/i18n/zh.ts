@@ -77,5 +77,19 @@ export const zh = {
     actionType: '在「{target}」中输入：{text}',
     actionAllow: '允许',
     actionDeny: '拒绝',
+    actionAllowSession: '允许，本站本次会话不再询问',
+    actionRiskPassword: '这是一个密码输入框。',
+    actionRiskPayment: '这看起来是支付相关输入框。',
+    actionRiskSubmit: '此操作会提交表单。',
+
+    // 自动化权限模式菜单
+    automationMode: '自动化权限',
+    modeAsk: '每次询问',
+    modeAskHint: '每次点击和输入都需确认。',
+    modeAuto: '自动',
+    modeAutoHint: '自动执行；仅危险操作（密码、支付、提交表单）才确认。',
+    modeYolo: '本站放开全部（YOLO）',
+    modeYoloHint: '在 {host} 上不再询问、直接执行。',
+    modeYoloNoHost: '打开普通网页后可启用。',
   },
 };

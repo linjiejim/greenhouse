@@ -88,5 +88,19 @@ export const en = {
     actionType: 'Type into "{target}": {text}',
     actionAllow: 'Allow',
     actionDeny: 'Deny',
+    actionAllowSession: "Allow, don't ask again this site",
+    actionRiskPassword: 'This is a password field.',
+    actionRiskPayment: 'This looks like a payment field.',
+    actionRiskSubmit: 'This submits a form.',
+
+    // Automation permission mode menu
+    automationMode: 'Automation',
+    modeAsk: 'Ask every time',
+    modeAskHint: 'Confirm every click and typing action.',
+    modeAuto: 'Auto',
+    modeAutoHint: 'Run automatically; only confirm risky actions (passwords, payments, form submits).',
+    modeYolo: 'YOLO on this site',
+    modeYoloHint: 'Run everything on {host} without asking.',
+    modeYoloNoHost: 'Open a normal web page to enable.',
   },
 };
