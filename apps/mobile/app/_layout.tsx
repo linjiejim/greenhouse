@@ -8,7 +8,7 @@
 
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, AppState, View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -18,6 +18,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuth } from '../src/store/auth';
 import { usePrefs } from '../src/store/prefs';
 import { setOnUnauthorized } from '../src/api/client';
+import { clearWidgetSnapshot, refreshWidgetSnapshot } from '../src/lib/widget-snapshot';
 import { useTheme } from '../src/theme';
 
 export default function RootLayout() {
@@ -47,6 +48,22 @@ export default function RootLayout() {
       router.replace('/');
     }
   }, [loading, user, segments, router]);
+
+  // Home-screen widget snapshot: publish after login resolves and on every
+  // background transition; clear on logout so the widget degrades to launcher.
+  const lang = usePrefs((s) => s.lang);
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      clearWidgetSnapshot();
+      return;
+    }
+    void refreshWidgetSnapshot(user.nickname ?? '', lang);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background') void refreshWidgetSnapshot(user.nickname ?? '', lang);
+    });
+    return () => sub.remove();
+  }, [loading, user, lang]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

@@ -11,7 +11,7 @@
 import React, { useCallback, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../src/store/auth';
@@ -40,6 +40,9 @@ export default function Home() {
   const profileId = usePrefs((s) => s.profileId);
 
   const profileName = useProfileName();
+  // Home-screen widget "新对话" deep link (greenhouse://?compose=1) — drop
+  // straight into typing.
+  const { compose } = useLocalSearchParams<{ compose?: string }>();
 
   const [input, setInput] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -141,6 +144,7 @@ export default function Home() {
         {/* composer — full-width flat bar at the bottom */}
         <Composer
           hero
+          autoFocus={compose === '1'}
           barStyle={barInset}
           value={input}
           onChangeText={setInput}

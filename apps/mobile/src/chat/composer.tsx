@@ -39,11 +39,14 @@ export function Composer({
   images = [],
   onRemoveImage,
   barStyle,
+  autoFocus = false,
 }: {
   value: string;
   onChangeText: (v: string) => void;
   onSend: () => void;
   hero?: boolean;
+  /** Focus the input on mount (widget/deep-link `compose=1` entry). */
+  autoFocus?: boolean;
   streaming?: boolean;
   onStop?: () => void;
   onAttach?: () => void;
@@ -118,6 +121,7 @@ export function Composer({
         <TextInput
           value={value}
           onChangeText={onChangeText}
+          autoFocus={autoFocus}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder={hero ? t('home.heroPlaceholder') : t('chat.followUpPlaceholder')}

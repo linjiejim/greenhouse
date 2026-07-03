@@ -12,6 +12,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@bacons/apple-targets": "4.0.7",
     "@expo/metro-runtime": "~56.0.13",
     "@gorhom/bottom-sheet": "^5.2.14",
     "expo": "~56.0.8",
