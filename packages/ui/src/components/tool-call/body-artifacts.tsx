@@ -112,12 +112,17 @@ export function isMediaArtifact(call: { name: string }): boolean {
 
 export function BodyArtifacts({ calls, ctx }: { calls: ArtifactCall[]; ctx: ArtifactCtx }) {
   const artifacts = calls.filter((c) => {
-    // File/media artifacts render at the bottom via <MessageAttachments>, not here.
-    if (!isArtifactCall(c) || isMediaArtifact(c)) return false;
-    // Defer the interactive ask_user form until the turn is committed (see `streaming`).
+    if (!isArtifactCall(c)) return false;
+    // Defer ONLY the interactive ask_user form while the turn streams: the streaming
+    // overlay is torn down + remounted as the committed bubble when the turn ends, which
+    // would wipe any selection made mid-stream (see `streaming`).
     if (ctx.streaming && (c.output as Record<string, unknown> | undefined)?.type === 'ask_user') {
       return false;
     }
+    // File/media artifacts (generated images, exports) normally render at the BOTTOM of the
+    // committed message via <MessageAttachments>, so skip them here — EXCEPT while streaming,
+    // when no attachments block is mounted, so surface them here to still appear mid-turn.
+    if (isMediaArtifact(c) && !ctx.streaming) return false;
     return true;
   });
   if (artifacts.length === 0) return null;
