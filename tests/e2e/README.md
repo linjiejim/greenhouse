@@ -6,21 +6,35 @@
 
 | | 单元测试 (`pnpm test`) | E2E 安全测试 (`pnpm test:e2e`) |
 |---|---|---|
-| 运行方式 | 自动/CI | **仅手动** |
+| 运行方式 | 自动/CI（in-process） | 自动/CI（live server，`test:e2e:ci`）+ 手动 |
 | 依赖 | 无外部依赖 | 需要运行中的 API 服务 |
-| 速度 | 快 (~1.5s) | 慢 (含真实 LLM 调用) |
+| 速度 | 快 (~1.5s) | 慢 (~2min，逐条真实 HTTP) |
 | 覆盖 | 函数级别逻辑 | 真实 HTTP 请求端到端 |
 | 配置 | `vitest.config.ts` | `vitest.e2e.config.ts` |
 
 ## 运行方法
 
-### 1. 启动测试服务器（终端 1）
+### 方式 A：一条命令（CI 用的就是这个）
+
+`scripts/e2e-ci.sh` 会自动起 API（指向一个必失败的 LLM 端点，无真实调用/费用）、等待
+`/health`、跑套件、结束后关服务器。需要一个已 migrate 的 Postgres（默认 `greenhouse_test`）。
 
 ```bash
-API_PORT=3999 ACCESS_PASSWORD=test-secret pnpm api
+pnpm test:e2e:ci
 ```
 
-### 2. 运行 E2E 测试（终端 2）
+`E2E_NO_LLM=1` 会跳过 `v1-api` 里两个需要真实模型回答内容的断言。要跑这两个，用下面方式 B
+带真实 LLM key 启动服务器。
+
+### 方式 B：手动两个终端
+
+#### 1. 启动测试服务器（终端 1）
+
+```bash
+API_PORT=3999 ACCESS_PASSWORD=test-secret TOKEN_SIGNING_KEY=test-secret pnpm api
+```
+
+#### 2. 运行 E2E 测试（终端 2）
 
 ```bash
 API_PORT=3999 ACCESS_PASSWORD=test-secret pnpm test:e2e

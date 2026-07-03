@@ -23,6 +23,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e:ci": "bash scripts/e2e-ci.sh",
     "test:e2e:ui": "playwright test",
     "test:e2e:ui:report": "playwright show-report",
     "typecheck": "tsc --noEmit",

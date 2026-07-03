@@ -2,16 +2,21 @@
  * Vitest configuration for E2E security tests.
  *
  * These tests run against a LIVE server and are not part of the normal
- * `pnpm test` workflow. Run manually:
+ * `pnpm test` workflow.
+ *
+ * One command (boots the API + a stubbed LLM, then runs the suite — this is
+ * exactly what CI's `e2e` job runs):
+ *
+ *   pnpm test:e2e:ci
+ *
+ * Or drive a server yourself (e.g. with a real LLM key, to exercise the
+ * content-dependent assertions that `test:e2e:ci` skips via E2E_NO_LLM):
  *
  *   # Terminal 1: Start test server
- *   API_PORT=3999 ACCESS_PASSWORD=test-secret pnpm api
+ *   API_PORT=3999 ACCESS_PASSWORD=test-secret TOKEN_SIGNING_KEY=test-secret pnpm api
  *
  *   # Terminal 2: Run e2e tests
  *   API_PORT=3999 ACCESS_PASSWORD=test-secret pnpm test:e2e
- *
- * Or run everything in one command (server auto-starts):
- *   pnpm test:e2e:full
  */
 
 import { defineConfig } from "vitest/config";

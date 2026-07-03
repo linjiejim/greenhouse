@@ -56,12 +56,15 @@ what exists." These rules are as binding as the "add" rules:
 
 - **Pre-commit hook**: husky + lint-staged runs `eslint --fix` + `prettier --write` on staged
   files.
-- **CI gate**: `.github/workflows/ci.yml` runs lint → typecheck → test on `main` and every PR
-  (`quality-gate.yml`, reusable). The test job builds the CI database via `migrate` (not push)
-  so the whole migration chain is exercised on every run.
-- **E2E security suite**: `pnpm test:e2e` (needs a running API; see `tests/e2e`). Run it before
-  merging security-relevant changes (auth / v1 / permissions / tool surface). This is the
-  **API-level** suite (vitest + `fetch`, no browser).
+- **CI gate**: `.github/workflows/ci.yml` runs lint → typecheck → test → **e2e** on `main` and
+  every PR (`quality-gate.yml`, reusable). The test/e2e jobs build the CI database via `migrate`
+  (not push) so the whole migration chain is exercised on every run.
+- **E2E security suite**: `pnpm test:e2e` (needs a running API; see `tests/e2e`). This is the
+  **API-level** suite (vitest + `fetch`, no browser) covering auth / v1 / permissions / tool
+  surface / injection / data isolation. CI runs it via `pnpm test:e2e:ci` (`scripts/e2e-ci.sh`),
+  which boots the API against a dead LLM endpoint and sets `E2E_NO_LLM=1` to skip the two
+  content-dependent v1 assertions — so it stays deterministic and free. When adding a test that
+  needs a real model reply, gate it with `describe.skipIf(process.env.E2E_NO_LLM === '1')`.
 - **Browser e2e (Playwright)**: `pnpm test:e2e:ui` — deterministic UI regression suite in
   `tests/e2e-ui/` (Chromium). Covers login, chat (LLM stubbed via `page.route` on `/api/chat`
   + the post-completion `GET /api/sessions/:id` reload), project create, and user create/delete

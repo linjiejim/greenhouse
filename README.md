@@ -247,13 +247,14 @@ Optional modules are gated by per-user feature flags: add an entry to
 pnpm dev          # Vite web (:3100) + API (:3101), proxied
 pnpm test         # vitest
 pnpm test:e2e     # e2e security suite (needs a running API — see tests/e2e)
+pnpm test:e2e:ci  # e2e suite, self-contained (boots the API, stubs the LLM) — same as CI
 pnpm typecheck    # tsc --noEmit
 pnpm lint         # eslint + prettier --check
 pnpm lint:fix     # auto-fix
 ```
 
 A husky + lint-staged pre-commit hook runs `eslint --fix` + `prettier --write` on staged
-files. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test on `main` and every PR.
+files. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → e2e on `main` and every PR.
 
 ### Database migrations
 

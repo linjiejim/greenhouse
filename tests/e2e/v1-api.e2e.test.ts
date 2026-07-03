@@ -348,7 +348,10 @@ describe('E2E: V1 SSE Response Format', () => {
 
 // ─── Streaming Answer Content (tool-using RAG) ───────────
 
-describe('E2E: V1 Streaming returns answer content for tool-using queries', () => {
+// These two assert the model emits non-empty answer text, so they need a
+// working LLM. CI runs the suite against a deliberately-dead LLM endpoint
+// (E2E_NO_LLM=1) and skips them; run locally with a real key to exercise them.
+describe.skipIf(process.env.E2E_NO_LLM === '1')('E2E: V1 Streaming returns answer content for tool-using queries', () => {
   // Regression for the "0 content delta" bug: a RAG query makes the agent loop
   // call tools, and the model sometimes exhausts its step budget (or leaks a
   // DSML call on the forced final step) without ever emitting answer text.

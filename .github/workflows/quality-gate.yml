@@ -62,3 +62,41 @@ jobs:
         env:
           DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
       - run: pnpm test
+
+  # Live-server integration/security suite (tests/e2e). Boots the real API and
+  # drives it over HTTP — the layer `pnpm test` (in-process units) never reaches:
+  # auth/token round-trips, cross-user data isolation, role escalation, injection,
+  # tool-access & v1 API boundaries. Runs against a dead LLM endpoint so it stays
+  # deterministic and free (E2E_NO_LLM skips the few content-dependent assertions).
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: greenhouse_test
+          POSTGRES_USER: greenhouse
+          POSTGRES_PASSWORD: greenhouse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U greenhouse -d greenhouse_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply migrations to test database
+        run: npx drizzle-kit migrate
+        env:
+          DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
+      - name: Run live-server E2E suite
+        run: pnpm test:e2e:ci
+        env:
+          DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
