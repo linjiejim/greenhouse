@@ -124,11 +124,13 @@ frontend changes hot-reload.
 > On a non-empty database it refuses unless you pass `--reset` (wipe first) or `--keep`
 > (load on top).
 
-> **Admin console** — `pnpm admin <command>` is the dev/ops entry point for a self-hosted
-> instance, all in-process (no running server needed): `users` (list / show / create),
+> **CLI console** — `pnpm cli <command>` is the dev/ops entry point for a self-hosted
+> instance, mostly in-process (no running server needed): `users` (list / show / create),
 > `tools`, `profiles`, `sessions` (browse + dump a transcript for debugging), `stats`,
-> `seed`, `db reset`, `api-client` (mint/list keys), and `doctor` (env + DB readiness check).
-> Run `pnpm admin` for the full command list.
+> `seed`, `db reset`, `api-client` (mint/list keys), `doctor` (env + DB readiness check),
+> and `chat` (needs a running server). `admin:create`, `seed`, and `chat` also stay as
+> top-level script aliases. Run `pnpm cli --help` for the full guide (`pnpm help` is pnpm's
+> own built-in, so use `pnpm cli --help` or `pnpm run help`).
 
 ## One-command Docker deploy
 

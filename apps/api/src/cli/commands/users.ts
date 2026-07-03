@@ -63,7 +63,7 @@ async function list(args: string[]): Promise<number> {
 
   console.log(heading(`Users (${users.length})`));
   if (!users.length) {
-    console.log(dim('  (none — run `pnpm admin users create`)'));
+    console.log(dim('  (none — run `pnpm cli users create`)'));
     return 0;
   }
   const rows = users.map((u) => [

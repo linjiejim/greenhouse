@@ -1,8 +1,8 @@
 /**
  * `admin db` — database overview and the destructive reset.
  *
- *   pnpm admin stats          # row counts across core tables + health
- *   pnpm admin db reset       # TRUNCATE every table (type the db name to confirm)
+ *   pnpm cli stats          # row counts across core tables + health
+ *   pnpm cli db reset       # TRUNCATE every table (type the db name to confirm)
  */
 
 import chalk from 'chalk';
@@ -98,6 +98,6 @@ async function reset(args: string[]): Promise<number> {
 
   await db.resetSchema();
   console.log(chalk.green(`✓ Database "${dbName()}" reset — all rows removed.`));
-  console.log(dim('  Re-seed with: pnpm admin seed'));
+  console.log(dim('  Re-seed with: pnpm cli seed'));
   return 0;
 }

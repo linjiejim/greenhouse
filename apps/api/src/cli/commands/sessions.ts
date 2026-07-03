@@ -66,7 +66,7 @@ async function list(args: string[]): Promise<number> {
     s.updated_at.slice(0, 16).replace('T', ' '),
   ]);
   console.log(table(['ID', 'Channel', 'Profile', 'User', 'Msgs', 'Title', 'Updated'], rows));
-  console.log(dim('\nShow a transcript with: pnpm admin sessions show <id>'));
+  console.log(dim('\nShow a transcript with: pnpm cli sessions show <id>'));
   return 0;
 }
 

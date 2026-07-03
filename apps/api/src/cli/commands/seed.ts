@@ -1,11 +1,11 @@
 /**
  * `admin seed` — load the example dataset in `data/examples/`.
  *
- *   pnpm admin seed              # empty DB: load. non-empty DB: refuse & explain.
- *   pnpm admin seed --reset      # wipe ALL data first, then load (double-confirm)
- *   pnpm admin seed --keep       # load on top of existing rows (may clash)
- *   pnpm admin seed --password p # override the shared demo password (default: greenhouse)
- *   pnpm admin seed --reset --yes  # skip the confirmation (scripts/CI)
+ *   pnpm cli seed              # empty DB: load. non-empty DB: refuse & explain.
+ *   pnpm cli seed --reset      # wipe ALL data first, then load (double-confirm)
+ *   pnpm cli seed --keep       # load on top of existing rows (may clash)
+ *   pnpm cli seed --password p # override the shared demo password (default: greenhouse)
+ *   pnpm cli seed --reset --yes  # skip the confirmation (scripts/CI)
  *
  * Each file in `data/examples/` is named after a table and holds JSONL — one JSON
  * object per line, loaded in a fixed FK-safe order (LOAD_ORDER). Rows may use

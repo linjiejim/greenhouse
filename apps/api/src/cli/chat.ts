@@ -1,13 +1,15 @@
 #!/usr/bin/env tsx
 /**
- * Greenhouse CLI — interactive chat with the agent.
+ * `cli chat` — interactive chat with the agent (a `pnpm cli` subcommand; the
+ * standalone `pnpm chat` alias still works). Unlike the other commands this one
+ * talks to a running API over HTTP, so start the server first (`pnpm api`).
  *
  * Usage:
- *   pnpm chat                       Start new session (default profile)
- *   pnpm chat --profile <id>        Start with a specific profile
- *   pnpm chat --session <id>        Resume existing session
- *   pnpm chat --list                List recent sessions
- *   pnpm chat --api http://...      Custom API endpoint
+ *   pnpm cli chat                   Start new session (default profile)
+ *   pnpm cli chat --profile <id>    Start with a specific profile
+ *   pnpm cli chat --session <id>    Resume existing session
+ *   pnpm cli chat --list            List recent sessions
+ *   pnpm cli chat --api http://...  Custom API endpoint
  */
 
 import { createInterface } from 'node:readline/promises';
@@ -358,14 +360,14 @@ async function checkHealth(): Promise<boolean> {
   }
 }
 
-async function main() {
+export async function run(_args: string[]): Promise<number> {
   // ── Handle --list ──
   if (process.argv.includes('--list')) {
     console.log(chalk.green.bold('\n  🌱 Recent Sessions'));
     const healthy = await checkHealth().catch(() => false);
     if (!healthy) {
       console.error(chalk.red(`  ❌ Cannot connect to ${API_BASE}\n`));
-      process.exit(1);
+      return 1;
     }
     const sessions = await listSessionsApi();
     if (sessions.length === 0) {
@@ -378,7 +380,7 @@ async function main() {
       }
       console.log('');
     }
-    process.exit(0);
+    return 0;
   }
 
   console.log(chalk.green.bold(`\n  🌱 ${PRODUCT_NAME} Chat`));
@@ -388,7 +390,7 @@ async function main() {
   if (!healthy) {
     console.error(chalk.red(`\n  ❌ Cannot connect to API at ${API_BASE}`));
     console.error(chalk.gray('  Start the server first: pnpm api\n'));
-    process.exit(1);
+    return 1;
   }
 
   // ── Resolve session ──
@@ -403,7 +405,7 @@ async function main() {
     const data = await getSessionApi(id);
     if (!data) {
       console.error(chalk.red(`\n  ❌ Session not found: ${id}\n`));
-      process.exit(1);
+      return 1;
     }
     sessionId = data.session.id;
     const msgCount = data.messages.length;
@@ -513,9 +515,5 @@ async function main() {
   rl.close();
   console.log(chalk.gray(`\n  Session saved: ${sessionId.slice(0, 8)}...`));
   console.log(chalk.gray('  Bye! 🌱\n'));
+  return 0;
 }
-
-main().catch((err) => {
-  console.error(chalk.red(`\n  Fatal: ${err.message}\n`));
-  process.exit(1);
-});

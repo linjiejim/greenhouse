@@ -1,8 +1,8 @@
 /**
  * `admin api-client` — mint/rotate and list external API clients.
  *
- *   pnpm admin api-client create [app_id] [app_name] [--profiles a,b]
- *   pnpm admin api-client list [--json]
+ *   pnpm cli api-client create [app_id] [app_name] [--profiles a,b]
+ *   pnpm cli api-client list [--json]
  *
  * The raw key (gh_sk_…) is printed exactly once on create/rotate — save it.
  * Absorbs the former `create-api-client.ts`.
@@ -63,7 +63,7 @@ async function list(args: string[]): Promise<number> {
 
   console.log(heading(`API clients (${clients.length})`));
   if (!clients.length) {
-    console.log(dim('  (none — create one with: pnpm admin api-client create)'));
+    console.log(dim('  (none — create one with: pnpm cli api-client create)'));
     return 0;
   }
   console.log(

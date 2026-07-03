@@ -1,26 +1,29 @@
 /**
- * `admin` — the Greenhouse dev/ops console.
+ * `cli` — the Greenhouse dev/ops console (`pnpm cli <command>`).
  *
  * A single entry point for the quick operations a project developer or admin
  * needs against a local/self-hosted deployment: inspect users, tools, profiles
- * and sessions; seed/reset the database; mint API clients; and health-check a
- * fresh clone. Everything runs in-process against the DB + registries (no
- * running server required).
+ * and sessions; seed/reset the database; mint API clients; health-check a fresh
+ * clone; and chat with the agent. Most commands run in-process against the DB +
+ * registries (no running server required); `chat` is the exception (it talks to
+ * a running API over HTTP).
  *
- *   pnpm admin <command> [subcommand] [args] [--flags]
+ *   pnpm cli <command> [subcommand] [args] [--flags]
+ *   pnpm cli --help               the getting-started guide (also: pnpm run help;
+ *                                 bare `pnpm help` is pnpm's own built-in)
  *
- * Each command lives in ./admin/<command>.ts and exports `run(args)`. Commands
- * are imported lazily so a cheap command (e.g. `tools`) never pays to load the
- * DB, and a broken module can't take down the whole console.
+ * Each command lives in ./commands/<command>.ts and exports `run(args)`.
+ * Commands are imported lazily so a cheap command (e.g. `tools`) never pays to
+ * load the DB, and a broken module can't take down the whole console.
  */
 
 import chalk from 'chalk';
 import { PRODUCT_NAME } from '@greenhouse/utils/brand';
-import { closeDb } from './admin/shared.js';
+import { closeDb } from './commands/shared.js';
 
-const USAGE = `${chalk.bold(`${PRODUCT_NAME} admin console`)} — dev/ops quick operations
+const USAGE = `${chalk.bold(`${PRODUCT_NAME} CLI`)} — dev/ops quick operations
 
-${chalk.bold('Usage:')} pnpm admin <command> [subcommand] [args] [--flags]
+${chalk.bold('Usage:')} pnpm cli <command> [subcommand] [args] [--flags]   ${chalk.dim('(guide: pnpm cli --help)')}
 
 ${chalk.bold('Inspect')}
   users [list]              List users (--role <r>, --json)
@@ -41,37 +44,42 @@ ${chalk.bold('Manage')}
 ${chalk.bold('Diagnose')}
   doctor                    Check env + DB readiness for this deployment
 
+${chalk.bold('Chat')} ${chalk.dim('(needs a running server: pnpm api)')}
+  chat                      Interactive agent chat (--profile <id>, --session <id>, --list)
+
 ${chalk.dim('Global: --json (machine output where supported). DB via DATABASE_URL in .env.')}`;
 
 async function dispatch(command: string, rest: string[]): Promise<number> {
   switch (command) {
     case 'users':
     case 'user':
-      return (await import('./admin/users.js')).run(rest);
+      return (await import('./commands/users.js')).run(rest);
     case 'tools':
     case 'tool':
-      return (await import('./admin/tools.js')).run(rest);
+      return (await import('./commands/tools.js')).run(rest);
     case 'profiles':
     case 'profile':
-      return (await import('./admin/profiles.js')).run(rest);
+      return (await import('./commands/profiles.js')).run(rest);
     case 'sessions':
     case 'session':
-      return (await import('./admin/sessions.js')).run(rest);
+      return (await import('./commands/sessions.js')).run(rest);
     case 'seed':
-      return (await import('./admin/seed.js')).run(rest);
+      return (await import('./commands/seed.js')).run(rest);
     case 'db':
-      return (await import('./admin/db.js')).run(rest);
+      return (await import('./commands/db.js')).run(rest);
     case 'reset':
-      return (await import('./admin/db.js')).run(['reset', ...rest]);
+      return (await import('./commands/db.js')).run(['reset', ...rest]);
     case 'stats':
     case 'overview':
-      return (await import('./admin/db.js')).run(['stats', ...rest]);
+      return (await import('./commands/db.js')).run(['stats', ...rest]);
     case 'doctor':
     case 'check':
-      return (await import('./admin/doctor.js')).run(rest);
+      return (await import('./commands/doctor.js')).run(rest);
     case 'api-client':
     case 'api-clients':
-      return (await import('./admin/api-client.js')).run(rest);
+      return (await import('./commands/api-client.js')).run(rest);
+    case 'chat':
+      return (await import('./chat.js')).run(rest);
     default:
       console.error(chalk.red(`Unknown command: ${command}`));
       console.log('\n' + USAGE);

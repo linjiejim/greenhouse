@@ -68,7 +68,7 @@ export async function run(_args: string[]): Promise<number> {
     label: 'Super admin exists',
     ok: superAdmins > 0,
     detail: `${superAdmins} found`,
-    fix: 'Run: pnpm admin users create --role super',
+    fix: 'Run: pnpm cli users create --role super',
   });
 
   const signKey = process.env.TOKEN_SIGNING_KEY ?? '';
