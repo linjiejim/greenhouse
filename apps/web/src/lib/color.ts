@@ -145,3 +145,41 @@ export function generatePalette(brandHex: string): Record<PaletteShade, Rgb> | n
   }
   return out;
 }
+
+// ─── Semantic status colors ──────────────────────────────
+
+/** The three CSS values a semantic status token needs (e.g. --t-success*). */
+export interface SemanticTokens {
+  /** Solid accent — text + border (the picked color, used verbatim). */
+  base: string;
+  /** Faint fill behind the accent (subtle). */
+  subtle: string;
+  /** Readable foreground on the subtle fill (fg). */
+  fg: string;
+}
+
+/**
+ * Derive a coherent {base, subtle, fg} trio from one picked status color,
+ * matching how Greenhouse's stock status tokens relate across light/dark.
+ * `base` is kept verbatim; only the fill + foreground are computed, so the
+ * swatch the user picks is exactly what they see.
+ */
+export function deriveSemantic(baseHex: string, isDark: boolean): SemanticTokens | null {
+  const rgb = hexToRgb(baseHex);
+  if (!rgb) return null;
+  const { C, h } = rgbToOklch(rgb);
+
+  if (isDark) {
+    return {
+      base: baseHex,
+      // Translucent tint so the fill sits on any dark surface (matches stock).
+      subtle: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.14)`,
+      fg: rgbToHex(oklchToRgb({ L: 0.82, C: Math.min(C, 0.12), h })),
+    };
+  }
+  return {
+    base: baseHex,
+    subtle: rgbToHex(oklchToRgb({ L: 0.965, C: Math.min(C * 0.4, 0.05), h })),
+    fg: rgbToHex(oklchToRgb({ L: 0.4, C: Math.min(C, 0.13), h })),
+  };
+}

@@ -151,22 +151,80 @@ export default {
   // Branding Studio (super only)
   brandingStudio: {
     intro:
-      'Tune the brand palette and design tokens with live preview, then export the CSS overrides into src/branding.css of your fork. Nothing is saved on the server — this page only previews and exports.',
-    brandColor: 'Brand color',
-    brandColorHint: 'One color generates the whole primary-50…900 palette (OKLCH ramp).',
-    palettePreview: 'Palette preview',
-    tokens: 'Design tokens',
-    tokensHint: 'Edits apply to the mode being previewed — switch preview mode to edit the other set.',
+      'Shape how Greenhouse looks — pick a starting style, then fine-tune colour, type and shape with everything previewing live on the right. Nothing is saved here; when it feels right, copy the styles out to your workspace.',
+
+    // Presets
+    presets: 'Starting styles',
+    preset_greenhouse: 'Greenhouse',
+    preset_slate: 'Slate',
+    preset_sunset: 'Sunset',
+    preset_editorial: 'Editorial',
+    preset_graphite: 'Graphite',
+
+    // Sections
+    brandColor: 'Brand colour',
+    semantic: 'Status colours',
+    tokens: 'Surfaces, text & borders',
+    typography: 'Typography',
+    shape: 'Corners',
     groupSurface: 'Surfaces',
     groupText: 'Text',
     groupBorder: 'Borders',
-    previewMode: 'Preview mode',
-    exportTitle: 'Export CSS overrides',
-    exportHint: 'Paste this block into apps/web/src/branding.css in your fork.',
-    copy: 'Copy',
+
+    // Controls
+    fontDefault: 'System default',
+    fontCustomPlaceholder: "Or type a font stack — 'Brand Sans', system-ui, sans-serif",
+    fontMonoPlaceholder: "Monospace — 'JetBrains Mono', ui-monospace, monospace",
+    textScale: 'Text size',
+    radius: 'Roundness',
+    preview: 'Live preview',
+
+    // Tooltips — what each control changes, in plain language
+    tipPresets:
+      'One click sets a whole look — brand colour, font and corner style together. A quick way to feel the range before fine-tuning.',
+    tipBrand:
+      'The main accent: primary buttons, links, selected items, focus rings and highlights across the whole app.',
+    tipSemantic:
+      'The colours of feedback — success, warning, danger and info states on tags, badges, alerts and status dots. Neutral follows your text/border colours; primary follows the brand colour.',
+    tipTokens:
+      'Background layers (page → cards), the shades of body text, and the lines that divide and outline things.',
+    tipTypography: 'The interface font and the overall text size, everywhere from menus to chat replies.',
+    tipShape: 'How rounded corners are — buttons, inputs, cards, tags and dialogs all follow this.',
+    tipPreview:
+      'Real components, updating as you tune. Switch between light and dark to check both — each keeps its own colour edits.',
+    tipExport:
+      'Copies the styles you changed as a block you can drop into your workspace to make them stick. Reset clears the preview.',
+
+    // Export
+    exportTitle: 'Save these styles',
+    copy: 'Copy styles',
     copied: 'Copied',
-    reset: 'Reset preview',
-    noChanges: 'No changes yet — pick a brand color or edit a token to build the export.',
+    reset: 'Reset',
+    noChanges: 'No changes yet — pick a starting style or adjust a colour to build the export.',
+
+    // Preview canvas — section titles
+    pvTypography: 'Type',
+    pvControls: 'Buttons & inputs',
+    pvSemantic: 'Status colours',
+    pvChat: 'Chat',
+
+    // Preview canvas — Greenhouse-voiced sample content
+    sampleHeading: 'Your workspace, your look',
+    sampleBody:
+      'Greenhouse gives every team an AI agent that works across chat, the knowledge base and projects. This is how your body copy reads to the people you invite.',
+    sampleMeta: 'Updated just now · by the agent',
+    samplePrimaryBtn: 'New chat',
+    sampleInput: 'Ask the agent anything…',
+    sampleToggle: 'Share with team',
+    sampleOnline: 'Connected',
+    sampleRunning: 'Running',
+    sampleFailed: 'Needs attention',
+    sampleUserMsg: 'Summarise last quarter and group it by product line.',
+    sampleAssistantMsg: 'Revenue grew across the board last quarter. The standouts:',
+    sampleBullet1: 'strongest growth, led by enterprise renewals',
+    sampleBullet2: 'up sharply on new signups — see the',
+    sampleLink: 'usage report',
+    sampleModelMeta: 'Answered in 3.8s',
   },
 
   // Chat

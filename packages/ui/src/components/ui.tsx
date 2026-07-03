@@ -275,6 +275,33 @@ export function Card({ children, className = '', ...props }: React.HTMLAttribute
   );
 }
 
+// ─── Tooltip ─────────────────────────────────────────────
+// Lightweight CSS-only hover/focus tooltip: wraps a trigger, reveals a bubble
+// on hover or keyboard focus. No portal / JS positioning — meant for short help
+// text on inline triggers (e.g. an info icon). Content wraps up to `w-56`.
+
+interface TooltipProps {
+  content: React.ReactNode;
+  children: React.ReactNode;
+  side?: 'top' | 'bottom';
+  className?: string;
+}
+
+export function Tooltip({ content, children, side = 'top', className = '' }: TooltipProps) {
+  const pos = side === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5';
+  return (
+    <span className={`group/tt relative inline-flex ${className}`} tabIndex={0}>
+      {children}
+      <span
+        role="tooltip"
+        className={`pointer-events-none absolute left-1/2 z-50 -translate-x-1/2 ${pos} w-56 max-w-[16rem] rounded-lg border border-edge bg-surface-raised px-2.5 py-1.5 text-left text-xs font-normal leading-relaxed text-fg-secondary opacity-0 shadow-md transition-opacity duration-150 group-hover/tt:opacity-100 group-focus/tt:opacity-100`}
+      >
+        {content}
+      </span>
+    </span>
+  );
+}
+
 // ─── Input ───────────────────────────────────────────────
 
 interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {

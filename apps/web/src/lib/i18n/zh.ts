@@ -158,22 +158,74 @@ const zh: Messages = {
   // 品牌工作台（仅超级管理员）
   brandingStudio: {
     intro:
-      '实时预览品牌色板与设计 token 的调整，调好后导出 CSS 覆盖块，粘贴到 fork 的 src/branding.css。本页面只做预览和导出，不会在服务端保存任何内容。',
+      '定制 Greenhouse 的外观——先选一个起始风格，再微调颜色、字体和圆角，右侧实时预览。此页不会保存任何内容；调满意后把样式导出到你的工作区即可生效。',
+
+    // 起始风格
+    presets: '起始风格',
+    preset_greenhouse: 'Greenhouse',
+    preset_slate: '石板蓝',
+    preset_sunset: '日落橙',
+    preset_editorial: '杂志感',
+    preset_graphite: '石墨黑',
+
+    // 分区
     brandColor: '品牌色',
-    brandColorHint: '一个颜色生成整套 primary-50…900 色板（OKLCH 色阶）。',
-    palettePreview: '色板预览',
-    tokens: '设计 Token',
-    tokensHint: '编辑作用于当前预览的模式——切换预览模式可编辑另一套。',
+    semantic: '状态色',
+    tokens: '表面、文字与边框',
+    typography: '排版',
+    shape: '圆角',
     groupSurface: '表面',
     groupText: '文字',
     groupBorder: '边框',
-    previewMode: '预览模式',
-    exportTitle: '导出 CSS 覆盖',
-    exportHint: '把这段粘贴到 fork 的 apps/web/src/branding.css。',
-    copy: '复制',
+
+    // 控件
+    fontDefault: '系统默认',
+    fontCustomPlaceholder: "或输入字体栈——'Brand Sans', system-ui, sans-serif",
+    fontMonoPlaceholder: "等宽字体——'JetBrains Mono', ui-monospace, monospace",
+    textScale: '字号',
+    radius: '圆润度',
+    preview: '实时预览',
+
+    // 提示——说明每个控件会改变什么，用大白话
+    tipPresets: '一键套用一整套观感——品牌色、字体和圆角一起变。微调前先快速感受不同风格。',
+    tipBrand: '主强调色：主按钮、链接、选中项、聚焦描边和全站高亮都会跟着变。',
+    tipSemantic:
+      '反馈色——成功 / 警告 / 危险 / 信息 状态在标签、徽章、提示条和状态点上的配色。中性色跟随文字/边框色，主色跟随品牌色。',
+    tipTokens: '背景层次（页面 → 卡片）、正文文字的深浅、以及分隔线和描边。',
+    tipTypography: '界面字体和整体字号，从菜单到会话回复处处生效。',
+    tipShape: '圆角的程度——按钮、输入框、卡片、标签和弹窗都会跟随。',
+    tipPreview: '真实组件，调整即时呈现。在浅色/深色间切换可分别检查——两套颜色改动各自保留。',
+    tipExport: '把你改动过的样式复制成一段代码，粘到工作区即可长期生效。重置会清空预览。',
+
+    // 导出
+    exportTitle: '保存这套样式',
+    copy: '复制样式',
     copied: '已复制',
-    reset: '重置预览',
-    noChanges: '暂无改动——选择品牌色或编辑 token 后生成导出内容。',
+    reset: '重置',
+    noChanges: '暂无改动——选一个起始风格或调整一个颜色即可生成导出内容。',
+
+    // 预览画布——分区标题
+    pvTypography: '文字',
+    pvControls: '按钮与输入',
+    pvSemantic: '状态色',
+    pvChat: '会话',
+
+    // 预览画布——贴近 Greenhouse 语气的示例内容
+    sampleHeading: '你的工作区，你的风格',
+    sampleBody: 'Greenhouse 为每个团队配一个横跨对话、知识库和项目的 AI 助手。这就是你邀请的成员看到的正文观感。',
+    sampleMeta: '刚刚更新 · 来自助手',
+    samplePrimaryBtn: '新对话',
+    sampleInput: '有什么想问助手的…',
+    sampleToggle: '与团队共享',
+    sampleOnline: '已连接',
+    sampleRunning: '运行中',
+    sampleFailed: '需要处理',
+    sampleUserMsg: '帮我汇总上季度，并按产品线分组。',
+    sampleAssistantMsg: '上季度整体营收增长，亮点如下：',
+    sampleBullet1: '增长最快，主要来自企业客户续约',
+    sampleBullet2: '新注册带动大幅上升——见',
+    sampleLink: '用量报告',
+    sampleModelMeta: '3.8 秒内回答',
   },
 
   // 聊天

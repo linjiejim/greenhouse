@@ -181,6 +181,7 @@ stores/
   - **禁止硬编码颜色名**（如 `teal-500`、`emerald-500`）——始终用 `primary-*` 或语义 token（`text-success`、`bg-success-subtle`）
   - 主题模式：light / dark / system 三选（`lib/theme.ts`，localStorage 持久化，旧多主题 key 自动迁移）；JS 只切 `.dark-theme` class，**不写 token 值**——否则内联样式会压过 fork 的 CSS 覆盖
   - 品牌（产品名 / Logo mark）走 `lib/branding.extensions.tsx`（S6 seam）；品牌 token 调整用 Settings → Branding Studio（super）实时预览并导出 CSS
+  - 排版/形状也是变量：Tailwind v4 默认主题变量（`--font-sans/--font-mono`、`--text-*`、`--radius-*`）被 utilities 以 var() 引用，fork 可在 branding.css 里直接覆盖（Studio 的字体/字号/圆角控制就是这么实现的）
 - 暗色模式：通过 CSS 变量自动切换——不需要 `dark:` 前缀
 - 主题过渡：bg/border/color 平滑 0.2s；`theme-loading` class 在首次渲染时抑制动画
 - 动画：`animate-fade-in`、`animate-slide-up`、`animate-slide-in-left/right`、`animate-toast-in/out`、`animate-skeleton`

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { hexToRgb, rgbToHex, rgbToOklch, oklchToRgb, generatePalette, PALETTE_SHADES } from './color';
+import { hexToRgb, rgbToHex, rgbToOklch, oklchToRgb, generatePalette, deriveSemantic, PALETTE_SHADES } from './color';
 
 describe('hex ↔ rgb', () => {
   it('parses and formats 6-digit hex (with or without #)', () => {
@@ -68,5 +68,34 @@ describe('generatePalette', () => {
 
   it('returns null for invalid hex', () => {
     expect(generatePalette('teal')).toBeNull();
+  });
+});
+
+describe('deriveSemantic', () => {
+  it('keeps the picked base verbatim in both modes', () => {
+    expect(deriveSemantic('#dc2626', false)!.base).toBe('#dc2626');
+    expect(deriveSemantic('#f87171', true)!.base).toBe('#f87171');
+  });
+
+  it('light mode: pale hex subtle fill + dark hex foreground', () => {
+    const { subtle, fg } = deriveSemantic('#dc2626', false)!;
+    expect(subtle).toMatch(/^#[0-9a-f]{6}$/);
+    expect(fg).toMatch(/^#[0-9a-f]{6}$/);
+    // subtle is a near-white tint; fg is a dark readable shade.
+    const subtleRgb = hexToRgb(subtle)!;
+    const fgRgb = hexToRgb(fg)!;
+    const luma = (c: { r: number; g: number; b: number }) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    expect(luma(subtleRgb)).toBeGreaterThan(luma(fgRgb));
+    expect(luma(subtleRgb)).toBeGreaterThan(220);
+  });
+
+  it('dark mode: translucent rgba subtle + light foreground', () => {
+    const { subtle, fg } = deriveSemantic('#34d399', true)!;
+    expect(subtle).toMatch(/^rgba\(52, 211, 153, 0\.\d+\)$/);
+    expect(hexToRgb(fg)).not.toBeNull();
+  });
+
+  it('returns null for invalid hex', () => {
+    expect(deriveSemantic('nope', false)).toBeNull();
   });
 });
