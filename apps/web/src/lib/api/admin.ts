@@ -39,10 +39,14 @@ export async function setUserProfiles(userId: string, profileIds: string[]): Pro
 
 // ─── Feature Requests ──────────────────────────────────
 
-export async function fetchFeatureRequests(status?: string): Promise<{ total: number; requests: FeatureRequest[] }> {
-  const res = await rpc.api.admin['feature-requests'].$get({
-    query: status ? { status } : {},
-  });
+export async function fetchFeatureRequests(
+  status?: string,
+  limit?: number,
+): Promise<{ total: number; requests: FeatureRequest[] }> {
+  const query: { status?: string; limit?: string } = {};
+  if (status) query.status = status;
+  if (limit !== undefined) query.limit = String(limit);
+  const res = await rpc.api.admin['feature-requests'].$get({ query });
   if (!res.ok) throw new Error(`Failed to fetch feature requests: ${res.status}`);
   return res.json();
 }

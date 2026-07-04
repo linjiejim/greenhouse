@@ -21,6 +21,7 @@
     "@ai-sdk/openai": "^3.0.63",
     "@ai-sdk/provider": "^3.0.10",
     "@greenhouse/agent-core": "workspace:*",
+    "@greenhouse/crud": "workspace:*",
     "@greenhouse/db": "workspace:*",
     "@greenhouse/knowledge-editor": "workspace:*",
     "@greenhouse/types": "workspace:*",

@@ -74,6 +74,9 @@ importers:
       '@greenhouse/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@greenhouse/crud':
+        specifier: workspace:*
+        version: link:../../packages/crud
       '@greenhouse/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -196,6 +199,9 @@ importers:
       '@greenhouse/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@greenhouse/crud':
+        specifier: workspace:*
+        version: link:../../packages/crud
       '@greenhouse/knowledge-editor':
         specifier: workspace:*
         version: link:../../packages/knowledge-editor
@@ -296,8 +302,39 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/crud:
+    dependencies:
+      '@greenhouse/types':
+        specifier: workspace:*
+        version: link:../types
+      '@greenhouse/ui':
+        specifier: workspace:*
+        version: link:../ui
+      '@greenhouse/utils':
+        specifier: workspace:*
+        version: link:../utils
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.0
+        version: 18.3.28
+      hono:
+        specifier: ^4.12.18
+        version: 4.12.18
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/db:
     dependencies:
+      '@greenhouse/crud':
+        specifier: workspace:*
+        version: link:../crud
       '@greenhouse/types':
         specifier: workspace:*
         version: link:../types

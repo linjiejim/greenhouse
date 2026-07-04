@@ -27,6 +27,7 @@ Every extension point is guarded by a test that pins it **empty in this repo**, 
 | S9 | custom chat card for a tool output | `apps/web/src/components/tool-call/artifact-renderers.ts` | `ARTIFACT_RENDERERS` |
 | S10 | Global-Agent page context (URL → PageContext) | `apps/web/src/lib/context-resolvers.ts` | `registerUrlContextResolver` |
 | S11 | pipeline-step summary for a tool | *(fork startup code)* | `registerToolOutputSummarizer()` from `@greenhouse/agent-core` |
+| S12 | CRUD field/column widget type (for `@greenhouse/crud`) | `apps/web/src/lib/crud.extensions.ts` | `registerCrudField` / `registerCrudColumn` (called from `registerCrudExtensions()`, wired in `app.tsx`); reference in a schema via `{ type: 'extension', name }` |
 | G0 | **wire the runtime hooks at startup** | `apps/api/src/bootstrap.extensions.ts` + `apps/web/src/bootstrap.extensions.ts` | `bootstrapForkExtensions()` (api) — the call-site for every `register*()` below |
 | G1 | upload storage backend (S3 / COS) | `apps/api/src/storage/extensions.ts` | `registerStorageDriver()` |
 | G2 | email connector (Gmail / Outlook) | `apps/api/src/email/extensions.ts` | `registerEmailConnector(provider, factory)` |
@@ -51,3 +52,12 @@ DB migrations for private tables live in the **fork's own** drizzle namespace (e
 3. `packages/db/src/services/crm.ts` + schema files → return from `createExtensionServices` in `db/extensions.ts`; add table names to `EXTENSION_RESET_TABLES`; generate migrations in `drizzle-fork/`.
 4. `apps/web/src/pages/crm/*` → register in `page-registry.tsx` (top-level tab) and/or `panels.extensions.tsx` + `nav-registry.extensions.ts` (settings module).
 5. Optional: `registerFeatureFlags([{ key: 'crm', … }])` to gate it; `registerUrlContextResolver('crm', …)` for Global-Agent context; `registerLocaleMessages('zh', { crm: … })` for i18n.
+
+## Recipe: build a list/edit page with `@greenhouse/crud`
+
+The low-code CRUD framework turns one declarative schema into a list + filters + add/edit form + detail + delete. See the reference at `apps/web/src/pages/settings/crud-example.tsx` (+ `apps/api/src/routes/crud-demo.ts`).
+
+- **Server (own a table):** `createTableCrudService(getDb(), myTable, opts)` (from `@greenhouse/db`) → `createCrudRoutes(service, { filterable, sortable, guards, hooks, parseCreate, parseUpdate })` (from `@greenhouse/crud/server`) → mount in `routes/extensions.ts`. Filter/sort keys are whitelisted **fail-loud** (unknown key → 400).
+- **Server (proxy an external API):** implement `CrudService` yourself (forward to the upstream admin API); the protocol matches, so the translation is thin — no table required.
+- **Client:** `defineCrud<Row>({ dataSource: createRestDataSource('/api/…', authFetch), columns, filters, formFields, access, … })` then render `<CrudPage schema={…} />`. Adapt an existing hc route by hand-writing a `CrudDataSource` instead of `createRestDataSource` (see `settings/prompts.tsx`).
+- **Escape hatches, narrow → wide:** column/field `type: 'custom'` (render fn) → `type: 'extension'` (S12 registered widget) → `slots` (toolbar / banner / rowExpand) + `tableActions` / `pageActions` → use `CrudPage` / `CrudForm` / `CrudDetail` standalone in a bespoke page (see `settings/mcp-keys.tsx`).

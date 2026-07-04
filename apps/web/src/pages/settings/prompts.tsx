@@ -1,291 +1,130 @@
 /**
  * Quick Prompts management — Settings sub-page.
  *
- * Available to all internal users.
- * Super users can create/edit global prompts.
+ * Rebuilt on @greenhouse/crud: one defineCrud schema drives the list, the
+ * add/edit dialog, filtering, and delete. The data source adapts the existing
+ * hc-typed prompts client (fetchPrompts/create/update/delete) — no server change.
+ * Available to all internal users; super users manage global prompts (per-row).
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  Button,
-  Dialog,
-  Input,
-  Textarea,
-  Badge,
-  Spinner,
-  ConfirmDialog,
-  EmptyState,
-  ListToolbar,
-  Checkbox,
-  toast,
-} from '../../components/ui';
-import { Plus, Pencil, Trash2, Globe, MessageSquare } from '../../lib/icons';
-import * as api from '../../lib/api';
+import React, { useMemo } from 'react';
+import { defineCrud, CrudPage, type CrudDataSource } from '@greenhouse/crud';
+import { MessageSquare, Globe } from '../../lib/icons';
+import { fetchPrompts, createPrompt, updatePrompt, deletePrompt } from '../../lib/api/prompts';
 import { useT } from '../../lib/i18n';
 import { useAuthStore } from '../../stores';
+import type { UserPrompt } from '@greenhouse/types/api';
+
+/** Client-side data source over the existing prompts API (small list, no server paging). */
+const promptsDataSource: CrudDataSource<UserPrompt> = {
+  async list(params) {
+    let all = await fetchPrompts();
+    for (const f of params.filter ?? []) {
+      if (f.key === 'title' && f.method === 'like') {
+        const q = String(f.value[0]).toLowerCase();
+        all = all.filter((p) => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q));
+      } else if (f.key === 'is_global' && f.method === 'eq') {
+        all = all.filter((p) => p.is_global === f.value[0]);
+      }
+    }
+    const sort = params.sort?.[0];
+    if (sort) {
+      const { key, order } = sort;
+      all = [...all].sort((a, b) => {
+        const av = (a as unknown as Record<string, unknown>)[key] as string | number;
+        const bv = (b as unknown as Record<string, unknown>)[key] as string | number;
+        return (av > bv ? 1 : av < bv ? -1 : 0) * (order === 'asc' ? 1 : -1);
+      });
+    }
+    const total = all.length;
+    const skip = params.skip ?? 0;
+    return { items: all.slice(skip, skip + (params.limit ?? 50)), total };
+  },
+  async get(id) {
+    const found = (await fetchPrompts()).find((p) => String(p.id) === id);
+    if (!found) throw new Error('Prompt not found');
+    return found;
+  },
+  create: (data) => createPrompt(data as { title: string; content: string; shortcut?: string; is_global?: boolean }),
+  update: (id, data) =>
+    updatePrompt(
+      Number(id),
+      data as { title?: string; content?: string; shortcut?: string | null; is_global?: boolean },
+    ),
+  remove: (id) => deletePrompt(Number(id)),
+};
 
 export function PromptsPage() {
   const t = useT();
-  const { currentUser } = useAuthStore();
-  const isSuper = currentUser?.role === 'super';
-  const [prompts, setPrompts] = useState<api.UserPrompt[]>([]);
-  const [loading, setLoading] = useState(true);
+  const isSuper = useAuthStore((s) => s.currentUser?.role === 'super');
 
-  // Dialog state
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingPrompt, setEditingPrompt] = useState<api.UserPrompt | null>(null);
-  const [form, setForm] = useState({ title: '', content: '', shortcut: '', is_global: false });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const loadPrompts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await api.fetchPrompts();
-      setPrompts(list);
-    } catch (_err) {
-      /* ignore */
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    loadPrompts();
-  }, [loadPrompts]);
-
-  const openCreate = () => {
-    setEditingPrompt(null);
-    setForm({ title: '', content: '', shortcut: '', is_global: false });
-    setError('');
-    setDialogOpen(true);
-  };
-
-  const openEdit = (prompt: api.UserPrompt) => {
-    setEditingPrompt(prompt);
-    setForm({
-      title: prompt.title,
-      content: prompt.content,
-      shortcut: prompt.shortcut || '',
-      is_global: prompt.is_global,
-    });
-    setError('');
-    setDialogOpen(true);
-  };
-
-  const handleSave = async () => {
-    if (!form.title.trim() || !form.content.trim()) {
-      setError('Title and content are required');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    try {
-      const payload = {
-        title: form.title.trim(),
-        content: form.content.trim(),
-        shortcut: form.shortcut.trim() || undefined,
-        is_global: isSuper ? form.is_global : undefined,
-      };
-      if (editingPrompt) {
-        await api.updatePrompt(editingPrompt.id, payload);
-      } else {
-        await api.createPrompt(payload);
-      }
-      setDialogOpen(false);
-      loadPrompts();
-    } catch (err: any) {
-      setError(err.message || t('common.saveFailed'));
-    }
-    setSaving(false);
-  };
-
-  const [pendingDelete, setPendingDelete] = useState<api.UserPrompt | null>(null);
-
-  const executeDelete = async () => {
-    if (!pendingDelete) return;
-    try {
-      await api.deletePrompt(pendingDelete.id);
-      toast(t('settings.promptDeleted'), 'success');
-      loadPrompts();
-    } catch (_err) {
-      toast(t('common.deleteFailed'), 'error');
-    }
-    setPendingDelete(null);
-  };
-
-  const createButton = (
-    <Button size="sm" onClick={openCreate}>
-      <Plus size={14} className="mr-1" /> Create prompt
-    </Button>
-  );
-
-  return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <ListToolbar
-        hint={
-          <>
-            Type <kbd className="px-1 py-0.5 bg-surface-muted rounded text-[10px] font-mono">/</kbd> in chat to use
-            prompts
-          </>
-        }
-        count={`${prompts.length} total`}
-        actions={createButton}
-      />
-
-      {loading && (
-        <div className="flex justify-center py-12">
-          <Spinner />
-        </div>
-      )}
-
-      {!loading && prompts.length === 0 && (
-        <EmptyState
-          icon={MessageSquare}
-          title="No quick prompts yet"
-          description="Create your first prompt to speed up common tasks."
-          action={createButton}
-        />
-      )}
-
-      {/* Table */}
-      {!loading && prompts.length > 0 && (
-        <div className="bg-surface-raised border border-edge rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-sunken text-fg-muted">
-              <tr>
-                <th className="text-left px-3 py-2">Title</th>
-                <th className="text-left px-3 py-2 w-24">Shortcut</th>
-                <th className="text-left px-3 py-2 w-20">Scope</th>
-                <th className="text-left px-3 py-2">Content</th>
-                <th className="text-center px-3 py-2 w-16">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-edge">
-              {prompts.map((p) => {
-                const canEdit = isSuper || !p.is_global;
-                return (
-                  <tr key={p.id} className="hover:bg-surface-sunken transition-colors">
-                    <td className="px-3 py-2.5">
-                      <span className="font-medium text-fg">{p.title}</span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {p.shortcut ? (
-                        <span className="text-[11px] font-mono text-fg-muted bg-surface-muted px-1.5 py-0.5 rounded">
-                          /{p.shortcut}
-                        </span>
-                      ) : (
-                        <span className="text-fg-faint">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {p.is_global ? (
-                        <Badge variant="default" className="text-[10px]">
-                          <Globe size={10} className="mr-0.5" /> Global
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-fg-muted">Personal</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs text-fg-muted truncate max-w-md">{p.content}</td>
-                    <td className="px-3 py-2.5 text-center">
-                      {canEdit && (
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => openEdit(p)}
-                            className="p-1 text-fg-muted hover:text-primary-fg hover:bg-surface-muted rounded transition-colors"
-                            title="Edit"
-                          >
-                            <Pencil size={13} />
-                          </button>
-                          <button
-                            onClick={() => setPendingDelete(p)}
-                            className="p-1 text-fg-muted hover:text-danger hover:bg-danger-subtle rounded transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Create/Edit Dialog */}
-      <Dialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        title={editingPrompt ? t('settings.editPrompt') : t('settings.newPrompt')}
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-fg-secondary mb-1">Title *</label>
-            <Input
-              value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              placeholder="e.g. Translate to English"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-fg-secondary mb-1">Shortcut</label>
-            <div className="flex items-center gap-1">
-              <span className="text-fg-muted text-sm">/</span>
-              <Input
-                value={form.shortcut}
-                onChange={(e) => setForm((f) => ({ ...f, shortcut: e.target.value.replace(/\s/g, '') }))}
-                placeholder="translate"
-                className="flex-1"
-              />
-            </div>
-            <p className="text-[10px] text-fg-faint mt-0.5">Optional. Used for quick filtering when typing /</p>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-fg-secondary mb-1">Prompt Content *</label>
-            <Textarea
-              value={form.content}
-              onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-              placeholder="Please translate the above content to English..."
-              rows={5}
-            />
-          </div>
-          {isSuper && (
-            <Checkbox
-              checked={form.is_global}
-              onChange={(e) => setForm((f) => ({ ...f, is_global: e.target.checked }))}
-              label={
-                <span className="flex items-center gap-1.5">
-                  <Globe size={14} className="text-fg-muted" />
-                  Global prompt (visible to all users)
+  const schema = useMemo(
+    () =>
+      defineCrud<UserPrompt>({
+        name: t('app.prompts'),
+        icon: MessageSquare,
+        dataSource: promptsDataSource,
+        pageSize: 50,
+        emptyMessage: 'No quick prompts yet',
+        defaultSort: { key: 'sort_order', order: 'asc' },
+        columns: [
+          { key: 'title', label: 'Title', sortable: true },
+          {
+            key: 'shortcut',
+            label: 'Shortcut',
+            type: 'custom',
+            width: '8rem',
+            render: (p) =>
+              p.shortcut ? (
+                <span className="text-[11px] font-mono text-fg-muted bg-surface-muted px-1.5 py-0.5 rounded">
+                  /{p.shortcut}
                 </span>
-              }
-            />
-          )}
-          {error && <p className="text-xs text-danger">{error}</p>}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" size="sm" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={handleSave} disabled={saving}>
-              {saving ? <Spinner className="mr-1" /> : null}
-              {editingPrompt ? t('common.save') : t('common.create')}
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-
-      <ConfirmDialog
-        open={!!pendingDelete}
-        onClose={() => setPendingDelete(null)}
-        onConfirm={executeDelete}
-        title={`Delete "${pendingDelete?.title}"?`}
-        confirmLabel="Delete"
-        confirmVariant="destructive"
-      />
-    </div>
+              ) : (
+                <span className="text-fg-faint">—</span>
+              ),
+          },
+          {
+            key: 'is_global',
+            label: 'Scope',
+            type: 'custom',
+            width: '7rem',
+            render: (p) =>
+              p.is_global ? (
+                <span className="inline-flex items-center gap-0.5 text-[10px] bg-surface-muted rounded px-1.5 py-0.5">
+                  <Globe size={10} /> Global
+                </span>
+              ) : (
+                <span className="text-xs text-fg-muted">Personal</span>
+              ),
+          },
+          { key: 'content', label: 'Content', type: 'longtext', truncate: 90, responsiveHide: 'md' },
+        ],
+        filters: [
+          { key: 'title', label: 'Search prompts', kind: 'text' },
+          { key: 'is_global', label: 'Global only', kind: 'boolean', secondary: true },
+        ],
+        formFields: [
+          { key: 'title', label: 'Title', type: 'text', required: true, placeholder: 'e.g. Translate to English' },
+          { key: 'shortcut', label: 'Shortcut', type: 'text', width: 2, comment: 'Optional. Filters when typing /' },
+          { key: 'content', label: 'Prompt Content', type: 'textarea', required: true, rows: 5 },
+          {
+            key: 'is_global',
+            label: 'Global prompt (visible to all users)',
+            type: 'switch',
+            visible: () => isSuper,
+            defaultValue: false,
+          },
+        ],
+        access: {
+          canAdd: true,
+          canEdit: true,
+          canDelete: true,
+          canEditRow: (p) => isSuper || !p.is_global,
+          canDeleteRow: (p) => isSuper || !p.is_global,
+        },
+      }),
+    [t, isSuper],
   );
+
+  return <CrudPage schema={schema} />;
 }

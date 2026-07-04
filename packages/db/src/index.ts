@@ -27,6 +27,9 @@ export type { Db } from './client.js';
 // table objects themselves stay behind '@greenhouse/db/schema').
 export type * from './schema/index.js';
 
+// Generic CRUD adapter — turns a Drizzle table into a @greenhouse/crud service.
+export * from './crud-adapter.js';
+
 // Service factories + their Input/Opts/Result types.
 export * from './services/sessions.js';
 export * from './services/llm-calls.js';

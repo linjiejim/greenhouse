@@ -7,8 +7,11 @@
  */
 
 import { sql } from 'drizzle-orm';
+import { safeJsonParse } from '@greenhouse/utils/json';
 
 import { createDbClient } from './client.js';
+import { createTableCrudService } from './crud-adapter.js';
+import { crudDemoItems, type CrudDemoItemRow } from './schema/crud-demo.js';
 import { createSessionService } from './services/sessions.js';
 import { createLlmCallService } from './services/llm-calls.js';
 import { createUsageService } from './services/usage.js';
@@ -67,6 +70,16 @@ export function createDatabase(connectionString: string) {
     userFeatures: createUserFeatureService(db),
     userMemories: createUserMemoryService(db),
 
+    // CRUD framework demo — reference wiring of the Drizzle adapter (see the
+    // "CRUD Framework Demo" settings page). tags is a JSON string[] text column.
+    crudDemo: createTableCrudService<CrudDemoItemRow>(db, crudDemoItems, {
+      defaultSort: { key: 'created_at', order: 'desc' },
+      writable: ['name', 'category', 'status', 'priority', 'is_featured', 'tags', 'notes'],
+      transformOut: (row) => ({ ...row, tags: safeJsonParse(row.tags as string | null, []) }),
+      transformIn: (data) =>
+        'tags' in data ? { ...data, tags: data.tags == null ? null : JSON.stringify(data.tags) } : data,
+    }),
+
     // Private fork services (empty upstream) — flow into the inferred
     // DatabaseProvider type. See extensions.ts.
     ...createExtensionServices(db),
@@ -107,6 +120,7 @@ export function createDatabase(connectionString: string) {
       // TRUNCATE is much faster than DROP+CREATE for tests.
       // Filter to only tables that exist in the current database.
       const tables = [
+        'crud_demo_items',
         'llm_calls',
         'user_memories',
         'user_features',

@@ -23,3 +23,4 @@ export * from './knowledge-base.js';
 export * from './user-feature.js';
 export * from './user-memory.js';
 export * from './groups.js';
+export * from './crud-demo.js';

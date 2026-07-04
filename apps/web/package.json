@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@greenhouse/contract": "workspace:*",
+    "@greenhouse/crud": "workspace:*",
     "@greenhouse/knowledge-editor": "workspace:*",
     "@greenhouse/types": "workspace:*",
     "@greenhouse/ui": "workspace:*",

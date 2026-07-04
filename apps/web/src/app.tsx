@@ -41,9 +41,12 @@ import { initScrollActivity } from './lib/scroll-activity';
 import { I18nProvider, useT, getStoredLocale } from './lib/i18n';
 import type { Locale } from './lib/i18n';
 import { getExtraPage, extraPageKeys, extraNavItems } from './lib/page-registry';
+import { registerCrudExtensions } from './lib/crud.extensions';
 
 // Initialize theme from localStorage on app load
 initTheme();
+// Register fork CRUD field/column widgets (no-op upstream)
+registerCrudExtensions();
 // Reveal scrollbars only while scrolling (they're transparent at rest)
 initScrollActivity();
 

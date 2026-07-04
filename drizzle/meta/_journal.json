@@ -22,6 +22,13 @@
       "when": 1782835092272,
       "tag": "0002_custom_profiles_drop_legacy",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783187580454,
+      "tag": "0003_crud_demo_items",
+      "breakpoints": true
     }
   ]
 }

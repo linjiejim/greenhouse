@@ -233,6 +233,11 @@ async function main() {
   const { createClientToolsRoute } = await import('./routes/client-tools.js');
   app.route('/api/client-tools', createClientToolsRoute());
 
+  // CRUD framework demo (super-only) — reference wiring of @greenhouse/crud.
+  // Generic protocol, so deliberately outside the AppType contract.
+  const { createCrudDemoRoutes } = await import('./routes/crud-demo.js');
+  app.route('/api/crud/demo', createCrudDemoRoutes());
+
   // Mount fork-contributed private routes (empty upstream). Also outside the
   // AppType contract — see routes/extensions.ts.
   mountExtraRoutes(app, toolRegistry);

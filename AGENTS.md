@@ -178,6 +178,7 @@ greenhouse/
 | `@greenhouse/db` | `packages/db/` | Database layer |
 | `@greenhouse/knowledge-editor` | `packages/knowledge-editor/` | KB editor: Tiptap schema + Markdown↔Tiptap JSON |
 | `@greenhouse/ui` | `packages/ui/` | Shared UI kit (React, presentational only — no stores/router). Old `apps/web` paths re-export from it |
+| `@greenhouse/crud` | `packages/crud/` | Low-code CRUD framework — one schema → list+form+detail. Subexports: `.` (client), `/server` (`createCrudRoutes`), `/protocol`. Drizzle adapter (`createTableCrudService`) lives in `@greenhouse/db`. See [EXTENDING.md](./EXTENDING.md) |
 | `@greenhouse/contract` | `packages/contract/` | Typed API contract (AppType + hc; **type-only import of `@greenhouse/api`**) |
 | `@greenhouse/api` | `apps/api/` | Backend app |
 | `@greenhouse/web` | `apps/web/` | Frontend app |

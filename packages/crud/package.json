@@ -1,0 +1,39 @@
+{
+  "name": "@greenhouse/crud",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/client/index.ts",
+      "types": "./src/client/index.ts"
+    },
+    "./server": {
+      "import": "./src/server/index.ts",
+      "types": "./src/server/index.ts"
+    },
+    "./protocol": {
+      "import": "./src/protocol/index.ts",
+      "types": "./src/protocol/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@greenhouse/types": "workspace:*",
+    "@greenhouse/ui": "workspace:*",
+    "@greenhouse/utils": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "hono": "^4.12.18",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "hono": "^4.12.18",
+    "react": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}

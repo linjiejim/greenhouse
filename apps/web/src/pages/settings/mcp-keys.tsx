@@ -1,28 +1,33 @@
 /**
  * McpKeysPanel — Administration › MCP Access (super-only).
  *
- * Mint and manage API keys for the MCP server (`/api/mcp`). Each key is bound to
- * an internal user (channel `a2a`) and inherits that user's permissions, narrowed
- * by the proxy allowlists. The raw key is shown ONCE on create/rotate.
+ * Rebuilt on @greenhouse/crud to exercise its escape hatches on a genuinely
+ * bespoke page: CrudPage owns the list (typed columns) + row actions
+ * (Activity / Enable-Disable / Rotate / Delete via tableActions) + toolbar
+ * (Refresh / Create via pageActions), while the "how to connect" callout, the
+ * one-time raw-key reveal, and the Create / Activity dialogs stay bespoke —
+ * mounted through the `banner` slot + sibling overlays, refreshed via ctx.reload.
  *
- * NOTE: distinct from the Desktop "MCP" section, which configures MCP *client*
- * sources the local agent consumes. This panel issues keys for external agents to
- * reach our resources.
+ * NOTE: distinct from the Desktop "MCP" section (MCP *client* sources). This
+ * panel issues keys for external agents to reach our resources over /api/mcp.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Key, Plus, Trash2, RefreshCw, Check, AlertTriangle, ChevronDown, ChevronRight, Globe } from '../../lib/icons';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { defineCrud, CrudPage, type CrudDataSource, type CrudActionContext } from '@greenhouse/crud';
 import {
-  Button,
-  Input,
-  Select,
-  Badge,
-  Dialog,
-  ConfirmDialog,
-  EmptyState,
-  ListToolbar,
-  toast,
-} from '../../components/ui';
+  Key,
+  Plus,
+  Trash2,
+  RefreshCw,
+  Check,
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  Globe,
+  History,
+  Ban,
+} from '../../lib/icons';
+import { Button, Input, Select, Dialog, ConfirmDialog, toast } from '../../components/ui';
 import { authFetch } from '../../lib/auth';
 
 interface ApiClient {
@@ -60,20 +65,16 @@ function userLabel(u: InternalUser): string {
 }
 
 export function McpKeysPanel() {
-  const [clients, setClients] = useState<ApiClient[]>([]);
   const [users, setUsers] = useState<InternalUser[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const reloadRef = useRef<() => void>(() => {});
 
   // One-time raw key reveal (after create / rotate).
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-
-  // "How to connect" collapsible.
   const [showConnect, setShowConnect] = useState(false);
   const [copiedConfig, setCopiedConfig] = useState(false);
 
-  // Create dialog state.
+  // Create dialog.
   const [creating, setCreating] = useState(false);
   const [draftAppId, setDraftAppId] = useState('');
   const [draftAppName, setDraftAppName] = useState('');
@@ -82,77 +83,62 @@ export function McpKeysPanel() {
 
   const [deleteTarget, setDeleteTarget] = useState<ApiClient | null>(null);
 
-  // Per-key activity (recent audit rows).
+  // Per-key activity.
   const [activityFor, setActivityFor] = useState<ApiClient | null>(null);
   const [activityRows, setActivityRows] = useState<AuditRow[] | null>(null);
   const [activityTotal, setActivityTotal] = useState(0);
   const [activityLoading, setActivityLoading] = useState(false);
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [cRes, uRes] = await Promise.all([authFetch('/api/admin/clients'), authFetch('/api/admin/users')]);
-      if (cRes.ok) {
-        const data = await cRes.json();
-        setClients((data.clients as ApiClient[]).filter((c) => c.channel === MCP_CHANNEL));
-      }
-      if (uRes.ok) {
-        const data = await uRes.json();
-        setUsers((data.users as InternalUser[]).filter((u) => u.role === 'super' || u.role === 'team'));
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
+  const loadUsers = useCallback(async () => {
+    const res = await authFetch('/api/admin/users');
+    if (res.ok) {
+      const data = await res.json();
+      setUsers((data.users as InternalUser[]).filter((u) => u.role === 'super' || u.role === 'team'));
     }
   }, []);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void loadUsers();
+  }, [loadUsers]);
 
   const userMap = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
-  // Copy-paste client config. URL is same-origin (works in prod; dev proxies /api).
-  const endpoint = `${window.location.origin}/api/mcp`;
-  const configJson = useMemo(
-    () =>
-      JSON.stringify(
-        {
-          mcpServers: {
-            greenhouse: {
-              type: 'http',
-              url: endpoint,
-              headers: { Authorization: `Bearer ${revealedKey ?? 'gh_sk_YOUR_KEY'}` },
-            },
-          },
-        },
-        null,
-        2,
-      ),
-    [endpoint, revealedKey],
-  );
-  const copyConfig = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(configJson);
-      setCopiedConfig(true);
-      setTimeout(() => setCopiedConfig(false), 1500);
-    } catch {
-      /* selectable fallback */
-    }
-  }, [configJson]);
-  // Auto-expand the connect section once a fresh key is revealed (so the config carries it).
   useEffect(() => {
     if (revealedKey) setShowConnect(true);
   }, [revealedKey]);
 
-  const openCreate = useCallback(() => {
-    setDraftAppId('');
-    setDraftAppName('');
-    setDraftUserId(users[0]?.id ?? '');
-    setCreating(true);
-  }, [users]);
+  // ── Data source: list MCP-channel keys ──────────────────
+  const dataSource = useMemo<CrudDataSource<ApiClient>>(
+    () => ({
+      async list() {
+        const res = await authFetch('/api/admin/clients');
+        if (!res.ok) throw new Error('Failed to load keys');
+        const data = await res.json();
+        const items = (data.clients as ApiClient[]).filter((c) => c.channel === MCP_CHANNEL);
+        return { items, total: items.length };
+      },
+      async get(id) {
+        const res = await authFetch('/api/admin/clients');
+        const data = await res.json();
+        const found = (data.clients as ApiClient[]).find((c) => c.id === id);
+        if (!found) throw new Error('Not found');
+        return found;
+      },
+    }),
+    [],
+  );
+
+  // ── Mutations ───────────────────────────────────────────
+  const openCreate = useCallback(
+    (ctx: CrudActionContext) => {
+      reloadRef.current = ctx.reload;
+      setDraftAppId('');
+      setDraftAppName('');
+      setDraftUserId(users[0]?.id ?? '');
+      setCreating(true);
+    },
+    [users],
+  );
 
   const submitCreate = useCallback(async () => {
     if (!draftAppId.trim() || !draftAppName.trim() || !draftUserId) {
@@ -180,65 +166,44 @@ export function McpKeysPanel() {
       setCopied(false);
       setCreating(false);
       toast('MCP key created', 'success');
-      await reload();
+      reloadRef.current();
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err), 'error');
     } finally {
       setSaving(false);
     }
-  }, [draftAppId, draftAppName, draftUserId, reload]);
+  }, [draftAppId, draftAppName, draftUserId]);
 
-  const rotate = useCallback(
-    async (c: ApiClient) => {
-      try {
-        const res = await authFetch(`/api/admin/clients/${c.id}/rotate-key`, { method: 'POST' });
-        const data = await res.json();
-        if (!res.ok) {
-          toast(data?.error || 'Failed to rotate key', 'error');
-          return;
-        }
-        setRevealedKey(data.api_key);
-        setCopied(false);
-        toast(`Rotated key for ${c.app_name}`, 'success');
-        await reload();
-      } catch (err) {
-        toast(err instanceof Error ? err.message : String(err), 'error');
-      }
-    },
-    [reload],
-  );
-
-  const toggleStatus = useCallback(
-    async (c: ApiClient) => {
-      try {
-        const res = await authFetch(`/api/admin/clients/${c.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: c.status === 'active' ? 'disabled' : 'active' }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          toast(data?.error || 'Failed to update status', 'error');
-          return;
-        }
-        await reload();
-      } catch (err) {
-        toast(err instanceof Error ? err.message : String(err), 'error');
-      }
-    },
-    [reload],
-  );
-
-  const copyKey = useCallback(async () => {
-    if (!revealedKey) return;
+  const rotate = useCallback(async (c: ApiClient, ctx: CrudActionContext) => {
     try {
-      await navigator.clipboard.writeText(revealedKey);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard may be unavailable; the key is still selectable */
+      const res = await authFetch(`/api/admin/clients/${c.id}/rotate-key`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) return toast(data?.error || 'Failed to rotate key', 'error');
+      setRevealedKey(data.api_key);
+      setCopied(false);
+      toast(`Rotated key for ${c.app_name}`, 'success');
+      ctx.reload();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), 'error');
     }
-  }, [revealedKey]);
+  }, []);
+
+  const toggleStatus = useCallback(async (c: ApiClient, ctx: CrudActionContext) => {
+    try {
+      const res = await authFetch(`/api/admin/clients/${c.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: c.status === 'active' ? 'disabled' : 'active' }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return toast(data?.error || 'Failed to update status', 'error');
+      }
+      ctx.reload();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), 'error');
+    }
+  }, []);
 
   const openActivity = useCallback(async (c: ApiClient) => {
     setActivityFor(c);
@@ -262,162 +227,203 @@ export function McpKeysPanel() {
     }
   }, []);
 
-  const createButton = (
-    <Button size="sm" onClick={openCreate} disabled={users.length === 0}>
-      <Plus size={14} className="mr-1" />
-      Create key
-    </Button>
+  const endpoint = `${window.location.origin}/api/mcp`;
+  const configJson = useMemo(
+    () =>
+      JSON.stringify(
+        {
+          mcpServers: {
+            greenhouse: {
+              type: 'http',
+              url: endpoint,
+              headers: { Authorization: `Bearer ${revealedKey ?? 'gh_sk_YOUR_KEY'}` },
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    [endpoint, revealedKey],
+  );
+
+  const schema = useMemo(
+    () =>
+      defineCrud<ApiClient>({
+        name: 'MCP key',
+        icon: Key,
+        dataSource,
+        pageSize: 50,
+        emptyMessage: 'No MCP keys yet',
+        columns: [
+          {
+            key: 'app_name',
+            label: 'App',
+            type: 'custom',
+            render: (c) => (
+              <div>
+                <div className="font-medium text-fg">{c.app_name}</div>
+                <div className="font-mono text-[11px] text-fg-faint">{c.app_id}</div>
+              </div>
+            ),
+          },
+          {
+            key: 'user_id',
+            label: 'Bound user',
+            type: 'custom',
+            responsiveHide: 'md',
+            render: (c) => {
+              const u = c.user_id ? userMap.get(c.user_id) : undefined;
+              return <span className="text-xs text-fg-secondary">{u ? userLabel(u) : (c.user_id ?? '—')}</span>;
+            },
+          },
+          {
+            key: 'status',
+            label: 'Status',
+            type: 'badge',
+            width: '6rem',
+            badgeMap: { active: 'success', disabled: 'destructive' },
+          },
+          {
+            key: 'rate_limit_rpm',
+            label: 'Limits (rpm/rpd)',
+            type: 'custom',
+            responsiveHide: 'lg',
+            render: (c) => (
+              <span className="text-xs text-fg-faint">
+                {c.rate_limit_rpm}/{c.rate_limit_rpd}
+              </span>
+            ),
+          },
+        ],
+        pageActions: [
+          { key: 'refresh', label: 'Refresh', icon: RefreshCw, onClick: (ctx) => ctx.reload() },
+          { key: 'create', label: 'Create key', icon: Plus, onClick: (ctx) => openCreate(ctx) },
+        ],
+        tableActions: [
+          { key: 'activity', label: 'Activity', icon: History, onClick: (c) => openActivity(c) },
+          {
+            key: 'toggle',
+            label: (c) => (c.status === 'active' ? 'Disable' : 'Enable'),
+            icon: Ban,
+            onClick: (c, ctx) => toggleStatus(c, ctx),
+          },
+          { key: 'rotate', label: 'Rotate key', icon: RefreshCw, tone: 'warning', onClick: (c, ctx) => rotate(c, ctx) },
+          {
+            key: 'delete',
+            label: 'Delete',
+            icon: Trash2,
+            tone: 'danger',
+            onClick: (c, ctx) => {
+              reloadRef.current = ctx.reload;
+              setDeleteTarget(c);
+            },
+          },
+        ],
+        slots: {
+          banner: () => (
+            <div className="space-y-3">
+              {/* How to connect */}
+              <div className="rounded-lg border border-edge bg-surface-raised">
+                <button
+                  onClick={() => setShowConnect((v) => !v)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-fg hover:bg-surface-sunken rounded-lg"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Globe size={12} className="text-fg-muted" /> How to connect an MCP client
+                  </span>
+                  {showConnect ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </button>
+                {showConnect && (
+                  <div className="px-3 pb-3 pt-2 space-y-2 border-t border-edge">
+                    <p className="text-xs text-fg-muted">
+                      Streamable-HTTP MCP server. Paste this into your client config, replacing the key with one from
+                      "Create key":
+                    </p>
+                    <div className="relative">
+                      <pre className="text-[11px] leading-relaxed font-mono bg-surface-sunken text-fg-secondary rounded p-2 pr-16 overflow-x-auto">
+                        {configJson}
+                      </pre>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="absolute top-1.5 right-1.5"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(configJson);
+                            setCopiedConfig(true);
+                            setTimeout(() => setCopiedConfig(false), 1500);
+                          } catch {
+                            /* clipboard unavailable */
+                          }
+                        }}
+                      >
+                        {copiedConfig ? <Check size={12} /> : null}
+                        {copiedConfig ? 'Copied' : 'Copy'}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-fg-faint break-all">
+                      Endpoint <span className="font-mono">{endpoint}</span> · auth{' '}
+                      <span className="font-mono">Authorization: Bearer &lt;key&gt;</span>.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* One-time key reveal */}
+              {revealedKey && (
+                <div className="rounded-lg border border-warning/40 bg-warning/10 p-3">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-warning mb-1">
+                    <AlertTriangle size={12} /> Save this key now — it is shown only once.
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs font-mono text-fg break-all bg-surface-sunken rounded px-2 py-1.5 select-all">
+                      {revealedKey}
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(revealedKey);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 1500);
+                        } catch {
+                          /* clipboard unavailable */
+                        }
+                      }}
+                    >
+                      {copied ? <Check size={12} /> : null}
+                      {copied ? 'Copied' : 'Copy'}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setRevealedKey(null)}>
+                      Dismiss
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ),
+        },
+      }),
+    [
+      dataSource,
+      userMap,
+      openCreate,
+      toggleStatus,
+      rotate,
+      openActivity,
+      showConnect,
+      copiedConfig,
+      configJson,
+      endpoint,
+      revealedKey,
+      copied,
+    ],
   );
 
   return (
     <div>
-      {/* Toolbar */}
-      <ListToolbar
-        className="mb-3"
-        hint={
-          <span className="block max-w-2xl">
-            API keys for external agents to reach internal resources over MCP (
-            <span className="font-mono">/api/mcp</span>). Each key is bound to an internal user and inherits that user's
-            permissions (narrowed by the proxy allowlists). Bind a least-privilege user — never a personal or super
-            account.
-          </span>
-        }
-        count={`${clients.length} ${clients.length === 1 ? 'key' : 'keys'}`}
-        actions={
-          <>
-            <Button size="sm" variant="ghost" onClick={() => void reload()} disabled={loading}>
-              <RefreshCw size={14} className="mr-1" />
-              Refresh
-            </Button>
-            {createButton}
-          </>
-        }
-      />
-
-      {/* Collapsible — how to connect an MCP client */}
-      <div className="mb-3 rounded-lg border border-edge bg-surface-raised">
-        <button
-          onClick={() => setShowConnect((v) => !v)}
-          className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-fg hover:bg-surface-sunken rounded-lg"
-        >
-          <span className="flex items-center gap-1.5">
-            <Globe size={12} className="text-fg-muted" />
-            How to connect an MCP client
-          </span>
-          {showConnect ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </button>
-        {showConnect && (
-          <div className="px-3 pb-3 pt-2 space-y-2 border-t border-edge">
-            <p className="text-xs text-fg-muted">
-              Streamable-HTTP MCP server. Paste this into your client config (Claude Desktop / Cursor /{' '}
-              <span className="font-mono">.mcp.json</span>), replacing the key with one from “New key”:
-            </p>
-            <div className="relative">
-              <pre className="text-[11px] leading-relaxed font-mono bg-surface-sunken text-fg-secondary rounded p-2 pr-16 overflow-x-auto">
-                {configJson}
-              </pre>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="absolute top-1.5 right-1.5"
-                onClick={() => void copyConfig()}
-              >
-                {copiedConfig ? <Check size={12} /> : null}
-                {copiedConfig ? 'Copied' : 'Copy'}
-              </Button>
-            </div>
-            <p className="text-[11px] text-fg-faint break-all">
-              Endpoint <span className="font-mono">{endpoint}</span> · auth{' '}
-              <span className="font-mono">Authorization: Bearer &lt;key&gt;</span>. Stdio-only clients bridge via{' '}
-              <span className="font-mono">npx mcp-remote {endpoint} --header "Authorization: Bearer &lt;key&gt;"</span>.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {error && <p className="text-xs text-danger mb-2">{error}</p>}
-
-      {/* One-time key reveal */}
-      {revealedKey && (
-        <div className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-3">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-warning mb-1">
-            <AlertTriangle size={12} />
-            Save this key now — it is shown only once.
-          </div>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 text-xs font-mono text-fg break-all bg-surface-sunken rounded px-2 py-1.5 select-all">
-              {revealedKey}
-            </code>
-            <Button size="sm" variant="secondary" onClick={() => void copyKey()}>
-              {copied ? <Check size={12} /> : null}
-              {copied ? 'Copied' : 'Copy'}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setRevealedKey(null)}>
-              Dismiss
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {!loading && clients.length === 0 ? (
-        <EmptyState
-          icon={Key}
-          title="No MCP keys yet"
-          description="Create a key to let an external agent connect over MCP."
-          action={createButton}
-        />
-      ) : (
-        <div className="bg-surface-raised border border-edge rounded-lg overflow-x-auto">
-          <table className="min-w-[760px] w-full text-xs">
-            <thead className="bg-surface-sunken text-fg-muted">
-              <tr>
-                <th className="px-3 py-2 text-left font-medium">App</th>
-                <th className="px-3 py-2 text-left font-medium">Bound user</th>
-                <th className="px-3 py-2 text-left font-medium">Status</th>
-                <th className="px-3 py-2 text-left font-medium">Limits (rpm/rpd)</th>
-                <th className="px-3 py-2 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-edge">
-              {clients.map((c) => {
-                const u = c.user_id ? userMap.get(c.user_id) : undefined;
-                return (
-                  <tr key={c.id} className="hover:bg-surface-sunken">
-                    <td className="px-3 py-2 text-fg">
-                      <div className="font-medium">{c.app_name}</div>
-                      <div className="font-mono text-fg-faint">{c.app_id}</div>
-                    </td>
-                    <td className="px-3 py-2 text-fg-secondary" title={c.user_id ?? ''}>
-                      {u ? userLabel(u) : (c.user_id ?? '—')}
-                    </td>
-                    <td className="px-3 py-2">
-                      <Badge variant={c.status === 'active' ? 'success' : 'destructive'}>{c.status}</Badge>
-                    </td>
-                    <td className="px-3 py-2 text-fg-faint">
-                      {c.rate_limit_rpm}/{c.rate_limit_rpd}
-                    </td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                      <Button size="sm" variant="ghost" onClick={() => void openActivity(c)} title="Recent activity">
-                        Activity
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => void toggleStatus(c)}>
-                        {c.status === 'active' ? 'Disable' : 'Enable'}
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => void rotate(c)} title="Rotate key">
-                        <RefreshCw size={12} />
-                        Rotate
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(c)} title="Delete">
-                        <Trash2 size={12} />
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <CrudPage schema={schema} />
 
       {/* Create dialog */}
       <Dialog open={creating} onClose={() => setCreating(false)} title="New MCP key" size="md">
@@ -449,8 +455,8 @@ export function McpKeysPanel() {
             </Select>
           </Field>
           <p className="text-[11px] text-fg-faint">
-            The key inherits this user's tool permissions, narrowed to the MCP-exposed set (knowledge / project / email
-            / chat). Writes still require <span className="font-mono">confirm:true</span> per call.
+            The key inherits this user's tool permissions, narrowed to the MCP-exposed set. Writes still require{' '}
+            <span className="font-mono">confirm:true</span> per call.
           </p>
           <div className="flex justify-end gap-2 pt-2 border-t border-edge">
             <Button size="sm" variant="secondary" onClick={() => setCreating(false)} disabled={saving}>
@@ -526,16 +532,17 @@ export function McpKeysPanel() {
         confirmLabel="Delete"
         confirmVariant="destructive"
         onConfirm={async () => {
-          if (!deleteTarget) return;
+          const target = deleteTarget;
+          if (!target) return;
           try {
-            const res = await authFetch(`/api/admin/clients/${deleteTarget.id}`, { method: 'DELETE' });
+            const res = await authFetch(`/api/admin/clients/${target.id}`, { method: 'DELETE' });
             if (!res.ok) {
               const data = await res.json().catch(() => ({}));
               toast(data?.error || 'Failed to delete', 'error');
               return;
             }
-            toast(`Deleted ${deleteTarget.app_id}`, 'success');
-            await reload();
+            toast(`Deleted ${target.app_id}`, 'success');
+            reloadRef.current();
           } finally {
             setDeleteTarget(null);
           }

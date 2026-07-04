@@ -30,6 +30,7 @@ import { GroupsPanel } from './groups';
 import { LlmGatewayAdminPanel } from './admin-llm-gateway';
 import { McpKeysPanel } from './mcp-keys';
 import { BrandingStudioPanel } from './branding-studio';
+import { CrudExamplePage } from './crud-example';
 import { findSettingsPanel } from './panels.extensions';
 
 // ─── Sub-module helpers ─────────────────────────────────
@@ -84,6 +85,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
           {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
           {effectiveModule === 'memory' && <MemoryPanel />}
           {effectiveModule === 'branding' && <BrandingStudioPanel />}
+          {effectiveModule === 'crud-example' && <CrudExamplePage />}
           {/* Private fork panels (empty upstream) — see panels.extensions.tsx. */}
           {findSettingsPanel(effectiveModule)?.render()}
         </div>

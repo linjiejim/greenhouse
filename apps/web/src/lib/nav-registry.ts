@@ -8,7 +8,20 @@
  * they're defined inline in AppSidebar / app.tsx since they're static and few.
  */
 
-import { Mail, Users, MessageSquare, ClipboardList, Key, Palette, Zap, BarChart3, Bot, Cloud, Brain } from './icons';
+import {
+  Mail,
+  Users,
+  MessageSquare,
+  ClipboardList,
+  Key,
+  Palette,
+  Zap,
+  BarChart3,
+  Bot,
+  Cloud,
+  Brain,
+  FlaskConical,
+} from './icons';
 import type { LucideIcon } from './icons';
 import { EXTENSION_SETTINGS_SECTIONS } from './nav-registry.extensions';
 
@@ -209,6 +222,16 @@ const SETTINGS_LABS: NavModule[] = [
     path: '#/settings/branding',
     parent: 'settings',
     description: 'Preview brand tokens and export CSS overrides for forks',
+    implemented: true,
+    requireRole: ['super'],
+  },
+  {
+    id: 'settings.crud-example',
+    label: 'CRUD Demo',
+    icon: FlaskConical,
+    path: '#/settings/crud-example',
+    parent: 'settings',
+    description: 'Low-code CRUD framework reference (build/edit demo records)',
     implemented: true,
     requireRole: ['super'],
   },
