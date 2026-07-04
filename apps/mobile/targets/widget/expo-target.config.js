@@ -17,18 +17,21 @@ module.exports = {
     // snapshot handoff (modules/widget-bridge) depends on it.
     'com.apple.security.application-groups': ['group.app.greenhouse.mobile'],
   },
+  // NOTE: the key shape is `{ light, dark }` — the plugin README's
+  // `{ color, darkColor }` is stale and silently yields EMPTY colorsets
+  // (every named Color renders transparent; texts/pills vanish).
   colors: {
     // System-recognized: widget editing tint + default background.
-    $accent: { color: '#0d9488', darkColor: '#5eead4' },
-    $widgetBackground: { color: '#ffffff', darkColor: '#1e293b' },
+    $accent: { light: '#0d9488', dark: '#5eead4' },
+    $widgetBackground: { light: '#ffffff', dark: '#1e293b' },
     // App palette (theme.ts light/dark).
-    WidgetFg: { color: '#111827', darkColor: '#f8fafc' },
-    WidgetMuted: { color: '#6b7280', darkColor: '#94a3b8' },
-    OnAccent: { color: '#ffffff', darkColor: '#042f2e' },
-    AccentTint: { color: '#f0fdfa', darkColor: '#1d3a48' },
-    AccentBorder: { color: '#99f6e4', darkColor: '#1c4d56' },
-    StatusSuccess: { color: '#059669', darkColor: '#34d399' },
-    StatusDanger: { color: '#dc2626', darkColor: '#f87171' },
+    WidgetFg: { light: '#111827', dark: '#f8fafc' },
+    WidgetMuted: { light: '#6b7280', dark: '#94a3b8' },
+    OnAccent: { light: '#ffffff', dark: '#042f2e' },
+    AccentTint: { light: '#f0fdfa', dark: '#1d3a48' },
+    AccentBorder: { light: '#99f6e4', dark: '#1c4d56' },
+    StatusSuccess: { light: '#059669', dark: '#34d399' },
+    StatusDanger: { light: '#dc2626', dark: '#f87171' },
   },
   images: {
     sprouty: './sprouty-idle.png',

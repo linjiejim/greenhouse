@@ -1,5 +1,36 @@
 {
-  "colors": [],
+  "colors": [
+    {
+      "color": {
+        "color-space": "display-p3",
+        "components": {
+          "red": 0.9411764705882353,
+          "green": 0.9921568627450981,
+          "blue": 0.9803921568627451,
+          "alpha": 1
+        }
+      },
+      "idiom": "universal"
+    },
+    {
+      "appearances": [
+        {
+          "appearance": "luminosity",
+          "value": "dark"
+        }
+      ],
+      "color": {
+        "color-space": "display-p3",
+        "components": {
+          "red": 0.11372549019607843,
+          "green": 0.22745098039215686,
+          "blue": 0.2823529411764706,
+          "alpha": 1
+        }
+      },
+      "idiom": "universal"
+    }
+  ],
   "info": {
     "version": 1,
     "author": "expo"
