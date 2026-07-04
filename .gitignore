@@ -62,3 +62,7 @@ apps/data/
 
 # Local-only docs (credentials etc.)
 docs/local/
+
+# Experimental specs and sketches
+docs/specs/
+docs/sketches/

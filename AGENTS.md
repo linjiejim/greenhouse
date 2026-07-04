@@ -25,6 +25,9 @@ Two access surfaces share one codebase:
 - Run `pnpm typecheck` and `pnpm lint` after every change — both must pass.
 - Update docs when API or behavior changes (`README.md` for humans; the `AGENTS.md` files for
   agents/conventions).
+- Feature-level design docs live in `docs/specs/` (`YYYYMMDD-<kebab-name>.md`, indexed in
+  `docs/specs/README.md`). Write the spec before building non-trivial cross-cutting features;
+  update its status/checklist as work lands.
 - Don't reinvent helpers — check `packages/utils/` before writing one.
 - Update `apps/api/src/profiles/agent-profiles.md` when agent profiles change.
 - Update this file when project structure, conventions, or domain rules change.
