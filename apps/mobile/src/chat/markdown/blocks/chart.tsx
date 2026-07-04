@@ -7,7 +7,7 @@
 import { Text, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import Svg, { Circle, G, Line as SvgLine, Path, Polygon, Polyline, Rect, Text as SvgText } from 'react-native-svg';
-import { makeStyles, radius, useTheme } from '../../../theme';
+import { font, makeStyles, radius, useTheme } from '../../../theme';
 import { CodeBlock } from './code';
 
 const toNum = (v: any): number | null => {
@@ -296,10 +296,10 @@ const useStyles = makeStyles((c) => ({
     borderRadius: radius.md,
     backgroundColor: c.surface,
   },
-  chartTitle: { fontSize: 13, fontWeight: '700', color: c.fg, marginBottom: 10 },
-  chartLabel: { fontSize: 11, color: c.fgMuted, textAlign: 'center', paddingHorizontal: 2, marginTop: 6 },
+  chartTitle: { fontSize: font.small, fontWeight: '700', color: c.fg, marginBottom: 10 },
+  chartLabel: { fontSize: font.caption, color: c.fgMuted, textAlign: 'center', paddingHorizontal: 2, marginTop: 6 },
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12, justifyContent: 'center' },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5, maxWidth: 150 },
   legendDot: { width: 9, height: 9, borderRadius: 3 },
-  legendText: { fontSize: 11.5, color: c.fgSecondary, flexShrink: 1 },
+  legendText: { fontSize: font.caption, color: c.fgSecondary, flexShrink: 1 },
 }));

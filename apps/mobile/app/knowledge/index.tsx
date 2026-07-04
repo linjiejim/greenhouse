@@ -11,8 +11,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listDocs, type KnowledgeDoc } from '../../src/api/knowledge';
 import { shortTime } from '../../src/lib/format';
 import { useT } from '../../src/lib/i18n';
-import { EmptyState, Field, Icon, Skeleton, Touchable } from '../../src/ui';
-import { makeStyles, radius, useTheme } from '../../src/theme';
+import { EmptyState, Field, Icon, ScreenHeader, Skeleton, Tile, Touchable } from '../../src/ui';
+import { font, makeStyles, radius, useTheme } from '../../src/theme';
 
 export default function KnowledgeList() {
   const { colors: c } = useTheme();
@@ -51,12 +51,7 @@ export default function KnowledgeList() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 2 }]}>
-      <View style={styles.header}>
-        <Touchable haptic="none" onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-          <Icon name="back" size={23} color={c.fg} />
-        </Touchable>
-        <Text style={styles.title}>{t('knowledge.title')}</Text>
-      </View>
+      <ScreenHeader variant="large" title={t('knowledge.title')} onLeading={() => router.back()} />
 
       <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
         <Field icon="search" placeholder={t('knowledge.searchPlaceholder')} value={search} onChangeText={onSearch} autoCapitalize="none" />
@@ -91,15 +86,13 @@ function DocRow({ doc, onPress }: { doc: KnowledgeDoc; onPress: () => void }) {
   const styles = useStyles(c);
   return (
     <Touchable onPress={onPress} style={styles.row} pressedStyle={{ opacity: 0.7 }}>
-      <View style={styles.rowIcon}>
-        <Icon name={doc.visibility === 'private' ? 'lock' : 'book'} size={18} color={c.accentDeep} />
-      </View>
+      <Tile icon={doc.visibility === 'private' ? 'lock' : 'book'} />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={styles.rowTitle}>
           {doc.title}
         </Text>
         {doc.summary ? (
-          <Text numberOfLines={2} style={styles.rowSummary}>
+          <Text numberOfLines={1} style={styles.rowSummary}>
             {doc.summary}
           </Text>
         ) : null}
@@ -117,7 +110,7 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 16, paddingBottom: 8 },
   backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: -8 },
-  title: { fontSize: 28, fontWeight: '700', color: c.fg, letterSpacing: -0.5 },
+  title: { fontSize: font.displaySm, fontWeight: '700', color: c.fg, letterSpacing: -0.5 },
 
   row: {
     flexDirection: 'row',
@@ -138,8 +131,8 @@ const useStyles = makeStyles((c) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowTitle: { fontSize: 15.5, fontWeight: '600', color: c.fg },
-  rowSummary: { fontSize: 13, color: c.fgMuted, marginTop: 3, lineHeight: 18 },
+  rowTitle: { fontSize: font.body, fontWeight: '600', color: c.fg },
+  rowSummary: { fontSize: font.small, color: c.fgMuted, marginTop: 3, lineHeight: 18 },
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 },
-  rowMetaText: { fontSize: 11.5, color: c.fgFaint },
+  rowMetaText: { fontSize: font.caption, color: c.fgFaint },
 }));

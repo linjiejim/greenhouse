@@ -136,18 +136,34 @@ export function makeStyles<T extends StyleSheet.NamedStyles<T>>(
   };
 }
 
-export const radius = { sm: 8, md: 10, lg: 14, xl: 18, full: 999 } as const;
+// `tile` is the one radius for every leading icon tile (was drifting 9/10/14).
+export const radius = { sm: 8, md: 10, lg: 14, xl: 18, tile: 10, full: 999 } as const;
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 
-/** Type scale (px). */
+/**
+ * Type scale (px) — the single source for every font size. Snap all text to one
+ * of these steps; no ad-hoc or half-point sizes. Mirrors the Pencil design
+ * system (design/greenhouse-mobile.pen).
+ */
 export const font = {
-  caption: 12,
-  label: 14,
-  body: 15,
-  heading: 18,
-  title: 22,
-  display: 30,
+  caption: 12, // meta, captions, tags, hints, chips
+  small: 13, // secondary text, summaries, metrics
+  label: 14, // segmented, secondary values
+  body: 15, // body copy, row titles, inputs
+  title: 16, // nav (compact) titles, buttons, prominent row labels
+  heading: 18, // section headings, sheet titles
+  large: 22, // doc titles, large headings
+  displaySm: 28, // screen large-titles (login / settings / knowledge)
+  display: 30, // home hero
+} as const;
+
+/** The only font weights in use — name them so call sites read intent. */
+export const weight = {
+  regular: '400',
+  medium: '500',
+  semibold: '600',
+  bold: '700',
 } as const;
 
 /** Reusable shadows (iOS shadow* + Android elevation). */

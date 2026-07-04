@@ -4,15 +4,16 @@
  * renderer for their text content.
  */
 import { Text, View } from 'react-native';
-import { makeStyles, radius, useTheme } from '../../../theme';
+import { font, makeStyles, radius, useTheme } from '../../../theme';
 import { Icon } from '../../../ui';
 import { Inline } from '../inline';
 
+// Prose heading ramp (distinct from chrome): descending steps off the type scale.
 const HEADING = [
-  { fontSize: 19, lineHeight: 27, marginTop: 18 },
-  { fontSize: 17, lineHeight: 25, marginTop: 16 },
-  { fontSize: 15.5, lineHeight: 23, marginTop: 14 },
-  { fontSize: 14.5, lineHeight: 22, marginTop: 12 },
+  { fontSize: font.heading, lineHeight: 27, marginTop: 18 },
+  { fontSize: font.title, lineHeight: 25, marginTop: 16 },
+  { fontSize: font.body, lineHeight: 23, marginTop: 14 },
+  { fontSize: font.label, lineHeight: 22, marginTop: 12 },
 ];
 
 export function Heading({ level, text }: { level: number; text: string }) {
@@ -106,13 +107,13 @@ export function OrderedList({ items }: { items: string[] }) {
 }
 
 const useStyles = makeStyles((c) => ({
-  p: { fontSize: 15, lineHeight: 25, color: c.fgSecondary, marginVertical: 6 },
+  p: { fontSize: font.body, lineHeight: 25, color: c.fgSecondary, marginVertical: 6 },
   h: { fontWeight: '700', color: c.fg, marginBottom: 6 },
   hr: { height: 1, backgroundColor: c.hairline, marginVertical: 16 },
 
   list: { marginVertical: 5, gap: 5 },
   li: { flexDirection: 'row', gap: 9, alignItems: 'flex-start' },
-  bullet: { color: c.accent, fontSize: 16, lineHeight: 25 },
+  bullet: { color: c.accent, fontSize: font.title, lineHeight: 25 },
   num: {
     width: 20,
     height: 20,
@@ -122,7 +123,7 @@ const useStyles = makeStyles((c) => ({
     justifyContent: 'center',
     marginTop: 3,
   },
-  numText: { fontSize: 11.5, fontWeight: '700', color: c.accentDeep },
+  numText: { fontSize: font.caption, fontWeight: '700', color: c.accentDeep },
   checkbox: {
     width: 18,
     height: 18,

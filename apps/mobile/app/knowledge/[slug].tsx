@@ -10,8 +10,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getDoc, docTags, type KnowledgeDoc } from '../../src/api/knowledge';
 import { Markdown } from '../../src/chat/markdown';
 import { useT } from '../../src/lib/i18n';
-import { EmptyState, Icon, Skeleton, Touchable } from '../../src/ui';
-import { makeStyles, radius, useTheme } from '../../src/theme';
+import { EmptyState, ScreenHeader, Skeleton } from '../../src/ui';
+import { font, makeStyles, radius, useTheme } from '../../src/theme';
 
 export default function KnowledgeDetail() {
   const { colors: c } = useTheme();
@@ -38,14 +38,7 @@ export default function KnowledgeDetail() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 2 }]}>
-      <View style={styles.header}>
-        <Touchable haptic="none" onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-          <Icon name="back" size={23} color={c.fg} />
-        </Touchable>
-        <Text numberOfLines={1} style={styles.headerTitle}>
-          {title}
-        </Text>
-      </View>
+      <ScreenHeader variant="compact" align="left" title={title} onLeading={() => router.back()} />
 
       {doc === null ? (
         <View style={{ paddingHorizontal: 16, gap: 12, paddingTop: 8 }}>
@@ -79,10 +72,10 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 16, paddingBottom: 8 },
   backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: -8 },
-  headerTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: c.fg },
+  headerTitle: { flex: 1, fontSize: font.title, fontWeight: '700', color: c.fg },
 
-  docTitle: { fontSize: 24, fontWeight: '700', color: c.fg, lineHeight: 32, marginTop: 6, marginBottom: 10 },
+  docTitle: { fontSize: font.large, fontWeight: '700', color: c.fg, lineHeight: 32, marginTop: 6, marginBottom: 10 },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 },
   tag: { backgroundColor: c.accentTint, borderRadius: radius.full, paddingVertical: 3, paddingHorizontal: 10 },
-  tagText: { fontSize: 12, color: c.accentDeep, fontWeight: '600' },
+  tagText: { fontSize: font.caption, color: c.accentDeep, fontWeight: '600' },
 }));

@@ -12,7 +12,7 @@ import Animated, { type AnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '../lib/i18n';
 import { useBottomPadStyle } from '../lib/keyboard';
-import { makeStyles, shadow, useTheme } from '../theme';
+import { font, makeStyles, shadow, useTheme } from '../theme';
 import { Icon, Spinner, Touchable } from '../ui';
 
 export interface Annotation {
@@ -277,7 +277,7 @@ const useStyles = makeStyles((c) => ({
     paddingHorizontal: 10,
     marginBottom: 6,
   },
-  annotationText: { flex: 1, fontSize: 12.5, color: c.fgSecondary, lineHeight: 18 },
+  annotationText: { flex: 1, fontSize: font.caption, color: c.fgSecondary, lineHeight: 18 },
   imageRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10 },
   thumb: {
     width: 56,
@@ -311,7 +311,7 @@ const useStyles = makeStyles((c) => ({
   },
   // taller default field; + and expand vertically centered with the text
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingLeft: 6, paddingRight: 8, paddingTop: 6, paddingBottom: 2 },
-  input: { flex: 1, fontSize: 15.5, lineHeight: 21, color: c.fg, padding: 0, paddingHorizontal: 2, textAlignVertical: 'center' },
+  input: { flex: 1, fontSize: font.body, lineHeight: 21, color: c.fg, padding: 0, paddingHorizontal: 2, textAlignVertical: 'center' },
   expandBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingBottom: 10, paddingTop: 2 },
   toolBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
@@ -330,7 +330,7 @@ const useStyles = makeStyles((c) => ({
     borderBottomColor: c.hairline,
   },
   fsHeaderBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginLeft: -6 },
-  fsTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: c.fg },
+  fsTitle: { flex: 1, fontSize: font.title, fontWeight: '700', color: c.fg },
   fsBody: { flex: 1 },
-  fsInput: { flex: 1, fontSize: 17, lineHeight: 27, color: c.fg, paddingHorizontal: 20, paddingTop: 18, textAlignVertical: 'top' },
+  fsInput: { flex: 1, fontSize: font.heading, lineHeight: 27, color: c.fg, paddingHorizontal: 20, paddingTop: 18, textAlignVertical: 'top' },
 }));

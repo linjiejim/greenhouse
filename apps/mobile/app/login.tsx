@@ -11,8 +11,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../src/store/auth';
 import { useBottomPadStyle } from '../src/lib/keyboard';
 import { useT } from '../src/lib/i18n';
-import { Button, Field, SproutyFace } from '../src/ui';
-import { makeStyles, useTheme } from '../src/theme';
+import { Button, Field, GreenhouseMark } from '../src/ui';
+import { font, makeStyles, useTheme } from '../src/theme';
 
 export default function Login() {
   const { colors: c } = useTheme();
@@ -45,7 +45,7 @@ export default function Login() {
       <View style={styles.inner}>
         <View style={styles.center}>
           <View style={styles.logo}>
-            <SproutyFace expr="idle" size={72} />
+            <GreenhouseMark size={72} />
           </View>
           <Text style={styles.title}>Greenhouse</Text>
           <Text style={styles.sub}>{t('login.subtitle')}</Text>
@@ -88,9 +88,9 @@ const useStyles = makeStyles((c) => ({
   inner: { flex: 1, justifyContent: 'center', paddingHorizontal: 28 },
   center: { alignItems: 'center', marginBottom: 36 },
   logo: { alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  title: { fontSize: 26, fontWeight: '700', color: c.fg },
-  sub: { fontSize: 14.5, color: c.fgMuted, marginTop: 5 },
+  title: { fontSize: font.displaySm, fontWeight: '700', color: c.fg },
+  sub: { fontSize: font.label, color: c.fgMuted, marginTop: 5 },
   form: { width: '100%' },
-  err: { color: c.danger, fontSize: 13, marginTop: 10, paddingLeft: 2 },
-  foot: { textAlign: 'center', fontSize: 12, color: c.fgFaint, paddingTop: 8 },
+  err: { color: c.danger, fontSize: font.small, marginTop: 10, paddingLeft: 2 },
+  foot: { textAlign: 'center', fontSize: font.caption, color: c.fgFaint, paddingTop: 8 },
 }));

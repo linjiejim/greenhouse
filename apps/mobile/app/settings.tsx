@@ -12,8 +12,8 @@ import Constants from 'expo-constants';
 import { useAuth } from '../src/store/auth';
 import { usePrefs } from '../src/store/prefs';
 import { useT } from '../src/lib/i18n';
-import { Icon, Segmented, Sheet, Toast, Touchable, UserAvatar } from '../src/ui';
-import { makeStyles, radius, shadow, useTheme } from '../src/theme';
+import { Icon, ScreenHeader, Segmented, Sheet, Toast, Touchable, UserAvatar } from '../src/ui';
+import { font, makeStyles, radius, shadow, useTheme } from '../src/theme';
 
 export default function Settings() {
   const { colors: c } = useTheme();
@@ -46,12 +46,7 @@ export default function Settings() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 2 }]}>
-      <View style={styles.header}>
-        <Touchable haptic="none" onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-          <Icon name="back" size={23} color={c.fg} />
-        </Touchable>
-        <Text style={styles.title}>{t('settings.title')}</Text>
-      </View>
+      <ScreenHeader variant="large" title={t('settings.title')} onLeading={() => router.back()} />
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24 }} showsVerticalScrollIndicator={false}>
         {/* account card */}
@@ -175,7 +170,7 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 16, paddingBottom: 8 },
   backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: -8 },
-  title: { fontSize: 28, fontWeight: '700', color: c.fg, letterSpacing: -0.5 },
+  title: { fontSize: font.displaySm, fontWeight: '700', color: c.fg, letterSpacing: -0.5 },
 
   account: {
     flexDirection: 'row',
@@ -189,27 +184,27 @@ const useStyles = makeStyles((c) => ({
     marginTop: 4,
     ...shadow.card,
   },
-  name: { fontSize: 17, fontWeight: '600', color: c.fg },
-  email: { fontSize: 13, color: c.fgMuted, marginTop: 2 },
+  name: { fontSize: font.heading, fontWeight: '600', color: c.fg },
+  email: { fontSize: font.small, color: c.fgMuted, marginTop: 2 },
   chevBox: { width: 28, height: 28, borderRadius: 14, backgroundColor: c.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
 
-  groupLabel: { fontSize: 12.5, fontWeight: '600', color: c.fgMuted, textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: 2, paddingBottom: 8 },
+  groupLabel: { fontSize: font.caption, fontWeight: '600', color: c.fgMuted, textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: 2, paddingBottom: 8 },
   groupCard: { backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.hairline, paddingHorizontal: 14 },
   settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 12, minHeight: 46 },
   infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 13 },
   rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.hairline },
-  settingLabel: { fontSize: 15, color: c.fg },
-  infoValue: { fontSize: 14, color: c.fgMuted },
+  settingLabel: { fontSize: font.body, color: c.fg },
+  infoValue: { fontSize: font.label, color: c.fgMuted },
 
   logout: { marginTop: 18, backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.hairline, paddingVertical: 14, alignItems: 'center' },
-  logoutText: { fontSize: 15.5, fontWeight: '600', color: c.danger },
-  foot: { textAlign: 'center', fontSize: 11.5, color: c.fgFaint, marginTop: 14 },
+  logoutText: { fontSize: font.body, fontWeight: '600', color: c.danger },
+  foot: { textAlign: 'center', fontSize: font.caption, color: c.fgFaint, marginTop: 14 },
 
-  confirmText: { fontSize: 15, color: c.fgSecondary, lineHeight: 24, marginBottom: 18 },
+  confirmText: { fontSize: font.body, color: c.fgSecondary, lineHeight: 24, marginBottom: 18 },
   confirmBtn: { backgroundColor: c.danger, borderRadius: radius.lg, paddingVertical: 14, alignItems: 'center' },
-  confirmBtnText: { fontSize: 15.5, fontWeight: '600', color: '#fff' },
+  confirmBtnText: { fontSize: font.body, fontWeight: '600', color: '#fff' },
   cancelBtn: { paddingVertical: 14, alignItems: 'center', marginTop: 8 },
-  cancelText: { fontSize: 15.5, fontWeight: '600', color: c.fgSecondary },
+  cancelText: { fontSize: font.body, fontWeight: '600', color: c.fgSecondary },
 
   toastWrap: { position: 'absolute', left: 0, right: 0, bottom: 24, alignItems: 'center' },
 }));

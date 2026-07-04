@@ -10,6 +10,7 @@ import {
   Animated,
   Easing,
   Platform,
+  StyleSheet,
   Text,
   TextInput,
   View,
@@ -18,8 +19,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
-import { font, makeStyles, radius, shadow, space, useTheme } from '../theme';
-import { Icon, IconName, Touchable } from './core';
+import { font, makeStyles, radius, shadow, space, useTheme, weight } from '../theme';
+import { Caret, Icon, IconName, Touchable } from './core';
 
 /* ----------------------------- Avatars ----------------------------- */
 export function AiAvatar({ size = 34, rad = 10 }: { size?: number; rad?: number }) {
@@ -123,7 +124,7 @@ export function Segmented<T extends string>({
         const on = it.id === value;
         return (
           <Touchable key={it.id} haptic="selection" onPress={() => onChange(it.id)} pressedStyle={{ opacity: 0.7 }} style={styles.segItem}>
-            <Text style={{ fontSize: 13, fontWeight: on ? '600' : '500', color: on ? c.accentDeep : c.fgMuted }}>
+            <Text style={{ fontSize: font.small, fontWeight: on ? '600' : '500', color: on ? c.accentDeep : c.fgMuted }}>
               {it.label}
             </Text>
           </Touchable>
@@ -324,9 +325,138 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={fg} />
       ) : (
-        <Text style={{ color: fg, fontSize: 16, fontWeight: '600', letterSpacing: variant === 'primary' ? 2 : 0 }}>{label}</Text>
+        <Text style={{ color: fg, fontSize: font.title, fontWeight: '600', letterSpacing: variant === 'primary' ? 2 : 0 }}>{label}</Text>
       )}
     </Touchable>
+  );
+}
+
+/* ----------------------------- Tile (leading icon) ----------------------------- */
+/** The one leading icon tile — a tinted rounded square. `tint` selects the
+ *  fill/foreground pairing; `size` defaults to the 36px used in list rows. */
+export function Tile({
+  icon,
+  size = 36,
+  iconSize,
+  tint = 'accent',
+}: {
+  icon: IconName;
+  size?: number;
+  iconSize?: number;
+  tint?: 'accent' | 'muted' | 'danger';
+}) {
+  const { colors: c } = useTheme();
+  const bg = tint === 'danger' ? c.dangerTint : tint === 'muted' ? c.surfaceMuted : c.accentTint;
+  const fg = tint === 'danger' ? c.danger : tint === 'muted' ? c.fgMuted : c.accentDeep;
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius.tile,
+        backgroundColor: bg,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Icon name={icon} size={iconSize ?? Math.round(size * 0.5)} color={fg} />
+    </View>
+  );
+}
+
+/* ----------------------------- DisclosureRow ----------------------------- */
+/** The quiet, tappable trigger shared by the assistant reply's tool-calls,
+ *  references, reasoning and metrics rows: a small leading icon, a muted label,
+ *  and a trailing chevron (right, or down when `open`). One row, one look. */
+export function DisclosureRow({
+  icon,
+  label,
+  open,
+  trailing = 'chevron',
+  onPress,
+  style,
+}: {
+  icon: IconName;
+  label: string;
+  /** When set, the chevron flips down (true) / right (false) — for toggles. */
+  open?: boolean;
+  trailing?: 'chevron' | 'none';
+  onPress?: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  return (
+    <Touchable haptic="none" onPress={onPress} style={[styles.disclosure, style]}>
+      <Icon name={icon} size={15} color={c.fgMuted} />
+      <Text style={styles.disclosureLabel}>{label}</Text>
+      {trailing === 'chevron' ? <Icon name={open ? 'chevD' : 'chevR'} size={14} color={c.fgFaint} /> : null}
+    </Touchable>
+  );
+}
+
+/* ----------------------------- ScreenHeader ----------------------------- */
+/**
+ * The two header archetypes, unified. `variant="large"` is the top-level list
+ * header (settings / knowledge): a back button and a big 28px title. `"compact"`
+ * is the detail header (chat / doc / table): a leading button, a centered (or
+ * left) title with optional subtitle + streaming caret, and an optional trailing
+ * slot, over a bottom hairline. Screens still own their safe-area top padding.
+ */
+export function ScreenHeader({
+  title,
+  subtitle,
+  variant = 'compact',
+  align = 'center',
+  leading = 'back',
+  onLeading,
+  right,
+  bordered = false,
+  titleStreaming = false,
+}: {
+  title: string;
+  subtitle?: string;
+  variant?: 'large' | 'compact';
+  align?: 'left' | 'center';
+  leading?: 'back' | 'close' | 'none';
+  onLeading?: () => void;
+  right?: React.ReactNode;
+  bordered?: boolean;
+  titleStreaming?: boolean;
+}) {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  const lead =
+    leading === 'none' ? null : (
+      <Touchable haptic="none" onPress={onLeading} style={styles.headerBtn} hitSlop={8}>
+        <Icon name={leading === 'close' ? 'x' : 'back'} size={variant === 'large' ? 23 : 22} color={c.fg} />
+      </Touchable>
+    );
+
+  if (variant === 'large') {
+    return (
+      <View style={styles.headerLarge}>
+        {lead}
+        <Text style={styles.headerLargeTitle}>{title}</Text>
+        {right ? <View style={{ marginLeft: 'auto' }}>{right}</View> : null}
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.headerCompact, bordered && styles.headerBordered]}>
+      {lead ?? <View style={styles.headerBtn} />}
+      <View style={[styles.headerCenter, { alignItems: align === 'center' ? 'center' : 'flex-start' }]}>
+        <View style={styles.headerTitleRow}>
+          <Text numberOfLines={1} style={[styles.headerCompactTitle, titleStreaming && { opacity: 0.5 }]}>
+            {title}
+          </Text>
+          {titleStreaming ? <Caret size={14} /> : null}
+        </View>
+        {subtitle ? <Text style={styles.headerSub}>{subtitle}</Text> : null}
+      </View>
+      {right ? right : align === 'center' ? <View style={styles.headerBtn} /> : null}
+    </View>
   );
 }
 
@@ -362,6 +492,19 @@ const useStyles = makeStyles((c) => ({
   },
   segItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 6 },
 
+  disclosure: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
+  disclosureLabel: { fontSize: font.small, color: c.fgMuted, fontWeight: weight.medium },
+
+  headerBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  headerLarge: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 16, paddingBottom: 8 },
+  headerLargeTitle: { fontSize: font.displaySm, fontWeight: weight.bold, color: c.fg, letterSpacing: -0.5, marginLeft: -2 },
+  headerCompact: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingBottom: 10 },
+  headerBordered: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.hairline },
+  headerCenter: { flex: 1 },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center' },
+  headerCompactTitle: { fontSize: font.title, fontWeight: weight.bold, color: c.fg, maxWidth: 240 },
+  headerSub: { fontSize: font.caption, color: c.fgMuted, marginTop: 1 },
+
   empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, paddingHorizontal: 32 },
   emptyIcon: {
     width: 64,
@@ -372,8 +515,8 @@ const useStyles = makeStyles((c) => ({
     justifyContent: 'center',
     marginBottom: 12,
   },
-  emptyTitle: { fontSize: 16, fontWeight: '600', color: c.fg },
-  emptySub: { fontSize: 13.5, color: c.fgMuted, lineHeight: 20, textAlign: 'center', marginTop: 4, maxWidth: 240 },
+  emptyTitle: { fontSize: font.title, fontWeight: '600', color: c.fg },
+  emptySub: { fontSize: font.small, color: c.fgMuted, lineHeight: 20, textAlign: 'center', marginTop: 4, maxWidth: 240 },
   emptyCta: {
     marginTop: 16,
     paddingVertical: 10,
@@ -410,7 +553,7 @@ const useStyles = makeStyles((c) => ({
     borderColor: c.hairline,
     backgroundColor: c.surface,
   },
-  fieldInput: { flex: 1, fontSize: 15.5, color: c.fg, padding: 0 },
+  fieldInput: { flex: 1, fontSize: font.body, color: c.fg, padding: 0 },
 
   btn: { height: 50, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.lg },
 }));

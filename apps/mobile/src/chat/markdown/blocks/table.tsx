@@ -4,10 +4,11 @@
  * the full grid on a dedicated page. Horizontal scrollers use gesture-handler's
  * ScrollView so a sideways swipe is claimed even inside the vertical chat scroll.
  */
+import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
-import { makeStyles, radius, useTheme } from '../../../theme';
+import { font, makeStyles, radius, useTheme } from '../../../theme';
 import { Icon, Touchable } from '../../../ui';
 import { Inline } from '../inline';
 import { putTable, type Align, type TableData } from '../../table-store';
@@ -29,8 +30,9 @@ const cellWidth = (s: string, charW: number, cjkW: number) => {
 };
 
 /** The bare grid — reused inline and on the fullscreen page. `big` bumps the
- *  type size / column caps for the dedicated viewer. */
-export function TableGrid({ data, big }: { data: TableData; big?: boolean }) {
+ *  type size / column caps for the dedicated viewer. `avail` is the width the
+ *  grid may occupy: when the natural grid is narrower, columns stretch to fill. */
+export function TableGrid({ data, big, avail }: { data: TableData; big?: boolean; avail?: number }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const { head, rows, align } = data;
@@ -43,11 +45,25 @@ export function TableGrid({ data, big }: { data: TableData; big?: boolean }) {
   // One fixed width per column, shared by every row. Without this each row is an
   // independent flex line whose cells size to their own content, so the same
   // column ends up a different width per row and the columns drift out of line.
-  const widths = Array.from({ length: cols }, (_, j) => {
+  const base = Array.from({ length: cols }, (_, j) => {
     let m = 0;
     for (const c of [head[j] ?? '', ...rows.map((r) => r[j] ?? '')]) m = Math.max(m, cellWidth(c, charW, cjkW));
     return Math.round(Math.min(maxW, Math.max(minW, m + 30)));
   });
+  // Stretch to fill when there's room: if the natural grid is narrower than the
+  // space available, scale every column proportionally so the table spans the
+  // full width (leftover px land on the last column). Wider grids keep their
+  // natural widths and scroll horizontally.
+  const natural = base.reduce((a, b) => a + b, 0);
+  let widths = base;
+  if (avail && natural > 0 && natural < avail) {
+    const target = avail - 1; // spare 1px for the grid's right hairline
+    const k = target / natural;
+    const scaled = base.map((w) => Math.floor(w * k));
+    const used = scaled.reduce((a, b) => a + b, 0);
+    scaled[cols - 1] += Math.max(0, Math.round(target - used));
+    widths = scaled;
+  }
   const al = (j: number): Align => align?.[j] ?? 'left';
 
   return (
@@ -83,6 +99,9 @@ export function Table({ data }: { data: TableData }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const router = useRouter();
+  // Width the grid may bleed into (content edge → screen edge). Measured so a
+  // narrow table can stretch to fill it rather than sitting in a cramped column.
+  const [avail, setAvail] = useState(0);
   const open = () => {
     const k = putTable(data);
     router.push({ pathname: '/table', params: { k } });
@@ -96,8 +115,8 @@ export function Table({ data }: { data: TableData }) {
           <Text style={styles.expandText}>全屏</Text>
         </Touchable>
       </View>
-      <View style={styles.tableBleed}>
-        <TableGrid data={data} />
+      <View style={styles.tableBleed} onLayout={(e) => setAvail(e.nativeEvent.layout.width)}>
+        <TableGrid data={data} avail={avail || undefined} />
       </View>
     </View>
   );
@@ -106,7 +125,7 @@ export function Table({ data }: { data: TableData }) {
 const useStyles = makeStyles((c) => ({
   tableWrap: { marginVertical: 12 },
   tableBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 },
-  tableHint: { fontSize: 12, color: c.fgFaint },
+  tableHint: { fontSize: font.caption, color: c.fgFaint },
   expandBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -118,7 +137,7 @@ const useStyles = makeStyles((c) => ({
     borderWidth: 1,
     borderColor: c.accentBorder,
   },
-  expandText: { fontSize: 12, fontWeight: '600', color: c.accentDeep },
+  expandText: { fontSize: font.caption, fontWeight: '600', color: c.accentDeep },
   tableBleed: { marginRight: -16 },
   grid: { borderTopWidth: 1, borderBottomWidth: 1, borderColor: c.hairline },
   gridContent: { borderRightWidth: 1, borderRightColor: c.hairline },
@@ -127,9 +146,9 @@ const useStyles = makeStyles((c) => ({
   trBorder: { borderBottomWidth: 1, borderBottomColor: c.hairline },
   // Cells are Views (not Texts) so the hairline dividers render reliably on
   // Android — borders on <Text> are dropped on some densities.
-  // Roomier padding + line-height so chat tables read less cramped.
-  cellBox: { paddingVertical: 11, paddingHorizontal: 15 },
+  // Compact vertical rhythm so chat tables stay short; width comes from stretch.
+  cellBox: { paddingVertical: 8, paddingHorizontal: 15 },
   cellDivider: { borderLeftWidth: 1, borderLeftColor: c.hairline },
-  cellText: { lineHeight: 22, color: c.fgSecondary },
+  cellText: { lineHeight: 20, color: c.fgSecondary },
   cellStrong: { fontWeight: '600', color: c.fg },
 }));

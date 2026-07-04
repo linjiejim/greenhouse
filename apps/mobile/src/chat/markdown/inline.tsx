@@ -6,7 +6,7 @@
  */
 import { type ReactNode } from 'react';
 import { Linking, Text } from 'react-native';
-import { makeStyles, mono, useTheme, type ThemeColors } from '../../theme';
+import { font, makeStyles, mono, type ThemeColors, useTheme } from '../../theme';
 
 export const openURL = (url: string) => Linking.openURL(url).catch(() => {});
 
@@ -15,7 +15,7 @@ const useStyles = makeStyles((c: ThemeColors) => ({
   bold: { fontWeight: '700' as const, color: c.fg },
   italic: { fontStyle: 'italic' as const },
   strike: { textDecorationLine: 'line-through' as const, color: c.fgMuted },
-  inlineCode: { fontFamily: mono, fontSize: 13, color: c.accentDeep, backgroundColor: c.surfaceMuted },
+  inlineCode: { fontFamily: mono, fontSize: font.small, color: c.accentDeep, backgroundColor: c.surfaceMuted },
 }));
 
 type InlineStyles = ReturnType<typeof useStyles>;

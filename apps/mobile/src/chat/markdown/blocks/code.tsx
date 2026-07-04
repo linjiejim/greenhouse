@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import * as Clipboard from 'expo-clipboard';
 import { useT } from '../../../lib/i18n';
-import { makeStyles, mono, radius, useTheme } from '../../../theme';
+import { font, makeStyles, mono, radius, useTheme } from '../../../theme';
 import { Icon, Touchable } from '../../../ui';
 
 /** Fenced code block — dark, language label + copy, horizontal scroll. */
@@ -26,7 +26,7 @@ export function CodeBlock({ lang, code }: { lang: string; code: string }) {
           style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
         >
           <Icon name={copied ? 'check' : 'copy'} size={14} color={copied ? c.accent : c.codeLabel} />
-          <Text style={{ fontSize: 12, fontWeight: '600', color: copied ? c.accent : c.codeLabel }}>
+          <Text style={{ fontSize: font.caption, fontWeight: '600', color: copied ? c.accent : c.codeLabel }}>
             {copied ? t('common.copied') : t('chat.actionCopy')}
           </Text>
         </Touchable>
@@ -64,7 +64,7 @@ const useStyles = makeStyles((c) => ({
     paddingHorizontal: 12,
     backgroundColor: c.codeHeader,
   },
-  codeLang: { fontFamily: mono, fontSize: 11, color: c.codeLabel, letterSpacing: 0.4 },
+  codeLang: { fontFamily: mono, fontSize: font.caption, color: c.codeLabel, letterSpacing: 0.4 },
   codeScroll: { backgroundColor: c.codeBg },
-  codeLine: { fontFamily: mono, fontSize: 12.5, lineHeight: 21, color: c.codeText },
+  codeLine: { fontFamily: mono, fontSize: font.caption, lineHeight: 21, color: c.codeText },
 }));

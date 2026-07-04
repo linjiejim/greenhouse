@@ -10,8 +10,8 @@ import type { Message } from '../shared/greenhouse-types';
 import { uploadUrl } from '../api/upload';
 import { catIcon, toolIcon, toolLabel } from '../lib/format';
 import { useT } from '../lib/i18n';
-import { makeStyles, mono, radius, useTheme } from '../theme';
-import { Caret, Icon, Spinner, SproutyFace, ThinkingDots, Touchable } from '../ui';
+import { font, makeStyles, mono, radius, useTheme } from '../theme';
+import { Caret, DisclosureRow, Icon, Spinner, SproutyFace, ThinkingDots, Touchable } from '../ui';
 import { Markdown } from './markdown';
 
 /* ----------------------------- types ----------------------------- */
@@ -141,13 +141,7 @@ function ToolTrigger({ steps, live, onOpen }: { steps: ToolStep[]; live?: boolea
       </View>
     );
   }
-  return (
-    <Touchable haptic="none" onPress={onOpen} style={[styles.trigRow, { marginBottom: 10 }]}>
-      <Icon name="bolt" size={15} color={c.fgMuted} />
-      <Text style={styles.trigLabel}>{t('chat.toolCalls')} · {total}</Text>
-      <Icon name="chevR" size={14} color={c.fgFaint} />
-    </Touchable>
-  );
+  return <DisclosureRow icon="bolt" label={`${t('chat.toolCalls')} · ${total}`} onPress={onOpen} style={{ marginBottom: 10 }} />;
 }
 
 /** Tool-call detail — the step rail, rendered inside the bottom sheet. */
@@ -196,11 +190,7 @@ function Reasoning({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
     <View style={{ marginTop: 2, marginBottom: 10 }}>
-      <Touchable haptic="none" onPress={() => setOpen((o) => !o)} style={styles.reasonHead}>
-        <Icon name="brain" size={15} color={c.fgMuted} />
-        <Text style={styles.reasonLabel}>{t('chat.reasoning')}</Text>
-        <Icon name={open ? 'chevD' : 'chevR'} size={14} color={c.fgFaint} />
-      </Touchable>
+      <DisclosureRow icon="brain" label={t('chat.reasoning')} open={open} onPress={() => setOpen((o) => !o)} />
       {open && (
         <View style={styles.reasonBody}>
           <Text style={styles.reasonText}>{text}</Text>
@@ -213,17 +203,9 @@ function Reasoning({ text }: { text: string }) {
 /* ----------------------------- Sources ----------------------------- */
 // Quiet trigger (like 思考过程); the source / web chips open in a bottom sheet.
 function RefTrigger({ count, onOpen }: { count: number; onOpen?: () => void }) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
   const t = useT();
   if (!count) return null;
-  return (
-    <Touchable haptic="none" onPress={onOpen} style={[styles.trigRow, { marginTop: 14 }]}>
-      <Icon name="book" size={15} color={c.fgMuted} />
-      <Text style={styles.trigLabel}>{t('chat.references')} · {count} 条</Text>
-      <Icon name="chevR" size={14} color={c.fgFaint} />
-    </Touchable>
-  );
+  return <DisclosureRow icon="book" label={`${t('chat.references')} · ${count} 条`} onPress={onOpen} style={{ marginTop: 14 }} />;
 }
 
 /** Reference detail — source + web chips, rendered inside the bottom sheet. */
@@ -438,24 +420,24 @@ const useStyles = makeStyles((c) => ({
 
   // Quiet trigger row shared by tool-calls + references (mirrors 思考过程).
   trigRow: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
-  trigLabel: { fontSize: 13, color: c.fgMuted, fontWeight: '500' },
+  trigLabel: { fontSize: font.small, color: c.fgMuted, fontWeight: '500' },
 
   step: { flexDirection: 'row', gap: 10, paddingTop: 9 },
   stepRail: { alignItems: 'center' },
   stepIcon: { width: 24, height: 24, borderRadius: 7, backgroundColor: c.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
   stepLine: { width: 1.5, flex: 1, minHeight: 14, backgroundColor: c.hairline, marginTop: 4 },
-  stepName: { fontSize: 13, fontWeight: '600', color: c.fg },
-  stepMs: { fontSize: 11, color: c.fgFaint },
-  stepInput: { fontFamily: mono, fontSize: 11.5, color: c.fgMuted, marginTop: 3, backgroundColor: c.surfaceMuted, borderRadius: 6, paddingVertical: 5, paddingHorizontal: 8 },
-  stepOutput: { fontSize: 12.5, color: c.fgSecondary, marginTop: 4, lineHeight: 18 },
+  stepName: { fontSize: font.small, fontWeight: '600', color: c.fg },
+  stepMs: { fontSize: font.caption, color: c.fgFaint },
+  stepInput: { fontFamily: mono, fontSize: font.caption, color: c.fgMuted, marginTop: 3, backgroundColor: c.surfaceMuted, borderRadius: 6, paddingVertical: 5, paddingHorizontal: 8 },
+  stepOutput: { fontSize: font.caption, color: c.fgSecondary, marginTop: 4, lineHeight: 18 },
 
   reasonHead: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
-  reasonLabel: { fontSize: 13, color: c.fgMuted, fontWeight: '500' },
+  reasonLabel: { fontSize: font.small, color: c.fgMuted, fontWeight: '500' },
   reasonBody: { marginTop: 7, padding: 12, backgroundColor: c.surfaceMuted, borderRadius: radius.md, borderLeftWidth: 2, borderLeftColor: c.hairline },
-  reasonText: { fontSize: 13, lineHeight: 21, color: c.fgMuted },
+  reasonText: { fontSize: font.small, lineHeight: 21, color: c.fgMuted },
 
   srcHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  srcHeadText: { fontSize: 12.5, color: c.fgMuted, fontWeight: '600' },
+  srcHeadText: { fontSize: font.caption, color: c.fgMuted, fontWeight: '600' },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   srcChip: {
     flexDirection: 'row',
@@ -469,13 +451,13 @@ const useStyles = makeStyles((c) => ({
     borderColor: c.hairline,
     backgroundColor: c.surface,
   },
-  srcChipText: { fontSize: 12.5, color: c.fgSecondary, flexShrink: 1 },
-  srcHost: { fontSize: 11, color: c.fgFaint },
+  srcChipText: { fontSize: font.caption, color: c.fgSecondary, flexShrink: 1 },
+  srcHost: { fontSize: font.caption, color: c.fgFaint },
 
   metricHead: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start' },
-  metricText: { fontSize: 11.5, color: c.fgFaint },
+  metricText: { fontSize: font.caption, color: c.fgFaint },
   metricBody: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginTop: 6 },
-  metricDetail: { fontSize: 11.5, color: c.fgMuted },
+  metricDetail: { fontSize: font.caption, color: c.fgMuted },
 
   errorBox: {
     marginTop: 8,
@@ -486,13 +468,13 @@ const useStyles = makeStyles((c) => ({
     alignItems: 'center',
     gap: 10,
   },
-  errorText: { flex: 1, color: c.danger, fontSize: 13.5 },
+  errorText: { flex: 1, color: c.danger, fontSize: font.small },
 
   userRow: { alignItems: 'flex-end', paddingHorizontal: 16, paddingVertical: 8, paddingLeft: 44 },
   userImages: { flexDirection: 'row', gap: 6, justifyContent: 'flex-end', marginBottom: 6 },
   userThumb: { width: 72, height: 72, borderRadius: 12, backgroundColor: c.surfaceMuted, borderWidth: 1, borderColor: c.hairline, alignItems: 'center', justifyContent: 'center' },
   userAnnotation: { borderLeftWidth: 3, borderLeftColor: c.accentBorder, backgroundColor: c.accentTint, borderTopRightRadius: 8, borderBottomRightRadius: 8, paddingVertical: 6, paddingHorizontal: 10, marginBottom: 6 },
-  userAnnotationText: { fontSize: 12.5, color: c.fgMuted },
+  userAnnotationText: { fontSize: font.caption, color: c.fgMuted },
   userBubble: { backgroundColor: c.accentTint, borderWidth: 1, borderColor: c.accentBorder, borderRadius: 18, borderBottomRightRadius: 6, paddingVertical: 10, paddingHorizontal: 14 },
-  userText: { fontSize: 15.5, lineHeight: 23, color: c.fg },
+  userText: { fontSize: font.body, lineHeight: 23, color: c.fg },
 }));

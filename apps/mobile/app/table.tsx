@@ -11,8 +11,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTable } from '../src/chat/table-store';
 import { TableGrid } from '../src/chat/markdown';
-import { Icon, Touchable } from '../src/ui';
-import { makeStyles, useTheme } from '../src/theme';
+import { ScreenHeader } from '../src/ui';
+import { font, makeStyles, useTheme } from '../src/theme';
 
 export default function FullTable() {
   const { colors: c } = useTheme();
@@ -24,22 +24,14 @@ export default function FullTable() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 4 }]}>
-      <View style={styles.header}>
-        <Touchable haptic="none" onPress={() => router.back()} style={styles.btn} hitSlop={8}>
-          <Icon name="x" size={22} color={c.fg} />
-        </Touchable>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text numberOfLines={1} style={styles.title}>
-            {title ? String(title) : '表格'}
-          </Text>
-          {data ? (
-            <Text style={styles.sub}>
-              {data.head.length} 列 · {data.rows.length} 行 · 横屏阅读更佳
-            </Text>
-          ) : null}
-        </View>
-        <View style={styles.btn} />
-      </View>
+      <ScreenHeader
+        variant="compact"
+        leading="close"
+        title={title ? String(title) : '表格'}
+        subtitle={data ? `${data.head.length} 列 · ${data.rows.length} 行 · 横屏阅读更佳` : undefined}
+        onLeading={() => router.back()}
+        bordered
+      />
 
       {data ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: insets.bottom + 24 }}>
@@ -66,8 +58,8 @@ const useStyles = makeStyles((c) => ({
     borderBottomColor: c.hairline,
   },
   btn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 16, fontWeight: '700', color: c.fg },
-  sub: { fontSize: 11.5, color: c.fgMuted, marginTop: 1 },
+  title: { fontSize: font.title, fontWeight: '700', color: c.fg },
+  sub: { fontSize: font.caption, color: c.fgMuted, marginTop: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  emptyText: { fontSize: 14, color: c.fgMuted },
+  emptyText: { fontSize: font.label, color: c.fgMuted },
 }));

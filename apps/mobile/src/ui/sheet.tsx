@@ -23,7 +23,7 @@ import {
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { Easing } from 'react-native-reanimated';
-import { makeStyles, useTheme } from '../theme';
+import { font, makeStyles, useTheme } from '../theme';
 import { Icon, IconName, Touchable } from './core';
 
 /** Snappier than gorhom's default spring — quick, settled open/close. */
@@ -184,7 +184,7 @@ export function ActionSheet({
             pressedStyle={{ backgroundColor: c.surfaceMuted }}
             style={[styles.actionRow, i > 0 && styles.actionDivider]}
           >
-            <Text style={{ fontSize: 15.5, fontWeight: '500', color: a.danger ? c.danger : c.fg }}>{a.label}</Text>
+            <Text style={{ fontSize: font.body, fontWeight: '500', color: a.danger ? c.danger : c.fg }}>{a.label}</Text>
             <Icon name={a.icon} size={19} color={a.danger ? c.danger : c.fgMuted} />
           </Touchable>
         ))}
@@ -206,7 +206,7 @@ const useStyles = makeStyles((c) => ({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: c.hairline,
   },
-  title: { fontSize: 17, fontWeight: '700', color: c.fg },
+  title: { fontSize: font.heading, fontWeight: '700', color: c.fg },
   closeBtn: {
     width: 30,
     height: 30,
