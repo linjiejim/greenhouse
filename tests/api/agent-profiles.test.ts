@@ -10,6 +10,13 @@ import {
   registerKnownTools,
   isValidCustomBaseProfileId,
 } from '../../apps/api/src/profile.js';
+import { EXTENSION_SYSTEM_PROFILES } from '../../apps/api/src/profiles/extensions.js';
+
+// Core system profiles upstream ships. A downstream fork's EXTENSION_SYSTEM_PROFILES
+// (the seam) either add new ids or override these by id, so the expected id set is
+// derived from the seam here — a fork never edits this behavior lock on sync.
+const CORE_PROFILE_IDS = ['default', 'team'];
+const EXPECTED_PROFILE_IDS = [...new Set([...CORE_PROFILE_IDS, ...EXTENSION_SYSTEM_PROFILES.map((p) => p.id)])].sort();
 
 const KNOWN_TOOLS = [
   'knowledge_query',
@@ -29,8 +36,8 @@ registerKnownTools(KNOWN_TOOLS);
 describe('All profiles: structural validation', () => {
   const all = loadAllProfiles();
 
-  it('has exactly 2 system profiles', () => {
-    expect(all.map((p) => p.id).sort()).toEqual(['default', 'team']);
+  it('has exactly the core + extension system profiles', () => {
+    expect(all.map((p) => p.id).sort()).toEqual(EXPECTED_PROFILE_IDS);
   });
 
   for (const profile of all) {
@@ -80,13 +87,13 @@ describe('Profile identities', () => {
 });
 
 describe('Profile module loading and legacy compatibility', () => {
-  it('loadAllProfiles returns 2 system profiles', () => {
+  it('loadAllProfiles returns the core + extension system profiles', () => {
     clearProfileCache();
     expect(
       loadAllProfiles()
         .map((p) => p.id)
         .sort(),
-    ).toEqual(['default', 'team']);
+    ).toEqual(EXPECTED_PROFILE_IDS);
   });
 
   it('maps legacy preset IDs to team', () => {

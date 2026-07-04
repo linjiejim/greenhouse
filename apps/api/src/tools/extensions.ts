@@ -19,8 +19,8 @@
  *   import { crmMutationTool } from './crm/crm-mutation.js';
  *   export const EXTENSION_TOOL_MODULES: ToolModule[] = [crmQueryTool, crmMutationTool];
  *
- * Note: a fork that adds a `kind: 'lazy'` tool must also extend its own copy of
- * the KNOWN_LAZY behavior-lock in tools/__tests__/registry-catalog.test.ts.
+ * The registry-catalog behavior-lock test derives its extension entries from this
+ * array, so a fork adding a `kind: 'lazy'` tool does NOT edit that test on sync.
  */
 
 import type { ToolModule } from './define.js';
