@@ -59,9 +59,15 @@ what exists." These rules are as binding as the "add" rules:
 
 - **Pre-commit hook**: husky + lint-staged runs `eslint --fix` + `prettier --write` on staged
   files.
-- **CI gate**: `.github/workflows/ci.yml` runs lint → typecheck → test → **e2e** on `main` and
-  every PR (`quality-gate.yml`, reusable). The test/e2e jobs build the CI database via `migrate`
-  (not push) so the whole migration chain is exercised on every run.
+- **CI gate**: `.github/workflows/ci.yml` runs lint → typecheck → test → **e2e** → **secret-scan**
+  on `main` and every PR (`quality-gate.yml`, reusable). The test/e2e jobs build the CI database
+  via `migrate` (not push) so the whole migration chain is exercised on every run.
+- **Secret scanning**: the `secret-scan` job runs [gitleaks](https://github.com/gitleaks/gitleaks)
+  over incoming commits (full history was verified clean once). Rules + allowlist live in
+  `.gitleaks.toml` at the repo root. Never commit real credentials; if the scanner flags a
+  **confirmed** non-secret (e.g. a token alphabet, or a documented demo/seed password under
+  `data/examples/` or `tests/`), add a narrow, commented entry to `.gitleaks.toml` — keep the
+  allowlist surgical so it can't mask a real leak.
 - **E2E security suite**: `pnpm test:e2e` (needs a running API; see `tests/e2e`). This is the
   **API-level** suite (vitest + `fetch`, no browser) covering auth / v1 / permissions / tool
   surface / injection / data isolation. CI runs it via `pnpm test:e2e:ci` (`scripts/e2e-ci.sh`),
