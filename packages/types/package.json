@@ -24,10 +24,6 @@
       "import": "./src/eval.ts",
       "types": "./src/eval.ts"
     },
-    "./http-client": {
-      "import": "./src/http-client.ts",
-      "types": "./src/http-client.ts"
-    },
     "./agent-context": {
       "import": "./src/agent-context.ts",
       "types": "./src/agent-context.ts"

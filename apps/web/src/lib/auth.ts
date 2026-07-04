@@ -10,7 +10,6 @@
  * so they can be used by React Native and other future clients.
  */
 
-import type { TokenStorage } from '@greenhouse/types/http-client';
 import { apiUrl, resolveFetchInput } from './api-base';
 
 // Re-export shared auth types for backward compatibility
@@ -314,37 +313,3 @@ export async function validateCurrentToken(): Promise<boolean> {
   const user = await validateSession();
   return user !== null;
 }
-
-// ─── Platform-specific TokenStorage (Web/localStorage) ───
-
-/**
- * Web-specific TokenStorage implementation using localStorage.
- * Pass this to createHttpClient() for browser-based clients.
- *
- * For React Native, create an equivalent using AsyncStorage or SecureStore.
- */
-export const webTokenStorage: TokenStorage = {
-  getAccessToken: () => getItem(ACCESS_KEY),
-  getRefreshToken: () => getItem(REFRESH_KEY),
-  setTokens: (access, refresh) => {
-    setItem(ACCESS_KEY, access);
-    setItem(REFRESH_KEY, refresh);
-  },
-  clearTokens: () => {
-    removeItem(ACCESS_KEY);
-    removeItem(REFRESH_KEY);
-    removeItem(USER_KEY);
-  },
-  getCachedUser: <T>() => {
-    const raw = getItem(USER_KEY);
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as T;
-    } catch {
-      return null;
-    }
-  },
-  setCachedUser: <T>(user: T) => {
-    setItem(USER_KEY, JSON.stringify(user));
-  },
-};
