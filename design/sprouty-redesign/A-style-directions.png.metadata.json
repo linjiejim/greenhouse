@@ -1,9 +1,0 @@
-{
-  "output": "design/sprouty-redesign/A-style-directions.png",
-  "model": "gpt-image-2",
-  "size": "1536x1024",
-  "quality": "low",
-  "estimatedCostUsd": 0.005,
-  "createdAt": "2026-07-02T17:31:42.359935+00:00",
-  "promptFile": "design/sprouty-redesign/A-style-directions.png.prompt.md"
-}
