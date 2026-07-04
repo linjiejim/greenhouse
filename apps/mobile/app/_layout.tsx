@@ -77,7 +77,7 @@ export default function RootLayout() {
             </View>
           ) : (
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
-              <Stack.Screen name="index" />
+              <Stack.Screen name="(drawer)" />
               <Stack.Screen name="login" />
               <Stack.Screen name="chat/[id]" options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="knowledge/index" options={{ animation: 'slide_from_right' }} />
