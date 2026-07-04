@@ -19,6 +19,7 @@ export interface SessionListOpts {
   userId?: string; // filter sessions by owner
   channel?: string; // filter by channel: 'web' | 'api' | 'a2a' | 'task'
   taskId?: number; // filter by scheduled task (via metadata)
+  search?: string; // case-insensitive substring match on title (server-side search)
 }
 
 export interface PaginationOpts {
@@ -64,12 +65,20 @@ export function createSessionService(db: Db) {
     },
 
     async list(opts: SessionListOpts = {}): Promise<SessionRow[]> {
-      const { status, limit = 200, offset = 0, includeEval = false, userId, channel, taskId } = opts;
+      const { status, limit = 200, offset = 0, includeEval = false, userId, channel, taskId, search } = opts;
       const conditions = [];
 
       if (userId) conditions.push(eq(sessions.user_id, userId));
       if (channel) conditions.push(eq(sessions.channel, channel));
       if (taskId) conditions.push(sql`${sessions.metadata}::jsonb @> ${JSON.stringify({ task_id: taskId })}::jsonb`);
+      // Server-side title search — kept in the SQL query (not filtered post-page)
+      // so limit/offset paginate over matches, and a match on a later page is
+      // still reachable via infinite scroll. Escape LIKE metacharacters.
+      const trimmed = search?.trim();
+      if (trimmed) {
+        const pattern = `%${trimmed.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+        conditions.push(sql`${sessions.title} ILIKE ${pattern}`);
+      }
       if (status && status !== 'all') {
         conditions.push(eq(sessions.status, status));
       } else if (!includeEval) {

@@ -2,7 +2,7 @@
  * Session routes — /api/sessions
  *
  * POST   /api/sessions                                — 创建新会话
- * GET    /api/sessions                                — 获取会话列表（支持status/limit/offset/include_eval筛选）
+ * GET    /api/sessions                                — 获取会话列表（支持status/limit/offset/include_eval/tag_id/q(标题搜索)筛选）
  * GET    /api/sessions/:id                             — 获取会话详情（含消息列表和token用量统计）
  * PATCH  /api/sessions/:id                             — 更新会话（status/rating/comment/title）
  * GET    /api/sessions/:id/context                      — 读取结构化会话上下文
@@ -159,6 +159,9 @@ const sessions = new Hono<AppEnv>()
     const offset = parseInt(c.req.query('offset') ?? '0', 10);
     const includeEval = c.req.query('include_eval') === '1';
     const tagId = c.req.query('tag_id') ? parseInt(c.req.query('tag_id')!, 10) : undefined;
+    // Optional case-insensitive title search — applied in the SQL query below so
+    // limit/offset paginate over matches (a hit on a later page stays reachable).
+    const search = c.req.query('q')?.trim() || undefined;
     // Optional channel filter (e.g. 'browser' — the extension side panel lists
     // only its own channel). Channel-scoped queries are always self-only.
     const channelQuery = c.req.query('channel') as SessionChannel | undefined;
@@ -166,7 +169,21 @@ const sessions = new Hono<AppEnv>()
     // super sees all; admin/member see only their own + shared sessions
     const userId = channelQuery ? authUser.id : authUser.role === 'super' ? undefined : authUser.id;
 
-    const list = await getDb().sessions.list({ status, limit, offset, includeEval, userId, channel: channelQuery });
+    const list = await getDb().sessions.list({
+      status,
+      limit,
+      offset,
+      includeEval,
+      userId,
+      channel: channelQuery,
+      search,
+    });
+
+    // The shared/organized backfills below fetch by id (bypassing the SQL search
+    // filter), so a search term must be re-applied to them in memory to keep the
+    // result set consistent with the paginated main query.
+    const matchesSearch = (s: SessionRow): boolean =>
+      !search || (s.title ?? '').toLowerCase().includes(search.toLowerCase());
 
     // Sessions shared with the current user (shared_with = me OR __team__).
     // Computed for every role so we can flag "shared with me" rows consistently.
@@ -188,6 +205,7 @@ const sessions = new Hono<AppEnv>()
             // lists that explicitly excluded them).
             if (!s) continue;
             if (status ? s.status !== status : !includeEval && s.status === 'eval') continue;
+            if (!matchesSearch(s)) continue;
             list.push(s);
           }
         }
@@ -212,6 +230,7 @@ const sessions = new Hono<AppEnv>()
           if (!accessible) continue;
           // Mirror the main query's status / eval-visibility filters.
           if (status ? s.status !== status : !includeEval && s.status === 'eval') continue;
+          if (!matchesSearch(s)) continue;
           list.push(s);
         }
         list.sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
