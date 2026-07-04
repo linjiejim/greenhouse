@@ -44,17 +44,24 @@
 }
 
 /* ── Table ── */
+/* Wrapper (injected in markdown.tsx) owns the horizontal scroll; the table fills
+   the width so narrow tables stretch and wide ones scroll instead of overflow. */
+.table-scroll {
+  @apply w-full overflow-x-auto;
+  -webkit-overflow-scrolling: touch;
+}
 .prose-base table,
 .prose-compact table {
   border-collapse: collapse;
-  @apply w-full block overflow-x-auto;
-  -webkit-overflow-scrolling: touch;
+  @apply w-full;
 }
 .prose-base th,
-.prose-compact th,
-.prose-base td,
-.prose-compact td {
+.prose-base td {
   @apply border border-edge px-3 py-2 text-left;
+}
+.prose-compact th,
+.prose-compact td {
+  @apply border border-edge px-3 py-1.5 text-left leading-snug;
 }
 .prose-base th,
 .prose-compact th {
@@ -103,7 +110,7 @@
 .prose-base blockquote {
   @apply my-3;
 }
-.prose-base table {
+.prose-base .table-scroll {
   @apply my-3;
 }
 .prose-base ul,
@@ -139,7 +146,7 @@
 .prose-compact blockquote {
   @apply my-2;
 }
-.prose-compact table {
+.prose-compact .table-scroll {
   @apply my-2;
 }
 .prose-compact ul,

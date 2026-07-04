@@ -297,6 +297,16 @@ function sanitizeMarkdownHtml(html: string): string {
   try {
     const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
     sanitizeMarkdownNode(doc.body);
+    // Wrap each table in a horizontal-scroll container: narrow tables stretch to
+    // fill the width, wide ones scroll instead of overflowing the message (see
+    // .table-scroll in components.css).
+    doc.body.querySelectorAll('table').forEach((table) => {
+      if (table.parentElement?.classList.contains('table-scroll')) return;
+      const wrap = doc.createElement('div');
+      wrap.className = 'table-scroll';
+      table.replaceWith(wrap);
+      wrap.appendChild(table);
+    });
     return doc.body.innerHTML;
   } catch {
     return sanitizeHtml(html);
