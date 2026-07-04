@@ -18,6 +18,7 @@
 
 import type { DatabaseProvider } from '@greenhouse/db';
 import type { AgentProfile } from '../profile.js';
+import type { ExtensionToolCategory } from './category-extensions.js';
 
 // ─── Metadata ────────────────────────────────────────────
 
@@ -29,8 +30,12 @@ import type { AgentProfile } from '../profile.js';
  *   proxy/MCP-exposed; gated by role at resolution AND at execution.
  * (Distinct from profile-manifest `level` — that's per-profile visibility, not
  * per-tool audience — and from `users.role`, an identity, not an audience.)
+ *
+ * A downstream fork may add private audience values via `ExtensionToolCategory`
+ * (category-extensions.ts, ships `never`) — widening this union WITHOUT editing
+ * this file, the same seam contract as EXTENSION_TOOL_MODULES.
  */
-export type ToolCategory = 'public' | 'team' | 'super';
+export type ToolCategory = 'public' | 'team' | 'super' | ExtensionToolCategory;
 
 /**
  * Functional domain a tool belongs to — the axis the UI groups by. This is
