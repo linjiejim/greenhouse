@@ -100,3 +100,18 @@ jobs:
         run: pnpm test:e2e:ci
         env:
           DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
+
+  # Secret scanning (gitleaks) — blocks newly-leaked credentials on every PR/push.
+  # Rules + allowlist live in .gitleaks.toml at the repo root. Full history was
+  # verified clean once locally; this gate scans incoming commits. Public repo, so
+  # gitleaks-action needs no license key.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so gitleaks can diff commit / PR ranges
+      - name: Scan for leaked secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

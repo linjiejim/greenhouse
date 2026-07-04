@@ -1,0 +1,29 @@
+# gitleaks config — secret scanning for CI (see .github/workflows/quality-gate.yml)
+# and local runs (`gitleaks detect`). Extends the built-in ruleset; the allowlist
+# below only covers KNOWN non-secrets. Keep it surgical — an over-broad allowlist
+# silently defeats the scanner. Add an entry only when you've confirmed the match
+# is not a live credential, and say why.
+
+title = "greenhouse secret-scan"
+
+[extend]
+# Keep every built-in gitleaks rule; only add exceptions below.
+useDefault = true
+
+[allowlist]
+description = "Confirmed non-secrets: token alphabets + intentional test/example credentials"
+
+# Matched against the captured secret value (default target).
+regexes = [
+  # Draft-token charset in apps/api/src/email/security.ts — a Crockford-style
+  # base32 alphabet used to GENERATE single-use tokens, not a key itself.
+  '''ABCDEFGHJKLMNPQRSTUVWXYZ23456789''',
+]
+
+# Matched against the file path. These paths hold deliberately-committed demo /
+# test credentials (documented + excluded from the audit's leak criteria).
+paths = [
+  '''data/examples/.*''',              # seed/demo users.json + its README
+  '''tests/e2e-ui/fixtures\.ts''',     # browser e2e test account password
+  '''tests/e2e/.*''',                  # e2e helper + *.test.ts fixture passwords
+]
