@@ -16,11 +16,15 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
-import { handleStreamEvent } from '../../src/shared/greenhouse-types';
+import { handleStreamEvent, type SessionTag } from '../../src/shared/greenhouse-types';
 import { getSession, deleteSession } from '../../src/api/sessions';
+import { removeTagFromSession } from '../../src/api/session-tags';
 import { streamChat } from '../../src/api/chat';
 import { prepareImage, uploadImage } from '../../src/api/upload';
 import { Composer, type Annotation, type ComposerImage } from '../../src/chat/composer';
+import { TagChip } from '../../src/chat/tag-chip';
+import { TagSelectorSheet } from '../../src/chat/tag-selector-sheet';
+import { TagManagerSheet } from '../../src/chat/tag-manager-sheet';
 import {
   AiMessage,
   UserMessage,
@@ -35,8 +39,8 @@ import {
 import { catLabel } from '../../src/lib/format';
 import { useT } from '../../src/lib/i18n';
 import { useBottomPadStyle, useCollapsingInsetStyle } from '../../src/lib/keyboard';
-import { ActionSheet, type ActionItem, BottomSheetScrollView, Caret, Icon, Sheet, Toast, Touchable } from '../../src/ui';
-import { makeStyles, radius, useTheme } from '../../src/theme';
+import { ActionSheet, type ActionItem, BottomSheetScrollView, Icon, ScreenHeader, Sheet, Tile, Toast, Touchable } from '../../src/ui';
+import { font, makeStyles, radius, useTheme } from '../../src/theme';
 
 let seq = 0;
 const nextId = () => `m${Date.now()}-${seq++}`;
@@ -58,6 +62,7 @@ export default function Conversation() {
   const sessionId = String(params.id);
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const readOnly = params.ro === '1';
 
   const aiActions = useMemo<ActionItem[]>(
     () => [
@@ -77,15 +82,17 @@ export default function Conversation() {
     ],
     [t],
   );
-  const headerActions = useMemo<ActionItem[]>(
-    () => [
+  const headerActions = useMemo<ActionItem[]>(() => {
+    const items: ActionItem[] = [
       { id: 'share', label: t('chat.actionShare'), icon: 'share' },
+      { id: 'tags', label: t('chat.actionTags'), icon: 'tag' },
       { id: 'rename', label: t('chat.actionRename'), icon: 'pen' },
       { id: 'export', label: t('chat.actionExport'), icon: 'download' },
       { id: 'del', label: t('chat.actionDelete'), icon: 'trash', danger: true },
-    ],
-    [t],
-  );
+    ];
+    // Read-only (shared / non-owned) sessions can't be written — hide tag editing.
+    return readOnly ? items.filter((i) => i.id !== 'tags') : items;
+  }, [t, readOnly]);
 
   const rootPad = useBottomPadStyle(0);
   const barInset = useCollapsingInsetStyle(Math.max(insets.bottom, 8));
@@ -108,8 +115,9 @@ export default function Conversation() {
   const [menuMsg, setMenuMsg] = useState<ChatMessage | null>(null);
   const [headMenu, setHeadMenu] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-
-  const readOnly = params.ro === '1';
+  const [sessionTags, setSessionTags] = useState<SessionTag[]>([]);
+  const [tagSel, setTagSel] = useState(false);
+  const [tagMgr, setTagMgr] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
   const followRef = useRef(true);
@@ -258,6 +266,7 @@ export default function Conversation() {
       const data = await getSession(sessionId);
       if (!alive || !data) return;
       if (data.session?.title) setTitle(data.session.title);
+      setSessionTags(data.session?.tags ?? (data as { tags?: SessionTag[] }).tags ?? []);
       const hist = (data.messages || [])
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map(fromStored);
@@ -388,6 +397,8 @@ export default function Conversation() {
       if (id === 'del') {
         deleteSession(sessionId).catch(() => {});
         router.back();
+      } else if (id === 'tags') {
+        setTagSel(true);
       } else {
         flash(t('common.comingSoon'));
       }
@@ -395,25 +406,38 @@ export default function Conversation() {
     [sessionId, router, flash, t],
   );
 
+  const removeTag = useCallback(
+    async (tag: SessionTag) => {
+      setSessionTags((prev) => prev.filter((x) => x.id !== tag.id));
+      await removeTagFromSession(sessionId, tag.id);
+    },
+    [sessionId],
+  );
+
   return (
     <Animated.View style={[styles.root, rootPad]}>
       {/* header */}
-      <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
-        <Touchable haptic="none" onPress={() => router.back()} style={styles.headerBtn} hitSlop={8}>
-          <Icon name="back" size={22} color={c.fg} />
-        </Touchable>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text numberOfLines={1} style={[styles.headerTitle, titleStreaming && { opacity: 0.5 }]}>
-              {title}
-            </Text>
-            {titleStreaming ? <Caret size={14} /> : null}
+      <View style={{ paddingTop: insets.top + 4, backgroundColor: c.bg }}>
+        <ScreenHeader
+          variant="compact"
+          title={title}
+          subtitle={readOnly ? t('chat.sharedReadOnly') : undefined}
+          titleStreaming={titleStreaming}
+          onLeading={() => router.back()}
+          bordered
+          right={
+            <Touchable haptic="none" onPress={() => setHeadMenu(true)} style={styles.headerBtn} hitSlop={8}>
+              <Icon name="more" size={22} color={c.fg} />
+            </Touchable>
+          }
+        />
+        {sessionTags.length ? (
+          <View style={styles.tagBar}>
+            {sessionTags.map((tag) => (
+              <TagChip key={tag.id} tag={tag} onRemove={readOnly ? undefined : () => removeTag(tag)} />
+            ))}
           </View>
-          {readOnly ? <Text style={styles.headerSub}>{t('chat.sharedReadOnly')}</Text> : null}
-        </View>
-        <Touchable haptic="none" onPress={() => setHeadMenu(true)} style={styles.headerBtn} hitSlop={8}>
-          <Icon name="more" size={22} color={c.fg} />
-        </Touchable>
+        ) : null}
       </View>
 
       {/* messages */}
@@ -551,9 +575,7 @@ export default function Conversation() {
               pressedStyle={{ opacity: 0.7 }}
               style={[styles.attachRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.hairline }]}
             >
-              <View style={styles.attachIcon}>
-                <Icon name={o.icon} size={20} color={c.accentDeep} />
-              </View>
+              <Tile icon={o.icon} size={38} iconSize={20} />
               <Text style={styles.attachLabel}>{o.label}</Text>
             </Touchable>
           ))}
@@ -567,6 +589,19 @@ export default function Conversation() {
         onPick={onMenuPick}
       />
       <ActionSheet visible={headMenu} onClose={() => setHeadMenu(false)} items={headerActions} onPick={onHeaderPick} />
+
+      <TagSelectorSheet
+        visible={tagSel}
+        onClose={() => setTagSel(false)}
+        sessionId={sessionId}
+        sessionTags={sessionTags}
+        onChange={setSessionTags}
+        onManage={() => {
+          setTagSel(false);
+          setTagMgr(true);
+        }}
+      />
+      <TagManagerSheet visible={tagMgr} onClose={() => setTagMgr(false)} />
 
       {toast ? (
         <View style={styles.toastWrap} pointerEvents="none">
@@ -590,8 +625,9 @@ const useStyles = makeStyles((c) => ({
     backgroundColor: c.bg,
   },
   headerBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: c.fg, maxWidth: 240 },
-  headerSub: { fontSize: 11.5, color: c.fgMuted, marginTop: 1 },
+  tagBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingTop: 8, paddingBottom: 2, backgroundColor: c.bg },
+  headerTitle: { fontSize: font.title, fontWeight: '700', color: c.fg, maxWidth: 240 },
+  headerSub: { fontSize: font.caption, color: c.fgMuted, marginTop: 1 },
 
   jumpWrap: { position: 'absolute', left: 0, right: 0, bottom: 150, alignItems: 'center' },
   jumpBtn: {
@@ -610,7 +646,7 @@ const useStyles = makeStyles((c) => ({
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
-  jumpText: { fontSize: 13, fontWeight: '600', color: c.fgSecondary },
+  jumpText: { fontSize: font.small, fontWeight: '600', color: c.fgSecondary },
 
   readonlyWrap: { paddingHorizontal: 14, paddingTop: 8, backgroundColor: c.bg },
   readonly: {
@@ -624,13 +660,13 @@ const useStyles = makeStyles((c) => ({
     borderColor: c.hairline,
     borderRadius: radius.xl,
   },
-  readonlyText: { fontSize: 14, color: c.fgMuted },
+  readonlyText: { fontSize: font.label, color: c.fgMuted },
 
   srcMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   srcBadge: { backgroundColor: c.accentTint, paddingVertical: 3, paddingHorizontal: 9, borderRadius: radius.full },
-  srcBadgeText: { fontSize: 12.5, fontWeight: '600', color: c.accentDeep },
-  srcTitle: { fontSize: 19, fontWeight: '700', color: c.fg, lineHeight: 27, marginBottom: 12 },
-  srcBody: { fontSize: 15, lineHeight: 25, color: c.fgSecondary },
+  srcBadgeText: { fontSize: font.caption, fontWeight: '600', color: c.accentDeep },
+  srcTitle: { fontSize: font.heading, fontWeight: '700', color: c.fg, lineHeight: 27, marginBottom: 12 },
+  srcBody: { fontSize: font.body, lineHeight: 25, color: c.fgSecondary },
   srcAsk: {
     marginTop: 22,
     flexDirection: 'row',
@@ -643,11 +679,11 @@ const useStyles = makeStyles((c) => ({
     borderWidth: 1,
     borderColor: c.accentBorder,
   },
-  srcAskText: { fontSize: 15, fontWeight: '600', color: c.accentDeep },
+  srcAskText: { fontSize: font.body, fontWeight: '600', color: c.accentDeep },
 
   attachRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 15 },
   attachIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: c.accentTint, alignItems: 'center', justifyContent: 'center' },
-  attachLabel: { fontSize: 16, fontWeight: '500', color: c.fg },
+  attachLabel: { fontSize: font.title, fontWeight: '500', color: c.fg },
 
   toastWrap: { position: 'absolute', left: 0, right: 0, bottom: 120, alignItems: 'center' },
 }));

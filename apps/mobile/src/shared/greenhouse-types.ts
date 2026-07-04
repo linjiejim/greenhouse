@@ -61,7 +61,10 @@ export interface Session {
 export interface SessionTag {
   id: number;
   name: string;
-  color?: string | null;
+  /** Hex color (DB default #6B7280). Always present on API responses. */
+  color: string;
+  /** Ordering within the tag library; present on the full row, omitted on the inline session copy. */
+  sort_order?: number;
 }
 
 export interface Message {

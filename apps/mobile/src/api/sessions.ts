@@ -7,12 +7,23 @@ import { api, apiJson } from './client';
 
 export type { Session, Message, Profile };
 
-/** List active sessions. Pass {limit, offset} to page (backend supports both). */
-export async function listSessions(opts?: { limit?: number; offset?: number }): Promise<Session[]> {
+/**
+ * List active sessions. Pass {limit, offset} to page (backend supports both).
+ * `search` filters by title server-side (case-insensitive substring) so a match
+ * on an unloaded page is still reachable via pagination.
+ */
+export async function listSessions(opts?: {
+  limit?: number;
+  offset?: number;
+  tagId?: number | null;
+  search?: string;
+}): Promise<Session[]> {
   const limit = opts?.limit ?? 200;
   const offset = opts?.offset ?? 0;
+  const tag = opts?.tagId != null ? `&tag_id=${opts.tagId}` : '';
+  const q = opts?.search ? `&q=${encodeURIComponent(opts.search)}` : '';
   const data = await apiJson<{ sessions: Session[] }>(
-    `/api/sessions?status=active&limit=${limit}&offset=${offset}`,
+    `/api/sessions?status=active&limit=${limit}&offset=${offset}${tag}${q}`,
     { sessions: [] },
   );
   return data.sessions ?? [];

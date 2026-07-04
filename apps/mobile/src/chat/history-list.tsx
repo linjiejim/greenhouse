@@ -1,6 +1,8 @@
 /**
  * Shared conversation-history pieces:
- *  - `useSessions`  — paginated session loader (infinite scroll; dedupes pages).
+ *  - `useSessions`  — paginated session loader (infinite scroll; dedupes pages;
+ *                     optional server-side tag filter + debounced title search,
+ *                     both hard-reset pagination on change).
  *  - `HistoryRow`   — compact row: title (left) + relative time (right), tags on a
  *                     second line, no leading avatar/icon. Used by the drawer
  *                     section and the full-screen history sheet.
@@ -14,42 +16,86 @@ import { listSessions } from '../api/sessions';
 import type { Session } from '../shared/greenhouse-types';
 import { shortTime } from '../lib/format';
 import { useT } from '../lib/i18n';
-import { makeStyles, radius, useTheme } from '../theme';
+import { font, makeStyles, useTheme } from '../theme';
 import { Icon, Spinner, Touchable } from '../ui';
+import { TagChip } from './tag-chip';
 
 /* ----------------------------- pagination hook ----------------------------- */
 
-export function useSessions(enabled: boolean, pageSize = 20) {
+export function useSessions(enabled: boolean, pageSize = 20, tagId: number | null = null, search = '') {
   const [items, setItems] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const offset = useRef(0);
   const busy = useRef(false);
+  const doneRef = useRef(false);
+  const tagRef = useRef<number | null>(tagId);
+  const searchRef = useRef(search);
 
   const loadMore = useCallback(async () => {
-    if (busy.current || done) return;
+    if (busy.current || doneRef.current) return;
     busy.current = true;
     setLoading(true);
-    const batch = await listSessions({ limit: pageSize, offset: offset.current });
+    const forTag = tagRef.current;
+    const forSearch = searchRef.current;
+    const batch = await listSessions({ limit: pageSize, offset: offset.current, tagId: forTag, search: forSearch || undefined });
+    // The tag filter or search term changed while this page was in flight — discard it.
+    if (tagRef.current !== forTag || searchRef.current !== forSearch) {
+      busy.current = false;
+      setLoading(false);
+      return;
+    }
     setItems((prev) => {
       const seen = new Set(prev.map((p) => p.id));
       return [...prev, ...batch.filter((b) => !seen.has(b.id))];
     });
     offset.current += batch.length;
-    if (batch.length < pageSize) setDone(true);
+    if (batch.length < pageSize) {
+      doneRef.current = true;
+      setDone(true);
+    }
     busy.current = false;
     setLoading(false);
-  }, [pageSize, done]);
+  }, [pageSize]);
 
   // Kick off the first page once the surface becomes visible.
   useEffect(() => {
-    if (enabled && items.length === 0 && !done && !busy.current) void loadMore();
+    if (enabled && items.length === 0 && !doneRef.current && !busy.current) void loadMore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
-  const removeItem = useCallback((id: string) => setItems((it) => it.filter((x) => x.id !== id)), []);
+  // Debounce the search term so typing doesn't fire a request per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(id);
+  }, [search]);
 
-  return { items, loading, done, loadMore, removeItem };
+  // Tag filter or search change → hard reset + reload (skips the initial mount).
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    tagRef.current = tagId;
+    searchRef.current = debouncedSearch;
+    offset.current = 0;
+    doneRef.current = false;
+    busy.current = false;
+    setDone(false);
+    setItems([]);
+    if (enabled) void loadMore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagId, debouncedSearch]);
+
+  const removeItem = useCallback((id: string) => setItems((it) => it.filter((x) => x.id !== id)), []);
+  const updateItem = useCallback(
+    (id: string, patch: Partial<Session>) => setItems((it) => it.map((x) => (x.id === id ? { ...x, ...patch } : x))),
+    [],
+  );
+
+  return { items, loading, done, loadMore, removeItem, updateItem };
 }
 
 /* ----------------------------- compact row ----------------------------- */
@@ -84,13 +130,8 @@ export function HistoryRow({
       </View>
       {tags.length ? (
         <View style={styles.tags}>
-          {tags.map((t) => (
-            <View key={t.id} style={styles.tagChip}>
-              {t.color ? <View style={[styles.tagDot, { backgroundColor: t.color }]} /> : null}
-              <Text numberOfLines={1} style={styles.tagText}>
-                {t.name}
-              </Text>
-            </View>
+          {tags.map((tag) => (
+            <TagChip key={tag.id} tag={tag} />
           ))}
         </View>
       ) : null}
@@ -146,28 +187,16 @@ export function DrawerHistory({ onOpen, onViewAll }: { onOpen: (s: Session) => v
 const useStyles = makeStyles((c) => ({
   row: { paddingHorizontal: 16, paddingVertical: 9 },
   top: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { flex: 1, fontSize: 14, fontWeight: '500', color: c.fg },
-  time: { fontSize: 11.5, color: c.fgFaint, flexShrink: 0 },
+  title: { flex: 1, fontSize: font.label, fontWeight: '500', color: c.fg },
+  time: { fontSize: font.caption, color: c.fgFaint, flexShrink: 0 },
   tags: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
-  tagChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: c.surfaceMuted,
-    borderRadius: radius.full,
-    paddingVertical: 2,
-    paddingHorizontal: 7,
-    maxWidth: 130,
-  },
-  tagDot: { width: 6, height: 6, borderRadius: 3 },
-  tagText: { fontSize: 11, fontWeight: '600', color: c.fgMuted },
 
   secHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 },
-  secTitle: { flex: 1, fontSize: 12.5, fontWeight: '700', color: c.fgMuted, letterSpacing: 0.3 },
+  secTitle: { flex: 1, fontSize: font.caption, fontWeight: '700', color: c.fgMuted, letterSpacing: 0.3 },
   more: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  moreText: { fontSize: 12.5, color: c.accent, fontWeight: '600' },
+  moreText: { fontSize: font.caption, color: c.accent, fontWeight: '600' },
 
   center: { paddingTop: 24, alignItems: 'center' },
-  empty: { paddingHorizontal: 16, paddingTop: 18, fontSize: 13, color: c.fgFaint },
+  empty: { paddingHorizontal: 16, paddingTop: 18, fontSize: font.small, color: c.fgFaint },
   footLoad: { paddingVertical: 16, alignItems: 'center' },
 }));
