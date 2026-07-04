@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { createToolRegistry } from '../../agent.js';
 import { STATIC_TOOL_MODULES, LAZY_TOOL_MODULES, getAllToolIds, getToolMeta, TOOL_DEFINITIONS } from '../registry.js';
+import { EXTENSION_TOOL_MODULES } from '../extensions.js';
 import { LAZY_TOOL_IDS } from '../../agent-runtime/tool-resolution.js';
 import type { DatabaseProvider } from '@greenhouse/db';
 
@@ -71,7 +72,10 @@ describe('lazy catalog + per-request construction (guard)', () => {
   });
 
   it('lazy catalog matches the known per-request tool set (behavior lock)', () => {
-    const KNOWN_LAZY = [
+    // Behavior lock on CORE lazy tools. A downstream fork's lazy tools flow in
+    // via EXTENSION_TOOL_MODULES (the seam) and are checked for presence below,
+    // NOT hand-listed here — so a fork never edits this list on sync.
+    const KNOWN_CORE_LAZY = [
       'feature_request',
       'project_manager',
       'email_manager',
@@ -87,7 +91,8 @@ describe('lazy catalog + per-request construction (guard)', () => {
       'call_llm',
       'admin_analytics',
     ];
-    expect(LAZY_TOOL_MODULES.map((m) => m.meta.id).sort()).toEqual([...KNOWN_LAZY].sort());
+    const extensionLazy = EXTENSION_TOOL_MODULES.filter((m) => m.kind === 'lazy').map((m) => m.meta.id);
+    expect(LAZY_TOOL_MODULES.map((m) => m.meta.id).sort()).toEqual([...KNOWN_CORE_LAZY, ...extensionLazy].sort());
   });
 
   it('static and lazy id sets are disjoint and together cover the catalog', () => {
