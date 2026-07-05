@@ -10,6 +10,10 @@
 /* The shared UI kit's components live outside this app — scan them too so the
    utility classes they use survive Tailwind's tree-shaking. */
 @source "../../../packages/ui/src/**/*.{tsx,ts}";
+/* Same reason: the CRUD framework's components (CrudForm/CrudPage/...) live
+   outside this app too — without this, classes only used there (e.g. the
+   unprefixed `col-span-4` a schema field falls back to) are silently dropped. */
+@source "../../../packages/crud/src/**/*.{tsx,ts}";
 
 /* ─── Custom dark variant: driven by .dark-theme class ─── */
 @custom-variant dark (&:where(.dark-theme, .dark-theme *));
