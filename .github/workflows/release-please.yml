@@ -22,8 +22,16 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      # A tag pushed by the default GITHUB_TOKEN does NOT cascade to other workflows
+      # (GitHub's recursion guard), so release.yml's `on: push: tags` never fires for
+      # a release-please tag. A PAT (RELEASE_PLEASE_TOKEN, contents+PRs write) makes
+      # the tag push trigger release.yml → stable image + browser zip, automatically.
+      # Falls back to GITHUB_TOKEN when the secret is absent: releases still tag &
+      # publish notes, but the stable artifacts must then be published by re-pushing
+      # the tag manually (RELEASING.md → "Publishing stable artifacts"). Add the PAT
+      # to make releases fully hands-off.
       - uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json

@@ -50,6 +50,23 @@ for people who want to test the tip and understand it can break.
 Pushes to `main` (no tag) run the same `release.yml` but only publish the `:edge` /
 `:main-<sha>` image — never `:latest`, never a Release asset.
 
+### Publishing stable artifacts — the tag→`release.yml` trigger needs a PAT
+
+Step 4 only fires automatically if release-please tags with a **PAT**. A tag created
+by the default `GITHUB_TOKEN` does **not** cascade to trigger `release.yml` (GitHub's
+recursion guard). Add a fine-grained PAT with **contents: write** + **pull-requests:
+write** as the `RELEASE_PLEASE_TOKEN` secret — release-please uses it
+(`secrets.RELEASE_PLEASE_TOKEN || GITHUB_TOKEN`) and step 4 becomes hands-off.
+
+**Without the PAT**, the Release + tag are still created, but you must publish the
+stable image + browser zip by re-pushing the tag from a machine with normal push
+rights (a `GITHUB_TOKEN`-free push *does* cascade):
+
+```bash
+git push origin :refs/tags/vX.Y.Z && git push origin vX.Y.Z  # re-push → fires release.yml
+gh release edit vX.Y.Z --draft=false --latest                # deleting a tag drafts its Release; re-publish it
+```
+
 ### Cutting a pre-release
 
 Land the commits, then let release-please propose the version; to force an `-rc`,
