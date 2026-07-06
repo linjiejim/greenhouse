@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://greenhouse.linjiejim.com"><img alt="Website" src="https://img.shields.io/badge/website-greenhouse.linjiejim.com-0d9488"></a>
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0d9488.svg"></a>
+  <a href="https://github.com/linjiejim/greenhouse/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/linjiejim/greenhouse?color=0d9488"></a>
   <a href="https://github.com/linjiejim/greenhouse/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/linjiejim/greenhouse/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/linjiejim/greenhouse/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/linjiejim/greenhouse?style=social"></a>
 </p>
@@ -147,6 +148,32 @@ docker compose exec api pnpm admin:create          # create the first super-admi
 ```
 
 The app is then at http://localhost:3000.
+
+## Releases & stability
+
+**Use a tagged release in production.** Two channels, and they are not equally
+stable:
+
+| You want… | Use | Stability |
+|---|---|---|
+| A version to run in production | A **tagged release** `vX.Y.Z` — [Releases](https://github.com/linjiejim/greenhouse/releases) · image `ghcr.io/linjiejim/greenhouse:X.Y.Z` (or `:X.Y`, `:latest`) | **Stable** — a cut we stand behind |
+| The bleeding edge / to test `main` | `ghcr.io/linjiejim/greenhouse:edge` (or `:main-<sha>`) | **Unstable** — CI builds off `main`; may break between releases |
+
+`:latest` always points at the newest **stable** release — never at `main`.
+Every release is stamped: `GET /health` returns the `version` + commit `revision`
+the running build was cut from, so a bug report can be matched to exact code.
+
+Pull and run a specific release:
+
+```bash
+# In docker-compose.yml, replace `build: .` with:
+#   image: ghcr.io/linjiejim/greenhouse:0.1.0
+docker compose up -d
+```
+
+The **browser extension** is attached to each Release as
+`greenhouse-bridge-vX.Y.Z.zip` (unzip → Chrome → "Load unpacked", or submit to the
+Web Store). Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
 
 ## Configuration
 

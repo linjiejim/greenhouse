@@ -73,10 +73,20 @@ These are enforced in review (full detail in `AGENTS.md`):
 
 ## Pull requests
 
+`main` is the integration branch (trunk): branch → PR → review → merge. It is
+protected — CI must be green and at least one review is required before merge.
+
 1. Branch off `main`, keep the PR focused and small where you can.
 2. Fill in the PR template checklist.
 3. Link the issue it addresses (`Closes #123`).
 4. Make sure the quality gates above are green.
+
+**PRs are squash-merged, and the squash commit must be a
+[Conventional Commit](https://www.conventionalcommits.org/)** (`feat(web): …`,
+`fix(api:export): …`) — that one line per PR is what drives automated versioning
+and the changelog. `feat` → minor bump, `fix` → patch (pre-1.0). See
+[RELEASING.md](./RELEASING.md) for how a release is cut; you don't need to touch
+`CHANGELOG.md` or any `version` field — release automation handles both.
 
 ## Reporting issues
 

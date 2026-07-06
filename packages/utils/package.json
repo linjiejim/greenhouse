@@ -40,6 +40,10 @@
       "import": "./src/brand.ts",
       "types": "./src/brand.ts"
     },
+    "./version": {
+      "import": "./src/version.ts",
+      "types": "./src/version.ts"
+    },
     "./id": {
       "import": "./src/id.ts",
       "types": "./src/id.ts"

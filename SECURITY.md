@@ -7,8 +7,19 @@ take security reports seriously.
 
 ## Supported versions
 
-The project is pre-1.0 and moves fast. Security fixes land on the latest `main`
-(current `0.1.x`). Please reproduce against `main` before reporting.
+Greenhouse is pre-1.0 and moves fast. Security fixes land on the **latest stable
+release line** and on `main`. Only tagged releases are considered stable — the
+`edge` / `main` builds are unstable by design (see the README
+["Releases & stability"](./README.md#releases--stability) and
+[RELEASING.md](./RELEASING.md)).
+
+| Version | Supported |
+|---|---|
+| Latest `0.1.x` tagged release | ✅ |
+| Older tags | ❌ — upgrade to the latest release |
+| `main` / `:edge` (unreleased tip) | ⚠️ unstable; fine to reproduce & report against |
+
+Please reproduce against the latest release (or `main`) before reporting.
 
 ## Reporting a vulnerability
 

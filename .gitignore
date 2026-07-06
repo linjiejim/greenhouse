@@ -15,6 +15,9 @@ tests/e2e-ui/.auth/
 # Build output
 dist/
 
+# Packaged browser extension (built by `pnpm -F @greenhouse/browser package`)
+apps/browser/*.zip
+
 # CLI build artifacts (CLI runs via tsx on .ts sources directly)
 apps/cli/src/*.js
 
