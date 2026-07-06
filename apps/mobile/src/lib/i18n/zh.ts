@@ -27,6 +27,8 @@ export const zh: Catalog = {
     title: '今天想做点什么？',
     subtitle: '问我任何关于知识库或团队的事',
     knowledge: '知识库',
+    projects: '项目',
+    history: '历史会话',
     heroPlaceholder: '问点什么…',
   },
   chat: {
@@ -69,7 +71,6 @@ export const zh: Catalog = {
     searchPlaceholder: '搜索会话…',
     empty: '还没有会话',
     emptySearch: '没有匹配的会话',
-    viewMore: '查看更多',
     deleteConfirm: '删除这个会话？',
     delete: '删除',
     shared: '分享',
@@ -106,6 +107,9 @@ export const zh: Catalog = {
     fallbackName: '用户',
   },
   drawer: {
+    knowledge: '知识库',
+    projects: '项目',
+    history: '历史会话',
     settings: '设置',
     logout: '退出登录',
   },

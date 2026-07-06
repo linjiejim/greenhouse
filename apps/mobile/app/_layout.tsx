@@ -80,6 +80,7 @@ export default function RootLayout() {
               <Stack.Screen name="(drawer)" />
               <Stack.Screen name="login" />
               <Stack.Screen name="chat/[id]" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="history/index" options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="knowledge/index" options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="knowledge/[slug]" options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />

@@ -1,15 +1,16 @@
 /**
- * Home — the AI-first hero and app entry. A clean top bar (☰ burger left; agent +
- * 知识库 pills right), a "今天想做点什么？" headline, and the composer in the thumb
- * zone. Typing + sending starts a new conversation (no "+ new").
+ * Home — the AI-first hero and app entry. A clean top bar (☰ burger left; a
+ * history / 知识库 / 项目 icon group right), a "今天想做点什么？" headline, and the
+ * composer in the thumb zone. The agent-profile picker now lives on the composer
+ * (a trigger above the input). Typing + sending starts a new conversation.
  *
  * The ☰ burger — and a left edge-swipe — open the native left drawer (account +
- * history + 设置 + 退出); its contents live in HomeDrawerContent, wired by the
- * drawer group layout (app/(drawer)/_layout.tsx).
+ * navigation directory + 设置 + 退出); its contents live in HomeDrawerContent,
+ * wired by the drawer group layout (app/(drawer)/_layout.tsx).
  */
 
 import React, { useCallback, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Alert, ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,12 +18,13 @@ import { useAuth } from '../../src/store/auth';
 import { usePrefs } from '../../src/store/prefs';
 import { createSession } from '../../src/api/sessions';
 import { Composer } from '../../src/chat/composer';
+import { HistorySheet, type OpenConversation } from '../../src/chat/history-sheet';
 import { ProfileSheet, useProfileName } from '../../src/chat/profile-sheet';
 import { greeting } from '../../src/lib/format';
 import { useT } from '../../src/lib/i18n';
 import { useBottomPadStyle, useCollapsingInsetStyle } from '../../src/lib/keyboard';
-import { Icon, SproutyFace, Touchable } from '../../src/ui';
-import { font, makeStyles, radius, shadow, useTheme } from '../../src/theme';
+import { Icon, IconName, SproutyFace, Touchable } from '../../src/ui';
+import { font, makeStyles, useTheme } from '../../src/theme';
 
 export default function Home() {
   const { colors: c } = useTheme();
@@ -42,6 +44,7 @@ export default function Home() {
 
   const [input, setInput] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const rootPad = useBottomPadStyle(0);
   const barInset = useCollapsingInsetStyle(Math.max(insets.bottom, 8));
@@ -65,25 +68,28 @@ export default function Home() {
     [creating, router, profileId],
   );
 
+  // Top-bar history icon → open a conversation from the popup.
+  const openConversation = useCallback(
+    (conv: OpenConversation) => {
+      setHistoryOpen(false);
+      router.push({ pathname: '/chat/[id]', params: { id: conv.id, title: conv.title, ro: conv.readOnly ? '1' : '0' } });
+    },
+    [router],
+  );
+
   return (
     <Animated.View style={[styles.root, rootPad]}>
       <View style={[styles.inner, { paddingTop: insets.top + 4 }]}>
-        {/* top bar: ☰ burger left; agent + 知识库 pills right */}
+        {/* top bar: ☰ burger left; history / 知识库 / 项目 icon buttons right */}
         <View style={styles.topBar}>
           <Touchable haptic="none" onPress={openDrawer} style={styles.burger} hitSlop={6}>
             <Icon name="menu" size={24} color={c.fg} sw={2} />
           </Touchable>
           <View style={{ flex: 1 }} />
-          <Touchable onPress={() => setProfileOpen(true)} style={styles.pill} pressedStyle={{ opacity: 0.7 }}>
-            <Icon name="sparkle" size={15} color={c.accent} />
-            <Text numberOfLines={1} style={[styles.pillLabel, { maxWidth: 120 }]}>
-              {profileName ?? t('profile.title')}
-            </Text>
-          </Touchable>
-          <Touchable onPress={() => router.push('/knowledge')} style={styles.pill} pressedStyle={{ opacity: 0.7 }}>
-            <Icon name="book" size={15} color={c.accent} />
-            <Text style={styles.pillLabel}>{t('home.knowledge')}</Text>
-          </Touchable>
+          <TopIcon icon="clock" label={t('home.history')} onPress={() => setHistoryOpen(true)} />
+          <TopIcon icon="book" label={t('home.knowledge')} onPress={() => router.push('/knowledge')} />
+          {/* 项目管理属需求 6，本任务只占位入口 */}
+          <TopIcon icon="folder" label={t('home.projects')} onPress={() => Alert.alert(t('common.comingSoon'))} />
         </View>
 
         {/* hero */}
@@ -98,7 +104,7 @@ export default function Home() {
           <Text style={styles.sub}>{t('home.subtitle')}</Text>
         </ScrollView>
 
-        {/* composer — full-width flat bar at the bottom */}
+        {/* composer — full-width flat bar at the bottom; agent picker above the input */}
         <Composer
           hero
           autoFocus={compose === '1'}
@@ -108,11 +114,25 @@ export default function Home() {
           onSend={() => input.trim() && startChat(input.trim())}
           onAttach={() => {}}
           onMic={() => {}}
+          profileName={profileName ?? t('profile.title')}
+          onPickProfile={() => setProfileOpen(true)}
         />
       </View>
 
       <ProfileSheet visible={profileOpen} onClose={() => setProfileOpen(false)} />
+      <HistorySheet visible={historyOpen} onClose={() => setHistoryOpen(false)} onOpen={openConversation} />
     </Animated.View>
+  );
+}
+
+/** A round icon button for the Home top bar (comfortable hit area + a11y label). */
+function TopIcon({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  return (
+    <Touchable onPress={onPress} style={styles.iconBtn} pressedStyle={{ opacity: 0.6 }} hitSlop={6} accessibilityLabel={label}>
+      <Icon name={icon} size={22} color={c.fg} sw={1.9} />
+    </Touchable>
   );
 }
 
@@ -128,20 +148,7 @@ const useStyles = makeStyles((c) => ({
     minHeight: 44,
   },
   burger: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 7,
-    paddingLeft: 11,
-    paddingRight: 13,
-    borderRadius: radius.full,
-    backgroundColor: c.surface,
-    borderWidth: 1,
-    borderColor: c.hairline,
-    ...shadow.card,
-  },
-  pillLabel: { fontSize: font.small, fontWeight: '600', color: c.fgSecondary },
+  iconBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   hero: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 16 },
   greeting: { fontSize: font.body, color: c.fgSecondary, fontWeight: '500', marginBottom: 10 },
   title: { fontSize: font.display, fontWeight: '700', color: c.fg, lineHeight: 38, letterSpacing: -0.5 },
