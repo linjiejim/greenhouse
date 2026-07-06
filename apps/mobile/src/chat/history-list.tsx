@@ -4,20 +4,18 @@
  *                     optional server-side tag filter + debounced title search,
  *                     both hard-reset pagination on change).
  *  - `HistoryRow`   — compact row: title (left) + relative time (right), tags on a
- *                     second line, no leading avatar/icon. Used by the drawer
- *                     section and the full-screen history sheet.
- *  - `DrawerHistory`— the drawer's embedded "历史会话" section: a section header
- *                     with a "查看更多" link over an infinite-scroll list.
+ *                     second line, no leading avatar/icon. Used by the shared
+ *                     <HistoryBrowser> (top-bar popup + standalone /history page).
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { listSessions } from '../api/sessions';
 import type { Session } from '../shared/greenhouse-types';
 import { shortTime } from '../lib/format';
 import { useT } from '../lib/i18n';
 import { font, makeStyles, useTheme } from '../theme';
-import { Icon, Spinner, Touchable } from '../ui';
+import { Icon, Touchable } from '../ui';
 import { TagChip } from './tag-chip';
 
 /* ----------------------------- pagination hook ----------------------------- */
@@ -139,64 +137,10 @@ export function HistoryRow({
   );
 }
 
-/* ----------------------------- drawer section ----------------------------- */
-
-export function DrawerHistory({ onOpen, onViewAll }: { onOpen: (s: Session) => void; onViewAll: () => void }) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  const t = useT();
-  const { items, loading, loadMore } = useSessions(true);
-  return (
-    <View style={{ flex: 1 }}>
-      <View style={styles.secHead}>
-        <Text style={styles.secTitle}>{t('history.title')}</Text>
-        <Touchable haptic="none" onPress={onViewAll} style={styles.more} hitSlop={6}>
-          <Text style={styles.moreText}>{t('history.viewMore')}</Text>
-          <Icon name="chevR" size={14} color={c.fgFaint} />
-        </Touchable>
-      </View>
-      <FlatList
-        data={items}
-        keyExtractor={(s) => s.id}
-        renderItem={({ item }) => <HistoryRow session={item} onPress={() => onOpen(item)} />}
-        onEndReached={() => loadMore()}
-        onEndReachedThreshold={0.5}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={
-          loading ? (
-            <View style={styles.center}>
-              <Spinner size={16} />
-            </View>
-          ) : (
-            <Text style={styles.empty}>{t('history.empty')}</Text>
-          )
-        }
-        ListFooterComponent={
-          loading && items.length > 0 ? (
-            <View style={styles.footLoad}>
-              <Spinner size={14} />
-            </View>
-          ) : null
-        }
-      />
-    </View>
-  );
-}
-
 const useStyles = makeStyles((c) => ({
   row: { paddingHorizontal: 16, paddingVertical: 9 },
   top: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { flex: 1, fontSize: font.label, fontWeight: '500', color: c.fg },
   time: { fontSize: font.caption, color: c.fgFaint, flexShrink: 0 },
   tags: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
-
-  secHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 },
-  secTitle: { flex: 1, fontSize: font.caption, fontWeight: '700', color: c.fgMuted, letterSpacing: 0.3 },
-  more: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  moreText: { fontSize: font.caption, color: c.accent, fontWeight: '600' },
-
-  center: { paddingTop: 24, alignItems: 'center' },
-  empty: { paddingHorizontal: 16, paddingTop: 18, fontSize: font.small, color: c.fgFaint },
-  footLoad: { paddingVertical: 16, alignItems: 'center' },
 }));

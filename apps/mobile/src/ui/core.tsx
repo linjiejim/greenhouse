@@ -148,6 +148,7 @@ export function Touchable({
   hitSlop,
   delayLongPress,
   accessibilityRole,
+  accessibilityLabel,
 }: {
   children: React.ReactNode;
   onPress?: (e: GestureResponderEvent) => void;
@@ -161,6 +162,8 @@ export function Touchable({
   hitSlop?: PressableProps['hitSlop'];
   delayLongPress?: number;
   accessibilityRole?: PressableProps['accessibilityRole'];
+  /** Spoken label for icon-only buttons (no visible text). */
+  accessibilityLabel?: string;
 }) {
   const handlePress = (e: GestureResponderEvent) => {
     if (disabled) return;
@@ -183,6 +186,7 @@ export function Touchable({
       onLongPress={handleLong}
       delayLongPress={delayLongPress}
       accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [style, pressed && !disabled && pressedStyle]}
     >
       {children}

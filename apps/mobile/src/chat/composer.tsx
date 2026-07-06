@@ -12,7 +12,7 @@ import Animated, { type AnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '../lib/i18n';
 import { useBottomPadStyle } from '../lib/keyboard';
-import { font, makeStyles, shadow, useTheme } from '../theme';
+import { font, makeStyles, radius, shadow, useTheme } from '../theme';
 import { Icon, Spinner, Touchable } from '../ui';
 
 export interface Annotation {
@@ -40,6 +40,8 @@ export function Composer({
   onRemoveImage,
   barStyle,
   autoFocus = false,
+  profileName,
+  onPickProfile,
 }: {
   value: string;
   onChangeText: (v: string) => void;
@@ -58,6 +60,10 @@ export function Composer({
   onRemoveImage?: (id: string) => void;
   /** Animated bottom inset for the bar (collapses to 0 as the keyboard opens). */
   barStyle?: AnimatedStyle<ViewStyle>;
+  /** Current agent-profile name — shown on the profile trigger (Home only). */
+  profileName?: string;
+  /** When set, renders an agent-profile trigger row above the input (Home hero). */
+  onPickProfile?: () => void;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -113,6 +119,23 @@ export function Composer({
             </View>
           ))}
         </View>
+      )}
+
+      {/* agent-profile trigger (Home hero only) — sits above the input so
+          "pick agent → type → send" reads as one block. */}
+      {onPickProfile && (
+        <Touchable
+          onPress={onPickProfile}
+          style={styles.profileTrigger}
+          pressedStyle={{ opacity: 0.7 }}
+          accessibilityLabel={t('profile.title')}
+        >
+          <Icon name="sparkle" size={15} color={c.accent} />
+          <Text numberOfLines={1} style={styles.profileName}>
+            {profileName ?? t('profile.title')}
+          </Text>
+          <Icon name="chevD" size={15} color={c.fgMuted} />
+        </Touchable>
       )}
 
       {/* input row: + (attach) on the left, text field, fullscreen-expand on the right (on focus) */}
@@ -309,6 +332,23 @@ const useStyles = makeStyles((c) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // agent-profile trigger row (Home) — a light chip-like strip above the input
+  profileTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    marginLeft: 12,
+    paddingVertical: 6,
+    paddingLeft: 10,
+    paddingRight: 8,
+    borderRadius: radius.full,
+    backgroundColor: c.surfaceMuted,
+    borderWidth: 1,
+    borderColor: c.hairline,
+  },
+  profileName: { fontSize: font.small, fontWeight: '600', color: c.fgSecondary, maxWidth: 180 },
   // taller default field; + and expand vertically centered with the text
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingLeft: 6, paddingRight: 8, paddingTop: 6, paddingBottom: 2 },
   input: { flex: 1, fontSize: font.body, lineHeight: 21, color: c.fg, padding: 0, paddingHorizontal: 2, textAlignVertical: 'center' },

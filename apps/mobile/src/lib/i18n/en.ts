@@ -30,6 +30,8 @@ export const en = {
     title: 'What shall we do today?',
     subtitle: 'Ask me anything about the knowledge base or your team',
     knowledge: 'Knowledge',
+    projects: 'Projects',
+    history: 'History',
     heroPlaceholder: 'Ask anything…',
   },
   chat: {
@@ -72,7 +74,6 @@ export const en = {
     searchPlaceholder: 'Search conversations…',
     empty: 'No conversations yet',
     emptySearch: 'No matching conversations',
-    viewMore: 'View more',
     deleteConfirm: 'Delete this conversation?',
     delete: 'Delete',
     shared: 'Shared',
@@ -109,6 +110,9 @@ export const en = {
     fallbackName: 'User',
   },
   drawer: {
+    knowledge: 'Knowledge',
+    projects: 'Projects',
+    history: 'History',
     settings: 'Settings',
     logout: 'Sign out',
   },
