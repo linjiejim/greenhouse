@@ -123,6 +123,34 @@ dataset populates, update the matching `data/examples/<table>.json` and its
 hashed at load; `api_clients`/`llm_upstreams`/`email_accounts` (instance-secret-encrypted) are
 not seeded.
 
+## Releasing & versioning
+
+Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must not break:
+
+- **One product, one version.** `git tag vX.Y.Z` is the release **source of truth**;
+  the **root `package.json` `version`** mirrors it and is bumped automatically by
+  release-please (`release-type: node`) in the Release PR — **don't hand-edit it**.
+  The per-workspace `package.json` `version` fields are placeholders (not maintained).
+  The runtime version still comes from the tag, not `package.json` (next point).
+- **Version comes from the tag at build time.** CI injects `APP_VERSION` (tag) +
+  `APP_REVISION` (commit sha) → env; read them via `@greenhouse/utils/version`
+  (`getVersionInfo()`), surfaced at `GET /health`. The `Dockerfile` takes them as
+  `ARG` + writes OCI labels. Don't read `package.json.version` for runtime version.
+- **Conventional Commits drive the bump** (already the repo norm, e.g.
+  `feat(api:export): …`). PRs are **squash-merged** → one Conventional Commit per PR.
+  `release-please` (`.github/workflows/release-please.yml` + `release-please-config.json`)
+  reads them, opens a Release PR, and on merge tags + creates the GitHub Release.
+  **`CHANGELOG.md` is release-please-managed — don't hand-edit released sections.**
+- **Stable vs. edge is a hard promise.** Tag → `ghcr.io/<owner>/greenhouse:X.Y.Z`
+  `:X.Y` `:latest` (stable). `main` → `:edge` / `:main-<sha>` only. `:latest` never
+  points at `main`. `release.yml` (tag/main triggered) enforces this — keep it intact.
+- **Artifacts.** API+web = the container image (primary). Browser = versioned zip
+  (`pnpm -F @greenhouse/browser package`, manifest version stamped from the tag).
+  Mobile = EAS Build (`apps/mobile/eas.json`), **decoupled** from the product
+  version (app-store cadence, its own `version` + `buildNumber`/`versionCode`).
+- The `Quality gate` (`ci.yml`) is unchanged and still gates every PR/`main`;
+  `release.yml` only publishes artifacts and never replaces those checks.
+
 ## Project structure (pnpm monorepo)
 
 ```

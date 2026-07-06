@@ -4,6 +4,9 @@
     "slug": "greenhouse-mobile",
     "scheme": "greenhouse",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,

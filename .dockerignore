@@ -23,6 +23,10 @@ dist-web
 docs
 tests
 **/__tests__
+# The Expo app is not a workspace member and never ships in the API image; its
+# local android/ios build dirs are multi-GB and bloat the build context (CI's
+# fresh checkout has none of them, but a local `docker build` does).
+apps/mobile
 
 # Runtime data / large regeneratable assets (kept out of the build context)
 data/db
