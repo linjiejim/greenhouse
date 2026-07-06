@@ -2,9 +2,11 @@
 
 Maintainer runbook. Greenhouse ships as **one product** at **one version** — there
 is no per-package release. `git tag vX.Y.Z` is the single source of truth for
-"what is a release"; the `package.json` `version` fields are placeholders and are
-**not** hand-maintained (the runtime version comes from the tag, injected as
-`APP_VERSION` — see below).
+"what is a release"; the **root `package.json` `version`** is kept in sync with it
+automatically by release-please (`release-type: node`) — it records the current
+release, so **don't hand-edit it**. The per-workspace `package.json` `version` fields
+are placeholders (not maintained). The runtime version still comes from the tag,
+injected as `APP_VERSION` (see below), not read from `package.json`.
 
 ## Stable vs. edge — the promise
 

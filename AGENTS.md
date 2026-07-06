@@ -127,9 +127,11 @@ not seeded.
 
 Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must not break:
 
-- **One product, one version.** `git tag vX.Y.Z` is the **single source of truth**.
-  The `package.json` `version` fields are placeholders — **do not** hand-bump them
-  to signal a release, and don't rely on them at runtime.
+- **One product, one version.** `git tag vX.Y.Z` is the release **source of truth**;
+  the **root `package.json` `version`** mirrors it and is bumped automatically by
+  release-please (`release-type: node`) in the Release PR — **don't hand-edit it**.
+  The per-workspace `package.json` `version` fields are placeholders (not maintained).
+  The runtime version still comes from the tag, not `package.json` (next point).
 - **Version comes from the tag at build time.** CI injects `APP_VERSION` (tag) +
   `APP_REVISION` (commit sha) → env; read them via `@greenhouse/utils/version`
   (`getVersionInfo()`), surfaced at `GET /health`. The `Dockerfile` takes them as
