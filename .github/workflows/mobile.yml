@@ -86,7 +86,8 @@ jobs:
 
       # The subaction only exists on main (not in the v8 tag) — pinned to a
       # commit sha (main @ 2026-06-02) for reproducibility.
-      - name: Fingerprint deploy (OTA update, or build + submit)
+      - name: Fingerprint deploy (OTA update, or new build)
+        id: cd
         if: steps.gate.outputs.run == 'true'
         uses: expo/expo-github-action/continuous-deploy-fingerprint@eab7a230208c952974db8c3245cfd78402c7b385
         with:
@@ -97,6 +98,16 @@ jobs:
           # Loads EAS server-side env vars (e.g. EXPO_PUBLIC_API_BASE_URL) into
           # the update export / build.
           environment: ${{ env.PROFILE }}
-          # Store submission only applies to store builds; `preview` is
-          # internal-distribution.
-          auto-submit-builds: ${{ (inputs.profile || 'production') == 'production' }}
+
+      # The action's own `auto-submit-builds` input proved unreliable (input
+      # accepted but --auto-submit never applied) — submit new store builds
+      # explicitly from the action's outputs instead. `preview` builds are
+      # internal-distribution, never submitted. Add an android twin of this
+      # step when the Play lane opens.
+      - name: Submit new build to TestFlight
+        if: >
+          steps.gate.outputs.run == 'true' &&
+          env.PROFILE == 'production' &&
+          steps.cd.outputs.ios-did-start-new-build == 'true'
+        working-directory: apps/mobile
+        run: eas submit --platform ios --id "${{ steps.cd.outputs.ios-build-id }}" --non-interactive --no-wait
