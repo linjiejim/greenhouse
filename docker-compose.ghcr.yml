@@ -1,0 +1,80 @@
+# Greenhouse — self-hosted deploy from the published GHCR image (no source build).
+# Same stack as docker-compose.yml (Postgres + one-shot migrate + API), but `migrate`
+# and `api` pull `ghcr.io/linjiejim/greenhouse` instead of building locally — so
+# upgrading is pull-based and needs no Node/pnpm toolchain.
+#
+# Fresh install:
+#   1) cp .env.example .env && ./scripts/gen-secrets.sh   # fills required secrets
+#   2) edit .env — set LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
+#   3) docker compose -f docker-compose.ghcr.yml up -d
+#   4) docker compose -f docker-compose.ghcr.yml exec api pnpm admin:create
+#
+# Upgrade (new DB migrations are applied automatically before the API starts):
+#   docker compose -f docker-compose.ghcr.yml pull
+#   docker compose -f docker-compose.ghcr.yml up -d
+#
+# Pin a release instead of tracking `latest` by setting GREENHOUSE_IMAGE in .env:
+#   GREENHOUSE_IMAGE=ghcr.io/linjiejim/greenhouse:0.2.0
+#
+# Run from the same directory as docker-compose.yml and the `pg_data` volume is
+# shared (same compose project) — switching between the two files keeps your data.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-greenhouse}
+      POSTGRES_USER: ${POSTGRES_USER:-greenhouse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-greenhouse}
+    # Loopback-only, not internet-exposed.
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-greenhouse} -d ${POSTGRES_DB:-greenhouse}']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # One-shot: applies the migration chain shipped inside the image, then exits.
+  # The API waits for it, so an upgraded image never runs against an old schema.
+  migrate:
+    image: ${GREENHOUSE_IMAGE:-ghcr.io/linjiejim/greenhouse:latest}
+    command: ['./node_modules/.bin/drizzle-kit', 'migrate']
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://greenhouse:greenhouse@postgres:5432/greenhouse
+
+  api:
+    image: ${GREENHOUSE_IMAGE:-ghcr.io/linjiejim/greenhouse:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      # In-network DB host is the `postgres` service (overrides .env's localhost value).
+      DATABASE_URL: postgresql://greenhouse:greenhouse@postgres:5432/greenhouse
+      API_PORT: '3000'
+    ports:
+      - '${PORT:-3000}:3000'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "node -e \"fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  pg_data:

@@ -1,0 +1,100 @@
+name: Mobile
+
+# Continuous deployment for the Expo app. Decoupled from the product `vX.Y.Z` tag
+# (app-store cadence) — it runs on `main` pushes that touch `apps/mobile/`.
+#
+# Fingerprint-based lane split (expo/expo-github-action continuous-deploy-fingerprint):
+#   • native fingerprint matches an existing EAS build → `eas update` only: JS/asset
+#     OTA, live on users' next app launch, no store round-trip.
+#   • fingerprint changed (new native module / config / SDK) → `eas build` with
+#     `--auto-submit` (production): iOS uploads to TestFlight automatically; the
+#     final "Submit for App Review" click stays in App Store Connect.
+#
+# Fork-safe / pre-setup-safe: without the `EXPO_TOKEN` secret every step is skipped
+# and the job exits green. One-time setup (Expo project, credentials, ASC app
+# record, EAS env vars): RELEASING.md → "Mobile → fingerprint CD".
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - '.github/workflows/mobile.yml'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS build profile + update branch'
+        type: choice
+        options: [production, preview]
+        default: production
+      platform:
+        description: 'Platform(s)'
+        type: choice
+        options: [ios, android, all]
+        default: ios
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # continuous-deploy-fingerprint comments when run from a PR
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      # push events have no inputs → default to the production lane, iOS only
+      # (Android submission needs its first Play Console upload done manually).
+      PROFILE: ${{ inputs.profile || 'production' }}
+      PLATFORM: ${{ inputs.platform || 'ios' }}
+    steps:
+      # `secrets` is not readable in a job-level `if`, so gate on a step output.
+      - name: Gate on EXPO_TOKEN
+        id: gate
+        run: |
+          if [ -n "$EXPO_TOKEN" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::EXPO_TOKEN secret not set — skipping mobile deploy (no-op)."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+      - uses: pnpm/action-setup@v4
+        if: steps.gate.outputs.run == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/mobile/pnpm-lock.yaml
+
+      # apps/mobile is NOT a workspace member — isolated install, own lockfile.
+      - name: Install mobile deps
+        if: steps.gate.outputs.run == 'true'
+        working-directory: apps/mobile
+        run: pnpm install --frozen-lockfile --ignore-workspace
+
+      - name: Set up EAS CLI
+        if: steps.gate.outputs.run == 'true'
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          packager: npm
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Fingerprint deploy (OTA update, or build + submit)
+        if: steps.gate.outputs.run == 'true'
+        uses: expo/expo-github-action/continuous-deploy-fingerprint@v8
+        with:
+          working-directory: apps/mobile
+          platform: ${{ env.PLATFORM }}
+          profile: ${{ env.PROFILE }}
+          branch: ${{ env.PROFILE }}
+          # Loads EAS server-side env vars (e.g. EXPO_PUBLIC_API_BASE_URL) into
+          # the update export / build.
+          environment: ${{ env.PROFILE }}
+          # Store submission only applies to store builds; `preview` is
+          # internal-distribution.
+          auto-submit-builds: ${{ (inputs.profile || 'production') == 'production' }}

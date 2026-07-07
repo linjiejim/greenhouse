@@ -151,6 +151,14 @@ docker compose exec api pnpm admin:create          # create the first super-admi
 
 The app is then at http://localhost:3000.
 
+Prefer the published image over a source build? Use
+[`docker-compose.ghcr.yml`](./docker-compose.ghcr.yml) instead — same stack, but it
+pulls `ghcr.io/linjiejim/greenhouse` (no Node/pnpm toolchain needed):
+
+```bash
+docker compose -f docker-compose.ghcr.yml up -d    # tracks :latest; pin via GREENHOUSE_IMAGE in .env
+```
+
 ## Releases & stability
 
 **Use a tagged release in production.** Two channels, and they are not equally
@@ -165,17 +173,30 @@ stable:
 Every release is stamped: `GET /health` returns the `version` + commit `revision`
 the running build was cut from, so a bug report can be matched to exact code.
 
-Pull and run a specific release:
-
-```bash
-# In docker-compose.yml, replace `build: .` with:
-#   image: ghcr.io/linjiejim/greenhouse:0.1.0
-docker compose up -d
-```
-
 The **browser extension** is attached to each Release as
 `greenhouse-bridge-vX.Y.Z.zip` (unzip → Chrome → "Load unpacked", or submit to the
-Web Store). Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
+Web Store). The **mobile app** ships on its own cadence via EAS: JS-only changes
+roll out as over-the-air updates; native changes auto-build and upload to
+TestFlight. Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
+
+### Upgrading
+
+Database migrations ship inside the image and are applied by a one-shot `migrate`
+service **before** the API starts — an upgraded deployment never runs new code
+against an old schema, and already-applied migrations are skipped. Optional but
+wise before a big jump: `./scripts/backup-db.sh`.
+
+```bash
+# Docker, published image (docker-compose.ghcr.yml):
+docker compose -f docker-compose.ghcr.yml pull
+docker compose -f docker-compose.ghcr.yml up -d
+
+# Docker, built from source (a fork / local checkout):
+git pull && docker compose up -d --build
+
+# Bare-metal source checkout:
+git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
+```
 
 ## Configuration
 
