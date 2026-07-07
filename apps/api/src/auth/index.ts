@@ -16,3 +16,14 @@ export {
 } from './token.js';
 export type { TokenPayload, AuthUser, UserRole } from './token.js';
 export { authMiddleware, getAuthUser, requireRole, requireInternal, requireSuper } from './middleware.js';
+// SSO — unified identity binding + provider connectors (auth/sso/).
+export {
+  getSsoConnectors,
+  getSsoConnector,
+  signSsoState,
+  verifySsoState,
+  sanitizeRedirect,
+  issueLoginTicket,
+  redeemLoginTicket,
+} from './sso/index.js';
+export type { SsoConnector, SsoIdentity } from './sso/index.js';

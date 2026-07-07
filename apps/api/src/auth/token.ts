@@ -89,6 +89,15 @@ function hmac(data: string, purpose: string): string {
   return createHmac('sha256', `${getSigningKey()}:${purpose}`).update(data).digest('hex');
 }
 
+/**
+ * HMAC with a caller-supplied purpose, keyed off TOKEN_SIGNING_KEY.
+ * The purpose string domain-separates signatures (access / refresh / sso-state)
+ * so a value signed for one use can never validate as another.
+ */
+export function hmacWithPurpose(data: string, purpose: string): string {
+  return hmac(data, purpose);
+}
+
 // ─── Access Token ────────────────────────────────────────
 
 /**

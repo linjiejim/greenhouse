@@ -31,13 +31,24 @@ These are the seams a downstream fork uses to add private features WITHOUT editi
 - **Storage backend** → `storage/extensions.ts` (`registerStorageDriver()`). Upstream is local disk; a driver routes `putUpload`/`getUpload`/`deleteUpload`/`presignUpload` to S3/COS. Never edit `storage/uploads.ts`.
 - **Email connectors** → `email/extensions.ts` (`registerEmailConnector(provider, factory)`). Upstream is IMAP-only; `createEmailClient` dispatches to a connector for a non-`imap` provider (Gmail/Outlook). Never edit `email/service.ts`.
 - **Public (auth-skipped) paths** → `auth/extensions.ts` (`EXTENSION_PUBLIC_PATHS` / `EXTENSION_PUBLIC_PATH_PREFIXES`). For OAuth redirect callbacks that arrive without a bearer token. **Security-sensitive** — a guard test pins these empty upstream. Never edit `isPublicPath()` in `middleware.ts`.
+- **SSO connectors** → `auth/sso/extensions.ts` (`EXTENSION_SSO_CONNECTORS`). A fork adds a private IdP (DingTalk / corporate OIDC) as an `SsoConnector`; the registry splices it after the env-driven built-ins and the `/api/auth/sso/:id/*` routes + public paths apply automatically (no G3 entry needed). Guard test pins the seam empty upstream. Never edit `auth/sso/registry.ts`.
 - **CSP `connect-src`** → the `CSP_CONNECT_SRC` env var (space/comma-separated origins) for a fork's external calls. No code edit.
 - Convention: contribute private code as NEW files under `tools/<domain>/`, `routes/`, or `profiles/`, then reference them from the matching `extensions.ts`. Runtime `register*()` calls go in `bootstrap.extensions.ts`. If a private need forces an edit to a shared file, that's a signal to add/extend a seam upstream, not to patch downstream.
 
 ### Auth module (`auth/`)
-- All auth logic lives in `auth/` (token, middleware, password, api-key, crypto, features).
+- All auth logic lives in `auth/` (token, middleware, password, api-key, crypto, features, sso).
 - Internal CLI / server self-calls use `createInternalToken()` from `auth/token.ts`.
 - Always import from `auth/index.ts`.
+- **SSO** (`auth/sso/` + `routes/sso.ts`; spec `docs/specs/20260708-sso-identity-connectors.md`):
+  a connector adapts one IdP to `buildAuthorizeUrl` + `exchangeCode`; everything else is shared —
+  HMAC `state` (TOKEN_SIGNING_KEY, purpose `sso-state`), one-time in-memory login tickets
+  (60s, single-instance assumption), binding rows in `user_identities`, opt-in JIT provisioning
+  (`SSO_AUTO_PROVISION`, sentinel `password_hash='SSO_ONLY'`, never email-merge). Public surface is
+  EXACTLY `providers`/`exchange` + `/:provider/(authorize|callback)` (regex in `middleware.ts`);
+  `identities`/`bind-url` stay behind Bearer. `getSsoConnectors()` is called in `main()` so a
+  partial env group fails at startup. `/api/auth/sso` has its own rate-limit bucket (30/5min) —
+  keep it ABOVE `/api/auth` in `RATE_LIMITS` (first prefix match wins). Full-flow integration
+  tests: `routes/__tests__/sso-flow.test.ts` (fake connector over the seam + greenhouse_test DB).
 - **Fail-closed startup gate (`assertAuthEnv()`, called from `main()`)**: if `ACCESS_PASSWORD` is unset, auth is off and `authMiddleware` treats every request as super — a total bypass for any exposed deployment. So `ACCESS_PASSWORD` is **mandatory in every environment** (local / dev / prod) and the service **refuses to start** without it; once set, `TOKEN_SIGNING_KEY` is equally mandatory (no fallback). It does **not** rely on `NODE_ENV` — forgetting `NODE_ENV=production` won't open it up. No escape hatch — local/dev `.env` must also set both. The contract is locked by `tests/api/token.test.ts`.
 
 ### Security (`security.ts`)

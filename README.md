@@ -38,6 +38,10 @@ or any MCP client.
   default or any S3-compatible store (`SKILLS_S3_*`).
 - **Email** *(optional)* — IMAP/SMTP mailbox connector; search, read, draft, and send from
   the agent.
+- **Enterprise SSO** *(optional)* — standard identity-binding layer with built-in
+  **WeCom (企业微信)** and **Feishu (飞书/Lark)** connectors: members link an enterprise
+  identity to their account (or are provisioned on first login) and sign in with one click;
+  forks can plug in their own IdP via the connector seam.
 - **LLM gateway + BYOK** — internal users reach admin-managed models through a server-side
   relay (no personal key needed), or bring their own.
 - **MCP server + agent tool-proxy** — expose the workbench's tools to any external agent over
@@ -220,6 +224,59 @@ Optional: vision (`analyze_image`), image generation (`generate_image`), and ext
 search. Uploads are stored on local disk (`data/uploads`), fine for single-instance deploys.
 Skill Center bundles default to local disk too (`data/skills`) — set the `SKILLS_S3_*` vars
 to keep them in S3-compatible object storage instead. See `.env.example`.
+
+### Enterprise SSO (WeCom / Feishu)
+
+Email + password stays the base login; SSO adds one-click sign-in with an enterprise
+identity **bound to an internal account**. Unconfigured = invisible (no login buttons, no
+endpoints doing anything). A partial provider config refuses to start rather than half-work.
+Design details: [docs/specs/20260708-sso-identity-connectors.md](./docs/specs/20260708-sso-identity-connectors.md).
+
+**WeCom (企业微信)** — create a self-built app (自建应用) in the WeCom admin console:
+
+1. Note the corp id (企业 ID, `我的企业`), the app's AgentId and Secret.
+2. Configure the app's **Web 网页授权及 JS-SDK 可信域名** and **企业微信授权登录 → Web 网页**
+   callback domain to your Greenhouse domain (e.g. `greenhouse.example.com`).
+3. Give the app **通讯录读取权限** if you want real names/avatars on bindings (optional —
+   without it, logins still work and fall back to the WeCom userid).
+
+```env
+SSO_WECOM_CORP_ID=ww1234567890abcdef
+SSO_WECOM_AGENT_ID=1000012
+SSO_WECOM_SECRET=<app secret>
+```
+
+Browsers get the WeCom QR login page; inside the WeCom client the same button signs in
+silently (in-app OAuth).
+
+**Feishu (飞书 / Lark)** — create a custom app (企业自建应用) on the open platform:
+
+1. Note the App ID and App Secret (credentials page).
+2. Add your callback under **安全设置 → 重定向 URL**:
+   `https://<your-domain>/api/auth/sso/feishu/callback`.
+3. Enable the login capability (网页应用) and publish the app to your org.
+
+```env
+SSO_FEISHU_APP_ID=cli_xxxxxxxxxxxx
+SSO_FEISHU_APP_SECRET=<app secret>
+# Lark international tenants:
+# SSO_FEISHU_BASE_URL=https://open.larksuite.com
+```
+
+**Shared knobs:**
+
+| Variable | Purpose |
+|---|---|
+| `SSO_PUBLIC_BASE_URL` | External base URL used to build IdP callback URLs (e.g. `https://greenhouse.example.com`); defaults to the request origin — set it when running behind a proxy that rewrites `Host` |
+| `SSO_AUTO_PROVISION` | `true` = first SSO login auto-creates an account (JIT). Default off: unbound identities are told to log in with a password and link the identity under **Settings → Preferences → Linked Accounts** |
+| `SSO_AUTO_PROVISION_ROLE` | Role for JIT accounts: `team` (default) or `external`. Never `super` |
+
+Notes: identities are unique per provider (an identity linked to one account can't be linked
+to another); IdP emails are **never** used to silently attach to an existing account (a
+conflicting email fails with an explicit error — bind manually instead); JIT accounts have no
+password until an admin sets one, and their last identity can't be unlinked. Adding another
+IdP (DingTalk, corporate OIDC, …) is one `SsoConnector` in a fork — see
+[EXTENDING.md](./EXTENDING.md).
 
 ## MCP & agent access
 

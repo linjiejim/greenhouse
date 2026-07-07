@@ -11,7 +11,7 @@
    cross-domain references (audit / logs / usage → users/sessions) stay loose (no FK) so those
    records outlive the entity they reference.
 
-The current schema has 35 tables, grouped by domain below.
+The current schema has 36 tables, grouped by domain below.
 
 ## Auth & users
 
@@ -21,6 +21,7 @@ The current schema has 35 tables, grouped by domain below.
 | **user_profiles** | User ↔ profile assignment (PK `user_id`+`profile_id`); a member may only use assigned profiles |
 | **user_tools** | User ↔ tool assignment (PK `user_id`+`tool_id`); `is_global` tools need no assignment |
 | **refresh_tokens** | Refresh-token store (SHA-256 hash) for silent login refresh |
+| **user_identities** | External SSO identities bound to accounts (`provider` + `subject` unique, one per provider per user); display name/avatar + `raw_profile` diagnostics; drives WeCom/Feishu login (spec `20260708-sso-identity-connectors`) |
 | **user_features** | Per-user feature flags (`user_id × feature`, `enabled`, `config`); unique `(user_id, feature)` |
 | **user_memories** | Persistent user facts extracted from conversations (`category` preference/fact/behavior, `confidence`, access tracking) |
 | **user_prompts** | Quick prompts / slash commands; personal or global (`is_global`, super-created) |
@@ -115,6 +116,7 @@ The current schema has 35 tables, grouped by domain below.
 | `user_profiles.user_id` | → `users.id` | CASCADE |
 | `user_tools.user_id` | → `users.id` | CASCADE |
 | `refresh_tokens.user_id` | → `users.id` | CASCADE |
+| `user_identities.user_id` | → `users.id` | CASCADE |
 | `user_features.user_id` | → `users.id` | CASCADE |
 | `user_memories.user_id` | → `users.id` | CASCADE |
 | `custom_profiles.user_id` | → `users.id` | CASCADE |

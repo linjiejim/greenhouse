@@ -249,6 +249,56 @@ export async function login(password: string): Promise<{ ok: boolean; error?: st
   return loginExternal(password);
 }
 
+// ─── SSO (unified identity binding) ──────────────────────
+
+export interface SsoProviderInfo {
+  id: string;
+  label: string;
+}
+
+/** Enabled SSO providers (empty when none configured — hides the buttons). */
+export async function fetchSsoProviders(): Promise<SsoProviderInfo[]> {
+  try {
+    const res = await fetch(apiUrl('/api/auth/sso/providers'));
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.providers) ? data.providers : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+/** Login-flow entry URL for a provider (top-level navigation target). */
+export function ssoAuthorizeUrl(providerId: string, redirect: string): string {
+  return apiUrl(`/api/auth/sso/${providerId}/authorize?redirect=${encodeURIComponent(redirect)}`);
+}
+
+/**
+ * Exchange a one-time SSO ticket (from the IdP callback redirect) for a
+ * token pair. Same storage side effects as loginInternal.
+ */
+export async function exchangeSsoTicket(
+  ticket: string,
+): Promise<{ ok: boolean; error?: string; user?: AuthenticatedUser }> {
+  try {
+    const res = await fetch(apiUrl('/api/auth/sso/exchange'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { ok: false, error: data.error || 'SSO login failed' };
+    }
+    const data = await res.json();
+    const user: AuthenticatedUser = data.user;
+    storeAuth(data.accessToken, data.refreshToken, user);
+    return { ok: true, user };
+  } catch (_err) {
+    return { ok: false, error: 'SSO login failed' };
+  }
+}
+
 // ─── Auth Status ─────────────────────────────────────────
 
 export async function checkAuthStatus(): Promise<boolean> {

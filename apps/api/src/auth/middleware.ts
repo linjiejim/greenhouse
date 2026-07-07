@@ -23,11 +23,19 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/login/external',
   '/api/auth/refresh',
   '/api/auth/status',
+  '/api/auth/sso/providers',
+  '/api/auth/sso/exchange',
   '/health',
 ]);
 
+// SSO login entry + IdP redirect target (both carry their own signed-state /
+// one-time-code verification). Deliberately NOT a prefix rule: /api/auth/sso/
+// identities and bind-url must stay behind Bearer auth.
+const SSO_PUBLIC_PATH_RE = /^\/api\/auth\/sso\/[A-Za-z0-9_-]+\/(authorize|callback)$/;
+
 export function isPublicPath(path: string): boolean {
   if (PUBLIC_PATHS.has(path)) return true;
+  if (SSO_PUBLIC_PATH_RE.test(path)) return true;
   // Fork-contributed public paths (empty upstream) — e.g. OAuth callbacks. See auth/extensions.ts.
   if (EXTENSION_PUBLIC_PATHS.includes(path)) return true;
   if (EXTENSION_PUBLIC_PATH_PREFIXES.some((p) => path.startsWith(p))) return true;

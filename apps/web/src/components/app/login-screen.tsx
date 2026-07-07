@@ -1,21 +1,51 @@
 /**
- * 登录界面 — 支持内部用户邮箱密码登录和外部访客密码登录。
+ * 登录界面 — 支持内部用户邮箱密码登录、外部访客密码登录，以及已配置的
+ * SSO 身份提供方（企业微信 / 飞书 / fork 连接器）一键登录。
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Input, AppLogo } from '../ui';
-import { loginInternal, loginExternal } from '../../lib/auth';
-import type { AuthenticatedUser } from '../../lib/auth';
+import { loginInternal, loginExternal, fetchSsoProviders, ssoAuthorizeUrl } from '../../lib/auth';
+import type { AuthenticatedUser, SsoProviderInfo } from '../../lib/auth';
 import { useT } from '../../lib/i18n';
 import { BRANDING } from '../../lib/branding.extensions';
 
-export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser) => void }) {
+/** Known callback error codes → i18n keys; anything else shows the generic message. */
+const SSO_ERROR_KEYS: Record<string, string> = {
+  not_bound: 'login.ssoNotBound',
+  email_conflict: 'login.ssoEmailConflict',
+  account_disabled: 'login.ssoAccountDisabled',
+  provider_error: 'login.ssoProviderError',
+  invalid_state: 'login.ssoInvalidState',
+};
+
+export function LoginScreen({
+  onSuccess,
+  ssoError,
+}: {
+  onSuccess: (user: AuthenticatedUser) => void;
+  /** Error surfaced by the SSO callback landing (code or message). */
+  ssoError?: string | null;
+}) {
   const t = useT();
   const [mode, setMode] = useState<'internal' | 'external'>('internal');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ssoProviders, setSsoProviders] = useState<SsoProviderInfo[]>([]);
+
+  useEffect(() => {
+    fetchSsoProviders().then(setSsoProviders);
+  }, []);
+
+  useEffect(() => {
+    if (ssoError) {
+      const key = SSO_ERROR_KEYS[ssoError];
+      setError(key ? t(key) : t('login.ssoFailed'));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- error text derives from the one-shot code
+  }, [ssoError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,6 +156,32 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
         >
           {loading ? t('login.signingIn') : mode === 'internal' ? t('login.signIn') : t('login.enter')}
         </button>
+
+        {/* SSO providers — only rendered when the server has connectors configured */}
+        {ssoProviders.length > 0 && (
+          <div className="mt-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex-1 h-px bg-edge" />
+              <span className="text-[11px] text-fg-faint">{t('login.ssoDivider')}</span>
+              <div className="flex-1 h-px bg-edge" />
+            </div>
+            <div className="space-y-2">
+              {ssoProviders.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  data-testid={`login-sso-${p.id}`}
+                  onClick={() => {
+                    window.location.href = ssoAuthorizeUrl(p.id, `/${window.location.hash}`);
+                  }}
+                  className="w-full py-2.5 rounded-xl border border-edge text-sm font-medium text-fg-secondary hover:border-edge-strong hover:bg-surface-sunken transition-colors"
+                >
+                  {t('login.ssoContinueWith', { provider: p.label })}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </form>
     </div>
   );
