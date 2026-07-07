@@ -19,6 +19,9 @@
       "appleTeamId": "3SKAS5BNK9",
       "entitlements": {
         "com.apple.security.application-groups": ["group.app.greenhouse.mobile"]
+      },
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
