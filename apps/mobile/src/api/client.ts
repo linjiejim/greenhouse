@@ -7,7 +7,7 @@
  * because it needs expo/fetch for response-body streaming.
  */
 
-import { API_BASE } from '../config';
+import { getApiBase } from '../store/stations';
 import {
   getAccessToken,
   getRefreshToken,
@@ -36,7 +36,7 @@ async function doRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
   try {
-    const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+    const res = await fetch(`${getApiBase()}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
@@ -53,7 +53,7 @@ async function doRefresh(): Promise<boolean> {
 
 /** Authenticated fetch against the API. Pass an API-relative path like `/api/sessions`. */
 export async function api(path: string, init: RequestInit = {}): Promise<Response> {
-  const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
+  const url = path.startsWith('http') ? path : `${getApiBase()}${path}`;
   const token = getAccessToken();
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);

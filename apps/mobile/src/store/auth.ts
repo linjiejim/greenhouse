@@ -1,16 +1,21 @@
 /**
  * Auth store (Zustand) — current user + auth lifecycle.
  * Mirrors the web app's useAuthStore pattern.
+ *
+ * bootstrap() is also the station-switch path: it (re)hydrates the station
+ * registry, loads the now-active station's tokens into the mirror and
+ * revalidates — so callers just `switchTo(...)` then `bootstrap()`.
  */
 
 import { create } from 'zustand';
 import type { AuthenticatedUser } from '../shared/greenhouse-types';
-import { hydrateTokens, getCachedUser } from '../api/token-storage';
+import { hydrateTokens, getCachedUser, getAccessToken } from '../api/token-storage';
+import { useStations } from './stations';
 import * as authApi from '../api/auth';
 
 interface AuthState {
   user: AuthenticatedUser | null;
-  /** true until the initial hydrate + validate completes */
+  /** true until the current hydrate + validate completes */
   loading: boolean;
   bootstrap: () => Promise<void>;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
@@ -23,11 +28,13 @@ export const useAuth = create<AuthState>((set) => ({
   loading: true,
 
   async bootstrap() {
-    await hydrateTokens();
+    set({ loading: true });
+    await useStations.getState().hydrate();
+    await hydrateTokens(useStations.getState().activeId);
     // Optimistically show the cached user, then validate in the background.
     const cached = getCachedUser();
     if (cached) set({ user: cached });
-    const validated = await authApi.validateSession();
+    const validated = getAccessToken() ? await authApi.validateSession() : null;
     set({ user: validated, loading: false });
   },
 

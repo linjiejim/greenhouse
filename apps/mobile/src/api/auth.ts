@@ -2,7 +2,7 @@
  * Auth API — internal email/password login, session validation, logout.
  */
 
-import { API_BASE } from '../config';
+import { getApiBase } from '../store/stations';
 import type { AuthenticatedUser } from '../shared/greenhouse-types';
 import { t } from '../lib/i18n';
 import { api } from './client';
@@ -16,7 +16,7 @@ export async function login(
   password: string,
 ): Promise<{ ok: boolean; error?: string; user?: AuthenticatedUser }> {
   try {
-    const res = await fetch(`${API_BASE}/api/auth/login`, {
+    const res = await fetch(`${getApiBase()}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),

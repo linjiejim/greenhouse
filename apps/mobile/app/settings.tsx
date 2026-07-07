@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { useAuth } from '../src/store/auth';
 import { usePrefs } from '../src/store/prefs';
+import { StationSheet, useActiveStation } from '../src/stations/station-sheet';
 import { useT } from '../src/lib/i18n';
 import { Icon, ScreenHeader, Segmented, Sheet, Toast, Touchable, UserAvatar } from '../src/ui';
 import { font, makeStyles, radius, shadow, useTheme } from '../src/theme';
@@ -27,6 +28,8 @@ export default function Settings() {
   const setTheme = usePrefs((s) => s.setTheme);
   const lang = usePrefs((s) => s.lang);
   const setLang = usePrefs((s) => s.setLang);
+  const station = useActiveStation();
+  const [stationOpen, setStationOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -62,6 +65,25 @@ export default function Settings() {
             <Icon name="chevR" size={17} color={c.fgFaint} />
           </View>
         </View>
+
+        {/* station */}
+        <Group label={t('station.title')}>
+          <Touchable
+            haptic="none"
+            onPress={() => setStationOpen(true)}
+            style={styles.infoRow}
+            pressedStyle={{ opacity: 0.6 }}
+            accessibilityLabel={t('station.current')}
+          >
+            <Text style={styles.settingLabel}>{t('station.current')}</Text>
+            <View style={styles.stationValue}>
+              <Text numberOfLines={1} style={styles.infoValue}>
+                {station?.name ?? '—'}
+              </Text>
+              <Icon name="chevR" size={16} color={c.fgFaint} />
+            </View>
+          </Touchable>
+        </Group>
 
         {/* appearance */}
         <Group label={t('settings.appearance')}>
@@ -103,6 +125,8 @@ export default function Settings() {
         </Touchable>
         <Text style={styles.foot}>{t('settings.footer')}</Text>
       </ScrollView>
+
+      <StationSheet visible={stationOpen} onClose={() => setStationOpen(false)} />
 
       <Sheet visible={confirm} onClose={() => setConfirm(false)} title={t('settings.logout')} heightPct={30}>
         <View style={{ padding: 18, paddingBottom: insets.bottom + 16 }}>
@@ -195,6 +219,7 @@ const useStyles = makeStyles((c) => ({
   rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.hairline },
   settingLabel: { fontSize: font.body, color: c.fg },
   infoValue: { fontSize: font.label, color: c.fgMuted },
+  stationValue: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0 },
 
   logout: { marginTop: 18, backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.hairline, paddingVertical: 14, alignItems: 'center' },
   logoutText: { fontSize: font.body, fontWeight: '600', color: c.danger },

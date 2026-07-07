@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Select, Spinner, StatusDot } from '@greenhouse/ui/components/ui';
+import { Select, Spinner } from '@greenhouse/ui/components/ui';
 import {
   History,
   Plus,
@@ -28,6 +28,7 @@ import { useT } from '@greenhouse/ui/lib/i18n';
 import { useChat } from './use-chat';
 import { Messages } from './messages';
 import { SelectionCard } from './selection-card';
+import { StationMenu } from './station-menu';
 import { useAuth } from '../lib/use-auth';
 import { readPageContext, readFullPageText, buildContextHint, type PageContext } from '../lib/page-context';
 import { listSessions, fetchProfiles, type BrowserSession, type ProfileOption } from '../lib/sessions';
@@ -117,7 +118,7 @@ export function ChatView() {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center gap-2 border-b border-edge px-3 py-2 text-sm">
-        <StatusDot color="success" size="sm" />
+        <StationMenu />
         <span className="min-w-0 flex-1 truncate font-medium">{chat.title ?? auth?.user.nickname ?? ''}</span>
         <Select size="sm" inline value={profileId} onChange={(e) => changeProfile(e.target.value)}>
           {profiles.map((p) => (

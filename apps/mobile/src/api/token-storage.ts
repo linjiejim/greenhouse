@@ -1,10 +1,12 @@
 /**
  * Token storage — secure on native (expo-secure-store), localStorage on web.
  *
- * The persisted layer is async, but most call sites (attaching an Authorization
- * header) need a synchronous read. So we keep an in-memory mirror that is
- * hydrated once at startup via `hydrateTokens()` and written through on every
- * mutation. Reads are sync; writes persist in the background.
+ * Tokens are stored **per station** (key suffix `__<stationId>`) so several
+ * saved deployments keep their sessions side by side; the in-memory mirror
+ * always holds the *active* station's pair. The persisted layer is async, but
+ * most call sites (attaching an Authorization header) need a synchronous read,
+ * so the mirror is hydrated via `hydrateTokens(stationId)` on startup / station
+ * switch and written through on every mutation.
  */
 
 import { Platform } from 'react-native';
@@ -22,6 +24,13 @@ let mem: { access: string | null; refresh: string | null; user: AuthenticatedUse
   refresh: null,
   user: null,
 };
+/** Station whose tokens the mirror holds; writes go under its keys. */
+let activeSid: string | null = null;
+
+/** SecureStore-safe per-station key ([A-Za-z0-9._-] only). */
+function keyFor(base: string, sid: string): string {
+  return `${base}__${sid}`;
+}
 
 // ─── persistence primitives ──────────────────────────────
 
@@ -50,16 +59,23 @@ function persistSet(key: string, value: string | null): void {
 
 // ─── public API ──────────────────────────────────────────
 
-/** Load persisted tokens into the in-memory mirror. Call once before render. */
-export async function hydrateTokens(): Promise<void> {
+/**
+ * Load a station's persisted tokens into the in-memory mirror and point all
+ * subsequent writes at it. Call once at startup and on every station switch;
+ * `null` (no station yet) just empties the mirror.
+ */
+export async function hydrateTokens(stationId: string | null): Promise<void> {
+  activeSid = stationId;
+  if (!stationId) {
+    mem = { access: null, refresh: null, user: null };
+    return;
+  }
   const [access, refresh, userRaw] = await Promise.all([
-    persistGet(ACCESS_KEY),
-    persistGet(REFRESH_KEY),
-    persistGet(USER_KEY),
+    persistGet(keyFor(ACCESS_KEY, stationId)),
+    persistGet(keyFor(REFRESH_KEY, stationId)),
+    persistGet(keyFor(USER_KEY, stationId)),
   ]);
-  mem.access = access;
-  mem.refresh = refresh;
-  mem.user = userRaw ? safeParseUser(userRaw) : null;
+  mem = { access, refresh, user: userRaw ? safeParseUser(userRaw) : null };
 }
 
 function safeParseUser(raw: string): AuthenticatedUser | null {
@@ -83,20 +99,48 @@ export function getCachedUser(): AuthenticatedUser | null {
 export function setTokens(access: string, refresh: string): void {
   mem.access = access;
   mem.refresh = refresh;
-  persistSet(ACCESS_KEY, access);
-  persistSet(REFRESH_KEY, refresh);
+  if (!activeSid) return;
+  persistSet(keyFor(ACCESS_KEY, activeSid), access);
+  persistSet(keyFor(REFRESH_KEY, activeSid), refresh);
 }
 
 export function setCachedUser(user: AuthenticatedUser): void {
   mem.user = user;
-  persistSet(USER_KEY, JSON.stringify(user));
+  if (activeSid) persistSet(keyFor(USER_KEY, activeSid), JSON.stringify(user));
 }
 
+/** Sign out of the active station — clears its mirror + persisted pair. */
 export function clearTokens(): void {
   mem = { access: null, refresh: null, user: null };
+  if (activeSid) purgeStationTokens(activeSid);
+}
+
+/** Delete a station's persisted tokens (station removal / sign-out cleanup). */
+export function purgeStationTokens(stationId: string): void {
+  persistSet(keyFor(ACCESS_KEY, stationId), null);
+  persistSet(keyFor(REFRESH_KEY, stationId), null);
+  persistSet(keyFor(USER_KEY, stationId), null);
+}
+
+/**
+ * One-time adoption of the pre-station un-suffixed keys: move them under
+ * `stationId` and delete the legacy entries. Returns whether a legacy session
+ * existed (the caller uses this to decide seeding).
+ */
+export async function migrateLegacyTokens(stationId: string): Promise<boolean> {
+  const [access, refresh, userRaw] = await Promise.all([
+    persistGet(ACCESS_KEY),
+    persistGet(REFRESH_KEY),
+    persistGet(USER_KEY),
+  ]);
+  if (!access && !refresh) return false;
+  if (access) persistSet(keyFor(ACCESS_KEY, stationId), access);
+  if (refresh) persistSet(keyFor(REFRESH_KEY, stationId), refresh);
+  if (userRaw) persistSet(keyFor(USER_KEY, stationId), userRaw);
   persistSet(ACCESS_KEY, null);
   persistSet(REFRESH_KEY, null);
   persistSet(USER_KEY, null);
+  return true;
 }
 
 // ─── UI preferences (non-secret, same persistence backend) ──

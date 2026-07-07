@@ -13,7 +13,7 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import type { StreamingEvent } from '../shared/greenhouse-types';
 import { t } from '../lib/i18n';
-import { API_BASE } from '../config';
+import { getApiBase } from '../store/stations';
 import { getAccessToken } from './token-storage';
 import { refreshTokens } from './client';
 
@@ -42,7 +42,7 @@ async function openStream(args: StreamChatArgs, token: string | null) {
   };
   if (args.modelOverride) body.model_override = args.modelOverride;
 
-  return expoFetch(`${API_BASE}/api/chat`, {
+  return expoFetch(`${getApiBase()}/api/chat`, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
