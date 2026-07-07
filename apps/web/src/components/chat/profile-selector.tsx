@@ -14,8 +14,9 @@ import { getToolIcon, getToolBrief } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
 import { SproutyFace } from '../sprouty/index.js';
 import { OverlayPanel } from '../app/overlay-panel';
-import type { SproutyVariant, LeafStyle } from '../sprouty/index.js';
+import type { SproutyVariant, SproutyPalette, LeafStyle } from '../sprouty/index.js';
 import { SPECIALIST_AVATARS } from '../sprouty/index.js';
+import { getWorkspaceTeamAvatar } from '../../lib/workspace-branding';
 
 /** Map preset (specialist) profile IDs to distinct Sprouty colors */
 export const PRESET_PROFILE_COLORS: Record<string, string> = {
@@ -64,12 +65,14 @@ function getProfilesByCategory(profiles: Profile[]): Record<ProfileCategory, Pro
   };
 }
 
-/** Resolve profile to Sprouty variant + color + accessories + leafStyle */
+/** Resolve profile to Sprouty variant + avatar DSL (color/accessories/leaf/face/palette) */
 export function profileToSprouty(p: Profile): {
   variant: SproutyVariant;
   color?: string;
   accessories?: string[];
   leafStyle?: LeafStyle;
+  faceStyle?: string;
+  palette?: SproutyPalette;
 } {
   if (p.is_custom) {
     const avatar = (p as any).avatar;
@@ -78,11 +81,12 @@ export function profileToSprouty(p: Profile): {
       color: avatar?.color,
       accessories: avatar?.accessories,
       leafStyle: avatar?.leafStyle,
+      faceStyle: avatar?.faceStyle,
+      palette: avatar?.palette,
     };
   }
-  if (p.id === 'team') return { variant: 'team' };
   // Specialist profiles get full avatar config
-  const specialist = SPECIALIST_AVATARS[p.id];
+  const specialist = p.id === 'team' ? undefined : SPECIALIST_AVATARS[p.id];
   if (specialist) {
     return {
       variant: 'custom',
@@ -91,7 +95,21 @@ export function profileToSprouty(p: Profile): {
       leafStyle: specialist.leafStyle,
     };
   }
-  return { variant: 'default' };
+  // Built-in profiles (default / team) wear the workspace team Sprouty when
+  // one is configured (Settings → Branding Studio), else the classic look.
+  const team = getWorkspaceTeamAvatar();
+  const variant: SproutyVariant = p.id === 'team' ? 'team' : 'default';
+  if (team) {
+    return {
+      variant,
+      color: team.color,
+      accessories: team.accessories,
+      leafStyle: team.leafStyle as LeafStyle | undefined,
+      faceStyle: team.faceStyle,
+      palette: team.palette,
+    };
+  }
+  return { variant };
 }
 
 // ─── Shared Profile Row Renderer ─────────────────────────

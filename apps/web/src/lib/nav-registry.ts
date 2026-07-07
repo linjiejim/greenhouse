@@ -21,6 +21,7 @@ import {
   Cloud,
   Brain,
   FlaskConical,
+  SlidersHorizontal,
 } from './icons';
 import type { LucideIcon } from './icons';
 import { EXTENSION_SETTINGS_SECTIONS } from './nav-registry.extensions';
@@ -163,6 +164,16 @@ const SETTINGS_ADMIN: NavModule[] = [
     requireRole: ['super'],
   },
   {
+    id: 'settings.runtime-config',
+    label: 'Runtime Config',
+    icon: SlidersHorizontal,
+    path: '#/settings/runtime-config',
+    parent: 'settings',
+    description: 'LLM / vision / image / search credentials — DB-backed, env fallback',
+    implemented: true,
+    requireRole: ['super'],
+  },
+  {
     id: 'settings.mcp-keys',
     label: 'MCP Access',
     icon: Key,
@@ -221,7 +232,7 @@ const SETTINGS_LABS: NavModule[] = [
     icon: Palette,
     path: '#/settings/branding',
     parent: 'settings',
-    description: 'Preview brand tokens and export CSS overrides for forks',
+    description: 'Workspace branding — name, logo, theme tokens, team Sprouty (or CSS export for forks)',
     implemented: true,
     requireRole: ['super'],
   },

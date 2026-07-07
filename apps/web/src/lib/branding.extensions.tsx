@@ -1,8 +1,15 @@
 /**
  * Fork extension point for branding (S6) — the ONLY file a downstream fork
- * edits to rebrand the UI chrome (product name + logo mark).
+ * edits to rebrand the UI chrome (product name + logo mark) in CODE.
  *
- * Upstream ships the Greenhouse defaults. The full branding surface for a fork:
+ * PRECEDENCE: workspace-configured branding (Settings → Branding Studio →
+ * "Save to workspace", served pre-login by GET /api/bootstrap and applied via
+ * lib/workspace-branding.ts) WINS over everything here at runtime. This file
+ * and branding.css are the code-level FALLBACK — what a deployment shows when
+ * nothing is configured in the admin UI, and what a fork bakes in as its
+ * defaults.
+ *
+ * Upstream ships the Greenhouse defaults. The code-level branding surface:
  *   1. `PRODUCT_NAME` env — document title (build-time, see vite.config.ts) and
  *      the runtime default for `BRANDING.productName` below.
  *   2. This file — override `productName` / `Mark` for the in-app logo lockups.

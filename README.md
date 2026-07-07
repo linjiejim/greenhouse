@@ -40,6 +40,15 @@ or any MCP client.
   the standard MCP protocol or the structured `/api/agent` proxy.
 - **Global Agent** — the agent can operate the web UI (navigate / prefill) via client-declared
   actions.
+- **Workspace branding & runtime config** — admins rebrand the deployment from the web
+  (tenant name, logo, theme tokens, team mascot) and manage runtime credentials
+  (LLM / vision / image / search keys) in Settings, all stored in the database with env-var
+  fallback — no code changes, no restart. Applied from the login screen on via a public
+  bootstrap endpoint.
+- **Sprouty avatar studio** — the mascot is a parametric SVG driven by a small avatar DSL:
+  members sculpt their own agent look (color presets or free palette, face styles,
+  accessories, leaf styles), admins set a workspace default, and the agent itself can design
+  one via the `design_sprouty_avatar` tool.
 
 Roles: **super > team > external**, plus per-user feature flags for gating optional modules.
 Auth is fail-closed — the server refuses to start without `ACCESS_PASSWORD` and
@@ -192,6 +201,13 @@ Everything is environment-driven; see [.env.example](./.env.example) for the ful
 Optional: vision (`analyze_image`), image generation (`generate_image`), and external web
 search. Uploads are stored on local disk (`data/uploads`), fine for single-instance deploys.
 See `.env.example`.
+
+**Admin-configurable at runtime**: the LLM / vision / image-generation / search credentials
+and the product name can also be set in **Settings → Runtime Config** (and branding in
+**Settings → Branding Studio**) — values saved there are stored in the database (secrets
+encrypted with `PROVIDER_TOKEN_ENCRYPTION_KEY`), win over the env vars, and apply without a
+restart. Clearing a value falls back to the env var, so env-only setups keep working
+unchanged.
 
 ## MCP & agent access
 
