@@ -30,6 +30,7 @@ const KNOWN_TOOLS = [
   'compute',
   'email_manager',
   'session_history',
+  'design_sprouty_avatar',
 ];
 registerKnownTools(KNOWN_TOOLS);
 

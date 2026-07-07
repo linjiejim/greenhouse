@@ -33,6 +33,7 @@ import { callLlmTool } from './sessions/call-llm.js';
 import { knowledgeQueryTool } from './knowledge/knowledge-query.js';
 import { knowledgeMutationTool } from './knowledge/knowledge-mutation.js';
 import { adminAnalyticsTool } from './admin/admin-analytics.js';
+import { designAvatarTool } from './profiles/design-avatar.js';
 import { EXTENSION_TOOL_MODULES } from './extensions.js';
 
 // ─── Catalog ─────────────────────────────────────────────
@@ -59,6 +60,7 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   knowledgeQueryTool,
   knowledgeMutationTool,
   adminAnalyticsTool,
+  designAvatarTool,
 ];
 
 /**

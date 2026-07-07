@@ -40,7 +40,13 @@ export interface CustomProfileInput {
   capabilities?: Array<{ icon: string; label: string; prompt: string }>;
   max_steps?: number;
   is_shared?: boolean;
-  avatar?: { color?: string; accessories?: string[]; leafStyle?: string };
+  avatar?: {
+    color?: string;
+    accessories?: string[];
+    leafStyle?: string;
+    faceStyle?: string;
+    palette?: { body?: string; leaf?: string };
+  };
   // Safe declarative config
   model_options?: { thinking?: boolean; temperature?: number; max_tokens?: number };
   model_choice_ids?: string[];

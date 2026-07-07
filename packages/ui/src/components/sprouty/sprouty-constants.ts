@@ -1,6 +1,13 @@
 /**
  * Sprouty constants — colors, sizes, variants, accessory metadata, specialist presets.
+ *
+ * The option-ID vocabulary (which colors/accessories/leaf/face styles exist)
+ * is canonical in @greenhouse/types/profile-manifest; the `satisfies` pins
+ * below turn any drift between that vocabulary and this visual metadata into
+ * a compile error.
  */
+
+import type { SproutyColorId, SproutyAccessoryId, SproutyLeafStyleId, SproutyFaceStyleId } from '@greenhouse/types';
 
 // ─── Sizes ───────────────────────────────────────────────
 
@@ -34,6 +41,7 @@ export interface SproutyColorSet {
 }
 
 export const COLOR_PRESETS: Record<string, SproutyColorSet> = {
+  // (keys pinned to SproutyColorId — see `satisfies` at the end)
   forest: {
     body: '#a4d65e',
     bodyDark: '#6a9e30',
@@ -98,19 +106,32 @@ export const COLOR_PRESETS: Record<string, SproutyColorSet> = {
     leafDark: '#8f522b',
     leafLight: '#df926b',
   },
-};
+} satisfies Record<SproutyColorId, SproutyColorSet>;
 
 export const DEFAULT_COLORS = COLOR_PRESETS.forest;
 
 // ─── Leaf Styles ─────────────────────────────────────────
 
-export type LeafStyle = 'normal' | 'big' | 'mini' | 'double';
+export type LeafStyle = SproutyLeafStyleId;
 
 export const LEAF_STYLES: { id: LeafStyle; name: string; emoji: string }[] = [
   { id: 'normal', name: 'Normal', emoji: '🌿' },
   { id: 'big', name: 'Big', emoji: '🌳' },
   { id: 'mini', name: 'Mini', emoji: '🌱' },
   { id: 'double', name: 'Double', emoji: '🍀' },
+];
+
+// ─── Face Styles ─────────────────────────────────────────
+// Restyles the NEUTRAL eye set (idle / responding / thinking / thumb);
+// expression-specific eyes (done, error, sleep, love, surprise) always win.
+
+export type FaceStyle = SproutyFaceStyleId;
+
+export const FACE_STYLES: { id: FaceStyle; name: string; emoji: string }[] = [
+  { id: 'default', name: 'Default', emoji: '🙂' },
+  { id: 'happy', name: 'Happy', emoji: '😊' },
+  { id: 'sparkle', name: 'Sparkle', emoji: '🤩' },
+  { id: 'sleepy', name: 'Sleepy', emoji: '😌' },
 ];
 
 // ─── Accessories ─────────────────────────────────────────
@@ -140,14 +161,23 @@ export const ACCESSORIES: AccessoryMeta[] = [
   { id: 'pencil', name: 'Pencil', type: 'held', emoji: '✏️' },
   { id: 'clipboard', name: 'Clipboard', type: 'held', emoji: '📋' },
   { id: 'chart', name: 'Bar Chart', type: 'held', emoji: '📊' },
-];
+] satisfies ({ id: SproutyAccessoryId } & AccessoryMeta)[];
 
 // ─── Avatar Configuration ────────────────────────────────
+
+/** Free-color override — two hexes restyle the whole mascot (derived shades
+ *  are computed by the renderer). Wins over the `color` preset when set. */
+export interface SproutyPalette {
+  body?: string;
+  leaf?: string;
+}
 
 export interface SproutyAvatarConfig {
   color: string;
   accessories: string[];
   leafStyle?: LeafStyle;
+  faceStyle?: FaceStyle;
+  palette?: SproutyPalette;
 }
 
 // ─── Specialist Presets ──────────────────────────────────

@@ -41,6 +41,12 @@
 
 内部团队助手，面向 super/team 用户。
 
+工具清单见 `team.ts`（knowledge_query / analyze_image / external_search / feature_request /
+generate_image / project_manager / design_sprouty_avatar）。`design_sprouty_avatar` 是形象 DSL
+的 Agent 侧入口：`options` 列出可用颜色/配件/叶型/表情目录与用户自己的 custom profiles，
+`apply` 将 zod 校验后的 AvatarConfig 写到调用者**本人**的 custom profile（ownership 由
+`getByUserSlug(userId, slug)` 强制）。
+
 ### 团队知识库工具
 
 `team` profile 通过统一的 `knowledge_query`（只读）+ `knowledge_mutation`（写，confirm-gated）访问 `knowledge_base`：

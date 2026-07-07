@@ -35,6 +35,7 @@ export default defineProfile({
     'feature_request',
     'generate_image',
     'project_manager',
+    'design_sprouty_avatar',
   ],
 
   system_prompt: readPrompt(import.meta.dirname, 'team.prompt.md'),

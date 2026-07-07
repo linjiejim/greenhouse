@@ -11,7 +11,7 @@
  * tip, blush, gentle features, stubby limbs — "憨厚可靠".
  */
 
-import { COLOR_PRESETS, type SproutyState } from './sprouty-constants.js';
+import { COLOR_PRESETS, type SproutyPalette, type SproutyState } from './sprouty-constants.js';
 
 export type SproutyFaceExpr =
   | 'idle'
@@ -98,6 +98,30 @@ function themeRemap(color?: string): Record<string, string> | null {
     [C.vein]: preset.leafDark,
     [C.ol]: mix(preset.bodyDark, '#000000', 0.42),
   };
+}
+
+const HEX6_RE = /^#[0-9a-fA-F]{6}$/;
+/**
+ * Free-color remap — two hexes (body/leaf) restyle the mascot; the derived
+ * shades (belly, vein, outline) are computed here so callers never supply
+ * them. Wins over the `color` preset. Invalid hexes are ignored.
+ */
+function paletteRemap(palette?: SproutyPalette): Record<string, string> | null {
+  if (!palette) return null;
+  const body = palette.body && HEX6_RE.test(palette.body) ? palette.body : undefined;
+  const leaf = palette.leaf && HEX6_RE.test(palette.leaf) ? palette.leaf : undefined;
+  if (!body && !leaf) return null;
+  const map: Record<string, string> = {};
+  if (body) {
+    map[C.body] = body;
+    map[C.belly] = mix(body, '#ffffff', 0.74);
+    map[C.ol] = mix(mix(body, '#000000', 0.35), '#000000', 0.42);
+  }
+  if (leaf) {
+    map[C.leaf] = leaf;
+    map[C.vein] = mix(leaf, '#000000', 0.34);
+  }
+  return map;
 }
 
 type Motion = 'breathe' | 'breatheSlow' | 'hop' | 'shake' | 'thinkbob';
@@ -215,15 +239,35 @@ interface EyeOpts {
   blink?: boolean;
   look?: 'up';
   teary?: boolean;
+  /** faceStyle 'sparkle' — bigger highlight + a second glint. */
+  sparkle?: boolean;
 }
 function eye(cx: number, o: EyeOpts): string {
   const dy = o.look === 'up' ? -1.5 : 0;
-  const hlr = o.teary ? 3.4 : 2.8;
+  const hlr = o.teary ? 3.4 : o.sparkle ? 3.6 : 2.8;
   const inner =
     `<ellipse cx="${cx}" cy="${EYEY + dy}" rx="8.2" ry="9.6" fill="${C.eye}"/>` +
     `<circle cx="${cx - 2.8}" cy="${EYEY - 4 + dy}" r="${hlr}" fill="#fff"/>` +
+    (o.sparkle ? `<circle cx="${cx + 3.4}" cy="${EYEY + 3.4 + dy}" r="1.9" fill="#fff" opacity=".9"/>` : '') +
     (o.teary ? `<circle cx="${cx + 3}" cy="${EYEY + 2 + dy}" r="1.6" fill="#fff" opacity=".8"/>` : '');
   return o.blink ? `<g class="sf-eye">${inner}</g>` : inner;
+}
+/**
+ * Neutral eye set routed through the avatar's faceStyle. Only the neutral
+ * expressions call this — expression-specific eyes (done/error/sleep/love/
+ * surprise) keep their own shapes so states stay readable.
+ */
+function stdEye(cx: number, o: EyeOpts, faceStyle?: string): string {
+  switch (faceStyle) {
+    case 'happy':
+      return happyEye(cx);
+    case 'sleepy':
+      return sleepEye(cx);
+    case 'sparkle':
+      return eye(cx, { ...o, sparkle: true });
+    default:
+      return eye(cx, o);
+  }
 }
 function happyEye(cx: number): string {
   return `<path d="M${cx - 9} ${EYEY + 3} Q${cx} ${EYEY - 6} ${cx + 9} ${EYEY + 3}" fill="none" stroke="${C.ol}" stroke-width="3" stroke-linecap="round"/>`;
@@ -320,12 +364,12 @@ function fxFor(expr: SproutyFaceExpr): string {
 }
 
 // ─── compose ─────────────────────────────────────────────
-function face(expr: SproutyFaceExpr): string {
+function face(expr: SproutyFaceExpr, faceStyle?: string): string {
   switch (expr) {
     case 'thinking':
-      return eye(LX, { look: 'up' }) + eye(RX, { look: 'up' }) + blush() + mouthThink();
+      return stdEye(LX, { look: 'up' }, faceStyle) + stdEye(RX, { look: 'up' }, faceStyle) + blush() + mouthThink();
     case 'responding':
-      return eye(LX, { blink: true }) + eye(RX, { blink: true }) + blush() + mouthOpen();
+      return stdEye(LX, { blink: true }, faceStyle) + stdEye(RX, { blink: true }, faceStyle) + blush() + mouthOpen();
     case 'done':
       return happyEye(LX) + happyEye(RX) + blush(true) + mouthLaugh();
     case 'error':
@@ -341,12 +385,12 @@ function face(expr: SproutyFaceExpr): string {
     case 'love':
       return heartEye(LX) + heartEye(RX) + blush(true) + mouthOpen();
     case 'thumb':
-      return eye(LX, {}) + winkEye(RX) + blush() + mouthOpen();
+      return stdEye(LX, {}, faceStyle) + winkEye(RX) + blush() + mouthOpen();
     case 'surprise':
       return brows('raised') + wideEye(LX) + wideEye(RX) + blush() + mouthO();
     case 'idle':
     default:
-      return eye(LX, { blink: true }) + eye(RX, { blink: true }) + blush() + mouthSmile();
+      return stdEye(LX, { blink: true }, faceStyle) + stdEye(RX, { blink: true }, faceStyle) + blush() + mouthSmile();
   }
 }
 function behindArms(expr: SproutyFaceExpr): string {
@@ -510,11 +554,15 @@ export interface SproutyFaceOptions {
   accessories?: string[];
   /** 'normal' | 'big' | 'mini' | 'double'. */
   leafStyle?: string;
+  /** 'default' | 'happy' | 'sparkle' | 'sleepy' (see FACE_STYLES). */
+  faceStyle?: string;
+  /** Free body/leaf hexes — wins over the `color` preset (see SproutyPalette). */
+  palette?: SproutyPalette;
 }
 
 /** Build the full inline-SVG markup for one expression + optional customization. */
 export function buildSproutyFaceSvg(expr: SproutyFaceExpr, opts: SproutyFaceOptions = {}): string {
-  const { animate = true, color, accessories, leafStyle } = opts;
+  const { animate = true, color, accessories, leafStyle, faceStyle, palette } = opts;
   const cfg = EXPR[expr] || EXPR.idle;
   const inner =
     sprout(leafStyle) +
@@ -522,7 +570,7 @@ export function buildSproutyFaceSvg(expr: SproutyFaceExpr, opts: SproutyFaceOpti
     behindArms(expr) +
     body() +
     belly() +
-    face(expr) +
+    face(expr, faceStyle) +
     frontArms(expr, animate) +
     renderAccessories(accessories);
   const fx = fxFor(expr);
@@ -531,8 +579,9 @@ export function buildSproutyFaceSvg(expr: SproutyFaceExpr, opts: SproutyFaceOpti
   let svg =
     `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" style="overflow:visible" focusable="false" aria-hidden="true">` +
     `${wrapOpen}<g class="sf-char${motion}">${inner}</g><g class="sf-fx">${fx}</g></g></svg>`;
-  const remap = themeRemap(color);
-  if (remap) {
+  // Palette (free hexes) wins over the preset; both remap the same base keys.
+  const remap = { ...(themeRemap(color) ?? {}), ...(paletteRemap(palette) ?? {}) };
+  if (Object.keys(remap).length) {
     const re = new RegExp(Object.keys(remap).join('|'), 'g');
     svg = svg.replace(re, (m) => remap[m] ?? m);
   }

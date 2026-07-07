@@ -13,9 +13,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Button, Dialog, Input, Textarea, Select, Spinner } from '../ui';
 import { Globe, X, Plus, Trash2, ChevronDown, ChevronUp, Maximize2, CAPABILITY_ICON_LIST } from '../../lib/icons';
 import { getToolIcon, getToolBrief } from '../../lib/icons';
-import { SproutyFace, COLOR_PRESETS, ACCESSORIES, LEAF_STYLES } from '../sprouty/index.js';
+import { SproutyDesigner, DEFAULT_SPROUTY_DESIGN, type SproutyDesignValue } from '../sprouty/index.js';
 import type { Profile, ToolMeta, CustomProfileInput } from '../../lib/api';
-import type { LeafStyle } from '../sprouty/index.js';
 
 const MAX_PROMPT_CHARS = 8000;
 const MAX_CAPABILITIES = 6;
@@ -45,9 +44,7 @@ interface ProfileFormData {
   capabilities: Array<{ icon: string; label: string; prompt: string }>;
   max_steps: number;
   is_shared: boolean;
-  avatar_color: string;
-  avatar_accessories: string[];
-  avatar_leafStyle: LeafStyle;
+  avatar: SproutyDesignValue;
   // Safe model knobs + behavior ('' = inherit base)
   model_thinking: '' | 'on' | 'off';
   model_temperature: string;
@@ -87,9 +84,7 @@ export function ProfileEditorDrawer({
     capabilities: [],
     max_steps: 12,
     is_shared: false,
-    avatar_color: 'forest',
-    avatar_accessories: [] as string[],
-    avatar_leafStyle: 'normal' as LeafStyle,
+    avatar: DEFAULT_SPROUTY_DESIGN,
     model_thinking: '',
     model_temperature: '',
     model_max_tokens: '',
@@ -101,7 +96,6 @@ export function ProfileEditorDrawer({
   const [error, setError] = useState('');
   const [toolSearch, setToolSearch] = useState('');
   const [showCapabilities, setShowCapabilities] = useState(false);
-  const [previewState, setPreviewState] = useState<'idle' | 'thinking' | 'responding' | 'done' | 'error'>('idle');
   const [promptFullscreen, setPromptFullscreen] = useState(false);
 
   // Reset form when profile changes
@@ -117,9 +111,13 @@ export function ProfileEditorDrawer({
           capabilities: profile.capabilities || [],
           max_steps: profile.max_steps || 12,
           is_shared: profile.is_shared || false,
-          avatar_color: (profile as any).avatar?.color || 'forest',
-          avatar_accessories: (profile as any).avatar?.accessories || [],
-          avatar_leafStyle: (profile as any).avatar?.leafStyle || 'normal',
+          avatar: {
+            color: (profile as any).avatar?.color || 'forest',
+            accessories: (profile as any).avatar?.accessories || [],
+            leafStyle: (profile as any).avatar?.leafStyle || 'normal',
+            faceStyle: (profile as any).avatar?.faceStyle || undefined,
+            palette: (profile as any).avatar?.palette || undefined,
+          },
           model_thinking:
             profile.model_options?.thinking === undefined ? '' : profile.model_options.thinking ? 'on' : 'off',
           model_temperature:
@@ -140,9 +138,7 @@ export function ProfileEditorDrawer({
           capabilities: [],
           max_steps: 12,
           is_shared: false,
-          avatar_color: 'forest',
-          avatar_accessories: [],
-          avatar_leafStyle: 'normal' as LeafStyle,
+          avatar: DEFAULT_SPROUTY_DESIGN,
           model_thinking: '',
           model_temperature: '',
           model_max_tokens: '',
@@ -249,9 +245,11 @@ export function ProfileEditorDrawer({
         max_steps: form.max_steps,
         is_shared: form.is_shared,
         avatar: {
-          color: form.avatar_color,
-          accessories: form.avatar_accessories,
-          leafStyle: form.avatar_leafStyle,
+          color: form.avatar.color,
+          accessories: form.avatar.accessories,
+          leafStyle: form.avatar.leafStyle,
+          ...(form.avatar.faceStyle ? { faceStyle: form.avatar.faceStyle } : {}),
+          ...(form.avatar.palette ? { palette: form.avatar.palette } : {}),
         },
         model_options: Object.keys(modelOptions).length ? modelOptions : undefined,
         default_language: form.default_language.trim() || undefined,
@@ -319,138 +317,8 @@ export function ProfileEditorDrawer({
       <div className="px-6 py-4 space-y-5">
         {error && <div className="text-sm text-danger bg-danger-subtle px-3 py-2 rounded-lg">{error}</div>}
 
-        {/* Avatar Preview + Color Picker */}
-        <div className="flex flex-col items-center gap-3 p-4 bg-surface-sunken rounded-xl">
-          <SproutyFace
-            variant="custom"
-            color={form.avatar_color}
-            accessories={form.avatar_accessories}
-            leafStyle={form.avatar_leafStyle}
-            state={previewState}
-            size="xl"
-            animate
-          />
-
-          {/* Color */}
-          <div className="w-full">
-            <label className="text-[10px] font-medium text-fg-faint uppercase tracking-wider block mb-1.5 text-center">
-              Color
-            </label>
-            <div className="flex items-center gap-2 flex-wrap justify-center">
-              {Object.entries(COLOR_PRESETS).map(([key, colors]) => (
-                <button
-                  key={key}
-                  onClick={() => setForm({ ...form, avatar_color: key })}
-                  title={key.charAt(0).toUpperCase() + key.slice(1)}
-                  className={`w-6 h-6 rounded-full border-2 transition-all ${
-                    form.avatar_color === key
-                      ? 'border-fg-secondary scale-110 ring-2 ring-primary-300/40'
-                      : 'border-transparent hover:border-edge-strong hover:scale-105'
-                  }`}
-                  style={{ backgroundColor: colors.body }}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Accessories */}
-          <div className="w-full">
-            <label className="text-[10px] font-medium text-fg-faint uppercase tracking-wider block mb-1.5 text-center">
-              Accessories
-            </label>
-            {(['hat', 'glasses', 'held'] as const).map((type) => {
-              const items = ACCESSORIES.filter((a) => a.type === type);
-              const typeLabel = type === 'hat' ? 'Hat' : type === 'glasses' ? 'Glasses' : 'Held';
-              return (
-                <div key={type} className="mb-1.5">
-                  <span className="text-[9px] text-fg-faint block mb-1 text-center">{typeLabel}</span>
-                  <div className="flex items-center gap-1.5 flex-wrap justify-center">
-                    {/* None button */}
-                    <button
-                      onClick={() =>
-                        setForm({
-                          ...form,
-                          avatar_accessories: form.avatar_accessories.filter((a) => !items.some((it) => it.id === a)),
-                        })
-                      }
-                      className={`w-7 h-7 rounded-md flex items-center justify-center text-[10px] transition-colors ${
-                        !items.some((it) => form.avatar_accessories.includes(it.id))
-                          ? 'bg-primary-subtle text-primary-fg ring-1 ring-primary-edge'
-                          : 'hover:bg-surface-muted text-fg-faint'
-                      }`}
-                      title="None"
-                    >
-                      ✕
-                    </button>
-                    {items.map((acc) => {
-                      const selected = form.avatar_accessories.includes(acc.id);
-                      return (
-                        <button
-                          key={acc.id}
-                          onClick={() => {
-                            // Toggle within type: mutually exclusive per type
-                            const others = form.avatar_accessories.filter((a) => !items.some((it) => it.id === a));
-                            setForm({
-                              ...form,
-                              avatar_accessories: selected ? others : [...others, acc.id],
-                            });
-                          }}
-                          title={acc.name}
-                          className={`w-7 h-7 rounded-md flex items-center justify-center text-sm transition-colors ${
-                            selected ? 'bg-primary-subtle ring-1 ring-primary-edge' : 'hover:bg-surface-muted'
-                          }`}
-                        >
-                          {acc.emoji}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Leaf Style */}
-          <div className="w-full">
-            <label className="text-[10px] font-medium text-fg-faint uppercase tracking-wider block mb-1.5 text-center">
-              Leaf Style
-            </label>
-            <div className="flex items-center gap-1.5 flex-wrap justify-center">
-              {LEAF_STYLES.map((ls) => (
-                <button
-                  key={ls.id}
-                  onClick={() => setForm({ ...form, avatar_leafStyle: ls.id })}
-                  title={ls.name}
-                  className={`px-2 py-1 rounded-md flex items-center gap-1 text-xs transition-colors ${
-                    form.avatar_leafStyle === ls.id
-                      ? 'bg-primary-subtle text-primary-fg ring-1 ring-primary-edge'
-                      : 'hover:bg-surface-muted text-fg-faint'
-                  }`}
-                >
-                  <span>{ls.emoji}</span>
-                  <span className="text-[10px]">{ls.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Expression preview */}
-          <div className="flex items-center gap-1">
-            {(['idle', 'thinking', 'responding', 'done', 'error'] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setPreviewState(s)}
-                className={`px-2 py-0.5 rounded-full text-[9px] font-medium transition-colors ${
-                  previewState === s
-                    ? 'bg-primary-subtle text-primary-fg-strong'
-                    : 'text-fg-faint hover:text-fg-muted hover:bg-surface-muted'
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Avatar — shared Sprouty designer (also used by the Branding Studio) */}
+        <SproutyDesigner value={form.avatar} onChange={(avatar) => setForm({ ...form, avatar })} />
 
         {/* Name + Slug */}
         <div>
