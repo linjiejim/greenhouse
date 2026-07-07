@@ -15,6 +15,8 @@ interface TagsState {
   /** Active tag filter for the history list (null = all). */
   filterId: number | null;
   load: (force?: boolean) => Promise<void>;
+  /** Drop the cache (station switch / re-auth) so the next load refetches. */
+  reset: () => void;
   setFilter: (id: number | null) => void;
   create: (name: string, color: string) => Promise<{ ok: boolean; tag?: SessionTag; error?: string }>;
   update: (id: number, patch: { name?: string; color?: string }) => Promise<{ ok: boolean; error?: string }>;
@@ -30,6 +32,10 @@ export const useTags = create<TagsState>((set, get) => ({
     if (get().loaded && !force) return;
     const tags = await tagsApi.listTags();
     set({ tags, loaded: true });
+  },
+
+  reset() {
+    set({ tags: [], loaded: false, filterId: null });
   },
 
   setFilter(filterId) {

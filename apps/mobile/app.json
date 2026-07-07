@@ -5,7 +5,7 @@
     "scheme": "greenhouse",
     "version": "1.0.0",
     "runtimeVersion": {
-      "policy": "appVersion"
+      "policy": "fingerprint"
     },
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -19,6 +19,9 @@
       "appleTeamId": "3SKAS5BNK9",
       "entitlements": {
         "com.apple.security.application-groups": ["group.app.greenhouse.mobile"]
+      },
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -30,12 +33,47 @@
     },
     "plugins": [
       "@bacons/apple-targets",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
       "expo-router",
       "expo-secure-store",
       "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "bundleIdentifier": "app.greenhouse.mobile.widget",
+                  "targetName": "GreenhouseWidget",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.app.greenhouse.mobile"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "1f49365d-7d88-472a-b196-01fcd9c428e5"
+      },
+      "router": {}
+    },
+    "owner": "linjiejim_hs",
+    "updates": {
+      "url": "https://u.expo.dev/1f49365d-7d88-472a-b196-01fcd9c428e5"
     }
   }
 }
