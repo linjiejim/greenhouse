@@ -273,6 +273,7 @@ export function ProfileEditorDrawer({
     projects: 'Projects & Tasks',
     email: 'Email',
     sessions: 'Sessions & Delegation',
+    skills: 'Skill Center',
     web: 'Web & Search',
     media: 'Media',
     compute: 'Compute',

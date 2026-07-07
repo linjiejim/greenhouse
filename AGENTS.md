@@ -178,7 +178,8 @@ greenhouse/
 │   │       ├── profiles/     # agent profiles in TS (defineProfile: default.ts/team.ts + *.prompt.md)
 │   │       ├── scheduler/    # cron scheduler + executor (automations)
 │   │       ├── email/        # IMAP/SMTP client + security
-│   │       ├── storage/      # upload storage (local disk)
+│   │       ├── skills/       # Skill Center — bundle validation, S3/local store, publish/download/sync core
+│   │       ├── storage/      # upload storage (local disk) + s3-lite (minimal SigV4 client)
 │   │       └── cli/          # `pnpm cli` console: index.ts dispatcher + commands/* (users,
 │   │                         #   tools, profiles, sessions, seed, db, doctor, api-client) + chat.ts
 │   └── web/              # React SPA — pages, components, lib, stores
@@ -257,6 +258,7 @@ Always import these — don't reimplement:
 | `parseHexKey(hex, label?)` | `@greenhouse/utils/crypto` | Validate + parse a 64-char hex key |
 | `toErrorMessage(err)` | `@greenhouse/utils/error` | Normalize an unknown error to a readable string |
 | `randomDocId(prefix?)` | `@greenhouse/utils/id` | Random opaque doc id (`doc-1a2b3c4d`); ids are system-assigned, never title-derived |
+| `isValidSemver` / `compareSemver` / `bumpPatch` | `@greenhouse/utils/semver` | Strict `X.Y.Z` semver helpers (Skill Center versioning) |
 
 ## Auth & permissions
 

@@ -592,6 +592,36 @@ const zh: Messages = {
     removeFailed: '移除失败',
   },
 
+  // 技能中心（设置）
+  skillCenter: {
+    hint: '企业级技能库。成员通过聊天或 Greenhouse MCP（skill_query / skill_mutation）从各自的 AI 工具发布技能；在这里浏览、审计和管理。每个版本不可变更并附带变更说明。',
+    empty: '还没有已发布的技能——让你的 Agent 通过 Greenhouse MCP 发布一个吧。',
+    searchPlaceholder: '搜索技能…',
+    colSkill: '技能',
+    colDescription: '描述',
+    colTags: '标签',
+    colVersion: '最新版本',
+    colDownloads: '下载次数',
+    colStatus: '状态',
+    colUpdated: '更新时间',
+    statusActive: '启用中',
+    statusArchived: '已归档',
+    archive: '归档',
+    unarchive: '取消归档',
+    archived: '技能已归档',
+    unarchived: '技能已恢复',
+    actionFailed: '操作失败',
+    owner: '所有者',
+    createdAt: '创建时间',
+    versionHistory: '版本历史',
+    files: '个文件',
+    viewFiles: '查看文件',
+    hideFiles: '收起文件',
+    downloadJson: '下载 JSON',
+    by: '由',
+    binaryFile: '二进制，base64',
+  },
+
   // 软件更新（桌面端）
   updates: {
     title: '软件更新',

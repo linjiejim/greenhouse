@@ -27,9 +27,10 @@ const EXPECTED_READONLY = [
   'session_query',
   'knowledge_query',
   'email_query',
+  'skill_query',
 ];
 
-const EXPECTED_MUTATING = ['project_mutation', 'knowledge_mutation', 'email_mutation'];
+const EXPECTED_MUTATING = ['project_mutation', 'knowledge_mutation', 'email_mutation', 'skill_mutation'];
 
 const EXPECTED_MCP = [
   'knowledge_query',
@@ -40,6 +41,8 @@ const EXPECTED_MCP = [
   'email_mutation',
   'session_query',
   'session_history',
+  'skill_query',
+  'skill_mutation',
 ];
 
 const sorted = (xs: Iterable<string>) => [...xs].sort();
