@@ -1,9 +1,9 @@
 # apps/browser — Chrome extension (MV3)
 
-Thin client of a **self-hosted Greenhouse instance**: the user supplies a base
-URL + email/password in the options page; the agent brain, tools and knowledge
-stay server-side. The extension only captures context, calls the API and
-renders.
+Thin client of **self-hosted Greenhouse instances**: the user saves one or more
+**stations** (server URL + email/password sign-in) in the options page; the
+agent brain, tools and knowledge stay server-side. The extension only captures
+context, calls the active station's API and renders.
 
 ## Layout
 
@@ -35,12 +35,22 @@ page `<title>`s — keep in sync). Re-render icons with
 - **UI comes from `@greenhouse/ui`** (atoms, markdown, tool-call cards, tokens,
   i18n mechanism). Same discipline as the package itself: no zustand, no
   router. Extension-local state lives in `chrome.storage` + React state.
-- **Auth**: never store the password — only the `/api/auth/login` token pair in
-  `chrome.storage.local` (`src/lib/storage.ts`, single `auth` slot). All token
-  refreshes go through the background worker (`auth:refresh` runtime message)
-  so rotation can't race between contexts. `authFetch()` retries once after a
-  401-triggered refresh; on a dead refresh token the background clears the slot
-  and every page falls back to the login flow via `storage.onChanged`.
+- **Stations & auth** (spec: `docs/specs/20260707-multi-station-workspaces.md`):
+  `src/lib/storage.ts` keeps a **station registry** in `chrome.storage.local`
+  (`stations` slot: `{stations: [{id, baseUrl, name, auth}], activeId}`); the
+  legacy single `auth` slot migrates lazily on first read (deterministic
+  origin-derived ids so concurrent migrations converge). Origins are unique —
+  adding a duplicate switches to it. Never store the password — only each
+  station's `/api/auth/login` token pair. All token refreshes go through the
+  background worker (`{type:'auth:refresh', stationId}` runtime message,
+  **single-flight per station**, written back by id) so rotation can't race
+  between contexts or leak across a mid-refresh switch. `authFetch()` resolves
+  the **active** station per call and retries once after a 401-triggered
+  refresh; a dead refresh token clears only that station's `auth` (entry kept)
+  and pages fall back to the sign-in flow via `storage.onChanged`. The panel
+  header's status dot is the station switcher (`sidepanel/station-menu.tsx`);
+  `ChatView` is keyed by station id so switching remounts chat state. Removing
+  a station best-effort revokes its origin permission (`forgetStation`).
 - **Permissions**: keep the static permission set minimal (`storage`,
   `sidePanel`, `scripting`, `activeTab`, `tabs` — the last one powers
   `browser_list_tabs`/automation tab metadata). Host access is requested at

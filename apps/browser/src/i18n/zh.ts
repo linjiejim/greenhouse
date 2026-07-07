@@ -10,7 +10,14 @@ export const zh = {
     title: 'Greenhouse Bridge',
     subtitle: '连接你自部署的 Greenhouse 实例。',
 
-    connection: '连接',
+    stations: '工作站',
+    stationsHint: '已保存的自部署 Greenhouse 服务器连接，点击某一项即可切换。',
+    noStations: '还没有工作站——先添加你的服务器。',
+    addStation: '添加工作站',
+    activeBadge: '当前',
+    signedOutBadge: '未登录',
+    removeStation: '移除',
+    removeConfirm: '移除“{name}”？它保存在本浏览器中的登录状态将被删除。',
     baseUrl: '服务器地址',
     baseUrlPlaceholder: 'https://greenhouse.example.com',
     baseUrlInvalid: '请输入有效的地址，例如 https://greenhouse.example.com',
@@ -29,8 +36,6 @@ export const zh = {
     loginFailed: '登录失败，请检查邮箱和密码。',
     networkError: '网络错误——请检查服务器地址和网络连接。',
 
-    connectedTo: '已连接到',
-    signedInAs: '当前用户',
     signOut: '退出登录',
 
     preferences: '偏好设置',
@@ -44,8 +49,14 @@ export const zh = {
   panel: {
     notConnectedTitle: '尚未连接',
     notConnectedHint: '先把扩展连接到你的 Greenhouse 实例，就可以带着页面上下文提问了。',
+    signedOutTitle: '登录已失效',
+    signedOutHint: '你在 {name} 上的会话已结束，请到设置中重新登录。',
     openSettings: '打开设置',
     connected: '已连接',
+
+    stationMenu: '工作站',
+    stationSignedOut: '未登录',
+    manageStations: '管理工作站…',
 
     currentPage: '当前页面',
     selectedChars: '已选中 {count} 字',

@@ -42,12 +42,20 @@ export async function getSession(
 }
 
 export async function createSession(profileId = 'default', title?: string): Promise<Session | null> {
-  try {
-    const res = await api('/api/sessions', {
+  const attempt = (pid: string) =>
+    api('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, profile_id: profileId }),
+      body: JSON.stringify({ title, profile_id: pid }),
     });
+  try {
+    let res = await attempt(profileId);
+    // The profile preference is device-global while stations are not — a
+    // profile picked on another station may not exist here. Don't let the
+    // stale pick block new conversations; retry once with the default.
+    if (!res.ok && profileId !== 'default' && [400, 403, 404].includes(res.status)) {
+      res = await attempt('default');
+    }
     if (!res.ok) return null;
     return await res.json();
   } catch {

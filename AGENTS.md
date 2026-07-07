@@ -156,8 +156,9 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
 ```
 greenhouse/
 ├── apps/
-│   ├── browser/          # Chrome extension (MV3) — side panel + options, thin client of a
-│   │                     #   self-hosted instance (login + token refresh); see its src/AGENTS.md
+│   ├── browser/          # Chrome extension (MV3) — side panel + options, thin client of
+│   │                     #   self-hosted instances (multi-station registry + per-station
+│   │                     #   token refresh); see its src/AGENTS.md
 │   ├── mobile/           # Expo (React Native) app — chat + knowledge (read-only) + settings.
 │   │                     #   NOT a workspace member (isolated install); see its AGENTS.md
 │   ├── api/              # Hono backend — routes, agent runtime, auth, security, scheduler

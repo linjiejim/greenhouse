@@ -1,34 +1,38 @@
 /**
  * Background service worker.
  *
- * Owns the refresh-token rotation: pages send {type: 'auth:refresh'} instead
- * of refreshing themselves, so a single in-flight refresh serves all contexts
- * (rotation revokes the old token — two racing refreshes would log the user
- * out). On an invalid/expired refresh token the stored auth is cleared, which
- * every page observes via storage.onChanged and falls back to the login flow.
+ * Owns the refresh-token rotation: pages send {type: 'auth:refresh', stationId}
+ * instead of refreshing themselves, so a single in-flight refresh per station
+ * serves all contexts (rotation revokes the old token — two racing refreshes
+ * would log the user out). Refreshes are keyed by station id and written back
+ * onto that id, so switching the active station mid-refresh can't cross-
+ * pollinate tokens. On an invalid/expired refresh token only that station's
+ * session is cleared (the registry entry stays), which every page observes via
+ * storage.onChanged and falls back to the sign-in flow.
  */
 
-import { getAuth, setAuth, type StoredAuth } from '../lib/storage';
+import { getStations, updateStationAuth, type StationAuth } from '../lib/storage';
 
 // Clicking the toolbar icon opens the side panel.
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {
   // Older Chrome without sidePanel behavior API — user can still open it via the panel picker.
 });
 
-// ─── Single-flight token refresh ─────────────────────────
+// ─── Single-flight token refresh (per station) ───────────
 
-let inflight: Promise<{ ok: boolean; accessToken?: string }> | null = null;
+const inflight = new Map<string, Promise<{ ok: boolean; accessToken?: string }>>();
 
-async function refreshTokens(): Promise<{ ok: boolean; accessToken?: string }> {
-  const auth = await getAuth();
-  if (!auth) return { ok: false };
+async function refreshTokens(stationId: string): Promise<{ ok: boolean; accessToken?: string }> {
+  const { stations } = await getStations();
+  const station = stations.find((s) => s.id === stationId);
+  if (!station?.auth) return { ok: false };
 
   let res: Response;
   try {
-    res = await fetch(`${auth.baseUrl}/api/auth/refresh`, {
+    res = await fetch(`${station.baseUrl}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: auth.refreshToken }),
+      body: JSON.stringify({ refreshToken: station.auth.refreshToken }),
     });
   } catch {
     // Network error — keep the stored pair, the next call may succeed.
@@ -36,8 +40,8 @@ async function refreshTokens(): Promise<{ ok: boolean; accessToken?: string }> {
   }
 
   if (res.status === 401) {
-    // Rotation dead (revoked/expired) — force re-login.
-    await setAuth(null);
+    // Rotation dead (revoked/expired) — force re-login on this station only.
+    await updateStationAuth(stationId, null);
     return { ok: false };
   }
   if (!res.ok) return { ok: false };
@@ -45,12 +49,11 @@ async function refreshTokens(): Promise<{ ok: boolean; accessToken?: string }> {
   const body = (await res.json().catch(() => null)) as {
     accessToken?: string;
     refreshToken?: string;
-    user?: StoredAuth['user'];
+    user?: StationAuth['user'];
   } | null;
   if (!body?.accessToken || !body.refreshToken || !body.user) return { ok: false };
 
-  await setAuth({
-    baseUrl: auth.baseUrl,
+  await updateStationAuth(stationId, {
     accessToken: body.accessToken,
     refreshToken: body.refreshToken,
     user: body.user,
@@ -58,13 +61,16 @@ async function refreshTokens(): Promise<{ ok: boolean; accessToken?: string }> {
   return { ok: true, accessToken: body.accessToken };
 }
 
-chrome.runtime.onMessage.addListener((message: { type?: string }, _sender, sendResponse) => {
-  if (message?.type !== 'auth:refresh') return undefined;
-  if (!inflight) {
-    inflight = refreshTokens().finally(() => {
-      inflight = null;
+chrome.runtime.onMessage.addListener((message: { type?: string; stationId?: string }, _sender, sendResponse) => {
+  if (message?.type !== 'auth:refresh' || !message.stationId) return undefined;
+  const id = message.stationId;
+  let flight = inflight.get(id);
+  if (!flight) {
+    flight = refreshTokens(id).finally(() => {
+      inflight.delete(id);
     });
+    inflight.set(id, flight);
   }
-  inflight.then(sendResponse);
+  flight.then(sendResponse);
   return true; // async sendResponse
 });
