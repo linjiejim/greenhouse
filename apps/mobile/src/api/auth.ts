@@ -6,7 +6,7 @@ import { getApiBase } from '../store/stations';
 import type { AuthenticatedUser } from '../shared/greenhouse-types';
 import { t } from '../lib/i18n';
 import { api } from './client';
-import { setTokens, setCachedUser, clearTokens, getAccessToken } from './token-storage';
+import { setTokens, setCachedUser, clearTokens, getAccessToken, getTokenStationId } from './token-storage';
 
 export type { AuthenticatedUser };
 
@@ -15,6 +15,7 @@ export async function login(
   email: string,
   password: string,
 ): Promise<{ ok: boolean; error?: string; user?: AuthenticatedUser }> {
+  const sid = getTokenStationId();
   try {
     const res = await fetch(`${getApiBase()}/api/auth/login`, {
       method: 'POST',
@@ -26,6 +27,9 @@ export async function login(
       return { ok: false, error: data.error || t('login.failed') };
     }
     const data = await res.json();
+    // Station switched while the request was in flight — these tokens belong
+    // to the previous station; don't write them into the new one's slot.
+    if (getTokenStationId() !== sid) return { ok: false, error: t('login.failed') };
     setTokens(data.accessToken, data.refreshToken);
     setCachedUser(data.user);
     return { ok: true, user: data.user };

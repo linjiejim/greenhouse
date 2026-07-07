@@ -11,6 +11,7 @@ import { getApiBase } from '../store/stations';
 import {
   getAccessToken,
   getRefreshToken,
+  getTokenStationId,
   setTokens,
   setCachedUser,
   clearTokens,
@@ -35,6 +36,7 @@ export function refreshTokens(): Promise<boolean> {
 async function doRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
+  const sid = getTokenStationId();
   try {
     const res = await fetch(`${getApiBase()}/api/auth/refresh`, {
       method: 'POST',
@@ -43,6 +45,9 @@ async function doRefresh(): Promise<boolean> {
     });
     if (!res.ok) return false;
     const data = await res.json();
+    // A station switch mid-refresh repoints the mirror — this rotation belongs
+    // to the old station, so writing it now would corrupt the new one's slot.
+    if (getTokenStationId() !== sid) return false;
     setTokens(data.accessToken, data.refreshToken);
     if (data.user) setCachedUser(data.user);
     return true;

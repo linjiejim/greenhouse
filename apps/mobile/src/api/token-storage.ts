@@ -86,6 +86,11 @@ function safeParseUser(raw: string): AuthenticatedUser | null {
   }
 }
 
+/** Station the mirror currently belongs to (guards async writes across switches). */
+export function getTokenStationId(): string | null {
+  return activeSid;
+}
+
 export function getAccessToken(): string | null {
   return mem.access;
 }
