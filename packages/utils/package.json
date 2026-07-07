@@ -47,6 +47,10 @@
     "./id": {
       "import": "./src/id.ts",
       "types": "./src/id.ts"
+    },
+    "./semver": {
+      "import": "./src/semver.ts",
+      "types": "./src/semver.ts"
     }
   },
   "scripts": {

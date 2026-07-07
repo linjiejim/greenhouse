@@ -87,6 +87,7 @@ describe('lazy catalog + per-request construction (guard)', () => {
       'session_query',
       'knowledge_query',
       'knowledge_mutation',
+      'skill_mutation',
       'spawn_session',
       'call_llm',
       'admin_analytics',

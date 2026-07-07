@@ -48,6 +48,7 @@ export type ToolGroup =
   | 'projects'
   | 'email'
   | 'sessions'
+  | 'skills'
   | 'web'
   | 'media'
   | 'compute'
@@ -65,6 +66,7 @@ export const TOOL_GROUPS: readonly { id: ToolGroup; label: string }[] = [
   { id: 'projects', label: 'Projects & Tasks' },
   { id: 'email', label: 'Email' },
   { id: 'sessions', label: 'Sessions & Delegation' },
+  { id: 'skills', label: 'Skill Center' },
   { id: 'web', label: 'Web & Search' },
   { id: 'media', label: 'Media' },
   { id: 'compute', label: 'Compute' },

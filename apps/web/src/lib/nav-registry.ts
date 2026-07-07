@@ -21,6 +21,7 @@ import {
   Cloud,
   Brain,
   FlaskConical,
+  Package,
 } from './icons';
 import type { LucideIcon } from './icons';
 import { EXTENSION_SETTINGS_SECTIONS } from './nav-registry.extensions';
@@ -59,7 +60,7 @@ export interface NavModule {
 // Organized by ownership/permission boundary (see `settingsSections` below):
 //   • Preferences (standalone, top)
 //   • Personal — Automation, My Prompts, My Agents (scoped to the current user)
-//   • Workspace — Groups, Cloud Email (shared collaboration + connected accounts)
+//   • Workspace — Groups, Cloud Email, Skill Center (shared collaboration + assets)
 //   • Administration (super) — Users, AI Gateway, MCP Access, System Agents,
 //                              Agent Usages, Feature Requests
 //   • Labs (super, beta) — Memory
@@ -137,6 +138,15 @@ const SETTINGS_WORKSPACE: NavModule[] = [
     path: '#/settings/email-accounts',
     parent: 'settings',
     description: 'Connected IMAP/SMTP email accounts',
+    implemented: true,
+  },
+  {
+    id: 'settings.skills',
+    label: 'Skill Center',
+    icon: Package,
+    path: '#/settings/skills',
+    parent: 'settings',
+    description: 'Shared agent skills with version history',
     implemented: true,
   },
 ];

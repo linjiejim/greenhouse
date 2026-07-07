@@ -75,6 +75,13 @@ The current schema has 35 tables, grouped by domain below.
 | **scheduled_tasks** | Cron-scheduled agent runs (FK `user_id` CASCADE): `profile_id`, `task_prompt`, `schedule` (cron), `timezone`, `enabled`, run tracking |
 | **email_accounts** | Per-user IMAP/SMTP mailbox binding (FK `user_id` CASCADE); AES-256-GCM encrypted `credentials`; unique `(user_id, provider, email_address)` |
 
+## Skill Center
+
+| Table | Purpose |
+|---|---|
+| **agent_skills** | Skill catalog: unique kebab-case `name` (immutable), `display_name`, `description`, `tags` (JSON), denormalized `latest_version`, `status` active/archived, `owner_user_id` (loose), `download_count`. Payload bundles live in the skill store (S3-compatible or local disk), not in the DB |
+| **agent_skill_versions** | Immutable per-version history (FK `skill_id` CASCADE): semver `version`, mandatory `changelog`, `file_count`, `size_bytes`, `content_hash` (sha256), `storage_key`, `created_by`; unique `(skill_id, version)` |
+
 ## API clients, audit & misc
 
 | Table | Purpose |
@@ -113,6 +120,7 @@ The current schema has 35 tables, grouped by domain below.
 | `custom_profiles.user_id` | → `users.id` | CASCADE |
 | `scheduled_tasks.user_id` | → `users.id` | CASCADE |
 | `email_accounts.user_id` | → `users.id` | CASCADE |
+| `agent_skill_versions.skill_id` | → `agent_skills.id` | CASCADE |
 
 ### Logical associations (application-level, no FK)
 
@@ -145,6 +153,7 @@ entity's lifecycle.
 | `user_prompts.user_id` | → `users.id` | Prompt owner |
 | `user_memories.source_session_id` | → `sessions.id` | Origin session |
 | `feature_requests.submitted_by` / `.session_id` | → `users.id` / `sessions.id` | Submitter / context |
+| `agent_skills.owner_user_id` / `agent_skill_versions.created_by` | → `users.id` | Skill owner / version author — skills outlive members |
 
 ## ER diagram
 
@@ -480,6 +489,28 @@ erDiagram
         text priority "low/normal/high"
         text session_id "logical"
     }
+    agent_skills {
+        int id PK
+        text name UK
+        text display_name
+        text description
+        text tags "JSON"
+        text latest_version
+        text status "active/archived"
+        text owner_user_id "logical"
+        int download_count
+    }
+    agent_skill_versions {
+        int id PK
+        int skill_id FK
+        text version "unique per skill"
+        text changelog
+        int file_count
+        int size_bytes
+        text content_hash "sha256"
+        text storage_key
+        text created_by "logical"
+    }
 
     %% ── FK constraints (solid) ──
     users ||--o{ user_profiles : "FK CASCADE"
@@ -506,6 +537,7 @@ erDiagram
     tasks ||--o{ tasks : "FK SET NULL (parent)"
     tasks ||--o{ task_comments : "FK CASCADE"
     tasks ||--o| project_activities : "FK SET NULL"
+    agent_skills ||--o{ agent_skill_versions : "FK CASCADE"
 
     %% ── Logical associations (no FK) ──
     users ||--o{ sessions : "logical: user_id"
@@ -515,6 +547,7 @@ erDiagram
     users ||--o{ feature_requests : "logical: submitted_by"
     users ||--o{ api_clients : "logical: user_id"
     users ||--o{ knowledge_base : "logical: owner/created_by"
+    users ||--o{ agent_skills : "logical: owner_user_id"
     sessions ||--o{ sessions : "logical: parent_session_id"
     sessions ||--o{ llm_usage : "logical: session_id"
     sessions ||--o{ api_audit_log : "logical: session_id"

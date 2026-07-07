@@ -56,6 +56,7 @@ import llmKeyRoutes from './routes/llm-keys.js';
 import { createLlmRelayRoutes } from './routes/llm-relay.js';
 import promptRoutes from './routes/prompts.js';
 import knowledgeRoutes from './routes/knowledge.js';
+import skillRoutes from './routes/skills.js';
 import groupRoutes from './routes/groups.js';
 import shareRoutes from './routes/shares.js';
 import sessionTagRoutes from './routes/session-tags.js';
@@ -67,6 +68,7 @@ import { createTasksRoute } from './routes/tasks.js';
 import { mountExtraRoutes } from './routes/extensions.js';
 import { bootstrapForkExtensions } from './bootstrap.extensions.js';
 import { maybeRegisterLocalStorageDriver } from './storage/local-driver.js';
+import { getSkillStore } from './skills/store.js';
 // ws CJS/ESM interop — use namespace import for reliable access
 import * as _ws from 'ws';
 const WsServer = _ws.WebSocketServer ?? (_ws as any).default?.WebSocketServer;
@@ -165,6 +167,9 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/prompts', promptRoutes)
       .use('/api/knowledge/*', requireInternal())
       .route('/api/knowledge', knowledgeRoutes)
+      // Skill Center — all internal users (writes owner/super-gated in skills/center.ts)
+      .use('/api/skills/*', requireInternal())
+      .route('/api/skills', skillRoutes)
       .use('/api/groups/*', requireInternal())
       .route('/api/groups', groupRoutes)
       .use('/api/shares/*', requireInternal())
@@ -221,6 +226,9 @@ async function main() {
   // Dev/verification: register a disk-backed object-storage driver (with presigned
   // URLs) when STORAGE_DRIVER=local — no-op otherwise, and never overrides a fork's.
   maybeRegisterLocalStorageDriver();
+  // Resolve the Skill Center bundle store now: a PARTIAL SKILLS_S3_* config must
+  // refuse to start (silently falling back to disk would strand new bundles).
+  const skillStore = getSkillStore();
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
 
   const toolRegistry = createToolRegistry(dbProvider);
@@ -264,6 +272,7 @@ async function main() {
     logger.info(`\n🌱 ${PRODUCT_NAME} API running at http://localhost:${info.port}`);
     logger.info(`   Model: ${process.env.LLM_MODEL ?? '(set LLM_MODEL)'}`);
     logger.info(`   Database: PostgreSQL`);
+    logger.info(`   Skill store: ${skillStore.backend === 's3' ? 'S3-compatible' : 'local disk (data/skills)'}`);
     logger.info(`   Profiles: ${profileIds.join(', ')}`);
     logger.info(`   WebSocket: enabled`);
   });

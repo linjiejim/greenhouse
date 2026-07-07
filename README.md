@@ -32,6 +32,10 @@ or any MCP client.
 - **Automations** — cron-scheduled agent runs that execute a prompt against a profile on a
   recurring schedule.
 - **Memory** — persistent per-user facts extracted from conversations and reused as context.
+- **Skill Center** — an org-wide library of agent skills (SKILL.md folders): publish from
+  your own AI tool over MCP/chat, find & download colleagues' skills, and keep installs in
+  sync — every version immutable with a mandatory changelog. Bundles live on local disk by
+  default or any S3-compatible store (`SKILLS_S3_*`).
 - **Email** *(optional)* — IMAP/SMTP mailbox connector; search, read, draft, and send from
   the agent.
 - **LLM gateway + BYOK** — internal users reach admin-managed models through a server-side
@@ -191,7 +195,8 @@ Everything is environment-driven; see [.env.example](./.env.example) for the ful
 
 Optional: vision (`analyze_image`), image generation (`generate_image`), and external web
 search. Uploads are stored on local disk (`data/uploads`), fine for single-instance deploys.
-See `.env.example`.
+Skill Center bundles default to local disk too (`data/skills`) — set the `SKILLS_S3_*` vars
+to keep them in S3-compatible object storage instead. See `.env.example`.
 
 ## MCP & agent access
 
