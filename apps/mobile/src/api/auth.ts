@@ -41,10 +41,14 @@ export async function login(
 /** Validate the stored session against /api/auth/me (refreshes if needed via api()). */
 export async function validateSession(): Promise<AuthenticatedUser | null> {
   if (!getAccessToken()) return null;
+  const sid = getTokenStationId();
   try {
     const res = await api('/api/auth/me');
     if (!res.ok) return null;
     const data = await res.json();
+    // Same in-flight guard as login/refresh: a station switch mid-validate
+    // means this user belongs to the previous station — don't cache it here.
+    if (getTokenStationId() !== sid) return null;
     setCachedUser(data.user);
     return data.user as AuthenticatedUser;
   } catch {
