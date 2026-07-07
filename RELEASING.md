@@ -169,9 +169,9 @@ One-time setup (secret-gated, not code — the workflow stays a no-op until done
   provenance attestation (`--provenance`), `cosign` keyless signing (OIDC).
 - **Chrome Web Store auto-publish** (`chrome-webstore-upload-action`) — needs store
   credentials as secrets (`STORE-SUBMISSION.md` has the copy ready).
-- **Mobile one-time setup** — the fingerprint CD workflow (`mobile.yml`) is live
-  but no-ops until the steps in "Mobile → fingerprint CD" above are done
-  (`eas init`, credential seeding, `EXPO_TOKEN`). Android additionally needs the
-  first manual Play Console upload.
+- **Mobile Android lane** — the iOS side is fully set up (project linked,
+  credentials seeded, `EXPO_TOKEN` in place). Android still needs the first
+  manual Play Console upload (store policy) + a service-account key on EAS,
+  then flip `platform` in `mobile.yml`.
 - **`release/x.y` maintenance branches** for back-porting security fixes to old
   lines (only once we support more than the latest).
