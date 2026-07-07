@@ -55,6 +55,7 @@ export * from './services/knowledge-shares.js';
 export * from './services/groups.js';
 export * from './services/user-features.js';
 export * from './services/user-memories.js';
+export * from './services/workspace-settings.js';
 
 // ─── Configuration ───────────────────────────────────────
 

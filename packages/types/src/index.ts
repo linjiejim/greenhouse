@@ -83,6 +83,28 @@ export type {
   ContextProviderDescriptor,
 } from './agent-context.js';
 
+// Workspace settings (DB-backed, admin-editable deployment config). Runtime
+// values are safe to re-export here — the module is dependency-free (no zod).
+export type {
+  WorkspaceSettingGroup,
+  WorkspaceSettingType,
+  WorkspaceSettingDef,
+  WorkspaceSettingKey,
+  WorkspaceSettingSource,
+  WorkspaceSettingView,
+  WorkspaceBootstrap,
+  ThemeTokens,
+} from './workspace-settings.js';
+export {
+  WORKSPACE_SETTINGS,
+  WORKSPACE_SETTING_KEYS,
+  getWorkspaceSettingDef,
+  sanitizeThemeTokens,
+  LOGO_ALLOWED_MIME,
+  LOGO_MAX_BYTES,
+  LOGO_MAX_DATA_URL_LENGTH,
+} from './workspace-settings.js';
+
 // Agent profile manifest — TYPES ONLY here so the web bundle never pulls in
 // zod. Server code imports the schema *values* from '@greenhouse/types/profile-manifest'.
 export type {
@@ -96,4 +118,8 @@ export type {
   ProfileData,
   SystemProfile,
   CustomBaseProfileId,
+  SproutyColorId,
+  SproutyAccessoryId,
+  SproutyLeafStyleId,
+  SproutyFaceStyleId,
 } from './profile-manifest.js';

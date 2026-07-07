@@ -35,6 +35,10 @@
     "./profile-manifest": {
       "import": "./src/profile-manifest.ts",
       "types": "./src/profile-manifest.ts"
+    },
+    "./workspace-settings": {
+      "import": "./src/workspace-settings.ts",
+      "types": "./src/workspace-settings.ts"
     }
   },
   "scripts": {

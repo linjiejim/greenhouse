@@ -164,6 +164,7 @@ greenhouse/
 │   │   └── src/
 │   │       ├── routes/       # HTTP routes (one file per resource)
 │   │       ├── auth/         # token, middleware, password, api-key, crypto, features
+│   │       ├── settings/     # workspace-config: DB→env resolution, env overlay, validation
 │   │       ├── tools/        # agent tools grouped by domain (knowledge/ projects/ email/ sessions/ media/ …), each defineTool
 │   │       ├── agent-runtime/# tool proxy, MCP auth, lazy tool resolution, run-agent
 │   │       ├── llm/          # completion / title / memory / relay-proxy (consumes agent-core)
@@ -182,7 +183,7 @@ greenhouse/
 ├── packages/
 │   ├── agent-core/       # Agent kernel — single streamText loop, model factory/registry
 │   │                     #   (OpenAI-compatible), time-context (no DB dependency)
-│   ├── types/            # shared TypeScript types (incl. FEATURE_FLAGS registry)
+│   ├── types/            # shared TypeScript types (incl. FEATURE_FLAGS + WORKSPACE_SETTINGS registries)
 │   ├── utils/            # shared helpers (date, json, concurrency, logger, crypto, error)
 │   ├── db/              # database layer — Drizzle schema + domain services (types inferred)
 │   ├── knowledge-editor/ # KB editor single source: Tiptap schema + server Markdown↔Tiptap JSON
@@ -283,3 +284,25 @@ Adding an experimental feature (three steps):
 2. Backend guard: `app.use('/api/<x>/*', requireFeature('<key>'))` (UI hiding ≠ access control;
    the backend must enforce).
 3. Frontend: wrap the tab/route/nav in `canUseFeature(currentUser, '<key>')`.
+
+### Workspace settings (DB-backed, admin-editable deployment config)
+
+Runtime credentials (LLM / vision / image-gen / search) and branding (tenant name, logo,
+theme tokens, team Sprouty) are configurable from the admin UI without code or restart.
+Spec: `docs/specs/20260707-workspace-config-branding-sprouty.md`.
+
+- **Registry (single source)**: `WORKSPACE_SETTINGS` in `packages/types/src/workspace-settings.ts`
+  (`key`, `group`, `type`, `secret?`, `env?`). The admin pages (Settings → Runtime Config /
+  Branding Studio) render from it — adding a setting is one registry entry, no migration.
+- **Storage**: `workspace_settings` table, one row per configured key; secrets AES-256-GCM
+  encrypted via `PROVIDER_TOKEN_ENCRYPTION_KEY` and never returned by the read API.
+- **Resolution** (`apps/api/src/settings/workspace-config.ts`): DB row → env var → unset.
+  Entries with an `env` mapping are **overlaid onto `process.env`** at startup and after every
+  write, so call-time consumers (model factory, media tools, search) pick them up unchanged —
+  single-process assumption (docker-compose deploy); multi-node needs a restart.
+- **Pre-login branding**: `GET /api/bootstrap` (public, in `PUBLIC_PATHS`) serves tenant
+  name / logo / theme tokens / team avatar; the web applies it before first paint
+  (`apps/web/src/lib/workspace-branding.ts`). The `BRANDING` fork seam stays the code-level
+  fallback.
+- **Admin API**: `GET/PUT /api/admin/settings` (super), batch all-or-nothing validation in
+  `validateWorkspaceValue` — never bypass it when adding write paths.

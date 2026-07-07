@@ -38,11 +38,70 @@ export const capabilitySchema = z.object({
 });
 export type Capability = z.infer<typeof capabilitySchema>;
 
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+// ─── Sprouty avatar DSL vocabulary ───────────────────────
+// Canonical option-id catalogs — the single source the renderer metadata
+// (@greenhouse/ui sprouty-constants pins its records to these unions), the
+// designer UI and the design_sprouty_avatar tool all derive from. The zod
+// schema below deliberately stays permissive (plain strings) so forks can add
+// options and the renderer can ignore unknowns gracefully.
+
+export const SPROUTY_COLOR_IDS = [
+  'forest',
+  'ocean',
+  'blossom',
+  'sunset',
+  'lavender',
+  'sunshine',
+  'midnight',
+  'autumn',
+] as const;
+export type SproutyColorId = (typeof SPROUTY_COLOR_IDS)[number];
+
+export const SPROUTY_ACCESSORY_IDS = [
+  'crown',
+  'cap',
+  'graduation',
+  'headset',
+  'round-glasses',
+  'sunglasses',
+  'coffee',
+  'wrench',
+  'magnifier',
+  'pencil',
+  'clipboard',
+  'chart',
+] as const;
+export type SproutyAccessoryId = (typeof SPROUTY_ACCESSORY_IDS)[number];
+
+export const SPROUTY_LEAF_STYLE_IDS = ['normal', 'big', 'mini', 'double'] as const;
+export type SproutyLeafStyleId = (typeof SPROUTY_LEAF_STYLE_IDS)[number];
+
+export const SPROUTY_FACE_STYLE_IDS = ['default', 'happy', 'sparkle', 'sleepy'] as const;
+export type SproutyFaceStyleId = (typeof SPROUTY_FACE_STYLE_IDS)[number];
+
+/**
+ * Sprouty avatar DSL — the "sculpt your own Sprouty" contract, shared by
+ * per-profile avatars, the workspace default (`branding.team_avatar` setting)
+ * and agent-generated configs (design_sprouty_avatar tool).
+ *
+ * `palette` overrides the preset `color` with free body/leaf hexes (derived
+ * shades are computed by the renderer). Visual metadata (hexes, emoji, names)
+ * lives with the renderer in @greenhouse/ui sprouty-constants, keyed by the
+ * id catalogs above.
+ */
 export const avatarConfigSchema = z.object({
   color: z.string().max(40).optional(),
   accessories: z.array(z.string().max(40)).max(10).optional(),
   leafStyle: z.string().max(40).optional(),
   faceStyle: z.string().max(40).optional(),
+  palette: z
+    .object({
+      body: z.string().regex(HEX_COLOR_RE, 'body must be a #rrggbb hex color'),
+      leaf: z.string().regex(HEX_COLOR_RE, 'leaf must be a #rrggbb hex color'),
+    })
+    .optional(),
 });
 export type AvatarConfig = z.infer<typeof avatarConfigSchema>;
 

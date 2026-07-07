@@ -6,7 +6,7 @@
  */
 
 import chalk from 'chalk';
-import { PRODUCT_NAME } from '@greenhouse/utils/brand';
+import { getProductName } from '@greenhouse/utils/brand';
 import type { UserRole } from '@greenhouse/db';
 import { hashPassword } from '../../auth/password.js';
 import {
@@ -134,7 +134,7 @@ async function create(args: string[]): Promise<number> {
     return 1;
   }
 
-  console.log(heading(`${PRODUCT_NAME} — create ${roleFlag} user`));
+  console.log(heading(`${getProductName()} — create ${roleFlag} user`));
 
   if (roleFlag === 'super') {
     const supers = (await db.users.list()).filter((u) => u.role === 'super');

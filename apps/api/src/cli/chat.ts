@@ -17,7 +17,7 @@ import chalk from 'chalk';
 import { marked } from 'marked';
 import { markedTerminal } from 'marked-terminal';
 import { createInternalToken, isAuthEnabled } from '../auth/index.js';
-import { PRODUCT_NAME } from '@greenhouse/utils/brand';
+import { getProductName } from '@greenhouse/utils/brand';
 
 // Configure marked for terminal rendering
 marked.use(
@@ -383,7 +383,7 @@ export async function run(_args: string[]): Promise<number> {
     return 0;
   }
 
-  console.log(chalk.green.bold(`\n  🌱 ${PRODUCT_NAME} Chat`));
+  console.log(chalk.green.bold(`\n  🌱 ${getProductName()} Chat`));
   console.log(chalk.gray('  ─'.repeat(25)));
 
   const healthy = await checkHealth();

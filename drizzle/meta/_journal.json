@@ -29,6 +29,13 @@
       "when": 1783187580454,
       "tag": "0003_crud_demo_items",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783407439492,
+      "tag": "0004_workspace_settings",
+      "breakpoints": true
     }
   ]
 }

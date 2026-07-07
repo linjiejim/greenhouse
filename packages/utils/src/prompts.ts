@@ -7,15 +7,18 @@
  * renders the same chart / datatable / preview code blocks everywhere.
  */
 
-import { PRODUCT_NAME } from './brand.js';
+import { getProductName } from './brand.js';
 
 // ─── Shared identity base ────────────────────────────────
 //
 // A thin, neutral identity preamble. Profiles (default, team, custom) layer
 // their own specialized persona on top in YAML; this base just fixes the
-// product name and the core behavioral contract.
+// product name and the core behavioral contract. A function (not a const) so
+// the product name reflects the workspace-configured value at call time.
 
-export const IDENTITY_BASE = `You are ${PRODUCT_NAME}, a helpful AI assistant. You stay faithful to the facts, never fabricate, keep your reasoning traceable, and follow the user's language preference (writing code comments and commit messages in English).`;
+export function identityBase(): string {
+  return `You are ${getProductName()}, a helpful AI assistant. You stay faithful to the facts, never fabricate, keep your reasoning traceable, and follow the user's language preference (writing code comments and commit messages in English).`;
+}
 
 // ─── Rich output rendering rules ─────────────────────────
 

@@ -11,7 +11,7 @@
    cross-domain references (audit / logs / usage → users/sessions) stay loose (no FK) so those
    records outlive the entity they reference.
 
-The current schema has 35 tables, grouped by domain below.
+The current schema has 36 tables, grouped by domain below.
 
 ## Auth & users
 
@@ -82,6 +82,7 @@ The current schema has 35 tables, grouped by domain below.
 | **api_clients** | External API client registration: `app_id`, key hash, limits, `allowed_profiles`, `user_id` (bound internal user for a2a/relay keys), `channel` (api/a2a/local-agent/cli/relay) |
 | **api_audit_log** | API call audit (v1 + agent proxy + relay + MCP): endpoint, tokens, IP, channel, bound user/session (loose refs) |
 | **feature_requests** | User feature requests (`status` pending/accepted/rejected/done, `priority`); member submits, super manages |
+| **workspace_settings** | Admin-editable deployment config, one row per configured `WORKSPACE_SETTINGS` registry key (`@greenhouse/types/workspace-settings`): plain values in `value` jsonb, secrets AES-256-GCM encrypted in `value_enc` (exactly one non-null); resolution DB → env fallback happens in `apps/api/src/settings/` |
 
 ## Table relationships
 
@@ -145,6 +146,7 @@ entity's lifecycle.
 | `user_prompts.user_id` | → `users.id` | Prompt owner |
 | `user_memories.source_session_id` | → `sessions.id` | Origin session |
 | `feature_requests.submitted_by` / `.session_id` | → `users.id` / `sessions.id` | Submitter / context |
+| `workspace_settings.updated_by` | → `users.id` | Last editor (audit) |
 
 ## ER diagram
 
@@ -480,6 +482,12 @@ erDiagram
         text priority "low/normal/high"
         text session_id "logical"
     }
+    workspace_settings {
+        text key PK "registry key"
+        jsonb value "plain value"
+        text value_enc "encrypted secret"
+        text updated_by "logical"
+    }
 
     %% ── FK constraints (solid) ──
     users ||--o{ user_profiles : "FK CASCADE"
@@ -513,6 +521,7 @@ erDiagram
     users ||--o{ projects : "logical: owner/created_by"
     users ||--o{ tasks : "logical: assignee/created_by"
     users ||--o{ feature_requests : "logical: submitted_by"
+    users ||--o{ workspace_settings : "logical: updated_by"
     users ||--o{ api_clients : "logical: user_id"
     users ||--o{ knowledge_base : "logical: owner/created_by"
     sessions ||--o{ sessions : "logical: parent_session_id"
