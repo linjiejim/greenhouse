@@ -106,6 +106,31 @@ export type PublishResult =
   | { ok: true; created: boolean; skill: SkillSummary; version: SkillVersionSummary }
   | SkillError;
 
+/**
+ * Failed-publish cleanup: delete the bundle we just put UNLESS a version row
+ * now references its key — the losing side of a concurrent duplicate publish
+ * shares the key with the winner, and deleting it would strand the winner's row.
+ */
+async function deleteBundleUnlessRegistered(
+  db: DatabaseProvider,
+  name: string,
+  version: string,
+  storageKey: string,
+): Promise<void> {
+  try {
+    const skill = await db.skills.getByName(name);
+    const row = skill ? await db.skills.getVersion(skill.id, version) : undefined;
+    if (row?.storage_key === storageKey) return;
+  } catch {
+    // Can't tell — keep the bundle; an unreferenced object is harmless, a
+    // missing referenced one is not.
+    return;
+  }
+  await getSkillStore()
+    .delete(storageKey)
+    .catch(() => {});
+}
+
 export async function publishSkill(db: DatabaseProvider, actor: Actor, input: PublishInput): Promise<PublishResult> {
   const nameError = validateSkillName(input.name ?? '');
   if (nameError) return err('invalid', nameError);
@@ -156,10 +181,10 @@ export async function publishSkill(db: DatabaseProvider, actor: Actor, input: Pu
       const versionRow = (await db.skills.getVersion(skill.id, version))!;
       return { ok: true, created: true, skill: toSkillSummary(skill), version: toVersionSummary(versionRow) };
     } catch {
-      // Likely a concurrent create of the same name — don't leave an orphan bundle.
-      await getSkillStore()
-        .delete(storageKey)
-        .catch(() => {});
+      // Likely a concurrent create of the same name. Clean up the orphan bundle —
+      // but only if the winner didn't register this exact key (same version ⇒ same
+      // key; deleting it would strand the winner's version row).
+      await deleteBundleUnlessRegistered(db, input.name, version, storageKey);
       return err('conflict', `Skill "${input.name}" already exists (or create failed) — retry as an update`);
     }
   }
@@ -204,9 +229,9 @@ export async function publishSkill(db: DatabaseProvider, actor: Actor, input: Pu
       created_by: actor.userId,
     });
   } catch {
-    await getSkillStore()
-      .delete(storageKey)
-      .catch(() => {});
+    // Same guard as the create path: a concurrent publish of the same version
+    // (e.g. an agent retry) shares this key — deleting it would break the winner.
+    await deleteBundleUnlessRegistered(db, existing.name, version, storageKey);
     return err('conflict', `Version ${version} of "${existing.name}" already exists — pick a higher version`);
   }
 

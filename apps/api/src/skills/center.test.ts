@@ -246,6 +246,39 @@ describe('publishSkill — update', () => {
     });
     expect(archived).toMatchObject({ ok: false, code: 'conflict', error: expect.stringMatching(/archived/) });
   });
+
+  it("a losing concurrent version publish must not delete the winner's shared bundle", async () => {
+    // Simulate the race: our addVersion loses to a concurrent identical publish
+    // (agent retry) that landed between our version-check and our insert.
+    const files = [skillMd('pdf-report'), { path: 'retry.md', content: 'r' }];
+    const real = db.skills.addVersion.bind(db.skills);
+    db.skills.addVersion = async (id, input) => {
+      await real(id, input); // the winner registers the row first…
+      throw new Error('unique violation'); // …then our own insert fails
+    };
+    const result = await publishSkill(db, OWNER, { name: 'pdf-report', changelog: 'retry', files });
+    db.skills.addVersion = real;
+
+    expect(result).toMatchObject({ ok: false, code: 'conflict' });
+    // The bundle is shared with the winner's registered row — it must survive…
+    expect(store.objects.has('pdf-report/0.1.1.json')).toBe(true);
+    // …and the winner's version must still download cleanly.
+    expect((await downloadSkill(db, 'pdf-report', '0.1.1')).ok).toBe(true);
+  });
+
+  it("a losing concurrent create must not delete the winner's bundle", async () => {
+    // Stale read: we saw no existing skill, but the winner created it (same
+    // retry payload) before our create committed.
+    const realGet = db.skills.getByName.bind(db.skills);
+    let stale = true;
+    db.skills.getByName = async (name: string) => (stale ? ((stale = false), undefined) : realGet(name));
+    const result = await publishSkill(db, OWNER, { name: 'pdf-report', files: [skillMd('pdf-report')] });
+    db.skills.getByName = realGet;
+
+    expect(result).toMatchObject({ ok: false, code: 'conflict' });
+    expect(store.objects.has('pdf-report/0.1.0.json')).toBe(true);
+    expect((await downloadSkill(db, 'pdf-report', '0.1.0')).ok).toBe(true);
+  });
 });
 
 describe('downloadSkill', () => {
