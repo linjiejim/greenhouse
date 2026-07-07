@@ -15,13 +15,15 @@ import { ENV_FILE, PUBLIC_DIR, REPO_ROOT } from './paths.js';
 config({ path: ENV_FILE });
 
 // ─── Proxy for external APIs (Google, Microsoft, etc.) ───
-// Node.js native fetch (undici) doesn't read HTTPS_PROXY by default.
-// Set global dispatcher if proxy env var is present.
-import { ProxyAgent, setGlobalDispatcher } from 'undici';
+// Node.js native fetch (undici) doesn't read proxy env vars by default.
+// EnvHttpProxyAgent honors HTTP(S)_PROXY *and* NO_PROXY — a plain ProxyAgent
+// would also drag loopback/LAN targets (a local MinIO skill store, Ollama)
+// through the proxy, where they are unreachable.
+import { EnvHttpProxyAgent, setGlobalDispatcher } from 'undici';
 const _httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
 if (_httpsProxy) {
-  setGlobalDispatcher(new ProxyAgent(_httpsProxy));
-  logger.info(`[Proxy] 🌐 Global fetch proxy set: ${_httpsProxy}`);
+  setGlobalDispatcher(new EnvHttpProxyAgent());
+  logger.info(`[Proxy] 🌐 Global fetch proxy set: ${_httpsProxy} (NO_PROXY honored)`);
 }
 
 import { Hono } from 'hono';
