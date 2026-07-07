@@ -44,6 +44,33 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "bundleIdentifier": "app.greenhouse.mobile.widget",
+                  "targetName": "GreenhouseWidget",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.app.greenhouse.mobile"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "1f49365d-7d88-472a-b196-01fcd9c428e5"
+      },
+      "router": {}
+    },
+    "owner": "linjiejim_hs",
+    "updates": {
+      "url": "https://u.expo.dev/1f49365d-7d88-472a-b196-01fcd9c428e5"
     }
   }
 }
