@@ -131,6 +131,15 @@ export default {
     emailRequired: 'Email is required',
     loginFailed: 'Login failed',
     invalidPassword: 'Invalid password',
+    ssoDivider: 'or continue with',
+    ssoContinueWith: 'Continue with {provider}',
+    ssoFailed: 'SSO sign-in failed. Please try again.',
+    ssoNotBound:
+      'This account is not linked yet. Sign in with your password, then link it under Settings → Preferences.',
+    ssoEmailConflict: 'An account with this email already exists. Sign in with your password and link it in Settings.',
+    ssoAccountDisabled: 'Account is disabled. Contact your administrator.',
+    ssoProviderError: 'The identity provider rejected the sign-in. Please try again.',
+    ssoInvalidState: 'The sign-in link expired. Please try again.',
   },
 
   // Preferences
@@ -146,6 +155,22 @@ export default {
       "Your notes will be injected into the AI Agent's context so it can personalize responses for you. For example: your role, preferred language, communication style, or areas of focus.",
     notesPlaceholder: 'e.g.\nI am a product manager.\nPlease respond in Chinese.\nKeep answers concise and technical.',
     charactersRemaining: '{count} characters remaining',
+    linkedAccounts: 'Linked Accounts',
+    linkedAccountsHint: 'Link an enterprise identity (WeCom / Feishu) to sign in with one click.',
+    ssoBoundAs: 'Linked as {name}',
+    ssoNotBound: 'Not linked',
+    ssoBind: 'Link',
+    ssoUnbind: 'Unlink',
+    ssoUnbindTitle: 'Unlink account?',
+    ssoUnbindDesc: 'You will no longer be able to sign in with {provider} until you link it again.',
+    ssoBindSuccess: 'Account linked',
+    ssoBindFailed: 'Linking failed. Please try again.',
+    ssoBindAlreadyBound: 'That identity is already linked to another account.',
+    ssoBindProviderLinked: 'You already have an identity linked for this provider. Unlink it first.',
+    ssoBindProviderError: 'The identity provider rejected the request. Please try again.',
+    ssoBindInvalidState: 'The linking session expired. Please try again.',
+    ssoUnbindSuccess: 'Account unlinked',
+    ssoUnbindFailed: 'Unlinking failed. Please try again.',
   },
 
   // Branding Studio (super only)

@@ -19,6 +19,7 @@ import { createUserService } from './services/users.js';
 import { createUserProfileService } from './services/user-profiles.js';
 import { createUserToolService } from './services/user-tools.js';
 import { createRefreshTokenService } from './services/refresh-tokens.js';
+import { createUserIdentityService } from './services/user-identities.js';
 import { createFeatureRequestService } from './services/feature-requests.js';
 import { createProjectService } from './services/projects.js';
 import { createApiClientService } from './services/api-clients.js';
@@ -51,6 +52,7 @@ export function createDatabase(connectionString: string) {
     userProfiles: createUserProfileService(db),
     userTools: createUserToolService(db),
     refreshTokens: createRefreshTokenService(db),
+    userIdentities: createUserIdentityService(db),
     featureRequests: createFeatureRequestService(db),
     projects: createProjectService(db),
     apiClients: createApiClientService(db),
@@ -148,6 +150,7 @@ export function createDatabase(connectionString: string) {
         'tasks',
         'projects',
         'feature_requests',
+        'user_identities',
         'refresh_tokens',
         'user_tools',
         'user_profiles',

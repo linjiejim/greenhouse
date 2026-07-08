@@ -263,7 +263,7 @@ Always import these — don't reimplement:
 ## Auth & permissions
 
 - Roles: `super` > `team` > `external`.
-- Auth module: `apps/api/src/auth/` (token, middleware, password, api-key, crypto, features).
+- Auth module: `apps/api/src/auth/` (token, middleware, password, api-key, crypto, features, sso).
 - Route guards: `requireSuper()` (super only), `requireInternal()` (team + super),
   `requireRole(...)`, `requireFeature(key)` (per-user flag).
 - Middleware injects `AuthUser` via `c.set('user', ...)` / `getAuthUser(c)`.
@@ -271,6 +271,13 @@ Always import these — don't reimplement:
 - **Fail-closed startup**: `assertAuthEnv()` (called in `main()`) refuses to start unless
   `ACCESS_PASSWORD` is set; if it is, `TOKEN_SIGNING_KEY` is also mandatory (no fallback, no
   `NODE_ENV` escape hatch). An unset `ACCESS_PASSWORD` would treat every request as super.
+- **Enterprise SSO** (`auth/sso/` + `routes/sso.ts`, spec `docs/specs/20260708-sso-identity-connectors.md`):
+  external identities (WeCom / Feishu / fork connectors) bind to internal accounts via the
+  `user_identities` table (`provider`+`subject` unique). Env-driven connector registry
+  (partial `SSO_WECOM_*` / `SSO_FEISHU_*` group = refuse to start; none = feature off);
+  login lands a one-time 60s ticket (never tokens in the URL) exchanged at
+  `POST /api/auth/sso/exchange`; JIT provisioning is opt-in (`SSO_AUTO_PROVISION`) and
+  **never merges by email** — conflicts error out and users bind manually instead.
 
 ### Feature flags (per-user experimental toggles)
 

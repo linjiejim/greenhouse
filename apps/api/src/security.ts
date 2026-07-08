@@ -124,6 +124,12 @@ interface RateLimitConfig {
 }
 
 const RATE_LIMITS: Record<string, RateLimitConfig> = {
+  // Must precede '/api/auth' (first prefix match wins). One SSO login costs
+  // ~4 requests (providers + authorize + callback + exchange) and the settings
+  // page lists identities from the same bucket, so 10/5min would starve it;
+  // brute force isn't a concern here (state is HMAC-signed, tickets are
+  // 128-bit single-use, codes are validated by the IdP).
+  '/api/auth/sso': { windowMs: 5 * 60_000, max: 30 },
   '/api/auth': { windowMs: 5 * 60_000, max: 10 }, // 10 attempts per 5 min
   '/api/chat': { windowMs: 60_000, max: 15 }, // 15 messages per min (overridden for internal)
   '/api/email/accounts': { windowMs: 60_000, max: 30 }, // 30 account ops per min

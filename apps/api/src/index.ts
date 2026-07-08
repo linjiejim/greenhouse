@@ -37,10 +37,12 @@ import type { AppEnv } from './app-env.js';
 import { listProfileIds } from './profile.js';
 import { authMiddleware, requireSuper, requireInternal } from './auth/middleware.js';
 import { assertAuthEnv } from './auth/token.js';
+import { getSsoConnectors } from './auth/sso/index.js';
 import { corsMiddleware, rateLimitMiddleware, securityHeadersMiddleware } from './security.js';
 
 // Route modules
 import authRoutes from './routes/auth.js';
+import ssoRoutes from './routes/sso.js';
 import profileRoutes from './routes/profiles.js';
 import sessionRoutes from './routes/sessions.js';
 import { createChatRoute } from './routes/chat.js';
@@ -151,6 +153,9 @@ function mountRoutes(toolRegistry: ToolRegistry) {
   return (
     app
       .route('/api/auth', authRoutes)
+      // SSO — providers/authorize/callback/exchange are public (see isPublicPath);
+      // bind-url + identities stay behind Bearer auth (enforced in-route).
+      .route('/api/auth/sso', ssoRoutes)
       .route('/api/profiles', profileRoutes)
       .route('/api/sessions', sessionRoutes)
       .route('/health', healthRoutes)
@@ -222,6 +227,9 @@ const PORT = parseInt(process.env.API_PORT ?? '3000', 10);
 
 async function main() {
   assertAuthEnv(); // fail fast: auth enabled ⇒ TOKEN_SIGNING_KEY must be set
+  // Resolve SSO connectors now: a PARTIAL SSO_WECOM_*/SSO_FEISHU_* group (or an
+  // invalid SSO_AUTO_PROVISION_ROLE) must refuse to start, not 500 on first login.
+  getSsoConnectors();
   // Wire fork runtime extensions (providers, connectors, storage, flags,
   // summarizers) before anything uses them. No-op upstream — see bootstrap.extensions.ts.
   bootstrapForkExtensions();

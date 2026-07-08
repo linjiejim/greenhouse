@@ -38,6 +38,7 @@ export * from './services/users.js';
 export * from './services/user-profiles.js';
 export * from './services/user-tools.js';
 export * from './services/refresh-tokens.js';
+export * from './services/user-identities.js';
 export * from './services/feature-requests.js';
 export * from './services/projects.js';
 export * from './services/api-clients.js';

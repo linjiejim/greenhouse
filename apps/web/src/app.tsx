@@ -31,7 +31,14 @@ import { SessionManagerProvider } from './lib/session-manager';
 import { Drawer, AppLogo, ToastContainer, ErrorBoundary, Spinner } from './components/ui';
 import { MessageCircle, FolderKanban, Plus, ArrowLeft, BookOpen } from './lib/icons';
 import type { LucideIcon } from './lib/icons';
-import { authFetch, checkAuthStatus, clearToken, setOnUnauthorized, validateSession } from './lib/auth';
+import {
+  authFetch,
+  checkAuthStatus,
+  clearToken,
+  exchangeSsoTicket,
+  setOnUnauthorized,
+  validateSession,
+} from './lib/auth';
 import { LoginScreen, AppSidebar, SidebarAccountMenu, TopBar } from './components/app';
 import { MobilePinnedSection, SettingsNavPanel } from './components/app/sidebar-panels';
 import { useAuthStore, useUIStore, useProfileStore } from './stores';
@@ -122,10 +129,44 @@ function App() {
     useProfileStore.getState().clear();
   }, [logout]);
 
+  // SSO callback landing error, shown on the login screen (ticket exchange
+  // failure or a ?sso_error= code from the API callback redirect).
+  const [ssoError, setSsoError] = useState<string | null>(null);
+
   useEffect(() => {
     setOnUnauthorized(handleUnauthorized);
 
     (async () => {
+      // ── SSO callback landing: exchange the one-time ticket before anything else ──
+      const params = new URLSearchParams(window.location.search);
+      const ssoTicket = params.get('sso_ticket');
+      const ssoErrorCode = params.get('sso_error');
+      if (ssoTicket || ssoErrorCode) {
+        // Strip the one-time params from the URL (keep the hash route).
+        params.delete('sso_ticket');
+        params.delete('sso_error');
+        const query = params.toString();
+        window.history.replaceState(
+          null,
+          '',
+          `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`,
+        );
+        if (ssoTicket) {
+          const result = await exchangeSsoTicket(ssoTicket);
+          if (result.ok && result.user) {
+            login(result.user);
+            if (result.user.locale && (result.user.locale === 'en' || result.user.locale === 'zh')) {
+              setUserLocale(result.user.locale as Locale);
+            }
+            useAuthStore.getState().setAuthState('authenticated');
+            return;
+          }
+          setSsoError(result.error ?? 'sso_failed');
+        } else if (ssoErrorCode) {
+          setSsoError(ssoErrorCode);
+        }
+      }
+
       const authEnabled = await checkAuthStatus();
       if (!authEnabled) {
         login({ id: 'dev', nickname: 'Dev', role: 'super', profiles: [] });
@@ -175,6 +216,7 @@ function App() {
     return (
       <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
         <LoginScreen
+          ssoError={ssoError}
           onSuccess={(user) => {
             login(user);
             if (user.locale && (user.locale === 'en' || user.locale === 'zh')) {

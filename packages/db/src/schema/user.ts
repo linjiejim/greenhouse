@@ -1,10 +1,10 @@
 /**
  * Drizzle schema — User management tables (PostgreSQL).
  *
- * Tables: users, user_profiles, user_tools, refresh_tokens
+ * Tables: users, user_profiles, user_tools, refresh_tokens, user_identities
  */
 
-import { pgTable, text, timestamp, integer, index, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, index, primaryKey, unique } from 'drizzle-orm/pg-core';
 
 // ─── users ────────────────────────────────────────────────
 
@@ -78,6 +78,34 @@ export const refreshTokens = pgTable(
   ],
 );
 
+// ─── user_identities ──────────────────────────────────────
+// External SSO identities bound to internal accounts (WeCom / Feishu / fork
+// connectors). One row per (provider, subject); a user binds at most one
+// identity per provider. See docs/specs/20260708-sso-identity-connectors.md.
+
+export const userIdentities = pgTable(
+  'user_identities',
+  {
+    id: text('id').primaryKey(),
+    user_id: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    subject: text('subject').notNull(),
+    display_name: text('display_name'),
+    avatar_url: text('avatar_url'),
+    raw_profile: text('raw_profile'),
+    created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
+    last_login_at: timestamp('last_login_at', { withTimezone: true, mode: 'string' }),
+  },
+  (table) => [
+    unique('uq_user_identities_provider_subject').on(table.provider, table.subject),
+    unique('uq_user_identities_user_provider').on(table.user_id, table.provider),
+    index('idx_user_identities_user').on(table.user_id),
+  ],
+);
+
 // ─── Row types (inferred — schema is the single source of truth) ──
 
 export type UserRow = typeof users.$inferSelect;
@@ -86,3 +114,4 @@ export type UserStatus = UserRow['status'];
 export type UserProfileRow = typeof userProfiles.$inferSelect;
 export type UserToolRow = typeof userTools.$inferSelect;
 export type RefreshTokenRow = typeof refreshTokens.$inferSelect;
+export type UserIdentityRow = typeof userIdentities.$inferSelect;

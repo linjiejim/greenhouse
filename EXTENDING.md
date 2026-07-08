@@ -32,6 +32,7 @@ Every extension point is guarded by a test that pins it **empty in this repo**, 
 | G1 | upload storage backend (S3 / COS) | `apps/api/src/storage/extensions.ts` | `registerStorageDriver()` |
 | G2 | email connector (Gmail / Outlook) | `apps/api/src/email/extensions.ts` | `registerEmailConnector(provider, factory)` |
 | G3 | public (auth-skipped) path — OAuth callbacks | `apps/api/src/auth/extensions.ts` | `EXTENSION_PUBLIC_PATHS` / `EXTENSION_PUBLIC_PATH_PREFIXES` |
+| G4 | SSO identity connector (private IdP: DingTalk / corporate OIDC / …) | `apps/api/src/auth/sso/extensions.ts` | `EXTENSION_SSO_CONNECTORS` — implement `SsoConnector` (authorize URL + code→identity); login/bind/JIT flows, routes, and `/api/auth/sso/:id/*` public paths come for free |
 | G5 | CSP `connect-src` for external origins | *(env)* | `CSP_CONNECT_SRC` (space/comma-separated) — no code edit |
 
 **Startup wiring (G0):** the `*.extensions.*` **array** seams are auto-imported by their central file — no wiring needed. The **runtime `register*()`** seams (S3, S5-i18n, S7, S10, S11, G1, G2) must be *called* at startup: put every API call inside `bootstrapForkExtensions()` in `apps/api/src/bootstrap.extensions.ts` (invoked at the start of `main()`), and every web call in `apps/web/src/bootstrap.extensions.ts` (imported first by `app.tsx`). This is the one place a fork wires them — `index.ts` / `app.tsx` stay untouched.
