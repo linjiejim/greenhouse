@@ -127,3 +127,12 @@
 4. 在包根 `index.ts` 加 `export * from './services/xxx.js'`
 5. 运行 `pnpm drizzle-kit generate` 生成迁移并 **review 生成的 SQL**（见上「push vs migrate」）；本地可 `migrate` 到 scratch 库自测，**不要 push 到共享/持久库**
 6. 更新 `db-schema.md`
+
+### Renumbering a migration (parked/conflicting PRs)
+
+When two branches both generate the same migration number, the later one renumbers
+to the next free slot. Renaming the `.sql` + snapshot is **not enough**: the drizzle
+migrator replays entries by the journal `when` timestamp (skips anything ≤ the last
+applied `created_at`). After renumbering, also bump that entry's `when` in
+`drizzle/meta/_journal.json` past every earlier entry, or already-migrated databases
+will silently skip it (fresh CI databases won't catch this).
