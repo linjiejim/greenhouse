@@ -133,7 +133,6 @@ export const en = {
     projects: 'Projects',
     history: 'History',
     settings: 'Settings',
-    logout: 'Sign out',
   },
   profile: {
     title: 'Choose an agent',

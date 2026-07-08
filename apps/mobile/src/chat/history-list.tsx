@@ -3,9 +3,10 @@
  *  - `useSessions`  — paginated session loader (infinite scroll; dedupes pages;
  *                     optional server-side tag filter + debounced title search,
  *                     both hard-reset pagination on change).
- *  - `HistoryRow`   — compact row: title (left) + relative time (right), tags on a
- *                     second line, no leading avatar/icon. Used by the shared
- *                     <HistoryBrowser> (top-bar popup + standalone /history page).
+ *  - `HistoryRow`   — compact single-line row: title (left), then up to two small
+ *                     tag chips (+N overflow) and the relative time on the right;
+ *                     no leading avatar/icon. Used by the shared <HistoryBrowser>
+ *                     (top-bar popup + standalone /history page).
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -110,7 +111,9 @@ export function HistoryRow({
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
-  const tags = session.tags?.slice(0, 3) ?? [];
+  const tags = session.tags ?? [];
+  const shown = tags.slice(0, 2);
+  const extra = tags.length - shown.length;
   return (
     <Touchable
       haptic="none"
@@ -124,23 +127,25 @@ export function HistoryRow({
           {session.title || t('chat.newConversation')}
         </Text>
         {session.share_count ? <Icon name="share" size={12} color={c.fgFaint} /> : null}
+        {shown.length ? (
+          <View style={styles.tags}>
+            {shown.map((tag) => (
+              <TagChip key={tag.id} tag={tag} size="sm" />
+            ))}
+            {extra > 0 ? <Text style={styles.more}>+{extra}</Text> : null}
+          </View>
+        ) : null}
         <Text style={styles.time}>{shortTime(session.updated_at)}</Text>
       </View>
-      {tags.length ? (
-        <View style={styles.tags}>
-          {tags.map((tag) => (
-            <TagChip key={tag.id} tag={tag} />
-          ))}
-        </View>
-      ) : null}
     </Touchable>
   );
 }
 
 const useStyles = makeStyles((c) => ({
-  row: { paddingHorizontal: 16, paddingVertical: 9 },
+  row: { paddingHorizontal: 16, paddingVertical: 12 },
   top: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { flex: 1, fontSize: font.label, fontWeight: '500', color: c.fg },
   time: { fontSize: font.caption, color: c.fgFaint, flexShrink: 0 },
-  tags: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
+  tags: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
+  more: { fontSize: font.caption, color: c.fgFaint },
 }));

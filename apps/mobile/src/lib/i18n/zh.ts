@@ -130,7 +130,6 @@ export const zh: Catalog = {
     projects: '项目',
     history: '历史会话',
     settings: '设置',
-    logout: '退出登录',
   },
   profile: {
     title: '选择智能体',

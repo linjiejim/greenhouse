@@ -1,9 +1,9 @@
 /**
- * Composer — the full-width flat input bar (Home hero + Chat bottom). Auto-
- * growing multiline input with the "+" (attach) on its left and, once focused, a
- * fullscreen-expand button on its right that opens an immersive editor modal.
- * Below: the primary send button (→ danger stop while streaming). Optional
- * annotation ("引用追问") and image-preview strips. (Voice input hidden for now.)
+ * Composer — the full-width flat input bar (Home hero + Chat bottom). One
+ * compact row: "+" (attach) on the left, an auto-growing multiline input, then
+ * — once focused — a fullscreen-expand button, and the primary send button
+ * (→ danger stop while streaming) inline on the right. Optional annotation
+ * ("引用追问") and image-preview strips above. (Voice input hidden for now.)
  */
 
 import React, { useState } from 'react';
@@ -138,9 +138,11 @@ export function Composer({
         </Touchable>
       )}
 
-      {/* input row: + (attach) on the left, text field, fullscreen-expand on the right (on focus) */}
+      {/* input row: + (attach) left, auto-growing field, expand (on focus), send right */}
       <View style={styles.inputRow}>
-        <ToolBtn icon="plus" onPress={onAttach} />
+        <View style={styles.btnSeat}>
+          <ToolBtn icon="plus" onPress={onAttach} />
+        </View>
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -155,16 +157,13 @@ export function Composer({
           style={[styles.input, { height: h + 12 }]}
         />
         {showExpand && (
-          <Touchable haptic="none" onPress={() => setExpanded(true)} style={styles.expandBtn} hitSlop={6}>
+          <Touchable haptic="none" onPress={() => setExpanded(true)} style={[styles.expandBtn, styles.btnSeat]} hitSlop={6}>
             <Icon name="expand" size={18} color={c.fgMuted} sw={1.9} />
           </Touchable>
         )}
-      </View>
-
-      {/* toolbar: send (voice input hidden for now) */}
-      <View style={styles.toolbar}>
-        <View style={{ flex: 1 }} />
-        {streaming ? <SendBtn stop onPress={onStop} /> : <SendBtn disabled={!canSend} onPress={onSend} />}
+        <View style={styles.btnSeat}>
+          {streaming ? <SendBtn stop onPress={onStop} /> : <SendBtn disabled={!canSend} onPress={onSend} />}
+        </View>
       </View>
 
       <FullScreenComposer
@@ -349,11 +348,12 @@ const useStyles = makeStyles((c) => ({
     borderColor: c.hairline,
   },
   profileName: { fontSize: font.small, fontWeight: '600', color: c.fgSecondary, maxWidth: 180 },
-  // taller default field; + and expand vertically centered with the text
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingLeft: 6, paddingRight: 8, paddingTop: 6, paddingBottom: 2 },
+  // One compact row; buttons pin to the bottom edge so a growing multiline
+  // field expands upward while + / expand / send stay put.
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, paddingLeft: 6, paddingRight: 8, paddingTop: 6, paddingBottom: 8 },
+  btnSeat: { marginBottom: 2 },
   input: { flex: 1, fontSize: font.body, lineHeight: 21, color: c.fg, padding: 0, paddingHorizontal: 2, textAlignVertical: 'center' },
   expandBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  toolbar: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingBottom: 10, paddingTop: 2 },
   toolBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   send: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
 
