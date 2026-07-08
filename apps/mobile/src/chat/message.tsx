@@ -1,7 +1,8 @@
 /**
  * Chat message rendering: the assistant reply (tool pipeline → reasoning → rich
- * markdown with streaming caret → citation/web sources → metrics) and the user
- * bubble. Plus `fromStored` to hydrate a persisted Message into this shape.
+ * markdown, unfolding with a per-block fade while streaming → citation/web
+ * sources → metrics) and the user bubble. Plus `fromStored` to hydrate a
+ * persisted Message into this shape.
  */
 
 import React, { useState } from 'react';
@@ -342,14 +343,9 @@ export function AiMessage({
       ) : null}
       {msg.reasoning && msg.status === 'done' ? <Reasoning text={msg.reasoning} /> : null}
 
-      {msg.status !== 'thinking' && msg.text ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <View style={{ width: '100%' }}>
-            <Markdown source={msg.text} />
-          </View>
-          {streaming ? <Caret /> : null}
-        </View>
-      ) : null}
+      {/* The reply unfolds via the drain + per-block fade — no trailing caret
+          next to the text (its own line kept appearing/vanishing = jitter). */}
+      {msg.status !== 'thinking' && msg.text ? <Markdown source={msg.text} animated={streaming} /> : null}
 
       {streaming && !msg.text && msg.tools && msg.tools.length > 0 ? <Caret /> : null}
 
@@ -415,7 +411,7 @@ export function UserMessage({ msg, onLongPress }: { msg: ChatMessage; onLongPres
 }
 
 const useStyles = makeStyles((c) => ({
-  aiRow: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 18 },
+  aiRow: { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 14 },
 
 
   // Quiet trigger row shared by tool-calls + references (mirrors 思考过程).
@@ -470,7 +466,7 @@ const useStyles = makeStyles((c) => ({
   },
   errorText: { flex: 1, color: c.danger, fontSize: font.small },
 
-  userRow: { alignItems: 'flex-end', paddingHorizontal: 16, paddingVertical: 8, paddingLeft: 44 },
+  userRow: { alignItems: 'flex-end', paddingHorizontal: 16, paddingVertical: 6, paddingLeft: 44 },
   userImages: { flexDirection: 'row', gap: 6, justifyContent: 'flex-end', marginBottom: 6 },
   userThumb: { width: 72, height: 72, borderRadius: 12, backgroundColor: c.surfaceMuted, borderWidth: 1, borderColor: c.hairline, alignItems: 'center', justifyContent: 'center' },
   userAnnotation: { borderLeftWidth: 3, borderLeftColor: c.accentBorder, backgroundColor: c.accentTint, borderTopRightRadius: 8, borderBottomRightRadius: 8, paddingVertical: 6, paddingHorizontal: 10, marginBottom: 6 },

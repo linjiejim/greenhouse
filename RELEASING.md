@@ -105,13 +105,50 @@ The whole app is one deployable unit (the API serves the built SPA), so the
 form — `v0.2.0-rc.1` → `0.2.0`), and zips `dist/` into
 `greenhouse-bridge-v<version>.zip` for "Load unpacked" / Web Store submission.
 
-### Mobile → EAS Build
+### Mobile → fingerprint CD (OTA update / store build → TestFlight)
 
-`apps/mobile/eas.json` defines `development` / `preview` / `production` profiles.
-For testers, `eas build --profile preview` produces an installable APK / simulator
-build. `production` uses `autoIncrement` for store `buildNumber`/`versionCode`. Full
-store automation needs an Expo account + credentials (see Follow-ups). The mobile
-release runs on its own cadence, decoupled from the product tag.
+`.github/workflows/mobile.yml` continuously deploys the Expo app on every `main`
+push that touches `apps/mobile/` — still decoupled from the product tag
+(app-store cadence). It uses
+`expo/expo-github-action/continuous-deploy-fingerprint`, which splits per native
+fingerprint:
+
+- **JS/asset-only change** (fingerprint matches an existing EAS build) →
+  `eas update` on the `production` branch: an OTA update users receive on their
+  next app launch — no store round-trip. `app.json` pins
+  `runtimeVersion.policy: "fingerprint"`, so an update can never reach a binary
+  it isn't compatible with.
+- **Native change** (new fingerprint: native dep / config plugin / SDK bump) →
+  `eas build --profile production --auto-submit`: iOS uploads to **TestFlight**
+  automatically (internal testers install right away; the final "Submit for App
+  Review" click stays manual in App Store Connect), then the update is published
+  for the new fingerprint. `buildNumber`/`versionCode` auto-increment **remotely**
+  (`eas.json` `appVersionSource: "remote"` — required on CI, where a locally
+  bumped number would be thrown away with the checkout).
+- **Manual lane**: `workflow_dispatch` with `profile: preview` (internal
+  distribution, Android APK) and a `platform` picker (`ios` default; switch to
+  `all` once Play credentials exist).
+
+**Fork-safe:** without the `EXPO_TOKEN` secret the workflow no-ops green.
+
+One-time setup (secret-gated, not code — the workflow stays a no-op until done):
+
+1. `cd apps/mobile && eas init` (links the Expo project, writes
+   `extra.eas.projectId`), then `eas update:configure` (writes `updates.url`).
+   Commit both `app.json` changes.
+2. Seed iOS credentials + the App Store Connect app record with one interactive
+   run: `eas build --profile production --auto-submit`. This stores the
+   distribution cert, the provisioning profile (incl. the App Group
+   entitlement), and the ASC API key on EAS servers, and initializes the remote
+   `buildNumber`.
+3. In the Expo dashboard set the `production` environment variable
+   `EXPO_PUBLIC_API_BASE_URL` — the app bakes it in at build/export time (until
+   runtime workspace-picker login lands). The workflow passes
+   `environment: production` so both builds and updates pick it up.
+4. Add an Expo access token as the `EXPO_TOKEN` Actions secret.
+5. Android, later: the **first** Play Console upload is manual (store policy);
+   after that, add the Play service-account key to EAS and use
+   `platform: android`/`all`.
 
 ## Branch protection (GitHub setting — record only)
 
@@ -132,6 +169,9 @@ release runs on its own cadence, decoupled from the product tag.
   provenance attestation (`--provenance`), `cosign` keyless signing (OIDC).
 - **Chrome Web Store auto-publish** (`chrome-webstore-upload-action`) — needs store
   credentials as secrets (`STORE-SUBMISSION.md` has the copy ready).
-- **EAS Submit** store automation — needs an Expo token + store credentials.
+- **Mobile Android lane** — the iOS side is fully set up (project linked,
+  credentials seeded, `EXPO_TOKEN` in place). Android still needs the first
+  manual Play Console upload (store policy) + a service-account key on EAS,
+  then flip `platform` in `mobile.yml`.
 - **`release/x.y` maintenance branches** for back-porting security fixes to old
   lines (only once we support more than the latest).

@@ -127,7 +127,7 @@ export interface UploadResult {
   size: number;
 }
 
-// ─── Knowledge base (read-only on mobile) ────────────────
+// ─── Knowledge base ──────────────────────────────────────
 
 export interface KnowledgeDoc {
   id: number;
@@ -150,6 +150,129 @@ export interface KnowledgeDoc {
   updated_at: string | null;
   /** The current viewer's effective role on this doc (when the API resolved it). */
   access?: 'owner' | 'editor' | 'reader' | null;
+}
+
+// ─── Project management ──────────────────────────────────
+// Canonical: packages/db/src/schema/project.ts (row shapes) +
+// apps/api/src/routes/projects.ts (enriched response shapes).
+
+export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed' | 'archived';
+export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done' | 'cancelled';
+export type Priority = 'low' | 'normal' | 'high' | 'urgent';
+export type ProjectVisibility = 'public' | 'private';
+export type ProjectMemberRole = 'owner' | 'member';
+
+export interface ProjectStats {
+  total: number;
+  todo: number;
+  in_progress: number;
+  in_review: number;
+  done: number;
+  cancelled: number;
+}
+
+export interface Project {
+  id: number;
+  title: string;
+  description: string | null;
+  status: ProjectStatus;
+  priority: Priority;
+  owner_id: string;
+  /** Enriched by the API from the user table. */
+  owner_nickname?: string;
+  start_date: string | null;
+  end_date: string | null;
+  color: string | null;
+  visibility: ProjectVisibility;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  /** List/gantt endpoints attach progress stats. */
+  stats?: ProjectStats;
+  /** 0–100, derived server-side from stats. */
+  progress?: number;
+}
+
+export interface ProjectTask {
+  id: number;
+  project_id: number;
+  parent_id: number | null;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: Priority;
+  /** 'task' | 'milestone' (free-form column, these two in practice). */
+  task_type: string;
+  assignee_id: string | null;
+  /** Enriched by the API from the user table. */
+  assignee_nickname?: string | null;
+  start_date: string | null;
+  due_date: string | null;
+  completed_at: string | null;
+  sort_order: number;
+  estimated_hours: number | null;
+  /** JSON-encoded string[] on tree endpoints; parsed string[] on /:id/tasks. */
+  tags: string | string[];
+  /** JSON-encoded number[] on tree endpoints; parsed number[] on /:id/tasks. */
+  dependencies: string | number[];
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  /** Present on tree-shaped responses (project detail, gantt). */
+  children?: ProjectTask[];
+}
+
+export interface ProjectMember {
+  id: number;
+  project_id: number;
+  user_id: string;
+  role: ProjectMemberRole;
+  /** Enriched by the API from the user table. */
+  nickname?: string;
+  added_by: string;
+  created_at: string;
+}
+
+export interface TaskComment {
+  id: number;
+  task_id: number;
+  user_id: string;
+  user_nickname?: string;
+  content: string;
+  created_at: string;
+}
+
+export interface ProjectActivity {
+  id: number;
+  project_id: number;
+  task_id: number | null;
+  user_id: string;
+  user_nickname?: string;
+  action: string;
+  detail: string | null;
+  created_at: string;
+}
+
+/** One project on the global gantt (`GET /api/projects/gantt`): color is always resolved. */
+export interface GanttProject extends Omit<Project, 'color' | 'visibility' | 'created_by'> {
+  color: string;
+  tasks: ProjectTask[];
+  stats: ProjectStats;
+  progress: number;
+}
+
+/** One snapshot in a doc's edit history (GET /api/knowledge/docs/:id/versions). */
+export interface KnowledgeDocVersion {
+  id: number;
+  doc_id: number;
+  version: number;
+  title: string;
+  content_markdown: string;
+  content_json: string;
+  summary: string;
+  changed_by: string | null;
+  change_reason: string | null;
+  created_at: string | null;
 }
 
 // ─── Streaming events ────────────────────────────────────

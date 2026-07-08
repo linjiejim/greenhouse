@@ -11,10 +11,17 @@ export const en = {
 
   options: {
     title: 'Greenhouse Bridge',
-    subtitle: 'Connect to your self-hosted Greenhouse instance.',
+    subtitle: 'Connect to your self-hosted Greenhouse instances.',
 
-    // Connection card
-    connection: 'Connection',
+    // Stations card
+    stations: 'Stations',
+    stationsHint: 'Saved connections to self-hosted Greenhouse servers. Click one to make it active.',
+    noStations: 'No stations yet — add your server to get started.',
+    addStation: 'Add station',
+    activeBadge: 'Active',
+    signedOutBadge: 'Signed out',
+    removeStation: 'Remove',
+    removeConfirm: 'Remove “{name}”? Its saved sign-in is deleted from this browser.',
     baseUrl: 'Server URL',
     baseUrlPlaceholder: 'https://greenhouse.example.com',
     baseUrlInvalid: 'Enter a valid URL, e.g. https://greenhouse.example.com',
@@ -35,9 +42,6 @@ export const en = {
     loginFailed: 'Sign-in failed. Check the email and password.',
     networkError: 'Network error — check the server URL and your connection.',
 
-    // Connected card
-    connectedTo: 'Connected to',
-    signedInAs: 'Signed in as',
     signOut: 'Sign out',
 
     // Preferences card
@@ -52,8 +56,15 @@ export const en = {
   panel: {
     notConnectedTitle: 'Not connected',
     notConnectedHint: 'Connect the extension to your Greenhouse instance to start asking with page context.',
+    signedOutTitle: 'Signed out',
+    signedOutHint: 'Your session on {name} has ended. Sign in again from settings.',
     openSettings: 'Open settings',
     connected: 'Connected',
+
+    // Station switcher menu
+    stationMenu: 'Stations',
+    stationSignedOut: 'Signed out',
+    manageStations: 'Manage stations…',
 
     // Selection context card
     currentPage: 'Current page',

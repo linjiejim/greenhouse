@@ -11,7 +11,7 @@
  */
 
 import React, { useState } from 'react';
-import { Alert, type AlertButton, FlatList, TextInput, View } from 'react-native';
+import { Alert, type AlertButton, FlatList, StyleSheet, TextInput, View } from 'react-native';
 import { deleteSession } from '../api/sessions';
 import type { Session } from '../shared/greenhouse-types';
 import { useT } from '../lib/i18n';
@@ -116,13 +116,13 @@ export function HistoryBrowser({
         }
         onEndReached={() => loadMore()}
         onEndReachedThreshold={0.5}
+        ItemSeparatorComponent={RowSep}
         ListEmptyComponent={
           loading ? (
             <View style={{ paddingTop: 4 }}>
               {[0, 1, 2, 3, 4].map((i) => (
                 <View key={i} style={styles.skelRow}>
-                  <Skeleton style={{ height: 13, width: '70%', marginBottom: 7 }} />
-                  <Skeleton style={{ height: 11, width: '30%' }} />
+                  <Skeleton style={{ height: 14, width: i % 2 ? '58%' : '72%' }} />
                 </View>
               ))}
             </View>
@@ -169,7 +169,15 @@ export function HistoryBrowser({
   );
 }
 
+/** Faint inset divider between history rows. */
+function RowSep() {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  return <View style={styles.sep} />;
+}
+
 const useStyles = makeStyles((c) => ({
+  sep: { height: StyleSheet.hairlineWidth, backgroundColor: c.hairline, marginHorizontal: 16 },
   searchWrap: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
   search: {
     flexDirection: 'row',
@@ -182,6 +190,6 @@ const useStyles = makeStyles((c) => ({
   },
   searchInput: { flex: 1, fontSize: font.body, color: c.fg, padding: 0 },
   list: { flex: 1 },
-  skelRow: { paddingHorizontal: 16, paddingVertical: 11 },
+  skelRow: { paddingHorizontal: 16, paddingVertical: 13 },
   footLoad: { paddingVertical: 16, alignItems: 'center' },
 }));

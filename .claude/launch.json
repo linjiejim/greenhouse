@@ -26,6 +26,15 @@
       "port": 8095
     },
     {
+      "name": "mobile-web-alt",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/mobile && npx expo start --web --port 8096"
+      ],
+      "port": 8096
+    },
+    {
       "name": "docs-landing",
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "4599", "--directory", "docs"],

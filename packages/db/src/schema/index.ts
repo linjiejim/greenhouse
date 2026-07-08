@@ -24,4 +24,5 @@ export * from './user-feature.js';
 export * from './user-memory.js';
 export * from './groups.js';
 export * from './crud-demo.js';
+export * from './skill.js';
 export * from './workspace-setting.js';

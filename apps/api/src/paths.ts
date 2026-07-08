@@ -22,5 +22,8 @@ export const DATA_DIR = resolve(REPO_ROOT, 'data');
 /** data/uploads/ directory */
 export const UPLOADS_DIR = resolve(DATA_DIR, 'uploads');
 
+/** data/skills/ directory — local-disk fallback of the Skill Center bundle store */
+export const SKILLS_DIR = resolve(DATA_DIR, 'skills');
+
 /** apps/web/src/ directory (frontend source, index.html lives here) */
 export const WEB_SRC_DIR = resolve(REPO_ROOT, 'apps', 'web', 'src');

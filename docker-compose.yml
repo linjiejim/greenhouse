@@ -58,6 +58,11 @@ services:
       API_PORT: '3000'
     ports:
       - '${PORT:-3000}:3000'
+    volumes:
+      # Uploads (data/uploads) + Skill Center bundles (data/skills) must outlive
+      # the container — an image swap otherwise wipes them while the DB catalog
+      # still references them.
+      - app_data:/app/data
     healthcheck:
       test:
         [
@@ -70,3 +75,4 @@ services:
 
 volumes:
   pg_data:
+  app_data:

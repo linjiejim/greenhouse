@@ -108,6 +108,11 @@ docker compose exec api pnpm admin:create          # first super-admin
 For local dev you can start only Postgres from the same file: `docker compose up -d postgres`
 (bound to `127.0.0.1:5432`, not internet-exposed).
 
+`docker-compose.ghcr.yml` is the same stack consuming the **published GHCR image**
+instead of building from source — the pull-based upgrade path for self-hosters
+(`pull` + `up -d`; the one-shot `migrate` service applies new migrations before the
+API starts). Keep the two compose files' service topology in sync.
+
 ### Example dataset (`pnpm seed`)
 
 `data/examples/` holds a de-identified reference dataset (fictional company "Greenhouse") —
@@ -146,8 +151,10 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
   points at `main`. `release.yml` (tag/main triggered) enforces this — keep it intact.
 - **Artifacts.** API+web = the container image (primary). Browser = versioned zip
   (`pnpm -F @greenhouse/browser package`, manifest version stamped from the tag).
-  Mobile = EAS Build (`apps/mobile/eas.json`), **decoupled** from the product
-  version (app-store cadence, its own `version` + `buildNumber`/`versionCode`).
+  Mobile = fingerprint CD (`.github/workflows/mobile.yml`, `EXPO_TOKEN`-gated,
+  no-op without it): JS-only change → EAS OTA update; native change → EAS build
+  `--auto-submit` (iOS → TestFlight). Still **decoupled** from the product version
+  (app-store cadence; `buildNumber`/`versionCode` auto-increment remotely on EAS).
 - The `Quality gate` (`ci.yml`) is unchanged and still gates every PR/`main`;
   `release.yml` only publishes artifacts and never replaces those checks.
 
@@ -156,10 +163,12 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
 ```
 greenhouse/
 ├── apps/
-│   ├── browser/          # Chrome extension (MV3) — side panel + options, thin client of a
-│   │                     #   self-hosted instance (login + token refresh); see its src/AGENTS.md
-│   ├── mobile/           # Expo (React Native) app — chat + knowledge (read-only) + settings.
-│   │                     #   NOT a workspace member (isolated install); see its AGENTS.md
+│   ├── browser/          # Chrome extension (MV3) — side panel + options, thin client of
+│   │                     #   self-hosted instances (multi-station registry + per-station
+│   │                     #   token refresh); see its src/AGENTS.md
+│   ├── mobile/           # Expo (React Native) app — chat + knowledge (read-only) + projects
+│   │                     #   (list/board/gantt) + settings. NOT a workspace member
+│   │                     #   (isolated install); see its AGENTS.md
 │   ├── api/              # Hono backend — routes, agent runtime, auth, security, scheduler
 │   │   └── src/
 │   │       ├── routes/       # HTTP routes (one file per resource)
@@ -171,7 +180,8 @@ greenhouse/
 │   │       ├── profiles/     # agent profiles in TS (defineProfile: default.ts/team.ts + *.prompt.md)
 │   │       ├── scheduler/    # cron scheduler + executor (automations)
 │   │       ├── email/        # IMAP/SMTP client + security
-│   │       ├── storage/      # upload storage (local disk)
+│   │       ├── skills/       # Skill Center — bundle validation, S3/local store, publish/download/sync core
+│   │       ├── storage/      # upload storage (local disk) + s3-lite (minimal SigV4 client)
 │   │       └── cli/          # `pnpm cli` console: index.ts dispatcher + commands/* (users,
 │   │                         #   tools, profiles, sessions, seed, db, doctor, api-client) + chat.ts
 │   └── web/              # React SPA — pages, components, lib, stores
@@ -250,6 +260,7 @@ Always import these — don't reimplement:
 | `parseHexKey(hex, label?)` | `@greenhouse/utils/crypto` | Validate + parse a 64-char hex key |
 | `toErrorMessage(err)` | `@greenhouse/utils/error` | Normalize an unknown error to a readable string |
 | `randomDocId(prefix?)` | `@greenhouse/utils/id` | Random opaque doc id (`doc-1a2b3c4d`); ids are system-assigned, never title-derived |
+| `isValidSemver` / `compareSemver` / `bumpPatch` | `@greenhouse/utils/semver` | Strict `X.Y.Z` semver helpers (Skill Center versioning) |
 
 ## Auth & permissions
 

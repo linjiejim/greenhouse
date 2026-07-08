@@ -4,7 +4,7 @@
  * Sections (see `settingsSections` in nav-registry):
  * - Preferences (standalone, top)
  * - Personal: Automation, My Prompts, My Agents
- * - Workspace: Groups, Cloud Email
+ * - Workspace: Groups, Cloud Email, Skill Center
  * - Administration (super only): Users, AI Gateway, Runtime Config, MCP Access, System Agents, Agent Usages, Feature Requests
  * - Labs (super only, beta): Memory, Branding Studio
  */
@@ -27,6 +27,7 @@ import { MyProfilesPage } from './my-profiles';
 import { EmailAccountsPanel } from './email-accounts';
 import { MemoryPanel } from './memory';
 import { GroupsPanel } from './groups';
+import { SkillCenterPanel } from './skills';
 import { LlmGatewayAdminPanel } from './admin-llm-gateway';
 import { McpKeysPanel } from './mcp-keys';
 import { RuntimeConfigPanel } from './runtime-config';
@@ -84,6 +85,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
           {effectiveModule === 'runtime-config' && <RuntimeConfigPanel />}
           {effectiveModule === 'mcp-keys' && <McpKeysPanel />}
           {effectiveModule === 'groups' && <GroupsPanel />}
+          {effectiveModule === 'skills' && <SkillCenterPanel />}
           {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
           {effectiveModule === 'memory' && <MemoryPanel />}
           {effectiveModule === 'branding' && <BrandingStudioPanel />}

@@ -32,6 +32,8 @@ import { spawnSessionTool } from './sessions/spawn-session.js';
 import { callLlmTool } from './sessions/call-llm.js';
 import { knowledgeQueryTool } from './knowledge/knowledge-query.js';
 import { knowledgeMutationTool } from './knowledge/knowledge-mutation.js';
+import { skillQueryTool } from './skills/skill-query.js';
+import { skillMutationTool } from './skills/skill-mutation.js';
 import { adminAnalyticsTool } from './admin/admin-analytics.js';
 import { designAvatarTool } from './profiles/design-avatar.js';
 import { EXTENSION_TOOL_MODULES } from './extensions.js';
@@ -59,6 +61,8 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   callLlmTool,
   knowledgeQueryTool,
   knowledgeMutationTool,
+  skillQueryTool,
+  skillMutationTool,
   adminAnalyticsTool,
   designAvatarTool,
 ];

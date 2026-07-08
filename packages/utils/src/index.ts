@@ -9,3 +9,4 @@ export { logger } from './logger.js';
 export { toErrorMessage } from './error.js';
 export { getProductName } from './brand.js';
 export { randomDocId } from './id.js';
+export { parseSemver, isValidSemver, compareSemver, bumpPatch } from './semver.js';

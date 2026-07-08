@@ -7,12 +7,21 @@
  * `ActionSheet` — a native-style action menu (long-press / header "⋯") rendered
  *   as a content-sized sheet of rows.
  *
+ * Keyboard policy (unified): the sheet itself NEVER translates with the
+ * keyboard — gorhom's `interactive` behavior shifts the sheet by the full
+ * keyboard height, which shoves the grabber of tall sheets off-screen and makes
+ * them un-dismissable. Instead we use `extend` (the sheet grows to the extended
+ * detent, iOS-sheet style, grabber always visible) and pad the body with the
+ * live keyboard height (useBottomPadStyle) so content scrolls above the
+ * keyboard. Bodies whose input sits at the END of the content should nudge it
+ * into view on focus (see tag-manager / station sheets: scrollToEnd on focus).
+ *
  * The isOpen guard mirrors ai-pen: gorhom dismisses itself on swipe-down / scrim
  * tap and fires onDismiss, so we must not redundantly call dismiss() or the
  * sheet wedges in DISMISSING and won't reopen.
  */
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -21,10 +30,15 @@ import {
   BottomSheetView,
   useBottomSheetTimingConfigs,
   type BottomSheetBackdropProps,
+  type BottomSheetScrollViewMethods,
 } from '@gorhom/bottom-sheet';
-import { Easing } from 'react-native-reanimated';
+import Animated, { Easing } from 'react-native-reanimated';
+import { useBottomPadStyle } from '../lib/keyboard';
 import { font, makeStyles, useTheme } from '../theme';
 import { Icon, IconName, Touchable } from './core';
+
+/** Detent the sheet extends to while the keyboard is up (grabber stays visible). */
+const EXTENDED_PCT = 92;
 
 /** Snappier than gorhom's default spring — quick, settled open/close. */
 function useSheetAnimation() {
@@ -32,6 +46,23 @@ function useSheetAnimation() {
 }
 
 export { BottomSheetView, BottomSheetScrollView, BottomSheetTextInput, BottomSheetFlatList } from '@gorhom/bottom-sheet';
+
+/**
+ * Reveal helper for sheet forms anchored at the END of the scroll content
+ * (tag-manager "new tag", station "add server"). The sheet no longer moves with
+ * the keyboard, so on focus we scroll to the end once the keyboard has settled
+ * (~250ms) and the body padding has made room.
+ */
+export function useSheetEndReveal(): {
+  scrollRef: React.RefObject<BottomSheetScrollViewMethods | null>;
+  revealEnd: () => void;
+} {
+  const scrollRef = useRef<BottomSheetScrollViewMethods | null>(null);
+  const revealEnd = useCallback(() => {
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 350);
+  }, []);
+  return { scrollRef, revealEnd };
+}
 
 function useBackdrop() {
   return useCallback(
@@ -72,6 +103,15 @@ export function Sheet({
   const isOpen = useRef(false);
   const backdrop = useBackdrop();
   const animationConfigs = useSheetAnimation();
+  // Body padding that tracks the keyboard frame-by-frame, so content clears the
+  // keyboard while the sheet itself stays put (see header comment).
+  const keyboardPad = useBottomPadStyle(0);
+  // Rest detent first (present() opens at index 0); extended detent is what
+  // `keyboardBehavior="extend"` grows to when the keyboard shows.
+  const snapPoints = useMemo(
+    () => (heightPct >= EXTENDED_PCT ? [`${heightPct}%`] : [`${heightPct}%`, `${EXTENDED_PCT}%`]),
+    [heightPct],
+  );
 
   useEffect(() => {
     if (visible && !isOpen.current) {
@@ -91,19 +131,19 @@ export function Sheet({
   return (
     <BottomSheetModal
       ref={ref}
-      snapPoints={[`${heightPct}%`]}
+      snapPoints={snapPoints}
       enableDynamicSizing={false}
       enableContentPanningGesture={!nativeScroll}
       animationConfigs={animationConfigs}
       onDismiss={handleDismiss}
       backdropComponent={backdrop}
-      keyboardBehavior="interactive"
+      keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
       backgroundStyle={styles.bg}
       handleIndicatorStyle={styles.grabber}
     >
-      <View style={{ flex: 1 }}>
+      <Animated.View style={[{ flex: 1 }, keyboardPad]}>
         {title ? (
           <View style={styles.header}>
             <Text style={styles.title}>{title}</Text>
@@ -116,7 +156,7 @@ export function Sheet({
           </View>
         ) : null}
         {children}
-      </View>
+      </Animated.View>
     </BottomSheetModal>
   );
 }

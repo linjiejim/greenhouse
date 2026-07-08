@@ -655,6 +655,36 @@ export default {
     removeFailed: 'Remove failed',
   },
 
+  // Skill Center (settings)
+  skillCenter: {
+    hint: 'The org-wide library of agent skills. Members publish skills from their own AI tools via chat or the Greenhouse MCP (skill_query / skill_mutation); browse, audit and manage them here. Every version is immutable and carries a changelog.',
+    empty: 'No skills published yet — ask your agent to publish one via the Greenhouse MCP.',
+    searchPlaceholder: 'Search skills…',
+    colSkill: 'Skill',
+    colDescription: 'Description',
+    colTags: 'Tags',
+    colVersion: 'Latest',
+    colDownloads: 'Downloads',
+    colStatus: 'Status',
+    colUpdated: 'Updated',
+    statusActive: 'Active',
+    statusArchived: 'Archived',
+    archive: 'Archive',
+    unarchive: 'Unarchive',
+    archived: 'Skill archived',
+    unarchived: 'Skill restored',
+    actionFailed: 'Action failed',
+    owner: 'Owner',
+    createdAt: 'Created',
+    versionHistory: 'Version history',
+    files: 'files',
+    viewFiles: 'View files',
+    hideFiles: 'Hide files',
+    downloadJson: 'Download JSON',
+    by: 'by',
+    binaryFile: 'binary, base64',
+  },
+
   // Software update (desktop)
   updates: {
     title: 'Software Update',

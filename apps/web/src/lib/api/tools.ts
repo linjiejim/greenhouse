@@ -13,6 +13,7 @@ export type ToolGroup =
   | 'projects'
   | 'email'
   | 'sessions'
+  | 'skills'
   | 'web'
   | 'media'
   | 'compute'

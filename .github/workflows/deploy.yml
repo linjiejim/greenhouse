@@ -1,0 +1,86 @@
+name: Deploy
+
+# Auto-deploy `main` to jim-server (green.linjiejim.com) — the maintainer's
+# integration instance for validating features continuously.
+#
+# Chain: push to main → Release builds ghcr `main-<sha>` → this workflow fires,
+# waits for the CI quality gate (lint/typecheck/test/e2e) on the same sha, then
+# SSHes in and rolls the compose stack to that exact image (the one-shot
+# `migrate` service applies DB migrations before the API restarts).
+#
+# Fork-safe: hard-gated to this repository; secrets live in the `jim-server`
+# environment (DEV_SERVER_HOST / PORT / USERNAME / SSH_KEY).
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch: # redeploy current main HEAD (its image must already exist)
+
+concurrency:
+  group: deploy-jim-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >
+      github.repository == 'linjiejim/greenhouse' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main'))
+    runs-on: ubuntu-latest
+    environment: jim-server
+    steps:
+      - name: Resolve target sha
+        id: sha
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          echo "full=$SHA" >> "$GITHUB_OUTPUT"
+          echo "short=${SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      # Release only proves the image built; the actual test gate is ci.yml,
+      # which runs in parallel — wait for it to conclude on the same commit.
+      - name: Wait for the CI quality gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.sha.outputs.full }}
+        run: |
+          for i in $(seq 1 60); do
+            RUN=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=1" \
+              --jq '.workflow_runs[0] | "\(.status) \(.conclusion)"' 2>/dev/null || echo "missing null")
+            STATUS=${RUN% *}; CONCLUSION=${RUN#* }
+            echo "attempt $i: status=$STATUS conclusion=$CONCLUSION"
+            if [ "$CONCLUSION" = "success" ]; then exit 0; fi
+            if [ "$STATUS" = "completed" ]; then
+              echo "CI concluded '$CONCLUSION' — not deploying"; exit 1
+            fi
+            sleep 20
+          done
+          echo "Timed out waiting for CI"; exit 1
+
+      - name: Roll the stack to main-${{ steps.sha.outputs.short }}
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          port: ${{ secrets.DEV_SERVER_PORT }}
+          username: ${{ secrets.DEV_SERVER_USERNAME }}
+          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+          script: |
+            set -e
+            cd /root/greenhouse/greenhouse
+            git fetch origin main && git reset --hard origin/main
+            IMG="ghcr.io/linjiejim/greenhouse:main-${{ steps.sha.outputs.short }}"
+            # Persist the pin so a manual `docker compose up` uses the same image.
+            sed -i "s|^GREENHOUSE_IMAGE=.*|GREENHOUSE_IMAGE=$IMG|" .env
+            docker compose -f docker-compose.ghcr.yml pull --quiet
+            docker compose -f docker-compose.ghcr.yml up -d
+            S=000
+            for i in 1 2 3 4 5 6 7 8; do
+              sleep 5
+              S=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18905/health)
+              echo "health attempt $i: HTTP $S"
+              [ "$S" = "200" ] && break
+            done
+            [ "$S" = "200" ] || { docker compose -f docker-compose.ghcr.yml logs --tail 50 api; exit 1; }
+            curl -s http://localhost:18905/health
+            docker image prune -f > /dev/null

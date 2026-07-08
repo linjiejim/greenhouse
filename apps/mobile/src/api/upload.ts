@@ -7,7 +7,7 @@
 import { Platform } from 'react-native';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import type { UploadResult } from '../shared/greenhouse-types';
-import { API_BASE } from '../config';
+import { getApiBase } from '../store/stations';
 import { api } from './client';
 
 const MAX_EDGE = 1024;
@@ -46,5 +46,5 @@ export async function uploadImage(uri: string, mime = 'image/jpeg'): Promise<Upl
 
 /** Absolute URL for a (possibly relative) upload url. */
 export function uploadUrl(url: string): string {
-  return url.startsWith('http') ? url : `${API_BASE}${url}`;
+  return url.startsWith('http') ? url : `${getApiBase()}${url}`;
 }

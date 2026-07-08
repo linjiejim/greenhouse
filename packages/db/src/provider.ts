@@ -37,6 +37,7 @@ import { createKnowledgeShareService } from './services/knowledge-shares.js';
 import { createGroupService } from './services/groups.js';
 import { createUserFeatureService } from './services/user-features.js';
 import { createUserMemoryService } from './services/user-memories.js';
+import { createSkillService } from './services/skills.js';
 import { createWorkspaceSettingService } from './services/workspace-settings.js';
 import { createExtensionServices, EXTENSION_RESET_TABLES } from './extensions.js';
 
@@ -70,6 +71,7 @@ export function createDatabase(connectionString: string) {
     groups: createGroupService(db),
     userFeatures: createUserFeatureService(db),
     userMemories: createUserMemoryService(db),
+    skills: createSkillService(db),
     workspaceSettings: createWorkspaceSettingService(db),
 
     // CRUD framework demo — reference wiring of the Drizzle adapter (see the
@@ -124,6 +126,8 @@ export function createDatabase(connectionString: string) {
       const tables = [
         'workspace_settings',
         'crud_demo_items',
+        'agent_skill_versions',
+        'agent_skills',
         'llm_calls',
         'user_memories',
         'user_features',

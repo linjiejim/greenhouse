@@ -22,6 +22,7 @@ export default defineConfig({
       '@greenhouse/utils/prompts': resolve(__dirname, 'packages/utils/src/prompts.ts'),
       '@greenhouse/utils/id': resolve(__dirname, 'packages/utils/src/id.ts'),
       '@greenhouse/utils/version': resolve(__dirname, 'packages/utils/src/version.ts'),
+      '@greenhouse/utils/semver': resolve(__dirname, 'packages/utils/src/semver.ts'),
       '@greenhouse/utils': resolve(__dirname, 'packages/utils/src/index.ts'),
       '@greenhouse/db/interfaces': resolve(__dirname, 'packages/db/src/interfaces.ts'),
       '@greenhouse/db/schema': resolve(__dirname, 'packages/db/src/schema/index.ts'),

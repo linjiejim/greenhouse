@@ -12,7 +12,7 @@ import { useTags } from '../store/tags';
 import { TAG_COLORS } from '../lib/tag-colors';
 import { useT } from '../lib/i18n';
 import { font, makeStyles, radius, useTheme } from '../theme';
-import { BottomSheetScrollView, BottomSheetTextInput, Icon, Sheet, Touchable } from '../ui';
+import { BottomSheetScrollView, BottomSheetTextInput, Icon, Sheet, Touchable, useSheetEndReveal } from '../ui';
 import { TagChip } from './tag-chip';
 
 function Swatches({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -53,6 +53,7 @@ export function TagManagerSheet({ visible, onClose }: { visible: boolean; onClos
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState<string>(TAG_COLORS[0]);
   const [busy, setBusy] = useState(false);
+  const { scrollRef, revealEnd } = useSheetEndReveal();
 
   useEffect(() => {
     if (visible) void load();
@@ -105,7 +106,7 @@ export function TagManagerSheet({ visible, onClose }: { visible: boolean; onClos
 
   return (
     <Sheet visible={visible} onClose={onClose} title={t('tags.manage')} heightPct={82}>
-      <BottomSheetScrollView contentContainerStyle={{ padding: 16, paddingBottom: 36 }} keyboardShouldPersistTaps="handled">
+      <BottomSheetScrollView ref={scrollRef} contentContainerStyle={{ padding: 16, paddingBottom: 36 }} keyboardShouldPersistTaps="handled">
         <Text style={styles.hint}>{t('tags.hint')}</Text>
 
         {tags.length === 0 ? <Text style={styles.empty}>{t('tags.none')}</Text> : null}
@@ -154,6 +155,7 @@ export function TagManagerSheet({ visible, onClose }: { visible: boolean; onClos
           <BottomSheetTextInput
             value={newName}
             onChangeText={setNewName}
+            onFocus={revealEnd}
             placeholder={t('tags.namePlaceholder')}
             placeholderTextColor={c.fgFaint}
             style={styles.fieldInput}
