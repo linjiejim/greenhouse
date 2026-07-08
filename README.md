@@ -64,8 +64,9 @@ greenhouse/
 │   │                         #   your instances via saved multi-server "stations"
 │   │                         #   (build: pnpm -F @greenhouse/browser build)
 │   └── mobile/               # Expo (React Native) app — chat, knowledge base (read-only),
-│                             #   settings; multi-server "stations" picked at sign-in;
-│                             #   isolated install (pnpm mobile:install, then pnpm mobile)
+│                             #   projects (list/board/gantt), settings; multi-server
+│                             #   "stations" picked at sign-in; isolated install
+│                             #   (pnpm mobile:install, then pnpm mobile)
 ├── packages/
 │   ├── agent-core/           # Agent kernel — streamText loop, OpenAI-compatible model
 │   │                         #   factory + registry (no DB dependency)

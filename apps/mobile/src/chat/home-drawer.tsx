@@ -8,7 +8,6 @@
  */
 
 import React, { useCallback } from 'react';
-import { Alert } from 'react-native';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import type { DrawerContentComponentProps } from 'expo-router/drawer';
@@ -29,7 +28,7 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
   // Close the drawer, then push — the panel slides out under the incoming screen
   // (same pattern as 设置, so the two overlays don't fight).
   const navigate = useCallback(
-    (path: '/knowledge' | '/history' | '/settings') => {
+    (path: '/knowledge' | '/projects' | '/history' | '/settings') => {
       close();
       setTimeout(() => router.push(path), 120);
     },
@@ -53,15 +52,7 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
       footer={<DrawerRow icon="gear" label={t('drawer.settings')} onPress={() => navigate('/settings')} />}
     >
       <DrawerRow icon="book" label={t('drawer.knowledge')} onPress={() => navigate('/knowledge')} />
-      {/* 项目管理属需求 6，本任务只占位入口 */}
-      <DrawerRow
-        icon="folder"
-        label={t('drawer.projects')}
-        onPress={() => {
-          close();
-          Alert.alert(t('common.comingSoon'));
-        }}
-      />
+      <DrawerRow icon="folder" label={t('drawer.projects')} onPress={() => navigate('/projects')} />
       <DrawerRow icon="clock" label={t('drawer.history')} onPress={() => navigate('/history')} />
     </DrawerScaffold>
   );
