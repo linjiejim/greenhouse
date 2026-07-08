@@ -55,6 +55,11 @@ export const FEATURE_FLAGS = [
     label: 'Knowledge Sync',
     description: 'Sync the knowledge base / wiki from external sources (sync panel, run history)',
   },
+  {
+    key: 'im_gateway',
+    label: 'IM Gateway (Telegram)',
+    description: 'Connect a chat platform (Telegram) and talk to your agent from it — deep-link pairing',
+  },
 ] as const satisfies readonly FeatureFlag[];
 
 /** Union of CORE feature keys, e.g. 'memory' | 'sync'. Fork-registered keys are

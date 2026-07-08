@@ -11,7 +11,7 @@
    cross-domain references (audit / logs / usage → users/sessions) stay loose (no FK) so those
    records outlive the entity they reference.
 
-The current schema has 35 tables, grouped by domain below.
+The current schema has 38 tables, grouped by domain below.
 
 ## Auth & users
 
@@ -82,6 +82,17 @@ The current schema has 35 tables, grouped by domain below.
 | **agent_skills** | Skill catalog: unique kebab-case `name` (immutable), `display_name`, `description`, `tags` (JSON), denormalized `latest_version`, `status` active/archived, `owner_user_id` (loose), `download_count`. Payload bundles live in the skill store (S3-compatible or local disk), not in the DB |
 | **agent_skill_versions** | Immutable per-version history (FK `skill_id` CASCADE): semver `version`, mandatory `changelog`, `file_count`, `size_bytes`, `content_hash` (sha256), `storage_key`, `created_by`; unique `(skill_id, version)` |
 
+## IM gateway
+
+Lets a user chat with their agent from an external chat platform (M0: Telegram). See
+`docs/specs/20260708-im-gateway.md`.
+
+| Table | Purpose |
+|---|---|
+| **im_bots** | A configured bot: `channel` (telegram), `name`, AES-256-GCM `token_enc` (never returned), `bot_username`, `default_profile_id` (governs tools+model), `status`, `poll_offset` (long-poll cursor, restart-safe) |
+| **im_identities** | Linked platform user → Greenhouse `user_id` + rolling `session_id` (FK `bot_id` CASCADE); `ext_user_id`/`ext_chat_id`, `display_name`; unique `(bot_id, ext_user_id)`. Only linked identities are stored |
+| **im_pairing_codes** | Short-lived (15 min), single-use deep-link codes (FK `bot_id` CASCADE) → `user_id` to link on redemption |
+
 ## API clients, audit & misc
 
 | Table | Purpose |
@@ -121,6 +132,8 @@ The current schema has 35 tables, grouped by domain below.
 | `scheduled_tasks.user_id` | → `users.id` | CASCADE |
 | `email_accounts.user_id` | → `users.id` | CASCADE |
 | `agent_skill_versions.skill_id` | → `agent_skills.id` | CASCADE |
+| `im_identities.bot_id` | → `im_bots.id` | CASCADE |
+| `im_pairing_codes.bot_id` | → `im_bots.id` | CASCADE |
 
 ### Logical associations (application-level, no FK)
 
@@ -151,6 +164,9 @@ entity's lifecycle.
 | `task_comments.user_id` | → `users.id` | Commenter |
 | `project_activities.user_id` | → `users.id` | Actor |
 | `user_prompts.user_id` | → `users.id` | Prompt owner |
+| `im_bots.created_by` | → `users.id` | Bot creator (super) |
+| `im_identities.user_id` / `.session_id` | → `users.id` / `sessions.id` | Linked user / rolling conversation (recreated if the session is deleted) |
+| `im_pairing_codes.user_id` | → `users.id` | User the code links on redemption |
 | `user_memories.source_session_id` | → `sessions.id` | Origin session |
 | `feature_requests.submitted_by` / `.session_id` | → `users.id` / `sessions.id` | Submitter / context |
 | `agent_skills.owner_user_id` / `agent_skill_versions.created_by` | → `users.id` | Skill owner / version author — skills outlive members |

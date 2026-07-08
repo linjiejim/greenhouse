@@ -35,7 +35,7 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import { createToolRegistry, type ToolRegistry } from './agent.js';
 import type { AppEnv } from './app-env.js';
 import { listProfileIds } from './profile.js';
-import { authMiddleware, requireSuper, requireInternal } from './auth/middleware.js';
+import { authMiddleware, requireSuper, requireInternal, requireFeature } from './auth/middleware.js';
 import { assertAuthEnv } from './auth/token.js';
 import { corsMiddleware, rateLimitMiddleware, securityHeadersMiddleware } from './security.js';
 
@@ -52,6 +52,8 @@ import uploadRoutes from './routes/upload.js';
 import adminRoutes from './routes/admin.js';
 import clientRoutes from './routes/admin-clients.js';
 import adminGatewayRoutes from './routes/admin-llm-gateway.js';
+import adminImRoutes from './routes/admin-im.js';
+import imRoutes from './routes/im.js';
 import featureRequestRoutes from './routes/feature-requests.js';
 import projectRoutes from './routes/projects.js';
 import llmKeyRoutes from './routes/llm-keys.js';
@@ -66,6 +68,7 @@ import sessionGroupRoutes from './routes/session-groups.js';
 import toolsRoutes from './routes/tools.js';
 import { emailRoutes } from './routes/email.js';
 import { initScheduler } from './scheduler/index.js';
+import { initImGateway } from './im/gateway.js';
 import { createTasksRoute } from './routes/tasks.js';
 import { mountExtraRoutes } from './routes/extensions.js';
 import { bootstrapForkExtensions } from './bootstrap.extensions.js';
@@ -161,6 +164,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin/clients', clientRoutes)
       .route('/api/admin/llm-gateway', adminGatewayRoutes)
       .route('/api/admin/feature-requests', featureRequestRoutes)
+      .route('/api/admin/im', adminImRoutes)
       // Project management — all internal users
       .use('/api/projects/*', requireInternal())
       .route('/api/projects', projectRoutes)
@@ -182,6 +186,10 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Session groups (folders) + Pinned — all internal users
       .use('/api/session-groups/*', requireInternal())
       .route('/api/session-groups', sessionGroupRoutes)
+      // IM gateway (Telegram) — internal users, feature-gated. Deep-link pairing + identity mgmt.
+      .use('/api/im/*', requireInternal())
+      .use('/api/im/*', requireFeature('im_gateway'))
+      .route('/api/im', imRoutes)
       // Tool metadata — all users (including external for their allowed tools)
       .route('/api/tools', toolsRoutes)
       // Email account management — OAuth callbacks bypass auth (redirect from Google/Microsoft)
@@ -256,13 +264,20 @@ async function main() {
   const scheduler = initScheduler(toolRegistry);
   await scheduler.start();
 
+  // Start IM gateway — receives inbound chat-platform messages for connected bots
+  // (Telegram in M0). Dormant if PROVIDER_TOKEN_ENCRYPTION_KEY is unset.
+  const imGateway = initImGateway(toolRegistry);
+  await imGateway.start();
+
   process.on('SIGINT', async () => {
     scheduler.stop();
+    await imGateway.stop();
     await dbProvider.close();
     process.exit(0);
   });
   process.on('SIGTERM', async () => {
     scheduler.stop();
+    await imGateway.stop();
     await dbProvider.close();
     process.exit(0);
   });

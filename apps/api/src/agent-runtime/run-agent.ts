@@ -72,6 +72,12 @@ export interface RunAgentInSessionArgs {
   system: string;
   /** The user turn to send. The caller is responsible for persisting it first. */
   prompt: string;
+  /**
+   * Prior conversation turns to prepend before `prompt`, giving the run
+   * multi-turn memory. Defaults to none (single-shot), so existing callers
+   * (scheduler, spawn_session) are unchanged. Callers own the history + any cap.
+   */
+  priorMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
   modelConfig: ModelConfig;
   tools?: ToolRegistry;
   maxSteps: number;
@@ -106,7 +112,7 @@ export async function runAgentInSession(args: RunAgentInSessionArgs): Promise<Ru
   const result = await generate({
     modelConfig: args.modelConfig,
     system: args.system,
-    messages: [{ role: 'user', content: args.prompt }],
+    messages: [...(args.priorMessages ?? []), { role: 'user', content: args.prompt }],
     tools: args.tools,
     maxSteps: args.maxSteps,
     toolChoice: args.toolChoice,

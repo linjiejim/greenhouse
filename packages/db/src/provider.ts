@@ -38,6 +38,7 @@ import { createGroupService } from './services/groups.js';
 import { createUserFeatureService } from './services/user-features.js';
 import { createUserMemoryService } from './services/user-memories.js';
 import { createSkillService } from './services/skills.js';
+import { createImService } from './services/im.js';
 import { createExtensionServices, EXTENSION_RESET_TABLES } from './extensions.js';
 
 export function createDatabase(connectionString: string) {
@@ -71,6 +72,7 @@ export function createDatabase(connectionString: string) {
     userFeatures: createUserFeatureService(db),
     userMemories: createUserMemoryService(db),
     skills: createSkillService(db),
+    im: createImService(db),
 
     // CRUD framework demo — reference wiring of the Drizzle adapter (see the
     // "CRUD Framework Demo" settings page). tags is a JSON string[] text column.
@@ -123,6 +125,9 @@ export function createDatabase(connectionString: string) {
       // Filter to only tables that exist in the current database.
       const tables = [
         'crud_demo_items',
+        'im_pairing_codes',
+        'im_identities',
+        'im_bots',
         'agent_skill_versions',
         'agent_skills',
         'llm_calls',

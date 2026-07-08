@@ -42,6 +42,9 @@ or any MCP client.
   relay (no personal key needed), or bring their own.
 - **MCP server + agent tool-proxy** — expose the workbench's tools to any external agent over
   the standard MCP protocol or the structured `/api/agent` proxy.
+- **IM Gateway** *(experimental, `im_gateway` flag)* — chat with your agent from **Telegram**:
+  deep-link pairing binds your Telegram account to Greenhouse, then messages run against your
+  bot's profile. Uses long-polling (no public URL needed); more platforms planned.
 - **Global Agent** — the agent can operate the web UI (navigate / prefill) via client-declared
   actions.
 

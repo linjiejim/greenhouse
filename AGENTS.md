@@ -177,6 +177,7 @@ greenhouse/
 │   │       ├── llm/          # completion / title / memory / relay-proxy (consumes agent-core)
 │   │       ├── profiles/     # agent profiles in TS (defineProfile: default.ts/team.ts + *.prompt.md)
 │   │       ├── scheduler/    # cron scheduler + executor (automations)
+│   │       ├── im/           # IM gateway — chat-platform adapters (Telegram) → agent turns
 │   │       ├── email/        # IMAP/SMTP client + security
 │   │       ├── skills/       # Skill Center — bundle validation, S3/local store, publish/download/sync core
 │   │       ├── storage/      # upload storage (local disk) + s3-lite (minimal SigV4 client)

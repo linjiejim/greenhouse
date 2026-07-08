@@ -7,7 +7,7 @@
 
 // ─── Session Types ───────────────────────────────────────
 
-export type SessionChannel = 'web' | 'api' | 'a2a' | 'task' | 'subagent' | 'browser';
+export type SessionChannel = 'web' | 'api' | 'a2a' | 'task' | 'subagent' | 'browser' | 'im';
 
 export interface SessionRow {
   id: string;

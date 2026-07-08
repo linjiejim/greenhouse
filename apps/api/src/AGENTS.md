@@ -146,3 +146,23 @@ Tool metadata is **co-located in each tool's file**. A tool declares itself with
 - Profile YAML files live in `profiles/` (`default`, `team`).
 - Architecture, tool scoping, and model-switching policy: [agent-profiles.md](./profiles/agent-profiles.md).
 - Update that doc when profiles change.
+
+### IM Gateway (`im/` + `routes/im.ts` + `routes/admin-im.ts`)
+- Lets a user chat with their agent from an external chat platform. **M0 = Telegram** via
+  long-polling (`getUpdates`) — **no public ingress required**, the key self-host win. Spec:
+  `docs/specs/20260708-im-gateway.md`. Gated by the `im_gateway` feature flag (user routes) +
+  super-only admin routes.
+- **One brain, per-platform transport.** `im/dispatch.ts` (`dispatchInbound`) is channel-agnostic:
+  slash commands, deep-link pairing, identity resolution, and running ONE turn via the shared
+  `runAgentInSession` (same runner as the scheduler — do not fork it). `im/telegram/worker.ts`
+  owns only transport (long-poll loop, send, typing, `poll_offset` persistence). The seam is
+  `ChannelWorker` (`im/types.ts`) + the normalized `InboundMessage`; a NEW platform = a new
+  worker that normalizes inbound and calls `dispatchInbound` — never a second dispatcher.
+- **Runtime**: `ImGateway` singleton (`im/gateway.ts`) started in `index.ts` `main()` (scheduler-style):
+  loads active bots → one worker each, hourly pairing-code sweep, `reloadBot()` on admin CRUD.
+  Dormant (warns) if `PROVIDER_TOKEN_ENCRYPTION_KEY` is unset (can't decrypt bot tokens).
+- **Security**: bot tokens AES-256-GCM encrypted (`auth/crypto.ts`, never returned); inbound text
+  through `sanitizeForPrompt` + `checkPromptInjection`; per-identity rate limit (`InMemoryRateLimiter`);
+  only linked identities run turns; a bot runs as its `default_profile_id` (pick least-privilege).
+- Tables (`im_bots` / `im_identities` / `im_pairing_codes`) — see `packages/db/src/db-schema.md`.
+- Optional env: `TELEGRAM_API_BASE` (override the Telegram API base for a proxy / tests).

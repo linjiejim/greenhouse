@@ -56,6 +56,7 @@ export * from './services/groups.js';
 export * from './services/user-features.js';
 export * from './services/user-memories.js';
 export * from './services/skills.js';
+export * from './services/im.js';
 
 // ─── Configuration ───────────────────────────────────────
 
