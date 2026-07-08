@@ -127,7 +127,7 @@ export interface UploadResult {
   size: number;
 }
 
-// ─── Knowledge base (read-only on mobile) ────────────────
+// ─── Knowledge base ──────────────────────────────────────
 
 export interface KnowledgeDoc {
   id: number;
@@ -150,6 +150,20 @@ export interface KnowledgeDoc {
   updated_at: string | null;
   /** The current viewer's effective role on this doc (when the API resolved it). */
   access?: 'owner' | 'editor' | 'reader' | null;
+}
+
+/** One snapshot in a doc's edit history (GET /api/knowledge/docs/:id/versions). */
+export interface KnowledgeDocVersion {
+  id: number;
+  doc_id: number;
+  version: number;
+  title: string;
+  content_markdown: string;
+  content_json: string;
+  summary: string;
+  changed_by: string | null;
+  change_reason: string | null;
+  created_at: string | null;
 }
 
 // ─── Streaming events ────────────────────────────────────

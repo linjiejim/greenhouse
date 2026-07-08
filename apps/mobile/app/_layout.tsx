@@ -83,6 +83,7 @@ export default function RootLayout() {
               <Stack.Screen name="history/index" options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="knowledge/index" options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="knowledge/[slug]" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="knowledge/edit" options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
               <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="table" options={{ animation: 'slide_from_bottom' }} />
             </Stack>
