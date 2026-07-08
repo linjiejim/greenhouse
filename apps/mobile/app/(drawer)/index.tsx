@@ -10,7 +10,7 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { Alert, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -88,8 +88,7 @@ export default function Home() {
           <View style={{ flex: 1 }} />
           <TopIcon icon="clock" label={t('home.history')} onPress={() => setHistoryOpen(true)} />
           <TopIcon icon="book" label={t('home.knowledge')} onPress={() => router.push('/knowledge')} />
-          {/* 项目管理属需求 6，本任务只占位入口 */}
-          <TopIcon icon="folder" label={t('home.projects')} onPress={() => Alert.alert(t('common.comingSoon'))} />
+          <TopIcon icon="folder" label={t('home.projects')} onPress={() => router.push('/projects')} />
         </View>
 
         {/* hero */}

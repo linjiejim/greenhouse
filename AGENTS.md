@@ -166,8 +166,9 @@ greenhouse/
 │   ├── browser/          # Chrome extension (MV3) — side panel + options, thin client of
 │   │                     #   self-hosted instances (multi-station registry + per-station
 │   │                     #   token refresh); see its src/AGENTS.md
-│   ├── mobile/           # Expo (React Native) app — chat + knowledge (read-only) + settings.
-│   │                     #   NOT a workspace member (isolated install); see its AGENTS.md
+│   ├── mobile/           # Expo (React Native) app — chat + knowledge (read-only) + projects
+│   │                     #   (list/board/gantt) + settings. NOT a workspace member
+│   │                     #   (isolated install); see its AGENTS.md
 │   ├── api/              # Hono backend — routes, agent runtime, auth, security, scheduler
 │   │   └── src/
 │   │       ├── routes/       # HTTP routes (one file per resource)
