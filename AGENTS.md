@@ -146,6 +146,12 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
   `release-please` (`.github/workflows/release-please.yml` + `release-please-config.json`)
   reads them, opens a Release PR, and on merge tags + creates the GitHub Release.
   **`CHANGELOG.md` is release-please-managed — don't hand-edit released sections.**
+- **Parked PRs (`parked` label).** A PR whose direction is accepted but which is not
+  strong enough to merge yet (needs polish or a product decision) gets the `parked`
+  label instead of being merged half-baked or closed. While parked: keep it rebased
+  when it collides with landed work (watch **migration numbers** — renumber to the
+  next free slot on revive), record what's missing in a PR comment, and re-review
+  parked PRs at every release cut (`gh pr list --label parked`).
 - **Stable vs. edge is a hard promise.** Tag → `ghcr.io/<owner>/greenhouse:X.Y.Z`
   `:X.Y` `:latest` (stable). `main` → `:edge` / `:main-<sha>` only. `:latest` never
   points at `main`. `release.yml` (tag/main triggered) enforces this — keep it intact.
