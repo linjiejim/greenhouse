@@ -1,11 +1,13 @@
 /**
- * Branding Studio (super only) — live-preview brand tokens, then export a CSS
- * override block for a downstream fork's src/branding.css (S6 seam).
+ * Branding Studio (super only) — live-preview brand tokens, persist them to
+ * the WORKSPACE (workspace_settings, served pre-login via /api/bootstrap), or
+ * export a CSS override block for a downstream fork's src/branding.css (S6).
  *
- * Stateless by design: edits are previewed via inline CSS variables on
- * <html> and NEVER persisted (server or localStorage). Leaving the page
- * removes the preview. The inline-style preview intentionally outranks
- * branding.css — that's what makes it a preview.
+ * Preview mechanics are unchanged: edits ride on inline CSS variables on
+ * <html> and are dropped when leaving the page. "Save to workspace" persists
+ * the SAME ThemeTokens shape the runtime applies (themeTokensToCss), plus the
+ * tenant name, logo (data URL) and the team Sprouty — so admins rebrand a
+ * deployment entirely from this page, no code or restart.
  *
  * Beyond the color tokens, typography and shape ride on Tailwind v4's default
  * theme variables (--font-sans, --text-*, --radius-*): utilities compile to
@@ -14,8 +16,8 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Input, Tooltip } from '../../components/ui';
-import { Sun, Moon, ClipboardCopy, RotateCcw, Info } from '../../lib/icons';
+import { Button, Input, Tooltip, toast } from '../../components/ui';
+import { Sun, Moon, ClipboardCopy, RotateCcw, Info, Upload, X } from '../../lib/icons';
 import { useI18n } from '../../lib/i18n';
 import { getThemeMode, setThemeMode } from '../../lib/theme';
 import { BrandingPreview } from './branding-preview';
@@ -29,6 +31,18 @@ import {
   type PaletteShade,
   type Rgb,
 } from '../../lib/color';
+import {
+  TEXT_SIZE_DEFAULTS,
+  RADIUS_DEFAULTS,
+  scaledRem,
+  themeTokensToCss,
+  getWorkspaceBranding,
+  updateWorkspaceBrandingLocal,
+} from '../../lib/workspace-branding';
+import { saveWorkspaceSettings } from '../../lib/api/workspace-settings';
+import { SproutyDesigner, DEFAULT_SPROUTY_DESIGN, type SproutyDesignValue } from '../../components/sprouty/index.js';
+import { LOGO_ALLOWED_MIME, LOGO_MAX_BYTES, sanitizeThemeTokens, type ThemeTokens } from '@greenhouse/types';
+import type { LeafStyle, FaceStyle } from '../../components/sprouty/index.js';
 
 type PreviewMode = 'light' | 'dark';
 
@@ -86,27 +100,9 @@ const ALL_SEMANTIC_VARS = SEMANTICS.flatMap((s) => [s.base, s.subtle, s.fg]);
 /** Every variable that lives in the per-mode overrides map (mode-dependent). */
 const PER_MODE_VARS = [...ALL_TOKEN_VARS, ...ALL_SEMANTIC_VARS];
 
-/** Tailwind v4 default text sizes (rem) — scaled by the font-size slider.
- *  Line heights are unitless ratios, so they follow automatically. */
-const TEXT_SIZE_DEFAULTS: Record<string, number> = {
-  '--text-xs': 0.75,
-  '--text-sm': 0.875,
-  '--text-base': 1,
-  '--text-lg': 1.125,
-  '--text-xl': 1.25,
-};
-
-/** Tailwind v4 default radii (rem) — scaled by the roundness slider. */
-const RADIUS_DEFAULTS: Record<string, number> = {
-  '--radius-xs': 0.125,
-  '--radius-sm': 0.25,
-  '--radius-md': 0.375,
-  '--radius-lg': 0.5,
-  '--radius-xl': 0.75,
-  '--radius-2xl': 1,
-  '--radius-3xl': 1.5,
-  '--radius-4xl': 2,
-};
+// TEXT_SIZE_DEFAULTS / RADIUS_DEFAULTS / scaledRem live in
+// lib/workspace-branding.ts — shared with the runtime CSS generator so the
+// preview, the export box and the persisted theme stay identical.
 
 /** Web-safe font stacks a fork can preview without shipping a webfont. */
 const FONT_DEFAULT = '';
@@ -137,8 +133,6 @@ const STYLE_PRESETS: StylePreset[] = [
   { key: 'editorial', swatch: '#9f1239', brand: '#9f1239', fontSans: FONT_SERIF, textScale: 1.05, radiusScale: 0.75 },
   { key: 'graphite', swatch: '#334155', brand: '#334155', fontSans: FONT_DEFAULT, textScale: 0.95, radiusScale: 0 },
 ];
-
-const scaledRem = (base: number, scale: number) => `${+(base * scale).toFixed(4)}rem`;
 
 function rootStyle() {
   return document.documentElement.style;
@@ -272,6 +266,11 @@ export function BrandingStudioPanel() {
   const [copied, setCopied] = useState(false);
   // Bumped whenever inline styles / preview mode change so computed values re-read.
   const [tick, setTick] = useState(0);
+  // ── workspace persistence state (branding.* settings) ──
+  const [productName, setProductName] = useState('');
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+  const [teamAvatar, setTeamAvatar] = useState<SproutyDesignValue | null>(null);
+  const [savingWorkspace, setSavingWorkspace] = useState(false);
 
   // Leaving the page drops the preview: clear inline vars, restore the stored mode.
   useEffect(() => {
@@ -279,6 +278,38 @@ export function BrandingStudioPanel() {
       clearAllInlineVars();
       setThemeMode(getThemeMode());
     };
+  }, []);
+
+  // Hydrate from the saved workspace branding (fetched at boot) so Save
+  // always persists the FULL state, not just this session's edits.
+  useEffect(() => {
+    const saved = getWorkspaceBranding();
+    setProductName(saved.productName ?? '');
+    setLogoDataUrl(saved.logo);
+    if (saved.teamAvatar) {
+      setTeamAvatar({
+        color: saved.teamAvatar.color ?? 'forest',
+        accessories: saved.teamAvatar.accessories ?? [],
+        leafStyle: (saved.teamAvatar.leafStyle as LeafStyle) ?? 'normal',
+        faceStyle: saved.teamAvatar.faceStyle as FaceStyle | undefined,
+        palette: saved.teamAvatar.palette,
+      });
+    }
+    const tokens = saved.themeTokens;
+    if (!tokens) return;
+    if (tokens.brand) applyBrandColor(tokens.brand);
+    if (tokens.fontSans) applyFontSans(tokens.fontSans);
+    if (tokens.fontMono) applyFontMono(tokens.fontMono);
+    if (tokens.fontScale) applyTextScale(tokens.fontScale);
+    if (tokens.radiusScale !== undefined) applyRadiusScale(tokens.radiusScale);
+    const light = tokens.light ?? {};
+    const dark = tokens.dark ?? {};
+    setOverrides({ light, dark });
+    const mode = isDarkPreviewActive();
+    for (const [variable, value] of Object.entries(mode === 'dark' ? dark : light)) {
+      rootStyle().setProperty(variable, value);
+    }
+    setTick((n) => n + 1);
   }, []);
 
   // ── apply helpers (pure — do NOT touch activePreset, so presets can reuse) ──
@@ -379,36 +410,103 @@ export function BrandingStudioPanel() {
     setTick((n) => n + 1);
   };
 
-  const exportCss = useMemo(() => {
-    const rootLines: string[] = [];
-    if (palette) {
-      for (const shade of PALETTE_SHADES) rootLines.push(`  --primary-${shade}: ${rgbToTriplet(palette[shade])};`);
-    }
-    if (fontSans.trim()) rootLines.push(`  --font-sans: ${fontSans.trim()};`);
-    if (fontMono.trim()) rootLines.push(`  --font-mono: ${fontMono.trim()};`);
-    if (textScale !== 1) {
-      for (const [variable, base] of Object.entries(TEXT_SIZE_DEFAULTS)) {
-        rootLines.push(`  ${variable}: ${scaledRem(base, textScale)};`);
-      }
-    }
-    if (radiusScale !== 1) {
-      for (const [variable, base] of Object.entries(RADIUS_DEFAULTS)) {
-        rootLines.push(`  ${variable}: ${scaledRem(base, radiusScale)};`);
-      }
-    }
-    for (const [variable, value] of Object.entries(overrides.light)) rootLines.push(`  ${variable}: ${value};`);
-    const darkLines = Object.entries(overrides.dark).map(([variable, value]) => `  ${variable}: ${value};`);
+  /** Current Studio state as the persistable ThemeTokens payload (null = no edits). */
+  const collectTokens = (): ThemeTokens | null => {
+    const tokens: ThemeTokens = {};
+    if (palette) tokens.brand = brandHex;
+    if (fontSans.trim()) tokens.fontSans = fontSans.trim();
+    if (fontMono.trim()) tokens.fontMono = fontMono.trim();
+    if (textScale !== 1) tokens.fontScale = textScale;
+    if (radiusScale !== 1) tokens.radiusScale = radiusScale;
+    if (Object.keys(overrides.light).length) tokens.light = overrides.light;
+    if (Object.keys(overrides.dark).length) tokens.dark = overrides.dark;
+    return Object.keys(tokens).length ? tokens : null;
+  };
 
-    const blocks: string[] = [];
-    if (rootLines.length) blocks.push(`:root {\n${rootLines.join('\n')}\n}`);
-    if (darkLines.length) blocks.push(`.dark-theme {\n${darkLines.join('\n')}\n}`);
-    return blocks.join('\n\n');
-  }, [palette, overrides, fontSans, fontMono, textScale, radiusScale]);
+  // Export box + Save share one generator (themeTokensToCss) — what you
+  // preview is exactly what gets persisted / exported.
+  const exportCss = useMemo(() => {
+    const tokens = collectTokens();
+    return tokens ? themeTokensToCss(tokens) : '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [palette, brandHex, overrides, fontSans, fontMono, textScale, radiusScale]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(exportCss);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // ── workspace persistence ──
+
+  const handleLogoFile = (file: File) => {
+    if (!(LOGO_ALLOWED_MIME as readonly string[]).includes(file.type)) {
+      toast(t('brandingStudio.logoBadType'), 'error');
+      return;
+    }
+    if (file.size > LOGO_MAX_BYTES) {
+      toast(t('brandingStudio.logoTooLarge'), 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setLogoDataUrl(String(reader.result));
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveWorkspace = async () => {
+    setSavingWorkspace(true);
+    try {
+      const tokens = collectTokens();
+      const avatar = teamAvatar
+        ? {
+            color: teamAvatar.color,
+            accessories: teamAvatar.accessories,
+            leafStyle: teamAvatar.leafStyle,
+            ...(teamAvatar.faceStyle ? { faceStyle: teamAvatar.faceStyle } : {}),
+            // The DSL requires both hexes; the designer always sets them together.
+            ...(teamAvatar.palette?.body && teamAvatar.palette?.leaf
+              ? { palette: { body: teamAvatar.palette.body, leaf: teamAvatar.palette.leaf } }
+              : {}),
+          }
+        : null;
+      await saveWorkspaceSettings({
+        'branding.theme_tokens': tokens,
+        'branding.product_name': productName.trim() || null,
+        'branding.logo': logoDataUrl || null,
+        'branding.team_avatar': avatar,
+      });
+      updateWorkspaceBrandingLocal({
+        productName: productName.trim() || null,
+        logo: logoDataUrl,
+        themeTokens: tokens ? sanitizeThemeTokens(tokens) : null,
+        teamAvatar: avatar,
+      });
+      toast(t('brandingStudio.workspaceSaved'), 'success');
+    } catch (err: any) {
+      toast(err?.message || 'Save failed', 'error');
+    }
+    setSavingWorkspace(false);
+  };
+
+  const handleClearWorkspace = async () => {
+    setSavingWorkspace(true);
+    try {
+      await saveWorkspaceSettings({
+        'branding.theme_tokens': null,
+        'branding.product_name': null,
+        'branding.logo': null,
+        'branding.team_avatar': null,
+      });
+      updateWorkspaceBrandingLocal({ productName: null, logo: null, themeTokens: null, teamAvatar: null });
+      setProductName('');
+      setLogoDataUrl(null);
+      setTeamAvatar(null);
+      resetPreview();
+      toast(t('brandingStudio.workspaceCleared'), 'success');
+    } catch (err: any) {
+      toast(err?.message || 'Reset failed', 'error');
+    }
+    setSavingWorkspace(false);
   };
 
   return (
@@ -615,6 +713,90 @@ export function BrandingStudioPanel() {
                 setActivePreset(null);
               }}
             />
+          </ControlSection>
+
+          {/* Workspace identity + persistence */}
+          <ControlSection title={t('brandingStudio.workspaceTitle')} tip={t('brandingStudio.tipWorkspace')}>
+            <div className="space-y-3">
+              <div>
+                <span className="block text-xs font-medium text-fg-muted mb-1.5">
+                  {t('brandingStudio.productName')}
+                </span>
+                <Input
+                  value={productName}
+                  onChange={(e) => setProductName(e.target.value)}
+                  placeholder="Greenhouse"
+                  maxLength={60}
+                  size="sm"
+                />
+              </div>
+              <div>
+                <span className="block text-xs font-medium text-fg-muted mb-1.5">{t('brandingStudio.logo')}</span>
+                <div className="flex items-center gap-3">
+                  {logoDataUrl ? (
+                    <img
+                      src={logoDataUrl}
+                      alt={t('brandingStudio.logo')}
+                      className="w-10 h-10 rounded-lg object-contain border border-edge bg-surface"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg border border-dashed border-edge flex items-center justify-center text-fg-faint text-[9px]">
+                      —
+                    </div>
+                  )}
+                  <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-edge text-fg-secondary hover:border-edge-strong cursor-pointer transition-all">
+                    <Upload size={13} />
+                    {t('brandingStudio.logoUpload')}
+                    <input
+                      type="file"
+                      accept={LOGO_ALLOWED_MIME.join(',')}
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleLogoFile(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                  {logoDataUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setLogoDataUrl(null)}
+                      className="p-1.5 rounded-md text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
+                      title={t('brandingStudio.logoRemove')}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <p className="text-[10px] text-fg-faint mt-1">{t('brandingStudio.logoHint')}</p>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-medium text-fg-muted">{t('brandingStudio.teamSprouty')}</span>
+                  <button
+                    type="button"
+                    onClick={() => setTeamAvatar(teamAvatar ? null : DEFAULT_SPROUTY_DESIGN)}
+                    className="text-[10px] text-primary-fg hover:underline"
+                  >
+                    {teamAvatar ? t('brandingStudio.teamSproutyOff') : t('brandingStudio.teamSproutyOn')}
+                  </button>
+                </div>
+                {teamAvatar ? (
+                  <SproutyDesigner value={teamAvatar} onChange={setTeamAvatar} showStatePreview={false} />
+                ) : (
+                  <p className="text-[10px] text-fg-faint">{t('brandingStudio.teamSproutyHint')}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <Button size="sm" onClick={handleSaveWorkspace} disabled={savingWorkspace}>
+                  {savingWorkspace ? t('common.saving') : t('brandingStudio.saveWorkspace')}
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleClearWorkspace} disabled={savingWorkspace}>
+                  {t('brandingStudio.clearWorkspace')}
+                </Button>
+              </div>
+            </div>
           </ControlSection>
 
           {/* Export */}

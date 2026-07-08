@@ -6,7 +6,7 @@
 
 import { resolve } from 'node:path';
 import { logger } from '@greenhouse/utils/logger';
-import { PRODUCT_NAME } from '@greenhouse/utils/brand';
+import { getProductName } from '@greenhouse/utils/brand';
 import { readFileSync, existsSync } from 'node:fs';
 import { config } from 'dotenv';
 import { ENV_FILE, PUBLIC_DIR, REPO_ROOT } from './paths.js';
@@ -48,8 +48,10 @@ import { createV1Routes } from './routes/v1/index.js';
 import { createAgentRoutes } from './routes/agent-tools.js';
 import { createMcpRoutes } from './routes/mcp.js';
 import healthRoutes from './routes/health.js';
+import bootstrapRoutes from './routes/bootstrap.js';
 import uploadRoutes from './routes/upload.js';
 import adminRoutes from './routes/admin.js';
+import adminSettingsRoutes from './routes/admin-settings.js';
 import clientRoutes from './routes/admin-clients.js';
 import adminGatewayRoutes from './routes/admin-llm-gateway.js';
 import featureRequestRoutes from './routes/feature-requests.js';
@@ -69,6 +71,7 @@ import { initScheduler } from './scheduler/index.js';
 import { createTasksRoute } from './routes/tasks.js';
 import { mountExtraRoutes } from './routes/extensions.js';
 import { bootstrapForkExtensions } from './bootstrap.extensions.js';
+import { applyWorkspaceEnvOverlay } from './settings/workspace-config.js';
 import { maybeRegisterLocalStorageDriver } from './storage/local-driver.js';
 import { getSkillStore } from './skills/store.js';
 // ws CJS/ESM interop — use namespace import for reliable access
@@ -154,10 +157,13 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/profiles', profileRoutes)
       .route('/api/sessions', sessionRoutes)
       .route('/health', healthRoutes)
+      // Public pre-login workspace personalization (PUBLIC_PATHS entry)
+      .route('/api/bootstrap', bootstrapRoutes)
       .route('/api/upload', uploadRoutes)
       // Super-admin-only routes
       .use('/api/admin/*', requireSuper())
       .route('/api/admin', adminRoutes)
+      .route('/api/admin/settings', adminSettingsRoutes)
       .route('/api/admin/clients', clientRoutes)
       .route('/api/admin/llm-gateway', adminGatewayRoutes)
       .route('/api/admin/feature-requests', featureRequestRoutes)
@@ -233,6 +239,11 @@ async function main() {
   const skillStore = getSkillStore();
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
 
+  // Overlay DB-configured workspace settings onto process.env (DB → env →
+  // default) BEFORE anything reads the runtime keys (tool registry, scheduler,
+  // model factory). See apps/api/src/settings/workspace-config.ts.
+  await applyWorkspaceEnvOverlay();
+
   const toolRegistry = createToolRegistry(dbProvider);
 
   // Mount everything (single typed chain — see mountRoutes/AppType above)
@@ -271,7 +282,7 @@ async function main() {
 
   serve({ fetch: app.fetch, port: PORT, websocket: { server: wss } }, (info) => {
     const profileIds = listProfileIds();
-    logger.info(`\n🌱 ${PRODUCT_NAME} API running at http://localhost:${info.port}`);
+    logger.info(`\n🌱 ${getProductName()} API running at http://localhost:${info.port}`);
     logger.info(`   Model: ${process.env.LLM_MODEL ?? '(set LLM_MODEL)'}`);
     logger.info(`   Database: PostgreSQL`);
     logger.info(`   Skill store: ${skillStore.backend === 's3' ? 'S3-compatible' : 'local disk (data/skills)'}`);

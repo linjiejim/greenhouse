@@ -37,6 +37,7 @@ import { MobilePinnedSection, SettingsNavPanel } from './components/app/sidebar-
 import { useAuthStore, useUIStore, useProfileStore } from './stores';
 import { useWsStore } from './stores/ws-store';
 import { initTheme } from './lib/theme';
+import { initWorkspaceBranding } from './lib/workspace-branding';
 import { initScrollActivity } from './lib/scroll-activity';
 import { I18nProvider, useT, getStoredLocale } from './lib/i18n';
 import type { Locale } from './lib/i18n';
@@ -436,9 +437,14 @@ function LoadingScreen() {
 const container = document.getElementById('root');
 if (container) {
   const root = createRoot(container);
-  root.render(
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>,
-  );
+  // Workspace branding (tenant name / logo / theme / team Sprouty) loads
+  // before first paint so the login screen is already personalized. Fails
+  // open fast (≤2.5s) to fork/build defaults when the API is unreachable.
+  void initWorkspaceBranding().finally(() => {
+    root.render(
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>,
+    );
+  });
 }

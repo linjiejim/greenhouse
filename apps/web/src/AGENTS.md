@@ -26,8 +26,18 @@ diff-words / wiki-diff 与 i18n **机制**（词条 en.ts/zh.ts 留在本 app，
 - 辅助函数：`getCategoryIcon()`、`getToolIcon()`、`getContextIcon()`
 - 标准尺寸：`size={12}` 行内、`size={14}` 按钮、`size={16}` 导航、`size={20}` 标题
 
-**Logo**
-- 使用 `components/ui.tsx` 中的 `<AppLogo />`（Lucide `Sprout` 图标 + "Greenhouse" 文字，无外部图片）
+**Logo / 工作区品牌**
+- 使用 `components/ui.tsx` 中的 `<AppLogo />`。产品名与 Logo 的**运行时来源**是
+  `lib/workspace-branding.ts`（app 启动先 `initWorkspaceBranding()` 拉取公开的
+  `GET /api/bootstrap`：租户名 / Logo dataURL / 主题 token / 团队 Sprouty，然后才渲染）；
+  未配置时回落到 `lib/branding.extensions.tsx` 的 `BRANDING`（fork 代码级 seam）。
+- 需要产品名/Logo 的组件一律调 `getRuntimeProductName()` / `getRuntimeLogo()`，
+  不要直接读 `BRANDING`（登录页/侧栏/AppLogo 已迁移）。
+- 主题 token 的运行时应用 = 注入 `<style data-workspace-branding>`（生成器
+  `themeTokensToCss`，与 Branding Studio 的导出/保存共用同一实现；写入与渲染两侧都过
+  `sanitizeThemeTokens` 防 CSS 注入）。
+- Sprouty 形象编辑用共享的 `components/sprouty/sprouty-designer.tsx`
+  （`<SproutyDesigner />`，profile 编辑器与 Branding Studio 团队形象共用，别再手写第二份）。
 
 ### UI 组件 (`components/ui.tsx`)
 - 基础组件：Button、Badge、Tag、TagList、Card、Input、Select、Textarea、Tabs、Dialog、ConfirmDialog、Drawer、Pagination、Spinner、Skeleton、SkeletonRow、SkeletonCard、StarRating、EmptyState、ErrorBoundary、AppLogo、ToastContainer、`toast()`

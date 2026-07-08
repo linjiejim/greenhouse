@@ -12,6 +12,7 @@ export {
   COLOR_PRESETS,
   ACCESSORIES,
   LEAF_STYLES,
+  FACE_STYLES,
   SPECIALIST_AVATARS,
   DEFAULT_COLORS,
   type SproutySize,
@@ -19,7 +20,9 @@ export {
   type SproutyVariant,
   type SproutyColorSet,
   type SproutyAvatarConfig,
+  type SproutyPalette,
   type AccessoryMeta,
   type AccessoryType,
   type LeafStyle,
+  type FaceStyle,
 } from './sprouty-constants.js';

@@ -91,6 +91,7 @@ describe('lazy catalog + per-request construction (guard)', () => {
       'spawn_session',
       'call_llm',
       'admin_analytics',
+      'design_sprouty_avatar',
     ];
     const extensionLazy = EXTENSION_TOOL_MODULES.filter((m) => m.kind === 'lazy').map((m) => m.meta.id);
     expect(LAZY_TOOL_MODULES.map((m) => m.meta.id).sort()).toEqual([...KNOWN_CORE_LAZY, ...extensionLazy].sort());

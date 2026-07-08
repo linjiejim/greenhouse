@@ -23,7 +23,7 @@ import chalk from 'chalk';
 import { DATA_DIR } from '../../paths.js';
 import { hashPassword } from '../../auth/password.js';
 import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
-import { PRODUCT_NAME } from '@greenhouse/utils/brand';
+import { getProductName } from '@greenhouse/utils/brand';
 import { openDb, parseFlags, flagStr, flagBool, confirmExact, heading, dim, dbName } from './shared.js';
 
 const EXAMPLES_DIR = resolve(DATA_DIR, 'examples');
@@ -136,7 +136,7 @@ export async function run(args: string[]): Promise<number> {
     }
   }
 
-  console.log(heading(`${PRODUCT_NAME} — seeding from ${EXAMPLES_DIR}`));
+  console.log(heading(`${getProductName()} — seeding from ${EXAMPLES_DIR}`));
   const passwordHash = await hashPassword(demoPassword);
 
   if (!keep) {

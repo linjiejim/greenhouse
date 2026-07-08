@@ -158,7 +158,7 @@ const zh: Messages = {
   // 品牌工作台（仅超级管理员）
   brandingStudio: {
     intro:
-      '定制 Greenhouse 的外观——先选一个起始风格，再微调颜色、字体和圆角，右侧实时预览。此页不会保存任何内容；调满意后把样式导出到你的工作区即可生效。',
+      '定制这个工作区的外观——先选一个起始风格，再微调颜色、字体和圆角，右侧实时预览。调满意后保存到工作区（连同名称、Logo 与团队 Sprouty），所有成员从登录页起即可看到；也可以导出 CSS 给 Fork 使用。',
 
     // 起始风格
     presets: '起始风格',
@@ -226,6 +226,60 @@ const zh: Messages = {
     sampleBullet2: '新注册带动大幅上升——见',
     sampleLink: '用量报告',
     sampleModelMeta: '3.8 秒内回答',
+
+    // 工作区持久化（branding.* 工作区配置）
+    workspaceTitle: '工作区标识',
+    tipWorkspace:
+      '保存到工作区后对所有成员生效（从登录页开始）——租户名、Logo、这些样式与团队 Sprouty。无需改代码、无需重启。',
+    productName: '产品名称',
+    logo: 'Logo',
+    logoUpload: '上传',
+    logoRemove: '移除 Logo',
+    logoHint: '支持 PNG / JPEG / SVG / WebP，最大 256 KB。显示在侧边栏和登录页。',
+    logoBadType: '不支持的图片格式',
+    logoTooLarge: '图片超过 256 KB',
+    teamSprouty: '团队 Sprouty',
+    teamSproutyOn: '自定义',
+    teamSproutyOff: '恢复默认',
+    teamSproutyHint: '内置 Agent 的默认形象。自定义它，让工作区拥有自己的吉祥物。',
+    saveWorkspace: '保存到工作区',
+    clearWorkspace: '重置工作区品牌',
+    workspaceSaved: '工作区品牌已保存',
+    workspaceCleared: '工作区品牌已重置',
+  },
+
+  // 共享 Sprouty 形象编辑器（Profile 编辑器 + 品牌工作室）
+  sproutyDesigner: {
+    color: '颜色',
+    customColor: '自定义',
+    bodyColor: '身体',
+    leafColor: '叶子',
+    faceStyle: '表情',
+    accessories: '配件',
+    slot_hat: '帽子',
+    slot_glasses: '眼镜',
+    slot_held: '手持',
+    none: '无',
+    leafStyle: '叶型',
+  },
+
+  // 运行时配置（管理员）——基于注册表的工作区设置
+  runtimeConfig: {
+    intro:
+      '在管理后台配置运行时凭据——模型端点、视觉、图像生成与联网搜索。此处保存的值优先于环境变量并立即生效；清空字段则回落到环境变量。',
+    group_llm: '主模型',
+    group_vision: '视觉',
+    group_image_gen: '图像生成',
+    group_search: '联网搜索',
+    sourceDb: '工作区',
+    sourceEnv: '环境变量',
+    sourceNone: '未配置',
+    envFallback: '环境变量回落：',
+    secretPlaceholder: '输入新值以替换',
+    secretSet: '已配置',
+    clear: '清空',
+    save: '保存更改',
+    saved: '运行时配置已保存',
   },
 
   // 聊天

@@ -24,6 +24,9 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/refresh',
   '/api/auth/status',
   '/health',
+  // Pre-login workspace personalization (tenant name/logo/theme/team Sprouty)
+  // — no secrets, no user data (see routes/bootstrap.ts).
+  '/api/bootstrap',
 ]);
 
 export function isPublicPath(path: string): boolean {

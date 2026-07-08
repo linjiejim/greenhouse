@@ -21,6 +21,14 @@
 - **No `any` in response objects**: an `any` field in a handler's return value collapses the whole route's inferred response to `never` (the hc endpoint becomes unusable). Annotate raw SQL result shapes before `c.json()`.
 - All routes are mounted through `mountRoutes()` in `src/index.ts` (**mount order has security semantics — don't reorder**). `export type AppType` is the contract, re-exported by `@greenhouse/contract` to the web client.
 - `/api/client-tools` is mounted dynamically and deliberately stays out of the contract (the browser client-action callback surface: `POST /result` returns an action result and unblocks a suspended agent step).
+- **Workspace settings** (`src/settings/workspace-config.ts` + `routes/admin-settings.ts` +
+  `routes/bootstrap.ts`): registry-driven deployment config (see root AGENTS.md → "Workspace
+  settings"). `GET /api/bootstrap` is PUBLIC (core `PUBLIC_PATHS` entry) and must only ever
+  serve non-sensitive branding (no secrets, no user data, no feature config). All writes go
+  through `validateWorkspaceValue`; secrets are encrypted with `encryptToken` and are never
+  returned by reads (`has_value`/`source` only). After every write call
+  `refreshWorkspaceConfig()` — it re-overlays resolved values onto `process.env`, which is how
+  call-time consumers (model factory, media tools, search) see admin changes without a restart.
 
 ### Fork extension points (downstream personalization)
 These are the seams a downstream fork uses to add private features WITHOUT editing shared registry files, so those files stay byte-identical to upstream and never conflict on sync. **Upstream (this repo) ships each one empty** — guard tests pin that (an OSS build must contain zero private tools/routes).

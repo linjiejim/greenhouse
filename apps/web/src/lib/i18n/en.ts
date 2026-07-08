@@ -151,7 +151,7 @@ export default {
   // Branding Studio (super only)
   brandingStudio: {
     intro:
-      'Shape how Greenhouse looks — pick a starting style, then fine-tune colour, type and shape with everything previewing live on the right. Nothing is saved here; when it feels right, copy the styles out to your workspace.',
+      'Shape how this workspace looks — pick a starting style, then fine-tune colour, type and shape with everything previewing live on the right. When it feels right, save it to the workspace (name, logo and team Sprouty included) so everyone gets it from the login screen on — or export the CSS for a fork.',
 
     // Presets
     presets: 'Starting styles',
@@ -225,6 +225,61 @@ export default {
     sampleBullet2: 'up sharply on new signups — see the',
     sampleLink: 'usage report',
     sampleModelMeta: 'Answered in 3.8s',
+
+    // Workspace persistence (branding.* workspace settings)
+    workspaceTitle: 'Workspace identity',
+    tipWorkspace:
+      'Saved to the workspace and applied for everyone from the login screen on — tenant name, logo, these styles and the team Sprouty. No code changes, no restart.',
+    productName: 'Product name',
+    logo: 'Logo',
+    logoUpload: 'Upload',
+    logoRemove: 'Remove logo',
+    logoHint: 'PNG / JPEG / SVG / WebP, up to 256 KB. Shown in the sidebar and on the login screen.',
+    logoBadType: 'Unsupported image type',
+    logoTooLarge: 'Image exceeds 256 KB',
+    teamSprouty: 'Team Sprouty',
+    teamSproutyOn: 'Customize',
+    teamSproutyOff: 'Use default',
+    teamSproutyHint:
+      'The default mascot worn by the built-in agents. Customize it to give your workspace its own face.',
+    saveWorkspace: 'Save to workspace',
+    clearWorkspace: 'Reset workspace branding',
+    workspaceSaved: 'Workspace branding saved',
+    workspaceCleared: 'Workspace branding reset',
+  },
+
+  // Shared Sprouty avatar designer (profile editor + Branding Studio)
+  sproutyDesigner: {
+    color: 'Color',
+    customColor: 'Custom',
+    bodyColor: 'Body',
+    leafColor: 'Leaf',
+    faceStyle: 'Face',
+    accessories: 'Accessories',
+    slot_hat: 'Hat',
+    slot_glasses: 'Glasses',
+    slot_held: 'Held',
+    none: 'None',
+    leafStyle: 'Leaf Style',
+  },
+
+  // Runtime Config (admin) — registry-driven workspace settings
+  runtimeConfig: {
+    intro:
+      'Configure the runtime credentials from the admin console — model endpoints, vision, image generation and web search. Values saved here win over environment variables and apply immediately; clearing a field falls back to the environment.',
+    group_llm: 'Main LLM',
+    group_vision: 'Vision',
+    group_image_gen: 'Image generation',
+    group_search: 'Web search',
+    sourceDb: 'Workspace',
+    sourceEnv: 'Environment',
+    sourceNone: 'Not set',
+    envFallback: 'Env fallback:',
+    secretPlaceholder: 'Enter a new value to replace',
+    secretSet: 'Configured',
+    clear: 'Clear',
+    save: 'Save changes',
+    saved: 'Runtime config saved',
   },
 
   // Chat

@@ -5,7 +5,7 @@
  * - Preferences (standalone, top)
  * - Personal: Automation, My Prompts, My Agents
  * - Workspace: Groups, Cloud Email, Skill Center
- * - Administration (super only): Users, AI Gateway, MCP Access, System Agents, Agent Usages, Feature Requests
+ * - Administration (super only): Users, AI Gateway, Runtime Config, MCP Access, System Agents, Agent Usages, Feature Requests
  * - Labs (super only, beta): Memory, Branding Studio
  */
 
@@ -30,6 +30,7 @@ import { GroupsPanel } from './groups';
 import { SkillCenterPanel } from './skills';
 import { LlmGatewayAdminPanel } from './admin-llm-gateway';
 import { McpKeysPanel } from './mcp-keys';
+import { RuntimeConfigPanel } from './runtime-config';
 import { BrandingStudioPanel } from './branding-studio';
 import { CrudExamplePage } from './crud-example';
 import { findSettingsPanel } from './panels.extensions';
@@ -81,6 +82,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
           {effectiveModule === 'usage' && <UsagePanelWithUsers />}
           {effectiveModule === 'feature-requests' && <FeatureRequestsContent />}
           {effectiveModule === 'llm-gateway' && <LlmGatewayAdminPanel />}
+          {effectiveModule === 'runtime-config' && <RuntimeConfigPanel />}
           {effectiveModule === 'mcp-keys' && <McpKeysPanel />}
           {effectiveModule === 'groups' && <GroupsPanel />}
           {effectiveModule === 'skills' && <SkillCenterPanel />}

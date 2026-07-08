@@ -1,6 +1,6 @@
 {
-  "id": "35ce8e15-b807-413d-9ff3-47121fb8843c",
-  "prevId": "8576b03b-d218-451c-be83-032be9bedd3f",
+  "id": "fb2f8e3d-5cb4-4eef-bf1f-953aebd4a8ed",
+  "prevId": "35ce8e15-b807-413d-9ff3-47121fb8843c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4465,6 +4465,49 @@
           "with": {}
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workspace_settings": {
+      "name": "workspace_settings",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "value_enc": {
+          "name": "value_enc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

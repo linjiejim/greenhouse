@@ -9,7 +9,13 @@
  */
 
 import React, { useMemo } from 'react';
-import { SPROUTY_SIZES, type SproutySize, type SproutyState, type SproutyVariant } from './sprouty-constants.js';
+import {
+  SPROUTY_SIZES,
+  type SproutyPalette,
+  type SproutySize,
+  type SproutyState,
+  type SproutyVariant,
+} from './sprouty-constants.js';
 import {
   buildSproutyFaceSvg,
   ensureSproutyFaceStyles,
@@ -30,6 +36,10 @@ export interface SproutyFaceProps {
   accessories?: string[];
   /** Leaf style: 'normal' | 'big' | 'mini' | 'double'. */
   leafStyle?: string;
+  /** Face style: 'default' | 'happy' | 'sparkle' | 'sleepy' (see FACE_STYLES). */
+  faceStyle?: string;
+  /** Free body/leaf hex override — wins over the `color` preset. */
+  palette?: SproutyPalette;
   /** Accepted for drop-in compat with profileToSprouty; color drives the look. */
   variant?: SproutyVariant;
   /** Rendered size — px number, or a size preset ('sm', 'md'…). Default 40. */
@@ -46,6 +56,8 @@ export function SproutyFace({
   color,
   accessories,
   leafStyle,
+  faceStyle,
+  palette,
   variant: _variant,
   size = 40,
   animate = true,
@@ -56,10 +68,11 @@ export function SproutyFace({
   const px = typeof size === 'number' ? size : SPROUTY_SIZES[size];
   const resolved: SproutyFaceExpr = expr ?? (state ? FACE_STATE_MAP[state] : 'idle');
   const accKey = accessories?.join('|') ?? '';
+  const paletteKey = palette ? `${palette.body ?? ''}|${palette.leaf ?? ''}` : '';
   const html = useMemo(
-    () => buildSproutyFaceSvg(resolved, { animate, color, accessories, leafStyle }),
-    // accKey stands in for the accessories array identity
-    [resolved, animate, color, accKey, leafStyle], // eslint-disable-line react-hooks/exhaustive-deps
+    () => buildSproutyFaceSvg(resolved, { animate, color, accessories, leafStyle, faceStyle, palette }),
+    // accKey / paletteKey stand in for the array/object identities
+    [resolved, animate, color, accKey, leafStyle, faceStyle, paletteKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   return (

@@ -18,10 +18,10 @@
  */
 
 import chalk from 'chalk';
-import { PRODUCT_NAME } from '@greenhouse/utils/brand';
+import { getProductName } from '@greenhouse/utils/brand';
 import { closeDb } from './commands/shared.js';
 
-const USAGE = `${chalk.bold(`${PRODUCT_NAME} CLI`)} — dev/ops quick operations
+const USAGE = `${chalk.bold(`${getProductName()} CLI`)} — dev/ops quick operations
 
 ${chalk.bold('Usage:')} pnpm cli <command> [subcommand] [args] [--flags]   ${chalk.dim('(guide: pnpm cli --help)')}
 
