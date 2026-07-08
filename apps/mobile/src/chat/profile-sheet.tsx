@@ -75,13 +75,17 @@ export function ProfileSheet({ visible, onClose }: { visible: boolean; onClose: 
                         <Text style={styles.badgeText}>{t('profile.custom')}</Text>
                       </View>
                     ) : null}
+                    {item.model ? (
+                      <Text numberOfLines={1} style={styles.rowModel}>
+                        {item.model.model}
+                      </Text>
+                    ) : null}
                   </View>
                   {item.description ? (
                     <Text numberOfLines={1} style={styles.rowDesc}>
                       {item.description}
                     </Text>
                   ) : null}
-                  {item.model ? <Text style={styles.rowModel}>{item.model.model}</Text> : null}
                 </View>
                 {active ? <Icon name="check" size={18} color={c.accent} sw={2.4} /> : null}
               </Touchable>
@@ -135,7 +139,8 @@ const useStyles = makeStyles((c) => ({
   },
   rowTitle: { fontSize: font.body, fontWeight: '600', color: c.fg, flexShrink: 1 },
   rowDesc: { fontSize: font.caption, color: c.fgMuted, marginTop: 3, lineHeight: 17 },
-  rowModel: { fontSize: font.caption, color: c.fgFaint, marginTop: 4 },
+  // model alias rides the title line, pushed to its right edge
+  rowModel: { fontSize: font.caption, color: c.fgFaint, marginLeft: 'auto', flexShrink: 0, maxWidth: 130 },
   badge: {
     backgroundColor: c.surfaceMuted,
     borderRadius: radius.full,

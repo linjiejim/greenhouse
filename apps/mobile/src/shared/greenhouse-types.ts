@@ -127,7 +127,7 @@ export interface UploadResult {
   size: number;
 }
 
-// ─── Knowledge base (read-only on mobile) ────────────────
+// ─── Knowledge base ──────────────────────────────────────
 
 export interface KnowledgeDoc {
   id: number;
@@ -259,6 +259,20 @@ export interface GanttProject extends Omit<Project, 'color' | 'visibility' | 'cr
   tasks: ProjectTask[];
   stats: ProjectStats;
   progress: number;
+}
+
+/** One snapshot in a doc's edit history (GET /api/knowledge/docs/:id/versions). */
+export interface KnowledgeDocVersion {
+  id: number;
+  doc_id: number;
+  version: number;
+  title: string;
+  content_markdown: string;
+  content_json: string;
+  summary: string;
+  changed_by: string | null;
+  change_reason: string | null;
+  created_at: string | null;
 }
 
 // ─── Streaming events ────────────────────────────────────

@@ -63,7 +63,7 @@ greenhouse/
 │   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to
 │   │                         #   your instances via saved multi-server "stations"
 │   │                         #   (build: pnpm -F @greenhouse/browser build)
-│   └── mobile/               # Expo (React Native) app — chat, knowledge base (read-only),
+│   └── mobile/               # Expo (React Native) app — chat, knowledge base (edit + history),
 │                             #   projects (list/board/gantt), settings; multi-server
 │                             #   "stations" picked at sign-in; isolated install
 │                             #   (pnpm mobile:install, then pnpm mobile)

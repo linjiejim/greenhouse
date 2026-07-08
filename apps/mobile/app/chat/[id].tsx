@@ -1,12 +1,16 @@
 /**
  * Conversation screen — the centerpiece.
  *
- * Streams the team agent reply (expo/fetch NDJSON), buffering text on a ~40ms
- * flush so a fast token stream doesn't thrash React. Renders the full rich
- * reply (tool pipeline, reasoning, markdown, citation + web sources, metrics),
- * supports long-press message actions, quote-to-ask, a header menu, the source
- * detail sheet, an attach sheet, jump-to-latest, and a read-only bar for shared
- * conversations. The request is abortable; send ⇄ stop mid-stream.
+ * Streams the team agent reply (expo/fetch NDJSON) into a buffer that a ~30fps
+ * "drain" reveals a little at a time (a fraction of the backlog per tick,
+ * snapped to word edges) — the reply unfolds smoothly like typing instead of
+ * slamming in whole chunks, and React never sees more than one commit per tick.
+ * The message is only finalized once the drain catches up with the closed
+ * stream. Renders the full rich reply (tool pipeline, reasoning, markdown,
+ * citation + web sources, metrics), supports long-press message actions,
+ * quote-to-ask, a header menu, the source detail sheet, an attach sheet,
+ * jump-to-latest, and a read-only bar for shared conversations. The request is
+ * abortable; send ⇄ stop mid-stream (stop reveals the rest instantly).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -124,7 +128,10 @@ export default function Conversation() {
   const abortRef = useRef<AbortController | null>(null);
   const textBufRef = useRef('');
   const reasonBufRef = useRef('');
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shownRef = useRef(0); // chars of textBuf revealed so far
+  const reasonShownRef = useRef(0);
+  const drainRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamEndRef = useRef(false);
   const aIdRef = useRef('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -142,19 +149,76 @@ export default function Conversation() {
     setMessages((ms) => ms.map((m) => (m.id === aIdRef.current ? fn(m) : m)));
   }, []);
 
-  const scheduleFlush = useCallback(() => {
-    if (flushTimerRef.current) return;
-    flushTimerRef.current = setTimeout(() => {
-      flushTimerRef.current = null;
+  /* ------------------------- smooth streaming drain -------------------------
+   * Deltas append to textBufRef; a ~30fps interval reveals a fraction of the
+   * backlog per tick (word-snapped), so the reply unfolds like calm typing
+   * instead of dumping whole chunks. Once the wire closes (streamEndRef) the
+   * drain speeds up, catches up, then finalizes the message. */
+
+  const stopDrain = useCallback(() => {
+    if (drainRef.current) {
+      clearInterval(drainRef.current);
+      drainRef.current = null;
+    }
+  }, []);
+
+  const finalize = useCallback(() => {
+    stopDrain();
+    patchAssistant((m) => ({
+      ...m,
+      text: textBufRef.current || m.text,
+      reasoning: reasonBufRef.current || m.reasoning,
+      status: 'done',
+    }));
+    setStreaming(false);
+    requestAnimationFrame(maybeScroll);
+  }, [stopDrain, patchAssistant, maybeScroll]);
+
+  const ensureDrain = useCallback(() => {
+    if (drainRef.current) return;
+    drainRef.current = setInterval(() => {
+      const buf = textBufRef.current;
+      const backlog = buf.length - shownRef.current;
+      const reasonDirty = reasonBufRef.current.length !== reasonShownRef.current;
+      if (backlog <= 0 && !reasonDirty) {
+        if (streamEndRef.current) finalize();
+        return;
+      }
+      if (backlog > 0) {
+        // Reveal a fraction of the backlog (min 2 chars — faster once the wire
+        // closed), then extend to the next whitespace so words appear whole
+        // (capped so CJK prose without spaces still flows).
+        let next = shownRef.current + Math.max(2, Math.ceil(backlog * (streamEndRef.current ? 0.3 : 0.12)));
+        if (next < buf.length) {
+          const cap = Math.min(buf.length, next + 16);
+          while (next < cap && !/\s/.test(buf[next])) next++;
+          const tail = buf.charCodeAt(next - 1);
+          if (tail >= 0xd800 && tail <= 0xdbff) next++; // never split a surrogate pair
+        }
+        next = Math.min(next, buf.length);
+        // A high surrogate at the very end of a still-open buffer means the
+        // pair was split across network chunks — hold it until the other half.
+        if (next === buf.length && !streamEndRef.current) {
+          const tail = buf.charCodeAt(next - 1);
+          if (tail >= 0xd800 && tail <= 0xdbff) next--;
+        }
+        shownRef.current = Math.max(shownRef.current, next);
+      }
+      reasonShownRef.current = reasonBufRef.current.length;
       patchAssistant((m) => ({
         ...m,
-        text: textBufRef.current,
+        text: buf.slice(0, shownRef.current),
         reasoning: reasonBufRef.current || m.reasoning,
-        status: m.status === 'thinking' ? 'streaming' : m.status,
+        // Keep the thinking face until actual text shows (reasoning alone
+        // shouldn't blank the row — it only renders once done).
+        status: m.status === 'thinking' && shownRef.current > 0 ? 'streaming' : m.status,
       }));
       maybeScroll();
-    }, 40);
-  }, [patchAssistant, maybeScroll]);
+    }, 33);
+  }, [finalize, patchAssistant, maybeScroll]);
+
+  // Never leave the drain running past unmount.
+  useEffect(() => stopDrain, [stopDrain]);
 
   const upsertTool = useCallback(
     (id: string, patch: { tool?: string; input?: unknown; output?: unknown; status?: 'running' | 'done' | 'error'; ms?: number }) => {
@@ -194,8 +258,12 @@ export default function Conversation() {
     async (userText: string, sendImages?: Array<{ id: string; url: string }>) => {
       const aId = nextId();
       aIdRef.current = aId;
+      stopDrain();
       textBufRef.current = '';
       reasonBufRef.current = '';
+      shownRef.current = 0;
+      reasonShownRef.current = 0;
+      streamEndRef.current = false;
       followRef.current = true;
       setMessages((ms) => [...ms, { id: aId, role: 'assistant', text: '', tools: [], status: 'thinking' }]);
       setStreaming(true);
@@ -213,11 +281,11 @@ export default function Conversation() {
           handleStreamEvent(evt, {
             onTextDelta: (t) => {
               textBufRef.current += t;
-              scheduleFlush();
+              ensureDrain();
             },
             onReasoningDelta: (t) => {
               reasonBufRef.current += t;
-              scheduleFlush();
+              ensureDrain();
             },
             onToolCallStart: (tid, name) => upsertTool(tid, { tool: name, status: 'running' }),
             onToolCall: (name, inp, tid) => upsertTool(tid || name, { tool: name, input: inp, status: 'running' }),
@@ -242,17 +310,13 @@ export default function Conversation() {
           patchAssistant((m) => ({ ...m, error: msg }));
         }
       } finally {
-        if (flushTimerRef.current) {
-          clearTimeout(flushTimerRef.current);
-          flushTimerRef.current = null;
-        }
-        patchAssistant((m) => ({ ...m, text: textBufRef.current || m.text, reasoning: reasonBufRef.current || m.reasoning, status: 'done' }));
-        setStreaming(false);
+        // Wire is closed — let the drain reveal what's left, then finalize.
+        streamEndRef.current = true;
+        ensureDrain();
         abortRef.current = null;
-        requestAnimationFrame(maybeScroll);
       }
     },
-    [sessionId, scheduleFlush, upsertTool, addSourcesFromResult, patchAssistant, maybeScroll, t],
+    [sessionId, stopDrain, ensureDrain, upsertTool, addSourcesFromResult, patchAssistant, maybeScroll, t],
   );
 
   // initial fresh send, or load history
@@ -352,9 +416,11 @@ export default function Conversation() {
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
-    patchAssistant((m) => ({ ...m, status: 'done' }));
-    setStreaming(false);
-  }, [patchAssistant]);
+    // Reveal whatever already arrived instantly — the user asked to stop.
+    shownRef.current = textBufRef.current.length;
+    reasonShownRef.current = reasonBufRef.current.length;
+    finalize();
+  }, [finalize]);
 
   const regenerate = useCallback(() => {
     if (streaming) return;
@@ -629,7 +695,7 @@ const useStyles = makeStyles((c) => ({
   headerTitle: { fontSize: font.title, fontWeight: '700', color: c.fg, maxWidth: 240 },
   headerSub: { fontSize: font.caption, color: c.fgMuted, marginTop: 1 },
 
-  jumpWrap: { position: 'absolute', left: 0, right: 0, bottom: 150, alignItems: 'center' },
+  jumpWrap: { position: 'absolute', left: 0, right: 0, bottom: 116, alignItems: 'center' },
   jumpBtn: {
     flexDirection: 'row',
     alignItems: 'center',

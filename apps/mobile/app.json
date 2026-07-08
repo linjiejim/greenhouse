@@ -8,6 +8,7 @@
       "policy": "fingerprint"
     },
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "assetBundlePatterns": [
@@ -25,7 +26,11 @@
       }
     },
     "android": {
-      "package": "app.greenhouse.mobile"
+      "package": "app.greenhouse.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0D9488"
+      }
     },
     "web": {
       "bundler": "metro",

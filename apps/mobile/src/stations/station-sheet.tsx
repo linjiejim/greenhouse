@@ -11,7 +11,7 @@ import { Alert, Text, View } from 'react-native';
 import { useStations, normalizeBaseUrl, probeStation, type StationRecord } from '../store/stations';
 import { useAuth } from '../store/auth';
 import { useT } from '../lib/i18n';
-import { BottomSheetScrollView, BottomSheetTextInput, Icon, Sheet, Tile, Touchable } from '../ui';
+import { BottomSheetScrollView, BottomSheetTextInput, Icon, Sheet, Tile, Touchable, useSheetEndReveal } from '../ui';
 import { font, makeStyles, radius, useTheme } from '../theme';
 
 export function StationSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -24,6 +24,7 @@ export function StationSheet({ visible, onClose }: { visible: boolean; onClose: 
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { scrollRef, revealEnd } = useSheetEndReveal();
 
   async function switchTo(station: StationRecord) {
     if (station.id !== activeId) {
@@ -82,6 +83,7 @@ export function StationSheet({ visible, onClose }: { visible: boolean; onClose: 
   return (
     <Sheet visible={visible} onClose={onClose} title={t('station.title')} heightPct={70}>
       <BottomSheetScrollView
+        ref={scrollRef}
         contentContainerStyle={{ padding: 16, paddingBottom: 36 }}
         keyboardShouldPersistTaps="handled"
       >
@@ -127,6 +129,7 @@ export function StationSheet({ visible, onClose }: { visible: boolean; onClose: 
               setUrl(v);
               setError(null);
             }}
+            onFocus={revealEnd}
             placeholder={t('station.urlPlaceholder')}
             placeholderTextColor={c.fgFaint}
             autoCapitalize="none"

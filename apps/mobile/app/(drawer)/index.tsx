@@ -5,8 +5,8 @@
  * (a trigger above the input). Typing + sending starts a new conversation.
  *
  * The ☰ burger — and a left edge-swipe — open the native left drawer (account +
- * navigation directory + 设置 + 退出); its contents live in HomeDrawerContent,
- * wired by the drawer group layout (app/(drawer)/_layout.tsx).
+ * navigation directory + 设置 / 工作站切换); its contents live in
+ * HomeDrawerContent, wired by the drawer group layout (app/(drawer)/_layout.tsx).
  */
 
 import React, { useCallback, useState } from 'react';

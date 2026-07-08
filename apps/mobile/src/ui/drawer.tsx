@@ -9,8 +9,9 @@
  *     into a `Drawer`'s `screenOptions`.
  *  - `DrawerScaffold` — the panel body: account header on top, a scrollable
  *     caller `children` area (e.g. the history list), an optional fixed `footer`
- *     (e.g. 设置), then sign-out + version pinned to the bottom.
- *  - `DrawerRow` — a drawer nav row (leading rounded icon, label, chevron).
+ *     (e.g. 设置 / 工作站), then the version pinned to the bottom.
+ *  - `DrawerRow` — a drawer nav row (leading rounded icon, label, optional muted
+ *     value, chevron).
  *
  * Reuse: build a `drawerContent` from `DrawerScaffold` + `DrawerRow` and hand
  * `drawerScreenOptions` to the `Drawer`. See src/chat/home-drawer.tsx for the
@@ -22,7 +23,6 @@ import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { DrawerNavigationOptions } from 'expo-router/drawer';
 import { font, makeStyles, radius, useTheme, type ThemeColors } from '../theme';
-import { useT } from '../lib/i18n';
 import { Icon, IconName, Touchable } from './core';
 import { Tile, UserAvatar } from './widgets';
 
@@ -53,15 +53,18 @@ export function drawerScreenOptions(c: ThemeColors): DrawerNavigationOptions {
   };
 }
 
-/** A drawer nav row — leading rounded icon, label, optional trailing chevron. */
+/** A drawer nav row — leading rounded icon, label, optional muted trailing
+ *  value (e.g. the active station name), optional trailing chevron. */
 export function DrawerRow({
   icon,
   label,
+  value,
   onPress,
   danger,
 }: {
   icon: IconName;
   label: string;
+  value?: string;
   onPress: () => void;
   danger?: boolean;
 }) {
@@ -71,6 +74,11 @@ export function DrawerRow({
     <Touchable onPress={onPress} pressedStyle={{ backgroundColor: c.surfaceMuted }} style={styles.row}>
       <Tile icon={icon} size={34} iconSize={20} tint={danger ? 'danger' : 'accent'} />
       <Text style={[styles.rowLabel, danger && { color: c.danger }]}>{label}</Text>
+      {value ? (
+        <Text numberOfLines={1} style={styles.rowValue}>
+          {value}
+        </Text>
+      ) : null}
       {danger ? null : <Icon name="chevR" size={16} color={c.fgFaint} />}
     </Touchable>
   );
@@ -79,30 +87,28 @@ export function DrawerRow({
 /**
  * The drawer panel body. Presentational only: account header on top, a
  * caller-provided scrollable `children` area (fills available height), an
- * optional fixed `footer`, then sign-out + version pinned to the bottom. Sits
- * inside the native drawer panel, so it owns padding/safe-area but not the
+ * optional fixed `footer` (e.g. 设置 / 工作站 rows), then the version pinned to
+ * the bottom. Sign-out lives on the Settings screen, not here. Sits inside the
+ * native drawer panel, so it owns padding/safe-area but not the
  * slide/scrim/gesture (those come from `drawerScreenOptions`).
  */
 export function DrawerScaffold({
   name,
   email,
   version,
-  onLogout,
   children,
   footer,
 }: {
   name: string;
   email?: string;
   version?: string;
-  onLogout: () => void;
   /** Scrollable middle content (e.g. the history list). Fills available height. */
   children?: React.ReactNode;
-  /** Fixed rows just above sign-out (e.g. 设置). */
+  /** Fixed rows pinned above the version foot (e.g. 设置 / 工作站). */
   footer?: React.ReactNode;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
-  const t = useT();
   const insets = useSafeAreaInsets();
 
   return (
@@ -125,11 +131,9 @@ export function DrawerScaffold({
       {/* middle: caller content (history) */}
       <View style={{ flex: 1, minHeight: 0 }}>{children}</View>
 
-      {/* footer rows (e.g. 设置), pinned above sign-out */}
+      {/* footer rows (e.g. 设置 / 工作站), pinned to the bottom */}
       {footer ? <View style={styles.footerRows}>{footer}</View> : null}
 
-      {/* sign out */}
-      <DrawerRow icon="logout" label={t('drawer.logout')} onPress={onLogout} danger />
       {version ? (
         <Text style={[styles.foot, { paddingBottom: insets.bottom + 14 }]}>Greenhouse · v{version}</Text>
       ) : (
@@ -157,5 +161,6 @@ const useStyles = makeStyles((c) => ({
   footerRows: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.hairline, paddingTop: 6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 13, paddingVertical: 11, paddingHorizontal: 16, borderRadius: radius.md },
   rowLabel: { flex: 1, fontSize: font.body, fontWeight: '600', color: c.fg },
+  rowValue: { fontSize: font.label, color: c.fgMuted, maxWidth: 120, flexShrink: 0 },
   foot: { textAlign: 'center', fontSize: font.caption, color: c.fgFaint, marginTop: 10 },
 }));
