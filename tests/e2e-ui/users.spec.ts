@@ -12,22 +12,25 @@ test.describe('user management', () => {
     try {
       await page.goto('/#/settings/users');
 
-      // Create
+      // Create (CrudForm testids: `{schema.testId}-add` / `-field-{key}` / `-submit`).
       await page.getByTestId('users-add').click();
-      await page.getByTestId('user-email-input').fill(email);
-      await page.getByTestId('user-password-input').fill('E2ePass-user-1');
-      await page.getByTestId('user-nickname-input').fill(`${runId}-u1`);
-      await page.getByTestId('user-create-submit').click();
+      await page.getByTestId('users-field-email').fill(email);
+      await page.getByTestId('users-field-password').fill('E2ePass-user-1');
+      await page.getByTestId('users-field-nickname').fill(`${runId}-u1`);
+      await page.getByTestId('users-submit').click();
 
       await expect(page.getByText(email)).toBeVisible();
 
-      // Delete → confirm
-      await page.getByTestId(`user-delete-${email}`).click();
+      // Delete → confirm. Row action testids are shared across rows, so scope the
+      // delete button to the row that shows this user's (unique, runId-tagged) email.
+      const row = page.getByRole('row', { has: page.getByText(email) });
+      await row.getByTestId('users-delete').click();
       await expect(page.getByTestId('confirm-dialog')).toBeVisible();
       await page.getByTestId('confirm-dialog-confirm').click();
 
-      // The regression assertion: success toast, NOT "Delete failed".
-      await expect(page.getByText('User deleted')).toBeVisible();
+      // The regression assertion: the delete-success toast (crud.deleted = "Deleted"),
+      // NOT the "Failed to delete" error toast.
+      await expect(page.getByText('Deleted', { exact: true })).toBeVisible();
       await expect(page.getByText(email)).toBeHidden();
     } finally {
       // Safety net: if anything above failed mid-way, remove the leftover user.

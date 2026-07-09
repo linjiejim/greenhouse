@@ -4,7 +4,7 @@
 - 每个子页面是一个 Panel 组件，在 `settings/index.tsx` 中挂载
 - **不要在 body 中重复页面标题**——TopBar 面包屑已展示 "Settings › xxx" + 描述
 - **全宽布局**：外层容器提供 `px-3 md:px-4 py-4`，子页面内不要再加 `max-w-*` / `mx-auto` / 额外 padding
-- 若页面有自己的固定 Tabs 栏（如 AI Gateway 的 upstreams/models/keys），保持 `h-full flex flex-col overflow-hidden` 模式
+- 多实体页（如 AI Gateway 的 upstreams/models/keys）用 `@greenhouse/crud` 的 `CrudTabs`；若自带固定 Tabs 栏，保持 `h-full flex flex-col overflow-hidden` 模式
 
 ### 添加新页面
 模块（导航 + 分组 + 权限）的唯一真相是 `lib/nav-registry.ts` 的 `settingsSections`，**不再**在 `settings/index.tsx` 里维护 MODULES 数组。
@@ -20,7 +20,16 @@
 - **Administration（super only）**：Users、AI Gateway、MCP Access、System Agents、Agent Usages、Feature Requests
 - **Labs（super only）**：Memory
 
-### 列表页范式（参考 Users / Feature Requests）
+### 列表 / 记录页范式（一律用 @greenhouse/crud）
+新的列表型/记录型页面**一律**用一份 `defineCrud<Row>` schema 驱动 `<CrudPage>`——工具栏/筛选/排序/分页、新增/编辑 Dialog、详情 Drawer、删除确认、空态全部由框架统一，不再手写。统一交互标准见 `docs/specs/20260709-crud-interaction-standard.md`。
+- 列表：`CrudPage`（表格默认；非表格记录用 `variant:'cards'` + `slots.renderCard`；多实体用 `CrudTabs`）
+- 增改：Dialog（`formMode:'dialog'`）；详情：右 Drawer；删除：内建确认；**禁止行内编辑/内联新增表单**
+- 行内开关用 `type:'toggle'` 列（字符串状态用 `checked:(row)=>…` 派生）
+- bespoke 子流程（工具/功能/资料分配等）用 `tableActions` 打开独立 Dialog，不塞进表单网格
+- 参考实现：`skills.tsx`（custom 列 + rowExpand）、`users.tsx`（toggle + 4 个保留弹框 + testId）、`admin-llm-gateway.tsx`（CrudTabs）、`email-accounts.tsx`/`memory.tsx`（cards）
+- e2e：给 schema 设 `testId`，框架自动派生 `{testId}-add`/`-field-{key}`/`-submit`/`-delete` 等选择器
+
+下面的手写 `<table>` 规范仅为 CrudPage 的底层形态参考 / 极特殊自定义页使用：
 ```
 ┌─ Toolbar: [搜索/筛选] ─────────────────── [操作按钮] ┐
 │                                                       │
