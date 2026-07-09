@@ -157,6 +157,7 @@ export function CrudForm<TRow>({ schema, mode, initial, onClose, onSaved }: Crud
                 form={form}
                 mode={mode}
                 disabled={disabled}
+                testId={schema.testId ? `${schema.testId}-field-${f.key}` : undefined}
               />
               {f.comment && <p className="text-[11px] text-fg-faint mt-0.5">{tr(t, f.comment)}</p>}
               {errors[f.key] && <p className="text-[11px] text-danger mt-0.5">{errors[f.key]}</p>}
@@ -166,10 +167,21 @@ export function CrudForm<TRow>({ schema, mode, initial, onClose, onSaved }: Crud
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
-        <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          disabled={saving}
+          data-testid={schema.testId ? `${schema.testId}-cancel` : undefined}
+        >
           {t('crud.cancel')}
         </Button>
-        <Button size="sm" onClick={handleSave} disabled={saving}>
+        <Button
+          size="sm"
+          onClick={handleSave}
+          disabled={saving}
+          data-testid={schema.testId ? `${schema.testId}-submit` : undefined}
+        >
           {saving ? <Spinner className="mr-1" /> : null}
           {mode === 'add' ? t('crud.create') : t('crud.save')}
         </Button>

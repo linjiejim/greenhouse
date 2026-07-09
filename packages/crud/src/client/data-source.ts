@@ -14,7 +14,9 @@ import type { ListParams, ListResult } from '../protocol/types.js';
 
 export interface CrudDataSource<TRow> {
   list(params: ListParams): Promise<ListResult<TRow>>;
-  get(id: string): Promise<TRow>;
+  /** Optional: the framework's detail view uses the in-memory row, so a
+   *  list-only / no-detail resource can omit this. */
+  get?(id: string): Promise<TRow>;
   create?(data: Record<string, unknown>): Promise<unknown>;
   update?(id: string, data: Record<string, unknown>): Promise<unknown>;
   remove?(id: string): Promise<unknown>;

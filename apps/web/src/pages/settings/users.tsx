@@ -1,20 +1,17 @@
 /**
- * User Management Panel — 用户管理（筛选/排序/删除增强版）
+ * User Management Panel — 用户管理，on @greenhouse/crud.
+ *
+ * The list (toolbar + filters + sortable table + pagination), the create/edit
+ * Dialog, the delete-confirm, and the enable/disable toggle all come from one
+ * `defineCrud` schema. The four bespoke pickers (Tool Assignment, Feature
+ * Toggles, Reset Password, Profile Assignment) stay as their own dialogs, opened
+ * from `tableActions`, with their open-state held in this component.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Button,
-  Input,
-  Select,
-  Dialog,
-  ConfirmDialog,
-  toast,
-  SkeletonRow,
-  SearchInput,
-  Tag,
-} from '../../components/ui';
-import { Pencil, Key, Ban, Check, Wrench, Trash2, ArrowUpDown, Bot, Sparkles } from '../../lib/icons';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
+import { defineCrud, CrudPage, type CrudDataSource } from '@greenhouse/crud';
+import { Button, Input, Dialog, toast, Tag } from '../../components/ui';
+import { Key, Wrench, Bot, Sparkles, Check, Users } from '../../lib/icons';
 import { authFetch } from '../../lib/auth';
 import {
   formatTokens,
@@ -50,30 +47,21 @@ interface ManagedUser {
   } | null;
 }
 
-type SortKey = 'default' | 'month_tokens' | 'total_calls' | 'last_login';
+// `password` is an add-only form field, not a row property.
+type UserRow = ManagedUser & { password?: string };
 
 // ─── Main Component ──────────────────────────────────────
 
 export function UserManagementPanel() {
   const t = useT();
-  const [users, setUsers] = useState<ManagedUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editUser, setEditUser] = useState<ManagedUser | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [pendingAction, setPendingAction] = useState<{
-    user: ManagedUser;
-    action: string;
-    newStatus: string;
-  } | null>(null);
+
+  // Bespoke dialog state (held here; the dialogs render alongside <CrudPage/>).
   const [resetPwdUser, setResetPwdUser] = useState<string | null>(null);
   const [resetPwdValue, setResetPwdValue] = useState('');
   const [toolAssignUser, setToolAssignUser] = useState<ManagedUser | null>(null);
   const [allTools, setAllTools] = useState<ToolMeta[]>([]);
   const [assignedToolIds, setAssignedToolIds] = useState<Set<string>>(new Set());
   const [savingTools, setSavingTools] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<ManagedUser | null>(null);
   const [profileAssignUser, setProfileAssignUser] = useState<ManagedUser | null>(null);
   const [availableProfileIds, setAvailableProfileIds] = useState<string[]>([]);
   const [assignedProfileIds, setAssignedProfileIds] = useState<Set<string>>(new Set());
@@ -82,154 +70,103 @@ export function UserManagementPanel() {
   const [userFeatures, setUserFeatures] = useState<Record<string, boolean>>({});
   const [savingFeatures, setSavingFeatures] = useState(false);
 
-  // ─── Filters & Sort ──────────────────────────────────
-  const [search, setSearch] = useState('');
-  const [filterRole, setFilterRole] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('default');
+  // Last-fetched rows by id — used by update() to preserve the super-role rule.
+  const byIdRef = useRef<Map<string, UserRow>>(new Map());
 
-  const [form, setForm] = useState({
-    email: '',
-    password: '',
-    nickname: '',
-    role: 'team' as string,
-    daily_message_limit: 50,
-    monthly_token_limit: 5000000,
-  });
+  // ─── Data source (client-side filter / sort / no paging) ───
+  const dataSource = useMemo<CrudDataSource<UserRow>>(
+    () => ({
+      async list(params) {
+        const res = await authFetch('/api/admin/users');
+        const data = res.ok ? await res.json() : { users: [] };
+        const all: UserRow[] = (data.users ?? []) as UserRow[];
+        byIdRef.current = new Map(all.map((u) => [u.id, u]));
 
-  const loadUsers = async () => {
-    setLoading(true);
-    try {
-      const res = await authFetch('/api/admin/users');
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(data.users);
-      }
-    } catch (_err) {
-      /* ignore */
-    }
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  // ─── Filtered & Sorted Users ─────────────────────────
-  const filteredUsers = useMemo(() => {
-    let result = users;
-
-    // Text search: name or email
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter((u) => u.nickname.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
-    }
-
-    // Role filter
-    if (filterRole) {
-      result = result.filter((u) => u.role === filterRole);
-    }
-
-    // Status filter
-    if (filterStatus) {
-      result = result.filter((u) => u.status === filterStatus);
-    }
-
-    // Sort
-    if (sortKey !== 'default') {
-      result = [...result].sort((a, b) => {
-        const usageA = a.usage_summary;
-        const usageB = b.usage_summary;
-        switch (sortKey) {
-          case 'month_tokens':
-            return (usageB?.month_tokens ?? 0) - (usageA?.month_tokens ?? 0);
-          case 'total_calls':
-            return (usageB?.total_calls ?? 0) - (usageA?.total_calls ?? 0);
-          case 'last_login': {
-            const timeA = a.last_login_at ? new Date(a.last_login_at).getTime() : 0;
-            const timeB = b.last_login_at ? new Date(b.last_login_at).getTime() : 0;
-            return timeB - timeA;
+        let result = all;
+        for (const f of params.filter ?? []) {
+          if (f.key === 'email') {
+            const q = String(f.value[0] ?? '').toLowerCase();
+            result = result.filter((u) => u.nickname.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+          } else if (f.key === 'role') {
+            result = result.filter((u) => u.role === f.value[0]);
+          } else if (f.key === 'status') {
+            result = result.filter((u) => u.status === f.value[0]);
           }
-          default:
-            return 0;
         }
-      });
-    }
 
-    return result;
-  }, [users, search, filterRole, filterStatus, sortKey]);
+        const sortItem = params.sort?.[0];
+        if (sortItem) {
+          const dir = sortItem.order === 'asc' ? 1 : -1;
+          const val = (u: UserRow) => {
+            switch (sortItem.key) {
+              case 'month_tokens':
+                return u.usage_summary?.month_tokens ?? 0;
+              case 'total_calls':
+                return u.usage_summary?.total_calls ?? 0;
+              case 'last_login_at':
+                return u.last_login_at ? new Date(u.last_login_at).getTime() : 0;
+              default:
+                return 0;
+            }
+          };
+          result = [...result].sort((a, b) => (val(a) - val(b)) * dir);
+        }
 
-  const handleCreate = async () => {
-    if (!form.email || !form.password || !form.nickname) {
-      setError(t('settings.fillRequiredFields'));
-      return;
-    }
-    if (form.password.length < 8) {
-      setError(t('settings.passwordMinLength'));
-      return;
-    }
-    setSaving(true);
-    setError('');
-    try {
-      const res = await authFetch('/api/admin/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      if (res.ok) {
-        setShowCreate(false);
-        setForm({
-          email: '',
-          password: '',
-          nickname: '',
-          role: 'team',
-          daily_message_limit: 50,
-          monthly_token_limit: 5000000,
+        return { items: result, total: result.length };
+      },
+      async create(data) {
+        const res = await authFetch('/api/admin/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: data.email,
+            password: data.password,
+            nickname: data.nickname,
+            role: data.role,
+            daily_message_limit: data.daily_message_limit,
+            monthly_token_limit: data.monthly_token_limit,
+          }),
         });
-        await loadUsers();
-      } else {
-        const data = await res.json();
-        setError(data.error || t('common.createFailed'));
-      }
-    } catch (_err) {
-      setError(t('common.networkError'));
-    }
-    setSaving(false);
-  };
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          throw new Error(err?.error || t('common.createFailed'));
+        }
+        return res.json().catch(() => null);
+      },
+      async update(id, data) {
+        const isSuper = byIdRef.current.get(id)?.role === 'super';
+        const res = await authFetch(`/api/admin/users/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nickname: data.nickname,
+            role: isSuper ? undefined : data.role,
+            daily_message_limit: data.daily_message_limit,
+            monthly_token_limit: data.monthly_token_limit,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          throw new Error(err?.error || t('common.saveFailed'));
+        }
+        return res.json().catch(() => null);
+      },
+      async remove(id) {
+        const res = await authFetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          throw new Error(err?.error || t('settings.deleteFailed'));
+        }
+      },
+    }),
+    [t],
+  );
 
-  const handleUpdate = async () => {
-    if (!editUser) return;
-    setSaving(true);
-    setError('');
-    try {
-      const res = await authFetch(`/api/admin/users/${editUser.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nickname: editUser.nickname,
-          role: editUser.role === 'super' ? undefined : editUser.role,
-          status: editUser.status,
-          daily_message_limit: editUser.daily_message_limit,
-          monthly_token_limit: editUser.monthly_token_limit,
-        }),
-      });
-      if (res.ok) {
-        setEditUser(null);
-        await loadUsers();
-      } else {
-        const data = await res.json();
-        setError(data.error || t('common.saveFailed'));
-      }
-    } catch (_err) {
-      setError(t('common.networkError'));
-    }
-    setSaving(false);
-  };
-
-  const handleResetPassword = async (userId: string) => {
+  // ─── Reset Password ──────────────────────────────────
+  const handleResetPassword = useCallback((userId: string) => {
     setResetPwdUser(userId);
     setResetPwdValue('');
-  };
+  }, []);
 
   const executeResetPassword = async () => {
     if (!resetPwdUser || resetPwdValue.length < 8) {
@@ -255,93 +192,20 @@ export function UserManagementPanel() {
     setResetPwdValue('');
   };
 
-  const openToolAssign = async (user: ManagedUser) => {
-    setToolAssignUser(user);
-    try {
-      const [toolsData, userToolsData] = await Promise.all([fetchTools(), fetchUserTools(user.id)]);
-      setAllTools(toolsData);
-      setAssignedToolIds(new Set(userToolsData.assigned));
-    } catch (_err) {
-      toast(t('settings.loadToolsFailed'), 'error');
-    }
-  };
-
-  const openProfileAssign = async (user: ManagedUser) => {
-    setProfileAssignUser(user);
-    try {
-      const data = await fetchUserProfiles(user.id);
-      setAvailableProfileIds(data.available);
-      setAssignedProfileIds(new Set(data.assigned));
-    } catch (_err) {
-      toast(t('settings.loadToolsFailed'), 'error');
-    }
-  };
-
-  const handleToggleProfileAssign = (profileId: string) => {
-    setAssignedProfileIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(profileId)) next.delete(profileId);
-      else next.add(profileId);
-      return next;
-    });
-  };
-
-  const handleSaveProfileAssign = async () => {
-    if (!profileAssignUser) return;
-    setSavingProfiles(true);
-    try {
-      await setUserProfiles(profileAssignUser.id, [...assignedProfileIds]);
-      toast(t('settings.toolsSaved'), 'success');
-      setProfileAssignUser(null);
-    } catch (_err) {
-      toast(t('common.saveFailed'), 'error');
-    }
-    setSavingProfiles(false);
-  };
-
-  // ── Feature Toggle ──────────────────────────────────
-
-  /** Known features — single source of truth: @greenhouse/types/features
-   *  (core + any fork-registered flags). */
-  const KNOWN_FEATURES = getAllFeatureFlags().map((f) => ({ id: f.key, label: f.label, description: f.description }));
-
-  const openFeatureAssign = async (user: ManagedUser) => {
-    setFeatureAssignUser(user);
-    try {
-      const res = await authFetch(`/api/admin/users/${user.id}/features`);
-      if (res.ok) {
-        const data = await res.json();
-        const map: Record<string, boolean> = {};
-        for (const f of data.features) {
-          map[f.feature] = f.enabled;
-        }
-        setUserFeatures(map);
+  // ─── Tool Assignment ─────────────────────────────────
+  const openToolAssign = useCallback(
+    async (user: ManagedUser) => {
+      setToolAssignUser(user);
+      try {
+        const [toolsData, userToolsData] = await Promise.all([fetchTools(), fetchUserTools(user.id)]);
+        setAllTools(toolsData);
+        setAssignedToolIds(new Set(userToolsData.assigned));
+      } catch (_err) {
+        toast(t('settings.loadToolsFailed'), 'error');
       }
-    } catch (_err) {
-      toast('Failed to load features', 'error');
-    }
-  };
-
-  const handleToggleFeature = async (featureId: string, enabled: boolean) => {
-    if (!featureAssignUser) return;
-    setSavingFeatures(true);
-    try {
-      const res = await authFetch(`/api/admin/users/${featureAssignUser.id}/features`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ feature: featureId, enabled }),
-      });
-      if (res.ok) {
-        setUserFeatures((prev) => ({ ...prev, [featureId]: enabled }));
-      } else {
-        const data = await res.json();
-        toast(data.error || 'Failed to update feature', 'error');
-      }
-    } catch (_err) {
-      toast('Network error', 'error');
-    }
-    setSavingFeatures(false);
-  };
+    },
+    [t],
+  );
 
   const handleToggleToolAssign = (toolId: string) => {
     setAssignedToolIds((prev) => {
@@ -365,462 +229,357 @@ export function UserManagementPanel() {
     setSavingTools(false);
   };
 
-  const handleToggleStatus = async (user: ManagedUser) => {
-    const newStatus = user.status === 'active' ? 'disabled' : 'active';
-    const action = newStatus === 'disabled' ? t('settings.disable') : t('settings.enable');
-    setPendingAction({ user, action, newStatus });
+  // ─── Profile Assignment ──────────────────────────────
+  const openProfileAssign = useCallback(
+    async (user: ManagedUser) => {
+      setProfileAssignUser(user);
+      try {
+        const data = await fetchUserProfiles(user.id);
+        setAvailableProfileIds(data.available);
+        setAssignedProfileIds(new Set(data.assigned));
+      } catch (_err) {
+        toast(t('settings.loadToolsFailed'), 'error');
+      }
+    },
+    [t],
+  );
+
+  const handleToggleProfileAssign = (profileId: string) => {
+    setAssignedProfileIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(profileId)) next.delete(profileId);
+      else next.add(profileId);
+      return next;
+    });
   };
 
-  const executePendingAction = async () => {
-    if (!pendingAction) return;
-    const { user, newStatus } = pendingAction;
-    setPendingAction(null);
+  const handleSaveProfileAssign = async () => {
+    if (!profileAssignUser) return;
+    setSavingProfiles(true);
     try {
-      const res = await authFetch(`/api/admin/users/${user.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      if (res.ok) await loadUsers();
-      else {
+      await setUserProfiles(profileAssignUser.id, [...assignedProfileIds]);
+      toast(t('settings.toolsSaved'), 'success');
+      setProfileAssignUser(null);
+    } catch (_err) {
+      toast(t('common.saveFailed'), 'error');
+    }
+    setSavingProfiles(false);
+  };
+
+  // ─── Feature Toggle ──────────────────────────────────
+
+  /** Known features — single source of truth: @greenhouse/types/features
+   *  (core + any fork-registered flags). */
+  const KNOWN_FEATURES = getAllFeatureFlags().map((f) => ({ id: f.key, label: f.label, description: f.description }));
+
+  const openFeatureAssign = useCallback(async (user: ManagedUser) => {
+    setFeatureAssignUser(user);
+    try {
+      const res = await authFetch(`/api/admin/users/${user.id}/features`);
+      if (res.ok) {
         const data = await res.json();
-        toast(data.error || t('common.operationFailed'), 'error');
+        const map: Record<string, boolean> = {};
+        for (const f of data.features) {
+          map[f.feature] = f.enabled;
+        }
+        setUserFeatures(map);
       }
     } catch (_err) {
-      toast(t('common.networkError'), 'error');
+      toast('Failed to load features', 'error');
     }
-  };
+  }, []);
 
-  const executeDeleteUser = async () => {
-    if (!deleteTarget) return;
-    const userId = deleteTarget.id;
-    setDeleteTarget(null);
+  const handleToggleFeature = async (featureId: string, enabled: boolean) => {
+    if (!featureAssignUser) return;
+    setSavingFeatures(true);
     try {
-      const res = await authFetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/admin/users/${featureAssignUser.id}/features`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feature: featureId, enabled }),
+      });
       if (res.ok) {
-        toast(t('settings.userDeleted'), 'success');
-        await loadUsers();
+        setUserFeatures((prev) => ({ ...prev, [featureId]: enabled }));
       } else {
         const data = await res.json();
-        toast(data.error || t('settings.deleteFailed'), 'error');
+        toast(data.error || 'Failed to update feature', 'error');
       }
     } catch (_err) {
-      toast(t('common.networkError'), 'error');
+      toast('Network error', 'error');
     }
+    setSavingFeatures(false);
   };
 
-  if (loading)
-    return (
-      <div className="space-y-0">
-        <table className="w-full">
-          <tbody>
-            {[...Array(5)].map((_, i) => (
-              <SkeletonRow key={i} cols={7} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
+  // ─── Schema ──────────────────────────────────────────
+  const schema = useMemo(
+    () =>
+      defineCrud<UserRow>({
+        name: 'settings.users',
+        icon: Users,
+        idField: 'id',
+        testId: 'users',
+        dataSource,
+        pageSize: 200,
+        emptyMessage: t('settings.noUsersFound'),
+        formMode: 'dialog',
+        formTitle: (mode) => (mode === 'add' ? t('settings.addNewUser') : t('settings.editUser')),
+        columns: [
+          {
+            key: 'nickname',
+            label: 'User',
+            type: 'custom',
+            render: (u) => (
+              <div className="flex items-center gap-2.5">
+                <span
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 ${
+                    u.role === 'super' || u.role === 'team'
+                      ? 'bg-info-subtle text-info'
+                      : 'bg-primary-subtle-hover text-primary-fg-strong'
+                  }`}
+                >
+                  {u.nickname.charAt(0).toUpperCase()}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-fg truncate" title={u.nickname}>
+                    {u.nickname}
+                  </div>
+                  <div className="text-[11px] text-fg-faint truncate" title={u.email}>
+                    {u.email}
+                  </div>
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: 'role',
+            label: 'Role',
+            type: 'custom',
+            render: (u) => (
+              <Tag tone={ROLE_TONE[u.role] ?? 'neutral'} className="capitalize">
+                {u.role}
+              </Tag>
+            ),
+          },
+          {
+            key: 'status',
+            label: 'Status',
+            type: 'toggle',
+            align: 'center',
+            width: '80px',
+            checked: (u) => u.status === 'active',
+            disabled: (u) => u.role === 'super',
+            onToggle: async (u, next) => {
+              const res = await authFetch(`/api/admin/users/${u.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: next ? 'active' : 'disabled' }),
+              });
+              if (!res.ok) {
+                const err = await res.json().catch(() => null);
+                throw new Error(err?.error || t('common.operationFailed'));
+              }
+            },
+          },
+          {
+            key: 'today_messages',
+            label: 'Today Msgs',
+            type: 'custom',
+            align: 'right',
+            render: (u) => {
+              const usage = u.usage_summary;
+              if (!usage) return <span className="text-xs text-fg-faint">—</span>;
+              const msgPct =
+                u.daily_message_limit > 0 ? Math.min(100, (usage.today_messages / u.daily_message_limit) * 100) : 0;
+              return (
+                <div>
+                  <div className="text-xs font-medium text-fg-secondary">
+                    {usage.today_messages}
+                    <span className="text-fg-faint">/{u.daily_message_limit}</span>
+                  </div>
+                  <div className="w-full bg-surface-muted rounded-full h-1 mt-1">
+                    <div
+                      className={`h-1 rounded-full ${msgPct > 80 ? 'bg-danger' : 'bg-primary-400'}`}
+                      style={{ width: `${msgPct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            },
+          },
+          {
+            key: 'month_tokens',
+            label: 'Month Tokens',
+            type: 'custom',
+            align: 'right',
+            sortable: true,
+            render: (u) => {
+              const usage = u.usage_summary;
+              if (!usage) return <span className="text-xs text-fg-faint">—</span>;
+              const tokenPct =
+                u.monthly_token_limit > 0 ? Math.min(100, (usage.month_tokens / u.monthly_token_limit) * 100) : 0;
+              return (
+                <div>
+                  <div className="text-xs font-medium text-fg-secondary">
+                    {formatTokens(usage.month_tokens)}
+                    <span className="text-fg-faint">/{formatTokens(u.monthly_token_limit)}</span>
+                  </div>
+                  <div className="w-full bg-surface-muted rounded-full h-1 mt-1">
+                    <div
+                      className={`h-1 rounded-full ${tokenPct > 80 ? 'bg-danger' : 'bg-primary-400'}`}
+                      style={{ width: `${tokenPct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            },
+          },
+          {
+            key: 'total_calls',
+            label: 'Total Calls',
+            type: 'custom',
+            align: 'right',
+            sortable: true,
+            render: (u) => (
+              <span className="text-xs font-medium text-fg-secondary">
+                {u.usage_summary ? u.usage_summary.total_calls.toLocaleString() : '—'}
+              </span>
+            ),
+          },
+          {
+            key: 'last_login_at',
+            label: 'Last Login',
+            type: 'custom',
+            align: 'right',
+            sortable: true,
+            render: (u) => (
+              <span className="text-xs text-fg-faint">
+                {u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('zh-CN') : t('common.neverLoggedIn')}
+              </span>
+            ),
+          },
+        ],
+        filters: [
+          { key: 'email', label: t('settings.searchUsers'), kind: 'text', placeholder: t('settings.searchUsers') },
+          {
+            key: 'role',
+            label: t('settings.filterByRole'),
+            kind: 'select',
+            options: [
+              { value: 'super', label: 'Super' },
+              { value: 'team', label: 'Team' },
+              { value: 'external', label: 'External' },
+            ],
+          },
+          {
+            key: 'status',
+            label: t('settings.filterByStatus'),
+            kind: 'select',
+            options: [
+              { value: 'active', label: 'Active' },
+              { value: 'disabled', label: 'Disabled' },
+            ],
+          },
+        ],
+        formFields: [
+          {
+            key: 'email',
+            label: t('settings.emailPlaceholder'),
+            type: 'email',
+            width: 2,
+            required: true,
+            placeholder: t('settings.emailPlaceholder'),
+            allows: { edit: false },
+          },
+          {
+            key: 'password',
+            label: t('settings.passwordPlaceholder'),
+            type: 'password',
+            width: 2,
+            required: true,
+            placeholder: t('settings.passwordPlaceholder'),
+            allows: { edit: false },
+            rules: [{ validate: (v) => (String(v ?? '').length < 8 ? t('settings.passwordMinLength') : null) }],
+          },
+          {
+            key: 'nickname',
+            label: t('common.nickname'),
+            type: 'text',
+            width: 2,
+            required: true,
+            placeholder: t('settings.nicknamePlaceholder'),
+          },
+          {
+            key: 'role',
+            label: t('common.role'),
+            type: 'select',
+            width: 2,
+            defaultValue: 'team',
+            disabled: (form) => form.role === 'super',
+            options: [
+              { value: 'team', label: 'Team' },
+              { value: 'external', label: 'External' },
+            ],
+          },
+          {
+            key: 'daily_message_limit',
+            label: t('settings.dailyMsgLimit'),
+            type: 'number',
+            width: 2,
+            defaultValue: 50,
+          },
+          {
+            key: 'monthly_token_limit',
+            label: t('settings.monthlyTokenLimit'),
+            type: 'number',
+            width: 2,
+            defaultValue: 5000000,
+          },
+        ],
+        access: {
+          canView: false,
+          canAdd: true,
+          canEdit: true,
+          canDelete: true,
+          canEditRow: (row) => row.role !== 'super',
+          canDeleteRow: (row) => row.role !== 'super',
+        },
+        tableActions: [
+          {
+            key: 'tools',
+            label: t('settings.toolAssignment'),
+            icon: Wrench,
+            visible: (u) => u.role !== 'super',
+            onClick: (u) => openToolAssign(u),
+          },
+          {
+            key: 'features',
+            label: 'Feature Toggles',
+            icon: Sparkles,
+            onClick: (u) => openFeatureAssign(u),
+          },
+          {
+            key: 'reset-password',
+            label: t('settings.resetPassword'),
+            icon: Key,
+            tone: 'warning',
+            visible: (u) => u.role !== 'super',
+            onClick: (u) => handleResetPassword(u.id),
+          },
+          {
+            key: 'profiles',
+            label: 'Assign Profiles',
+            icon: Bot,
+            visible: (u) => u.role !== 'super',
+            onClick: (u) => openProfileAssign(u),
+          },
+        ],
+      }),
+    [t, dataSource, openToolAssign, openFeatureAssign, openProfileAssign, handleResetPassword],
+  );
 
   return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder={t('settings.searchUsers')}
-          size="sm"
-          className="flex-1 min-w-[140px] sm:flex-none sm:w-[200px]"
-        />
-        <Select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} size="sm" inline>
-          <option value="">{t('settings.filterByRole')}</option>
-          <option value="super">Super</option>
-          <option value="team">Team</option>
-          <option value="external">External</option>
-        </Select>
-        <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} size="sm" inline>
-          <option value="">{t('settings.filterByStatus')}</option>
-          <option value="active">Active</option>
-          <option value="disabled">Disabled</option>
-        </Select>
-        <Select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} size="sm" inline>
-          <option value="default">{t('settings.sortByDefault')}</option>
-          <option value="month_tokens">{t('settings.sortByTokenUsage')}</option>
-          <option value="total_calls">{t('settings.sortByTotalCalls')}</option>
-          <option value="last_login">{t('settings.sortByLastLogin')}</option>
-        </Select>
-        <div className="flex-1" />
-        <span className="text-xs text-fg-muted whitespace-nowrap">
-          {t('settings.totalUsers', { count: String(filteredUsers.length) })}
-          {filteredUsers.length !== users.length && <span className="text-fg-faint"> / {users.length}</span>}
-        </span>
-        <Button
-          size="sm"
-          data-testid="users-add"
-          onClick={() => {
-            setShowCreate(true);
-            setError('');
-          }}
-        >
-          {t('settings.addUser')}
-        </Button>
-      </div>
-
-      {error && <p className="text-sm text-danger bg-danger-subtle px-3 py-2 rounded-lg">{error}</p>}
-
-      {/* Create form */}
-      {showCreate && (
-        <div className="bg-surface-sunken rounded-xl p-4 space-y-3 border border-edge">
-          <h4 className="text-sm font-medium text-fg">{t('settings.addNewUser')}</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Input
-              data-testid="user-email-input"
-              placeholder={t('settings.emailPlaceholder')}
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-            />
-            <Input
-              data-testid="user-password-input"
-              placeholder={t('settings.passwordPlaceholder')}
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-            />
-            <Input
-              data-testid="user-nickname-input"
-              placeholder={t('settings.nicknamePlaceholder')}
-              value={form.nickname}
-              onChange={(e) => setForm({ ...form, nickname: e.target.value })}
-            />
-            <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              <option value="team">Team</option>
-              <option value="external">External</option>
-            </Select>
-            <Input
-              placeholder={t('settings.dailyMsgLimit')}
-              type="number"
-              value={form.daily_message_limit}
-              onChange={(e) => setForm({ ...form, daily_message_limit: parseInt(e.target.value) || 0 })}
-            />
-            <Input
-              placeholder={t('settings.monthlyTokenLimit')}
-              type="number"
-              value={form.monthly_token_limit}
-              onChange={(e) => setForm({ ...form, monthly_token_limit: parseInt(e.target.value) || 0 })}
-            />
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Button variant="ghost" size="sm" onClick={() => setShowCreate(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button size="sm" onClick={handleCreate} disabled={saving} data-testid="user-create-submit">
-              {saving ? t('common.saving') : t('common.create')}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* User table */}
-      <div className="bg-surface-raised border border-edge rounded-xl overflow-hidden overflow-x-auto">
-        <table className="w-full text-sm min-w-[800px]">
-          <thead>
-            <tr className="bg-surface-sunken border-b border-edge text-[11px] text-fg-muted font-medium uppercase tracking-wider">
-              <th className="text-left py-2.5 px-3">User</th>
-              <th className="text-left py-2.5 px-3">Role</th>
-              <th className="text-left py-2.5 px-3">Status</th>
-              <th className="text-right py-2.5 px-3">Today Msgs</th>
-              <th className="text-right py-2.5 px-3">
-                <button
-                  className={`inline-flex items-center gap-1 hover:text-fg-secondary transition-colors ${sortKey === 'month_tokens' ? 'text-fg-secondary' : ''}`}
-                  onClick={() => setSortKey(sortKey === 'month_tokens' ? 'default' : 'month_tokens')}
-                >
-                  Month Tokens
-                  <ArrowUpDown size={10} />
-                </button>
-              </th>
-              <th className="text-right py-2.5 px-3">
-                <button
-                  className={`inline-flex items-center gap-1 hover:text-fg-secondary transition-colors ${sortKey === 'total_calls' ? 'text-fg-secondary' : ''}`}
-                  onClick={() => setSortKey(sortKey === 'total_calls' ? 'default' : 'total_calls')}
-                >
-                  Total Calls
-                  <ArrowUpDown size={10} />
-                </button>
-              </th>
-              <th className="text-right py-2.5 px-3">
-                <button
-                  className={`inline-flex items-center gap-1 hover:text-fg-secondary transition-colors ${sortKey === 'last_login' ? 'text-fg-secondary' : ''}`}
-                  onClick={() => setSortKey(sortKey === 'last_login' ? 'default' : 'last_login')}
-                >
-                  Last Login
-                  <ArrowUpDown size={10} />
-                </button>
-              </th>
-              <th className="text-center py-2.5 px-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-edge">
-            {filteredUsers.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="py-8 text-center text-sm text-fg-muted">
-                  {t('settings.noUsersFound')}
-                </td>
-              </tr>
-            ) : (
-              filteredUsers.map((u) => {
-                const usage = u.usage_summary;
-                const msgPct =
-                  usage && u.daily_message_limit > 0
-                    ? Math.min(100, (usage.today_messages / u.daily_message_limit) * 100)
-                    : 0;
-                const tokenPct =
-                  usage && u.monthly_token_limit > 0
-                    ? Math.min(100, (usage.month_tokens / u.monthly_token_limit) * 100)
-                    : 0;
-
-                return (
-                  <tr
-                    key={u.id}
-                    className={`hover:bg-surface-sunken/50 transition-colors ${
-                      u.status === 'disabled' ? 'opacity-60' : ''
-                    }`}
-                  >
-                    {/* User */}
-                    <td className="py-2.5 px-3">
-                      <div className="flex items-center gap-2.5">
-                        <span
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 ${
-                            u.role === 'super'
-                              ? 'bg-info-subtle text-info'
-                              : u.role === 'team'
-                                ? 'bg-info-subtle text-info'
-                                : 'bg-primary-subtle-hover text-primary-fg-strong'
-                          }`}
-                        >
-                          {u.nickname.charAt(0).toUpperCase()}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-fg truncate" title={u.nickname}>
-                            {u.nickname}
-                          </div>
-                          <div className="text-[11px] text-fg-faint truncate" title={u.email}>
-                            {u.email}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    {/* Role */}
-                    <td className="py-2.5 px-3">
-                      <Tag tone={ROLE_TONE[u.role] ?? 'neutral'} className="capitalize">
-                        {u.role}
-                      </Tag>
-                    </td>
-                    {/* Status */}
-                    <td className="py-2.5 px-3">
-                      {u.status === 'disabled' ? <Tag tone="danger">Disabled</Tag> : <Tag tone="success">Active</Tag>}
-                    </td>
-                    {/* Today messages */}
-                    <td className="py-2.5 px-3 text-right">
-                      {usage ? (
-                        <div>
-                          <div className="text-xs font-medium text-fg-secondary">
-                            {usage.today_messages}
-                            <span className="text-fg-faint">/{u.daily_message_limit}</span>
-                          </div>
-                          <div className="w-full bg-surface-muted rounded-full h-1 mt-1">
-                            <div
-                              className={`h-1 rounded-full ${msgPct > 80 ? 'bg-danger' : 'bg-primary-400'}`}
-                              style={{ width: `${msgPct}%` }}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-fg-faint">—</span>
-                      )}
-                    </td>
-                    {/* Month tokens */}
-                    <td className="py-2.5 px-3 text-right">
-                      {usage ? (
-                        <div>
-                          <div className="text-xs font-medium text-fg-secondary">
-                            {formatTokens(usage.month_tokens)}
-                            <span className="text-fg-faint">/{formatTokens(u.monthly_token_limit)}</span>
-                          </div>
-                          <div className="w-full bg-surface-muted rounded-full h-1 mt-1">
-                            <div
-                              className={`h-1 rounded-full ${tokenPct > 80 ? 'bg-danger' : 'bg-primary-400'}`}
-                              style={{ width: `${tokenPct}%` }}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-fg-faint">—</span>
-                      )}
-                    </td>
-                    {/* Total calls */}
-                    <td className="py-2.5 px-3 text-right">
-                      <span className="text-xs font-medium text-fg-secondary">
-                        {usage ? usage.total_calls.toLocaleString() : '—'}
-                      </span>
-                    </td>
-                    {/* Last login */}
-                    <td className="py-2.5 px-3 text-right text-xs text-fg-faint">
-                      {u.last_login_at
-                        ? new Date(u.last_login_at).toLocaleDateString('zh-CN')
-                        : t('common.neverLoggedIn')}
-                    </td>
-                    {/* Actions */}
-                    <td className="py-2.5 px-3 text-center">
-                      {u.role !== 'super' ? (
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => {
-                              setEditUser({ ...u });
-                              setError('');
-                            }}
-                            className="text-xs text-fg-faint hover:text-primary-fg p-1.5 rounded hover:bg-surface-muted"
-                            title={t('common.edit')}
-                          >
-                            <Pencil size={13} />
-                          </button>
-                          <button
-                            onClick={() => openToolAssign(u)}
-                            className="text-xs text-fg-faint hover:text-primary-fg p-1.5 rounded hover:bg-surface-muted"
-                            title={t('settings.toolAssignment')}
-                          >
-                            <Wrench size={13} />
-                          </button>
-                          <button
-                            onClick={() => openFeatureAssign(u)}
-                            className="text-xs text-fg-faint hover:text-purple-500 p-1.5 rounded hover:bg-surface-muted"
-                            title="Feature Toggles"
-                          >
-                            <Sparkles size={13} />
-                          </button>
-                          <button
-                            onClick={() => handleResetPassword(u.id)}
-                            className="text-xs text-fg-faint hover:text-warning p-1.5 rounded hover:bg-surface-muted"
-                            title={t('settings.resetPassword')}
-                          >
-                            <Key size={13} />
-                          </button>
-                          <button
-                            onClick={() => handleToggleStatus(u)}
-                            className={`text-xs p-1.5 rounded hover:bg-surface-muted ${
-                              u.status === 'active'
-                                ? 'text-fg-faint hover:text-danger'
-                                : 'text-fg-faint hover:text-success'
-                            }`}
-                            title={u.status === 'active' ? t('settings.disable') : t('settings.enable')}
-                          >
-                            {u.status === 'active' ? <Ban size={13} /> : <Check size={13} />}
-                          </button>
-                          <button
-                            onClick={() => setDeleteTarget(u)}
-                            data-testid={`user-delete-${u.email}`}
-                            className="text-xs text-fg-faint hover:text-danger p-1.5 rounded hover:bg-surface-muted"
-                            title={t('settings.deleteUser')}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => openFeatureAssign(u)}
-                            className="text-xs text-fg-faint hover:text-purple-500 p-1.5 rounded hover:bg-surface-muted"
-                            title="Feature Toggles"
-                          >
-                            <Sparkles size={13} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Edit dialog */}
-      <Dialog open={!!editUser} onClose={() => setEditUser(null)} title={t('settings.editUser')} size="lg">
-        {editUser && (
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs text-fg-muted mb-1 block">{t('common.nickname')}</label>
-              <Input
-                value={editUser.nickname}
-                onChange={(e) => setEditUser({ ...editUser, nickname: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-fg-muted mb-1 block">{t('common.role')}</label>
-              <Select
-                value={editUser.role}
-                onChange={(e) => setEditUser({ ...editUser, role: e.target.value })}
-                disabled={editUser.role === 'super'}
-              >
-                <option value="team">Team</option>
-                <option value="external">External</option>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-fg-muted mb-1 block">{t('settings.dailyMsgLimit')}</label>
-                <Input
-                  type="number"
-                  value={editUser.daily_message_limit}
-                  onChange={(e) => setEditUser({ ...editUser, daily_message_limit: parseInt(e.target.value) || 0 })}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-fg-muted mb-1 block">{t('settings.monthlyTokenLimit')}</label>
-                <Input
-                  type="number"
-                  value={editUser.monthly_token_limit}
-                  onChange={(e) => setEditUser({ ...editUser, monthly_token_limit: parseInt(e.target.value) || 0 })}
-                />
-              </div>
-            </div>
-            {error && <p className="text-sm text-danger">{error}</p>}
-            <div className="flex gap-2 justify-end mt-4">
-              <Button variant="ghost" size="sm" onClick={() => setEditUser(null)}>
-                {t('common.cancel')}
-              </Button>
-              <Button size="sm" onClick={handleUpdate} disabled={saving}>
-                {saving ? t('common.saving') : t('common.save')}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Dialog>
-
-      {/* Toggle status confirm */}
-      <ConfirmDialog
-        open={!!pendingAction}
-        onClose={() => setPendingAction(null)}
-        onConfirm={executePendingAction}
-        title={t('settings.disableUserConfirm', {
-          action: pendingAction?.action || '',
-          name: pendingAction?.user.nickname || '',
-        })}
-        confirmLabel={pendingAction?.action || t('common.confirm')}
-        confirmVariant={pendingAction?.newStatus === 'disabled' ? 'destructive' : 'default'}
-      />
-
-      {/* Delete user confirm */}
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={executeDeleteUser}
-        title={t('settings.deleteUserConfirm', { name: deleteTarget?.nickname || '' })}
-        confirmLabel={t('settings.deleteUser')}
-        confirmVariant="destructive"
-      />
+    <>
+      <CrudPage schema={schema} />
 
       {/* Reset password dialog */}
       <Dialog open={!!resetPwdUser} onClose={() => setResetPwdUser(null)} title={t('settings.resetPassword')} size="sm">
@@ -877,14 +636,14 @@ export function UserManagementPanel() {
                           const rank = (x: ToolMeta) => (x.is_global ? 2 : assignedToolIds.has(x.id) ? 1 : 0);
                           return rank(b) - rank(a);
                         })
-                        .map((t) => {
-                          const isGlobal = t.is_global;
-                          const isAssigned = isGlobal || assignedToolIds.has(t.id);
-                          const Icon = getToolIcon(t.id);
+                        .map((tool) => {
+                          const isGlobal = tool.is_global;
+                          const isAssigned = isGlobal || assignedToolIds.has(tool.id);
+                          const Icon = getToolIcon(tool.id);
                           return (
                             <button
-                              key={t.id}
-                              onClick={() => !isGlobal && handleToggleToolAssign(t.id)}
+                              key={tool.id}
+                              onClick={() => !isGlobal && handleToggleToolAssign(tool.id)}
                               disabled={isGlobal}
                               className={`w-full text-left px-2 py-2 rounded-lg transition-colors flex items-center gap-2.5 ${
                                 isGlobal
@@ -911,9 +670,9 @@ export function UserManagementPanel() {
                                 <span
                                   className={`text-xs font-medium ${isAssigned ? 'text-fg-secondary' : 'text-fg-faint'}`}
                                 >
-                                  {t.name}
+                                  {tool.name}
                                 </span>
-                                <span className="text-[11px] text-fg-faint ml-2">{t.brief}</span>
+                                <span className="text-[11px] text-fg-faint ml-2">{tool.brief}</span>
                               </div>
                               {isGlobal && (
                                 <span className="text-[9px] text-fg-faint bg-surface-muted px-1.5 py-0.5 rounded-full">
@@ -1049,6 +808,6 @@ export function UserManagementPanel() {
           </div>
         )}
       </Dialog>
-    </div>
+    </>
   );
 }

@@ -1,27 +1,32 @@
 /**
- * Email Accounts panel — Settings sub-page for managing email integrations.
+ * Email Accounts panel — IMAP/SMTP integrations, on @greenhouse/crud (cards).
  *
- * Each user can bind up to 10 generic IMAP/SMTP email accounts.
- * Super users can see all users' accounts for audit.
+ * The card grid, the add Dialog, delete-confirm, empty state and toolbar all
+ * come from `defineCrud` with `variant: 'cards'`. Per-card "Test connection"
+ * keeps its own spinner (AccountCard); super users get a "show all" scope toggle.
+ * Each user can bind up to 10 accounts; there is no edit (add + delete + test).
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { CheckCircle, Trash2, Plus, Inbox, X } from '../../lib/icons';
-import {
-  Button,
-  Input,
-  Spinner,
-  Toggle,
-  Tag,
-  EmptyState,
-  ListToolbar,
-  ConfirmDialog,
-  StatusDot,
-} from '../../components/ui';
-import { toast } from '../../components/ui';
+import React, { useMemo, useState } from 'react';
+import { defineCrud, CrudPage, type CrudDataSource, type CrudActionContext } from '@greenhouse/crud';
+import { CheckCircle, Trash2, Mail } from '../../lib/icons';
+import { Button, Spinner, Toggle, Tag, StatusDot, toast } from '../../components/ui';
 import { fetchEmailAccounts, addImapEmailAccount, deleteEmailAccount, testEmailAccount } from '../../lib/api';
 import type { EmailAccountInfo } from '../../lib/api';
 import { useAuthStore } from '../../stores';
+
+// The add form's inputs (SMTP/IMAP host, port, credentials) aren't columns on
+// the row, so widen the row type so those field keys type-check.
+type ImapDraft = {
+  smtp_host: string;
+  smtp_port: number;
+  imap_host: string;
+  imap_port: number;
+  username: string;
+  password: string;
+  use_tls: boolean;
+};
+type EmailRow = EmailAccountInfo & Partial<ImapDraft>;
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   active: { label: 'Active', color: 'text-success' },
@@ -30,357 +35,207 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   error: { label: 'Error', color: 'text-danger' },
 };
 
-export function EmailAccountsPanel() {
-  const { currentUser } = useAuthStore();
-  const isSuper = currentUser?.role === 'super';
+function statusDotColor(status: string) {
+  return status === 'active'
+    ? 'success'
+    : status === 'auth_expired'
+      ? 'warning'
+      : status === 'error'
+        ? 'danger'
+        : 'muted';
+}
 
-  const [accounts, setAccounts] = useState<EmailAccountInfo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showAll, setShowAll] = useState(false);
-  const [showAddImap, setShowAddImap] = useState(false);
-  const [testingId, setTestingId] = useState<number | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<EmailAccountInfo | null>(null);
+/** One account card, with its own Test-connection spinner state. */
+function AccountCard({
+  row,
+  ctx,
+  showAll,
+  reload,
+}: {
+  row: EmailRow;
+  ctx: CrudActionContext;
+  showAll: boolean;
+  reload: () => void;
+}) {
+  const [testing, setTesting] = useState(false);
+  const status = STATUS_MAP[row.status] ?? STATUS_MAP.error;
 
-  // IMAP/SMTP form
-  const [imapForm, setImapForm] = useState({
-    email_address: '',
-    display_name: '',
-    smtp_host: '',
-    smtp_port: 465,
-    imap_host: '',
-    imap_port: 993,
-    username: '',
-    password: '',
-    use_tls: true,
-  });
-  const [addLoading, setAddLoading] = useState(false);
-
-  const load = useCallback(async () => {
+  const handleTest = async () => {
+    setTesting(true);
     try {
-      const data = await fetchEmailAccounts(showAll);
-      setAccounts(data);
-    } catch {
-      toast('Failed to load email accounts', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [showAll]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const handleTest = async (id: number) => {
-    setTestingId(id);
-    try {
-      const result = await testEmailAccount(id);
-      if (result.ok) {
-        toast('Connection test passed', 'success');
-      } else {
-        toast(`Connection test failed: ${result.error}`, 'error');
-      }
-      await load();
+      const result = await testEmailAccount(row.id);
+      toast(
+        result.ok ? 'Connection test passed' : `Connection test failed: ${result.error}`,
+        result.ok ? 'success' : 'error',
+      );
+      reload();
     } catch {
       toast('Connection test failed', 'error');
     } finally {
-      setTestingId(null);
+      setTesting(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const { id } = deleteTarget;
-    setDeleteTarget(null);
-    setDeletingId(id);
-    try {
-      await deleteEmailAccount(id);
-      toast('Account removed', 'success');
-      await load();
-    } catch {
-      toast('Failed to remove account', 'error');
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const handleAddImap = async () => {
-    if (!imapForm.email_address || !imapForm.smtp_host || !imapForm.username || !imapForm.password) {
-      toast('Please fill in all required fields', 'error');
-      return;
-    }
-    setAddLoading(true);
-    try {
-      const result = await addImapEmailAccount({
-        email_address: imapForm.email_address,
-        display_name: imapForm.display_name || undefined,
-        smtp_host: imapForm.smtp_host,
-        smtp_port: imapForm.smtp_port,
-        imap_host: imapForm.imap_host || undefined,
-        imap_port: imapForm.imap_port,
-        username: imapForm.username,
-        password: imapForm.password,
-        use_tls: imapForm.use_tls,
-      });
-      if (result.ok) {
-        toast('IMAP/SMTP account added', 'success');
-        setShowAddImap(false);
-        setImapForm({
-          email_address: '',
-          display_name: '',
-          smtp_host: '',
-          smtp_port: 465,
-          imap_host: '',
-          imap_port: 993,
-          username: '',
-          password: '',
-          use_tls: true,
-        });
-        await load();
-      } else {
-        toast(result.error || 'Failed to add account', 'error');
-      }
-    } catch {
-      toast('Failed to add account', 'error');
-    } finally {
-      setAddLoading(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Spinner />
+  return (
+    <div className="bg-surface-raised border border-edge rounded-lg p-4 h-full flex flex-col justify-between gap-3">
+      <div className="flex items-start gap-2.5 min-w-0">
+        <StatusDot color={statusDotColor(row.status)} className="mt-1" />
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-fg truncate" title={row.email_address}>
+              {row.email_address}
+            </span>
+            {showAll && (
+              <Tag tone="neutral" className="flex-shrink-0">
+                {row.user_id.slice(0, 8)}
+              </Tag>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {row.display_name && <span className="text-[11px] text-fg-muted">{row.display_name}</span>}
+            <span className={`text-[10px] ${status.color}`}>{status.label}</span>
+            {row.error_message && (
+              <span className="text-[10px] text-danger truncate max-w-[200px]" title={row.error_message}>
+                {row.error_message}
+              </span>
+            )}
+          </div>
+        </div>
       </div>
-    );
-  }
+      <div className="flex items-center justify-end gap-1">
+        <Button variant="ghost" size="sm" onClick={handleTest} disabled={testing} title="Test connection">
+          {testing ? <Spinner className="h-3.5 w-3.5" /> : <CheckCircle size={13} />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-danger hover:text-danger"
+          onClick={() => ctx.openDelete(row as unknown as Record<string, unknown>)}
+          title="Remove account"
+        >
+          <Trash2 size={13} />
+        </Button>
+      </div>
+    </div>
+  );
+}
 
-  const createButton = (
-    <Button size="sm" onClick={() => setShowAddImap((v) => !v)}>
-      <Plus size={14} className="mr-1" />
-      Create account
-    </Button>
+export function EmailAccountsPanel() {
+  const { currentUser } = useAuthStore();
+  const isSuper = currentUser?.role === 'super';
+  const [showAll, setShowAll] = useState(false);
+
+  const dataSource = useMemo<CrudDataSource<EmailRow>>(
+    () => ({
+      async list() {
+        const items = await fetchEmailAccounts(showAll);
+        return { items, total: items.length };
+      },
+      async get(id) {
+        const found = (await fetchEmailAccounts(showAll)).find((a) => String(a.id) === id);
+        if (!found) throw new Error('Account not found');
+        return found;
+      },
+      async create(data) {
+        const result = await addImapEmailAccount({
+          email_address: String(data.email_address),
+          display_name: (data.display_name as string) || undefined,
+          smtp_host: String(data.smtp_host ?? ''),
+          smtp_port: Number(data.smtp_port) || 465,
+          imap_host: (data.imap_host as string) || undefined,
+          imap_port: Number(data.imap_port) || 993,
+          username: String(data.username ?? ''),
+          password: String(data.password ?? ''),
+          use_tls: Boolean(data.use_tls),
+        });
+        if (!result.ok) throw new Error(result.error || 'Failed to add account');
+        return result.account;
+      },
+      remove: (id) => deleteEmailAccount(Number(id)),
+    }),
+    [showAll],
+  );
+
+  const schema = useMemo(
+    () =>
+      defineCrud<EmailRow>({
+        name: 'Email account',
+        icon: Mail,
+        idField: 'id',
+        dataSource,
+        variant: 'cards',
+        emptyMessage: 'No email accounts connected',
+        formMode: 'dialog',
+        formTitle: () => 'Create email account',
+        columns: [
+          { key: 'email_address', label: 'Email' },
+          { key: 'display_name', label: 'Display name' },
+          {
+            key: 'status',
+            label: 'Status',
+            type: 'badge',
+            badgeMap: { active: 'success', disabled: 'secondary', auth_expired: 'warning', error: 'destructive' },
+          },
+        ],
+        formFields: [
+          {
+            key: 'email_address',
+            label: 'Email Address',
+            type: 'email',
+            width: 2,
+            required: true,
+            placeholder: 'user@example.com',
+          },
+          { key: 'display_name', label: 'Display Name', type: 'text', width: 2, placeholder: 'John Doe' },
+          {
+            key: 'smtp_host',
+            label: 'SMTP Host',
+            type: 'text',
+            width: 2,
+            required: true,
+            placeholder: 'smtp.example.com',
+          },
+          { key: 'smtp_port', label: 'SMTP Port', type: 'number', width: 2, defaultValue: 465 },
+          { key: 'imap_host', label: 'IMAP Host', type: 'text', width: 2, placeholder: 'imap.example.com (optional)' },
+          { key: 'imap_port', label: 'IMAP Port', type: 'number', width: 2, defaultValue: 993 },
+          {
+            key: 'username',
+            label: 'Username',
+            type: 'text',
+            width: 2,
+            required: true,
+            placeholder: 'user@example.com',
+          },
+          {
+            key: 'password',
+            label: 'Password / App Password',
+            type: 'password',
+            width: 2,
+            required: true,
+            placeholder: '••••••••',
+          },
+          { key: 'use_tls', label: 'Use TLS', type: 'switch', defaultValue: true },
+        ],
+        access: { canAdd: true, canEdit: false, canDelete: true },
+        slots: {
+          renderCard: (row, ctx) => <AccountCard row={row} ctx={ctx} showAll={showAll} reload={ctx.reload} />,
+        },
+      }),
+    [dataSource, showAll],
   );
 
   return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <ListToolbar
-        hint="IMAP/SMTP accounts for a unified inbox and Agent access."
-        count={accounts.length > 0 ? `${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'}` : undefined}
-        actions={
-          <>
-            {isSuper && (
-              <label className="flex items-center gap-1.5 text-xs text-fg-muted">
-                <Toggle checked={showAll} onChange={() => setShowAll(!showAll)} />
-                Show all users
-              </label>
-            )}
-            {createButton}
-          </>
-        }
-      />
-
-      {/* Account list */}
-      {accounts.length > 0 && (
-        <div className="bg-surface-raised border border-edge rounded-xl overflow-hidden">
-          <div className="divide-y divide-edge">
-            {accounts.map((account) => {
-              const status = STATUS_MAP[account.status] ?? STATUS_MAP.error;
-              return (
-                <div
-                  key={account.id}
-                  className="px-4 py-3 flex items-center justify-between hover:bg-surface-sunken transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <StatusDot
-                      color={
-                        account.status === 'active'
-                          ? 'success'
-                          : account.status === 'auth_expired'
-                            ? 'warning'
-                            : account.status === 'error'
-                              ? 'danger'
-                              : 'muted'
-                      }
-                    />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-fg truncate" title={account.email_address}>
-                          {account.email_address}
-                        </span>
-                        {showAll && (
-                          <Tag tone="neutral" className="flex-shrink-0">
-                            {account.user_id.slice(0, 8)}
-                          </Tag>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {account.display_name && (
-                          <span className="text-[11px] text-fg-muted">{account.display_name}</span>
-                        )}
-                        <span className={`text-[10px] ${status.color}`}>{status.label}</span>
-                        {account.error_message && (
-                          <span
-                            className="text-[10px] text-danger truncate max-w-[200px]"
-                            title={account.error_message}
-                          >
-                            {account.error_message}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleTest(account.id)}
-                      disabled={testingId === account.id}
-                      title="Test connection"
-                    >
-                      {testingId === account.id ? <Spinner className="h-3.5 w-3.5" /> : <CheckCircle size={13} />}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDeleteTarget(account)}
-                      disabled={deletingId === account.id}
-                      className="text-danger hover:text-danger"
-                      title="Remove account"
-                    >
-                      {deletingId === account.id ? <Spinner className="h-3.5 w-3.5" /> : <Trash2 size={13} />}
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {accounts.length === 0 && (
-        <EmptyState
-          icon={Inbox}
-          title="No email accounts connected"
-          description="Connect an IMAP/SMTP account for a unified inbox and Agent access."
-          action={createButton}
-        />
-      )}
-
-      {/* IMAP/SMTP form */}
-      {showAddImap && (
-        <div className="bg-surface-raised border border-edge rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-fg">Create email account</h4>
-            <button onClick={() => setShowAddImap(false)} className="p-1 text-fg-muted hover:text-fg">
-              <X size={14} />
-            </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] text-fg-faint mb-1 block">Email Address *</label>
-              <Input
-                type="email"
-                placeholder="user@example.com"
-                value={imapForm.email_address}
-                onChange={(e) => setImapForm((f) => ({ ...f, email_address: e.target.value }))}
-                size="sm"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-fg-faint mb-1 block">Display Name</label>
-              <Input
-                placeholder="John Doe"
-                value={imapForm.display_name}
-                onChange={(e) => setImapForm((f) => ({ ...f, display_name: e.target.value }))}
-                size="sm"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-fg-faint mb-1 block">SMTP Host *</label>
-              <Input
-                placeholder="smtp.example.com"
-                value={imapForm.smtp_host}
-                onChange={(e) => setImapForm((f) => ({ ...f, smtp_host: e.target.value }))}
-                size="sm"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-fg-faint mb-1 block">SMTP Port</label>
-              <Input
-                type="number"
-                value={imapForm.smtp_port}
-                onChange={(e) => setImapForm((f) => ({ ...f, smtp_port: parseInt(e.target.value) || 465 }))}
-                size="sm"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-fg-faint mb-1 block">IMAP Host</label>
-              <Input
-                placeholder="imap.example.com (optional)"
-                value={imapForm.imap_host}
-                onChange={(e) => setImapForm((f) => ({ ...f, imap_host: e.target.value }))}
-                size="sm"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-fg-faint mb-1 block">IMAP Port</label>
-              <Input
-                type="number"
-                value={imapForm.imap_port}
-                onChange={(e) => setImapForm((f) => ({ ...f, imap_port: parseInt(e.target.value) || 993 }))}
-                size="sm"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-fg-faint mb-1 block">Username *</label>
-              <Input
-                placeholder="user@example.com"
-                value={imapForm.username}
-                onChange={(e) => setImapForm((f) => ({ ...f, username: e.target.value }))}
-                size="sm"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-fg-faint mb-1 block">Password / App Password *</label>
-              <Input
-                type="password"
-                placeholder="••••••••"
-                value={imapForm.password}
-                onChange={(e) => setImapForm((f) => ({ ...f, password: e.target.value }))}
-                size="sm"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-between mt-3">
-            <div className="flex items-center gap-2">
-              <Toggle checked={imapForm.use_tls} onChange={() => setImapForm((f) => ({ ...f, use_tls: !f.use_tls }))} />
-              <span className="text-xs text-fg-muted">Use TLS</span>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setShowAddImap(false)}>
-                Cancel
-              </Button>
-              <Button variant="default" size="sm" onClick={handleAddImap} disabled={addLoading}>
-                {addLoading ? <Spinner className="h-3.5 w-3.5" /> : 'Create account'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <ConfirmDialog
-        open={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        title="Remove email account"
-        description={`Remove "${deleteTarget?.email_address}"? This disconnects the account but does not delete any mail.`}
-        confirmLabel="Remove"
-        confirmVariant="destructive"
-      />
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-fg-muted">IMAP/SMTP accounts for a unified inbox and Agent access.</p>
+        {isSuper && (
+          <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+            <Toggle checked={showAll} onChange={() => setShowAll((v) => !v)} />
+            Show all users
+          </label>
+        )}
+      </div>
+      <CrudPage key={String(showAll)} schema={schema} />
     </div>
   );
 }

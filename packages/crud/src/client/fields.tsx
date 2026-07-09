@@ -38,9 +38,19 @@ export interface CrudFieldInputProps<TRow> {
   form: Record<string, unknown>;
   mode: 'add' | 'edit';
   disabled?: boolean;
+  /** Stable e2e hook forwarded to the underlying control. */
+  testId?: string;
 }
 
-export function CrudFieldInput<TRow>({ field, value, onChange, form, mode, disabled }: CrudFieldInputProps<TRow>) {
+export function CrudFieldInput<TRow>({
+  field,
+  value,
+  onChange,
+  form,
+  mode,
+  disabled,
+  testId,
+}: CrudFieldInputProps<TRow>) {
   const placeholder = 'placeholder' in field ? field.placeholder : undefined;
 
   switch (field.type) {
@@ -56,6 +66,7 @@ export function CrudFieldInput<TRow>({ field, value, onChange, form, mode, disab
           maxLength={field.maxLength}
           disabled={disabled}
           placeholder={placeholder}
+          data-testid={testId}
           onChange={(e) => onChange(e.target.value)}
         />
       );
@@ -67,6 +78,7 @@ export function CrudFieldInput<TRow>({ field, value, onChange, form, mode, disab
           rows={field.rows ?? 4}
           disabled={disabled}
           placeholder={placeholder}
+          data-testid={testId}
           onChange={(e) => onChange(e.target.value)}
         />
       );
@@ -80,11 +92,14 @@ export function CrudFieldInput<TRow>({ field, value, onChange, form, mode, disab
           step={field.step}
           disabled={disabled}
           placeholder={placeholder}
+          data-testid={testId}
           onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
         />
       );
     case 'select':
-      return <SelectField source={field.options} value={value} onChange={onChange} disabled={disabled} />;
+      return (
+        <SelectField source={field.options} value={value} onChange={onChange} disabled={disabled} testId={testId} />
+      );
     case 'radio':
       return <RadioField source={field.options} value={value} onChange={onChange} disabled={disabled} />;
     case 'multi-select':
@@ -132,17 +147,20 @@ function SelectField({
   value,
   onChange,
   disabled,
+  testId,
 }: {
   source: OptionsSource;
   value: unknown;
   onChange: (v: unknown) => void;
   disabled?: boolean;
+  testId?: string;
 }) {
   const options = useOptions(source);
   return (
     <Select
       value={value === undefined || value === null ? '' : String(value)}
       disabled={disabled}
+      data-testid={testId}
       onChange={(e) => {
         const raw = e.target.value;
         const match = options.find((o) => String(o.value) === raw);
