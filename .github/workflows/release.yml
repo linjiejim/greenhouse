@@ -81,12 +81,7 @@ jobs:
       contents: write # upload the asset to the GitHub Release
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       # `package` runs `vite build` then stamps manifest.version from APP_VERSION
       # and zips dist/ → greenhouse-bridge-vX.Y.Z.zip.

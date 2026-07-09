@@ -60,8 +60,9 @@ what exists." These rules are as binding as the "add" rules:
 - **Pre-commit hook**: husky + lint-staged runs `eslint --fix` + `prettier --write` on staged
   files.
 - **CI gate**: `.github/workflows/ci.yml` runs lint → typecheck → test → **e2e** → **secret-scan**
-  on `main` and every PR (`quality-gate.yml`, reusable). The test/e2e jobs build the CI database
-  via `migrate` (not push) so the whole migration chain is exercised on every run.
+  on `main` and every PR (shared pnpm/Node setup lives in `.github/actions/setup`). The test/e2e
+  jobs build the CI database via `migrate` (not push) so the whole migration chain is exercised
+  on every run.
 - **Secret scanning**: the `secret-scan` job runs [gitleaks](https://github.com/gitleaks/gitleaks)
   over incoming commits (full history was verified clean once). Rules + allowlist live in
   `.gitleaks.toml` at the repo root. Never commit real credentials; if the scanner flags a
@@ -159,9 +160,12 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
   (`pnpm -F @greenhouse/browser package`, manifest version stamped from the tag).
   Mobile = fingerprint CD (`.github/workflows/mobile.yml`, `EXPO_TOKEN`-gated,
   no-op without it): JS-only change → EAS OTA update; native change → EAS build
-  `--auto-submit` (iOS → TestFlight). Still **decoupled** from the product version
-  (app-store cadence; `buildNumber`/`versionCode` auto-increment remotely on EAS).
-- The `Quality gate` (`ci.yml`) is unchanged and still gates every PR/`main`;
+  `--auto-submit` (iOS → TestFlight). The mobile `version` **follows the product
+  version** (release-please `extra-files` bumps `apps/mobile/app.json` +
+  `package.json`; `fingerprint.config.js` skips version fields so a bump alone
+  stays on the OTA lane), while build cadence stays app-store-driven and
+  `buildNumber`/`versionCode` auto-increment remotely on EAS.
+- The CI quality gate (`ci.yml`) is unchanged and still gates every PR/`main`;
   `release.yml` only publishes artifacts and never replaces those checks.
 
 ## Project structure (pnpm monorepo)

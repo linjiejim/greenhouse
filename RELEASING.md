@@ -5,8 +5,10 @@ is no per-package release. `git tag vX.Y.Z` is the single source of truth for
 "what is a release"; the **root `package.json` `version`** is kept in sync with it
 automatically by release-please (`release-type: node`) — it records the current
 release, so **don't hand-edit it**. The per-workspace `package.json` `version` fields
-are placeholders (not maintained). The runtime version still comes from the tag,
-injected as `APP_VERSION` (see below), not read from `package.json`.
+are placeholders (not maintained) — except `apps/mobile`, whose `package.json` +
+`app.json` versions release-please keeps in sync with the product version via
+`extra-files` (don't hand-edit those either). The runtime version still comes from
+the tag, injected as `APP_VERSION` (see below), not read from `package.json`.
 
 ## Stable vs. edge — the promise
 
@@ -28,9 +30,14 @@ for people who want to test the tip and understand it can break.
 - **Conventional Commits drive the bump.** The repo already uses them
   (`feat(api:export): …`, `fix(web): …`). PRs are **squash-merged** so one PR =
   one Conventional Commit on `main`.
-- **Mobile is decoupled.** The Expo app follows app-store cadence with its own
-  `version` + `buildNumber`/`versionCode` (`apps/mobile/app.json`, `eas.json`
-  `autoIncrement`). It does not have to match the product version.
+- **Mobile shares the product version, but not the cadence.** The Expo app's
+  user-facing `version` (`apps/mobile/app.json` + `package.json`) is bumped by
+  release-please together with the root — one version number across the product
+  (`release-please-config.json` `extra-files`). Store **builds** still happen on
+  their own fingerprint-driven cadence (see "Mobile → fingerprint CD"), so a
+  TestFlight binary simply carries whatever product version was current when its
+  native fingerprint last changed; `buildNumber`/`versionCode` stay
+  remote-auto-incremented (`eas.json`) and are unrelated to the product version.
 
 ## How a release happens (the automated flow)
 
@@ -108,8 +115,9 @@ form — `v0.2.0-rc.1` → `0.2.0`), and zips `dist/` into
 ### Mobile → fingerprint CD (OTA update / store build → TestFlight)
 
 `.github/workflows/mobile.yml` continuously deploys the Expo app on every `main`
-push that touches `apps/mobile/` — still decoupled from the product tag
-(app-store cadence). It uses
+push that touches `apps/mobile/` — decoupled from the product **tag** (app-store
+cadence), though the app **version** is synced to the product version by
+release-please (see "Version strategy"). It uses
 `expo/expo-github-action/continuous-deploy-fingerprint`, which splits per native
 fingerprint:
 
@@ -128,6 +136,15 @@ fingerprint:
 - **Manual lane**: `workflow_dispatch` with `profile: preview` (internal
   distribution, Android APK) and a `platform` picker (`ios` default; switch to
   `all` once Play credentials exist).
+
+`apps/mobile/fingerprint.config.js` skips version fields (`ExpoConfigVersions`)
+when fingerprinting: a release-please version bump alone must ride the OTA lane,
+not burn a store build. Delete that skip if you'd rather every product release
+cut a TestFlight build. Note the version history quirk: TestFlight already has a
+`1.0.0` train from before the version was synced to the (pre-1.0) product
+version; App Store Connect only rejects versions lower than the last **approved**
+App Store release, and the app has never been approved, so uploading e.g.
+`0.5.0` is expected to work — verify on the first post-sync store build.
 
 **Fork-safe:** without the `EXPO_TOKEN` secret the workflow no-ops green.
 
@@ -155,8 +172,8 @@ One-time setup (secret-gated, not code — the workflow stays a no-op until done
 `main` is the integration branch (trunk). Configure in repo **Settings → Branches**:
 
 - Require a pull request before merging, **≥ 1 approving review**.
-- Require status checks to pass: the `Quality gate` jobs (lint, typecheck, test,
-  e2e, secret-scan).
+- Require status checks to pass: the `CI` jobs (lint, typecheck, test, e2e,
+  secret-scan).
 - **Squash merge only** (keeps one Conventional Commit per PR for release-please).
 - Include administrators.
 
