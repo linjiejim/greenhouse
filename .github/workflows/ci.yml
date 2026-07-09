@@ -1,12 +1,100 @@
 name: CI
 
-# Quality gate (lint → typecheck → test) for the default branch and all PRs.
-# This workflow never deploys.
+# Quality gate (lint / typecheck / test / e2e / secret-scan) for the default
+# branch and all PRs. This workflow never deploys — but deploy.yml polls it and
+# only rolls jim-server once it passes on the same sha.
 on:
   push:
     branches: [main]
   pull_request:
 
 jobs:
-  gate:
-    uses: ./.github/workflows/quality-gate.yml
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: greenhouse_test
+          POSTGRES_USER: greenhouse
+          POSTGRES_PASSWORD: greenhouse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U greenhouse -d greenhouse_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # Build the test DB via `migrate` (NOT push) so the migration chain is
+      # exercised on every run — a broken/incomplete chain fails CI here
+      # instead of silently diverging from push.
+      - name: Apply migrations to test database
+        run: npx drizzle-kit migrate
+        env:
+          DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
+      - run: pnpm test
+
+  # Live-server integration/security suite (tests/e2e). Boots the real API and
+  # drives it over HTTP — the layer `pnpm test` (in-process units) never reaches:
+  # auth/token round-trips, cross-user data isolation, role escalation, injection,
+  # tool-access & v1 API boundaries. Runs against a dead LLM endpoint so it stays
+  # deterministic and free (E2E_NO_LLM skips the few content-dependent assertions).
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: greenhouse_test
+          POSTGRES_USER: greenhouse
+          POSTGRES_PASSWORD: greenhouse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U greenhouse -d greenhouse_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Apply migrations to test database
+        run: npx drizzle-kit migrate
+        env:
+          DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
+      - name: Run live-server E2E suite
+        run: pnpm test:e2e:ci
+        env:
+          DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
+
+  # Secret scanning (gitleaks) — blocks newly-leaked credentials on every PR/push.
+  # Rules + allowlist live in .gitleaks.toml at the repo root. Full history was
+  # verified clean once locally; this gate scans incoming commits. Public repo, so
+  # gitleaks-action needs no license key.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so gitleaks can diff commit / PR ranges
+      - name: Scan for leaked secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
