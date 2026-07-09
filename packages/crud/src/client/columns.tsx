@@ -30,6 +30,8 @@ export function renderCell<TRow>(col: ColumnDef<TRow>, row: TRow): React.ReactNo
       return <TagList items={items} />;
     }
     case 'boolean':
+    case 'toggle':
+      // Read-only rendering (detail view). The interactive switch lives in CrudPage.
       return value ? <Badge variant="success">✓</Badge> : <span className="text-fg-faint">—</span>;
     case 'longtext': {
       const text = value == null ? '' : String(value);

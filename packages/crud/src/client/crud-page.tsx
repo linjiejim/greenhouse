@@ -15,6 +15,7 @@ import {
   Spinner,
   ListToolbar,
   ConfirmDialog,
+  Toggle,
   toast,
 } from '@greenhouse/ui/components/ui';
 import {
@@ -31,7 +32,7 @@ import {
 } from '@greenhouse/ui/lib/icons';
 import { useT } from '@greenhouse/ui/lib/i18n';
 
-import type { FilterDef, ResolvedCrudSchema, CrudActionContext, TableActionDef } from './schema.js';
+import type { ColumnDef, FilterDef, ResolvedCrudSchema, CrudActionContext, TableActionDef } from './schema.js';
 import type { FilterItem, SortItem } from '../protocol/types.js';
 import type { OptionsSource, SelectOption } from './schema.js';
 import { renderCell } from './columns.js';
@@ -138,6 +139,7 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
       openCreate: () => setFormState({ mode: 'add', row: null }),
       openEdit: (row) => setFormState({ mode: 'edit', row: row as TRow }),
       openDetail: (row) => setDetailRow(row as TRow),
+      openDelete: (row) => setDeleteTarget(row as TRow),
     }),
     [reload],
   );
@@ -182,7 +184,11 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
 
   // ── Toolbar ────────────────────────────────────────────
   const addButton = schema.access.canAdd ? (
-    <Button size="sm" onClick={() => setFormState({ mode: 'add', row: null })}>
+    <Button
+      size="sm"
+      onClick={() => setFormState({ mode: 'add', row: null })}
+      data-testid={schema.testId ? `${schema.testId}-add` : undefined}
+    >
       <Plus size={14} className="mr-1" />
       {`${t('crud.add')} ${tr(t, schema.name)}`}
     </Button>
@@ -259,6 +265,12 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
             action={addButton ?? undefined}
           />
         ))
+      ) : schema.variant === 'cards' && schema.slots?.renderCard ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((row) => (
+            <div key={String((row as Record<string, unknown>)[idField])}>{schema.slots!.renderCard!(row, ctx)}</div>
+          ))}
+        </div>
       ) : (
         <div className="bg-surface-raised border border-edge rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
@@ -314,8 +326,9 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
                                   ? 'hidden sm:table-cell'
                                   : ''
                           }`}
+                          onClick={col.type === 'toggle' ? (e) => e.stopPropagation() : undefined}
                         >
-                          {renderCell(col, row)}
+                          {col.type === 'toggle' ? <ToggleCell col={col} row={row} ctx={ctx} /> : renderCell(col, row)}
                         </td>
                       ))}
                       {hasActionsCol && (
@@ -330,6 +343,7 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
                                 tone="default"
                                 onClick={() => setDetailRow(row)}
                                 icon={Eye}
+                                testId={schema.testId ? `${schema.testId}-view` : undefined}
                               />
                             )}
                             {rowActions.includes('edit') &&
@@ -340,6 +354,7 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
                                   tone="primary"
                                   onClick={() => setFormState({ mode: 'edit', row })}
                                   icon={Pencil}
+                                  testId={schema.testId ? `${schema.testId}-edit` : undefined}
                                 />
                               )}
                             {rowActions.includes('delete') &&
@@ -350,6 +365,7 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
                                   tone="danger"
                                   onClick={() => setDeleteTarget(row)}
                                   icon={Trash2}
+                                  testId={schema.testId ? `${schema.testId}-delete` : undefined}
                                 />
                               )}
                           </div>
@@ -427,21 +443,59 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
 
 // ─── Sub-components ──────────────────────────────────────
 
+/** Interactive switch cell (`type: 'toggle'`). Optimistic flip, reverts on error. */
+function ToggleCell<TRow>({
+  col,
+  row,
+  ctx,
+}: {
+  col: Extract<ColumnDef<TRow>, { type: 'toggle' }>;
+  row: TRow;
+  ctx: CrudActionContext;
+}) {
+  const t = useT();
+  const record = row as Record<string, unknown>;
+  const [optimistic, setOptimistic] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const base = col.checked ? col.checked(row) : !!record[col.key];
+  const checked = optimistic ?? base;
+  const disabled = busy || (col.disabled?.(row) ?? false);
+
+  const onChange = async (next: boolean) => {
+    setOptimistic(next);
+    setBusy(true);
+    try {
+      await col.onToggle(row, next, ctx);
+      ctx.reload();
+    } catch (err) {
+      setOptimistic(null); // revert
+      toast(err instanceof Error ? err.message : t('crud.saveFailed'), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <Toggle checked={checked} onChange={onChange} disabled={disabled} />;
+}
+
 function IconBtn({
   title,
   tone,
   onClick,
   icon: Icon,
+  testId,
 }: {
   title: string;
   tone: string;
   onClick: () => void;
   icon: LucideIcon;
+  testId?: string;
 }) {
   return (
     <button
       onClick={onClick}
       title={title}
+      data-testid={testId}
       className={`p-1.5 rounded transition-colors ${ACTION_TONE[tone] ?? ACTION_TONE.default}`}
     >
       <Icon size={14} />

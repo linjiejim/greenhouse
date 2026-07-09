@@ -54,6 +54,17 @@ export type ColumnDef<TRow> =
       truncate?: number;
     })
   | (ColumnBase & { key: RowKey<TRow>; type: 'badge'; badgeMap?: Record<string, BadgeTone> })
+  | (ColumnBase & {
+      key: RowKey<TRow>;
+      type: 'toggle';
+      /** Fired when the switch is flipped; do the mutation here, then ctx.reload() runs on success. */
+      onToggle: (row: TRow, next: boolean, ctx: CrudActionContext) => void | Promise<void>;
+      /** Derive the checked state from the row (e.g. a string status → boolean).
+       *  Defaults to `!!row[key]` when omitted. */
+      checked?: (row: TRow) => boolean;
+      /** Render the switch disabled for rows this returns true for. */
+      disabled?: (row: TRow) => boolean;
+    })
   | (ColumnBase & { key: string; type: 'custom'; render: (row: TRow) => ReactNode })
   | (ColumnBase & { key: string; type: 'extension'; name: string; config?: Record<string, unknown> });
 
@@ -131,6 +142,8 @@ export interface CrudActionContext {
   openCreate: () => void;
   openEdit: (row: Record<string, unknown>) => void;
   openDetail: (row: Record<string, unknown>) => void;
+  /** Open the built-in delete-confirm dialog for a row. */
+  openDelete: (row: Record<string, unknown>) => void;
 }
 
 // ─── Detail view ─────────────────────────────────────────
@@ -160,6 +173,8 @@ export interface CrudSlots<TRow> {
   empty?: ReactNode;
   /** Expandable content under a row (click to toggle). */
   rowExpand?: (row: TRow, ctx: CrudActionContext) => ReactNode;
+  /** Card body for `variant: 'cards'` — replaces the table row. Wire actions via ctx. */
+  renderCard?: (row: TRow, ctx: CrudActionContext) => ReactNode;
 }
 
 // ─── Full schema ─────────────────────────────────────────
@@ -171,8 +186,15 @@ export interface CrudSchema<TRow = Record<string, unknown>> {
   /** Primary-key field. Default 'id'. */
   idField?: RowKey<TRow>;
   icon?: LucideIcon;
+  /** Stable e2e/automation hook. When set, the chrome exposes derived data-testids:
+   *  Add button `{testId}-add`; form field inputs `{testId}-field-{key}`; form submit
+   *  `{testId}-submit` / cancel `{testId}-cancel`; per-row action buttons
+   *  `{testId}-view` / `{testId}-edit` / `{testId}-delete` (same across rows — scope by row). */
+  testId?: string;
 
   columns: ColumnDef<TRow>[];
+  /** List presentation. 'table' (default) or 'cards' (needs slots.renderCard). */
+  variant?: 'table' | 'cards';
   filters?: FilterDef<TRow>[];
   defaultSort?: SortItem;
   pageSize?: number;
@@ -198,6 +220,7 @@ export interface CrudSchema<TRow = Record<string, unknown>> {
 
 export interface ResolvedCrudSchema<TRow> extends CrudSchema<TRow> {
   idField: RowKey<TRow>;
+  variant: 'table' | 'cards';
   filters: FilterDef<TRow>[];
   formFields: FieldDef<TRow>[];
   formTabs: FormTab[];
@@ -220,6 +243,7 @@ export function defineCrud<TRow>(schema: CrudSchema<TRow>): ResolvedCrudSchema<T
   return {
     ...schema,
     idField: schema.idField ?? ('id' as RowKey<TRow>),
+    variant: schema.variant ?? 'table',
     filters: schema.filters ?? [],
     formFields: schema.formFields ?? [],
     formTabs: schema.formTabs ?? [],

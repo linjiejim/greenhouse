@@ -15,6 +15,8 @@ export { CrudForm } from './crud-form.js';
 export type { CrudFormProps } from './crud-form.js';
 export { CrudDetail } from './crud-detail.js';
 export type { CrudDetailProps } from './crud-detail.js';
+export { CrudTabs } from './crud-tabs.js';
+export type { CrudTabsProps, CrudTab } from './crud-tabs.js';
 export { CrudFieldInput } from './fields.js';
 export { renderCell } from './columns.js';
 export { usePersistedPageSize, tr, formatCell } from './util.js';
