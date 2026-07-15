@@ -40,7 +40,10 @@ export default defineConfig({
     // tests/e2e = API e2e suite (own config, needs a running API); tests/e2e-ui =
     // Playwright browser suite (run via `pnpm test:e2e:ui`). Neither belongs to the
     // default vitest run — collecting a Playwright spec throws at import.
-    exclude: ['tests/e2e/**', 'tests/e2e-ui/**', '**/node_modules/**'],
+    // **/.claude/** = agent worktrees (full repo copies without node_modules) —
+    // without the exclude a root `pnpm test` collects every copy and reports
+    // hundreds of phantom module-resolution failures.
+    exclude: ['tests/e2e/**', 'tests/e2e-ui/**', '**/node_modules/**', '**/.claude/**'],
     // Silence app loggers so error-path tests don't spam the run output.
     // Override with LOG_LEVEL=debug when debugging a specific test.
     env: { LOG_LEVEL: process.env.LOG_LEVEL ?? 'silent' },
