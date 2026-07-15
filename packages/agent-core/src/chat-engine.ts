@@ -11,8 +11,9 @@
  */
 
 import { streamText, stepCountIs, wrapLanguageModel } from 'ai';
-import type { StreamTextResult, ToolSet } from 'ai';
+import type { StreamTextResult, ToolSet, ModelMessage } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
+import { logger } from '@greenhouse/utils/logger';
 import { createModelFromConfig, buildProviderOptions, applyModelOverride, type ModelConfig } from './model.js';
 import { getProviderMiddleware } from './provider-extensions.js';
 import { getToolOutputSummarizer } from './tool-stream-hooks.js';
@@ -165,6 +166,158 @@ export async function createChatStreamAsync(input: ChatEngineInput): Promise<{
   });
 
   return { streamResult, startTime, modelId: modelConfig.model };
+}
+
+// ─── Final-Answer Guarantee ──────────────────────────────
+
+/**
+ * The agent loop occasionally exhausts its step budget calling tools without
+ * ever emitting an assistant answer — the model keeps searching until
+ * `stopWhen` cuts it off (or still tries to call a tool on the forced
+ * `toolChoice: 'none'` final step), and the consumer receives an empty
+ * assistant turn. `withFinalAnswerGuarantee` below closes that hole for every
+ * host and every model.
+ */
+interface FinalAnswerContext {
+  profile: EngineProfile;
+  systemPrompt: string;
+  /** The original conversation passed to createChatStreamAsync. */
+  baseMessages: Array<{ role: string; content: string }>;
+}
+
+/** Flatten the prior turn's tool-result messages into a plain-text evidence digest. */
+function digestToolResults(priorTurn: ModelMessage[]): string {
+  const MAX_PER_RESULT = 2000;
+  const MAX_TOTAL = 16000;
+  const blocks: string[] = [];
+  for (const m of priorTurn as Array<{ role: string; content: unknown }>) {
+    if (m.role !== 'tool' || !Array.isArray(m.content)) continue;
+    for (const part of m.content as Array<{ type?: string; toolName?: string; output?: unknown }>) {
+      if (part?.type !== 'tool-result') continue;
+      const raw = (part.output as { value?: unknown })?.value ?? part.output;
+      let text: string;
+      try {
+        text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+      } catch {
+        text = String(raw);
+      }
+      blocks.push(`### ${part.toolName ?? 'tool'}\n${text.slice(0, MAX_PER_RESULT)}`);
+    }
+  }
+  return blocks.join('\n\n').slice(0, MAX_TOTAL);
+}
+
+/**
+ * Build the "answer now, no tools" continuation stream.
+ *
+ * The gathered evidence is flattened to plain text rather than replayed as
+ * structured tool-call/tool-result messages on purpose: replaying that history
+ * primes the model to keep calling tools, which is exactly the loop being
+ * escaped. Thinking is disabled for speed, and `tools: {}` + `toolChoice:
+ * 'none'` make a text answer the only possible output.
+ */
+async function createFinalAnswerStreamAsync(
+  ctx: FinalAnswerContext,
+  priorResult: StreamTextResult<ToolSet, never>,
+): Promise<StreamTextResult<ToolSet, never>> {
+  const modelConfig: ModelConfig = {
+    ...ctx.profile.model,
+    options: { ...ctx.profile.model.options, thinking: false },
+  };
+  // Same creation path as the primary stream so fork-registered provider
+  // middleware still applies here.
+  const rawModel = await createModelFromConfig(modelConfig);
+  const middleware = getProviderMiddleware(modelConfig.provider);
+  const model = middleware ? wrapLanguageModel({ model: rawModel as LanguageModelV3, middleware }) : rawModel;
+
+  const digest = digestToolResults((await priorResult.response).messages ?? []);
+  const messages: ModelMessage[] = [
+    ...injectTimeContext(ctx.baseMessages).map(
+      (m) => ({ role: m.role as 'user' | 'assistant' | 'system', content: m.content }) as ModelMessage,
+    ),
+    {
+      role: 'user',
+      content:
+        `[Information already gathered by tools:]\n\n${digest || '(no results)'}\n\n` +
+        `[Tool use is now disabled. Using only the information above, answer my most recent question in plain text. ` +
+        `If the information is insufficient, say so briefly. Do not call any tools.]`,
+    },
+  ];
+
+  const providerOptions = buildProviderOptions(modelConfig);
+
+  return streamText({
+    model,
+    system: ctx.systemPrompt,
+    messages,
+    tools: {},
+    toolChoice: 'none',
+    ...(providerOptions ? { providerOptions } : {}),
+  });
+}
+
+/**
+ * One final-answer pass, emitted as synthetic fullStream `text-delta` parts
+ * and retried up to `maxAttempts` while a pass yields nothing (a pass can come
+ * back empty on intermittent provider quirks — e.g. a tool-call leak stripped
+ * by fork middleware). Empty passes yield nothing, so retrying never
+ * duplicates content.
+ */
+async function* finalAnswerParts(
+  ctx: FinalAnswerContext,
+  priorResult: StreamTextResult<ToolSet, never>,
+  maxAttempts = 3,
+): AsyncGenerator<{ type: 'text-delta'; id: string; text: string }> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let produced = '';
+    try {
+      const continuation = await createFinalAnswerStreamAsync(ctx, priorResult);
+      for await (const part of continuation.fullStream) {
+        if (part.type === 'text-delta' && part.text) {
+          produced += part.text;
+          yield { type: 'text-delta', id: 'final-answer', text: part.text };
+        }
+      }
+    } catch (err) {
+      logger.warn('[chat-engine] final-answer attempt failed', { attempt, err: String(err) });
+    }
+    if (produced.trim()) return;
+  }
+}
+
+/**
+ * Wrap a primary chat stream so it never ends with an empty assistant answer.
+ *
+ * Hosts iterate THIS instead of `streamResult.fullStream` — the only line they
+ * change. Mechanics: pass every part through untouched but hold back the
+ * terminal `finish` part; if the loop ran tools yet produced no text, splice
+ * in the final-answer parts (as ordinary `text-delta`s, so host switches and
+ * collectors need no special-casing) before finally emitting `finish`. Streams
+ * that produced text — or never ran a tool (nothing gathered to answer from) —
+ * pass through byte-identical.
+ */
+export async function* withFinalAnswerGuarantee(
+  streamResult: StreamTextResult<ToolSet, never>,
+  ctx: FinalAnswerContext,
+): AsyncGenerator<any> {
+  let sawText = false;
+  let toolRan = false;
+  let finishPart: any = null;
+
+  for await (const part of streamResult.fullStream as AsyncIterable<any>) {
+    if (part.type === 'text-delta' && part.text) sawText = true;
+    else if (part.type === 'tool-result') toolRan = true;
+    if (part.type === 'finish') {
+      finishPart = part; // defer until after any spliced-in answer
+      continue;
+    }
+    yield part;
+  }
+
+  if (!sawText && toolRan) {
+    yield* finalAnswerParts(ctx, streamResult);
+  }
+  if (finishPart) yield finishPart;
 }
 
 // ─── Collectors ──────────────────────────────────────────

@@ -27,6 +27,7 @@ import type { SessionContext } from '../../session-context.js';
 import type { ApiClientRow } from '@greenhouse/db';
 import {
   createChatStreamAsync,
+  withFinalAnswerGuarantee,
   createCollectors,
   processStreamPart,
   summarizeOutput,
@@ -439,7 +440,14 @@ export function createV1ChatRoute(toolRegistry: ToolRegistry) {
 
           let toolCallIndex = 0;
 
-          for await (const part of streamResult.fullStream) {
+          // withFinalAnswerGuarantee == streamResult.fullStream, except when
+          // the run ends with tool activity but no text: it splices in one
+          // tools-off "answer now" pass so the reply is never empty.
+          for await (const part of withFinalAnswerGuarantee(streamResult, {
+            profile,
+            systemPrompt,
+            baseMessages: chatMessages,
+          })) {
             processStreamPart(part, collectors);
 
             switch (part.type) {
@@ -598,9 +606,14 @@ export function createV1ChatRoute(toolRegistry: ToolRegistry) {
 
     // ── Response: Non-streaming ──
     try {
-      // Consume the full stream to collect results.
+      // Consume the full stream to collect results (withFinalAnswerGuarantee
+      // splices in a final answer when a run ends with tools but no text).
       let streamError: string | undefined;
-      for await (const part of streamResult.fullStream) {
+      for await (const part of withFinalAnswerGuarantee(streamResult, {
+        profile,
+        systemPrompt,
+        baseMessages: chatMessages,
+      })) {
         processStreamPart(part, collectors);
         if (part.type === 'error') streamError = String(part.error);
       }

@@ -13,6 +13,7 @@
 // Engine
 export {
   createChatStreamAsync,
+  withFinalAnswerGuarantee,
   createCollectors,
   processStreamPart,
   buildEngineResult,
