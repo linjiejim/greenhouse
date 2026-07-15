@@ -86,19 +86,26 @@ describe('E2E: Agent proxy auth', () => {
 });
 
 // ─── Manifest ────────────────────────────────────────────
+// These read-path tests run under the internal `team` profile, not `default`:
+// /api/agent is an internal-only surface (external tokens are rejected above),
+// and the public `default` profile is the seam forks override most — a fork's
+// default may not carry knowledge_query at all. `knowledge_query` on the
+// internal team profile is a core-product invariant (the knowledge base is
+// upstream's own module); a fork that removes it there adapts this suite.
 
 describe('E2E: Agent runtime manifest', () => {
   it('returns the read-only server tools for the logged-in user', async () => {
-    const res = await fetch(`${BASE_URL}/api/agent/runtime-manifest?profile_id=default`, {
+    const res = await fetch(`${BASE_URL}/api/agent/runtime-manifest?profile_id=team`, {
       headers: h(memberToken),
     });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.capabilities).toEqual({ serverTools: true, localTools: false });
     const ids = data.tools.map((t: { id: string }) => t.id);
-    // Global read-only tools are present for any internal user.
+    // Core read-only tools are present for any internal user.
     expect(ids).toContain('knowledge_query');
-    // Non-allowlisted tools are never exposed.
+    // Non-allowlisted tools are never exposed — generate_image IS on the team
+    // profile but ships no proxy surface, so the allowlist must filter it here.
     expect(ids).not.toContain('generate_image');
     // Each tool carries a JSON Schema for its input (agents need it to call).
     const sourceTool = data.tools.find((t: { id: string }) => t.id === 'knowledge_query');
@@ -113,7 +120,7 @@ describe('E2E: Agent tool call', () => {
     const res = await fetch(`${BASE_URL}/api/agent/tools/knowledge_query/call`, {
       method: 'POST',
       headers: h(memberToken),
-      body: JSON.stringify({ profile_id: 'default', input: { action: 'search', query: 'nutrient' } }),
+      body: JSON.stringify({ profile_id: 'team', input: { action: 'search', query: 'nutrient' } }),
     });
     expect(res.status).toBe(200);
     const data = await res.json();
@@ -125,7 +132,7 @@ describe('E2E: Agent tool call', () => {
     const res = await fetch(`${BASE_URL}/api/agent/tools/generate_image/call`, {
       method: 'POST',
       headers: h(memberToken),
-      body: JSON.stringify({ profile_id: 'default', input: {} }),
+      body: JSON.stringify({ profile_id: 'team', input: {} }),
     });
     expect(res.status).toBe(403);
   });
@@ -134,7 +141,7 @@ describe('E2E: Agent tool call', () => {
     const res = await fetch(`${BASE_URL}/api/agent/tools/knowledge_query/call`, {
       method: 'POST',
       headers: h(memberToken),
-      body: JSON.stringify({ profile_id: 'default', input: {} }), // missing required action/query
+      body: JSON.stringify({ profile_id: 'team', input: {} }), // missing required action/query
     });
     expect(res.status).toBe(400);
   });
