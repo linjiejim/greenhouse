@@ -23,6 +23,7 @@ import type { AgentProfile } from '../profile.js';
 import type { AppEnv } from '../app-env.js';
 import {
   createChatStreamAsync,
+  withFinalAnswerGuarantee,
   createCollectors,
   processStreamPart,
   buildEngineResult,
@@ -463,7 +464,15 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
       }
 
       try {
-        for await (const part of streamResult.fullStream) {
+        // withFinalAnswerGuarantee == streamResult.fullStream, except when the
+        // run ends with tool activity but no text: it splices in one tools-off
+        // "answer now" pass (reordering `finish` after it) so the reply is
+        // never empty. See chat-engine.ts.
+        for await (const part of withFinalAnswerGuarantee(streamResult, {
+          profile,
+          systemPrompt,
+          baseMessages: chatMessages,
+        })) {
           // Check if title is ready and inject before other events
           if (resolvedTitle && !titleSent) {
             titleSent = true;
