@@ -27,12 +27,12 @@
 
 // ─── Registry ────────────────────────────────────────────
 
-export type WorkspaceSettingGroup = 'branding' | 'llm' | 'vision' | 'image_gen' | 'search';
+export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search';
 
 /**
  * Value shape stored in the `value` jsonb column:
  * 'string' (single line) and 'text' (multi-line) are JSON strings; 'json' is
- * an object validated per-key server-side (theme tokens, avatar DSL).
+ * an object validated per-key server-side (theme tokens).
  */
 export type WorkspaceSettingType = 'string' | 'text' | 'json';
 
@@ -88,20 +88,12 @@ const WORKSPACE_SETTINGS_LITERAL = [
     type: 'json',
     maxLength: 20000,
   },
-  {
-    key: 'branding.team_avatar',
-    group: 'branding',
-    label: 'Team Sprouty',
-    description: 'Workspace default Sprouty avatar DSL (used by built-in profiles without their own avatar)',
-    type: 'json',
-    maxLength: 2000,
-  },
-  // ── Main LLM (OpenAI-compatible) ──
+  // ── Main LLM (any OpenAI-compatible endpoint; see config/models.yaml) ──
   {
     key: 'llm.base_url',
     group: 'llm',
     label: 'LLM base URL',
-    description: 'OpenAI-compatible endpoint for the agent kernel',
+    description: 'OpenAI-compatible endpoint for the built-in `flash` / `pro` model ids',
     type: 'string',
     env: 'LLM_BASE_URL',
     placeholder: 'https://api.openai.com/v1',
@@ -119,7 +111,7 @@ const WORKSPACE_SETTINGS_LITERAL = [
     key: 'llm.model',
     group: 'llm',
     label: 'Default model',
-    description: 'Model id for the default/flash logical models',
+    description: 'Model id served as the `flash` logical model (chat default, relay default)',
     type: 'string',
     env: 'LLM_MODEL',
     placeholder: 'gpt-4o-mini',
@@ -127,79 +119,47 @@ const WORKSPACE_SETTINGS_LITERAL = [
   {
     key: 'llm.model_pro',
     group: 'llm',
-    label: 'Pro model',
-    description: 'Heavier model for the `pro` logical id (defaults to the default model)',
+    label: 'Stronger model',
+    description: 'Optional heavier model id served as the `pro` logical model on the same endpoint',
     type: 'string',
     env: 'LLM_MODEL_PRO',
   },
+  // ── Media (analyze_image / generate_image) ──
   {
-    key: 'llm.model_title',
-    group: 'llm',
-    label: 'Title model',
-    description: 'Light non-thinking model for auto-titles (defaults to the default model)',
+    key: 'media.base_url',
+    group: 'media',
+    label: 'Media base URL',
+    description: 'OpenAI-compatible endpoint used for image analysis and generation (defaults to the LLM endpoint)',
     type: 'string',
-    env: 'LLM_MODEL_TITLE',
-  },
-  // ── Vision (analyze_image) ──
-  {
-    key: 'vision.base_url',
-    group: 'vision',
-    label: 'Vision base URL',
-    description: 'OpenAI-compatible multimodal endpoint (falls back to the main LLM endpoint)',
-    type: 'string',
-    env: 'IMAGE_API_BASE_URL',
+    env: 'MEDIA_BASE_URL',
+    placeholder: 'https://api.openai.com/v1',
   },
   {
-    key: 'vision.api_key',
-    group: 'vision',
-    label: 'Vision API key',
-    description: 'API key for the vision endpoint (falls back to the main LLM key)',
+    key: 'media.api_key',
+    group: 'media',
+    label: 'Media API key',
+    description: 'API key for the media endpoint (defaults to the LLM key)',
     type: 'string',
     secret: true,
-    env: 'IMAGE_API_KEY',
+    env: 'MEDIA_API_KEY',
   },
   {
-    key: 'vision.model',
-    group: 'vision',
+    key: 'media.vision_model',
+    group: 'media',
     label: 'Vision model',
     description: 'Multimodal model id for analyze_image',
     type: 'string',
     env: 'VISION_MODEL',
-  },
-  // ── Image generation (generate_image) ──
-  {
-    key: 'image_gen.gpt_base_url',
-    group: 'image_gen',
-    label: 'Primary image base URL',
-    description: 'OpenAI-compatible image API endpoint (required with its key to enable generate_image)',
-    type: 'string',
-    env: 'GPT_IMAGE_BASE_URL',
+    placeholder: 'gpt-4o-mini',
   },
   {
-    key: 'image_gen.gpt_api_key',
-    group: 'image_gen',
-    label: 'Primary image API key',
-    description: 'API key for the primary image provider',
+    key: 'media.image_model',
+    group: 'media',
+    label: 'Image model',
+    description: 'Image generation model id for generate_image',
     type: 'string',
-    secret: true,
-    env: 'GPT_IMAGE_API_KEY',
-  },
-  {
-    key: 'image_gen.glm_base_url',
-    group: 'image_gen',
-    label: 'Fallback image base URL',
-    description: 'Optional secondary image provider used when the primary fails',
-    type: 'string',
-    env: 'GLM_IMAGE_BASE_URL',
-  },
-  {
-    key: 'image_gen.glm_api_key',
-    group: 'image_gen',
-    label: 'Fallback image API key',
-    description: 'API key for the secondary image provider',
-    type: 'string',
-    secret: true,
-    env: 'GLM_IMAGE_API_KEY',
+    env: 'IMAGE_MODEL',
+    placeholder: 'gpt-image-2',
   },
   // ── External web search ──
   {
@@ -271,8 +231,6 @@ export interface WorkspaceBootstrap {
   /** Logo data URL, or null to use the built-in mark. */
   logo: string | null;
   theme_tokens: ThemeTokens | null;
-  /** Workspace default Sprouty avatar (profile-manifest AvatarConfig shape). */
-  team_avatar: Record<string, unknown> | null;
 }
 
 // ─── Theme tokens (Branding Studio payload) ──────────────

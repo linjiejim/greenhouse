@@ -7,7 +7,7 @@
 
 // ─── Session Types ───────────────────────────────────────
 
-export type SessionChannel = 'web' | 'api' | 'a2a' | 'task' | 'subagent' | 'browser';
+export type SessionChannel = 'web' | 'api' | 'a2a' | 'task' | 'subagent' | 'workflow' | 'mission' | 'feishu';
 
 export interface SessionRow {
   id: string;
@@ -37,6 +37,8 @@ export interface MessageRow {
   references_: string;
   pipeline: string;
   reasoning: string | null;
+  /** Registry model id that produced this assistant turn; null for user turns and pre-2026-08 messages. */
+  model: string | null;
   images: string;
   confidence: number | null;
   grounded: number | null;
@@ -47,6 +49,14 @@ export interface MessageRow {
   duration_ms: number | null;
   created_at: string;
   seq: number;
+}
+
+/** Cursor-paginated session transcript page, ordered by ascending message sequence. */
+export interface SessionMessagePage {
+  messages: MessageRow[];
+  has_more: boolean;
+  /** Exclusive cursor for the next older page, or null when the transcript start is reached. */
+  next_before_seq: number | null;
 }
 
 export interface PipelineStep {
@@ -60,13 +70,16 @@ export interface PipelineStep {
 export interface Reference {
   slug: string;
   title: string;
-  /** Knowledge-base document citation. */
-  type: 'wiki';
+  type: 'kb_doc' | 'wiki' | 'source';
+  /** In-app link to the referenced record (`#/knowledge/doc/<id>-<slug>`), when known. */
+  url?: string;
   category?: string;
   page_type?: string;
   relevance?: number;
-  /** Knowledge-base document id (knowledge_base.doc_id) — used to open the doc. */
-  doc_id?: string;
+  /** For source references: the original source document ID */
+  source_id?: string;
+  /** Source references attached to this wiki page (from ref_docs) */
+  ref_docs?: Array<{ source_id: string; category: string; title: string }>;
 }
 
 export interface MessageInput {
@@ -76,6 +89,8 @@ export interface MessageInput {
   references?: Reference[];
   pipeline?: PipelineStep[];
   reasoning?: string;
+  /** Registry model id that produced this assistant turn. */
+  model?: string;
   images?: Array<{ id: string; url: string }>;
   confidence?: number;
   grounded?: boolean;

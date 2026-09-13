@@ -10,7 +10,7 @@
  */
 /**
  * Safely parse a JSON string, returning a fallback on failure.
- * Use for DB columns that store JSON text (e.g. references, meta, allowed_profiles).
+ * Use for DB columns that store JSON text (e.g. references and meta).
  */
 export function safeJsonParse(str: string | null | undefined, fallback: unknown = null): unknown {
   if (!str) return fallback;

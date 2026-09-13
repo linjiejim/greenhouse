@@ -1,7 +1,9 @@
 /**
- * Shared types — re-export everything from one place.
+ * Shared types — re-export the commonly consumed surface from one place.
  *
- * Usage: import type { Session, Message, StreamingEvent } from '../types';
+ * Consumers that only need types import from here; runtime helpers and the
+ * zod schemas stay on their dedicated subpaths (`@greenhouse/types/<module>`)
+ * so a browser bundle never pulls in more than it uses.
  */
 
 // DB row types & input contracts
@@ -9,39 +11,25 @@ export type { SessionRow, SessionChannel, MessageRow, MessageInput, PipelineStep
 
 // API response types & shared client types
 export type {
-  // Auth
   UserRole,
   AuthenticatedUser,
-  // Profile
   Profile,
-  ProfileCapability,
   ProfileUsage,
   ProfileDetail,
   UsageSummary,
-  // Session (API shape)
   Session,
   Message,
   SessionUsage,
-  // Upload
   UploadResult,
-  // Knowledge base
   KnowledgeDoc,
   KnowledgeDocVersion,
-  KnowledgeSearchResult,
-  KnowledgeGenerateResult,
-  ChangeProposal,
-  ApplyResult,
-  // Feature Request
+  KnowledgeSearchHit,
   FeatureRequest,
-  // User & Usage
   UserUsageSummary,
   ShareableUser,
-  // Prompt
   UserPrompt,
-  // Share
   ShareItem,
   ShareInfo,
-  // Streaming
   StreamingEvent,
   StreamEventCallbacks,
   TextDeltaEvent,
@@ -51,25 +39,11 @@ export type {
   ErrorEvent,
 } from './api.js';
 
-export {
-  // Functions (not just types)
-  estimateCost,
-  formatTokens,
-  formatDuration,
-  handleStreamEvent,
-  readNdjsonStream,
-} from './api.js';
+export { formatTokens, formatDuration, handleStreamEvent, readNdjsonStream } from './api.js';
 
 // Feature flags (per-user experimental feature registry)
 export type { FeatureFlag, FeatureKey } from './features.js';
-export {
-  FEATURE_FLAGS,
-  FEATURE_FLAG_KEYS,
-  getFeatureFlag,
-  featureDefault,
-  registerFeatureFlags,
-  getAllFeatureFlags,
-} from './features.js';
+export { FEATURE_FLAGS, getFeatureFlag, featureDefault } from './features.js';
 
 // WebSocket message protocol
 export type { ServerWsEvent, ClientWsEvent, OnlineUser } from './ws.js';
@@ -110,14 +84,8 @@ export {
 export type {
   Capability,
   AvatarConfig,
-  ModelOptions,
-  ModelChoice,
-  AccessConfig,
-  ModelConfigInput,
   ProfileManifest,
   ProfileData,
-  SystemProfile,
-  CustomBaseProfileId,
   SproutyColorId,
   SproutyAccessoryId,
   SproutyLeafStyleId,

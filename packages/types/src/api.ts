@@ -14,41 +14,68 @@
 
 // ─── Profile Types ───────────────────────────────────────
 
-export interface ProfileCapability {
-  icon: string;
-  label: string;
-  prompt: string;
+/**
+ * A piece of display text available in more than one language.
+ *
+ * System profiles (YAML) can declare per-locale copy; custom profiles (user-authored,
+ * stored in DB) never do. Clients therefore always keep the flat field as the fallback:
+ * `current locale → source locale ('zh') → flat field`.
+ */
+export type LocalizedText = Partial<Record<'en' | 'zh', string>>;
+
+export interface ProfileAvatar {
+  color?: string;
+  accessories?: string[];
+  leafStyle?: 'normal' | 'big' | 'mini' | 'double';
+  eyeStyle?: 'classic' | 'dot' | 'soft' | 'focused';
+  faceStyle?: string;
 }
 
 export interface Profile {
   id: string;
   name: string;
   description?: string | null;
-  // Custom profiles derive model from their base profile — absent if the base is gone.
+  /** Per-locale copy for `name` — system profiles only. */
+  name_i18n?: LocalizedText;
+  /** Per-locale copy for `description` — system profiles only. */
+  description_i18n?: LocalizedText;
+  // Resolved provider/model, for display only.
   model?: { provider: string; model: string };
-  // Registry models the user may switch between for this profile (empty = pinned).
-  model_choices?: Array<{ id: string; label: string; description?: string }>;
+  /** Registry model id this agent is pinned to (v3: one agent = one model). */
+  model_id?: string;
   tools: string[];
   max_steps?: number;
   tool_choice?: string;
   system_prompt?: string;
-  capabilities?: ProfileCapability[];
-  // Safe declarative config (custom profiles)
-  model_options?: { thinking?: boolean; temperature?: number; max_tokens?: number };
-  model_choice_ids?: string[];
-  default_language?: string | null;
-  greeting?: string | null;
-  suggested_followups?: string[];
   usage?: ProfileUsage | null;
   // Custom profile fields
   is_custom?: boolean;
   is_shared?: boolean;
   base_profile_id?: string;
   user_id?: string;
+  /** Present when the custom Agent belongs to another internal user. */
+  owner_nickname?: string;
   slug?: string;
   forked_from?: string | null;
+  avatar?: ProfileAvatar;
   created_at?: string;
   updated_at?: string;
+  /** Stable asset lifecycle and immutable executable version metadata. */
+  lifecycle_status?: 'draft' | 'review' | 'pilot' | 'verified' | 'rejected' | 'suspended' | 'deprecated' | 'archived';
+  lifecycle_note?: string | null;
+  current_version?: number;
+  published_version?: number | null;
+  manifest_hash?: string;
+  change_log?: string;
+  purpose?: string | null;
+  audience?: string | null;
+  risk_level?: 'low' | 'medium' | 'high';
+  budget_policy?: Record<string, unknown>;
+  eval_refs?: unknown[];
+  owner_backup_user_id?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  next_review_at?: string | null;
 }
 
 export interface ProfileUsage {
@@ -114,6 +141,18 @@ export interface UsageSummary {
 // ─── Session Types (API response shape) ──────────────────
 
 /**
+ * Which slice of the conversation list a caller wants.
+ *
+ * - `mine`   — sessions the caller owns (every role, super included)
+ * - `shared` — sessions someone else shared with the caller
+ * - `team`   — everyone else's sessions; super only, 403 otherwise
+ *
+ * Omitting the scope keeps the legacy combined list (super sees everything).
+ */
+export const SESSION_SCOPES = ['mine', 'shared', 'team'] as const;
+export type SessionScope = (typeof SESSION_SCOPES)[number];
+
+/**
  * Session as returned by the API — a subset of SessionRow,
  * excluding internal fields (user_id, app_id, channel).
  */
@@ -126,6 +165,8 @@ export interface Session {
   feedback: string | null;
   profile_id: string;
   channel?: string;
+  /** Set when the session was spawned by another one (spawn_session, workflow nodes). */
+  parent_session_id?: string | null;
   metadata: string;
   created_at: string;
   updated_at: string;
@@ -133,6 +174,8 @@ export interface Session {
   is_owner?: boolean;
   /** Whether this session was shared with the authenticated user by someone else (list endpoint). */
   shared?: boolean;
+  /** Display name of the owner — present on list rows the caller does not own. */
+  owner_nickname?: string;
   /** Share count — how many people/team can see this session. -1 = team-wide. */
   share_count?: number;
   /** The current user's custom folder for this session (per-user; null = unfiled). */
@@ -173,6 +216,8 @@ export interface Message {
   references_: string;
   pipeline: string;
   reasoning: string | null;
+  /** Registry model id that produced this assistant turn; null for user turns. */
+  model: string | null;
   images: string;
   confidence: number | null;
   grounded: number | null;
@@ -197,6 +242,41 @@ export interface SessionUsage {
   messageCount: number;
 }
 
+// ─── Message Eval Types ──────────────────────────────────
+
+export interface MessageEvalResult {
+  exists: boolean;
+  eval?: {
+    id: number;
+    message_id: string;
+    session_id: string;
+    /** v2 verdict — 'pass' | 'fail' | 'pending'. Null on legacy rows. */
+    verdict?: string | null;
+    score_accuracy: number | null;
+    score_faithfulness: number | null;
+    score_completeness: number | null;
+    score_hallucination: number | null;
+    score_final: number | null;
+    /** JSON array string; nullable in DB (column default '[]' without NOT NULL). */
+    discrepancies: string | null;
+    duration_ms: number | null;
+    created_at: string;
+  };
+  agent_session_id?: string | null;
+}
+
+/** One evaluated message's latest-run summary — from GET /sessions/:id/evals. */
+export interface SessionEvalSummary {
+  message_id: string;
+  /** 'pass' | 'fail' | 'pending'; null on legacy rows. */
+  verdict: string | null;
+  /** Weighted 0–10; null when verdict is 'pending'. */
+  score_final: number | null;
+  /** The Agent session that ran the eval — used to restore it on click. */
+  eval_session_id: string | null;
+  created_at: string;
+}
+
 // ─── Upload Types ────────────────────────────────────────
 
 export interface UploadResult {
@@ -206,7 +286,56 @@ export interface UploadResult {
   size: number;
 }
 
+// ─── Wiki Types ──────────────────────────────────────────
+
+export interface WikiPage {
+  slug: string;
+  category: string;
+  title: string;
+  content?: string;
+  summary: string;
+  questions: string;
+  topics: string;
+  tags: string;
+  meta: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WikiCategory {
+  name: string;
+  count: number;
+}
+
+/** Matches the server's SourceSearchResult (GET /api/wiki/search → results[]). */
+export interface WikiSearchResult {
+  source_id: string;
+  category: string;
+  title: string;
+  _slug: string | null;
+  _summary: string | null;
+  snippet: string;
+  relevance: number;
+}
+
 // ─── Team Knowledge Base Types ───────────────────────────
+
+/**
+ * A unified knowledge search hit (GET /api/knowledge/search). `slug` is the
+ * doc_id — feed it to the stable `#/knowledge/doc/<id>-<slug>` deeplink. `scope`
+ * + `access` say which channel matched and the caller's effective role.
+ */
+export interface KnowledgeSearchHit {
+  id: number;
+  slug: string;
+  title: string;
+  summary: string;
+  snippet: string;
+  tags: string;
+  relevance: number;
+  scope: 'team' | 'personal' | 'shared';
+  access: 'owner' | 'editor' | 'reader';
+}
 
 export interface KnowledgeDoc {
   id: number;
@@ -219,6 +348,12 @@ export interface KnowledgeDoc {
   topics: string;
   tags: string;
   space: string;
+  /** kb drive folder this doc lives in (null = root). */
+  folder_id: number | null;
+  /** Manual order among siblings in the sidebar tree; 0 = never dragged (alphabetical). */
+  sort_order: number;
+  /** Whether this doc is a reusable template ("new from template"). */
+  is_template: boolean;
   visibility: 'team' | 'private';
   status: 'draft' | 'published' | 'archived';
   owner_user_id: string | null;
@@ -228,6 +363,42 @@ export interface KnowledgeDoc {
   updated_at: string | null;
   /** The current viewer's effective role on this doc (when the API resolved it). */
   access?: 'owner' | 'editor' | 'reader' | null;
+}
+
+/** A doc that links TO the current doc (backlink), access-filtered. */
+export interface KnowledgeBacklink {
+  id: number;
+  slug: string;
+  title: string;
+}
+
+/** A document-level comment. */
+export interface KnowledgeComment {
+  id: number;
+  author_user_id: string;
+  author_nickname: string;
+  content: string;
+  created_at: string | null;
+  can_delete: boolean;
+}
+
+/** A current editor of a doc (editing presence). */
+export interface KnowledgeEditor {
+  userId: string;
+  nickname: string;
+}
+
+/** LWW conflict info returned by a save when the row moved on. */
+export interface KnowledgeConflict {
+  conflicted: true;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+export interface KnowledgeTemplateSummary {
+  id: number;
+  slug: string;
+  title: string;
 }
 
 export interface KnowledgeShare {
@@ -268,40 +439,6 @@ export interface KnowledgeDocVersion {
   created_at: string | null;
 }
 
-export interface KnowledgeSearchResult {
-  id: number;
-  slug: string;
-  title: string;
-  summary: string;
-  snippet: string;
-  tags: string;
-  relevance: number;
-}
-
-export interface KnowledgeGenerateResult {
-  title: string;
-  slug: string;
-  content_markdown: string;
-  summary: string;
-  questions: string[];
-  topics: string[];
-  tags: string[];
-}
-
-export interface ChangeProposal {
-  slug: string;
-  title: string;
-  reason: string;
-  changes: Array<{
-    field: string;
-    description: string;
-    before: string;
-    before_full?: string;
-    after: string;
-  }>;
-  affected_pages?: string[];
-}
-
 export interface ApplyResult {
   success: boolean;
   slug: string;
@@ -309,6 +446,113 @@ export interface ApplyResult {
   changed_by: string;
   reason: string;
   fields_updated: string[];
+}
+
+// ─── Source Types ─────────────────────────────────────────
+
+export interface SourceItem {
+  id: number;
+  source_id: string;
+  category: string;
+  title: string;
+  tags: string | null;
+  meta: string | null;
+  file_path: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface SourceCategory {
+  name: string;
+  count: number;
+}
+
+// ─── Sync Types ──────────────────────────────────────────
+
+export interface SyncScanChange {
+  source_id: string;
+  category: string;
+  title: string;
+  change_type: 'new' | 'updated' | 'deleted';
+  remote_updated_at?: string | null;
+  local_updated_at?: string | null;
+  remote_created_at?: string | null;
+}
+
+export interface SyncScanSummary {
+  total: number;
+  new: number;
+  updated: number;
+  deleted: number;
+}
+
+export interface SyncScanResult {
+  summary: Record<string, SyncScanSummary>;
+  changes: SyncScanChange[];
+  scanned_at: string;
+  duration_ms: number;
+}
+
+export interface SyncFieldDiff {
+  field: string;
+  before: string;
+  after: string;
+}
+
+export interface SyncPreviewChange {
+  index: number;
+  source_id: string;
+  category: string;
+  action: 'added' | 'updated' | 'deleted';
+  title: string;
+  diff_summary: string;
+  field_diffs?: SyncFieldDiff[];
+  new_content?: string;
+  old_content?: string;
+  before_hash?: string;
+  after_hash?: string;
+  /**
+   * Scan flagged it as updated (newer timestamp) but synced content is identical
+   * — applying only refreshes the local updated_at so it stops reappearing.
+   */
+  timestamp_only?: boolean;
+}
+
+export interface SyncCategorySummary {
+  added: number;
+  updated: number;
+  deleted: number;
+  unchanged: number;
+}
+
+export interface SyncPreviewResult {
+  previewId: string;
+  summary: Record<string, SyncCategorySummary>;
+  changes: SyncPreviewChange[];
+  errors: string[];
+}
+
+export interface SyncRun {
+  id: number;
+  status: string;
+  categories: string[];
+  trigger: string;
+  started_at: string;
+  finished_at: string | null;
+  summary: Record<string, SyncCategorySummary>;
+}
+
+export interface SyncChange {
+  id: number;
+  run_id: number;
+  source_id: string;
+  category: string;
+  action: string;
+  title: string | null;
+  diff_summary: string | null;
+  before_hash: string | null;
+  after_hash: string | null;
+  created_at: string;
 }
 
 // ─── Feature Request Types ───────────────────────────────
@@ -350,6 +594,14 @@ export interface ShareableUser {
 
 // ─── User Prompt Types ───────────────────────────────────
 
+/**
+ * A Task — the user-facing name for a saved, reusable prompt.
+ *
+ * The wire shape keeps the historical field names (and the `/api/prompts`
+ * path): a task with no variables and no tools is byte-for-byte the prompt
+ * this always was, so renaming the transport would only have forced every
+ * client to change for nothing.
+ */
 export interface UserPrompt {
   id: number;
   user_id: string;
@@ -358,9 +610,21 @@ export interface UserPrompt {
   shortcut: string | null;
   sort_order: number;
   is_global: boolean;
+  description: string | null;
+  /** JSON-encoded `TaskVariable[]` — parse with `parseTaskVariables`. */
+  variables: string;
+  /** JSON-encoded `string[]` of tool ids the captured flow used. Display only. */
+  expected_tools: string;
+  source_session_id: string | null;
+  created_via: 'manual' | 'capture';
   created_at: string;
   updated_at: string;
+  /** Present on scoped lists when the Task belongs to another user. */
+  owner_nickname?: string;
 }
+
+export const PROMPT_SCOPES = ['mine', 'shared', 'team'] as const;
+export type PromptScope = (typeof PROMPT_SCOPES)[number];
 
 // ─── Share Types ─────────────────────────────────────────
 
@@ -370,15 +634,14 @@ export interface ShareItem {
   shared_with: string;
   shared_by: string;
   message: string | null;
-  read_at: string | null;
+  /** Per-user timestamp on inbox responses; omitted from share-management responses. */
+  read_at?: string | null;
   created_at: string;
   /** Present on GET /api/shares (inbox); NOT returned by GET /api/sessions/:id/shares. */
   session_title?: string;
   shared_by_nickname: string;
   /** Present on GET /api/sessions/:id/shares only. */
   shared_with_nickname?: string;
-  /** Per-user read timestamp (replaces read_at for correctness). */
-  user_read_at?: string | null;
 }
 
 /** Share context returned in session detail for non-owner viewers. */
@@ -409,9 +672,7 @@ export interface AuthenticatedUser {
   id: string;
   email?: string;
   nickname: string;
-  role: UserRole;
-  profiles: string[];
-  daily_message_limit?: number;
+  role: Exclude<UserRole, 'external'>;
   monthly_token_limit?: number;
   notes?: string | null;
   locale?: string;
@@ -424,20 +685,38 @@ export interface AuthenticatedUser {
 /**
  * A frontend action the client advertises to the agent for the current turn.
  *
- * The client (web/mobile) declares which UI actions are available on the current
+ * The browser Web client declares which UI actions are available on the current
  * screen — navigate, prefill a form, read the current view, etc. The backend turns
- * each into an agent tool whose execution round-trips back to the client (reusing the
- * same `local-tool-request` → POST `/api/desktop/tool-result` bridge as desktop local
- * tools). Only the serializable descriptor crosses the wire; the live `execute` handler
- * stays in the client.
+ * each into an agent tool whose execution round-trips back to that browser through
+ * the legacy `local-tool-request` event and POST `/api/client-actions/tool-result`.
+ * Only the serializable descriptor crosses the wire; the live `execute` handler stays
+ * in the client.
  */
 export interface ClientActionDescriptor {
-  /** Tool name the agent calls, e.g. 'navigate'. Must be unique per turn. */
+  /** Tool name the agent calls, e.g. 'crm_navigate'. Must be unique per turn. */
   name: string;
   /** When the agent should use it + what it does. Becomes the tool description. */
   description: string;
   /** JSON Schema (object) describing the action's parameters. */
   parameters: Record<string, unknown>;
+}
+
+/** Serializable page-scoped Client Actions captured for one chat turn. */
+export interface ClientActionSnapshot {
+  scopeId: string;
+  actions: ClientActionDescriptor[];
+}
+
+/** Optional browser environment attached to a single chat turn. */
+export interface ChatTurnEnvironment {
+  ambientContext?: import('./agent-context.js').AmbientContextEnvelope;
+  clientActions?: ClientActionSnapshot;
+  /**
+   * Model for THIS turn. Omitted by every headless caller, which keeps the
+   * agent's own `model.id` — the picker beside the composer is the only thing
+   * that sets it (spec: 20260731-attachment-and-preset-convergence M3).
+   */
+  model?: string;
 }
 
 // ─── Streaming Types ─────────────────────────────────────
@@ -527,12 +806,26 @@ export interface SourceEvent {
   [key: string]: unknown;
 }
 
-/** Desktop-only: request frontend to execute a local tool via the desktop bridge. */
+/** Request the browser to execute a declared client action (legacy wire event name). */
 export interface LocalToolRequestEvent {
   type: 'local-tool-request';
   toolCallId: string;
   toolId: string;
   params: Record<string, unknown>;
+  /** Page scope that advertised the action; omitted for legacy callers. */
+  scopeId?: string;
+}
+
+/**
+ * Keepalive filler. Carries no information — consumers ignore it.
+ *
+ * A step that runs long without producing output (image generation takes ~30–100s)
+ * otherwise leaves the connection silent, and any reverse proxy in the path will
+ * eventually treat that silence as a dead upstream and close it mid-answer
+ * (nginx's `proxy_read_timeout` defaults to 60s). Bytes on the wire reset that timer.
+ */
+export interface PingEvent {
+  type: 'ping';
 }
 
 /** Discriminated union of all stream event types. */
@@ -551,7 +844,44 @@ export type StreamingEvent =
   | StepFinishEvent
   | TitleEvent
   | SourceEvent
-  | LocalToolRequestEvent;
+  | LocalToolRequestEvent
+  | PingEvent;
+
+// ─── Background Run Replay Envelope ──────────────────────
+
+/**
+ * Fields the chat run registry adds to every buffered event so a reconnecting
+ * client can resume exactly where it left off.
+ *
+ * `seq` is the monotonic cursor a client echoes back as `?after=`; `replayed`
+ * marks events served from the buffer rather than live, which lets consumers
+ * skip the side-effectful ones (re-running a client action after a refresh
+ * would fire it against a page instance that no longer advertised it).
+ *
+ * Declared here — not on either side — because the api stamps these fields and
+ * the browser reads them; two local definitions would drift silently.
+ */
+export interface RunReplayEnvelope {
+  seq?: number;
+  replayed?: boolean;
+}
+
+/** A stream event as delivered over a reconnectable run stream. */
+export type ReplayableStreamEvent = StreamingEvent & RunReplayEnvelope;
+
+/**
+ * Lifecycle of one background chat generation. Shared so the registry, the
+ * `chat:run` WebSocket event and the browser all name the same three states.
+ */
+export type ChatRunStatus = 'running' | 'completed' | 'error';
+
+/** Shape of `GET /api/chat/runs/:sessionId`'s `run` field. */
+export interface ChatRunInfo {
+  run_id: string;
+  status: ChatRunStatus;
+  started_at: number;
+  next_seq: number;
+}
 
 // ─── Stream Event Callbacks ──────────────────────────────
 
@@ -570,33 +900,7 @@ export interface StreamEventCallbacks {
   onStepFinish?: (finishReason?: string, usage?: FinishEvent['usage']) => void;
   onTitle?: (title: string) => void;
   onSource?: (data: Record<string, unknown>) => void;
-  onLocalToolRequest?: (toolCallId: string, toolId: string, params: Record<string, unknown>) => void;
-}
-
-// ─── Cost Estimation ─────────────────────────────────────
-
-// Prices in USD per 1M tokens (illustrative default — adjust for your model)
-const PRICING = {
-  inputCacheHit: 0.0028,
-  inputCacheMiss: 0.14,
-  output: 0.28,
-};
-
-const USD_TO_CNY = 7.2;
-
-export function estimateCost(usage: {
-  inputTokens?: number | null;
-  outputTokens?: number | null;
-  cachedTokens?: number | null;
-}): { usd: number; cny: number } {
-  const cached = usage.cachedTokens || 0;
-  const totalInput = usage.inputTokens || 0;
-  const uncached = Math.max(0, totalInput - cached);
-  const output = usage.outputTokens || 0;
-
-  const usd =
-    (cached * PRICING.inputCacheHit + uncached * PRICING.inputCacheMiss + output * PRICING.output) / 1_000_000;
-  return { usd, cny: usd * USD_TO_CNY };
+  onLocalToolRequest?: (toolCallId: string, toolId: string, params: Record<string, unknown>, scopeId?: string) => void;
 }
 
 // ─── Formatting Utilities ────────────────────────────────
@@ -616,7 +920,7 @@ export function formatDuration(ms: number): string {
 
 /**
  * Dispatch a single streaming event to the appropriate callback.
- * Platform-agnostic — works in both Web and React Native.
+ * UI-framework-agnostic dispatcher used by the browser Web client.
  */
 export function handleStreamEvent(event: StreamingEvent, cbs: StreamEventCallbacks): void {
   switch (event.type) {
@@ -663,7 +967,10 @@ export function handleStreamEvent(event: StreamingEvent, cbs: StreamEventCallbac
       cbs.onSource?.(event as Record<string, unknown>);
       break;
     case 'local-tool-request':
-      cbs.onLocalToolRequest?.(event.toolCallId, event.toolId, event.params);
+      cbs.onLocalToolRequest?.(event.toolCallId, event.toolId, event.params, event.scopeId);
+      break;
+    case 'ping':
+      // Keepalive filler — its only job was to put bytes on the wire.
       break;
   }
 }
@@ -672,6 +979,10 @@ export function handleStreamEvent(event: StreamingEvent, cbs: StreamEventCallbac
 
 export interface ScheduledTask {
   id: number;
+  /** Owner id is required for Mine / Team administration views. */
+  user_id: string;
+  /** Present when a super views another user's Automation. */
+  owner_nickname?: string;
   name: string;
   profile_id: string;
   task_prompt: string;
@@ -679,6 +990,20 @@ export interface ScheduledTask {
   timezone: string;
   enabled: boolean;
   max_steps: number;
+  /** Optional WeCom group-bot webhook the scheduler posts run summaries to. */
+  notify_webhook: string | null;
+  /** Email the run summary to the owner's own account address. */
+  notify_email: boolean;
+  /** Deliver the run summary as a WeCom app message to the owner (recipient derived from their binding). */
+  notify_wecom: boolean;
+  /** Deliver the run summary as a Feishu card DM to the owner (recipient derived from their binding). */
+  notify_feishu: boolean;
+  /**
+   * JSON string array of tools the owner granted to this automation's
+   * unattended runs, beyond the read-only baseline. Catalog and parsing live in
+   * `@greenhouse/types/automation-tools`; the value is a filter, never a grant.
+   */
+  unattended_tools: string;
   last_run_at: string | null;
   last_status: string | null;
   next_run_at: string | null;
@@ -695,14 +1020,32 @@ export interface ScheduledTaskInput {
   timezone?: string;
   max_steps?: number;
   enabled?: boolean;
+  notify_webhook?: string | null;
+  notify_email?: boolean;
+  notify_wecom?: boolean;
+  notify_feishu?: boolean;
 }
 
-export interface TaskRunSummary {
+/**
+ * One past execution of an Automation. The spine is the `channel='task'`
+ * session (every run, including pre-Runtime history, has one); the `run`
+ * projection is attached where a durable Runtime run exists and carries
+ * status, error and timing. `run: null` therefore means "legacy run from
+ * before the Runtime era", not "no execution happened".
+ */
+export interface AutomationRunEntry {
   session_id: string;
   title: string | null;
-  status: string;
   created_at: string;
-  message_count?: number;
+  run: {
+    id: string;
+    status: string;
+    trigger: 'scheduled' | 'manual';
+    error_code: string | null;
+    error_message: string | null;
+    started_at: string | null;
+    ended_at: string | null;
+  } | null;
 }
 
 // ─── NDJSON Stream Reader ────────────────────────────────
@@ -737,5 +1080,34 @@ export async function* readNdjsonStream<T>(reader: ReadableStreamDefaultReader<U
     } catch (_err) {
       /* skip */
     }
+  }
+}
+
+/**
+ * Chat-specific completion guard layered on top of the generic NDJSON parser.
+ *
+ * A transport can reach EOF after yielding valid partial JSON lines. That is
+ * not a successful chat turn unless the server explicitly emitted `finish`.
+ * Keeping this separate preserves readNdjsonStream for non-chat NDJSON users.
+ */
+export async function* requireChatStreamFinish(events: AsyncIterable<StreamingEvent>): AsyncGenerator<StreamingEvent> {
+  let sawFinish = false;
+  let streamError: string | undefined;
+
+  for await (const event of events) {
+    yield event;
+    if (event.type === 'error') {
+      streamError = event.error || 'Chat stream failed before completion';
+    }
+    if (event.type === 'finish') {
+      sawFinish = true;
+    }
+  }
+
+  if (streamError) {
+    throw new Error(streamError);
+  }
+  if (!sawFinish) {
+    throw new Error('Chat stream ended before completion. Please retry.');
   }
 }

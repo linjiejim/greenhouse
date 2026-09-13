@@ -15,10 +15,10 @@
  * ⚠️ Import ONLY types from @greenhouse/api here (`export type`/`import type`).
  * A value import would execute the server entry point (it calls main()).
  *
- * Streaming endpoints (chat NDJSON) return raw streams — clients keep their
- * hand-rolled readers for those; hc still types the paths and request shapes.
+ * Streaming endpoints (chat NDJSON and sync apply) return raw streams —
+ * clients keep their hand-rolled readers for those; hc still types the
+ * paths and request shapes.
  */
 
 export type { AppType } from '@greenhouse/api';
 export { hc } from 'hono/client';
-export type { InferRequestType, InferResponseType } from 'hono/client';

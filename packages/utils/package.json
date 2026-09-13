@@ -4,10 +4,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": {
-      "import": "./src/index.ts",
-      "types": "./src/index.ts"
-    },
     "./date": {
       "import": "./src/date.ts",
       "types": "./src/date.ts"
@@ -36,21 +32,25 @@
       "import": "./src/prompts.ts",
       "types": "./src/prompts.ts"
     },
-    "./brand": {
-      "import": "./src/brand.ts",
-      "types": "./src/brand.ts"
-    },
-    "./version": {
-      "import": "./src/version.ts",
-      "types": "./src/version.ts"
-    },
-    "./id": {
-      "import": "./src/id.ts",
-      "types": "./src/id.ts"
-    },
     "./semver": {
       "import": "./src/semver.ts",
       "types": "./src/semver.ts"
+    },
+    "./wecom": {
+      "import": "./src/wecom.ts",
+      "types": "./src/wecom.ts"
+    },
+    "./feishu": {
+      "import": "./src/feishu.ts",
+      "types": "./src/feishu.ts"
+    },
+    "./html": {
+      "import": "./src/html.ts",
+      "types": "./src/html.ts"
+    },
+    "./brand": {
+      "import": "./src/brand.ts",
+      "types": "./src/brand.ts"
     }
   },
   "scripts": {

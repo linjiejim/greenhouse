@@ -4,8 +4,11 @@
  * SINGLE SOURCE OF TRUTH for which gated / experimental features exist.
  * Consumed by:
  *   • apps/api — `requireFeature()` middleware + `/api/auth/me` resolution
- *                (apps/api/src/auth/features.ts)
- *   • apps/web — admin toggle UI (settings/users.tsx) + nav / route gating
+ *                (apps/api/src/auth/features.ts); flags additionally gate the
+ *                chat/proxy tools that ride them via resolveUserTools + the
+ *                feature-point registry (apps/api/src/platform/feature-points.ts)
+ *   • apps/web — per-user admin toggle in the unified permission modal
+ *                (settings/user-permissions-modal.tsx) + nav / route gating
  *                (apps/web/src/lib/features.ts)
  *
  * ─── How gating resolves ─────────────────────────────────
@@ -17,7 +20,7 @@
  *     no row                → flag.defaultEnabled  (default false)
  *
  * So `defaultEnabled: false` is an OPT-IN allowlist: hidden for everyone
- * until a super grants it per user in Settings → Users → Features.
+ * until a super grants it per user in Settings → Users → (user) → Permissions.
  * `defaultEnabled: true` is opt-OUT: on for all internal users unless a
  * super explicitly disables it for someone.
  *
@@ -49,43 +52,34 @@ export const FEATURE_FLAGS = [
     key: 'memory',
     label: 'AI Memory',
     description: 'Agent learns and remembers user preferences across sessions',
+    // On for everyone unless explicitly disabled — memory is only useful if it
+    // accumulates, and an opt-in allowlist kept it empty for its entire v1 life.
+    defaultEnabled: true,
   },
   {
-    key: 'sync',
-    label: 'Knowledge Sync',
-    description: 'Sync the knowledge base / wiki from external sources (sync panel, run history)',
+    key: 'tables',
+    label: 'Tables',
+    description: 'Internal multidimensional tables, shared grid views, dashboards, REST, and MCP access',
+    // Baseline capability (2026-08-14): on for every internal user; super can
+    // still disable it per user in the permissions modal.
+    defaultEnabled: true,
+  },
+  {
+    key: 'cloud-agent',
+    label: 'Missions',
+    description: 'Long-running missions in disposable sandboxes with a persistent workspace',
+    // Baseline capability (2026-08-14) — same posture as `tables`. Runtime
+    // admission (MISSION_ENABLED + sandbox prechecks) still gates execution.
+    defaultEnabled: true,
   },
 ] as const satisfies readonly FeatureFlag[];
 
-/** Union of CORE feature keys, e.g. 'memory' | 'sync'. Fork-registered keys are
- *  plain strings resolved at runtime (see getAllFeatureFlags), not in this union. */
+/** Union of known feature keys, e.g. 'memory' | 'tables'. */
 export type FeatureKey = (typeof FEATURE_FLAGS)[number]['key'];
 
-/** All CORE registry keys as a plain string array. */
-export const FEATURE_FLAG_KEYS: readonly string[] = FEATURE_FLAGS.map((f) => f.key);
-
-// ─── Fork extension point ────────────────────────────────
-// @greenhouse/types is a versioned package a fork consumes over npm and cannot
-// edit, so a fork registers its private gated features (e.g. 'crm') at startup
-// via registerFeatureFlags(). Empty upstream. Consumers that must include fork
-// flags (per-user resolution, the admin toggle list) read getAllFeatureFlags();
-// getFeatureFlag/featureDefault below already do.
-
-const extensionFeatureFlags: FeatureFlag[] = [];
-
-/** Register private feature flags contributed by a downstream fork (call at startup). */
-export function registerFeatureFlags(flags: FeatureFlag[]): void {
-  extensionFeatureFlags.push(...flags);
-}
-
-/** Core flags plus any fork-registered flags. Empty-extension upstream ⇒ just core. */
-export function getAllFeatureFlags(): readonly FeatureFlag[] {
-  return extensionFeatureFlags.length ? [...FEATURE_FLAGS, ...extensionFeatureFlags] : FEATURE_FLAGS;
-}
-
-/** Look up a flag's metadata by key (core + fork-registered). */
+/** Look up a flag's metadata by key. */
 export function getFeatureFlag(key: string): FeatureFlag | undefined {
-  return getAllFeatureFlags().find((f) => f.key === key);
+  return FEATURE_FLAGS.find((f) => f.key === key);
 }
 
 /** Effective state for a user that has no explicit `user_features` row. */
