@@ -22,9 +22,9 @@ test.describe('user management', () => {
       await expect(page.getByText(email)).toBeVisible();
 
       // Delete lives in the edit dialog → open the row (row action testids are shared
-      // across rows, so scope to the row that shows this user's runId-tagged email),
-      // then delete → confirm.
-      const row = page.getByRole('row', { has: page.getByText(email) });
+      // across rows, so scope to the row that shows this user's runId-tagged email —
+      // `getByRole` has no `has` option, so filter explicitly), then delete → confirm.
+      const row = page.getByRole('row').filter({ hasText: email });
       await row.getByTestId('users-edit').click();
       await page.getByTestId('users-delete').click();
       await expect(page.getByTestId('confirm-dialog')).toBeVisible();
