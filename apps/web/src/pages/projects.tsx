@@ -5,7 +5,9 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Button, Input, Select, Spinner, Dialog, Textarea, SearchInput } from '../components/ui';
+import { Button, EmptyState, Select, Spinner, Dialog, SearchInput } from '../components/ui';
+import { ModulePage } from '../components/app/module-page';
+import { FormActions, FormError } from '../components/form';
 import { authFetch } from '../lib/auth';
 import {
   FolderKanban,
@@ -22,11 +24,15 @@ import {
 } from '../lib/icons';
 import {
   GlobalGanttView,
+  ProjectForm,
+  EMPTY_PROJECT_FORM,
+  type ProjectFormValue,
   type GlobalGanttZoom,
   type GlobalGanttFilter,
   statusConfig as taskStatusConfig,
 } from '../components/project';
-import { useT } from '../lib/i18n';
+import { useT, type TranslationKey } from '../lib/i18n';
+import { invalidateProjects, useProjectRefreshStore } from '../stores';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -58,25 +64,26 @@ interface Project {
 
 // ─── Status/Priority Badges ─────────────────────────────
 
-const statusConfig: Record<string, { label: string; color: string }> = {
-  planning: { label: 'Planning', color: 'bg-surface-muted text-fg-secondary border-edge' },
-  active: { label: 'Active', color: 'bg-info-subtle text-info border-info' },
-  on_hold: { label: 'On Hold', color: 'bg-warning-subtle text-warning-fg border-warning' },
-  completed: { label: 'Completed', color: 'bg-success-subtle text-success-fg border-success' },
-  archived: { label: 'Archived', color: 'bg-surface-sunken text-fg-faint border-edge' },
+const statusConfig: Record<string, { label: TranslationKey; color: string }> = {
+  planning: { label: 'projects.planning', color: 'bg-surface-muted text-fg-secondary border-edge' },
+  active: { label: 'common.active', color: 'bg-info-subtle text-info border-info' },
+  on_hold: { label: 'projects.onHold', color: 'bg-warning-subtle text-warning-fg border-warning' },
+  completed: { label: 'common.completed', color: 'bg-success-subtle text-success-fg border-success' },
+  archived: { label: 'common.archived', color: 'bg-surface-sunken text-fg-faint border-edge' },
 };
 
-const priorityConfig: Record<string, { label: string; color: string }> = {
-  low: { label: 'Low', color: 'text-fg-faint' },
-  normal: { label: 'Normal', color: 'text-info' },
-  high: { label: 'High', color: 'text-warning' },
-  urgent: { label: 'Urgent', color: 'text-danger' },
+const priorityConfig: Record<string, { label: TranslationKey; color: string }> = {
+  low: { label: 'common.low', color: 'text-fg-faint' },
+  normal: { label: 'common.normal', color: 'text-info' },
+  high: { label: 'common.high', color: 'text-warning' },
+  urgent: { label: 'common.urgent', color: 'text-danger' },
 };
 
 // ─── Progress Bar ────────────────────────────────────────
 
 function ProgressBar({ progress, stats }: { progress: number; stats: ProjectStats }) {
-  if (stats.total === 0) return <span className="text-xs text-fg-faint">No tasks</span>;
+  const t = useT();
+  if (stats.total === 0) return <span className="text-xs text-fg-faint">{t('projects.noTasks')}</span>;
 
   return (
     <div className="flex items-center gap-2 w-full">
@@ -94,6 +101,7 @@ function ProgressBar({ progress, stats }: { progress: number; stats: ProjectStat
 // ─── Project Card ────────────────────────────────────────
 
 function ProjectCard({ project, onClick }: { project: Project; onClick: () => void }) {
+  const t = useT();
   const sc = statusConfig[project.status] ?? statusConfig.planning;
   const pc = priorityConfig[project.priority] ?? priorityConfig.normal;
   const isOverdue =
@@ -117,12 +125,14 @@ function ProjectCard({ project, onClick }: { project: Project; onClick: () => vo
               {project.title}
             </h3>
             {project.visibility === 'private' && <Lock size={11} className="text-fg-faint flex-shrink-0" />}
-            {project.priority !== 'normal' && <span className={`text-[10px] font-medium ${pc.color}`}>{pc.label}</span>}
+            {project.priority !== 'normal' && (
+              <span className={`text-[10px] font-medium ${pc.color}`}>{t(pc.label)}</span>
+            )}
           </div>
           {project.description && <p className="text-xs text-fg-muted line-clamp-1">{project.description}</p>}
         </div>
         <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${sc.color}`}>
-          {sc.label}
+          {t(sc.label)}
         </span>
       </div>
 
@@ -143,7 +153,7 @@ function ProjectCard({ project, onClick }: { project: Project; onClick: () => vo
           {isOverdue && (
             <span className="flex items-center gap-0.5 text-danger">
               <AlertTriangle size={11} />
-              Overdue
+              {t('projects.overdue')}
             </span>
           )}
           {project.end_date && (
@@ -173,17 +183,7 @@ function CreateProjectDialog({
   users: Array<{ id: string; nickname: string }>;
 }) {
   const t = useT();
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    priority: 'normal',
-    status: 'planning',
-    owner_id: '',
-    start_date: '',
-    end_date: '',
-    color: '',
-    visibility: 'public' as 'public' | 'private',
-  });
+  const [form, setForm] = useState<ProjectFormValue>(EMPTY_PROJECT_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -211,17 +211,7 @@ function CreateProjectDialog({
         }),
       });
       if (res.ok) {
-        setForm({
-          title: '',
-          description: '',
-          priority: 'normal',
-          status: 'planning',
-          owner_id: '',
-          start_date: '',
-          end_date: '',
-          color: '',
-          visibility: 'public',
-        });
+        setForm(EMPTY_PROJECT_FORM);
         onCreated();
         onClose();
       } else {
@@ -235,105 +225,26 @@ function CreateProjectDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={t('projects.createProject')} size="lg" testId="project-create-dialog">
-      <div className="space-y-3">
-        <Input
-          data-testid="project-name-input"
-          placeholder={t('projects.projectNamePlaceholder')}
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-        />
-        <Textarea
-          placeholder={t('projects.projectDescPlaceholder')}
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-          rows={3}
-        />
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-fg-muted mb-1 block">{t('common.priority')}</label>
-            <Select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-              <option value="low">Low</option>
-              <option value="normal">Normal</option>
-              <option value="high">High</option>
-              <option value="urgent">Urgent</option>
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs text-fg-muted mb-1 block">{t('common.assignee')}</label>
-            <Select value={form.owner_id} onChange={(e) => setForm({ ...form, owner_id: e.target.value })}>
-              <option value="">{t('common.self')}</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.nickname}
-                </option>
-              ))}
-            </Select>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-fg-muted mb-1 block">{t('common.startDate')}</label>
-            <Input
-              type="date"
-              value={form.start_date}
-              onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="text-xs text-fg-muted mb-1 block">{t('common.endDate')}</label>
-            <Input type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
-          </div>
-        </div>
-        <div>
-          <label className="text-xs text-fg-muted mb-1 block">{t('projects.projectColor')}</label>
-          <div className="flex items-center gap-1.5">
-            {['#3b82f6', '#8b5cf6', '#06b6d4', '#f59e0b', '#ef4444', '#10b981', '#ec4899', '#6366f1'].map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setForm({ ...form, color: form.color === c ? '' : c })}
-                className={`w-6 h-6 rounded-full border-2 transition-all ${
-                  form.color === c ? 'border-fg scale-110' : 'border-transparent hover:border-edge-strong'
-                }`}
-                style={{ backgroundColor: c }}
-              />
-            ))}
-          </div>
-        </div>
-        <div>
-          <label className="text-xs text-fg-muted mb-1 block">{t('projects.visibility')}</label>
-          <div className="flex items-center gap-3">
-            {(['public', 'private'] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setForm({ ...form, visibility: v })}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition-colors ${
-                  form.visibility === v
-                    ? 'border-primary-300 bg-primary-subtle text-primary-fg-strong font-medium'
-                    : 'border-edge text-fg-muted hover:border-edge-strong'
-                }`}
-              >
-                {v === 'private' && <Lock size={11} />}
-                {v === 'public' ? t('projects.visibilityPublic') : t('projects.visibilityPrivate')}
-              </button>
-            ))}
-          </div>
-          <p className="text-[10px] text-fg-faint mt-1">
-            {form.visibility === 'private' ? t('projects.visibilityPrivateDesc') : t('projects.visibilityPublicDesc')}
-          </p>
-        </div>
-        {error && <p className="text-sm text-danger">{error}</p>}
-        <div className="flex gap-2 justify-end pt-2">
-          <Button variant="ghost" size="sm" onClick={onClose}>
+    <Dialog open={open} onClose={onClose} title={t('projects.createProject')} size="lg">
+      <form
+        data-testid="project-create-dialog"
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleSubmit();
+        }}
+      >
+        <ProjectForm value={form} onChange={setForm} users={users} showOwner />
+        <FormError>{error}</FormError>
+        <FormActions>
+          <Button variant="ghost" size="sm" type="button" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button size="sm" onClick={handleSubmit} disabled={saving} data-testid="project-create-submit">
+          <Button size="sm" type="submit" disabled={saving} data-testid="project-create-submit">
             {saving ? t('projects.creating') : t('common.create')}
           </Button>
-        </div>
-      </div>
+        </FormActions>
+      </form>
     </Dialog>
   );
 }
@@ -359,6 +270,7 @@ export function ProjectsPage() {
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [users, setUsers] = useState<Array<{ id: string; nickname: string }>>([]);
+  const projectsRevision = useProjectRefreshStore((state) => state.revision);
 
   // Gantt-specific state
   const [ganttZoom, setGanttZoom] = useState<GlobalGanttZoom>(() => {
@@ -422,158 +334,158 @@ export function ProjectsPage() {
 
   useEffect(() => {
     loadProjects();
-  }, [loadProjects]);
+  }, [loadProjects, projectsRevision]);
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
 
-  // The create button now lives in the sidebar "PROJECTS" header; it opens this page's dialog via an event.
-  useEffect(() => {
-    const handler = () => setShowCreate(true);
-    window.addEventListener('projects:create', handler);
-    return () => window.removeEventListener('projects:create', handler);
-  }, []);
-
-  // Reload our own list and notify the sidebar panel after a project is created.
-  const handleCreated = useCallback(() => {
-    loadProjects();
-    window.dispatchEvent(new CustomEvent('projects:changed'));
-  }, [loadProjects]);
-
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Toolbar: View Switch + Filters */}
-      <div className="flex items-center gap-2 px-4 md:px-6 py-2 border-b border-edge bg-surface-sunken/50 flex-wrap">
-        {/* View toggle */}
-        <div className="flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-lg">
-          {[
-            { key: 'cards' as const, icon: LayoutGrid, label: t('projects.cards') },
-            { key: 'gantt' as const, icon: GanttChart, label: t('projects.globalGantt'), hideOnMobile: true },
-          ].map((v) => (
-            <button
-              key={v.key}
-              onClick={() => handleViewChange(v.key)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-colors ${
-                view === v.key
-                  ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
-                  : 'text-fg-muted hover:text-fg-secondary'
-              } ${'hideOnMobile' in v && v.hideOnMobile ? 'hidden md:flex' : ''}`}
-            >
-              <v.icon size={13} />
-              {v.label}
-            </button>
-          ))}
-        </div>
-
-        {view === 'cards' && (
-          <>
-            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} size="sm" inline>
-              <option value="">All Status</option>
-              <option value="planning">Planning</option>
-              <option value="active">Active</option>
-              <option value="on_hold">On Hold</option>
-              <option value="completed">Completed</option>
-              <option value="archived">Archived</option>
-            </Select>
-            <Select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className=""
-              size="sm"
-              inline
-            >
-              <option value="">All Priority</option>
-              <option value="urgent">Urgent</option>
-              <option value="high">High</option>
-              <option value="normal">Normal</option>
-              <option value="low">Low</option>
-            </Select>
-            <div className="relative flex-1 min-w-[120px] max-w-[240px]">
-              <SearchInput value={search} onChange={setSearch} size="sm" placeholder="Search..." />
-            </div>
-          </>
-        )}
-
-        {view === 'gantt' && (
-          <>
-            <div className="hidden sm:flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-lg">
-              {(['day', 'week', 'month', 'year'] as GlobalGanttZoom[]).map((z) => (
-                <button
-                  key={z}
-                  onClick={() => handleZoomChange(z)}
-                  className={`px-2 py-1 rounded-md text-[11px] transition-colors ${
-                    ganttZoom === z
-                      ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
-                      : 'text-fg-muted hover:text-fg-secondary'
-                  }`}
-                >
-                  {z.charAt(0).toUpperCase() + z.slice(1)}
-                </button>
-              ))}
-            </div>
-            <span className="hidden sm:inline text-fg-faint">|</span>
-            <Select
-              value={ganttFilter.projectStatus || ''}
-              onChange={(e) => setGanttFilter({ ...ganttFilter, projectStatus: e.target.value || undefined })}
-              className="hidden sm:block"
-              size="xs"
-              inline
-            >
-              <option value="">All Projects</option>
-              <option value="planning">Planning</option>
-              <option value="active">Active</option>
-              <option value="on_hold">On Hold</option>
-              <option value="completed">Completed</option>
-            </Select>
-            <Select
-              value={ganttFilter.status || ''}
-              onChange={(e) => setGanttFilter({ ...ganttFilter, status: e.target.value || undefined })}
-              className="hidden sm:block"
-              size="xs"
-              inline
-            >
-              <option value="">All Task Status</option>
-              {Object.entries(taskStatusConfig).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v.label}
-                </option>
-              ))}
-            </Select>
-            {users.length > 0 && (
-              <Select
-                value={ganttFilter.assignee || ''}
-                onChange={(e) => setGanttFilter({ ...ganttFilter, assignee: e.target.value || undefined })}
-                className="hidden sm:block"
-                size="xs"
-                inline
+    <ModulePage
+      moduleId="workspace.projects"
+      layout="canvas"
+      actions={
+        <Button size="sm" onClick={() => setShowCreate(true)} data-testid="projects-new">
+          <Plus size={14} className="mr-1" /> {t('projects.createProject')}
+        </Button>
+      }
+      toolbar={
+        <div className="flex flex-wrap items-center gap-2">
+          {/* View toggle */}
+          <div className="flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-lg">
+            {[
+              { key: 'cards' as const, icon: LayoutGrid, label: t('projects.cards') },
+              { key: 'gantt' as const, icon: GanttChart, label: t('projects.globalGantt'), hideOnMobile: true },
+            ].map((v) => (
+              <button
+                key={v.key}
+                onClick={() => handleViewChange(v.key)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-colors ${
+                  view === v.key
+                    ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
+                    : 'text-fg-muted hover:text-fg-secondary'
+                } ${'hideOnMobile' in v && v.hideOnMobile ? 'hidden md:flex' : ''}`}
               >
-                <option value="">All Assignee</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.nickname}
+                <v.icon size={13} />
+                {v.label}
+              </button>
+            ))}
+          </div>
+
+          {view === 'cards' && (
+            <>
+              <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} size="sm" inline>
+                <option value="">{t('projects.allStatus')}</option>
+                {Object.entries(statusConfig).map(([value, config]) => (
+                  <option key={value} value={value}>
+                    {t(config.label)}
                   </option>
                 ))}
               </Select>
-            )}
-          </>
-        )}
-      </div>
+              <Select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className=""
+                size="sm"
+                inline
+              >
+                <option value="">{t('projects.allPriority')}</option>
+                <option value="urgent">{t('common.urgent')}</option>
+                <option value="high">{t('common.high')}</option>
+                <option value="normal">{t('common.normal')}</option>
+                <option value="low">{t('common.low')}</option>
+              </Select>
+              <div className="relative flex-1 min-w-[120px] max-w-[240px]">
+                <SearchInput value={search} onChange={setSearch} size="sm" placeholder={t('projects.searchProjects')} />
+              </div>
+            </>
+          )}
 
+          {view === 'gantt' && (
+            <>
+              <div className="hidden sm:flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-lg">
+                {(['day', 'week', 'month', 'year'] as GlobalGanttZoom[]).map((z) => (
+                  <button
+                    key={z}
+                    onClick={() => handleZoomChange(z)}
+                    className={`px-2 py-1 rounded-md text-[11px] transition-colors ${
+                      ganttZoom === z
+                        ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
+                        : 'text-fg-muted hover:text-fg-secondary'
+                    }`}
+                  >
+                    {t(`projects.${z}` as 'projects.day' | 'projects.week' | 'projects.month' | 'projects.year')}
+                  </button>
+                ))}
+              </div>
+              <span className="hidden sm:inline text-fg-faint">|</span>
+              <Select
+                value={ganttFilter.projectStatus || ''}
+                onChange={(e) => setGanttFilter({ ...ganttFilter, projectStatus: e.target.value || undefined })}
+                className="hidden sm:block"
+                size="xs"
+                inline
+                aria-label={t('projects.allProjects')}
+              >
+                <option value="">{t('projects.allProjects')}</option>
+                {Object.entries(statusConfig)
+                  .filter(([value]) => value !== 'archived')
+                  .map(([value, config]) => (
+                    <option key={value} value={value}>
+                      {t(config.label)}
+                    </option>
+                  ))}
+              </Select>
+              <Select
+                value={ganttFilter.status || ''}
+                onChange={(e) => setGanttFilter({ ...ganttFilter, status: e.target.value || undefined })}
+                className="hidden sm:block"
+                size="xs"
+                inline
+                aria-label={t('projects.allTaskStatus')}
+              >
+                <option value="">{t('projects.allTaskStatus')}</option>
+                {Object.entries(taskStatusConfig).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v.label}
+                  </option>
+                ))}
+              </Select>
+              {users.length > 0 && (
+                <Select
+                  value={ganttFilter.assignee || ''}
+                  onChange={(e) => setGanttFilter({ ...ganttFilter, assignee: e.target.value || undefined })}
+                  className="hidden sm:block"
+                  size="xs"
+                  inline
+                  aria-label={t('projects.allAssignees')}
+                >
+                  <option value="">{t('projects.allAssignees')}</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.nickname}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </>
+          )}
+          {view === 'cards' && <span className="ml-auto text-xs text-fg-faint">{projects.length}</span>}
+        </div>
+      }
+    >
       {/* Content */}
       {view === 'cards' ? (
-        <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4">
+        <div className="h-full overflow-y-auto py-1">
           {loading ? (
             <div className="flex justify-center py-12">
               <Spinner className="text-primary-fg" />
             </div>
           ) : projects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-fg-faint">
-              <FolderKanban size={40} className="mb-3 text-fg-faint" />
-              <p className="text-sm">No projects yet</p>
-              <Button size="sm" className="mt-3" onClick={() => setShowCreate(true)} data-testid="projects-new-empty">
-                <Plus size={14} className="mr-1" /> Create your first project
-              </Button>
-            </div>
+            <EmptyState
+              icon={FolderKanban}
+              title={t('projects.noProjects')}
+              description={t('projects.createFirstProject')}
+            />
           ) : (
             <div className="grid gap-3 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
               {projects.map((p) => (
@@ -589,7 +501,7 @@ export function ProjectsPage() {
           )}
         </div>
       ) : (
-        <div className="flex-1 overflow-hidden">
+        <div className="h-full overflow-hidden">
           <GlobalGanttView
             zoom={ganttZoom}
             filter={ganttFilter}
@@ -606,9 +518,9 @@ export function ProjectsPage() {
       <CreateProjectDialog
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        onCreated={handleCreated}
+        onCreated={invalidateProjects}
         users={users}
       />
-    </div>
+    </ModulePage>
   );
 }

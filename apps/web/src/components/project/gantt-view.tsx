@@ -255,14 +255,14 @@ export function GanttView({
 
   const barTooltip = useCallback(
     (row: GanttTaskRow<null>, bar: GanttBarStyle) =>
-      `${row.task.title}\n${row.task.start_date || '?'} → ${row.task.due_date || '?'}\nProgress: ${bar.progress}%`,
-    [],
+      `${row.task.title}\n${row.task.start_date || '?'} → ${row.task.due_date || '?'}\n${t('projects.projectProgress')}: ${bar.progress}%`,
+    [t],
   );
 
   const leftHeader = (
     <div className="h-10 border-b border-edge bg-surface-sunken px-3 flex items-center justify-between flex-shrink-0">
       <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-fg-secondary">Task</span>
+        <span className="text-xs font-medium text-fg-secondary">{t('projects.tasks')}</span>
         <button
           onClick={handleExpandAll}
           className="text-[10px] text-fg-faint hover:text-primary-fg"
@@ -278,7 +278,7 @@ export function GanttView({
           ▶
         </button>
       </div>
-      <span className="text-xs font-medium text-fg-faint">Assignee</span>
+      <span className="text-xs font-medium text-fg-faint">{t('common.assignee')}</span>
     </div>
   );
 

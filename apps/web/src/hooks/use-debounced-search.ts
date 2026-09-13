@@ -18,7 +18,7 @@ interface UseDebouncedSearchOptions {
  */
 export function useDebouncedSearch({ onSearch, delay = 300 }: UseDebouncedSearchOptions) {
   const [query, setQueryRaw] = useState('');
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setQuery = useCallback(
     (q: string) => {

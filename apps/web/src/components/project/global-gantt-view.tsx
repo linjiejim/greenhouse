@@ -8,12 +8,12 @@
  * 薄壳：数据加载/乐观更新/行模型构建/抽屉弹窗在此，渲染骨架在 GanttCore。
  */
 
-import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
+import { useMemo, useEffect, useState, useCallback } from 'react';
 import { TaskDetailDrawer } from './task-drawer';
 import { CreateTaskDialog } from './create-task-dialog';
 import { authFetch } from '../../lib/auth';
 import { ChevronDown, ChevronRight, FolderKanban, Plus, MoreHorizontal, RefreshCw, Search } from '../../lib/icons';
-import { toast, Spinner, Select, SearchInput } from '../ui';
+import { EmptyState, toast, Spinner, Select, SearchInput, ResizeHandle } from '../ui';
 import type { Task } from './types';
 import {
   childProgress,
@@ -30,6 +30,7 @@ import {
 import { GanttCore, GANTT_ROW_HEIGHT, ganttDayWidth } from './gantt-core';
 import type { GanttBarTask, GanttGroupRow, GanttRow, GanttRowCtx, GanttTaskRow } from './gantt-core';
 import { useT } from '../../lib/i18n';
+import { useProjectRefreshStore } from '../../stores';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ export function GlobalGanttView({
   onRefresh?: () => void;
 }) {
   const t = useT();
+  const projectsRevision = useProjectRefreshStore((state) => state.revision);
 
   const [projects, setProjects] = useState<GanttProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,14 +127,13 @@ export function GlobalGanttView({
     }
     return 360;
   });
-  const resizingRef = useRef(false);
 
   const DAY_WIDTH = ganttDayWidth(zoom);
   const ROW_HEIGHT = GANTT_ROW_HEIGHT;
 
   // ── Load Data ──────────────────────────────────────────
 
-  const loadData = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -146,12 +147,16 @@ export function GlobalGanttView({
       /* ignore */
     }
     setLoading(false);
+  }, [filter?.projectStatus]);
+
+  const loadData = useCallback(async () => {
+    await fetchData();
     onRefresh?.();
-  }, [filter?.projectStatus, onRefresh]);
+  }, [fetchData, onRefresh]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    void fetchData();
+  }, [fetchData, projectsRevision]);
 
   // ── Optimistic task update helper ─────────────────────
 
@@ -524,7 +529,7 @@ export function GlobalGanttView({
               setShowCreate(true);
             }}
             className="p-0.5 text-fg-faint hover:text-primary-fg rounded opacity-0 hover:opacity-100 transition-opacity touch-visible"
-            title="Add task"
+            title={t('projects.addTask')}
           >
             <Plus size={12} />
           </button>
@@ -534,7 +539,7 @@ export function GlobalGanttView({
         </div>
       );
     },
-    [expandedProjects, ROW_HEIGHT, toggleProject, onNavigateToProject],
+    [expandedProjects, ROW_HEIGHT, toggleProject, onNavigateToProject, t],
   );
 
   const renderTaskRow = useCallback(
@@ -624,12 +629,7 @@ export function GlobalGanttView({
   }
 
   if (projects.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-fg-faint">
-        <FolderKanban size={40} className="mb-3" />
-        <p className="text-sm">No projects found</p>
-      </div>
-    );
+    return <EmptyState icon={FolderKanban} title={t('projects.noProjects')} />;
   }
 
   const leftHeader = (
@@ -668,30 +668,22 @@ export function GlobalGanttView({
   );
 
   const resizeHandle = (
-    <div
-      className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary-400/40 active:bg-primary-400/60 z-[10] transition-colors"
-      onMouseDown={(e) => {
-        e.preventDefault();
-        resizingRef.current = true;
-        const startX = e.clientX;
-        const startWidth = labelWidth;
-        const onMove = (ev: MouseEvent) => {
-          const newWidth = Math.max(200, Math.min(600, startWidth + ev.clientX - startX));
-          setLabelWidth(newWidth);
-        };
-        const onUp = () => {
-          resizingRef.current = false;
-          document.removeEventListener('mousemove', onMove);
-          document.removeEventListener('mouseup', onUp);
-          try {
-            localStorage.setItem('global-gantt-label-width', String(labelWidth));
-          } catch (_err) {
-            /* ignore */
-          }
-        };
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
+    <ResizeHandle
+      orientation="vertical"
+      value={labelWidth}
+      min={200}
+      max={600}
+      defaultValue={360}
+      onChange={setLabelWidth}
+      onResizeEnd={(nextWidth) => {
+        try {
+          localStorage.setItem('global-gantt-label-width', String(nextWidth));
+        } catch (_err) {
+          /* ignore */
+        }
       }}
+      label={t('projects.resizeTaskLabelColumn')}
+      className="absolute right-0 top-0 bottom-0 z-[10]"
     />
   );
 

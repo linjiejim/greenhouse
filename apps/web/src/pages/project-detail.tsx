@@ -6,13 +6,28 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Button, Input, Select, Spinner, Dialog, Textarea, Drawer } from '../components/ui';
+import { Button, EmptyState, Select, Spinner, Dialog, Drawer } from '../components/ui';
+import { FormActions } from '../components/form';
 import { useAgentContext } from '../components/agent-context';
 import { authFetch } from '../lib/auth';
 import { timeAgo } from '../lib/utils';
-import { ArrowLeft, Plus, List, LayoutGrid, GanttChart, Calendar, User, Clock, Edit3, Users, Lock } from '../lib/icons';
+import {
+  ArrowLeft,
+  Plus,
+  List,
+  LayoutGrid,
+  GanttChart,
+  Calendar,
+  User,
+  Clock,
+  Edit3,
+  Users,
+  Lock,
+  FolderKanban,
+} from '../lib/icons';
 import { useT } from '../lib/i18n';
 import { useAuthStore } from '../stores';
+import { useInEntityPeek } from '../components/entity-peek';
 import {
   type Task,
   type Project,
@@ -29,11 +44,14 @@ import {
   TaskDetailDrawer,
   CreateTaskDialog,
   MembersPanel,
+  ProjectForm,
+  type ProjectFormValue,
 } from '../components/project';
 
 // ─── Project Detail Page ─────────────────────────────────
 
 export function ProjectDetailPage({ projectId }: { projectId: number }) {
+  const inPeek = useInEntityPeek();
   const t = useT();
   const currentUser = useAuthStore((s) => s.currentUser);
   const [project, setProject] = useState<Project | null>(null);
@@ -59,7 +77,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [showActivities, setShowActivities] = useState(false);
   const [editingProject, setEditingProject] = useState(false);
-  const [projectForm, setProjectForm] = useState<any>({});
+  const [projectForm, setProjectForm] = useState<ProjectFormValue | null>(null);
   const [savingProject, setSavingProject] = useState(false);
   const { enrichPageContext } = useAgentContext();
 
@@ -193,19 +211,23 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
 
   if (!project) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-fg-faint">
-        <p className="text-sm">Project not found</p>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="mt-2"
-          onClick={() => {
-            window.location.hash = '#/projects';
-          }}
-        >
-          ← Back to Projects
-        </Button>
-      </div>
+      <EmptyState
+        icon={FolderKanban}
+        variant="page"
+        tone="danger"
+        title={t('projects.projectNotFound')}
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              window.location.hash = '#/projects';
+            }}
+          >
+            ← {t('projects.backToProjects')}
+          </Button>
+        }
+      />
     );
   }
 
@@ -214,20 +236,22 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="px-4 md:px-6 py-3 border-b border-edge bg-surface-raised">
-        <div className="flex items-center justify-between mb-2">
+      <div className="px-3 md:px-6 py-3 border-b border-edge bg-surface-raised">
+        <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex items-center gap-3 min-w-0">
-            <button
-              onClick={() => {
-                window.location.hash = '#/projects';
-              }}
-              className="text-fg-faint hover:text-fg-secondary flex-shrink-0"
-            >
-              <ArrowLeft size={18} />
-            </button>
+            {!inPeek && (
+              <button
+                onClick={() => {
+                  window.location.hash = '#/projects';
+                }}
+                className="text-fg-faint hover:text-fg-secondary flex-shrink-0"
+              >
+                <ArrowLeft size={18} />
+              </button>
+            )}
             <h1 className="text-base font-semibold text-fg truncate">{project.title}</h1>
             <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${psc.color}`}>
-              {psc.label}
+              {t(psc.label)}
             </span>
             {project.priority !== 'normal' && (
               <span className={`text-[10px] font-medium ${priorityColors[project.priority]}`}>{project.priority}</span>
@@ -239,31 +263,32 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-shrink-0 items-center gap-1 sm:gap-2">
             {/* Members avatars */}
             <button
               onClick={() => setShowMembers(true)}
-              className="flex items-center gap-1 px-2 py-1 text-xs text-fg-muted hover:text-primary-fg rounded hover:bg-surface-muted transition-colors"
+              className="inline-flex h-9 w-9 sm:h-auto sm:w-auto items-center justify-center gap-1 sm:px-2 sm:py-1 text-xs text-fg-muted hover:text-primary-fg rounded-md hover:bg-surface-muted transition-colors"
               title={t('projects.members')}
             >
               <Users size={13} />
-              <span>{members.length}</span>
+              <span className="hidden sm:inline">{members.length}</span>
             </button>
             <button
               onClick={() => {
                 setEditingProject(true);
                 setProjectForm({
                   title: project.title,
-                  description: project.description,
+                  description: project.description || '',
                   status: project.status,
                   priority: project.priority,
-                  start_date: project.start_date,
-                  end_date: project.end_date,
-                  color: (project as any).color || '',
+                  owner_id: project.owner_id,
+                  start_date: project.start_date || '',
+                  end_date: project.end_date || '',
+                  color: project.color || '',
                   visibility: project.visibility || 'public',
                 });
               }}
-              className="p-1.5 text-fg-faint hover:text-primary-fg rounded hover:bg-surface-muted"
+              className="inline-flex h-9 w-9 items-center justify-center text-fg-faint hover:text-primary-fg rounded-md hover:bg-surface-muted"
               title={t('projects.editProject')}
             >
               <Edit3 size={14} />
@@ -273,7 +298,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
                 setShowActivities(true);
                 loadActivities();
               }}
-              className="p-1.5 text-fg-faint hover:text-primary-fg rounded hover:bg-surface-muted"
+              className="inline-flex h-9 w-9 items-center justify-center text-fg-faint hover:text-primary-fg rounded-md hover:bg-surface-muted"
               title={t('projects.changelog')}
             >
               <Clock size={14} />
@@ -294,7 +319,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
             </span>
           )}
           <span className="flex items-center gap-1">
-            <span className="text-success">{stats?.done ?? 0}</span>/{stats?.total ?? 0} tasks · {progress}%
+            {t('projects.taskProgress', { done: stats?.done ?? 0, total: stats?.total ?? 0, progress })}
           </span>
           {stats && (
             <div className="flex-1 max-w-[200px] h-1.5 bg-surface-muted rounded-full overflow-hidden">
@@ -305,22 +330,22 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
       </div>
 
       {/* View tabs + Zoom + Filter + Add Task */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 md:px-6 py-2 border-b border-edge bg-surface-sunken/50">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 md:px-6 py-2 border-b border-edge bg-surface-sunken/50">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-lg">
             {[
-              { key: 'gantt' as const, icon: GanttChart, label: 'Gantt' },
-              { key: 'list' as const, icon: List, label: 'List' },
-              { key: 'board' as const, icon: LayoutGrid, label: 'Board' },
+              { key: 'gantt' as const, icon: GanttChart, label: t('projects.gantt'), hideOnMobile: true },
+              { key: 'list' as const, icon: List, label: t('projects.list'), hideOnMobile: false },
+              { key: 'board' as const, icon: LayoutGrid, label: t('projects.board'), hideOnMobile: false },
             ].map((v) => (
               <button
                 key={v.key}
                 onClick={() => setView(v.key)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-colors ${
+                className={`items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-colors ${
                   view === v.key
                     ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
                     : 'text-fg-muted hover:text-fg-secondary'
-                }`}
+                } ${v.hideOnMobile ? 'hidden md:flex' : 'flex'}`}
               >
                 <v.icon size={13} />
                 {v.label}
@@ -340,7 +365,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
                         : 'text-fg-muted hover:text-fg-secondary'
                     }`}
                   >
-                    {z.charAt(0).toUpperCase() + z.slice(1)}
+                    {t(`projects.${z}` as 'projects.day' | 'projects.week' | 'projects.month' | 'projects.year')}
                   </button>
                 ))}
               </div>
@@ -352,10 +377,10 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
                 size="xs"
                 inline
               >
-                <option value="">All Status</option>
+                <option value="">{t('projects.allStatus')}</option>
                 {Object.entries(statusConfig).map(([k, v]) => (
                   <option key={k} value={k}>
-                    {v.label}
+                    {t(v.label)}
                   </option>
                 ))}
               </Select>
@@ -366,7 +391,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
                 size="xs"
                 inline
               >
-                <option value="">All Assignee</option>
+                <option value="">{t('projects.allAssignees')}</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.nickname}
@@ -380,11 +405,11 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
                 size="xs"
                 inline
               >
-                <option value="">All Priority</option>
-                <option value="urgent">Urgent</option>
-                <option value="high">High</option>
-                <option value="normal">Normal</option>
-                <option value="low">Low</option>
+                <option value="">{t('projects.allPriority')}</option>
+                <option value="urgent">{t('common.urgent')}</option>
+                <option value="high">{t('common.high')}</option>
+                <option value="normal">{t('common.normal')}</option>
+                <option value="low">{t('common.low')}</option>
               </Select>
             </>
           )}
@@ -397,7 +422,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
               setShowCreateMilestone(true);
             }}
           >
-            <span className="text-amber-500 mr-1">◆</span> {t('projects.milestone')}
+            <span className="mr-1 text-warning">◆</span> {t('projects.milestone')}
           </Button>
           <Button
             size="sm"
@@ -417,10 +442,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
         {view === 'list' && (
           <div className="h-full overflow-y-auto">
             {tasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-fg-faint">
-                <List size={36} className="mb-3 text-fg-faint" />
-                <p className="text-sm">No tasks yet</p>
-              </div>
+              <EmptyState icon={List} title={t('projects.noTasks')} />
             ) : (
               tasks.map((t) => (
                 <TaskTreeItem
@@ -437,7 +459,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
         )}
 
         {view === 'board' && (
-          <div className="h-full overflow-x-auto p-4">
+          <div className="h-full overflow-x-auto p-3 md:p-4">
             <div className="flex flex-col md:flex-row gap-3 md:min-w-max">
               {['todo', 'in_progress', 'in_review', 'done'].map((status) => (
                 <BoardColumn
@@ -540,113 +562,25 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
         title={t('projects.editProject')}
         size="md"
       >
-        <div className="space-y-3">
-          <Input
-            placeholder={t('projects.projectName')}
-            value={projectForm.title || ''}
-            onChange={(e) => setProjectForm({ ...projectForm, title: e.target.value })}
-          />
-          <Textarea
-            placeholder={t('common.description')}
-            value={projectForm.description || ''}
-            onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })}
-            rows={3}
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-fg-muted mb-1 block">{t('common.status')}</label>
-              <Select
-                value={projectForm.status || ''}
-                onChange={(e) => setProjectForm({ ...projectForm, status: e.target.value })}
-              >
-                {Object.entries(projectStatusConfig).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v.label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs text-fg-muted mb-1 block">{t('common.priority')}</label>
-              <Select
-                value={projectForm.priority || ''}
-                onChange={(e) => setProjectForm({ ...projectForm, priority: e.target.value })}
-              >
-                <option value="low">Low</option>
-                <option value="normal">Normal</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </Select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-fg-muted mb-1 block">{t('common.startDate')}</label>
-              <Input
-                type="date"
-                value={projectForm.start_date || ''}
-                onChange={(e) => setProjectForm({ ...projectForm, start_date: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-fg-muted mb-1 block">{t('common.endDate')}</label>
-              <Input
-                type="date"
-                value={projectForm.end_date || ''}
-                onChange={(e) => setProjectForm({ ...projectForm, end_date: e.target.value })}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs text-fg-muted mb-1 block">{t('projects.projectColor')}</label>
-            <div className="flex items-center gap-1.5">
-              {['#3b82f6', '#8b5cf6', '#06b6d4', '#f59e0b', '#ef4444', '#10b981', '#ec4899', '#6366f1'].map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setProjectForm({ ...projectForm, color: projectForm.color === c ? '' : c })}
-                  className={`w-6 h-6 rounded-full border-2 transition-all ${
-                    projectForm.color === c ? 'border-fg scale-110' : 'border-transparent hover:border-edge-strong'
-                  }`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="text-xs text-fg-muted mb-1 block">{t('projects.visibility')}</label>
-            <div className="flex items-center gap-3">
-              {(['public', 'private'] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setProjectForm({ ...projectForm, visibility: v })}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition-colors ${
-                    projectForm.visibility === v
-                      ? 'border-primary-300 bg-primary-subtle text-primary-fg-strong font-medium'
-                      : 'border-edge text-fg-muted hover:border-edge-strong'
-                  }`}
-                >
-                  {v === 'private' && <Lock size={11} />}
-                  {v === 'public' ? t('projects.visibilityPublic') : t('projects.visibilityPrivate')}
-                </button>
-              ))}
-            </div>
-            <p className="text-[10px] text-fg-faint mt-1">
-              {projectForm.visibility === 'private'
-                ? t('projects.visibilityPrivateDesc')
-                : t('projects.visibilityPublicDesc')}
-            </p>
-          </div>
-          <div className="flex gap-2 justify-end pt-2">
-            <Button variant="ghost" size="sm" onClick={() => setEditingProject(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button size="sm" onClick={handleSaveProject} disabled={savingProject}>
-              {savingProject ? t('common.saving') : t('common.save')}
-            </Button>
-          </div>
-        </div>
+        {projectForm && (
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSaveProject();
+            }}
+          >
+            <ProjectForm value={projectForm} onChange={setProjectForm} showStatus />
+            <FormActions>
+              <Button variant="ghost" size="sm" type="button" onClick={() => setEditingProject(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button size="sm" type="submit" disabled={savingProject}>
+                {savingProject ? t('common.saving') : t('common.save')}
+              </Button>
+            </FormActions>
+          </form>
+        )}
       </Dialog>
 
       {/* Activities Drawer */}
@@ -659,7 +593,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
         </div>
         <div className="overflow-y-auto flex-1 px-4 py-3">
           {activities.length === 0 ? (
-            <p className="text-xs text-fg-faint text-center py-8">{t('common.noRecords')}</p>
+            <EmptyState icon={Clock} title={t('common.noRecords')} variant="compact" tone="neutral" />
           ) : (
             <div className="space-y-3">
               {activities.map((a) => (

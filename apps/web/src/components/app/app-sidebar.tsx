@@ -1,42 +1,54 @@
 /**
- * AppSidebar — global left sidebar with navigation, contextual panels, and user profile.
+ * AppSidebar — full-height brand, global navigation, and contextual rail.
  *
  * Layout (top to bottom):
- * 1. Logo + collapse toggle
- * 2. Horizontal primary navigation tabs
- * 3. + New Chat / contextual actions
- * 4. Contextual panel (varies by active tab)
- * 5. User profile + settings (bottom)
+ * 1. Brand + global actions
+ * 2. + New Chat
+ * 3. Global destinations + Chat utilities + More
+ * 4. Contextual panel (varies by active destination)
+ * 5. User profile + settings + collapse control (bottom)
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AppLogo } from '../ui';
-import { getRuntimeProductName } from '../../lib/workspace-branding';
+import { useState, type ReactNode } from 'react';
+
 import { SidebarAccountMenu } from './user-menu';
-import {
-  MessageCircle,
-  FolderKanban,
-  Settings as SettingsIcon,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  ArrowLeft,
-  BookOpen,
-} from '../../lib/icons';
-import type { LucideIcon } from '../../lib/icons';
-import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, useAuthStore, useUIStore } from '../../stores';
+import { PanelLeftClose, PanelLeftOpen, Plus, ArrowLeft } from '../../lib/icons';
+import { AppLogo, ResizeHandle } from '../ui';
+import { AssistantNavButton } from '../agent-panel';
+import { SearchNavButton } from '../search/search-nav-button';
+import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, useAuthStore, useUIStore } from '../../stores';
+import { usePlatformCatalog } from '../../stores/platform-store';
 import { useT } from '../../lib/i18n';
+import { SidebarPrimaryAction } from './sidebar-primary-action';
+import { SidebarGlobalNavigation } from './sidebar-global-navigation';
+import { WsStatusIndicator } from './top-bar';
+import type { PrimaryNavigation } from '../../platform/navigation';
 import {
   ChatHistoryPanel,
   SettingsNavPanel,
+  AdministrationNavPanel,
   ProjectsListPanel,
   PinnedSection,
   PinnedSectionCollapsed,
   KnowledgeNavPanel,
+  SkillHubNavPanel,
+  TablesNavPanel,
 } from './sidebar-panels';
-import { extraNavItems } from '../../lib/page-registry';
 
-type Route = 'chat' | 'history' | 'settings' | 'projects' | 'inbox' | 'design' | 'knowledge' | (string & {});
+type Route =
+  | 'home'
+  | 'chat'
+  | 'automations'
+  | 'agents'
+  | 'settings'
+  | 'administration'
+  | 'projects'
+  | 'design'
+  | 'knowledge'
+  | 'tables'
+  | 'skillhub'
+  | 'tasks'
+  | 'executions';
 
 interface AppSidebarProps {
   route: Route;
@@ -45,7 +57,99 @@ interface AppSidebarProps {
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
   onSignOut: () => void;
-  onBackFromSettings: () => void;
+  onBack: () => void;
+  navigation: PrimaryNavigation;
+}
+
+type SidebarBrandHeaderProps =
+  | { collapsed: true; onToggle: () => void; globalActions?: never }
+  | { collapsed: false; globalActions?: ReactNode };
+
+interface SidebarBackButtonProps {
+  onClick: () => void;
+  compact?: boolean;
+  label?: string;
+}
+
+/** A real navigation action, visually distinct from the panel toggle above it. */
+export function SidebarBackButton({ onClick, compact = false, label }: SidebarBackButtonProps) {
+  const t = useT();
+  const resolvedLabel = label ?? t('common.back');
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        compact
+          ? 'flex h-9 w-9 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary'
+          : 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg'
+      }
+      title={resolvedLabel}
+      aria-label={resolvedLabel}
+    >
+      <ArrowLeft size={compact ? 16 : 14} />
+      {!compact && <span>{resolvedLabel}</span>}
+    </button>
+  );
+}
+
+const COLLAPSED_SIDEBAR_WIDTH = 60;
+
+/** Shell identity owns the stable top row; the collapsed rail turns it into the expand target. */
+export function SidebarBrandHeader(props: SidebarBrandHeaderProps) {
+  const t = useT();
+  if (props.collapsed) {
+    return (
+      <div className="relative flex h-14 w-full flex-shrink-0 items-center justify-center border-b border-edge px-1">
+        <button
+          type="button"
+          onClick={props.onToggle}
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary"
+          title={t('navigation.expandSidebar')}
+          aria-expanded={false}
+          aria-label={t('navigation.expandSidebar')}
+        >
+          <PanelLeftOpen size={15} />
+        </button>
+      </div>
+    );
+  }
+
+  const { globalActions } = props;
+
+  return (
+    <div className="flex h-14 w-full flex-shrink-0 items-center gap-2 border-b border-edge px-3">
+      <div className="sidebar-brand-identity group relative flex min-w-0 flex-1 items-center overflow-hidden rounded-lg px-1">
+        <a href="#/chat" className="absolute inset-0 z-0 rounded-lg" aria-label={t('navigation.greenHouseHome')} />
+        <div className="pointer-events-none relative z-[1] flex items-center gap-2 transition-opacity group-hover:opacity-80">
+          <AppLogo size="sm" logoOnly />
+          <div className="flex min-w-0 flex-col">
+            <span className="font-display text-sm font-bold leading-tight text-fg">Greenhouse</span>
+            <div className="flex h-3 items-center gap-1 text-[9px] leading-tight text-fg-faint">
+              <span>{t('navigation.brandTagline')}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      {globalActions && <div className="flex flex-shrink-0 items-center gap-0">{globalActions}</div>}
+    </div>
+  );
+}
+
+export function SidebarCollapseButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary"
+      title={t('navigation.collapseSidebar')}
+      aria-expanded={true}
+      aria-label={t('navigation.collapseSidebar')}
+    >
+      <PanelLeftClose size={16} />
+    </button>
+  );
 }
 
 export function AppSidebar({
@@ -55,288 +159,224 @@ export function AppSidebar({
   onSelectSession,
   onNewChat,
   onSignOut,
-  onBackFromSettings,
+  onBack,
+  navigation,
 }: AppSidebarProps) {
   const t = useT();
   const { currentUser } = useAuthStore();
-  const { sidebarCollapsed, sidebarWidth, setSidebarCollapsed, setSidebarWidth } = useUIStore();
-  const [isResizing, setIsResizing] = useState(false);
-  const sidebarRef = useRef<HTMLDivElement>(null);
+  const {
+    chatWorkspaceView,
+    sidebarCollapsed,
+    sidebarWidth,
+    setChatWorkspaceView,
+    setSidebarCollapsed,
+    setSidebarWidth,
+  } = useUIStore();
+  const { hasApplication } = usePlatformCatalog();
   const minWidth = SIDEBAR_MIN_WIDTH;
   const maxWidth = SIDEBAR_MAX_WIDTH;
+  const [sidebarDragWidth, setSidebarDragWidth] = useState<number | null>(null);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
 
-  const userRole = currentUser?.role ?? 'external';
-  const isExternal = userRole === 'external';
   const isSettingsRoute = route === 'settings';
-
-  const navItems: Array<{ key: Route; label: string; icon: LucideIcon; visible: boolean }> = [
-    { key: 'chat', label: t('app.chat'), icon: MessageCircle, visible: true },
-    { key: 'projects', label: t('app.projects'), icon: FolderKanban, visible: !isExternal },
-    { key: 'knowledge', label: t('app.knowledge'), icon: BookOpen, visible: !isExternal },
-    ...extraNavItems({ isExternal, userRole }),
-  ];
-  const visibleNavItems = navItems.filter((item) => item.visible);
-
-  // Resize handlers
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isResizing) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      const newWidth = Math.min(maxWidth, Math.max(minWidth, e.clientX));
-      setSidebarWidth(newWidth);
-    };
-    const handleMouseUp = () => setIsResizing(false);
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'col-resize';
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.userSelect = '';
-      document.body.style.cursor = '';
-    };
-  }, [isResizing, maxWidth, minWidth, setSidebarWidth]);
+  const isAdminRoute = route === 'administration';
+  const visibleSidebarWidth = sidebarDragWidth ?? (sidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : sidebarWidth);
+  // Settings and Administration keep their dedicated contextual panels. Normal
+  // application routes share the global navigation instead of a redundant Back.
+  const isOverlayRoute = isSettingsRoute || isAdminRoute;
 
   // Parse active sub-module for contextual panels
   const activeSubModule = subPath.split('/').filter(Boolean)[0] || '';
 
-  // ── Collapsed sidebar ──
+  const handleSidebarResize = (next: number) => {
+    setSidebarDragWidth(next);
+    if (next >= minWidth) {
+      setSidebarWidth(next);
+      setSidebarCollapsed(false);
+    } else {
+      setSidebarCollapsed(true);
+    }
+  };
+
+  const finishSidebarResize = (next: number) => {
+    if (next >= minWidth) {
+      setSidebarWidth(next);
+      setSidebarCollapsed(false);
+    } else {
+      setSidebarCollapsed(true);
+    }
+    setSidebarDragWidth(null);
+    setSidebarResizing(false);
+  };
+
+  const resizeHandle = (
+    <ResizeHandle
+      orientation="vertical"
+      value={visibleSidebarWidth}
+      min={COLLAPSED_SIDEBAR_WIDTH}
+      max={maxWidth}
+      defaultValue={SIDEBAR_DEFAULT_WIDTH}
+      onResizeStart={() => {
+        setSidebarDragWidth(visibleSidebarWidth);
+        setSidebarResizing(true);
+      }}
+      onChange={handleSidebarResize}
+      onResizeEnd={finishSidebarResize}
+      label={t('navigation.resizeSidebar')}
+      className="-ml-1 hidden flex-shrink-0 md:flex z-10"
+    />
+  );
+
   if (sidebarCollapsed) {
     return (
-      <div
-        className="hidden md:flex flex-col items-center my-2 ml-2 py-2 rounded-2xl border border-edge bg-surface-raised shadow-none overflow-hidden flex-shrink-0 h-[calc(100vh-1rem)] transition-[width] duration-200 ease-in-out"
-        style={{ width: 60 }}
-      >
-        {/* Logo only (no text) */}
-        <div className="p-2">
-          <AppLogo size="sm" logoOnly />
+      <>
+        <div
+          className={`hidden h-full flex-shrink-0 flex-col items-center border-r border-edge bg-surface-chrome md:flex ${
+            sidebarResizing ? '' : 'transition-[width] duration-200 ease-in-out'
+          }`}
+          style={{ width: visibleSidebarWidth }}
+        >
+          <SidebarBrandHeader collapsed onToggle={() => setSidebarCollapsed(false)} />
+
+          <div className="flex min-h-0 w-full flex-1 flex-col items-center pt-2">
+            {isOverlayRoute ? (
+              <div className="mb-2 flex flex-col items-center gap-1">
+                <SidebarBackButton onClick={onBack} label={t('common.back')} compact />
+              </div>
+            ) : (
+              <>
+                <div className="mb-2 flex flex-col items-center gap-1 border-b border-edge pb-2">
+                  <SearchNavButton />
+                  <AssistantNavButton />
+                  <WsStatusIndicator />
+                </div>
+                <button
+                  type="button"
+                  onClick={onNewChat}
+                  className="mb-1 flex h-9 w-9 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary"
+                  title={t('navigation.newChat')}
+                  aria-label={t('navigation.newChat')}
+                >
+                  <Plus size={16} />
+                </button>
+                <SidebarGlobalNavigation
+                  navigation={navigation}
+                  route={route}
+                  chatWorkspaceView={chatWorkspaceView}
+                  onSelectChatWorkspace={setChatWorkspaceView}
+                  compact
+                />
+              </>
+            )}
+
+            {!isOverlayRoute && route !== 'chat' && route !== 'executions' && (
+              <PinnedSectionCollapsed currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />
+            )}
+
+            <div className="flex-1" />
+
+            <SidebarAccountMenu user={currentUser} compact executionCenterActive={route === 'executions'} />
+          </div>
         </div>
-
-        <div className="flex flex-col items-center gap-1 mb-2">
-          <button
-            onClick={onNewChat}
-            className="w-9 h-9 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg-secondary hover:bg-surface-muted transition-colors"
-            title="New Chat"
-          >
-            <Plus size={16} />
-          </button>
-
-          <button
-            onClick={() => setSidebarCollapsed(false)}
-            className="w-9 h-9 flex items-center justify-center rounded-lg text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
-            title="Expand sidebar"
-            aria-expanded={false}
-            aria-label="Expand sidebar"
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-
-        {isSettingsRoute ? (
-          <button
-            onClick={onBackFromSettings}
-            className="w-9 h-9 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg-secondary hover:bg-surface-muted transition-colors mb-3"
-            title="Back"
-          >
-            <ArrowLeft size={16} />
-          </button>
-        ) : (
-          <>
-            {/* Nav icons */}
-            <nav className="flex flex-col gap-1 px-1.5" aria-label="Main navigation">
-              {visibleNavItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = route === item.key;
-                return (
-                  <a
-                    key={item.key}
-                    href={`#/${item.key}`}
-                    aria-current={isActive ? 'page' : undefined}
-                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
-                      isActive
-                        ? 'bg-primary-subtle text-primary-fg-strong'
-                        : 'text-fg-muted hover:text-fg-secondary hover:bg-surface-muted'
-                    }`}
-                    title={item.label}
-                  >
-                    <Icon size={16} />
-                  </a>
-                );
-              })}
-            </nav>
-
-            {/* Pinned shortcuts (collapsed) */}
-            <PinnedSectionCollapsed currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />
-          </>
-        )}
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Settings + User avatar */}
-        {!isExternal && (
-          <a
-            href="#/settings"
-            className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
-              route === 'settings'
-                ? 'bg-primary-subtle text-primary-fg-strong'
-                : 'text-fg-faint hover:text-fg-secondary hover:bg-surface-muted'
-            }`}
-            title={t('app.settings')}
-          >
-            <SettingsIcon size={16} />
-          </a>
-        )}
-        <SidebarAccountMenu user={currentUser} compact />
-      </div>
+        {resizeHandle}
+      </>
     );
   }
 
-  // ── Expanded sidebar ──
   return (
     <>
       <div
-        ref={sidebarRef}
-        className="hidden md:flex flex-col my-2 ml-2 rounded-2xl border border-edge bg-surface-raised shadow-none overflow-hidden flex-shrink-0 h-[calc(100vh-1rem)] relative transition-[width] duration-200 ease-in-out"
-        style={{ width: sidebarWidth }}
+        className={`relative hidden h-full flex-shrink-0 flex-col overflow-visible border-r border-edge bg-surface-chrome md:flex ${
+          sidebarResizing ? '' : 'transition-[width] duration-200 ease-in-out'
+        }`}
+        style={{ width: visibleSidebarWidth, containerType: 'inline-size', containerName: 'app-sidebar' }}
       >
-        {/* Top: Logo + Title/Workspace + Collapse */}
-        <div className="flex items-center gap-2.5 px-3 pt-3 pb-2 flex-shrink-0">
-          {/* Column 1: Logo */}
-          <a href="#/chat" className="flex-shrink-0 hover:opacity-80 transition-opacity">
-            <AppLogo size="lg" logoOnly />
-          </a>
+        <SidebarBrandHeader
+          collapsed={false}
+          globalActions={
+            <>
+              <WsStatusIndicator />
+              <SearchNavButton />
+              <AssistantNavButton />
+            </>
+          }
+        />
 
-          {/* Column 2: Title */}
-          <div className="flex flex-col min-w-0 flex-1 gap-0.5">
-            <a href="#/chat" className="hover:opacity-80 transition-opacity">
-              <span className="font-semibold text-fg text-sm leading-tight">{getRuntimeProductName()}</span>
-            </a>
-          </div>
-
-          {/* Column 3: Fixed header actions */}
-          <div className="flex flex-shrink-0 items-center gap-1">
-            <button
-              onClick={onNewChat}
-              className="h-8 w-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg-secondary hover:bg-surface-muted transition-colors"
-              title="New Chat"
-              aria-label="New Chat"
-            >
-              <Plus size={15} />
-            </button>
-            <button
-              onClick={() => setSidebarCollapsed(true)}
-              className="h-8 w-8 flex items-center justify-center rounded-lg text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
-              title="Collapse sidebar"
-              aria-expanded={true}
-              aria-label="Collapse sidebar"
-            >
-              <ChevronLeft size={14} />
-            </button>
-          </div>
-        </div>
-
-        {isSettingsRoute ? (
-          <>
-            <div className="px-3 pb-2 flex-shrink-0">
-              <button
-                onClick={onBackFromSettings}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-fg-secondary hover:text-fg hover:bg-surface-muted transition-colors"
-              >
-                <ArrowLeft size={14} />
-                <span>Back</span>
-              </button>
-            </div>
-
-            <div className="mx-3 border-t border-edge flex-shrink-0" />
-
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col mt-1">
-              <SettingsNavPanel activeModule={activeSubModule || 'preferences'} onSignOut={onSignOut} />
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Primary navigation — horizontal tabs */}
-            <nav
-              className="mx-3 mb-2 flex items-stretch gap-1 rounded-xl bg-surface-sunken p-1 flex-shrink-0 overflow-hidden"
-              aria-label="Main navigation"
-            >
-              {visibleNavItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = route === item.key;
-                return (
-                  <a
-                    key={item.key}
-                    href={`#/${item.key}`}
-                    aria-current={isActive ? 'page' : undefined}
-                    className={`flex h-12 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg border px-1 transition-colors ${
-                      isActive
-                        ? 'border-edge bg-surface-raised text-fg font-medium'
-                        : 'border-transparent text-fg-muted hover:bg-surface-muted hover:text-fg-secondary'
-                    }`}
-                    title={item.label}
-                  >
-                    <Icon size={15} className={isActive ? 'text-primary-fg' : 'text-fg-faint'} />
-                    <span className="max-w-full truncate text-[9px] leading-tight">{item.label}</span>
-                  </a>
-                );
-              })}
-            </nav>
-
-            {route === 'chat' && (
-              <div className="px-3 pb-2 flex-shrink-0">
-                <button
-                  onClick={onNewChat}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 transition-colors"
-                >
-                  <Plus size={14} />
-                  <span>New Chat</span>
-                </button>
+        <div className="flex min-h-0 flex-1 flex-col pt-2">
+          {isOverlayRoute && (
+            <>
+              <div className="flex-shrink-0 px-3 pb-2">
+                <SidebarBackButton onClick={onBack} label={t('common.back')} />
               </div>
-            )}
+              <div className="mx-3 flex-shrink-0 border-t border-edge" />
+            </>
+          )}
 
-            {/* Pinned shortcuts */}
-            <PinnedSection currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />
+          {isOverlayRoute ? (
+            <>
+              <div className="flex-1 min-h-0 overflow-hidden flex flex-col mt-1">
+                {isAdminRoute ? (
+                  <AdministrationNavPanel activeModule={activeSubModule || 'users'} />
+                ) : (
+                  <SettingsNavPanel activeModule={activeSubModule || 'preferences'} onSignOut={onSignOut} />
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex-shrink-0 px-3 pb-2">
+                <SidebarPrimaryAction icon={Plus} onClick={onNewChat}>
+                  {t('navigation.newChat')}
+                </SidebarPrimaryAction>
+              </div>
 
-            {/* Separator */}
-            <div className="mx-3 border-t border-edge flex-shrink-0" />
+              <SidebarGlobalNavigation
+                navigation={navigation}
+                route={route}
+                chatWorkspaceView={chatWorkspaceView}
+                onSelectChatWorkspace={setChatWorkspaceView}
+                className="pb-2"
+              />
 
-            {/* Contextual Panel */}
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col mt-1">
-              {route === 'chat' && (
-                <ChatHistoryPanel currentSessionId={currentSessionId} onSelectSession={onSelectSession} />
+              <div className="mx-3 flex-shrink-0 border-t border-edge" />
+
+              {/* Tables own the full contextual rail. Execution Center is a
+                  global utility and deliberately omits unrelated pinned links. */}
+              {route !== 'tables' && route !== 'executions' && (
+                <PinnedSection currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />
               )}
-              {route === 'projects' && <ProjectsListPanel />}
-              {route === 'knowledge' && <KnowledgeNavPanel activeModule={activeSubModule} />}
-            </div>
-          </>
-        )}
 
-        {/* Bottom: Account + Settings */}
-        <div className="px-3 py-1.5 border-t border-edge flex-shrink-0">
-          <SidebarAccountMenu
-            user={currentUser}
-            showSettingsIcon={!isExternal}
-            settingsActive={route === 'settings'}
-            onBackFromSettings={onBackFromSettings}
-            isSettingsRoute={isSettingsRoute}
-          />
+              {/* Contextual Panel */}
+              <div className="flex-1 min-h-0 overflow-hidden flex flex-col mt-1">
+                {route === 'chat' && (
+                  <ChatHistoryPanel currentSessionId={currentSessionId} onSelectSession={onSelectSession} />
+                )}
+                {route === 'projects' && <ProjectsListPanel />}
+                {/* Knowledge gets the FULL sub-path: its tree highlights the open
+                    document, which lives in the later segments. */}
+                {route === 'knowledge' && <KnowledgeNavPanel activeModule={subPath} />}
+                {route === 'skillhub' && <SkillHubNavPanel activeName={activeSubModule} />}
+                {route === 'tables' && hasApplication('tables') && <TablesNavPanel subPath={subPath} />}
+              </div>
+            </>
+          )}
+
+          {/* Account and collapse control share the stable bottom row. */}
+          <div className="flex flex-shrink-0 items-center gap-1 border-t border-edge px-3 py-1.5">
+            <div className="min-w-0 flex-1">
+              <SidebarAccountMenu
+                user={currentUser}
+                settingsActive={isOverlayRoute}
+                executionCenterActive={route === 'executions'}
+                onBackFromSettings={onBack}
+                isSettingsRoute={isOverlayRoute}
+              />
+            </div>
+            <SidebarCollapseButton onClick={() => setSidebarCollapsed(true)} />
+          </div>
         </div>
       </div>
-
-      {/* Resize handle */}
-      <div
-        onMouseDown={handleMouseDown}
-        className={`hidden md:block w-2 my-4 -ml-1 rounded-full flex-shrink-0 cursor-col-resize transition-colors hover:bg-primary-300 ${
-          isResizing ? 'bg-primary-400' : 'bg-transparent'
-        }`}
-        style={{ zIndex: 10 }}
-      />
+      {resizeHandle}
     </>
   );
 }

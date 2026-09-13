@@ -1,24 +1,25 @@
 import type { ContextProviderDescriptor } from '@greenhouse/types/agent-context';
 import { ClipboardList, TrendingUp, Search } from '../icons';
 import { registerContextProvider } from '../context-registry';
+import { getStoredLocale, translate } from '../i18n';
+
+const tr = (key: Parameters<typeof translate>[1]) => translate(getStoredLocale(), key);
 
 const provider: ContextProviderDescriptor<'project-list'> = {
   type: 'project-list',
 
-  label: () => 'Projects overview',
+  label: () => tr('contextActions.projectsOverview'),
 
-  emptyMessage: () => 'Ask me about your projects — create new ones, check progress, or get summaries.',
-
-  placeholder: () => 'Ask about projects...',
+  emptyMessage: () => tr('contextActions.projectsEmpty'),
 
   quickActions: () => [
-    { icon: ClipboardList, label: '所有项目概览', msg: '列出所有进行中的项目及其进度' },
-    { icon: TrendingUp, label: '创建新项目', msg: '帮我创建一个新项目' },
-    { icon: Search, label: '逾期检查', msg: '检查所有项目中是否有逾期的任务' },
+    { icon: ClipboardList, label: tr('contextActions.allProjects'), msg: tr('contextActions.allProjectsPrompt') },
+    { icon: TrendingUp, label: tr('contextActions.createProject'), msg: tr('contextActions.createProjectPrompt') },
+    { icon: Search, label: tr('contextActions.overdueCheck'), msg: tr('contextActions.overdueCheckPrompt') },
   ],
 
   contextHint: () =>
-    'Current Context: Project List. The user is on the project list page. They can view all projects, create new ones, and check progress. Use the project_manager tool to help. Available actions: list_projects, create_project, get_project, query_tasks, project_summary.',
+    'Current Context: Project List. The visible page lists projects and exposes project creation and progress summaries.',
 };
 
 registerContextProvider(provider);

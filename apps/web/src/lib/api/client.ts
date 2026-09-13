@@ -1,7 +1,7 @@
 /**
  * Typed RPC client over the whole API surface (@greenhouse/contract AppType).
  *
- * Auth (Bearer header + 401 refresh-retry + desktop URL resolution) rides on
+ * Auth (Bearer header + 401 refresh-retry + optional API base resolution) rides on
  * authFetch as the custom fetch. Response types flow from the server's actual
  * `c.json(...)` returns — a server shape change becomes a compile error in
  * the functions below, not a silent runtime drift.

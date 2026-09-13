@@ -11,15 +11,50 @@
  * - Counter "1 / N"
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog } from './ui';
-import { ArrowLeft, ArrowRight, Download, FileText, Image as ImageIcon } from '../lib/icons';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Download,
+  FileText,
+  Image as ImageIcon,
+  Maximize2,
+  Pencil,
+  ZoomIn,
+  ZoomOut,
+} from '../lib/icons';
 import { useT } from '../lib/i18n';
+import { openSidePane, useSidePaneStore } from '../stores/side-pane-store';
 
 export interface MediaFile {
+  id?: string;
   src: string;
   type: string; // 'image' | 'video' | 'pdf' | other
   name?: string;
+}
+
+/** Annotation can only preserve the clean original when it is one of our
+ * authenticated uploads. External images may also taint the export canvas. */
+function uploadImageId(file: MediaFile): string | null {
+  if (file.id) return file.id;
+  const relative = file.src.match(/^\/api\/upload\/([^/?#]+)(?:[?#].*)?$/);
+  if (relative?.[1]) {
+    try {
+      return decodeURIComponent(relative[1]);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof window === 'undefined') return null;
+  try {
+    const url = new URL(file.src, window.location.origin);
+    if (url.origin !== window.location.origin || !url.pathname.startsWith('/api/upload/')) return null;
+    const id = url.pathname.slice('/api/upload/'.length);
+    return id && !id.includes('/') ? decodeURIComponent(id) : null;
+  } catch {
+    return null;
+  }
 }
 
 interface MediaPreviewDialogProps {
@@ -42,23 +77,94 @@ function getMediaCategory(file: MediaFile): 'image' | 'video' | 'pdf' | 'other' 
   return 'other';
 }
 
+/** Zoom range and step for the image viewer. 1 = fit to the frame. */
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 8;
+const ZOOM_STEP = 0.5;
+
 export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: MediaPreviewDialogProps) {
   const t = useT();
   const [index, setIndex] = useState(initialIndex);
   const [imgError, setImgError] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const panRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(
+    null,
+  );
+  const sidePaneAvailable = useSidePaneStore((state) => state.hostMounted);
+
+  const resetView = useCallback(() => {
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+  }, []);
 
   // Reset index when dialog opens or initialIndex changes
   useEffect(() => {
     if (open) {
       setIndex(initialIndex);
       setImgError(false);
+      resetView();
     }
-  }, [open, initialIndex]);
+  }, [open, initialIndex, resetView]);
 
-  // Reset image error when index changes
+  // Reset image error and framing when index changes
   useEffect(() => {
     setImgError(false);
-  }, [index]);
+    resetView();
+  }, [index, resetView]);
+
+  /**
+   * Zoom about the frame centre. Functional update on purpose: two clicks landing
+   * in one React batch would otherwise both read the same rendered `zoom` and
+   * collapse into a single step.
+   */
+  const zoomBy = useCallback((delta: number) => {
+    setZoom((prev) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round((prev + delta) * 100) / 100)));
+  }, []);
+
+  // Back at 1× the image fits the frame, so any leftover pan would only push it
+  // off-centre with no way to see what's missing.
+  useEffect(() => {
+    if (zoom === MIN_ZOOM) setOffset({ x: 0, y: 0 });
+  }, [zoom]);
+
+  const onImagePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLImageElement>) => {
+      if (zoom <= MIN_ZOOM) return;
+      panRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        originX: offset.x,
+        originY: offset.y,
+      };
+      // Pointer capture throws NotFoundError when the pointer is already gone;
+      // it sits at the top of the handler, so an uncaught throw kills the pan.
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* capture is an optimisation, not a requirement */
+      }
+    },
+    [offset.x, offset.y, zoom],
+  );
+
+  const onImagePointerMove = useCallback((e: React.PointerEvent<HTMLImageElement>) => {
+    const pan = panRef.current;
+    if (!pan || pan.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    setOffset({ x: pan.originX + (e.clientX - pan.startX), y: pan.originY + (e.clientY - pan.startY) });
+  }, []);
+
+  const endPan = useCallback((e: React.PointerEvent<HTMLImageElement>) => {
+    if (panRef.current?.pointerId !== e.pointerId) return;
+    panRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+  }, []);
 
   const goPrev = useCallback(() => {
     setIndex((i) => Math.max(0, i - 1));
@@ -73,7 +179,7 @@ export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: M
     if (file) window.open(file.src, '_blank');
   }, [files, index]);
 
-  // Keyboard navigation
+  // Keyboard navigation + zoom
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
@@ -83,11 +189,20 @@ export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: M
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         goNext();
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        zoomBy(ZOOM_STEP);
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        zoomBy(-ZOOM_STEP);
+      } else if (e.key === '0') {
+        e.preventDefault();
+        resetView();
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [open, goPrev, goNext]);
+  }, [open, goPrev, goNext, zoomBy, resetView]);
 
   if (!open || files.length === 0) return null;
 
@@ -96,56 +211,126 @@ export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: M
   const category = getMediaCategory(current);
   const hasPrev = index > 0;
   const hasNext = index < files.length - 1;
+  const imageId = category === 'image' ? uploadImageId(current) : null;
 
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title={t('media.viewAttachment', { current: index + 1, total: files.length })}
-      size="xl"
+      size="workspace"
       noPadding
+      scrollBody={false}
     >
-      <div className="flex flex-col" style={{ height: '70vh' }}>
+      {/* Taller than a generic dialog on purpose: this is the "look at the detail"
+          surface, and zooming is useless if the frame is small to begin with. */}
+      <div className="flex h-[85dvh] max-h-full min-h-0 flex-col">
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-edge bg-surface-raised flex-shrink-0">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-edge bg-surface-raised px-2 py-2 sm:px-4">
+          <div className="flex flex-shrink-0 items-center gap-1 sm:gap-2">
             <button
               onClick={goPrev}
               disabled={!hasPrev}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border border-edge bg-surface-muted text-fg-secondary hover:bg-surface-sunken disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              aria-label={t('media.prev')}
+              className="flex h-11 w-11 items-center justify-center gap-1 rounded-md border border-edge bg-surface-muted text-xs text-fg-secondary transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30 sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
             >
-              <ArrowLeft size={13} /> {t('media.prev')}
+              <ArrowLeft size={15} /> <span className="hidden sm:inline">{t('media.prev')}</span>
             </button>
             <button
               onClick={goNext}
               disabled={!hasNext}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border border-edge bg-surface-muted text-fg-secondary hover:bg-surface-sunken disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              aria-label={t('media.next')}
+              className="flex h-11 w-11 items-center justify-center gap-1 rounded-md border border-edge bg-surface-muted text-xs text-fg-secondary transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30 sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
             >
-              {t('media.next')} <ArrowRight size={13} />
+              <span className="hidden sm:inline">{t('media.next')}</span> <ArrowRight size={15} />
             </button>
           </div>
-          <div className="flex items-center gap-2">
+          {category === 'image' && !imgError && (
+            <div className="flex flex-shrink-0 items-center gap-1">
+              <button
+                onClick={() => zoomBy(-ZOOM_STEP)}
+                disabled={zoom <= MIN_ZOOM}
+                aria-label={t('media.zoomOut')}
+                title={t('media.zoomOut')}
+                className="flex h-11 w-11 items-center justify-center rounded-md border border-edge bg-surface-muted text-fg-secondary transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30 sm:h-8 sm:w-8"
+              >
+                <ZoomOut size={15} />
+              </button>
+              <button
+                onClick={resetView}
+                aria-label={t('media.resetZoom')}
+                title={t('media.resetZoom')}
+                className="flex h-11 min-w-[3.5rem] items-center justify-center gap-1 rounded-md border border-edge bg-surface-muted px-1 text-xs tabular-nums text-fg-secondary transition-colors hover:bg-surface-sunken sm:h-8"
+              >
+                <Maximize2 size={13} /> {Math.round(zoom * 100)}%
+              </button>
+              <button
+                onClick={() => zoomBy(ZOOM_STEP)}
+                disabled={zoom >= MAX_ZOOM}
+                aria-label={t('media.zoomIn')}
+                title={t('media.zoomIn')}
+                className="flex h-11 w-11 items-center justify-center rounded-md border border-edge bg-surface-muted text-fg-secondary transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30 sm:h-8 sm:w-8"
+              >
+                <ZoomIn size={15} />
+              </button>
+            </div>
+          )}
+          <div className="flex min-w-0 items-center justify-end gap-2">
             {current.name && (
-              <span className="text-xs text-fg-muted truncate max-w-[200px]" title={current.name}>
+              <span
+                className="hidden min-w-0 max-w-[200px] truncate text-xs text-fg-muted sm:inline"
+                title={current.name}
+              >
                 {current.name}
               </span>
             )}
+            {imageId && sidePaneAvailable && (
+              <button
+                onClick={() => {
+                  openSidePane({ kind: 'image-annotate', src: current.src, imageId });
+                  onClose();
+                }}
+                aria-label={t('annotate.open')}
+                className="flex h-11 w-11 flex-shrink-0 items-center justify-center gap-1 rounded-md border border-edge bg-surface-muted text-xs text-fg-secondary transition-colors hover:bg-surface-sunken sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
+              >
+                <Pencil size={15} /> <span className="hidden sm:inline">{t('annotate.open')}</span>
+              </button>
+            )}
             <button
               onClick={handleDownload}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border border-edge bg-surface-muted text-fg-secondary hover:bg-surface-sunken transition-colors"
+              aria-label={t('media.download')}
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center gap-1 rounded-md border border-edge bg-surface-muted text-xs text-fg-secondary transition-colors hover:bg-surface-sunken sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
             >
-              <Download size={13} /> {t('media.download')}
+              <Download size={15} /> <span className="hidden sm:inline">{t('media.download')}</span>
             </button>
           </div>
         </div>
 
         {/* Preview area */}
-        <div className="flex-1 flex items-center justify-center bg-surface-sunken overflow-hidden p-4">
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-surface-sunken p-2 sm:p-4">
           {category === 'image' && !imgError && (
             <img
               src={current.src}
               alt={current.name || 'Preview'}
-              className="max-w-full max-h-full object-contain"
+              className="max-h-full max-w-full touch-none select-none object-contain"
+              style={{
+                transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+                // No transition while dragging — a lagging image feels broken.
+                transition: panRef.current ? 'none' : 'transform 120ms ease-out',
+                cursor: zoom > MIN_ZOOM ? (panRef.current ? 'grabbing' : 'grab') : 'zoom-in',
+              }}
+              draggable={false}
+              onPointerDown={onImagePointerDown}
+              onPointerMove={onImagePointerMove}
+              onPointerUp={endPan}
+              onPointerCancel={endPan}
+              onDoubleClick={() => (zoom > MIN_ZOOM ? resetView() : setZoom(2))}
+              onWheel={(e) => {
+                // Trackpad pinch arrives as ctrl+wheel; plain wheel keeps scrolling
+                // the page behind, which is what a reader expects at 100%.
+                if (!e.ctrlKey && zoom === MIN_ZOOM) return;
+                zoomBy(-Math.sign(e.deltaY) * ZOOM_STEP);
+              }}
               onError={() => setImgError(true)}
             />
           )}

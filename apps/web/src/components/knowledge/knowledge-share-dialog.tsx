@@ -56,7 +56,7 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
       })
       .catch(() => toast(t('knowledge.loadShareFailed'), 'error'))
       .finally(() => setLoading(false));
-  }, [open, docId]);
+  }, [open, docId, t]);
 
   const sharedTargets = new Set(shares.map((s) => s.target));
 
@@ -157,9 +157,9 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
           </div>
 
           {/* Groups */}
-          <div>
-            <span className="text-xs font-medium text-fg-muted">{t('knowledge.groups')}</span>
-            {groups.length > 0 ? (
+          {groups.length > 0 && (
+            <div>
+              <span className="text-xs font-medium text-fg-muted">{t('knowledge.groups')}</span>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {groups.map((g) => {
                   const target = `group:${g.id}`;
@@ -185,22 +185,8 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
                   );
                 })}
               </div>
-            ) : (
-              <p className="mt-1 text-xs text-fg-muted">
-                {t('knowledge.noGroupsHint')}{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    window.location.hash = '#/settings/groups';
-                  }}
-                  className="text-primary-fg-strong hover:underline"
-                >
-                  {t('knowledge.createGroupLink')}
-                </button>
-              </p>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Users */}
           <div>

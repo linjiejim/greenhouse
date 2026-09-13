@@ -9,6 +9,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { MessageSquareQuote } from '../../lib/icons';
+import { useT } from '../../lib/i18n';
 
 interface SelectionPopoverProps {
   /** Viewport-relative bounding rect of the selection */
@@ -20,6 +21,7 @@ interface SelectionPopoverProps {
 }
 
 export function SelectionPopover({ rect, text, onActivate }: SelectionPopoverProps) {
+  const t = useT();
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   // Capture initial values on mount so they survive re-renders
@@ -46,7 +48,7 @@ export function SelectionPopover({ rect, text, onActivate }: SelectionPopoverPro
         text-fg-faint hover:text-primary-fg hover:border-primary-300 hover:bg-primary-subtle
         transition-all duration-150 animate-fade-in"
       style={{ top: pos.top, left: pos.left }}
-      title="Quote & add note"
+      title={t('chat.quoteAndNote')}
     >
       <MessageSquareQuote size={14} />
     </button>

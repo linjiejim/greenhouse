@@ -2,14 +2,42 @@
  * Profiles API — base profiles, custom profiles, usage summary.
  */
 
-import type { Profile, ProfileDetail, UsageSummary } from '@greenhouse/types/api';
+import type { Profile, ProfileAvatar, ProfileDetail, UsageSummary } from '@greenhouse/types/api';
 import { rpc } from './client';
+
+export class ProfilesRequestError extends Error {
+  constructor(public readonly status: number) {
+    super(`Failed to fetch profiles: ${status}`);
+  }
+}
+
+/** A model the user may pick for a turn — served alongside the profile list. */
+export interface ChatModel {
+  id: string;
+  name: string;
+}
+
+/**
+ * Profiles + the models a user may switch between, from one request.
+ *
+ * Most callers only want the profiles, so `fetchProfiles` keeps its shape and
+ * this fuller variant serves the one consumer (the chat store) that also
+ * renders the model picker.
+ */
+export async function fetchProfilesAndModels(): Promise<{ profiles: Profile[]; models: ChatModel[] }> {
+  const res = await rpc.api.profiles.$get();
+  if (!res.ok) throw new ProfilesRequestError(res.status);
+  const data = await res.json();
+  return { profiles: data.profiles ?? [], models: 'models' in data ? (data.models ?? []) : [] };
+}
+
+export async function fetchProfilesStrict(): Promise<Profile[]> {
+  return (await fetchProfilesAndModels()).profiles;
+}
 
 export async function fetchProfiles(): Promise<Profile[]> {
   try {
-    const res = await rpc.api.profiles.$get({ query: {} });
-    if (!res.ok) return [];
-    return (await res.json()).profiles ?? [];
+    return await fetchProfilesStrict();
   } catch {
     return [];
   }
@@ -35,24 +63,42 @@ export interface CustomProfileInput {
   name: string;
   description?: string;
   base_profile_id: string;
+  /** Registry model id this agent runs on. */
+  model_id?: string;
   tools: string[];
   system_prompt: string;
   capabilities?: Array<{ icon: string; label: string; prompt: string }>;
   max_steps?: number;
   is_shared?: boolean;
-  avatar?: {
-    color?: string;
-    accessories?: string[];
-    leafStyle?: string;
-    faceStyle?: string;
-    palette?: { body?: string; leaf?: string };
-  };
-  // Safe declarative config
-  model_options?: { thinking?: boolean; temperature?: number; max_tokens?: number };
-  model_choice_ids?: string[];
-  default_language?: string;
-  greeting?: string;
-  suggested_followups?: string[];
+  avatar?: ProfileAvatar;
+  purpose?: string;
+  audience?: string;
+  risk_level?: 'low' | 'medium' | 'high';
+  budget_policy?: Record<string, unknown>;
+  eval_refs?: unknown[];
+  owner_backup_user_id?: string | null;
+  review_due_at?: string | null;
+  change_log?: string;
+}
+
+export type ProfileLifecycleStatus = NonNullable<Profile['lifecycle_status']>;
+
+export async function transitionCustomProfileLifecycle(
+  id: number,
+  input: {
+    status: ProfileLifecycleStatus;
+    note?: string;
+    publish_version?: number;
+    next_review_at?: string;
+  },
+): Promise<Profile> {
+  const args = { param: { id: String(id) }, json: input };
+  const res = await rpc.api.profiles.custom[':id'].lifecycle.$post(args);
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(('error' in data && data.error) || 'Failed to update Agent lifecycle');
+  }
+  return res.json();
 }
 
 export async function fetchCustomProfiles(): Promise<Profile[]> {
@@ -100,7 +146,7 @@ export async function forkProfile(sourceProfileId: string, name?: string): Promi
   });
   if (!res.ok) {
     const data = await res.json();
-    throw new Error(('error' in data && data.error) || 'Failed to fork profile');
+    throw new Error(('error' in data && data.error) || 'Failed to fork Agent');
   }
   return res.json();
 }

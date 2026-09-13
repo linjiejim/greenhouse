@@ -10,6 +10,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Pencil, Check } from '../../lib/icons';
+import { useT } from '../../lib/i18n';
 
 export interface Annotation {
   id: string;
@@ -25,21 +26,22 @@ interface AnnotationListProps {
 }
 
 export function AnnotationList({ annotations, onUpdate, onDelete, onClearAll }: AnnotationListProps) {
+  const t = useT();
   if (annotations.length === 0) return null;
 
   return (
     <div className="mb-2 space-y-1.5 animate-fade-in">
       <div className="flex items-center justify-between px-1">
         <span className="text-[10px] text-fg-faint font-medium uppercase tracking-wider">
-          Annotations ({annotations.length})
+          {t('chat.annotationsCount', { count: annotations.length })}
         </span>
         {annotations.length > 1 && (
           <button
             onClick={onClearAll}
             className="text-[10px] text-fg-faint hover:text-danger transition-colors"
-            title="Clear all annotations"
+            title={t('chat.clearAnnotations')}
           >
-            Clear all
+            {t('chat.clearAnnotations')}
           </button>
         )}
       </div>
@@ -67,6 +69,7 @@ function AnnotationItem({
   onUpdate: (note: string) => void;
   onDelete: () => void;
 }) {
+  const t = useT();
   const [isEditing, setIsEditing] = useState(false);
   const [editNote, setEditNote] = useState(annotation.note);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -113,12 +116,12 @@ function AnnotationItem({
                 }
               }}
               className="flex-1 text-xs bg-surface-raised border border-edge-strong rounded px-2 py-1 text-fg focus:outline-none focus:ring-1 focus:ring-primary-500/40"
-              placeholder="Your note…"
+              placeholder={t('chat.yourNote')}
             />
             <button
               onClick={handleSave}
               className="p-1 rounded text-primary-fg hover:bg-primary-subtle transition-colors"
-              title="Save"
+              title={t('common.save')}
             >
               <Check size={12} />
             </button>
@@ -126,7 +129,7 @@ function AnnotationItem({
         ) : annotation.note ? (
           <p className="text-xs text-fg-secondary font-medium leading-relaxed">→ {annotation.note}</p>
         ) : (
-          <p className="text-[11px] text-fg-faint">(no note)</p>
+          <p className="text-[11px] text-fg-faint">{t('chat.noNote')}</p>
         )}
       </div>
 
@@ -139,7 +142,7 @@ function AnnotationItem({
               setIsEditing(true);
             }}
             className="p-1 rounded text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
-            title="Edit note"
+            title={t('chat.editNote')}
           >
             <Pencil size={11} />
           </button>
@@ -147,7 +150,7 @@ function AnnotationItem({
         <button
           onClick={onDelete}
           className="p-1 rounded text-fg-faint hover:text-danger hover:bg-danger-subtle transition-colors"
-          title="Remove"
+          title={t('common.remove')}
         >
           <X size={11} />
         </button>

@@ -3,25 +3,42 @@
  * shareable users and per-session shares.
  */
 
-import type { Session, Message, SessionUsage, ShareInfo, ShareableUser, ShareItem } from '@greenhouse/types/api';
+import type {
+  Session,
+  Message,
+  SessionUsage,
+  MessageEvalResult,
+  SessionEvalSummary,
+  ShareInfo,
+  ShareableUser,
+  ShareItem,
+  SessionScope,
+} from '@greenhouse/types/api';
 import { rpc } from './client';
 
-export async function createSession(
-  title?: string,
-  profileId?: string,
-  context?: SessionContextData | null,
-): Promise<Session> {
+export async function createSession(title?: string, profileId?: string): Promise<Session> {
   // Non-literal arg: hc only types `json` for validator-backed routes (none yet).
-  const args = { json: { title, profile_id: profileId, ...(context ? { context } : {}) } };
+  const args = { json: { title, profile_id: profileId } };
   const res = await rpc.api.sessions.$post(args);
   if (!res.ok) throw new Error(`createSession failed: ${res.status}`);
   return res.json();
 }
 
-export async function listSessions(status?: string, includeEval = true): Promise<Session[]> {
-  const query: Record<string, string> = { limit: '500' };
+/**
+ * Omitting `scope` asks for the legacy combined list (a super gets everyone's
+ * conversations) — the history browser still wants that. The sidebar passes an
+ * explicit scope.
+ */
+export async function listSessions(
+  status?: string,
+  includeEval = true,
+  limit = 500,
+  scope?: SessionScope,
+): Promise<Session[]> {
+  const query: Record<string, string> = { limit: String(limit) };
   if (status && status !== 'all') query.status = status;
   if (includeEval) query.include_eval = '1';
+  if (scope) query.scope = scope;
   try {
     const res = await rpc.api.sessions.$get({ query });
     if (!res.ok) return [];
@@ -37,6 +54,32 @@ export async function getSession(
   const res = await rpc.api.sessions[':id'].$get({ param: { id } });
   if (!res.ok) throw new Error(`getSession failed: ${res.status}`);
   return res.json();
+}
+
+export async function forkSession(id: string, messageId?: string): Promise<Session> {
+  const args = { param: { id }, json: { message_id: messageId } };
+  const res = await rpc.api.sessions[':id'].fork.$post(args);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: 'Failed to fork conversation' }));
+    throw new Error(('error' in data && data.error) || `Fork failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function getMessageEval(sessionId: string, messageId: string): Promise<MessageEvalResult> {
+  const res = await rpc.api.sessions[':id'].messages[':msgId'].eval.$get({
+    param: { id: sessionId, msgId: messageId },
+  });
+  if (!res.ok) throw new Error(`getMessageEval failed: ${res.status}`);
+  return res.json();
+}
+
+/** Latest eval summary per message in a session — drives the eval-button state. */
+export async function getSessionEvals(sessionId: string): Promise<SessionEvalSummary[]> {
+  const res = await rpc.api.sessions[':id'].evals.$get({ param: { id: sessionId } });
+  if (!res.ok) throw new Error(`getSessionEvals failed: ${res.status}`);
+  const data = await res.json();
+  return data.evals as SessionEvalSummary[];
 }
 
 export async function updateSession(
@@ -100,8 +143,22 @@ export async function editMessage(sessionId: string, messageId: string, content:
 
 // ─── Regenerate API ──────────────────────────────────────
 
-export async function regenerateResponse(sessionId: string): Promise<{ ok: boolean; lastUserMessage: string }> {
-  const res = await rpc.api.sessions[':id'].regenerate.$post({ param: { id: sessionId } });
+export interface RegenerateResponse {
+  ok: true;
+  last_user: {
+    id: string;
+    content: string;
+    images: Array<{ id: string; url: string }>;
+  } | null;
+}
+
+export async function regenerateResponse(sessionId: string, assistantMessageId: string): Promise<RegenerateResponse> {
+  // Non-literal arg: hc only exposes `json` for validator-backed routes.
+  const args = {
+    param: { id: sessionId },
+    json: { assistant_message_id: assistantMessageId },
+  };
+  const res = await rpc.api.sessions[':id'].regenerate.$post(args);
   if (!res.ok) {
     const data = await res.json();
     throw new Error(('error' in data && data.error) || `Regenerate failed: ${res.status}`);
@@ -143,37 +200,4 @@ export async function deleteOneShare(sessionId: string, shareId: number): Promis
     param: { id: sessionId, shareId: String(shareId) },
   });
   if (!res.ok) throw new Error(`deleteOneShare failed: ${res.status}`);
-}
-
-// ─── Session Context ─────────────────────────────────────
-
-/** Structured per-session context (mirrors api/src/session-context.ts schema). */
-export interface SessionContextData {
-  role?: string;
-  locale?: string;
-  timezone?: string;
-  notes?: string;
-  attributes?: Record<string, string>;
-  _meta?: { source: 'app' | 'admin'; updated_at: string };
-}
-
-export async function getSessionContext(sessionId: string): Promise<SessionContextData | null> {
-  const res = await rpc.api.sessions[':id'].context.$get({ param: { id: sessionId } });
-  if (!res.ok) throw new Error(`getSessionContext failed: ${res.status}`);
-  const data = (await res.json()) as { context: SessionContextData | null };
-  return data.context;
-}
-
-/** Set (or clear, with null) the structured session context. */
-export async function putSessionContext(
-  sessionId: string,
-  context: SessionContextData | null,
-): Promise<SessionContextData | null> {
-  // Non-literal arg: hc only types `json` for validator-backed routes (none yet);
-  // the indirection passes the body while keeping param typing.
-  const args = { param: { id: sessionId }, json: { context } };
-  const res = await rpc.api.sessions[':id'].context.$put(args);
-  const data = (await res.json()) as { context?: SessionContextData | null; error?: string };
-  if (!res.ok) throw new Error(data.error || `putSessionContext failed: ${res.status}`);
-  return data.context ?? null;
 }

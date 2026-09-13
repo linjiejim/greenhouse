@@ -11,7 +11,7 @@ export function UserMessageContent({ content }: { content: string }) {
   const parsed = useMemo(() => parseAnnotatedContent(content), [content]);
 
   if (!parsed) {
-    return <Markdown content={content} />;
+    return <Markdown content={content} linkTarget="new-window" />;
   }
 
   return (
@@ -27,7 +27,7 @@ export function UserMessageContent({ content }: { content: string }) {
       {parsed.message && (
         <>
           <div className="border-t border-primary-edge/40 my-2" />
-          <Markdown content={parsed.message} />
+          <Markdown content={parsed.message} linkTarget="new-window" />
         </>
       )}
     </>

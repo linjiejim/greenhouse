@@ -2,25 +2,47 @@
  * Chat input area — textarea + image upload + send button.
  *
  * Composer enhancements:
- *  - `@`  → mention an agent profile (switches the active profile; shows a pill)
- *  - `/`  → quick-prompt command menu (commands expand into editable text)
- * The selected profile renders as a removable pill via <ComposerChips>.
+ *  - `@`  → select an agent profile (switches the active profile; shows a pill)
+ *  - `/`  → select a Task (attaches structured instructions + variable fields)
+ * Explicit profile and Task selections render as removable structured context.
  *
  * Extracted from chat.tsx for reusability and maintainability.
  */
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { Button, Spinner } from '../ui';
 import { ArrowUp, Paperclip, Square } from '../../lib/icons';
 import { useTriggerPopup } from './use-trigger-popup';
 import { CommandMenuPopover } from './command-menu-popover';
-import type { UserPrompt } from './command-menu-popover';
+import type { SlashSkill, UserPrompt } from './command-menu-popover';
+import { parseTaskVariables } from '@greenhouse/types/tasks';
 import { MentionPopover } from './mention-popover';
 import { ComposerChips } from './composer-chips';
+import { TaskVariableForm } from './task-variable-form';
+import { AttachmentChips } from '../conversation/attachments';
+import type { PendingAttachment } from '../conversation/attachments';
 import type { Profile } from '../../lib/api';
+import type { MissionRuntimeAvailability } from '../../lib/api/cloud-agent';
 import { AnnotationList } from './annotation-list';
 import type { Annotation } from './annotation-list';
 import { useT } from '../../lib/i18n';
+
+/**
+ * Composer height, in px. One line at rest, growing to roughly four before it
+ * scrolls internally.
+ *
+ * Global rather than per-surface on purpose: a taller composer only for the
+ * empty state would jump the instant the first message is sent, and the overlay
+ * shares this component. The empty state is now the personal workbench, so the
+ * vertical space a permanently three-line composer used to hold belongs to the
+ * cards above it.
+ *
+ * The floor is 56 and not lower because the mobile send button is anchored to
+ * the textarea's own bottom-right (`absolute bottom-2`) and is a 44px touch
+ * target: below 52 it overflows into the toolbar row underneath.
+ */
+const COMPOSER_MIN_HEIGHT = 56;
+const COMPOSER_MAX_HEIGHT = 112;
 
 export interface PendingImage {
   file: File;
@@ -42,16 +64,66 @@ interface ChatInputProps {
   maxImages?: number;
   /** Slot rendered at the start of the left toolbar (thinking mode, etc.) */
   topSlot?: React.ReactNode;
-  /** Slot rendered after attachment and voice controls in the left toolbar */
+  /** Slot rendered ABOVE the composer box (workflow run dock, etc.) */
+  aboveSlot?: React.ReactNode;
+  /** Slot rendered after the attachment control in the left toolbar */
   feedbackSlot?: React.ReactNode;
   /** Slot rendered in the bottom-right toolbar (before send button) */
   rightSlot?: React.ReactNode;
   /** Auto-focus textarea on mount */
   autoFocus?: boolean;
+  /**
+   * Disable the send buttons while the composer stays editable (mission run
+   * in flight). Distinct from isStreaming: no stop button, drafts keep
+   * working. Enter still calls onSend so the host can explain the block.
+   */
+  sendDisabled?: boolean;
+  /**
+   * A send was accepted but is waiting for in-flight image uploads. The send
+   * button shows a spinner (still no stop button — nothing is streaming yet)
+   * and the host sends automatically once the uploads settle.
+   */
+  sendWaiting?: boolean;
+  /** Hide the image-attachment affordance (mission composers use file attachments instead). */
+  attachmentsDisabled?: boolean;
+  /** Replace the standard localized placeholder for special composer states. */
+  placeholder?: string;
+  /** Hide the arrow/stop control when the rightSlot owns the primary action. */
+  hideSendButton?: boolean;
+
+  // ── Generic file attachments (every conversation) ──
+  // Providing onAttachmentSelect switches the paperclip to an any-file-type
+  // picker; files render as chips and upload on send (host-owned flow).
+  /** Pending attachment chips (name + size + upload state). */
+  pendingAttachments?: Array<PendingAttachment<unknown>>;
+  /** Called with picked/pasted files — enables the generic attach button. */
+  onAttachmentSelect?: (files: FileList | File[]) => void;
+  /** Remove a pending attachment chip by index. */
+  onRemoveAttachment?: (index: number) => void;
+  /** Cap for the generic attach button's disabled state. */
+  maxAttachments?: number;
   /** Optional external ref to the textarea (e.g. to focus after quoting) */
   inputRef?: React.MutableRefObject<HTMLTextAreaElement | null>;
-  /** Available slash command prompts */
+  /** Tasks available from the slash picker. */
   slashPrompts?: UserPrompt[];
+  /** Mission-ready skills for the slash picker (empty when the user can't launch missions). */
+  slashSkills?: SlashSkill[];
+  /** Mission admission posture; omitted when the user lacks the feature. */
+  missionAvailability?: MissionRuntimeAvailability;
+  /** Task attached to this draft; its body is expanded only when sending. */
+  selectedPrompt?: UserPrompt | null;
+  /** Skill attached to this draft; sending launches a Cloud Agent mission. */
+  selectedSkill?: SlashSkill | null;
+  /** Explicit route for the next send to continue a Mission. */
+  missionInstruction?: boolean;
+  /** Values typed into the selected task's `{{variables}}` form. */
+  taskValues?: Record<string, string>;
+  onTaskValueChange?: (key: string, value: string) => void;
+  onSelectPrompt?: (prompt: UserPrompt) => void;
+  onRemovePrompt?: () => void;
+  onSelectSkill?: (skill: SlashSkill) => void;
+  onRemoveSkill?: () => void;
+  onRemoveMissionInstruction?: () => void;
   /** Annotations from selection follow-up */
   annotations?: Annotation[];
   /** Update an annotation's note */
@@ -61,21 +133,19 @@ interface ChatInputProps {
   /** Clear all annotations */
   onClearAnnotations?: () => void;
 
-  // ── @-mention (agent profile) ──
-  /** Profiles available for @-mention. */
+  // ── @ Agent Profile picker ──
+  /** Profiles available from the @ picker. */
   profiles?: Profile[];
   /** Currently-active profile id (shown with a check in the menu). */
   selectedProfileId?: string;
   /** Enable the @ trigger (e.g. only for new chats with >1 profile). */
   mentionEnabled?: boolean;
-  /** Called when a profile is @-mentioned. */
+  /** Called when a profile is selected from the @ picker. */
   onMentionProfile?: (profileId: string) => void;
   /** Profile to surface as a pill (null = none). */
   profileChip?: Profile | null;
   /** Remove the profile pill (revert to default). */
   onRemoveProfileChip?: () => void;
-  /** Extra chips rendered in the pill bar after the profile pill (e.g. session-context trigger). */
-  chipsExtra?: React.ReactNode;
 }
 
 export function ChatInput({
@@ -89,11 +159,33 @@ export function ChatInput({
   onRemoveImage,
   maxImages = 3,
   topSlot,
+  aboveSlot,
   feedbackSlot,
   rightSlot,
   autoFocus,
+  sendDisabled = false,
+  sendWaiting = false,
+  attachmentsDisabled = false,
+  placeholder,
+  hideSendButton = false,
+  pendingAttachments = [],
+  onAttachmentSelect,
+  onRemoveAttachment,
+  maxAttachments = 10,
   inputRef,
   slashPrompts = [],
+  slashSkills = [],
+  missionAvailability,
+  selectedPrompt,
+  selectedSkill,
+  missionInstruction,
+  taskValues,
+  onTaskValueChange,
+  onSelectPrompt,
+  onRemovePrompt,
+  onSelectSkill,
+  onRemoveSkill,
+  onRemoveMissionInstruction,
   annotations = [],
   onUpdateAnnotation,
   onDeleteAnnotation,
@@ -104,23 +196,35 @@ export function ChatInput({
   onMentionProfile,
   profileChip,
   onRemoveProfileChip,
-  chipsExtra,
 }: ChatInputProps) {
   const t = useT();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const attachmentsUploading = pendingAttachments.some((a) => a.uploading);
   const inputAreaRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // Track IME composition manually — the Electron renderer doesn't reliably set
-  // KeyboardEvent.isComposing, so a bare isComposing check would send the
-  // message on the Enter that merely confirms the IME candidate.
+  const pendingTaskFocusRef = useRef<{ promptId: number; fallbackCaret: number } | null>(null);
+  const [isMobileComposer, setIsMobileComposer] = useState(false);
+  // Track IME composition manually so Enter confirms a candidate instead of
+  // accidentally sending the message.
   const isComposingRef = useRef(false);
 
-  // ── /slash command trigger ──
-  const slashEnabled = !isStreaming && slashPrompts.length > 0;
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const media = window.matchMedia('(max-width: 767px)');
+    const sync = () => setIsMobileComposer(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
+
+  // ── / Task + Skill trigger ──
+  const slashEnabled =
+    !isStreaming && (slashPrompts.length > 0 || slashSkills.length > 0 || missionAvailability !== undefined);
   const slash = useTriggerPopup({ triggerChar: '/', textareaRef, value: input, enabled: slashEnabled });
 
-  // ── @mention trigger (agent profile) ──
+  // ── @ Agent Profile trigger ──
   const mentionActiveEnabled = mentionEnabled && profiles.length > 0 && !isStreaming;
   const mention = useTriggerPopup({ triggerChar: '@', textareaRef, value: input, enabled: mentionActiveEnabled });
 
@@ -135,12 +239,14 @@ export function ChatInput({
       const timer = setTimeout(() => textareaRef.current?.focus(), 100);
       return () => clearTimeout(timer);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return undefined;
+  }, [autoFocus]);
 
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = Math.max(72, Math.min(textareaRef.current.scrollHeight, 160)) + 'px';
+      textareaRef.current.style.height =
+        Math.max(COMPOSER_MIN_HEIGHT, Math.min(textareaRef.current.scrollHeight, COMPOSER_MAX_HEIGHT)) + 'px';
     }
   }, [input]);
 
@@ -154,17 +260,29 @@ export function ChatInput({
     }, 0);
   }, []);
 
-  // Handle /command selections — prompts expand into editable text.
+  // Handle /Task selections — strip only the trigger token and attach the
+  // Task as structured context. The rest of the draft stays editable.
   const handleSelectPrompt = useCallback(
     (prompt: UserPrompt) => {
       const at = slash.triggerIndex;
-      setInput(slash.insertSelection(prompt.content));
-      refocusAt(at + prompt.content.length);
+      pendingTaskFocusRef.current = { promptId: prompt.id, fallbackCaret: at };
+      setInput(slash.insertSelection(''));
+      onSelectPrompt?.(prompt);
     },
-    [slash, setInput, refocusAt],
+    [slash, setInput, onSelectPrompt],
   );
-
-  // Handle @mention selection — strip the `@query` token, switch profile.
+  // Handle /Skill selections — strip the trigger token and attach the skill
+  // as a chip; the send launches a Cloud Agent mission with the typed brief.
+  const handleSelectSkill = useCallback(
+    (skill: SlashSkill) => {
+      const at = slash.triggerIndex;
+      setInput(slash.insertSelection(''));
+      onSelectSkill?.(skill);
+      refocusAt(at);
+    },
+    [slash, setInput, onSelectSkill, refocusAt],
+  );
+  // Handle @ Agent selection — strip the `@query` token, switch profile.
   const handleSelectMention = useCallback(
     (profileId: string) => {
       const at = mention.triggerIndex;
@@ -175,7 +293,31 @@ export function ChatInput({
     [mention, setInput, onMentionProfile, refocusAt],
   );
 
-  // Send handler
+  // A Task with variables starts in its first blank instead of bouncing the
+  // user back to the message textarea. TaskVariableForm handles deterministic
+  // Tab movement through the remaining variables and then calls back here.
+  useEffect(() => {
+    const request = pendingTaskFocusRef.current;
+    if (!request || selectedPrompt?.id !== request.promptId) return;
+    pendingTaskFocusRef.current = null;
+    const firstVariable = containerRef.current?.querySelector<HTMLInputElement>('[data-task-variable-input]');
+    if (firstVariable) {
+      firstVariable.focus();
+      return;
+    }
+    refocusAt(request.fallbackCaret);
+  }, [refocusAt, selectedPrompt]);
+
+  const focusMessageInput = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.focus();
+    const end = textarea.value.length;
+    textarea.setSelectionRange(end, end);
+  }, []);
+
+  // Send handler. `sendDisabled` only disables the buttons — Enter still
+  // reaches onSend so the host can surface a hint for why sending is blocked.
   const handleSend = useCallback(() => {
     // Dismiss any open popover
     slash.dismiss();
@@ -188,8 +330,7 @@ export function ChatInput({
       // Don't handle Enter if a popover is open (popover handles it)
       if (slash.isActive || mention.isActive) return;
       // Guard against IME composition: `isComposing`/keyCode 229 cover browsers,
-      // and our manual ref covers the Electron renderer where neither is reliable. The
-      // Enter that confirms an IME candidate must select, not send.
+      // plus the manual ref cover browsers where composition state is delayed.
       const composing = e.nativeEvent.isComposing || e.keyCode === 229 || isComposingRef.current;
       if (e.key === 'Enter' && !e.shiftKey && !composing) {
         // While a response is generating the composer stays editable, but Enter
@@ -202,9 +343,22 @@ export function ChatInput({
     [handleSend, slash.isActive, mention.isActive, isStreaming],
   );
 
+  const defaultPlaceholder = isMobileComposer
+    ? t('chat.askPlaceholderShort')
+    : mentionActiveEnabled && slashEnabled
+      ? t('chat.askPlaceholderFull')
+      : mentionActiveEnabled
+        ? t('chat.askPlaceholderAgent')
+        : slashEnabled
+          ? t('chat.askPlaceholderTask')
+          : t('chat.askPlaceholderShort');
+
   return (
-    <div className="px-3 md:px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-0 bg-gradient-to-t from-surface-sunken via-surface-sunken/95 to-surface-sunken/0 flex-shrink-0">
+    <div className="mobile-keyboard-lift px-3 md:px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-4 bg-gradient-to-t from-surface-canvas via-surface-canvas/95 to-surface-canvas/0 flex-shrink-0">
       <div ref={containerRef} className="relative mx-auto w-full max-w-5xl">
+        {/* Above-composer slot (workflow run dock) */}
+        {aboveSlot}
+
         {/* Annotation list */}
         {annotations.length > 0 && onUpdateAnnotation && onDeleteAnnotation && onClearAnnotations && (
           <div className="mb-2">
@@ -217,7 +371,7 @@ export function ChatInput({
           </div>
         )}
 
-        <div className="rounded-2xl border border-edge bg-surface-raised shadow-xl overflow-visible">
+        <div className="relative z-10 overflow-visible rounded-2xl border border-edge bg-surface-chrome shadow-xl transition-[border-color,box-shadow] focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/30">
           {/* Image preview */}
           {pendingImages.length > 0 && (
             <div className="px-3 pt-3 pb-1 flex gap-2 flex-wrap">
@@ -253,8 +407,30 @@ export function ChatInput({
             </div>
           )}
 
-          {/* Selected profile pill */}
-          <ComposerChips profile={profileChip} onRemoveProfile={onRemoveProfileChip} extra={chipsExtra} />
+          {/* Mission file-attachment chips (name + size + upload state) */}
+          {onAttachmentSelect && onRemoveAttachment && pendingAttachments.length > 0 && (
+            <AttachmentChips attachments={pendingAttachments} onRemove={onRemoveAttachment} className="px-3 pt-3" />
+          )}
+
+          {/* Structured @ Agent + / Task + / Skill selections */}
+          <ComposerChips
+            profile={profileChip}
+            onRemoveProfile={onRemoveProfileChip}
+            prompt={selectedPrompt}
+            onRemovePrompt={onRemovePrompt}
+            skill={selectedSkill}
+            onRemoveSkill={onRemoveSkill}
+            missionInstruction={missionInstruction}
+            onRemoveMissionInstruction={onRemoveMissionInstruction}
+          />
+          {selectedPrompt && onTaskValueChange && (
+            <TaskVariableForm
+              variables={parseTaskVariables(selectedPrompt.variables)}
+              values={taskValues ?? {}}
+              onChange={onTaskValueChange}
+              onComplete={focusMessageInput}
+            />
+          )}
 
           {/* Textarea — visually part of the floating composer */}
           {/*
@@ -274,12 +450,25 @@ export function ChatInput({
                 e.target.value = '';
               }}
             />
+            {/* Any-file-type picker — the host routes images back to the inline path */}
+            {onAttachmentSelect && (
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) onAttachmentSelect(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+            )}
             <textarea
+              data-testid="chat-input"
               ref={(el) => {
                 textareaRef.current = el;
                 if (inputRef) inputRef.current = el;
               }}
-              data-testid="chat-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -290,6 +479,20 @@ export function ChatInput({
                 isComposingRef.current = false;
               }}
               onPaste={(e) => {
+                // Hand every pasted file to the host, which routes by kind
+                // (images inline, everything else an attachment) — the same
+                // router the picker and drop-zone use.
+                if (onAttachmentSelect) {
+                  const pasted = Array.from(e.clipboardData.items)
+                    .map((item) => item.getAsFile())
+                    .filter((f): f is File => f !== null);
+                  if (pasted.length) {
+                    e.preventDefault();
+                    onAttachmentSelect(pasted);
+                  }
+                  return;
+                }
+                if (attachmentsDisabled) return;
                 const files = Array.from(e.clipboardData.items)
                   .filter((item) => item.type.startsWith('image/'))
                   .map((item) => item.getAsFile())
@@ -299,73 +502,120 @@ export function ChatInput({
                   onImageSelect(files);
                 }
               }}
-              placeholder={t('chat.askPlaceholderFull')}
-              rows={2}
-              className="block w-full bg-transparent border-0 px-4 pt-4 pb-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:ring-0 resize-none disabled:opacity-60"
-              style={{ minHeight: '72px', maxHeight: '160px' }}
+              placeholder={placeholder ?? defaultPlaceholder}
+              rows={1}
+              className="chat-composer-textarea block w-full resize-none border-0 bg-transparent px-4 pb-2.5 pr-16 pt-3 text-sm text-fg placeholder-fg-faint focus:outline-none focus:ring-0 disabled:opacity-60 md:pr-4"
+              style={{ minHeight: `${COMPOSER_MIN_HEIGHT}px`, maxHeight: `${COMPOSER_MAX_HEIGHT}px` }}
             />
+            {!hideSendButton && (
+              <div className="absolute bottom-2 right-3 md:hidden">
+                {isStreaming ? (
+                  <Button
+                    onClick={onStop}
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 rounded-full border border-danger p-0 text-danger hover:bg-danger-subtle"
+                    title={t('chat.stopGenerating')}
+                    aria-label={t('chat.stopGenerating')}
+                  >
+                    <Square size={13} />
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleSend}
+                    data-testid="chat-send"
+                    disabled={(!input.trim() && !selectedPrompt && !selectedSkill) || sendDisabled || sendWaiting}
+                    size="icon"
+                    className="h-11 w-11 rounded-full p-0"
+                    title={sendWaiting ? t('chat.uploadingImages') : t('common.send')}
+                    aria-label={sendWaiting ? t('chat.uploadingImages') : t('common.send')}
+                  >
+                    {sendWaiting ? <Spinner className="h-4 w-4" /> : <ArrowUp size={15} />}
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Bottom toolbar */}
           <div className="flex items-center justify-between gap-2 px-3 pb-3 pt-1 flex-wrap">
-            {/* Left: controls + attach */}
+            {/* Left: controls + attachment */}
             <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
               {topSlot}
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isStreaming || pendingImages.length >= maxImages}
-                className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-fg-muted hover:text-fg-secondary hover:bg-surface-muted disabled:opacity-40 transition-colors"
-                title={`Upload image (max ${maxImages})`}
-              >
-                <Paperclip size={15} />
-              </button>
+              {onAttachmentSelect ? (
+                <button
+                  onClick={() => attachmentInputRef.current?.click()}
+                  disabled={attachmentsUploading || pendingAttachments.length >= maxAttachments}
+                  className="h-11 w-11 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-lg text-fg-muted hover:text-fg-secondary hover:bg-surface-muted disabled:opacity-40 transition-colors"
+                  title={t('cloudAgent.attach', { count: maxAttachments })}
+                  aria-label={t('cloudAgent.attach', { count: maxAttachments })}
+                >
+                  <Paperclip size={15} />
+                </button>
+              ) : (
+                !attachmentsDisabled && (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isStreaming || pendingImages.length >= maxImages}
+                    className="h-11 w-11 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-lg text-fg-muted hover:text-fg-secondary hover:bg-surface-muted disabled:opacity-40 transition-colors"
+                    title={`Upload image (max ${maxImages})`}
+                  >
+                    <Paperclip size={15} />
+                  </button>
+                )
+              )}
               {feedbackSlot && <div className="flex items-center sm:ml-1">{feedbackSlot}</div>}
             </div>
 
             {/* Right: profile selector + send/stop */}
             <div className="flex items-center gap-1.5 min-w-0 ml-auto">
               {rightSlot}
-              {isStreaming ? (
-                <Button
-                  onClick={onStop}
-                  data-testid="chat-stop"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-full p-0 text-danger hover:bg-danger-subtle border border-danger"
-                  title="Stop generating"
-                  aria-label="Stop generating"
-                >
-                  <Square size={13} />
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleSend}
-                  data-testid="chat-send"
-                  disabled={!input.trim()}
-                  size="icon"
-                  className="h-8 w-8 rounded-full p-0"
-                  title={t('common.send')}
-                  aria-label={t('common.send')}
-                >
-                  <ArrowUp size={15} />
-                </Button>
+              {!hideSendButton && (
+                <div className="hidden md:block">
+                  {isStreaming ? (
+                    <Button
+                      onClick={onStop}
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-full border border-danger p-0 text-danger hover:bg-danger-subtle"
+                      title={t('chat.stopGenerating')}
+                      aria-label={t('chat.stopGenerating')}
+                    >
+                      <Square size={13} />
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleSend}
+                      disabled={(!input.trim() && !selectedPrompt && !selectedSkill) || sendDisabled || sendWaiting}
+                      size="icon"
+                      className="h-8 w-8 rounded-full p-0"
+                      title={sendWaiting ? t('chat.uploadingImages') : t('common.send')}
+                      aria-label={sendWaiting ? t('chat.uploadingImages') : t('common.send')}
+                    >
+                      {sendWaiting ? <Spinner className="h-4 w-4" /> : <ArrowUp size={15} />}
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* /command menu */}
+        {/* / Task + Skill menu */}
         {showSlash && (
           <CommandMenuPopover
             query={slash.query}
             prompts={slashPrompts}
+            skills={slashSkills}
+            missionAvailability={missionAvailability}
             onSelectPrompt={handleSelectPrompt}
+            onSelectSkill={handleSelectSkill}
             onDismiss={slash.dismiss}
             anchorRef={containerRef}
           />
         )}
 
-        {/* @mention menu */}
+        {/* @ Agent Profile menu */}
         {showMention && (
           <MentionPopover
             query={mention.query}

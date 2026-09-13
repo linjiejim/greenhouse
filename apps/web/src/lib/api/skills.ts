@@ -7,6 +7,18 @@
  */
 
 import { rpc } from './client';
+import { downloadAuthenticatedFile } from '../file-download';
+
+export type SkillScanStatus = 'pending' | 'clean' | 'suspicious' | 'blocked';
+/** Mirrors the API's FIRST_PARTY_SKILL_GROUPS — `core`/`apps` retired 2026-08-17. */
+export type SkillSourceGroup = 'branding' | 'business';
+
+export interface SkillScanFinding {
+  rule: string;
+  severity: 'high' | 'medium';
+  path?: string;
+  excerpt: string;
+}
 
 export interface SkillSummary {
   name: string;
@@ -17,6 +29,19 @@ export interface SkillSummary {
   status: 'active' | 'archived';
   owner_user_id: string;
   download_count: number;
+  scan_status: SkillScanStatus;
+  scan_findings: SkillScanFinding[];
+  scan_version: string | null;
+  scanned_at: string | null;
+  scan_reviewed_by: string | null;
+  scan_reviewed_at: string | null;
+  scan_note: string | null;
+  /** Launchable as a Cloud Agent mission (server-derived; sandbox-sync predicate). */
+  mission_ready: boolean;
+  /** Trusted first-party repository group; null for user/team skills. */
+  source_group: SkillSourceGroup | null;
+  /** Selectable in Chat's slash picker and accepted by direct launch. */
+  slash_selectable: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -69,12 +94,65 @@ export async function getSkill(name: string): Promise<{ skill: SkillSummary; ver
 export async function downloadSkillBundle(
   name: string,
   version?: string,
+  opts?: { meter?: boolean },
 ): Promise<{ skill: SkillSummary; version: SkillVersionSummary; files: SkillFileEntry[] }> {
-  const args = { param: { name }, query: version ? { version } : {} };
+  // meter:false = passive browse (render SKILL.md / preview files) — don't inflate download_count.
+  const query: Record<string, string> = {};
+  if (version) query.version = version;
+  if (opts?.meter === false) query.meter = 'false';
+  const args = { param: { name }, query };
   const res = await rpc.api.skills[':name'].download.$get(args);
   const data = await res.json().catch(() => null);
   if (!res.ok || !data || 'error' in data) throw new Error(errorOf(data, 'Failed to download skill'));
   return data;
+}
+
+/** Explicit user download: the complete installable Skill package, not its JSON wire representation. */
+export async function downloadSkillArchive(name: string, version: string): Promise<void> {
+  const url = `/api/skills/${encodeURIComponent(name)}/download.zip?version=${encodeURIComponent(version)}`;
+  return downloadAuthenticatedFile(url, `${name}-${version}.zip`);
+}
+
+export interface PublishSkillInput {
+  name: string;
+  display_name?: string;
+  description?: string;
+  tags?: string[];
+  version?: string;
+  changelog?: string;
+  files: SkillFileEntry[];
+}
+
+export async function publishSkill(
+  input: PublishSkillInput,
+): Promise<{ created: boolean; skill: SkillSummary; version: SkillVersionSummary }> {
+  // No validator on this route — pass json indirectly per the hc convention.
+  const args = { json: input };
+  const res = await rpc.api.skills.publish.$post(args);
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || 'error' in data) throw new Error(errorOf(data, 'Failed to publish skill'));
+  return data;
+}
+
+/** Super only — rule on a scanner verdict. `blocked` is the permanent ban. */
+export async function decideSkillScan(
+  name: string,
+  decision: 'clean' | 'blocked',
+  note?: string,
+): Promise<SkillSummary> {
+  const args = { param: { name }, json: { decision, note } };
+  const res = await rpc.api.skills[':name']['scan-decision'].$post(args);
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || 'error' in data) throw new Error(errorOf(data, 'Failed to record the decision'));
+  return data.skill;
+}
+
+/** Super only — re-run the scanner over the latest version. */
+export async function rescanSkill(name: string): Promise<SkillSummary> {
+  const res = await rpc.api.skills[':name'].rescan.$post({ param: { name } });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || 'error' in data) throw new Error(errorOf(data, 'Failed to rescan skill'));
+  return data.skill;
 }
 
 export async function archiveSkill(name: string): Promise<SkillSummary> {

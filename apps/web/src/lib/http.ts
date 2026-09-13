@@ -1,8 +1,8 @@
 /**
  * Small shared HTTP helpers built on top of `authFetch`.
  *
- * Typed API modules should use these instead of re-implementing query-string
- * building and JSON-with-error-handling per file.
+ * Typed API modules (crm-api, …) should use these instead of
+ * re-implementing query-string building and JSON-with-error-handling per file.
  */
 
 import { authFetch } from './auth';

@@ -1,12 +1,15 @@
 /**
- * Settings nav panel — sidebar contextual panel for Settings tab.
+ * Settings nav panel — sidebar contextual panel for the (user-scoped) Settings tab.
  *
  * Sections (see `settingsSections` in nav-registry):
- * - Preferences (standalone, top — no header)
- * - Personal: Automation, My Prompts, My Agents
- * - Workspace: Groups, Cloud Email
- * - Administration (super only): Users, AI Gateway, MCP Access, System Agents, Agent Usages, Feature Requests
- * - Labs (super only, beta): Memory
+ * - Preferences + Cloud (one flat block, no header): Preferences, Groups,
+ *   Agent Connections, Greenhouse Admin
+ * - Labs (feature-gated): Memory
+ *
+ * Automation, Tasks, and My Agents live in the Chat sidebar workspace.
+ *
+ * Global management (Users, Agent Usages, Evaluation, …) lives on the separate
+ * super-only Administration surface — see `administration-nav-panel`.
  *
  * Module definitions sourced from unified nav-registry.
  */
@@ -17,7 +20,8 @@ import { useAuthStore, usePinStore } from '../../../stores';
 import { ConfirmDialog } from '../../ui';
 import { useT } from '../../../lib/i18n';
 import { ContextMenu, useContextMenu } from '../context-menu';
-import { settingsSections } from '../../../lib/nav-registry';
+import { localizeNavModule, settingsSections } from '../../../lib/nav-registry';
+import { canUseFeature } from '../../../lib/features';
 import type { NavModule, SettingsNavSection } from '../../../lib/nav-registry';
 
 // ─── Component ───────────────────────────────────────────
@@ -39,7 +43,11 @@ export function SettingsNavPanel({ activeModule, collapsed, onSignOut }: Setting
 
   if (collapsed) return null;
 
-  const canViewModule = (mod: NavModule) => !mod.requireRole || (mod.requireRole.includes('super') && isSuper);
+  const canViewModule = (mod: NavModule) => {
+    const roleAllowed = !mod.requireRole || (mod.requireRole.includes('super') && isSuper);
+    const featureAllowed = !mod.requireFeature || canUseFeature(currentUser, mod.requireFeature);
+    return roleAllowed && featureAllowed;
+  };
   const canViewSection = (section: SettingsNavSection) =>
     !section.requireRole || (section.requireRole.includes('super') && isSuper);
 
@@ -55,15 +63,15 @@ export function SettingsNavPanel({ activeModule, collapsed, onSignOut }: Setting
     const pinned = isPinned(mod.id);
     return [
       pinned
-        ? { label: 'Unpin from Sidebar', icon: PinOff, onClick: () => unpinItem(mod.id) }
-        : { label: 'Pin to Sidebar', icon: Pin, onClick: () => pinItem(mod.id) },
+        ? { label: t('sessionGroups.unpin'), icon: PinOff, onClick: () => unpinItem(mod.id) }
+        : { label: t('sessionGroups.pin'), icon: Pin, onClick: () => pinItem(mod.id) },
     ];
   };
 
   const renderItem = (mod: NavModule) => (
     <NavItem
       key={mod.id}
-      mod={mod}
+      mod={localizeNavModule(mod, t)}
       isActive={activeModule === getShortKey(mod)}
       onClick={() => navigate(getShortKey(mod))}
       onContextMenu={(e) => {
@@ -76,11 +84,11 @@ export function SettingsNavPanel({ activeModule, collapsed, onSignOut }: Setting
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="px-3 py-2 flex-shrink-0">
-        <span className="text-xs font-medium text-fg-muted uppercase tracking-wide">Settings</span>
+        <span className="text-xs font-medium text-fg-muted uppercase tracking-wide">{t('app.settings')}</span>
       </div>
       <nav className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
         {settingsSections.filter(canViewSection).map((section, sectionIndex) => {
-          const visibleItems = section.items.filter(canViewModule);
+          const visibleItems = section.items.filter((mod) => !mod.hiddenFromNav && canViewModule(mod));
 
           // Skip empty sections entirely (e.g. all items role-gated out).
           if (visibleItems.length === 0) return null;
@@ -92,7 +100,7 @@ export function SettingsNavPanel({ activeModule, collapsed, onSignOut }: Setting
                   {sectionIndex > 0 && <div className="mx-1 my-1.5 border-t border-edge" />}
                   <div className="px-3 pt-1 pb-0.5">
                     <span className="text-[10px] font-semibold text-fg-faint uppercase tracking-wider">
-                      {section.label}
+                      {section.labelKey ? t(section.labelKey) : section.label}
                     </span>
                   </div>
                 </>

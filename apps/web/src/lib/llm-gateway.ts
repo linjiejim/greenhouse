@@ -1,8 +1,7 @@
 /**
  * 团队网关 (LLM Gateway) — web API client.
  *
- * 用户自助：拉取可选模型目录、无感签发/轮换默认 key、管理网关 key。
- * 管理员：上游池 + 模型目录 + 网关 key 治理。
+ * 管理员用于管理上游池、模型目录与网关 key。
  *
  * 所有请求走 authFetch（自动带内部用户 Bearer token + 401 续期）。
  */
@@ -10,13 +9,6 @@
 import { authFetch } from './auth';
 
 // ─── User-facing types ───────────────────────────────────
-
-export interface GatewayCatalogModel {
-  public_id: string;
-  display_name: string;
-  is_default: boolean;
-  is_public: boolean;
-}
 
 export interface GatewayKey {
   id: string;
@@ -38,161 +30,44 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
   return data;
 }
 
-/** Enabled gateway models the current user may select. */
-export async function fetchGatewayCatalog(): Promise<GatewayCatalogModel[]> {
-  const res = await authFetch('/api/auth/llm-keys/catalog');
-  const data = await jsonOrThrow<{ models: GatewayCatalogModel[] }>(res);
-  return data.models ?? [];
-}
-
-/** Seamless provision — get-or-rotate the user's default gateway key (returns raw once). */
-export async function provisionGatewayKey(): Promise<{ key: GatewayKey; api_key: string }> {
-  const res = await authFetch('/api/auth/llm-keys/provision', { method: 'POST' });
-  return jsonOrThrow<{ key: GatewayKey; api_key: string }>(res);
-}
-
-export async function listGatewayKeys(): Promise<{ keys: GatewayKey[]; limit: number; count: number }> {
-  const res = await authFetch('/api/auth/llm-keys');
-  return jsonOrThrow<{ keys: GatewayKey[]; limit: number; count: number }>(res);
-}
-
-export async function createGatewayKey(input: {
-  name?: string;
-  allowed_models?: string[];
-}): Promise<{ key: GatewayKey; api_key: string }> {
-  const res = await authFetch('/api/auth/llm-keys', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  return jsonOrThrow<{ key: GatewayKey; api_key: string }>(res);
-}
-
-export async function deleteGatewayKey(id: string): Promise<void> {
-  const res = await authFetch(`/api/auth/llm-keys/${id}`, { method: 'DELETE' });
-  await jsonOrThrow(res);
-}
-
 // ─── Admin types ─────────────────────────────────────────
 
-export type GatewayUpstreamKind = 'openai' | 'anthropic' | 'deepseek' | 'openai-compatible';
-
-export interface GatewayUpstream {
-  id: string;
-  name: string;
-  provider_kind: GatewayUpstreamKind;
-  base_url: string;
-  has_key: boolean;
-  enabled: boolean;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
+/** One provider in a catalog model's fallback chain. */
+export interface CatalogProvider {
+  provider: string;
+  model: string;
+  base_url: string | null;
+  api_key_env: string;
+  /** Presence only — the key value never leaves the server. */
+  api_key_configured: boolean;
+  relay_capable: boolean;
 }
 
-export interface GatewayModel {
+export interface CatalogModel {
   id: string;
-  public_id: string;
-  display_name: string;
-  upstream_id: string;
-  upstream_model: string;
-  enabled: boolean;
+  name: string;
   is_default: boolean;
   is_public: boolean;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
+  /** At least one provider in the chain is usable right now. */
+  ready: boolean;
+  providers: CatalogProvider[];
 }
 
 export interface AdminGatewayKey extends GatewayKey {
-  user_id: string | null;
+  user_id: string;
   today_tokens: number;
 }
 
-// ─── Admin: upstreams ────────────────────────────────────
+// ─── Admin: model catalog (read-only) ────────────────────
 
-export async function adminListUpstreams(): Promise<GatewayUpstream[]> {
-  const res = await authFetch('/api/admin/llm-gateway/upstreams');
-  return (await jsonOrThrow<{ upstreams: GatewayUpstream[] }>(res)).upstreams ?? [];
-}
-
-export async function adminCreateUpstream(input: {
-  name: string;
-  provider_kind: GatewayUpstreamKind;
-  base_url: string;
-  api_key: string;
-  enabled?: boolean;
-}): Promise<GatewayUpstream> {
-  const res = await authFetch('/api/admin/llm-gateway/upstreams', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  return (await jsonOrThrow<{ upstream: GatewayUpstream }>(res)).upstream;
-}
-
-export async function adminUpdateUpstream(
-  id: string,
-  patch: Partial<{
-    name: string;
-    provider_kind: GatewayUpstreamKind;
-    base_url: string;
-    api_key: string;
-    enabled: boolean;
-  }>,
-): Promise<void> {
-  const res = await authFetch(`/api/admin/llm-gateway/upstreams/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  });
-  await jsonOrThrow(res);
-}
-
-export async function adminDeleteUpstream(id: string): Promise<void> {
-  const res = await authFetch(`/api/admin/llm-gateway/upstreams/${id}`, { method: 'DELETE' });
-  await jsonOrThrow(res);
-}
-
-// ─── Admin: models ───────────────────────────────────────
-
-export async function adminListModels(): Promise<GatewayModel[]> {
-  const res = await authFetch('/api/admin/llm-gateway/models');
-  return (await jsonOrThrow<{ models: GatewayModel[] }>(res)).models ?? [];
-}
-
-export async function adminCreateModel(input: {
-  public_id: string;
-  display_name: string;
-  upstream_id: string;
-  upstream_model: string;
-  enabled?: boolean;
-  is_default?: boolean;
-  is_public?: boolean;
-  sort_order?: number;
-}): Promise<GatewayModel> {
-  const res = await authFetch('/api/admin/llm-gateway/models', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  return (await jsonOrThrow<{ model: GatewayModel }>(res)).model;
-}
-
-export async function adminUpdateModel(
-  id: string,
-  patch: Partial<Omit<GatewayModel, 'id' | 'public_id' | 'created_at' | 'updated_at'>>,
-): Promise<void> {
-  const res = await authFetch(`/api/admin/llm-gateway/models/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  });
-  await jsonOrThrow(res);
-}
-
-export async function adminDeleteModel(id: string): Promise<void> {
-  const res = await authFetch(`/api/admin/llm-gateway/models/${id}`, { method: 'DELETE' });
-  await jsonOrThrow(res);
+/**
+ * The catalog is declared in `apps/api/config/models.yaml` with secrets in env,
+ * so there is nothing to write here — only to inspect.
+ */
+export async function adminGetCatalog(): Promise<{ models: CatalogModel[]; source: string }> {
+  const res = await authFetch('/api/admin/llm-gateway/catalog');
+  const data = await jsonOrThrow<{ models: CatalogModel[]; source: string }>(res);
+  return { models: data.models ?? [], source: data.source ?? '' };
 }
 
 // ─── Admin: relay keys ───────────────────────────────────

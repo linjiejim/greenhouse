@@ -6,13 +6,18 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button, Textarea } from '../../components/ui';
+import { FormActions, FormError } from '../../components/form';
+import { SettingsPanel, SettingsSection } from '../../components/settings';
+import { ModulePage } from '../../components/app/module-page';
 import { authFetch } from '../../lib/auth';
-import { Sparkles, Palette, Globe } from '../../lib/icons';
-import { ThemeModeSelector } from '../../components/app/theme-mode-selector';
+import { Check, Globe, Monitor, Moon, Palette, Sparkles, Sun } from '../../lib/icons';
+import { applyTheme, getActiveTheme, getThemeDefinition } from '../../lib/theme';
+import type { ThemeKey } from '../../lib/theme';
 import { useI18n, LOCALE_OPTIONS } from '../../lib/i18n';
 import { useAuthStore } from '../../stores';
 
 const MAX_NOTES_LENGTH = 500;
+const THEME_CHOICES: ThemeKey[] = ['system', 'light', 'dark'];
 
 export function PreferencesPanel() {
   const { t, locale, setLocale } = useI18n();
@@ -21,12 +26,23 @@ export function PreferencesPanel() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTheme, setActiveTheme] = useState<ThemeKey>(getActiveTheme());
+  const [, setSystemThemeVersion] = useState(0);
 
   useEffect(() => {
     setNotes(currentUser?.notes ?? '');
     setSaved(false);
     setError(null);
+    setActiveTheme(getActiveTheme());
   }, [currentUser?.notes]);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const refreshPreview = () => setSystemThemeVersion((version) => version + 1);
+    mediaQuery.addEventListener('change', refreshPreview);
+    return () => mediaQuery.removeEventListener('change', refreshPreview);
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
@@ -56,59 +72,121 @@ export function PreferencesPanel() {
   const remaining = MAX_NOTES_LENGTH - notes.length;
 
   return (
-    <div className="space-y-6">
-      {/* AI Personal Notes — top priority */}
-      <section>
-        <div className="flex items-start gap-2.5 p-2.5 bg-primary-subtle border border-primary-edge rounded-lg mb-3">
-          <Sparkles size={15} className="text-primary-fg mt-0.5 flex-shrink-0" />
-          <p className="text-xs text-primary-fg-strong leading-relaxed">{t('preferences.notesHint')}</p>
-        </div>
-
-        <label className="block text-sm font-medium text-fg-secondary mb-1.5">{t('preferences.personalNotes')}</label>
-        <Textarea
-          value={notes}
-          onChange={(e) => {
-            if (e.target.value.length <= MAX_NOTES_LENGTH) {
-              setNotes(e.target.value);
+    <ModulePage moduleId="settings.preferences" layout="form">
+      <SettingsPanel>
+        {/* AI Personal Notes — top priority */}
+        <SettingsSection
+          title={t('preferences.personalNotes')}
+          description={t('preferences.notesHint')}
+          icon={Sparkles}
+        >
+          <Textarea
+            aria-label={t('preferences.personalNotes')}
+            value={notes}
+            onChange={(e) => {
+              if (e.target.value.length <= MAX_NOTES_LENGTH) {
+                setNotes(e.target.value);
+              }
+            }}
+            placeholder={t('preferences.notesPlaceholder')}
+            rows={5}
+            className="resize-none"
+          />
+          <FormActions
+            leading={
+              <span className={`text-[10px] ${remaining < 50 ? 'text-warning' : 'text-fg-faint'}`}>
+                {t('preferences.charactersRemaining', { count: remaining })}
+              </span>
             }
-          }}
-          placeholder={t('preferences.notesPlaceholder')}
-          rows={5}
-          className="resize-none"
-        />
-        <div className="flex items-center justify-between mt-1.5">
-          <span className={`text-[10px] ${remaining < 50 ? 'text-warning' : 'text-fg-faint'}`}>
-            {t('preferences.charactersRemaining', { count: remaining })}
-          </span>
-          <div className="flex items-center gap-2">
-            {saved && <span className="text-xs text-primary-fg font-medium">{t('common.saved')}</span>}
+          >
+            {saved && <span className="text-xs font-medium text-primary-fg">{t('common.saved')}</span>}
             <Button size="sm" onClick={handleSave} disabled={saving || notes === (currentUser?.notes ?? '')}>
               {saving ? t('common.saving') : t('common.save')}
             </Button>
+          </FormActions>
+          <FormError>{error}</FormError>
+        </SettingsSection>
+
+        <SettingsSection
+          title={t('preferences.theme')}
+          description={t('preferences.themeDescription')}
+          icon={Palette}
+          accent
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {THEME_CHOICES.map((themeKey) => {
+              const theme = getThemeDefinition(themeKey);
+              const isActive = activeTheme === themeKey;
+              const Icon = themeKey === 'system' ? Monitor : theme.dark ? Moon : Sun;
+              const title = t(
+                themeKey === 'system'
+                  ? 'preferences.themeSystem'
+                  : theme.dark
+                    ? 'preferences.themeDark'
+                    : 'preferences.themeLight',
+              );
+              const description = t(
+                themeKey === 'system'
+                  ? 'preferences.themeSystemDescription'
+                  : theme.dark
+                    ? 'preferences.themeDarkDescription'
+                    : 'preferences.themeLightDescription',
+              );
+              return (
+                <button
+                  key={themeKey}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => {
+                    applyTheme(themeKey);
+                    setActiveTheme(themeKey);
+                  }}
+                  className={`group relative overflow-hidden rounded-xl border p-3 text-left transition-all ${
+                    isActive
+                      ? 'border-primary-500 bg-primary-subtle shadow-sm ring-1 ring-primary-500/15'
+                      : 'border-edge bg-surface-raised hover:border-primary-300 hover:bg-surface-sunken'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span
+                      className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border"
+                      style={{
+                        backgroundColor: theme.surface.surfaceMuted,
+                        borderColor: theme.surface.edgeStrong,
+                        color: theme.dark ? '#A5DDA9' : '#1F6B34',
+                      }}
+                    >
+                      <Icon size={17} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-fg">{title}</span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-fg-muted">{description}</span>
+                    </span>
+                    <span
+                      className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border ${
+                        isActive
+                          ? 'border-primary-600 bg-primary-600 text-white'
+                          : 'border-edge-strong text-transparent'
+                      }`}
+                    >
+                      <Check size={12} strokeWidth={3} />
+                    </span>
+                  </div>
+                  <span
+                    className="mt-3 flex h-8 overflow-hidden rounded-lg border"
+                    style={{ borderColor: theme.surface.edge }}
+                  >
+                    <span className="w-1/4" style={{ backgroundColor: theme.surface.chrome }} />
+                    <span className="flex-1" style={{ backgroundColor: theme.surface.canvas }} />
+                    <span className="w-1/5" style={{ backgroundColor: 'rgb(46 139 61)' }} />
+                  </span>
+                </button>
+              );
+            })}
           </div>
-        </div>
-        {error && (
-          <p className="text-xs text-danger bg-danger-subtle border border-danger rounded-lg px-3 py-2 mt-2">{error}</p>
-        )}
-      </section>
+        </SettingsSection>
 
-      {/* Theme + Language — each on its own full-width row */}
-      <div className="space-y-6">
-        {/* Theme Mode — light / dark / system */}
-        <section>
-          <label className="flex items-center gap-2 text-sm font-medium text-fg-secondary mb-2.5">
-            <Palette size={14} className="text-primary-fg" />
-            {t('preferences.theme')}
-          </label>
-          <ThemeModeSelector />
-        </section>
-
-        {/* Language Selector */}
-        <section>
-          <label className="flex items-center gap-2 text-sm font-medium text-fg-secondary mb-2.5">
-            <Globe size={14} className="text-primary-fg" />
-            {t('preferences.language')}
-          </label>
+        <SettingsSection title={t('preferences.language')} icon={Globe}>
           <div className="flex gap-2">
             {LOCALE_OPTIONS.map((opt) => (
               <button
@@ -125,8 +203,8 @@ export function PreferencesPanel() {
               </button>
             ))}
           </div>
-        </section>
-      </div>
-    </div>
+        </SettingsSection>
+      </SettingsPanel>
+    </ModulePage>
   );
 }

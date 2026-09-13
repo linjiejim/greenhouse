@@ -1,17 +1,18 @@
 /**
  * Shared presentational primitives + constants for the LLM usage dashboards.
  *
- * The settings "Usage" panel (pages/settings/usage-enhanced.tsx) renders the
- * KPI cards and distribution bars over the period selector defined here.
+ * The settings Usage panel renders KPI cards and distribution bars over the
+ * shared period selector from these primitives.
  */
 
 import type { ReactNode } from 'react';
+import { useT, type TranslationKey } from '../../lib/i18n';
 
 export const PERIODS = [
-  { label: 'All Time', value: '' },
-  { label: 'Last 30 Days', value: '30d' },
-  { label: 'Last 7 Days', value: '7d' },
-  { label: 'Last 24 Hours', value: '24h' },
+  { labelKey: 'usage.allTime' as TranslationKey, value: '' },
+  { labelKey: 'usage.last30Days' as TranslationKey, value: '30d' },
+  { labelKey: 'usage.last7Days' as TranslationKey, value: '7d' },
+  { labelKey: 'usage.last24Hours' as TranslationKey, value: '24h' },
 ] as const;
 
 export function periodToSince(value: string): string | undefined {
@@ -40,7 +41,7 @@ export const PROFILE_COLORS = ['bg-primary-500', 'bg-info', 'bg-danger', 'bg-war
 
 export function KpiCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="bg-surface-raised border border-edge rounded-xl p-4 shadow-sm">
+    <div className="bg-surface-card border border-edge rounded-xl p-4 shadow-sm">
       <div className="text-[10px] font-semibold text-fg-faint uppercase tracking-wider mb-2">{title}</div>
       {children}
     </div>
@@ -48,8 +49,9 @@ export function KpiCard({ title, children }: { title: string; children: ReactNod
 }
 
 export function DistributionBar({ items }: { items: Array<{ label: string; value: number; color: string }> }) {
+  const t = useT();
   const total = items.reduce((s, i) => s + i.value, 0);
-  if (total === 0) return <div className="text-sm text-fg-faint">No data</div>;
+  if (total === 0) return <div className="text-sm text-fg-faint">{t('usage.noData')}</div>;
 
   return (
     <div className="space-y-2">

@@ -2,7 +2,7 @@
  * Detail kit — shared primitives for record detail (view) and edit screens.
  *
  * One visual language for every detail page, whether it renders as a full-page
- * view or inside a Drawer (dashboard CrudDetail):
+ * view (CRM company/contact/deal) or inside a Drawer (dashboard CrudDetail):
  *
  * - <DetailHeader>  — icon/avatar + title + meta (id/timestamps) + status badges
  *                     + right-aligned actions, with optional Back link.
@@ -68,19 +68,27 @@ export function DetailHeader({
           <span>{backLabel}</span>
         </button>
       )}
-      <div className="flex items-start gap-4">
+      {/* flex-wrap + a title min-width so a narrow screen drops the actions to
+          their own row instead of crushing the title down to "Fra…". */}
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
         {icon}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-[220px]">
           <div className="flex items-center gap-2 flex-wrap">
             {titlePrefix}
             {typeof title === 'string' ? <h1 className="text-xl font-bold text-fg truncate">{title}</h1> : title}
             {titleSuffix}
           </div>
-          {meta && <div className="flex items-center gap-3 mt-1 text-[10px] text-fg-faint">{meta}</div>}
+          {/* Meta entries wrap as whole chunks; without nowrap a flex child
+              shrinks until CJK text breaks one character per line. */}
+          {meta && (
+            <div className="flex items-center gap-3 mt-1 flex-wrap text-[10px] text-fg-faint [&>*]:whitespace-nowrap">
+              {meta}
+            </div>
+          )}
           {subtitle && <div className="flex items-center gap-3 mt-1 flex-wrap">{subtitle}</div>}
           {badges && <div className="flex items-center gap-1 mt-2 flex-wrap">{badges}</div>}
         </div>
-        {actions && <div className="flex items-center gap-2 flex-shrink-0 ml-3">{actions}</div>}
+        {actions && <div className="flex items-center gap-2 flex-shrink-0 ml-auto">{actions}</div>}
       </div>
     </div>
   );

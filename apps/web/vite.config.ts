@@ -7,15 +7,13 @@
  * from the browser's POV, so authFetch/ws keep working without CORS.
  *
  * WEB_PORT/API_PORT are read from the repo-root `.env` (via loadEnv) with the
- * shell environment taking precedence, so a fork can pin dev ports in `.env`
- * without editing this file.
+ * shell environment taking precedence, so a deployment can pin dev ports in
+ * `.env` without editing this file.
  *
- * Build: emits the hashed bundle into the repo-root `public/` (where the API
- * static server, the Electron packaging step and the hot-update publisher all
- * already look). `base: './'` keeps asset refs relative so the SAME index.html
- * works both served at `/` by the API and loaded as a file:// document.
- * `emptyOutDir: false` so the build never wipes co-located static files; the
- * build script clears `public/assets` itself.
+ * Build: emits the hashed bundle into the repo-root `public/`, where the API
+ * serves it. `base: './'` keeps hashed assets relative to index.html.
+ * `emptyOutDir: false` preserves the committed static files in `public/`; the
+ * build pre-step removes every other legacy/generated artifact first.
  */
 
 import { defineConfig, loadEnv } from 'vite';
@@ -37,8 +35,8 @@ export default defineConfig(({ mode }) => {
   const apiTarget = `http://localhost:${env('API_PORT') || 3000}`;
 
   // White-label seam: the document title follows PRODUCT_NAME (default "Greenhouse"),
-  // mirroring @greenhouse/utils/brand on the server — so a fork rebrands via env
-  // without editing index.html. Empty/unset ⇒ identical to upstream.
+  // mirroring @greenhouse/utils/brand on the server — so a deployment rebrands via
+  // env without editing index.html. Empty/unset ⇒ "Greenhouse".
   const productName = env('PRODUCT_NAME') || 'Greenhouse';
 
   return {
@@ -49,13 +47,12 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       {
         name: 'greenhouse-brand-title',
-        transformIndexHtml: (html) => html.replace(/<title>[\s\S]*?<\/title>/, `<title>${productName}</title>`),
+        transformIndexHtml: (html: string) => html.replace(/<title>[\s\S]*?<\/title>/, `<title>${productName}</title>`),
       },
     ],
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version || '0.0.0'),
       __GREENHOUSE_API_BASE_URL__: JSON.stringify(env('GREENHOUSE_API_BASE_URL') || ''),
-      // Runtime default for BRANDING.productName (branding.extensions.tsx).
       __PRODUCT_NAME__: JSON.stringify(productName),
     },
     server: {
@@ -65,12 +62,15 @@ export default defineConfig(({ mode }) => {
         '/api': { target: apiTarget, changeOrigin: true, ws: true },
         '/public': { target: apiTarget, changeOrigin: true },
         '/health': { target: apiTarget, changeOrigin: true },
+        '/favicon.ico': { target: apiTarget, changeOrigin: true },
       },
     },
     build: {
       outDir: resolve(repoRoot, 'public'),
       emptyOutDir: false,
-      sourcemap: true,
+      // Source maps are opt-in: the API serves /assets without auth, so publishing
+      // them by default would disclose application source with no upload consumer.
+      sourcemap: env('WEB_BUILD_SOURCEMAP') === 'true',
       chunkSizeWarningLimit: 1500,
     },
   };

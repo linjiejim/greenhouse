@@ -1,13 +1,12 @@
 /**
- * Branding Studio (super only) — live-preview brand tokens, persist them to
- * the WORKSPACE (workspace_settings, served pre-login via /api/bootstrap), or
- * export a CSS override block for a downstream fork's src/branding.css (S6).
+ * Branding Studio (super only) — live-preview brand tokens and persist them to
+ * the WORKSPACE (workspace_settings, served pre-login via /api/bootstrap).
  *
- * Preview mechanics are unchanged: edits ride on inline CSS variables on
- * <html> and are dropped when leaving the page. "Save to workspace" persists
- * the SAME ThemeTokens shape the runtime applies (themeTokensToCss), plus the
- * tenant name, logo (data URL) and the team Sprouty — so admins rebrand a
- * deployment entirely from this page, no code or restart.
+ * Edits ride on inline CSS variables on <html> and are dropped when leaving the
+ * page (the stored theme is re-applied). "Save to workspace" persists the SAME
+ * ThemeTokens shape the runtime applies (themeTokensToVariables), plus the
+ * product name and logo (data URL) — so admins rebrand a deployment entirely
+ * from this page, no code or restart.
  *
  * Beyond the color tokens, typography and shape ride on Tailwind v4's default
  * theme variables (--font-sans, --text-*, --radius-*): utilities compile to
@@ -15,11 +14,12 @@
  * zero component changes.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Input, Tooltip, toast } from '../../components/ui';
-import { Sun, Moon, ClipboardCopy, RotateCcw, Info, Upload, X } from '../../lib/icons';
-import { useI18n } from '../../lib/i18n';
-import { getThemeMode, setThemeMode } from '../../lib/theme';
+import React, { useEffect, useState } from 'react';
+import { Button, Input, toast } from '../../components/ui';
+import { ModulePage } from '../../components/app/module-page';
+import { Sun, Moon, RotateCcw, Info, Upload, X } from '../../lib/icons';
+import { useI18n, type TranslationKey } from '../../lib/i18n';
+import { applyTheme, getActiveTheme } from '../../lib/theme';
 import { BrandingPreview } from './branding-preview';
 import {
   PALETTE_SHADES,
@@ -35,14 +35,11 @@ import {
   TEXT_SIZE_DEFAULTS,
   RADIUS_DEFAULTS,
   scaledRem,
-  themeTokensToCss,
   getWorkspaceBranding,
   updateWorkspaceBrandingLocal,
 } from '../../lib/workspace-branding';
 import { saveWorkspaceSettings } from '../../lib/api/workspace-settings';
-import { SproutyDesigner, DEFAULT_SPROUTY_DESIGN, type SproutyDesignValue } from '../../components/sprouty/index.js';
 import { LOGO_ALLOWED_MIME, LOGO_MAX_BYTES, sanitizeThemeTokens, type ThemeTokens } from '@greenhouse/types';
-import type { LeafStyle, FaceStyle } from '../../components/sprouty/index.js';
 
 type PreviewMode = 'light' | 'dark';
 
@@ -101,8 +98,8 @@ const ALL_SEMANTIC_VARS = SEMANTICS.flatMap((s) => [s.base, s.subtle, s.fg]);
 const PER_MODE_VARS = [...ALL_TOKEN_VARS, ...ALL_SEMANTIC_VARS];
 
 // TEXT_SIZE_DEFAULTS / RADIUS_DEFAULTS / scaledRem live in
-// lib/workspace-branding.ts — shared with the runtime CSS generator so the
-// preview, the export box and the persisted theme stay identical.
+// lib/workspace-branding.ts — shared with the runtime variable generator so the
+// preview and the persisted theme stay identical.
 
 /** Web-safe font stacks a fork can preview without shipping a webfont. */
 const FONT_DEFAULT = '';
@@ -127,7 +124,7 @@ interface StylePreset {
 }
 
 const STYLE_PRESETS: StylePreset[] = [
-  { key: 'greenhouse', swatch: '#14b8a6', brand: '#14b8a6', fontSans: FONT_DEFAULT, textScale: 1, radiusScale: 1 },
+  { key: 'greenhouse', swatch: '#2e8b3d', brand: '#2e8b3d', fontSans: FONT_DEFAULT, textScale: 1, radiusScale: 1 },
   { key: 'slate', swatch: '#4f46e5', brand: '#4f46e5', fontSans: FONT_INTER, textScale: 1, radiusScale: 0.5 },
   { key: 'sunset', swatch: '#ea580c', brand: '#ea580c', fontSans: FONT_HUMANIST, textScale: 1, radiusScale: 1.75 },
   { key: 'editorial', swatch: '#9f1239', brand: '#9f1239', fontSans: FONT_SERIF, textScale: 1.05, radiusScale: 0.75 },
@@ -148,7 +145,7 @@ function currentBrandHex(): string {
   if (triplet.length === 3 && triplet.every((n) => Number.isFinite(n))) {
     return rgbToHex({ r: triplet[0], g: triplet[1], b: triplet[2] });
   }
-  return '#14b8a6';
+  return '#2e8b3d';
 }
 
 function isDarkPreviewActive(): PreviewMode {
@@ -167,16 +164,16 @@ function clearAllInlineVars() {
 
 // ─── Small building blocks ───────────────────────────────
 
-/** Section header: title + a "more info" tooltip that explains what the
+/** Section header: title + a "more info" hint that explains what the
  *  control affects in the running app (plain language, no CSS jargon). */
 function ControlSection({ title, tip, children }: { title: string; tip: string; children: React.ReactNode }) {
   return (
     <section className="py-5 first:pt-0 last:pb-0">
       <div className="flex items-center gap-1.5 mb-3">
         <h3 className="text-sm font-semibold text-fg">{title}</h3>
-        <Tooltip content={tip}>
+        <span title={tip} aria-label={tip}>
           <Info size={13} className="text-fg-faint hover:text-fg-muted cursor-help" />
-        </Tooltip>
+        </span>
       </div>
       {children}
     </section>
@@ -263,20 +260,18 @@ export function BrandingStudioPanel() {
   const [fontMono, setFontMono] = useState('');
   const [textScale, setTextScale] = useState(1);
   const [radiusScale, setRadiusScale] = useState(1);
-  const [copied, setCopied] = useState(false);
   // Bumped whenever inline styles / preview mode change so computed values re-read.
   const [tick, setTick] = useState(0);
   // ── workspace persistence state (branding.* settings) ──
   const [productName, setProductName] = useState('');
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
-  const [teamAvatar, setTeamAvatar] = useState<SproutyDesignValue | null>(null);
   const [savingWorkspace, setSavingWorkspace] = useState(false);
 
-  // Leaving the page drops the preview: clear inline vars, restore the stored mode.
+  // Leaving the page drops the preview: clear inline vars, restore the stored theme.
   useEffect(() => {
     return () => {
       clearAllInlineVars();
-      setThemeMode(getThemeMode());
+      applyTheme(getActiveTheme());
     };
   }, []);
 
@@ -286,15 +281,6 @@ export function BrandingStudioPanel() {
     const saved = getWorkspaceBranding();
     setProductName(saved.productName ?? '');
     setLogoDataUrl(saved.logo);
-    if (saved.teamAvatar) {
-      setTeamAvatar({
-        color: saved.teamAvatar.color ?? 'forest',
-        accessories: saved.teamAvatar.accessories ?? [],
-        leafStyle: (saved.teamAvatar.leafStyle as LeafStyle) ?? 'normal',
-        faceStyle: saved.teamAvatar.faceStyle as FaceStyle | undefined,
-        palette: saved.teamAvatar.palette,
-      });
-    }
     const tokens = saved.themeTokens;
     if (!tokens) return;
     if (tokens.brand) applyBrandColor(tokens.brand);
@@ -398,6 +384,7 @@ export function BrandingStudioPanel() {
 
   const resetPreview = () => {
     clearAllInlineVars();
+    applyTheme(getActiveTheme());
     setPalette(null);
     setOverrides({ light: {}, dark: {} });
     setBrandHex(currentBrandHex());
@@ -406,7 +393,6 @@ export function BrandingStudioPanel() {
     setTextScale(1);
     setRadiusScale(1);
     setActivePreset(null);
-    setCopied(false);
     setTick((n) => n + 1);
   };
 
@@ -421,20 +407,6 @@ export function BrandingStudioPanel() {
     if (Object.keys(overrides.light).length) tokens.light = overrides.light;
     if (Object.keys(overrides.dark).length) tokens.dark = overrides.dark;
     return Object.keys(tokens).length ? tokens : null;
-  };
-
-  // Export box + Save share one generator (themeTokensToCss) — what you
-  // preview is exactly what gets persisted / exported.
-  const exportCss = useMemo(() => {
-    const tokens = collectTokens();
-    return tokens ? themeTokensToCss(tokens) : '';
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [palette, brandHex, overrides, fontSans, fontMono, textScale, radiusScale]);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(exportCss);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   // ── workspace persistence ──
@@ -457,29 +429,15 @@ export function BrandingStudioPanel() {
     setSavingWorkspace(true);
     try {
       const tokens = collectTokens();
-      const avatar = teamAvatar
-        ? {
-            color: teamAvatar.color,
-            accessories: teamAvatar.accessories,
-            leafStyle: teamAvatar.leafStyle,
-            ...(teamAvatar.faceStyle ? { faceStyle: teamAvatar.faceStyle } : {}),
-            // The DSL requires both hexes; the designer always sets them together.
-            ...(teamAvatar.palette?.body && teamAvatar.palette?.leaf
-              ? { palette: { body: teamAvatar.palette.body, leaf: teamAvatar.palette.leaf } }
-              : {}),
-          }
-        : null;
       await saveWorkspaceSettings({
         'branding.theme_tokens': tokens,
         'branding.product_name': productName.trim() || null,
         'branding.logo': logoDataUrl || null,
-        'branding.team_avatar': avatar,
       });
       updateWorkspaceBrandingLocal({
         productName: productName.trim() || null,
         logo: logoDataUrl,
         themeTokens: tokens ? sanitizeThemeTokens(tokens) : null,
-        teamAvatar: avatar,
       });
       toast(t('brandingStudio.workspaceSaved'), 'success');
     } catch (err: any) {
@@ -495,12 +453,10 @@ export function BrandingStudioPanel() {
         'branding.theme_tokens': null,
         'branding.product_name': null,
         'branding.logo': null,
-        'branding.team_avatar': null,
       });
-      updateWorkspaceBrandingLocal({ productName: null, logo: null, themeTokens: null, teamAvatar: null });
+      updateWorkspaceBrandingLocal({ productName: null, logo: null, themeTokens: null });
       setProductName('');
       setLogoDataUrl(null);
-      setTeamAvatar(null);
       resetPreview();
       toast(t('brandingStudio.workspaceCleared'), 'success');
     } catch (err: any) {
@@ -510,353 +466,319 @@ export function BrandingStudioPanel() {
   };
 
   return (
-    <div className="space-y-4">
-      <p className="text-xs text-fg-muted leading-relaxed max-w-3xl">{t('brandingStudio.intro')}</p>
+    <ModulePage moduleId="admin.branding" layout="canvas">
+      <div className="space-y-4 p-1">
+        <p className="text-xs text-fg-muted leading-relaxed max-w-3xl">{t('brandingStudio.intro')}</p>
 
-      <div className="lg:grid lg:grid-cols-[380px_minmax(0,1fr)] lg:gap-8 lg:items-start space-y-6 lg:space-y-0">
-        {/* ─── Left: controls (light dividers between sections) ─── */}
-        <div className="divide-y divide-edge">
-          {/* Presets */}
-          <ControlSection title={t('brandingStudio.presets')} tip={t('brandingStudio.tipPresets')}>
-            <div className="flex flex-wrap gap-1.5">
-              {STYLE_PRESETS.map((p) => {
-                const isActive = activePreset === p.key;
-                return (
-                  <button
-                    key={p.key}
-                    type="button"
-                    onClick={() => applyPreset(p)}
-                    className={`flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full border transition-all ${
-                      isActive
-                        ? 'border-primary-500 bg-primary-subtle/50 text-primary-fg-strong font-medium shadow-sm'
-                        : 'border-edge text-fg-secondary hover:border-edge-strong hover:bg-surface-sunken'
-                    }`}
-                  >
-                    <span
-                      className="w-3.5 h-3.5 rounded-full border border-black/10 flex-shrink-0"
-                      style={{ backgroundColor: p.swatch }}
-                    />
-                    <span className="text-xs">{t(`brandingStudio.preset_${p.key}`)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </ControlSection>
+        <div className="lg:grid lg:grid-cols-[380px_minmax(0,1fr)] lg:gap-8 lg:items-start space-y-6 lg:space-y-0">
+          {/* ─── Left: controls (light dividers between sections) ─── */}
+          <div className="divide-y divide-edge">
+            {/* Presets */}
+            <ControlSection title={t('brandingStudio.presets')} tip={t('brandingStudio.tipPresets')}>
+              <div className="flex flex-wrap gap-1.5">
+                {STYLE_PRESETS.map((p) => {
+                  const isActive = activePreset === p.key;
+                  return (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => applyPreset(p)}
+                      className={`flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full border transition-all ${
+                        isActive
+                          ? 'border-primary-500 bg-primary-subtle/50 text-primary-fg-strong font-medium shadow-sm'
+                          : 'border-edge text-fg-secondary hover:border-edge-strong hover:bg-surface-sunken'
+                      }`}
+                    >
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border border-black/10 flex-shrink-0"
+                        style={{ backgroundColor: p.swatch }}
+                      />
+                      <span className="text-xs">{t(`brandingStudio.preset_${p.key}` as TranslationKey)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </ControlSection>
 
-          {/* Brand color → palette */}
-          <ControlSection title={t('brandingStudio.brandColor')} tip={t('brandingStudio.tipBrand')}>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={brandHex}
-                onChange={(e) => {
-                  applyBrandColor(e.target.value);
-                  setActivePreset(null);
-                }}
-                className="h-9 w-12 rounded-md border border-edge-strong bg-surface cursor-pointer"
-                aria-label={t('brandingStudio.brandColor')}
-              />
-              <Input
-                value={brandHex}
-                onChange={(e) => {
-                  const hex = e.target.value;
-                  setBrandHex(hex);
-                  if (hexToRgb(hex)) {
-                    applyBrandColor(hex.startsWith('#') ? hex : `#${hex}`);
+            {/* Brand color → palette */}
+            <ControlSection title={t('brandingStudio.brandColor')} tip={t('brandingStudio.tipBrand')}>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={brandHex}
+                  onChange={(e) => {
+                    applyBrandColor(e.target.value);
                     setActivePreset(null);
-                  }
-                }}
-                className="w-32 font-mono text-sm"
-                spellCheck={false}
-              />
-            </div>
-            {palette && (
-              <div className="mt-3 flex rounded-lg overflow-hidden border border-edge">
-                {PALETTE_SHADES.map((shade) => (
-                  <div
-                    key={shade}
-                    className="flex-1 h-8 flex items-end justify-center pb-0.5"
-                    style={{ backgroundColor: rgbToHex(palette[shade]) }}
-                    title={`primary-${shade}: ${rgbToHex(palette[shade])}`}
-                  >
-                    <span className={`text-[9px] font-mono ${shade >= 400 ? 'text-white/80' : 'text-black/50'}`}>
-                      {shade}
+                  }}
+                  className="h-9 w-12 rounded-md border border-edge-strong bg-surface cursor-pointer"
+                  aria-label={t('brandingStudio.brandColor')}
+                />
+                <Input
+                  value={brandHex}
+                  onChange={(e) => {
+                    const hex = e.target.value;
+                    setBrandHex(hex);
+                    if (hexToRgb(hex)) {
+                      applyBrandColor(hex.startsWith('#') ? hex : `#${hex}`);
+                      setActivePreset(null);
+                    }
+                  }}
+                  className="w-32 font-mono text-sm"
+                  spellCheck={false}
+                />
+              </div>
+              {palette && (
+                <div className="mt-3 flex rounded-lg overflow-hidden border border-edge">
+                  {PALETTE_SHADES.map((shade) => (
+                    <div
+                      key={shade}
+                      className="flex-1 h-8 flex items-end justify-center pb-0.5"
+                      style={{ backgroundColor: rgbToHex(palette[shade]) }}
+                      title={`primary-${shade}: ${rgbToHex(palette[shade])}`}
+                    >
+                      <span className={`text-[9px] font-mono ${shade >= 400 ? 'text-white/80' : 'text-black/50'}`}>
+                        {shade}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ControlSection>
+
+            {/* Semantic status colors */}
+            <ControlSection title={t('brandingStudio.semantic')} tip={t('brandingStudio.tipSemantic')}>
+              <div className="grid grid-cols-2 gap-2" data-tick={tick}>
+                {SEMANTICS.map((s) => (
+                  <SwatchInput
+                    key={s.key}
+                    variable={s.base}
+                    label={s.key}
+                    value={overrides[previewMode][s.base] ?? computedVar(s.base)}
+                    onChange={(hex) => setSemanticColor(s, hex)}
+                  />
+                ))}
+              </div>
+            </ControlSection>
+
+            {/* Surfaces / text / borders */}
+            <ControlSection title={t('brandingStudio.tokens')} tip={t('brandingStudio.tipTokens')}>
+              <div className="space-y-4">
+                {TOKEN_GROUPS.map((group) => (
+                  <div key={group.key}>
+                    <span className="block text-xs font-medium text-fg-muted mb-1.5">
+                      {t(`brandingStudio.${group.key}`)}
                     </span>
+                    <div className="grid grid-cols-2 gap-2" data-tick={tick}>
+                      {group.tokens.map((token) => (
+                        <SwatchInput
+                          key={token.variable}
+                          variable={token.variable}
+                          label={token.label}
+                          value={overrides[previewMode][token.variable] ?? computedVar(token.variable)}
+                          onChange={(hex) => setTokenOverride(token.variable, hex)}
+                        />
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
-            )}
-          </ControlSection>
+            </ControlSection>
 
-          {/* Semantic status colors */}
-          <ControlSection title={t('brandingStudio.semantic')} tip={t('brandingStudio.tipSemantic')}>
-            <div className="grid grid-cols-2 gap-2" data-tick={tick}>
-              {SEMANTICS.map((s) => (
-                <SwatchInput
-                  key={s.key}
-                  variable={s.base}
-                  label={s.key}
-                  value={overrides[previewMode][s.base] ?? computedVar(s.base)}
-                  onChange={(hex) => setSemanticColor(s, hex)}
-                />
-              ))}
-            </div>
-          </ControlSection>
-
-          {/* Surfaces / text / borders */}
-          <ControlSection title={t('brandingStudio.tokens')} tip={t('brandingStudio.tipTokens')}>
-            <div className="space-y-4">
-              {TOKEN_GROUPS.map((group) => (
-                <div key={group.key}>
-                  <span className="block text-xs font-medium text-fg-muted mb-1.5">
-                    {t(`brandingStudio.${group.key}`)}
-                  </span>
-                  <div className="grid grid-cols-2 gap-2" data-tick={tick}>
-                    {group.tokens.map((token) => (
-                      <SwatchInput
-                        key={token.variable}
-                        variable={token.variable}
-                        label={token.label}
-                        value={overrides[previewMode][token.variable] ?? computedVar(token.variable)}
-                        onChange={(hex) => setTokenOverride(token.variable, hex)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </ControlSection>
-
-          {/* Typography */}
-          <ControlSection title={t('brandingStudio.typography')} tip={t('brandingStudio.tipTypography')}>
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    applyFontSans('');
-                    setActivePreset(null);
-                  }}
-                  className={`px-2.5 py-1 text-xs rounded-lg border transition-all ${
-                    fontSans === ''
-                      ? 'border-primary-500 bg-primary-subtle/50 text-primary-fg-strong font-medium'
-                      : 'border-edge text-fg-secondary hover:border-edge-strong'
-                  }`}
-                >
-                  {t('brandingStudio.fontDefault')}
-                </button>
-                {FONT_SANS_PRESETS.map((preset) => (
+            {/* Typography */}
+            <ControlSection title={t('brandingStudio.typography')} tip={t('brandingStudio.tipTypography')}>
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-1.5">
                   <button
-                    key={preset.label}
                     type="button"
                     onClick={() => {
-                      applyFontSans(preset.stack);
+                      applyFontSans('');
                       setActivePreset(null);
                     }}
-                    style={{ fontFamily: preset.stack }}
                     className={`px-2.5 py-1 text-xs rounded-lg border transition-all ${
-                      fontSans === preset.stack
+                      fontSans === ''
                         ? 'border-primary-500 bg-primary-subtle/50 text-primary-fg-strong font-medium'
                         : 'border-edge text-fg-secondary hover:border-edge-strong'
                     }`}
                   >
-                    {preset.label}
+                    {t('brandingStudio.fontDefault')}
                   </button>
-                ))}
-              </div>
-              <Input
-                value={fontSans}
-                onChange={(e) => {
-                  applyFontSans(e.target.value);
-                  setActivePreset(null);
-                }}
-                placeholder={t('brandingStudio.fontCustomPlaceholder')}
-                size="sm"
-                className="font-mono text-xs"
-                spellCheck={false}
-              />
-              <Input
-                value={fontMono}
-                onChange={(e) => {
-                  applyFontMono(e.target.value);
-                  setActivePreset(null);
-                }}
-                placeholder={t('brandingStudio.fontMonoPlaceholder')}
-                size="sm"
-                className="font-mono text-xs"
-                spellCheck={false}
-              />
-              <ScaleSlider
-                label={t('brandingStudio.textScale')}
-                value={textScale}
-                min={0.85}
-                max={1.15}
-                step={0.025}
-                onChange={(v) => {
-                  applyTextScale(v);
-                  setActivePreset(null);
-                }}
-              />
-            </div>
-          </ControlSection>
-
-          {/* Shape */}
-          <ControlSection title={t('brandingStudio.shape')} tip={t('brandingStudio.tipShape')}>
-            <ScaleSlider
-              label={t('brandingStudio.radius')}
-              value={radiusScale}
-              min={0}
-              max={2}
-              step={0.125}
-              onChange={(v) => {
-                applyRadiusScale(v);
-                setActivePreset(null);
-              }}
-            />
-          </ControlSection>
-
-          {/* Workspace identity + persistence */}
-          <ControlSection title={t('brandingStudio.workspaceTitle')} tip={t('brandingStudio.tipWorkspace')}>
-            <div className="space-y-3">
-              <div>
-                <span className="block text-xs font-medium text-fg-muted mb-1.5">
-                  {t('brandingStudio.productName')}
-                </span>
+                  {FONT_SANS_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        applyFontSans(preset.stack);
+                        setActivePreset(null);
+                      }}
+                      style={{ fontFamily: preset.stack }}
+                      className={`px-2.5 py-1 text-xs rounded-lg border transition-all ${
+                        fontSans === preset.stack
+                          ? 'border-primary-500 bg-primary-subtle/50 text-primary-fg-strong font-medium'
+                          : 'border-edge text-fg-secondary hover:border-edge-strong'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
                 <Input
-                  value={productName}
-                  onChange={(e) => setProductName(e.target.value)}
-                  placeholder="Greenhouse"
-                  maxLength={60}
+                  value={fontSans}
+                  onChange={(e) => {
+                    applyFontSans(e.target.value);
+                    setActivePreset(null);
+                  }}
+                  placeholder={t('brandingStudio.fontCustomPlaceholder')}
                   size="sm"
+                  className="font-mono text-xs"
+                  spellCheck={false}
+                />
+                <Input
+                  value={fontMono}
+                  onChange={(e) => {
+                    applyFontMono(e.target.value);
+                    setActivePreset(null);
+                  }}
+                  placeholder={t('brandingStudio.fontMonoPlaceholder')}
+                  size="sm"
+                  className="font-mono text-xs"
+                  spellCheck={false}
+                />
+                <ScaleSlider
+                  label={t('brandingStudio.textScale')}
+                  value={textScale}
+                  min={0.85}
+                  max={1.15}
+                  step={0.025}
+                  onChange={(v) => {
+                    applyTextScale(v);
+                    setActivePreset(null);
+                  }}
                 />
               </div>
-              <div>
-                <span className="block text-xs font-medium text-fg-muted mb-1.5">{t('brandingStudio.logo')}</span>
-                <div className="flex items-center gap-3">
-                  {logoDataUrl ? (
-                    <img
-                      src={logoDataUrl}
-                      alt={t('brandingStudio.logo')}
-                      className="w-10 h-10 rounded-lg object-contain border border-edge bg-surface"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-lg border border-dashed border-edge flex items-center justify-center text-fg-faint text-[9px]">
-                      —
-                    </div>
-                  )}
-                  <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-edge text-fg-secondary hover:border-edge-strong cursor-pointer transition-all">
-                    <Upload size={13} />
-                    {t('brandingStudio.logoUpload')}
-                    <input
-                      type="file"
-                      accept={LOGO_ALLOWED_MIME.join(',')}
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleLogoFile(file);
-                        e.target.value = '';
-                      }}
-                    />
-                  </label>
-                  {logoDataUrl && (
-                    <button
-                      type="button"
-                      onClick={() => setLogoDataUrl(null)}
-                      className="p-1.5 rounded-md text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
-                      title={t('brandingStudio.logoRemove')}
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-                <p className="text-[10px] text-fg-faint mt-1">{t('brandingStudio.logoHint')}</p>
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-fg-muted">{t('brandingStudio.teamSprouty')}</span>
-                  <button
-                    type="button"
-                    onClick={() => setTeamAvatar(teamAvatar ? null : DEFAULT_SPROUTY_DESIGN)}
-                    className="text-[10px] text-primary-fg hover:underline"
-                  >
-                    {teamAvatar ? t('brandingStudio.teamSproutyOff') : t('brandingStudio.teamSproutyOn')}
-                  </button>
-                </div>
-                {teamAvatar ? (
-                  <SproutyDesigner value={teamAvatar} onChange={setTeamAvatar} showStatePreview={false} />
-                ) : (
-                  <p className="text-[10px] text-fg-faint">{t('brandingStudio.teamSproutyHint')}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-2 pt-1">
-                <Button size="sm" onClick={handleSaveWorkspace} disabled={savingWorkspace}>
-                  {savingWorkspace ? t('common.saving') : t('brandingStudio.saveWorkspace')}
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleClearWorkspace} disabled={savingWorkspace}>
-                  {t('brandingStudio.clearWorkspace')}
-                </Button>
-              </div>
-            </div>
-          </ControlSection>
+            </ControlSection>
 
-          {/* Export */}
-          <ControlSection title={t('brandingStudio.exportTitle')} tip={t('brandingStudio.tipExport')}>
-            <div className="flex items-center gap-2 mb-2">
-              <Button variant="outline" size="sm" onClick={resetPreview}>
-                <RotateCcw size={13} className="mr-1" />
-                {t('brandingStudio.reset')}
-              </Button>
-              <Button size="sm" onClick={handleCopy} disabled={!exportCss}>
-                <ClipboardCopy size={13} className="mr-1" />
-                {copied ? t('brandingStudio.copied') : t('brandingStudio.copy')}
-              </Button>
-            </div>
-            {exportCss ? (
-              <pre className="text-xs font-mono bg-surface-muted border border-edge rounded-lg p-3 overflow-x-auto whitespace-pre">
-                {exportCss}
-              </pre>
-            ) : (
-              <p className="text-xs text-fg-muted border border-dashed border-edge rounded-lg px-3 py-4 text-center">
-                {t('brandingStudio.noChanges')}
-              </p>
-            )}
-          </ControlSection>
-        </div>
+            {/* Shape */}
+            <ControlSection title={t('brandingStudio.shape')} tip={t('brandingStudio.tipShape')}>
+              <ScaleSlider
+                label={t('brandingStudio.radius')}
+                value={radiusScale}
+                min={0}
+                max={2}
+                step={0.125}
+                onChange={(v) => {
+                  applyRadiusScale(v);
+                  setActivePreset(null);
+                }}
+              />
+            </ControlSection>
 
-        {/* ─── Right: live specimen canvas ─── */}
-        <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pr-1">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-medium text-fg-secondary">{t('brandingStudio.preview')}</span>
-              <Tooltip content={t('brandingStudio.tipPreview')}>
-                <Info size={13} className="text-fg-faint hover:text-fg-muted cursor-help" />
-              </Tooltip>
-            </div>
-            {/* Preview mode — also selects which mode's color edits you're making */}
-            <div className="inline-flex rounded-lg border border-edge p-0.5">
-              {(['light', 'dark'] as const).map((mode) => {
-                const Icon = mode === 'light' ? Sun : Moon;
-                const isActive = previewMode === mode;
-                return (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => switchPreviewMode(mode)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
-                      isActive ? 'bg-surface-muted text-fg font-medium' : 'text-fg-muted hover:text-fg-secondary'
-                    }`}
-                    aria-pressed={isActive}
-                  >
-                    <Icon size={13} />
-                    {mode === 'light' ? t('preferences.themeLight') : t('preferences.themeDark')}
-                  </button>
-                );
-              })}
-            </div>
+            {/* Workspace identity + persistence */}
+            <ControlSection title={t('brandingStudio.workspaceTitle')} tip={t('brandingStudio.tipWorkspace')}>
+              <div className="space-y-3">
+                <div>
+                  <span className="block text-xs font-medium text-fg-muted mb-1.5">
+                    {t('brandingStudio.productName')}
+                  </span>
+                  <Input
+                    value={productName}
+                    onChange={(e) => setProductName(e.target.value)}
+                    placeholder="Greenhouse"
+                    maxLength={60}
+                    size="sm"
+                  />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-fg-muted mb-1.5">{t('brandingStudio.logo')}</span>
+                  <div className="flex items-center gap-3">
+                    {logoDataUrl ? (
+                      <img
+                        src={logoDataUrl}
+                        alt={t('brandingStudio.logo')}
+                        className="w-10 h-10 rounded-lg object-contain border border-edge bg-surface"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg border border-dashed border-edge flex items-center justify-center text-fg-faint text-[9px]">
+                        —
+                      </div>
+                    )}
+                    <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-edge text-fg-secondary hover:border-edge-strong cursor-pointer transition-all">
+                      <Upload size={13} />
+                      {t('brandingStudio.logoUpload')}
+                      <input
+                        type="file"
+                        accept={LOGO_ALLOWED_MIME.join(',')}
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleLogoFile(file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                    {logoDataUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setLogoDataUrl(null)}
+                        className="p-1.5 rounded-md text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
+                        title={t('brandingStudio.logoRemove')}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-fg-faint mt-1">{t('brandingStudio.logoHint')}</p>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <Button size="sm" onClick={handleSaveWorkspace} disabled={savingWorkspace}>
+                    {savingWorkspace ? t('common.saving') : t('brandingStudio.saveWorkspace')}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleClearWorkspace} disabled={savingWorkspace}>
+                    {t('brandingStudio.clearWorkspace')}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={resetPreview}>
+                    <RotateCcw size={13} className="mr-1" />
+                    {t('brandingStudio.reset')}
+                  </Button>
+                </div>
+              </div>
+            </ControlSection>
           </div>
-          <BrandingPreview />
+
+          {/* ─── Right: live specimen canvas ─── */}
+          <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pr-1">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-medium text-fg-secondary">{t('brandingStudio.preview')}</span>
+                <span title={t('brandingStudio.tipPreview')} aria-label={t('brandingStudio.tipPreview')}>
+                  <Info size={13} className="text-fg-faint hover:text-fg-muted cursor-help" />
+                </span>
+              </div>
+              {/* Preview mode — also selects which mode's color edits you're making */}
+              <div className="inline-flex rounded-lg border border-edge p-0.5">
+                {(['light', 'dark'] as const).map((mode) => {
+                  const Icon = mode === 'light' ? Sun : Moon;
+                  const isActive = previewMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => switchPreviewMode(mode)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
+                        isActive ? 'bg-surface-muted text-fg font-medium' : 'text-fg-muted hover:text-fg-secondary'
+                      }`}
+                      aria-pressed={isActive}
+                    >
+                      <Icon size={13} />
+                      {mode === 'light' ? t('preferences.themeLight') : t('preferences.themeDark')}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <BrandingPreview />
+          </div>
         </div>
       </div>
-    </div>
+    </ModulePage>
   );
 }

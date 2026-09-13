@@ -10,6 +10,8 @@
 
 import React, { useCallback, useState } from 'react';
 import { marked } from 'marked';
+import { FileDown } from '../lib/icons';
+import { useI18n, useT } from '../lib/i18n';
 
 // ─── PDF Print Stylesheet ────────────────────────────────
 
@@ -213,23 +215,23 @@ function renderMarkdownToHtml(markdown: string): string {
 
 // ─── Build Full HTML Document ────────────────────────────
 
-function buildPrintDocument(markdown: string): string {
+function buildPrintDocument(markdown: string, title: string, lang: string): string {
   const htmlContent = renderMarkdownToHtml(markdown);
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${lang}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Report</title>
+  <title>${title}</title>
   <style>${PDF_CSS}</style>
 </head>
 <body>
 ${htmlContent}
 <div class="pdf-footer">
-  <span>Greenhouse · ${dateStr}</span>
+  <span>Greenhouse Research · ${dateStr}</span>
 </div>
 </body>
 </html>`;
@@ -237,8 +239,8 @@ ${htmlContent}
 
 // ─── Export PDF via Print ────────────────────────────────
 
-function triggerPdfPrint(markdown: string): void {
-  const html = buildPrintDocument(markdown);
+function triggerPdfPrint(markdown: string, title: string, lang: string): void {
+  const html = buildPrintDocument(markdown, title, lang);
 
   // Create a hidden iframe for isolated print context
   const iframe = document.createElement('iframe');
@@ -288,20 +290,24 @@ interface ExportPdfButtonProps {
   label?: string;
   /** Is the message currently streaming? */
   isStreaming?: boolean;
+  /** Render as a compact icon action inside a message footer. */
+  iconOnly?: boolean;
 }
 
-export function ExportPdfButton({ markdown, label, isStreaming }: ExportPdfButtonProps) {
+export function ExportPdfButton({ markdown, label, isStreaming, iconOnly = false }: ExportPdfButtonProps) {
+  const t = useT();
+  const { locale } = useI18n();
   const [exporting, setExporting] = useState(false);
 
   const handleExport = useCallback(() => {
     setExporting(true);
     try {
-      triggerPdfPrint(markdown);
+      triggerPdfPrint(markdown, t('common.report'), locale === 'zh' ? 'zh-CN' : 'en');
     } finally {
       // Reset after print dialog opens
       setTimeout(() => setExporting(false), 1000);
     }
-  }, [markdown]);
+  }, [locale, markdown, t]);
 
   // Only show for substantial content (likely a report)
   if (isStreaming || !markdown || markdown.length < 500) {
@@ -312,25 +318,16 @@ export function ExportPdfButton({ markdown, label, isStreaming }: ExportPdfButto
     <button
       onClick={handleExport}
       disabled={exporting}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-fg-muted hover:text-info rounded-md border border-edge hover:border-blue-300 hover:bg-info-subtle transition-colors disabled:opacity-40"
-      title="Export as PDF"
+      className={
+        iconOnly
+          ? 'inline-flex h-7 w-7 items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-info-subtle hover:text-info disabled:opacity-40'
+          : 'inline-flex items-center gap-1.5 rounded-md border border-edge px-2.5 py-1 text-[11px] text-fg-muted transition-colors hover:border-primary-300 hover:bg-info-subtle hover:text-info disabled:opacity-40'
+      }
+      title={t('common.exportPdf')}
+      aria-label={t('common.exportPdf')}
     >
-      <svg
-        width="13"
-        height="13"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <line x1="12" y1="18" x2="12" y2="12" />
-        <polyline points="9 15 12 18 15 15" />
-      </svg>
-      {label || 'PDF'}
+      <FileDown size={14} />
+      {!iconOnly && (label || 'PDF')}
     </button>
   );
 }

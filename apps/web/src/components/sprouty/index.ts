@@ -1,4 +1,23 @@
-// Moved to @greenhouse/ui (shared UI kit) — this shim keeps the old import path working.
-export * from '@greenhouse/ui/components/sprouty';
-// App-level (uses web i18n): the shared "sculpt your Sprouty" editor.
-export { SproutyDesigner, DEFAULT_SPROUTY_DESIGN, type SproutyDesignValue } from './sprouty-designer';
+export { SproutyAvatar } from './sprouty-avatar.js';
+export type { SproutyAvatarProps, SproutyExpression } from './sprouty-avatar.js';
+export {
+  SproutyGeometricMark,
+  SPROUTY_GEOMETRIC_CONCEPTS,
+  type SproutyGeometricConcept,
+  type SproutyGeometricConceptMeta,
+} from './sprouty-geometric-concepts.js';
+export {
+  SPROUTY_SIZES,
+  COLOR_PRESETS,
+  ACCESSORIES,
+  LEAF_STYLES,
+  EYE_STYLES,
+  type SproutySize,
+  type SproutyState,
+  type SproutyVariant,
+  type SproutyColorSet,
+  type AccessoryMeta,
+  type AccessoryType,
+  type LeafStyle,
+  type EyeStyle,
+} from './sprouty-constants.js';

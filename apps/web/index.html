@@ -2,9 +2,15 @@
 <html lang="en" class="theme-loading">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      user-scalable=no / maximum-scale=1: page zoom is disabled globally by
+      product decision. iOS Safari ignores both directives (they only take effect
+      on Android Chrome and similar); accidental zoom from double-tap is handled
+      separately by `html { touch-action: manipulation }` in app.css.
+    -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-visual, maximum-scale=1, user-scalable=no"
     />
     <title>Greenhouse</title>
     <link rel="icon" href="/favicon.ico" sizes="any" />

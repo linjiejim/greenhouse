@@ -5,10 +5,11 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Dialog, Button, Input, ConfirmDialog, toast } from '../ui';
+import { Dialog, Button, IconButton, Input, ConfirmDialog, toast } from '../ui';
 import { Pencil, Trash2, GripVertical, Plus } from '../../lib/icons';
 import { TAG_COLORS } from '../session-tags/colors';
 import { useT } from '../../lib/i18n';
+import { useListReorder } from '../../hooks/use-list-reorder';
 import type { SessionGroup } from '@greenhouse/types/api';
 import * as api from '../../lib/api';
 
@@ -29,7 +30,6 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
   const [newColor, setNewColor] = useState(TAG_COLORS[0].value);
   const [showCreate, setShowCreate] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<SessionGroup | null>(null);
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   // Custom folders only — the Pinned system group is managed implicitly.
   const customGroups = groups.filter((g) => g.kind !== 'pinned');
@@ -39,7 +39,7 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
     try {
       setGroups(await api.listSessionGroups());
     } catch {
-      toast(t('common.loadFailed') || 'Failed to load groups', 'error');
+      toast(t('common.loadFailed'), 'error');
     }
     setLoading(false);
   }, [t]);
@@ -57,9 +57,9 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
       setShowCreate(false);
       loadGroups();
       onGroupsChanged();
-      toast(t('sessionGroups.created') || 'Group created', 'success');
+      toast(t('sessionGroups.created'), 'success');
     } catch (err: any) {
-      toast(err.message || 'Failed to create', 'error');
+      toast(err.message || t('common.createFailed'), 'error');
     }
   };
 
@@ -70,9 +70,9 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
       setEditingId(null);
       loadGroups();
       onGroupsChanged();
-      toast(t('sessionGroups.updated') || 'Group updated', 'success');
+      toast(t('sessionGroups.updated'), 'success');
     } catch (err: any) {
-      toast(err.message || 'Failed to update', 'error');
+      toast(err.message || t('common.saveFailed'), 'error');
     }
   };
 
@@ -83,63 +83,55 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
       setPendingDelete(null);
       loadGroups();
       onGroupsChanged();
-      toast(t('sessionGroups.deleted') || 'Group deleted', 'success');
+      toast(t('sessionGroups.deleted'), 'success');
     } catch {
-      toast(t('common.deleteFailed') || 'Failed to delete', 'error');
+      toast(t('common.deleteFailed'), 'error');
     }
   };
 
-  const handleDragStart = (idx: number) => setDragIdx(idx);
-  const handleDragOver = (e: React.DragEvent, idx: number) => {
-    e.preventDefault();
-    if (dragIdx == null || dragIdx === idx) return;
-    const next = [...customGroups];
-    const [moved] = next.splice(dragIdx, 1);
-    next.splice(idx, 0, moved);
-    // Re-stitch: pinned (if any) stays, custom order replaced.
-    setGroups([...groups.filter((g) => g.kind === 'pinned'), ...next]);
-    setDragIdx(idx);
-  };
-  const handleDragEnd = async () => {
-    setDragIdx(null);
-    const updates = customGroups.map((g, i) => ({ id: g.id, sort_order: i }));
-    try {
-      await api.reorderSessionGroups(updates);
-      onGroupsChanged();
-    } catch {
-      toast(t('sessionGroups.reorderFailed') || 'Failed to reorder', 'error');
-    }
-  };
+  // Shared pointer-based reorder (works on touch; HTML5 DnD did not).
+  const reorder = useListReorder(
+    customGroups.map((g) => g.id),
+    async (ids) => {
+      const byId = new Map(customGroups.map((g) => [g.id, g]));
+      // Re-stitch: pinned (if any) stays, custom order replaced.
+      setGroups([...groups.filter((g) => g.kind === 'pinned'), ...ids.map((id) => byId.get(id)!).filter(Boolean)]);
+      try {
+        await api.reorderSessionGroups(ids.map((id, i) => ({ id, sort_order: i })));
+        onGroupsChanged();
+      } catch {
+        toast(t('sessionGroups.reorderFailed'), 'error');
+        void loadGroups();
+      }
+    },
+  );
+  const orderedGroups = reorder.order.map((id) => customGroups.find((g) => g.id === id)!).filter(Boolean);
 
   if (!open) return null;
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} title={t('sessionGroups.manageGroups') || 'Manage groups'} size="sm">
+      <Dialog open={open} onClose={onClose} title={t('sessionGroups.manageGroups')} size="sm">
         <div className="space-y-3">
           <div className="space-y-1 min-h-[60px]">
             {loading && groups.length === 0 && (
-              <div className="text-xs text-fg-faint text-center py-4">{t('common.loading') || 'Loading...'}</div>
+              <div className="text-xs text-fg-faint text-center py-4">{t('common.loading')}</div>
             )}
             {!loading && customGroups.length === 0 && (
-              <div className="text-xs text-fg-faint text-center py-4">
-                {t('sessionGroups.noGroups') || 'No groups yet. Create your first group below.'}
-              </div>
+              <div className="text-xs text-fg-faint text-center py-4">{t('sessionGroups.noGroups')}</div>
             )}
-            {customGroups.map((group, idx) => (
+            {orderedGroups.map((group) => (
               <div
                 key={group.id}
-                draggable={editingId !== group.id}
-                onDragStart={() => handleDragStart(idx)}
-                onDragOver={(e) => handleDragOver(e, idx)}
-                onDragEnd={handleDragEnd}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded-md border border-transparent hover:border-edge hover:bg-surface-muted transition-colors group cursor-move ${
-                  dragIdx === idx ? 'opacity-50' : ''
+                {...reorder.itemProps(group.id)}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-md border border-transparent hover:border-edge hover:bg-surface-muted transition-colors group cursor-grab active:cursor-grabbing ${
+                  reorder.draggingId === group.id ? 'opacity-50' : ''
                 }`}
               >
                 <GripVertical size={12} className="text-fg-faint flex-shrink-0" />
                 {editingId === group.id ? (
-                  <div className="flex-1 flex items-center gap-2">
+                  // No drag from the edit form — a press there is text selection.
+                  <div className="flex-1 flex items-center gap-2" data-no-drag>
                     <Input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
@@ -152,7 +144,7 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
                       autoFocus
                     />
                     <div className="flex gap-0.5">
-                      {TAG_COLORS.map((c) => (
+                      {TAG_COLORS.map((c, index) => (
                         <button
                           key={c.value}
                           onClick={() => setEditColor(c.value)}
@@ -160,15 +152,15 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
                             editColor === c.value ? 'border-fg scale-110' : 'border-transparent'
                           }`}
                           style={{ backgroundColor: c.value }}
-                          title={c.label}
+                          aria-label={t('sessionGroups.colorOption', { index: index + 1 })}
                         />
                       ))}
                     </div>
                     <Button size="sm" onClick={handleEdit}>
-                      {t('common.save') || 'Save'}
+                      {t('common.save')}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
-                      {t('common.cancel') || 'Cancel'}
+                      {t('common.cancel')}
                     </Button>
                   </div>
                 ) : (
@@ -178,24 +170,27 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
                     {group.member_count != null && group.member_count > 0 && (
                       <span className="text-[10px] text-fg-faint tabular-nums">{group.member_count}</span>
                     )}
-                    <button
+                    <IconButton
                       onClick={() => {
                         setEditingId(group.id);
                         setEditName(group.name);
                         setEditColor(group.color);
                       }}
-                      className="p-1 text-fg-faint hover:text-fg-secondary rounded transition-colors opacity-0 group-hover:opacity-100 touch-visible"
-                      title={t('common.edit') || 'Edit'}
+                      className="opacity-0 group-hover:opacity-100 touch-visible"
+                      label={t('common.edit')}
+                      size="compact"
                     >
                       <Pencil size={12} />
-                    </button>
-                    <button
+                    </IconButton>
+                    <IconButton
                       onClick={() => setPendingDelete(group)}
-                      className="p-1 text-fg-faint hover:text-danger rounded transition-colors opacity-0 group-hover:opacity-100 touch-visible"
-                      title={t('common.delete') || 'Delete'}
+                      className="opacity-0 group-hover:opacity-100 touch-visible"
+                      label={t('common.delete')}
+                      variant="destructive"
+                      size="compact"
                     >
                       <Trash2 size={12} />
-                    </button>
+                    </IconButton>
                   </>
                 )}
               </div>
@@ -207,7 +202,7 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
               <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder={t('sessionGroups.groupName') || 'Group name'}
+                placeholder={t('sessionGroups.groupName')}
                 size="sm"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleCreate();
@@ -216,8 +211,8 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
                 autoFocus
               />
               <div className="flex items-center gap-1">
-                <span className="text-[11px] text-fg-faint mr-1">Color:</span>
-                {TAG_COLORS.map((c) => (
+                <span className="text-[11px] text-fg-faint mr-1">{t('common.color')}:</span>
+                {TAG_COLORS.map((c, index) => (
                   <button
                     key={c.value}
                     onClick={() => setNewColor(c.value)}
@@ -225,23 +220,23 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
                       newColor === c.value ? 'border-fg scale-110' : 'border-transparent'
                     }`}
                     style={{ backgroundColor: c.value }}
-                    title={c.label}
+                    aria-label={t('sessionGroups.colorOption', { index: index + 1 })}
                   />
                 ))}
               </div>
               <div className="flex items-center justify-end gap-2">
                 <Button size="sm" variant="ghost" onClick={() => setShowCreate(false)}>
-                  {t('common.cancel') || 'Cancel'}
+                  {t('common.cancel')}
                 </Button>
                 <Button size="sm" onClick={handleCreate} disabled={!newName.trim()}>
-                  {t('common.create') || 'Create'}
+                  {t('common.create')}
                 </Button>
               </div>
             </div>
           ) : (
             <Button variant="outline" size="sm" className="w-full" onClick={() => setShowCreate(true)}>
               <Plus size={14} className="mr-1" />
-              {t('sessionGroups.newGroup') || 'New group'}
+              {t('sessionGroups.newGroup')}
             </Button>
           )}
         </div>
@@ -251,12 +246,9 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
         open={!!pendingDelete}
         onClose={() => setPendingDelete(null)}
         onConfirm={handleDelete}
-        title={t('sessionGroups.deleteTitle') || 'Delete group?'}
-        description={
-          t('sessionGroups.deleteDescription', { name: pendingDelete?.name || '' }) ||
-          `Group "${pendingDelete?.name}" will be removed.`
-        }
-        confirmLabel={t('common.delete') || 'Delete'}
+        title={t('sessionGroups.deleteTitle')}
+        description={t('sessionGroups.deleteDescription', { name: pendingDelete?.name || '' })}
+        confirmLabel={t('common.delete')}
         confirmVariant="destructive"
       />
     </>

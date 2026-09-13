@@ -13,3 +13,7 @@ export type { GlobalGanttZoom, GlobalGanttFilter } from './global-gantt-view';
 export { TaskDetailDrawer } from './task-drawer';
 export { CreateTaskDialog } from './create-task-dialog';
 export { MembersPanel } from './members-panel';
+export { ProjectForm, EMPTY_PROJECT_FORM } from './project-form';
+export type { ProjectFormValue } from './project-form';
+export { TaskForm, EMPTY_TASK_FORM } from './task-form';
+export type { TaskFormValue } from './task-form';

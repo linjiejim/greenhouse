@@ -1,22 +1,626 @@
 @import 'tailwindcss';
 
-/* Design tokens (semantic colors, light/dark values) live in @greenhouse/ui —
-   shared with any future non-web shell. Forks still override in branding.css. */
-@import '@greenhouse/ui/styles/tokens.css';
-/* Prose variants, syntax highlighting and shared keyframe animations (used by
-   RichMarkdown, Dialog, toast, ...) also live in the shared kit. */
-@import '@greenhouse/ui/styles/components.css';
 @source "../**/*.{tsx,ts}";
-/* The shared UI kit's components live outside this app — scan them too so the
-   utility classes they use survive Tailwind's tree-shaking. */
-@source "../../../packages/ui/src/**/*.{tsx,ts}";
-/* Same reason: the CRUD framework's components (CrudForm/CrudPage/...) live
-   outside this app too — without this, classes only used there (e.g. the
-   unprefixed `col-span-4` a schema field falls back to) are silently dropped. */
+/* Workspace packages with Tailwind-classed JSX (pnpm-symlinked → outside auto-detection) */
 @source "../../../packages/crud/src/**/*.{tsx,ts}";
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  overscroll-behavior-y: none;
+  background: var(--t-surface-canvas);
+  color: var(--t-fg);
+  font-family: 'Nunito Sans', 'Avenir Next', 'Segoe UI', system-ui, Arial, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Frameless Desktop satellite windows sit on a transparent native NSWindow.
+ * The main app canvas must not leak into them: only each floating glass surface
+ * paints pixels, leaving rounded corners and unused space genuinely transparent.
+ */
+html.desktop-satellite-surface,
+html.desktop-satellite-surface body,
+html.desktop-satellite-surface #root {
+  background: transparent;
+  overflow: hidden;
+}
+
+.font-display,
+h1,
+h2,
+h3 {
+  font-family: Nunito, 'Avenir Next', 'Segoe UI', system-ui, Arial, sans-serif;
+}
+
+::selection {
+  background: rgb(var(--primary-400) / 0.28);
+  color: var(--t-fg);
+}
+
+/*
+ * 双击缩放会在聊天里频繁误触（连点两下发送区、快速点两个按钮都会触发），且缩放后
+ * 没有可见的复位入口。`manipulation` 精确地只禁双击缩放，**保留双指缩放**——低视力
+ * 用户仍能放大，不违反 WCAG 1.4.4。
+ *
+ * 注意 `user-scalable=no` 不是可选项：iOS Safari 自 iOS 10 起直接忽略它，写了也只是
+ * 让人以为禁掉了。真要完全禁用只有在 WebView 壳里用原生 prop，见 mobile 的 spike spec。
+ */
+html {
+  touch-action: manipulation;
+}
+
+.app-viewport {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.min-app-viewport {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/*
+ * Mobile software keyboards resize and sometimes pan the visual viewport. The
+ * app shell keeps the pre-keyboard height so the header and transcript do not
+ * jump; useMobileKeyboardViewport publishes only the obscured bottom inset for
+ * the composer to consume. Desktop remains on the ordinary dynamic viewport.
+ */
+@media (max-width: 767px) {
+  .app-viewport {
+    position: relative;
+    top: var(--mobile-viewport-offset-top, 0px);
+    height: var(--app-viewport-height, 100dvh);
+  }
+
+  .mobile-keyboard-lift {
+    transform: translate3d(0, calc(-1 * var(--mobile-keyboard-inset, 0px)), 0);
+    transition: transform 160ms ease-out;
+    will-change: transform;
+  }
+
+  /* Dialogs, drawers and floating panels follow the *visible* viewport while
+     an IME is open. The application behind them keeps its stable height; only
+     the active overlay is shortened and offset so its focused control and
+     close action remain reachable above the keyboard. */
+  html[data-mobile-keyboard-open='true'] .mobile-visual-viewport {
+    top: var(--mobile-viewport-offset-top, 0px);
+    bottom: auto;
+    height: calc(var(--app-viewport-height, 100dvh) - var(--mobile-keyboard-inset, 0px));
+  }
+
+  html[data-mobile-keyboard-open='true'],
+  html[data-mobile-keyboard-open='true'] body {
+    overflow: hidden;
+  }
+}
+
+button,
+a,
+[role='button'] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * 选择策略：**界面外壳不可选，内容可选。**
+ *
+ * 触屏上长按一个按钮/标签/导航项会拖出系统的选择手柄和「拷贝/查找」气泡，桌面上双击
+ * 也会把标签文字整块刷蓝——两者都不是用户的意图，纯属误触。但正文必须可选：复制模型
+ * 回复、摘抄文档、拷贝 ID 都是核心操作，所以这里只圈定「chrome」，不做全局 user-select:none。
+ *
+ * 命中范围刻意用语义选择器（按钮/导航/表头/标签）而不是按组件类名，新组件自动继承；
+ * 需要例外时用 .selectable 显式放行。
+ */
+button,
+a,
+label,
+summary,
+[role='button'],
+[role='tab'],
+[role='menuitem'],
+[role='option'],
+[role='switch'],
+[role='separator'],
+nav,
+th,
+.tabular-chrome {
+  -webkit-user-select: none;
+  user-select: none;
+  /* 长按不弹 iOS 的分享/查找气泡；WebView 壳里尤其明显 */
+  -webkit-touch-callout: none;
+}
+
+/*
+ * ⚠️ 上面那条 `user-select: none` 会在 **WebKit 里连带禁掉拖拽**：Safari 认为
+ * 不可选的元素也不可拖，而知识库侧栏的文档行本身就是一个 `<button>`。表现是
+ * 按住拖动完全没反应——没有拖影、没有落点高亮、什么都不发生，而 Chrome 一切正常
+ * （Blink 没有这条联动），所以只在 Safari 上复现。`-webkit-user-drag: element`
+ * 显式声明「这个元素整体可拖」，把两者解耦。
+ *
+ * 只声明「可拖」，不动光标——`draggable` 的元素里有一半（聊天历史行、导航项）
+ * 本质是点击项，把它们的 pointer 换成 grab 会读成「这不是按钮」。需要 grab
+ * 提示的地方在组件上用 `cursor-grab` 显式加。
+ */
+[draggable='true'] {
+  -webkit-user-drag: element;
+}
+
+/*
+ * 例外：外壳里真正需要被复制的文本（会话 ID、字段值、代码片段等）。
+ * 放在 chrome 容器内时用这个类显式放行。
+ */
+.selectable,
+.selectable * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/*
+ * 内容区始终可选，即使嵌在上面某个不可选的容器里（如 <label> 包住的说明文字、
+ * nav 里的搜索输入）。输入控件必须可选，否则移动端连光标定位都会变别扭。
+ */
+input,
+textarea,
+[contenteditable='true'],
+.prose-base,
+.prose-compact,
+.rich-markdown,
+.markdown-body {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.sidebar-actions-expanded {
+  display: flex;
+}
+
+.sidebar-actions-compact,
+.sidebar-compact-row-action,
+.sidebar-filter-select {
+  display: none;
+}
+
+/*
+ * Sidebar destinations, More-flyout entries and history rows share one
+ * active-state language: **fill only**.
+ *
+ * This used to also carry an inset edge and a 3px leading marker, because
+ * background alone genuinely was too easy to miss — against the pale light
+ * chrome the active fill was 0.7 L* away, which is nothing. Both extras were
+ * compensating for that, and both became redundant when `primary-subtle-hover`
+ * stopped being drawn from the same wash as the chrome (2026-08-25): the step is
+ * now 6.6 L* in light and 8.2 L* in dark. Keeping them stacked three cues on one
+ * row and made the nav read as a boxed control rather than a highlighted row.
+ *
+ * A row is not a chip. It spans the full width of its container with nothing to
+ * compare against on either side, so the fill is unambiguous on its own; a small
+ * bounded control sitting in a row of identical siblings still needs its edge.
+ * That is why `--t-primary-edge` stays strong and is deliberately absent here.
+ */
+.sidebar-active-item {
+  background: var(--t-primary-subtle-hover);
+  color: var(--t-primary-fg-strong);
+}
+
+@container app-sidebar (max-width: 219px) {
+  .sidebar-actions-expanded,
+  .sidebar-filter-pills,
+  .sidebar-secondary-meta {
+    display: none;
+  }
+
+  .sidebar-actions-compact,
+  .sidebar-compact-row-action {
+    display: flex;
+  }
+
+  .sidebar-filter-select {
+    display: block;
+  }
+
+  /* At the minimum rail width, prioritize the brand label and collapse
+     control over the optional local workspace badge. */
+  .sidebar-brand-workspace {
+    display: none;
+  }
+}
+
+/* Prevent iOS Safari from zooming the page when a compact app input receives focus. */
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  .safe-area-panel {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Assistant overlay: travel from upper-left toward its lower-right resting place.
+   Mobile keeps the familiar sheet motion; desktop uses restrained diagonal
+   drift, scale, and fade so the panel still feels anchored to the header. */
+@keyframes panel-pop {
+  from {
+    opacity: 0;
+    transform: translate(-6px, -6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes panel-pop-out {
+  from {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-6px, -6px) scale(0.97);
+  }
+}
+
+@keyframes panel-slide-down {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+@keyframes backdrop-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes backdrop-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.animate-panel-enter {
+  animation: slide-up 0.3s ease-out;
+}
+
+.animate-panel-exit {
+  animation: panel-slide-down 0.25s ease-in forwards;
+}
+
+@media (min-width: 768px) {
+  .animate-panel-enter {
+    animation: panel-pop 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    transform-origin: top left;
+  }
+
+  .animate-panel-exit {
+    animation: panel-pop-out 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+    transform-origin: top left;
+  }
+}
+
+.animate-backdrop-fade {
+  animation: backdrop-fade 0.15s ease-out;
+}
+
+.animate-backdrop-fade-out {
+  animation: backdrop-fade-out 0.18s ease-in forwards;
+}
 
 /* ─── Custom dark variant: driven by .dark-theme class ─── */
 @custom-variant dark (&:where(.dark-theme, .dark-theme *));
+
+/* ─── Theme: Semantic color tokens mapped to CSS variables ─── */
+@theme static inline {
+  --color-surface-canvas: var(--t-surface-canvas);
+  --color-surface-chrome: var(--t-surface-chrome);
+  --color-surface: var(--t-surface);
+  --color-surface-card: var(--t-surface-card);
+  --color-surface-raised: var(--t-surface-raised);
+  --color-surface-muted: var(--t-surface-muted);
+  --color-surface-sunken: var(--t-surface-sunken);
+
+  --color-fg: var(--t-fg);
+  --color-fg-secondary: var(--t-fg-secondary);
+  --color-fg-muted: var(--t-fg-muted);
+  --color-fg-faint: var(--t-fg-faint);
+
+  --color-edge: var(--t-edge);
+  --color-edge-strong: var(--t-edge-strong);
+  --color-logo-safe: #ffffff;
+
+  /* Fixed Greenhouse brand palette; appearance mode only changes semantic surfaces. */
+  --color-primary-50: rgb(var(--primary-50));
+  --color-primary-100: rgb(var(--primary-100));
+  --color-primary-200: rgb(var(--primary-200));
+  --color-primary-300: rgb(var(--primary-300));
+  --color-primary-400: rgb(var(--primary-400));
+  --color-primary-500: rgb(var(--primary-500));
+  --color-primary-600: rgb(var(--primary-600));
+  --color-primary-700: rgb(var(--primary-700));
+  --color-primary-800: rgb(var(--primary-800));
+  --color-primary-900: rgb(var(--primary-900));
+
+  /* Semantic status colors */
+  --color-success: var(--t-success);
+  --color-success-subtle: var(--t-success-subtle);
+  --color-success-fg: var(--t-success-fg);
+
+  --color-warning: var(--t-warning);
+  --color-warning-subtle: var(--t-warning-subtle);
+  --color-warning-fg: var(--t-warning-fg);
+
+  --color-danger: var(--t-danger);
+  --color-danger-subtle: var(--t-danger-subtle);
+  --color-danger-fg: var(--t-danger-fg);
+
+  --color-info: var(--t-info);
+  --color-info-subtle: var(--t-info-subtle);
+  --color-info-fg: var(--t-info-fg);
+
+  /* Destructive action */
+  --color-destructive: var(--t-destructive);
+  --color-destructive-hover: var(--t-destructive-hover);
+
+  /* Star rating */
+  --color-star: var(--t-star);
+  --color-star-hover: var(--t-star-hover);
+
+  /* Semantic border/divide colors (for border-danger, border-success etc.) */
+  /* These use the same values as the status colors */
+
+  /* Primary semantic tokens — adapt to dark mode */
+  --color-primary-subtle: var(--t-primary-subtle);
+  --color-primary-subtle-hover: var(--t-primary-subtle-hover);
+  --color-primary-edge: var(--t-primary-edge);
+  --color-primary-fg: var(--t-primary-fg);
+  --color-primary-fg-strong: var(--t-primary-fg-strong);
+}
+
+/* ─── Light (default) ─── */
+:root {
+  /* Greenhouse brand: wash → sage/lime → green → deep green. */
+  --primary-50: 244 248 241;
+  --primary-100: 238 245 234;
+  --primary-200: 221 235 213;
+  --primary-300: 199 217 216;
+  --primary-400: 140 198 63;
+  --primary-500: 46 139 61;
+  --primary-600: 39 122 53;
+  --primary-700: 31 107 52;
+  --primary-800: 24 85 42;
+  --primary-900: 18 63 32;
+
+  /* Surface */
+  --t-surface-canvas: #ffffff;
+  --t-surface-chrome: #f1f7ed;
+  --t-surface: #f4f8f1;
+  --t-surface-card: #f7faf5;
+  --t-surface-raised: #ffffff;
+  --t-surface-muted: #eef5ea;
+  --t-surface-sunken: #f7f9f5;
+
+  /* Text */
+  --t-fg: #2b2b2b;
+  --t-fg-secondary: #455147;
+  --t-fg-muted: #5f6a61;
+  --t-fg-faint: #657067;
+
+  /* Border */
+  --t-edge: #e6ece3;
+  --t-edge-strong: #cbd6c8;
+
+  /* Status: Success */
+  --t-success: #2e8b3d;
+  --t-success-subtle: #eef5ea;
+  --t-success-fg: #1f6b34;
+
+  /* Status: Warning */
+  --t-warning: #a84d21;
+  --t-warning-subtle: #fff3ec;
+  --t-warning-fg: #7a3517;
+
+  /* Status: Danger */
+  --t-danger: #c2413b;
+  --t-danger-subtle: #fff0ef;
+  --t-danger-fg: #8f2f2b;
+
+  /* Destructive action */
+  --t-destructive: #c2413b;
+  --t-destructive-hover: #a93631;
+
+  /* Star rating */
+  --t-star: #b7791f;
+  --t-star-hover: #925f18;
+
+  /* Status: Info */
+  --t-info: #2d6e8e;
+  --t-info-subtle: #edf7fa;
+  --t-info-fg: #24566e;
+
+  /*
+   * Primary semantic — these carry SELECTED / ACTIVE state across the app, so in
+   * light mode they must not be drawn from the brand wash the neutral surfaces are
+   * already made of. They used to be primary-50/100/200, which made
+   * `primary-subtle` byte-identical to `--t-surface` and `primary-subtle-hover`
+   * byte-identical to `--t-surface-muted`: a selected chip differed from its
+   * unselected neighbour by 1.01:1, i.e. not at all. Values below keep dark-green
+   * label text at 5.4:1 while giving the fill a ~5 L* step off every neutral.
+   *
+   * The load-bearing cue is the EDGE, not the fill: no light fill can reach the
+   * 3:1 that WCAG 2.2 SC 1.4.11 wants for a state indicator and still take dark
+   * green text (the best candidate tops out near 1.26:1). primary-500 clears 3:1
+   * against the fill, the hover fill, the canvas and the sunken track alike.
+   */
+  --t-primary-subtle: #e1edd6;
+  --t-primary-subtle-hover: #d8e7cc;
+  --t-primary-edge: rgb(var(--primary-500));
+  --t-primary-fg: rgb(var(--primary-600));
+  --t-primary-fg-strong: rgb(var(--primary-700));
+
+  /*
+   * Reading surfaces opt out. Inline code, @-mentions and entity-link hover want a
+   * brand tint, not a state indicator — they sit inside running prose, where the
+   * selection-strength fill above reads as highlighting half the paragraph. This is
+   * the old primary-subtle value, kept for exactly those three consumers.
+   */
+  --t-primary-wash: rgb(var(--primary-50));
+
+  /* Focus indicator — see the `:root …:focus-visible` rule near the bottom. */
+  --t-focus-ring: rgb(var(--primary-600));
+}
+
+/* ─── Dark ─── */
+.dark-theme {
+  color-scheme: dark;
+
+  /* Surface */
+  --t-surface-canvas: #0f1510;
+  --t-surface-chrome: #1a231b;
+  --t-surface: #151c16;
+  --t-surface-card: #1a231b;
+  --t-surface-raised: #1a231b;
+  --t-surface-muted: #243026;
+  --t-surface-sunken: #0f1510;
+
+  /* Text */
+  --t-fg: #f2f6f0;
+  --t-fg-secondary: #c6d0c3;
+  --t-fg-muted: #95a292;
+  --t-fg-faint: #82917f;
+
+  /* Border */
+  --t-edge: #2c392e;
+  --t-edge-strong: #405143;
+
+  /* Status: Success */
+  --t-success: #76c97d;
+  --t-success-subtle: rgba(76, 175, 80, 0.14);
+  --t-success-fg: #a5dda9;
+
+  /* Status: Warning */
+  --t-warning: #e7a16b;
+  --t-warning-subtle: rgba(217, 102, 43, 0.15);
+  --t-warning-fg: #f0b98f;
+
+  /* Status: Danger */
+  --t-danger: #ee837d;
+  --t-danger-subtle: rgba(224, 80, 73, 0.14);
+  --t-danger-fg: #f4aaa6;
+
+  /* Destructive action */
+  --t-destructive: #d75650;
+  --t-destructive-hover: #e16c66;
+
+  /* Star rating */
+  --t-star: #e6b45d;
+  --t-star-hover: #f0c472;
+
+  /* Status: Info */
+  --t-info: #72b4cf;
+  --t-info-subtle: rgba(70, 145, 176, 0.15);
+  --t-info-fg: #a1cfe1;
+
+  /* Primary semantic (dark — translucent overlays instead of pastel).
+     Dark never had the light mode's problem: a green overlay on a near-black
+     surface already separates selected from unselected by 1.30:1, so these are
+     deliberately left alone. */
+  --t-primary-subtle: rgb(var(--primary-500) / 0.12);
+  --t-primary-subtle-hover: rgb(var(--primary-500) / 0.2);
+  --t-primary-edge: rgb(var(--primary-500) / 0.25);
+  --t-primary-fg: rgb(var(--primary-300));
+  --t-primary-fg-strong: rgb(var(--primary-200));
+  --t-primary-wash: rgb(var(--primary-500) / 0.12);
+
+  --t-focus-ring: rgb(var(--primary-400));
+}
+
+/* Brand signature — reserved for title/section bars. */
+.brand-gradient {
+  background: linear-gradient(90deg, #1f6b34 0%, #2e8b3d 45%, #8cc63f 100%);
+}
+
+.brand-auth-background {
+  --auth-glow-x: 50%;
+  --auth-glow-y: 34%;
+  background-color: var(--t-surface-sunken);
+  background-image:
+    radial-gradient(
+      circle 24rem at var(--auth-glow-x) var(--auth-glow-y),
+      rgb(var(--primary-300) / 0.1),
+      transparent 72%
+    ),
+    radial-gradient(circle at 12% 12%, rgb(var(--primary-400) / 0.14), transparent 30rem),
+    radial-gradient(circle at 88% 88%, rgb(var(--primary-500) / 0.1), transparent 34rem);
+}
+
+.login-tagline-window {
+  display: block;
+  height: 1.25rem;
+  overflow: hidden;
+}
+
+.login-tagline-track {
+  display: flex;
+  flex-direction: column;
+  animation: login-tagline-cycle 12s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  will-change: transform;
+}
+
+.login-tagline-line {
+  display: flex;
+  height: 1.25rem;
+  flex: 0 0 1.25rem;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+@keyframes login-tagline-cycle {
+  0%,
+  22% {
+    transform: translate3d(0, 0, 0);
+  }
+  27%,
+  49% {
+    transform: translate3d(0, -25%, 0);
+  }
+  54%,
+  76% {
+    transform: translate3d(0, -50%, 0);
+  }
+  81%,
+  100% {
+    transform: translate3d(0, -75%, 0);
+  }
+}
 
 /* ─── Theme transition (smooth theme switching) ─── */
 * {
@@ -34,6 +638,27 @@
 /* Performance: skip transition on page load — JS removes this class after first paint */
 .theme-loading * {
   transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-auth-background {
+    --auth-glow-x: 50% !important;
+    --auth-glow-y: 34% !important;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .login-tagline-track {
+    animation: none !important;
+    transform: none !important;
+  }
 }
 
 /* ─── Scrollbar — hidden at rest, revealed only while scrolling / on hover ─── */
@@ -85,90 +710,448 @@
   display: none;
 }
 
-/* ─── Overlay panel enter/exit (OverlayPanel side variant) ───
-   Desktop: the panel is anchored at the TOP-RIGHT (where the Agent nav button
-   lives), so it unfurls toward the bottom-left on open and retracts back to the
-   top-right on close — scale + a small diagonal drift + fade, transform-origin
-   pinned to that corner. Mobile: full-screen sheet slides up to open, down to
-   close. */
-@keyframes panel-pop {
-  from {
-    opacity: 0;
-    transform: translate(6px, -6px) scale(0.97);
+/* ─── Prose: shared base (elements styled via Tailwind @apply) ─── */
+.prose-base,
+.prose-compact {
+  @apply text-sm font-normal text-fg-secondary;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.prose-base > :first-child,
+.prose-compact > :first-child {
+  margin-top: 0;
+}
+.prose-base > :last-child,
+.prose-compact > :last-child {
+  margin-bottom: 0;
+}
+
+/* RichMarkdown composes prose and interactive blocks under the same density.
+   Child blocks own no outer margin; one parent rhythm keeps every transition
+   (text → chart → text, table → confirm, etc.) consistent. */
+.rich-markdown-base > * + * {
+  @apply mt-4;
+}
+.rich-markdown-compact > * + * {
+  @apply mt-2.5;
+}
+
+/* ── Headings and inline emphasis ── */
+.prose-base h1,
+.prose-base h2,
+.prose-base h3,
+.prose-base h4,
+.prose-base h5,
+.prose-base h6,
+.prose-compact h1,
+.prose-compact h2,
+.prose-compact h3,
+.prose-compact h4,
+.prose-compact h5,
+.prose-compact h6 {
+  @apply font-semibold text-fg;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+}
+.prose-base strong,
+.prose-compact strong {
+  @apply font-semibold text-fg;
+}
+.prose-base em,
+.prose-compact em {
+  @apply text-fg-muted;
+}
+
+/* ── Links ── */
+.prose-base a,
+.prose-compact a {
+  @apply text-primary-fg underline decoration-primary-500/45 underline-offset-2;
+}
+.prose-base a:hover,
+.prose-compact a:hover {
+  @apply text-primary-fg-strong decoration-primary-600;
+}
+
+/* ── Record references ──
+   A link to a record in this app (customer, contact, deal, project, KB doc);
+   markdown.tsx tags them from the href. Styled as a quiet chip rather than a
+   link because clicking one opens a detail overlay instead of navigating, and a
+   plain underlined link promises a page you are about to be taken to. */
+.prose-base a.entity-link,
+.prose-compact a.entity-link {
+  @apply inline-flex items-baseline gap-1 rounded bg-surface-muted px-1 py-px font-medium text-fg no-underline;
+  /* Long customer names wrap mid-chip rather than pushing the column wider. */
+  @apply break-words;
+}
+.prose-base a.entity-link::before,
+.prose-compact a.entity-link::before {
+  content: '';
+  @apply inline-block h-[0.62em] w-[0.62em] flex-shrink-0 self-center rounded-[2px] bg-primary-500/70;
+}
+.prose-base a.entity-link:hover,
+.prose-compact a.entity-link:hover {
+  @apply text-primary-fg-strong no-underline;
+  background-color: var(--t-primary-wash);
+}
+
+/* ── @-mentions ──
+   One rule for all three surfaces: the Tiptap mention NODE (doc editor + comment
+   editor, class from the shared schema) and the rendered Markdown link
+   (markdown.tsx tags `user:` links with the same class). Not a link visually —
+   it never navigates. */
+.kb-mention {
+  @apply inline-block rounded px-1 py-px text-[0.9em] font-medium text-primary-fg-strong no-underline;
+  background-color: var(--t-primary-wash);
+}
+.prose-base a.kb-mention,
+.prose-compact a.kb-mention {
+  @apply no-underline cursor-default;
+}
+
+/* ── Inline code ── */
+.prose-base code,
+.prose-compact code {
+  @apply rounded-md px-1 py-0.5 font-mono text-[0.86em] font-medium text-primary-fg-strong;
+  background-color: var(--t-primary-wash);
+}
+
+/* ── Code blocks ── */
+.prose-base pre,
+.prose-compact pre {
+  @apply max-h-96 overflow-auto rounded-md border border-edge/70 bg-surface-sunken font-mono;
+}
+.prose-base pre code,
+.prose-compact pre code {
+  @apply bg-transparent p-0 text-[12px] font-normal leading-[1.65] text-fg-secondary;
+}
+
+/* ── Blockquote ── */
+.prose-base blockquote,
+.prose-compact blockquote {
+  @apply rounded-r-md border-l-2 border-primary-500 bg-surface-muted py-2 pl-3 pr-3 text-fg-secondary;
+}
+.prose-base blockquote p,
+.prose-compact blockquote p {
+  @apply my-0;
+}
+
+/* ── Table ── */
+.prose-base .md-table-shell,
+.prose-compact .md-table-shell {
+  @apply w-full overflow-hidden rounded-lg border border-edge;
+}
+.prose-base .md-table-toolbar,
+.prose-compact .md-table-toolbar {
+  @apply flex justify-end gap-0.5 border-b border-edge bg-surface-sunken px-1.5 py-1;
+}
+.prose-base .md-table-icon-action,
+.prose-compact .md-table-icon-action {
+  @apply inline-flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus:outline-none focus:ring-2 focus:ring-primary-500/40;
+}
+.prose-base .md-table-scroll,
+.prose-compact .md-table-scroll {
+  @apply w-full overflow-x-auto;
+  -webkit-overflow-scrolling: touch;
+}
+.prose-base table,
+.prose-compact table {
+  border-collapse: collapse;
+  @apply my-0 w-full min-w-[28rem] text-[13px];
+}
+.prose-base th,
+.prose-compact th,
+.prose-base td,
+.prose-compact td {
+  @apply border-b border-edge px-3 py-2 text-left align-top;
+}
+.prose-base th,
+.prose-compact th {
+  @apply bg-surface-muted text-xs font-semibold text-fg;
+}
+.prose-base td,
+.prose-compact td {
+  @apply text-fg-secondary;
+}
+.prose-base tbody tr:last-child td,
+.prose-compact tbody tr:last-child td {
+  @apply border-b-0;
+}
+
+/* ── Images ── */
+.prose-base img,
+.prose-compact img {
+  /* Every prose image opens a lightbox on click (see <Markdown>), so advertise it. */
+  @apply max-w-full cursor-zoom-in rounded-lg border border-edge shadow-sm;
+}
+
+/* Document images are thumbnails too, just a roomier one than chat: a screenshot
+   pasted at 2000px wide otherwise pushes the surrounding paragraphs apart and the
+   reader has to scroll past it to keep reading. Full detail is one click away in
+   the lightbox (which zooms), so the inline copy only has to say "there is a
+   picture here, and roughly what of". */
+.prose-base img {
+  @apply max-w-[360px];
+}
+
+/* Chat thumbnails are capped by the IMAGE, not by its container, so the size can't
+   depend on the surrounding DOM shape. While an answer streams in, marked's
+   `breaks: true` briefly parses `![img](url)\n**text**` as ONE paragraph (img + <br> +
+   text) until the second newline arrives — that isn't an image-only paragraph, so it
+   never enters .md-image-row. Sizing the row instead of the image made the picture
+   render full-width for those few frames and then snap to 260px: a visible flash on
+   every generation. Capping here keeps it 260px in both shapes.
+   `max-width` (not `width`) so a small inline icon stays its own size. */
+.prose-compact img {
+  @apply max-w-[260px];
+}
+
+/* Runs of consecutive images become one flex row (see groupImageRuns) — chat only,
+   so several generations in one answer sit side by side instead of stacking. Layout
+   only; the width above does the sizing. */
+.prose-compact .md-image-row {
+  @apply my-2 flex flex-wrap items-start gap-2;
+}
+.prose-compact .md-image-row img,
+.prose-compact .md-image-row > a {
+  @apply my-0;
+}
+.prose-compact .md-image-row > a {
+  @apply block max-w-[260px];
+}
+
+/* ── HR ── */
+.prose-base hr,
+.prose-compact hr {
+  @apply border-edge;
+}
+
+/* ── Lists ── */
+.prose-base ul,
+.prose-compact ul,
+.prose-base ol,
+.prose-compact ol {
+  list-style: revert;
+}
+.prose-base li::marker,
+.prose-compact li::marker {
+  color: rgb(var(--primary-600));
+  font-weight: 600;
+}
+.prose-base li > ul,
+.prose-base li > ol,
+.prose-compact li > ul,
+.prose-compact li > ol {
+  @apply mt-1 mb-0;
+}
+
+/* ─── prose-base: spacious variant for wiki / docs ─── */
+.prose-base {
+  line-height: 1.72;
+}
+.prose-base h1 {
+  @apply mt-7 mb-3 text-xl leading-[1.35];
+}
+.prose-base h2 {
+  @apply mt-6 mb-2 text-[17px] leading-[1.4];
+}
+.prose-base h3 {
+  @apply mt-5 mb-2 text-[15px] leading-[1.45];
+}
+.prose-base h4 {
+  @apply mt-4 mb-1.5 text-sm leading-[1.5];
+}
+.prose-base h5,
+.prose-base h6 {
+  @apply mt-4 mb-1.5 text-[13px] leading-[1.5] text-fg-secondary;
+}
+.prose-base p {
+  @apply my-2.5;
+}
+.prose-base pre {
+  @apply my-4 p-4;
+}
+.prose-base blockquote {
+  @apply my-4;
+}
+.prose-base .md-table-shell {
+  @apply my-4;
+}
+.prose-base ul,
+.prose-base ol {
+  @apply my-2.5 pl-5;
+}
+.prose-base li {
+  @apply my-1.5 pl-0.5;
+}
+.prose-base hr {
+  @apply my-7;
+}
+
+/* ─── prose-compact: tight variant for chat / agent messages ─── */
+.prose-compact {
+  line-height: 1.6;
+}
+.prose-compact h1 {
+  @apply mt-3 mb-1.5 text-base leading-[1.4];
+}
+.prose-compact h2 {
+  @apply mt-3 mb-1.5 text-[15px] leading-[1.45];
+}
+.prose-compact h3 {
+  @apply mt-2.5 mb-1 text-sm leading-[1.5];
+}
+.prose-compact h4 {
+  @apply mt-2.5 mb-1 text-[13px] leading-[1.5];
+}
+.prose-compact h5,
+.prose-compact h6 {
+  @apply mt-2 mb-1 text-xs leading-[1.5] text-fg-secondary;
+}
+.prose-compact p {
+  @apply my-1.5;
+}
+.prose-compact pre {
+  @apply my-2.5 p-3;
+}
+.prose-compact blockquote {
+  @apply my-2.5;
+}
+.prose-compact .md-table-shell {
+  @apply my-2.5;
+}
+.prose-compact table {
+  @apply min-w-[24rem] text-xs;
+}
+.prose-compact th,
+.prose-compact td {
+  @apply px-2.5 py-1.5;
+}
+.prose-compact ul,
+.prose-compact ol {
+  @apply my-1.5 pl-5;
+}
+.prose-compact li {
+  @apply my-1 pl-0.5;
+}
+.prose-compact hr {
+  @apply my-5;
+}
+
+/* ─── Dark prose adjustments ─── */
+.dark-theme .prose-base pre code,
+.dark-theme .prose-compact pre code {
+  @apply text-fg;
+}
+/* Inline code outside prose */
+.dark-theme code:not(.prose-base code):not(.prose-compact code) {
+  @apply bg-primary-subtle text-primary-fg;
+}
+
+/* ─── Syntax Highlighting (lightweight) ─── */
+.hl-pre {
+  position: relative;
+}
+.prose-base .md-code-shell,
+.prose-compact .md-code-shell {
+  @apply relative;
+  box-shadow: none;
+}
+.prose-base .md-code-shell pre,
+.prose-compact .md-code-shell pre {
+  padding-right: 2.75rem;
+  box-shadow: none;
+}
+.prose-base .md-code-icon-action,
+.prose-compact .md-code-icon-action {
+  @apply absolute right-1.5 top-1.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-surface-raised/90 text-fg-muted shadow-sm backdrop-blur-sm transition-colors hover:bg-surface-muted hover:text-fg focus:outline-none focus:ring-2 focus:ring-primary-500/40;
+}
+.hl-lang {
+  @apply absolute top-2 right-11 text-[10px] text-fg-faint uppercase tracking-wider select-none;
+}
+.md-code-fullscreen-view pre.hl-pre {
+  @apply m-0 max-h-none min-h-full;
+}
+.hl-keyword {
+  @apply font-semibold text-primary-fg-strong;
+}
+.hl-string {
+  @apply text-success;
+}
+.hl-comment {
+  @apply text-fg-faint italic;
+}
+.hl-number {
+  @apply text-info;
+}
+
+/* ─── Animations ─── */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.4;
   }
-  to {
+  50% {
     opacity: 1;
-    transform: translate(0, 0) scale(1);
   }
 }
-@keyframes panel-pop-out {
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes fade-in {
   from {
-    opacity: 1;
-    transform: translate(0, 0) scale(1);
+    opacity: 0;
+    transform: translateY(4px);
   }
   to {
-    opacity: 0;
-    transform: translate(6px, -6px) scale(0.97);
-  }
-}
-@keyframes slide-down {
-  from {
     opacity: 1;
     transform: translateY(0);
   }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Workflow DAG: dashes flowing along an edge that feeds a running node */
+@keyframes workflow-flow {
   to {
+    stroke-dashoffset: -18;
+  }
+}
+.animate-workflow-flow {
+  animation: workflow-flow 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-workflow-flow {
+    animation: none;
+  }
+}
+
+/* Typewriter animation for AI-generated session titles */
+@keyframes typewriter-reveal {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.animate-typewriter {
+  animation: typewriter-reveal 0.8s steps(20, end);
+}
+
+@keyframes slide-up {
+  from {
     opacity: 0;
     transform: translateY(100%);
   }
-}
-@keyframes backdrop-fade {
-  from {
-    opacity: 0;
-  }
   to {
     opacity: 1;
+    transform: translateY(0);
   }
 }
-@keyframes backdrop-fade-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-.animate-panel-enter {
+.animate-slide-up {
   animation: slide-up 0.3s ease-out;
-}
-.animate-panel-exit {
-  animation: slide-down 0.25s ease-in forwards;
-}
-@media (min-width: 768px) {
-  .animate-panel-enter {
-    animation: panel-pop 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-    transform-origin: top right;
-  }
-  .animate-panel-exit {
-    animation: panel-pop-out 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
-    transform-origin: top right;
-  }
-}
-.animate-backdrop-fade {
-  animation: backdrop-fade 0.15s ease-out;
-}
-.animate-backdrop-fade-out {
-  animation: backdrop-fade-out 0.18s ease-in forwards;
-}
-/* Vestibular safety: collapse motion to a plain fade. */
-@media (prefers-reduced-motion: reduce) {
-  .animate-panel-enter,
-  .animate-backdrop-fade {
-    animation: backdrop-fade 0.15s ease-out;
-  }
-  .animate-panel-exit,
-  .animate-backdrop-fade-out {
-    animation: backdrop-fade-out 0.15s ease-out forwards;
-  }
 }
 
 @keyframes slide-in-left {
@@ -284,6 +1267,22 @@ table tbody tr:hover {
   }
 }
 
+/* Assistant message controls reserve their row to avoid layout shift, but stay
+   visually quiet until the whole answer is hovered or keyboard-focused. Touch
+   devices keep the controls visible because they have no durable hover state. */
+@media (hover: hover) and (pointer: fine) {
+  .message-hover-actions {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .message-actions-host:hover .message-hover-actions,
+  .message-actions-host:focus-within .message-hover-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 /* ─── Dark theme form overrides (inputs use semantic tokens now but fallback) ─── */
 .dark-theme input,
 .dark-theme select,
@@ -295,6 +1294,12 @@ table tbody tr:hover {
 .dark-theme input::placeholder,
 .dark-theme textarea::placeholder {
   color: var(--t-fg-faint) !important;
+}
+
+/* The composer is one continuous card. Keep its textarea transparent so the
+   generic dark-form fallback cannot reveal a square fill beyond the card radius. */
+.dark-theme textarea.chat-composer-textarea {
+  background-color: transparent !important;
 }
 
 /* ─── Dark theme: remaining non-semantic color overrides ─── */
@@ -530,13 +1535,26 @@ table tbody tr:nth-child(even) {
   background-color: rgba(255, 255, 255, 0.03);
 }
 
-/* --- Hover/focus consistency: interactive elements --- */
-.dark-theme button:focus-visible,
-.dark-theme a:focus-visible,
-.dark-theme input:focus-visible,
-.dark-theme select:focus-visible,
-.dark-theme textarea:focus-visible {
-  outline: 2px solid rgb(var(--primary-400));
+/*
+ * --- Hover/focus consistency: interactive elements ---
+ *
+ * This rule used to be scoped to `.dark-theme`, which left light mode with no
+ * app-level focus indicator at all: the shared Button/IconButton set
+ * `focus:outline-none` and replace it with `ring-primary-500/40`, which is
+ * 1.69:1 on white — below the 3:1 WCAG 2.2 wants for a focus indicator, and with
+ * the UA outline suppressed there was nothing else to see. `--t-focus-ring` is
+ * primary-600 in light (5.36:1 on canvas) and primary-400 in dark.
+ *
+ * `:root` is load-bearing, not decoration: it lifts specificity to (0,2,1) so the
+ * rule still beats Tailwind's `.focus\:outline-none:focus` (0,1,1). Dropping it
+ * would tie on specificity and lose to whichever rule Tailwind emits later.
+ */
+:root button:focus-visible,
+:root a:focus-visible,
+:root input:focus-visible,
+:root select:focus-visible,
+:root textarea:not(.chat-composer-textarea):focus-visible {
+  outline: 2px solid var(--t-focus-ring);
   outline-offset: 1px;
 }
 
@@ -673,7 +1691,8 @@ h6.ce-header {
   flex-direction: column !important;
   max-width: none !important;
   width: 100% !important;
-  height: 100% !important;
+  height: 100vh !important;
+  height: 100dvh !important;
 }
 .editorjs-fullscreen .editorjs-body {
   flex: 1;
@@ -683,6 +1702,7 @@ h6.ce-header {
   max-width: 900px;
   margin: 0 auto;
   min-height: calc(100vh - 48px);
+  min-height: calc(100dvh - 48px);
 }
 
 /* --- Dark theme overrides for EditorJS --- */

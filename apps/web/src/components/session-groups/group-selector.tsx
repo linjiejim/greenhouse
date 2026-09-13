@@ -12,7 +12,8 @@ import type { SessionGroup } from '@greenhouse/types/api';
 import * as api from '../../lib/api';
 
 interface GroupSelectorProps {
-  sessionId: string;
+  /** Target session (single-session mode). Optional when `onPick` is provided. */
+  sessionId?: string;
   /** The session's current folder id (null = unfiled). */
   currentGroupId: number | null;
   /** All of the user's folders (Pinned is filtered out internally). */
@@ -22,9 +23,26 @@ interface GroupSelectorProps {
   onClose: () => void;
   x: number;
   y: number;
+  /**
+   * Batch override: when provided, picking (or creating) a folder calls this
+   * with the chosen group id (null = remove from folder) instead of the
+   * built-in single-session `api.setSessionGroup`. The list/create UI is shared;
+   * only the write target differs. `currentGroupId` is ignored for the
+   * single-home re-pick toggle in this mode (there is no single current folder).
+   */
+  onPick?: (groupId: number | null) => Promise<void>;
 }
 
-export function GroupSelector({ sessionId, currentGroupId, allGroups, onChanged, onClose, x, y }: GroupSelectorProps) {
+export function GroupSelector({
+  sessionId,
+  currentGroupId,
+  allGroups,
+  onChanged,
+  onClose,
+  x,
+  y,
+  onPick,
+}: GroupSelectorProps) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,9 +82,13 @@ export function GroupSelector({ sessionId, currentGroupId, allGroups, onChanged,
     async (groupId: number | null) => {
       setBusy(true);
       try {
-        // Single-home toggle: re-picking the current folder removes the session from it.
-        const next = groupId != null && groupId === currentGroupId ? null : groupId;
-        await api.setSessionGroup(sessionId, next);
+        if (onPick) {
+          await onPick(groupId);
+        } else {
+          // Single-home toggle: re-picking the current folder removes the session from it.
+          const next = groupId != null && groupId === currentGroupId ? null : groupId;
+          await api.setSessionGroup(sessionId!, next);
+        }
         onChanged();
         onClose();
       } catch (err: any) {
@@ -74,7 +96,7 @@ export function GroupSelector({ sessionId, currentGroupId, allGroups, onChanged,
       }
       setBusy(false);
     },
-    [sessionId, currentGroupId, onChanged, onClose],
+    [sessionId, currentGroupId, onChanged, onClose, onPick],
   );
 
   const handleCreate = useCallback(async () => {
@@ -84,7 +106,8 @@ export function GroupSelector({ sessionId, currentGroupId, allGroups, onChanged,
     try {
       const color = TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)].value;
       const group = await api.createSessionGroup(name, color);
-      await api.setSessionGroup(sessionId, group.id);
+      if (onPick) await onPick(group.id);
+      else await api.setSessionGroup(sessionId!, group.id);
       setSearch('');
       onChanged();
       onClose();
@@ -92,7 +115,7 @@ export function GroupSelector({ sessionId, currentGroupId, allGroups, onChanged,
       toast(err.message || 'Failed to create group', 'error');
     }
     setBusy(false);
-  }, [search, sessionId, onChanged, onClose]);
+  }, [search, sessionId, onChanged, onClose, onPick]);
 
   return (
     <div
@@ -112,15 +135,15 @@ export function GroupSelector({ sessionId, currentGroupId, allGroups, onChanged,
               if (e.key === 'Enter' && canCreate) handleCreate();
               if (e.key === 'Escape') onClose();
             }}
-            placeholder={t('sessionGroups.moveToGroup') || 'Move to group...'}
+            placeholder={t('sessionGroups.moveToGroup')}
             className="w-full text-xs bg-surface-sunken border border-edge rounded pl-7 pr-2 py-1.5 focus:outline-none focus:border-primary-500 text-fg placeholder:text-fg-faint"
           />
         </div>
       </div>
 
       <div className="max-h-48 overflow-y-auto py-1">
-        {/* Remove from folder */}
-        {currentGroupId != null && (
+        {/* Remove from folder (batch mode always offers it; single-session only when filed) */}
+        {(onPick != null || currentGroupId != null) && (
           <button
             onClick={() => handlePick(null)}
             disabled={busy}
@@ -129,13 +152,11 @@ export function GroupSelector({ sessionId, currentGroupId, allGroups, onChanged,
             <span className="w-4 flex items-center justify-center text-fg-faint">
               <X size={12} />
             </span>
-            <span>{t('sessionGroups.removeFromGroup') || 'Remove from group'}</span>
+            <span>{t('sessionGroups.removeFromGroup')}</span>
           </button>
         )}
         {filtered.length === 0 && !canCreate && (
-          <div className="px-3 py-2 text-xs text-fg-faint text-center">
-            {t('sessionGroups.noGroups') || 'No groups'}
-          </div>
+          <div className="px-3 py-2 text-xs text-fg-faint text-center">{t('sessionGroups.noGroups')}</div>
         )}
         {filtered.map((group) => {
           const isActive = group.id === currentGroupId;
@@ -167,7 +188,7 @@ export function GroupSelector({ sessionId, currentGroupId, allGroups, onChanged,
           >
             <Plus size={12} />
             <span>
-              {t('common.create') || 'Create'} &ldquo;{search.trim()}&rdquo;
+              {t('common.create')} &ldquo;{search.trim()}&rdquo;
             </span>
           </button>
         </div>

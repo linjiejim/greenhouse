@@ -10,6 +10,8 @@ import { TagBadge } from './tag-badge';
 import { TAG_COLORS } from './colors';
 import type { SessionTag } from '@greenhouse/types/api';
 import * as api from '../../lib/api';
+import { useT } from '../../lib/i18n';
+import { useListReorder } from '../../hooks/use-list-reorder';
 
 interface TagManagerDialogProps {
   open: boolean;
@@ -18,6 +20,7 @@ interface TagManagerDialogProps {
 }
 
 export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDialogProps) {
+  const t = useT();
   const [tags, setTags] = useState<SessionTag[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -27,7 +30,6 @@ export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDia
   const [newColor, setNewColor] = useState(TAG_COLORS[0].value);
   const [showCreate, setShowCreate] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<SessionTag | null>(null);
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   const loadTags = useCallback(async () => {
     setLoading(true);
@@ -35,10 +37,10 @@ export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDia
       const data = await api.listSessionTags();
       setTags(data);
     } catch {
-      toast('Failed to load tags', 'error');
+      toast(t('sessionTags.loadFailed'), 'error');
     }
     setLoading(false);
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (open) loadTags();
@@ -53,9 +55,9 @@ export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDia
       setShowCreate(false);
       loadTags();
       onTagsChanged();
-      toast('Tag created', 'success');
+      toast(t('sessionTags.created'), 'success');
     } catch (err: any) {
-      toast(err.message || 'Failed to create', 'error');
+      toast(err.message || t('common.createFailed'), 'error');
     }
   };
 
@@ -66,9 +68,9 @@ export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDia
       setEditingId(null);
       loadTags();
       onTagsChanged();
-      toast('Tag updated', 'success');
+      toast(t('sessionTags.updated'), 'success');
     } catch (err: any) {
-      toast(err.message || 'Failed to update', 'error');
+      toast(err.message || t('sessionTags.updateFailed'), 'error');
     }
   };
 
@@ -79,59 +81,55 @@ export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDia
       setPendingDelete(null);
       loadTags();
       onTagsChanged();
-      toast('Tag deleted', 'success');
+      toast(t('sessionTags.deleted'), 'success');
     } catch {
-      toast('Failed to delete', 'error');
+      toast(t('common.deleteFailed'), 'error');
     }
   };
 
-  const handleDragStart = (idx: number) => setDragIdx(idx);
-  const handleDragOver = (e: React.DragEvent, idx: number) => {
-    e.preventDefault();
-    if (dragIdx == null || dragIdx === idx) return;
-    const next = [...tags];
-    const [moved] = next.splice(dragIdx, 1);
-    next.splice(idx, 0, moved);
-    setTags(next);
-    setDragIdx(idx);
-  };
-  const handleDragEnd = async () => {
-    setDragIdx(null);
-    const updates = tags.map((t, i) => ({ id: t.id, sort_order: i }));
-    try {
-      await api.reorderSessionTags(updates);
-      onTagsChanged();
-    } catch {
-      toast('Failed to reorder', 'error');
-    }
-  };
+  // Shared pointer-based reorder (works on touch; HTML5 DnD did not).
+  const reorder = useListReorder(
+    tags.map((tag) => tag.id),
+    async (ids) => {
+      const byId = new Map(tags.map((tag) => [tag.id, tag]));
+      setTags(ids.map((id) => byId.get(id)!).filter(Boolean));
+      try {
+        await api.reorderSessionTags(ids.map((id, i) => ({ id, sort_order: i })));
+        onTagsChanged();
+      } catch {
+        toast(t('sessionTags.reorderFailed'), 'error');
+        void loadTags();
+      }
+    },
+  );
+  const orderedTags = reorder.order.map((id) => tags.find((tag) => tag.id === id)!).filter(Boolean);
 
   if (!open) return null;
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} title="Manage Tags" size="sm">
+      <Dialog open={open} onClose={onClose} title={t('sessionTags.manage')} size="sm">
         <div className="space-y-3">
           {/* Tag list */}
           <div className="space-y-1 min-h-[60px]">
-            {loading && tags.length === 0 && <div className="text-xs text-fg-faint text-center py-4">Loading...</div>}
-            {!loading && tags.length === 0 && (
-              <div className="text-xs text-fg-faint text-center py-4">No tags yet. Create your first tag below.</div>
+            {loading && tags.length === 0 && (
+              <div className="text-xs text-fg-faint text-center py-4">{t('common.loading')}</div>
             )}
-            {tags.map((tag, idx) => (
+            {!loading && tags.length === 0 && (
+              <div className="text-xs text-fg-faint text-center py-4">{t('sessionTags.empty')}</div>
+            )}
+            {orderedTags.map((tag) => (
               <div
                 key={tag.id}
-                draggable
-                onDragStart={() => handleDragStart(idx)}
-                onDragOver={(e) => handleDragOver(e, idx)}
-                onDragEnd={handleDragEnd}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded-md border border-transparent hover:border-edge hover:bg-surface-muted transition-colors group cursor-move ${
-                  dragIdx === idx ? 'opacity-50' : ''
+                {...reorder.itemProps(tag.id)}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-md border border-transparent hover:border-edge hover:bg-surface-muted transition-colors group cursor-grab active:cursor-grabbing ${
+                  reorder.draggingId === tag.id ? 'opacity-50' : ''
                 }`}
               >
                 <GripVertical size={12} className="text-fg-faint flex-shrink-0" />
                 {editingId === tag.id ? (
-                  <div className="flex-1 flex items-center gap-2">
+                  // No drag from the edit form — a press there is text selection.
+                  <div className="flex-1 flex items-center gap-2" data-no-drag>
                     <Input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
@@ -157,10 +155,10 @@ export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDia
                       ))}
                     </div>
                     <Button size="sm" onClick={handleEdit}>
-                      Save
+                      {t('common.save')}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
-                      Cancel
+                      {t('common.cancel')}
                     </Button>
                   </div>
                 ) : (
@@ -174,14 +172,14 @@ export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDia
                         setEditColor(tag.color);
                       }}
                       className="p-1 text-fg-faint hover:text-fg-secondary rounded transition-colors opacity-0 group-hover:opacity-100 touch-visible"
-                      title="Edit"
+                      title={t('common.edit')}
                     >
                       <Pencil size={12} />
                     </button>
                     <button
                       onClick={() => setPendingDelete(tag)}
                       className="p-1 text-fg-faint hover:text-danger rounded transition-colors opacity-0 group-hover:opacity-100 touch-visible"
-                      title="Delete"
+                      title={t('common.delete')}
                     >
                       <Trash2 size={12} />
                     </button>
@@ -197,7 +195,7 @@ export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDia
               <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="Tag name"
+                placeholder={t('sessionTags.namePlaceholder')}
                 size="sm"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleCreate();
@@ -206,7 +204,7 @@ export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDia
                 autoFocus
               />
               <div className="flex items-center gap-1">
-                <span className="text-[11px] text-fg-faint mr-1">Color:</span>
+                <span className="text-[11px] text-fg-faint mr-1">{t('common.color')}:</span>
                 {TAG_COLORS.map((c) => (
                   <button
                     key={c.value}
@@ -220,20 +218,20 @@ export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDia
                 ))}
               </div>
               <div className="flex items-center gap-2">
-                <TagBadge name={newName || 'Preview'} color={newColor} size="md" />
+                <TagBadge name={newName || t('sessionTags.preview')} color={newColor} size="md" />
                 <span className="flex-1" />
                 <Button size="sm" variant="ghost" onClick={() => setShowCreate(false)}>
-                  Cancel
+                  {t('common.cancel')}
                 </Button>
                 <Button size="sm" onClick={handleCreate} disabled={!newName.trim()}>
-                  Create
+                  {t('common.create')}
                 </Button>
               </div>
             </div>
           ) : (
             <Button variant="outline" size="sm" className="w-full" onClick={() => setShowCreate(true)}>
               <Plus size={14} className="mr-1" />
-              New Tag
+              {t('sessionTags.newTag')}
             </Button>
           )}
         </div>
@@ -243,9 +241,9 @@ export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDia
         open={!!pendingDelete}
         onClose={() => setPendingDelete(null)}
         onConfirm={handleDelete}
-        title="Delete tag?"
-        description={`Tag "${pendingDelete?.name}" will be removed from all sessions.`}
-        confirmLabel="Delete"
+        title={t('sessionTags.deleteTitle')}
+        description={t('sessionTags.deleteDescription', { name: pendingDelete?.name ?? '' })}
+        confirmLabel={t('common.delete')}
         confirmVariant="destructive"
       />
     </>

@@ -13,7 +13,3 @@ export function registerContextProvider<T extends PageContextType>(provider: Con
 export function getContextProvider<T extends PageContextType>(type: T): ContextProviderDescriptor<T> | undefined {
   return registry.get(type) as ContextProviderDescriptor<T> | undefined;
 }
-
-export function getAllProviderTypes(): PageContextType[] {
-  return [...registry.keys()];
-}

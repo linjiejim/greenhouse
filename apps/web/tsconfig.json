@@ -5,8 +5,7 @@
     "outDir": "dist",
     "declaration": false,
     "declarationMap": false,
-    "jsx": "react-jsx",
-    "types": ["web-bluetooth"]
+    "jsx": "react-jsx"
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

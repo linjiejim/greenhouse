@@ -1,8 +1,8 @@
 /**
- * Scheduled Tasks API — CRUD, manual trigger, execution history.
+ * Scheduled Tasks API — CRUD and manual trigger.
  */
 
-import type { ScheduledTask, ScheduledTaskInput, TaskRunSummary } from '@greenhouse/types/api';
+import type { AutomationRunEntry, ScheduledTask, ScheduledTaskInput } from '@greenhouse/types/api';
 import { rpc } from './client';
 
 export async function listTasks(): Promise<(ScheduledTask & { schedule_desc?: string })[]> {
@@ -23,14 +23,6 @@ export async function createTask(input: ScheduledTaskInput): Promise<ScheduledTa
   }
   const data = await res.json();
   return data.task;
-}
-
-export async function getTask(
-  id: number,
-): Promise<{ task: ScheduledTask & { schedule_desc?: string }; recent_runs: TaskRunSummary[] }> {
-  const res = await rpc.api.tasks[':id'].$get({ param: { id: String(id) } });
-  if (!res.ok) throw new Error(`getTask failed: ${res.status}`);
-  return res.json();
 }
 
 export async function updateTask(
@@ -57,6 +49,15 @@ export async function deleteTask(id: number): Promise<void> {
   }
 }
 
+export async function listTaskRuns(id: number): Promise<AutomationRunEntry[]> {
+  const res = await rpc.api.tasks[':id'].runs.$get({ param: { id: String(id) } });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Load history failed' }));
+    throw new Error(('error' in err && err.error) || `Load history failed: ${res.status}`);
+  }
+  return (await res.json()).entries ?? [];
+}
+
 export async function runTask(id: number): Promise<{ session_id: string }> {
   const res = await rpc.api.tasks[':id'].run.$post({ param: { id: String(id) } });
   if (!res.ok) {
@@ -64,14 +65,4 @@ export async function runTask(id: number): Promise<{ session_id: string }> {
     throw new Error(('error' in err && err.error) || `Run failed: ${res.status}`);
   }
   return res.json();
-}
-
-export async function getTaskHistory(id: number): Promise<TaskRunSummary[]> {
-  try {
-    const res = await rpc.api.tasks[':id'].history.$get({ param: { id: String(id) } });
-    if (!res.ok) return [];
-    return (await res.json()).runs ?? [];
-  } catch {
-    return [];
-  }
 }

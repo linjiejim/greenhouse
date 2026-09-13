@@ -14,10 +14,12 @@ import { wsClient, type WsStatus } from '../lib/ws';
 import type { OnlineUser, ServerWsEvent } from '@greenhouse/types/ws';
 import { toast } from '../components/ui';
 import { useUIStore } from './ui-store';
+import { notifyRuntimeInvalidated } from '../lib/runtime-invalidation';
 
 interface WsStore {
   status: WsStatus;
   shareCount: number;
+  notificationCount: number;
   onlineUsers: OnlineUser[];
 
   // Actions
@@ -29,6 +31,7 @@ export const useWsStore = create<WsStore>((set) => {
   // Subscribe to connection status changes
   wsClient.onStatusChange((status) => {
     set({ status });
+    if (status === 'connected') notifyRuntimeInvalidated();
     // Clear presence data on disconnect (will be re-pushed on reconnect)
     if (status === 'disconnected') {
       set({ onlineUsers: [] });
@@ -40,6 +43,15 @@ export const useWsStore = create<WsStore>((set) => {
     switch (event.type) {
       case 'share:count':
         set({ shareCount: event.count });
+        break;
+
+      case 'notification:summary':
+        set({ notificationCount: event.unread });
+        break;
+
+      case 'notification:new':
+        set({ notificationCount: event.unread });
+        toast(event.title, 'info');
         break;
 
       case 'share:new':
@@ -69,12 +81,17 @@ export const useWsStore = create<WsStore>((set) => {
         // A child session was spawned server-side — refresh the history sidebar.
         useUIStore.getState().bumpSessionListVersion();
         break;
+
+      case 'runtime:invalidate':
+        notifyRuntimeInvalidated(event.runId);
+        break;
     }
   });
 
   return {
     status: 'disconnected',
     shareCount: 0,
+    notificationCount: 0,
     onlineUsers: [],
 
     connect: () => wsClient.connect(),

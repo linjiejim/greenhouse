@@ -22,7 +22,7 @@ const EMPTY: TextSelectionState = { text: '', rect: null };
  */
 export function useTextSelection(containerRef: React.RefObject<HTMLElement | null>) {
   const [selection, setSelection] = useState<TextSelectionState>(EMPTY);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const update = useCallback(() => {
     const sel = window.getSelection();
@@ -58,13 +58,13 @@ export function useTextSelection(containerRef: React.RefObject<HTMLElement | nul
   useEffect(() => {
     const handleSelectionChange = () => {
       // Debounce to avoid rapid updates during drag-select
-      clearTimeout(debounceRef.current);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(update, 80);
     };
 
     // mouseup also captures the final selection after a drag
     const handleMouseUp = () => {
-      clearTimeout(debounceRef.current);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(update, 50);
     };
 
@@ -72,7 +72,7 @@ export function useTextSelection(containerRef: React.RefObject<HTMLElement | nul
     document.addEventListener('mouseup', handleMouseUp);
 
     return () => {
-      clearTimeout(debounceRef.current);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
       document.removeEventListener('selectionchange', handleSelectionChange);
       document.removeEventListener('mouseup', handleMouseUp);
     };

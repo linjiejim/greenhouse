@@ -12,104 +12,67 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bot, ChevronDown, Check, X } from '../../lib/icons';
 import { getToolIcon, getToolBrief } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
-import { SproutyFace } from '../sprouty/index.js';
+import { SproutyAvatar } from '../sprouty/index.js';
 import { OverlayPanel } from '../app/overlay-panel';
-import type { SproutyVariant, SproutyPalette, LeafStyle } from '../sprouty/index.js';
-import { SPECIALIST_AVATARS } from '../sprouty/index.js';
-import { getWorkspaceTeamAvatar } from '../../lib/workspace-branding';
+import type { EyeStyle, SproutyVariant, LeafStyle } from '../sprouty/index.js';
+import { useLocalized, useT, type TranslationKey } from '../../lib/i18n';
+import { DEFAULT_AGENT_ID } from '../../lib/agent-constants';
+import { useHoverFlyout } from '../../hooks/use-hover-flyout';
 
-/** Map preset (specialist) profile IDs to distinct Sprouty colors */
-export const PRESET_PROFILE_COLORS: Record<string, string> = {
-  researcher: 'ocean',
-  writer: 'blossom',
-  'project-assistant': 'sunset',
-  'cs-quality': 'lavender',
-  'ops-analyst': 'midnight',
-  'cc-analyzer': 'autumn',
-};
+/** Resolves server-authored copy to the active locale — see `useLocalized`. */
+type Localize = ReturnType<typeof useLocalized>;
 
-/** Check if a profile is a specialist preset */
-export function isSpecialistProfile(p: Profile): boolean {
-  return !p.is_custom && p.id in PRESET_PROFILE_COLORS;
-}
+const profileName = (p: Profile, l: Localize) => l(p.name_i18n, p.name);
+const profileDescription = (p: Profile, l: Localize) => l(p.description_i18n, p.description ?? '');
 
-type ProfileCategory = 'system' | 'specialist' | 'custom';
+type ProfileCategory = 'system' | 'custom';
 type ProfileFilter = 'all' | ProfileCategory;
 
-const PROFILE_CATEGORY_LABELS: Record<ProfileCategory, string> = {
-  system: 'System',
-  specialist: 'Specialist',
-  custom: 'Custom',
+const PROFILE_CATEGORY_LABELS: Record<ProfileCategory, TranslationKey> = {
+  system: 'profileSelector.system',
+  custom: 'profileSelector.custom',
 };
 
-const PROFILE_FILTER_LABELS: Record<ProfileFilter, string> = {
-  all: 'All',
-  system: 'system',
-  custom: 'custom',
-  specialist: 'specialist',
+const PROFILE_FILTER_LABELS: Record<ProfileFilter, TranslationKey> = {
+  all: 'profileSelector.all',
+  system: 'profileSelector.system',
+  custom: 'profileSelector.custom',
 };
 
-const PROFILE_FILTERS: ProfileFilter[] = ['all', 'system', 'custom', 'specialist'];
+const PROFILE_FILTERS: ProfileFilter[] = ['all', 'system', 'custom'];
 
 function getProfileCategory(p: Profile): ProfileCategory {
   if (p.is_custom) return 'custom';
-  if (isSpecialistProfile(p)) return 'specialist';
   return 'system';
 }
 
 function getProfilesByCategory(profiles: Profile[]): Record<ProfileCategory, Profile[]> {
   return {
     system: profiles.filter((p) => getProfileCategory(p) === 'system'),
-    specialist: profiles.filter((p) => getProfileCategory(p) === 'specialist'),
     custom: profiles.filter((p) => getProfileCategory(p) === 'custom'),
   };
 }
 
-/** Resolve profile to Sprouty variant + avatar DSL (color/accessories/leaf/face/palette) */
+/** Resolve profile appearance fields to Sprouty props. */
 export function profileToSprouty(p: Profile): {
   variant: SproutyVariant;
   color?: string;
   accessories?: string[];
   leafStyle?: LeafStyle;
-  faceStyle?: string;
-  palette?: SproutyPalette;
+  eyeStyle?: EyeStyle;
 } {
   if (p.is_custom) {
-    const avatar = (p as any).avatar;
+    const avatar = p.avatar;
     return {
       variant: 'custom',
       color: avatar?.color,
       accessories: avatar?.accessories,
       leafStyle: avatar?.leafStyle,
-      faceStyle: avatar?.faceStyle,
-      palette: avatar?.palette,
+      eyeStyle: avatar?.eyeStyle,
     };
   }
-  // Specialist profiles get full avatar config
-  const specialist = p.id === 'team' ? undefined : SPECIALIST_AVATARS[p.id];
-  if (specialist) {
-    return {
-      variant: 'custom',
-      color: specialist.color,
-      accessories: specialist.accessories,
-      leafStyle: specialist.leafStyle,
-    };
-  }
-  // Built-in profiles (default / team) wear the workspace team Sprouty when
-  // one is configured (Settings → Branding Studio), else the classic look.
-  const team = getWorkspaceTeamAvatar();
-  const variant: SproutyVariant = p.id === 'team' ? 'team' : 'default';
-  if (team) {
-    return {
-      variant,
-      color: team.color,
-      accessories: team.accessories,
-      leafStyle: team.leafStyle as LeafStyle | undefined,
-      faceStyle: team.faceStyle,
-      palette: team.palette,
-    };
-  }
-  return { variant };
+  if (p.id === 'team') return { variant: 'team' };
+  return { variant: 'default' };
 }
 
 // ─── Shared Profile Row Renderer ─────────────────────────
@@ -118,7 +81,7 @@ function getVisibleProfileGroups(
   groupedProfiles: Record<ProfileCategory, Profile[]>,
   filter: ProfileFilter,
 ): Array<{ category: ProfileCategory; profiles: Profile[] }> {
-  const order: ProfileCategory[] = ['system', 'custom', 'specialist'];
+  const order: ProfileCategory[] = ['system', 'custom'];
   return order
     .filter((category) => filter === 'all' || filter === category)
     .map((category) => ({ category, profiles: groupedProfiles[category] }))
@@ -140,67 +103,60 @@ function getTooltipPosition(rowRect: DOMRect, width = 260, height = 260): React.
   const top = Math.min(Math.max(rowRect.top, margin), maxTop);
   left = Math.min(Math.max(left, margin), maxLeft);
 
-  return { top, left, maxHeight: `calc(100vh - ${margin * 2}px)` };
+  return { top, left, maxHeight: `calc(100dvh - ${margin * 2}px)` };
 }
 
 function ToolsPreviewTooltip({ profile, isRowHovered }: { profile: Profile; isRowHovered: boolean }) {
+  const t = useT();
+  const localized = useLocalized();
   const triggerRef = useRef<HTMLSpanElement>(null);
-  const closeTimerRef = useRef<number | null>(null);
+  const surfaceHoveredRef = useRef(false);
   const [style, setStyle] = useState<React.CSSProperties | null>(null);
+  const { open: visible, openNow, closeSoon, cancelClose } = useHoverFlyout();
   const tools = profile.tools;
   const visibleTools = tools.slice(0, 6);
   const hiddenCount = Math.max(0, tools.length - visibleTools.length);
 
-  const cancelClose = () => {
-    if (closeTimerRef.current !== null) {
-      window.clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-  };
-
-  const closeSoon = () => {
-    cancelClose();
-    closeTimerRef.current = window.setTimeout(() => {
-      setStyle(null);
-      closeTimerRef.current = null;
-    }, 140);
-  };
-
-  const open = () => {
-    cancelClose();
+  const showTooltip = () => {
     const rowRect = triggerRef.current?.closest('button')?.getBoundingClientRect();
     if (!rowRect) return;
     const estimatedHeight = Math.min(260, Math.max(78, 42 + (tools.length > 0 ? visibleTools.length * 42 : 32)));
     setStyle(getTooltipPosition(rowRect, 260, estimatedHeight));
+    openNow();
   };
 
   useEffect(() => {
-    if (isRowHovered || !style) return;
+    if (isRowHovered || surfaceHoveredRef.current || !visible) return;
     closeSoon();
     return cancelClose;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRowHovered, style]);
+  }, [cancelClose, closeSoon, isRowHovered, visible]);
 
   return (
     <span
       ref={triggerRef}
-      onMouseEnter={open}
+      onMouseEnter={showTooltip}
       onMouseLeave={() => {
         if (!isRowHovered) closeSoon();
       }}
-      aria-label={`${profile.name} tools`}
-      className="relative rounded-full px-1.5 py-0.5 text-[10px] text-fg-faint whitespace-nowrap hover:bg-primary-subtle hover:text-primary-fg focus:outline-none focus:ring-1 focus:ring-primary-edge"
+      aria-label={t('profileSelector.toolsAria', { name: profileName(profile, localized) })}
+      className="relative rounded-full px-1.5 py-0.5 text-[10px] text-fg-faint whitespace-nowrap hover:bg-primary-subtle hover:text-primary-fg-strong focus:outline-none focus:ring-1 focus:ring-primary-edge"
     >
-      {tools.length} tools
-      {style && (
+      {t('profileSelector.toolCount', { count: tools.length })}
+      {visible && style && (
         <span
           className="fixed z-40 block w-[260px] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl animate-fade-in pointer-events-auto"
           style={style}
-          onMouseEnter={cancelClose}
-          onMouseLeave={closeSoon}
+          onMouseEnter={() => {
+            surfaceHoveredRef.current = true;
+            cancelClose();
+          }}
+          onMouseLeave={() => {
+            surfaceHoveredRef.current = false;
+            closeSoon();
+          }}
         >
           <span className="flex items-center justify-between border-b border-edge px-3 py-2">
-            <span className="text-[11px] font-medium text-fg-muted">Tools</span>
+            <span className="text-[11px] font-medium text-fg-muted">{t('profileEditor.tools')}</span>
             <span className="text-[10px] text-fg-faint">{tools.length}</span>
           </span>
           {tools.length > 0 ? (
@@ -225,12 +181,14 @@ function ToolsPreviewTooltip({ profile, isRowHovered }: { profile: Profile; isRo
                 );
               })}
               {hiddenCount > 0 && (
-                <span className="block px-2 py-1 text-[10px] font-medium text-fg-faint">+{hiddenCount} more tools</span>
+                <span className="block px-2 py-1 text-[10px] font-medium text-fg-faint">
+                  {t('profileSelector.moreTools', { count: hiddenCount })}
+                </span>
               )}
             </span>
           ) : (
             <span className="block px-3 py-2 text-center text-[10px] italic text-fg-faint">
-              Prompt-only mode — no tools
+              {t('profileSelector.promptOnly')}
             </span>
           )}
         </span>
@@ -246,9 +204,12 @@ function renderProfileRow(
   onSelect: (id: string) => void,
   onClose: () => void,
   setHoveredId: (id: string | null) => void,
+  localized: Localize,
 ) {
   const isSelected = p.id === selectedId;
   const isHovered = hoveredId === p.id;
+  const name = profileName(p, localized);
+  const description = profileDescription(p, localized);
   return (
     <button
       key={p.id}
@@ -267,21 +228,21 @@ function renderProfileRow(
             : 'border border-transparent hover:bg-surface-sunken'
       }`}
     >
-      <SproutyFace {...profileToSprouty(p)} state="idle" size="xs" animate={isHovered} />
+      <SproutyAvatar {...profileToSprouty(p)} state="idle" size="xs" animate={isHovered} />
       <span className="flex-1 min-w-0 overflow-hidden">
         <span
           className={`text-[13px] leading-tight font-medium truncate block ${isSelected ? 'text-primary-fg-strong' : 'text-fg-secondary'}`}
-          title={p.name}
+          title={name}
         >
-          {p.name}
+          {name}
         </span>
         <span
           className={`mt-0.5 block h-3 truncate text-[10px] leading-3 ${
-            isHovered && p.description ? 'text-fg-faint' : 'text-transparent'
+            isHovered && description ? 'text-fg-faint' : 'text-transparent'
           }`}
-          title={p.description ?? undefined}
+          title={description || undefined}
         >
-          {p.description || '\u00a0'}
+          {description || '\u00a0'}
         </span>
       </span>
       <span className="flex items-center gap-1.5 flex-shrink-0">
@@ -308,6 +269,8 @@ function ProfilePickerPopover({
   anchorRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const t = useT();
+  const localized = useLocalized();
   const groupedProfiles = getProfilesByCategory(profiles);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<ProfileFilter>('all');
@@ -344,7 +307,17 @@ function ProfilePickerPopover({
       <div className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl">
         <div className="border-b border-edge px-3 py-2.5 flex items-center gap-2">
           <Bot size={14} className="text-primary-fg" />
-          <span className="text-xs font-medium text-fg-muted">Select Agent Profile</span>
+          <span className="text-xs font-medium text-fg-muted">{t('profileSelector.selectAgent')}</span>
+          {/* Light entry to the one place agents are actually managed. */}
+          <button
+            onClick={() => {
+              onClose();
+              window.location.hash = '#/agents';
+            }}
+            className="ml-auto rounded-md px-1.5 py-0.5 text-[11px] text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
+          >
+            {t('profileSelector.manage')}
+          </button>
         </div>
         <div className="border-b border-edge px-2.5 py-2">
           <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
@@ -365,7 +338,7 @@ function ProfilePickerPopover({
                       : 'border border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg-secondary'
                   }`}
                 >
-                  {PROFILE_FILTER_LABELS[filter]} <span className="text-fg-faint">{count}</span>
+                  {t(PROFILE_FILTER_LABELS[filter])} <span className="text-fg-faint">{count}</span>
                 </button>
               );
             })}
@@ -378,12 +351,12 @@ function ProfilePickerPopover({
                 <div key={group.category}>
                   <div className={`${index > 0 ? 'mt-1.5 border-t border-edge pt-1.5' : ''} px-2 py-1`}>
                     <span className="text-[10px] font-medium uppercase tracking-wider text-fg-faint">
-                      {PROFILE_CATEGORY_LABELS[group.category]}
+                      {t(PROFILE_CATEGORY_LABELS[group.category])}
                     </span>
                   </div>
                   <div className="space-y-1">
                     {group.profiles.map((p) =>
-                      renderProfileRow(p, selectedId, hoveredId, onSelect, onClose, setHoveredId),
+                      renderProfileRow(p, selectedId, hoveredId, onSelect, onClose, setHoveredId, localized),
                     )}
                   </div>
                 </div>
@@ -391,7 +364,7 @@ function ProfilePickerPopover({
             </div>
           ) : (
             <div className="flex h-24 items-center justify-center px-4 text-center">
-              <span className="text-xs text-fg-faint">No profiles in this category</span>
+              <span className="text-xs text-fg-faint">{t('profileSelector.noAgents')}</span>
             </div>
           )}
         </div>
@@ -413,6 +386,8 @@ function ProfilePickerDrawer({
   onSelect: (id: string) => void;
   onClose: () => void;
 }) {
+  const t = useT();
+  const localized = useLocalized();
   const groupedProfiles = getProfilesByCategory(profiles);
   const [activeFilter, setActiveFilter] = useState<ProfileFilter>('all');
   const visibleGroups = getVisibleProfileGroups(groupedProfiles, activeFilter);
@@ -420,6 +395,8 @@ function ProfilePickerDrawer({
 
   const renderMobileRow = (p: Profile) => {
     const isSelected = p.id === selectedId;
+    const name = profileName(p, localized);
+    const description = profileDescription(p, localized);
     return (
       <button
         key={p.id}
@@ -432,24 +409,26 @@ function ProfilePickerDrawer({
         }`}
       >
         <div className="mt-0.5 flex-shrink-0">
-          <SproutyFace {...profileToSprouty(p)} state="idle" size="sm" />
+          <SproutyAvatar {...profileToSprouty(p)} state="idle" size="sm" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span
                 className={`text-sm font-medium truncate ${isSelected ? 'text-primary-fg-strong' : 'text-fg-secondary'}`}
-                title={p.name}
+                title={name}
               >
-                {p.name}
+                {name}
               </span>
               {isSelected && <Check size={14} className="text-primary-fg flex-shrink-0" />}
             </div>
-            <span className="text-[10px] text-fg-faint flex-shrink-0">{p.tools.length} tools</span>
+            <span className="text-[10px] text-fg-faint flex-shrink-0">
+              {t('profileSelector.toolCount', { count: p.tools.length })}
+            </span>
           </div>
-          {p.description && (
-            <p className="text-xs text-fg-faint mt-0.5 leading-snug line-clamp-2" title={p.description}>
-              {p.description}
+          {description && (
+            <p className="text-xs text-fg-faint mt-0.5 leading-snug line-clamp-2" title={description}>
+              {description}
             </p>
           )}
         </div>
@@ -458,15 +437,27 @@ function ProfilePickerDrawer({
   };
 
   return (
-    <OverlayPanel onClose={onClose} variant="bottom">
+    <OverlayPanel onClose={onClose} variant="bottom" ariaLabel={t('profileSelector.selectAgent')}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-edge">
         <div className="flex items-center gap-2">
           <Bot size={14} className="text-primary-fg" />
-          <span className="text-sm font-medium text-fg-secondary">Select Agent Profile</span>
+          <span className="text-sm font-medium text-fg-secondary">{t('profileSelector.selectAgent')}</span>
         </div>
-        <button onClick={onClose} className="p-1 rounded-md hover:bg-surface-muted text-fg-faint">
-          <X size={16} />
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Light entry to the one place agents are actually managed. */}
+          <button
+            onClick={() => {
+              onClose();
+              window.location.hash = '#/agents';
+            }}
+            className="rounded-md px-2 py-1 text-xs text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
+          >
+            {t('profileSelector.manage')}
+          </button>
+          <button onClick={onClose} className="p-1 rounded-md hover:bg-surface-muted text-fg-faint">
+            <X size={16} />
+          </button>
+        </div>
       </div>
       <div className="border-b border-edge px-3 py-2">
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
@@ -484,7 +475,7 @@ function ProfilePickerDrawer({
                     : 'border border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg-secondary'
                 }`}
               >
-                {PROFILE_FILTER_LABELS[filter]} <span className="text-fg-faint">{count}</span>
+                {t(PROFILE_FILTER_LABELS[filter])} <span className="text-fg-faint">{count}</span>
               </button>
             );
           })}
@@ -497,7 +488,7 @@ function ProfilePickerDrawer({
               <div key={group.category}>
                 <div className={`${index > 0 ? 'border-t border-edge mt-1.5 pt-1.5' : ''} px-4 py-1`}>
                   <span className="text-[10px] font-medium text-fg-faint uppercase tracking-wider">
-                    {PROFILE_CATEGORY_LABELS[group.category]}
+                    {t(PROFILE_CATEGORY_LABELS[group.category])}
                   </span>
                 </div>
                 <div className="space-y-1">{group.profiles.map(renderMobileRow)}</div>
@@ -506,7 +497,7 @@ function ProfilePickerDrawer({
           </div>
         ) : (
           <div className="flex h-24 items-center justify-center px-4 text-center">
-            <span className="text-xs text-fg-faint">No profiles in this category</span>
+            <span className="text-xs text-fg-faint">{t('profileSelector.noAgents')}</span>
           </div>
         )}
       </div>
@@ -532,23 +523,27 @@ export function ProfileSelector({
 }: ProfileSelectorProps) {
   const [showPicker, setShowPicker] = useState(false);
   const selectorRef = useRef<HTMLDivElement>(null);
+  const localized = useLocalized();
 
   const selectedProfile = profiles.find((p) => p.id === selectedProfileId);
 
-  if (profiles.length <= 1 && !readonly) return null;
   if (!selectedProfile) return null;
+  // Sprouty is the implicit default. Only an explicitly selected Agent earns a
+  // persistent label in the toolbar; otherwise this slot belongs to the model.
+  if (selectedProfileId === DEFAULT_AGENT_ID) return null;
+  if (profiles.length <= 1 && !readonly) return null;
 
   return (
     <div ref={selectorRef} className="relative px-1 py-1">
       <button
         onClick={() => !readonly && profiles.length > 1 && setShowPicker(!showPicker)}
         disabled={readonly || profiles.length <= 1}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+        className={`inline-flex min-h-11 sm:min-h-0 items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
           readonly ? 'text-fg-muted cursor-default' : 'text-primary-fg-strong hover:bg-primary-subtle cursor-pointer'
         }`}
       >
-        <SproutyFace {...profileToSprouty(selectedProfile)} state="idle" size="xs" animate={false} />
-        <span className="truncate max-w-[200px]">{selectedProfile.name}</span>
+        <SproutyAvatar {...profileToSprouty(selectedProfile)} state="idle" size="xs" animate={false} />
+        <span className="truncate max-w-[110px] sm:max-w-[200px]">{profileName(selectedProfile, localized)}</span>
         {!readonly && profiles.length > 1 && (
           <ChevronDown size={12} className={`flex-shrink-0 transition-transform ${showPicker ? 'rotate-180' : ''}`} />
         )}

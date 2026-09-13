@@ -1,11 +1,11 @@
 /**
- * AgentContext — global state for the Global Agent panel.
+ * AgentContext — global state for the context-aware Assistant overlay.
  *
  * Provides:
  * - Panel open/close state
  * - URL-driven page context (auto-detected from hash route)
  * - Page enrichment API (pages add data like titles after fetching)
- * - beforeunload protection delegated to SessionManager
+ * - Generic launch intents shared by page integrations
  *
  * Context resolution flow:
  *   URL hash → resolveUrlContext() → base context (type + URL params)
@@ -13,75 +13,38 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
+import type { AssistantLaunchRequest, PageContext } from '@greenhouse/types/agent-context';
+import { pageContextKey } from '../lib/page-context-key';
+import { parseExecutionSubPath } from '../lib/execution-route';
+import { isSearchShortcut } from './search/shortcut';
+import { useGlobalSearchStore } from '../stores/global-search-store';
+export type { PageContext } from '@greenhouse/types/agent-context';
 
 // Import and init all frontend context-providers (triggers registration)
 import '../lib/context-providers';
-import { resolveExtraUrlContext } from '../lib/context-resolvers';
-
-// ─── Types ───────────────────────────────────────────────
-
-export interface PageContext {
-  // Core page types plus `(string & {})` so a downstream fork can contribute its
-  // own page types (e.g. 'crm') via registerUrlContextResolver without editing
-  // this union. The `(string & {})` member keeps literal autocomplete for the
-  // core types while accepting any string. See lib/context-resolvers.ts.
-  type: 'chat' | 'history' | 'feature-request-list' | 'project-list' | 'project-detail' | (string & {});
-  slug?: string;
-  title?: string;
-  category?: string;
-  sessionId?: string;
-  lastAssistantMessageId?: string;
-  runId?: string;
-  totalPending?: number;
-  projectId?: number;
-  projectTitle?: string;
-  /** Fork route sub-path segment (e.g. a private module id). Set by fork resolvers. */
-  module?: string;
-}
 
 export interface AgentContextValue {
   // Panel state
   isOpen: boolean;
   toggle: () => void;
-  open: (initialPrompt?: string) => void;
+  open: () => void;
   close: () => void;
 
   // Dynamic context — auto from URL + page enrichment
   pageContext: PageContext | null;
-  /** @deprecated Use enrichPageContext() instead — base context is auto-derived from URL */
-  setPageContext: (ctx: PageContext | null) => void;
   /** Pages call this to add data not available from URL (e.g., title, email) */
   enrichPageContext: (data: Partial<PageContext> | null) => void;
 
-  // Convenience triggers
-  openWithDraft: (draft: string) => void;
-  /** Open panel with a specific profile and optional draft prompt */
-  openWithProfile: (profileId: string, draft?: string) => void;
-
-  // Pending initial prompt (set by open()) — auto-executed
-  pendingPrompt: string | null;
-  clearPendingPrompt: () => void;
-
-  // Draft prompt (set in input field, user must confirm)
-  draftPrompt: string | null;
-  clearDraftPrompt: () => void;
-
-  // Restore session (load an existing agent session)
-  pendingRestoreSessionId: string | null;
-  clearPendingRestore: () => void;
-
-  // Profile override (set by openWithProfile) — used by agent panel
-  pendingProfile: string | null;
-  clearPendingProfile: () => void;
+  launchAssistant: (request?: Omit<AssistantLaunchRequest, 'id'>) => void;
+  launchRequest: AssistantLaunchRequest | null;
+  clearLaunchRequest: (id: number) => void;
 }
 
 // ─── URL → Context Resolution ────────────────────────────
 
 /**
  * Parse the current hash route into a base PageContext.
- * Core routes are handled by the switch below; any other route falls through to
- * the fork resolver registry (lib/context-resolvers.ts) — empty upstream.
- * Exported for unit testing.
+ * This is the SINGLE place that maps URLs to context types.
  */
 export function resolveUrlContext(hash: string): PageContext | null {
   const cleaned = hash.replace(/^#\/?/, '');
@@ -98,9 +61,6 @@ export function resolveUrlContext(hash: string): PageContext | null {
         sessionId: params.get('session') || undefined,
       };
 
-    case 'history':
-      return { type: 'history' };
-
     case 'projects':
       if (subPath) {
         const projectId = parseInt(subPath, 10);
@@ -109,14 +69,40 @@ export function resolveUrlContext(hash: string): PageContext | null {
       return { type: 'project-list' };
 
     case 'settings':
+      // Evaluation remains a Settings sub-module.
+      if (segments[1] === 'eval') {
+        return {
+          type: 'eval',
+          runId: segments[2] === 'runs' && segments[3] ? segments[3] : undefined,
+        };
+      }
       if (subPath === 'feature-requests' || params.get('tab') === 'feature-requests') {
         return { type: 'feature-request-list' };
       }
       return null;
 
+    case 'tables': {
+      const baseId = Number(segments[1]);
+      const itemId = Number(segments[3]);
+      return {
+        type: 'tables',
+        baseId: Number.isInteger(baseId) && baseId > 0 ? baseId : undefined,
+        tableId: segments[2] === 'table' && Number.isInteger(itemId) && itemId > 0 ? itemId : undefined,
+        dashboardId: segments[2] === 'dashboard' && Number.isInteger(itemId) && itemId > 0 ? itemId : undefined,
+      };
+    }
+
+    case 'executions': {
+      const parsed = parseExecutionSubPath(segments.slice(1).join('/'));
+      return {
+        type: 'execution-center',
+        runKind: parsed.kind ?? undefined,
+        runId: parsed.runId ?? undefined,
+      };
+    }
+
     default:
-      // Fork-contributed routes (empty upstream) — see lib/context-resolvers.ts.
-      return resolveExtraUrlContext(route, subPath, params);
+      return null;
   }
 }
 
@@ -134,7 +120,8 @@ export function useAgentContext(): AgentContextValue {
 
 export function AgentProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [launchRequest, setLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
+  const launchIdRef = React.useRef(0);
 
   // ── URL-driven context ──
   const [hash, setHash] = useState(window.location.hash || '#/chat');
@@ -150,9 +137,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const [enrichment, setEnrichment] = useState<Partial<PageContext>>({});
 
   // Reset enrichment when URL context type/key changes
-  const contextKey = urlContext
-    ? `${urlContext.type}:${(urlContext as any).slug || ''}:${(urlContext as any).projectId || ''}:${(urlContext as any).itemId || ''}:${(urlContext as any).module || ''}:${(urlContext as any).sessionId || ''}`
-    : '';
+  const contextKey = pageContextKey(urlContext);
   useEffect(() => {
     setEnrichment({});
   }, [contextKey]);
@@ -168,46 +153,17 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     setEnrichment(data ?? {});
   }, []);
 
-  // Legacy setPageContext — still works, overwrites everything
-  // Kept for backward compatibility during migration
-  const [legacyOverride, setLegacyOverride] = useState<PageContext | null>(null);
-  const setPageContext = useCallback((ctx: PageContext | null) => {
-    setLegacyOverride(ctx);
-  }, []);
-
-  // Final context: legacy override takes precedence if set
-  const effectivePageContext = legacyOverride ?? pageContext;
-
   // ── Panel controls ──
   const toggle = useCallback(() => setIsOpen((prev) => !prev), []);
-  const open = useCallback((initialPrompt?: string) => {
-    setIsOpen(true);
-    if (initialPrompt) setPendingPrompt(initialPrompt);
-  }, []);
+  const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
-  const clearPendingPrompt = useCallback(() => setPendingPrompt(null), []);
-
-  // Draft prompt — shown in input field for user to confirm (not auto-sent)
-  const [draftPrompt, setDraftPrompt] = useState<string | null>(null);
-  const clearDraftPrompt = useCallback(() => setDraftPrompt(null), []);
-
-  // Pending restore session ID
-  const [pendingRestoreSessionId, setPendingRestoreSessionId] = useState<string | null>(null);
-  const clearPendingRestore = useCallback(() => setPendingRestoreSessionId(null), []);
-
-  // ── Convenience triggers ──
-  const openWithDraft = useCallback((draft: string) => {
+  const launchAssistant = useCallback((request: Omit<AssistantLaunchRequest, 'id'> = {}) => {
     setIsOpen(true);
-    setDraftPrompt(draft);
+    launchIdRef.current += 1;
+    setLaunchRequest({ ...request, id: launchIdRef.current });
   }, []);
-
-  const [pendingProfile, setPendingProfile] = useState<string | null>(null);
-  const clearPendingProfile = useCallback(() => setPendingProfile(null), []);
-
-  const openWithProfile = useCallback((profileId: string, draft?: string) => {
-    setIsOpen(true);
-    setPendingProfile(profileId);
-    if (draft) setDraftPrompt(draft);
+  const clearLaunchRequest = useCallback((id: number) => {
+    setLaunchRequest((current) => (current?.id === id ? null : current));
   }, []);
 
   // ── Global keyboard shortcuts ──
@@ -217,21 +173,30 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       const tag = (e.target as HTMLElement)?.tagName;
       const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
-      // Cmd+K / Ctrl+K: toggle Agent panel
+      // Cmd+K / Ctrl+K: toggle Assistant overlay
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setIsOpen((prev) => !prev);
         return;
       }
 
-      // Cmd+Escape / Ctrl+Escape: close Agent panel (or any top-level panel)
+      // Cmd+P / Ctrl+P: toggle global search. Registered here with the other
+      // global shortcuts rather than inside the palette, so it works before the
+      // palette has ever been mounted.
+      if (isSearchShortcut(e)) {
+        e.preventDefault();
+        useGlobalSearchStore.getState().toggle();
+        return;
+      }
+
+      // Cmd+Escape / Ctrl+Escape: close Assistant overlay (or any top-level panel)
       if ((e.metaKey || e.ctrlKey) && e.key === 'Escape') {
         e.preventDefault();
         setIsOpen(false);
         return;
       }
 
-      // Escape (no modifier): close Agent panel if open
+      // Escape (no modifier): close Assistant overlay if open
       if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !isInput) {
         if (isOpen) {
           e.preventDefault();
@@ -256,19 +221,11 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     toggle,
     open,
     close,
-    pageContext: effectivePageContext,
-    setPageContext,
+    pageContext,
     enrichPageContext,
-    openWithDraft,
-    openWithProfile,
-    pendingPrompt,
-    clearPendingPrompt,
-    draftPrompt,
-    clearDraftPrompt,
-    pendingRestoreSessionId,
-    clearPendingRestore,
-    pendingProfile,
-    clearPendingProfile,
+    launchAssistant,
+    launchRequest,
+    clearLaunchRequest,
   };
 
   return <AgentContext.Provider value={value}>{children}</AgentContext.Provider>;

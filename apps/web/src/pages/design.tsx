@@ -10,6 +10,8 @@
 import React, { useState } from 'react';
 import {
   Button,
+  IconButton,
+  ResizeHandle,
   Badge,
   Tag,
   TagList,
@@ -28,7 +30,6 @@ import {
   SkeletonRow,
   SkeletonCard,
   EmptyState,
-  ListToolbar,
   AppLogo,
   ErrorBoundary,
   SearchInput,
@@ -40,11 +41,17 @@ import {
   toast,
 } from '../components/ui';
 import { DetailHeader, DetailSection, FieldGrid, Field } from '../components/detail';
+import { FormActions, FormField, FormGrid } from '../components/form';
+import { SettingsSection } from '../components/settings';
+import { ModulePage } from '../components/app/module-page';
 import { Markdown } from '../components/markdown';
 import { RichMarkdown } from '../components/rich-markdown';
-import { DataTableBlock } from '../components/blocks/datatable-block';
+import { DataTableBlock, DataTablePendingBlock } from '../components/blocks/datatable-block';
 import { ChartBlock } from '../components/blocks/chart-block';
 import { ConfirmBlock } from '../components/blocks/confirm-block';
+import { ArtifactCard, ArtifactCardActions } from '../components/chat/artifact-card';
+import { MermaidBlock } from '../components/blocks/mermaid-block';
+import { InlineEditCell } from '../components/tables';
 import type { ChartData, DataTableData } from '../components/blocks/index';
 import {
   Search,
@@ -59,10 +66,13 @@ import {
   AlertTriangle,
   Info,
   HelpCircle,
-  Copy,
   ChevronRight,
   Pencil,
-  RefreshCw,
+  ClipboardList,
+  GitBranch,
+  Cloud,
+  Columns3,
+  Bookmark,
 } from '../lib/icons';
 
 // ─── Section Wrapper ─────────────────────────────────────
@@ -177,18 +187,24 @@ const NAV_SECTIONS = [
     group: 'Data Display',
     items: [
       { id: 'skeletons', label: 'Skeletons' },
-      { id: 'list-toolbar', label: 'ListToolbar' },
       { id: 'empty-states', label: 'Empty States' },
       { id: 'star-rating', label: 'Star Rating' },
+      { id: 'inline-edit-cell', label: 'Inline Edit Cell' },
       { id: 'datatable', label: 'DataTable' },
       { id: 'pagination', label: 'Pagination' },
       { id: 'chart', label: 'Chart' },
       { id: 'confirm-block', label: 'Confirm Block' },
+      { id: 'chat-artifact-cards', label: 'Chat Artifact Cards' },
+      { id: 'mermaid-block', label: 'Mermaid Block' },
     ],
   },
   {
     group: 'Detail',
     items: [{ id: 'detail-kit', label: 'Detail Kit' }],
+  },
+  {
+    group: 'Layout',
+    items: [{ id: 'module-page', label: 'Module Page' }],
   },
   {
     group: 'Content',
@@ -298,13 +314,18 @@ export function DesignPage() {
 
         {/* Data Display */}
         <SkeletonsSection />
-        <ListToolbarSection />
         <EmptyStatesSection />
         <StarRatingSection />
+        <InlineEditCellSection />
         <DataTableSection />
         <PaginationSection />
         <ChartSection />
         <ConfirmBlockSection />
+        <ChatArtifactCardsSection />
+        <MermaidBlockSection />
+
+        {/* Layout */}
+        <ModulePageSection />
 
         {/* Detail */}
         <DetailKitSection />
@@ -335,6 +356,8 @@ function ColorsSection() {
     >
       <SubSection title="Surfaces">
         <DemoRow>
+          <ColorSwatch name="canvas" className="bg-surface-canvas" />
+          <ColorSwatch name="chrome" className="bg-surface-chrome" />
           <ColorSwatch name="surface" className="bg-surface" />
           <ColorSwatch name="raised" className="bg-surface-raised" />
           <ColorSwatch name="muted" className="bg-surface-muted" />
@@ -376,7 +399,9 @@ function ColorsSection() {
             <ColorSwatch key={shade} name={`${shade}`} className={`bg-primary-${shade}`} />
           ))}
         </DemoRow>
-        <p className="text-[10px] text-fg-faint mt-2">Driven by active theme (Teal, Forest, Ocean, etc.)</p>
+        <p className="text-[10px] text-fg-faint mt-2">
+          Fixed Greenhouse brand palette. Light and dark modes only change semantic surfaces.
+        </p>
       </SubSection>
 
       <SubSection title="Status Colors">
@@ -402,7 +427,13 @@ function ColorsSection() {
             <span className="text-xs font-medium text-primary-fg-strong">primary-subtle</span>
           </div>
           <div className="rounded-lg p-3 bg-primary-subtle-hover border border-primary-edge">
-            <span className="text-xs font-medium text-primary-fg">primary-subtle-hover</span>
+            <span className="text-xs font-medium text-primary-fg-strong">primary-subtle-hover</span>
+          </div>
+          {/* Not a Tailwind colour on purpose: the prose wash has exactly three
+              consumers (inline code, @-mentions, entity-link hover) and should not
+              become a general-purpose fill people reach for instead of the state one. */}
+          <div className="rounded-lg border border-edge p-3" style={{ backgroundColor: 'var(--t-primary-wash)' }}>
+            <span className="text-xs font-medium text-primary-fg-strong">primary-wash (prose only)</span>
           </div>
         </div>
       </SubSection>
@@ -478,7 +509,7 @@ function SpacingSection() {
             { label: 'rounded-full', cls: 'rounded-full', usage: 'badges, avatars' },
           ].map((r) => (
             <div key={r.label} className="flex flex-col items-center gap-2">
-              <div className={`w-16 h-16 bg-primary-200 border border-primary-400 ${r.cls}`} />
+              <div className={`w-16 h-16 bg-primary-subtle-hover border border-primary-edge ${r.cls}`} />
               <CodeLabel>{r.label}</CodeLabel>
               <span className="text-[10px] text-fg-faint">{r.usage}</span>
             </div>
@@ -559,8 +590,8 @@ function AnimationsSection() {
         {showAnim && (
           <Card key={`${showAnim}-${animKey}`} className={`p-4 max-w-sm mt-3 ${showAnim}`}>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary-100 flex items-center justify-center">
-                <ChevronRight size={16} className="text-primary-600" />
+              <div className="w-10 h-10 rounded-lg bg-primary-subtle flex items-center justify-center">
+                <ChevronRight size={16} className="text-primary-fg" />
               </div>
               <div>
                 <p className="text-sm font-medium text-fg">{showAnim}</p>
@@ -592,6 +623,8 @@ function AnimationsSection() {
 // ═══════════════════════════════════════════════════════════
 
 function ButtonsSection() {
+  const [paneWidth, setPaneWidth] = useState(180);
+
   return (
     <Section
       id="buttons"
@@ -648,6 +681,37 @@ function ButtonsSection() {
   Add Item
 </Button>`}
         />
+      </SubSection>
+
+      <SubSection title="Icon actions & resize separator">
+        <DemoRow>
+          <IconButton label="Settings">
+            <Settings size={16} />
+          </IconButton>
+          <IconButton label="Delete" variant="destructive">
+            <Trash2 size={16} />
+          </IconButton>
+        </DemoRow>
+        <div className="mt-3 flex h-28 max-w-xl overflow-hidden rounded-lg border border-edge bg-surface-canvas">
+          <div
+            className="flex flex-shrink-0 items-center justify-center bg-surface-chrome text-xs text-fg-muted"
+            style={{ width: paneWidth }}
+          >
+            {paneWidth}px
+          </div>
+          <ResizeHandle
+            orientation="vertical"
+            value={paneWidth}
+            min={120}
+            max={320}
+            defaultValue={180}
+            onChange={setPaneWidth}
+            label="Resize demo pane"
+          />
+          <div className="flex flex-1 items-center justify-center text-xs text-fg-faint">
+            Drag, use arrow keys, or double-click
+          </div>
+        </div>
       </SubSection>
 
       <SubSection title="States">
@@ -758,11 +822,60 @@ function PaginationSection() {
           />
         </div>
         <CodeSnippet
-          code={`const [pageSize, setPageSize] = usePersistedPageSize('dashboard.inquiries', 20);
+          code={`const [pageSize, setPageSize] = usePersistedPageSize('projects.list', 20);
 <Pagination page={page} pageSize={pageSize} total={total}
   onPageChange={setPage} onPageSizeChange={setPageSize} />`}
         />
       </SubSection>
+    </Section>
+  );
+}
+
+function ModulePageSection() {
+  return (
+    <Section
+      id="module-page"
+      title="Module Page"
+      description="components/app/module-page.tsx — registry-driven page identity, responsive actions, optional tabs/notice/toolbar slots, and form/list/canvas width contracts."
+    >
+      <div className="h-[440px] overflow-hidden rounded-xl border border-edge bg-surface-canvas">
+        <ModulePage
+          moduleId="admin.users"
+          layout="list"
+          actions={<Button size="sm">Add user</Button>}
+          toolbar={
+            <div className="flex flex-wrap items-center gap-2">
+              <SearchInput value="" onChange={() => undefined} placeholder="Search users" size="sm" />
+              <Select value="" onChange={() => undefined} size="sm" inline>
+                <option value="">All roles</option>
+              </Select>
+              <span className="ml-auto text-xs text-fg-muted">12 users</span>
+            </div>
+          }
+        >
+          <Card>
+            <div className="grid grid-cols-[1fr_auto] gap-3 text-sm">
+              <div>
+                <div className="font-medium text-fg">Module content</div>
+                <div className="mt-1 text-xs text-fg-muted">
+                  Business pages only provide their content and the slots they actually need.
+                </div>
+              </div>
+              <Badge variant="success">Consistent</Badge>
+            </div>
+          </Card>
+        </ModulePage>
+      </div>
+      <CodeSnippet
+        code={`<ModulePage
+  moduleId="admin.users"
+  layout="list"
+  actions={<Button>Add user</Button>}
+  toolbar={<UserFilters />}
+>
+  <UserTable />
+</ModulePage>`}
+      />
     </Section>
   );
 }
@@ -824,7 +937,7 @@ function InputsSection() {
     <Section
       id="inputs"
       title="Form Inputs"
-      description="components/ui.tsx — Input, Select, Textarea. Use instead of raw HTML elements."
+      description="components/ui.tsx + components/form — controls and accessible label/help/error/action layout. Use these instead of hand-built field wrappers."
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <SubSection title="Input">
@@ -870,29 +983,37 @@ function InputsSection() {
 
         <SubSection title="Form Layout Example">
           <Card className="p-4 space-y-3">
-            <div>
-              <label className="text-xs font-medium text-fg-secondary mb-1 block">Name</label>
+            <FormField label="Name" required help="Shown to teammates across the workspace.">
               <Input placeholder="Enter name" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-fg-secondary mb-1 block">Category</label>
-              <Select>
-                <option value="">Select category</option>
-                <option value="a">Category A</option>
-                <option value="b">Category B</option>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-fg-secondary mb-1 block">Description</label>
-              <Textarea placeholder="Describe…" rows={2} />
-            </div>
-            <div className="flex justify-end gap-2 pt-1">
+            </FormField>
+            <FormGrid>
+              <FormField label="Category">
+                <Select>
+                  <option value="">Select category</option>
+                  <option value="a">Category A</option>
+                  <option value="b">Category B</option>
+                </Select>
+              </FormField>
+              <FormField label="Description">
+                <Textarea placeholder="Describe…" rows={2} />
+              </FormField>
+            </FormGrid>
+            <FormActions>
               <Button variant="ghost" size="sm">
                 Cancel
               </Button>
               <Button size="sm">Save</Button>
-            </div>
+            </FormActions>
           </Card>
+          <CodeSnippet
+            code={`<FormField label={t('common.name')} required help={hint} error={error}>
+  <Input value={name} onChange={...} />
+</FormField>
+<FormActions>
+  <Button variant="ghost">{t('common.cancel')}</Button>
+  <Button type="submit">{t('common.save')}</Button>
+</FormActions>`}
+          />
         </SubSection>
       </div>
     </Section>
@@ -913,8 +1034,8 @@ function CardsSection() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-2">
-            <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center">
-              <Star size={14} className="text-primary-600" />
+            <div className="w-8 h-8 rounded-full bg-primary-subtle flex items-center justify-center">
+              <Star size={14} className="text-primary-fg" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-fg">With Icon</h3>
@@ -939,6 +1060,17 @@ function CardsSection() {
           </div>
         </Card>
       </div>
+      <SubSection title="Settings Section">
+        <SettingsSection
+          icon={Settings}
+          title="Language & region"
+          description="Settings pages use one full-width section rhythm; avoid page-specific max-width wrappers."
+        >
+          <p className="text-sm text-fg-muted">
+            Section content keeps its own compact flow inside a shared header shell.
+          </p>
+        </SettingsSection>
+      </SubSection>
       <CodeSnippet
         code={`<Card className="p-4">
   <h3 className="text-sm font-semibold text-fg mb-1">Title</h3>
@@ -1002,8 +1134,10 @@ function TabsSection() {
 
 function DialogsSection() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [tabbedDialogOpen, setTabbedDialogOpen] = useState(false);
+  const [dialogTab, setDialogTab] = useState('details');
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [dialogSize, setDialogSize] = useState<'sm' | 'md' | 'lg' | 'xl'>('md');
+  const [dialogSize, setDialogSize] = useState<'sm' | 'md' | 'lg' | 'xl' | 'workspace'>('md');
 
   return (
     <Section
@@ -1013,7 +1147,7 @@ function DialogsSection() {
     >
       <SubSection title="Standard Dialog">
         <DemoRow>
-          {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
+          {(['sm', 'md', 'lg', 'xl', 'workspace'] as const).map((size) => (
             <Button
               key={size}
               variant="outline"
@@ -1026,6 +1160,9 @@ function DialogsSection() {
               Size: {size}
             </Button>
           ))}
+          <Button variant="outline" size="sm" onClick={() => setTabbedDialogOpen(true)}>
+            Stable tabbed dialog
+          </Button>
         </DemoRow>
         <Dialog
           open={dialogOpen}
@@ -1050,6 +1187,40 @@ function DialogsSection() {
               </Button>
             </div>
           </div>
+        </Dialog>
+        <Dialog
+          open={tabbedDialogOpen}
+          onClose={() => setTabbedDialogOpen(false)}
+          title="Stable tabbed dialog"
+          size="lg"
+          tabs={
+            <Tabs
+              tabs={[
+                { key: 'details', label: 'Details' },
+                { key: 'activity', label: 'Activity' },
+              ]}
+              active={dialogTab}
+              onChange={setDialogTab}
+            />
+          }
+        >
+          {dialogTab === 'details' ? (
+            <p className="text-sm text-fg-secondary">
+              The dialog keeps a stable height when switching between tabs. Its body scrollbar stays on the outer right
+              edge while content keeps the standard inset.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {Array.from({ length: 18 }, (_, index) => (
+                <div
+                  key={index}
+                  className="rounded-lg border border-edge bg-surface-sunken p-3 text-sm text-fg-secondary"
+                >
+                  Activity item {index + 1}
+                </div>
+              ))}
+            </div>
+          )}
         </Dialog>
       </SubSection>
 
@@ -1221,6 +1392,116 @@ toast('Item deleted', 'info', {
 // DATA DISPLAY
 // ═══════════════════════════════════════════════════════════
 
+function InlineEditCellSection() {
+  const [name, setName] = useState('Example Customer');
+  const [stage, setStage] = useState('qualified');
+  const [tags, setTags] = useState(['priority', 'retail']);
+  const [active, setActive] = useState(true);
+  const [amount, setAmount] = useState<number | null>(1250);
+  const [registeredAt, setRegisteredAt] = useState<string | null>('2026-07-29');
+
+  return (
+    <Section
+      id="inline-edit-cell"
+      title="Inline Edit Cell"
+      description="components/tables/inline-edit-cell.tsx — shared double-click and keyboard editing for data grids."
+    >
+      <div className="max-w-5xl overflow-x-auto rounded-lg border border-edge">
+        <table className="w-full min-w-[860px]">
+          <thead className="bg-surface-muted">
+            <tr className="border-b border-edge">
+              <th className="px-3 py-2 text-left text-xs font-medium text-fg-muted">Customer</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-fg-muted">Stage</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-fg-muted">Tags</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-fg-muted">Active</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-fg-muted">Nullable amount</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-fg-muted">Registered</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="px-2 py-1.5 text-sm text-fg">
+                <InlineEditCell label="Customer" value={name} onCommit={async (next) => setName(next)}>
+                  {name}
+                </InlineEditCell>
+              </td>
+              <td className="px-2 py-1.5 text-sm text-fg-secondary">
+                <InlineEditCell
+                  label="Stage"
+                  value={stage}
+                  inputType="select"
+                  options={[
+                    { value: 'lead', label: 'Lead' },
+                    { value: 'qualified', label: 'Qualified' },
+                    { value: 'won', label: 'Won' },
+                  ]}
+                  onCommit={async (next) => setStage(next)}
+                >
+                  {stage}
+                </InlineEditCell>
+              </td>
+              <td className="px-2 py-1.5 text-sm text-fg-secondary">
+                <InlineEditCell
+                  label="Tags"
+                  value={tags}
+                  inputType="multi-select"
+                  allowCustomOptions
+                  options={[
+                    { value: 'priority', label: 'Priority' },
+                    { value: 'retail', label: 'Retail' },
+                    { value: 'partner', label: 'Partner' },
+                  ]}
+                  onCommit={async (next) => setTags(next)}
+                >
+                  {tags.join(', ') || '—'}
+                </InlineEditCell>
+              </td>
+              <td className="px-2 py-1.5 text-sm text-fg-secondary">
+                <InlineEditCell
+                  label="Active"
+                  value={active}
+                  inputType="boolean"
+                  quickToggle
+                  onCommit={async (next) => setActive(next)}
+                >
+                  {active ? 'Yes' : 'No'}
+                </InlineEditCell>
+              </td>
+              <td className="px-2 py-1.5 text-sm text-fg-secondary">
+                <InlineEditCell
+                  label="Nullable amount"
+                  value={amount}
+                  inputType="number"
+                  parseDraft={(draft) => (draft.trim() ? Number(draft) : null)}
+                  onCommit={async (next) => setAmount(next)}
+                >
+                  {amount ?? '—'}
+                </InlineEditCell>
+              </td>
+              <td className="px-2 py-1.5 text-sm text-fg-secondary">
+                <InlineEditCell
+                  label="Registered"
+                  value={registeredAt}
+                  inputType="date"
+                  formatDraft={(value) => value ?? ''}
+                  parseDraft={(draft) => draft || null}
+                  onCommit={async (next) => setRegisteredAt(next)}
+                >
+                  {registeredAt ?? '—'}
+                </InlineEditCell>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-fg-muted">
+        Double-click text/select/tags/date values, or focus them and press Enter/F2. Boolean switches save on one click;
+        clearing a nullable number saves null.
+      </p>
+    </Section>
+  );
+}
+
 function SkeletonsSection() {
   return (
     <Section
@@ -1268,100 +1549,54 @@ function SkeletonsSection() {
   );
 }
 
-function ListToolbarSection() {
-  return (
-    <Section
-      id="list-toolbar"
-      title="ListToolbar"
-      description="components/ui.tsx — standard header row for settings list pages. Muted hint left, result count + actions right, primary Create button last. Don't hand-roll flex + spacer per page."
-    >
-      <div className="space-y-3">
-        <Card>
-          <ListToolbar
-            hint="Reusable quick prompts"
-            count="8 total"
-            actions={
-              <Button size="sm">
-                <Plus size={14} className="mr-1" />
-                Create prompt
-              </Button>
-            }
-          />
-        </Card>
-        <Card>
-          <ListToolbar
-            hint="Connected email accounts"
-            count="3 accounts"
-            actions={
-              <>
-                <Button size="sm" variant="ghost">
-                  <RefreshCw size={14} />
-                </Button>
-                <Button size="sm">
-                  <Plus size={14} className="mr-1" />
-                  Create account
-                </Button>
-              </>
-            }
-          />
-        </Card>
-      </div>
-      <CodeSnippet
-        code={`<ListToolbar
-  hint="Reusable quick prompts"
-  count={\`\${prompts.length} total\`}
-  actions={
-    <Button size="sm" onClick={openCreate}>
-      <Plus size={14} className="mr-1" /> Create prompt
-    </Button>
-  }
-/>`}
-      />
-    </Section>
-  );
-}
-
 function EmptyStatesSection() {
   return (
     <Section
       id="empty-states"
       title="Empty State"
-      description="components/ui.tsx — placeholder when content is empty. Always use a Lucide icon, never emoji. Pass action for a primary CTA (e.g. the same Create button as the toolbar)."
+      description="components/ui.tsx — one structure for empty collections, route-level missing states, and compact overlays. Always use a Lucide icon, never emoji."
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <EmptyState icon={Search} title="No results found" description="Try adjusting your search or filters." />
         </Card>
         <Card>
-          <EmptyState icon={Mail} title="No messages" description="Start a conversation to see messages here." />
-        </Card>
-        <Card>
           <EmptyState
-            icon={HelpCircle}
-            title="No prompts yet"
-            description="Create your first prompt to speed up common tasks."
+            icon={Mail}
+            title="No messages"
+            description="Start a conversation to see messages here."
             action={
               <Button size="sm">
-                <Plus size={14} className="mr-1" />
-                Create prompt
+                <Plus size={14} className="mr-1" /> New message
               </Button>
             }
           />
         </Card>
         <Card>
-          <EmptyState icon={Copy} title="No items yet" />
+          <EmptyState
+            icon={HelpCircle}
+            variant="compact"
+            tone="neutral"
+            title="No activity yet"
+            description="Updates will appear here."
+          />
+        </Card>
+        <Card>
+          <EmptyState
+            icon={AlertTriangle}
+            variant="compact"
+            tone="danger"
+            title="Content unavailable"
+            description="Try again after checking your connection."
+          />
         </Card>
       </div>
       <CodeSnippet
         code={`<EmptyState
   icon={Search}
-  title="No prompts yet"
-  description="Create your first prompt to speed up common tasks."
-  action={
-    <Button size="sm" onClick={openCreate}>
-      <Plus size={14} className="mr-1" /> Create prompt
-    </Button>
-  }
+  title="No results found"
+  description="Try adjusting your search or filters."
+  action={<Button size="sm">Clear filters</Button>}
 />`}
       />
     </Section>
@@ -1426,6 +1661,9 @@ function DataTableSection() {
       description="components/blocks/datatable-block.tsx — sortable, filterable table. Rendered from code fences or directly."
     >
       <DataTableBlock data={data} />
+      <SubSection title="Streaming placeholder">
+        <DataTablePendingBlock />
+      </SubSection>
       <CodeSnippet
         code={`import { DataTableBlock } from '../components/blocks/datatable-block';
 
@@ -1546,6 +1784,163 @@ function ConfirmBlockSection() {
   onAction={(value) => handleAction(value)}
 />`}
       />
+    </Section>
+  );
+}
+
+function ChatArtifactCardsSection() {
+  const [completedOpen, setCompletedOpen] = useState(false);
+  return (
+    <Section
+      id="chat-artifact-cards"
+      title="Chat Artifact Cards"
+      description="Shared anatomy and lifecycle for Ask User, Workflow, Mission, Schema Plan and Task Capture cards. Business bodies vary; header density, state, footer actions and resolved receipts stay consistent."
+    >
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <SubSection title="Ask User · awaiting input">
+          <ArtifactCard
+            icon={<ClipboardList size={14} />}
+            title="Email requirements"
+            meta="3 required questions"
+            status={{ label: 'Needs input', tone: 'primary' }}
+            tone="accent"
+            footer={
+              <ArtifactCardActions hint="Complete the required questions to continue.">
+                <Button size="sm">Submit answers</Button>
+              </ArtifactCardActions>
+            }
+          >
+            <div className="space-y-2 text-xs text-fg-secondary">
+              <div className="rounded-md border border-edge bg-surface-raised px-2.5 py-2">
+                1. What should the email do?
+              </div>
+              <div className="rounded-md border border-edge bg-surface-raised px-2.5 py-2">
+                2. Who is the recipient?
+              </div>
+            </div>
+          </ArtifactCard>
+        </SubSection>
+
+        <SubSection title="Workflow · running">
+          <ArtifactCard
+            icon={<GitBranch size={14} />}
+            title="Review product documentation"
+            meta="4 nodes · v2"
+            status={{ label: 'Running', tone: 'info', busy: true }}
+          >
+            <div className="grid grid-cols-4 gap-2 text-center text-[10px] text-fg-muted">
+              {['Extract', 'Review', 'Verify', 'Deliver'].map((label, index) => (
+                <div key={label} className="rounded-md border border-edge bg-surface-raised px-2 py-3">
+                  <StatusDot color={index === 0 ? 'success' : index === 1 ? 'primary' : 'muted'} />
+                  <div className="mt-1">{label}</div>
+                </div>
+              ))}
+            </div>
+          </ArtifactCard>
+        </SubSection>
+
+        <SubSection title="Mission · review and launch">
+          <ArtifactCard
+            icon={<Cloud size={14} />}
+            title="Audit supplier report"
+            meta="Default model"
+            status={{ label: 'Review', tone: 'primary' }}
+            footer={
+              <ArtifactCardActions hint="Nothing runs until Launch.">
+                <Button size="sm" variant="ghost">
+                  Not now
+                </Button>
+                <Button size="sm">Launch</Button>
+              </ArtifactCardActions>
+            }
+          >
+            <p className="text-xs leading-relaxed text-fg-secondary">
+              Check the supplied report against the source files and return a concise exception list with evidence.
+            </p>
+          </ArtifactCard>
+        </SubSection>
+
+        <SubSection title="Schema Plan · partial failure">
+          <ArtifactCard
+            icon={<Columns3 size={14} />}
+            title="Table structure change"
+            meta="5 applied · 1 failed"
+            status={{ label: 'Needs attention', tone: 'warning' }}
+          >
+            <div className="space-y-1 text-xs">
+              <div className="flex items-center gap-2 text-fg-secondary">
+                <Check size={12} className="text-success" /> Create Base · Launch Tracker
+              </div>
+              <div className="flex items-center gap-2 text-danger">
+                <AlertTriangle size={12} /> Archive field · owner permission required
+              </div>
+            </div>
+          </ArtifactCard>
+        </SubSection>
+
+        <SubSection title="Task Capture · completed receipt">
+          <ArtifactCard
+            icon={<Bookmark size={14} />}
+            title="Save as a Task"
+            meta="Weekly launch review"
+            status={{ label: 'Completed', tone: 'success' }}
+            tone="success"
+            collapsed={!completedOpen}
+            onToggle={() => setCompletedOpen((value) => !value)}
+          >
+            <p className="text-xs text-fg-secondary">
+              The Task was created exactly once. Refreshing or retrying restores this receipt without creating a
+              duplicate.
+            </p>
+          </ArtifactCard>
+        </SubSection>
+
+        <SubSection title="Action failure · remains expanded">
+          <ArtifactCard
+            icon={<Bookmark size={14} />}
+            title="Save as a Task"
+            meta="Customer follow-up"
+            status={{ label: 'Failed', tone: 'danger' }}
+            tone="danger"
+            footer={
+              <ArtifactCardActions hint="The server kept the failure receipt; review before trying a new draft.">
+                <Button size="sm" variant="outline">
+                  Open details
+                </Button>
+              </ArtifactCardActions>
+            }
+          >
+            <p className="text-xs text-danger">The source session is no longer writable.</p>
+          </ArtifactCard>
+        </SubSection>
+      </div>
+    </Section>
+  );
+}
+
+function MermaidBlockSection() {
+  return (
+    <Section
+      id="mermaid-block"
+      title="Mermaid Block"
+      description="components/blocks/mermaid-block.tsx — ```mermaid fences rendered as themed vector diagrams. Lazy-loaded on first use; securityLevel:'strict' disables click/href directives because the source is model output."
+    >
+      <SubSection title="Flowchart">
+        <MermaidBlock
+          code={'flowchart LR\n  A[下单] --> B{库存充足?}\n  B -->|是| C[出库]\n  B -->|否| D[补货]\n  D --> C'}
+        />
+      </SubSection>
+
+      <SubSection title="Sequence">
+        <MermaidBlock
+          code={'sequenceDiagram\n  用户->>Web: 提交订单\n  Web->>API: POST /orders\n  API-->>Web: 201 Created'}
+        />
+      </SubSection>
+
+      <SubSection title="Invalid syntax (falls back to the source)">
+        <MermaidBlock code={'flowchart LR\n  A --> (((('} />
+      </SubSection>
+      <CodeSnippet code={'```mermaid\nflowchart LR\n  A[Order] --> B[Ship]\n```'} />
     </Section>
   );
 }
@@ -1863,19 +2258,13 @@ Plus a confirm block:
     {"label": "Reject", "value": "no", "variant": "destructive"}
   ]
 }
-\`\`\`
-
-And a local file preview:
-
-\`\`\`html-preview
-{ "src": "/Users/jim/code/OpenGreensy/slides.html", "title": "OpenGreensy Slides" }
 \`\`\``;
 
   return (
     <Section
       id="rich-markdown"
       title="Rich Markdown"
-      description="components/rich-markdown.tsx — enhanced renderer that parses chart/datatable/confirm and local file preview code fences into interactive blocks."
+      description="components/rich-markdown.tsx — Markdown composition layer with chart/datatable/confirm blocks that share the same base/compact density."
     >
       <Card className="p-4">
         <RichMarkdown content={sample} onConfirmAction={(v) => toast(`Action: ${v}`, 'info')} />
@@ -1885,6 +2274,7 @@ And a local file preview:
 
 <RichMarkdown
   content={markdownWithBlocks}
+  compact
   onConfirmAction={(value) => handleAction(value)}
 />`}
       />

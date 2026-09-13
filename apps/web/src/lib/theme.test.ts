@@ -1,32 +1,44 @@
-/**
- * Theme mode normalization — including the one-time migration of stored keys
- * from the removed multi-theme palette (pre-2026-07) to light/dark.
- */
+import { describe, expect, it } from 'vitest';
+import { getThemeDefinition, normalizeThemeKey, resolveThemeKey, THEMES } from './theme.js';
 
-import { describe, it, expect } from 'vitest';
-import { normalizeThemeMode } from './theme';
-
-describe('normalizeThemeMode', () => {
-  it('passes through the three canonical modes', () => {
-    expect(normalizeThemeMode('light')).toBe('light');
-    expect(normalizeThemeMode('dark')).toBe('dark');
-    expect(normalizeThemeMode('system')).toBe('system');
+describe('Greenhouse theme modes', () => {
+  it('keeps exactly one light and one dark resolved palette', () => {
+    expect(THEMES.map((theme) => theme.key)).toEqual(['light', 'dark']);
   });
 
-  it('maps legacy dark palette keys to dark', () => {
-    for (const key of ['midnight', 'deep-ocean', 'amoled']) {
-      expect(normalizeThemeMode(key)).toBe('dark');
-    }
+  it('resolves the system preference without creating a third palette', () => {
+    expect(resolveThemeKey('system', false)).toBe('light');
+    expect(resolveThemeKey('system', true)).toBe('dark');
+    expect(getThemeDefinition('system', true).key).toBe('dark');
   });
 
-  it('maps legacy light palette keys (and unknown values) to light', () => {
-    for (const key of ['teal', 'forest', 'ocean', 'blossom', 'harvest', 'rose', 'whatever']) {
-      expect(normalizeThemeMode(key)).toBe('light');
-    }
+  it('keeps content canvas and application chrome distinct in both modes', () => {
+    const light = getThemeDefinition('light').surface;
+    const dark = getThemeDefinition('dark').surface;
+
+    expect(light.canvas).toBe('#FFFFFF');
+    expect(light.chrome).not.toBe(light.canvas);
+    expect(light.surfaceCard).not.toBe(light.canvas);
+    expect(light.surfaceCard).not.toBe(light.chrome);
+    expect(dark.canvas).toBe(dark.surfaceSunken);
+    expect(dark.chrome).toBe(dark.surfaceRaised);
+    expect(dark.surfaceCard).toBe(dark.surfaceRaised);
   });
 
-  it('defaults to system when nothing is stored', () => {
-    expect(normalizeThemeMode(null)).toBe('system');
-    expect(normalizeThemeMode('')).toBe('system');
+  it('migrates historical dark themes to dark', () => {
+    expect(normalizeThemeKey('midnight')).toBe('dark');
+    expect(normalizeThemeKey('deep-ocean')).toBe('dark');
+    expect(normalizeThemeKey('amoled')).toBe('dark');
+  });
+
+  it('migrates historical light themes and defaults missing or unknown values to system', () => {
+    expect(normalizeThemeKey('teal')).toBe('light');
+    expect(normalizeThemeKey('forest')).toBe('light');
+    expect(normalizeThemeKey('ocean')).toBe('light');
+    expect(normalizeThemeKey('blossom')).toBe('light');
+    expect(normalizeThemeKey('harvest')).toBe('light');
+    expect(normalizeThemeKey('rose')).toBe('light');
+    expect(normalizeThemeKey('anything-else')).toBe('system');
+    expect(normalizeThemeKey(null)).toBe('system');
   });
 });

@@ -1,61 +1,46 @@
 /**
- * Chat message display components with cost estimation and clickable sources.
+ * Chat message display components with operational metrics and clickable sources.
  */
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Badge, Dialog } from '../ui';
+import { Dialog } from '../ui';
 import { RichMarkdown } from '../rich-markdown';
 import { MessageActions } from './message-actions';
-import { ExportPdfButton } from '../pdf-export';
 import { ToolCallRenderer } from '../tool-call/index';
-import { BodyArtifacts, MessageAttachments, partitionCalls } from '../tool-call/body-artifacts';
+import { BodyArtifacts, partitionCalls, splitArtifactsByPlacement } from '../tool-call/body-artifacts';
 import { PipelineStageChart } from './pipeline-stage-chart';
-import type { PipelineStep } from './pipeline-viewer';
-import { estimateCost } from '../../lib/api';
-import {
-  getCategoryIcon,
-  BookOpen,
-  MessageSquare,
-  Image as ImageIcon,
-  Pencil,
-  Clock,
-  DollarSign,
-  CheckCircle,
-  AlertTriangle,
-  Globe,
-  ChevronDown,
-  Maximize2,
-} from '../../lib/icons';
+import type { PipelineStep } from '@greenhouse/types/session';
+import { dedupe } from './annotations';
+import { Search, BookOpen, Pencil, Clock, Globe, ChevronDown, Cloud } from '../../lib/icons';
 import { marked } from 'marked';
 import { useTextSelection } from './use-text-selection';
 import { SelectionPopover } from './selection-popover';
 import { NoteInputDialog } from './note-input-dialog';
 import { UserMessageContent } from './user-message-content';
-import { ReasoningPanel } from './reasoning-panel';
-import { SproutyFace } from '../sprouty/index.js';
-import type { SproutyVariant } from '../sprouty/index.js';
-import { dedupe } from './annotations';
+import { splitAttachments } from '../blocks';
+import { AttachmentsBlock } from '../blocks/attachments-block';
+import { ReasoningPanel, ReasoningToggle } from './reasoning-panel';
 export { StreamingMessageBubble } from './streaming-message-bubble';
 import { useT } from '../../lib/i18n';
+import { MediaPreviewDialog } from '../media-preview-dialog';
+
+// Temporarily hidden while the message-level evaluation flow is being revised.
+const SHOW_MESSAGE_EVAL = false;
 
 // ─── Types ───────────────────────────────────────────────
 
 // Client-side reference shape — `type` stays a loose string until validated
-// (the canonical @greenhouse/types Reference narrows it to 'wiki', i.e. a
-// knowledge-base doc citation keyed by doc_id).
+// (the canonical @greenhouse/types Reference narrows it to 'wiki' | 'source').
 interface Reference {
   slug: string;
   title: string;
   type: string;
+  url?: string;
   category?: string;
   page_type?: string;
   relevance?: number;
-  doc_id?: string;
-}
-
-/** Open a knowledge-base doc detail by its doc_id (= slug). */
-function openKnowledgeDoc(docId: string) {
-  window.location.hash = `#/knowledge/${encodeURIComponent(docId)}`;
+  source_id?: string;
+  ref_docs?: Array<{ source_id: string; category: string; title: string }>;
 }
 
 interface MessageProps {
@@ -67,18 +52,25 @@ interface MessageProps {
   pipeline?: PipelineStep[];
   references?: Reference[];
   images?: Array<{ id: string; url: string }>;
-  confidence?: number | null;
-  grounded?: number | null;
   inputTokens?: number | null;
   outputTokens?: number | null;
   cachedTokens?: number | null;
   reasoningTokens?: number | null;
   durationMs?: number | null;
+  /** Registry model id that produced this turn — visible now that it varies per turn. */
+  model?: string | null;
   createdAt?: string;
   isLastUser?: boolean;
   isStreaming?: boolean;
-  /** Compact mode for Agent Panel — hides fullscreen, translate, pipeline chart */
+  /** Compact mode for Agent Panel — hides eval, fullscreen, translate, pipeline chart */
   compact?: boolean;
+  onEval?: (messageId: string) => void;
+  /**
+   * Existing eval for this message, if it was already evaluated. Present → the eval
+   * button shows the verdict and "view" affordance instead of "Eval"; clicking still
+   * routes through onEval, which restores the prior eval session.
+   */
+  evalState?: { verdict: string | null; score_final: number | null } | null;
   onEdit?: (messageId: string, content: string) => void;
   onTranslate?: (messageId: string, targetLang: 'en' | 'zh') => void;
   onRegenerate?: (messageId: string) => void;
@@ -91,22 +83,19 @@ interface MessageProps {
   hasFollowUpUserMessage?: boolean;
   /** Previous user message content — used as fullscreen dialog title */
   previousUserMessage?: string;
-  /** Agent avatar (from profileToSprouty) — a small "done" Sprouty on the completed bubble. */
-  agentAvatar?: { variant?: SproutyVariant; color?: string; accessories?: string[]; leafStyle?: string };
+  /** Persisted follow-up content used to summarize a submitted ask_user form. */
+  submittedUserMessage?: string;
+  /** Persisted next user message used to restore confirm-block selection. */
+  confirmedActionValue?: string;
+  /** Fork the parent conversation through this Agent reply. */
+  onFork?: (messageId: string) => Promise<void> | void;
+  /** Usage, timing and cost are an operational surface restricted to super users. */
+  canViewMetrics?: boolean;
+  /** False for shared/read-only transcripts: action artifacts stay reviewable but inert. */
+  canActOnArtifacts?: boolean;
+  /** Durable Mission outcome rendered as a continuation of its dispatch turn. */
+  missionOutcome?: { messageId: string; content: string; createdAt: string };
 }
-
-// ─── Grounding / confidence badges: DORMANT ──────────────
-// The "NN% grounded" badge (Sources row) and the "grounded / ungrounded"
-// chip (metrics row) were fed EXCLUSIVELY by the `checker` tool's output,
-// persisted as message.confidence / message.grounded. The checker tool was
-// removed on 2026-06-18, so for every new message these fields are always
-// null and the badges carry no signal. Messages persisted before the removal
-// may still hold stale values, so we suppress the badges outright instead of
-// relying on the `!= null` guard alone. The DB columns + prop threading are
-// kept (dormant) as message-quality-metadata infra in case a future signal
-// (e.g. an eval-based grounding score) repopulates them — flip this to
-// re-enable. See the session-storage notes in README.md.
-const SHOW_GROUNDING_BADGES = false;
 
 // ─── Message Bubble (completed message) ──────────────────
 
@@ -121,22 +110,23 @@ function MessageBubbleImpl(props: MessageProps) {
     role,
     content,
     messageId,
-    sessionId: _sessionId,
+    sessionId,
     reasoning,
     pipeline,
     references,
     images,
-    confidence,
-    grounded,
     inputTokens,
     outputTokens,
     cachedTokens,
     reasoningTokens,
     durationMs,
+    model,
     createdAt,
     isLastUser,
     isStreaming,
     compact,
+    onEval,
+    evalState,
     onEdit,
     onTranslate,
     onRegenerate,
@@ -145,14 +135,22 @@ function MessageBubbleImpl(props: MessageProps) {
     onConfirmAction,
     hasFollowUpUserMessage,
     previousUserMessage,
-    agentAvatar,
+    submittedUserMessage,
+    confirmedActionValue,
+    onFork,
+    canViewMetrics = false,
+    canActOnArtifacts = true,
+    missionOutcome,
   } = props;
 
   const [showReasoning, setShowReasoning] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(content);
+  const editInputRef = useRef<HTMLTextAreaElement>(null);
   const [showFullscreen, setShowFullscreen] = useState(false);
+  const [previewImageIndex, setPreviewImageIndex] = useState<number | null>(null);
+  const [isForking, setIsForking] = useState(false);
 
   // Text selection for "quote & follow up"
   const contentRef = useRef<HTMLDivElement>(null);
@@ -176,19 +174,27 @@ function MessageBubbleImpl(props: MessageProps) {
   }, [selection.text, selection.rect, noteDialog]);
 
   // Normalize pipeline steps into the shared ToolCall shape, then split into
-  // trace-block rows vs. body artifacts (the ask_user form, page-update
+  // trace-block rows vs. body artifacts (eval cards, the ask_user form, page-update
   // diffs, generated images). Generated-image dedup against embedded markdown lives
-  // in <BodyArtifacts> (it receives `content`).
-  const { trace: traceCalls, artifacts: artifactCalls } = useMemo(() => {
-    const calls = (pipeline ?? []).map((s) => ({
+  // in <BodyArtifacts> (it receives `content`). Confirm-gate cards (mission
+  // dispatch) render below the prose that introduces them.
+  const {
+    trace: traceCalls,
+    artifactsAbove,
+    artifactsBelow,
+  } = useMemo(() => {
+    const calls = (pipeline ?? []).map((s, artifactIndex) => ({
       name: s.tool,
       input: s.input,
       output: s.output,
       status: 'done' as const,
       durationMs: s.duration_ms,
       step: s.step,
+      artifactIndex,
     }));
-    return partitionCalls(calls);
+    const { trace, artifacts } = partitionCalls(calls);
+    const { above, below } = splitArtifactsByPlacement(artifacts);
+    return { trace, artifactsAbove: above, artifactsBelow: below };
   }, [pipeline]);
 
   // Extract external search sources from pipeline
@@ -213,140 +219,146 @@ function MessageBubbleImpl(props: MessageProps) {
   }, [pipeline]);
 
   // Rendered HTML for copy-as-HTML
+  const actionContent = missionOutcome ? `${content}\n\n${missionOutcome.content}` : content;
   const renderedHtml = useMemo(() => {
     try {
-      const result = marked.parse(content);
+      const result = marked.parse(actionContent);
       return typeof result === 'string' ? result : '';
     } catch (_err) {
       return '';
     }
-  }, [content]);
-  const [showAllRefs, setShowAllRefs] = useState(false);
+  }, [actionContent]);
+  const [showReferences, setShowReferences] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing || !editInputRef.current) return;
+    const input = editInputRef.current;
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 240)}px`;
+  }, [isEditing, editText]);
+
+  // Mission turns carry their inputs as a server-written fence; lift it out so
+  // the bubble shows the prompt as text and the files as chips.
+  const { text: userText, attachments } = useMemo(() => splitAttachments(content), [content]);
 
   if (role === 'user') {
     const hasImages = images && images.length > 0;
     return (
-      <div className="flex justify-end animate-fade-in">
-        <div className="max-w-[80%] bg-primary-subtle border border-primary-edge rounded-xl rounded-br-md px-4 py-3 group relative">
-          {/* Image thumbnails */}
-          {hasImages && (
-            <div className="mb-2 flex gap-2 flex-wrap">
-              {images!.map((img) => (
-                <a
-                  key={img.id}
-                  href={img.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-20 h-20 rounded-lg overflow-hidden border border-primary-edge hover:border-primary-400 transition-colors flex-shrink-0"
-                >
-                  <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                </a>
-              ))}
-            </div>
-          )}
-          {isEditing ? (
-            <div className="space-y-2">
-              <textarea
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                className="w-full bg-surface-raised border border-primary-300 rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-primary-500/40 resize-none"
-                rows={3}
-                autoFocus
-              />
-              <div className="flex gap-1.5 justify-end">
-                <button
-                  onClick={() => {
-                    setIsEditing(false);
-                    setEditText(content);
-                  }}
-                  className="px-2.5 py-1 text-xs text-fg-muted hover:text-fg-secondary rounded border border-edge-strong hover:bg-surface-sunken"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    if (editText.trim() && editText.trim() !== content && onEdit && messageId) {
-                      onEdit(messageId, editText.trim());
-                      setIsEditing(false);
-                    }
-                  }}
-                  disabled={!editText.trim() || editText.trim() === content}
-                  className="px-2.5 py-1 text-xs text-white bg-primary-600 hover:bg-primary-700 rounded disabled:opacity-40"
-                >
-                  Save & Resend
-                </button>
+      <>
+        <div className="flex justify-end animate-fade-in">
+          <div
+            className={`group relative max-w-[80%] rounded-2xl rounded-br-md border border-edge bg-surface-muted px-4 py-3 shadow-sm shadow-primary-900/5 ${
+              isEditing ? 'w-[min(28rem,80vw)]' : ''
+            }`}
+          >
+            {/* Image thumbnails stay inside the app instead of navigating a
+                mobile WebView to a raw image with no visible way back. */}
+            {hasImages && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {images.map((img, imageIndex) => (
+                  <button
+                    type="button"
+                    key={img.id}
+                    onClick={() => setPreviewImageIndex(imageIndex)}
+                    aria-label={t('media.viewAttachment', { current: imageIndex + 1, total: images.length })}
+                    className="block h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-edge-strong transition-colors hover:border-primary-400"
+                  >
+                    <img src={img.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  </button>
+                ))}
               </div>
-            </div>
-          ) : (
-            <UserMessageContent content={content} />
-          )}
-          <div className="flex items-center justify-between mt-1.5">
-            {createdAt && <p className="text-[10px] text-fg-faint">{new Date(createdAt).toLocaleTimeString()}</p>}
-            {isLastUser && !isEditing && onEdit && (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="text-[10px] text-fg-faint hover:text-primary-fg opacity-0 group-hover:opacity-100 touch-visible transition-opacity ml-2"
-                title={t('chat.editMessage')}
-              >
-                <Pencil size={10} className="inline mr-0.5" />
-                Edit
-              </button>
             )}
+            {isEditing ? (
+              <div className="space-y-2">
+                <textarea
+                  ref={editInputRef}
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  className="max-h-60 w-full resize-none overflow-y-auto border-0 bg-transparent p-0 text-sm leading-relaxed text-fg outline-none focus:ring-0"
+                  rows={1}
+                  autoFocus
+                />
+                <div className="flex gap-1.5 justify-end">
+                  <button
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditText(content);
+                    }}
+                    className="px-2.5 py-1 text-xs text-fg-muted hover:text-fg-secondary rounded border border-edge-strong hover:bg-surface-sunken"
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (editText.trim() && editText.trim() !== content && onEdit && messageId) {
+                        onEdit(messageId, editText.trim());
+                        setIsEditing(false);
+                      }
+                    }}
+                    disabled={!editText.trim() || editText.trim() === content}
+                    className="px-2.5 py-1 text-xs text-white bg-primary-600 hover:bg-primary-700 rounded disabled:opacity-40"
+                  >
+                    {t('chat.saveAndResend')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <UserMessageContent content={userText} />
+            )}
+            {/* Mission inputs: pills between the text and the timestamp row. */}
+            {attachments.length > 0 && !isEditing && (
+              <div className="mt-2">
+                <AttachmentsBlock data={attachments} />
+              </div>
+            )}
+            <div className="flex items-center justify-between mt-1.5">
+              {createdAt && <p className="text-[10px] text-fg-faint">{new Date(createdAt).toLocaleTimeString()}</p>}
+              {isLastUser && !isEditing && onEdit && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="text-[10px] text-fg-faint hover:text-primary-fg opacity-0 group-hover:opacity-100 touch-visible transition-opacity ml-2"
+                  title={t('chat.editMessage')}
+                >
+                  <Pencil size={10} className="inline mr-0.5" />
+                  {t('common.edit')}
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+        <MediaPreviewDialog
+          open={previewImageIndex !== null}
+          files={(images ?? []).map((image) => ({ id: image.id, src: image.url, type: 'image' }))}
+          initialIndex={previewImageIndex ?? 0}
+          onClose={() => setPreviewImageIndex(null)}
+        />
+      </>
     );
   }
 
   // Assistant message
   const hasPipeline = pipeline && pipeline.length > 0;
-  const hasRefs = references && references.length > 0;
-  const hasMetrics = !!(inputTokens || outputTokens || durationMs);
-  const analyzedImages = hasPipeline ? pipeline!.filter((s) => s.tool === 'analyze_image') : [];
-  const hasAnalyzedImages = analyzedImages.length > 0;
+  // Fail closed: non-super users do not get either the expanded values or the
+  // disclosure button that hints this operational data exists.
+  const hasMetrics = canViewMetrics && !!(inputTokens || outputTokens || durationMs || model);
 
   const hasExternalSources = externalSources.length > 0;
-
-  // Cost estimation
-  const cost = hasMetrics ? estimateCost({ inputTokens, outputTokens, cachedTokens }) : null;
-
-  // Shared ctx for artifact cards — the inline block above the prose and the
-  // file/media attachments rendered below it.
-  const artifactCtx = {
-    content,
-    onViewWiki: openKnowledgeDoc,
-    onViewSource: (id: string) => openKnowledgeDoc(id),
-    onAskUserSubmit,
-    askUserSubmitted: hasFollowUpUserMessage,
-    onOpenSession: (id: string) => {
-      window.location.hash = `#/chat?session=${id}`;
-    },
-  };
+  const knowledgeRefs = dedupe(references ?? [], (r) => r.slug);
+  const hasRefs = knowledgeRefs.length > 0;
 
   return (
     <div className="animate-fade-in space-y-2">
-      <div className="max-w-[90%] min-w-0 group/actions">
+      <div className="message-actions-host max-w-[90%] min-w-0 group/actions">
         {/* Action bar */}
-        <div className="flex items-center gap-3 mb-1.5">
-          <SproutyFace {...(agentAvatar ?? {})} state="done" size={20} animate={false} title="Agent" />
-          {reasoning && (
-            <button
-              onClick={() => setShowReasoning(!showReasoning)}
-              className="flex items-center gap-1 text-[11px] text-fg-faint hover:text-fg-secondary transition-colors"
-            >
-              <MessageSquare size={12} />
-              <span>Thinking</span>
-              <ChevronDown size={11} className={`transition-transform ${showReasoning ? 'rotate-180' : ''}`} />
-            </button>
-          )}
-          {/* Pipeline toggle removed — ToolCallRenderer has its own collapse */}
-          {hasAnalyzedImages && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium rounded-full bg-violet-50 text-violet-600 border border-violet-200">
-              <ImageIcon size={11} />{' '}
-              {analyzedImages.length === 1 ? t('chat.analyzedImage') : `Analyzed ${analyzedImages.length} images`}
-            </span>
-          )}
-        </div>
+        {reasoning && (
+          <div className="mb-1.5 flex items-center gap-3">
+            <ReasoningToggle
+              reasoning={reasoning}
+              expanded={showReasoning}
+              onToggle={() => setShowReasoning(!showReasoning)}
+            />
+          </div>
+        )}
 
         {/* Reasoning panel */}
         {showReasoning && reasoning && <ReasoningPanel reasoning={reasoning} />}
@@ -354,24 +366,39 @@ function MessageBubbleImpl(props: MessageProps) {
         {/* Pipeline tool calls (trace block) */}
         {traceCalls.length > 0 && (
           <div className="mb-3">
-            <ToolCallRenderer
-              calls={traceCalls}
-              variant="full"
-              defaultCollapsed
-              onViewWiki={openKnowledgeDoc}
-              onViewSource={(id) => openKnowledgeDoc(id)}
-            />
+            <ToolCallRenderer calls={traceCalls} variant="full" defaultCollapsed />
           </div>
         )}
 
-        {/* Body artifacts (above prose) — the ask_user form, page-update diffs. File/
-            media artifacts render at the bottom via <MessageAttachments>. */}
-        {artifactCalls.length > 0 && <BodyArtifacts calls={artifactCalls} ctx={artifactCtx} />}
+        {/* Body artifacts — eval cards, the ask_user form, page-update diffs, generated images. */}
+        {artifactsAbove.length > 0 && (
+          <BodyArtifacts
+            calls={artifactsAbove}
+            ctx={{
+              content,
+              sessionId,
+              messageId,
+              canAct: canActOnArtifacts,
+              onAskUserSubmit,
+              askUserSubmitted: hasFollowUpUserMessage,
+              askUserSubmittedMessage: submittedUserMessage,
+              onOpenSession: (id) => {
+                window.location.hash = `#/chat?session=${id}`;
+              },
+            }}
+          />
+        )}
 
         {/* Main content — flush, no bubble */}
         <div className="relative">
           <div ref={contentRef}>
-            <RichMarkdown content={content} compact onConfirmAction={onConfirmAction} />
+            <RichMarkdown
+              content={content}
+              compact
+              onConfirmAction={onConfirmAction}
+              resolvedConfirmValue={confirmedActionValue}
+              linkTarget="new-window"
+            />
           </div>
           {/* Selection follow-up: icon button on text selection */}
           {activePopover && onQuote && !noteDialog && (
@@ -397,166 +424,196 @@ function MessageBubbleImpl(props: MessageProps) {
               onDismiss={() => setNoteDialog(null)}
             />
           )}
-          {/* Message actions bar — revealed on hover */}
-          <div className="mt-1.5 flex items-center justify-between opacity-0 group-hover/actions:opacity-100 focus-within:opacity-100 touch-visible transition-opacity">
-            <div className="flex items-center gap-1.5">
-              <ExportPdfButton markdown={content} isStreaming={isStreaming} />
-              {!compact && (
-                <button
-                  onClick={() => setShowFullscreen(true)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-fg-muted hover:text-primary-fg rounded-md border border-edge hover:border-primary-300 hover:bg-primary-subtle transition-colors"
-                  title="Fullscreen"
-                >
-                  <Maximize2 size={12} />
-                </button>
-              )}
-            </div>
-            <MessageActions
-              content={content}
-              renderedHtml={renderedHtml}
-              onTranslate={!compact && onTranslate && messageId ? (lang) => onTranslate(messageId, lang) : undefined}
-              onRegenerate={onRegenerate && messageId ? () => onRegenerate(messageId) : undefined}
-              isStreaming={isStreaming}
-            />
-          </div>
         </div>
 
-        {/* File/media attachments — download cards & generated files — at the message bottom. */}
-        {artifactCalls.length > 0 && <MessageAttachments calls={artifactCalls} ctx={artifactCtx} />}
+        {/* Confirm-gate cards (mission dispatch) — the prose above introduces them,
+            so review-then-launch reads top to bottom. */}
+        {artifactsBelow.length > 0 && (
+          <BodyArtifacts
+            position="below"
+            calls={artifactsBelow}
+            ctx={{
+              content,
+              sessionId,
+              messageId,
+              canAct: canActOnArtifacts,
+              onAskUserSubmit,
+              askUserSubmitted: hasFollowUpUserMessage,
+              askUserSubmittedMessage: submittedUserMessage,
+              onOpenSession: (id) => {
+                window.location.hash = `#/chat?session=${id}`;
+              },
+            }}
+          />
+        )}
+
+        {missionOutcome && (
+          <div className="mt-3 border-t border-edge/60 pt-3" data-mission-outcome-continuation>
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-medium text-fg-muted">
+              <Cloud size={12} className="text-primary-fg" />
+              <span>{t('cloudAgent.resultLabel')}</span>
+            </div>
+            <RichMarkdown content={missionOutcome.content} compact linkTarget="new-window" />
+          </div>
+        )}
 
         {/* References (clickable) — single-line, collapsible */}
         {(hasRefs || hasExternalSources) &&
           (() => {
-            const sourceRefs = dedupe(references || [], (r) => r.doc_id || r.slug);
-            const totalRefCount = sourceRefs.length + externalSources.length;
-            const needsExpand = totalRefCount > 4;
+            const totalRefCount = knowledgeRefs.length + externalSources.length;
 
             return (
               <div className="mt-2 space-y-1">
-                {/* Internal Sources */}
-                {sourceRefs.length > 0 && (
-                  <div
-                    className={`flex items-center gap-1.5 ${showAllRefs ? 'flex-wrap' : 'flex-nowrap overflow-hidden max-h-[26px]'}`}
-                  >
-                    <span className="text-[11px] text-fg-faint flex items-center gap-1 flex-shrink-0">
-                      <BookOpen size={11} /> Sources:
-                    </span>
-                    {sourceRefs.map((ref) => (
-                      <button
-                        key={ref.doc_id || ref.slug}
-                        onClick={() => openKnowledgeDoc(ref.doc_id || ref.slug)}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full border bg-primary-subtle text-primary-fg-strong border-primary-edge hover:bg-primary-subtle-hover transition-colors cursor-pointer flex-shrink-0"
-                      >
-                        {ref.category && (
-                          <span className="text-[10px] text-primary-500">
-                            {(() => {
-                              const Icon = getCategoryIcon(ref.category!);
-                              return <Icon size={10} />;
-                            })()}
-                          </span>
+                <button
+                  onClick={() => setShowReferences(!showReferences)}
+                  className="flex items-center gap-1 text-[10px] text-primary-fg transition-colors hover:text-primary-fg-strong"
+                >
+                  <BookOpen size={11} />
+                  {showReferences ? t('common.collapse') : t('chat.showAllReferences', { count: totalRefCount })}
+                  <ChevronDown size={10} className={`transition-transform ${showReferences ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showReferences && (
+                  <div className="space-y-1 animate-fade-in">
+                    {/* Knowledge documents the agent actually read */}
+                    {hasRefs && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="flex flex-shrink-0 items-center gap-1 text-[11px] text-fg-faint">
+                          <BookOpen size={11} /> {t('chat.sources')}:
+                        </span>
+                        {knowledgeRefs.map((ref) =>
+                          ref.url ? (
+                            <a
+                              key={ref.slug}
+                              href={ref.url}
+                              className="inline-flex flex-shrink-0 cursor-pointer items-center gap-1 rounded-full border border-primary-edge bg-primary-subtle px-2 py-0.5 text-xs font-medium text-primary-fg-strong transition-colors hover:bg-primary-subtle-hover"
+                              title={ref.title}
+                            >
+                              <span className="max-w-[120px] truncate">{ref.title}</span>
+                            </a>
+                          ) : (
+                            <span
+                              key={ref.slug}
+                              className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-primary-edge bg-primary-subtle px-2 py-0.5 text-xs font-medium text-primary-fg-strong"
+                              title={ref.title}
+                            >
+                              <span className="max-w-[120px] truncate">{ref.title}</span>
+                            </span>
+                          ),
                         )}
-                        <span className="truncate max-w-[120px]">{ref.title}</span>
-                      </button>
-                    ))}
-                    {SHOW_GROUNDING_BADGES && confidence != null && (
-                      <Badge variant={confidence >= 0.8 ? 'success' : confidence >= 0.5 ? 'warning' : 'destructive'}>
-                        <CheckCircle size={11} className="inline" /> {(confidence * 100).toFixed(0)}% grounded
-                      </Badge>
+                      </div>
+                    )}
+
+                    {/* External search sources */}
+                    {hasExternalSources && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="flex flex-shrink-0 items-center gap-1 text-[10px] text-fg-faint">
+                          <Globe size={10} /> {t('chat.web')}:
+                        </span>
+                        {externalSources.map((es, i) => (
+                          <a
+                            key={i}
+                            href={es.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex flex-shrink-0 items-center gap-1 rounded border border-info/30 bg-info-subtle px-1.5 py-0.5 text-[10px] font-medium text-info-fg transition-colors hover:border-info/60"
+                            title={es.url}
+                          >
+                            <Globe size={9} />
+                            <span className="max-w-[140px] truncate">{es.title}</span>
+                          </a>
+                        ))}
+                      </div>
                     )}
                   </div>
-                )}
-
-                {/* External search sources */}
-                {hasExternalSources && (
-                  <div
-                    className={`flex items-center gap-1.5 ${showAllRefs ? 'flex-wrap' : 'flex-nowrap overflow-hidden max-h-[26px]'}`}
-                  >
-                    <span className="text-[10px] text-fg-faint flex items-center gap-1 flex-shrink-0">
-                      <Globe size={10} /> Web:
-                    </span>
-                    {externalSources.map((es, i) => (
-                      <a
-                        key={i}
-                        href={es.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded border bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100 transition-colors flex-shrink-0"
-                        title={es.url}
-                      >
-                        <Globe size={9} />
-                        <span className="truncate max-w-[140px]">{es.title}</span>
-                      </a>
-                    ))}
-                  </div>
-                )}
-
-                {/* Expand/collapse toggle */}
-                {needsExpand && (
-                  <button
-                    onClick={() => setShowAllRefs(!showAllRefs)}
-                    className="text-[10px] text-primary-fg hover:text-primary-fg-strong transition-colors flex items-center gap-0.5"
-                  >
-                    {showAllRefs ? 'Collapse' : `Show all ${totalRefCount} references`}
-                    <ChevronDown size={10} className={`transition-transform ${showAllRefs ? 'rotate-180' : ''}`} />
-                  </button>
                 )}
               </div>
             );
           })()}
 
-        {/* Metrics + Cost — collapsed by default; cost, token breakdown and the
-              per-step timing chart all live inside the expanded panel. */}
-        {hasMetrics && (
-          <>
-            <button
-              onClick={() => setShowMetrics(!showMetrics)}
-              className="mt-1.5 flex items-center gap-3 text-[11px] text-fg-faint hover:text-fg-secondary transition-colors"
-            >
-              {durationMs != null && (
-                <span className="flex items-center gap-0.5">
-                  <Clock size={10} /> {(durationMs / 1000).toFixed(2)}s
-                </span>
-              )}
-              {SHOW_GROUNDING_BADGES && grounded != null && (
-                <span className="flex items-center gap-0.5">
-                  {grounded ? (
-                    <>
-                      <CheckCircle size={10} /> grounded
-                    </>
-                  ) : (
-                    <>
-                      <AlertTriangle size={10} /> ungrounded
-                    </>
-                  )}
-                </span>
-              )}
-              <ChevronDown size={11} className={`transition-transform ${showMetrics ? 'rotate-180' : ''}`} />
-            </button>
-            {showMetrics && (
-              <div className="mt-1 space-y-2">
-                {/* Per-step timing breakdown — hidden in compact mode */}
-                {!compact && hasPipeline && pipeline!.length > 0 && (
-                  <PipelineStageChart steps={pipeline!} totalDurationMs={durationMs} />
+        {/* Single-line footer: elapsed time on the left, all message actions on the right.
+            The exact model stays inside the super-only expanded diagnostics —
+            it is operational metadata, not part of the answer's primary reading flow. */}
+        <div className="message-hover-actions mt-1.5 flex min-h-7 items-center justify-between gap-2 pt-1 transition-opacity">
+          <div className="min-w-0">
+            {hasMetrics && (
+              <button
+                onClick={() => setShowMetrics(!showMetrics)}
+                className="flex items-center gap-1 text-[11px] text-fg-faint transition-colors hover:text-fg-secondary"
+              >
+                {durationMs != null && (
+                  <span className="flex items-center gap-0.5">
+                    <Clock size={10} /> {(durationMs / 1000).toFixed(2)}s
+                  </span>
                 )}
-                <div className="flex flex-wrap gap-3 text-[11px] text-fg-muted bg-surface-sunken border border-edge rounded-md px-3 py-2">
-                  {inputTokens != null && <span>In: {inputTokens.toLocaleString()}</span>}
-                  {outputTokens != null && <span>Out: {outputTokens.toLocaleString()}</span>}
-                  {cachedTokens ? <span>Cached: {cachedTokens.toLocaleString()}</span> : null}
-                  {reasoningTokens ? <span>Reasoning: {reasoningTokens.toLocaleString()}</span> : null}
-                  {durationMs != null && (
-                    <span>
-                      <Clock size={10} className="inline" /> {(durationMs / 1000).toFixed(2)}s
-                    </span>
-                  )}
-                  {cost && (
-                    <span>
-                      <DollarSign size={10} className="inline" /> ${cost.usd.toFixed(6)} ≈ ¥{cost.cny.toFixed(4)}
-                    </span>
-                  )}
-                </div>
-              </div>
+                {durationMs == null && <span>{t('common.details')}</span>}
+                <ChevronDown size={11} className={`transition-transform ${showMetrics ? 'rotate-180' : ''}`} />
+              </button>
             )}
-          </>
+          </div>
+          <div className="ml-auto flex items-center">
+            {SHOW_MESSAGE_EVAL && !compact && messageId && onEval && (
+              <button
+                onClick={() => onEval(messageId)}
+                className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-fg-faint transition-colors hover:bg-surface-muted hover:text-primary-fg"
+                title={evalState ? t('chat.viewEvaluation') : t('chat.evaluateResponse')}
+              >
+                <Search size={12} />
+                {evalState?.verdict || t('eval.title')}
+              </button>
+            )}
+            <MessageActions
+              content={actionContent}
+              renderedHtml={renderedHtml}
+              onTranslate={!compact && onTranslate && messageId ? (lang) => onTranslate(messageId, lang) : undefined}
+              onRegenerate={onRegenerate && messageId ? () => onRegenerate(messageId) : undefined}
+              onFullscreen={!compact ? () => setShowFullscreen(true) : undefined}
+              onFork={
+                !compact && onFork && messageId
+                  ? async () => {
+                      setIsForking(true);
+                      try {
+                        await onFork(messageId);
+                      } finally {
+                        setIsForking(false);
+                      }
+                    }
+                  : undefined
+              }
+              isForking={isForking}
+              isStreaming={isStreaming}
+            />
+          </div>
+        </div>
+
+        {/* Expanded timing/cost details stay on their own row below the footer. */}
+        {hasMetrics && showMetrics && (
+          <div className="mt-1 space-y-2">
+            {/* Per-step timing breakdown — hidden in compact mode */}
+            {!compact && hasPipeline && pipeline!.length > 0 && (
+              <PipelineStageChart steps={pipeline!} totalDurationMs={durationMs} />
+            )}
+            <div className="flex flex-wrap gap-3 text-[11px] text-fg-muted bg-surface-sunken border border-edge rounded-md px-3 py-2">
+              {model && <span className="font-mono">{model}</span>}
+              {inputTokens != null && (
+                <span>{t('chat.inputTokensShort', { count: inputTokens.toLocaleString() })}</span>
+              )}
+              {outputTokens != null && (
+                <span>{t('chat.outputTokensShort', { count: outputTokens.toLocaleString() })}</span>
+              )}
+              {cachedTokens ? (
+                <span>{t('chat.cachedTokensShort', { count: cachedTokens.toLocaleString() })}</span>
+              ) : null}
+              {reasoningTokens ? (
+                <span>{t('chat.reasoningTokensShort', { count: reasoningTokens.toLocaleString() })}</span>
+              ) : null}
+              {durationMs != null && (
+                <span>
+                  <Clock size={10} className="inline" /> {(durationMs / 1000).toFixed(2)}s
+                </span>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
@@ -576,7 +633,7 @@ function MessageBubbleImpl(props: MessageProps) {
           noPadding
         >
           <div className="px-6 pb-6">
-            <RichMarkdown content={content} />
+            <RichMarkdown content={actionContent} linkTarget="new-window" />
           </div>
         </Dialog>
       )}

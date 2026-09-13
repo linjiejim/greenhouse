@@ -12,6 +12,7 @@ import { Share2, X, Users, Check } from '../../lib/icons';
 import * as api from '../../lib/api';
 import type { ShareableUser, ShareItem } from '@greenhouse/types/api';
 import { timeAgo } from '../../lib/utils';
+import { useT } from '../../lib/i18n';
 
 interface ShareDialogProps {
   open: boolean;
@@ -23,6 +24,7 @@ interface ShareDialogProps {
 }
 
 export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareChanged }: ShareDialogProps) {
+  const t = useT();
   const [users, setUsers] = useState<ShareableUser[]>([]);
   const [existingShares, setExistingShares] = useState<ShareItem[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
@@ -80,40 +82,40 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
         team: shareWithTeam,
         message: note.trim() || undefined,
       });
-      toast('Session shared successfully', 'success');
+      toast(t('shareDialog.shared'), 'success');
       onShareChanged?.();
       onClose();
     } catch (err: any) {
-      toast(err.message || 'Failed to share', 'error');
+      toast(err.message || t('shareDialog.shareFailed'), 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [sessionId, selectedUserIds, shareWithTeam, note, onClose, onShareChanged]);
+  }, [sessionId, selectedUserIds, shareWithTeam, note, onClose, onShareChanged, t]);
 
   const handleUnshareAll = useCallback(async () => {
     try {
       await api.unshareSession(sessionId);
-      toast('All sharing removed', 'success');
+      toast(t('shareDialog.allRemoved'), 'success');
       setExistingShares([]);
       setShareWithTeam(false);
       onShareChanged?.();
     } catch {
-      toast('Failed to remove sharing', 'error');
+      toast(t('shareDialog.removeAllFailed'), 'error');
     }
-  }, [sessionId, onShareChanged]);
+  }, [sessionId, onShareChanged, t]);
 
   const handleRemoveOne = useCallback(
     async (shareId: number) => {
       try {
         await api.deleteOneShare(sessionId, shareId);
         setExistingShares((prev) => prev.filter((s) => s.id !== shareId));
-        toast('Share removed', 'success');
+        toast(t('shareDialog.shareRemoved'), 'success');
         onShareChanged?.();
       } catch {
-        toast('Failed to remove share', 'error');
+        toast(t('shareDialog.removeFailed'), 'error');
       }
     },
-    [sessionId, onShareChanged],
+    [sessionId, onShareChanged, t],
   );
 
   // Filter users by search
@@ -135,7 +137,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
     : alreadySharedUserIds.size;
 
   return (
-    <Dialog open={open} onClose={onClose} title="Share Conversation" size="md">
+    <Dialog open={open} onClose={onClose} title={t('shareDialog.title')} size="md">
       {loading ? (
         <div className="flex justify-center py-8">
           <Spinner />
@@ -145,13 +147,13 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
           {/* Session title + viewer count */}
           <div className="flex items-center justify-between">
             <div className="text-sm text-fg-secondary min-w-0">
-              <span className="text-fg-muted">Sharing: </span>
-              <span className="font-medium truncate">{sessionTitle || 'Untitled'}</span>
+              <span className="text-fg-muted">{t('shareDialog.sharing')} </span>
+              <span className="font-medium truncate">{sessionTitle || t('common.untitled')}</span>
             </div>
             {viewerCount > 0 && (
               <div className="flex items-center gap-1 text-xs text-fg-muted flex-shrink-0 bg-surface-muted px-2 py-1 rounded-full">
                 <Users size={12} />
-                <span>{isTeamShared ? 'Team' : `${viewerCount} viewer${viewerCount !== 1 ? 's' : ''}`}</span>
+                <span>{isTeamShared ? t('shareDialog.team') : t('shareDialog.viewers', { count: viewerCount })}</span>
               </div>
             )}
           </div>
@@ -161,10 +163,10 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
             <div className="bg-surface-muted rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-fg-muted uppercase tracking-wider">
-                  Currently shared with
+                  {t('shareDialog.current')}
                 </span>
                 <button onClick={handleUnshareAll} className="text-xs text-danger hover:underline">
-                  Remove all
+                  {t('shareDialog.removeAll')}
                 </button>
               </div>
               <div className="space-y-1">
@@ -172,13 +174,13 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
                   <div className="flex items-center justify-between py-1">
                     <Badge variant="secondary">
                       <Users size={10} className="mr-1" />
-                      Entire Team
+                      {t('shareDialog.entireTeam')}
                     </Badge>
                     {existingShares.find((s) => s.shared_with === '__team__') && (
                       <button
                         onClick={() => handleRemoveOne(existingShares.find((s) => s.shared_with === '__team__')!.id)}
                         className="p-0.5 text-fg-faint hover:text-danger transition-colors"
-                        title="Remove team share"
+                        title={t('shareDialog.removeTeam')}
                       >
                         <X size={12} />
                       </button>
@@ -192,13 +194,13 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
                     return (
                       <div key={s.id} className="flex items-center justify-between py-1">
                         <div className="flex items-center gap-2 min-w-0">
-                          <Badge variant="default">{user?.nickname || 'Unknown'}</Badge>
+                          <Badge variant="default">{user?.nickname || t('shareDialog.unknown')}</Badge>
                           <span className="text-[10px] text-fg-faint">{timeAgo(s.created_at)}</span>
                         </div>
                         <button
                           onClick={() => handleRemoveOne(s.id)}
                           className="p-0.5 text-fg-faint hover:text-danger transition-colors"
-                          title={`Remove share for ${user?.nickname || 'Unknown'}`}
+                          title={t('shareDialog.removeUser', { name: user?.nickname || t('shareDialog.unknown') })}
                         >
                           <X size={12} />
                         </button>
@@ -217,8 +219,8 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
             <div className="flex items-center gap-2">
               <Users size={16} className="text-fg-muted" />
               <div>
-                <span className="text-sm font-medium text-fg">Share with entire team</span>
-                <p className="text-xs text-fg-muted">All internal users can view this conversation</p>
+                <span className="text-sm font-medium text-fg">{t('shareDialog.shareTeam')}</span>
+                <p className="text-xs text-fg-muted">{t('shareDialog.shareTeamHint')}</p>
               </div>
             </div>
             <Toggle checked={shareWithTeam} onChange={setShareWithTeam} disabled={isTeamShared} />
@@ -229,7 +231,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
             <>
               <div>
                 <Input
-                  placeholder="Search team members..."
+                  placeholder={t('shareDialog.searchMembers')}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   size="sm"
@@ -237,7 +239,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
               </div>
               <div className="max-h-48 overflow-y-auto border border-edge rounded-lg divide-y divide-edge">
                 {filteredUsers.length === 0 && (
-                  <div className="px-3 py-4 text-center text-xs text-fg-muted">No members found</div>
+                  <div className="px-3 py-4 text-center text-xs text-fg-muted">{t('shareDialog.noMembers')}</div>
                 )}
                 {filteredUsers.map((user) => {
                   const isAlready = alreadySharedUserIds.has(user.id);
@@ -264,7 +266,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
                         {(isSelected || isAlready) && <Check size={10} className="text-white" />}
                       </div>
                       {/* Avatar */}
-                      <div className="w-7 h-7 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-primary-subtle text-primary-fg-strong flex items-center justify-center text-xs font-semibold flex-shrink-0">
                         {user.nickname.charAt(0).toUpperCase()}
                       </div>
                       {/* Info */}
@@ -272,7 +274,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
                         <div className="text-sm font-medium truncate">{user.nickname}</div>
                         <div className="text-[11px] text-fg-muted truncate">{user.email}</div>
                       </div>
-                      {isAlready && <span className="text-[10px] text-fg-faint">Shared</span>}
+                      {isAlready && <span className="text-[10px] text-fg-faint">{t('shareDialog.alreadyShared')}</span>}
                     </button>
                   );
                 })}
@@ -283,7 +285,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
           {/* Note */}
           <div>
             <Textarea
-              placeholder="Add a note (optional)..."
+              placeholder={t('shareDialog.notePlaceholder')}
               value={note}
               onChange={(e) => setNote(e.target.value)}
               rows={2}
@@ -294,7 +296,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
           {/* Actions */}
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={onClose}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button onClick={handleShare} disabled={submitting || (selectedUserIds.size === 0 && !shareWithTeam)}>
               {submitting ? (
@@ -302,7 +304,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
               ) : (
                 <>
                   <Share2 size={14} className="mr-1.5" />
-                  Share
+                  {t('shareDialog.share')}
                 </>
               )}
             </Button>

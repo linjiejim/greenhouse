@@ -6,6 +6,7 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import type { Task } from './types';
+import { useT } from '../../lib/i18n';
 
 export function GanttMiniMap({
   flatTasks,
@@ -22,26 +23,29 @@ export function GanttMiniMap({
   timelineRef: React.RefObject<HTMLDivElement | null>;
   getBarStyle: (t: Task & { isParent: boolean }, drag: any) => any;
 }) {
+  const t = useT();
   const miniRef = useRef<HTMLDivElement>(null);
   const timelineWidth = totalDays * DAY_WIDTH;
   const contentHeight = flatTasks.length * ROW_HEIGHT;
   const MINI_HEIGHT = 32;
-  const [viewState, setViewState] = useState({ left: 0, width: 100 });
+  const [viewState, setViewState] = useState({ left: 0, width: 0, containerWidth: 0, fullyVisible: false });
 
   // Calculate scale
-  const containerWidth = miniRef.current?.clientWidth ?? 300;
-  const scaleX = containerWidth / timelineWidth;
+  const containerWidth = viewState.containerWidth || 300;
+  const scaleX = containerWidth / Math.max(timelineWidth, 1);
   const scaleY = MINI_HEIGHT / Math.max(contentHeight, 1);
 
   useEffect(() => {
     const el = timelineRef.current;
     if (!el) return;
     const updateView = () => {
-      const cw = miniRef.current?.clientWidth ?? 300;
-      const sx = cw / (totalDays * DAY_WIDTH);
+      const cw = miniRef.current?.clientWidth ?? el.clientWidth;
+      const sx = cw / Math.max(totalDays * DAY_WIDTH, 1);
       setViewState({
         left: el.scrollLeft * sx,
         width: Math.min(el.clientWidth * sx, cw),
+        containerWidth: cw,
+        fullyVisible: el.scrollWidth <= el.clientWidth + 1,
       });
     };
     updateView();
@@ -53,46 +57,62 @@ export function GanttMiniMap({
     };
   }, [totalDays, DAY_WIDTH, timelineRef]);
 
-  const handleMiniClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (!timelineRef.current || !miniRef.current) return;
-      const rect = miniRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const cw = miniRef.current.clientWidth;
+  const moveViewport = useCallback(
+    (clientX: number) => {
+      const timeline = timelineRef.current;
+      const mini = miniRef.current;
+      if (!timeline || !mini) return;
+      const rect = mini.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const cw = mini.clientWidth;
       const ratio = x / cw;
-      timelineRef.current.scrollLeft = ratio * timelineWidth - timelineRef.current.clientWidth / 2;
+      timeline.scrollLeft = ratio * timelineWidth - timeline.clientWidth / 2;
     },
     [timelineWidth, timelineRef],
   );
 
-  const handleMiniDrag = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      const onMove = (ev: MouseEvent) => {
-        if (!timelineRef.current || !miniRef.current) return;
-        const rect = miniRef.current.getBoundingClientRect();
-        const x = ev.clientX - rect.left;
-        const cw = miniRef.current.clientWidth;
-        const ratio = x / cw;
-        timelineRef.current.scrollLeft = ratio * timelineWidth - timelineRef.current.clientWidth / 2;
-      };
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    },
-    [timelineWidth, timelineRef],
-  );
+  if (viewState.fullyVisible) return null;
+
+  const timeline = timelineRef.current;
+  const maxScroll = Math.max(0, (timeline?.scrollWidth ?? timelineWidth) - (timeline?.clientWidth ?? 0));
 
   return (
     <div
       ref={miniRef}
-      className="relative bg-surface-sunken border-t border-edge cursor-pointer select-none flex-shrink-0"
+      role="scrollbar"
+      tabIndex={0}
+      aria-label={t('task.timelineOverview')}
+      aria-orientation="horizontal"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(maxScroll)}
+      aria-valuenow={Math.round(timeline?.scrollLeft ?? 0)}
+      className="relative bg-surface-sunken border-t border-edge cursor-pointer touch-none select-none flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500/50"
       style={{ height: MINI_HEIGHT }}
-      onClick={handleMiniClick}
-      onMouseDown={handleMiniDrag}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        moveViewport(event.clientX);
+      }}
+      onPointerMove={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) moveViewport(event.clientX);
+      }}
+      onPointerUp={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+      }}
+      onKeyDown={(event) => {
+        const el = timelineRef.current;
+        if (!el) return;
+        const step = Math.max(80, el.clientWidth * 0.15);
+        if (event.key === 'ArrowLeft') el.scrollLeft -= step;
+        else if (event.key === 'ArrowRight') el.scrollLeft += step;
+        else if (event.key === 'Home') el.scrollLeft = 0;
+        else if (event.key === 'End') el.scrollLeft = el.scrollWidth;
+        else return;
+        event.preventDefault();
+      }}
     >
       {/* Mini bars */}
       {flatTasks.map((t, idx) => {
@@ -113,9 +133,11 @@ export function GanttMiniMap({
       })}
       {/* Viewport indicator */}
       <div
-        className="absolute top-0 bottom-0 border-2 border-primary-500 bg-primary-500/10 rounded-sm pointer-events-none"
+        className="absolute top-0 bottom-0 border-2 border-primary-500 bg-primary-500/10 rounded-sm pointer-events-none flex items-center justify-center"
         style={{ left: viewState.left, width: Math.max(viewState.width, 4) }}
-      />
+      >
+        {viewState.width >= 24 && <span className="h-3 w-1 rounded-full bg-primary-500/50" />}
+      </div>
     </div>
   );
 }

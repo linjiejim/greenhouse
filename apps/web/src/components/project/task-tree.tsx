@@ -3,7 +3,8 @@
  */
 
 import React from 'react';
-import { ChevronDown, ChevronRight, Calendar } from '../../lib/icons';
+import { ChevronDown, ChevronRight, Calendar, Flag } from '../../lib/icons';
+import { useT, type TranslationKey } from '../../lib/i18n';
 import { statusConfig, priorityColors } from './types';
 import type { Task } from './types';
 
@@ -30,6 +31,7 @@ export function TaskTreeItem({
   expanded: Set<number>;
   onToggle: (id: number) => void;
 }) {
+  const t = useT();
   const hasChildren = task.children && task.children.length > 0;
   const isExpanded = expanded.has(task.id);
   const today = new Date().toISOString().split('T')[0];
@@ -66,9 +68,15 @@ export function TaskTreeItem({
         </span>
 
         {task.priority !== 'normal' && (
-          <span className={`text-[10px] font-medium ${priorityColors[task.priority]}`}>
-            {task.priority === 'urgent' ? '🔴' : task.priority === 'high' ? '🟠' : '⚪'}
-          </span>
+          <Flag
+            size={11}
+            className={`flex-shrink-0 ${priorityColors[task.priority]}`}
+            aria-label={t(
+              ({ low: 'common.low', high: 'common.high', urgent: 'common.urgent' } as Record<string, TranslationKey>)[
+                task.priority
+              ] ?? 'common.normal',
+            )}
+          />
         )}
 
         {task.assignee_nickname && (

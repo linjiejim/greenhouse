@@ -4,9 +4,9 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Card, Spinner, SkeletonCard, Tag } from '../../components/ui';
-import { Users, Bot, Wrench, type LucideIcon } from '../../lib/icons';
-import { fetchUsageSummary, fetchUserUsageSummary, formatTokens, formatDuration, estimateCost } from '../../lib/api';
+import { Card, EmptyState, Spinner, SkeletonCard, Tag } from '../../components/ui';
+import { BarChart3, Users, Bot, Wrench, type LucideIcon } from '../../lib/icons';
+import { fetchUsageSummary, fetchUserUsageSummary, formatTokens, formatDuration } from '../../lib/api';
 import type { UsageSummary, UserUsageSummary } from '../../lib/api';
 import { ROLE_TONE, type TagTone } from '../../lib/utils';
 import {
@@ -17,6 +17,8 @@ import {
   KpiCard,
   DistributionBar,
 } from '../../components/usage/usage-widgets';
+import { useT, type TranslationKey } from '../../lib/i18n';
+import { ModulePage } from '../../components/app/module-page';
 
 const CALLER_TONE: Record<string, TagTone> = {
   chat: 'info',
@@ -28,15 +30,16 @@ const CALLER_TONE: Record<string, TagTone> = {
 
 type SubTab = 'users' | 'profiles' | 'callers';
 
-const SUB_TABS: Array<{ key: SubTab; label: string; icon: LucideIcon }> = [
-  { key: 'users', label: 'By Users', icon: Users },
-  { key: 'profiles', label: 'By Profiles', icon: Bot },
-  { key: 'callers', label: 'By Callers', icon: Wrench },
+const SUB_TABS: Array<{ key: SubTab; labelKey: TranslationKey; icon: LucideIcon }> = [
+  { key: 'users', labelKey: 'usage.byUsers', icon: Users },
+  { key: 'profiles', labelKey: 'usage.byProfiles', icon: Bot },
+  { key: 'callers', labelKey: 'usage.byCallers', icon: Wrench },
 ];
 
 // ─── By Users Tab ────────────────────────────────────────
 
 function ByUsersTab({ period }: { period: string }) {
+  const t = useT();
   const [data, setData] = useState<UserUsageSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -62,57 +65,47 @@ function ByUsersTab({ period }: { period: string }) {
   }
 
   if (data.length === 0) {
-    return <div className="text-sm text-fg-faint text-center py-8">No usage data</div>;
+    return <EmptyState icon={BarChart3} variant="compact" tone="neutral" title={t('usage.noData')} />;
   }
 
   const maxCalls = Math.max(...data.map((d) => Number(d.total_calls)));
   const totalCalls = data.reduce((s, d) => s + Number(d.total_calls), 0);
   const totalInput = data.reduce((s, d) => s + Number(d.total_input_tokens), 0);
   const totalOutput = data.reduce((s, d) => s + Number(d.total_output_tokens), 0);
-  const totalCost = estimateCost({ inputTokens: totalInput, outputTokens: totalOutput });
 
   return (
     <div className="space-y-4">
       {/* KPI summary */}
-      <div className="grid grid-cols-4 gap-4">
-        <KpiCard title="Total Users">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+        <KpiCard title={t('usage.totalUsers')}>
           <div className="text-2xl font-bold text-fg">{data.length}</div>
         </KpiCard>
-        <KpiCard title="Total Calls">
+        <KpiCard title={t('usage.totalCalls')}>
           <div className="text-2xl font-bold text-fg">{totalCalls.toLocaleString()}</div>
         </KpiCard>
-        <KpiCard title="Total Tokens">
+        <KpiCard title={t('usage.totalTokens')}>
           <div className="text-2xl font-bold text-fg">{formatTokens(totalInput + totalOutput)}</div>
           <div className="text-[11px] text-fg-faint mt-0.5">
-            In: {formatTokens(totalInput)} / Out: {formatTokens(totalOutput)}
+            {t('usage.inputOutput', { input: formatTokens(totalInput), output: formatTokens(totalOutput) })}
           </div>
-        </KpiCard>
-        <KpiCard title="Estimated Cost">
-          <div className="text-2xl font-bold text-fg">${totalCost.usd.toFixed(4)}</div>
-          <div className="text-[11px] text-fg-faint mt-0.5">¥{totalCost.cny.toFixed(4)}</div>
         </KpiCard>
       </div>
 
       {/* Detail table */}
-      <Card className="p-0 overflow-hidden">
-        <table className="w-full text-[11px]">
+      <Card className="p-0 overflow-x-auto">
+        <table className="w-full min-w-[680px] text-[11px]">
           <thead>
             <tr className="text-fg-faint border-b border-edge bg-surface-sunken/50">
-              <th className="text-left font-medium py-2.5 px-4">User</th>
-              <th className="text-left font-medium py-2.5 px-3">Role</th>
-              <th className="text-right font-medium py-2.5 px-3">Calls</th>
-              <th className="text-right font-medium py-2.5 px-3">Input</th>
-              <th className="text-right font-medium py-2.5 px-3">Output</th>
-              <th className="text-right font-medium py-2.5 px-3">Est. Cost</th>
-              <th className="text-left font-medium py-2.5 px-3 w-32">Distribution</th>
+              <th className="text-left font-medium py-2.5 px-4">{t('usage.user')}</th>
+              <th className="text-left font-medium py-2.5 px-3">{t('usage.role')}</th>
+              <th className="text-right font-medium py-2.5 px-3">{t('usage.calls')}</th>
+              <th className="text-right font-medium py-2.5 px-3">{t('usage.input')}</th>
+              <th className="text-right font-medium py-2.5 px-3">{t('usage.output')}</th>
+              <th className="text-left font-medium py-2.5 px-3 w-32">{t('usage.distribution')}</th>
             </tr>
           </thead>
           <tbody>
             {data.map((u) => {
-              const cost = estimateCost({
-                inputTokens: Number(u.total_input_tokens),
-                outputTokens: Number(u.total_output_tokens),
-              });
               const barWidth = maxCalls > 0 ? (Number(u.total_calls) / maxCalls) * 100 : 0;
               return (
                 <tr key={u.user_id} className="text-fg-secondary border-b border-edge hover:bg-surface-sunken">
@@ -127,7 +120,6 @@ function ByUsersTab({ period }: { period: string }) {
                   <td className="py-2 px-3 text-right font-mono">{Number(u.total_calls).toLocaleString()}</td>
                   <td className="py-2 px-3 text-right">{formatTokens(Number(u.total_input_tokens))}</td>
                   <td className="py-2 px-3 text-right">{formatTokens(Number(u.total_output_tokens))}</td>
-                  <td className="py-2 px-3 text-right font-mono">${cost.usd.toFixed(3)}</td>
                   <td className="py-2 px-3">
                     <div className="w-full bg-surface-muted rounded-full h-2 overflow-hidden">
                       <div
@@ -149,43 +141,37 @@ function ByUsersTab({ period }: { period: string }) {
 // ─── By Profiles Tab ─────────────────────────────────────
 
 function ByProfilesTab({ summary }: { summary: UsageSummary }) {
+  const t = useT();
   const { by_profile, total } = summary;
-  const totalCost = estimateCost({
-    inputTokens: Number(total.total_input_tokens),
-    outputTokens: Number(total.total_output_tokens),
-    cachedTokens: Number(total.total_cached_tokens),
-  });
 
   return (
     <div className="space-y-4">
       {/* KPI summary */}
-      <div className="grid grid-cols-4 gap-4">
-        <KpiCard title="Total Calls">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+        <KpiCard title={t('usage.totalCalls')}>
           <div className="text-2xl font-bold text-fg">{Number(total.total_calls).toLocaleString()}</div>
         </KpiCard>
-        <KpiCard title="Input Tokens">
+        <KpiCard title={t('usage.inputTokens')}>
           <div className="text-2xl font-bold text-fg">{formatTokens(total.total_input_tokens)}</div>
           {Number(total.total_cached_tokens) > 0 && (
-            <div className="text-[11px] text-fg-faint mt-0.5">{formatTokens(total.total_cached_tokens)} cached</div>
-          )}
-        </KpiCard>
-        <KpiCard title="Output Tokens">
-          <div className="text-2xl font-bold text-fg">{formatTokens(total.total_output_tokens)}</div>
-          {Number(total.total_reasoning_tokens) > 0 && (
             <div className="text-[11px] text-fg-faint mt-0.5">
-              {formatTokens(total.total_reasoning_tokens)} reasoning
+              {t('usage.cached', { count: formatTokens(total.total_cached_tokens) })}
             </div>
           )}
         </KpiCard>
-        <KpiCard title="Estimated Cost">
-          <div className="text-2xl font-bold text-fg">${totalCost.usd.toFixed(4)}</div>
-          <div className="text-[11px] text-fg-faint mt-0.5">¥{totalCost.cny.toFixed(4)}</div>
+        <KpiCard title={t('usage.outputTokens')}>
+          <div className="text-2xl font-bold text-fg">{formatTokens(total.total_output_tokens)}</div>
+          {Number(total.total_reasoning_tokens) > 0 && (
+            <div className="text-[11px] text-fg-faint mt-0.5">
+              {t('usage.reasoning', { count: formatTokens(total.total_reasoning_tokens) })}
+            </div>
+          )}
         </KpiCard>
       </div>
 
       {/* Distribution + detail */}
       <Card className="p-4">
-        <div className="text-xs font-semibold text-fg-muted mb-3">Profile Distribution</div>
+        <div className="text-xs font-semibold text-fg-muted mb-3">{t('usage.profileDistribution')}</div>
         <DistributionBar
           items={by_profile.map((p, i) => ({
             label: p.profile_id,
@@ -194,37 +180,27 @@ function ByProfilesTab({ summary }: { summary: UsageSummary }) {
           }))}
         />
         {by_profile.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-edge">
-            <table className="w-full text-[11px]">
+          <div className="mt-4 pt-4 border-t border-edge overflow-x-auto">
+            <table className="w-full min-w-[560px] text-[11px]">
               <thead>
                 <tr className="text-fg-faint">
-                  <th className="text-left font-medium pb-2">Profile</th>
-                  <th className="text-right font-medium pb-2">Calls</th>
-                  <th className="text-right font-medium pb-2">Input</th>
-                  <th className="text-right font-medium pb-2">Output</th>
-                  <th className="text-right font-medium pb-2">Avg Duration</th>
-                  <th className="text-right font-medium pb-2">Est. Cost</th>
+                  <th className="text-left font-medium pb-2">{t('usage.profile')}</th>
+                  <th className="text-right font-medium pb-2">{t('usage.calls')}</th>
+                  <th className="text-right font-medium pb-2">{t('usage.input')}</th>
+                  <th className="text-right font-medium pb-2">{t('usage.output')}</th>
+                  <th className="text-right font-medium pb-2">{t('usage.avgDuration')}</th>
                 </tr>
               </thead>
               <tbody>
-                {by_profile.map((p) => {
-                  const cost = estimateCost({
-                    inputTokens: Number(p.input_tokens),
-                    outputTokens: Number(p.output_tokens),
-                  });
-                  return (
-                    <tr key={p.profile_id} className="text-fg-secondary border-b border-edge last:border-0">
-                      <td className="py-1.5 font-mono font-medium text-fg">{p.profile_id}</td>
-                      <td className="py-1.5 text-right">{Number(p.calls).toLocaleString()}</td>
-                      <td className="py-1.5 text-right">{formatTokens(p.input_tokens)}</td>
-                      <td className="py-1.5 text-right">{formatTokens(p.output_tokens)}</td>
-                      <td className="py-1.5 text-right">
-                        {p.avg_duration_ms ? formatDuration(p.avg_duration_ms) : '—'}
-                      </td>
-                      <td className="py-1.5 text-right font-mono">${cost.usd.toFixed(3)}</td>
-                    </tr>
-                  );
-                })}
+                {by_profile.map((p) => (
+                  <tr key={p.profile_id} className="text-fg-secondary border-b border-edge last:border-0">
+                    <td className="py-1.5 font-mono font-medium text-fg">{p.profile_id}</td>
+                    <td className="py-1.5 text-right">{Number(p.calls).toLocaleString()}</td>
+                    <td className="py-1.5 text-right">{formatTokens(p.input_tokens)}</td>
+                    <td className="py-1.5 text-right">{formatTokens(p.output_tokens)}</td>
+                    <td className="py-1.5 text-right">{p.avg_duration_ms ? formatDuration(p.avg_duration_ms) : '—'}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -237,80 +213,66 @@ function ByProfilesTab({ summary }: { summary: UsageSummary }) {
 // ─── By Callers Tab ──────────────────────────────────────
 
 function ByCallersTab({ summary }: { summary: UsageSummary }) {
+  const t = useT();
   const { by_caller, total } = summary;
-  const totalCost = estimateCost({
-    inputTokens: Number(total.total_input_tokens),
-    outputTokens: Number(total.total_output_tokens),
-    cachedTokens: Number(total.total_cached_tokens),
-  });
 
   return (
     <div className="space-y-4">
       {/* KPI summary */}
-      <div className="grid grid-cols-4 gap-4">
-        <KpiCard title="Total Calls">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+        <KpiCard title={t('usage.totalCalls')}>
           <div className="text-2xl font-bold text-fg">{Number(total.total_calls).toLocaleString()}</div>
         </KpiCard>
-        <KpiCard title="Input Tokens">
+        <KpiCard title={t('usage.inputTokens')}>
           <div className="text-2xl font-bold text-fg">{formatTokens(total.total_input_tokens)}</div>
           {Number(total.total_cached_tokens) > 0 && (
-            <div className="text-[11px] text-fg-faint mt-0.5">{formatTokens(total.total_cached_tokens)} cached</div>
-          )}
-        </KpiCard>
-        <KpiCard title="Output Tokens">
-          <div className="text-2xl font-bold text-fg">{formatTokens(total.total_output_tokens)}</div>
-          {Number(total.total_reasoning_tokens) > 0 && (
             <div className="text-[11px] text-fg-faint mt-0.5">
-              {formatTokens(total.total_reasoning_tokens)} reasoning
+              {t('usage.cached', { count: formatTokens(total.total_cached_tokens) })}
             </div>
           )}
         </KpiCard>
-        <KpiCard title="Estimated Cost">
-          <div className="text-2xl font-bold text-fg">${totalCost.usd.toFixed(4)}</div>
-          <div className="text-[11px] text-fg-faint mt-0.5">¥{totalCost.cny.toFixed(4)}</div>
+        <KpiCard title={t('usage.outputTokens')}>
+          <div className="text-2xl font-bold text-fg">{formatTokens(total.total_output_tokens)}</div>
+          {Number(total.total_reasoning_tokens) > 0 && (
+            <div className="text-[11px] text-fg-faint mt-0.5">
+              {t('usage.reasoning', { count: formatTokens(total.total_reasoning_tokens) })}
+            </div>
+          )}
         </KpiCard>
       </div>
 
       {/* Distribution + detail */}
       <Card className="p-4">
-        <div className="text-xs font-semibold text-fg-muted mb-3">Caller Distribution</div>
+        <div className="text-xs font-semibold text-fg-muted mb-3">{t('usage.callerDistribution')}</div>
         <DistributionBar
           items={by_caller.map((c) => ({
-            label: c.caller || '(unknown)',
+            label: c.caller || t('usage.unknown'),
             value: Number(c.calls),
             color: CALLER_COLORS[c.caller] || 'bg-fg-faint',
           }))}
         />
         {by_caller.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-edge">
-            <table className="w-full text-[11px]">
+          <div className="mt-4 pt-4 border-t border-edge overflow-x-auto">
+            <table className="w-full min-w-[480px] text-[11px]">
               <thead>
                 <tr className="text-fg-faint">
-                  <th className="text-left font-medium pb-2">Caller</th>
-                  <th className="text-right font-medium pb-2">Calls</th>
-                  <th className="text-right font-medium pb-2">Input</th>
-                  <th className="text-right font-medium pb-2">Output</th>
-                  <th className="text-right font-medium pb-2">Est. Cost</th>
+                  <th className="text-left font-medium pb-2">{t('usage.caller')}</th>
+                  <th className="text-right font-medium pb-2">{t('usage.calls')}</th>
+                  <th className="text-right font-medium pb-2">{t('usage.input')}</th>
+                  <th className="text-right font-medium pb-2">{t('usage.output')}</th>
                 </tr>
               </thead>
               <tbody>
-                {by_caller.map((c) => {
-                  const cost = estimateCost({
-                    inputTokens: Number(c.input_tokens),
-                    outputTokens: Number(c.output_tokens),
-                  });
-                  return (
-                    <tr key={c.caller} className="text-fg-secondary border-b border-edge last:border-0">
-                      <td className="py-1.5">
-                        <Tag tone={CALLER_TONE[c.caller] ?? 'neutral'}>{c.caller || '(unknown)'}</Tag>
-                      </td>
-                      <td className="py-1.5 text-right">{Number(c.calls).toLocaleString()}</td>
-                      <td className="py-1.5 text-right">{formatTokens(c.input_tokens)}</td>
-                      <td className="py-1.5 text-right">{formatTokens(c.output_tokens)}</td>
-                      <td className="py-1.5 text-right font-mono">${cost.usd.toFixed(3)}</td>
-                    </tr>
-                  );
-                })}
+                {by_caller.map((c) => (
+                  <tr key={c.caller} className="text-fg-secondary border-b border-edge last:border-0">
+                    <td className="py-1.5">
+                      <Tag tone={CALLER_TONE[c.caller] ?? 'neutral'}>{c.caller || t('usage.unknown')}</Tag>
+                    </td>
+                    <td className="py-1.5 text-right">{Number(c.calls).toLocaleString()}</td>
+                    <td className="py-1.5 text-right">{formatTokens(c.input_tokens)}</td>
+                    <td className="py-1.5 text-right">{formatTokens(c.output_tokens)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -323,6 +285,7 @@ function ByCallersTab({ summary }: { summary: UsageSummary }) {
 // ─── Combined Component (LLM Usage Dashboard) ────────────
 
 export function UsagePanelWithUsers() {
+  const t = useT();
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('');
@@ -340,53 +303,56 @@ export function UsagePanelWithUsers() {
   }, [period]);
 
   return (
-    <div className="space-y-6">
-      {/* Toolbar: Period Selector + Sub-tabs */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1 border-b border-edge">
-          {SUB_TABS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.key;
-            return (
+    <ModulePage
+      moduleId="admin.usage"
+      layout="list"
+      tabs={
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex max-w-full gap-1 overflow-x-auto scrollbar-hide border-b border-edge">
+            {SUB_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex flex-shrink-0 items-center gap-1.5 px-4 py-2 text-sm border-b-2 transition-colors ${
+                    isActive
+                      ? 'border-primary-500 text-primary-fg-strong font-medium'
+                      : 'border-transparent text-fg-muted hover:text-fg-secondary hover:border-edge-strong'
+                  }`}
+                >
+                  <Icon size={14} className={isActive ? 'text-primary-fg' : 'text-fg-faint'} />
+                  {t(tab.labelKey)}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex max-w-full gap-1 overflow-x-auto scrollbar-hide bg-surface-muted p-0.5 rounded-lg">
+            {PERIODS.map((p) => (
               <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-1.5 px-4 py-2 text-sm border-b-2 transition-colors ${
-                  isActive
-                    ? 'border-primary-500 text-primary-fg-strong font-medium'
-                    : 'border-transparent text-fg-muted hover:text-fg-secondary hover:border-edge-strong'
+                key={p.value}
+                onClick={() => setPeriod(p.value)}
+                className={`flex-shrink-0 px-3 py-1 text-xs rounded-md transition-colors ${
+                  period === p.value
+                    ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
+                    : 'text-fg-muted hover:text-fg-secondary'
                 }`}
               >
-                <Icon size={14} className={isActive ? 'text-primary-fg' : 'text-fg-faint'} />
-                {tab.label}
+                {t(p.labelKey)}
               </button>
-            );
-          })}
+            ))}
+          </div>
         </div>
-        <div className="flex gap-1 bg-surface-muted p-0.5 rounded-lg">
-          {PERIODS.map((p) => (
-            <button
-              key={p.value}
-              onClick={() => setPeriod(p.value)}
-              className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                period === p.value
-                  ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
-                  : 'text-fg-muted hover:text-fg-secondary'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
+      }
+    >
       {/* Tab content */}
       {loading && !summary ? (
         <div className="flex justify-center py-20">
           <Spinner className="text-primary-500" />
         </div>
       ) : !summary && activeTab !== 'users' ? (
-        <div className="text-center py-20 text-fg-faint">Failed to load usage data</div>
+        <div className="text-center py-20 text-fg-faint">{t('common.loadFailed')}</div>
       ) : (
         <>
           {activeTab === 'users' && <ByUsersTab period={period} />}
@@ -394,6 +360,6 @@ export function UsagePanelWithUsers() {
           {activeTab === 'callers' && summary && <ByCallersTab summary={summary} />}
         </>
       )}
-    </div>
+    </ModulePage>
   );
 }

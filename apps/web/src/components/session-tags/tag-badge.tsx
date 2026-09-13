@@ -9,6 +9,7 @@
 
 import React from 'react';
 import { X } from '../../lib/icons';
+import { useT } from '../../lib/i18n';
 
 interface TagBadgeProps {
   name: string;
@@ -25,6 +26,7 @@ const SIZE_MAP = {
 };
 
 export function TagBadge({ name, color, onRemove, onClick, size = 'sm' }: TagBadgeProps) {
+  const t = useT();
   return (
     <span
       className={`inline-flex items-center rounded-full font-medium ${SIZE_MAP[size]} transition-colors`}
@@ -49,7 +51,7 @@ export function TagBadge({ name, color, onRemove, onClick, size = 'sm' }: TagBad
             onRemove();
           }}
           className="flex-shrink-0 rounded-full hover:opacity-70 transition-opacity"
-          title="Remove tag"
+          title={t('sessionTags.remove')}
         >
           <X size={size === 'xs' ? 8 : 10} />
         </button>

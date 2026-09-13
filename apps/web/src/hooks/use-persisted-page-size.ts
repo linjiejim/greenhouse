@@ -5,7 +5,7 @@ const STORAGE_PREFIX = 'pageSize:';
 /**
  * Page-size state persisted to localStorage, for the shared <Pagination> control.
  *
- * Each list passes a stable `key` (e.g. 'dashboard.inquiries') so a user's chosen
+ * Each list passes a stable `key` (e.g. 'projects.list') so a user's chosen
  * rows-per-page (20/50/100) survives reloads and navigation. Returns the tuple
  * `[pageSize, setPageSize]` — call the setter from <Pagination onPageSizeChange>.
  *

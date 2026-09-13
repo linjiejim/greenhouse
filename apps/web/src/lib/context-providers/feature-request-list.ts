@@ -9,8 +9,6 @@ const provider: ContextProviderDescriptor<'feature-request-list'> = {
 
   emptyMessage: () => 'Ask me to analyze feature requests, identify trends, or prioritize items',
 
-  placeholder: () => 'Analyze requests, find patterns, prioritize...',
-
   quickActions: () => [
     {
       icon: BarChart3,
@@ -30,9 +28,9 @@ const provider: ContextProviderDescriptor<'feature-request-list'> = {
   ],
 
   contextHint: (ctx) =>
-    `Current Context: Feature Requests. The user is managing feature requests submitted by internal users.` +
+    `Current Context: Feature Requests. The visible page lists feature requests submitted by internal users.` +
     (ctx.totalPending ? ` Pending requests: ${ctx.totalPending}.` : '') +
-    ' You can help analyze, prioritize, and categorize feature requests. Use the feature_request tool to list and update requests.',
+    ' The page includes prioritization and categorization fields.',
 };
 
 registerContextProvider(provider);

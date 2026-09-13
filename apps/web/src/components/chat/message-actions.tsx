@@ -9,8 +9,10 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ConfirmDialog } from '../ui';
-import { Copy, Globe, FileText, ClipboardList, RotateCcw } from '../../lib/icons';
+import { Copy, Globe, FileText, ClipboardList, RotateCcw, Maximize2, GitFork, MoreHorizontal } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
+import { ExportPdfButton } from '../pdf-export';
+import { useHoverFlyout } from '../../hooks/use-hover-flyout';
 
 interface MessageActionsProps {
   /** Raw markdown content of the assistant message */
@@ -23,28 +25,51 @@ interface MessageActionsProps {
   onRegenerate?: () => void;
   /** Whether the chat is currently streaming (disable actions) */
   isStreaming?: boolean;
+  /** Open the message in the fullscreen reader. */
+  onFullscreen?: () => void;
+  /** Fork the conversation through this Agent reply. */
+  onFork?: () => void;
+  /** Disable repeat clicks while a fork request is running. */
+  isForking?: boolean;
 }
 
 type CopyFormat = 'markdown' | 'html' | 'text';
 
-export function MessageActions({ content, renderedHtml, onTranslate, onRegenerate, isStreaming }: MessageActionsProps) {
+export function MessageActions({
+  content,
+  renderedHtml,
+  onTranslate,
+  onRegenerate,
+  isStreaming,
+  onFullscreen,
+  onFork,
+  isForking = false,
+}: MessageActionsProps) {
   const t = useT();
-  const [showMenu, setShowMenu] = useState(false);
+  const [showCopyMenu, setShowCopyMenu] = useState(false);
+  const {
+    open: showMoreMenu,
+    setOpen: setShowMoreMenu,
+    openNow: openMoreMenu,
+    closeNow: closeMoreMenu,
+    closeSoon: closeMoreMenuSoon,
+  } = useHoverFlyout();
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const actionsRef = useRef<HTMLDivElement>(null);
 
-  // Close menu on outside click
+  // Close either menu on an outside click.
   useEffect(() => {
-    if (!showMenu) return;
+    if (!showCopyMenu && !showMoreMenu) return;
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowMenu(false);
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) {
+        setShowCopyMenu(false);
+        setShowMoreMenu(false);
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [showMenu]);
+  }, [setShowMoreMenu, showCopyMenu, showMoreMenu]);
 
   // Clear copy feedback after 2s
   useEffect(() => {
@@ -86,15 +111,16 @@ export function MessageActions({ content, renderedHtml, onTranslate, onRegenerat
       } catch (_err) {
         setCopyFeedback('Failed');
       }
-      setShowMenu(false);
+      setShowCopyMenu(false);
     },
     [content, renderedHtml],
   );
 
   const handleRegenerate = useCallback(() => {
     setShowRegenConfirm(true);
-    setShowMenu(false);
-  }, []);
+    setShowCopyMenu(false);
+    setShowMoreMenu(false);
+  }, [setShowMoreMenu]);
 
   const confirmRegenerate = useCallback(() => {
     setShowRegenConfirm(false);
@@ -102,79 +128,155 @@ export function MessageActions({ content, renderedHtml, onTranslate, onRegenerat
   }, [onRegenerate]);
 
   return (
-    <div className="relative inline-flex items-center gap-1">
+    <div ref={actionsRef} className="relative inline-flex items-center gap-1">
       {/* Copy feedback toast */}
       {copyFeedback && <span className="text-[10px] text-success font-medium animate-fade-in">{copyFeedback}</span>}
 
-      {/* Quick action buttons (always visible on hover) */}
-      <div className="flex items-center gap-0.5 opacity-0 group-hover/actions:opacity-100 transition-opacity">
+      {/* Compact icon actions share one stable right-aligned row. */}
+      <div className="flex items-center gap-0.5">
+        <ExportPdfButton markdown={content} isStreaming={isStreaming} iconOnly />
+
         {/* Copy dropdown trigger */}
         <button
-          onClick={() => setShowMenu(!showMenu)}
-          className="p-1 text-fg-faint hover:text-fg-secondary rounded hover:bg-surface-muted transition-colors"
-          title="Copy"
+          onClick={() => {
+            setShowCopyMenu((open) => !open);
+            setShowMoreMenu(false);
+          }}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary"
+          title={t('common.copy')}
+          aria-label={t('common.copy')}
         >
           <Copy size={14} />
         </button>
-
-        {/* Translate buttons — sends as a new chat turn */}
-        {onTranslate && (
-          <>
-            <button
-              onClick={() => onTranslate('en')}
-              disabled={isStreaming}
-              className="px-1.5 py-0.5 text-[10px] text-fg-faint hover:text-info rounded hover:bg-info-subtle transition-colors disabled:opacity-40"
-              title="Translate to English"
-            >
-              EN
-            </button>
-            <button
-              onClick={() => onTranslate('zh')}
-              disabled={isStreaming}
-              className="px-1.5 py-0.5 text-[10px] text-fg-faint hover:text-info rounded hover:bg-info-subtle transition-colors disabled:opacity-40"
-              title={t('messageActions.translateToChinese')}
-            >
-              {t('messageActions.zh')}
-            </button>
-          </>
-        )}
 
         {/* Regenerate */}
         {onRegenerate && (
           <button
             onClick={handleRegenerate}
             disabled={isStreaming}
-            className="p-1 text-fg-faint hover:text-warning rounded hover:bg-warning-subtle transition-colors disabled:opacity-40"
-            title="Regenerate response"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-warning-subtle hover:text-warning disabled:opacity-40"
+            title={t('chat.regenerateResponse')}
+            aria-label={t('chat.regenerateResponse')}
           >
             <RotateCcw size={14} />
           </button>
         )}
+
+        {(onFullscreen || onFork || onTranslate) && (
+          <div
+            className="relative inline-flex"
+            onMouseEnter={openMoreMenu}
+            onMouseLeave={closeMoreMenuSoon}
+            onFocusCapture={openMoreMenu}
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) closeMoreMenu();
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.stopPropagation();
+                closeMoreMenu();
+              }
+            }}
+          >
+            <button
+              onClick={() => {
+                setShowMoreMenu(true);
+                setShowCopyMenu(false);
+              }}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary"
+              title={t('common.more')}
+              aria-label={t('common.more')}
+              aria-haspopup="menu"
+              aria-expanded={showMoreMenu}
+            >
+              <MoreHorizontal size={14} />
+            </button>
+
+            {showMoreMenu && (
+              <div role="menu" className="absolute bottom-full right-0 z-20 min-w-[180px] pb-1 animate-fade-in">
+                <div className="rounded-lg border border-edge bg-surface-raised py-1 shadow-lg">
+                  {onFullscreen && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        onFullscreen();
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-fg-secondary hover:bg-surface-sunken"
+                    >
+                      <Maximize2 size={13} className="text-fg-faint" />
+                      {t('chat.fullscreen')}
+                    </button>
+                  )}
+                  {onFork && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        onFork();
+                      }}
+                      disabled={isStreaming || isForking}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-fg-secondary hover:bg-surface-sunken disabled:opacity-40"
+                    >
+                      <GitFork size={13} className="text-fg-faint" />
+                      {t('chat.forkFromReply')}
+                    </button>
+                  )}
+                  {onTranslate && (
+                    <>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setShowMoreMenu(false);
+                          onTranslate('en');
+                        }}
+                        disabled={isStreaming}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-fg-secondary hover:bg-surface-sunken disabled:opacity-40"
+                      >
+                        <Globe size={13} className="text-fg-faint" />
+                        {t('chat.translateToEnglish')}
+                      </button>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setShowMoreMenu(false);
+                          onTranslate('zh');
+                        }}
+                        disabled={isStreaming}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-fg-secondary hover:bg-surface-sunken disabled:opacity-40"
+                      >
+                        <Globe size={13} className="text-fg-faint" />
+                        {t('messageActions.translateToChinese')}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Copy format dropdown */}
-      {showMenu && (
-        <div
-          ref={menuRef}
-          className="absolute bottom-full right-0 mb-1 bg-surface-raised border border-edge rounded-lg shadow-lg py-1 z-10 min-w-[140px] animate-fade-in"
-        >
+      {showCopyMenu && (
+        <div className="absolute bottom-full right-0 mb-1 bg-surface-raised border border-edge rounded-lg shadow-lg py-1 z-10 min-w-[140px] animate-fade-in">
           <button
             onClick={() => handleCopy('markdown')}
             className="w-full px-3 py-1.5 text-left text-xs text-fg-secondary hover:bg-surface-sunken flex items-center gap-2"
           >
-            <ClipboardList size={12} className="text-fg-faint" /> Copy as MD
+            <ClipboardList size={12} className="text-fg-faint" /> {t('messageActions.copyAsMd')}
           </button>
           <button
             onClick={() => handleCopy('html')}
             className="w-full px-3 py-1.5 text-left text-xs text-fg-secondary hover:bg-surface-sunken flex items-center gap-2"
           >
-            <Globe size={12} className="text-fg-faint" /> Copy as HTML
+            <Globe size={12} className="text-fg-faint" /> {t('messageActions.copyAsHtml')}
           </button>
           <button
             onClick={() => handleCopy('text')}
             className="w-full px-3 py-1.5 text-left text-xs text-fg-secondary hover:bg-surface-sunken flex items-center gap-2"
           >
-            <FileText size={12} className="text-fg-faint" /> Copy as Text
+            <FileText size={12} className="text-fg-faint" /> {t('messageActions.copyAsText')}
           </button>
         </div>
       )}
@@ -184,9 +286,9 @@ export function MessageActions({ content, renderedHtml, onTranslate, onRegenerat
         open={showRegenConfirm}
         onClose={() => setShowRegenConfirm(false)}
         onConfirm={confirmRegenerate}
-        title="Regenerate this response?"
-        description="The current response will be replaced with a new one."
-        confirmLabel="Regenerate"
+        title={t('chat.regenerateConfirm')}
+        description={t('chat.regenerateWarning')}
+        confirmLabel={t('chat.regenerate')}
       />
     </div>
   );

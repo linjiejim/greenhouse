@@ -3,19 +3,6 @@
  */
 
 const PROFILE_PREFIX = 'greenhouse-last-profile';
-const GLOBAL_AGENT_PROFILE_PREFIX = 'greenhouse-global-agent-profile';
-
-// One-time cleanup: remove deprecated tool-selection keys (ToolSelector removed)
-try {
-  const keysToRemove: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith('greenhouse-active-tools')) keysToRemove.push(key);
-  }
-  keysToRemove.forEach((k) => localStorage.removeItem(k));
-} catch {
-  /* ignore in SSR / restricted contexts */
-}
 
 function profileKey(userId?: string): string {
   return userId ? `${PROFILE_PREFIX}-${userId}` : PROFILE_PREFIX;
@@ -32,31 +19,38 @@ export function getLastProfile(userId?: string): string | null {
 
 /** Save the user's last-selected profile ID. */
 export function setLastProfile(profileId: string, userId?: string): void {
-  localStorage.setItem(profileKey(userId), profileId);
-}
-
-// ─── Global Agent panel profile (independent of the Chat page) ─────────────
-//
-// The floating Global Agent picks its own profile, persisted separately from the
-// Chat page so the two never clobber each other's last choice.
-
-function globalAgentProfileKey(userId?: string): string {
-  return userId ? `${GLOBAL_AGENT_PROFILE_PREFIX}-${userId}` : GLOBAL_AGENT_PROFILE_PREFIX;
-}
-
-/** Get the user's last Global Agent profile ID. Returns null if never set. */
-export function getGlobalAgentProfile(userId?: string): string | null {
   try {
-    return localStorage.getItem(globalAgentProfileKey(userId));
+    localStorage.setItem(profileKey(userId), profileId);
+  } catch {
+    /* ignore in restricted contexts */
+  }
+}
+
+// ─── Model preference ────────────────────────────────────
+
+const MODEL_KEY_PREFIX = 'greenhouse_last_model';
+
+function modelKey(userId?: string): string {
+  return userId ? `${MODEL_KEY_PREFIX}:${userId}` : MODEL_KEY_PREFIX;
+}
+
+/**
+ * The model the user last picked. Deliberately per-user and global rather than
+ * per-session: the model is a per-turn choice, so "what I usually run" is the
+ * useful memory — reopening an old conversation preselects your habit, not
+ * whatever that conversation happened to start on.
+ */
+export function getLastModel(userId?: string): string | null {
+  try {
+    return localStorage.getItem(modelKey(userId));
   } catch {
     return null;
   }
 }
 
-/** Save the user's last Global Agent profile ID. */
-export function setGlobalAgentProfile(profileId: string, userId?: string): void {
+export function setLastModel(modelId: string, userId?: string): void {
   try {
-    localStorage.setItem(globalAgentProfileKey(userId), profileId);
+    localStorage.setItem(modelKey(userId), modelId);
   } catch {
     /* ignore in restricted contexts */
   }

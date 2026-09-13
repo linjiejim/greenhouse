@@ -3,8 +3,10 @@
  */
 
 export { LoginScreen } from './login-screen';
-export { HealthIndicator, UserMenuDropdown, SidebarAccountMenu, MyProfilePanel, roleBadgeStyles } from './user-menu';
-export { PreferencesDialog } from './preferences-dialog';
-export { AppSidebar } from './app-sidebar';
+export { SidebarAccountMenu } from './user-menu';
+export { AppSidebar, SidebarBackButton } from './app-sidebar';
 export { TopBar } from './top-bar';
+export { ExecutionCenterLink } from './execution-center-link';
+export { SidebarToolbar } from './sidebar-toolbar';
+export type { SidebarToolbarAction } from './sidebar-toolbar';
 export { ModulePageShell, MobileModuleTabs, CachedModule } from './module-page-shell';

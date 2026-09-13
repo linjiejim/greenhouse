@@ -3,8 +3,8 @@
  *
  * Implementations live in ./api/<domain>.ts as hc (Hono RPC) typed calls over
  * the @greenhouse/contract AppType — response shapes are checked against the
- * server's actual implementation at compile time. Streaming (chat, sync apply)
- * and FormData (upload) endpoints stay on raw authFetch; see ./api/client.ts
+ * server's actual implementation at compile time. Streaming (chat) and
+ * FormData (upload) endpoints stay on raw authFetch; see ./api/client.ts
  * for the conventions.
  */
 
@@ -13,7 +13,6 @@ import type { StreamingEvent } from './stream-events';
 // Re-export all API types for backward compatibility
 // (so existing `import { Session } from './api'` still works)
 export type {
-  ProfileCapability,
   Profile,
   ProfileUsage,
   ProfileDetail,
@@ -21,6 +20,8 @@ export type {
   Session,
   Message,
   SessionUsage,
+  MessageEvalResult,
+  SessionEvalSummary,
   UploadResult,
   FeatureRequest,
   UserUsageSummary,
@@ -30,12 +31,11 @@ export type {
   ShareInfo,
   ScheduledTask,
   ScheduledTaskInput,
-  TaskRunSummary,
   SessionTag,
   SessionGroup,
 } from '@greenhouse/types/api';
 
-export { estimateCost, formatTokens, formatDuration } from '@greenhouse/types/api';
+export { formatTokens, formatDuration } from '@greenhouse/types/api';
 
 export type StreamEvent = StreamingEvent;
 
@@ -47,9 +47,12 @@ export * from './api/shares';
 export * from './api/admin';
 export * from './api/tools';
 export * from './api/tasks';
+export * from './api/workflows';
+export * from './api/notifications';
+export * from './api/cost-value';
 export * from './api/prompts';
-export * from './api/settings';
-export * from './api/chat'; // streaming + desktop surface — raw authFetch
+export * from './api/email';
+export * from './api/chat'; // streaming + Client Action result surface — raw authFetch
 export * from './api/upload'; // FormData — raw authFetch
 
 // Session tag API functions (hc-typed)

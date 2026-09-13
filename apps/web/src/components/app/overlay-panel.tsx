@@ -10,8 +10,11 @@
  */
 
 import React from 'react';
+import { useOverlayBehavior } from '../../hooks/use-overlay-behavior';
 
 interface OverlayPanelProps {
+  /** Whether modal behavior (Escape + body scroll lock) is active. Default true. */
+  active?: boolean;
   /** Close callback (backdrop click + optional close button) */
   onClose: () => void;
   children: React.ReactNode;
@@ -29,16 +32,21 @@ interface OverlayPanelProps {
   panelRef?: React.Ref<HTMLDivElement>;
   /** Extra content rendered inside the portal but outside the panel (e.g. resize handles) */
   extraContent?: React.ReactNode;
+  /** Accessible name for the dialog surface */
+  ariaLabel?: string;
+  /** Optional motion classes for the backdrop (e.g. presence-driven opacity). */
+  backdropClassName?: string;
   /**
-   * Play the exit animation instead of the entrance (side variant only). The
-   * parent keeps this mounted while true, then unmounts on `onExited`.
+   * Optional presence animation for a top-right anchored side panel.
+   * The parent must keep the panel mounted through the exit phase.
    */
-  closing?: boolean;
-  /** Fired when the exit animation finishes — the parent should unmount now. */
+  motionState?: 'enter' | 'exit';
+  /** Fired after the panel's own exit animation completes. */
   onExited?: () => void;
 }
 
 export function OverlayPanel({
+  active = true,
   onClose,
   children,
   variant = 'side',
@@ -48,19 +56,32 @@ export function OverlayPanel({
   zPanel = 50,
   panelRef,
   extraContent,
-  closing = false,
+  ariaLabel = 'Panel',
+  backdropClassName = '',
+  motionState,
   onExited,
 }: OverlayPanelProps) {
+  useOverlayBehavior(active, onClose);
+  // `inert` is supported by target browsers, but the current React DOM types
+  // in this repo do not declare it yet. A spread preserves the boolean runtime
+  // value without widening the project's global JSX types.
+  const inactiveAttributes = active ? {} : ({ inert: true } as const);
+
   if (variant === 'bottom') {
     return (
-      <div className="fixed inset-0 flex flex-col justify-end" style={{ zIndex: zPanel }}>
-        <div className="absolute inset-0 bg-black/20 animate-backdrop-fade" onClick={onClose} />
+      <div className="mobile-visual-viewport fixed inset-0 flex flex-col justify-end" style={{ zIndex: zPanel }}>
+        <div className={`absolute inset-0 bg-black/20 ${backdropClassName}`} onClick={onClose} />
         <div
           ref={panelRef}
-          className={
+          role="dialog"
+          aria-modal={active || undefined}
+          aria-hidden={!active}
+          {...inactiveAttributes}
+          aria-label={ariaLabel}
+          className={`safe-area-panel ${
             className ||
-            'relative bg-surface-raised rounded-t-2xl shadow-xl max-h-[70vh] flex flex-col animate-slide-up'
-          }
+            'relative bg-surface-raised rounded-t-2xl shadow-xl max-h-[min(70dvh,42rem)] flex flex-col animate-slide-up'
+          }`}
           style={style}
         >
           {children}
@@ -70,27 +91,42 @@ export function OverlayPanel({
   }
 
   // variant === 'side'
+  const backdropMotionClass =
+    motionState === 'enter'
+      ? 'animate-backdrop-fade'
+      : motionState === 'exit'
+        ? 'animate-backdrop-fade-out pointer-events-none'
+        : '';
+  const panelMotionClass =
+    motionState === 'enter'
+      ? 'animate-panel-enter'
+      : motionState === 'exit'
+        ? 'animate-panel-exit pointer-events-none'
+        : '';
+
   return (
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 bg-black/20 ${closing ? 'animate-backdrop-fade-out' : 'animate-backdrop-fade'}`}
+        className={`fixed inset-0 bg-black/20 ${backdropMotionClass} ${backdropClassName}`}
         style={{ zIndex: zBackdrop }}
         onClick={onClose}
       />
-      {/* Panel — opens from the top-right anchor toward bottom-left (desktop) / slides up (mobile);
-          close reverses it. While `closing`, the parent keeps us mounted until onAnimationEnd. */}
+      {/* Panel */}
       <div
         ref={panelRef}
-        className={`${
+        role="dialog"
+        aria-modal={active || undefined}
+        aria-hidden={!active}
+        {...inactiveAttributes}
+        aria-label={ariaLabel}
+        className={`safe-area-panel mobile-visual-viewport ${
           className ||
           'fixed inset-0 md:inset-auto md:bottom-4 md:right-4 bg-surface-raised md:rounded-2xl shadow-2xl md:border md:border-edge flex flex-col overflow-hidden'
-        } ${closing ? 'animate-panel-exit' : 'animate-panel-enter'}`}
+        } ${panelMotionClass}`}
         style={{ zIndex: zPanel, ...style }}
-        onAnimationEnd={(e) => {
-          // Only the panel's OWN exit animation finalizes the unmount — ignore
-          // bubbled animationend from children (message bubbles, spinners, …).
-          if (closing && e.target === e.currentTarget) onExited?.();
+        onAnimationEnd={(event) => {
+          if (motionState === 'exit' && event.target === event.currentTarget) onExited?.();
         }}
       >
         {extraContent}

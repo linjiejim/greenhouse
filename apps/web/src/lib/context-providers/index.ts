@@ -6,7 +6,9 @@
  */
 
 import './chat';
-import './history';
+import './eval';
 import './feature-request-list';
 import './project-list';
 import './project-detail';
+import './tables';
+import './execution-center';

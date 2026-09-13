@@ -12,6 +12,8 @@ import { Button, Badge, Tag, Input, Toggle, StatusDot } from '../../components/u
 import { Sparkles } from '../../lib/icons';
 import { useI18n } from '../../lib/i18n';
 
+const TONES = ['neutral', 'primary', 'success', 'warning', 'danger', 'info'] as const;
+
 function Row({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="px-5 py-4 border-b border-edge last:border-b-0">
@@ -57,12 +59,11 @@ export function BrandingPreview() {
       {/* Semantic tones */}
       <Row title={t('brandingStudio.pvSemantic')}>
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
-          <Tag tone="neutral">neutral</Tag>
-          <Tag tone="primary">primary</Tag>
-          <Tag tone="success">success</Tag>
-          <Tag tone="warning">warning</Tag>
-          <Tag tone="danger">danger</Tag>
-          <Tag tone="info">info</Tag>
+          {TONES.map((tone) => (
+            <Tag key={tone} tone={tone}>
+              {tone}
+            </Tag>
+          ))}
         </div>
         <div className="flex flex-wrap items-center gap-4 text-sm text-fg-secondary">
           <span className="flex items-center gap-1.5">
@@ -87,11 +88,11 @@ export function BrandingPreview() {
             <p>{t('brandingStudio.sampleAssistantMsg')}</p>
             <ul>
               <li>
-                <strong>Platform</strong> — {t('brandingStudio.sampleBullet1')}
+                <strong>{t('brandingStudio.sampleBullet1Label')}</strong> — {t('brandingStudio.sampleBullet1')}
               </li>
               <li>
                 <strong>API</strong> — {t('brandingStudio.sampleBullet2')}{' '}
-                <a href="#/settings/branding" onClick={(e) => e.preventDefault()}>
+                <a href="#/administration/branding" onClick={(e) => e.preventDefault()}>
                   {t('brandingStudio.sampleLink')}
                 </a>
               </li>

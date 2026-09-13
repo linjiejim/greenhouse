@@ -1,29 +1,38 @@
 /**
  * usePageActions — declare the agent's available actions for the current page.
  *
- * Symmetric to usePageContext (which declares "what this screen IS"); this declares
- * "what this screen CAN DO". Registers on mount / deps change, unregisters on unmount,
+ * Declares what the agent can do on this screen. Registers on mount / deps change,
+ * unregisters on unmount,
  * so the agent only ever sees actions for the screen the user is actually on.
  *
  * Usage:
  *   usePageActions([
  *     {
- *       name: 'navigate',
- *       description: 'Open a page or record for the user',
+ *       name: 'crm_navigate',
+ *       description: 'Open a CRM page or record for the user',
  *       parameters: { type: 'object', properties: { module: { type: 'string' } } },
- *       execute: ({ module }) => { window.location.hash = `#/${module}`; },
+ *       execute: ({ module }) => { window.location.hash = `#/crm/${module}`; },
  *     },
- *   ], [itemId]);
+ *   ], [dealId]);
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { registerClientAction } from '../lib/client-actions/registry';
 import type { RegisteredClientAction } from '../lib/client-actions/registry';
+import { pageActionScopeId } from '../lib/page-action-scope';
 
 export function usePageActions(actions: RegisteredClientAction[], deps: unknown[] = []): void {
+  const [scopeId, setScopeId] = useState(() => pageActionScopeId());
+
   useEffect(() => {
-    const unregisters = actions.map(registerClientAction);
+    const update = () => setScopeId(pageActionScopeId());
+    window.addEventListener('hashchange', update);
+    return () => window.removeEventListener('hashchange', update);
+  }, []);
+
+  useEffect(() => {
+    const unregisters = actions.map((action) => registerClientAction(scopeId, action));
     return () => unregisters.forEach((u) => u());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [scopeId, ...deps]);
 }

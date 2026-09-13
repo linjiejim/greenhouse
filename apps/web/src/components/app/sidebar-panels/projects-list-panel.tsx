@@ -6,7 +6,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Spinner, SearchInput } from '../../ui';
 import { authFetch } from '../../../lib/auth';
-import { Lock, Plus } from '../../../lib/icons';
+import { Lock } from '../../../lib/icons';
+import { useProjectRefreshStore } from '../../../stores';
+import { useT } from '../../../lib/i18n';
 
 interface ProjectSummary {
   id: number;
@@ -29,9 +31,11 @@ interface ProjectsListPanelProps {
 }
 
 export function ProjectsListPanel({ collapsed }: ProjectsListPanelProps) {
+  const t = useT();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const projectsRevision = useProjectRefreshStore((state) => state.revision);
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
@@ -41,7 +45,7 @@ export function ProjectsListPanel({ collapsed }: ProjectsListPanelProps) {
         const data = await res.json();
         setProjects(data.projects || data || []);
       }
-    } catch (err) {
+    } catch (_err) {
       /* ignore */
     }
     setLoading(false);
@@ -49,14 +53,7 @@ export function ProjectsListPanel({ collapsed }: ProjectsListPanelProps) {
 
   useEffect(() => {
     loadProjects();
-  }, [loadProjects]);
-
-  // Reload when a project is created/changed elsewhere (e.g. the create dialog on the Projects page).
-  useEffect(() => {
-    const handler = () => loadProjects();
-    window.addEventListener('projects:changed', handler);
-    return () => window.removeEventListener('projects:changed', handler);
-  }, [loadProjects]);
+  }, [loadProjects, projectsRevision]);
 
   if (collapsed) return null;
 
@@ -66,23 +63,19 @@ export function ProjectsListPanel({ collapsed }: ProjectsListPanelProps) {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="px-3 py-2 flex-shrink-0 flex items-center justify-between">
-        <span className="text-xs font-medium text-fg-muted uppercase tracking-wide">Projects</span>
-        <button
-          onClick={() => window.dispatchEvent(new CustomEvent('projects:create'))}
-          className="h-5 w-5 flex items-center justify-center rounded text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
-          title="New project"
-          aria-label="New project"
-          data-testid="projects-new"
-        >
-          <Plus size={14} />
-        </button>
+      <div className="px-3 py-2 flex-shrink-0">
+        <span className="text-xs font-medium text-fg-muted uppercase tracking-wide">{t('projects.title')}</span>
       </div>
 
       {/* Search */}
       <div className="px-3 pb-2 flex-shrink-0">
         <div className="relative">
-          <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search projects..." size="sm" />
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder={t('projects.searchProjects')}
+            size="sm"
+          />
         </div>
       </div>
 
@@ -96,7 +89,7 @@ export function ProjectsListPanel({ collapsed }: ProjectsListPanelProps) {
 
         {!loading && filtered.length === 0 && (
           <div className="px-3 py-6 text-center text-xs text-fg-faint">
-            {searchQuery ? 'No matches' : 'No projects'}
+            {searchQuery ? t('common.noRecordsFound') : t('projects.noProjects')}
           </div>
         )}
 
@@ -112,7 +105,9 @@ export function ProjectsListPanel({ collapsed }: ProjectsListPanelProps) {
             </span>
             {project.visibility === 'private' && <Lock size={10} className="flex-shrink-0 text-fg-faint" />}
             {project.progress > 0 && (
-              <span className="flex-shrink-0 text-[10px] text-fg-faint tabular-nums">{project.progress}%</span>
+              <span className="sidebar-secondary-meta flex-shrink-0 text-[10px] text-fg-faint tabular-nums">
+                {project.progress}%
+              </span>
             )}
           </a>
         ))}

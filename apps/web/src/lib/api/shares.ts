@@ -33,16 +33,6 @@ export async function fetchShares(opts?: { limit?: number; offset?: number }): P
   }
 }
 
-export async function fetchShareCount(): Promise<number> {
-  try {
-    const res = await rpc.api.shares.count.$get();
-    if (!res.ok) return 0;
-    return (await res.json()).count ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
 export async function markShareRead(id: number): Promise<void> {
   const res = await rpc.api.shares[':id'].read.$patch({ param: { id: String(id) } });
   if (!res.ok) throw new Error(`markShareRead failed: ${res.status}`);

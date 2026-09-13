@@ -1,16 +1,18 @@
 /**
  * GroupsPanel — manage groups ("小组") used as knowledge-sharing targets.
  *
- * Rebuilt on @greenhouse/crud: the list + create dialog + delete come from one
- * defineCrud schema; the per-group member editor rides the rowExpand slot (the
- * framework's block-level escape hatch). Data source adapts the existing groups
- * client — no server change.
+ * Rebuilt on @greenhouse/crud: the list + delete-confirm come from one defineCrud
+ * schema; the intro card + inline create row live in the toolbar slot and the
+ * per-group member editor rides the rowExpand slot (the framework's block-level
+ * escape hatches). Data source adapts the existing groups client — no server
+ * change. “Member” means membership in a group, not an account role; account
+ * roles remain team/super. Owner (creator) and super manage their groups.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { defineCrud, CrudPage, type CrudDataSource } from '@greenhouse/crud';
-import { Input, Spinner, toast } from '../../components/ui';
-import { Users, UserPlus, X } from '../../lib/icons';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { defineCrud, CrudPage, type CrudDataSource } from './crud';
+import { Badge, Button, Input, Spinner, toast } from '../../components/ui';
+import { Users, Plus, UserPlus, X } from '../../lib/icons';
 import { fetchShareableUsers } from '../../lib/api';
 import {
   listGroups,
@@ -22,24 +24,14 @@ import {
 } from '../../lib/api/groups';
 import { useT } from '../../lib/i18n';
 import type { ShareableUser, UserGroup, GroupMember } from '@greenhouse/types/api';
+import { ModulePage } from '../../components/app/module-page';
 
 const dataSource: CrudDataSource<UserGroup> = {
   async list(params) {
-    let groups = await listGroups();
-    const nameF = params.filter?.find((f) => f.key === 'name');
-    if (nameF) {
-      const q = String(nameF.value[0]).toLowerCase();
-      groups = groups.filter((g) => g.name.toLowerCase().includes(q));
-    }
-    const total = groups.length;
+    const groups = await listGroups();
     const skip = params.skip ?? 0;
-    return { items: groups.slice(skip, skip + (params.limit ?? 50)), total };
+    return { items: groups.slice(skip, skip + (params.limit ?? 50)), total: groups.length };
   },
-  async get(id) {
-    const { group } = await getGroup(Number(id));
-    return group;
-  },
-  create: (data) => createGroup(data as { name: string; description?: string }),
   remove: (id) => deleteGroup(Number(id)),
 };
 
@@ -49,51 +41,105 @@ export function GroupsPanel() {
   const schema = useMemo(
     () =>
       defineCrud<UserGroup>({
-        name: t('groups.createGroup'),
+        name: t('groups.group'),
         icon: Users,
         dataSource,
         pageSize: 50,
-        emptyMessage: t('groups.noGroups'),
-        defaultSort: { key: 'updated_at', order: 'desc' },
+        storageKey: 'settings-groups',
         columns: [
           {
             key: 'name',
-            label: 'Group',
+            label: t('groups.group'),
             type: 'custom',
             render: (g) => (
-              <span className="inline-flex items-center gap-2">
-                <Users size={15} className="text-fg-faint" />
-                <span className="font-medium text-fg">{g.name}</span>
+              <span className="flex items-center gap-2 min-w-0">
+                <Users size={15} className="text-fg-faint flex-shrink-0" />
+                <span className="truncate text-sm font-medium text-fg" title={g.name}>
+                  {g.name}
+                </span>
+                {g.member_count !== undefined && (
+                  <Badge variant="secondary">
+                    {g.member_count} {g.member_count === 1 ? t('groups.memberOne') : t('groups.memberOther')}
+                  </Badge>
+                )}
               </span>
             ),
           },
-          {
-            key: 'member_count',
-            label: 'Members',
-            type: 'custom',
-            width: '8rem',
-            render: (g) =>
-              g.member_count !== undefined ? (
-                <span className="text-xs text-fg-muted">
-                  {g.member_count} {g.member_count === 1 ? t('groups.memberOne') : t('groups.memberOther')}
-                </span>
-              ) : (
-                <span className="text-fg-faint">—</span>
-              ),
-          },
         ],
-        filters: [{ key: 'name', label: 'Search groups', kind: 'text' }],
-        formFields: [{ key: 'name', label: t('groups.newGroupName'), type: 'text', required: true }],
-        formTitle: () => t('groups.createGroup'),
-        access: { canAdd: true, canDelete: true },
+        access: { canDelete: true },
+        deleteConfirm: (g) => ({
+          title: t('groups.deleteGroupTitle'),
+          description: t('groups.deleteGroupConfirm', { name: g.name }),
+        }),
         slots: {
+          toolbar: (ctx) => (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 bg-surface-card border border-edge rounded-xl p-4">
+                <div className="p-2 rounded-lg bg-primary-500/10">
+                  <Users className="w-5 h-5 text-primary-fg" />
+                </div>
+                <p className="flex-1 text-sm text-fg-muted">{t('groups.intro')}</p>
+              </div>
+              <CreateGroupRow onCreated={ctx.reload} />
+            </div>
+          ),
+          empty: (
+            <div className="text-center text-fg-muted py-12">
+              <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p>{t('groups.noGroups')}</p>
+            </div>
+          ),
           rowExpand: (g, ctx) => <GroupMembers groupId={g.id} onChanged={ctx.reload} />,
         },
       }),
     [t],
   );
 
-  return <CrudPage schema={schema} />;
+  return (
+    <ModulePage moduleId="settings.groups" layout="list">
+      <CrudPage schema={schema} />
+    </ModulePage>
+  );
+}
+
+// ─── Inline create row (toolbar slot) ────────────────────
+
+function CreateGroupRow({ onCreated }: { onCreated: () => void }) {
+  const t = useT();
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    setCreating(true);
+    try {
+      await createGroup({ name: newName.trim() });
+      toast(t('groups.created'), 'success');
+      setNewName('');
+      onCreated();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : t('groups.createFailed'), 'error');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        placeholder={t('groups.newGroupName')}
+        value={newName}
+        onChange={(e) => setNewName(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+        size="sm"
+        className="max-w-xs"
+      />
+      <Button size="sm" onClick={handleCreate} disabled={creating || !newName.trim()}>
+        {creating ? <Spinner className="w-4 h-4 mr-1" /> : <Plus size={14} className="mr-1" />}
+        {t('groups.createGroup')}
+      </Button>
+    </div>
+  );
 }
 
 // ─── Group members editor (rowExpand slot) ───────────────
@@ -165,6 +211,7 @@ function GroupMembers({ groupId, onChanged }: { groupId: number; onChanged: () =
 
   return (
     <div className="space-y-3">
+      {/* Current members */}
       <div className="flex flex-wrap gap-1.5">
         {members.length === 0 && <span className="text-xs text-fg-faint">{t('groups.noMembers')}</span>}
         {members.map((m) => (
@@ -184,6 +231,7 @@ function GroupMembers({ groupId, onChanged }: { groupId: number; onChanged: () =
         ))}
       </div>
 
+      {/* Add member */}
       <Input
         placeholder={t('groups.searchToAdd')}
         value={search}

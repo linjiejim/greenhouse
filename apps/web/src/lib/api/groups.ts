@@ -38,22 +38,6 @@ export async function createGroup(input: {
   return (await res.json()).group;
 }
 
-export async function updateGroup(id: number, updates: { name?: string; description?: string }): Promise<UserGroup> {
-  // Non-literal arg: hc only types `json` for validator-backed routes (none yet);
-  // the indirection passes the body while keeping param/response typing.
-  const args = { param: { id: String(id) }, json: updates };
-  const res = await rpc.api.groups[':id'].$patch(args);
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error((data && 'error' in data && data.error) || 'Failed to update group');
-  }
-  const { group } = await res.json();
-  // Server types `group` as nullable (update() can miss if the row vanished
-  // mid-request); surface that instead of returning null as a UserGroup.
-  if (!group) throw new Error('Failed to update group');
-  return group;
-}
-
 export async function deleteGroup(id: number): Promise<void> {
   const res = await rpc.api.groups[':id'].$delete({ param: { id: String(id) } });
   if (!res.ok) {

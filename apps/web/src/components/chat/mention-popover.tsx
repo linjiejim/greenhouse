@@ -1,20 +1,22 @@
 /**
- * MentionPopover — floating dropdown for @-mentioning an agent profile.
+ * MentionPopover — floating dropdown for selecting an Agent Profile with `@`.
  *
  * Mirrors SlashCommandPopover's interaction model (↑↓ navigate, Enter/Tab select,
- * Esc dismiss) but lists agent profiles. Selecting a profile switches the active
- * profile for the chat and surfaces it as a pill in the composer.
+ * Esc dismiss) and lists Agent Profiles only. Selecting one switches the active
+ * profile for a new chat and surfaces it as a pill in the composer.
  *
- * Reuses profileToSprouty + SproutyFace from profile-selector so the avatar
+ * Reuses profileToSprouty + SproutyAvatar from profile-selector so the avatar
  * styling stays consistent with the toolbar picker.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, Check } from '../../lib/icons';
+import { Check } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
-import { SproutyFace } from '../sprouty/index.js';
+import { SproutyAvatar } from '../sprouty/index.js';
 import { profileToSprouty } from './profile-selector';
 import { PopoverWrapper } from './popover-wrapper';
+import { useLocalized, useT } from '../../lib/i18n';
+import { Tag } from '../ui';
 
 interface MentionPopoverProps {
   query: string;
@@ -34,13 +36,17 @@ export function MentionPopover({
   onDismiss,
   anchorRef,
 }: MentionPopoverProps) {
+  const t = useT();
+  const localized = useLocalized();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
   const filtered = profiles.filter((p) => {
     if (!query) return true;
     const q = query.toLowerCase();
-    return p.name.toLowerCase().includes(q) || (p.description?.toLowerCase().includes(q) ?? false);
+    const name = localized(p.name_i18n, p.name);
+    const description = localized(p.description_i18n, p.description ?? '');
+    return name.toLowerCase().includes(q) || description.toLowerCase().includes(q);
   });
 
   // Reset selection when filter changes
@@ -92,7 +98,7 @@ export function MentionPopover({
     return (
       <PopoverWrapper anchorRef={anchorRef}>
         <div className="px-3 py-3 text-center">
-          <p className="text-xs text-fg-faint">No matching profiles</p>
+          <p className="text-xs text-fg-faint">{t('chat.noMatchingAgentProfiles')}</p>
         </div>
       </PopoverWrapper>
     );
@@ -100,38 +106,36 @@ export function MentionPopover({
 
   return (
     <PopoverWrapper anchorRef={anchorRef}>
-      <div className="px-2.5 py-1.5 text-[10px] font-medium text-fg-faint uppercase tracking-wider flex items-center gap-1">
-        <Bot size={10} /> Agent Profile
-      </div>
-      <div ref={listRef} className="max-h-64 overflow-y-auto">
+      <div ref={listRef} className="max-h-64 overflow-y-auto" role="listbox" aria-label={t('chat.agentProfile')}>
         {filtered.map((p, idx) => {
           const isSelected = idx === selectedIndex;
           const isActive = p.id === selectedProfileId;
+          const name = localized(p.name_i18n, p.name);
+          const source = !p.is_custom ? 'system' : p.is_shared ? 'shared' : 'personal';
           return (
             <button
               key={p.id}
               data-idx={idx}
+              data-selected={isSelected ? 'true' : 'false'}
+              role="option"
+              aria-selected={isSelected}
               onMouseDown={(e) => {
                 e.preventDefault();
                 onSelect(p.id);
               }}
               onMouseEnter={() => setSelectedIndex(idx)}
-              className={`w-full flex items-center gap-2 px-2.5 py-2 text-left transition-colors ${
-                isSelected ? 'bg-primary-subtle text-primary-fg-strong' : 'text-fg hover:bg-surface-muted'
+              className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${
+                isSelected ? 'bg-primary-600 text-white' : 'text-fg hover:bg-surface-muted'
               }`}
             >
-              <SproutyFace {...profileToSprouty(p)} state="idle" size="xs" animate={isSelected} />
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium truncate" title={p.name}>
-                  {p.name}
-                </span>
-                {p.description && (
-                  <span className="block text-[11px] text-fg-muted truncate" title={p.description}>
-                    {p.description}
-                  </span>
-                )}
+              <SproutyAvatar {...profileToSprouty(p)} state="idle" size="xs" animate={isSelected} />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium" title={name}>
+                {name}
               </span>
-              {isActive && <Check size={14} className="flex-shrink-0 text-primary-fg" />}
+              <Tag tone={source === 'system' ? 'neutral' : source === 'shared' ? 'info' : 'primary'}>
+                {t(`profileSelector.${source}`)}
+              </Tag>
+              {isActive && <Check size={14} className="flex-shrink-0" />}
             </button>
           );
         })}

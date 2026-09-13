@@ -1,241 +1,400 @@
 /**
- * Email Accounts panel — IMAP/SMTP integrations, on @greenhouse/crud (cards).
+ * Email Accounts panel — bind a personal IMAP/SMTP mailbox.
  *
- * The card grid, the add Dialog, delete-confirm, empty state and toolbar all
- * come from `defineCrud` with `variant: 'cards'`. Per-card "Test connection"
- * keeps its own spinner (AccountCard); super users get a "show all" scope toggle.
- * Each user can bind up to 10 accounts; there is no edit (add + delete + test).
+ * One @greenhouse/crud schema drives the table, the add/edit dialog and the delete
+ * confirmation. The bespoke part is the connection block: picking a provider
+ * fills in host/port/TLS AND unfolds that provider's own instructions, because
+ * "where do I get the password" is the actual hard step — every one of these
+ * providers wants a generated app password rather than the login password, and
+ * each hides that switch somewhere different.
+ *
+ * The whole connection is ONE custom field holding an object (same shape as the
+ * cron builder in automations.tsx): a preset choice rewrites five sibling
+ * values at once, and a `type: 'custom'` field can only write its own. The data
+ * source unpacks it on the way out.
+ *
+ * The server tests IMAP *and* SMTP before it saves, so a row in this table is a
+ * mailbox that demonstrably worked at least once.
  */
 
-import React, { useMemo, useState } from 'react';
-import { defineCrud, CrudPage, type CrudDataSource, type CrudActionContext } from '@greenhouse/crud';
-import { CheckCircle, Trash2, Mail } from '../../lib/icons';
-import { Button, Spinner, Toggle, Tag, StatusDot, toast } from '../../components/ui';
-import { fetchEmailAccounts, addImapEmailAccount, deleteEmailAccount, testEmailAccount } from '../../lib/api';
-import type { EmailAccountInfo } from '../../lib/api';
-import { useAuthStore } from '../../stores';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ModulePage } from '../../components/app/module-page';
+import { EMAIL_PRESETS, getEmailPreset, type EmailPresetId, type EmailAccountView } from '@greenhouse/types/email';
+import { defineCrud, CrudPage, type CrudDataSource, type CrudFieldRenderProps } from './crud';
+import { Button, EmptyState, Input, Select, Tag, toast } from '../../components/ui';
+import { CheckCircle, ExternalLink, Mail, Plus, RefreshCw } from '../../lib/icons';
+import * as api from '../../lib/api';
+import { formatDate } from '../../lib/utils';
+import { useT, type TranslationKey } from '../../lib/i18n';
 
-// The add form's inputs (SMTP/IMAP host, port, credentials) aren't columns on
-// the row, so widen the row type so those field keys type-check.
-type ImapDraft = {
-  smtp_host: string;
-  smtp_port: number;
+interface ConnectionValue {
+  preset: EmailPresetId;
   imap_host: string;
   imap_port: number;
-  username: string;
-  password: string;
+  smtp_host: string;
+  smtp_port: number;
   use_tls: boolean;
-};
-type EmailRow = EmailAccountInfo & Partial<ImapDraft>;
-
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  active: { label: 'Active', color: 'text-success' },
-  disabled: { label: 'Disabled', color: 'text-fg-faint' },
-  auth_expired: { label: 'Re-auth needed', color: 'text-warning' },
-  error: { label: 'Error', color: 'text-danger' },
-};
-
-function statusDotColor(status: string) {
-  return status === 'active'
-    ? 'success'
-    : status === 'auth_expired'
-      ? 'warning'
-      : status === 'error'
-        ? 'danger'
-        : 'muted';
 }
 
-/** One account card, with its own Test-connection spinner state. */
-function AccountCard({
-  row,
-  ctx,
-  showAll,
-  reload,
-}: {
-  row: EmailRow;
-  ctx: CrudActionContext;
-  showAll: boolean;
-  reload: () => void;
-}) {
-  const [testing, setTesting] = useState(false);
-  const status = STATUS_MAP[row.status] ?? STATUS_MAP.error;
+/** The dialog edits a flat draft; `password` is write-only and never read back. */
+interface AccountDraft extends Record<string, unknown> {
+  id: number;
+  email_address: string;
+  display_name: string | null;
+  username: string;
+  password: string;
+  connection: ConnectionValue;
+  status: EmailAccountView['status'];
+  last_verified_at: string | null;
+  error_message: string | null;
+  preset: EmailPresetId;
+}
 
-  const handleTest = async () => {
-    setTesting(true);
-    try {
-      const result = await testEmailAccount(row.id);
-      toast(
-        result.ok ? 'Connection test passed' : `Connection test failed: ${result.error}`,
-        result.ok ? 'success' : 'error',
-      );
-      reload();
-    } catch {
-      toast('Connection test failed', 'error');
-    } finally {
-      setTesting(false);
-    }
+function toDraft(row: EmailAccountView): AccountDraft {
+  return {
+    id: row.id,
+    email_address: row.email_address,
+    display_name: row.display_name,
+    username: row.username,
+    password: '',
+    connection: {
+      preset: row.preset,
+      imap_host: row.imap_host,
+      imap_port: row.imap_port,
+      smtp_host: row.smtp_host,
+      smtp_port: row.smtp_port,
+      use_tls: row.use_tls,
+    },
+    status: row.status,
+    last_verified_at: row.last_verified_at,
+    error_message: row.error_message,
+    preset: row.preset,
   };
+}
+
+const FEISHU = getEmailPreset('feishu')!;
+
+const DEFAULT_CONNECTION: ConnectionValue = {
+  preset: 'feishu',
+  imap_host: FEISHU.imap_host,
+  imap_port: FEISHU.imap_port,
+  smtp_host: FEISHU.smtp_host,
+  smtp_port: FEISHU.smtp_port,
+  use_tls: FEISHU.use_tls,
+};
+
+// ─── Connection field ────────────────────────────────────
+
+function ConnectionField({ value, onChange, disabled }: CrudFieldRenderProps) {
+  const t = useT();
+  const conn = (value as ConnectionValue | undefined) ?? DEFAULT_CONNECTION;
+  const preset = getEmailPreset(conn.preset);
+  const patch = (next: Partial<ConnectionValue>) => onChange({ ...conn, ...next });
+
+  // Each provider's steps are one i18n string, newline-separated, rendered as
+  // an ordered list — the numbering is presentation, not content.
+  // help_key is data (the preset table), so the key type is asserted here.
+  const steps = String(t((preset?.help_key ?? 'emailAccounts.help.custom') as TranslationKey)).split('\n');
 
   return (
-    <div className="bg-surface-raised border border-edge rounded-lg p-4 h-full flex flex-col justify-between gap-3">
-      <div className="flex items-start gap-2.5 min-w-0">
-        <StatusDot color={statusDotColor(row.status)} className="mt-1" />
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-fg truncate" title={row.email_address}>
-              {row.email_address}
-            </span>
-            {showAll && (
-              <Tag tone="neutral" className="flex-shrink-0">
-                {row.user_id.slice(0, 8)}
-              </Tag>
-            )}
-          </div>
-          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            {row.display_name && <span className="text-[11px] text-fg-muted">{row.display_name}</span>}
-            <span className={`text-[10px] ${status.color}`}>{status.label}</span>
-            {row.error_message && (
-              <span className="text-[10px] text-danger truncate max-w-[200px]" title={row.error_message}>
-                {row.error_message}
-              </span>
-            )}
-          </div>
-        </div>
+    <div className="space-y-3">
+      <Select
+        value={conn.preset}
+        disabled={disabled}
+        onChange={(e) => {
+          const next = getEmailPreset(e.target.value);
+          if (!next) return;
+          patch({
+            preset: next.id,
+            imap_host: next.imap_host,
+            imap_port: next.imap_port,
+            smtp_host: next.smtp_host,
+            smtp_port: next.smtp_port,
+            use_tls: next.use_tls,
+          });
+        }}
+      >
+        {EMAIL_PRESETS.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.label}
+          </option>
+        ))}
+      </Select>
+
+      <div className="rounded-lg border border-edge bg-surface-muted p-3">
+        <p className="text-xs font-medium text-fg-secondary mb-1.5">{t('emailAccounts.help.title')}</p>
+        <ol className="text-xs text-fg-muted space-y-1 list-decimal list-inside">
+          {steps.map((line, i) => (
+            <li key={i}>{line}</li>
+          ))}
+        </ol>
+        {preset?.help_url && (
+          <a
+            href={preset.help_url}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="mt-2 inline-flex items-center gap-1 text-xs text-primary-fg hover:underline"
+          >
+            {t('emailAccounts.help.open')}
+            <ExternalLink size={11} />
+          </a>
+        )}
       </div>
-      <div className="flex items-center justify-end gap-1">
-        <Button variant="ghost" size="sm" onClick={handleTest} disabled={testing} title="Test connection">
-          {testing ? <Spinner className="h-3.5 w-3.5" /> : <CheckCircle size={13} />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-danger hover:text-danger"
-          onClick={() => ctx.openDelete(row as unknown as Record<string, unknown>)}
-          title="Remove account"
-        >
-          <Trash2 size={13} />
-        </Button>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[11px] text-fg-faint mb-1 block">IMAP host</label>
+          <Input
+            size="sm"
+            disabled={disabled}
+            value={conn.imap_host}
+            onChange={(e) => patch({ imap_host: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="text-[11px] text-fg-faint mb-1 block">IMAP port</label>
+          <Input
+            size="sm"
+            type="number"
+            disabled={disabled}
+            value={String(conn.imap_port)}
+            onChange={(e) => patch({ imap_port: Number(e.target.value) || 0 })}
+          />
+        </div>
+        <div>
+          <label className="text-[11px] text-fg-faint mb-1 block">SMTP host</label>
+          <Input
+            size="sm"
+            disabled={disabled}
+            value={conn.smtp_host}
+            onChange={(e) => patch({ smtp_host: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="text-[11px] text-fg-faint mb-1 block">SMTP port</label>
+          <Input
+            size="sm"
+            type="number"
+            disabled={disabled}
+            value={String(conn.smtp_port)}
+            onChange={(e) => patch({ smtp_port: Number(e.target.value) || 0 })}
+          />
+        </div>
       </div>
     </div>
   );
 }
 
-export function EmailAccountsPanel() {
-  const { currentUser } = useAuthStore();
-  const isSuper = currentUser?.role === 'super';
-  const [showAll, setShowAll] = useState(false);
+// ─── Panel ───────────────────────────────────────────────
 
-  const dataSource = useMemo<CrudDataSource<EmailRow>>(
+export function EmailAccountsPanel() {
+  const t = useT();
+  const [shared, setShared] = useState<{ available: boolean; address: string | null }>({
+    available: false,
+    address: null,
+  });
+  const [testingId, setTestingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    api
+      .fetchSharedMailbox()
+      .then((s) => setShared({ available: s.available, address: s.address }))
+      .catch(() => setShared({ available: false, address: null }));
+  }, []);
+
+  const dataSource = useMemo<CrudDataSource<AccountDraft>>(
     () => ({
       async list() {
-        const items = await fetchEmailAccounts(showAll);
-        return { items, total: items.length };
+        const accounts = await api.fetchEmailAccounts();
+        return { items: accounts.map(toDraft), total: accounts.length };
       },
-      async get(id) {
-        const found = (await fetchEmailAccounts(showAll)).find((a) => String(a.id) === id);
-        if (!found) throw new Error('Account not found');
-        return found;
-      },
-      async create(data) {
-        const result = await addImapEmailAccount({
-          email_address: String(data.email_address),
-          display_name: (data.display_name as string) || undefined,
-          smtp_host: String(data.smtp_host ?? ''),
-          smtp_port: Number(data.smtp_port) || 465,
-          imap_host: (data.imap_host as string) || undefined,
-          imap_port: Number(data.imap_port) || 993,
-          username: String(data.username ?? ''),
-          password: String(data.password ?? ''),
-          use_tls: Boolean(data.use_tls),
+      async create(input) {
+        const draft = input as Partial<AccountDraft>;
+        const conn = draft.connection ?? DEFAULT_CONNECTION;
+        const result = await api.createEmailAccount({
+          email_address: String(draft.email_address ?? '').trim(),
+          display_name: draft.display_name ? String(draft.display_name) : null,
+          preset: conn.preset,
+          imap_host: conn.imap_host,
+          imap_port: conn.imap_port,
+          smtp_host: conn.smtp_host,
+          smtp_port: conn.smtp_port,
+          use_tls: conn.use_tls,
+          username: draft.username ? String(draft.username) : undefined,
+          password: String(draft.password ?? ''),
         });
-        if (!result.ok) throw new Error(result.error || 'Failed to add account');
-        return result.account;
+        toast(t('emailAccounts.saved'), 'success');
+        return toDraft(result.account);
       },
-      remove: (id) => deleteEmailAccount(Number(id)),
+      async update(id, input) {
+        const draft = input as Partial<AccountDraft>;
+        const conn = draft.connection;
+        const result = await api.updateEmailAccount(Number(id), {
+          display_name: draft.display_name ? String(draft.display_name) : null,
+          imap_host: conn?.imap_host,
+          imap_port: conn?.imap_port,
+          smtp_host: conn?.smtp_host,
+          smtp_port: conn?.smtp_port,
+          use_tls: conn?.use_tls,
+          username: draft.username ? String(draft.username) : undefined,
+          // Empty means "keep the stored password", not "clear it".
+          password: draft.password ? String(draft.password) : undefined,
+        });
+        toast(t('emailAccounts.saved'), 'success');
+        return toDraft(result.account);
+      },
+      async remove(id) {
+        await api.deleteEmailAccount(Number(id));
+      },
     }),
-    [showAll],
+    [t],
   );
 
   const schema = useMemo(
     () =>
-      defineCrud<EmailRow>({
-        name: 'Email account',
-        icon: Mail,
-        idField: 'id',
+      defineCrud<AccountDraft>({
+        name: t('emailAccounts.entity'),
+        testId: 'email-accounts',
         dataSource,
-        variant: 'cards',
-        emptyMessage: 'No email accounts connected',
-        formMode: 'dialog',
-        formTitle: () => 'Create email account',
+        idField: 'id',
+        icon: Mail,
         columns: [
-          { key: 'email_address', label: 'Email' },
-          { key: 'display_name', label: 'Display name' },
+          { key: 'email_address', label: t('emailAccounts.address'), type: 'text' },
+          {
+            key: 'preset',
+            label: t('emailAccounts.provider'),
+            type: 'custom',
+            render: (row) => <Tag tone="neutral">{getEmailPreset(row.preset)?.label ?? row.preset}</Tag>,
+          },
           {
             key: 'status',
-            label: 'Status',
-            type: 'badge',
-            badgeMap: { active: 'success', disabled: 'secondary', auth_expired: 'warning', error: 'destructive' },
+            label: t('emailAccounts.status'),
+            type: 'custom',
+            render: (row) => (
+              <Tag tone={row.status === 'active' ? 'success' : row.status === 'error' ? 'danger' : 'neutral'} truncate>
+                {row.status === 'error' && row.error_message ? row.error_message : row.status}
+              </Tag>
+            ),
+          },
+          {
+            key: 'last_verified_at',
+            label: t('emailAccounts.lastVerified'),
+            type: 'custom',
+            render: (row) => (
+              <span className="text-xs text-fg-muted">
+                {row.last_verified_at ? formatDate(row.last_verified_at) : '—'}
+              </span>
+            ),
           },
         ],
         formFields: [
           {
+            key: 'connection',
+            label: t('emailAccounts.provider'),
+            type: 'custom',
+            defaultValue: DEFAULT_CONNECTION,
+            render: (props) => <ConnectionField {...props} />,
+          },
+          { type: 'divider', label: t('emailAccounts.credentials') },
+          {
             key: 'email_address',
-            label: 'Email Address',
-            type: 'email',
-            width: 2,
-            required: true,
-            placeholder: 'user@example.com',
-          },
-          { key: 'display_name', label: 'Display Name', type: 'text', width: 2, placeholder: 'John Doe' },
-          {
-            key: 'smtp_host',
-            label: 'SMTP Host',
+            label: t('emailAccounts.address'),
             type: 'text',
-            width: 2,
             required: true,
-            placeholder: 'smtp.example.com',
-          },
-          { key: 'smtp_port', label: 'SMTP Port', type: 'number', width: 2, defaultValue: 465 },
-          { key: 'imap_host', label: 'IMAP Host', type: 'text', width: 2, placeholder: 'imap.example.com (optional)' },
-          { key: 'imap_port', label: 'IMAP Port', type: 'number', width: 2, defaultValue: 993 },
-          {
-            key: 'username',
-            label: 'Username',
-            type: 'text',
-            width: 2,
-            required: true,
-            placeholder: 'user@example.com',
+            placeholder: 'you@example.com',
           },
           {
             key: 'password',
-            label: 'Password / App Password',
-            type: 'password',
-            width: 2,
-            required: true,
-            placeholder: '••••••••',
+            label: t('emailAccounts.password'),
+            type: 'custom',
+            comment: t('emailAccounts.passwordHint'),
+            render: ({ value, onChange, disabled, mode }) => (
+              <Input
+                type="password"
+                autoComplete="new-password"
+                placeholder={mode === 'edit' ? t('emailAccounts.passwordKeep') : '••••••••'}
+                disabled={disabled}
+                value={(value as string) ?? ''}
+                onChange={(e) => onChange(e.target.value)}
+              />
+            ),
           },
-          { key: 'use_tls', label: 'Use TLS', type: 'switch', defaultValue: true },
+          {
+            key: 'username',
+            label: t('emailAccounts.username'),
+            type: 'text',
+            comment: t('emailAccounts.usernameHint'),
+          },
+          {
+            key: 'display_name',
+            label: t('emailAccounts.displayName'),
+            type: 'text',
+            comment: t('emailAccounts.displayNameHint'),
+          },
         ],
-        access: { canAdd: true, canEdit: false, canDelete: true },
+        access: { canView: false, canAdd: true, canEdit: true, canDelete: true },
+        deleteConfirm: (row) => ({
+          title: t('emailAccounts.unbindTitle'),
+          description: t('emailAccounts.unbindConfirm', { address: row.email_address }),
+        }),
+        tableActions: [
+          {
+            key: 'test',
+            label: t('emailAccounts.test'),
+            icon: RefreshCw,
+            tone: 'primary',
+            onClick: async (row, ctx) => {
+              if (testingId === row.id) return;
+              setTestingId(row.id);
+              try {
+                const result = await api.testEmailAccount(row.id);
+                const ok = result.test.imap.ok && result.test.smtp.ok;
+                toast(
+                  ok
+                    ? t('emailAccounts.testOk', { address: row.email_address })
+                    : `IMAP ${result.test.imap.ok ? 'OK' : '✗'} · SMTP ${result.test.smtp.ok ? 'OK' : '✗'}`,
+                  ok ? 'success' : 'error',
+                );
+                ctx.reload();
+              } catch (err) {
+                toast(err instanceof Error ? err.message : t('emailAccounts.testFailed'), 'error');
+              } finally {
+                setTestingId(null);
+              }
+            },
+          },
+        ],
         slots: {
-          renderCard: (row, ctx) => <AccountCard row={row} ctx={ctx} showAll={showAll} reload={ctx.reload} />,
+          banner: () =>
+            shared.available ? (
+              <div className="flex items-center gap-2 rounded-lg border border-edge bg-surface-muted px-3 py-2">
+                <CheckCircle size={14} className="text-success flex-shrink-0" />
+                <span className="text-xs text-fg-muted">
+                  {t('emailAccounts.sharedAvailable', { address: shared.address ?? '' })}
+                </span>
+              </div>
+            ) : null,
+          toolbar: (ctx) => (
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-fg-muted">{t('emailAccounts.countLabel', { count: ctx.total })}</span>
+              <div className="flex-1" />
+              <Button size="sm" onClick={ctx.openCreate}>
+                <Plus size={14} className="mr-1" />
+                {t('emailAccounts.add')}
+              </Button>
+            </div>
+          ),
+          empty: (
+            <EmptyState icon={Mail} title={t('emailAccounts.noneTitle')} description={t('emailAccounts.noneDesc')} />
+          ),
         },
       }),
-    [dataSource, showAll],
+    [t, dataSource, testingId, shared],
   );
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-fg-muted">IMAP/SMTP accounts for a unified inbox and Agent access.</p>
-        {isSuper && (
-          <label className="flex items-center gap-1.5 text-xs text-fg-muted">
-            <Toggle checked={showAll} onChange={() => setShowAll((v) => !v)} />
-            Show all users
-          </label>
-        )}
-      </div>
-      <CrudPage key={String(showAll)} schema={schema} />
-    </div>
+    <ModulePage moduleId="settings.email-accounts" layout="list">
+      <CrudPage schema={schema} />
+    </ModulePage>
   );
 }

@@ -7,8 +7,12 @@
 
 export { useAuthStore } from './auth-store.js';
 export type { AuthState } from './auth-store.js';
-export { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, useUIStore } from './ui-store.js';
+export { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, useUIStore } from './ui-store.js';
+export type { ChatWorkspaceView } from './ui-store.js';
 export { usePinStore } from './pin-store.js';
+export { usePlatformCatalog, usePlatformStore } from './platform-store.js';
+export { invalidateProjects, useProjectRefreshStore } from './project-refresh-store.js';
 export { useProfileStore } from './profile-store.js';
 export { useWsStore } from './ws-store.js';
 export { useKnowledgeStore } from './knowledge-store.js';
+export { useSidePaneStore } from './side-pane-store.js';

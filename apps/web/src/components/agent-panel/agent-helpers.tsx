@@ -1,7 +1,7 @@
 /**
- * Agent panel helper functions — registry-based context resolution.
+ * Assistant overlay helpers — registry-based context resolution.
  *
- * All display logic (labels, placeholders, quick actions) and context hints
+ * All display logic (labels, empty states, quick actions) and context hints
  * are delegated to the context-providers registry. No per-type switch statements.
  */
 
@@ -12,9 +12,8 @@ import { getContextProvider } from '../../lib/context-registry';
 
 // ─── Defaults ────────────────────────────────────────────
 
-const DEFAULT_LABEL = 'Global assistant';
+const DEFAULT_LABEL = 'Assistant';
 const DEFAULT_EMPTY_MSG = 'How can I help?';
-const DEFAULT_PLACEHOLDER = 'Ask a question...';
 
 export interface QuickAction {
   icon: LucideIcon;
@@ -46,16 +45,6 @@ export function getEmptyStateMessage(ctx: PageContext | null): string {
   return DEFAULT_EMPTY_MSG;
 }
 
-export function getPlaceholder(ctx: PageContext | null): string {
-  if (!ctx) return DEFAULT_PLACEHOLDER;
-  const provider = getContextProvider(ctx.type as any);
-  if (provider) {
-    const ph = provider.placeholder(ctx as any);
-    return ph || DEFAULT_PLACEHOLDER;
-  }
-  return DEFAULT_PLACEHOLDER;
-}
-
 export function getQuickActions(ctx: PageContext | null): QuickAction[] {
   if (!ctx) return DEFAULT_QUICK_ACTIONS;
   const provider = getContextProvider(ctx.type as any);
@@ -78,6 +67,3 @@ export function getContextHint(ctx: PageContext | null): string | undefined {
   if (provider) return provider.contextHint(ctx as any);
   return undefined;
 }
-
-// Re-export safeParse for backward compat with agent-panel
-export { safeParse } from '../../lib/utils';

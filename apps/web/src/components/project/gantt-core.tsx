@@ -772,7 +772,7 @@ export function GanttCore<TData, GData>({
               onClick={() => runBatchAction('status', key)}
               className={`px-2 py-0.5 rounded-full border text-[10px] hover:shadow-sm transition-colors ${cfg.bg}`}
             >
-              {cfg.label}
+              {t(cfg.label)}
             </button>
           ))}
           {users && users.length > 0 && (
@@ -938,7 +938,7 @@ export function GanttCore<TData, GData>({
             {/* Drag-to-create preview */}
             {createDrag && (
               <div
-                className="absolute z-[4] bg-primary-200 opacity-40 rounded"
+                className="absolute z-[4] bg-primary-500 opacity-25 rounded"
                 style={{
                   left: Math.min(createDrag.startDay, createDrag.currentDay) * DAY_WIDTH,
                   top: 40,
@@ -1054,7 +1054,7 @@ export function GanttCore<TData, GData>({
                                   bar.isDarkBg ? 'bg-surface-raised/25 text-white' : 'bg-fg/10 text-fg-muted'
                                 }`}
                               >
-                                {statusConfig[task.status]?.label || task.status}
+                                {statusConfig[task.status] ? t(statusConfig[task.status].label) : task.status}
                               </span>
                             )}
                           </div>
@@ -1098,7 +1098,7 @@ export function GanttCore<TData, GData>({
               style={{ left: todayOffset }}
             >
               <div className="absolute top-0 -left-2 text-[9px] text-danger font-medium bg-danger-subtle px-1 rounded">
-                Today
+                {t('common.today')}
               </div>
             </div>
           </div>

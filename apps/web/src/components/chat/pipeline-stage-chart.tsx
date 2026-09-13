@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import type { PipelineStep } from './pipeline-viewer';
+import type { PipelineStep } from '@greenhouse/types/session';
+import { useT, type TranslationKey } from '../../lib/i18n';
 
 // ─── Stage Colors ────────────────────────────────────────
 
@@ -19,9 +20,9 @@ const STAGE_COLORS = [
   { bg: 'bg-cyan-500', text: 'text-cyan-700', light: 'bg-cyan-50' },
 ];
 
-const TOOL_LABELS: Record<string, string> = {
-  search: 'Search',
-  get_page: 'Read Page',
+const TOOL_LABELS: Record<string, TranslationKey> = {
+  search: 'pipeline.search',
+  get_page: 'pipeline.readPage',
 };
 
 // ─── Types ───────────────────────────────────────────────
@@ -45,6 +46,7 @@ interface PipelineStageChartProps {
 // ─── Component ───────────────────────────────────────────
 
 export function PipelineStageChart({ steps, totalDurationMs, compact, className = '' }: PipelineStageChartProps) {
+  const t = useT();
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   const {
@@ -71,14 +73,14 @@ export function PipelineStageChart({ steps, totalDurationMs, compact, className 
 
     const stages: StageInfo[] = toolOrder.map((tool, i) => ({
       tool,
-      label: TOOL_LABELS[tool] || `${tool}`,
+      label: TOOL_LABELS[tool] ? t(TOOL_LABELS[tool]) : tool,
       durationMs: toolMap.get(tool)!,
       percent: total > 0 ? (toolMap.get(tool)! / total) * 100 : 0,
       color: STAGE_COLORS[i % STAGE_COLORS.length],
     }));
 
     return { stages, pipelineMs: pipelineSum, otherMs, total };
-  }, [steps, totalDurationMs]);
+  }, [steps, totalDurationMs, t]);
 
   if (stages.length === 0) return null;
 
@@ -105,7 +107,7 @@ export function PipelineStageChart({ steps, totalDurationMs, compact, className 
             <div
               className={`bg-edge-strong transition-opacity ${hoveredIdx != null ? 'opacity-40' : ''}`}
               style={{ width: `${Math.max(otherPercent, 0.5)}%` }}
-              title={`LLM / Other: ${(otherMs / 1000).toFixed(2)}s (${otherPercent.toFixed(1)}%)`}
+              title={`${t('pipeline.llmOther')}: ${(otherMs / 1000).toFixed(2)}s (${otherPercent.toFixed(1)}%)`}
             />
           )}
         </div>
@@ -132,7 +134,7 @@ export function PipelineStageChart({ steps, totalDurationMs, compact, className 
           {otherMs > 0 && (
             <div className="flex items-center gap-1 text-[10px]">
               <span className="w-2 h-2 rounded-sm bg-edge-strong inline-block" />
-              <span className="text-fg-muted font-medium">LLM / Other</span>
+              <span className="text-fg-muted font-medium">{t('pipeline.llmOther')}</span>
               <span className="text-fg-faint">{(otherMs / 1000).toFixed(2)}s</span>
               <span className="text-fg-faint">({otherPercent.toFixed(0)}%)</span>
             </div>

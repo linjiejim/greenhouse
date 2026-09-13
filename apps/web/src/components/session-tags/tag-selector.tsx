@@ -10,6 +10,7 @@ import { TagBadge } from './tag-badge';
 import { TAG_COLORS } from './colors';
 import type { SessionTag } from '@greenhouse/types/api';
 import * as api from '../../lib/api';
+import { useT } from '../../lib/i18n';
 
 interface TagSelectorProps {
   sessionId: string;
@@ -26,6 +27,7 @@ interface TagSelectorProps {
 }
 
 export function TagSelector({ sessionId, sessionTags, allTags, onChanged, onClose, x, y }: TagSelectorProps) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
@@ -75,11 +77,11 @@ export function TagSelector({ sessionId, sessionTags, allTags, onChanged, onClos
         }
         onChanged();
       } catch (err: any) {
-        toast(err.message || 'Failed', 'error');
+        toast(err.message || t('common.failed'), 'error');
       }
       setLoading(null);
     },
-    [sessionId, sessionTagIds, onChanged],
+    [sessionId, sessionTagIds, onChanged, t],
   );
 
   const handleCreate = useCallback(async () => {
@@ -92,9 +94,9 @@ export function TagSelector({ sessionId, sessionTags, allTags, onChanged, onClos
       setSearch('');
       onChanged();
     } catch (err: any) {
-      toast(err.message || 'Failed to create tag', 'error');
+      toast(err.message || t('sessionTags.createFailed'), 'error');
     }
-  }, [search, sessionId, onChanged]);
+  }, [search, sessionId, onChanged, t]);
 
   return (
     <div
@@ -115,7 +117,7 @@ export function TagSelector({ sessionId, sessionTags, allTags, onChanged, onClos
               if (e.key === 'Enter' && canCreate) handleCreate();
               if (e.key === 'Escape') onClose();
             }}
-            placeholder="Search tags..."
+            placeholder={t('sessionTags.search')}
             className="w-full text-xs bg-surface-sunken border border-edge rounded pl-7 pr-2 py-1.5 focus:outline-none focus:border-primary-500 text-fg placeholder:text-fg-faint"
           />
         </div>
@@ -124,7 +126,7 @@ export function TagSelector({ sessionId, sessionTags, allTags, onChanged, onClos
       {/* Tag list */}
       <div className="max-h-48 overflow-y-auto py-1">
         {filtered.length === 0 && !canCreate && (
-          <div className="px-3 py-2 text-xs text-fg-faint text-center">No tags found</div>
+          <div className="px-3 py-2 text-xs text-fg-faint text-center">{t('sessionTags.noTagsFound')}</div>
         )}
         {filtered.map((tag) => {
           const isActive = sessionTagIds.has(tag.id);
@@ -155,7 +157,7 @@ export function TagSelector({ sessionId, sessionTags, allTags, onChanged, onClos
             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-primary-fg-strong hover:bg-surface-muted transition-colors"
           >
             <Plus size={12} />
-            <span>Create &ldquo;{search.trim()}&rdquo;</span>
+            <span>{t('sessionTags.createNamed', { name: search.trim() })}</span>
           </button>
         </div>
       )}

@@ -1,19 +1,12 @@
 /**
  * Greenhouse — Web UI entry point.
- * Hash-based routing: #/chat, #/history, #/settings, #/projects
+ * Hash-based routing for Chat, Knowledge, Projects, Tables, and Settings.
  *
- * NEW LAYOUT: Global left sidebar + simplified top bar + main content.
+ * LAYOUT: Full-height global/contextual sidebar + right-side top bar and content.
  * UI 子组件拆分到 components/app/ 目录下。
  */
 
 import './app.css';
-// Fork branding token overrides (S6) — comment-only upstream. Imported after
-// app.css so redefinitions win the cascade.
-import './branding.css';
-// Fork runtime web extensions (URL context resolvers, locale messages). No-op
-// upstream — see bootstrap.extensions.ts. Imported first so registrations run
-// before the app renders.
-import './bootstrap.extensions';
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ChatPage } from './pages/chat';
@@ -22,18 +15,43 @@ import { ChatPage } from './pages/chat';
 const ProjectsPage = lazy(() => import('./pages/projects').then((m) => ({ default: m.ProjectsPage })));
 const ProjectDetailPage = lazy(() => import('./pages/project-detail').then((m) => ({ default: m.ProjectDetailPage })));
 const SettingsPage = lazy(() => import('./pages/settings').then((m) => ({ default: m.SettingsPage })));
-const InboxPage = lazy(() => import('./pages/inbox').then((m) => ({ default: m.InboxPage })));
+const AdministrationPage = lazy(() =>
+  import('./pages/administration').then((m) => ({ default: m.AdministrationPage })),
+);
 const DesignPage = lazy(() => import('./pages/design').then((m) => ({ default: m.DesignPage })));
 const KnowledgePage = lazy(() => import('./pages/knowledge').then((m) => ({ default: m.KnowledgePage })));
+const AgentsPage = lazy(() => import('./pages/agents').then((m) => ({ default: m.AgentsPage })));
+const AutomationsPage = lazy(() =>
+  import('./pages/settings/automations').then((m) => ({ default: m.AutomationsPanel })),
+);
+const PersonalTasksPage = lazy(() => import('./pages/settings/prompts').then((m) => ({ default: m.PromptsPage })));
+const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
+const ExecutionCenterPage = lazy(() => import('./pages/tasks').then((m) => ({ default: m.ExecutionsPage })));
+const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
+const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => ({ default: m.OAuthConsentPage })));
+const AccountPasswordPage = lazy(() =>
+  import('./pages/account-password').then((m) => ({ default: m.AccountPasswordPage })),
+);
 import { AgentProvider } from './components/agent-context';
-import { GlobalAgentPanel } from './components/agent-panel';
+import { AssistantPanel } from './components/agent-panel';
+import { EntityPeekHost } from './components/entity-peek';
+import { GlobalSearchDialog } from './components/search/global-search-dialog';
 import { SessionManagerProvider } from './lib/session-manager';
-import { Drawer, AppLogo, ToastContainer, ErrorBoundary, Spinner } from './components/ui';
-import { MessageCircle, FolderKanban, Plus, ArrowLeft, BookOpen } from './lib/icons';
-import type { LucideIcon } from './lib/icons';
-import { authFetch, checkAuthStatus, clearToken, setOnUnauthorized, validateSession } from './lib/auth';
-import { LoginScreen, AppSidebar, SidebarAccountMenu, TopBar } from './components/app';
-import { MobilePinnedSection, SettingsNavPanel } from './components/app/sidebar-panels';
+import { ConfirmDialog, Drawer, AppLogo, ToastContainer, ErrorBoundary, Spinner, IconButton } from './components/ui';
+import { Plus, X } from './lib/icons';
+import { authFetch, clearToken, setOnUnauthorized, validateSession } from './lib/auth';
+import { navigationBlocked } from './lib/navigation-guard';
+import { LoginScreen, AppSidebar, SidebarAccountMenu, SidebarBackButton, TopBar } from './components/app';
+import {
+  ChatHistoryPanel,
+  KnowledgeNavPanel,
+  MobilePinnedSection,
+  SettingsNavPanel,
+  AdministrationNavPanel,
+} from './components/app/sidebar-panels';
+import { SidebarGlobalNavigation } from './components/app/sidebar-global-navigation';
+import { SidebarPrimaryAction } from './components/app/sidebar-primary-action';
+import { SearchNavButton } from './components/search/search-nav-button';
 import { useAuthStore, useUIStore, useProfileStore } from './stores';
 import { useWsStore } from './stores/ws-store';
 import { initTheme } from './lib/theme';
@@ -41,21 +59,31 @@ import { initWorkspaceBranding } from './lib/workspace-branding';
 import { initScrollActivity } from './lib/scroll-activity';
 import { I18nProvider, useT, getStoredLocale } from './lib/i18n';
 import type { Locale } from './lib/i18n';
-import { getExtraPage, extraPageKeys, extraNavItems } from './lib/page-registry';
-import { registerCrudExtensions } from './lib/crud.extensions';
+import { buildPrimaryNavigation } from './platform/navigation';
+import { usePlatformCatalog, usePlatformStore } from './stores/platform-store';
+import { useMobileKeyboardViewport } from './hooks/use-mobile-keyboard-viewport';
+import { legacyExecutionRedirect } from './lib/execution-route';
 
 // Initialize theme from localStorage on app load
 initTheme();
-// Register fork CRUD field/column widgets (no-op upstream)
-registerCrudExtensions();
 // Reveal scrollbars only while scrolling (they're transparent at rest)
 initScrollActivity();
 
 // ─── Router ──────────────────────────────────────────────
 
-// Core routes keep literal typing; `(string & {})` admits fork page keys
-// registered via ./lib/page-registry (see extraPageKeys).
-type Route = 'chat' | 'history' | 'settings' | 'projects' | 'inbox' | 'design' | 'knowledge' | (string & {});
+type Route =
+  | 'chat'
+  | 'automations'
+  | 'agents'
+  | 'settings'
+  | 'administration'
+  | 'projects'
+  | 'design'
+  | 'knowledge'
+  | 'tables'
+  | 'skillhub'
+  | 'tasks'
+  | 'executions';
 
 interface ParsedRoute {
   route: Route;
@@ -63,30 +91,187 @@ interface ParsedRoute {
   params: URLSearchParams;
 }
 
-function useHashRouter() {
+/**
+ * The hash router, with a leave guard.
+ *
+ * A hash change cannot be cancelled — by the time `hashchange` fires the URL has
+ * already moved. So when a screen has unsaved work we simply do NOT commit the
+ * new hash: the app keeps rendering the current screen while the caller asks the
+ * user. Confirming commits it; cancelling puts the URL back (which fires another
+ * `hashchange` that matches what we are already rendering, and is ignored).
+ */
+function useHashRouter(): { hash: string; pending: string | null; confirmLeave: () => void; cancelLeave: () => void } {
   const [hash, setHash] = useState(window.location.hash || '#/chat');
+  const [pending, setPending] = useState<string | null>(null);
   useEffect(() => {
-    const handler = () => setHash(window.location.hash || '#/chat');
+    const handler = () => {
+      const next = window.location.hash || '#/chat';
+      if (next === hash) {
+        setPending(null);
+        return;
+      }
+      if (navigationBlocked()) {
+        setPending(next);
+        return;
+      }
+      setHash(next);
+    };
     window.addEventListener('hashchange', handler);
     return () => window.removeEventListener('hashchange', handler);
+  }, [hash]);
+
+  const confirmLeave = useCallback(() => {
+    setPending((target) => {
+      if (target) setHash(target);
+      return null;
+    });
   }, []);
-  return hash;
+  const cancelLeave = useCallback(() => {
+    setPending(null);
+    // Back to where we still are. Same-value assignment fires no event, which is
+    // exactly right — nothing to re-render.
+    window.location.hash = hash;
+  }, [hash]);
+
+  return { hash, pending, confirmLeave, cancelLeave };
+}
+
+/**
+ * Asks before a guarded screen is navigated away from. Rendered at the app root
+ * because the guard lives in the router, not in any one screen — the screen that
+ * is about to be left has no chance to render anything at this point.
+ */
+function LeaveConfirmDialog({
+  open,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const t = useT();
+  return (
+    <ConfirmDialog
+      open={open}
+      onClose={onCancel}
+      onConfirm={onConfirm}
+      title={t('common.unsavedTitle')}
+      description={t('common.unsavedDesc')}
+      confirmLabel={t('common.discardChanges')}
+      confirmVariant="destructive"
+    />
+  );
 }
 
 function parseRoute(hash: string): ParsedRoute {
+  const executionRedirect = legacyExecutionRedirect(hash);
+  if (executionRedirect) {
+    window.location.hash = executionRedirect;
+    return parseRoute(executionRedirect);
+  }
+
   const cleaned = hash.replace(/^#\/?/, '');
   const [path, query] = cleaned.split('?');
   const segments = path.split('/');
   const topLevel = segments[0] || 'chat';
 
-  // Redirect legacy routes into settings
+  // Chat utilities used to be in-memory workspace switches. Keep those links
+  // working, but canonicalize them to real pages so refresh/back/deep-links all
+  // describe the screen the user is actually looking at.
+  if (topLevel === 'chat') {
+    const legacyView = new URLSearchParams(query || '').get('view');
+    const destination =
+      legacyView === 'automations'
+        ? '#/automations'
+        : legacyView === 'prompts'
+          ? '#/tasks'
+          : legacyView === 'agents'
+            ? '#/agents'
+            : null;
+    if (destination) {
+      window.location.hash = destination;
+      return parseRoute(destination);
+    }
+  }
+
+  // Redirect the retired prompt alias into its canonical independent page.
   if (topLevel === 'prompts') {
-    window.location.hash = '#/settings/prompts';
-    return { route: 'settings', subPath: 'prompts', params: new URLSearchParams(query || '') };
+    window.location.hash = '#/tasks';
+    return { route: 'tasks', subPath: '', params: new URLSearchParams() };
+  }
+
+  if (topLevel === 'sync') {
+    const syncTail = segments.slice(1).filter(Boolean).join('/');
+    const subPath = `wiki/sync${syncTail ? `/${syncTail}` : ''}`;
+    window.location.hash = `#/knowledge/${subPath}`;
+    return { route: 'knowledge', subPath, params: new URLSearchParams(query || '') };
+  }
+
+  if (topLevel === 'wiki') {
+    const wikiTail = segments.slice(1).filter(Boolean).join('/');
+    const destination = `#/knowledge/wiki${wikiTail ? `/${wikiTail}` : ''}`;
+    window.location.hash = destination;
+    return {
+      route: 'knowledge',
+      subPath: `wiki${wikiTail ? `/${wikiTail}` : ''}`,
+      params: new URLSearchParams(query || ''),
+    };
+  }
+
+  if (topLevel === 'eval') {
+    const evalTail = segments.slice(1).filter(Boolean).join('/');
+    const destination = `#/administration/eval${evalTail ? `/${evalTail}` : ''}`;
+    window.location.hash = destination;
+    return {
+      route: 'administration',
+      subPath: `eval${evalTail ? `/${evalTail}` : ''}`,
+      params: new URLSearchParams(query || ''),
+    };
+  }
+
+  if (topLevel === 'history') {
+    window.location.hash = '#/chat';
+    return { route: 'chat', subPath: '', params: new URLSearchParams() };
+  }
+
+  // The workbench is the Chat empty state now, so both the retired Apps page and
+  // the short-lived standalone Home page redirect there. Old bookmarks keep
+  // working; they just land on the screen that owns the cards.
+  if (topLevel === 'workbench' || topLevel === 'home') {
+    window.location.hash = '#/chat';
+    return { route: 'chat', subPath: '', params: new URLSearchParams() };
+  }
+
+  // The old full-page inbox duplicated the account-menu dialog. Preserve old
+  // bookmarks without keeping a second implementation alive.
+  if (topLevel === 'inbox') {
+    window.location.hash = '#/chat';
+    return { route: 'chat', subPath: '', params: new URLSearchParams() };
+  }
+
+  // Retired routes from earlier product areas keep resolving so old links land
+  // somewhere useful instead of on a dead page.
+  if (topLevel === 'dashboard' || topLevel === 'inquiry') {
+    window.location.hash = '#/chat';
+    return { route: 'chat', subPath: '', params: new URLSearchParams() };
   }
 
   const route = (
-    ['chat', 'history', 'settings', 'projects', 'inbox', 'design', 'knowledge', ...extraPageKeys()].includes(topLevel)
+    [
+      'chat',
+      'automations',
+      'agents',
+      'settings',
+      'administration',
+      'projects',
+      'design',
+      'knowledge',
+      'tables',
+      'skillhub',
+      'tasks',
+      'executions',
+    ].includes(topLevel)
       ? topLevel
       : 'chat'
   ) as Route;
@@ -97,16 +282,24 @@ function parseRoute(hash: string): ParsedRoute {
 // ─── App ─────────────────────────────────────────────────
 
 function App() {
+  // One viewport coordinator covers login, route pages and every shared
+  // overlay. Call it above the auth branches so no mobile input falls back to
+  // browser-default whole-page keyboard resizing.
+  useMobileKeyboardViewport();
   const { authState, currentUser, login, logout, updateUser: _updateUser } = useAuthStore();
   const [userLocale, setUserLocale] = useState<Locale>(getStoredLocale());
-  const hash = useHashRouter();
+  const { hash, pending: pendingLeave, confirmLeave, cancelLeave } = useHashRouter();
   const { route, subPath, params } = useMemo(() => parseRoute(hash), [hash]);
+  const passwordLinkRoute = hash.split('?')[0] === '#/activate';
+  const passwordLinkToken = passwordLinkRoute
+    ? new URLSearchParams(hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '').get('token')
+    : null;
 
   // Sync locale to backend when user changes it
   const handleLocaleChange = useCallback(
     (locale: Locale) => {
       setUserLocale(locale);
-      if (currentUser && currentUser.id !== 'external' && currentUser.id !== 'dev') {
+      if (currentUser) {
         authFetch('/api/auth/me/preferences', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -124,15 +317,13 @@ function App() {
   }, [logout]);
 
   useEffect(() => {
+    // The one-time link page owns its unauthenticated session lifecycle. A
+    // stale access-token validation must not race a successful completion and
+    // clear the freshly issued session.
+    if (passwordLinkRoute) return;
     setOnUnauthorized(handleUnauthorized);
 
     (async () => {
-      const authEnabled = await checkAuthStatus();
-      if (!authEnabled) {
-        login({ id: 'dev', nickname: 'Dev', role: 'super', profiles: [] });
-        return;
-      }
-
       const user = await validateSession();
       if (user) {
         login(user);
@@ -145,7 +336,7 @@ function App() {
         useAuthStore.getState().setAuthState('needs-login');
       }
     })();
-  }, [handleUnauthorized]);
+  }, [handleUnauthorized, login, passwordLinkRoute]);
 
   // ── WebSocket lifecycle: connect on login, disconnect on logout ──
   useEffect(() => {
@@ -163,6 +354,26 @@ function App() {
     }
     return unsub;
   }, []);
+
+  if (passwordLinkRoute) {
+    return (
+      <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
+        <Suspense fallback={<LoadingScreen />}>
+          <AccountPasswordPage
+            initialToken={passwordLinkToken}
+            onSuccess={(user) => {
+              login(user);
+              if (user.locale && (user.locale === 'en' || user.locale === 'zh')) {
+                setUserLocale(user.locale as Locale);
+              }
+              useAuthStore.getState().setAuthState('authenticated');
+            }}
+          />
+        </Suspense>
+        <ToastContainer />
+      </I18nProvider>
+    );
+  }
 
   if (authState === 'checking') {
     return (
@@ -184,6 +395,18 @@ function App() {
             useAuthStore.getState().setAuthState('authenticated');
           }}
         />
+        <ToastContainer />
+      </I18nProvider>
+    );
+  }
+
+  if (new URLSearchParams(window.location.search).get('oauth_authorize') === '1') {
+    return (
+      <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
+        <Suspense fallback={<LoadingScreen />}>
+          <OAuthConsentPage />
+        </Suspense>
+        <ToastContainer />
       </I18nProvider>
     );
   }
@@ -193,6 +416,7 @@ function App() {
       <AgentProvider>
         <SessionManagerProvider>
           <AppShell route={route} subPath={subPath} params={params} />
+          <LeaveConfirmDialog open={pendingLeave !== null} onConfirm={confirmLeave} onCancel={cancelLeave} />
           <ToastContainer />
         </SessionManagerProvider>
       </AgentProvider>
@@ -211,20 +435,36 @@ interface AppShellProps {
 function AppShell({ route, subPath, params }: AppShellProps) {
   const t = useT();
   const { currentUser, logout } = useAuthStore();
-  const { navOpen, setNavOpen, currentSessionTitle, currentSessionProfileId, currentChatSessionId } = useUIStore();
+  const { chatWorkspaceView, navOpen, setChatWorkspaceView, setNavOpen, currentSessionTitle, currentChatSessionId } =
+    useUIStore();
 
-  const userRole = currentUser?.role ?? 'external';
-  const isExternal = userRole === 'external';
+  const { orderedApplications, hasApplication, loading: catalogLoading } = usePlatformCatalog();
+  const loadPlatformCatalog = usePlatformStore((state) => state.load);
+
+  useEffect(() => {
+    void loadPlatformCatalog(true);
+  }, [loadPlatformCatalog]);
+
+  useEffect(() => {
+    setChatWorkspaceView('conversation');
+  }, [route, setChatWorkspaceView]);
 
   // Session ID from store (synced by ChatPage internally)
   const currentSessionId = currentChatSessionId;
   const previousNonSettingsHashRef = useRef('#/chat');
+  const lastChatHashRef = useRef('#/chat');
+
+  // Settings + Administration are full-screen overlay routes with a Back button.
+  const isOverlayRoute = route === 'settings' || route === 'administration';
 
   useEffect(() => {
-    if (route !== 'settings') {
+    if (route === 'chat') {
+      lastChatHashRef.current = window.location.hash || '#/chat';
+    }
+    if (!isOverlayRoute) {
       previousNonSettingsHashRef.current = window.location.hash || '#/chat';
     }
-  }, [route, subPath, params]);
+  }, [isOverlayRoute, params, route, subPath]);
 
   const _onSignOut = useCallback(() => {
     clearToken();
@@ -233,33 +473,41 @@ function AppShell({ route, subPath, params }: AppShellProps) {
     useProfileStore.getState().clear();
   }, [logout, setNavOpen]);
 
-  const handleBackFromSettings = useCallback(() => {
-    const target = previousNonSettingsHashRef.current?.startsWith('#/settings')
-      ? '#/chat'
-      : previousNonSettingsHashRef.current || '#/chat';
+  const handleBackFromPage = useCallback(() => {
+    const previousPage = previousNonSettingsHashRef.current;
+    const overlayTarget =
+      previousPage?.startsWith('#/settings') || previousPage?.startsWith('#/administration')
+        ? lastChatHashRef.current
+        : previousPage;
+    const target = isOverlayRoute ? overlayTarget || lastChatHashRef.current : lastChatHashRef.current;
     window.location.hash = target;
-  }, []);
+  }, [isOverlayRoute]);
 
   const handleNewChat = useCallback(() => {
+    setChatWorkspaceView('conversation');
     window.location.hash = `#/chat?new=${Date.now()}`;
-  }, []);
+  }, [setChatWorkspaceView]);
 
-  const handleSelectSession = useCallback((sessionId: string) => {
-    window.location.hash = `#/chat?session=${sessionId}`;
-  }, []);
+  const handleSelectSession = useCallback(
+    (sessionId: string) => {
+      setChatWorkspaceView('conversation');
+      window.location.hash = `#/chat?session=${sessionId}`;
+    },
+    [setChatWorkspaceView],
+  );
 
-  // Navigation items for mobile drawer (+ fork pages that opt into the nav)
-  const navItems: Array<{ key: Route; label: string; icon: LucideIcon; visible: boolean }> = [
-    { key: 'chat', label: t('app.chat'), icon: MessageCircle, visible: true },
-    { key: 'projects', label: t('app.projects'), icon: FolderKanban, visible: !isExternal },
-    { key: 'knowledge', label: t('app.knowledge'), icon: BookOpen, visible: !isExternal },
-    ...extraNavItems({ isExternal, userRole }),
-  ];
-
+  // One permission-aware navigation model feeds both the desktop sidebar and
+  // mobile drawer. Presentation differs, visibility and ordering do not.
+  const primaryNavigation = buildPrimaryNavigation({
+    applications: orderedApplications,
+    chatLabel: t('app.chat'),
+    skillhubLabel: t('app.skillhub'),
+  });
   return (
     <>
-      <div className="h-screen flex overflow-hidden bg-surface-sunken">
-        {/* Global Left Sidebar — desktop only */}
+      <div className="app-viewport flex overflow-hidden bg-surface-canvas">
+        {/* Full-height contextual rail — desktop only. Brand, workspace,
+            primary action, contextual navigation, and account all live here. */}
         <AppSidebar
           route={route}
           subPath={subPath}
@@ -267,104 +515,123 @@ function AppShell({ route, subPath, params }: AppShellProps) {
           onSelectSession={handleSelectSession}
           onNewChat={handleNewChat}
           onSignOut={_onSignOut}
-          onBackFromSettings={handleBackFromSettings}
+          onBack={handleBackFromPage}
+          navigation={primaryNavigation}
         />
 
-        {/* Right side: TopBar + Main Content */}
-        <div className="flex flex-col flex-1 min-w-0 h-full py-2 pr-2">
+        {/* Right workspace: contextual page bar and content. */}
+        <div className="flex h-full min-w-0 flex-1 flex-col">
           {/* Simplified Top Bar */}
           <TopBar
             route={route}
             subPath={subPath}
             sessionTitle={currentSessionTitle}
-            sessionProfileId={currentSessionProfileId}
-            isExternal={isExternal}
+            chatWorkspaceView={chatWorkspaceView}
+            onSelectSession={handleSelectSession}
           />
 
           {/* Mobile navigation drawer */}
-          <Drawer open={navOpen} onClose={() => setNavOpen(false)}>
-            <div className="px-4 py-4 border-b border-edge flex items-center justify-between gap-3">
-              <AppLogo size="sm" showVersion />
-              <button
-                onClick={() => {
-                  handleNewChat();
-                  setNavOpen(false);
-                }}
-                className="h-8 w-8 flex items-center justify-center rounded-lg text-fg-muted hover:text-fg-secondary hover:bg-surface-muted transition-colors"
-                title="New Chat"
-                aria-label="New Chat"
-              >
-                <Plus size={15} />
-              </button>
-            </div>
-            {route === 'settings' ? (
-              <>
-                <div className="px-3 py-3 border-b border-edge">
-                  <button
+          <Drawer open={navOpen} onClose={() => setNavOpen(false)} ariaLabel={t('navigation.mobile')}>
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-edge px-4 py-4">
+                <AppLogo size="sm" showVersion />
+                <div className="flex items-center gap-0">
+                  <SearchNavButton />
+                  <IconButton onClick={() => setNavOpen(false)} label={t('common.close')}>
+                    <X size={16} />
+                  </IconButton>
+                </div>
+              </div>
+              {isOverlayRoute && (
+                <div className="flex-shrink-0 border-b border-edge px-3 py-3">
+                  <SidebarBackButton
+                    label={t('common.back')}
                     onClick={() => {
-                      handleBackFromSettings();
+                      handleBackFromPage();
                       setNavOpen(false);
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-fg-secondary hover:text-fg hover:bg-surface-muted transition-colors"
-                  >
-                    <ArrowLeft size={14} />
-                    <span>Back</span>
-                  </button>
-                </div>
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <SettingsNavPanel
-                    activeModule={subPath.split('/').filter(Boolean)[0] || 'preferences'}
-                    onSignOut={_onSignOut}
                   />
                 </div>
-              </>
-            ) : (
-              <>
-                <nav
-                  className="mx-3 mb-2 flex items-stretch gap-1 rounded-xl bg-surface-sunken p-1 overflow-x-auto"
-                  aria-label="Main navigation"
-                >
-                  {navItems
-                    .filter((item) => item.visible)
-                    .map((item) => {
-                      const Icon = item.icon;
-                      const isActive = route === item.key;
-                      return (
-                        <a
-                          key={item.key}
-                          href={`#/${item.key}`}
-                          onClick={() => setNavOpen(false)}
-                          className={`flex h-12 min-w-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-lg border px-1 transition-colors ${
-                            isActive
-                              ? 'border-edge bg-surface-raised text-fg font-medium'
-                              : 'border-transparent text-fg-muted hover:bg-surface-muted hover:text-fg-secondary'
-                          }`}
-                          title={item.label}
-                        >
-                          <Icon size={15} className={isActive ? 'text-primary-fg' : 'text-fg-faint'} />
-                          <span className="max-w-full truncate text-[9px] leading-tight">{item.label}</span>
-                        </a>
-                      );
-                    })}
-                </nav>
-                {/* Pinned shortcuts (mobile) */}
-                <MobilePinnedSection
-                  currentHash={`#/${route}${subPath ? '/' + subPath : ''}`}
-                  onNavigate={() => setNavOpen(false)}
-                />
-              </>
-            )}
-            {/* User info at bottom of drawer */}
-            {currentUser && (
-              <div className="px-4 py-3 border-t border-edge">
-                <SidebarAccountMenu
-                  user={currentUser}
-                  showSettingsIcon={!isExternal}
-                  settingsActive={route === 'settings'}
-                  onNavigate={() => setNavOpen(false)}
-                />
-              </div>
-            )}
+              )}
+              {isOverlayRoute ? (
+                <>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    {route === 'administration' ? (
+                      <AdministrationNavPanel activeModule={subPath.split('/').filter(Boolean)[0] || 'users'} />
+                    ) : (
+                      <SettingsNavPanel
+                        activeModule={subPath.split('/').filter(Boolean)[0] || 'preferences'}
+                        onSignOut={_onSignOut}
+                      />
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <div className="flex-shrink-0 px-3 pb-2 pt-3">
+                    <SidebarPrimaryAction
+                      icon={Plus}
+                      onClick={() => {
+                        handleNewChat();
+                        setNavOpen(false);
+                      }}
+                    >
+                      {t('navigation.newChat')}
+                    </SidebarPrimaryAction>
+                  </div>
+                  <SidebarGlobalNavigation
+                    navigation={primaryNavigation}
+                    route={route}
+                    chatWorkspaceView={chatWorkspaceView}
+                    onSelectChatWorkspace={setChatWorkspaceView}
+                    onNavigate={() => setNavOpen(false)}
+                    morePlacement="inline"
+                    className="pb-2"
+                  />
+                  <div className="mx-3 border-t border-edge" />
+                  {route === 'chat' ? (
+                    <div className="flex min-h-0 flex-1 flex-col pt-1">
+                      <ChatHistoryPanel
+                        currentSessionId={currentSessionId}
+                        onSelectSession={(sessionId) => {
+                          handleSelectSession(sessionId);
+                          setNavOpen(false);
+                        }}
+                      />
+                    </div>
+                  ) : route === 'knowledge' ? (
+                    // The tree is the ONLY way to reach an internal doc (the page
+                    // body stopped listing documents when the tree shipped), so
+                    // without this the whole team library is unreachable on a
+                    // phone — you'd land on the public wiki and stop there.
+                    <div className="flex min-h-0 flex-1 flex-col pt-1">
+                      <KnowledgeNavPanel activeModule={subPath} onNavigate={() => setNavOpen(false)} />
+                    </div>
+                  ) : route === 'executions' ? (
+                    <div className="min-h-0 flex-1" />
+                  ) : (
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                      <MobilePinnedSection
+                        currentHash={`#/${route}${subPath ? '/' + subPath : ''}`}
+                        onNavigate={() => setNavOpen(false)}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* User info stays pinned while the navigation region scrolls. */}
+              {currentUser && (
+                <div className="flex-shrink-0 border-t border-edge bg-surface-raised px-4 py-3">
+                  <SidebarAccountMenu
+                    user={currentUser}
+                    showSettingsIcon
+                    settingsActive={route === 'settings'}
+                    executionCenterActive={route === 'executions'}
+                    onNavigate={() => setNavOpen(false)}
+                  />
+                </div>
+              )}
+            </div>
           </Drawer>
 
           {/* Page content */}
@@ -377,39 +644,47 @@ function AppShell({ route, subPath, params }: AppShellProps) {
               }
             >
               <main className="flex-1 overflow-hidden min-h-0">
+                {catalogLoading && (route === 'projects' || route === 'knowledge' || route === 'tables') && (
+                  <div className="flex h-full items-center justify-center">
+                    <Spinner className="h-6 w-6 text-fg-faint" />
+                  </div>
+                )}
                 {route === 'chat' && (
                   <ChatPage
                     key={params.get('session') || params.get('new') || 'new'}
                     initialSessionId={params.get('session') || undefined}
-                    userRole={userRole}
                   />
                 )}
-                {route === 'history' && !isExternal && <ChatPage key="from-history" userRole={userRole} />}
-                {route === 'settings' && !isExternal && <SettingsPage subPath={subPath} />}
+                {route === 'automations' && <AutomationsPage />}
+                {route === 'tasks' && <PersonalTasksPage />}
+                {route === 'agents' && <AgentsPage />}
+                {route === 'skillhub' && <SkillHubPage subPath={subPath} />}
+                {route === 'settings' && <SettingsPage subPath={subPath} />}
+                {route === 'administration' && <AdministrationPage subPath={subPath} />}
                 {route === 'projects' &&
-                  !isExternal &&
+                  hasApplication('projects') &&
                   (subPath ? <ProjectDetailPage projectId={parseInt(subPath)} /> : <ProjectsPage />)}
-                {route === 'inbox' && !isExternal && <InboxPage />}
                 {route === 'design' && <DesignPage />}
-                {route === 'knowledge' && !isExternal && <KnowledgePage subPath={subPath} basePath="#/knowledge" />}
-                {route === 'history' && isExternal && <ChatPage key="fallback" userRole={userRole} />}
-                {route === 'settings' && isExternal && (
-                  <div className="flex items-center justify-center h-full text-fg-faint text-sm">
-                    {t('app.noPermission')}
-                  </div>
+                {route === 'knowledge' && hasApplication('knowledge') && (
+                  <KnowledgePage subPath={subPath} basePath="#/knowledge" />
                 )}
-                {route === 'knowledge' && isExternal && (
-                  <div className="flex items-center justify-center h-full text-fg-faint text-sm">
-                    {t('app.noPermission')}
-                  </div>
-                )}
-                {/* Private fork pages (empty upstream) — see lib/page-registry. */}
-                {getExtraPage(route)?.render({ subPath, params, userRole, isExternal })}
+                {route === 'tables' && hasApplication('tables') && <TablesPage subPath={subPath} />}
+                {route === 'executions' && <ExecutionCenterPage subPath={subPath} params={params} />}
+                {!catalogLoading &&
+                  ((route === 'projects' && !hasApplication('projects')) ||
+                    (route === 'knowledge' && !hasApplication('knowledge')) ||
+                    (route === 'tables' && !hasApplication('tables'))) && (
+                    <div className="flex h-full items-center justify-center text-sm text-fg-faint">
+                      {t('app.noPermission')}
+                    </div>
+                  )}
               </main>
             </Suspense>
           </ErrorBoundary>
 
-          <GlobalAgentPanel />
+          <AssistantPanel />
+          <EntityPeekHost />
+          <GlobalSearchDialog />
         </div>
       </div>
     </>
@@ -421,10 +696,10 @@ function AppShell({ route, subPath, params }: AppShellProps) {
 function LoadingScreen() {
   const t = useT();
   return (
-    <div className="h-screen flex items-center justify-center bg-surface-sunken">
+    <div className="app-viewport flex items-center justify-center bg-surface-sunken">
       <div className="text-center">
-        <div className="flex justify-center">
-          <AppLogo logoOnly size="xl" />
+        <div className="mx-auto flex justify-center">
+          <AppLogo size="xl" logoOnly />
         </div>
         <p className="text-sm text-fg-faint mt-2">{t('common.loading')}</p>
       </div>
@@ -436,11 +711,10 @@ function LoadingScreen() {
 
 const container = document.getElementById('root');
 if (container) {
-  const root = createRoot(container);
-  // Workspace branding (tenant name / logo / theme / team Sprouty) loads
-  // before first paint so the login screen is already personalized. Fails
-  // open fast (≤2.5s) to fork/build defaults when the API is unreachable.
+  // Workspace branding (name / logo / theme) loads before first paint so the
+  // login screen is already branded; it fails open to the build defaults.
   void initWorkspaceBranding().finally(() => {
+    const root = createRoot(container);
     root.render(
       <ErrorBoundary>
         <App />
