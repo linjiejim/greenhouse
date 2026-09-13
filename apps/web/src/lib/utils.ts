@@ -55,6 +55,47 @@ export function formatDate(dateStr?: string): string {
 }
 
 /**
+ * Like `formatDate`, but rendered in an explicit IANA time zone — for records
+ * that carry their own zone (an automation runs on *its* clock, not the viewer's).
+ */
+export function formatDateInZone(dateStr: string | null | undefined, timeZone: string | null | undefined): string {
+  if (!dateStr) return '';
+  try {
+    return new Date(dateStr).toLocaleString(displayLocale(), {
+      ...(timeZone ? { timeZone } : {}),
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return formatDate(dateStr);
+  }
+}
+
+/**
+ * Flatten Markdown to plain text for one-line previews (notification bodies, list
+ * summaries) — headings, emphasis, inline code and links lose their syntax, not their words.
+ */
+export function markdownPreview(text: string | null | undefined): string {
+  if (!text) return '';
+  return text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s{0,3}>\s?/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/(\*|_)(.*?)\1/g, '$2')
+    .replace(/~~(.*?)~~/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Format a date without the clock (e.g. "May 14, 2026").
  *
  * For calendar-grained fields — registration date, shipped-on, follow-up due —

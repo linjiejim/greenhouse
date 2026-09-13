@@ -2317,6 +2317,8 @@ export default {
     createAndEnable: 'Create & Enable',
     colTask: 'Task',
     colSchedule: 'Schedule',
+    nextRun: 'Next {time}',
+    noNextRun: 'No next run',
     colProfile: 'Profile',
     colStatus: 'Status',
     colRuns: 'Runs',

@@ -378,12 +378,14 @@ export function McpKeysPanel() {
                     <td className="px-3 py-2 text-fg-secondary whitespace-nowrap">
                       {bound ? userLabel(bound) : (c.bound_user_id ?? '—')}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {c.allowed_scopes.map((s) => (
-                        <Badge key={s} variant={s === 'mcp:write' ? 'warning' : 'secondary'} className="mr-1">
-                          {s}
-                        </Badge>
-                      ))}
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-1">
+                        {c.allowed_scopes.map((s) => (
+                          <Badge key={s} variant={s === 'mcp:write' ? 'warning' : 'secondary'}>
+                            {s}
+                          </Badge>
+                        ))}
+                      </div>
                     </td>
                     <td className="px-3 py-2">{statusBadge(c)}</td>
                     <td className="px-3 py-2 text-fg-faint whitespace-nowrap">{formatDate(c.created_at)}</td>

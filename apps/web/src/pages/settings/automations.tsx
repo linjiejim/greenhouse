@@ -36,6 +36,7 @@ import {
   type AutomationOptInTier,
 } from '@greenhouse/types/automation-tools';
 import { useT } from '../../lib/i18n';
+import { formatDate, formatDateInZone } from '../../lib/utils';
 import { fetchWeComBinding } from '../../lib/api/wecom';
 import { fetchFeishuBinding } from '../../lib/api/feishu';
 import { useAuthStore } from '../../stores';
@@ -456,7 +457,7 @@ function RunHistoryDialog({ task, onClose }: { task: Task; onClose: () => void }
                 onClick={() => openSession(entry.session_id)}
               >
                 <td className="px-3 py-2 text-xs text-fg-secondary">
-                  {new Date(entry.created_at).toLocaleString('zh-CN', { timeZone: task.timezone })}
+                  {formatDateInZone(entry.created_at, task.timezone)}
                 </td>
                 <td className="px-3 py-2 text-xs text-fg-muted">
                   {entry.run
@@ -588,9 +589,11 @@ export function AutomationsPanel() {
             width: '8rem',
             type: 'custom',
             render: (task) => (
-              <div className="flex items-center gap-1 text-xs text-fg-secondary">
+              <div className="flex items-center gap-1 text-xs text-fg-secondary" title={task.schedule}>
                 <Clock size={11} />
-                {task.schedule_desc || task.schedule}
+                {task.enabled && task.next_run_at
+                  ? t('automations.nextRun', { time: formatDate(task.next_run_at) })
+                  : t('automations.noNextRun')}
               </div>
             ),
           },
@@ -620,7 +623,7 @@ export function AutomationsPanel() {
             render: (task) =>
               task.last_run_at ? (
                 <span className="text-xs text-fg-muted">
-                  {new Date(task.last_run_at).toLocaleString('zh-CN', { timeZone: task.timezone })}{' '}
+                  {formatDateInZone(task.last_run_at, task.timezone)}{' '}
                   {task.last_status === 'completed' ? (
                     <CheckCircle
                       size={13}

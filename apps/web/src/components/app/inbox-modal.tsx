@@ -7,7 +7,7 @@ import type { PlatformNotification } from '@greenhouse/types/notification';
 import { CheckCheck, Inbox, MessageSquare, Users } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { executionNotificationHref } from '../../lib/execution-route';
-import { timeAgo } from '../../lib/utils';
+import { timeAgo, markdownPreview } from '../../lib/utils';
 import * as api from '../../lib/api';
 import { useWsStore } from '../../stores';
 import { Badge, Dialog, EmptyState, Spinner } from '../ui';
@@ -194,7 +194,9 @@ export function InboxModal({ open, onClose }: { open: boolean; onClose: () => vo
                     >
                       {item.title}
                     </span>
-                    <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-fg-muted">{item.body}</span>
+                    <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-fg-muted">
+                      {markdownPreview(item.body)}
+                    </span>
                   </span>
                   <span className="flex-shrink-0 text-[11px] text-fg-faint">{timeAgo(item.created_at)}</span>
                 </button>

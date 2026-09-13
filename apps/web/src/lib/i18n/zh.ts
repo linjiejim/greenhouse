@@ -2274,6 +2274,8 @@ const zh: Messages = {
     createAndEnable: '创建并启用',
     colTask: '任务',
     colSchedule: '排程',
+    nextRun: '下次 {time}',
+    noNextRun: '暂无下次运行',
     colProfile: 'Profile',
     colStatus: '状态',
     colRuns: '运行次数',
