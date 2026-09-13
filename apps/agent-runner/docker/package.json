@@ -1,0 +1,10 @@
+{
+  "name": "greenhouse-sandbox-runtime",
+  "private": true,
+  "type": "module",
+  "description": "Dependency manifest for the Sandbox Runner image ONLY — keep the Pi version in lockstep with @greenhouse/sandbox-runner",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.83.0",
+    "typebox": "1.3.7"
+  }
+}

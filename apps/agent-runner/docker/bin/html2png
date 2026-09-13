@@ -1,0 +1,36 @@
+#!/bin/sh
+# html2png <input.html|url> <output.png> [width] [height]
+#
+# Screenshot half of the pair — lets the agent actually LOOK at what it built
+# (the html-slides skill asks for a 1600x900 check, which is the default size here)
+# instead of shipping a deck it never rendered. Same mandatory flags as
+# html2pdf; see that script for why each one is there.
+set -eu
+
+if [ $# -lt 2 ]; then
+  echo "usage: html2png <input.html|url> <output.png> [width] [height]" >&2
+  exit 2
+fi
+
+input=$1
+output=$2
+width=${3:-1600}
+height=${4:-900}
+
+case "$input" in
+  http://* | https://* | file://*) url=$input ;;
+  *) url="file://$(cd "$(dirname "$input")" && pwd)/$(basename "$input")" ;;
+esac
+
+exec chromium \
+  --headless \
+  --no-sandbox \
+  --disable-gpu \
+  --disable-dev-shm-usage \
+  --log-level=3 \
+  --hide-scrollbars \
+  --virtual-time-budget=15000 \
+  --run-all-compositor-stages-before-draw \
+  --window-size="${width},${height}" \
+  --screenshot="$output" \
+  "$url"

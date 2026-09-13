@@ -1,0 +1,45 @@
+#!/bin/sh
+# html2pdf <input.html|url> <output.pdf> [extra chromium flags...]
+#
+# The one blessed HTML→PDF path in the sandbox (the pdf / html-report skills
+# deliverables). Every flag here is load-bearing, which is why this is a script
+# and not a line in a doc for the agent to re-derive each run:
+#   --no-sandbox            container runs as root with --cap-drop ALL, so
+#                           chromium's own sandbox cannot start at all
+#   --disable-dev-shm-usage docker gives /dev/shm 64 MB; the renderer crashes
+#                           on real pages without this
+#   --virtual-time-budget   wait for webfonts/layout instead of printing a
+#                           half-painted page
+#   --log-level=3           there is no dbus/upower in the container, and
+#                           chromium logs ~25 ERROR lines about it on every
+#                           single run. That noise lands in the agent's tool
+#                           output and gets paid for in tokens.
+set -eu
+
+if [ $# -lt 2 ]; then
+  echo "usage: html2pdf <input.html|url> <output.pdf> [chromium flags...]" >&2
+  exit 2
+fi
+
+input=$1
+output=$2
+shift 2
+
+case "$input" in
+  http://* | https://* | file://*) url=$input ;;
+  *) url="file://$(cd "$(dirname "$input")" && pwd)/$(basename "$input")" ;;
+esac
+
+exec chromium \
+  --headless \
+  --no-sandbox \
+  --disable-gpu \
+  --disable-dev-shm-usage \
+  --log-level=3 \
+  --hide-scrollbars \
+  --virtual-time-budget=15000 \
+  --run-all-compositor-stages-before-draw \
+  --no-pdf-header-footer \
+  --print-to-pdf="$output" \
+  "$@" \
+  "$url"
