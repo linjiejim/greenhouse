@@ -32,17 +32,17 @@ type SkillQueryInput = z.infer<typeof skillQuerySchema>;
 const meta: ToolMeta = {
   id: 'skill_query',
   name: 'Skill Query',
-  brief: 'Find, inspect, download and sync-check shared agent skills from the enterprise Skill Center',
-  description: `Read access to the enterprise Skill Center — the org's shared library of agent skills (a skill = a folder of instructions/files with SKILL.md at its root). Actions:
-- skills.find: search the catalog by keyword (name/description/tags); returns summaries with the latest version and download count.
+  brief: 'Find, inspect, download and sync-check shared agent skills from the team Skill Center',
+  description: `Read access to the team Skill Center — the org's shared library of agent skills (a skill = a folder of instructions/files with SKILL.md at its root). Actions:
+- skills.find: search the catalog; returns summaries with the latest version and download count.
 - skills.get: one skill's detail plus its FULL version history with changelogs — use this to review what changed between versions.
-- skills.download: fetch a version's files (latest by default). The result carries every file as { path, content, encoding? } — to install, write each file under the client's skills directory (e.g. .claude/skills/<name>/<path>), preserving relative paths and decoding base64 entries. Archived skills stay downloadable for pinned installs.
-- skills.check_updates: pass the locally installed skills as {name, version} pairs; returns per skill whether it is up_to_date / update_available (with the pending changelogs, oldest first) / archived / not_found. Use this to sync a local skill set, then skills.download the ones with updates.`,
+- skills.download: fetch a version's files (latest by default). The result carries every file as { path, content, encoding? } — to install, write each file under the client's skills directory (e.g. .claude/skills/<name>/<path>), preserving relative paths and decoding base64 entries. Archived skills stay downloadable for pinned installs. Skills flagged by the security scanner are refused here until a super admin clears them — report that to the user rather than retrying.
+- skills.check_updates: pass the locally installed skills as {name, version} pairs; returns per skill whether it is up_to_date / update_available (with the pending changelogs, oldest first) / archived / quarantined (scanner-flagged; skip it) / not_found. Use this to sync a local skill set, then skills.download the ones with updates.`,
   category: 'team',
   is_global: true,
-  icon: 'Sparkles',
-  group: 'skills',
-  surface: { proxy: 'read', mcp: true },
+  icon: 'Package',
+  surface: { proxy: 'read', mcp: 'skills', unattendedReplaySafe: true },
+  sort_order: 33,
 };
 
 export function createSkillQueryTool(db: DatabaseProvider) {
@@ -99,5 +99,5 @@ export function createSkillQueryTool(db: DatabaseProvider) {
 export const skillQueryTool = defineTool({
   meta,
   kind: 'static',
-  create: (ctx) => createSkillQueryTool(ctx.db),
+  create: (db) => createSkillQueryTool(db),
 });

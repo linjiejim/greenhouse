@@ -2,46 +2,123 @@
  * LLM Gateway relay — pure forwarding helpers (中转转发纯逻辑).
  *
  * The gateway exposes a single OpenAI-compatible surface
- * (`POST /api/llm/v1/chat/completions`). Each public model maps to an upstream
- * pool entry; the server rewrites the model id, injects the org's real key and
- * forwards. All passthrough upstreams speak the OpenAI wire format (OpenAI,
- * DeepSeek's OpenAI endpoint, any OpenAI-compatible endpoint). Native protocols
- * (e.g. Anthropic) are not translated.
+ * (`POST /api/llm/v1/chat/completions`). A client-facing model id is a model in
+ * `config/models.yaml`; the server picks the first provider in that model's
+ * chain whose API key env var is set, rewrites the model id and forwards.
+ * OpenAI / DeepSeek / OpenAI-compatible upstreams are a transparent passthrough.
  *
- * These helpers are intentionally side-effect-free so they can be unit-tested
- * without a DB or network.
+ * The catalog used to live in `llm_upstreams` + `llm_gateway_models` with the
+ * vendor key encrypted in the DB; both are gone — one config, keys in env.
+ *
+ * These helpers are side-effect-free apart from reading `process.env`, so they
+ * unit-test without a DB or network.
  */
 
 import { safeJsonParse } from '@greenhouse/utils/json';
-import type { LlmGatewayModelRow, LlmUpstreamKind } from '@greenhouse/db';
+import { KIMI_DEFAULT_BASE_URL, MINIMAX_DEFAULT_BASE_URL, type ModelEntry } from '@greenhouse/agent-core';
 
-/** Upstream kinds the relay can transparently passthrough today (OpenAI wire format). */
-export const PASSTHROUGH_KINDS: ReadonlySet<LlmUpstreamKind> = new Set<LlmUpstreamKind>([
+/** Provider kinds the relay can transparently passthrough today (OpenAI wire format). */
+export const PASSTHROUGH_KINDS: ReadonlySet<string> = new Set([
   'openai',
   'deepseek',
+  'kimi',
+  'minimax',
   'openai-compatible',
 ]);
 
-export function isPassthroughKind(kind: LlmUpstreamKind): boolean {
+export function isPassthroughKind(kind: string): boolean {
   return PASSTHROUGH_KINDS.has(kind);
 }
 
+/** A catalog model resolved down to one reachable upstream. */
+export interface RelayModel {
+  /** Client-facing model id — the catalog key. */
+  id: string;
+  displayName: string;
+  provider: string;
+  /** The model id actually sent upstream. */
+  upstreamModel: string;
+  baseUrl: string;
+  apiKey: string;
+  /** Exact hard-budget account for the credential that receives this request. */
+  scopeId: string;
+}
+
 /**
- * Resolve which gateway models a relay key may use.
- *
- * @param allowedModelIds - the key's `meta.allowed_models` (public_id list), or
- *   `null`/empty to mean "the default public subset".
- * @param enabledModels - all currently enabled catalog rows.
+ * One relay HTTP request is always one provider attempt: this endpoint has no
+ * response cache, so a repeated client Idempotency-Key must never deduplicate
+ * hard-budget charging. Keep that client key only as permanent diagnostic
+ * metadata and identify the billable attempt with a server-generated nonce.
+ */
+export function buildRelayBudgetAttempt(
+  clientId: string,
+  clientIdempotencyKey: string | undefined,
+  attemptNonce: string,
+): {
+  idempotencyKey: string;
+  metadata: { client_idempotency_key?: string };
+} {
+  return {
+    idempotencyKey: `relay:${clientId}:${attemptNonce}`,
+    metadata: clientIdempotencyKey ? { client_idempotency_key: clientIdempotencyKey } : {},
+  };
+}
+
+/** Mirrors createModelDirect's default so relay and agent hit the same endpoint. */
+function resolveBaseUrl(provider: string, declared: string | undefined, env: NodeJS.ProcessEnv): string | null {
+  if (declared) return declared;
+  if (provider === 'deepseek') return env.LLM_BASE_URL || 'https://api.deepseek.com';
+  if (provider === 'openai') return 'https://api.openai.com/v1';
+  if (provider === 'kimi') return env.KIMI_BASE_URL || KIMI_DEFAULT_BASE_URL;
+  if (provider === 'minimax') return env.MINIMAX_BASE_URL || MINIMAX_DEFAULT_BASE_URL;
+  return env.LLM_BASE_URL || null;
+}
+
+/**
+ * Resolve a catalog model to its first usable upstream: passthrough protocol,
+ * API key present in env, base URL known. Returns null when nothing in the
+ * chain is reachable — the relay reports that as "temporarily unavailable"
+ * rather than pretending the model exists.
+ */
+export function resolveRelayModel(
+  id: string,
+  entry: ModelEntry,
+  env: NodeJS.ProcessEnv = process.env,
+): RelayModel | null {
+  for (const provider of entry.providers) {
+    if (!isPassthroughKind(provider.provider)) continue;
+    const apiKey = env[provider.apiKeyEnv];
+    if (!apiKey) continue;
+    const baseUrl = resolveBaseUrl(provider.provider, provider.baseUrl, env);
+    if (!baseUrl) continue;
+    return {
+      id,
+      displayName: entry.name,
+      provider: provider.provider,
+      upstreamModel: provider.model,
+      baseUrl,
+      apiKey,
+      scopeId: `${provider.apiKeyEnv}:${provider.provider}:${provider.baseUrl ?? 'default'}`,
+    };
+  }
+  return null;
+}
+
+/**
+ * Which catalog models a relay key may use: its explicit `meta.allowed_models`
+ * subset, else the config's `relay.public` list.
  */
 export function resolveModelSubset(
   allowedModelIds: string[] | null | undefined,
-  enabledModels: LlmGatewayModelRow[],
-): LlmGatewayModelRow[] {
+  catalogIds: string[],
+  publicIds: string[],
+): string[] {
   if (allowedModelIds && allowedModelIds.length > 0) {
     const allow = new Set(allowedModelIds);
-    return enabledModels.filter((m) => allow.has(m.public_id));
+    return catalogIds.filter((id) => allow.has(id));
   }
-  return enabledModels.filter((m) => m.is_public);
+  const isPublic = new Set(publicIds);
+  return catalogIds.filter((id) => isPublic.has(id));
 }
 
 /** Read `meta.allowed_models` from an api_clients.meta JSON string. */
@@ -62,13 +139,9 @@ export function upstreamChatUrl(baseUrl: string): string {
   return joinUrl(baseUrl.trim(), 'chat/completions');
 }
 
-/**
- * Build upstream auth + content headers for a passthrough request.
- *
- * All passthrough upstreams use OpenAI-style bearer auth. `kind` is kept for
- * call-site compatibility (and a future native protocol could branch on it).
- */
-export function upstreamHeaders(_kind: LlmUpstreamKind, apiKey: string): Record<string, string> {
+/** Build upstream auth + content headers for a passthrough request. */
+export function upstreamHeaders(kind: string, apiKey: string): Record<string, string> {
+  if (!isPassthroughKind(kind)) throw new Error(`Unsupported upstream protocol: ${kind}`);
   return {
     'content-type': 'application/json',
     authorization: `Bearer ${apiKey}`,
@@ -83,15 +156,78 @@ export interface IncomingChatBody {
   [key: string]: unknown;
 }
 
+export class RelayRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RelayRequestError';
+  }
+}
+
 /**
- * Rewrite the client request body for the upstream: swap the public model id for
+ * Validate and materialize a provider-enforced output ceiling. The catalog
+ * value is a hard server boundary; clients cannot raise it by choosing either
+ * OpenAI spelling of the field.
+ */
+export function applyRelayOutputLimit(
+  body: IncomingChatBody,
+  maxOutputTokens: number,
+): { body: IncomingChatBody; outputTokenLimit: number } {
+  const cap = Math.max(1, Math.floor(maxOutputTokens));
+  if (body.max_completion_tokens !== undefined && body.max_tokens !== undefined) {
+    throw new RelayRequestError('Use either max_tokens or max_completion_tokens, not both');
+  }
+  const declared = [body.max_completion_tokens, body.max_tokens].filter((value) => value !== undefined);
+  for (const value of declared) {
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+      throw new RelayRequestError('max_tokens must be a positive integer');
+    }
+    if (value > cap) {
+      throw new RelayRequestError(`Requested output limit exceeds the model maximum of ${cap} tokens`);
+    }
+  }
+
+  if (body.max_completion_tokens !== undefined) {
+    return {
+      body: { ...body, max_completion_tokens: body.max_completion_tokens },
+      outputTokenLimit: body.max_completion_tokens as number,
+    };
+  }
+  if (body.max_tokens !== undefined) {
+    return { body: { ...body, max_tokens: body.max_tokens }, outputTokenLimit: body.max_tokens as number };
+  }
+  return { body: { ...body, max_tokens: cap }, outputTokenLimit: cap };
+}
+
+/**
+ * Sampling params Kimi pins server-side. Verified live against
+ * `api.kimi.com/coding/v1`: any other value is a hard 400
+ * (`invalid temperature: only 1 is allowed for this model`), not a silent
+ * clamp. Only `1 / 0.95 / 0 / 0` are accepted, i.e. exactly the model's own
+ * defaults.
+ */
+const KIMI_FIXED_SAMPLING_PARAMS = ['temperature', 'top_p', 'frequency_penalty', 'presence_penalty'] as const;
+
+/**
+ * Rewrite the client request body for the upstream: swap the client-facing model id for
  * the real upstream model, and (for streaming) force `stream_options.include_usage`
  * so the relay can always read token usage from the final SSE chunk.
+ *
+ * For Kimi, also drop the sampling params it pins server-side: nearly every
+ * OpenAI client sends `temperature`, and forwarding it would turn a normal
+ * request into a 400 the caller cannot act on. Dropping them yields exactly the
+ * values Kimi would have forced anyway — the only alternative that isn't a lie.
  */
-export function buildUpstreamBody(body: IncomingChatBody, upstreamModel: string): Record<string, unknown> {
+export function buildUpstreamBody(
+  body: IncomingChatBody,
+  upstreamModel: string,
+  provider: string,
+): Record<string, unknown> {
   const out: Record<string, unknown> = { ...body, model: upstreamModel };
   if (body.stream) {
     out.stream_options = { ...(body.stream_options ?? {}), include_usage: true };
+  }
+  if (provider === 'kimi') {
+    for (const param of KIMI_FIXED_SAMPLING_PARAMS) delete out[param];
   }
   return out;
 }
@@ -131,7 +267,7 @@ export function extractUsageFromSseChunk(line: string): TokenUsage | null {
   };
 }
 
-export interface PublicModelEntry {
+export interface ClientModelEntry {
   id: string;
   display_name: string;
   object: 'model';
@@ -139,15 +275,15 @@ export interface PublicModelEntry {
 }
 
 /** Shape the `/v1/models` response (OpenAI-compatible) from a model subset. */
-export function toModelsListResponse(models: LlmGatewayModelRow[]): {
+export function toModelsListResponse(models: RelayModel[]): {
   object: 'list';
-  data: PublicModelEntry[];
+  data: ClientModelEntry[];
 } {
   return {
     object: 'list',
     data: models.map((m) => ({
-      id: m.public_id,
-      display_name: m.display_name,
+      id: m.id,
+      display_name: m.displayName,
       object: 'model',
       owned_by: 'greenhouse-gateway',
     })),

@@ -1,544 +1,480 @@
 /**
- * Project Management routes — /api/projects
+ * Project Management routes — /api/projects (Platform Kernel adapter)
  *
- * GET    /api/projects                    — 项目列表（含进度统计）
- * POST   /api/projects                    — 创建项目
- * GET    /api/projects/:id                — 项目详情（含任务树）
- * PATCH  /api/projects/:id                — 更新项目
- * DELETE /api/projects/:id                — 删除项目
- * GET    /api/projects/:id/tasks          — 任务列表
- * POST   /api/projects/:id/tasks          — 创建任务
- * PATCH  /api/projects/tasks/:taskId      — 更新任务
- * DELETE /api/projects/tasks/:taskId      — 删除任务
- * PATCH  /api/projects/tasks-reorder      — 批量排序（支持跨项目移动）
- * PATCH  /api/projects/tasks/:taskId/move  — 移动任务到其他项目
- * GET    /api/projects/tasks/:taskId/comments — 获取评论
- * POST   /api/projects/tasks/:taskId/comments — 添加评论
- * DELETE /api/projects/comments/:commentId    — 删除评论
- * GET    /api/projects/:id/activities     — 变更记录
- * GET    /api/projects/:id/members        — 项目成员列表
- * POST   /api/projects/:id/members        — 添加成员
- * PATCH  /api/projects/:id/members/:userId — 更新成员角色
- * DELETE /api/projects/:id/members/:userId — 移除成员
- * GET    /api/projects/gantt             — 全局甘特图数据（所有项目 + 任务树）
+ * GET    /api/projects                         — 项目列表（含进度统计）
+ * POST   /api/projects                         — 创建项目
+ * GET    /api/projects/gantt                   — 全局甘特图
+ * PATCH  /api/projects/tasks-reorder           — 批量排序/跨项目移动
+ * PATCH  /api/projects/tasks/:taskId/move      — 移动任务
+ * GET    /api/projects/:id                     — 项目详情
+ * PATCH  /api/projects/:id                     — 更新项目
+ * DELETE /api/projects/:id                     — 删除项目
+ * GET    /api/projects/:id/tasks               — 任务列表
+ * POST   /api/projects/:id/tasks               — 创建任务
+ * PATCH  /api/projects/tasks/:taskId           — 更新任务
+ * DELETE /api/projects/tasks/:taskId           — 删除任务
+ * GET    /api/projects/tasks/:taskId/comments  — 评论列表
+ * POST   /api/projects/tasks/:taskId/comments  — 添加评论
+ * DELETE /api/projects/comments/:commentId     — 删除评论
+ * GET    /api/projects/:id/activities          — 活动记录
+ * GET    /api/projects/meta/users              — 可指派用户
+ * GET    /api/projects/:id/members             — 成员列表
+ * POST   /api/projects/:id/members             — 添加成员
+ * PATCH  /api/projects/:id/members/:userId     — 修改成员角色
+ * DELETE /api/projects/:id/members/:userId     — 移除成员
  */
 
-import { Hono } from 'hono';
-import { getDb } from '@greenhouse/db';
-import { getAuthUser } from '../auth/middleware.js';
-import type { ProjectStatus, Priority, TaskStatus, ProjectVisibility, ProjectMemberRole } from '@greenhouse/db';
+import { Hono, type Context } from 'hono';
+import { getDb, type ProjectMemberRow, type ProjectRow, type TaskRow } from '@greenhouse/db';
+import { safeJsonParse } from '@greenhouse/utils/json';
 import type { AppEnv } from '../app-env.js';
-
-// ─── Helper: enrich with user nicknames ──────────────────
-
-async function getUserMap() {
-  const users = await getDb().users.list();
-  return new Map(users.map((u) => [u.id, u]));
-}
-
-// ─── Global Gantt ────────────────────────────────────────
+import { getAuthUser } from '../auth/middleware.js';
+import { humanActor } from '../platform/actor.js';
+import { projectResource, type ProjectActionId } from '../platform/projects/application.js';
+import { getPlatformRuntime } from '../platform/runtime.js';
 
 const PROJECT_COLORS = ['#3b82f6', '#8b5cf6', '#06b6d4', '#f59e0b', '#ef4444', '#10b981', '#ec4899', '#6366f1'];
 
+type ActionFailure = {
+  ok: false;
+  code: 'INVALID_INPUT' | 'NOT_FOUND' | 'CONFLICT' | 'FORBIDDEN' | 'INTERNAL_ERROR';
+  message: string;
+};
+
+type TaskTreeNode = TaskRow & {
+  assignee_nickname: string | null;
+  children: TaskTreeNode[];
+};
+
+function errorStatus(code: ActionFailure['code']): 400 | 403 | 404 | 409 | 500 {
+  switch (code) {
+    case 'INVALID_INPUT':
+      return 400;
+    case 'FORBIDDEN':
+      return 403;
+    case 'NOT_FOUND':
+      return 404;
+    case 'CONFLICT':
+      return 409;
+    case 'INTERNAL_ERROR':
+      return 500;
+  }
+}
+
+function actionError(c: Context, result: ActionFailure) {
+  return c.json({ error: result.message }, errorStatus(result.code));
+}
+
+async function dispatch(
+  c: Context,
+  actionId: ProjectActionId,
+  payload: unknown,
+  ids: { projectId?: number; taskId?: number; commentId?: number } = {},
+) {
+  return getPlatformRuntime().dispatch({
+    actor: humanActor(getAuthUser(c), c),
+    appId: 'projects',
+    actionId,
+    payload,
+    resource: projectResource(actionId, ids),
+  });
+}
+
+async function getUserMap() {
+  const users = await getDb().users.list();
+  return new Map(users.map((user) => [user.id, user]));
+}
+
+function buildTaskTree(tasks: TaskRow[], userMap: Awaited<ReturnType<typeof getUserMap>>): TaskTreeNode[] {
+  const taskMap = new Map<number, TaskTreeNode>();
+  for (const task of tasks) {
+    taskMap.set(task.id, {
+      ...task,
+      assignee_nickname: userMap.get(task.assignee_id ?? '')?.nickname ?? task.assignee_id,
+      children: [],
+    });
+  }
+  const roots: TaskTreeNode[] = [];
+  for (const task of taskMap.values()) {
+    const parent = task.parent_id ? taskMap.get(task.parent_id) : undefined;
+    if (parent) parent.children.push(task);
+    else roots.push(task);
+  }
+  return roots;
+}
+
 const projects = new Hono<AppEnv>()
-  /** GET /gantt — all projects with task trees for global gantt view */
   .get('/gantt', async (c) => {
-    const user = getAuthUser(c);
-    const statusFilter = c.req.query('status'); // comma-separated, e.g. "active,planning"
-    const allowedStatuses = statusFilter ? statusFilter.split(',').map((s) => s.trim()) : undefined;
-
-    const [allProjects, userMap] = await Promise.all([
-      getDb().projects.listProjects({ limit: 200, userId: user.id, userRole: user.role }),
-      getUserMap(),
-    ]);
-
-    // Filter by status if provided, otherwise exclude archived
+    const statusFilter = c.req.query('status');
+    const allowedStatuses = statusFilter ? statusFilter.split(',').map((status) => status.trim()) : undefined;
+    const result = await dispatch(c, 'getGantt', { limit: 200 });
+    if (!result.ok) return actionError(c, result);
+    const rows = (result.data as { projects: ProjectRow[] }).projects;
     const filtered = allowedStatuses
-      ? allProjects.filter((p) => allowedStatuses.includes(p.status))
-      : allProjects.filter((p) => p.status !== 'archived');
-
+      ? rows.filter((project) => allowedStatuses.includes(project.status))
+      : rows.filter((project) => project.status !== 'archived');
+    const userMap = await getUserMap();
     const enriched = await Promise.all(
-      filtered.map(async (p, idx) => {
-        const [tasks, stats] = await Promise.all([
-          getDb().projects.listTasks(p.id),
-          getDb().projects.getProjectStats(p.id),
-        ]);
-
-        // Build task tree
-        const taskMap = new Map(
-          tasks.map((t) => [
-            t.id,
-            {
-              ...t,
-              assignee_nickname: userMap.get(t.assignee_id ?? '')?.nickname ?? t.assignee_id,
-              children: [] as any[],
-            },
-          ]),
+      filtered.map(async (project, index) => {
+        const tasksResult = await dispatch(
+          c,
+          'listTasks',
+          { projectId: project.id, limit: 500 },
+          { projectId: project.id },
         );
-        const rootTasks: any[] = [];
-        for (const task of taskMap.values()) {
-          if (task.parent_id && taskMap.has(task.parent_id)) {
-            taskMap.get(task.parent_id)!.children.push(task);
-          } else {
-            rootTasks.push(task);
-          }
-        }
-
+        if (!tasksResult.ok) return null;
+        const [stats] = await Promise.all([getDb().projects.getProjectStats(project.id)]);
+        const tasks = (tasksResult.data as { tasks: TaskRow[] }).tasks;
         return {
-          id: p.id,
-          title: p.title,
-          description: p.description,
-          status: p.status,
-          priority: p.priority,
-          owner_id: p.owner_id,
-          owner_nickname: userMap.get(p.owner_id)?.nickname ?? p.owner_id,
-          start_date: p.start_date,
-          end_date: p.end_date,
-          color: p.color || PROJECT_COLORS[idx % PROJECT_COLORS.length],
-          tasks: rootTasks,
+          id: project.id,
+          title: project.title,
+          description: project.description,
+          status: project.status,
+          priority: project.priority,
+          owner_id: project.owner_id,
+          owner_nickname: userMap.get(project.owner_id)?.nickname ?? project.owner_id,
+          start_date: project.start_date,
+          end_date: project.end_date,
+          color: project.color || PROJECT_COLORS[index % PROJECT_COLORS.length],
+          tasks: buildTaskTree(tasks, userMap),
           stats,
           progress: stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0,
         };
       }),
     );
-
-    return c.json({ projects: enriched });
+    return c.json({ projects: enriched.filter((project) => project !== null) });
   })
-  // ─── Tasks batch operations (before /:id to avoid route conflict) ──
-
-  /** PATCH /tasks-reorder — batch reorder tasks (supports cross-project move) */
   .patch('/tasks-reorder', async (c) => {
-    const user = getAuthUser(c);
     const body = (await c.req.json()) as {
-      updates: Array<{ id: number; sort_order: number; project_id?: number }>;
+      updates?: Array<{ id: number; sort_order: number; project_id?: number }>;
     };
-    if (!body.updates?.length) return c.json({ error: 'updates array required' }, 400);
-
-    // Separate moves (project_id change) from simple reorders
-    const moves = body.updates.filter((u) => u.project_id !== undefined);
-    const reorders = body.updates.map((u) => ({ id: u.id, sort_order: u.sort_order }));
-
-    // Handle project_id changes first
-    for (const mv of moves) {
-      await getDb().projects.updateTask(mv.id, { project_id: mv.project_id }, user.id);
-    }
-
-    // Then reorder
-    await getDb().projects.reorderTasks(reorders);
+    const result = await dispatch(c, 'reorderTasks', {
+      updates: body.updates?.map((update) => ({
+        id: update.id,
+        sortOrder: update.sort_order,
+        projectId: update.project_id,
+      })),
+    });
+    if (!result.ok) return actionError(c, result);
     return c.json({ success: true });
   })
-  /** PATCH /tasks/:taskId/move — move task to another project */
   .patch('/tasks/:taskId/move', async (c) => {
-    const user = getAuthUser(c);
-    const taskId = parseInt(c.req.param('taskId'), 10);
-    if (isNaN(taskId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const body = (await c.req.json()) as { project_id: number };
-    if (!body.project_id) return c.json({ error: 'project_id is required' }, 400);
-
-    // Verify target project exists
-    const targetProject = await getDb().projects.getProjectById(body.project_id);
-    if (!targetProject) return c.json({ error: 'Target project not found' }, 404);
-
-    const updated = await getDb().projects.updateTask(taskId, { project_id: body.project_id }, user.id);
-    if (!updated) return c.json({ error: 'Task not found' }, 404);
-
-    return c.json({ task: updated });
+    const taskId = Number(c.req.param('taskId'));
+    const body = (await c.req.json()) as { project_id?: number };
+    const result = await dispatch(
+      c,
+      'moveTask',
+      { taskId, projectId: body.project_id },
+      { taskId, projectId: body.project_id },
+    );
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as { task: TaskRow });
   })
-  // ─── Projects CRUD ───────────────────────────────────────
-
-  /** GET / — list projects with progress stats */
   .get('/', async (c) => {
-    const user = getAuthUser(c);
-    const status = c.req.query('status') as ProjectStatus | undefined;
-    const priority = c.req.query('priority') as Priority | undefined;
-    const search = c.req.query('search') || undefined;
-    const limit = parseInt(c.req.query('limit') || '50', 10);
-    const offset = parseInt(c.req.query('offset') || '0', 10);
-
-    const opts = { status, priority, search, limit, offset, userId: user.id, userRole: user.role };
-    const [list, total, userMap] = await Promise.all([
-      getDb().projects.listProjects(opts),
-      getDb().projects.countProjects(opts),
-      getUserMap(),
-    ]);
-
-    // Enrich with stats and user info
+    const result = await dispatch(c, 'listProjects', {
+      status: c.req.query('status') || undefined,
+      priority: c.req.query('priority') || undefined,
+      search: c.req.query('search') || undefined,
+      limit: Number(c.req.query('limit') || 50),
+      offset: Number(c.req.query('offset') || 0),
+    });
+    if (!result.ok) return actionError(c, result);
+    const { projects: rows, total } = result.data as { projects: ProjectRow[]; total: number };
+    const userMap = await getUserMap();
     const enriched = await Promise.all(
-      list.map(async (p) => {
-        const stats = await getDb().projects.getProjectStats(p.id);
+      rows.map(async (project) => {
+        const stats = await getDb().projects.getProjectStats(project.id);
         return {
-          ...p,
-          owner_nickname: userMap.get(p.owner_id)?.nickname ?? p.owner_id,
-          visibility: p.visibility,
+          ...project,
+          owner_nickname: userMap.get(project.owner_id)?.nickname ?? project.owner_id,
           stats,
           progress: stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0,
         };
       }),
     );
-
     return c.json({ total, projects: enriched });
   })
-  /** POST / — create project */
   .post('/', async (c) => {
-    const user = getAuthUser(c);
-    const body = (await c.req.json()) as {
-      title: string;
-      description?: string;
-      status?: ProjectStatus;
-      priority?: Priority;
-      owner_id?: string;
-      start_date?: string;
-      end_date?: string;
-      color?: string;
-      visibility?: ProjectVisibility;
-    };
-
-    if (!body.title?.trim()) return c.json({ error: 'Title is required' }, 400);
-
-    const project = await getDb().projects.createProject({
-      title: body.title.trim(),
+    const body = (await c.req.json()) as Record<string, unknown>;
+    const result = await dispatch(c, 'createProject', {
+      title: body.title,
       description: body.description,
       status: body.status,
       priority: body.priority,
-      owner_id: body.owner_id || user.id,
-      start_date: body.start_date,
-      end_date: body.end_date,
+      ownerId: body.owner_id,
+      startDate: body.start_date,
+      endDate: body.end_date,
       color: body.color,
       visibility: body.visibility,
-      created_by: user.id,
     });
-
-    return c.json({ project }, 201);
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as { project: ProjectRow }, 201);
   })
-  /** GET /:id — project detail with task tree */
   .get('/:id', async (c) => {
-    const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const project = await getDb().projects.getProjectById(id);
-    if (!project) return c.json({ error: 'Project not found' }, 404);
-
-    // Visibility check: private projects only for super or members
-    if (project.visibility === 'private' && user.role !== 'super') {
-      const isMember = await getDb().projects.isMember(id, user.id);
-      if (!isMember) return c.json({ error: 'Project not found' }, 404);
-    }
-
-    const [tasks, stats, userMap, members] = await Promise.all([
-      getDb().projects.listTasks(id),
-      getDb().projects.getProjectStats(id),
+    const projectId = Number(c.req.param('id'));
+    const projectResult = await dispatch(c, 'getProject', { projectId }, { projectId });
+    if (!projectResult.ok) return actionError(c, projectResult);
+    const project = (projectResult.data as { project: ProjectRow }).project;
+    const [tasksResult, membersResult, stats, userMap] = await Promise.all([
+      dispatch(c, 'listTasks', { projectId, limit: 500 }, { projectId }),
+      dispatch(c, 'listMembers', { projectId }, { projectId }),
+      getDb().projects.getProjectStats(projectId),
       getUserMap(),
-      getDb().projects.getMembers(id),
     ]);
-
-    // Build task tree
-    const taskMap = new Map(
-      tasks.map((t) => [
-        t.id,
-        { ...t, assignee_nickname: userMap.get(t.assignee_id ?? '')?.nickname ?? t.assignee_id, children: [] as any[] },
-      ]),
-    );
-    const rootTasks: any[] = [];
-    for (const task of taskMap.values()) {
-      if (task.parent_id && taskMap.has(task.parent_id)) {
-        taskMap.get(task.parent_id)!.children.push(task);
-      } else {
-        rootTasks.push(task);
-      }
-    }
-
+    if (!tasksResult.ok) return actionError(c, tasksResult);
+    if (!membersResult.ok) return actionError(c, membersResult);
+    const tasks = (tasksResult.data as { tasks: TaskRow[] }).tasks;
+    const members = (membersResult.data as { members: ProjectMemberRow[] }).members;
     return c.json({
       project: {
         ...project,
         owner_nickname: userMap.get(project.owner_id)?.nickname ?? project.owner_id,
       },
-      tasks: rootTasks,
+      tasks: buildTaskTree(tasks, userMap),
       stats,
       progress: stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0,
-      members: members.map((m) => ({
-        ...m,
-        nickname: userMap.get(m.user_id)?.nickname ?? m.user_id,
+      members: members.map((member) => ({
+        ...member,
+        nickname: userMap.get(member.user_id)?.nickname ?? member.user_id,
       })),
     });
   })
-  /** PATCH /:id — update project */
   .patch('/:id', async (c) => {
-    const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const body = (await c.req.json()) as {
-      title?: string;
-      description?: string;
-      status?: ProjectStatus;
-      priority?: Priority;
-      owner_id?: string;
-      start_date?: string | null;
-      end_date?: string | null;
-      color?: string | null;
-      visibility?: ProjectVisibility;
-    };
-
-    const updated = await getDb().projects.updateProject(id, body, user.id);
-    if (!updated) return c.json({ error: 'Project not found' }, 404);
-
-    return c.json({ project: updated });
+    const projectId = Number(c.req.param('id'));
+    const body = (await c.req.json()) as Record<string, unknown>;
+    const result = await dispatch(
+      c,
+      'updateProject',
+      {
+        projectId,
+        updates: {
+          title: body.title,
+          description: body.description,
+          status: body.status,
+          priority: body.priority,
+          owner_id: body.owner_id,
+          start_date: body.start_date,
+          end_date: body.end_date,
+          color: body.color,
+          visibility: body.visibility,
+        },
+      },
+      { projectId },
+    );
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as { project: ProjectRow });
   })
-  /** DELETE /:id — delete project */
   .delete('/:id', async (c) => {
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const deleted = await getDb().projects.deleteProject(id);
-    if (!deleted) return c.json({ error: 'Project not found' }, 404);
-
+    const projectId = Number(c.req.param('id'));
+    const result = await dispatch(c, 'deleteProject', { projectId }, { projectId });
+    if (!result.ok) return actionError(c, result);
     return c.json({ success: true });
   })
-  // ─── Tasks CRUD ──────────────────────────────────────────
-
-  /** GET /:id/tasks — list tasks for a project */
   .get('/:id/tasks', async (c) => {
-    const projectId = parseInt(c.req.param('id'), 10);
-    if (isNaN(projectId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const status = c.req.query('status') as TaskStatus | undefined;
-    const assignee_id = c.req.query('assignee_id') || undefined;
-
-    const tasks = await getDb().projects.listTasks(projectId, { status, assignee_id });
+    const projectId = Number(c.req.param('id'));
+    const result = await dispatch(
+      c,
+      'listTasks',
+      {
+        projectId,
+        status: c.req.query('status') || undefined,
+        assigneeId: c.req.query('assignee_id') || undefined,
+      },
+      { projectId },
+    );
+    if (!result.ok) return actionError(c, result);
     const userMap = await getUserMap();
-
-    const enriched = tasks.map((t) => ({
-      ...t,
-      assignee_nickname: userMap.get(t.assignee_id ?? '')?.nickname ?? t.assignee_id,
-      tags: JSON.parse(t.tags || '[]'),
+    const tasks = (result.data as { tasks: TaskRow[] }).tasks.map((task) => ({
+      ...task,
+      assignee_nickname: userMap.get(task.assignee_id ?? '')?.nickname ?? task.assignee_id,
+      tags: safeJsonParse(task.tags, []) as string[],
     }));
-
-    return c.json({ tasks: enriched });
+    return c.json({ tasks });
   })
-  /** POST /:id/tasks — create task */
   .post('/:id/tasks', async (c) => {
-    const user = getAuthUser(c);
-    const projectId = parseInt(c.req.param('id'), 10);
-    if (isNaN(projectId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    // Verify project exists
-    const project = await getDb().projects.getProjectById(projectId);
-    if (!project) return c.json({ error: 'Project not found' }, 404);
-
-    const body = (await c.req.json()) as {
-      title: string;
-      description?: string;
-      parent_id?: number;
-      status?: TaskStatus;
-      priority?: Priority;
-      task_type?: string;
-      assignee_id?: string;
-      start_date?: string;
-      due_date?: string;
-      estimated_hours?: number;
-      tags?: string[];
-      dependencies?: number[];
-    };
-
-    if (!body.title?.trim()) return c.json({ error: 'Title is required' }, 400);
-
-    const task = await getDb().projects.createTask({
-      project_id: projectId,
-      parent_id: body.parent_id,
-      title: body.title.trim(),
-      description: body.description,
-      status: body.status,
-      priority: body.priority,
-      task_type: body.task_type,
-      assignee_id: body.assignee_id,
-      start_date: body.start_date,
-      due_date: body.due_date,
-      estimated_hours: body.estimated_hours,
-      tags: body.tags,
-      dependencies: body.dependencies,
-      created_by: user.id,
-    });
-
-    return c.json({ task }, 201);
+    const projectId = Number(c.req.param('id'));
+    const body = (await c.req.json()) as Record<string, unknown>;
+    const result = await dispatch(
+      c,
+      'createTask',
+      {
+        projectId,
+        parentId: body.parent_id,
+        title: body.title,
+        description: body.description,
+        status: body.status,
+        priority: body.priority,
+        taskType: body.task_type,
+        assigneeId: body.assignee_id,
+        startDate: body.start_date,
+        dueDate: body.due_date,
+        estimatedHours: body.estimated_hours,
+        tags: body.tags,
+        dependencies: body.dependencies,
+      },
+      { projectId },
+    );
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as { task: TaskRow }, 201);
   })
-  /** PATCH /tasks/:taskId — update task */
   .patch('/tasks/:taskId', async (c) => {
-    const user = getAuthUser(c);
-    const taskId = parseInt(c.req.param('taskId'), 10);
-    if (isNaN(taskId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const body = (await c.req.json()) as {
-      title?: string;
-      description?: string;
-      status?: TaskStatus;
-      priority?: Priority;
-      task_type?: string;
-      assignee_id?: string | null;
-      parent_id?: number | null;
-      project_id?: number;
-      start_date?: string | null;
-      due_date?: string | null;
-      sort_order?: number;
-      estimated_hours?: number | null;
-      tags?: string[];
-      dependencies?: number[];
-    };
-
-    const updated = await getDb().projects.updateTask(taskId, body, user.id);
-    if (!updated) return c.json({ error: 'Task not found' }, 404);
-
-    return c.json({ task: updated });
+    const taskId = Number(c.req.param('taskId'));
+    const body = (await c.req.json()) as Record<string, unknown>;
+    const result = await dispatch(
+      c,
+      'updateTask',
+      {
+        taskId,
+        updates: {
+          title: body.title,
+          description: body.description,
+          status: body.status,
+          priority: body.priority,
+          task_type: body.task_type,
+          assignee_id: body.assignee_id,
+          parent_id: body.parent_id,
+          project_id: body.project_id,
+          start_date: body.start_date,
+          due_date: body.due_date,
+          sort_order: body.sort_order,
+          estimated_hours: body.estimated_hours,
+          tags: body.tags,
+          dependencies: body.dependencies,
+        },
+      },
+      { taskId },
+    );
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as { task: TaskRow });
   })
-  /** DELETE /tasks/:taskId — delete task */
   .delete('/tasks/:taskId', async (c) => {
-    const taskId = parseInt(c.req.param('taskId'), 10);
-    if (isNaN(taskId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const deleted = await getDb().projects.deleteTask(taskId);
-    if (!deleted) return c.json({ error: 'Task not found' }, 404);
-
+    const taskId = Number(c.req.param('taskId'));
+    const result = await dispatch(c, 'deleteTask', { taskId }, { taskId });
+    if (!result.ok) return actionError(c, result);
     return c.json({ success: true });
   })
-  /* tasks-reorder moved above /:id routes to avoid Hono route conflict */
-
-  // ─── Comments ────────────────────────────────────────────
-
-  /** GET /tasks/:taskId/comments — list comments */
   .get('/tasks/:taskId/comments', async (c) => {
-    const taskId = parseInt(c.req.param('taskId'), 10);
-    if (isNaN(taskId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const comments = await getDb().projects.getComments(taskId);
+    const taskId = Number(c.req.param('taskId'));
+    const result = await dispatch(c, 'listComments', { taskId }, { taskId });
+    if (!result.ok) return actionError(c, result);
     const userMap = await getUserMap();
-
-    const enriched = comments.map((cm) => ({
-      ...cm,
-      user_nickname: userMap.get(cm.user_id)?.nickname ?? cm.user_id,
-    }));
-
-    return c.json({ comments: enriched });
-  })
-  /** POST /tasks/:taskId/comments — add comment */
-  .post('/tasks/:taskId/comments', async (c) => {
-    const user = getAuthUser(c);
-    const taskId = parseInt(c.req.param('taskId'), 10);
-    if (isNaN(taskId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const body = (await c.req.json()) as { content: string };
-    if (!body.content?.trim()) return c.json({ error: 'Content is required' }, 400);
-
-    const comment = await getDb().projects.addComment({
-      task_id: taskId,
-      user_id: user.id,
-      content: body.content.trim(),
-    });
-
-    return c.json({ comment }, 201);
-  })
-  /** DELETE /comments/:commentId — delete comment */
-  .delete('/comments/:commentId', async (c) => {
-    const commentId = parseInt(c.req.param('commentId'), 10);
-    if (isNaN(commentId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const deleted = await getDb().projects.deleteComment(commentId);
-    if (!deleted) return c.json({ error: 'Comment not found' }, 404);
-
-    return c.json({ success: true });
-  })
-  // ─── Activities ──────────────────────────────────────────
-
-  /** GET /:id/activities — project activity log */
-  .get('/:id/activities', async (c) => {
-    const projectId = parseInt(c.req.param('id'), 10);
-    if (isNaN(projectId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const limit = parseInt(c.req.query('limit') || '50', 10);
-    const offset = parseInt(c.req.query('offset') || '0', 10);
-
-    const activities = await getDb().projects.getActivities(projectId, limit, offset);
-    const userMap = await getUserMap();
-
-    const enriched = activities.map((a) => ({
-      ...a,
-      user_nickname: userMap.get(a.user_id)?.nickname ?? a.user_id,
-    }));
-
-    return c.json({ activities: enriched });
-  })
-  // ─── Users list for assignment ───────────────────────────
-
-  /** GET /meta/users — list internal users for task assignment */
-  .get('/meta/users', async (c) => {
-    const users = await getDb().users.list();
+    const comments = (
+      result.data as {
+        comments: Array<{ id: number; task_id: number; user_id: string; content: string; created_at: string }>;
+      }
+    ).comments;
     return c.json({
-      users: users.filter((u) => u.status === 'active').map((u) => ({ id: u.id, nickname: u.nickname, role: u.role })),
-    });
-  })
-  // ─── Members ───────────────────────────────────────────────
-
-  /** GET /:id/members — list project members */
-  .get('/:id/members', async (c) => {
-    const projectId = parseInt(c.req.param('id'), 10);
-    if (isNaN(projectId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const [members, userMap] = await Promise.all([getDb().projects.getMembers(projectId), getUserMap()]);
-
-    return c.json({
-      members: members.map((m) => ({
-        ...m,
-        nickname: userMap.get(m.user_id)?.nickname ?? m.user_id,
+      comments: comments.map((comment) => ({
+        ...comment,
+        user_nickname: userMap.get(comment.user_id)?.nickname ?? comment.user_id,
       })),
     });
   })
-  /** POST /:id/members — add member */
-  .post('/:id/members', async (c) => {
-    const user = getAuthUser(c);
-    const projectId = parseInt(c.req.param('id'), 10);
-    if (isNaN(projectId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const body = (await c.req.json()) as { user_id: string; role?: ProjectMemberRole };
-    if (!body.user_id) return c.json({ error: 'user_id is required' }, 400);
-
-    const member = await getDb().projects.addMember({
-      project_id: projectId,
-      user_id: body.user_id,
-      role: body.role,
-      added_by: user.id,
-    });
-
-    const userMap = await getUserMap();
+  .post('/tasks/:taskId/comments', async (c) => {
+    const taskId = Number(c.req.param('taskId'));
+    const body = (await c.req.json()) as { content?: string };
+    const result = await dispatch(c, 'addComment', { taskId, content: body.content }, { taskId });
+    if (!result.ok) return actionError(c, result);
     return c.json(
-      {
-        member: { ...member, nickname: userMap.get(member.user_id)?.nickname ?? member.user_id },
+      result.data as {
+        comment: { id: number; task_id: number; user_id: string; content: string; created_at: string };
       },
       201,
     );
   })
-  /** PATCH /:id/members/:userId — update member role */
-  .patch('/:id/members/:userId', async (c) => {
-    const projectId = parseInt(c.req.param('id'), 10);
-    const userId = c.req.param('userId');
-    if (isNaN(projectId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const body = (await c.req.json()) as { role: ProjectMemberRole };
-    if (!body.role) return c.json({ error: 'role is required' }, 400);
-
-    const updated = await getDb().projects.updateMemberRole(projectId, userId, body.role);
-    if (!updated) return c.json({ error: 'Member not found' }, 404);
-
-    return c.json({ member: updated });
+  .delete('/comments/:commentId', async (c) => {
+    const commentId = Number(c.req.param('commentId'));
+    const result = await dispatch(c, 'deleteComment', { commentId }, { commentId });
+    if (!result.ok) return actionError(c, result);
+    return c.json({ success: true });
   })
-  /** DELETE /:id/members/:userId — remove member */
+  .get('/:id/activities', async (c) => {
+    const projectId = Number(c.req.param('id'));
+    const result = await dispatch(
+      c,
+      'listActivities',
+      {
+        projectId,
+        limit: Number(c.req.query('limit') || 50),
+        offset: Number(c.req.query('offset') || 0),
+      },
+      { projectId },
+    );
+    if (!result.ok) return actionError(c, result);
+    const userMap = await getUserMap();
+    const activities = (
+      result.data as {
+        activities: Array<{
+          id: number;
+          project_id: number;
+          task_id: number | null;
+          user_id: string;
+          action: string;
+          detail: string | null;
+          created_at: string;
+        }>;
+      }
+    ).activities;
+    return c.json({
+      activities: activities.map((activity) => ({
+        ...activity,
+        user_nickname: userMap.get(activity.user_id)?.nickname ?? activity.user_id,
+      })),
+    });
+  })
+  .get('/meta/users', async (c) => {
+    const result = await dispatch(c, 'listAssignableUsers', {});
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as { users: Array<{ id: string; nickname: string; role: string }> });
+  })
+  .get('/:id/members', async (c) => {
+    const projectId = Number(c.req.param('id'));
+    const result = await dispatch(c, 'listMembers', { projectId }, { projectId });
+    if (!result.ok) return actionError(c, result);
+    const userMap = await getUserMap();
+    const members = (result.data as { members: ProjectMemberRow[] }).members;
+    return c.json({
+      members: members.map((member) => ({
+        ...member,
+        nickname: userMap.get(member.user_id)?.nickname ?? member.user_id,
+      })),
+    });
+  })
+  .post('/:id/members', async (c) => {
+    const projectId = Number(c.req.param('id'));
+    const body = (await c.req.json()) as { user_id?: string; role?: 'owner' | 'member' };
+    const result = await dispatch(
+      c,
+      'manageMembers',
+      { projectId, operation: 'add', userId: body.user_id, role: body.role },
+      { projectId },
+    );
+    if (!result.ok) return actionError(c, result);
+    const member = (result.data as { member: ProjectMemberRow }).member;
+    const user = await getDb().users.getById(member.user_id);
+    return c.json({ member: { ...member, nickname: user?.nickname ?? member.user_id } }, 201);
+  })
+  .patch('/:id/members/:userId', async (c) => {
+    const projectId = Number(c.req.param('id'));
+    const body = (await c.req.json()) as { role?: 'owner' | 'member' };
+    const result = await dispatch(
+      c,
+      'manageMembers',
+      { projectId, operation: 'update', userId: c.req.param('userId'), role: body.role },
+      { projectId },
+    );
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as { member: ProjectMemberRow });
+  })
   .delete('/:id/members/:userId', async (c) => {
-    const projectId = parseInt(c.req.param('id'), 10);
-    const userId = c.req.param('userId');
-    if (isNaN(projectId)) return c.json({ error: 'Invalid ID' }, 400);
-
-    const deleted = await getDb().projects.removeMember(projectId, userId);
-    if (!deleted) return c.json({ error: 'Member not found' }, 404);
-
+    const projectId = Number(c.req.param('id'));
+    const result = await dispatch(
+      c,
+      'manageMembers',
+      { projectId, operation: 'remove', userId: c.req.param('userId') },
+      { projectId },
+    );
+    if (!result.ok) return actionError(c, result);
     return c.json({ success: true });
   });
 

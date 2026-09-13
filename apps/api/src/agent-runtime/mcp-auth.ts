@@ -1,100 +1,190 @@
 /**
  * MCP runtime — auth bridge for `/api/mcp`.
  *
- * External agents authenticate with a long-lived API key (`gh_sk_*`) that is
- * BOUND to an internal user (`api_clients.user_id`). This middleware runs after
- * `apiKeyMiddleware` (which validates the key and injects the `ApiClient`), then:
- *   - requires the key to be bound to a user,
- *   - loads that user and requires an active internal role (`super` | `team`),
- *   - builds the `AgentIdentity` the proxy layer consumes.
+ * OAuth-only: external agents authenticate with an OAuth access token issued
+ * either through Authorization Code + PKCE (interactive clients) or through
+ * client_credentials (admin-created machine clients bound to an internal
+ * user). Every request re-resolves token → grant → user and builds the
+ * AgentIdentity consumed by the proxy layer.
  *
- * The bound user's permissions are the security boundary: the proxy can only
- * ever narrow them (tools ∩ allowlist ∩ scope). Mint a least-privilege internal
- * user for each external integration — never bind an MCP key to a super or a
- * personal account.
+ * The authorizing/bound user's permissions are the security boundary: the
+ * proxy can only ever narrow them (tools ∩ allowlist ∩ scope). Machine clients
+ * must bind a least-privilege internal user — never a super or a personal
+ * account.
  */
 
 import type { Context, Next } from 'hono';
 import { logger } from '@greenhouse/utils/logger';
 import { getDb } from '@greenhouse/db';
-import { getApiClient, getClientIP } from '../auth/api-key.js';
+import { getClientIP } from '../auth/api-key.js';
 import type { AgentIdentity } from './api-auth.js';
 import { MUTATING_PROXY_ALLOWLIST } from './tool-proxy.js';
+import { mcpToolIdsForGroups } from '../tools/registry.js';
+import { InMemoryRateLimiter } from '../security.js';
+import {
+  getMcpResourceUrl,
+  getProtectedResourceMetadataUrl,
+  hashOAuthCredential,
+  isOAuthAccessToken,
+  OAUTH_SUPPORTED_SCOPES,
+  parseStoredOAuthScopes,
+  resourceGroupsFromScopes,
+  scopesAreSubset,
+} from '../platform/oauth.js';
 
 /** Channel recorded for MCP traffic. Reuses the existing `a2a` enum value. */
 export const MCP_AUDIT_CHANNEL = 'a2a' as const;
 
+const oauthLimiter = new InMemoryRateLimiter(120_000);
+const OAUTH_RPM_LIMIT = 120;
+const OAUTH_RPD_LIMIT = 10_000;
+
 /**
- * Require the API key to be bound to an active internal user and build the
- * `AgentIdentity`. Must run after `apiKeyMiddleware` (which sets `apiClient`).
- *
- * Write posture: the identity carries the full mutating allowlist, so any write
- * the bound user is permitted is reachable — but each call still requires
- * `confirm: true` (see `executeProxyTool`). The real boundary is which user the
- * key binds to.
+ * Advertised in every challenge. MCP clients (SEP-835) take the WWW-Authenticate
+ * `scope` over the resource metadata's `scopes_supported`, so naming only
+ * `mcp:read` here silently pinned every discovered client to a read-only grant —
+ * write tools then never appear in tools/list and the user gets no say. We
+ * advertise the full set instead: the consent screen still lists each scope and
+ * only grants what the resource owner approves, and writes stay confirm-gated.
  */
-export async function mcpIdentityMiddleware(c: Context, next: Next) {
-  const client = getApiClient(c); // throws if apiKeyMiddleware didn't run
+const CHALLENGE_SCOPE = OAUTH_SUPPORTED_SCOPES.join(' ');
 
-  if (!client.user_id) {
-    return c.json(
-      {
-        error: {
-          message: 'This API key is not bound to a user and cannot access the MCP surface',
-          type: 'auth_error',
-        },
-      },
-      403,
-    );
-  }
+function oauthChallenge(c: Context, message: string, status: 401 | 403, error?: string) {
+  const params = [
+    `resource_metadata="${getProtectedResourceMetadataUrl()}"`,
+    `scope="${CHALLENGE_SCOPE}"`,
+    ...(error ? [`error="${error}"`] : []),
+  ];
+  c.header('WWW-Authenticate', `Bearer ${params.join(', ')}`);
+  return c.json({ error: { message, type: 'auth_error' } }, status);
+}
 
-  let user;
+async function oauthIdentityMiddleware(c: Context, rawToken: string, next: Next) {
+  let resolved;
   try {
-    user = await getDb().users.getById(client.user_id);
-  } catch (err) {
-    logger.error('[mcp-auth] user lookup failed:', err);
+    resolved = await getDb().platformOAuth.getTokenByHash(hashOAuthCredential(rawToken));
+  } catch (error) {
+    logger.error('[mcp-auth] OAuth token lookup failed:', error);
     return c.json({ error: { message: 'Internal server error', type: 'server_error' } }, 500);
   }
 
-  if (!user || user.status !== 'active') {
-    return c.json({ error: { message: 'Bound user is unavailable or disabled', type: 'auth_error' } }, 403);
-  }
-  if (user.role !== 'super' && user.role !== 'team') {
-    return c.json(
-      { error: { message: 'MCP access requires an internal user (super or team)', type: 'auth_error' } },
-      403,
-    );
+  if (
+    !resolved ||
+    resolved.token.token_type !== 'access' ||
+    resolved.token.revoked_at ||
+    new Date(resolved.token.expires_at).getTime() <= Date.now() ||
+    resolved.token.resource !== getMcpResourceUrl() ||
+    resolved.grant.status !== 'active' ||
+    resolved.grant.resource !== getMcpResourceUrl() ||
+    resolved.client.status !== 'active'
+  ) {
+    return oauthChallenge(c, 'Invalid, expired, or revoked OAuth access token', 401, 'invalid_token');
   }
 
+  let scopes;
+  let grantScopes;
+  try {
+    scopes = parseStoredOAuthScopes(resolved.token.scopes);
+    grantScopes = parseStoredOAuthScopes(resolved.grant.scopes);
+  } catch {
+    return oauthChallenge(c, 'OAuth token or grant contains invalid scopes', 401, 'invalid_token');
+  }
+  if (!scopesAreSubset(scopes, grantScopes)) {
+    return oauthChallenge(c, 'OAuth token exceeds the current grant scopes', 401, 'invalid_token');
+  }
+  if (!scopes.includes('mcp:read')) {
+    return oauthChallenge(c, 'OAuth token does not grant mcp:read', 403, 'insufficient_scope');
+  }
+
+  const user = await getDb().users.getById(resolved.grant.user_id);
+  if (!user || user.status !== 'active') {
+    return oauthChallenge(c, 'The authorizing user is unavailable or disabled', 401, 'invalid_token');
+  }
+  if (user.role !== 'super' && user.role !== 'team') {
+    return oauthChallenge(c, 'MCP access requires an internal user', 403, 'insufficient_scope');
+  }
+
+  // Resource groups say WHICH data, the action scopes say WHICH verbs; the
+  // reachable set is their product. `allowedTools` narrows reads and
+  // `allowedWriteTools` narrows writes (resolveProxyToolIds), and both are only
+  // ever a narrowing — the bound user's own permissions are still applied on
+  // top, per request, in composeMcpContext.
+  const groupTools = mcpToolIdsForGroups(resourceGroupsFromScopes(scopes));
   const identity: AgentIdentity = {
     userId: user.id,
     userRole: user.role,
-    allowedTools: [],
-    allowedWriteTools: [...MUTATING_PROXY_ALLOWLIST],
+    allowedTools: [...groupTools].filter((id) => !MUTATING_PROXY_ALLOWLIST.has(id)),
+    allowedWriteTools: scopes.includes('mcp:write')
+      ? [...groupTools].filter((id) => MUTATING_PROXY_ALLOWLIST.has(id))
+      : [],
     allowedWorkspaces: [],
   };
   c.set('agentIdentity', identity);
-  // Mirror the chat route's context shape so downstream helpers behave identically.
   c.set('user', { id: identity.userId, role: identity.userRole });
+  c.set('oauthClientId', resolved.client.id);
+  c.set('oauthScopes', scopes);
+  // Machine (client_credentials) tokens are distinguished in platform audit.
+  c.set(
+    'oauthAuthMethod',
+    resolved.client.token_endpoint_auth_method === 'client_secret_post' ? 'oauth-client' : 'oauth',
+  );
 
+  const rateKey = `${resolved.client.id}:${resolved.grant.user_id}`;
+  const rpm = oauthLimiter.check(`mcp-oauth:rpm:${rateKey}`, 60_000, OAUTH_RPM_LIMIT);
+  c.header('X-RateLimit-Limit', String(OAUTH_RPM_LIMIT));
+  c.header('X-RateLimit-Remaining', String(Math.max(0, rpm.remaining)));
+  c.header('X-RateLimit-Reset', String(Math.ceil(rpm.resetAt / 1000)));
+  if (!rpm.allowed) return c.json({ error: { message: 'Rate limit exceeded', type: 'rate_limit_error' } }, 429);
+  const rpd = oauthLimiter.check(`mcp-oauth:rpd:${rateKey}`, 86_400_000, OAUTH_RPD_LIMIT);
+  if (!rpd.allowed) return c.json({ error: { message: 'Daily rate limit exceeded', type: 'rate_limit_error' } }, 429);
+
+  if (!resolved.token.last_used_at || Date.now() - new Date(resolved.token.last_used_at).getTime() > 5 * 60 * 1000) {
+    try {
+      await getDb().platformOAuth.touchAccessToken(resolved.token.id);
+    } catch (error) {
+      logger.warn('[mcp-auth] could not update OAuth token activity', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   return next();
+}
+
+/**
+ * OAuth-only MCP credential boundary. Interactive clients present tokens from
+ * the Authorization Code + PKCE flow; automation presents tokens from
+ * client_credentials. Anything else — including legacy `lpai_sk_*` keys — gets
+ * a 401 with the RFC 9728 challenge pointing at the OAuth metadata.
+ */
+export async function mcpCredentialMiddleware(c: Context, next: Next) {
+  const header = c.req.header('Authorization');
+  const rawToken = header?.startsWith('Bearer ') ? header.slice(7) : '';
+  if (rawToken && isOAuthAccessToken(rawToken)) {
+    return oauthIdentityMiddleware(c, rawToken, next);
+  }
+  return oauthChallenge(
+    c,
+    'MCP requires an OAuth access token (authorization code or client_credentials)',
+    401,
+    'invalid_token',
+  );
 }
 
 // ─── Audit ─────────────────────────────────────────────────
 
 /**
  * Record an MCP request/tool-call into the shared `api_audit_log`, attributed to
- * the real API client (`app_id`) and the bound internal user (`user_id`).
+ * the OAuth client (`app_id`) and the authorizing/bound internal user (`user_id`).
  */
 export async function recordMcpAudit(
   c: Context,
   opts: { endpoint: string; statusCode: number; durationMs: number; error?: string; meta?: Record<string, unknown> },
 ): Promise<void> {
   try {
-    const client = c.get('apiClient') as { app_id?: string } | undefined;
+    const oauthClientId = c.get('oauthClientId') as string | undefined;
     const identity = c.get('agentIdentity') as AgentIdentity | undefined;
     await getDb().apiAudit.record({
-      app_id: client?.app_id ?? 'mcp:unknown',
+      app_id: oauthClientId ?? 'mcp:unknown',
       endpoint: opts.endpoint,
       method: c.req.method,
       user_id: identity?.userId,

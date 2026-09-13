@@ -10,10 +10,12 @@
  *   back to disk would strand new bundles outside the store the admin asked for.
  * - Local disk under data/skills/ (default) — zero config, single-instance.
  *
- * Why not the uploads StorageDriver seam (storage/extensions.ts): that global
- * is the UPLOADS backend and is fork-owned (registerStorageDriver, empty
- * upstream). Skills need an upstream-configured backend of their own without
- * hijacking uploads; only the put/get/delete *shape* is mirrored here.
+ * Why not the uploads storage (storage/uploads.ts): that path is the COS-backed
+ * UPLOADS backend with its own key layout and fallback semantics. Skills need
+ * an independently-configured backend without hijacking uploads; only the
+ * put/get/delete *shape* is mirrored here. Local disk is the default here
+ * (D13 in docs/specs/20260715-greenhouse-backport-and-slim.md) — the S3 driver
+ * ships but stays unwired until the SKILLS_S3_* env vars are set.
  */
 
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';

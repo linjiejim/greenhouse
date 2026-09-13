@@ -2,7 +2,8 @@
  * Skill Mutation tool — write side of the Skill Center: publish a new skill or
  * push a new version (changelog mandatory), edit catalog metadata, archive /
  * unarchive, and (super only) permanently delete. Reachable over the cloud
- * proxy mutating allowlist (confirm:true per call) and MCP.
+ * proxy mutating allowlist (confirm:true per call) and MCP. Lazy: needs the
+ * requesting user's identity (wired in buildLazyServerTools).
  */
 
 import { tool } from 'ai';
@@ -55,18 +56,18 @@ export interface SkillMutationContext {
 const meta: ToolMeta = {
   id: 'skill_mutation',
   name: 'Skill Mutation',
-  brief: 'Publish, version, and manage shared agent skills in the enterprise Skill Center with confirmation',
-  description: `Write access to the enterprise Skill Center. Actions:
-- skills.publish: share a skill with the org, or push a new version of one you own. Send the COMPLETE file set as { path, content, encoding? } entries including SKILL.md at the root (read the local skill folder first). Versions are strict semver and immutable: a new skill starts at 0.1.0 (or the version you pass), an update must be greater than the current latest (omit version to patch-bump). A changelog describing what changed is REQUIRED for updates — every version is recorded in browsable history. Limits: ≤ 64 files, ≤ 1 MiB total; base64-encode small binary assets.
+  brief: 'Publish, version, and manage shared agent skills in the team Skill Center with confirmation',
+  description: `Write access to the team Skill Center. Actions:
+- skills.publish: share a skill with the org, or push a new version of one you own. Send the COMPLETE file set (read the local skill folder first). Versions are immutable and every one is kept in browsable history. Limits: ≤ 64 files, ≤ 1 MiB total. Each publish is security-scanned; a bundle that trips a rule is quarantined (nobody can download it) until a super admin clears it, so report that outcome rather than republishing.
 - skills.update_meta: edit display_name / description / tags of a skill you own.
 - skills.archive / skills.unarchive: hide a skill from discovery (existing installs keep working and can still download pinned versions).
-- skills.delete: PERMANENTLY remove a skill and all its versions — super admins only.
-Publishing/managing is limited to the skill's owner (or a super admin). Every call requires explicit user confirmation via the cloud proxy (confirm:true). Before publishing an update, use skill_query skills.get to review the current latest version.`,
+- skills.delete: PERMANENTLY remove a skill and all its versions.
+Every action is limited to the skill's owner or a super admin (delete: super only), and each call requires explicit user confirmation via the cloud proxy (confirm:true). Before publishing an update, use skill_query skills.get to review the current latest version.`,
   category: 'team',
   is_global: true,
-  icon: 'UploadCloud',
-  group: 'skills',
-  surface: { proxy: 'write', mcp: true },
+  icon: 'Upload',
+  surface: { proxy: 'write', mcp: 'skills' },
+  sort_order: 34,
 };
 
 export function createSkillMutationTool(db: DatabaseProvider, ctx: SkillMutationContext) {
@@ -124,9 +125,4 @@ export function createSkillMutationTool(db: DatabaseProvider, ctx: SkillMutation
   });
 }
 
-export const skillMutationTool = defineTool({
-  meta,
-  kind: 'lazy',
-  requires: { user: 'internal' },
-  create: (ctx) => createSkillMutationTool(ctx.db, { userId: ctx.userId, userRole: ctx.userRole }),
-});
+export const skillMutationTool = defineTool({ meta, kind: 'lazy' });

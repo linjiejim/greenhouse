@@ -2,11 +2,11 @@
  * Session routes — /api/sessions
  *
  * POST   /api/sessions                                — 创建新会话
- * GET    /api/sessions                                — 获取会话列表（支持status/limit/offset/include_eval/tag_id/q(标题搜索)筛选）
- * GET    /api/sessions/:id                             — 获取会话详情（含消息列表和token用量统计）
+ * GET    /api/sessions                                — 获取会话列表（支持status/limit/offset/include_eval/page_meta/scope筛选）
+ * GET    /api/sessions/:id                             — 获取会话详情（include_messages=0 可只取元数据）
+ * GET    /api/sessions/:id/messages                    — 分页获取会话消息
+ * POST   /api/sessions/:id/fork                        — 复制完整会话或复制到指定 Agent 回复
  * PATCH  /api/sessions/:id                             — 更新会话（status/rating/comment/title）
- * GET    /api/sessions/:id/context                      — 读取结构化会话上下文
- * PUT    /api/sessions/:id/context                      — 设置/清除结构化会话上下文（device/grower/plants...）
  * DELETE /api/sessions/:id                             — 删除会话
  * GET    /api/sessions/:id/shares                       — 获取会话的分享列表
  * DELETE /api/sessions/:id/shares                       — 移除会话的所有分享
@@ -14,49 +14,57 @@
  * GET    /api/sessions/:id/messages/:msgId/eval        — 获取消息的缓存评估结果
  * GET    /api/sessions/:id/evals                       — 会话内每条消息的最新评估摘要（驱动评测按钮状态）
  * PATCH  /api/sessions/:id/messages/:msgId             — 编辑用户消息内容（同时删除后续消息）
- * POST   /api/sessions/:id/regenerate                  — 重新生成最后一条AI回复（删除旧回复）
+ * POST   /api/sessions/:id/regenerate                  — 校验指定的末尾 AI 回复可重新生成
  */
 
 import { Hono } from 'hono';
-import { getDb } from '@greenhouse/db';
+import { getDb, SessionActiveRuntimeError } from '@greenhouse/db';
+import { SESSION_SCOPES, type SessionScope } from '@greenhouse/types/api';
 import { getAuthUser } from '../auth/middleware.js';
-import type { AuthUser } from '../auth/middleware.js';
-import type { SessionRow, SessionChannel } from '../session.js';
 import { generateSessionTitle } from '../llm/title.js';
-import { normalizeProfileId, resolveProfileAsync } from '../profile.js';
-import { parseSessionContext, readSessionContext, writeSessionContext } from '../session-context.js';
+import { resolveProfileAsync } from '../profile.js';
+import { canAccessSession, canWriteSession } from '../session-access.js';
+import { pinProfileIdForUser, ProfileAccessError } from '../profile-access.js';
+import { createOwnedSession, SessionCreationError } from '../session-creation.js';
 import type { AppEnv } from '../app-env.js';
+import { deleteObjectAtKey } from '../storage/uploads.js';
+import { logger } from '@greenhouse/utils/logger';
+import { toErrorMessage } from '@greenhouse/utils/error';
+import { chatRunRegistry } from '../chat-runs.js';
+import { withOwnerNicknames } from '../user-display.js';
 
 // ─── Visibility Helpers ──────────────────────────────────
 
-/** Check if user can READ (list/detail) a session. */
-async function canAccessSession(user: AuthUser, session: SessionRow): Promise<boolean> {
-  if (user.role === 'external') return false;
-  if (user.role === 'super') return true;
-  // Owner
-  if (session.user_id === user.id) return true;
-  // Shared with this user
-  const sharedIds = await getDb().sessionShares.getSharedSessionIds(user.id);
-  return sharedIds.includes(session.id);
-}
+/**
+ * How many shared conversations the unscoped list folds in.
+ *
+ * Matches the service's own default page size. The `shared` scope is the
+ * paginated way to read them all; this backfill only keeps the legacy combined
+ * list from losing recently-shared rows.
+ */
+const SHARED_BACKFILL_LIMIT = 200;
 
-/** Check if user can WRITE (update/delete) a session. */
-function canWriteSession(user: AuthUser, session: SessionRow): boolean {
-  if (user.role === 'external') return false;
-  if (user.role === 'super') return true;
-  // admin & member: only their own
-  return session.user_id === user.id;
+/**
+ * `undefined` = no scope asked for, `null` = asked for something unknown.
+ *
+ * Omitting the scope keeps the historical behaviour (super sees everything, a
+ * team user sees own + shared), so existing consumers are untouched; the
+ * sidebar asks for `mine` explicitly. The vocabulary lives in
+ * `@greenhouse/types/api` so the browser and the server can't drift.
+ */
+function parseSessionScope(raw: string | undefined): SessionScope | undefined | null {
+  if (raw === undefined) return undefined;
+  return (SESSION_SCOPES as readonly string[]).includes(raw) ? (raw as SessionScope) : null;
 }
 
 const sessions = new Hono<AppEnv>()
   /** GET /api/sessions/shareable-users — list active internal users for sharing */
   .get('/shareable-users', async (c) => {
     const authUser = getAuthUser(c);
-    if (authUser.role === 'external') return c.json({ error: 'Forbidden' }, 403);
 
     const allUsers = await getDb().users.list();
     const users = allUsers
-      .filter((u) => u.status === 'active' && u.id !== authUser.id)
+      .filter((u) => u.status === 'active' && (u.role === 'team' || u.role === 'super') && u.id !== authUser.id)
       .map((u) => ({ id: u.id, nickname: u.nickname, email: u.email, role: u.role }));
     return c.json({ users });
   })
@@ -64,161 +72,110 @@ const sessions = new Hono<AppEnv>()
   .post('/', async (c) => {
     const authUser = getAuthUser(c);
 
-    // External users cannot create sessions
-    if (authUser.role === 'external') {
-      return c.json({ error: 'External users cannot create sessions' }, 403);
-    }
-
     const body = (await c.req.json().catch(() => ({}))) as {
       title?: string;
       profile_id?: string;
-      context?: unknown;
-      channel?: string;
     };
-    // Only 'browser' (extension side panel) may be claimed by clients; every
-    // other channel value is server-assigned elsewhere and defaults to 'web'.
-    const channel = body.channel === 'browser' ? 'browser' : undefined;
-    const requestedProfileId = normalizeProfileId(body.profile_id) || 'default';
-    const profile = await resolveProfileAsync(requestedProfileId).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      return new Error(message);
-    });
-    if (profile instanceof Error) {
-      return c.json({ error: `Invalid profile: ${profile.message}` }, 400);
+    try {
+      // `channel='mission'` is no longer minted: Mission direct-launch creates
+      // the same ordinary conversation through this shared helper.
+      const session = await createOwnedSession(authUser, { title: body.title, profileId: body.profile_id });
+      return c.json(session, 201);
+    } catch (err) {
+      if (err instanceof SessionCreationError) return c.json({ error: err.message }, err.status);
+      throw err;
     }
-    if (profile.access.level === 'hidden') {
-      return c.json({ error: `Profile "${requestedProfileId}" cannot be used for cloud sessions` }, 403);
-    }
-    if (requestedProfileId.startsWith('custom:')) {
-      const customId = parseInt(requestedProfileId.slice(7), 10);
-      if (isNaN(customId)) return c.json({ error: 'Invalid custom profile ID' }, 400);
-      const customRow = await getDb().customProfiles.getById(customId);
-      if (!customRow) return c.json({ error: 'Custom profile not found' }, 404);
-      if (customRow.user_id !== authUser.id && !customRow.is_shared && authUser.role !== 'super') {
-        return c.json({ error: 'You do not have access to this custom profile' }, 403);
-      }
-    }
-
-    let session = await getDb().sessions.create(body.title, requestedProfileId, authUser.id, undefined, channel);
-
-    // Optional structured session context (device/grower/plants...) at creation
-    if (body.context !== undefined && body.context !== null) {
-      // Web routes are the manual-configuration surface; app callers use /api/v1.
-      const parsed = parseSessionContext(body.context, 'admin');
-      if (!parsed.ok) return c.json({ error: `Invalid context: ${parsed.error}` }, 400);
-      const updated = await getDb().sessions.update(session.id, {
-        metadata: writeSessionContext(session.metadata, parsed.context),
-      });
-      if (updated) session = updated;
-    }
-
-    return c.json(session, 201);
-  })
-  /** GET /api/sessions/:id/context — read the structured session context */
-  .get('/:id/context', async (c) => {
-    const authUser = getAuthUser(c);
-    const id = c.req.param('id');
-    const session = await getDb().sessions.getById(id);
-    if (!session || !(await canAccessSession(authUser, session))) {
-      return c.json({ error: 'Session not found' }, 404);
-    }
-    return c.json({ context: readSessionContext(session.metadata) });
-  })
-  /** PUT /api/sessions/:id/context — set or clear (context: null) the structured session context */
-  .put('/:id/context', async (c) => {
-    const authUser = getAuthUser(c);
-    const id = c.req.param('id');
-    const session = await getDb().sessions.getById(id);
-    if (!session) return c.json({ error: 'Session not found' }, 404);
-    if (!canWriteSession(authUser, session)) return c.json({ error: 'Forbidden' }, 403);
-
-    const body = (await c.req.json().catch(() => ({}))) as { context?: unknown };
-
-    if (body.context === null) {
-      await getDb().sessions.update(id, { metadata: writeSessionContext(session.metadata, null) });
-      return c.json({ context: null });
-    }
-
-    const parsed = parseSessionContext(body.context, 'admin');
-    if (!parsed.ok) return c.json({ error: `Invalid context: ${parsed.error}` }, 400);
-
-    await getDb().sessions.update(id, { metadata: writeSessionContext(session.metadata, parsed.context) });
-    return c.json({ context: parsed.context });
   })
   /** GET /api/sessions — list sessions */
   .get('/', async (c) => {
     const authUser = getAuthUser(c);
 
-    // External users have no session history
-    if (authUser.role === 'external') {
-      return c.json({ sessions: [] });
-    }
-
     const status = c.req.query('status');
-    const limit = parseInt(c.req.query('limit') ?? '200', 10);
-    const offset = parseInt(c.req.query('offset') ?? '0', 10);
+    const rawLimit = c.req.query('limit');
+    const rawOffset = c.req.query('offset');
+    const requestedLimit = rawLimit === undefined ? 200 : Number(rawLimit);
+    const offset = rawOffset === undefined ? 0 : Number(rawOffset);
+    if (
+      rawLimit !== undefined &&
+      (!/^\d+$/.test(rawLimit) || !Number.isSafeInteger(requestedLimit) || requestedLimit < 1)
+    ) {
+      return c.json({ error: 'limit must be a positive integer' }, 400);
+    }
+    if (rawOffset !== undefined && (!/^\d+$/.test(rawOffset) || !Number.isSafeInteger(offset))) {
+      return c.json({ error: 'offset must be a non-negative integer' }, 400);
+    }
+    const includePageMeta = c.req.query('page_meta') === '1';
+    // New cursor consumers use bounded pages. Preserve the legacy endpoint's
+    // exact requested limit until Web has migrated to the page_meta contract.
+    const limit = includePageMeta ? Math.min(requestedLimit, 200) : requestedLimit;
     const includeEval = c.req.query('include_eval') === '1';
     const tagId = c.req.query('tag_id') ? parseInt(c.req.query('tag_id')!, 10) : undefined;
-    // Optional case-insensitive title search — applied in the SQL query below so
-    // limit/offset paginate over matches (a hit on a later page stays reachable).
-    const search = c.req.query('q')?.trim() || undefined;
-    // Optional channel filter (e.g. 'browser' — the extension side panel lists
-    // only its own channel). Channel-scoped queries are always self-only.
-    const channelQuery = c.req.query('channel') as SessionChannel | undefined;
+    const channel = c.req.query('channel');
 
-    // super sees all; admin/member see only their own + shared sessions
-    const userId = channelQuery ? authUser.id : authUser.role === 'super' ? undefined : authUser.id;
+    const scope = parseSessionScope(c.req.query('scope'));
+    if (scope === null) {
+      return c.json({ error: `scope must be one of: ${SESSION_SCOPES.join(', ')}` }, 400);
+    }
+    // Fail closed rather than quietly returning an empty page — an empty list
+    // would hide the caller's bug instead of naming it.
+    if (scope === 'team' && authUser.role !== 'super') {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
 
-    const list = await getDb().sessions.list({
+    // Workflow node/reviewer sessions are engine internals reachable only from a
+    // run's Trace link — they never belong in a user-facing session list.
+    // `?channel=workflow` is the explicit debug back door.
+    const listOpts = {
       status,
-      limit,
+      limit: includePageMeta ? limit + 1 : limit,
       offset,
       includeEval,
-      userId,
-      channel: channelQuery,
-      search,
-    });
+      channel,
+      excludeChannels: channel ? undefined : ['workflow'],
+    };
 
-    // The shared/organized backfills below fetch by id (bypassing the SQL search
-    // filter), so a search term must be re-applied to them in memory to keep the
-    // result set consistent with the paginated main query.
-    const matchesSearch = (s: SessionRow): boolean =>
-      !search || (s.title ?? '').toLowerCase().includes(search.toLowerCase());
+    let baseList;
+    if (scope === 'shared') {
+      baseList = await getDb().sessions.listSharedWith(authUser.id, listOpts);
+    } else if (scope === 'team') {
+      baseList = await getDb().sessions.list({ ...listOpts, excludeUserId: authUser.id });
+    } else {
+      // 'mine' pins the query to the caller for every role. Without a scope the
+      // historical rule stands: super sees everyone's sessions.
+      const ownerId = scope === 'mine' || authUser.role !== 'super' ? authUser.id : undefined;
+      baseList = await getDb().sessions.list({ ...listOpts, userId: ownerId });
+    }
+    const hasMore = includePageMeta && baseList.length > limit;
+    const list = includePageMeta ? baseList.slice(0, limit) : baseList;
+    const consumedBaseRows = list.length;
 
     // Sessions shared with the current user (shared_with = me OR __team__).
     // Computed for every role so we can flag "shared with me" rows consistently.
     const sharedSessionIds = await getDb().sessionShares.getSharedSessionIds(authUser.id);
     const sharedIdSet = new Set(sharedSessionIds);
 
-    // For non-super users, also include sessions shared with them.
-    // Channel-scoped queries skip the shared/organized backfills — they exist
-    // for the web sidebar; a channel list is just "my sessions on <channel>".
-    if (userId && !channelQuery) {
-      if (sharedSessionIds.length > 0) {
-        const existingIds = new Set(list.map((s) => s.id));
-        const missingIds = sharedSessionIds.filter((id) => !existingIds.has(id));
-        if (missingIds.length > 0) {
-          const sharedSessions = await Promise.all(missingIds.map((id) => getDb().sessions.getById(id)));
-          for (const s of sharedSessions) {
-            // Mirror the main query's filters: status match AND the
-            // include_eval flag (otherwise shared eval sessions leak into
-            // lists that explicitly excluded them).
-            if (!s) continue;
-            if (status ? s.status !== status : !includeEval && s.status === 'eval') continue;
-            if (!matchesSearch(s)) continue;
-            list.push(s);
-          }
-        }
-        // Re-sort by updated_at desc
-        list.sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
+    // Unscoped + non-super: fold in sessions shared with this user. `scope=mine`
+    // deliberately skips this — shared conversations live in their own tab.
+    if (scope === undefined && authUser.role !== 'super' && sharedSessionIds.length > 0) {
+      const sharedRows = await getDb().sessions.listSharedWith(authUser.id, {
+        status,
+        includeEval,
+        limit: SHARED_BACKFILL_LIMIT,
+      });
+      const existingIds = new Set(list.map((s) => s.id));
+      for (const s of sharedRows) {
+        if (!existingIds.has(s.id)) list.push(s);
       }
+      // Re-sort by updated_at desc
+      list.sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
     }
 
     // Backfill pinned/grouped sessions that fell outside the recent window
     // (an old or shared session the user filed/pinned must still surface).
-    // Mirrors the shared-session backfill above; access-checked inline so a
-    // session un-shared after being organized (an orphan membership) drops out.
-    const organizedIds = channelQuery ? [] : await getDb().sessionGroups.getOrganizedSessionIds(authUser.id);
+    // Filing something is an explicit act, so it outranks the scope filter —
+    // but only where those sections are rendered ('mine' and the unscoped list).
+    const organizedIds =
+      scope === 'shared' || scope === 'team' ? [] : await getDb().sessionGroups.getOrganizedSessionIds(authUser.id);
     if (organizedIds.length > 0) {
       const existingIds = new Set(list.map((s) => s.id));
       const missingIds = organizedIds.filter((id) => !existingIds.has(id));
@@ -230,7 +187,6 @@ const sessions = new Hono<AppEnv>()
           if (!accessible) continue;
           // Mirror the main query's status / eval-visibility filters.
           if (status ? s.status !== status : !includeEval && s.status === 'eval') continue;
-          if (!matchesSearch(s)) continue;
           list.push(s);
         }
         list.sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
@@ -261,18 +217,66 @@ const sessions = new Hono<AppEnv>()
     });
 
     // Filter by tag if requested
-    const result = tagId ? enriched.filter((s) => s.tags.some((t) => t.id === tagId)) : enriched;
+    const filtered = tagId ? enriched.filter((s) => s.tags.some((t) => t.id === tagId)) : enriched;
+    // Name the owner on rows the caller doesn't own — resolved after the tag
+    // filter so dropped rows cost nothing.
+    const result = await withOwnerNicknames(getDb(), filtered, authUser.id);
 
+    if (includePageMeta) {
+      return c.json({
+        sessions: result,
+        page: {
+          has_more: hasMore,
+          next_offset: offset + consumedBaseRows,
+        },
+      });
+    }
     return c.json({ sessions: result });
+  })
+  /** GET /api/sessions/:id/messages — get an ascending cursor page of messages */
+  .get('/:id/messages', async (c) => {
+    const authUser = getAuthUser(c);
+    const sessionId = c.req.param('id');
+    const session = await getDb().sessions.getById(sessionId);
+    if (!session || !(await canAccessSession(authUser, session))) {
+      return c.json({ error: 'Session not found' }, 404);
+    }
+
+    const rawLimit = c.req.query('limit');
+    const rawBeforeSeq = c.req.query('before_seq');
+    let limit = 50;
+    let beforeSeq: number | undefined;
+
+    if (rawLimit !== undefined) {
+      limit = Number(rawLimit);
+      if (!/^\d+$/.test(rawLimit) || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+        return c.json({ error: 'limit must be an integer between 1 and 100' }, 400);
+      }
+    }
+
+    if (rawBeforeSeq !== undefined) {
+      beforeSeq = Number(rawBeforeSeq);
+      if (!/^\d+$/.test(rawBeforeSeq) || !Number.isSafeInteger(beforeSeq)) {
+        return c.json({ error: 'before_seq must be a non-negative integer' }, 400);
+      }
+    }
+
+    const page = await getDb().sessions.getMessagePage(sessionId, { limit, beforeSeq });
+    return c.json(page);
   })
   /** GET /api/sessions/:id — get session detail + messages */
   .get('/:id', async (c) => {
     const authUser = getAuthUser(c);
     const id = c.req.param('id');
+    const rawIncludeMessages = c.req.query('include_messages');
+    if (rawIncludeMessages !== undefined && rawIncludeMessages !== '0' && rawIncludeMessages !== '1') {
+      return c.json({ error: 'include_messages must be 0 or 1' }, 400);
+    }
+    const includeMessages = rawIncludeMessages !== '0';
     const session = await getDb().sessions.getById(id);
     if (!session) return c.json({ error: 'Session not found' }, 404);
 
-    // Visibility check: super sees all, admin/member only their own, external nothing
+    // Visibility check: super sees all; team users see owned or explicitly shared sessions.
     if (!(await canAccessSession(authUser, session))) {
       return c.json({ error: 'Session not found' }, 404);
     }
@@ -280,7 +284,7 @@ const sessions = new Hono<AppEnv>()
     const isOwner = session.user_id === authUser.id;
 
     const [messages, usage, tags, shareRows] = await Promise.all([
-      getDb().sessions.getMessages(id),
+      includeMessages ? getDb().sessions.getMessages(id) : Promise.resolve([]),
       getDb().sessions.getUsage(id),
       getDb().sessionTags.getSessionTags(id),
       getDb().sessionShares.getSharesForSession(id),
@@ -319,6 +323,51 @@ const sessions = new Hono<AppEnv>()
 
     return c.json({ session: enrichedSession, messages, usage, share_info: shareInfo });
   })
+  /** POST /api/sessions/:id/fork — copy a readable conversation into an owned session */
+  .post('/:id/fork', async (c) => {
+    const authUser = getAuthUser(c);
+    const sourceSessionId = c.req.param('id');
+    const source = await getDb().sessions.getById(sourceSessionId);
+    if (!source || !(await canAccessSession(authUser, source))) {
+      return c.json({ error: 'Session not found' }, 404);
+    }
+    if (source.channel !== 'web') {
+      return c.json({ error: 'Only regular chat sessions can be forked' }, 400);
+    }
+
+    let profileId: string;
+    try {
+      profileId = await pinProfileIdForUser(authUser, source.profile_id);
+    } catch (err) {
+      if (err instanceof ProfileAccessError) return c.json({ error: err.message }, err.status);
+      throw err;
+    }
+    const profile = await resolveProfileAsync(profileId).catch(() => null);
+    if (!profile || profile.access.level === 'hidden') {
+      return c.json({ error: 'The source Agent is no longer available' }, 409);
+    }
+    const body = (await c.req.json().catch(() => ({}))) as { message_id?: string };
+    let throughSeq: number | undefined;
+    if (body.message_id) {
+      const boundary = await getDb().sessions.getMessageById(body.message_id);
+      if (!boundary || boundary.session_id !== sourceSessionId) {
+        return c.json({ error: 'Message not found' }, 404);
+      }
+      if (boundary.role !== 'assistant') {
+        return c.json({ error: 'A conversation can only be forked from an Agent reply' }, 400);
+      }
+      throughSeq = boundary.seq;
+    }
+
+    const fork = await getDb().sessions.fork({
+      sourceSessionId,
+      userId: authUser.id,
+      throughSeq,
+      sourceMessageId: body.message_id,
+    });
+    if (!fork) return c.json({ error: 'Session not found' }, 404);
+    return c.json(fork, 201);
+  })
   /** PATCH /api/sessions/:id — update session (status, rating, comment, title) */
   .patch('/:id', async (c) => {
     const authUser = getAuthUser(c);
@@ -341,9 +390,73 @@ const sessions = new Hono<AppEnv>()
       feedback?: string | null;
       metadata?: string;
     };
+    if (body.status !== undefined) {
+      const userWritableStatuses = new Set(['active', 'archived', 'completed', 'deleted']);
+      const mayMarkEval = authUser.role === 'super' && body.status === 'eval';
+      if (!userWritableStatuses.has(body.status) && !mayMarkEval) {
+        return c.json({ error: 'Invalid session status' }, 400);
+      }
+    }
     const session = await getDb().sessions.update(id, body);
     if (!session) return c.json({ error: 'Session not found' }, 404);
     return c.json(session);
+  })
+  /** GET /api/sessions/:id/messages/:msgId/eval — get cached eval result for a message */
+  .get('/:id/messages/:msgId/eval', async (c) => {
+    const authUser = getAuthUser(c);
+    const sessionId = c.req.param('id');
+
+    // Visibility check on parent session
+    const session = await getDb().sessions.getById(sessionId);
+    if (!session || !(await canAccessSession(authUser, session))) {
+      return c.json({ error: 'Session not found' }, 404);
+    }
+
+    const messageId = c.req.param('msgId');
+    const message = await getDb().sessions.getMessageById(messageId);
+    if (!message || message.session_id !== sessionId) {
+      return c.json({ exists: false });
+    }
+
+    const evalResult = await getDb().chatEval.getByMessageId(messageId);
+    if (!evalResult || evalResult.session_id !== sessionId) return c.json({ exists: false });
+
+    return c.json({
+      exists: true,
+      eval: evalResult,
+      agent_session_id: evalResult.eval_session_id ?? null,
+    });
+  })
+  /**
+   * GET /api/sessions/:id/evals — latest eval summary per message in a session.
+   * Powers the chat eval-button state (评测过 → 查看) without an N+1 of the
+   * per-message endpoint. Returns one entry per evaluated message (most recent run).
+   */
+  .get('/:id/evals', async (c) => {
+    const authUser = getAuthUser(c);
+    const sessionId = c.req.param('id');
+
+    const session = await getDb().sessions.getById(sessionId);
+    if (!session || !(await canAccessSession(authUser, session))) {
+      return c.json({ error: 'Session not found' }, 404);
+    }
+
+    const rows = await getDb().chatEval.getBySessionId(sessionId);
+    // Collapse re-evals to the latest run per message (created_at desc).
+    const latest = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) {
+      const prev = latest.get(row.message_id);
+      if (!prev || row.created_at > prev.created_at) latest.set(row.message_id, row);
+    }
+    const evals = [...latest.values()].map((r) => ({
+      message_id: r.message_id,
+      verdict: r.verdict ?? null,
+      score_final: r.score_final ?? null,
+      eval_session_id: r.eval_session_id ?? null,
+      created_at: r.created_at,
+    }));
+
+    return c.json({ evals });
   })
   /** DELETE /api/sessions/:id — hard delete session */
   .delete('/:id', async (c) => {
@@ -357,7 +470,23 @@ const sessions = new Hono<AppEnv>()
       return c.json({ error: 'Forbidden' }, 403);
     }
 
-    await getDb().sessions.delete(id);
+    if (chatRunRegistry.getActive(id)) {
+      return c.json({ error: 'Stop the active Chat run before deleting this session' }, 409);
+    }
+    const files = await getDb().chatFiles.listBySession(id);
+    try {
+      await getDb().sessions.delete(id);
+    } catch (error) {
+      if (error instanceof SessionActiveRuntimeError) return c.json({ error: error.message }, 409);
+      throw error;
+    }
+    await Promise.all(
+      files.map((file) =>
+        deleteObjectAtKey(file.storage_key).catch((error) => {
+          logger.warn(`[Chat files] object cleanup failed for ${file.storage_key}: ${toErrorMessage(error)}`);
+        }),
+      ),
+    );
     return c.json({ ok: true });
   })
   /** PATCH /api/sessions/:id/messages/:msgId — edit a message content */
@@ -375,16 +504,13 @@ const sessions = new Hono<AppEnv>()
       return c.json({ error: 'Session not found' }, 404);
     }
 
-    const msg = await getDb().sessions.getMessageById(msgId);
-    if (!msg || msg.session_id !== sessionId) return c.json({ error: 'Message not found' }, 404);
-    if (msg.role !== 'user') return c.json({ error: 'Can only edit user messages' }, 400);
-
-    // Delete all messages after this one (assistant response + any subsequent)
-    await getDb().sessions.deleteMessagesAfterSeq(sessionId, msg.seq + 1);
-
-    // Update message content
-    await getDb().sessions.updateMessageContent(msgId, body.content.trim());
-    await getDb().sessions.touch(sessionId);
+    const result = await getDb().sessions.editUserMessageAndTruncate(sessionId, msgId, body.content.trim());
+    if (!result.ok) {
+      if (result.reason === 'not_user') {
+        return c.json({ error: 'Can only edit user messages' }, 400);
+      }
+      return c.json({ error: result.reason === 'session_not_found' ? 'Session not found' : 'Message not found' }, 404);
+    }
 
     return c.json({ ok: true });
   })
@@ -405,14 +531,14 @@ const sessions = new Hono<AppEnv>()
     if (!firstUser) return c.json({ error: 'No user message found' }, 400);
 
     try {
-      const title = await generateSessionTitle(firstUser.content);
+      const title = await generateSessionTitle(firstUser.content, { userId: authUser.id, sessionId: id });
       await getDb().sessions.updateTitle(id, title);
       return c.json({ title });
     } catch {
       return c.json({ error: 'Title generation failed' }, 500);
     }
   })
-  /** POST /api/sessions/:id/regenerate — delete last assistant message so chat can re-generate */
+  /** POST /api/sessions/:id/regenerate — validate the selected tail assistant without deleting it */
   .post('/:id/regenerate', async (c) => {
     const authUser = getAuthUser(c);
     const sessionId = c.req.param('id');
@@ -424,21 +550,22 @@ const sessions = new Hono<AppEnv>()
       return c.json({ error: 'Forbidden' }, 403);
     }
 
-    const messages = await getDb().sessions.getMessages(sessionId);
-    if (messages.length === 0) return c.json({ error: 'No messages to regenerate' }, 400);
+    const body = (await c.req.json().catch(() => null)) as {
+      assistant_message_id?: unknown;
+    } | null;
+    if (typeof body?.assistant_message_id !== 'string' || body.assistant_message_id.trim() === '') {
+      return c.json({ error: 'assistant_message_id is required' }, 400);
+    }
 
-    // Find the last assistant message
-    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
-    if (!lastAssistant) return c.json({ error: 'No assistant message to regenerate' }, 400);
+    const result = await getDb().sessions.prepareRegeneration(sessionId, body.assistant_message_id.trim());
+    if (!result.ok) {
+      if (result.reason === 'session_not_found') {
+        return c.json({ error: 'Session not found' }, 404);
+      }
+      return c.json({ error: 'Assistant message is no longer the latest message' }, 409);
+    }
 
-    // Delete the last assistant message (and anything after it)
-    await getDb().sessions.deleteMessagesAfterSeq(sessionId, lastAssistant.seq);
-    await getDb().sessions.touch(sessionId);
-
-    // Find the last user message (which will be re-sent)
-    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
-
-    return c.json({ ok: true, lastUserMessage: lastUser?.content || '' });
+    return c.json({ ok: true, last_user: result.last_user });
   })
   /** GET /api/sessions/:id/shares — get shares for a session */
   .get('/:id/shares', async (c) => {
@@ -500,7 +627,8 @@ const sessions = new Hono<AppEnv>()
       return c.json({ error: 'Forbidden' }, 403);
     }
 
-    await getDb().sessionShares.deleteOne(shareId);
+    const deleted = await getDb().sessionShares.deleteOne(shareId, sessionId);
+    if (!deleted) return c.json({ error: 'Share not found' }, 404);
     return c.json({ ok: true });
   })
   // ─── Session Tag Link Endpoints ──────────────────────────

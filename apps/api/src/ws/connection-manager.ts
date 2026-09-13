@@ -11,6 +11,7 @@
 import type { WSContext } from 'hono/ws';
 import type { OnlineUser, ServerWsEvent } from '@greenhouse/types/ws';
 import { logger } from '@greenhouse/utils/logger';
+import { getDb } from '@greenhouse/db';
 
 interface Connection {
   ws: WSContext;
@@ -18,11 +19,13 @@ interface Connection {
   nickname: string;
   role: string;
   connectedAt: string;
-  /** Token expiry timestamp in seconds (0 = dev mode, no expiry). */
+  /** Credential generation captured by the access token. */
+  tokenAuthVersion: number;
+  /** Token expiry timestamp in seconds. */
   tokenExp: number;
 }
 
-class ConnectionManager {
+export class ConnectionManager {
   /** userId → Set<Connection> (one user may have multiple tabs/devices) */
   private connections = new Map<string, Set<Connection>>();
 
@@ -80,6 +83,20 @@ class ConnectionManager {
       this.broadcastToSuper({ type: 'presence:leave', userId: conn.userId });
     } else {
       logger.info(`[WS] - ${conn.nickname} (${conn.userId}) tab closed — ${set.size} remaining`);
+    }
+  }
+
+  /** Close every connection for a user and remove it from all broadcast sets. */
+  disconnectUser(userId: string, code = 4001, reason = 'Account unavailable'): void {
+    const set = this.connections.get(userId);
+    if (!set) return;
+    for (const conn of [...set]) {
+      try {
+        conn.ws.close(code, reason);
+      } catch {
+        /* ignore close errors */
+      }
+      this.remove(conn);
     }
   }
 
@@ -154,20 +171,67 @@ class ConnectionManager {
     }
   }
 
-  /** Send ping to all connections; close any with expired tokens. */
-  pingAll(): void {
+  /** Broadcast to every super except an owner already sent the same event. */
+  broadcastToSuperExcept(excludedUserId: string, event: ServerWsEvent): void {
+    const data = JSON.stringify(event);
+    for (const [userId, set] of this.connections) {
+      if (userId === excludedUserId) continue;
+      for (const conn of set) {
+        if (conn.role === 'super') {
+          try {
+            conn.ws.send(data);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    }
+  }
+
+  /** Revalidate account state, then ping live connections. */
+  async pingAll(): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
     const data = JSON.stringify({ type: 'ping' } as ServerWsEvent);
-    for (const set of this.connections.values()) {
-      for (const conn of set) {
-        // Check token expiry (0 = dev mode, skip)
-        if (conn.tokenExp > 0 && conn.tokenExp < now) {
+    for (const [userId, set] of [...this.connections]) {
+      let user;
+      try {
+        user = await getDb().users.getById(userId);
+      } catch (error) {
+        logger.warn(`[WS] Account revalidation failed for ${userId}: ${String(error)}`);
+        this.disconnectUser(userId, 1011, 'Account validation failed');
+        continue;
+      }
+
+      if (!user || user.status !== 'active' || (user.role !== 'super' && user.role !== 'team')) {
+        logger.info(`[WS] Account unavailable for ${userId}, closing active connections`);
+        this.disconnectUser(userId);
+        continue;
+      }
+
+      let roleChanged = false;
+      for (const conn of [...set]) {
+        if (conn.tokenAuthVersion !== user.auth_version) {
+          logger.info(`[WS] Credentials revoked for ${conn.nickname} (${conn.userId}), closing`);
+          try {
+            conn.ws.close(4001, 'Credentials revoked');
+          } catch {
+            /* ignore */
+          }
+          this.remove(conn);
+          continue;
+        }
+        if (conn.role !== user.role) {
+          conn.role = user.role;
+          roleChanged = true;
+        }
+        if (conn.tokenExp < now) {
           logger.info(`[WS] Token expired for ${conn.nickname} (${conn.userId}), closing`);
           try {
             conn.ws.close(4002, 'Token expired');
           } catch {
             /* ignore */
           }
+          this.remove(conn);
           continue;
         }
         try {
@@ -175,6 +239,9 @@ class ConnectionManager {
         } catch {
           /* ignore */
         }
+      }
+      if (roleChanged) {
+        this.broadcastToSuper({ type: 'presence:snapshot', users: this.getOnlineUsers() });
       }
     }
   }

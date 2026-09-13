@@ -9,8 +9,8 @@
  * Build the final prompt for a scheduled task execution.
  * Prepends date/time/timezone context to the raw task prompt.
  */
-export function buildTaskPrompt(taskPrompt: string, timezone: string): string {
-  const now = new Date();
+export function buildTaskPrompt(taskPrompt: string, timezone: string, reference = new Date()): string {
+  const now = reference;
 
   // Format date in user's timezone
   const formatter = new Intl.DateTimeFormat('zh-CN', {
@@ -43,8 +43,8 @@ export function buildTaskPrompt(taskPrompt: string, timezone: string): string {
  * Generate a session title for a task execution.
  * Format: [任务名] YYYY-MM-DD HH:mm
  */
-export function buildTaskSessionTitle(taskName: string, timezone: string): string {
-  const now = new Date();
+export function buildTaskSessionTitle(taskName: string, timezone: string, reference = new Date()): string {
+  const now = reference;
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
     year: 'numeric',

@@ -4,12 +4,11 @@
  * GET    /api/auth/llm-keys           — 列出自己的网关 key
  * GET    /api/auth/llm-keys/catalog   — 当前可选的网关模型目录（用于挑选子集）
  * POST   /api/auth/llm-keys           — 创建网关 key（绑定可用模型子集，明文只返回一次）
- * POST   /api/auth/llm-keys/provision — 无感自动签发：取得/轮换默认 key（Desktop 用）
  * DELETE /api/auth/llm-keys/:id       — 吊销自己的网关 key
  *
  * 认证：Bearer Token（内部用户）。所有内部用户可自助管理。
  * 网关 key 复用 api_clients（channel='relay'），可用模型子集存 meta.allowed_models；
- * 自动签发的默认 key 标记 meta.auto=true 且不限定子集（始终跟随 is_public 目录）。
+ * 历史自动签发 key 的 meta.auto 标记仍会原样返回，便于管理员识别和回收。
  */
 
 import { Hono } from 'hono';
@@ -19,6 +18,8 @@ import { generateApiKey } from '../auth/api-key.js';
 import { getDb } from '@greenhouse/db';
 import type { ApiClientRow } from '@greenhouse/db';
 import { safeJsonParse } from '@greenhouse/utils/json';
+import { resolveRelayModel } from '../llm/relay-proxy.js';
+import { getModelCatalog } from '../config/models.js';
 import type { AppEnv } from '../app-env.js';
 
 const MAX_RELAY_KEYS_PER_USER = 10;
@@ -44,22 +45,28 @@ function relayKeyView(k: ApiClientRow) {
   };
 }
 
-/** Enabled public_ids the user may bind a key to. */
-async function enabledPublicIds(): Promise<Set<string>> {
-  const enabled = await getDb().llmGatewayModels.listEnabled();
-  return new Set(enabled.map((m) => m.public_id));
+/**
+ * Catalog models that can actually be served right now: declared in
+ * `config/models.yaml`, OpenAI-compatible protocol, and with their API key
+ * present in env. A model nobody can reach must not be offerable on a key.
+ */
+function relayReadyModels() {
+  const catalog = getModelCatalog();
+  return Object.entries(catalog.models)
+    .map(([id, entry]) => resolveRelayModel(id, entry))
+    .filter((m): m is NonNullable<typeof m> => m !== null)
+    .map((m) => ({ ...m, isPublic: catalog.relay.public.includes(m.id), isDefault: catalog.relay.default === m.id }));
 }
 
 const llmKeyRoutes = new Hono<AppEnv>()
   // ─── GET /catalog — 可选模型目录 ──────────────────────────
   .get('/catalog', async (c) => {
-    const enabled = await getDb().llmGatewayModels.listEnabled();
     return c.json({
-      models: enabled.map((m) => ({
-        public_id: m.public_id,
-        display_name: m.display_name,
-        is_default: m.is_default,
-        is_public: m.is_public,
+      models: relayReadyModels().map((m) => ({
+        public_id: m.id,
+        display_name: m.displayName,
+        is_default: m.isDefault,
+        is_public: m.isPublic,
       })),
     });
   })
@@ -88,7 +95,7 @@ const llmKeyRoutes = new Hono<AppEnv>()
     // Validate requested model subset against the enabled catalog.
     let allowedModels: string[] | undefined;
     if (Array.isArray(body.allowed_models) && body.allowed_models.length > 0) {
-      const available = await enabledPublicIds();
+      const available = new Set(relayReadyModels().map((m) => m.id));
       const invalid = body.allowed_models.filter((m) => !available.has(m));
       if (invalid.length > 0) {
         return c.json({ error: `Unknown or disabled models: ${invalid.join(', ')}` }, 400);
@@ -121,38 +128,6 @@ const llmKeyRoutes = new Hono<AppEnv>()
       },
       201,
     );
-  })
-  // ─── POST /provision — 无感自动签发（取得或轮换默认 key）─────
-  .post('/provision', async (c) => {
-    const user = getAuthUser(c);
-    const keys = (await getDb().apiClients.listByUserId(user.id)).filter((k) => k.channel === 'relay');
-    const auto = keys.find((k) => (safeJsonParse(k.meta, {}) as { auto?: boolean }).auto === true);
-
-    const { raw, hash } = generateApiKey();
-
-    // Rotate the existing auto key (its old raw was only shown once / may be lost), or create a new one.
-    // This caps each user at a single seamless key while always returning a usable secret.
-    let client: ApiClientRow | undefined;
-    if (auto) {
-      client = await getDb().apiClients.update(auto.id, { api_key_hash: hash, status: 'active' });
-    } else {
-      const suffix = randomBytes(4).toString('hex');
-      client = await getDb().apiClients.create({
-        app_id: `relay-${user.id.slice(0, 8)}-${suffix}`,
-        app_name: 'Desktop Gateway',
-        api_key_hash: hash,
-        rate_limit_rpm: DEFAULT_RELAY_RPM,
-        rate_limit_rpd: DEFAULT_RELAY_RPD,
-        daily_token_limit: DEFAULT_RELAY_DAILY_TOKEN_LIMIT,
-        user_id: user.id,
-        channel: 'relay',
-        created_by: user.id,
-        meta: { auto: true },
-      });
-    }
-
-    if (!client) return c.json({ error: 'Failed to provision gateway key' }, 500);
-    return c.json({ key: relayKeyView(client), api_key: raw });
   })
   // ─── DELETE /:id — 吊销自己的网关 key ──────────────────────
   .delete('/:id', async (c) => {

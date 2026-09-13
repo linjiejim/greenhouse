@@ -1,7 +1,7 @@
 /**
- * API Key authentication — 外部服务的 Server-to-Server 认证。
+ * API Key authentication — 内部集成客户端的 Server-to-Server 认证。
  *
- * API Key 格式：gh_sk_<32字节hex>
+ * API Key 格式：lpai_sk_<32字节hex> (共71字符)
  * 数据库存储 SHA-256 哈希，原始 Key 仅在创建时返回一次。
  *
  * 中间件从 Authorization: Bearer header 提取并验证，将 ApiClient 注入 Hono context。
@@ -13,10 +13,11 @@ import type { Context, Next } from 'hono';
 import { getDb } from '@greenhouse/db';
 import type { ApiClientRow } from '@greenhouse/db';
 import { InMemoryRateLimiter } from '../security.js';
+import { getRequestSourceIp } from '../request-ip.js';
 
 // ─── Constants ───────────────────────────────────────────
 
-const API_KEY_PREFIX = 'gh_sk_';
+const API_KEY_PREFIX = 'lpai_sk_';
 const API_KEY_BYTES = 32;
 
 // ─── Key Generation ──────────────────────────────────────
@@ -61,13 +62,13 @@ export function getApiClient(c: Context): ApiClientRow {
  * Get the client IP address from the request.
  */
 export function getClientIP(c: Context): string {
-  return c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'unknown';
+  return getRequestSourceIp(c);
 }
 
 // ─── Middleware ───────────────────────────────────────────
 
 /**
- * API Key authentication middleware for external v1 endpoints.
+ * API Key authentication middleware for MCP and LLM relay integrations.
  * Validates Authorization: Bearer header, checks client status, injects into context.
  */
 export async function apiKeyMiddleware(c: Context, next: Next) {
@@ -119,10 +120,10 @@ export async function apiKeyMiddleware(c: Context, next: Next) {
 
 /**
  * Build a per-API-key rate-limit middleware (RPM + RPD from the client's own
- * limits). Shared by all API-key surfaces (v1, agent) so the policy never forks.
+ * limits). Shared by the MCP and LLM relay API-key surfaces so the policy never forks.
  * Must run after a middleware that sets `apiClient` in context.
  *
- * @param prefix - namespace for the limiter keys (e.g. 'v1', 'agent')
+ * @param prefix - namespace for the limiter keys (e.g. 'mcp', 'relay')
  */
 export function createPerKeyRateLimitMiddleware(prefix: string) {
   const limiter = new InMemoryRateLimiter(120_000);

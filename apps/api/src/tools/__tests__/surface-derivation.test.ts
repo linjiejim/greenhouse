@@ -1,75 +1,205 @@
 /**
- * GUARD TEST — pins the proxy/MCP exposure surface.
+ * Guard test for the derived proxy/MCP exposure sets (ported from OSS greenhouse).
  *
- * The READONLY_PROXY_ALLOWLIST / MUTATING_PROXY_ALLOWLIST / MCP_EXPOSED_TOOL_IDS
- * sets are DERIVED from each tool's declarative `meta.surface` field (see
- * tools/define.ts + registry.ts). This is a security-relevant surface: anything in
- * these sets is reachable by trusted runtimes (Local Agent / CLI) over /api/agent
- * and by external agents over /api/mcp.
- *
- * This test hardcodes the EXACT expected sets and asserts the derivation reproduces
- * them. Any future change to a tool's `surface` (or a new tool that accidentally
- * declares one) shifts these sets and fails CI here — forcing a conscious review of
- * the exposure invariant. If you intentionally change the surface, update BOTH the
- * tool's `meta.surface` and the expected arrays below in the same change.
+ * The allowlists are DERIVED from each tool's declarative `meta.surface` —
+ * this test pins the exact expected memberships so an accidental exposure
+ * change (adding `surface` to a sensitive tool, typo'ing a tier, dropping a
+ * field during refactor) fails CI instead of silently widening /api/agent or
+ * /api/mcp. The pinned sets below are 1:1 with the hand-maintained lists this
+ * derivation replaced (2026-07 B5) — any intentional change must edit BOTH the
+ * tool's meta and this test.
  */
 
 import { describe, it, expect } from 'vitest';
-import { READONLY_PROXY_ALLOWLIST, MUTATING_PROXY_ALLOWLIST, MCP_EXPOSED_TOOL_IDS } from '../registry.js';
+import { MCP_RESOURCE_GROUP_IDS } from '@greenhouse/types/mcp';
+import {
+  READONLY_PROXY_ALLOWLIST,
+  MUTATING_PROXY_ALLOWLIST,
+  MCP_EXPOSED_TOOL_IDS,
+  MCP_TOOL_IDS_BY_GROUP,
+  WORKBENCH_READ_TOOL_IDS,
+  LAZY_TOOL_IDS,
+  TOOL_DEFINITIONS,
+} from '../registry.js';
 
-// The frozen invariant. Order-independent — compared as sorted arrays / sets.
-const EXPECTED_READONLY = [
-  'external_search',
-  'compute',
-  'analyze_image',
-  'session_history',
-  'project_query',
-  'session_query',
-  'knowledge_query',
-  'email_query',
-  'skill_query',
-];
+const sorted = (s: Set<string>) => [...s].sort();
 
-const EXPECTED_MUTATING = ['project_mutation', 'knowledge_mutation', 'email_mutation', 'skill_mutation'];
-
-const EXPECTED_MCP = [
-  'knowledge_query',
-  'knowledge_mutation',
-  'project_query',
-  'project_mutation',
-  'email_query',
-  'email_mutation',
-  'session_query',
-  'session_history',
-  'skill_query',
-  'skill_mutation',
-];
-
-const sorted = (xs: Iterable<string>) => [...xs].sort();
-
-describe('proxy/MCP surface derivation (security invariant)', () => {
-  it('READONLY_PROXY_ALLOWLIST exactly equals the frozen read set', () => {
-    expect(sorted(READONLY_PROXY_ALLOWLIST)).toEqual(sorted(EXPECTED_READONLY));
+describe('surface-derived exposure sets', () => {
+  it('READONLY_PROXY_ALLOWLIST matches the pinned read surface', () => {
+    expect(sorted(READONLY_PROXY_ALLOWLIST)).toEqual(
+      [
+        'external_search',
+        'compute',
+        'analyze_image',
+        'project_query',
+        'session_query',
+        'knowledge_query',
+        'skill_query',
+        'generate_image',
+        'tables_query',
+        // 2026-08-03: Automations (scheduled tasks) — the model can inspect and
+        // manage the user's own schedules; owner scoping is inside the tools.
+        'automation_query',
+        // 2026-08-05: mailbox reading returns after the 0.18.0 removal. Read is
+        // safe to expose broadly; the write half is confirm-gated below.
+        'email_query',
+      ].sort(),
+    );
   });
 
-  it('MUTATING_PROXY_ALLOWLIST exactly equals the frozen write set', () => {
-    expect(sorted(MUTATING_PROXY_ALLOWLIST)).toEqual(sorted(EXPECTED_MUTATING));
+  it('MUTATING_PROXY_ALLOWLIST matches the pinned write surface (confirm-gated)', () => {
+    expect(sorted(MUTATING_PROXY_ALLOWLIST)).toEqual(
+      [
+        'project_mutation',
+        'knowledge_mutation',
+        'skill_mutation',
+        'tables_mutation',
+        'automation_mutation',
+        'email_mutation',
+      ].sort(),
+    );
   });
 
-  it('MCP_EXPOSED_TOOL_IDS exactly equals the frozen MCP set', () => {
-    expect(sorted(MCP_EXPOSED_TOOL_IDS)).toEqual(sorted(EXPECTED_MCP));
+  it('MCP_EXPOSED_TOOL_IDS matches the pinned MCP surface', () => {
+    expect(sorted(MCP_EXPOSED_TOOL_IDS)).toEqual(
+      [
+        'knowledge_query',
+        'knowledge_mutation',
+        'project_query',
+        'project_mutation',
+        'session_query',
+        'skill_query',
+        'skill_mutation',
+        // 2026-07-23: image generation opened to MCP so image-producing skills
+        // call a tool instead of a REST relay.
+        'generate_image',
+        'tables_query',
+        'tables_mutation',
+        // 2026-08-16: automation_query stays (reading your own schedule is
+        // harmless and useful); automation_mutation left — a machine client IS
+        // unattended, and an automation that can create automations multiplies.
+        'automation_query',
+        // 2026-08-16: the email pair left MCP entirely. email_mutation's safety
+        // rests on a human reading the draft card, which no MCP caller has —
+        // `user_confirmed` and the synthetic `confirm` are both self-asserted,
+        // collapsing two-step confirmation into one. email_query left with it:
+        // a private inbox is not something to hand a third-party client.
+        // Both keep their proxy tier (CLI + Mission sandbox still use them).
+      ].sort(),
+    );
   });
 
-  it('every MCP-exposed tool is also in a proxy allowlist (mcp:true never grants access alone)', () => {
-    const proxied = new Set([...READONLY_PROXY_ALLOWLIST, ...MUTATING_PROXY_ALLOWLIST]);
-    for (const id of MCP_EXPOSED_TOOL_IDS) {
-      expect(proxied.has(id), `MCP tool "${id}" is not in any proxy allowlist`).toBe(true);
+  it('every MCP-exposed tool declares a resource group, and groups only contain exposed tools', () => {
+    // A tool that reached MCP without a group would be unreachable for every
+    // grant (groups are what a user consents to) — fail-closed, but silently.
+    const grouped = new Set<string>();
+    for (const [group, ids] of MCP_TOOL_IDS_BY_GROUP) {
+      expect(MCP_RESOURCE_GROUP_IDS, `unknown resource group ${group}`).toContain(group);
+      for (const id of ids) {
+        expect(MCP_EXPOSED_TOOL_IDS.has(id), `${id} is in group ${group} but not MCP-exposed`).toBe(true);
+        grouped.add(id);
+      }
+    }
+    expect(sorted(grouped)).toEqual(sorted(MCP_EXPOSED_TOOL_IDS));
+  });
+
+  it('every resource group is reachable with read-only scope', () => {
+    // resolveProxyToolIds narrows reads by group and writes by group ∩ mcp:write.
+    // A group holding only write tools would resolve to an empty read set, and
+    // an empty `allowedTools` used to mean "no narrowing at all".
+    for (const [group, ids] of MCP_TOOL_IDS_BY_GROUP) {
+      const readable = [...ids].filter((id) => READONLY_PROXY_ALLOWLIST.has(id));
+      expect(readable.length, `group ${group} has no readable tool`).toBeGreaterThan(0);
     }
   });
 
-  it('read and write proxy sets are disjoint', () => {
+  it('WORKBENCH_READ_TOOL_IDS matches the pinned automatic-refresh surface', () => {
+    expect(sorted(WORKBENCH_READ_TOOL_IDS)).toEqual(['knowledge_query', 'project_query', 'tables_query'].sort());
+    for (const id of WORKBENCH_READ_TOOL_IDS) {
+      expect(READONLY_PROXY_ALLOWLIST.has(id), `${id} is workbench:true but not read-only proxied`).toBe(true);
+    }
+    for (const id of ['generate_image', 'analyze_image', 'external_search', 'email_query']) {
+      expect(WORKBENCH_READ_TOOL_IDS.has(id), `${id} must never auto-run from Home`).toBe(false);
+    }
+  });
+
+  it('every MCP-exposed tool also carries a proxy tier (reachability invariant)', () => {
+    for (const id of MCP_EXPOSED_TOOL_IDS) {
+      expect(
+        READONLY_PROXY_ALLOWLIST.has(id) || MUTATING_PROXY_ALLOWLIST.has(id),
+        `${id} is mcp:true but has no proxy tier — it would be listed but never reachable`,
+      ).toBe(true);
+    }
+  });
+
+  it('proxy tiers are disjoint (a tool is read XOR write)', () => {
     for (const id of READONLY_PROXY_ALLOWLIST) {
-      expect(MUTATING_PROXY_ALLOWLIST.has(id), `"${id}" is in both read and write sets`).toBe(false);
+      expect(MUTATING_PROXY_ALLOWLIST.has(id), `${id} is in both proxy tiers`).toBe(false);
+    }
+  });
+
+  it('LAZY_TOOL_IDS matches the pinned per-request set', () => {
+    expect(sorted(LAZY_TOOL_IDS)).toEqual(
+      [
+        'analyze_image',
+        'generate_image',
+        'feature_request',
+        'project_query',
+        'project_mutation',
+        'session_query',
+        'knowledge_query',
+        'knowledge_mutation',
+        'eval_message',
+        'spawn_session',
+        'call_llm',
+        'skill_mutation',
+        'tables_query',
+        'tables_mutation',
+        'tables_schema_plan',
+        'workflow_plan',
+        'mission_dispatch',
+        'task_capture',
+        'read_attachment',
+        'export_data',
+        'automation_query',
+        'automation_mutation',
+        'memory',
+        'log_friction',
+        'workbench_query',
+        'workbench_mutation',
+        'email_query',
+        'email_mutation',
+      ].sort(),
+    );
+  });
+
+  it('the workbench pair is chat-only — never proxied or MCP-exposed', () => {
+    // Personal home-page configuration has no automation consumer, and its
+    // write side pairs with a screen the user is looking at (spec D15).
+    for (const id of ['workbench_query', 'workbench_mutation']) {
+      expect(READONLY_PROXY_ALLOWLIST.has(id)).toBe(false);
+      expect(MUTATING_PROXY_ALLOWLIST.has(id)).toBe(false);
+      expect(MCP_EXPOSED_TOOL_IDS.has(id)).toBe(false);
+    }
+  });
+
+  it('tables_schema_plan is chat-only — never proxied or MCP-exposed', () => {
+    // Schema editing is gated on a human pressing Confirm on the plan card.
+    // The proxy and MCP have no such human, only a self-declared confirm flag,
+    // so exposing it there would hand an integration the power to restructure
+    // tables unattended (spec D3).
+    expect(READONLY_PROXY_ALLOWLIST.has('tables_schema_plan')).toBe(false);
+    expect(MUTATING_PROXY_ALLOWLIST.has('tables_schema_plan')).toBe(false);
+    expect(MCP_EXPOSED_TOOL_IDS.has('tables_schema_plan')).toBe(false);
+  });
+
+  it('default-deny: tools without surface are on neither proxy tier', () => {
+    for (const meta of TOOL_DEFINITIONS) {
+      if (!meta.surface) {
+        expect(READONLY_PROXY_ALLOWLIST.has(meta.id)).toBe(false);
+        expect(MUTATING_PROXY_ALLOWLIST.has(meta.id)).toBe(false);
+        expect(MCP_EXPOSED_TOOL_IDS.has(meta.id)).toBe(false);
+      }
     }
   });
 });

@@ -1,14 +1,14 @@
 /**
  * Client action tools — verifies (1) the client-declared action descriptors are
- * validated/clamped safely, and (2) each generated tool round-trips through the SAME
- * bridge as Desktop local tools (emit `local-tool-request` → client posts result →
- * model receives the real UI output).
+ * validated/clamped safely, and (2) each generated tool round-trips through the
+ * browser bridge (legacy `local-tool-request` event → client posts result → model
+ * receives the real UI output).
  */
 
 import { describe, it, expect, vi } from 'vitest';
 import { sanitizeClientActions, createClientActionTools } from '../client-actions.js';
-import { createLocalToolBridge } from '../local/bridge.js';
-import { resolveLocalToolResult } from '../local/pending.js';
+import { createClientActionBridge } from '../client-action-bridge.js';
+import { resolveClientActionResult } from '../client-action-pending.js';
 
 const objSchema = { type: 'object', properties: { module: { type: 'string' } }, required: ['module'] };
 
@@ -20,8 +20,8 @@ describe('sanitizeClientActions', () => {
   });
 
   it('keeps a well-formed action', () => {
-    const out = sanitizeClientActions([{ name: 'navigate_demo', description: 'open a page', parameters: objSchema }]);
-    expect(out).toEqual([{ name: 'navigate_demo', description: 'open a page', parameters: objSchema }]);
+    const out = sanitizeClientActions([{ name: 'crm_navigate', description: 'open a page', parameters: objSchema }]);
+    expect(out).toEqual([{ name: 'crm_navigate', description: 'open a page', parameters: objSchema }]);
   });
 
   it('drops malformed actions (bad name, empty desc, non-object params)', () => {
@@ -55,39 +55,76 @@ describe('sanitizeClientActions', () => {
     const out = sanitizeClientActions([{ name: 'a', description: 'x'.repeat(5000), parameters: objSchema }]);
     expect(out[0].description.length).toBe(2000);
   });
+
+  it('warns when the cap drops actions, naming what was lost', async () => {
+    // The desktop's native capabilities plus the browser bridge already claim 20 of
+    // the 32 slots, so hitting the cap silently means screenshot/selection/clipboard
+    // can disappear from the model's tool list with nothing to explain it.
+    const { logger } = await import('@greenhouse/utils/logger');
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    try {
+      const many = Array.from({ length: 34 }, (_, i) => ({
+        name: `act_${i}`,
+        description: 'x',
+        parameters: objSchema,
+      }));
+      expect(sanitizeClientActions(many)).toHaveLength(32);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][1]).toMatchObject({
+        cap: 32,
+        kept: 32,
+        dropped: 2,
+        dropped_names: ['act_32', 'act_33'],
+      });
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('stays quiet when nothing is dropped', async () => {
+    const { logger } = await import('@greenhouse/utils/logger');
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    try {
+      sanitizeClientActions([{ name: 'ok', description: 'good', parameters: objSchema }]);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });
 
 describe('createClientActionTools round-trip', () => {
   it('emits a local-tool-request with the action name and resolves with the client UI result', async () => {
     const sessionId = `sess-${Math.random().toString(36).slice(2)}`;
     const events: Record<string, unknown>[] = [];
-    const bridge = createLocalToolBridge(sessionId);
+    const userId = 'user-a';
+    const bridge = createClientActionBridge(userId, sessionId);
     bridge.setWriter(async (event) => {
       events.push(event);
     });
 
     const tools = createClientActionTools(
-      [{ name: 'navigate_demo', description: 'open a page', parameters: objSchema }],
+      [{ name: 'crm_navigate', description: 'open a CRM page', parameters: objSchema }],
       bridge,
     );
-    expect(Object.keys(tools)).toEqual(['navigate_demo']);
+    expect(Object.keys(tools)).toEqual(['crm_navigate']);
 
     // Invoke exactly as the AI SDK would: execute(input, { toolCallId }).
-    const execPromise = tools.navigate_demo.execute({ module: 'projects' }, { toolCallId: 'c1' });
+    const execPromise = tools.crm_navigate.execute({ module: 'deals' }, { toolCallId: 'c1' });
 
     await vi.waitFor(() => expect(events).toHaveLength(1));
     expect(events[0]).toEqual({
       type: 'local-tool-request',
       toolCallId: 'c1',
-      toolId: 'navigate_demo',
-      params: { module: 'projects' },
+      toolId: 'crm_navigate',
+      params: { module: 'deals' },
     });
 
-    // The browser executes navigate_demo and posts its result back.
+    // The browser executes crm_navigate and posts its result back.
     await vi.waitFor(() =>
-      expect(resolveLocalToolResult(sessionId, 'c1', { ok: true, navigatedTo: '#/projects' })).toBe(true),
+      expect(resolveClientActionResult(userId, sessionId, 'c1', { ok: true, navigatedTo: '#/crm/deals' })).toBe(true),
     );
 
-    await expect(execPromise).resolves.toEqual({ ok: true, navigatedTo: '#/projects' });
+    await expect(execPromise).resolves.toEqual({ ok: true, navigatedTo: '#/crm/deals' });
   });
 });

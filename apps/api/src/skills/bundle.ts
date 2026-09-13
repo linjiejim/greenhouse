@@ -5,7 +5,7 @@
  * `{ path, content, encoding? }` entries (`utf8` default, `base64` for small
  * binary assets), with `SKILL.md` required at the root. This module is the
  * single validation path shared by the HTTP routes and the agent tools —
- * see docs/specs/20260707-skill-center.md.
+ * ported from OSS greenhouse, see docs/specs/20260715-greenhouse-backport-and-slim.md (B7).
  */
 
 import { createHash } from 'node:crypto';

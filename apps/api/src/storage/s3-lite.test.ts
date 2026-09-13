@@ -90,7 +90,7 @@ function mockFetch(status: number, body = '') {
 const CFG = {
   endpoint: 'http://127.0.0.1:9000',
   region: 'us-east-1',
-  bucket: 'greenhouse',
+  bucket: 'example-bucket',
   accessKeyId: 'AKIDEXAMPLE',
   secretAccessKey: 'secret',
 };
@@ -101,7 +101,7 @@ describe('createS3Client', () => {
     await createS3Client(CFG, impl).putObject('skills/pdf/1.0.0.json', '{"a":1}', 'application/json');
 
     const req = calls[0]!;
-    expect(req.url).toBe('http://127.0.0.1:9000/greenhouse/skills/pdf/1.0.0.json');
+    expect(req.url).toBe('http://127.0.0.1:9000/example-bucket/skills/pdf/1.0.0.json');
     expect(req.method).toBe('PUT');
     expect(req.headers['content-type']).toBe('application/json');
     expect(req.headers['x-amz-content-sha256']).toBe(sha256Hex('{"a":1}'));
@@ -118,7 +118,7 @@ describe('createS3Client', () => {
       { ...CFG, endpoint: 'https://s3.us-east-1.amazonaws.com', forcePathStyle: false },
       impl,
     ).putObject('k.json', 'x', 'application/json');
-    expect(calls[0]!.url).toBe('https://greenhouse.s3.us-east-1.amazonaws.com/k.json');
+    expect(calls[0]!.url).toBe('https://example-bucket.s3.us-east-1.amazonaws.com/k.json');
   });
 
   it('GET returns the body, and null on 404', async () => {

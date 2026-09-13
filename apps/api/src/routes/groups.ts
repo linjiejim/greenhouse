@@ -9,6 +9,7 @@
  * POST   /api/groups/:id/members          — 添加成员（owner/super）
  * DELETE /api/groups/:id/members/:userId  — 移除成员（owner/super）
  *
+ * 这里的“成员”指小组成员关系，不是账号角色；可登录账号角色仍只有 team/super。
  * 小组用作知识库精细共享的目标（knowledge_base_shares.shared_with='group:<id>'）。
  */
 

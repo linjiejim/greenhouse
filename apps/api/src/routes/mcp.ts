@@ -1,7 +1,7 @@
 /**
  * MCP Server — `/api/mcp`
  *
- * Exposes the internal capability layer to external MCP clients (Claude,
+ * Exposes the workbench's internal capability layer to external MCP clients (Claude,
  * Cursor, any MCP-speaking agent) over Streamable HTTP. This is a thin protocol
  * adapter in front of the existing agent tool-proxy — it does NOT define its own
  * resource access:
@@ -10,17 +10,18 @@
  *   tools/call  ← executeProxyTool(...)      (confirm-gate, input validation,
  *                                             permission intersection, all reused)
  *
- * Auth: API key (`gh_sk_*`) bound to an internal user (see mcp-auth.ts). The
- * proxy never widens permissions — the exposed set is always
+ * Auth: OAuth 2.1 access token only — authorization code (interactive) or
+ * client_credentials (machine clients), see mcp-auth.ts. The proxy never
+ * widens permissions — the exposed set is always
  *   resolveEffectiveTools(boundUser, profile) ∩ proxy allowlists ∩ MCP phase set.
  *
  * Transport: stateless WebStandard transport (a fresh Server per request). MCP
  * does not enforce an initialize handshake before tools/* on the server, so each
  * self-contained request is answerable without session state.
  *
- * Exposed surface: knowledge + project + email (split read/write, derived from
- * the email_manager grant) + chat history. Each tool must also be in the proxy
- * READ/WRITE allowlists to be reachable.
+ * Exposed surface: knowledge + project + tables (split read/write) + chat history
+ * + skills.
+ * Each tool must also be in the proxy READ/WRITE allowlists to be reachable.
  */
 
 import { Hono } from 'hono';
@@ -29,10 +30,22 @@ import { logger } from '@greenhouse/utils/logger';
 import { getDb } from '@greenhouse/db';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ReadResourceRequestSchema,
+  ErrorCode,
+  McpError,
+} from '@modelcontextprotocol/sdk/types.js';
 import type { ToolRegistry } from '../agent.js';
 import { resolveProfileAsync } from '../profile.js';
 import { resolveEffectiveTools, buildLazyServerTools } from '../agent-runtime/tool-resolution.js';
+// Derived from each tool's `meta.surface.mcp` (tools/registry.ts); re-exported
+// for tests/consumers that previously imported the hand-maintained list here.
+import { MCP_EXPOSED_TOOL_IDS } from '../tools/registry.js';
+export { MCP_EXPOSED_TOOL_IDS };
 import {
   resolveProxyToolIds,
   buildProxyManifest,
@@ -42,66 +55,113 @@ import {
   type ProxyToolManifestEntry,
 } from '../agent-runtime/tool-proxy.js';
 import { getAgentIdentity } from '../agent-runtime/api-auth.js';
-import { mcpIdentityMiddleware, recordMcpAudit } from '../agent-runtime/mcp-auth.js';
-import { apiKeyMiddleware, createPerKeyRateLimitMiddleware } from '../auth/api-key.js';
-import { MCP_EXPOSED_TOOL_IDS } from '../tools/registry.js';
+import type { AgentIdentity } from '../agent-runtime/api-auth.js';
+import { mcpCredentialMiddleware, recordMcpAudit } from '../agent-runtime/mcp-auth.js';
 import type { AppEnv } from '../app-env.js';
+import { delegatedAgentActor } from '../platform/actor.js';
+import { getPlatformRuntime } from '../platform/runtime.js';
+import { projectsManifest } from '../platform/manifests/projects.js';
+import { knowledgeManifest } from '../platform/manifests/knowledge.js';
+import { tablesManifest } from '../platform/manifests/tables.js';
+import { dispatchKnowledgeOperation } from '../platform/knowledge/adapter.js';
+import {
+  KNOWLEDGE_RESOURCE_URI_TEMPLATE,
+  listKnowledgeResources,
+  readKnowledgeResource,
+} from '../platform/knowledge/resources.js';
 
 const SERVER_NAME = 'greenhouse';
 const SERVER_VERSION = '0.1.0';
 
-/**
- * Profile used to resolve the bound user's tool set. Internal-only surface, so we
- * use the internal `team` profile (an internal-level profile resolves to the
- * bound user's full active tool set), then narrow by the proxy allowlists and the
- * MCP phase set below.
- */
-const MCP_PROFILE_ID = 'team';
+/** Sent to clients in the initialize response — the agent-facing bootstrap hint. */
+const SERVER_INSTRUCTIONS =
+  'Greenhouse team workbench. The tool list is your permission list: a missing tool has not been ' +
+  'granted to you, and each tool documents its own usage. Mutating tools (names ending in ' +
+  '`mutation`) require confirm:true on every call. For reusable output skills (decks, reports, ' +
+  'reviews…) use skill_query skills.find to search and skills.download to install them locally.';
 
 /**
- * Tools exposed over MCP. DERIVED from each tool's declarative `meta.surface.mcp`
- * field in the tool catalog (apps/api/src/tools/registry.ts) — no hand-maintained
- * id list here. A tool must ALSO be in the proxy READ/WRITE allowlists to be
- * reachable; this set scopes the MCP surface to the shipped domains. Email tools
- * are additionally gated by the user's `email_manager` grant (see resolveMcpContext).
- * Re-exported so existing consumers (mcp.test.ts) keep importing it from this module.
+ * Profile used to resolve the bound user's tool set. Internal-only surface, so we
+ * use the canonical agent-runtime `desktop` profile (full internal tool set),
+ * then narrow by the proxy allowlists and the MCP phase set below.
  */
-export { MCP_EXPOSED_TOOL_IDS };
+const MCP_PROFILE_ID = 'desktop';
+
+// Tools exposed over MCP — derived from each tool's `meta.surface.mcp` in the
+// catalog (tools/registry.ts). A tool must ALSO carry a proxy tier to be
+// reachable. Feature-owned tools are gated by their per-user flag inside
+// resolveUserTools — the single flag→tool gate; this route must not re-gate
+// (a second hand-written map here once drifted from feature-points.ts).
 
 interface McpContext {
   toolIds: string[];
   registry: ToolRegistry;
 }
 
-/**
- * Email split tools derived from the bound user's `email_manager` grant rather
- * than standalone assignment: a user authorized for the chat email tool gets the
- * same capability (read + confirm-gated send) over MCP, nothing extra to assign.
- */
-const EMAIL_TOOL_IDS = ['email_query', 'email_mutation'];
+function capabilitiesByActionKind(
+  manifest: typeof projectsManifest | typeof knowledgeManifest | typeof tablesManifest,
+  kind: 'query' | 'command',
+): string[] {
+  return [
+    ...new Set(
+      Object.values(manifest.actions)
+        .filter((action) => action.mcp && action.kind === kind)
+        .map((action) => action.capability),
+    ),
+  ];
+}
+
+const PLATFORM_TOOL_CAPABILITIES: Readonly<Record<string, readonly string[]>> = {
+  project_query: capabilitiesByActionKind(projectsManifest, 'query'),
+  project_mutation: capabilitiesByActionKind(projectsManifest, 'command'),
+  knowledge_query: capabilitiesByActionKind(knowledgeManifest, 'query'),
+  knowledge_mutation: capabilitiesByActionKind(knowledgeManifest, 'command'),
+  tables_query: capabilitiesByActionKind(tablesManifest, 'query'),
+  tables_mutation: capabilitiesByActionKind(tablesManifest, 'command'),
+};
 
 /**
- * Short-TTL cache of the resolved context, keyed by userId+role. The bound user's
- * tools rarely change, so re-resolving (incl. a DB read for team userTools/
- * features) on every tools/list and tools/call is wasteful. TTL is short so
- * permission/feature changes still take effect within ~1 min. Keyed by userId+role
- * only — MCP identities carry no per-key scope or workspace.
+ * Registry-migrated tools disappear when none of their actions are authorized.
+ * Legacy tools remain governed by their existing feature/tool gates until their
+ * M4 migration. This check is intentionally uncached so revocation affects the
+ * very next tools/list request.
+ */
+export async function filterMcpToolIdsByPlatform(
+  identity: ReturnType<typeof getAgentIdentity>,
+  toolIds: readonly string[],
+): Promise<string[]> {
+  const actor = delegatedAgentActor({ userId: identity.userId, authMethod: 'oauth' });
+  const visibility = await Promise.all(
+    toolIds.map(async (toolId) => {
+      const capabilities = PLATFORM_TOOL_CAPABILITIES[toolId];
+      if (!capabilities) return { toolId, visible: true };
+      const decisions = await Promise.all(
+        capabilities.map((capability) => getPlatformRuntime().authorize(actor, capability)),
+      );
+      return { toolId, visible: decisions.some((decision) => decision.allowed) };
+    }),
+  );
+  return visibility.filter((entry) => entry.visible).map((entry) => entry.toolId);
+}
+
+/**
+ * Short-TTL cache of the built context (lazy-tool registry + narrowed tool ids).
+ * The user's effective tool set is re-resolved on EVERY request (two cheap DB
+ * reads) and is part of the cache key, so revoking a flag or a user_tools grant
+ * takes effect on the very next request — the cache only skips re-constructing
+ * the tool registry, never a permission decision. Platform capability visibility
+ * and OAuth token/grant/client/user state are never cached either.
  */
 const CONTEXT_TTL_MS = 60_000;
 const contextCache = new Map<string, { ctx: McpContext; expiresAt: number }>();
 
 /**
- * Resolve the proxy context for the bound user: profile → effective tools →
- * proxy intersection → MCP narrowing, plus the lazy registry. Result is cached per
- * userId+role for CONTEXT_TTL_MS. No workspace scoping (no workspace-bound tool is
- * exposed).
+ * Compose the MCP context for a resolved identity: profile → effective tools
+ * (flag gating included — resolveUserTools is the single gate) → proxy
+ * intersection → MCP surface narrowing → per-request platform visibility.
+ * Exported so the cross-channel parity test can drive the real composition.
  */
-async function resolveMcpContext(c: Context, toolRegistry: ToolRegistry): Promise<McpContext> {
-  const identity = getAgentIdentity(c);
-  const cacheKey = `${identity.userId}:${identity.userRole}`;
-  const cached = contextCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.ctx;
-
+export async function composeMcpContext(identity: AgentIdentity, toolRegistry: ToolRegistry): Promise<McpContext> {
   const profile = await resolveProfileAsync(MCP_PROFILE_ID);
   const { effectiveTools } = await resolveEffectiveTools({
     userId: identity.userId,
@@ -110,19 +170,26 @@ async function resolveMcpContext(c: Context, toolRegistry: ToolRegistry): Promis
     profileId: MCP_PROFILE_ID,
   });
 
-  // Email split tools follow the email_manager grant (binding a mailbox is checked
-  // at execute time — an unbound account just gets an empty list_accounts).
-  const effective = effectiveTools.includes('email_manager')
-    ? [...new Set([...effectiveTools, ...EMAIL_TOOL_IDS])]
-    : effectiveTools.filter((id) => !EMAIL_TOOL_IDS.includes(id));
+  const cacheKey = [
+    identity.userId,
+    identity.userRole,
+    // `undefined` (no narrowing) and `[]` (nothing readable) must not collide.
+    identity.allowedTools ? [...identity.allowedTools].sort().join(',') : '*',
+    [...identity.allowedWriteTools].sort().join(','),
+    [...effectiveTools].sort().join(','),
+  ].join(':');
+  const cached = contextCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { ...cached.ctx, toolIds: await filterMcpToolIdsByPlatform(identity, cached.ctx.toolIds) };
+  }
 
-  const toolIds = resolveProxyToolIds(effective, {
+  const toolIds = resolveProxyToolIds(effectiveTools, {
     allowedTools: identity.allowedTools,
     allowedWriteTools: identity.allowedWriteTools,
   }).filter((id) => MCP_EXPOSED_TOOL_IDS.has(id));
   const registry: ToolRegistry = {
     ...toolRegistry,
-    ...buildLazyServerTools(getDb(), effective, {
+    ...buildLazyServerTools(getDb(), effectiveTools, {
       userId: identity.userId,
       userRole: identity.userRole,
       workspaceId: null,
@@ -131,7 +198,12 @@ async function resolveMcpContext(c: Context, toolRegistry: ToolRegistry): Promis
 
   const ctx: McpContext = { toolIds, registry };
   contextCache.set(cacheKey, { ctx, expiresAt: Date.now() + CONTEXT_TTL_MS });
-  return ctx;
+  return { ...ctx, toolIds: await filterMcpToolIdsByPlatform(identity, toolIds) };
+}
+
+/** Resolve the MCP context for the current request's authenticated identity. */
+async function resolveMcpContext(c: Context, toolRegistry: ToolRegistry): Promise<McpContext> {
+  return composeMcpContext(getAgentIdentity(c), toolRegistry);
 }
 
 /**
@@ -161,7 +233,18 @@ export function toMcpInputSchema(entry: ProxyToolManifestEntry): Record<string, 
 
 /** Build a fresh per-request MCP server wired to this request's tool context. */
 export function buildMcpServer(c: Context, ctx: McpContext): Server {
-  const server = new Server({ name: SERVER_NAME, version: SERVER_VERSION }, { capabilities: { tools: {} } });
+  const server = new Server(
+    { name: SERVER_NAME, version: SERVER_VERSION },
+    { capabilities: { tools: {}, resources: {} }, instructions: SERVER_INSTRUCTIONS },
+  );
+  const identity = getAgentIdentity(c);
+  const oauthClientId = c.get('oauthClientId') as string | undefined;
+  const oauthAuthMethod = c.get('oauthAuthMethod') as 'oauth' | 'oauth-client' | undefined;
+  const actor = delegatedAgentActor({
+    userId: identity.userId,
+    clientId: oauthClientId,
+    authMethod: oauthAuthMethod ?? 'oauth',
+  });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: buildProxyManifest(ctx.toolIds, ctx.registry).map((entry) => ({
@@ -210,16 +293,83 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
     }
   });
 
+  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    const start = Date.now();
+    const result = await dispatchKnowledgeOperation(
+      actor,
+      'listDocuments',
+      { transport: 'mcp-resource' },
+      async () => ({
+        ok: true,
+        data: {
+          resources: await listKnowledgeResources(getDb(), identity.userId),
+        },
+      }),
+    );
+    await recordMcpAudit(c, {
+      endpoint: 'mcp:resources/list',
+      statusCode: result.ok ? 200 : 403,
+      durationMs: Date.now() - start,
+      error: result.ok ? undefined : result.message,
+    });
+    return result.ok ? result.data : { resources: [] };
+  });
+
+  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+    const result = await dispatchKnowledgeOperation(
+      actor,
+      'listDocuments',
+      { transport: 'mcp-resource-template' },
+      async () => ({
+        ok: true,
+        data: {
+          resourceTemplates: [
+            {
+              name: 'knowledge-document',
+              title: 'Knowledge document',
+              description: 'A team, personal, or explicitly shared knowledge document.',
+              uriTemplate: KNOWLEDGE_RESOURCE_URI_TEMPLATE,
+              mimeType: 'text/markdown',
+            },
+          ],
+        },
+      }),
+    );
+    return result.ok ? result.data : { resourceTemplates: [] };
+  });
+
+  server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
+    const start = Date.now();
+    const result = await dispatchKnowledgeOperation(
+      actor,
+      'readDocument',
+      { uri: req.params.uri, transport: 'mcp-resource' },
+      async () => {
+        const content = await readKnowledgeResource(getDb(), identity.userId, req.params.uri);
+        return content
+          ? { ok: true, data: { contents: [content] } }
+          : { ok: false, code: 'NOT_FOUND', message: 'Resource not found' };
+      },
+    );
+    await recordMcpAudit(c, {
+      endpoint: 'mcp:resources/read',
+      statusCode: result.ok ? 200 : result.code === 'FORBIDDEN' ? 403 : 404,
+      durationMs: Date.now() - start,
+      error: result.ok ? undefined : result.message,
+      meta: { uri: req.params.uri },
+    });
+    if (!result.ok) throw new McpError(ErrorCode.InvalidParams, 'Resource not found');
+    return result.data;
+  });
+
   return server;
 }
 
 export function createMcpRoutes(toolRegistry: ToolRegistry) {
   return (
     new Hono<AppEnv>()
-      // Auth chain: API key → bound-internal-user identity → per-key rate limit.
-      .use('*', apiKeyMiddleware)
-      .use('*', mcpIdentityMiddleware)
-      .use('*', createPerKeyRateLimitMiddleware('mcp'))
+      // OAuth or legacy API key → current internal-user identity → scoped rate limit.
+      .use('*', mcpCredentialMiddleware)
       // Single MCP endpoint. POST carries JSON-RPC; GET/DELETE are handled by the
       // transport per spec (405 in stateless mode).
       .all('/', async (c) => {

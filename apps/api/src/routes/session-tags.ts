@@ -10,6 +10,7 @@
 
 import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
+import { isUniqueViolation } from '@greenhouse/utils/error';
 import { getAuthUser } from '../auth/middleware.js';
 import type { AppEnv } from '../app-env.js';
 
@@ -45,10 +46,8 @@ const sessionTagRoutes = new Hono<AppEnv>()
         sort_order: existing.length,
       });
       return c.json(tag, 201);
-    } catch (err: any) {
-      // drizzle wraps the PG error: the 23505 code lives on err.cause.
-      const code = err?.code ?? err?.cause?.code;
-      if (code === '23505' || err?.cause?.message?.includes('unique') || err?.message?.includes('unique')) {
+    } catch (err) {
+      if (isUniqueViolation(err)) {
         return c.json({ error: 'Tag name already exists' }, 409);
       }
       throw err;
@@ -100,10 +99,8 @@ const sessionTagRoutes = new Hono<AppEnv>()
       const tag = await getDb().sessionTags.update(id, updates);
       if (!tag) return c.json({ error: 'Tag not found' }, 404);
       return c.json(tag);
-    } catch (err: any) {
-      // drizzle wraps the PG error: the 23505 code lives on err.cause.
-      const code = err?.code ?? err?.cause?.code;
-      if (code === '23505' || err?.cause?.message?.includes('unique') || err?.message?.includes('unique')) {
+    } catch (err) {
+      if (isUniqueViolation(err)) {
         return c.json({ error: 'Tag name already exists' }, 409);
       }
       throw err;

@@ -2,55 +2,154 @@
  * Auth routes — /api/auth
  *
  * POST /api/auth/login          — 内部用户邮箱密码登录
- * POST /api/auth/login/external — 外部用户固定密码登录
  * POST /api/auth/refresh        — 刷新access token（使用refresh token）
+ * POST /api/auth/password-link/inspect  — 检查一次性账户设置/重置链接（不消费）
+ * POST /api/auth/password-link/complete — 设置密码、消费链接并登录
  * GET  /api/auth/me             — 获取当前登录用户信息
  * GET  /api/auth/me/usage       — 获取当前用户用量统计
  * GET  /api/auth/me/preferences — 获取当前用户偏好notes
  * PUT  /api/auth/me/preferences — 更新当前用户偏好notes
- * GET  /api/auth/status         — 查询认证配置状态
  */
 
-import { Hono } from 'hono';
-import { verifyPassword } from '../auth/password.js';
-import {
-  createAccessToken,
-  createRefreshToken,
-  hashRefreshToken,
-  verifyExternalPassword,
-  isAuthEnabled,
-} from '../auth/token.js';
+import { createHash } from 'node:crypto';
+import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
+import { hashPassword, verifyPassword } from '../auth/password.js';
+import { createAccessToken, createRefreshToken, hashRefreshToken } from '../auth/token.js';
 import { getAuthUser } from '../auth/middleware.js';
-import { resolveUserFeatures } from '../auth/features.js';
-import { getDb } from '@greenhouse/db';
-import { nowIso } from '@greenhouse/utils/date';
+import { resolveUserFeatures, userHasFeature } from '../auth/features.js';
+import {
+  getDb,
+  hashAccountPasswordToken,
+  type UserMemoryCategory,
+  type UserMemoryStatus,
+  type UserRow,
+} from '@greenhouse/db';
 import { sql } from 'drizzle-orm';
+import { validateMemoryText } from '../llm/memory-limits.js';
 import type { AppEnv } from '../app-env.js';
+import { InMemoryRateLimiter } from '../security.js';
+import { maskEmail, recordAccountSecurityAudit, resumeUserRuntime } from '../account-security.js';
+import { logger } from '@greenhouse/utils/logger';
+import { toErrorMessage } from '@greenhouse/utils/error';
 
-// ─── System User: external ───────────────────────────────
+const PASSWORD_LINK_BODY_LIMIT = 4096;
+const PASSWORD_LINK_WINDOW_MS = 5 * 60_000;
+const PASSWORD_LINK_TOKEN_LIMIT = 10;
+const INVALID_PASSWORD_LINK_ERROR = 'This password link is invalid or expired.';
+const passwordLinkTokenLimiter = new InMemoryRateLimiter();
 
-let _externalUserReady = false;
+function tokenRateKey(operation: 'inspect' | 'complete', token: string): string {
+  const hash = hashAccountPasswordToken(token) ?? createHash('sha256').update(token, 'utf8').digest('hex');
+  return `password-link:${operation}:${hash}`;
+}
 
-/** Ensure the 'external' system user exists in the DB (idempotent). */
-async function ensureExternalUser(): Promise<void> {
-  if (_externalUserReady) return;
-  const existing = await getDb().users.getById('external');
-  if (!existing) {
-    const now = nowIso();
-    try {
-      await getDb().executeRaw(sql`
-        INSERT INTO users (id, email, password_hash, nickname, role, status, daily_message_limit, monthly_token_limit, locale, created_at, updated_at)
-        VALUES ('external', 'guest@system.local', 'NOLOGIN', 'Guest', 'external', 'active', 200, 20000000, 'en', ${now}, ${now})
-        ON CONFLICT (id) DO NOTHING
-      `);
-    } catch {
-      // Ignore — another request may have created it concurrently
-    }
-  }
-  _externalUserReady = true;
+function passwordLinkRateLimitResponse(c: Context<AppEnv>, operation: 'inspect' | 'complete', token: string) {
+  const result = passwordLinkTokenLimiter.check(
+    tokenRateKey(operation, token),
+    PASSWORD_LINK_WINDOW_MS,
+    PASSWORD_LINK_TOKEN_LIMIT,
+  );
+  if (result.allowed) return null;
+  c.header('Retry-After', String(Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000))));
+  return c.json({ error: 'Too many attempts. Please try again later.' }, 429);
+}
+
+function noStore(c: { header(name: string, value: string): void }): void {
+  c.header('Cache-Control', 'no-store');
+  c.header('Pragma', 'no-cache');
+}
+
+/**
+ * Issue a normal access + refresh session for an already-authenticated user.
+ *
+ * Exported for the Feishu login exchange (routes/feishu-oauth.ts): scan login
+ * must produce exactly the same session a password login would — same token
+ * shapes, same `last_login_at` side effect — so it calls this rather than
+ * growing a second issuance path.
+ */
+export async function issueUserSession(user: UserRow) {
+  const accessToken = createAccessToken(user.id, user.role, user.auth_version);
+  const refresh = createRefreshToken();
+  await getDb().refreshTokens.create(user.id, refresh.hash, refresh.expiresAt, user.auth_version);
+  await getDb().users.updateLastLogin(user.id);
+  return {
+    accessToken,
+    refreshToken: refresh.raw,
+    user: {
+      id: user.id,
+      email: user.email,
+      nickname: user.nickname,
+      role: user.role,
+      monthly_token_limit: user.monthly_token_limit,
+      locale: user.locale ?? 'en',
+    },
+  };
 }
 
 const auth = new Hono<AppEnv>()
+  .use(
+    '/password-link/*',
+    bodyLimit({
+      maxSize: PASSWORD_LINK_BODY_LIMIT,
+      onError: (c) => c.json({ error: 'Request body is too large.' }, 413),
+    }),
+  )
+  .use('/password-link/*', async (c, next) => {
+    noStore(c);
+    await next();
+    noStore(c);
+  })
+  // ─── One-time Account Password Links ────────────────────
+
+  .post('/password-link/inspect', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { token?: unknown };
+    const token = typeof body.token === 'string' ? body.token : '';
+    const limited = passwordLinkRateLimitResponse(c, 'inspect', token);
+    if (limited) return limited;
+
+    const inspected = await getDb().accountPasswordLinks.inspect(token);
+    if (!inspected) return c.json({ error: INVALID_PASSWORD_LINK_ERROR }, 400);
+    return c.json({
+      purpose: inspected.link.purpose,
+      masked_email: maskEmail(inspected.user.email),
+      expires_at: inspected.link.expires_at,
+    });
+  })
+  .post('/password-link/complete', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { token?: unknown; password?: unknown };
+    const token = typeof body.token === 'string' ? body.token : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const limited = passwordLinkRateLimitResponse(c, 'complete', token);
+    if (limited) return limited;
+    if (password.length < 8) return c.json({ error: 'Password must be at least 8 characters.' }, 400);
+
+    // Avoid paying the scrypt cost for random probes. complete() repeats every
+    // validation while holding user + link locks, so this is only a fast gate.
+    if (!(await getDb().accountPasswordLinks.inspect(token))) {
+      return c.json({ error: INVALID_PASSWORD_LINK_ERROR }, 400);
+    }
+    const passwordHash = await hashPassword(password);
+    const completed = await getDb().accountPasswordLinks.complete(token, passwordHash);
+    if (!completed) return c.json({ error: INVALID_PASSWORD_LINK_ERROR }, 400);
+
+    try {
+      await recordAccountSecurityAudit(getDb(), {
+        actorId: completed.user.id,
+        targetUserId: completed.user.id,
+        linkId: completed.link.id,
+        actionId: 'completeAccountPasswordLink',
+        result: 'success',
+        summary: { purpose: completed.link.purpose },
+      });
+    } catch (error) {
+      // Activation has already committed and cannot be replayed. Report an
+      // audit outage without turning a consumed link into a client failure.
+      logger.error('[account-security] completion audit failed', toErrorMessage(error));
+    }
+    await resumeUserRuntime(completed.user.id);
+    return c.json(await issueUserSession(completed.user));
+  })
   // ─── Internal User Login ─────────────────────────────────
 
   /** POST /api/auth/login — email + password login for internal users */
@@ -69,8 +168,12 @@ const auth = new Hono<AppEnv>()
       return c.json({ error: 'Invalid email or password' }, 401);
     }
 
-    if (user.status === 'disabled') {
+    if (user.status !== 'active') {
       return c.json({ error: 'Account is disabled. Contact your administrator.' }, 403);
+    }
+
+    if (user.role !== 'super' && user.role !== 'team') {
+      return c.json({ error: 'This application is available to internal users only.' }, 403);
     }
 
     const valid = await verifyPassword(body.password, user.password_hash);
@@ -78,67 +181,7 @@ const auth = new Hono<AppEnv>()
       return c.json({ error: 'Invalid email or password' }, 401);
     }
 
-    // Issue tokens
-    const accessToken = createAccessToken(user.id, user.role);
-    const refresh = createRefreshToken();
-    await getDb().refreshTokens.create(user.id, refresh.hash, refresh.expiresAt);
-
-    // Update last login
-    await getDb().users.updateLastLogin(user.id);
-
-    // Load assigned profiles
-    const profiles =
-      user.role !== 'external'
-        ? [] // super/team have access to all profiles
-        : await getDb().userProfiles.getProfiles(user.id);
-
-    return c.json({
-      accessToken,
-      refreshToken: refresh.raw,
-      user: {
-        id: user.id,
-        email: user.email,
-        nickname: user.nickname,
-        role: user.role,
-        profiles,
-        daily_message_limit: user.daily_message_limit,
-        monthly_token_limit: user.monthly_token_limit,
-        locale: user.locale ?? 'en',
-      },
-    });
-  })
-  // ─── External User Login ─────────────────────────────────
-
-  /** POST /api/auth/login/external — fixed password login for beta testers */
-  .post('/login/external', async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { password?: string };
-
-    if (!body.password) {
-      return c.json({ error: 'Password is required' }, 400);
-    }
-
-    if (!verifyExternalPassword(body.password)) {
-      return c.json({ error: 'Invalid password' }, 401);
-    }
-
-    // Ensure system user 'external' exists (first-run auto-seed)
-    await ensureExternalUser();
-
-    const accessToken = createAccessToken('external', 'external');
-    // External users also get a refresh token for convenience
-    const refresh = createRefreshToken();
-    await getDb().refreshTokens.create('external', refresh.hash, refresh.expiresAt);
-
-    return c.json({
-      accessToken,
-      refreshToken: refresh.raw,
-      user: {
-        id: 'external',
-        nickname: 'Guest',
-        role: 'external',
-        profiles: [],
-      },
-    });
+    return c.json(await issueUserSession(user));
   })
   // ─── Token Refresh ───────────────────────────────────────
 
@@ -151,44 +194,26 @@ const auth = new Hono<AppEnv>()
     }
 
     const hash = hashRefreshToken(body.refreshToken);
-    const tokenRow = await getDb().refreshTokens.validate(hash);
+    const tokenRow = await getDb().refreshTokens.consume(hash);
 
     if (!tokenRow) {
       return c.json({ error: 'Invalid or expired refresh token' }, 401);
     }
 
-    // Revoke old refresh token (rotation)
-    await getDb().refreshTokens.revoke(tokenRow.id);
-
-    // For external users
-    if (tokenRow.user_id === 'external') {
-      const accessToken = createAccessToken('external', 'external');
-      const newRefresh = createRefreshToken();
-      await getDb().refreshTokens.create('external', newRefresh.hash, newRefresh.expiresAt);
-
-      return c.json({
-        accessToken,
-        refreshToken: newRefresh.raw,
-        user: {
-          id: 'external',
-          nickname: 'Guest',
-          role: 'external',
-          profiles: [],
-        },
-      });
-    }
-
-    // For internal users
     const user = await getDb().users.getById(tokenRow.user_id);
-    if (!user || user.status === 'disabled') {
+    if (!user || user.status !== 'active') {
       return c.json({ error: 'Account not found or disabled' }, 401);
     }
+    if (user.role !== 'super' && user.role !== 'team') {
+      return c.json({ error: 'This application is available to internal users only.' }, 403);
+    }
+    if (tokenRow.auth_version !== user.auth_version) {
+      return c.json({ error: 'Invalid or expired refresh token' }, 401);
+    }
 
-    const accessToken = createAccessToken(user.id, user.role);
+    const accessToken = createAccessToken(user.id, user.role, user.auth_version);
     const newRefresh = createRefreshToken();
-    await getDb().refreshTokens.create(user.id, newRefresh.hash, newRefresh.expiresAt);
-
-    const profiles = user.role !== 'external' ? [] : await getDb().userProfiles.getProfiles(user.id);
+    await getDb().refreshTokens.create(user.id, newRefresh.hash, newRefresh.expiresAt, user.auth_version);
 
     return c.json({
       accessToken,
@@ -198,8 +223,6 @@ const auth = new Hono<AppEnv>()
         email: user.email,
         nickname: user.nickname,
         role: user.role,
-        profiles,
-        daily_message_limit: user.daily_message_limit,
         monthly_token_limit: user.monthly_token_limit,
         locale: user.locale ?? 'en',
       },
@@ -211,25 +234,10 @@ const auth = new Hono<AppEnv>()
   .get('/me', async (c) => {
     const authUser = getAuthUser(c);
 
-    if (authUser.role === 'external' || authUser.id === 'external') {
-      return c.json({
-        user: {
-          id: 'external',
-          nickname: 'Guest',
-          // const-asserted so the guest variant stays inside the contract's
-          // AuthenticatedUser union (plain literals widen to string/never[])
-          role: 'external' as const,
-          profiles: [] as string[],
-        },
-      });
-    }
-
     const user = await getDb().users.getById(authUser.id);
     if (!user) {
       return c.json({ error: 'User not found' }, 404);
     }
-
-    const profiles = user.role !== 'external' ? [] : await getDb().userProfiles.getProfiles(user.id);
 
     // Resolve effective feature flags (super-bypass + per-flag defaults).
     const features = await resolveUserFeatures(authUser.id, authUser.role).catch(() => ({}));
@@ -240,8 +248,6 @@ const auth = new Hono<AppEnv>()
         email: user.email,
         nickname: user.nickname,
         role: user.role,
-        profiles,
-        daily_message_limit: user.daily_message_limit,
         monthly_token_limit: user.monthly_token_limit,
         notes: user.notes ?? null,
         locale: user.locale ?? 'en',
@@ -252,17 +258,6 @@ const auth = new Hono<AppEnv>()
   /** GET /api/auth/me/usage — get current user's usage stats */
   .get('/me/usage', async (c) => {
     const authUser = getAuthUser(c);
-
-    if (authUser.role === 'external' || authUser.id === 'external') {
-      return c.json({
-        usage: {
-          today_messages: 0,
-          month_tokens: 0,
-          daily_limit: 0,
-          monthly_limit: 0,
-        },
-      });
-    }
 
     const user = await getDb().users.getById(authUser.id);
     if (!user) {
@@ -296,7 +291,6 @@ const auth = new Hono<AppEnv>()
       usage: {
         today_messages: todayMessages,
         month_tokens: monthTokens,
-        daily_limit: user.daily_message_limit,
         monthly_limit: user.monthly_token_limit,
       },
     });
@@ -306,10 +300,6 @@ const auth = new Hono<AppEnv>()
   /** GET /api/auth/me/preferences — get current user's preference notes */
   .get('/me/preferences', async (c) => {
     const authUser = getAuthUser(c);
-
-    if (authUser.role === 'external' || authUser.id === 'external') {
-      return c.json({ notes: null });
-    }
 
     const user = await getDb().users.getById(authUser.id);
     if (!user) {
@@ -321,10 +311,6 @@ const auth = new Hono<AppEnv>()
   /** PUT /api/auth/me/preferences — update current user's preference notes + locale */
   .put('/me/preferences', async (c) => {
     const authUser = getAuthUser(c);
-
-    if (authUser.role === 'external' || authUser.id === 'external') {
-      return c.json({ error: 'External users cannot set preferences' }, 403);
-    }
 
     const body = (await c.req.json().catch(() => ({}))) as { notes?: string; locale?: string };
 
@@ -356,63 +342,92 @@ const auth = new Hono<AppEnv>()
 
     return c.json({ notes: updated.notes ?? null, locale: updated.locale ?? 'en' });
   })
-  // ─── Auth Status ─────────────────────────────────────────
-
-  /** GET /api/auth/status — check if auth is enabled */
-  .get('/status', async (c) => {
-    return c.json({ authEnabled: isAuthEnabled() });
-  })
   // ─── User Memories (self-service) ─────────────────
+  // All three writes share one gate and one validator with the `memory` tool:
+  // v1 gated only the GET, and gated it against the raw table so super users —
+  // who are enabled by role, not by row — got a 403 on their own memories.
 
-  /** GET /api/auth/me/memories — get current user's memories (requires memory feature) */
+  /** GET /api/auth/me/memories — list the caller's memories (any status) */
   .get('/me/memories', async (c) => {
     const authUser = getAuthUser(c);
     if (!authUser) return c.json({ error: 'Not authenticated' }, 401);
+    if (!(await userHasFeature(authUser.id, authUser.role, 'memory'))) {
+      return c.json({ error: 'Memory feature not enabled for your account' }, 403);
+    }
 
-    const enabled = await getDb().userFeatures.isEnabled(authUser.id, 'memory');
-    if (!enabled) return c.json({ error: 'Memory feature not enabled for your account' }, 403);
-
-    const memories = await getDb().userMemories.listByUser(authUser.id, 50);
+    const memories = await getDb().userMemories.listByUser(authUser.id);
     return c.json({ memories });
   })
-  /** PATCH /api/auth/me/memories/:id — update a memory */
+  /** PATCH /api/auth/me/memories/:id — edit content/category/pinned, or move status */
   .patch('/me/memories/:id', async (c) => {
     const authUser = getAuthUser(c);
     if (!authUser) return c.json({ error: 'Not authenticated' }, 401);
+    if (!(await userHasFeature(authUser.id, authUser.role, 'memory'))) {
+      return c.json({ error: 'Memory feature not enabled for your account' }, 403);
+    }
 
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid memory ID' }, 400);
 
-    const body = (await c.req.json()) as { content?: string; category?: string };
-    if (!body.content && !body.category) {
+    const body = (await c.req.json()) as {
+      title?: string;
+      content?: string;
+      category?: UserMemoryCategory;
+      pinned?: boolean;
+      status?: UserMemoryStatus;
+    };
+    if (
+      body.title === undefined &&
+      body.content === undefined &&
+      body.category === undefined &&
+      body.pinned === undefined &&
+      body.status === undefined
+    ) {
       return c.json({ error: 'Nothing to update' }, 400);
     }
 
-    // Verify memory belongs to user
-    const memories = await getDb().userMemories.listByUser(authUser.id, 100);
-    const target = memories.find((m) => m.id === id);
-    if (!target) return c.json({ error: 'Memory not found' }, 404);
+    const existing = await getDb().userMemories.getOwned(id, authUser.id);
+    if (!existing) return c.json({ error: 'Memory not found' }, 404);
 
-    const updated = await getDb().userMemories.update(id, {
-      content: body.content,
-      category: body.category,
-    });
-    return c.json(updated);
+    const check = validateMemoryText({ title: body.title, content: body.content });
+    if (!check.ok) return c.json({ error: check.error }, 400);
+
+    if (body.status !== undefined) {
+      // Restoring, archiving, or waking a dormant memory. `superseded` is a
+      // consolidation verdict, not something a user sets by hand.
+      if (!['active', 'dormant', 'archived'].includes(body.status)) {
+        return c.json({ error: 'Invalid status' }, 400);
+      }
+      await getDb().userMemories.setStatus(id, authUser.id, body.status);
+    }
+
+    const updated =
+      body.title !== undefined || body.content !== undefined || body.category !== undefined || body.pinned !== undefined
+        ? await getDb().userMemories.update(id, authUser.id, {
+            title: body.title?.trim(),
+            content: body.content?.trim(),
+            category: body.category,
+            pinned: body.pinned,
+          })
+        : await getDb().userMemories.getOwned(id, authUser.id);
+
+    return c.json(updated ?? null);
   })
-  /** DELETE /api/auth/me/memories/:id — delete a memory */
+  /** DELETE /api/auth/me/memories/:id — the one hard delete in the system */
   .delete('/me/memories/:id', async (c) => {
     const authUser = getAuthUser(c);
     if (!authUser) return c.json({ error: 'Not authenticated' }, 401);
+    if (!(await userHasFeature(authUser.id, authUser.role, 'memory'))) {
+      return c.json({ error: 'Memory feature not enabled for your account' }, 403);
+    }
 
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid memory ID' }, 400);
 
-    // Verify memory belongs to user
-    const memories = await getDb().userMemories.listByUser(authUser.id, 100);
-    const target = memories.find((m) => m.id === id);
-    if (!target) return c.json({ error: 'Memory not found' }, 404);
+    const existing = await getDb().userMemories.getOwned(id, authUser.id);
+    if (!existing) return c.json({ error: 'Memory not found' }, 404);
 
-    await getDb().userMemories.delete(id);
+    await getDb().userMemories.delete(id, authUser.id);
     return c.json({ deleted: true });
   })
   /** GET /api/auth/me/features — get current user's feature flags */

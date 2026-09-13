@@ -1,298 +1,323 @@
 /**
- * User Memory — extraction, retrieval, and batch processing.
+ * User Memory — recall index, write-side validation, and the weekly
+ * consolidation pass.
  *
- * - extractMemories(): LLM-powered extraction from a single conversation
- * - retrieveUserMemories(): Load & format memories for system prompt injection
- * - runMemoryExtraction(): Daily batch job entry point
+ * - buildMemoryIndexBlock(): the block injected into a system prompt. Titles
+ *   only, within a hard budget — bodies are pulled on demand by the `memory`
+ *   tool. Injection is NOT a use: it never touches last_used_at.
+ * - validateMemoryText(): shared write-side guard for the tool and the REST API.
+ * - runMemoryConsolidation(): weekly upkeep — merge duplicates, supersede
+ *   contradictions, demote stale rows. It never invents new memories.
+ *
+ * v1's daily extraction cron was deleted; see docs/specs/20260804-memory-v2.md.
  */
 
 import { generateText } from 'ai';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { createModelFromConfig } from '@greenhouse/agent-core';
+import {
+  createModelFromConfig,
+  resolveModelConfig,
+  buildProviderOptions,
+  type ModelConfig,
+} from '@greenhouse/agent-core';
 import { logger } from '@greenhouse/utils/logger';
 import { extractJson } from '@greenhouse/utils/json';
-import { runWithConcurrency } from '@greenhouse/utils/concurrency';
-import { getDb, isDbInitialized } from '@greenhouse/db';
-import type { ModelConfig } from '../profile.js';
+import { getDb, type UserMemoryRow } from '@greenhouse/db';
+import { sanitizeForPrompt } from '../security.js';
+import { MEMORY_INDEX_BUDGET_CHARS, validateMemoryText } from './memory-limits.js';
+import { userHasFeature } from '../auth/features.js';
+import type { UserRole } from '../auth/token.js';
+import { createProviderAttemptBudgetHook } from './usage-budget.js';
 
-// ─── Configuration ───────────────────────────────────────
+// ─── Limits & write-side validation ─────────────────────
 
-/** Model: configurable via env, defaults to flash for speed and cost. */
-const MEMORY_MODEL_CONFIG: ModelConfig = {
-  id: 'flash',
-  provider: process.env.MEMORY_LLM_PROVIDER || 'openai-compatible',
-  model: process.env.MEMORY_LLM_MODEL || 'flash', // placeholder — resolved via registry id above
-  apiKey: process.env.MEMORY_LLM_API_KEY_NAME || 'LLM_API_KEY',
-};
+// Limits/validation live in a zero-import leaf module so tool descriptions can
+// interpolate them at module-eval time without risking an import cycle.
+export {
+  MEMORY_INDEX_BUDGET_CHARS,
+  MEMORY_TITLE_MAX,
+  MEMORY_CONTENT_MAX,
+  MEMORY_DORMANT_AFTER_DAYS,
+  validateMemoryText,
+  redactEvidence,
+  type MemoryTextValidation,
+} from './memory-limits.js';
 
-/** Max messages to include in extraction prompt. */
-const MAX_MESSAGES_FOR_EXTRACTION = 8;
+/** Memories older than this get a "recorded N ago" marker so the model can discount them. */
+const STALE_MARKER_AFTER_DAYS = 30;
 
-/** Max characters per message in extraction prompt. */
-const MAX_MESSAGE_LENGTH = 600;
+/** Users below this many active memories aren't worth a consolidation call. */
+const CONSOLIDATION_MIN_ACTIVE = 10;
 
-/** Concurrency limit for session processing within a user. */
-const SESSION_CONCURRENCY = 3;
+/** Upkeep runs on the cheap catalog model; `id` is what selects the provider chain. */
+// Registry id resolves the real provider/model at call time; the literal
+// provider/model fields are placeholders the kernel ignores for registry ids.
+const CONSOLIDATION_MODEL: ModelConfig = { id: 'flash', provider: 'openai-compatible', model: 'flash' };
 
-/** Max total sessions to process per job run (global cap). */
-const MAX_SESSIONS_PER_JOB = 100;
+// ─── Recall index ────────────────────────────────────────
 
-/** Max sessions to scan per user (only recent unprocessed). */
-const MAX_SESSIONS_PER_USER = 20;
+function ageMarker(row: UserMemoryRow, now: number): string {
+  const stamp = row.last_used_at ?? row.created_at;
+  const days = Math.floor((now - new Date(stamp).getTime()) / (24 * 60 * 60 * 1000));
+  if (days < STALE_MARKER_AFTER_DAYS) return '';
+  if (days < 365) return ` (recorded ~${Math.round(days / 30)} months ago)`;
+  return ` (recorded over a year ago)`;
+}
 
-// ─── Extraction Prompt ───────────────────────────────────
+/**
+ * Build the `## User Memory` block for a system prompt.
+ *
+ * Titles only, pinned first, newest-used next, cut off at a hard character
+ * budget. Everything is sanitised: memory text is model-written and
+ * user-editable, so it is untrusted input that gets replayed every turn.
+ */
+export async function buildMemoryIndexBlock(userId: string): Promise<string | null> {
+  const db = getDb();
+  const rows = await db.userMemories.listForIndex(userId);
+  if (rows.length === 0) return null;
 
-const EXTRACTION_SYSTEM_PROMPT = `You are a memory extraction system. Analyze the conversation and extract user-specific facts worth remembering for future conversations.
+  const now = Date.now();
+  const lines: string[] = [];
+  let used = 0;
+  let dropped = 0;
 
-Extract ONLY information that is:
-1. About the USER personally (not general knowledge or task content)
-2. Likely to be useful in FUTURE conversations
-3. Persistent facts (not ephemeral session context)
+  for (const row of rows) {
+    const line = `- [${row.category}] ${sanitizeForPrompt(row.title)}${ageMarker(row, now)} (id: ${row.id})`;
+    if (used + line.length > MEMORY_INDEX_BUDGET_CHARS) {
+      dropped++;
+      continue;
+    }
+    lines.push(line);
+    used += line.length + 1;
+  }
 
-Categories:
-- "preference": Communication style, language, format, response length preferences
-- "fact": Role, projects, tech stack, team structure, domain expertise, company info
-- "behavior": Common workflows, frequently used tools, work patterns
+  if (lines.length === 0) return null;
+
+  const overflow =
+    dropped > 0
+      ? `\n${dropped} older ${dropped === 1 ? 'memory is' : 'memories are'} not listed — use memory(action:"recall", query:"…") to search them.`
+      : '';
+
+  return (
+    `What you remember about this user, one line each. These are point-in-time notes, not live state — ` +
+    `re-check anything that may have changed. Use them to personalise your answers without announcing that you ` +
+    `"remember"; call memory(action:"recall", ids:[…]) to read the full note when a line looks relevant.\n` +
+    lines.join('\n') +
+    overflow
+  );
+}
+
+/**
+ * The memory section for a system prompt: feature gate, index, heading.
+ *
+ * The single entry point for every prompt-assembly site (chat, scheduled tasks,
+ * spawned subagents). Returns null when the feature is off, the user is unknown,
+ * or anything at all fails — memory must never be the reason a turn breaks.
+ */
+export async function resolveMemoryContext(userId: string, role?: UserRole): Promise<string | null> {
+  try {
+    const db = getDb();
+    let userRole = role;
+    if (!userRole) {
+      const user = await db.users.getById(userId);
+      if (!user) return null;
+      userRole = user.role as UserRole;
+    }
+    if (!(await userHasFeature(userId, userRole, 'memory'))) return null;
+
+    const index = await buildMemoryIndexBlock(userId);
+    return index ? `### Memory\n${index}` : null;
+  } catch (err) {
+    logger.warn('[memory] failed to build memory context', { error: toErrorMessage(err) });
+    return null;
+  }
+}
+
+// ─── Weekly consolidation ────────────────────────────────
+
+const CONSOLIDATION_SYSTEM_PROMPT = `You are the upkeep pass over one user's stored memories. You NEVER invent new information — you only reorganise what is already there.
+
+You receive a numbered list of memories, each with an id, category, title and content.
+
+Return a JSON array of operations. Valid operations:
+- {"op":"merge","ids":[<ids>],"title":"...","content":"...","category":"preference|fact|behavior"} — two or more memories say the same thing. Write one replacement that keeps every distinct detail; the originals are retired.
+- {"op":"supersede","old_id":<id>,"new_id":<id>} — two memories contradict each other and one is clearly the newer truth. Keep new_id, retire old_id.
+- {"op":"demote","id":<id>} — this was a one-off task detail or is plainly obsolete, and is not worth keeping active.
 
 Rules:
-- Output a JSON array: [{"category": "...", "content": "..."}]
-- Each content: one concise, self-contained statement
-- Max 3 items per conversation (be highly selective)
-- If nothing worth remembering, output: []
-- Content language: match the user's language
-- NEVER extract: passwords, tokens, API keys, emails, phone numbers
-- NEVER extract: transient task details, one-off questions, general knowledge`;
+- Write in English. Keep proper nouns and literal values (identifiers, enum values such as 潜在, document titles, customer names, error strings) EXACTLY as they appear — never translate them.
+- A merged title must be one line, under 80 characters, and written so a reader can judge relevance without opening the body.
+- Be conservative. If two memories are merely related, leave them alone. Prefer returning [] over a speculative edit.
+- Never merge or demote a memory marked [pinned].
+- Output ONLY the JSON array.`;
 
-// ─── Core Functions ──────────────────────────────────────
-
-interface ExtractedMemory {
-  category: string;
-  content: string;
+interface ConsolidationOp {
+  op: 'merge' | 'supersede' | 'demote';
+  ids?: number[];
+  title?: string;
+  content?: string;
+  category?: string;
+  old_id?: number;
+  new_id?: number;
 }
 
-/**
- * Extract memories from a conversation using LLM.
- *
- * @param messages - Conversation messages (user + assistant only)
- * @returns Array of extracted memories (may be empty)
- */
-export async function extractMemories(messages: Array<{ role: string; content: string }>): Promise<ExtractedMemory[]> {
-  // Filter to user+assistant, take last N messages
-  const relevant = messages
-    .filter((m) => m.role === 'user' || m.role === 'assistant')
-    .slice(-MAX_MESSAGES_FOR_EXTRACTION);
+const VALID_CATEGORIES = new Set(['preference', 'fact', 'behavior']);
 
-  if (relevant.length < 2) return []; // Need at least one exchange
+/** Parse + shape-check the model's operation list. Anything malformed is dropped. */
+export function parseConsolidationOps(raw: string, knownIds: Set<number>): ConsolidationOp[] {
+  const jsonStr = extractJson(raw);
+  if (!jsonStr) return [];
 
-  // Format for prompt (truncate long messages)
-  const formatted = relevant
-    .map((m) => {
-      const content =
-        m.content.length > MAX_MESSAGE_LENGTH ? m.content.slice(0, MAX_MESSAGE_LENGTH) + '...' : m.content;
-      return `${m.role}: ${content}`;
-    })
-    .join('\n\n');
-
+  let parsed: unknown;
   try {
-    const model = await createModelFromConfig(MEMORY_MODEL_CONFIG);
-
-    const result = await generateText({
-      model,
-      system: EXTRACTION_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: `Conversation:\n${formatted}` }],
-      temperature: 0.2,
-      maxOutputTokens: 300,
-      maxRetries: 1,
-    });
-
-    // Parse JSON output
-    const jsonStr = extractJson(result.text);
-    if (!jsonStr) return [];
-
-    const parsed = JSON.parse(jsonStr);
-    if (!Array.isArray(parsed)) return [];
-
-    // Validate structure
-    const validCategories = new Set(['preference', 'fact', 'behavior']);
-    const memories: ExtractedMemory[] = parsed
-      .filter(
-        (m: unknown): m is { category: string; content: string } =>
-          typeof m === 'object' &&
-          m !== null &&
-          typeof (m as Record<string, unknown>).category === 'string' &&
-          typeof (m as Record<string, unknown>).content === 'string' &&
-          validCategories.has((m as Record<string, unknown>).category as string) &&
-          ((m as Record<string, unknown>).content as string).length > 0,
-      )
-      .slice(0, 3); // Max 3 per conversation
-
-    // Record usage (fire-and-forget)
-    if (result.usage && isDbInitialized()) {
-      getDb()
-        .usage.record({
-          profile_id: 'system',
-          caller: 'memory-extract',
-          model: MEMORY_MODEL_CONFIG.model,
-          input_tokens: result.usage.inputTokens ?? 0,
-          output_tokens: result.usage.outputTokens ?? 0,
-          cached_tokens: 0,
-          reasoning_tokens: 0,
-        })
-        .catch(() => {});
-    }
-
-    return memories;
-  } catch (err) {
-    logger.warn('[memory] Extraction failed', { error: toErrorMessage(err) });
+    parsed = JSON.parse(jsonStr);
+  } catch {
     return [];
   }
-}
+  if (!Array.isArray(parsed)) return [];
 
-/**
- * Retrieve and format user memories for system prompt injection.
- *
- * @param userId - User ID
- * @returns Formatted memory block string, or null if no memories
- */
-export async function retrieveUserMemories(userId: string): Promise<string | null> {
-  const db = getDb();
-  const memories = await db.userMemories.listByUser(userId, 20);
-  if (memories.length === 0) return null;
+  const ops: ConsolidationOp[] = [];
+  for (const item of parsed) {
+    if (typeof item !== 'object' || item === null) continue;
+    const op = item as Record<string, unknown>;
 
-  // Fire-and-forget: record access
-  db.userMemories.touchMany(memories.map((m) => m.id)).catch(() => {});
-
-  // Group by category and format
-  const grouped: Record<string, string[]> = {};
-  for (const m of memories) {
-    if (!grouped[m.category]) grouped[m.category] = [];
-    grouped[m.category].push(m.content);
-  }
-
-  const categoryLabels: Record<string, string> = {
-    preference: 'Preferences',
-    fact: 'Facts',
-    behavior: 'Behavior Patterns',
-  };
-
-  const parts: string[] = [];
-  for (const [cat, items] of Object.entries(grouped)) {
-    const label = categoryLabels[cat] || cat;
-    parts.push(`${label}:\n${items.map((c) => `- ${c}`).join('\n')}`);
-  }
-
-  return parts.join('\n\n');
-}
-
-/**
- * Daily batch job: extract memories from unprocessed sessions.
- *
- * 1. Get users with 'memory' feature enabled
- * 2. For each user, find sessions not yet processed
- * 3. Extract memories from each session
- * 4. Store memories + mark sessions as processed
- */
-export async function runMemoryExtraction(): Promise<{
-  usersProcessed: number;
-  sessionsProcessed: number;
-  memoriesExtracted: number;
-}> {
-  const db = getDb();
-  const stats = { usersProcessed: 0, sessionsProcessed: 0, memoriesExtracted: 0 };
-
-  // 1. Get enabled users
-  const userIds = await db.userFeatures.listEnabledUsers('memory');
-  if (userIds.length === 0) {
-    logger.info('[memory] No users with memory feature enabled');
-    return stats;
-  }
-
-  logger.info(`[memory] Processing ${userIds.length} user(s)`);
-
-  let totalSessionsProcessed = 0;
-
-  // 2. Process each user
-  for (const userId of userIds) {
-    if (totalSessionsProcessed >= MAX_SESSIONS_PER_JOB) {
-      logger.info(`[memory] Global session cap (${MAX_SESSIONS_PER_JOB}) reached, stopping`);
-      break;
+    if (op.op === 'merge') {
+      const ids = Array.isArray(op.ids) ? op.ids.filter((n): n is number => typeof n === 'number') : [];
+      const title = typeof op.title === 'string' ? op.title.trim() : '';
+      const content = typeof op.content === 'string' ? op.content.trim() : '';
+      const category = typeof op.category === 'string' && VALID_CATEGORIES.has(op.category) ? op.category : 'fact';
+      if (ids.length < 2 || !ids.every((id) => knownIds.has(id)) || !title || !content) continue;
+      if (!validateMemoryText({ title, content }).ok) continue;
+      ops.push({ op: 'merge', ids, title, content, category });
+      continue;
     }
 
+    if (op.op === 'supersede') {
+      const oldId = typeof op.old_id === 'number' ? op.old_id : undefined;
+      const newId = typeof op.new_id === 'number' ? op.new_id : undefined;
+      if (oldId === undefined || newId === undefined || oldId === newId) continue;
+      if (!knownIds.has(oldId) || !knownIds.has(newId)) continue;
+      ops.push({ op: 'supersede', old_id: oldId, new_id: newId });
+      continue;
+    }
+
+    if (op.op === 'demote') {
+      const id = typeof op.id === 'number' ? op.id : undefined;
+      if (id === undefined || !knownIds.has(id)) continue;
+      ops.push({ op: 'demote', ids: [id] });
+    }
+  }
+  return ops;
+}
+
+async function consolidateUser(userId: string): Promise<number> {
+  const db = getDb();
+  const rows = await db.userMemories.listForIndex(userId);
+  if (rows.length < CONSOLIDATION_MIN_ACTIVE) return 0;
+
+  // Pinned rows are shown for context but may not be merged or demoted.
+  const listing = rows
+    .map(
+      (r) =>
+        `id=${r.id}${r.pinned ? ' [pinned]' : ''} category=${r.category}\ntitle: ${r.title}\ncontent: ${r.content}`,
+    )
+    .join('\n\n');
+
+  // Catalog entry, not a pinned provider: `id` drives registry resolution (and
+  // its fallback chain), resolveModelConfig layers the catalog's sampling
+  // options, buildProviderOptions keeps provider-specific flags matched to
+  // whichever provider actually answers.
+  const modelConfig = resolveModelConfig(CONSOLIDATION_MODEL);
+  const messages = [{ role: 'user' as const, content: `Memories:\n\n${listing}` }];
+  const providerAttemptHook = createProviderAttemptBudgetHook({
+    db,
+    userId,
+    caller: 'memory-consolidation',
+    profileId: 'system',
+    metadata: { active_memory_count: rows.length },
+  });
+  const model = await createModelFromConfig(modelConfig, { onProviderAttempt: providerAttemptHook });
+
+  const result = await generateText({
+    model,
+    system: CONSOLIDATION_SYSTEM_PROMPT,
+    messages,
+    temperature: 0.1,
+    maxOutputTokens: 1500,
+    maxRetries: 1,
+    providerOptions: buildProviderOptions(modelConfig),
+  });
+
+  const pinned = new Set(rows.filter((r) => r.pinned).map((r) => r.id));
+  const ops = parseConsolidationOps(result.text, new Set(rows.map((r) => r.id)));
+  let applied = 0;
+
+  for (const op of ops) {
     try {
-      // Get user's sessions that haven't been memory-extracted
-      const sessions = await db.sessions.list({
-        userId,
-        channel: 'web',
-        limit: MAX_SESSIONS_PER_USER,
-      });
-
-      // Filter to sessions not yet extracted
-      const unprocessed = sessions.filter((s) => {
-        try {
-          const meta = JSON.parse(s.metadata || '{}');
-          return !meta.memory_extracted;
-        } catch {
-          return true;
+      if (op.op === 'merge') {
+        const targets = (op.ids ?? []).filter((id) => !pinned.has(id));
+        if (targets.length < 2) continue;
+        const replacement = await db.userMemories.create({
+          user_id: userId,
+          category: op.category as 'preference' | 'fact' | 'behavior',
+          title: op.title!,
+          content: op.content!,
+          source: 'consolidation',
+        });
+        for (const id of targets) {
+          await db.userMemories.setStatus(id, userId, 'superseded', replacement.id);
         }
-      });
-
-      if (unprocessed.length === 0) continue;
-
-      logger.info(`[memory] User ${userId}: ${unprocessed.length} unprocessed session(s)`);
-      stats.usersProcessed++;
-
-      // Process sessions with concurrency limit
-      await runWithConcurrency(unprocessed, SESSION_CONCURRENCY, async (session) => {
-        try {
-          const messages = await db.sessions.buildChatMessages(session.id);
-
-          // Skip sessions with too few messages
-          if (messages.filter((m) => m.role === 'user').length < 1) {
-            await markSessionExtracted(session.id);
-            return;
-          }
-
-          const extracted = await extractMemories(messages);
-
-          if (extracted.length > 0) {
-            const count = await db.userMemories.upsertBatch(
-              extracted.map((m) => ({
-                user_id: userId,
-                category: m.category,
-                content: m.content,
-                source_session_id: session.id,
-              })),
-            );
-            stats.memoriesExtracted += count;
-          }
-
-          await markSessionExtracted(session.id);
-          stats.sessionsProcessed++;
-          totalSessionsProcessed++;
-        } catch (err) {
-          logger.warn('[memory] Failed to process session', { sessionId: session.id, error: String(err) });
-        }
-      });
+        applied++;
+      } else if (op.op === 'supersede') {
+        if (pinned.has(op.old_id!)) continue;
+        await db.userMemories.setStatus(op.old_id!, userId, 'superseded', op.new_id!);
+        applied++;
+      } else if (op.op === 'demote') {
+        const id = op.ids![0]!;
+        if (pinned.has(id)) continue;
+        await db.userMemories.setStatus(id, userId, 'archived');
+        applied++;
+      }
     } catch (err) {
-      logger.error(`[memory] Failed to process user ${userId}`, err);
+      logger.warn('[memory] consolidation op failed', { userId, op: op.op, error: toErrorMessage(err) });
+    }
+  }
+
+  return applied;
+}
+
+/**
+ * Weekly upkeep: demote stale memories everywhere, then run the merge pass for
+ * users who have enough active memories for it to be worth a model call.
+ */
+export async function runMemoryConsolidation(): Promise<{
+  demoted: number;
+  usersProcessed: number;
+  opsApplied: number;
+}> {
+  const db = getDb();
+  const stats = { demoted: 0, usersProcessed: 0, opsApplied: 0 };
+
+  stats.demoted = await db.userMemories.demoteStale();
+
+  const candidates = await db.userMemories.listUsersForConsolidation(CONSOLIDATION_MIN_ACTIVE);
+  for (const candidate of candidates) {
+    try {
+      const user = await db.users.getById(candidate.user_id);
+      if (!user || user.status !== 'active') continue;
+      if (!(await userHasFeature(user.id, user.role as UserRole, 'memory'))) continue;
+
+      const applied = await consolidateUser(candidate.user_id);
+      stats.usersProcessed++;
+      stats.opsApplied += applied;
+    } catch (err) {
+      // Leave the user unmarked so the next run retries them.
+      logger.warn('[memory] consolidation failed for user', {
+        userId: candidate.user_id,
+        error: toErrorMessage(err),
+      });
     }
   }
 
   return stats;
-}
-
-/**
- * Mark a session as memory-extracted in its metadata.
- */
-async function markSessionExtracted(sessionId: string): Promise<void> {
-  try {
-    const db = getDb();
-    const session = await db.sessions.getById(sessionId);
-    const meta = JSON.parse(session?.metadata || '{}');
-    meta.memory_extracted = true;
-    meta.memory_extracted_at = new Date().toISOString();
-    await db.sessions.update(sessionId, { metadata: JSON.stringify(meta) });
-  } catch {
-    /* ignore */
-  }
 }

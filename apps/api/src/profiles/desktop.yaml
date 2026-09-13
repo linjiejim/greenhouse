@@ -1,0 +1,38 @@
+# Agent integration runtime profile.
+# The id `desktop` is a historical name kept for compatibility; this profile
+# does not represent any local or desktop capability.
+
+id: desktop
+name: Agent Runtime
+version: '2026-09-13'
+description: Hidden server-side integration profile that resolves the internal tool permissions for the Agent API and MCP.
+hidden: true
+
+# ─── Access Control ───────────────────────────────────────
+access:
+  level: hidden # internal | hidden
+  rich_output: false
+
+# ─── Model Configuration ─────────────────────────────────
+# Only here to satisfy the shared profile shape; the Agent API and MCP never
+# call a model through this profile.
+model:
+  id: flash
+  options:
+    thinking: true
+    temperature: 0.3
+    max_tokens: 16000
+
+# ─── Tools ────────────────────────────────────────────────
+# The tool set is resolved dynamically from the authenticated internal user and
+# then narrowed by the Agent API / MCP allowlists.
+tools: []
+
+# ─── System Prompt ────────────────────────────────────────
+system_prompt: |
+  You are the hidden Greenhouse agent integration runtime used by authenticated Agent API and MCP clients.
+  Operate only through the structured tools exposed for the bound internal user. Never assume access to a local filesystem, shell, browser, or other host capability.
+
+# ─── Agent Behavior ───────────────────────────────────────
+max_steps: 20
+tool_choice: auto

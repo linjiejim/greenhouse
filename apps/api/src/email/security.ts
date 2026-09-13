@@ -1,45 +1,42 @@
 /**
- * Email security utilities — sanitization, validation, SSRF prevention, draft tokens.
+ * Email security — LLM-facing sanitization, address validation, draft tokens.
  *
- * Defense-in-depth for the email module:
- * 1. XSS prevention — HTML escaping for OAuth callback pages
- * 2. Prompt injection defense — sanitize email content before it enters LLM context
- * 3. SSRF prevention — block internal/reserved hosts for IMAP/SMTP
- * 4. Email address validation — reject malformed addresses
- * 5. OData injection prevention — escape Outlook search queries
- * 6. Draft token system — server-side send confirmation with single-use tokens
+ * Recovered from the module deleted in 61efc4ab (0.18.0) with three changes,
+ * each of which closed a real hole (see docs/specs/20260805-email-revival.md D3):
+ *
+ *  1. `findLatestDraft` is GONE. It let send_email fall back to "the user's most
+ *     recent pending draft" when the token was wrong — so a prompt-injected
+ *     model could draft a malicious message, pass any made-up token, and send
+ *     it. An invalid token is now simply a refusal.
+ *  2. The regex host blocklist is GONE. Reachability is decided at connect time
+ *     against the resolved IP (imap-smtp-client.ts), which a DNS answer cannot
+ *     dodge.
+ *  3. escapeHtml / escapeODataSearch are GONE with their consumers (OAuth
+ *     callback pages, Microsoft Graph).
+ *
+ * Sanitization is the load-bearing part: email bodies are attacker-authored
+ * text that lands in the model's context. Everything read back from a mailbox
+ * goes through sanitizeEmail* before it is returned.
  */
 
 import { randomBytes } from 'node:crypto';
 import { logger } from '@greenhouse/utils/logger';
+import { DRAFT_TTL_MS, MAX_DRAFTS_PER_USER } from './limits.js';
+import type { EmailAddress, EmailDetail, EmailSummary } from './types.js';
 
-// ─── HTML Escaping (XSS Prevention) ──────────────────────
+// ─── Content sanitization for LLM context ────────────────
 
-const HTML_ESCAPE_MAP: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#x27;',
-};
-
-/** Escape HTML special characters to prevent XSS in rendered HTML. */
-export function escapeHtml(str: string): string {
-  return str.replace(/[&<>"']/g, (ch) => HTML_ESCAPE_MAP[ch] ?? ch);
-}
-
-// ─── Email Content Sanitization for LLM ──────────────────
-
-/** Max characters of email body to return to LLM. */
+/** Max characters of body text handed to the model. */
 const MAX_BODY_LENGTH = 4000;
 
-/** Max characters of email subject/snippet to return to LLM. */
+/** Max characters of subject handed to the model. */
 const MAX_SUBJECT_LENGTH = 500;
 
-/**
- * Strip HTML tags from email body, returning plain text.
- * Removes style/script blocks first, then all remaining tags.
- */
+/** Max characters of a snippet or display name. */
+const MAX_SNIPPET_LENGTH = 500;
+const MAX_NAME_LENGTH = 200;
+
+/** Strip HTML to plain text — style/script blocks first, then all tags. */
 function stripHtmlTags(html: string): string {
   return html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
@@ -56,113 +53,80 @@ function stripHtmlTags(html: string): string {
 }
 
 /**
- * Sanitize a single text field for safe LLM consumption.
- * Removes potential prompt injection delimiters and truncates.
+ * Neutralize one text field: truncate, normalize, and remove the markers a
+ * sender could use to impersonate the conversation's own structure.
  */
 function sanitizeTextField(text: string, maxLength: number): string {
   let s = text.slice(0, maxLength);
 
-  // Normalize unicode to prevent homoglyph attacks
+  // ORDER MATTERS, and the deleted module had it wrong: invisibles are removed
+  // FIRST. They exist to break up the very patterns matched below — "sys<ZWSP>tem:"
+  // sails past the role regex, and stripping the ZWSP afterwards hands the model
+  // a clean "system:" prefix. Normalize next, so homoglyphs cannot do the same.
+  s = s.replace(/[\u200B-\u200F\u2028-\u202F\u2060-\u206F\uFEFF]/g, '');
   s = s.normalize('NFC');
 
-  // Strip role injection delimiters — prevent fake system/assistant messages
-  // Match both after newline AND at start of string
+  // Fake turn boundaries — "system:", "<|im_start|>", etc.
   s = s
     .replace(/(^|\n)\s*(system|assistant|user)\s*:\s*/gi, '$1')
     .replace(/<\|?(system|assistant|user|im_start|im_end)\|?>/gi, '');
 
-  // Neutralize XML-style structured injection attempts
+  // XML-ish structured injection.
   s = s.replace(/<\/?(tool_call|function_call|function|instructions|tool_result)[^>]*>/gi, '');
-
-  // Strip invisible/zero-width characters that could hide injections
-  s = s.replace(/[\u200B-\u200F\u2028-\u202F\u2060-\u206F\uFEFF]/g, '');
 
   return s;
 }
 
+function sanitizeAddress(addr: EmailAddress): EmailAddress {
+  return addr.name ? { ...addr, name: sanitizeTextField(addr.name, MAX_NAME_LENGTH) } : addr;
+}
+
 /**
- * Sanitize email message detail before returning to LLM context.
+ * Sanitize a message before it enters LLM context.
  *
- * Key defenses:
- * - Strips HTML → plain text for body (removes scripts, styles, tags)
- * - Truncates long content to prevent context window abuse
- * - Removes prompt injection patterns from all text fields
- * - Wraps content in boundary markers so LLM knows it's external data
+ * body_html is dropped entirely — its text is folded into body_text when that
+ * is missing or clearly truncated, and the markup itself has no value to the
+ * model while carrying every trick in the book.
  */
-export function sanitizeEmailForLLM(message: any): any {
-  const sanitized = { ...message };
+export function sanitizeEmailForLLM<T extends EmailSummary | EmailDetail>(message: T): T {
+  const sanitized: T = { ...message };
 
-  // Sanitize subject
-  if (sanitized.subject) {
-    sanitized.subject = sanitizeTextField(sanitized.subject, MAX_SUBJECT_LENGTH);
-  }
+  sanitized.subject = sanitizeTextField(sanitized.subject ?? '', MAX_SUBJECT_LENGTH);
+  if (sanitized.snippet) sanitized.snippet = sanitizeTextField(sanitized.snippet, MAX_SNIPPET_LENGTH);
+  if (sanitized.from) sanitized.from = sanitizeAddress(sanitized.from);
+  if (Array.isArray(sanitized.to)) sanitized.to = sanitized.to.map(sanitizeAddress);
 
-  // Sanitize snippet
-  if (sanitized.snippet) {
-    sanitized.snippet = sanitizeTextField(sanitized.snippet, 500);
-  }
+  const detail = sanitized as EmailDetail;
+  if (Array.isArray(detail.cc)) detail.cc = detail.cc.map(sanitizeAddress);
 
-  // For detailed message: prefer plain text, strip HTML body
-  if (sanitized.body_html) {
-    const plainFromHtml = stripHtmlTags(sanitized.body_html);
-    // Use HTML-derived text if no plain text or plain text is significantly shorter
-    if (!sanitized.body_text || sanitized.body_text.length < plainFromHtml.length * 0.5) {
-      sanitized.body_text = plainFromHtml;
+  if (detail.body_html) {
+    const plainFromHtml = stripHtmlTags(detail.body_html);
+    if (!detail.body_text || detail.body_text.length < plainFromHtml.length * 0.5) {
+      detail.body_text = plainFromHtml;
     }
-    // Remove HTML body from LLM context — only return plain text
-    delete sanitized.body_html;
+    delete detail.body_html;
   }
-
-  if (sanitized.body_text) {
-    sanitized.body_text = sanitizeTextField(sanitized.body_text, MAX_BODY_LENGTH);
-  }
-
-  // Sanitize from/to/cc display names (could contain injection)
-  if (sanitized.from?.name) {
-    sanitized.from = { ...sanitized.from, name: sanitizeTextField(sanitized.from.name, 200) };
-  }
-  if (Array.isArray(sanitized.to)) {
-    sanitized.to = sanitized.to.map((addr: any) =>
-      addr.name ? { ...addr, name: sanitizeTextField(addr.name, 200) } : addr,
-    );
-  }
-  if (Array.isArray(sanitized.cc)) {
-    sanitized.cc = sanitized.cc.map((addr: any) =>
-      addr.name ? { ...addr, name: sanitizeTextField(addr.name, 200) } : addr,
-    );
+  if (detail.body_text) {
+    detail.body_text = sanitizeTextField(detail.body_text, MAX_BODY_LENGTH);
   }
 
   return sanitized;
 }
 
-/**
- * Sanitize email list results before returning to LLM context.
- */
-export function sanitizeEmailListForLLM(result: any): any {
-  if (!result?.messages) return result;
-  return {
-    ...result,
-    messages: result.messages.map((m: any) => sanitizeEmailForLLM(m)),
-  };
+export function sanitizeEmailListForLLM<T extends EmailSummary>(messages: T[]): T[] {
+  return messages.map((m) => sanitizeEmailForLLM(m));
 }
 
-// ─── Email Address Validation ────────────────────────────
+// ─── Address validation ──────────────────────────────────
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Validate email address format. Returns true if valid. */
 export function isValidEmail(email: string): boolean {
   return EMAIL_REGEX.test(email) && email.length <= 254;
 }
 
-/**
- * Validate a list of email address objects.
- * Returns an error string if invalid, null if all valid.
- */
-export function validateEmailAddresses(
-  addresses: Array<{ name?: string; address: string }>,
-  fieldName: string,
-): string | null {
+/** Returns an error string naming the offending address, or null when all are valid. */
+export function validateEmailAddresses(addresses: EmailAddress[], fieldName: string): string | null {
   for (const addr of addresses) {
     if (!addr.address || !isValidEmail(addr.address)) {
       return `Invalid email address in ${fieldName}: "${addr.address}"`;
@@ -171,99 +135,78 @@ export function validateEmailAddresses(
   return null;
 }
 
-// ─── SSRF Prevention ────────────────────────────────────
-
-const BLOCKED_HOST_PATTERNS: RegExp[] = [
-  /^localhost$/i,
-  /^127\.\d+\.\d+\.\d+$/,
-  /^10\.\d+\.\d+\.\d+$/,
-  /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
-  /^192\.168\.\d+\.\d+$/,
-  /^169\.254\.\d+\.\d+$/, // AWS/cloud metadata
-  /^0\.0\.0\.0$/,
-  /^::1?$/,
-  /^fd[0-9a-f]{2}:/i, // IPv6 ULA
-  /^fe80:/i, // IPv6 link-local
-  /\.local$/i,
-  /\.internal$/i,
-  /\.svc\.cluster\.local$/i, // Kubernetes services
-  /^metadata\.google\.internal$/i, // GCP metadata
-];
-
 /**
- * Check if a host is safe for SMTP/IMAP connection (not internal/reserved).
- * Returns true if the host is allowed, false if it's blocked.
+ * Recipient allowlist for the SHARED mailbox: the sender's own account address,
+ * or anyone inside the company domain.
+ *
+ * Personal accounts are deliberately not filtered — a user sending as
+ * themselves is doing what email is for. The shared mailbox is different: it
+ * speaks for the company, and anything the agent read (customer data, internal
+ * analysis) could otherwise be forwarded anywhere by one injected instruction.
  */
-export function isAllowedMailHost(host: string): boolean {
-  const h = host.trim().toLowerCase();
-  if (!h || h.length > 253) return false;
-
-  for (const pattern of BLOCKED_HOST_PATTERNS) {
-    if (pattern.test(h)) return false;
-  }
-
-  // Must contain a dot (valid domain or IP)
-  if (!h.includes('.') && !h.includes(':')) return false;
-
-  return true;
+/**
+ * Domain the shared mailbox may send to besides the sender's own address —
+ * the company's own domain. Derived from SHARED_MAILBOX_ADDRESS (the part
+ * after `@`) unless SHARED_MAILBOX_ALLOWED_DOMAIN overrides it; when neither
+ * is configured the shared mailbox can only reply to itself (fail closed).
+ */
+export function sharedMailboxAllowedDomain(): string {
+  const explicit = process.env.SHARED_MAILBOX_ALLOWED_DOMAIN?.trim().toLowerCase();
+  if (explicit) return explicit;
+  const address = process.env.SHARED_MAILBOX_ADDRESS?.trim().toLowerCase() ?? '';
+  const at = address.lastIndexOf('@');
+  return at > 0 ? address.slice(at + 1) : '';
 }
 
-// ─── OData Query Escaping ────────────────────────────────
+export function checkSharedRecipients(recipients: EmailAddress[], senderAccountEmail: string): string | null {
+  const own = senderAccountEmail.trim().toLowerCase();
+  const domain = sharedMailboxAllowedDomain();
+  const violations = recipients
+    .map((r) => r.address.trim().toLowerCase())
+    .filter((address) => address !== own && !(domain && address.endsWith(`@${domain}`)));
 
-/**
- * Escape a string for use in Microsoft Graph OData $search parameter.
- * Removes double quotes to prevent query breakout attacks.
- */
-export function escapeODataSearch(query: string): string {
-  return query.replace(/"/g, '').slice(0, 500);
+  if (violations.length === 0) return null;
+  const allowed = domain ? ` or @${domain} addresses` : '';
+  return `The shared mailbox can only send to your own address (${senderAccountEmail})${allowed}. Rejected: ${violations.join(', ')}. Use your own bound mailbox to reach outside recipients.`;
 }
 
-// ─── Draft Token Store ───────────────────────────────────
+// ─── Draft tokens ────────────────────────────────────────
 
 export interface DraftEntry {
   token: string;
   userId: string;
-  accountId: number;
-  to: Array<{ name?: string; address: string }>;
-  cc?: Array<{ name?: string; address: string }>;
+  /** Which mailbox it will be sent from — 'shared' or a personal account id. */
+  accountRef: string;
+  to: EmailAddress[];
+  cc?: EmailAddress[];
+  bcc?: EmailAddress[];
   subject: string;
   bodyText?: string;
   bodyHtml?: string;
   inReplyTo?: string;
   references?: string[];
+  /** Attachment ids resolved at send time, not bytes held in memory. */
+  attachmentIds?: string[];
   seq: number;
   createdAt: number;
   expiresAt: number;
 }
 
 const draftStore = new Map<string, DraftEntry>();
-
-/** Monotonic sequence counter for draft ordering. */
 let draftSeq = 0;
 
-/** Draft validity window — 10 minutes. */
-const DRAFT_TTL_MS = 10 * 60 * 1000;
-
-/** Max pending drafts per user (prevent abuse). */
-const MAX_DRAFTS_PER_USER = 20;
-
-/**
- * Character set for short draft tokens: uppercase + digits, excluding ambiguous chars.
- * 30 chars ^ 6 = ~729 million combinations — plenty for a 10-minute window.
- */
+/** Uppercase + digits minus the ambiguous glyphs; 32^6 ≈ 1e9 per 10-minute window. */
 const TOKEN_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-/** Generate a short, LLM-friendly draft token (6 uppercase alphanumeric chars). */
 function generateShortToken(): string {
   const bytes = randomBytes(6);
   let token = '';
   for (let i = 0; i < 6; i++) {
-    token += TOKEN_CHARS[bytes[i] % TOKEN_CHARS.length];
+    token += TOKEN_CHARS[bytes[i]! % TOKEN_CHARS.length];
   }
   return token;
 }
 
-/** Cleanup expired drafts. */
 function cleanupDrafts(): void {
   const now = Date.now();
   for (const [key, entry] of draftStore) {
@@ -272,35 +215,25 @@ function cleanupDrafts(): void {
 }
 
 /**
- * Create a server-side draft entry and return a single-use token.
+ * Store a draft server-side and return its single-use token.
  *
- * When the agent calls `draft_email`, the email content is stored here.
- * When `send_email` is called later, it MUST provide this token and the
- * actual sent content is taken from the stored draft — not from the LLM's input.
- * This prevents a prompt-injected LLM from changing recipients at send time.
+ * This is why send_email is safe to expose: the bytes that actually go out are
+ * read back from here, not from the send call's arguments. An injected model
+ * cannot swap the recipient between the confirmation the user read and the
+ * message that leaves.
  */
 export function createDraftToken(
   userId: string,
-  accountId: number,
-  email: {
-    to: Array<{ name?: string; address: string }>;
-    cc?: Array<{ name?: string; address: string }>;
-    subject: string;
-    bodyText?: string;
-    bodyHtml?: string;
-    inReplyTo?: string;
-    references?: string[];
-  },
+  accountRef: string,
+  email: Omit<DraftEntry, 'token' | 'userId' | 'accountRef' | 'seq' | 'createdAt' | 'expiresAt'>,
 ): string {
   cleanupDrafts();
 
-  // Limit per-user pending drafts
   let userDraftCount = 0;
   for (const entry of draftStore.values()) {
     if (entry.userId === userId) userDraftCount++;
   }
   if (userDraftCount >= MAX_DRAFTS_PER_USER) {
-    // Evict oldest draft for this user
     let oldestKey: string | null = null;
     let oldestSeq = Infinity;
     for (const [key, entry] of draftStore) {
@@ -313,87 +246,59 @@ export function createDraftToken(
   }
 
   const token = generateShortToken();
+  const now = Date.now();
   draftStore.set(token, {
+    ...email,
     token,
     userId,
-    accountId,
-    to: email.to,
-    cc: email.cc,
-    subject: email.subject,
-    bodyText: email.bodyText,
-    bodyHtml: email.bodyHtml,
-    inReplyTo: email.inReplyTo,
-    references: email.references,
+    accountRef,
     seq: ++draftSeq,
-    createdAt: Date.now(),
-    expiresAt: Date.now() + DRAFT_TTL_MS,
+    createdAt: now,
+    expiresAt: now + DRAFT_TTL_MS,
   });
 
-  logger.info(`[Email Security] Draft token created for user ${userId}, account ${accountId}: ${token.slice(0, 8)}...`);
+  logger.info(`[Email] Draft ${token} created for user ${userId} (${accountRef})`);
   return token;
 }
 
 /**
- * Validate and consume a draft token (single-use).
+ * Validate and consume a token. Single use: a second send with the same token
+ * finds nothing.
  *
- * Returns the stored draft entry if valid, null otherwise.
- * The token is deleted after consumption — it cannot be reused.
- *
- * Token matching is case-insensitive to tolerate LLM casing variations.
+ * Matching tolerates the spaces/dashes/casing a model might introduce, but
+ * there is NO fallback to "the most recent draft" — a wrong token means the
+ * model must draft again and the user must confirm again.
  */
 export function consumeDraftToken(token: string, userId: string): DraftEntry | null {
   cleanupDrafts();
 
-  // Normalize: uppercase, strip spaces/dashes the LLM might have inserted
   const normalized = token.replace(/[\s-]/g, '').toUpperCase();
-
   const entry = draftStore.get(normalized);
   if (!entry) {
-    logger.warn(`[Email Security] Draft token not found or already used: ${normalized}`);
+    logger.warn(`[Email] Draft token not found or already used: ${normalized}`);
     return null;
   }
   if (entry.expiresAt < Date.now()) {
     draftStore.delete(normalized);
-    logger.warn(`[Email Security] Draft token expired: ${normalized}`);
+    logger.warn(`[Email] Draft token expired: ${normalized}`);
     return null;
   }
   if (entry.userId !== userId) {
-    logger.warn(`[Email Security] Draft token user mismatch: expected ${entry.userId}, got ${userId}`);
+    logger.warn(`[Email] Draft token user mismatch on ${normalized}`);
     return null;
   }
 
-  // Consume: single-use — delete after validation
   draftStore.delete(normalized);
   return entry;
 }
 
-/**
- * Find the most recent pending draft for a user.
- *
- * Fallback for when the LLM fabricates or misremembers a token.
- * Returns the draft without consuming it — the caller must still call
- * consumeDraftToken() with the real token to actually send.
- */
-export function findLatestDraft(userId: string, accountId?: number): DraftEntry | null {
-  cleanupDrafts();
-  let latest: DraftEntry | null = null;
-  for (const entry of draftStore.values()) {
-    if (entry.userId !== userId) continue;
-    if (accountId !== undefined && entry.accountId !== accountId) continue;
-    if (!latest || entry.seq > latest.seq) {
-      latest = entry;
-    }
-  }
-  return latest;
-}
-
-/** Get pending draft count (for testing/monitoring). */
+/** Pending draft count — monitoring and tests. */
 export function getPendingDraftCount(): number {
   cleanupDrafts();
   return draftStore.size;
 }
 
-/** Clear all drafts (for testing). */
+/** Tests only. */
 export function clearAllDrafts(): void {
   draftStore.clear();
 }

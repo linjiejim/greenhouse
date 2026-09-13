@@ -82,9 +82,9 @@ Information reliability tiers: L1 official primary sources > L2 commercial data 
 Search in both Chinese and English. Key information requires confirmation from at least two independent sources.`,
   category: 'team',
   is_global: true,
-  icon: 'Globe',
-  group: 'web',
   surface: { proxy: 'read' },
+  icon: 'Globe',
+  sort_order: 10,
 };
 
 export function createExternalSearchTool() {

@@ -1,12 +1,11 @@
 /**
  * Client Action Tools — agent tools that operate the user's current frontend screen.
  *
- * These reuse the SAME client-side execution round-trip as Desktop local tools:
- * the tool's execute() emits a `local-tool-request` via the {@link LocalToolBridge}
- * and awaits the real result the client posts back to /api/client-tools/result.
+ * The tool's execute() emits the legacy `local-tool-request` wire event via the
+ * {@link ClientActionBridge} and awaits the real result posted back to
+ * `/api/client-actions/tool-result`.
  *
- * Unlike local tools (a fixed server-side catalog of OS capabilities), client actions
- * are DECLARED BY THE CLIENT per request — each turn the frontend advertises which UI
+ * Client actions are declared by the browser per request — each turn the frontend advertises which UI
  * actions are available on the current screen (navigate, prefill a form, read the
  * current view, ...). The backend stays generic: it just registers whatever the client
  * declared as bridge-backed tools. This mirrors AG-UI's "frontend tools are declared by
@@ -18,8 +17,9 @@
  */
 
 import { tool, jsonSchema } from 'ai';
+import { logger } from '@greenhouse/utils/logger';
 import type { ClientActionDescriptor } from '@greenhouse/types/api';
-import type { LocalToolBridge } from './local/bridge.js';
+import type { ClientActionBridge } from './client-action-bridge.js';
 
 /** Hard caps so a misbehaving client can't flood the tool set. */
 const MAX_ACTIONS = 32;
@@ -35,8 +35,17 @@ export function sanitizeClientActions(raw: unknown): ClientActionDescriptor[] {
   if (!Array.isArray(raw)) return [];
   const out: ClientActionDescriptor[] = [];
   const seen = new Set<string>();
+  let truncated = 0;
   for (const item of raw) {
-    if (out.length >= MAX_ACTIONS) break;
+    // Truncation is silent to the caller by design (a full tool set shouldn't 400 a
+    // chat turn), but it must not be silent to us: the desktop's global capabilities
+    // and the browser bridge already claim 20 of the 32 slots, so a page declaring a
+    // dozen of its own is enough to make screenshot/selection/clipboard vanish from
+    // the model's tool list with nothing anywhere to explain why.
+    if (out.length >= MAX_ACTIONS) {
+      truncated += 1;
+      continue;
+    }
     if (!item || typeof item !== 'object') continue;
     const { name, description, parameters } = item as Record<string, unknown>;
     if (typeof name !== 'string' || !NAME_RE.test(name) || name.length > MAX_NAME_LEN) continue;
@@ -50,6 +59,17 @@ export function sanitizeClientActions(raw: unknown): ClientActionDescriptor[] {
       parameters: parameters as Record<string, unknown>,
     });
   }
+  if (truncated > 0) {
+    logger.warn('[client-actions] declared action set exceeded the cap; extras dropped', {
+      cap: MAX_ACTIONS,
+      kept: out.length,
+      dropped: truncated,
+      dropped_names: (raw as unknown[])
+        .slice(-truncated)
+        .map((item) => (item && typeof item === 'object' ? (item as { name?: unknown }).name : undefined))
+        .filter((name): name is string => typeof name === 'string'),
+    });
+  }
   return out;
 }
 
@@ -59,7 +79,7 @@ export function sanitizeClientActions(raw: unknown): ClientActionDescriptor[] {
  */
 export function createClientActionTools(
   descriptors: ClientActionDescriptor[],
-  bridge: LocalToolBridge,
+  bridge: ClientActionBridge,
 ): Record<string, any> {
   const tools: Record<string, any> = {};
   for (const d of descriptors) {

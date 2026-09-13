@@ -1,288 +1,263 @@
 /**
- * Email account management routes — /api/email
+ * Email account routes — /api/email
  *
- * Generic IMAP/SMTP accounts only. The whole route requires internal auth.
+ * GET    /api/email/presets        — 可选的邮箱预设（host/port/说明键）
+ * GET    /api/email/accounts       — 当前用户绑定的邮箱列表（不含密码）
+ * POST   /api/email/accounts       — 新增绑定（保存前必须连接测试通过）
+ * PUT    /api/email/accounts/:id   — 更新绑定（密码可选，留空则不改）
+ * DELETE /api/email/accounts/:id   — 解除绑定
+ * POST   /api/email/accounts/:id/test — 重新测试既有绑定的连接
+ * GET    /api/email/shared         — 共享邮箱是否可用（super 才看得到地址）
  *
- * GET    /api/email/accounts              — 列出我的邮箱账号 (super: 可看所有人)
- * POST   /api/email/accounts              — 添加 IMAP/SMTP 邮箱
- * PUT    /api/email/accounts/:id          — 更新邮箱配置
- * DELETE /api/email/accounts/:id          — 删除邮箱
- * POST   /api/email/accounts/:id/test     — 测试连接
- * GET    /api/email/accounts/:id/folders  — 获取文件夹/标签列表
- * GET    /api/email/accounts/:id/messages — 获取邮件列表
- * GET    /api/email/accounts/:id/messages/:msgId — 获取邮件详情
- * POST   /api/email/accounts/:id/send     — 发送邮件
+ * Permission: internal + `email` feature flag（挂载点统一加守卫）。
+ *
+ * 这里是协议适配层：连接、发信与限额都在 email/service.ts 与
+ * email/imap-smtp-client.ts，与 Agent 工具共用同一份实现。
  */
 
 import { Hono } from 'hono';
-import type { Context } from 'hono';
+import { z } from 'zod';
 import { getDb } from '@greenhouse/db';
-import { getAuthUser, requireInternal } from '../auth/middleware.js';
-import {
-  encryptCredentials,
-  createEmailClient,
-  testEmailConnection,
-  MAX_EMAIL_ACCOUNTS,
-  isEncryptionConfigured,
-} from '../email/index.js';
-import type { ImapCredentials } from '../email/index.js';
-import { logger } from '@greenhouse/utils/logger';
-import { isAllowedMailHost, isValidEmail, validateEmailAddresses } from '../email/security.js';
+import { EMAIL_PRESETS, getEmailPreset } from '@greenhouse/types/email';
+import { isUniqueViolation, toErrorMessage } from '@greenhouse/utils/error';
+import { nowIso } from '@greenhouse/utils/date';
+import type { EmailAccountRow } from '@greenhouse/db';
+import type { AuthUser } from '../auth/token.js';
 import type { AppEnv } from '../app-env.js';
+import { encryptToken, isEncryptionConfigured } from '../auth/crypto.js';
+import { ImapSmtpClient } from '../email/imap-smtp-client.js';
+import { getSharedMailboxCredentials, toCredentials } from '../email/service.js';
+import { isValidEmail } from '../email/security.js';
 
-// ─── Helper: ownership check ──────────────────────────────
-
-// Typed Context (not `any`): an `any` return from a handler erases the route
-// from the inferred AppType schema, breaking hc clients for /accounts/:id.
-async function getOwnedAccount(c: Context<AppEnv>, id: number) {
-  const user = getAuthUser(c);
-  const db = getDb();
-  const account = await db.emailAccounts.getById(id);
-  if (!account) return { error: c.json({ error: 'Account not found' }, 404) };
-  if (account.user_id !== user.id && user.role !== 'super') {
-    return { error: c.json({ error: 'Forbidden' }, 403) };
-  }
-  return { account, user };
+/** Password is write-only: it goes in through create/update and never comes back. */
+function toView(row: EmailAccountRow) {
+  return {
+    id: row.id,
+    email_address: row.email_address,
+    display_name: row.display_name,
+    preset: row.preset,
+    imap_host: row.imap_host,
+    imap_port: row.imap_port,
+    smtp_host: row.smtp_host,
+    smtp_port: row.smtp_port,
+    use_tls: row.use_tls,
+    use_proxy: row.use_proxy,
+    username: row.username,
+    status: row.status,
+    error_message: row.error_message,
+    last_verified_at: row.last_verified_at,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
 }
 
-const emailRoutes = new Hono<AppEnv>()
-  // The whole email surface is internal-only.
-  .use('/accounts/*', requireInternal())
-  .use('/accounts', requireInternal())
+const presetIds = EMAIL_PRESETS.map((p) => p.id) as [string, ...string[]];
 
-  // ─── GET /accounts — list email accounts ──────────────────
+const createAccountSchema = z.object({
+  email_address: z.string().trim().min(3).max(254),
+  display_name: z.string().max(120).nullish(),
+  preset: z.enum(presetIds).default('custom'),
+  imap_host: z.string().trim().min(1).max(253),
+  imap_port: z.number().int().min(1).max(65535),
+  smtp_host: z.string().trim().min(1).max(253),
+  smtp_port: z.number().int().min(1).max(65535),
+  use_tls: z.boolean().default(true),
+  use_proxy: z.boolean().default(false),
+  username: z.string().trim().min(1).max(254).optional(),
+  // Trimmed because copy-pasted app passwords routinely carry a stray trailing
+  // space/newline (Gmail even DISPLAYS them with grouping spaces), and a mail
+  // password that genuinely starts or ends with whitespace does not exist in
+  // practice. Inner spaces are preserved.
+  password: z.string().trim().min(1).max(512),
+});
 
-  .get('/accounts', async (c) => {
-    const user = getAuthUser(c);
-    const db = getDb();
-    const showAll = c.req.query('all') === 'true' && user.role === 'super';
-    const accounts = showAll ? await db.emailAccounts.listAll() : await db.emailAccounts.listByUser(user.id);
+const updateAccountSchema = createAccountSchema.partial().omit({ email_address: true, preset: true });
 
-    return c.json({
-      accounts: accounts.map((a) => ({
-        id: a.id,
-        user_id: a.user_id,
-        provider: a.provider,
-        email_address: a.email_address,
-        display_name: a.display_name,
-        config: a.config,
-        status: a.status,
-        error_message: a.error_message,
-        last_synced_at: a.last_synced_at,
-        created_at: a.created_at,
-        updated_at: a.updated_at,
-      })),
-    });
-  })
-  // ─── POST /accounts — add IMAP/SMTP account ──────────────
+export function createEmailRoutes() {
+  return (
+    new Hono<AppEnv>()
+      /** GET /api/email/presets — provider presets (single source of truth in @greenhouse/types). */
+      .get('/presets', (c) => c.json({ presets: EMAIL_PRESETS }))
 
-  .post('/accounts', async (c) => {
-    if (!isEncryptionConfigured()) {
-      return c.json({ error: 'PROVIDER_TOKEN_ENCRYPTION_KEY is not configured' }, 503);
-    }
+      /** GET /api/email/shared — whether the shared mailbox exists; address for supers only. */
+      .get('/shared', (c) => {
+        const user = (c.get as (key: string) => AuthUser | undefined)('user');
+        if (!user) return c.json({ error: 'Authentication required' }, 401);
+        const creds = getSharedMailboxCredentials();
+        const available = creds !== null && user.role === 'super';
+        return c.json({
+          available,
+          address: available ? creds!.email_address : null,
+          configured: creds !== null,
+        });
+      })
 
-    const user = getAuthUser(c);
-    const db = getDb();
+      /** GET /api/email/accounts — the caller's own bindings. */
+      .get('/accounts', async (c) => {
+        const user = (c.get as (key: string) => AuthUser | undefined)('user');
+        if (!user) return c.json({ error: 'Authentication required' }, 401);
+        const rows = await getDb().email.listAccountsByUser(user.id);
+        return c.json({ accounts: rows.map(toView) });
+      })
 
-    // Check limit
-    const count = await db.emailAccounts.countByUser(user.id);
-    if (count >= MAX_EMAIL_ACCOUNTS) {
-      return c.json({ error: `Maximum ${MAX_EMAIL_ACCOUNTS} email accounts allowed` }, 400);
-    }
+      /**
+       * POST /api/email/accounts — bind a mailbox.
+       *
+       * The connection is tested BEFORE the row is written: a binding that
+       * cannot read or send is worse than no binding, because the agent will
+       * cheerfully try to use it.
+       */
+      .post('/accounts', async (c) => {
+        const user = (c.get as (key: string) => AuthUser | undefined)('user');
+        if (!user) return c.json({ error: 'Authentication required' }, 401);
+        if (!isEncryptionConfigured()) {
+          return c.json({ error: 'PROVIDER_TOKEN_ENCRYPTION_KEY is not configured on this server.' }, 500);
+        }
 
-    const body = await c.req.json();
-    const { email_address, display_name, imap_host, imap_port, smtp_host, smtp_port, username, password, use_tls } =
-      body;
+        const parsed = createAccountSchema.safeParse(await c.req.json().catch(() => ({})));
+        if (!parsed.success) {
+          return c.json({ error: `Invalid request: ${parsed.error.issues[0]?.message ?? 'bad body'}` }, 400);
+        }
+        const input = parsed.data;
+        if (!isValidEmail(input.email_address)) {
+          return c.json({ error: `"${input.email_address}" is not a valid email address.` }, 400);
+        }
 
-    if (!email_address || !smtp_host || !smtp_port || !username || !password) {
-      return c.json({ error: 'Missing required fields: email_address, smtp_host, smtp_port, username, password' }, 400);
-    }
+        const username = input.username?.trim() || input.email_address;
+        const test = await new ImapSmtpClient({
+          email_address: input.email_address,
+          display_name: input.display_name ?? null,
+          imap_host: input.imap_host,
+          imap_port: input.imap_port,
+          smtp_host: input.smtp_host,
+          smtp_port: input.smtp_port,
+          use_tls: input.use_tls,
+          use_proxy: input.use_proxy,
+          username,
+          password: input.password,
+        }).testConnection();
 
-    // Validate email address format
-    if (!isValidEmail(email_address)) {
-      return c.json({ error: 'Invalid email address format' }, 400);
-    }
+        if (!test.imap.ok || !test.smtp.ok) {
+          return c.json({ error: 'Connection test failed — the account was not saved.', test }, 400);
+        }
 
-    // SSRF prevention: block internal/reserved hosts
-    const effectiveImapHost = imap_host || smtp_host;
-    if (!isAllowedMailHost(smtp_host)) {
-      return c.json({ error: 'SMTP host is not allowed (internal/reserved address)' }, 400);
-    }
-    if (!isAllowedMailHost(effectiveImapHost)) {
-      return c.json({ error: 'IMAP host is not allowed (internal/reserved address)' }, 400);
-    }
+        try {
+          const row = await getDb().email.createAccount({
+            user_id: user.id,
+            email_address: input.email_address,
+            display_name: input.display_name ?? null,
+            preset: getEmailPreset(input.preset)?.id ?? 'custom',
+            imap_host: input.imap_host,
+            imap_port: input.imap_port,
+            smtp_host: input.smtp_host,
+            smtp_port: input.smtp_port,
+            use_tls: input.use_tls,
+            use_proxy: input.use_proxy,
+            username,
+            password_encrypted: encryptToken(input.password),
+          });
+          const verified = await getDb().email.updateAccount(row.id, { last_verified_at: nowIso() });
+          return c.json({ account: toView(verified ?? row), test }, 201);
+        } catch (err) {
+          if (isUniqueViolation(err)) {
+            return c.json({ error: `${input.email_address} is already bound to your account.` }, 409);
+          }
+          return c.json({ error: toErrorMessage(err) }, 500);
+        }
+      })
 
-    const creds: ImapCredentials = {
-      type: 'imap',
-      imap_host: effectiveImapHost,
-      imap_port: imap_port ?? 993,
-      smtp_host,
-      smtp_port,
-      username,
-      password,
-      use_tls: use_tls ?? true,
-    };
+      /** PUT /api/email/accounts/:id — update connection settings and/or password. */
+      .put('/accounts/:id', async (c) => {
+        const user = (c.get as (key: string) => AuthUser | undefined)('user');
+        if (!user) return c.json({ error: 'Authentication required' }, 401);
 
-    const account = await db.emailAccounts.create({
-      user_id: user.id,
-      provider: 'imap',
-      email_address,
-      display_name: display_name || undefined,
-      credentials: encryptCredentials(creds),
-    });
+        const id = Number.parseInt(c.req.param('id'), 10);
+        if (!Number.isInteger(id)) return c.json({ error: 'Invalid account id' }, 400);
 
-    logger.info(`[Email] 📧 IMAP account added: ${email_address} by user ${user.id}`);
+        const existing = await getDb().email.getAccount(id);
+        if (!existing || existing.user_id !== user.id) return c.json({ error: 'Account not found' }, 404);
 
-    return c.json(
-      {
-        account: {
-          id: account.id,
-          provider: account.provider,
-          email_address: account.email_address,
-          status: account.status,
-          created_at: account.created_at,
-        },
-        message: 'Account added. Run connection test to verify.',
-      },
-      201,
-    );
-  })
-  // ─── PUT /accounts/:id — update account ───────────────────
+        const parsed = updateAccountSchema.safeParse(await c.req.json().catch(() => ({})));
+        if (!parsed.success) {
+          return c.json({ error: `Invalid request: ${parsed.error.issues[0]?.message ?? 'bad body'}` }, 400);
+        }
+        const input = parsed.data;
 
-  .put('/accounts/:id', async (c) => {
-    const id = parseInt(c.req.param('id'));
-    if (isNaN(id)) return c.json({ error: 'Invalid account ID' }, 400);
+        const merged = {
+          ...toCredentials(existing),
+          ...(input.display_name !== undefined ? { display_name: input.display_name } : {}),
+          ...(input.imap_host !== undefined ? { imap_host: input.imap_host } : {}),
+          ...(input.imap_port !== undefined ? { imap_port: input.imap_port } : {}),
+          ...(input.smtp_host !== undefined ? { smtp_host: input.smtp_host } : {}),
+          ...(input.smtp_port !== undefined ? { smtp_port: input.smtp_port } : {}),
+          ...(input.use_tls !== undefined ? { use_tls: input.use_tls } : {}),
+          ...(input.use_proxy !== undefined ? { use_proxy: input.use_proxy } : {}),
+          ...(input.username !== undefined ? { username: input.username } : {}),
+          ...(input.password !== undefined ? { password: input.password } : {}),
+        };
 
-    const result = await getOwnedAccount(c, id);
-    if ('error' in result && !('account' in result)) return result.error;
+        const test = await new ImapSmtpClient(merged).testConnection();
+        if (!test.imap.ok || !test.smtp.ok) {
+          return c.json({ error: 'Connection test failed — nothing was changed.', test }, 400);
+        }
 
-    const body = await c.req.json();
-    const updates: Record<string, unknown> = {};
-    if (body.display_name !== undefined) updates.display_name = body.display_name;
-    if (body.config !== undefined) updates.config = body.config;
-    if (body.status !== undefined) updates.status = body.status;
+        const updated = await getDb().email.updateAccount(id, {
+          display_name: merged.display_name,
+          imap_host: merged.imap_host,
+          imap_port: merged.imap_port,
+          smtp_host: merged.smtp_host,
+          smtp_port: merged.smtp_port,
+          use_tls: merged.use_tls,
+          use_proxy: merged.use_proxy,
+          username: merged.username,
+          ...(input.password !== undefined ? { password_encrypted: encryptToken(input.password) } : {}),
+          status: 'active',
+          error_message: null,
+          last_verified_at: nowIso(),
+        });
+        return c.json({ account: toView(updated!), test });
+      })
 
-    const updated = await getDb().emailAccounts.update(id, updates);
-    return c.json({
-      account: {
-        id: updated!.id,
-        provider: updated!.provider,
-        email_address: updated!.email_address,
-        display_name: updated!.display_name,
-        status: updated!.status,
-        updated_at: updated!.updated_at,
-      },
-    });
-  })
-  // ─── DELETE /accounts/:id — delete account ────────────────
+      /** DELETE /api/email/accounts/:id — unbind. */
+      .delete('/accounts/:id', async (c) => {
+        const user = (c.get as (key: string) => AuthUser | undefined)('user');
+        if (!user) return c.json({ error: 'Authentication required' }, 401);
 
-  .delete('/accounts/:id', async (c) => {
-    const id = parseInt(c.req.param('id'));
-    if (isNaN(id)) return c.json({ error: 'Invalid account ID' }, 400);
+        const id = Number.parseInt(c.req.param('id'), 10);
+        if (!Number.isInteger(id)) return c.json({ error: 'Invalid account id' }, 400);
 
-    const result = await getOwnedAccount(c, id);
-    if ('error' in result && !('account' in result)) return result.error;
+        const existing = await getDb().email.getAccount(id);
+        if (!existing || existing.user_id !== user.id) return c.json({ error: 'Account not found' }, 404);
 
-    await getDb().emailAccounts.delete(id);
-    logger.info(`[Email] 🗑️ Account deleted: ${result.account!.email_address}`);
-    return c.json({ message: `Account "${result.account!.email_address}" deleted` });
-  })
-  // ─── POST /accounts/:id/test — test connection ───────────
+        await getDb().email.deleteAccount(id);
+        return c.json({ deleted: true, id });
+      })
 
-  .post('/accounts/:id/test', async (c) => {
-    const id = parseInt(c.req.param('id'));
-    if (isNaN(id)) return c.json({ error: 'Invalid account ID' }, 400);
+      /**
+       * POST /api/email/accounts/:id/test — re-test an existing binding.
+       *
+       * Records the verdict on the row so the list can show a mailbox that has
+       * started failing (expired app password, revoked client access) instead of
+       * letting the agent discover it mid-conversation.
+       */
+      .post('/accounts/:id/test', async (c) => {
+        const user = (c.get as (key: string) => AuthUser | undefined)('user');
+        if (!user) return c.json({ error: 'Authentication required' }, 401);
 
-    const result = await getOwnedAccount(c, id);
-    if ('error' in result && !('account' in result)) return result.error;
+        const id = Number.parseInt(c.req.param('id'), 10);
+        if (!Number.isInteger(id)) return c.json({ error: 'Invalid account id' }, 400);
 
-    const testResult = await testEmailConnection(getDb(), result.account!);
-    return c.json(testResult);
-  })
-  // ─── GET /accounts/:id/folders — list folders ─────────────
+        const existing = await getDb().email.getAccount(id);
+        if (!existing || existing.user_id !== user.id) return c.json({ error: 'Account not found' }, 404);
 
-  .get('/accounts/:id/folders', async (c) => {
-    const id = parseInt(c.req.param('id'));
-    if (isNaN(id)) return c.json({ error: 'Invalid account ID' }, 400);
-
-    const result = await getOwnedAccount(c, id);
-    if ('error' in result && !('account' in result)) return result.error;
-
-    const client = await createEmailClient(getDb(), result.account!);
-    const folders = await client.listFolders();
-    return c.json({ folders });
-  })
-  // ─── GET /accounts/:id/messages — list messages ──────────
-
-  .get('/accounts/:id/messages', async (c) => {
-    const id = parseInt(c.req.param('id'));
-    if (isNaN(id)) return c.json({ error: 'Invalid account ID' }, 400);
-
-    const result = await getOwnedAccount(c, id);
-    if ('error' in result && !('account' in result)) return result.error;
-
-    const client = await createEmailClient(getDb(), result.account!);
-    const listResult = await client.listMessages({
-      folder: c.req.query('folder') ?? undefined,
-      query: c.req.query('q') ?? undefined,
-      limit: parseInt(c.req.query('limit') ?? '20'),
-      page_token: c.req.query('page_token') ?? undefined,
-    });
-    return c.json(listResult);
-  })
-  // ─── GET /accounts/:id/messages/:msgId — get detail ──────
-
-  .get('/accounts/:id/messages/:msgId', async (c) => {
-    const id = parseInt(c.req.param('id'));
-    if (isNaN(id)) return c.json({ error: 'Invalid account ID' }, 400);
-
-    const result = await getOwnedAccount(c, id);
-    if ('error' in result && !('account' in result)) return result.error;
-
-    const client = await createEmailClient(getDb(), result.account!);
-    const message = await client.getMessage(c.req.param('msgId'));
-    return c.json({ message });
-  })
-  // ─── POST /accounts/:id/send — send email ────────────────
-
-  .post('/accounts/:id/send', async (c) => {
-    const id = parseInt(c.req.param('id'));
-    if (isNaN(id)) return c.json({ error: 'Invalid account ID' }, 400);
-
-    const result = await getOwnedAccount(c, id);
-    if ('error' in result && !('account' in result)) return result.error;
-
-    const body = await c.req.json();
-    if (!body.to?.length || !body.subject) {
-      return c.json({ error: 'Missing required fields: to, subject' }, 400);
-    }
-
-    // Validate all recipient addresses
-    const toError = validateEmailAddresses(body.to, 'to');
-    if (toError) return c.json({ error: toError }, 400);
-    if (body.cc?.length) {
-      const ccError = validateEmailAddresses(body.cc, 'cc');
-      if (ccError) return c.json({ error: ccError }, 400);
-    }
-    if (body.bcc?.length) {
-      const bccError = validateEmailAddresses(body.bcc, 'bcc');
-      if (bccError) return c.json({ error: bccError }, 400);
-    }
-
-    const client = await createEmailClient(getDb(), result.account!);
-    const sendResult = await client.sendEmail({
-      to: body.to,
-      cc: body.cc,
-      bcc: body.bcc,
-      subject: body.subject,
-      body_text: body.body_text,
-      body_html: body.body_html,
-      in_reply_to: body.in_reply_to,
-      references: body.references,
-    });
-
-    logger.info(`[Email] ✉️ Sent from ${result.account!.email_address}: "${body.subject}"`);
-    return c.json({ message: 'Email sent successfully', messageId: sendResult.messageId });
-  });
-
-export { emailRoutes };
+        const test = await new ImapSmtpClient(toCredentials(existing)).testConnection();
+        const ok = test.imap.ok && test.smtp.ok;
+        const updated = await getDb().email.updateAccount(id, {
+          status: ok ? 'active' : 'error',
+          error_message: ok ? null : [test.imap.error, test.smtp.error].filter(Boolean).join(' | '),
+          ...(ok ? { last_verified_at: nowIso() } : {}),
+        });
+        return c.json({ account: toView(updated!), test });
+      })
+  );
+}

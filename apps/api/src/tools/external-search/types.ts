@@ -62,13 +62,6 @@ export interface SanitizeResult {
 
 // ─── Tool Input / Output Types ───────────────────────────
 
-export interface ExternalSearchInput {
-  query: string;
-  maxResults: number;
-  extractContent: boolean;
-  language: 'en' | 'zh' | 'auto';
-}
-
 export interface ExternalSearchOutput {
   query: string;
   resultCount: number;

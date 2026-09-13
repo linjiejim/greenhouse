@@ -36,7 +36,8 @@ const computeInputSchema = z.object({
       },
     )
     .describe(
-      'Input data to pass into the compute(data) function. ' + 'Typically the result from a previous tool call.',
+      'Input data to pass into the compute(data) function. ' +
+        'Typically the result from a previous tool call (e.g. tables_query or session_query).',
     ),
 });
 
@@ -69,9 +70,10 @@ Rules:
 - Timeout: 15 seconds, Memory: 64MB`,
   category: 'team',
   is_global: true,
+  builtin: true,
+  surface: { proxy: 'read', unattendedReplaySafe: true },
   icon: 'Calculator',
-  group: 'compute',
-  surface: { proxy: 'read' },
+  sort_order: 14,
 };
 
 export function createComputeTool() {

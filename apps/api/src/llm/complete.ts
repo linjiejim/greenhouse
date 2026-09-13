@@ -11,10 +11,12 @@
  */
 
 import { generateText, Output } from 'ai';
-import { createModelFromConfig, buildProviderOptions } from '@greenhouse/agent-core';
-import { resolveProfile } from '../profile.js';
+import { createModelFromConfig, buildProviderOptions, resolveModelConfig } from '@greenhouse/agent-core';
+import { resolveProfileAsync } from '../profile.js';
 import type { AgentProfile } from '../profile.js';
 import { extractJson } from '@greenhouse/utils/json';
+import { getDb } from '@greenhouse/db';
+import { createProviderAttemptBudgetHook } from './usage-budget.js';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -36,8 +38,13 @@ export interface CompletionOptions {
   systemPrompt?: string;
   /** Caller identifier for usage tracking: 'compiler', 'judge', 'api', etc. */
   caller?: string;
+  /** Authenticated internal owner whose hard monthly budget this call consumes. */
+  userId: string;
+  sessionId?: string;
   /** Request JSON output mode — model returns valid JSON without markdown fences */
   responseFormat?: 'json';
+  /** Propagate durable Runtime cancellation into provider I/O. */
+  abortSignal?: AbortSignal;
 }
 
 export interface CompletionResult {
@@ -72,8 +79,9 @@ async function rateLimit(): Promise<void> {
  *
  * @example
  * ```ts
- * const result = await complete('admin', {
+ * const result = await complete('team', {
  *   messages: [{ role: 'user', content: 'Compile a wiki page for...' }],
+ *   userId: authenticatedUser.id,
  *   maxTokens: 12000,
  * });
  * console.log(result.text);
@@ -83,18 +91,28 @@ export async function complete(
   profileOrId: AgentProfile | string,
   options: CompletionOptions,
 ): Promise<CompletionResult> {
-  const profile = typeof profileOrId === 'string' ? resolveProfile(profileOrId) : profileOrId;
+  const profile = typeof profileOrId === 'string' ? await resolveProfileAsync(profileOrId) : profileOrId;
 
-  const model = await createModelFromConfig(profile.model);
-  const providerOptions = buildProviderOptions(profile.model);
-
-  const temperature = options.temperature ?? (profile.model.options?.temperature as number | undefined) ?? 0.7;
-  const maxTokens = options.maxTokens ?? (profile.model.options?.max_tokens as number | undefined) ?? 4096;
+  // Same layering as the chat path: catalog options for the model, profile
+  // options on top (see resolveModelConfig).
+  const modelConfig = resolveModelConfig(profile.model);
+  const caller = options.caller ?? 'api';
+  const db = getDb();
+  const providerAttemptHook = createProviderAttemptBudgetHook({
+    db,
+    userId: options.userId,
+    caller,
+    profileId: profile.id,
+    ...(options.sessionId ? { sessionId: options.sessionId, runId: options.sessionId } : {}),
+    metadata: { response_format: options.responseFormat ?? null },
+  });
+  const model = await createModelFromConfig(modelConfig, { onProviderAttempt: providerAttemptHook });
+  const providerOptions = buildProviderOptions(modelConfig);
+  const temperature = options.temperature ?? (modelConfig.options?.temperature as number | undefined) ?? 0.7;
+  const maxTokens = options.maxTokens ?? (modelConfig.options?.max_tokens as number | undefined) ?? 4096;
   const systemPrompt = options.systemPrompt ?? profile.system_prompt;
 
   await rateLimit();
-
-  const startTime = Date.now();
 
   const result = await generateText({
     model,
@@ -108,31 +126,10 @@ export async function complete(
     maxRetries: options.maxRetries ?? 3,
     ...(providerOptions ? { providerOptions } : {}),
     ...(options.responseFormat === 'json' ? { output: Output.json() } : {}),
+    ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
   });
 
   lastCallTime = Date.now();
-  const durationMs = Date.now() - startTime;
-
-  // Fire-and-forget usage recording
-  if (result.usage) {
-    import('@greenhouse/db')
-      .then(({ getDb, isDbInitialized }) => {
-        if (!isDbInitialized()) return;
-        getDb()
-          .usage.record({
-            profile_id: profile.id,
-            caller: options.caller ?? 'api',
-            model: profile.model.model,
-            input_tokens: result.usage.inputTokens ?? 0,
-            output_tokens: result.usage.outputTokens ?? 0,
-            cached_tokens: ((result.usage as Record<string, unknown>).cachedInputTokens as number) ?? 0,
-            reasoning_tokens: ((result.usage as Record<string, unknown>).reasoningTokens as number) ?? 0,
-            duration_ms: durationMs,
-          })
-          .catch(() => {});
-      })
-      .catch(() => {});
-  }
 
   return {
     text: result.text,
@@ -152,7 +149,7 @@ export async function complete(
  *
  * @example
  * ```ts
- * const plan = await completeJson<{ topics: TopicPlan[] }>('admin', {
+ * const plan = await completeJson<{ topics: TopicPlan[] }>('team', {
  *   messages: [{ role: 'user', content: 'Plan topic pages...' }],
  * });
  * ```

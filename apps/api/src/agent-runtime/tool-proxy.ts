@@ -1,7 +1,7 @@
 /**
  * Agent runtime — cloud tool proxy.
  *
- * Exposes a curated subset of server tools to trusted runtimes (Local Agent,
+ * Exposes a curated subset of server tools to trusted integrations (Agent API,
  * CLI) via `/api/agent/*`.
  *
  * Two tiers:
@@ -9,10 +9,9 @@
  * - WRITE tools (MUTATING_PROXY_ALLOWLIST): default-DENY unless the caller's
  *   auth scope includes them, and each call must pass `confirm: true`.
  *   Only unambiguously-mutating, bounded tools are listed here; mixed read/write
- *   tools (e.g. feature_request, project_manager) need per-action gating and are
- *   intentionally excluded for now. email_manager is instead exposed as split
- *   read/write tools (email_query/email_mutation) so each side lands cleanly in
- *   one tier.
+ *   tools (e.g. feature_request, memory) need per-action gating and are
+ *   intentionally excluded. Domain tools ship as split read/write pairs
+ *   (crm_query/crm_mutation, …) so each side lands cleanly in one tier.
  *
  * The proxy never widens permissions: the exposed set is always
  *   resolveEffectiveTools(user, profile) ∩ proxy allowlists.
@@ -21,20 +20,19 @@
 import { z } from 'zod';
 import { logger } from '@greenhouse/utils/logger';
 import type { ToolRegistry } from '../agent.js';
-import { getToolMeta, READONLY_PROXY_ALLOWLIST, MUTATING_PROXY_ALLOWLIST } from '../tools/registry.js';
+import { getToolMeta } from '../tools/registry.js';
+
+import { READONLY_PROXY_ALLOWLIST, MUTATING_PROXY_ALLOWLIST } from '../tools/registry.js';
+
+// Derived from each tool's declarative `meta.surface` in the catalog (single
+// source; guard test pins the sets). Re-exported here so existing consumers
+// (api-auth, mcp-auth, routes) keep their import path.
+export { READONLY_PROXY_ALLOWLIST, MUTATING_PROXY_ALLOWLIST };
 
 /**
- * The proxy read/write allowlists are DERIVED from each tool's declarative
- * `meta.surface` field in the tool catalog (apps/api/src/tools/registry.ts) — there
- * is no hand-maintained id list here. Default-deny: a tool with no `surface` is
- * never reachable via /api/agent. Re-exported so existing consumers
- * (api-auth.ts, mcp-auth.ts) keep importing them from this module.
- *
- * - READONLY_PROXY_ALLOWLIST: tools exposed read-only (no confirm gate).
- * - MUTATING_PROXY_ALLOWLIST: tools that are only reachable when the caller's
- *   write scope includes them AND the call passes `confirm: true`.
+ * Server tools considered safe to expose read-only through the proxy.
+ * Default-deny: anything not listed here is never reachable via /api/agent.
  */
-export { READONLY_PROXY_ALLOWLIST, MUTATING_PROXY_ALLOWLIST };
 
 export function isMutatingProxyTool(id: string): boolean {
   return MUTATING_PROXY_ALLOWLIST.has(id);
@@ -74,7 +72,13 @@ function toInputJsonSchema(toolId: string, registry?: ToolRegistry): Record<stri
 }
 
 export interface ProxyScopeOptions {
-  /** Extra READ narrowing; empty/undefined = no extra narrowing beyond proxy allowlist. */
+  /**
+   * Extra READ narrowing. `undefined` = no narrowing beyond the proxy allowlist;
+   * a list narrows to exactly it, and an EMPTY list means zero read tools.
+   * MCP passes the tools of the granted resource groups here, so treating empty
+   * as "no narrowing" would silently turn the narrowest possible grant into an
+   * unrestricted one.
+   */
   allowedTools?: string[];
   /** WRITE tools allowed for this credential; empty/undefined = no writes. */
   allowedWriteTools?: string[];
@@ -88,7 +92,7 @@ export interface ProxyScopeOptions {
  *   (and every write execution still requires confirm:true).
  */
 export function resolveProxyToolIds(effectiveTools: string[], opts: ProxyScopeOptions = {}): string[] {
-  const readScope = opts.allowedTools && opts.allowedTools.length > 0 ? new Set(opts.allowedTools) : null;
+  const readScope = opts.allowedTools ? new Set(opts.allowedTools) : null;
   const writeScope = new Set(opts.allowedWriteTools ?? []);
   const reads = effectiveTools.filter((id) => READONLY_PROXY_ALLOWLIST.has(id) && (!readScope || readScope.has(id)));
   const writes = effectiveTools.filter((id) => MUTATING_PROXY_ALLOWLIST.has(id) && writeScope.has(id));
@@ -132,19 +136,57 @@ export class ProxyToolError extends Error {
  * Enforce an optional workspace allowlist.
  *
  * - Empty allowlist → the credential is not workspace-scoped; any workspace is allowed.
- * - Non-empty allowlist → a *requested* workspace must be in it. Requests that
- *   carry no workspace pass: no workspace-bound tool is reachable through the
- *   read-only proxy yet, so there is nothing to scope. When such a tool is added
- *   to the allowlist, tighten this to require a workspace for scoped credentials.
+ * - Non-empty allowlist → a workspace is mandatory and must be in it. Tool
+ *   inputs are separately locked to that outer workspace by the route.
  *
  * @throws ProxyToolError(403) when a workspace is requested but not permitted.
  */
 export function assertWorkspaceAllowed(allowedWorkspaces: string[], workspaceId: string | null | undefined): void {
   if (allowedWorkspaces.length === 0) return;
-  if (!workspaceId) return;
+  if (!workspaceId) {
+    throw new ProxyToolError('A workspace is required for this scoped credential', 403);
+  }
   if (!allowedWorkspaces.includes(workspaceId)) {
     throw new ProxyToolError(`Workspace "${workspaceId}" is not permitted for this credential`, 403);
   }
+}
+
+export interface PreparedProxyToolCall {
+  toolId: string;
+  input: unknown;
+  execute: (input: unknown, options: unknown) => Promise<unknown>;
+}
+
+/** Validate reachability, implementation and schema without executing. */
+export function prepareProxyToolCall(
+  registry: ToolRegistry,
+  toolId: string,
+  allowedToolIds: string[],
+  input: unknown,
+): PreparedProxyToolCall {
+  const normalized = normalizeLegacyToolCall(toolId, input);
+  if (!allowedToolIds.includes(toolId) && !allowedToolIds.includes(normalized.toolId)) {
+    throw new ProxyToolError(`Tool "${toolId}" is not available for this credential`, 403);
+  }
+  const toolDef = registry[normalized.toolId] as
+    | {
+        inputSchema?: { safeParse?: (v: unknown) => { success: boolean; data?: unknown; error?: unknown } };
+        execute?: (input: unknown, options: unknown) => Promise<unknown>;
+      }
+    | undefined;
+  if (!toolDef || typeof toolDef.execute !== 'function') {
+    throw new ProxyToolError(`Tool "${normalized.toolId}" has no executable implementation`, 404);
+  }
+
+  let validatedInput = normalized.input;
+  if (toolDef.inputSchema && typeof toolDef.inputSchema.safeParse === 'function') {
+    const result = toolDef.inputSchema.safeParse(normalized.input ?? {});
+    if (!result.success) {
+      throw new ProxyToolError(`Invalid input for tool "${normalized.toolId}": ${formatZodError(result.error)}`, 400);
+    }
+    validatedInput = result.data;
+  }
+  return { toolId: normalized.toolId, input: validatedInput, execute: toolDef.execute };
 }
 
 /**
@@ -177,41 +219,43 @@ export async function executeProxyTool(
     throw new ProxyToolError(`Tool "${actualToolId}" mutates state — pass confirm:true to execute`, 400);
   }
 
-  const toolDef = registry[actualToolId] as
-    | {
-        inputSchema?: { safeParse?: (v: unknown) => { success: boolean; data?: unknown; error?: unknown } };
-        execute?: (input: unknown, options: unknown) => Promise<unknown>;
-      }
-    | undefined;
-
-  if (!toolDef || typeof toolDef.execute !== 'function') {
-    throw new ProxyToolError(`Tool "${actualToolId}" has no executable implementation`, 404);
-  }
-
-  // Validate input against the tool's schema when it exposes a Zod-style safeParse.
-  let validatedInput = actualInput;
-  const schema = toolDef.inputSchema;
-  if (schema && typeof schema.safeParse === 'function') {
-    const result = schema.safeParse(actualInput ?? {});
-    if (!result.success) {
-      throw new ProxyToolError(`Invalid input for tool "${actualToolId}": ${formatZodError(result.error)}`, 400);
-    }
-    validatedInput = result.data;
-  }
-
-  return toolDef.execute(validatedInput, { toolCallId: `agent-proxy-${actualToolId}`, messages: [] });
+  const prepared = prepareProxyToolCall(registry, toolId, allowedToolIds, actualInput);
+  return prepared.execute(prepared.input, { toolCallId: `agent-proxy-${actualToolId}`, messages: [] });
 }
 
 function normalizeLegacyToolCall(toolId: string, input: unknown): { toolId: string; input: unknown } {
   const inputObj = typeof input === 'object' && input !== null && !Array.isArray(input) ? input : {};
   switch (toolId) {
+    // team_knowledge / personal_knowledge (retired 2026-08-14) were
+    // knowledge_query with the scope fixed. The input shapes are otherwise
+    // identical (action / query / doc_id / limit), so scope is the only thing
+    // added — and re-adding it is idempotent, which this function must be
+    // (the proxy normalizes twice; see the note below).
     case 'search_team_knowledge':
     case 'search_greenhouse_doc':
-      // Legacy MCP names → unified knowledge_query (scope defaults to 'team').
-      return { toolId: 'knowledge_query', input: { ...inputObj, action: 'search' } };
+      return { toolId: 'knowledge_query', input: { ...inputObj, scope: 'team', action: 'search' } };
     case 'get_team_knowledge':
     case 'get_greenhouse_doc':
-      return { toolId: 'knowledge_query', input: { ...inputObj, action: 'get' } };
+      return { toolId: 'knowledge_query', input: { ...inputObj, scope: 'team', action: 'get' } };
+    case 'team_knowledge':
+      return { toolId: 'knowledge_query', input: { scope: 'team', ...inputObj } };
+    case 'personal_knowledge':
+      return { toolId: 'knowledge_query', input: { scope: 'personal', ...inputObj } };
+    // session_history (retired 2026-08-07, once proxy/MCP-exposed) ⊂ session_query:
+    // search-with-query → search; search-without-query (recent list) → list of the
+    // user's web conversations; get (read messages) → messages. NOTE the proxy
+    // normalizes twice (executeProxyTool + prepareProxyToolCall), so every branch
+    // must be idempotent — already-translated actions pass through unchanged.
+    case 'session_history': {
+      const legacy = inputObj as { action?: unknown; query?: unknown };
+      if (legacy.action === 'get' || legacy.action === 'messages') {
+        return { toolId: 'session_query', input: { ...inputObj, action: 'messages' } };
+      }
+      if (typeof legacy.query === 'string' && legacy.query.length > 0) {
+        return { toolId: 'session_query', input: { ...inputObj, action: 'search' } };
+      }
+      return { toolId: 'session_query', input: { ...inputObj, action: 'list', channel: 'web' } };
+    }
     default:
       return { toolId, input };
   }

@@ -1,13 +1,14 @@
 /**
  * Security middleware — rate limiting, security headers, input validation.
  *
- * Provides defense-in-depth for public-facing deployment:
+ * Provides defense-in-depth for an internet-reachable internal deployment:
  * - IP-based rate limiting (in-memory, per-endpoint)
  * - Standard security response headers
  * - Profile access control enforcement
  */
 
 import type { Context, Next } from 'hono';
+import { getRequestSourceIp } from './request-ip.js';
 
 // ─── Rate Limiter ────────────────────────────────────────
 
@@ -16,7 +17,7 @@ interface RateLimitEntry {
   resetAt: number;
 }
 
-class InMemoryRateLimiter {
+export class InMemoryRateLimiter {
   private store = new Map<string, RateLimitEntry>();
   private cleanupInterval: ReturnType<typeof setInterval>;
 
@@ -64,9 +65,27 @@ const limiter = new InMemoryRateLimiter();
 
 // ─── CORS ────────────────────────────────────────────────
 
-// No origins are allowed by default — the operator declares the web app /
-// API origins via the CORS_ALLOWED_ORIGINS env var (comma-separated).
-const DEFAULT_CORS_ORIGINS: string[] = [];
+const DEFAULT_CORS_ORIGINS = [
+  // Production web app / backend origin
+  'https://greenhouse.example.com',
+  // Local dev
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  // Vite dev server. A browser at :3100 reaches the API through Vite's proxy and is
+  // same-origin, but `tauri dev` loads that same URL while pointing at a *remote*
+  // API base, which makes those calls genuinely cross-origin.
+  'http://localhost:3100',
+  'http://127.0.0.1:3100',
+  // Expo Web mobile client uses a fixed dev port. Keep both loopback spellings
+  // explicit so nearby ports and non-loopback hosts remain denied.
+  'http://localhost:8090',
+  'http://127.0.0.1:8090',
+  // Desktop shell (apps/desktop). It serves the web bundle from a custom scheme so
+  // that hot updates keep a stable origin, which makes every API call cross-origin.
+  // These two are fixed, non-web-reachable origins — the allowlist stays closed.
+  'greenhouse://localhost', // macOS / Linux
+  'http://greenhouse.localhost', // Windows maps custom schemes onto http://<scheme>.localhost
+];
 
 function getAllowedCorsOrigins(): Set<string> {
   const fromEnv = (process.env.CORS_ALLOWED_ORIGINS || '')
@@ -81,20 +100,9 @@ function isAllowedCorsOrigin(origin: string): boolean {
   return getAllowedCorsOrigins().has(origin);
 }
 
-// ─── CSP connect-src ─────────────────────────────────────
-// The CSP allows XHR/fetch/websocket to 'self' only by default. A fork whose
-// modules call external origins (OAuth token endpoints, mail APIs, etc.) adds
-// them via the CSP_CONNECT_SRC env var (space- or comma-separated) — no code edit.
-const CSP_CONNECT_SRC_EXTRA: string = (process.env.CSP_CONNECT_SRC || '')
-  .split(/[\s,]+/)
-  .map((s) => s.trim())
-  .filter(Boolean)
-  .join(' ');
-
 /**
- * Allow cross-origin API access only from the origins the operator declares in
- * CORS_ALLOWED_ORIGINS. Clients store bearer tokens in localStorage, so no
- * cookie credentials are required.
+ * Allow cross-origin API access only from approved internal web/dev origins.
+ * Bearer authentication does not require cookie credentials.
  */
 export async function corsMiddleware(c: Context, next: Next) {
   const origin = c.req.header('Origin') || '';
@@ -124,21 +132,28 @@ interface RateLimitConfig {
 }
 
 const RATE_LIMITS: Record<string, RateLimitConfig> = {
+  '/api/auth/password-link': { windowMs: 5 * 60_000, max: 20 }, // public IP boundary; token limiter is route-local
   '/api/auth': { windowMs: 5 * 60_000, max: 10 }, // 10 attempts per 5 min
+  // Run control (probe/list/attach/stop) is cheap registry access, not LLM
+  // spend — auto-resume retries and multi-tab attaches must not eat the chat
+  // message budget. Must stay ABOVE '/api/chat': first prefix match wins.
+  '/api/chat/runs': { windowMs: 60_000, max: 60 },
   '/api/chat': { windowMs: 60_000, max: 15 }, // 15 messages per min (overridden for internal)
-  '/api/email/accounts': { windowMs: 60_000, max: 30 }, // 30 account ops per min
-  '/api/email/oauth': { windowMs: 5 * 60_000, max: 10 }, // 10 OAuth attempts per 5 min
-  // Other admin endpoints intentionally unthrottled — admin-only usage
+  '/oauth/register': { windowMs: 60 * 60_000, max: 10 }, // bound anonymous dynamic client registration
+  '/oauth/token': { windowMs: 60_000, max: 60 }, // bound anonymous code/refresh credential attempts
+  '/oauth/revoke': { windowMs: 60_000, max: 60 }, // bound anonymous revocation probing
+  // Publishing is now a user-facing action (SkillHub Upload), and every call
+  // writes an object to the skill store — bound it per user/IP.
+  '/api/skills/publish': { windowMs: 60_000, max: 10 },
+  // Other authenticated or independently guarded endpoints are intentionally unthrottled here.
 };
 
 // Internal users get higher limits
 const INTERNAL_RATE_LIMITS: Record<string, RateLimitConfig> = {
+  '/api/chat/runs': { windowMs: 60_000, max: 120 }, // run control for internal users
   '/api/chat': { windowMs: 60_000, max: 30 }, // 30 messages per min for internal users
+  '/api/skills/publish': { windowMs: 60_000, max: 20 }, // bulk skill sync runs are legitimate
 };
-
-function getClientIP(c: Context): string {
-  return c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'unknown';
-}
 
 function matchRateLimit(path: string): RateLimitConfig | null {
   for (const [prefix, config] of Object.entries(RATE_LIMITS)) {
@@ -163,21 +178,14 @@ function matchInternalRateLimit(path: string): RateLimitConfig | null {
  * Apply per-IP and per-user rate limits based on endpoint configuration.
  */
 export async function rateLimitMiddleware(c: Context, next: Next) {
-  // V1 endpoints have their own per-API-Key rate limiting
-  if (c.req.path.startsWith('/api/v1/')) return next();
-
-  // /api/auth/status is a harmless config check (no auth, no side effects)
-  // — exempt from the /api/auth login-attempt rate limit bucket.
-  if (c.req.path === '/api/auth/status') return next();
-
   const config = matchRateLimit(c.req.path);
   if (!config) return next();
 
-  const ip = getClientIP(c);
+  const ip = getRequestSourceIp(c);
 
   // Check if user is internal (for higher limits)
   const user = c.get('user') as { id?: string; role?: string } | undefined;
-  const isInternal = user && user.role && user.role !== 'external';
+  const isInternal = user?.role === 'super' || user?.role === 'team';
   const effectiveConfig = isInternal ? (matchInternalRateLimit(c.req.path) ?? config) : config;
 
   // Per-IP rate limiting
@@ -185,7 +193,7 @@ export async function rateLimitMiddleware(c: Context, next: Next) {
   const ipResult = limiter.check(ipKey, effectiveConfig.windowMs, effectiveConfig.max);
 
   // Per-user rate limiting (if authenticated)
-  if (user?.id && user.id !== 'external') {
+  if (user?.id) {
     const userKey = `user:${user.id}:${c.req.path.split('/').slice(0, 4).join('/')}`;
     const userResult = limiter.check(userKey, effectiveConfig.windowMs, effectiveConfig.max);
     if (!userResult.allowed) {
@@ -227,10 +235,12 @@ export async function securityHeadersMiddleware(c: Context, next: Next) {
       "worker-src 'self' blob:",
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:",
-      "img-src 'self' data: blob:",
-      "media-src 'self' blob:",
-      "frame-src 'self'",
-      `connect-src 'self'${CSP_CONNECT_SRC_EXTRA ? ' ' + CSP_CONNECT_SRC_EXTRA : ''}`,
+      "img-src 'self' data: blob: https://unpkg.com https://*.myqcloud.com https://ui-avatars.com",
+      "media-src 'self' https://*.myqcloud.com",
+      "frame-src 'self' https://*.myqcloud.com",
+      // COS: authed file endpoints (chat files, Drive) 302 to a presigned object
+      // URL, and fetch()-based downloads follow that redirect from the page.
+      "connect-src 'self' https://unpkg.com https://*.myqcloud.com",
     ].join('; '),
   );
 
@@ -240,58 +250,44 @@ export async function securityHeadersMiddleware(c: Context, next: Next) {
   }
 }
 
-// ─── Profile Access Control ──────────────────────────────
+// ─── Request Log Redaction ──────────────────────────────
 
-import { getPublicProfileIds, getAdminProfileIds, resolveProfile, onProfileCacheClear } from './profile.js';
+const SENSITIVE_QUERY_KEYS = new Set([
+  'authorization',
+  'token',
+  'access_token',
+  'refresh_token',
+  'id_token',
+  'code',
+  'state',
+  'password',
+  'api_key',
+  'apikey',
+  'client_secret',
+  'secret',
+  'signature',
+  'sig',
+]);
 
-/**
- * Profiles that can only be used through session mode (not stateless chat).
- * Derived from profile YAML `access.requires_session: true`.
- * Lazily cached — populated on first access after profiles are loaded.
- */
-let _adminProfiles: Set<string> | null = null;
-export function getAdminProfiles(): Set<string> {
-  if (!_adminProfiles) _adminProfiles = getAdminProfileIds();
-  return _adminProfiles;
+function isSensitiveQueryKey(key: string): boolean {
+  const normalized = key.toLowerCase().replaceAll('-', '_');
+  return (
+    SENSITIVE_QUERY_KEYS.has(normalized) ||
+    normalized.endsWith('_token') ||
+    normalized.endsWith('_password') ||
+    normalized.endsWith('_secret') ||
+    normalized.endsWith('_api_key')
+  );
 }
 
-/**
- * Profiles safe for public/anonymous access.
- * Derived from profile YAML `access.level: 'public'`.
- */
-let _publicProfiles: Set<string> | null = null;
-export function getPublicProfiles(): Set<string> {
-  if (!_publicProfiles) _publicProfiles = getPublicProfileIds();
-  return _publicProfiles;
-}
-
-// Register for cache invalidation when profiles are reloaded
-onProfileCacheClear(() => {
-  _adminProfiles = null;
-  _publicProfiles = null;
-});
-
-/**
- * Validate that a profile can be used in the given context.
- * Uses the profile's declared access metadata.
- */
-export function validateProfileAccess(profileId: string, hasSessionId: boolean): { allowed: boolean; reason?: string } {
-  // Custom profiles don't need the YAML-based validation
-  if (profileId.startsWith('custom:')) {
-    return { allowed: true };
+/** Return a query string safe for logs while preserving non-secret diagnostics. */
+export function redactQueryForLog(url: URL): string {
+  const params = new URLSearchParams(url.searchParams);
+  for (const key of new Set(params.keys())) {
+    if (isSensitiveQueryKey(key)) params.set(key, '[REDACTED]');
   }
-  try {
-    const profile = resolveProfile(profileId);
-    if (profile.access.requires_session && !hasSessionId) {
-      return {
-        allowed: false,
-        reason: `Profile "${profileId}" requires an existing session and cannot be used in stateless mode`,
-      };
-    }
-  } catch {
-    // Profile not found — allow (will fail later during profile resolution)
-  }
-  return { allowed: true };
+  const query = params.toString();
+  return query ? `?${query}` : '';
 }
 
 // ─── Prompt Injection Detection ──────────────────────────
@@ -320,12 +316,12 @@ const INJECTION_PATTERNS: Array<{ pattern: RegExp; severity: 'high' | 'medium' }
   { pattern: /你的(系统|初始)(提示|指令)是什么/i, severity: 'medium' },
 
   // Role-playing manipulation
-  { pattern: /you\s+are\s+now\s+(a|an|my)\s+/i, severity: 'medium' },
-  { pattern: /pretend\s+(to\s+be|you\s*(?:are|'re))\s+/i, severity: 'medium' },
-  { pattern: /act\s+as\s+(a|an)\s+/i, severity: 'medium' },
+  { pattern: /you\s+are\s+now\s+(a|an|my)\s+(?!greenhouse)/i, severity: 'medium' },
+  { pattern: /pretend\s+(to\s+be|you\s*(?:are|'re))\s+(?!a\s+(?:plant|garden|hydroponic))/i, severity: 'medium' },
+  { pattern: /act\s+as\s+(?!a\s+(?:plant|garden|hydroponic))/i, severity: 'medium' },
 
   // Tool manipulation
-  { pattern: /call\s+(the\s+)?\w+\s+tool\b/i, severity: 'medium' },
+  { pattern: /call\s+(the\s+)?update_page\s+tool/i, severity: 'medium' },
   { pattern: /execute\s+(the\s+)?tool\s+(call|named)/i, severity: 'medium' },
 ];
 
@@ -416,7 +412,3 @@ export function validateMagicBytes(buffer: Buffer, claimedType: string): boolean
 
   return true;
 }
-
-// ─── Export for testing ──────────────────────────────────
-
-export { InMemoryRateLimiter };

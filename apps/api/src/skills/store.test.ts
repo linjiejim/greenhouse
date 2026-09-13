@@ -49,7 +49,7 @@ describe('resolveSkillStoreFromEnv', () => {
   it('selects S3 when the four required vars are present', () => {
     const store = resolveSkillStoreFromEnv({
       SKILLS_S3_ENDPOINT: 'http://127.0.0.1:9000',
-      SKILLS_S3_BUCKET: 'greenhouse',
+      SKILLS_S3_BUCKET: 'example-bucket',
       SKILLS_S3_ACCESS_KEY_ID: 'ak',
       SKILLS_S3_SECRET_ACCESS_KEY: 'sk',
     });
@@ -58,7 +58,7 @@ describe('resolveSkillStoreFromEnv', () => {
 
   it('fails loud on partial S3 config instead of silently falling back', () => {
     expect(() =>
-      resolveSkillStoreFromEnv({ SKILLS_S3_ENDPOINT: 'http://127.0.0.1:9000', SKILLS_S3_BUCKET: 'greenhouse' }),
+      resolveSkillStoreFromEnv({ SKILLS_S3_ENDPOINT: 'http://127.0.0.1:9000', SKILLS_S3_BUCKET: 'example-bucket' }),
     ).toThrow(/partial SKILLS_S3_\* config.*SKILLS_S3_ACCESS_KEY_ID/s);
   });
 });

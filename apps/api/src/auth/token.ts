@@ -14,13 +14,14 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 export type UserRole = 'super' | 'team' | 'external';
 
 export interface TokenPayload {
-  uid: string; // user UUID or 'external'
+  uid: string; // user UUID
   role: UserRole;
+  authVersion: number; // credential generation; must match users.auth_version
   exp: number; // expiry timestamp (seconds)
 }
 
 export interface AuthUser {
-  id: string; // user UUID or 'external'
+  id: string; // user UUID
   role: UserRole;
   nickname?: string;
 }
@@ -35,58 +36,51 @@ export { ACCESS_TOKEN_TTL, REFRESH_TOKEN_TTL };
 // ─── Signing Key ─────────────────────────────────────────
 
 /**
- * Get the access password (used for external user login).
- */
-function getAccessPassword(): string {
-  const secret = process.env.ACCESS_PASSWORD;
-  if (!secret) throw new Error('ACCESS_PASSWORD env var is required');
-  return secret;
-}
-
-/**
  * Get the token signing key.
  *
  * TOKEN_SIGNING_KEY is mandatory — there is deliberately NO fallback.
- * ACCESS_PASSWORD is handed to external guests, so any key derived from it
- * would let a guest forge arbitrary tokens (including role=super) offline.
+ * Keep it independent from the interactive login password so rotating either
+ * secret does not silently change the other security boundary.
  */
+export function isValidTokenSigningKey(value: string | undefined): value is string {
+  return typeof value === 'string' && /^[0-9a-fA-F]{64}$/.test(value);
+}
+
 function getSigningKey(): string {
   const dedicated = process.env.TOKEN_SIGNING_KEY;
-  if (!dedicated) {
+  if (!isValidTokenSigningKey(dedicated)) {
     throw new Error(
-      'TOKEN_SIGNING_KEY env var is required. Generate one with: openssl rand -hex 32 ' +
-        '(it must be an independent random value, never derived from ACCESS_PASSWORD).',
+      'TOKEN_SIGNING_KEY must be exactly 64 hexadecimal characters (32 bytes). ' +
+        'Generate one with: openssl rand -hex 32.',
     );
   }
   return dedicated;
 }
 
 /**
- * Fail fast at startup when the server would otherwise come up with
- * authentication DISABLED. Called once from main() before the server binds.
- *
- * When ACCESS_PASSWORD is unset, authMiddleware treats EVERY request as a
- * super-user — on any shared or internet-exposed host that is a full auth
- * bypass. So the server FAILS CLOSED: ACCESS_PASSWORD is mandatory everywhere
- * (local, dev, prod) and the server refuses to start without it. When a password
- * is set, a dedicated TOKEN_SIGNING_KEY is also mandatory (no fallback).
+ * Fail fast when required authentication secrets are absent. Called once from
+ * main() before the server binds. There is no middleware bypass when the key is
+ * absent; this guard provides an earlier, clearer startup failure. A dedicated
+ * TOKEN_SIGNING_KEY is mandatory everywhere (local, dev, prod), with no fallback.
  *
  * The guard deliberately does NOT depend on NODE_ENV: a deploy that forgets
  * NODE_ENV=production still cannot boot wide-open.
  */
 export function assertAuthEnv(): void {
-  if (!process.env.ACCESS_PASSWORD) {
-    throw new Error(
-      'Refusing to start: ACCESS_PASSWORD is not set, so authentication would be DISABLED ' +
-        'and every request would be granted super-user access. Set ACCESS_PASSWORD and ' +
-        'TOKEN_SIGNING_KEY (required in every environment — local, dev, and production).',
-    );
-  }
-  getSigningKey(); // auth enabled ⇒ dedicated signing key is mandatory
+  getSigningKey();
 }
 
 function hmac(data: string, purpose: string): string {
   return createHmac('sha256', `${getSigningKey()}:${purpose}`).update(data).digest('hex');
+}
+
+/**
+ * Purpose-scoped HMAC over the shared signing key, for sibling token modules
+ * (e.g. auth/task-token.ts). Distinct purposes make token families mutually
+ * unverifiable — a cloud-agent task token can never pass as an access token.
+ */
+export function hmacSign(data: string, purpose: string): string {
+  return hmac(data, purpose);
 }
 
 // ─── Access Token ────────────────────────────────────────
@@ -94,10 +88,14 @@ function hmac(data: string, purpose: string): string {
 /**
  * Create a signed access token carrying user identity.
  */
-export function createAccessToken(uid: string, role: UserRole): string {
+export function createAccessToken(uid: string, role: UserRole, authVersion: number): string {
+  if (!Number.isInteger(authVersion) || authVersion < 0) {
+    throw new Error('authVersion must be a non-negative integer');
+  }
   const payload: TokenPayload = {
     uid,
     role,
+    authVersion,
     exp: Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL,
   };
   const payloadStr = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -114,15 +112,20 @@ export function validateAccessToken(token: string): TokenPayload | null {
   if (parts.length !== 2) return null;
 
   const [payloadStr, sig] = parts;
+  if (!/^[0-9a-f]{64}$/i.test(sig)) return null;
   const expectedSig = hmac(payloadStr, 'access');
 
-  if (sig.length !== expectedSig.length) return null;
-  if (!timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return null;
+  if (!timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expectedSig, 'hex'))) return null;
 
   try {
-    const payload = JSON.parse(Buffer.from(payloadStr, 'base64url').toString()) as TokenPayload;
+    const payload = JSON.parse(Buffer.from(payloadStr, 'base64url').toString()) as Partial<TokenPayload>;
+    if (typeof payload.uid !== 'string' || payload.uid.length === 0) return null;
+    if (payload.role !== 'super' && payload.role !== 'team' && payload.role !== 'external') return null;
+    if (typeof payload.authVersion !== 'number' || !Number.isInteger(payload.authVersion) || payload.authVersion < 0)
+      return null;
+    if (typeof payload.exp !== 'number' || !Number.isInteger(payload.exp)) return null;
     if (payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return payload;
+    return payload as TokenPayload;
   } catch {
     return null;
   }
@@ -145,78 +148,4 @@ export function createRefreshToken(): { raw: string; hash: string; expiresAt: st
  */
 export function hashRefreshToken(raw: string): string {
   return createHmac('sha256', `${getSigningKey()}:refresh`).update(raw).digest('hex');
-}
-
-// ─── Legacy Token (transition only) ─────────────────────
-
-/**
- * Validate old-format tokens during transition period.
- * Format: "<expiry_hex>.<hmac>"
- * Returns true if the token is valid AND not expired.
- */
-export function validateLegacyToken(token: string): boolean {
-  try {
-    const key = getSigningKey();
-    const parts = token.split('.');
-    if (parts.length !== 2) return false;
-
-    const [expiryHex, sig] = parts;
-    const expectedSig = createHmac('sha256', key).update(expiryHex).digest('hex');
-
-    if (sig.length !== expectedSig.length) return false;
-    if (!timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return false;
-
-    const expiresAt = parseInt(expiryHex, 16);
-    if (isNaN(expiresAt) || expiresAt < Math.floor(Date.now() / 1000)) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// ─── External User Password ─────────────────────────────
-
-/**
- * Check if a password matches the ACCESS_PASSWORD (for external user login).
- * Uses timing-safe comparison to prevent timing side-channel attacks.
- */
-export function verifyExternalPassword(password: string): boolean {
-  try {
-    const secret = getAccessPassword();
-    const a = Buffer.from(password);
-    const b = Buffer.from(secret);
-    if (a.length !== b.length) {
-      // Perform a dummy comparison to avoid leaking length info via timing
-      timingSafeEqual(b, b);
-      return false;
-    }
-    return timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if auth is enabled (ACCESS_PASSWORD is set).
- */
-/**
- * Check if auth is enabled (ACCESS_PASSWORD is set).
- * In production (NODE_ENV=production), ACCESS_PASSWORD is mandatory.
- */
-export function isAuthEnabled(): boolean {
-  const hasPassword = !!process.env.ACCESS_PASSWORD;
-  if (!hasPassword && process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'ACCESS_PASSWORD must be set in production. ' + 'Set ACCESS_PASSWORD env var or run in development mode.',
-    );
-  }
-  return hasPassword;
-}
-
-/**
- * Create a short-lived internal access token for CLI / server self-calls.
- * Uses 'super' role since these are trusted internal callers.
- */
-export function createInternalToken(): string {
-  return createAccessToken('internal', 'super');
 }

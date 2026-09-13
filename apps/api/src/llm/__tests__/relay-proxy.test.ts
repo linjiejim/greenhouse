@@ -3,9 +3,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { LlmGatewayModelRow } from '@greenhouse/db';
+import type { ModelEntry } from '@greenhouse/agent-core';
 import {
   resolveModelSubset,
+  resolveRelayModel,
   parseAllowedModels,
   isPassthroughKind,
   upstreamChatUrl,
@@ -14,42 +15,120 @@ import {
   extractUsageFromJson,
   extractUsageFromSseChunk,
   toModelsListResponse,
+  buildRelayBudgetAttempt,
+  applyRelayOutputLimit,
+  type RelayModel,
 } from '../relay-proxy.js';
 
-function model(over: Partial<LlmGatewayModelRow>): LlmGatewayModelRow {
-  return {
-    id: over.id ?? 'm1',
-    public_id: over.public_id ?? 'claude-sonnet',
-    display_name: over.display_name ?? 'Claude Sonnet',
-    upstream_id: over.upstream_id ?? 'u1',
-    upstream_model: over.upstream_model ?? 'claude-sonnet-4-5',
-    enabled: over.enabled ?? true,
-    is_default: over.is_default ?? false,
-    is_public: over.is_public ?? true,
-    sort_order: over.sort_order ?? 0,
-    created_at: over.created_at ?? '2026-01-01T00:00:00.000Z',
-    updated_at: over.updated_at ?? '2026-01-01T00:00:00.000Z',
-  };
-}
+describe('relay budget attempt identity', () => {
+  it('keeps the client idempotency key as metadata while every provider attempt stays unique', () => {
+    const first = buildRelayBudgetAttempt('client-1', 'business-operation-7', 'server-attempt-a');
+    const replay = buildRelayBudgetAttempt('client-1', 'business-operation-7', 'server-attempt-b');
+
+    expect(first.idempotencyKey).toBe('relay:client-1:server-attempt-a');
+    expect(replay.idempotencyKey).toBe('relay:client-1:server-attempt-b');
+    expect(first.idempotencyKey).not.toContain('business-operation-7');
+    expect(first.metadata).toEqual({ client_idempotency_key: 'business-operation-7' });
+    expect(replay.metadata).toEqual(first.metadata);
+  });
+});
 
 describe('resolveModelSubset', () => {
-  const models = [
-    model({ id: 'a', public_id: 'pub-a', is_public: true }),
-    model({ id: 'b', public_id: 'pub-b', is_public: false }),
-    model({ id: 'c', public_id: 'pub-c', is_public: true }),
-  ];
+  const catalog = ['a', 'b', 'c'];
+  const publicIds = ['a', 'c'];
 
-  it('falls back to the public subset when no allowlist', () => {
-    expect(resolveModelSubset(null, models).map((m) => m.public_id)).toEqual(['pub-a', 'pub-c']);
-    expect(resolveModelSubset([], models).map((m) => m.public_id)).toEqual(['pub-a', 'pub-c']);
+  it('falls back to the config public subset when the key has no allowlist', () => {
+    expect(resolveModelSubset(null, catalog, publicIds)).toEqual(['a', 'c']);
+    expect(resolveModelSubset([], catalog, publicIds)).toEqual(['a', 'c']);
   });
 
-  it('restricts to the explicit allowlist (including non-public models)', () => {
-    expect(resolveModelSubset(['pub-b'], models).map((m) => m.public_id)).toEqual(['pub-b']);
+  it('restricts to the explicit allowlist (including models outside the public subset)', () => {
+    expect(resolveModelSubset(['b'], catalog, publicIds)).toEqual(['b']);
   });
 
-  it('ignores allowlist entries that are not enabled/known', () => {
-    expect(resolveModelSubset(['pub-a', 'ghost'], models).map((m) => m.public_id)).toEqual(['pub-a']);
+  it('ignores allowlist entries that are not in the catalog', () => {
+    expect(resolveModelSubset(['a', 'ghost'], catalog, publicIds)).toEqual(['a']);
+  });
+});
+
+describe('resolveRelayModel', () => {
+  const entry: ModelEntry = {
+    name: 'Flash',
+    providers: [
+      { provider: 'deepseek', model: 'v4-flash', apiKeyEnv: 'PRIMARY_KEY' },
+      { provider: 'openai-compatible', model: 'alt', apiKeyEnv: 'FALLBACK_KEY', baseUrl: 'https://alt/v1' },
+    ],
+  };
+
+  it('picks the first provider whose key env is set', () => {
+    const resolved = resolveRelayModel('flash', entry, { PRIMARY_KEY: 'k1', FALLBACK_KEY: 'k2' } as NodeJS.ProcessEnv);
+    expect(resolved).toMatchObject({
+      id: 'flash',
+      provider: 'deepseek',
+      upstreamModel: 'v4-flash',
+      apiKey: 'k1',
+      scopeId: 'PRIMARY_KEY:deepseek:default',
+    });
+  });
+
+  it('falls through to the next provider when the primary key is missing', () => {
+    const resolved = resolveRelayModel('flash', entry, { FALLBACK_KEY: 'k2' } as NodeJS.ProcessEnv);
+    expect(resolved).toMatchObject({ provider: 'openai-compatible', baseUrl: 'https://alt/v1', apiKey: 'k2' });
+  });
+
+  it('returns null when no provider in the chain has a key — never a half-configured upstream', () => {
+    expect(resolveRelayModel('flash', entry, {} as NodeJS.ProcessEnv)).toBeNull();
+  });
+
+  it('skips providers whose protocol the relay cannot passthrough', () => {
+    const exotic: ModelEntry = { name: 'X', providers: [{ provider: 'bedrock', model: 'm', apiKeyEnv: 'K' }] };
+    expect(resolveRelayModel('x', exotic, { K: 'k' } as NodeJS.ProcessEnv)).toBeNull();
+  });
+
+  it('defaults the deepseek base URL like the agent runtime does', () => {
+    const only: ModelEntry = { name: 'D', providers: [{ provider: 'deepseek', model: 'm', apiKeyEnv: 'K' }] };
+    expect(resolveRelayModel('d', only, { K: 'k' } as NodeJS.ProcessEnv)?.baseUrl).toBe('https://api.deepseek.com');
+  });
+
+  it('defaults the kimi base URL to the coding-plan endpoint, overridable by env', () => {
+    const kimi: ModelEntry = { name: 'K3', providers: [{ provider: 'kimi', model: 'k3', apiKeyEnv: 'KIMI_API_KEY' }] };
+    expect(resolveRelayModel('kimi-k3', kimi, { KIMI_API_KEY: 'k' } as NodeJS.ProcessEnv)).toMatchObject({
+      provider: 'kimi',
+      upstreamModel: 'k3',
+      baseUrl: 'https://api.kimi.com/coding/v1',
+    });
+    expect(
+      resolveRelayModel('kimi-k3', kimi, {
+        KIMI_API_KEY: 'k',
+        KIMI_BASE_URL: 'https://api.moonshot.ai/v1',
+      } as NodeJS.ProcessEnv)?.baseUrl,
+    ).toBe('https://api.moonshot.ai/v1');
+  });
+
+  it('defaults the minimax base URL to the CN coding-plan endpoint, overridable by env', () => {
+    const minimax: ModelEntry = {
+      name: 'M3',
+      providers: [{ provider: 'minimax', model: 'MiniMax-M3', apiKeyEnv: 'MINIMAX_API_KEY' }],
+    };
+    expect(resolveRelayModel('minimax-m3', minimax, { MINIMAX_API_KEY: 'k' } as NodeJS.ProcessEnv)).toMatchObject({
+      provider: 'minimax',
+      upstreamModel: 'MiniMax-M3',
+      baseUrl: 'https://api.minimaxi.com/v1',
+    });
+    expect(
+      resolveRelayModel('minimax-m3', minimax, {
+        MINIMAX_API_KEY: 'k',
+        MINIMAX_BASE_URL: 'https://api.minimax.io/v1',
+      } as NodeJS.ProcessEnv)?.baseUrl,
+    ).toBe('https://api.minimax.io/v1');
+  });
+
+  it('never leaks a key for an openai-compatible provider with no base URL', () => {
+    const broken: ModelEntry = {
+      name: 'B',
+      providers: [{ provider: 'openai-compatible', model: 'm', apiKeyEnv: 'K' }],
+    };
+    expect(resolveRelayModel('b', broken, { K: 'k' } as NodeJS.ProcessEnv)).toBeNull();
   });
 });
 
@@ -66,10 +145,12 @@ describe('parseAllowedModels', () => {
 });
 
 describe('isPassthroughKind', () => {
-  it('passes OpenAI-family kinds, not Anthropic', () => {
+  it('passes OpenAI-family kinds only', () => {
     expect(isPassthroughKind('openai')).toBe(true);
     expect(isPassthroughKind('deepseek')).toBe(true);
     expect(isPassthroughKind('openai-compatible')).toBe(true);
+    expect(isPassthroughKind('kimi')).toBe(true);
+    expect(isPassthroughKind('minimax')).toBe(true);
     expect(isPassthroughKind('anthropic')).toBe(false);
   });
 });
@@ -82,29 +163,60 @@ describe('upstreamChatUrl', () => {
 });
 
 describe('upstreamHeaders', () => {
-  it('uses Bearer auth for all passthrough kinds (OpenAI wire format)', () => {
+  it('uses Bearer auth for OpenAI-family', () => {
     expect(upstreamHeaders('openai', 'sk-x')).toMatchObject({ authorization: 'Bearer sk-x' });
-    expect(upstreamHeaders('deepseek', 'sk-x')).toMatchObject({ authorization: 'Bearer sk-x' });
-    expect(upstreamHeaders('openai-compatible', 'sk-x')).toMatchObject({ authorization: 'Bearer sk-x' });
+  });
+  it('rejects unsupported protocol kinds instead of advertising a partial implementation', () => {
+    expect(() => upstreamHeaders('anthropic', 'sk-x')).toThrow(/Unsupported upstream protocol/);
   });
 });
 
 describe('buildUpstreamBody', () => {
   it('rewrites the model id', () => {
-    const out = buildUpstreamBody({ model: 'claude-sonnet', messages: [] }, 'claude-sonnet-4-5');
+    const out = buildUpstreamBody({ model: 'claude-sonnet', messages: [] }, 'claude-sonnet-4-5', 'openai-compatible');
     expect(out.model).toBe('claude-sonnet-4-5');
   });
 
   it('forces include_usage on streaming requests only', () => {
-    const streamed = buildUpstreamBody({ model: 'x', stream: true }, 'real');
+    const streamed = buildUpstreamBody({ model: 'x', stream: true }, 'real', 'deepseek');
     expect(streamed.stream_options).toEqual({ include_usage: true });
-    const nonStream = buildUpstreamBody({ model: 'x' }, 'real');
+    const nonStream = buildUpstreamBody({ model: 'x' }, 'real', 'deepseek');
     expect(nonStream.stream_options).toBeUndefined();
   });
 
   it('preserves caller stream_options while adding include_usage', () => {
-    const out = buildUpstreamBody({ model: 'x', stream: true, stream_options: { foo: 1 } }, 'real');
+    const out = buildUpstreamBody({ model: 'x', stream: true, stream_options: { foo: 1 } }, 'real', 'deepseek');
     expect(out.stream_options).toEqual({ foo: 1, include_usage: true });
+  });
+
+  it('drops the sampling params Kimi hard-rejects, and only for Kimi', () => {
+    const sent = { model: 'kimi-k3', temperature: 0.4, top_p: 0.9, frequency_penalty: 0.5, presence_penalty: 0.5 };
+    const kimi = buildUpstreamBody(sent, 'k3', 'kimi');
+    expect(kimi).toEqual({ model: 'k3' });
+
+    // Every other upstream keeps the caller's sampling params untouched.
+    expect(buildUpstreamBody(sent, 'deepseek-v4-pro', 'deepseek')).toMatchObject({ temperature: 0.4, top_p: 0.9 });
+    // MiniMax accepts arbitrary sampling values (verified live) — no stripping.
+    expect(buildUpstreamBody(sent, 'MiniMax-M3', 'minimax')).toMatchObject({ temperature: 0.4, top_p: 0.9 });
+  });
+});
+
+describe('applyRelayOutputLimit', () => {
+  it('materializes the catalog cap when omitted and preserves a lower client cap', () => {
+    expect(applyRelayOutputLimit({ messages: [] }, 4096)).toEqual({
+      body: { messages: [], max_tokens: 4096 },
+      outputTokenLimit: 4096,
+    });
+    expect(applyRelayOutputLimit({ messages: [], max_tokens: 512 }, 4096)).toEqual({
+      body: { messages: [], max_tokens: 512 },
+      outputTokenLimit: 512,
+    });
+  });
+
+  it('rejects invalid, ambiguous, or above-catalog output limits', () => {
+    expect(() => applyRelayOutputLimit({ max_tokens: 0 }, 4096)).toThrow(/positive integer/);
+    expect(() => applyRelayOutputLimit({ max_tokens: 5000 }, 4096)).toThrow(/model maximum/);
+    expect(() => applyRelayOutputLimit({ max_tokens: 1, max_completion_tokens: 1 }, 4096)).toThrow(/either/);
   });
 });
 
@@ -131,9 +243,25 @@ describe('usage extraction', () => {
 });
 
 describe('toModelsListResponse', () => {
+  const relayModel: RelayModel = {
+    id: 'flash',
+    displayName: 'Flash',
+    provider: 'deepseek',
+    upstreamModel: 'v4-flash',
+    baseUrl: 'https://api.deepseek.com',
+    apiKey: 'secret-key',
+    scopeId: 'PRIMARY_KEY:deepseek:default',
+  };
+
   it('shapes an OpenAI-compatible models list', () => {
-    const res = toModelsListResponse([model({ public_id: 'pub-a', display_name: 'A' })]);
+    const res = toModelsListResponse([relayModel]);
     expect(res.object).toBe('list');
-    expect(res.data[0]).toMatchObject({ id: 'pub-a', object: 'model', owned_by: 'greenhouse-gateway' });
+    expect(res.data[0]).toMatchObject({ id: 'flash', display_name: 'Flash', object: 'model' });
+  });
+
+  it('never exposes the upstream key or endpoint to the client', () => {
+    const serialized = JSON.stringify(toModelsListResponse([relayModel]));
+    expect(serialized).not.toContain('secret-key');
+    expect(serialized).not.toContain('api.deepseek.com');
   });
 });

@@ -5,7 +5,7 @@
  * GET    /api/shares/count        — 获取未读分享数
  * POST   /api/shares              — 分享会话给指定用户/团队
  * PATCH  /api/shares/:id/read     — 标记单条已读
- * POST   /api/shares/read-session — 标记某会话的所有分享已读
+ * POST   /api/shares/read-session — 标记某会话的所有分享已读（幂等，无分享也返回 200）
  * POST   /api/shares/read-all     — 标记当前用户所有分享已读
  */
 
@@ -19,7 +19,6 @@ const shares = new Hono<AppEnv>()
   /** GET /api/shares — list shares for current user */
   .get('/', async (c) => {
     const user = getAuthUser(c);
-    if (user.role === 'external') return c.json({ error: 'Forbidden' }, 403);
 
     const limit = parseInt(c.req.query('limit') ?? '50', 10);
     const offset = parseInt(c.req.query('offset') ?? '0', 10);
@@ -35,8 +34,6 @@ const shares = new Hono<AppEnv>()
           ...s,
           session_title: session?.title || 'Untitled',
           shared_by_nickname: sharer?.nickname || 'Unknown',
-          // Use per-user read_at for correctness
-          read_at: s.user_read_at ?? null,
         };
       }),
     );
@@ -46,7 +43,6 @@ const shares = new Hono<AppEnv>()
   /** GET /api/shares/count — unread share count */
   .get('/count', async (c) => {
     const user = getAuthUser(c);
-    if (user.role === 'external') return c.json({ error: 'Forbidden' }, 403);
 
     const count = await getDb().sessionShares.countUnread(user.id);
     return c.json({ count });
@@ -54,7 +50,6 @@ const shares = new Hono<AppEnv>()
   /** POST /api/shares — share a session with users/team */
   .post('/', async (c) => {
     const user = getAuthUser(c);
-    if (user.role === 'external') return c.json({ error: 'Forbidden' }, 403);
 
     const body = (await c.req.json()) as {
       session_id?: string;
@@ -113,7 +108,7 @@ const shares = new Hono<AppEnv>()
       // Notify all connected internal users (except the sharer)
       const allUsers = await getDb().users.list();
       for (const u of allUsers) {
-        if (u.id === user.id || u.status !== 'active') continue;
+        if (u.id === user.id || u.status !== 'active' || (u.role !== 'team' && u.role !== 'super')) continue;
         connectionManager.sendToUser(u.id, {
           type: 'share:new',
           shareId: 0,
@@ -146,12 +141,12 @@ const shares = new Hono<AppEnv>()
   /** PATCH /api/shares/:id/read — mark one share as read */
   .patch('/:id/read', async (c) => {
     const user = getAuthUser(c);
-    if (user.role === 'external') return c.json({ error: 'Forbidden' }, 403);
 
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
 
-    await getDb().sessionShares.markReadForUser(id, user.id);
+    const marked = await getDb().sessionShares.markReadForUser(id, user.id);
+    if (!marked) return c.json({ error: 'Share not found' }, 404);
 
     // Push updated unread count via WebSocket
     pushShareCount(user.id);
@@ -161,12 +156,16 @@ const shares = new Hono<AppEnv>()
   /** POST /api/shares/read-session — mark all shares in a session as read */
   .post('/read-session', async (c) => {
     const user = getAuthUser(c);
-    if (user.role === 'external') return c.json({ error: 'Forbidden' }, 403);
 
     const body = (await c.req.json()) as { session_id?: string };
     if (!body.session_id) return c.json({ error: 'session_id required' }, 400);
 
-    await getDb().sessionShares.markAllReadInSession(user.id, body.session_id);
+    // Idempotent by nature: the web client fires this on every session open, so
+    // "this session has nothing shared with you" is the ordinary case, not an
+    // error. Returning 404 for it printed a red console line on every open of a
+    // non-shared session and taught readers to ignore real failures here.
+    const marked = await getDb().sessionShares.markAllReadInSession(user.id, body.session_id);
+    if (!marked) return c.json({ ok: true });
 
     // Push updated unread count via WebSocket
     pushShareCount(user.id);
@@ -176,7 +175,6 @@ const shares = new Hono<AppEnv>()
   /** POST /api/shares/read-all — mark all of the current user's shares as read */
   .post('/read-all', async (c) => {
     const user = getAuthUser(c);
-    if (user.role === 'external') return c.json({ error: 'Forbidden' }, 403);
 
     await getDb().sessionShares.markAllRead(user.id);
 

@@ -19,7 +19,7 @@
  * supported docker-compose deploy; multi-node needs a restart (see spec).
  *
  * Secrets are stored AES-256-GCM-encrypted (auth/crypto.ts, same
- * PROVIDER_TOKEN_ENCRYPTION_KEY path as llm_upstreams) and are never returned
+ * PROVIDER_TOKEN_ENCRYPTION_KEY path as provider tokens) and are never returned
  * by the admin read API (has_value/source only).
  */
 
@@ -35,11 +35,11 @@ import {
   type WorkspaceBootstrap,
   type ThemeTokens,
 } from '@greenhouse/types/workspace-settings';
-import { avatarConfigSchema } from '@greenhouse/types/profile-manifest';
 import { getDb, isDbInitialized } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { decryptToken } from '../auth/crypto.js';
+import { reloadModelCatalog } from '../config/models.js';
 
 // ─── State ───────────────────────────────────────────────
 
@@ -141,6 +141,9 @@ export async function applyWorkspaceEnvOverlay(): Promise<void> {
 export async function refreshWorkspaceConfig(): Promise<void> {
   invalidateWorkspaceConfigCache();
   await applyWorkspaceEnvOverlay();
+  // The model catalog resolves `model_env` / `base_url_env` at parse time, so a
+  // changed LLM_* value only takes effect once the catalog is re-read.
+  reloadModelCatalog();
 }
 
 // ─── Validation (write path) ─────────────────────────────
@@ -189,11 +192,6 @@ export function validateWorkspaceValue(def: WorkspaceSettingDef, raw: unknown): 
     if (!tokens) return { ok: false, error: 'branding.theme_tokens has no valid token entries' };
     return { ok: true, value: tokens };
   }
-  if (def.key === 'branding.team_avatar') {
-    const parsed = avatarConfigSchema.safeParse(raw);
-    if (!parsed.success) return { ok: false, error: `branding.team_avatar: ${parsed.error.issues[0]?.message}` };
-    return { ok: true, value: parsed.data };
-  }
   if (!raw || typeof raw !== 'object') return { ok: false, error: `${def.key} must be a JSON object` };
   return { ok: true, value: raw };
 }
@@ -231,17 +229,15 @@ export async function getWorkspaceBootstrap(): Promise<WorkspaceBootstrap> {
     const productName = (await getWorkspaceValue('branding.product_name')) as string | undefined;
     const logo = (await getWorkspaceValue('branding.logo')) as string | undefined;
     const tokens = await getWorkspaceValue('branding.theme_tokens');
-    const avatar = await getWorkspaceValue('branding.team_avatar');
     return {
       product_name: productName || null,
       logo: logo || null,
       // Sanitize on the way out too — a tampered DB row must not be able to
-      // break out of the <style> block the web injects.
+      // break out of the variables the web applies.
       theme_tokens: (tokens ? sanitizeThemeTokens(tokens) : null) as ThemeTokens | null,
-      team_avatar: avatar ? (avatarConfigSchema.safeParse(avatar).data ?? null) : null,
     };
   } catch (err) {
     logger.warn(`[WorkspaceConfig] bootstrap fell back to defaults: ${toErrorMessage(err)}`);
-    return { product_name: null, logo: null, theme_tokens: null, team_avatar: null };
+    return { product_name: null, logo: null, theme_tokens: null };
   }
 }

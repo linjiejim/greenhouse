@@ -16,6 +16,7 @@
 
 import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
+import { isUniqueViolation } from '@greenhouse/utils/error';
 import { getAuthUser } from '../auth/middleware.js';
 import type { AppEnv } from '../app-env.js';
 
@@ -56,10 +57,8 @@ const sessionGroupRoutes = new Hono<AppEnv>()
         sort_order: customCount, // append after existing folders
       });
       return c.json(group, 201);
-    } catch (err: any) {
-      // drizzle wraps the PG error: the 23505 code lives on err.cause.
-      const code = err?.code ?? err?.cause?.code;
-      if (code === '23505' || err?.cause?.message?.includes('unique') || err?.message?.includes('unique')) {
+    } catch (err) {
+      if (isUniqueViolation(err)) {
         return c.json({ error: 'Group name already exists' }, 409);
       }
       throw err;
@@ -131,10 +130,8 @@ const sessionGroupRoutes = new Hono<AppEnv>()
       const group = await getDb().sessionGroups.update(id, updates);
       if (!group) return c.json({ error: 'Group not found' }, 404);
       return c.json(group);
-    } catch (err: any) {
-      // drizzle wraps the PG error: the 23505 code lives on err.cause.
-      const code = err?.code ?? err?.cause?.code;
-      if (code === '23505' || err?.cause?.message?.includes('unique') || err?.message?.includes('unique')) {
+    } catch (err) {
+      if (isUniqueViolation(err)) {
         return c.json({ error: 'Group name already exists' }, 409);
       }
       throw err;

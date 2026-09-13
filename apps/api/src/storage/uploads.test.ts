@@ -1,49 +1,69 @@
-import { describe, it, expect } from 'vitest';
-import { makeExpiringId, expiryOf, isExpired, isInlineId, contentTypeForId } from './uploads.js';
+import { describe, expect, it } from 'vitest';
 
-describe('expiring ids', () => {
-  it('mints ids of the form exp_<epochSec>_<uuid8>.<ext>', () => {
-    const id = makeExpiringId('xlsx', 1000, 5000);
-    expect(id).toMatch(/^exp_\d+_[0-9a-f]{8}\.xlsx$/);
+import { getUpload, isValidUploadId, normalizeKeyPrefix } from './uploads.js';
+
+describe('upload storage boundary', () => {
+  it.each([
+    '1784639633034-4f8974b9.jpg',
+    'gen-1784639629506-b776711a.png',
+    '1784639633034-32fd7fa6-01a2-4bdd-9733-737e835da203.webp',
+    'gen-1784639629506-32fd7fa6-01a2-4bdd-9733-737e835da203.png',
+  ])('accepts server-generated upload ID %s', (id) => {
+    expect(isValidUploadId(id)).toBe(true);
   });
 
-  it('normalizes a leading-dot extension and lowercases it', () => {
-    expect(makeExpiringId('.CSV', 1000, 0)).toMatch(/\.csv$/);
-  });
+  it.each(['1715000000000-deadbeef.jfif', '1715000000000-deadbeef.php'])(
+    'keeps legacy flat upload ID %s readable',
+    (id) => {
+      expect(isValidUploadId(id)).toBe(true);
+    },
+  );
 
-  it('round-trips the deadline through expiryOf (seconds precision)', () => {
-    const now = 5000;
-    const id = makeExpiringId('csv', 1000, now); // floor((5000+1000)/1000)*1000 = 6000
-    expect(expiryOf(id)).toBe(6000);
-  });
-
-  it('returns null for ids without an expiry marker', () => {
-    expect(expiryOf('gen-123-abcdef12.png')).toBeNull();
-    expect(expiryOf('1715-abcd.jpg')).toBeNull();
-  });
-
-  it('isExpired is true only past the deadline, and never for plain ids', () => {
-    const id = makeExpiringId('csv', 1000, 5000); // deadline 6000ms
-    expect(isExpired(id, 5999)).toBe(false);
-    expect(isExpired(id, 6001)).toBe(true);
-    expect(isExpired('gen-123-abcdef12.png', 9_999_999_999)).toBe(false);
+  it.each([
+    '../../.env',
+    '/etc/passwd',
+    '..\\..\\.env',
+    'image.png',
+    '1784639633034-nothex.png',
+    '1784639633034-32fd7fa6-01a2-4bdd-9733-737e835da203.svg',
+    '1784639633034-4f8974b9.jpg?token=x',
+  ])('rejects attacker-controlled upload ID %s', async (id) => {
+    expect(isValidUploadId(id)).toBe(false);
+    await expect(getUpload(id)).rejects.toThrow('Invalid upload ID');
   });
 });
 
-describe('content types & disposition', () => {
-  it('maps export extensions to their MIME types', () => {
-    expect(contentTypeForId('exp_1_abcdef12.csv')).toBe('text/csv; charset=utf-8');
-    expect(contentTypeForId('exp_1_abcdef12.xlsx')).toBe(
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
-    expect(contentTypeForId('x.png')).toBe('image/png');
-    expect(contentTypeForId('x.bin')).toBe('application/octet-stream');
+describe('object-key prefix from the environment', () => {
+  it('falls back when unset or blank', () => {
+    expect(normalizeKeyPrefix(undefined, 'X', 'uploads/')).toBe('uploads/');
+    expect(normalizeKeyPrefix('   ', 'X', 'uploads/')).toBe('uploads/');
   });
 
-  it('treats images and pdf as inline, exports as attachments', () => {
-    expect(isInlineId('x.png')).toBe(true);
-    expect(isInlineId('x.pdf')).toBe(true);
-    expect(isInlineId('exp_1_abcdef12.csv')).toBe(false);
-    expect(isInlineId('exp_1_abcdef12.xlsx')).toBe(false);
+  it.each([
+    ['uploads/', 'uploads/'],
+    ['uploads', 'uploads/'], // missing trailing slash is a harmless typo — normalise it
+    ['  drive/  ', 'drive/'],
+    ['drive/crm', 'drive/crm/'],
+    ['my-bucket_v2.1/', 'my-bucket_v2.1/'],
+  ])('normalises %s to %s', (raw, expected) => {
+    expect(normalizeKeyPrefix(raw, 'X', 'uploads/')).toBe(expected);
+  });
+
+  // Regression: a .env line that lost its newline glued the NEXT assignment onto this
+  // value, producing a real prefix of `uploads/TOKEN_SIGNING_KEY=<hex>`. That filed
+  // every chat upload under a junk path for six weeks and printed the swallowed value
+  // into the startup log. It must fail at boot, not be accepted silently.
+  it.each([
+    // Shape of the real incident, with an all-zero stand-in — never paste an actual
+    // key-shaped value into a fixture, the secret scanner rightly rejects it.
+    `uploads/TOKEN_SIGNING_KEY=${'0'.repeat(64)}`,
+    'uploads/ SOME_OTHER=value',
+    'uploads/\nTOKEN=abc',
+    '../escape/',
+    '/absolute/',
+  ])('refuses malformed prefix %j', (raw) => {
+    expect(() => normalizeKeyPrefix(raw, 'TENCENT_CLOUD_COS_PREFIX', 'uploads/')).toThrow(
+      /TENCENT_CLOUD_COS_PREFIX is not a valid object-key prefix/,
+    );
   });
 });

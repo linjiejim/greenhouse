@@ -2,7 +2,7 @@
  * Workspace bootstrap route — /api/bootstrap (PUBLIC).
  *
  * GET /api/bootstrap — pre-login workspace personalization (tenant name, logo
- * data URL, theme tokens, team Sprouty). Served before auth so the login
+ * data URL, theme tokens). Served before auth so the login
  * screen can brand itself; therefore it must never expose secrets, user data
  * or feature configuration. Listed in PUBLIC_PATHS (auth/middleware.ts).
  */
