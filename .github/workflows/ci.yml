@@ -18,6 +18,12 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
+    # tsc checks the whole monorepo in one program and peaks above 2 GB. Node
+    # sizes its default old-space from visible memory, and on this runner that
+    # default sits close enough to the peak to tip over (`Reached heap limit`,
+    # exit 134) while the same tree typechecks clean locally. Pin the ceiling.
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup

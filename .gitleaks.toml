@@ -15,6 +15,12 @@ description = "Confirmed non-secrets: token alphabets + intentional test/example
 
 # Matched against the captured secret value (default target).
 regexes = [
+  # apps/api/src/llm/__tests__/memory-limits.test.ts fakes a JWT — that test asserts
+  # the memory guard REFUSES to store tokens, so the fixture must look like one.
+  # Payload decodes to {"sub":"12345"}; the signature segment is keyboard noise and
+  # corresponds to no key. Only this fixture's unique signature is allowed, not the
+  # generic HS256 header prefix (which every such token shares).
+  '''dBjftJeZ4CVPmB92K27uhbUJU1p1r''',
   # Draft-token charset in apps/api/src/email/security.ts — a Crockford-style
   # base32 alphabet used to GENERATE single-use tokens, not a key itself.
   '''ABCDEFGHJKLMNPQRSTUVWXYZ23456789''',

@@ -9,9 +9,29 @@ packages:
 
 # Which dependency build scripts may run. pnpm 11 reads this `allowBuilds` map from
 # pnpm-workspace.yaml — NOT package.json's old `pnpm.onlyBuiltDependencies`, which
-# pnpm 11 silently ignores. true = build (native deps that need compiling).
-# The pnpm version is pinned via `packageManager` in package.json.
+# pnpm 11 silently ignores. true = build (native deps that need compiling),
+# false = skip (script not needed). The pnpm version is pinned via `packageManager`
+# in package.json so this format stays valid on every machine (local + server + CI).
 allowBuilds:
+  # Pi (agent-runner) transitive deps — postinstall scripts are optional codegen/
+  # telemetry; the runner never executes them, so skip.
+  '@google/genai': false
   better-sqlite3: false # unused drizzle driver (we use postgres-js)
   esbuild: true
   isolated-vm: true
+  protobufjs: false
+
+minimumReleaseAgeExclude:
+  - '@earendil-works/pi-agent-core@0.83.0'
+  - '@earendil-works/pi-ai@0.83.0'
+  - '@earendil-works/pi-coding-agent@0.83.0'
+  - '@earendil-works/pi-tui@0.83.0'
+
+# @earendil-works/pi-ai (agent-runner) pins @aws-sdk/client-bedrock-runtime@3.1048.0,
+# whose transitive exact pins point at @aws-sdk/@smithy versions that are no longer
+# on the registry (July 2026 unpublish wave). We never use the Bedrock provider, so
+# collapse that subtree to a coherent published release. Drop when pi resolves clean.
+overrides:
+  '@aws-sdk/client-bedrock-runtime': '3.1087.0'
+  '@aws-sdk/token-providers': '3.1087.0'
+  '@smithy/node-http-handler': '4.9.6'

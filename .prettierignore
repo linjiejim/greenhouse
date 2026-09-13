@@ -1,7 +1,7 @@
 node_modules/
+# Expo app keeps its own toolchain/formatting (not in the pnpm workspace)
 apps/mobile/
 dist/
-dist-web/
 public/
 drizzle/
 data/
@@ -9,3 +9,8 @@ pnpm-lock.yaml
 *.md
 **/target/
 .turbo/
+apps/mobile/.expo/
+apps/mobile/android/
+apps/mobile/ios/
+# Expo 生成并自带「should not be edited」注释，跑过 expo start / prebuild 就会出现
+apps/mobile/expo-env.d.ts

@@ -32,7 +32,6 @@ fill() {
   echo "generated ${key}"
 }
 
-fill ACCESS_PASSWORD
 fill TOKEN_SIGNING_KEY
 fill PROVIDER_TOKEN_ENCRYPTION_KEY
 
