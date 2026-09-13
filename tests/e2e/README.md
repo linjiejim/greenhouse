@@ -4,69 +4,89 @@
 
 ## 与单元测试的区别
 
-| | 单元测试 (`pnpm test`) | E2E 安全测试 (`pnpm test:e2e`) |
+| | 单元测试 (`pnpm test`) | E2E 安全测试 (`pnpm test:e2e:ci`) |
 |---|---|---|
-| 运行方式 | 自动/CI（in-process） | 自动/CI（live server，`test:e2e:ci`）+ 手动 |
-| 依赖 | 无外部依赖 | 需要运行中的 API 服务 |
-| 速度 | 快 (~1.5s) | 慢 (~2min，逐条真实 HTTP) |
+| 运行方式 | 自动/CI | **自动/CI**（quality-gate 的 `e2e` job）+ 可本地 |
+| 依赖 | 无外部依赖 | 脚本自起 API（死 LLM 端点 + 本地存储，零外呼） |
+| 速度 | 快 (~1.5s) | ~3min（死 LLM 的重试退避占大头） |
 | 覆盖 | 函数级别逻辑 | 真实 HTTP 请求端到端 |
 | 配置 | `vitest.config.ts` | `vitest.e2e.config.ts` |
 
-## 运行方法
-
-### 方式 A：一条命令（CI 用的就是这个）
-
-`scripts/e2e-ci.sh` 会自动起 API（指向一个必失败的 LLM 端点，无真实调用/费用）、等待
-`/health`、跑套件、结束后关服务器。需要一个已 migrate 的 Postgres（默认 `greenhouse_test`）。
+## 一条命令跑（CI 同款）
 
 ```bash
-pnpm test:e2e:ci
+# 需要一个已 migrate 的 Postgres（一次性容器示例见 scripts/e2e-ci.sh 头部注释）
+DATABASE_URL=postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test pnpm test:e2e:ci
 ```
 
-`E2E_NO_LLM=1` 会跳过 `v1-api` 里两个需要真实模型回答内容的断言。要跑这两个，用下面方式 B
-带真实 LLM key 启动服务器。
+脚本先在隔离库中通过正式 DB service 创建一个一次性、active 的 `super` 用户，将其
+真实 UUID 注入 token fixture；随后启动 API、把 LLM 指向必然拒连端点、清空 COS
+凭据强制走本地存储，跑完自动拆服务并级联删除该用户。测试不使用 synthetic uid，
+也不绕过生产鉴权。
+在写入 fixture 前，脚本会强制检查 `DATABASE_URL`：默认只接受 loopback 主机且库名含
+`test` 或 `e2e` 的一次性数据库，并把测试 API 绑定在 `127.0.0.1`。不要把此套件指向
+共享 dev/prod 数据库。
+套件断言与内部角色模型 `super > team` 对齐；`external`、`member`、`admin`
+等历史角色只作为「旧 token 必须 fail closed」的守卫用例保留。
 
-### 方式 B：手动两个终端
+## 手动两终端方式（调试单个用例）
 
-#### 1. 启动测试服务器（终端 1）
+### 1. 创建一次性身份并启动测试服务器（终端 1）
 
 ```bash
-API_PORT=3999 ACCESS_PASSWORD=test-secret TOKEN_SIGNING_KEY=test-secret pnpm api
+export DATABASE_URL=postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
+export E2E_SUPER_USER_ID="$(./node_modules/.bin/tsx tests/e2e/seed-users.ts seed)"
+echo "$E2E_SUPER_USER_ID" # 复制给终端 2
+API_HOST=127.0.0.1 API_PORT=3999 TOKEN_SIGNING_KEY=6666666666666666666666666666666666666666666666666666666666666666 pnpm api
 ```
 
-#### 2. 运行 E2E 测试（终端 2）
+### 2. 运行 E2E 测试（终端 2）
 
 ```bash
-API_PORT=3999 ACCESS_PASSWORD=test-secret pnpm test:e2e
+DATABASE_URL=postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test \
+  E2E_SUPER_USER_ID=复制终端1输出的UUID \
+  API_PORT=3999 TOKEN_SIGNING_KEY=6666666666666666666666666666666666666666666666666666666666666666 pnpm test:e2e
 ```
 
 ### 运行特定测试文件
 
 ```bash
-API_PORT=3999 ACCESS_PASSWORD=test-secret pnpm vitest run tests/e2e/auth-security.e2e.test.ts --config vitest.e2e.config.ts
+DATABASE_URL=postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test \
+  E2E_SUPER_USER_ID=复制终端1输出的UUID \
+  API_PORT=3999 TOKEN_SIGNING_KEY=6666666666666666666666666666666666666666666666666666666666666666 \
+  pnpm vitest run tests/e2e/auth-security.e2e.test.ts --config vitest.e2e.config.ts
+```
+
+调试结束后停止 API，并从任一终端清理 fixture：
+
+```bash
+DATABASE_URL=postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test \
+  ./node_modules/.bin/tsx tests/e2e/seed-users.ts cleanup "$E2E_SUPER_USER_ID"
 ```
 
 ## 测试套件
 
 | 文件 | 覆盖范围 |
 |------|---------|
-| `auth-security.e2e.test.ts` | 认证令牌验证、密码暴力破解、公开路径、授权访问控制 |
+| `auth-security.e2e.test.ts` | 认证令牌、内部账号状态、已删除入口、公开路径与授权访问控制 |
 | `injection-security.e2e.test.ts` | 路径穿越、SQL/FTS 注入、Prompt 注入、XSS、请求体滥用 |
-| `data-isolation.e2e.test.ts` | Profile 工具边界、Session 数据隔离、知识库写保护、信息泄露 |
+| `data-isolation.e2e.test.ts` | Profile 兼容映射、Session 数据隔离、信息泄露 |
 | `ratelimit-upload.e2e.test.ts` | 速率限制、文件上传安全、响应头安全 |
 | `tool-access-control.e2e.test.ts` | 用户-工具权限边界、工具分配 API |
-| `profile-access-control.e2e.test.ts` | Profile 访问控制、角色过滤 |
+| `profile-access-control.e2e.test.ts` | 内部 Profile 访问控制与旧 ID 映射 |
 | `role-escalation.e2e.test.ts` | 角色提权防护、禁用用户隔离 |
-| `v1-api.e2e.test.ts` | V1 外部 API 认证、会话隔离、Profile 限制、禁用客户端 |
 | `user-management.e2e.test.ts` | 用户 CRUD、角色权限、密码重置、配额、禁用用户 |
-| `session-crud.e2e.test.ts` | Session CRUD、跨用户隔离、外部用户限制 |
-| `session-shared-list.e2e.test.ts` | 共享 Session 在列表中的可见性与标记 |
-| `agent-proxy.e2e.test.ts` | Agent 代理认证、运行时 manifest、工具调用、写操作 confirm 门控、default profile |
-| `api-clients.e2e.test.ts` | API 客户端 CRUD、Key 轮换、用量审计 |
+| `session-crud.e2e.test.ts` | Session CRUD、跨用户隔离、未认证访问拒绝 |
+| `session-shared-list.e2e.test.ts` | Session 分享列表与所有权标志 |
+| `agent-proxy.e2e.test.ts` | 内部 Agent 工具代理认证、清单与写工具确认门 |
+| `eval-system.e2e.test.ts` | 评测题库 CRUD、运行列表、权限控制 |
+| `oauth-machine-clients.e2e.test.ts` | OAuth 机器客户端：创建/轮换/禁用、client_credentials 换 token、scope 收窄与审计 |
 
 ## 注意事项
 
-- Prompt 注入测试会触发真实 LLM 调用（使用 `default` profile），会产生少量 API 费用
+- 本地手动运行时，少数 Chat 用例可能触发配置的 LLM；CI 脚本把模型地址固定到本机死端点，不会外呼
+- `E2E_SUPER_USER_ID` 必须对应隔离测试库中的 active `super` 行；推荐始终使用 `pnpm test:e2e:ci` 自动管理
+- E2E 会写入并删除大量 fixture；安全门默认拒绝非 loopback 或名称不含 `test/e2e` 的数据库
 - 某些测试创建 sessions 后会自动清理，但如果测试中断可能留下孤儿数据
 - 速率限制测试可能需要等待限速窗口重置才能重复运行
 - 超时设置为 60 秒/测试（LLM 响应时间）
@@ -77,9 +97,7 @@ API_PORT=3999 ACCESS_PASSWORD=test-secret pnpm vitest run tests/e2e/auth-securit
 
 ```typescript
 import { describe, it, expect, beforeAll } from "vitest";
-
-const BASE_URL = `http://localhost:${process.env.API_PORT || 3999}`;
-const PASSWORD = process.env.ACCESS_PASSWORD || "test-secret";
+import { BASE_URL } from "./helpers.js";
 
 beforeAll(async () => {
   // Verify server is running

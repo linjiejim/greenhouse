@@ -35,7 +35,6 @@ setup('create account + authenticate', async ({ page }) => {
 
   // 2. Log in via the real UI.
   await page.goto('/');
-  await page.getByTestId('login-tab-team').click();
   await page.getByTestId('login-email').fill(TEST_ACCOUNT.email);
   await page.getByTestId('login-password').fill(TEST_ACCOUNT.password);
   await page.getByTestId('login-submit').click();

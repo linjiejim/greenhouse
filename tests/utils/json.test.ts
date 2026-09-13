@@ -49,14 +49,7 @@ describe('extractJson', () => {
   });
 
   it('handles multiline JSON in code fence', () => {
-    const input = [
-      '```json',
-      '{',
-      '  "summary": "test",',
-      '  "tags": ["a", "b"]',
-      '}',
-      '```',
-    ].join('\n');
+    const input = ['```json', '{', '  "summary": "test",', '  "tags": ["a", "b"]', '}', '```'].join('\n');
 
     const result = extractJson(input);
     expect(result).not.toBeNull();
@@ -86,8 +79,7 @@ describe('extractJson', () => {
   });
 
   it('handles nested JSON objects', () => {
-    const input =
-      '```json\n{"outer": {"inner": "value"}, "list": [1, 2]}\n```';
+    const input = '```json\n{"outer": {"inner": "value"}, "list": [1, 2]}\n```';
     const result = extractJson(input);
     expect(result).not.toBeNull();
     const parsed = JSON.parse(result!);

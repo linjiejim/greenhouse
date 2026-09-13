@@ -20,7 +20,8 @@ test.describe('projects', () => {
 
     // Projects default to the Gantt view on desktop; switch to Cards to see the list.
     await page.getByRole('button', { name: 'Cards' }).click();
-    await expect(page.getByText(name)).toBeVisible();
+    // The sidebar project tree lists it too — assert on the main list only.
+    await expect(page.locator('main').getByText(name).first()).toBeVisible();
 
     // Cleanup — the UI only archives; hard-delete the row via the API.
     // (project name is stored under `title`)

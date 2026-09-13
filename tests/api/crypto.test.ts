@@ -1,7 +1,7 @@
 /**
  * Crypto module unit tests — AES-256-GCM encryption/decryption.
  *
- * Tests auth/crypto.ts (provider tokens).
+ * Tests auth/crypto.ts provider-token encryption.
  */
 
 import { describe, it, expect } from 'vitest';

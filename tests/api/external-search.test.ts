@@ -14,11 +14,7 @@ import { SearchProviderRegistry } from '../../apps/api/src/tools/external-search
 import { TavilyProvider } from '../../apps/api/src/tools/external-search/providers/tavily.js';
 import { BraveProvider } from '../../apps/api/src/tools/external-search/providers/brave.js';
 import { FirecrawlProvider } from '../../apps/api/src/tools/external-search/providers/firecrawl.js';
-import {
-  sanitizeContent,
-  sanitizeSnippet,
-  escapeXml,
-} from '../../apps/api/src/tools/external-search/sanitizer.js';
+import { sanitizeContent, sanitizeSnippet, escapeXml } from '../../apps/api/src/tools/external-search/sanitizer.js';
 import {
   stripHTMLTags,
   ContentExtractorChain,
@@ -26,24 +22,14 @@ import {
   LocalFallbackExtractor,
 } from '../../apps/api/src/tools/external-search/extractor.js';
 import { buildProviderRegistry } from '../../apps/api/src/tools/external-search/index.js';
-import type {
-  SearchProvider,
-  SearchResult,
-  SearchOpts,
-} from '../../apps/api/src/tools/external-search/types.js';
+import type { SearchProvider, SearchResult, SearchOpts } from '../../apps/api/src/tools/external-search/types.js';
 
 // ─── Helper: Mock Search Provider ────────────────────────
 
-function createMockProvider(
-  name: string,
-  results: SearchResult[] = [],
-  shouldFail = false,
-): SearchProvider {
+function createMockProvider(name: string, results: SearchResult[] = [], shouldFail = false): SearchProvider {
   return {
     name,
-    search: shouldFail
-      ? vi.fn().mockRejectedValue(new Error(`${name} failed`))
-      : vi.fn().mockResolvedValue(results),
+    search: shouldFail ? vi.fn().mockRejectedValue(new Error(`${name} failed`)) : vi.fn().mockResolvedValue(results),
   };
 }
 
@@ -119,17 +105,17 @@ describe('SearchProviderRegistry', () => {
     registry.register(createMockProvider('p1', [], true));
     registry.register(createMockProvider('p2', [], true));
 
-    await expect(
-      registry.search('test', { maxResults: 5, language: 'en' }),
-    ).rejects.toThrow('All search providers failed');
+    await expect(registry.search('test', { maxResults: 5, language: 'en' })).rejects.toThrow(
+      'All search providers failed',
+    );
   });
 
   it('throws when no providers registered', async () => {
     const registry = new SearchProviderRegistry();
 
-    await expect(
-      registry.search('test', { maxResults: 5, language: 'en' }),
-    ).rejects.toThrow('No search providers registered');
+    await expect(registry.search('test', { maxResults: 5, language: 'en' })).rejects.toThrow(
+      'No search providers registered',
+    );
   });
 
   it('passes search options to provider', async () => {
@@ -148,10 +134,7 @@ describe('SearchProviderRegistry', () => {
 
 describe('sanitizeContent', () => {
   it('wraps content in XML envelope', () => {
-    const result = sanitizeContent(
-      'Some clean content about plants',
-      'https://example.com/plants',
-    );
+    const result = sanitizeContent('Some clean content about plants', 'https://example.com/plants');
 
     expect(result.text).toContain('<external_source');
     expect(result.text).toContain('url="https://example.com/plants"');
@@ -224,10 +207,7 @@ describe('sanitizeContent', () => {
   });
 
   it('escapes special characters in URL attribute', () => {
-    const result = sanitizeContent(
-      'test',
-      'https://example.com/search?q=a&b=c"d',
-    );
+    const result = sanitizeContent('test', 'https://example.com/search?q=a&b=c"d');
 
     expect(result.text).toContain('&amp;');
     expect(result.text).toContain('&quot;');
@@ -271,16 +251,12 @@ describe('escapeXml', () => {
   });
 
   it('handles strings with multiple special chars', () => {
-    expect(escapeXml('<a href="test">&</a>')).toBe(
-      '&lt;a href=&quot;test&quot;&gt;&amp;&lt;/a&gt;',
-    );
+    expect(escapeXml('<a href="test">&</a>')).toBe('&lt;a href=&quot;test&quot;&gt;&amp;&lt;/a&gt;');
   });
 
   it('passes through safe strings unchanged', () => {
     expect(escapeXml('hello world')).toBe('hello world');
-    expect(escapeXml('https://example.com/path')).toBe(
-      'https://example.com/path',
-    );
+    expect(escapeXml('https://example.com/path')).toBe('https://example.com/path');
   });
 });
 
@@ -292,8 +268,7 @@ describe('stripHTMLTags', () => {
   });
 
   it('removes script and style blocks entirely', () => {
-    const html =
-      '<p>Before</p><script>alert(1)</script><style>.x{color:red}</style><p>After</p>';
+    const html = '<p>Before</p><script>alert(1)</script><style>.x{color:red}</style><p>After</p>';
     const result = stripHTMLTags(html);
     expect(result).not.toContain('alert');
     expect(result).not.toContain('color:red');
@@ -311,9 +286,7 @@ describe('stripHTMLTags', () => {
 
   it('decodes HTML entities', () => {
     // Note: &nbsp; → space, trailing space is trimmed by stripHTMLTags
-    expect(stripHTMLTags('&amp; &lt; &gt; &quot; &#39; &nbsp;')).toBe(
-      "& < > \" '",
-    );
+    expect(stripHTMLTags('&amp; &lt; &gt; &quot; &#39; &nbsp;')).toBe('& < > " \'');
   });
 
   it('removes HTML comments', () => {
@@ -321,8 +294,7 @@ describe('stripHTMLTags', () => {
   });
 
   it('handles noscript and SVG elements', () => {
-    const html =
-      '<noscript>Please enable JS</noscript><svg><circle r="10"/></svg><p>Content</p>';
+    const html = '<noscript>Please enable JS</noscript><svg><circle r="10"/></svg><p>Content</p>';
     const result = stripHTMLTags(html);
     expect(result).not.toContain('Please enable');
     expect(result).not.toContain('circle');
@@ -363,10 +335,7 @@ describe('ContentExtractorChain', () => {
       }),
     };
 
-    const chain = new ContentExtractorChain([
-      successExtractor,
-      fallbackExtractor,
-    ]);
+    const chain = new ContentExtractorChain([successExtractor, fallbackExtractor]);
     const result = await chain.extract('https://example.com');
 
     expect(result.title).toBe('Test Page');
@@ -405,9 +374,7 @@ describe('ContentExtractorChain', () => {
 
     const chain = new ContentExtractorChain([fail1, fail2]);
 
-    await expect(chain.extract('https://example.com')).rejects.toThrow(
-      'Fail 2',
-    );
+    await expect(chain.extract('https://example.com')).rejects.toThrow('Fail 2');
   });
 });
 
@@ -473,9 +440,7 @@ describe('TavilyProvider', () => {
     });
 
     const provider = new TavilyProvider('test-key');
-    await expect(
-      provider.search('test', { maxResults: 5, language: 'en' }),
-    ).rejects.toThrow('Tavily API 429');
+    await expect(provider.search('test', { maxResults: 5, language: 'en' })).rejects.toThrow('Tavily API 429');
   });
 
   it('handles empty results', async () => {
@@ -646,9 +611,7 @@ describe('BraveProvider', () => {
     });
 
     const provider = new BraveProvider('bad-key');
-    await expect(
-      provider.search('test', { maxResults: 5, language: 'en' }),
-    ).rejects.toThrow('Brave API 401');
+    await expect(provider.search('test', { maxResults: 5, language: 'en' })).rejects.toThrow('Brave API 401');
   });
 });
 
@@ -835,9 +798,7 @@ describe('FirecrawlProvider', () => {
     });
 
     const provider = new FirecrawlProvider('bad-key');
-    await expect(
-      provider.search('test', { maxResults: 5, language: 'en' }),
-    ).rejects.toThrow('Firecrawl API 402');
+    await expect(provider.search('test', { maxResults: 5, language: 'en' })).rejects.toThrow('Firecrawl API 402');
   });
 
   it('handles failed success flag', async () => {
@@ -850,9 +811,7 @@ describe('FirecrawlProvider', () => {
     });
 
     const provider = new FirecrawlProvider('key');
-    await expect(
-      provider.search('test', { maxResults: 5, language: 'en' }),
-    ).rejects.toThrow('Firecrawl search failed');
+    await expect(provider.search('test', { maxResults: 5, language: 'en' })).rejects.toThrow('Firecrawl search failed');
   });
 
   it('uses metadata title as fallback', async () => {

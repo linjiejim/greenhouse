@@ -6,14 +6,11 @@
  * - Roles cannot be self-escalated
  * - Disabled users are blocked
  *
- * Run manually:
- *   API_PORT=3999 ACCESS_PASSWORD=test-secret pnpm vitest run tests/e2e/ --config vitest.e2e.config.ts
+ * Use `pnpm test:e2e:ci`; manual debugging setup is documented in tests/e2e/README.md.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createTestToken, BASE_URL, PASSWORD, authHeaders } from './helpers.js';
-
-// ─── Token generation (we know the ACCESS_PASSWORD) ──────
+import { createSuperToken, createTestToken, BASE_URL, authHeaders } from './helpers.js';
 
 // ─── Test User State ─────────────────────────────────────
 
@@ -31,9 +28,11 @@ const TEST_DISABLE_PASSWORD = 'TestPass123!';
 
 // ─── Helpers ─────────────────────────────────────────────
 
-// Roles are super > team > external. 'team' is the internal non-super role
-// (the one that must still be blocked from super-only admin endpoints).
-async function createUserAndLogin(email: string, password: string, nickname: string): Promise<{ id: string; token: string }> {
+async function createUserAndLogin(
+  email: string,
+  password: string,
+  nickname: string,
+): Promise<{ id: string; token: string }> {
   const createRes = await fetch(`${BASE_URL}/api/admin/users`, {
     method: 'POST',
     headers: authHeaders(superToken),
@@ -55,12 +54,10 @@ beforeAll(async () => {
     const res = await fetch(`${BASE_URL}/health`);
     if (!res.ok) throw new Error('Server not healthy');
   } catch {
-    throw new Error(
-      `Server not running at ${BASE_URL}. Start with: API_PORT=3999 ACCESS_PASSWORD=test-secret pnpm api`,
-    );
+    throw new Error(`Server not running at ${BASE_URL}. Run pnpm test:e2e:ci or follow tests/e2e/README.md.`);
   }
 
-  superToken = createTestToken('e2e-super', 'super');
+  superToken = createSuperToken();
   externalToken = createTestToken('external', 'external');
 
   const member = await createUserAndLogin(TEST_MEMBER_EMAIL, TEST_MEMBER_PASSWORD, 'E2E Role Test Member');
@@ -87,7 +84,7 @@ afterAll(async () => {
 // ─── Admin Endpoint Protection ───────────────────────────
 
 describe('E2E: Admin Endpoint Protection', () => {
-  it('team user cannot access /api/admin/users (super-only)', async () => {
+  it('member cannot access /api/admin/users', async () => {
     const res = await fetch(`${BASE_URL}/api/admin/users`, {
       headers: authHeaders(memberToken),
     });
@@ -101,7 +98,7 @@ describe('E2E: Admin Endpoint Protection', () => {
     expect(res.status).toBe(403);
   });
 
-  it('team user cannot create users via admin API', async () => {
+  it('member cannot create users via admin API', async () => {
     const res = await fetch(`${BASE_URL}/api/admin/users`, {
       method: 'POST',
       headers: authHeaders(memberToken),
@@ -114,14 +111,23 @@ describe('E2E: Admin Endpoint Protection', () => {
     expect(res.status).toBe(403);
   });
 
-  it('team user cannot access super-only admin endpoints', async () => {
-    const res = await fetch(`${BASE_URL}/api/admin/clients`, {
+  it('team member CAN access knowledge endpoints (internal surface)', async () => {
+    // Role model is super > team > external: knowledge is requireInternal, so a
+    // plain team member is allowed — only external (and unknown roles) are not.
+    const res = await fetch(`${BASE_URL}/api/knowledge/docs`, {
+      headers: authHeaders(memberToken),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('team member cannot access the super-only eval management surface', async () => {
+    const res = await fetch(`${BASE_URL}/api/eval/datasets`, {
       headers: authHeaders(memberToken),
     });
     expect(res.status).toBe(403);
   });
 
-  it('external cannot access internal knowledge endpoints', async () => {
+  it('external cannot access knowledge endpoints', async () => {
     const res = await fetch(`${BASE_URL}/api/knowledge/docs`, {
       headers: authHeaders(externalToken),
     });
@@ -143,12 +149,12 @@ describe('E2E: Role Escalation Prevention', () => {
     expect(data.error).toContain('super');
   });
 
-  it('team user cannot patch their own role', async () => {
-    // Non-super users can't access admin routes at all
+  it('member cannot patch their own role', async () => {
+    // Member can't access admin routes at all
     const res = await fetch(`${BASE_URL}/api/admin/users/${memberId}`, {
       method: 'PATCH',
       headers: authHeaders(memberToken),
-      body: JSON.stringify({ role: 'super' }),
+      body: JSON.stringify({ role: 'team' }),
     });
     expect(res.status).toBe(403);
   });
@@ -176,19 +182,11 @@ describe('E2E: Disabled User Isolation', () => {
     expect([403, 429]).toContain(loginRes.status);
   });
 
-  it('disabled user existing token still works until expiry (token is stateless)', async () => {
-    // The old token is still valid because tokens are stateless HMAC
-    // This is expected behavior — tokens expire naturally.
-    // The system mitigates this by:
-    // 1. Short-lived access tokens (4 hours)
-    // 2. Revoking all refresh tokens on disable
+  it('disabled user existing token is rejected immediately', async () => {
     const res = await fetch(`${BASE_URL}/api/sessions`, {
       headers: authHeaders(disableTestMemberToken),
     });
-    // This may succeed because HMAC tokens are stateless.
-    // The key protection is that refresh tokens are revoked,
-    // so the user can't get new access tokens after the current one expires.
-    expect([200, 401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   it('disabled user cannot refresh token', async () => {
@@ -210,6 +208,11 @@ describe('E2E: Disabled User Isolation', () => {
       body: JSON.stringify({ status: 'active' }),
     });
     expect(enableRes.status).toBe(200);
+
+    const oldTokenRes = await fetch(`${BASE_URL}/api/sessions`, {
+      headers: authHeaders(disableTestMemberToken),
+    });
+    expect(oldTokenRes.status).toBe(401);
 
     // Login may still be rate-limited from earlier tests
     const loginRes = await fetch(`${BASE_URL}/api/auth/login`, {

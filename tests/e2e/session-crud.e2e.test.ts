@@ -4,22 +4,18 @@
  * Tests /api/sessions CRUD operations and cross-user isolation:
  * - Create, list, update, delete sessions
  * - User A cannot access/modify User B's sessions
- * - External users cannot create sessions
+ * - Unauthenticated callers cannot access sessions
  * - Session status/title update
  *
- * Run manually:
- *   API_PORT=3999 ACCESS_PASSWORD=test-secret pnpm vitest run tests/e2e/session-crud.e2e.test.ts --config vitest.e2e.config.ts
+ * Use `pnpm test:e2e:ci`; manual debugging setup is documented in tests/e2e/README.md.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createTestToken, BASE_URL, PASSWORD } from './helpers.js';
+import { createSuperToken, createTestToken, BASE_URL } from './helpers.js';
 
 let superToken: string;
 let memberTokenA: string;
 let memberTokenB: string;
-let externalToken: string;
-let memberIdA: string;
-let memberIdB: string;
 const sessionsToClean: Array<{ id: string; token: string }> = [];
 const usersToClean: string[] = [];
 
@@ -32,8 +28,7 @@ const UNIQUE = Date.now().toString(36);
 beforeAll(async () => {
   const res = await fetch(`${BASE_URL}/health`);
   if (!res.ok) throw new Error(`Server not running at ${BASE_URL}`);
-  superToken = createTestToken('e2e-session-super', 'super');
-  externalToken = createTestToken('external', 'external');
+  superToken = createSuperToken();
 
   // Create two member users
   for (const label of ['a', 'b']) {
@@ -47,10 +42,8 @@ beforeAll(async () => {
     const id = data.user.id;
     usersToClean.push(id);
     if (label === 'a') {
-      memberIdA = id;
       memberTokenA = createTestToken(id, 'team');
     } else {
-      memberIdB = id;
       memberTokenB = createTestToken(id, 'team');
     }
   }
@@ -75,12 +68,13 @@ describe('E2E: Session CRUD', () => {
     const res = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'default' }),
+      body: JSON.stringify({ profile_id: 'team' }),
     });
     expect(res.status).toBe(201);
     const data = await res.json();
     expect(data.id).toMatch(/^[0-9a-f]{8}-/);
-    expect(data.profile_id).toBe('default');
+    // `team` is a retired id — the server resolves it to the preset that replaced it.
+    expect(data.profile_id).toBe('sprouty');
     sessionsToClean.push({ id: data.id, token: memberTokenA });
   });
 
@@ -89,7 +83,7 @@ describe('E2E: Session CRUD', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'default', title: `e2e-ownership-test-${UNIQUE}` }),
+      body: JSON.stringify({ profile_id: 'team', title: `e2e-ownership-test-${UNIQUE}` }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: memberTokenA });
@@ -108,7 +102,7 @@ describe('E2E: Session CRUD', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'default' }),
+      body: JSON.stringify({ profile_id: 'team' }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: memberTokenA });
@@ -127,7 +121,7 @@ describe('E2E: Session CRUD', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'default' }),
+      body: JSON.stringify({ profile_id: 'team' }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: memberTokenA });
@@ -146,7 +140,7 @@ describe('E2E: Session CRUD', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'default' }),
+      body: JSON.stringify({ profile_id: 'team' }),
     });
     const session = await createRes.json();
 
@@ -170,7 +164,7 @@ describe('E2E: Session Cross-User Isolation', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'default' }),
+      body: JSON.stringify({ profile_id: 'team' }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: memberTokenA });
@@ -186,7 +180,7 @@ describe('E2E: Session Cross-User Isolation', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'default' }),
+      body: JSON.stringify({ profile_id: 'team' }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: memberTokenA });
@@ -209,7 +203,7 @@ describe('E2E: Session Cross-User Isolation', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'default' }),
+      body: JSON.stringify({ profile_id: 'team' }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: memberTokenA });
@@ -226,7 +220,7 @@ describe('E2E: Session Cross-User Isolation', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'default' }),
+      body: JSON.stringify({ profile_id: 'team' }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: superToken });
@@ -238,24 +232,20 @@ describe('E2E: Session Cross-User Isolation', () => {
   });
 });
 
-// ─── External User Restrictions ──────────────────────────
+// ─── Authentication Boundary ─────────────────────────────
 
-describe('E2E: Session External User Restrictions', () => {
-  it('external user cannot create sessions', async () => {
+describe('E2E: Session Authentication Boundary', () => {
+  it('unauthenticated caller cannot create sessions', async () => {
     const res = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
-      headers: h(externalToken),
-      body: JSON.stringify({ profile_id: 'default' }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile_id: 'team' }),
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
   });
 
-  it('external user gets empty session list', async () => {
-    const res = await fetch(`${BASE_URL}/api/sessions`, {
-      headers: h(externalToken),
-    });
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.sessions).toHaveLength(0);
+  it('unauthenticated caller cannot list sessions', async () => {
+    const res = await fetch(`${BASE_URL}/api/sessions`);
+    expect(res.status).toBe(401);
   });
 });

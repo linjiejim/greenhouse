@@ -21,16 +21,18 @@ test.describe('user management', () => {
 
       await expect(page.getByText(email)).toBeVisible();
 
-      // Delete → confirm. Row action testids are shared across rows, so scope the
-      // delete button to the row that shows this user's (unique, runId-tagged) email.
+      // Delete lives in the edit dialog → open the row (row action testids are shared
+      // across rows, so scope to the row that shows this user's runId-tagged email),
+      // then delete → confirm.
       const row = page.getByRole('row', { has: page.getByText(email) });
-      await row.getByTestId('users-delete').click();
+      await row.getByTestId('users-edit').click();
+      await page.getByTestId('users-delete').click();
       await expect(page.getByTestId('confirm-dialog')).toBeVisible();
       await page.getByTestId('confirm-dialog-confirm').click();
 
-      // The regression assertion: the delete-success toast (crud.deleted = "Deleted"),
+      // The regression assertion: the delete-success toast (settings.userDeleted),
       // NOT the "Failed to delete" error toast.
-      await expect(page.getByText('Deleted', { exact: true })).toBeVisible();
+      await expect(page.getByText('User deleted', { exact: true })).toBeVisible();
       await expect(page.getByText(email)).toBeHidden();
     } finally {
       // Safety net: if anything above failed mid-way, remove the leftover user.

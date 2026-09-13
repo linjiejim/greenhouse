@@ -2,8 +2,8 @@
  * Workspace config — write-path validation tests (pure, no DB).
  *
  * validateWorkspaceValue guards everything an admin can PUT to
- * /api/admin/settings: logo data URLs, http(s) base URLs, theme tokens,
- * the team avatar DSL and plain string limits.
+ * /api/admin/settings: logo data URLs, http(s) base URLs, theme tokens and
+ * plain string limits.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -47,18 +47,5 @@ describe('validateWorkspaceValue', () => {
     });
     expect(good).toEqual({ ok: true, value: { brand: '#4f46e5', light: { '--t-surface': '#ffffff' } } });
     expect(validateWorkspaceValue(def('branding.theme_tokens'), { light: { 'bad key': ';' } }).ok).toBe(false);
-  });
-
-  it('validates the team avatar against the DSL schema', () => {
-    const ok = validateWorkspaceValue(def('branding.team_avatar'), {
-      color: 'ocean',
-      accessories: ['round-glasses'],
-      leafStyle: 'big',
-      faceStyle: 'sparkle',
-      palette: { body: '#5ec4d6', leaf: '#3a8fa0' },
-    });
-    expect(ok.ok).toBe(true);
-    const bad = validateWorkspaceValue(def('branding.team_avatar'), { palette: { body: 'blue', leaf: '#zzzzzz' } });
-    expect(bad.ok).toBe(false);
   });
 });

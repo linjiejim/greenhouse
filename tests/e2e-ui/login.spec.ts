@@ -14,7 +14,6 @@ test.describe('auth', () => {
 
   test('rejects a wrong password and stays on the login screen', async ({ page }) => {
     await page.goto('/');
-    await page.getByTestId('login-tab-team').click();
     await page.getByTestId('login-email').fill(TEST_ACCOUNT.email);
     await page.getByTestId('login-password').fill('definitely-the-wrong-password');
     await page.getByTestId('login-submit').click();

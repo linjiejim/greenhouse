@@ -57,7 +57,14 @@ test('chat: sends a message and renders the mocked assistant reply', async ({ pa
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        session: { id: sessionId, title: 'e2e chat', rating: null, comment: null, profile_id: 'default', status: 'active' },
+        session: {
+          id: sessionId,
+          title: 'e2e chat',
+          rating: null,
+          comment: null,
+          profile_id: 'default',
+          status: 'active',
+        },
         messages: [msg('user', userText || 'ping', 1), msg('assistant', ASSISTANT_REPLY, 2)],
         usage: { totalInputTokens: 1, totalOutputTokens: 1, totalCachedTokens: 0, totalReasoningTokens: 0 },
         share_info: null,
@@ -68,7 +75,8 @@ test('chat: sends a message and renders the mocked assistant reply', async ({ pa
   try {
     await page.goto('/#/chat');
     await page.getByTestId('chat-input').fill('ping from playwright');
-    await page.getByTestId('chat-send').click();
+    // Desktop composer sends on Enter (the round send button is mobile-only).
+    await page.getByTestId('chat-input').press('Enter');
 
     // User bubble shows immediately; assistant bubble shows the streamed + reloaded mock reply.
     await expect(page.getByText('ping from playwright')).toBeVisible();

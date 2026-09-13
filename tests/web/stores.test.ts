@@ -21,21 +21,21 @@ describe('useAuthStore', () => {
   });
 
   it('login sets user and authenticated state', () => {
-    const user = { id: 'u1', nickname: 'Jim', role: 'admin' as const, profiles: [] };
+    const user = { id: 'u1', nickname: 'Jim', role: 'super' as const };
     useAuthStore.getState().login(user);
     expect(useAuthStore.getState().authState).toBe('authenticated');
     expect(useAuthStore.getState().currentUser?.nickname).toBe('Jim');
   });
 
   it('logout clears user and sets needs-login', () => {
-    useAuthStore.getState().login({ id: 'u1', nickname: 'Test', role: 'member' as const, profiles: [] });
+    useAuthStore.getState().login({ id: 'u1', nickname: 'Test', role: 'team' as const });
     useAuthStore.getState().logout();
     expect(useAuthStore.getState().authState).toBe('needs-login');
     expect(useAuthStore.getState().currentUser).toBeNull();
   });
 
   it('updateUser merges partial updates', () => {
-    useAuthStore.getState().login({ id: 'u1', nickname: 'Old', role: 'member' as const, profiles: [] });
+    useAuthStore.getState().login({ id: 'u1', nickname: 'Old', role: 'team' as const });
     useAuthStore.getState().updateUser({ nickname: 'New' });
     expect(useAuthStore.getState().currentUser?.nickname).toBe('New');
     expect(useAuthStore.getState().currentUser?.id).toBe('u1');
@@ -49,7 +49,7 @@ describe('useUIStore', () => {
       myProfileOpen: false,
       preferencesOpen: false,
       currentSessionTitle: '',
-      currentSessionProfileId: 'default',
+      currentSessionProfileId: 'team',
       currentSessionTags: [],
       currentChatSessionId: null,
       sessionListVersion: 0,
@@ -90,14 +90,14 @@ describe('useUIStore', () => {
   });
 
   it('setCurrentSessionInfo defaults tags to empty array', () => {
-    useUIStore.getState().setCurrentSessionInfo('Title', 'default');
+    useUIStore.getState().setCurrentSessionInfo('Title', 'team');
     expect(useUIStore.getState().currentSessionTags).toEqual([]);
   });
 
   it('setCurrentSessionInfo replaces previous tags', () => {
-    useUIStore.getState().setCurrentSessionInfo('T', 'default', [{ id: 1, name: 'a', color: '#000' }]);
+    useUIStore.getState().setCurrentSessionInfo('T', 'team', [{ id: 1, name: 'a', color: '#000' }]);
     expect(useUIStore.getState().currentSessionTags).toHaveLength(1);
-    useUIStore.getState().setCurrentSessionInfo('T', 'default', []);
+    useUIStore.getState().setCurrentSessionInfo('T', 'team', []);
     expect(useUIStore.getState().currentSessionTags).toEqual([]);
   });
 
@@ -130,7 +130,7 @@ describe('useProfileStore', () => {
 
   it('clear resets all state', () => {
     useProfileStore.setState({
-      profiles: [{ id: 'default', name: 'Default', tools: [], model: { provider: 'test', model: 'test' } }] as any,
+      profiles: [{ id: 'team', name: 'Team', tools: [], model: { provider: 'test', model: 'test' } }] as any,
       initialized: true,
       loading: true,
     });
@@ -144,7 +144,7 @@ describe('useProfileStore', () => {
   it('fetchProfiles is idempotent when initialized', async () => {
     // Mark as initialized with some profiles
     useProfileStore.setState({
-      profiles: [{ id: 'default', name: 'Default', tools: [], model: { provider: 'test', model: 'test' } }] as any,
+      profiles: [{ id: 'team', name: 'Team', tools: [], model: { provider: 'test', model: 'test' } }] as any,
       initialized: true,
     });
     // fetchProfiles without force should be a no-op

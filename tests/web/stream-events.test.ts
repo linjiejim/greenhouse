@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { readNdjsonStream, handleStreamEvent } from '@greenhouse/types/api';
+import { readNdjsonStream, requireChatStreamFinish, handleStreamEvent } from '@greenhouse/types/api';
 import type { StreamingEvent, StreamEventCallbacks } from '@greenhouse/types/api';
 
 // ─── Helper: create a ReadableStream from string lines ───
@@ -40,9 +40,7 @@ describe('readNdjsonStream', () => {
   });
 
   it('parses multiple lines in one chunk', async () => {
-    const reader = createStream([
-      '{"type":"text-delta","text":"a"}\n{"type":"text-delta","text":"b"}\n',
-    ]);
+    const reader = createStream(['{"type":"text-delta","text":"a"}\n{"type":"text-delta","text":"b"}\n']);
     const events: unknown[] = [];
     for await (const event of readNdjsonStream(reader)) {
       events.push(event);
@@ -53,10 +51,7 @@ describe('readNdjsonStream', () => {
   });
 
   it('handles events split across chunks', async () => {
-    const reader = createStream([
-      '{"type":"text-del',
-      'ta","text":"split"}\n',
-    ]);
+    const reader = createStream(['{"type":"text-del', 'ta","text":"split"}\n']);
     const events: unknown[] = [];
     for await (const event of readNdjsonStream(reader)) {
       events.push(event);
@@ -109,9 +104,68 @@ describe('readNdjsonStream', () => {
   });
 });
 
+describe('requireChatStreamFinish', () => {
+  it('reproduces a partial datatable EOF as an error instead of a completed turn', async () => {
+    const reader = createStream([
+      '{"type":"text-delta","text":"```datatable\\n{\\\"columns\\\":[{\\\"key\\\":\\\"name\\\""}\n',
+    ]);
+    const received: StreamingEvent[] = [];
+
+    await expect(async () => {
+      for await (const event of requireChatStreamFinish(readNdjsonStream<StreamingEvent>(reader))) {
+        received.push(event);
+      }
+    }).rejects.toThrow('Chat stream ended before completion');
+
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({ type: 'text-delta' });
+  });
+
+  it('accepts a stream only after an explicit finish event', async () => {
+    const reader = createStream(['{"type":"text-delta","text":"done"}\n', '{"type":"finish","finishReason":"stop"}\n']);
+    const received: StreamingEvent[] = [];
+
+    for await (const event of requireChatStreamFinish(readNdjsonStream<StreamingEvent>(reader))) {
+      received.push(event);
+    }
+
+    expect(received.map((event) => event.type)).toEqual(['text-delta', 'finish']);
+  });
+
+  it('propagates an explicit server stream error', async () => {
+    const reader = createStream(['{"type":"error","error":"generation timed out"}\n']);
+
+    await expect(async () => {
+      for await (const _event of requireChatStreamFinish(readNdjsonStream<StreamingEvent>(reader))) {
+        // Consume the guarded stream.
+      }
+    }).rejects.toThrow('generation timed out');
+  });
+});
+
 // ─── handleStreamEvent ──────────────────────────────────
 
 describe('handleStreamEvent', () => {
+  // Keepalive pings are pure filler sent to stop a reverse proxy from closing an idle
+  // connection during a slow tool. Firing any callback for one would corrupt the
+  // transcript (a stray step, an early finish), so it must dispatch to nothing at all.
+  it('swallows a keepalive ping without invoking any callback', () => {
+    const cbs: StreamEventCallbacks = {
+      onTextDelta: vi.fn(),
+      onReasoningDelta: vi.fn(),
+      onToolCallStart: vi.fn(),
+      onToolCall: vi.fn(),
+      onToolResult: vi.fn(),
+      onStepStart: vi.fn(),
+      onStepFinish: vi.fn(),
+      onFinish: vi.fn(),
+      onError: vi.fn(),
+      onTitle: vi.fn(),
+    };
+    handleStreamEvent({ type: 'ping' } as StreamingEvent, cbs);
+    for (const cb of Object.values(cbs)) expect(cb).not.toHaveBeenCalled();
+  });
+
   it('dispatches text-delta', () => {
     const onTextDelta = vi.fn();
     handleStreamEvent({ type: 'text-delta', text: 'hello' } as StreamingEvent, { onTextDelta });
@@ -126,19 +180,17 @@ describe('handleStreamEvent', () => {
 
   it('dispatches tool-call-start', () => {
     const onToolCallStart = vi.fn();
-    handleStreamEvent(
-      { type: 'tool-call-start', id: 'tc1', toolName: 'search' } as StreamingEvent,
-      { onToolCallStart },
-    );
+    handleStreamEvent({ type: 'tool-call-start', id: 'tc1', toolName: 'search' } as StreamingEvent, {
+      onToolCallStart,
+    });
     expect(onToolCallStart).toHaveBeenCalledWith('tc1', 'search');
   });
 
   it('dispatches tool-call-delta', () => {
     const onToolCallDelta = vi.fn();
-    handleStreamEvent(
-      { type: 'tool-call-delta', id: 'tc1', delta: '{"query":' } as StreamingEvent,
-      { onToolCallDelta },
-    );
+    handleStreamEvent({ type: 'tool-call-delta', id: 'tc1', delta: '{"query":' } as StreamingEvent, {
+      onToolCallDelta,
+    });
     expect(onToolCallDelta).toHaveBeenCalledWith('tc1', '{"query":');
   });
 
@@ -151,20 +203,16 @@ describe('handleStreamEvent', () => {
   it('dispatches tool-result', () => {
     const onToolResult = vi.fn();
     const output = { results: [{ title: 'Test' }] };
-    handleStreamEvent(
-      { type: 'tool-result', id: 'tc1', toolName: 'search', output } as StreamingEvent,
-      { onToolResult },
-    );
+    handleStreamEvent({ type: 'tool-result', id: 'tc1', toolName: 'search', output } as StreamingEvent, {
+      onToolResult,
+    });
     expect(onToolResult).toHaveBeenCalledWith('tc1', 'search', output);
   });
 
   it('dispatches finish', () => {
     const onFinish = vi.fn();
     const usage = { inputTokens: 100, outputTokens: 50 };
-    handleStreamEvent(
-      { type: 'finish', finishReason: 'stop', usage } as StreamingEvent,
-      { onFinish },
-    );
+    handleStreamEvent({ type: 'finish', finishReason: 'stop', usage } as StreamingEvent, { onFinish });
     expect(onFinish).toHaveBeenCalledWith('stop', usage);
   });
 
@@ -224,7 +272,7 @@ describe('handleStreamEvent', () => {
       { type: 'text-delta', text: 'Here is' },
       { type: 'text-delta', text: ' the answer.' },
       { type: 'step-finish', finishReason: 'stop', usage: { inputTokens: 100, outputTokens: 40 } },
-      { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 150, outputTokens: 50 } },
+      { type: 'finish', finishReason: 'stop', usage: { inputTokens: 150, outputTokens: 50 } },
     ] as StreamingEvent[];
 
     for (const event of events) {
@@ -235,6 +283,6 @@ describe('handleStreamEvent', () => {
     expect(cbs.onStepStart).toHaveBeenCalledTimes(2);
     expect(cbs.onToolCallStart).toHaveBeenCalledWith('tc1', 'knowledge_query');
     expect(cbs.onTextDelta).toHaveBeenCalledTimes(2);
-    expect(cbs.onFinish).toHaveBeenCalledTimes(1);
+    expect(cbs.onFinish).toHaveBeenCalledWith('stop', { inputTokens: 150, outputTokens: 50 });
   });
 });

@@ -7,15 +7,11 @@
  *   - shared:   true ONLY on sessions someone else shared with you
  *               (your own session — even shared to __team__ — is NOT "shared with me")
  *
- * Run manually:
- *   # Terminal 1
- *   API_PORT=3999 ACCESS_PASSWORD=test-secret pnpm api
- *   # Terminal 2
- *   API_PORT=3999 ACCESS_PASSWORD=test-secret pnpm test:e2e tests/e2e/session-shared-list.e2e.test.ts
+ * Use `pnpm test:e2e:ci`; manual debugging setup is documented in tests/e2e/README.md.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createTestToken, BASE_URL } from './helpers.js';
+import { createSuperToken, createTestToken, BASE_URL } from './helpers.js';
 
 let superToken: string;
 let tokenA: string;
@@ -48,7 +44,7 @@ async function createSession(token: string, title: string): Promise<string> {
   const res = await fetch(`${BASE_URL}/api/sessions`, {
     method: 'POST',
     headers: h(token),
-    body: JSON.stringify({ profile_id: 'default', title }),
+    body: JSON.stringify({ profile_id: 'team', title }),
   });
   const data = await res.json();
   sessionsToClean.push(data.id);
@@ -65,7 +61,7 @@ async function listSessions(token: string): Promise<any[]> {
 beforeAll(async () => {
   const res = await fetch(`${BASE_URL}/health`);
   if (!res.ok) throw new Error(`Server not running at ${BASE_URL}`);
-  superToken = createTestToken('e2e-shared-super', 'super');
+  superToken = createSuperToken();
   idA = await createUser('a');
   idB = await createUser('b');
   // 'team' is this system's internal role (super | team | external);

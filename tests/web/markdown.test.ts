@@ -40,8 +40,7 @@ function fixMarkdownTables(md: string): string {
   text = text.replace(/(?<!~)~(?!~)/g, (match, offset) => {
     const before = text[offset - 1] || '';
     const after = text[offset + 1] || '';
-    const isRange = /[\d\w\u4e00-\u9fff\u00b0)）]/.test(before) &&
-                    /[\d\w\u4e00-\u9fff(（]/.test(after);
+    const isRange = /[\d\w\u4e00-\u9fff\u00b0)）]/.test(before) && /[\d\w\u4e00-\u9fff(（]/.test(after);
     return isRange ? '\\~' : match;
   });
 
