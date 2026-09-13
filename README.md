@@ -16,80 +16,90 @@ agents over [MCP](https://modelcontextprotocol.io/). Admins author tools in code
 auto-expose over chat, `/api/agent`, and `/api/mcp` — add a tool by writing one file.
 
 Greenhouse is built around the idea that the agent *is* the product, not a feature bolted on
-the side. The chat agent, the knowledge base, projects, automations and email all share one
-tool layer; the same tools your team uses in chat are the ones you expose to Claude, Cursor,
-or any MCP client.
+the side. Chat, the knowledge base, projects, tables, automations, missions and email all share
+one tool layer and one permission model; the same tools your team uses in chat are the ones you
+expose to Claude, Cursor, or any MCP client.
 
 ## Features
 
-- **Chat** — streaming agent with selectable profiles (public vs. internal), tool-call
-  traces, memory, image analysis and generation, and session sharing/grouping/tagging.
-- **Knowledge Base** — team, personal, and shared documents with a Tiptap rich-text editor,
-  Markdown-first storage, full-text search, version history, and fine-grained sharing via
-  user Groups.
-- **Projects** — projects, tasks (board / gantt / tree views), members, comments, and an
-  activity log.
-- **Automations** — cron-scheduled agent runs that execute a prompt against a profile on a
-  recurring schedule.
-- **Memory** — persistent per-user facts extracted from conversations and reused as context.
-- **Skill Center** — an org-wide library of agent skills (SKILL.md folders): publish from
-  your own AI tool over MCP/chat, find & download colleagues' skills, and keep installs in
-  sync — every version immutable with a mandatory changelog. Bundles live on local disk by
-  default or any S3-compatible store (`SKILLS_S3_*`).
-- **Email** *(optional)* — IMAP/SMTP mailbox connector; search, read, draft, and send from
-  the agent.
-- **LLM gateway + BYOK** — internal users reach admin-managed models through a server-side
-  relay (no personal key needed), or bring their own.
-- **MCP server + agent tool-proxy** — expose the workbench's tools to any external agent over
-  the standard MCP protocol or the structured `/api/agent` proxy.
-- **Global Agent** — the agent can operate the web UI (navigate / prefill) via client-declared
-  actions.
-- **Workspace branding & runtime config** — admins rebrand the deployment from the web
-  (tenant name, logo, theme tokens, team mascot) and manage runtime credentials
-  (LLM / vision / image / search keys) in Settings, all stored in the database with env-var
-  fallback — no code changes, no restart. Applied from the login screen on via a public
-  bootstrap endpoint.
-- **Sprouty avatar studio** — the mascot is a parametric SVG driven by a small avatar DSL:
-  members sculpt their own agent look (color presets or free palette, face styles,
-  accessories, leaf styles), admins set a workspace default, and the agent itself can design
-  one via the `design_sprouty_avatar` tool.
+- **Chat** — streaming agent with tool-call traces, attachments of any file type (the agent
+  reads text / CSV / JSON / xlsx / docx / PDF), per-turn model switching from a config catalog,
+  a side pane for artifacts and records, session forking, background runs, sharing / grouping /
+  tagging, and a global ⌘P search.
+- **Knowledge Base** — team, personal and shared documents with a Tiptap editor, Markdown-first
+  storage, folders plus a file cabinet, backlinks, comments and @-mentions, templates, version
+  history, fine-grained sharing via groups, and segmented full-text search (CJK-aware).
+- **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
+- **Tables** — multidimensional bases: typed fields, views, forms, record links, dashboards,
+  rule automations, and conversational schema planning (the agent drafts a base, you confirm).
+- **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
+  templates), editable by drag-and-drop or by asking the agent.
+- **Execution center** — one surface for every durable run: automations (cron), missions,
+  workflows and sub-agents, with an approval inbox for steps that need a human.
+- **Missions** *(optional)* — long-running tasks in disposable sandboxes (Docker + gVisor): the
+  agent gets a real shell, files and a document toolchain, reports progress live and hands back
+  artifacts.
+- **Workflows** — a multi-agent task-graph engine (database state machine, human gates,
+  pause / retry per node) that the agent can plan from a conversation.
+- **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
+  the agent logs when tooling gets in its way.
+- **Skill Center** — an org-wide library of agent skills (SKILL.md bundles) with immutable
+  versions, changelogs, security scanning, and first-party packs shipped from `skillhub/`.
+- **Email** *(optional)* — personal IMAP/SMTP mailboxes and a shared team mailbox; search,
+  read, draft and send with a server-side draft confirmation.
+- **Notifications** — an in-app notification center with durable delivery to email, WeCom and
+  Feishu.
+- **Integrations** *(optional)* — WeCom and Feishu account binding, direct-message push, Feishu
+  sign-in, and a Feishu bot that runs the agent from a chat.
+- **MCP server + agent tool-proxy** — OAuth 2.1 (PKCE for people, client credentials for
+  machines) with scopes per resource group; the same tools over the structured `/api/agent`
+  proxy.
+- **LLM relay + usage budgets** — an OpenAI-compatible relay for internal users, plus monthly
+  token and image budgets per user, organization and provider.
+- **Platform kernel** — applications declare a manifest (modules, entities, fields, actions);
+  roles, capabilities and record / field policies are enforced once for HTTP, chat tools, the
+  proxy and MCP. One permissions dialog per user.
+- **Workspace branding & runtime config** — rebrand from the web (name, logo, theme tokens) and
+  manage runtime credentials (LLM / media / search) in Administration; values live in the
+  database with env-var fallback and apply without a restart, from the login screen on.
+- **Sprouty** — the mascot is a parametric SVG; members design their own agent look.
 
-Roles: **super > team > external**, plus per-user feature flags for gating optional modules.
-Auth is fail-closed — the server refuses to start without `ACCESS_PASSWORD` and
-`TOKEN_SIGNING_KEY`.
+Roles: **super > team**, plus per-user feature flags and platform policies that gate optional
+modules. Auth is fail-closed — the server refuses to start without `TOKEN_SIGNING_KEY`, and
+stored secrets need `PROVIDER_TOKEN_ENCRYPTION_KEY`.
 
 ## Architecture
 
 A pnpm monorepo. The Hono API also serves the built React SPA, so production is a single
-process / single container.
+process / single container (plus an optional sandbox-runner image for Missions).
 
 ```
 greenhouse/
 ├── apps/
-│   ├── api/                  # Hono backend — routes, agent runtime, auth, scheduler;
-│   │                         #   also serves the built web SPA at `/`
+│   ├── api/                  # Hono backend — routes, agent runtime, platform kernel, auth,
+│   │                         #   scheduler, runtime kernel, CLI; also serves the web SPA at `/`
 │   ├── web/                  # React + Vite single-page app (hash router)
-│   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to
-│   │                         #   your instances via saved multi-server "stations"
-│   │                         #   (build: pnpm -F @greenhouse/browser build)
-│   └── mobile/               # Expo (React Native) app — chat, knowledge base (edit + history),
-│                             #   projects (list/board/gantt), settings; multi-server
-│                             #   "stations" picked at sign-in; isolated install
-│                             #   (pnpm mobile:install, then pnpm mobile)
+│   ├── agent-runner/         # Mission sandbox runner — built into the greenhouse/agent-runtime
+│   │                         #   image; the API never imports it
+│   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to your
+│   │                         #   instances via saved multi-server "stations"
+│   └── mobile/               # Expo (React Native) app — chat, knowledge, projects, settings;
+│                             #   isolated install (pnpm mobile:install, then pnpm mobile)
 ├── packages/
-│   ├── agent-core/           # Agent kernel — streamText loop, OpenAI-compatible model
-│   │                         #   factory + registry (no DB dependency)
-│   ├── types/                # Shared TypeScript types (incl. feature-flag registry)
-│   ├── utils/                # Shared helpers (date, json, crypto, logger, concurrency)
+│   ├── agent-core/           # Agent kernel — streamText loop, OpenAI-compatible model factory
+│   │                         #   + registry, provider quirks (no DB dependency)
+│   ├── platform-kernel/      # Application manifests, actor context, authorization, registry
+│   ├── types/                # Shared TypeScript types (feature flags, workspace settings, …)
+│   ├── utils/                # Shared helpers (date, json, crypto, logger, semver, webhooks)
 │   ├── db/                   # Database layer — Drizzle schema + domain services
 │   ├── knowledge-editor/     # Tiptap schema + server-side Markdown ↔ Tiptap JSON
-│   ├── ui/                   # Shared React UI kit (atoms, markdown renderers, tool-call
-│   │                         #   cards, design tokens, i18n mechanism)
+│   ├── crud/                 # Low-code CRUD framework (one schema → list / form / detail)
+│   ├── ui/                   # Shared React UI kit (atoms, markdown, tool-call cards, tokens)
 │   └── contract/             # Typed API contract — re-exports the API's AppType + hc
-│                             #   (single source for the web's typed client)
+├── skillhub/                 # First-party skill packs (synced into the Skill Center on boot)
 ├── drizzle/                  # Migration files (the single source of truth for the schema)
-├── scripts/                  # gen-secrets.sh, backup-db.sh
-└── tests/                    # unit / integration + e2e security suite
+├── scripts/                  # gen-secrets, backup-db, run-dev, e2e-ci, agent-runtime build
+└── tests/                    # unit / db / e2e (API) / e2e-ui (Playwright)
 ```
 
 **Stack:** [Hono](https://hono.dev/) API · React 19 + [Vite](https://vite.dev/) ·
@@ -119,9 +129,9 @@ pnpm drizzle-kit migrate
 # 5. Create the first super-admin — or skip to step 6 to load the demo dataset instead
 pnpm admin:create
 
-# 6. (optional) Instead of a bare admin, load the example dataset (it bundles demo
-#    admins) to explore with realistic content. Fresh DB: no flag needed. To re-seed
-#    a populated DB, use `pnpm seed --reset` (wipes first, asks to confirm).
+# 6. (optional) Load the example dataset (it bundles demo admins) to explore with
+#    realistic content. Fresh DB: no flag needed. To re-seed a populated DB, use
+#    `pnpm seed --reset` (wipes first, asks to confirm).
 pnpm seed
 
 # 7. Run the dev servers (Vite web :3100 + API :3000, Vite proxies /api → api)
@@ -131,25 +141,25 @@ pnpm dev
 Open http://localhost:3100. Backend changes require a restart (the API has no `--watch`);
 frontend changes hot-reload.
 
-> **Custom ports** — if `:3100`/`:3000` clash with something, set `WEB_PORT` /
-> `API_PORT` in `.env` (or as shell vars, which take precedence); the web dev
-> proxy follows `API_PORT`. E.g. `WEB_PORT=4400` + `API_PORT=4401`.
+> **One-command acceptance environment** — `pnpm run-dev up` starts Postgres + API + web
+> together with unified logs under `.run-dev/`, avoids port clashes automatically, and gives
+> each git worktree its own sandbox database (`greenhouse_wt_<dir>`); `pnpm run-dev stop`
+> tears it down.
 
-> **Example dataset** — `pnpm seed` loads a small, de-identified fictional company
-> (users, knowledge base, projects, chats, automations, sharing) so you can experience and
-> validate every major feature. Every seeded user logs in with the password `greenhouse`
+> **Custom ports** — if `:3100`/`:3000` clash with something, set `WEB_PORT` / `API_PORT` in
+> `.env` (or as shell vars, which take precedence); the web dev proxy follows `API_PORT`.
+
+> **Example dataset** — `pnpm seed` loads a small, de-identified fictional company (users,
+> knowledge base, projects, chats, automations, a custom agent, sharing) so you can experience
+> and validate every major feature. Every seeded user logs in with the password `greenhouse`
 > (e.g. `maya@greenhouse.example`). See [`data/examples/README.md`](data/examples/README.md).
-> `pnpm seed` replaces `pnpm admin:create` for a demo install — it seeds its own admin.
-> On a non-empty database it refuses unless you pass `--reset` (wipe first) or `--keep`
-> (load on top).
+> On a non-empty database it refuses unless you pass `--reset` (wipe first) or `--keep`.
 
 > **CLI console** — `pnpm cli <command>` is the dev/ops entry point for a self-hosted
-> instance, mostly in-process (no running server needed): `users` (list / show / create),
-> `tools`, `profiles`, `sessions` (browse + dump a transcript for debugging), `stats`,
-> `seed`, `db reset`, `api-client` (mint/list keys), `doctor` (env + DB readiness check),
-> and `chat` (needs a running server). `admin:create`, `seed`, and `chat` also stay as
-> top-level script aliases. Run `pnpm cli --help` for the full guide (`pnpm help` is pnpm's
-> own built-in, so use `pnpm cli --help` or `pnpm run help`).
+> instance, mostly in-process (no running server needed): `users`, `tools`, `profiles`,
+> `sessions`, `seed`, `db`, `doctor` (env + DB readiness), `knowledge` (reindex / import a
+> folder of Markdown), `tables`, `platform` (scaffold an application), and `chat` (needs a
+> running server). Run `pnpm cli --help` for the full guide.
 
 ## One-command Docker deploy
 
@@ -172,6 +182,10 @@ pulls `ghcr.io/linjiejim/greenhouse` (no Node/pnpm toolchain needed):
 ```bash
 docker compose -f docker-compose.ghcr.yml up -d    # tracks :latest; pin via GREENHOUSE_IMAGE in .env
 ```
+
+Missions need one more piece on the host: Docker with the gVisor runtime, a dedicated bridge
+network, and the sandbox image (`bash scripts/build-agent-runtime.sh`). They stay off until
+`MISSION_ENABLED=1` and every preflight passes — see `.env.example`.
 
 ## Releases & stability
 
@@ -212,6 +226,14 @@ git pull && docker compose up -d --build
 git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 ```
 
+> **Upgrading from 0.6.x** — this line removes the public/guest surface (`/api/v1`, the
+> `default` profile, external accounts) and the database-managed LLM gateway upstreams in
+> favour of the model catalog below. The migration retires external accounts, disables
+> legacy agent-to-agent API keys, and drops email accounts (they must be re-added under
+> Settings → Email with explicit IMAP/SMTP settings). Existing custom agents become
+> immutable draft v1 and stay unshared until a super publishes them. Knowledge documents are
+> re-tokenized for search on the first boot.
+
 ## Configuration
 
 Everything is environment-driven; see [.env.example](./.env.example) for the full list.
@@ -221,22 +243,24 @@ Everything is environment-driven; see [.env.example](./.env.example) for the ful
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string |
-| `ACCESS_PASSWORD` | Gates all internal routes; unset = auth disabled, so it is mandatory |
-| `TOKEN_SIGNING_KEY` | Independent signing key for auth tokens (`openssl rand -hex 32`) |
-| `PROVIDER_TOKEN_ENCRYPTION_KEY` | AES-256-GCM key for stored secrets — gateway upstream keys, email credentials (`openssl rand -hex 32`) |
-| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | Any OpenAI-compatible endpoint; all logical model ids (`default`/`flash`/`pro`) resolve to `LLM_MODEL` (override `pro` with `LLM_MODEL_PRO`) |
+| `TOKEN_SIGNING_KEY` | Signing key for auth tokens (`openssl rand -hex 32`) |
+| `PROVIDER_TOKEN_ENCRYPTION_KEY` | AES-256-GCM key for stored secrets — email passwords, integration tokens, workspace-setting secrets (`openssl rand -hex 32`) |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | Any OpenAI-compatible endpoint; the `flash` catalog entry resolves to `LLM_MODEL` (add a stronger `pro` with `LLM_MODEL_PRO`) |
 
-Optional: vision (`analyze_image`), image generation (`generate_image`), and external web
-search. Uploads are stored on local disk (`data/uploads`), fine for single-instance deploys.
-Skill Center bundles default to local disk too (`data/skills`) — set the `SKILLS_S3_*` vars
-to keep them in S3-compatible object storage instead. See `.env.example`.
+**Model catalog** — `apps/api/src/config/models.yaml` is the single definition of every model
+a deployment can use: the built-in `flash` / `pro` entries follow `LLM_*`, and native DeepSeek,
+Kimi and MiniMax entries appear in the chat picker as soon as their key is set. Add a provider
+entry to offer another model; secrets never live in the file.
 
-**Admin-configurable at runtime**: the LLM / vision / image-generation / search credentials
-and the product name can also be set in **Settings → Runtime Config** (and branding in
-**Settings → Branding Studio**) — values saved there are stored in the database (secrets
-encrypted with `PROVIDER_TOKEN_ENCRYPTION_KEY`), win over the env vars, and apply without a
-restart. Clearing a value falls back to the env var, so env-only setups keep working
-unchanged.
+Optional: media (vision `analyze_image` + `generate_image` through `MEDIA_*`, falling back to
+the LLM endpoint), external web search, email mailboxes, WeCom / Feishu, missions, usage
+budgets, and object storage. Uploads default to local disk (`data/uploads`), Skill Center
+bundles to `data/skills` — set `SKILLS_S3_*` to keep bundles in S3-compatible storage.
+
+**Admin-configurable at runtime**: the LLM / media / search credentials and the product name
+can also be set in **Administration → Runtime Config** (and branding in **Branding Studio**) —
+values saved there are stored in the database (secrets encrypted with
+`PROVIDER_TOKEN_ENCRYPTION_KEY`), win over the env vars, and apply without a restart.
 
 ## MCP & agent access
 
@@ -247,25 +271,21 @@ Every capability is reachable three ways from the same tool layer:
   lists the caller's available tools (with input schemas), `POST /tools/:id/call` invokes one.
   Read tools run freely; write tools are deny-by-default and require `confirm: true`.
 - **`/api/mcp`** — the same proxy wrapped in the standard MCP protocol (Streamable HTTP), so
-  any MCP client (Claude, Cursor, …) can connect. The key is **bound to a specific internal
-  user**; the proxy can only *narrow* that user's permissions, never widen them. Provision and
-  manage keys under Settings › Administration › MCP Access.
+  any MCP client (Claude, Cursor, …) can connect. Auth is **OAuth 2.1**: people authorize with
+  Authorization Code + PKCE from their own account; automation uses machine clients
+  (client credentials) that a super binds to a least-privilege internal user under
+  Administration → MCP Access. Scopes combine an action (`mcp:read` / `mcp:write`) with
+  resource groups (`mcp:knowledge`, `mcp:projects`, `mcp:tables`, …).
 
 For both proxy surfaces the effective tool set is `resolveEffectiveTools(user, profile)`
 intersected with the proxy allowlist — a tool only appears if it declares the relevant
-`surface` in its metadata (see below).
+`surface` in its metadata (see below). The proxy can only *narrow* a user's permissions,
+never widen them.
 
 ## Adding a tool
 
-> Forking Greenhouse to build something private on top? See **[EXTENDING.md](./EXTENDING.md)** —
-> it documents every extension point (tools, routes, DB tables, pages, profiles, LLM providers,
-> feature flags, i18n) so a fork adds private features without editing shared files or diverging
-> from upstream.
-
 A tool is **one file + one line** — for every kind, not just stateless ones. Declare it with
 `defineTool`, give it a `create(ctx)`, set its `surface`, and add one line to `TOOL_MODULES`.
-
-A **static** tool needs nothing per request (only the shared `db`):
 
 ```ts
 // apps/api/src/tools/my-tool.ts
@@ -278,10 +298,10 @@ export const myTool = defineTool({
     category: 'team',
     is_global: true,
     icon: 'Wrench',
-    group: 'compute', // functional domain (one of TOOL_GROUPS in define.ts) — how the UI sections tools
+    group: 'compute', // functional domain (one of TOOL_GROUPS in define.ts)
     surface: {
       proxy: 'read',   // 'read' (no confirm) | 'write' (confirm-gated) | 'none'
-      mcp: true,       // also expose over /api/mcp
+      mcp: 'knowledge', // MCP resource group, or omit to keep it off /api/mcp
     },
   },
   kind: 'static',
@@ -290,43 +310,56 @@ export const myTool = defineTool({
 ```
 
 A **lazy** tool needs request context (the calling user / the session). Declare what it needs
-with `requires`; the runtime builds it per request, passes a `ctx` carrying those fields, and
-enforces `requires` as the access guard (no permission checks wired anywhere else):
+with `requires`; the runtime builds it per request and enforces `requires` as the access guard:
 
 ```ts
 export const myUserTool = defineTool({
-  meta: {
-    /* … same shape … */
-  },
+  meta: { /* … same shape … */ },
   kind: 'lazy',
-  requires: { user: 'internal' }, // 'optional' | 'required' | 'internal'  (+ session?, registry?)
+  requires: { user: 'internal' }, // 'optional' | 'required' | 'internal' | 'super' (+ session?)
   create: (ctx) => createMyUserTool(ctx.db, { userId: ctx.userId }),
 });
 ```
 
-Then add one line to `TOOL_MODULES` in `apps/api/src/tools/registry.ts`. That's it — no other
-edits, including for lazy tools. The registry derives the read/write proxy allowlists, the
-MCP-exposed set, and the lazy build list directly from each module's `meta.surface` / `kind` /
-`requires` — there are no hand-maintained id lists. The tool is now reachable in chat,
-`/api/agent`, and `/api/mcp`.
+Then add one line to `TOOL_MODULES` in `apps/api/src/tools/registry.ts`. The registry derives
+the read/write proxy allowlists, the MCP-exposed set, and the lazy build list from each
+module's `meta.surface` / `kind` / `requires` — there are no hand-maintained id lists. The tool
+is now reachable in chat, `/api/agent`, and `/api/mcp`.
 
-Optional modules are gated by per-user feature flags: add an entry to
-`packages/types/src/features.ts` and guard the routes with `requireFeature('<key>')`.
+Optional modules are gated by per-user feature flags (`packages/types/src/features.ts`) and
+by **feature points** (`apps/api/src/platform/feature-points.ts`), which map a flag or an
+application to the tools it owns so one switch controls the app, REST, MCP and chat at once.
+
+## Adding an application
+
+Larger modules are **platform applications**: a JSON-serializable manifest (modules, entities,
+fields, actions, navigation) plus a registration that binds handlers. The kernel enforces
+capabilities and record / field policies once, for every transport. Scaffold a fail-closed
+starting point with:
+
+```bash
+pnpm cli platform create-app my-app --title "My App"
+```
+
+See [EXTENDING.md](./EXTENDING.md) for the full map of extension points.
 
 ## Development
 
 ```bash
-pnpm dev          # Vite web (:3100) + API (:3101), proxied
-pnpm test         # vitest
-pnpm test:e2e     # e2e security suite (needs a running API — see tests/e2e)
-pnpm test:e2e:ci  # e2e suite, self-contained (boots the API, stubs the LLM) — same as CI
-pnpm typecheck    # tsc --noEmit
-pnpm lint         # eslint + prettier --check
-pnpm lint:fix     # auto-fix
+pnpm dev            # Vite web (:3100) + API (:3000), proxied
+pnpm test           # every layer: unit + db (transaction-isolated) + db-commit
+pnpm test:unit      # fast feedback: unit / contract tests only
+pnpm test:db        # database integration tests (needs a migrated greenhouse_test)
+pnpm test:e2e:ci    # live-server API e2e suite, self-contained (boots the API, dead LLM)
+pnpm test:e2e:ui    # Playwright browser suite (tests/e2e-ui; auto-starts pnpm dev)
+pnpm typecheck      # tsc --noEmit
+pnpm lint           # eslint + prettier --check
+pnpm lint:fix       # auto-fix
 ```
 
 A husky + lint-staged pre-commit hook runs `eslint --fix` + `prettier --write` on staged
-files. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → e2e on `main` and every PR.
+files. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → e2e → secret-scan on
+`main` and every PR.
 
 ### Database migrations
 

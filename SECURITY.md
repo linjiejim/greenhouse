@@ -1,8 +1,8 @@
 # Security Policy
 
 Greenhouse is an AI-native agent workbench: it handles authentication, stored
-third-party credentials (LLM gateway keys, email accounts), an external/public
-agent surface (`/api/v1/*`, `/api/mcp`, `/api/agent`), and tool execution. We
+third-party credentials (LLM gateway keys, email accounts), an
+agent surface (`/api/mcp`, `/api/agent`), and tool execution. We
 take security reports seriously.
 
 ## Supported versions
@@ -48,8 +48,8 @@ Please include:
 ## Scope — areas of particular interest
 
 - **Auth & sessions** — token signing/validation, the fail-closed `assertAuthEnv`
-  startup guard, role/feature gating (`super` / `team` / `external`).
-- **External surface** — `/api/v1/*`, `/api/mcp`, `/api/agent`: profile/tool
+  startup guard, role/feature gating (`super` / `team`).
+- **Agent surface** — `/api/mcp`, `/api/agent`: profile/tool
   scoping, API-key isolation, cross-user/session data isolation.
 - **Secret handling** — encryption of stored upstream LLM keys and email
   credentials (`PROVIDER_TOKEN_ENCRYPTION_KEY`, AES-256-GCM).
@@ -64,7 +64,7 @@ to demonstrate a finding.
 ## Out of scope
 
 - Issues that require a misconfigured deploy that ignores the documented
-  fail-closed requirements (e.g. running without `ACCESS_PASSWORD` /
+  fail-closed requirements (e.g. running without `TOKEN_SIGNING_KEY` /
   `TOKEN_SIGNING_KEY` set — the server refuses to start without them by design).
 - Local development credentials in `.env.example` (placeholders) or the bundled
   local Postgres defaults.

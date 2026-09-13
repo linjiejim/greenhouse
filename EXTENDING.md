@@ -1,63 +1,78 @@
-# Extending Greenhouse (downstream forks)
+# Extending Greenhouse
 
-Greenhouse is designed to be **forked and personalized** without diverging from upstream. A downstream fork adds its private tools, routes, tables, pages, profiles, providers and translations through **extension points** — small files that ship **empty upstream** and are spliced into the central registries. Because the fork edits only these extension files (and adds new files of its own), the shared registry files (`registry.ts`, `index.ts`, `app.tsx`, `provider.ts`, …) stay **byte-identical to upstream** and never conflict when you pull a new Greenhouse release.
+Greenhouse is meant to be extended with your own tools, applications and integrations. Every
+capability plugs into a **registry** that already drives chat, the `/api/agent` proxy, the
+`/api/mcp` server, permissions and the admin UI — so an extension is almost always "one new
+file + one registry line", never a scattered set of edits.
 
-Every extension point is guarded by a test that pins it **empty in this repo**, so an open-source build can never ship private code.
-
-## The boundary model
-
-| Layer | What it is | How a fork extends it |
-|---|---|---|
-| **Versioned packages** — `@greenhouse/{agent-core, types, utils, contract, knowledge-editor}` | Consumed over npm; the fork **cannot** edit them | **Runtime `register*()` / DI hooks** called at startup |
-| **Consumer-owned source** — `apps/api`, `apps/web`, `packages/db` | The fork keeps its own synced copy | **Designated `*.extensions.*` files** spliced into the central file |
+> Earlier releases (≤ 0.6) shipped a separate family of `*.extensions.*` seam files that were
+> pinned empty upstream. Those seams were retired: the registries below are the extension
+> points now, and a downstream fork simply keeps its additions on its own branch.
 
 ## Extension points
 
-| # | Add a private… | Edit this file | Mechanism |
-|---|---|---|---|
-| S1 | agent tool (auto-exposed on chat + `/api/agent` + `/api/mcp`) | `apps/api/src/tools/extensions.ts` | `EXTENSION_TOOL_MODULES` |
-| S2 | API route | `apps/api/src/routes/extensions.ts` | `EXTRA_ROUTES` (mounted out of the `AppType` contract, like `/api/client-tools`) |
-| S3 | LLM provider / provider options / model middleware (re-add DeepSeek/Anthropic/DSML) | *(fork startup code)* | `registerProviderFactory` / `registerProviderOptionsBuilder` / `registerProviderMiddleware` from `@greenhouse/agent-core` |
-| S4-db | DB table + service (typed `db.x.*`) | `packages/db/src/extensions.ts` | `createExtensionServices` + `EXTENSION_RESET_TABLES` (flow into the inferred `DatabaseProvider`) |
-| S4-profile | system profile | `apps/api/src/profiles/extensions.ts` | `EXTENSION_SYSTEM_PROFILES` |
-| S5 | settings nav section / translations | `apps/web/src/lib/nav-registry.extensions.ts` / `registerLocaleMessages` | `EXTENSION_SETTINGS_SECTIONS` / i18n fallback |
-| S6 | branding (name / logo / theme tokens) | `apps/web/src/branding.extensions.tsx` + `apps/web/src/branding.css` + *(env)* | `BRANDING` (product name + logo mark); design-token CSS overrides — generate with Settings → Branding Studio (super) and paste into `branding.css`; `PRODUCT_NAME` env sets the document title + `BRANDING` default; replace `public/favicon.*` assets. Env-only knobs: `CORS_ALLOWED_ORIGINS`, storage/vision env |
-| S7 | feature flag | *(fork startup code)* | `registerFeatureFlags()` from `@greenhouse/types` |
-| S8 | top-level page + settings panel | `apps/web/src/lib/page-registry.tsx` + `apps/web/src/pages/settings/panels.extensions.tsx` | `EXTRA_PAGES` / `findSettingsPanel` |
-| S9 | custom chat card for a tool output | `apps/web/src/components/tool-call/artifact-renderers.ts` | `ARTIFACT_RENDERERS` |
-| S10 | Global-Agent page context (URL → PageContext) | `apps/web/src/lib/context-resolvers.ts` | `registerUrlContextResolver` |
-| S11 | pipeline-step summary for a tool | *(fork startup code)* | `registerToolOutputSummarizer()` from `@greenhouse/agent-core` |
-| S12 | CRUD field/column widget type (for `@greenhouse/crud`) | `apps/web/src/lib/crud.extensions.ts` | `registerCrudField` / `registerCrudColumn` (called from `registerCrudExtensions()`, wired in `app.tsx`); reference in a schema via `{ type: 'extension', name }` |
-| G0 | **wire the runtime hooks at startup** | `apps/api/src/bootstrap.extensions.ts` + `apps/web/src/bootstrap.extensions.ts` | `bootstrapForkExtensions()` (api) — the call-site for every `register*()` below |
-| G1 | upload storage backend (S3 / COS) | `apps/api/src/storage/extensions.ts` | `registerStorageDriver()` |
-| G2 | email connector (Gmail / Outlook) | `apps/api/src/email/extensions.ts` | `registerEmailConnector(provider, factory)` |
-| G3 | public (auth-skipped) path — OAuth callbacks | `apps/api/src/auth/extensions.ts` | `EXTENSION_PUBLIC_PATHS` / `EXTENSION_PUBLIC_PATH_PREFIXES` |
-| G5 | CSP `connect-src` for external origins | *(env)* | `CSP_CONNECT_SRC` (space/comma-separated) — no code edit |
+| Add a… | Where | Mechanism |
+|---|---|---|
+| **Agent tool** (auto-exposed on chat, `/api/agent`, `/api/mcp`) | `apps/api/src/tools/<name>.ts` + one line in `tools/registry.ts` | `defineTool({ meta, kind, requires?, create })`; `meta.surface` decides proxy / MCP exposure and the workbench binding; `meta.is_global` decides default availability |
+| **Platform application** (module with entities, permissions, navigation) | `apps/api/src/platform/manifests/<app>.ts` + `apps/api/src/platform/<app>/application.ts`, registered in `index.ts` (`initializePlatformRuntime`) | Manifest v2 (JSON-serializable) + registration handlers; scaffold with `pnpm cli platform create-app <id>`; bump `manifest.version` whenever the serialized manifest changes |
+| **Feature flag** (per-user opt-in / opt-out) | `packages/types/src/features.ts` | `FEATURE_FLAGS` entry; guard routes with `requireFeature('<key>')`; the admin toggle appears automatically |
+| **Feature point** (what a flag / app owns) | `apps/api/src/platform/feature-points.ts` | Maps a flag or app to its tool ids and capability prefix so one switch controls app + REST + MCP + chat |
+| **API route** | `apps/api/src/routes/<resource>.ts`, mounted in `apps/api/src/index.ts` (`mountRoutes`) | Chained Hono routes (they become part of the typed `AppType` contract used by the web client) |
+| **Database table + service** | `packages/db/src/schema/<domain>.ts` + `services/<domain>.ts`, one line in `provider.ts` | Drizzle schema → `pnpm drizzle-kit generate` → review SQL → commit; services are typed factories, the provider type is inferred |
+| **Web page / navigation** | `apps/web/src/pages/**`, `apps/web/src/lib/nav-registry.ts`, hash routes in `apps/web/src/app.tsx` | Settings/Administration modules come from `nav-registry`; top-level pages are hash routes in `app.tsx`; platform apps surface through the permission-aware catalog (`apps/web/src/platform/`) |
+| **Chat card for a tool output** | `apps/web/src/components/tool-call/body-artifacts.tsx` + `tool-call-card.tsx` | Tool results render from the tool's `presentation` metadata; add a body renderer keyed by tool id |
+| **Translations** | `apps/web/src/lib/i18n/{en,zh}.ts` | Keys must exist in both locales; `visible-copy.test.ts` rejects hardcoded English in TSX |
+| **Workspace setting** (admin-editable runtime config) | `packages/types/src/workspace-settings.ts` | One `WORKSPACE_SETTINGS` entry (`key`, `group`, `type`, `secret?`, `env?`) — the Runtime Config page renders from it, no migration |
+| **Model** | `apps/api/src/config/models.yaml` | Catalog entry with a provider chain; `api_key_env` / `model_env` / `base_url_env` name the env vars; unset keys hide the model |
+| **Agent profile** | `apps/api/src/profiles/*.yaml` | Validated by `@greenhouse/types/profile-manifest`; keep prompts free of tool-specific rules (those belong in tool descriptions) |
+| **Skill pack** (first-party skill) | `skillhub/<group>/<name>/SKILL.md` (+ `CHANGELOG.md`, assets) | Synced into the Skill Center on boot; see `skillhub/README.md` |
+| **Automation-eligible write tool** | `packages/types/src/automation-tools.ts` | Opt-in catalog of tools an owner may grant to an unattended run |
+| **Upload storage backend** | `apps/api/src/storage/uploads.ts` | Local disk by default; Tencent COS when `TENCENT_CLOUD_COS_*` are set; Skill Center bundles use `SKILLS_S3_*` |
+| **Notification transport** | `apps/api/src/notifications/` | Durable delivery attempts per transport (email, WeCom, Feishu) |
+| **Integration (OAuth callback, bot)** | `apps/api/src/wecom/`, `apps/api/src/feishu/` as reference implementations | Public callback paths are listed in `auth/middleware.ts` (`PUBLIC_PATHS`) — keep that list minimal |
 
-**Startup wiring (G0):** the `*.extensions.*` **array** seams are auto-imported by their central file — no wiring needed. The **runtime `register*()`** seams (S3, S5-i18n, S7, S10, S11, G1, G2) must be *called* at startup: put every API call inside `bootstrapForkExtensions()` in `apps/api/src/bootstrap.extensions.ts` (invoked at the start of `main()`), and every web call in `apps/web/src/bootstrap.extensions.ts` (imported first by `app.tsx`). This is the one place a fork wires them — `index.ts` / `app.tsx` stay untouched.
+## Golden rules
 
-DB migrations for private tables live in the **fork's own** drizzle namespace (e.g. `drizzle-fork/`, timestamp-prefixed filenames) — never in this package's `drizzle/` chain.
+1. **Registries, not forks of shared files.** If a change needs an edit to `registry.ts`,
+   `index.ts`, `provider.ts` beyond the one-line registration, add the missing seam to the
+   registry instead of special-casing your module.
+2. **Permissions are declared, not hand-rolled.** Tools declare `requires` and `surface`;
+   applications declare capabilities and entity/field policies in the manifest. Transport
+   layers (HTTP, chat, proxy, MCP) adapt protocol only — they never make a second permission
+   decision.
+3. **Declared capabilities must be real.** A tool description, UI option or doc must not claim
+   something the code cannot do; unconfigured paths fail explicitly.
+4. **Delete with the same discipline as you add.** Removing a module means removing its
+   translations, nav entries, docs and tests in the same change.
+5. **Generic improvements go upstream.** Anything that could exist without your private
+   domain belongs in Greenhouse; keep only genuinely private modules on your branch.
 
-## Golden rules (keep upstream mergeable)
+## Recipe: a private module
 
-1. **Generic improvements go upstream first.** Anything that could exist without your private domain lands in Greenhouse and comes back via a version bump — this is what stops the core from re-diverging.
-2. **Private code = new files + one extension file.** Never edit a shared file except through an extension point. If a private need forces a shared-file edit, that's the signal to add/extend a seam **upstream**, not to patch downstream.
-3. **Scope stays split.** Core packages stay `@greenhouse/*` and are consumed verbatim; private packages are your own scope. Never re-scope core.
-4. **Seam changes are upstream-only.** Adding or widening an extension point is a core change → upstream → version bump. Never widen a seam locally.
+1. Scaffold the application: `pnpm cli platform create-app crm --title "CRM" --dry-run`, then
+   fill in the manifest (entities, fields, actions) and the registration handlers.
+2. Add its tools as a query / mutation pair (`crm_query`, `crm_mutation`) with `defineTool`,
+   declaring `surface.proxy` and an MCP resource group; list them in `TOOL_MODULES`.
+3. Add a feature flag (`packages/types/src/features.ts`) and a feature point that owns the two
+   tools and the `crm.*` capability prefix.
+4. Schema + service in `packages/db`, migration via `drizzle-kit generate`.
+5. Web: pages under `apps/web/src/pages/crm/`, a hash route in `app.tsx`, translations, and an
+   `entity-links` kind if records should open as peeks from chat.
+6. Tests: a `*.db.test.ts` for the service, a route test, and an entry in the tool-surface
+   guard test so the exposed set changes consciously.
 
-## Recipe: add a private module (e.g. CRM)
+## Recipe: a list/edit page with `@greenhouse/crud`
 
-1. `apps/api/src/tools/crm/*.ts` (`defineTool`) → list in `tools/extensions.ts`.
-2. `apps/api/src/routes/crm.ts` → add to `EXTRA_ROUTES` in `routes/extensions.ts`.
-3. `packages/db/src/services/crm.ts` + schema files → return from `createExtensionServices` in `db/extensions.ts`; add table names to `EXTENSION_RESET_TABLES`; generate migrations in `drizzle-fork/`.
-4. `apps/web/src/pages/crm/*` → register in `page-registry.tsx` (top-level tab) and/or `panels.extensions.tsx` + `nav-registry.extensions.ts` (settings module).
-5. Optional: `registerFeatureFlags([{ key: 'crm', … }])` to gate it; `registerUrlContextResolver('crm', …)` for Global-Agent context; `registerLocaleMessages('zh', { crm: … })` for i18n.
+The low-code CRUD framework turns one declarative schema into a list + filters + add/edit
+form + detail + delete.
 
-## Recipe: build a list/edit page with `@greenhouse/crud`
-
-The low-code CRUD framework turns one declarative schema into a list + filters + add/edit form + detail + delete. See the reference at `apps/web/src/pages/settings/crud-example.tsx` (+ `apps/api/src/routes/crud-demo.ts`).
-
-- **Server (own a table):** `createTableCrudService(getDb(), myTable, opts)` (from `@greenhouse/db`) → `createCrudRoutes(service, { filterable, sortable, guards, hooks, parseCreate, parseUpdate })` (from `@greenhouse/crud/server`) → mount in `routes/extensions.ts`. Filter/sort keys are whitelisted **fail-loud** (unknown key → 400).
-- **Server (proxy an external API):** implement `CrudService` yourself (forward to the upstream admin API); the protocol matches, so the translation is thin — no table required.
-- **Client:** `defineCrud<Row>({ dataSource: createRestDataSource('/api/…', authFetch), columns, filters, formFields, access, … })` then render `<CrudPage schema={…} />`. Adapt an existing hc route by hand-writing a `CrudDataSource` instead of `createRestDataSource` (see `settings/prompts.tsx`).
-- **Escape hatches, narrow → wide:** column/field `type: 'custom'` (render fn) → `type: 'extension'` (S12 registered widget) → `slots` (toolbar / banner / rowExpand) + `tableActions` / `pageActions` → use `CrudPage` / `CrudForm` / `CrudDetail` standalone in a bespoke page (see `settings/mcp-keys.tsx`).
+- **Server:** `createTableCrudService(getDb(), myTable, opts)` (from `@greenhouse/db`) →
+  `createCrudRoutes(service, { filterable, sortable, guards, hooks, parseCreate, parseUpdate })`
+  (from `@greenhouse/crud/server`) → mount in `index.ts`. Filter/sort keys are whitelisted
+  fail-loud (unknown key → 400).
+- **Client:** `defineCrud<Row>({ dataSource: createRestDataSource('/api/…', authFetch), columns,
+  filters, formFields, access, … })` then render `<CrudPage schema={…} />`. Reference
+  implementations: `apps/web/src/pages/settings/users.tsx`, `skills.tsx`, `mcp-keys.tsx`.
+- **Escape hatches, narrow → wide:** column/field `type: 'custom'` (render fn) → `slots` +
+  `tableActions` / `pageActions` → use `CrudPage` / `CrudForm` / `CrudDetail` standalone in a
+  bespoke page (`installCrudUi` wires the host's UI kit once, in `app.tsx`).

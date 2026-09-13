@@ -1,157 +1,470 @@
-## Backend API rules
+## 后端 API 规则
 
-### Logging
-- All backend logs use `logger.info/warn/error` from `utils/logger`.
-- **No `console.log/warn/error`** — use the structured logger.
-- Format: `[INFO/WARN/ERROR] message` + an optional data object.
+### 日志规范
+- 所有后端日志使用 `utils/logger` 中的 `logger.info/warn/error`
+- **禁止使用 `console.log/warn/error`**——统一用结构化 logger
+- 日志格式：`[INFO/WARN/ERROR] 消息` + 可选 data 对象
 
-### Routes
-- Each route file starts with a comment block listing its endpoints:
+### 路由规范
+- 每个路由文件顶部添加中文注释块，列出所有端点：
   ```
   /**
-   * XXX routes — /api/xxx
+   * XXX 路由 — /api/xxx
    *
-   * GET  /api/xxx     — list XXX
-   * POST /api/xxx     — create XXX
+   * GET  /api/xxx     — 获取XXX列表
+   * POST /api/xxx     — 创建XXX
    */
   ```
-- One file per resource, in `routes/`.
-- **Routes must be chained** (prerequisite for the hc contract): `const x = new Hono<AppEnv>().get(...).post(...)`. Statement-style registration (`x.get(...)`) doesn't accumulate types and the endpoint disappears from the `AppType` contract. `AppEnv` comes from `src/app-env.ts`.
-- Factory routes (`createXxxRoute()`) **must not** declare an explicit `: Hono` return type — it flattens the chained schema and breaks hc inference.
-- **No `any` in response objects**: an `any` field in a handler's return value collapses the whole route's inferred response to `never` (the hc endpoint becomes unusable). Annotate raw SQL result shapes before `c.json()`.
-- All routes are mounted through `mountRoutes()` in `src/index.ts` (**mount order has security semantics — don't reorder**). `export type AppType` is the contract, re-exported by `@greenhouse/contract` to the web client.
-- `/api/client-tools` is mounted dynamically and deliberately stays out of the contract (the browser client-action callback surface: `POST /result` returns an action result and unblocks a suspended agent step).
-- **Workspace settings** (`src/settings/workspace-config.ts` + `routes/admin-settings.ts` +
-  `routes/bootstrap.ts`): registry-driven deployment config (see root AGENTS.md → "Workspace
-  settings"). `GET /api/bootstrap` is PUBLIC (core `PUBLIC_PATHS` entry) and must only ever
-  serve non-sensitive branding (no secrets, no user data, no feature config). All writes go
-  through `validateWorkspaceValue`; secrets are encrypted with `encryptToken` and are never
-  returned by reads (`has_value`/`source` only). After every write call
-  `refreshWorkspaceConfig()` — it re-overlays resolved values onto `process.env`, which is how
-  call-time consumers (model factory, media tools, search) see admin changes without a restart.
+- 路由文件放在 `routes/` 目录下，每个资源一个文件
+- **路由必须链式定义**（2026-06 起，hc 契约的前提）：`const x = new Hono<AppEnv>().get(...).post(...)`，禁止 `x.get(...)` 语句式注册——语句式不积累类型，端点会从 `AppType` 契约里消失。`AppEnv` 来自 `src/app-env.ts`
+- 工厂路由（`createXxxRoute()`）**禁止写显式 `: Hono` 返回类型注解**——会把链式 schema 抹平，hc 推导失效
+- **响应对象里不许有 `any`**：handler 返回值若含 `any` 字段，整条路由的推导响应会塌成 `never`（hc 端点直接不可用）。raw SQL 结果先标注形状再 `c.json()`
+- 全部路由经 `src/index.ts` 的 `mountRoutes()` 单链挂载（**注册顺序有安全语义，禁止重排**）；`export type AppType` 即对外契约，由 `@greenhouse/contract` 重导出给浏览器 Web typed client
+- **长时流式响应必须同时有心跳和上游时限**：`routes/chat.ts` 每 `STREAM_KEEPALIVE_MS`（15s）写一条 `{"type":"ping"}`，并带 `X-Accel-Buffering: no`；`agent-core/chat-engine.ts` 的 `CHAT_STREAM_TIMEOUT` 则约束 LLM 总时长、单步时长和无 chunk 时长。两者解决不同问题：心跳防反代把健康的慢工具掐断；SDK timeout 防上游已经僵住却被心跳无限续命。`chunkMs` 也覆盖本地工具执行，必须高于生图实测的 30–100s。AI SDK timeout 发的是 `abort` part，不是普通 `error`，两者都必须转成前端错误并走中断落库。中断时剥掉未闭合的 chart/confirm/datatable fence，持久化安全的部分正文 + 明确重试提示，再结束 HTTP 响应；禁止让刷新抹掉整轮。心跳是纯填充，`handleStreamEvent` 里必须保持空 case——任何回调都会污染 transcript。
+- **中断文案统一收敛，唯一例外是用量预算拒绝**（`chat-turn.ts` 的 `usageBudgetNotice`）：其余失败一律收成通用「请重试」——原始 provider 错误既不可行动又是泄露面。预算准入不同，三点缺一不可：文案是我们为用户写的、拒绝发生在任何 provider I/O **之前**（没计费也没有上游细节）、而「请重试」对它是**假话**（每次重试都在 ~1s 后被同样拒绝，用户会照做很多次）。识别要沿 `cause` 链走几层——AI SDK 会用 `RetryError` 之类把它包起来。同一句话必须同时进流事件与持久化的 assistant 消息，否则刷新后又变回「请重试」。见 [spec D1](../../../docs/specs/20260813-usage-budget-admission-truthfulness.md)。
+- **Chat 生成与 HTTP 响应解耦（run 注册表）**：一轮生成 = 一个 `ChatRun`（`chat-runs.ts`，进程内 seq 事件缓冲 + 订阅者 + abort signal），agent loop 在 `chat-turn.ts` 的 `pumpChatTurn` 里 detached 跑，POST 响应只是 0 号订阅者——断连/刷新不影响生成，重连走 `GET /api/chat/runs/:sessionId/stream?after=seq`（回放标 `replayed:true` 再实时尾随），探测/列表/停止见 `routes/chat.ts` 头注释。**分层固定**：`routes/chat.ts` 只做协议适配（鉴权 → 工具装配 → 起 run → 订阅），泵循环与订阅层在 `chat-turn.ts`，终态落库在 `chat-persist.ts`；别把循环搬回路由。回放信封（`seq`/`replayed`）与 `ChatRunStatus` 定义在 `@greenhouse/types/api`，服务端盖章、浏览器读取，禁止任一端另建本地定义。硬约束：**同 session 一次一轮**（claim 在持久化 user 消息之前，重复 POST 409；claim 后的预检失败必须 release）；**先落库再 `finish(run)`**——订阅者以流关闭为"可安全重拉消息"的信号，颠倒顺序会让前端 reload 与 DB 写入竞态；心跳按连接写、不进缓冲；服务端 stop 与 SIGINT/SIGTERM（`registry.shutdown` 先于 db.close）都走 abort → 中断落库路径；生命周期经 WS `chat:run` 推给属主（只推 id/状态不推内容）。限流表里 `/api/chat/runs` 必须排在 `/api/chat` **之前**（`matchRateLimit` 首个前缀命中即生效），否则重连/探测会吃掉 LLM 消息配额。注册表是内存态（pm2 单进程），多实例部署前必须重新设计。
+- **Chat 历史有发送前预算窗口，预算按当轮模型派生**：`windowMessagesByBudget`（`@greenhouse/agent-core` 的 `context-budget`，CJK≈1 字/token、其余≈4 字符/token）在模型解析后、发模型前把最老的整条消息裁出窗口，最新一条永远保留；只裁模型载荷，**不动 DB 转录**。预算 = `resolveHistoryBudget(当轮模型 id)` = models.yaml 逐模型声明的 `context_window` × `compaction_threshold`（阈值缺省 0.5，上限 0.9；窗口按 provider 链**最小值**声明），未声明窗口的模型回退 `HISTORY_TOKEN_BUDGET`=80k。当前：flash/pro 1M → 预算 500k，minimax-m3 512k → 262k，kimi-k3 256k → 131k（2026-08-14 起上游用 `k3-256k`，1M 版每请求吃约 2 倍订阅额度）。自动摘要/压缩尚未实现——这是防上游上下文超限的安全下限，不是记忆策略；`compaction_threshold` 同时预留为将来折叠式压缩的触发点，**滑窗一旦触发,每轮头部平移会让 provider 前缀缓存全失效**（DeepSeek 自动缓存实测命中 ~90%），所以真到常规触发时应改折叠而不是调大窗口。见 [spec](../../../docs/specs/20260806-model-context-window-and-compaction-config.md)。
+- **两套 `?after=seq` 回放是刻意并存，不是重复造轮子**（登记于防熵增门禁）：Chat run（本节，内存缓冲 + 实时尾随 + 订阅者推送）服务分钟级的交互流，要求零延迟且不接受逐事件写库的写放大；Cloud Agent run（`routes/cloud-agent.ts` 的 `GET /runs/:id/events?after=`，`agent_run_events` 表 + 轮询）服务小时级的沙箱任务，必须跨 pm2 重启存活、事实源在 DB。合并任一方向都会退化：把 chat 塞进 DB 回放会重蹈 20260729 否决过的写放大，把 mission 塞进内存会丢掉重启耐久性。**唯一该合流的点**是 cloud-agent 将来做 SSE 推送时复用 `chat-turn.ts` 的 `streamRunToResponse` 订阅形状（见 cloud-agent spec 的 P2）；在那之前两套各管一头。
 
-### Fork extension points (downstream personalization)
-These are the seams a downstream fork uses to add private features WITHOUT editing shared registry files, so those files stay byte-identical to upstream and never conflict on sync. **Upstream (this repo) ships each one empty** — guard tests pin that (an OSS build must contain zero private tools/routes).
-- **Private tools** → `tools/extensions.ts` (`EXTENSION_TOOL_MODULES`). The fork adds tool modules there; `registry.ts` splices them into the catalog before deriving metadata + the proxy/MCP allowlists, so a private tool with `meta.surface` is auto-exposed. Never edit `registry.ts` to add a tool.
-- **Private routes** → `routes/extensions.ts` (`EXTRA_ROUTES` + `mountExtraRoutes`). The fork pushes `{ path, create, use }` entries; they mount in `main()` after the typed chain and are intentionally **outside** the `AppType` contract (same as `/api/client-tools`) — the fork calls them with plain `fetch`. Never edit `mountRoutes()` to add a private route.
-- **Private system profiles** → `profiles/extensions.ts` (`EXTENSION_SYSTEM_PROFILES`). The fork adds `defineProfile(...)` results there; `profile.ts` splices them into `SYSTEM_PROFILES` so they're loadable/listable/resolvable, and a private profile may reference private tools (validated against the live catalog). Never edit `profile.ts`.
-- **Startup wiring for runtime hooks** → `bootstrap.extensions.ts` (`bootstrapForkExtensions()`, called first thing in `main()`). The array seams above self-wire (their central file imports them); the runtime `register*()` seams must be *called* — do it here. Never edit `index.ts`'s `main()` to wire a fork.
-- **Storage backend** → `storage/extensions.ts` (`registerStorageDriver()`). Upstream is local disk; a driver routes `putUpload`/`getUpload`/`deleteUpload`/`presignUpload` to S3/COS. Never edit `storage/uploads.ts`.
-- **Email connectors** → `email/extensions.ts` (`registerEmailConnector(provider, factory)`). Upstream is IMAP-only; `createEmailClient` dispatches to a connector for a non-`imap` provider (Gmail/Outlook). Never edit `email/service.ts`.
-- **Public (auth-skipped) paths** → `auth/extensions.ts` (`EXTENSION_PUBLIC_PATHS` / `EXTENSION_PUBLIC_PATH_PREFIXES`). For OAuth redirect callbacks that arrive without a bearer token. **Security-sensitive** — a guard test pins these empty upstream. Never edit `isPublicPath()` in `middleware.ts`.
-- **CSP `connect-src`** → the `CSP_CONNECT_SRC` env var (space/comma-separated origins) for a fork's external calls. No code edit.
-- Convention: contribute private code as NEW files under `tools/<domain>/`, `routes/`, or `profiles/`, then reference them from the matching `extensions.ts`. Runtime `register*()` calls go in `bootstrap.extensions.ts`. If a private need forces an edit to a shared file, that's a signal to add/extend a seam upstream, not to patch downstream.
+### 会话列表的 scope 筛选（`GET /api/sessions?scope=`）
 
-### Auth module (`auth/`)
-- All auth logic lives in `auth/` (token, middleware, password, api-key, crypto, features).
-- Internal CLI / server self-calls use `createInternalToken()` from `auth/token.ts`.
-- Always import from `auth/index.ts`.
-- **Fail-closed startup gate (`assertAuthEnv()`, called from `main()`)**: if `ACCESS_PASSWORD` is unset, auth is off and `authMiddleware` treats every request as super — a total bypass for any exposed deployment. So `ACCESS_PASSWORD` is **mandatory in every environment** (local / dev / prod) and the service **refuses to start** without it; once set, `TOKEN_SIGNING_KEY` is equally mandatory (no fallback). It does **not** rely on `NODE_ENV` — forgetting `NODE_ENV=production` won't open it up. No escape hatch — local/dev `.env` must also set both. The contract is locked by `tests/api/token.test.ts`.
+侧边栏「我的 / 分享给我 / Team」三档的后端。方案与决策（D1–D8）见 [spec](../../../docs/specs/20260806-session-list-scope-filter.md)。
 
-### Security (`security.ts`)
-- External user input **must** pass through `sanitizeForPrompt()` before reaching the LLM.
-- Use `checkPromptInjection()` to detect and log injection attempts.
-- Rate limiting uses the shared `InMemoryRateLimiter` class — don't roll your own.
-- File uploads: validate MIME via `validateMagicBytes()`.
+- **不传 `scope` = 历史行为，一个字节都没变**（super 看全部、team 看自己 + 分享回填）。历史弹框仍这么用，所以别把默认改成 `mine` —— 那会让 View All 名不副实且波及面不可控。
+- `scope=team` **对非 super 直接 403**，不是静默返回空数组：空列表会把调用方的 bug 藏起来。
+- **`excludeUserId` 必须用 `IS DISTINCT FROM`**（`sessions.user_id` 可空：历史与引擎会话没有 owner）。写成 `<>` 的话三值逻辑会静默吞掉所有无主会话，「除我以外的全部」就变成「除我以外**有主**的全部」，且没有任何报错。
+- **`owner_nickname` 按「owner ≠ 请求者」统一附带，不按 scope 特判**（`withOwnerNicknames`）：一条规则同时覆盖 Team tab、分享 tab、super 的无 scope 列表、team 用户的分享回填行。按 scope 特判的话历史弹框里 super 看别人的会话就没名字，得再开第二条通道。
+- **分享列表查询只有一份**：`db.sessions.listSharedWith()`。`scope=shared` 用它，无 scope 的回填也用它（原先是拿到 id 列表后逐个 `getById` 的 N+1）。它是 EXISTS 半连接不是 join —— 同一会话可能同时有直接分享和 `__team__` 分享，join 会把它返回两次。
+- **pin/分组回填只在 `mine` 与无 scope 下做**：归档整理是显式动作，优先级高于 scope；`shared`/`team` 是平铺列表，回填进去只会让人困惑。
 
-### Upload storage (`storage/uploads.ts`)
-- Unified storage layer for chat-uploaded images / generated images — **never touch the filesystem directly**, always go through `putUpload(id, buffer, contentType)` / `getUpload(id)` / `deleteUpload(id)`.
-- Backend is local disk (`data/uploads`), suitable for single-instance deploys. For multi-instance, put an object-storage backend behind this same put/get/delete interface.
-- `routes/upload.ts`'s `GET /api/upload/:id` is the authenticated origin proxy (keeps `authMiddleware`; URL contract unchanged). It derives `Content-Type` from the id's extension (`contentTypeForId`) and sends `Content-Disposition: attachment` for non-inline types (csv/xlsx/…) so they download; images/pdf stay inline.
-- **Expiring exports.** Generated downloads (e.g. `export_table`) mint an id via `makeExpiringId(ext, ttlMs)` of the form `exp_<epochSec>_<uuid>.<ext>` — the deadline lives IN the id, so enforcement is stateless: `GET` returns **410** past it (and lazily deletes), with `Cache-Control: private, no-store`. Return `expires_at` in the tool output so the FE can render an "expired" state. A fork's object-storage driver **must preserve the id verbatim** (so `expiryOf`/`isExpired` still parse) and should set its presigned-URL TTL to match. Large exports (>5 MB) prefer `presignUpload(id)` when the driver supports it; upstream (local disk) returns null → the proxy link.
-- **Local-disk sweep.** GET-time reaping only deletes exports that are re-fetched; one that's never requested again would linger forever. `sweepExpiredUploads()` (in `uploads.ts`) deletes expired `exp_*` files under `UPLOADS_DIR` — it reuses `isExpired`, so image / `gen-*` uploads (no encoded expiry) are never touched. Runs at startup + hourly via `scheduler/uploads-sweep-job.ts`; **no-op when a storage driver is registered** (the object store owns lifecycle cleanup).
+### 个人资产的 scope 筛选
 
-### Skill Center (`skills/` + `routes/skills.ts` + `tools/skills/`)
-- The org-wide skill hub (spec: `docs/specs/20260707-skill-center.md`). ONE core implementation in `skills/center.ts` (publish / download / check-updates / manage) serves BOTH surfaces: the `/api/skills` routes and the `skill_query` / `skill_mutation` agent tools — don't fork the logic per surface.
-- **Payload vs catalog split**: the DB (`agent_skills` + `agent_skill_versions`, `db.skills`) holds the catalog and immutable version history (mandatory changelog, semver strictly increasing, unique `(skill_id, version)`); the file bundles live in the **skill store** (`skills/store.ts`) at key `<name>/<version>.json`.
-- Skill store backend resolves once at startup (`getSkillStore()` in `index.ts` — fail-fast): all four `SKILLS_S3_*` env vars → S3-compatible via `storage/s3-lite.ts` (dependency-free SigV4 client, pinned by official test vectors); none → local disk `data/skills/`; a **partial** config refuses to start. It deliberately does NOT reuse the uploads `registerStorageDriver` global — that seam is fork-owned and bound to uploads; only the put/get/delete shape is mirrored.
-- Bundle validation is centralized in `skills/bundle.ts` (SKILL.md required at root, path safety, ≤64 files / ≤1 MiB, utf8|base64, canonical sha256) — never accept files into the store another way.
-- Permissions: reads = internal users; publish new version / meta / archive = owner or super; hard delete = super (also deletes stored bundles). Enforced inside `center.ts` (routes add `requireInternal` at mount).
+Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset scope spec](../../../docs/specs/20260812-personal-asset-scope-tabs.md)。共通约束：`Team` 只给 super，三档互斥，外部资产带 `owner_nickname`；管理员跨用户查看不是“共享”。Tasks 的 `GET /api/prompts?scope=` 在服务端筛选，`team` 对普通成员 403；不传 scope 仍保持 Chat 选择器所需的“自己的 + global”。Automation 当前没有分享模型，Web 的 Shared 是明确空态；不要把 super 的全量 `/api/tasks` 响应归类为 Shared。
 
-### External API (v1)
-- v1 endpoints live in `routes/v1/`, fully isolated from internal `/api/chat`.
-- Auth: `Authorization: Bearer` header → `apiKeyMiddleware` → injects `ApiClientRow`.
-- API key format: `gh_sk_<32-byte hex>`, stored as a SHA-256 hash.
-- Request format: OpenAI Chat Completions compatible, streamed via SSE.
-- Session isolation: an external client can only access sessions matching its `app_id`.
-- Session context: `greenhouse.context` (structured role/locale/timezone/notes/attributes, see the zod schema in `session-context.ts`) is whitelisted, stored in `sessions.metadata.context`, and rendered into the system prompt (labeled as untrusted reference data). Internally it's set from the web session TopBar's Context button (`GET/PUT /api/sessions/:id/context`).
-- Every v1 call writes a row to `api_audit_log`.
-- Rate limiting: per API key (RPM + RPD + daily token cap) via the shared `InMemoryRateLimiter`.
-- Client management: `/api/admin/clients` (super only).
-- **LLM layer = OpenAI-compatible protocol only**: the model factory keeps only `openai` / `openai-compatible` cases (both via `@ai-sdk/openai`'s `createOpenAI`); `createModelDirect`'s `switch` is left as an extension point (commented on how to add a native Anthropic/Google protocol later). DeepSeek etc. still connect via their **OpenAI-compatible endpoint**. The registry is **lazily derived from env** (`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`, optional `LLM_MODEL_PRO`): logical ids `default`/`flash`/`pro` all resolve to that upstream. (A previous DeepSeek-native "DSML" tool-call interceptor has been removed entirely — forks re-add such quirk handling via `registerProviderMiddleware`.)
-- **Final-answer guarantee (model-agnostic)**: when an agent run ends with tool activity but no assistant text (the loop burned its step budget searching), the kernel splices in one tools-off "answer now" pass over a plain-text digest of the gathered tool results, so no host ever returns an empty answer. Hosts iterate `withFinalAnswerGuarantee(streamResult, { profile, systemPrompt, baseMessages })` instead of `streamResult.fullStream` — that one line is the whole host-side contract (`packages/agent-core/src/chat-engine.ts`).
+### 鉴权模块 (`auth/`)
+- 所有鉴权逻辑放在 `auth/` 目录（token、middleware、password、api-key）
+- 内部 CLI/服务器自调用：必须传递真实且当前有效的 team/super access token；禁止合成 `internal` 用户或绕过数据库用户校验
+- 禁止从已删除的 `auth.ts` 导入——始终使用 `auth/index.ts`
+- **fail-closed 启动闸（`assertAuthEnv()`，main() 启动时调用）**：`TOKEN_SIGNING_KEY` 在所有环境（本地/dev/生产）一律必填、必须是 64 位 hex（32 bytes）且无 fallback，缺失或格式错误时服务拒绝启动。`authMiddleware` 永远要求实名内部账号的 Bearer token，不存在 dev/匿名 super 旁路；每次请求重新读取用户状态、当前角色与 `auth_version`，已删除、禁用、历史 `external` 或密码重置前签发的 token 立即失效。refresh token 同样记录签发版本并单次消费，密码重置在一个事务内递增版本并撤销 refresh。契约由 `tests/api/token.test.ts`、`auth/__tests__/internal-only.test.ts` 与 `routes/__tests__/auth-version.test.ts` 锁定。
+- **受邀设密/安全重置不是登录旁路**：只有 super 可签发 `invite/reset` 链接；公共面精确限定为 `POST /api/auth/password-link/{inspect,complete}`，没有 GET 消费、公共注册或忘记密码。fragment token 只按 hash 查库，inspect 不消费；complete 在 DB 锁内单次消费后才签发正常 Access/Refresh 会话。公共端点必须保留 4KB body limit、IP + token-hash 双限流、统一无效错误与 `no-store`。邮件重置签发即进入 `reset_required` 并主动停 Chat/WS、Scheduler、Workflow、Cloud Agent；安全状态已提交后，运行时清理失败只能记录日志，不能恢复旧凭证。
 
-### Team LLM gateway relay (`/api/llm/*`)
-- Lets internal users reach org-managed models **without their own vendor key**, server-side; coexists with BYOK (gateway is the default).
-- Relay endpoints in `routes/llm-relay.ts`, mounted at `/api/llm`, with **their own relay-key auth** (reuses `apiKeyMiddleware`, `channel='relay'`), exempted from internal Bearer auth in `auth/middleware.ts`'s `isPublicPath` (like `/api/v1`):
-  - `POST /v1/chat/completions` — one OpenAI-compatible entry. Looks up `model` in `llm_gateway_models` → `llm_upstreams`, checks it's within the key's `meta.allowed_models` subset (no subset = the `is_public` default set); omitted `model` uses `is_default`. OpenAI/DeepSeek/compatible upstreams are **transparently forwarded** (decrypt + inject the upstream key, rewrite `model`, pass the SSE stream through verbatim and extract usage); Anthropic-kind returns 501 for now.
-  - `GET /v1/models` — returns the key's subset (OpenAI-compatible), driving model pickers and the seamless default.
-- Pure forward/extract logic is in `llm/relay-proxy.ts` (unit-tested). Each call writes `api_audit_log` (`channel='relay'`, bound `user_id`, tokens feed the `daily_token_limit` quota).
-- Upstream real keys are AES-256-GCM encrypted (`auth/crypto.ts`, reuses `PROVIDER_TOKEN_ENCRYPTION_KEY`) in `llm_upstreams.api_key_enc`.
-- Self-service provisioning: `/api/auth/llm-keys` (internal user Bearer, `requireInternal`): `POST /provision` (get or rotate the default key, for seamless setup), `POST /` (bind a model subset), `GET /`, `GET /catalog`, `DELETE /:id`.
-- Admin (super only): `/api/admin/llm-gateway` — upstream pool / model catalog / gateway-key governance (disable = `status:'disabled'`, change daily quota, view today's usage).
+### 安全 (`security.ts`)
+- 用户输入在传给 LLM 前**必须**经过 `sanitizeForPrompt()` 处理
+- 使用 `checkPromptInjection()` 检测和记录注入攻击
+- 限流使用共享的 `InMemoryRateLimiter` 类——不要单独实现
+- 限流/审计来源 IP 必须走 `request-ip.ts`：默认使用 socket peer；只有 loopback 或 `TRUSTED_PROXY_IPS` 明确登记的反代才可提供 `X-Forwarded-For/X-Real-IP`，禁止直接信任请求头。
+- 文件上传：通过 `validateMagicBytes()` 校验 MIME 类型
+- Agent 工具下载公网图片必须走 `network-security.ts` 的 `fetchPublicImage()`：只准 public HTTPS，连接时 DNS 校验、每跳重定向复核、响应大小上限和图片魔数缺一不可；禁止对模型输入 URL 直接 `fetch()`。
+- **要传 `dispatcher`（undici `Agent`/`ProxyAgent`）时，`fetch` 必须从同一个 `undici` 包导入**，不能用全局 `fetch`。Node 内置 fetch 自带钉死的 undici（`process.versions.undici`，Node 22 = 6.x），会用那份构建的 handler 接口校验 dispatcher，于是本仓依赖的 undici 8 dispatcher 一律被拒：`UND_ERR_INVALID_ARG: invalid onRequestStart method`，对外只表现为一句无信息量的 `TypeError: fetch failed`，且在联网前就失败。2026-07-27 生图全线挂掉就是这个原因（上游返回图片 URL，下载那步必挂）。单测若 mock `globalThis.fetch` 测不出来——要么 mock `undici` 的 `fetch`，要么 mock `fetchPublicImage` 这一层。
 
-### Tool system
+### Chat 的 Ambient Context 与 Client Actions
+- `POST /api/chat` 可接收逐轮 `ambient_context`；它是浏览器当前页面的可选参考，不持久化到 Session，不代表用户意图，也不能授予 Profile、Tool、Platform、record 或 field 权限。
+- `ambient-context.ts` 是通用 envelope 的唯一校验/提示格式化入口：校验 `version/source/scope_id/label/route/hint`、限制长度并经 `sanitizeForPrompt()`；无效 Context 必须静默丢弃，让 Chat 正常继续。
+- 固定提示必须明确 Context 可能无关或过期、不是用户请求/指令/授权；只有与当前用户消息自然相关时才使用，歧义时先询问。
+- 浏览器 Client Actions 必须同时带 `client_action_scope_id`；有 Ambient Context 时两个 scope 必须一致，否则不装配 UI 工具。`local-tool-request` 回传同一 scope，由浏览器在当前页面实例中 fail closed。
+- Client Actions 只处理当前浏览器的读取、导航、填充等 UI 动作；真实数据写入继续走既有服务端 mutation 工具、确认门与 Platform 权限链。
 
-Tool metadata is **co-located in each tool's file**. A tool declares itself with `defineTool({ meta, kind, requires?, create })` (`tools/define.ts`); `meta.description` is passed straight to `tool({ description })`. `tools/registry.ts` is just a barrel — it imports each module and lists it in `TOOL_MODULES`, from which it derives everything else (static factories, the lazy catalog, `LAZY_TOOL_IDS`, the proxy/MCP allowlists); there are no hand-maintained parallel id lists.
+### 上传存储 (`storage/uploads.ts`)
+- 聊天上传图片 / 生成图的统一存储层——**不要直接读写磁盘或 COS**，一律走 `putUpload(id, buffer, contentType)` / `getUpload(id)`。
+- `putUpload/getUpload` 是统一安全边界：只接受服务端生成的平坦图片 ID，校验完整路径形态、大小与魔数；工具层不得自行拼接 `UPLOADS_DIR`。新对象使用 `timestamp + 完整 UUID`，读取端只为历史对象兼容旧 8-hex UUID 前缀。
+- 后端自动选择：配了 `TENCENT_CLOUD_COS_*`（SecretId/Key/Bucket/Region）走腾讯云 COS，否则回退本地 `data/uploads`（仅单机/本地开发；多实例部署必须配 COS）。
+- `getUpload` 在 COS 命中 404 时**回落本地磁盘**，兼容历史文件与仍写本地的路径。
+- 子用户用 CAM 最小权限密钥（Put/Get/Delete，限定到 BUCKET/PREFIX）。验证配置：`pnpm --filter @greenhouse/api cos:smoke`（`scripts/cos-smoke.mjs`，直连 COS 排查凭证/策略）。
+- key 前缀（`TENCENT_CLOUD_COS_PREFIX` / `_DRIVE_PREFIX`）走 `normalizeKeyPrefix()`：缺尾斜杠自动补，含非法字符（`=`、空白、`..` 段等）**启动即报错**。两个前缀都在**模块加载时**求值（`KEY_PREFIX` / `DRIVE_PREFIX` 常量），不要挪回 `getCosConfig()` 里——那样是懒求值，坏值只会在有人恰好打开一张图时炸成一个莫名的 500，而不是启动就报配置错误（2026-07-28 修正）。起因是 dev 的 `.env` 漏了换行、把下一行的 `TOKEN_SIGNING_KEY=<hex>` 粘进前缀值，聊天上传被写进 `uploads/TOKEN_SIGNING_KEY=<hex>/`、该值还进了启动日志，六周无人察觉（2026-07-28 修复）。生成图不受影响——它用硬编码的 `generate/` 前缀（见 `objectKey()`）。
+- ⚠️ **改前缀会让既有对象全部失联**：引用只存 id，key 是 `前缀 + id` 现算的。上面那次修前缀就把 dev 的 62 个对象（含 11 张品牌配图，`brand/*` 文档内嵌的 `/api/upload/<id>`）留在了旧的畸形前缀下、全部 404，事后靠 `putObjectCopy` 逐个复制到 `uploads/<id>` 才修回。**清点引用别只查 `messages.content`**——还有 `messages.images`、`knowledge_base.content`/`content_json`、`sources.content`。
+- 预签名下载（`presignGetUrl` → `/api/chat-files/:id/content`、`/api/drive/files/:id/content` 鉴权后 302 到 COS）**吃 CSP 的 `connect-src`**：前端 `downloadAuthenticatedFile()` 用 `fetch` 取字节，`fetch` 跟随重定向后**目标域要单独过 `connect-src`**，所以 `security.ts` 那条必须带 `https://*.myqcloud.com`。此前只有 `img-src`/`media-src`/`frame-src` 放行了它，于是图片预览一直正常、只有下载被 block（2026-07-30 修）。**本地 `pnpm dev` 复现不出来**——页面由 Vite 提供、根本不带 CSP 头，只有部署环境（api 直接 serve 打包产物）才有；回归护栏是 `security-headers.test.ts`。另一半前提在云上：COS 桶的 CORS 白名单必须含站点 origin（含端口）。
+- `routes/upload.ts` 的 `GET /api/upload/:id` 是私有 bucket 的回源代理。浏览器 `<img>` 不能附加 Bearer header，因此该 GET 在中央 auth allowlist 中公开读取；对象 id 必须保持 `timestamp + 完整 UUID` 的不可枚举格式。`POST /api/upload` 仍要求内部账号，不得把公开读取扩展到上传、列表或删除。
 
-- `meta.surface` is the **single declarative source** for proxy / MCP exposure:
-  - `proxy: 'read'` → in `READONLY_PROXY_ALLOWLIST` (callable, no confirm).
-  - `proxy: 'write'` → in `MUTATING_PROXY_ALLOWLIST` (confirm-gated).
-  - `proxy: 'none'` (or omitted) → not proxied; chat-only.
-  - `mcp: true` → also in `MCP_EXPOSED_TOOL_IDS` (must also have a `proxy` value).
-  `registry.ts` builds these three sets by filtering `TOOL_DEFINITIONS` on `meta.surface` — change the metadata, the allowlists follow.
-- `create(ctx: ToolContext)` builds the tool. **Static** tools read only `ctx.db` and are built once in `createToolRegistry`. **Lazy** tools read request-scoped fields (`userId` / `sessionId` / …) and are built per-request in `buildLazyServerTools`.
-- `kind`: `static` (no `requires`) / `lazy` (declares `requires`).
-- `requires` (lazy only) is the **declarative access guard** the runtime enforces before building the tool — the same guard that used to be a hand-written if-ladder:
-  - `user: 'optional'` (anonymous ok) | `'required'` (a userId) | `'internal'` (a non-external userId) | `'super'` (role `super` only).
-  - `session: true` (needs a sessionId) · `registry: true` (gets the `assembleChildTools` closure; `spawn_session` only — the raw registry is never handed to a tool).
-- **`meta.category` is the audience axis, aligned with `users.role`:** `'public'` (everyone incl. external/v1-chat) · `'team'` (internal users) · `'super'` (super-admins only). It's distinct from profile-manifest `level` (per-profile visibility) and from `users.role` (an identity, not an audience).
-- **Super-admin-only tools** (`category: 'super'` + `requires.user: 'super'`) are gated at **three layers** (defense in depth): `resolveUserTools` subtracts `getSuperToolIds()` from every non-super allow-set (so even a stray `user_tools` row can't grant one); `buildLazyServerTools` skips them for non-super callers; and the tool's own `execute` re-checks `ctx.userRole === 'super'`. They must set **no `surface`** (never proxy/MCP-exposed) and are omitted from the tool-assignment UI (not user-assignable). Reference impl: `tools/admin/admin-analytics.ts` (read-only usage/activity/external-API analytics; its DB queries live in `packages/db` `adminAnalytics` and never return message content, session titles, or `llm_calls` input/output — the privacy line is enforced in the service, not the caller).
+### 聊天附件（`/api/chat-files` + `read_attachment`）
 
-**Adding a tool** = one file + one line, for **every** kind (static or lazy):
-1. In the tool's file, `export const xxxTool = defineTool({ meta, kind, requires?, create })`; set `meta.surface` to expose it over proxy/MCP.
-2. Add an import + array entry in `TOOL_MODULES` in `tools/registry.ts`.
-`createToolRegistry` / `buildLazyServerTools` / `registerKnownTools` / `LAZY_TOOL_IDS` / the proxy + MCP allowlists are all derived automatically — a lazy tool **no longer** needs a second registration in `tool-resolution.ts`.
+- **一个上传口，任意文件类型**：`POST /api/chat-files/upload`（multipart，≤100MB/个、每用户 5GB 配额）写 `chat_files` 行（`source='user'`），下载走既有 `GET /api/chat-files/:id/content`（跟随会话读权限 + no-store + 预签名 302）。方案见 [附件与预设收敛 spec](../../../docs/specs/20260731-attachment-and-preset-convergence.md)。
+- **图片是唯一的例外，公开读豁免绝不外扩**：`<img src>` 带不了 Bearer，所以图片继续走 `/api/upload` 的扁平不可枚举 id + `isPublicPath` 公开读；其余文件一律鉴权。这条边界由 `routes/__tests__/attachment-boundary.test.ts` 钉住——把 PDF/xlsx 放进公开读，等于给每份文件发一个永久免登录 URL。
+- **写比读严**：会话被分享后接收方仍可读文件，但只有 owner 能往会话里传附件（上传路由校验 `session.user_id === user.id`）。
+- **上传口挂在 `/upload` 而不是裸路径**：守卫是 `.use('/api/chat-files/*', requireInternal())`，而 Hono 的 `/*` **匹配不到裸路径本身**——挂在 `/` 上的写入口会绕过角色守卫，只剩全局 Bearer 兜底。
+- **附件 fence 必须与正文分开 sanitize**（`chat-user-message.ts` 的 `sanitizeUserMessageForPrompt`，落库前唯一入口）。浏览器把 ```attachments fence 追加在用户正文**之后**，整串过一次 `sanitizeForPrompt()` 就会被它的 8000 字符截断吃掉——正文一长，fence 连同 file id 静默消失，模型拿不到附件、`read_attachment` 无从调用，且全程不报错。现在先 `splitAttachments()` 拆开：正文照旧截断（那道上限是真防线，不放宽），fence 解析后**按契约三字段重投影再序列化**（客户端塞的额外键、恶意文件名一律丢弃而不是就地清洗）。**别改 `sanitizeForPrompt` 本体**给它开「这段不截断」模式——它是全 API 所有 prompt 字符串的共同下限，为一个调用方开口子等于削弱其余全部。回归护栏 `__tests__/chat-user-message.test.ts`。
+- **`read_attachment` 是懒的、会说不**：`is_global`、session-scoped（**会话边界就是鉴权**：file_id 由模型给出，跨会话的 id 必须查不到）。能读 text/CSV/JSON/xlsx/**.docx**/**有文字层的 PDF**，读不了图片/音视频/压缩包/>10MB——这时返回明确错误而不是猜，模型据此改用 `mission_dispatch` 把文件丢进沙箱（**扫描件与加密 PDF 除外**，沙箱同样办不到，见下）。附件因此是**能力**而不是**路由信号**：决定去哪执行的是「这个工具能不能干」，不是文件类型（spec D1）。
+- **图片引用不是「不存在」，要么指路要么放行**（2026-08-13 修）：图片刻意没有 `chat_files` 行（走公开读的 `/api/upload/:id`），于是任何只查 chat_files 的工具都把「会话里明摆着的那张图」答成 `No such attachment`——dev 上两个会话共 5 次。现在跨两个存储的解析只有一份实现 `files/conversation-files.ts`：先查 chat_files 行，再按 `db.sessions.sessionReferencesImage()` 在**本会话转录**里认图（用户上传落 `messages.images`、生成图落 assistant `pipeline`），字节分别走 `getObjectAtKey(storage_key)` 与 `getUpload(id)`——**这两个函数的本地路径不同**（`data/uploads/<id>` vs drive key），别拿任一个通吃。会话边界仍是鉴权：id 由模型给出，跨会话的 id 必须解析不到。`email_mutation` 的 `attachment_ids` 因此同时收文件与图片，并接受 `/api/upload/<id>` 整串（`generate_image` 同时返回 `id` 与 `url`，模型两种都会传）；`read_attachment` 遇到本会话的图片改答「这是图片，用 `analyze_image`」。**不给图片补 `chat_files` 行**：那张表的 `storage_key` 有下载/删除/mission staging 三个既有消费者，塞进一个它们读不了的 key 等于制造三处静默失效。
+  - **`normalizeFileRef` 是「模型写的图片引用」的唯一归一入口**：`analyze_image` 也走它（2026-08-18 补）。此前它把 `/api/upload/<id>` 整串直接喂 `getUpload`，得到 `Invalid upload ID`——模型据此汇报「那张图不存在」，而那正是它上一步刚生成的海报。**新工具收图片引用时一律先过它**，别再判一次「像不像 URL」。
+  - **`analyze_image` 也必须跨两个存储，归一化只解决了 URL 那一半**（2026-08-20 补）。「图片走 `/api/upload`」有个例外：composer 选了技能或 mission 时 `images` 被清空，**所有**选中文件（含图片）一律进 `chat_files`，于是模型拿到的是个裸 UUID。它过不了 `isValidUploadId`，而 `getUpload` 对不合形状的 id 是**抛异常**，一路变成 `Failed to load image: Invalid upload ID`——对一个本会话真实拥有的文件说「无效」。现在顺序是 **先 `loadStoredImage`（`isValidUploadId` 守卫在前，绝不让非 upload id 碰到存储层）→ 未命中且有 sessionId 才 `resolveConversationFiles`**。**先查扁平存储这一步不能省**：本轮刚生成的图还没进转录，`sessionReferencesImage` 看不见它。解析出的**非图片**是独立结果（`not_an_image`）而不是 miss——两者要给相反的建议：miss 是「这个 id 谁都不认识」，非图片是「会话确实有这个文件，别再换 id 了」，错误里点名文件名与 content type 并指回 `read_attachment`（若它已拒过则叫模型照那条错误走，避免两个工具互相踢皮球）。起因是 dev 上一份扫描版 W-9：`read_attachment` 正确报「无文字层」，模型改用 `analyze_image` 传同一个 file_id，撞上这条死路。
+- **字节→文本的单一实现是 `files/extract-text.ts`**（`read_attachment` 是它的薄壳）。它只产出诊断、不产出去向：`{ok:false, reason}` 有四种（`unsupported`/`encrypted`/`no_text_layer`/`extract_failed`），**「那该怎么办」由调用方按自己的面追加**——聊天附件可以直接进 mission，客户文件柜里的文件得先下载再传进会话，两句指引不一样，写进共享模块必然有一边是错的。**text 分支按 BOM 解码 UTF-16LE/BE（无 BOM 靠零字节占比嗅探），且输出永不含 NUL 字符**——一份 UTF-16 CSV 被按 UTF-8 读出的乱码曾以「成功」返回给模型，NUL 进了 `messages.pipeline` 后还会炸掉 friction 挖掘器的 `::jsonb` cast（2026-08-11 修）。
+- ⚠️ **动态 `import()` 一个 CJS 包必须走 `default`，`vitest` 全绿不等于 Node 全绿**（2026-08-07 修）。`exceljs` 是 CJS，Node 真实 ESM 加载器静态探测不到它的具名导出，`Workbook` 只挂在 `default` 上；而 vitest 的 interop 会**合成**那个具名绑定。于是 `const { Workbook } = await import('exceljs')` 单测一路绿、线上每一个 .xlsx 附件都死在 `Workbook is not a constructor`——`read_attachment` 与 `crm_query.read_file` 两个面同时哑掉。现在统一走 `resolveWorkbookCtor()`（两种形状都认，都没有就显式抛错）。**这类 bug 只有真 Node 进程抓得到**：验证手段是 `node --input-type=module` 或 `tsx` 直接加载真实源文件，不是加一条单测。
+- **失败提示不许指向调用方没有的工具**（2026-08-07 修）。`read_attachment` 的兜底原本硬写「draft a mission with `mission_dispatch`」，但那个工具由 `cloud-agent` flag 门控——没开的用户拿到一句「去用你看不见的工具」，模型于是既没读到文件也没有出路。现在 `sandboxHint(canDispatchMission)` 按 `effectiveTools` 给话术。这是根 AGENTS.md「能力声明必须真实」在错误文案上的同一条要求：**没有出口比假出口好**。
+- **也不许指向一个到了也办不成的地方**（2026-08-24 修，同一条要求往下一层）。`fallbackHint(reason, canDispatchMission)` 现在按 `extractText` 的失败 reason 分流：`no_text_layer`（扫描件）与 `encrypted` **不进 mission**——`greenhouse/agent-runtime` 镜像有 poppler / ImageMagick 但**没有任何 OCR 引擎**（见 cloud-agent spec D12 的取舍），`pdftoppm` 渲出来的页面沙箱里没人读得了，密码同理沙箱也没有。指过去只是花掉一个容器、一个并发位和几分钟，回到同一句拒绝。这两类改为指真正走得通的路：让用户给一份**有文字层的文件**，或把页面**当图片发**（`analyze_image` 与 vision 模型读得了图）。`unsupported`/`extract_failed`（压缩包、怪格式）与超大文件仍走 `sandboxHint`——那些沙箱确实更强。起因是 dev friction 80：一份扫描版 W-9，模型照提示准备派 mission，接着又拿同一个 PDF id 去试 `analyze_image`（friction 56）。
+- **服务端现在解析 PDF（`unpdf`），这推翻了 2026-08-02 的 spec D11**（见 [反转决策 D2](../../../docs/specs/20260804-crm-file-attach-and-pdf-reading.md)）。D11 自己写明的重开条件——「PDF 多到每份都进沙箱明显不划算」——在客户资料场景成立，用的也是它预写的首选库。**它当年的顾虑用显式失败分类回应，不是靠假装**：扫描件（无文字层）、加密、超时/损坏各有独立 reason 与错误句，绝不返回空字符串冒充读到了。**只提文字层，不渲染、不执行**：无 XFA、无嵌入 JS、不光栅化；pdf.js 6 已经彻底删掉 CVE-2024-4367 用的 eval 字体路径（构建里 `new Function` 为 0 处），所以恶意 PDF 的最坏结果就是一次失败解析或 10s 超时，两者都是普通返回值。**扫描件的视觉降级是 v2 方向，代码里刻意不留抽象**。
 
-### Agent tool proxy (`/api/agent/*`)
-- A stable cloud capability layer letting programmatic clients reach cloud data through structured tools. Route: `routes/agent-tools.ts`:
-  - `GET /api/agent/runtime-manifest?profile_id=&workspace_id=` — the caller's available tools (with a `mutating` flag + input JSON Schema).
-  - `POST /api/agent/tools/:toolId/call` — invoke one tool.
-- Auth: a logged-in user's access token (`Authorization: Bearer`) via `agentBearerAuthMiddleware` + per-user rate limit.
-- Tool set = `resolveEffectiveTools(user, profile)` ∩ the proxy allowlist — the proxy can only **narrow** permissions, never widen them.
-- **The system prompt never dynamically lists the tool set**: tool definitions (name/description/schema) are already delivered to the model natively via `tools[]`; injecting "the user's tool names" into the prompt inevitably drifts from the real registered set. `resolveEffectiveTools` returns only the narrowed `effectiveTools`. Exception: a profile YAML's `system_prompt` **may** carry usage policy for tools (e.g. "search before get"), but only for tools that profile guarantees exist.
-- The allowlists live in `agent-runtime/tool-proxy.ts` but are **derived from `meta.surface`** (re-exported from `registry.ts`):
-  - `READONLY_PROXY_ALLOWLIST` — read tools (e.g. `project_query`, `session_query`, `knowledge_query`).
-  - `MUTATING_PROXY_ALLOWLIST` — write tools (e.g. `project_mutation`, `knowledge_mutation`, `email_mutation`).
-- **Write tools default DENY**: a write call must be in the write allowlist, the caller's write permission must include it, and every call must carry `confirm:true`, else 400. Every call writes an agent audit row.
+### 用户记忆与踩坑信号 (`llm/memory.ts` + `frictions/` + `memory`/`log_friction` 工具)
 
-### Session orchestration tools (`spawn_session` / `call_llm`)
-- A session can spawn child sessions or fire one-shot LLM calls in parallel, turning a single session into a "controller" that can chew through complex tasks. Both are **lazy and session-scoped** — assembled only when `buildLazyServerTools` receives a `sessionId`, so they are **not exposed on the stateless proxy/MCP surface**. `is_global:true`: on by default for internal users, but only effective on the chat surface (which passes a sessionId); child tool sets are always ⊆ the caller's permissions.
-- **Shared runner**: `runAgentInSession()` in `agent-runtime/run-agent.ts` is the single implementation of "run one agent turn to completion in a session and persist the assistant message + pipeline + references." Both `scheduler/executor.ts` (automations) and `spawn_session` reuse it. The LLM call goes through an injectable `generate` seam (defaults to `generateText`, stubbable in tests — no real model/key needed); `db` is injectable too.
-- **`spawn_session`**: creates a `channel=subagent` child session, links the parent via `sessions.parent_session_id`, records depth in `metadata.spawn_depth`. `mode:'sync'` waits for and returns the result; `mode:'async'` requires `confirm:true` and runs in the background (in-process fire-and-forget, **lost on restart** — no durable queue). Guards: max depth `MAX_SPAWN_DEPTH`, per-parent async concurrency cap; child tool sets go through the same `resolveEffectiveTools` path and stay ⊆ the caller's.
-- sync is a legitimate long-task mode (the parent waits to summarize). Guards: sync hard timeout 10min, async 30min; bound to the parent tool call's `abortSignal` (parent cancel/disconnect stops the child immediately, no orphan runs); timeout/cancel/failure always writes a status message to the child session (it's never left empty). `call_llm` likewise has a 2min timeout + parent-abort.
-- **`call_llm`**: no session, no tools, one-shot. Full input/output is written to the `llm_calls` audit table (linked by the caller's session_id), **not** fed back into context; optional `model` override; multiple calls in one step fan out in parallel.
+两套刻意分开的东西，方案与决策（D1–D11）见 [spec](../../../docs/specs/20260804-memory-v2.md)：**记忆是 per-user 且会注入 prompt**，**friction 是团队级且永不注入**。
 
-### MCP server (`/api/mcp`)
-- Wraps the agent tool proxy in the **MCP protocol** so any MCP client (Claude / Cursor / external agent) can reach internal resources over the standard protocol. Route: `routes/mcp.ts`, a **thin adapter** — no custom resource access: `tools/list` ← `buildProxyManifest`, `tools/call` ← `executeProxyTool` (confirm gate / input validation / permission intersection all reuse `tool-proxy.ts`).
-- Uses `@modelcontextprotocol/sdk`; transport is **WebStandard Streamable HTTP** (stateless: each request builds a fresh `Server` declaring the `tools` capability, consuming `c.req.raw` and returning a `Response`). `enableJsonResponse:true`.
-- Auth: an API key **bound to an internal user** (`api_clients.user_id`, `channel='a2a'`). Chain: `apiKeyMiddleware` → `mcpIdentityMiddleware` (`agent-runtime/mcp-auth.ts`: requires the key be bound to a user whose `role∈{super,team}` and is active, else 403) → per-key rate limit (`createPerKeyRateLimitMiddleware('mcp')`). Exempted from internal Bearer in `isPublicPath` (like `/api/v1`, `/api/agent`).
-- **Security boundary = the internal user the key is bound to.** The proxy can only narrow that user's permissions (`resolveEffectiveTools ∩ proxy allowlist ∩ MCP-stage set`). Bind each external integration to a **dedicated least-privilege user** — never to super or a personal account.
-- **Write posture: open but confirm-gated.** `mcpIdentityMiddleware` grants the identity the full `MUTATING_PROXY_ALLOWLIST`; mutating tools get a **required `confirm` boolean** injected into their `tools/list` input schema, which `tools/call` strips and passes through as `executeProxyTool`'s `confirm` (MCP's `tools/call` has only `name`+`arguments`). confirm is caller-supplied — it guards against accidental triggering, not malice; the real gate is the bound user's permissions.
-- **Exposure set**: `MCP_EXPOSED_TOOL_IDS` (derived from `meta.mcp`) = knowledge + project + email + skill + chat-history tools (each must also be in a `tool-proxy.ts` allowlist):
-  - knowledge: `knowledge_query` (read) / `knowledge_mutation` (write).
-  - project: `project_query` (read) / `project_mutation` (write).
-  - skills: `skill_query` (read: find/get/download/check_updates) / `skill_mutation` (write: publish/update_meta/archive/unarchive/delete) — the "find skill / download / publish back" flow for external agents.
-  - email: `email_query` (read: list_accounts/list_folders/search_emails/read_email) / `email_mutation` (write: draft_email/send_email). Send safety reuses the server-side draft: `draft_email` returns a preview + `draft_token` (stored server-side ~10min), `send_email` sends by token (content taken from the server draft), on top of the MCP `confirm:true` gate.
-  - chat: read-only `session_query` / `session_history` (driving conversations goes through `/api/v1/chat/completions`, not MCP).
-- Audit: each `tools/call` writes `api_audit_log` via `recordMcpAudit` (`channel='a2a'`, real `app_id`, bound `user_id`).
-- Provisioning a bound key: `POST /api/admin/clients` (super) with `user_id` + `channel:'a2a'` (validated at creation that the bound user exists / is active / is internal).
-- Performance: `resolveMcpContext` (tool set + registry) is cached per `userId+role` for `CONTEXT_TTL_MS` (60s); permission changes take effect within ≤60s.
-- Admin UI: Settings › Administration › MCP Access (`apps/web/src/pages/settings/mcp-keys.tsx`, super only): create / rotate / disable / delete keys, copy the client config, per-key Activity (`/:id/audit`).
-- Pure logic (schema normalization + confirm injection, protocol round-trips) is unit-tested in `routes/__tests__/mcp.test.ts` (SDK `InMemoryTransport` + `Client`, no DB).
+- **写入只有显式一条路**：`memory` 工具（remember/recall/update/forget）。v1 那个每日 03:00 抽取 cron 已删除——它把「记什么」交给事后批量 LLM，质量差且延迟一天。后台只剩养护：`upkeep-jobs.ts` 的周日 05:00 consolidation（合并重复/取代矛盾/降级过时，**从不新增记忆**）+ 每日 04:00 friction 挖掘。
+- **召回是两层**：`resolveMemoryContext()` 是所有 prompt 组装点的唯一入口（chat 路由 / scheduler executor / spawn_session / workflow 生产节点），注入的只有 `title` 一行 × 硬预算 2000 字符；正文由模型按需 `recall`。**不上 pgvector**（D3）——这个量级模型看索引推理比向量检索准，且零基建。**注入不算使用**：只有 recall/update 刷新 `last_used_at`，否则衰减状态机会永远认为每条都在被用。workflow 侧经可注入的 `resolveUserContext` dep 接入（不动 `enrichSystem` 契约），**只给生产节点、不给 reviewer**——reviewer 跑在 `toolChoice:'none'` 上，给它一份写着「call memory(recall…)」的索引等于给一个按不动的按钮，而且它本就该是干净上下文。
+- **衰减是状态机不是分数**（D4）：90 天未用 → `dormant`（掉出索引、仍可搜、被 recall 自动转回 active），consolidation 取代的置 `superseded` 并留指针。**系统永不物理删**，唯一硬删是用户在设置页点删除。`confidence` 这个恒 0.8 的死字段已随 v1 一起删掉。
+- **门控必须走 `userHasFeature`，不能用 `db.userFeatures.isEnabled`**。这是 v1 的死因：memory flag 现在 `defaultEnabled: true`，而 `isEnabled` 只查表——super 靠角色全开、团队靠默认值全开，两者表里都没有行，于是查表一律返回 false。功能上线至今 dev 零条记忆、设置页对 super 403，就是这么来的。回归护栏在 `routes/__tests__/memory-access.db.test.ts`。
+- **注入前必须 `sanitizeForPrompt`，写入前必须过 `validateMemoryText`**：记忆是模型写的、用户可编辑的文本，且每轮对话开头重放——这是一条持久 prompt-injection 通道（v1 漏了 sanitize）。写侧的敏感信息正则是**拒收**（邮箱/手机/key/JWT/hex），不是靠 prompt 自觉。
+- ⚠️ **日期不是电话号码，拒收前必须先把日期挖掉**（2026-08-13 修）。老的手机正则 `(?:\+?\d[\s-]?){7,}\d` 命中 `2026-08-11`——ISO 日期就是 8 位数字用分隔符连起来，与不带国家码的电话同形。而「这件事是哪天定的」是记忆最普通的内容，于是 dev 上一条纯工作决策被连拒 6 次（模型看不出是哪一段犯规，只能原样重试）。现在 `findSensitiveSpans()` 先算出日期跨度，任何与之重叠的匹配一律不算；电话另加 10–15 位数字的下限（`20260811` 这类紧凑日期与年份因此天然出局）。**校验与脱敏共用这一个函数**——`redactEvidence` 也据它按跨度替换，所以「拒收提到的那一段」与「证据里被打码的那一段」永远是同一段，且日期在 friction 证据里保持可读。
+- **拒收要报出具体片段并指路**：错误里带 `"<犯规原文>"`（模型无法从 2000 字里猜是哪一段），联系方式类再追加一句「归业务记录：挂到对应的项目 / 知识文档 / Tables 记录下，记忆只留决策、用姓名指代」——信息本身值得留存，只是不该留在一段会被重放进每轮 prompt、没有归属也没有权限的文本里。密钥类不给这句：它哪儿都不该去。
+- **限额与校验住零 import 叶子模块** `llm/memory-limits.ts` 与 `frictions/friction-limits.ts`：工具描述在模块求值期插值这些常量，而 `tools/registry.ts` 导入全部工具模块——常量若藏在会连到 db/security 的模块后面，一旦成环就是 TDZ，单测全绿但 API 起不来（automation 工具踩过一次）。
+- **friction 双写单实现**：`frictions/friction-center.ts` 同时服务每日挖掘（扫 `messages.pipeline`，纯 SQL + 归一化，**无 LLM 成本**）与 `log_friction` 工具（覆盖没报错但绕远路的软摩擦）。指纹 = `tool + kind + 归一化错误`，同一个坑只有一行、`occurrence_count` 就是复盘优先级。**计数刻意不精确**（D8）：25h 窗口有重叠，重启会重复计数——它是排序信号不是账本。证据是**脱敏不是拒收**（与记忆相反：friction 样本的诊断价值就在原文）。
+- **两个工具都刻意没有 `surface`**：`memory` 读写混装、套不进 proxy 的 read/write 二分（标 read 就等于让无状态调用方绕过确认门写记忆）；`log_friction` 是团队表的写入、per-call confirm 门在它身上没有意义。所以 chat / 定时任务 / 子会话拿得到，`/api/agent` 与 `/api/mcp` 拿不到。
+- **friction 复盘的出口在 harness 层**：`设置 → Administration → Frictions`（super only，`/api/admin/frictions`）只是队列，修复动作是改工具 description、改实现补报错、改 prompt、沉淀 skill 或改代码。**刻意不做**「把踩坑经验自动注入所有人的 prompt」的共享记忆——那会让一条写坏的经验污染全员，而复盘一次就能修在真正的位置上。重复 ≥3 次的操作型摩擦优先考虑升格成 SkillHub 技能。
+- **错误文案里插值的动态值一律加引号**（2026-08-07 定）。`normalizeErrorText` 把 `"..."` 与裸数字归一成占位符，靠这个把同一个坑聚到一行；不带引号的值逃逸归一化，于是 9 个重复联系人报错生成了 9 条 friction，一个问题被排成九个偶发噪声。写 `(ID: "${id}", Name: "${name}")`，不要写 `(ID: ${id}, Name: ${name})`。
+- **错误文案应当指路，不只是判定**。同一批 dev 数据里，凡是错误句写清了下一步（「传 update_if_exists」「改用 search 找 id」「若是联系人 id 就带 type」）的，模型下一轮就自愈；只说「not found」的，模型倾向再猜一个 id。工具的错误分支是 prompt 的一部分，按 prompt 的标准写。
+- **检索工具的「库是空的」必须与「这个词没命中」分开说**（2026-08-20 补）。`found: 0` 把两者压成同一个信号，而它们的下一步相反：没命中该换关键词，空库换到天亮也没用。`search_inquiry_knowledge` 因此在 miss 分支（且**只在** miss 分支，命中时不为此付一次 `count()`）查一次总量，为 0 就返回 error 并明说别再调、改用 `knowledge_query`。起因是 `inquiry_knowledge` 在 dev 一行都没有，模型换着词重试——5 天 28 次，单轮最多 8 次。**这也是「未配置一律显式报错」在检索面的形态**：空库不是一次检索结果，是这台部署上根本没有这项能力。顺带把一个只会被 `mineEmptySearches` 归档、且 `archived` 永不自动重开的内容缺口，转成看得见的 `tool_error` friction 行。
 
-### Agent profiles
-- Profile YAML files live in `profiles/` (`default`, `team`).
-- Architecture, tool scoping, and model-switching policy: [agent-profiles.md](./profiles/agent-profiles.md).
-- Update that doc when profiles change.
+### Automation / 定时任务 (`scheduler/` + `/api/tasks` + `automation_*` 工具)
+
+- 用户面叫 **Automation**，定义事实仍是 `scheduled_tasks`，但每次 cron/manual occurrence 必须先持久化为 `kind='automation'` Runtime Run，再由通用 worker claim/lease/heartbeat 后调用 `executor.ts`（每次执行建 `channel='task'` 会话，复用 `runAgentInSession`）。`TaskScheduler` 的 croner 只负责产生触发，不再 fire-and-forget，也不以进程内 Set 当互斥事实。注意仓库里 "automation" 有三义，别混：这个（定时任务）、Tables 的 `table_automation_rules`（记录事件触发的确定性规则）、以及 desktop 浏览器桥的 `automation-policy`（用户面刻意叫 Browser）。
+- **单一实现在 `scheduler/task-center.ts`**：cron/时区校验、每人 10 条配额、最小间隔 1 小时、prompt 10–4000 字符、`max_steps` ≤20、hidden profile 门、`sanitizeForPrompt`、以及 scheduler 联动（`reloadTask`/`removeJob`/`runTaskManually`）全在这里，返回 `{ok,code,error}` 判别联合而非 throw。`routes/tasks.ts` 与 `tools/automation-{query,mutation}.ts` 都只是薄壳——**别在任一侧复制校验**，两份必然漂移。执行 admission/driver 则只有 `scheduler/runtime-driver.ts` 一份：保存完整 task/profile/prompt/time snapshot、确定性 session、Runtime Step，并把当前 Runtime id 传给 `spawn_session` lineage。
+- **执行历史读路径 = `listTaskRuns`（`GET /api/tasks/:id/runs`）**：以 `channel='task'` 会话为脊（Runtime 化之前的存量历史与入队失败记录都有会话）、按 `session_id` 连上 Runtime run 投影 status/error/时长/trigger；`run:null` 表示「Runtime 时代之前的历史运行」。DB 侧走 `db.runtime.listRunsForSource`（命中 `uq_runtime_runs_source` 前缀索引）。Web 的 Automations 行 History 弹框与执行中心详情消费它；`GET /api/tasks/:id` 的 `recent_runs` 继续服务 `automation_query.get`。见 [spec](../../../docs/specs/20260814-automation-run-history-and-failure-visibility.md)。
+- **入队失败必须浮出，不许只留 stderr**（2026-08-14 修）：`runTask` 的 catch 走 `surfaceEnqueueFailure`——建失败会话（`⚠️ 任务执行失败` 幂等消息）+ `updateRunStatus('failed')` + `notifyTaskResult` 三通道送达。此前 profile 被删的任务每晚失败两天无人知晓：错误只进 error.log、任务行冻在最后一次真实运行、boot catch-up 的补跑失败也只是静默推进游标。
+- **无人值守工具基线 = `scheduledToolBase(effectiveTools)`，不再与 YAML `tools:` 二次相交**（2026-08-14 修）：系统 profile 的 YAML 工具列表在任何运行时都不读取（chat、fork 同口径），automation 曾是唯一的例外——sprouty 系任务被饿到 3 个只读工具，custom 任务还被剥掉 `resolveEffectiveTools` 特意并入的 builtins。收窄语义不变：custom 的「profile 只能收窄」由 `resolveEffectiveTools` 承担，`filterUnattendedToolIds` 的 fail-closed 白名单（仅 replay-safe 读工具）原样压顶。
+- **额外工具由 owner 逐任务勾选（`scheduled_tasks.unattended_tools`，2026-08-24）**，方案与决策 D1–D12 见 [spec](../../../docs/specs/20260824-automation-optin-tools.md)。这不是把无人值守放开，是把「拒绝的三种理由」拆开：确认门依赖真人读卡（`email_mutation`）与自我增殖（`automation_mutation`）**一次性同意替代不了**，而「花钱」（生图/识图/联网搜索）与「可逆内部写」（Tables/CRM/知识库/项目）替代得了。
+  - **勾选永不放大权限**：运行时集合 = `勾选 ∩ 目录 ∩ effectiveTools`，而 `effectiveTools` 在每次执行前由 `resolveEffectiveTools` 重算。flag 关掉、角色降级、`user_tools` 收回，下次运行自动少一个工具，没人需要回去改勾选。
+  - **`filterUnattendedToolIds(ids, optIn?)` 的第二个参数必须是显式入参**：它有三个消费者（scheduler executor、`childSpawnToolIds`、workflow 节点），只有第一个背后站着「配置那一次点了复选框的人」。写成默认值或塞进共享 context 就会静默漏进另外两个。两段是并集，自动放行那段一个字符都不许动。
+  - **`unattended_tools` 只能由 HTTP 控制台写**（`TaskActor.canGrantTools`，路由传 true、`automation_mutation` 钉死 false）。`automation_mutation` 是 builtin，聊天里任何模型都能调——它若能写这一列，一次提示注入就能造出带 `crm_mutation` 的定时任务，而全程没有人看见过一个复选框。工具 description 因此改为指路「让用户去 设置 → Automations → 编辑 → Tools 勾」。
+  - **目录住 `@greenhouse/types/automation-tools`，不住 `defineTool` 的 `meta.surface`**：`tools/registry.ts → tools/automation-mutation.ts → scheduler/task-center.ts` 是既有 import 链，task-center 反向 import registry 就成环 = 那个「单测全绿、API 起不来」的 TDZ 陷阱。代价由 `__tests__/automation-opt-in-catalog.test.ts` 补：目录里每个 id 必须真实存在，且与自动放行集 / denylist / dispatch 集互不相交。
+  - **写入必须进送达摘要**（`notifyTaskResult` 读 `db.runtime.listToolCalls(runId)` 取 `risk_level !== 'r0'`）。这是放弃逐次确认的对价：用户至少要在几分钟内知道写了什么。数据源用 Runtime ToolCall 证据而不是重解析 `messages.pipeline`——前者写在真实 execute 边界。查询失败只 warn、不加这一节，**绝不把一次成功的 run 变成失败**。payload 存结构化 `writes[]` 与原文 `summary`，渲染在 `formatWriteReceipt`（改样式不该变成数据迁移）。
+- **触发幂等与恢复**：计划 occurrence 的身份只由 `taskId + scheduledFor` 决定，cron 与 boot catch-up 的投递路径不得进入 source id/input（否则一次崩溃会把同一时点重跑两次）；manual occurrence 使用独立 UUID。每个任务同时只允许一个 active Runtime Run，DB advisory lock 是事实源。启动时 `next_run_at` 已过期只补 24h 内最新一次，更早只标 `missed` 并推进游标。Automation `max_attempts=1`：agent 整轮可能已产生副作用，running lease stale 后 generic reaper 直接 failed、不自动重放；`onRunReclaimed` 同步 `scheduled_tasks`/session/Step 失败回执。执行中心只开放 Cancel（不开放 pause/retry）：queued 在命令 fence 后立即同步 Run/Step/session/task 终态，claimed/running 只持久 `desired_state=cancel`，由 driver heartbeat/poll abort 当前 LLM 后收口。
+- **scope 决定谁能跨用户**：`TaskActor.scope`——HTTP 控制台传 `'any'`（super 可见/可管全部任务，任务 prompt 含敏感上下文，这是刻意的管理面），agent 工具构造时钉死 `'own'`，所以模型即使属于 super 也只能碰自己的。
+- **hidden profile 在 create 和 update 两处都要拦**：只拦 create 的话，成员可以先用允许的 profile 建任务再切过去（`checkProfileAccess` 因此被两条路径共用）。
+- **无人值守上下文禁用 `automation_mutation` 与 `email_mutation`**：`UNATTENDED_TOOL_DENYLIST`（`agent-runtime/tool-resolution.ts`）被定时执行、workflow 节点和 headless 子会话共同消费。理由与 `mission_dispatch`/`workflow_plan` 同款——没人能按确认；automation 还会自我增殖，email 的两阶段草稿确认在无人值守时也没有真实读者。custom profile 可以自己写 tools 数组，所以这不是理论风险。只读的 `automation_query`/`email_query` 不禁。**这条 denylist 压在 opt-in 之上**：上面那个逐任务勾选无论存了什么都够不到这两个（`skill_mutation` 与 dispatch 类同理，靠不进目录挡住）。
+- 工具是 **lazy 但不 session-scoped**：任务归属是用户不是会话，stateless 的 proxy/MCP 面也必须够得着（对照 `skill_mutation`）。写工具在 `MUTATING_PROXY_ALLOWLIST`，每次调用需 `confirm:true`。
+- **结果送达 = per-task 企微 webhook（2026-08-04 补齐）**：`scheduled_tasks.notify_webhook` + `scheduler/notify.ts`，跑完（成功或失败）由 **scheduler** 推一条 markdown 摘要。**这是系统行为，刻意不是 Agent 工具**——给模型一把「POST 到这个 URL」的工具等于开一条它可以任意瞄准的外呼通道；模型只产内容，去哪由系统决定。URL 在写入时被钉死为两家群机器人端点——`https://qyapi.weixin.qq.com` 或 `https://open.feishu.cn/open-apis/bot/...`（`task-center.validateNotifyWebhook`），其余 host 一律 400；发送侧按 host 分派 payload 格式（`task-limits.notifyWebhookKind`，住叶子模块是因为 notify → task-center → scheduler/index → notify 成环）。送达失败只 `logger.warn`，绝不把一次成功的 run 变成失败。**仍缺**：WS `task:run` 推送与站内未读（通用收件箱是平台级基建，另行立项）。
+
+### 企业微信（`wecom/` + `/api/wecom` + `notify_wecom`）
+
+**群机器人与自建应用是两件事，刻意并存**：`@greenhouse/utils/wecom` 的 `sendWeComMarkdown` 是无状态 POST 到群 webhook，发到**聊天室**、点不了名；`apps/api/src/wecom/client.ts` 是自建应用（corp app），才能按 `touser` 发给**某个人**。方案与决策（D1–D8）见 [spec](../../../docs/specs/20260808-wecom-login-and-push.md)。
+
+- **corp app 客户端住 `apps/api/src/wecom/`，不进 `@greenhouse/utils`**：它有状态（access token 缓存 + 提前 5 分钟刷新 + 42001/40014 强制重取一次），而 utils 的调性是无状态纯函数。企微对 `gettoken` 有频控，缓存不是优化而是必需。
+- **未配置就什么都不显示**：`GET /api/wecom/binding` 的 `available` 由三个 env 是否齐全决定，前端据此**整块不渲染**绑定卡；`/oauth/start` 未配置返回 503。一个必然失败的按钮就是一次假的能力声明。
+- **两条腿鉴权刻意不同**：`/oauth/start` 必须带 Bearer——「是谁在绑定」只有这一跳知道，所以它返回 `{authorize_url}` 由浏览器自己跳，**不能写成整页 302**（那样发不出 header，必然 401）；`/oauth/callback` 是企微重定向浏览器过来的、没有 header，凭证就是 `state`（服务端生成、单次消费、10 分钟、绑死 userId），因此进 `isPublicPath` 且**永不调 `getAuthUser`**。落库前重读账号仍是 active 内部用户。护栏 `routes/__tests__/wecom-oauth.test.ts` 直接断言 `isPublicPath` 三个路径的取值。
+- **一个企微身份只能绑一个账号**（`findByProviderUserId` 查重）：否则两个人都能绑同一位同事，然后都收到他的通知。
+- **个人推送的收件人只从绑定派生**：`scheduled_tasks.notify_wecom` 是**布尔**，与 `notify_email` 同构——通道里没有任何可供瞄准的收件人字段，这正是它能免确认的原因。知识库 @提及是在群通道之外**叠加**一条个人消息，两条腿各自独立（群未配置不影响 DM，未绑定的收件人只是收不到）。
+- **绑定存 `user_provider_tokens(provider='wecom')`，且 `access_token` 为 NULL**：企微应用 token 是 corp 全局的、由 client 缓存，per-user 行没有凭证可存。为此把该列改成可空而不是塞空串——后者会让列注释「AES-256-GCM encrypted」变成假话。
+- 已知限制：企微 markdown **应用消息只在企业微信客户端内可见**（微信侧不显示）；state 与 token 缓存都在进程内存，多实例部署需换共享存储。
+
+### 飞书（`feishu/` + `/api/feishu` + `notify_feishu` + 扫码登录）
+
+形状与企微一节完全同构（群机器人 `@greenhouse/utils/feishu` 的 `sendFeishuMarkdown` 无状态发群，`feishu/client.ts` 有状态发 DM；未配置整块隐藏；绑定存 `user_provider_tokens(provider='feishu')`、`access_token` NULL；一个飞书身份一个账号；DM 收件人只从绑定派生）。方案与决策（D1–D10）见 [spec](../../../docs/specs/20260824-feishu-oauth-and-push.md)。企微没有而飞书有的三件事：
+
+- **绑定走 OAuth 而非邮箱匹配**（Greenhouse 邮箱与飞书邮箱不一致），存的是 `open_id`；user access token 换完 user_info 即弃，任何飞书凭证都不落库。
+- **绑定与登录共用一个 callback**（`/api/feishu/oauth/callback`），按 state 里的 `intent` 分流——飞书后台每条重定向 URL 都要登记，单 callback 少登记一条。bind state 绑死 userId；login state 不绑，命中绑定后发 **60s 单次消费的兑换码**回 `#/login?feishu_code=...`，前端 `POST /oauth/exchange`（公开 + IP 限流）换正常会话——**复用 `routes/auth.ts` 导出的 `issueUserSession`**，不长第二条签发路径；长期凭证永不进 URL。未绑定 → `not_bound` 引导先密码登录再绑定；**不自动建号**。
+- **三条公开路径**（`isPublicPath`）：`/oauth/callback`（浏览器重定向，state 是凭证）、`/oauth/start-login` 与 `/oauth/exchange`（登录页没有 Bearer 可带）。`/oauth/start` 与 `/binding` 仍要 Bearer，守卫写在路由文件内。护栏 `routes/__tests__/feishu-oauth.test.ts` 直接断言五个路径的 `isPublicPath` 取值。
+- 已知限制与企微同款：state / 兑换码 / tenant token 缓存都在进程内存，多实例部署需换共享存储。DM 需应用开通「机器人」能力且收件人在应用可见范围内（`230002 user not visible to app` 就是范围没放开）。
+
+### 飞书机器人对话（`feishu/bot/` + 长连接）
+
+在飞书里 @机器人或私聊 = 用自己那个 Greenhouse Agent；跟着某条消息「回复」= 延续那次对话。**默认关闭**（`FEISHU_BOT_ENABLED=1` 才连）。方案与决策（D1–D10）见 [spec](../../../docs/specs/20260825-feishu-bot-conversation.md)。
+
+- **走长连接，不走 webhook**：`WSClient` 是我们主动连出去的，不需要给飞书开任何公网入站端点。飞书机房能否 POST 到 `:18888` 始终是未知数（OAuth 回调走通只证明**浏览器**能访问），长连接把它整个绕开，且**事件与卡片回调都收得到**。代价是**进程内单连接**——多实例部署前必须重新设计（同一 app 多条长连接会重复投递事件，与 `chat-runs` 内存注册表同款已知限制）。⚠️ 后台「事件配置」与「回调配置」是**两套独立订阅方式**，都要各自选长连接；只配一半时点卡片按钮报「目标回调服务当前未在线」。
+- **会话键是一条回退链** `thread_id ?? root_id ?? message_id`（`bot/conversation-key.ts`，零 import 叶子模块）。一条链覆盖三种形态：话题群天然每话题一个会话、普通回复链按 root 聚合、首次发言用自己的 id 当未来的根。**别改用 `parent_id`**——实测它指向「被直接回复的那一条」，链上每条各不相同；而 `root_id` 恒定，正因如此用户回复链上**任意一条**旧消息都续得上，不必去找最后一条。
+- **身份只认绑定表，不猜也不建号**：`open_id` → `user_provider_tokens(provider='feishu')` → 用**这个人自己的权限**跑（`resolveEffectiveTools` 原样复用）。每条消息都重读账号，绑定后被禁用/降级立刻失效。未绑定回一张引导卡而不是沉默。
+- **飞书面不是无人值守**（对面有真人在等），所以**不套** `UNATTENDED_TOOL_DENYLIST`；但另有一份 `FEISHU_DENIED_TOOL_IDS` 挡掉编排类工具（mission/workflow/schema-plan/task-capture/spawn/call_llm）——它们的确认门是 Web 专属富卡片，IM 里没有 Launch 按钮那道天然减速带，一句话就能起一个几十分钟、烧沙箱与模型额度的任务。**两份 denylist 刻意分开**：那份禁的是「没人能按确认」，这份禁的是「这个交互形态承载不了」。
+- **群里的回答带权限页脚**（「以 X 的权限查询，内容对本群可见」）。群可见性风险是**接受**的（Jim 拍板），但要让它在每次发生时可见，而不是写在某个没人读的文档里。刻意不做「群里换一套更窄的权限」——那是第二套权限口径，且用户无法预知自己在群里能问什么。
+- **`ask_user` 的问题必须从 `toolEvidence` 里捞出来渲染进正文**（`bot/ask-user.ts`）：它的 `presentation: 'artifact'` 让问题不进 assistant 正文，而飞书面只取 `result.text`——不渲染的话用户只看到一句引导语，**被问了什么完全不可见**（比「要回 Web 才能答」更糟）。刻意**不做卡片按钮**：IM 里打字回答本就最自然，正文渲染 + 既有的「回复」延续机制已经让「不离开飞书」成立，零新状态。⚠️ **截断只作用于正文、提问永远保留**——反过来会让长回答把结尾的问题整段吃掉，与附件 fence 被 `sanitizeForPrompt` 吃掉是同一个形状。
+- **消息先认领再处理**（`feishu_message_receipts` 主键）：飞书会重投，而处理一条消息 = 跑一轮 agent = 花钱且会回消息。
+- **回答必须走 `replyCardMarkdown`（reply）而不是新发一条**：只有 reply 才让用户后续的「回复」保持在同一条链上、`root_id` 稳定；新发一条会开新链，用户每回复一次就换一个会话。
+- 执行复用 `runAgentInSession`（与定时任务、spawn 同一个 runner），`usageContext.caller='feishu-bot'` 归属发消息的用户、计入其月度配额。`channel='feishu'` 的会话**照常出现在会话列表里**——它是用户亲自参与的真实对话，与 workflow 那种引擎产物不同。
+- 长连接连不上只 `logger.warn`，**绝不拖垮主 API**（与 Mission 预检失败同款姿态）。
+
+### Tasks（`user_prompts` + `/api/prompts` + `task_capture`）
+
+用户面叫 **Tasks**，底层仍是 `user_prompts` 表与 `/api/prompts` 路径——一个没有变量、没有工具的任务与原来的快捷指令逐字段相同，改表名/改路径只会让所有既有客户端一起返工。方案与决策（D1–D7）见 [spec](../../../docs/specs/20260808-tasks-from-sessions.md)。
+
+- **`task_capture` 只起草，不写库**（与 `mission_dispatch`/`workflow_plan`/`tables_schema_plan` 同形，也一并进 `DISPATCH_TOOL_IDS`）。真正落库的是卡片上用户按的 Create → `POST /api/prompts`，用**用户自己的 Bearer**，模型的工具表里没有它。这道门是功能本身而不是仪式：用户要固化的是「刚才这套确实跑通了的流程」，模型自作主张存下的就是一套没人核对过、却会被 `/` 调用几个月的流程。
+- **聊天卡片固化是 exactly-once，旧 API 保持兼容**：卡片随 POST 成对传 `artifact_action_id + artifact_session_id`，服务端先在 `chat_artifact_receipts` 原子 claim，再创建 Task；`user_prompts.artifact_action_id` 唯一键补偿「业务行已写、回执未写」窗口，刷新与重复请求返回同一 Task。两字段只传一个是 400；旧的 capture 调用两者都不传仍按原语义创建，不强迫非聊天客户端伪造 message id。
+- **`expected_tools` 由服务端从会话真实调用记录派生，不收模型自报**（`toolsUsedIn` 扫 `messages.pipeline`）。它回答的是「这个任务够得着什么」，不是「这个用户能跑什么」——**不做权限判定**，运行时仍由既有 per-user 工具解析层管辖。加第二道闸只会在「作者有、运行者没有」时误伤，而那种情况下模型本就会如实报告缺工具。
+- **变量必须与正文里的 `{{占位符}}` 对得上**（`validateVariables`，create 与 update 两处）。声明了却没有占位符的变量会渲染出一个「填了也不影响任何东西」的输入框，而用户从界面上看不出来，所以是 400 拒绝而不是静默丢弃。update 时按**本次请求要保存的正文**校验（没传 content 才回落到库里那份），否则「同时重命名占位符和变量」这个最自然的编辑永远过不了。
+- **未填的占位符原样进消息**，不补空字符串：空白会静默改变任务的语义，而一个可见的 `{{region}}` 是 `RICH_OUTPUT_GUIDE` 明确要求模型先用 `ask_user` 问清楚的东西。
+- 变量填写的主路径是 composer 里的内联表单（确定性、不耗模型轮次），`ask_user` 只兜底旁路进入的情况（spec D3）。
+
+### Email（`email/` + `/api/email` + `email_query`/`email_mutation`）
+
+个人邮箱绑定 + 共享 Greenhouse 邮箱 + automation 邮件送达，方案与决策（D1–D8）见 [spec](../../../docs/specs/20260805-email-revival.md)。2026-07-22 在内部单一服务面收敛（`61efc4ab`）中整体删除，2026-08-05 按「底座找回 + 面层重写」找回。
+
+- **只有一个 provider：通用 IMAP/SMTP**（`email/imap-smtp-client.ts`，imapflow 读 + nodemailer 发）。OAuth 一律不复活：服务器在国内，Gmail 的 OAuth 与 IMAP 端点同样要走代理、OAuth 无连通性优势，而它的 restricted scope 在 Testing 模式下 refresh token 7 天过期，app password 一次配置长期有效（D1）。Outlook 历史上从未真正跑通，不找回。
+- ⚠️ **读信是全新实现，不是找回的**：本仓与 OSS fork 的所有历史版本里 `listMessages()` 都是「打个 warn 然后 return []」的 stub，IMAP 账号实际只能发不能读。**这里读失败一律 throw**——静默空数组会让 Agent 把「读不了」如实汇报成「收件箱是空的」，是最坏的失败形态。
+- ⚠️ **文件夹名必须按 SPECIAL-USE 解析，不能字面 open**（2026-08-13 修）：IMAP 的文件夹路径是每台服务器自己的（`Sent` / `Sent Messages` / `&XfJT0ZAB-`），而模型只会说 `Sent`，于是 `getMailboxLock('Sent')` 在多数邮箱上直接失败、且只报一句 `Command failed`。`resolveFolderPath()` 的顺序是 精确路径 → SPECIAL-USE 角色（`FOLDER_ROLE_ALIASES` 含中英别名）→ 同名 → 都不中就报错**并列出该邮箱真实有哪些文件夹**（让服务器回一句 `Command failed` 是最没用的失败）。`listMessages`/`getMessage` 两处都必须走它。
+- ⚠️ **`describeImapError` 要包在 `withImap` 的 catch 上，不是逐调用点**（2026-08-13 修）：imapflow 的所有命令失败都只说 `Command failed`，真实原因在 `err.responseText`。原先只有 connect 那一处包了，于是 list/search/fetch 的失败一路裸奔到 friction 队列。包在共用出口上，才不会有哪条 IMAP 路径因为漏写而丢掉原因。
+- ⚠️ **ImapFlow 实例必须在 connect 前挂 'error' 监听**（2026-08-12 修）：`connect()` reject 不保证 socket 已拆——半开 socket 的 `socketTimeout` 稍后触发 `emitError`，此时没有 pending handler 就走 `emit('error')`，无监听器 = uncaught exception，**整个 API 进程被打死**。dev 上每次绑定失败都在 400 响应发出 ~15s 后崩一次进程（pm2 静默重启，所有用户的在飞 run 一起陪葬）。修法在 `imap-smtp-client.ts`：`guardImapClientErrors()` construct 后立刻挂、connect 失败即 `close()`；回归护栏在 `imap-smtp-egress.test.ts`。另外 imapflow 的命令失败一律只说 `Command failed`，服务器真实拒绝原因在 `err.responseText`——错误信息必须经 `describeImapError()` 透出，否则「密码错」和「协议错」对用户长得一模一样。
+- **两种邮箱是刻意不同的东西**：personal = `email_accounts` 一行、属于某个用户、可发给任何人；shared = `SHARED_MAILBOX_ADDRESS`，**全部从 env 读、不在表里**（运维所有物，不随任何用户删除而消失；塞进 per-user 表要么伪造 owner 要么 user_id 可空，后者正是 `knowledge_base.user_id` 事故的形状）。聊天面 shared 仅 super 可解析，且收件人白名单 = 发起人自己的账号邮箱 + 共享邮箱所在域（`SHARED_MAILBOX_ALLOWED_DOMAIN`，默认取地址的域名）。
+- **`mailbox` 参数收账号 id、`shared`，也收地址**（2026-08-18 补）：`list_accounts` 一行里同时给出 `mailbox` 与 `email_address`，模型两种都会传，而地址此前过不了数字解析、回的还是一句 `mailbox is required` —— 对一次**带着 mailbox** 的调用说「你没传」，模型只能原样重试。`resolveMailbox` 把地址**归一回账号 id** 再走原路径：所有权、禁用、共享邮箱 super-only 三道门一个不少（按地址点名共享邮箱同样受 super 门约束）。归一化不是顺手：draft token 存的 ref 会被 send 路径重新 `parseMailboxRef`，**只有 `shared` 与账号 id 往返得了**，所以 draft 存的是 `resolved.mailbox.ref` 而不是模型写的那一串。文案分两句由 `mailboxRefError()` 统一给：真没传才说 required，传了不认识就引用原值并指回 `list_accounts`。
+- **发信只有一条路**：`email/service.ts` 的 `sendMail()`，顺序固定 归属 → 收件人策略 → 日限 → 附件预算 → 发送 → 审计。**收件人策略抽成 `checkRecipientPolicy()` 被 draft 与 send 共用**——draft 侧跑它是为了不给用户看一张按下去必被拒的卡，send 侧那次才是边界；分成两份就等于卡片能承诺发送路径不允许的事（浏览器验收时抓到的：原本只在 send 校验）。
+- **`send` 发的是服务端存的 draft，不是 send 调用的入参**——这是把外呼通道交给模型的全部安全性来源：注入能让它起草坏东西，但改不了「用户读到的卡片」与「真正发出的信」之间的收件人。**token 无效即拒绝，没有 fallback**：旧模块的 `findLatestDraft` 会在 token 对不上时发出「该用户最近一条草稿」，等于把这个性质原样交还回去。
+- **读回的内容全量过 `sanitizeEmailForLLM`**（剥 HTML / 角色前缀 / 工具标记 / 零宽字符，正文截 4000）。**清洗顺序有意义**：零宽字符必须**先**删再跑角色正则——`sys<ZWSP>tem:` 会绕过正则，事后再删 ZWSP 就等于把一个干净的 `system:` 前缀交给模型（旧模块的顺序是反的，回归测试钉在 `email/__tests__/security.test.ts`）。
+- **出网**：直连时先 DNS 解析 → `isPublicNetworkAddress()` 判定 → **用解析出的那个 IP 连接**、TLS 仍用原主机名做 SNI，解析与连接同一个答案才关得住 rebinding 窗口（旧模块是可绕过的正则黑名单）。`use_proxy` 走 `MAIL_EGRESS_PROXY`（socks5/http），未配置即明确报错，不静默回退直连。**2026-08-12 起绑定表单不再有代理开关**（预设表的 `needs_proxy` 已删，个人邮箱一律直连尝试）；`use_proxy` 列、API 字段与代理通路保留——共享邮箱 `SHARED_MAILBOX_USE_PROXY` 仍消费，也是将来「特定 URL 出口代理」的挂点。
+- **限额常量住零 import 叶子模块** `email/limits.ts`（工具描述在模块求值期插值它们——与 automation 同款 TDZ 陷阱）。共享邮箱 80 封/天是**低于飞书服务端硬限制**（100/天/发件人）留的余量：我方先拒才有可读错误，被服务商拒会连带打掉 automation 送达。
+- **`email_mutation` 在 `UNATTENDED_TOOL_DENYLIST` 里**：它的安全性全部建立在有人读那张卡并同意，无人值守时没有卡也没有读者，两步确认会退化成一步发送。automation 要送邮件走下面的系统通道。
+- **门控**：没有 feature flag——邮箱绑定对全体内部用户开放（`/api/email/*` 只挂 `requireInternal()`，两个工具 `is_global:true`，与 `knowledge_mutation`/`automation_mutation` 同档）。真正的边界在下面三层：账号归属自己、共享邮箱 super-only、外发要用户按确认卡。**发布前曾按 flag 灰度，上线前一刻推翻**（见 [spec D7](../../../docs/specs/20260805-email-revival.md)）：flag 加进了 `FEATURE_FLAGS` 却漏了 `FEATURE_POINTS`，于是权限弹框里没有开关、除 super 外无人可用，而 `email_query`/`email_mutation` 因为不属于任何 feature point 反而掉进了可逐个分配的 "Advanced tools" 桶——一次直接分配就绕开了那道 flag。护栏是 `platform/__tests__/feature-point-parity.test.ts`：**新增 flag 必须同时登记 feature point**，否则没人能授予它。
+
+### 定时任务的邮件送达（`notify_email`）
+
+`scheduler/notify.ts` 从单通道变双通道，两条都保持「**送达是系统行为，不是 Agent 工具**」（leads-pool D10）：
+
+- `notify_webhook` → 企微或飞书群机器人，URL 写入时被钉死为 `qyapi.weixin.qq.com` / `open.feishu.cn/open-apis/bot/...` 两家；
+- `notify_email` → **布尔，不是地址**。收件人由 task owner 反查得到，所以这条通道**根本没有可供任何人瞄准的参数**——这正是它能免确认的原因。发件走共享邮箱的 `sendFromSharedMailbox()`，绕过 resolveMailbox 的 super-only 门（那道门是给模型面的，这条路径上没有模型）。
+- 共享邮箱未配置 / owner 无邮箱 → 只 `logger.warn` 并跳过，**绝不把一次成功的 run 变成失败**。
+
+**送达正文必须经 `notifications/render.ts`，不能直接转发 `summary`**（2026-08-17 起，方案与决策 D1–D10 见 [spec](../../../docs/specs/20260817-notification-delivery-rendering.md)）。`summary` 是 assistant 的终答，写给**聊天渲染器**：Markdown + `RICH_OUTPUT_GUIDE` 主动要求产出的富块围栏。懂那些围栏的渲染器只活在浏览器里，邮件里没有浏览器。
+
+- **两步单向管线**：`flattenRichOutput()`（围栏 → 普通 Markdown，复用浏览器同一份 `parseSegments`）→ `renderNotificationEmail()`（Markdown → HTML 文档）。**HTML 由文本那份产出**，所以 multipart 的两部分无从漂移。三个通道（邮件 / 企微 / 站内）都用第一步的输出。
+- **截断在扁平化之后**：卡片与收件箱行仍 600 字符，邮件 20000。此前 600 的卡片上限直接作用在原文上，一个 datatable 围栏常被拦腰砍断。
+- **`marked` 原样透传 raw HTML**，而 summary 是模型写的——`renderer.html` 那一处 escape 是承重的，旧实现的「整段 escape」顺带在做这件事。`href`/`src` 同理只放行 `http(s)`/`mailto`，站内相对路径按 `PUBLIC_BASE_URL` 补全，`#/chat/...` 这类退化成纯文本（点不动的链接比没有链接更糟）。
+- ⚠️ **`marked` 的渲染器覆写必须写成普通对象**：`Marked.use()` 用 `Object.keys` 收方法，只看得见自有属性，`Renderer` 子类的原型方法**全部静默失效**（实现时踩到，三条覆写一条都没生效）。
+- payload 里的 `summary` 仍存**原文**：payload 是事实，渲染是表现，存渲染结果等于把改样式变成数据迁移。
+
+### 技能中心 (`skills/` + `/api/skills`)
+- 团队 Agent 技能库（OSS greenhouse 移植，B7）：发布/发现/下载/同步 SKILL.md 技能文件夹，不可变 semver + 强制 changelog + sha256 完整性校验。
+- **单一实现**在 `skills/center.ts`（publish/download/check-updates/manage 编排，返回 `{ok,code,error}` 判别联合而非 throw）；HTTP 路由 `routes/skills.ts`（挂载 `requireInternal()`）与 agent 工具 `tools/skills/{skill-query,skill-mutation}.ts` 都只是薄壳。权限：读=全体内部用户，写=owner 或 super，硬删=仅 super（校验在 center.ts，不在路由层）。
+- bundle 校验/规范形/哈希在 `skills/bundle.ts`（≤64 文件、≤1MiB、路径白名单、SKILL.md 必须在根）；版本 payload 存 `skills/store.ts`——默认本地磁盘 `data/skills/`，配全 `SKILLS_S3_*` 四个 env 则切 S3 兼容后端（`storage/s3-lite.ts`，零依赖 SigV4 客户端；**partial 配置启动即报错**，不静默回退）。与 `storage/uploads.ts`（COS 上传存储）完全独立，互不复用。
+- 工具 surface：`skill_query` = `{ proxy:'read', mcp:'skills' }`（static），`skill_mutation` = `{ proxy:'write', mcp:'skills' }`（lazy，构造在 `agent-runtime/tool-resolution.ts`）——`mcp` 的值是资源组名（见上方 MCP 一节），变更需同步改 `tools/__tests__/surface-derivation.test.ts` 的钉住集合。
+- **第一方技能包（仓库根 `skillhub/`）**：官方包的唯一真源（索引与写作规范见 `skillhub/README.md`）。第一方名称是保留命名空间，`publishSkill` 只接受 super，不能由普通用户抢注后继承信任。发布双通道同语义（content hash 幂等 + 版本必须 bump）：启动时 `skills/boot-seed.ts` 自动同步（owner 取 `SKILLHUB_SEED_OWNER_EMAIL` 指向的 active super，或最早 active super；缺目录/缺 owner 静默跳过，纪律违规记日志不阻断 boot）；手动补发用 `scripts/skillhub-sync.mjs`（MCP JSON-RPC，`GREENHOUSE_CLIENT_ID/SECRET` 走 client_credentials 换 token）。两者的目录读取/解析零漂移由 `tests/skillhub/boot-seed-parity.test.ts` 钉住。
+- **Web 也能发布（2026-08-05）**：SkillHub 列表/落地页/侧栏/详情页都有 Upload 入口，zip 在**浏览器**里用 `fflate` 解开（`apps/web/src/components/skillhub/bundle-from-files.ts`），走的仍是同一条 `POST /api/skills/publish`——服务端契约与权限口径一个字没变。前端那份限值预检不是安全边界（服务端逐项复校），只为让用户在点 Publish 前看到问题；两边限值由 `tests/skillhub/upload-limits-parity.test.ts` 钉住。这**收窄推翻**了 20260722 D1：仓库 `skillhub/` 仍是**第一方（`official`）技能的唯一真源**，往 official 包上传会被下次部署覆盖（弹框已警告），Web 上传服务的是团队自建技能。
+
+#### 发布期安全扫描与隔离（`skills/scanner.ts`）
+
+方案与决策（D1–D8）见 [spec](../../../docs/specs/20260805-skillhub-web-upload-and-scan.md)。技能是「Agent 会读、且常照做」的内容，沙箱同步还会把全部 clean 技能物化进 `~/.agents/skills`，所以上传内容是有直接执行路径的不可信输入。
+
+- **扫描同步跑在 publish 里，没有异步任务**：对象上限 64 文件 / 1 MiB、规则是纯正则 + 魔数比对、无 IO，成本毫秒级。别改成 fire-and-forget——那会凭空造出一个「pending 期该不该放行」的竞态：放行就是隔离机制有个可预期的绕过口，不放行就是正常发布短暂不可用。异步只留两处：启动补扫（`sweepUnscannedSkills`，存量 `scanned_at IS NULL` 的行）与 super 触发的 `rescan`。
+- **隔离判定只写在 `downloadSkill` 一处**（`quarantineError`）。这个函数同时服务 HTTP 路由、`skill_query.skills.download`（聊天 / proxy / MCP）、cloud-agent 沙箱同步、Web 详情页的 SKILL.md 预览——写在这一处就同时覆盖四个消费面。**别在路由层或工具层补第二份判定**。
+- **不传 `actor` 的调用方按最严处理**（fail-closed）。`pending` 一律不进入团队/无人值守消费；第三方即使规则扫描为 `clean`，也只有 owner/super 能先下载检查，必须经 super `decide clean` 留下 `scan_reviewed_by` 后才向团队与沙箱开放。规则扫描只能发现模式，不能证明自然语言指令无害。HTTP 路由转发真实调用者，好让 owner（改完重发）与 super（审核正文）通得过。
+- **`blocked` 是粘性的**：`publishSkill` 在 blocked 技能上直接 409，否则「封禁 → 改个字重发」就绕过了封禁。解禁只有 super 判 clean 一条路。
+- **只有 `high` 隔离，`medium` 只记录**；命令模式对 `.md` **只在围栏代码块内**匹配（散文里的 `curl` 是文档），链接/标记类规则则扫全文（散文里的恶意链接正是攻击）。**改规则前先看 `scanner.test.ts` 最后那条测试**——它遍历仓库 `skillhub/` 全部包断言 `high` 命中为 0，是防止规则收紧过头当场封禁自己全部第一方技能的长期刹车（实施中它已经把 shebang 与 HTML 模板里的 `<script` 从 high 逼降到 medium）。
+- **第一方身份取自仓库目录，不取 `official` 标签**：`apps/api/src/skills/first-party.ts` 从 `resolveSkillhubDir()` + `collectSkillDirs()` 派生仓库自有包名，且这些名称在发布入口 super-only。仓库内容仍然扫描并记录 findings（保留可观测性），但不因规则误报阻断启动。**别改回读 `tags`**：标签是 owner 可写的；没有 `skillhub/` 目录的部署得到空集合（fail closed）。
+- **扫描先于落库**：`scanForPublish()` 是纯函数，在写 bundle/版本行之前算完；算不出就拒绝发布。扫描发生在提交之后的话，抛异常会把技能留在 `pending`，而 `downloadSkill` 放行 `pending` —— 等于没扫过的包可以下载。`setScanResult` 的 `onlyIfLatestVersion` 防止并发发布把旧包结论盖在新包隔离上。
+- **metadata 也是扫描输入**：`updateSkillMeta` 先读取最新 bundle，用变更后的 display/description/tags 重扫，再由 `updateMetaWithScan` 单条原子写入 metadata + verdict，并清掉旧人工 review；禁止先改 metadata、后异步补 verdict。
+- 沙箱同步只物化 `clean && (first-party || scan_reviewed_by != null)`：不符合者从 wanted 集合剔除，已物化旧副本会在下一轮清理。部署期存量 `pending` 宁可暂时不挂载，也不能进入无人值守执行面。
+- 管理端点 `POST /:name/scan-decision`（clean/blocked）与 `POST /:name/rescan`，super only，校验同样在 `center.ts`。`checkUpdates` 对被隔离技能返回 `quarantined` 而非 `update_available`，否则客户端会反复尝试下载一个必然被拒的技能。
+- **通知刻意只有企微 webhook + 页面内计数**：`SKILLS_WECOM_WEBHOOK_URL`（回退 `SYNC_WECOM_WEBHOOK_URL`），未配置就静默 no-op、不假装发过。站内未读收件箱是平台级基建（另行立项），不为这一个模块造半套。待审核计数是 Web 侧从已加载的全量目录**纯客户端推导**的，没有也不需要新端点。
+
+### Agent 输出兜底
+- **工具参数 JSON 兜底（`experimental_repairToolCall`）**：模型在长参数上会写坏 JSON（未转义的引号、正文里的真换行、尾逗号、被截断），SDK 解析失败就把整次调用丢掉。2026-08-06 dev 上一次真实事故：三次连续的 `workflow_plan` 草稿（长中文 brief）全挂在 `Expected ',' or '}' after property value`，模型随即放弃编排改回手工做——**用户点名要的功能就这么没了**。现在 `chat-engine` 挂 `createToolCallRepair()`，调 `agent-core/repair-tool-json.ts` 的**本地确定性**修复（不再问一次模型：故障是机械的，多一轮往返既慢又可能再失败，且确定性修复才测得住）。**工具名错不修**（猜是哪个工具是更坏的赌），修复会 `logger.warn` 留痕——频繁触发说明某个工具 schema 太大或描述太糊，那该进 friction 队列而不是被静默吸收。
+  - **修复器是两趟，loose 先跑、strict 兜底，且 strict 的产物必须解析得了才采用**（2026-08-18 加）。引号规则「`"` 后面跟 `,` 即字符串结束」在值里含未转义引号、其后正好是 `", ` 时会在句子中间收尾，逗号后那截散文于是落在「必须是 key」的位置——**报错 `Expected double-quoted property name` 是修复器造出来的，不是模型写的**（dev friction 59：一次 4 条的 `tables_mutation` 批量因此连挂两次，用户改成逐条发）。strict pass 要求逗号后**真的开始一个 JSON 值**（`"`/`{`/`[`/`-`/数字/`true`/`false`/`null`）才收尾。这个顺序是承重的：它只能把 `null`（整次调用被丢弃）变成一次救回的调用，**不可能**把本来修得好的变成修不好。
+  - ⚠️ **排查时注意 pm2 日志按轮转时刻命名**：`error__2026-08-15_00-00-00.log` 装的是 **08-14** 的记录。friction 59 曾被判为「没有原始 payload 无法定位」，而那两条点名 `tables_mutation` 的 warn 当时就在盘上，只是找错了文件。
+- **终答兜底（final-answer guarantee，DeepSeek 专属、可一处移除）**：RAG 查询里模型偶尔会反复调工具直到耗尽 `max_steps` 却一句答案都不吐（或在被强制 `toolChoice:'none'` 的最后一步漏出 DSML 工具调用），导致流式 `delta.content` 与非流式 `message.content` 全空。**这是 DeepSeek 的 DSML 泄漏 bug 引发的，别的模型没有**，所以整套补丁集中在内核、对外只留一行接缝：
+  - host 侧**唯一改动**＝把 `for await (… of streamResult.fullStream)` 换成 `for await (… of withFinalAnswerGuarantee(streamResult, { profile, systemPrompt, baseMessages }))`（`@greenhouse/agent-core`）。`finish` 重排、补答、collectors 累计都在 wrapper 内完成，host 的 switch / 落库逻辑零改动。
+  - wrapper 内部按 `resolvesToDeepSeek` 门控（非 DeepSeek 直接透传），「跑了工具但无文字」时补一轮**无工具**生成：把已抓到的工具结果**拍平成纯文本摘要**喂回去（不重放结构化 tool-call 历史，否则又诱导模型继续调工具/漏 DSML），失败重试至多 3 次；补答以普通 `text-delta` 形式插在 `finish` 之前。
+  - 每次补答都是独立 provider 调用：wrapper 把每个尝试的 `totalUsage` 累加到主流结果，host 最终通过 `buildEngineResult` 统一结算；Chat 的预算预留也必须包含最多 3 次补答及 SDK retry，不能只按主循环估算。
+  - 配套：DSML 拦截器在 `toolChoice:'none'` 的步骤**只剥离不回收** DSML（回收会把 finishReason 改写成 tool-calls，反而搞砸"最后一步必须出文字"这个保险）。
+  - **移除**（DeepSeek 修了 DSML 解析后）：删 `dsml-interceptor.ts` + chat-engine 的 final-answer 段，把各 host 那行 `withFinalAnswerGuarantee(...)` 改回 `streamResult.fullStream` 即可，无其他连带。
+
+### 团队 LLM 网关中转 (`/api/llm/*`)
+- 让内部用户**无需自备厂商 key**，通过服务端中转访问组织统一管理的模型。
+- 中转端点 `routes/llm-relay.ts`，挂 `/api/llm`，**自有 relay-key 认证**（复用 `apiKeyMiddleware`，`channel='relay'`），在 `auth/middleware.ts` 的 `isPublicPath` 中豁免内部 Bearer 鉴权：
+  - `POST /v1/chat/completions` — 统一 OpenAI 兼容入口。`model` 即 `config/models.yaml` 里的模型 id，须落在该 key 的 `meta.allowed_models` 子集内（无子集=config 的 `relay.public`）；省略 `model` 时取 `relay.default`。按 provider 链取**第一个 env 里配了 key 的**上游透明转发（改写 model、流式 SSE 原样回传并抽取 usage）；只有 OpenAI/DeepSeek/Kimi/兼容协议（`PASSTHROUGH_KINDS`，都是 OpenAI 线格式）可转发。
+  - `GET /v1/models` — 返回该 key 子集中当前真正可达（协议可转发 + env 有 key）的模型。
+- 纯转发/解析逻辑在 `llm/relay-proxy.ts`（已单测）。每次调用写 `api_audit_log`（`channel='relay'`、绑定 `user_id`、token 用量喂 `daily_token_limit` 配额）。
+- **模型目录是配置不是数据**：`apps/api/src/config/models.yaml` 声明模型与有序 provider 链，密钥只写 env 变量名；`config/models.ts` 在 `main()` 里解析并注入 agent-core 的 registry，**Chat 与中转共用同一份**。曾经的 `llm_upstreams`/`llm_gateway_models` 两张表与库内 AES 加密的厂商 key 已删除（migration 0036）——改模型请改配置文件后重新部署。目录里两个平行的消费段：`relay:`（`default` + `public`，给中转 key）与 `chat:`（`selectable`，给聊天选择器）；**采样参数也归目录**（每个模型的 `options`，由 `resolveModelConfig()` 与 profile 显式值合并，profile 优先），profile YAML 不再写 `options`。
+- **模型是每轮的选择**（2026-08-01，推翻 presets-unification 的「一个 Agent = 一个模型」）：`POST /api/chat` 的可选 `model` 经 `isChatModelAllowed()` 按 `chat.selectable` 校验（非法值 400）后作 `modelOverride` 下发，并落库进 `messages.model`。`GET /api/profiles` 同时返回 `models: listChatModels()`（过掉没有可达 provider 的模型）。**落库的是 registry id 不是上游模型名**——`modelConfig.model` 是 provider 链里第一个的名字、fallback 时并不改变，记它等于指认一个没跑过的 provider；`createChatStreamAsync` 因此返回 `modelConfig.id ?? modelConfig.model`。四个只差一行 `model.id` 的预设与 `extends` 机制已随之删除，见 [附件与预设收敛 spec](../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3。
+- **`kimi-k3` 不在 `relay.public`**：Kimi Code 订阅是整个部署共享的固定请求配额（约 300–1200 次 / 5 小时），所以中转 key 只能由管理员写进 `meta.allowed_models` 才拿得到，默认子集里没有它。另外 `buildUpstreamBody` 对 kimi 上游会**删掉 `temperature`/`top_p`/两个 penalty**——这几个参数 Kimi 服务端钉死，传别的值是硬 400（实测 `only 1 is allowed`），而客户端普遍会带 temperature。方案见 [spec](../../../docs/specs/20260729-kimi-k3-provider.md)。
+- **`minimax-m3` 同理不在 `relay.public`**（MiniMax coding plan 也是部署共享的订阅配额），但**不做参数剥离**——MiniMax 接受任意采样值（实测），钉死采样是 Kimi 特有约束别外推。provider kind `minimax` 走 CN 域名 `api.minimaxi.com/v1`（intl 域名拒收 coding plan key）；思考经 `buildProviderOptions` 注入 `reasoning_split: true` 走 `reasoning_content` 字段（默认是 `<think>` 标签内联在 content 里）。方案见 [spec](../../../docs/specs/20260811-minimax-m3-provider.md)。
+- **模型目录的 `vision: true` 是「图片直传」的唯一开关**：chat 路由对声明了 vision 的当轮模型（`modelSupportsVision`）把 user 消息的 `images` 元数据经 `chat-vision.ts` 解析成 AI SDK image parts 直接进载荷（窗口内全部 user 轮，8 张 / 单图 10MB / 总 24MB 上限，新消息优先），**跳过 ID 提示**；超额/加载失败的图回落 ID 提示走 `analyze_image`，绝不静默丢。未声明 vision 的模型一切照旧（ID 提示 + `analyze_image`）。headless 路径（定时任务/workflow/spawn/proxy/MCP）刻意不做直传——消息本就不带 `images` 元数据。**直传轮必须同时注入「图已可见」的 system prompt 段**（chat 路由 `visionInlinedImages > 0` 分支）——`analyze_image` 的 description 命令模型「附图必调」，没有这段时模型会编造占位 URL（实测 `https://placeholder.local/…`）去满足工具、烧一步换必然失败。
+- 自助签发：`/api/auth/llm-keys`（内部用户 Bearer，`requireInternal`）：`POST /`（创建并绑定模型子集）、`GET /`、`GET /catalog`、`DELETE /:id`。历史自动签发 key 仍可列出和删除，不再提供 `/provision`。
+- 管理员（仅 super）：`/api/admin/llm-gateway` — `GET /catalog` **只读**（模型、provider 链、每个 `api_key_env` 是否已配置，绝不回显密钥值）+ 网关 key 治理（吊销=`status:'disabled'`、改每日额度、查今日用量）。key 治理是授权不是配置，所以留在后台。
+
+### Agent 工具代理 (`/api/agent/*`)
+- 稳定的云端能力层，供内部 CLI 按结构化工具访问服务端数据，路由在 `routes/agent-tools.ts`：
+  - `GET /api/agent/runtime-manifest?profile_id=&workspace_id=` — 返回该用户/profile 可用的工具清单（含 `mutating` 标记与 input JSON Schema）
+  - `POST /api/agent/tools/:toolId/call` — 执行单个工具
+- 认证：登录用户 access token（`Authorization: Bearer`），经 `agentBearerAuthMiddleware` + per-user 限流。
+- 工具集 = `resolveEffectiveTools(user, profile)` ∩ 代理白名单——代理只能**收窄**用户权限，永不放大。
+- **内置 Agent 工具（`builtin: true` → `BUILTIN_AGENT_TOOL_IDS`，2026-08-13）**：自建 Agent 的 `tools` 数组是**交集过滤器**，作者没想到的能力就是没有——于是一个只勾了 email 的自建 Agent 被要求「每天 8 点查收件箱」时只能如实说做不到（dev friction 51）。10 个工具因此无条件并进过滤器：`ask_user`/`read_attachment`/`compute`/`memory`/`log_friction`/`automation_query`/`automation_mutation`/`export_data`/`task_capture`/`analyze_image`。
+  - ⚠️ **必须并进 `profileTools`（过滤集），不是并进 `effectiveTools`（结果）**。写反了就是真正的放大：`memory` flag 关掉的用户会凭空拿到 memory，super-only 工具也会漏给 team。`resolveEffectiveTools` 那句「profile 只能收窄、永不放大」全靠与 `activeTools` 的交集，护栏是 `agent-runtime/__tests__/builtin-tools.db.test.ts`（拿真实 team allow-set + 关掉的 flag 验，super 用户验不出这个区别）。
+  - **准入标准**：没有独立的权限/费用/外呼语义。领域数据（知识库/项目/Tables）、付费 provider、外发通道（email）、编排（spawn/mission/workflow）一律保持可选——「这个 Agent 能看到什么、能做什么」是作者的设计决策。唯一的写工具是 `automation_mutation`：owner-scoped + 每人 10 条 + **已在 `UNATTENDED_TOOL_DENYLIST`**，所以定时任务不能靠它自我增殖。集合由 `tools/__tests__/builtin-tools.test.ts` 钉死。
+  - **前端整组隐藏**（`profile-editor.tsx` 的 `pickableTools`）：既然勾不勾都一样，就不该渲染成一个答案不影响结果的问题；说明文字改为「基础能力始终包含」，以免那份清单被读成 Agent 能力的全集。
+- ⚠️ **「这个用户能用哪些工具」只有 `resolveUserTools` 一个口径**（2026-08-13 修）：`routes/profiles.ts` 的 create / update / fork 三处曾各自重算 `global ∪ assigned`，漏掉 **feature flag 拥有的工具**（memory / CRM / Tables / mission_dispatch，见 `FEATURE_OWNED_TOOL_IDS`）。而工具选择器 `GET /api/tools` 用的是 `resolveUserTools`——于是普通成员在编辑器里看得到 memory，勾上保存必然 403，super 因提前 return 而永远撞不到。**同一个问题有两种拼写就是多了一种。**
+- ⚠️ **fork 系统 Agent 要按「它真正跑起来是什么」播种**（2026-08-13 修）：系统 profile 的 YAML `tools:` 列表**运行时从不读取**（系统 profile 用的是用户完整 allow-set），但 fork 路径恰好读了它，于是 fork 出来的 Sprouty 严格弱于本体（没有 email/知识库/附件/记忆…）且界面上毫无提示。现在 fork 系统 profile 播的是该用户的 allow-set，fork 自建 Agent 仍播源 Agent 的声明集。
+- **system prompt 永不动态罗列工具集**：工具定义（名称/描述/schema）已经由 `tools[]` 原生下发给模型；代码侧把"用户的工具名单"注入 prompt 必然与实际注册集漂移。`resolveEffectiveTools` 只返回收窄后的 `effectiveTools`，全量 allow-set 不出该模块。例外：profile YAML 的 system_prompt **可以**为工具写使用策略（如"先 search 再 get"），但只能引用该 profile 保证存在的工具——custom profile 引用自己 `tools:` 声明的；internal profile 只能引用 `is_global: true` 的（internal 实际工具集 = 用户 allow-set，点名非全局工具会对未分配用户产生虚假能力描述）。
+- 代理集合由每个工具的 `meta.surface` 声明并在 `tools/registry.ts` 派生，`agent-runtime/tool-proxy.ts` 只消费这些集合：
+  - `READONLY_PROXY_ALLOWLIST` — 只读工具（如 `project_query`、`session_query`、`knowledge_query`、`tables_query`）
+  - `MUTATING_PROXY_ALLOWLIST` — 写工具（如 `project_mutation`、`knowledge_mutation`、`tables_mutation`）
+  - `WORKBENCH_READ_TOOL_IDS` — `surface.workbench:true` 的自动刷新安全子集；必须同时是 read proxy，但 read proxy 不自动进入工作台（生图、附件分析、开放网页搜索等明确排除）
+- **写工具默认 DENY**：必须同时在写白名单内、调用方写权限包含它、且每次调用带 `confirm:true`，否则 400。每次调用写入 agent audit。
+- **工具元数据 = 各工具文件内 co-located**：每个工具在自己的 `.ts` 里用 `defineTool({ meta, kind, create? })` 声明 metadata（`meta.description` 直接喂给 `tool({ description })`，无需再回 registry 取）。`tools/registry.ts` 是显式 catalog：导入各模块后由 `TOOL_MODULES` 派生 `TOOL_DEFINITIONS`、内部默认 id、proxy/MCP surface、lazy id、`STATIC_TOOL_MODULES` 与 `getAllToolIds()`，没有平行手维护清单。`kind`：`static`（带 `create`，进共享 registry）/ `lazy`（无 create，按请求在 `buildLazyServerTools` 装配）/ `special`（在路由里就地构造，metadata 进 registry 的 `SPECIAL_METAS`——**当前无人使用**，唯一的 
+- 新增工具：① 在该工具文件 `export const xxxTool = defineTool({ meta, kind, create })`，需要 Agent proxy/MCP 时同时声明 `meta.surface`；② 在 `tools/registry.ts` 的 `TOOL_MODULES` 加 import + 数组项；③ lazy 工具在 `agent-runtime/tool-resolution.ts` 的 `buildLazyServerTools` 实现构造。所有集合自动派生，禁止再维护独立 allowlist。
+
+### 知识库的 Agent 读模型（`knowledge_query` 单一实现）
+
+方案与决策见 [spec](../../../docs/specs/20260814-kb-agent-read-model-upgrade.md)。读面从三个工具收敛成一个，
+并从「只有 grep」补成 **tree（ls）→ search（grep）→ get（cat/outline/section）** 三层。
+
+- **`team_knowledge` / `personal_knowledge` 已退役（2026-08-14）**，等价于 `knowledge_query` 的
+  `scope='team'|'personal'`。旧 id 由 `RETIRED_TOOL_ALIASES` 展开（custom profile 存的数组仍有效）、
+  由 `normalizeLegacyToolCall` 接住 proxy 直呼（输入形状本就兼容，只补一个 scope）、由 DSML 别名表接住
+  模型写出的旧名。**退役前逐 action 核对过，它不是纯子集**：scoped 那对的**数字 id 兜底**（模型拿搜索结果里的
+  数字 `id` 来 get，拒收会造成一串假 not-found）与**产品栏目的权威口径**必须搬进 `knowledge_query`，
+  否则等于把修过的坑重新挖开、把唯一事实源的约束丢掉。
+- **目录树是读路径的一部分，不只是 UI**：`action='tree'` 返回目录 + 每个目录的文档标题（空目录也列），
+  `search`/`list` 的 `folder` 参数把范围限定到某棵子树。路径解析复用 `resolveKbFolderPath`（错误列同级、
+  歧义拒绝），子树展开在应用层（`kbFolderSubtreeIds`，KB 树浅、量小，不上递归 CTE）。
+  ⚠️ **folder 过滤只准收窄**：`folderIds` 传空数组必须匹配零行（`folderFilter` 里的 `AND false`），
+  放宽成「无过滤」会把一次限定范围的提问静默答成全库范围。
+- **弱命中要出声不要过滤**：全部命中的 `relevance` 都低于 `WEAK_RELEVANCE_MAX` 时返回 `weak_match:true` +
+  提示句。阈值按 `ts_rank` 的权重标度定（A≈0.6 / C≈0.1），刻意压在正文命中之下——它防的是「拿 0.02 分的命中
+  当权威引用」，不是替模型否决普通正文命中。**不做服务端硬过滤**：模型能判断 snippet，被藏起来的结果没人能判断。
+- **长文档读粒度与写侧共用寻址**：`mode='outline'|'section'` 与 `knowledge_mutation` 的 `update_section`
+  都走 `knowledge-sections.ts`。两份实现必然漂移，而漂移的表现是「模型读了一节、改回去落在另一节」，全程无报错。
+- **`knowledge_query` 必须有 `summarizeOutput` 分支**（`agent-core/chat-engine.ts`）：它的输出没有顶层 `action`
+  字段，靠形状分派。没有分支就落到 `default: return output`，于是**每次读文档都把全文写进 `messages.pipeline`**。
+- **写入时富化是 `_summary` 的唯一来源**：`knowledge_mutation` 的 `summary` 参数写 `_summary`（FTS 的 B 权重）
+  并置 `_enriched_at`；内容变更时不传就清空。**刻意没有批量富化管线**（spec D3）——`sources` 那条 enricher 服务的是
+  无头单轮的对外 RAG，team KB 的消费者是会换关键词重试、有目录可浏览的交互式模型，对称不是需求。
+
+### 知识库侧栏树的排序与整库导出
+
+方案与决策见 [spec](../../../docs/specs/20260811-kb-tree-order-and-export.md)。
+
+- **放置与排序是两条路，刻意的**：拖进目录仍走既有 `PUT /api/drive/folders/:id` 与 `PUT /api/knowledge/docs/:id`（那两处已经持有 scope/归属/环检测），新增的 `POST /api/knowledge/tree/reorder` **只写 `sort_order`**，并在写之前逐条校验「这些 id 现在就是该 parent 的同级」。这道校验是承重的：它是唯一绕过 move 端点那套跨域检查的写路径，一旦允许非同级 id，reorder 就成了第二个（且无校验的）移动接口。同理它还拒绝跨访问域的一组（根级下 team 文档与某人的私有文档并排存在，但渲染在两棵树里）。
+- **`sort_order = 0` 表示「从没拖过」，读侧把它排在最后**（`orderKey()`，web 侧比较器）。反过来（0 排最前）会让每一篇新建/刚移入的文档跳到手工排好的列表顶端。全 0 的目录 = 纯字母序，也就是排序功能上线前的行为，所以存量零变化。
+- **写入是单条 `UPDATE … FROM (VALUES …)`**（`db.knowledgeBase.reorderDocs` / `db.drive.reorderFolders`），一条语句天然原子，不需要事务；service 只管数据，鉴权在路由。
+- **`GET /api/knowledge/export`（super）范围钉死 `visibility='team'`**。`db.knowledgeBase.listAll()` 就在隔壁且**不过滤 visibility/owner**——用它等于把全公司的私人笔记打进管理员的下载包。注意 super 在 `/docs` 列表上并不比普通成员看得多，所以这个 super 门是「批量导出是管理动作」，不是「super 能看更多」。
+- **守卫必须写裸路径 `.use('/export', requireSuper())`**：Hono 的 `/*` 匹配不到 `/export` 本身，写成 `/export/*` 等于对所有内部用户敞开。
+- ⚠️ **知识库新增任何路由，同时要在 `platform/knowledge/http-adapter.ts` 的 `matchKnowledgeAction()` 里登记**（并在同目录 `.test.ts` 补一条断言）。那个 middleware 罩着整个 knowledge router 且 **fail-closed**：没登记的路径直接 404，不是「跳过鉴权」而是「根本走不通」。落地时正好撞上：这两条路由与那道护栏分别在两条分支上开发，rebase 后 reorder/export 全 404，10 条测试一起红——路由能不能用取决于映射表，别只改路由文件。`/tree/reorder` → `updateDocument`（与「把文档移进目录」同一个 `knowledge.library.update`），`/export` → `listDocuments`（能力就是普通读，super 门在路由自己身上）。
+- **导出可限定范围**：`?folder_id=`（该目录及其子树，压缩包根就是这个目录）或 `?doc_id=`（单篇，平铺不带空目录链）。范围只影响**打包多少**，不影响**能打包什么**——团队可见过滤在三种形态下逐字相同，一条对私有文档的 `doc_id` 请求得到的是一个不含它的包。
+- **导出是 `importSeedTree()` 的逆运算**（目录→文件夹、doc→`<title>.md`、`/api/upload/<id>`→`assets/`），front matter 带 `doc_id` 以便往返；**缺图、超限一律写进包内 `EXPORT-NOTES.md`**，不静默丢。zip 用 `fflate`（isomorphic，web 侧早已在用），图片以 level 0 入包——PNG 再压一遍只烧 CPU。
+- **`user-select: none` 在 WebKit 里连带禁掉拖拽**（`app.css`，2026-08-11 修）：Safari 认为不可选的元素也不可拖，而知识库侧栏的文档行本身就是 `<button>`——按住拖动完全没反应，没有拖影也没有落点高亮。Chrome/Blink 没有这条联动，所以只在 Safari 复现，**在 Chrome 里怎么测都是绿的**。修法是给 `[draggable='true']` 显式 `-webkit-user-drag: element`。新增拖拽交互时记得：只在 Chrome 验过 ≠ 拖拽能用。
+- **`contentDisposition()` 现在是 `http/content-disposition.ts` 的单一实现**，cloud-agent / chat-files / drive 三处共用（drive 那份原先只有 `filename=`、没有 `filename*`，中文名下载下来是 percent-encoded 乱码）。
+
+### 全局聚合搜索（`GET /api/search`）
+
+⌘P palette 的后端：跨本人 web 会话标题 / 项目 / 知识库，按种类分组返回。会话 lane 必须同时按 `user_id` 与 `channel='web'` 过滤，不能把 workflow 等内部会话或他人历史带进来。实体部分方案见 [spec](../../../docs/specs/20260804-entity-references-and-peek.md) D14–D18。
+
+- **每域一条独立 lane，各自 dispatch、各自 try/catch**。任何一域不可用（未开通、无权限、报错）只让那一组为空——一扇门关着不是一次故障。
+- **知识库那三种安全参数组合只有一份**：`knowledge-search.ts` 的 `searchKnowledgeScopes()`，`/api/knowledge/search` 与本路由共用。`db.knowledgeBase.search()` 的 visibility/owner 都是**可选**参数，省略即返回全公司私有文档——这是一行代码就能捅出泄露的地方，别在第二处重写组合。
+- **不做跨域相关性排序**：项目/会话全是 ILIKE 无 relevance，知识库是 `ts_rank`(<1)，不可比；混排会让回退通道把真命中挤掉（知识库内部早踩过）。
+- **守卫写在路由文件内 `.use('*', requireInternal())`**，不是挂载点的 `.use('/api/search/*')`——`/*` 匹配不到裸路径本身，那样只剩全局 Bearer 兜底。
+
+### 工具返回值里的站内深链（`url`）
+
+返回可点开的记录时，结果行带一个 `url` 字段，模型在正文里把它写成 Markdown 链接，用户点击就地浮出详情。方案见 [spec](../../../docs/specs/20260804-entity-references-and-peek.md)。
+
+- **深链格式的唯一真源是 `@greenhouse/types/entity-links` 的 `entityUrl()`**，构造与解析共用一张表（浏览器侧靠 `parseEntityUrl` 认出这些链接）。**别再手写 `#/knowledge/doc/${id}-${slug}` 这种模板**——`knowledge-mutation.ts` 手抄过一份，两边已经开始漂移，这次一并收敛了。
+- **引用指令写在工具 description，措辞取自零 import 叶子模块 `tools/cite-url.ts` 的 `CITE_URL_INSTRUCTION`**（今天 6 个工具在用）。写在 description 而不是 profile prompt，是因为它随 function definition 下发、自动覆盖 chat / proxy / MCP 三个面；抽成常量是因为六份同义句必然漂移。**「verbatim，不许自己拼」是这句话的重点**——伪造的链接和真链接长得一模一样，直到有人点开。
+- **加这句话要付描述预算**（`__tests__/description-budget.test.ts`）：这次的 ~600 字符是靠删工具里 zod schema 已经 `.describe()` 过的筛选/排序字段清单付的，ceiling 没动。下次同理——先删重复，别先抬预算。
+
+### Tables 的对话式 Schema 编辑（`tables_schema_plan` + `/api/tables/schema-plan/apply`）
+- **三个 Tables 工具的分工**：`tables_query` 读、`tables_mutation` 写记录（两者都上 proxy/MCP）、`tables_schema_plan` 改结构（**只上聊天面**）。前两个调用即生效，第三个只起草。方案与决策见 [spec](../../../docs/specs/20260803-tables-conversational-schema-editing.md)。
+- **确认门是卡片按钮，不是 `confirm:true` 参数**：工具不写任何行，只返回一个 artifact；真正执行的 `POST /api/tables/schema-plan/apply` 只接受用户自己的 Bearer，**模型的工具表里没有它**。所以 `tables_schema_plan` 刻意不声明 `surface`（proxy/MCP 上没有真人可以按确认），并进 `DISPATCH_TOOL_IDS` —— workflow 节点与 spawn 子会话同样拿不到它（无头会话里那张卡永远没人按）。`NODE_TOOL_DENYLIST` 现在直接 spread `DISPATCH_TOOL_IDS`，别再往两处各抄一份 id。
+- **权限只判一次**：apply 逐项 `runtime.dispatch` 到既有 action（`createBase`/`createTable`/`createField`/…），Base 角色门槛因此与 Web 完全同源——schema 要 `builder`、Base 设置要 `owner`。工具侧的草稿期探针（`getSchema`/`getBase` 两个只读 action）只是为了**不给用户一张按下去必失败的卡**，不是第二条授权路径。
+- **不是原子的，也不该是**：跨 action 事务必须绕开 `runtime.dispatch` 自己拼 SQL = 复制第二份权限判定。改为逐项尽力执行 + 逐项如实回报（`applied`/`failed`/`skipped`），依赖失败 ref 的后续项传递性 skip。
+- **刷新按稳定 action id 恢复，绝不重新武装**：schema 操作不幂等（再确认一次会建出第二套同名字段），所以前端以 assistant message id + pipeline 位置派生 action id；apply 在第一项执行前原子 claim `chat_artifact_receipts`，把完整成功/部分失败结果写成持久回执。重复请求只返回原结果，processing/failed 也不猜测重试；必须让用户起一张新草稿，避免在不确定的副作用后重复建表。
+- **两个会咬人的运行时行为**（工具 description 里已写明，改动时别弄丢）：`createBase` **必然**连带建一张表（所以计划用 `defaultTableRef`/`defaultTableName` 命名并复用它，否则留下空的 "Table 1"）；`createTable` **必然**带一个必填主字段 `Name` 和一个 `Grid` 视图（所以模型不该再加自己的"名称"字段）。
+- **唯一键冲突曾整条漏成 500**：`platform/tables/application.ts` 的 `wrap()` 只查了 `err.code`，而 drizzle 把 pg code 包在 `err.cause.code` —— Tables 的 `CONFLICT` 分支因此一直是死代码，重名的 Base/表/字段对用户表现为 "Internal Server Error"。判定统一收敛到 `@greenhouse/utils/error` 的 `isUniqueViolation()`（同时查两层 + 消息兜底），`session-groups`/`session-tags` 里原先手抄的四份也已换成它。**再需要判重名时用这个函数，不要抄第五份**。
+
+### Tables 的删除与恢复口径（生命周期）
+
+方案与决策见 [spec](../../../docs/specs/20260803-tables-lifecycle-and-grid-interaction.md)。
+
+- **删除一律软删，恢复分层**：Base / 表 / 记录都只写 `archived_at`（记录是 `deleted_at`），**恢复入口刻意不对称**——记录有表内回收站（`GET /tables/:id/records/deleted` + `POST .../restore`，editor 自助），Base 与表只能由管理员 `pnpm cli tables list-archived | restore-base | restore-table`。误删一行是高频低风险，误删一张表影响所有成员，多一道人工摩擦是特性（D2）。**Dashboard 是唯一的例外：硬删**——纯 widget 配置、无业务数据，为它建一套归档货架是为对称付钱（D4）。
+- **record 字段策略是真实边界**：所有 record query/aggregate/widget/read/write/batch/form submit 都必须在 `requireTableData` 检查 `record.values` 的 read/write policy；masked 单条读取只回空 values，查询与聚合必须 full-read，防止用筛选/聚合反推。个人 view 的 get/update 在 DB service 接收 userId，不能因为调用者是 Base builder 就读改别人的 personal view。attachment 值只接受同 Base 的数字 Drive file id；发布表单禁止 attachment 字段，避免把完整内部文件柜暴露成表单上传器。
+- **删表 / 删 Base 要 `owner`，与「建表/改表只要 builder」刻意不对称**（D3）。归档一张表**不动**任何记录、字段或 relation 链接：指向已归档表的新链接由既有校验拒绝，存量链接保留、rollup 停止刷新。
+- **模型永远不能删表或删 Base**：`tables_schema_plan` 没有、也不要加 `table.archive`/`base.archive` op（D5）。工具描述里写的是"这件事只能用户在侧栏手动做"，改动时别把那句路径提示弄丢——否则模型只会说做不到，不会告诉用户怎么做。
+- **`archived_at` 过滤已经在查询层**（`listTables`/`getSchema`/`listBasesForUser`），新增读路径别忘了它；`getRecordById` 刻意不过滤 `deleted_at`（回收站与审计要看得见已删行）。
+- 新增的四个 action（`archiveTable`/`deleteDashboard`/`listDeletedRecords`/`restoreRecord`）已 bump manifest 到 `1.2.0`——**改 action 表必须 bump**，否则 API 启动即 fatal。
+
+### Platform Kernel v2
+- `platform/` 是内部应用的统一运行时：应用以确定性 Manifest v2 声明 module/entity/field/action/navigation，运行时代码只放在 registration/adapter，不写入 Manifest。`bootstrap.ts` 负责发布 release、建立受保护的 `super/team` baseline roles，并只同步 active 内部用户绑定；历史 `external` 用户不再建立 Platform role。
+- `runtime.dispatch()` 是受保护 action 的唯一入口，固定顺序为 capability → record/field policy → handler → platform audit。HTTP、Chat Tool、Agent Proxy 与 MCP 只能做协议适配，不得各自复制一套权限判断。
+- 已接入 `projects`、`knowledge`、`tables`。各应用的 `access.ts` 把 Entity Policy 转成业务查询的 SQL scope，并对读取/导出结果执行字段投影；未授权的记录按 404 处理，避免 IDOR 存在性泄露。
+- **响应里的计算字段必须写进 Manifest**：投影只保留 Manifest 声明过的列，未声明的键（含 `owner_name`/`user_name` 这类服务端拼的展示字段）会被静默丢掉。加字段要同时 bump 对应 manifest 的 `version`，否则 API 启动即 fatal。这类问题静态检查测不出，只有起服务才暴露。
+- 权限管理 API 位于 `/api/admin/platform`（super-only），支持 catalog、角色、用户 capability 例外、Entity Policy、最终权限预览和审计。策略写入时必须与当前 Manifest 的 access scopes/fields 交叉校验。
+- 新应用先运行 `pnpm cli platform create-app <id> --title "..." --dry-run` 评审边界；生成器只创建 fail-closed Manifest/registration/test/README，不会自动接入 bootstrap 或生产 runtime。
+- 新应用必须有 Manifest、registration、SQL scope/record/field adapter、HTTP/Tool/MCP 适配和 parity/security matrix；不要直接在 transport 层放行。无专用 Web UI 的应用可以保持 Agent/MCP-only。
+
+### 会话编排工具（`spawn_session` / `call_llm`）
+- 一个会话可派生子会话或并行发起一次性 LLM 调用，把单会话扩成能并行/持久啃复杂任务的"主控"。两者都是 **lazy 且 session-scoped**——只在 `buildLazyServerTools` 收到 `sessionId` 时装配，因此**不在无状态的 proxy/MCP 面暴露**（那两条调用不传 sessionId）。`is_global:true`：对内部用户默认开启（无需 assign），但因 session-scoped 仅在带 sessionId 的 chat 面生效；子工具集永远 ⊆ 调用方权限。
+- **共享 runner**：`agent-runtime/run-agent.ts` 的 `runAgentInSession()` 是"在某 session 里跑一轮 agent 到结束并落库 assistant 消息 + pipeline + 引用"的唯一实现，`scheduler/executor.ts`（定时任务）与 `spawn_session` 都复用它。LLM 调用走可注入的 `generate` seam（默认 `generateText`，测试可 stub，无需真模型/真 key）；`db` 也可注入（默认 `getDb()`）。
+- **headless 记账契约**：`runAgentInSession` 的 `usageContext`（profileId/userId/caller）**必填**——每轮结束写一条 `llm_usage`（registry 模型 id，含 cached/reasoning token），归属 owner 并计入其月度配额；caller 标签固定为 `scheduled-task` / `spawn_session` / `workflow` / `workflow-review`。记账失败只 warn 不失败运行，契约由 `agent-runtime/__tests__/run-agent.test.ts` 钉住。`defaultGenerate` 记 `totalUsage`（多步合计，v6 的 `result.usage` 只算最后一步）并带 `CHAT_STREAM_TIMEOUT`——定时任务因此与 chat 同享时间上限。
+- **定时任务不持有永久权限**：Scheduler 在启动、reload、自动/手动执行以及真正调用模型前都重新读取 owner；只有数据库中当前为 `active team|super` 的用户可运行。Executor 必须复用 `resolveEffectiveTools` + `buildLazyServerTools`，任务 Profile 只能收窄 owner 当前工具权限，不能放大；禁用/降级账号后旧 cron 立即 fail closed。
+- **`spawn_session`**：建 channel=`subagent` 子会话，`sessions.parent_session_id` 挂父、`metadata.spawn_depth` 记深度；每个 child session 唯一映射 `kind=subagent/source_kind=spawned_session` Runtime Run 与 `agent-turn` Step，完整 prompt/profile/参数永久保存。`mode:'async'` 需 `confirm:true`，只有 child transcript seed + durable enqueue 都成功才返回 `started`，由 Runtime worker 在重启后 claim；`mode:'sync'` 也创建同一 trace，但原子 claim Run+Step 后 inline 执行，避免单 worker nested deadlock。Run `max_attempts=1`：queued/只 claim 未 running 可安全恢复，running stale 直接失败且整轮绝不自动重放。worker 每次执行前重验 active internal owner、immutable custom Agent 版本/当前共享权限，并按当前 feature/tool grant 重新装配 unattended 工具；取消只写 Runtime `desired_state=cancel`，queued 立即收口，running 由 poll abort。父/root lineage 优先使用当前 Chat/Automation/Workflow Runtime id，缺失时按 parent session 的 active Runtime 回查。每父 active child 上限由 PostgreSQL advisory lock + Runtime 行计数裁决，不再使用进程内 Map。护栏仍含 `MAX_SPAWN_DEPTH`（到顶剥掉 child 的 spawn_session）且子工具永远 ⊆ owner 当前权限。
+- **sync 是合法的长任务模式**（父需等子结果做汇总再继续）。护栏:sync 硬超时 10min、async 30min(仅防真挂死,非延迟目标);绑定父工具调用的 `abortSignal`(父取消/断连 → 子立即停,不留孤儿 run);超时/取消/失败都往子会话写一条状态消息——子会话**永不留空**;`call_llm` 同样有 2min 超时 + parent-abort。注意:子会话是 headless `generateText`(不往父 SSE 流吐字),长 sync 期间父流静默,极长任务仍可能被中间代理空闲超时掐断——前端用 in-flight 进度卡片(spinner + 已运行计时)缓解观感。
+- **`call_llm`**：无 session、无工具、一次性。完整 input/output 写 `llm_calls` 审计表（按调用方 session_id 关联），**不回灌上下文**；可选 `model` 覆盖（走便宜模型）；模型在一个 step 内多次调用即并行扇出。
+
+### Workflow 图编排引擎（`workflow-engine/` + `/api/workflows`）
+- 多 Agent 任务图：`workflow_plan` 工具起草 DAG → 用户在计划卡片 Confirm（**唯一执行入口**，模型无法启动执行）→ `workflow-engine` 执行。方案与决策见 [spec](../../../docs/specs/20260728-workflow-graph-engine.md)。
+- **DB 状态机，非常驻对象**：`driveRun()`（runner.ts）幂等可重入，每轮从 `workflow_node_runs` 行重算 ready 集；行状态即 checkpoint。重启后 `initWorkflowEngine` 的 boot sweep 把 stranded `running` 行标失败并按 retry 政策重跑（节点边界持久、节点内部整节点重跑，节点内 mutation 需幂等）。人工门持久化在 `workflow_gates`（不是内存 promise registry），决议走 `POST /runs/:runId/gates/:gateId/decide`。
+- **节点 = 一次 `runAgentInSession`**：channel=`workflow` 子会话挂在编排会话下；system = `enrichSystemPrompt(profile)` + 节点 `role_addendum`（只追加不替换）；brief 走 user prompt；产出按简化类型表校验（一次 repair 重试）。工具面 = `resolveEffectiveTools` ∖ `NODE_TOOL_DENYLIST`；mutation 工具只进 `deliverable_node`（写单线程）。reviewer check 用**干净上下文**（独立 `[workflow-review]` 会话，拿不到生产过程）。
+- **node id 的字符集只有一份定义**：`blackboard.ts` 的 `NODE_ID_CHARS` 派生出 `NODE_ID_PATTERN`（schema 用）与 `INPUT_REF_PATTERN`（引用解析 + 图校验共用）。2026-08-07 之前它被抄了三份，放宽时漏掉任意一份的后果是**静默的**：schema 收下节点，引用正则不匹配，`$nodes.<id>.outputs.x` 被当字面量原样交给节点，全程零报错。同期放宽到接受下划线——模型默认写 snake_case，而 id 是不透明键、不是 URL slug，卡这个只制造返工。
+- **有界 back-and-forth**：节点间不对话，只通过黑板（`$nodes.<id>.outputs.<path>`）传结构化输出；评审/人工驳回 → `returned` 行带 feedback 重跑，`max_return` 封顶后升级 escalation gate（retry/skip/abort）；预算超限同样 escalation（绝不静默截断/继续）。
+- **人工干预（v2）**：`pauseRun`/`resumeRun`（`paused` ≠ `paused_for_gate`：前者是用户按的停，**不 abort 在飞节点**，跑完即止；`paused` 不参与 boot sweep）、`requeueNode`（对 `failed|skipped|returned` 的节点排下一 attempt 或写死为 skipped；`passed` 不允许重跑；run 已 `failed` 时会复位为 `running` 做局部补救；顺带把该节点的 pending escalation gate 判为 approved 免得永远卡住）。这些动作走 REST，不经 drive 循环，故各自补一次 `emitRunState` WS 推送。
+- **两个易踩的坑**：① `ensureDriving` 必须 **re-arm**——正在收尾的 drive 循环会让紧随其后的 resume / 门决议静默失效；② `driveRun` 的 `completed` 同步要放在状态判断**之前**，否则被 pause/cancel 中断的 run 停在过时计数上。
+- **run 冻结自己的图**：confirm 时把图快照进 `workflow_runs.graph`，引擎与视图一律读快照（`workflows.graph` 只是 0035 前旧行的兜底）；`PATCH /api/workflows/:id` 在有 active run 时另外返回 409。计划态可自由改（agent / objective / role_addendum / depends_on / 删节点，version+1）。
+- **`workflow_plan` 只能写「本会话自己起草且未执行的 draft」**：`workflow_id` 是模型给的，等于它不该有的能力——曾有一次真实事故，模型传 `workflow_id:1` 覆写了另一会话中已确认并跑完的工作流，然后才说"请确认计划"（确认门被绕过 + 历史被改写）。目标现在由 `created_from_session_id` 反查，已确认的计划一律冻结。契约见 `tools/__tests__/workflow-plan.test.ts`。
+- **`workflow_plan` 当前仅对 super 会话装配**（2026-08-12 调试期临时收口）：`resolveUserTools` 对 team 硬过滤 `WORKFLOWS_SUPER_ONLY_TOOL_IDS`，包括历史 `user_tools` 直接分配；`/api/workflows` 的 collection root 与全部子路径都挂 `requireSuper()`。工具仍无独立 feature flag，**执行仍只经用户 Confirm**；完整 planner 方法论继续写在工具 description。前端同步隐藏历史计划卡、工具轨迹与 Task Dock，且 team 不发 workflow 查询。开放口径与回滚点见 [Workflow super-only rollout spec](../../../docs/specs/20260812-workflow-super-only-rollout.md)；原来的全员装配决策仅作为历史背景保留在 [session-modes spec](../../../docs/specs/20260731-session-modes-tool-unification.md) D9。
+- **终态回写编排会话**：run 到 `completed|failed|canceled` 时，`workflow-engine/outcome.ts` 的 `settleRun()` 用 `db.workflows.transitionRun`（CAS）抢终态，**赢下的那一次**才写一条 assistant 消息到 `workflows.created_from_session_id`（completed 用 `splitWorkflowSummary()` 取交付正文 + 指引；failed/canceled 一句话）。四个终态入口（drive 完成 / drive stall / escalation abort / cancel）全部经它，禁止再直接 `updateRun({status:'completed'|...})`——否则 cancel 与 drive 收尾竞态会写出两条消息。这推翻了 v1 的"不向编排会话伪造 assistant 消息"（当时 run 卡片是唯一消费面）。
+- **节点会话不是用户会话**：`channel='workflow'` 的会话由引擎产生、只作审计用，`GET /api/sessions` 默认用 `excludeChannels` 把它们挡在所有列表之外（`?channel=workflow` 是调试后门），前端进入后是只读 + 返回工作流的回链。v2 UI 见 [spec](../../../docs/specs/20260728-workflow-graph-engine-v2.md)。
+
+### 统一 Runtime 读模型（`runtime/` + `/api/runtime`）
+
+- **部署级 kill switches 与用户权限分离**：`trusted-execution/kill-switches.ts` 是唯一解析入口，所有开关默认启用，非空非法值 fail-closed 并由 `/health.trusted_execution.invalid_env` 只报告变量名。`RUNTIME_MISSION_ADAPTER_ENABLED` / `RUNTIME_WORKFLOW_ADAPTER_ENABLED` 分别停止 immediate mirror + reconciler lane；`RUNTIME_CHAT_ADAPTER_ENABLED` 只跳过新 Chat Runtime trace，ChatRun、transcript 与 provider 调用照常工作；`RUNTIME_WORKER_ENABLED` 是 lease/outbox 与所有 durable driver 总闸，`RUNTIME_EVAL_DRIVER_ENABLED` / `RUNTIME_AUTOMATION_DRIVER_ENABLED` / `RUNTIME_SUBAGENT_DRIVER_ENABLED` 可再独立停止对应认领，并让该执行面的新准入返回 503；`RUNTIME_NOTIFICATION_PROJECTOR_ENABLED` 同时停止站内通知投影与可重试的外部通知 delivery worker；兼容环境变量 `TASK_CENTER_ENABLED` 让 `/api/runtime` 和 Trace→Dataset 读面稳定 503；`RUNTIME_APPROVAL_INBOX_ENABLED` 独立关闭 Interrupt 列表/决议但保留其它执行中心读面；`AGENT_GOVERNANCE_ENABLED` 只停止自动生命周期治理。任何一个关闭都不得改 `user_features`，也不得停止 Mission controller / Workflow engine / Chat；新增 convergence 服务必须登记独立开关与健康事实。
+- M2 灰度期 **Mission/Workflow 领域表仍是执行真相源**；`runtime/adapters.ts` 只把 Run、node/runner Step、事件、产物和审批/门镜像到 `runtime_*`。镜像状态必须沿 `@greenhouse/types/runtime` 的合法边迁移并走 DB CAS/Event/Outbox，禁止直接改 Runtime 表或反向驱动领域状态。
+- 双写不要求领域事务与 Runtime 跨表原子化：创建/显式命令后 `mirrorRuntimeRunSoon()` 降低延迟，`runtime/reconciler.ts` 在 boot 全量稳定游标 backfill，并持续周期补偿；单个坏历史行只记错、不能阻断 Mission/Workflow 执行。首次 boot 创建的历史终态 Run 会把 suppress policy 原子写入 `run.created` 并传播到终态 Event，不制造存量未读通知；boot 时已存在的 Run 与后续周期补偿不带该 policy，仍正常通知。adapter 的 source/id/event/artifact/interrupt key 必须确定性，重复 pass 不得新增时间线。
+- `/api/runtime/runs`、`/interrupts`、`/summary` 是执行中心单一 API，但 Runtime 是读模型而不是授权凭证：team 的 Mission 必须实时通过 `cloud-agent` feature，Workflow/Chat/Eval 仅 super，Automation/Subagent 仍按 owner；列表、详情、events、interrupts、summary 与每次 command 都按来源域 fail-closed 过滤，不能因历史 Runtime owner 行保留已撤销权限。DB JSON text 在响应前解析成完整 `RuntimePayload`，不截断消息、工具参数、事件或决定。
+- ordinary Chat 是 trace-only Runtime producer：`routes/chat.ts` 必须为每个 authenticated provider turn（包括 stateless）在 title/main provider I/O 前创建 `kind=chat/source_kind=chat_turn` Run + `chat_turn` Step，并把 Runtime run id 传给 provider-attempt budget；`chat-turn.ts` 先持久化 transcript（有 session 时），再按成功/用户 stop/流中断收口 `succeeded/canceled/interrupted`。Runtime 永久保存 exact transcript、完整 provider envelope、answer/reasoning/pipeline 和未摘要 raw tool input/output；worker 永不 claim Chat。启动必须调用 `reconcileInterruptedChatRuntimeRuns()` 把遗留 active Chat trace 标 `interrupted`，不 replay。稳定 source 优先用持久 user message id，regeneration/continuation 才附 transport UUID；stateless 以 ChatRun UUID 唯一标识；已终态 source 禁止复用。普通用户仍看不到 Chat Runtime，super 可从运营 trace 查看。
+- **Runtime ToolCall 必须在真实 execute 边界落证据**：Chat、Automation、Subagent 统一用 `runtime/tool-evidence.ts` 克隆 per-turn 工具表并包装 `execute`，禁止再从 `fullStream`/整轮 `steps` 事后补写。wrapper 必须 await `db.runtime.beginToolCallWithAuthority()` 后才进入原工具，并在完整 output/error 终态写成功后才把结果交给模型；before 写失败或已 abort 时原工具调用次数必须为 0。risk 从 `defineTool` 共置的 `runtime_risk`（未显式声明时按 proxy surface 的 read/write 姿态）推导，input/output/error 永久完整保存。Automation/Subagent 必须传 workerId + leaseMs，由 DB 同事务锁 Run/Step 并重验 desired state、owner、双 lease；Chat 只能走明确的 unleased `chat_turn` projection。`running` 仅表示已 admission，worker 在 begin commit→execute 或 execute→terminal write 窗口消失都收为 `uncertain`，绝不自动重试；取消无法撤销已开始的外部副作用。
+- Trace → Dataset 复用上述 Runtime detail 与既有 Eval Dataset，端点固定为 super-only
+  `GET/POST /api/eval/datasets/from-runtime/:runId[/preview]`：GET 只返回完整未脱敏证据、可编辑建议与敏感路径提示，
+  绝不写库；POST 必须带 idempotency key，经 `db.eval.createDatasetFromRuntimeTrace` 事务锁后才写
+  `source='agent'` 与不可省略的 provenance。不要把永久 Trace 留存误做成自动加入数据集，也不要另建 Dataset 表。
+- 统一命令只委派现有领域 driver 真正支持的动作：Mission 只 cancel，Workflow pause/resume/cancel，Eval 只 cancel，Mission approval 与 Workflow gate approve/reject；来源不支持的动作返回冲突，绝不能只改 Runtime 做出“已暂停/已重试”的假象。Run command 必须经 `db.runtime.executeRunDomainCommand()`：事务锁定 Runtime Run，在锁内重新鉴权并完成领域 side effect，再 CAS 推进 desired state + Event/Outbox；`may_drive=false` 只允许确认 crash-window 中来源已到目标，禁止发起新副作用，从而保证同版本 pause/cancel 不会双执行。queued Eval cancel 在领域与 desired state 都落库后立即把 Runtime 终态化，running Eval 由 driver 在 case 安全边界收口。
+- `runtime/worker.ts` 负责 stale lease/Interrupt 过期和 `runtime.events` Outbox 的 claim/lease/ack/retry/dead-letter；投递成功才 ack，并发出只含 id/status 的 `runtime:invalidate` WS。可执行 driver 必须显式注册才 claim；Mission/Workflow 读模型未注册，避免与领域 engine 双重执行。driver 持有自己的 lease/heartbeat 并 detached 运行，长 Eval 不能阻塞 outbox 与 stale maintenance pass。通知投影通过 `onEvent` observer 注入，失败重试 Outbox，不能反向改业务 Run 终态。
+- Subagent 只准经 `db.runtime.admitSubagent()` 准入：由稳定 tool-call identity 派生 child session/message id，在同一事务创建 child transcript seed、`kind=subagent/source_kind=spawned_session` Run 与唯一 `agent-turn` Step；显式父 Runtime id 原样传入 DB，绝不能在缺失/失效时静默降级为 session 上另一条 active Run，DB 行锁内必须重验 parent owner/session、`claimed|running` 与 `desired_state=run`。任一校验/限流失败必须整笔回滚，禁止恢复“先建会话、再 ensure Runtime”的非原子路径。async 只在事务提交后返回，sync 原子 claim 同一 Run+Step 后 inline 执行。Run 固定 `max_attempts=1`；queued 可跨重启 claim，running stale 只终态化且绝不重放可能已外写的整轮。执行前重验 active internal owner、immutable custom Agent 版本与当前工具权限；执行中心/父取消只写 Runtime `desired_state`，queued 立即收口，running 由 driver poll abort。session 删除必须先拒绝仍关联 active Subagent 的 child 与 parent，避免切断取消控制面。
+- Eval API 只创建 durable request：`db.eval.createQueuedRun()` 原子冻结 exact dataset IDs 与 pending results，随后 `ensureEvalRuntimeRun()` 建唯一 Runtime/Steps；boot reconciler 补领域提交后的 crash window。driver 只执行 pending result，completed/error/cancelled 只补 Step，stale case 以 immutable replacement attempt 恢复。每次 claim 和每个 case 都重验 actor 仍为 active super、按当前 `auth_version` 新签 token；bearer 绝不进 config/Runtime。Run/Step heartbeat 保 lease，另用 500ms 只读 poll 观察 Eval status/Runtime desired state，cancel 立即 abort self-call；不要用高频 heartbeat Event 代替 cancel poll。
+
+### Mission Runtime（`cloud-agent/` 内部目录 + `/api/missions` canonical 协议）
+- 云端 disposable 容器跑 Pi coding-agent 长任务，每用户持久工作区；方案与决策（D1–D11）见 [spec](../../../docs/specs/20260731-cloud-agent-runtime.md)。feature flag `cloud-agent`（2026-08-14 起 `defaultEnabled: true`——基础能力默认全员开放，super 可逐人关闭），路由挂 `requireInternal + requireFeature`。
+- **默认关闭**：新配置用 `MISSION_ENABLED=1`，旧 `CLOUD_AGENT_ENABLED` 只作兼容别名。启用需要宿主有 Docker、`greenhouse/agent-runtime` 镜像和关闭 IPv6/容器互访的专用 bridge（`docker network create --opt com.docker.network.bridge.enable_icc=false cloud-agent`）；Mission 默认强制 `runsc`，且启动预检会执行 `scripts/cloud-agent-net.sh --check`，验证 DOCKER-USER + INPUT 的首条锚点、独占规则链与精确 API allow，禁止 RFC1918/link-local/metadata 和 Mission 容器横向流量；任一缺失只关闭 Mission admission、不拖垮主 API。仅 `NODE_ENV=development|test` 可显式 `SANDBOX_RUNNER_ALLOW_UNHARDENED=1`。关闭/预检失败的语义是 **abort，不是 drain**：queued/active run 进入 `runtime_disabled|runtime_unavailable` 终态、run-scoped relay key 撤销并尽力停容器，杜绝无人 reaper 时继续运行；历史 GET 仍可读，所有新写/附件 staging 返回稳定 503。**dev 服务器 2026-07-31 已开通**（含 `scripts/cloud-agent-net.sh` 出网加固 + `cloud-agent-net.service` 持久化），配置迁移与收敛见 [可信执行平台 spec](../../../docs/specs/20260812-trusted-execution-platform-convergence.md)。
+- **附件上限是「应用层唯一权威」**：`POST /attachments` 前挂 `bodyLimit`（`MAX_ATTACHMENT_BYTES` + 1 MB multipart 余量）在 socket 层截断，再由 `file.size` 做精确判定——顺序反过来的话 `parseBody()` 会先把整个超大 body 读进内存。**反代必须放得比它宽**：dev nginx 的全局 `client_max_body_size 10m` 曾把附件卡在 10 MB 并回一个裸 HTML 413（应用层错误信息根本没机会出现），已在站点块改成 `110m`。同一个坑也压着 drive 的 `PUT /files/:id/content` 代理上传。
+- **控制面是纯编排、状态全在 DB**：`agent_runs` 行就是状态机（queued→starting→running→终态），所有迁移走 compare-and-set——cancel/complete/reaper 竞态只有一个赢家。无内存队列；`claimNextQueuedRun()` 在 PostgreSQL transaction 内拿固定 advisory lock，原子检查全局并发 ≤ `SANDBOX_RUNNER_MAX_CONCURRENT`(3) 与每用户同时 1 个后把最早合格 run 认领为 starting；所以多个 API 实例也不会超发，Docker I/O 则在事务外并行。容器是 dockerd 的子进程，**pm2 重启不打断任务的前提是新进程通过全部安全预检**；通过后 runtime 先进入 `reconciling` 并 await `bootSweep({pump:false})` 对账 DB active runs vs `docker ps`，所有 task/relay/admission 闸门保持关闭，确认孤儿容器移除、失容器 run 终态化后才发布 `ready` 并 pump。Docker 命令有硬超时；运行中若失去 Docker 控制面，立即熔断 Mission admission 并触发 quarantine，不能把未知状态当作“容器已删”。`pump` 的 re-arm 与 workflow-engine `ensureDriving` 同款陷阱——收尾中的循环必须补一轮。
+- **沙箱内只有 run 绑定凭证**：① per-run relay key（`api_clients` channel='relay'，`meta.allowed_models` 限定主/降级两个模型，run 终态即 disable——LLM 用量天然按 run 归户；`meta.cloud_agent_run_id` 也是 boot sweep 清掉「client 已创建、run 尚未 checkpoint client id」崩溃窗口孤儿 key 的兜底）；② task token（`auth/task-token.ts`，HMAC purpose `cloud-agent-task`、前缀 `lpct_`，TTL = wall 预算 + 10min 上传宽限）。task token 被 canonical `/api/missions/internal/*`、兼容 `/api/cloud-agent/internal/*` 与 `/api/agent/*` 接受（isPublicPath 豁免中央 Bearer；三处都每请求重读用户 active internal + run 归属 + run 非终态），不通 `/api/mcp`/任何用户面。平台工具面的口径见下方「沙箱的平台能力面」。
+- **事件协议单一真源**：`@greenhouse/types/cloud-agent` 的 `AgentRunEventType`（含 `tool.approval_requested`）+ `AgentRunStatus` + `AgentRunEvent` 信封。runner 以 **type-only import** 使用（`@greenhouse/types` 是它的 devDependency，编译期擦除，镜像不多装一个包）、内部路由用 `AGENT_RUN_EVENT_TYPES` 白名单校验（不再是形状正则——typo 的 type 以前会变成永久不可渲染的时间线行）、web 直接消费同一份类型。`agent_runs.status` 列枚举与该 union 由 `schema/agent-run.ts` 里的双向 `_AssertRunStatusParity` 钉死。**`run.started` 每 run 只发一次**：Pi 的 `agent_start` 在每次 provider-retry 后重进 agent loop 都会触发，1:1 映射曾把一次连吃 6 个 429 的 run 画成 7 行「Run started」（2026-08-03 修，后续重进只写 journal）；另外 `session.prompt()` resolve ≠ 成功——Pi 重试耗尽时以带 `errorMessage` 的 assistant 消息收尾而不抛错，runner 必须检查末条消息的 errorMessage，否则终局 429 会被上报成 `result_summary` 为空的 `completed`，fallback 模型永不触发。
+- **`run.canceled` 由控制面真实写出**（曾是"类型里有、无人发出"的幽灵）：cancel / wall-budget reaper / boot sweep 这三条**没有 runner 上报**的终态路径，各写一条终态事件，否则时间线会在半路戛然而止。seq 走保留高位段 `AGENT_RUN_SERVER_SEQ_BASE`（=1e9，路由拒收 runner 发的该段 seq）——**不能用负数或低位**：客户端按 `?after=<lastSeq>` 增量拉，比已投递 seq 小的事件永远拿不到。runner 自己上报完成的路径不补写（`settle(run, {runnerReported:true})`）。
+- **事件与产物**：runner 推的步骤级事件进 `agent_run_events`（`(run_id, seq)` 唯一索引 = 幂等重推）；消息、工具参数与事件 payload 保留完整值且不设自动过期——**前端永远不读沙箱文件系统**。纯 `{requests}` 保活心跳只 touch `run.updated_at`、不落不可见事件行；携带 `platform_tools` / `downgraded_to` 的信息性心跳仍保留。产物 multipart 上传经 `putObjectAtKey`（COS-or-local）落 `cloud-agent/<runId>/<path>`，服务端算 sha256；runner 对网络/5xx 重试，路由按同 run+path+sha256 幂等确认（同路径不同内容仍 409），避免「服务端已落盘但响应丢失」被误报 `artifact.failed`。下载走鉴权路由 + no-store。**文件名走 `sanitizeFileSegment`（归一化，不是拒绝）**：它原来是 ASCII-only 正则，把每个中文名产物 400 掉——agent 写完文件、如实汇报成功，用户那边只是没有卡片（2026-07-31，一次 29 分钟的任务就这么丢了报告）。产物上传失败现在有独立的 `artifact.failed` 事件，并由 runner 追加进 `result_summary`，所以终态消息一定看得见。下载的 `Content-Disposition` 必须走 `contentDisposition()` 同时给 `filename` 与 `filename*=UTF-8''`——只 percent-encode 塞进 `filename` 的话，用户存下来的就是字面的 `ECT%E8%AF%B4...txt`。事件推送会 touch run.updated_at，reaper 的 90s exit 宽限据此判断"容器退了但 completion 还在路上"。
+- **产物收集是两道，且第二道才是兜底**（2026-08-08 修，[spec](../../../docs/specs/20260808-cloud-agent-artifact-reliability.md)）：
+  - **沙箱侧**（`agent-runner/src/artifacts.ts`，纯函数 + 注入 fs）尽力而为——mtime 增量、50 上限、大小上限。**它的每一次不发都必须发 `artifact.skipped` 事件**（`stale_mtime`/`over_limit`/`too_large`/`unreadable`/`walk_error`）。此前四个丢弃点全是静默的：mtime 判旧直接 `continue`（而 `mv`/`unzip`/`cp -p` 都保留时间戳）、`slice(50)` 发生在 mtime 过滤**之前**（持久 workspace 里旧文件先占满名额）、walk 一处 `readdirSync` 抛错就 `return []` 丢掉已收集的全部、symlink 的 Dirent 对 `isFile`/`isDirectory` 都答 false。**前端那个 `artifactSkipped` 分支在实现里从没被触发过**——UI 声称在展示产物列表而列表可以静默不全，就是「能力声明必须真实」被违反。
+  - **控制面侧**（`cloud-agent/artifact-sweep.ts`，在 `settle()` 里、**排在 outcome 消息之前**）终态一律重扫宿主 `<workspaceDir>/artifacts/`。这道是承重的：取消 / 墙钟超时 / 配额超限 / 容器退出 / boot sweep / runner 崩溃——这些路径 runner **根本没机会跑上传**，文件就躺在宿主盘上，而下一轮又会被 mtime 判旧跳过，等于永久不可达。**判新用 `(path, sha256)` 内容寻址、不用 mtime**（`listArtifactDigestsForWorkspace`，跨该 workspace 全部 run），所以共享目录可以每轮重扫而不会把上周的报告再挂一次。补收行发 `artifact.created` + `recovered:true`，seq 走 `AGENT_RUN_SERVER_SEQ_BASE + 2 + i`。**sweep 的 decline 只在控制面收尾的终态发 `artifact.skipped`**（`{path, reason, source:'controller'}`，seq 固定子段 `+100 + i`，与补收条数无关所以重复 settle 天然去重；扫描上限截断也算一条 decline）——runner 上报的终态不发，它自己的上传 pass 已经报过同一批（超限文件每轮都超限，两侧都报 = 每文件两行）。
+  - **落库只有一份实现** `cloud-agent/artifact-store.ts` 的 `persistArtifact()`，上传路由与 sweep 共用——两条路径必须在限额、路径清洗、storage key、幂等语义上逐字一致，否则「补收的文件」和「上传的文件」就活在两套规则下。runner 收到 409（控制面已判终态、关闭 runner 写）不再报 `artifact.failed`：那不是用户可见的失败，sweep 会接手。
+  - **交付约定必须住受管标记块**（`toolchain.ts` 的 `DELIVERY_CONTRACT` 进 `<!-- greenhouse:toolchain -->`）。它原先在 `BASE_CONTEXT` 里，而那段**只在文件不存在时**才写；workspace 是持久的、agent 对它有完整写权限，一次 `write`（而非 `edit`）AGENTS.md 就让「交付物放 `artifacts/`」在该 workspace 的所有后续 run 里永久消失，此后 agent 把报告写在别处、收集器根本不看那里、run 照样报成功。
+- **沙箱的平台能力面（2026-08-06 加固）**：`/api/agent` 的 bearer 中间件额外接受 `lpct_` task token——身份 = run 所有者（每请求重读 active internal + run 归属 + run 必须 starting/running，终态即关闸），工具面与所有者本人 CLI token 一致，但写确认语义不同：runner **永不发送 `confirm:true`**；task token 的 mutation 先由服务端校验输入并签发一次性 `agent_run_approvals` lease（精确绑定 run/user/tool/canonical input hash），owner/super 在任务详情批准后 runner 携 `approval_id` 重试，服务端 CAS `approved→consumed` 后才以内层 confirmed 调用执行。唯一免批是 `email_mutation` 的私人 `draft` 动作；CLI/MCP 仍走既有显式 confirm。技能：controller 起 run 前只把第一方或 super 审核过的 clean Skill Center 技能物化到 `<dataRoot>/shared/skills`（5min TTL、`.version` 幂等、失败回退上次好副本），只读挂到 `/home/agent/.agents/skills` 由 Pi 原生发现；`CLOUD_AGENT_SKILLS_DIR` 钉死则跳过同步。runner 侧 `platform-tools.ts` 把 runtime-manifest 逐条映射成 Pi 自定义工具（TypeBox `Unsafe` 包 JSON Schema）。
+- **发起统一走一个 POST，两个人工确认入口**（2026-08-01 起 `sprouty-mission` 预设退役；2026-08-12 加第二入口）：① 普通 Sprouty 会话里 `mission_dispatch` 起草任务卡（`tools/mission-dispatch.ts`，**不建 run、不写任何表**），用户点 Launch 才调 POST。工具拒绝「prompt 引用 `./inputs/` 但 `attachment_ids` 为空」的起草——沙箱只收到显式列出的文件，错误信息附会话现有文件 id+名字供模型自愈重试（2026-08-03，一次没带附件的 OCR mission 把预算花在全盘 `find` 上）；可选 `title` 进 artifact 并随 Launch 传给 run，卡片头与 Task Dock 显示它而非 prompt 截断。**`mission_dispatch` 也收可选 `skill`（2026-08-13）**：起草期用的必须是 **launch 那一刻会用的同一个谓词**——即 `isSlashSelectableSkill()`，不是更宽的 `isMissionReadySkill()`；两者一旦分叉，卡片就会承诺一个 Launch 必拒的技能，而这个参数存在的意义正是「不给用户一张按下去必被拒的卡」。**真边界仍是 POST /runs 的重校验**（技能可能在起草与 Launch 之间被隔离）。带 `skill` 时 `prompt` 可空，卡片 meta 行显示技能名（不显示的话用户等于在确认一份看不见的指令）。加它的直接原因：模型没有「按名引用技能」这条路时，会把整套技能方法论抄进 prompt 然后撞 32 KB 上限；超限错误现在也点名这条出路。工具由 `cloud-agent` feature flag 门控（`CLOUD_AGENT_FEATURE_TOOL_IDS` 并入 `resolveUserTools`，与 CRM 同款），并进 `NODE_TOOL_DENYLIST` + `DISPATCH_TOOL_IDS`（workflow 节点与 spawn 子会话都拿不到——headless 会话里没人能按 Launch）。② **composer `/` 技能直发**：POST 接受可选 `skill`（技能名）——先满足 **mission-ready**（active + clean + 仓库第一方/已审核，沙箱同步事实），再满足 **slash-selectable**（服务端从 `skillhub/<group>` 派生，当前仅 `branding/business`）；catalog 下发两个独立布尔，launch 用 `isSlashSelectableSkill()` 重校验，浏览器不得用可编辑 tag 复刻。接受后由 `enqueueRun` 把技能使用指令拼进 runner prompt 与 `original_prompt`，带 `skill` 时 `prompt` 可空（title 回落技能 display_name）。**user 消息在 channel='mission' 的会话写，或请求显式带 `write_user_turn`**（composer 直发路径——正文确实是用户在输入框亲手打的，写成 user turn 不是伪造；卡片路径仍不写，那个会话已有用户真实那一轮 + 任务卡里的完整 prompt，session-modes spec D5）；user turn 只含用户原文，**技能 preamble 不进用户气泡**；**assistant 终态消息所有路径都写**。契约测试：`skills/mission-ready.test.ts` + `routes/__tests__/cloud-agent-skill-launch.db.test.ts` + `cloud-agent/controller-enqueue.db.test.ts`。
+- **直发路径要把会话转录一起交给沙箱（`cloud-agent/conversation-transcript.ts`，2026-08-13 补）**：直发的简述是用户亲手打的、刻意不经模型，所以它天然依赖上文——「调研一轮 → `/技能` +『输出分析报告』」是最自然的用法，而沙箱看不见那段对话。失败形态不是「问一句要分析什么」，是**自己挑个题目自信地做错**（dev 会话 `023ddcc3`：Reddit 舆情之后那句「输出分析报告」被做成了亚马逊 ERP 经营报告，占着唯一并发位烧完墙钟）。修法是 `write_user_turn` 且会话有历史时，把转录渲染成 markdown 经既有 `prepareRunInputs` 落到 `./inputs/conversation.md`，runner prompt 只加一行指路。四条边界：**走文件不走 prompt**（32 KB 是留给指令的，大块材料进 `inputs/`——`mission_dispatch` 对模型强制的同一条规则，别在直发路径自己破例）；**卡片路径不给**（那条路上有个看得见对话的模型在写自包含 brief，旁边放转录只会诱导「照对话里说的做」这种懒 brief）；**它不是附件**（不进 `input_manifest`、不进「用户附了 N 个文件」那句、聊天里不长出用户没上传过的药丸，重名自动改名永不覆盖）；**不重新 sanitize 但一切裁剪都出声**（user 轮落库前已过 `sanitizeUserMessageForPrompt`，且这就是 chat 每轮重放给模型的同一份转录；整份过 `sanitizeForPrompt()` 等于把 8000 字符的 prompt 截断施加到一份明确不是 prompt 的文档上。预算是最新 40 条 / 单条 20k 字符 / 整份 80k 字符，**保尾不保头**，裁掉多少条、截断多少字符都写在文件里）。⚠️ 连带必须改的一处：`startRun` 里 `/workspace/inputs` 的**挂载判据从 `input_manifest` 换成读 staging 目录**（`workspace.ts` 的 `runInputsPresent()`）——转录不进清单，按清单判就会让转录躺在宿主盘上、而容器里那句指路指向一个没挂上的路径。清单是「用户附件」的展示事实，磁盘才是「挂不挂」的事实。见 [spec D9](../../../docs/specs/20260812-slash-skill-mission-launch.md)。
+- **WS `mission:run`**：控制面在每个赢下的状态 CAS（enqueue/starting/running/终态）经 `connectionManager.sendToUser` 推 `{runId, sessionId, status}`，与 `chat:run`/`workflow:progress` 同形状——**只推 id+状态**。Task Dock、任务 rail 与移动端列表据此刷新，状态列表的常轮询是 15s 兜底；打开的详情页仍以 2s 增量拉步骤事件。内容级 SSE 仍是 cloud-agent spec 的 P2（届时复用 `streamRunToResponse` 订阅形状），别在这里抢跑。controller 的 `notify` 是注入的（测试不接 WS）。
+- **存量** mission 会话（channel='mission'；新会话不再生成该 channel）的消息**只由服务端写**：user 落在 enqueue；terminal settle 先冻结一条 `agent_run_outbox`，再用 `cloud-agent-outcome:<runId>` 确定性 message id 调 `addMessageOnce`，settle/boot/tick 都可补投，进程在“消息已写、outbox 未确认”之间崩溃也不会重复。产物仍走 ```mission-artifacts``` fence。目录按 **workspace** 键控（`ws-<id>/{workspace,session}`），follow-up run 挂同一对目录、Pi `continueRecent` 原生续上下文；runner 只上传本轮 mtime 之后的产物。工作区按用户总量做配额，闲置 14 天后 tar.gz 上传对象存储再删本地，复用 archived workspace 时原子解冻；journal 终态单独归档并可鉴权下载。**用户附件的 staging blob 继续保留**：会话比工作区活得久，输入要在历史里一直可下载，所以对象存储对它也是真源。user turn 写 ```mission-attachments``` fence（`{key,name,size_bytes}`），下载走 `GET /attachments/download?key=`，**归属靠 key 前缀精确匹配**，别人的 key 即使 super 也 404。方案见 [chat-integration spec](../../../docs/specs/20260731-cloud-agent-chat-integration.md) 与 [hardening spec](../../../docs/specs/20260806-cloud-agent-hardening.md)。
+- **镜像与 Sandbox Runner**：`apps/agent-runner`（包名 `@greenhouse/sandbox-runner`，目录暂留兼容，**api 不得 import**）编译后进 `greenhouse/agent-runtime` 镜像（镜像名暂留兼容，避免已有宿主和 workspace 迁移；构建脚本 `scripts/build-agent-runtime.sh`）。**交付工具链一律烤进镜像，不挂宿主二进制**：chromium + CJK 字体（`html2pdf`/`html2png` 两个包装脚本是唯一受祝福的 HTML→PDF/PNG 路径——容器以 root 跑且 `--cap-drop ALL`，chromium 必须 `--no-sandbox`，且 docker 默认 64 MB 的 `/dev/shm` 会让渲染进程崩）、poppler-utils、pandoc、imagemagick、python3 venv（pandas/openpyxl/python-docx/python-pptx/pypdf/pillow/requests/bs4/lxml）。理由与不装 LibreOffice/matplotlib 的取舍见 spec D12。Mission 必须以 `runsc` + `--read-only` + `/tmp`/`/home/agent` tmpfs 运行，所有 OS/系统 Python 依赖必须在构建时进镜像；模型不得声称可在运行时 `apt-get` 或改写 `/opt/venv`，仅 workspace 内的项目依赖可写。能力清单不硬编码——`agent-runner/src/toolchain.ts` 每轮启动实测 PATH 与 python 模块，写进 workspace `AGENTS.md` 的标记块（块外笔记保留），所以镜像加减工具无需同步改任何文案。runner 配 Pi 自定义 provider 指 `$API_BASE/api/llm/v1`（openai-completions + `compat.supportsDeveloperRole:false`），journal 全保真落 `/session/journal.jsonl`、API 只收步骤级；上游 429/quota 时降级 `GREENHOUSE_FALLBACK_MODEL` 续跑；`GREENHOUSE_MAX_REQUESTS` 预算耗尽即 abort（kimi 配额全部署共享）。会话续命 = `SessionManager.continueRecent`，同一 `/session` 目录挂进新容器即恢复。
+- **Sandbox per-user hard quota 必须逐次验真**：非 development/test 的 marker + mount 只证明宿主能力；enqueue 与 Docker start 前都要通过 root-owned `SANDBOX_RUNNER_QUOTA_ATTEST_COMMAND` 查询实际 `<dataRoot>/homes/<userId>`，证明独占非 0 project id、byte/inode hard limit 精确匹配、project-inherit 开启且兄弟用户无复用。验真必须发生在 controller 创建目录之前；失败只返回该用户 `mission_workspace_quota_unavailable`，已有历史查询继续可用，禁止把 project-0 目录放行。特权 provision 只在 ops 脚本 `scripts/sandbox-runner-quota.sh ensure/bootstrap`，API 仅调用只读 `attest`。
+
+### MCP 服务端 (`/api/mcp`)
+- 把上面的 Agent 工具代理用 **MCP 协议**包一层，让任意 MCP 客户端（Claude / Cursor / 外部 agent）按标准协议访问内部资源。路由在 `routes/mcp.ts`，**薄适配器**——不自定义资源访问：`tools/list` ← `buildProxyManifest`，`tools/call` ← `executeProxyTool`（confirm 门 / 输入校验 / 权限交集全复用 `tool-proxy.ts`）。
+- 依赖 `@modelcontextprotocol/sdk`；传输用 **WebStandard Streamable HTTP**（无状态：每请求新建一个声明 `tools` 能力的 `Server`，直接吃 `c.req.raw` 还回 `Response`，无需 `fetch-to-node`）。`enableJsonResponse:true`。
+- 认证 **OAuth-only**：交互式走 Authorization Code + PKCE S256，自动化走 `client_credentials`（super 在 admin 面板创建机器客户端：`client_secret_post` + 绑定最小权限内部用户 + `allowed_scopes` 上限；只发 1 小时 access token、不发 refresh）。`agent-runtime/mcp-auth.ts` 的 `mcpCredentialMiddleware` 每请求校验 token hash、resource audience、scope、grant/client/user 状态并构造 `AgentIdentity`；非 `lpoa_at_` Bearer 一律 401 + RFC 9728 challenge。旧 `lpai_sk` A2A Key 通道已删除（migration 0030 同步禁用存量行；`api_clients` 表保留给 relay）。
+- OAuth discovery：`/.well-known/oauth-protected-resource/api/mcp` + `/.well-known/oauth-authorization-server`；协议端点 `/oauth/{authorize,register,token,revoke}`；用户 consent/grants API `/api/oauth/*`。公开客户端只支持 `token_endpoint_auth_method=none`，PKCE 强制 S256，redirect URI 精确匹配，token 只存 SHA-256 hash。
+- **scope 是两个正交维度：动作 × 资源组**（2026-08-16，见 [spec](../../../docs/specs/20260816-mcp-surface-and-scope-granularity.md)）。动作 scope（`mcp:read`/`mcp:write`）说"能做什么动词"，资源组 scope（`mcp:knowledge`/`mcp:projects`/…，每个 MCP 资源组一个）说"能碰哪些数据"，可达工具 = 组内工具 ∩ 动作档，再 ∩ 绑定用户自己的权限。组的真源是各工具 `meta.surface.mcp` 里的组名（union 类型，**新工具上 MCP 必须回答属于哪组**，忘了是编译错误），`MCP_TOOL_IDS_BY_GROUP` 与 scope 列表都由它派生。
+  - ⚠️ **`normalizeOAuthScopes`（请求侧）与 `parseStoredOAuthScopes`（存储侧）刻意不对称，方向写反就是静默提权**：前者对"没提资源组"的请求展开成全部组（客户端不知道我们怎么分组，多数只会照搬 `scopes_supported` 或干脆不传，不展开等于打断所有现有客户端）；后者**永远不展开**——存的是什么就是什么。在存储侧加一行展开，等于把每个存量 grant 提权成全权限。存量行由迁移链 显式回填，所以代码里**没有**、也不该有"无组视为全部"的兼容分支。回归护栏在 `platform/__tests__/oauth.test.ts`。
+  - **空资源组不是合法状态**：consent 页全不勾时禁用按钮，approve 端点 400 拒绝。这不是体验优化——是让"没有资源组"永远不出现在存储里，从而杜绝将来有人把它读成"全部"。
+  - **`AgentIdentity.allowedTools` 同理**：`undefined` = 不收窄（CLI/沙箱按用户全权），`[]` = 零个可读工具。`resolveProxyToolIds` 曾把空数组当"不收窄"，而 MCP 现在正是从资源组派生这个列表——两者合流就是把最窄的授权变成无限制。
+- OAuth scope 只收窄、不放大平台权限：`mcp:read` 才可访问，`mcp:write` 只决定是否暴露 confirm-gated 写工具；401/403 challenge 的 `WWW-Authenticate: scope=` **必须广播全量 `OAUTH_SUPPORTED_SCOPES`**——MCP 客户端按 SEP-835 优先采用它（高于 metadata 的 `scopes_supported`），只写 `mcp:read` 会把所有被发现的客户端钉死成只读 grant，用户在 consent 页连选都选不到（2026-07-27 修）；真正的授权决定权在 consent 页，写工具还有 confirm 门。每个 action 仍走绑定用户的 Platform capability + record/field ACL。MCP 与 refresh 每次都把 token/code scopes 和当前 grant scopes 取交集校验；grant scopes 变化会事务性撤销旧 token/未用 code，grant/client/user 撤销在下一请求生效。
+- **安全边界 = key 绑的那个内部用户**：代理只能收窄其权限（`resolveEffectiveTools ∩ 代理白名单 ∩ MCP 阶段集`）。给每个外部集成绑**最小权限专设用户**，别绑 super / 个人账号。
+- **写姿态：开放但需 confirm**。`mcpIdentityMiddleware` 给身份全量 `MUTATING_PROXY_ALLOWLIST`；mutating 工具在 `tools/list` 的 input schema 里被注入一个 **required `confirm` 布尔**，`tools/call` 执行前剥离并作为 `executeProxyTool` 的 `confirm` 传入（MCP 的 `tools/call` 只有 `name`+`arguments`，没有独立 confirm 字段）。注：confirm 由调用方自传，防误触发、非防恶意——真正的闸门是绑定用户的权限。
+- **暴露范围**：`MCP_EXPOSED_TOOL_IDS`（由各工具 `meta.surface` 派生，见 `tools/registry.ts`）= knowledge + project + tables + chat + skills + automation（只读）+ 生图（`generate_image`，2026-07-23 开放，见下）。工具须同时有 proxy 读/写 tier。
+  - **2026-08-16 摘掉三个**：`email_query` / `email_mutation` / `automation_mutation`（proxy tier 原样保留，CLI 与 Mission 沙箱照常用）。理由不是"风险大"这种泛泛判断，而是**它们的安全模型在 MCP 上不成立**：`email_mutation` 的全部安全性来自"用户读了那张草稿卡"——draft 把 token 交给模型、send 发服务端存的草稿，中间那道人读的门是承重的；MCP 上 `user_confirmed` 与合成的 `confirm` 都由调用方模型自填，两段确认坍缩成一段。同一条理由早已把它写进 `UNATTENDED_TOOL_DENYLIST`，而 **client_credentials 机器客户端就是无人值守**。email 又是全部写工具里唯一外发、不可逆、发出去收不回的通道。`email_query` 一并摘掉：私人收件箱全文不该交给第三方客户端。`automation_mutation` 是自我增殖（"能建定时任务的定时任务"），当前有三层兜底所以不算在救火，但重开无人值守写权限前先关掉这条侧门。**别用"加 approval lease"复活它们**——那套形状服务的是长任务里等人拍板，MCP 是同步请求-响应，调用方会阻塞等人点按钮。
+  - chat：只读 `session_query`（已在只读白名单；`session_history` 2026-08-07 并入其 search/messages，旧名经 `normalizeLegacyToolCall` 别名兼容）；MCP 不提供直接驱动聊天的端点。
+  - skills：技能中心 `skill_query`(读：find/get/download/check_updates)/`skill_mutation`(写：publish/update_meta/archive/unarchive/delete)——owner/super 校验在 `skills/center.ts`，与 `/api/skills` 路由共用同一实现；外部 agent 可经 MCP 发布/同步团队技能。
+- 审计：每次 `tools/call` 经 `recordMcpAudit` 写 `api_audit_log`（`channel='a2a'` 枚举沿用、`app_id`=OAuth client id、绑定 `user_id`）；平台侧 actor `authMethod` 区分 `oauth`（人授权）/`oauth-client`（机器凭证）。
+- 机器客户端管理：`/api/admin/platform/oauth/machine-clients`（仅 super，routes/platform-admin.ts）：create（返回一次性 `lpoa_cs_` secret）/rotate-secret/disable（级联撤 grant+token，re-enable 自动恢复机器 grant）/delete/per-client audit；创建即校验被绑用户 active/内部并 upsert 机器 grant。DCR (`/oauth/register`) 保持 public-only，机器客户端不可自助注册。
+- 性能：用户的 effective 工具集（flag / user_tools）**每请求重新解析**（两次轻量 DB 读），60s 的 `CONTEXT_TTL_MS` 缓存只免注册表构建——cache key 含 effectiveTools 签名，任何权限变化即 miss；Platform 工具可见性与 OAuth token/grant/client/user 状态同样不缓存。**撤权（含 flag 关闭与 user_tools 收回）一律下一请求生效**。flag→工具的门控只在 `resolveUserTools` 一处（由 `FEATURE_POINTS` 派生），本路由不再二次门控——曾经手写的第二份 CRM/Tables 工具表与 feature-points 漂移过，跨渠道口径由 `tests/api/channel-tool-parity.db.test.ts` 钉住。
+- 管理 UI：Settings › Administration › MCP Access（`apps/web/src/pages/settings/mcp-keys.tsx`，super-only）：建/轮换/禁用/删 key、复制客户端配置（折叠的 "How to connect"）、per-key Activity（读 `/:id/audit` 看最近调用）。
+- 纯逻辑（`toMcpInputSchema` 的 schema 归一化 + confirm 注入、协议往返）已单测：`routes/__tests__/mcp.test.ts`（用 SDK `InMemoryTransport`+`Client`，不连 DB）。
+
+### 生图 (`generate_image` 工具)
+- `tools/generate-image.ts` 的 `generate_image`（surface `proxy:'read' + mcp:'image'`，`is_global`）是唯一生图入口。**它在 MCP 上独占一个资源组**：挂 read tier（不需要 confirm）但每次调用花真金白银，和其它只读工具捆在一起，用户就没法在给出读权限的同时拒绝付费调用。：gpt-image-2 → `storage/uploads.ts` 落 COS/本地，产物经公开的 `GET /api/upload/:id` 取用。chat 同步内联渲染（`presentation:'artifact'`）；/api/agent 与 /api/mcp 经代理暴露为只读工具，生图技能即调它生图（不再 curl REST）。
+- 生图预算按真实 `usd_micros` 计，不再拿图像 token 冒充文本预算：provider I/O 前一次性原子预留 user + organization + `media` provider 三个 UTC 月账户，成功按该尺寸 low 档实际美元成本结算；结果未知由 TTL 以预估美元结算。provider 返回的 input/output token 仍写 `llm_usage`，并以同一 budget key 关联统计事实。默认硬限额与运营覆盖可通过 `USAGE_BUDGET_*_IMAGE_USD_MICROS` 调整。
+- **单模型、单渠道、单质量档**（2026-07-27 起）：`IMAGE_MODEL`（默认 gpt-image-2）经媒体端点，**固定 `low`，schema 里没有 `quality` 参数**。medium/high 分别是 low 的 ~8x/~33x 成本，而模型判断不了这钱该不该花；要更精细先加大 `size`。zod 会 strip 未知字段，所以老调用方继续传 `quality` 不报错、静默降到 low。GLM 兜底与 `GLM_IMAGE_*`/`GPT_IMAGE_*` env 已一并移除。
+- 上游 env 为 `MEDIA_API_KEY`/`MEDIA_BASE_URL`（见 `media-provider.ts`，未配置时回落 `LLM_API_KEY`/`LLM_BASE_URL`，识图与生图共用一个 OpenAI 兼容端点）。响应可能**同时带 `b64_json` 和 `url`**，`persistImage` 优先取 base64：既少一跳，也不依赖上游托管 URL 从服务器可达。
+- 审计走统一的 `mcp:tools/call`（`recordMcpAudit`，`meta.tool` 记工具名、**不含 prompt**）；旧的 `/api/images` REST 中转与其 `image.generate` 专项（含完整 prompt）审计已于 2026-07-23 移除。low 档实测 20–30s，超时上限 180s——同步 MCP 调用会挂住整个请求，反代读超时要盖过上游耗时。
+- **`size` 只有三个合法值**（`1024x1024` / `1024x1536` / `1536x1024`）：其余取值上游**既不报错也不修正**，会返回一个谁也没要的分辨率。实测 low 档传 `1080x1080` 拿回 `1254x1254`／863KB，同画面 `1024x1024` 只有 121KB——白白 7 倍体积，还掉出 `COST_USD_BY_SIZE` 导致成本显示为空。`resolveSize()` 按长宽比 log 距离归一到这三个之一（`auto`/缺省→默认横图），归一时结果里回传 `requested_size`。**别放宽 zod 的 regex 就当支持了**；旧技能原来推荐的 `1152x1536`/`1536x864`/`864x1536` 全是不存在的尺寸，已在 skill 0.5.0 修正。
+- **要求「用真 logo」时必须传 `images`，不能靠 prompt 描述**（2026-07-28）：`action:'generate'` 也吃 `images` 了，带参考图就自动改走 `/images/edits`——那是 gpt-image-2 唯一能吃参考图的端点，`/images/generations` 会把它们静默丢掉。该端点**独立于参考图尺寸地遵守 `size`**（实测 4218×1723 的 logo 进、1024×1024 海报出），所以 `size` 必须一路透传，否则合成图会继承素材的比例。起因：让 Agent 按品牌规范出海报，它读了 `brand/foundations/logo` 却在 prompt 里描述「三叶嫩芽 mark」让模型重画，而那篇文档明写 logo **永远不重绘**——它当时没有别的选择，参考图只能通过 `action:'edit'` 传、而 edit 的描述写的是「用户上传的图」。品牌素材就在知识库里（`brand/foundations/logo` 等文档内嵌 `/api/upload/<id>`），工具描述现在直接指路。
+
+### Agent Profiles
+- Profile YAML 文件放在 `profiles/` 目录
+- 架构、工具矩阵、设计决策详见 [agent-profiles.md](./profiles/agent-profiles.md)
+- Profile 变更时同步更新该文档
