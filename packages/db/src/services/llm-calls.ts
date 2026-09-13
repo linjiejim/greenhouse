@@ -7,7 +7,6 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { eq, desc } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -49,16 +48,6 @@ export function createLlmCallService(db: Db) {
       };
       const inserted = await db.insert(llmCalls).values(row).returning();
       return inserted[0] as LlmCallRow;
-    },
-
-    /** List the audited LLM calls for a session, newest first. */
-    async listBySession(sessionId: string, limit = 100): Promise<LlmCallRow[]> {
-      return (await db
-        .select()
-        .from(llmCalls)
-        .where(eq(llmCalls.session_id, sessionId))
-        .orderBy(desc(llmCalls.created_at))
-        .limit(limit)) as LlmCallRow[];
     },
   };
 }

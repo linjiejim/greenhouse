@@ -12,7 +12,8 @@
  * - versions keep snapshots for audit/history.
  */
 
-import { integer, pgTable, text, serial, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { integer, pgTable, text, serial, timestamp, index, uniqueIndex, boolean } from 'drizzle-orm/pg-core';
+import { driveFolders } from './drive.js';
 
 // ─── knowledge_base ───────────────────────────────────────
 
@@ -31,9 +32,16 @@ export const knowledgeBase = pgTable(
     content_hash: text('content_hash'), // SHA-256 hash for incremental ingest
     visibility: text('visibility').notNull().default('team'), // 'team' | 'private' (private + owner_user_id = personal)
     status: text('status').notNull().default('published'), // 'draft' | 'published' | 'archived'
+    is_template: boolean('is_template').notNull().default(false), // "new from template" source
     tags: text('tags').notNull().default('[]'), // JSON array
     meta: text('meta').notNull().default('{}'), // JSON object
     file_path: text('file_path'), // source file relative path (if ingested)
+    // Directory placement: a scope='kb' drive folder (null = root). Docs are never
+    // cascade-deleted by a folder op — the folder-delete guard requires empty first.
+    folder_id: integer('folder_id').references(() => driveFolders.id, { onDelete: 'set null' }),
+    // Manual order among siblings in the sidebar tree, ascending. Same contract as
+    // drive_folders.sort_order: 0 = never dragged, readers sort by (sort_order, title).
+    sort_order: integer('sort_order').notNull().default(0),
     owner_user_id: text('owner_user_id'), // personal-ownership key (loose ref); scopes private docs to one user
     created_by: text('created_by'),
     updated_by: text('updated_by'),
@@ -42,6 +50,13 @@ export const knowledgeBase = pgTable(
     _questions: text('_questions').notNull().default('[]'),
     _topics: text('_topics').notNull().default('[]'),
     _enriched_at: timestamp('_enriched_at', { withTimezone: true, mode: 'string' }),
+    // ─── Segmented FTS tokens (jieba, weight A/B/C) ──
+    // Space-joined jieba tokens recomputed on every write; the weighted GIN
+    // expression index lives in the migration chain (drizzle can't track it).
+    // A = title + tags, B = _summary + _questions, C = content + _topics.
+    _tokens_a: text('_tokens_a').notNull().default(''),
+    _tokens_b: text('_tokens_b').notNull().default(''),
+    _tokens_c: text('_tokens_c').notNull().default(''),
     created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }),
     updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
   },
@@ -51,6 +66,7 @@ export const knowledgeBase = pgTable(
     index('idx_kb_visibility').on(table.visibility),
     index('idx_kb_status').on(table.status),
     index('idx_kb_updated_at').on(table.updated_at),
+    index('idx_kb_folder').on(table.folder_id),
   ],
 );
 
@@ -108,9 +124,60 @@ export const knowledgeBaseShares = pgTable(
   ],
 );
 
+// ─── kb_links (backlinks) ────────────────────────────────
+//
+// One row per canonical internal link `#/knowledge/doc/<id>-<slug>` found in a
+// doc's Markdown. Rebuilt on every save (outlinks of `from_doc_id`). Both ends
+// cascade-delete so a removed doc leaves no dangling links. The detail page reads
+// the reverse direction (who links TO me) and access-filters per caller.
+
+export const kbLinks = pgTable(
+  'kb_links',
+  {
+    id: serial('id').primaryKey(),
+    from_doc_id: integer('from_doc_id')
+      .notNull()
+      .references(() => knowledgeBase.id, { onDelete: 'cascade' }),
+    to_doc_id: integer('to_doc_id')
+      .notNull()
+      .references(() => knowledgeBase.id, { onDelete: 'cascade' }),
+    created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_kb_links_from_to').on(table.from_doc_id, table.to_doc_id),
+    index('idx_kb_links_to').on(table.to_doc_id),
+    index('idx_kb_links_from').on(table.from_doc_id),
+  ],
+);
+
+// ─── kb_comments ─────────────────────────────────────────
+//
+// Document-level comments (no inline anchors). Soft-deleted (deleted_at) so an
+// author/super can remove one without breaking @-notification history. Read
+// access follows the doc (resolveKbAccess). Comments deliberately do NOT enter
+// FTS / knowledge_query / /search (spec D10) — they're discussion, not knowledge.
+
+export const kbComments = pgTable(
+  'kb_comments',
+  {
+    id: serial('id').primaryKey(),
+    doc_id: integer('doc_id')
+      .notNull()
+      .references(() => knowledgeBase.id, { onDelete: 'cascade' }),
+    author_user_id: text('author_user_id').notNull(),
+    content: text('content').notNull(),
+    created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
+    deleted_at: timestamp('deleted_at', { withTimezone: true, mode: 'string' }),
+  },
+  (table) => [index('idx_kb_comments_doc').on(table.doc_id), index('idx_kb_comments_created').on(table.created_at)],
+);
+
 // ─── Row types (inferred — schema is the single source of truth) ──
 
 export type KnowledgeDocRow = typeof knowledgeBase.$inferSelect;
 export type KnowledgeDocVersionRow = typeof knowledgeBaseVersions.$inferSelect;
 export type KnowledgeShareRow = typeof knowledgeBaseShares.$inferSelect;
 export type KnowledgeShareRole = KnowledgeShareRow['role'];
+export type KbLinkRow = typeof kbLinks.$inferSelect;
+export type KbCommentRow = typeof kbComments.$inferSelect;

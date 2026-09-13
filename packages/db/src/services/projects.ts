@@ -2,7 +2,8 @@
  * Project service — Project + Task CRUD with activity tracking (PostgreSQL).
  */
 
-import { eq, and, or, like, sql, desc, isNull } from 'drizzle-orm';
+import { eq, and, or, ilike, sql, desc, isNull, type SQL } from 'drizzle-orm';
+import type { DataScope } from '@greenhouse/platform-kernel';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -99,8 +100,13 @@ export interface ProjectListOpts {
   search?: string;
   limit?: number;
   offset?: number;
-  userId?: string;
-  userRole?: string;
+  access?: ProjectListAccess;
+}
+
+export interface ProjectListAccess {
+  userId: string;
+  isSuper: boolean;
+  scopes: readonly DataScope['kind'][];
 }
 
 export interface TaskListOpts {
@@ -109,6 +115,26 @@ export interface TaskListOpts {
   parent_id?: number | null;
   limit?: number;
   offset?: number;
+}
+
+function projectAccessCondition(access: ProjectListAccess): SQL | undefined {
+  if (access.isSuper && access.scopes.includes('all')) return undefined;
+
+  const allowed: SQL[] = [];
+  if (access.scopes.includes('all')) {
+    allowed.push(eq(projects.visibility, 'public'));
+    allowed.push(sql`${projects.id} IN (SELECT project_id FROM project_members WHERE user_id = ${access.userId})`);
+  }
+  if (access.scopes.includes('own')) {
+    allowed.push(eq(projects.owner_id, access.userId));
+    allowed.push(eq(projects.created_by, access.userId));
+  }
+  if (access.scopes.includes('collaborating')) {
+    allowed.push(sql`${projects.id} IN (SELECT project_id FROM project_members WHERE user_id = ${access.userId})`);
+  }
+
+  if (allowed.length === 0) return sql`false`;
+  return allowed.length === 1 ? allowed[0] : or(...allowed)!;
 }
 
 export function createProjectService(db: Db) {
@@ -176,17 +202,16 @@ export function createProjectService(db: Db) {
       if (opts?.status) conditions.push(eq(projects.status, opts.status));
       if (opts?.priority) conditions.push(eq(projects.priority, opts.priority));
       if (opts?.search) {
+        // Case-insensitive, like every other domain's search. `like` here meant
+        // a lowercase query found the customer and the doc but silently not the
+        // project, which reads as "search is broken" rather than "search is
+        // case-sensitive in exactly one place".
         const term = `%${opts.search}%`;
-        conditions.push(or(like(projects.title, term), like(projects.description, term))!);
+        conditions.push(or(ilike(projects.title, term), ilike(projects.description, term))!);
       }
-      // Visibility filter: super sees all; others see public + own private memberships
-      if (opts?.userId && opts?.userRole !== 'super') {
-        conditions.push(
-          or(
-            eq(projects.visibility, 'public'),
-            sql`${projects.id} IN (SELECT project_id FROM project_members WHERE user_id = ${opts.userId})`,
-          )!,
-        );
+      if (opts?.access) {
+        const accessCondition = projectAccessCondition(opts.access);
+        if (accessCondition) conditions.push(accessCondition);
       }
 
       const limit = opts?.limit ?? 50;
@@ -256,16 +281,16 @@ export function createProjectService(db: Db) {
       if (opts?.status) conditions.push(eq(projects.status, opts.status));
       if (opts?.priority) conditions.push(eq(projects.priority, opts.priority));
       if (opts?.search) {
+        // Case-insensitive, like every other domain's search. `like` here meant
+        // a lowercase query found the customer and the doc but silently not the
+        // project, which reads as "search is broken" rather than "search is
+        // case-sensitive in exactly one place".
         const term = `%${opts.search}%`;
-        conditions.push(or(like(projects.title, term), like(projects.description, term))!);
+        conditions.push(or(ilike(projects.title, term), ilike(projects.description, term))!);
       }
-      if (opts?.userId && opts?.userRole !== 'super') {
-        conditions.push(
-          or(
-            eq(projects.visibility, 'public'),
-            sql`${projects.id} IN (SELECT project_id FROM project_members WHERE user_id = ${opts.userId})`,
-          )!,
-        );
+      if (opts?.access) {
+        const accessCondition = projectAccessCondition(opts.access);
+        if (accessCondition) conditions.push(accessCondition);
       }
 
       let query = db.select({ cnt: sql<number>`COUNT(*)` }).from(projects);
@@ -449,14 +474,6 @@ export function createProjectService(db: Db) {
       });
     },
 
-    async getSubtasks(parentId: number): Promise<TaskRow[]> {
-      return await db
-        .select()
-        .from(tasks)
-        .where(eq(tasks.parent_id, parentId))
-        .orderBy(tasks.sort_order, tasks.created_at);
-    },
-
     // ── Comments ──
 
     async addComment(input: TaskCommentInput): Promise<TaskCommentRow> {
@@ -491,6 +508,11 @@ export function createProjectService(db: Db) {
         .where(eq(taskComments.task_id, taskId))
         .orderBy(taskComments.created_at)
         .limit(limit);
+    },
+
+    async getCommentById(id: number): Promise<TaskCommentRow | undefined> {
+      const rows = await db.select().from(taskComments).where(eq(taskComments.id, id)).limit(1);
+      return rows[0];
     },
 
     async deleteComment(id: number): Promise<boolean> {
@@ -602,14 +624,6 @@ export function createProjectService(db: Db) {
         .where(and(eq(projectMembers.project_id, projectId), eq(projectMembers.user_id, userId)))
         .limit(1);
       return rows.length > 0;
-    },
-
-    async getUserProjectIds(userId: string): Promise<number[]> {
-      const rows = await db
-        .select({ project_id: projectMembers.project_id })
-        .from(projectMembers)
-        .where(eq(projectMembers.user_id, userId));
-      return rows.map((r) => r.project_id);
     },
   };
   return service;

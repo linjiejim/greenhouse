@@ -17,6 +17,7 @@
  */
 
 import { createDatabase, type DatabaseProvider } from './provider.js';
+import { getActiveTestTransactionProvider } from './test-runtime.js';
 
 export { createDatabase };
 export type { DatabaseProvider };
@@ -24,38 +25,50 @@ export type { Db } from './client.js';
 
 // ─── Public types ────────────────────────────────────────
 // Row types + column-union types live next to the tables (type-only re-export;
-// table objects themselves stay behind '@greenhouse/db/schema').
+// table objects themselves remain private to the database package.
 export type * from './schema/index.js';
-
-// Generic CRUD adapter — turns a Drizzle table into a @greenhouse/crud service.
-export * from './crud-adapter.js';
 
 // Service factories + their Input/Opts/Result types.
 export * from './services/sessions.js';
 export * from './services/llm-calls.js';
+export * from './services/eval.js';
+export * from './services/chat-eval.js';
 export * from './services/usage.js';
+export * from './services/usage-budget.js';
 export * from './services/users.js';
-export * from './services/user-profiles.js';
 export * from './services/user-tools.js';
 export * from './services/refresh-tokens.js';
+export * from './services/account-password-links.js';
 export * from './services/feature-requests.js';
 export * from './services/projects.js';
 export * from './services/api-clients.js';
 export * from './services/api-audit.js';
-export * from './services/admin-analytics.js';
-export * from './services/llm-gateway.js';
 export * from './services/user-prompts.js';
 export * from './services/session-shares.js';
 export * from './services/scheduled-tasks.js';
+export * from './services/provider-tokens.js';
+export * from './services/feishu-bot.js';
 export * from './services/custom-profiles.js';
-export * from './services/email-accounts.js';
 export * from './services/session-tags.js';
+export * from './services/kb-comments.js';
 export * from './services/knowledge-base.js';
 export * from './services/knowledge-shares.js';
 export * from './services/groups.js';
 export * from './services/user-features.js';
 export * from './services/user-memories.js';
+export * from './services/tool-frictions.js';
+export * from './services/drive.js';
+export * from './services/email.js';
 export * from './services/skills.js';
+export * from './services/platform.js';
+export * from './services/platform-oauth.js';
+export * from './services/tables.js';
+export * from './services/workflows.js';
+export * from './services/chat-files.js';
+export * from './services/agent-runs.js';
+export * from './services/chat-artifact-receipts.js';
+export * from './services/runtime.js';
+export * from './services/notifications.js';
 export * from './services/workspace-settings.js';
 
 // ─── Configuration ───────────────────────────────────────
@@ -74,6 +87,12 @@ let _provider: DatabaseProvider | null = null;
  * Initialize the database provider. Must be called once at startup.
  */
 export async function initDatabase(config: DbConfig): Promise<DatabaseProvider> {
+  const testProvider = getActiveTestTransactionProvider();
+  if (testProvider) {
+    _provider = testProvider;
+    return testProvider;
+  }
+
   if (_provider) {
     await _provider.close();
     _provider = null;

@@ -2,8 +2,8 @@
  * Session share service (PostgreSQL).
  *
  * Supports sharing sessions with specific users or the entire team ('__team__').
- * Per-user read tracking uses session_share_reads table (solves the team share bug
- * where a single read_at on __team__ rows would mark it read for everyone).
+ * Per-user read tracking uses session_share_reads, so team shares are tracked
+ * independently for every recipient.
  */
 
 import { eq, and, or, ne, desc, sql } from 'drizzle-orm';
@@ -18,11 +18,12 @@ export interface SessionShareRow {
   shared_with: string; // user_id or '__team__'
   shared_by: string;
   message: string | null;
-  /** @deprecated Use per-user read tracking (session_share_reads). */
-  read_at: string | null;
   created_at: string;
-  /** Per-user read timestamp — populated by listForUser via LEFT JOIN. */
-  user_read_at?: string | null;
+}
+
+export interface SessionInboxShareRow extends SessionShareRow {
+  /** Per-user read timestamp populated by listForUser via LEFT JOIN. */
+  read_at: string | null;
 }
 
 export interface SessionShareInput {
@@ -30,15 +31,6 @@ export interface SessionShareInput {
   shared_with: string;
   shared_by: string;
   message?: string;
-}
-
-/** Summary of share info for a session from a viewer's perspective. */
-export interface SessionShareInfo {
-  shared_by: string;
-  shared_by_nickname: string;
-  message: string | null;
-  created_at: string;
-  total_viewers: number;
 }
 
 /** Sentinel value for "shared with entire team". */
@@ -83,7 +75,7 @@ export function createSessionShareService(db: Db) {
       return row?.count ?? 0;
     },
 
-    async listForUser(userId: string, opts?: { limit?: number; offset?: number }): Promise<SessionShareRow[]> {
+    async listForUser(userId: string, opts?: { limit?: number; offset?: number }): Promise<SessionInboxShareRow[]> {
       const limit = opts?.limit ?? 50;
       const offset = opts?.offset ?? 0;
       const rows = await db
@@ -93,9 +85,8 @@ export function createSessionShareService(db: Db) {
           shared_with: schema.sessionShares.shared_with,
           shared_by: schema.sessionShares.shared_by,
           message: schema.sessionShares.message,
-          read_at: schema.sessionShares.read_at, // legacy, kept for compat
           created_at: schema.sessionShares.created_at,
-          user_read_at: schema.sessionShareReads.read_at,
+          read_at: schema.sessionShareReads.read_at,
         })
         .from(schema.sessionShares)
         .leftJoin(
@@ -120,41 +111,55 @@ export function createSessionShareService(db: Db) {
         .limit(limit)
         .offset(offset);
 
-      return rows.map((r) => ({
-        id: r.id,
-        session_id: r.session_id,
-        shared_with: r.shared_with,
-        shared_by: r.shared_by,
-        message: r.message,
-        read_at: r.read_at, // legacy
-        created_at: r.created_at,
-        user_read_at: r.user_read_at,
-      }));
+      return rows;
     },
 
-    async markReadForUser(shareId: number, userId: string): Promise<void> {
-      // Look up session_id from the share row
+    async markReadForUser(shareId: number, userId: string): Promise<boolean> {
+      // Resolve only a share actually addressed to this user. Without this
+      // predicate, knowing another share id lets a user create arbitrary read
+      // receipts for sessions outside their inbox.
       const [share] = await db
         .select({ session_id: schema.sessionShares.session_id })
         .from(schema.sessionShares)
-        .where(eq(schema.sessionShares.id, shareId))
+        .where(
+          and(
+            eq(schema.sessionShares.id, shareId),
+            or(eq(schema.sessionShares.shared_with, userId), eq(schema.sessionShares.shared_with, TEAM)),
+            ne(schema.sessionShares.shared_by, userId),
+          ),
+        )
         .limit(1);
-      if (!share) return;
+      if (!share) return false;
 
       const now = nowIso();
       await db
         .insert(schema.sessionShareReads)
         .values({ session_id: share.session_id, user_id: userId, read_at: now })
         .onConflictDoNothing();
+      return true;
     },
 
-    async markAllReadInSession(userId: string, sessionId: string): Promise<void> {
+    async markAllReadInSession(userId: string, sessionId: string): Promise<boolean> {
+      const [share] = await db
+        .select({ id: schema.sessionShares.id })
+        .from(schema.sessionShares)
+        .where(
+          and(
+            eq(schema.sessionShares.session_id, sessionId),
+            or(eq(schema.sessionShares.shared_with, userId), eq(schema.sessionShares.shared_with, TEAM)),
+            ne(schema.sessionShares.shared_by, userId),
+          ),
+        )
+        .limit(1);
+      if (!share) return false;
+
       const now = nowIso();
       // Upsert into per-user reads table
       await db
         .insert(schema.sessionShareReads)
         .values({ session_id: sessionId, user_id: userId, read_at: now })
         .onConflictDoNothing();
+      return true;
     },
 
     async markAllRead(userId: string): Promise<void> {
@@ -200,53 +205,12 @@ export function createSessionShareService(db: Db) {
       await db.delete(schema.sessionShares).where(eq(schema.sessionShares.session_id, sessionId));
     },
 
-    async deleteOne(id: number): Promise<void> {
-      await db.delete(schema.sessionShares).where(eq(schema.sessionShares.id, id));
-    },
-
-    async getShareInfoForUser(sessionId: string, userId: string): Promise<SessionShareInfo | null> {
-      // Get all shares for this session that are visible to this user
-      const shares = await db
-        .select()
-        .from(schema.sessionShares)
-        .where(
-          and(
-            eq(schema.sessionShares.session_id, sessionId),
-            or(eq(schema.sessionShares.shared_with, userId), eq(schema.sessionShares.shared_with, TEAM)),
-          ),
-        )
-        .orderBy(schema.sessionShares.created_at)
-        .limit(1);
-
-      if (shares.length === 0) return null;
-
-      const share = shares[0];
-
-      // Count total unique viewers (direct users + 1 for team if team-shared)
-      const allShares = await db
-        .select({
-          shared_with: schema.sessionShares.shared_with,
-        })
-        .from(schema.sessionShares)
-        .where(eq(schema.sessionShares.session_id, sessionId));
-
-      let totalViewers = 0;
-      for (const s of allShares) {
-        if (s.shared_with === TEAM) {
-          // Don't count __team__ as a number — it's dynamic
-          totalViewers = -1; // signal: team-wide
-          break;
-        }
-        totalViewers++;
-      }
-
-      return {
-        shared_by: share.shared_by,
-        shared_by_nickname: '', // filled by the route layer
-        message: share.message,
-        created_at: share.created_at,
-        total_viewers: totalViewers, // -1 = team-wide
-      };
+    async deleteOne(id: number, sessionId: string): Promise<boolean> {
+      const rows = await db
+        .delete(schema.sessionShares)
+        .where(and(eq(schema.sessionShares.id, id), eq(schema.sessionShares.session_id, sessionId)))
+        .returning({ id: schema.sessionShares.id });
+      return rows.length > 0;
     },
   };
   return service;

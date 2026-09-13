@@ -2,7 +2,7 @@
  * User tool service — user ↔ tool assignment (Super assigns tools to users) (PostgreSQL).
  */
 
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -30,32 +30,6 @@ export function createUserToolService(db: Db) {
           });
         }
       });
-    },
-
-    /** Check if a user has been assigned a specific tool. */
-    async hasTool(userId: string, toolId: string): Promise<boolean> {
-      const rows = await db
-        .select({ tool_id: userTools.tool_id })
-        .from(userTools)
-        .where(and(eq(userTools.user_id, userId), eq(userTools.tool_id, toolId)));
-      return rows.length > 0;
-    },
-
-    /** Batch-get tool assignments for multiple users (admin list page). */
-    async getToolsByUsers(userIds: string[]): Promise<Map<string, string[]>> {
-      if (userIds.length === 0) return new Map();
-      const rows = await db
-        .select({ user_id: userTools.user_id, tool_id: userTools.tool_id })
-        .from(userTools)
-        .where(inArray(userTools.user_id, userIds));
-
-      const result = new Map<string, string[]>();
-      for (const row of rows) {
-        const existing = result.get(row.user_id) ?? [];
-        existing.push(row.tool_id);
-        result.set(row.user_id, existing);
-      }
-      return result;
     },
   };
   return service;

@@ -8,23 +8,27 @@
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
-    "./schema": {
-      "import": "./src/schema/index.ts",
-      "types": "./src/schema/index.ts"
+    "./seeds/eval-seed": {
+      "import": "./src/seeds/eval-seed.ts",
+      "types": "./src/seeds/eval-seed.ts"
+    },
+    "./test-config": {
+      "import": "./src/test-config.ts",
+      "types": "./src/test-config.ts"
     }
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@greenhouse/crud": "workspace:*",
+    "@greenhouse/platform-kernel": "workspace:*",
     "@greenhouse/types": "workspace:*",
     "@greenhouse/utils": "workspace:*",
+    "@node-rs/jieba": "2.0.1",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31.10",
     "typescript": "^5.7.0"
   }
 }

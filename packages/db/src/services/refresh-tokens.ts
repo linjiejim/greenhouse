@@ -13,31 +13,34 @@ import type { RefreshTokenRow } from '../schema/user.js';
 export function createRefreshTokenService(db: Db) {
   const service = {
     /** Store a new refresh token. Returns the token ID. */
-    async create(userId: string, tokenHash: string, expiresAt: string): Promise<string> {
+    async create(userId: string, tokenHash: string, expiresAt: string, authVersion: number): Promise<string> {
       const id = randomUUID();
       await db.insert(refreshTokens).values({
         id,
         user_id: userId,
         token_hash: tokenHash,
+        auth_version: authVersion,
         expires_at: expiresAt,
         created_at: nowIso(),
       });
       return id;
     },
 
-    /** Look up a non-expired token by its hash. Returns null if not found/expired. */
-    async validate(tokenHash: string): Promise<RefreshTokenRow | null> {
+    /**
+     * Atomically consume a non-expired token by its hash.
+     *
+     * Refresh-token rotation must be single-use even when two refresh requests
+     * arrive concurrently. A DELETE ... RETURNING statement makes the lookup
+     * and revocation one database operation, so only one caller can receive the
+     * token row.
+     */
+    async consume(tokenHash: string): Promise<RefreshTokenRow | null> {
       const now = nowIso();
       const rows = await db
-        .select()
-        .from(refreshTokens)
-        .where(and(eq(refreshTokens.token_hash, tokenHash), sql`expires_at > ${now}`));
+        .delete(refreshTokens)
+        .where(and(eq(refreshTokens.token_hash, tokenHash), sql`expires_at > ${now}`))
+        .returning();
       return rows[0] ?? null;
-    },
-
-    /** Revoke a specific token. */
-    async revoke(id: string): Promise<void> {
-      await db.delete(refreshTokens).where(eq(refreshTokens.id, id));
     },
 
     /** Revoke all tokens for a user (e.g. on password change). */

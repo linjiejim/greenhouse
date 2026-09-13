@@ -1,22 +1,18 @@
-/**
- * API audit service — external API audit log persistence (PostgreSQL).
- */
+/** Shared audit persistence for MCP, Agent proxy, and LLM Relay traffic. */
 
 import { eq, and, sql, desc } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
 import { apiAuditLog } from '../schema/index.js';
-import type { ApiAuditLogRow, ApiClientChannel } from '../schema/api-client.js';
+import type { ApiAuditLogRow, ApiAuditChannel } from '../schema/api-client.js';
 
 export interface ApiAuditLogInput {
   app_id: string;
   endpoint: string;
   method: string;
-  session_id?: string;
-  ext_user_id?: string;
-  user_id?: string; // internal user the key is bound to (a2a / local-agent / cli)
-  channel?: ApiClientChannel; // defaults to 'api' at the DB layer when omitted
+  user_id?: string;
+  channel: Exclude<ApiAuditChannel, 'api'>;
   status_code?: number;
   duration_ms?: number;
   input_tokens?: number;
@@ -28,13 +24,12 @@ export interface ApiAuditLogInput {
 
 export interface ApiAuditListOpts {
   app_id?: string;
-  ext_user_id?: string;
   since?: string;
   limit?: number;
   offset?: number;
 }
 
-/** External API audit log persistence. */
+/** Internal integration audit persistence. */
 export function createApiAuditService(db: Db) {
   const service = {
     async record(input: ApiAuditLogInput): Promise<void> {
@@ -42,10 +37,8 @@ export function createApiAuditService(db: Db) {
         app_id: input.app_id,
         endpoint: input.endpoint,
         method: input.method,
-        session_id: input.session_id ?? null,
-        ext_user_id: input.ext_user_id ?? null,
         user_id: input.user_id ?? null,
-        ...(input.channel ? { channel: input.channel } : {}),
+        channel: input.channel,
         status_code: input.status_code ?? null,
         duration_ms: input.duration_ms ?? null,
         input_tokens: input.input_tokens ?? null,
@@ -60,7 +53,6 @@ export function createApiAuditService(db: Db) {
     async list(opts?: ApiAuditListOpts): Promise<ApiAuditLogRow[]> {
       const conditions = [];
       if (opts?.app_id) conditions.push(eq(apiAuditLog.app_id, opts.app_id));
-      if (opts?.ext_user_id) conditions.push(eq(apiAuditLog.ext_user_id, opts.ext_user_id));
       if (opts?.since) conditions.push(sql`created_at >= ${opts.since}`);
 
       const limit = opts?.limit ?? 50;

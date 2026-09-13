@@ -6,9 +6,9 @@
  * The enterprise skill hub: members publish agent skills (a named folder of
  * files with SKILL.md at the root) and pull each other's over chat / the agent
  * proxy / MCP. Version payloads (the file bundles) live in the skill store
- * (S3-compatible or local disk — apps/api/src/skills/store.ts); the DB keeps
- * the catalog + immutable version history with changelogs.
- * See docs/specs/20260707-skill-center.md.
+ * (local disk by default, S3-compatible optional — apps/api/src/skills/store.ts);
+ * the DB keeps the catalog + immutable version history with changelogs.
+ * Ported from OSS greenhouse — see docs/specs/20260715-greenhouse-backport-and-slim.md (B7).
  */
 
 import { integer, pgTable, text, serial, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
@@ -30,6 +30,19 @@ export const agentSkills = pgTable(
     // Loose ref to users (no FK) — skills must outlive the member who published them.
     owner_user_id: text('owner_user_id').notNull(),
     download_count: integer('download_count').notNull().default(0),
+    // ── Security scan (skill-level, not version-level) ──
+    // Quarantine is a property of the whole skill: an author who poisoned v2 is
+    // not to be trusted for v1 either. `scan_version` records WHICH version the
+    // verdict came from. `blocked` is sticky — only a super can lift it.
+    scan_status: text('scan_status', { enum: ['pending', 'clean', 'suspicious', 'blocked'] })
+      .notNull()
+      .default('pending'),
+    scan_findings: text('scan_findings').notNull().default('[]'), // JSON array of matched rules
+    scan_version: text('scan_version'), // semantic NULL = never scanned
+    scanned_at: timestamp('scanned_at', { withTimezone: true, mode: 'string' }),
+    scan_reviewed_by: text('scan_reviewed_by'), // loose ref to users (super who ruled)
+    scan_reviewed_at: timestamp('scan_reviewed_at', { withTimezone: true, mode: 'string' }),
+    scan_note: text('scan_note'),
     created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
@@ -37,6 +50,7 @@ export const agentSkills = pgTable(
     uniqueIndex('uq_agent_skills_name').on(table.name),
     index('idx_agent_skills_status').on(table.status),
     index('idx_agent_skills_updated_at').on(table.updated_at),
+    index('idx_agent_skills_scan_status').on(table.scan_status),
   ],
 );
 
@@ -69,4 +83,5 @@ export const agentSkillVersions = pgTable(
 
 export type SkillRow = typeof agentSkills.$inferSelect;
 export type SkillStatus = SkillRow['status'];
+export type SkillScanStatus = SkillRow['scan_status'];
 export type SkillVersionRow = typeof agentSkillVersions.$inferSelect;

@@ -43,6 +43,13 @@
       "when": 1783501387691,
       "tag": "0005_workspace_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789309862542,
+      "tag": "0006_internal_workbench_sync",
+      "breakpoints": true
     }
   ]
 }
