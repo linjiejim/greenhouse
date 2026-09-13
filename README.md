@@ -20,6 +20,65 @@ the side. Chat, the knowledge base, projects, tables, automations, missions and 
 one tool layer and one permission model; the same tools your team uses in chat are the ones you
 expose to Claude, Cursor, or any MCP client.
 
+## A quick look
+
+<p align="center">
+  <img src="docs/assets/screens/chat-knowledge.gif" alt="Asking the agent about the home-office stipend: it searches the knowledge base and answers with citations" width="960" />
+</p>
+<p align="center"><sub>Grounded answers: the agent searches the team knowledge base, cites the policy document, and the trace shows every tool call.</sub></p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/screens/home-workbench.webp" alt="Home workbench with live project cards" />
+      <b>Home workbench</b> — live cards backed by the same tools; edit by drag-and-drop or ask the agent.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/screens/chat-tables-answer.webp" alt="Chat answer with a rendered data table from a Tables base" />
+      <b>Data in chat</b> — the agent queries a Tables base and answers with sortable, exportable tables.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/screens/tables-grid.webp" alt="Tables grid with typed fields" />
+      <b>Tables</b> — typed fields, views, forms and record links; the agent plans schemas conversationally.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/screens/knowledge-doc.webp" alt="Knowledge base document" />
+      <b>Knowledge base</b> — team, personal and shared documents with backlinks and full-text search.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/screens/projects-gantt.webp" alt="Projects portfolio timeline" />
+      <b>Projects</b> — portfolio timeline, boards and task trees with members, comments and activity.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/screens/execution-center.webp" alt="Execution center listing runs" />
+      <b>Execution center</b> — automations, missions, workflows and sub-agents in one place, with an approval inbox.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/screens/skillhub.webp" alt="Skill Center" />
+      <b>Skill Center</b> — versioned SKILL.md bundles with changelogs and security scanning.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/screens/admin-permissions-dialog.webp" alt="Per-user permissions dialog" />
+      <b>One permissions dialog</b> — roles, capabilities and feature flags, enforced once for HTTP, chat, the proxy and MCP.
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/assets/screens/chat-knowledge-answer-dark.webp" alt="Dark theme" width="66%" />
+  <img src="docs/assets/screens/mobile-chat.webp" alt="Mobile layout" width="19%" />
+</p>
+<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat, knowledge and projects natively.</sub></p>
+
+Every image above is produced by `node scripts/capture-screens.mjs` against a seeded dev stack — the
+same script doubles as an end-to-end smoke tour (see [Development](#development)).
+
 ## Features
 
 - **Chat** — streaming agent with tool-call traces, attachments of any file type (the agent
@@ -356,6 +415,17 @@ pnpm typecheck      # tsc --noEmit
 pnpm lint           # eslint + prettier --check
 pnpm lint:fix       # auto-fix
 ```
+
+### Screenshot tour (visual smoke test)
+
+```bash
+pnpm dev                         # or pnpm run-dev up — with `pnpm seed` loaded
+node scripts/capture-screens.mjs # logs in as the seeded super, seeds a demo base, walks every surface
+```
+
+The tour writes `docs/assets/screens/*.webp` (plus a chat `gif`/`mp4`, needs `ffmpeg` and `cwebp`)
+and exits non-zero on any console error or failed `/api` request, so it doubles as a real-browser
+smoke test. Re-run it after visible UI changes so the README and landing page stay truthful.
 
 A husky + lint-staged pre-commit hook runs `eslint --fix` + `prettier --write` on staged
 files. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → e2e → secret-scan on
