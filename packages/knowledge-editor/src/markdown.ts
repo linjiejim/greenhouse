@@ -7,13 +7,15 @@
  * so the two never drift — using the SAME schema the editor uses
  * (`knowledgeEditorExtensions`), so the result round-trips cleanly.
  *
- * Pipeline: Markdown --(marked)--> HTML --(@tiptap/html generateJSON)--> Tiptap JSON.
- * Runs in Node via @tiptap/html's server export (happy-dom backed).
+ * Pipeline: Markdown --(md-html)--> HTML --(@tiptap/html generateJSON)--> Tiptap JSON.
+ * Runs in Node via @tiptap/html's server export (happy-dom backed). The
+ * Markdown→HTML half is shared with the browser editor (see md-html.ts) so both
+ * loaders build the same document from the same source.
  */
 
-import { marked } from 'marked';
 import { generateJSON } from '@tiptap/html';
 import { knowledgeEditorExtensions } from './extensions.js';
+import { markdownToEditorHtml } from './md-html.js';
 
 export const EMPTY_TIPTAP_DOC = '{}';
 
@@ -28,8 +30,7 @@ export function markdownToTiptapJson(markdown: string | null | undefined): strin
   const md = (markdown ?? '').trim();
   if (!md) return EMPTY_TIPTAP_DOC;
   try {
-    const html = marked.parse(md, { async: false, gfm: true }) as string;
-    const json = generateJSON(html, knowledgeEditorExtensions());
+    const json = generateJSON(markdownToEditorHtml(md), knowledgeEditorExtensions());
     return JSON.stringify(json);
   } catch {
     return EMPTY_TIPTAP_DOC;

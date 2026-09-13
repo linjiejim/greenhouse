@@ -3,7 +3,8 @@
  * server CrudService, but it runs in the browser, so it can be:
  *
  *  1. createRestDataSource(base, authFetch) — talk to a createCrudRoutes endpoint
- *     (the one-stop path, and the fork-proxy path since the protocol matches).
+ *     (the one-stop path; also fits the existing /api/admin/:resource protocol,
+ *     which shares the same wire shape).
  *  2. A hand-written adapter over existing hc/typed routes (migrate a page with
  *     zero server change).
  *
@@ -40,8 +41,8 @@ async function unwrap(res: Response): Promise<any> {
 
 /**
  * A data source backed by a standard createCrudRoutes endpoint mounted at `base`
- * (e.g. '/api/crud/demo'). `fetcher` is the app's authenticated fetch (authFetch)
- * — injected because web/mobile/browser each have their own.
+ * (e.g. '/api/crud/demo'). `fetcher` is injected so the browser app can apply
+ * its authenticated transport without coupling this package to Web auth state.
  */
 export function createRestDataSource<TRow>(base: string, fetcher: Fetcher): Required<CrudDataSource<TRow>> {
   const b = base.replace(/\/+$/, '');

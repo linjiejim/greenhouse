@@ -7,12 +7,12 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Button, Dialog, Drawer, Spinner, toast } from '@greenhouse/ui/components/ui';
-import { useT } from '@greenhouse/ui/lib/i18n';
 
 import type { FieldDef, ResolvedCrudSchema } from './schema.js';
 import { fieldsForMode, formDefaults } from './schema.js';
 import { CrudFieldInput } from './fields.js';
+import { getCrudUi } from './ui.js';
+import { useCrudT } from './i18n.js';
 import { tr } from './util.js';
 
 export interface CrudFormProps<TRow> {
@@ -31,7 +31,8 @@ const SPAN: Record<number, string> = {
 };
 
 export function CrudForm<TRow>({ schema, mode, initial, onClose, onSaved }: CrudFormProps<TRow>) {
-  const t = useT();
+  const { Button, Dialog, Drawer, FieldHelp, Spinner, toast } = getCrudUi();
+  const t = useCrudT();
   const fields = useMemo(() => fieldsForMode(schema.formFields, mode), [schema.formFields, mode]);
 
   const [form, setForm] = useState<Record<string, unknown>>(() => ({
@@ -146,10 +147,13 @@ export function CrudForm<TRow>({ schema, mode, initial, onClose, onSaved }: Crud
           const disabled = typeof f.disabled === 'function' ? f.disabled(form) : false;
           return (
             <div key={f.key} className={SPAN[f.width ?? 4]}>
-              <label className="block text-xs font-medium text-fg-secondary mb-1">
-                {tr(t, f.label)}
-                {f.required && <span className="text-danger ml-0.5">*</span>}
-              </label>
+              <div className="mb-1 flex min-h-5 items-center gap-1">
+                <label className="block text-xs font-medium text-fg-secondary">
+                  {tr(t, f.label)}
+                  {f.required && <span className="text-danger ml-0.5">*</span>}
+                </label>
+                {f.help && <FieldHelp content={tr(t, f.help)} />}
+              </div>
               <CrudFieldInput
                 field={f}
                 value={form[f.key]}
@@ -201,7 +205,7 @@ export function CrudForm<TRow>({ schema, mode, initial, onClose, onSaved }: Crud
   }
 
   return (
-    <Dialog open onClose={onClose} title={title} size="md">
+    <Dialog open onClose={onClose} title={title} size={schema.formSize}>
       {body}
     </Dialog>
   );

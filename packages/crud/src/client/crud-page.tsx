@@ -7,18 +7,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Button,
-  Select,
-  Input,
-  Pagination,
-  EmptyState,
-  Spinner,
-  ListToolbar,
-  ConfirmDialog,
-  Toggle,
-  toast,
-} from '@greenhouse/ui/components/ui';
-import {
   Plus,
   Pencil,
   Trash2,
@@ -29,8 +17,7 @@ import {
   ChevronUp,
   Inbox,
   type LucideIcon,
-} from '@greenhouse/ui/lib/icons';
-import { useT } from '@greenhouse/ui/lib/i18n';
+} from 'lucide-react';
 
 import type { ColumnDef, FilterDef, ResolvedCrudSchema, CrudActionContext, TableActionDef } from './schema.js';
 import type { FilterItem, SortItem } from '../protocol/types.js';
@@ -38,6 +25,8 @@ import type { OptionsSource, SelectOption } from './schema.js';
 import { renderCell } from './columns.js';
 import { CrudForm } from './crud-form.js';
 import { CrudDetail } from './crud-detail.js';
+import { getCrudUi } from './ui.js';
+import { useCrudT } from './i18n.js';
 import { tr, usePersistedPageSize } from './util.js';
 
 export interface CrudPageProps<TRow> {
@@ -53,7 +42,8 @@ const ACTION_TONE: Record<string, string> = {
 };
 
 export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
-  const t = useT();
+  const { Button, Pagination, EmptyState, Spinner, ConfirmDialog, toast } = getCrudUi();
+  const t = useCrudT();
   const idField = schema.idField;
 
   const [items, setItems] = useState<TRow[]>([]);
@@ -121,7 +111,7 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
     } finally {
       if (seq === reqSeq.current) setLoading(false);
     }
-  }, [schema.dataSource, buildParams, page, pageSize, t]);
+  }, [schema.dataSource, buildParams, page, pageSize, t, toast]);
 
   // Debounced reload on any query change (filters typed live).
   const filterKey = JSON.stringify(filterValues);
@@ -204,20 +194,22 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
   const primaryFilters = schema.filters.filter((f) => !f.secondary);
   const secondaryFilters = schema.filters.filter((f) => f.secondary);
 
+  const deleteText = deleteTarget && schema.deleteConfirm ? schema.deleteConfirm(deleteTarget) : undefined;
+
   return (
     <div className="space-y-4">
       {schema.slots?.toolbar ? (
         schema.slots.toolbar({ ...ctx, total })
       ) : (
-        <ListToolbar
-          count={t('crud.total', { count: total })}
-          actions={
-            <>
-              {pageActionButtons}
-              {addButton}
-            </>
-          }
-        />
+        // Standard list-toolbar row: count right-aligned, actions last.
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex-1" />
+          <span className="text-xs text-fg-faint whitespace-nowrap">{t('crud.total', { count: total })}</span>
+          <div className="flex items-center gap-2">
+            {pageActionButtons}
+            {addButton}
+          </div>
+        </div>
       )}
 
       {schema.slots?.banner?.(ctx)}
@@ -231,7 +223,6 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
               def={def}
               value={filterValues[def.key]}
               onChange={(v) => setFilter(def.key, v)}
-              t={t}
             />
           ))}
           {showMore &&
@@ -241,7 +232,6 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
                 def={def}
                 value={filterValues[def.key]}
                 onChange={(v) => setFilter(def.key, v)}
-                t={t}
               />
             ))}
           {secondaryFilters.length > 0 && (
@@ -259,11 +249,14 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
         </div>
       ) : items.length === 0 ? (
         (schema.slots?.empty ?? (
-          <EmptyState
-            icon={schema.icon ?? Inbox}
-            title={schema.emptyMessage ? tr(t, schema.emptyMessage) : t('crud.empty')}
-            action={addButton ?? undefined}
-          />
+          <div className="flex flex-col items-center">
+            <EmptyState
+              icon={schema.icon ?? Inbox}
+              title={schema.emptyMessage ? tr(t, schema.emptyMessage) : t('crud.empty')}
+            />
+            {/* The app's EmptyState has no action slot — render the CTA under it. */}
+            {addButton && <div className="-mt-10 pb-10">{addButton}</div>}
+          </div>
         ))
       ) : schema.variant === 'cards' && schema.slots?.renderCard ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -335,7 +328,7 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
                         <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-0.5">
                             {schema.tableActions.map((a) => (
-                              <TableActionButton key={a.key} action={a} row={row} ctx={ctx} t={t} />
+                              <TableActionButton key={a.key} action={a} row={row} ctx={ctx} />
                             ))}
                             {rowActions.includes('view') && (
                               <IconBtn
@@ -432,8 +425,10 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
-        title={t('crud.confirmDeleteTitle')}
-        description={t('crud.confirmDeleteBody')}
+        title={deleteText?.title ?? t('crud.confirmDeleteTitle')}
+        // When the schema overrides the confirm text, its description is taken
+        // as-is (undefined → no body line) instead of the generic fallback.
+        description={deleteText ? deleteText.description : t('crud.confirmDeleteBody')}
         confirmLabel={t('crud.delete')}
         confirmVariant="destructive"
       />
@@ -453,7 +448,8 @@ function ToggleCell<TRow>({
   row: TRow;
   ctx: CrudActionContext;
 }) {
-  const t = useT();
+  const { Toggle, toast } = getCrudUi();
+  const t = useCrudT();
   const record = row as Record<string, unknown>;
   const [optimistic, setOptimistic] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -507,13 +503,12 @@ function TableActionButton<TRow>({
   action,
   row,
   ctx,
-  t,
 }: {
   action: TableActionDef<TRow>;
   row: TRow;
   ctx: CrudActionContext;
-  t: (k: string) => string;
 }) {
+  const t = useCrudT();
   if (action.visible && !action.visible(row)) return null;
   const label = typeof action.label === 'function' ? action.label(row) : action.label;
   const Icon = action.icon;
@@ -532,13 +527,13 @@ function FilterControl<TRow>({
   def,
   value,
   onChange,
-  t,
 }: {
   def: FilterDef<TRow>;
   value: unknown;
   onChange: (v: unknown) => void;
-  t: (k: string) => string;
 }) {
+  const { Input, Select } = getCrudUi();
+  const t = useCrudT();
   if (def.kind === 'text') {
     return (
       <div className="relative">
@@ -583,20 +578,20 @@ function FilterControl<TRow>({
     );
   }
   // select
-  return <FilterSelect def={def} value={value} onChange={onChange} t={t} />;
+  return <FilterSelect def={def} value={value} onChange={onChange} />;
 }
 
 function FilterSelect<TRow>({
   def,
   value,
   onChange,
-  t,
 }: {
   def: FilterDef<TRow>;
   value: unknown;
   onChange: (v: unknown) => void;
-  t: (k: string) => string;
 }) {
+  const { Select } = getCrudUi();
+  const t = useCrudT();
   const [opts, setOpts] = useState<SelectOption[]>(Array.isArray(def.options) ? def.options : []);
   useEffect(() => {
     const src = def.options as OptionsSource | undefined;

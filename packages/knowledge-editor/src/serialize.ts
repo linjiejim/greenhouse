@@ -4,12 +4,12 @@
  * The inverse of markdown.ts — lives in this package so both directions of the
  * Markdown ⇄ content_json round-trip share one schema and one home (it was
  * previously handwritten inside the web editor component, where it dropped
- * tables/images and escaped text so aggressively that "GH-Max" became
- * "GH\-Max"; audit 2026-06-10 defect #5).
+ * tables/images and escaped text so aggressively that "LPH-Max" became
+ * "LPH\-Max"; audit 2026-06-10 defect #5).
  *
  * Escaping philosophy: escape the few characters that are markdown triggers
  * anywhere inline (\ ` * _ [), plus block-syntax triggers only where they
- * actually matter — at the start of a line. Plain prose like "GH-Max",
+ * actually matter — at the start of a line. Plain prose like "LPH-Max",
  * "v1.0" or "(2026)" must pass through untouched.
  */
 
@@ -156,6 +156,12 @@ function nodeToMarkdown(node: TiptapNode, depth = 0): string {
       return '\n';
     case 'horizontalRule':
       return '\n---\n';
+    case 'mention': {
+      // `[@label](user:<id>)` — the `user:<id>` target is what notifications parse.
+      const id = String(node.attrs?.id ?? '');
+      const label = String(node.attrs?.label ?? id);
+      return id ? `[@${label}](user:${id})` : `@${label}`;
+    }
     default:
       return inner;
   }

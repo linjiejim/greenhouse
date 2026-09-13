@@ -10,16 +10,15 @@
  */
 
 import React, { useState } from 'react';
-import { useT } from '@greenhouse/ui/lib/i18n';
-import type { LucideIcon } from '@greenhouse/ui/lib/icons';
+import type { LucideIcon } from 'lucide-react';
 
 import type { ResolvedCrudSchema } from './schema.js';
 import { CrudPage } from './crud-page.js';
+import { useCrudT } from './i18n.js';
 import { tr } from './util.js';
 
 export interface CrudTab {
   key: string;
-  /** Literal or dotted i18n key. */
   label: string;
   icon?: LucideIcon;
   // A tab holds a schema for any row shape; the row type is erased at the tab boundary.
@@ -34,7 +33,7 @@ export interface CrudTabsProps {
 }
 
 export function CrudTabs({ tabs, active, onActiveChange }: CrudTabsProps) {
-  const t = useT();
+  const t = useCrudT();
   const [internal, setInternal] = useState(tabs[0]?.key ?? '');
   const activeKey = active ?? internal;
   const current = tabs.find((tb) => tb.key === activeKey) ?? tabs[0];

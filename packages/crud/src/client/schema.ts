@@ -7,17 +7,18 @@
  *
  * Escape hatches, narrowest → widest:
  *   - field/column `type: 'custom'` with a render fn (fully typed, inline)
- *   - `type: 'extension'` referencing a fork-registered widget (registry.ts)
- *   - slots (toolbar / empty / rowExpand), tableActions, pageActions, detailTabs
+ *   - slots (toolbar / banner / empty / rowExpand), tableActions, pageActions, detailTabs
  *   - use CrudPage / CrudForm / CrudDetail standalone in a bespoke page
+ *
+ * (Upstream's fork-oriented `type: 'extension'` widget registry is deliberately
+ * not ported — this repo is a single mainline; `custom` covers the same ground.)
  */
 
 import type { ReactNode } from 'react';
-import type { LucideIcon } from '@greenhouse/ui/lib/icons';
+import type { LucideIcon } from 'lucide-react';
 
 import type { FilterMethod, SortItem } from '../protocol/types.js';
 import type { CrudDataSource } from './data-source.js';
-import type { CrudFieldRenderProps } from './registry.js';
 
 export type BadgeTone = 'default' | 'secondary' | 'success' | 'warning' | 'destructive';
 export type RowKey<TRow> = Extract<keyof TRow, string>;
@@ -32,6 +33,16 @@ export type OptionsSource = SelectOption[] | ((query?: string) => Promise<Select
 export interface ValidationRule {
   /** Return an error message string when invalid, or null/undefined when valid. */
   validate: (value: unknown, form: Record<string, unknown>) => string | null | undefined;
+}
+
+/** Props handed to a `type: 'custom'` form field's render fn. */
+export interface CrudFieldRenderProps {
+  value: unknown;
+  onChange: (value: unknown) => void;
+  form: Record<string, unknown>;
+  mode: 'add' | 'edit';
+  disabled?: boolean;
+  placeholder?: string;
 }
 
 // ─── Columns (list table) ────────────────────────────────
@@ -65,8 +76,7 @@ export type ColumnDef<TRow> =
       /** Render the switch disabled for rows this returns true for. */
       disabled?: (row: TRow) => boolean;
     })
-  | (ColumnBase & { key: string; type: 'custom'; render: (row: TRow) => ReactNode })
-  | (ColumnBase & { key: string; type: 'extension'; name: string; config?: Record<string, unknown> });
+  | (ColumnBase & { key: string; type: 'custom'; render: (row: TRow) => ReactNode });
 
 // ─── Filters (list toolbar) ──────────────────────────────
 
@@ -92,6 +102,9 @@ interface FieldBase<TRow> {
   tab?: string;
   required?: boolean;
   placeholder?: string;
+  /** Secondary explanation shown on demand beside the field label. */
+  help?: string;
+  /** Persistent guidance reserved for state or action-critical information. */
   comment?: string;
   defaultValue?: unknown;
   visible?: (form: Record<string, unknown>) => boolean;
@@ -110,8 +123,7 @@ export type FieldDef<TRow> =
   | ({ type: 'tags' } & FieldBase<TRow>)
   | ({ type: 'switch' | 'date' | 'datetime' | 'json' | 'readonly' } & FieldBase<TRow>)
   | { type: 'divider'; label?: string; tab?: string }
-  | ({ type: 'custom' } & FieldBase<TRow> & { render: (props: CrudFieldRenderProps) => ReactNode })
-  | ({ type: 'extension'; name: string; config?: Record<string, unknown> } & FieldBase<TRow>);
+  | ({ type: 'custom' } & FieldBase<TRow> & { render: (props: CrudFieldRenderProps) => ReactNode });
 
 export interface FormTab {
   key: string;
@@ -180,7 +192,7 @@ export interface CrudSlots<TRow> {
 // ─── Full schema ─────────────────────────────────────────
 
 export interface CrudSchema<TRow = Record<string, unknown>> {
-  /** Display name (literal or a dotted i18n key). */
+  /** Display name (shown in "Add {name}" and as the detail drawer title). */
   name: string;
   dataSource: CrudDataSource<TRow>;
   /** Primary-key field. Default 'id'. */
@@ -204,6 +216,8 @@ export interface CrudSchema<TRow = Record<string, unknown>> {
   formFields?: FieldDef<TRow>[];
   formTabs?: FormTab[];
   formMode?: 'dialog' | 'drawer';
+  /** Dialog canvas size. Defaults to `md` to preserve existing CRUD forms. */
+  formSize?: 'sm' | 'md' | 'lg' | 'xl' | 'workspace' | 'wide' | 'full';
   /** Title builder for the add/edit form; defaults to "Add {name}" / "Edit {name}". */
   formTitle?: (mode: 'add' | 'edit', row: TRow | null) => string;
 
@@ -216,6 +230,10 @@ export interface CrudSchema<TRow = Record<string, unknown>> {
   emptyMessage?: string;
   /** Row click behavior. Default: 'detail' if canView & no rowExpand, else none. */
   onRowClick?: 'detail' | 'edit' | 'none';
+  /** Override the built-in delete-confirm text per row (e.g. include the row's
+   *  name). Omitted fields fall back to the generic chrome strings.
+   *  (Local addition over OSS upstream — pages here confirm with the row name.) */
+  deleteConfirm?: (row: TRow) => { title?: string; description?: string };
 }
 
 export interface ResolvedCrudSchema<TRow> extends CrudSchema<TRow> {
@@ -225,6 +243,7 @@ export interface ResolvedCrudSchema<TRow> extends CrudSchema<TRow> {
   formFields: FieldDef<TRow>[];
   formTabs: FormTab[];
   formMode: 'dialog' | 'drawer';
+  formSize: 'sm' | 'md' | 'lg' | 'xl' | 'workspace' | 'wide' | 'full';
   pageSize: number;
   storageKey: string;
   access: {
@@ -248,6 +267,7 @@ export function defineCrud<TRow>(schema: CrudSchema<TRow>): ResolvedCrudSchema<T
     formFields: schema.formFields ?? [],
     formTabs: schema.formTabs ?? [],
     formMode: schema.formMode ?? 'dialog',
+    formSize: schema.formSize ?? 'md',
     pageSize: schema.pageSize ?? 20,
     storageKey: schema.storageKey ?? `crud:${schema.name}`,
     access: {
@@ -264,10 +284,6 @@ export function defineCrud<TRow>(schema: CrudSchema<TRow>): ResolvedCrudSchema<T
 }
 
 // ─── Helpers shared by form/detail ───────────────────────
-
-export function isInputField<TRow>(f: FieldDef<TRow>): f is Extract<FieldDef<TRow>, { key: RowKey<TRow> }> {
-  return f.type !== 'divider';
-}
 
 export function fieldsForMode<TRow>(fields: FieldDef<TRow>[], mode: 'add' | 'edit'): FieldDef<TRow>[] {
   return fields.filter((f) => {

@@ -31,6 +31,36 @@ describe('defineCrud resolution', () => {
     expect(s.variant).toBe('cards');
   });
 
+  it('keeps compact dialogs by default and preserves an explicit larger canvas', () => {
+    const compact = defineCrud<Row>({ name: 'Row', dataSource, columns: [{ key: 'name', label: 'Name' }] });
+    const wide = defineCrud<Row>({
+      name: 'Row',
+      dataSource,
+      formSize: 'xl',
+      columns: [{ key: 'name', label: 'Name' }],
+    });
+    expect(compact.formSize).toBe('md');
+    expect(wide.formSize).toBe('xl');
+  });
+
+  it('preserves on-demand field help separately from persistent comments', () => {
+    const s = defineCrud<Row>({
+      name: 'Row',
+      dataSource,
+      columns: [{ key: 'name', label: 'Name' }],
+      formFields: [
+        {
+          key: 'name',
+          label: 'Name',
+          type: 'text',
+          help: 'Shown on demand',
+          comment: 'Always visible',
+        },
+      ],
+    });
+    expect(s.formFields[0]).toMatchObject({ help: 'Shown on demand', comment: 'Always visible' });
+  });
+
   it('accepts a toggle column with an onToggle handler', () => {
     const calls: Array<[Row, boolean]> = [];
     const s = defineCrud<Row>({

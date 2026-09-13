@@ -9,9 +9,10 @@
  *   DELETE /:id       → { ok: true } | 404
  *
  * Guards (read/write/delete) are per-method middleware — reuse the app's own
- * requireInternal()/requireSuper()/requireFeature(). Hooks are the server-side
- * escape hatch: scopeFilter (row-level isolation), before/after mutation hooks,
- * and canAccess (per-row guard for get/update/delete).
+ * requireInternal()/requireSuper()/requireFeature() from apps/api auth
+ * middleware. Hooks are the server-side escape hatch: scopeFilter (row-level
+ * isolation), before/after mutation hooks, and canAccess (per-row guard for
+ * get/update/delete).
  *
  * The env is intentionally `any`: the factory is generic over the host app's
  * Hono environment, and mounting it must not widen a typed AppType — so mount

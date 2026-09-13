@@ -1,7 +1,7 @@
 /**
  * Fail-loud validation of list requests against a route's declared whitelist.
  *
- * The letpot-era filter layer silently dropped anything it did not recognise
+ * The legacy /admin filter layer silently dropped anything it did not recognise
  * (id filters that were not 24 chars, numeric selects, unknown keys) — so a
  * user could filter and get unfiltered results with no signal. Here every
  * unknown filter key, disallowed method, or unsortable key is a hard 400 with

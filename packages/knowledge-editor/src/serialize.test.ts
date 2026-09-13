@@ -3,11 +3,12 @@
  *
  * These encode audit 2026-06-10 defect #5: agent-written tables/images were
  * silently dropped by a human edit-save, and aggressive escaping corrupted
- * plain prose ("GH-Max" → "GH\-Max").
+ * plain prose ("LPH-Max" → "LPH\-Max").
  */
 
 import { describe, it, expect } from 'vitest';
 import { markdownToTiptapJson } from './markdown.js';
+import { markdownToEditorHtml } from './md-html.js';
 import { tiptapJsonToMarkdown, type TiptapNode } from './serialize.js';
 
 function roundTrip(md: string): string {
@@ -15,9 +16,9 @@ function roundTrip(md: string): string {
   return tiptapJsonToMarkdown(json);
 }
 
-describe('escaping (the GH\\-Max bug)', () => {
+describe('escaping (the LPH\\-Max bug)', () => {
   it('leaves product codes, versions and ordinary punctuation untouched', () => {
-    expect(roundTrip('GH-Max supports 21 pods.')).toBe('GH-Max supports 21 pods.');
+    expect(roundTrip('LPH-Max supports 21 pods.')).toBe('LPH-Max supports 21 pods.');
     expect(roundTrip('Released v1.0 (2026) — 50% faster!')).toBe('Released v1.0 (2026) — 50% faster!');
     expect(roundTrip('Use pH 5.5-6.5 for basil.')).toBe('Use pH 5.5-6.5 for basil.');
   });
@@ -48,7 +49,7 @@ describe('escaping (the GH\\-Max bug)', () => {
 });
 
 describe('tables survive the round-trip (previously silently dropped)', () => {
-  const table = ['| Model | Pods |', '| --- | --- |', '| GH-Max | 21 |', '| GH-SE | 12 |'].join('\n');
+  const table = ['| Model | Pods |', '| --- | --- |', '| LPH-Max | 21 |', '| LPH-SE | 12 |'].join('\n');
 
   it('markdown table → JSON contains a table node', () => {
     const json = JSON.parse(markdownToTiptapJson(table)) as TiptapNode;
@@ -60,8 +61,8 @@ describe('tables survive the round-trip (previously silently dropped)', () => {
     const out = roundTrip(table);
     expect(out).toContain('| Model | Pods |');
     expect(out).toContain('| --- | --- |');
-    expect(out).toContain('| GH-Max | 21 |');
-    expect(out).toContain('| GH-SE | 12 |');
+    expect(out).toContain('| LPH-Max | 21 |');
+    expect(out).toContain('| LPH-SE | 12 |');
   });
 
   it('double round-trip is stable', () => {
@@ -96,6 +97,56 @@ describe('images survive the round-trip (previously silently dropped)', () => {
     expect(JSON.stringify(json)).toContain('pump.png');
     const out = roundTrip(md);
     expect(out).toBe('![pump diagram](https://cdn.example.com/pump.png)');
+  });
+});
+
+describe('editor fallback for docs with no content_json', () => {
+  // Markdown-only writers (CLI import, agent tools) leave content_json '{}', so
+  // the editor loads them by parsing the Markdown instead. That branch used to be
+  // a line-based converter that knew only headings/lists/quotes: a brand doc
+  // opened as literal text and the first save wrote the flattening back over the
+  // canonical Markdown, escaped. Same source, same schema, same result as the
+  // JSON path is what keeps a plain open-and-save from destroying a doc.
+  const doc = [
+    '# 色彩 Color',
+    '',
+    '原则是**在大量留白上克制地用绿**，`ink` 承担文字。',
+    '',
+    '![品牌色板](/api/upload/1753300000000-d8a85e6d.png)',
+    '',
+    '## 色板',
+    '',
+    '| Token | Hex |',
+    '| --- | --- |',
+    '| `green` | `#2E8B3D` |',
+    '',
+    '#### 细则',
+    '',
+    'See [the guide](https://example.com).',
+  ].join('\n');
+
+  it('matches the JSON path the server would have derived', () => {
+    expect(markdownToEditorHtml(doc)).toBe(markdownToEditorHtml(roundTrip(doc)));
+  });
+
+  it('keeps bold, inline code, images, tables and h4 instead of flattening them', () => {
+    const out = roundTrip(doc);
+    expect(out).toContain('**在大量留白上克制地用绿**');
+    expect(out).toContain('`ink`');
+    expect(out).toContain('![品牌色板](/api/upload/1753300000000-d8a85e6d.png)');
+    expect(out).toContain('| Token | Hex |');
+    expect(out).toContain('#### 细则');
+    expect(out).toContain('[the guide](https://example.com)');
+    // The corruption signature: markdown triggers escaped into literal text.
+    expect(out).not.toContain('\\*');
+    expect(out).not.toContain('\\`');
+    expect(out).not.toContain('\\[');
+  });
+
+  it('does not turn soft line wraps into hard breaks', () => {
+    // apps/web sets marked's global `breaks: true` for chat; inheriting it here
+    // would insert a <br> per wrapped line every time a doc round-tripped.
+    expect(markdownToEditorHtml('one\ntwo')).not.toContain('<br');
   });
 });
 

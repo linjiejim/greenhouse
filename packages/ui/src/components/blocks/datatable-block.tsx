@@ -8,7 +8,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Input, SearchInput } from '../ui';
+import { SearchInput } from '../ui';
 import type { DataTableData } from './index';
 import { useT } from '../../lib/i18n';
 import { BADGE_PALETTE } from '../../lib/utils';

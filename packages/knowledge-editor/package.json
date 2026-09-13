@@ -12,6 +12,10 @@
       "import": "./src/markdown.ts",
       "types": "./src/markdown.ts"
     },
+    "./md-html": {
+      "import": "./src/md-html.ts",
+      "types": "./src/md-html.ts"
+    },
     "./serialize": {
       "import": "./src/serialize.ts",
       "types": "./src/serialize.ts"
@@ -24,11 +28,13 @@
   "dependencies": {
     "@tiptap/core": "^3.24.0",
     "@tiptap/extension-image": "^3.24.0",
+    "@tiptap/extension-mention": "^3.28.0",
     "@tiptap/extension-table": "^3.24.0",
     "@tiptap/extension-typography": "^3.24.0",
     "@tiptap/html": "3.24.0",
     "@tiptap/pm": "^3.24.0",
     "@tiptap/starter-kit": "^3.24.0",
+    "@tiptap/suggestion": "^3.28.0",
     "happy-dom": "^20.8.9",
     "marked": "^18.0.3"
   },

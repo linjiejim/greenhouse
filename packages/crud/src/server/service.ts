@@ -1,8 +1,7 @@
 /**
  * CrudService — the data-source abstraction the route factory drives. Implement
- * it over Drizzle (see @greenhouse/db `createTableCrudService`), over an
- * in-memory array (demos/tests), or as a proxy that forwards to an external
- * admin API (a fork whose backend owns no tables).
+ * it over Drizzle, over an in-memory array (demos/tests), or as a proxy that
+ * forwards to an external admin API.
  */
 
 import type { ListParams, ListResult } from '../protocol/types.js';

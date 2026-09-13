@@ -1,7 +1,7 @@
 /**
  * Zod schemas for the wire protocol — used by the server route factory to
  * reject malformed list requests loudly (400) instead of silently dropping
- * filters the way the letpot-era code did.
+ * filters the way the legacy /admin filter layer did.
  */
 
 import { z } from 'zod';

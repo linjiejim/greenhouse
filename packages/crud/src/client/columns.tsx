@@ -1,20 +1,16 @@
 /** Column cell rendering for the list table. */
 
 import React from 'react';
-import { Badge, TagList } from '@greenhouse/ui/components/ui';
 
 import type { ColumnDef } from './schema.js';
-import { getCrudColumn } from './registry.js';
+import { getCrudUi } from './ui.js';
 import { formatCell } from './util.js';
 
 export function renderCell<TRow>(col: ColumnDef<TRow>, row: TRow): React.ReactNode {
+  const { Badge, TagList } = getCrudUi();
   const record = row as Record<string, unknown>;
 
   if (col.type === 'custom') return col.render(row);
-  if (col.type === 'extension') {
-    const renderer = getCrudColumn(col.name);
-    return renderer ? renderer({ value: record[col.key], row: record, config: col.config }) : '—';
-  }
 
   const value = record[col.key];
 

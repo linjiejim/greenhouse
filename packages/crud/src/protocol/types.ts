@@ -1,12 +1,12 @@
 /**
  * CRUD wire protocol — the shape shared by the client data source, the server
- * route factory, and the Drizzle adapter. Deliberately kept flat and JSON-only
- * so a proxy (e.g. a fork forwarding to an external admin API) is a thin
- * translation, and shape-compatible with the letpot `/admin/:resource` protocol
- * (skip/limit/filter[]/sort[], POST /list).
+ * route factory, and any adapter over existing endpoints. Deliberately kept
+ * flat and JSON-only so a proxy is a thin translation, and shape-compatible
+ * with the existing `/api/admin/:resource` protocol (skip/limit/filter[]/sort[],
+ * POST /list).
  */
 
-/** Comparison operators a filter can use. Superset of the letpot method set. */
+/** Comparison operators a filter can use. Superset of the /admin method set. */
 export type FilterMethod =
   | 'eq'
   | 'ne'

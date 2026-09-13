@@ -5,12 +5,12 @@
  */
 
 import React, { useState } from 'react';
-import { Button, Drawer } from '@greenhouse/ui/components/ui';
-import { Pencil, X } from '@greenhouse/ui/lib/icons';
-import { useT } from '@greenhouse/ui/lib/i18n';
+import { Pencil, X } from 'lucide-react';
 
 import type { ColumnDef, ResolvedCrudSchema } from './schema.js';
 import { renderCell } from './columns.js';
+import { getCrudUi } from './ui.js';
+import { useCrudT } from './i18n.js';
 import { tr } from './util.js';
 
 export interface CrudDetailProps<TRow> {
@@ -21,7 +21,8 @@ export interface CrudDetailProps<TRow> {
 }
 
 export function CrudDetail<TRow>({ schema, row, onClose, onEdit }: CrudDetailProps<TRow>) {
-  const t = useT();
+  const { Button, Drawer } = getCrudUi();
+  const t = useCrudT();
   const [tab, setTab] = useState<string>(schema.detailTabs?.[0]?.key ?? '');
 
   const fieldGrid = (cols: ColumnDef<TRow>[]) => (

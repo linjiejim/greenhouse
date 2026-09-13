@@ -1,15 +1,14 @@
 /**
  * CrudFieldInput — renders one form field from its FieldDef, wired to the form
- * value. Built on @greenhouse/ui primitives so it inherits the design system
- * (and branding) for free. Unknown/extension types resolve through the registry.
+ * value. Built on the installed UI kit so it inherits the app's design system
+ * for free. `custom` fields are the inline escape hatch.
  */
 
 import React, { useEffect, useState } from 'react';
-import { Input, Textarea, Select, Toggle, Checkbox, Tag } from '@greenhouse/ui/components/ui';
-import { X } from '@greenhouse/ui/lib/icons';
+import { X } from 'lucide-react';
 
 import type { FieldDef, OptionsSource, SelectOption } from './schema.js';
-import { getCrudField } from './registry.js';
+import { getCrudUi } from './ui.js';
 import { formatCell } from './util.js';
 
 function useOptions(source: OptionsSource | undefined): SelectOption[] {
@@ -51,6 +50,7 @@ export function CrudFieldInput<TRow>({
   disabled,
   testId,
 }: CrudFieldInputProps<TRow>) {
+  const { Input, Textarea, Toggle } = getCrudUi();
   const placeholder = 'placeholder' in field ? field.placeholder : undefined;
 
   switch (field.type) {
@@ -132,11 +132,6 @@ export function CrudFieldInput<TRow>({
       return <div className="text-sm text-fg-secondary py-1.5">{formatCell(undefined, value)}</div>;
     case 'custom':
       return <>{field.render({ value, onChange, form, mode, disabled, placeholder })}</>;
-    case 'extension': {
-      const Comp = getCrudField(field.name);
-      if (!Comp) return <div className="text-xs text-danger">Unknown field: {field.name}</div>;
-      return <>{Comp({ value, onChange, form, mode, disabled, placeholder, config: field.config })}</>;
-    }
     default:
       return null;
   }
@@ -155,6 +150,7 @@ function SelectField({
   disabled?: boolean;
   testId?: string;
 }) {
+  const { Select } = getCrudUi();
   const options = useOptions(source);
   return (
     <Select
@@ -217,6 +213,7 @@ function MultiSelectField({
   onChange: (v: unknown) => void;
   disabled?: boolean;
 }) {
+  const { Checkbox } = getCrudUi();
   const options = useOptions(source);
   const arr = Array.isArray(value) ? (value as unknown[]) : [];
   const toggle = (v: SelectOption['value']) => {
@@ -249,6 +246,7 @@ function TagsField({
   disabled?: boolean;
   placeholder?: string;
 }) {
+  const { Input, Tag } = getCrudUi();
   const tags = Array.isArray(value) ? (value as string[]) : [];
   const [draft, setDraft] = useState('');
   const add = () => {
@@ -260,7 +258,7 @@ function TagsField({
     <div>
       <div className="flex flex-wrap gap-1.5 mb-1.5">
         {tags.map((tag) => (
-          <Tag key={tag} icon={undefined}>
+          <Tag key={tag}>
             {tag}
             {!disabled && (
               <button
@@ -300,6 +298,7 @@ function JsonField({
   onChange: (v: unknown) => void;
   disabled?: boolean;
 }) {
+  const { Textarea } = getCrudUi();
   // null (a nullable json column) shows an empty box, not the literal text "null".
   const [text, setText] = useState(() => (value == null ? '' : JSON.stringify(value, null, 2)));
   const [error, setError] = useState('');
