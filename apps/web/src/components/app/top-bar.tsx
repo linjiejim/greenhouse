@@ -295,8 +295,8 @@ export function TopBar({
     <header
       className={`${visibility} min-h-10 items-center justify-between gap-2 border-b border-edge bg-surface-raised px-3 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] md:h-10 md:py-0 md:pt-0 flex-shrink-0 z-10`}
     >
-      {/* Left */}
-      <div className="flex items-center gap-2 min-w-0">
+      {/* Left — takes whatever width the actions leave and truncates the title. */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <IconButton onClick={() => setNavOpen(true)} label={t('navigation.mobile')} wrapperClassName="-ml-1 md:hidden">
           <Menu size={20} />
         </IconButton>
@@ -320,7 +320,7 @@ export function TopBar({
       </div>
 
       {/* Right — session actions stay together and never compete with the title. */}
-      <div className="ml-auto flex min-w-0 items-center justify-end gap-1 sm:gap-2">
+      <div className="ml-auto flex flex-shrink-0 items-center justify-end gap-1 sm:gap-2">
         {/* Workbench controls, only while the panel that registered them is on
             screen (the empty state of a new conversation). Sending the first
             message unmounts the panel, which takes these with it. */}
