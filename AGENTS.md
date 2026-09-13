@@ -100,6 +100,17 @@ what exists." These rules are as binding as the "add" rules:
   create/delete. `playwright.config.ts` auto-starts `pnpm dev` (reuses a running one);
   `auth.setup.ts` creates a super test account via `admin:create` and logs in. Locators use
   `data-testid` anchors + `role=dialog`. Writes use a per-run prefix and self-clean.
+- **Screenshot tour (visual smoke)**: `node scripts/capture-screens.mjs` drives a running,
+  seeded dev stack (`E2E_BASE_URL`, default `:4400`) through every surface with Playwright:
+  it seeds a demo Tables base / workbench layout / skills / custom agent / MCP machine client
+  over the API, asks the live model two questions, and writes `docs/assets/screens/*.webp`
+  (+ `chat-knowledge.gif` / `.mp4`) that the README and `docs/index.html` embed. It exits
+  non-zero on any console error or failed `/api` request. Re-run it after visible UI changes
+  so the docs stay truthful — never hand-edit or mock the captures. Needs `ffmpeg` + `cwebp`.
+- **Landing page**: `docs/index.html` is the GitHub Pages site (precompiled Tailwind — run
+  `scripts/build-landing.sh` after changing utility classes and commit `docs/tailwind.css`).
+  Copy is bilingual: every `data-i18n` key needs a matching entry in the inline `ZH`
+  dictionary; the English source of truth is the markup itself.
 - **Dev mode**: `pnpm dev` runs the Vite dev server (web, `:3100`, HMR) + the API (`:3000`)
   in parallel. Vite proxies `/api` (incl. ws), `/public`, `/health` to the API, so the browser
   sees same-origin — open `:3100`. Ports are overridable via `WEB_PORT` / `API_PORT` (read from
