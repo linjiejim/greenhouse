@@ -29,7 +29,8 @@ import { useExtensionsStore } from '../../stores/extensions-store';
 
 describe('web extension seam', () => {
   it('compiles the example and exposes its page route', () => {
-    expect(COMPILED_WEB_EXTENSIONS.map((e) => e.id)).toEqual(['example']);
+    // `toContain`, not equality: a fork compiles its own extensions in beside this one.
+    expect(COMPILED_WEB_EXTENSIONS.map((e) => e.id)).toContain('example');
     expect(compiledExtensionRoutes().has('example')).toBe(true);
     expect(findExtensionPage('example')?.extension.id).toBe('example');
     expect(findExtensionPage('nope')).toBeNull();

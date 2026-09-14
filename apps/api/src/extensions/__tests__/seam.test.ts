@@ -104,7 +104,8 @@ describe('extension seam', { timeout: 60_000 }, () => {
   it('contributes nothing while disabled', async () => {
     const m = await loadWith('');
     expect(m.extensions.EXTENSIONS).toEqual([]);
-    expect(m.extensions.COMPILED_EXTENSIONS.map((e) => e.id)).toEqual(['example']);
+    // `toContain`, not equality: a fork compiles its own extensions in beside this one.
+    expect(m.extensions.COMPILED_EXTENSIONS.map((e) => e.id)).toContain('example');
     expect(m.registry.getAllToolIds()).not.toContain('example_notes_query');
     expect(m.points.FEATURE_POINTS.some((p) => p.key === 'example')).toBe(false);
     expect(m.features.allFeatureFlags().some((f) => f.key === 'example')).toBe(false);
