@@ -23,6 +23,20 @@ export { createDatabase };
 export type { DatabaseProvider };
 export type { Db } from './client.js';
 
+// Extension hooks: service bags, reset tables, and the extension migration lane.
+export {
+  registerExtensionServices,
+  registerExtensionResetTables,
+  getExtensionServices,
+  _resetExtensionRegistrations,
+} from './extensions.js';
+export type { ExtensionServiceFactory } from './extensions.js';
+export type {
+  ExtensionMigrationSource,
+  ExtensionMigrationStatus,
+  ExtensionMigrationRunner,
+} from './extension-migrations.js';
+
 // ─── Public types ────────────────────────────────────────
 // Row types + column-union types live next to the tables (type-only re-export;
 // table objects themselves remain private to the database package.

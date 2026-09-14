@@ -7,6 +7,8 @@
  */
 
 import { sql } from 'drizzle-orm';
+import { buildExtensionServices, extensionResetTables } from './extensions.js';
+import { createExtensionMigrationRunner } from './extension-migrations.js';
 
 import { createDbClient, type Db, type DbClient } from './client.js';
 import { createSessionService } from './services/sessions.js';
@@ -54,6 +56,10 @@ import { createWorkspaceSettingService } from './services/workspace-settings.js'
 
 function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
   return {
+    /** Services registered by enabled extensions, keyed by extension id (see extensions.ts). */
+    extensions: buildExtensionServices(db),
+    /** Extension-owned migration lane (see extension-migrations.ts). */
+    extensionMigrations: createExtensionMigrationRunner(db),
     sessions: createSessionService(db),
     llmCalls: createLlmCallService(db),
     eval: createEvalService(db),
@@ -138,6 +144,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
       // TRUNCATE is much faster than DROP+CREATE for tests.
       // Filter to only tables that exist in the current database.
       const tables = [
+        ...extensionResetTables(),
         'workspace_settings',
         'notification_delivery_attempts',
         'notifications',
