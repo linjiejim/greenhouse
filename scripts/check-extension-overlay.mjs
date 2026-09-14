@@ -37,12 +37,26 @@ const ALLOWED = [
 /** The two list files are the only core files a fork edits: one import line per extension. */
 const ONE_LINE_REGISTRATION = ['apps/api/src/extensions/index.ts', 'apps/web/src/extensions/index.ts'];
 
+/**
+ * Glob → RegExp for the allow-list.
+ *
+ * The `**` tokens are swapped for placeholders before single `*` is handled:
+ * replacing them inline first would leave a `.*` whose own `*` the next rule
+ * rewrites into `[^/]*`, quietly turning "any depth" into "one level" — which
+ * is how this guard passed while a nested extension file went unchecked.
+ */
 function globToRegExp(glob) {
+  const DOUBLE_SLASH = '\u0000';
+  const DOUBLE = '\u0001';
   const escaped = glob
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*\//g, '(?:.*/)?')
-    .replace(/\*\*/g, '.*')
-    .replace(/\*/g, '[^/]*');
+    .replace(/\*\*\//g, DOUBLE_SLASH)
+    .replace(/\*\*/g, DOUBLE)
+    .replace(/\*/g, '[^/]*')
+    .split(DOUBLE_SLASH)
+    .join('(?:.*/)?')
+    .split(DOUBLE)
+    .join('.*');
   return new RegExp(`^${escaped}$`);
 }
 
