@@ -137,12 +137,13 @@ describe('Projects Platform Kernel migration', () => {
     // manifest's serialization shifted when compileApp stopped letting a
     // caller-supplied `id` through, and an unbumped manifest whose hash moved
     // is a boot-time fatal (see platform/__tests__/manifest-hash.test.ts).
+    // Core's three, pinned. A fork's extensions publish their own applications
+    // beside them, so filter to core rather than asserting the whole list.
     const active = await db.platform.listActiveAppReleases();
-    expect(active.map((release) => `${release.app_id}@${release.version}`)).toEqual([
-      'knowledge@1.0.1',
-      'projects@1.0.1',
-      `tables@${tablesManifest.version}`,
-    ]);
+    const coreIds = new Set(['knowledge', 'projects', 'tables']);
+    expect(
+      active.filter((release) => coreIds.has(release.app_id)).map((release) => `${release.app_id}@${release.version}`),
+    ).toEqual(['knowledge@1.0.1', 'projects@1.0.1', `tables@${tablesManifest.version}`]);
     const roles = await db.platform.listRoles('default');
     expect(roles.map((role) => role.code)).toEqual(['super', 'team']);
     expect(roles.every((role) => role.system_protected)).toBe(true);

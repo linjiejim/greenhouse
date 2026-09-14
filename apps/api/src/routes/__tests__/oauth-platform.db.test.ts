@@ -21,7 +21,7 @@ import {
   generateOAuthClientId,
   hashOAuthCredential,
   normalizeOAuthScopes,
-  OAUTH_SUPPORTED_SCOPES,
+  oauthSupportedScopes,
   pkceChallenge,
 } from '../../platform/oauth.js';
 
@@ -179,7 +179,9 @@ describe('Platform OAuth 2.1', () => {
     expect(await resource.json()).toMatchObject({
       resource: `${API_URL}/api/mcp`,
       authorization_servers: [API_URL],
-      scopes_supported: [...OAUTH_SUPPORTED_SCOPES],
+      // The dynamic list, not the static core constant: an active extension
+      // contributes an `mcp:<group>` scope of its own.
+      scopes_supported: oauthSupportedScopes(),
     });
 
     const server = await app.request('/.well-known/oauth-authorization-server');
@@ -612,7 +614,7 @@ describe('Platform OAuth 2.1', () => {
       const protectedApp = createProtectedApp();
       const denied = await protectedApp.request('/');
       expect(denied.status).toBe(401);
-      expect(denied.headers.get('www-authenticate')).toContain(`scope="${OAUTH_SUPPORTED_SCOPES.join(' ')}"`);
+      expect(denied.headers.get('www-authenticate')).toContain(`scope="${oauthSupportedScopes().join(' ')}"`);
     });
   });
 });
