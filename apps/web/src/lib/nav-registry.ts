@@ -17,7 +17,6 @@ import {
   Users,
   ClipboardList,
   Key,
-  Sprout,
   Package,
   Palette,
   SlidersHorizontal,
@@ -29,7 +28,6 @@ import {
   Bot,
   Table2,
   FolderKanban,
-  BookOpen,
 } from './icons';
 import type { LucideIcon } from './icons';
 import type { FeatureKey } from '@greenhouse/types/features';
