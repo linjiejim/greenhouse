@@ -12,7 +12,11 @@ const mocks = vi.hoisted(() => ({
   recordAudit: vi.fn(),
 }));
 
-vi.mock('@greenhouse/db', () => ({
+// Partial mock: keep the real module's other exports (the extension seam calls
+// `registerExtensionServices` at import time, so a bare object mock breaks as
+// soon as a deployment enables an extension that has services).
+vi.mock('@greenhouse/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@greenhouse/db')>()),
   getDb: () => ({
     refreshTokens: { consume: mocks.consume, create: mocks.create },
     users: { getById: mocks.getById, updateLastLogin: mocks.updateLastLogin },

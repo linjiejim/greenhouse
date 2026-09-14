@@ -6,7 +6,11 @@ const dbMocks = vi.hoisted(() => ({
   getRunById: vi.fn(),
 }));
 
-vi.mock('@greenhouse/db', () => ({
+// Partial mock: keep the real module's other exports (the extension seam calls
+// `registerExtensionServices` at import time, so a bare object mock breaks as
+// soon as a deployment enables an extension that has services).
+vi.mock('@greenhouse/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@greenhouse/db')>()),
   getDb: () => ({ users: { getById: dbMocks.getById }, agentRuns: { getRunById: dbMocks.getRunById } }),
 }));
 
