@@ -184,6 +184,9 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
   Keep it rebased (watch **migration numbers** — renumber to the next free slot on revive).
 - **Stable vs. edge is a hard promise.** Tag → `ghcr.io/<owner>/greenhouse:X.Y.Z` `:X.Y`
   `:latest` (stable). `main` → `:edge` / `:main-<sha>` only. `release.yml` enforces this.
+- **Publishing workflows are repository-gated.** `release.yml` / `release-please.yml` /
+  `mobile.yml` / `deploy.yml` only run in `linjiejim/greenhouse`; a fork's CD goes in
+  `.github/workflows/fork-*.yml`.
 - **Artifacts.** API+web = the container image (primary). Browser = versioned zip
   (`pnpm -F @greenhouse/browser package`). Mobile = fingerprint CD
   (`.github/workflows/mobile.yml`, `EXPO_TOKEN`-gated): JS-only change → EAS OTA update;

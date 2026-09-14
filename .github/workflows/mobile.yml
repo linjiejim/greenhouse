@@ -10,9 +10,10 @@ name: Mobile
 #     `--auto-submit` (production): iOS uploads to TestFlight automatically; the
 #     final "Submit for App Review" click stays in App Store Connect.
 #
-# Fork-safe / pre-setup-safe: without the `EXPO_TOKEN` secret every step is skipped
-# and the job exits green. One-time setup (Expo project, credentials, ASC app
-# record, EAS env vars): RELEASING.md → "Mobile → fingerprint CD".
+# Fork-safe / pre-setup-safe: the job only runs in this repository (a fork keeps
+# its own CD in `fork-*.yml`), and without the `EXPO_TOKEN` secret every step is
+# skipped and the job exits green. One-time setup (Expo project, credentials, ASC
+# app record, EAS env vars): RELEASING.md → "Mobile → fingerprint CD".
 on:
   push:
     branches: [main]
@@ -38,6 +39,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.repository == 'linjiejim/greenhouse'
     runs-on: ubuntu-latest
     permissions:
       contents: read

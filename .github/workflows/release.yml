@@ -8,6 +8,8 @@ name: Release
 #                 `:latest`, never a Release asset — main is explicitly unstable.
 # The stable/edge split is the machine-readable half of the promise in the README
 # "Releases & stability" section. See RELEASING.md.
+# Fork-safe: both jobs only run in this repository — a fork's main never publishes
+# images or Release assets from here (its own CD lives in `fork-*.yml`).
 on:
   push:
     branches: [main]
@@ -24,6 +26,7 @@ concurrency:
 jobs:
   # ── API + web → single container image on GHCR ──
   image:
+    if: github.repository == 'linjiejim/greenhouse'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -75,7 +78,7 @@ jobs:
 
   # ── Browser extension → versioned zip attached to the Release (stable only) ──
   browser:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'linjiejim/greenhouse' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write # upload the asset to the GitHub Release

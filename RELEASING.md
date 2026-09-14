@@ -147,7 +147,9 @@ version; App Store Connect only rejects versions lower than the last **approved*
 App Store release, and the app has never been approved, so uploading e.g.
 `0.5.0` is expected to work — verify on the first post-sync store build.
 
-**Fork-safe:** without the `EXPO_TOKEN` secret the workflow no-ops green.
+**Fork-safe:** the job only runs in `linjiejim/greenhouse` — as do `release.yml`,
+`release-please.yml` and `deploy.yml`, so a fork's `main` publishes nothing from
+upstream's workflows — and without the `EXPO_TOKEN` secret it no-ops green.
 
 One-time setup (secret-gated, not code — the workflow stays a no-op until done):
 

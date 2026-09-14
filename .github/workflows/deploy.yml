@@ -72,6 +72,13 @@ jobs:
             IMG="ghcr.io/linjiejim/greenhouse:main-${{ steps.sha.outputs.short }}"
             # Persist the pin so a manual `docker compose up` uses the same image.
             sed -i "s|^GREENHOUSE_IMAGE=.*|GREENHOUSE_IMAGE=$IMG|" .env
+            # Pull anonymously. The image is public, but docker never falls back to
+            # anonymous while ~/.docker/config.json holds a login for ghcr.io — and other
+            # deployments on this host log in with short-lived Actions tokens they never
+            # revoke, so a stale one turns this pull into `denied`. An empty config dir
+            # keeps the deploy independent of whatever is stored there.
+            export DOCKER_CONFIG="$(mktemp -d)"
+            trap 'rm -rf "$DOCKER_CONFIG"' EXIT
             docker compose -f docker-compose.ghcr.yml pull --quiet
             docker compose -f docker-compose.ghcr.yml up -d
             S=000

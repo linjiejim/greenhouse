@@ -4,7 +4,8 @@ name: Release Please
 # Commits since the last tag and maintains a "Release PR" (computed SemVer bump +
 # generated CHANGELOG.md). Merging that PR tags `vX.Y.Z` and creates the GitHub
 # Release — which is what triggers release.yml to build & publish the artifacts.
-# See RELEASING.md.
+# See RELEASING.md. Fork-safe: only runs in this repository, so a fork's main never
+# grows Release PRs or tags it did not ask for.
 on:
   push:
     branches: [main]
@@ -20,6 +21,7 @@ concurrency:
 
 jobs:
   release-please:
+    if: github.repository == 'linjiejim/greenhouse'
     runs-on: ubuntu-latest
     steps:
       # A tag pushed by the default GITHUB_TOKEN does NOT cascade to other workflows
