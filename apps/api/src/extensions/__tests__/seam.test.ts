@@ -155,7 +155,16 @@ describe('extension seam', { timeout: 60_000 }, () => {
   it('refuses a tool that core could never build', async () => {
     const { defineExtension } = await import('../define.js');
     const { defineTool } = await import('../../tools/define.js');
-    const meta = { id: 'ghost_tool', name: 'Ghost', description: 'x', category: 'team' as const };
+    const meta = {
+      id: 'ghost_tool',
+      name: 'Ghost',
+      brief: 'x',
+      description: 'x',
+      category: 'team' as const,
+      is_global: false,
+      icon: 'Ghost',
+      sort_order: 0,
+    };
     // A lazy tool without createLazy is exactly the shape that reaches the
     // catalog but never the agent — refuse it at definition, not at run time.
     expect(() => defineExtension({ id: 'ghosts', name: 'x', tools: [defineTool({ meta, kind: 'lazy' })] })).toThrow(
