@@ -34,6 +34,15 @@ export default tseslint.config(
   // TypeScript recommended
   ...tseslint.configs.recommended,
 
+  // Pin the project root. `apps/mobile` installs its own node_modules (it is not a
+  // workspace member), which otherwise leaves typescript-eslint with two candidate
+  // roots and makes linting fail on a machine that has built the mobile app.
+  {
+    languageOptions: {
+      parserOptions: { tsconfigRootDir: import.meta.dirname },
+    },
+  },
+
   // React Hooks
   {
     plugins: { 'react-hooks': reactHooks },
