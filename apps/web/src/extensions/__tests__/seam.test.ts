@@ -15,7 +15,13 @@ import {
 import { translate } from '../../lib/i18n';
 import { isEntityUrl, parseEntityUrl } from '@greenhouse/types/entity-links';
 import { availableRecipes } from '@greenhouse/types/workbench';
-import { getNavModule, isNavModuleActive, localizeNavModule, settingsSections } from '../../lib/nav-registry';
+import {
+  getNavModule,
+  isNavModuleActive,
+  localizeNavModule,
+  resolveSubModule,
+  settingsSections,
+} from '../../lib/nav-registry';
 import { registeredEntityKind, registeredKnowledgeDocPanels, registeredToolCard } from '../../lib/extension-registries';
 import { entityPeekMeta } from '../../components/entity-peek/registry';
 import { mcpGroupIds, mcpGroupLabelKey } from '../../lib/mcp-groups';
@@ -112,6 +118,29 @@ describe('web extension seam', () => {
   it('keeps the store fail-closed until the API answers', () => {
     expect(useExtensionsStore.getState().loaded).toBe(false);
     expect(useExtensionsStore.getState().extensions).toEqual([]);
+  });
+
+  it('gives an extension page its own sub-module identities and breadcrumb', () => {
+    // `<ModulePage moduleId="example.notes">` resolves against this.
+    const mod = getNavModule('example.notes');
+    expect(mod).toBeDefined();
+    expect(mod?.parent).toBe('standalone');
+    expect(mod?.path).toBe('#/example/notes');
+    expect(mod?.extensionId).toBe('example');
+    expect(localizeNavModule(mod!, (key) => translate('en', key)).label).toBe('Example notes');
+
+    // The breadcrumb root comes from the page's own title key, not a core table.
+    expect(resolveSubModule('example', 'notes', (key) => translate('en', key))).toMatchObject({
+      primary: 'Example notes',
+      secondary: 'Example notes',
+    });
+    // A detail path still resolves to its parent module.
+    expect(resolveSubModule('example', 'notes/42', (key) => translate('en', key))).toMatchObject({
+      secondary: 'Example notes › #42',
+    });
+    // Still hidden while the extension is inactive.
+    expect(isNavModuleActive(mod!, [])).toBe(false);
+    expect(isNavModuleActive(mod!, [{ id: 'example' }])).toBe(true);
   });
 
   it('learns record routes and recipes from the API, so links and cards resolve in the browser', async () => {

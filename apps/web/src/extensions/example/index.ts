@@ -25,7 +25,16 @@ function tx(key: string, params?: Record<string, string | number>): string {
 export const exampleWebExtension = defineWebExtension({
   id: 'example',
   messages: exampleMessages,
-  pages: [{ route: 'example', component: ExampleNotesPage, titleKey: 'ext.example.title' }],
+  pages: [
+    {
+      route: 'example',
+      component: ExampleNotesPage,
+      titleKey: 'ext.example.title',
+      // Sub-modules give `#/example/notes` a page identity (`example.notes`),
+      // a breadcrumb and a rail entry. A one-screen page can omit this.
+      modules: [{ key: 'notes', labelKey: 'ext.example.nav', descriptionKey: 'ext.example.intro', icon: StickyNote }],
+    },
+  ],
   navigation: [
     {
       id: 'example',

@@ -23,6 +23,26 @@ export interface ExtensionPageProps {
   params: URLSearchParams;
 }
 
+/**
+ * One sub-page of an extension page — `#/<route>/<key>`.
+ *
+ * A page big enough to have its own module rail (a CRM with leads, companies,
+ * deals…) declares its sub-modules here instead of hard-coding them. Each one
+ * becomes a standalone navigation module with id `<extension id>.<key>`, which
+ * is what `<ModulePage moduleId>` and the top-bar breadcrumb resolve against.
+ */
+export interface WebExtensionPageModule {
+  /** Sub-path segment, e.g. `companies` → `#/crm/companies`, module id `crm.companies`. */
+  key: string;
+  labelKey: ExtensionTranslationKey;
+  descriptionKey?: ExtensionTranslationKey;
+  icon: LucideIcon;
+  /** Keep the route live but out of the rail and the mobile tabs. */
+  hiddenFromNav?: boolean;
+  requireFeature?: string;
+  requireRole?: 'super'[];
+}
+
 export interface WebExtensionPage {
   /** Top-level hash segment: the page answers `#/<route>` and `#/<route>/...`. */
   route: string;
@@ -31,6 +51,8 @@ export interface WebExtensionPage {
   sidebarPanel?: ComponentType<{ subPath: string; onNavigate?: () => void }>;
   /** Top-bar title; defaults to the extension name from the API. */
   titleKey?: ExtensionTranslationKey;
+  /** Sub-modules of this page, in rail order. */
+  modules?: WebExtensionPageModule[];
 }
 
 export interface WebExtensionNavItem {

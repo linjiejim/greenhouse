@@ -10,7 +10,7 @@
  * not create another primary-navigation source.
  */
 
-import type { WebExtensionModule } from '../extensions/define';
+import type { WebExtensionModule, WebExtensionPageModule } from '../extensions/define';
 import {
   MessageSquareWarning,
   Mail,
@@ -446,6 +446,52 @@ export function registerExtensionNavModules(extensionId: string, modules: readon
   }
 }
 
+/**
+ * Register the sub-modules of an extension *page* (`#/<route>/<key>`).
+ *
+ * These are `standalone` identities — page header, breadcrumb and module rail —
+ * not entries in Settings or Administration. The id is `<extension id>.<key>`,
+ * so a CRM extension's companies screen is `crm.companies`, exactly the shape
+ * `<ModulePage moduleId="crm.companies">` expects.
+ */
+const EXTENSION_ROUTE_TITLES = new Map<string, string>();
+
+export function registerExtensionPageModules(
+  extensionId: string,
+  route: string,
+  modules: readonly WebExtensionPageModule[],
+  titleKey?: string,
+): void {
+  // Breadcrumb root for `#/<route>/...` — without it the page's sub-modules
+  // would resolve but have nothing to hang off.
+  EXTENSION_ROUTE_TITLES.set(route, titleKey ?? `ext.${extensionId}.title`);
+  for (const mod of modules) {
+    const id = `${extensionId}.${mod.key}`;
+    if (MODULE_MAP.has(id))
+      throw new Error(`Extension "${extensionId}" registers page module "${id}" twice or over a core module`);
+    const navModule: NavModule = {
+      id,
+      label: mod.key,
+      icon: mod.icon,
+      path: `#/${route}/${mod.key}`,
+      parent: 'standalone',
+      requireRole: mod.requireRole,
+      requireFeature: mod.requireFeature,
+      hiddenFromNav: mod.hiddenFromNav,
+      extensionId,
+      labelKey: mod.labelKey,
+      descriptionKey: mod.descriptionKey,
+    };
+    ALL_MODULES.push(navModule);
+    MODULE_MAP.set(id, navModule);
+  }
+}
+
+/** The registered page modules of one extension, in declaration order. */
+export function extensionPageModules(extensionId: string): NavModule[] {
+  return ALL_MODULES.filter((m) => m.extensionId === extensionId && m.parent === 'standalone');
+}
+
 /** Core modules are always active; extension modules only while their extension is. */
 export function isNavModuleActive(module: NavModule, activeExtensions: ReadonlyArray<{ id: string }>): boolean {
   return !module.extensionId || activeExtensions.some((ext) => ext.id === module.extensionId);
@@ -468,7 +514,8 @@ export function resolveSubModule(
     knowledge: t('app.knowledge'),
   };
 
-  const primary = routeLabels[route];
+  const extensionTitle = EXTENSION_ROUTE_TITLES.get(route);
+  const primary = routeLabels[route] ?? (extensionTitle ? t(extensionTitle as TranslationKey) : undefined);
   if (!primary) return null;
 
   // Knowledge sub-routes (not in module registry)

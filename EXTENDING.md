@@ -135,7 +135,16 @@ import { defineWebExtension } from '../../extension-kit';
 export const crmWebExtension = defineWebExtension({
   id: 'crm',
   messages: { en: { title: 'CRM', … }, zh: { title: '客户', … } },   // merged under ext.crm.*
-  pages: [{ route: 'crm', component: lazy(() => import('./page')), sidebarPanel: CrmNavPanel, titleKey: 'ext.crm.title' }],
+  pages: [
+    {
+      route: 'crm',
+      component: lazy(() => import('./page')),
+      sidebarPanel: CrmNavPanel,
+      titleKey: 'ext.crm.title',
+      // Optional: sub-modules of this page — `#/crm/companies`, module id `crm.companies`.
+      modules: [{ key: 'companies', labelKey: 'ext.crm.companies', icon: Users }],
+    },
+  ],
   navigation: [{ id: 'crm', labelKey: 'ext.crm.nav', icon: Users, href: '#/crm', route: 'crm', requireFeature: 'crm' }],
   modules: [{ key: 'crm', parent: 'settings', labelKey: 'ext.crm.settings', icon: Users, component: CrmSettings }],
   toolCards: [{ tool: 'crm_query', component: CrmResultCard }],
@@ -147,6 +156,7 @@ export const crmWebExtension = defineWebExtension({
 | Field | Lands in | Notes |
 |---|---|---|
 | `pages` | hash router (`#/<route>` and sub-paths), top bar, contextual sidebar | Rendered only while the API reports the id active; otherwise a calm "not enabled" state. |
+| `pages[].modules` | the navigation registry as `standalone` modules, id `<id>.<key>` | What `<ModulePage moduleId="crm.companies">`, the module rail and the breadcrumb resolve against. Omit for a one-screen page. |
 | `navigation` | the sidebar "More" menu (desktop flyout + mobile drawer) | `requireFeature` / `requireRole` hide the entry per user. |
 | `modules` | Settings ("Extensions" section) or Administration | Key becomes `#/settings/<key>` or `#/administration/<key>`; pins and breadcrumbs work. |
 | `messages` | i18n, under `ext.<id>.*` | `t('ext.crm.title')` type-checks; a missing locale falls back to English. The visible-copy guard still rejects hard-coded English in your TSX. |

@@ -7,7 +7,7 @@
  * are only rendered for the ids the API reports as active.
  */
 import { registerExtensionMessages } from '../lib/i18n';
-import { registerExtensionNavModules } from '../lib/nav-registry';
+import { registerExtensionNavModules, registerExtensionPageModules } from '../lib/nav-registry';
 import { registerExtensionContextProvider } from '../lib/context-registry';
 import { useExtensionsStore } from '../stores/extensions-store';
 import {
@@ -34,6 +34,9 @@ for (const ext of COMPILED_WEB_EXTENSIONS) {
 for (const ext of COMPILED_WEB_EXTENSIONS) {
   if (ext.messages) registerExtensionMessages(ext.id, ext.messages);
   if (ext.modules?.length) registerExtensionNavModules(ext.id, ext.modules);
+  for (const page of ext.pages ?? []) {
+    if (page.modules?.length) registerExtensionPageModules(ext.id, page.route, page.modules, page.titleKey);
+  }
   if (ext.contextProvider) registerExtensionContextProvider(ext.id, ext.contextProvider);
   for (const card of ext.toolCards ?? []) {
     registerToolCard(card.tool, { component: card.component, placement: card.placement ?? 'inline' });
