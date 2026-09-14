@@ -4,14 +4,14 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Greenhouse — an organization's shared AI brain</title>
-<meta name="description" content="Open-source, AI-native agent workbench. Self-host in one command. One tool layer powers your team's chat, your app's agent, and any external agent over MCP." />
+<meta name="description" content="An open-source AI assistant for your whole team, on your own server. It knows your documents, projects and data, and the same tools work in team chat, in your apps, and in Claude or Cursor." />
 <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
 <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
 <meta name="theme-color" content="#0d9488" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://greenhouse.linjiejim.com/" />
 <meta property="og:title" content="Greenhouse — an organization's shared AI brain" />
-<meta property="og:description" content="Open-source, AI-native agent workbench. Self-host in one command. One tool layer powers your team's chat, your app's agent, and any external agent over MCP." />
+<meta property="og:description" content="An open-source AI assistant for your whole team, on your own server. It knows your documents, projects and data, and the same tools work in team chat, in your apps, and in Claude or Cursor." />
 <meta property="og:image" content="https://greenhouse.linjiejim.com/og.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
@@ -99,9 +99,11 @@
         Put the agent at the<br><span class="text-brand-600">center</span> of your organization.
       </h1>
       <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="hero.lede">
-        Greenhouse is an open-source, AI-native agent workbench you self-host in one command. One shared
-        tool layer powers your team's chat, your app's own agent, and any external agent over MCP —
-        <span class="font-semibold text-ink">add a capability by writing one file.</span>
+        An open-source AI assistant for your whole team, running on your own server. It knows your
+        documents, your projects and your data, and every tool you give it works the same way in team chat,
+        in your own apps, and in Claude or Cursor —
+        <span class="font-semibold text-ink">one file per new capability.</span>
+      </span>
       </p>
       <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
         <a href="https://github.com/linjiejim/greenhouse" class="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700">
@@ -161,16 +163,15 @@
     The agent <span class="text-brand-600">is</span> the product — not a feature bolted on the side.
   </h2>
   <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="thesis.p">
-    Most AI tooling stops at personal productivity: great for one developer locally, but the moment it
-    enters an organization the whole layer that matters is missing — unified management, data permissions,
-    audit, collaboration. Greenhouse fills exactly that gap. It's not another clever agent; it's the
-    <span class="font-semibold text-ink">manageable foundation an agent platform stands on.</span>
+        Most AI tools stop at helping one person. The moment a team needs them, the hard parts are
+        missing: who may see what, who approved what, and a record of what happened. Greenhouse is that
+        missing part — the foundation an agent sits on, not another clever agent.
+      </span>
   </p>
   <blockquote class="mx-auto mt-10 max-w-2xl border-l-2 border-brand-400 pl-5 text-left text-lg italic leading-relaxed text-ink-soft" data-i18n="thesis.quote">
-    If the agent is the center of the organization, then the center of the product should be a tool layer.
-    The tools your team uses in chat are the same tools you expose to Claude or Cursor. Adding a capability
-    is writing one file.
-  </blockquote>
+        The tools your team uses in chat are the same tools you hand to Claude or Cursor.
+        Adding a capability is writing one file.
+      </blockquote>
 </section>
 
 <!-- PRODUCT TOUR -->
@@ -178,11 +179,7 @@
   <div class="mx-auto max-w-6xl px-6 py-24">
     <div class="mx-auto max-w-2xl text-center">
       <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="tour.kicker">Product tour</p>
-      <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="tour.h2">One workbench. Every surface shares the agent.</h2>
-      <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="tour.p">
-        Real screenshots from the bundled example dataset — captured by the same script that runs the
-        project's end-to-end smoke tour, so what you see here is what ships.
-      </p>
+      <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="tour.h2">One place to work. The agent is in all of it.</h2>
     </div>
 
     <div class="mt-12 grid gap-6 lg:grid-cols-[19rem_1fr]" data-tour>
@@ -210,7 +207,7 @@
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="executions">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t6">Execution center</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d6">Automations, missions, workflows and sub-agents, in one place.</span>
+          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d6">Scheduled jobs, long tasks and workflows, in one place.</span>
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="skills">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t7">Skill Center</span>
@@ -240,13 +237,19 @@
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
             <img src="./assets/screens/knowledge-search.webp" alt="Knowledge base with a search hit open next to the results" width="1440" height="900" class="block w-full" loading="lazy" />
           </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c3">Rich-text editor, Markdown-first storage, folders, backlinks, versions and segmented full-text search — the same index the agent cites from in chat.</figcaption>
+          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c3">
+        A proper editor, folders, links between pages, version history, and search that handles
+              Chinese — the same place the agent quotes from in chat.
+      </figcaption>
         </figure>
         <figure class="tour-panel" data-tour-panel="tables" hidden>
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
             <img src="./assets/screens/tables-grid.webp" alt="Tables grid with select, number, date, user and checkbox fields" width="1440" height="900" class="block w-full" loading="lazy" />
           </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c4">Multidimensional bases: typed fields, views, forms, record links and rule automations. Describe a base in chat and the agent drafts the schema for you to confirm.</figcaption>
+          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c4">
+        Spreadsheet-like tables with real field types, views, forms and links between records.
+              Describe what you need in chat and the agent drafts it for you to approve.
+      </figcaption>
         </figure>
         <figure class="tour-panel" data-tour-panel="projects" hidden>
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
@@ -258,13 +261,19 @@
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
             <img src="./assets/screens/execution-center.webp" alt="Execution center listing completed automation runs" width="1440" height="900" class="block w-full" loading="lazy" />
           </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c6">Every durable run in one surface — cron automations, sandboxed missions, workflows and sub-agents — with an approval inbox for the steps that need a human.</figcaption>
+          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c6">
+        Everything running in the background on one screen — scheduled jobs, long tasks, workflows —
+              with an inbox for the steps that need a person to say yes.
+      </figcaption>
         </figure>
         <figure class="tour-panel" data-tour-panel="skills" hidden>
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
             <img src="./assets/screens/skillhub.webp" alt="Skill Center listing published skills" width="1440" height="900" class="block w-full" loading="lazy" />
           </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c7">Immutable, versioned SKILL.md bundles with changelogs and security scanning. First-party packs ship in the repo and sync into the Skill Center on boot.</figcaption>
+          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c7">
+        Reusable know-how the agent can pick up, versioned so an update never rewrites history.
+              A starter set ships with the project.
+      </figcaption>
         </figure>
         <figure class="tour-panel" data-tour-panel="agents" hidden>
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
@@ -355,13 +364,13 @@
         <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="gen.kicker">Generative UI</p>
         <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="gen.h2">Messages aren't just text.</h2>
         <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="gen.p1">
-          When an answer carries a table, a chart, or an action to confirm, the chat upgrades it into a real
-          component — sortable tables, charts, file cards, confirm buttons. The agent only ever speaks text;
-          the interface decides how it's rendered.
-        </p>
+        When an answer carries a table, a chart or something to approve, the chat turns it into the
+        real thing — sortable tables, charts, file cards, buttons. The agent only writes text; the interface
+        decides how it looks.
+      </p>
         <p class="mt-4 text-lg leading-relaxed text-ink-soft" data-i18n="gen.p2">
-          And those buttons aren't just for show: a click feeds straight back into the step where the agent
-          paused — <span class="font-semibold text-ink">weaving human approval into the agent's loop.</span>
+        The buttons work: a click answers the step the agent paused on, and it carries on.
+      </span>
         </p>
         <ul class="mt-6 space-y-2.5 text-[15px] text-ink-soft">
           <li class="flex items-center gap-2.5"><span class="grid h-5 w-5 place-items-center rounded-full bg-brand-50 text-brand-600"><svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span data-i18n="gen.li1">Sortable, searchable data tables with CSV export</span></li>
@@ -386,9 +395,9 @@
     <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="perm.kicker">Trust boundary</p>
     <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="perm.h2">Safe to point at your whole org.</h2>
     <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="perm.p">
-      Permissions live in one place — the platform kernel under the tool layer — and they only ever subtract.
-      That's the boundary that makes it safe to open your organization's capabilities to an outside agent.
-    </p>
+        Permissions live in one place, and they only ever take away — never add. That is what makes
+        it safe to open your company's tools to an outside agent.
+      </p>
   </div>
   <div class="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
     <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
@@ -409,7 +418,10 @@
     <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 3.5a3 3 0 0 1 0 7M21 20a6 6 0 0 0-4-5.6" stroke-linecap="round"/></svg></div>
       <h3 class="text-base font-semibold text-ink" data-i18n="perm.c4t">Roles, policies, one dialog</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="perm.c4b">Super and team roles, per-user feature flags, and record / field policies declared once and enforced for HTTP, chat, the proxy and MCP alike.</p>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="perm.c4b">
+        Roles, per-person switches, and rules down to a single field — written once, enforced the
+          same way however the request arrives.
+      </p>
     </div>
   </div>
   <div class="mt-10 grid gap-6 md:grid-cols-2">
@@ -423,7 +435,9 @@
       <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
         <img src="./assets/screens/admin-mcp-access.webp" alt="MCP Access page listing a machine client with least-privilege scopes" width="1440" height="900" class="block w-full" loading="lazy" />
       </div>
-      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="perm.figB">External agents connect over OAuth 2.1 — PKCE for people, client credentials for machines bound to a least-privilege user — with scopes per resource group.</figcaption>
+      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="perm.figB">
+        Outside agents sign in with OAuth, and each one is granted only the groups of tools you pick.
+      </figcaption>
     </figure>
   </div>
 </section>
@@ -442,10 +456,9 @@
         <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="prof.kicker">Agent profiles</p>
         <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="prof.h2">Distill best practices into virtual coworkers.</h2>
         <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="prof.p1">
-          A profile is a face, a name, a system prompt, a chosen subset of tools, and a few quick actions —
-          one person's way of doing a job, compressed into a reusable unit. Publish it org-wide after review;
-          anyone can fork it and ship a better version.
-        </p>
+        A profile is a name, a face, a set of instructions and the tools it may use — one person's way
+        of doing a job, saved so anyone can use it. Publish it to the team, or copy someone's and improve it.
+      </p>
         <p class="mt-4 text-lg leading-relaxed text-ink-soft" data-i18n="prof.p2">
           Pair it with <span class="font-semibold text-ink">automations</span> — a cron schedule that runs a profile's
           prompt on its own — and the daily standup report or morning data sweep runs itself. The longer a team
@@ -466,12 +479,18 @@
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h3 class="text-base font-semibold text-ink" data-i18n="feat.chatT">Chat</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.chatB">Streaming agent with tool-call traces, attachments of any file type, per-turn model switching, forking, sharing, tags and a global ⌘P search.</p>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.chatB">
+        Streaming replies you can watch work, attachments of any type, a different model per
+          message, plus branching, sharing, tags and ⌘P search.
+      </p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke-linecap="round"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke-linejoin="round"/></svg></div>
       <h3 class="text-base font-semibold text-ink" data-i18n="feat.kbT">Knowledge base</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.kbB">Team, personal &amp; shared docs. Rich-text editor, Markdown-first, backlinks, comments, version history, group sharing, CJK-aware search.</p>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.kbB">
+        Team, personal and shared documents — a proper editor, links between pages, comments,
+          version history, and search that handles Chinese.
+      </p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></div>
@@ -481,7 +500,10 @@
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16" stroke-linecap="round"/></svg></div>
       <h3 class="text-base font-semibold text-ink" data-i18n="feat.tablesT">Tables</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.tablesB">Multidimensional bases: typed fields, views, forms, record links, dashboards, rule automations, and conversational schema planning.</p>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.tablesB">
+        Spreadsheet-like tables with real field types, views, forms, links between records,
+          dashboards and automations — designed by talking to the agent.
+      </p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -496,17 +518,25 @@
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h3 class="text-base font-semibold text-ink" data-i18n="feat.missionT">Missions <span class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-mut">optional</span></h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.missionB">Long-running tasks in disposable sandboxes (Docker + gVisor): a real shell, files and a document toolchain, live progress, artifacts handed back.</p>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.missionB">
+        Long tasks run in a throwaway sandbox with a real shell and file system, reporting
+          progress and handing back what they produced.
+      </p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-7 7c0 3 2 4 2 7h10c0-3 2-4 2-7a7 7 0 0 0-7-7zM9 21h6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h3 class="text-base font-semibold text-ink" data-i18n="feat.memT">Memory</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.memB">Per-user memories with titles, pinning and lifecycle, plus the friction signals the agent logs when tooling gets in its way.</p>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.memB">
+        The agent remembers what each person told it to, and notes where the tooling got in its way.
+      </p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke-linejoin="round"/><path d="M3.3 7L12 12l8.7-5M12 22V12" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h3 class="text-base font-semibold text-ink" data-i18n="feat.skillT">Skill Center</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.skillB">An org-wide library of agent skills: immutable versioned SKILL.md bundles with changelogs and security scanning; first-party packs ship in the repo.</p>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.skillB">
+        A shared library of agent know-how: versioned, change-logged and security-scanned, with
+          a starter set in the box.
+      </p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -515,13 +545,19 @@
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3" stroke-linecap="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.mcpT">MCP server + agent proxy</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.mcpB">OAuth 2.1 — PKCE for people, client credentials for machines — with scopes per resource group; the same tools over the structured /api/agent proxy.</p>
+      <h3 class="text-base font-semibold text-ink" data-i18n="feat.mcpT">MCP server</h3>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.mcpB">
+        Connect Claude, Cursor or anything that speaks MCP. They get the same tools, with exactly
+          the permissions you granted.
+      </p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.kernelT">Platform kernel &amp; runtime config</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.kernelB">Applications declare a manifest; roles, capabilities and record / field policies are enforced once for every transport. Credentials and branding are managed from the browser, no restart.</p>
+      <h3 class="text-base font-semibold text-ink" data-i18n="feat.kernelT">Permissions &amp; settings</h3>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.kernelB">
+        Every feature declares what it is, so one set of rules covers every way in. Credentials
+          and branding are edited in the browser and take effect at once.
+      </p>
     </div>
   </div>
 </section>
@@ -550,10 +586,9 @@
   <div class="mx-auto max-w-2xl text-center">
     <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="self.kicker">Self-host</p>
     <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="self.h2">One command. Your infrastructure.</h2>
-    <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="self.p">
-      A single container serves the API and the SPA. Postgres, a one-shot migration, done. Members log in
-      with accounts — there's no app to install.
-    </p>
+    <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="self.p">A single container serves the app and the API; Postgres and the database migration come with
+      it. All you need is Docker and an API key for any OpenAI-compatible model. People sign in with an
+      account — there is nothing to install.</p>
   </div>
   <div class="mx-auto mt-12 max-w-5xl overflow-hidden rounded-2xl border border-edge bg-[#0c1512] card-shadow">
     <div class="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
@@ -582,9 +617,9 @@ docker compose exec api pnpm admin:create
   <div class="mx-auto mt-16 max-w-2xl text-center">
     <h3 class="text-2xl font-bold tracking-tight text-ink" data-i18n="self.configT">Then configure it from the browser.</h3>
     <p class="mt-3 text-base leading-relaxed text-ink-soft" data-i18n="self.configP">
-      LLM, media and search credentials, the product name, logo and theme tokens all live in Administration —
-      stored encrypted, winning over env vars, applied without a restart, from the login screen on.
-    </p>
+        API keys, the product name, the logo and the colours are all edited in Administration —
+      stored encrypted and applied immediately, right down to the login screen.
+      </p>
   </div>
   <div class="mt-8 grid gap-6 md:grid-cols-2">
     <figure>
@@ -597,7 +632,7 @@ docker compose exec api pnpm admin:create
       <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
         <img src="./assets/screens/admin-branding-studio.webp" alt="Branding Studio with logo and theme token controls" width="1440" height="900" class="block w-full" loading="lazy" />
       </div>
-      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="self.figB">Branding Studio — rebrand the workbench (name, logo, colours) without touching a stylesheet.</figcaption>
+      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="self.figB">Branding Studio — change the name, logo and colours without touching a stylesheet.</figcaption>
     </figure>
   </div>
 </section>
@@ -608,10 +643,10 @@ docker compose exec api pnpm admin:create
     <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="ext.kicker">Make it yours</p>
     <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="ext.h2">Your own modules, without forking the core.</h2>
     <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="ext.p">
-      An extension is two folders and one import line. Every field of its manifest lands in a registry the
-      platform already has — tools, routes, pages, permissions, search, file storage, MCP consent, scheduled
-      jobs, CLI commands, its own database migrations. Nothing in the core knows your module exists, so
-      <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">git merge upstream</code> stays boring.
+        An extension is two folders and one import line. It can bring its own pages, tools, tables,
+      permissions, search, files, scheduled jobs and commands. The core never learns your module exists, so
+      <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">git merge upstream</code> keeps working.
+      </code> stays boring.
     </p>
   </div>
 
@@ -698,7 +733,10 @@ docker compose exec api pnpm admin:create
     <div class="rounded-2xl border border-edge bg-white p-8 card-shadow">
       <div class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h3 class="text-xl font-bold text-ink" data-i18n="who.c2t">Developers &amp; builders</h3>
-      <p class="mt-2 text-[15px] leading-relaxed text-ink-soft" data-i18n="who.c2b">Read it as a reference implementation of how an agent platform fits together — tool layer, permissions, generative UI, MCP — then extend it your way.</p>
+      <p class="mt-2 text-[15px] leading-relaxed text-ink-soft" data-i18n="who.c2b">
+        Read it as a worked example of how an agent platform fits together — tools, permissions,
+          interface, MCP — then take it your own way.
+      </p>
     </div>
   </div>
 </section>
@@ -781,7 +819,7 @@ docker compose exec api pnpm admin:create
 
   var ZH = {
     'meta.title': 'Greenhouse — 组织共享的 AI 大脑',
-    'meta.desc': '开源、AI 原生的 Agent 工作台，一条命令就能自托管。同一套工具层，同时驱动团队聊天、你自己应用里的 Agent，以及任何通过 MCP 接入的外部 Agent。',
+    'meta.desc': '一套开源的团队 AI 助手，跑在你自己的服务器上。它认得你们的文档、项目和数据；同一套工具，在团队对话里、在你的应用里、在 Claude 或 Cursor 里都一样用。',
 
     'nav.why': '理念',
     'nav.tour': '产品导览',
@@ -793,7 +831,7 @@ docker compose exec api pnpm admin:create
 
     'hero.badge': '开源 · MIT · 自托管',
     'hero.h1': '让 Agent 站在组织的<br><span class="text-brand-600">正中心</span>。',
-    'hero.lede': 'Greenhouse 是一个开源、AI 原生的 Agent 工作台，一条命令就能自托管。同一套共享工具层，同时驱动团队聊天、你自己应用里的 Agent，以及任何通过 MCP 接入的外部 Agent。<span class="font-semibold text-ink">想加一项新能力？写一个文件就够了。</span>',
+    'hero.lede': '一套开源的团队 AI 助手，跑在你自己的服务器上。它认得你们的文档、项目和数据；你给它的每一样工具，在团队对话里、在你自己的应用里、在 Claude 或 Cursor 里，用起来都是同一套——<span class="font-semibold text-ink">加一样能力，写一个文件。</span>',
     'hero.star': '在 GitHub 上 Star',
     'hero.tour': '看看产品导览',
     'hero.liveBadge': '真实录屏 · 无任何假数据',
@@ -806,12 +844,11 @@ docker compose exec api pnpm admin:create
 
     'thesis.kicker': '核心理念',
     'thesis.h2': 'Agent <span class="text-brand-600">本身</span>就是产品，而不是硬生生拼在旁边的一个功能。',
-    'thesis.p': '大多数 AI 工具都止步于个人生产力：一个开发者在本地用得很顺手，可一旦进了组织，真正要紧的那一层就不见了——统一管理、数据权限、审计、协作，统统缺席。Greenhouse 补的正是这一块。它不是又一个更聪明的 Agent，而是<span class="font-semibold text-ink">一个 Agent 平台赖以立足的可管理底座。</span>',
-    'thesis.quote': '如果说 Agent 是组织的中心，那产品的中心就该是一套工具层。团队在聊天里用的工具，和你开放给 Claude、Cursor 的，本就是同一套。想加一项能力？写一个文件就好。',
+    'thesis.p': '大多数 AI 工具止步于帮一个人。一旦一个团队要用，最难的部分就空着：谁能看到什么、谁批准了什么、发生过什么有没有记录。Greenhouse 补的就是这一块——不是又一个聪明的 Agent，而是 Agent 站上去的地基。',
+    'thesis.quote': '团队在对话里用的工具，就是你交给 Claude 或 Cursor 的那套工具。加一样能力，写一个文件。',
 
     'tour.kicker': '产品导览',
-    'tour.h2': '一个工作台，每个界面都共享同一个 Agent。',
-    'tour.p': '以下都是用内置示例数据集截取的真实界面——由项目自带的端到端冒烟脚本自动截图，你看到的就是实际交付的样子。',
+    'tour.h2': '一个地方干活，Agent 无处不在。',
     'tour.t1': '首页工作台',
     'tour.d1': '由 Agent 同一套工具驱动的实时卡片。',
     'tour.t2': '跨数据提问',
@@ -823,18 +860,18 @@ docker compose exec api pnpm admin:create
     'tour.t5': '项目',
     'tour.d5': '组合时间线、看板与任务树。',
     'tour.t6': '执行中心',
-    'tour.d6': '自动化、任务沙箱、工作流与子 Agent，一处尽览。',
+    'tour.d6': '定时任务、长任务和工作流，都在一个地方。',
     'tour.t7': '技能中心',
     'tour.d7': '全组织共享的带版本 Agent 技能库。',
     'tour.t8': '我的 Agent',
     'tour.d8': '虚拟同事：一段提示词、一组工具、一张脸。',
     'tour.c1': '一天的工作，一屏看完。每张卡片都是一次带保存配方的工具调用——拖拽重排，或者直接让 Agent 帮你改布局。',
     'tour.c2': '“哪些反馈是负面的？各渠道平均分是多少？”——Agent 查询多维表格，用可排序、可导出的表格作答，并指出真正需要行动的缺口。',
-    'tour.c3': '富文本编辑器、Markdown 优先存储、文件夹、反向链接、版本历史与分词全文搜索——和 Agent 在聊天里引用的是同一份索引。',
-    'tour.c4': '多维数据表：类型化字段、视图、表单、记录关联与规则自动化。在聊天里描述一个表，Agent 先起草结构，由你确认。',
+    'tour.c3': '像样的编辑器、文件夹、页面互链、版本历史，还有认得中文的搜索——Agent 在对话里引用的就是这里。',
+    'tour.c4': '像表格一样的多维表：真正的字段类型、视图、表单、记录关联。在对话里说清楚要什么，Agent 先起个草给你确认。',
     'tour.c5': '组合时间线、看板与任务树，带成员、评论和活动日志——Agent 还能直接从对话里创建任务。',
-    'tour.c6': '所有持久运行都在一个界面：cron 自动化、沙箱任务、工作流与子 Agent，需要人拍板的步骤进入审批收件箱。',
-    'tour.c7': '不可变、带版本的 SKILL.md 包，附变更日志与安全扫描。官方技能包随仓库发布，启动时自动同步到技能中心。',
+    'tour.c6': '所有在后台跑的东西都在一屏里——定时任务、长任务、工作流——需要人点头的步骤会进收件箱。',
+    'tour.c7': '可复用的经验，Agent 随手就能拿来用；版本化保存，更新不会改写历史。项目自带一套入门包。',
     'tour.c8': '一个档案 = 一段系统提示词 + 一组挑选好的工具 + 一张脸。可以私有使用，评审后发布给团队，复刻别人的，或者定时运行。',
 
     'tool.kicker': '工具层',
@@ -849,8 +886,8 @@ docker compose exec api pnpm admin:create
 
     'gen.kicker': '生成式 UI',
     'gen.h2': '消息，不只是文本。',
-    'gen.p1': '当一个回答里带着表格、图表，或是一个待确认的操作，聊天会把它升级成真正的组件：可排序的表格、图表、文件卡片、确认按钮。Agent 自始至终只说文本，怎么渲染交给界面来定。',
-    'gen.p2': '而这些按钮不只是摆设：点一下，就直接回到 Agent 刚才停下的那一步——<span class="font-semibold text-ink">把人的确认，织进 Agent 的循环里。</span>',
+    'gen.p1': '当回答里带着表格、图表或需要你点头的操作，对话会把它变成真东西——可排序的表格、图表、文件卡片、按钮。Agent 只写文字，界面决定它长什么样。',
+    'gen.p2': '按钮是真能按的：点一下就回答了 Agent 停下来等的那一步，它接着往下做。',
     'gen.li1': '可排序、可搜索、可导出 CSV 的数据表格',
     'gen.li2': '图表：柱状、折线、饼图、雷达',
     'gen.li3': '一点就让 Agent 接着往下跑的确认按钮',
@@ -859,7 +896,7 @@ docker compose exec api pnpm admin:create
 
     'perm.kicker': '信任边界',
     'perm.h2': '放心对着整个组织开放。',
-    'perm.p': '权限只集中在一处——工具层之下的平台内核——而且只做减法。正是这条边界，让你敢把组织的能力开放给外部 Agent。',
+    'perm.p': '权限只在一个地方定义，而且只会做减法，永远不会加。正因如此，把公司的工具开放给外部 Agent 才是安全的。',
     'perm.c1t': '只收窄，绝不放大',
     'perm.c1b': 'Agent 拿到的，只是它所属用户权限的一个子集，永远不可能获得用户自己都没有的能力。',
     'perm.c2t': '写操作，得有人点头',
@@ -867,42 +904,42 @@ docker compose exec api pnpm admin:create
     'perm.c3t': '默认就是关的',
     'perm.c3b': '没配签名密钥、没配加密密钥？服务器直接拒绝启动。绝不会出现“忘了配置、结果门户大开”的情况。',
     'perm.c4t': '角色、策略，一个对话框',
-    'perm.c4b': '超级管理员与团队两种角色、按用户的功能开关，以及记录 / 字段级策略——声明一次，对 HTTP、聊天、代理和 MCP 一视同仁地生效。',
+    'perm.c4b': '角色、按人开关、细到单个字段的规则——写一次，无论请求从哪来都是同一套。',
     'perm.figA': '每位用户一个权限对话框：基础访问、应用访问、高级访问与用量上限，全局工具如实标明。',
-    'perm.figB': '外部 Agent 通过 OAuth 2.1 接入——人用 PKCE，机器用客户端凭证并绑定到最小权限用户——按资源组划分 scope。',
+    'perm.figB': '外部 Agent 用 OAuth 登录，每个只拿到你勾选的那几组工具。',
 
     'prof.kicker': 'Agent 档案',
     'prof.h2': '把最佳实践，沉淀成一个个虚拟同事。',
-    'prof.p1': '一个档案，就是一张脸、一个名字、一段系统提示词、一组挑好的工具，再加几个快捷操作——把一个人做某件事的方法，打包成一个能反复用的单元。评审后可以发布给全公司；谁都能复刻一份，做出更好的版本。',
+    'prof.p1': '一个「分身」就是一个名字、一张脸、一套指令和它能用的工具——把一个人做某件事的方法存下来，谁都能用。可以发布给全团队，也可以抄别人的再改得更好。',
     'prof.p2': '再配上<span class="font-semibold text-ink">自动化</span>：用 cron 定时让某个档案的提示词自己跑起来，每天的站会汇报、早上的数据巡检就全自动了。团队用得越久，这条虚拟同事的板凳就越深，像复利一样越滚越大。',
     'prof.figcap': '定时运行的档案：每日站会摘要自己跑完，进入执行中心，并通知负责人。',
 
     'feat.kicker': '同一个平台',
     'feat.h2': '所有功能，共享同一套工具层。',
     'feat.chatT': '聊天',
-    'feat.chatB': '流式 Agent、工具调用轨迹、任意类型附件、按轮次切换模型、会话分叉、分享、标签，以及全局 ⌘P 搜索。',
+    'feat.chatB': '流式回答，能看着它干活；任意类型的附件；每条消息都能换模型；还有分支、分享、标签和 ⌘P 搜索。',
     'feat.kbT': '知识库',
-    'feat.kbB': '团队、个人和共享文档。富文本编辑器、Markdown 优先、反向链接、评论、版本历史、分组共享、支持中文分词的搜索。',
+    'feat.kbB': '团队、个人和共享文档——像样的编辑器、页面互链、评论、版本历史，以及认得中文的搜索。',
     'feat.projT': '项目',
     'feat.projB': '项目和任务，支持看板、甘特图、树状三种视图，带成员、评论和活动日志。',
     'feat.tablesT': '多维表格',
-    'feat.tablesB': '多维数据表：类型化字段、视图、表单、记录关联、仪表盘、规则自动化，以及对话式的表结构规划。',
+    'feat.tablesB': '像表格一样的多维表：真正的字段类型、视图、表单、记录关联、仪表盘和自动化——跟 Agent 聊着就设计好了。',
     'feat.wbT': '首页工作台',
     'feat.wbB': '由同一套工具驱动的个人实时仪表盘——配方与模板，拖拽即可编辑，或者直接让 Agent 来改。',
     'feat.execT': '执行中心 + 自动化',
     'feat.execB': 'cron 定时的 Agent 运行、工作流与子 Agent 汇集在一个界面，需要人拍板的步骤进入审批收件箱。',
     'feat.missionT': '任务沙箱 <span class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-mut">可选</span>',
-    'feat.missionB': '在一次性沙箱（Docker + gVisor）里跑长任务：真实 shell、文件与文档工具链，实时进度，产物交回。',
+    'feat.missionB': '长任务跑在用完即弃的沙箱里，有真的 shell 和文件系统，边跑边汇报进度，做完把产物交回来。',
     'feat.memT': '记忆',
-    'feat.memB': '按人保存、带标题、可置顶、有生命周期的记忆，外加 Agent 被工具绊住时记录的摩擦信号。',
+    'feat.memB': 'Agent 记住每个人让它记的事，也会记下工具在哪里绊住了它。',
     'feat.skillT': '技能中心',
-    'feat.skillB': '全组织共享的 Agent 技能库：不可变、带版本的 SKILL.md 包，附变更日志与安全扫描；官方技能包随仓库发布。',
+    'feat.skillB': '团队共享的经验库：版本化、有变更记录、过安全扫描，开箱带一套入门包。',
     'feat.emailT': '邮件与集成 <span class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-mut">可选</span>',
     'feat.emailB': 'IMAP/SMTP 邮箱（服务端草稿确认）、企业微信与飞书账号绑定，通知直接送到大家已经在用的地方。',
-    'feat.mcpT': 'MCP 服务器 + Agent 代理',
-    'feat.mcpB': 'OAuth 2.1——人用 PKCE，机器用客户端凭证——按资源组划分 scope；同一套工具也可经结构化的 /api/agent 代理调用。',
-    'feat.kernelT': '平台内核与运行时配置',
-    'feat.kernelB': '应用以清单声明自己；角色、能力与记录 / 字段级策略只实现一次，对所有传输层生效。凭证与品牌在浏览器里管理，无需重启。',
+    'feat.mcpT': 'MCP 服务',
+    'feat.mcpB': '接上 Claude、Cursor，或任何会说 MCP 的东西。它们拿到同一套工具，权限就是你给的那些。',
+    'feat.kernelT': '权限与设置',
+    'feat.kernelB': '每个功能都自己声明是什么，所以一套规则覆盖所有入口。密钥和品牌在浏览器里改，改完立刻生效。',
 
     'metaSec.kicker': '关于产品本身',
     'metaSec.h2': '一个为 Agent 打造的产品——也由 Agent 亲手打造。',
@@ -911,17 +948,17 @@ docker compose exec api pnpm admin:create
 
     'self.kicker': '自托管',
     'self.h2': '一条命令，部署在你自己的基础设施上。',
-    'self.p': '一个容器同时跑 API 和前端 SPA。配上 Postgres，做一次迁移，就齐活了。成员用账号登录，什么都不用装。',
+    'self.p': '一个容器同时跑应用和 API，Postgres 和数据库迁移都带着。你只需要 Docker，以及任意一个 OpenAI 兼容模型的 API key。成员用账号登录，什么都不用装。',
     'self.stack': '技术栈',
     'self.configT': '然后，在浏览器里把它配好。',
-    'self.configP': 'LLM、多媒体与搜索凭证，产品名称、Logo 和主题令牌，全都在「管理」里设置——加密存储、优先于环境变量、无需重启即生效，从登录页开始就是你的品牌。',
+    'self.configP': 'API key、产品名、Logo 和配色都在「管理」里改——加密存储，改完立刻生效，连登录页都跟着变。',
     'self.figA': '运行时配置——每一项工作区设置都只在代码里声明一次，这里自动渲染；密钥落盘加密。',
-    'self.figB': '品牌工作室——改名字、换 Logo、调配色，一行样式表都不用碰。',
+    'self.figB': '品牌工作室——改名字、Logo 和配色，不用碰样式表。',
 
     'nav.extend': '扩展',
     'ext.kicker': '让它成为你的',
     'ext.h2': '写你自己的模块，不用 fork 内核。',
-    'ext.p': '一个扩展就是两个目录加一行 import。清单里的每个字段都落到平台<strong>已有</strong>的注册表上——工具、路由、页面、权限、搜索、文件柜、MCP 授权、定时任务、CLI 命令，以及它自己的数据库迁移。内核不知道你的模块存在，所以 <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">git merge upstream</code> 永远是件无聊的事。',
+    'ext.p': '一个扩展就是两个目录加一行 import。它可以自带页面、工具、数据表、权限、搜索、文件、定时任务和命令。内核从不知道你的模块存在，所以 <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">git merge upstream</code> 一直都好使。',
     'ext.list': '在 <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">greenhouse.config.ts</code> 里按部署开关，再按用户用权限开关。关掉的扩展什么都不贡献——没有工具、没有路由、没有迁移。',
     'ext.figA': '仓库自带的参考扩展：自己的页面、表、工具和 API——照着抄就行。',
     'ext.figB': '导航入口，按用户的功能开关显示。',
@@ -934,7 +971,7 @@ docker compose exec api pnpm admin:create
     'who.c1t': '正在转向 AI 原生的团队',
     'who.c1b': '拿它当内部平台的底座：自上而下开放你的工具和数据，给每位成员一个开箱即用、能真正干活的 Agent。',
     'who.c2t': '开发者与构建者',
-    'who.c2b': '把它当成一份参考实现，看看一个 Agent 平台到底是怎么搭起来的：工具层、权限、生成式 UI、MCP，然后照你自己的想法去扩展。',
+    'who.c2b': '把它当成一个完整的范例，看一个 Agent 平台是怎么拼起来的——工具、权限、界面、MCP——然后按你自己的想法接着做。',
 
     'cta.h2': '克隆下来，写下你的第一个工具。',
     'cta.p': '“让 Agent 站在组织中心”到底是什么样子？Greenhouse 给出了一个答案——也发出一份邀请。',
