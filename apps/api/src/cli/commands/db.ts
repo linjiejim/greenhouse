@@ -5,7 +5,8 @@
  *   pnpm cli db reset       # TRUNCATE every table (type the db name to confirm)
  *   pnpm cli db baseline    # adopt an existing database: record the migration
  *                           # chain (core + enabled extensions) as applied
- *                           # (--dry-run to preview, --yes for automation)
+ *                           # (--dry-run to preview, --yes for automation,
+ *                           #  --through to stop short of the end of a chain)
  */
 
 import chalk from 'chalk';
@@ -58,25 +59,73 @@ export async function run(args: string[]): Promise<number> {
  * It asserts nothing about the real schema — run `--dry-run` first, compare with
  * `drizzle-kit generate` output, and only then commit.
  */
+/**
+ * `--through` — the last entry of a chain the database already reflects.
+ *
+ * Comma-separated; a bare value names a core tag, `<extension>/<file>` names an
+ * extension file. Anything after it stays pending and applies normally, which
+ * is how an adopted database gets the migration written specifically to bring
+ * it the rest of the way.
+ */
+function parseThrough(raw: string | undefined): { core?: string; extensions: Record<string, string> } {
+  const result: { core?: string; extensions: Record<string, string> } = { extensions: {} };
+  for (const spec of (raw ?? '').split(',').map((s) => s.trim())) {
+    if (!spec) continue;
+    const slash = spec.indexOf('/');
+    if (slash === -1) result.core = spec;
+    else result.extensions[spec.slice(0, slash)] = spec.slice(slash + 1);
+  }
+  return result;
+}
+
 async function baseline(args: string[]): Promise<number> {
   const { flags } = parseFlags(args);
   const dryRun = flagBool(flags, 'dry-run');
+  const through = parseThrough(typeof flags.through === 'string' ? flags.through : undefined);
   const db = await openDb();
 
-  const core = readCoreMigrations(DRIZZLE_DIR);
+  const allCore = readCoreMigrations(DRIZZLE_DIR);
+  let core = allCore;
+  if (through.core !== undefined) {
+    const index = allCore.findIndex((file) => file.tag === through.core);
+    if (index === -1) {
+      console.error(chalk.red(`--through: no core migration tagged "${through.core}"`));
+      return 1;
+    }
+    core = allCore.slice(0, index + 1);
+  }
   const coreState = await db.coreMigrationBaseline.status(core);
   const corePending = coreState.filter((entry) => !entry.recorded);
 
   const sources = extensionMigrationSources();
+  for (const extensionId of Object.keys(through.extensions)) {
+    if (!sources.some((source) => source.extensionId === extensionId)) {
+      console.error(chalk.red(`--through: extension "${extensionId}" is not enabled`));
+      return 1;
+    }
+  }
   const extensionState = await db.extensionMigrations.status(sources);
-  const extensionPending = extensionState.filter((entry) => !entry.applied);
+  // What baseline would record: pending files, minus anything past a --through.
+  const pastThrough = new Set<string>();
+  const seenThrough = new Set<string>();
+  for (const entry of extensionState) {
+    const key = `${entry.extensionId}/${entry.name}`;
+    if (seenThrough.has(entry.extensionId)) pastThrough.add(key);
+    if (through.extensions[entry.extensionId] === entry.name) seenThrough.add(entry.extensionId);
+  }
+  const extensionPending = extensionState.filter(
+    (entry) => !entry.applied && !pastThrough.has(`${entry.extensionId}/${entry.name}`),
+  );
+  const leftPending = extensionState.filter(
+    (entry) => !entry.applied && pastThrough.has(`${entry.extensionId}/${entry.name}`),
+  );
   const drifted = extensionState.filter((entry) => entry.drifted);
 
   heading('Migration baseline');
   console.log(
     kvBlock([
       ['Database', redactDbUrl()],
-      ['Core chain', `${core.length} file(s), ${corePending.length} to record`],
+      ['Core chain', `${core.length} of ${allCore.length} file(s), ${corePending.length} to record`],
       ['Extensions', sources.length === 0 ? dim('none enabled') : sources.map((s) => s.extensionId).join(', ')],
       ['Extension chain', `${extensionState.length} file(s), ${extensionPending.length} to record`],
     ]),
@@ -84,6 +133,9 @@ async function baseline(args: string[]): Promise<number> {
   if (corePending.length > 0) console.log(dim(`  core:      ${corePending.map((e) => e.tag).join(', ')}`));
   if (extensionPending.length > 0) {
     console.log(dim(`  extension: ${extensionPending.map((e) => `${e.extensionId}/${e.name}`).join(', ')}`));
+  }
+  if (leftPending.length > 0) {
+    console.log(dim(`  left to apply at boot: ${leftPending.map((e) => `${e.extensionId}/${e.name}`).join(', ')}`));
   }
   if (drifted.length > 0) {
     console.error(
@@ -109,7 +161,7 @@ async function baseline(args: string[]): Promise<number> {
   }
 
   const coreResult = await db.coreMigrationBaseline.apply(core);
-  const extensionResult = await db.extensionMigrations.baseline(sources);
+  const extensionResult = await db.extensionMigrations.baseline(sources, { through: through.extensions });
   console.log(
     chalk.green(
       `\nRecorded ${coreResult.recorded.length} core and ${extensionResult.recorded.length} extension migration(s).`,

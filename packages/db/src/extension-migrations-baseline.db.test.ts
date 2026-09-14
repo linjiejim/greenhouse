@@ -42,4 +42,28 @@ describe('extension migration baseline', () => {
     expect((await db.extensionMigrations.apply(sources)).applied).toEqual([]);
     expect((await db.extensionMigrations.baseline(sources)).recorded).toEqual([]);
   });
+
+  it('stops at --through, so the rest of the chain still applies', async () => {
+    // 0002 is the migration written to finish adopting a database: it must run,
+    // not be recorded away, even though everything before it is already there.
+    writeFileSync(join(dir, '0002_adopt.sql'), 'CREATE TABLE IF NOT EXISTS baseline_probe (id int);\n');
+    const sources = [{ extensionId: 'probe', dir }];
+
+    const { recorded } = await db.extensionMigrations.baseline(sources, {
+      through: { probe: '0001_create.sql' },
+    });
+    expect(recorded).toEqual(['probe/0001_create.sql']);
+
+    // 0002 is still pending…
+    expect(await db.extensionMigrations.status(sources)).toEqual([
+      { extensionId: 'probe', name: '0001_create.sql', applied: true, drifted: false },
+      { extensionId: 'probe', name: '0002_adopt.sql', applied: false, drifted: false },
+    ]);
+    // …and applying the lane runs exactly that one file.
+    expect((await db.extensionMigrations.apply(sources)).applied).toEqual(['probe/0002_adopt.sql']);
+    const [{ n }] = (await db.executeRaw(
+      sql`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name = 'baseline_probe'`,
+    )) as Array<{ n: number }>;
+    expect(n).toBe(1);
+  });
 });

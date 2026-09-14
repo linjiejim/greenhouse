@@ -108,7 +108,17 @@ export function createExtensionMigrationRunner(db: Db) {
      * why this is an explicit operator command (`pnpm cli db baseline`) rather
      * than something the boot path can decide on its own.
      */
-    async baseline(sources: readonly ExtensionMigrationSource[]): Promise<{ recorded: string[] }> {
+    async baseline(
+      sources: readonly ExtensionMigrationSource[],
+      opts: {
+        /**
+         * Per extension, the last file the database already reflects. Later
+         * files are left pending so they apply normally — the case where a
+         * migration exists to bring an adopted database the rest of the way.
+         */
+        through?: Readonly<Record<string, string>>;
+      } = {},
+    ): Promise<{ recorded: string[] }> {
       if (sources.length === 0) return { recorded: [] };
       await ensureTable();
       return db.transaction(async (tx) => {
@@ -116,7 +126,11 @@ export function createExtensionMigrationRunner(db: Db) {
         const recorded: string[] = [];
         for (const source of sources) {
           const existing = await appliedChecksums(tx as unknown as Db, source.extensionId);
+          const limit = opts.through?.[source.extensionId];
+          let past = false;
           for (const file of readMigrationFiles(source.dir)) {
+            if (past) break;
+            if (limit !== undefined && file.name === limit) past = true;
             if (existing.has(file.name)) continue;
             await tx.execute(
               sql`INSERT INTO extension_migrations (extension_id, name, checksum) VALUES (${source.extensionId}, ${file.name}, ${file.checksum})`,

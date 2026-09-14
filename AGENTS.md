@@ -309,7 +309,9 @@ greenhouse/
   - **Adopting an existing database** (an instance moving onto this codebase): `pnpm cli db baseline`
     records the core chain (drizzle's own journal, identical hashes) and every enabled extension's
     migrations as applied without executing them. Always `--dry-run` first and compare against
-    `drizzle-kit generate` output.
+    `drizzle-kit generate` output. `--through` stops short of the end of a chain
+    (`--through 0006_x,crm/0001_baseline.sql`), so a migration written specifically to finish
+    the adoption still runs instead of being recorded away.
   - A database no server has booted against (a fresh test database) gets the core chain from
     `drizzle-kit migrate` and the extension lane from
     `DATABASE_URL=… pnpm tsx scripts/apply-ext-migrations.mjs`.
