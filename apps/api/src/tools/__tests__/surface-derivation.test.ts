@@ -8,6 +8,12 @@
  * /api/mcp. The pinned sets below are 1:1 with the hand-maintained lists this
  * derivation replaced (2026-07 B5) — any intentional change must edit BOTH the
  * tool's meta and this test.
+ *
+ * The pinned sets cover the CORE tools only: a fork compiles its own extensions
+ * into the same registry, and a guard that failed the moment it did would be a
+ * guard nobody could keep. The invariants below (a group per MCP tool, tiers
+ * disjoint, MCP ⊆ proxy, default-deny) run over the FULL set, extensions
+ * included — that is where an accidental exposure would actually show up.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -20,13 +26,16 @@ import {
   WORKBENCH_READ_TOOL_IDS,
   LAZY_TOOL_IDS,
   TOOL_DEFINITIONS,
+  CORE_TOOL_IDS,
 } from '../registry.js';
 
 const sorted = (s: Set<string>) => [...s].sort();
+/** The pinned expectations describe core; extensions are covered by the invariants. */
+const core = (s: Set<string> | ReadonlySet<string>) => [...s].filter((id) => CORE_TOOL_IDS.has(id)).sort();
 
 describe('surface-derived exposure sets', () => {
   it('READONLY_PROXY_ALLOWLIST matches the pinned read surface', () => {
-    expect(sorted(READONLY_PROXY_ALLOWLIST)).toEqual(
+    expect(core(READONLY_PROXY_ALLOWLIST)).toEqual(
       [
         'external_search',
         'compute',
@@ -48,7 +57,7 @@ describe('surface-derived exposure sets', () => {
   });
 
   it('MUTATING_PROXY_ALLOWLIST matches the pinned write surface (confirm-gated)', () => {
-    expect(sorted(MUTATING_PROXY_ALLOWLIST)).toEqual(
+    expect(core(MUTATING_PROXY_ALLOWLIST)).toEqual(
       [
         'project_mutation',
         'knowledge_mutation',
@@ -61,7 +70,7 @@ describe('surface-derived exposure sets', () => {
   });
 
   it('MCP_EXPOSED_TOOL_IDS matches the pinned MCP surface', () => {
-    expect(sorted(MCP_EXPOSED_TOOL_IDS)).toEqual(
+    expect(core(MCP_EXPOSED_TOOL_IDS)).toEqual(
       [
         'knowledge_query',
         'knowledge_mutation',
@@ -114,7 +123,7 @@ describe('surface-derived exposure sets', () => {
   });
 
   it('WORKBENCH_READ_TOOL_IDS matches the pinned automatic-refresh surface', () => {
-    expect(sorted(WORKBENCH_READ_TOOL_IDS)).toEqual(['knowledge_query', 'project_query', 'tables_query'].sort());
+    expect(core(WORKBENCH_READ_TOOL_IDS)).toEqual(['knowledge_query', 'project_query', 'tables_query'].sort());
     for (const id of WORKBENCH_READ_TOOL_IDS) {
       expect(READONLY_PROXY_ALLOWLIST.has(id), `${id} is workbench:true but not read-only proxied`).toBe(true);
     }
@@ -139,7 +148,7 @@ describe('surface-derived exposure sets', () => {
   });
 
   it('LAZY_TOOL_IDS matches the pinned per-request set', () => {
-    expect(sorted(LAZY_TOOL_IDS)).toEqual(
+    expect(core(LAZY_TOOL_IDS)).toEqual(
       [
         'analyze_image',
         'generate_image',

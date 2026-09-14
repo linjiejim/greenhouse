@@ -92,6 +92,9 @@ const CORE_TOOL_MODULES: ToolModule[] = [
 ];
 
 /** Static tools (constructed once from the shared db) — drives createToolRegistry. */
+/** Ids of the tools this repository ships, without any extension's — what the surface guard pins. */
+export const CORE_TOOL_IDS: ReadonlySet<string> = new Set(CORE_TOOL_MODULES.map((m) => m.meta.id));
+
 /** Core tools followed by the tools of every active extension (see extensions/index.ts). */
 const TOOL_MODULES: ToolModule[] = withExtensionTools(CORE_TOOL_MODULES, fromExtensions('tools'));
 
