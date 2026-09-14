@@ -4,8 +4,14 @@ import { applyConfigEnv, GREENHOUSE_CONFIG, extensionEnabled } from './greenhous
 
 describe('greenhouse.config.ts loader', () => {
   it('loads the repository config file with defaults filled in', () => {
-    expect(GREENHOUSE_CONFIG.clients.stations.mode).toBe('multi');
+    // Shape, not content: a fork ships its own greenhouse.config.ts, and a test
+    // that pinned this repository's values would fail in every one of them.
+    expect(['multi', 'single']).toContain(GREENHOUSE_CONFIG.clients.stations.mode);
+    if (GREENHOUSE_CONFIG.clients.stations.mode === 'single') {
+      expect(GREENHOUSE_CONFIG.clients.stations.defaults).toHaveLength(1);
+    }
     expect(Array.isArray(GREENHOUSE_CONFIG.packs.skills)).toBe(true);
+    expect(Array.isArray(GREENHOUSE_CONFIG.packs.profiles)).toBe(true);
     expect(typeof extensionEnabled('anything')).toBe('boolean');
   });
 

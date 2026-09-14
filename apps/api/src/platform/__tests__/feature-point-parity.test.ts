@@ -14,14 +14,18 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { FEATURE_FLAGS } from '@greenhouse/types/features';
+// `allFeatureFlags()`, not the core constant: an extension registers its own
+// flags at load, and its feature point must be checked against those too.
+import { allFeatureFlags } from '@greenhouse/types/features';
 import { FEATURE_POINTS, FEATURE_OWNED_TOOL_IDS, toolsetToolIds } from '../feature-points.js';
 import { TOOL_DEFINITIONS, getAllToolIds } from '../../tools/registry.js';
 
 describe('feature flag ↔ feature point parity', () => {
   it('gives every feature flag a feature point, so super has a toggle for it', () => {
     const pointFlags = new Set(FEATURE_POINTS.filter((p) => p.flag).map((p) => p.flag));
-    const ungrantable = FEATURE_FLAGS.map((f) => f.key).filter((key) => !pointFlags.has(key));
+    const ungrantable = allFeatureFlags()
+      .map((f) => f.key)
+      .filter((key) => !pointFlags.has(key));
 
     expect(
       ungrantable,
@@ -32,7 +36,7 @@ describe('feature flag ↔ feature point parity', () => {
   });
 
   it('points every feature point at a flag that still exists', () => {
-    const flagKeys = new Set<string>(FEATURE_FLAGS.map((f) => f.key));
+    const flagKeys = new Set<string>(allFeatureFlags().map((f) => f.key));
     const dangling = FEATURE_POINTS.filter((p) => p.flag && !flagKeys.has(p.flag)).map((p) => p.key);
 
     expect(dangling, `Feature point(s) ${dangling.join(', ')} reference a deleted flag.`).toEqual([]);
