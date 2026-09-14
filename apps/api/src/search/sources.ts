@@ -12,13 +12,14 @@
  */
 import type { DatabaseProvider } from '@greenhouse/db';
 import type { SearchHit } from '@greenhouse/types/search';
+import type { UserRole } from '@greenhouse/types/api';
 
 export interface SearchSourceContext {
   query: string;
   /** Rows to fetch; the route asks for one more than it shows to compute `hasMore`. */
   limit: number;
   userId: string;
-  userRole: string;
+  userRole: UserRole;
   db: DatabaseProvider;
 }
 

@@ -13,6 +13,7 @@
  *   record's entity policy). Core never guesses: an unregistered scope is denied.
  */
 import type { DatabaseProvider } from '@greenhouse/db';
+import type { UserRole } from '@greenhouse/types/api';
 
 export type DriveAccess = 'owner' | 'editor' | 'reader' | null;
 
@@ -29,7 +30,7 @@ export interface DriveAccessNode {
 
 export interface DriveScopeContext {
   userId: string;
-  userRole: string;
+  userRole: UserRole;
   db: DatabaseProvider;
   operation: 'read' | 'write';
 }
