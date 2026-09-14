@@ -23,20 +23,29 @@ export interface CoreMigrationFile {
   folderMillis: number;
   /** Tables this file creates — what `db baseline` checks really exist. */
   createsTables: string[];
+  /** Tables this file drops, so a later drop cancels an earlier create. */
+  dropsTables: string[];
 }
 
 /**
- * Table names a migration creates.
+ * Table names a migration creates and drops.
  *
  * Deliberately a regex over the SQL rather than a parse: it only has to be
- * right about `CREATE TABLE` in files drizzle-kit generated, and it is used to
- * warn an operator, never to decide what runs.
+ * right about `CREATE TABLE` / `DROP TABLE` in files drizzle-kit generated, and
+ * it is used to warn an operator, never to decide what runs. Callers net the
+ * two across the chain — a table created in 0003 and dropped in 0006 is not
+ * something a database in step with 0006 should still have.
  */
-export function tablesCreatedBy(sqlText: string): string[] {
-  const names: string[] = [];
-  const pattern = /CREATE TABLE\s+(?:IF NOT EXISTS\s+)?"?([A-Za-z_][A-Za-z0-9_]*)"?/gi;
-  for (const match of sqlText.matchAll(pattern)) if (match[1]) names.push(match[1]);
-  return names;
+export function tablesTouchedBy(sqlText: string): { creates: string[]; drops: string[] } {
+  const collect = (pattern: RegExp): string[] => {
+    const names: string[] = [];
+    for (const match of sqlText.matchAll(pattern)) if (match[1]) names.push(match[1]);
+    return names;
+  };
+  return {
+    creates: collect(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?"?([A-Za-z_][A-Za-z0-9_]*)"?/gi),
+    drops: collect(/DROP TABLE\s+(?:IF EXISTS\s+)?"?([A-Za-z_][A-Za-z0-9_]*)"?/gi),
+  };
 }
 
 interface JournalEntry {
@@ -53,11 +62,13 @@ export function readCoreMigrations(migrationsFolder: string): CoreMigrationFile[
     const file = join(migrationsFolder, `${entry.tag}.sql`);
     if (!existsSync(file)) throw new Error(`Journal lists ${entry.tag} but ${file} is missing`);
     const text = readFileSync(file, 'utf8');
+    const touched = tablesTouchedBy(text);
     return {
       tag: entry.tag,
       hash: createHash('sha256').update(text).digest('hex'),
       folderMillis: entry.when,
-      createsTables: tablesCreatedBy(text),
+      createsTables: touched.creates,
+      dropsTables: touched.drops,
     };
   });
 }
@@ -76,13 +87,18 @@ export function createCoreMigrationBaseline(db: Db) {
     /** Which chain entries are already recorded, matched by hash. */
     async status(
       migrations: readonly CoreMigrationFile[],
-    ): Promise<{ tag: string; recorded: boolean; createsTables: string[] }[]> {
+    ): Promise<{ tag: string; recorded: boolean; createsTables: string[]; dropsTables: string[] }[]> {
       await ensureTable();
       const rows = (await db.execute(sql`SELECT hash FROM drizzle.__drizzle_migrations`)) as unknown as Array<{
         hash: string;
       }>;
       const known = new Set(rows.map((r) => r.hash));
-      return migrations.map((m) => ({ tag: m.tag, recorded: known.has(m.hash), createsTables: m.createsTables }));
+      return migrations.map((m) => ({
+        tag: m.tag,
+        recorded: known.has(m.hash),
+        createsTables: m.createsTables,
+        dropsTables: m.dropsTables,
+      }));
     },
 
     /** Record the missing entries without executing their SQL. */

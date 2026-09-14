@@ -152,9 +152,13 @@ async function baseline(args: string[]): Promise<number> {
   // Baseline asserts the database already has what these files would create.
   // Recording a migration whose tables are absent is the quiet way to end up
   // with a schema that boots and then fails on the first query, so check.
+  // Net across the chain in order: a table created in one file and dropped in a
+  // later one is not something the database should still have.
   const expected = new Set<string>();
-  for (const entry of corePending) for (const t of entry.createsTables) expected.add(t);
-  for (const entry of extensionPending) for (const t of entry.createsTables) expected.add(t);
+  for (const entry of [...corePending, ...extensionPending]) {
+    for (const t of entry.createsTables) expected.add(t);
+    for (const t of entry.dropsTables) expected.delete(t);
+  }
   const absent: string[] = [];
   for (const name of [...expected].sort()) {
     const rows = (await db.executeRaw(sql`SELECT to_regclass(${'public.' + name}) IS NOT NULL AS present`)) as Array<{
