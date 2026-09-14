@@ -310,6 +310,9 @@ greenhouse/
     records the core chain (drizzle's own journal, identical hashes) and every enabled extension's
     migrations as applied without executing them. Always `--dry-run` first and compare against
     `drizzle-kit generate` output.
+  - A database no server has booted against (a fresh test database) gets the core chain from
+    `drizzle-kit migrate` and the extension lane from
+    `DATABASE_URL=… pnpm tsx scripts/apply-ext-migrations.mjs`.
 - **Client stations**: `clients.stations` (`multi` | `single` + `defaults`) is read by the browser
   extension at build time; the mobile app mirrors it through `EXPO_PUBLIC_STATIONS_MODE` /
   `EXPO_PUBLIC_API_BASE_URL` (see `apps/mobile/AGENTS.md`).
