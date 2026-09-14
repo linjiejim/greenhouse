@@ -29,8 +29,8 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { putUpload, getUpload, detectImageContentType } from '../storage/uploads.js';
-import { fetchPublicImage } from '../network-security.js';
-import { getMediaProviderConfig } from '../media-provider.js';
+import { fetchPublicImage } from '../security/network.js';
+import { getMediaProviderConfig } from '../llm/media-provider.js';
 import { IMAGE_BUDGET_TTL_MS, reserveImageUsdBudget, settleAndRecordBudgetedImageUsage } from '../llm/usage-budget.js';
 
 // ─── Upstream ────────────────────────────────────────────

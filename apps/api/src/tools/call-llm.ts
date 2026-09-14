@@ -14,7 +14,7 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { getModelEntry, createModelFromConfig, buildProviderOptions } from '@greenhouse/agent-core';
 import type { ModelConfig, ProviderAttemptHook } from '@greenhouse/agent-core';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { resolveProfileAsync } from '../profile.js';
+import { resolveProfileAsync } from '../profiles/profile.js';
 import { logger } from '@greenhouse/utils/logger';
 import {
   createProviderAttemptBudgetHook,

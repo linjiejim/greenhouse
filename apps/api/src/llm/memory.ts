@@ -23,7 +23,7 @@ import {
 import { logger } from '@greenhouse/utils/logger';
 import { extractJson } from '@greenhouse/utils/json';
 import { getDb, type UserMemoryRow } from '@greenhouse/db';
-import { sanitizeForPrompt } from '../security.js';
+import { sanitizeForPrompt } from '../security/security.js';
 import { MEMORY_INDEX_BUDGET_CHARS, validateMemoryText } from './memory-limits.js';
 import { userHasFeature } from '../auth/features.js';
 import type { UserRole } from '../auth/token.js';

@@ -9,7 +9,7 @@ vi.mock('undici', async (importOriginal) => {
 });
 
 import { fetch as undiciFetch } from 'undici';
-import { assertSafePublicImageUrl, fetchPublicImage, isPublicNetworkAddress } from './network-security.js';
+import { assertSafePublicImageUrl, fetchPublicImage, isPublicNetworkAddress } from './network.js';
 
 describe('public image network policy', () => {
   it.each([

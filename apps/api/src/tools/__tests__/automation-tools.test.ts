@@ -25,8 +25,8 @@ vi.mock('../../scheduler/index.js', () => ({
   getScheduler: () => (schedulerAvailable ? scheduler : null),
 }));
 
-vi.mock('../../profile.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../profile.js')>();
+vi.mock('../../profiles/profile.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../profiles/profile.js')>();
   const profile = (id: string, level: 'internal' | 'hidden') => ({
     id,
     name: id,

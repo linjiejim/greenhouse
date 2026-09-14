@@ -21,22 +21,22 @@ vi.mock('@greenhouse/agent-core', () => ({
   buildEngineResult: vi.fn(async () => mocks.engineResult),
 }));
 
-vi.mock('./chat-persist.js', () => ({ persistChatResult: mocks.persistChatResult }));
+vi.mock('./persist.js', () => ({ persistChatResult: mocks.persistChatResult }));
 
-vi.mock('./chat-runtime.js', () => ({
+vi.mock('./runtime.js', () => ({
   chatRuntimeResultMessageId: (runId: string, status: string) => `chat-runtime-result:${runId}:${status}`,
   chatRuntimePayload: mocks.chatRuntimePayload,
   checkpointChatRuntimeStream: mocks.checkpointChatRuntimeStream,
   settleChatRuntimeTrace: mocks.settleChatRuntimeTrace,
 }));
 
-vi.mock('./ws/connection-manager.js', () => ({
+vi.mock('../ws/connection-manager.js', () => ({
   connectionManager: { sendToUser: mocks.sendToUser },
 }));
 
-import { ChatRun } from './chat-runs.js';
-import { pumpChatTurn } from './chat-turn.js';
-import { UsageBudgetAdmissionError } from './llm/usage-budget.js';
+import { ChatRun } from './runs.js';
+import { pumpChatTurn } from './turn.js';
+import { UsageBudgetAdmissionError } from '../llm/usage-budget.js';
 
 function collectors() {
   return {

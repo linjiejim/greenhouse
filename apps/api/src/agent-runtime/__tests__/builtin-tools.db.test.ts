@@ -18,7 +18,7 @@ import { createInternalTestUser } from '../../../../../tests/helpers/internal-us
 import { resolveEffectiveTools } from '../tool-resolution.js';
 import { resolveUserTools } from '../../agent.js';
 import { BUILTIN_AGENT_TOOL_IDS } from '../../tools/registry.js';
-import type { AgentProfile } from '../../profile.js';
+import type { AgentProfile } from '../../profiles/profile.js';
 
 let db: DatabaseProvider;
 

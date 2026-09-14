@@ -21,7 +21,7 @@ import { generateText } from 'ai';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { createModelFromConfig } from '@greenhouse/agent-core';
 import { logger } from '@greenhouse/utils/logger';
-import type { ModelConfig } from '../profile.js';
+import type { ModelConfig } from '../profiles/profile.js';
 import { getDb } from '@greenhouse/db';
 import { createProviderAttemptBudgetHook } from './usage-budget.js';
 

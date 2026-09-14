@@ -6,7 +6,7 @@
  */
 
 import { getDb } from '@greenhouse/db';
-import type { AuthUser } from './auth/token.js';
+import type { AuthUser } from '../auth/token.js';
 import type { SessionRow } from '@greenhouse/types/session';
 
 /** Check whether a user may read/list a session. */

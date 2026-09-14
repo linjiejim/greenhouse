@@ -12,8 +12,8 @@
 
 import { generateText, Output } from 'ai';
 import { createModelFromConfig, buildProviderOptions, resolveModelConfig } from '@greenhouse/agent-core';
-import { resolveProfileAsync } from '../profile.js';
-import type { AgentProfile } from '../profile.js';
+import { resolveProfileAsync } from '../profiles/profile.js';
+import type { AgentProfile } from '../profiles/profile.js';
 import { extractJson } from '@greenhouse/utils/json';
 import { getDb } from '@greenhouse/db';
 import { createProviderAttemptBudgetHook } from './usage-budget.js';

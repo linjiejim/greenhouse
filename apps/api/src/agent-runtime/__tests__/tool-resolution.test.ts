@@ -12,7 +12,7 @@ import { parseWorkbenchConfig } from '@greenhouse/types/workbench';
 import { resolveEffectiveTools, buildLazyServerTools, childSpawnToolIds } from '../tool-resolution.js';
 import { MAX_SPAWN_DEPTH } from '../../tools/spawn-session.js';
 import { BUILTIN_AGENT_TOOL_IDS, RETIRED_TOOL_ALIASES, getAllToolIds } from '../../tools/registry.js';
-import type { AgentProfile } from '../../profile.js';
+import type { AgentProfile } from '../../profiles/profile.js';
 
 const DECLARED_TOOLS = ['knowledge_query', 'analyze_image'];
 

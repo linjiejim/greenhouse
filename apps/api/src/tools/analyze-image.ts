@@ -23,8 +23,8 @@ import { z } from 'zod';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { getUpload, isValidUploadId } from '../storage/uploads.js';
 import { normalizeFileRef, resolveConversationFiles } from '../files/conversation-files.js';
-import { fetchPublicImage } from '../network-security.js';
-import { getMediaProviderConfig } from '../media-provider.js';
+import { fetchPublicImage } from '../security/network.js';
+import { getMediaProviderConfig } from '../llm/media-provider.js';
 import { reserveUserTokenBudget, settleAndRecordBudgetedUsage } from '../llm/usage-budget.js';
 
 const VISION_PROMPT = `Analyze the attached image as neutral source material. Do not assume it is about plants, products, support, or any other domain.

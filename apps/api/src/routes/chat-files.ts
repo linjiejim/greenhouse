@@ -23,7 +23,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from '@greenhouse/db';
 import { getAuthUser } from '../auth/middleware.js';
 import { contentDisposition } from '../http/content-disposition.js';
-import { canAccessSession } from '../session-access.js';
+import { canAccessSession } from '../sessions/access.js';
 import { getObjectAtKey, presignGetUrl, putObjectAtKey } from '../storage/uploads.js';
 import { sanitizeUploadName } from '../storage/filename.js';
 import type { AppEnv } from '../app-env.js';

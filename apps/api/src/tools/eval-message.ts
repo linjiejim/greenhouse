@@ -13,7 +13,7 @@ import { tool } from 'ai';
 import { defineTool, type ToolMeta } from './define.js';
 import { z } from 'zod';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { judgeChatAnswer, buildEvalContext, loadReferenceSources, retrieveKbForJudge } from '../chat-eval.js';
+import { judgeChatAnswer, buildEvalContext, loadReferenceSources, retrieveKbForJudge } from '../chat/eval.js';
 
 const evalMessageSchema = z.object({
   session_id: z.string().describe('The session ID containing the message to evaluate'),

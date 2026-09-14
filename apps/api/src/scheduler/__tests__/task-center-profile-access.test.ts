@@ -13,8 +13,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('../../profile.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../profile.js')>();
+vi.mock('../../profiles/profile.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../profiles/profile.js')>();
   return {
     ...actual,
     resolveProfileAsync: async (id?: string | null) => {

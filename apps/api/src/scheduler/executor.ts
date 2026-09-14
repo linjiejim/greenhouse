@@ -24,8 +24,8 @@ import {
   LAZY_TOOL_IDS,
   resolveEffectiveTools,
 } from '../agent-runtime/tool-resolution.js';
-import { assertPinnedProfileExecutionAccess, resolveProfileAsync } from '../profile.js';
-import { sanitizeForPrompt } from '../security.js';
+import { assertPinnedProfileExecutionAccess, resolveProfileAsync } from '../profiles/profile.js';
+import { sanitizeForPrompt } from '../security/security.js';
 import { buildTaskPrompt, buildTaskSessionTitle } from './prompt-builder.js';
 import { notifyTaskResult } from './notify.js';
 import { logger } from '@greenhouse/utils/logger';

@@ -78,7 +78,7 @@ import { humanActor } from '../platform/actor.js';
 import { tablesResource, type TablesActionId } from '../platform/tables/application.js';
 import { analyzeSchemaPlan, applySchemaPlan, schemaPlanApplySchema } from '../platform/tables/schema-plan.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
-import { artifactReceiptResult, claimArtifactAction } from '../chat-artifact-actions.js';
+import { artifactReceiptResult, claimArtifactAction } from '../chat/artifact-actions.js';
 import { toErrorMessage } from '@greenhouse/utils/error';
 
 type ActionFailure = {

@@ -12,8 +12,8 @@ import { logger } from '@greenhouse/utils/logger';
 import type { Context, Next } from 'hono';
 import { getDb } from '@greenhouse/db';
 import type { ApiClientRow } from '@greenhouse/db';
-import { InMemoryRateLimiter } from '../security.js';
-import { getRequestSourceIp } from '../request-ip.js';
+import { InMemoryRateLimiter } from '../security/security.js';
+import { getRequestSourceIp } from '../security/request-ip.js';
 
 // ─── Constants ───────────────────────────────────────────
 

@@ -28,14 +28,14 @@ import { createClientActionBridge } from '../tools/client-action-bridge.js';
 import type { ClientActionBridge } from '../tools/client-action-bridge.js';
 import { sanitizeClientActions, createClientActionTools } from '../tools/client-actions.js';
 import type { ClientActionDescriptor } from '@greenhouse/types/api';
-import { resolveProfileAsync } from '../profile.js';
+import { resolveProfileAsync } from '../profiles/profile.js';
 import { isChatModelAllowed } from '../config/models.js';
-import { sanitizeForPrompt } from '../security.js';
-import { sanitizeChatMessagesForPrompt } from '../chat-user-message.js';
+import { sanitizeForPrompt } from '../security/security.js';
+import { sanitizeChatMessagesForPrompt } from '../chat/user-message.js';
 import { resolveMemoryContext } from '../llm/memory.js';
-import { pinProfileIdForUser, ProfileAccessError } from '../profile-access.js';
+import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import type { AuthUser } from '../auth/token.js';
-import type { AgentProfile } from '../profile.js';
+import type { AgentProfile } from '../profiles/profile.js';
 import type { AppEnv } from '../app-env.js';
 import {
   createChatStreamAsync,
@@ -45,20 +45,20 @@ import {
   modelSupportsVision,
 } from '@greenhouse/agent-core';
 import type { EngineMessage } from '@greenhouse/agent-core';
-import { inlineImagesForVision } from '../chat-vision.js';
+import { inlineImagesForVision } from '../chat/vision.js';
 import { generateSessionTitle } from '../llm/title.js';
-import { canWriteSession } from '../session-access.js';
-import { formatAmbientContextPrompt, sanitizeAmbientContext } from '../ambient-context.js';
+import { canWriteSession } from '../sessions/access.js';
+import { formatAmbientContextPrompt, sanitizeAmbientContext } from '../chat/ambient-context.js';
 import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
-import { chatRunRegistry, ChatRun } from '../chat-runs.js';
-import { pumpChatTurn, streamRunToResponse } from '../chat-turn.js';
+import { chatRunRegistry, ChatRun } from '../chat/runs.js';
+import { pumpChatTurn, streamRunToResponse } from '../chat/turn.js';
 import { createProviderAttemptBudgetHook, type UsageBudgetPool } from '../llm/usage-budget.js';
 import {
   recordChatRuntimeProviderInput,
   settleChatRuntimeTrace,
   startChatRuntimeTrace,
   type ChatRuntimeTrace,
-} from '../chat-runtime.js';
+} from '../chat/runtime.js';
 import { runtimeAdapterEnabled } from '../trusted-execution/kill-switches.js';
 import { instrumentRuntimeTools } from '../runtime/tool-evidence.js';
 

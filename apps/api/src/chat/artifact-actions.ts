@@ -5,8 +5,8 @@
 import { createHash } from 'node:crypto';
 import { getDb, type ChatArtifactKind, type ChatArtifactReceiptRow } from '@greenhouse/db';
 import { safeJsonParse } from '@greenhouse/utils/json';
-import type { AuthUser } from './auth/token.js';
-import { canWriteSession } from './session-access.js';
+import type { AuthUser } from '../auth/token.js';
+import { canWriteSession } from '../sessions/access.js';
 
 export type ArtifactActionClaim =
   | { ok: true; claimed: true; receipt: ChatArtifactReceiptRow }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAmbientContextPrompt, sanitizeAmbientContext } from '../ambient-context.js';
+import { formatAmbientContextPrompt, sanitizeAmbientContext } from '../chat/ambient-context.js';
 
 describe('ambient page context', () => {
   it('accepts a bounded v1 current-page envelope', () => {

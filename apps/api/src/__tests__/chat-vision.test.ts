@@ -12,7 +12,7 @@ import {
   MAX_INLINE_IMAGES,
   MAX_INLINE_IMAGE_BYTES,
   type VisionSourceMessage,
-} from '../chat-vision.js';
+} from '../chat/vision.js';
 import type { EngineContentPart } from '@greenhouse/agent-core';
 
 const PNG = { buffer: Buffer.from('89504e47deadbeef', 'hex'), contentType: 'image/png' };

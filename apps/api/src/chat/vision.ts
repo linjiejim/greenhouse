@@ -17,8 +17,8 @@
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { EngineMessage, EngineContentPart } from '@greenhouse/agent-core';
-import { sanitizeForPrompt } from './security.js';
-import { getUpload } from './storage/uploads.js';
+import { sanitizeForPrompt } from '../security/security.js';
+import { getUpload } from '../storage/uploads.js';
 
 export interface VisionSourceMessage {
   role: string;

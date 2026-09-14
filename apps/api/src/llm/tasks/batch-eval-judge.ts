@@ -5,7 +5,7 @@
  * LLM configuration used by the evaluation engine.
  */
 
-import type { AgentProfile } from '../../profile.js';
+import type { AgentProfile } from '../../profiles/profile.js';
 
 export const BATCH_EVAL_JUDGE_PROFILE: AgentProfile = {
   id: 'task:batch-eval-judge',

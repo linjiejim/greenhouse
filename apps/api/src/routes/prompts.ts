@@ -21,7 +21,7 @@ import {
 } from '@greenhouse/types/tasks';
 import { getAuthUser } from '../auth/middleware.js';
 import type { AppEnv } from '../app-env.js';
-import { artifactReceiptResult, claimArtifactAction } from '../chat-artifact-actions.js';
+import { artifactReceiptResult, claimArtifactAction } from '../chat/artifact-actions.js';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { UserPromptRow } from '@greenhouse/db';
 import { PROMPT_SCOPES, type PromptScope } from '@greenhouse/types/api';

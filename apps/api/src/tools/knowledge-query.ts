@@ -24,8 +24,8 @@ import { entityUrl } from '@greenhouse/types/entity-links';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { defineTool, type ToolMeta } from './define.js';
 import { CITE_URL_INSTRUCTION } from './cite-url.js';
-import { kbFolderPath, kbFolderPaths, kbFolderSubtreeIds, kbTree, resolveKbFolderPath } from '../knowledge-folders.js';
-import { outlineSections, readSection } from '../knowledge-sections.js';
+import { kbFolderPath, kbFolderPaths, kbFolderSubtreeIds, kbTree, resolveKbFolderPath } from '../knowledge/folders.js';
+import { outlineSections, readSection } from '../knowledge/sections.js';
 import { runKnowledgeAgentAction } from '../platform/knowledge/agent-adapter.js';
 import type { KnowledgeActionId } from '../platform/knowledge/adapter.js';
 

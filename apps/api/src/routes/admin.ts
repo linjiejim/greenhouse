@@ -40,7 +40,7 @@ import {
   recordAccountSecurityAudit,
   resumeUserRuntime,
   suspendUserRuntime,
-} from '../account-security.js';
+} from '../security/account.js';
 
 const RETIRED_EXTERNAL_PASSWORD_HASH = 'EXTERNAL_ACCOUNT_RETIRED_NOLOGIN';
 

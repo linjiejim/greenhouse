@@ -20,7 +20,7 @@ import { getClientIP } from '../auth/api-key.js';
 import type { AgentIdentity } from './api-auth.js';
 import { MUTATING_PROXY_ALLOWLIST } from './tool-proxy.js';
 import { mcpToolIdsForGroups } from '../tools/registry.js';
-import { InMemoryRateLimiter } from '../security.js';
+import { InMemoryRateLimiter } from '../security/security.js';
 import {
   getMcpResourceUrl,
   getProtectedResourceMetadataUrl,

@@ -43,7 +43,7 @@ vi.mock('../../llm/usage-budget.js', () => ({
   createProviderAttemptBudgetHook: mocks.createProviderAttemptBudgetHook,
 }));
 
-vi.mock('../../chat-runtime.js', () => ({
+vi.mock('../../chat/runtime.js', () => ({
   startChatRuntimeTrace: mocks.startChatRuntimeTrace,
   recordChatRuntimeProviderInput: mocks.recordChatRuntimeProviderInput,
   settleChatRuntimeTrace: mocks.settleChatRuntimeTrace,
@@ -67,7 +67,7 @@ vi.mock('@greenhouse/agent-core', () => ({
   getModelEntry: () => ({ options: { max_tokens: 100 } }),
 }));
 
-vi.mock('../../chat-persist.js', () => ({
+vi.mock('../../chat/persist.js', () => ({
   persistChatResult: mocks.persistChatResult,
 }));
 
@@ -82,7 +82,7 @@ vi.mock('../../agent-runtime/tool-resolution.js', () => ({
   buildLazyServerTools: vi.fn(() => ({})),
 }));
 
-vi.mock('../../profile.js', () => ({
+vi.mock('../../profiles/profile.js', () => ({
   normalizeProfileId: (id: string | undefined) => id,
   resolveProfileAsync: vi.fn(async () => ({
     id: 'team',
@@ -94,7 +94,7 @@ vi.mock('../../profile.js', () => ({
   })),
 }));
 
-vi.mock('../../profile-access.js', () => ({
+vi.mock('../../profiles/access.js', () => ({
   pinProfileIdForUser: vi.fn(async (_user: unknown, profileId: string | undefined) => profileId ?? 'team'),
   ProfileAccessError: class ProfileAccessError extends Error {
     status = 403 as const;

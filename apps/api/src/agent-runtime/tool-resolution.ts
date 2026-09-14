@@ -55,7 +55,7 @@ import { createWorkflowPlanTool } from '../tools/workflow-plan.js';
 import { createMissionDispatchTool } from '../tools/mission-dispatch.js';
 import { createTaskCaptureTool } from '../tools/task-capture.js';
 import { createReadAttachmentTool } from '../tools/read-attachment.js';
-import type { AgentProfile } from '../profile.js';
+import type { AgentProfile } from '../profiles/profile.js';
 
 /**
  * Draft-only tools whose confirm surface is a card in a HUMAN conversation — a

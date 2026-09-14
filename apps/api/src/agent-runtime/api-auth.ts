@@ -14,7 +14,7 @@ import type { UserRole } from '@greenhouse/db';
 import { validateAccessToken } from '../auth/token.js';
 import { validateTaskToken } from '../auth/task-token.js';
 import { getClientIP } from '../auth/api-key.js';
-import { InMemoryRateLimiter } from '../security.js';
+import { InMemoryRateLimiter } from '../security/security.js';
 import { MUTATING_PROXY_ALLOWLIST } from './tool-proxy.js';
 import { getMissionRuntimeStatus } from '../cloud-agent/index.js';
 

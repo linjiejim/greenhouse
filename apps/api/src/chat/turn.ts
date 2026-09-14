@@ -21,12 +21,12 @@ import type {
   ProviderAttemptHook,
 } from '@greenhouse/agent-core';
 import type { StreamTextResult, ToolSet } from 'ai';
-import type { ClientActionBridge } from './tools/client-action-bridge.js';
-import type { AgentProfile } from './profile.js';
-import { persistChatResult } from './chat-persist.js';
-import { chatRunRegistry, type ChatRun } from './chat-runs.js';
-import { UsageBudgetAdmissionError } from './llm/usage-budget.js';
-import { connectionManager } from './ws/connection-manager.js';
+import type { ClientActionBridge } from '../tools/client-action-bridge.js';
+import type { AgentProfile } from '../profiles/profile.js';
+import { persistChatResult } from './persist.js';
+import { chatRunRegistry, type ChatRun } from './runs.js';
+import { UsageBudgetAdmissionError } from '../llm/usage-budget.js';
+import { connectionManager } from '../ws/connection-manager.js';
 import {
   chatRuntimePayload,
   chatRuntimeResultMessageId,
@@ -34,7 +34,7 @@ import {
   settleChatRuntimeTrace,
   type ChatRuntimeTerminalStatus,
   type ChatRuntimeTrace,
-} from './chat-runtime.js';
+} from './runtime.js';
 
 /**
  * How often to write a keepalive `ping` while a turn is in flight.

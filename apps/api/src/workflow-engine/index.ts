@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { WORKFLOW_BUDGET_LIMITS, type WorkflowBudget } from '@greenhouse/types/workflow';
-import { resolveProfileAsync, enrichSystemPrompt, type AgentProfile } from '../profile.js';
+import { resolveProfileAsync, enrichSystemPrompt, type AgentProfile } from '../profiles/profile.js';
 import { resolveMemoryContext } from '../llm/memory.js';
 import {
   resolveEffectiveTools,

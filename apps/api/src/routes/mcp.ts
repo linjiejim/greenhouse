@@ -40,7 +40,7 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolRegistry } from '../agent.js';
-import { resolveProfileAsync } from '../profile.js';
+import { resolveProfileAsync } from '../profiles/profile.js';
 import { resolveEffectiveTools, buildLazyServerTools } from '../agent-runtime/tool-resolution.js';
 // Derived from each tool's `meta.surface.mcp` (tools/registry.ts); re-exported
 // for tests/consumers that previously imported the hand-maintained list here.

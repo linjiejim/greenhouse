@@ -21,7 +21,7 @@ import { zipSync, type Zippable } from 'fflate';
 import type { DatabaseProvider, DriveFolderRow, KnowledgeDocRow } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { getUpload } from './storage/uploads.js';
+import { getUpload } from '../storage/uploads.js';
 
 /** Hard ceiling on exported docs; a bigger library needs a streaming design. */
 const MAX_DOCS = 2000;

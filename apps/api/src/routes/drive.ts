@@ -36,9 +36,9 @@ import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { getAuthUser } from '../auth/middleware.js';
 import { contentDisposition } from '../http/content-disposition.js';
-import { resolveDriveAccess, canReadDrive, canWriteDrive } from '../drive-access.js';
-import type { DriveAccessNode } from '../drive-access.js';
-import { validateDriveUpload, safeDriveContentType, MAX_DRIVE_FILE_SIZE } from '../drive-upload-policy.js';
+import { resolveDriveAccess, canReadDrive, canWriteDrive } from '../drive/access.js';
+import type { DriveAccessNode } from '../drive/access.js';
+import { validateDriveUpload, safeDriveContentType, MAX_DRIVE_FILE_SIZE } from '../drive/upload-policy.js';
 import {
   driveKeyFor,
   presignPutUrl,

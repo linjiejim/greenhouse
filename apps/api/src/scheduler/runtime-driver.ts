@@ -24,7 +24,7 @@ import { logger } from '@greenhouse/utils/logger';
 import type { ToolRegistry } from '../agent.js';
 import type { RuntimeDriver, RuntimeDriverContext } from '../runtime/worker.js';
 import { settleOpenRuntimeToolCalls } from '../runtime/tool-evidence.js';
-import { sanitizeForPrompt } from '../security.js';
+import { sanitizeForPrompt } from '../security/security.js';
 import { buildTaskPrompt, buildTaskSessionTitle } from './prompt-builder.js';
 import {
   executeTaskInSession,

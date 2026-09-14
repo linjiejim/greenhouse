@@ -35,7 +35,7 @@ vi.mock('@greenhouse/db', async (importOriginal) => ({
   }),
 }));
 
-vi.mock('../../account-security.js', () => ({
+vi.mock('../../security/account.js', () => ({
   getPasswordLinkCapability: () => mocks.capability,
   deliverAccountPasswordLink: mocks.deliver,
   recordAccountSecurityAudit: mocks.audit,

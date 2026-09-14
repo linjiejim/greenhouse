@@ -7,8 +7,8 @@
 
 import type { DatabaseProvider } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
-import type { AgentProfile } from './profile.js';
-import { enrichSystemPrompt, registerKnownTools } from './profile.js';
+import type { AgentProfile } from './profiles/profile.js';
+import { enrichSystemPrompt, registerKnownTools } from './profiles/profile.js';
 import { getGlobalToolIds, getAllToolIds, STATIC_TOOL_MODULES } from './tools/registry.js';
 import { FEATURE_POINTS, WORKFLOWS_SUPER_ONLY_TOOL_IDS } from './platform/feature-points.js';
 import { resolveUserFeatures } from './auth/features.js';

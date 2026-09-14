@@ -22,15 +22,15 @@ import { getDb, SessionActiveRuntimeError } from '@greenhouse/db';
 import { SESSION_SCOPES, type SessionScope } from '@greenhouse/types/api';
 import { getAuthUser } from '../auth/middleware.js';
 import { generateSessionTitle } from '../llm/title.js';
-import { resolveProfileAsync } from '../profile.js';
-import { canAccessSession, canWriteSession } from '../session-access.js';
-import { pinProfileIdForUser, ProfileAccessError } from '../profile-access.js';
-import { createOwnedSession, SessionCreationError } from '../session-creation.js';
+import { resolveProfileAsync } from '../profiles/profile.js';
+import { canAccessSession, canWriteSession } from '../sessions/access.js';
+import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
+import { createOwnedSession, SessionCreationError } from '../sessions/creation.js';
 import type { AppEnv } from '../app-env.js';
 import { deleteObjectAtKey } from '../storage/uploads.js';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { chatRunRegistry } from '../chat-runs.js';
+import { chatRunRegistry } from '../chat/runs.js';
 import { withOwnerNicknames } from '../user-display.js';
 
 // ─── Visibility Helpers ──────────────────────────────────

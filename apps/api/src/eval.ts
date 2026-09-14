@@ -12,7 +12,7 @@ import { runWithConcurrency } from '@greenhouse/utils/concurrency';
 import { scoreDimension } from './llm/judge.js';
 import { complete } from './llm/complete.js';
 import { BATCH_EVAL_JUDGE_PROFILE } from './llm/tasks/batch-eval-judge.js';
-import { pinProfileVersion, resolveProfileAsync } from './profile.js';
+import { pinProfileVersion, resolveProfileAsync } from './profiles/profile.js';
 
 // Re-export for convenience
 export { extractJson };

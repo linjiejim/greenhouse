@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   retrieveKbForJudge: vi.fn(),
 }));
 
-vi.mock('../../chat-eval.js', () => mocks);
+vi.mock('../../chat/eval.js', () => mocks);
 
 import { createEvalMessageTool } from '../eval-message.js';
 

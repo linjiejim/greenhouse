@@ -51,7 +51,7 @@ import { connectionManager } from '../ws/connection-manager.js';
 import { attachmentKeyPrefix, isOwnedAttachmentKey } from '../cloud-agent/attachment-keys.js';
 import { WorkspaceQuotaAttestationError } from '../cloud-agent/quota-preflight.js';
 import { isSlashSelectableSkill } from '../skills/mission-ready.js';
-import { createOwnedSession, SessionCreationError } from '../session-creation.js';
+import { createOwnedSession, SessionCreationError } from '../sessions/creation.js';
 
 const MAX_PROMPT_BYTES = 32 * 1024;
 const MAX_EVENTS_PER_BATCH = 200;

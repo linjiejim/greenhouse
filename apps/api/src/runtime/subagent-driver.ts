@@ -32,7 +32,7 @@ import {
   normalizeProfileId,
   resolveProfileAsync,
   type AgentProfile,
-} from '../profile.js';
+} from '../profiles/profile.js';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { logger } from '@greenhouse/utils/logger';

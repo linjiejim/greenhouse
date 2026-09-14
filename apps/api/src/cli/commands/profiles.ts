@@ -6,7 +6,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { loadAllProfiles } from '../../profile.js';
+import { loadAllProfiles } from '../../profiles/profile.js';
 import { openDb, parseFlags, flagBool, table, heading, dim, truncate } from './shared.js';
 
 interface CustomProfileRow {

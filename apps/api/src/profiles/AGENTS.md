@@ -20,7 +20,7 @@
 
 ### 重要规则
 
-- **清单有两个真源，必须同步**：文件系统（`loadAllProfiles()` 扫目录）与 `apps/api/src/profile.ts` 的常量
+- **清单有两个真源，必须同步**：文件系统（`loadAllProfiles()` 扫目录）与 `apps/api/src/profiles/profile.ts` 的常量
   （`PRESET_PROFILE_IDS`、`DEFAULT_PROFILE_ID`、`CUSTOM_BASE_PROFILE_IDS`）。
   只加 YAML 不进常量 = 一个没人能选到的 Agent；只改常量不加 YAML = 启动即报 `Profile not found`。
 - **custom profile 的 `base_profile_id` 只能是预设之一**（`CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS`，
@@ -74,7 +74,7 @@
 ### 新增或修改 profile 后必须同步
 
 - `apps/api/src/profiles/agent-profiles.md` — 架构与工具矩阵文档。
-- `apps/api/src/profile.ts` — 增删预设时同步 `PRESET_PROFILE_IDS` 等常量（顺序即选择器顺序）。
+- `apps/api/src/profiles/profile.ts` — 增删预设时同步 `PRESET_PROFILE_IDS` 等常量（顺序即选择器顺序）。
 - `apps/web/src/lib/agent-constants.ts` — 前端镜像的预设 id、顺序与 `LEGACY_AGENT_IDS`。
 - `tests/api/agent-profiles.test.ts` — 钉住 YAML 数量与文件名集合、旧 id 映射、合法 custom base 集合、
   rich-output 单一副本、「没有 profile 使用 `extends`」、以及采样参数归目录（含 Kimi 剥离护栏）。

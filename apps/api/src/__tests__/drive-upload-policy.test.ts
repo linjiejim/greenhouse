@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validateDriveUpload, safeDriveContentType, MAX_DRIVE_FILE_SIZE } from '../drive-upload-policy.js';
+import { validateDriveUpload, safeDriveContentType, MAX_DRIVE_FILE_SIZE } from '../drive/upload-policy.js';
 
 describe('validateDriveUpload', () => {
   it('accepts a normal document under the size limit', () => {

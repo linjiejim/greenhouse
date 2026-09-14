@@ -8,7 +8,7 @@ import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
-import { publicArtifactReceipt } from '../chat-artifact-actions.js';
+import { publicArtifactReceipt } from '../chat/artifact-actions.js';
 
 const artifactActions = new Hono<AppEnv>().get('/:id', async (c) => {
   const receipt = await getDb().chatArtifactReceipts.getForUser(c.req.param('id'), getAuthUser(c).id);

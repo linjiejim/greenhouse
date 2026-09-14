@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatEngineResult } from '@greenhouse/agent-core';
-import { finalizeInterruptedChatContent, persistChatResult } from './chat-persist.js';
+import { finalizeInterruptedChatContent, persistChatResult } from './persist.js';
 
 const mocks = vi.hoisted(() => ({
   addMessage: vi.fn(),

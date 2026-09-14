@@ -5,18 +5,18 @@ const mocks = vi.hoisted(() => ({
   send: vi.fn(),
 }));
 
-vi.mock('./email/service.js', () => ({
+vi.mock('../email/service.js', () => ({
   getSharedMailboxCredentials: () => (mocks.sharedMailbox ? { email_address: 'greenhouse@example.com' } : null),
   sendFromSharedMailbox: mocks.send,
 }));
-vi.mock('./chat-runs.js', () => ({ chatRunRegistry: { stopForUser: vi.fn() } }));
-vi.mock('./ws/connection-manager.js', () => ({ connectionManager: { disconnectUser: vi.fn() } }));
-vi.mock('./scheduler/index.js', () => ({ getScheduler: () => null }));
-vi.mock('./cloud-agent/index.js', () => ({ getCloudAgentController: () => null }));
-vi.mock('./workflow-engine/index.js', () => ({ getWorkflowEngine: () => ({ cancelRunsForUser: vi.fn() }) }));
-vi.mock('./platform/runtime.js', () => ({ PLATFORM_ORG_ID: 'default' }));
+vi.mock('../chat/runs.js', () => ({ chatRunRegistry: { stopForUser: vi.fn() } }));
+vi.mock('../ws/connection-manager.js', () => ({ connectionManager: { disconnectUser: vi.fn() } }));
+vi.mock('../scheduler/index.js', () => ({ getScheduler: () => null }));
+vi.mock('../cloud-agent/index.js', () => ({ getCloudAgentController: () => null }));
+vi.mock('../workflow-engine/index.js', () => ({ getWorkflowEngine: () => ({ cancelRunsForUser: vi.fn() }) }));
+vi.mock('../platform/runtime.js', () => ({ PLATFORM_ORG_ID: 'default' }));
 
-const { deliverAccountPasswordLink, getPasswordLinkCapability, maskEmail } = await import('./account-security.js');
+const { deliverAccountPasswordLink, getPasswordLinkCapability, maskEmail } = await import('./account.js');
 
 const originalPublicBaseUrl = process.env.PUBLIC_BASE_URL;
 

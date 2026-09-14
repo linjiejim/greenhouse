@@ -15,11 +15,11 @@
 
 import { logger } from '@greenhouse/utils/logger';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { complete } from './llm/complete.js';
+import { complete } from '../llm/complete.js';
 import { extractJson } from '@greenhouse/utils/json';
-import { scoreDimension } from './llm/judge.js';
-import { resolveProfile } from './profile.js';
-import { searchKnowledgeScopes } from './knowledge-search.js';
+import { scoreDimension } from '../llm/judge.js';
+import { resolveProfile } from '../profiles/profile.js';
+import { searchKnowledgeScopes } from '../knowledge/search.js';
 
 // ─── Types ───────────────────────────────────────────────
 

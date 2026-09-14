@@ -40,8 +40,8 @@ import type {
 } from '@greenhouse/types/eval';
 import type { RuntimeJsonValue, RuntimeRun } from '@greenhouse/types/runtime';
 import { SEED_DATASETS } from '@greenhouse/db/seeds/eval-seed';
-import { resolveProfileAsync } from '../profile.js';
-import { pinProfileIdForUser, ProfileAccessError } from '../profile-access.js';
+import { resolveProfileAsync } from '../profiles/profile.js';
+import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import { getAuthUser } from '../auth/middleware.js';
 import type { DatasetBatchAction } from '@greenhouse/db';
 import type { AppEnv } from '../app-env.js';

@@ -11,7 +11,7 @@
  * untrusted external data, not instructions to follow.
  */
 
-import { checkPromptInjection } from '../../security.js';
+import { checkPromptInjection } from '../../security/security.js';
 import type { SanitizeResult } from './types.js';
 
 /** Maximum characters per individual search result content */

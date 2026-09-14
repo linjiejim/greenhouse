@@ -9,7 +9,7 @@ vi.mock('@greenhouse/db', () => ({
   getDb: () => ({ customProfiles: { getById: mocks.getById, getVersion: mocks.getVersion } }),
 }));
 
-import { assertCustomProfileAccess, pinProfileIdForUser, ProfileAccessError } from './profile-access.js';
+import { assertCustomProfileAccess, pinProfileIdForUser, ProfileAccessError } from './access.js';
 
 const owner = { id: 'owner', role: 'team' as const };
 const other = { id: 'other', role: 'team' as const };

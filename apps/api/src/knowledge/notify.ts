@@ -21,10 +21,10 @@
 import { sendWeComMarkdown } from '@greenhouse/utils/wecom';
 import { logger } from '@greenhouse/utils/logger';
 import type { DatabaseProvider, KnowledgeDocRow } from '@greenhouse/db';
-import { isWeComConfigured, sendAppMarkdown } from './wecom/client.js';
-import { WECOM_PROVIDER } from './routes/wecom-oauth.js';
-import { isFeishuConfigured, sendCardMarkdown } from './feishu/client.js';
-import { FEISHU_PROVIDER } from './routes/feishu-oauth.js';
+import { isWeComConfigured, sendAppMarkdown } from '../wecom/client.js';
+import { WECOM_PROVIDER } from '../routes/wecom-oauth.js';
+import { isFeishuConfigured, sendCardMarkdown } from '../feishu/client.js';
+import { FEISHU_PROVIDER } from '../routes/feishu-oauth.js';
 
 /** Extract mentioned user ids from `[@nickname](user:<id>)` markdown links. */
 export function extractMentionIds(content: string): string[] {

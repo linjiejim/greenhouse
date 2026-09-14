@@ -22,7 +22,7 @@ import type { AppEnv } from '../app-env.js';
 import { humanActor } from '../platform/actor.js';
 import { projectResource } from '../platform/projects/application.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
-import { searchKnowledgeScopes } from '../knowledge-search.js';
+import { searchKnowledgeScopes } from '../knowledge/search.js';
 
 /** Rows per kind when every kind is shown side by side. */
 const GROUP_LIMIT = 5;

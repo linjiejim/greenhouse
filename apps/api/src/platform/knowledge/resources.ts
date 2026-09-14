@@ -8,7 +8,7 @@
 
 import type { DatabaseProvider, KnowledgeDocRow } from '@greenhouse/db';
 import { safeJsonParse } from '@greenhouse/utils/json';
-import { canRead, resolveKbAccess } from '../../knowledge-access.js';
+import { canRead, resolveKbAccess } from '../../knowledge/access.js';
 
 export const KNOWLEDGE_RESOURCE_URI_TEMPLATE = 'greenhouse://knowledge/doc/{slug}';
 

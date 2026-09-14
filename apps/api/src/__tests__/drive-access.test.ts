@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveDriveAccess, canReadDrive, canWriteDrive } from '../drive-access.js';
+import { resolveDriveAccess, canReadDrive, canWriteDrive } from '../drive/access.js';
 
 describe('resolveDriveAccess — kb scope', () => {
   const ctx = {};

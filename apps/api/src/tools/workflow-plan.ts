@@ -23,8 +23,8 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import type { DatabaseProvider } from '@greenhouse/db';
 import type { WorkflowGraph, WorkflowPlanArtifact } from '@greenhouse/types/workflow';
 import { validateWorkflowGraph, resolveBudget } from '../workflow-engine/graph.js';
-import { loadProfile, listProfileIds, normalizeProfileId } from '../profile.js';
-import { sanitizeForPrompt } from '../security.js';
+import { loadProfile, listProfileIds, normalizeProfileId } from '../profiles/profile.js';
+import { sanitizeForPrompt } from '../security/security.js';
 import { defineTool, type ToolMeta } from './define.js';
 
 const meta: ToolMeta = {

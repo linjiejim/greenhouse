@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { splitAttachments } from '@greenhouse/types/rich-output';
-import { sanitizeChatMessagesForPrompt, sanitizeUserMessageForPrompt } from '../chat-user-message.js';
+import { sanitizeChatMessagesForPrompt, sanitizeUserMessageForPrompt } from '../chat/user-message.js';
 
 const CHIPS = [
   { id: 'file-1', name: '报价历史.xlsx', size_bytes: 20_480 },

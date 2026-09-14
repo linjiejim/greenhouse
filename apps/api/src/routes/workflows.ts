@@ -31,7 +31,7 @@ import type {
 import { getAuthUser } from '../auth/middleware.js';
 import { getWorkflowEngine } from '../workflow-engine/index.js';
 import { validateWorkflowGraph, resolveBudget } from '../workflow-engine/graph.js';
-import { sanitizeForPrompt } from '../security.js';
+import { sanitizeForPrompt } from '../security/security.js';
 import type { AppEnv } from '../app-env.js';
 
 // ─── View assembly ───────────────────────────────────────

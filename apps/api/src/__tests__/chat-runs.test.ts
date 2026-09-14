@@ -5,7 +5,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ChatRun, chatRunRegistry } from '../chat-runs.js';
+import { ChatRun, chatRunRegistry } from '../chat/runs.js';
 
 let seq = 0;
 const uniqueSession = () => `session-${++seq}-${Math.random().toString(36).slice(2)}`;

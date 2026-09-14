@@ -31,8 +31,8 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { getAuthUser, requireInternal } from '../auth/middleware.js';
 import { buildAuthorizeUrl, getFeishuConfig, resolveUserByCode } from '../feishu/client.js';
 import { issueUserSession } from './auth.js';
-import { InMemoryRateLimiter } from '../security.js';
-import { getRequestSourceIp } from '../request-ip.js';
+import { InMemoryRateLimiter } from '../security/security.js';
+import { getRequestSourceIp } from '../security/request-ip.js';
 import type { AppEnv } from '../app-env.js';
 import type { UserRow } from '@greenhouse/db';
 

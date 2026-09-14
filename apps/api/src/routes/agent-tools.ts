@@ -17,7 +17,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { logger } from '@greenhouse/utils/logger';
 import { getDb } from '@greenhouse/db';
 import type { ToolRegistry } from '../agent.js';
-import { resolveProfileAsync } from '../profile.js';
+import { resolveProfileAsync } from '../profiles/profile.js';
 import { resolveEffectiveTools, buildLazyServerTools } from '../agent-runtime/tool-resolution.js';
 import {
   resolveProxyToolIds,
@@ -35,7 +35,7 @@ import {
   recordAgentAudit,
 } from '../agent-runtime/api-auth.js';
 import type { AppEnv } from '../app-env.js';
-import { pinProfileIdForUser, ProfileAccessError } from '../profile-access.js';
+import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import {
   agentToolAction,
   canonicalAgentToolInput,

@@ -29,7 +29,7 @@ import {
   parseCustomProfileReference,
   resolveProfileAsync,
   type AgentProfile,
-} from '../profile.js';
+} from '../profiles/profile.js';
 import { getModelEntry, getModelRegistry } from '@greenhouse/agent-core';
 import { listChatModels } from '../config/models.js';
 import { getDb } from '@greenhouse/db';
@@ -40,10 +40,10 @@ import type {
   CustomProfileVersionRow,
 } from '@greenhouse/db';
 import { getAuthUser, requireSuper } from '../auth/middleware.js';
-import { assertCustomProfileAccess, pinProfileIdForUser, ProfileAccessError } from '../profile-access.js';
+import { assertCustomProfileAccess, pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import { getAllToolIds } from '../tools/registry.js';
 import { resolveUserTools } from '../agent.js';
-import { sanitizeForPrompt } from '../security.js';
+import { sanitizeForPrompt } from '../security/security.js';
 import { logger } from '@greenhouse/utils/logger';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import type { AppEnv } from '../app-env.js';

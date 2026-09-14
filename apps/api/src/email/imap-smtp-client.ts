@@ -19,7 +19,7 @@ import type SMTPTransport from 'nodemailer/lib/smtp-transport/index.js';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { isPublicNetworkAddress } from '../network-security.js';
+import { isPublicNetworkAddress } from '../security/network.js';
 import { CONNECTION_TEST_TIMEOUT_MS, DEFAULT_LIST_LIMIT, IMAP_TIMEOUT_MS, MAX_LIST_LIMIT } from './limits.js';
 import type {
   ConnectionTestResult,

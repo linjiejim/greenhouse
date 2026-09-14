@@ -10,11 +10,11 @@
  * - In-memory cache with file watcher for dev hot-reload
  */
 
-import { GREENHOUSE_CONFIG, resolvePackPath } from './config/greenhouse-config.js';
+import { GREENHOUSE_CONFIG, resolvePackPath } from '../config/greenhouse-config.js';
 import { readFileSync, readdirSync, existsSync, watch } from 'node:fs';
 import { logger } from '@greenhouse/utils/logger';
 import { composeRichOutput } from '@greenhouse/utils/prompts';
-import { resolve, join } from 'node:path';
+import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { DatabaseProvider } from '@greenhouse/db';
 
@@ -78,7 +78,8 @@ export function registerKnownTools(names: string[]): void {
 
 // ─── Profile Directory ───────────────────────────────────
 
-const PROFILES_DIR = resolve(import.meta.dirname, 'profiles');
+/** The built-in presets live next to this loader (apps/api/src/profiles/*.yaml). */
+const PROFILES_DIR = import.meta.dirname;
 
 /**
  * Core profiles first, then the pack directories from greenhouse.config.ts

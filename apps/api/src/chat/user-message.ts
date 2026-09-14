@@ -22,7 +22,7 @@
  */
 
 import { splitAttachments, type ChatAttachmentItem } from '@greenhouse/types/rich-output';
-import { sanitizeForPrompt } from './security.js';
+import { sanitizeForPrompt } from '../security/security.js';
 
 /**
  * Filenames are display text bound for the prompt. 255 is the same ceiling the

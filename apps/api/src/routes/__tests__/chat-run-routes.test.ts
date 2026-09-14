@@ -41,7 +41,7 @@ vi.mock('@greenhouse/db', async (importOriginal) => {
 });
 
 import { createChatRoute } from '../chat.js';
-import { chatRunRegistry } from '../../chat-runs.js';
+import { chatRunRegistry } from '../../chat/runs.js';
 
 let seq = 0;
 const uniqueSession = () => `run-route-${++seq}-${Math.random().toString(36).slice(2)}`;

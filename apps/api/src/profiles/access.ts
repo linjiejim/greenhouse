@@ -1,5 +1,5 @@
 import { getDb, type CustomProfileRow, type DatabaseProvider } from '@greenhouse/db';
-import type { AuthUser } from './auth/token.js';
+import type { AuthUser } from '../auth/token.js';
 import { DEFAULT_PROFILE_ID, normalizeProfileId, parseCustomProfileReference } from './profile.js';
 
 type ProfileActor = Pick<AuthUser, 'id' | 'role'>;

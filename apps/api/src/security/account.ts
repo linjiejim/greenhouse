@@ -13,13 +13,13 @@ import { escapeHtml } from '@greenhouse/utils/html';
 import { getProductName } from '@greenhouse/utils/brand';
 import type { PlatformAuditEvent } from '@greenhouse/platform-kernel';
 
-import { getSharedMailboxCredentials, sendFromSharedMailbox } from './email/service.js';
-import { chatRunRegistry } from './chat-runs.js';
-import { connectionManager } from './ws/connection-manager.js';
-import { getScheduler } from './scheduler/index.js';
-import { getCloudAgentController } from './cloud-agent/index.js';
-import { getWorkflowEngine } from './workflow-engine/index.js';
-import { PLATFORM_ORG_ID } from './platform/runtime.js';
+import { getSharedMailboxCredentials, sendFromSharedMailbox } from '../email/service.js';
+import { chatRunRegistry } from '../chat/runs.js';
+import { connectionManager } from '../ws/connection-manager.js';
+import { getScheduler } from '../scheduler/index.js';
+import { getCloudAgentController } from '../cloud-agent/index.js';
+import { getWorkflowEngine } from '../workflow-engine/index.js';
+import { PLATFORM_ORG_ID } from '../platform/runtime.js';
 
 export type PasswordLinkAvailabilityReason =
   | 'missing_public_base_url'

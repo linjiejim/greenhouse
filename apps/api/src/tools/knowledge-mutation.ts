@@ -15,11 +15,11 @@ import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
 import { entityUrl } from '@greenhouse/types/entity-links';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { defineTool, type ToolMeta } from './define.js';
-import { resolveKbAccess, canWrite, canArchive } from '../knowledge-access.js';
-import { resolveKbFolderPath } from '../knowledge-folders.js';
+import { resolveKbAccess, canWrite, canArchive } from '../knowledge/access.js';
+import { resolveKbFolderPath } from '../knowledge/folders.js';
 // Shared with knowledge_query's mode=outline|section: read and write must
 // address the same span, or a model edits something other than what it read.
-import { replaceSection } from '../knowledge-sections.js';
+import { replaceSection } from '../knowledge/sections.js';
 import { runKnowledgeAgentAction } from '../platform/knowledge/agent-adapter.js';
 import type { KnowledgeActionId } from '../platform/knowledge/adapter.js';
 

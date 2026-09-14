@@ -6,7 +6,7 @@
  */
 
 import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
-import { sanitizeForPrompt } from './security.js';
+import { sanitizeForPrompt } from '../security/security.js';
 
 const MAX_SCOPE_LENGTH = 256;
 const MAX_LABEL_LENGTH = 200;

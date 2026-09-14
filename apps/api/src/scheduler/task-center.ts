@@ -20,9 +20,9 @@ import { logger } from '@greenhouse/utils/logger';
 import type { AutomationRunEntry } from '@greenhouse/types/api';
 import { AUTOMATION_OPT_IN_TOOLS, isAutomationOptInTool } from '@greenhouse/types/automation-tools';
 import { ScheduledTaskActiveRunError, type DatabaseProvider, type ScheduledTaskRow } from '@greenhouse/db';
-import { resolveProfileAsync } from '../profile.js';
-import { pinProfileIdForUser, ProfileAccessError } from '../profile-access.js';
-import { sanitizeForPrompt } from '../security.js';
+import { resolveProfileAsync } from '../profiles/profile.js';
+import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
+import { sanitizeForPrompt } from '../security/security.js';
 import { getScheduler } from './index.js';
 import {
   DEFAULT_TIMEZONE,

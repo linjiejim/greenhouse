@@ -10,7 +10,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { randomUUID } from 'node:crypto';
-import { validateMagicBytes } from '../security.js';
+import { validateMagicBytes } from '../security/security.js';
 import { putUpload, getUpload, isValidUploadId } from '../storage/uploads.js';
 import type { AppEnv } from '../app-env.js';
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB

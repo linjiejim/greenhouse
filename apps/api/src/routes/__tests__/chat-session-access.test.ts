@@ -48,7 +48,7 @@ vi.mock('../../llm/title.js', () => ({
 }));
 
 import { createChatRoute, isTrustedEvalExecution } from '../chat.js';
-import { canAccessSession, canWriteSession } from '../../session-access.js';
+import { canAccessSession, canWriteSession } from '../../sessions/access.js';
 
 function makeSession(ownerId = 'owner'): SessionRow {
   return {

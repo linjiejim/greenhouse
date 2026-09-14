@@ -36,10 +36,15 @@ import { initDatabase } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { createToolRegistry, type ToolRegistry } from './agent.js';
 import type { AppEnv } from './app-env.js';
-import { listProfileIds, startProfileWatcher } from './profile.js';
+import { listProfileIds, startProfileWatcher } from './profiles/profile.js';
 import { authMiddleware, requireSuper, requireInternal, requireFeature } from './auth/middleware.js';
 import { assertAuthEnv } from './auth/token.js';
-import { corsMiddleware, rateLimitMiddleware, redactQueryForLog, securityHeadersMiddleware } from './security.js';
+import {
+  corsMiddleware,
+  rateLimitMiddleware,
+  redactQueryForLog,
+  securityHeadersMiddleware,
+} from './security/security.js';
 
 // Route modules
 import authRoutes from './routes/auth.js';
@@ -100,7 +105,7 @@ import { createWorkbenchRoutes } from './routes/workbench.js';
 import { getSkillStore } from './skills/store.js';
 import { seedSkillhub } from './skills/boot-seed.js';
 import { sweepUnscannedSkills } from './skills/center.js';
-import { backfillKnowledgeTokens } from './knowledge-backfill.js';
+import { backfillKnowledgeTokens } from './knowledge/backfill.js';
 import { initScheduler } from './scheduler/index.js';
 import { createEmailRoutes } from './routes/email.js';
 import { createTasksRoute } from './routes/tasks.js';
@@ -112,7 +117,7 @@ import { initMissionRuntime } from './cloud-agent/index.js';
 import { startRuntimeReconciler } from './runtime/reconciler.js';
 import { startRuntimeWorker } from './runtime/worker.js';
 import { createEvalRuntimeDriver, reconcileEvalRuntimeRuns, reconcileReclaimedEvalRun } from './runtime/eval-driver.js';
-import { reconcileInterruptedChatRuntimeRuns } from './chat-runtime.js';
+import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './runtime/subagent-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
@@ -130,7 +135,7 @@ import * as _ws from 'ws';
 const WsServer = _ws.WebSocketServer ?? (_ws as any).default?.WebSocketServer;
 import wsRoutes from './ws/index.js';
 import { connectionManager } from './ws/connection-manager.js';
-import { chatRunRegistry } from './chat-runs.js';
+import { chatRunRegistry } from './chat/runs.js';
 import { startUsageBudgetSweeper } from './llm/usage-budget-sweeper.js';
 
 const app = new Hono<AppEnv>();

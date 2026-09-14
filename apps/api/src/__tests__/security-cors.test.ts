@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { corsMiddleware } from '../security.js';
+import { corsMiddleware } from '../security/security.js';
 
 const originalCorsOrigins = process.env.CORS_ALLOWED_ORIGINS;
 

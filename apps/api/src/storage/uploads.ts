@@ -27,7 +27,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, statSyn
 import { resolve, extname, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { UPLOADS_DIR } from '../paths.js';
-import { validateMagicBytes } from '../security.js';
+import { validateMagicBytes } from '../security/security.js';
 
 export interface StoredObject {
   buffer: Buffer;

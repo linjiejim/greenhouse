@@ -28,8 +28,8 @@ import {
 import { sql } from 'drizzle-orm';
 import { validateMemoryText } from '../llm/memory-limits.js';
 import type { AppEnv } from '../app-env.js';
-import { InMemoryRateLimiter } from '../security.js';
-import { maskEmail, recordAccountSecurityAudit, resumeUserRuntime } from '../account-security.js';
+import { InMemoryRateLimiter } from '../security/security.js';
+import { maskEmail, recordAccountSecurityAudit, resumeUserRuntime } from '../security/account.js';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 

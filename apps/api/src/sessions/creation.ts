@@ -3,9 +3,9 @@
 import { getDb } from '@greenhouse/db';
 import type { SessionRow } from '@greenhouse/types/session';
 
-import type { AuthUser } from './auth/token.js';
-import { resolveProfileAsync } from './profile.js';
-import { pinProfileIdForUser, ProfileAccessError } from './profile-access.js';
+import type { AuthUser } from '../auth/token.js';
+import { resolveProfileAsync } from '../profiles/profile.js';
+import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 
 type SessionActor = Pick<AuthUser, 'id' | 'role'>;
 
