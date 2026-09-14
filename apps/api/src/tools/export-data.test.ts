@@ -78,3 +78,46 @@ describe('export_data inline source', () => {
     expect(storage.deleteObjectAtKey).toHaveBeenCalledWith('drive/chat/generated.csv');
   });
 });
+
+describe('export_data extension source', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storage.putObjectAtKey.mockResolvedValue(undefined);
+    storage.deleteObjectAtKey.mockResolvedValue(undefined);
+  });
+
+  it('accepts a lane an extension registered and files its rows', async () => {
+    // Reset first: the registry and the tool must come from the same fresh
+    // module graph, because the union is built when the tool module loads.
+    vi.resetModules();
+    const { registerExportSources } = await import('./export-sources.js');
+    const { z } = await import('zod');
+    registerExportSources([
+      {
+        type: 'probe_rows',
+        schema: z.object({ type: z.literal('probe_rows'), since: z.string().optional() }),
+        describe: 'every probe row on the server.',
+        load: async (source) => ({
+          columns: [{ key: 'label', label: 'Label' }],
+          rows: [{ label: `since:${(source as { since?: string }).since ?? 'all'}` }],
+          defaultFilename: 'probe-rows',
+          defaultSheetName: 'Probe',
+        }),
+      },
+    ]);
+    const { createExportDataTool: freshTool } = await import('./export-data.js');
+
+    const create = vi.fn(async (input) => ({ id: 'file-2', ...input }));
+    const db = { chatFiles: { create } } as unknown as DatabaseProvider;
+    const result = await execute(freshTool(db, { userId: 'user-1', sessionId: 'session-1' }), {
+      source: { type: 'probe_rows', since: '2026-01-01' },
+      format: 'csv',
+    });
+
+    expect(result.type).toBe('file');
+    // The loader saw its own parsed fields, not just the discriminator.
+    const written = storage.putObjectAtKey.mock.calls[0]?.[1] as Buffer;
+    expect(written.toString('utf8')).toContain('since:2026-01-01');
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: 'probe-rows.csv' }));
+  });
+});

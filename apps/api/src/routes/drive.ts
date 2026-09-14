@@ -239,6 +239,7 @@ const drive = new Hono<AppEnv>()
       parent_id: parent_id ?? null,
       name,
       base_id: keys.base_id,
+      owner_key: keys.owner_key,
       visibility: keys.visibility,
       owner_user_id: keys.owner_user_id,
       created_by: getAuthUser(c).id,
