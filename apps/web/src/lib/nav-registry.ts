@@ -418,7 +418,10 @@ export function getNavModule(id: string): NavModule | undefined {
  */
 export function registerExtensionNavModules(extensionId: string, modules: readonly WebExtensionModule[]): void {
   for (const mod of modules) {
-    const id = `${mod.parent}.${mod.key}`;
+    // Same id shape as core's own modules (`settings.preferences`, `admin.users`),
+    // so an extension panel can say `<ModulePage moduleId="admin.<key>">` exactly
+    // like a core panel does. The route stays `#/administration/<key>`.
+    const id = `${mod.parent === 'administration' ? 'admin' : 'settings'}.${mod.key}`;
     if (MODULE_MAP.has(id))
       throw new Error(`Extension "${extensionId}" registers nav module "${id}" twice or over a core module`);
     const navModule: NavModule = {

@@ -163,7 +163,7 @@ export const crmWebExtension = defineWebExtension({
 | `pages` | hash router (`#/<route>` and sub-paths), top bar, contextual sidebar | Rendered only while the API reports the id active; otherwise a calm "not enabled" state. |
 | `pages[].modules` | the navigation registry as `standalone` modules, id `<id>.<key>` | What `<ModulePage moduleId="crm.companies">`, the module rail and the breadcrumb resolve against. Omit for a one-screen page. |
 | `navigation` | the sidebar "More" menu (desktop flyout + mobile drawer) | `requireFeature` / `requireRole` hide the entry per user. |
-| `modules` | Settings ("Extensions" section) or Administration | Key becomes `#/settings/<key>` or `#/administration/<key>`; pins and breadcrumbs work. |
+| `modules` | Settings ("Extensions" section) or Administration | Key becomes `#/settings/<key>` or `#/administration/<key>`; the module id is `settings.<key>` / `admin.<key>` (core's own shape), so a panel renders through `<ModulePage moduleId="admin.<key>">`; pins and breadcrumbs work. |
 | `messages` | i18n, under `ext.<id>.*` | `t('ext.crm.title')` type-checks; a missing locale falls back to English. The visible-copy guard still rejects hard-coded English in your TSX. |
 | `toolCards` / `toolIcons` | chat transcript, tool catalogs | A card replaces the trace row once the tool returned without error; `placement: 'below'` renders after the prose. |
 | `entityKinds` | peek / side-pane chrome and body for the kinds the API half registered | Same `kind` string on both halves; `render` is optional (without it the peek offers "open full page"). |

@@ -14,6 +14,7 @@ const ExampleNotesPage = lazy(() => import('./page').then((m) => ({ default: m.E
 const ExampleNotePeek = lazy(() => import('./page').then((m) => ({ default: m.ExampleNotePeek })));
 const ExampleDocPanel = lazy(() => import('./page').then((m) => ({ default: m.ExampleDocPanel })));
 const ExampleSettingsModule = lazy(() => import('./page').then((m) => ({ default: m.ExampleSettingsModule })));
+const ExampleAdminModule = lazy(() => import('./page').then((m) => ({ default: m.ExampleAdminModule })));
 
 /** Extension copy for imperative code: the current locale is stored by the i18n provider. */
 function tx(key: string, params?: Record<string, string | number>): string {
@@ -54,6 +55,15 @@ export const exampleWebExtension = defineWebExtension({
       icon: StickyNote,
       component: ExampleSettingsModule,
       requireFeature: 'example',
+    },
+    {
+      key: 'example',
+      parent: 'administration',
+      labelKey: 'ext.example.admin.title',
+      descriptionKey: 'ext.example.admin.description',
+      icon: StickyNote,
+      component: ExampleAdminModule,
+      requireRole: ['super'],
     },
   ],
   toolCards: [{ tool: 'example_notes_query', component: ExampleNotesCard }],

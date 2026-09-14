@@ -1,6 +1,7 @@
 /** `#/example` — the example extension's page: list, add and delete personal notes. */
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Input, Spinner, toast } from '../../components/ui';
+import { ModulePage } from '../../components/app/module-page';
 import { StickyNote, Trash2 } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { authFetch } from '../../lib/auth';
@@ -132,6 +133,22 @@ export function ExampleSettingsModule() {
       <h2 className="text-lg font-semibold text-fg">{t('ext.example.settings.title')}</h2>
       <p className="text-sm text-fg-muted">{t('ext.example.settings.body')}</p>
     </div>
+  );
+}
+
+/**
+ * Administration → Example notes: the same contribution on the super-only side,
+ * rendered through `ModulePage` so the registry id (`admin.example`) is the
+ * one a core administration panel would use.
+ */
+export function ExampleAdminModule() {
+  const t = useT();
+  return (
+    <ModulePage moduleId="admin.example" layout="form">
+      <p className="text-sm text-fg-muted" data-testid="example-admin-module">
+        {t('ext.example.admin.body')}
+      </p>
+    </ModulePage>
   );
 }
 

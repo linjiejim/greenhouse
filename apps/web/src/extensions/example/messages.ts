@@ -20,6 +20,11 @@ export const exampleMessages = {
       description: 'Where the reference extension keeps its knobs',
       body: 'This settings module comes from the example extension. Admin-editable values live in Administration → Runtime Config under “Example notes”.',
     },
+    admin: {
+      title: 'Example notes',
+      description: 'What the reference extension shows administrators',
+      body: 'This administration module comes from the example extension and renders through the same ModulePage as core panels.',
+    },
     entity: { note: 'Note' },
     mcpGroup: {
       label: 'Example notes',
@@ -53,6 +58,11 @@ export const exampleMessages = {
       title: '示例笔记',
       description: '参考扩展的设置项放在哪里',
       body: '这个设置模块来自示例扩展。管理员可编辑的值在「管理 → 运行时配置」的「示例笔记」分组里。',
+    },
+    admin: {
+      title: '示例笔记',
+      description: '参考扩展给管理员看的内容',
+      body: '这个管理模块来自示例扩展，和核心面板一样通过 ModulePage 渲染。',
     },
     entity: { note: '笔记' },
     mcpGroup: {

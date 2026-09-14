@@ -35,6 +35,12 @@ test.describe('example extension', () => {
     const { tools: catalog } = (await tools.json()) as { tools: Array<{ id: string }> };
     expect(catalog.map((t) => t.id)).toContain('example_notes_query');
 
+    // The Administration module renders through ModulePage under core's
+    // `admin.<key>` id — the shape a private extension's admin panel uses.
+    await page.goto('/#/administration/example');
+    await expect(page.getByTestId('example-admin-module')).toBeVisible();
+    await expect(page.getByText('Something went wrong')).toHaveCount(0);
+
     if (created) await api.delete(`/api/ext/example/notes/${created.id}`);
   });
 });
