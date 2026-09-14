@@ -24,6 +24,7 @@ async function loadWith(enabled: string) {
   const workbench = await import('@greenhouse/types/workbench');
   const searchSources = await import('../../search/sources.js');
   const drive = await import('../../drive/access.js');
+  const exportSources = await import('../../tools/export-sources.js');
   const oauth = await import('../../platform/oauth.js');
   return {
     extensions,
@@ -38,6 +39,7 @@ async function loadWith(enabled: string) {
     workbench,
     searchSources,
     drive,
+    exportSources,
     oauth,
   };
 }
@@ -103,6 +105,9 @@ describe('extension seam', { timeout: 60_000 }, () => {
     expect(m.drive.isKnownDriveScope('kb')).toBe(true);
     expect(m.drive.isKnownDriveScope('nope')).toBe(false);
 
+    // an export_data lane of its own
+    expect(m.exportSources.extensionExportSources().map((s) => s.type)).toEqual(['example_notes']);
+
     // search lane + workbench recipe
     expect(m.searchSources.extensionSearchSources().map((s) => s.kind)).toEqual(['ext:example:note']);
     expect(m.workbench.allWidgetRecipes().map((r) => r.id)).toContain('example.notes');
@@ -126,6 +131,7 @@ describe('extension seam', { timeout: 60_000 }, () => {
     expect(m.searchSources.extensionSearchSources()).toEqual([]);
     expect(m.drive.extensionDriveScopes()).toEqual([]);
     expect(m.drive.isKnownDriveScope('example-note')).toBe(false);
+    expect(m.exportSources.extensionExportSources()).toEqual([]);
     expect(m.workbench.allWidgetRecipes().some((r) => r.id === 'example.notes')).toBe(false);
     expect(() => m.entityLinks.entityUrl({ kind: 'ext:example:note', id: 1 })).toThrow(/Unknown entity kind/);
   });

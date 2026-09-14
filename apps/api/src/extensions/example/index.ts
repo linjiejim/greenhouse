@@ -14,6 +14,7 @@ import { defineExtension, extensionPath } from '../define.js';
 import { exampleRoutes } from './routes.js';
 import { createExampleServices, type ExampleServices } from './service.js';
 import { exampleNotesQueryTool } from './tool.js';
+import { z } from 'zod';
 
 export const exampleExtension = defineExtension({
   id: 'example',
@@ -53,6 +54,29 @@ export const exampleExtension = defineExtension({
         // the caller, so a note that is not theirs simply is not found.
         const note = await notes.get(userId, Number(ownerKey));
         return note ? 'editor' : null;
+      },
+    },
+  ],
+  // …and a whole-dataset lane in `export_data`, so the model exports the notes
+  // as a file instead of transcribing them into an inline payload.
+  exportSources: [
+    {
+      type: 'example_notes',
+      schema: z.object({ type: z.literal('example_notes') }),
+      describe: 'export every note the signed-in user has saved in the Example extension.',
+      load: async (_source, { userId }, db) => {
+        const { notes } = getExtensionServices<ExampleServices>(db, 'example');
+        const rows = await notes.list(userId, 1000);
+        return {
+          columns: [
+            { key: 'id', label: 'ID' },
+            { key: 'body', label: 'Note' },
+            { key: 'created_at', label: 'Created' },
+          ],
+          rows: rows as unknown as Array<Record<string, unknown>>,
+          defaultFilename: 'example-notes',
+          defaultSheetName: 'Notes',
+        };
       },
     },
   ],

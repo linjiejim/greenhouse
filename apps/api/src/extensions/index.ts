@@ -20,6 +20,7 @@ import { extensionEnabled } from '../config/greenhouse-config.js';
 import { registerPublicPaths } from '../auth/public-paths.js';
 import { registerSearchSources } from '../search/sources.js';
 import { registerDriveScopes } from '../drive/access.js';
+import { registerExportSources } from '../tools/export-sources.js';
 import type { GreenhouseExtension } from './define.js';
 import { exampleExtension } from './example/index.js';
 
@@ -63,5 +64,6 @@ for (const ext of EXTENSIONS) {
   if (ext.entityKinds?.length) registerEntityKinds(ext.entityKinds);
   if (ext.searchSources?.length) registerSearchSources(ext.searchSources);
   if (ext.driveScopes?.length) registerDriveScopes(ext.driveScopes);
+  if (ext.exportSources?.length) registerExportSources(ext.exportSources);
   if (ext.workbenchRecipes?.length) registerWidgetRecipes(ext.workbenchRecipes);
 }

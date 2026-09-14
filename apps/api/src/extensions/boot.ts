@@ -19,6 +19,25 @@ export function extensionApplicationRegistrations(): ApplicationRegistration<Pla
   return fromExtensions('applications').map(({ manifest, handlers }) => ({ manifest, handlers }));
 }
 
+/**
+ * Tool → capability map for applications extensions own, in the shape
+ * `routes/mcp.ts` folds into its own: a tool is hidden once every capability
+ * behind it is denied.
+ */
+export function extensionPlatformToolCapabilities(
+  capabilitiesByActionKind: (manifest: ApplicationRegistration['manifest'], kind: 'query' | 'command') => string[],
+): Record<string, readonly string[]> {
+  const map: Record<string, readonly string[]> = {};
+  for (const app of fromExtensions('applications')) {
+    for (const kind of ['query', 'command'] as const) {
+      for (const toolId of app.platformTools?.[kind] ?? []) {
+        map[toolId] = capabilitiesByActionKind(app.manifest, kind);
+      }
+    }
+  }
+  return map;
+}
+
 /** The same applications as bootstrap plans (manifest + baseline team capabilities). */
 export function extensionApplicationPlans(): {
   manifest: ApplicationRegistration['manifest'];

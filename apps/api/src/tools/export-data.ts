@@ -12,9 +12,11 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import { nowIso } from '@greenhouse/utils/date';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { z } from 'zod';
+import type { ZodObject, ZodRawShape } from 'zod';
 import { dispatchTablesAgentAction } from '../platform/tables/agent-adapter.js';
 import { chatFileKeyFor, deleteObjectAtKey, putObjectAtKey } from '../storage/uploads.js';
 import { defineTool, type ToolMeta } from './define.js';
+import { extensionExportSources } from './export-sources.js';
 import { tableQuerySchema } from './tables-query.js';
 import { generateTabularExport, type TabularExportColumn, type TabularExportFormat } from './tabular-export.js';
 
@@ -42,8 +44,20 @@ const tablesSourceSchema = z.object({
   query: tableQuerySchema.omit({ cursor: true, limit: true }).optional(),
 });
 
+/**
+ * The union is built at module load from core's two members plus whatever the
+ * active extensions registered — `zod` needs the members up front, and the
+ * extension list is a load-time registration, so by the time this evaluates the
+ * set is complete and fixed for the process.
+ */
+const sourceSchemas = [
+  inlineSourceSchema,
+  tablesSourceSchema,
+  ...extensionExportSources().map((source) => source.schema),
+] as unknown as [typeof inlineSourceSchema, typeof tablesSourceSchema, ...ZodObject<ZodRawShape>[]];
+
 const exportDataSchema = z.object({
-  source: z.discriminatedUnion('type', [inlineSourceSchema, tablesSourceSchema]),
+  source: z.discriminatedUnion('type', sourceSchemas),
   format: z.enum(['xlsx', 'csv']).default('xlsx'),
   filename: z
     .string()
@@ -77,8 +91,11 @@ const meta: ToolMeta = {
 Sources:
 - inline: export rows already returned by another tool. Supply columns when stable labels/order matter.
 - tables_records: let the server read every matching record from an internal multidimensional table. Discover table/field IDs with tables_query first.
+${extensionExportSources()
+  .map((source) => `- ${source.type}: ${source.describe}`)
+  .join('\n')}
 
-The server-backed source enforces the signed-in user's Tables permissions and is limited to 10,000 rows. Return the file artifact to the user; never paste the exported rows into the answer.`,
+The server-backed sources enforce the signed-in user's permissions and are limited to 10,000 rows. Return the file artifact to the user; never paste the exported rows into the answer.`,
   category: 'core',
   is_global: true,
   builtin: true,
@@ -204,10 +221,17 @@ async function loadDataset(
   source: ExportSource,
   context: ExportDataContext,
 ): Promise<ExportDataset> {
-  if (source.type === 'tables_records') return loadTablesRecords(source, context);
+  // The extension members widen the union to `Record<string, unknown>`, so
+  // dispatch on the discriminator before narrowing back to core's two shapes.
+  const extension = extensionExportSources().find((candidate) => candidate.type === source.type);
+  if (extension) return extension.load(source as unknown as Record<string, unknown>, context, db);
+  if (source.type === 'tables_records') {
+    return loadTablesRecords(source as Extract<ExportSource, { type: 'tables_records' }>, context);
+  }
+  const inline = source as Extract<ExportSource, { type: 'inline' }>;
   return {
-    columns: source.columns ?? inferColumns(source.rows),
-    rows: source.rows,
+    columns: inline.columns ?? inferColumns(inline.rows),
+    rows: inline.rows,
     defaultFilename: `data-export-${nowIso().slice(0, 10)}`,
     defaultSheetName: 'Data',
   };

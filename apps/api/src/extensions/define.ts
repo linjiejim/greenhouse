@@ -19,6 +19,7 @@ import type { ExtensionEntityKindDef } from '@greenhouse/types/entity-links';
 import type { WidgetRecipe } from '@greenhouse/types/workbench';
 import type { SearchSource } from '../search/sources.js';
 import type { DriveScopeDef } from '../drive/access.js';
+import type { ExtensionExportSource } from '../tools/export-sources.js';
 import type { WorkspaceSettingDef } from '@greenhouse/types/workspace-settings';
 import type { GreenhouseConfig } from '@greenhouse/types/config';
 import type { AppEnv } from '../app-env.js';
@@ -39,6 +40,11 @@ export interface ExtensionRoute {
 export interface ExtensionApplication extends ApplicationRegistration<PlatformHandlerContext> {
   /** Capabilities granted to the `team` role at bootstrap, e.g. `['crm.*']`. */
   teamCapabilities?: readonly string[];
+  /**
+   * Tools backed by this application's actions, so MCP hides a tool whose every
+   * action is denied — the same rule core applies to its own registry tools.
+   */
+  platformTools?: { query?: readonly string[]; command?: readonly string[] };
 }
 
 export interface ExtensionJob {
@@ -96,6 +102,8 @@ export interface GreenhouseExtension {
    * the resolver declared here. Core validates the shape and delegates the rule.
    */
   driveScopes?: DriveScopeDef[];
+  /** Whole-dataset sources offered by `export_data`, beyond core's inline/tables. */
+  exportSources?: ExtensionExportSource[];
   /**
    * MCP consent groups this extension owns (conventionally its own id). A token
    * can then be granted `mcp:<group>` alone; tools join it via `surface.mcp`.

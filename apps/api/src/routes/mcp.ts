@@ -62,6 +62,7 @@ import { delegatedAgentActor } from '../platform/actor.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
 import { projectsManifest } from '../platform/manifests/projects.js';
 import { knowledgeManifest } from '../platform/manifests/knowledge.js';
+import { extensionPlatformToolCapabilities } from '../extensions/boot.js';
 import { tablesManifest } from '../platform/manifests/tables.js';
 import { dispatchKnowledgeOperation } from '../platform/knowledge/adapter.js';
 import {
@@ -118,6 +119,8 @@ const PLATFORM_TOOL_CAPABILITIES: Readonly<Record<string, readonly string[]>> = 
   knowledge_mutation: capabilitiesByActionKind(knowledgeManifest, 'command'),
   tables_query: capabilitiesByActionKind(tablesManifest, 'query'),
   tables_mutation: capabilitiesByActionKind(tablesManifest, 'command'),
+  // Application-backed tools an extension owns follow the same rule.
+  ...extensionPlatformToolCapabilities(capabilitiesByActionKind),
 };
 
 /**

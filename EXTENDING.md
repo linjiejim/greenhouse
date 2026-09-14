@@ -117,6 +117,8 @@ Every field is optional and maps 1:1 onto a core registry:
 | `entityKinds` | in-app deeplinks (`entityUrl` / `parseEntityUrl`) and chat peeks | `{ kind: 'ext:crm:company', route: '#/crm/companies/:id' }` — one template drives both directions. Put the URL in a tool result and the chat renders a peek instead of a link. |
 | `searchSources` | the ⌘P palette | One lane per record kind; it applies its own permission check and a failure only empties its own group. |
 | `mcpGroups` | MCP consent + OAuth scopes | `['crm']` gives `mcp:crm`; tools join it with `surface.mcp: 'crm'`. Existing grants never pick up a new group. |
+| `exportSources` | the `export_data` tool's source union | A whole-dataset lane (`crm_customers`) so the model exports server-side instead of transcribing rows. Apply your own authorization; the tool only persists the result. |
+| `applications[].platformTools` | MCP tool visibility | Ties `crm_query` / `crm_mutation` to the application's query / command actions, so a fully denied tool disappears from `tools/list` like core's do. |
 | `driveScopes` | the shared Drive (`drive_folders` / `drive_files`) | Your own file cabinet inside core's tables: rows carry `scope: '<your scope>'` and `owner_key` (any text — a record id), and the `authorize(ownerKey, ctx)` you declare is the only rule core applies. |
 | `workbenchRecipes` | Home workbench card picker + `workbench_query.recipes` | Backed by one of the extension's own read tools; `labelKey` / `descriptionKey` translate it. |
 | `skillPacks` | Skill Center seed at boot | Same layout as `skillhub/`. |
