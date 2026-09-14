@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetProvider, initDatabase } from '@greenhouse/db';
 import type { DatabaseProvider, UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
-import { resolveProfileAsync } from '../../apps/api/src/profile.js';
+import { resolveProfileAsync } from '../../apps/api/src/profiles/profile.js';
 import { createInternalTestUser } from '../helpers/internal-user.js';
 
 let db: DatabaseProvider;

@@ -13,7 +13,7 @@ import {
   LAZY_TOOL_IDS,
 } from '../../../apps/api/src/agent-runtime/tool-resolution.js';
 import { BUILTIN_AGENT_TOOL_IDS, getAllToolIds } from '../../../apps/api/src/tools/registry.js';
-import type { AgentProfile } from '../../../apps/api/src/profile.js';
+import type { AgentProfile } from '../../../apps/api/src/profiles/profile.js';
 
 // Minimal AgentProfile factory — resolveEffectiveTools only reads tools.
 function makeProfile(overrides: Partial<AgentProfile>): AgentProfile {

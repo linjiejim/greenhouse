@@ -243,7 +243,7 @@ form + detail + delete.
   Filter/sort keys are whitelisted fail-loud (unknown key → 400).
 - **Client:** `defineCrud<Row>({ dataSource: createRestDataSource('/api/…', authFetch), columns,
   filters, formFields, access, … })` then render `<CrudPage schema={…} />`. Reference
-  implementations: `apps/web/src/pages/settings/users.tsx`, `skills.tsx`, `mcp-keys.tsx`.
+  implementations: `apps/web/src/pages/administration/users.tsx`, `skills.tsx`, `mcp-keys.tsx`.
 - **Escape hatches, narrow → wide:** column/field `type: 'custom'` (render fn) → `slots` +
   `tableActions` / `pageActions` → use `CrudPage` / `CrudForm` / `CrudDetail` standalone in a
   bespoke page (`installCrudUi` wires the host's UI kit once, in `app.tsx`).

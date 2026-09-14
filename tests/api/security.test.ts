@@ -10,7 +10,7 @@ import {
   validateMagicBytes,
   InMemoryRateLimiter,
   redactQueryForLog,
-} from '../../apps/api/src/security.js';
+} from '../../apps/api/src/security/security.js';
 
 // ─── Request Log Redaction ──────────────────────────────
 

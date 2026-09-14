@@ -198,15 +198,21 @@ greenhouse/
 │   ├── api/              # Hono backend — routes, agent runtime, auth, security, scheduler, CLI
 │   │   └── src/
 │   │       ├── routes/       # HTTP routes (one file per resource)
-│   │       ├── auth/         # token, middleware, password, api-key, crypto, features
+│   │       ├── chat/         # chat turn pipeline: turn, runtime, persist, runs, vision, eval, ambient context
+│   │       ├── knowledge/    # knowledge base domain: access, search, folders, sections, export, notify, backfill
+│   │       ├── sessions/     # session access rules + creation
+│   │       ├── drive/        # drive access + upload policy
+│   │       ├── auth/         # token, middleware, password, api-key, crypto, features, public paths
+│   │       ├── security/     # headers / CORS / rate limit, network egress policy, account lockout, request ip
+│   │       ├── extensions/   # the extension seam: define + index (compiled list) + boot glue + example/
 │   │       ├── settings/     # workspace-config: DB→env resolution, env overlay, validation
 │   │       ├── config/       # models.yaml + catalog loader (the model registry)
 │   │       ├── tools/        # agent tools, each declared with defineTool
 │   │       ├── agent-runtime/# tool proxy, MCP auth, lazy tool resolution, run-agent
 │   │       ├── platform/     # platform kernel host: manifests, applications, feature points,
 │   │       │                 #   bootstrap, OAuth server
-│   │       ├── llm/          # completion / title / memory / relay / usage budgets
-│   │       ├── profiles/     # agent profiles (YAML) + agent-profiles.md
+│   │       ├── llm/          # completion / title / memory / relay / usage budgets / media provider
+│   │       ├── profiles/     # agent profile loader + access rules, the YAML presets, agent-profiles.md
 │   │       ├── scheduler/    # cron scheduler + executor (automations)
 │   │       ├── runtime/      # unified runtime kernel: runs, steps, interrupts, outbox, read models
 │   │       ├── workflow-engine/ # multi-agent task-graph engine
@@ -219,7 +225,8 @@ greenhouse/
 │   │       ├── storage/      # upload storage (local disk / COS) + s3-lite (SigV4 client)
 │   │       ├── workbench/    # workbench card evaluation (shared by API + tools)
 │   │       └── cli/          # `pnpm cli` console: index.ts dispatcher + commands/*
-│   ├── web/              # React SPA — pages, components, lib, stores, platform catalog
+│   ├── web/              # React SPA — pages (administration/, settings/, executions/, …), components,
+│   │                     #   lib, stores, platform catalog, extensions/ (web half of the seam)
 │   ├── agent-runner/     # Mission sandbox runner (@greenhouse/sandbox-runner); image only,
 │   │                     #   the API never imports it
 │   ├── browser/          # Chrome extension (MV3) — side panel + options; see its src/AGENTS.md
@@ -378,7 +385,7 @@ ids it owns, so one switch controls app + REST + MCP + chat (`resolveUserTools` 
 flag-owned tools from this map — flag-owned tools cannot be assigned directly).
 `GET /api/admin/users/:id/access` aggregates flags, capabilities, entity policies and tools
 into one read-only view; writes still go through the existing fine-grained endpoints. The
-dialog (`apps/web/src/pages/settings/user-permissions-modal.tsx`) renders from that view.
+dialog (`apps/web/src/pages/administration/user-permissions-modal.tsx`) renders from that view.
 
 ### Platform kernel v2
 

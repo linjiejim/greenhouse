@@ -13,9 +13,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // version-matched), which these tests cannot intercept — `undici` is an apps/api
 // dependency and isn't resolvable from the repo root. Swap in a stand-in of the same
 // shape that goes through `globalThis.fetch`, so one mock drives both the API call and
-// the download. The real downloader's guards live in apps/api/src/network-security.test.ts.
-vi.mock('../apps/api/src/network-security.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../apps/api/src/network-security.js')>();
+// the download. The real downloader's guards live in apps/api/src/security/network.test.ts.
+vi.mock('../../apps/api/src/security/network.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../apps/api/src/security/network.js')>();
   return {
     ...actual,
     fetchPublicImage: async (input: string) => {
@@ -26,7 +26,7 @@ vi.mock('../apps/api/src/network-security.js', async (importOriginal) => {
   };
 });
 
-import { createGenerateImageTool, resolveSize } from '../apps/api/src/tools/generate-image.js';
+import { createGenerateImageTool, resolveSize } from '../../apps/api/src/tools/generate-image.js';
 
 const PNG_BYTES = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const API_BASE = 'https://media.example.com/v1';
@@ -268,7 +268,7 @@ describe('GenerateImageTool', () => {
 
     try {
       // The reference image must exist in storage first.
-      const { putUpload } = await import('../apps/api/src/storage/uploads.js');
+      const { putUpload } = await import('../../apps/api/src/storage/uploads.js');
       const refId = `gen-${Date.now()}-11111111-2222-3333-4444-555555555555.png`;
       await putUpload(refId, Buffer.from(PNG_BYTES), 'image/png');
 
@@ -296,7 +296,7 @@ describe('GenerateImageTool', () => {
     const { spy, restore } = mockFetch(() => b64Response());
 
     try {
-      const { putUpload } = await import('../apps/api/src/storage/uploads.js');
+      const { putUpload } = await import('../../apps/api/src/storage/uploads.js');
       const refId = `gen-${Date.now()}-11111111-2222-3333-4444-666666666666.png`;
       await putUpload(refId, Buffer.from(PNG_BYTES), 'image/png');
 
@@ -324,7 +324,7 @@ describe('GenerateImageTool', () => {
 describe('generate with reference assets', () => {
   /** Put a stand-in asset in storage and return its upload id. */
   async function seedAsset(suffix: string): Promise<string> {
-    const { putUpload } = await import('../apps/api/src/storage/uploads.js');
+    const { putUpload } = await import('../../apps/api/src/storage/uploads.js');
     const id = `gen-${Date.now()}-11111111-2222-3333-4444-${suffix}.png`;
     await putUpload(id, Buffer.from(PNG_BYTES), 'image/png');
     return id;
@@ -480,7 +480,7 @@ describe('size resolution', () => {
   it('keeps the source shape on a plain edit — an omitted size stays omitted', async () => {
     const { spy, restore } = mockFetch(() => b64Response());
     try {
-      const { putUpload } = await import('../apps/api/src/storage/uploads.js');
+      const { putUpload } = await import('../../apps/api/src/storage/uploads.js');
       const refId = `gen-${Date.now()}-11111111-2222-3333-4444-aaaaaaaaaaaa.png`;
       await putUpload(refId, Buffer.from(PNG_BYTES), 'image/png');
 

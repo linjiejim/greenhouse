@@ -17,7 +17,7 @@ import type { DatabaseProvider, UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../helpers/internal-user.js';
 
-import { resolveProfileAsync } from '../../apps/api/src/profile.js';
+import { resolveProfileAsync } from '../../apps/api/src/profiles/profile.js';
 import { resolveEffectiveTools } from '../../apps/api/src/agent-runtime/tool-resolution.js';
 import {
   resolveProxyToolIds,

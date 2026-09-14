@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const ROOT = join(import.meta.dirname, '..');
+const ROOT = join(import.meta.dirname, '..', '..');
 
 /** The three consumers that must delegate to `@greenhouse/types/workbench`. */
 const CONSUMERS = [

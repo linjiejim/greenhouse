@@ -9,7 +9,7 @@ import {
   checkpointChatRuntimeStream,
   settleChatRuntimeTrace,
   startChatRuntimeTrace,
-} from '../../apps/api/src/chat-runtime.js';
+} from '../../apps/api/src/chat/runtime.js';
 import { instrumentRuntimeTools } from '../../apps/api/src/runtime/tool-evidence.js';
 
 let db: DatabaseProvider;

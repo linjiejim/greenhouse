@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { initDatabase, getDb, _resetProvider } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { createFeatureRequestTool } from '../apps/api/src/tools/feature-request.js';
+import { createFeatureRequestTool } from '../../apps/api/src/tools/feature-request.js';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 
 let db: DatabaseProvider;

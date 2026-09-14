@@ -135,7 +135,7 @@
 - 权重:kb A=title+tags / B=\_summary+\_questions / C=content+\_topics
 - **查询侧同款分词**:`segmentForFts(query)` → `buildSegmentedTsQuery`(单中文字如「低」不被丢弃),三级策略 AND→OR→ILIKE;**存储与查询必须走同一 `segmentForFts`,否则 token 不对齐**
 - **CJK snippet**:`ts_headline` 对分词列与原文不对齐,改 `buildSnippet`(应用层按首个命中 token 截原文);拉丁词才继续用 `ts_headline`
-- **回填**:迁移只加空列,存量行由启动时的 `backfillKnowledgeTokens`（`apps/api/src/knowledge-backfill.ts`）自动补齐,也可 `pnpm cli knowledge reindex` 手动重算;之后写路径保持同步
+- **回填**:迁移只加空列,存量行由启动时的 `backfillKnowledgeTokens`（`apps/api/src/knowledge/backfill.ts`）自动补齐,也可 `pnpm cli knowledge reindex` 手动重算;之后写路径保持同步
 - **AND 命中不足时用 OR 补位,不是「首个非空 pass 即返回」**(2026-08-14):旧写法让一条平庸的 AND 命中挡住整个 OR
   候选集。现在两个 pass 都跑,AND 结果排前、OR 按 id 去重填满剩余名额,仍不够才回退 ILIKE。`search` 与 `searchShared`
   两处同款,改一处必须改另一处。
@@ -174,7 +174,7 @@
 - `kb_links{from_doc_id,to_doc_id}`(两端 CASCADE,unique(from,to)):出链在每次保存时由 `rebuildOutlinks(id, markdown)` 全量重建——扫描正文里的规范链接 `#/knowledge/doc/<id>`。反链读反方向,**必须逐条过 `resolveKbAccess`**(否则私有文档标题会经反链列表泄露)。
 - `kb_comments`(软删 `deleted_at`):文档级评论,读权限跟随文档。**不进 FTS / `knowledge_query` / `/search`**(spec D10)——讨论不是知识。
 - `knowledge_base.is_template`:显式布尔(不塞 meta JSON),`listTemplates()` 只列 team 可见模板。
-- 编辑态 presence 是**进程内存**(`apps/api/src/knowledge-presence.ts`,90s TTL),无表;与 `ws/connection-manager.ts` 的全局在线态是两回事。
+- 编辑态 presence 是**进程内存**(`apps/api/src/knowledge/presence.ts`,90s TTL),无表;与 `ws/connection-manager.ts` 的全局在线态是两回事。
 
 ### 侧栏树的手动排序列
 

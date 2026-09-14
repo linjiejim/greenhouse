@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { executeCompute } from '../apps/api/src/tools/compute/executor.js';
+import { executeCompute } from '../../apps/api/src/tools/compute/executor.js';
 
 describe('ComputeExecutor', () => {
   // ── Basic execution ──────────────────────────────────

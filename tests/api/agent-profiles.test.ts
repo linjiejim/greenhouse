@@ -9,7 +9,7 @@ import {
   registerKnownTools as registerTools,
   clearProfileCache as clearCache,
   validateProfile,
-} from '../../apps/api/src/profile.js';
+} from '../../apps/api/src/profiles/profile.js';
 
 const PROFILES_DIR = resolve(import.meta.dirname, '../../apps/api/src/profiles');
 const KNOWN_TOOLS = [
@@ -125,7 +125,7 @@ describe('Profile identities', () => {
 
 describe('Profile module loading and legacy compatibility', () => {
   it('loadAllProfiles returns 3 internal system profiles', async () => {
-    const { loadAllProfiles, clearProfileCache, registerKnownTools } = await import('../../apps/api/src/profile.js');
+    const { loadAllProfiles, clearProfileCache, registerKnownTools } = await import('../../apps/api/src/profiles/profile.js');
     registerKnownTools(KNOWN_TOOLS);
     clearProfileCache();
     expect(
@@ -136,7 +136,7 @@ describe('Profile module loading and legacy compatibility', () => {
   });
 
   it('maps stored legacy profile IDs onto the presets that replaced them', async () => {
-    const { resolveProfile, clearProfileCache } = await import('../../apps/api/src/profile.js');
+    const { resolveProfile, clearProfileCache } = await import('../../apps/api/src/profiles/profile.js');
     clearProfileCache();
     // Sessions/eval runs/scheduled tasks still store these; they must keep working.
     for (const legacy of [
@@ -247,7 +247,7 @@ describe('Profile module loading and legacy compatibility', () => {
   });
 
   it('reports the provider the catalog will actually run, not a hard-coded default', async () => {
-    const { loadProfile, clearProfileCache, registerKnownTools } = await import('../../apps/api/src/profile.js');
+    const { loadProfile, clearProfileCache, registerKnownTools } = await import('../../apps/api/src/profiles/profile.js');
     registerKnownTools(KNOWN_TOOLS);
     clearProfileCache();
     // The profile declares only `model.id`; the provider comes from the catalog.
@@ -264,7 +264,7 @@ describe('Profile module loading and legacy compatibility', () => {
   });
 
   it('validates custom base profile IDs', async () => {
-    const { isValidCustomBaseProfileId } = await import('../../apps/api/src/profile.js');
+    const { isValidCustomBaseProfileId } = await import('../../apps/api/src/profiles/profile.js');
     expect(isValidCustomBaseProfileId('sprouty')).toBe(true);
     // Retired preset ids are not fork bases (stored rows normalize first).
     expect(isValidCustomBaseProfileId('sprouty-quick')).toBe(false);
@@ -277,14 +277,14 @@ describe('Profile module loading and legacy compatibility', () => {
   });
 
   it('resolveProfileAsync handles custom malformed IDs', async () => {
-    const { resolveProfileAsync } = await import('../../apps/api/src/profile.js');
+    const { resolveProfileAsync } = await import('../../apps/api/src/profiles/profile.js');
     await expect(resolveProfileAsync('custom:abc')).rejects.toThrow(/Invalid custom profile ID/);
   });
 });
 
 describe('Rich output guide', () => {
   it('is one shared copy — every rich-output profile gets it, no YAML restates it', async () => {
-    const { enrichSystemPrompt } = await import('../../apps/api/src/profile.js');
+    const { enrichSystemPrompt } = await import('../../apps/api/src/profiles/profile.js');
     const { RICH_OUTPUT_GUIDE } = await import('@greenhouse/utils/prompts');
 
     for (const id of ['sprouty', 'eval-judge']) {
