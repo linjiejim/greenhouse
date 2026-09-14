@@ -78,6 +78,21 @@ export interface GreenhouseExtension {
   name: string;
   description?: string;
 
+  /**
+   * Other extensions this one needs, by id.
+   *
+   * Two extensions in the same build can import each other's exports by
+   * relative path — they are ordinary modules. What they cannot do is check at
+   * runtime that the other one is actually switched on, which is a
+   * configuration mistake that otherwise surfaces as a confusing failure deep
+   * in a request. Declaring it here turns that into a clear error at boot, and
+   * documents the coupling where a reader will find it.
+   *
+   * Depend on another extension only for something genuinely unshareable — an
+   * authenticated transport, a credential chain. Anything else belongs in core.
+   */
+  dependsOn?: string[];
+
   /** Agent tools — auto-exposed to chat, `/api/agent` and `/api/mcp` per each tool's `meta.surface`. */
   tools?: ToolModule[];
   /** HTTP routes mounted after the core chain. */

@@ -120,6 +120,7 @@ Every field is optional and maps 1:1 onto a core registry:
 | `exportSources` | the `export_data` tool's source union | A whole-dataset lane (`crm_customers`) so the model exports server-side instead of transcribing rows. Apply your own authorization; the tool only persists the result. |
 | `applications[].teamExportableEntities` | the `team` role's bootstrap field policy | Which of your entities a normal user may export in full. Empty by default — bulk export is a deliberate grant. |
 | `applications[].platformTools` | MCP tool visibility | Ties `crm_query` / `crm_mutation` to the application's query / command actions, so a fully denied tool disappears from `tools/list` like core's do. |
+| `dependsOn` | a boot-time check | Ids this extension needs switched on too. Two extensions in one build can import each other by path; this makes the configuration requirement explicit and fails fast instead of deep inside a request. Reserve it for the genuinely unshareable — an authenticated transport, a credential chain. |
 | `driveScopes` | the shared Drive (`drive_folders` / `drive_files`) | Your own file cabinet inside core's tables: rows carry `scope: '<your scope>'` and `owner_key` (any text — a record id), and the `authorize(ownerKey, ctx)` you declare is the only rule core applies. |
 | `workbenchRecipes` | Home workbench card picker + `workbench_query.recipes` | Backed by one of the extension's own read tools; `labelKey` / `descriptionKey` translate it. |
 | `skillPacks` | Skill Center seed at boot | Same layout as `skillhub/`. |
