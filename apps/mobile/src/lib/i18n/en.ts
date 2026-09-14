@@ -31,6 +31,7 @@ export const en = {
     title: 'Stations',
     current: 'Current station',
     hint: 'Self-hosted Greenhouse servers this app can connect to. Tap one to switch — each keeps its own sign-in.',
+    lockedHint: 'This build is locked to {name} — the server cannot be changed here.',
     empty: 'No stations yet',
     addFirst: 'Add your server…',
     add: 'Add station',

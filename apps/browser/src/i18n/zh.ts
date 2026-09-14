@@ -13,6 +13,7 @@ export const zh = {
     stations: '工作站',
     stationsHint: '已保存的自部署 Greenhouse 服务器连接，点击某一项即可切换。',
     noStations: '还没有工作站——先添加你的服务器。',
+    lockedHint: '此版本已固定连接到 {name}。',
     addStation: '添加工作站',
     activeBadge: '当前',
     signedOutBadge: '未登录',

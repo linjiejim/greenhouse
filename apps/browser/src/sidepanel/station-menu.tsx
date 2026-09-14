@@ -3,12 +3,17 @@
  * stations. Picking one flips the registry's active id; the panel remounts
  * ChatView via the station key. Signed-out stations are still listed (the
  * gate screen asks for sign-in after the switch).
+ *
+ * A single-station build (src/config.ts) has nothing to switch: the dot and
+ * the locked station's name are shown instead, and clicking them opens the
+ * options page (still the panel's only route to sign-out / preferences).
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import { StatusDot } from '@greenhouse/ui/components/ui';
 import { Check, ChevronDown, Server, Settings } from '@greenhouse/ui/lib/icons';
 import { useT } from '@greenhouse/ui/lib/i18n';
+import { isSingleStation } from '../config';
 import { setActiveStation } from '../lib/storage';
 import { useStations } from '../lib/use-auth';
 
@@ -28,6 +33,19 @@ export function StationMenu() {
   }, [open]);
 
   const active = state.stations.find((s) => s.id === state.activeId) ?? null;
+
+  if (isSingleStation()) {
+    return (
+      <button
+        className="flex min-w-0 items-center gap-1.5 rounded p-1 hover:bg-surface-muted"
+        title={active ? `${active.name} · ${active.baseUrl}` : t('common.settings')}
+        onClick={() => chrome.runtime.openOptionsPage()}
+      >
+        <StatusDot color="success" size="sm" />
+        {active && <span className="max-w-32 truncate text-xs text-fg-secondary">{active.name}</span>}
+      </button>
+    );
+  }
 
   return (
     <div ref={ref} className="relative flex items-center">

@@ -6,6 +6,9 @@
  * /api/auth/status, request host permission for that origin) and, when the
  * active station is signed out, the email + password sign-in for it. Each
  * station keeps its own token pair, so switching never drops a session.
+ *
+ * A single-station build (src/config.ts) shows only its locked station: no
+ * add form, no remove control — sign-in / sign-out still work as usual.
  */
 
 import React, { useState } from 'react';
@@ -13,9 +16,10 @@ import { Button, Card, Input, Badge, Select, Spinner } from '@greenhouse/ui/comp
 import { LogOut, Trash2 } from '@greenhouse/ui/lib/icons';
 import { useI18n, LOCALE_OPTIONS, type Locale } from '@greenhouse/ui/lib/i18n';
 import { THEME_MODES, getThemeMode, setThemeMode, type ThemeMode } from '@greenhouse/ui/lib/theme';
-import { normalizeBaseUrl, checkServer, requestHostPermission, login, logout, forgetStation } from '../lib/auth';
-import { addStation, setActiveStation, type Station } from '../lib/storage';
+import { checkServer, requestHostPermission, login, logout, forgetStation } from '../lib/auth';
+import { addStation, normalizeBaseUrl, setActiveStation, type Station } from '../lib/storage';
 import { useStations } from '../lib/use-auth';
+import { isSingleStation } from '../config';
 
 export function OptionsApp() {
   const { t, setLocale, locale } = useI18n();
@@ -65,32 +69,36 @@ export function OptionsApp() {
 function StationsCard({ stations, active }: { stations: Station[]; active: Station | null }) {
   const { t } = useI18n();
   const [adding, setAdding] = useState(false);
+  const locked = isSingleStation();
 
   return (
     <Card className="p-4 flex flex-col gap-3">
       <div>
         <h2 className="text-sm font-semibold">{t('options.stations')}</h2>
-        <p className="text-xs text-fg-muted mt-0.5">{t('options.stationsHint')}</p>
+        <p className="text-xs text-fg-muted mt-0.5">
+          {locked ? t('options.lockedHint', { name: active?.name ?? '' }) : t('options.stationsHint')}
+        </p>
       </div>
 
       {stations.length === 0 && !adding && <p className="text-sm text-fg-muted">{t('options.noStations')}</p>}
 
       {stations.map((s) => (
-        <StationRow key={s.id} station={s} isActive={s.id === active?.id} />
+        <StationRow key={s.id} station={s} isActive={s.id === active?.id} locked={locked} />
       ))}
 
-      {adding ? (
-        <AddStationForm onDone={() => setAdding(false)} onCancel={() => setAdding(false)} />
-      ) : (
-        <Button variant="outline" onClick={() => setAdding(true)}>
-          {t('options.addStation')}
-        </Button>
-      )}
+      {!locked &&
+        (adding ? (
+          <AddStationForm onDone={() => setAdding(false)} onCancel={() => setAdding(false)} />
+        ) : (
+          <Button variant="outline" onClick={() => setAdding(true)}>
+            {t('options.addStation')}
+          </Button>
+        ))}
     </Card>
   );
 }
 
-function StationRow({ station, isActive }: { station: Station; isActive: boolean }) {
+function StationRow({ station, isActive, locked }: { station: Station; isActive: boolean; locked: boolean }) {
   const { t } = useI18n();
 
   const remove = async () => {
@@ -135,13 +143,15 @@ function StationRow({ station, isActive }: { station: Station; isActive: boolean
           <LogOut size={15} />
         </button>
       )}
-      <button
-        className="rounded p-1.5 text-fg-secondary hover:bg-surface-muted hover:text-danger-fg"
-        title={t('options.removeStation')}
-        onClick={remove}
-      >
-        <Trash2 size={15} />
-      </button>
+      {!locked && (
+        <button
+          className="rounded p-1.5 text-fg-secondary hover:bg-surface-muted hover:text-danger-fg"
+          title={t('options.removeStation')}
+          onClick={remove}
+        >
+          <Trash2 size={15} />
+        </button>
+      )}
     </div>
   );
 }

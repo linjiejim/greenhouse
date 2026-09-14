@@ -15,6 +15,7 @@ PRIVACY.md             # privacy policy (store listing requires a hosted copy)
 sidepanel.html         # side panel entry (React)
 options.html           # options page entry (React)
 src/
+├── config.ts          # build-time clients.stations from the root greenhouse.config.ts
 ├── background/        # service worker — owns refresh-token rotation (single-flight)
 ├── lib/               # storage (chrome.storage.local slot), auth client, hooks
 ├── i18n/              # en/zh catalogs, registered into @greenhouse/ui's i18n mechanism
@@ -51,6 +52,19 @@ page `<title>`s — keep in sync). Re-render icons with
   header's status dot is the station switcher (`sidepanel/station-menu.tsx`);
   `ChatView` is keyed by station id so switching remounts chat state. Removing
   a station best-effort revokes its origin permission (`forgetStation`).
+- **Client stations config** (`src/config.ts`): the `clients.stations` section
+  of the repository's `greenhouse.config.ts` is bundled at build time —
+  `mode: 'multi' | 'single'`, `defaults: [{id, name, url}]` (OSS default:
+  `multi`, `[]`). `defaults` are seeded, signed out, on the first read of a
+  fresh install (no `stations` slot and no legacy `auth`), first one active;
+  a registry the user emptied is not re-seeded. `single` locks the build to
+  `defaults[0]`: `getStations()` re-locks the registry on every read (the
+  entry with that origin keeps its session, anything else is dropped),
+  `addStation` throws for any other origin, `removeStation` /
+  `setActiveStation` are no-ops, and the options page / station menu hide
+  add, remove and switch (the menu collapses to the station name, which opens
+  the options page). A `single` config without exactly one default throws at
+  module load — fail closed, same rule as the server-side schema.
 - **Permissions**: keep the static permission set minimal (`storage`,
   `sidePanel`, `scripting`, `activeTab`, `tabs` — the last one powers
   `browser_list_tabs`/automation tab metadata). Host access is requested at

@@ -28,6 +28,7 @@ export const zh: Catalog = {
     title: '工作站',
     current: '当前工作站',
     hint: '本应用可连接的自部署 Greenhouse 服务器，点按即可切换——每个工作站的登录状态相互独立。',
+    lockedHint: '此版本已固定连接到 {name}，无法在此更换服务器。',
     empty: '还没有工作站',
     addFirst: '添加你的服务器…',
     add: '添加工作站',

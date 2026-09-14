@@ -4,10 +4,14 @@
  * Settings (switch after signing in). Every mutation re-runs auth.bootstrap()
  * so the active station's tokens are rehydrated and the root layout routes to
  * home or /login depending on whether the target station has a live session.
+ *
+ * A single-station build (IS_SINGLE_STATION) shows only its locked station —
+ * no add form, no delete — so the user can still see which server they are on.
  */
 
 import React, { useState } from 'react';
 import { Alert, Text, View } from 'react-native';
+import { IS_SINGLE_STATION } from '../config';
 import { useStations, normalizeBaseUrl, probeStation, type StationRecord } from '../store/stations';
 import { useAuth } from '../store/auth';
 import { useT } from '../lib/i18n';
@@ -20,6 +24,8 @@ export function StationSheet({ visible, onClose }: { visible: boolean; onClose: 
   const t = useT();
   const stations = useStations((s) => s.stations);
   const activeId = useStations((s) => s.activeId);
+  const locked = IS_SINGLE_STATION;
+  const active = stations.find((s) => s.id === activeId) ?? null;
 
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
@@ -81,15 +87,17 @@ export function StationSheet({ visible, onClose }: { visible: boolean; onClose: 
   }
 
   return (
-    <Sheet visible={visible} onClose={onClose} title={t('station.title')} heightPct={70}>
+    <Sheet visible={visible} onClose={onClose} title={t('station.title')} heightPct={locked ? 40 : 70}>
       <BottomSheetScrollView
         ref={scrollRef}
         contentContainerStyle={{ padding: 16, paddingBottom: 36 }}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.hint}>{t('station.hint')}</Text>
+        <Text style={styles.hint}>
+          {locked ? t('station.lockedHint', { name: active?.name ?? '' }) : t('station.hint')}
+        </Text>
 
-        {stations.length === 0 ? <Text style={styles.empty}>{t('station.empty')}</Text> : null}
+        {!locked && stations.length === 0 ? <Text style={styles.empty}>{t('station.empty')}</Text> : null}
 
         {stations.map((station) => {
           const active = station.id === activeId;
@@ -111,43 +119,49 @@ export function StationSheet({ visible, onClose }: { visible: boolean; onClose: 
                 </Text>
               </View>
               {active ? <Icon name="check" size={18} color={c.accent} sw={2.4} /> : null}
-              <Touchable haptic="none" onPress={() => confirmRemove(station)} hitSlop={8} style={styles.iconBtn}>
-                <Icon name="trash" size={16} color={c.fgMuted} />
-              </Touchable>
+              {!locked ? (
+                <Touchable haptic="none" onPress={() => confirmRemove(station)} hitSlop={8} style={styles.iconBtn}>
+                  <Icon name="trash" size={16} color={c.fgMuted} />
+                </Touchable>
+              ) : null}
             </Touchable>
           );
         })}
 
-        <View style={styles.divider} />
+        {!locked ? (
+          <>
+            <View style={styles.divider} />
 
-        <Text style={styles.formLabel}>{t('station.add')}</Text>
-        <View style={styles.field}>
-          <Icon name="globe" size={17} color={c.fgMuted} />
-          <BottomSheetTextInput
-            value={url}
-            onChangeText={(v: string) => {
-              setUrl(v);
-              setError(null);
-            }}
-            onFocus={revealEnd}
-            placeholder={t('station.urlPlaceholder')}
-            placeholderTextColor={c.fgFaint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            editable={!busy}
-            onSubmitEditing={() => void add()}
-            style={styles.fieldInput}
-          />
-        </View>
-        {error ? <Text style={styles.err}>{error}</Text> : null}
-        <Touchable
-          onPress={() => void add()}
-          disabled={busy || !url.trim()}
-          style={[styles.addBtn, (busy || !url.trim()) && styles.disabled]}
-        >
-          <Text style={styles.addBtnText}>{busy ? t('station.checking') : t('station.addAction')}</Text>
-        </Touchable>
+            <Text style={styles.formLabel}>{t('station.add')}</Text>
+            <View style={styles.field}>
+              <Icon name="globe" size={17} color={c.fgMuted} />
+              <BottomSheetTextInput
+                value={url}
+                onChangeText={(v: string) => {
+                  setUrl(v);
+                  setError(null);
+                }}
+                onFocus={revealEnd}
+                placeholder={t('station.urlPlaceholder')}
+                placeholderTextColor={c.fgFaint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                editable={!busy}
+                onSubmitEditing={() => void add()}
+                style={styles.fieldInput}
+              />
+            </View>
+            {error ? <Text style={styles.err}>{error}</Text> : null}
+            <Touchable
+              onPress={() => void add()}
+              disabled={busy || !url.trim()}
+              style={[styles.addBtn, (busy || !url.trim()) && styles.disabled]}
+            >
+              <Text style={styles.addBtnText}>{busy ? t('station.checking') : t('station.addAction')}</Text>
+            </Touchable>
+          </>
+        ) : null}
       </BottomSheetScrollView>
     </Sheet>
   );

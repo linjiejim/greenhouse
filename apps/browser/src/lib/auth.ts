@@ -9,31 +9,8 @@
 
 import { getAuth, removeStation, updateStationAuth, type Station, type StationAuth } from './storage';
 
-// ─── Base URL handling ───────────────────────────────────
-
-/**
- * Normalize user input to an origin: add a scheme if missing, drop path/slash.
- * Bare IPs / localhost default to http:// (LAN self-hosts rarely have TLS);
- * everything else defaults to https://. An explicit scheme always wins.
- */
-export function normalizeBaseUrl(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  const withProto = /^https?:\/\//i.test(trimmed) ? trimmed : `${defaultScheme(trimmed)}://${trimmed}`;
-  try {
-    return new URL(withProto).origin;
-  } catch {
-    return null;
-  }
-}
-
-function defaultScheme(input: string): 'http' | 'https' {
-  const authority = input.split('/')[0];
-  // [::1]-style IPv6 literals, localhost, and dotted IPv4s are LAN targets.
-  const host = authority.startsWith('[') ? authority : authority.split(':')[0];
-  if (host === 'localhost' || host.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return 'http';
-  return 'https';
-}
+// ─── Instance probing ────────────────────────────────────
+// (URL normalization lives in ./storage next to the registry it feeds.)
 
 /** Ask the user to grant host permission for the instance origin. */
 export async function requestHostPermission(baseUrl: string): Promise<boolean> {

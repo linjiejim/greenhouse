@@ -17,6 +17,7 @@ export const en = {
     stations: 'Stations',
     stationsHint: 'Saved connections to self-hosted Greenhouse servers. Click one to make it active.',
     noStations: 'No stations yet — add your server to get started.',
+    lockedHint: 'This build is locked to {name}.',
     addStation: 'Add station',
     activeBadge: 'Active',
     signedOutBadge: 'Signed out',

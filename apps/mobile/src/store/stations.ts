@@ -4,14 +4,21 @@
  * origin at call time via getApiBase(). Tokens live per station in
  * token-storage, so switching keeps each deployment's session.
  *
- * First-launch seeding: a legacy (pre-station) signed-in session is adopted
- * onto a station built from DEFAULT_API_BASE; otherwise a signed-out default
- * station is seeded only for pinned builds (EXPO_PUBLIC_API_BASE_URL set) and
- * dev. The generic store build starts empty and the user adds their server.
+ * First-launch seeding: the build's default stations (STATIONS.defaults, from
+ * EXPO_PUBLIC_API_BASE_URL) are seeded signed-out with the first one active,
+ * and a legacy (pre-station) signed-in session is adopted onto that first
+ * station. With no defaults, only a legacy session or __DEV__ seeds a station
+ * built from DEFAULT_API_BASE — the generic store build starts empty and the
+ * user adds their server.
+ *
+ * Single-station builds (IS_SINGLE_STATION): the registry is locked to the
+ * default station — hydrate() re-locks it on every run and add / switchTo /
+ * remove ignore everything else, so no UI path can leave that server.
  */
 
 import { create } from 'zustand';
-import { DEFAULT_API_BASE, HAS_PINNED_BASE } from '../config';
+import { DEFAULT_API_BASE, IS_SINGLE_STATION, STATIONS } from '../config';
+import type { StationConfig } from '../shared/greenhouse-config';
 import { loadPref, savePref, migrateLegacyTokens, purgeStationTokens } from '../api/token-storage';
 
 export interface StationRecord {
@@ -77,16 +84,29 @@ export async function probeStation(baseUrl: string): Promise<{ ok: boolean; auth
   }
 }
 
+/** Signed-out record for a configured default: config id, normalized origin. */
+function seedRecord(d: StationConfig): StationRecord {
+  const baseUrl = normalizeBaseUrl(d.url) ?? d.url;
+  return { id: d.id, baseUrl, name: d.name.trim() || hostLabel(baseUrl) };
+}
+
+/** The one station a single-station build is locked to (null otherwise). */
+function lockedStation(): StationRecord | null {
+  const first = STATIONS.defaults[0];
+  return IS_SINGLE_STATION && first ? seedRecord(first) : null;
+}
+
 interface StationsState {
   stations: StationRecord[];
   activeId: string | null;
   hydrated: boolean;
-  /** Load the persisted registry (with legacy adoption / first-launch seeding). */
+  /** Load the persisted registry (with legacy adoption / first-launch seeding / single-station lock). */
   hydrate: () => Promise<void>;
-  /** Save a station and make it active; a duplicate origin switches instead. */
+  /** Save a station and make it active; a duplicate origin switches instead. Locked builds ignore other origins. */
   add: (baseUrl: string, name?: string) => Promise<StationRecord>;
+  /** Make a station active. No-op in a locked build. */
   switchTo: (id: string) => Promise<void>;
-  /** Delete the entry and its persisted tokens; active falls to the first remaining. */
+  /** Delete the entry and its persisted tokens; active falls to the first remaining. No-op in a locked build. */
   remove: (id: string) => Promise<void>;
 }
 
@@ -119,20 +139,32 @@ export const useStations = create<StationsState>((set, get) => ({
     let activeId = rawActive;
 
     if (!stations) {
-      // First launch on this install.
-      stations = [];
-      activeId = null;
-      const seed: StationRecord = {
-        id: newStationId(),
-        baseUrl: DEFAULT_API_BASE,
-        name: hostLabel(DEFAULT_API_BASE),
-      };
-      const hadLegacySession = await migrateLegacyTokens(seed.id);
-      if (hadLegacySession || HAS_PINNED_BASE || __DEV__) {
-        stations = [seed];
-        activeId = seed.id;
-      }
+      // First launch on this install: seed the build's defaults, first one active.
+      stations = STATIONS.defaults.map(seedRecord);
+      // A legacy (pre-station) session is adopted onto the first seeded station —
+      // or onto a station built from the build default when nothing is seeded.
+      const first = stations[0] ?? { id: newStationId(), baseUrl: DEFAULT_API_BASE, name: hostLabel(DEFAULT_API_BASE) };
+      const hadLegacySession = await migrateLegacyTokens(first.id);
+      if (stations.length === 0 && (hadLegacySession || __DEV__)) stations = [first];
+      activeId = stations[0]?.id ?? null;
       await persist(stations, activeId);
+    }
+
+    const locked = lockedStation();
+    if (locked) {
+      // Single-station build: the registry holds exactly the locked station. An
+      // entry with the same origin keeps its id (and so its tokens); anything else
+      // is unreachable in this build and goes, tokens included.
+      const existing = stations.find((s) => s.baseUrl === locked.baseUrl);
+      const station = existing ? { ...existing, name: locked.name } : locked;
+      const alreadyLocked =
+        stations.length === 1 && stations[0].id === station.id && stations[0].name === station.name && activeId === station.id;
+      if (!alreadyLocked) {
+        for (const s of stations) if (s.id !== station.id) purgeStationTokens(s.id);
+        stations = [station];
+        activeId = station.id;
+        await persist(stations, activeId);
+      }
     }
 
     if (activeId && !stations.some((s) => s.id === activeId)) activeId = stations[0]?.id ?? null;
@@ -141,6 +173,10 @@ export const useStations = create<StationsState>((set, get) => ({
 
   async add(baseUrl, name) {
     const { stations } = get();
+    const locked = lockedStation();
+    if (locked && baseUrl !== locked.baseUrl) {
+      return stations.find((s) => s.baseUrl === locked.baseUrl) ?? locked;
+    }
     const existing = stations.find((s) => s.baseUrl === baseUrl);
     if (existing) {
       await get().switchTo(existing.id);
@@ -154,6 +190,7 @@ export const useStations = create<StationsState>((set, get) => ({
   },
 
   async switchTo(id) {
+    if (IS_SINGLE_STATION) return;
     const { stations, activeId } = get();
     if (activeId === id || !stations.some((s) => s.id === id)) return;
     set({ activeId: id });
@@ -161,6 +198,7 @@ export const useStations = create<StationsState>((set, get) => ({
   },
 
   async remove(id) {
+    if (IS_SINGLE_STATION) return;
     const { stations, activeId } = get();
     const next = stations.filter((s) => s.id !== id);
     const nextActive = activeId === id ? (next[0]?.id ?? null) : activeId;

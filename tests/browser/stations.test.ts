@@ -1,22 +1,39 @@
 /**
  * Station-registry tests for the extension storage layer — the multi-station
- * core: legacy single-slot migration, add/switch/remove semantics, and
- * per-station session writes. chrome.storage.local is mocked in-memory.
+ * core: legacy single-slot migration, add/switch/remove semantics, per-station
+ * session writes, and the build-time stations config (first-launch seeding,
+ * single-station lock). chrome.storage.local is mocked in-memory; the config
+ * module is mocked so every test picks its own mode / defaults.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ClientStationsConfig } from '@greenhouse/types/config';
 import {
   addStation,
   getAuth,
   getStations,
   migrateLegacyAuth,
+  normalizeBaseUrl,
   removeStation,
   setActiveStation,
   stationIdFor,
   updateStationAuth,
   type StationAuth,
 } from '../../apps/browser/src/lib/storage';
-import { normalizeBaseUrl } from '../../apps/browser/src/lib/auth';
+
+// ─── Build-time config mock ──────────────────────────────
+
+// Mutable so each test sets its own mode / defaults: the storage layer reads
+// the config at call time, never at import.
+const cfg = vi.hoisted((): ClientStationsConfig => ({ mode: 'multi', defaults: [] }));
+
+vi.mock('../../apps/browser/src/config', () => ({
+  get STATIONS() {
+    return cfg;
+  },
+  isSingleStation: () => cfg.mode === 'single',
+  defaultStations: () => cfg.defaults,
+}));
 
 // ─── chrome.storage.local mock ───────────────────────────
 
@@ -43,7 +60,11 @@ function installChromeMock() {
   };
 }
 
-beforeEach(installChromeMock);
+beforeEach(() => {
+  installChromeMock();
+  cfg.mode = 'multi';
+  cfg.defaults = [];
+});
 
 const user = { id: 'u1', nickname: 'Kim', role: 'team' };
 const AUTH_A: StationAuth = { accessToken: 'at-a', refreshToken: 'rt-a', user };
@@ -178,6 +199,109 @@ describe('station sessions', () => {
     expect(await getAuth()).toBeNull();
     await removeStation(two.id);
     expect((await getAuth())?.stationId).toBe(one.id);
+  });
+});
+
+// ─── Configured defaults (greenhouse.config.ts → clients.stations) ─
+
+const HQ = { id: 'hq', name: 'HQ', url: 'https://hq.example.com/' };
+const LAB = { id: 'lab', name: 'Lab', url: 'lab.example.com' };
+const HQ_ID = stationIdFor('https://hq.example.com');
+
+describe('configured default stations', () => {
+  it('seeds the defaults on first launch — origins normalized, first one active, persisted once', async () => {
+    cfg.defaults = [HQ, LAB];
+    const state = await getStations();
+    expect(state.stations).toEqual([
+      { id: HQ_ID, baseUrl: 'https://hq.example.com', name: 'HQ', auth: null },
+      { id: stationIdFor('https://lab.example.com'), baseUrl: 'https://lab.example.com', name: 'Lab', auth: null },
+    ]);
+    expect(state.activeId).toBe(HQ_ID);
+    expect(store.stations).toEqual(state);
+    // Seeding happened on the first read, not on every read.
+    cfg.defaults = [];
+    expect(await getStations()).toEqual(state);
+  });
+
+  it('does not seed when a legacy auth slot is migrated instead', async () => {
+    cfg.defaults = [HQ];
+    store.auth = { baseUrl: 'https://gh.example.com', accessToken: 'at', refreshToken: 'rt', user };
+    const state = await getStations();
+    expect(state.stations.map((s) => s.baseUrl)).toEqual(['https://gh.example.com']);
+    expect(store.auth).toBeUndefined();
+  });
+
+  it('leaves a registry the user emptied alone', async () => {
+    cfg.defaults = [HQ];
+    store.stations = { stations: [], activeId: null };
+    expect(await getStations()).toEqual({ stations: [], activeId: null });
+  });
+
+  it('seeded stations behave like any other (removable, switchable)', async () => {
+    cfg.defaults = [HQ, LAB];
+    await removeStation(HQ_ID);
+    const state = await getStations();
+    expect(state.stations.map((s) => s.name)).toEqual(['Lab']);
+    expect(state.activeId).toBe(state.stations[0].id);
+  });
+});
+
+// ─── Single-station build ────────────────────────────────
+
+describe('single-station build', () => {
+  beforeEach(() => {
+    cfg.mode = 'single';
+    cfg.defaults = [HQ];
+  });
+
+  it('holds exactly the locked station, active', async () => {
+    expect(await getStations()).toEqual({
+      stations: [{ id: HQ_ID, baseUrl: 'https://hq.example.com', name: 'HQ', auth: null }],
+      activeId: HQ_ID,
+    });
+  });
+
+  it('refuses a foreign origin and keeps accepting the locked one', async () => {
+    await expect(addStation('https://other.example.com')).rejects.toThrow(/locked to HQ/);
+    expect((await getStations()).stations.map((s) => s.baseUrl)).toEqual(['https://hq.example.com']);
+    expect((await addStation('https://hq.example.com')).id).toBe(HQ_ID);
+  });
+
+  it('ignores remove and switch', async () => {
+    await removeStation(HQ_ID);
+    await setActiveStation('st-nope');
+    const state = await getStations();
+    expect(state.stations.map((s) => s.id)).toEqual([HQ_ID]);
+    expect(state.activeId).toBe(HQ_ID);
+  });
+
+  it('still signs the locked station in and out', async () => {
+    await updateStationAuth(HQ_ID, AUTH_A);
+    expect((await getAuth())?.stationId).toBe(HQ_ID);
+    await updateStationAuth(HQ_ID, null);
+    expect(await getAuth()).toBeNull();
+    expect((await getStations()).stations).toHaveLength(1);
+  });
+
+  it('re-locks a registry left by a multi-station build, keeping the locked station session', async () => {
+    const other = {
+      id: stationIdFor('https://other.example.com'),
+      baseUrl: 'https://other.example.com',
+      name: 'other.example.com',
+      auth: AUTH_A,
+    };
+    const hq = {
+      id: HQ_ID,
+      baseUrl: 'https://hq.example.com',
+      name: 'hq.example.com',
+      auth: { ...AUTH_A, accessToken: 'at-hq' },
+    };
+    store.stations = { stations: [other, hq], activeId: other.id };
+
+    const state = await getStations();
+    expect(state).toEqual({ stations: [{ ...hq, name: 'HQ' }], activeId: HQ_ID });
+    expect(store.stations).toEqual(state);
+    expect((await getAuth())?.accessToken).toBe('at-hq');
   });
 });
 
