@@ -24,9 +24,10 @@ for people who want to test the tip and understand it can break.
 
 ## Version strategy
 
-- **SemVer**, pre-1.0 (`0.y.z`): while `0.x`, a `feat:` bumps the **minor** and
-  `fix:` bumps the **patch** (breaking changes also bump minor until 1.0). This is
-  configured in `release-please-config.json` (`bump-minor-pre-major`).
+- **SemVer**, from 1.0.0 on: a breaking change (`feat!:` or a `BREAKING CHANGE:`
+  footer) bumps the **major**, `feat:` the **minor**, `fix:` the **patch**. Before
+  1.0 the major was pinned by `bump-minor-pre-major`; that is off now, so a
+  breaking change really does mean a new major.
 - **Conventional Commits drive the bump.** The repo already uses them
   (`feat(api:export): …`, `fix(web): …`). PRs are **squash-merged** so one PR =
   one Conventional Commit on `main`.
