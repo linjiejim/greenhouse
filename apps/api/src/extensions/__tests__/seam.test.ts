@@ -151,4 +151,24 @@ describe('extension seam', { timeout: 60_000 }, () => {
     expect(() => defineExtension({ id: 'Bad Id', name: 'x' })).toThrow(/must match/);
     expect(defineExtension({ id: 'fine-1', name: 'x' }).id).toBe('fine-1');
   });
+
+  it('refuses a tool that core could never build', async () => {
+    const { defineExtension } = await import('../define.js');
+    const { defineTool } = await import('../../tools/define.js');
+    const meta = { id: 'ghost_tool', name: 'Ghost', description: 'x', category: 'team' as const };
+    // A lazy tool without createLazy is exactly the shape that reaches the
+    // catalog but never the agent — refuse it at definition, not at run time.
+    expect(() => defineExtension({ id: 'ghosts', name: 'x', tools: [defineTool({ meta, kind: 'lazy' })] })).toThrow(
+      /createLazy/,
+    );
+    expect(() => defineExtension({ id: 'ghosts', name: 'x', tools: [defineTool({ meta, kind: 'static' })] })).toThrow(
+      /create\(\)/,
+    );
+    const ok = defineExtension({
+      id: 'ghosts',
+      name: 'x',
+      tools: [defineTool({ meta, kind: 'lazy', createLazy: () => ({}) })],
+    });
+    expect(ok.tools?.[0]?.meta.id).toBe('ghost_tool');
+  });
 });

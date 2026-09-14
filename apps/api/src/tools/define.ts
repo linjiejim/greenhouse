@@ -133,6 +133,8 @@ export interface LazyToolContext {
   /** Bind workspace-aware inputs to `workspaceId` (proxy / automation credentials). */
   lockWorkspace?: boolean;
   profileId?: string | null;
+  /** True in scheduled-task runs and workflow nodes: nobody is present for the rest of the turn. */
+  unattended?: boolean;
 }
 
 export interface ToolModule {

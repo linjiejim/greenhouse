@@ -149,10 +149,25 @@ export interface GreenhouseExtension {
 
 const ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 
-/** Identity helper with the one validation worth doing early: a well-formed id. */
+/**
+ * Identity helper with the validations worth doing early: a well-formed id, and
+ * tools core can actually build. Core wires its own lazy tools by name; an
+ * extension tool has exactly one path each — `create` for static, `createLazy`
+ * for lazy — and without it the tool sits in the catalog but is never handed to
+ * the agent, which only shows up at run time as "I have no such tool".
+ */
 export function defineExtension(extension: GreenhouseExtension): GreenhouseExtension {
   if (!ID_PATTERN.test(extension.id)) {
     throw new Error(`Extension id "${extension.id}" must match ${ID_PATTERN} (it is also the config switch)`);
+  }
+  for (const mod of extension.tools ?? []) {
+    if (mod.kind === 'static' && !mod.create)
+      throw new Error(`Extension "${extension.id}" tool "${mod.meta.id}" is static but has no create()`);
+    if (mod.kind === 'lazy' && !mod.createLazy)
+      throw new Error(
+        `Extension "${extension.id}" tool "${mod.meta.id}" is lazy but has no createLazy() — ` +
+          'core has no per-tool case for extension tools, so it could never be built',
+      );
   }
   return extension;
 }
