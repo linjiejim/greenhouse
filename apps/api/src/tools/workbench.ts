@@ -84,7 +84,7 @@ const mapSchema = z
 
 const navSchema = z
   .object({
-    app_id: z.string().optional().describe('Application id from the catalog, e.g. "crm" — links to its home.'),
+    app_id: z.string().optional().describe('Application id from the catalog, e.g. "projects" — links to its home.'),
     entity_kind: z.enum(['crm_company', 'crm_deal', 'project', 'kb_doc', 'tables_record']).optional(),
     entity_id: z.number().int().optional(),
     slug: z.string().optional().describe('kb_doc only.'),

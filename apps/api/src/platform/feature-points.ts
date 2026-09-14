@@ -142,6 +142,16 @@ function pointToolIds(key: string): readonly string[] {
   return point.toolIds;
 }
 
+/**
+ * The feature flag that gates a platform application, if any.
+ *
+ * Derived from the registry so the HTTP layer never hard-codes app ids: an app
+ * an extension brings is gated by its own flag on exactly the same path.
+ */
+export function appFeatureFlag(appId: string): string | undefined {
+  return FEATURE_POINTS.find((point) => point.kind === 'app' && point.appId === appId)?.flag;
+}
+
 export const TABLES_FEATURE_TOOL_IDS: readonly string[] = pointToolIds('tables');
 export const MEMORY_FEATURE_TOOL_IDS: readonly string[] = pointToolIds('memory');
 export const CLOUD_AGENT_FEATURE_TOOL_IDS: readonly string[] = pointToolIds('cloud-agent');

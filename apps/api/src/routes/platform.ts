@@ -16,20 +16,28 @@ import { getAuthUser } from '../auth/middleware.js';
 import { humanActor } from '../platform/actor.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
 import { userHasFeature } from '../auth/features.js';
+import { appFeatureFlag } from '../platform/feature-points.js';
 import { PLATFORM_ORG_ID } from '../platform/runtime.js';
 
+/**
+ * Applications this user may see: visible to the actor AND, when the app is
+ * owned by a feature flag, that flag enabled.
+ *
+ * The flag comes from the feature-point registry rather than a list of app ids
+ * here, so an application an extension registers is gated identically.
+ */
 async function visibleApplications(c: Parameters<typeof getAuthUser>[0]) {
   const user = getAuthUser(c);
   const actor = humanActor(user, c);
-  const [visible, hasCrm, hasTables] = await Promise.all([
-    getPlatformRuntime().listVisibleApplications(actor),
-    userHasFeature(user.id, user.role, 'crm'),
-    userHasFeature(user.id, user.role, 'tables'),
-  ]);
-  return visible.filter(
-    (application) =>
-      (application.manifest.id !== 'crm' || hasCrm) && (application.manifest.id !== 'tables' || hasTables),
-  );
+  const visible = await getPlatformRuntime().listVisibleApplications(actor);
+  const allowed = await Promise.all(visible.map((application) => appEnabledFor(user, application.manifest.id)));
+  return visible.filter((_, index) => allowed[index]);
+}
+
+/** True when the app has no flag, or the user has it. */
+async function appEnabledFor(user: ReturnType<typeof getAuthUser>, appId: string): Promise<boolean> {
+  const flag = appFeatureFlag(appId);
+  return flag ? userHasFeature(user.id, user.role, flag) : true;
 }
 
 function stableIdList(value: unknown, field: string, allowedIds: ReadonlySet<string>): string[] {
@@ -180,14 +188,16 @@ const platformRoutes = new Hono<AppEnv>()
     const user = getAuthUser(c);
     const actor = humanActor(user, c);
     const runtime = getPlatformRuntime();
-    const [hasCrm, hasTables] = await Promise.all([
-      userHasFeature(user.id, user.role, 'crm'),
-      userHasFeature(user.id, user.role, 'tables'),
-    ]);
+    const manifests = runtime.listManifests();
+    const enabled = new Map(
+      await Promise.all(
+        manifests.map(async (manifest) => [manifest.id, await appEnabledFor(user, manifest.id)] as const),
+      ),
+    );
     const permissions = [];
-    for (const manifest of runtime.listManifests()) {
+    for (const manifest of manifests) {
       for (const capability of manifest.capabilities) {
-        if ((manifest.id === 'crm' && !hasCrm) || (manifest.id === 'tables' && !hasTables)) {
+        if (!enabled.get(manifest.id)) {
           permissions.push({
             appId: manifest.id,
             capability,
