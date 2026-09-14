@@ -26,7 +26,7 @@ const EXCLUDED_FILES = new Set([
 // Product names, protocols, keyboard labels, units, and example values are not
 // prose. Keeping this list narrow makes any new user-facing English fail here.
 const INTENTIONAL_COPY = [
-  /^(Greenhouse|by Greenhouse|Greenhouse|SkillHub|CRM|macOS|Windows|ESC|esc|PDF|KA|S\/A|ms|null)$/,
+  /^(Greenhouse|by Greenhouse|Greenhouse|SkillHub|macOS|Windows|ESC|esc|PDF|KA|S\/A|ms|null)$/,
   /^(ID:|SN:|TTFB|client_id|sha256:)$/,
   /^(Greenhouse v|MB · \.|MB ·)$/,
   /^(IMAP|SMTP) (host|port)$/,

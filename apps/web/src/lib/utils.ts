@@ -280,9 +280,8 @@ export const CHART_PALETTE = [
 ] as const;
 
 // ─── Domain → Tag tone maps ──────────────────────────────
-// Single source of truth for status/result/stage colors, consumed by <Tag tone>.
-// Replaces the per-file STATUS_BADGE_VARIANT / RESULT_BADGE_VARIANT / STAGE_VARIANTS
-// dictionaries that were duplicated across inquiry and CRM pages.
+// Single source of truth for enum → color, consumed by <Tag tone>. Add a new
+// enum here and import it; do not re-declare a per-page XXX_BADGE_VARIANT dict.
 
 /** Semantic tone for the shared <Tag> component (defined here so tone maps below
  *  carry no dependency on components/). */
@@ -291,43 +290,8 @@ export type TagTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' |
 /** Semantic tone palette for deterministic datatable badge columns. */
 export const BADGE_PALETTE: readonly TagTone[] = ['primary', 'info', 'warning', 'danger', 'success', 'neutral'];
 
-/** Inquiry status (DB enum stays Chinese) → Tag tone. */
-export const INQUIRY_STATUS_TONE: Record<string, TagTone> = {
-  进行中: 'warning',
-  已回复: 'neutral',
-  已解决: 'success',
-  已关闭: 'danger',
-  未解决: 'warning',
-  已拆分: 'neutral',
-};
-
-/** Inquiry resolution result (DB enum stays Chinese) → Tag tone. */
-export const INQUIRY_RESULT_TONE: Record<string, TagTone> = {
-  '已补发-整机': 'info',
-  '已补发-配件': 'info',
-  '已补发-回寄': 'info',
-  已退货: 'warning',
-  已换货: 'primary',
-  换货: 'info',
-  退款: 'warning',
-  维修: 'primary',
-  拒绝: 'danger',
-  补发: 'success',
-  待定: 'neutral',
-};
-
 /** User role → Tag tone (mirrors roleBadgeStyles; consumed by user/usage tables). */
 export const ROLE_TONE: Record<string, TagTone> = {
   super: 'info',
   team: 'neutral',
-};
-
-/** CRM deal stage → Tag tone (and Badge variant fallback). */
-export const DEAL_STAGE_TONE: Record<string, TagTone> = {
-  draft: 'primary',
-  sent: 'neutral',
-  negotiating: 'warning',
-  won: 'success',
-  lost: 'danger',
-  cancelled: 'neutral',
 };

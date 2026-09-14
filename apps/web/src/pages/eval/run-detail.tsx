@@ -607,7 +607,7 @@ export function RunDetail({ runId, onBack }: { runId: string; onBack: () => void
               <th className="text-center px-3 py-2 w-14">{t('eval.completenessShort')}</th>
               <th className="text-center px-3 py-2 w-14">{t('eval.relevanceShort')}</th>
               <th className="text-center px-3 py-2 w-14">{t('eval.speedShort')}</th>
-              <th className="text-center px-3 py-2 w-16">{t('inquiryEval.time')}</th>
+              <th className="text-center px-3 py-2 w-16">{t('common.time')}</th>
               <th className="text-center px-3 py-2 w-16">{t('eval.tokens')}</th>
               <th className="text-center px-3 py-2 w-20">{t('common.status')}</th>
             </tr>

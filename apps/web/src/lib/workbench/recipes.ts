@@ -29,7 +29,11 @@ interface RecipeLabels {
   descriptionKey: TranslationKey;
 }
 
-const RECIPE_LABELS: Record<string, RecipeLabels> = {
+/**
+ * Exported so `lib/i18n/localized.test.ts` can assert the other direction too:
+ * every `home.recipe.*` key in the locales is claimed by a recipe here.
+ */
+export const RECIPE_LABELS: Record<string, RecipeLabels> = {
   'projects.list': {
     labelKey: 'home.recipe.projectsList',
     descriptionKey: 'home.recipe.projectsListDesc',

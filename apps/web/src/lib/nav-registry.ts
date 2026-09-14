@@ -255,37 +255,11 @@ export const administrationModules = ADMINISTRATION_MODULES;
 
 // ─── Knowledge list modules ─────────────────────────────
 //
-// Only the three collection views use ModulePage. Document reading/editing,
-// folders and sync runs are contextual workspaces with their own detail shell.
-const KNOWLEDGE_MODULES: NavModule[] = [
-  {
-    id: 'knowledge.wiki',
-    label: 'Wiki Docs',
-    icon: BookOpen,
-    path: '#/knowledge/wiki',
-    parent: 'knowledge',
-    description: 'Synchronized public knowledge base',
-    pinnable: false,
-  },
-  {
-    id: 'knowledge.api-sources',
-    label: 'API Sources',
-    icon: Cloud,
-    path: '#/knowledge/api-sources',
-    parent: 'knowledge',
-    description: 'API content sources',
-    pinnable: false,
-  },
-  {
-    id: 'knowledge.expert',
-    label: 'Expert Knowledge',
-    icon: Sprout,
-    path: '#/knowledge/expert',
-    parent: 'knowledge',
-    description: 'Expert topic knowledge base',
-    pinnable: false,
-  },
-];
+// The knowledge page owns its own scope views (team / personal / shared) and
+// resolves everything else as a document slug, so there is nothing here to
+// register today. Kept as the seam for the next collection view that does need
+// a ModulePage identity.
+const KNOWLEDGE_MODULES: NavModule[] = [];
 
 // ─── Standalone workspace pages ─────────────────────────
 //
@@ -404,9 +378,6 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   'workspace.projects': { label: 'projects.title', description: 'navigation.projectsDesc' },
   'workspace.executions': { label: 'taskCenter.title', description: 'taskCenter.description' },
   'workspace.skillhub': { label: 'skillHub.title', description: 'navigation.skillHubDesc' },
-  'knowledge.wiki': { label: 'navigation.wikiDocs', description: 'navigation.wikiDocsDesc' },
-  'knowledge.api-sources': { label: 'navigation.apiSources', description: 'navigation.apiSourcesDesc' },
-  'knowledge.expert': { label: 'navigation.expertKnowledge', description: 'navigation.expertKnowledgeDesc' },
 };
 
 const englishT: Translate = (key, params) => translate('en', key, params);
@@ -504,9 +475,6 @@ export function resolveSubModule(
   if (route === 'knowledge') {
     const segments = subPath.split('/').filter(Boolean);
     const KNOWLEDGE_SUBS: Record<string, { label: string; description: string }> = {
-      wiki: { label: t('navigation.wikiDocs'), description: t('navigation.wikiDocsDesc') },
-      'api-sources': { label: t('navigation.apiSources'), description: t('navigation.apiSourcesDesc') },
-      expert: { label: t('navigation.expertKnowledge'), description: t('navigation.expertKnowledgeDesc') },
       internal: { label: t('navigation.internalKnowledge'), description: t('navigation.internalKnowledgeDesc') },
       personal: { label: t('navigation.personalKnowledge'), description: t('navigation.personalKnowledgeDesc') },
       new: { label: t('navigation.newDocument'), description: t('navigation.newDocumentDesc') },

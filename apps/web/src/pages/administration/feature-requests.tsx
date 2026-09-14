@@ -144,7 +144,7 @@ export function FeatureRequestsPanel() {
                   <th className="text-left px-3 py-2 w-20">{t('common.status')}</th>
                   <th className="text-left px-3 py-2 w-20">{t('common.priority')}</th>
                   <th className="text-left px-3 py-2 w-32">{t('settings.submittedBy')}</th>
-                  <th className="text-left px-3 py-2 w-24">{t('inquiryEval.time')}</th>
+                  <th className="text-left px-3 py-2 w-24">{t('common.time')}</th>
                   <th className="text-center px-3 py-2 w-28">{t('common.actions')}</th>
                 </tr>
               </thead>

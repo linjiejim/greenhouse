@@ -9,7 +9,9 @@ import zh from './zh';
 import { pickLocalized, translate } from './index';
 import { EMAIL_PRESETS } from '@greenhouse/types/email';
 import { MCP_RESOURCE_GROUP_IDS } from '@greenhouse/types/mcp';
+import { AUTOMATION_OPT_IN_TOOLS } from '@greenhouse/types/automation-tools';
 import { mcpGroupDescriptionKey, mcpGroupLabelKey } from '../mcp-groups';
+import { RECIPE_LABELS } from '../workbench/recipes';
 
 function flatten(value: Record<string, unknown>, prefix = ''): Map<string, string> {
   const entries = new Map<string, string>();
@@ -106,11 +108,62 @@ describe('data-driven translation keys resolve', () => {
 
   // MCP resource groups: the OAuth consent screen renders one checkbox per
   // group, so a missing key here is a user authorizing a capability labelled
-  // "mcpGroups.crm.label".
+  // "mcpGroups.knowledge.label".
   it.each(MCP_RESOURCE_GROUP_IDS.map((id) => [id] as const))('mcp group %s is labelled in both locales', (id) => {
     for (const key of [mcpGroupLabelKey(id), mcpGroupDescriptionKey(id)]) {
       expect(english.get(key), `missing en: ${key}`).toBeTruthy();
       expect(chinese.get(key), `missing zh: ${key}`).toBeTruthy();
+    }
+  });
+
+  /**
+   * …and the other direction. A label with no group behind it is worse than a
+   * missing one: the group registry is the consent screen's single source of
+   * truth, so the checkbox never renders and nobody ever sees the copy — it just
+   * sits there claiming the product can read a data domain it cannot. Both
+   * halves of this pair exist because a whole module was deleted and its
+   * `mcpGroups.crm` label outlived it.
+   */
+  it('has no mcpGroups label without a registered resource group', () => {
+    const labelled = new Set(
+      [...english.keys()].filter((key) => key.startsWith('mcpGroups.')).map((key) => key.split('.')[1]),
+    );
+    const known = new Set<string>(MCP_RESOURCE_GROUP_IDS);
+    for (const id of labelled) {
+      expect(known.has(id), `mcpGroups.${id}.* is labelled but ${id} is not in MCP_RESOURCE_GROUP_IDS`).toBe(true);
+    }
+  });
+
+  /**
+   * Workbench card recipes. The catalog lives in @greenhouse/types/workbench and
+   * the copy in `home.recipe.*`, joined by `RECIPE_LABELS`. An unclaimed key is a
+   * card recipe the picker cannot offer — the nine `home.recipe.crm*` keys
+   * survived their module exactly this way.
+   *
+   * Only CORE recipes go through that table: an extension's recipe ships its own
+   * `ext.<id>.*` keys, which are not in `en.ts` at all, so this stays exact.
+   */
+  it('has no home.recipe key that no recipe claims', () => {
+    const claimed = new Set(
+      Object.values(RECIPE_LABELS).flatMap((labels) => [labels.labelKey as string, labels.descriptionKey as string]),
+    );
+    for (const key of english.keys()) {
+      if (!key.startsWith('home.recipe.')) continue;
+      expect(claimed.has(key), `${key} is not referenced by RECIPE_LABELS in lib/workbench/recipes.ts`).toBe(true);
+    }
+  });
+
+  /**
+   * Automation opt-in tool labels. `toolLabel()` (pages/automations.tsx) builds
+   * `automations.tool_<id>` from the catalog id, so a label whose id left the
+   * catalog is a checkbox nobody can ever tick — `tool_crm_mutation` was one.
+   */
+  it('has no automations.tool_ label outside the opt-in catalog', () => {
+    const catalog = new Set(AUTOMATION_OPT_IN_TOOLS.map((tool) => tool.id));
+    for (const key of english.keys()) {
+      const id = key.startsWith('automations.tool_') ? key.slice('automations.tool_'.length) : null;
+      if (!id) continue;
+      expect(catalog.has(id), `${key} has no matching id in AUTOMATION_OPT_IN_TOOLS`).toBe(true);
     }
   });
 });

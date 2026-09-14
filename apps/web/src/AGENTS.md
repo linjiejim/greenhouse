@@ -19,7 +19,7 @@
 - 新增原子组件：SearchInput、Toggle、StatusDot、Checkbox、Avatar、DateRangeInput
 - 表单布局组件 (`components/form/`)：`FormField`、`FormGrid`、`FormGroup`、`FormSection`、`FormActions`、`FormError`。业务表单只组合字段与领域值，不再各写 label/help/error/footer 间距；`FormField` 负责 `htmlFor`、`aria-describedby`、`aria-invalid`。
 - Settings 分区 (`components/settings/`)：`SettingsPanel`（统一 `space-y-4`）与 `SettingsSection`（标题/说明/图标/操作/内容）；Settings 子页不得再各造卡片头与外层节奏。
-- 模块页框 (`components/app/module-page.tsx`)：`ModulePageShell` 只拥有模块导航/viewport；所有非 Chat 的常规总览、集合与列表页由 `ModulePage` 从导航注册表派生身份，并统一 `actions → notice → tabs → toolbar → content`、`form/list/canvas` 宽度与滚动。当前覆盖 Settings/Administration、Tasks、Automation、My Agents、Tables 首页、Projects、Execution Center、SkillHub 入口、CRM 总览/列表和 Knowledge 三个公开集合；这些页面不得再自建外层 header、padding、max-width 或滚动容器。记录详情、整页编辑器、Project/Tables 数据工作区、SkillHub 技能详情等沉浸式页面继续使用 Detail/Canvas 专用结构，禁止为了形式统一套第二层页头。标题为紧凑单行，说明必须 `truncate + title`，避免操作区被长文案挤出。
+- 模块页框 (`components/app/module-page.tsx`)：`ModulePageShell` 只拥有模块导航/viewport；所有非 Chat 的常规总览、集合与列表页由 `ModulePage` 从导航注册表派生身份，并统一 `actions → notice → tabs → toolbar → content`、`form/list/canvas` 宽度与滚动。当前覆盖 Settings/Administration、Tasks、Automation、My Agents、Tables 首页、Projects、Execution Center、SkillHub 入口和 Knowledge 三个公开集合；这些页面不得再自建外层 header、padding、max-width 或滚动容器。记录详情、整页编辑器、Project/Tables 数据工作区、SkillHub 技能详情等沉浸式页面继续使用 Detail/Canvas 专用结构，禁止为了形式统一套第二层页头。标题为紧凑单行，说明必须 `truncate + title`，避免操作区被长文案挤出。
 - 详情页组件 (`components/detail/`)：`<DetailHeader>`、`<DetailSection>`、`<FieldGrid>`、`<Field>`——见下方「详情页规范」
 - 列表分页：`<Pagination>` + `usePersistedPageSize`——见下方「列表分页规范」
 - 标签：`<Tag>`（方角紧凑、单行）/`<TagList>`（多标签单行 +N）——见下方「标签 Tag 规范」
@@ -91,7 +91,7 @@
   - **只有 entity 入栈，预览是替换**：「看另一张图」是切换不是下钻，一摞 HTML 预览的返回栈没人要。
   - **图片批注（`side-pane/image-annotator.tsx`）**：lightbox 的「批注修改」→ 分栏里画圈/框/箭头/自由笔/文字 → 合成 PNG 上传 → 经 `lib/composer-draft.ts` 把**双图 + 可编辑文案**填进 composer（原图在前作底、批注图在后作空间参考；只传批注图会把红圈烤进结果）。三条约束：**坐标全存图片自身像素**（overlay 按 pane 宽显示、导出按原分辨率，存屏幕坐标必错位）；**换算按 `object-contain` 的适配尺寸**而不是元素尺寸（否则整体偏移一个留白带的距离）；**`setPointerCapture` 必须 try/catch**（pointer 失效时它抛 `NotFoundError`，而它在 `pointerdown` 头部，异常会让整笔画根本不开始）。草稿**只填不发**——画错一个圈不该等于一次真金白银的生图。见 [spec](../../../docs/specs/20260808-image-annotation-editing.md)
   - **对话式编辑的实时刷新走 `lib/entity-sync.ts`**：SessionManager 在 `project_mutation`/`knowledge_mutation`/… 的 tool result 到达时按**域**广播（不是记录 id——mutation 工具不上报改了哪一行，在这里编一个 id 等于在最该刷新的时候静默失效），分栏把它折进 `bodyKey` 触发重挂载重取。形状抄 `onWorkbenchChanged`。
-- **实体 peek（`components/entity-peek/`）**：右侧 Drawer + 栈（`stores/entity-peek-store.ts`），直接复用既有详情组件（CRM 三个 + Projects + KB 适配器），**不用 iframe**。URL 不变、不进浏览器历史——peek 是「看一眼」，要固定地址就按头部的「在完整页面打开」。详情组件里两处只在整页成立的行为（返回列表按钮、跨记录 `window.location.hash` 跳转）经 `useInEntityPeek()` / `useEntityNavigate()` 分流：在 peek 里前者隐藏、后者压栈。新增可 peek 的实体 = 在 `@greenhouse/types/entity-links` 加 kind + 在 `entity-peek/registry.tsx` 加一行，别在调用侧写 if。方案见 [spec](../../../docs/specs/20260804-entity-references-and-peek.md)。
+- **实体 peek（`components/entity-peek/`）**：右侧 Drawer + 栈（`stores/entity-peek-store.ts`），直接复用既有详情组件（Projects + KB 适配器），**不用 iframe**。URL 不变、不进浏览器历史——peek 是「看一眼」，要固定地址就按头部的「在完整页面打开」。详情组件里两处只在整页成立的行为（返回列表按钮、跨记录 `window.location.hash` 跳转）经 `useInEntityPeek()` / `useEntityNavigate()` 分流：在 peek 里前者隐藏、后者压栈。新增可 peek 的实体 = 在 `@greenhouse/types/entity-links` 加 kind + 在 `entity-peek/registry.tsx` 加一行，别在调用侧写 if。方案见 [spec](../../../docs/specs/20260804-entity-references-and-peek.md)。
 - 两套 prose 的正文继承全站 `Nunito Sans`，标题沿用全局 display family，颜色只用语义 token：正文常规字重、强调/标题最高 `font-semibold`；`prose-base` 用文档级层级与宽松行距，`prose-compact` 保持 `text-sm` 与紧凑节奏。Markdown 表格必须保留原生 table layout，由 `.md-table-shell > .md-table-scroll` 负责工具栏与横向滚动，禁止再给 `<table>` 本身加 `display:block`；工具栏的 CSV 导出、全屏与复制统一为 icon-only + tooltip，复制为可直接粘贴到 Sheets/Excel 的 TSV。CSV/TSV 都收敛在共享 `lib/csv-export.ts`，不得各写一套表格序列化。
 - **图片**：任何 prose 里的 `<img>` 点击都开 lightbox（`markdown.tsx` 上的委托点击，故 CSS 给了 `cursor: zoom-in`）。`compact` 时额外跑 `groupImageRuns()`：连续的「只含图片的段落」合并成一个 `div.md-image-row` flex 行，缩略图**固定 260px 宽**——1:1 的生成图原来会撑满整条消息列。marked 开了 `breaks: true`，所以「空行分隔」得到多个 `<p>`、「单换行分隔」得到一个带 `<br>` 的 `<p>`，两种都要归并（否则 DOM 形状取决于作者怎么敲空行）。**只在 compact 生效**，文档页要的是全宽阅读尺寸；CSS 也必须整段挂在 `.prose-compact` 下。
 - `generate_image` 进入 calling 且尚无 output 时，`BodyArtifacts` 立即渲染与最终缩略图同宽的 1:1 Skeleton；成功后原位换成图片，失败仍回到工具轨迹展示错误。不要用只有文字/Spinner 的等待态——高耗时生图需要稳定占住最终布局。
@@ -130,7 +130,7 @@ stores/
 
 ### 共享工具函数 (`lib/utils.ts`)
 - `safeParse(json, fallback)`、`relativeTime()`、`timeAgo()`、`formatDate()`、`formatDay()`、`formatTokens()`
-- 日期粒度：带时刻的时间戳用 `formatDate()`；**日历粒度字段**（注册日、出库日、跟进到期日、表格里的创建日）用 `formatDay()`——`formatDate()` 会拖出一串 "12:00 AM" 噪音并占掉表格列宽
+- 日期粒度：带时刻的时间戳用 `formatDate()`；**日历粒度字段**（项目起止日、任务到期日、表格里的创建日）用 `formatDay()`——`formatDate()` 会拖出一串 "12:00 AM" 噪音并占掉表格列宽
 - `roleBadgeStyles`——角色徽章样式，禁止在组件中重复定义
 - `CHART_PALETTE` / `BADGE_PALETTE`——数据可视化配色，禁止在组件中硬编码色板；图表默认使用克制的品牌 品牌绿阶，不恢复彩虹式特殊色板
 - **禁止在组件文件中重复实现**
@@ -457,7 +457,7 @@ stores/
 - **单元格默认单行**：表格加 `[&_td]:whitespace-nowrap`（一个类作用于所有 `<td>`），**所有单元格默认不换行、单行显示**。
 - **单元格截断 + tooltip**：长自由文本列用**内层** `<span className="block max-w-[…] truncate" title={value}>`（auto-layout 表 `max-width` 必须放在内层块元素上，放 `<td>` 上不生效）超出省略；`title` 必须带，悬停看全文。`<Tag truncate>` / `<Badge truncate>` 已自动写 `title`。
 - 非整页滚动的列表（页面级滚动、卡片内小表）可只做 nowrap + tooltip，sticky 视容器而定。
-- **横向滚动的宽表必须钉住两端**：身份列（名称/单号）`sticky left-0`、行操作列 `sticky right-0`，class 组合与 z 层级取自 `lib/sticky-columns.ts`（`STICKY_LEFT_HEADER` / `STICKY_RIGHT_CELL` / …），不要各页手写。**钉住的单元格必须自带不透明背景 + 行 hover 背景**（`STICKY_CELL_SURFACE`）——透明背景会让滚动过去的列直接透过来；对应地，行 `<tr>` 需要 `group` class，否则 hover 态跟不上。表面色留给调用方（Tables 坐在 `surface-raised` 上，CRM 行 hover 到 `surface-muted`），模块只管定位与层级。
+- **横向滚动的宽表必须钉住两端**：身份列（名称/单号）`sticky left-0`、行操作列 `sticky right-0`，class 组合与 z 层级取自 `lib/sticky-columns.ts`（`STICKY_LEFT_HEADER` / `STICKY_RIGHT_CELL` / …），不要各页手写。**钉住的单元格必须自带不透明背景 + 行 hover 背景**（`STICKY_CELL_SURFACE`）——透明背景会让滚动过去的列直接透过来；对应地，行 `<tr>` 需要 `group` class，否则 hover 态跟不上。表面色留给调用方（Tables 坐在 `surface-raised` 上，行 hover 到 `surface-muted`），模块只管定位与层级。
 - **单元格内联编辑：单击查看、悬浮出铅笔、点铅笔才进编辑**（`components/tables/inline-edit-cell.tsx`，Tables Grid 共用）。**不要退回双击**——双击必须靠吞掉单击或加定时器才能与"点开这一行"区分，而当初正是那次吞没让整站的表格点击静默失效（2026-08-03 修）。铅笔按钮带 `touch-visible`：触屏没有 hover，那是它唯一的入口；键盘 Enter/F2 保留。行点击的归宿由宿主决定（Tables 开记录抽屉、项目跳详情页），所以**行操作列要自己 `stopPropagation`**，否则点删除会顺带把详情打开。
 
 ### 列表分页规范
@@ -478,7 +478,7 @@ stores/
 - 状态/结果/类型等单个标签 → `<Tag tone truncate>`（`components/ui.tsx`）。`tone` 取 `neutral|primary|success|warning|danger|info`，内置 `whitespace-nowrap`；在受限列里加 `truncate`（自动写 `title`，可用 `maxW` 调宽度）。
 - 多标签单元格 → `<TagList items max>`，单行展示前 `max` 个再 `+N`，**不要** `flex-wrap`。
 - **禁止**再手写 `text-[10px] px-1.5 py-0.5 rounded border ...` 的 pill `<span>`，也**禁止**在表格里用 `flex flex-wrap` 堆叠多个 Badge/Tag。
-- 域值→tone 的映射集中在 `lib/utils.ts`（`INQUIRY_STATUS_TONE` / `INQUIRY_RESULT_TONE` / `DEAL_STAGE_TONE`）——新增枚举改这里，各页 import，不要在页面里重复 `XXX_BADGE_VARIANT` 字典。
+- 域值→tone 的映射集中在 `lib/utils.ts`（`ROLE_TONE`，以及给确定性徽章列用的 `BADGE_PALETTE`）——新增枚举改这里，各页 import，不要在页面里重复 `XXX_BADGE_VARIANT` 字典。
 - `<Badge>` 也支持 `truncate` / `maxW`；圆角 pill 风格用 Badge，方角紧凑风格用 Tag。
 - 例外：**详情页头部的标签云**（`<DetailHeader badges>`）是展示区，允许 `flex-wrap`；只有**表格/紧凑容器**强制单行。
 
@@ -496,11 +496,11 @@ stores/
 **带关联记录的详情页（主记录 + 多个子列表）用「吸顶头 + tab 主体」，不要一路平铺：**
 
 - 结构固定为 `h-full flex flex-col` → 头部块 `flex-shrink-0`（Back + `<DetailHeader>` + `<Tabs>`）+ 主体 `flex-1 overflow-y-auto`。**只有主体滚动**，无论翻到第几页都看得见当前记录是谁。
-- 关联记录一律**一个 tab 一类**，tab 标题必须带 `(数量)`——用 i18n 的 `xxxTab: 'Xxx ({count})'` 模板，让「这个客户到底有没有跟进/文件/出库单」不用点进去就能回答。
+- 关联记录一律**一个 tab 一类**，tab 标题必须带 `(数量)`——用 i18n 的 `xxxTab: 'Xxx ({count})'` 模板，让「这个项目到底有没有任务/评论/附件」不用点进去就能回答。
 - **数量取服务端总数**，不要 `items.length`：详情接口的子列表是截断的（项目详情的 tasks/comments 各 100），前端拿 `counts` 字段；列表被截断时用 `common.showingFirst` 之类的提示行显式说明，禁止静默只显示一部分。
-- 子列表用**紧凑表格 + `<Pagination>`**，不要不封顶的卡片流（客户详情曾经用 45 张卡片堆出 4500px）。
-- `<EmptyState>` 只用于**整个 tab 为空**；tab 内的小区块（如出库单里的寄样记录）用一行 `text-xs text-fg-faint` 说明，别再塞 `py-16` 的大空状态。
-- **变更历史 tab 不带数量**：它的 payload 是服务端截断的一段（20 条）且不回总数，写 `(20)` 会读成"一共就 20 条"。取而代之，条数顶到上限时用一行 `crm.activityCapped` 提示说明只显示了最近 N 条。
+- 子列表用**紧凑表格 + `<Pagination>`**，不要不封顶的卡片流（某个详情页曾经用 45 张卡片堆出 4500px）。
+- `<EmptyState>` 只用于**整个 tab 为空**；tab 内的小区块（如任务下的子项）用一行 `text-xs text-fg-faint` 说明，别再塞 `py-16` 的大空状态。
+- **变更历史 tab 不带数量**：它的 payload 是服务端截断的一段（20 条）且不回总数，写 `(20)` 会读成"一共就 20 条"。取而代之，条数顶到上限时用一行「只显示最近 N 条」的提示说明截断。
 
 ### 拖拽交互：用指针事件，不要 HTML5 DnD
 
