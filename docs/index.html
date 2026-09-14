@@ -66,6 +66,7 @@
       <a href="#tour" class="hover:text-brand-700" data-i18n="nav.tour">Tour</a>
       <a href="#tool-layer" class="hover:text-brand-700" data-i18n="nav.toolLayer">Tool layer</a>
       <a href="#features" class="hover:text-brand-700" data-i18n="nav.features">Features</a>
+      <a href="#extend" class="hover:text-brand-700" data-i18n="nav.extend">Extend</a>
       <a href="#selfhost" class="hover:text-brand-700" data-i18n="nav.selfhost">Self-host</a>
     </nav>
     <div class="flex items-center gap-3">
@@ -601,6 +602,69 @@ docker compose exec api pnpm admin:create
   </div>
 </section>
 
+<!-- EXTEND -->
+<section id="extend" class="mx-auto max-w-6xl px-6 py-24 scroll-mt-20">
+  <div class="mx-auto max-w-2xl text-center">
+    <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="ext.kicker">Make it yours</p>
+    <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="ext.h2">Your own modules, without forking the core.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="ext.p">
+      An extension is two folders and one import line. Every field of its manifest lands in a registry the
+      platform already has — tools, routes, pages, permissions, search, file storage, MCP consent, scheduled
+      jobs, CLI commands, its own database migrations. Nothing in the core knows your module exists, so
+      <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">git merge upstream</code> stays boring.
+    </p>
+  </div>
+
+  <div class="mt-12 grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+    <div>
+<pre class="overflow-x-auto rounded-2xl border border-edge bg-ink p-6 text-[13px] leading-relaxed text-gray-100 shot-shadow"><span class="text-gray-500">// apps/api/src/extensions/notes/index.ts</span>
+<span class="text-teal-300">export const</span> notesExtension = <span class="text-teal-300">defineExtension</span>({
+  id: <span class="text-amber-200">'notes'</span>,
+  tools: [notesQueryTool],
+  routes: [{ path: <span class="text-amber-200">'/api/ext/notes'</span>, app: notesRoutes }],
+  featureFlags: [{ key: <span class="text-amber-200">'notes'</span>, defaultEnabled: <span class="text-teal-300">false</span> }],
+  entityKinds: [{ kind: <span class="text-amber-200">'ext:notes:note'</span>, route: <span class="text-amber-200">'#/notes/:id'</span> }],
+  searchSources: [notesSearchLane],
+  driveScopes: [notesCabinet],
+  migrations: { dir: extensionPath(import.meta.url, <span class="text-amber-200">'migrations'</span>) },
+  services: createNotesService,
+})</pre>
+      <p class="mt-5 text-[15px] leading-relaxed text-ink-soft" data-i18n="ext.list">
+        Switch it on per deployment in <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">greenhouse.config.ts</code>,
+        then per user with a permission toggle. A disabled extension contributes nothing at all — no tools, no routes,
+        no migrations.
+      </p>
+    </div>
+    <figure>
+      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
+        <img src="./assets/screens/extension-example-page.webp" alt="An extension's own page rendered in the workbench" width="1440" height="900" class="block w-full" loading="lazy" />
+      </div>
+      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figA">The reference extension shipping with the repo: its own page, table, tool and API — the template you copy.</figcaption>
+    </figure>
+  </div>
+
+  <div class="mt-10 grid gap-6 md:grid-cols-3">
+    <figure>
+      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
+        <img src="./assets/screens/extension-more-menu.webp" alt="An extension's navigation entry in the sidebar menu" width="1440" height="900" class="block w-full" loading="lazy" />
+      </div>
+      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figB">Navigation, gated by the user's own feature flag.</figcaption>
+    </figure>
+    <figure>
+      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
+        <img src="./assets/screens/extension-chat-card.webp" alt="An extension's tool result rendered as a chat card" width="1440" height="900" class="block w-full" loading="lazy" />
+      </div>
+      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figC">Its tool results render as first-class chat cards.</figcaption>
+    </figure>
+    <figure>
+      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
+        <img src="./assets/screens/extension-runtime-config.webp" alt="An extension's settings on the Runtime Config page" width="1440" height="900" class="block w-full" loading="lazy" />
+      </div>
+      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figD">Its settings appear in Runtime Config like any built-in.</figcaption>
+    </figure>
+  </div>
+</section>
+
 <!-- EVERYWHERE -->
 <section class="border-y border-edge bg-gray-50/60">
   <div class="mx-auto max-w-6xl px-6 py-24">
@@ -854,6 +918,15 @@ docker compose exec api pnpm admin:create
     'self.figA': '运行时配置——每一项工作区设置都只在代码里声明一次，这里自动渲染；密钥落盘加密。',
     'self.figB': '品牌工作室——改名字、换 Logo、调配色，一行样式表都不用碰。',
 
+    'nav.extend': '扩展',
+    'ext.kicker': '让它成为你的',
+    'ext.h2': '写你自己的模块，不用 fork 内核。',
+    'ext.p': '一个扩展就是两个目录加一行 import。清单里的每个字段都落到平台<strong>已有</strong>的注册表上——工具、路由、页面、权限、搜索、文件柜、MCP 授权、定时任务、CLI 命令，以及它自己的数据库迁移。内核不知道你的模块存在，所以 <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">git merge upstream</code> 永远是件无聊的事。',
+    'ext.list': '在 <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">greenhouse.config.ts</code> 里按部署开关，再按用户用权限开关。关掉的扩展什么都不贡献——没有工具、没有路由、没有迁移。',
+    'ext.figA': '仓库自带的参考扩展：自己的页面、表、工具和 API——照着抄就行。',
+    'ext.figB': '导航入口，按用户的功能开关显示。',
+    'ext.figC': '它的工具结果在对话里就是一等公民卡片。',
+    'ext.figD': '它的设置和内置模块一样出现在 Runtime Config 里。',
     'every.kicker': '团队在哪，它就在哪',
     'every.h2': '浅色、深色、桌面、手机。',
     'every.p': '响应式 Web 应用支持浅色、深色与跟随系统三种主题；另有 iOS / Android 原生 Expo 应用与 Chrome 侧边栏扩展，全部对接同一套 API。',

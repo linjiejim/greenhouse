@@ -423,9 +423,12 @@ fields map 1:1 onto the core registries: the tool catalog (and with it `/api/age
 `/api/mcp`), route mounting, platform applications, feature flags and points (one switch in
 the permissions dialog), Runtime Config settings, public paths, the scheduler, the CLI, the
 database services, a dedicated **migration lane** (`extension_migrations`, applied at boot under
-an advisory lock), the hash router, the sidebar, i18n, tool cards and the agent panel. Which
-extensions are *active* is decided per deployment by `greenhouse.config.ts` or
-`GREENHOUSE_EXTENSIONS`; an inactive extension contributes nothing.
+an advisory lock), record kinds with deeplinks and chat peeks, lanes in global search, whole-dataset
+sources for `export_data`, its own scope in the shared file Drive, MCP consent groups, Home
+workbench cards, the hash router (including a page's own sub-modules), the sidebar, i18n, tool
+cards and the agent panel. Which extensions are *active* is decided per deployment by
+`greenhouse.config.ts` or `GREENHOUSE_EXTENSIONS`; an inactive extension contributes nothing —
+no tools, no routes, no migrations.
 
 The shipped `example` extension (off by default; `GREENHOUSE_EXTENSIONS=example` to try it) is a
 complete reference — per-user notes with their own table, tool, API, page, "More" entry,
