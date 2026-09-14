@@ -55,6 +55,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@greenhouse/types": "workspace:*",
     "@playwright/test": "^1.61.1",
     "@types/node": "^22.0.0",
     "@types/web-bluetooth": "^0.0.21",

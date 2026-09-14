@@ -26,6 +26,8 @@ export default defineConfig({
       '@greenhouse/types/source': resolve(__dirname, 'packages/types/src/source.ts'),
       '@greenhouse/types/agent-context': resolve(__dirname, 'packages/types/src/agent-context.ts'),
       '@greenhouse/types/features': resolve(__dirname, 'packages/types/src/features.ts'),
+      '@greenhouse/types/config': resolve(__dirname, 'packages/types/src/config.ts'),
+      '@greenhouse/types/config-schema': resolve(__dirname, 'packages/types/src/config-schema.ts'),
       '@greenhouse/types/mcp': resolve(__dirname, 'packages/types/src/mcp.ts'),
       '@greenhouse/types/automation-tools': resolve(__dirname, 'packages/types/src/automation-tools.ts'),
       '@greenhouse/types/tables': resolve(__dirname, 'packages/types/src/tables.ts'),

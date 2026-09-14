@@ -10,6 +10,7 @@
  * - In-memory cache with file watcher for dev hot-reload
  */
 
+import { GREENHOUSE_CONFIG, resolvePackPath } from './config/greenhouse-config.js';
 import { readFileSync, readdirSync, existsSync, watch } from 'node:fs';
 import { logger } from '@greenhouse/utils/logger';
 import { composeRichOutput } from '@greenhouse/utils/prompts';
@@ -78,6 +79,29 @@ export function registerKnownTools(names: string[]): void {
 // ─── Profile Directory ───────────────────────────────────
 
 const PROFILES_DIR = resolve(import.meta.dirname, 'profiles');
+
+/**
+ * Core profiles first, then the pack directories from greenhouse.config.ts
+ * (`packs.profiles`). A later directory wins for the same id, so a pack may
+ * override a built-in preset without editing core.
+ */
+function profileDirs(): string[] {
+  return [PROFILES_DIR, ...GREENHOUSE_CONFIG.packs.profiles.map((dir) => resolvePackPath(dir))];
+}
+
+const PROFILE_FILE = /\.ya?ml$/;
+
+/** The winning file for a profile id, or null when no directory has it. */
+function findProfileFile(id: string): string | null {
+  let found: string | null = null;
+  for (const dir of profileDirs()) {
+    for (const ext of ['yaml', 'yml']) {
+      const candidate = join(dir, `${id}.${ext}`);
+      if (existsSync(candidate)) found = candidate;
+    }
+  }
+  return found;
+}
 
 // ─── Loader ──────────────────────────────────────────────
 
@@ -223,8 +247,8 @@ function validateProfileId(id: string): void {
 }
 
 function readProfileYaml(id: string): Record<string, unknown> {
-  const filePath = join(PROFILES_DIR, `${id}.yaml`);
-  if (!existsSync(filePath)) {
+  const filePath = findProfileFile(id);
+  if (!filePath) {
     throw new Error(`Profile not found: "${id}"`);
   }
   return (parseYaml(readFileSync(filePath, 'utf-8')) ?? {}) as Record<string, unknown>;
@@ -251,13 +275,8 @@ export function loadProfile(id: string): AgentProfile {
  * Load all available profiles from the profiles directory.
  */
 export function loadAllProfiles(): AgentProfile[] {
-  if (!existsSync(PROFILES_DIR)) return [];
-
-  const files = readdirSync(PROFILES_DIR).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
-
   const profiles: AgentProfile[] = [];
-  for (const file of files) {
-    const id = file.replace(/\.ya?ml$/, '');
+  for (const id of listProfileIds()) {
     try {
       profiles.push(loadProfile(id));
     } catch (err) {
@@ -287,10 +306,12 @@ export function isProfileRunnable(profile: AgentProfile): boolean {
  * List profile IDs (without loading full content).
  */
 export function listProfileIds(): string[] {
-  if (!existsSync(PROFILES_DIR)) return [];
-  return readdirSync(PROFILES_DIR)
-    .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
-    .map((f) => f.replace(/\.ya?ml$/, ''));
+  const ids = new Set<string>();
+  for (const dir of profileDirs()) {
+    if (!existsSync(dir)) continue;
+    for (const file of readdirSync(dir)) if (PROFILE_FILE.test(file)) ids.add(file.replace(PROFILE_FILE, ''));
+  }
+  return [...ids];
 }
 
 /**
@@ -426,10 +447,14 @@ let watcherActive = false;
  */
 export function startProfileWatcher(): void {
   if (watcherActive) return;
-  if (!existsSync(PROFILES_DIR)) return;
+  for (const dir of profileDirs()) {
+    if (existsSync(dir)) watchProfileDir(dir);
+  }
+}
 
+function watchProfileDir(dir: string): void {
   try {
-    const watcher = watch(PROFILES_DIR, { persistent: false }, (eventType, filename) => {
+    const watcher = watch(dir, { persistent: false }, (eventType, filename) => {
       if (filename && (filename.endsWith('.yaml') || filename.endsWith('.yml'))) {
         const id = filename.replace(/\.ya?ml$/, '');
         profileCache.delete(id);
@@ -463,7 +488,7 @@ export function startProfileWatcher(): void {
     // Don't let the watcher prevent process exit
     watcher.unref();
     watcherActive = true;
-    logger.info(`[Profile] 👁️ Watching ${PROFILES_DIR} for changes`);
+    logger.info(`[Profile] 👁️ Watching ${dir} for changes`);
   } catch (err) {
     logger.warn(`[Profile] ⚠️ Could not start file watcher: ${err instanceof Error ? err.message : err}`);
   }

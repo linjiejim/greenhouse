@@ -16,6 +16,14 @@
       "import": "./src/features.ts",
       "types": "./src/features.ts"
     },
+    "./config": {
+      "import": "./src/config.ts",
+      "types": "./src/config.ts"
+    },
+    "./config-schema": {
+      "import": "./src/config-schema.ts",
+      "types": "./src/config-schema.ts"
+    },
     "./mcp": {
       "import": "./src/mcp.ts",
       "types": "./src/mcp.ts"

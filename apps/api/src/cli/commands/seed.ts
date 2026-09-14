@@ -16,6 +16,7 @@
  * migration chain — run `npx drizzle-kit migrate` first on a fresh database.
  */
 
+import { GREENHOUSE_CONFIG, resolvePackPath } from '../../config/greenhouse-config.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { sql } from 'drizzle-orm';
@@ -27,7 +28,10 @@ import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
 import { getProductName } from '@greenhouse/utils/brand';
 import { openDb, parseFlags, flagStr, flagBool, confirmExact, heading, dim, dbName } from './shared.js';
 
-const EXAMPLES_DIR = resolve(DATA_DIR, 'examples');
+/** `packs.seeds` in greenhouse.config.ts points `pnpm seed` at another dataset. */
+const EXAMPLES_DIR = GREENHOUSE_CONFIG.packs.seeds
+  ? resolvePackPath(GREENHOUSE_CONFIG.packs.seeds)
+  : resolve(DATA_DIR, 'examples');
 
 /**
  * FK-safe load order. Parents before children; self-referential tables
