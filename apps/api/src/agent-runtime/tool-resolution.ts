@@ -11,6 +11,7 @@
  */
 
 import type { DatabaseProvider } from '@greenhouse/db';
+import { fromExtensions } from '../extensions/index.js';
 import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tools';
 import { resolveUserTools, selectTools } from '../agent.js';
 import type { ToolRegistry } from '../agent.js';
@@ -447,6 +448,19 @@ export function buildLazyServerTools(
         },
       });
     }
+  }
+
+  // Extension lazy tools take the generic path: no per-tool case needed in core.
+  for (const mod of fromExtensions('tools')) {
+    if (mod.kind !== 'lazy' || !mod.createLazy || !effectiveTools.includes(mod.meta.id)) continue;
+    tools[mod.meta.id] = mod.createLazy({
+      db,
+      userId,
+      userRole,
+      sessionId,
+      workspaceId: ctx.workspaceId ?? null,
+      profileId: ctx.profileId ?? null,
+    });
   }
 
   return tools;

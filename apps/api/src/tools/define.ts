@@ -123,6 +123,16 @@ export type ToolKind = 'static' | 'lazy' | 'special';
 /** A `tool()` instance from the `ai` SDK. Kept loose to avoid leaking generics. */
 export type AiTool = unknown;
 
+/** Request context handed to `createLazy` — who is calling, from which session. */
+export interface LazyToolContext {
+  db: DatabaseProvider;
+  userId: string;
+  userRole: string;
+  sessionId?: string;
+  workspaceId?: string | null;
+  profileId?: string | null;
+}
+
 export interface ToolModule {
   meta: ToolMeta;
   kind: ToolKind;
@@ -132,6 +142,12 @@ export interface ToolModule {
    * existing call site (for example buildLazyServerTools or the chat route).
    */
   create?: (db: DatabaseProvider) => AiTool;
+  /**
+   * Generic factory for 'lazy' tools — built per request from the calling
+   * user's context. Core tools are still wired by name in buildLazyServerTools;
+   * extension tools use this so nothing in core needs a new case.
+   */
+  createLazy?: (ctx: LazyToolContext) => AiTool;
 }
 
 /** Identity helper — gives each tool module a precise type while co-locating meta. */

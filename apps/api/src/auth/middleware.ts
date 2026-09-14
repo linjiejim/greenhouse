@@ -11,6 +11,7 @@ import type { Context, Next } from 'hono';
 import { validateAccessToken } from './token.js';
 import type { AuthUser, UserRole } from './token.js';
 import { userHasFeature } from './features.js';
+import { isExtensionPublicPath } from './public-paths.js';
 import { getDb } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 
@@ -54,6 +55,7 @@ const PUBLIC_PATHS = new Set([
 /** Exported for the boundary regression test — see routes/__tests__/attachment-boundary.test.ts. */
 export function isPublicPath(path: string): boolean {
   if (PUBLIC_PATHS.has(path)) return true;
+  if (isExtensionPublicPath(path)) return true;
   // Frontend static assets — Vite emits the hashed bundle under /assets/* (base './').
   if (path === '/' || path === '/favicon.ico' || path.startsWith('/public/') || path.startsWith('/assets/'))
     return true;

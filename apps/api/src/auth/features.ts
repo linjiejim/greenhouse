@@ -12,7 +12,7 @@
 
 import { getDb } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { FEATURE_FLAGS, featureDefault } from '@greenhouse/types/features';
+import { allFeatureFlags, featureDefault } from '@greenhouse/types/features';
 import type { UserRole } from './token.js';
 
 /**
@@ -34,7 +34,7 @@ export async function resolveUserFeatures(
   const result: Record<string, boolean> = {};
 
   if (role === 'super') {
-    for (const flag of FEATURE_FLAGS) result[flag.key] = true;
+    for (const flag of allFeatureFlags()) result[flag.key] = true;
     return result;
   }
 
@@ -46,7 +46,7 @@ export async function resolveUserFeatures(
     /* DB unavailable — fall back to defaults */
   }
 
-  for (const flag of FEATURE_FLAGS) {
+  for (const flag of allFeatureFlags()) {
     result[flag.key] = explicit.has(flag.key) ? explicit.get(flag.key)! : featureDefault(flag.key);
   }
   return result;

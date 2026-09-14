@@ -20,7 +20,12 @@ import { notifyTaskResult } from './notify.js';
 import { cancelAutomationRunsForUser, enqueueAutomationRun, type AutomationTrigger } from './runtime-driver.js';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { startFrictionMiningJob, startMemoryConsolidationJob, stopUpkeepJobs } from './upkeep-jobs.js';
+import {
+  startFrictionMiningJob,
+  startMemoryConsolidationJob,
+  stopUpkeepJobs,
+  startExtensionJobs,
+} from './upkeep-jobs.js';
 import type { ToolRegistry } from '../agent.js';
 import type { ScheduledTaskRow } from '@greenhouse/db';
 
@@ -76,6 +81,7 @@ export class TaskScheduler {
     // System-level jobs
     startFrictionMiningJob();
     startMemoryConsolidationJob();
+    startExtensionJobs();
   }
 
   /**

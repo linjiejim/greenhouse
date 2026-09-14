@@ -24,7 +24,7 @@
  */
 
 import {
-  WORKSPACE_SETTINGS,
+  allWorkspaceSettings,
   getWorkspaceSettingDef,
   sanitizeThemeTokens,
   LOGO_ALLOWED_MIME,
@@ -116,12 +116,12 @@ export async function getWorkspaceValue(key: string): Promise<unknown> {
  */
 export async function applyWorkspaceEnvOverlay(): Promise<void> {
   // Snapshot first so originals survive the overlay writes below.
-  for (const def of WORKSPACE_SETTINGS) if (def.env) snapshotEnv(def.env);
+  for (const def of allWorkspaceSettings()) if (def.env) snapshotEnv(def.env);
   if (!isDbInitialized()) return;
 
   const db = await ensureCache();
   let applied = 0;
-  for (const def of WORKSPACE_SETTINGS) {
+  for (const def of allWorkspaceSettings()) {
     if (!def.env) continue;
     const dbVal = db.get(def.key);
     if (dbVal !== undefined && dbVal !== '') {
@@ -200,7 +200,7 @@ export function validateWorkspaceValue(def: WorkspaceSettingDef, raw: unknown): 
 
 export async function getWorkspaceSettingViews(): Promise<WorkspaceSettingView[]> {
   const db = await ensureCache();
-  return WORKSPACE_SETTINGS.map((def) => {
+  return allWorkspaceSettings().map((def) => {
     const hasDb = db.has(def.key);
     let source: WorkspaceSettingSource = 'none';
     if (hasDb) source = 'db';

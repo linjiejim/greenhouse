@@ -17,6 +17,7 @@
  * Commands are imported lazily so a cheap command never pays to load the DB.
  */
 
+import { extensionCommands } from '../extensions/boot.js';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -25,7 +26,7 @@ import { closeDb } from './commands/shared.js';
 
 const CLI_DIR = dirname(fileURLToPath(import.meta.url));
 
-const USAGE = `${chalk.bold('greenhouse CLI')} — dev/ops quick operations
+const CORE_USAGE = `${chalk.bold('greenhouse CLI')} — dev/ops quick operations
 
 ${chalk.bold('Usage:')} pnpm cli <command> [subcommand] [args] [--flags]   ${chalk.dim('(guide: pnpm cli --help)')}
 
@@ -58,6 +59,14 @@ ${chalk.bold('Chat')} ${chalk.dim('(needs a running server: pnpm api)')}
   eval <args>               Chat answer eval runner (cli/eval.ts; --help for its own usage)
 
 ${chalk.dim('Global: --json (machine output where supported). DB via DATABASE_URL in .env.')}`;
+
+/** Core usage plus one line per command contributed by active extensions. */
+function usage(): string {
+  const extra = extensionCommands();
+  if (extra.length === 0) return CORE_USAGE;
+  const lines = extra.map((cmd) => `  ${cmd.name.padEnd(25)} ${cmd.usage}`);
+  return `${CORE_USAGE}\n\n${chalk.bold('Extensions')}\n${lines.join('\n')}`;
+}
 
 /** Delegate to an operational self-running script, preserving its argv contract. */
 function delegate(script: string, args: string[]): Promise<number> {
@@ -110,10 +119,22 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
       return delegate('chat.ts', rest);
     case 'eval':
       return delegate('eval.ts', rest);
-    default:
+    default: {
+      const extension = extensionCommands().find((cmd) => cmd.name === command);
+      if (extension) {
+        // Extension commands get a ready database, like every core command.
+        const { openDb, closeDb } = await import('./commands/shared.js');
+        await openDb();
+        try {
+          return await extension.run(rest);
+        } finally {
+          await closeDb();
+        }
+      }
       console.error(chalk.red(`Unknown command: ${command}`));
-      console.log('\n' + USAGE);
+      console.log('\n' + usage());
       return 1;
+    }
   }
 }
 
@@ -122,7 +143,7 @@ async function main(): Promise<number> {
   const command = argv[0];
 
   if (!command || command === 'help' || command === '--help' || command === '-h') {
-    console.log(USAGE);
+    console.log(usage());
     return 0;
   }
   return dispatch(command, argv.slice(1));

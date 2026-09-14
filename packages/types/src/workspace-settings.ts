@@ -27,6 +27,7 @@
 
 // ─── Registry ────────────────────────────────────────────
 
+/** Core groups render as fixed sections of Runtime Config; an extension uses its own id as the group. */
 export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search';
 
 /**
@@ -39,7 +40,8 @@ export type WorkspaceSettingType = 'string' | 'text' | 'json';
 export interface WorkspaceSettingDef {
   /** Stable key, stored verbatim in `workspace_settings.key`. Never rename. */
   key: string;
-  group: WorkspaceSettingGroup;
+  /** A `WorkspaceSettingGroup` for core settings; an extension id for extension settings. */
+  group: WorkspaceSettingGroup | (string & {});
   /** Human label for the admin UI. */
   label: string;
   /** What the setting controls (shown under the label). */
@@ -200,8 +202,35 @@ export type WorkspaceSettingKey = (typeof WORKSPACE_SETTINGS_LITERAL)[number]['k
 
 export const WORKSPACE_SETTING_KEYS: readonly string[] = WORKSPACE_SETTINGS.map((s) => s.key);
 
+// ─── Extension settings ──────────────────────────────────
+// Extensions register admin-editable settings at boot (key `<extensionId>.<name>`,
+// group = extension id). They are stored, encrypted and served exactly like the
+// core entries; Runtime Config renders each extension as its own section.
+
+const extensionSettings: WorkspaceSettingDef[] = [];
+
+export function registerWorkspaceSettings(defs: readonly WorkspaceSettingDef[]): void {
+  for (const def of defs) {
+    if (getWorkspaceSettingDef(def.key)) throw new Error(`Workspace setting "${def.key}" is already registered`);
+    if (!def.key.startsWith(`${def.group}.`)) {
+      throw new Error(`Workspace setting "${def.key}" must be prefixed with its group "${def.group}."`);
+    }
+    extensionSettings.push(def);
+  }
+}
+
+/** Core settings followed by every registered extension setting. */
+export function allWorkspaceSettings(): readonly WorkspaceSettingDef[] {
+  return [...WORKSPACE_SETTINGS, ...extensionSettings];
+}
+
+/** Test hook — forget extension settings registered by a suite. */
+export function _resetExtensionWorkspaceSettings(): void {
+  extensionSettings.length = 0;
+}
+
 export function getWorkspaceSettingDef(key: string): WorkspaceSettingDef | undefined {
-  return WORKSPACE_SETTINGS.find((s) => s.key === key);
+  return WORKSPACE_SETTINGS.find((s) => s.key === key) ?? extensionSettings.find((s) => s.key === key);
 }
 
 // ─── API views ───────────────────────────────────────────
@@ -212,7 +241,7 @@ export type WorkspaceSettingSource = 'db' | 'env' | 'none';
 /** Admin read view — secrets never expose their value, only has_value/source. */
 export interface WorkspaceSettingView {
   key: string;
-  group: WorkspaceSettingGroup;
+  group: string;
   label: string;
   description: string;
   type: WorkspaceSettingType;

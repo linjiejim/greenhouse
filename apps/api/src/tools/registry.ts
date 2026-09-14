@@ -13,6 +13,7 @@
  * Frontend fetches metadata via GET /api/tools.
  */
 
+import { fromExtensions } from '../extensions/index.js';
 import type { McpResourceGroup } from '@greenhouse/types/mcp';
 import type { ToolMeta, ToolModule } from './define.js';
 export type { ToolCategory, ToolMeta } from './define.js';
@@ -54,7 +55,7 @@ import { workbenchQueryTool, workbenchMutationTool } from './workbench.js';
 // ─── Catalog ─────────────────────────────────────────────
 
 /** All single-purpose tools — metadata co-located in each file via defineTool. */
-const TOOL_MODULES: ToolModule[] = [
+const CORE_TOOL_MODULES: ToolModule[] = [
   analyzeImageTool,
   askUserTool,
   externalSearchTool,
@@ -92,6 +93,18 @@ const TOOL_MODULES: ToolModule[] = [
 ];
 
 /** Static tools (constructed once from the shared db) — drives createToolRegistry. */
+/** Core tools followed by the tools of every active extension (see extensions/index.ts). */
+const TOOL_MODULES: ToolModule[] = withExtensionTools(CORE_TOOL_MODULES, fromExtensions('tools'));
+
+function withExtensionTools(core: ToolModule[], extension: ToolModule[]): ToolModule[] {
+  const ids = new Set(core.map((m) => m.meta.id));
+  for (const mod of extension) {
+    if (ids.has(mod.meta.id)) throw new Error(`Extension tool "${mod.meta.id}" collides with an existing tool id`);
+    ids.add(mod.meta.id);
+  }
+  return [...core, ...extension];
+}
+
 export const STATIC_TOOL_MODULES: ToolModule[] = TOOL_MODULES.filter((m) => m.kind === 'static');
 
 /** Route-constructed tools keep CENTRAL metadata here rather than in TOOL_MODULES. */

@@ -16,7 +16,8 @@
  */
 
 import { resolveEntityPolicy, type FieldPolicy, type UserEntityPolicyOverride } from '@greenhouse/platform-kernel';
-import { featureDefault, type FeatureKey } from '@greenhouse/types/features';
+import { featureDefault } from '@greenhouse/types/features';
+import { fromExtensions } from '../extensions/index.js';
 import type { DatabaseProvider, UserRow } from '@greenhouse/db';
 import { getPlatformRuntime, PLATFORM_ORG_ID } from './runtime.js';
 import { humanActor } from './actor.js';
@@ -35,7 +36,7 @@ type FeaturePointKind = 'app' | 'flag' | 'toolset';
  */
 type FeaturePointGroup = 'basic' | 'apps' | 'advanced';
 
-interface FeaturePointDef {
+export interface FeaturePointDef {
   key: string;
   title: string;
   description: string;
@@ -44,8 +45,8 @@ interface FeaturePointDef {
   group: FeaturePointGroup;
   /** kind 'app': the manifest application this point maps to. */
   appId?: string;
-  /** Main toggle lands on this feature flag (memory/tables/cloud-agent). */
-  flag?: FeatureKey;
+  /** Main toggle lands on this feature flag (memory/tables/cloud-agent, or an extension flag). */
+  flag?: string;
   /** kind 'app' without a flag: main toggle writes a deny/inherit override on this pattern. */
   capabilityPrefix?: string;
   /** Tools that belong to this point (ride with the feature, not separately assigned). */
@@ -57,7 +58,7 @@ interface FeaturePointDef {
  * baseline) → apps (application points) → advanced (opt-in flags + the derived
  * tool bucket, see `toolsetToolIds`).
  */
-export const FEATURE_POINTS: readonly FeaturePointDef[] = [
+const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
   {
     key: 'tables',
     title: 'Tables',
@@ -125,6 +126,9 @@ export const FEATURE_POINTS: readonly FeaturePointDef[] = [
     toolIds: [],
   },
 ];
+
+/** Core points followed by the points of every active extension (see extensions/index.ts). */
+export const FEATURE_POINTS: readonly FeaturePointDef[] = [...CORE_FEATURE_POINTS, ...fromExtensions('featurePoints')];
 
 /**
  * Per-feature tool id sets, DERIVED from the FEATURE_POINTS entries above — the
@@ -209,7 +213,7 @@ export interface AccessTool {
   assigned: boolean;
 }
 
-export type AccessMainControl = { type: 'flag'; flag: FeatureKey } | { type: 'capability'; capability: string } | null;
+export type AccessMainControl = { type: 'flag'; flag: string } | { type: 'capability'; capability: string } | null;
 
 export interface AccessFeaturePoint {
   key: string;
@@ -261,7 +265,7 @@ export async function buildUserAccessView(db: DatabaseProvider, user: UserRow): 
   ]);
 
   const featureState = new Map(featureRows.map((r) => [r.feature, r.enabled]));
-  const resolveFlag = (key: FeatureKey): boolean =>
+  const resolveFlag = (key: string): boolean =>
     isSuper ? true : featureState.has(key) ? Boolean(featureState.get(key)) : featureDefault(key);
   const assignedSet = new Set(assignedTools);
   const overrideMap = new Map(overrides.map((o) => [o.capability, o.effect]));

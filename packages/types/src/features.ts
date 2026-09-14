@@ -74,12 +74,37 @@ export const FEATURE_FLAGS = [
   },
 ] as const satisfies readonly FeatureFlag[];
 
-/** Union of known feature keys, e.g. 'memory' | 'tables'. */
+/** Union of the core feature keys, e.g. 'memory' | 'tables'. Extension keys are plain strings. */
 export type FeatureKey = (typeof FEATURE_FLAGS)[number]['key'];
 
-/** Look up a flag's metadata by key. */
+// ─── Extension flags ─────────────────────────────────────
+// Extensions (apps/api/src/extensions) register their flags at boot. They live in
+// the same `user_features` table and admin UI as the core flags; only the
+// compile-time `FeatureKey` union stays core-only.
+
+const extensionFlags: FeatureFlag[] = [];
+
+/** Register extension flags. Throws on a key collision with a core or earlier extension flag. */
+export function registerFeatureFlags(flags: readonly FeatureFlag[]): void {
+  for (const flag of flags) {
+    if (getFeatureFlag(flag.key)) throw new Error(`Feature flag "${flag.key}" is already registered`);
+    extensionFlags.push(flag);
+  }
+}
+
+/** Core flags followed by every registered extension flag. */
+export function allFeatureFlags(): readonly FeatureFlag[] {
+  return [...FEATURE_FLAGS, ...extensionFlags];
+}
+
+/** Test hook — forget extension flags registered by a suite. */
+export function _resetExtensionFeatureFlags(): void {
+  extensionFlags.length = 0;
+}
+
+/** Look up a flag's metadata by key (core or extension). */
 export function getFeatureFlag(key: string): FeatureFlag | undefined {
-  return FEATURE_FLAGS.find((f) => f.key === key);
+  return FEATURE_FLAGS.find((f) => f.key === key) ?? extensionFlags.find((f) => f.key === key);
 }
 
 /** Effective state for a user that has no explicit `user_features` row. */

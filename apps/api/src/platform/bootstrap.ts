@@ -14,6 +14,7 @@ import { projectsManifest } from './manifests/projects.js';
 import { knowledgeManifest } from './manifests/knowledge.js';
 import { tablesManifest } from './manifests/tables.js';
 import { PLATFORM_ORG_ID } from './runtime.js';
+import { extensionApplicationPlans } from '../extensions/boot.js';
 
 type InternalUserRole = Exclude<UserRole, 'external'>;
 
@@ -61,7 +62,7 @@ const SYSTEM_ROLES: ReadonlyArray<{
   },
 ];
 
-const APPLICATIONS: readonly ApplicationBootstrapPlan[] = [
+const CORE_APPLICATIONS: readonly ApplicationBootstrapPlan[] = [
   {
     manifest: projectsManifest,
     teamCapabilities: ['projects.*'],
@@ -75,6 +76,9 @@ const APPLICATIONS: readonly ApplicationBootstrapPlan[] = [
     teamCapabilities: ['tables.*'],
   },
 ];
+
+/** Core applications followed by the ones active extensions own. */
+const APPLICATIONS: readonly ApplicationBootstrapPlan[] = [...CORE_APPLICATIONS, ...extensionApplicationPlans()];
 
 function fullFieldPolicy(
   manifest: ApplicationManifest,

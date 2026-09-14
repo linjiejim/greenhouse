@@ -12,9 +12,12 @@
 
 import { Cron } from 'croner';
 import { logger } from '@greenhouse/utils/logger';
+import { extensionJobs } from '../extensions/boot.js';
+import { DEFAULT_TIMEZONE } from './task-limits.js';
 
 let frictionJob: Cron | null = null;
 let consolidationJob: Cron | null = null;
+let extensionJobHandles: Cron[] = [];
 
 export function startFrictionMiningJob(): void {
   frictionJob = new Cron('0 4 * * *', { timezone: 'Asia/Shanghai' }, async () => {
@@ -53,9 +56,26 @@ export function startMemoryConsolidationJob(): void {
   );
 }
 
+/** Periodic jobs declared by active extensions (see extensions/define.ts → `jobs`). */
+export function startExtensionJobs(): void {
+  for (const job of extensionJobs()) {
+    const handle = new Cron(job.cron, { timezone: job.timezone ?? DEFAULT_TIMEZONE }, async () => {
+      try {
+        await job.run();
+      } catch (err) {
+        logger.error(`[ExtensionJob:${job.id}] Failed:`, err);
+      }
+    });
+    extensionJobHandles.push(handle);
+    logger.info(`[ExtensionJob:${job.id}] Scheduled "${job.cron}" → next: ${handle.nextRun()?.toISOString()}`);
+  }
+}
+
 export function stopUpkeepJobs(): void {
   frictionJob?.stop();
   frictionJob = null;
   consolidationJob?.stop();
   consolidationJob = null;
+  for (const handle of extensionJobHandles) handle.stop();
+  extensionJobHandles = [];
 }

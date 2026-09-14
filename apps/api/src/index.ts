@@ -53,6 +53,14 @@ import { createMcpRoutes } from './routes/mcp.js';
 import oauthRoutes from './routes/oauth.js';
 import healthRoutes from './routes/health.js';
 import bootstrapRoutes from './routes/bootstrap.js';
+import extensionsRoutes from './routes/extensions.js';
+import {
+  applyExtensionMigrations,
+  extensionApplicationRegistrations,
+  mountExtensionRoutes,
+  runExtensionBootHooks,
+  runExtensionShutdownHooks,
+} from './extensions/boot.js';
 import adminSettingsRoutes from './routes/admin-settings.js';
 import { applyWorkspaceEnvOverlay } from './settings/workspace-config.js';
 import uploadRoutes from './routes/upload.js';
@@ -256,6 +264,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/health', healthRoutes)
       // Pre-login workspace personalization (name / logo / theme) — public.
       .route('/api/bootstrap', bootstrapRoutes)
+      .route('/api/extensions', extensionsRoutes)
       .route('/api/upload', uploadRoutes)
       // Internal-only routes (team + super)
       .use('/api/eval/*', requireSuper())
@@ -396,6 +405,10 @@ async function main() {
   // refuse to start (silently falling back to disk would strand new bundles).
   const skillStore = getSkillStore();
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
+  // Extension-owned tables live in their own migration lane (core DDL stays in
+  // drizzle/*.sql, applied before boot). Pending files are applied here, under
+  // an advisory lock, before anything can want the tables.
+  await applyExtensionMigrations(dbProvider);
   // Admin-edited runtime config (LLM / media / search credentials) wins over the
   // environment: overlay it onto process.env before anything reads those vars.
   await applyWorkspaceEnvOverlay();
@@ -404,7 +417,12 @@ async function main() {
   initModelCatalog();
   const usageBudgetSweeper = await startUsageBudgetSweeper(dbProvider);
   const platformBootstrap = await bootstrapPlatform(dbProvider);
-  initializePlatformRuntime(dbProvider, [projectsRegistration, knowledgeRegistration, tablesRegistration]);
+  initializePlatformRuntime(dbProvider, [
+    projectsRegistration,
+    knowledgeRegistration,
+    tablesRegistration,
+    ...extensionApplicationRegistrations(),
+  ]);
   if (
     platformBootstrap.appReleasesActivated.length > 0 ||
     platformBootstrap.rolesCreated.length > 0 ||
@@ -428,6 +446,7 @@ async function main() {
   void backfillKnowledgeTokens(dbProvider);
 
   const toolRegistry = createToolRegistry(dbProvider);
+  await runExtensionBootHooks(dbProvider);
 
   // Rebuild Mission/Workflow Runtime projections before accepting Execution Center
   // reads, then keep compensating domain/read-model dual writes in background.
@@ -456,6 +475,9 @@ async function main() {
 
   // Mount everything (single typed chain — see mountRoutes/AppType above)
   mountRoutes(toolRegistry);
+  // Extension routes sit outside the typed contract: a fork's private API never
+  // reshapes the public AppType.
+  mountExtensionRoutes(app);
 
   // Feishu bot long connection: off by default (FEISHU_BOT_ENABLED=1 to connect);
   // a failed connection only warns and never takes the main API down.
@@ -481,6 +503,7 @@ async function main() {
     notificationDeliveryWorker?.stop();
     agentGovernanceWorker?.stop();
     stopFeishuBot();
+    await runExtensionShutdownHooks();
     await chatRunRegistry.shutdown(5000);
     await dbProvider.close();
     process.exit(0);

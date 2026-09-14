@@ -43,7 +43,7 @@ export { formatTokens, formatDuration, handleStreamEvent, readNdjsonStream } fro
 
 // Feature flags (per-user experimental feature registry)
 export type { FeatureFlag, FeatureKey } from './features.js';
-export { FEATURE_FLAGS, getFeatureFlag, featureDefault } from './features.js';
+export { FEATURE_FLAGS, getFeatureFlag, featureDefault, allFeatureFlags, registerFeatureFlags } from './features.js';
 
 // WebSocket message protocol
 export type { ServerWsEvent, ClientWsEvent, OnlineUser } from './ws.js';

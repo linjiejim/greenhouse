@@ -14,6 +14,8 @@
  * each other so they cannot drift.
  */
 
+import { extensionSkillPackDirs } from '../extensions/boot.js';
+import { resolvePackPath } from '../config/greenhouse-config.js';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -208,7 +210,12 @@ export async function seedSkillhub(
     }
 
     const summary: SeedSummary = { dir, published: [], skipped: [], errors: [] };
-    for (const ref of collectSkillDirs(dir)) {
+    // skillhub/ first, then the pack roots from greenhouse.config.ts and the
+    // ones bundled with active extensions — same layout, same rules.
+    const roots = [dir, ...extensionSkillPackDirs().map((root) => resolvePackPath(root))].filter(
+      (root, i, all) => existsSync(root) && all.indexOf(root) === i,
+    );
+    for (const ref of roots.flatMap((root) => collectSkillDirs(root))) {
       const local = loadLocalSkill(ref);
       if ('error' in local) {
         summary.errors.push(`${ref.name}: ${local.error}`);
