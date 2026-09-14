@@ -42,10 +42,12 @@ export function extensionPlatformToolCapabilities(
 export function extensionApplicationPlans(): {
   manifest: ApplicationRegistration['manifest'];
   teamCapabilities: readonly string[];
+  teamExportableEntities?: readonly string[];
 }[] {
   return fromExtensions('applications').map((app) => ({
     manifest: app.manifest,
     teamCapabilities: app.teamCapabilities ?? [`${app.manifest.id}.*`],
+    teamExportableEntities: app.teamExportableEntities,
   }));
 }
 

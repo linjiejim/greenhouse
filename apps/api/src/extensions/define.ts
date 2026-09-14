@@ -40,6 +40,8 @@ export interface ExtensionRoute {
 export interface ExtensionApplication extends ApplicationRegistration<PlatformHandlerContext> {
   /** Capabilities granted to the `team` role at bootstrap, e.g. `['crm.*']`. */
   teamCapabilities?: readonly string[];
+  /** Entities the `team` role may export in full (default: none). */
+  teamExportableEntities?: readonly string[];
   /**
    * Tools backed by this application's actions, so MCP hides a tool whose every
    * action is denied — the same rule core applies to its own registry tools.

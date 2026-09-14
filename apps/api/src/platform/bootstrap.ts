@@ -43,6 +43,12 @@ interface ApplicationBootstrapPlan {
   manifest: ApplicationManifest;
   /** Baseline capabilities that preserve the current internal-user behavior. */
   teamCapabilities: readonly string[];
+  /**
+   * Entities the `team` role may export in full. Empty by default: bulk export
+   * of a whole dataset is a deliberate grant, not something a new application
+   * gets for free.
+   */
+  teamExportableEntities?: readonly string[];
 }
 
 const SYSTEM_ROLES: ReadonlyArray<{
@@ -193,7 +199,12 @@ async function addBaselineEntityPolicies(
         module_id: entity.module,
         entity_id: entity.id,
         scopes: declaredScopes(application.manifest, entity.id),
-        field_policies: fullFieldPolicy(application.manifest, entity.id, entity.id !== 'activity', false),
+        field_policies: fullFieldPolicy(
+          application.manifest,
+          entity.id,
+          entity.id !== 'activity',
+          application.teamExportableEntities?.includes(entity.id) ?? false,
+        ),
       });
       const teamKey = `${roles.team.id}:${application.manifest.id}:${entity.id}`;
       if (!keys.has(teamKey)) result.entityPoliciesAdded += 1;
