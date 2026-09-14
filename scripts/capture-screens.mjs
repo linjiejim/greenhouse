@@ -678,6 +678,51 @@ await step('inbox', async () => {
   await page.mouse.move(700, 450);
 });
 
+await step('extension', async () => {
+  // Only meaningful when the stack runs with GREENHOUSE_EXTENSIONS=example.
+  const active = (await client.get('/api/extensions')).body?.extensions ?? [];
+  if (!active.some((e) => e.id === 'example')) {
+    log('  ↷ example extension not active — skipped');
+    return;
+  }
+  const notes = (await client.get('/api/ext/example/notes')).body?.notes ?? [];
+  if (notes.length === 0) {
+    for (const body of [
+      'Ask Priya for the SOC 2 evidence list',
+      'Draft the launch blog outline',
+      'Renew the Vandelay security packet',
+    ]) {
+      await client.post('/api/ext/example/notes', { body });
+    }
+  }
+  await page.goto(`${BASE}/#/example`);
+  await snap(page, 'extension-example-page', { wait: 1500 });
+  await page.getByRole('button', { name: 'More', exact: true }).first().hover();
+  await snap(page, 'extension-more-menu', { wait: 800 });
+  await page.mouse.move(700, 450);
+  await page.goto(`${BASE}/#/settings/example`);
+  await snap(page, 'extension-settings-module', { wait: 1200 });
+  await page.goto(`${BASE}/#/administration/runtime-config`);
+  await settle(page, 1200);
+  await page
+    .getByText('Example notes (extension)')
+    .scrollIntoViewIfNeeded()
+    .catch(() => {});
+  await snap(page, 'extension-runtime-config', { wait: 800 });
+  await page.goto(`${BASE}/#/chat`);
+  await page.getByTestId('chat-input').waitFor();
+  await page
+    .getByRole('button', { name: 'New Chat' })
+    .first()
+    .click()
+    .catch(() => {});
+  await page.getByTestId('chat-input').fill('What did I note down? List my example notes.');
+  await page.getByTestId('chat-input').press('Enter');
+  const ok = await waitForAnswer(page, ['SOC 2'], 120000);
+  if (!ok) throw new Error('extension tool answer did not complete in time');
+  await snap(page, 'extension-chat-card', { wait: 1200 });
+});
+
 await step('dark-theme', async () => {
   await page.mouse.move(700, 450);
   await page.evaluate(() => localStorage.setItem('greenhouse-theme', 'dark'));

@@ -321,6 +321,11 @@ can also be set in **Administration → Runtime Config** (and branding in **Bran
 values saved there are stored in the database (secrets encrypted with
 `PROVIDER_TOKEN_ENCRYPTION_KEY`), win over the env vars, and apply without a restart.
 
+**Structure lives in code**: [`greenhouse.config.ts`](./greenhouse.config.ts) (typed, validated
+at boot) declares which extensions are switched on, where content packs live (skill packs,
+agent profiles, a seed dataset) and how the browser extension / mobile app treat server
+stations. `GREENHOUSE_EXTENSIONS=crm,example` overrides the extension list per deployment.
+
 ## MCP & agent access
 
 Every capability is reachable three ways from the same tool layer:
@@ -401,6 +406,33 @@ pnpm cli platform create-app my-app --title "My App"
 ```
 
 See [EXTENDING.md](./EXTENDING.md) for the full map of extension points.
+
+## Extensions
+
+Private or optional modules do not need to touch core at all. An **extension** is two folders
+and two list entries:
+
+```
+apps/api/src/extensions/<id>/    tools, routes, tables + migrations, services, jobs, commands, flags, settings
+apps/web/src/extensions/<id>/    pages, navigation, settings modules, translations, chat cards
+apps/api/src/extensions/index.ts one import line   ·   apps/web/src/extensions/index.ts one import line
+```
+
+Each half exports one object — `defineExtension({...})` / `defineWebExtension({...})` — whose
+fields map 1:1 onto the core registries: the tool catalog (and with it `/api/agent` and
+`/api/mcp`), route mounting, platform applications, feature flags and points (one switch in
+the permissions dialog), Runtime Config settings, public paths, the scheduler, the CLI, the
+database services, a dedicated **migration lane** (`extension_migrations`, applied at boot under
+an advisory lock), the hash router, the sidebar, i18n, tool cards and the agent panel. Which
+extensions are *active* is decided per deployment by `greenhouse.config.ts` or
+`GREENHOUSE_EXTENSIONS`; an inactive extension contributes nothing.
+
+The shipped `example` extension (off by default; `GREENHOUSE_EXTENSIONS=example` to try it) is a
+complete reference — per-user notes with their own table, tool, API, page, "More" entry,
+Settings module, Runtime Config section, job and CLI command. Forks keep their modules under
+`apps/*/src/extensions/`, content under `packs/`, and run `scripts/check-extension-overlay.mjs`
+in CI so a commit outside the seam fails instead of drifting from upstream. The full contract
+and the fork workflow are in [EXTENDING.md](./EXTENDING.md#extensions).
 
 ## Development
 

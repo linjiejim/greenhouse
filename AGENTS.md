@@ -268,6 +268,36 @@ greenhouse/
 - e.g. `import { nowIso } from '@greenhouse/utils/date'`
 - e.g. `import type { DatabaseProvider } from '@greenhouse/db'`
 
+## Extensions & deployment configuration
+
+- **`greenhouse.config.ts`** (repo root, typed by `@greenhouse/types/config`, validated by
+  `config-schema.ts` at boot via `apps/api/src/config/greenhouse-config.ts`) holds *structure*:
+  `extensions.enabled`, `packs.{skills,profiles,seeds}`, `clients.stations`. Secrets stay in
+  `.env`; live product knobs stay in Runtime Config (DB). Do not add a fourth layer, and do not
+  move env-only infrastructure into the file. `GREENHOUSE_EXTENSIONS` overrides the enabled list.
+- **Extension seam**: `apps/api/src/extensions/<id>/` + `apps/web/src/extensions/<id>/`, each
+  exporting `defineExtension` / `defineWebExtension`, listed once in the two `extensions/index.ts`
+  files. Every core registry aggregates from the *active* set (`EXTENSIONS` / the
+  `/api/extensions` store). Rules:
+  - Core never references an extension by id. If a module needs a hook the contract lacks, add
+    the hook to the contract + registry (and the example + seam test), never a `case 'crm'`.
+  - Contract fields map 1:1 onto existing registries — no new abstraction without a registry
+    behind it. The full list is in EXTENDING.md → "Extensions".
+  - Extension tables use the migration lane (`migrations/*.sql`, `--> statement-breakpoint`);
+    never append extension DDL to `drizzle/`. Applied files are checksummed — add a new file
+    instead of editing one.
+  - Extension copy lives under `ext.<id>.*` (`registerExtensionMessages`); core `en.ts`/`zh.ts`
+    stay untouched. `visible-copy.test.ts` still scans extension TSX.
+  - The `example` extension is the reference and the test fixture: keep it exercising every
+    field; `apps/api/src/extensions/__tests__/seam.test.ts` and
+    `apps/web/src/extensions/__tests__/seam.test.ts` load it with `GREENHOUSE_EXTENSIONS=example`;
+    the Playwright stack runs with the example on.
+  - Forks: private modules only under the seam, content under `packs/`; `scripts/check-extension-overlay.mjs`
+    must pass against `upstream/main`. Anything generic goes upstream first.
+- **Client stations**: `clients.stations` (`multi` | `single` + `defaults`) is read by the browser
+  extension at build time; the mobile app mirrors it through `EXPO_PUBLIC_STATIONS_MODE` /
+  `EXPO_PUBLIC_API_BASE_URL` (see `apps/mobile/AGENTS.md`).
+
 ## Domain rules
 
 Detailed rules live next to the code:
