@@ -115,6 +115,24 @@ describe('Mission runtime admission', () => {
     });
   });
 
+  it('treats a missing docker CLI as nothing to contain when Mission is disabled', async () => {
+    const db = {
+      agentRuns: { listQueuedRuns: async () => [], listActiveRuns: async () => [] },
+      apiClients: { list: async () => [] },
+    } as unknown as DatabaseProvider;
+    const docker = unavailableDocker('unused');
+    docker.listAgentContainers = async () => {
+      throw new DockerControlPlaneError('Failed to list sandbox containers: spawn docker ENOENT', {
+        cause: Object.assign(new Error('spawn docker ENOENT'), { code: 'ENOENT', syscall: 'spawn docker' }),
+      });
+    };
+
+    await initMissionRuntime({ env: { NODE_ENV: 'test' }, docker, db });
+
+    // Disabled stays disabled: no `unavailable` state and no containment retry loop.
+    expect(getMissionRuntimeStatus()).toEqual({ state: 'disabled' });
+  });
+
   it('does not confirm containment until an in-flight start drains and its late container is removed', async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), 'mission-runtime-race-'));
     const skillsDir = join(dataRoot, 'skills');

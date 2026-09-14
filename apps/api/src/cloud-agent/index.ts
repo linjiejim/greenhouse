@@ -8,7 +8,7 @@ import { AGENT_RUN_SERVER_SEQ_BASE } from '@greenhouse/types/cloud-agent';
 
 import { connectionManager } from '../ws/connection-manager.js';
 import { isMissionEnabled, loadSandboxRunnerConfig, type SandboxRunnerConfig } from './config.js';
-import { containerNameFor, createDockerCli, type DockerCli } from './docker.js';
+import { containerNameFor, createDockerCli, isDockerExecutableMissing, type DockerCli } from './docker.js';
 import { createCloudAgentController, type CloudAgentController } from './controller.js';
 import { abortMissionRelayRequests } from './relay-requests.js';
 import {
@@ -188,8 +188,15 @@ async function quarantineMissionRuns(
       }
     }
   } catch (err) {
-    containmentConfirmed = false;
-    logger.error('[mission] failed to list containers while closing admission', { err: String(err) });
+    if (isDockerExecutableMissing(err)) {
+      // No docker CLI in this runtime: this process could never have started a
+      // sandbox container, and nothing it could reach survives here. Retrying
+      // would only repeat the same ENOENT, so there is nothing left to contain.
+      logger.info('[mission] docker CLI not found; no sandbox containers to contain');
+    } else {
+      containmentConfirmed = false;
+      logger.error('[mission] failed to list containers while closing admission', { err: String(err) });
+    }
   }
   return containmentConfirmed;
 }

@@ -139,6 +139,21 @@ export interface DockerCli {
   tailLogs(nameOrId: string, lines: number): Promise<string>;
 }
 
+/**
+ * The docker executable itself is absent (`spawn docker ENOENT`), as in a
+ * container image without a docker CLI. Nothing on this host can be reached
+ * through it, so retrying the same call can never change the answer.
+ */
+export function isDockerExecutableMissing(err: unknown): boolean {
+  let current: unknown = err;
+  for (let depth = 0; current && typeof current === 'object' && depth < 5; depth++) {
+    const e = current as { code?: unknown; cause?: unknown };
+    if (e.code === 'ENOENT') return true;
+    current = e.cause;
+  }
+  return false;
+}
+
 export function isMissingContainerError(err: unknown): boolean {
   const message = toErrorMessage(err);
   const stderr = err && typeof err === 'object' && 'stderr' in err ? String(err.stderr ?? '') : '';
