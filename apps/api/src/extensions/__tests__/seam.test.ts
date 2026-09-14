@@ -23,6 +23,7 @@ async function loadWith(enabled: string) {
   const mcp = await import('@greenhouse/types/mcp');
   const workbench = await import('@greenhouse/types/workbench');
   const searchSources = await import('../../search/sources.js');
+  const drive = await import('../../drive/access.js');
   const oauth = await import('../../platform/oauth.js');
   return {
     extensions,
@@ -36,6 +37,7 @@ async function loadWith(enabled: string) {
     mcp,
     workbench,
     searchSources,
+    drive,
     oauth,
   };
 }
@@ -95,6 +97,12 @@ describe('extension seam', { timeout: 60_000 }, () => {
     expect(m.oauth.resourceGroupsFromScopes(['mcp:read', 'mcp:example'])).toEqual(['example']);
     expect(m.registry.MCP_EXPOSED_TOOL_IDS).toContain('example_notes_query');
 
+    // its own drive scope — core's two are untouched, the extension's is known
+    expect(m.drive.extensionDriveScopes().map((d) => d.scope)).toEqual(['example-note']);
+    expect(m.drive.isKnownDriveScope('example-note')).toBe(true);
+    expect(m.drive.isKnownDriveScope('kb')).toBe(true);
+    expect(m.drive.isKnownDriveScope('nope')).toBe(false);
+
     // search lane + workbench recipe
     expect(m.searchSources.extensionSearchSources().map((s) => s.kind)).toEqual(['ext:example:note']);
     expect(m.workbench.allWidgetRecipes().map((r) => r.id)).toContain('example.notes');
@@ -116,6 +124,8 @@ describe('extension seam', { timeout: 60_000 }, () => {
     expect(m.mcp.allMcpResourceGroups()).not.toContain('example');
     expect(m.oauth.oauthSupportedScopes()).not.toContain('mcp:example');
     expect(m.searchSources.extensionSearchSources()).toEqual([]);
+    expect(m.drive.extensionDriveScopes()).toEqual([]);
+    expect(m.drive.isKnownDriveScope('example-note')).toBe(false);
     expect(m.workbench.allWidgetRecipes().some((r) => r.id === 'example.notes')).toBe(false);
     expect(() => m.entityLinks.entityUrl({ kind: 'ext:example:note', id: 1 })).toThrow(/Unknown entity kind/);
   });

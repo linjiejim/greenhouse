@@ -50,6 +50,13 @@
       "when": 1789309862542,
       "tag": "0006_internal_workbench_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789376813701,
+      "tag": "0007_drive_extension_scopes",
+      "breakpoints": true
     }
   ]
 }

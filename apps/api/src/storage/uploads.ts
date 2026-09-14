@@ -254,14 +254,23 @@ const DRIVE_PREFIX = normalizeKeyPrefix(
 
 /** Build the server-owned COS key for a drive file. Namespaced by scope + owner. */
 export function driveKeyFor(opts: {
-  scope: 'kb' | 'tables';
+  scope: string;
   baseId?: number | null;
+  /** Owner of an extension scope. */
+  ownerKey?: string | null;
   visibility?: string | null;
   filename: string;
 }): string {
   const ext = extname(opts.filename).toLowerCase();
   const uid = randomUUID();
   if (opts.scope === 'tables') return `${DRIVE_PREFIX}tables/${opts.baseId ?? 'none'}/${uid}${ext}`;
+  // An extension scope is namespaced by its own owner key, sanitized — the key is
+  // extension data and must never be able to escape the prefix.
+  if (opts.scope !== 'kb') {
+    const owner = (opts.ownerKey ?? 'none').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'none';
+    const scope = opts.scope.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32);
+    return `${DRIVE_PREFIX}${scope}/${owner}/${uid}${ext}`;
+  }
   return `${DRIVE_PREFIX}kb/${opts.visibility ?? 'team'}/${uid}${ext}`;
 }
 

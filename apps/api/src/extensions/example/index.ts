@@ -41,6 +41,21 @@ export const exampleExtension = defineExtension({
       },
     },
   ],
+  // …and its own drive scope: a file cabinet per note, inside the shared
+  // `drive_*` tables, keyed by `owner_key` and guarded by this resolver.
+  driveScopes: [
+    {
+      scope: 'example-note',
+      authorize: async (ownerKey, { userId, db }) => {
+        if (!ownerKey) return null;
+        const { notes } = getExtensionServices<ExampleServices>(db, 'example');
+        // Notes are personal, so the cabinet is too: `get` is already scoped to
+        // the caller, so a note that is not theirs simply is not found.
+        const note = await notes.get(userId, Number(ownerKey));
+        return note ? 'editor' : null;
+      },
+    },
+  ],
   // …and a Home workbench card backed by its read tool.
   workbenchRecipes: [
     {

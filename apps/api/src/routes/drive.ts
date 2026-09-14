@@ -4,6 +4,8 @@
  * A generic folder/file cabinet over db.drive, shared by committed scopes:
  *   - scope='kb'  → knowledge-base folders (visibility + owner_user_id).
  *   - scope='tables' → Tables Base files (base_id + Base ACL).
+ *   - an extension scope → keyed by `owner_key`, authorized by the resolver the
+ *     extension registered. Core validates the shape and delegates the rule.
  *
  * Auth: mounted behind requireInternal(); per-node authorization is resolveDriveAccess
  * (the single source of truth, also unit-tested). Downloads are NEVER public — the
@@ -36,7 +38,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { getAuthUser } from '../auth/middleware.js';
 import { contentDisposition } from '../http/content-disposition.js';
-import { resolveDriveAccess, canReadDrive, canWriteDrive } from '../drive/access.js';
+import { resolveDriveAccessAsync, isKnownDriveScope, canReadDrive, canWriteDrive } from '../drive/access.js';
 import type { DriveAccessNode } from '../drive/access.js';
 import { validateDriveUpload, safeDriveContentType, MAX_DRIVE_FILE_SIZE } from '../drive/upload-policy.js';
 import {
@@ -59,6 +61,12 @@ interface ScopeKeys {
   visibility: 'team' | 'private' | null;
   owner_user_id: string | null;
   base_id: number | null;
+  owner_key: string | null;
+}
+
+/** Core owns exactly these two; everything else must come from an extension. */
+function isCoreScope(scope: string): scope is 'kb' | 'tables' {
+  return scope === 'kb' || scope === 'tables';
 }
 
 /**
@@ -68,11 +76,15 @@ interface ScopeKeys {
 function buildScopeKeys(
   c: Context<AppEnv>,
   scope: DriveScope,
-  input: { base_id?: number | null; visibility?: 'team' | 'private' },
+  input: { base_id?: number | null; visibility?: 'team' | 'private'; owner_key?: string | null },
 ): ScopeKeys | { error: string } {
+  if (!isCoreScope(scope)) {
+    if (!input.owner_key) return { error: `owner_key is required for the ${scope} scope` };
+    return { scope, base_id: null, visibility: null, owner_user_id: null, owner_key: input.owner_key };
+  }
   if (scope === 'tables') {
     if (!input.base_id) return { error: 'base_id is required for tables scope' };
-    return { scope, base_id: input.base_id, visibility: null, owner_user_id: null };
+    return { scope, base_id: input.base_id, visibility: null, owner_user_id: null, owner_key: null };
   }
   const visibility = input.visibility ?? 'team';
   const user = getAuthUser(c);
@@ -81,6 +93,7 @@ function buildScopeKeys(
     base_id: null,
     visibility,
     owner_user_id: visibility === 'private' ? user.id : null,
+    owner_key: null,
   };
 }
 
@@ -106,18 +119,21 @@ async function accessFor(c: Context<AppEnv>, node: DriveAccessNode, operation: '
       else tablesRole = null;
     }
   }
-  return resolveDriveAccess(node, user.id, { tablesRole });
+  return resolveDriveAccessAsync(node, { userId: user.id, userRole: user.role, db: getDb(), operation, tablesRole });
 }
 
-const toNode = (row: Pick<DriveFolderRow, 'scope' | 'visibility' | 'owner_user_id' | 'base_id'>): DriveAccessNode => ({
+const toNode = (
+  row: Pick<DriveFolderRow, 'scope' | 'visibility' | 'owner_user_id' | 'base_id' | 'owner_key'>,
+): DriveAccessNode => ({
   scope: row.scope,
   visibility: row.visibility,
   owner_user_id: row.owner_user_id,
   base_id: row.base_id,
+  owner_key: row.owner_key,
 });
 
 function parseScopeParam(v?: string): DriveScope | null {
-  return v === 'kb' || v === 'tables' ? v : null;
+  return v && isKnownDriveScope(v) ? v : null;
 }
 
 function parseIntOrNull(v?: string | null): number | null {
@@ -126,12 +142,14 @@ function parseIntOrNull(v?: string | null): number | null {
   return Number.isInteger(n) ? n : null;
 }
 
-const scopeEnum = z.enum(['kb', 'tables']);
+/** Any registered scope — `isKnownDriveScope` is the gate, not a fixed enum. */
+const scopeEnum = z.string().refine(isKnownDriveScope, { message: 'unknown scope' });
 const visibilityEnum = z.enum(['team', 'private']);
 
 const folderCreateSchema = z.object({
   scope: scopeEnum,
   base_id: z.number().int().positive().optional(),
+  owner_key: z.string().min(1).max(128).optional(),
   visibility: visibilityEnum.optional(),
   parent_id: z.number().int().positive().optional(),
   name: z
@@ -156,6 +174,7 @@ const folderUpdateSchema = z
 const fileInitSchema = z.object({
   scope: scopeEnum,
   base_id: z.number().int().positive().optional(),
+  owner_key: z.string().min(1).max(128).optional(),
   visibility: visibilityEnum.optional(),
   folder_id: z.number().int().positive().optional(),
   name: z.string().min(1),
@@ -173,6 +192,7 @@ const drive = new Hono<AppEnv>()
     const visRaw = c.req.query('visibility');
     const keys = buildScopeKeys(c, scope, {
       base_id: parseIntOrNull(c.req.query('base_id')),
+      owner_key: c.req.query('owner_key') ?? null,
       visibility: visRaw === 'team' || visRaw === 'private' ? visRaw : undefined,
     });
     if ('error' in keys) return c.json({ error: keys.error }, 400);
@@ -185,6 +205,7 @@ const drive = new Hono<AppEnv>()
     const folders = await getDb().drive.listFolders({
       scope,
       base_id: keys.base_id ?? undefined,
+      owner_key: keys.owner_key ?? undefined,
       visibility: keys.visibility ?? undefined,
       owner_user_id: keys.owner_user_id ?? undefined,
       parent_id: parentParam === 'all' ? undefined : parseIntOrNull(parentParam),
@@ -194,8 +215,8 @@ const drive = new Hono<AppEnv>()
   .post('/folders', async (c) => {
     const parsed = folderCreateSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'invalid input' }, 400);
-    const { scope, base_id, visibility, parent_id, name } = parsed.data;
-    const keys = buildScopeKeys(c, scope, { base_id, visibility });
+    const { scope, base_id, visibility, owner_key, parent_id, name } = parsed.data;
+    const keys = buildScopeKeys(c, scope, { base_id, visibility, owner_key });
     if ('error' in keys) return c.json({ error: keys.error }, 400);
     if (!canWriteDrive(await accessFor(c, keys, 'write'))) return c.json({ error: 'forbidden' }, 403);
 
@@ -206,6 +227,7 @@ const drive = new Hono<AppEnv>()
         !parent ||
         parent.scope !== scope ||
         parent.base_id !== keys.base_id ||
+        parent.owner_key !== keys.owner_key ||
         parent.visibility !== keys.visibility ||
         parent.owner_user_id !== keys.owner_user_id
       ) {
@@ -244,7 +266,8 @@ const drive = new Hono<AppEnv>()
         parent.scope !== folder.scope ||
         parent.visibility !== folder.visibility ||
         parent.owner_user_id !== folder.owner_user_id ||
-        parent.base_id !== folder.base_id
+        parent.base_id !== folder.base_id ||
+        parent.owner_key !== folder.owner_key
       ) {
         return c.json({ error: 'parent folder is in a different scope' }, 400);
       }
@@ -285,6 +308,7 @@ const drive = new Hono<AppEnv>()
     const visRaw = c.req.query('visibility');
     const keys = buildScopeKeys(c, scope, {
       base_id: parseIntOrNull(c.req.query('base_id')),
+      owner_key: c.req.query('owner_key') ?? null,
       visibility: visRaw === 'team' || visRaw === 'private' ? visRaw : undefined,
     });
     if ('error' in keys) return c.json({ error: keys.error }, 400);
@@ -293,6 +317,7 @@ const drive = new Hono<AppEnv>()
     const files = await getDb().drive.listFiles({
       scope,
       base_id: keys.base_id ?? undefined,
+      owner_key: keys.owner_key ?? undefined,
       visibility: keys.visibility ?? undefined,
       owner_user_id: keys.owner_user_id ?? undefined,
       folder_id: parseIntOrNull(c.req.query('folder_id')),
@@ -302,18 +327,19 @@ const drive = new Hono<AppEnv>()
   .post('/files/init', async (c) => {
     const parsed = fileInitSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'invalid input' }, 400);
-    const { scope, base_id, visibility, folder_id, name, size, content_type } = parsed.data;
+    const { scope, base_id, visibility, owner_key, folder_id, name, size, content_type } = parsed.data;
 
     const valid = validateDriveUpload({ name, size, content_type });
     if (!valid.ok) return c.json({ error: valid.error }, 400);
 
-    const keys = buildScopeKeys(c, scope, { base_id, visibility });
+    const keys = buildScopeKeys(c, scope, { base_id, visibility, owner_key });
     if ('error' in keys) return c.json({ error: keys.error }, 400);
     if (!canWriteDrive(await accessFor(c, keys, 'write'))) return c.json({ error: 'forbidden' }, 403);
 
     const cosKey = driveKeyFor({
       scope,
       baseId: keys.base_id,
+      ownerKey: keys.owner_key,
       visibility: keys.visibility,
       filename: name,
     });
@@ -327,6 +353,7 @@ const drive = new Hono<AppEnv>()
       content_type: safeDriveContentType(name),
       size,
       base_id: keys.base_id,
+      owner_key: keys.owner_key,
       visibility: keys.visibility,
       owner_user_id: keys.owner_user_id,
       uploaded_by: getAuthUser(c).id,

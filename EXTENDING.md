@@ -117,6 +117,7 @@ Every field is optional and maps 1:1 onto a core registry:
 | `entityKinds` | in-app deeplinks (`entityUrl` / `parseEntityUrl`) and chat peeks | `{ kind: 'ext:crm:company', route: '#/crm/companies/:id' }` — one template drives both directions. Put the URL in a tool result and the chat renders a peek instead of a link. |
 | `searchSources` | the ⌘P palette | One lane per record kind; it applies its own permission check and a failure only empties its own group. |
 | `mcpGroups` | MCP consent + OAuth scopes | `['crm']` gives `mcp:crm`; tools join it with `surface.mcp: 'crm'`. Existing grants never pick up a new group. |
+| `driveScopes` | the shared Drive (`drive_folders` / `drive_files`) | Your own file cabinet inside core's tables: rows carry `scope: '<your scope>'` and `owner_key` (any text — a record id), and the `authorize(ownerKey, ctx)` you declare is the only rule core applies. |
 | `workbenchRecipes` | Home workbench card picker + `workbench_query.recipes` | Backed by one of the extension's own read tools; `labelKey` / `descriptionKey` translate it. |
 | `skillPacks` | Skill Center seed at boot | Same layout as `skillhub/`. |
 | `onBoot` / `onShutdown` | after the tool registry exists, before routes serve; on SIGTERM | |
@@ -168,6 +169,9 @@ export const crmWebExtension = defineWebExtension({
 
 `apps/web/src/extension-kit.ts` re-exports `authFetch`, `useT`, the UI kit, `useAuthStore`,
 `canUseFeature`, `usePageActions` and the contract types.
+
+On the browser side, `<DriveBrowser owner={{ scope: 'crm', owner_key: String(companyId) }} />`
+renders that cabinet with the same UI Tables and Knowledge use.
 
 ### What the seam does not cover (yet)
 

@@ -45,8 +45,21 @@ export interface DriveFile {
   updated_at: string;
 }
 
-/** Owner keys identifying which scope/container a node belongs to. */
-export type DriveOwner = { scope: 'kb'; visibility: 'team' | 'private' } | { scope: 'tables'; base_id: number };
+/**
+ * Owner keys identifying which scope/container a node belongs to.
+ *
+ * The third member is how an extension addresses its own cabinet: any scope it
+ * registered on the API, plus the `owner_key` whose meaning only it knows.
+ */
+export type DriveOwner =
+  | { scope: 'kb'; visibility: 'team' | 'private'; owner_key?: never }
+  | { scope: 'tables'; base_id: number; owner_key?: never }
+  | { scope: string; owner_key: string };
+
+/** The extension member of the union — `scope` alone cannot discriminate it. */
+export function isExtensionDriveOwner(owner: DriveOwner): owner is { scope: string; owner_key: string } {
+  return typeof owner.owner_key === 'string';
+}
 
 async function jsonReq<T>(url: string, method: string, body?: unknown): Promise<T> {
   const res = await authFetch(url, {
@@ -62,6 +75,8 @@ async function jsonReq<T>(url: string, method: string, body?: unknown): Promise<
 }
 
 function ownerQuery(owner: DriveOwner): string {
+  if (isExtensionDriveOwner(owner))
+    return `scope=${encodeURIComponent(owner.scope)}&owner_key=${encodeURIComponent(owner.owner_key)}`;
   if (owner.scope === 'tables') return `scope=tables&base_id=${owner.base_id}`;
   return `scope=kb&visibility=${owner.visibility}`;
 }

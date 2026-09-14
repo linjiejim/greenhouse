@@ -18,6 +18,7 @@ import type { FeatureFlag } from '@greenhouse/types/features';
 import type { ExtensionEntityKindDef } from '@greenhouse/types/entity-links';
 import type { WidgetRecipe } from '@greenhouse/types/workbench';
 import type { SearchSource } from '../search/sources.js';
+import type { DriveScopeDef } from '../drive/access.js';
 import type { WorkspaceSettingDef } from '@greenhouse/types/workspace-settings';
 import type { GreenhouseConfig } from '@greenhouse/types/config';
 import type { AppEnv } from '../app-env.js';
@@ -89,6 +90,12 @@ export interface GreenhouseExtension {
   entityKinds?: ExtensionEntityKindDef[];
   /** Lanes added to the global search palette, one per record kind. */
   searchSources?: SearchSource[];
+  /**
+   * Drive scopes this extension owns — its own file cabinet inside the shared
+   * `drive_folders` / `drive_files` tables, keyed by `owner_key` and guarded by
+   * the resolver declared here. Core validates the shape and delegates the rule.
+   */
+  driveScopes?: DriveScopeDef[];
   /**
    * MCP consent groups this extension owns (conventionally its own id). A token
    * can then be granted `mcp:<group>` alone; tools join it via `surface.mcp`.

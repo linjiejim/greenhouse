@@ -4,6 +4,7 @@
  * Reused across surfaces via the `owner` prop:
  *   - Tables Base files:     <DriveBrowser owner={{ scope: 'tables', base_id }} />
  *   - KB folder attachments: <DriveBrowser owner={{ scope: 'kb', visibility }} initialFolderId={id} />
+ *   - an extension's cabinet:  <DriveBrowser owner={{ scope: 'crm', owner_key: String(companyId) }} />
  *
  * Navigates one folder level at a time (breadcrumb walks the parent chain),
  * uploads via the API client (presigned-direct or proxy, transparently), and
@@ -23,6 +24,7 @@ import {
   uploadDriveFile,
   downloadDriveFile,
   formatFileSize,
+  isExtensionDriveOwner,
 } from '../../lib/api/drive';
 import type { DriveOwner, DriveFolder, DriveFile } from '../../lib/api/drive';
 import { formatDate } from '../../lib/utils';
@@ -54,7 +56,11 @@ export function DriveBrowser({ owner, initialFolderId = null, onMutate }: Props)
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // owner is stable per surface; collapse to a primitive for the effect dep.
-  const ownerKey = owner.scope === 'tables' ? `tables:${owner.base_id}` : `kb:${owner.visibility}`;
+  const ownerKey = isExtensionDriveOwner(owner)
+    ? `${owner.scope}:${owner.owner_key}`
+    : owner.scope === 'tables'
+      ? `tables:${owner.base_id}`
+      : `kb:${owner.visibility}`;
 
   const load = useCallback(async () => {
     setLoading(true);

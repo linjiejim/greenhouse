@@ -21,6 +21,8 @@ export interface DriveFolderInput {
   visibility?: DriveFolderRow['visibility'];
   owner_user_id?: string | null;
   base_id?: number | null;
+  /** Owner of an extension scope — opaque to core. */
+  owner_key?: string | null;
   created_by?: string | null;
 }
 
@@ -29,6 +31,7 @@ export interface DriveFolderListOpts {
   /** null = root folders only; undefined = any depth. */
   parent_id?: number | null;
   base_id?: number | null;
+  owner_key?: string | null;
   visibility?: DriveFolderRow['visibility'];
   owner_user_id?: string | null;
 }
@@ -44,6 +47,7 @@ export interface DriveFileInput {
   visibility?: DriveFileRow['visibility'];
   owner_user_id?: string | null;
   base_id?: number | null;
+  owner_key?: string | null;
   uploaded_by?: string | null;
 }
 
@@ -52,6 +56,7 @@ export interface DriveFileListOpts {
   /** null = files at the scope/owner root; undefined = any folder. */
   folder_id?: number | null;
   base_id?: number | null;
+  owner_key?: string | null;
   visibility?: DriveFileRow['visibility'];
   owner_user_id?: string | null;
 }
@@ -69,6 +74,7 @@ export function createDriveService(db: Db) {
           visibility: input.visibility ?? null,
           owner_user_id: input.owner_user_id ?? null,
           base_id: input.base_id ?? null,
+          owner_key: input.owner_key ?? null,
           created_by: input.created_by ?? null,
           created_at: now,
           updated_at: now,
@@ -82,6 +88,7 @@ export function createDriveService(db: Db) {
       if (opts.parent_id === null) conditions.push(isNull(driveFolders.parent_id));
       else if (opts.parent_id !== undefined) conditions.push(eq(driveFolders.parent_id, opts.parent_id));
       if (opts.base_id != null) conditions.push(eq(driveFolders.base_id, opts.base_id));
+      if (opts.owner_key != null) conditions.push(eq(driveFolders.owner_key, opts.owner_key));
       if (opts.visibility) conditions.push(eq(driveFolders.visibility, opts.visibility));
       if (opts.owner_user_id != null) conditions.push(eq(driveFolders.owner_user_id, opts.owner_user_id));
       // (sort_order, name): every row defaults to 0, so a tree nobody has dragged
@@ -145,6 +152,7 @@ export function createDriveService(db: Db) {
           visibility: input.visibility ?? null,
           owner_user_id: input.owner_user_id ?? null,
           base_id: input.base_id ?? null,
+          owner_key: input.owner_key ?? null,
           uploaded_by: input.uploaded_by ?? null,
           created_at: now,
           updated_at: now,
@@ -158,6 +166,7 @@ export function createDriveService(db: Db) {
       if (opts.folder_id === null) conditions.push(isNull(driveFiles.folder_id));
       else if (opts.folder_id !== undefined) conditions.push(eq(driveFiles.folder_id, opts.folder_id));
       if (opts.base_id != null) conditions.push(eq(driveFiles.base_id, opts.base_id));
+      if (opts.owner_key != null) conditions.push(eq(driveFiles.owner_key, opts.owner_key));
       if (opts.visibility) conditions.push(eq(driveFiles.visibility, opts.visibility));
       if (opts.owner_user_id != null) conditions.push(eq(driveFiles.owner_user_id, opts.owner_user_id));
       return db
