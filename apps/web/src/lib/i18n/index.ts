@@ -32,11 +32,28 @@ type FlatKeys<T, Prefix extends string = ''> =
 
 export type TranslationKey = FlatKeys<LocaleMessages>;
 
+/** Keys owned by extensions: `ext.<id>.<path>` — typed loosely so extension code never edits en.ts/zh.ts. */
+export type ExtensionTranslationKey = `ext.${string}`;
+export type AnyTranslationKey = TranslationKey | ExtensionTranslationKey;
+
 // ---------------------------------------------------------------------------
 // Locale registry
 // ---------------------------------------------------------------------------
 
 const locales: Record<Locale, LocaleMessages> = { en, zh: zh as unknown as LocaleMessages };
+
+// Extension dictionaries, merged under `ext.<id>` per locale at extension load
+// (see apps/web/src/extensions/index.ts). A missing locale falls back to English.
+const extensionMessages: Record<Locale, Record<string, unknown>> = { en: {}, zh: {} };
+
+export function registerExtensionMessages(
+  id: string,
+  messages: Partial<Record<Locale, Record<string, unknown>>>,
+): void {
+  for (const locale of Object.keys(extensionMessages) as Locale[]) {
+    extensionMessages[locale][id] = messages[locale] ?? messages.en ?? {};
+  }
+}
 
 export const LOCALE_OPTIONS: Array<{ value: Locale; label: string; nativeLabel: string }> = [
   { value: 'en', label: 'English', nativeLabel: 'English' },
@@ -71,7 +88,7 @@ function storeLocale(locale: Locale) {
 // Translation helper (non-React usage)
 // ---------------------------------------------------------------------------
 
-function resolve(messages: LocaleMessages, key: string): string {
+function resolve(messages: LocaleMessages | Record<string, unknown>, key: string): string {
   const parts = key.split('.');
   let current: unknown = messages;
   for (const part of parts) {
@@ -90,7 +107,13 @@ function interpolate(template: string, params?: Record<string, string | number>)
 }
 
 /** Translate outside React (native bridges, registries, and other imperative code). */
-export function translate(locale: Locale, key: TranslationKey, params?: Record<string, string | number>): string {
+export function translate(locale: Locale, key: AnyTranslationKey, params?: Record<string, string | number>): string {
+  if (key.startsWith('ext.')) {
+    const path = key.slice(4);
+    let text = resolve(extensionMessages[locale] ?? extensionMessages.en, path);
+    if (text === path && locale !== 'en') text = resolve(extensionMessages.en, path);
+    return interpolate(text === path ? key : text, params);
+  }
   const messages = locales[locale] ?? locales.en;
   return interpolate(resolve(messages, key), params);
 }
@@ -102,7 +125,7 @@ export function translate(locale: Locale, key: TranslationKey, params?: Record<s
 interface I18nContextValue {
   locale: Locale;
   setLocale: (locale: Locale) => void;
-  t: (key: TranslationKey, params?: Record<string, string | number>) => string;
+  t: (key: AnyTranslationKey, params?: Record<string, string | number>) => string;
 }
 
 const I18nContext = createContext<I18nContextValue>({
@@ -149,7 +172,7 @@ export function I18nProvider({ children, initialLocale, onLocaleChange }: I18nPr
   }, [locale]);
 
   const t = useCallback(
-    (key: TranslationKey, params?: Record<string, string | number>): string => translate(locale, key, params),
+    (key: AnyTranslationKey, params?: Record<string, string | number>): string => translate(locale, key, params),
     [locale],
   );
 

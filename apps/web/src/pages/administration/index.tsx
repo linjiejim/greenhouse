@@ -9,6 +9,9 @@
  * themselves are reused verbatim from the old Settings > Administration section.
  */
 
+import { isNavModuleActive } from '../../lib/nav-registry';
+import { extensionModuleComponent } from '../../extensions';
+import { useExtensionsStore } from '../../stores/extensions-store';
 import React from 'react';
 import { ModulePageShell } from '../../components/app/module-page-shell';
 import { useAuthStore } from '../../stores';
@@ -37,6 +40,7 @@ function getModuleKey(mod: NavModule) {
 export function AdministrationPage({ subPath }: { subPath: string }) {
   const t = useT();
   const { currentUser } = useAuthStore();
+  const activeExtensions = useExtensionsStore((s) => s.extensions);
   const isSuper = currentUser?.role === 'super';
 
   const segments = subPath.split('/').filter(Boolean);
@@ -48,9 +52,11 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
     return <div className="flex h-full items-center justify-center text-sm text-fg-faint">{t('app.noPermission')}</div>;
   }
 
-  const activeModule = ALL_MODULES.find((m) => getModuleKey(m) === moduleKey) ? moduleKey : DEFAULT_MODULE;
+  const visibleModules = ALL_MODULES.filter((m) => isNavModuleActive(m, activeExtensions));
+  const activeModule = visibleModules.find((m) => getModuleKey(m) === moduleKey) ? moduleKey : DEFAULT_MODULE;
+  const extensionModule = extensionModuleComponent('administration', activeModule);
   return (
-    <ModulePageShell activeKey={activeModule} mobileItems={ALL_MODULES} contentClassName="bg-surface-canvas">
+    <ModulePageShell activeKey={activeModule} mobileItems={visibleModules} contentClassName="bg-surface-canvas">
       {/* Eval takes full height with its own scroll */}
       {activeModule === 'eval' && <EvalPage subPath={segments.slice(1).join('/')} />}
       {activeModule === 'users' && <UserManagementPanel />}
@@ -61,6 +67,7 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
       {activeModule === 'mcp-keys' && <McpKeysPanel />}
       {activeModule === 'runtime-config' && <RuntimeConfigPanel />}
       {activeModule === 'branding' && <BrandingStudioPanel />}
+      {extensionModule && <extensionModule.component />}
     </ModulePageShell>
   );
 }

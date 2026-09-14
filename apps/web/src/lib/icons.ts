@@ -5,6 +5,7 @@
  * Import individual icons or use the category/action maps.
  */
 
+import { registeredToolIcon } from './extension-registries';
 import {
   MessageCircle,
   BookOpen,
@@ -92,6 +93,7 @@ import {
   MoreHorizontal,
   Info,
   Wrench,
+  StickyNote,
   SlidersHorizontal,
   CircleDot,
   Minus,
@@ -288,6 +290,7 @@ export {
   MoreHorizontal,
   Info,
   Wrench,
+  StickyNote,
   SlidersHorizontal,
   CircleDot,
   Minus,
@@ -452,7 +455,7 @@ export const TOOL_ICONS: Record<string, LucideIcon> = {
 
 /** Get the Lucide icon for a tool name. */
 export function getToolIcon(toolName: string): LucideIcon {
-  return TOOL_ICONS[toolName] || Wrench;
+  return registeredToolIcon(toolName) || TOOL_ICONS[toolName] || Wrench;
 }
 
 // ─── Tool Brief Descriptions ─────────────────────────────

@@ -52,6 +52,8 @@ export default defineConfig({
   // not just the web server (:3100).
   webServer: {
     command: 'pnpm dev',
+    // The browser suite exercises the extension seam through the example extension.
+    env: { ...process.env, GREENHOUSE_EXTENSIONS: 'example' },
     url: `${BASE_URL}/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

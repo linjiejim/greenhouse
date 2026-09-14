@@ -33,6 +33,9 @@ const AccountPasswordPage = lazy(() =>
   import('./pages/account-password').then((m) => ({ default: m.AccountPasswordPage })),
 );
 import { AgentProvider } from './components/agent-context';
+import { compiledExtensionRoutes } from './extensions';
+import { ExtensionPageHost, ExtensionSidebarPanel } from './extensions/host';
+import { useExtensionsStore } from './stores/extensions-store';
 import { AssistantPanel } from './components/agent-panel';
 import { EntityPeekHost } from './components/entity-peek';
 import { GlobalSearchDialog } from './components/search/global-search-dialog';
@@ -73,6 +76,7 @@ initScrollActivity();
 
 type Route =
   | 'chat'
+  | 'extension'
   | 'automations'
   | 'agents'
   | 'settings'
@@ -89,6 +93,8 @@ interface ParsedRoute {
   route: Route;
   subPath: string;
   params: URLSearchParams;
+  /** The extension page route (`#/<extensionRoute>`) when `route === 'extension'`. */
+  extensionRoute?: string;
 }
 
 /**
@@ -257,6 +263,17 @@ function parseRoute(hash: string): ParsedRoute {
     return { route: 'chat', subPath: '', params: new URLSearchParams() };
   }
 
+  // Extension pages answer their own top-level segment; the host checks the
+  // extension is active before rendering anything.
+  if (compiledExtensionRoutes().has(topLevel)) {
+    return {
+      route: 'extension',
+      extensionRoute: topLevel,
+      subPath: segments.slice(1).join('/'),
+      params: new URLSearchParams(query || ''),
+    };
+  }
+
   const route = (
     [
       'chat',
@@ -289,7 +306,7 @@ function App() {
   const { authState, currentUser, login, logout, updateUser: _updateUser } = useAuthStore();
   const [userLocale, setUserLocale] = useState<Locale>(getStoredLocale());
   const { hash, pending: pendingLeave, confirmLeave, cancelLeave } = useHashRouter();
-  const { route, subPath, params } = useMemo(() => parseRoute(hash), [hash]);
+  const { route, subPath, params, extensionRoute } = useMemo(() => parseRoute(hash), [hash]);
   const passwordLinkRoute = hash.split('?')[0] === '#/activate';
   const passwordLinkToken = passwordLinkRoute
     ? new URLSearchParams(hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '').get('token')
@@ -415,7 +432,7 @@ function App() {
     <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
       <AgentProvider>
         <SessionManagerProvider>
-          <AppShell route={route} subPath={subPath} params={params} />
+          <AppShell route={route} subPath={subPath} params={params} extensionRoute={extensionRoute} />
           <LeaveConfirmDialog open={pendingLeave !== null} onConfirm={confirmLeave} onCancel={cancelLeave} />
           <ToastContainer />
         </SessionManagerProvider>
@@ -428,11 +445,12 @@ function App() {
 
 interface AppShellProps {
   route: Route;
+  extensionRoute?: string;
   subPath: string;
   params: URLSearchParams;
 }
 
-function AppShell({ route, subPath, params }: AppShellProps) {
+function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
   const t = useT();
   const { currentUser, logout } = useAuthStore();
   const { chatWorkspaceView, navOpen, setChatWorkspaceView, setNavOpen, currentSessionTitle, currentChatSessionId } =
@@ -444,6 +462,11 @@ function AppShell({ route, subPath, params }: AppShellProps) {
   useEffect(() => {
     void loadPlatformCatalog(true);
   }, [loadPlatformCatalog]);
+
+  const loadExtensions = useExtensionsStore((state) => state.load);
+  useEffect(() => {
+    void loadExtensions();
+  }, [loadExtensions]);
 
   useEffect(() => {
     setChatWorkspaceView('conversation');
@@ -510,6 +533,7 @@ function AppShell({ route, subPath, params }: AppShellProps) {
             primary action, contextual navigation, and account all live here. */}
         <AppSidebar
           route={route}
+          extensionRoute={extensionRoute}
           subPath={subPath}
           currentSessionId={currentSessionId}
           onSelectSession={handleSelectSession}
@@ -582,6 +606,7 @@ function AppShell({ route, subPath, params }: AppShellProps) {
                   <SidebarGlobalNavigation
                     navigation={primaryNavigation}
                     route={route}
+                    extensionRoute={extensionRoute}
                     chatWorkspaceView={chatWorkspaceView}
                     onSelectChatWorkspace={setChatWorkspaceView}
                     onNavigate={() => setNavOpen(false)}
@@ -609,6 +634,14 @@ function AppShell({ route, subPath, params }: AppShellProps) {
                     </div>
                   ) : route === 'executions' ? (
                     <div className="min-h-0 flex-1" />
+                  ) : route === 'extension' ? (
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                      <ExtensionSidebarPanel
+                        route={extensionRoute ?? ''}
+                        subPath={subPath}
+                        onNavigate={() => setNavOpen(false)}
+                      />
+                    </div>
                   ) : (
                     <div className="min-h-0 flex-1 overflow-y-auto">
                       <MobilePinnedSection
@@ -670,6 +703,9 @@ function AppShell({ route, subPath, params }: AppShellProps) {
                 )}
                 {route === 'tables' && hasApplication('tables') && <TablesPage subPath={subPath} />}
                 {route === 'executions' && <ExecutionCenterPage subPath={subPath} params={params} />}
+                {route === 'extension' && (
+                  <ExtensionPageHost route={extensionRoute ?? ''} subPath={subPath} params={params} />
+                )}
                 {!catalogLoading &&
                   ((route === 'projects' && !hasApplication('projects')) ||
                     (route === 'knowledge' && !hasApplication('knowledge')) ||

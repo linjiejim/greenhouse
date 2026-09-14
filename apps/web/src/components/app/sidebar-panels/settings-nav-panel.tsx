@@ -20,7 +20,8 @@ import { useAuthStore, usePinStore } from '../../../stores';
 import { ConfirmDialog } from '../../ui';
 import { useT } from '../../../lib/i18n';
 import { ContextMenu, useContextMenu } from '../context-menu';
-import { localizeNavModule, settingsSections } from '../../../lib/nav-registry';
+import { isNavModuleActive, localizeNavModule, settingsSections } from '../../../lib/nav-registry';
+import { useExtensionsStore } from '../../../stores/extensions-store';
 import { canUseFeature } from '../../../lib/features';
 import type { NavModule, SettingsNavSection } from '../../../lib/nav-registry';
 
@@ -34,6 +35,7 @@ interface SettingsNavPanelProps {
 
 export function SettingsNavPanel({ activeModule, collapsed, onSignOut }: SettingsNavPanelProps) {
   const t = useT();
+  const activeExtensions = useExtensionsStore((s) => s.extensions);
   const { currentUser } = useAuthStore();
   const isSuper = currentUser?.role === 'super';
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -88,7 +90,9 @@ export function SettingsNavPanel({ activeModule, collapsed, onSignOut }: Setting
       </div>
       <nav className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
         {settingsSections.filter(canViewSection).map((section, sectionIndex) => {
-          const visibleItems = section.items.filter((mod) => !mod.hiddenFromNav && canViewModule(mod));
+          const visibleItems = section.items.filter(
+            (mod) => !mod.hiddenFromNav && canViewModule(mod) && isNavModuleActive(mod, activeExtensions),
+          );
 
           // Skip empty sections entirely (e.g. all items role-gated out).
           if (visibleItems.length === 0) return null;

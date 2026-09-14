@@ -10,6 +10,7 @@
  * not create another primary-navigation source.
  */
 
+import type { WebExtensionModule } from '../extensions/define';
 import {
   MessageSquareWarning,
   Mail,
@@ -51,8 +52,13 @@ export interface NavModule {
   description?: string;
   /** Role requirement (empty = all roles can see) */
   requireRole?: 'super'[];
-  /** Optional per-user feature flag gate. */
-  requireFeature?: FeatureKey;
+  /** Optional per-user feature flag gate (a core FeatureKey or an extension flag). */
+  requireFeature?: FeatureKey | (string & {});
+  /** Set for modules an extension contributed; the module only shows while that extension is active. */
+  extensionId?: string;
+  /** Translation keys for extension modules (core modules use NAV_COPY). */
+  labelKey?: string;
+  descriptionKey?: string;
   /** Whether this item can be pinned (default true) */
   pinnable?: boolean;
   /**
@@ -144,9 +150,12 @@ const SETTINGS_LABS: NavModule[] = [
   },
 ];
 
+const SETTINGS_EXTENSIONS: NavModule[] = [];
+
 export const settingsSections: SettingsNavSection[] = [
   { key: 'top', items: SETTINGS_TOP },
   { key: 'labs', label: 'Labs', labelKey: 'navigation.labs', items: SETTINGS_LABS },
+  { key: 'extensions', label: 'Extensions', labelKey: 'navigation.extensions', items: SETTINGS_EXTENSIONS },
 ];
 
 /** Flat list of every settings module across all sections. */
@@ -403,6 +412,13 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
 const englishT: Translate = (key, params) => translate('en', key, params);
 
 export function localizeNavModule(module: NavModule, t: Translate): NavModule {
+  if (module.labelKey) {
+    return {
+      ...module,
+      label: t(module.labelKey as TranslationKey),
+      description: module.descriptionKey ? t(module.descriptionKey as TranslationKey) : module.description,
+    };
+  }
   const copy = NAV_COPY[module.id];
   if (!copy) return module;
   return {
@@ -420,6 +436,48 @@ const MODULE_MAP = new Map<string, NavModule>(ALL_MODULES.map((m) => [m.id, m]))
 /** Look up a module by its unique id */
 export function getNavModule(id: string): NavModule | undefined {
   return MODULE_MAP.get(id);
+}
+
+// ─── Extension modules ───────────────────────────────────
+
+/**
+ * Register Settings / Administration modules contributed by a web extension.
+ * Called once at load by apps/web/src/extensions/index.ts; the arrays above are
+ * mutated in place so every consumer (panels, page switches, pins, breadcrumbs)
+ * sees the modules without a code change. `isNavModuleActive` hides them while
+ * the extension is not active on the connected API.
+ */
+export function registerExtensionNavModules(extensionId: string, modules: readonly WebExtensionModule[]): void {
+  for (const mod of modules) {
+    const id = `${mod.parent}.${mod.key}`;
+    if (MODULE_MAP.has(id))
+      throw new Error(`Extension "${extensionId}" registers nav module "${id}" twice or over a core module`);
+    const navModule: NavModule = {
+      id,
+      label: mod.key,
+      icon: mod.icon,
+      path: `#/${mod.parent}/${mod.key}`,
+      parent: mod.parent,
+      requireRole: mod.requireRole,
+      requireFeature: mod.requireFeature,
+      extensionId,
+      labelKey: mod.labelKey,
+      descriptionKey: mod.descriptionKey,
+    };
+    if (mod.parent === 'settings') {
+      SETTINGS_EXTENSIONS.push(navModule);
+      SETTINGS_ALL.push(navModule);
+    } else {
+      ADMINISTRATION_MODULES.push(navModule);
+    }
+    ALL_MODULES.push(navModule);
+    MODULE_MAP.set(id, navModule);
+  }
+}
+
+/** Core modules are always active; extension modules only while their extension is. */
+export function isNavModuleActive(module: NavModule, activeExtensions: ReadonlyArray<{ id: string }>): boolean {
+  return !module.extensionId || activeExtensions.some((ext) => ext.id === module.extensionId);
 }
 
 /**

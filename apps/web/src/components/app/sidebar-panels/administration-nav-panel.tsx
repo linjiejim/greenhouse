@@ -11,7 +11,8 @@ import React from 'react';
 import { Pin, PinOff } from '../../../lib/icons';
 import { useAuthStore, usePinStore } from '../../../stores';
 import { ContextMenu, useContextMenu } from '../context-menu';
-import { administrationModules, localizeNavModule } from '../../../lib/nav-registry';
+import { administrationModules, isNavModuleActive, localizeNavModule } from '../../../lib/nav-registry';
+import { useExtensionsStore } from '../../../stores/extensions-store';
 import { canUseFeature } from '../../../lib/features';
 import type { NavModule } from '../../../lib/nav-registry';
 import { useT } from '../../../lib/i18n';
@@ -23,6 +24,7 @@ interface AdministrationNavPanelProps {
 
 export function AdministrationNavPanel({ activeModule, collapsed }: AdministrationNavPanelProps) {
   const t = useT();
+  const activeExtensions = useExtensionsStore((s) => s.extensions);
   const { currentUser } = useAuthStore();
   const isSuper = currentUser?.role === 'super';
   const { pinItem, unpinItem, isPinned } = usePinStore();
@@ -52,7 +54,9 @@ export function AdministrationNavPanel({ activeModule, collapsed }: Administrati
     ];
   };
 
-  const visibleItems = administrationModules.filter(canViewModule);
+  const visibleItems = administrationModules.filter(
+    (mod) => canViewModule(mod) && isNavModuleActive(mod, activeExtensions),
+  );
 
   return (
     <div className="flex flex-col flex-1 min-h-0">

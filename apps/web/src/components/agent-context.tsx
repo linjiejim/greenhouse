@@ -12,6 +12,7 @@
  *   Page component → enrichPageContext() → merged context
  */
 
+import { findExtensionPage } from '../extensions';
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import type { AssistantLaunchRequest, PageContext } from '@greenhouse/types/agent-context';
 import { pageContextKey } from '../lib/page-context-key';
@@ -101,8 +102,11 @@ export function resolveUrlContext(hash: string): PageContext | null {
       };
     }
 
-    default:
+    default: {
+      const match = findExtensionPage(route);
+      if (match) return { type: 'extension', extension: match.extension.id, route, subPath };
       return null;
+    }
   }
 }
 

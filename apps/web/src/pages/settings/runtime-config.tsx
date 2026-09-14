@@ -2,8 +2,10 @@
  * Runtime Config (super only) — registry-driven workspace settings editor for
  * the runtime credentials: main LLM, media (vision + image generation), web search.
  *
- * Rendered straight from WORKSPACE_SETTINGS (@greenhouse/types): adding a
- * setting there makes it appear here — no page changes. Values saved here win
+ * Rendered straight from the settings registry (@greenhouse/types, plus the
+ * entries active extensions register): adding a setting makes it appear here —
+ * no page changes. Extension settings render as one section per extension.
+ * Values saved here win
  * over env vars and apply immediately (the API re-overlays process.env after
  * every write); clearing a field falls back to the env var. Secrets are
  * write-only: the server exposes has_value/source, never the value.
@@ -18,6 +20,7 @@ import { ModulePage } from '../../components/app/module-page';
 import { useI18n } from '../../lib/i18n';
 import type { TranslationKey } from '../../lib/i18n';
 import { fetchWorkspaceSettings, saveWorkspaceSettings } from '../../lib/api/workspace-settings';
+import { useExtensionsStore } from '../../stores/extensions-store';
 
 const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search'];
 
@@ -53,14 +56,26 @@ export function RuntimeConfigPanel() {
       .catch((err) => setError(err?.message || 'Failed to load'));
   }, []);
 
+  const extensions = useExtensionsStore((s) => s.extensions);
+
+  // Core runtime groups first, then one section per extension group (any group
+  // that is neither core nor branding), in registration order.
   const grouped = useMemo(() => {
-    const map = new Map<WorkspaceSettingGroup, WorkspaceSettingView[]>();
+    const map = new Map<string, WorkspaceSettingView[]>();
     for (const g of RUNTIME_GROUPS) map.set(g, []);
     for (const v of views ?? []) {
-      if (map.has(v.group)) map.get(v.group)!.push(v);
+      if (v.group === 'branding') continue;
+      if (!map.has(v.group)) map.set(v.group, []);
+      map.get(v.group)!.push(v);
     }
     return map;
   }, [views]);
+
+  const groupLabel = (group: string): string => {
+    if ((RUNTIME_GROUPS as string[]).includes(group)) return t(`runtimeConfig.group_${group}` as TranslationKey);
+    const name = extensions.find((e) => e.id === group)?.name ?? group;
+    return t('runtimeConfig.group_extension', { name });
+  };
 
   const stage = (key: string, value: string | null) => {
     setDirty((prev) => ({ ...prev, [key]: value }));
@@ -109,11 +124,9 @@ export function RuntimeConfigPanel() {
       <div className="space-y-6 max-w-3xl">
         <p className="text-xs text-fg-muted leading-relaxed">{t('runtimeConfig.intro')}</p>
 
-        {RUNTIME_GROUPS.map((group) => (
+        {[...grouped.keys()].map((group) => (
           <section key={group} className="bg-surface-raised border border-edge rounded-xl p-4">
-            <h3 className="text-sm font-semibold text-fg mb-3">
-              {t(`runtimeConfig.group_${group}` as TranslationKey)}
-            </h3>
+            <h3 className="text-sm font-semibold text-fg mb-3">{groupLabel(group)}</h3>
             <div className="space-y-3">
               {(grouped.get(group) ?? []).map((v) => {
                 const staged = dirty[v.key];

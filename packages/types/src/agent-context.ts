@@ -15,7 +15,16 @@ export type PageContext =
   | ProjectListContext
   | ProjectDetailContext
   | TablesContext
-  | ExecutionCenterContext;
+  | ExecutionCenterContext
+  | ExtensionPageContext;
+
+/** A page owned by a web extension (`#/<route>/<subPath>`); the extension supplies the provider. */
+export interface ExtensionPageContext {
+  type: 'extension';
+  extension: string;
+  route: string;
+  subPath: string;
+}
 
 export interface ChatContext {
   type: 'chat';

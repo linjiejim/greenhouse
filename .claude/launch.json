@@ -4,7 +4,18 @@
     {
       "name": "greenhouse",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev"],
+      "runtimeArgs": [
+        "dev"
+      ],
+      "port": 4400
+    },
+    {
+      "name": "greenhouse-ext",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "GREENHOUSE_EXTENSIONS=example pnpm dev"
+      ],
       "port": 4400
     },
     {
@@ -37,7 +48,13 @@
     {
       "name": "docs-landing",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4599", "--directory", "docs"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4599",
+        "--directory",
+        "docs"
+      ],
       "port": 4599
     }
   ]

@@ -6,8 +6,14 @@ import type { ChatWorkspaceView } from '../../stores';
 import type { PrimaryNavigation, PrimaryNavigationItem } from '../../platform/navigation';
 import { CHAT_WORKSPACE_ITEMS } from '../chat/chat-workspace-navigation';
 import { useHoverFlyout } from '../../hooks/use-hover-flyout';
+import { useAuthStore } from '../../stores';
+import { useExtensionsStore } from '../../stores/extensions-store';
+import { activeExtensionNavItems } from '../../extensions';
+import { canUseFeature } from '../../lib/features';
 
 interface SidebarGlobalNavigationProps {
+  /** Active extension page route while `route === 'extension'`. */
+  extensionRoute?: string;
   navigation: PrimaryNavigation;
   route: string;
   chatWorkspaceView: ChatWorkspaceView;
@@ -78,6 +84,7 @@ function PrimaryLink({
 export function SidebarGlobalNavigation({
   navigation,
   route,
+  extensionRoute,
   chatWorkspaceView,
   onSelectChatWorkspace,
   onNavigate,
@@ -98,7 +105,15 @@ export function SidebarGlobalNavigation({
   const hoverEnabled = morePlacement === 'flyout';
   const utilityMoreActive = MORE_UTILITY_ITEMS.some((item) => item.route === route);
   const overflowActive = navigation.overflow.some((item) => item.key === route);
-  const moreActive = utilityMoreActive || overflowActive;
+  const { currentUser } = useAuthStore();
+  const activeExtensions = useExtensionsStore((s) => s.extensions);
+  const extensionItems = activeExtensionNavItems(new Set(activeExtensions.map((e) => e.id))).filter(
+    (item) =>
+      (!item.requireRole || (item.requireRole.includes('super') && currentUser?.role === 'super')) &&
+      (!item.requireFeature || canUseFeature(currentUser, item.requireFeature)),
+  );
+  const extensionMoreActive = route === 'extension' && extensionItems.some((item) => item.route === extensionRoute);
+  const moreActive = utilityMoreActive || overflowActive || extensionMoreActive;
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -217,6 +232,37 @@ export function SidebarGlobalNavigation({
               {MORE_UTILITY_ITEMS.length > 0 && navigation.overflow.length > 0 && (
                 <div className="mx-2 my-1 border-t border-edge" />
               )}
+
+              {extensionItems.length > 0 && (MORE_UTILITY_ITEMS.length > 0 || navigation.overflow.length > 0) && (
+                <div className="mx-2 my-1 border-t border-edge" />
+              )}
+
+              {extensionItems.map((item) => {
+                const Icon = item.icon;
+                const active = route === 'extension' && item.route === extensionRoute;
+                return (
+                  <a
+                    key={`ext-${item.id}`}
+                    href={item.href}
+                    role="menuitem"
+                    aria-current={active ? 'page' : undefined}
+                    onClick={() => {
+                      setMoreOpen(false);
+                      onNavigate?.();
+                    }}
+                    className={`flex min-h-11 items-center gap-2.5 px-3 py-1.5 text-sm transition-colors md:min-h-9 ${
+                      active ? 'sidebar-active-item font-semibold' : 'text-fg-secondary hover:bg-surface-muted'
+                    }`}
+                  >
+                    <Icon
+                      size={15}
+                      className={`flex-shrink-0 ${active ? 'text-primary-fg' : 'text-fg-faint'}`}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{t(item.labelKey)}</span>
+                  </a>
+                );
+              })}
 
               {navigation.overflow.map((item) => {
                 const Icon = item.icon;

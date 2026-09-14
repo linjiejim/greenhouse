@@ -30,14 +30,14 @@ const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
 
 export function getContextLabel(ctx: PageContext | null): string {
   if (!ctx) return DEFAULT_LABEL;
-  const provider = getContextProvider(ctx.type as any);
+  const provider = getContextProvider(ctx.type as any, ctx);
   if (provider) return provider.label(ctx as any);
   return DEFAULT_LABEL;
 }
 
 export function getEmptyStateMessage(ctx: PageContext | null): string {
   if (!ctx) return DEFAULT_EMPTY_MSG;
-  const provider = getContextProvider(ctx.type as any);
+  const provider = getContextProvider(ctx.type as any, ctx);
   if (provider) {
     const msg = provider.emptyMessage(ctx as any);
     return msg || DEFAULT_EMPTY_MSG;
@@ -47,7 +47,7 @@ export function getEmptyStateMessage(ctx: PageContext | null): string {
 
 export function getQuickActions(ctx: PageContext | null): QuickAction[] {
   if (!ctx) return DEFAULT_QUICK_ACTIONS;
-  const provider = getContextProvider(ctx.type as any);
+  const provider = getContextProvider(ctx.type as any, ctx);
   if (provider) {
     const actions = provider.quickActions(ctx as any);
     if (actions.length > 0) {
@@ -63,7 +63,7 @@ export function getQuickActions(ctx: PageContext | null): QuickAction[] {
  */
 export function getContextHint(ctx: PageContext | null): string | undefined {
   if (!ctx) return undefined;
-  const provider = getContextProvider(ctx.type as any);
+  const provider = getContextProvider(ctx.type as any, ctx);
   if (provider) return provider.contextHint(ctx as any);
   return undefined;
 }

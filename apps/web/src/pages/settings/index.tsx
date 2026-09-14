@@ -16,7 +16,9 @@
 import React from 'react';
 import { ModulePageShell } from '../../components/app/module-page-shell';
 import { useAuthStore } from '../../stores';
-import { settingsAllModules } from '../../lib/nav-registry';
+import { isNavModuleActive, settingsAllModules } from '../../lib/nav-registry';
+import { extensionModuleComponent } from '../../extensions';
+import { useExtensionsStore } from '../../stores/extensions-store';
 import { canUseFeature } from '../../lib/features';
 import type { NavModule } from '../../lib/nav-registry';
 
@@ -41,6 +43,7 @@ function getModuleKey(mod: NavModule) {
 
 export function SettingsPage({ subPath }: { subPath: string }) {
   const { currentUser } = useAuthStore();
+  const activeExtensions = useExtensionsStore((s) => s.extensions);
 
   // Redirect legacy Settings deep links (admin modules → Administration) to
   // their new homes. See redirects.ts for the map.
@@ -62,7 +65,8 @@ export function SettingsPage({ subPath }: { subPath: string }) {
     const featureAllowed = !mod.requireFeature || canUseFeature(currentUser, mod.requireFeature);
     return roleAllowed && featureAllowed;
   };
-  const visibleModules = ALL_MODULES.filter(canViewModule);
+  const visibleModules = ALL_MODULES.filter((mod) => canViewModule(mod) && isNavModuleActive(mod, activeExtensions));
+  const extensionModule = extensionModuleComponent('settings', moduleKey);
   const visibleNavigationModules = visibleModules.filter((mod) => !mod.hiddenFromNav);
 
   // Unknown or unauthorized modules fall back to preferences.
@@ -79,6 +83,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
       {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
       {effectiveModule === 'groups' && <GroupsPanel />}
       {effectiveModule === 'memory' && <MemoryPanel />}
+      {extensionModule && effectiveModule === moduleKey && <extensionModule.component />}
     </ModulePageShell>
   );
 }

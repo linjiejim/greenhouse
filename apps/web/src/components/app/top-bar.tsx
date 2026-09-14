@@ -36,6 +36,7 @@ import { MessageFeedback } from '../chat/message-feedback';
 type Route =
   | 'home'
   | 'chat'
+  | 'extension'
   | 'automations'
   | 'agents'
   | 'settings'

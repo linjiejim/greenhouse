@@ -34,10 +34,12 @@ import {
   SkillHubNavPanel,
   TablesNavPanel,
 } from './sidebar-panels';
+import { ExtensionSidebarPanel } from '../../extensions/host';
 
 type Route =
   | 'home'
   | 'chat'
+  | 'extension'
   | 'automations'
   | 'agents'
   | 'settings'
@@ -52,6 +54,7 @@ type Route =
 
 interface AppSidebarProps {
   route: Route;
+  extensionRoute?: string;
   subPath: string;
   currentSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
@@ -154,6 +157,7 @@ export function SidebarCollapseButton({ onClick }: { onClick: () => void }) {
 
 export function AppSidebar({
   route,
+  extensionRoute,
   subPath,
   currentSessionId,
   onSelectSession,
@@ -260,6 +264,7 @@ export function AppSidebar({
                   <Plus size={16} />
                 </button>
                 <SidebarGlobalNavigation
+                  extensionRoute={extensionRoute}
                   navigation={navigation}
                   route={route}
                   chatWorkspaceView={chatWorkspaceView}
@@ -331,6 +336,7 @@ export function AppSidebar({
               </div>
 
               <SidebarGlobalNavigation
+                extensionRoute={extensionRoute}
                 navigation={navigation}
                 route={route}
                 chatWorkspaceView={chatWorkspaceView}
@@ -357,6 +363,9 @@ export function AppSidebar({
                 {route === 'knowledge' && <KnowledgeNavPanel activeModule={subPath} />}
                 {route === 'skillhub' && <SkillHubNavPanel activeName={activeSubModule} />}
                 {route === 'tables' && hasApplication('tables') && <TablesNavPanel subPath={subPath} />}
+                {route === 'extension' && extensionRoute && (
+                  <ExtensionSidebarPanel route={extensionRoute} subPath={subPath} />
+                )}
               </div>
             </>
           )}

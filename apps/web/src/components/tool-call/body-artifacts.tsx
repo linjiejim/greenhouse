@@ -16,6 +16,7 @@
  * so THIS registry — not the flag — is the complete list.
  */
 
+import { registeredToolCard } from '../../lib/extension-registries';
 import React from 'react';
 import { AlertTriangle, GitBranch, Image } from '../../lib/icons';
 import { Skeleton, Spinner } from '../ui';
@@ -99,6 +100,9 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
   // Interactive form — any tool may return this shape.
   if (out?.type === 'ask_user' && out?.questions) return true;
 
+  // Extension cards render once a result without an error exists.
+  if (registeredToolCard(call.name)) return !!out && !out.error;
+
   switch (call.name) {
     case 'eval_message':
       // Loading (no output yet) or a successful result; an errored eval falls back to trace.
@@ -172,7 +176,10 @@ const BELOW_PROSE_TOOLS = new Set(['workflow_plan', 'mission_dispatch', 'tables_
 export function splitArtifactsByPlacement<T extends { name: string }>(calls: T[]): { above: T[]; below: T[] } {
   const above: T[] = [];
   const below: T[] = [];
-  for (const c of calls) (BELOW_PROSE_TOOLS.has(c.name) ? below : above).push(c);
+  for (const c of calls) {
+    const belowProse = BELOW_PROSE_TOOLS.has(c.name) || registeredToolCard(c.name)?.placement === 'below';
+    (belowProse ? below : above).push(c);
+  }
   return { above, below };
 }
 
@@ -293,8 +300,12 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
         <TaskCaptureCard data={out as unknown as TaskCaptureData} actionId={actionId} sessionId={writableSessionId} />
       ) : null;
 
-    default:
-      return null;
+    default: {
+      const card = registeredToolCard(call.name);
+      if (!card) return null;
+      const Card = card.component;
+      return <Card call={call} />;
+    }
   }
 }
 
