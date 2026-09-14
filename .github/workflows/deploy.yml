@@ -81,10 +81,13 @@ jobs:
             trap 'rm -rf "$DOCKER_CONFIG"' EXIT
             docker compose -f docker-compose.ghcr.yml pull --quiet
             docker compose -f docker-compose.ghcr.yml up -d
+            # The API needs a few seconds before it listens; until then curl exits
+            # non-zero, and under `set -e` a failing `S=$(...)` would abort the roll
+            # on the first attempt — keep the assignment inside an || list.
             S=000
             for i in 1 2 3 4 5 6 7 8; do
               sleep 5
-              S=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18905/health)
+              S=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18905/health) || S=000
               echo "health attempt $i: HTTP $S"
               [ "$S" = "200" ] && break
             done
