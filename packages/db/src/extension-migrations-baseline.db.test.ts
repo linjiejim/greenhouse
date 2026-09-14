@@ -37,7 +37,7 @@ describe('extension migration baseline', () => {
 
     // And the runner now considers the lane clean.
     expect(await db.extensionMigrations.status(sources)).toEqual([
-      { extensionId: 'probe', name: '0001_create.sql', applied: true, drifted: false },
+      { extensionId: 'probe', name: '0001_create.sql', createsTables: [], applied: true, drifted: false },
     ]);
     expect((await db.extensionMigrations.apply(sources)).applied).toEqual([]);
     expect((await db.extensionMigrations.baseline(sources)).recorded).toEqual([]);
@@ -56,8 +56,16 @@ describe('extension migration baseline', () => {
 
     // 0002 is still pending…
     expect(await db.extensionMigrations.status(sources)).toEqual([
-      { extensionId: 'probe', name: '0001_create.sql', applied: true, drifted: false },
-      { extensionId: 'probe', name: '0002_adopt.sql', applied: false, drifted: false },
+      { extensionId: 'probe', name: '0001_create.sql', createsTables: [], applied: true, drifted: false },
+      // The status carries what the file creates, so `db baseline` can check it
+      // really is there before recording the file as applied.
+      {
+        extensionId: 'probe',
+        name: '0002_adopt.sql',
+        createsTables: ['baseline_probe'],
+        applied: false,
+        drifted: false,
+      },
     ]);
     // …and applying the lane runs exactly that one file.
     expect((await db.extensionMigrations.apply(sources)).applied).toEqual(['probe/0002_adopt.sql']);

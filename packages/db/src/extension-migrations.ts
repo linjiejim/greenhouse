@@ -13,6 +13,7 @@
  * which keeps several API replicas booting at once from racing each other.
  */
 import { createHash } from 'node:crypto';
+import { tablesCreatedBy } from './core-migrations.js';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
@@ -27,6 +28,7 @@ export interface ExtensionMigrationSource {
 export interface ExtensionMigrationStatus {
   extensionId: string;
   name: string;
+  createsTables: string[];
   applied: boolean;
   /** The file changed after it was applied — the runner refuses to continue. */
   drifted: boolean;
@@ -40,6 +42,8 @@ const ADVISORY_LOCK_KEY = 74_192_026;
 interface MigrationFile {
   name: string;
   checksum: string;
+  /** Tables the file creates — `db baseline` checks these really exist. */
+  createsTables: string[];
   statements: string[];
 }
 
@@ -53,6 +57,7 @@ function readMigrationFiles(dir: string): MigrationFile[] {
       return {
         name,
         checksum: createHash('sha256').update(text).digest('hex'),
+        createsTables: tablesCreatedBy(text),
         statements: text
           .split(STATEMENT_BREAKPOINT)
           .map((s) => s.trim())
@@ -91,6 +96,7 @@ export function createExtensionMigrationRunner(db: Db) {
           out.push({
             extensionId: source.extensionId,
             name: file.name,
+            createsTables: file.createsTables,
             applied: existing !== undefined,
             drifted: existing !== undefined && existing !== file.checksum,
           });

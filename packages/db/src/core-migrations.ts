@@ -21,6 +21,22 @@ export interface CoreMigrationFile {
   hash: string;
   /** Journal `when`, stored verbatim as `created_at` — what drizzle compares. */
   folderMillis: number;
+  /** Tables this file creates — what `db baseline` checks really exist. */
+  createsTables: string[];
+}
+
+/**
+ * Table names a migration creates.
+ *
+ * Deliberately a regex over the SQL rather than a parse: it only has to be
+ * right about `CREATE TABLE` in files drizzle-kit generated, and it is used to
+ * warn an operator, never to decide what runs.
+ */
+export function tablesCreatedBy(sqlText: string): string[] {
+  const names: string[] = [];
+  const pattern = /CREATE TABLE\s+(?:IF NOT EXISTS\s+)?"?([A-Za-z_][A-Za-z0-9_]*)"?/gi;
+  for (const match of sqlText.matchAll(pattern)) if (match[1]) names.push(match[1]);
+  return names;
 }
 
 interface JournalEntry {
@@ -36,10 +52,12 @@ export function readCoreMigrations(migrationsFolder: string): CoreMigrationFile[
   return (journal.entries ?? []).map((entry) => {
     const file = join(migrationsFolder, `${entry.tag}.sql`);
     if (!existsSync(file)) throw new Error(`Journal lists ${entry.tag} but ${file} is missing`);
+    const text = readFileSync(file, 'utf8');
     return {
       tag: entry.tag,
-      hash: createHash('sha256').update(readFileSync(file, 'utf8')).digest('hex'),
+      hash: createHash('sha256').update(text).digest('hex'),
       folderMillis: entry.when,
+      createsTables: tablesCreatedBy(text),
     };
   });
 }
@@ -56,13 +74,15 @@ export function createCoreMigrationBaseline(db: Db) {
 
   return {
     /** Which chain entries are already recorded, matched by hash. */
-    async status(migrations: readonly CoreMigrationFile[]): Promise<{ tag: string; recorded: boolean }[]> {
+    async status(
+      migrations: readonly CoreMigrationFile[],
+    ): Promise<{ tag: string; recorded: boolean; createsTables: string[] }[]> {
       await ensureTable();
       const rows = (await db.execute(sql`SELECT hash FROM drizzle.__drizzle_migrations`)) as unknown as Array<{
         hash: string;
       }>;
       const known = new Set(rows.map((r) => r.hash));
-      return migrations.map((m) => ({ tag: m.tag, recorded: known.has(m.hash) }));
+      return migrations.map((m) => ({ tag: m.tag, recorded: known.has(m.hash), createsTables: m.createsTables }));
     },
 
     /** Record the missing entries without executing their SQL. */

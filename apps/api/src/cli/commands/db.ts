@@ -6,7 +6,8 @@
  *   pnpm cli db baseline    # adopt an existing database: record the migration
  *                           # chain (core + enabled extensions) as applied
  *                           # (--dry-run to preview, --yes for automation,
- *                           #  --through to stop short of the end of a chain)
+ *                           #  --through to stop short of the end of a chain,
+ *                           #  --force to record tables the database lacks)
  */
 
 import chalk from 'chalk';
@@ -148,6 +149,33 @@ async function baseline(args: string[]): Promise<number> {
     console.log(chalk.green('\nNothing to record — this database is already in step with the chain.'));
     return 0;
   }
+  // Baseline asserts the database already has what these files would create.
+  // Recording a migration whose tables are absent is the quiet way to end up
+  // with a schema that boots and then fails on the first query, so check.
+  const expected = new Set<string>();
+  for (const entry of corePending) for (const t of entry.createsTables) expected.add(t);
+  for (const entry of extensionPending) for (const t of entry.createsTables) expected.add(t);
+  const absent: string[] = [];
+  for (const name of [...expected].sort()) {
+    const rows = (await db.executeRaw(sql`SELECT to_regclass(${'public.' + name}) IS NOT NULL AS present`)) as Array<{
+      present: boolean;
+    }>;
+    if (!rows[0]?.present) absent.push(name);
+  }
+  if (absent.length > 0) {
+    console.error(chalk.red(`\n${absent.length} table(s) these migrations create are NOT in this database:`));
+    console.error(`  ${absent.join(', ')}`);
+    console.error(
+      dim(
+        'Recording them as applied would leave the schema permanently short of them.\n' +
+          'Use --through to baseline only the part the database really has, and let the rest apply;\n' +
+          'or --force if you know these tables are meant to be absent.',
+      ),
+    );
+    if (!flagBool(flags, 'force')) return 1;
+    console.log(chalk.yellow('\n--force: recording them anyway.'));
+  }
+
   if (dryRun) {
     console.log(dim('\n--dry-run: nothing written.'));
     return 0;
