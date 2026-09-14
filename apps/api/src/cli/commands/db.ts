@@ -5,6 +5,7 @@
  *   pnpm cli db reset       # TRUNCATE every table (type the db name to confirm)
  *   pnpm cli db baseline    # adopt an existing database: record the migration
  *                           # chain (core + enabled extensions) as applied
+ *                           # (--dry-run to preview, --yes for automation)
  */
 
 import chalk from 'chalk';
@@ -99,7 +100,10 @@ async function baseline(args: string[]): Promise<number> {
     console.log(dim('\n--dry-run: nothing written.'));
     return 0;
   }
-  if (!(await confirmExact(dbName(), `Type the database name to record these as applied (${dbName()}): `))) {
+  if (
+    !flagBool(flags, 'yes') &&
+    !(await confirmExact(`Type the database name "${chalk.bold(dbName())}" to record these as applied: `, dbName()))
+  ) {
     console.log(dim('Aborted.'));
     return 1;
   }
