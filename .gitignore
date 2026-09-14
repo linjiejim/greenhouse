@@ -80,10 +80,14 @@ apps/data/
 .claude/settings.local.json
 .claude/*.local.json
 .claude/skills/ppt-master
+# Personal skills symlinked from ~/jim-skills (the repo's own skills are committed as real dirs)
+.claude/skills/greenhouse-merge-pr
+.claude/skills/greenhouse-release
 
 # Local-only docs (credentials etc.)
 docs/local/
 
 # Experimental specs and sketches
 docs/specs/
+design/
 docs/sketches/
