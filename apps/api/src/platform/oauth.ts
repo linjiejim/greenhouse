@@ -8,7 +8,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { safeJsonParse } from '@greenhouse/utils/json';
-import { MCP_RESOURCE_GROUP_IDS, type McpResourceGroup } from '@greenhouse/types/mcp';
+import { MCP_RESOURCE_GROUP_IDS, allMcpResourceGroups } from '@greenhouse/types/mcp';
 
 export const OAUTH_ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
 export const OAUTH_REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -26,21 +26,34 @@ export const OAUTH_ACTION_SCOPES = ['mcp:read', 'mcp:write'] as const;
  * Orthogonal to the action scopes: the reachable tools are the tools in the
  * granted groups, intersected with the granted action tier.
  */
+/** The CORE resource scopes — the compile-time union and what tests pin. */
 export const OAUTH_RESOURCE_SCOPES = MCP_RESOURCE_GROUP_IDS.map((id) => `mcp:${id}` as const);
 
 export const OAUTH_SUPPORTED_SCOPES = [...OAUTH_ACTION_SCOPES, ...OAUTH_RESOURCE_SCOPES] as const;
-export type OAuthScope = (typeof OAUTH_SUPPORTED_SCOPES)[number];
+/** A core scope, or `mcp:<group>` for a group an extension registered. */
+export type OAuthScope = (typeof OAUTH_SUPPORTED_SCOPES)[number] | (string & {});
 
-const RESOURCE_SCOPE_SET = new Set<string>(OAUTH_RESOURCE_SCOPES);
+/**
+ * Every scope this deployment supports, extension groups included. A function
+ * rather than a constant: extensions register their groups during boot, and the
+ * metadata endpoints / validators must see the same set the tools use.
+ */
+export function oauthResourceScopes(): string[] {
+  return allMcpResourceGroups().map((id) => `mcp:${id}`);
+}
+
+export function oauthSupportedScopes(): OAuthScope[] {
+  return [...OAUTH_ACTION_SCOPES, ...oauthResourceScopes()];
+}
 
 export function isResourceScope(scope: string): boolean {
-  return RESOURCE_SCOPE_SET.has(scope);
+  return oauthResourceScopes().includes(scope);
 }
 
 /** The resource groups a scope set authorizes (order follows the registry). */
-export function resourceGroupsFromScopes(scopes: readonly OAuthScope[]): McpResourceGroup[] {
+export function resourceGroupsFromScopes(scopes: readonly OAuthScope[]): string[] {
   const granted = new Set<string>(scopes);
-  return MCP_RESOURCE_GROUP_IDS.filter((id) => granted.has(`mcp:${id}`));
+  return allMcpResourceGroups().filter((id) => granted.has(`mcp:${id}`));
 }
 
 const ACCESS_TOKEN_PREFIX = 'lpoa_at_';
@@ -81,7 +94,7 @@ export function oauthProtectedResourceMetadata() {
   return {
     resource: getMcpResourceUrl(),
     authorization_servers: [getOAuthIssuerUrl()],
-    scopes_supported: [...OAUTH_SUPPORTED_SCOPES],
+    scopes_supported: oauthSupportedScopes(),
     bearer_methods_supported: ['header'],
     resource_name: 'Greenhouse MCP',
   };
@@ -95,7 +108,7 @@ export function oauthAuthorizationServerMetadata() {
     token_endpoint: `${issuer}/oauth/token`,
     registration_endpoint: `${issuer}/oauth/register`,
     revocation_endpoint: `${issuer}/oauth/revoke`,
-    scopes_supported: [...OAUTH_SUPPORTED_SCOPES],
+    scopes_supported: oauthSupportedScopes(),
     response_types_supported: ['code'],
     response_modes_supported: ['query'],
     grant_types_supported: ['authorization_code', 'refresh_token', 'client_credentials'],
@@ -185,9 +198,10 @@ export function parseStoredStringArray(value: string): string[] {
  * storage paths so they cannot disagree about what a legal scope set is.
  */
 function validateScopeSet(scopes: Iterable<string>): Set<OAuthScope> {
+  const supported = oauthSupportedScopes();
   const set = new Set<OAuthScope>();
   for (const scope of scopes) {
-    if (!(OAUTH_SUPPORTED_SCOPES as readonly string[]).includes(scope)) {
+    if (!supported.includes(scope)) {
       throw new Error(`Unsupported scope: ${scope}`);
     }
     set.add(scope as OAuthScope);
@@ -198,7 +212,7 @@ function validateScopeSet(scopes: Iterable<string>): Set<OAuthScope> {
 
 /** Canonical ordering, so persisted and compared scope arrays are stable. */
 function orderScopes(scopes: ReadonlySet<OAuthScope>): OAuthScope[] {
-  return OAUTH_SUPPORTED_SCOPES.filter((scope) => scopes.has(scope));
+  return oauthSupportedScopes().filter((scope) => scopes.has(scope));
 }
 
 /**
@@ -240,8 +254,9 @@ export function parseStoredOAuthScopes(value: string): OAuthScope[] {
  */
 export function normalizeOAuthScopes(raw?: string): OAuthScope[] {
   const validated = validateScopeSet((raw?.trim() || 'mcp:read').split(/\s+/).filter(Boolean));
-  if (!OAUTH_RESOURCE_SCOPES.some((scope) => validated.has(scope))) {
-    for (const scope of OAUTH_RESOURCE_SCOPES) validated.add(scope);
+  const resourceScopes = oauthResourceScopes();
+  if (!resourceScopes.some((scope) => validated.has(scope))) {
+    for (const scope of resourceScopes) validated.add(scope);
   }
   return orderScopes(validated);
 }

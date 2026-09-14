@@ -289,7 +289,12 @@ greenhouse/
   - Core never references an extension by id. If a module needs a hook the contract lacks, add
     the hook to the contract + registry (and the example + seam test), never a `case 'crm'`.
   - Contract fields map 1:1 onto existing registries — no new abstraction without a registry
-    behind it. The full list is in EXTENDING.md → "Extensions".
+    behind it. The full list is in EXTENDING.md → "Extensions". Registries opened for extensions
+    so far: tools (incl. a generic lazy path), routes, platform apps, feature flags/points,
+    workspace settings, public paths, scheduler jobs, CLI commands, db services + a migration
+    lane, entity kinds (deeplink + peek), search sources, MCP consent groups, workbench recipes,
+    web pages/navigation/modules/i18n/tool cards/knowledge-doc panels/agent context.
+  - Still closed: notification transports and workbench pinning of extension records.
   - Extension tables use the migration lane (`migrations/*.sql`, `--> statement-breakpoint`);
     never append extension DDL to `drizzle/`. Applied files are checksummed — add a new file
     instead of editing one.
@@ -301,6 +306,10 @@ greenhouse/
     the Playwright stack runs with the example on.
   - Forks: private modules only under the seam, content under `packs/`; `scripts/check-extension-overlay.mjs`
     must pass against `upstream/main`. Anything generic goes upstream first.
+  - **Adopting an existing database** (an instance moving onto this codebase): `pnpm cli db baseline`
+    records the core chain (drizzle's own journal, identical hashes) and every enabled extension's
+    migrations as applied without executing them. Always `--dry-run` first and compare against
+    `drizzle-kit generate` output.
 - **Client stations**: `clients.stations` (`multi` | `single` + `defaults`) is read by the browser
   extension at build time; the mobile app mirrors it through `EXPO_PUBLIC_STATIONS_MODE` /
   `EXPO_PUBLIC_API_BASE_URL` (see `apps/mobile/AGENTS.md`).

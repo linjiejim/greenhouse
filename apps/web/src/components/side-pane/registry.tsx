@@ -14,7 +14,7 @@ import type { EntityRef } from '@greenhouse/types/entity-links';
 import { Code, FileText, Pencil, type LucideIcon } from '../../lib/icons';
 import type { TranslationKey } from '../../lib/i18n';
 import type { SidePaneEntry } from '../../stores/side-pane-store';
-import { ENTITY_PEEK_META, renderEntityPeekBody } from '../entity-peek/registry';
+import { entityPeekMeta, renderEntityPeekBody } from '../entity-peek/registry';
 
 const HtmlPreview = lazy(() => import('./html-preview').then((m) => ({ default: m.HtmlPreview })));
 const ImageAnnotator = lazy(() => import('./image-annotator').then((m) => ({ default: m.ImageAnnotator })));
@@ -30,7 +30,7 @@ export interface SidePaneChrome {
 export function sidePaneChrome(entry: SidePaneEntry): SidePaneChrome {
   switch (entry.kind) {
     case 'entity': {
-      const meta = ENTITY_PEEK_META[entry.ref.kind];
+      const meta = entityPeekMeta(entry.ref.kind);
       return { icon: meta.icon, fallbackTitleKey: meta.fallbackTitleKey, title: entry.label };
     }
     case 'html':

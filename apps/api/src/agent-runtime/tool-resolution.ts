@@ -459,6 +459,7 @@ export function buildLazyServerTools(
       userRole,
       sessionId,
       workspaceId: ctx.workspaceId ?? null,
+      lockWorkspace: ctx.lockWorkspace ?? false,
       profileId: ctx.profileId ?? null,
     });
   }

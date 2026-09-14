@@ -6,6 +6,10 @@
  * deployments with different extension sets.
  */
 import { create } from 'zustand';
+import { registerEntityKinds, extensionEntityKinds } from '@greenhouse/types/entity-links';
+import type { ExtensionEntityKindDef } from '@greenhouse/types/entity-links';
+import { registerWidgetRecipes, allWidgetRecipes } from '@greenhouse/types/workbench';
+import type { WidgetRecipe } from '@greenhouse/types/workbench';
 import { authFetch } from '../lib/auth';
 
 export interface ActiveExtension {
@@ -28,7 +32,17 @@ export const useExtensionsStore = create<ExtensionsStore>((set) => ({
     try {
       const res = await authFetch('/api/extensions');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as { extensions: ActiveExtension[] };
+      const data = (await res.json()) as {
+        extensions: ActiveExtension[];
+        entityKinds?: ExtensionEntityKindDef[];
+        workbenchRecipes?: WidgetRecipe[];
+      };
+      // Registration is idempotent on purpose: the store reloads after a
+      // re-login, and the shared registries reject a duplicate outright.
+      const knownKinds = new Set(extensionEntityKinds().map((def) => def.kind));
+      registerEntityKinds((data.entityKinds ?? []).filter((def) => !knownKinds.has(def.kind)));
+      const knownRecipes = new Set(allWidgetRecipes().map((recipe) => recipe.id));
+      registerWidgetRecipes((data.workbenchRecipes ?? []).filter((recipe) => !knownRecipes.has(recipe.id)));
       set({ extensions: data.extensions, loaded: true });
     } catch {
       // Fail closed: an unreachable list means no extension UI, never a broken one.

@@ -134,3 +134,42 @@ export function ExampleSettingsModule() {
     </div>
   );
 }
+
+/** Peek body for `ext:example:note` — what a `#/example/notes/42` link opens inline. */
+export function ExampleNotePeek({ id }: { id: string }) {
+  const t = useT();
+  const [note, setNote] = useState<Note | null | undefined>(undefined);
+
+  useEffect(() => {
+    authFetch(`/api/ext/example/notes/${id}`)
+      .then((res) => (res.ok ? (res.json() as Promise<{ note: Note }>) : null))
+      .then((data) => setNote(data?.note ?? null))
+      .catch(() => setNote(null));
+  }, [id]);
+
+  if (note === undefined) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner className="h-5 w-5 text-fg-faint" />
+      </div>
+    );
+  }
+  if (note === null) {
+    return <p className="p-6 text-sm text-fg-faint">{t('ext.example.loadFailed')}</p>;
+  }
+  return (
+    <div className="p-6" data-testid="example-note-peek">
+      <p className="whitespace-pre-wrap text-sm text-fg">{note.body}</p>
+    </div>
+  );
+}
+
+/** A section every knowledge document gets while this extension is active. */
+export function ExampleDocPanel(_props: { docId: number }) {
+  const t = useT();
+  return (
+    <section className="mt-6 rounded-xl border border-dashed border-edge px-4 py-3">
+      <p className="text-xs text-fg-muted">{t('ext.example.docPanel')}</p>
+    </section>
+  );
+}

@@ -36,6 +36,8 @@ export type {
   ExtensionMigrationStatus,
   ExtensionMigrationRunner,
 } from './extension-migrations.js';
+export { readCoreMigrations } from './core-migrations.js';
+export type { CoreMigrationFile } from './core-migrations.js';
 
 // ─── Public types ────────────────────────────────────────
 // Row types + column-union types live next to the tables (type-only re-export;

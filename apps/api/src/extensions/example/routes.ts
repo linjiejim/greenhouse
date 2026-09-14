@@ -20,6 +20,13 @@ export const exampleRoutes = new Hono<AppEnv>()
     const notes = await services().notes.list(user.id, 50);
     return c.json({ notes });
   })
+  .get('/notes/:id', async (c) => {
+    const user = c.get('user');
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id)) return c.json({ error: 'invalid id' }, 400);
+    const note = await services().notes.get(user.id, id);
+    return note ? c.json({ note }) : c.json({ error: 'not found' }, 404);
+  })
   .post('/notes', async (c) => {
     const user = c.get('user');
     const parsed = NoteInput.safeParse(await c.req.json().catch(() => ({})));

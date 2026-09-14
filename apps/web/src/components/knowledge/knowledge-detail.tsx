@@ -6,6 +6,8 @@
  * optional questions/topics, plus an outline rail down the right edge.
  */
 
+import { registeredKnowledgeDocPanels } from '../../lib/extension-registries';
+import { useExtensionsStore } from '../../stores/extensions-store';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KnowledgeDoc, KnowledgeDocVersion, KnowledgeBacklink, KnowledgeComment } from '@greenhouse/types/api';
 import { Badge, Button, Dialog, Select, Spinner, ConfirmDialog, toast } from '../ui';
@@ -94,6 +96,7 @@ export function KnowledgeDetail({ doc }: KnowledgeDetailProps) {
           )}
 
           <KnowledgeBacklinks docId={doc.id} />
+          <ExtensionDocPanels docId={doc.id} />
           <KnowledgeComments docId={doc.id} />
         </div>
       </main>
@@ -240,6 +243,26 @@ function DocOutline({
         </div>
       )}
     </aside>
+  );
+}
+
+/**
+ * Sections an extension attached to every document (a content-sync extension's
+ * "where this came from", say). Rendered between the backlinks and the comments;
+ * an extension that is compiled in but not active registers nothing.
+ */
+function ExtensionDocPanels({ docId }: { docId: number }) {
+  const active = useExtensionsStore((s) => s.extensions);
+  const panels = registeredKnowledgeDocPanels().filter((panel) =>
+    active.some((extension) => extension.id === panel.extensionId),
+  );
+  if (panels.length === 0) return null;
+  return (
+    <>
+      {panels.map(({ id, component: Panel }) => (
+        <Panel key={id} docId={docId} />
+      ))}
+    </>
   );
 }
 

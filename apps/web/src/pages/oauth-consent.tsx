@@ -3,7 +3,8 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { MCP_RESOURCE_GROUP_IDS } from '@greenhouse/types/mcp';
+import { mcpGroupIds } from '../lib/mcp-groups';
+import { useExtensionsStore } from '../stores/extensions-store';
 import { AppLogo, Badge, Button, Card, Checkbox, Spinner } from '../components/ui';
 import { Key, Shield, XCircle } from '../lib/icons';
 import { decideOAuthAuthorization, validateOAuthAuthorization } from '../lib/api/oauth';
@@ -27,6 +28,7 @@ function actionScopeLabel(scope: string): { title: TranslationKey; detail: Trans
 }
 
 export function OAuthConsentPage() {
+  const activeExtensionIds = useExtensionsStore((state) => state.extensions.map((extension) => extension.id));
   const t = useT();
   const params = useMemo(() => {
     const next = new URLSearchParams(window.location.search);
@@ -59,8 +61,8 @@ export function OAuthConsentPage() {
 
   // Only the groups this request actually covers are offered.
   const offeredGroups = useMemo(
-    () => (request ? MCP_RESOURCE_GROUP_IDS.filter((id) => request.scopes.includes(`mcp:${id}`)) : []),
-    [request],
+    () => (request ? mcpGroupIds(activeExtensionIds).filter((id) => request.scopes.includes(`mcp:${id}`)) : []),
+    [request, activeExtensionIds],
   );
   const actionScopes = useMemo(
     () => (request ? request.scopes.filter((scope) => scope === 'mcp:read' || scope === 'mcp:write') : []),

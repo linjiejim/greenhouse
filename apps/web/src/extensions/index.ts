@@ -10,7 +10,13 @@ import { registerExtensionMessages } from '../lib/i18n';
 import { registerExtensionNavModules } from '../lib/nav-registry';
 import { registerExtensionContextProvider } from '../lib/context-registry';
 import { useExtensionsStore } from '../stores/extensions-store';
-import { registerToolCard, registerToolIcons } from '../lib/extension-registries';
+import {
+  registerEntityKindUi,
+  registerKnowledgeDocPanels,
+  registerMcpGroupUi,
+  registerToolCard,
+  registerToolIcons,
+} from '../lib/extension-registries';
 import type { WebExtension, WebExtensionModule, WebExtensionNavItem, WebExtensionPage } from './define';
 import { exampleWebExtension } from './example';
 
@@ -33,6 +39,13 @@ for (const ext of COMPILED_WEB_EXTENSIONS) {
     registerToolCard(card.tool, { component: card.component, placement: card.placement ?? 'inline' });
   }
   if (ext.toolIcons) registerToolIcons(ext.toolIcons);
+  if (ext.entityKinds?.length) registerEntityKindUi(ext.entityKinds);
+  if (ext.mcpGroups?.length) {
+    registerMcpGroupUi(ext.mcpGroups.map((group) => ({ ...group, extensionId: ext.id })));
+  }
+  if (ext.knowledgeDocPanels?.length) {
+    registerKnowledgeDocPanels(ext.knowledgeDocPanels.map((panel) => ({ ...panel, extensionId: ext.id })));
+  }
   ext.onLoad?.();
 }
 

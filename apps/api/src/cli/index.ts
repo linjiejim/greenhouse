@@ -42,6 +42,7 @@ ${chalk.bold('Inspect')}
 ${chalk.bold('Manage')}
   users create              Create a user (--email --password --nickname --role)
   db reset                  Wipe ALL data — truncate every table (--yes; local dev only)
+  db baseline               Adopt an existing database: record the migration chain as applied (--dry-run)
   platform bootstrap        Publish manifests + synchronize system roles/policies
   platform create-app <id>  Scaffold a fail-closed Platform app (--title, --output, --dry-run)
   knowledge reindex         Recompute segmented FTS tokens (--batch)

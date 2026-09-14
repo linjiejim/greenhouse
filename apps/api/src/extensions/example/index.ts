@@ -23,6 +23,40 @@ export const exampleExtension = defineExtension({
   tools: [exampleNotesQueryTool],
   routes: [{ path: '/api/ext/example', app: exampleRoutes, guards: [requireFeature('example')] }],
 
+  // Its own MCP consent group, so a token can be granted `mcp:example` alone.
+  mcpGroups: ['example'],
+  // Its records get deeplinks (`#/example/notes/42`) and peeks in chat.
+  entityKinds: [{ kind: 'ext:example:note', route: '#/example/notes/:id' }],
+  // …and a lane in the global search palette.
+  searchSources: [
+    {
+      kind: 'ext:example:note',
+      search: async ({ query, limit, userId, db }) => {
+        const { notes } = getExtensionServices<ExampleServices>(db, 'example');
+        const rows = await notes.search(userId, query, limit);
+        return rows.map((row) => ({
+          ref: { kind: 'ext:example:note' as const, id: row.id },
+          title: row.body.slice(0, 80),
+        }));
+      },
+    },
+  ],
+  // …and a Home workbench card backed by its read tool.
+  workbenchRecipes: [
+    {
+      id: 'example.notes',
+      toolId: 'example_notes_query',
+      label: 'Example notes',
+      description: 'Your latest notes from the Example extension',
+      labelKey: 'ext.example.recipe.notes',
+      descriptionKey: 'ext.example.recipe.notesDesc',
+      display: 'table',
+      source: { toolId: 'example_notes_query', input: { limit: 10 } },
+      map: { rows: 'notes', columns: [{ key: 'body', type: 'text' }] },
+      size: { w: 6, h: 5 },
+    },
+  ],
+
   featureFlags: [
     {
       key: 'example',

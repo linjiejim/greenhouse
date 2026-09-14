@@ -9,6 +9,7 @@
 import { sql } from 'drizzle-orm';
 import { buildExtensionServices, extensionResetTables } from './extensions.js';
 import { createExtensionMigrationRunner } from './extension-migrations.js';
+import { createCoreMigrationBaseline } from './core-migrations.js';
 
 import { createDbClient, type Db, type DbClient } from './client.js';
 import { createSessionService } from './services/sessions.js';
@@ -60,6 +61,8 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     extensions: buildExtensionServices(db),
     /** Extension-owned migration lane (see extension-migrations.ts). */
     extensionMigrations: createExtensionMigrationRunner(db),
+    /** Seeding drizzle's own journal for an adopted database (see core-migrations.ts). */
+    coreMigrationBaseline: createCoreMigrationBaseline(db),
     sessions: createSessionService(db),
     llmCalls: createLlmCallService(db),
     eval: createEvalService(db),

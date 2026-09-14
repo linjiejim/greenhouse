@@ -5,6 +5,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { getExtensionServices } from '@greenhouse/db';
+import { entityUrl } from '@greenhouse/types/entity-links';
 import { defineTool } from '../../tools/define.js';
 import type { ExampleServices } from './service.js';
 
@@ -20,7 +21,7 @@ export const exampleNotesQueryTool = defineTool({
     is_global: false,
     icon: 'StickyNote',
     sort_order: 900,
-    surface: { proxy: 'read', workbench: true, unattendedReplaySafe: true },
+    surface: { proxy: 'read', mcp: 'example', workbench: true, unattendedReplaySafe: true },
   },
   kind: 'lazy',
   createLazy: ({ db, userId }) =>
@@ -32,7 +33,17 @@ export const exampleNotesQueryTool = defineTool({
       execute: async ({ limit }) => {
         const { notes } = getExtensionServices<ExampleServices>(db, 'example');
         const rows = await notes.list(userId, limit);
-        return { count: rows.length, notes: rows.map((r) => ({ id: r.id, body: r.body, created_at: r.created_at })) };
+        return {
+          count: rows.length,
+          // `url` is the in-app deeplink for the record kind this extension
+          // registered, so the chat renders a peek instead of a raw link.
+          notes: rows.map((r) => ({
+            id: r.id,
+            body: r.body,
+            created_at: r.created_at,
+            url: entityUrl({ kind: 'ext:example:note', id: r.id }),
+          })),
+        };
       },
     }),
 });

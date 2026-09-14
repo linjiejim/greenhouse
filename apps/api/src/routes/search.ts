@@ -23,6 +23,7 @@ import { humanActor } from '../platform/actor.js';
 import { projectResource } from '../platform/projects/application.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
 import { searchKnowledgeScopes } from '../knowledge/search.js';
+import { extensionSearchSources } from '../search/sources.js';
 
 /** Rows per kind when every kind is shown side by side. */
 const GROUP_LIMIT = 5;
@@ -52,7 +53,12 @@ export function createSearchRoute() {
         const user = getAuthUser(c);
         const query = (c.req.query('q') ?? '').trim().slice(0, MAX_QUERY_LENGTH);
         const kindParam = c.req.query('kind');
-        const kind = SEARCHABLE_KINDS.find((k) => k === kindParam);
+        // Core kinds plus the ones active extensions registered a lane for.
+        const searchableKinds: readonly SearchKind[] = [
+          ...SEARCHABLE_KINDS,
+          ...extensionSearchSources().map((source) => source.kind as SearchKind),
+        ];
+        const kind = searchableKinds.find((k) => k === kindParam);
         if (kindParam && !kind) return c.json({ error: `Unknown kind "${kindParam}"` }, 400);
         if (!query) return c.json({ query, groups: [] as SearchGroup[] });
 
@@ -121,7 +127,17 @@ export function createSearchRoute() {
           }),
         ]);
 
-        const groups = [sessionHistory, projects, docs].filter((g): g is SearchGroup => g !== null);
+        // Extension lanes run after the core three, in registration order, and
+        // are just as isolated: a failing one leaves its group empty.
+        const extensionGroups = await Promise.all(
+          extensionSearchSources().map((source) =>
+            lane(source.kind as SearchKind, () =>
+              source.search({ query, limit: fetchLimit, userId: user.id, userRole: user.role, db }),
+            ),
+          ),
+        );
+
+        const groups = [sessionHistory, projects, docs, ...extensionGroups].filter((g): g is SearchGroup => g !== null);
         return c.json({ query, groups });
       })
   );

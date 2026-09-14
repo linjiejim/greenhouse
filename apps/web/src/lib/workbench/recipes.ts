@@ -13,14 +13,15 @@
 
 import {
   WIDGET_RECIPES,
+  allWidgetRecipes,
   type WidgetRecipe,
-  type WidgetRecipeId,
   type WorkbenchTemplate,
   type WorkbenchTemplateId,
 } from '@greenhouse/types/workbench';
 import type { TranslationKey } from '../i18n';
 
 export { availableRecipes, findRecipe } from '@greenhouse/types/workbench';
+export { allWidgetRecipes };
 export type { WidgetRecipe, WidgetRecipeId } from '@greenhouse/types/workbench';
 
 interface RecipeLabels {
@@ -28,7 +29,7 @@ interface RecipeLabels {
   descriptionKey: TranslationKey;
 }
 
-const RECIPE_LABELS: Record<WidgetRecipeId, RecipeLabels> = {
+const RECIPE_LABELS: Record<string, RecipeLabels> = {
   'projects.list': {
     labelKey: 'home.recipe.projectsList',
     descriptionKey: 'home.recipe.projectsListDesc',
@@ -47,8 +48,18 @@ const RECIPE_LABELS: Record<WidgetRecipeId, RecipeLabels> = {
   },
 };
 
+/**
+ * Core recipes translate from the table above; an extension's recipe carries its
+ * own `ext.<id>.*` keys. With neither, the shared English label renders as-is
+ * (t() falls back to the key it was given).
+ */
 export function recipeLabels(recipe: WidgetRecipe): RecipeLabels {
-  return RECIPE_LABELS[recipe.id];
+  return (
+    RECIPE_LABELS[recipe.id] ?? {
+      labelKey: (recipe.labelKey ?? recipe.label) as TranslationKey,
+      descriptionKey: (recipe.descriptionKey ?? recipe.description) as TranslationKey,
+    }
+  );
 }
 
 interface TemplateLabels {

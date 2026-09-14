@@ -65,7 +65,7 @@ export interface ToolMeta {
    */
   surface?: {
     proxy?: 'read' | 'write' | 'none';
-    mcp?: McpResourceGroup;
+    mcp?: McpResourceGroup | (string & {});
     workbench?: boolean;
     unattendedReplaySafe?: boolean;
   };
@@ -130,6 +130,8 @@ export interface LazyToolContext {
   userRole: string;
   sessionId?: string;
   workspaceId?: string | null;
+  /** Bind workspace-aware inputs to `workspaceId` (proxy / automation credentials). */
+  lockWorkspace?: boolean;
   profileId?: string | null;
 }
 

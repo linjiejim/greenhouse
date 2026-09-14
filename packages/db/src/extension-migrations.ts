@@ -99,6 +99,35 @@ export function createExtensionMigrationRunner(db: Db) {
       return out;
     },
 
+    /**
+     * Mark every pending file as applied WITHOUT running it.
+     *
+     * For adopting a database whose tables already exist — an internal instance
+     * moving onto the extension lane, or a restored dump. The files must match
+     * what is really in the database; the runner cannot verify that, which is
+     * why this is an explicit operator command (`pnpm cli db baseline`) rather
+     * than something the boot path can decide on its own.
+     */
+    async baseline(sources: readonly ExtensionMigrationSource[]): Promise<{ recorded: string[] }> {
+      if (sources.length === 0) return { recorded: [] };
+      await ensureTable();
+      return db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`);
+        const recorded: string[] = [];
+        for (const source of sources) {
+          const existing = await appliedChecksums(tx as unknown as Db, source.extensionId);
+          for (const file of readMigrationFiles(source.dir)) {
+            if (existing.has(file.name)) continue;
+            await tx.execute(
+              sql`INSERT INTO extension_migrations (extension_id, name, checksum) VALUES (${source.extensionId}, ${file.name}, ${file.checksum})`,
+            );
+            recorded.push(`${source.extensionId}/${file.name}`);
+          }
+        }
+        return { recorded };
+      });
+    },
+
     /** Apply every pending file of every source, in order, atomically. */
     async apply(sources: readonly ExtensionMigrationSource[]): Promise<{ applied: string[] }> {
       if (sources.length === 0) return { applied: [] };

@@ -114,6 +114,10 @@ Every field is optional and maps 1:1 onto a core registry:
 | `commands` | `pnpm cli <name>` and `pnpm cli --help` | Namespace with the id: `crm:import`. |
 | `migrations` | the extension migration lane | Ordered `NNNN_name.sql` files, `--> statement-breakpoint` between statements (what `drizzle-kit generate` emits). Applied at boot under an advisory lock, tracked in `extension_migrations` with a checksum — editing an applied file fails fast. Core DDL stays in `drizzle/`. |
 | `services` / `resetTables` | `db.extensions[<id>]`, integration-test truncation | Keep a typed accessor: `getExtensionServices<CrmServices>(db, 'crm')`. |
+| `entityKinds` | in-app deeplinks (`entityUrl` / `parseEntityUrl`) and chat peeks | `{ kind: 'ext:crm:company', route: '#/crm/companies/:id' }` — one template drives both directions. Put the URL in a tool result and the chat renders a peek instead of a link. |
+| `searchSources` | the ⌘P palette | One lane per record kind; it applies its own permission check and a failure only empties its own group. |
+| `mcpGroups` | MCP consent + OAuth scopes | `['crm']` gives `mcp:crm`; tools join it with `surface.mcp: 'crm'`. Existing grants never pick up a new group. |
+| `workbenchRecipes` | Home workbench card picker + `workbench_query.recipes` | Backed by one of the extension's own read tools; `labelKey` / `descriptionKey` translate it. |
 | `skillPacks` | Skill Center seed at boot | Same layout as `skillhub/`. |
 | `onBoot` / `onShutdown` | after the tool registry exists, before routes serve; on SIGTERM | |
 
@@ -147,6 +151,9 @@ export const crmWebExtension = defineWebExtension({
 | `modules` | Settings ("Extensions" section) or Administration | Key becomes `#/settings/<key>` or `#/administration/<key>`; pins and breadcrumbs work. |
 | `messages` | i18n, under `ext.<id>.*` | `t('ext.crm.title')` type-checks; a missing locale falls back to English. The visible-copy guard still rejects hard-coded English in your TSX. |
 | `toolCards` / `toolIcons` | chat transcript, tool catalogs | A card replaces the trace row once the tool returned without error; `placement: 'below'` renders after the prose. |
+| `entityKinds` | peek / side-pane chrome and body for the kinds the API half registered | Same `kind` string on both halves; `render` is optional (without it the peek offers "open full page"). |
+| `mcpGroups` | consent screen and machine-client form | Display copy for a group the API half owns; the group only appears while the extension is active. |
+| `knowledgeDocPanels` | every knowledge document, between backlinks and comments | For things attached to documents — provenance, sync state. |
 | `contextProvider` | the agent panel on your pages | Receives `{ type: 'extension', extension, route, subPath }`. |
 
 `apps/web/src/extension-kit.ts` re-exports `authFetch`, `useT`, the UI kit, `useAuthStore`,
@@ -154,10 +161,10 @@ export const crmWebExtension = defineWebExtension({
 
 ### What the seam does not cover (yet)
 
-Entity kinds and peeks, global-search sources, workbench recipes, MCP resource groups and
-notification transports are still closed registries in core. If your module needs one of those,
-extend the registry upstream (they are small `Record`s and unions) rather than patching around
-it — that is a contribution, not a fork.
+Notification transports (email / WeCom / Feishu) and workbench **pinning** of extension records
+are still closed in core — pinning needs a read tool plus an action mapping per kind, which no
+extension has asked for yet. If your module needs one, extend the registry upstream rather than
+patching around it: that is a contribution, not a fork.
 
 ### Keeping a fork thin
 
@@ -226,7 +233,9 @@ belongs to Greenhouse itself.
 3. Tables: write `migrations/0001_*.sql` (or generate it with a per-extension drizzle config),
    declare `resetTables`, expose services through `services`.
 4. Tools: one file per tool with `defineTool`; own them through a feature point so the
-   permissions dialog shows one switch for the whole module.
+   permissions dialog shows one switch for the whole module. Declare `mcpGroups` if the module
+   should be separately consentable over MCP, and `entityKinds` + `searchSources` if it owns
+   records people will link to and search for.
 5. UI: a page under `#/<id>`, a "More" entry, translations under `ext.<id>.*`, a card for the
    tool's result.
 6. Tests: a `*.db.test.ts` for the service, a route test, and a seam test that imports the

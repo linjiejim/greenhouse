@@ -20,6 +20,13 @@ export const exampleMessages = {
       description: 'Where the reference extension keeps its knobs',
       body: 'This settings module comes from the example extension. Admin-editable values live in Administration → Runtime Config under “Example notes”.',
     },
+    entity: { note: 'Note' },
+    mcpGroup: {
+      label: 'Example notes',
+      description: 'Read the notes saved in the Example extension',
+    },
+    recipe: { notes: 'Example notes', notesDesc: 'Your latest notes from the Example extension' },
+    docPanel: 'Example extension: this section is rendered on every knowledge document while the extension is active.',
     context: {
       label: 'Example notes',
       empty: 'Ask about your notes, or tell me what to remember.',
@@ -47,6 +54,13 @@ export const exampleMessages = {
       description: '参考扩展的设置项放在哪里',
       body: '这个设置模块来自示例扩展。管理员可编辑的值在「管理 → 运行时配置」的「示例笔记」分组里。',
     },
+    entity: { note: '笔记' },
+    mcpGroup: {
+      label: '示例笔记',
+      description: '读取示例扩展里保存的笔记',
+    },
+    recipe: { notes: '示例笔记', notesDesc: '示例扩展里最新的几条笔记' },
+    docPanel: '示例扩展：只要扩展处于启用状态，每篇知识库文档都会显示这一段。',
     context: {
       label: '示例笔记',
       empty: '问问你的笔记，或者告诉我要记住什么。',

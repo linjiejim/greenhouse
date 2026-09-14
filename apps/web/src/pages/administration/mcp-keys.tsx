@@ -11,7 +11,8 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { MCP_RESOURCE_GROUP_IDS } from '@greenhouse/types/mcp';
+import { mcpGroupIds } from '../../lib/mcp-groups';
+import { useExtensionsStore } from '../../stores/extensions-store';
 import { Plus, Trash2, RefreshCw, Check, AlertTriangle, ChevronDown, ChevronRight, Globe } from '../../lib/icons';
 import { Badge, Button, Checkbox, ConfirmDialog, Dialog, Input, Select, toast } from '../../components/ui';
 import { FormActions, FormField } from '../../components/form';
@@ -58,6 +59,9 @@ function userLabel(u: InternalUser): string {
 }
 
 export function McpKeysPanel() {
+  const activeExtensionIds = useExtensionsStore((state) => state.extensions.map((extension) => extension.id));
+  // Core groups plus those of the extensions this deployment runs.
+  const groupIds = useMemo(() => mcpGroupIds(activeExtensionIds), [activeExtensionIds]);
   const t = useT();
   const [clients, setClients] = useState<OAuthClient[]>([]);
   const [users, setUsers] = useState<InternalUser[]>([]);
@@ -139,9 +143,9 @@ export function McpKeysPanel() {
     setDraftWrite(false);
     // Start from everything: narrowing is the deliberate act, and a machine
     // client with no capability ticked cannot call anything at all.
-    setDraftGroups(new Set([...MCP_RESOURCE_GROUP_IDS]));
+    setDraftGroups(new Set(groupIds));
     setCreating(true);
-  }, [users]);
+  }, [users, groupIds]);
 
   const toggleDraftGroup = useCallback((id: string, checked: boolean) => {
     setDraftGroups((current) => {
@@ -168,7 +172,7 @@ export function McpKeysPanel() {
           scopes: [
             'mcp:read',
             ...(draftWrite ? ['mcp:write'] : []),
-            ...MCP_RESOURCE_GROUP_IDS.filter((id) => draftGroups.has(id)).map((id) => `mcp:${id}`),
+            ...groupIds.filter((id) => draftGroups.has(id)).map((id) => `mcp:${id}`),
           ],
         }),
       });
@@ -187,7 +191,7 @@ export function McpKeysPanel() {
     } finally {
       setSaving(false);
     }
-  }, [draftName, draftUserId, draftWrite, draftGroups, reload, t]);
+  }, [draftName, draftUserId, draftWrite, draftGroups, groupIds, reload, t]);
 
   const rotate = useCallback(
     async (c: OAuthClient) => {
@@ -490,7 +494,7 @@ export function McpKeysPanel() {
             />
             <FormField label={t('mcpAccess.capabilities')} help={t('mcpAccess.capabilitiesHint')}>
               <div className="max-h-52 divide-y divide-edge overflow-y-auto rounded-lg border border-edge">
-                {MCP_RESOURCE_GROUP_IDS.map((id) => (
+                {groupIds.map((id) => (
                   <label key={id} className="flex cursor-pointer items-start gap-2 p-2 hover:bg-surface-muted">
                     <Checkbox
                       checked={draftGroups.has(id)}

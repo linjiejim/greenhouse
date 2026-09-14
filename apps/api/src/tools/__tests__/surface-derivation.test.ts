@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { MCP_RESOURCE_GROUP_IDS } from '@greenhouse/types/mcp';
+import { allMcpResourceGroups } from '@greenhouse/types/mcp';
 import {
   READONLY_PROXY_ALLOWLIST,
   MUTATING_PROXY_ALLOWLIST,
@@ -94,7 +94,7 @@ describe('surface-derived exposure sets', () => {
     // grant (groups are what a user consents to) — fail-closed, but silently.
     const grouped = new Set<string>();
     for (const [group, ids] of MCP_TOOL_IDS_BY_GROUP) {
-      expect(MCP_RESOURCE_GROUP_IDS, `unknown resource group ${group}`).toContain(group);
+      expect(allMcpResourceGroups(), `unknown resource group ${group}`).toContain(group);
       for (const id of ids) {
         expect(MCP_EXPOSED_TOOL_IDS.has(id), `${id} is in group ${group} but not MCP-exposed`).toBe(true);
         grouped.add(id);

@@ -16,7 +16,7 @@ import { ArrowLeft, ExternalLink, X } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { useEntityPeekStore } from '../../stores/entity-peek-store';
 import { EntityPeekScope } from './context';
-import { ENTITY_PEEK_META, renderEntityPeekBody } from './registry';
+import { entityPeekMeta, renderEntityPeekBody } from './registry';
 
 export function EntityPeekHost() {
   const t = useT();
@@ -25,7 +25,7 @@ export function EntityPeekHost() {
   const close = useEntityPeekStore((s) => s.close);
 
   const entry = stack[stack.length - 1];
-  const meta = entry ? ENTITY_PEEK_META[entry.ref.kind] : null;
+  const meta = entry ? entityPeekMeta(entry.ref.kind) : null;
   const Icon = meta?.icon;
   const body = entry ? renderEntityPeekBody(entry.ref) : null;
 

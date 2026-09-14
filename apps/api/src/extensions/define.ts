@@ -15,6 +15,9 @@ import type { Hono, MiddlewareHandler } from 'hono';
 import type { ApplicationRegistration } from '@greenhouse/platform-kernel';
 import type { DatabaseProvider, Db } from '@greenhouse/db';
 import type { FeatureFlag } from '@greenhouse/types/features';
+import type { ExtensionEntityKindDef } from '@greenhouse/types/entity-links';
+import type { WidgetRecipe } from '@greenhouse/types/workbench';
+import type { SearchSource } from '../search/sources.js';
 import type { WorkspaceSettingDef } from '@greenhouse/types/workspace-settings';
 import type { GreenhouseConfig } from '@greenhouse/types/config';
 import type { AppEnv } from '../app-env.js';
@@ -78,6 +81,21 @@ export interface GreenhouseExtension {
   featurePoints?: FeaturePointDef[];
   /** Admin-editable runtime settings (`<id>.<name>`, group `<id>`), rendered in Runtime Config. */
   workspaceSettings?: WorkspaceSettingDef[];
+  /**
+   * Record kinds this extension owns (`ext:<id>:<name>` + a hash route with one
+   * `:id`), so its records get deeplinks in tool output and peeks in chat.
+   * The web half registers the icon and the peek body for the same kind.
+   */
+  entityKinds?: ExtensionEntityKindDef[];
+  /** Lanes added to the global search palette, one per record kind. */
+  searchSources?: SearchSource[];
+  /**
+   * MCP consent groups this extension owns (conventionally its own id). A token
+   * can then be granted `mcp:<group>` alone; tools join it via `surface.mcp`.
+   */
+  mcpGroups?: string[];
+  /** Home-workbench cards this extension offers, backed by its own read tools. */
+  workbenchRecipes?: WidgetRecipe[];
   /** Paths that skip authentication (OAuth callbacks, webhooks). Keep this list minimal. */
   publicPaths?: { exact?: string[]; prefixes?: string[] };
   /** Periodic jobs started with the scheduler. */

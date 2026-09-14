@@ -20,7 +20,7 @@ export interface ToolMeta {
   /** `mcp` carries the tool's resource group — see @greenhouse/types/mcp. */
   surface?: {
     proxy?: 'read' | 'write' | 'none';
-    mcp?: McpResourceGroup;
+    mcp?: McpResourceGroup | (string & {});
     workbench?: boolean;
     unattendedReplaySafe?: boolean;
   };

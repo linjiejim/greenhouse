@@ -14,7 +14,6 @@
  */
 
 import { fromExtensions } from '../extensions/index.js';
-import type { McpResourceGroup } from '@greenhouse/types/mcp';
 import type { ToolMeta, ToolModule } from './define.js';
 export type { ToolCategory, ToolMeta } from './define.js';
 
@@ -163,8 +162,8 @@ export const MCP_EXPOSED_TOOL_IDS = new Set<string>(TOOL_DEFINITIONS.filter((m) 
  * a tool cannot be MCP-exposed without naming its group, so there is no way to
  * land in "exposed but ungrouped".
  */
-export const MCP_TOOL_IDS_BY_GROUP: ReadonlyMap<McpResourceGroup, ReadonlySet<string>> = (() => {
-  const map = new Map<McpResourceGroup, Set<string>>();
+export const MCP_TOOL_IDS_BY_GROUP: ReadonlyMap<string, ReadonlySet<string>> = (() => {
+  const map = new Map<string, Set<string>>();
   for (const meta of TOOL_DEFINITIONS) {
     const group = meta.surface?.mcp;
     if (!group) continue;
@@ -176,7 +175,7 @@ export const MCP_TOOL_IDS_BY_GROUP: ReadonlyMap<McpResourceGroup, ReadonlySet<st
 })();
 
 /** Tool ids reachable for a set of granted resource groups. Unknown groups are ignored. */
-export function mcpToolIdsForGroups(groups: Iterable<McpResourceGroup>): Set<string> {
+export function mcpToolIdsForGroups(groups: Iterable<string>): Set<string> {
   const ids = new Set<string>();
   for (const group of groups) {
     for (const id of MCP_TOOL_IDS_BY_GROUP.get(group) ?? []) ids.add(id);

@@ -17,7 +17,7 @@
  * See docs/specs/20260805-home-workbench.md.
  */
 
-import type { EntityKind, EntityRef } from './entity-links.js';
+import type { CoreEntityKind, EntityKind, EntityRef } from './entity-links.js';
 
 export const WORKBENCH_LIMITS = {
   /** Cards per user. Caps the JSON blob and the batch-evaluation fan-out alike. */
@@ -147,21 +147,30 @@ export type NavTarget = { type: 'app'; appId: string } | { type: 'entity'; ref: 
  * authorization path. Kinds mapped to `null` have no read action today and are
  * therefore not offered as pin targets — an honest gap, not a silent bypass.
  */
-export const NAV_ENTITY_RESOLVERS: Readonly<Record<EntityKind, { toolId: string; action: string } | null>> =
+export const NAV_ENTITY_RESOLVERS: Readonly<Record<CoreEntityKind, { toolId: string; action: string } | null>> =
   Object.freeze({
     project: { toolId: 'project_query', action: 'get' },
     kb_doc: { toolId: 'knowledge_query', action: 'get' },
     tables_record: { toolId: 'tables_query', action: 'records.get' },
   });
 
+/**
+ * Resolver for a kind, or undefined when there is none. Extension record kinds
+ * have no resolver today: they get deeplinks, peeks and search, but not
+ * workbench pinning (that needs a read tool + action mapping per kind).
+ */
+export function navEntityResolver(kind: EntityKind): { toolId: string; action: string } | null | undefined {
+  return (NAV_ENTITY_RESOLVERS as Record<string, { toolId: string; action: string } | null>)[kind];
+}
+
 /** Entity kinds a navigation card can point at. */
-export const PINNABLE_ENTITY_KINDS: readonly EntityKind[] = (Object.keys(NAV_ENTITY_RESOLVERS) as EntityKind[]).filter(
-  (kind) => NAV_ENTITY_RESOLVERS[kind] !== null,
-);
+export const PINNABLE_ENTITY_KINDS: readonly EntityKind[] = (
+  Object.keys(NAV_ENTITY_RESOLVERS) as CoreEntityKind[]
+).filter((kind) => NAV_ENTITY_RESOLVERS[kind] !== null);
 
 /** Build the resolver call for a ref, or null when the kind is unpinnable. */
 export function navEntitySource(ref: EntityRef): ToolSource | null {
-  const resolver = NAV_ENTITY_RESOLVERS[ref.kind];
+  const resolver = navEntityResolver(ref.kind);
   if (!resolver) return null;
   switch (ref.kind) {
     case 'project':
@@ -380,7 +389,7 @@ function parseNavTarget(value: unknown): NavTarget | null {
   if (value.type === 'entity') {
     const ref = parseEntityRef(value.ref);
     // An unpinnable kind can't be resolved, so it can't be stored either.
-    return ref && NAV_ENTITY_RESOLVERS[ref.kind] ? { type: 'entity', ref } : null;
+    return ref && navEntityResolver(ref.kind) ? { type: 'entity', ref } : null;
   }
   return null;
 }
@@ -535,7 +544,9 @@ export function isTextWidget(widget: WorkbenchWidget): widget is TextWidget {
  * through the agent, which can run `workbench_query.preview` and see the real
  * shape before committing a card.
  */
-export type WidgetRecipeId = 'projects.list' | 'projects.active' | 'projects.planning' | 'projects.on_hold';
+export type CoreWidgetRecipeId = 'projects.list' | 'projects.active' | 'projects.planning' | 'projects.on_hold';
+/** A core id, or an extension's own (conventionally `<extension id>.<name>`). */
+export type WidgetRecipeId = CoreWidgetRecipeId | (string & {});
 
 export interface WidgetRecipe {
   id: WidgetRecipeId;
@@ -550,6 +561,13 @@ export interface WidgetRecipe {
   map?: FieldMap;
   /** Default grid size, in the 12-column vocabulary. */
   size: { w: number; h: number };
+  /**
+   * Translation keys for the browser (extensions only — core recipes are
+   * translated from the closed table in apps/web/src/lib/workbench/recipes.ts).
+   * Without them the English `label` / `description` above render as-is.
+   */
+  labelKey?: string;
+  descriptionKey?: string;
 }
 
 export const WIDGET_RECIPES: readonly WidgetRecipe[] = [
@@ -627,8 +645,32 @@ export const WIDGET_RECIPES: readonly WidgetRecipe[] = [
   },
 ];
 
+// ─── Extension recipes ───────────────────────────────────
+
+const extensionRecipes: WidgetRecipe[] = [];
+
+/** Register the workbench cards an extension offers. Called at boot. */
+export function registerWidgetRecipes(recipes: readonly WidgetRecipe[]): void {
+  for (const recipe of recipes) {
+    if (allWidgetRecipes().some((existing) => existing.id === recipe.id)) {
+      throw new Error(`Widget recipe "${recipe.id}" is already registered`);
+    }
+    extensionRecipes.push(recipe);
+  }
+}
+
+/** Core recipes followed by every registered extension recipe. */
+export function allWidgetRecipes(): readonly WidgetRecipe[] {
+  return [...WIDGET_RECIPES, ...extensionRecipes];
+}
+
+/** Test hook — forget recipes registered by a suite. */
+export function _resetExtensionWidgetRecipes(): void {
+  extensionRecipes.length = 0;
+}
+
 export function findRecipe(recipeId: string | undefined): WidgetRecipe | undefined {
-  return recipeId ? WIDGET_RECIPES.find((recipe) => recipe.id === recipeId) : undefined;
+  return recipeId ? allWidgetRecipes().find((recipe) => recipe.id === recipeId) : undefined;
 }
 
 /**
@@ -639,7 +681,7 @@ export function findRecipe(recipeId: string | undefined): WidgetRecipe | undefin
  */
 export function availableRecipes(readableToolIds: ReadonlySet<string> | readonly string[]): WidgetRecipe[] {
   const readable = readableToolIds instanceof Set ? readableToolIds : new Set(readableToolIds);
-  return WIDGET_RECIPES.filter((recipe) => readable.has(recipe.toolId));
+  return allWidgetRecipes().filter((recipe) => readable.has(recipe.toolId));
 }
 
 // ─── Workbench templates ────────────────────────────────

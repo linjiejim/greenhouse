@@ -24,8 +24,9 @@
  * never widens what that user could already do.
  *
  * ─── Adding a group ──────────────────────────────────────
- * Add an entry here, then set `surface: { …, mcp: '<id>' }` on the tools that
- * belong to it. The scope, the consent checkbox and the admin picker all follow
+ * Add an entry here (or, for an extension, declare `mcpGroups` on it and let
+ * `registerMcpResourceGroups` add it at boot), then set
+ * `surface: { …, mcp: '<id>' }` on the tools that belong to it. The scope, the consent checkbox and the admin picker all follow
  * automatically. Note that existing grants do NOT gain the new group — a user
  * authorized a set of capabilities that did not include it, so picking it up
  * silently would be exactly the widening this design exists to prevent.
@@ -47,6 +48,32 @@ export const MCP_RESOURCE_GROUP_IDS = [
 
 export type McpResourceGroup = (typeof MCP_RESOURCE_GROUP_IDS)[number];
 
+// ─── Extension groups ────────────────────────────────────
+// An extension that owns a data domain gets its own consent group, so a token
+// can be granted `mcp:crm` without touching anything else. Registered at boot
+// from the active extensions; the core list above stays the compile-time union.
+
+const extensionGroups: string[] = [];
+
+export function registerMcpResourceGroups(ids: readonly string[]): void {
+  for (const id of ids) {
+    if (!/^[a-z][a-z0-9-]*$/.test(id))
+      throw new Error(`MCP resource group "${id}" must be lowercase letters, digits and dashes`);
+    if (allMcpResourceGroups().includes(id)) throw new Error(`MCP resource group "${id}" is already registered`);
+    extensionGroups.push(id);
+  }
+}
+
+/** Core groups followed by every registered extension group, in consent order. */
+export function allMcpResourceGroups(): readonly string[] {
+  return [...MCP_RESOURCE_GROUP_IDS, ...extensionGroups];
+}
+
+/** Test hook — forget groups registered by a suite. */
+export function _resetExtensionMcpResourceGroups(): void {
+  extensionGroups.length = 0;
+}
+
 export function isMcpResourceGroup(value: string): value is McpResourceGroup {
-  return (MCP_RESOURCE_GROUP_IDS as readonly string[]).includes(value);
+  return allMcpResourceGroups().includes(value);
 }

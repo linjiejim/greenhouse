@@ -13,6 +13,7 @@
  * top instead of centred.
  */
 
+import type { EntityKind } from '@greenhouse/types/entity-links';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { entityUrl } from '@greenhouse/types/entity-links';
 import { SEARCHABLE_KINDS, type SearchHit, type SearchKind } from '@greenhouse/types/search';
@@ -24,16 +25,22 @@ import { globalSearch } from '../../lib/api/search';
 import { toSearchSummary } from '../../lib/search-summary';
 import { useGlobalSearchStore } from '../../stores/global-search-store';
 import { openEntityPeek } from '../../stores/entity-peek-store';
-import { ENTITY_PEEK_META } from '../entity-peek/registry';
+import { entityPeekMeta } from '../entity-peek/registry';
 
 const DEBOUNCE_MS = 200;
 
-const KIND_LABEL_KEYS: Record<SearchKind, TranslationKey> = {
+const KIND_LABEL_KEYS: Record<string, TranslationKey> = {
   session: 'search.session',
   project: 'search.project',
   kb_doc: 'search.doc',
   tables_record: 'entityPeek.record',
 };
+
+/** Group heading for a kind — core from the table, extension kinds from their registration. */
+function kindLabelKey(kind: SearchKind): TranslationKey {
+  if (KIND_LABEL_KEYS[kind]) return KIND_LABEL_KEYS[kind];
+  return entityPeekMeta(kind as EntityKind).fallbackTitleKey as TranslationKey;
+}
 
 /** Subtitles carry authored prose, so strip any Markdown before showing one inline. */
 function subtitleText(hit: SearchHit): string {
@@ -194,11 +201,11 @@ export function GlobalSearchDialog() {
             <p className="px-4 py-8 text-center text-sm text-fg-faint">{t('search.noResults', { query: trimmed })}</p>
           )}
           {sections.map((section) => {
-            const Icon = section.kind === 'session' ? MessageSquare : ENTITY_PEEK_META[section.kind].icon;
+            const Icon = section.kind === 'session' ? MessageSquare : entityPeekMeta(section.kind as EntityKind).icon;
             return (
               <section key={section.kind}>
                 <div className="flex items-center gap-2 px-4 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-fg-faint">
-                  <span>{t(KIND_LABEL_KEYS[section.kind])}</span>
+                  <span>{t(kindLabelKey(section.kind))}</span>
                   {section.hasMore && kind === null && (
                     <button
                       onClick={() => setKind(section.kind)}

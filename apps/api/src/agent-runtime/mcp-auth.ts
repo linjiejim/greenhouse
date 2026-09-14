@@ -26,7 +26,7 @@ import {
   getProtectedResourceMetadataUrl,
   hashOAuthCredential,
   isOAuthAccessToken,
-  OAUTH_SUPPORTED_SCOPES,
+  oauthSupportedScopes,
   parseStoredOAuthScopes,
   resourceGroupsFromScopes,
   scopesAreSubset,
@@ -47,12 +47,13 @@ const OAUTH_RPD_LIMIT = 10_000;
  * advertise the full set instead: the consent screen still lists each scope and
  * only grants what the resource owner approves, and writes stay confirm-gated.
  */
-const CHALLENGE_SCOPE = OAUTH_SUPPORTED_SCOPES.join(' ');
+/** Computed per challenge: extensions register their groups during boot. */
+const challengeScope = () => oauthSupportedScopes().join(' ');
 
 function oauthChallenge(c: Context, message: string, status: 401 | 403, error?: string) {
   const params = [
     `resource_metadata="${getProtectedResourceMetadataUrl()}"`,
-    `scope="${CHALLENGE_SCOPE}"`,
+    `scope="${challengeScope()}"`,
     ...(error ? [`error="${error}"`] : []),
   ];
   c.header('WWW-Authenticate', `Bearer ${params.join(', ')}`);

@@ -23,6 +23,22 @@ export function createExampleNoteService(db: Db) {
         .returning({ id: exampleNotes.id });
       return rows.length > 0;
     },
+    async get(userId: string, id: number): Promise<ExampleNoteRow | undefined> {
+      const [row] = await db
+        .select()
+        .from(exampleNotes)
+        .where(sql`${exampleNotes.id} = ${id} AND ${exampleNotes.user_id} = ${userId}`)
+        .limit(1);
+      return row;
+    },
+    async search(userId: string, query: string, limit: number): Promise<ExampleNoteRow[]> {
+      return db
+        .select()
+        .from(exampleNotes)
+        .where(sql`${exampleNotes.user_id} = ${userId} AND ${exampleNotes.body} ILIKE ${'%' + query + '%'}`)
+        .orderBy(desc(exampleNotes.id))
+        .limit(limit);
+    },
     async count(): Promise<number> {
       const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(exampleNotes);
       return row?.n ?? 0;

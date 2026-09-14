@@ -45,6 +45,12 @@ export { formatTokens, formatDuration, handleStreamEvent, readNdjsonStream } fro
 export type { FeatureFlag, FeatureKey } from './features.js';
 export { FEATURE_FLAGS, getFeatureFlag, featureDefault, allFeatureFlags, registerFeatureFlags } from './features.js';
 
+// Extension-facing registries (entity kinds, MCP groups, workbench recipes).
+export { registerEntityKinds, extensionEntityKinds } from './entity-links.js';
+export type { ExtensionEntityKindDef, CoreEntityKind, ExtensionEntityKind } from './entity-links.js';
+export { registerMcpResourceGroups, allMcpResourceGroups } from './mcp.js';
+export { registerWidgetRecipes, allWidgetRecipes } from './workbench.js';
+
 // WebSocket message protocol
 export type { ServerWsEvent, ClientWsEvent, OnlineUser } from './ws.js';
 

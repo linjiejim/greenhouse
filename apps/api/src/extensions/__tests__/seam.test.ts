@@ -19,7 +19,25 @@ async function loadWith(enabled: string) {
   const features = await import('@greenhouse/types/features');
   const settings = await import('@greenhouse/types/workspace-settings');
   const middleware = await import('../../auth/middleware.js');
-  return { extensions, boot, registry, points, features, settings, middleware };
+  const entityLinks = await import('@greenhouse/types/entity-links');
+  const mcp = await import('@greenhouse/types/mcp');
+  const workbench = await import('@greenhouse/types/workbench');
+  const searchSources = await import('../../search/sources.js');
+  const oauth = await import('../../platform/oauth.js');
+  return {
+    extensions,
+    boot,
+    registry,
+    points,
+    features,
+    settings,
+    middleware,
+    entityLinks,
+    mcp,
+    workbench,
+    searchSources,
+    oauth,
+  };
 }
 
 afterEach(() => {
@@ -59,6 +77,30 @@ describe('extension seam', { timeout: 60_000 }, () => {
     expect(m.middleware.isPublicPath('/api/ext/example/notes')).toBe(false);
   });
 
+  it('opens the four shared registries to the extension', async () => {
+    const m = await loadWith('example');
+
+    // entity kinds: deeplinks in tool output, peeks in chat
+    expect(m.entityLinks.extensionEntityKinds().map((d) => d.kind)).toContain('ext:example:note');
+    const ref = { kind: 'ext:example:note', id: 42 } as const;
+    expect(m.entityLinks.entityUrl(ref)).toBe('#/example/notes/42');
+    expect(m.entityLinks.parseEntityUrl('#/example/notes/42')).toEqual(ref);
+    // a list page is not a record
+    expect(m.entityLinks.parseEntityUrl('#/example/notes')).toBeNull();
+
+    // MCP consent group → an OAuth scope of its own
+    expect(m.mcp.allMcpResourceGroups()).toContain('example');
+    expect(m.oauth.oauthSupportedScopes()).toContain('mcp:example');
+    expect(m.oauth.normalizeOAuthScopes('mcp:read mcp:example')).toEqual(['mcp:read', 'mcp:example']);
+    expect(m.oauth.resourceGroupsFromScopes(['mcp:read', 'mcp:example'])).toEqual(['example']);
+    expect(m.registry.MCP_EXPOSED_TOOL_IDS).toContain('example_notes_query');
+
+    // search lane + workbench recipe
+    expect(m.searchSources.extensionSearchSources().map((s) => s.kind)).toEqual(['ext:example:note']);
+    expect(m.workbench.allWidgetRecipes().map((r) => r.id)).toContain('example.notes');
+    expect(m.workbench.availableRecipes(['example_notes_query']).map((r) => r.id)).toEqual(['example.notes']);
+  });
+
   it('contributes nothing while disabled', async () => {
     const m = await loadWith('');
     expect(m.extensions.EXTENSIONS).toEqual([]);
@@ -69,6 +111,12 @@ describe('extension seam', { timeout: 60_000 }, () => {
     expect(m.settings.allWorkspaceSettings().some((s) => s.key === 'example.greeting')).toBe(false);
     expect(m.boot.extensionCommands()).toEqual([]);
     expect(m.boot.extensionMigrationSources()).toEqual([]);
+    expect(m.entityLinks.extensionEntityKinds()).toEqual([]);
+    expect(m.mcp.allMcpResourceGroups()).not.toContain('example');
+    expect(m.oauth.oauthSupportedScopes()).not.toContain('mcp:example');
+    expect(m.searchSources.extensionSearchSources()).toEqual([]);
+    expect(m.workbench.allWidgetRecipes().some((r) => r.id === 'example.notes')).toBe(false);
+    expect(() => m.entityLinks.entityUrl({ kind: 'ext:example:note', id: 1 })).toThrow(/Unknown entity kind/);
   });
 
   it('keeps the feature-point invariants with the extension on', async () => {

@@ -27,6 +27,11 @@ export { GREENHOUSE_CONFIG, extensionEnabled, resolvePackPath } from './config/g
 export { getWorkspaceValue } from './settings/workspace-config.js';
 
 export type { FeaturePointDef } from './platform/feature-points.js';
+export type { SearchSource, SearchSourceContext } from './search/sources.js';
+export type { SearchHit } from '@greenhouse/types/search';
+export { entityUrl, parseEntityUrl } from '@greenhouse/types/entity-links';
+export type { EntityRef, ExtensionEntityKindDef } from '@greenhouse/types/entity-links';
+export type { WidgetRecipe } from '@greenhouse/types/workbench';
 export type { FeatureFlag } from '@greenhouse/types/features';
 export type { WorkspaceSettingDef } from '@greenhouse/types/workspace-settings';
 export type { GreenhouseConfig } from '@greenhouse/types/config';

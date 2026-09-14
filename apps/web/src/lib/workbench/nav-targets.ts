@@ -11,13 +11,13 @@
  * record resolve identically.
  */
 
-import { entityUrl, type EntityKind } from '@greenhouse/types/entity-links';
+import { entityUrl, type CoreEntityKind } from '@greenhouse/types/entity-links';
 import type { NavTarget } from '@greenhouse/types/workbench';
 import { BookOpen, FolderKanban, LayoutGrid, Table2, type LucideIcon } from '../icons';
 import type { PlatformApplication } from '../../platform/catalog';
 import { platformApplicationHref, platformApplicationIcon } from '../../platform/catalog';
 
-const ENTITY_ICONS: Record<EntityKind, LucideIcon> = {
+const ENTITY_ICONS: Record<CoreEntityKind, LucideIcon> = {
   project: FolderKanban,
   kb_doc: BookOpen,
   tables_record: Table2,
@@ -37,5 +37,10 @@ export function resolveNavTarget(target: NavTarget, applications: readonly Platf
     if (!application) return { href: null, icon: LayoutGrid };
     return { href: platformApplicationHref(application), icon: platformApplicationIcon(application) };
   }
-  return { href: entityUrl(target.ref), icon: ENTITY_ICONS[target.ref.kind] };
+  // Only core kinds are pinnable today (they are the ones with a read resolver),
+  // so the lookup cannot miss; the fallback keeps a stored card from crashing.
+  return {
+    href: entityUrl(target.ref),
+    icon: (ENTITY_ICONS as Record<string, LucideIcon>)[target.ref.kind] ?? LayoutGrid,
+  };
 }
