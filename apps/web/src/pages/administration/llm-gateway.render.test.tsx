@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { I18nProvider } from '../../lib/i18n';
-import { LlmGatewayAdminPanel } from './admin-llm-gateway';
+import { LlmGatewayAdminPanel } from './llm-gateway';
 
 describe('LlmGatewayAdminPanel', () => {
   it('separates models and gateway keys while presenting the model catalog as a table', () => {

@@ -21,12 +21,10 @@ const AdministrationPage = lazy(() =>
 const DesignPage = lazy(() => import('./pages/design').then((m) => ({ default: m.DesignPage })));
 const KnowledgePage = lazy(() => import('./pages/knowledge').then((m) => ({ default: m.KnowledgePage })));
 const AgentsPage = lazy(() => import('./pages/agents').then((m) => ({ default: m.AgentsPage })));
-const AutomationsPage = lazy(() =>
-  import('./pages/settings/automations').then((m) => ({ default: m.AutomationsPanel })),
-);
-const PersonalTasksPage = lazy(() => import('./pages/settings/prompts').then((m) => ({ default: m.PromptsPage })));
+const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ default: m.AutomationsPanel })));
+const PersonalTasksPage = lazy(() => import('./pages/tasks').then((m) => ({ default: m.PromptsPage })));
 const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
-const ExecutionCenterPage = lazy(() => import('./pages/tasks').then((m) => ({ default: m.ExecutionsPage })));
+const ExecutionCenterPage = lazy(() => import('./pages/executions').then((m) => ({ default: m.ExecutionsPage })));
 const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
 const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => ({ default: m.OAuthConsentPage })));
 const AccountPasswordPage = lazy(() =>

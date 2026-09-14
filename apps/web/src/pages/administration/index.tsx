@@ -20,15 +20,15 @@ import type { NavModule } from '../../lib/nav-registry';
 import { useT } from '../../lib/i18n';
 
 // Sub-panels (shared with the former Settings > Administration section)
-import { UsagePanelWithUsers } from '../settings/usage-enhanced';
-import { FeatureRequestsPanel } from '../settings/feature-requests';
+import { UsagePanelWithUsers } from './usage';
+import { FeatureRequestsPanel } from './feature-requests';
 import { FrictionsPanel } from './frictions';
-import { UserManagementPanel } from '../settings/users';
+import { UserManagementPanel } from './users';
 import { EvalPage } from '../eval';
-import { LlmGatewayAdminPanel } from '../settings/admin-llm-gateway';
-import { McpKeysPanel } from '../settings/mcp-keys';
-import { RuntimeConfigPanel } from '../settings/runtime-config';
-import { BrandingStudioPanel } from '../settings/branding-studio';
+import { LlmGatewayAdminPanel } from './llm-gateway';
+import { McpKeysPanel } from './mcp-keys';
+import { RuntimeConfigPanel } from './runtime-config';
+import { BrandingStudioPanel } from './branding-studio';
 
 const ALL_MODULES = administrationModules;
 const DEFAULT_MODULE = 'users';

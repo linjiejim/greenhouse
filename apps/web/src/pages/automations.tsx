@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { defineCrud, CrudPage, type CrudDataSource, type CrudFieldRenderProps, type FieldDef } from './crud';
+import { defineCrud, CrudPage, type CrudDataSource, type CrudFieldRenderProps, type FieldDef } from './settings/crud';
 import {
   Badge,
   Button,
@@ -25,28 +25,23 @@ import {
   Toggle,
   toast,
   type TagTone,
-} from '../../components/ui';
-import { AlertTriangle, CheckCircle, Clock, History, Play, Plus, Zap, XCircle } from '../../lib/icons';
-import * as api from '../../lib/api';
-import type { ScheduledTask, ScheduledTaskInput } from '../../lib/api';
+} from '../components/ui';
+import { AlertTriangle, CheckCircle, Clock, History, Play, Plus, Zap, XCircle } from '../lib/icons';
+import * as api from '../lib/api';
+import type { ScheduledTask, ScheduledTaskInput } from '../lib/api';
 import type { AutomationRunEntry } from '@greenhouse/types/api';
 import {
   AUTOMATION_OPT_IN_TOOLS,
   normalizeAutomationOptInTools,
   type AutomationOptInTier,
 } from '@greenhouse/types/automation-tools';
-import { useT } from '../../lib/i18n';
-import { formatDate, formatDateInZone } from '../../lib/utils';
-import { fetchWeComBinding } from '../../lib/api/wecom';
-import { fetchFeishuBinding } from '../../lib/api/feishu';
-import { useAuthStore } from '../../stores';
-import {
-  assetScopeItems,
-  DEFAULT_ASSET_SCOPE,
-  filterAutomationsByScope,
-  type AssetScope,
-} from '../../lib/asset-scopes';
-import { ModulePage } from '../../components/app/module-page';
+import { useT } from '../lib/i18n';
+import { formatDate, formatDateInZone } from '../lib/utils';
+import { fetchWeComBinding } from '../lib/api/wecom';
+import { fetchFeishuBinding } from '../lib/api/feishu';
+import { useAuthStore } from '../stores';
+import { assetScopeItems, DEFAULT_ASSET_SCOPE, filterAutomationsByScope, type AssetScope } from '../lib/asset-scopes';
+import { ModulePage } from '../components/app/module-page';
 
 type Task = ScheduledTask & { schedule_desc?: string };
 

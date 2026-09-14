@@ -8,16 +8,16 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { defineCrud, CrudPage, type CrudDataSource } from './crud';
-import { Badge, Button, Checkbox, EmptyState, FilterPills, Input } from '../../components/ui';
-import { Plus, Globe, MessageSquare } from '../../lib/icons';
-import { fetchPrompts, createPrompt, updatePrompt, deletePrompt } from '../../lib/api/prompts';
-import { useT } from '../../lib/i18n';
-import { useAuthStore } from '../../stores';
+import { defineCrud, CrudPage, type CrudDataSource } from './settings/crud';
+import { Badge, Button, Checkbox, EmptyState, FilterPills, Input } from '../components/ui';
+import { Plus, Globe, MessageSquare } from '../lib/icons';
+import { fetchPrompts, createPrompt, updatePrompt, deletePrompt } from '../lib/api/prompts';
+import { useT } from '../lib/i18n';
+import { useAuthStore } from '../stores';
 import type { PromptScope, UserPrompt } from '@greenhouse/types/api';
 import { parseExpectedTools, parseTaskVariables, placeholdersIn } from '@greenhouse/types/tasks';
-import { assetScopeItems, DEFAULT_ASSET_SCOPE, type AssetScope } from '../../lib/asset-scopes';
-import { ModulePage } from '../../components/app/module-page';
+import { assetScopeItems, DEFAULT_ASSET_SCOPE, type AssetScope } from '../lib/asset-scopes';
+import { ModulePage } from '../components/app/module-page';
 
 /** Trim + shape the form payload exactly like the legacy dialog did
  *  (empty shortcut → undefined; is_global only present when the field was visible). */

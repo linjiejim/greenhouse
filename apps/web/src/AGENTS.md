@@ -32,7 +32,7 @@
   - 浏览类**详情/辅助面板**（任务详情、成员列表、活动流、只读预览、CRUD 工作区抽屉）→ 右侧 `<Drawer>`
   - Drawer 内触发创建/编辑时打开居中 Dialog，Drawer 保留为只读上下文；禁止把整套编辑表单直接切换进 Drawer（Project Task 是基准实现）
   - Drawer 背景只压暗**不加 backdrop-blur**（保持页面上下文可读）；Dialog 背景保留 blur
-  - 定时排程不要让用户裸写 cron——用频率+时间的可视化构建器（见 `pages/settings/automations.tsx` 的 buildCron/parseCron），cron 表达式仅作高级逃生口
+  - 定时排程不要让用户裸写 cron——用频率+时间的可视化构建器（见 `pages/automations.tsx` 的 buildCron/parseCron），cron 表达式仅作高级逃生口
 - **弹层底座 `<OverlayFrame>`（`components/overlay-frame.tsx`）是安全区、高度上限、遮罩、Escape/滚动锁/焦点恢复、关闭动画的唯一实现**。`Dialog`/`ConfirmDialog`/`ActionConfirmDialog` 都是它的 variant（`center`/`alert`），调用方用的仍是原来的组件签名。新增弹层一律经底座接入，**不要**再手写 `fixed inset-0` + backdrop + `env(safe-area-inset-*)` + 高度上限那一套；需要新形态就给底座加 variant。`Drawer`/`OverlayPanel` 是第二批（当前行为正确，等第一批在 dev 跑过一个版本再切，见 [spec](../../../docs/specs/20260801-overlay-foundation-and-history-modal-split.md) D2）
 - 浮层面板 → `<OverlayPanel>`（`components/app/overlay-panel.tsx`），不要手写 backdrop + fixed inset-0
   - `variant="side"`（右侧面板）或 `variant="bottom"`（底部抽屉）
@@ -469,7 +469,7 @@ stores/
 - 每页数量用 `const [pageSize, setPageSize] = usePersistedPageSize('<scope>', 20)` 持久化到 localStorage（key 如 `projects.list`、`tables.records`）；**改变 pageSize 时调用方负责把 `page` 重置为 0**。
 - 数据加载的 `limit/offset`（或 `page_size`）一律取自 `pageSize`，并把 `pageSize` 加入 `loadData` 依赖。
 - 1-based 的旧页码（如 `eval/datasets`）在调用处做 `page={page-1}` / `onPageChange={(p)=>setPage(p+1)}` 适配，不改内部约定。
-- 参考：`packages/crud/src/client/`、`pages/settings/users.tsx`。
+- 参考：`packages/crud/src/client/`、`pages/administration/users.tsx`。
 
 ### 标签 Tag 规范
 
