@@ -41,6 +41,12 @@ test.describe('example extension', () => {
     await expect(page.getByTestId('example-admin-module')).toBeVisible();
     await expect(page.getByText('Something went wrong')).toHaveCount(0);
 
+    // A legacy hash the extension claims (`pages[].aliases`) redirects into
+    // it with the tail intact.
+    await page.goto('/#/example-notes/abc');
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/example/notes/abc');
+    await expect(page.getByTestId('example-notes-page')).toBeVisible();
+
     if (created) await api.delete(`/api/ext/example/notes/${created.id}`);
   });
 });

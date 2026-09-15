@@ -45,6 +45,17 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: 'tests/e2e-ui/.auth/state.json' },
       dependencies: ['setup'],
     },
+    {
+      // Specs an extension ships next to its own code:
+      // apps/*/src/extensions/<id>/e2e/*.e2e.ts (see the example extension).
+      // Same authenticated state as the core suite; nothing else in apps/ matches.
+      name: 'extensions',
+      testDir: './apps',
+      testMatch: /src\/extensions\/[^/]+\/e2e\/.*\.e2e\.ts$/,
+      testIgnore: ['**/node_modules/**'],
+      use: { ...devices['Desktop Chrome'], storageState: 'tests/e2e-ui/.auth/state.json' },
+      dependencies: ['setup'],
+    },
   ],
 
   // Auto-start the dev server; reuse one already running locally.
@@ -52,8 +63,11 @@ export default defineConfig({
   // not just the web server (:3100).
   webServer: {
     command: 'pnpm dev',
-    // The browser suite exercises the extension seam through the example extension.
-    env: { ...process.env, GREENHOUSE_EXTENSIONS: 'example' },
+    // The browser suite exercises the extension seam through the example
+    // extension. A deployment that compiles its own extensions in lists them
+    // here too (GREENHOUSE_EXTENSIONS=example,crm,…) so the surface sweep and
+    // their own e2e specs run against them.
+    env: { ...process.env, GREENHOUSE_EXTENSIONS: process.env.GREENHOUSE_EXTENSIONS || 'example' },
     url: `${BASE_URL}/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
