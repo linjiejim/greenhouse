@@ -38,8 +38,9 @@ test('every active extension surface renders without an error', async ({ page, a
       }
       await expect(page.getByText('Something went wrong')).toHaveCount(0);
       await expect(page.getByText('This extension is not enabled on this deployment.')).toHaveCount(0);
-      // Something rendered for the hash — never a blank shell.
-      await expect(page.locator('main')).not.toBeEmpty();
+      // Something rendered for the hash — never a blank shell. `.first()` is
+      // the app shell's own <main>; an extension page may render another one.
+      await expect(page.locator('main').first()).not.toBeEmpty();
     });
   }
   expect(pageErrors, 'uncaught errors while opening extension surfaces').toEqual([]);
