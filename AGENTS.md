@@ -80,10 +80,10 @@ what exists." These rules are as binding as the "add" rules:
 
 - **Pre-commit hook**: husky + lint-staged runs `eslint --fix` + `prettier --write` on staged
   files.
-- **CI gate**: `.github/workflows/ci.yml` runs lint → typecheck → test → **e2e** → **secret-scan**
-  on `main` and every PR (shared pnpm/Node setup lives in `.github/actions/setup`). The test/e2e
-  jobs build the CI database via `migrate` (not push) so the whole migration chain is exercised
-  on every run.
+- **CI gate**: `.github/workflows/ci.yml` runs lint → typecheck → test → **e2e** → **e2e-ui** →
+  **secret-scan** on `main` and every PR (shared pnpm/Node setup lives in `.github/actions/setup`).
+  The test/e2e/e2e-ui jobs build the CI database via `migrate` (not push) so the whole migration
+  chain is exercised on every run.
 - **Secret scanning**: the `secret-scan` job runs [gitleaks](https://github.com/gitleaks/gitleaks)
   over incoming commits. Rules + allowlist live in `.gitleaks.toml`. Never commit real
   credentials; if the scanner flags a **confirmed** non-secret (a token alphabet, a test JWT
@@ -97,9 +97,15 @@ what exists." These rules are as binding as the "add" rules:
   `describe.skipIf(process.env.E2E_NO_LLM === '1')`.
 - **Browser e2e (Playwright)**: `pnpm test:e2e:ui` — deterministic UI regression suite in
   `tests/e2e-ui/` (Chromium): login, chat (LLM stubbed via `page.route`), project create, user
-  create/delete. `playwright.config.ts` auto-starts `pnpm dev` (reuses a running one);
+  create/delete, the extension seam, and **`extension-surfaces.spec.ts`**, which reads every hash
+  the active extensions registered (`window.__greenhouseExtensionSurfaces`) and opens each one —
+  the check for failures only a browser sees (unresolvable module ids, pages that throw on
+  render). Extensions ship their own specs as `apps/web/src/extensions/<id>/e2e/*.e2e.ts`
+  (the `extensions` Playwright project; import only `@playwright/test`). `playwright.config.ts`
+  auto-starts `pnpm dev` with `GREENHOUSE_EXTENSIONS=example` (reuses a running one);
   `auth.setup.ts` creates a super test account via `admin:create` and logs in. Locators use
-  `data-testid` anchors + `role=dialog`. Writes use a per-run prefix and self-clean.
+  `data-testid` anchors + `role=dialog`. Writes use a per-run prefix and self-clean. CI runs the
+  whole suite in the `e2e-ui` job (Chromium via `playwright install --with-deps`).
 - **Screenshot tour (visual smoke)**: `node scripts/capture-screens.mjs` drives a running,
   seeded dev stack (`E2E_BASE_URL`, default `:4400`) through every surface with Playwright:
   it seeds a demo Tables base / workbench layout / skills / custom agent / MCP machine client
@@ -185,8 +191,20 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
 - **Stable vs. edge is a hard promise.** Tag → `ghcr.io/<owner>/greenhouse:X.Y.Z` `:X.Y`
   `:latest` (stable). `main` → `:edge` / `:main-<sha>` only. `release.yml` enforces this.
 - **Publishing workflows are repository-gated.** `release.yml` / `release-please.yml` /
-  `mobile.yml` / `deploy.yml` only run in `linjiejim/greenhouse`; a fork's CD goes in
-  `.github/workflows/fork-*.yml`.
+  `mobile.yml` / `deploy.yml` / `uptime.yml` only run in `linjiejim/greenhouse`; a fork's CD goes
+  in `.github/workflows/fork-*.yml`.
+- **Uptime.** `.github/workflows/uptime.yml` probes `/health` on the integration instance every
+  ten minutes plus any URLs in the `UPTIME_EXTRA_URLS` secret (comma-separated; logged by index so
+  a private hostname never prints). A failed run is the alert (GitHub mails the owner; set
+  `FEISHU_WEBHOOK` to post into a group as well).
+- **Backups are verified or they do not exist.** `scripts/backup-db.sh` checks gzip integrity, a
+  size floor and pg_dump's completion marker, deletes a failed dump, and rotates only files it
+  named itself (`<prefix>_YYYYmmdd_HHMMSS.sql.gz`, newest 7 + 8 Sundays). Every deployment's cron
+  runs this script (`PG_CONTAINER` / `PG_DB` / `PG_USER` / `BACKUP_PREFIX`), never an ad-hoc
+  `pg_dump | gzip` line — that is how an instance once shipped 20-byte dumps for two months.
+- **Mission egress on a blue/green host.** `scripts/cloud-agent-net.sh` takes `API_PORT=3109,3110`
+  so both API slots stay reachable from the sandbox network while everything else private stays
+  rejected; `--check` verifies the exact rule sequence for every listed port.
 - **Artifacts.** API+web = the container image (primary). Browser = versioned zip
   (`pnpm -F @greenhouse/browser package`). Mobile = fingerprint CD
   (`.github/workflows/mobile.yml`, `EXPO_TOKEN`-gated): JS-only change → EAS OTA update;
@@ -306,7 +324,14 @@ greenhouse/
   - The `example` extension is the reference and the test fixture: keep it exercising every
     field; `apps/api/src/extensions/__tests__/seam.test.ts` and
     `apps/web/src/extensions/__tests__/seam.test.ts` load it with `GREENHOUSE_EXTENSIONS=example`;
-    the Playwright stack runs with the example on.
+    the Playwright stack runs with the example on, sweeps every surface it registers and runs
+    its own `e2e/notes.e2e.ts`.
+  - Legacy hashes belong to the extension that replaced them: `pages[].aliases`
+    (`{ wiki: 'content/pages' }`) redirects `#/wiki/<tail>` into the page, tail and query intact.
+    `app.tsx` carries no per-module redirects any more; a core route can never be aliased.
+  - Extension tools must be buildable: `defineExtension` rejects a `static` tool without
+    `create()` and a `lazy` tool without `createLazy()` (core has no per-tool case for extension
+    tools, so such a tool reaches the catalog but is never handed to the agent).
   - Forks: private modules only under the seam, content under `packs/`; `scripts/check-extension-overlay.mjs`
     must pass against `upstream/main`. Anything generic goes upstream first.
   - **Adopting an existing database** (an instance moving onto this codebase): `pnpm cli db baseline`

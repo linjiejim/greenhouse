@@ -1,0 +1,48 @@
+name: Uptime
+
+# Every ten minutes: GET /health on the integration instance plus any URLs in
+# the UPTIME_EXTRA_URLS secret (comma-separated — a private hostname stays out
+# of the public log, which prints only an index for those). A failed run is the
+# alert: GitHub e-mails the repository owner when a scheduled workflow fails,
+# and FEISHU_WEBHOOK (optional) posts the same line into a group.
+# Repository-gated like the other operational workflows.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  probe:
+    if: github.repository == 'linjiejim/greenhouse'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe every instance
+        env:
+          EXTRA_URLS: ${{ secrets.UPTIME_EXTRA_URLS }}
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+        run: |
+          set -u
+          failed=()
+          IFS=',' read -r -a urls <<< "https://green.linjiejim.com/health,${EXTRA_URLS:-}"
+          i=0
+          for url in "${urls[@]}"; do
+            url="${url// /}"
+            [ -z "$url" ] && continue
+            if [ "$i" -eq 0 ]; then label="green.linjiejim.com"; else label="extra-$i"; fi
+            i=$((i + 1))
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo 000)
+            echo "$label -> $code"
+            [ "$code" = 200 ] || failed+=("$label ($code)")
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            msg="greenhouse uptime: ${failed[*]} not healthy"
+            if [ -n "${FEISHU_WEBHOOK:-}" ]; then
+              curl -s -X POST -H 'Content-Type: application/json' "$FEISHU_WEBHOOK" \
+                -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"$msg\"}}" >/dev/null || true
+            fi
+            echo "::error::$msg"
+            exit 1
+          fi

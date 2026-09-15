@@ -477,8 +477,17 @@ generated SQL, and commit it. **On persistent / shared databases use `migrate` o
 ### Backups
 
 ```bash
-./scripts/backup-db.sh            # dump to data/db/backups/ (gzipped, keeps last 10)
+./scripts/backup-db.sh                                   # dump to data/db/backups/
+PG_CONTAINER=greenhouse-postgres-1 ./scripts/backup-db.sh /srv/backups   # docker compose stack
 ```
+
+Every dump is **verified** before it counts (gzip integrity, a size floor, pg_dump's own
+completion marker) — a failed dump leaves no file behind, so a cron log or mail shows the
+failure instead of an empty archive that looks like a way back. Retention keeps the newest
+seven plus eight Sunday dumps and only ever touches files the script named itself
+(`<prefix>_YYYYmmdd_HHMMSS.sql.gz`); hand-made archives next to them are left alone.
+`PG_CONTAINER` / `PG_USER` / `PG_DB` / `BACKUP_PREFIX` / `KEEP_DAILY` / `KEEP_WEEKLY` select
+the target and the policy.
 
 ## Contributing
 
