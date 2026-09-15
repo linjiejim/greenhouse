@@ -6,13 +6,18 @@
 //    4–6 GB copy per tree. CI is not redirected (release workflows collect the
 //    artifacts from `apps/desktop/src-tauri/target/**`), and an explicit
 //    CARGO_TARGET_DIR is always respected.
-// 2. `tauri dev|build` get the deployment overlay from `tauri-config.mjs` appended
-//    as `--config`, so a fork or a release pipeline configures the shell with
-//    environment variables instead of editing `tauri.conf.json`.
-// 3. Local macOS `tauri build`s are ad-hoc signed as a whole bundle, and updater
-//    artifacts are skipped when there is no minisign key — see prepareDesktopCommand.
+// 2. `tauri dev|build` get a config overlay: the deployment overlay from
+//    `tauri-config.mjs` (so a fork or a release pipeline configures the shell with
+//    environment variables instead of editing `tauri.conf.json`) plus, for local
+//    builds without a minisign key, `createUpdaterArtifacts: false`. The overlay is
+//    written to a temp file and passed as `--config <path>` — never inline JSON:
+//    on Windows the command goes through cmd.exe, which strips the quotes and hands
+//    Tauri `{identifier:…}` ("key must be a string").
+// 3. Local macOS `tauri build`s are ad-hoc signed as a whole bundle — see
+//    prepareDesktopCommand.
 import { spawn } from 'node:child_process';
-import { homedir } from 'node:os';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildTauriConfigOverlay, committedCsp } from './tauri-config.mjs';
@@ -35,11 +40,6 @@ function tauriSubcommand(command, args) {
   return executable === 'tauri' ? args[0] : undefined;
 }
 
-function insertBeforeRunnerArgs(args, values) {
-  const separator = args.indexOf('--');
-  args.splice(separator === -1 ? args.length : separator, 0, ...values);
-}
-
 /**
  * Give local packages a real bundle signature instead of leaving only Cargo's
  * linker signature on the Mach-O executable. macOS TCC evaluates the running
@@ -51,21 +51,19 @@ function insertBeforeRunnerArgs(args, values) {
  * full-bundle ad-hoc signature and skip updater artifacts when their minisign
  * private key is not available.
  *
- * `overlay` is the deployment overlay (already computed, so this stays pure); it
- * is appended to `tauri dev` and `tauri build` alike, in CI too — that is the
- * whole point of it.
+ * `overlay` is the deployment overlay (already computed, so this stays pure).
+ * Returns `{ args, env, config }`: `config` is the merged overlay object to pass
+ * to `tauri dev|build` (null when there is nothing to override) — the caller
+ * turns it into a `--config <file>` argument.
  */
 export function prepareDesktopCommand(command, args, env = process.env, platform = process.platform, overlay = null) {
   const nextArgs = [...args];
   const nextEnv = { ...env };
   const subcommand = tauriSubcommand(command, nextArgs);
-
-  if (overlay && (subcommand === 'dev' || subcommand === 'build')) {
-    insertBeforeRunnerArgs(nextArgs, ['--config', JSON.stringify(overlay)]);
-  }
+  let config = overlay && (subcommand === 'dev' || subcommand === 'build') ? structuredClone(overlay) : null;
 
   if (subcommand !== 'build' || nextEnv.CI) {
-    return { args: nextArgs, env: nextEnv };
+    return { args: nextArgs, env: nextEnv, config };
   }
 
   if (
@@ -78,10 +76,18 @@ export function prepareDesktopCommand(command, args, env = process.env, platform
   }
 
   if (!nextEnv.TAURI_SIGNING_PRIVATE_KEY) {
-    insertBeforeRunnerArgs(nextArgs, ['--config', JSON.stringify({ bundle: { createUpdaterArtifacts: false } })]);
+    config = { ...(config ?? {}), bundle: { ...(config?.bundle ?? {}), createUpdaterArtifacts: false } };
   }
 
-  return { args: nextArgs, env: nextEnv };
+  return { args: nextArgs, env: nextEnv, config };
+}
+
+/** `--config <path>` goes before any `--` runner arguments. */
+export function withConfigArg(args, configPath) {
+  const next = [...args];
+  const separator = next.indexOf('--');
+  next.splice(separator === -1 ? next.length : separator, 0, '--config', configPath);
+  return next;
 }
 
 const isEntrypoint = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -99,7 +105,14 @@ if (isEntrypoint) {
   const targetDir = sharedCargoTargetDir(env);
   if (targetDir) env.CARGO_TARGET_DIR = targetDir;
 
-  const child = spawn(cmd, prepared.args, {
+  let finalArgs = prepared.args;
+  if (prepared.config) {
+    const configPath = join(mkdtempSync(join(tmpdir(), 'greenhouse-tauri-')), 'tauri.overlay.json');
+    writeFileSync(configPath, JSON.stringify(prepared.config));
+    finalArgs = withConfigArg(prepared.args, configPath);
+  }
+
+  const child = spawn(cmd, finalArgs, {
     stdio: 'inherit',
     env,
     shell: process.platform === 'win32',
