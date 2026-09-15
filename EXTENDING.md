@@ -148,6 +148,8 @@ export const crmWebExtension = defineWebExtension({
       titleKey: 'ext.crm.title',
       // Optional: sub-modules of this page — `#/crm/companies`, module id `crm.companies`.
       modules: [{ key: 'companies', labelKey: 'ext.crm.companies', icon: Users }],
+      // Optional: hashes from before the extension — `#/customers/<tail>` → `#/crm/companies/<tail>`.
+      aliases: { customers: 'crm/companies' },
     },
   ],
   navigation: [{ id: 'crm', labelKey: 'ext.crm.nav', icon: Users, href: '#/crm', route: 'crm', requireFeature: 'crm' }],
@@ -162,6 +164,7 @@ export const crmWebExtension = defineWebExtension({
 |---|---|---|
 | `pages` | hash router (`#/<route>` and sub-paths), top bar, contextual sidebar | Rendered only while the API reports the id active; otherwise a calm "not enabled" state. |
 | `pages[].modules` | the navigation registry as `standalone` modules, id `<id>.<key>` | What `<ModulePage moduleId="crm.companies">`, the module rail and the breadcrumb resolve against. Omit for a one-screen page. |
+| `pages[].aliases` | the hash router, before extension routes | Legacy top-level hashes → a path inside this page; the tail and query survive (`#/customers/42` → `#/crm/companies/42`). Must land in the page's own route, must not repeat a route, unique across the compiled set; a core route can never be aliased. |
 | `navigation` | the sidebar "More" menu (desktop flyout + mobile drawer) | `requireFeature` / `requireRole` hide the entry per user. |
 | `modules` | Settings ("Extensions" section) or Administration | Key becomes `#/settings/<key>` or `#/administration/<key>`; the module id is `settings.<key>` / `admin.<key>` (core's own shape), so a panel renders through `<ModulePage moduleId="admin.<key>">`; pins and breadcrumbs work. |
 | `messages` | i18n, under `ext.<id>.*` | `t('ext.crm.title')` type-checks; a missing locale falls back to English. The visible-copy guard still rejects hard-coded English in your TSX. |
@@ -176,6 +179,27 @@ export const crmWebExtension = defineWebExtension({
 
 On the browser side, `<DriveBrowser owner={{ scope: 'crm', owner_key: String(companyId) }} />`
 renders that cabinet with the same UI Tables and Knowledge use.
+
+### Proving it in a browser
+
+An API-level test cannot see the failures an extension actually ships with — a module id the
+panel cannot resolve, a page that throws on first render, a front end still calling a moved
+route. Two things cover that, and both are generic:
+
+- **The surface sweep** — `tests/e2e-ui/extension-surfaces.spec.ts` reads every hash the
+  *active* extensions registered (`window.__greenhouseExtensionSurfaces`, fed by
+  `defineWebExtension`: pages, page modules, "More" entries, Settings / Administration modules,
+  aliases) and opens each one, failing on an error boundary, a "not enabled" state, a blank
+  shell or an uncaught page error. Nothing to write: compile an extension in, switch it on, and
+  the sweep covers it.
+- **Extension-owned specs** — `apps/web/src/extensions/<id>/e2e/*.e2e.ts` run in the
+  `extensions` Playwright project with the shared authenticated state (see
+  `apps/web/src/extensions/example/e2e/notes.e2e.ts`). Import only `@playwright/test`; the
+  folder stays self-contained and inside the seam.
+
+CI runs both in the `e2e-ui` job with `GREENHOUSE_EXTENSIONS=example`. A fork's CI runs the
+same `pnpm test:e2e:ui` with its own extensions enabled (the config file's list applies when
+the variable is unset), so a private extension gets the sweep and its own specs on every push.
 
 ### What the seam does not cover (yet)
 
