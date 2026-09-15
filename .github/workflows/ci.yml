@@ -90,6 +90,56 @@ jobs:
         env:
           DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
 
+  # Browser suite (tests/e2e-ui plus every extension's own `e2e/*.e2e.ts`).
+  # Boots `pnpm dev` with the example extension on and drives Chromium through
+  # the real UI: login, chat (LLM stubbed in the page), projects, users, the
+  # extension seam, and a sweep that opens every surface the active extensions
+  # register. This is the gate for failures no API test can see — a module id
+  # the panel cannot resolve, a page that throws on first render.
+  e2e-ui:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: greenhouse_test
+          POSTGRES_USER: greenhouse
+          POSTGRES_PASSWORD: greenhouse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U greenhouse -d greenhouse_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
+      # Same hermetic settings as scripts/e2e-ci.sh: a signing key so tokens
+      # round-trip, and an LLM endpoint that refuses connections so nothing
+      # real is ever called (the chat spec stubs the stream in the browser).
+      TOKEN_SIGNING_KEY: '6666666666666666666666666666666666666666666666666666666666666666'
+      PROVIDER_TOKEN_ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
+      LLM_API_KEY: sk-e2e-fake
+      LLM_MODEL: e2e-fake-model
+      LLM_BASE_URL: http://127.0.0.1:1/v1
+      LOG_LEVEL: error
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Apply migrations to test database
+        run: npx drizzle-kit migrate
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run browser suite
+        run: pnpm test:e2e:ui
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   # Secret scanning (gitleaks) — blocks newly-leaked credentials on every PR/push.
   # Rules + allowlist live in .gitleaks.toml at the repo root. Full history was
   # verified clean once locally; this gate scans incoming commits. Public repo, so
