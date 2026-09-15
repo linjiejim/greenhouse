@@ -5,6 +5,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/linjiejim/greenhouse/compare/v1.1.0...v1.2.0) (2026-09-15)
+
+
+### Added
+
+* **desktop:** Tauri desktop shell with signed hot updates, configured per deployment by environment ([da114c9](https://github.com/linjiejim/greenhouse/commit/da114c9d8e9a9adade82574487997fabddcc7641))
+
+
+### Fixed
+
+* **agent-core:** build DeepSeek-backed openai-compatible entries with the DeepSeek client ([15bcb3f](https://github.com/linjiejim/greenhouse/commit/15bcb3f780915eb786d055e01a1ed979e9f7acf5))
+* **desktop:** pass the Tauri config overlay as a file, not inline JSON ([86bf439](https://github.com/linjiejim/greenhouse/commit/86bf439aafb1b38a92d066c0d99c622736b7a23c))
+
 ## [1.1.0](https://github.com/linjiejim/greenhouse/compare/v1.0.0...v1.1.0) (2026-09-15)
 
 
