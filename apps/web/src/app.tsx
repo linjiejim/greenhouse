@@ -31,7 +31,7 @@ const AccountPasswordPage = lazy(() =>
   import('./pages/account-password').then((m) => ({ default: m.AccountPasswordPage })),
 );
 import { AgentProvider } from './components/agent-context';
-import { compiledExtensionRoutes } from './extensions';
+import { compiledExtensionRouteAliases, compiledExtensionRoutes } from './extensions';
 import { ExtensionPageHost, ExtensionSidebarPanel } from './extensions/host';
 import { useExtensionsStore } from './stores/extensions-store';
 import { AssistantPanel } from './components/agent-panel';
@@ -168,6 +168,22 @@ function LeaveConfirmDialog({
   );
 }
 
+/** Top-level hashes core owns; an extension alias can never take one over. */
+const CORE_ROUTES: ReadonlySet<string> = new Set([
+  'chat',
+  'automations',
+  'agents',
+  'settings',
+  'administration',
+  'projects',
+  'design',
+  'knowledge',
+  'tables',
+  'skillhub',
+  'tasks',
+  'executions',
+]);
+
 function parseRoute(hash: string): ParsedRoute {
   const executionRedirect = legacyExecutionRedirect(hash);
   if (executionRedirect) {
@@ -205,35 +221,6 @@ function parseRoute(hash: string): ParsedRoute {
     return { route: 'tasks', subPath: '', params: new URLSearchParams() };
   }
 
-  if (topLevel === 'sync') {
-    const syncTail = segments.slice(1).filter(Boolean).join('/');
-    const subPath = `wiki/sync${syncTail ? `/${syncTail}` : ''}`;
-    window.location.hash = `#/knowledge/${subPath}`;
-    return { route: 'knowledge', subPath, params: new URLSearchParams(query || '') };
-  }
-
-  if (topLevel === 'wiki') {
-    const wikiTail = segments.slice(1).filter(Boolean).join('/');
-    const destination = `#/knowledge/wiki${wikiTail ? `/${wikiTail}` : ''}`;
-    window.location.hash = destination;
-    return {
-      route: 'knowledge',
-      subPath: `wiki${wikiTail ? `/${wikiTail}` : ''}`,
-      params: new URLSearchParams(query || ''),
-    };
-  }
-
-  if (topLevel === 'eval') {
-    const evalTail = segments.slice(1).filter(Boolean).join('/');
-    const destination = `#/administration/eval${evalTail ? `/${evalTail}` : ''}`;
-    window.location.hash = destination;
-    return {
-      route: 'administration',
-      subPath: `eval${evalTail ? `/${evalTail}` : ''}`,
-      params: new URLSearchParams(query || ''),
-    };
-  }
-
   if (topLevel === 'history') {
     window.location.hash = '#/chat';
     return { route: 'chat', subPath: '', params: new URLSearchParams() };
@@ -261,6 +248,17 @@ function parseRoute(hash: string): ParsedRoute {
     return { route: 'chat', subPath: '', params: new URLSearchParams() };
   }
 
+  // Legacy hashes an extension claims (`pages[].aliases`) redirect into the
+  // extension, tail and query intact, so bookmarks and chat links that predate
+  // it keep landing somewhere real. A core route can never be aliased away.
+  const alias = CORE_ROUTES.has(topLevel) ? undefined : compiledExtensionRouteAliases().get(topLevel);
+  if (alias) {
+    const tail = segments.slice(1).filter(Boolean).join('/');
+    const destination = `#/${alias}${tail ? `/${tail}` : ''}${query ? `?${query}` : ''}`;
+    window.location.hash = destination;
+    return parseRoute(destination);
+  }
+
   // Extension pages answer their own top-level segment; the host checks the
   // extension is active before rendering anything.
   if (compiledExtensionRoutes().has(topLevel)) {
@@ -272,24 +270,7 @@ function parseRoute(hash: string): ParsedRoute {
     };
   }
 
-  const route = (
-    [
-      'chat',
-      'automations',
-      'agents',
-      'settings',
-      'administration',
-      'projects',
-      'design',
-      'knowledge',
-      'tables',
-      'skillhub',
-      'tasks',
-      'executions',
-    ].includes(topLevel)
-      ? topLevel
-      : 'chat'
-  ) as Route;
+  const route = (CORE_ROUTES.has(topLevel) ? topLevel : 'chat') as Route;
   const subPath = segments.slice(1).join('/');
   return { route, subPath, params: new URLSearchParams(query || '') };
 }

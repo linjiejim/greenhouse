@@ -8,10 +8,13 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   COMPILED_WEB_EXTENSIONS,
   activeExtensionNavItems,
+  compiledExtensionRouteAliases,
   compiledExtensionRoutes,
   extensionModuleComponent,
+  extensionSurfaces,
   findExtensionPage,
 } from '../index';
+import { defineWebExtension } from '../define';
 import { translate } from '../../lib/i18n';
 import { isEntityUrl, parseEntityUrl } from '@greenhouse/types/entity-links';
 import { availableRecipes } from '@greenhouse/types/workbench';
@@ -188,5 +191,51 @@ describe('web extension seam', () => {
       fetchSpy.mockRestore();
       useExtensionsStore.getState().reset();
     }
+  });
+});
+
+describe('web extension aliases and surfaces', () => {
+  it('maps a legacy hash into the page that claims it', () => {
+    expect(compiledExtensionRouteAliases().get('example-notes')).toBe('example/notes');
+    expect(compiledExtensionRouteAliases().has('example')).toBe(false);
+  });
+
+  it('refuses an alias that leaves its own page or repeats a route', () => {
+    const page = { route: 'x', component: () => null };
+    expect(() => defineWebExtension({ id: 'x', pages: [{ ...page, aliases: { legacy: 'y/z' } }] })).toThrow(
+      /must redirect into its own page/,
+    );
+    expect(() => defineWebExtension({ id: 'x', pages: [{ ...page, aliases: { x: 'x' } }] })).toThrow(
+      /already one of its page routes/,
+    );
+    expect(() => defineWebExtension({ id: 'x', pages: [{ ...page, aliases: { 'Bad Hash': 'x' } }] })).toThrow(
+      /must match/,
+    );
+    expect(defineWebExtension({ id: 'x', pages: [{ ...page, aliases: { legacy: 'x/sub' } }] }).id).toBe('x');
+  });
+
+  it('lists every hash the active extensions answer for, and nothing while inactive', () => {
+    expect(extensionSurfaces(new Set())).toEqual([]);
+    const surfaces = extensionSurfaces(new Set(['example']));
+    expect(surfaces.map((s) => s.hash)).toEqual(
+      expect.arrayContaining([
+        '#/example',
+        '#/example/notes',
+        '#/example-notes',
+        '#/settings/example',
+        '#/administration/example',
+      ]),
+    );
+    expect(surfaces.find((s) => s.kind === 'alias')).toMatchObject({
+      hash: '#/example-notes',
+      redirectsTo: '#/example/notes',
+    });
+    expect(surfaces.find((s) => s.hash === '#/administration/example')).toMatchObject({
+      kind: 'administration-module',
+      requireRole: ['super'],
+    });
+    expect(surfaces.every((s) => s.extensionId === 'example')).toBe(true);
+    // In a browser the same list hangs off window.__greenhouseExtensionSurfaces;
+    // tests/e2e-ui/extension-surfaces.spec.ts reads it from the running page.
   });
 });
