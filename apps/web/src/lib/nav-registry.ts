@@ -28,6 +28,7 @@ import {
   Bot,
   Table2,
   FolderKanban,
+  Monitor,
 } from './icons';
 import type { LucideIcon } from './icons';
 import type { FeatureKey } from '@greenhouse/types/features';
@@ -52,6 +53,11 @@ export interface NavModule {
   requireRole?: 'super'[];
   /** Optional per-user feature flag gate (a core FeatureKey or an extension flag). */
   requireFeature?: FeatureKey | (string & {});
+  /**
+   * Only show inside the desktop app. Used for pages whose every control drives a
+   * native command — in a browser they would render nothing but errors.
+   */
+  requireDesktop?: boolean;
   /** Set for modules an extension contributed; the module only shows while that extension is active. */
   extensionId?: string;
   /** Translation keys for extension modules (core modules use NAV_COPY). */
@@ -76,6 +82,7 @@ export interface NavModule {
 //   • Preferences + Cloud (one flat block, no header) — Preferences, Groups,
 //     Agent Connections, Connections
 //   • Labs (feature-gated) — Memory
+//   • Desktop — the desktop app (download in a browser, native controls in the shell)
 //
 // Automation, Tasks, and My Agents live in the Chat workspace and are not
 // Settings modules.
@@ -148,11 +155,27 @@ const SETTINGS_LABS: NavModule[] = [
   },
 ];
 
+// The Desktop entry is visible everywhere: inside the shell it manages native
+// controls, in a browser it offers the installer download (desktop-download.tsx).
+// Nothing here sets `requireDesktop` today; the flag stays for pages whose every
+// control would be a native command.
+const SETTINGS_DESKTOP: NavModule[] = [
+  {
+    id: 'settings.desktop',
+    label: 'Desktop',
+    icon: Monitor,
+    path: '#/settings/desktop',
+    parent: 'settings',
+    description: 'Desktop app download, shortcuts, permissions, and updates',
+  },
+];
+
 const SETTINGS_EXTENSIONS: NavModule[] = [];
 
 export const settingsSections: SettingsNavSection[] = [
   { key: 'top', items: SETTINGS_TOP },
   { key: 'labs', label: 'Labs', labelKey: 'navigation.labs', items: SETTINGS_LABS },
+  { key: 'desktop', items: SETTINGS_DESKTOP },
   { key: 'extensions', label: 'Extensions', labelKey: 'navigation.extensions', items: SETTINGS_EXTENSIONS },
 ];
 
@@ -357,6 +380,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
     description: 'navigation.emailAccountsDesc',
   },
   'settings.memory': { label: 'navigation.memory', description: 'navigation.memoryDesc' },
+  'settings.desktop': { label: 'navigation.desktop', description: 'navigation.desktopDesc' },
   'admin.users': { label: 'navigation.users', description: 'navigation.usersDesc' },
   'admin.runtime-config': { label: 'navigation.runtimeConfig', description: 'navigation.runtimeConfigDesc' },
   'admin.branding': { label: 'navigation.branding', description: 'navigation.brandingDesc' },

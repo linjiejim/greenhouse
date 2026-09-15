@@ -91,3 +91,11 @@ docs/local/
 docs/specs/
 design/
 docs/sketches/
+
+# Desktop shell (Tauri)
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+# Signing keys: the public halves are baked into builds, the private halves never leave a machine/CI secret
+apps/desktop/.keys/
+# Release staging written by scripts/desktop/*.mjs
+apps/desktop/release/

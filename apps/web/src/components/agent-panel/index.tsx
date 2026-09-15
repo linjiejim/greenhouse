@@ -20,6 +20,9 @@ import { Bot, Clock, Maximize2, Plus, X } from '../../lib/icons';
 import * as api from '../../lib/api';
 import { useSessionManager } from '../../lib/session-manager';
 import { useT } from '../../lib/i18n';
+import { onAttachment, type AgentAttachment } from '../../lib/desktop/attach';
+
+type DesktopAttachmentRequest = AgentAttachment & { id: number };
 
 export function AssistantNavButton() {
   const t = useT();
@@ -63,6 +66,8 @@ export function AssistantPanel() {
   const [showHistory, setShowHistory] = useState(false);
   const [historySessions, setHistorySessions] = useState<api.Session[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [desktopAttachment, setDesktopAttachment] = useState<DesktopAttachmentRequest | null>(null);
+  const desktopAttachmentIdRef = useRef(0);
   const panelRef = useRef<HTMLDivElement>(null);
   const [panelWidth, setPanelWidth] = useState(() => Math.max(480, Math.round(window.innerWidth * 0.8)));
   const [panelHeight, setPanelHeight] = useState(() => window.innerHeight - 64);
@@ -81,6 +86,21 @@ export function AssistantPanel() {
     setRendered(false);
     setClosing(false);
   }, []);
+
+  // Desktop captures (screenshot shortcut, selection bar) land here: files go
+  // through the pane's normal image path, the rest is an ordinary launch request.
+  useEffect(
+    () =>
+      onAttachment((attachment) => {
+        const { files, draft, autoSend, profileId, newConversation, sessionId } = attachment;
+        if (files?.length) {
+          desktopAttachmentIdRef.current += 1;
+          setDesktopAttachment({ files, id: desktopAttachmentIdRef.current });
+        }
+        launchAssistant({ draft, autoSend, profileId, newConversation, sessionId });
+      }, 'assistant'),
+    [launchAssistant],
+  );
 
   useEffect(() => {
     setContextDismissed(false);
@@ -293,6 +313,7 @@ export function AssistantPanel() {
         onLaunchConsumed={clearLaunchRequest}
         onSessionChange={setCurrentSessionId}
         getTurnEnvironment={getTurnEnvironment}
+        externalAttachment={desktopAttachment}
       />
     </OverlayPanel>
   );

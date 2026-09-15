@@ -75,6 +75,17 @@ describe('markdown link classification', () => {
     expect(anchor(render('[site](https://example.com)', 'new-window'))).toContain('target="_blank"');
   });
 
+  it('keeps in-app links in place on desktop, where _blank is a dead click', () => {
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    try {
+      expect(anchor(render('[docs](#/knowledge)', 'new-window'))).not.toContain('target=');
+      // External links are unaffected — that path predates this rule.
+      expect(anchor(render('[site](https://example.com)', 'new-window'))).toContain('target="_blank"');
+    } finally {
+      delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    }
+  });
+
   it('still renders @-mentions as inert chips', () => {
     const tag = anchor(render('[@Jim](user:abc)'));
     expect(tag).toContain('kb-mention');

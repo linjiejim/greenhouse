@@ -63,6 +63,7 @@ import type { AssistantLaunchRequest } from '@greenhouse/types/agent-context';
 import type { ChatTurnEnvironment } from '@greenhouse/types/api';
 import { snapshotClientActions } from '../../lib/client-actions/registry';
 import { pageActionScopeId } from '../../lib/page-action-scope';
+import type { AgentAttachment } from '../../lib/desktop/attach';
 import { CONVERSATION_SURFACE_POLICIES, type ConversationSurface } from './surface-policy';
 import { onComposerDraft } from '../../lib/composer-draft';
 import { MissionProgressMessages } from './mission-progress-messages';
@@ -70,6 +71,7 @@ import { groupMissionOutcomes } from './mission-outcome-grouping';
 
 export type { ConversationSurface } from './surface-policy';
 
+type ExternalAttachmentRequest = AgentAttachment & { id: number };
 type PendingForkRequest = { messageId?: string; preserveDraft: boolean };
 
 export interface ConversationPaneProps {
@@ -83,6 +85,12 @@ export interface ConversationPaneProps {
   onLaunchConsumed?: (id: number) => void;
   onSessionChange?: (sessionId: string | null) => void;
   getTurnEnvironment?: () => ChatTurnEnvironment | undefined;
+  /**
+   * Files (and optionally a draft) handed in from outside the React tree — the
+   * desktop shell's screenshot / selection capture. Keyed by `id` so the same
+   * request is applied once even if the host re-renders with it still set.
+   */
+  externalAttachment?: ExternalAttachmentRequest | null;
 }
 
 /** Stored sessions may still carry retired ids; map them onto the one preset. */
@@ -149,6 +157,7 @@ export function ConversationPane({
   onLaunchConsumed,
   onSessionChange,
   getTurnEnvironment,
+  externalAttachment,
 }: ConversationPaneProps) {
   const policy = CONVERSATION_SURFACE_POLICIES[surface];
   /**
@@ -1512,6 +1521,27 @@ export function ConversationPane({
       }),
     [],
   );
+
+  const lastExternalAttachmentIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!externalAttachment || lastExternalAttachmentIdRef.current === externalAttachment.id) return;
+    lastExternalAttachmentIdRef.current = externalAttachment.id;
+
+    void (async () => {
+      if (externalAttachment.files?.length) {
+        // Same path as a pasted or dropped image: one attachment path, not two.
+        await handleImageSelect(externalAttachment.files);
+      }
+      if (externalAttachment.draft) {
+        sessionDrafts.set(draftKey, { input: externalAttachment.draft, annotations: [], prompt: null });
+        setInput(externalAttachment.draft);
+        setAnnotations([]);
+        setSelectedPrompt(null);
+        setTaskValues({});
+        if (externalAttachment.autoSend) setPendingAutoSend(externalAttachment.draft);
+      }
+    })();
+  }, [draftKey, externalAttachment, handleImageSelect]);
 
   const removeImage = useCallback((index: number) => {
     setPendingImages((prev) => {

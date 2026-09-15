@@ -25,6 +25,7 @@
     "@greenhouse/knowledge-editor": "workspace:*",
     "@greenhouse/types": "workspace:*",
     "@greenhouse/utils": "workspace:*",
+    "@tauri-apps/api": "^2.11.1",
     "@tiptap/core": "^3.24.0",
     "@tiptap/extension-placeholder": "^3.24.0",
     "@tiptap/pm": "^3.24.0",

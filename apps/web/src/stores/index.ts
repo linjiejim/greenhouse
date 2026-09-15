@@ -16,3 +16,5 @@ export { useProfileStore } from './profile-store.js';
 export { useWsStore } from './ws-store.js';
 export { useKnowledgeStore } from './knowledge-store.js';
 export { useSidePaneStore } from './side-pane-store.js';
+export { useDesktopUpdateStore } from './desktop-update-store.js';
+export type { PendingDesktopUpdate } from './desktop-update-store.js';

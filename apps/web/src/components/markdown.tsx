@@ -12,6 +12,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { marked } from 'marked';
 import { parseEntityUrl } from '@greenhouse/types/entity-links';
 import { apiUrl } from '../lib/api-base';
+import { isDesktop } from '../lib/desktop/bridge';
 import { sanitizeHtml } from '../lib/utils';
 import { downloadCsv, markdownTableToCsv, markdownTableToTsv, safeCsvFilename } from '../lib/csv-export';
 import { openEntityPeek } from '../stores/entity-peek-store';
@@ -339,9 +340,12 @@ function sanitizeMarkdownNode(node: Node, linkTarget: MarkdownLinkTarget): void 
         } else if (!isHashRoute) {
           el.setAttribute('target', '_blank');
           el.setAttribute('rel', 'noopener noreferrer');
-        } else if (linkTarget === 'new-window') {
+        } else if (linkTarget === 'new-window' && !isDesktop()) {
           // In-app routes open a second tab from chat so the conversation
-          // survives.
+          // survives — but only in a browser. The desktop shell has no
+          // `opener:open-url` permission and blocks `target=_blank` new-window
+          // requests outright, so there the same attribute is a dead click;
+          // it navigates in place instead (a known, deliberate degradation).
           el.setAttribute('target', '_blank');
           el.setAttribute('rel', 'noopener noreferrer');
         }

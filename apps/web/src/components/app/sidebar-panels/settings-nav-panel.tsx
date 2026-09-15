@@ -5,6 +5,7 @@
  * - Preferences + Cloud (one flat block, no header): Preferences, Groups,
  *   Agent Connections, Greenhouse Admin
  * - Labs (feature-gated): Memory
+ * - Desktop: the desktop app (download in a browser, native controls in the shell)
  *
  * Automation, Tasks, and My Agents live in the Chat sidebar workspace.
  *
@@ -23,6 +24,7 @@ import { ContextMenu, useContextMenu } from '../context-menu';
 import { isNavModuleActive, localizeNavModule, settingsSections } from '../../../lib/nav-registry';
 import { useExtensionsStore } from '../../../stores/extensions-store';
 import { canUseFeature } from '../../../lib/features';
+import { isDesktop } from '../../../lib/desktop';
 import type { NavModule, SettingsNavSection } from '../../../lib/nav-registry';
 
 // ─── Component ───────────────────────────────────────────
@@ -48,6 +50,7 @@ export function SettingsNavPanel({ activeModule, collapsed, onSignOut }: Setting
   const canViewModule = (mod: NavModule) => {
     const roleAllowed = !mod.requireRole || (mod.requireRole.includes('super') && isSuper);
     const featureAllowed = !mod.requireFeature || canUseFeature(currentUser, mod.requireFeature);
+    if (mod.requireDesktop && !isDesktop()) return false;
     return roleAllowed && featureAllowed;
   };
   const canViewSection = (section: SettingsNavSection) =>

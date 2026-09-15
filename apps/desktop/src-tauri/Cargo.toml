@@ -1,0 +1,77 @@
+[package]
+name = "greenhouse-desktop"
+version = "0.2.0"
+description = "Greenhouse desktop shell"
+edition = "2021"
+rust-version = "1.82"
+publish = false
+
+[lib]
+# The desktop logic lives in a lib so `cargo test` can exercise it without a
+# windowing environment; `main.rs` is a thin launcher.
+name = "greenhouse_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+# build.rs reads apps/desktop/package.json to stamp in the baseline bundle version.
+serde_json = "1"
+
+[dependencies]
+# `macos-private-api` is what allows transparent windows, which the floating
+# selection bar and quick-capture composer need to render as rounded cards rather
+# than opaque rectangles. It bars App Store distribution — the shell is distributed
+# as a direct download (GitHub Releases, or a deployment's own update source).
+tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png", "macos-private-api"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+tempfile = "3"
+# Clipboard access is cross-platform, unlike most of the native layer.
+arboard = "3"
+# Async commands run on Tauri's runtime; `rt` + `macros` are what the async tests
+# (`#[tokio::test]` in `commands::updates`) need.
+tokio = { version = "1", features = ["sync", "rt", "time", "macros"] }
+log = "0.4"
+
+# Web-bundle hot updates: fetch, verify (sha256 + ed25519), unpack.
+sha2 = "0.10"
+ed25519-dalek = "2"
+flate2 = "1"
+tar = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tauri-plugin-log = "2"
+tauri-plugin-process = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-global-shortcut = "2"
+
+# Shell (full-app) updates. The web layer updates separately and far more often via
+# the signed bundle flow in `bundle`/`updater` — see apps/desktop/AGENTS.md.
+[target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
+tauri-plugin-updater = "2"
+
+# macOS-only native capabilities.
+#
+# CGEventTap is driven directly rather than through `rdev`: rdev 0.5 pins
+# core-graphics 0.19 / cocoa 0.22 / core-foundation 0.7, which would sit alongside
+# the 0.25/0.10 that Tauri already links. One event stack, current bindings.
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
+core-graphics = "0.25"
+accessibility-sys = "0.2"
+# Greenhouse Island is still a webview, but AppKit owns its screen-safe notch
+# geometry and Space/full-screen behavior.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSScreen", "NSWindow"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSGeometry", "NSObject", "objc2-core-foundation"] }
+
+# Windows has no scriptable interactive capture, so it goes through a capture library.
+# macOS uses the built-in `screencapture` binary instead — see native/capture.rs.
+[target.'cfg(target_os = "windows")'.dependencies]
+xcap = "0.9"
+
+[features]
+# Used by the Tauri CLI for `tauri dev`.
+default = []

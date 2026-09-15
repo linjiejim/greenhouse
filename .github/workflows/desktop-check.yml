@@ -1,0 +1,35 @@
+# Rust checks for the desktop shell.
+#
+# Deliberately NOT part of the CI gate (lint / typecheck / test / e2e / secret-scan):
+# a Rust toolchain plus a Tauri dependency tree adds minutes to every PR, and the
+# overwhelming majority of PRs never touch apps/desktop. The paths filter means this
+# only runs when the shell or its release scripts change.
+#
+# The web half of the desktop integration lives in apps/web, so it is already
+# covered by the main gate; the release scripts' unit tests run in `pnpm test`.
+name: Desktop shell checks
+on:
+  push:
+    branches: [main]
+    paths: ['apps/desktop/**', 'scripts/desktop/**', '.github/workflows/desktop-check.yml']
+  pull_request:
+    paths: ['apps/desktop/**', 'scripts/desktop/**', '.github/workflows/desktop-check.yml']
+
+concurrency:
+  group: desktop-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      # fmt --check, clippy -D warnings, the wrapper/overlay node tests and cargo test.
+      - run: pnpm desktop:check

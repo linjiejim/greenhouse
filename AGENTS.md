@@ -253,6 +253,7 @@ greenhouse/
 │   ├── agent-runner/     # Mission sandbox runner (@greenhouse/sandbox-runner); image only,
 │   │                     #   the API never imports it
 │   ├── browser/          # Chrome extension (MV3) — side panel + options; see its src/AGENTS.md
+│   ├── desktop/          # Tauri shell — apps/web as a macOS/Windows app + native capture; features live in web, see apps/desktop/AGENTS.md
 │   └── mobile/           # Expo (React Native) app — NOT a workspace member; see its AGENTS.md
 ├── packages/
 │   ├── agent-core/       # Agent kernel — streamText loop, model factory/registry, provider quirks
@@ -289,6 +290,7 @@ greenhouse/
 | `@greenhouse/web` | `apps/web/` | Frontend app |
 | `@greenhouse/sandbox-runner` | `apps/agent-runner/` | Mission sandbox runner — built into the `greenhouse/agent-runtime` image; server code must not import it |
 | `@greenhouse/browser` | `apps/browser/` | Chrome extension (MV3) — consumes `@greenhouse/ui` |
+| `@greenhouse/desktop` | `apps/desktop/` | Tauri desktop shell (Rust + `tauri.conf.json`; the web side is `apps/web/src/lib/desktop/`). Configured per deployment through `GREENHOUSE_DESKTOP_*` build-time variables, never by editing the crate |
 | `@greenhouse/mobile` | `apps/mobile/` | Expo mobile app — **not** a workspace member (own lockfile, `pnpm mobile:install`); vendors its types |
 
 ### Import conventions
@@ -360,6 +362,7 @@ Detailed rules live next to the code:
 | Frontend | [apps/web/src/AGENTS.md](./apps/web/src/AGENTS.md) | Design system, components, styling, i18n, platform navigation |
 | Settings pages | [apps/web/src/pages/settings/AGENTS.md](./apps/web/src/pages/settings/AGENTS.md) | Settings / Administration modules, CRUD page conventions |
 | Browser extension | [apps/browser/src/AGENTS.md](./apps/browser/src/AGENTS.md) | MV3 lifecycle, stations, token refresh |
+| Desktop shell | [apps/desktop/AGENTS.md](./apps/desktop/AGENTS.md) | Tauri shell: hot updates (two version lines), deployment variables, native capabilities, signing |
 | Mobile | [apps/mobile/AGENTS.md](./apps/mobile/AGENTS.md) | Expo app — workspace isolation, vendored types, theme/i18n rules |
 | Agent profiles | [apps/api/src/profiles/agent-profiles.md](./apps/api/src/profiles/agent-profiles.md) | Profiles, model switching, tool scoping |
 | LLM / Agent kernel | `packages/agent-core/` + `apps/api/src/llm/` | Kernel (model factory/registry, chat-engine) in the package; completion/title/memory/relay/budget consumers in api |

@@ -113,6 +113,41 @@ The whole app is one deployable unit (the API serves the built SPA), so the
 form — `v0.2.0-rc.1` → `0.2.0`), and zips `dist/` into
 `greenhouse-bridge-v<version>.zip` for "Load unpacked" / Web Store submission.
 
+### Desktop shell → installers + update manifests (`desktop-release.yml`)
+
+Every `v*` tag also builds the Tauri desktop shell (`apps/desktop`) for macOS (Apple Silicon)
+and Windows (x64), packages the signed web bundle, attaches everything to the tag's GitHub
+Release and publishes the three manifests installed shells trust —
+`app/latest.json`, `app/downloads.json`, `web/manifest.json` — to the project site under
+`docs/updates/desktop/<channel>/` (GitHub Pages serves `docs/` from `main`, so a commit is
+the deploy). Pre-release tags (`v1.2.0-rc.1`) publish to `beta`; `workflow_dispatch` can
+rebuild an existing tag into either channel. The built shell reads its updates from
+`https://greenhouse.linjiejim.com/updates/desktop` and only downloads installers from the
+Release host (`GREENHOUSE_DESKTOP_ARTIFACT_ORIGINS`), so a tampered manifest cannot redirect it.
+
+Web changes between tags do **not** reach installed shells automatically — a hot update is cut
+per tag. Installed shells check 20 s after launch and every 4 h.
+
+**One-time repository configuration (settings, not code):**
+
+| Kind | Name | How |
+|---|---|---|
+| secret | `TAURI_SIGNING_PRIVATE_KEY` | `pnpm --filter @greenhouse/desktop tauri signer generate -w ~/.tauri/greenhouse.key` — the private key text |
+| var | `TAURI_UPDATER_PUBKEY` | the public key the same command prints |
+| secret | `WEB_BUNDLE_SIGN_KEY` | `node scripts/desktop/gen-web-bundle-key.mjs` → contents of `apps/desktop/.keys/web-bundle-sign.pem` |
+| var | `WEB_BUNDLE_PUBKEY` | contents of `apps/desktop/.keys/web-bundle-sign.pub` |
+| optional secrets | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_P8` | Developer ID signing + notarization; without them the macOS build is ad-hoc signed and Gatekeeper warns on first open |
+
+The `shell` jobs refuse to run without the two key pairs: a shell that cannot verify its own
+updates must not be published. **Rotating either key invalidates every published manifest for
+installed shells** — rotate only together with a new shell release. Back the private keys up
+outside GitHub; a lost `TAURI_SIGNING_PRIVATE_KEY` means installed shells can never update
+again except by hand.
+
+Local dry run of the artifacts (no publishing): `pnpm desktop:build && node
+scripts/desktop/make-app-release.mjs`, then `node scripts/desktop/merge-app-release.mjs
+--channel beta --artifact-base https://example.invalid/app --allow-missing`.
+
 ### Mobile → fingerprint CD (OTA update / store build → TestFlight)
 
 `.github/workflows/mobile.yml` continuously deploys the Expo app on every `main`

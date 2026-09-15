@@ -220,7 +220,7 @@ stores/
 - 后端没有页面类型 provider；只验证通用 envelope、限制长度，并用固定文案把它标为“可能无关/过期的参考，不是用户指令或权限”。
 - Client Actions 必须按 `scope_id` 注册、快照与执行；**页面**动作在页面实例变化后 fail closed，真实数据 mutation 仍走服务端确认工具。
 - **scope 的 route key 只取路径，不含 query string**：Chat 在一轮对话进行中就会 `replaceState` 写 `#/chat?session=<id>`，把它算成另一个 route 会让本轮快照下来的 scope 当场失配、且**重试永远不恢复**（`sequence` 只增不减，导航回原路径拿到的也是新 id）。query 标注的是同一个页面实例，那些 handler 一个都没变。
-- **全局动作（`GLOBAL_CLIENT_ACTION_SCOPE`）不随页面过期**：全局客户端动作的生命周期与任何 route 无关，过期它们只会打断跨页面的长任务，安全边界另在 `safety:'confirm'` + desktop `automation-policy` + `ActionConfirmDialog`。这条必须与 `snapshotClientActions`「从任何 scope 都广播全局动作」保持一致——两边不一致就是**广播了再拒绝**，即根 AGENTS「能力声明必须真实」要禁的形状（dev frictions 60/62–65 即此）。`executeClientAction` 因此先 `resolveClientAction()` 再按 `origin` 判定；**来源取自查表结果而不是名字**，页面可以注册同名影子动作，那个影子是页面绑定的。见 [round-4 spec D1/D2](../../../docs/specs/20260818-chat-friction-round-4.md)。
+- **全局动作（`GLOBAL_CLIENT_ACTION_SCOPE`）不随页面过期**：全局客户端动作的生命周期与任何 route 无关，过期它们只会打断跨页面的长任务，安全边界另在 `safety:'confirm'` + `ActionConfirmDialog`（`components/app/action-confirm-dialog.tsx`，挂在 app 根；它是 `confirm-gate` 唯一的回答者，没挂上 `safety:'confirm'` 的动作会永远等待）。这条必须与 `snapshotClientActions`「从任何 scope 都广播全局动作」保持一致——两边不一致就是**广播了再拒绝**，即根 AGENTS「能力声明必须真实」要禁的形状（dev frictions 60/62–65 即此）。`executeClientAction` 因此先 `resolveClientAction()` 再按 `origin` 判定；**来源取自查表结果而不是名字**，页面可以注册同名影子动作，那个影子是页面绑定的。见 [round-4 spec D1/D2](../../../docs/specs/20260818-chat-friction-round-4.md)。
 - **没有 `getTurnEnvironment` 的 host 也要广播全局 Client Actions**：`ConversationPane` 在宿主没传环境时自行取 `snapshotClientActions(pageActionScopeId())`，只是不附 ambient context。桌面原生能力和浏览器自动化注册在 `GLOBAL_CLIENT_ACTION_SCOPE`，曾经因为只有 Assistant overlay 传这个 prop 而在主 Chat 页完全不可见。服务端只在**存在** ambient context 时才要求两个 scope 一致，所以纯 client-actions 的环境是合法的。
 - **工作台对话式修改复用普通 Chat turn 与既有 `workbench_query` / `workbench_mutation`**：Customize 里激活后，`ConversationPane` 保持 `WorkbenchPanel` 为 sticky live preview，composer 只补工作台意图前缀、不另建写 API；`SessionManager` 在 `workbench_mutation` tool result 后广播失效事件，面板重读服务端偏好并重新求值。面板挂载、window focus/pageshow 与重新可见时也必须重读，不能把 Zustand projection 当长期事实。
 - 新页面在 `lib/context-providers/` 添加 provider 文件并在 `index.ts` 中导入
@@ -281,6 +281,7 @@ stores/
 - `Cmd+P` / `Ctrl+P`——全局搜索（判定与文案在 `components/search/shortcut.ts`，注册在 `agent-context.tsx` 的全局处理器里，与其它全局快捷键同处；**刻意不抢 `Cmd+K`**）
 - `Cmd+N` / `Ctrl+N`——新建聊天
 - `Cmd+Escape`——关闭 Assistant 浮层
+- `Cmd/Ctrl` + `+` / `-` / `0`——**仅桌面端**页面缩放（`lib/desktop/zoom.ts`；浏览器里这三个键归浏览器自己，不拦截）
 - `Escape`（无修饰键，输入框外）——关闭 Assistant 浮层（如已打开）
 - 弹窗：Escape 关闭（由共享 `useOverlayBehavior` 统一处理）
 - Popover（@提及/斜杠命令）：`↑↓` 导航、`Enter/Tab` 选中、`Escape` 关闭

@@ -3,17 +3,30 @@
  *
  * Deployments share this one bundle, in precedence order:
  *
- * 1. **Split hosting** — `GREENHOUSE_API_BASE_URL` is a build-time override for
+ * 1. **Desktop shell** — the window is served from `greenhouse://localhost`, so the
+ *    API is necessarily cross-origin. The shell injects `__GREENHOUSE_DESKTOP_API_BASE__`
+ *    before any app script runs (see `apps/desktop/src-tauri/src/settings.rs`), which
+ *    keeps the shell the single source of truth for which server is in use — the web
+ *    layer can't silently repoint itself without going through a native command.
+ * 2. **Split hosting** — `GREENHOUSE_API_BASE_URL` is a build-time override for
  *    serving the SPA from a different origin than the API.
- * 2. **Same-origin** — the default; the API serves this bundle itself (and the
+ * 3. **Same-origin** — the default; the API serves this bundle itself (and the
  *    Vite dev server proxies `/api`, `/public` and `/health` to it).
  */
 
 declare const __GREENHOUSE_API_BASE_URL__: string | undefined;
 
+declare global {
+  interface Window {
+    /** Injected by the desktop shell at window creation. Absent in a browser. */
+    __GREENHOUSE_DESKTOP_API_BASE__?: string;
+  }
+}
+
 /**
  * Paths the API owns. `/public` is included because uploads and runtime assets are
- * served by the API, not bundled.
+ * served by the API, not bundled — in the desktop shell a bare `/public/...` would
+ * otherwise resolve against the custom scheme and 404.
  */
 const API_PATH_RE = /^(\/api(?:\/|\?|$)|\/public(?:\/|\?|$)|\/health(?:\?|$))/;
 const ABSOLUTE_URL_RE = /^[a-zA-Z][a-zA-Z\d+.-]*:/;
@@ -31,8 +44,15 @@ function getBuildTimeApiBase(): string {
   }
 }
 
+function getDesktopApiBase(): string {
+  if (typeof window === 'undefined') return '';
+  return normalizeBaseUrl(window.__GREENHOUSE_DESKTOP_API_BASE__);
+}
+
 /** Return the remote API origin when one is needed; empty string means same-origin. */
 export function getApiBaseUrl(): string {
+  const desktopBase = getDesktopApiBase();
+  if (desktopBase) return desktopBase;
   return getBuildTimeApiBase();
 }
 

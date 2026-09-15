@@ -1,12 +1,25 @@
 /** Sidebar account menu and its account/inbox dialogs. */
 
 import React, { useEffect, useState } from 'react';
-import { Settings as SettingsIcon, ArrowLeft, Inbox, Users, Shield, Monitor, Moon, Sun } from '../../lib/icons';
-import { Avatar, Badge, Dialog, EmptyState, StatusDot } from '../ui';
+import {
+  Settings as SettingsIcon,
+  ArrowLeft,
+  Inbox,
+  Users,
+  Shield,
+  RefreshCw,
+  ScrollText,
+  Monitor,
+  Moon,
+  Sun,
+} from '../../lib/icons';
+import { Avatar, Badge, Dialog, EmptyState, Spinner, StatusDot, toast } from '../ui';
 import type { AuthenticatedUser } from '../../lib/auth';
+import { isDesktop } from '../../lib/desktop/bridge';
+import { checkForWebUpdateManually } from '../../lib/desktop/updates';
 import { APP_VERSION, roleBadgeStyles } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
-import { useWsStore } from '../../stores';
+import { useDesktopUpdateStore, useWsStore } from '../../stores';
 import { InboxModal } from './inbox-modal';
 import { useHoverFlyout } from '../../hooks/use-hover-flyout';
 import { applyTheme, getActiveTheme, type ThemeKey } from '../../lib/theme';
@@ -56,6 +69,9 @@ export function SidebarAccountMenu({
   const notificationCount = useWsStore((s) => s.notificationCount);
   const onlineUsers = useWsStore((s) => s.onlineUsers);
   const wsConnected = useWsStore((s) => s.status === 'connected');
+  const checkingForUpdate = useDesktopUpdateStore((s) => s.checking);
+  const setReleaseNotesOpen = useDesktopUpdateStore((s) => s.setReleaseNotesOpen);
+  const desktop = isDesktop();
   const totalInboxCount = shareCount + notificationCount;
   const showInboxBadge = totalInboxCount > 0;
 
@@ -268,6 +284,22 @@ export function SidebarAccountMenu({
               }}
             />
 
+            {/* Release notes are part of the product, not a shell-only feature. */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setReleaseNotesOpen(true);
+              }}
+              className="w-full text-left flex items-center gap-2.5 px-3 py-1.5 text-sm text-fg-secondary hover:bg-surface-sunken transition-colors"
+              role="menuitem"
+            >
+              <span className="w-5 text-center text-fg-faint">
+                <ScrollText size={15} />
+              </span>
+              <span>{t('desktop.releaseNotes')}</span>
+            </button>
+
             {/* Online users — super only, opens a dialog on click */}
             {isSuper && wsConnected && (
               <button
@@ -301,6 +333,29 @@ export function SidebarAccountMenu({
                 </span>
                 <span>{t('app.administration')}</span>
               </button>
+            )}
+
+            {desktop && (
+              <>
+                <div className="mx-3 my-1 border-t border-edge" />
+                <button
+                  type="button"
+                  disabled={checkingForUpdate}
+                  onClick={() => {
+                    setOpen(false);
+                    void checkForWebUpdateManually().catch((err) =>
+                      toast(err instanceof Error ? err.message : String(err), 'error'),
+                    );
+                  }}
+                  className="w-full text-left flex items-center gap-2.5 px-3 py-1.5 text-sm text-fg-secondary hover:bg-surface-sunken transition-colors disabled:opacity-50"
+                  role="menuitem"
+                >
+                  <span className="w-5 text-center text-fg-faint">
+                    {checkingForUpdate ? <Spinner /> : <RefreshCw size={15} />}
+                  </span>
+                  <span>{t('desktop.checkUpdates')}</span>
+                </button>
+              </>
             )}
 
             <button

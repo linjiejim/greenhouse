@@ -1,0 +1,248 @@
+# Desktop shell release.
+#
+# For every `v*` tag: build the shell for macOS (Apple Silicon) and Windows (x64),
+# sign the updater payloads, package the signed web bundle, attach everything to
+# the tag's GitHub Release, and publish the three documents installed shells trust
+# — `app/latest.json`, `app/downloads.json`, `web/manifest.json` — to the project
+# site under docs/updates/desktop/<channel>/ (that is what the built shell's
+# GREENHOUSE_DESKTOP_UPDATE_BASE points at). Pre-release tags publish to `beta`.
+#
+# The big files live on the Release; the manifests carry their absolute URLs and
+# the shell only downloads from origins its build allowed (GREENHOUSE_DESKTOP_
+# ARTIFACT_ORIGINS). Manifests are committed only after every asset is uploaded,
+# so they can never point at a file that is not there.
+#
+# Required repository configuration (see RELEASING.md → Desktop):
+#   secrets  TAURI_SIGNING_PRIVATE_KEY   minisign key for shell updates (`tauri signer generate`)
+#            WEB_BUNDLE_SIGN_KEY         ed25519 PEM for web-bundle hot updates (gen-web-bundle-key.mjs)
+#   vars     TAURI_UPDATER_PUBKEY        public half of the minisign key
+#            WEB_BUNDLE_PUBKEY           public half of the ed25519 key
+#   optional APPLE_CERTIFICATE (+_PASSWORD), APPLE_SIGNING_IDENTITY, APPLE_API_ISSUER,
+#            APPLE_API_KEY, APPLE_API_KEY_P8 — Developer ID signing + notarization.
+#            Without them the macOS build is ad-hoc signed: it runs, but Gatekeeper
+#            warns on first open. Windows installers are not Authenticode-signed.
+name: Desktop release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build and publish'
+        required: true
+      channel:
+        description: 'Update channel to publish to'
+        type: choice
+        default: beta
+        options: [beta, stable]
+
+env:
+  UPDATE_BASE: https://greenhouse.linjiejim.com/updates/desktop
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: github.repository == 'linjiejim/greenhouse'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the Release when a hand-made tag has none yet
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      channel: ${{ steps.plan.outputs.channel }}
+      web_bundle_version: ${{ steps.plan.outputs.web_bundle_version }}
+      artifact_base: ${{ steps.plan.outputs.artifact_base }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0 # the web-bundle version is the commit count
+      - id: plan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag || github.ref_name }}"
+          if [ -n "${{ inputs.channel }}" ]; then
+            channel="${{ inputs.channel }}"
+          elif [[ "$tag" == *-* ]]; then
+            channel=beta
+          else
+            channel=stable
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          echo "web_bundle_version=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+          echo "artifact_base=https://github.com/${{ github.repository }}/releases/download/$tag" >> "$GITHUB_OUTPUT"
+          # release-please creates the Release with the tag; a hand-made tag may have none.
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            prerelease=""; [ "$channel" = beta ] && prerelease="--prerelease"
+            gh release create "$tag" --title "$tag" --notes "Desktop shell $tag" $prerelease
+          fi
+          echo "tag=$tag channel=$channel web-bundle=$(git rev-list --count HEAD)"
+
+  web-bundle:
+    needs: plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.tag }}
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - name: Require the web-bundle signing key
+        env:
+          WEB_BUNDLE_SIGN_KEY: ${{ secrets.WEB_BUNDLE_SIGN_KEY }}
+        run: |
+          if [ -z "$WEB_BUNDLE_SIGN_KEY" ]; then
+            echo "::error::WEB_BUNDLE_SIGN_KEY is not set — installed shells only accept signed bundles (scripts/desktop/gen-web-bundle-key.mjs)."
+            exit 1
+          fi
+      - run: pnpm web:build
+      - name: Package + sign the web bundle
+        env:
+          WEB_BUNDLE_SIGN_KEY: ${{ secrets.WEB_BUNDLE_SIGN_KEY }}
+          GREENHOUSE_WEB_BUNDLE_VERSION: ${{ needs.plan.outputs.web_bundle_version }}
+        run: >-
+          node scripts/desktop/make-web-bundle.mjs
+          --channel ${{ needs.plan.outputs.channel }}
+          --artifact-base ${{ needs.plan.outputs.artifact_base }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-web
+          path: apps/desktop/release/web/*
+          if-no-files-found: error
+
+  shell:
+    needs: plan
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-latest
+            name: macos
+          - os: windows-latest
+            name: windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.tag }}
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - name: Require the update signing keys
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_UPDATER_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
+          WEB_BUNDLE_PUBKEY: ${{ vars.WEB_BUNDLE_PUBKEY }}
+        run: |
+          missing=""
+          [ -z "$TAURI_SIGNING_PRIVATE_KEY" ] && missing="$missing TAURI_SIGNING_PRIVATE_KEY(secret)"
+          [ -z "$TAURI_UPDATER_PUBKEY" ] && missing="$missing TAURI_UPDATER_PUBKEY(var)"
+          [ -z "$WEB_BUNDLE_PUBKEY" ] && missing="$missing WEB_BUNDLE_PUBKEY(var)"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing:$missing — a shell that cannot verify its updates must not be published (RELEASING.md → Desktop)."
+            exit 1
+          fi
+      - name: Materialize the Apple notary key (when configured)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          if [ -n "$APPLE_API_KEY_P8" ]; then
+            printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+            echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+          else
+            # No Developer ID: ad-hoc sign the whole bundle so macOS permission
+            # grants (Accessibility, Screen Recording) still bind to the app.
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+            echo "::notice::No Apple signing secrets — publishing an ad-hoc signed macOS build (Gatekeeper warns on first open)."
+          fi
+      - name: Build the shell
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          GREENHOUSE_DESKTOP_UPDATER_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
+          GREENHOUSE_WEB_BUNDLE_PUBKEY: ${{ vars.WEB_BUNDLE_PUBKEY }}
+          GREENHOUSE_WEB_BUNDLE_VERSION: ${{ needs.plan.outputs.web_bundle_version }}
+          GREENHOUSE_DESKTOP_UPDATE_BASE: ${{ env.UPDATE_BASE }}
+          GREENHOUSE_DESKTOP_ARTIFACT_ORIGINS: https://github.com/${{ github.repository }}/releases/download
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || env.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: pnpm desktop:build
+      - name: Package the release fragment
+        run: node scripts/desktop/make-app-release.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}
+          path: apps/desktop/release/app/*
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, web-bundle, shell]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # upload assets to the Release, push the manifests to main
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.tag }}
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          merge-multiple: false
+          path: release
+      - name: Assemble the release manifests
+        run: |
+          mkdir -p apps/desktop/release/app apps/desktop/release/web
+          cp release/desktop-macos/* release/desktop-windows/* apps/desktop/release/app/
+          cp release/desktop-web/* apps/desktop/release/web/
+          node scripts/desktop/merge-app-release.mjs \
+            --channel ${{ needs.plan.outputs.channel }} \
+            --artifact-base ${{ needs.plan.outputs.artifact_base }}
+      - name: Attach artifacts to the Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd apps/desktop/release
+          # Installers, updater payloads + signatures, the web bundle tarball. The
+          # manifests go up too, as a record; installed shells read them from the site.
+          gh release upload "${{ needs.plan.outputs.tag }}" \
+            app/*.dmg app/*.app.tar.gz app/*.sig app/*.exe app/latest.json app/downloads.json \
+            web/*.tar.gz web/manifest.json --clobber
+      - name: Publish the manifests to the site
+        env:
+          CHANNEL: ${{ needs.plan.outputs.channel }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git fetch origin main
+          git worktree add ../site origin/main
+          dest="../site/docs/updates/desktop/$CHANNEL"
+          mkdir -p "$dest/app" "$dest/web"
+          cp apps/desktop/release/app/latest.json apps/desktop/release/app/downloads.json "$dest/app/"
+          cp apps/desktop/release/web/manifest.json "$dest/web/"
+          cd ../site
+          git add docs/updates/desktop
+          if git diff --cached --quiet; then
+            echo "manifests unchanged"
+          else
+            git commit -m "chore(desktop): publish $CHANNEL update manifests for $TAG [skip ci]"
+            git push origin HEAD:main
+          fi

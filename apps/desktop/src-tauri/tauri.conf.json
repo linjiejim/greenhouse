@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Greenhouse",
+  "version": "../../../package.json",
+  "identifier": "com.linjiejim.greenhouse",
+  "build": {
+    "frontendDist": "../../../public",
+    "devUrl": "http://localhost:3100",
+    "beforeBuildCommand": "pnpm -w web:build"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self' greenhouse: http://greenhouse.localhost; script-src 'self' greenhouse: http://greenhouse.localhost 'unsafe-inline' 'unsafe-eval'; style-src 'self' greenhouse: http://greenhouse.localhost 'unsafe-inline'; worker-src 'self' greenhouse: http://greenhouse.localhost blob:; font-src 'self' greenhouse: http://greenhouse.localhost data:; img-src 'self' greenhouse: http://greenhouse.localhost asset: http://asset.localhost data: blob: https: http://localhost:3100 http://localhost:3000; media-src 'self' greenhouse: http://greenhouse.localhost asset: http://asset.localhost blob: https: http://localhost:3100 http://localhost:3000; frame-src 'self' greenhouse: http://greenhouse.localhost https:; connect-src 'self' greenhouse: http://greenhouse.localhost ipc: http://ipc.localhost data: blob: http://localhost:3100 ws://localhost:3100 http://localhost:3000 ws://localhost:3000",
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
+    },
+    "macOSPrivateApi": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg", "nsis"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "createUpdaterArtifacts": true,
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

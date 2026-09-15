@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Baseline permissions for the main Greenhouse window. Capabilities are an allowlist — a plugin API is unreachable from the web layer until it is listed here, which is the point. Note that the app's own #[tauri::command]s do not appear here; they are gated by being registered in the invoke_handler at all.",
+  "windows": ["main", "quick", "selection-bar"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:webview:allow-internal-toggle-devtools",
+    "core:webview:allow-set-webview-zoom",
+    "dialog:allow-open",
+    "opener:allow-reveal-item-in-dir",
+    "process:allow-restart",
+    "updater:default"
+  ]
+}

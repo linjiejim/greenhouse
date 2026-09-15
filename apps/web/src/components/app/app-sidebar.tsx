@@ -12,6 +12,7 @@
 import { useState, type ReactNode } from 'react';
 
 import { SidebarAccountMenu } from './user-menu';
+import { DesktopUpdateNotice } from './desktop-update-notice';
 import { PanelLeftClose, PanelLeftOpen, Plus, ArrowLeft } from '../../lib/icons';
 import { AppLogo, ResizeHandle } from '../ui';
 import { AssistantNavButton } from '../agent-panel';
@@ -19,6 +20,7 @@ import { SearchNavButton } from '../search/search-nav-button';
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, useAuthStore, useUIStore } from '../../stores';
 import { usePlatformCatalog } from '../../stores/platform-store';
 import { useT } from '../../lib/i18n';
+import { isMacDesktop } from '../../lib/desktop/bridge';
 import { SidebarPrimaryAction } from './sidebar-primary-action';
 import { SidebarGlobalNavigation } from './sidebar-global-navigation';
 import { WsStatusIndicator } from './top-bar';
@@ -101,9 +103,18 @@ const COLLAPSED_SIDEBAR_WIDTH = 60;
 /** Shell identity owns the stable top row; the collapsed rail turns it into the expand target. */
 export function SidebarBrandHeader(props: SidebarBrandHeaderProps) {
   const t = useT();
+  // The desktop shell draws a transparent overlay titlebar on macOS, so the brand
+  // row grows to keep the traffic lights clear and doubles as the window's drag
+  // region (`data-tauri-drag-region` is inert in a browser).
+  const macDesktop = isMacDesktop();
   if (props.collapsed) {
     return (
-      <div className="relative flex h-14 w-full flex-shrink-0 items-center justify-center border-b border-edge px-1">
+      <div
+        data-tauri-drag-region
+        className={`relative flex w-full flex-shrink-0 justify-center border-b border-edge px-1 ${
+          macDesktop ? 'h-16 items-end pb-1 pt-4' : 'h-14 items-center'
+        }`}
+      >
         <button
           type="button"
           onClick={props.onToggle}
@@ -121,7 +132,12 @@ export function SidebarBrandHeader(props: SidebarBrandHeaderProps) {
   const { globalActions } = props;
 
   return (
-    <div className="flex h-14 w-full flex-shrink-0 items-center gap-2 border-b border-edge px-3">
+    <div
+      data-tauri-drag-region
+      className={`flex w-full flex-shrink-0 gap-2 border-b border-edge ${
+        macDesktop ? 'h-16 items-end pb-1 pl-3 pr-2 pt-4' : 'h-14 items-center px-3'
+      }`}
+    >
       <div className="sidebar-brand-identity group relative flex min-w-0 flex-1 items-center overflow-hidden rounded-lg px-1">
         <a href="#/chat" className="absolute inset-0 z-0 rounded-lg" aria-label={t('navigation.greenHouseHome')} />
         <div className="pointer-events-none relative z-[1] flex items-center gap-2 transition-opacity group-hover:opacity-80">
@@ -280,6 +296,7 @@ export function AppSidebar({
 
             <div className="flex-1" />
 
+            <DesktopUpdateNotice compact />
             <SidebarAccountMenu user={currentUser} compact executionCenterActive={route === 'executions'} />
           </div>
         </div>
@@ -369,6 +386,8 @@ export function AppSidebar({
               </div>
             </>
           )}
+
+          <DesktopUpdateNotice />
 
           {/* Account and collapse control share the stable bottom row. */}
           <div className="flex flex-shrink-0 items-center gap-1 border-t border-edge px-3 py-1.5">
