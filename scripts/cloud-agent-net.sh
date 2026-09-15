@@ -192,9 +192,22 @@ check_rules() {
   local fwd_allows input_allows
   fwd_allows=$(count_leading_allows "$FWD_CHAIN" RETURN)
   input_allows=$(count_leading_allows "$INPUT_CHAIN" ACCEPT)
-  [ "$fwd_allows" -ge 1 ] && [ "$input_allows" -ge 1 ]
-  [ "$(iptables -S "$FWD_CHAIN" | grep -c '^-A ')" -eq $((fwd_allows + 7)) ]
-  [ "$(iptables -S "$INPUT_CHAIN" | grep -c '^-A ')" -eq $((input_allows + 1)) ]
+  [ "$fwd_allows" -ge 1 ] || {
+    echo "$FWD_CHAIN rule 1 has unsafe order/content: expected an API allow row first" >&2
+    return 1
+  }
+  [ "$input_allows" -ge 1 ] || {
+    echo "$INPUT_CHAIN rule 1 has unsafe order/content: expected an API allow row first" >&2
+    return 1
+  }
+  [ "$(iptables -S "$FWD_CHAIN" | grep -c '^-A ')" -eq $((fwd_allows + 7)) ] || {
+    echo "$FWD_CHAIN has an unexpected number of rules (want $((fwd_allows + 7)))" >&2
+    return 1
+  }
+  [ "$(iptables -S "$INPUT_CHAIN" | grep -c '^-A ')" -eq $((input_allows + 1)) ] || {
+    echo "$INPUT_CHAIN has an unexpected number of rules (want $((input_allows + 1)))" >&2
+    return 1
+  }
 
   local line=$((fwd_allows + 1))
   for destination in "$SUBNET" 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10; do
