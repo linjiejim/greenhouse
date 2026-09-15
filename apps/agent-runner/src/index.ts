@@ -28,6 +28,7 @@ import {
 // than an unrecognized row in the user's timeline.
 import type { AgentRunEventType } from '@greenhouse/types/cloud-agent';
 import { collectArtifacts, guessContentType } from './artifacts.js';
+import { buildRelayModelsConfig, parseModelMaxTokens } from './models-config.js';
 import { loadPlatformTools } from './platform-tools.js';
 import { ensureWorkspaceContext } from './toolchain.js';
 
@@ -50,6 +51,7 @@ const API_BASE = requireEnv('GREENHOUSE_API_BASE').replace(/\/$/, '');
 const _RELAY_KEY = requireEnv('GREENHOUSE_RELAY_KEY');
 const MODEL = requireEnv('GREENHOUSE_MODEL');
 const FALLBACK_MODEL = process.env.GREENHOUSE_FALLBACK_MODEL || null;
+const MODEL_MAX_TOKENS = parseModelMaxTokens(process.env.GREENHOUSE_MODEL_MAX_TOKENS);
 const MAX_REQUESTS = Number(process.env.GREENHOUSE_MAX_REQUESTS ?? 300);
 const PROMPT_PATH = process.env.GREENHOUSE_PROMPT_PATH ?? '/session/prompt.md';
 
@@ -273,25 +275,17 @@ async function reportCompletion(
 // ─── Provider config (written before the harness boots) ──
 
 function writeModelsJson(): string {
-  const models = [MODEL, ...(FALLBACK_MODEL && FALLBACK_MODEL !== MODEL ? [FALLBACK_MODEL] : [])];
   const modelsPath = join(SESSION_DIR, 'models.json');
   writeFileSync(
     modelsPath,
     JSON.stringify(
-      {
-        providers: {
-          [PROVIDER_ID]: {
-            name: 'Greenhouse LLM Relay',
-            baseUrl: `${API_BASE}/api/llm/v1`,
-            api: 'openai-completions',
-            apiKey: '$GREENHOUSE_RELAY_KEY',
-            // The relay fronts DeepSeek/Kimi upstreams: no `developer` role,
-            // and kimi rejects sampling params outright (the relay strips them).
-            compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
-            models: models.map((id) => ({ id, name: id })),
-          },
-        },
-      },
+      buildRelayModelsConfig({
+        providerId: PROVIDER_ID,
+        apiBase: API_BASE,
+        model: MODEL,
+        fallbackModel: FALLBACK_MODEL,
+        maxTokens: MODEL_MAX_TOKENS,
+      }),
       null,
       2,
     ),

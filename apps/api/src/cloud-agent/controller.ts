@@ -47,6 +47,7 @@ import { getObjectAtKey } from '../storage/uploads.js';
 import { sanitizeUploadName } from '../storage/filename.js';
 import { isOwnedAttachmentKey } from './attachment-keys.js';
 import { WorkspaceQuotaAttestationError, type AssertUserWorkspaceQuota } from './quota-preflight.js';
+import { relayOutputLimits } from './model-limits.js';
 import { abortMissionRelayRequests } from './relay-requests.js';
 import {
   archiveRunJournal,
@@ -520,6 +521,9 @@ export function createCloudAgentController({
           GREENHOUSE_RELAY_KEY: relayKey,
           GREENHOUSE_MODEL: run.model,
           GREENHOUSE_FALLBACK_MODEL: run.fallback_model ?? '',
+          // The relay's per-model output caps: the runner declares them to
+          // its SDK so no request ever asks for more than the relay accepts.
+          GREENHOUSE_MODEL_MAX_TOKENS: JSON.stringify(relayOutputLimits([run.model, run.fallback_model])),
           GREENHOUSE_MAX_REQUESTS: String(run.max_requests),
           GREENHOUSE_PROMPT_PATH: promptPathFor(run.id),
         },

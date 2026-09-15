@@ -38,6 +38,7 @@ import {
 import { getModelCatalog } from '../config/models.js';
 import type { AppEnv } from '../app-env.js';
 import { getMissionRuntimeStatus } from '../cloud-agent/index.js';
+import { RELAY_DEFAULT_OUTPUT_TOKENS } from '../cloud-agent/model-limits.js';
 import { beginMissionRelayRequest, type MissionRelayRequestHandle } from '../cloud-agent/relay-requests.js';
 import {
   estimateRelayTokens,
@@ -215,7 +216,7 @@ export function createLlmRelayRoutes() {
           try {
             ({ body: boundedBody, outputTokenLimit } = applyRelayOutputLimit(
               body,
-              catalogEntry?.options?.max_tokens ?? 20_000,
+              catalogEntry?.options?.max_tokens ?? RELAY_DEFAULT_OUTPUT_TOKENS,
             ));
           } catch (error) {
             if (!(error instanceof RelayRequestError)) throw error;
