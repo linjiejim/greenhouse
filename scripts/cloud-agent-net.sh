@@ -32,6 +32,9 @@ set -euo pipefail
 NETWORK="${SANDBOX_RUNNER_NETWORK:-${CLOUD_AGENT_NETWORK:-cloud-agent}}"
 # One port, or a comma-separated list when two API slots take turns behind a
 # reverse proxy (blue/green): every listed port is reachable, nothing else.
+# `--check` demands every listed port and accepts extra allow rows for other
+# ports on the same gateways — the API checks with its own port only, while
+# the host applied the rules for both slots.
 API_PORT="${API_PORT:-3108}"
 COMMENT="greenhouse-mission-sandbox"
 FWD_CHAIN="GREENHOUSE-MISSION-FWD"
@@ -134,6 +137,28 @@ check_row() {
   fi
 }
 
+# The rows before the deny block must ALL be tcp allows to one of the two
+# gateways on some port — nothing broader may precede a deny. Prints how many
+# there are; the required ports are checked separately with `iptables -C`.
+count_leading_allows() {
+  local chain="$1" target="$2" n=0 row actual_target actual_protocol actual_destination
+  while :; do
+    row=$(iptables -L "$chain" -n --line-numbers | awk -v wanted="$((n + 1))" '$1 == wanted { print }')
+    [ -n "$row" ] || break
+    actual_target=$(echo "$row" | awk '{print $2}')
+    actual_protocol=$(echo "$row" | awk '{print $3}')
+    actual_destination=$(echo "$row" | awk '{print $6}')
+    [ "$actual_target" = "$target" ] || break
+    proto_matches tcp "$actual_protocol" || break
+    if [ "$actual_destination" != "$GATEWAY" ]; then
+      [ -n "$HOST_GATEWAY" ] && [ "$actual_destination" = "$HOST_GATEWAY" ] || break
+    fi
+    echo "$row" | grep -Eq 'dpt:[0-9]+$' || break
+    n=$((n + 1))
+  done
+  echo "$n"
+}
+
 check_rules() {
   check_first_jump DOCKER-USER "$FWD_CHAIN"
   check_first_jump INPUT "$INPUT_CHAIN"
@@ -145,8 +170,10 @@ check_rules() {
   [ "$(iptables -S INPUT | grep -c -- "-j $INPUT_CHAIN")" -eq 1 ]
   for port in "${API_PORTS[@]}"; do
     iptables -C "$FWD_CHAIN" -d "$GATEWAY" -p tcp --dport "$port" -j RETURN
+    iptables -C "$INPUT_CHAIN" -d "$GATEWAY" -p tcp --dport "$port" -j ACCEPT
     if [ -n "$HOST_GATEWAY" ] && [ "$HOST_GATEWAY" != "$GATEWAY" ]; then
       iptables -C "$FWD_CHAIN" -d "$HOST_GATEWAY" -p tcp --dport "$port" -j RETURN
+      iptables -C "$INPUT_CHAIN" -d "$HOST_GATEWAY" -p tcp --dport "$port" -j ACCEPT
     fi
   done
   iptables -C "$FWD_CHAIN" -d "$SUBNET" -j REJECT
@@ -156,53 +183,26 @@ check_rules() {
   iptables -C "$FWD_CHAIN" -d 169.254.0.0/16 -j REJECT
   iptables -C "$FWD_CHAIN" -d 100.64.0.0/10 -j REJECT
   iptables -C "$FWD_CHAIN" -j RETURN
-  for port in "${API_PORTS[@]}"; do
-    iptables -C "$INPUT_CHAIN" -d "$GATEWAY" -p tcp --dport "$port" -j ACCEPT
-    if [ -n "$HOST_GATEWAY" ] && [ "$HOST_GATEWAY" != "$GATEWAY" ]; then
-      iptables -C "$INPUT_CHAIN" -d "$HOST_GATEWAY" -p tcp --dport "$port" -j ACCEPT
-    fi
-  done
   iptables -C "$INPUT_CHAIN" -j REJECT
 
-  # One allow row per (gateway, port); the deny block and the final RETURN /
-  # REJECT are fixed.
-  local per_port=1
-  if [ -n "$HOST_GATEWAY" ] && [ "$HOST_GATEWAY" != "$GATEWAY" ]; then
-    per_port=2
-  fi
-  local allows=$(( per_port * ${#API_PORTS[@]} ))
-  local expected_fwd=$(( allows + 7 )) expected_input=$(( allows + 1 ))
-  [ "$(iptables -S "$FWD_CHAIN" | grep -c '^-A ')" -eq "$expected_fwd" ]
-  [ "$(iptables -S "$INPUT_CHAIN" | grep -c '^-A ')" -eq "$expected_input" ]
+  # Exact sequence: precise API allows first (this port's and, on a blue/green
+  # host, the other slot's), every private/east-west deny next, and only then
+  # the public-internet RETURN. Existence + rule count is insufficient because
+  # moving the final RETURN to line 1 bypasses all denies.
+  local fwd_allows input_allows
+  fwd_allows=$(count_leading_allows "$FWD_CHAIN" RETURN)
+  input_allows=$(count_leading_allows "$INPUT_CHAIN" ACCEPT)
+  [ "$fwd_allows" -ge 1 ] && [ "$input_allows" -ge 1 ]
+  [ "$(iptables -S "$FWD_CHAIN" | grep -c '^-A ')" -eq $((fwd_allows + 7)) ]
+  [ "$(iptables -S "$INPUT_CHAIN" | grep -c '^-A ')" -eq $((input_allows + 1)) ]
 
-  # Exact sequence: precise API allows first, every private/east-west deny
-  # next, and only then the public-internet RETURN. Existence + rule count is
-  # insufficient because moving the final RETURN to line 1 bypasses all denies.
-  local line=1
-  for port in "${API_PORTS[@]}"; do
-    check_row "$FWD_CHAIN" "$line" RETURN tcp "$GATEWAY" "dpt:$port"
-    line=$((line + 1))
-    if [ -n "$HOST_GATEWAY" ] && [ "$HOST_GATEWAY" != "$GATEWAY" ]; then
-      check_row "$FWD_CHAIN" "$line" RETURN tcp "$HOST_GATEWAY" "dpt:$port"
-      line=$((line + 1))
-    fi
-  done
+  local line=$((fwd_allows + 1))
   for destination in "$SUBNET" 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10; do
     check_row "$FWD_CHAIN" "$line" REJECT all "$destination"
     line=$((line + 1))
   done
   check_row "$FWD_CHAIN" "$line" RETURN all 0.0.0.0/0
-
-  line=1
-  for port in "${API_PORTS[@]}"; do
-    check_row "$INPUT_CHAIN" "$line" ACCEPT tcp "$GATEWAY" "dpt:$port"
-    line=$((line + 1))
-    if [ -n "$HOST_GATEWAY" ] && [ "$HOST_GATEWAY" != "$GATEWAY" ]; then
-      check_row "$INPUT_CHAIN" "$line" ACCEPT tcp "$HOST_GATEWAY" "dpt:$port"
-      line=$((line + 1))
-    fi
-  done
-  check_row "$INPUT_CHAIN" "$line" REJECT all 0.0.0.0/0
+  check_row "$INPUT_CHAIN" $((input_allows + 1)) REJECT all 0.0.0.0/0
 }
 
 if [ "${1:-}" = "--check" ]; then

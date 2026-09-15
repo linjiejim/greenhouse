@@ -204,7 +204,9 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
   `pg_dump | gzip` line — that is how an instance once shipped 20-byte dumps for two months.
 - **Mission egress on a blue/green host.** `scripts/cloud-agent-net.sh` takes `API_PORT=3109,3110`
   so both API slots stay reachable from the sandbox network while everything else private stays
-  rejected; `--check` verifies the exact rule sequence for every listed port.
+  rejected. `--check` demands every listed port and tolerates extra allow rows for other ports on
+  the same gateways (the API checks with its own port; the host applied both), but nothing
+  broader may precede the deny block. Keep the host's watchdog/oneshot units on the same script.
 - **Artifacts.** API+web = the container image (primary). Browser = versioned zip
   (`pnpm -F @greenhouse/browser package`). Mobile = fingerprint CD
   (`.github/workflows/mobile.yml`, `EXPO_TOKEN`-gated): JS-only change → EAS OTA update;
