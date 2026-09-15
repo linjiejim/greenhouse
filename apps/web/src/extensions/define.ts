@@ -53,6 +53,13 @@ export interface WebExtensionPage {
   titleKey?: ExtensionTranslationKey;
   /** Sub-modules of this page, in rail order. */
   modules?: WebExtensionPageModule[];
+  /**
+   * Legacy top-level hashes this page answers for → the path they redirect to
+   * (relative to `#/`; must be this page's route or a path under it). The tail
+   * survives, so `{ wiki: 'content/pages' }` sends `#/wiki/abc` to
+   * `#/content/pages/abc`. For bookmarks and chat links that predate the extension.
+   */
+  aliases?: Record<string, string>;
 }
 
 export interface WebExtensionNavItem {
@@ -149,6 +156,22 @@ const ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 export function defineWebExtension(extension: WebExtension): WebExtension {
   if (!ID_PATTERN.test(extension.id)) {
     throw new Error(`Web extension id "${extension.id}" must match ${ID_PATTERN}`);
+  }
+  const routes = new Set((extension.pages ?? []).map((page) => page.route));
+  for (const page of extension.pages ?? []) {
+    for (const [from, to] of Object.entries(page.aliases ?? {})) {
+      if (!ID_PATTERN.test(from)) {
+        throw new Error(`Web extension "${extension.id}" alias "${from}" must match ${ID_PATTERN}`);
+      }
+      if (routes.has(from)) {
+        throw new Error(`Web extension "${extension.id}" alias "${from}" is already one of its page routes`);
+      }
+      if (to !== page.route && !to.startsWith(`${page.route}/`)) {
+        throw new Error(
+          `Web extension "${extension.id}" alias "${from}" must redirect into its own page "${page.route}", got "${to}"`,
+        );
+      }
+    }
   }
   return extension;
 }

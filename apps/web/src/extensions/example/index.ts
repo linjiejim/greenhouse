@@ -34,6 +34,8 @@ export const exampleWebExtension = defineWebExtension({
       // Sub-modules give `#/example/notes` a page identity (`example.notes`),
       // a breadcrumb and a rail entry. A one-screen page can omit this.
       modules: [{ key: 'notes', labelKey: 'ext.example.nav', descriptionKey: 'ext.example.intro', icon: StickyNote }],
+      // A hash from before the extension existed: `#/example-notes/<tail>` → `#/example/notes/<tail>`.
+      aliases: { 'example-notes': 'example/notes' },
     },
   ],
   navigation: [
