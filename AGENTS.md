@@ -483,7 +483,10 @@ env (`model_env` / `base_url_env`) — the built-in `flash` / `pro` ids follow `
 DeepSeek / Kimi / MiniMax entries appear once their key is set. `options` belong to the model
 (sampling / reasoning), never to an agent; `context_window` drives history compaction.
 `@greenhouse/agent-core` keeps an env-derived fallback registry for tests and for consumers
-that boot without the file.
+that boot without the file. A `flash` / `pro` entry whose `LLM_MODEL` / `LLM_BASE_URL` point at
+DeepSeek is built with the DeepSeek client (`isDeepSeekFamily` in agent-core), so the catalog's
+`thinking` option and per-call `providerOptions.deepseek` reach the wire and `reasoning_content`
+is parsed; the generic OpenAI client drops both (that is how auto-titles went blank).
 
 ## Testing
 

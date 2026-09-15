@@ -36,7 +36,13 @@ const MAX_TITLE_LENGTH = 30;
 /** Fallback title length when LLM fails. */
 const FALLBACK_LENGTH = 50;
 
-/** Model config: use flash via registry for speed and cost efficiency. */
+/**
+ * Model config: the deployment's `flash` id, resolved through the registry
+ * (`id` wins; `provider` / `model` are only the legacy-path fallback). Thinking
+ * is switched off per call below; that switch reaches the wire because the
+ * factory builds DeepSeek-backed entries with the DeepSeek client even when the
+ * catalog declares them `openai-compatible` (see isDeepSeekFamily in agent-core).
+ */
 const TITLE_MODEL_CONFIG: ModelConfig = {
   id: 'flash',
   provider: 'deepseek',
@@ -105,14 +111,22 @@ export async function generateSessionTitle(
       providerOptions: { deepseek: { thinking: { type: 'disabled' } } },
     });
 
-    // Empty means "that was not a title" — a refusal, a preamble, or the model
-    // starting on the task. Falling back to the user's own words beats storing
-    // the first 30 characters of a report.
-    const title = cleanTitle(result.text) || fallbackTitle(userMessage);
-
-    logger.info('[title-gen] Generated', { title });
-
-    return title;
+    // Empty means "that was not a title" — a refusal, a preamble, the model
+    // starting on the task, or nothing at all because the output budget went to
+    // reasoning. Falling back to the user's own words beats storing the first
+    // 30 characters of a report; say so in the log, because a fallback that
+    // reads as "Generated" hid exactly that failure for a week.
+    const title = cleanTitle(result.text);
+    if (title) {
+      logger.info('[title-gen] Generated', { title });
+      return title;
+    }
+    logger.warn('[title-gen] Model returned no usable title, using fallback', {
+      finishReason: result.finishReason,
+      usage: result.usage,
+      head: result.text.slice(0, 80),
+    });
+    return fallbackTitle(userMessage);
   } catch (_err) {
     logger.warn('[title-gen] LLM title generation failed, using fallback', {
       error: toErrorMessage(_err),

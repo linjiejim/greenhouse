@@ -3,6 +3,9 @@
  *
  * Supports DeepSeek, OpenAI, Kimi, and OpenAI-compatible providers
  * via lazy dynamic imports — only the provider SDK actually used gets loaded.
+ * An `openai-compatible` entry that points at DeepSeek is built with the
+ * DeepSeek client (isDeepSeekFamily), so thinking on/off and reasoning
+ * parsing work whichever provider name the catalog used.
  *
  * Features:
  * - Registry-based model resolution (logical ID → provider chain)
@@ -119,6 +122,38 @@ export const KIMI_DEFAULT_BASE_URL = 'https://api.kimi.com/coding/v1';
  */
 export const MINIMAX_DEFAULT_BASE_URL = 'https://api.minimaxi.com/v1';
 
+// ─── DeepSeek family detection ───────────────────────────
+
+/**
+ * Is this (model, endpoint) pair really DeepSeek, whatever the catalog calls
+ * the provider?
+ *
+ * The built-in `flash` / `pro` ids are declared `openai-compatible` so one
+ * `LLM_BASE_URL` + `LLM_MODEL` pair works against any endpoint. When that pair
+ * points at DeepSeek, the generic @ai-sdk/openai client is the wrong tool: it
+ * forwards only `providerOptions.openai`, so `providerOptions.deepseek.thinking`
+ * never reaches the wire — V4 then thinks by default, the title generator's
+ * 60-token budget went entirely to reasoning, and every title fell back to
+ * the user's own words — and it drops `reasoning_content`, leaving the
+ * reasoning panel empty. Route by model family / host instead, so the DeepSeek
+ * client (itself OpenAI-compatible) is used wherever DeepSeek actually answers.
+ *
+ * Matches official model ids (`deepseek-chat`, `deepseek-v4-flash`, …) and
+ * the official host. Vendor-prefixed ids on third-party gateways
+ * (`deepseek-ai/DeepSeek-V4` on SiliconFlow) deliberately stay on the generic
+ * client: those gateways do not speak DeepSeek's `thinking` field.
+ */
+export function isDeepSeekFamily(model: string, baseUrl?: string): boolean {
+  if (/^deepseek-[^/]+$/i.test(model)) return true;
+  if (!baseUrl) return false;
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === 'deepseek.com' || host.endsWith('.deepseek.com');
+  } catch {
+    return false;
+  }
+}
+
 // ─── Direct Model Creation ───────────────────────────────
 
 /**
@@ -178,13 +213,15 @@ async function createModelDirect(
       if (!baseURL) {
         throw new Error(`Provider "openai-compatible" requires baseUrl in profile or LLM_BASE_URL env`);
       }
-      try {
-        const { createOpenAI } = await import('@ai-sdk/openai');
-        return createOpenAI({ apiKey, baseURL }).chat(model);
-      } catch (_err) {
+      // DeepSeek behind the generic provider id: the DeepSeek client is what
+      // carries `providerOptions.deepseek` (thinking on/off) to the wire and
+      // parses `reasoning_content`. See isDeepSeekFamily.
+      if (isDeepSeekFamily(model, baseURL)) {
         const { createDeepSeek } = await import('@ai-sdk/deepseek');
         return createDeepSeek({ apiKey, baseURL }).chat(model);
       }
+      const { createOpenAI } = await import('@ai-sdk/openai');
+      return createOpenAI({ apiKey, baseURL }).chat(model);
     }
 
     default:
@@ -471,8 +508,20 @@ export function resolveModelConfig(config: ModelConfig): ModelConfig {
  */
 export function buildProviderOptions(config: ModelConfig): any {
   // Registry configs inherit the primary provider; direct configs use their
-  // declared provider.
-  const effectiveProvider = config.id ? getModelEntry(config.id)?.providers[0]?.provider : config.provider;
+  // declared provider. A generic `openai-compatible` entry that really points
+  // at DeepSeek gets DeepSeek's knobs — the factory builds it with the DeepSeek
+  // client for the same reason (isDeepSeekFamily), so the two stay in step.
+  const primary = config.id
+    ? getModelEntry(config.id)?.providers[0]
+    : { provider: config.provider, model: config.model, baseUrl: config.baseUrl };
+  let effectiveProvider = primary?.provider;
+  if (
+    effectiveProvider === 'openai-compatible' &&
+    primary &&
+    isDeepSeekFamily(primary.model, primary.baseUrl || process.env.LLM_BASE_URL)
+  ) {
+    effectiveProvider = 'deepseek';
+  }
 
   // Kimi K3 reasons unconditionally (turning thinking off downgrades the
   // request to an older model upstream), so there is no `thinking` switch —
@@ -497,8 +546,11 @@ export function buildProviderOptions(config: ModelConfig): any {
     };
   }
 
-  if (!config.options?.thinking) return undefined;
-
-  // Only DeepSeek currently has a thinking option.
-  return effectiveProvider === 'deepseek' ? { deepseek: { thinking: { type: 'enabled' } } } : undefined;
+  // Only DeepSeek has a thinking switch. V4 thinks by default, so both values
+  // go on the wire explicitly: the catalog's `thinking` option is then the
+  // truth, not a hint the endpoint may or may not share.
+  if (effectiveProvider !== 'deepseek') return undefined;
+  if (config.options?.thinking === true) return { deepseek: { thinking: { type: 'enabled' } } };
+  if (config.options?.thinking === false) return { deepseek: { thinking: { type: 'disabled' } } };
+  return undefined;
 }
