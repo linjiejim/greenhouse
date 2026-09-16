@@ -20,6 +20,28 @@ test('keeps CI build identity and updater artifacts untouched', () => {
   assert.equal(result.config, null);
 });
 
+test('drops the Apple variables a CI runner materialised as empty strings', () => {
+  const result = prepareDesktopCommand(
+    'tauri',
+    ['build'],
+    {
+      CI: 'true',
+      APPLE_CERTIFICATE: '',
+      APPLE_CERTIFICATE_PASSWORD: '',
+      APPLE_API_ISSUER: '',
+      APPLE_API_KEY: '',
+      APPLE_SIGNING_IDENTITY: '-',
+      TAURI_SIGNING_PRIVATE_KEY: 'secret',
+    },
+    'darwin',
+  );
+
+  assert.equal('APPLE_CERTIFICATE' in result.env, false);
+  assert.equal('APPLE_API_ISSUER' in result.env, false);
+  assert.equal(result.env.APPLE_SIGNING_IDENTITY, '-');
+  assert.equal(result.env.TAURI_SIGNING_PRIVATE_KEY, 'secret');
+});
+
 test('fully ad-hoc signs a local macOS bundle and disables unsigned updater artifacts', () => {
   const result = prepareDesktopCommand('tauri', ['build', '--bundles', 'app'], {}, 'darwin');
 

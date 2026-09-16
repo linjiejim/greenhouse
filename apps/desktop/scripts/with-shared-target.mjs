@@ -62,6 +62,13 @@ export function prepareDesktopCommand(command, args, env = process.env, platform
   const subcommand = tauriSubcommand(command, nextArgs);
   let config = overlay && (subcommand === 'dev' || subcommand === 'build') ? structuredClone(overlay) : null;
 
+  // A CI runner materialises an absent secret as an empty string, and Tauri's
+  // bundler reads a set-but-empty APPLE_CERTIFICATE as a certificate to import
+  // (`security import` then fails on nothing). Absent is absent.
+  for (const key of Object.keys(nextEnv)) {
+    if (key.startsWith('APPLE_') && nextEnv[key] === '') delete nextEnv[key];
+  }
+
   if (subcommand !== 'build' || nextEnv.CI) {
     return { args: nextArgs, env: nextEnv, config };
   }
