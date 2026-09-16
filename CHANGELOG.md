@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1](https://github.com/linjiejim/greenhouse/compare/v1.2.0...v1.2.1) (2026-09-16)
+
+
+### Fixed
+
+* **desktop:** ignore Apple signing variables a CI runner left empty ([19d2d5e](https://github.com/linjiejim/greenhouse/commit/19d2d5e102fcd5710576ebdcc2310e191c569708))
+
 ## [1.2.0](https://github.com/linjiejim/greenhouse/compare/v1.1.0...v1.2.0) (2026-09-16)
 
 
