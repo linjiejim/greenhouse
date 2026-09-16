@@ -151,20 +151,36 @@ jobs:
             echo "::error::Missing:$missing — a shell that cannot verify its updates must not be published (RELEASING.md → Desktop)."
             exit 1
           fi
-      - name: Materialize the Apple notary key (when configured)
+      # The Apple variables reach the build only when they are configured: a secret
+      # that does not exist arrives as an empty string, and Tauri reads a set-but-empty
+      # APPLE_CERTIFICATE as a certificate to import (`security import` then fails).
+      - name: Configure Apple signing (when configured)
         if: runner.os == 'macOS'
         shell: bash
         env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
         run: |
-          if [ -n "$APPLE_API_KEY_P8" ]; then
-            printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
-            echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
-          else
+          set -euo pipefail
+          if [ -z "$APPLE_CERTIFICATE" ]; then
             # No Developer ID: ad-hoc sign the whole bundle so macOS permission
             # grants (Accessibility, Screen Recording) still bind to the app.
             echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
             echo "::notice::No Apple signing secrets — publishing an ad-hoc signed macOS build (Gatekeeper warns on first open)."
+            exit 0
+          fi
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY; do
+            if [ -n "${!name}" ]; then
+              printf '%s<<__EOV__\n%s\n__EOV__\n' "$name" "${!name}" >> "$GITHUB_ENV"
+            fi
+          done
+          if [ -n "$APPLE_API_KEY_P8" ]; then
+            printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+            echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
           fi
       - name: Build the shell
         shell: bash
@@ -176,11 +192,6 @@ jobs:
           GREENHOUSE_WEB_BUNDLE_VERSION: ${{ needs.plan.outputs.web_bundle_version }}
           GREENHOUSE_DESKTOP_UPDATE_BASE: ${{ env.UPDATE_BASE }}
           GREENHOUSE_DESKTOP_ARTIFACT_ORIGINS: https://github.com/${{ github.repository }}/releases/download
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || env.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: pnpm desktop:build
       - name: Package the release fragment
         run: node scripts/desktop/make-app-release.mjs
