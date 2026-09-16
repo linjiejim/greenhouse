@@ -3,6 +3,12 @@ name: CI
 # Quality gate (lint / typecheck / test / e2e / secret-scan) for the default
 # branch and all PRs. This workflow never deploys — but deploy.yml polls it and
 # only rolls jim-server once it passes on the same sha.
+#
+# Gated to this repository like every other workflow here. An overlay fork carries
+# extensions whose tables this file never migrates, and is usually an organisation,
+# where gitleaks-action needs a licence — on a fork these jobs could only fail.
+# Forks run their own gate (fork-ci.yml, see EXTENDING.md); pull requests to this
+# repository still run here whichever fork they come from.
 on:
   push:
     branches: [main]
@@ -10,6 +16,7 @@ on:
 
 jobs:
   lint:
+    if: github.repository == 'linjiejim/greenhouse'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,6 +24,7 @@ jobs:
       - run: pnpm lint
 
   typecheck:
+    if: github.repository == 'linjiejim/greenhouse'
     runs-on: ubuntu-latest
     # tsc checks the whole monorepo in one program and peaks above 2 GB. Node
     # sizes its default old-space from visible memory, and on this runner that
@@ -30,6 +38,7 @@ jobs:
       - run: pnpm typecheck
 
   test:
+    if: github.repository == 'linjiejim/greenhouse'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -63,6 +72,7 @@ jobs:
   # tool-access & v1 API boundaries. Runs against a dead LLM endpoint so it stays
   # deterministic and free (E2E_NO_LLM skips the few content-dependent assertions).
   e2e:
+    if: github.repository == 'linjiejim/greenhouse'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -97,6 +107,7 @@ jobs:
   # register. This is the gate for failures no API test can see — a module id
   # the panel cannot resolve, a page that throws on first render.
   e2e-ui:
+    if: github.repository == 'linjiejim/greenhouse'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -145,6 +156,7 @@ jobs:
   # verified clean once locally; this gate scans incoming commits. Public repo, so
   # gitleaks-action needs no license key.
   secret-scan:
+    if: github.repository == 'linjiejim/greenhouse'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

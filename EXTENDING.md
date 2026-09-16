@@ -221,10 +221,12 @@ git remote add upstream https://github.com/linjiejim/greenhouse.git && git fetch
 node scripts/check-extension-overlay.mjs upstream/main
 ```
 
-Upstream's publishing workflows (`release.yml`, `release-please.yml`, `mobile.yml`, `deploy.yml`)
-are gated to `linjiejim/greenhouse` and stay inert in a fork; only `ci.yml` runs there. A fork
-puts its own gates and deployment in `.github/workflows/fork-*.yml`, which the overlay guard
-allows.
+Upstream's workflows (`ci.yml`, `release.yml`, `release-please.yml`, `mobile.yml`, `deploy.yml`,
+`desktop-release.yml`) are gated to `linjiejim/greenhouse` and stay inert in a fork — `ci.yml`
+included, because it neither migrates a fork's extension tables nor carries an organisation's
+gitleaks licence, so on a fork it could only fail. A fork puts its own gates and deployment in
+`.github/workflows/fork-*.yml`, which the overlay guard allows; `desktop-check.yml` (Rust checks
+of the shell, nothing deployment-specific) is the one upstream workflow that still runs there.
 
 The rule of thumb: **code that could exist without your business goes upstream; content,
 credentials and business-specific modules stay in the overlay.**
