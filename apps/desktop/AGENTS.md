@@ -252,8 +252,13 @@ are capped at warn, so a launch is a dozen useful lines rather than hundreds of 
   AppleScript); an unauthorized environment fails with `AppleEvent timed out (-1712)`. The
   `.app` is unaffected.
 - **Gatekeeper**: an ad-hoc signed build runs on the machine that built it; on another
-  machine it is reported as damaged (`xattr -dr com.apple.quarantine` is the only way past).
-  Distribute Developer-ID-signed and notarized builds only.
+  machine a *quarantined* copy (browser download, AirDrop) is reported as damaged, and that
+  dialog has no "open anyway" — only `xattr -dr com.apple.quarantine`. The flag is set by the
+  downloading application, not by the file: `curl … | tar xz -C /Applications` (the README's
+  install path) sets none and the app opens normally, and the built-in updater writes new
+  versions the same way. Ad-hoc signatures also change with every build, so TCC grants
+  (Accessibility, Screen Recording) have to be re-granted after an update; only a Developer
+  ID signature keeps them. Deployments that want neither caveat sign with a Developer ID.
 - **`target/` must stay out of eslint/prettier**: `tauri-codegen` writes embedded web output
   back as `.js`; the root `eslint.config.js` and `.prettierignore` exclude `**/target/`.
 - **Transparent windows need `macos-private-api`** (Cargo feature + `macOSPrivateApi` in the

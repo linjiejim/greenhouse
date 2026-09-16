@@ -266,6 +266,23 @@ Web Store). The **mobile app** ships on its own cadence via EAS: JS-only changes
 roll out as over-the-air updates; native changes auto-build and upload to
 TestFlight. Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
 
+The **desktop app** (a Tauri shell for macOS on Apple Silicon and Windows x64) is
+attached to each Release as well; installed copies update themselves from the project
+site. The macOS build is ad-hoc signed — no Developer ID — so a `.dmg` that came through
+a browser carries the quarantine flag and Gatekeeper reports it as *damaged* instead of
+warning. Install from the terminal instead: `curl` and `tar` set no quarantine flag, and
+the app opens like any other.
+
+```bash
+curl -fsSL https://github.com/linjiejim/greenhouse/releases/latest/download/Greenhouse-macos-aarch64.app.tar.gz | tar xz -C /Applications
+```
+
+(Already have the `.dmg`? `xattr -dr com.apple.quarantine /Applications/Greenhouse.app` gets
+you to the same place.) Windows:
+[`Greenhouse-windows-x86_64-setup.exe`](https://github.com/linjiejim/greenhouse/releases/latest/download/Greenhouse-windows-x86_64-setup.exe)
+— unsigned, so SmartScreen asks once (*More info → Run anyway*). Later versions arrive
+through the built-in updater, signature-checked, without any prompt.
+
 ### Upgrading
 
 Database migrations ship inside the image and are applied by a one-shot `migrate`

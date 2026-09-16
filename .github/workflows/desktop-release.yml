@@ -230,6 +230,12 @@ jobs:
         run: |
           set -euo pipefail
           cd apps/desktop/release
+          # Stable aliases beside the versioned names, so releases/latest/download/<alias>
+          # (the README install command) always resolves to the newest stable release.
+          # Each glob must match exactly one file; cp fails loudly otherwise.
+          cp app/*-aarch64.app.tar.gz app/Greenhouse-macos-aarch64.app.tar.gz
+          cp app/*-aarch64.dmg app/Greenhouse-macos-aarch64.dmg
+          cp app/*-x86_64-setup.exe app/Greenhouse-windows-x86_64-setup.exe
           # Installers, updater payloads + signatures, the web bundle tarball. The
           # manifests go up too, as a record; installed shells read them from the site.
           gh release upload "${{ needs.plan.outputs.tag }}" \

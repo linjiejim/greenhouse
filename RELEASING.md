@@ -128,6 +128,11 @@ Release host (`GREENHOUSE_DESKTOP_ARTIFACT_ORIGINS`), so a tampered manifest can
 Web changes between tags do **not** reach installed shells automatically — a hot update is cut
 per tag. Installed shells check 20 s after launch and every 4 h.
 
+Every installer is attached twice: under its versioned name (what the manifests reference)
+and under a stable alias — `Greenhouse-macos-aarch64.app.tar.gz`, `Greenhouse-macos-aarch64.dmg`,
+`Greenhouse-windows-x86_64-setup.exe` — so `releases/latest/download/<alias>` (the README's
+install command) always resolves to the newest stable release. Pre-releases are never `latest`.
+
 **One-time repository configuration (settings, not code):**
 
 | Kind | Name | How |
@@ -136,7 +141,7 @@ per tag. Installed shells check 20 s after launch and every 4 h.
 | var | `TAURI_UPDATER_PUBKEY` | the public key the same command prints |
 | secret | `WEB_BUNDLE_SIGN_KEY` | `node scripts/desktop/gen-web-bundle-key.mjs` → contents of `apps/desktop/.keys/web-bundle-sign.pem` |
 | var | `WEB_BUNDLE_PUBKEY` | contents of `apps/desktop/.keys/web-bundle-sign.pub` |
-| optional secrets | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_P8` | Developer ID signing + notarization; without them the macOS build is ad-hoc signed and Gatekeeper warns on first open |
+| optional secrets | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_P8` | Developer ID signing + notarization. Without them the macOS build is ad-hoc signed: a browser-downloaded `.dmg` is quarantined and Gatekeeper reports it as *damaged* (no "open anyway"), which is why the README installs from the `.app.tar.gz` with `curl \| tar` — no quarantine flag, no prompt |
 
 The `shell` jobs refuse to run without the two key pairs: a shell that cannot verify its own
 updates must not be published. **Rotating either key invalidates every published manifest for
