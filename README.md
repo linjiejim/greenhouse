@@ -81,6 +81,14 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 
 ## Features
 
+- **Persistent coworkers** — the top avatar row opens each Agent's private inbox; drag to reorder or use
+  “More”. History stays together as separate topics, with unread replies, running work and pending-action
+  indicators. “New topic” starts fresh model context; returning restores the last topic, draft and reading
+  position. Existing chats keep their chosen identity. Personal and reviewed shared Agents have persistent
+  memory and Mission workspace bindings per requesting user. Agents can discuss work through
+  `agent_chat`; expand the conversation card to see their actual rounds. Shared Agents use
+  separate private chats in this first version; group chat is not included.
+
 - **Chat** — streaming agent with tool-call traces, attachments of any file type (the agent
   reads text / CSV / JSON / xlsx / docx / PDF), per-turn model switching from a config catalog,
   a side pane for artifacts and records, session forking, background runs, sharing / grouping /

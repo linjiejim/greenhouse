@@ -160,6 +160,7 @@ describe('surface-derived exposure sets', () => {
         'knowledge_mutation',
         'eval_message',
         'spawn_session',
+        'agent_chat',
         'call_llm',
         'skill_mutation',
         'tables_query',

@@ -30,6 +30,7 @@ export const userMemories = pgTable(
     user_id: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    agent_instance_id: text('agent_instance_id'),
     category: text('category', { enum: ['preference', 'fact', 'behavior'] })
       .notNull()
       .default('preference'),

@@ -1,3 +1,4 @@
+import { safeJsonParse } from '@greenhouse/utils/json';
 /**
  * ConversationPane — the single conversation implementation shared by the
  * full Chat page and the context-aware Assistant overlay.
@@ -9,7 +10,12 @@ import { MessageBubble, StreamingMessageBubble } from '../chat/message';
 import { ChatInput } from '../chat/chat-input';
 import type { PendingImage } from '../chat/chat-input';
 import { composePromptMessage } from '../chat/prompt-selection';
-import { ProfileSelector, profileToSprouty } from '../chat/profile-selector';
+import { profileToSprouty } from '../chat/profile-avatar';
+import { AgentAvatarPicker, AgentIdentity, agentKey } from '../chat/agent-avatar-picker';
+import { EditableChatTitle } from '../app/top-bar';
+import { useCoworkerInbox } from './use-coworker-inbox';
+import { CoworkerHistory } from './coworker-history';
+import { useCoworkerReading } from './use-coworker-reading';
 import { ModelSelector } from '../chat/model-selector';
 import { SproutyAvatar } from '../sprouty/index.js';
 import { useAgentContext } from '../agent-context';
@@ -31,12 +37,11 @@ const DRAFT_KEY_NEW = '__new_session__';
 /** Stable empty tool-call array so the streaming overlay deps don't change every render. */
 const EMPTY_TOOL_CALLS: StreamingToolCall[] = [];
 import { safeParse } from '../../lib/utils';
-import { AlertTriangle, Image, Paperclip, Share2, Eye, X, ChevronDown, GitFork } from '../../lib/icons';
+import { AlertTriangle, Image, Paperclip, Share2, Eye, X, ChevronDown, GitFork, History, Plus } from '../../lib/icons';
 import type { LucideIcon } from '../../lib/icons';
 import * as api from '../../lib/api';
 import { ShareDialog } from '../chat/share-dialog';
-import { ProfileEditorDrawer } from '../chat/profile-editor';
-import { Button, Skeleton, toast } from '../ui';
+import { Button, IconButton, Skeleton, toast } from '../ui';
 import { MAX_IMAGES } from '../../lib/constants';
 import { TaskDock } from './task-dock';
 import { WorkbenchPanel } from '../workbench/workbench-panel';
@@ -77,6 +82,7 @@ type PendingForkRequest = { messageId?: string; preserveDraft: boolean };
 export interface ConversationPaneProps {
   surface: ConversationSurface;
   initialSessionId?: string;
+  initialProfileId?: string;
   visible?: boolean;
   viewportId?: string;
   topSlot?: React.ReactNode;
@@ -149,6 +155,7 @@ function ChatHistorySkeleton({ label }: { label: string }) {
 export function ConversationPane({
   surface,
   initialSessionId,
+  initialProfileId,
   visible = true,
   viewportId,
   topSlot,
@@ -177,9 +184,11 @@ export function ConversationPane({
     return actions.length > 0 ? { clientActions: { scopeId, actions } } : undefined;
   }, [getTurnEnvironment]);
   const stableViewportId = useRef(viewportId ?? `${surface}-${Math.random().toString(36).slice(2)}`).current;
-  const newDraftKey = `${DRAFT_KEY_NEW}:${stableViewportId}`;
   const t = useT();
   const currentUser = useAuthStore((s) => s.currentUser);
+  const newDraftKey = useRef(
+    `${DRAFT_KEY_NEW}:${currentUser?.id ?? 'anonymous'}:${surface === 'full' ? (initialProfileId ?? getLastProfile(currentUser?.id) ?? DEFAULT_AGENT_ID) : stableViewportId}`,
+  ).current;
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId || null);
   const [messages, setMessages] = useState<ParsedMessage[]>([]);
   const [isLoadingSession, setIsLoadingSession] = useState(() => !!initialSessionId);
@@ -187,13 +196,14 @@ export function ConversationPane({
   const [workbenchConversationMode, setWorkbenchConversationMode] = useState(false);
   const [pendingAutoSend, setPendingAutoSend] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState('');
-  const [sessionProfileId, setSessionProfileId] = useState(DEFAULT_AGENT_ID);
+  const [sessionProfileId, setSessionProfileId] = useState(initialProfileId ?? DEFAULT_AGENT_ID);
   const [sessionRating, setSessionRating] = useState<number | null>(null);
   const [sessionComment, setSessionComment] = useState<string | null>(null);
   const [sessionTags, setSessionTags] = useState<Array<{ id: number; name: string; color: string }>>([]);
   // Workflow node/reviewer sessions (channel 'workflow') are engine-produced
   // audit records: read-only, with a link back to the orchestrating session.
   const [sessionChannel, setSessionChannel] = useState<string>('web');
+  const [sessionIsPeer, setSessionIsPeer] = useState(false);
   const [parentSessionId, setParentSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -226,7 +236,7 @@ export function ConversationPane({
   // Selected profile, restored from the user's last choice.
   const [selectedProfileId, setSelectedProfileId] = useState(() => {
     const cached = getLastProfile(currentUser?.id);
-    return normalizeSelectedProfileId(cached);
+    return normalizeSelectedProfileId(initialProfileId ?? cached);
   });
 
   // Composer @-mention: the profile explicitly mentioned for this draft (shows a
@@ -239,8 +249,7 @@ export function ConversationPane({
 
   // ─── Auto-scroll: only when user is at bottom ───────────
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const isUserAtBottomRef = useRef(true);
-  const prevSessionIdRef = useRef<string | null>(sessionId);
+  const isUserAtBottomRef = useRef(surface !== 'full' || !initialSessionId);
 
   // Flag: skip session load when we just created it (first message scenario)
   const skipNextSessionLoadRef = useRef(false);
@@ -261,36 +270,47 @@ export function ConversationPane({
 
   // ─── Per-session draft: save/restore on session switch ─────────
   const draftKey = useMemo(() => sessionId || newDraftKey, [newDraftKey, sessionId]);
-
-  // Save current draft when session changes
+  const draftStorageKey = `coworker-draft:${currentUser?.id}:${draftKey}`;
+  const draftSnapshot = useRef<SessionDraft>({ input, annotations, prompt: selectedPrompt, skill: selectedSkill });
+  draftSnapshot.current = { input, annotations, prompt: selectedPrompt, skill: selectedSkill };
   useEffect(() => {
-    const prevKey = prevSessionIdRef.current || newDraftKey;
-    if (prevKey !== draftKey) {
-      // Save previous session's draft
-      sessionDrafts.set(prevKey, { input, annotations, prompt: selectedPrompt, skill: selectedSkill });
-      // Restore new session's draft (or defaults)
-      const draft = sessionDrafts.get(draftKey);
-      if (draft) {
-        setInput(draft.input);
-        setAnnotations(draft.annotations);
-        setSelectedPrompt(draft.prompt);
-        setSelectedSkill(draft.skill ?? null);
-        setTaskValues({});
-      } else {
-        setInput('');
-        setAnnotations([]);
-        setSelectedPrompt(null);
-        setSelectedSkill(null);
-        setTaskValues({});
-      }
-      // Composer @-mention is per-draft — reset on switch.
-      setMissionInstructionTarget(null);
-      setMentionedProfileId(null);
-      profileBeforeMentionRef.current = null;
-      modelBeforeMentionRef.current = null;
+    const cached = sessionDrafts.get(draftKey);
+    let text = cached?.input;
+    try {
+      text ??= sessionStorage.getItem(draftStorageKey) ?? '';
+    } catch {
+      /* storage unavailable */
     }
-    prevSessionIdRef.current = sessionId;
-  }, [draftKey, newDraftKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    setInput(text ?? '');
+    setAnnotations(cached?.annotations ?? []);
+    setSelectedPrompt(cached?.prompt ?? null);
+    setSelectedSkill(cached?.skill ?? null);
+    setTaskValues({});
+    setMissionInstructionTarget(null);
+    setMentionedProfileId(null);
+    profileBeforeMentionRef.current = null;
+    modelBeforeMentionRef.current = null;
+    return () => {
+      sessionDrafts.set(draftKey, draftSnapshot.current);
+      try {
+        if (draftSnapshot.current.input) sessionStorage.setItem(draftStorageKey, draftSnapshot.current.input);
+        else sessionStorage.removeItem(draftStorageKey);
+      } catch {
+        /* storage unavailable */
+      }
+    };
+  }, [draftKey, draftStorageKey]);
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      try {
+        if (input) sessionStorage.setItem(draftStorageKey, input);
+        else sessionStorage.removeItem(draftStorageKey);
+      } catch {
+        /* storage unavailable */
+      }
+    }, 150);
+    return () => clearTimeout(timeout);
+  }, [input, draftStorageKey]);
 
   // Image upload state
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -354,9 +374,6 @@ export function ConversationPane({
   const preferenceKey = currentUser?.id || '__anonymous__';
   const preferredProfileId = preferredProfileIds[preferenceKey];
 
-  // Tool list for profile editor (fork)
-  const { availableTools, fetchTools: loadTools } = useProfileStore();
-
   // Update profile selection (don't override user's thinking mode preference)
   const handleModelChange = useCallback(
     (modelId: string) => {
@@ -368,7 +385,9 @@ export function ConversationPane({
 
   // The two toolbar selectors are mutually exclusive: Sprouty exposes the
   // per-turn model choice; every explicit Agent exposes its own identity.
-  const activeProfile = displayProfiles.find((p) => p.id === (sessionId ? sessionProfileId : selectedProfileId));
+  const activeProfile = displayProfiles.find(
+    (p) => agentKey(p.id) === agentKey(sessionId ? sessionProfileId : selectedProfileId),
+  );
 
   const handleProfileChange = useCallback(
     (profileId: string) => {
@@ -417,34 +436,6 @@ export function ConversationPane({
     modelBeforeMentionRef.current = null;
   }, [currentUser?.id, preferredProfileId]);
 
-  // Fork profile state
-  const [forkDrawerOpen, setForkDrawerOpen] = useState(false);
-  const [forkedProfile, setForkedProfile] = useState<api.Profile | null>(null);
-
-  const handleFork = useCallback(async (profileId: string) => {
-    try {
-      const forked = await api.forkProfile(profileId);
-      setForkedProfile(forked);
-      setForkDrawerOpen(true);
-    } catch (err: any) {
-      toast(err.message || 'Failed to fork Agent', 'error');
-    }
-  }, []);
-
-  const handleForkSave = useCallback(
-    async (input: api.CustomProfileInput, editId?: number) => {
-      if (editId !== undefined) {
-        await api.updateCustomProfile(editId, input);
-      }
-      setForkDrawerOpen(false);
-      setForkedProfile(null);
-      toast('Agent forked successfully', 'success');
-      // Refresh profiles and switch to the forked one
-      loadProfiles();
-    },
-    [loadProfiles],
-  );
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Ref to the composer textarea — used to focus after "quote & follow up"
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -459,18 +450,17 @@ export function ConversationPane({
   // Load profiles on mount (tools loaded lazily by profile store for fork editor)
   useEffect(() => {
     loadProfiles();
-    if (policy.showProfileManagement) loadTools();
-  }, [loadProfiles, loadTools, policy.showProfileManagement]);
+  }, [loadProfiles]);
 
   useEffect(() => {
     const persisted = hydratePreferredProfile(currentUser?.id);
-    if (!mentionedProfileId) setSelectedProfileId(normalizeSelectedProfileId(persisted));
-  }, [currentUser?.id, hydratePreferredProfile, mentionedProfileId]);
+    if (!mentionedProfileId) setSelectedProfileId(normalizeSelectedProfileId(initialProfileId ?? persisted));
+  }, [currentUser?.id, hydratePreferredProfile, mentionedProfileId, initialProfileId]);
 
   useEffect(() => {
-    if (mentionedProfileId || preferredProfileId === undefined) return;
+    if (initialProfileId || mentionedProfileId || preferredProfileId === undefined) return;
     setSelectedProfileId(normalizeSelectedProfileId(preferredProfileId));
-  }, [mentionedProfileId, preferredProfileId]);
+  }, [mentionedProfileId, preferredProfileId, initialProfileId]);
 
   // Load slash prompts.
   useEffect(() => {
@@ -541,7 +531,56 @@ export function ConversationPane({
     setChatShare,
     setChatFeedback,
     setChatTitleEdit,
+    setChatAgentPicker,
   } = useUIStore();
+  const coworkerProfileId = sessionId ? sessionProfileId : selectedProfileId;
+  const coworker = useCoworkerInbox(
+    policy.publishGlobalChatUi,
+    coworkerProfileId,
+    isLoadingSession ? null : sessionId,
+    isOwner,
+    !isLoadingSession,
+  );
+  const navigationProfiles = useMemo(
+    () => [
+      ...displayProfiles,
+      ...coworker.inboxes
+        .filter((item) => item.topic_count > 0 && !displayProfiles.some((p) => agentKey(p.id) === item.profile_id))
+        .map((item) => ({ id: item.profile_id, name: item.name, tools: [] })),
+    ],
+    [displayProfiles, coworker.inboxes],
+  );
+  const coworkerStatuses = useMemo(
+    () => Object.fromEntries(coworker.inboxes.map((item) => [item.profile_id, item])),
+    [coworker.inboxes],
+  );
+  useCoworkerReading({
+    enabled: policy.publishGlobalChatUi && isOwner && !sessionIsPeer,
+    userId: currentUser?.id,
+    sessionId,
+    loading: isLoadingSession || !coworker.ready,
+    messages,
+    root: scrollContainerRef,
+    atBottom: isUserAtBottomRef,
+  });
+  useEffect(() => {
+    if (!policy.publishGlobalChatUi) return;
+    setChatAgentPicker({
+      profiles: navigationProfiles,
+      selectedId: coworkerProfileId,
+      onSelect: coworker.navigate,
+      statuses: coworkerStatuses,
+    });
+    return () => setChatAgentPicker(null);
+  }, [
+    policy.publishGlobalChatUi,
+    navigationProfiles,
+    coworkerProfileId,
+    coworker.navigate,
+    coworkerStatuses,
+    setChatAgentPicker,
+  ]);
+
   const handleRenameSessionTitle = useCallback(
     async (nextTitle: string) => {
       const title = nextTitle.trim();
@@ -592,7 +631,7 @@ export function ConversationPane({
 
   // Sync the Share affordance to the store so the TopBar can render the Share
   // button beside the session tags. Mirrors the old in-page button's condition.
-  const canShare = !!sessionId && messages.length > 0;
+  const canShare = !!sessionId && messages.length > 0 && !sessionIsPeer;
   const hasAssistantMessage = messages.some((message) => message.role === 'assistant');
   useEffect(() => {
     if (!policy.showShare) return;
@@ -687,6 +726,10 @@ export function ConversationPane({
           setSessionComment(data.session.comment ?? null);
           setSessionTags((data.session as any).tags || []);
           setSessionChannel(data.session.channel ?? 'web');
+          setSessionIsPeer(
+            data.session.channel === 'subagent' &&
+              !!(safeJsonParse(data.session.metadata, {}) as Record<string, unknown>).dialogue_id,
+          );
           setParentSessionId(data.session.parent_session_id ?? null);
           setMessages(data.messages.map(parseMessage));
           // Share context
@@ -710,6 +753,7 @@ export function ConversationPane({
       setSessionComment(null);
       setSessionTags([]);
       setSessionChannel('web');
+      setSessionIsPeer(false);
       setParentSessionId(null);
       setIsOwner(true);
       setShareCount(0);
@@ -891,13 +935,14 @@ export function ConversationPane({
   useEffect(() => {
     const addedMessages = messages.length - prevMessagesLenRef.current;
     prevMessagesLenRef.current = messages.length;
+    if (policy.publishGlobalChatUi && (isLoadingSession || !coworker.ready)) return;
     // Always scroll when a new user message is added (user just sent)
     const lastMsg = messages[messages.length - 1];
     if (addedMessages > 0 && lastMsg?.role === 'user') {
       isUserAtBottomRef.current = true;
     }
     scrollToBottom();
-  }, [messages, scrollToBottom]);
+  }, [messages, scrollToBottom, policy.publishGlobalChatUi, isLoadingSession, coworker.ready]);
 
   // Scroll during streaming only if user is at bottom
   useEffect(() => {
@@ -915,6 +960,7 @@ export function ConversationPane({
   // Double rAF waits for the freshly-loaded messages to lay out before jumping,
   // replacing a hard-coded timeout.
   useEffect(() => {
+    if (policy.publishGlobalChatUi) return; // Full chat restores its own per-topic viewport.
     isUserAtBottomRef.current = true;
     // A new conversation has no transcript to land at the end of — it opens on
     // the workbench, which must start at the top.
@@ -925,7 +971,7 @@ export function ConversationPane({
       });
     });
     return () => cancelAnimationFrame(raf);
-  }, [sessionId]);
+  }, [sessionId, policy.publishGlobalChatUi]);
 
   const handleSend = useCallback(
     async (overrideMessage?: string) => {
@@ -1719,6 +1765,36 @@ export function ConversationPane({
         )}
 
         {topSlot}
+        {policy.publishGlobalChatUi && sessionId && (
+          <div className="flex min-w-0 items-center gap-2 border-b border-edge px-4 py-2">
+            <AgentIdentity profileId={sessionProfileId} profiles={navigationProfiles} />
+            <EditableChatTitle
+              title={sessionTitle || t('coworker.untitledTopic')}
+              controls={isOwner ? { readonly: false, onRename: handleRenameSessionTitle } : null}
+            />
+            <span className="flex-1" />
+            {isOwner && !sessionIsPeer && (
+              <>
+                <IconButton
+                  size="compact"
+                  label={t('coworker.history')}
+                  onClick={() => scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+                >
+                  <History size={15} />
+                </IconButton>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="shrink-0 whitespace-nowrap"
+                  onClick={() => void coworker.newTopic()}
+                >
+                  <Plus size={14} />
+                  {t('coworker.newTopic')}
+                </Button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Share button moved to the TopBar (next to session tags) — see TopBar. */}
 
@@ -1740,10 +1816,18 @@ export function ConversationPane({
         )}
 
         {/* Messages */}
-        <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+        <div
+          ref={scrollContainerRef}
+          data-testid="conversation-scroll"
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto"
+        >
           {/* Center the conversation to the same width as the composer (max-w-5xl)
               so the content doesn't stretch edge-to-edge on wide screens. */}
           <div className="mx-auto w-full max-w-5xl px-3 md:px-4 py-4 space-y-4">
+            {policy.publishGlobalChatUi && isOwner && !sessionIsPeer && (
+              <CoworkerHistory state={coworker} profileId={coworkerProfileId} sessionId={sessionId} />
+            )}
             {isLoadingSession ? (
               <ChatHistorySkeleton label={t('chat.loadingHistory')} />
             ) : (
@@ -1762,7 +1846,9 @@ export function ConversationPane({
                   // data yet.
                   const intro = (
                     <ProfileEmptyState
-                      profile={displayProfiles.find((p) => p.id === (sessionId ? sessionProfileId : selectedProfileId))}
+                      profile={displayProfiles.find(
+                        (p) => agentKey(p.id) === agentKey(sessionId ? sessionProfileId : selectedProfileId),
+                      )}
                       onCustomize={
                         policy.showWorkbench
                           ? () => {
@@ -1773,7 +1859,7 @@ export function ConversationPane({
                       }
                     />
                   );
-                  return policy.showWorkbench ? (
+                  return policy.showWorkbench && !initialProfileId && !coworker.history?.topics.length ? (
                     <WorkbenchPanel
                       emptyFallback={intro}
                       conversationMode={workbenchConversationMode}
@@ -1816,56 +1902,63 @@ export function ConversationPane({
                     ? [...messages.slice(0, idx)].reverse().find((m) => m.role === 'user')?.content
                     : undefined;
                 return (
-                  <MessageBubble
+                  <div
                     key={msg.clientKey}
-                    role={msg.role}
-                    content={msg.content}
-                    messageId={msg.id}
-                    sessionId={sessionId}
-                    reasoning={msg.reasoning}
-                    pipeline={msg.pipeline}
-                    references={msg.references}
-                    images={msg.images}
-                    inputTokens={msg.input_tokens}
-                    outputTokens={msg.output_tokens}
-                    cachedTokens={msg.cached_tokens}
-                    reasoningTokens={msg.reasoning_tokens}
-                    durationMs={msg.duration_ms}
-                    model={msg.model}
-                    canViewMetrics={currentUser?.role === 'super'}
-                    canActOnArtifacts={isOwner}
-                    createdAt={msg.created_at}
-                    isLastUser={isLastUser}
-                    compact={policy.compactMessages}
-                    onEdit={isLastUser && !effectiveRunActive && !isMissionConversation ? handleEditMessage : undefined}
-                    onTranslate={
-                      policy.allowTranslate && !isMissionConversation && msg.role === 'assistant'
-                        ? handleTranslate
-                        : undefined
-                    }
-                    onRegenerate={msg.role === 'assistant' && !isMissionConversation ? handleRegenerate : undefined}
-                    onQuote={policy.allowQuote && msg.role === 'assistant' ? handleQuote : undefined}
-                    isStreaming={effectiveIsStreaming}
-                    onAskUserSubmit={
-                      msg.role === 'assistant' &&
-                      msg.pipeline?.some((s) => s.tool === 'ask_user' || (s.output as any)?.type === 'ask_user')
-                        ? isOwner
-                          ? handleSend
+                    id={policy.publishGlobalChatUi ? `coworker-message-${msg.id}` : undefined}
+                    data-coworker-message={policy.publishGlobalChatUi && msg.role === 'assistant' ? msg.id : undefined}
+                  >
+                    <MessageBubble
+                      role={msg.role}
+                      content={msg.content}
+                      messageId={msg.id}
+                      sessionId={sessionId}
+                      reasoning={msg.reasoning}
+                      pipeline={msg.pipeline}
+                      references={msg.references}
+                      images={msg.images}
+                      inputTokens={msg.input_tokens}
+                      outputTokens={msg.output_tokens}
+                      cachedTokens={msg.cached_tokens}
+                      reasoningTokens={msg.reasoning_tokens}
+                      durationMs={msg.duration_ms}
+                      model={msg.model}
+                      canViewMetrics={currentUser?.role === 'super'}
+                      canActOnArtifacts={isOwner}
+                      createdAt={msg.created_at}
+                      isLastUser={isLastUser}
+                      compact={policy.compactMessages}
+                      onEdit={
+                        isLastUser && !effectiveRunActive && !isMissionConversation ? handleEditMessage : undefined
+                      }
+                      onTranslate={
+                        policy.allowTranslate && !isMissionConversation && msg.role === 'assistant'
+                          ? handleTranslate
                           : undefined
-                        : undefined
-                    }
-                    onConfirmAction={msg.role === 'assistant' && isOwner ? handleSend : undefined}
-                    hasFollowUpUserMessage={hasFollowUpUserMessage}
-                    submittedUserMessage={submittedUserMessage}
-                    confirmedActionValue={followUpUserMessage}
-                    previousUserMessage={previousUserMsg}
-                    missionOutcome={missionOutcome}
-                    onFork={
-                      policy.showProfileManagement && sessionId && sessionChannel === 'web'
-                        ? requestForkSession
-                        : undefined
-                    }
-                  />
+                      }
+                      onRegenerate={msg.role === 'assistant' && !isMissionConversation ? handleRegenerate : undefined}
+                      onQuote={policy.allowQuote && msg.role === 'assistant' ? handleQuote : undefined}
+                      isStreaming={effectiveIsStreaming}
+                      onAskUserSubmit={
+                        msg.role === 'assistant' &&
+                        msg.pipeline?.some((s) => s.tool === 'ask_user' || (s.output as any)?.type === 'ask_user')
+                          ? isOwner
+                            ? handleSend
+                            : undefined
+                          : undefined
+                      }
+                      onConfirmAction={msg.role === 'assistant' && isOwner ? handleSend : undefined}
+                      hasFollowUpUserMessage={hasFollowUpUserMessage}
+                      submittedUserMessage={submittedUserMessage}
+                      confirmedActionValue={followUpUserMessage}
+                      previousUserMessage={previousUserMsg}
+                      missionOutcome={missionOutcome}
+                      onFork={
+                        policy.showProfileManagement && sessionId && sessionChannel === 'web'
+                          ? requestForkSession
+                          : undefined
+                      }
+                    />
+                  </div>
                 );
               })}
 
@@ -1914,7 +2007,16 @@ export function ConversationPane({
 
         {/* Input — read-only for workflow node sessions (engine-produced audit
             records) and for non-owners of shared sessions */}
-        {sessionId && sessionChannel === 'workflow' ? (
+        {sessionId && sessionIsPeer ? (
+          <div className="flex items-center justify-center gap-2 p-3 text-xs text-fg-muted">
+            <span>{t('coworker.readonly')}</span>
+            {parentSessionId && (
+              <a className="text-primary-600 hover:underline" href={`#/chat?session=${parentSessionId}`}>
+                {t('coworker.back')}
+              </a>
+            )}
+          </div>
+        ) : sessionId && sessionChannel === 'workflow' ? (
           <WorkflowNodeSessionBar parentSessionId={parentSessionId} />
         ) : sessionId && !isOwner ? (
           <ChatInput
@@ -1937,12 +2039,6 @@ export function ConversationPane({
             }
             rightSlot={
               <>
-                <ProfileSelector
-                  profiles={displayProfiles}
-                  selectedProfileId={sessionProfileId}
-                  onSelectProfile={handleProfileChange}
-                  readonly
-                />
                 <Button
                   size="sm"
                   onClick={() => requestForkSession(undefined, true)}
@@ -2046,7 +2142,7 @@ export function ConversationPane({
             profiles={displayProfiles}
             selectedProfileId={sessionId ? sessionProfileId : selectedProfileId}
             mentionEnabled={!sessionId && displayProfiles.length > 1}
-            onMentionProfile={handleMentionProfile}
+            onMentionProfile={policy.publishGlobalChatUi ? (id) => void coworker.navigate(id) : handleMentionProfile}
             profileChip={
               !sessionId && mentionedProfileId
                 ? (displayProfiles.find((p) => p.id === mentionedProfileId) ?? null)
@@ -2061,13 +2157,14 @@ export function ConversationPane({
             onClearAnnotations={() => setAnnotations([])}
             rightSlot={
               <>
-                <ProfileSelector
-                  profiles={displayProfiles}
-                  selectedProfileId={sessionId ? sessionProfileId : selectedProfileId}
-                  onSelectProfile={handleProfileChange}
-                  readonly={!!sessionId}
-                  onFork={policy.showProfileManagement && !sessionId ? handleFork : undefined}
-                />
+                {!policy.publishGlobalChatUi && !sessionId && (
+                  <AgentAvatarPicker
+                    profiles={displayProfiles}
+                    selectedId={selectedProfileId}
+                    onSelect={handleProfileChange}
+                    disabled={effectiveRunActive}
+                  />
+                )}
                 {activeProfile?.id === DEFAULT_AGENT_ID && (
                   <ModelSelector
                     models={models}
@@ -2109,21 +2206,6 @@ export function ConversationPane({
         onClose={() => setPendingFork(null)}
         onConfirm={confirmForkSession}
       />
-
-      {/* Fork Profile Editor */}
-      {policy.showProfileManagement && (
-        <ProfileEditorDrawer
-          open={forkDrawerOpen}
-          onClose={() => {
-            setForkDrawerOpen(false);
-            setForkedProfile(null);
-          }}
-          profile={forkedProfile}
-          availableTools={availableTools}
-          isSuper={currentUser?.role === 'super'}
-          onSave={handleForkSave}
-        />
-      )}
     </div>
   );
 }

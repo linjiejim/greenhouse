@@ -5,7 +5,7 @@
  * Esc dismiss) and lists Agent Profiles only. Selecting one switches the active
  * profile for a new chat and surfaces it as a pill in the composer.
  *
- * Reuses profileToSprouty + SproutyAvatar from profile-selector so the avatar
+ * Reuses profileToSprouty + SproutyAvatar from profile-avatar so the avatar
  * styling stays consistent with the toolbar picker.
  */
 
@@ -13,7 +13,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Check } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
 import { SproutyAvatar } from '../sprouty/index.js';
-import { profileToSprouty } from './profile-selector';
+import { profileToSprouty } from './profile-avatar';
 import { PopoverWrapper } from './popover-wrapper';
 import { useLocalized, useT } from '../../lib/i18n';
 import { Tag } from '../ui';

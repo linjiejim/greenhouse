@@ -39,6 +39,7 @@ import { BatchActionBar } from './batch-action-bar';
 import { pruneMissing, rangeSelect, toggleOne, type SelectableRow } from './selection';
 import type { SessionTag, SessionGroup, SessionScope } from '@greenhouse/types/api';
 import { DEFAULT_ASSET_SCOPE } from '../../../lib/asset-scopes';
+import { agentKey } from '../../chat/agent-avatar-picker';
 
 // Long-press duration (touch) to enter multi-select mode.
 const LONG_PRESS_MS = 450;
@@ -313,7 +314,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
   const longPressFired = useRef(false);
 
   const { activeSessions, unreadSessions, importantSessions, remoteStreamingSessions } = useSessionManager();
-  const { sessionListVersion, bumpSessionListVersion } = useUIStore();
+  const { sessionListVersion, bumpSessionListVersion, currentSessionProfileId } = useUIStore();
   const currentUser = useAuthStore((s) => s.currentUser);
   // Same unread number the inbox shows — one server-pushed count, not a second tally.
   const unreadShareCount = useWsStore((s) => s.shareCount);
@@ -450,10 +451,19 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     setContextMenu({ sessionId: session.id, x: rect.left, y: rect.bottom + 4 });
   }, []);
 
+  const sessionRequest = useRef(0);
   const loadSessions = useCallback(async () => {
+    const request = ++sessionRequest.current;
     setLoading(true);
     try {
-      const data = await api.listSessions('active', false, 500, effectiveScope);
+      const data = await api.listSessions(
+        'active',
+        false,
+        500,
+        effectiveScope,
+        effectiveScope === 'mine' ? agentKey(currentSessionProfileId) : undefined,
+      );
+      if (request !== sessionRequest.current) return;
       // Keep the full set (server caps at 500): pinned/grouped sessions must
       // survive even when older than the 50 most-recent. Date buckets cap
       // their own render below.
@@ -465,8 +475,8 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     } catch (err) {
       console.error('Failed to load sessions:', err);
     }
-    setLoading(false);
-  }, [effectiveScope]);
+    if (request === sessionRequest.current) setLoading(false);
+  }, [effectiveScope, currentSessionProfileId]);
 
   // Load user tags.
   const loadTags = useCallback(async () => {

@@ -14,7 +14,7 @@ import type { Profile } from '../../lib/api';
 import type { UserPrompt } from '@greenhouse/types/api';
 import type { SlashSkill } from './command-menu-popover';
 import { SproutyAvatar } from '../sprouty/index.js';
-import { profileToSprouty } from './profile-selector';
+import { profileToSprouty } from './profile-avatar';
 import { useLocalized, useT } from '../../lib/i18n';
 import { Tag } from '../ui';
 

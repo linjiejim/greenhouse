@@ -16,6 +16,7 @@ import { BUILTIN_AGENT_TOOL_IDS, MUTATING_PROXY_ALLOWLIST, TOOL_DEFINITIONS } fr
 import { UNATTENDED_TOOL_DENYLIST } from '../../agent-runtime/tool-resolution.js';
 
 const EXPECTED = [
+  'agent_chat',
   'analyze_image',
   'ask_user',
   'automation_mutation',
@@ -33,9 +34,11 @@ describe('BUILTIN_AGENT_TOOL_IDS', () => {
     expect([...BUILTIN_AGENT_TOOL_IDS].sort()).toEqual(EXPECTED);
   });
 
-  it('holds no domain data, outbound channel or orchestration tool', () => {
+  it('holds no domain data, outbound channel or unbounded dispatch tool', () => {
     // "What may this Agent see and do" is the author's design decision. CRM,
     // knowledge, Tables, email and mission/workflow dispatch stay opt-in.
+    // agent_chat is the bounded, read-only peer discussion exception: targets
+    // are requester-authorized and cannot recursively dispatch work.
     const forbidden = [
       'knowledge_query',
       'knowledge_mutation',

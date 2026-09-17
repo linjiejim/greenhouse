@@ -71,9 +71,9 @@ function ageMarker(row: UserMemoryRow, now: number): string {
  * budget. Everything is sanitised: memory text is model-written and
  * user-editable, so it is untrusted input that gets replayed every turn.
  */
-export async function buildMemoryIndexBlock(userId: string): Promise<string | null> {
+export async function buildMemoryIndexBlock(userId: string, agentId: string | null = null): Promise<string | null> {
   const db = getDb();
-  const rows = await db.userMemories.listForIndex(userId);
+  const rows = await db.userMemories.listForIndex(userId, 100, agentId);
   if (rows.length === 0) return null;
 
   const now = Date.now();
@@ -114,7 +114,11 @@ export async function buildMemoryIndexBlock(userId: string): Promise<string | nu
  * spawned subagents). Returns null when the feature is off, the user is unknown,
  * or anything at all fails — memory must never be the reason a turn breaks.
  */
-export async function resolveMemoryContext(userId: string, role?: UserRole): Promise<string | null> {
+export async function resolveMemoryContext(
+  userId: string,
+  role?: UserRole,
+  agentScope: string | null | { sessionId?: string } = null,
+): Promise<string | null> {
   try {
     const db = getDb();
     let userRole = role;
@@ -125,7 +129,11 @@ export async function resolveMemoryContext(userId: string, role?: UserRole): Pro
     }
     if (!(await userHasFeature(userId, userRole, 'memory'))) return null;
 
-    const index = await buildMemoryIndexBlock(userId);
+    const agentId =
+      typeof agentScope === 'object' && agentScope !== null
+        ? await db.coworkers.memoryScopeForSession(agentScope.sessionId)
+        : agentScope;
+    const index = await buildMemoryIndexBlock(userId, agentId);
     return index ? `### Memory\n${index}` : null;
   } catch (err) {
     logger.warn('[memory] failed to build memory context', { error: toErrorMessage(err) });

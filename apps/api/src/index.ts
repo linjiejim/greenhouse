@@ -50,6 +50,7 @@ import {
 import authRoutes from './routes/auth.js';
 import profileRoutes from './routes/profiles.js';
 import sessionRoutes from './routes/sessions.js';
+import coworkerRoutes from './routes/coworkers.js';
 import evalRoutes from './routes/eval.js';
 import { createChatRoute } from './routes/chat.js';
 import clientActionRoutes from './routes/client-actions.js';
@@ -266,6 +267,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/auth', authRoutes)
       .route('/api/profiles', profileRoutes)
       .route('/api/sessions', sessionRoutes)
+      .route('/api/coworkers', coworkerRoutes)
       .route('/health', healthRoutes)
       // Pre-login workspace personalization (name / logo / theme) — public.
       .route('/api/bootstrap', bootstrapRoutes)

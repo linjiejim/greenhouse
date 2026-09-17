@@ -23,7 +23,7 @@ import {
 } from '../components/ui';
 import { Bot, Plus, Pencil, Trash2, Globe, GitFork } from '../lib/icons';
 import { SproutyAvatar } from '../components/sprouty/index.js';
-import { profileToSprouty } from '../components/chat/profile-selector';
+import { profileToSprouty } from '../components/chat/profile-avatar';
 import * as api from '../lib/api';
 import { useAuthStore, useProfileStore } from '../stores';
 import { ProfileEditorDrawer } from '../components/chat/profile-editor';
@@ -361,6 +361,7 @@ export function AgentsPage() {
                                   key={status}
                                   size="sm"
                                   variant="ghost"
+                                  className="shrink-0 whitespace-nowrap"
                                   onClick={() => setLifecycleTarget({ profile: p, status })}
                                   title={t(`agents.lifecycleAction.${status}`)}
                                 >
@@ -443,6 +444,7 @@ export function AgentsPage() {
                                       key={status}
                                       size="sm"
                                       variant="ghost"
+                                      className="shrink-0 whitespace-nowrap"
                                       onClick={() => setLifecycleTarget({ profile: p, status })}
                                     >
                                       {t(`agents.lifecycleAction.${status}`)}

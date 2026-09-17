@@ -5,7 +5,7 @@ import type { Profile } from '../../lib/api';
 import { I18nProvider } from '../../lib/i18n';
 import { MessageBubble } from './message';
 import { NoteInputDialog } from './note-input-dialog';
-import { ProfileSelector } from './profile-selector';
+import { AgentIdentity } from './agent-avatar-picker';
 import { ReasoningToggle } from './reasoning-panel';
 
 vi.mock('../rich-markdown', () => ({
@@ -147,37 +147,13 @@ describe('chat presentation polish', () => {
     expect(html).toContain('h-9 w-9');
   });
 
-  it('omits the implicit built-in profile in both editable and read-only composers but keeps an explicit Agent visible', () => {
+  it('shows the chosen coworker identity in existing conversations without a picker', () => {
     const profiles = [
       { id: 'sprouty', name: 'Sprouty' },
-      { id: 'analyst', name: 'Analyst' },
+      { id: 'custom:1', name: 'Analyst' },
     ] as Profile[];
-    const defaultHtml = inEnglish(
-      createElement(ProfileSelector, {
-        profiles,
-        selectedProfileId: 'sprouty',
-        onSelectProfile: vi.fn(),
-        readonly: true,
-      }),
-    );
-    const customHtml = inEnglish(
-      createElement(ProfileSelector, {
-        profiles,
-        selectedProfileId: 'analyst',
-        onSelectProfile: vi.fn(),
-        readonly: true,
-      }),
-    );
-    const editableDefaultHtml = inEnglish(
-      createElement(ProfileSelector, {
-        profiles,
-        selectedProfileId: 'sprouty',
-        onSelectProfile: vi.fn(),
-      }),
-    );
-
-    expect(defaultHtml).toBe('');
-    expect(editableDefaultHtml).toBe('');
-    expect(customHtml).toContain('Analyst');
+    const html = inEnglish(createElement(AgentIdentity, { profiles, profileId: 'custom:1@2' }));
+    expect(html).toContain('title="Analyst"');
+    expect(html).not.toContain('<button');
   });
 });

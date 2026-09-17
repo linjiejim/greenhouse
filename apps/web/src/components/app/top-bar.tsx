@@ -19,6 +19,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Pencil,
+  MoreHorizontal,
 } from '../../lib/icons';
 import { useSidePaneStore, useUIStore, useWsStore } from '../../stores';
 import { useT } from '../../lib/i18n';
@@ -31,6 +32,9 @@ import { chatWorkspaceLabel } from '../chat/chat-workspace-navigation';
 import type { ChatWorkspaceView } from '../../stores';
 import type { SessionTag } from '../../lib/api';
 import * as api from '../../lib/api';
+import { OverlayPanel } from './overlay-panel';
+import { AgentAvatarPicker, AgentIdentity } from '../chat/agent-avatar-picker';
+import { useProfileStore } from '../../stores/profile-store';
 import { MessageFeedback } from '../chat/message-feedback';
 
 type Route =
@@ -224,13 +228,17 @@ export function TopBar({
     chatShare,
     chatFeedback,
     chatTitleEdit,
+    chatAgentPicker,
+    currentSessionProfileId,
     homeWorkbench,
     setCurrentSessionInfo,
     bumpSessionListVersion,
   } = useUIStore();
+  const profiles = useProfileStore((s) => s.profiles);
   const [allTags, setAllTags] = useState<SessionTag[]>([]);
   const [tagSelector, setTagSelector] = useState<{ x: number; y: number } | null>(null);
   const [showMobileHistory, setShowMobileHistory] = useState(false);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const sidePaneOpen = useSidePaneStore((state) => state.isOpen);
   const collapseSidePane = useSidePaneStore((state) => state.collapse);
   const reopenSidePane = useSidePaneStore((state) => state.reopen);
@@ -292,9 +300,32 @@ export function TopBar({
   // session title/tags/share bar stays visible at every width.
   const visibility = route === 'chat' ? 'flex' : 'flex md:hidden';
 
+  const conversationActions = (
+    <>
+      {isChatConversation && (
+        <IconButton
+          onClick={sidePaneOpen ? collapseSidePane : reopenSidePane}
+          label={sidePaneOpen ? t('sidePane.collapse') : t('sidePane.open')}
+        >
+          {sidePaneOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+        </IconButton>
+      )}
+      {isChatConversation && currentChatSessionId && (
+        <IconButton
+          onClick={handleTagEdit}
+          label={currentSessionTags.length > 0 ? t('common.tags') : t('chat.addTags')}
+          className={currentSessionTags.length > 0 ? 'text-primary-fg-strong' : ''}
+        >
+          <Tag size={16} />
+        </IconButton>
+      )}
+      {isChatConversation && <ChatTopBarSessionActions feedback={chatFeedback} share={chatShare} />}
+    </>
+  );
+
   return (
     <header
-      className={`${visibility} min-h-10 items-center justify-between gap-2 border-b border-edge bg-surface-raised px-3 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] md:h-10 md:py-0 md:pt-0 flex-shrink-0 z-10`}
+      className={`${visibility} min-h-10 items-center justify-between gap-2 border-b border-edge bg-surface-raised px-3 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] ${isChatConversation && chatAgentPicker ? 'md:min-h-16' : 'md:h-10'} md:py-0 md:pt-0 flex-shrink-0 z-10`}
     >
       {/* Left — takes whatever width the actions leave and truncates the title. */}
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -314,7 +345,14 @@ export function TopBar({
           </div>
         ) : /* Simple title */
         isChatConversation ? (
-          <EditableChatTitle title={title} controls={chatTitleEdit} />
+          chatAgentPicker ? (
+            <AgentAvatarPicker {...chatAgentPicker} />
+          ) : (
+            <>
+              <AgentIdentity profileId={currentSessionProfileId} profiles={profiles} />
+              <EditableChatTitle title={title} controls={chatTitleEdit} />
+            </>
+          )
         ) : (
           <h2 className="truncate text-sm font-medium text-fg">{title}</h2>
         )}
@@ -325,25 +363,20 @@ export function TopBar({
         {/* Workbench controls, only while the panel that registered them is on
             screen (the empty state of a new conversation). Sending the first
             message unmounts the panel, which takes these with it. */}
-        {isChatConversation && <WorkbenchTopBarActions controls={homeWorkbench} />}
-        {isChatConversation && (
-          <IconButton
-            onClick={sidePaneOpen ? collapseSidePane : reopenSidePane}
-            label={sidePaneOpen ? t('sidePane.collapse') : t('sidePane.open')}
-          >
-            {sidePaneOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-          </IconButton>
-        )}
+        {isChatConversation && !currentChatSessionId && <WorkbenchTopBarActions controls={homeWorkbench} />}
+        <div className={isChatConversation && currentChatSessionId ? 'hidden sm:contents' : 'contents'}>
+          {conversationActions}
+        </div>
         {isChatConversation && currentChatSessionId && (
           <IconButton
-            onClick={handleTagEdit}
-            label={currentSessionTags.length > 0 ? t('common.tags') : t('chat.addTags')}
-            className={currentSessionTags.length > 0 ? 'text-primary-fg-strong' : ''}
+            wrapperClassName="sm:hidden"
+            label={t('coworker.actions')}
+            onClick={() => setMobileActionsOpen(true)}
           >
-            <Tag size={16} />
+            <MoreHorizontal size={18} />
           </IconButton>
         )}
-        {isChatConversation && <ChatTopBarSessionActions feedback={chatFeedback} share={chatShare} />}
+
         {children}
         <div className="flex items-center gap-1 md:hidden">
           {route === 'chat' && (
@@ -354,6 +387,18 @@ export function TopBar({
           <WsStatusIndicator />
         </div>
       </div>
+
+      {mobileActionsOpen && (
+        <OverlayPanel
+          onClose={() => setMobileActionsOpen(false)}
+          ariaLabel={t('coworker.actions')}
+          className="fixed right-3 top-14 flex rounded-xl border border-edge bg-surface-raised p-2 shadow-xl"
+        >
+          <div className="flex items-center gap-1" onClick={() => setMobileActionsOpen(false)}>
+            {conversationActions}
+          </div>
+        </OverlayPanel>
+      )}
 
       {/* Tag selector popover */}
       {tagSelector && isChatConversation && currentChatSessionId && (

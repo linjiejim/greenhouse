@@ -356,7 +356,16 @@ const auth = new Hono<AppEnv>()
     }
 
     const memories = await getDb().userMemories.listByUser(authUser.id);
-    return c.json({ memories });
+    const agentIds = [...new Set(memories.flatMap((m) => (m.agent_instance_id ? [m.agent_instance_id] : [])))];
+    const agents = new Map(
+      await Promise.all(agentIds.map(async (id) => [id, (await getDb().coworkers.get(id))?.name ?? null] as const)),
+    );
+    return c.json({
+      memories: memories.map((m) => ({
+        ...m,
+        agent_name: m.agent_instance_id ? agents.get(m.agent_instance_id) : null,
+      })),
+    });
   })
   /** PATCH /api/auth/me/memories/:id — edit content/category/pinned, or move status */
   .patch('/me/memories/:id', async (c) => {

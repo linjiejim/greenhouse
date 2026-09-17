@@ -3,6 +3,36 @@
  */
 export default {
   // Common / shared
+  coworker: {
+    history: 'Our conversations',
+    newTopic: 'New topic',
+    topicHint: 'Each topic has its own context. History and memories stay available.',
+    firstUnread: 'First unread',
+    olderTopics: 'Older topics',
+    untitledTopic: 'New topic',
+    historyEmpty: 'Start with a message. Your conversations will stay here.',
+    loadFailed: 'Unable to load. Try again.',
+    working: 'Working',
+    attention: 'Needs your attention',
+    paused: 'Paused',
+    runningCount: '{count} in progress',
+    unreadCount: '{count} unread',
+
+    actions: 'Conversation actions',
+    readonly: 'Conversation between colleagues',
+    back: 'Back to your chat',
+    choose: 'Talk to',
+    more: 'More colleagues',
+    chooseHint: 'Open a colleague’s conversations. Drag to reorder, or use Alt + arrow keys.',
+    moveEarlier: 'Move earlier',
+    moveLater: 'Move later',
+    discussion: 'Colleague discussion',
+    discussing: 'Discussing with a colleague',
+    round: 'Round {round}',
+    failed: 'Reply interrupted',
+    privateHint:
+      'Only the messages sent between these two colleagues are included. Your chat stays with the original Agent.',
+  },
   common: {
     save: 'Save',
     saving: 'Saving...',
@@ -453,14 +483,6 @@ export default {
     custom: 'Custom',
     shared: 'Shared',
     personal: 'Personal',
-    all: 'All',
-    toolsAria: '{name} tools',
-    toolCount: '{count} tools',
-    moreTools: '+{count} more tools',
-    promptOnly: 'Prompt-only mode — no tools',
-    selectAgent: 'Select Agent',
-    manage: 'Manage →',
-    noAgents: 'No Agents in this category',
   },
 
   agent: {

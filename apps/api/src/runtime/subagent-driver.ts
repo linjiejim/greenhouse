@@ -76,6 +76,8 @@ interface SubagentRuntimeAdmissionBase extends SubagentRuntimeInput {
 
 export interface AdmitSubagentRuntimeInput extends SubagentRuntimeAdmissionBase {
   seed_message_id: string;
+  agent_instance_id?: string;
+  dialogue_id?: string;
 }
 
 export interface SubagentRuntimeEnvelope {
@@ -96,6 +98,7 @@ export async function admitSubagentRuntimeRun(
   const admitted = await db.runtime.admitSubagent({
     child_session_id: input.child_session_id,
     seed_message_id: input.seed_message_id,
+    agent_instance_id: input.agent_instance_id,
     owner_user_id: input.owner_user_id,
     initiated_by_user_id: input.initiated_by_user_id,
     parent_session_id: input.parent_session_id,
@@ -105,7 +108,8 @@ export async function admitSubagentRuntimeRun(
     metadata: {
       spawn_depth: input.depth,
       parent_session_id: input.parent_session_id,
-      spawned_by: 'spawn_session',
+      spawned_by: input.dialogue_id ? 'agent_chat' : 'spawn_session',
+      ...(input.dialogue_id ? { dialogue_id: input.dialogue_id } : {}),
     },
     prompt: input.prompt,
     depth: input.depth,
@@ -210,7 +214,11 @@ async function assembleCurrentTools(
     profile: input.profile,
     profileId: input.profile.id,
   });
-  const ids = resolution.childSpawnToolIds(effectiveTools, input.depth);
+  const session = await input.db.sessions.getById(input.childSessionId);
+  const peer = (safeJsonParse(session?.metadata ?? '{}', {}) as Record<string, unknown>).dialogue_id;
+  const ids = resolution
+    .childSpawnToolIds(effectiveTools, input.depth)
+    .filter((id) => !peer || !['session_query', 'spawn_session', 'agent_chat', 'memory'].includes(id));
   const tools = agent.selectTools(
     options.toolRegistry,
     ids.filter((toolId) => !resolution.LAZY_TOOL_IDS.has(toolId)),
@@ -471,7 +479,8 @@ export async function executeSubagentRuntimeRun(
       },
       options,
     );
-    const memory = await (options.resolveMemory ?? resolveMemoryContext)(owner.id, ownerRole as UserRole);
+    const peer = (safeJsonParse(session.metadata, {}) as Record<string, unknown>).dialogue_id;
+    const memory = peer ? null : await (options.resolveMemory ?? resolveMemoryContext)(owner.id, ownerRole as UserRole);
     const system = memory
       ? `${enrichSystemPrompt(profile)}\n\n## User Context\n${memory}`
       : enrichSystemPrompt(profile);

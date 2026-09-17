@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "agent_instance_id" text;

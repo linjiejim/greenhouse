@@ -519,3 +519,7 @@ is parsed; the generic OpenAI client drops both (that is how auto-titles went bl
 - Fast feedback: `pnpm test:unit`; database focus: `pnpm test:db`; before landing run the full
   `pnpm test`. Worker counts are tunable via `VITEST_UNIT_MAX_WORKERS` /
   `VITEST_DB_MAX_WORKERS`.
+
+### Persistent coworker identity
+
+Chat keeps the top-bar coworker avatars visible as navigation between private inboxes. Each user's history groups by stable coworker identity while sessions remain separate topic contexts. `coworker_inboxes` saves the last topic; exact per-message receipts track unread replies independently of Runtime attention. Navigation never cancels work or changes an existing topic's Agent. `coworkers` is identity/state; immutable Profiles remain configuration and governance. Shared coworkers use separate user chats, memory and Mission workspace bindings. `agent_chat` stores bounded bilateral discussions and reuses the Subagent Runtime; it never changes the human conversation's Agent. See the API, web and database domain guides for the scope and replay rules.

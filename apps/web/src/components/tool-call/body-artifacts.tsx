@@ -16,6 +16,7 @@
  * so THIS registry — not the flag — is the complete list.
  */
 
+import { AgentDialogueCard } from './agent-dialogue-card';
 import { registeredToolCard } from '../../lib/extension-registries';
 import React from 'react';
 import { AlertTriangle, GitBranch, Image } from '../../lib/icons';
@@ -112,6 +113,8 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
       // stable image-shaped placeholder instead of making the transcript look
       // idle for up to a minute. Errors still fall back to the trace row.
       return !out || (!!out.success && !!out.url);
+    case 'agent_chat':
+      return !out || out.type === 'agent_dialogue';
     case 'spawn_session':
       // Card while in-flight (no output yet) and once a child exists (incl. a
       // failed/timed-out child, so its error is openable). Pre-creation
@@ -196,7 +199,20 @@ export function BodyArtifacts({
   position?: 'above' | 'below';
 }) {
   const canUseWorkflow = useAuthStore((state) => state.currentUser?.role === 'super');
-  const artifacts = calls.filter((c) => {
+  const artifacts = calls.filter((c, index) => {
+    if (c.name === 'agent_chat') {
+      const id = (c.output as Record<string, unknown> | undefined)?.dialogue_id;
+      if (
+        id &&
+        calls
+          .slice(index + 1)
+          .some(
+            (later) =>
+              later.name === 'agent_chat' && (later.output as Record<string, unknown> | undefined)?.dialogue_id === id,
+          )
+      )
+        return false;
+    }
     if (!isArtifactCall(c)) return false;
     if (c.name === 'workflow_plan' && !canUseWorkflow) return false;
     // Defer the interactive ask_user form until the turn is committed (see `streaming`).
@@ -275,6 +291,8 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
       );
     }
 
+    case 'agent_chat':
+      return <AgentDialogueCard call={call} />;
     case 'spawn_session':
       return <SpawnSessionCard call={call} ctx={ctx} />;
 

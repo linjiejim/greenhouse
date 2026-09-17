@@ -34,11 +34,13 @@ export async function listSessions(
   includeEval = true,
   limit = 500,
   scope?: SessionScope,
+  profileKey?: string,
 ): Promise<Session[]> {
   const query: Record<string, string> = { limit: String(limit) };
   if (status && status !== 'all') query.status = status;
   if (includeEval) query.include_eval = '1';
   if (scope) query.scope = scope;
+  if (profileKey) query.profile_key = profileKey;
   try {
     const res = await rpc.api.sessions.$get({ query });
     if (!res.ok) return [];
@@ -53,7 +55,27 @@ export async function getSession(
 ): Promise<{ session: Session; messages: Message[]; usage: SessionUsage; share_info?: ShareInfo }> {
   const res = await rpc.api.sessions[':id'].$get({ param: { id } });
   if (!res.ok) throw new Error(`getSession failed: ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  // The legacy detail response contains only the oldest 100 messages. Complete
+  // long transcripts through the existing cursor API so new replies and unread
+  // anchors beyond that window remain reachable in the shared conversation UI.
+  if (data.messages.length < 100) return data;
+  const messages: Message[] = [];
+  let before: number | undefined;
+  do {
+    const args = {
+      param: { id },
+      query: { limit: '100', ...(before === undefined ? {} : { before_seq: String(before) }) },
+    };
+    const response = await rpc.api.sessions[':id'].messages.$get(args);
+    if (!response.ok) throw new Error(`getSession messages failed: ${response.status}`);
+    const page = await response.json();
+    messages.unshift(...page.messages);
+    if (!page.has_more || page.next_before_seq === null) break;
+    if (before !== undefined && page.next_before_seq >= before) throw new Error('Message cursor did not advance');
+    before = page.next_before_seq;
+  } while (true);
+  return { ...data, messages };
 }
 
 export async function forkSession(id: string, messageId?: string): Promise<Session> {

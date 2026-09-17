@@ -14,6 +14,7 @@ export const sessions = pgTable(
     id: text('id').primaryKey(),
     title: text('title'),
     status: text('status').notNull().default('active'),
+    agent_instance_id: text('agent_instance_id'),
     profile_id: text('profile_id').notNull().default('team'),
     user_id: text('user_id'),
     app_id: text('app_id'),
@@ -31,6 +32,7 @@ export const sessions = pgTable(
   },
   (table) => [
     index('idx_sessions_user').on(table.user_id),
+    index('idx_sessions_coworker_history').on(table.user_id, table.agent_instance_id, table.updated_at, table.id),
     index('idx_sessions_app_id').on(table.app_id),
     index('idx_sessions_channel').on(table.channel),
     index('idx_sessions_parent').on(table.parent_session_id),

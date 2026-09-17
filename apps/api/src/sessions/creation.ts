@@ -1,5 +1,6 @@
 /** Shared authorization path for user-owned conversation creation. */
 
+import { resolveCoworker } from '../coworkers/identity.js';
 import { getDb } from '@greenhouse/db';
 import type { SessionRow } from '@greenhouse/types/session';
 
@@ -49,5 +50,8 @@ export async function createOwnedSession(
     throw new SessionCreationError(`Profile "${profileId}" cannot be used for cloud sessions`, 403);
   }
 
-  return getDb().sessions.create(input.title, profileId, actor.id);
+  const { instance } = await resolveCoworker(actor, profileId);
+  return getDb().sessions.create(input.title, profileId, actor.id, undefined, undefined, undefined, {
+    agentInstanceId: instance.id,
+  });
 }

@@ -6,6 +6,7 @@
  */
 
 import { create } from 'zustand';
+import type { AgentPickerControls } from '../components/chat/agent-avatar-picker';
 
 const LEGACY_SIDEBAR_DEFAULT_WIDTHS = new Set([174, 200, 220]);
 export const SIDEBAR_DEFAULT_WIDTH = 248;
@@ -66,6 +67,7 @@ interface UIStore {
   } | null;
   // The mounted full Chat pane owns session mutations; this callback lets the
   // global TopBar edit the title without creating a second session state.
+  chatAgentPicker: AgentPickerControls | null;
   chatTitleEdit: { readonly: boolean; onRename: (title: string) => Promise<void> } | null;
   // Home workbench controls, registered by the panel while it is on screen so
   // the TopBar can host Customize next to the session title. Null means
@@ -96,6 +98,7 @@ interface UIStore {
   setChatShare: (v: { shareCount: number; onOpen: () => void } | null) => void;
   setChatFeedback: (v: UIStore['chatFeedback']) => void;
   setChatTitleEdit: (v: UIStore['chatTitleEdit']) => void;
+  setChatAgentPicker: (v: UIStore['chatAgentPicker']) => void;
   setHomeWorkbench: (v: { editing: boolean; onToggleEdit: () => void } | null) => void;
   bumpSessionListVersion: () => void;
   setActiveWorkspace: (ws: string) => void;
@@ -118,6 +121,7 @@ export const useUIStore = create<UIStore>((set) => ({
   chatShare: null,
   chatFeedback: null,
   chatTitleEdit: null,
+  chatAgentPicker: null,
   homeWorkbench: null,
   sessionListVersion: 0,
 
@@ -145,6 +149,7 @@ export const useUIStore = create<UIStore>((set) => ({
   setChatShare: (chatShare) => set({ chatShare }),
   setChatFeedback: (chatFeedback) => set({ chatFeedback }),
   setChatTitleEdit: (chatTitleEdit) => set({ chatTitleEdit }),
+  setChatAgentPicker: (chatAgentPicker) => set({ chatAgentPicker }),
   setHomeWorkbench: (homeWorkbench) => set({ homeWorkbench }),
   bumpSessionListVersion: () => set((state) => ({ sessionListVersion: state.sessionListVersion + 1 })),
   setActiveWorkspace: (activeWorkspace) => {

@@ -11,6 +11,35 @@ type Messages = DeepRecord<typeof en>;
 
 const zh: Messages = {
   // 通用 / 共享
+  coworker: {
+    history: '我们的记录',
+    newTopic: '新话题',
+    topicHint: '每个话题独立使用上下文，历史和记忆仍然保留。',
+    firstUnread: '首条未读',
+    olderTopics: '更早的话题',
+    untitledTopic: '新话题',
+    historyEmpty: '从第一条消息开始，记录会保留在这里。',
+    loadFailed: '暂时无法加载，点击重试',
+    working: '进行中',
+    attention: '需要你处理',
+    paused: '已暂停',
+    runningCount: '进行中 {count} 项',
+    unreadCount: '{count} 条未读',
+
+    actions: '会话操作',
+    readonly: '这是同事之间的对话',
+    back: '返回原会话',
+    choose: '与谁对话',
+    more: '更多同事',
+    chooseHint: '点击头像查看与同事的记录。拖动排序，也可按 Alt + 方向键。',
+    moveEarlier: '向前移',
+    moveLater: '向后移',
+    discussion: '同事讨论',
+    discussing: '正在与同事讨论',
+    round: '第 {round} 轮',
+    failed: '回复中断',
+    privateHint: '这里只包含两位同事之间发送的消息。你的对话对象保持不变。',
+  },
   common: {
     save: '保存',
     saving: '保存中...',
@@ -457,14 +486,6 @@ const zh: Messages = {
     custom: '自定义',
     shared: '共享',
     personal: '个人',
-    all: '全部',
-    toolsAria: '{name}的工具',
-    toolCount: '{count} 个工具',
-    moreTools: '另有 {count} 个工具',
-    promptOnly: '仅提示词模式——无工具',
-    selectAgent: '选择 Agent',
-    manage: '管理 →',
-    noAgents: '此分类下没有 Agent',
   },
 
   agent: {

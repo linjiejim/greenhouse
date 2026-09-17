@@ -17,6 +17,7 @@ import type { UserMemoryRow, UserMemoryCategory, UserMemoryStatus, UserMemorySou
 
 export interface UserMemoryInput {
   user_id: string;
+  agent_instance_id?: string | null;
   category: UserMemoryCategory;
   title: string;
   content: string;
@@ -43,6 +44,10 @@ export const MEMORY_DORMANT_AFTER_DAYS = 90;
 /** "Last touched" for ordering/decay — a memory never recalled falls back to when it was written. */
 const lastTouched = sql`coalesce(${userMemories.last_used_at}, ${userMemories.created_at})`;
 
+function memoryScope(agentId: string | null) {
+  return agentId ? eq(userMemories.agent_instance_id, agentId) : isNull(userMemories.agent_instance_id);
+}
+
 export function createUserMemoryService(db: Db) {
   const service = {
     /** Add a memory. Add-only by design — no write-time dedup verdict. */
@@ -52,6 +57,7 @@ export function createUserMemoryService(db: Db) {
         .insert(userMemories)
         .values({
           user_id: input.user_id,
+          agent_instance_id: input.agent_instance_id ?? null,
           category: input.category,
           title: input.title,
           content: input.content,
@@ -81,11 +87,11 @@ export function createUserMemoryService(db: Db) {
      * Rows eligible for the injected index: active (or pinned) memories,
      * pinned first, then most recently used.
      */
-    async listForIndex(userId: string, limit = 100): Promise<UserMemoryRow[]> {
+    async listForIndex(userId: string, limit = 100, agentId: string | null = null): Promise<UserMemoryRow[]> {
       return await db
         .select()
         .from(userMemories)
-        .where(and(eq(userMemories.user_id, userId), eq(userMemories.status, 'active')))
+        .where(and(eq(userMemories.user_id, userId), eq(userMemories.status, 'active'), memoryScope(agentId)))
         .orderBy(desc(userMemories.pinned), desc(lastTouched))
         .limit(limit);
     },
@@ -94,7 +100,7 @@ export function createUserMemoryService(db: Db) {
     async search(
       userId: string,
       query: string,
-      opts: { includeInactive?: boolean; limit?: number } = {},
+      opts: { includeInactive?: boolean; limit?: number; agentId?: string | null } = {},
     ): Promise<UserMemoryRow[]> {
       const term = `%${query.replace(/[%_\\]/g, (ch) => `\\${ch}`)}%`;
       const statusFilter = opts.includeInactive
@@ -108,6 +114,7 @@ export function createUserMemoryService(db: Db) {
           and(
             eq(userMemories.user_id, userId),
             statusFilter,
+            memoryScope(opts.agentId ?? null),
             or(ilike(userMemories.title, term), ilike(userMemories.content, term)),
           ),
         )
@@ -121,11 +128,17 @@ export function createUserMemoryService(db: Db) {
     },
 
     /** Fetch by id, scoped to an owner — the ownership check for API/tool paths. */
-    async getOwned(id: number, userId: string): Promise<UserMemoryRow | undefined> {
+    async getOwned(id: number, userId: string, agentId?: string | null): Promise<UserMemoryRow | undefined> {
       const rows = await db
         .select()
         .from(userMemories)
-        .where(and(eq(userMemories.id, id), eq(userMemories.user_id, userId)));
+        .where(
+          and(
+            eq(userMemories.id, id),
+            eq(userMemories.user_id, userId),
+            agentId === undefined ? undefined : memoryScope(agentId),
+          ),
+        );
       return rows[0];
     },
 
@@ -209,7 +222,7 @@ export function createUserMemoryService(db: Db) {
       const rows = await db
         .select({ user_id: userMemories.user_id, count: sql<string>`count(*)` })
         .from(userMemories)
-        .where(eq(userMemories.status, 'active'))
+        .where(and(eq(userMemories.status, 'active'), isNull(userMemories.agent_instance_id)))
         .groupBy(userMemories.user_id)
         .having(sql`count(*) >= ${minActive}`);
       return rows.map((r) => ({ user_id: r.user_id, count: Number(r.count) }));

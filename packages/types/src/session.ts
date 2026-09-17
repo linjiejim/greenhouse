@@ -16,6 +16,7 @@ export interface SessionRow {
   rating: number | null;
   comment: string | null;
   feedback: string | null;
+  agent_instance_id?: string | null;
   profile_id: string;
   user_id: string | null;
   app_id: string | null;
@@ -99,4 +100,36 @@ export interface MessageInput {
   cached_tokens?: number;
   reasoning_tokens?: number;
   duration_ms?: number;
+}
+/** Private coworker inbox read models; sessions remain the conversation source. */
+export interface CoworkerActivity {
+  id: string;
+  session_id: string;
+  kind: string;
+  status: string;
+  title: string | null;
+  attention: boolean;
+}
+export interface CoworkerInbox {
+  id: string;
+  profile_id: string;
+  name: string;
+  active_session_id: string | null;
+  topic_count: number;
+  unread_count: number;
+  running_count: number;
+  attention_count: number;
+  first_unread_session_id: string | null;
+  first_unread_message_id: string | null;
+}
+export interface CoworkerTopic {
+  id: string;
+  title: string | null;
+  profile_id: string;
+  updated_at: string;
+  preview: string;
+  unread_count: number;
+  first_unread_id: string | null;
+  running_count: number;
+  attention_count: number;
 }

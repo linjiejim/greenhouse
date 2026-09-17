@@ -132,6 +132,8 @@ const sessions = new Hono<AppEnv>()
       includeEval,
       channel,
       excludeChannels: channel ? undefined : ['workflow'],
+      excludeDialogueRounds: !channel,
+      profileKey: c.req.query('profile_key'),
     };
 
     let baseList;
@@ -158,6 +160,7 @@ const sessions = new Hono<AppEnv>()
     // deliberately skips this — shared conversations live in their own tab.
     if (scope === undefined && authUser.role !== 'super' && sharedSessionIds.length > 0) {
       const sharedRows = await getDb().sessions.listSharedWith(authUser.id, {
+        profileKey: c.req.query('profile_key'),
         status,
         includeEval,
         limit: SHARED_BACKFILL_LIMIT,
@@ -185,6 +188,11 @@ const sessions = new Hono<AppEnv>()
           if (!s) continue;
           const accessible = authUser.role === 'super' || s.user_id === authUser.id || sharedIdSet.has(s.id);
           if (!accessible) continue;
+          if (listOpts.profileKey) {
+            if (scope === 'mine' && s.user_id !== authUser.id) continue;
+            const coworker = s.agent_instance_id ? await getDb().coworkers.get(s.agent_instance_id) : undefined;
+            if ((coworker?.profile_key ?? s.profile_id.replace(/@[0-9]+$/, '')) !== listOpts.profileKey) continue;
+          }
           // Mirror the main query's status / eval-visibility filters.
           if (status ? s.status !== status : !includeEval && s.status === 'eval') continue;
           list.push(s);
@@ -396,6 +404,26 @@ const sessions = new Hono<AppEnv>()
       if (!userWritableStatuses.has(body.status) && !mayMarkEval) {
         return c.json({ error: 'Invalid session status' }, 400);
       }
+    }
+    // Identity and execution lineage are server-owned. Public metadata may not
+    // erase or forge those keys, including on pre-instance conversations.
+    if (body.metadata !== undefined) {
+      let incoming: Record<string, unknown>;
+      try {
+        const parsed: unknown = JSON.parse(body.metadata);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid metadata');
+        incoming = parsed as Record<string, unknown>;
+      } catch {
+        return c.json({ error: 'Invalid metadata' }, 400);
+      }
+      const previous = JSON.parse(existing.metadata) as Record<string, unknown>;
+      for (const key of ['agent_instance_id', 'dialogue_id', 'spawn_depth', 'spawned_by', 'parent_session_id']) {
+        if (key in incoming && JSON.stringify(incoming[key]) !== JSON.stringify(previous[key]))
+          return c.json({ error: 'Session identity and lineage are read-only' }, 400);
+        delete incoming[key];
+        if (key in previous) incoming[key] = previous[key];
+      }
+      body.metadata = JSON.stringify(incoming);
     }
     const session = await getDb().sessions.update(id, body);
     if (!session) return c.json({ error: 'Session not found' }, 404);

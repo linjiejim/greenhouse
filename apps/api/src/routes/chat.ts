@@ -47,6 +47,7 @@ import {
 import type { EngineMessage } from '@greenhouse/agent-core';
 import { inlineImagesForVision } from '../chat/vision.js';
 import { generateSessionTitle } from '../llm/title.js';
+import { resolveCoworker } from '../coworkers/identity.js';
 import { canWriteSession } from '../sessions/access.js';
 import { formatAmbientContextPrompt, sanitizeAmbientContext } from '../chat/ambient-context.js';
 import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
@@ -261,6 +262,10 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               return c.json({ error: sessionAccess.error }, 403);
             }
 
+            if (session.agent_instance_id === null && session.user_id === userId) {
+              const { instance } = await resolveCoworker(authUser, profileId);
+              await getDb().coworkers.bindSession(sessionId, instance.id);
+            }
             run = chatRunRegistry.claim(sessionId, userId);
             if (!run) {
               return c.json({ error: 'A response is already being generated for this session' }, 409);
@@ -540,6 +545,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             Object.keys(tools).length > 0,
             userId,
             ambientContext,
+            sessionId,
           );
 
           // Vision models see attached images directly, but analyze_image's own
@@ -800,6 +806,7 @@ async function buildSystemPromptWithUserNotes(
   hasTools: boolean,
   userId: string | null,
   ambientContext?: AmbientContextEnvelope,
+  sessionId?: string,
 ): Promise<string> {
   let userInfo: string | undefined;
   let userLocale: string | undefined;
@@ -819,7 +826,7 @@ async function buildSystemPromptWithUserNotes(
 
     // Memory index (feature-gated inside resolveMemoryContext, which also
     // sanitises — memory text is model-written and user-editable).
-    const memoryBlock = await resolveMemoryContext(userId);
+    const memoryBlock = await resolveMemoryContext(userId, undefined, { sessionId });
     if (memoryBlock) userInfo = userInfo ? `${userInfo}\n${memoryBlock}` : memoryBlock;
   }
 

@@ -25,7 +25,8 @@ import {
   WORKBENCH_READ_TOOL_IDS,
 } from '../tools/registry.js';
 export { LAZY_TOOL_IDS };
-import { createSpawnSessionTool, MAX_SPAWN_DEPTH } from '../tools/spawn-session.js';
+import { createAgentChatTool } from '../tools/agent-chat.js';
+import { createSpawnSessionTool, MAX_SPAWN_DEPTH, type SpawnSessionContext } from '../tools/spawn-session.js';
 import { createCallLlmTool } from '../tools/call-llm.js';
 import { createProjectQueryTool } from '../tools/project-query.js';
 import { createProjectMutationTool } from '../tools/project-mutation.js';
@@ -407,9 +408,13 @@ export function buildLazyServerTools(
         profileId: ctx.profileId ?? null,
       });
     }
-    if (effectiveTools.includes('spawn_session') && ctx.toolRegistry && (userRole === 'team' || userRole === 'super')) {
+    if (
+      (effectiveTools.includes('spawn_session') || effectiveTools.includes('agent_chat')) &&
+      ctx.toolRegistry &&
+      (userRole === 'team' || userRole === 'super')
+    ) {
       const toolRegistry = ctx.toolRegistry;
-      tools.spawn_session = createSpawnSessionTool(db, {
+      const spawnContext: SpawnSessionContext = {
         userId: uid,
         userRole,
         parentSessionId,
@@ -446,7 +451,9 @@ export function buildLazyServerTools(
           );
           return childTools;
         },
-      });
+      };
+      if (effectiveTools.includes('spawn_session')) tools.spawn_session = createSpawnSessionTool(db, spawnContext);
+      if (effectiveTools.includes('agent_chat')) tools.agent_chat = createAgentChatTool(db, spawnContext);
     }
   }
 

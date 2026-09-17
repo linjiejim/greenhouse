@@ -609,6 +609,12 @@ export function createCloudAgentController({
       }
 
       let workspaceId = input.workspaceId ?? null;
+      if (!workspaceId && input.sessionId) {
+        const session = await db.sessions.getById(input.sessionId);
+        if (!session || session.user_id !== userId) throw new Error('Conversation not found');
+        const agentId = await db.coworkers.scopeForSession(input.sessionId);
+        if (agentId) workspaceId = await db.coworkers.ensureWorkspace(agentId, userId, input.title);
+      }
       let workspace: AgentWorkspaceRow;
       if (!workspaceId) {
         workspace = await db.agentRuns.createWorkspace({ user_id: userId, name: input.title });

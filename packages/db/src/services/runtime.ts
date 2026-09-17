@@ -178,6 +178,7 @@ export interface RuntimeExecutionClaimResult {
  * bind retries of the same tool call to the same transcript + Runtime source.
  */
 export interface RuntimeSubagentAdmissionInput {
+  agent_instance_id?: string;
   child_session_id: string;
   seed_message_id: string;
   owner_user_id: string;
@@ -758,6 +759,7 @@ export function createRuntimeService(db: Db) {
         let idempotent = false;
         if (existingSession) {
           if (
+            existingSession.agent_instance_id !== (input.agent_instance_id ?? null) ||
             existingSession.title !== title ||
             existingSession.status !== 'active' ||
             existingSession.profile_id !== profileId ||
@@ -797,6 +799,7 @@ export function createRuntimeService(db: Db) {
               user_id: ownerUserId,
               app_id: null,
               channel: 'subagent',
+              agent_instance_id: input.agent_instance_id ?? null,
               parent_session_id: parentSessionId,
               metadata,
               created_at: at,

@@ -21,6 +21,7 @@ type MemoryStatus = 'active' | 'dormant' | 'archived' | 'superseded';
 
 interface Memory {
   id: number;
+  agent_name?: string | null;
   category: string;
   title: string;
   content: string;
@@ -301,6 +302,7 @@ export function MemoryPanel() {
                             <div className="flex items-center gap-1.5 flex-wrap">
                               {mem.pinned && <Pin className="w-3 h-3 text-primary-600 shrink-0" />}
                               <p className="text-sm text-fg font-medium">{mem.title}</p>
+                              {mem.agent_name && <Tag tone="neutral">{mem.agent_name}</Tag>}
                               {mem.status !== 'active' && (
                                 <Tag tone={STATUS_TONE[mem.status]} truncate title={t(STATUS_HINT[mem.status])}>
                                   {t(STATUS_LABEL[mem.status])}

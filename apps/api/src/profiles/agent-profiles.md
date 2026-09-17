@@ -281,3 +281,9 @@ stateless Agent/MCP 不开放该文件工具。
 
 - Batch eval judge 配置位于 `apps/api/src/llm/tasks/batch-eval-judge.ts`。
 - 这些配置仅由对应 eval 引擎调用，不出现在 profile picker，也不能被用户选择；交互式评估使用 `eval-judge` profile。
+
+### 持久同事与配置的关系
+
+首版每个自定义 Profile 资产对应一个持久 coworker，默认 Sprouty 则每人一个。Profile 的不可变版本继续决定运行配置；版本更新不改变 coworker ID。共享仍须通过既有 review/pilot/verified 流程，首版是不同用户分别私聊。顶部圆形头像持续作为同事收件箱导航；标题行头像在前。切换同事打开其历史话题，不改写当前 session 的身份。“新话题”创建独立消息上下文，历史和该用户的长期记忆仍归属于同一 coworker。
+
+内置 `agent_chat` 允许原 Agent 用工具找其他有权访问的同事讨论，并通过 dialogue_id 多轮往返。它不切换用户会话的身份，不让目标 Agent 获得创建者权限，也不隐式转发人的私聊或记忆。每次 peer 回复运行在既有 Subagent Runtime 中，最多六轮，每轮十二步，仅使用已许可的只读工具。

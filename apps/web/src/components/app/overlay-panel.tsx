@@ -6,7 +6,7 @@
  * - "bottom" — bottom sheet (mobile-first, slides up)
  *
  * Replaces hand-rolled `fixed inset-0` + `bg-black/20` backdrop patterns
- * in agent-panel, sync-panel, profile-selector.
+ * in agent-panel, sync-panel, agent-avatar-picker.
  */
 
 import React from 'react';

@@ -37,3 +37,5 @@ export * from './agent-run.js';
 export * from './runtime.js';
 export * from './notification.js';
 export * from './workspace-setting.js';
+
+export * from './coworker.js';

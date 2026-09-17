@@ -26,6 +26,7 @@ import { projectQueryTool } from './project-query.js';
 import { projectMutationTool } from './project-mutation.js';
 import { computeTool } from './compute/tool.js';
 import { sessionQueryTool } from './session-query.js';
+import { agentChatTool } from './agent-chat.js';
 import { spawnSessionTool } from './spawn-session.js';
 import { workflowPlanTool } from './workflow-plan.js';
 import { missionDispatchTool } from './mission-dispatch.js';
@@ -65,6 +66,7 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   computeTool,
   sessionQueryTool,
   spawnSessionTool,
+  agentChatTool,
   workflowPlanTool,
   missionDispatchTool,
   taskCaptureTool,

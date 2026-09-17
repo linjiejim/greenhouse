@@ -533,3 +533,14 @@ erDiagram
 2. 确认 `drizzle/meta/_journal.json` 与 snapshot 的 `id/prevId` 连续。
 3. 运行 `./node_modules/.bin/drizzle-kit check`。
 4. 更新本文的表目录、FK、逻辑关联与 ER 图。
+
+## Persistent coworker domain
+
+- `coworkers`: stable ID, owner, unversioned profile key and display name; unique owner/profile key.
+- `sessions.agent_instance_id`: immutable logical reference to a coworker; migration 0010 backfills known historical human profiles, with lazy binding retained on future human turns.
+- `coworker_dialogues`: two coworker IDs, requesting user, originating human session, pinned target profile version and participant names.
+- `coworker_rounds`: dialogue FK (cascade), unique dialogue/round, idempotent tool-call-derived ID, sent message, real reply, status/error and child Runtime session reference. The dialogue row serializes admission.
+- `coworker_workspaces`: unique coworker/requester binding to `agent_workspaces`; storage and execution remain in the Mission domain.
+- `coworker_inboxes`: unique requester/coworker selection, nullable active session FK (set null on delete).
+- `coworker_message_reads`: unique requester/message receipt with content/pipeline hash; both foreign keys cascade. Existing replies get an upgrade read baseline. New/regenerated human-facing assistant deliveries count once; internal peer messages and Runtime notifications are not counted again.
+- `user_memories.agent_instance_id`: logical instance scope in addition to mandatory user ownership; null preserves legacy Sprouty memories. User self-service sees every owned scope; agent lookup/index never crosses scope. Automatic weekly consolidation excludes custom coworker scopes.

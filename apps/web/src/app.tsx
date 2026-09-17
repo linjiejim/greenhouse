@@ -599,7 +599,8 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
 
   const handleNewChat = useCallback(() => {
     setChatWorkspaceView('conversation');
-    window.location.hash = `#/chat?new=${Date.now()}`;
+    const profile = useUIStore.getState().currentSessionProfileId;
+    window.location.hash = `#/chat?agent=${encodeURIComponent(profile.replace(/@\d+$/, ''))}&new=${Date.now()}`;
   }, [setChatWorkspaceView]);
 
   const handleSelectSession = useCallback(
@@ -775,8 +776,9 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                 )}
                 {route === 'chat' && (
                   <ChatPage
-                    key={params.get('session') || params.get('new') || 'new'}
+                    key={params.get('session') || `${params.get('agent') || 'default'}:${params.get('new') || 'new'}`}
                     initialSessionId={params.get('session') || undefined}
+                    initialProfileId={params.get('agent') || undefined}
                     launchRequest={chatLaunchRequest}
                     onLaunchConsumed={(id) => {
                       setChatLaunchRequest((request) => (request?.id === id ? null : request));

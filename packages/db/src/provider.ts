@@ -6,6 +6,7 @@
  * here.
  */
 
+import { createCoworkerService } from './services/coworkers.js';
 import { sql } from 'drizzle-orm';
 import { buildExtensionServices, extensionResetTables } from './extensions.js';
 import { createExtensionMigrationRunner } from './extension-migrations.js';
@@ -64,6 +65,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     /** Seeding drizzle's own journal for an adopted database (see core-migrations.ts). */
     coreMigrationBaseline: createCoreMigrationBaseline(db),
     sessions: createSessionService(db),
+    coworkers: createCoworkerService(db),
     llmCalls: createLlmCallService(db),
     eval: createEvalService(db),
     chatEval: createChatEvalService(db),
@@ -148,6 +150,12 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
       // Filter to only tables that exist in the current database.
       const tables = [
         ...extensionResetTables(),
+        'coworker_message_reads',
+        'coworker_inboxes',
+        'coworker_workspaces',
+        'coworker_rounds',
+        'coworker_dialogues',
+        'coworkers',
         'workspace_settings',
         'notification_delivery_attempts',
         'notifications',

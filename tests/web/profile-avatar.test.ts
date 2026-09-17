@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Profile } from '@greenhouse/types/api';
-import { profileToSprouty } from '../../apps/web/src/components/chat/profile-selector.js';
+import { profileToSprouty } from '../../apps/web/src/components/chat/profile-avatar.js';
 
 function profile(id: string, extra: Partial<Profile> = {}): Profile {
   return { id, name: id, tools: [], ...extra };

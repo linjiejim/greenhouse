@@ -62,7 +62,7 @@ const meta: ToolMeta = {
   id: 'memory',
   name: 'Memory',
   brief: 'Remember durable facts about this user, and read back what you already know',
-  description: `Your long-term memory of THIS user, carried across every conversation. The system prompt lists what you already know, one title per line; this tool opens those notes and writes new ones.
+  description: `Your long-term memory of THIS user with THIS coworker, carried across conversations with the same coworker. Memories of other coworkers are private. The system prompt lists what you already know, one title per line; this tool opens those notes and writes new ones.
 
 Call \`remember\` whenever the user tells you to ("remember that…", "from now on…") — that is never optional — and when you learn something durable about them or about how they want to be worked with. Do NOT store one-off task details, anything you can look up on demand, or credentials (those are rejected). Prefer \`update\` over storing a second, contradicting note.
 
@@ -100,6 +100,7 @@ export function createMemoryTool(db: DatabaseProvider, ctx: MemoryToolContext) {
     inputSchema: memorySchema,
     execute: async (input: MemoryInput) => {
       try {
+        const agentId = await db.coworkers.memoryScopeForSession(ctx.sessionId);
         switch (input.action) {
           case 'remember': {
             if (!input.title || !input.content) {
@@ -110,6 +111,7 @@ export function createMemoryTool(db: DatabaseProvider, ctx: MemoryToolContext) {
 
             const row = await db.userMemories.create({
               user_id: ctx.userId,
+              agent_instance_id: agentId,
               category: input.category ?? 'fact',
               title: input.title.trim(),
               content: input.content.trim(),
@@ -123,11 +125,12 @@ export function createMemoryTool(db: DatabaseProvider, ctx: MemoryToolContext) {
           case 'recall': {
             let rows: UserMemoryRow[] = [];
             if (input.ids && input.ids.length > 0) {
-              const found = await Promise.all(input.ids.map((id) => db.userMemories.getOwned(id, ctx.userId)));
+              const found = await Promise.all(input.ids.map((id) => db.userMemories.getOwned(id, ctx.userId, agentId)));
               rows = found.filter((r): r is UserMemoryRow => Boolean(r));
             } else if (input.query) {
               rows = await db.userMemories.search(ctx.userId, input.query, {
                 includeInactive: input.include_inactive,
+                agentId,
               });
             } else {
               return { action: input.action, error: 'recall needs either ids or query' };
@@ -144,7 +147,7 @@ export function createMemoryTool(db: DatabaseProvider, ctx: MemoryToolContext) {
 
           case 'update': {
             if (input.id === undefined) return { action: input.action, error: 'id is required for update' };
-            const existing = await db.userMemories.getOwned(input.id, ctx.userId);
+            const existing = await db.userMemories.getOwned(input.id, ctx.userId, agentId);
             if (!existing) return { action: input.action, error: `memory ${input.id} not found` };
 
             const check = validateMemoryText({ title: input.title, content: input.content });
@@ -162,7 +165,7 @@ export function createMemoryTool(db: DatabaseProvider, ctx: MemoryToolContext) {
 
           case 'forget': {
             if (input.id === undefined) return { action: input.action, error: 'id is required for forget' };
-            const existing = await db.userMemories.getOwned(input.id, ctx.userId);
+            const existing = await db.userMemories.getOwned(input.id, ctx.userId, agentId);
             if (!existing) return { action: input.action, error: `memory ${input.id} not found` };
 
             await db.userMemories.setStatus(input.id, ctx.userId, 'archived');

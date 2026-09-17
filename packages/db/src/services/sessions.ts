@@ -64,6 +64,8 @@ export interface SessionListOpts {
    * user-facing objects, so list consumers exclude them by default.
    */
   excludeChannels?: string[];
+  excludeDialogueRounds?: boolean;
+  profileKey?: string;
   taskId?: number; // filter by scheduled task (via metadata)
 }
 
@@ -206,6 +208,11 @@ function sessionListConditions(opts: SessionListOpts) {
   if (excludeUserId) conditions.push(sql`${sessions.user_id} IS DISTINCT FROM ${excludeUserId}`);
   if (channel) conditions.push(eq(sessions.channel, channel));
   if (excludeChannels?.length) conditions.push(notInArray(sessions.channel, excludeChannels));
+  if (opts.excludeDialogueRounds) conditions.push(sql`NOT (${sessions.metadata}::jsonb ? 'dialogue_id')`);
+  if (opts.profileKey)
+    conditions.push(
+      sql`coalesce((select c.profile_key from coworkers c where c.id = ${sessions.agent_instance_id}), regexp_replace(${sessions.profile_id}, '@[0-9]+$', '')) = ${opts.profileKey}`,
+    );
   if (taskId) conditions.push(sql`${sessions.metadata}::jsonb @> ${JSON.stringify({ task_id: taskId })}::jsonb`);
   if (status && status !== 'all') {
     conditions.push(eq(sessions.status, status));
@@ -224,7 +231,7 @@ export function createSessionService(db: Db) {
       appId?: string,
       channel?: SessionChannel,
       parentSessionId?: string,
-      options?: { id?: string; metadata?: string },
+      options?: { id?: string; metadata?: string; agentInstanceId?: string },
     ): Promise<SessionRow> {
       const now = nowIso();
       const session: SessionRow = {
@@ -234,6 +241,7 @@ export function createSessionService(db: Db) {
         rating: null,
         comment: null,
         feedback: null,
+        agent_instance_id: options?.agentInstanceId ?? null,
         profile_id: profileId ?? 'team',
         user_id: userId ?? null,
         app_id: appId ?? null,
@@ -278,6 +286,7 @@ export function createSessionService(db: Db) {
           user_id: input.userId,
           app_id: null,
           channel: 'web',
+          agent_instance_id: source.user_id === input.userId ? source.agent_instance_id : null,
           parent_session_id: source.id,
           metadata: JSON.stringify({
             forked_from_session_id: source.id,

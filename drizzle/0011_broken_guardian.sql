@@ -1,0 +1,1 @@
+CREATE INDEX "idx_sessions_coworker_history" ON "sessions" USING btree ("user_id","agent_instance_id","updated_at","id");

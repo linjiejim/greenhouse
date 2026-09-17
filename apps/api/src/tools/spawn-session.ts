@@ -61,6 +61,8 @@ export interface SpawnSessionContext {
   /** Current durable execution envelope, when Chat/Automation/Workflow has one. */
   parentRuntimeRunId?: string | null;
   workspaceId?: string | null;
+  agentInstanceId?: string;
+  dialogueId?: string;
   /**
    * Builds the child's tool set for (childSessionId, profile, depth). Supplied by
    * the lazy-tool wiring so this file never imports the tool-resolution layer
@@ -189,6 +191,8 @@ export function createSpawnSessionTool(db: DatabaseProvider, ctx: SpawnSessionCo
           mode,
           timeout_ms: timeoutMs,
           workspace_id: ctx.workspaceId ?? null,
+          agent_instance_id: ctx.agentInstanceId,
+          dialogue_id: ctx.dialogueId,
         });
         createdChildSessionId = childSessionId;
 

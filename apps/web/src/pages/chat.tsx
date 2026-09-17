@@ -18,11 +18,12 @@ import { ChatSidePane, useSidePaneHost } from '../components/side-pane/chat-side
 
 interface ChatPageProps {
   initialSessionId?: string;
+  initialProfileId?: string;
   launchRequest?: AssistantLaunchRequest | null;
   onLaunchConsumed?: (id: number) => void;
 }
 
-export function ChatPage({ initialSessionId, launchRequest, onLaunchConsumed }: ChatPageProps) {
+export function ChatPage({ initialSessionId, initialProfileId, launchRequest, onLaunchConsumed }: ChatPageProps) {
   useSidePaneHost(initialSessionId ?? '__new__');
 
   return (
@@ -31,6 +32,7 @@ export function ChatPage({ initialSessionId, launchRequest, onLaunchConsumed }: 
         <ConversationPane
           surface="full"
           initialSessionId={initialSessionId}
+          initialProfileId={initialProfileId}
           launchRequest={launchRequest}
           onLaunchConsumed={onLaunchConsumed}
         />

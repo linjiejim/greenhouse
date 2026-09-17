@@ -281,3 +281,11 @@
 4. 在包根 `index.ts` 加 `export * from './services/xxx.js'`
 5. 运行 `pnpm drizzle-kit generate` 生成迁移并 **review 生成的 SQL**（见上「push vs migrate」）；本地可 `migrate` 到 scratch 库自测，**不要 push 到共享/持久库**
 6. 更新 `db-schema.md`
+
+### Coworker persistence
+
+`coworkers` separates persistent runtime identity from versioned `custom_profiles`. Stable key is `(owner_user_id, profile_key)`; a shared profile has one identity but each requester owns separate memory, workspace and dialogue state. `sessions.agent_instance_id` is a logical cross-domain reference and is not writable through session PATCH. `user_memories.agent_instance_id` null is the legacy/default scope. Agent reads must filter both requester and instance; human self-service can inspect all of their own scopes.
+
+`coworker_dialogues` owns `coworker_rounds`. Round admission locks the dialogue and enforces one active round, six-round cap, and idempotency. `coworker_workspaces` has a unique `(agent_instance_id, user_id)` binding to an existing Mission workspace. No parallel execution or file-storage service was introduced.
+
+`coworker_inboxes` stores last selected topic per requester/instance (null explicitly selects a new draft). `coworker_message_reads` stores exact assistant-message receipts with content/pipeline fingerprints; deleting/regenerating a reply cannot inherit its old read state. The write rechecks session ownership and human channel. `coworker-inbox.ts` derives history and unread/work/attention counts from existing sessions/messages/Runtime, never a second transcript. No super bypass; shared coworkers keep each requester's receipts, selection and activity private. Migration 0010 backfills historical identities and read baselines; 0011 adds the history cursor index. Exclude deleted/eval/internal topics from inbox history.
