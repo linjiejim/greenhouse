@@ -1,15 +1,15 @@
 {
-  "version": "1.2.0",
-  "notes": "Greenhouse 1.2.0",
-  "pub_date": "2026-09-16T04:40:25.968Z",
+  "version": "1.3.0",
+  "notes": "Greenhouse 1.3.0",
+  "pub_date": "2026-09-23T07:12:01.312Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUeVgrOGpzRElFNGlkYk15Yi9jeW9kb0xDdGhJRVNJMjhOc212cmg5TyswRWFLdVZJcUJzVk8wMGptemR1eDByTko1UkZ6clpZRnB2bXU3Q3RoaUU1a05lMlE3SDA3aHdnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NTMzNjI1CWZpbGU6R3JlZW5ob3VzZS5hcHAudGFyLmd6ClQydWo3R2l5U1RUZHM3d3pwSFZTNW94dkFSaCtRTmVuWGlWNVZueVRLY3o5SnMxWUNUMEo4a2lweGVBK0VnMVIvTHRoUlEzV1RteW0yaFpPd2xJVkF3PT0K",
-      "url": "https://github.com/linjiejim/greenhouse/releases/download/v1.2.0/Greenhouse-1.2.0-aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUeVgrOGpzRElFNHJQWjQ1RlVRR292eFRiOVhndTBueFNCeFF3ZlZSWVQzN0ZFQTJMOHQ4R05oYS8zTDhxMEZuVzJjZHROY2dPcGtjYXpmQUtvYVZrMlc1OC8rbW03OWdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMTQ3NTIwCWZpbGU6R3JlZW5ob3VzZS5hcHAudGFyLmd6CmloVXdyckozOEU5UUV1RGt0RFh5UWxETVhBb2lncStJYlpQeVVkMzNWMjI4bjB0cjJzSUZWeDhmNm9INWQ3Ny9nbEZCdzkreDFYTDJDejUxN0R5TEF3PT0K",
+      "url": "https://github.com/linjiejim/greenhouse/releases/download/v1.3.0/Greenhouse-1.3.0-aarch64.app.tar.gz"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUeVgrOGpzRElFNGhyTDJRQWhsMVFnRmMzMEJ5Vy9wcW9EdnJWZzJsNG5DMmV3T1JoSVRpMkxtTDZrUTJRQ0ZrV2R0a2F2Uit1OFhPRXFBVHdXcWc2Ylp3NUtyZmdTalFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NTMzOTU3CWZpbGU6R3JlZW5ob3VzZV8xLjIuMF94NjQtc2V0dXAuZXhlCkxxbWJLdVcvQkFJRmZLUWNKT3RlV0ZHOUFKeGQ0VmZtSmUzMHJqenBoQ2lsR2NYUXBXV2YyZXpjSitnWmp6MTM2R2oxbDFkUCtsTFVUUzZtMWZwUURRPT0K",
-      "url": "https://github.com/linjiejim/greenhouse/releases/download/v1.2.0/Greenhouse-1.2.0-x86_64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUeVgrOGpzRElFNGdvaGtYNGpPTlZuK1lOSnBOemZwWXZsankwUXlLU3VsYm1CZXYwT1lvc240RHlWK3gyMmNsakZMZ2JRZ0k4aUpxd3R5Mk44QWxVTGFKazFRN2hyMWdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMTQ3NTk1CWZpbGU6R3JlZW5ob3VzZV8xLjMuMF94NjQtc2V0dXAuZXhlCkhFZG41OCtsSFpBSmh3OTJ2aVhPS2pvdlEzQ3hLRUlEWCtHVXYwK3pLQXVHcUx3aWwvcXNOcmx0anl3TEJHS2lKZVdmUjUzdHFiSzBlUlltUFFUTEJ3PT0K",
+      "url": "https://github.com/linjiejim/greenhouse/releases/download/v1.3.0/Greenhouse-1.3.0-x86_64-setup.exe"
     }
   }
 }
