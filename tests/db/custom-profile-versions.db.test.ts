@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetProvider, initDatabase } from '@greenhouse/db';
 import type { DatabaseProvider, UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
+import { DEFAULT_MODEL_REGISTRY, setModelRegistry } from '@greenhouse/agent-core';
 import { resolveProfileAsync } from '../../apps/api/src/profiles/profile.js';
 import { createInternalTestUser } from '../helpers/internal-user.js';
 
@@ -14,14 +15,14 @@ function unique(label: string) {
   return `${label}-${Date.now()}-${Math.random()}`;
 }
 
-async function createAgent(riskLevel: 'low' | 'medium' | 'high' = 'medium') {
+async function createAgent(riskLevel: 'low' | 'medium' | 'high' = 'medium', modelId = 'flash') {
   return db.customProfiles.create({
     slug: unique('agent'),
     user_id: owner.id,
     name: 'Release analyst',
     description: 'Turns release evidence into a concise brief.',
     base_profile_id: 'sprouty',
-    model_id: 'flash',
+    model_id: modelId,
     tools: ['team_knowledge'],
     system_prompt: 'Use only verified release evidence.',
     max_steps: 12,
@@ -127,6 +128,31 @@ describe('Custom Agent immutable versions', () => {
       id: `custom:${asset.id}@1`,
       system_prompt: 'Use only verified release evidence.',
     });
+  });
+
+  // A model is retired from the catalog (or its key is unset) long after an
+  // Agent was pinned to it; the Agent keeps working on its base preset model.
+  it('runs an Agent pinned to a model this deployment cannot reach on its base preset model', async () => {
+    const savedKey = process.env.DEEPSEEK_API_KEY;
+    delete process.env.DEEPSEEK_API_KEY;
+    // In the catalog but unkeyed — the case a plain "is it in the catalog" check misses.
+    setModelRegistry({
+      ...DEFAULT_MODEL_REGISTRY,
+      'deepseek-flash': {
+        name: 'DeepSeek V4.1 Flash',
+        providers: [{ provider: 'deepseek', model: 'deepseek-flash', apiKeyEnv: 'DEEPSEEK_API_KEY' }],
+      },
+    });
+    try {
+      for (const modelId of ['minimax-m3', 'deepseek-flash']) {
+        const asset = await createAgent('medium', modelId);
+        const resolved = await resolveProfileAsync(`custom:${asset.id}@1`);
+        expect(resolved.model.id, modelId).toBe('flash');
+      }
+    } finally {
+      setModelRegistry(DEFAULT_MODEL_REGISTRY);
+      if (savedKey !== undefined) process.env.DEEPSEEK_API_KEY = savedKey;
+    }
   });
 
   it('rejects same-state lifecycle calls and exposes stable governance sweeper queries', async () => {

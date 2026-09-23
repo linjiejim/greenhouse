@@ -367,14 +367,18 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
 
           // ── Per-turn model choice ──
           // Only models the catalog marks chat-selectable AND that have a
-          // reachable provider; anything else is a client bug, not a fallback.
+          // reachable provider. Anything else runs on the agent's own default
+          // instead of failing the turn: the usual sender is a client still
+          // remembering a model this deployment has since retired or unkeyed,
+          // and the user cannot switch away from a model the picker no longer
+          // shows. The default is always permitted, so nothing is widened.
           let requestedModel: string | undefined;
           if (typeof body.model === 'string' && body.model) {
-            if (!isChatModelAllowed(body.model)) {
-              releaseClaim();
-              return c.json({ error: `Model "${body.model}" is not available` }, 400);
+            if (isChatModelAllowed(body.model)) {
+              requestedModel = body.model;
+            } else {
+              logger.info(`[Chat] model "${body.model}" is not available here — using the agent default`);
             }
-            requestedModel = body.model;
           }
 
           // Pre-send context budget: the transcript itself is never trimmed, but

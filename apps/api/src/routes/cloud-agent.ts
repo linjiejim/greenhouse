@@ -34,7 +34,7 @@ import type { Context } from 'hono';
 import { logger } from '@greenhouse/utils/logger';
 import { getDb } from '@greenhouse/db';
 import type { AgentRunRow } from '@greenhouse/db';
-import { getModelEntry } from '@greenhouse/agent-core';
+import { getAvailableProviders, getModelEntry } from '@greenhouse/agent-core';
 import { AGENT_RUN_EVENT_TYPES, AGENT_RUN_SERVER_SEQ_BASE } from '@greenhouse/types/cloud-agent';
 
 import type { AppEnv } from '../app-env.js';
@@ -294,7 +294,15 @@ export function createCloudAgentRoutes() {
         }
 
         const config = loadCloudAgentConfig();
-        const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : config.defaultModel;
+        // A model this deployment can no longer reach (retired from the
+        // catalog, or its key unset) — typically a browser's remembered picker
+        // choice — runs on the deployment default, same as Chat.
+        const requestedModel = typeof body.model === 'string' ? body.model.trim() : '';
+        const model =
+          requestedModel && getAvailableProviders(requestedModel).length > 0 ? requestedModel : config.defaultModel;
+        if (requestedModel && model !== requestedModel) {
+          logger.info(`[cloud-agent] model "${requestedModel}" is not available here — using ${model}`);
+        }
         if (!getModelEntry(model)) return c.json({ error: `unknown model: ${model}` }, 400);
         const fallbackModel =
           config.fallbackModel && config.fallbackModel !== model && getModelEntry(config.fallbackModel)

@@ -143,6 +143,14 @@ describe('POST /runs — skill launch', () => {
     expect(captured).toBeNull();
   });
 
+  // A browser that last picked a since-retired model keeps sending it; the
+  // picker no longer lists it, so a 400 would leave no way out.
+  it('runs on the deployment default when the requested model is no longer available', async () => {
+    const res = await postRun({ prompt: 'go', model: 'kimi-k3' });
+    expect(res.status).toBe(201);
+    expect(captured?.model).toBe('flash');
+  });
+
   it('still requires a prompt when no skill is given', async () => {
     expect((await postRun({ model: 'pro' })).status).toBe(400);
   });

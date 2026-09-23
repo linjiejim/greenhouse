@@ -67,6 +67,10 @@ vi.mock('@greenhouse/agent-core', () => ({
   getModelEntry: () => ({ options: { max_tokens: 100 } }),
 }));
 
+vi.mock('../../config/models.js', () => ({
+  isChatModelAllowed: (id: string) => id === 'test-model' || id === 'other-model',
+}));
+
 vi.mock('../../chat/persist.js', () => ({
   persistChatResult: mocks.persistChatResult,
 }));
@@ -289,6 +293,38 @@ describe('POST /api/chat finish wire event', () => {
     expect(mocks.createProviderAttemptBudgetHook).toHaveBeenCalledWith(
       expect.objectContaining({ runId: 'runtime-chat-run' }),
     );
+  });
+
+  // A browser keeps sending the model it last picked; once that model is
+  // retired the picker can't offer a way back, so the turn must not 400.
+  it('runs a retired or unkeyed model choice on the agent default instead of rejecting the turn', async () => {
+    async function* fullStream() {
+      yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } };
+    }
+    const streamed = () => ({
+      streamResult: { fullStream: fullStream() },
+      dsmlRecoveries: [],
+      startTime: Date.now(),
+      modelId: 'test-model',
+    });
+    const send = (model: string) =>
+      createApp().request('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: 'Hello' }], model }),
+      });
+
+    mocks.createChatStreamAsync.mockResolvedValueOnce(streamed());
+    const retired = await send('kimi-k3');
+    expect(retired.status).toBe(200);
+    await retired.text();
+    expect(mocks.createChatStreamAsync.mock.calls[0]![0]).not.toHaveProperty('modelOverride');
+
+    mocks.createChatStreamAsync.mockResolvedValueOnce(streamed());
+    const offered = await send('other-model');
+    expect(offered.status).toBe(200);
+    await offered.text();
+    expect(mocks.createChatStreamAsync.mock.calls[1]![0]).toMatchObject({ modelOverride: 'other-model' });
   });
 
   it('hands Chat an execution-boundary-instrumented tool registry when Runtime trace is enabled', async () => {

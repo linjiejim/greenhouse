@@ -377,7 +377,10 @@ export async function resolveProfileAsync(
 
     // The base preset only supplies access flags and the model FALLBACK — a
     // custom agent owns its model (row.model_id), so changing a preset's model
-    // can never silently change a forked agent's behaviour.
+    // can never silently change a forked agent's behaviour. The fallback is
+    // also what an agent pinned to a model this deployment can no longer reach
+    // (removed from the catalog, or its key unset) runs on, instead of failing
+    // every message with "No available providers".
     let baseProfile: AgentProfile;
     try {
       const normalizedBase = normalizeProfileId(version.base_profile_id) ?? DEFAULT_PROFILE_ID;
@@ -399,7 +402,7 @@ export async function resolveProfileAsync(
         rich_output: baseProfile.access.rich_output,
       },
       model:
-        version.model_id && getModelEntry(version.model_id)
+        version.model_id && getAvailableProviders(version.model_id).length > 0
           ? { ...baseProfile.model, id: version.model_id }
           : baseProfile.model,
       tools,

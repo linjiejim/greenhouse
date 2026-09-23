@@ -351,6 +351,11 @@ export function ConversationPane({
     setPreferredProfile,
   } = useProfileStore();
   const displayProfiles = profiles;
+  // A remembered model the catalog no longer offers (retired, or its key unset)
+  // is never sent: the turn runs on the agent default, which is also what the
+  // picker shows in its place. The server falls back the same way for clients
+  // still running an older bundle.
+  const offeredModelId = selectedModelId && models.some((m) => m.id === selectedModelId) ? selectedModelId : null;
   const preferenceKey = currentUser?.id || '__anonymous__';
   const preferredProfileId = preferredProfileIds[preferenceKey];
 
@@ -1095,7 +1100,7 @@ export function ConversationPane({
             ...(sessionId ? { session_id: sessionId } : { create_session_profile_id: selectedProfileId }),
             ...(stagedAttachments?.length ? { attachments: stagedAttachments } : {}),
             ...(chatFileIds?.length ? { chat_file_ids: chatFileIds } : {}),
-            ...(selectedModelId ? { model: selectedModelId } : {}),
+            ...(offeredModelId ? { model: offeredModelId } : {}),
           });
           const acceptedSessionId = run.session_id;
           if (!acceptedSessionId) throw new Error(t('cloudAgent.createFailed'));
@@ -1365,7 +1370,7 @@ export function ConversationPane({
       // handled by the manager and completion is materialized above.
       sendMessage(sid!, msgWithAttachments, uploadedImages.length > 0 ? uploadedImages : undefined, {
         ...turnEnvironment(),
-        ...(selectedModelId ? { model: selectedModelId } : {}),
+        ...(offeredModelId ? { model: offeredModelId } : {}),
       });
     },
     [
@@ -1374,7 +1379,7 @@ export function ConversationPane({
       selectedSkill,
       missionInstructionTarget,
       taskValues,
-      selectedModelId,
+      offeredModelId,
       effectiveRunActive,
       isMissionConversation,
       missionActiveRun,
