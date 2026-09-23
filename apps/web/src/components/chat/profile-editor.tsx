@@ -123,6 +123,11 @@ export function ProfileEditorDrawer({
   }, [open, fetchProfiles]);
 
   const [form, setForm] = useState<ProfileFormData>(createEmptyForm);
+  // An Agent pinned to a model the catalog no longer offers (retired, or its
+  // key unset) already runs on the default; show and save that, not an id the
+  // server would reject. Before the list loads, keep the stored value.
+  const offeredModelId =
+    models.length === 0 || models.some((m) => m.id === form.model_id) ? form.model_id : (models[0]?.id ?? 'flash');
   const [initialForm, setInitialForm] = useState<ProfileFormData>(createEmptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -238,7 +243,7 @@ export function ProfileEditorDrawer({
         name: form.name.trim(),
         description: form.description.trim() || undefined,
         base_profile_id: form.base_profile_id,
-        model_id: form.model_id,
+        model_id: offeredModelId,
         tools: form.tools,
         system_prompt: form.system_prompt.trim(),
         max_steps: form.max_steps,
@@ -628,11 +633,8 @@ export function ProfileEditorDrawer({
 
               {/* Model — an agent owns its model (v3); it never drifts with the base preset. */}
               <FormField label={t('profileEditor.model')} help={t('profileEditor.modelHint')}>
-                <Select value={form.model_id} onChange={(e) => setForm({ ...form, model_id: e.target.value })}>
-                  {(models.some((m) => m.id === form.model_id)
-                    ? models
-                    : [{ id: form.model_id, name: form.model_id }, ...models]
-                  ).map((m) => (
+                <Select value={offeredModelId} onChange={(e) => setForm({ ...form, model_id: e.target.value })}>
+                  {(models.length > 0 ? models : [{ id: offeredModelId, name: offeredModelId }]).map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.id === m.name ? m.id : `${m.id} — ${m.name}`}
                     </option>
