@@ -219,6 +219,45 @@ describe('GenerateImageTool', () => {
     }
   });
 
+  // Vision stays on the (multimodal) LLM/media endpoint; generation can live at
+  // an image provider. The key must travel only with its own base URL.
+  it('generates at the dedicated image endpoint when IMAGE_BASE_URL is set', async () => {
+    process.env.IMAGE_BASE_URL = 'https://images.example.com/v1/';
+    process.env.IMAGE_API_KEY = 'test-image-key';
+    const { spy, restore } = mockFetch(() => b64Response());
+
+    try {
+      const tool = createImageTool();
+      const result = await tool.execute({ action: 'generate', prompt: 'a poster' }, { toolCallId: 'test', messages: [] });
+
+      const [url, init] = spy.mock.calls[0];
+      expect(url).toBe('https://images.example.com/v1/images/generations');
+      expect(init.headers.Authorization).toBe('Bearer test-image-key');
+      expect(JSON.parse(init.body)).toMatchObject({ model: 'gpt-image-2', quality: 'low' });
+      expect((result as any).success).toBe(true);
+    } finally {
+      restore();
+      delete process.env.IMAGE_BASE_URL;
+      delete process.env.IMAGE_API_KEY;
+    }
+  });
+
+  it('refuses to send another key to IMAGE_BASE_URL when IMAGE_API_KEY is missing', async () => {
+    process.env.IMAGE_BASE_URL = 'https://images.example.com/v1';
+    const { spy, restore } = mockFetch(() => b64Response());
+
+    try {
+      const tool = createImageTool();
+      const result = await tool.execute({ action: 'generate', prompt: 'a poster' }, { toolCallId: 'test', messages: [] });
+
+      expect((result as any).error).toContain('IMAGE_API_KEY');
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      restore();
+      delete process.env.IMAGE_BASE_URL;
+    }
+  });
+
   it('downloads the image when the endpoint returns a URL instead of base64', async () => {
     const { spy, restore } = mockFetch((url: string) => {
       if (url.includes('media.example.com')) {

@@ -173,6 +173,25 @@ const WORKSPACE_SETTINGS_LITERAL = [
     env: 'IMAGE_MODEL',
     placeholder: 'gpt-image-2',
   },
+  {
+    key: 'media.image_base_url',
+    group: 'media',
+    label: 'Image generation base URL',
+    description:
+      'Optional dedicated endpoint for generate_image (set together with its key); unset = the media endpoint above',
+    type: 'string',
+    env: 'IMAGE_BASE_URL',
+    placeholder: 'https://api.openai.com/v1',
+  },
+  {
+    key: 'media.image_api_key',
+    group: 'media',
+    label: 'Image generation API key',
+    description: 'API key for the image generation endpoint — only ever sent to that base URL',
+    type: 'string',
+    secret: true,
+    env: 'IMAGE_API_KEY',
+  },
   // ── External web search ──
   {
     key: 'search.tavily_api_key',

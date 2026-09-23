@@ -45,6 +45,8 @@ export LLM_MODEL_PRO=""
 # (and so the model picker assertions do not drift with the environment).
 export DEEPSEEK_API_KEY=""
 export MEDIA_API_KEY=""
+export IMAGE_BASE_URL=""
+export IMAGE_API_KEY=""
 export LOG_LEVEL="${LOG_LEVEL:-error}"
 export NODE_ENV="${NODE_ENV:-test}"
 # Force local-disk storage so the suite stays hermetic (zero real uploads).

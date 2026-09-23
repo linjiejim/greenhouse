@@ -7,8 +7,8 @@
  *   images are composited in **as-is** (logos, product shots, reference art)
  * - edit: modify reference images according to the prompt
  *
- * One model, one channel, one quality tier: the media endpoint (see
- * ../media-provider.ts) at fixed `low` quality. The tier is not exposed to
+ * One model, one channel, one quality tier: the image endpoint (`IMAGE_*`, else
+ * the shared media endpoint — see ../media-provider.ts) at fixed `low` quality. The tier is not exposed to
  * callers — medium/high cost roughly 8x / 33x of low and the model has no way
  * to judge whether that spend is warranted. Need more detail? Raise `size`.
  *
@@ -30,7 +30,7 @@ import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { putUpload, getUpload, detectImageContentType } from '../storage/uploads.js';
 import { fetchPublicImage } from '../security/network.js';
-import { getMediaProviderConfig } from '../llm/media-provider.js';
+import { getImageProviderConfig } from '../llm/media-provider.js';
 import { IMAGE_BUDGET_TTL_MS, reserveImageUsdBudget, settleAndRecordBudgetedImageUsage } from '../llm/usage-budget.js';
 
 // ─── Upstream ────────────────────────────────────────────
@@ -222,7 +222,7 @@ function extractImageUsage(result: unknown): ImageProviderResult['usage'] {
 }
 
 async function callGenerate(prompt: string, size: string, onProviderIo: () => void): Promise<ImageProviderResult> {
-  const { apiKey, baseUrl } = getMediaProviderConfig('image generation');
+  const { apiKey, baseUrl } = getImageProviderConfig('image generation');
 
   onProviderIo();
   const resp = await fetch(`${baseUrl}/images/generations`, {
@@ -271,7 +271,7 @@ async function callEdit(
   size: string | undefined,
   onProviderIo: () => void,
 ): Promise<ImageProviderResult> {
-  const { apiKey, baseUrl } = getMediaProviderConfig('image editing');
+  const { apiKey, baseUrl } = getImageProviderConfig('image editing');
 
   // Build multipart form data
   const formData = new FormData();

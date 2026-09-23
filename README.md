@@ -332,7 +332,8 @@ its payload. Set `LLM_VISION=false` when `LLM_MODEL` is text-only, and images go
 `analyze_image` instead.
 
 Optional: media (vision `analyze_image` + `generate_image` through `MEDIA_*`, falling back to
-the LLM endpoint), external web search, email mailboxes, WeCom / Feishu, missions, usage
+the LLM endpoint; `IMAGE_BASE_URL` + `IMAGE_API_KEY` move generation alone to an image
+provider), external web search, email mailboxes, WeCom / Feishu, missions, usage
 budgets, and object storage. Uploads default to local disk (`data/uploads`), Skill Center
 bundles to `data/skills` — set `SKILLS_S3_*` to keep bundles in S3-compatible storage.
 
