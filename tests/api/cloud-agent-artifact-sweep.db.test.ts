@@ -38,7 +38,7 @@ async function newRun(): Promise<AgentRunRow> {
     workspace_id: workspace.id,
     title: 't',
     prompt: 'p',
-    model: 'kimi-k3',
+    model: 'deepseek-flash',
   });
 }
 

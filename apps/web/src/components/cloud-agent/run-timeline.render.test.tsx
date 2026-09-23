@@ -42,11 +42,11 @@ describe('RunTimeline', () => {
   it('renders only the first run.started — retry duplicates from older runs collapse', () => {
     // The observed incident: 1 real start + 6 provider-retry re-emissions.
     const events = [
-      ev('run.started', { model: 'kimi-k3' }),
+      ev('run.started', { model: 'deepseek-flash' }),
       ev('tool.started', { tool: 'bash', args: JSON.stringify({ command: 'ls -la ./inputs/' }) }),
       ev('tool.completed', { tool: 'bash', is_error: false, result: 'ok' }),
-      ev('run.started', { model: 'kimi-k3' }),
-      ev('run.started', { model: 'kimi-k3' }),
+      ev('run.started', { model: 'deepseek-flash' }),
+      ev('run.started', { model: 'deepseek-flash' }),
       ev('run.completed', { requests: 10 }),
     ];
     const html = render(events);

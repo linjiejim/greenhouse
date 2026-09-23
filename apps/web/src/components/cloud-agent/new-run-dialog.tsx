@@ -28,8 +28,7 @@ interface NewRunDialogProps {
 
 export function NewRunDialog({ open, onClose, onCreated }: NewRunDialogProps) {
   const t = useT();
-  // Chat model catalog — the mission vocabulary is the same; the hardcoded
-  // kimi-k3/pro pair predates the relay accepting any registry model.
+  // Chat model catalog — the mission vocabulary is the same.
   const models = useMissionModels();
   const [title, setTitle] = useState('');
   const [prompt, setPrompt] = useState('');

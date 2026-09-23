@@ -145,7 +145,7 @@ describe('Mission runtime admission', () => {
       status: 'starting',
       prompt: 'Run after the gate opens',
       input_manifest: '[]',
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
       fallback_model: null,
       session_id: null,
       max_wall_ms: 60 * 60_000,

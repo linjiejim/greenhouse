@@ -8,7 +8,6 @@ import {
   loadProfile as loadProfileFromDisk,
   registerKnownTools as registerTools,
   clearProfileCache as clearCache,
-  validateProfile,
 } from '../../apps/api/src/profiles/profile.js';
 
 const PROFILES_DIR = resolve(import.meta.dirname, '../../apps/api/src/profiles');
@@ -68,7 +67,7 @@ describe('All profiles: structural validation', () => {
         expect(profile.name).toBeDefined();
         expect(profile.system_prompt).toBeDefined();
         expect(profile.model?.id).toBeDefined();
-        expect(['flash', 'pro', 'kimi-k3']).toContain(profile.model.id);
+        expect(['flash', 'pro', 'deepseek-flash']).toContain(profile.model.id);
       });
 
       it('has valid tools', () => {
@@ -125,7 +124,8 @@ describe('Profile identities', () => {
 
 describe('Profile module loading and legacy compatibility', () => {
   it('loadAllProfiles returns 3 internal system profiles', async () => {
-    const { loadAllProfiles, clearProfileCache, registerKnownTools } = await import('../../apps/api/src/profiles/profile.js');
+    const { loadAllProfiles, clearProfileCache, registerKnownTools } =
+      await import('../../apps/api/src/profiles/profile.js');
     registerKnownTools(KNOWN_TOOLS);
     clearProfileCache();
     expect(
@@ -185,69 +185,25 @@ describe('Profile module loading and legacy compatibility', () => {
     }
   });
 
-  it('never sends Kimi a sampling parameter, whatever the previous model set', async () => {
-    const { resolveModelConfig, setModelRegistry, DEFAULT_MODEL_REGISTRY } = await import('@greenhouse/agent-core');
-    setModelRegistry({
-      ...DEFAULT_MODEL_REGISTRY,
-      'kimi-k3': {
-        name: 'Kimi K3',
-        options: { reasoning_effort: 'high', max_tokens: 20000 },
-        providers: [{ provider: 'kimi', model: 'k3', apiKeyEnv: 'KIMI_API_KEY' }],
-      },
-    });
-    try {
-      // Switching a turn to K3 carries the previous config forward; Kimi pins
-      // sampling server-side and hard-400s anything else, so it must be dropped.
-      const resolved = resolveModelConfig({
-        id: 'kimi-k3',
-        provider: 'kimi',
-        model: 'k3',
-        options: { temperature: 0.4, top_p: 0.9, thinking: true },
-      });
-      expect(resolved.options?.temperature).toBeUndefined();
-      expect(resolved.options?.top_p).toBeUndefined();
-      expect(resolved.options?.reasoning_effort).toBe('high');
-      expect(resolved.options?.max_tokens).toBe(20000);
-    } finally {
-      setModelRegistry(DEFAULT_MODEL_REGISTRY);
-    }
-  });
-
-  it('rejects an unusable reasoning_effort at load, not on every message', () => {
-    const base = { id: 'fixture', name: 'Fixture', tools: [], system_prompt: 'fixture' };
-    const withEffort = (reasoning_effort: unknown) =>
-      validateProfile({ ...base, model: { id: 'kimi-k3', options: { reasoning_effort } } }, 'fixture');
-
-    expect(() => withEffort('medium')).toThrow(/reasoning_effort/); // Kimi takes low|high|max only
-    for (const effort of ['low', 'high', 'max']) {
-      expect(withEffort(effort).model.options?.reasoning_effort, effort).toBe(effort);
-    }
-  });
-
   it('a model with no key configured is never offered in the picker', async () => {
     const { listChatModels } = await import('../../apps/api/src/config/models.js');
-    const { setModelRegistry, DEFAULT_MODEL_REGISTRY } = await import('@greenhouse/agent-core');
-    const saved = { KIMI_API_KEY: process.env.KIMI_API_KEY };
-    setModelRegistry({
-      ...DEFAULT_MODEL_REGISTRY,
-      'kimi-k3': { name: 'Kimi K3', providers: [{ provider: 'kimi', model: 'k3', apiKeyEnv: 'KIMI_API_KEY' }] },
-    });
+    const saved = process.env.DEEPSEEK_API_KEY;
     try {
       // The check that used to hide a whole preset now hides just the engine:
-      // no KIMI_API_KEY → K3 is simply not in the dropdown.
-      delete process.env.KIMI_API_KEY;
-      expect(listChatModels().map((m) => m.id)).not.toContain('kimi-k3');
-      process.env.KIMI_API_KEY = 'sk-test';
-      expect(listChatModels().map((m) => m.id)).toContain('kimi-k3');
+      // no DEEPSEEK_API_KEY → `deepseek-flash` is simply not in the dropdown.
+      delete process.env.DEEPSEEK_API_KEY;
+      expect(listChatModels().map((m) => m.id)).not.toContain('deepseek-flash');
+      process.env.DEEPSEEK_API_KEY = 'sk-test';
+      expect(listChatModels().map((m) => m.id)).toContain('deepseek-flash');
     } finally {
-      if (saved.KIMI_API_KEY === undefined) delete process.env.KIMI_API_KEY;
-      else process.env.KIMI_API_KEY = saved.KIMI_API_KEY;
-      setModelRegistry(DEFAULT_MODEL_REGISTRY);
+      if (saved === undefined) delete process.env.DEEPSEEK_API_KEY;
+      else process.env.DEEPSEEK_API_KEY = saved;
     }
   });
 
   it('reports the provider the catalog will actually run, not a hard-coded default', async () => {
-    const { loadProfile, clearProfileCache, registerKnownTools } = await import('../../apps/api/src/profiles/profile.js');
+    const { loadProfile, clearProfileCache, registerKnownTools } =
+      await import('../../apps/api/src/profiles/profile.js');
     registerKnownTools(KNOWN_TOOLS);
     clearProfileCache();
     // The profile declares only `model.id`; the provider comes from the catalog.

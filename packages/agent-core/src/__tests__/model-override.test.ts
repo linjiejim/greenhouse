@@ -100,7 +100,7 @@ describe('attributed model id', () => {
 describe('supported providers', () => {
   it('rejects removed provider implementations and lists only wired providers', async () => {
     await expect(createModelFromConfig({ provider: 'google', model: 'gemini' })).rejects.toThrow(
-      'Supported: deepseek, openai, kimi, minimax, openai-compatible',
+      'Supported: deepseek, openai, openai-compatible',
     );
   });
 
@@ -116,14 +116,7 @@ describe('supported providers', () => {
   });
 });
 
-describe('minimax provider', () => {
-  const minimaxConfig: ModelConfig = { provider: 'minimax', model: 'MiniMax-M3' };
-
-  it('creates a model without needing LLM_BASE_URL (its endpoint is built in)', async () => {
-    const model = await createModelFromConfig(minimaxConfig);
-    expect(model).toMatchObject({ modelId: 'MiniMax-M3' });
-  });
-
+describe('provider attempts', () => {
   it('admits every concrete provider attempt before I/O and supplies a hard output cap', async () => {
     const marked = vi.fn();
     const settle = vi.fn();
@@ -136,7 +129,7 @@ describe('minimax provider', () => {
       })) as unknown as typeof fetch;
     try {
       const model = (await createModelFromConfig(
-        { ...minimaxConfig, apiKey: 'MINIMAX_API_KEY' },
+        { provider: 'deepseek', model: 'deepseek-flash', apiKey: 'DEEPSEEK_API_KEY' },
         { onProviderAttempt: hook },
       )) as unknown as { doStream: (options: unknown) => Promise<unknown> };
       await model.doStream({ prompt: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] });
@@ -146,58 +139,57 @@ describe('minimax provider', () => {
 
     expect(hook).toHaveBeenCalledWith({
       descriptor: expect.objectContaining({
-        provider: 'minimax',
-        modelId: 'MiniMax-M3',
-        scopeId: 'MINIMAX_API_KEY:minimax:default',
+        provider: 'deepseek',
+        modelId: 'deepseek-flash',
+        scopeId: 'DEEPSEEK_API_KEY:deepseek:default',
       }),
       options: expect.objectContaining({ maxOutputTokens: 20_000 }),
     });
     expect(marked).toHaveBeenCalledOnce();
   });
+});
 
-  it('always asks for split reasoning; a thinking switch only when explicitly off', () => {
-    // reasoning_split moves thinking from inline <think> tags in `content`
-    // into the reasoning_content field the client actually parses.
-    expect(buildProviderOptions(minimaxConfig)).toEqual({ minimax: { reasoning_split: true } });
-    expect(buildProviderOptions({ ...minimaxConfig, options: { thinking: true } })).toEqual({
-      minimax: { reasoning_split: true },
-    });
-    expect(buildProviderOptions({ ...minimaxConfig, options: { thinking: false } })).toEqual({
-      minimax: { reasoning_split: true, thinking: { type: 'disabled' } },
-    });
-  });
-
-  // Wire-format contract, mirroring the kimi test: `include_usage` keeps
-  // streamed answers billable, and the namespace has to match the client name
-  // or reasoning_split silently never reaches the body.
-  it('asks for usage on streams and puts reasoning_split in the body', async () => {
+describe('DeepSeek image input', () => {
+  // The chat vision path hands the engine image parts; this is the wire
+  // contract that makes them pixels at DeepSeek rather than a dropped part.
+  // `deepseek-flash` (V4.1 Flash) reads image_url data URLs natively.
+  it('ships attached image bytes as an image_url data URL', async () => {
     const sent: Array<Record<string, unknown>> = [];
     const realFetch = globalThis.fetch;
-    const savedKey = process.env.MINIMAX_API_KEY;
-    process.env.MINIMAX_API_KEY = 'sk-cp-unit-test';
     globalThis.fetch = (async (_url: unknown, init: { body?: string }) => {
       sent.push(JSON.parse(String(init?.body)));
       return new Response('data: [DONE]\n\n', { status: 200, headers: { 'content-type': 'text/event-stream' } });
     }) as unknown as typeof fetch;
 
     try {
-      const model = (await createModelFromConfig({ ...minimaxConfig, apiKey: 'MINIMAX_API_KEY' })) as unknown as {
-        doStream: (o: unknown) => Promise<unknown>;
-      };
+      const model = (await createModelFromConfig({
+        provider: 'openai-compatible',
+        model: 'deepseek-flash',
+        baseUrl: 'https://api.deepseek.com',
+        apiKey: 'DEEPSEEK_API_KEY',
+      })) as unknown as { doStream: (o: unknown) => Promise<unknown> };
       await model.doStream({
-        prompt: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
-        providerOptions: buildProviderOptions(minimaxConfig),
+        prompt: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'what is this?' },
+              { type: 'file', mediaType: 'image/png', data: new Uint8Array([1, 2, 3]) },
+            ],
+          },
+        ],
       });
     } finally {
       globalThis.fetch = realFetch;
-      if (savedKey === undefined) delete process.env.MINIMAX_API_KEY;
-      else process.env.MINIMAX_API_KEY = savedKey;
     }
 
-    expect(sent[0]).toMatchObject({
-      model: 'MiniMax-M3',
-      stream_options: { include_usage: true },
-      reasoning_split: true,
+    const messages = sent[0]!.messages as Array<{ role: string; content: unknown }>;
+    expect(messages[0]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'what is this?' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } },
+      ],
     });
   });
 });
@@ -210,7 +202,7 @@ describe('modelSupportsVision', () => {
         'vision-model': {
           name: 'Vision Model',
           vision: true,
-          providers: [{ provider: 'minimax', model: 'MiniMax-M3', apiKeyEnv: 'MINIMAX_API_KEY' }],
+          providers: [{ provider: 'deepseek', model: 'deepseek-flash', apiKeyEnv: 'DEEPSEEK_API_KEY' }],
         },
       });
       expect(modelSupportsVision('vision-model')).toBe(true);
@@ -219,71 +211,6 @@ describe('modelSupportsVision', () => {
       expect(modelSupportsVision(undefined)).toBe(false);
     } finally {
       setModelRegistry(TEST_REGISTRY);
-    }
-  });
-});
-
-describe('kimi provider', () => {
-  const kimiConfig: ModelConfig = { provider: 'kimi', model: 'k3' };
-
-  it('creates a model without needing LLM_BASE_URL (its endpoint is built in)', async () => {
-    const model = await createModelFromConfig(kimiConfig);
-    expect(model).toMatchObject({ modelId: 'k3' });
-  });
-
-  it('sends reasoning_effort under Kimi’s own namespace — the only reasoning knob it honours', () => {
-    // The namespace is the provider name we construct the client with, so the
-    // options land on the wire as `reasoning_effort` for kimi and nothing else.
-    for (const effort of ['low', 'high', 'max'] as const) {
-      expect(buildProviderOptions({ ...kimiConfig, options: { reasoning_effort: effort } })).toEqual({
-        kimi: { reasoningEffort: effort },
-      });
-    }
-  });
-
-  it('never sends a thinking switch: K3 reasons unconditionally', () => {
-    expect(buildProviderOptions({ ...kimiConfig, options: { thinking: true } })).toBeUndefined();
-    expect(buildProviderOptions(kimiConfig)).toBeUndefined();
-  });
-
-  // What actually goes on the wire. Both facts below were found the hard way
-  // against the live endpoint: without `include_usage` a streamed answer bills
-  // zero tokens against every quota, and the provider-options namespace has to
-  // match the client's `name` or `reasoning_effort` is silently dropped.
-  it('asks for usage on streams and puts reasoning_effort in the body', async () => {
-    const sent: Array<Record<string, unknown>> = [];
-    const realFetch = globalThis.fetch;
-    const savedKey = process.env.KIMI_API_KEY;
-    process.env.KIMI_API_KEY = 'sk-unit-test';
-    globalThis.fetch = (async (_url: unknown, init: { body?: string }) => {
-      sent.push(JSON.parse(String(init?.body)));
-      return new Response('data: [DONE]\n\n', { status: 200, headers: { 'content-type': 'text/event-stream' } });
-    }) as unknown as typeof fetch;
-
-    try {
-      // `LanguageModel` is a union that includes a bare model-id string, so it
-      // needs the two-step cast to reach the wire call.
-      const model = (await createModelFromConfig({ ...kimiConfig, apiKey: 'KIMI_API_KEY' })) as unknown as {
-        doStream: (o: unknown) => Promise<unknown>;
-      };
-      await model.doStream({
-        prompt: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
-        providerOptions: buildProviderOptions({ ...kimiConfig, options: { reasoning_effort: 'high' } }),
-      });
-    } finally {
-      globalThis.fetch = realFetch;
-      if (savedKey === undefined) delete process.env.KIMI_API_KEY;
-      else process.env.KIMI_API_KEY = savedKey;
-    }
-
-    expect(sent[0]).toMatchObject({
-      model: 'k3',
-      stream_options: { include_usage: true },
-      reasoning_effort: 'high',
-    });
-    // Kimi 400s on any sampling value but its own — we must send none of them.
-    for (const banned of ['temperature', 'top_p', 'frequency_penalty', 'presence_penalty']) {
-      expect(sent[0]![banned], banned).toBeUndefined();
     }
   });
 });

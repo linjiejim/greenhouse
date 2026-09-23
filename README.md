@@ -324,9 +324,12 @@ Everything is environment-driven; see [.env.example](./.env.example) for the ful
 | `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | Any OpenAI-compatible endpoint; the `flash` catalog entry resolves to `LLM_MODEL` (add a stronger `pro` with `LLM_MODEL_PRO`) |
 
 **Model catalog** — `apps/api/src/config/models.yaml` is the single definition of every model
-a deployment can use: the built-in `flash` / `pro` entries follow `LLM_*`, and native DeepSeek,
-Kimi and MiniMax entries appear in the chat picker as soon as their key is set. Add a provider
-entry to offer another model; secrets never live in the file.
+a deployment can use: the built-in `flash` / `pro` entries follow `LLM_*`, and the native
+DeepSeek V4.1 Flash entry (`deepseek-flash`) appears in the chat picker as soon as
+`DEEPSEEK_API_KEY` is set. Add a provider entry to offer another model; secrets never live in
+the file. The default model is treated as multimodal: images attached in Chat go straight into
+its payload. Set `LLM_VISION=false` when `LLM_MODEL` is text-only, and images go through
+`analyze_image` instead.
 
 Optional: media (vision `analyze_image` + `generate_image` through `MEDIA_*`, falling back to
 the LLM endpoint), external web search, email mailboxes, WeCom / Feishu, missions, usage

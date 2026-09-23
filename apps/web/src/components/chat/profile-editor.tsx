@@ -17,6 +17,7 @@ import type { Profile, ToolMeta, CustomProfileInput } from '../../lib/api';
 import type { EyeStyle, LeafStyle } from '../sprouty/index.js';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { FormActions, FormError, FormField, FormGrid } from '../form';
+import { useProfileStore } from '../../stores';
 
 const MAX_PROMPT_CHARS = 8000;
 
@@ -35,14 +36,6 @@ function slugify(name: string): string {
 }
 
 // ─── Types ──────────────────────────────────────────────
-
-/** Registry ids the presets ship with (see apps/api/src/config/models.yaml). */
-const MODEL_OPTIONS = [
-  { id: 'flash', label: 'flash — DeepSeek V4 Flash' },
-  { id: 'pro', label: 'pro — DeepSeek V4 Pro' },
-  { id: 'kimi-k3', label: 'kimi-k3 — Kimi K3' },
-  { id: 'minimax-m3', label: 'minimax-m3 — MiniMax M3 (vision)' },
-];
 
 interface ProfileFormData {
   name: string;
@@ -123,6 +116,11 @@ export function ProfileEditorDrawer({
 }: ProfileEditorDrawerProps) {
   const t = useT();
   const isEditing = !!profile;
+  // Same list as the Chat picker: catalog models this deployment can reach.
+  const { models, fetchProfiles } = useProfileStore();
+  useEffect(() => {
+    if (open) void fetchProfiles();
+  }, [open, fetchProfiles]);
 
   const [form, setForm] = useState<ProfileFormData>(createEmptyForm);
   const [initialForm, setInitialForm] = useState<ProfileFormData>(createEmptyForm);
@@ -631,9 +629,12 @@ export function ProfileEditorDrawer({
               {/* Model — an agent owns its model (v3); it never drifts with the base preset. */}
               <FormField label={t('profileEditor.model')} help={t('profileEditor.modelHint')}>
                 <Select value={form.model_id} onChange={(e) => setForm({ ...form, model_id: e.target.value })}>
-                  {MODEL_OPTIONS.map((m) => (
+                  {(models.some((m) => m.id === form.model_id)
+                    ? models
+                    : [{ id: form.model_id, name: form.model_id }, ...models]
+                  ).map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.label}
+                      {m.id === m.name ? m.id : `${m.id} — ${m.name}`}
                     </option>
                   ))}
                 </Select>

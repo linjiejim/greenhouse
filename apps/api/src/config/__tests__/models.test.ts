@@ -119,42 +119,54 @@ models:
 
   it('parses the vision flag and rejects non-boolean values', () => {
     const withVision = (v: string) =>
-      `models:\n  m3:\n    vision: ${v}\n    providers:\n      - { provider: minimax, model: MiniMax-M3, api_key_env: K }\n`;
+      `models:\n  m3:\n    vision: ${v}\n    providers:\n      - { provider: deepseek, model: deepseek-flash, api_key_env: K }\n`;
     expect(parseModelCatalog(withVision('true')).models.m3!.vision).toBe(true);
     expect(parseModelCatalog(withVision('false')).models.m3!.vision).toBe(false);
     expect(parseModelCatalog(MINIMAL).models.flash!.vision).toBeUndefined(); // absent = text-only
     expect(() => parseModelCatalog(withVision('yes please'))).toThrow(/vision/);
   });
 
-  it('ships MiniMax M3 as a vision model on the CN coding-plan endpoint, off the public relay subset', () => {
-    const source = readFileSync(resolve(import.meta.dirname, '../models.yaml'), 'utf-8');
-    const catalog = parseModelCatalog(source);
-
-    expect(catalog.models['minimax-m3']!.providers).toEqual([
-      {
-        provider: 'minimax',
-        model: 'MiniMax-M3',
-        apiKeyEnv: 'MINIMAX_API_KEY',
-        baseUrl: 'https://api.minimaxi.com/v1',
-      },
-    ]);
-    // This is what routes attached images straight into the payload.
-    expect(catalog.models['minimax-m3']!.vision).toBe(true);
-    expect(catalog.chat.selectable).toContain('minimax-m3');
-    // The MiniMax coding plan is a fixed shared quota — same rule as kimi-k3.
-    expect(catalog.relay.public).not.toContain('minimax-m3');
+  it('lets vision_env override the declared vision flag, keeping the default on an unrecognized value', () => {
+    const source = `models:\n  flash:\n    vision: true\n    vision_env: TEST_VISION\n    providers:\n      - { provider: deepseek, model: m, api_key_env: K }\n`;
+    const previous = process.env.TEST_VISION;
+    try {
+      delete process.env.TEST_VISION;
+      expect(parseModelCatalog(source).models.flash!.vision).toBe(true);
+      for (const off of ['false', '0', 'OFF', ' no ']) {
+        process.env.TEST_VISION = off;
+        expect(parseModelCatalog(source).models.flash!.vision, off).toBe(false);
+      }
+      process.env.TEST_VISION = 'true';
+      expect(parseModelCatalog(source.replace('vision: true', 'vision: false')).models.flash!.vision).toBe(true);
+      // A typo saved in Runtime Config must not take the catalog down.
+      process.env.TEST_VISION = 'flase';
+      expect(parseModelCatalog(source).models.flash!.vision).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.TEST_VISION;
+      else process.env.TEST_VISION = previous;
+    }
+    expect(() => parseModelCatalog(source.replace('vision_env: TEST_VISION', 'vision_env: 3'))).toThrow(/vision_env/);
   });
 
-  it('ships Kimi K3 on the coding-plan endpoint, kept off the public relay subset', () => {
+  it('ships only DeepSeek-served or endpoint-agnostic models, the default reading images natively', () => {
     const source = readFileSync(resolve(import.meta.dirname, '../models.yaml'), 'utf-8');
-    const catalog = parseModelCatalog(source);
-
-    expect(catalog.models['kimi-k3']!.providers).toEqual([
-      { provider: 'kimi', model: 'k3-256k', apiKeyEnv: 'KIMI_API_KEY', baseUrl: 'https://api.kimi.com/coding/v1' },
-    ]);
-    // The Kimi Code plan is a fixed shared quota, so relay keys reach it only
-    // through an explicit `allowed_models` grant — never by default.
-    expect(catalog.relay.public).not.toContain('kimi-k3');
+    const previous = process.env.LLM_VISION;
+    delete process.env.LLM_VISION;
+    try {
+      const catalog = parseModelCatalog(source);
+      expect(Object.keys(catalog.models)).toEqual(['flash', 'pro', 'deepseek-flash']);
+      // Attached images go straight to the default model unless LLM_VISION=false.
+      expect(catalog.models.flash!.vision).toBe(true);
+      expect(catalog.models['deepseek-flash']!.vision).toBe(true);
+      expect(catalog.models['deepseek-flash']!.providers).toEqual([
+        { provider: 'deepseek', model: 'deepseek-flash', apiKeyEnv: 'DEEPSEEK_API_KEY' },
+      ]);
+      // Env-derived providers drop out when LLM_MODEL is unset, so assert a subset.
+      const providers = Object.values(catalog.models).flatMap((m) => m.providers.map((p) => p.provider));
+      for (const provider of providers) expect(['openai-compatible', 'deepseek']).toContain(provider);
+    } finally {
+      if (previous !== undefined) process.env.LLM_VISION = previous;
+    }
   });
 
   it('resolves model_env / base_url_env at parse time and drops providers whose model env is unset', () => {

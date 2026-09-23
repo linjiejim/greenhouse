@@ -49,7 +49,7 @@ const settledRun = (over: Partial<CloudAgentRun> = {}): CloudAgentRun => ({
   original_prompt: SHORT_PROMPT,
   prompt: SHORT_PROMPT,
   input_manifest: '[]',
-  model: 'kimi-k3',
+  model: 'deepseek-flash',
   fallback_model: 'pro',
   workspace_id: 1,
   session_id: 's1',
@@ -120,7 +120,7 @@ describe('model choice before Launch', () => {
   it('resolveMissionModelDefault: dispatch pick > session model > deployment default', () => {
     const models = [
       { id: 'flash', name: 'Flash' },
-      { id: 'kimi-k3', name: 'Kimi K3' },
+      { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' },
     ];
     expect(resolveMissionModelDefault('pro', 'flash', models)).toBe('pro');
     expect(resolveMissionModelDefault(undefined, 'flash', models)).toBe('flash');
@@ -136,14 +136,14 @@ describe('model choice before Launch', () => {
         run: null,
         models: [
           { id: 'flash', name: 'Flash' },
-          { id: 'kimi-k3', name: 'Kimi K3' },
+          { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' },
         ],
         modelId: 'flash',
       }),
     );
     expect(html).toContain('<select');
     expect(html).toContain('>Flash</option>');
-    expect(html).toContain('>Kimi K3</option>');
+    expect(html).toContain('>DeepSeek V4.1 Flash</option>');
     expect(html).toContain(en('cloudAgent.dispatchDefaultModel'));
     expect(html).toContain(en('cloudAgent.launch'));
   });

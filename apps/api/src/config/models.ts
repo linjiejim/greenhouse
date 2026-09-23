@@ -68,6 +68,25 @@ function parseProvider(raw: unknown, modelId: string, index: number): ProviderEn
   };
 }
 
+const ENV_TRUE = new Set(['true', '1', 'yes', 'on']);
+const ENV_FALSE = new Set(['false', '0', 'no', 'off']);
+
+/**
+ * `vision` may be overridden per deployment by the env var `vision_env` names:
+ * the default model follows LLM_MODEL, so only the operator knows whether the
+ * model behind it reads images. An unrecognized value keeps the declared
+ * default rather than throwing — this also runs when an admin saves Runtime
+ * Config, and a typo there must not take the catalog (and the next boot) down.
+ */
+function resolveVision(modelId: string, declared: boolean | undefined, visionEnv: string | undefined) {
+  const raw = visionEnv ? process.env[visionEnv]?.trim().toLowerCase() : undefined;
+  if (!raw) return declared;
+  if (ENV_TRUE.has(raw)) return true;
+  if (ENV_FALSE.has(raw)) return false;
+  logger.warn(`[models] ${visionEnv}="${raw}" is not true/false — models.${modelId}.vision stays ${Boolean(declared)}`);
+  return declared;
+}
+
 export function parseModelCatalog(source: string): ModelCatalog {
   const doc = parseYaml(source) as Record<string, unknown> | null;
   const rawModels = doc?.models as Record<string, unknown> | undefined;
@@ -103,10 +122,15 @@ export function parseModelCatalog(source: string): ModelCatalog {
 
     // Vision capability — hosts inline image attachments only for models that
     // declare it. Anything but a literal true is treated as text-only.
-    const vision = entry?.vision;
-    if (vision !== undefined && typeof vision !== 'boolean') {
+    const declaredVision = entry?.vision;
+    if (declaredVision !== undefined && typeof declaredVision !== 'boolean') {
       throw new Error(`models.yaml: models.${id}.vision must be a boolean`);
     }
+    const visionEnv = entry?.vision_env;
+    if (visionEnv !== undefined && typeof visionEnv !== 'string') {
+      throw new Error(`models.yaml: models.${id}.vision_env must name an env var`);
+    }
+    const vision = resolveVision(id, declaredVision, visionEnv);
 
     models[id] = {
       name: typeof entry?.name === 'string' ? entry.name : id,
@@ -169,8 +193,9 @@ export function getModelCatalog(): ModelCatalog {
 /**
  * Models the Chat picker may offer: declared selectable AND actually reachable
  * (at least one provider whose api_key_env is set). The reachability half used
- * to live in `isProfileRunnable` — a deployment without KIMI_API_KEY simply
- * never shows K3, rather than offering it and failing on the first message.
+ * to live in `isProfileRunnable` — a deployment without DEEPSEEK_API_KEY simply
+ * never shows `deepseek-flash`, rather than offering it and failing on the
+ * first message.
  */
 export function listChatModels(): Array<{ id: string; name: string }> {
   const cat = getModelCatalog();

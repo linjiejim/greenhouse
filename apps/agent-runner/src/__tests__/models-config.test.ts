@@ -7,14 +7,14 @@ describe('runner models.json', () => {
       providerId: 'greenhouse-relay',
       apiBase: 'http://api:3000',
       model: 'flash',
-      fallbackModel: 'kimi-k3',
+      fallbackModel: 'deepseek-flash',
       maxTokens: { flash: 16000 },
     });
     const provider = cfg.providers['greenhouse-relay'];
     expect(provider.baseUrl).toBe('http://api:3000/api/llm/v1');
     expect(provider.models).toEqual([
       { id: 'flash', name: 'flash', maxTokens: 16000 },
-      { id: 'kimi-k3', name: 'kimi-k3' },
+      { id: 'deepseek-flash', name: 'deepseek-flash' },
     ]);
   });
 

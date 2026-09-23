@@ -293,8 +293,9 @@ export function loadAllProfiles(): AgentProfile[] {
  * A model in the catalog whose `api_key_env` is unset has no reachable
  * provider, so offering the profile in the picker would buy the user nothing
  * but a "No available providers" error on their first message — exactly the
- * kind of untrue capability claim the repo bans. Sprouty (K3) ships this way
- * (hidden) until `KIMI_API_KEY` is configured.
+ * kind of untrue capability claim the repo bans. A preset pinned to an
+ * optional catalog model (e.g. `deepseek-flash`) stays hidden until that
+ * model's key is configured.
  *
  * Only system presets are gated on this: a *custom* agent is user data, and
  * silently dropping someone's agent from their own list reads as data loss.
@@ -583,19 +584,10 @@ export function validateProfile(raw: unknown, fileId: string): AgentProfile {
   if (!modelRaw) throw new Error(`Profile "${fileId}" missing required field: model`);
 
   const rawOpts = modelRaw.options as Record<string, unknown> | undefined;
-  // `reasoning_effort` reaches the provider verbatim — blow up at load rather
-  // than on every single message.
-  const effort = rawOpts?.reasoning_effort;
-  if (effort !== undefined && effort !== 'low' && effort !== 'high' && effort !== 'max') {
-    throw new Error(
-      `Profile "${fileId}" has invalid model.options.reasoning_effort: "${String(effort)}" (expected low | high | max)`,
-    );
-  }
   const modelOptions: ModelOptions | undefined = rawOpts
     ? {
         ...rawOpts,
         thinking: rawOpts.thinking as boolean | undefined,
-        reasoning_effort: effort,
         temperature: rawOpts.temperature as number | undefined,
         max_tokens: rawOpts.max_tokens as number | undefined,
       }
@@ -603,11 +595,10 @@ export function validateProfile(raw: unknown, fileId: string): AgentProfile {
 
   const modelId = modelRaw.id as string | undefined;
   // Registry profiles declare only `model.id`; `provider` is then whatever the
-  // catalog says runs it. It used to be hard-coded to 'deepseek' — invisible
-  // while every model WAS DeepSeek, but the moment a Kimi model landed the
-  // admin panel started announcing "deepseek / kimi-k3". The runtime never read
-  // this field for registry profiles (createModelFromConfig resolves by `id`),
-  // so it was purely a lie told to whoever displays it.
+  // catalog says runs it. It used to be hard-coded to 'deepseek', which the
+  // admin panel then displayed for every model whatever actually served it.
+  // The runtime never reads this field for registry profiles
+  // (createModelFromConfig resolves by `id`), so it must not lie either.
   const registryProvider = modelId ? getModelEntry(modelId)?.providers[0]?.provider : undefined;
 
   const model: ModelConfig = {

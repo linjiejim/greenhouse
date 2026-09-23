@@ -119,6 +119,16 @@ const WORKSPACE_SETTINGS_LITERAL = [
     placeholder: 'gpt-4o-mini',
   },
   {
+    key: 'llm.vision',
+    group: 'llm',
+    label: 'Default model reads images',
+    description:
+      '`true` (the default) sends attached images straight to the default model; set `false` if it is text-only, and images go through analyze_image instead',
+    type: 'string',
+    env: 'LLM_VISION',
+    placeholder: 'true',
+  },
+  {
     key: 'llm.model_pro',
     group: 'llm',
     label: 'Stronger model',

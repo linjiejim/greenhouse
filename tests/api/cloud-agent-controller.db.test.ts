@@ -88,7 +88,7 @@ async function enqueue(controller: ReturnType<typeof makeController>, owner = us
   return controller.enqueueRun(owner.id, {
     title: 'Task',
     prompt: 'Do the thing',
-    model: 'kimi-k3',
+    model: 'deepseek-flash',
     fallbackModel: 'pro',
   });
 }
@@ -114,7 +114,7 @@ describe('Cloud Agent controller', () => {
       hardQuotaMarkerPath: '/tmp/greenhouse-test-quota-marker.json',
       quotaAttestCommand: '/usr/local/sbin/greenhouse-sandbox-runner-quota',
       archiveAfterDays: 14,
-      defaultModel: 'kimi-k3',
+      defaultModel: 'deepseek-flash',
       fallbackModel: 'pro',
     };
   });
@@ -138,7 +138,7 @@ describe('Cloud Agent controller', () => {
     const client = (await db.apiClients.getById(started.relay_client_id!))!;
     expect(client.channel).toBe('relay');
     expect(client.user_id).toBe(user.id);
-    expect(JSON.parse(client.meta).allowed_models).toEqual(['kimi-k3', 'pro']);
+    expect(JSON.parse(client.meta).allowed_models).toEqual(['deepseek-flash', 'pro']);
 
     // Container spec: workspace + session mounts, run-scoped credentials only.
     expect(docker.started).toHaveLength(1);
@@ -150,7 +150,7 @@ describe('Cloud Agent controller', () => {
     expect(spec.env.GREENHOUSE_RUN_ID).toBe(run.id);
     expect(spec.env.GREENHOUSE_TASK_TOKEN.startsWith('lpct_')).toBe(true);
     expect(spec.env.GREENHOUSE_RELAY_KEY.startsWith('lpai_sk_')).toBe(true);
-    expect(spec.env.GREENHOUSE_MODEL).toBe('kimi-k3');
+    expect(spec.env.GREENHOUSE_MODEL).toBe('deepseek-flash');
     expect(spec.env.GREENHOUSE_FALLBACK_MODEL).toBe('pro');
 
     // Prompt landed in the session dir (per-run file); artifacts dir pre-created.
@@ -210,7 +210,7 @@ describe('Cloud Agent controller', () => {
     const first = await controller.enqueueRun(user.id, {
       title: 'Mission',
       prompt: 'Build the report',
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
       fallbackModel: 'pro',
       sessionId: session.id,
     });
@@ -240,7 +240,7 @@ describe('Cloud Agent controller', () => {
     const second = await controller.enqueueRun(user.id, {
       title: 'Mission',
       prompt: 'Now translate it',
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
       fallbackModel: 'pro',
       workspaceId: first.workspace_id,
       sessionId: session.id,
@@ -270,7 +270,7 @@ describe('Cloud Agent controller', () => {
     const run = await controller.enqueueRun(user.id, {
       title: 'Report',
       prompt: 'Write the report into report.md',
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
       fallbackModel: 'pro',
       sessionId: session.id,
     });
@@ -309,7 +309,7 @@ describe('Cloud Agent controller', () => {
     const run = await controller.enqueueRun(user.id, {
       title: 'Crunch it',
       prompt: 'Summarize ./inputs/report.csv',
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
       fallbackModel: 'pro',
       sessionId: session.id,
       attachments: [{ id: file.id, name: file.name }],
@@ -339,7 +339,7 @@ describe('Cloud Agent controller', () => {
     const run = await controller.enqueueRun(user.id, {
       title: 'With file',
       prompt: 'Analyze the attached CSV',
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
       fallbackModel: 'pro',
       sessionId: session.id,
       attachments: [{ key, name: 'data.csv' }],
@@ -382,7 +382,7 @@ describe('Cloud Agent controller', () => {
     const run = await controller.enqueueRun(user.id, {
       title: 'Report',
       prompt: '输出分析报告',
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
       fallbackModel: null,
       sessionId: session.id,
       writeUserTurn: true,
@@ -417,7 +417,7 @@ describe('Cloud Agent controller', () => {
     const run = await controller.enqueueRun(user.id, {
       title: 'Safe input',
       prompt: 'Read data.csv',
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
       fallbackModel: null,
       workspaceId: workspace.id,
       attachments: [{ key, name: 'data.csv' }],
@@ -468,7 +468,7 @@ describe('Cloud Agent controller', () => {
           workspace_id: workspace.id,
           title: `blocked-${i}`,
           prompt: 'wait',
-          model: 'kimi-k3',
+          model: 'deepseek-flash',
         }),
       );
     }
@@ -824,7 +824,7 @@ describe('Cloud Agent controller', () => {
       user_id: user.id,
       channel: 'relay',
       created_by: user.id,
-      meta: { allowed_models: ['kimi-k3'], cloud_agent_run_id: 'car_missing' },
+      meta: { allowed_models: ['deepseek-flash'], cloud_agent_run_id: 'car_missing' },
     });
 
     await controller.bootSweep();

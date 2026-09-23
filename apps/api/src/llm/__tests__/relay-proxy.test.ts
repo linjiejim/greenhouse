@@ -90,39 +90,6 @@ describe('resolveRelayModel', () => {
     expect(resolveRelayModel('d', only, { K: 'k' } as NodeJS.ProcessEnv)?.baseUrl).toBe('https://api.deepseek.com');
   });
 
-  it('defaults the kimi base URL to the coding-plan endpoint, overridable by env', () => {
-    const kimi: ModelEntry = { name: 'K3', providers: [{ provider: 'kimi', model: 'k3', apiKeyEnv: 'KIMI_API_KEY' }] };
-    expect(resolveRelayModel('kimi-k3', kimi, { KIMI_API_KEY: 'k' } as NodeJS.ProcessEnv)).toMatchObject({
-      provider: 'kimi',
-      upstreamModel: 'k3',
-      baseUrl: 'https://api.kimi.com/coding/v1',
-    });
-    expect(
-      resolveRelayModel('kimi-k3', kimi, {
-        KIMI_API_KEY: 'k',
-        KIMI_BASE_URL: 'https://api.moonshot.ai/v1',
-      } as NodeJS.ProcessEnv)?.baseUrl,
-    ).toBe('https://api.moonshot.ai/v1');
-  });
-
-  it('defaults the minimax base URL to the CN coding-plan endpoint, overridable by env', () => {
-    const minimax: ModelEntry = {
-      name: 'M3',
-      providers: [{ provider: 'minimax', model: 'MiniMax-M3', apiKeyEnv: 'MINIMAX_API_KEY' }],
-    };
-    expect(resolveRelayModel('minimax-m3', minimax, { MINIMAX_API_KEY: 'k' } as NodeJS.ProcessEnv)).toMatchObject({
-      provider: 'minimax',
-      upstreamModel: 'MiniMax-M3',
-      baseUrl: 'https://api.minimaxi.com/v1',
-    });
-    expect(
-      resolveRelayModel('minimax-m3', minimax, {
-        MINIMAX_API_KEY: 'k',
-        MINIMAX_BASE_URL: 'https://api.minimax.io/v1',
-      } as NodeJS.ProcessEnv)?.baseUrl,
-    ).toBe('https://api.minimax.io/v1');
-  });
-
   it('never leaks a key for an openai-compatible provider with no base URL', () => {
     const broken: ModelEntry = {
       name: 'B',
@@ -149,8 +116,7 @@ describe('isPassthroughKind', () => {
     expect(isPassthroughKind('openai')).toBe(true);
     expect(isPassthroughKind('deepseek')).toBe(true);
     expect(isPassthroughKind('openai-compatible')).toBe(true);
-    expect(isPassthroughKind('kimi')).toBe(true);
-    expect(isPassthroughKind('minimax')).toBe(true);
+    expect(isPassthroughKind('kimi')).toBe(false); // removed provider
     expect(isPassthroughKind('anthropic')).toBe(false);
   });
 });
@@ -173,31 +139,25 @@ describe('upstreamHeaders', () => {
 
 describe('buildUpstreamBody', () => {
   it('rewrites the model id', () => {
-    const out = buildUpstreamBody({ model: 'claude-sonnet', messages: [] }, 'claude-sonnet-4-5', 'openai-compatible');
+    const out = buildUpstreamBody({ model: 'claude-sonnet', messages: [] }, 'claude-sonnet-4-5');
     expect(out.model).toBe('claude-sonnet-4-5');
   });
 
   it('forces include_usage on streaming requests only', () => {
-    const streamed = buildUpstreamBody({ model: 'x', stream: true }, 'real', 'deepseek');
+    const streamed = buildUpstreamBody({ model: 'x', stream: true }, 'real');
     expect(streamed.stream_options).toEqual({ include_usage: true });
-    const nonStream = buildUpstreamBody({ model: 'x' }, 'real', 'deepseek');
+    const nonStream = buildUpstreamBody({ model: 'x' }, 'real');
     expect(nonStream.stream_options).toBeUndefined();
   });
 
   it('preserves caller stream_options while adding include_usage', () => {
-    const out = buildUpstreamBody({ model: 'x', stream: true, stream_options: { foo: 1 } }, 'real', 'deepseek');
+    const out = buildUpstreamBody({ model: 'x', stream: true, stream_options: { foo: 1 } }, 'real');
     expect(out.stream_options).toEqual({ foo: 1, include_usage: true });
   });
 
-  it('drops the sampling params Kimi hard-rejects, and only for Kimi', () => {
-    const sent = { model: 'kimi-k3', temperature: 0.4, top_p: 0.9, frequency_penalty: 0.5, presence_penalty: 0.5 };
-    const kimi = buildUpstreamBody(sent, 'k3', 'kimi');
-    expect(kimi).toEqual({ model: 'k3' });
-
-    // Every other upstream keeps the caller's sampling params untouched.
-    expect(buildUpstreamBody(sent, 'deepseek-v4-pro', 'deepseek')).toMatchObject({ temperature: 0.4, top_p: 0.9 });
-    // MiniMax accepts arbitrary sampling values (verified live) — no stripping.
-    expect(buildUpstreamBody(sent, 'MiniMax-M3', 'minimax')).toMatchObject({ temperature: 0.4, top_p: 0.9 });
+  it('forwards the caller sampling params untouched', () => {
+    const sent = { model: 'flash', temperature: 0.4, top_p: 0.9, frequency_penalty: 0.5, presence_penalty: 0.5 };
+    expect(buildUpstreamBody(sent, 'deepseek-flash')).toEqual({ ...sent, model: 'deepseek-flash' });
   });
 });
 

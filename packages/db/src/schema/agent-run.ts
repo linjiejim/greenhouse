@@ -70,7 +70,7 @@ export const agentRuns = pgTable(
     prompt: text('prompt').notNull(),
     /** Frozen attachment/input metadata JSON for audit and replay. */
     input_manifest: text('input_manifest').notNull().default('[]'),
-    /** Model registry id (config/models.yaml), e.g. 'kimi-k3'. */
+    /** Model registry id (config/models.yaml), e.g. 'flash'. */
     model: text('model').notNull(),
     /** Registry id the runner downgrades to on upstream 429/quota exhaustion. */
     fallback_model: text('fallback_model'),
@@ -85,7 +85,7 @@ export const agentRuns = pgTable(
     session_id: text('session_id'),
     /** Wall-clock budget; also the task token TTL. */
     max_wall_ms: integer('max_wall_ms').notNull().default(7_200_000),
-    /** LLM request budget (kimi coding-plan quota is deployment-shared). */
+    /** LLM request budget (provider quota is deployment-shared). */
     max_requests: integer('max_requests').notNull().default(300),
     used_requests: integer('used_requests').notNull().default(0),
     input_tokens: integer('input_tokens').notNull().default(0),

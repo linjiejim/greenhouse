@@ -73,7 +73,7 @@ describe('Cloud Agent internal routes', () => {
       workspace_id: workspace.id,
       title: 't',
       prompt: 'p',
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
     });
     await db.agentRuns.transitionRun(run.id, ['queued'], { status: 'running' });
     // Internal credential tests exercise auth/run state, so keep the global
@@ -296,7 +296,7 @@ describe('Cloud Agent internal routes', () => {
         hardQuotaMarkerPath: '/tmp/greenhouse-test-quota-marker.json',
         quotaAttestCommand: '/usr/local/sbin/greenhouse-sandbox-runner-quota',
         archiveAfterDays: 14,
-        defaultModel: 'kimi-k3',
+        defaultModel: 'deepseek-flash',
         fallbackModel: 'pro',
       },
     });
@@ -309,7 +309,7 @@ describe('Cloud Agent internal routes', () => {
     const owned = await controller.enqueueRun(owner.id, {
       title: 'full',
       prompt: 'do',
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
       fallbackModel: 'pro',
     });
     await controller.pump();

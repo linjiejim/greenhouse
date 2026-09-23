@@ -226,7 +226,7 @@ export function createLlmRelayRoutes() {
 
           const url = upstreamChatUrl(model.baseUrl);
           const headers = upstreamHeaders(model.provider, model.apiKey);
-          const upstreamBody = buildUpstreamBody(boundedBody, model.upstreamModel, model.provider);
+          const upstreamBody = buildUpstreamBody(boundedBody, model.upstreamModel);
           const wantStream = body.stream === true;
           const auditMeta = { model: model.id, provider: model.provider, upstream_model: model.upstreamModel };
 

@@ -44,8 +44,8 @@ export function buildRelayModelsConfig(input: RelayModelsConfigInput) {
         baseUrl: `${input.apiBase}/api/llm/v1`,
         api: 'openai-completions',
         apiKey: '$GREENHOUSE_RELAY_KEY',
-        // The relay fronts DeepSeek/Kimi upstreams: no `developer` role,
-        // and kimi rejects sampling params outright (the relay strips them).
+        // The relay fronts DeepSeek / OpenAI-compatible upstreams: no
+        // `developer` role, and no reasoning-effort knob on the wire.
         compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
         models: models.map((id) => ({
           id,

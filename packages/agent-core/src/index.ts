@@ -30,8 +30,6 @@ export {
   buildProviderOptions,
   applyModelOverride,
   resolveModelConfig,
-  KIMI_DEFAULT_BASE_URL,
-  MINIMAX_DEFAULT_BASE_URL,
   DEFAULT_PROVIDER_MAX_OUTPUT_TOKENS,
 } from './model.js';
 export type {

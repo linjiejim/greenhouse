@@ -482,9 +482,16 @@ are configurable from the admin UI without code or restart.
 `apps/api/src/config/models.yaml` is the single definition of every model (chat picker and
 the `/api/llm` relay read the same catalog; there is no database copy). A provider entry
 names the env var holding its key (`api_key_env`) and may resolve its model id / endpoint from
-env (`model_env` / `base_url_env`) — the built-in `flash` / `pro` ids follow `LLM_*`, native
-DeepSeek / Kimi / MiniMax entries appear once their key is set. `options` belong to the model
-(sampling / reasoning), never to an agent; `context_window` drives history compaction.
+env (`model_env` / `base_url_env`) — the built-in `flash` / `pro` ids follow `LLM_*`, the native
+`deepseek-flash` (DeepSeek V4.1 Flash) entry appears once `DEEPSEEK_API_KEY` is set. The only
+provider adapters are `deepseek`, `openai` and `openai-compatible` (Kimi and MiniMax were removed
+in 2026-09). `options` belong to the model (sampling / reasoning), never to an agent;
+`context_window` drives history compaction. `vision: true` makes Chat inline attached images
+instead of routing them through `analyze_image`; `vision_env` lets a deployment override it
+(`flash` declares `vision: true` + `vision_env: LLM_VISION`, because the default model is
+whatever `LLM_MODEL` names). A requested model the deployment can no longer reach — retired from
+the catalog or its key unset — never fails a turn: Chat, Mission launch and custom Agents fall
+back to the agent / deployment default.
 `@greenhouse/agent-core` keeps an env-derived fallback registry for tests and for consumers
 that boot without the file. A `flash` / `pro` entry whose `LLM_MODEL` / `LLM_BASE_URL` point at
 DeepSeek is built with the DeepSeek client (`isDeepSeekFamily` in agent-core), so the catalog's

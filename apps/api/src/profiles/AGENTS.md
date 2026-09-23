@@ -35,12 +35,11 @@
   这两个状态。owner 可提交 review/撤回/归档，super 可审核、暂停与退役；版本行不得 update/delete。
 - **模型是每轮的选择，不是 Agent 的身份**（2026-08-01 起，推翻旧的「一个 Agent = 一个模型」）：
   `POST /api/chat` 的 `model` 字段按 `isChatModelAllowed()` 对 `models.yaml` 的 `chat.selectable` 校验后作
-  `modelOverride` 下发，落库进 `messages.model`。**profile YAML 的 `model.id` 只是起点**，不再是承诺——
+  `modelOverride` 下发，落库进 `messages.model`；校验不过（模型已下线或 key 已撤）就回落 profile 的
+  `model.id`，不报错。**profile YAML 的 `model.id` 只是起点**，不再是承诺——
   quick/deep/K3 曾是同一个助手的三份副本，那是「换引擎」被表达成「换助手」的产物。
-- **采样参数属于模型目录，不属于 profile**：`temperature` / `reasoning_effort` 等写 `models.yaml` 的
-  `options`，由 `resolveModelConfig()` 合并（profile 显式给的仍然优先）。Kimi 服务端钉死采样参数，
-  传别的值硬 400，所以该函数对 kimi 上游**强制剥掉** `temperature`/`top_p`/两个 penalty——
-  这条护栏在目录层，任何 profile 都绕不过去。
+- **采样参数属于模型目录，不属于 profile**：`temperature` / `thinking` / `max_tokens` 等写 `models.yaml` 的
+  `options`，由 `resolveModelConfig()` 合并（profile 显式给的仍然优先）。
 - **没有 `extends`**：它只为「同一个 Agent、换个模型」而生，模型下放到每轮之后就没有消费者了，
   已随四预设一并删除。想复用提示词请直接改 `sprouty.yaml`（只此一份，无副本可漂移）。
 
@@ -52,8 +51,9 @@
   其使用/确认/展示规则写在工具自身 `description` 里（随 function definition 下发）。internal profile 的
   prompt 只能点名 `is_global: true` 的工具或该 profile `tools:` 明确声明的工具，否则会对未分配用户留下虚假能力描述。
 - **跑不起来的模型不出现在选择器里**：`GET /api/profiles` 同时返回 `models: listChatModels()`，
-  该函数过掉在目录里没有可达 provider（`api_key_env` 未配）的模型——没配 `KIMI_API_KEY` 的部署
-  就看不到 K3。预设本身只剩一个，可用性判断因此从 profile 挪到了模型。
+  该函数过掉在目录里没有可达 provider（`api_key_env` 未配）的模型——没配 `DEEPSEEK_API_KEY` 的部署
+  就看不到 `deepseek-flash`。预设本身只剩一个，可用性判断因此从 profile 挪到了模型。custom Agent 钉的
+  `model_id` 不可达（已从目录下线或 key 未配）时，`resolveProfileAsync` 回落 base preset 的模型。
 - **面向用户的文案可 i18n**（`name`/`description`）：写纯字符串或 `{ zh, en }`
   映射，源语言 `zh`，写错 locale key 或给空串**直接抛错**导致 profile 加载失败。`system_prompt` 不做 i18n。
 - **`sprouty-mission` / `sprouty-workflows` 已退役**（2026-08-01）——`workflow_plan` 与 `mission_dispatch`
@@ -77,4 +77,4 @@
 - `apps/api/src/profiles/profile.ts` — 增删预设时同步 `PRESET_PROFILE_IDS` 等常量（顺序即选择器顺序）。
 - `apps/web/src/lib/agent-constants.ts` — 前端镜像的预设 id、顺序与 `LEGACY_AGENT_IDS`。
 - `tests/api/agent-profiles.test.ts` — 钉住 YAML 数量与文件名集合、旧 id 映射、合法 custom base 集合、
-  rich-output 单一副本、「没有 profile 使用 `extends`」、以及采样参数归目录（含 Kimi 剥离护栏）。
+  rich-output 单一副本、「没有 profile 使用 `extends`」、以及没配 key 的模型不进选择器。

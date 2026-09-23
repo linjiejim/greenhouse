@@ -21,7 +21,7 @@ async function createRunFixture() {
     workspace_id: workspace.id,
     title: 'Fix the docs',
     prompt: 'Update README to match reality',
-    model: 'kimi-k3',
+    model: 'deepseek-flash',
     fallback_model: 'pro',
   });
   return { workspace, run };

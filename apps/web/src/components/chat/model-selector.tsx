@@ -5,12 +5,13 @@
  * assistant on three engines, so the engine moved here and the three presets
  * collapsed into one (spec: 20260731-attachment-and-preset-convergence M3).
  *
- * Ids are shown verbatim (`flash`, `pro`, `kimi-k3`) with the catalog's display
- * name as the tooltip — the ids ARE the vocabulary the team uses, and the list
- * is short enough that inventing labels would only add a translation surface.
+ * Ids are shown verbatim (`flash`, `pro`, `deepseek-flash`) with the catalog's
+ * display name as the tooltip — the ids ARE the vocabulary the team uses, and
+ * the list is short enough that inventing labels would only add a translation
+ * surface.
  *
  * The list is already filtered server-side to models with a reachable provider,
- * so a deployment without KIMI_API_KEY never offers K3.
+ * so a deployment without DEEPSEEK_API_KEY never offers `deepseek-flash`.
  */
 
 import React, { useEffect, useRef, useState } from 'react';

@@ -4,7 +4,7 @@
 
 > **四预设已于 2026-08-01 收敛为一个**（见 [附件与预设收敛 spec](../../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3）。quick / deep / K3 三份提示词逐字相同，区别只有模型；`sprouty-workflows` 与 `sprouty-mission` 是把「模式」伪装成「助手」——两个工具（`workflow_plan`、`mission_dispatch`）现在对所有内部会话装配，起草与执行都不再依赖开局选中某个预设。所有退役 id 由 `normalizeProfileId()` 归一到 `sprouty`，**不做数据迁移**。存量 mission 会话继续像 mission 一样工作，靠的是 `channel='mission'` 而不是 profile。
 
-**模型改由每轮选择**，所以「这个预设跑不跑得起来」的判断也从 profile 挪到了模型：`GET /api/profiles` 除 profiles 外返回 `models: listChatModels()`，该函数过掉在目录里没有任何可达 provider（`api_key_env` 未配）的模型——没配 `KIMI_API_KEY` 的部署就看不到 K3，不会出现"选得到、一发消息就吃 No available providers"的虚假能力。**自定义 Agent 不参与任何过滤**：那是用户自己的数据，从他自己的列表里悄悄消失更像丢数据。
+**模型改由每轮选择**，所以「这个预设跑不跑得起来」的判断也从 profile 挪到了模型：`GET /api/profiles` 除 profiles 外返回 `models: listChatModels()`，该函数过掉在目录里没有任何可达 provider（`api_key_env` 未配）的模型——没配 `DEEPSEEK_API_KEY` 的部署就看不到 `deepseek-flash`，不会出现"选得到、一发消息就吃 No available providers"的虚假能力。**自定义 Agent 不参与任何过滤**：那是用户自己的数据，从他自己的列表里悄悄消失更像丢数据；它钉的模型不可达时改跑 base preset 的模型。
 
 | ID | Name | Runtime | Visibility | Notes |
 | --- | --- | --- | --- | --- |
@@ -75,19 +75,17 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
 其实是"换引擎"。所以模型下放回每一轮：
 
 - **`POST /api/chat` 接受 `model`**（复活了 v3 删掉的 `model_override`，但形态不同：值域是模型目录的
-  `chat.selectable`，由 `isChatModelAllowed()` 校验后作 `modelOverride` 传给引擎，非法值 400）。
+  `chat.selectable`，由 `isChatModelAllowed()` 校验后作 `modelOverride` 传给引擎；校验不过就回落 Agent
+  默认模型而不是 400——浏览器记着的上次选择可能是已下线的模型，而选择器已不再列它）。
 - **落库进 `messages.model`**，前端在助手消息的元信息行原样显示，与选择器同一套词汇（`flash` / `pro` /
-  `kimi-k3`）。存的是 **registry id 而不是上游模型名**——`modelConfig.model` 是 provider 链里第一个的
+  `deepseek-flash`）。存的是 **registry id 而不是上游模型名**——`modelConfig.model` 是 provider 链里第一个的
   名字，fallback 时并不改变，记它等于指认一个没跑过的 provider。
 - **选中的模型记在用户维度**（`greenhouse_last_model:<userId>`），不是会话维度：一次会话里前几轮用 flash
   摸情况、发现要动脑再切 pro 是正常用法，把选择钉死在会话上反而拦住它。
 - **自定义 Agent 也能切**，但选中一个自定义 Agent 时选择器默认跳到它自己的 `custom_profiles.model_id`
   ——那是作者对"这个 Agent 该怎么跑"的决定，不该被用户上一次的随手选择静默盖掉。仍是默认，可覆盖。
-- **采样参数归模型目录**：`temperature` / `reasoning_effort` 等写进 `models.yaml` 的 `options`，由
-  `resolveModelConfig()` 合并（profile 显式给的优先）。K3 恒定思考所以只有 `reasoning_effort: high`
-  （上游默认 `max`，为延迟与配额降一档），且对 kimi 上游**强制剥掉** `temperature`/`top_p`/两个 penalty
-  ——Kimi 服务端钉死采样参数，传别的值直接 400（实测 `only 1 is allowed`）。这条护栏放在目录层，
-  任何 profile 都绕不过去，由 `tests/api/agent-profiles.test.ts` 钉住。
+- **采样参数归模型目录**：`temperature` / `thinking` / `max_tokens` 等写进 `models.yaml` 的 `options`，由
+  `resolveModelConfig()` 合并（profile 显式给的优先）。
 - **`extends` 已删除**：它只为「同一个 Agent、换个模型」而生，模型下放之后零消费者。
 - 自定义 Agent 仍自带 `custom_profiles.model_id`，**不从 base profile 继承**：否则预设换模型会连带改掉
   所有 fork 出去的 Agent。`base_profile_id` 是 fork 溯源与 `rich_output` 等访问属性的来源。

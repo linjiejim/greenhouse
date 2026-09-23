@@ -1,7 +1,7 @@
 /**
  * LLM Model Factory — creates language model instances from configuration.
  *
- * Supports DeepSeek, OpenAI, Kimi, and OpenAI-compatible providers
+ * Supports DeepSeek, OpenAI, and OpenAI-compatible providers
  * via lazy dynamic imports — only the provider SDK actually used gets loaded.
  * An `openai-compatible` entry that points at DeepSeek is built with the
  * DeepSeek client (isDeepSeekFamily), so thinking on/off and reasoning
@@ -24,7 +24,6 @@ import { logger } from '@greenhouse/utils/logger';
 
 export interface ModelOptions {
   thinking?: boolean; // enable reasoning (e.g. DeepSeek thinking mode)
-  reasoning_effort?: 'low' | 'high' | 'max'; // reasoning strength for always-thinking models (Kimi K3)
   temperature?: number; // sampling temperature (default: 0.7)
   max_tokens?: number; // max output tokens (default: 4096)
   [key: string]: unknown; // provider-specific options
@@ -102,26 +101,6 @@ function isRetriableError(err: unknown): boolean {
   return false;
 }
 
-// ─── Kimi (Kimi Code plan) ───────────────────────────────
-
-/**
- * Default upstream for the `kimi` provider — the Kimi Code subscription's
- * OpenAI-compatible surface (the plan's own endpoint, NOT the pay-as-you-go
- * Kimi Open Platform at api.moonshot.ai/v1, which issues different keys).
- * Exported so the relay resolves the same host as the agent runtime.
- */
-export const KIMI_DEFAULT_BASE_URL = 'https://api.kimi.com/coding/v1';
-
-// ─── MiniMax (coding plan) ───────────────────────────────
-
-/**
- * Default upstream for the `minimax` provider — the CN endpoint
- * (`api.minimaxi.com`). Coding-plan keys (`sk-cp-…`) are rejected by the intl
- * host `api.minimax.io` (401 `invalid api key (2049)`, verified live).
- * Exported so the relay resolves the same host as the agent runtime.
- */
-export const MINIMAX_DEFAULT_BASE_URL = 'https://api.minimaxi.com/v1';
-
 // ─── DeepSeek family detection ───────────────────────────
 
 /**
@@ -177,37 +156,6 @@ async function createModelDirect(
       return createOpenAI({ apiKey, baseURL: baseUrl || undefined }).chat(model);
     }
 
-    case 'kimi': {
-      // Kimi speaks OpenAI chat-completions, but K3 always reasons and returns
-      // the thinking text in `reasoning_content` — a field @ai-sdk/openai drops
-      // on the floor, which would leave the reasoning panel permanently empty.
-      // The vendor-neutral @ai-sdk/openai-compatible parses it, sends
-      // `max_tokens` (the field Kimi documents) instead of rewriting it to
-      // `max_completion_tokens`, and takes `name`, which becomes the
-      // providerOptions namespace — so Kimi's knobs travel under `kimi`.
-      //
-      // Pinned to the 2.x line on purpose: 3.x moved to LanguageModelV4 while
-      // this repo's `ai` + provider stack is still V3.
-      // `includeUsage` is not optional for us: without it the client never asks
-      // for `stream_options.include_usage`, the stream carries no usage chunk,
-      // and every streamed answer would be billed as zero tokens against the
-      // per-user quotas.
-      const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
-      const baseURL = baseUrl || process.env.KIMI_BASE_URL || KIMI_DEFAULT_BASE_URL;
-      return createOpenAICompatible({ name: 'kimi', apiKey, baseURL, includeUsage: true }).chatModel(model);
-    }
-
-    case 'minimax': {
-      // Same client choice as Kimi (see that case): the vendor-neutral
-      // openai-compatible package parses `reasoning_content` — which is where
-      // M3's thinking lands once we send `reasoning_split: true` via
-      // providerOptions (buildProviderOptions) — and `includeUsage` is what
-      // makes streamed answers carry a usage chunk instead of billing zero.
-      const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
-      const baseURL = baseUrl || process.env.MINIMAX_BASE_URL || MINIMAX_DEFAULT_BASE_URL;
-      return createOpenAICompatible({ name: 'minimax', apiKey, baseURL, includeUsage: true }).chatModel(model);
-    }
-
     case 'openai-compatible': {
       const baseURL = baseUrl || process.env.LLM_BASE_URL || '';
       if (!baseURL) {
@@ -225,9 +173,7 @@ async function createModelDirect(
     }
 
     default:
-      throw new Error(
-        `Unknown model provider: "${provider}". Supported: deepseek, openai, kimi, minimax, openai-compatible`,
-      );
+      throw new Error(`Unknown model provider: "${provider}". Supported: deepseek, openai, openai-compatible`);
   }
 }
 
@@ -482,23 +428,12 @@ export function resolvesToDeepSeek(config: ModelConfig): boolean {
  *      choice rather than a second agent;
  *   2. the AGENT's task tuning on top, for profiles that genuinely need it
  *      (eval-judge grades at temperature 0.2 whatever the model's default is).
- *
- * Kimi is the exception that has to be enforced, not documented: it pins
- * sampling server-side and answers `400 invalid temperature: only 1 is allowed
- * for this model` to anything else. The relay already strips these on the way
- * out (buildUpstreamBody); this is the same rule on the chat path, so switching
- * a conversation to K3 can never smuggle the previous model's temperature.
  */
-const KIMI_PINNED_SAMPLING = ['temperature', 'top_p', 'frequency_penalty', 'presence_penalty'] as const;
-
 export function resolveModelConfig(config: ModelConfig): ModelConfig {
   const entry = config.id ? getModelEntry(config.id) : undefined;
   if (!entry) return config;
 
   const options: ModelOptions = { ...entry.options, ...config.options };
-  if (entry.providers[0]?.provider === 'kimi') {
-    for (const key of KIMI_PINNED_SAMPLING) delete options[key];
-  }
   return { ...config, options };
 }
 
@@ -521,29 +456,6 @@ export function buildProviderOptions(config: ModelConfig): any {
     isDeepSeekFamily(primary.model, primary.baseUrl || process.env.LLM_BASE_URL)
   ) {
     effectiveProvider = 'deepseek';
-  }
-
-  // Kimi K3 reasons unconditionally (turning thinking off downgrades the
-  // request to an older model upstream), so there is no `thinking` switch —
-  // only how hard it thinks. Lands on the wire as `reasoning_effort`.
-  if (effectiveProvider === 'kimi') {
-    const effort = config.options?.reasoning_effort;
-    return effort ? { kimi: { reasoningEffort: effort } } : undefined;
-  }
-
-  // MiniMax M3: `reasoning_split` moves thinking out of `<think>` tags in
-  // `content` into the separate `reasoning_content` field the client parses —
-  // it controls WHERE thinking is returned, not whether it happens. The
-  // openai-compatible client merges unknown namespace keys into the request
-  // body verbatim, so these land on the wire as-is. Thinking defaults to on
-  // upstream; only an explicit `thinking: false` sends the disable switch.
-  if (effectiveProvider === 'minimax') {
-    return {
-      minimax: {
-        reasoning_split: true,
-        ...(config.options?.thinking === false ? { thinking: { type: 'disabled' } } : {}),
-      },
-    };
   }
 
   // Only DeepSeek has a thinking switch. V4 thinks by default, so both values

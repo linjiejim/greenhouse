@@ -44,8 +44,6 @@ export LLM_MODEL_PRO=""
 # Clear optional provider keys so a local .env can never leak into a real call
 # (and so the model picker assertions do not drift with the environment).
 export DEEPSEEK_API_KEY=""
-export KIMI_API_KEY=""
-export MINIMAX_API_KEY=""
 export MEDIA_API_KEY=""
 export LOG_LEVEL="${LOG_LEVEL:-error}"
 export NODE_ENV="${NODE_ENV:-test}"

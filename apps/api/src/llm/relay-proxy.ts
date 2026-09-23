@@ -15,16 +15,10 @@
  */
 
 import { safeJsonParse } from '@greenhouse/utils/json';
-import { KIMI_DEFAULT_BASE_URL, MINIMAX_DEFAULT_BASE_URL, type ModelEntry } from '@greenhouse/agent-core';
+import type { ModelEntry } from '@greenhouse/agent-core';
 
 /** Provider kinds the relay can transparently passthrough today (OpenAI wire format). */
-export const PASSTHROUGH_KINDS: ReadonlySet<string> = new Set([
-  'openai',
-  'deepseek',
-  'kimi',
-  'minimax',
-  'openai-compatible',
-]);
+export const PASSTHROUGH_KINDS: ReadonlySet<string> = new Set(['openai', 'deepseek', 'openai-compatible']);
 
 export function isPassthroughKind(kind: string): boolean {
   return PASSTHROUGH_KINDS.has(kind);
@@ -69,8 +63,6 @@ function resolveBaseUrl(provider: string, declared: string | undefined, env: Nod
   if (declared) return declared;
   if (provider === 'deepseek') return env.LLM_BASE_URL || 'https://api.deepseek.com';
   if (provider === 'openai') return 'https://api.openai.com/v1';
-  if (provider === 'kimi') return env.KIMI_BASE_URL || KIMI_DEFAULT_BASE_URL;
-  if (provider === 'minimax') return env.MINIMAX_BASE_URL || MINIMAX_DEFAULT_BASE_URL;
   return env.LLM_BASE_URL || null;
 }
 
@@ -199,35 +191,14 @@ export function applyRelayOutputLimit(
 }
 
 /**
- * Sampling params Kimi pins server-side. Verified live against
- * `api.kimi.com/coding/v1`: any other value is a hard 400
- * (`invalid temperature: only 1 is allowed for this model`), not a silent
- * clamp. Only `1 / 0.95 / 0 / 0` are accepted, i.e. exactly the model's own
- * defaults.
- */
-const KIMI_FIXED_SAMPLING_PARAMS = ['temperature', 'top_p', 'frequency_penalty', 'presence_penalty'] as const;
-
-/**
  * Rewrite the client request body for the upstream: swap the client-facing model id for
  * the real upstream model, and (for streaming) force `stream_options.include_usage`
  * so the relay can always read token usage from the final SSE chunk.
- *
- * For Kimi, also drop the sampling params it pins server-side: nearly every
- * OpenAI client sends `temperature`, and forwarding it would turn a normal
- * request into a 400 the caller cannot act on. Dropping them yields exactly the
- * values Kimi would have forced anyway — the only alternative that isn't a lie.
  */
-export function buildUpstreamBody(
-  body: IncomingChatBody,
-  upstreamModel: string,
-  provider: string,
-): Record<string, unknown> {
+export function buildUpstreamBody(body: IncomingChatBody, upstreamModel: string): Record<string, unknown> {
   const out: Record<string, unknown> = { ...body, model: upstreamModel };
   if (body.stream) {
     out.stream_options = { ...(body.stream_options ?? {}), include_usage: true };
-  }
-  if (provider === 'kimi') {
-    for (const param of KIMI_FIXED_SAMPLING_PARAMS) delete out[param];
   }
   return out;
 }

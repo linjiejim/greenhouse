@@ -11,11 +11,16 @@
 # name env vars holding the model id / endpoint, so the two built-in ids work
 # against ANY OpenAI-compatible endpoint straight from `.env`:
 #
-#   LLM_BASE_URL=https://api.deepseek.com   LLM_API_KEY=…   LLM_MODEL=deepseek-v4-flash
-#   LLM_MODEL_PRO=deepseek-v4-pro           (optional stronger model, same endpoint)
+#   LLM_BASE_URL=https://api.deepseek.com   LLM_API_KEY=…   LLM_MODEL=deepseek-flash
+#   LLM_MODEL_PRO=…                         (optional stronger model, same endpoint)
 #
 # `options` are the MODEL's sampling/reasoning behavior, not an agent's — every
 # consumer of a model gets them.
+#
+# `vision: true` means the model reads images natively: Chat inlines attached
+# images into the payload instead of routing them through analyze_image.
+# `vision_env` names an env var that overrides it per deployment — the default
+# model follows LLM_MODEL, so set LLM_VISION=false when that model is text-only.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # `context_window` is the model's max context in tokens — declare the MINIMUM
@@ -32,6 +37,9 @@ models:
   flash:
     name: Default model
     context_window: 128000
+    # Current default models are multimodal (deepseek-flash, gpt-4o-mini, …).
+    vision: true
+    vision_env: LLM_VISION
     options:
       temperature: 0.4
       max_tokens: 16000
@@ -55,65 +63,21 @@ models:
         api_key_env: LLM_API_KEY
         base_url_env: LLM_BASE_URL
 
-  # DeepSeek native provider (DSML tool-call recovery, reasoning). Optional:
-  # invisible until DEEPSEEK_API_KEY is configured.
+  # DeepSeek V4.1 Flash on DeepSeek's own API (natively multimodal). Optional:
+  # invisible until DEEPSEEK_API_KEY is configured. Deployments whose LLM_*
+  # already point at DeepSeek get the same model as `flash` and skip this.
   deepseek-flash:
-    name: DeepSeek V4 Flash
+    name: DeepSeek V4.1 Flash
     context_window: 1000000
-    options:
-      thinking: true
-      temperature: 0.4
-      max_tokens: 20000
-    providers:
-      - provider: deepseek
-        model: deepseek-v4-flash
-        api_key_env: DEEPSEEK_API_KEY
-
-  deepseek-pro:
-    name: DeepSeek V4 Pro
-    context_window: 1000000
-    options:
-      thinking: true
-      temperature: 0.4
-      max_tokens: 20000
-    providers:
-      - provider: deepseek
-        model: deepseek-v4-pro
-        api_key_env: DEEPSEEK_API_KEY
-
-  # Kimi K3 on the Kimi Code subscription (`https://api.kimi.com/coding/v1`,
-  # key from the Kimi Code Console — NOT a Kimi Open Platform key). Reasoning
-  # always on; no fallback chain on purpose (nobody else serves this model).
-  kimi-k3:
-    name: Kimi K3
-    context_window: 262144
-    options:
-      # K3 always reasons; `high` keeps chat latency and plan quota sane.
-      reasoning_effort: high
-      max_tokens: 20000
-      # No `temperature`: Kimi pins sampling server-side and rejects overrides.
-    providers:
-      - provider: kimi
-        model: k3-256k
-        api_key_env: KIMI_API_KEY
-        base_url: https://api.kimi.com/coding/v1
-
-  # MiniMax M3 on the MiniMax coding plan (`sk-cp-…` key, CN endpoint).
-  # Natively multimodal: `vision: true` makes chat inline attached images
-  # straight into the payload instead of routing them through analyze_image.
-  minimax-m3:
-    name: MiniMax M3
-    context_window: 524288
     vision: true
     options:
       thinking: true
-      temperature: 1.0
+      temperature: 0.4
       max_tokens: 20000
     providers:
-      - provider: minimax
-        model: MiniMax-M3
-        api_key_env: MINIMAX_API_KEY
-        base_url: https://api.minimaxi.com/v1
+      - provider: deepseek
+        model: deepseek-flash
+        api_key_env: DEEPSEEK_API_KEY
 
 # ─── Chat model picker ────────────────────────────────────
 # Which models a user may switch between in Chat, in the order the picker shows
@@ -129,18 +93,14 @@ chat:
     - flash
     - pro
     - deepseek-flash
-    - deepseek-pro
-    - kimi-k3
-    - minimax-m3
 
 # ─── Outbound relay (/api/llm) ────────────────────────────
 # Which of the models above external clients may request, and which one a key
-# with no explicit subset gets by default. Subscription-quota models (Kimi,
-# MiniMax) stay out unless an admin lists them in a key's `allowed_models`.
+# with no explicit subset gets by default. A model left out stays reachable
+# only through a key whose `allowed_models` lists it.
 relay:
   default: flash
   public:
     - flash
     - pro
     - deepseek-flash
-    - deepseek-pro

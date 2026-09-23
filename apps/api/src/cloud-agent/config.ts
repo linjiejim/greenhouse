@@ -124,7 +124,7 @@ export function loadSandboxRunnerConfig(env: NodeJS.ProcessEnv = process.env): S
     archiveAfterDays,
     // `flash` is the one catalog id every deployment has (it follows LLM_*), so
     // it is the default for both roles. Point MISSION_DEFAULT_MODEL at a stronger
-    // catalog entry (e.g. `pro` or `kimi-k3`) once its key is configured; the
+    // catalog entry (e.g. `pro`) once its key is configured; the
     // fallback is what a run continues on when that model's provider 429s or is
     // otherwise unavailable — deliberately the cheap, always-reachable one that
     // keeps a long run alive, not the pricier one.

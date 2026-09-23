@@ -809,8 +809,9 @@ const profiles = new Hono<AppEnv>()
     return c.json({
       profiles: [...systemProfiles, ...customProfilesList],
       // The models a user may switch between per turn. Filtered to those with a
-      // reachable provider, so a deployment without KIMI_API_KEY simply never
-      // offers K3 (the check `isProfileRunnable` used to do at profile level).
+      // reachable provider, so a deployment without DEEPSEEK_API_KEY simply never
+      // offers `deepseek-flash` (the check `isProfileRunnable` used to do at
+      // profile level).
       models: listChatModels(),
     });
   })

@@ -405,7 +405,7 @@ async function main(): Promise<void> {
   pipe.start();
   const heartbeat = setInterval(() => pipe.emit('run.heartbeat', { requests: tally.requests }), HEARTBEAT_MS);
 
-  // Request budget: abort the session once the cap is hit (kimi quota is
+  // Request budget: abort the session once the cap is hit (provider quota is
   // deployment-shared — a runaway loop must not eat the whole team's budget).
   const budgetWatch = setInterval(() => {
     if (tally.requests >= MAX_REQUESTS) {
@@ -417,7 +417,7 @@ async function main(): Promise<void> {
    * `session.prompt()` resolving is not the same as the turn succeeding: when
    * the provider keeps erroring, Pi retries with backoff and eventually gives
    * up by ENDING the loop on an errored assistant message instead of throwing
-   * (observed 2026-08-03: four terminal Kimi 429s → an empty "completed" run
+   * (observed 2026-08-03: four terminal provider 429s → an empty "completed" run
    * whose outcome message had nothing to say, and the fallback model never
    * engaged). Surface that ending as a real failure so the quota downgrade /
    * failed status below applies. A budget abort also ends on an error marker;

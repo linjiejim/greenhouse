@@ -37,7 +37,7 @@ describe('Runtime Mission/Workflow read-model adapters', () => {
       prompt: 'runner prompt',
       original_prompt: 'exact user prompt',
       input_manifest: JSON.stringify([{ name: 'input.csv', nested: { preserve: true } }]),
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
     });
     const fullPayload = { tool: 'shell', params: { command: 'x'.repeat(20_000) } };
     await db.agentRuns.appendEvents(source.id, [
@@ -95,7 +95,7 @@ describe('Runtime Mission/Workflow read-model adapters', () => {
       workspace_id: workspace.id,
       title: 'historical terminal',
       prompt: 'already done',
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
     });
     historical = (await db.agentRuns.transitionRun(historical.id, ['queued'], { status: 'running' }))!;
     historical = (await db.agentRuns.transitionRun(historical.id, ['running'], { status: 'completed' }))!;
@@ -120,7 +120,7 @@ describe('Runtime Mission/Workflow read-model adapters', () => {
       workspace_id: workspace.id,
       title: 'later terminal',
       prompt: 'finishes after boot',
-      model: 'kimi-k3',
+      model: 'deepseek-flash',
     });
     // Boot sees an active run, so it must not persist the historical policy.
     await mirrorMissionRun(db, later, { suppressInitialTerminalNotification: true });
@@ -204,7 +204,7 @@ describe('Runtime Mission/Workflow read-model adapters', () => {
           workspace_id: workspace.id,
           title: suffix,
           prompt: suffix,
-          model: 'kimi-k3',
+          model: 'deepseek-flash',
         }),
       ),
     );

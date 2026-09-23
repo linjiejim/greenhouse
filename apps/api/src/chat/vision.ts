@@ -1,12 +1,12 @@
 /**
  * Chat vision path — inline attached images for catalog `vision: true` models.
  *
- * The default chat contract sends the model only image IDs (a text hint) and
- * lets it call analyze_image for a prose description. A natively multimodal
- * model (MiniMax M3) should instead see the pixels: this module resolves the
- * `images` metadata on user messages into AI SDK image parts via the shared
- * upload storage, so the provider client ships them as base64 `image_url`
- * entries.
+ * A text-only model gets only image IDs (a text hint) and calls analyze_image
+ * for a prose description. A natively multimodal model — the default one
+ * (`flash`, e.g. DeepSeek V4.1 Flash) unless LLM_VISION=false — sees the
+ * pixels instead: this module resolves the `images` metadata on user messages
+ * into AI SDK image parts via the shared upload storage, so the provider
+ * client ships them as base64 `image_url` entries.
  *
  * Bounded on purpose — base64 payloads are unbounded history growth otherwise:
  * newest messages claim the inline budget first; anything over budget (or that
