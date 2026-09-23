@@ -5,6 +5,21 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0](https://github.com/linjiejim/greenhouse/compare/v1.2.0...v1.3.0) (2026-09-23)
+
+
+### Added
+
+* **media:** image generation can use its own endpoint (IMAGE_BASE_URL + IMAGE_API_KEY) ([6010590](https://github.com/linjiejim/greenhouse/commit/601059045fbbbfcc9389b8ccdafa822ff3098d01))
+* **models:** DeepSeek-only catalog; the default model reads attached images ([844ef94](https://github.com/linjiejim/greenhouse/commit/844ef949ae5c0a18c0d4f6d03b3349d9c603d45d))
+
+
+### Fixed
+
+* **chat:** run a retired or unkeyed model choice on the default instead of failing ([72e7a48](https://github.com/linjiejim/greenhouse/commit/72e7a483a850ed55c7a0e71857b55d7104ac84a8))
+* **desktop:** ignore Apple signing variables a CI runner left empty ([19d2d5e](https://github.com/linjiejim/greenhouse/commit/19d2d5e102fcd5710576ebdcc2310e191c569708))
+* **web:** the Agent editor shows and saves the default for a retired model ([54ad249](https://github.com/linjiejim/greenhouse/commit/54ad249e8dbba3ef270abaa9789a154823403cc0))
+
 ## [1.2.0](https://github.com/linjiejim/greenhouse/compare/v1.1.0...v1.2.0) (2026-09-16)
 
 
