@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1](https://github.com/linjiejim/greenhouse/compare/v1.3.0...v1.3.1) (2026-09-24)
+
+
+### Fixed
+
+* **browser:** put the extension back on the current chat contract ([#30](https://github.com/linjiejim/greenhouse/issues/30)) ([7bfb3a5](https://github.com/linjiejim/greenhouse/commit/7bfb3a5b2573b58eadf453a85f1ec0e74aaddb39))
+
 ## [1.3.0](https://github.com/linjiejim/greenhouse/compare/v1.2.0...v1.3.0) (2026-09-23)
 
 
