@@ -1,8 +1,8 @@
 {
-  "webBundleVersion": "183",
+  "webBundleVersion": "188",
   "minShellVersion": "0.9.0",
-  "url": "https://github.com/linjiejim/greenhouse/releases/download/v1.3.0/web-bundle-183.tar.gz",
-  "sha256": "cb8d5d2f5e563739acbf6403543a6cbb91dff1cd9b49edda9b6b800b072ac0a0",
-  "sig": "hsNq0zdihBGBb4LeZxrJI1vjgo0EVizHJ/SSgln7V4QwM1NnOWzkrlvIm40kYrcqQNpRrawCaO0Kjj63BRD4DQ==",
-  "releasedAt": "2026-09-23T07:06:19.400Z"
+  "url": "https://github.com/linjiejim/greenhouse/releases/download/v1.3.1/web-bundle-188.tar.gz",
+  "sha256": "df66ccaa56445d61fc737deb098d1abd99a7b11b91b87502b00519b56569f52b",
+  "sig": "dtkyGJh358esqiKltuXay2oIgJ5/2fht872Va/QB0K5kqNXa1TCaQkIKyxL/PpJ4vMqvw1k76HfDvDnzv+AHDQ==",
+  "releasedAt": "2026-09-24T07:24:18.333Z"
 }
