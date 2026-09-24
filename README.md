@@ -369,51 +369,86 @@ never widen them.
 
 ## Adding a tool
 
-A tool is **one file + one line** — for every kind, not just stateless ones. Declare it with
-`defineTool`, give it a `create(ctx)`, set its `surface`, and add one line to `TOOL_MODULES`.
+A tool's metadata and implementation live in one file, declared with `defineTool`, and the
+tool is registered with one line in `CORE_TOOL_MODULES` (`apps/api/src/tools/registry.ts`).
+A tool that needs nothing about the caller is **static**: it is built once, and `create`
+receives the shared database handle.
 
 ```ts
 // apps/api/src/tools/my-tool.ts
-export const myTool = defineTool({
-  meta: {
-    id: 'my_tool',
-    name: 'My Tool',
-    brief: 'one-line summary (always in the prompt)',
-    description: 'full usage instructions — passed straight to the model',
-    category: 'team',
-    is_global: true,
-    icon: 'Wrench',
-    group: 'compute', // functional domain (one of TOOL_GROUPS in define.ts)
-    surface: {
-      proxy: 'read',   // 'read' (no confirm) | 'write' (confirm-gated) | 'none'
-      mcp: 'knowledge', // MCP resource group, or omit to keep it off /api/mcp
-    },
+const meta: ToolMeta = {
+  id: 'my_tool',
+  name: 'My Tool',
+  brief: 'one-line summary for catalogs and the permissions UI (never sent to the model)',
+  description: 'full usage instructions — this is what the model reads, on every step',
+  category: 'team', // 'core' | 'team' | 'admin'
+  is_global: true, // on for every internal user, no assignment needed
+  icon: 'Wrench', // Lucide icon name
+  sort_order: 50,
+  surface: {
+    proxy: 'read', // 'read' (no confirm) | 'write' (confirm-gated) | 'none'
+    mcp: 'knowledge', // MCP resource group (needs a proxy tier); omit to keep it off /api/mcp
   },
-  kind: 'static',
-  create: (ctx) => tool({ /* description, inputSchema, execute — uses ctx.db */ }),
-});
+};
+
+export function createMyTool(db: DatabaseProvider) {
+  return tool({ description: meta.description /* , inputSchema, execute: uses db */ });
+}
+
+export const myTool = defineTool({ meta, kind: 'static', create: (db) => createMyTool(db) });
 ```
 
-A **lazy** tool needs request context (the calling user / the session). Declare what it needs
-with `requires`; the runtime builds it per request and enforces `requires` as the access guard:
+A tool that must know who is calling is **lazy**: it is built per request, so every read and
+write can be scoped to that user. A core lazy tool declares no `create`; its file exports the
+factory, and the factory gets one construction case in `buildLazyServerTools`
+(`apps/api/src/agent-runtime/tool-resolution.ts`). Tools bound to a conversation go inside that
+function's `if (sessionId)` block, so they never appear on the stateless `/api/agent` and
+`/api/mcp` surfaces. Extension tools skip this step: they set `createLazy(ctx)` and are built
+through a generic path (see [Extensions](#extensions)).
 
 ```ts
-export const myUserTool = defineTool({
-  meta: { /* … same shape … */ },
-  kind: 'lazy',
-  requires: { user: 'internal' }, // 'optional' | 'required' | 'internal' | 'super' (+ session?)
-  create: (ctx) => createMyUserTool(ctx.db, { userId: ctx.userId }),
-});
+// apps/api/src/tools/my-user-tool.ts
+const meta: ToolMeta = { id: 'my_user_tool' /* , …the same fields as above */ };
+
+export function createMyUserTool(db: DatabaseProvider, ctx: { userId: string }) {
+  return tool({ description: meta.description /* , inputSchema, execute: filters by ctx.userId */ });
+}
+
+export const myUserTool = defineTool({ meta, kind: 'lazy' });
+
+// apps/api/src/agent-runtime/tool-resolution.ts, inside buildLazyServerTools
+if (effectiveTools.includes('my_user_tool')) {
+  tools.my_user_tool = createMyUserTool(db, { userId });
+}
 ```
 
-Then add one line to `TOOL_MODULES` in `apps/api/src/tools/registry.ts`. The registry derives
-the read/write proxy allowlists, the MCP-exposed set, and the lazy build list from each
-module's `meta.surface` / `kind` / `requires` — there are no hand-maintained id lists. The tool
-is now reachable in chat, `/api/agent`, and `/api/mcp`.
+There is no per-tool access guard to declare. Who may call a tool is resolved before anything
+is built: `super` gets every tool; a `team` member gets the `is_global` tools, the tools owned
+by each feature flag they have, and any tools assigned to them individually. A custom Agent can
+only narrow that set, and each surface narrows it again (the proxy allowlists and OAuth scopes,
+the unattended denylist for scheduled runs). Ownership of the data itself is checked inside the
+tool, against the `userId` its factory received.
+
+The registry derives every exposure set from the catalog, with no hand-maintained id lists: the
+read and write proxy allowlists, the MCP set per resource group, the Home-workbench and builtin
+sets, and the lazy id list all come from each tool's `meta.surface` / `builtin` / `kind`. Guard
+tests pin the result: `tools/__tests__/surface-derivation.test.ts` fixes the exact core members
+of the proxy, MCP, workbench and lazy sets (an intentional exposure change edits the tool and
+the test together), and `description-budget.test.ts` caps the combined length of tool
+descriptions, since every one is sent to the model on every step.
+
+The other `meta` fields: `surface.workbench` (safe to re-run as a Home card),
+`surface.unattendedReplaySafe` (may run with nobody present and be retried), `builtin` (part of
+every Agent, even a custom one that did not list it), `runtime_risk` (the risk class recorded
+on each call when the surface does not imply it) and `presentation` (`'artifact'` marks a
+result that renders as an inline card rather than a trace row). The header of
+`apps/api/src/tools/define.ts` is the field-by-field reference.
 
 Optional modules are gated by per-user feature flags (`packages/types/src/features.ts`) and
 by **feature points** (`apps/api/src/platform/feature-points.ts`), which map a flag or an
 application to the tools it owns so one switch controls the app, REST, MCP and chat at once.
+A non-global tool that no flag or application owns lands in the *Advanced tools* bucket and is
+granted per user.
 
 ## Adding an application
 
