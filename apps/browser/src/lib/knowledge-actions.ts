@@ -5,7 +5,8 @@
  * Unlike the browser actions (which run in the page), this one is executed by
  * POSTing to the confirm-gated agent proxy /api/agent/tools/knowledge_mutation/
  * call (see lib/knowledge-tools.ts). The server gives a `browser`-channel
- * session no inline writer at all (apps/api/src/chat/browser-channel.ts), so
+ * session no inline writer at all (`filterBrowserSessionToolIds`, apps/api/src/
+ * agent-runtime/tool-resolution.ts), so
  * this action is the single, always-confirmed write path from the panel.
  */
 

@@ -141,7 +141,8 @@ page `<title>`s — keep in sync). Re-render icons with
   `confirm:true`. Every save shows a `KnowledgeConfirmCard` first (writes are
   never silent). It is the single write path: the server gives a
   `browser`-channel session no inline writer at all — only declared reads plus
-  `ask_user` / `export_data` (`apps/api/src/chat/browser-channel.ts`) — keyed on
+  `ask_user` / `export_data` (`filterBrowserSessionToolIds` in
+  `apps/api/src/agent-runtime/tool-resolution.ts`) — keyed on
   the session's channel, never on a flag the panel sends. Don't reintroduce a
   client-side "omit write tools" switch; a server that stops reading it hands
   every writer back silently, which is exactly what happened to the old
