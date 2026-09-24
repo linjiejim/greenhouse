@@ -94,7 +94,8 @@ review SQL → `db-schema.md`。**持久库只 `migrate` 永不 `push`。**
 
 → [add-agent-tool](../add-agent-tool/SKILL.md)
 
-`defineTool({ meta, create })` 同文件 → `registry.ts` 的 `CORE_TOOL_MODULES` →
+`defineTool({ meta, kind, create? })` 同文件 → `registry.ts` 的 `CORE_TOOL_MODULES`（lazy 工具再到
+`buildLazyServerTools` 接构造分支）→
 `surface` 决定 proxy/MCP 暴露 → 归属一个 feature point。
 **多数情况不需要改 profile YAML**（系统 profile 的 `tools:` 运行时不读取）。
 
