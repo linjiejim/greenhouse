@@ -70,8 +70,18 @@ jobs:
             cd /root/greenhouse/greenhouse
             git fetch origin main && git reset --hard origin/main
             IMG="ghcr.io/linjiejim/greenhouse:main-${{ steps.sha.outputs.short }}"
+            # The image being replaced stays on disk as the rollback target.
+            PREV=$(sed -n 's/^GREENHOUSE_IMAGE=//p' .env)
             # Persist the pin so a manual `docker compose up` uses the same image.
             sed -i "s|^GREENHOUSE_IMAGE=.*|GREENHOUSE_IMAGE=$IMG|" .env
+            # Every roll pins a new main-<sha> tag and `image prune` only removes
+            # untagged images, so superseded tags piled up until the disk filled and
+            # took Postgres down with it (2026-09-24: 43 tags, 100%). Drop every
+            # main-* tag but the outgoing and incoming ones before pulling, so a full
+            # disk heals on the next roll instead of failing it.
+            docker image ls --filter "reference=ghcr.io/linjiejim/greenhouse:main-*" \
+              --format '{{.Repository}}:{{.Tag}}' | grep -vxF -e "$IMG" -e "$PREV" \
+              | xargs -r docker rmi > /dev/null || true
             # Pull anonymously. The image is public, but docker never falls back to
             # anonymous while ~/.docker/config.json holds a login for ghcr.io — and other
             # deployments on this host log in with short-lived Actions tokens they never
