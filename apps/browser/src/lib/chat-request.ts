@@ -5,8 +5,9 @@
  * and the ambient-context caps. No chrome.* references.
  *
  * There is deliberately no "don't give the model write tools" flag: the server
- * keys that on the session's `browser` channel (apps/api/src/chat/browser-channel.ts),
- * so it cannot be lost by a client that forgets to ask.
+ * keys that on the session's `browser` channel (`filterBrowserSessionToolIds` in
+ * apps/api/src/agent-runtime/tool-resolution.ts), so it cannot be lost by a client
+ * that forgets to ask.
  */
 
 import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';

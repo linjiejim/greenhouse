@@ -1,9 +1,15 @@
 /**
- * The browser-extension conversation surface, end to end through the real
- * POST /api/chat route: a `browser`-channel session gets no inline writer (its
- * panel's confirm-carded Client Action is the only write path), while the
- * panel's actions and the page it is on do reach the model. Keyed on the
- * session's channel, so the same request on a web session keeps its writers.
+ * The browser-extension conversation surface through the real POST /api/chat
+ * route: a `browser`-channel session has its tools narrowed by
+ * `filterBrowserSessionToolIds` (no inline writer; the panel's confirm-carded
+ * Client Action is the only write path), while the panel's actions and the page
+ * it is on do reach the model. Keyed on the session's channel, so the same
+ * request on a web session is not narrowed.
+ *
+ * The filter is a stand-in here on purpose: the real one reads the tool catalog,
+ * which loads every active extension, and a fork running these tests with its
+ * own extensions on must not trip over that. Its semantics are pinned against
+ * the real catalog in agent-runtime/__tests__/browser-session-tools.test.ts.
  */
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -88,13 +94,17 @@ vi.mock('../../agent.js', () => ({
 }));
 
 // The user's full allow-set: reads, proxy-confirmed writers, a writer the proxy
-// never sees (memory) and an output-only tool. The filter under test runs on it.
+// never sees (memory) and an output-only tool. The stand-in filter keeps the two
+// the real one keeps from this set.
+const EFFECTIVE_TOOLS = ['knowledge_query', 'knowledge_mutation', 'project_mutation', 'memory', 'export_data'];
+const filterBrowserSessionToolIds = vi.hoisted(() =>
+  vi.fn((ids: string[]) => ids.filter((id) => id === 'knowledge_query' || id === 'export_data')),
+);
 vi.mock('../../agent-runtime/tool-resolution.js', () => ({
   LAZY_TOOL_IDS: new Set(),
-  resolveEffectiveTools: vi.fn(async () => ({
-    effectiveTools: ['knowledge_query', 'knowledge_mutation', 'project_mutation', 'memory', 'export_data'],
-  })),
+  resolveEffectiveTools: vi.fn(async () => ({ effectiveTools: EFFECTIVE_TOOLS })),
   buildLazyServerTools: vi.fn(() => ({})),
+  filterBrowserSessionToolIds,
 }));
 
 vi.mock('../../profiles/profile.js', () => ({
@@ -289,6 +299,7 @@ describe('POST /api/chat on the browser-extension channel', () => {
 
     const { tool_ids, system_prompt } = await sendTurn(panelTurnBody());
 
+    expect(filterBrowserSessionToolIds).toHaveBeenCalledWith(EFFECTIVE_TOOLS);
     expect(tool_ids).toEqual(expect.arrayContaining(['knowledge_query', 'export_data']));
     for (const writer of ['knowledge_mutation', 'project_mutation', 'memory']) expect(tool_ids).not.toContain(writer);
     // The confirm-carded write path and the browser automation are registered as Client Actions.
@@ -302,6 +313,7 @@ describe('POST /api/chat on the browser-extension channel', () => {
 
     const { tool_ids } = await sendTurn(panelTurnBody());
 
+    expect(filterBrowserSessionToolIds).not.toHaveBeenCalled();
     expect(tool_ids).toEqual(expect.arrayContaining(['knowledge_mutation', 'project_mutation', 'memory']));
   });
 
