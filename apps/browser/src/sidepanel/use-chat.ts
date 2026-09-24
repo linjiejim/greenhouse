@@ -11,7 +11,9 @@ import { handleStreamEvent } from '@greenhouse/ui/lib/stream-events';
 import type { StreamingToolCall } from '@greenhouse/ui/components/chat/streaming-message-bubble';
 import type { ToolCall } from '@greenhouse/ui/components/tool-call';
 import { streamChat, postToolResult } from '../lib/chat';
-import { executeBrowserAction, type ConfirmRequest } from '../lib/browser-tools';
+import { newTurnScopeId } from '../lib/chat-request';
+import { buildPageAmbientContext, type PageContext } from '../lib/page-context';
+import { executeBrowserAction, type ActionResult, type ConfirmRequest } from '../lib/browser-tools';
 import { executeKnowledgeAction, type KnowledgeConfirmRequest } from '../lib/knowledge-tools';
 import { KNOWLEDGE_ACTION_NAME } from '../lib/knowledge-actions';
 import {
@@ -50,6 +52,13 @@ export interface PendingAction extends ConfirmRequest {
 /** A knowledge write awaiting the user's approval in the panel. */
 export interface PendingKnowledge extends KnowledgeConfirmRequest {
   resolve: (allowed: boolean) => void;
+}
+
+/** The page the user was on when they sent the turn (omitted when page context is switched off). */
+export interface PageSnapshot {
+  ctx: PageContext;
+  /** Extracted page text, for the explicit "summarize page" action only. */
+  fullPageText?: string | null;
 }
 
 function tryParseJson(raw: string): unknown {
@@ -141,7 +150,7 @@ export function useChat(profileId: string) {
   }, []);
 
   const send = useCallback(
-    async (text: string, contextHint?: string) => {
+    async (text: string, page?: PageSnapshot) => {
       setError(null);
       setMessages((prev) => [...prev, { role: 'user', content: text, toolCalls: [] }]);
 
@@ -169,8 +178,19 @@ export function useChat(profileId: string) {
       abortRef.current = abort;
       setStreaming(buffers);
 
+      // One scope per turn: the page snapshot and this turn's Client Actions
+      // share it, and the server stamps it on every action request it sends back.
+      const scopeId = newTurnScopeId();
+      const ambientContext = page ? buildPageAmbientContext(page.ctx, scopeId, page.fullPageText) : undefined;
+
       try {
-        for await (const event of streamChat({ sessionId: sid, message: text, contextHint, signal: abort.signal })) {
+        for await (const event of streamChat({
+          sessionId: sid,
+          message: text,
+          scopeId,
+          ambientContext,
+          signal: abort.signal,
+        })) {
           handleStreamEvent(event, {
             onTextDelta: (t) => {
               buffers.text += t;
@@ -187,16 +207,18 @@ export function useChat(profileId: string) {
               if (id) upsertCall(id, { name: toolName, input: JSON.stringify(input) });
             },
             onToolResult: (id, _toolName, output) => upsertCall(id, { output, status: 'done' }),
-            onLocalToolRequest: (toolCallId, toolId, params) => {
+            onLocalToolRequest: (toolCallId, toolId, params, requestScopeId) => {
               // Client-action round-trip: execute locally (writes gated by a
               // confirm card), then post the result to resume the agent.
               // Fire-and-forget — the stream stays paused server-side until the
               // result arrives, so the read loop must keep running.
               void (async () => {
-                const result =
-                  toolId === KNOWLEDGE_ACTION_NAME
-                    ? await executeKnowledgeAction(params, requestKnowledgeConfirm, profileId)
-                    : await executeBrowserAction(toolId, params, requestConfirm);
+                const result: ActionResult =
+                  requestScopeId !== undefined && requestScopeId !== scopeId
+                    ? { error: 'This action was requested for a different turn and was not run.' }
+                    : toolId === KNOWLEDGE_ACTION_NAME
+                      ? await executeKnowledgeAction(params, requestKnowledgeConfirm, profileId)
+                      : await executeBrowserAction(toolId, params, requestConfirm);
                 await postToolResult(sid!, {
                   toolCallId,
                   output: 'output' in result ? result.output : null,

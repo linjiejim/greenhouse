@@ -4,6 +4,7 @@
  */
 
 import type { ToolCall } from '@greenhouse/ui/components/tool-call';
+import { BROWSER_SESSION_CHANNEL } from '@greenhouse/types/session';
 import { authFetch } from './auth';
 
 export interface BrowserSession {
@@ -24,7 +25,7 @@ export async function createSession(profileId: string): Promise<BrowserSession> 
   const res = await authFetch('/api/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ profile_id: profileId, channel: 'browser' }),
+    body: JSON.stringify({ profile_id: profileId, channel: BROWSER_SESSION_CHANNEL }),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -33,8 +34,9 @@ export async function createSession(profileId: string): Promise<BrowserSession> 
   return (await res.json()) as BrowserSession;
 }
 
+/** The caller's own panel conversations — `scope=mine` keeps a super's list to their own. */
 export async function listSessions(): Promise<BrowserSession[]> {
-  const res = await authFetch('/api/sessions?channel=browser&limit=30');
+  const res = await authFetch(`/api/sessions?scope=mine&channel=${BROWSER_SESSION_CHANNEL}&limit=30`);
   if (!res.ok) return [];
   const body = (await res.json()) as { sessions?: BrowserSession[] };
   return body.sessions ?? [];

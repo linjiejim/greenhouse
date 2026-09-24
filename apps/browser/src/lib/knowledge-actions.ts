@@ -4,9 +4,9 @@
  * Advertised to /api/chat as a client_action alongside the browser_* tools.
  * Unlike the browser actions (which run in the page), this one is executed by
  * POSTing to the confirm-gated agent proxy /api/agent/tools/knowledge_mutation/
- * call (see lib/knowledge-tools.ts). The extension also sends omit_write_tools
- * so the inline knowledge_mutation is NOT offered in the stream — this action is
- * the single, always-confirmed write path from the panel.
+ * call (see lib/knowledge-tools.ts). The server gives a `browser`-channel
+ * session no inline writer at all (apps/api/src/chat/browser-channel.ts), so
+ * this action is the single, always-confirmed write path from the panel.
  */
 
 import type { ClientActionDescriptor } from '@greenhouse/types/api';
@@ -37,3 +37,25 @@ export const KNOWLEDGE_ACTION_DESCRIPTOR: ClientActionDescriptor = {
     required: ['mode', 'content'],
   },
 };
+
+/** A save the panel is about to confirm, normalized from the model's call. */
+export interface KnowledgeWriteRequest {
+  mode: 'create' | 'append';
+  scope: 'personal' | 'team';
+  title?: string;
+  docId?: string;
+  content: string;
+}
+
+/** The confirm-gated agent-proxy call a confirmed save goes through. */
+export const KNOWLEDGE_MUTATION_CALL_PATH = '/api/agent/tools/knowledge_mutation/call';
+
+/**
+ * The `knowledge_mutation` input for a confirmed save. Held to the server
+ * tool's own input schema by tests/browser/chat-contract.test.ts.
+ */
+export function buildKnowledgeMutationInput(req: KnowledgeWriteRequest): Record<string, unknown> {
+  return req.mode === 'create'
+    ? { action: 'knowledge.create_doc', scope: req.scope, title: req.title, content: req.content }
+    : { action: 'knowledge.append_doc', scope: req.scope, doc_id: req.docId, content: req.content };
+}

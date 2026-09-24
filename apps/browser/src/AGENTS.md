@@ -73,25 +73,43 @@ page `<title>`s — keep in sync). Re-render icons with
 - **No resident content scripts.** Page context is read on demand with
   `chrome.scripting.executeScript` (`src/lib/page-context.ts`): the user's
   selection is the context (selection-as-context), full-page text only on the
-  explicit "summarize page" quick action. Context rides in `/api/chat`'s
-  per-turn `context_hint` — it is never stored in the conversation.
+  explicit "summarize page" quick action. It rides in `/api/chat`'s per-turn
+  `ambient_context` envelope (`buildPageAmbientContext`: title → label, URL →
+  route, selection or page text → hint), sized to the shared
+  `AMBIENT_CONTEXT_LIMITS` so nothing is cut server-side, and never stored in
+  the conversation.
+- **The chat request has one builder and one contract.** `src/lib/chat-request.ts`
+  (pure data) builds the body as the shared `ChatRequestBody` from
+  `@greenhouse/types/api`; each turn gets a fresh scope id that the ambient
+  context and the Client Actions share. `tests/browser/chat-contract.test.ts`
+  runs these builders against the server's own admission code — change the
+  shared types, never hand-write a field or a path. (The panel once kept
+  sending `context_hint` / `omit_write_tools` and posting results to a renamed
+  route for two months after the server contract changed; nothing errored.)
 - **Sessions are server-side on the `'browser'` channel** (`src/lib/sessions.ts`):
-  created lazily on first send via `POST /api/sessions {channel:'browser'}`,
-  listed with `GET /api/sessions?channel=browser`. The web app can continue
-  them; the panel's history list shows only this channel.
+  created lazily on first send via `POST /api/sessions {channel:'browser'}` (the
+  only channel a client may ask for), listed with
+  `GET /api/sessions?scope=mine&channel=browser` — the caller's own panel
+  conversations, nothing from the sidebar folded in. The web app can continue
+  them, read-only (see the write-back rule below).
 - **Chat rendering reuses the shared kit** (`src/sidepanel/messages.tsx`):
   `StreamingMessageBubble` for the in-flight turn, `RichMarkdown` +
-  `ToolCallRenderer` + `BodyArtifacts` for committed turns, stream accumulation
-  via `handleStreamEvent` from `@greenhouse/types` (`src/sidepanel/use-chat.ts`).
+  `ToolCallRenderer` + `BodyArtifacts` for committed turns, with
+  `MessageAttachments` below the prose for file and image results (file cards
+  download through `src/lib/files.ts`, which attaches the station token and
+  only fetches `/api/chat-files/`), stream accumulation via `handleStreamEvent`
+  from `@greenhouse/types` (`src/sidepanel/use-chat.ts`).
 - **i18n**: extension keys live in `src/i18n/{en,zh}.ts` (keep both in sync);
   they register through `registerCoreLocaleMessages` — same fallback chain as
   the web app.
 - **Browser automation = client actions.** Every chat turn advertises the
   `browser_*` tool descriptors (`src/lib/browser-actions.ts`, pure data —
   descriptor-contract tests in `browser-actions.test.ts`) via `/api/chat`'s
-  `client_actions`; the server pauses the agent step on a `local-tool-request`
-  stream event and the panel executes it (`src/lib/browser-tools.ts`) then
-  POSTs `/api/client-tools/result`. Conventions:
+  `client_actions` + `client_action_scope_id` (without the scope id the server
+  registers none of them); the server pauses the agent step on a
+  `local-tool-request` stream event stamped with that scope, the panel executes
+  it (`src/lib/browser-tools.ts`, refusing a request from another turn's scope)
+  then POSTs the result to `CLIENT_ACTION_RESULT_PATH`. Conventions:
   - Read/navigate actions (`list_tabs`, `open_tab`, `read_page`,
     `get_elements`, `scroll`, `wait`) run automatically. Write actions
     (`browser_click` / `browser_type`, the `CONFIRM_ACTIONS` set) go through
@@ -121,7 +139,10 @@ page `<title>`s — keep in sync). Re-render icons with
   it does NOT run in the page — its executor (`lib/knowledge-tools.ts`) POSTs to
   the confirm-gated agent proxy `/api/agent/tools/knowledge_mutation/call` with
   `confirm:true`. Every save shows a `KnowledgeConfirmCard` first (writes are
-  never silent). The chat request sends `omit_write_tools: true` so the inline
-  `knowledge_mutation` (and other `MUTATING_PROXY_ALLOWLIST` tools) are stripped
-  server-side — this client action is the single, always-confirmed write path.
-  Do not remove `omit_write_tools`, or the model could write without a card.
+  never silent). It is the single write path: the server gives a
+  `browser`-channel session no inline writer at all — only declared reads plus
+  `ask_user` / `export_data` (`apps/api/src/chat/browser-channel.ts`) — keyed on
+  the session's channel, never on a flag the panel sends. Don't reintroduce a
+  client-side "omit write tools" switch; a server that stops reading it hands
+  every writer back silently, which is exactly what happened to the old
+  `omit_write_tools`.

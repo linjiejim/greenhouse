@@ -132,6 +132,19 @@ export interface AmbientContextEnvelope {
   hint: string;
 }
 
+/**
+ * Per-field length caps the API enforces on {@link AmbientContextEnvelope}
+ * (apps/api/src/chat/ambient-context.ts). Longer values are cut server-side,
+ * so a client that builds from page content sizes against these instead of
+ * losing its tail silently.
+ */
+export const AMBIENT_CONTEXT_LIMITS = {
+  scopeId: 256,
+  label: 200,
+  route: 500,
+  hint: 4_000,
+} as const;
+
 /** Generic launcher intent shared by every Assistant entry point. */
 export interface AssistantLaunchRequest {
   id: number;

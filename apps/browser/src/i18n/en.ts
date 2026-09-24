@@ -9,6 +9,13 @@ export const en = {
     settings: 'Settings',
   },
 
+  // Shared kit: the file card a tool's download renders as (export_data).
+  fileArtifact: {
+    download: 'Download',
+    downloadFailed: 'File download failed',
+    rows: '{rows} rows',
+  },
+
   options: {
     title: 'Greenhouse Bridge',
     subtitle: 'Connect to your self-hosted Greenhouse instances.',

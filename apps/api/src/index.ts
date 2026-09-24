@@ -53,6 +53,7 @@ import sessionRoutes from './routes/sessions.js';
 import evalRoutes from './routes/eval.js';
 import { createChatRoute } from './routes/chat.js';
 import clientActionRoutes from './routes/client-actions.js';
+import { CLIENT_ACTIONS_API_PREFIX } from '@greenhouse/types/api';
 import { createAgentRoutes } from './routes/agent-tools.js';
 import { createMcpRoutes } from './routes/mcp.js';
 import oauthRoutes from './routes/oauth.js';
@@ -343,8 +344,8 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // WebSocket endpoint — internal users only (auth via query token)
       .route('/api/ws', wsRoutes)
       // Browser client-action results — internal user-bound and part of the typed contract
-      .use('/api/client-actions/*', requireInternal())
-      .route('/api/client-actions', clientActionRoutes)
+      .use(`${CLIENT_ACTIONS_API_PREFIX}/*` as const, requireInternal())
+      .route(CLIENT_ACTIONS_API_PREFIX, clientActionRoutes)
       // ── Registry-dependent routes (need DB-backed toolRegistry) ──
       .route('/api/chat', createChatRoute(toolRegistry))
       // Home workbench card evaluation — every internal user. Cards are

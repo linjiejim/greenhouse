@@ -6,6 +6,13 @@ export const zh = {
     settings: '设置',
   },
 
+  // 共享组件：工具返回的文件下载卡（export_data）。
+  fileArtifact: {
+    download: '下载',
+    downloadFailed: '文件下载失败',
+    rows: '{rows} 行',
+  },
+
   options: {
     title: 'Greenhouse Bridge',
     subtitle: '连接你自部署的 Greenhouse 实例。',
