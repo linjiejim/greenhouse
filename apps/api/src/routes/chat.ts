@@ -20,6 +20,7 @@ import { selectTools, buildSystemPrompt } from '../agent.js';
 import type { ToolRegistry } from '../agent.js';
 import {
   buildLazyServerTools,
+  filterBrowserSessionToolIds,
   filterUnattendedToolIds,
   LAZY_TOOL_IDS,
   resolveEffectiveTools,
@@ -51,7 +52,6 @@ import { generateSessionTitle } from '../llm/title.js';
 import { canWriteSession } from '../sessions/access.js';
 import { formatAmbientContextPrompt } from '../chat/ambient-context.js';
 import { admitTurnEnvironment } from '../chat/turn-environment.js';
-import { filterBrowserSessionToolIds } from '../chat/browser-channel.js';
 import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
 import { chatRunRegistry, ChatRun } from '../chat/runs.js';
 import { pumpChatTurn, streamRunToResponse } from '../chat/turn.js';
@@ -461,7 +461,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // Runtime driver. A profile prompt can never opt mutation tools back in.
           // A browser-extension conversation reads untrusted pages, so it gets
           // no inline writer at all; its panel's confirm-carded Client Action is
-          // the only write path (chat/browser-channel.ts).
+          // the only write path (filterBrowserSessionToolIds, agent-runtime/tool-resolution.ts).
           const executionTools = unattendedExecution
             ? filterUnattendedToolIds(effectiveTools)
             : sessionChannel === BROWSER_SESSION_CHANNEL

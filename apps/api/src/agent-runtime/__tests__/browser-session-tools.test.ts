@@ -5,9 +5,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { filterBrowserSessionToolIds } from './browser-channel.js';
-import { getAllToolIds, getToolMeta, MUTATING_PROXY_ALLOWLIST } from '../tools/registry.js';
-import { DISPATCH_TOOL_IDS } from '../agent-runtime/tool-resolution.js';
+import { DISPATCH_TOOL_IDS, filterBrowserSessionToolIds } from '../tool-resolution.js';
+import { getAllToolIds, getToolMeta, MUTATING_PROXY_ALLOWLIST } from '../../tools/registry.js';
 
 const OUTPUT_ONLY = ['ask_user', 'export_data'];
 
