@@ -3,7 +3,7 @@
  * instead of as rows inside the collapsible "N tool calls" trace block.
  *
  * This module is the single source of truth for which tool calls become body
- * artifacts (the ask_user form, page-update diffs, generated images)
+ * artifacts (the ask_user form, page-update diffs, generated images, file downloads)
  * and how they render:
  *   - <ToolCallRenderer> consults `isArtifactCall` to KEEP these out of the trace
  *     block (so a message with only an artifact call shows no trace block at all).
@@ -14,7 +14,7 @@
  * not the flag — is the complete list.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { GitBranch, FileSpreadsheet, Download } from '../../lib/icons';
 import { Spinner } from '../ui';
 import { useT } from '../../lib/i18n';
@@ -52,6 +52,33 @@ export interface ArtifactCtx {
   content?: string;
   /** Open a session by id (spawn_session card → jump to the spawned child). */
   onOpenSession?: (sessionId: string) => void;
+  /**
+   * Download a file artifact (a `type: 'file'` output, e.g. export_data). Chat
+   * files need the caller's token, so a plain link would 401; each host passes
+   * its own authenticated fetch. Without it the card shows no download button.
+   */
+  onDownloadFile?: (downloadUrl: string, filename: string) => Promise<void>;
+}
+
+/** A downloadable chat file a tool produced (export_data) — the shape the API returns. */
+export interface FileArtifactOutput {
+  type: 'file';
+  file_id: string;
+  name: string;
+  download_url: string;
+  size?: number;
+  row_count?: number;
+}
+
+/** Keyed on the output shape, not the tool name, so any tool that returns a file renders the card. */
+export function isFileArtifactOutput(output: unknown): output is FileArtifactOutput {
+  const out = output as Record<string, unknown> | undefined;
+  return (
+    out?.type === 'file' &&
+    typeof out.file_id === 'string' &&
+    typeof out.name === 'string' &&
+    typeof out.download_url === 'string'
+  );
 }
 
 // ─── Matcher ─────────────────────────────────────────────
@@ -67,6 +94,8 @@ export interface ArtifactCtx {
 export function isArtifactCall(call: { name: string; output?: unknown }): boolean {
   const out = call.output as Record<string, unknown> | undefined;
 
+  if (isFileArtifactOutput(out)) return true;
+
   // Interactive form — any tool may return this shape.
   if (out?.type === 'ask_user' && out?.questions) return true;
 
@@ -74,8 +103,6 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
     case 'update_page':
       return !!out?.success;
     case 'generate_image':
-      return !!out?.success && !!out?.url;
-    case 'export_table':
       return !!out?.success && !!out?.url;
     case 'spawn_session':
       // Card while in-flight (no output yet) and once a child exists (incl. a
@@ -104,8 +131,8 @@ export function partitionCalls<T extends { name: string; output?: unknown }>(
  * attachments at the BOTTOM of the message (via <MessageAttachments>), kept out of
  * the top <BodyArtifacts> block.
  */
-export function isMediaArtifact(call: { name: string }): boolean {
-  return call.name === 'export_table' || call.name === 'generate_image';
+export function isMediaArtifact(call: { name: string; output?: unknown }): boolean {
+  return isFileArtifactOutput(call.output) || call.name === 'generate_image';
 }
 
 // ─── Renderer ────────────────────────────────────────────
@@ -164,6 +191,8 @@ export function MessageAttachments({ calls, ctx }: { calls: ArtifactCall[]; ctx:
 function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx }) {
   const out = call.output as Record<string, unknown> | undefined;
 
+  if (isFileArtifactOutput(out)) return <FileArtifactCard out={out} onDownload={ctx.onDownloadFile} />;
+
   // Interactive form — checked first since any tool can emit it.
   if (out?.type === 'ask_user' && out?.questions) {
     return (
@@ -187,9 +216,6 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
       return <GeneratedImageCard url={url} prompt={(out?.prompt as string) || ''} />;
     }
 
-    case 'export_table':
-      return out?.url ? <ExportFileCard out={out} /> : null;
-
     case 'spawn_session':
       return <SpawnSessionCard call={call} ctx={ctx} />;
 
@@ -205,7 +231,7 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
 // Reused by the compact result cards (spawn session, exported file) so they stay
 // visually in sync: a sunken bordered shell + a small pill action button.
 
-/** Sunken chip container. ExportFileCard appends `w-fit` to hug its content. */
+/** Sunken chip container. FileArtifactCard appends `w-fit` to hug its content. */
 const CARD_SHELL = 'flex items-center gap-2 rounded-lg border border-edge bg-surface-sunken px-3 py-2';
 /** Small pill action button (open / download). */
 const CARD_ACTION_BTN =
@@ -330,52 +356,47 @@ function formatBytes(n: number): string {
 }
 
 /**
- * Download card for a generated export (export_table). Renders an "expired" state
- * once the link's deadline (expires_at) has passed; the server also 410s past it,
- * so a stale-clock click still fails closed. The friendly (Unicode) filename rides
- * on the <a download> attribute — honored for same-origin proxy links; for a
- * cross-origin presigned link the object store's own Content-Disposition applies.
+ * Download card for a chat file a tool produced (export_data). The download runs
+ * through the host's authenticated fetch (`ctx.onDownloadFile`); a failed one says
+ * so on the card instead of failing silently.
  */
-function ExportFileCard({ out }: { out: Record<string, unknown> }) {
+function FileArtifactCard({
+  out,
+  onDownload,
+}: {
+  out: FileArtifactOutput;
+  onDownload?: ArtifactCtx['onDownloadFile'];
+}) {
   const t = useT();
-  const url = out.url as string;
-  const filename = (out.filename as string) || 'export';
-  const format = ((out.format as string) || '').toUpperCase();
-  const size = typeof out.size_bytes === 'number' ? formatBytes(out.size_bytes) : null;
-  const sheetCount = typeof out.sheet_count === 'number' ? out.sheet_count : null;
-  const expiresAt = typeof out.expires_at === 'string' ? Date.parse(out.expires_at) : NaN;
-  const expired = !Number.isNaN(expiresAt) && Date.now() > expiresAt;
-
-  const subtitle = [format, size, sheetCount && sheetCount > 1 ? `${sheetCount} sheets` : null]
+  const [failed, setFailed] = useState(false);
+  const detail = [
+    typeof out.size === 'number' ? formatBytes(out.size) : null,
+    typeof out.row_count === 'number' ? t('fileArtifact.rows', { rows: out.row_count }) : null,
+  ]
     .filter(Boolean)
     .join(' · ');
 
   return (
     <div className={`${CARD_SHELL} w-fit max-w-full`}>
-      <FileSpreadsheet className={`h-4 w-4 flex-shrink-0 ${expired ? 'text-fg-faint' : 'text-success'}`} />
+      <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-success" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium text-fg">{filename}</div>
-        {subtitle && <div className="text-[10px] text-fg-faint">{subtitle}</div>}
+        <div className="truncate text-xs font-medium text-fg">{out.name}</div>
+        {detail && <div className="text-[10px] text-fg-faint">{detail}</div>}
+        {failed && <div className="text-[10px] text-danger">{t('fileArtifact.downloadFailed')}</div>}
       </div>
-      {expired ? (
-        <span
-          className="flex-shrink-0 rounded-md bg-surface-muted px-2 py-1 text-[11px] font-medium text-fg-faint"
-          title={t('exportFile.expiredHint')}
-        >
-          {t('exportFile.expired')}
-        </span>
-      ) : (
-        <a
-          href={url}
-          download={filename}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={t('exportFile.download')}
-          aria-label={t('exportFile.download')}
+      {onDownload && (
+        <button
+          type="button"
+          onClick={() => {
+            setFailed(false);
+            onDownload(out.download_url, out.name).catch(() => setFailed(true));
+          }}
+          title={t('fileArtifact.download')}
+          aria-label={t('fileArtifact.download')}
           className="flex-shrink-0 inline-flex items-center justify-center rounded-md border border-edge p-1.5 text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
         >
           <Download className="h-4 w-4" />
-        </a>
+        </button>
       )}
     </div>
   );

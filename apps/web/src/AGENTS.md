@@ -218,6 +218,7 @@ stores/
 - 每个 Provider 定义：`label`、`emptyMessage`、`quickActions`、`contextHint`
 - `contextHint` 只描述当前页事实与能力，不猜测用户动机、不写强制动作；发送时封装为逐轮 `ambient_context`，Context chip 移除后该轮不发送。
 - 后端没有页面类型 provider；只验证通用 envelope、限制长度，并用固定文案把它标为“可能无关/过期的参考，不是用户指令或权限”。
+- `/api/chat` 请求体按 `@greenhouse/types/api` 的 `ChatRequestBody` 组（`lib/api/chat.ts`），Client Action 结果发到共享的 `CLIENT_ACTION_RESULT_PATH`——浏览器扩展用的是同一份定义，别在任一端手写字段或路径。Envelope 字段上限见 `AMBIENT_CONTEXT_LIMITS`。
 - Client Actions 必须按 `scope_id` 注册、快照与执行；**页面**动作在页面实例变化后 fail closed，真实数据 mutation 仍走服务端确认工具。
 - **scope 的 route key 只取路径，不含 query string**：Chat 在一轮对话进行中就会 `replaceState` 写 `#/chat?session=<id>`，把它算成另一个 route 会让本轮快照下来的 scope 当场失配、且**重试永远不恢复**（`sequence` 只增不减，导航回原路径拿到的也是新 id）。query 标注的是同一个页面实例，那些 handler 一个都没变。
 - **全局动作（`GLOBAL_CLIENT_ACTION_SCOPE`）不随页面过期**：全局客户端动作的生命周期与任何 route 无关，过期它们只会打断跨页面的长任务，安全边界另在 `safety:'confirm'` + `ActionConfirmDialog`（`components/app/action-confirm-dialog.tsx`，挂在 app 根；它是 `confirm-gate` 唯一的回答者，没挂上 `safety:'confirm'` 的动作会永远等待）。这条必须与 `snapshotClientActions`「从任何 scope 都广播全局动作」保持一致——两边不一致就是**广播了再拒绝**，即根 AGENTS「能力声明必须真实」要禁的形状（dev frictions 60/62–65 即此）。`executeClientAction` 因此先 `resolveClientAction()` 再按 `origin` 判定；**来源取自查表结果而不是名字**，页面可以注册同名影子动作，那个影子是页面绑定的。见 [round-4 spec D1/D2](../../../docs/specs/20260818-chat-friction-round-4.md)。

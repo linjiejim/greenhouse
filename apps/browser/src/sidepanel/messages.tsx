@@ -1,18 +1,25 @@
 /**
  * Message list — user bubbles are local; assistant rendering reuses the shared
- * kit (RichMarkdown + ToolCallRenderer + BodyArtifacts + ReasoningPanel), and
- * the in-flight turn is the same StreamingMessageBubble the web app uses.
+ * kit (RichMarkdown + ToolCallRenderer + BodyArtifacts + MessageAttachments +
+ * ReasoningPanel), and the in-flight turn is the same StreamingMessageBubble the
+ * web app uses. File and image results render as attachments below the prose.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import { RichMarkdown } from '@greenhouse/ui/components/rich-markdown';
 import { ToolCallRenderer } from '@greenhouse/ui/components/tool-call';
-import { BodyArtifacts, partitionCalls } from '@greenhouse/ui/components/tool-call/body-artifacts';
+import {
+  BodyArtifacts,
+  MessageAttachments,
+  partitionCalls,
+  type ArtifactCtx,
+} from '@greenhouse/ui/components/tool-call/body-artifacts';
 import { ReasoningPanel } from '@greenhouse/ui/components/chat/reasoning-panel';
 import { StreamingMessageBubble } from '@greenhouse/ui/components/chat/streaming-message-bubble';
 import { ChevronDown, ChevronRight } from '@greenhouse/ui/lib/icons';
 import { useT } from '@greenhouse/ui/lib/i18n';
 import type { ChatMessage, StreamingState } from './use-chat';
+import { downloadChatFile } from '../lib/files';
 
 interface MessagesProps {
   messages: ChatMessage[];
@@ -74,6 +81,13 @@ function AssistantMessage({
   const t = useT();
   const [showReasoning, setShowReasoning] = useState(false);
   const { trace, artifacts } = partitionCalls(message.toolCalls);
+  const artifactCtx: ArtifactCtx = {
+    onAskUserSubmit,
+    askUserSubmitted: hasFollowUp,
+    streaming: false,
+    content: message.content,
+    onDownloadFile: downloadChatFile,
+  };
 
   return (
     <div className="max-w-full self-start text-sm">
@@ -88,13 +102,9 @@ function AssistantMessage({
       )}
       {showReasoning && message.reasoning && <ReasoningPanel reasoning={message.reasoning} />}
       {trace.length > 0 && <ToolCallRenderer calls={trace} variant="compact" defaultCollapsed />}
-      {artifacts.length > 0 && (
-        <BodyArtifacts
-          calls={artifacts}
-          ctx={{ onAskUserSubmit, askUserSubmitted: hasFollowUp, streaming: false, content: message.content }}
-        />
-      )}
+      {artifacts.length > 0 && <BodyArtifacts calls={artifacts} ctx={artifactCtx} />}
       {message.content && <RichMarkdown compact content={message.content} />}
+      {artifacts.length > 0 && <MessageAttachments calls={artifacts} ctx={artifactCtx} />}
     </div>
   );
 }

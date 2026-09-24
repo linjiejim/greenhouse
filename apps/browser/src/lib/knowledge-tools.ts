@@ -9,16 +9,15 @@
 
 import { authFetch } from './auth';
 import type { ActionResult } from './browser-tools';
+import {
+  buildKnowledgeMutationInput,
+  KNOWLEDGE_MUTATION_CALL_PATH,
+  type KnowledgeWriteRequest,
+} from './knowledge-actions';
 
 const CONTENT_LIMIT = 20_000;
 
-export interface KnowledgeConfirmRequest {
-  mode: 'create' | 'append';
-  scope: 'personal' | 'team';
-  title?: string;
-  docId?: string;
-  content: string;
-}
+export type KnowledgeConfirmRequest = KnowledgeWriteRequest;
 
 /** Panel gate: resolve true to save, false to decline. */
 export type KnowledgeConfirmFn = (req: KnowledgeConfirmRequest) => Promise<boolean>;
@@ -56,12 +55,9 @@ export async function executeKnowledgeAction(
       return { error: 'User declined to save to the knowledge base. Do not retry — ask the user how to proceed.' };
     }
 
-    const input =
-      req.mode === 'create'
-        ? { action: 'knowledge.create_doc', scope: req.scope, title: req.title, content: req.content }
-        : { action: 'knowledge.append_doc', scope: req.scope, doc_id: req.docId, content: req.content };
+    const input = buildKnowledgeMutationInput(req);
 
-    const res = await authFetch('/api/agent/tools/knowledge_mutation/call', {
+    const res = await authFetch(KNOWLEDGE_MUTATION_CALL_PATH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ input, confirm: true, profile_id: profileId }),

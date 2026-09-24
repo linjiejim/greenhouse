@@ -568,6 +568,75 @@ export interface ClientActionSnapshot {
   actions: ClientActionDescriptor[];
 }
 
+/** Mount prefix of the Client Action routes (see apps/api/src/index.ts). */
+export const CLIENT_ACTIONS_API_PREFIX = '/api/client-actions';
+
+/**
+ * Where a client posts a Client Action result to resume the paused agent step.
+ * Body: `{ session_id, toolCallId, output, error? }`. The web app and the
+ * browser extension both import this — never hand-write the path.
+ */
+export const CLIENT_ACTION_RESULT_PATH = `${CLIENT_ACTIONS_API_PREFIX}/tool-result` as const;
+
+// ─── Chat Request (POST /api/chat) ───────────────────────
+
+/** One message in a POST /api/chat body. */
+export interface ChatRequestMessage {
+  role: string;
+  content: string;
+  images?: Array<{ id: string; url: string }>;
+}
+
+/**
+ * The body of POST /api/chat — the ONE definition the server reads and every
+ * first-party client builds. A field the server stops reading must leave this
+ * type, so a client still sending it fails to compile instead of being ignored
+ * (the browser extension once kept sending `context_hint` / `omit_write_tools`
+ * for months after the server dropped them).
+ */
+export interface ChatRequestBody {
+  session_id?: string;
+  messages?: ChatRequestMessage[];
+  /** Per-turn snapshot of the page the user is looking at — reference data, never an instruction. */
+  ambient_context?: import('./agent-context.js').AmbientContextEnvelope;
+  profile_id?: string;
+  /**
+   * Per-turn model choice. The agent's `model.id` is the default; headless
+   * callers (scheduled tasks, eval runs, workflow nodes, spawned sub-sessions)
+   * never send this and keep that default.
+   */
+  model?: string;
+  /** Active workspace for the per-user tool proxy. */
+  workspace_id?: string;
+  /** Client Actions available on the current screen; registered only with a persisted session. */
+  client_actions?: ClientActionDescriptor[];
+  /** Scope the actions were captured in; must equal `ambient_context.scope_id` when both are sent. */
+  client_action_scope_id?: string;
+  /** Re-run the latest assistant reply instead of appending a user message (validated server-side). */
+  regenerate_assistant_message_id?: unknown;
+}
+
+/**
+ * Every field of {@link ChatRequestBody}, as data — the contract test holds a
+ * client's real request to this list. The type below fails to compile if a
+ * field is added to the interface without being listed here.
+ */
+export const CHAT_REQUEST_BODY_KEYS = [
+  'session_id',
+  'messages',
+  'ambient_context',
+  'profile_id',
+  'model',
+  'workspace_id',
+  'client_actions',
+  'client_action_scope_id',
+  'regenerate_assistant_message_id',
+] as const satisfies readonly (keyof ChatRequestBody)[];
+
+type UnlistedChatRequestKeys = Exclude<keyof ChatRequestBody, (typeof CHAT_REQUEST_BODY_KEYS)[number]>;
+/** Compile-time exhaustiveness check for CHAT_REQUEST_BODY_KEYS. */
+export const CHAT_REQUEST_BODY_KEYS_ARE_EXHAUSTIVE: [UnlistedChatRequestKeys] extends [never] ? true : never = true;
+
 /** Optional browser environment attached to a single chat turn. */
 export interface ChatTurnEnvironment {
   ambientContext?: import('./agent-context.js').AmbientContextEnvelope;

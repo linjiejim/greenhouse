@@ -7,7 +7,24 @@
 
 // ─── Session Types ───────────────────────────────────────
 
-export type SessionChannel = 'web' | 'api' | 'a2a' | 'task' | 'subagent' | 'workflow' | 'mission' | 'feishu';
+export type SessionChannel =
+  | 'web'
+  | 'api'
+  | 'a2a'
+  | 'task'
+  | 'subagent'
+  | 'workflow'
+  | 'mission'
+  | 'feishu'
+  | 'browser';
+
+/**
+ * Conversations started from the browser extension side panel. The only
+ * channel a client may ask for on POST /api/sessions (every other value is
+ * server-assigned), and the one the chat route keys its read-only tool face on
+ * (apps/api/src/chat/browser-channel.ts).
+ */
+export const BROWSER_SESSION_CHANNEL = 'browser' satisfies SessionChannel;
 
 export interface SessionRow {
   id: string;

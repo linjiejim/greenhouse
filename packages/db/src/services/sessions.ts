@@ -58,7 +58,7 @@ export interface SessionListOpts {
    * every NULL-owner row, so "everyone else's" would quietly exclude them.
    */
   excludeUserId?: string;
-  channel?: string; // filter by channel: 'web' | 'api' | 'a2a' | 'task'
+  channel?: string; // filter by channel (a SessionChannel, e.g. 'web' | 'task' | 'browser')
   /**
    * Channels to hide. Engine-internal sessions (channel 'workflow') are not
    * user-facing objects, so list consumers exclude them by default.

@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { BodyArtifacts } from './body-artifacts';
+import { BodyArtifacts, isArtifactCall, isMediaArtifact, MessageAttachments } from './body-artifacts';
 import { ToolCallRenderer } from './index';
 
 describe('ask_user form placement', () => {
@@ -125,5 +125,43 @@ describe('spawn_session card placement', () => {
     expect(html).toContain('AeroGarden 深度调研'); // title pulled from the streaming input
     expect(html).toContain('0:00'); // the elapsed-time counter (SSR initial value)
     expect(html).not.toContain('<button'); // no child id yet → no Open button
+  });
+});
+
+describe('file artifacts (export_data)', () => {
+  const fileCall = {
+    name: 'export_data',
+    input: {},
+    output: {
+      type: 'file',
+      file_id: 'file-1',
+      name: 'pricing.xlsx',
+      size: 2048,
+      row_count: 12,
+      download_url: '/api/chat-files/file-1/content',
+    },
+  };
+
+  it('is recognized by its output shape, not the tool name, and renders as an attachment', () => {
+    expect(isArtifactCall(fileCall)).toBe(true);
+    expect(isMediaArtifact(fileCall)).toBe(true);
+    expect(isArtifactCall({ ...fileCall, name: 'some_other_tool' })).toBe(true);
+    expect(isArtifactCall({ name: 'export_data', output: { type: 'file', name: 'x' } })).toBe(false);
+  });
+
+  it('renders the card below the prose with a download button only when the host can download', () => {
+    const onDownloadFile = async () => {};
+    const withDownload = renderToStaticMarkup(
+      createElement(MessageAttachments, { calls: [fileCall], ctx: { onDownloadFile } }),
+    );
+    expect(withDownload).toContain('pricing.xlsx');
+    expect(withDownload).toContain('<button');
+
+    const withoutDownload = renderToStaticMarkup(createElement(MessageAttachments, { calls: [fileCall], ctx: {} }));
+    expect(withoutDownload).toContain('pricing.xlsx');
+    expect(withoutDownload).not.toContain('<button');
+
+    // A committed message keeps it out of the top body block — it belongs with the attachments.
+    expect(renderToStaticMarkup(createElement(BodyArtifacts, { calls: [fileCall], ctx: {} }))).toBe('');
   });
 });

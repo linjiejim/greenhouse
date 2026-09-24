@@ -26,8 +26,9 @@ import {
 } from '../agent-runtime/tool-resolution.js';
 import { createClientActionBridge } from '../tools/client-action-bridge.js';
 import type { ClientActionBridge } from '../tools/client-action-bridge.js';
-import { sanitizeClientActions, createClientActionTools } from '../tools/client-actions.js';
-import type { ClientActionDescriptor } from '@greenhouse/types/api';
+import { createClientActionTools } from '../tools/client-actions.js';
+import type { ChatRequestBody, ChatRequestMessage } from '@greenhouse/types/api';
+import { BROWSER_SESSION_CHANNEL, type SessionChannel } from '@greenhouse/types/session';
 import { resolveProfileAsync } from '../profiles/profile.js';
 import { isChatModelAllowed } from '../config/models.js';
 import { sanitizeForPrompt } from '../security/security.js';
@@ -48,7 +49,9 @@ import type { EngineMessage } from '@greenhouse/agent-core';
 import { inlineImagesForVision } from '../chat/vision.js';
 import { generateSessionTitle } from '../llm/title.js';
 import { canWriteSession } from '../sessions/access.js';
-import { formatAmbientContextPrompt, sanitizeAmbientContext } from '../chat/ambient-context.js';
+import { formatAmbientContextPrompt } from '../chat/ambient-context.js';
+import { admitTurnEnvironment } from '../chat/turn-environment.js';
+import { filterBrowserSessionToolIds } from '../chat/browser-channel.js';
 import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
 import { chatRunRegistry, ChatRun } from '../chat/runs.js';
 import { pumpChatTurn, streamRunToResponse } from '../chat/turn.js';
@@ -61,12 +64,6 @@ import {
 } from '../chat/runtime.js';
 import { runtimeAdapterEnabled } from '../trusted-execution/kill-switches.js';
 import { instrumentRuntimeTools } from '../runtime/tool-evidence.js';
-
-interface ChatRequestMessage {
-  role: string;
-  content: string;
-  images?: Array<{ id: string; url: string }>;
-}
 
 /** Session status alone is not an execution credential. */
 export function isTrustedEvalExecution(user: Pick<AuthUser, 'role'>, sessionStatus: string): boolean {
@@ -114,22 +111,9 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
   return (
     new Hono<AppEnv>()
       .post('/', async (c) => {
-        const body = (await c.req.json()) as {
-          session_id?: string;
-          messages?: ChatRequestMessage[];
-          ambient_context?: AmbientContextEnvelope;
-          profile_id?: string;
-          /**
-           * Per-turn model choice. The agent's `model.id` is the default;
-           * headless callers (scheduled tasks, eval runs, workflow nodes,
-           * spawned sub-sessions) never send this and keep that default.
-           */
-          model?: string;
-          workspace_id?: string; // active workspace for per-user proxy
-          client_actions?: ClientActionDescriptor[]; // frontend UI actions available on the current screen
-          client_action_scope_id?: string;
-          regenerate_assistant_message_id?: unknown;
-        };
+        // One shared definition with every first-party client (web, browser
+        // extension); tests/browser/chat-contract.test.ts holds the extension to it.
+        const body = (await c.req.json()) as ChatRequestBody;
 
         const sessionId = body.session_id;
         const rawRegenerationTarget = body.regenerate_assistant_message_id;
@@ -213,6 +197,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         let titlePromise: Promise<string> | null = null;
         let pendingTitleMessage: string | null = null;
         let unattendedExecution = false;
+        let sessionChannel: SessionChannel | undefined;
         let triggeringUserMessageId: string | undefined;
         let sourceMode: 'message' | 'regeneration' | 'continuation' = 'continuation';
         let expectedAssistantTail: { id: string; content: string } | undefined;
@@ -223,6 +208,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             if (!session) {
               return c.json({ error: 'Session not found' }, 404);
             }
+            sessionChannel = session.channel;
             // `status` is user-editable for normal lifecycle actions. Only a
             // trusted super-owned Eval self-call may select the isolated Eval
             // budget pool and retry-safe unattended tool policy; a team user
@@ -473,7 +459,14 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // Eval can retry only because its authenticated self-call is forced
           // through the same fail-closed read-only policy as every unattended
           // Runtime driver. A profile prompt can never opt mutation tools back in.
-          const executionTools = unattendedExecution ? filterUnattendedToolIds(effectiveTools) : effectiveTools;
+          // A browser-extension conversation reads untrusted pages, so it gets
+          // no inline writer at all; its panel's confirm-carded Client Action is
+          // the only write path (chat/browser-channel.ts).
+          const executionTools = unattendedExecution
+            ? filterUnattendedToolIds(effectiveTools)
+            : sessionChannel === BROWSER_SESSION_CHANNEL
+              ? filterBrowserSessionToolIds(effectiveTools)
+              : effectiveTools;
 
           const tools = selectTools(
             toolRegistry,
@@ -501,20 +494,10 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // `local-tool-request` event: the bridge emits the request and awaits the
           // result posted to /api/client-actions/tool-result before the agent resumes.
           let clientActionBridge: ClientActionBridge | null = null;
-          const ambientContext = sanitizeAmbientContext(body.ambient_context);
-          const clientActions = sanitizeClientActions(body.client_actions);
-          const clientActionScopeId =
-            typeof body.client_action_scope_id === 'string'
-              ? sanitizeForPrompt(body.client_action_scope_id).trim().slice(0, 256)
-              : undefined;
-          // A persisted session id is part of the result correlation key. Stateless
-          // turns therefore ignore advertised actions instead of prompting the model
-          // to call tools that were never registered.
-          // When ambient context is present its scope and the actions must describe
-          // the same page snapshot; a mismatched browser payload fails closed.
-          const scopeMatchesAmbient = !ambientContext || ambientContext.scope_id === clientActionScopeId;
-          const usesClientActions =
-            Boolean(sessionId) && Boolean(clientActionScopeId) && scopeMatchesAmbient && clientActions.length > 0;
+          const { ambientContext, clientActions, clientActionScopeId, usesClientActions } = admitTurnEnvironment(
+            body,
+            sessionId,
+          );
           if (usesClientActions && sessionId) {
             clientActionBridge = createClientActionBridge(userId, sessionId, clientActionScopeId);
             Object.assign(tools, createClientActionTools(clientActions, clientActionBridge));
