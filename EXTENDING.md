@@ -238,7 +238,7 @@ belongs to Greenhouse itself.
 
 | Add a… | Where | Mechanism |
 |---|---|---|
-| **Agent tool** (auto-exposed on chat, `/api/agent`, `/api/mcp`) | `apps/api/src/tools/<name>.ts` + one line in `tools/registry.ts` | `defineTool({ meta, kind, requires?, create })`; `meta.surface` decides proxy / MCP exposure and the workbench binding; `meta.is_global` decides default availability |
+| **Agent tool** (chat, plus `/api/agent` / `/api/mcp` as its `surface` allows) | `apps/api/src/tools/<name>.ts` + one line in `CORE_TOOL_MODULES` (`tools/registry.ts`); a lazy tool also gets a construction case in `buildLazyServerTools` (`agent-runtime/tool-resolution.ts`) | `defineTool({ meta, kind, create? })`: static tools get `create(db)`, lazy ones are built per request from the caller's `userId`; `meta.surface` decides proxy / MCP exposure and the workbench binding; `meta.is_global` decides default availability |
 | **Platform application** (module with entities, permissions, navigation) | `apps/api/src/platform/manifests/<app>.ts` + `apps/api/src/platform/<app>/application.ts`, registered in `index.ts` (`initializePlatformRuntime`) and `platform/bootstrap.ts` | Manifest v2 (JSON-serializable) + registration handlers; scaffold with `pnpm cli platform create-app <id>`; bump `manifest.version` whenever the serialized manifest changes |
 | **Feature flag** (per-user opt-in / opt-out) | `packages/types/src/features.ts` | `FEATURE_FLAGS` entry; guard routes with `requireFeature('<key>')`; the admin toggle appears automatically |
 | **Feature point** (what a flag / app owns) | `apps/api/src/platform/feature-points.ts` | Maps a flag or app to its tool ids and capability prefix so one switch controls app + REST + MCP + chat |
@@ -249,7 +249,7 @@ belongs to Greenhouse itself.
 | **Translations** | `apps/web/src/lib/i18n/{en,zh}.ts` | Keys must exist in both locales; `visible-copy.test.ts` rejects hardcoded English in TSX |
 | **Workspace setting** (admin-editable runtime config) | `packages/types/src/workspace-settings.ts` | One `WORKSPACE_SETTINGS` entry (`key`, `group`, `type`, `secret?`, `env?`) — the Runtime Config page renders from it, no migration |
 | **Model** | `apps/api/src/config/models.yaml` | Catalog entry with a provider chain; `api_key_env` / `model_env` / `base_url_env` name the env vars; unset keys hide the model |
-| **Agent profile** | `apps/api/src/profiles/*.yaml` (or a `packs.profiles` directory) | Validated by `@greenhouse/types/profile-manifest`; keep prompts free of tool-specific rules (those belong in tool descriptions) |
+| **Agent profile** | `apps/api/src/profiles/*.yaml` (or a `packs.profiles` directory) | Validated on load by `validateProfile()` in `apps/api/src/profiles/profile.ts`; keep prompts free of tool-specific rules (those belong in tool descriptions) |
 | **Skill pack** (first-party skill) | `skillhub/<group>/<name>/SKILL.md` (+ `CHANGELOG.md`, assets), or a `packs.skills` root | Synced into the Skill Center on boot; see `skillhub/README.md` |
 | **Automation-eligible write tool** | `packages/types/src/automation-tools.ts` | Opt-in catalog of tools an owner may grant to an unattended run |
 | **Upload storage backend** | `apps/api/src/storage/uploads.ts` | Local disk by default; Tencent COS when `TENCENT_CLOUD_COS_*` are set; Skill Center bundles use `SKILLS_S3_*` |
@@ -261,10 +261,11 @@ belongs to Greenhouse itself.
 1. **Registries, not forks of shared files.** If a change needs an edit to `registry.ts`,
    `index.ts`, `provider.ts` beyond the one-line registration, add the missing seam to the
    registry instead of special-casing your module.
-2. **Permissions are declared, not hand-rolled.** Tools declare `requires` and `surface`;
-   applications declare capabilities and entity/field policies in the manifest. Transport
-   layers (HTTP, chat, proxy, MCP) adapt protocol only — they never make a second permission
-   decision. Extensions inherit this: a guard on a route, a flag on a tool, never both halves
+2. **Permissions are declared, not hand-rolled.** Tools declare `surface` and `is_global`, and
+   feature points map each flag or application to the tools it owns; applications declare
+   capabilities and entity/field policies in the manifest. Transport layers (HTTP, chat,
+   proxy, MCP) adapt protocol only — they never make a second permission decision.
+   Extensions inherit this: a guard on a route, a flag on a tool, never both halves
    re-deciding.
 3. **Declared capabilities must be real.** A tool description, UI option or doc must not claim
    something the code cannot do; unconfigured paths fail explicitly.

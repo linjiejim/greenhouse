@@ -1,13 +1,12 @@
 /**
- * Agent Profile manifest — the SINGLE source of truth for profile shape.
+ * Agent Profile manifest schemas (zod) and the Sprouty avatar option vocabulary.
  *
- * One zod schema drives every representation of a profile:
- * - system profiles authored in TS via `defineProfile()` → `systemProfileSchema`
- * - user-created custom profiles (API input + DB jsonb payload) → `profileManifestSchema`
- *   / `profileDataSchema`
- *
- * Adding a configurable field = add it here (+ wire its runtime effect). No
- * hand-written validators to keep in sync, no parallel type definitions.
+ * Not the runtime validator: system profiles are YAML files in
+ * `apps/api/src/profiles/` (plus any `packs.profiles` directory) checked on load
+ * by the hand-written `validateProfile()` in `apps/api/src/profiles/profile.ts`,
+ * and custom Agents are checked by `apps/api/src/routes/profiles.ts`. Today the
+ * only part anything imports is the Sprouty option-ID types (re-exported by the
+ * package index), which `packages/ui` pins its avatar metadata against.
  *
  * NOTE on bundling: this module imports zod (a runtime value). It is exported
  * via the dedicated `@greenhouse/types/profile-manifest` subpath and ONLY
@@ -195,8 +194,8 @@ export type ProfileData = z.infer<typeof profileDataSchema>;
 
 // ─── System / first-party profile (superset) ─────────────
 //
-// Authored in TS via defineProfile(). Adds the privileged fields that user
-// manifests may never set: access tier, raw model config, hidden flag.
+// The privileged fields a system profile carries and a user manifest may never
+// set: access tier, raw model config, hidden flag.
 
 export const systemProfileSchema = z.object({
   ...sharedProfileFields,
