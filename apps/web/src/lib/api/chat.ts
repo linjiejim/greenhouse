@@ -4,7 +4,7 @@
  * Deliberately NOT on the hc client (see ./client.ts conventions):
  * - streamChat consumes NDJSON event streams via a
  *   hand-rolled reader — hc is for JSON request/response only.
- * - postClientActionResult talks to `/api/client-actions/tool-result`, which is
+ * - postClientActionResult talks to CLIENT_ACTION_RESULT_PATH, which is
  *   mounted dynamically and therefore absent from
  *   @greenhouse/contract AppType.
  * All functions stay on raw authFetch.
@@ -12,9 +12,11 @@
 
 import { authFetch } from '../auth';
 import { readNdjsonStream } from '../stream-utils';
-import { requireChatStreamFinish } from '@greenhouse/types/api';
+import { CLIENT_ACTION_RESULT_PATH, requireChatStreamFinish } from '@greenhouse/types/api';
 import type { StreamingEvent } from '../stream-events';
 import type {
+  ChatRequestBody,
+  ChatRequestMessage,
   ChatRunInfo,
   ChatTurnEnvironment,
   ClientActionDescriptor,
@@ -36,11 +38,11 @@ export async function* streamChat(
   environment?: ChatTurnEnvironment,
   regenerateAssistantMessageId?: string,
 ): AsyncGenerator<StreamEvent> {
-  const body: Record<string, unknown> = {
+  const body: ChatRequestBody = {
     session_id: sessionId,
   };
   if (message !== undefined) {
-    const messagePayload: { role: string; content: string; images?: Array<{ id: string; url: string }> } = {
+    const messagePayload: ChatRequestMessage = {
       role: 'user',
       content: message,
     };
@@ -148,7 +150,7 @@ export async function postClientActionResult(
   sessionId: string,
   result: { toolCallId: string; output: unknown; error?: string },
 ): Promise<void> {
-  await authFetch(`${BASE}/api/client-actions/tool-result`, {
+  await authFetch(`${BASE}${CLIENT_ACTION_RESULT_PATH}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: sessionId, ...result }),

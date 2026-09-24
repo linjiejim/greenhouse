@@ -5,13 +5,15 @@
  * as untrusted reference data, never as user intent or an authorization input.
  */
 
-import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
+import { AMBIENT_CONTEXT_LIMITS, type AmbientContextEnvelope } from '@greenhouse/types/agent-context';
 import { sanitizeForPrompt } from '../security/security.js';
 
-const MAX_SCOPE_LENGTH = 256;
-const MAX_LABEL_LENGTH = 200;
-const MAX_ROUTE_LENGTH = 500;
-const MAX_HINT_LENGTH = 4_000;
+// Shared with the clients that build the envelope (web context providers, the
+// browser extension), so they can size page content instead of being cut here.
+const MAX_SCOPE_LENGTH = AMBIENT_CONTEXT_LIMITS.scopeId;
+const MAX_LABEL_LENGTH = AMBIENT_CONTEXT_LIMITS.label;
+const MAX_ROUTE_LENGTH = AMBIENT_CONTEXT_LIMITS.route;
+const MAX_HINT_LENGTH = AMBIENT_CONTEXT_LIMITS.hint;
 
 function boundedString(value: unknown, maxLength: number): string | undefined {
   if (typeof value !== 'string') return undefined;

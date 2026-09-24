@@ -3,38 +3,31 @@
  *
  * The extension always runs in session mode: the server stores history and
  * replays it, so each turn only carries the NEW user message plus an optional
- * `context_hint` (page URL/title/selection) that is injected per-request into
- * the prompt without polluting the stored conversation.
+ * `ambient_context` (the page's title, URL and selection) that the server adds
+ * to that turn's prompt without storing it in the conversation. The panel's
+ * browser actions and knowledge write-back ride along as Client Actions; the
+ * server runs them back here through `local-tool-request` events (executed in
+ * lib/browser-tools.ts / lib/knowledge-tools.ts). Body shape: lib/chat-request.ts.
  */
 
 import { readNdjsonStream } from '@greenhouse/ui/lib/stream-utils';
 import type { StreamingEvent } from '@greenhouse/ui/lib/stream-events';
+import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
+import { CLIENT_ACTION_RESULT_PATH } from '@greenhouse/types/api';
 import { authFetch } from './auth';
-import { BROWSER_ACTION_DESCRIPTORS } from './browser-actions';
-import { KNOWLEDGE_ACTION_DESCRIPTOR } from './knowledge-actions';
+import { buildChatRequestBody } from './chat-request';
 
 export async function* streamChat(opts: {
   sessionId: string;
   message: string;
-  contextHint?: string;
+  scopeId: string;
+  ambientContext?: AmbientContextEnvelope;
   signal?: AbortSignal;
 }): AsyncGenerator<StreamingEvent> {
   const res = await authFetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      session_id: opts.sessionId,
-      messages: [{ role: 'user', content: opts.message }],
-      ...(opts.contextHint ? { context_hint: opts.contextHint } : {}),
-      // Advertise the browser automation actions + the knowledge write-back
-      // action every turn; the backend turns them into tools whose execution
-      // round-trips back to this panel via `local-tool-request` events
-      // (executed in lib/browser-tools.ts / lib/knowledge-tools.ts).
-      client_actions: [...BROWSER_ACTION_DESCRIPTORS, KNOWLEDGE_ACTION_DESCRIPTOR],
-      // The panel owns the only (confirm-gated) write path, so the inline
-      // mutating tools must not be offered in the stream.
-      omit_write_tools: true,
-    }),
+    body: JSON.stringify(buildChatRequestBody(opts)),
     signal: opts.signal,
   });
   if (!res.ok || !res.body) {
@@ -52,7 +45,7 @@ export async function postToolResult(
   sessionId: string,
   result: { toolCallId: string; output: unknown; error?: string },
 ): Promise<void> {
-  await authFetch('/api/client-tools/result', {
+  await authFetch(CLIENT_ACTION_RESULT_PATH, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: sessionId, ...result }),

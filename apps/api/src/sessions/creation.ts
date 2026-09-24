@@ -1,7 +1,7 @@
 /** Shared authorization path for user-owned conversation creation. */
 
 import { getDb } from '@greenhouse/db';
-import type { SessionRow } from '@greenhouse/types/session';
+import type { SessionChannel, SessionRow } from '@greenhouse/types/session';
 
 import type { AuthUser } from '../auth/token.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
@@ -28,7 +28,7 @@ export class SessionCreationError extends Error {
  */
 export async function createOwnedSession(
   actor: SessionActor,
-  input: { title?: string; profileId?: string },
+  input: { title?: string; profileId?: string; channel?: SessionChannel },
 ): Promise<SessionRow> {
   let profileId: string;
   try {
@@ -49,5 +49,5 @@ export async function createOwnedSession(
     throw new SessionCreationError(`Profile "${profileId}" cannot be used for cloud sessions`, 403);
   }
 
-  return getDb().sessions.create(input.title, profileId, actor.id);
+  return getDb().sessions.create(input.title, profileId, actor.id, undefined, input.channel);
 }

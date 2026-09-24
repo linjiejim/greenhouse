@@ -23,7 +23,8 @@ import { replaceSection } from '../knowledge/sections.js';
 import { runKnowledgeAgentAction } from '../platform/knowledge/agent-adapter.js';
 import type { KnowledgeActionId } from '../platform/knowledge/adapter.js';
 
-const knowledgeMutationSchema = z.object({
+/** Exported for the browser-extension contract test: the panel's knowledge saves must parse under it. */
+export const knowledgeMutationSchema = z.object({
   action: z
     .enum([
       'knowledge.create_doc',

@@ -25,12 +25,12 @@ import type { AutomationMode } from '../lib/automation-prefs';
 import { hostOf } from '../lib/automation-prefs';
 import { setThemeMode } from '@greenhouse/ui/lib/theme';
 import { useT } from '@greenhouse/ui/lib/i18n';
-import { useChat } from './use-chat';
+import { useChat, type PageSnapshot } from './use-chat';
 import { Messages } from './messages';
 import { SelectionCard } from './selection-card';
 import { StationMenu } from './station-menu';
 import { useAuth } from '../lib/use-auth';
-import { readPageContext, readFullPageText, buildContextHint, type PageContext } from '../lib/page-context';
+import { readPageContext, readFullPageText, type PageContext } from '../lib/page-context';
 import { listSessions, fetchProfiles, type BrowserSession, type ProfileOption } from '../lib/sessions';
 
 const PROFILE_KEY = 'preferred-profile';
@@ -90,13 +90,13 @@ export function ChatView() {
       // Re-read right before send so the freshest selection wins.
       const ctx = await readPageContext();
       setPageCtx(ctx);
-      let hint: string | undefined;
+      let page: PageSnapshot | undefined;
       if (ctxEnabled) {
-        let fullText: string | null = null;
-        if (opts.fullPage && ctx.tabId !== null) fullText = await readFullPageText(ctx.tabId);
-        hint = buildContextHint(ctx, fullText);
+        let fullPageText: string | null = null;
+        if (opts.fullPage && ctx.tabId !== null) fullPageText = await readFullPageText(ctx.tabId);
+        page = { ctx, fullPageText };
       }
-      void send(text, hint);
+      void send(text, page);
     },
     [ctxEnabled, send],
   );

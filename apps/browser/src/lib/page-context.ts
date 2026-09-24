@@ -9,8 +9,11 @@
  * available and surface a "grant access" affordance.
  */
 
-const SELECTION_LIMIT = 4_000;
-const PAGE_TEXT_LIMIT = 8_000;
+import { AMBIENT_CONTEXT_LIMITS, type AmbientContextEnvelope } from '@greenhouse/types/agent-context';
+
+// Nothing past the API's hint cap reaches the model, so don't read more than it.
+const SELECTION_LIMIT = AMBIENT_CONTEXT_LIMITS.hint;
+const PAGE_TEXT_LIMIT = AMBIENT_CONTEXT_LIMITS.hint;
 
 export interface PageContext {
   tabId: number | null;
@@ -83,16 +86,48 @@ export async function readFullPageText(tabId: number): Promise<string | null> {
   }
 }
 
-/** Render the per-turn context_hint block sent alongside the user message. */
-export function buildContextHint(ctx: PageContext, fullPageText?: string | null): string | undefined {
-  if (!ctx.url && !ctx.selection && !fullPageText) return undefined;
-  const lines: string[] = ['The user is currently browsing this web page:'];
-  if (ctx.url) lines.push(`URL: ${ctx.url}`);
-  if (ctx.title) lines.push(`Title: ${ctx.title}`);
-  if (ctx.selection) {
-    lines.push('Text the user selected on the page:', '"""', ctx.selection, '"""');
-  } else if (fullPageText) {
-    lines.push('Page content (extracted):', '"""', fullPageText, '"""');
+function clip(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max) : text;
+}
+
+function hostOf(url: string): string | undefined {
+  try {
+    return new URL(url).host || undefined;
+  } catch {
+    return undefined;
   }
-  return lines.join('\n');
+}
+
+/** A quoted block that fits the hint cap: the quoted text is cut, never the frame around it. */
+function quotedHint(lead: string, body: string): string {
+  const frame = `${lead}\n"""\n`;
+  const close = '\n"""';
+  return frame + clip(body, AMBIENT_CONTEXT_LIMITS.hint - frame.length - close.length) + close;
+}
+
+/**
+ * The per-turn `ambient_context` for the page the user is on: title as the
+ * label, URL as the route, and their selection (or, for "summarize page", the
+ * extracted text) as the hint. Sized to the API's caps so nothing is cut
+ * server-side. Sent with the turn only; never stored in the conversation.
+ */
+export function buildPageAmbientContext(
+  ctx: PageContext,
+  scopeId: string,
+  fullPageText?: string | null,
+): AmbientContextEnvelope | undefined {
+  if (!ctx.url) return undefined;
+  const hint = ctx.selection
+    ? quotedHint('Text the user selected on this page:', ctx.selection)
+    : fullPageText
+      ? quotedHint('Text extracted from this page:', fullPageText)
+      : 'The user has this page open in their browser; nothing on it is selected.';
+  return {
+    version: 1,
+    scope_id: scopeId,
+    source: 'current-page',
+    label: clip(ctx.title?.trim() || hostOf(ctx.url) || ctx.url, AMBIENT_CONTEXT_LIMITS.label),
+    route: clip(ctx.url, AMBIENT_CONTEXT_LIMITS.route),
+    hint,
+  };
 }
