@@ -4,7 +4,7 @@
  * The chat stream delivers a `local-tool-request` for one of the actions
  * declared in browser-actions.ts; executeBrowserAction() performs it with
  * chrome.tabs / chrome.scripting and the caller posts the result back to
- * /api/client-tools/result, resuming the paused agent step.
+ * CLIENT_ACTION_RESULT_PATH (lib/chat.ts), resuming the paused agent step.
  *
  * Design notes:
  * - No resident content script: element indexing and interactions are one-shot
