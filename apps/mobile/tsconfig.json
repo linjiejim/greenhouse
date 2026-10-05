@@ -3,5 +3,9 @@
   "compilerOptions": {
     "strict": true
   },
-  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
+  // *.test.ts run in the ROOT vitest (they import workspace sources such as @greenhouse/types to
+  // check vendored copies for drift), which an isolated mobile install cannot resolve. The rest
+  // repeats expo/tsconfig.base's excludes, which an own "exclude" replaces.
+  "exclude": ["node_modules", "babel.config.js", "metro.config.js", "jest.config.js", "android", "ios", "**/*.test.ts"]
 }

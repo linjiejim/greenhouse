@@ -126,12 +126,16 @@ export function BotsSidebarPanel({ onNavigate }: { onNavigate?: () => void }) {
               onClick={() => void openDm(bot)}
               disabled={opening === bot.id}
               title={t('bots.sidebar.openDm', { name: bot.name })}
-              className="relative flex w-14 flex-shrink-0 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition-colors hover:bg-surface-muted"
+              className="group relative flex w-14 flex-shrink-0 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition-colors hover:bg-surface-muted"
             >
               <BotAvatar bot={bot} size="sm" />
               <span className="w-full truncate text-center text-[10px] text-fg-muted">{bot.name}</span>
               {attention === 'needs_you' && (
-                <StatusDot color="warning" size="md" className="absolute right-2 top-1.5 ring-2 ring-surface-chrome" />
+                <StatusDot
+                  color="warning"
+                  size="md"
+                  className="absolute right-2 top-1.5 ring-2 ring-surface-chrome group-hover:ring-surface-muted"
+                />
               )}
             </button>
           );
@@ -229,19 +233,29 @@ function ConversationRow({
       type="button"
       onClick={onOpen}
       aria-current={active ? 'page' : undefined}
-      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${
+      className={`group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${
         active ? 'sidebar-active-item' : 'hover:bg-surface-muted'
       } ${readOnly && !active ? 'opacity-70' : ''}`}
       data-testid="bots-conversation-row"
       data-session-id={conversation.session_id}
     >
-      {conversation.kind === 'direct' ? (
-        <BotAvatar bot={owner} size="sm" />
-      ) : (
-        <span className="flex w-8 flex-shrink-0 justify-center">
-          <BotAvatarStack bots={members} max={2} size="xs" />
-        </span>
-      )}
+      {/* One leading slot for both kinds, sized to two overlapping 24px chips (24 + 24 − 6px) so titles
+          align: a group shows its first two Bots and no +N chip (the header carries the roster). */}
+      <span className="flex w-[42px] flex-shrink-0 justify-center">
+        {conversation.kind === 'direct' ? (
+          // Static; a DM nobody can answer any more (its Bot was archived) sleeps.
+          <BotAvatar bot={owner} size="sm" state={readOnly ? 'sleep' : 'idle'} animate={false} />
+        ) : (
+          <BotAvatarStack
+            bots={members.slice(0, 2)}
+            max={2}
+            size="xs"
+            // The chip ring must match the row it sits on in every state, or it shows as a halo:
+            // the chrome at rest, the hover fill under the pointer, the (opaque) active fill.
+            ringClassName={active ? 'ring-sidebar-active' : 'ring-surface-chrome group-hover:ring-surface-muted'}
+          />
+        )}
+      </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span

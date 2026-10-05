@@ -52,14 +52,19 @@ export function BotFields({
   nameError,
   models,
   compact = false,
+  avatarTemplateKey,
+  avatarStableId,
 }: {
   value: BotDraft;
   onChange: (next: BotDraft) => void;
   nameError?: string;
   /** Offer a model choice (the Chat catalog); omitted → the field is hidden. */
   models?: ChatModel[];
-  /** Tighter instructions box for the in-chat card. */
+  /** The in-chat card: tighter instructions box and a static avatar preview. */
   compact?: boolean;
+  /** The Bot's template and id, so a legacy avatar resolves to the plant it shows everywhere else. */
+  avatarTemplateKey?: string | null;
+  avatarStableId?: string;
 }) {
   const t = useT();
   const set = <K extends keyof BotDraft>(key: K, next: BotDraft[K]) => onChange({ ...value, [key]: next });
@@ -116,7 +121,14 @@ export function BotFields({
         </FormField>
       )}
       <FormGroup label={t('bots.form.avatar')}>
-        <AvatarPicker value={value.avatar} onChange={(avatar) => set('avatar', avatar)} />
+        <AvatarPicker
+          value={value.avatar}
+          onChange={(avatar) => set('avatar', avatar)}
+          templateKey={avatarTemplateKey}
+          stableId={avatarStableId}
+          // The compact form is the in-chat card: in a transcript only the speaking Bot moves.
+          animate={compact ? false : undefined}
+        />
       </FormGroup>
     </div>
   );

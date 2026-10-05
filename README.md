@@ -129,7 +129,9 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Workspace branding & runtime config** — rebrand from the web (name, logo, theme tokens) and
   manage runtime credentials (LLM / media / search) in Administration; values live in the
   database with env-var fallback and apply without a restart, from the login screen on.
-- **Sprouty** — the mascot is a parametric SVG; members design their own agent look.
+- **Plant avatars** — every agent and Bot is a real plant with two ink eyes (15 species, light
+  and dark). Its pose and eyes show what it is doing, only the one that is speaking moves, and
+  members pick their own plant and mood.
 
 Roles: **super > team**, plus per-user feature flags and platform policies that gate optional
 modules. Auth is fail-closed — the server refuses to start without `TOKEN_SIGNING_KEY`, and
@@ -162,7 +164,7 @@ greenhouse/
 │   ├── db/                   # Database layer — Drizzle schema + domain services
 │   ├── knowledge-editor/     # Tiptap schema + server-side Markdown ↔ Tiptap JSON
 │   ├── crud/                 # Low-code CRUD framework (one schema → list / form / detail)
-│   ├── ui/                   # Shared React UI kit (atoms, markdown, tool-call cards, tokens)
+│   ├── ui/                   # Shared React UI kit (atoms, markdown, tool-call cards, plant avatars, tokens)
 │   └── contract/             # Typed API contract — re-exports the API's AppType + hc
 ├── skillhub/                 # First-party skill packs (synced into the Skill Center on boot)
 ├── drizzle/                  # Migration files (the single source of truth for the schema)

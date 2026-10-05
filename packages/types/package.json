@@ -96,6 +96,10 @@
       "import": "./src/profile-manifest.ts",
       "types": "./src/profile-manifest.ts"
     },
+    "./plant-avatar": {
+      "import": "./src/plant-avatar.ts",
+      "types": "./src/plant-avatar.ts"
+    },
     "./workspace-settings": {
       "import": "./src/workspace-settings.ts",
       "types": "./src/workspace-settings.ts"

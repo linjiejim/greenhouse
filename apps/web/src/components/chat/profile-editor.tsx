@@ -6,17 +6,30 @@
  * - Tools grouped by category (Core / Team / Admin)
  * - Auto-generated slug display (read-only)
  * - System prompt character counter (xxx / 8000)
+ * - Appearance: plant + resting mood (shared PlantPicker) with a 120px preview
+ *   that morphs through the seven states; save merges `plant` + legacy colour +
+ *   `faceStyle` into the stored avatar and keeps every other key.
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Button, Checkbox, ConfirmDialog, Dialog, Input, Select, Spinner, Tag, Textarea } from '../ui';
 import { X, ChevronDown, ChevronUp, Maximize2 } from '../../lib/icons';
 import { getToolIcon, getToolBrief } from '../../lib/icons';
-import { SproutyAvatar, COLOR_PRESETS, ACCESSORIES, EYE_STYLES, LEAF_STYLES } from '../sprouty/index.js';
+import {
+  PLANT_STATES,
+  legacyToMood,
+  withMood,
+  withPlant,
+  type PlantId,
+  type PlantMood,
+  type PlantState,
+} from '@greenhouse/types';
+import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
 import type { Profile, ToolMeta, CustomProfileInput } from '../../lib/api';
-import type { EyeStyle, LeafStyle } from '../sprouty/index.js';
 import { useT, type TranslationKey } from '../../lib/i18n';
+import { freshPlant, profilePlant } from '../../lib/plant-avatar';
 import { FormActions, FormError, FormField, FormGrid } from '../form';
+import { PlantPicker } from '../plant-picker';
 import { useProfileStore } from '../../stores';
 
 const MAX_PROMPT_CHARS = 8000;
@@ -49,10 +62,8 @@ interface ProfileFormData {
   audience: string;
   risk_level: 'low' | 'medium' | 'high';
   change_log: string;
-  avatar_color: string;
-  avatar_accessories: string[];
-  avatar_leafStyle: LeafStyle;
-  avatar_eyeStyle: EyeStyle;
+  avatar_plant: PlantId;
+  avatar_mood: PlantMood;
 }
 
 interface ProfileEditorDrawerProps {
@@ -64,7 +75,8 @@ interface ProfileEditorDrawerProps {
   onSave: (input: CustomProfileInput, editId?: number) => Promise<void>;
 }
 
-function createEmptyForm(): ProfileFormData {
+/** A new Agent wears a plant none of the member's custom Agents has yet. */
+function createEmptyForm(plant: PlantId = freshPlant([])): ProfileFormData {
   return {
     name: '',
     description: '',
@@ -77,10 +89,8 @@ function createEmptyForm(): ProfileFormData {
     audience: '',
     risk_level: 'medium',
     change_log: '',
-    avatar_color: 'forest',
-    avatar_accessories: [],
-    avatar_leafStyle: 'normal',
-    avatar_eyeStyle: 'classic',
+    avatar_plant: plant,
+    avatar_mood: 'calm',
   };
 }
 
@@ -97,10 +107,9 @@ function createProfileForm(profile: Profile): ProfileFormData {
     audience: profile.audience || '',
     risk_level: profile.risk_level || 'medium',
     change_log: '',
-    avatar_color: profile.avatar?.color || 'forest',
-    avatar_accessories: profile.avatar?.accessories || [],
-    avatar_leafStyle: profile.avatar?.leafStyle || 'normal',
-    avatar_eyeStyle: profile.avatar?.eyeStyle || 'classic',
+    // What the Agent renders as today (a legacy avatar resolves by its `custom:<id>`).
+    avatar_plant: profilePlant(profile),
+    avatar_mood: legacyToMood(profile.avatar),
   };
 }
 
@@ -134,7 +143,7 @@ export function ProfileEditorDrawer({
   const [toolSearch, setToolSearch] = useState('');
   const [selectedToolsOnly, setSelectedToolsOnly] = useState(false);
   const [showAppearance, setShowAppearance] = useState(false);
-  const [previewState, setPreviewState] = useState<'idle' | 'thinking' | 'responding' | 'done' | 'error'>('idle');
+  const [previewState, setPreviewState] = useState<PlantState>('idle');
   const [promptFullscreen, setPromptFullscreen] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [touched, setTouched] = useState({ name: false, systemPrompt: false });
@@ -142,15 +151,21 @@ export function ProfileEditorDrawer({
   // Reset form when profile changes
   useEffect(() => {
     if (open) {
+      // Read the list once (not a dependency): the fetch on open must not reset a form mid-edit.
+      const customPlants = useProfileStore
+        .getState()
+        .profiles.filter((p) => p.is_custom)
+        .map(profilePlant);
       const nextForm = profile
         ? createProfileForm(profile)
-        : { ...createEmptyForm(), change_log: t('profileEditor.initialVersion') };
+        : { ...createEmptyForm(freshPlant(customPlants)), change_log: t('profileEditor.initialVersion') };
       setForm(nextForm);
       setInitialForm(nextForm);
       setError('');
       setToolSearch('');
       setSelectedToolsOnly(false);
       setShowAppearance(false);
+      setPreviewState('idle');
       setPromptFullscreen(false);
       setDiscardConfirmOpen(false);
       setTouched({ name: false, systemPrompt: false });
@@ -191,12 +206,13 @@ export function ProfileEditorDrawer({
   const nameMissing = !form.name.trim();
   const promptMissing = !form.system_prompt.trim();
   const canSave = !nameMissing && !promptMissing && promptLength <= MAX_PROMPT_CHARS;
+  const plantName = t(`plantAvatar.name.${form.avatar_plant}`);
   const appearanceSummary = t('profileEditor.appearanceSummary', {
-    color: t(`profileEditor.colorName.${form.avatar_color}` as TranslationKey),
-    leaf: t(`profileEditor.leafName.${form.avatar_leafStyle}` as TranslationKey),
-    eyes: t(`profileEditor.eyeName.${form.avatar_eyeStyle}` as TranslationKey),
-    count: form.avatar_accessories.length,
+    plant: plantName,
+    mood: t(`plantAvatar.mood.${form.avatar_mood}`),
   });
+  // The preview resolves from the avatar the save will write, so it shows exactly what gets stored.
+  const previewAvatar = withMood(withPlant(profile?.avatar ?? {}, form.avatar_plant), form.avatar_mood);
 
   const requestClose = () => {
     if (dirty) {
@@ -251,12 +267,8 @@ export function ProfileEditorDrawer({
         audience: form.audience.trim() || undefined,
         risk_level: form.risk_level,
         change_log: form.change_log.trim() || undefined,
-        avatar: {
-          color: form.avatar_color,
-          accessories: form.avatar_accessories,
-          leafStyle: form.avatar_leafStyle,
-          eyeStyle: form.avatar_eyeStyle,
-        },
+        // Merge, never replace: legacy keys (accessories, palette, eyeStyle…) stay stored for rollback.
+        avatar: previewAvatar,
       };
 
       const editId = profile ? parseInt(profile.id.replace('custom:', ''), 10) : undefined;
@@ -333,19 +345,18 @@ export function ProfileEditorDrawer({
                   aria-expanded={showAppearance}
                   className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-muted"
                 >
-                  <SproutyAvatar
-                    variant="custom"
-                    color={form.avatar_color}
-                    accessories={form.avatar_accessories}
-                    leafStyle={form.avatar_leafStyle}
-                    eyeStyle={form.avatar_eyeStyle}
-                    state="idle"
+                  <PlantAvatar
+                    plant={form.avatar_plant}
+                    avatar={previewAvatar}
+                    stableId={profile?.id}
                     size="sm"
                     animate={false}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block text-xs font-medium text-fg-secondary">{t('profileEditor.appearance')}</span>
-                    <span className="block truncate text-[10px] text-fg-faint">{appearanceSummary}</span>
+                    <span className="block truncate text-[10px] text-fg-faint" data-testid="profile-appearance-summary">
+                      {appearanceSummary}
+                    </span>
                   </span>
                   {showAppearance ? (
                     <ChevronUp size={14} className="text-fg-faint" />
@@ -355,23 +366,28 @@ export function ProfileEditorDrawer({
                 </button>
 
                 {showAppearance && (
-                  <div className="grid gap-4 border-t border-edge p-4 sm:grid-cols-[7rem_minmax(0,1fr)]">
+                  <div className="grid gap-4 border-t border-edge p-4 sm:grid-cols-[8rem_minmax(0,1fr)]">
                     <div className="flex flex-col items-center gap-2">
-                      <SproutyAvatar
-                        variant="custom"
-                        color={form.avatar_color}
-                        accessories={form.avatar_accessories}
-                        leafStyle={form.avatar_leafStyle}
-                        eyeStyle={form.avatar_eyeStyle}
+                      {/* Always animated so a state chip morphs it in place; idle stays capped (spec §6). */}
+                      <PlantAvatar
+                        plant={form.avatar_plant}
+                        avatar={previewAvatar}
+                        stableId={profile?.id}
                         state={previewState}
                         size="xl"
                         animate
+                        label={`${plantName} · ${t(`plantAvatar.state.${previewState}`)}`}
                       />
-                      <div className="flex max-w-[7rem] flex-wrap justify-center gap-0.5">
-                        {(['idle', 'thinking', 'responding', 'done', 'error'] as const).map((state) => (
+                      <div
+                        className="flex max-w-[8rem] flex-wrap justify-center gap-0.5"
+                        role="group"
+                        aria-label={t('profileEditor.previewStates')}
+                      >
+                        {PLANT_STATES.map((state) => (
                           <button
                             key={state}
                             type="button"
+                            aria-pressed={previewState === state}
                             onClick={() => setPreviewState(state)}
                             className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium transition-colors ${
                               previewState === state
@@ -379,163 +395,23 @@ export function ProfileEditorDrawer({
                                 : 'text-fg-faint hover:bg-surface-muted hover:text-fg-muted'
                             }`}
                           >
-                            {t(`profileEditor.previewState.${state}` as TranslationKey)}
+                            {t(`plantAvatar.state.${state}`)}
                           </button>
                         ))}
                       </div>
                     </div>
 
-                    <div className="min-w-0 space-y-3">
-                      <div>
-                        <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-fg-faint">
-                          {t('profileEditor.color')}
-                        </label>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {Object.entries(COLOR_PRESETS).map(([key, colors]) => (
-                            <button
-                              key={key}
-                              type="button"
-                              onClick={() => setForm({ ...form, avatar_color: key })}
-                              title={t(`profileEditor.colorName.${key}` as TranslationKey)}
-                              className={`h-6 w-6 rounded-full border-2 transition-all ${
-                                form.avatar_color === key
-                                  ? 'scale-110 border-fg-secondary ring-2 ring-primary-300/40'
-                                  : 'border-transparent hover:scale-105 hover:border-edge-strong'
-                              }`}
-                              style={{ backgroundColor: colors.body }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-fg-faint">
-                          {t('profileEditor.accessories')}
-                        </label>
-                        <div className="grid gap-2 sm:grid-cols-3">
-                          {(['hat', 'glasses', 'held'] as const).map((type) => {
-                            const items = ACCESSORIES.filter((accessory) => accessory.type === type);
-                            const typeLabel = t(`profileEditor.accessoryType.${type}` as TranslationKey);
-                            return (
-                              <div key={type}>
-                                <span className="mb-1 block text-[9px] text-fg-faint">{typeLabel}</span>
-                                <div className="flex flex-wrap items-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setForm({
-                                        ...form,
-                                        avatar_accessories: form.avatar_accessories.filter(
-                                          (accessory) => !items.some((item) => item.id === accessory),
-                                        ),
-                                      })
-                                    }
-                                    className={`flex h-7 w-7 items-center justify-center rounded-md text-[10px] transition-colors ${
-                                      !items.some((item) => form.avatar_accessories.includes(item.id))
-                                        ? 'bg-primary-subtle text-primary-fg-strong ring-1 ring-primary-edge'
-                                        : 'text-fg-faint hover:bg-surface-muted'
-                                    }`}
-                                    title={t('profileEditor.none')}
-                                  >
-                                    ✕
-                                  </button>
-                                  {items.map((accessory) => {
-                                    const selected = form.avatar_accessories.includes(accessory.id);
-                                    return (
-                                      <button
-                                        key={accessory.id}
-                                        type="button"
-                                        onClick={() => {
-                                          const others = form.avatar_accessories.filter(
-                                            (value) => !items.some((item) => item.id === value),
-                                          );
-                                          setForm({
-                                            ...form,
-                                            avatar_accessories: selected ? others : [...others, accessory.id],
-                                          });
-                                        }}
-                                        title={t(`profileEditor.accessoryName.${accessory.id}` as TranslationKey)}
-                                        className={`flex h-7 w-7 items-center justify-center rounded-md text-sm transition-colors ${
-                                          selected
-                                            ? 'bg-primary-subtle ring-1 ring-primary-edge'
-                                            : 'hover:bg-surface-muted'
-                                        }`}
-                                      >
-                                        {accessory.emoji}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-fg-faint">
-                          {t('profileEditor.leafStyle')}
-                        </label>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {LEAF_STYLES.map((style) => (
-                            <button
-                              key={style.id}
-                              type="button"
-                              onClick={() => setForm({ ...form, avatar_leafStyle: style.id })}
-                              title={t(`profileEditor.leafName.${style.id}` as TranslationKey)}
-                              className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
-                                form.avatar_leafStyle === style.id
-                                  ? 'bg-primary-subtle text-primary-fg-strong ring-1 ring-primary-edge'
-                                  : 'text-fg-faint hover:bg-surface-muted'
-                              }`}
-                            >
-                              <span>{style.emoji}</span>
-                              <span className="text-[10px]">
-                                {t(`profileEditor.leafName.${style.id}` as TranslationKey)}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-fg-faint">
-                          {t('profileEditor.eyeStyle')}
-                        </label>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {EYE_STYLES.map((style) => (
-                            <button
-                              key={style.id}
-                              type="button"
-                              onClick={() => setForm({ ...form, avatar_eyeStyle: style.id })}
-                              title={t(`profileEditor.eyeDescription.${style.id}` as TranslationKey)}
-                              className={`flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-left transition-colors ${
-                                form.avatar_eyeStyle === style.id
-                                  ? 'bg-primary-subtle text-primary-fg-strong ring-1 ring-primary-edge'
-                                  : 'text-fg-faint hover:bg-surface-muted'
-                              }`}
-                            >
-                              <SproutyAvatar
-                                variant="custom"
-                                color={form.avatar_color}
-                                leafStyle={form.avatar_leafStyle}
-                                eyeStyle={style.id}
-                                state="idle"
-                                size="sm"
-                                animate={false}
-                              />
-                              <span className="min-w-0">
-                                <span className="block truncate text-[10px] font-medium">
-                                  {t(`profileEditor.eyeName.${style.id}` as TranslationKey)}
-                                </span>
-                                <span className="block truncate text-[9px] text-fg-faint">
-                                  {t(`profileEditor.eyeDescription.${style.id}` as TranslationKey)}
-                                </span>
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                    <div className="min-w-0">
+                      <PlantPicker
+                        plant={form.avatar_plant}
+                        mood={form.avatar_mood}
+                        onPlantChange={(plant) => setForm({ ...form, avatar_plant: plant })}
+                        onMoodChange={(mood) => {
+                          setForm({ ...form, avatar_mood: mood });
+                          // A mood only shows on the resting face.
+                          setPreviewState('idle');
+                        }}
+                      />
                     </div>
                   </div>
                 )}

@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import type { PlantState } from '@greenhouse/types';
 import type { BotTaskView } from '@greenhouse/types/bots';
 import { IconButton, Tag, toast, type TagTone } from '../ui';
 import { ListTodo, X } from '../../lib/icons';
@@ -30,6 +31,21 @@ const STATUS_TONE: Record<BotTaskView['status'], TagTone> = {
   failed: 'danger',
   canceled: 'neutral',
   interrupted: 'warning',
+};
+
+/**
+ * The owning Bot's pose for a task row. Always static: the dock is a list, and in
+ * the Bots surface motion means "this Bot is talking" — a pose, not a loop, is
+ * what tells a failed task's Bot from a finished one at a glance.
+ */
+const TASK_POSE: Record<BotTaskView['status'], PlantState> = {
+  queued: 'idle',
+  running: 'idle',
+  waiting: 'waiting',
+  succeeded: 'done',
+  failed: 'error',
+  canceled: 'sleep',
+  interrupted: 'error',
 };
 
 function elapsed(task: BotTaskView, now: number): string {
@@ -138,7 +154,12 @@ export function BotTaskDock({
             const isActive = ACTIVE.has(task.status);
             return (
               <li key={task.run_id} className="flex items-center gap-2 py-2">
-                {bot ? <BotAvatar bot={bot} size="xs" /> : <ListTodo size={14} className="text-fg-muted" />}
+                {bot ? (
+                  // Named: the row prints the task, not whose it is.
+                  <BotAvatar bot={bot} size="xs" state={TASK_POSE[task.status]} animate={false} label={bot.name} />
+                ) : (
+                  <ListTodo size={14} className="text-fg-muted" />
+                )}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-medium text-fg" title={task.title}>
                     {task.title}

@@ -292,6 +292,9 @@ importers:
       '@greenhouse/types':
         specifier: workspace:*
         version: link:../../packages/types
+      '@greenhouse/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@greenhouse/utils':
         specifier: workspace:*
         version: link:../../packages/utils

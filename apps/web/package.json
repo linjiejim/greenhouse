@@ -24,6 +24,7 @@
     "@greenhouse/crud": "workspace:*",
     "@greenhouse/knowledge-editor": "workspace:*",
     "@greenhouse/types": "workspace:*",
+    "@greenhouse/ui": "workspace:*",
     "@greenhouse/utils": "workspace:*",
     "@novnc/novnc": "^1.6.0",
     "@tauri-apps/api": "^2.11.1",

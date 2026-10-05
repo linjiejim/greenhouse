@@ -71,7 +71,7 @@ const JSONB_COLUMNS = new Set<string>();
 
 type Row = Record<string, unknown>;
 
-function readJsonl(file: string): Row[] {
+export function readJsonl(file: string): Row[] {
   const raw = readFileSync(file, 'utf8');
   return raw
     .split('\n')

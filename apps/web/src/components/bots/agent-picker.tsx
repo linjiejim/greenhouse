@@ -4,8 +4,7 @@
  */
 
 import type { Profile } from '@greenhouse/types/api';
-import { SproutyAvatar } from '../sprouty';
-import { profileToSprouty } from '../chat/profile-selector';
+import { AgentAvatar } from '../chat/agent-avatar';
 import { useT } from '../../lib/i18n';
 
 /** Agents a member can start a Bot from: custom ones (system presets are not personas). */
@@ -26,7 +25,7 @@ export function AgentPicker({ agents, onPick }: { agents: Profile[]; onPick: (ag
               onClick={() => onPick(agent)}
               className="flex w-full items-center gap-3 rounded-lg border border-transparent px-2 py-2 text-left transition-colors hover:border-primary-edge hover:bg-primary-subtle"
             >
-              <SproutyAvatar {...profileToSprouty(agent)} state="idle" size="sm" animate={false} />
+              <AgentAvatar profile={agent} size="sm" animate={false} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium text-fg" title={agent.name}>
                   {agent.name}

@@ -78,7 +78,7 @@ parent→child sub-agent lineage, folders, tags, and a shared session.
 
 **Power features** — quick prompts (global + personal), user memories, scheduled
 automations (cron), feature requests (all statuses), one custom agent (loaded as an
-immutable draft v1), and per-user feature flags.
+immutable draft v1, with a plant avatar), and per-user feature flags.
 
 ## Not seeded (and why)
 

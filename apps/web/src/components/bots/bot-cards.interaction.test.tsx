@@ -394,6 +394,22 @@ describe('approval details', () => {
   });
 });
 
+describe('the "new Bot" card', () => {
+  it('previews the proposed Bot still — in a transcript only the speaking Bot moves', async () => {
+    const req = request({
+      kind: 'bot_create',
+      payload: { name: 'Fern', role: 'Writer', instructions: '', avatar: { plant: 'fern' }, template_key: null },
+    });
+    await mount(
+      createElement(BotTranscript, props({ messages: [requestRow(req, 1)], requests: new Map([[req.id, req]]) })),
+    );
+    const card = document.querySelector('[data-testid="bots-request-card"][data-request-kind="bot_create"]')!;
+    // The 80px preview is a hero, which idles by default; the card must hold it still.
+    expect(card.querySelector('[data-testid="bots-avatar-picker"] > div > .pa-root > svg.pa-fern')).not.toBeNull();
+    expect(card.querySelectorAll('.pa-mo')).toHaveLength(0);
+  });
+});
+
 describe('a later line about a card', () => {
   it('renders "Sign-in skipped" as a system line under the one card', async () => {
     const req = request({ status: 'denied' });

@@ -17,11 +17,7 @@ const COPY_ATTRIBUTES = new Set([
   'title',
 ]);
 
-const EXCLUDED_FILES = new Set([
-  'pages/design.tsx',
-  'pages/sprouty-lab.tsx',
-  'components/sprouty/sprouty-geometric-concepts.tsx',
-]);
+const EXCLUDED_FILES = new Set(['pages/design.tsx']);
 
 // Product names, protocols, keyboard labels, units, and example values are not
 // prose. Keeping this list narrow makes any new user-facing English fail here.

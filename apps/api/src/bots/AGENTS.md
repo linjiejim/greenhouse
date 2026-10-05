@@ -26,6 +26,13 @@ bots/
 
 - **Bot ≠ 自定义 Agent**：Bot 是轻量身份（名字 / 角色 / 守则 / 头像 / 可选模型）跑在 sprouty 基座上，
   工具面 = 主人自己的有效工具（Bot 永远不超过主人）+ Bot 工具。不要把 Bot 做成 profile 版本。
+- **头像是一株植物**：`bots.avatar` 每次写入（创建 / PATCH / 确认 `bot_create` 卡）都过 `avatarConfigSchema`，
+  未知键被剥掉，超长值返回 400。服务端统一用 `plantAvatarConfig()` 写：`plant`（物种 id）加最近的旧
+  `color`（给不认识 `plant` 的老客户端），静息眼神存成旧的 `faceStyle`。这和 Web 编辑器是同一条规则，都不写
+  `mood` 键：`legacyToMood` 先读 `mood`，旧客户端改了 `faceStyle` 会被一个过期的 `mood` 盖住。`plant` 不校验
+  是否在 `PLANT_IDS` 里，未知值由渲染端的 `legacyToPlant` 兜底。模板就是同名植物（`TEMPLATE_PLANT`：
+  chief → ivy、researcher → sage、operator → basil、writer → fern、analyst → clover）。`team` create 提议的
+  Bot 取 `IMPLICIT_POOL[hashSeed(名字) % 14]`：同名总是同一株，也永远不会落到内置 Sprouty 专用的 sprout。
 - **单写者**：Bots 对话只有持有该会话 run 的引擎写。服务端在对话进行中产生的一切（交还、续跑、后台
   汇报、忙时插话）走 `deliverToConversation()` → 抢到 run 就直接写，否则进 `bot_inbox`。inbox 是
   **先应用后消费**（稳定 message id `bot-inbox:<id>`，失败计数，5 次后隔离），跨进程互斥是会话级

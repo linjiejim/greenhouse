@@ -1,8 +1,8 @@
 /**
  * GreenhouseMark — the brand house-with-sprout mark as an inline SVG, tinted
  * with the theme accent. Canonical geometry: logos/greenhouse-mark.svg (keep in
- * sync if the brand mark changes). Used on the login screen in place of the
- * Sprouty mascot; pass `color` to override the accent tint.
+ * sync if the brand mark changes). Used on the login screen (the agent face,
+ * PlantAvatar, is for the agent only); pass `color` to override the accent tint.
  */
 
 import React from 'react';

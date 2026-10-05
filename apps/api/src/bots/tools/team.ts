@@ -17,7 +17,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { BOT_TEMPLATES, BOT_INSTRUCTIONS_MAX, BOT_NAME_MAX, BOT_ROLE_MAX } from '@greenhouse/types/bots';
+import { IMPLICIT_POOL, hashSeed, plantAvatarConfig } from '@greenhouse/types';
+import { BOT_INSTRUCTIONS_MAX, BOT_NAME_MAX, BOT_ROLE_MAX } from '@greenhouse/types/bots';
 import type { BotCreatePayload } from '@greenhouse/types/bots';
 import type { BotTurnContext } from '../engine/context.js';
 import type { AskRejection } from '../engine/floor.js';
@@ -69,12 +70,13 @@ function resolveMember(port: TeamPort, ref: string | undefined) {
   return port.members().find((m) => m.bot.id === ref || m.bot.name.toLowerCase() === key);
 }
 
-/** A pleasant default avatar for a proposed Bot (the member can change it on the card). */
-function proposedAvatar(name: string): BotCreatePayload['avatar'] {
-  const palette = BOT_TEMPLATES.map((t) => t.avatar);
-  let hash = 0;
-  for (const ch of name) hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) >>> 0;
-  return palette[hash % palette.length]!;
+/**
+ * The default avatar for a proposed Bot (the member can change it on the card):
+ * a plant hashed from the name — the same name always proposes the same plant —
+ * from the implicit pool, so never the built-in Sprouty's reserved sprout.
+ */
+export function proposedAvatar(name: string): BotCreatePayload['avatar'] {
+  return plantAvatarConfig(IMPLICIT_POOL[hashSeed(name) % IMPLICIT_POOL.length]!);
 }
 
 export function createTeamTool(ctx: BotTurnContext, port: TeamPort) {

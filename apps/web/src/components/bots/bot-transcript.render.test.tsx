@@ -117,6 +117,18 @@ describe('BotTranscript', () => {
     expect(html).toContain('polish the intro');
   });
 
+  it("rings a group intro's overlapped chips in the canvas the transcript sits on", () => {
+    // The transcript has no surface of its own; the stack's default ring (surface-raised) is a
+    // visible lighter halo on dark's darker canvas.
+    const html = render({ kind: 'group', title: 'Launch prep', ownerBotId: null, members: all });
+    const stack = html.slice(html.indexOf('data-testid="plant-avatar-stack"'));
+    const chipRings = [...stack.matchAll(/class="(relative inline-flex rounded-full[^"]*)"/g)].map((m) =>
+      m[1].split(/\s+/).filter((name) => name.startsWith('ring-') && name !== 'ring-2'),
+    );
+    expect(chipRings).toHaveLength(3);
+    for (const ring of chipRings) expect(ring).toEqual(['ring-surface-canvas']);
+  });
+
   it('streams each Bot as its own segment and marks a queued send as delivered', () => {
     const segments: BotStreamSegment[] = [
       { botId: sage.id, reason: 'user', status: 'completed', text: 'found it', reasoning: '', toolCalls: [] },

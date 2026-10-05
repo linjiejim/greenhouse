@@ -132,6 +132,17 @@ what exists." These rules are as binding as the "add" rules:
   (+ `chat-knowledge.gif` / `.mp4`) that the README and `docs/index.html` embed. It exits
   non-zero on any console error or failed `/api` request. Re-run it after visible UI changes
   so the docs stay truthful — never hand-edit or mock the captures. Needs `ffmpeg` + `cwebp`.
+- **Plant avatars (visual review)**: every Agent / Bot avatar is drawn by one SVG-string builder in
+  `packages/ui/src/components/plant-avatar/`. After touching it, render the review sheet with
+  `node --import tsx scripts/plant-avatar-gallery.mjs [--out=path]` (default
+  `/tmp/plant-avatar-gallery.png`) and look at it. After editing a silhouette, add `--fit`: it
+  re-measures the optical fit in Chromium and rewrites `plant-fit.generated.ts`. Then refresh the
+  golden digests in `plant-avatar-parity.test.ts` with `vitest -u`. Stored avatar JSON is never
+  rewritten (custom-Agent versions are hashed): writers store `plant` + the nearest legacy `color`
+  (`PLANT_LEGACY_COLOR`) and the resting mood as the legacy `faceStyle` (never a `mood` key, which
+  would shadow an old client's `faceStyle` edit). Legacy rows resolve to a plant at render time
+  (`legacyToPlant`). The resolver and the writer rule (`withPlant` / `withMood` / `plantAvatarConfig`)
+  live in `@greenhouse/types/plant-avatar`, one copy for the API, the web editors and the renderer.
 - **Landing page**: `docs/index.html` is the GitHub Pages site (precompiled Tailwind — run
   `scripts/build-landing.sh` after changing utility classes and commit `docs/tailwind.css`).
   Copy is bilingual: every `data-i18n` key needs a matching entry in the inline `ZH`
@@ -297,7 +308,7 @@ greenhouse/
 │   ├── db/               # database layer — Drizzle schema + domain services (types inferred)
 │   ├── knowledge-editor/ # Tiptap schema + server Markdown↔Tiptap JSON
 │   ├── crud/             # low-code CRUD framework (defineCrud + CrudPage / createCrudRoutes)
-│   ├── ui/               # shared presentational UI kit (React) — used by the browser extension
+│   ├── ui/               # shared presentational UI kit (React) — browser extension + web (plant avatars)
 │   └── contract/         # typed API contract — re-exports apps/api's AppType + hc (web client)
 ├── skillhub/             # first-party skill packs (synced into the Skill Center on boot)
 ├── drizzle/              # migration files (single source of truth for the schema)

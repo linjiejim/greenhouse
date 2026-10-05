@@ -324,6 +324,16 @@ test.describe('bots', () => {
     await expect(transcript.getByText('@Sage Compare the top 3 vendors')).toHaveCount(1);
     // `@Sage` became a mention the server resolves.
     expect(posted).toMatchObject({ session_id: 'grp-1', mentions: [SAGE.id] });
+    // Plant avatars: each Bot wears its template plant (stored avatars predate `plant`)
+    // in the speaker headers, the header roster and the sidebar group stack.
+    await expect(transcript.locator('svg.pa-sage').first()).toBeVisible();
+    await expect(transcript.locator('svg.pa-fern').first()).toBeVisible();
+    const header = page.getByTestId('bots-conversation-header');
+    await expect(header.locator('svg.pa-sage')).toHaveCount(1);
+    await expect(header.locator('svg.pa-fern')).toHaveCount(1);
+    await expect(page.getByTestId('bots-sidebar').locator('[data-testid="plant-avatar-stack"] svg')).toHaveCount(2);
+    // The turn is over, so nothing moves: in a roster, motion means exactly "this Bot is talking".
+    await expect(page.locator('.pa-mo')).toHaveCount(0);
   });
 
   test('an approval card settles through POST /api/bots/requests/:id', async ({ page }) => {

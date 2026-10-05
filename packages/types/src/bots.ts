@@ -8,6 +8,7 @@
  */
 
 import type { AvatarConfig } from './profile-manifest.js';
+import { TEMPLATE_PLANT, plantAvatarConfig } from './plant-avatar.js';
 
 // ─── Bots ────────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ export interface BotTemplateCopy {
 
 export interface BotTemplate {
   key: BotTemplateKey;
+  /** The plant the template is named after (`TEMPLATE_PLANT`) + its resting mood, stored as `faceStyle` (`plantAvatarConfig`). */
   avatar: AvatarConfig;
   /** Needs the computer to be useful (marked in the gallery when the org has none). */
   needsComputer: boolean;
@@ -69,7 +71,7 @@ export interface BotTemplate {
 export const BOT_TEMPLATES: readonly BotTemplate[] = [
   {
     key: 'chief',
-    avatar: { color: 'forest', accessories: ['clipboard'], faceStyle: 'happy' },
+    avatar: plantAvatarConfig(TEMPLATE_PLANT.chief, 'calm'),
     needsComputer: false,
     copy: {
       en: {
@@ -96,7 +98,7 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
   },
   {
     key: 'researcher',
-    avatar: { color: 'ocean', accessories: ['magnifier', 'round-glasses'], faceStyle: 'default' },
+    avatar: plantAvatarConfig(TEMPLATE_PLANT.researcher, 'calm'),
     needsComputer: true,
     copy: {
       en: {
@@ -125,7 +127,7 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
   },
   {
     key: 'operator',
-    avatar: { color: 'sunset', accessories: ['headset', 'wrench'], faceStyle: 'default' },
+    avatar: plantAvatarConfig(TEMPLATE_PLANT.operator, 'calm'),
     needsComputer: true,
     copy: {
       en: {
@@ -154,7 +156,7 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
   },
   {
     key: 'writer',
-    avatar: { color: 'blossom', accessories: ['pencil'], faceStyle: 'sparkle' },
+    avatar: plantAvatarConfig(TEMPLATE_PLANT.writer, 'bright'),
     needsComputer: false,
     copy: {
       en: {
@@ -181,7 +183,7 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
   },
   {
     key: 'analyst',
-    avatar: { color: 'lavender', accessories: ['chart'], faceStyle: 'default' },
+    avatar: plantAvatarConfig(TEMPLATE_PLANT.analyst, 'calm'),
     needsComputer: true,
     copy: {
       en: {

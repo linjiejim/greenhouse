@@ -32,7 +32,7 @@
 | `feishu_message_receipts` | PK `message_id` | 已处理的飞书消息 id（迁移 0066）。飞书会重投事件，而处理一条消息 = 跑一轮 agent = 花钱且会回消息；**先写回执再干活**，写冲突即丢弃。回执只为去重，保留 7 天足够覆盖任何重投窗口 |
 | `user_provider_tokens` | PK `id`；UK `(user_id, provider, workspace_id)`，NULLS NOT DISTINCT | 通用外部 provider 绑定；access/refresh/credential 为加密文本，含 scope、过期时间与 metadata。**`access_token` 自 0056 起可空**——企微这类绑定存的是**身份**而非凭证（应用 token 是 corp 全局、进程内缓存），塞一个空串会让该列自己的契约变成假的；`provider_user_id` 即企微 UserId（`provider='wecom'`）或飞书 open_id（`provider='feishu'`），是个人消息推送的收件人来源；飞书绑定同时是扫码登录的查表键 |
 | `custom_profiles` | PK `id`；UK `(user_id, slug)` | 自定义 Agent 稳定资产身份；owner/current/published version 指针与 draft/review/pilot/verified/rejected/suspended/deprecated/archived 生命周期。共享只由 pilot/verified 派生；backup owner FK SET NULL，reviewer 为保留历史的逻辑引用 |
-| `custom_profile_versions` | PK `id`；UK `(profile_id, version)` | 不可变可执行 manifest；模型、tools、prompt、外观与 purpose/audience/risk/budget/eval refs/review due 一起版本化，含 change log、SHA-256 manifest hash 与创建人；生产 service 无 update/delete |
+| `custom_profile_versions` | PK `id`；UK `(profile_id, version)` | 不可变可执行 manifest；模型、tools、prompt、外观（`avatar` JSON：`plant` + 最近的旧 `color` + 以 `faceStyle` 存的静息眼神；旧行带 Sprouty 时代的 accessories / leafStyle / eyeStyle / palette 等键——因进 manifest hash 永不回写，渲染时由 `legacyToPlant` 映射成植物）与 purpose/audience/risk/budget/eval refs/review due 一起版本化，含 change log、SHA-256 manifest hash 与创建人；生产 service 无 update/delete |
 | `user_memories` | PK `id`；部分索引 `bot_id` | 用户长期记忆；`title`（注入 prompt 的召回索引行）+ `content` + 类别、状态机（active/dormant/archived/superseded）、pinned、来源、`superseded_by` 自引用、`last_used_at`；`bot_id` 为作用域：null=用户级（所有 Agent 与 Bot 都看得到），非空=该 Bot 私有 |
 | `tool_frictions` | PK `id`, UNIQUE `fingerprint` | Agent 踩坑信号（团队级，永不注入 prompt）；工具/类型/摘要/证据、`occurrence_count` 聚合计数、样本会话、复盘状态与解决备注 |
 | `user_prompts` | PK `id`；UK `artifact_action_id` | **Tasks**（可复用任务，用户面已改叫 Tasks，表名保留）；`description` 一句话用途说明（选择器里展示）、`variables` JSON 存 `{{占位符}}` 定义、`expected_tools` JSON 存该流程实际用过的工具（**仅展示，不做权限判定**）、`source_session_id` 逻辑指向固化来源会话（无 FK，任务比会话活得久）、`created_via` 区分手写与会话固化。聊天固化时 `artifact_action_id` 是 exactly-once 恢复键；无变量无工具的行 = 原来的快捷 Prompt，行为逐字段不变 |
@@ -64,7 +64,7 @@
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `bots` | PK `id`(`bot_<hex>`)；部分 UK `(user_id, name_key) WHERE status='active'`；索引 `(user_id, status)` | 成员私有的持久 Bot 身份（≠ 自定义 Agent 版本）：name / `name_key`（NFKC 小写，唯一键）/ role / instructions（长期规则，注入前 sanitize）/ avatar（Sprouty DSL JSON）/ model_id / template_key；`status=archived` 是成员唯一的「删除」（消息仍能显示作者名）；随 `user_id` 级联硬删 |
+| `bots` | PK `id`(`bot_<hex>`)；部分 UK `(user_id, name_key) WHERE status='active'`；索引 `(user_id, status)` | 成员私有的持久 Bot 身份（≠ 自定义 Agent 版本）：name / `name_key`（NFKC 小写，唯一键）/ role / instructions（长期规则，注入前 sanitize）/ avatar（植物头像 JSON：`plant` + 最近的旧 `color` + 以 `faceStyle` 存的静息眼神）/ model_id / template_key；`status=archived` 是成员唯一的「删除」（消息仍能显示作者名）；随 `user_id` 级联硬删 |
 | `bot_conversations` | PK/FK `session_id`；UK `owner_bot_id`；索引 `(user_id, last_activity_at)` | 与 session 1:1 的 Bots 对话：`kind=direct/group`，`owner_bot_id`（私聊主人，每个 Bot 一条规范私聊，私聊永不变群——邀请进来的是 guest）、`lead_bot_id`（未点名消息的应答者）、群规 `description`、`allow_bot_chat`、结构化滚动摘要 `digest` + `digest_upto_seq` / `digest_upto_message_id`（CAS 更新；边界消息消失即重置）、`last_read_at` |
 | `bot_conversation_members` | PK `id`；UK `(session_id, bot_id)` | 对话成员（≤6）：`role=owner/lead/member/guest`、`position`、`added_by`（`user` 或 `bot:<id>`） |
 | `bot_shared_notes` | PK `id`；索引 `(session_id, status)` | 对话级共享笔记（黑板）：title（注入索引）/ body / `author_bot_id`（null=成员写的）/ `status=open/done` / pinned；open ≤50 |

@@ -1,7 +1,8 @@
 /**
  * /api/bots against real PostgreSQL: owner scoping (another member's rows and
  * a super's attempts are 404), idempotent bootstrap with a fixed greeting,
- * Bot name rules, conversations, notes, and exactly-once request decisions.
+ * Bot name rules, conversations, notes, exactly-once request decisions, and
+ * plant avatars (template plants, plant kept and junk stripped on every write).
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +12,7 @@ import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type { AppEnv } from '../../app-env.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 import { chatRunRegistry } from '../../chat/runs.js';
+import { botTemplate } from '@greenhouse/types/bots';
 import { createBotsRoutes } from '../routes.js';
 
 vi.mock('../../ws/connection-manager.js', () => ({ connectionManager: { sendToUser: vi.fn() } }));
@@ -386,5 +388,67 @@ describe('Bot profile', () => {
     expect((await call(jim, 'DELETE', `/${ivy.id}/memories/${mine.id}`)).json).toEqual({ ok: true });
     expect((await call(jim, 'DELETE', `/${ivy.id}`)).json).toEqual({ ok: true });
     expect((await call(jim, 'GET', '')).json.bots).toHaveLength(1);
+  });
+});
+
+describe('Bot avatars', () => {
+  it('a template copy is the plant the template is named after', async () => {
+    const boot = await call(jim, 'POST', '/bootstrap');
+    // Tracks the template (not a copy of its values), so a template edit cannot strand this test.
+    expect(boot.json.bot.avatar).toEqual(botTemplate('chief')!.avatar);
+    expect(boot.json.bot.avatar.plant).toBe('ivy');
+    const researcher = await call(jim, 'POST', '', { template_key: 'researcher' });
+    expect(researcher.json.bot.avatar).toEqual({ plant: 'sage', color: 'forest', faceStyle: 'default' });
+    const stored = await db.bots.getBot(jim.id, researcher.json.bot.id);
+    expect(JSON.parse(stored!.avatar)).toEqual({ plant: 'sage', color: 'forest', faceStyle: 'default' });
+  });
+
+  it('create and patch keep the plant and mood, strip unknown keys, reject out-of-bounds values', async () => {
+    const created = await call(jim, 'POST', '', {
+      name: 'Lotus',
+      avatar: { plant: 'lotus', mood: 'soft', color: 'blossom', eyeStyle: 'soft', sparkles: true },
+    });
+    expect(created.status).toBe(200);
+    expect(created.json.bot.avatar).toEqual({ plant: 'lotus', mood: 'soft', color: 'blossom', eyeStyle: 'soft' });
+
+    const botId = created.json.bot.id as string;
+    const patched = await call(jim, 'PATCH', `/${botId}`, { avatar: { plant: 'maple', mood: 'bright', model: 'x' } });
+    expect(patched.json.bot.avatar).toEqual({ plant: 'maple', mood: 'bright' });
+    expect((await call(jim, 'GET', '')).json.bots.find((b: { id: string }) => b.id === botId).avatar).toEqual({
+      plant: 'maple',
+      mood: 'bright',
+    });
+
+    const tooLong = await call(jim, 'PATCH', `/${botId}`, { avatar: { plant: 'x'.repeat(41) } });
+    expect(tooLong).toMatchObject({ status: 400, json: { code: 'bot_name_invalid' } });
+    expect(JSON.parse((await db.bots.getBot(jim.id, botId))!.avatar)).toEqual({ plant: 'maple', mood: 'bright' });
+  });
+
+  it('a confirmed Bot proposal keeps the proposed plant, or the member’s pick on the card', async () => {
+    const ivy = (await call(jim, 'POST', '', { name: 'Ivy' })).json;
+    const propose = (name: string) =>
+      db.bots.createRequest({
+        user_id: jim.id,
+        session_id: ivy.dm_session_id,
+        bot_id: ivy.bot.id,
+        kind: 'bot_create',
+        payload: {
+          name,
+          role: 'Writer',
+          instructions: 'Write well.',
+          avatar: { plant: 'clover', color: 'forest' },
+          template_key: null,
+        },
+      });
+    const asProposed = await call(jim, 'POST', `/requests/${(await propose('Clover')).id}`, { decision: 'approve' });
+    const kept = await db.bots.getBot(jim.id, asProposed.json.request.result.bot_id);
+    expect(JSON.parse(kept!.avatar)).toEqual({ plant: 'clover', color: 'forest' });
+
+    const edited = await call(jim, 'POST', `/requests/${(await propose('Lavender')).id}`, {
+      decision: 'approve',
+      bot: { avatar: { plant: 'lavender', color: 'lavender', faceStyle: 'sleepy', junk: 1 } },
+    });
+    const picked = await db.bots.getBot(jim.id, edited.json.request.result.bot_id);
+    expect(JSON.parse(picked!.avatar)).toEqual({ plant: 'lavender', color: 'lavender', faceStyle: 'sleepy' });
   });
 });

@@ -12,7 +12,7 @@ import { uploadUrl } from '../api/upload';
 import { catIcon, toolIcon, toolLabel } from '../lib/format';
 import { useT } from '../lib/i18n';
 import { font, makeStyles, mono, radius, useTheme } from '../theme';
-import { Caret, DisclosureRow, Icon, Spinner, SproutyFace, ThinkingDots, Touchable } from '../ui';
+import { Caret, DisclosureRow, Icon, PlantAvatar, Spinner, ThinkingDots, Touchable } from '../ui';
 import { Markdown } from './markdown';
 
 /* ----------------------------- types ----------------------------- */
@@ -318,6 +318,7 @@ export function AiMessage({
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const t = useT();
   const streaming = msg.status === 'streaming';
   return (
     <Touchable
@@ -329,7 +330,7 @@ export function AiMessage({
     >
       {msg.status === 'thinking' ? (
         <View style={{ paddingTop: 4, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <SproutyFace expr="thinking" size={44} />
+          <PlantAvatar state="thinking" size={44} label={t('chat.thinking')} />
           <ThinkingDots />
         </View>
       ) : null}
@@ -351,7 +352,7 @@ export function AiMessage({
 
       {msg.error ? (
         <View style={styles.errorBox}>
-          <SproutyFace expr="error" size={40} breathe={false} />
+          <PlantAvatar state="error" size={40} />
           <Text style={styles.errorText}>{msg.error}</Text>
         </View>
       ) : null}

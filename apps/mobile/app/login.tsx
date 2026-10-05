@@ -1,6 +1,6 @@
 /**
  * Login — pick a station (self-hosted server), then internal email + password.
- * Sprouty mascot, hairline fields, primary button. The station row opens the
+ * Greenhouse brand mark, hairline fields, primary button. The station row opens the
  * StationSheet; switching to a station with a live saved session skips the
  * credentials entirely (root layout routes home once bootstrap resolves).
  *

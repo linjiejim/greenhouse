@@ -178,6 +178,62 @@ describe('dark selection state', () => {
   // separate visual-design call, not something this guardrail should imply was done.
 });
 
+describe('active sidebar row fill', () => {
+  /**
+   * `--t-sidebar-active` is `primary-subtle-hover` flattened over the chrome. It is
+   * the only way to write it: `var(--alias)` in light, a `color-mix` over the
+   * chrome in dark — resolve both to an opaque colour.
+   */
+  function sidebarActive(block: Map<string, string>): [number, number, number, number] {
+    const raw = block.get('--t-sidebar-active');
+    if (!raw) throw new Error('missing token --t-sidebar-active');
+    const alias = raw.match(/^var\((--[\w-]+)\)$/);
+    if (alias) return rgba(block, alias[1]);
+    const mix = raw.match(/^color-mix\(in srgb, rgb\(var\((--primary-\d+)\)\) ([\d.]+)%, var\((--[\w-]+)\)\)$/);
+    if (!mix) throw new Error(`unsupported --t-sidebar-active: ${raw}`);
+    const ramp = light.get(mix[1])!.split(/\s+/).map(Number);
+    const weight = Number(mix[2]) / 100;
+    const base = rgba(block, mix[3]);
+    return [...ramp.map((v, i) => v * weight + base[i] * (1 - weight)), 1] as [number, number, number, number];
+  }
+
+  it.each([
+    ['light', light],
+    ['dark', dark],
+  ])('%s: is opaque and the same colour as the hover fill over the chrome', (_, block) => {
+    // A group row's avatar chips are separated by a ring in the row's own colour. Dark's
+    // subtle-hover is a translucent overlay: as a ring it composites over the chip it
+    // overlaps, not the chrome, and reads as a halo. The opaque flattening cannot.
+    const fill = sidebarActive(block);
+    expect(fill[3]).toBe(1);
+    const expected = flatten(rgba(block, '--t-primary-subtle-hover'), rgba(block, '--t-surface-chrome'));
+    fill.slice(0, 3).forEach((channel, i) => expect(channel).toBeCloseTo(expected[i], 6));
+  });
+
+  it('is what the active row paints and what `ring-sidebar-active` resolves to', () => {
+    const rule = CSS.slice(CSS.indexOf('.sidebar-active-item {'));
+    expect(rule.slice(0, rule.indexOf('}'))).toContain('background: var(--t-sidebar-active);');
+    expect(CSS).toContain('--color-sidebar-active: var(--t-sidebar-active);');
+  });
+});
+
+describe('plant picker selection ring', () => {
+  it.each([
+    ['light', light],
+    ['dark', dark],
+  ])('%s: the solid brand ring clears 3:1 on the dialog and on the selected fill', (_, block) => {
+    // The selected species chip is a bounded control among identical siblings: its ring is
+    // the WCAG 1.4.11 indicator. `primary-edge` would not do in dark (a 25% overlay).
+    const dialog = rgba(block, '--t-surface-raised');
+    const raised = flatten(dialog, dialog);
+    // `ring-primary-500`: the brand ramp is shared by both themes and lives in the light block.
+    const ring = light.get('--primary-500')!.split(/\s+/).map(Number) as [number, number, number];
+    const fill = flatten(rgba(block, '--t-primary-subtle'), dialog);
+    expect(ratio(ring, raised)).toBeGreaterThanOrEqual(3);
+    expect(ratio(ring, fill)).toBeGreaterThanOrEqual(3);
+  });
+});
+
 describe('token source parity', () => {
   // app.css is the pre-JS default; lib/theme.ts writes inline styles at runtime and
   // wins. They duplicate the same hexes with nothing keeping them in sync, so a

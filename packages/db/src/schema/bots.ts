@@ -47,7 +47,7 @@ export const bots = pgTable(
     role: text('role').notNull().default(''),
     /** Long-lived rules / personality (the Bot's description). Sanitised before prompt injection. */
     instructions: text('instructions').notNull().default(''),
-    /** Sprouty avatar DSL (`avatarConfigSchema`), JSON text. */
+    /** Plant avatar JSON (`avatarConfigSchema`): `plant`, the nearest legacy `color`, the mood as `faceStyle`. */
     avatar: text('avatar').notNull().default('{}'),
     /** Model registry id; an unreachable model falls back to the deployment default. */
     model_id: text('model_id'),

@@ -33,8 +33,13 @@ module.exports = {
     StatusSuccess: { light: '#059669', dark: '#34d399' },
     StatusDanger: { light: '#dc2626', dark: '#f87171' },
   },
+  // Sprouty's plant avatar, rendered by apps/mobile/scripts/render-widget-art.mjs from the
+  // vendored static builder (light + dark palettes; mono = lock-screen knockout silhouette).
   images: {
     sprouty: './sprouty-idle.png',
     sproutySleep: './sprouty-sleep.png',
+    sproutyDark: './sprouty-idle-dark.png',
+    sproutySleepDark: './sprouty-sleep-dark.png',
+    sproutyMono: './sprouty-mono.png',
   },
 };

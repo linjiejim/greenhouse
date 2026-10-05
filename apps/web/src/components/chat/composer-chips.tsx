@@ -13,8 +13,7 @@ import { Cloud, Sparkles, X, Zap } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
 import type { UserPrompt } from '@greenhouse/types/api';
 import type { SlashSkill } from './command-menu-popover';
-import { SproutyAvatar } from '../sprouty/index.js';
-import { profileToSprouty } from './profile-selector';
+import { AgentAvatar } from './agent-avatar';
 import { useLocalized, useT } from '../../lib/i18n';
 import { Tag } from '../ui';
 
@@ -58,7 +57,7 @@ export function ComposerChips({
             title={t('chat.agentChipTitle', { name: profileLabel })}
             removeLabel={t('chat.removeAgent', { name: profileLabel })}
           >
-            <SproutyAvatar {...profileToSprouty(profile)} state="idle" size="xs" animate={false} />
+            <AgentAvatar profile={profile} size="xs" animate={false} />
           </Pill>
         </div>
       )}

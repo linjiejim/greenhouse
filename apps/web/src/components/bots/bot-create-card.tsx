@@ -103,10 +103,11 @@ export function BotCreateCard({
           }}
           nameError={touched ? nameMessage(issue, draft.name) : undefined}
           compact
+          avatarTemplateKey={payload.template_key}
         />
       ) : (
         <div className="flex items-center gap-2">
-          <BotAvatar avatar={draft.avatar} size="sm" />
+          <BotAvatar avatar={draft.avatar} templateKey={payload.template_key} size="sm" />
           <span className="text-sm font-medium text-fg">{draft.name}</span>
           {draft.role && <span className="text-xs text-fg-muted">{draft.role}</span>}
         </div>

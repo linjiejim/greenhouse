@@ -21,6 +21,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@greenhouse/types/api': resolve(__dirname, 'packages/types/src/api.ts'),
+      '@greenhouse/types/plant-avatar': resolve(__dirname, 'packages/types/src/plant-avatar.ts'),
       '@greenhouse/types/session': resolve(__dirname, 'packages/types/src/session.ts'),
       '@greenhouse/types/eval': resolve(__dirname, 'packages/types/src/eval.ts'),
       '@greenhouse/types/source': resolve(__dirname, 'packages/types/src/source.ts'),

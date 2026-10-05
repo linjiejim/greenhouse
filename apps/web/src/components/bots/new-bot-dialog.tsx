@@ -7,12 +7,14 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { TEMPLATE_PLANT, withPlant, type PlantId } from '@greenhouse/types';
 import { BOT_TEMPLATES, type BotTemplate, type BotTemplateKey, type BotView } from '@greenhouse/types/bots';
 import { Button, Dialog, Tag, toast } from '../ui';
 import { FormActions } from '../form';
 import { ArrowLeft, Bot, Monitor, Plus } from '../../lib/icons';
 import { useI18n } from '../../lib/i18n';
 import { useAuthStore, useProfileStore } from '../../stores';
+import { botPlant, freshPlant } from '../../lib/plant-avatar';
 import * as botsApi from '../../lib/api/bots';
 import { computerReady, useBotsStore } from './bots-store';
 import { BotAvatar } from './bot-avatar';
@@ -21,7 +23,22 @@ import { botNameIssueFromCode, validateBotName } from './bot-name';
 import { AgentPicker, snapshotableAgents } from './agent-picker';
 import { botDraftFromAgent } from './agent-snapshot';
 
-const EMPTY_DRAFT: BotDraft = { name: '', role: '', instructions: '', avatar: { color: 'forest' }, model_id: null };
+/** A blank Bot wears a plant none of the member's Bots has yet. */
+export function emptyBotDraft(taken: readonly PlantId[]): BotDraft {
+  return { name: '', role: '', instructions: '', avatar: withPlant({}, freshPlant(taken)), model_id: null };
+}
+
+/** A template pre-fills its copy and pins its plant (Ivy → ivy …), whatever the stored template avatar says. */
+export function templateBotDraft(template: BotTemplate, copyLocale: 'en' | 'zh'): BotDraft {
+  const copy = template.copy[copyLocale];
+  return {
+    name: copy.name,
+    role: copy.role,
+    instructions: copy.instructions,
+    avatar: withPlant(template.avatar, TEMPLATE_PLANT[template.key]),
+    model_id: null,
+  };
+}
 
 export function NewBotDialog({
   open,
@@ -52,7 +69,8 @@ export function NewBotDialog({
   const nameMessage = useBotNameMessage();
   const [step, setStep] = useState<'gallery' | 'agents' | 'form'>('gallery');
   const [templateKey, setTemplateKey] = useState<BotTemplateKey | null>(null);
-  const [draft, setDraft] = useState<BotDraft>(EMPTY_DRAFT);
+  const takenPlants = useMemo(() => bots.map(botPlant), [bots]);
+  const [draft, setDraft] = useState<BotDraft>(() => emptyBotDraft(takenPlants));
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [serverIssue, setServerIssue] = useState<ReturnType<typeof botNameIssueFromCode>>(null);
@@ -63,10 +81,12 @@ export function NewBotDialog({
     if (!open) return;
     setStep('gallery');
     setTemplateKey(null);
-    setDraft(EMPTY_DRAFT);
+    setDraft(emptyBotDraft(takenPlants));
     setTouched(false);
     setServerIssue(null);
     void fetchProfiles();
+    // Reset on open only: a Bot list refresh must not re-dress the draft mid-edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchProfiles, open]);
 
   const issue = useMemo(
@@ -76,18 +96,7 @@ export function NewBotDialog({
 
   const choose = (template: BotTemplate | null) => {
     setTemplateKey(template?.key ?? null);
-    if (template) {
-      const copy = template.copy[copyLocale];
-      setDraft({
-        name: copy.name,
-        role: copy.role,
-        instructions: copy.instructions,
-        avatar: template.avatar,
-        model_id: null,
-      });
-    } else {
-      setDraft(EMPTY_DRAFT);
-    }
+    setDraft(template ? templateBotDraft(template, copyLocale) : emptyBotDraft(takenPlants));
     // A template name the member already uses must show as a conflict right away.
     setTouched(Boolean(template));
     setServerIssue(null);
@@ -172,7 +181,7 @@ export function NewBotDialog({
                   className="flex items-start gap-3 rounded-xl border border-edge bg-surface-card p-3 text-left transition-colors hover:border-primary-edge hover:bg-primary-subtle"
                   data-template={template.key}
                 >
-                  <BotAvatar avatar={template.avatar} size="md" />
+                  <BotAvatar avatar={template.avatar} templateKey={template.key} size="md" />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                       <span className="truncate text-sm font-semibold text-fg">{copy.role}</span>
@@ -245,6 +254,7 @@ export function NewBotDialog({
             }}
             nameError={touched ? nameMessage(issue ?? serverIssue, draft.name) : nameMessage(serverIssue, draft.name)}
             models={models}
+            avatarTemplateKey={templateKey}
           />
           {templateKey &&
             BOT_TEMPLATES.find((template) => template.key === templateKey)?.needsComputer &&

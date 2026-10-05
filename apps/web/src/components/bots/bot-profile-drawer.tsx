@@ -249,6 +249,8 @@ function EditBotDialog({
         }}
         nameError={nameMessage(issue ?? serverIssue, draft.name)}
         models={models}
+        avatarTemplateKey={bot.template_key}
+        avatarStableId={bot.id}
       />
       <FormActions className="mt-4">
         <Button variant="ghost" onClick={onClose}>

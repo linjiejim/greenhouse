@@ -48,6 +48,9 @@ import { logger } from '@greenhouse/utils/logger';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import type { AppEnv } from '../app-env.js';
 import { withOwnerNicknames } from '../user-display.js';
+import { isPlantId, legacyToPlant, withPlant } from '@greenhouse/types';
+import { isUniqueViolation } from '@greenhouse/utils/error';
+import { normalizeProfileAvatar } from '../profiles/avatar.js';
 import type { ProfileAvatar } from '@greenhouse/types/api';
 
 const MAX_CUSTOM_PROFILES_PER_USER = 20;
@@ -96,26 +99,9 @@ function formatCustomProfile(
       model = { provider: base.model.provider, model: base.model.model };
     }
   }
-  const rawAvatar = safeJsonParse(manifest.avatar, {});
-  const avatarRecord =
-    rawAvatar && typeof rawAvatar === 'object' && !Array.isArray(rawAvatar)
-      ? Object.fromEntries(Object.entries(rawAvatar))
-      : {};
-  const leafStyle = avatarRecord.leafStyle;
-  const eyeStyle = avatarRecord.eyeStyle;
-  const avatar: ProfileAvatar = {
-    ...(typeof avatarRecord.color === 'string' ? { color: avatarRecord.color } : {}),
-    ...(Array.isArray(avatarRecord.accessories)
-      ? { accessories: avatarRecord.accessories.filter((item): item is string => typeof item === 'string') }
-      : {}),
-    ...(leafStyle === 'normal' || leafStyle === 'big' || leafStyle === 'mini' || leafStyle === 'double'
-      ? { leafStyle }
-      : {}),
-    ...(eyeStyle === 'classic' || eyeStyle === 'dot' || eyeStyle === 'soft' || eyeStyle === 'focused'
-      ? { eyeStyle }
-      : {}),
-    ...(typeof avatarRecord.faceStyle === 'string' ? { faceStyle: avatarRecord.faceStyle } : {}),
-  };
+  // Stored rows span every avatar era (and versions are never rewritten): the
+  // normaliser is the allow-list — plant, mood, palette and the legacy keys.
+  const avatar = normalizeProfileAvatar(safeJsonParse(manifest.avatar, {}));
   return {
     id: `custom:${row.id}`,
     slug: row.slug,
@@ -340,7 +326,7 @@ const profiles = new Hono<AppEnv>()
         system_prompt: sanitizeForPrompt(system_prompt.trim()),
         max_steps: max_steps || 12,
         is_shared: false,
-        avatar: avatar || {},
+        avatar: { ...normalizeProfileAvatar(avatar) },
         purpose: typeof purpose === 'string' ? purpose.trim() || null : null,
         audience: typeof audience === 'string' ? audience.trim() || null : null,
         risk_level: (risk_level as CustomProfileRiskLevel | undefined) ?? 'medium',
@@ -356,8 +342,9 @@ const profiles = new Hono<AppEnv>()
       logger.info(`[Profile] ✅ Custom profile created: custom:${row.id} (${row.name}) by ${authUser.id}`);
       const version = await getDb().customProfiles.getCurrentVersion(row.id);
       return c.json(formatCustomProfile(row, undefined, version), 201);
-    } catch (err: any) {
-      if (err.message?.includes('uq_custom_profiles_user_slug') || err.code === '23505') {
+    } catch (err) {
+      // drizzle nests the Postgres code in `err.cause`; a top-level check never matched.
+      if (isUniqueViolation(err)) {
         return c.json({ error: `A profile with slug "${slug}" already exists` }, 409);
       }
       throw err;
@@ -382,6 +369,13 @@ const profiles = new Hono<AppEnv>()
     let baseProfileId: string;
     let sourceModelId: string | null;
     let sourceReference: string;
+    // A fork of a custom Agent keeps its look: the avatar is copied with the plant
+    // the source actually renders as pinned (`legacyToPlant` against the source's
+    // own stable id) — a legacy avatar that resolves by id hash, such as `{}`,
+    // would otherwise pick again for the fork's id and change species. A fork of a
+    // system Agent starts from `{}` and gets its own plant: the built-in Sprouty's
+    // sprout is reserved, so a copy must not pass for the original.
+    let sourceAvatar: ProfileAvatar = {};
 
     const forkedFromSystemProfile = !source_profile_id.startsWith('custom:');
     if (source_profile_id.startsWith('custom:')) {
@@ -411,6 +405,13 @@ const profiles = new Hono<AppEnv>()
         ? (normalizeProfileId(sourceVersion.base_profile_id) as string)
         : DEFAULT_PROFILE_ID;
       sourceModelId = sourceVersion.model_id ?? loadProfile(baseProfileId).model.id ?? null;
+      const storedAvatar = normalizeProfileAvatar(safeJsonParse(sourceVersion.avatar, {}));
+      // Pin only when the stored plant is not one we render: an unknown id (an
+      // overlay's cultivar, a future species, a typo from an API client) resolves
+      // through the legacy keys like `{}` does, hashed by the source's own id.
+      sourceAvatar = isPlantId(storedAvatar.plant)
+        ? storedAvatar
+        : withPlant(storedAvatar, legacyToPlant(storedAvatar, null, `custom:${sourceRow.id}`));
     } else {
       // Fork from system profile
       const allProfiles = loadAllProfiles();
@@ -464,6 +465,7 @@ const profiles = new Hono<AppEnv>()
         system_prompt: sourcePrompt,
         max_steps: sourceMaxSteps,
         is_shared: false,
+        avatar: { ...sourceAvatar },
         forked_from: sourceReference,
         change_log: `Forked from ${sourceReference}`,
         created_by: authUser.id,
@@ -475,8 +477,9 @@ const profiles = new Hono<AppEnv>()
       const baseMap = new Map(loadAllProfiles().map((p) => [p.id, p]));
       const version = await getDb().customProfiles.getCurrentVersion(row.id);
       return c.json(formatCustomProfile(row, baseMap, version), 201);
-    } catch (err: any) {
-      if (err.message?.includes('uq_custom_profiles_user_slug') || err.code === '23505') {
+    } catch (err) {
+      // drizzle nests the Postgres code in `err.cause`; a top-level check never matched.
+      if (isUniqueViolation(err)) {
         return c.json({ error: `A profile with slug "${slug}" already exists. Try a different name.` }, 409);
       }
       throw err;
@@ -659,7 +662,7 @@ const profiles = new Hono<AppEnv>()
       return c.json({ error: 'Sharing requires lifecycle review; use the lifecycle endpoint' }, 400);
     }
     if (body.avatar !== undefined) {
-      updates.avatar = body.avatar;
+      updates.avatar = normalizeProfileAvatar(body.avatar);
     }
     if (body.purpose !== undefined) updates.purpose = body.purpose?.trim() || null;
     if (body.audience !== undefined) updates.audience = body.audience?.trim() || null;
