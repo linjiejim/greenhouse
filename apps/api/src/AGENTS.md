@@ -55,6 +55,7 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - 限流/审计来源 IP 必须走 `security/request-ip.ts`：默认使用 socket peer；只有 loopback 或 `TRUSTED_PROXY_IPS` 明确登记的反代才可提供 `X-Forwarded-For/X-Real-IP`，禁止直接信任请求头。
 - 文件上传：通过 `validateMagicBytes()` 校验 MIME 类型
 - Agent 工具下载公网图片必须走 `security/network.ts` 的 `fetchPublicImage()`：只准 public HTTPS，连接时 DNS 校验、每跳重定向复核、响应大小上限和图片魔数缺一不可；禁止对模型输入 URL 直接 `fetch()`。
+- Agent 工具抓取网页（搜索结果正文提取等）同理走 `fetchPublicPage()`：http(s)、无凭证、拒 localhost 与非公网字面量，连接时 DNS 校验（防 rebinding 到 127.0.0.1 / 内网 / 云元数据）、手动跟随重定向且每跳复核、解码后流式截断。曾经的 `LocalFallbackExtractor` 直接 `fetch(url, { redirect: 'follow' })`，一个跳到内网的搜索结果就能把 API 主机上的本地服务读进对话。
 - **要传 `dispatcher`（undici `Agent`/`ProxyAgent`）时，`fetch` 必须从同一个 `undici` 包导入**，不能用全局 `fetch`。Node 内置 fetch 自带钉死的 undici（`process.versions.undici`，Node 22 = 6.x），会用那份构建的 handler 接口校验 dispatcher，于是本仓依赖的 undici 8 dispatcher 一律被拒：`UND_ERR_INVALID_ARG: invalid onRequestStart method`，对外只表现为一句无信息量的 `TypeError: fetch failed`，且在联网前就失败。2026-07-27 生图全线挂掉就是这个原因（上游返回图片 URL，下载那步必挂）。单测若 mock `globalThis.fetch` 测不出来——要么 mock `undici` 的 `fetch`，要么 mock `fetchPublicImage` 这一层。
 
 ### Chat 的 Ambient Context 与 Client Actions

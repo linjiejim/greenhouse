@@ -8,8 +8,33 @@ vi.mock('undici', async (importOriginal) => {
   return { ...actual, fetch: vi.fn(actual.fetch) };
 });
 
+// DNS answers for the rebinding case: `rebind.greenhouse.test` resolves to
+// loopback, everything else goes to the real resolver.
+vi.mock('node:dns', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:dns')>();
+  const lookup = ((hostname: string, options: unknown, callback: unknown) => {
+    if (hostname === 'rebind.greenhouse.test') {
+      (callback as (e: null, a: Array<{ address: string; family: number }>) => void)(null, [
+        { address: '127.0.0.1', family: 4 },
+      ]);
+      return;
+    }
+    return (actual.lookup as (...args: unknown[]) => unknown)(hostname, options, callback);
+  }) as typeof actual.lookup;
+  return { ...actual, lookup };
+});
+
 import { fetch as undiciFetch } from 'undici';
-import { assertSafePublicImageUrl, fetchPublicImage, isPublicNetworkAddress } from './network.js';
+import {
+  assertSafePublicImageUrl,
+  assertSafePublicPageUrl,
+  fetchPublicImage,
+  fetchPublicPage,
+  isPublicNetworkAddress,
+} from './network.js';
+
+type UndiciResponse = Awaited<ReturnType<typeof undiciFetch>>;
+const asUndici = (response: Response) => response as unknown as UndiciResponse;
 
 describe('public image network policy', () => {
   it.each([
@@ -100,4 +125,73 @@ describe('public image network policy', () => {
     }
     expect(codes).not.toContain('UND_ERR_INVALID_ARG');
   }, 15_000);
+});
+
+describe('public page fetch (search-result extraction)', () => {
+  it.each([
+    'file:///etc/passwd',
+    'ftp://example.com/x',
+    'http://localhost:3000/',
+    'http://api.localhost/',
+    'http://127.0.0.1:3111/',
+    'http://[::1]/',
+    'http://10.0.0.5/admin',
+    'http://169.254.169.254/latest/meta-data',
+    'http://user:pass@example.com/',
+  ])('rejects unsafe page URL %s', (url) => {
+    expect(() => assertSafePublicPageUrl(url)).toThrow();
+  });
+
+  it.each(['http://example.com/a', 'https://example.com:8443/b?q=1'])('accepts public page URL %s', (url) => {
+    expect(assertSafePublicPageUrl(url).toString()).toBe(url);
+  });
+
+  it('refuses a public page that redirects to a loopback address, without requesting it', async () => {
+    const fetchMock = vi.mocked(undiciFetch);
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValueOnce(
+      asUndici(new Response(null, { status: 302, headers: { location: 'http://127.0.0.1:3111/api/admin' } })),
+    );
+
+    await expect(fetchPublicPage('https://1.1.1.1/start')).rejects.toThrow(/not public/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://1.1.1.1/start',
+      expect.objectContaining({ redirect: 'manual', dispatcher: expect.anything() }),
+    );
+  });
+
+  it('follows a public redirect and returns the page text', async () => {
+    const fetchMock = vi.mocked(undiciFetch);
+    fetchMock.mockClear();
+    fetchMock
+      .mockResolvedValueOnce(asUndici(new Response(null, { status: 301, headers: { location: '/docs' } })))
+      .mockResolvedValueOnce(
+        asUndici(new Response('<title>Docs</title><p>hello</p>', { headers: { 'content-type': 'text/html' } })),
+      );
+
+    const page = await fetchPublicPage('https://1.1.1.1/');
+    expect(page).toMatchObject({ text: '<title>Docs</title><p>hello</p>', finalUrl: 'https://1.1.1.1/docs' });
+    expect(page.truncated).toBe(false);
+  });
+
+  it('stops reading at the decoded-size cap', async () => {
+    const fetchMock = vi.mocked(undiciFetch);
+    fetchMock.mockResolvedValueOnce(asUndici(new Response('x'.repeat(5000))));
+
+    const page = await fetchPublicPage('https://1.1.1.1/big', { maxBytes: 1024 });
+    expect(page.text).toHaveLength(1024);
+    expect(page.truncated).toBe(true);
+  });
+
+  // The connect-time guard, end to end through undici: a hostname whose DNS
+  // answer is loopback (rebinding) is refused when the socket would open, so a
+  // name that passed the URL check can still never reach the API host.
+  it('refuses a hostname that resolves to a private address at connect time', async () => {
+    const error = await fetchPublicPage('http://rebind.greenhouse.test/').catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(Error);
+    const messages: string[] = [];
+    for (let cause: unknown = error; cause instanceof Error; cause = cause.cause) messages.push(cause.message);
+    expect(messages.join(' | ')).toMatch(/non-public address/);
+  });
 });
