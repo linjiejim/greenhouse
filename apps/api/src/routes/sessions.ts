@@ -20,7 +20,7 @@
 import { Hono } from 'hono';
 import { getDb, SessionActiveRuntimeError } from '@greenhouse/db';
 import { SESSION_SCOPES, type SessionScope } from '@greenhouse/types/api';
-import { BROWSER_SESSION_CHANNEL } from '@greenhouse/types/session';
+import { BOTS_SESSION_CHANNEL, BROWSER_SESSION_CHANNEL, defaultSessionListHiding } from '@greenhouse/types/session';
 import { getAuthUser } from '../auth/middleware.js';
 import { generateSessionTitle } from '../llm/title.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
@@ -129,7 +129,8 @@ const sessions = new Hono<AppEnv>()
     }
 
     // Workflow node/reviewer sessions are engine internals reachable only from a
-    // run's Trace link — they never belong in a user-facing session list.
+    // run's Trace link, and Bots conversations live on their own surface
+    // (/api/bots) — neither belongs in the generic session list.
     // `?channel=workflow` is the explicit debug back door.
     const listOpts = {
       status,
@@ -137,11 +138,24 @@ const sessions = new Hono<AppEnv>()
       offset,
       includeEval,
       channel,
-      excludeChannels: channel ? undefined : ['workflow'],
+      ...defaultSessionListHiding(channel),
     };
 
+    // The backfill below fetches rows one by one: same hide-by-default rule.
+    const hiding = defaultSessionListHiding(channel);
+    const isHiddenByDefault = (s: { id: string; channel: string }) =>
+      (hiding.excludeChannels ?? []).some((hidden) => hidden === s.channel) ||
+      (hiding.excludeIdPrefixes ?? []).some((prefix) => s.id.startsWith(prefix));
+
+    // `?channel=bots` lists only the caller's own Bots conversations, whatever the
+    // role or scope: they are owner-only and never shared (sessions/access.ts).
+    const ownerOnlyChannel = channel === BOTS_SESSION_CHANNEL;
+
     let baseList;
-    if (scope === 'shared') {
+    if (ownerOnlyChannel) {
+      baseList =
+        scope === 'shared' || scope === 'team' ? [] : await getDb().sessions.list({ ...listOpts, userId: authUser.id });
+    } else if (scope === 'shared') {
       baseList = await getDb().sessions.listSharedWith(authUser.id, listOpts);
     } else if (scope === 'team') {
       baseList = await getDb().sessions.list({ ...listOpts, excludeUserId: authUser.id });
@@ -161,8 +175,9 @@ const sessions = new Hono<AppEnv>()
     const sharedIdSet = new Set(sharedSessionIds);
 
     // Unscoped + non-super: fold in sessions shared with this user. `scope=mine`
-    // deliberately skips this — shared conversations live in their own tab.
-    if (scope === undefined && authUser.role !== 'super' && sharedSessionIds.length > 0) {
+    // deliberately skips this — shared conversations live in their own tab — and
+    // so does a channel-filtered list ("my conversations on <channel>").
+    if (scope === undefined && !channel && authUser.role !== 'super' && sharedSessionIds.length > 0) {
       const sharedRows = await getDb().sessions.listSharedWith(authUser.id, {
         status,
         includeEval,
@@ -195,8 +210,10 @@ const sessions = new Hono<AppEnv>()
           if (!s) continue;
           const accessible = authUser.role === 'super' || s.user_id === authUser.id || sharedIdSet.has(s.id);
           if (!accessible) continue;
-          // Mirror the main query's status / eval-visibility filters.
+          // Mirror the main query's status / eval-visibility filters — and its
+          // hiding: a Bots conversation filed into a group must not surface here.
           if (status ? s.status !== status : !includeEval && s.status === 'eval') continue;
+          if (isHiddenByDefault(s)) continue;
           list.push(s);
         }
         list.sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
@@ -513,6 +530,11 @@ const sessions = new Hono<AppEnv>()
     if (!session || !canWriteSession(authUser, session)) {
       return c.json({ error: 'Session not found' }, 404);
     }
+    // A Bots transcript interleaves several speakers and backs a rolling summary
+    // keyed by seq; truncating it would desynchronise both.
+    if (session.channel === BOTS_SESSION_CHANNEL) {
+      return c.json({ error: 'Messages in a Bots conversation cannot be edited' }, 409);
+    }
 
     const result = await getDb().sessions.editUserMessageAndTruncate(sessionId, msgId, body.content.trim());
     if (!result.ok) {
@@ -558,6 +580,9 @@ const sessions = new Hono<AppEnv>()
     // Write permission check
     if (!canWriteSession(authUser, session)) {
       return c.json({ error: 'Forbidden' }, 403);
+    }
+    if (session.channel === BOTS_SESSION_CHANNEL) {
+      return c.json({ error: 'Replies in a Bots conversation cannot be regenerated' }, 409);
     }
 
     const body = (await c.req.json().catch(() => null)) as {

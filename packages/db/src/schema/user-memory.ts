@@ -19,7 +19,9 @@
  */
 
 import { pgTable, serial, text, timestamp, integer, boolean, index, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { users } from './user.js';
+import { bots } from './bots.js';
 
 // ─── user_memories ────────────────────────────────────────
 
@@ -52,6 +54,13 @@ export const userMemories = pgTable(
       onDelete: 'set null',
     }),
     source_session_id: text('source_session_id'),
+    /**
+     * Scope: null = user-level (every agent and every Bot of this user sees it);
+     * a Bot id = that Bot's private memory. Services take the scope as a
+     * REQUIRED argument — null reads only user-level rows, a Bot id reads
+     * user-level + its own (docs/specs/20261005-personal-assistant-bots.md §4.6).
+     */
+    bot_id: text('bot_id').references(() => bots.id, { onDelete: 'cascade' }),
     /** Refreshed on real use (recall / update) — NOT on prompt injection. */
     last_used_at: timestamp('last_used_at', { withTimezone: true, mode: 'string' }),
     created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
@@ -61,6 +70,9 @@ export const userMemories = pgTable(
     index('idx_user_memories_user').on(table.user_id),
     index('idx_user_memories_category').on(table.user_id, table.category),
     index('idx_user_memories_status').on(table.user_id, table.status),
+    index('idx_user_memories_bot')
+      .on(table.bot_id)
+      .where(sql`${table.bot_id} IS NOT NULL`),
   ],
 );
 

@@ -1,7 +1,7 @@
 /**
  * Health check route — /health
  *
- * GET /health — health check: database status + runtime/mission readiness (no model or profile details)
+ * GET /health — health check: database status + runtime/mission/bots-computer readiness (no model or profile details)
  */
 
 import { Hono } from 'hono';
@@ -9,6 +9,7 @@ import { getDb } from '@greenhouse/db';
 import type { AppEnv } from '../app-env.js';
 import { getMissionRuntimeStatus, type MissionRuntimeStatus } from '../cloud-agent/index.js';
 import { resolveTrustedExecutionSwitches, trustedExecutionHealthView } from '../trusted-execution/kill-switches.js';
+import { botsComputerHealthView } from '../bots/computer/runtime.js';
 
 /** Public health posture: never expose host paths, images or preflight errors. */
 export function missionHealthView(status: MissionRuntimeStatus) {
@@ -38,6 +39,8 @@ const health = new Hono<AppEnv>().get('/', async (c) => {
       },
       mission: missionHealthView(getMissionRuntimeStatus()),
       trusted_execution: trustedExecutionHealthView(resolveTrustedExecutionSwitches()),
+      // Bot computers: runtime state (+ reason when unavailable) and capacity; no user ids or paths.
+      bots: botsComputerHealthView(),
     },
     dbHealth.ok ? 200 : 503,
   );

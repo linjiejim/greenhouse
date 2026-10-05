@@ -1,6 +1,7 @@
 /**
  * Runtime Config (super only) — registry-driven workspace settings editor for
- * the runtime credentials: main LLM, media (vision + image generation), web search.
+ * the runtime credentials: main LLM, media (vision + image generation), web search,
+ * plus the Bot computers capacity knobs (also editable on Administration → Bot computers).
  *
  * Rendered straight from the settings registry (@greenhouse/types, plus the
  * entries active extensions register): adding a setting makes it appear here —
@@ -22,7 +23,7 @@ import type { TranslationKey } from '../../lib/i18n';
 import { fetchWorkspaceSettings, saveWorkspaceSettings } from '../../lib/api/workspace-settings';
 import { useExtensionsStore } from '../../stores/extensions-store';
 
-const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search'];
+const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search', 'bots'];
 
 function SourceBadge({ source }: { source: WorkspaceSettingView['source'] }) {
   const { t } = useI18n();

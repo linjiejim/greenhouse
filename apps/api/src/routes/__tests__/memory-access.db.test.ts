@@ -215,9 +215,9 @@ describe('memory lifecycle', () => {
     expect((await db.userMemories.getById(pinned.id))?.status).toBe('active');
 
     // Dormant rows leave the prompt index but stay searchable.
-    const index = await db.userMemories.listForIndex(user.id);
+    const index = await db.userMemories.listForIndex(user.id, { botId: null });
     expect(index.map((m) => m.id)).not.toContain(stale.id);
-    const found = await db.userMemories.search(user.id, 'Stale', { includeInactive: true });
+    const found = await db.userMemories.search(user.id, 'Stale', { botId: null }, { includeInactive: true });
     expect(found.map((m) => m.id)).toContain(stale.id);
   });
 
@@ -231,6 +231,6 @@ describe('memory lifecycle', () => {
     const after = await db.userMemories.getById(oldMem.id);
     expect(after?.status).toBe('superseded');
     expect(after?.superseded_by).toBe(merged.id);
-    expect(await db.userMemories.listForIndex(user.id)).toHaveLength(1);
+    expect(await db.userMemories.listForIndex(user.id, { botId: null })).toHaveLength(1);
   });
 });

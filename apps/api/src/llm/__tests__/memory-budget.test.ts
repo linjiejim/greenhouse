@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => {
       demoteStale: vi.fn(async () => 0),
       listUsersForConsolidation: vi.fn(async () => [{ user_id: 'user-1' }]),
       listForIndex: vi.fn(async () => rows),
+      listActiveScopes: vi.fn(async () => [{ bot_id: null, count: rows.length }]),
       create: vi.fn(),
       setStatus: vi.fn(),
     },

@@ -157,6 +157,16 @@
 - **`tool_frictions.fingerprint` 的唯一索引就是聚合契约**：同一个坑必须落到同一行、`occurrence_count` 累加，指纹算法（`apps/api/src/frictions/friction-center.ts`）改动会让历史行与新行分裂成两条，等于把优先级信号打散——改之前先想清楚是否需要迁移存量指纹。`sample_sessions` 是逻辑引用、**刻意无 FK**（运维遥测必须比它引用的会话活得久）。
 - **`record()` 必须是单条 `onConflictDoUpdate`，不许退回「先查后插」**：这张表有两个并发写入者（凌晨挖掘器批量扫 + 聊天里实时 `log_friction`），先查后插会让后手撞 23505，而两个调用方都吞异常 → 这次踩坑**静默消失**，计数偏低、排序失真。样本集的「去重 + 取最新 5 条」也在同一条 SQL 里算（读的就是它要更新的那一行），这依赖 `sample_sessions` 恒为合法 JSON 数组——该列 NOT NULL DEFAULT `'[]'` 且只有这一个写入者。回归测试在 `tests/db/tool-frictions.db.test.ts`（并发那条在旧实现下必红）。`scanToolErrors` 会跳过 pipeline 里含 `\u0000` 转义的行——PG 的 jsonb 存不了 NUL，一条被污染的消息就能让整轮挖掘抛「unsupported Unicode escape sequence」（2026-08-11 实测），写入端（extract-text）已不再产 NUL，这道 SQL 侧防御管的是存量行与未来的其它写入者。
 
+### Bots 表（个人助理）
+
+方案见 [Bots spec](../../../docs/specs/20261005-personal-assistant-bots.md)。
+
+- **记忆作用域是必填参数**：`user_memories.bot_id` 为 null 是用户级、非空是某个 Bot 私有。`listForIndex` / `search` / `getOwnedInScope` 都**必须**传 `MemoryScope`——`{ botId: null }` 只读用户级（普通对话、定时任务、subagent、workflow、飞书都这么传），`{ botId }` 读用户级 + 该 Bot，`{ botId, exact: true }` 只读一个分区（整理、管理）。把 scope 做成可选会让每个旧调用方把所有 Bot 的私有记忆注入进普通对话；按 id 查一定走 `getOwnedInScope`，否则 Bot A 能凭递增 id 打开 Bot B 的私有记忆。consolidation 按 `(user_id, bot_id)` 分区跑，替换行继承 `bot_id`。
+- **Bots 对话只有一个写者**：持有该会话 ChatRun 的引擎。服务端在对话进行中产生的东西（交还事件、续跑、后台汇报、忙时插话）一律进 `bot_inbox`，不要直接 `addMessage`——任何半路插入的行都会让进行中回合的 tail-CAS 失败、它刚流式展示的回答在刷新后消失。引擎自己的多行写入用 `sessions.appendIfTail`（角色通用的尾 CAS），每写一行推进 expected tail。
+- **`bot_computers` 的每次状态迁移都是 `version` CAS**，单用户的 start/stop/evict 在 `withUserLock`、容量判断在 `withCapacityLock` 里做——蓝绿两个 API 槽位共享同一个 Docker daemon 和这张表，进程内状态不能当事实。接管租约的 `lease_epoch` 单调递增：观察（快照/截图）返回前要复核 epoch，变了就丢弃。
+- **密码库只存密文、只回元数据**：service 原样存取 `*_enc` 列，加解密（AAD=`vault:<user_id>:<item_id>:<field>`）在 API 的 vault 模块里做；HTTP 与工具的读路径只返回 `VaultItemView`。新 id 先用 `newVaultItemId()` 生成再加密（id 是 AAD 的一部分）。
+- `bot_requests` 只经 `settleRequest` 从 pending 单次 CAS 结算（双击、两个槽位竞争都只有一个赢家）；`payload` 只放服务端派生的展示/执行数据，**永不放秘密**（安全登录卡的输入值只经过一次请求体，不落库）。
+
 ### 邮箱绑定与发信审计
 
 方案见 [email 复活 spec](../../../docs/specs/20260805-email-revival.md)。

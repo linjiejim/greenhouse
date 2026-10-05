@@ -11,6 +11,7 @@
 import { getDb } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import type { ChatEngineResult, DsmlRecoveryEvent } from '@greenhouse/agent-core';
+import type { MessageRow } from '@greenhouse/types/session';
 
 // ─── Persist ─────────────────────────────────────────────
 
@@ -33,7 +34,21 @@ export interface PersistInput {
   };
   /** Stable Runtime-derived identity closes transcript→Runtime crash windows. */
   resultMessageId?: string;
+  /** Bots conversations: the Bot that authored this turn. */
+  botId?: string;
+  /**
+   * Persist a placeholder line when the turn produced no text but did call
+   * tools (a Bot whose only action was a hand-off) — otherwise the turn would
+   * vanish from the transcript.
+   */
+  emptyTextFallback?: string;
 }
+
+/** What persistence did — the Bots engine advances its expected tail from it. */
+export type PersistChatOutcome =
+  | { status: 'appended' | 'replaced'; message: MessageRow }
+  | { status: 'skipped'; reason: string }
+  | { status: 'empty' };
 
 function incompleteRichBlockStart(content: string): number | null {
   const openFence = /```(?:chart|confirm|datatable)[^\S\r\n]*\r?\n/g;
@@ -60,7 +75,7 @@ export function finalizeInterruptedChatContent(content: string, notice: string):
  * Persist chat result to DB: assistant message, LLM usage, DSML recovery metadata.
  * Called by /api/chat after the stream completes.
  */
-export async function persistChatResult(input: PersistInput): Promise<void> {
+export async function persistChatResult(input: PersistInput): Promise<PersistChatOutcome> {
   const {
     sessionId,
     caller,
@@ -73,12 +88,19 @@ export async function persistChatResult(input: PersistInput): Promise<void> {
     replaceAssistantMessageId,
     expectedTail,
     resultMessageId,
+    botId,
+    emptyTextFallback,
   } = input;
   const hasIncompleteRichBlock = incompleteRichBlockStart(engineResult.text) != null;
+  const rawText =
+    !engineResult.text.trim() && emptyTextFallback && engineResult.pipelineSteps.length > 0
+      ? emptyTextFallback
+      : engineResult.text;
   const content =
     interruptionReason || hasIncompleteRichBlock
-      ? finalizeInterruptedChatContent(engineResult.text, interruptionNotice)
-      : engineResult.text;
+      ? finalizeInterruptedChatContent(rawText, interruptionNotice)
+      : rawText;
+  let outcome: PersistChatOutcome = { status: 'empty' };
 
   if (content && replaceAssistantMessageId && streamCompleted && !interruptionReason) {
     const replacement = await getDb().sessions.replaceLatestAssistant(
@@ -106,6 +128,9 @@ export async function persistChatResult(input: PersistInput): Promise<void> {
         assistantMessageId: replaceAssistantMessageId,
         reason: replacement.reason,
       });
+      outcome = { status: 'skipped', reason: replacement.reason };
+    } else {
+      outcome = { status: 'replaced', message: replacement.message };
     }
   } else if (content && !replaceAssistantMessageId) {
     if (!streamCompleted && !interruptionReason) {
@@ -127,6 +152,7 @@ export async function persistChatResult(input: PersistInput): Promise<void> {
       cached_tokens: engineResult.usage.cachedInputTokens || undefined,
       reasoning_tokens: engineResult.usage.reasoningTokens || undefined,
       duration_ms: engineResult.durationMs,
+      ...(botId ? { bot_id: botId } : {}),
     };
     if (expectedTail) {
       const appended = await getDb().sessions.appendAssistantIfTail(
@@ -141,11 +167,14 @@ export async function persistChatResult(input: PersistInput): Promise<void> {
           expectedTailMessageId: expectedTail.id,
           reason: appended.reason,
         });
+        outcome = { status: 'skipped', reason: appended.reason };
+      } else {
+        outcome = { status: 'appended', message: appended.message };
       }
     } else {
       // Stateless callers do not reach this persistence path. Keep the fallback
       // for internal/legacy callers that intentionally have no transcript CAS.
-      await getDb().sessions.addMessage(assistantMessage);
+      outcome = { status: 'appended', message: await getDb().sessions.addMessage(assistantMessage) };
     }
   }
 
@@ -161,4 +190,5 @@ export async function persistChatResult(input: PersistInput): Promise<void> {
       /* ignore */
     }
   }
+  return outcome;
 }

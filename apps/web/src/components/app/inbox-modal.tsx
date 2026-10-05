@@ -14,7 +14,19 @@ import { Badge, Dialog, EmptyState, Spinner } from '../ui';
 
 type InboxTab = 'notifications' | 'shares';
 
+/**
+ * A server-chosen in-app link (`payload.href`, e.g. a Bots "needs you" card's
+ * `#/bots?c=<session>`). Only hash routes are honoured — never an absolute URL.
+ */
+function payloadHref(payload: PlatformNotification['payload']): string | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const href = (payload as Record<string, unknown>).href;
+  return typeof href === 'string' && href.startsWith('#/') ? href : null;
+}
+
 function notificationHref(item: PlatformNotification): string | null {
+  const linked = payloadHref(item.payload);
+  if (linked) return linked;
   if (item.run_id) {
     // Historical notifications predate the kind segment; the Execution Center
     // router keeps this compatibility form readable.

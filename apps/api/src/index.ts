@@ -52,6 +52,16 @@ import profileRoutes from './routes/profiles.js';
 import sessionRoutes from './routes/sessions.js';
 import evalRoutes from './routes/eval.js';
 import { createChatRoute } from './routes/chat.js';
+import {
+  createAdminBotComputerRoutes,
+  createBotsComputerRoutes,
+  createBotsVaultRoutes,
+  createComputerViewerRoutes,
+  initBotComputers,
+  shutdownBotComputers,
+} from './bots/computer/index.js';
+import { createBotsRoutes, initBotsEngine, shutdownBotsEngine } from './bots/engine/index.js';
+import { startBotsOrphanSweep, stopBotsOrphanSweep } from './bots/purge.js';
 import clientActionRoutes from './routes/client-actions.js';
 import { CLIENT_ACTIONS_API_PREFIX } from '@greenhouse/types/api';
 import { createAgentRoutes } from './routes/agent-tools.js';
@@ -293,6 +303,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin/llm-gateway', adminGatewayRoutes)
       .route('/api/admin/feature-requests', featureRequestRoutes)
       .route('/api/admin/frictions', frictionRoutes)
+      .route('/api/admin/bot-computers', createAdminBotComputerRoutes())
       // Project management — all internal users
       .use('/api/platform/*', requireInternal())
       .route('/api/platform', platformRoutes)
@@ -341,6 +352,10 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Team Gateway Key self-service — all internal users
       .use('/api/auth/llm-keys/*', requireInternal())
       .route('/api/auth/llm-keys', llmKeyRoutes)
+      // Bots computer live viewer (RFB over WebSocket). Under /api/ws because a
+      // browser WebSocket cannot send a Bearer header: isPublicPath exempts the
+      // prefix and the route authenticates a one-time, purpose-bound token itself.
+      .route('/api/ws/computer', createComputerViewerRoutes())
       // WebSocket endpoint — internal users only (auth via query token)
       .route('/api/ws', wsRoutes)
       // Browser client-action results — internal user-bound and part of the typed contract
@@ -348,6 +363,16 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route(CLIENT_ACTIONS_API_PREFIX, clientActionRoutes)
       // ── Registry-dependent routes (need DB-backed toolRegistry) ──
       .route('/api/chat', createChatRoute(toolRegistry))
+      // Bots — every internal user behind the `bots` flag. Owner-only on every
+      // path inside the routes (super included). The bare collection path is
+      // not matched by `/*`, so it is guarded explicitly.
+      .use('/api/bots', requireInternal())
+      .use('/api/bots', requireFeature('bots'))
+      .use('/api/bots/*', requireInternal())
+      .use('/api/bots/*', requireFeature('bots'))
+      .route('/api/bots/computer', createBotsComputerRoutes())
+      .route('/api/bots/vault', createBotsVaultRoutes())
+      .route('/api/bots', createBotsRoutes())
       // Home workbench card evaluation — every internal user. Cards are
       // evaluated as the requesting user through the read-only tool allowlist,
       // so this widens nothing the user could not already query; a user with no
@@ -511,6 +536,9 @@ async function main() {
     stopFeishuBot();
     await runExtensionShutdownHooks();
     await chatRunRegistry.shutdown(5000);
+    stopBotsOrphanSweep();
+    await shutdownBotsEngine();
+    await shutdownBotComputers();
     await dbProvider.close();
     process.exit(0);
   };
@@ -571,6 +599,15 @@ async function main() {
   // is already serving. Missing/hung Docker hardening therefore closes only
   // Mission admission instead of delaying Chat and health availability.
   await initMissionRuntime();
+
+  // Bots: the engine (inbox sweeper, request expiry) and the computer
+  // subsystem (prechecks, reconcile, lifecycle loops). Like Mission, the
+  // computer initialises after the platform is serving and a broken Docker host
+  // only closes computers — Bots keep chatting without one.
+  await initBotsEngine(toolRegistry);
+  await initBotComputers();
+  // Bots transcripts of deleted members whose purge had to wait for a run to settle.
+  startBotsOrphanSweep();
 
   // Heartbeat: ping all WS connections every 30s
   setInterval(() => void connectionManager.pingAll(), 30_000);

@@ -161,6 +161,9 @@ importers:
       nodemailer:
         specifier: ^9.0.3
         version: 9.1.1
+      playwright-core:
+        specifier: ^1.61.1
+        version: 1.61.1
       socks:
         specifier: ^2.8.9
         version: 2.8.10
@@ -292,6 +295,9 @@ importers:
       '@greenhouse/utils':
         specifier: workspace:*
         version: link:../../packages/utils
+      '@novnc/novnc':
+        specifier: ^1.6.0
+        version: 1.7.0
       '@tauri-apps/api':
         specifier: ^2.11.1
         version: 2.11.1
@@ -1758,6 +1764,9 @@ packages:
   '@node-rs/jieba@2.0.1':
     resolution: {integrity: sha512-tnfzXOMqzVQF2dSKMhPC9HrHzzWmN6KheL/zYtGenhOpq/bCKHJWVASSggEnHlkmHgXGeIJHR2N/IuPzewz1BQ==}
     engines: {node: '>= 10'}
+
+  '@novnc/novnc@1.7.0':
+    resolution: {integrity: sha512-ucEJOx4T2avIRCleodk7YobZj5O2Ga2AeLfQ69A/yjG9HHba2+PDgwSkN3FttrmG+70ZGx21sElNFouK13RzyA==}
 
   '@opentelemetry/api@1.9.0':
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
@@ -6794,6 +6803,8 @@ snapshots:
       '@node-rs/jieba-win32-arm64-msvc': 2.0.1
       '@node-rs/jieba-win32-ia32-msvc': 2.0.1
       '@node-rs/jieba-win32-x64-msvc': 2.0.1
+
+  '@novnc/novnc@1.7.0': {}
 
   '@opentelemetry/api@1.9.0': {}
 

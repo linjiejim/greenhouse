@@ -86,7 +86,19 @@ export type ServerWsEvent =
       kind: string;
       eventType: string;
       seq: number;
-    };
+    }
+  // Bots: a conversation's transcript, members, notes or requests changed
+  // server-side (task report, handback event, request settled). Id only — the
+  // client refetches /api/bots/conversations/:id.
+  | { type: 'bots:conversation'; sessionId: string }
+  // Bots: the member's computer changed state or take-over lease.
+  | {
+      type: 'bots:computer';
+      state: import('./bots.js').ComputerState;
+      controller: 'bot' | 'user';
+    }
+  // Bots: the count of pending "needs you" requests changed.
+  | { type: 'bots:attention'; pending: number };
 
 // ─── Client → Server Events ─────────────────────────────
 

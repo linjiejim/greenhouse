@@ -29,7 +29,8 @@ import { createClientActionBridge } from '../tools/client-action-bridge.js';
 import type { ClientActionBridge } from '../tools/client-action-bridge.js';
 import { createClientActionTools } from '../tools/client-actions.js';
 import type { ChatRequestBody, ChatRequestMessage } from '@greenhouse/types/api';
-import { BROWSER_SESSION_CHANNEL, type SessionChannel } from '@greenhouse/types/session';
+import { BOTS_SESSION_CHANNEL, BROWSER_SESSION_CHANNEL, type SessionChannel } from '@greenhouse/types/session';
+import { userHasFeature } from '../auth/features.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
 import { isChatModelAllowed } from '../config/models.js';
 import { sanitizeForPrompt } from '../security/security.js';
@@ -222,6 +223,82 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             // reach addMessage/buildChatMessages/title updates below.
             if (!canWriteSession(authUser, session)) {
               return c.json({ error: 'Session not found' }, 404);
+            }
+
+            // ── Bots conversations: multi-speaker turns run in the Bots engine ──
+            // Branches before any single-agent preparation (history, Runtime
+            // trace, tools). canWriteSession above is owner-only for this channel.
+            if (session.channel === BOTS_SESSION_CHANNEL) {
+              if (!(await userHasFeature(userId, userRole, 'bots'))) {
+                return c.json({ error: 'Bots are not enabled for this account' }, 403);
+              }
+              if (regenerationTargetId) {
+                return c.json({ error: 'Replies in a Bots conversation cannot be regenerated' }, 409);
+              }
+              const lastMessage = body.messages?.[body.messages.length - 1];
+              // A message, an image, or both (the composer sends a pasted screenshot on its own).
+              const botsImages = lastMessage?.images?.length ? lastMessage.images : undefined;
+              if (!lastMessage || lastMessage.role !== 'user' || (!lastMessage.content?.trim() && !botsImages)) {
+                return c.json({ error: 'A Bots turn needs a message or an image' }, 400);
+              }
+              const rawMentions = body.mentions ?? [];
+              if (
+                !Array.isArray(rawMentions) ||
+                rawMentions.length > 6 ||
+                rawMentions.some((m) => typeof m !== 'string' || m.length > 64)
+              ) {
+                return c.json({ error: 'mentions must be at most 6 Bot ids' }, 400);
+              }
+              const botsMessage = {
+                content: lastMessage.content ?? '',
+                mentions: rawMentions,
+                ...(botsImages ? { images: botsImages } : {}),
+              };
+              // Loaded on first use: the engine pulls in the whole Bots tool
+              // stack, which an ordinary chat turn never needs.
+              const botsEngine = await import('../bots/engine/index.js');
+              const botsDb = getDb();
+              // Nobody here can answer (an archived DM owner, a group without
+              // active Bots): refuse plainly instead of accepting a message that
+              // would get no reply.
+              const replyState = await botsEngine.conversationReplyState(botsDb, userId, sessionId);
+              if (replyState === 'bot_archived') {
+                return c.json(
+                  { error: 'This Bot was archived — its conversation is read-only', code: replyState },
+                  409,
+                );
+              }
+              if (replyState === 'no_active_members') {
+                return c.json(
+                  { error: 'No Bot in this conversation can reply — invite one first', code: replyState },
+                  409,
+                );
+              }
+              const botsRun = await botsEngine.claimBotsRun(botsDb, sessionId, userId);
+              if (!botsRun) {
+                // Busy (here or on another API slot): the running chain reads it
+                // between Bot turns (single writer).
+                await botsEngine.deliverToConversation(sessionId, { kind: 'user_message', ...botsMessage });
+                return c.json({ queued: true as const }, 202);
+              }
+              try {
+                await botsEngine.startBotsChain({
+                  authUser,
+                  session,
+                  toolRegistry,
+                  run: botsRun,
+                  message: botsMessage,
+                  db: botsDb,
+                });
+              } catch (err) {
+                await botsEngine.releaseBotsRun(botsDb, botsRun);
+                throw err;
+              }
+              c.header('Content-Type', 'application/x-ndjson');
+              c.header('Cache-Control', 'no-cache');
+              c.header('X-Accel-Buffering', 'no');
+              c.header('X-Session-Id', sessionId);
+              return honoStream(c, (stream) => streamRunToResponse(botsRun, stream, -1));
             }
 
             try {
@@ -761,6 +838,13 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         if (activeRun) {
           if (activeRun.userId !== authUser.id && authUser.role !== 'super') {
             return c.json({ error: 'Session not found' }, 404);
+          }
+          if (activeRun.userId !== authUser.id) {
+            // A super may stop someone's ordinary chat, never their Bots.
+            const runSession = await getDb().sessions.getById(sessionId);
+            if (!runSession || !canWriteSession(authUser, runSession)) {
+              return c.json({ error: 'Session not found' }, 404);
+            }
           }
           activeRun.requestStop('user');
           return c.json({ ok: true as const, run_id: activeRun.runId });

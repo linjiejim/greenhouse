@@ -99,6 +99,10 @@
     "./workspace-settings": {
       "import": "./src/workspace-settings.ts",
       "types": "./src/workspace-settings.ts"
+    },
+    "./bots": {
+      "import": "./src/bots.ts",
+      "types": "./src/bots.ts"
     }
   },
   "scripts": {

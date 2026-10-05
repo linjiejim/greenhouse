@@ -64,45 +64,68 @@ function ageMarker(row: UserMemoryRow, now: number): string {
   return ` (recorded over a year ago)`;
 }
 
-/**
- * Build the `## User Memory` block for a system prompt.
- *
- * Titles only, pinned first, newest-used next, cut off at a hard character
- * budget. Everything is sanitised: memory text is model-written and
- * user-editable, so it is untrusted input that gets replayed every turn.
- */
-export async function buildMemoryIndexBlock(userId: string): Promise<string | null> {
-  const db = getDb();
-  const rows = await db.userMemories.listForIndex(userId);
-  if (rows.length === 0) return null;
+/** Budget split when a Bot reads both layers: user-level first, then its own notes. */
+const BOT_PRIVATE_INDEX_BUDGET_CHARS = 600;
 
-  const now = Date.now();
+function renderIndexLines(rows: UserMemoryRow[], budget: number, now: number): { lines: string[]; dropped: number } {
   const lines: string[] = [];
   let used = 0;
   let dropped = 0;
-
   for (const row of rows) {
     const line = `- [${row.category}] ${sanitizeForPrompt(row.title)}${ageMarker(row, now)} (id: ${row.id})`;
-    if (used + line.length > MEMORY_INDEX_BUDGET_CHARS) {
+    if (used + line.length > budget) {
       dropped++;
       continue;
     }
     lines.push(line);
     used += line.length + 1;
   }
+  return { lines, dropped };
+}
 
-  if (lines.length === 0) return null;
+/**
+ * Build the `## User Memory` block for a system prompt.
+ *
+ * Titles only, pinned first, newest-used next, cut off at a hard character
+ * budget. Everything is sanitised: memory text is model-written and
+ * user-editable, so it is untrusted input that gets replayed every turn.
+ *
+ * Without a Bot the block holds user-level memories only. A Bot reads the
+ * user-level layer plus its own private notes, under a split budget; it never
+ * sees another Bot's private memories.
+ */
+export async function buildMemoryIndexBlock(
+  userId: string,
+  opts: { botId?: string | null } = {},
+): Promise<string | null> {
+  const db = getDb();
+  const botId = opts.botId ?? null;
+  const userRows = await db.userMemories.listForIndex(userId, { botId: null });
+  const botRows = botId ? await db.userMemories.listForIndex(userId, { botId, exact: true }) : [];
+  if (userRows.length === 0 && botRows.length === 0) return null;
 
+  const now = Date.now();
+  const userBudget = botId ? MEMORY_INDEX_BUDGET_CHARS - BOT_PRIVATE_INDEX_BUDGET_CHARS : MEMORY_INDEX_BUDGET_CHARS;
+  const userPart = renderIndexLines(userRows, userBudget, now);
+  const botPart = botId ? renderIndexLines(botRows, BOT_PRIVATE_INDEX_BUDGET_CHARS, now) : { lines: [], dropped: 0 };
+  if (userPart.lines.length === 0 && botPart.lines.length === 0) return null;
+
+  const dropped = userPart.dropped + botPart.dropped;
   const overflow =
     dropped > 0
       ? `\n${dropped} older ${dropped === 1 ? 'memory is' : 'memories are'} not listed — use memory(action:"recall", query:"…") to search them.`
       : '';
 
+  const sections = [userPart.lines.join('\n')];
+  if (botPart.lines.length > 0) {
+    sections.push(`Your own private notes (only you see these):\n${botPart.lines.join('\n')}`);
+  }
+
   return (
     `What you remember about this user, one line each. These are point-in-time notes, not live state — ` +
     `re-check anything that may have changed. Use them to personalise your answers without announcing that you ` +
     `"remember"; call memory(action:"recall", ids:[…]) to read the full note when a line looks relevant.\n` +
-    lines.join('\n') +
+    sections.filter(Boolean).join('\n') +
     overflow
   );
 }
@@ -114,7 +137,11 @@ export async function buildMemoryIndexBlock(userId: string): Promise<string | nu
  * spawned subagents). Returns null when the feature is off, the user is unknown,
  * or anything at all fails — memory must never be the reason a turn breaks.
  */
-export async function resolveMemoryContext(userId: string, role?: UserRole): Promise<string | null> {
+export async function resolveMemoryContext(
+  userId: string,
+  role?: UserRole,
+  opts: { botId?: string | null } = {},
+): Promise<string | null> {
   try {
     const db = getDb();
     let userRole = role;
@@ -125,7 +152,7 @@ export async function resolveMemoryContext(userId: string, role?: UserRole): Pro
     }
     if (!(await userHasFeature(userId, userRole, 'memory'))) return null;
 
-    const index = await buildMemoryIndexBlock(userId);
+    const index = await buildMemoryIndexBlock(userId, opts);
     return index ? `### Memory\n${index}` : null;
   } catch (err) {
     logger.warn('[memory] failed to build memory context', { error: toErrorMessage(err) });
@@ -210,9 +237,24 @@ export function parseConsolidationOps(raw: string, knownIds: Set<number>): Conso
   return ops;
 }
 
+/**
+ * Consolidate one user, one scope partition at a time: user-level memories and
+ * each Bot's private memories are separate lists, and a merge never crosses
+ * them (a replacement inherits its partition's bot_id).
+ */
 async function consolidateUser(userId: string): Promise<number> {
   const db = getDb();
-  const rows = await db.userMemories.listForIndex(userId);
+  const scopes = await db.userMemories.listActiveScopes(userId, CONSOLIDATION_MIN_ACTIVE);
+  let applied = 0;
+  for (const scope of scopes) {
+    applied += await consolidatePartition(userId, scope.bot_id);
+  }
+  return applied;
+}
+
+async function consolidatePartition(userId: string, botId: string | null): Promise<number> {
+  const db = getDb();
+  const rows = await db.userMemories.listForIndex(userId, { botId, exact: true });
   if (rows.length < CONSOLIDATION_MIN_ACTIVE) return 0;
 
   // Pinned rows are shown for context but may not be merged or demoted.
@@ -263,6 +305,7 @@ async function consolidateUser(userId: string): Promise<number> {
           title: op.title!,
           content: op.content!,
           source: 'consolidation',
+          bot_id: botId,
         });
         for (const id of targets) {
           await db.userMemories.setStatus(id, userId, 'superseded', replacement.id);

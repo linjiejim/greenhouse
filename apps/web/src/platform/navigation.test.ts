@@ -52,6 +52,25 @@ describe('Primary navigation', () => {
     expect(primary.map((item) => item.key)).not.toContain('home');
   });
 
+  it('puts Bots right after Chat only when the member has the feature', () => {
+    const without = buildPrimaryNavigation({ applications: [application('knowledge')], ...baseLabels });
+    expect(without.primary.map((item) => item.key)).toEqual(['chat', 'knowledge']);
+
+    const withBots = buildPrimaryNavigation({
+      applications: [application('knowledge'), application('projects')],
+      ...baseLabels,
+      bots: { label: 'Bots' },
+    });
+    expect(withBots.primary.map((item) => item.key)).toEqual(['chat', 'bots', 'knowledge', 'projects']);
+    expect(withBots.primary[1]).toMatchObject({ href: '#/bots', badge: undefined });
+    expect(withBots.overflow.map((item) => item.key)).toEqual(['skillhub']);
+  });
+
+  it('carries the pending "needs you" count as the Bots badge', () => {
+    const { primary } = buildPrimaryNavigation({ applications: [], ...baseLabels, bots: { label: 'Bots', badge: 3 } });
+    expect(primary.find((item) => item.key === 'bots')?.badge).toBe(3);
+  });
+
   it('keeps durable executions out of More because they have one fixed utility entry', () => {
     const navigation = buildPrimaryNavigation({ applications: [], ...baseLabels });
     expect(navigation.overflow.map((item) => item.key)).toEqual(['skillhub']);

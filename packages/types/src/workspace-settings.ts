@@ -28,7 +28,7 @@
 // ─── Registry ────────────────────────────────────────────
 
 /** Core groups render as fixed sections of Runtime Config; an extension uses its own id as the group. */
-export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search';
+export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search' | 'bots';
 
 /**
  * Value shape stored in the `value` jsonb column:
@@ -219,6 +219,29 @@ const WORKSPACE_SETTINGS_LITERAL = [
     type: 'string',
     secret: true,
     env: 'BRAVE_SEARCH_API_KEY',
+  },
+  // ── Bots computers (live knobs; the Docker host itself is .env infrastructure) ──
+  {
+    key: 'bots.computer_idle_minutes',
+    group: 'bots',
+    label: 'Computer idle timeout (minutes)',
+    description:
+      "A member's computer is removed after this many minutes without use (its files and logins are kept). 5–240, default 15.",
+    type: 'string',
+    env: 'BOTS_COMPUTER_IDLE_MINUTES',
+    maxLength: 4,
+    placeholder: '15',
+  },
+  {
+    key: 'bots.computer_max_running',
+    group: 'bots',
+    label: 'Computers running at once',
+    description:
+      "How many members' computers may run at the same time on the shared host; the least recently used idle one is stopped to make room. 1–50, default 2, capped by the host's memory.",
+    type: 'string',
+    env: 'BOTS_COMPUTER_MAX_RUNNING',
+    maxLength: 3,
+    placeholder: '2',
   },
 ] as const satisfies readonly WorkspaceSettingDef[];
 

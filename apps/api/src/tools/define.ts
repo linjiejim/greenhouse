@@ -108,6 +108,12 @@ export interface ToolMeta {
    * FE registry — not this flag — is the complete list).
    */
   presentation?: 'trace' | 'artifact';
+  /**
+   * `bots` — exists only inside Bots conversations (built by the Bots engine).
+   * Such tools are left out of GET /api/tools and the Agent editor's pick list:
+   * no other execution surface can construct them.
+   */
+  context?: 'bots';
 }
 
 /**
@@ -116,7 +122,8 @@ export interface ToolMeta {
  * - 'static'  — built once in the shared registry from just the db (or nothing).
  * - 'lazy'    — built per-request because it needs user context; wired in
  *               buildLazyServerTools / the chat route, not the static registry.
- * - 'special' — bespoke construction inside a route. No tool uses it today.
+ * - 'special' — bespoke construction outside the generic paths. Today: the Bot
+ *               tools (bots/tools/meta.ts), built only by the Bots engine.
  */
 export type ToolKind = 'static' | 'lazy' | 'special';
 

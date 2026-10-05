@@ -5,6 +5,7 @@
  */
 
 import { pgTable, text, timestamp, integer, doublePrecision, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 // ─── sessions ─────────────────────────────────────────────
 
@@ -57,6 +58,20 @@ export const messages = pgTable(
      * from before models became a per-turn choice.
      */
     model: text('model'),
+    /**
+     * Bot that authored this assistant turn in a Bots conversation (channel
+     * `bots`); null for user turns, system events and every non-Bots session.
+     * Logical reference to `bots.id` (no FK: messages is the largest table and
+     * Bots are archived, never hard-deleted while their user exists).
+     */
+    bot_id: text('bot_id'),
+    /**
+     * Structured system event in a Bots conversation (JSON text) — a hand-off
+     * (`{kind:'ask', to}`), a Bot joining, a take-over completed, a task
+     * report, the collaboration limit… The row's `content` stays the
+     * human-readable line; this drives rendering and transcript projection.
+     */
+    bot_event: text('bot_event'),
     images: text('images').notNull().default('[]'),
     confidence: doublePrecision('confidence'),
     grounded: integer('grounded'),
@@ -71,6 +86,9 @@ export const messages = pgTable(
   (table) => [
     index('idx_messages_session').on(table.session_id),
     uniqueIndex('uq_messages_session_seq').on(table.session_id, table.seq),
+    index('idx_messages_bot')
+      .on(table.bot_id)
+      .where(sql`${table.bot_id} IS NOT NULL`),
   ],
 );
 

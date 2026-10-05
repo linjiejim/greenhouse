@@ -6,7 +6,7 @@
  *
  * Sections (see `settingsSections` in nav-registry):
  * - Preferences + Cloud (one flat block): Preferences, Groups, Agent Connections,
- *   Connections, Email Accounts
+ *   Connections, Email Accounts, Passwords (Bots vault, `bots` flag)
  * - Labs (feature-gated): Memory
  * - Desktop: installer download in a browser, native controls inside the shell
  *
@@ -32,6 +32,7 @@ import { MemoryPanel } from './memory';
 import { GroupsPanel } from './groups';
 import { OAuthGrantsPanel } from './oauth-grants';
 import { DesktopPanel } from './desktop';
+import { PasswordsPanel } from './passwords';
 import { DEFAULT_MODULE, resolveSettingsRedirect } from './redirects';
 
 // ─── Sub-module helpers ─────────────────────────────────
@@ -85,6 +86,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
       {effectiveModule === 'agent-connections' && <OAuthGrantsPanel />}
       {effectiveModule === 'provider-bindings' && <ProviderBindingsPanel />}
       {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
+      {effectiveModule === 'passwords' && <PasswordsPanel />}
       {effectiveModule === 'groups' && <GroupsPanel />}
       {effectiveModule === 'memory' && <MemoryPanel />}
       {effectiveModule === 'desktop' && <DesktopPanel />}

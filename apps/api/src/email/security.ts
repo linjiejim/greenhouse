@@ -292,6 +292,26 @@ export function consumeDraftToken(token: string, userId: string): DraftEntry | n
   return entry;
 }
 
+/**
+ * Read a draft WITHOUT consuming it — for showing the member exactly what a
+ * send will mail before they allow it (a Bots approval card). Same matching,
+ * expiry and owner rules as `consumeDraftToken`; returns a copy, so a caller
+ * can never alter the bytes the send reads back.
+ */
+export function peekDraftToken(token: string, userId: string): DraftEntry | null {
+  cleanupDrafts();
+  const entry = draftStore.get(token.replace(/[\s-]/g, '').toUpperCase());
+  if (!entry || entry.expiresAt < Date.now() || entry.userId !== userId) return null;
+  return {
+    ...entry,
+    to: [...entry.to],
+    ...(entry.cc ? { cc: [...entry.cc] } : {}),
+    ...(entry.bcc ? { bcc: [...entry.bcc] } : {}),
+    ...(entry.references ? { references: [...entry.references] } : {}),
+    ...(entry.attachmentIds ? { attachmentIds: [...entry.attachmentIds] } : {}),
+  };
+}
+
 /** Pending draft count — monitoring and tests. */
 export function getPendingDraftCount(): number {
   cleanupDrafts();

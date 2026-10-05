@@ -614,6 +614,8 @@ export interface ChatRequestBody {
   client_action_scope_id?: string;
   /** Re-run the latest assistant reply instead of appending a user message (validated server-side). */
   regenerate_assistant_message_id?: unknown;
+  /** Bots conversations only: Bot ids the user addressed (resolved against the member list server-side). */
+  mentions?: string[];
 }
 
 /**
@@ -631,6 +633,7 @@ export const CHAT_REQUEST_BODY_KEYS = [
   'client_actions',
   'client_action_scope_id',
   'regenerate_assistant_message_id',
+  'mentions',
 ] as const satisfies readonly (keyof ChatRequestBody)[];
 
 type UnlistedChatRequestKeys = Exclude<keyof ChatRequestBody, (typeof CHAT_REQUEST_BODY_KEYS)[number]>;
@@ -760,6 +763,9 @@ export interface PingEvent {
 
 /** Discriminated union of all stream event types. */
 export type StreamingEvent =
+  | import('./bots.js').BotTurnStartEvent
+  | import('./bots.js').BotTurnEndEvent
+  | import('./bots.js').BotRequestEvent
   | TextDeltaEvent
   | ReasoningDeltaEvent
   | ToolCallStartEvent
@@ -831,6 +837,11 @@ export interface StreamEventCallbacks {
   onTitle?: (title: string) => void;
   onSource?: (data: Record<string, unknown>) => void;
   onLocalToolRequest?: (toolCallId: string, toolId: string, params: Record<string, unknown>, scopeId?: string) => void;
+  /** Bots conversations: one Bot starts / finishes speaking inside a multi-speaker turn. */
+  onBotTurnStart?: (event: import('./bots.js').BotTurnStartEvent) => void;
+  onBotTurnEnd?: (event: import('./bots.js').BotTurnEndEvent) => void;
+  /** Bots conversations: a "needs you" card was raised mid-turn. */
+  onBotRequest?: (request: import('./bots.js').BotRequestView) => void;
 }
 
 // ─── Formatting Utilities ────────────────────────────────
@@ -895,6 +906,15 @@ export function handleStreamEvent(event: StreamingEvent, cbs: StreamEventCallbac
       break;
     case 'source':
       cbs.onSource?.(event as Record<string, unknown>);
+      break;
+    case 'bot-turn-start':
+      cbs.onBotTurnStart?.(event);
+      break;
+    case 'bot-turn-end':
+      cbs.onBotTurnEnd?.(event);
+      break;
+    case 'bot-request':
+      cbs.onBotRequest?.(event.request);
       break;
     case 'local-tool-request':
       cbs.onLocalToolRequest?.(event.toolCallId, event.toolId, event.params, event.scopeId);

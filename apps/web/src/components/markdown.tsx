@@ -6,9 +6,11 @@
  * - Lightweight syntax highlighting for code blocks (JS/TS/Python/CSS/SQL/HTML)
  * - Responsive table wrappers that preserve native table layout
  * - Image lightbox: click any image to open the shared, dismissible media preview
+ * - Chat-file images (`/api/chat-files/:id/content`, e.g. a Bot's screenshot)
+ *   load through the authenticated fetch — see files/auth-image.tsx
  */
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { marked } from 'marked';
 import { parseEntityUrl } from '@greenhouse/types/entity-links';
 import { apiUrl } from '../lib/api-base';
@@ -19,6 +21,7 @@ import { openEntityPeek } from '../stores/entity-peek-store';
 import { isSidePaneAvailable, openSidePane } from '../stores/side-pane-store';
 import { useT } from '../lib/i18n';
 import { MediaPreviewDialog } from './media-preview-dialog';
+import { hydrateAuthImages, isAuthImageSrc } from './files/auth-image';
 import { Dialog, toast } from './ui';
 
 // Configure marked
@@ -316,6 +319,11 @@ function sanitizeMarkdownNode(node: Node, linkTarget: MarkdownLinkTarget): void 
           const val = el.getAttribute(attrName) || '';
           if (val.trim().toLowerCase().startsWith('javascript:')) {
             el.setAttribute(attrName, '#');
+          } else if (attrName === 'src' && tag === 'img' && isAuthImageSrc(val)) {
+            // `<img src>` cannot carry the Bearer token: the component fetches
+            // these bytes itself once the HTML is on the page.
+            el.removeAttribute('src');
+            el.setAttribute('data-auth-src', val.trim());
           } else if (attrName === 'href' && entity) {
             // Kept navigable so cmd-click and "copy link" still work, even
             // though a plain click is intercepted into a peek.
@@ -626,6 +634,7 @@ export const Markdown = React.memo(function Markdown({
   linkTarget = 'in-place',
 }: MarkdownProps) {
   const t = useT();
+  const rootRef = useRef<HTMLDivElement>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [fullscreenTableHtml, setFullscreenTableHtml] = useState<string | null>(null);
   const [fullscreenCodeHtml, setFullscreenCodeHtml] = useState<string | null>(null);
@@ -651,6 +660,10 @@ export const Markdown = React.memo(function Markdown({
       return `<p>${sanitizeHtml(content)}</p>`;
     }
   }, [content, anchors, compact, linkTarget, t]);
+
+  // The HTML island is replaced whenever `html` changes; fill its chat-file
+  // images each time, before paint (loaded ones are filled synchronously).
+  useLayoutEffect(() => (rootRef.current ? hydrateAuthImages(rootRef.current) : undefined), [html]);
 
   // Delegated clicks: table actions, record reference, image lightbox.
   const handleClick = useCallback(
@@ -710,7 +723,9 @@ export const Markdown = React.memo(function Markdown({
       }
       if (target.tagName === 'IMG') {
         e.preventDefault();
-        setLightboxSrc((target as HTMLImageElement).src);
+        // A chat-file image still loading has no src yet.
+        const src = (target as HTMLImageElement).getAttribute('src');
+        if (src) setLightboxSrc((target as HTMLImageElement).src);
       }
     },
     [t],
@@ -719,7 +734,12 @@ export const Markdown = React.memo(function Markdown({
   const proseClass = compact ? 'prose-compact' : 'prose-base';
   return (
     <>
-      <div className={`${proseClass} ${className}`} dangerouslySetInnerHTML={{ __html: html }} onClick={handleClick} />
+      <div
+        ref={rootRef}
+        className={`${proseClass} ${className}`}
+        dangerouslySetInnerHTML={{ __html: html }}
+        onClick={handleClick}
+      />
       <MediaPreviewDialog
         open={lightboxSrc !== null}
         files={lightboxSrc ? [{ src: lightboxSrc, type: 'image' }] : []}

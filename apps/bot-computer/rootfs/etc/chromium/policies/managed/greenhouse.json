@@ -1,0 +1,20 @@
+{
+  "PasswordManagerEnabled": false,
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "BookmarkBarEnabled": false,
+  "BrowserSignin": 0,
+  "SyncDisabled": true,
+  "TranslateEnabled": false,
+  "DefaultBrowserSettingEnabled": false,
+  "MetricsReportingEnabled": false,
+  "PromotionsEnabled": false,
+  "ShowHomeButton": false,
+  "HideWebStoreIcon": true,
+  "BackgroundModeEnabled": false,
+  "DownloadDirectory": "/home/agent/Downloads",
+  "PromptForDownloadLocation": false,
+  "DiskCacheSize": 104857600,
+  "URLBlocklist": ["file://*"],
+  "URLAllowlist": ["file:///opt/greenhouse/"]
+}

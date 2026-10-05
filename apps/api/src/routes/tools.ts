@@ -28,8 +28,10 @@ const tools = new Hono<AppEnv>()
     const assignedToolIds = new Set(allowedTools);
 
     // Return only tools the user can see, with assigned flag
+    // Bot tools exist only inside Bots conversations; nothing a user picks here
+    // (an Agent's tool list, an automation opt-in) could ever build them.
     const result = allMetas
-      .filter((t) => assignedToolIds.has(t.id))
+      .filter((t) => assignedToolIds.has(t.id) && t.context !== 'bots')
       .map((t) => ({
         id: t.id,
         name: t.name,

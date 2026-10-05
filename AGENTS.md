@@ -70,6 +70,23 @@ what exists." These rules are as binding as the "add" rules:
     previews" and "what the user refreshes" are the same thing. The bindable set is derived
     from tool metadata (`surface.workbench: true` → `WORKBENCH_READ_TOOL_IDS`), deliberately
     narrower than the read proxy.
+  - Registered: **the Bots computer controller (`apps/api/src/bots/computer/`) is separate from
+    the Mission sandbox lifecycle (`apps/api/src/cloud-agent/`)** — a Mission is one disposable
+    container per run with the Pi harness inside, one run per member, and its boot sweep /
+    finalize remove every container without an active run; a Bots computer is a long-lived
+    desktop per member (named home volume, idle stop + LRU, watch / take-over lease) whose agent
+    loop runs inside the API. They share the docker conventions, the hardening flags and the
+    egress check (`scripts/cloud-agent-net.sh`); don't add a third container manager — extend one
+    of these two.
+  - Registered: **the Bots page (`apps/web/src/pages/bots/`) does not reuse `ConversationPane`**
+    — that pane is a single-agent controller (messages have no author, the stream has no
+    speaker, drafts / task dock / side panel are bound to one agent). The Bots page reuses the
+    pieces (`MessageBubble`, `StreamingMessageBubble`, `ChatInput`, `ToolCallRenderer`,
+    `RichMarkdown`, `DockRow`), and stream consumption stays single: `SessionManager.runStream`
+    with `bot-turn-start` / `bot-turn-end` / `bot-request` events from `packages/types/src/api.ts`.
+  - Registered: **`playwright-core` is an API dependency** — the API drives each Bots computer's
+    Chromium over CDP (`connectOverCDP`, through a `docker exec` pipe relay). It is the protocol
+    client only; no browser binary ships with the API.
 - **No speculative abstraction.** Don't write interface layers / multi-backend abstractions /
   "for future use" columns with no second consumer.
 - **Declared capabilities must be real.** LLM tool descriptions, UI options, and docs must not
@@ -83,7 +100,9 @@ what exists." These rules are as binding as the "add" rules:
 - **CI gate**: `.github/workflows/ci.yml` runs lint → typecheck → test → **e2e** → **e2e-ui** →
   **secret-scan** on `main` and every PR (shared pnpm/Node setup lives in `.github/actions/setup`).
   The test/e2e/e2e-ui jobs build the CI database via `migrate` (not push) so the whole migration
-  chain is exercised on every run.
+  chain is exercised on every run. The test job also installs the Playwright headless shell: the
+  Bots browser-adapter suites drive a real Chromium and fail (not skip) without it under `CI` — a
+  fork CI that runs `pnpm test` needs the same step or `BOTS_BROWSER_TESTS=skip`.
 - **Secret scanning**: the `secret-scan` job runs [gitleaks](https://github.com/gitleaks/gitleaks)
   over incoming commits. Rules + allowlist live in `.gitleaks.toml`. Never commit real
   credentials; if the scanner flags a **confirmed** non-secret (a token alphabet, a test JWT
@@ -156,6 +175,15 @@ Missions additionally need the sandbox runner image (`bash scripts/build-agent-r
 (`scripts/cloud-agent-net.sh`); they stay disabled until `MISSION_ENABLED=1` and every
 preflight passes.
 
+Bots work without any of this (chat, memory, collaboration, background research). Their
+computers additionally need the computer image (`bash scripts/build-bot-computer.sh` →
+`greenhouse/bot-computer`), gVisor `runsc`, a hardened bridge (`BOTS_COMPUTER_NETWORK`, IPv6 off +
+ICC off, egress rules from `scripts/cloud-agent-net.sh --profile bots`) and **the API running on
+the Docker host** (computers are reached through `docker exec`; no port is published, so the
+compose image — which has no docker CLI — reports computers as unavailable). They stay off until
+`BOTS_COMPUTER_ENABLED=1` and every precheck in Administration → Bot computers passes. The vault
+needs `PROVIDER_TOKEN_ENCRYPTION_KEY`.
+
 ### Example dataset (`pnpm seed`)
 
 `data/examples/` holds a de-identified reference dataset (fictional company "Greenhouse") —
@@ -207,6 +235,9 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
   rejected. `--check` demands every listed port and tolerates extra allow rows for other ports on
   the same gateways (the API checks with its own port; the host applied both), but nothing
   broader may precede the deny block. Keep the host's watchdog/oneshot units on the same script.
+  `--profile bots` (Bots computers, `BOTS_COMPUTER_NETWORK`) installs its own chains with **zero**
+  allow rows — computers never talk to the API — and its `--check` fails on any API-port row; the
+  two profiles coexist on one host, each skipping the other's tagged anchor.
 - **Artifacts.** API+web = the container image (primary). Browser = versioned zip
   (`pnpm -F @greenhouse/browser package`). Mobile = fingerprint CD
   (`.github/workflows/mobile.yml`, `EXPO_TOKEN`-gated): JS-only change → EAS OTA update;
@@ -240,6 +271,8 @@ greenhouse/
 │   │       ├── runtime/      # unified runtime kernel: runs, steps, interrupts, outbox, read models
 │   │       ├── workflow-engine/ # multi-agent task-graph engine
 │   │       ├── cloud-agent/  # Missions control plane (queue, sandbox runner lifecycle)
+│   │       ├── bots/         # Bots: engine (floor, prompt, digest, inbox), computer (lifecycle, viewer,
+│   │       │                 #   lease, CDP browser), vault, tools, routes — see its AGENTS.md
 │   │       ├── trusted-execution/ # deployment kill switches for the runtime layers
 │   │       ├── notifications/# notification center + durable delivery
 │   │       ├── email/        # IMAP/SMTP client, shared mailbox, security
@@ -252,6 +285,7 @@ greenhouse/
 │   │                     #   lib, stores, platform catalog, extensions/ (web half of the seam)
 │   ├── agent-runner/     # Mission sandbox runner (@greenhouse/sandbox-runner); image only,
 │   │                     #   the API never imports it
+│   ├── bot-computer/     # Bots computer image (Xvnc + Chromium + shell, two uids, zero ports); image only
 │   ├── browser/          # Chrome extension (MV3) — side panel + options; see its src/AGENTS.md
 │   ├── desktop/          # Tauri shell — apps/web as a macOS/Windows app + native capture; features live in web, see apps/desktop/AGENTS.md
 │   └── mobile/           # Expo (React Native) app — NOT a workspace member; see its AGENTS.md
@@ -359,6 +393,7 @@ Detailed rules live next to the code:
 |---|---|---|
 | Database | [packages/db/src/AGENTS.md](./packages/db/src/AGENTS.md) | Service pattern, PostgreSQL, Drizzle, migrations, test isolation |
 | Backend API | [apps/api/src/AGENTS.md](./apps/api/src/AGENTS.md) | Routes, auth, security, tool system, proxy/MCP, runtime, missions, integrations |
+| Bots | [apps/api/src/bots/AGENTS.md](./apps/api/src/bots/AGENTS.md) | Personal-assistant Bots: conversation engine, context, memory scopes, computer, vault, HTTP contract |
 | Frontend | [apps/web/src/AGENTS.md](./apps/web/src/AGENTS.md) | Design system, components, styling, i18n, platform navigation |
 | Settings pages | [apps/web/src/pages/settings/AGENTS.md](./apps/web/src/pages/settings/AGENTS.md) | Settings / Administration modules, CRUD page conventions |
 | Browser extension | [apps/browser/src/AGENTS.md](./apps/browser/src/AGENTS.md) | MV3 lifecycle, stations, token refresh |
@@ -410,8 +445,8 @@ Fine-grained gating beyond roles: open a module/feature to specific internal use
 per-user by a super in Settings → Users → (user) → Permissions.
 
 - **Registry (single source)**: `FEATURE_FLAGS` in `packages/types/src/features.ts`
-  (`{ key, label, description, defaultEnabled? }`). Today: `memory`, `tables`, `cloud-agent`
-  (all `defaultEnabled: true` = opt-out).
+  (`{ key, label, description, defaultEnabled? }`). Today: `memory`, `tables`, `cloud-agent`,
+  `bots` (all `defaultEnabled: true` = opt-out).
 - **Storage**: `user_features` table (`user_id × feature`, `enabled` boolean).
 - **Resolution** (`resolveUserFeatures` in `apps/api/src/auth/features.ts`): `super → all on`;
   explicit row → `row.enabled`; no row → `flag.defaultEnabled`.

@@ -28,6 +28,7 @@ export const ADMIN_REDIRECTS: Record<string, string> = {
   'mcp-keys': 'mcp-keys',
   'runtime-config': 'runtime-config',
   branding: 'branding',
+  'bot-computers': 'bot-computers',
   permissions: 'users',
 };
 

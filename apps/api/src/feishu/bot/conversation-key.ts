@@ -38,6 +38,12 @@ export function feishuConversationKey(refs: FeishuThreadRefs): string {
  *  - **会话编排**（spawn/call_llm）：本就 session-scoped 且只在带 sessionId 的
  *    chat 面装配，这里显式列出是为了让「飞书面有什么」可以只读这一处。
  *
+ *  - **Bot 工具**（browser/computer/request_takeover/vault/team/conversation/
+ *    bot_tasks）：只由 Bots 引擎在 bots 会话里按回合构造（catalog 里是 special），
+ *    飞书路径本来就拿不到；列在这里是纵深防御——哪天有人把它们接进通用装配，
+ *    飞书面也不会多出一台电脑和一个密码库（Bots spec §5）。逐字列出而不 import
+ *    `BOT_TOOL_IDS`，保持本文件零 import；护栏测试核对两者一致。
+ *
  * 注意这**不是** `UNATTENDED_TOOL_DENYLIST`——飞书面对面有真人在等回答，不是
  * 无人值守（spec D6）。两者刻意分开：那份禁的是「没人能按确认」，这份禁的是
  * 「这个交互形态承载不了」。
@@ -49,6 +55,13 @@ export const FEISHU_DENIED_TOOL_IDS: readonly string[] = [
   'task_capture',
   'spawn_session',
   'call_llm',
+  'browser',
+  'computer',
+  'request_takeover',
+  'vault',
+  'team',
+  'conversation',
+  'bot_tasks',
 ];
 
 const DENIED = new Set(FEISHU_DENIED_TOOL_IDS);

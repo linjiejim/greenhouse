@@ -33,7 +33,7 @@
 | `user_provider_tokens` | PK `id`；UK `(user_id, provider, workspace_id)`，NULLS NOT DISTINCT | 通用外部 provider 绑定；access/refresh/credential 为加密文本，含 scope、过期时间与 metadata。**`access_token` 自 0056 起可空**——企微这类绑定存的是**身份**而非凭证（应用 token 是 corp 全局、进程内缓存），塞一个空串会让该列自己的契约变成假的；`provider_user_id` 即企微 UserId（`provider='wecom'`）或飞书 open_id（`provider='feishu'`），是个人消息推送的收件人来源；飞书绑定同时是扫码登录的查表键 |
 | `custom_profiles` | PK `id`；UK `(user_id, slug)` | 自定义 Agent 稳定资产身份；owner/current/published version 指针与 draft/review/pilot/verified/rejected/suspended/deprecated/archived 生命周期。共享只由 pilot/verified 派生；backup owner FK SET NULL，reviewer 为保留历史的逻辑引用 |
 | `custom_profile_versions` | PK `id`；UK `(profile_id, version)` | 不可变可执行 manifest；模型、tools、prompt、外观与 purpose/audience/risk/budget/eval refs/review due 一起版本化，含 change log、SHA-256 manifest hash 与创建人；生产 service 无 update/delete |
-| `user_memories` | PK `id` | 用户长期记忆；`title`（注入 prompt 的召回索引行）+ `content` + 类别、状态机（active/dormant/archived/superseded）、pinned、来源、`superseded_by` 自引用、`last_used_at` |
+| `user_memories` | PK `id`；部分索引 `bot_id` | 用户长期记忆；`title`（注入 prompt 的召回索引行）+ `content` + 类别、状态机（active/dormant/archived/superseded）、pinned、来源、`superseded_by` 自引用、`last_used_at`；`bot_id` 为作用域：null=用户级（所有 Agent 与 Bot 都看得到），非空=该 Bot 私有 |
 | `tool_frictions` | PK `id`, UNIQUE `fingerprint` | Agent 踩坑信号（团队级，永不注入 prompt）；工具/类型/摘要/证据、`occurrence_count` 聚合计数、样本会话、复盘状态与解决备注 |
 | `user_prompts` | PK `id`；UK `artifact_action_id` | **Tasks**（可复用任务，用户面已改叫 Tasks，表名保留）；`description` 一句话用途说明（选择器里展示）、`variables` JSON 存 `{{占位符}}` 定义、`expected_tools` JSON 存该流程实际用过的工具（**仅展示，不做权限判定**）、`source_session_id` 逻辑指向固化来源会话（无 FK，任务比会话活得久）、`created_via` 区分手写与会话固化。聊天固化时 `artifact_action_id` 是 exactly-once 恢复键；无变量无工具的行 = 原来的快捷 Prompt，行为逐字段不变 |
 | `user_groups` | PK `id` | 用户创建的小组；`created_by` 为逻辑用户引用 |
@@ -44,7 +44,7 @@
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
 | `sessions` | PK `id` | 会话；`profile_id` 默认 `team`，记录 user/app/channel、父会话谱系、评分、反馈与 JSON metadata |
-| `messages` | PK `id`；UK `(session_id, seq)`；索引 `session_id` | 会话消息；含 role/content、引用、pipeline、reasoning、图片、置信度、token 与耗时；`seq` 为会话内唯一顺序；普通回复以 tail revision CAS 追加，编辑与截断为原子事务；重新生成在成功后以同一 `seq` 原子替换末尾 assistant，失败保留旧回复。`model` 记产出该轮的 registry 模型 id（`flash`/`pro`/…，模型改为每轮可选后新增）——user 轮、服务端写的终态消息与历史消息均为 null |
+| `messages` | PK `id`；UK `(session_id, seq)`；索引 `session_id` | 会话消息；含 role/content、引用、pipeline、reasoning、图片、置信度、token 与耗时；`seq` 为会话内唯一顺序；普通回复以 tail revision CAS 追加，编辑与截断为原子事务；重新生成在成功后以同一 `seq` 原子替换末尾 assistant，失败保留旧回复。`model` 记产出该轮的 registry 模型 id（`flash`/`pro`/…，模型改为每轮可选后新增）——user 轮、服务端写的终态消息与历史消息均为 null。Bots 对话（`channel='bots'`）额外用 `bot_id` 记撰写该轮的 Bot、用 `bot_event`（JSON）记结构化系统事件（交接、加入、接管完成、后台汇报…），`content` 仍是可读文本 |
 | `chat_files` | PK `id`；UK `storage_key`；索引 session/creator | Chat 会话的私有文件 handle（两个方向）；字节在对象存储，记录 session、文件名/MIME/size、服务端 storage key 与创建人。`source`：`agent`=工具产物（如 `export_data`，存量行的默认值）/ `user`=用户上传的附件。**图片不进这张表**——`<img src>` 带不了 Bearer，图片走 `/api/upload` 的扁平 id + 公开读 |
 | `chat_artifact_receipts` | PK `id`；索引 session/user | 聊天动作卡的持久回执；稳定 action id 原子 claim，绑定 session/user/kind/request hash，保存 processing/succeeded/failed 与原始结果。用于 Schema Plan 与 Task Capture 的刷新恢复和 exactly-once 执行，不替代业务表 |
 | `session_shares` | PK `id`；UK `(session_id, shared_with)`；FK `session_id` CASCADE | 会话共享；目标为 user id 或 `__team__`；已读状态独立存于 `session_share_reads` |
@@ -57,6 +57,22 @@
 | `llm_usage` | PK `id`；索引 profile/caller/user/created_at/budget key | LLM 用量统计；按 profile、caller、session、user、model 记录 token 与耗时；`budget_idempotency_key` 关联统一预算预留，NULL 表示迁移前或尚未接入预算的 legacy 调用 |
 | `scheduled_tasks` | PK `id` | 用户定时 Agent 任务；profile 默认 `team`，保存 cron、时区、执行状态与计数；`notify_webhook`（可选企微/飞书**群**机器人地址，host 白名单二选一、按 host 分派 payload 格式）、`notify_email`（布尔，发到 owner 账号邮箱）、`notify_wecom`（布尔，以企微应用消息发给 owner 本人，收件人取自其 `user_provider_tokens(provider='wecom')` 绑定）与 `notify_feishu`（布尔，以飞书卡片 DM 发给 owner 本人，收件人取自 `provider='feishu'` 绑定，迁移 0064）四条送达通道，均由 scheduler（非 Agent）在跑完后推送摘要——布尔通道**没有任何可供瞄准的收件人字段**，这正是它们免确认的原因；`unattended_tools`（JSON 字符串数组，迁移 0065）是 owner 逐任务勾选的额外工具，目录在 `@greenhouse/types/automation-tools`——它是**过滤器不是授权**（运行时取 `勾选 ∩ 目录 ∩ owner 当前 effectiveTools`），且只有用户自己的控制台请求能写，`automation_mutation` 一律拒绝 |
 | `scheduled_task_runtime_occurrences` | PK `runtime_run_id`；task/owner 索引 | Automation Runtime 终态的永久幂等投影水位；冻结 task/owner/status/version/planned time，保证成功计数只增一次、旧 occurrence 不覆盖新状态；外部通知按渠道由 `notification_delivery_attempts` 独立持久化与重试 |
+
+### Bots（个人助理）
+
+每个成员的常驻 Bot、它们的对话、共用电脑与密码库（见 [spec](../../../docs/specs/20261005-personal-assistant-bots.md)）。对话本体仍是 `sessions`（`channel='bots'`）+ `messages`（`bot_id` 记作者、`bot_event` 记结构化系统事件）；以下是 Bots 自己的表。所有读写按 owner 隔离。
+
+| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+|---|---|---|
+| `bots` | PK `id`(`bot_<hex>`)；部分 UK `(user_id, name_key) WHERE status='active'`；索引 `(user_id, status)` | 成员私有的持久 Bot 身份（≠ 自定义 Agent 版本）：name / `name_key`（NFKC 小写，唯一键）/ role / instructions（长期规则，注入前 sanitize）/ avatar（Sprouty DSL JSON）/ model_id / template_key；`status=archived` 是成员唯一的「删除」（消息仍能显示作者名）；随 `user_id` 级联硬删 |
+| `bot_conversations` | PK/FK `session_id`；UK `owner_bot_id`；索引 `(user_id, last_activity_at)` | 与 session 1:1 的 Bots 对话：`kind=direct/group`，`owner_bot_id`（私聊主人，每个 Bot 一条规范私聊，私聊永不变群——邀请进来的是 guest）、`lead_bot_id`（未点名消息的应答者）、群规 `description`、`allow_bot_chat`、结构化滚动摘要 `digest` + `digest_upto_seq` / `digest_upto_message_id`（CAS 更新；边界消息消失即重置）、`last_read_at` |
+| `bot_conversation_members` | PK `id`；UK `(session_id, bot_id)` | 对话成员（≤6）：`role=owner/lead/member/guest`、`position`、`added_by`（`user` 或 `bot:<id>`） |
+| `bot_shared_notes` | PK `id`；索引 `(session_id, status)` | 对话级共享笔记（黑板）：title（注入索引）/ body / `author_bot_id`（null=成员写的）/ `status=open/done` / pinned；open ≤50 |
+| `bot_requests` | PK `id`(`brq_<hex>`)；索引 `(user_id, status)`、`(session_id, status)` | 所有「需要你」：`kind=takeover/login/approval/bot_create/task_start`，`status` 只经 `settleRequest` 从 pending 单次 CAS 结算；`payload` 为服务端派生的展示/执行数据（**从不含秘密**），`expires_at` 到期由清扫置 expired |
+| `bot_inbox` | PK `id`；部分索引 `(session_id, id) WHERE consumed_at IS NULL` | 单写者规则的持久队列：会话忙时外部产生的事件 / 续跑 / 后台汇报 / 插话消息落这里，由持有 ChatRun 的引擎在 Bot 回合之间排空（`consumeInbox` CAS） |
+| `bot_computers` | PK/FK `user_id` | 每成员一台电脑的 DB 权威生命周期：namespace / 容器名 / 卷名、`state=absent/starting/running/stopping/error` + `state_reason`、`version`（所有迁移 CAS）、接管租约 `lease_controller=bot/user` + 单调 `lease_epoch`、`viewer_heartbeat_at`（持有观看连接的槽位刷新）、`last_active_at`（闲置判定）、`image_id`、`disk_bytes` |
+| `vault_items` | PK `id`(`vlt_<hex>`)；索引 `user_id` | 密码库条目：`origins`（JSON，精确 `https://host[:port]` 或显式 `*.host`）、`username_enc` / `password_enc` / `totp_enc`（AES-256-GCM，AAD=`vault:<user_id>:<item_id>:<field>`，任何读路径都不返回）、`username_hint`（打码展示）、`policy=ask/auto`、`always_origins`（「此站点总是允许」） |
+| `vault_access_log` | PK `id`；索引 `(user_id, created_at)` | 每次代填的元数据审计：条目标签快照、bot/session、真实 origin、`action=fill_login/fill_totp/secure_login`、`outcome`、`approval`；不记录任何值 |
 
 ### Workflow 图编排
 
@@ -224,6 +240,25 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `user_memories.user_id` | `users.id` | CASCADE |
 | `group_members.group_id` | `user_groups.id` | CASCADE |
 | `group_members.user_id` | `users.id` | CASCADE |
+| `bots.user_id` | `users.id` | CASCADE |
+| `bot_conversations.session_id` | `sessions.id` | CASCADE |
+| `bot_conversations.user_id` | `users.id` | CASCADE |
+| `bot_conversations.owner_bot_id` | `bots.id` | CASCADE |
+| `bot_conversations.lead_bot_id` | `bots.id` | SET NULL |
+| `bot_conversation_members.session_id` | `bot_conversations.session_id` | CASCADE |
+| `bot_conversation_members.user_id` | `users.id` | CASCADE |
+| `bot_conversation_members.bot_id` | `bots.id` | CASCADE |
+| `bot_shared_notes.session_id` | `bot_conversations.session_id` | CASCADE |
+| `bot_shared_notes.author_bot_id` | `bots.id` | SET NULL |
+| `bot_requests.user_id` | `users.id` | CASCADE |
+| `bot_requests.session_id` | `bot_conversations.session_id` | CASCADE |
+| `bot_requests.bot_id` | `bots.id` | SET NULL |
+| `bot_inbox.session_id` | `bot_conversations.session_id` | CASCADE |
+| `bot_computers.user_id` | `users.id` | CASCADE |
+| `vault_items.user_id` | `users.id` | CASCADE |
+| `vault_access_log.user_id` | `users.id` | CASCADE |
+| `vault_access_log.item_id` | `vault_items.id` | SET NULL |
+| `user_memories.bot_id` | `bots.id` | CASCADE |
 | `messages.session_id` | `sessions.id` | CASCADE |
 | `chat_files.session_id` | `sessions.id` | CASCADE |
 | `chat_artifact_receipts.session_id` | `sessions.id` | CASCADE |
@@ -319,6 +354,8 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `sessions.user_id` | `users.id` | 会话必须由中央鉴权绑定真实内部用户；无 FK 以保留历史 |
 | `sessions.app_id` | `api_clients.app_id` | A2A/Relay 等集成来源 |
 | `sessions.parent_session_id` | `sessions.id` | 派生会话谱系；父会话删除不级联 |
+| `messages.bot_id` | `bots.id` | Bots 对话中撰写该轮的 Bot；messages 是最大的表，刻意无 FK（成员能做的只有归档；Bot 行只随用户删除级联硬删，而那时成员的 Bots 会话连同 `bottask-` 子会话由 `apps/api/src/bots/purge.ts` 一并删除——会话「比用户活得久」的通用规则对 `channel='bots'` 不适用，删不掉的（仍有运行中的 run）由每小时的孤儿清扫补删）。`role='assistant'` 且 `bot_id` 指向不存在的行时投影为「已删除的 Bot」 |
+| `vault_access_log.bot_id` / `vault_access_log.session_id` | `bots.id` / `sessions.id` | 审计必须比 Bot 与对话活得久 |
 | `chat_files.created_by` | `users.id` | 生成会话文件的内部用户；元数据随 session 级联，主体关系保持松散 |
 | `chat_artifact_receipts.user_id` | `users.id` | 动作回执的执行人；会话删除级联回执，主体关系保持松散 |
 | `session_shares.shared_with` / `session_share_reads.user_id` | `users.id` 或 `__team__` | 指定用户或全团队目标 |

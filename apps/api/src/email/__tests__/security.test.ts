@@ -9,7 +9,7 @@
  * `findLatestDraft` sent the newest draft when the token was wrong).
  */
 
-import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest';
 import {
   checkSharedRecipients,
   clearAllDrafts,
@@ -17,11 +17,12 @@ import {
   createDraftToken,
   getPendingDraftCount,
   isValidEmail,
+  peekDraftToken,
   sanitizeEmailForLLM,
   sanitizeEmailListForLLM,
   validateEmailAddresses,
 } from '../security.js';
-import { MAX_DRAFTS_PER_USER } from '../limits.js';
+import { DRAFT_TTL_MS, MAX_DRAFTS_PER_USER } from '../limits.js';
 import type { EmailDetail, EmailSummary } from '../types.js';
 
 function detail(overrides: Partial<EmailDetail> = {}): EmailDetail {
@@ -229,5 +230,37 @@ describe('draft tokens', () => {
     const entry = consumeDraftToken(token, 'user-1');
     expect(entry?.bcc?.[0]?.address).toBe('hidden@example.com');
     expect(entry?.attachmentIds).toEqual(['file-1']);
+  });
+
+  it('peeks without consuming, under the same token, owner and expiry rules', () => {
+    const token = createDraftToken('user-1', '7', { ...draft, cc: [{ address: 'c@example.com' }] });
+    const mangled = `${token.slice(0, 3).toLowerCase()} ${token.slice(3)}`;
+    expect(peekDraftToken(mangled, 'user-1')).toMatchObject({ subject: 'Hi', accountRef: '7' });
+    expect(peekDraftToken(token, 'user-2')).toBeNull();
+    expect(peekDraftToken('AAAAAA', 'user-1')).toBeNull();
+    // Still there for the send.
+    expect(consumeDraftToken(token, 'user-1')?.subject).toBe('Hi');
+    expect(peekDraftToken(token, 'user-1')).toBeNull();
+  });
+
+  it('a peeked copy cannot change what the send mails', () => {
+    const token = createDraftToken('user-1', '7', draft);
+    const peeked = peekDraftToken(token, 'user-1')!;
+    peeked.to.push({ address: 'attacker@evil.example' });
+    peeked.subject = 'changed';
+    const sent = consumeDraftToken(token, 'user-1')!;
+    expect(sent.to).toEqual([{ address: 'a@example.com' }]);
+    expect(sent.subject).toBe('Hi');
+  });
+
+  it('does not peek an expired draft', () => {
+    vi.useFakeTimers();
+    try {
+      const token = createDraftToken('user-1', '7', draft);
+      vi.advanceTimersByTime(DRAFT_TTL_MS + 1);
+      expect(peekDraftToken(token, 'user-1')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

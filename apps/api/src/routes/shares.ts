@@ -68,6 +68,11 @@ const shares = new Hono<AppEnv>()
     if (session.user_id !== user.id && user.role !== 'super') {
       return c.json({ error: 'Only session owner can share' }, 403);
     }
+    // A Bots conversation carries the owner's computer sessions and private
+    // context; it is never shared (v1).
+    if (session.channel === 'bots') {
+      return c.json({ error: 'Bots conversations cannot be shared' }, 400);
+    }
 
     const inputs: Array<{ session_id: string; shared_with: string; shared_by: string; message?: string }> = [];
 

@@ -206,6 +206,20 @@ stores/
 - 消费端使用 `handleStreamEvent(event, callbacks)` 分发——不要写 `switch(event.type)`
 - 新增流事件类型时更新 `stream-events.ts` 中的 `StreamingEvent` 联合和 `handleStreamEvent` 分发
 
+### Bots 工作区（`#/bots`，`components/bots/` + `pages/bots/`）
+
+- **一个 API 客户端**：所有 Bots 资源（`/api/bots*`、`/api/bots/computer/*`、`/api/bots/vault/*`、`/api/admin/bot-computers/*`）都在 `lib/api/bots.ts`，走 `rpc`；失败统一抛 `BotsApiError(message, status, code, reason)`，调用点只用 `isBotsApiError(err, code?)` 判断，按 `code` 映射 i18n 文案（未知 code 回落到服务端消息或动作自己的兜底文案）。单测用**部分 mock**（`importOriginal` + 覆盖调用函数），保留真实错误类型，让 code→文案映射被测到。
+- **code→文案表按共享类型写全**：`@greenhouse/types/bots` 的 `ComputerErrorCode` / `VaultErrorCode` / `BotRequestErrorCode` 列出每族路由会返回的 code；文案表声明为 `Partial<Record<Code, TranslationKey>>` 并 `satisfies Record<Code, TranslationKey>`（服务端加 code 没配文案 = 编译错误），查表只用 `copyForCode(map, code)`（只认自有 key，`constructor` 之类不会命中）。`over_quota` 带 `reason: 'host_disk'` = 宿主 Docker 磁盘快满（管理员的事），不能说成「你的电脑磁盘满了」。新 code 由电脑 / 引擎侧告知 web 侧再补进这些类型。
+- **Bot 目录 = 活跃 + 已归档**：`useBotsStore().bots` 只有活跃 Bot（选择器、头像条、@ 列表、邀请）；`GET /api/bots` 恒带 `archived_bots`，历史渲染（标题、发言人、卡片、回执）用 `useBotDirectory()`，已归档 Bot 显示真名。`useBotsLoadState()` 为 `loading` 时，未知 id 意味着「还没加载」，渲染骨架而不是「已删除的 Bot」；加载失败要露出并给重试。DM 的 Bot 已归档 / 群里没有活跃 Bot（`conversationReplyable`）→ 对话只读：composer 换成说明 + 「新建 Bot」/「邀请 Bot」，侧栏沉到「已归档」分组，落地页不选它。
+- **电脑状态单一来源**：Bots 页持有唯一的 `useComputerStatus`，经 `computer` prop 传给 `ComputerPane`（不传则 pane 自持，供独立使用）；离开电脑面板的每条路径（✕、头部 Computer/Info、「查看摘要」）都经 `ComputerPaneHandle.requestClose`，接管中先确认并交还。
+- **请求卡片 key = `request:<id>`**（live 与持久化同 key），否则运行结束时卡片重挂载会吞掉成员正在编辑的名字 / 输入到一半的登录信息。同一请求的后续行（「已跳过 x 的登录」、拒绝、任务不可用）是系统行而不是第二张卡：按顺序判（卡片行在前），卡片行在未加载的更早一页时按时间判（`buildTranscript` 的 `requests`，晚于请求创建 2 分钟以上即后续行）。
+- **请求卡片的状态**：登录卡只发填了的字段（只填密码 / 只填用户名都能提交——服务端会跟到两步登录的下一屏）；`computer_restarted` 等页面已不在的拒绝给「让 Bot 重新打开页面」+ 再问一次。过期的登录 / 接管卡不再有任何操作（登录卡说「已过期，请让 Bot 重新发起」）。电脑自己发起的接管卡（payload `{implicit: true, reason: 'interrupted' | 'waiting', host?, title?}`，用 `implicitTakeover()` 读，`reason` 是代码不是文案）显示「你在 X 工作时接管了电脑」/「X 正在等待使用电脑」，主操作「交还——让 X 继续」= `approve`。审批卡详情整段显示（`whitespace-pre-wrap` + 行内滚动），服务端的 `…(+N more characters)` / `+K more fields` 截断标记渲染成本地化注释。
+- **交还电脑**：`handbackComputer({ note, requestId, sessionId })` 恒带当前对话的 `session_id`（从卡片 / 横幅接管时再带 `request_id`），服务端据此结清这张卡并唤醒对应 Bot；电脑面板横幅对 implicit 卡给「交还——让 X 继续」而不是「接管」。
+- **每条发送路径同一种失败说明**：composer、重试/继续/再问一次、ask_user 表单、confirm 块都走 `ConversationView` 的 `send`；它报告失败后再 reject，表单据此重新可提交（`AskUserCard.onSubmit` / `ConfirmBlock.onAction` 可返回 Promise）。`POST /api/chat` 409 `bot_archived` / `no_active_members` 立即换成只读说明（本地标记，不等 Bot 列表重读；对话切换或成员变化时清除），`no_active_members` 还会打开邀请对话框。
+- 附件与 Chat 同一流程：图片走内联，其他文件成为附件 chip，发送时上传 `/api/chat-files` 并追加 ` ```attachments ` 围栏（Bot 用 `read_attachment` 读取）；整个对话区可拖放。只发图片 / 只发文件也可以（`ChatInput` 的 `sendWithoutText`，仅 Bots 打开）。
+- **`/api/chat-files/:id/content` 的图片必须带 token**：Markdown 里的此类图片和图片类文件产物（Bot 的浏览器截图、分享的图）都经 `components/files/auth-image.tsx`（authFetch → blob URL，只显示位图类型，卸载即 revoke）；Markdown 把它们标成 `data-auth-src` 再由 `hydrateAuthImages` 填充。其他图片（`/api/upload/` 公共 id、外链）保持普通 `<img>`。
+- 路由隐藏了 TopBar，所以 Bots 的每个状态（加载、失败、找不到、无权限）都要带手机端导航按钮（`BotsBareHeader` / `BotsMobileNavButton`）。
+
 ### 页面上下文注入
 - `components/conversation/conversation-pane.tsx` 是 full Chat 与右上角 Assistant overlay 的唯一会话 UI/控制器；新增 split-pane host 必须复用它，不得复制发送、上传、流恢复或消息 reconcile。
 - Surface 差异集中在 `components/conversation/surface-policy.ts`，只隐藏分享、评分、Profile 管理、翻译/引用等外围 affordance；附件、工具卡、ask_user、confirm、编辑/重试与错误恢复不得因 Surface 缩减。Workflow 是唯一额外的角色 rollout 门：当前仅 super 渲染计划卡、工具轨迹与 Task Dock，team 也不得发 workflow 查询；这不是 Surface 差异，开放时须按 [rollout spec](../../../docs/specs/20260812-workflow-super-only-rollout.md) 三层一起撤销。
@@ -336,10 +350,11 @@ stores/
 **触摸交互：**
 - 移动端主要按钮与纯图标操作的实际命中区至少 44×44px；视觉图标可以保持 14–20px
 - Markdown 图片与用户消息缩略图都必须走共享 `MediaPreviewDialog`，禁止手写无标题栏/关闭按钮的全屏 lightbox，也禁止把移动 WebView 直接导航到 raw image；媒体翻页、下载与关闭在移动端都要保持至少 44×44px 命中区。
-- **禁止仅依赖 hover 显示关键操作。** 配合 `group-hover:opacity-100` 使用 `.touch-visible` CSS 辅助类，确保触屏设备上按钮可见：
+- **禁止仅依赖 hover 显示关键操作。** 配合 `group-hover:opacity-100` 使用 `.touch-visible` CSS 辅助类，确保触屏设备上按钮可见；再加 `group-focus-within:opacity-100 focus-within:opacity-100`，让键盘 Tab 到这一行（或这颗按钮）时操作同样可见——否则焦点会落在一颗完全透明的（可能是删除）按钮上：
   ```tsx
-  className="opacity-0 group-hover:opacity-100 touch-visible"
+  className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 touch-visible"
   ```
+  （包裹层自己不获得焦点，所以用 `focus-within` 而不是 `focus-visible`；`group-focus-within` 指向行级 `li.group`。）
 - `touch-visible` 类定义在 `index.html`，通过 `@media (hover: none)` 设置 `opacity: 1`
 - Assistant 消息底部的耗时与复制/重试等操作栏保留固定高度，桌面端仅在整条消息 hover 或键盘 focus-within 时显示，触屏端恒显；正文代码块使用扁平浅底与细边框，禁止 `shadow-*` 悬浮卡片效果。
 

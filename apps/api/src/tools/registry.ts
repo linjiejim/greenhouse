@@ -7,8 +7,9 @@
  * ids, known-tool names, the static tool factories) from one array —
  * no parallel hand-maintained id lists, no glob/side-effect self-registration.
  *
- * SPECIAL_METAS is currently empty: no tool is constructed inside a route any
- * more. The hook stays for the next one.
+ * SPECIAL_METAS holds the Bot tools (bots/tools/meta.ts): catalogued here so
+ * feature points, guard tests and the description budget see them, but built
+ * only by the Bots engine inside Bots conversations.
  *
  * Frontend fetches metadata via GET /api/tools.
  */
@@ -50,6 +51,7 @@ import { emailMutationTool } from './email-mutation.js';
 import { memoryTool } from './memory.js';
 import { logFrictionTool } from './log-friction.js';
 import { workbenchQueryTool, workbenchMutationTool } from './workbench.js';
+import { BOT_TOOL_METAS } from '../bots/tools/meta.js';
 
 // ─── Catalog ─────────────────────────────────────────────
 
@@ -109,8 +111,8 @@ function withExtensionTools(core: ToolModule[], extension: ToolModule[]): ToolMo
 
 export const STATIC_TOOL_MODULES: ToolModule[] = TOOL_MODULES.filter((m) => m.kind === 'static');
 
-/** Route-constructed tools keep CENTRAL metadata here rather than in TOOL_MODULES. */
-const SPECIAL_METAS: ToolMeta[] = [];
+/** Specially constructed tools keep CENTRAL metadata here rather than in TOOL_MODULES. */
+const SPECIAL_METAS: ToolMeta[] = [...BOT_TOOL_METAS];
 
 /** Single source of truth for all tool metadata. */
 export const TOOL_DEFINITIONS: ToolMeta[] = [...TOOL_MODULES.map((m) => m.meta), ...SPECIAL_METAS];

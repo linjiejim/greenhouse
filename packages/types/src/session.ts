@@ -16,7 +16,8 @@ export type SessionChannel =
   | 'workflow'
   | 'mission'
   | 'feishu'
-  | 'browser';
+  | 'browser'
+  | 'bots';
 
 /**
  * Conversations started from the browser extension side panel. The only
@@ -25,6 +26,49 @@ export type SessionChannel =
  * (`filterBrowserSessionToolIds` in apps/api/src/agent-runtime/tool-resolution.ts).
  */
 export const BROWSER_SESSION_CHANNEL = 'browser' satisfies SessionChannel;
+
+/**
+ * Bots conversations (docs/specs/20261005-personal-assistant-bots.md). Server-
+ * assigned only; owner-only on every path; listed through /api/bots, never in
+ * the generic session lists.
+ */
+export const BOTS_SESSION_CHANNEL = 'bots' satisfies SessionChannel;
+
+/**
+ * Channels the generic session lists, title search and `session_query list`
+ * hide by default: engine-internal workflow node sessions, and Bots
+ * conversations, which have their own surface and a multi-speaker transcript
+ * the single-agent conversation UI cannot render.
+ */
+export const HIDDEN_SESSION_CHANNELS: readonly SessionChannel[] = ['workflow', 'bots'];
+
+/**
+ * A Bot's background task runs in a `subagent` child session whose id starts
+ * with this prefix — the one marker that tells a Bot task from a
+ * `spawn_session` child everywhere (Runtime driver, notifications, lists).
+ */
+export const BOT_TASK_SESSION_PREFIX = 'bottask-';
+
+/**
+ * Session id prefixes the same default lists hide: a Bot's background task
+ * belongs to its Bots conversation (it is reported there), not to the member's
+ * Chat history.
+ */
+export const HIDDEN_SESSION_ID_PREFIXES: readonly string[] = [BOT_TASK_SESSION_PREFIX];
+
+/**
+ * The hide-by-default filter of the generic session lists (GET /api/sessions,
+ * title search, `session_query list`): nothing hidden once the caller asks for
+ * a channel explicitly. One helper so the copies cannot drift apart.
+ */
+export function defaultSessionListHiding(channel?: string | null): {
+  excludeChannels?: SessionChannel[];
+  excludeIdPrefixes?: readonly string[];
+} {
+  return channel
+    ? {}
+    : { excludeChannels: [...HIDDEN_SESSION_CHANNELS], excludeIdPrefixes: HIDDEN_SESSION_ID_PREFIXES };
+}
 
 export interface SessionRow {
   id: string;
@@ -56,6 +100,10 @@ export interface MessageRow {
   reasoning: string | null;
   /** Registry model id that produced this assistant turn; null for user turns and pre-2026-08 messages. */
   model: string | null;
+  /** Bot that authored this turn in a Bots conversation; null/absent everywhere else. */
+  bot_id?: string | null;
+  /** Structured Bots system event (JSON text), see `BotEvent` in @greenhouse/types/bots. */
+  bot_event?: string | null;
   images: string;
   confidence: number | null;
   grounded: number | null;
@@ -108,6 +156,10 @@ export interface MessageInput {
   reasoning?: string;
   /** Registry model id that produced this assistant turn. */
   model?: string;
+  /** Authoring Bot (Bots conversations only). */
+  bot_id?: string;
+  /** Structured Bots system event, serialised. */
+  bot_event?: string;
   images?: Array<{ id: string; url: string }>;
   confidence?: number;
   grounded?: boolean;

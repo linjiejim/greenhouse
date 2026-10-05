@@ -6,6 +6,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { getDb } from '@greenhouse/db';
 import type { AccountPasswordLinkPurpose, DatabaseProvider, IssuedAccountPasswordLink, UserRow } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -19,6 +20,8 @@ import { connectionManager } from '../ws/connection-manager.js';
 import { getScheduler } from '../scheduler/index.js';
 import { getCloudAgentController } from '../cloud-agent/index.js';
 import { getWorkflowEngine } from '../workflow-engine/index.js';
+import { purgeUserComputer } from '../bots/computer/index.js';
+import { cancelBotTasksForUser } from '../bots/engine/index.js';
 import { PLATFORM_ORG_ID } from '../platform/runtime.js';
 
 export type PasswordLinkAvailabilityReason =
@@ -163,6 +166,11 @@ export async function suspendUserRuntime(userId: string): Promise<void> {
   } catch {
     // Engine is not initialized in small route tests and early boot only.
   }
+  // Bots: stop the member's computer, close live viewers and drop DevTools
+  // connections. The home volume is kept for a later re-enable — deleting the
+  // account wipes it separately.
+  work.push(purgeUserComputer(userId, { wipe: false, reason: 'suspend' }));
+  work.push(cancelBotTasksForUser(getDb(), userId));
 
   const results = await Promise.allSettled(work);
   for (const result of results) {

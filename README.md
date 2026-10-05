@@ -98,6 +98,14 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Missions** *(optional)* — long-running tasks in disposable sandboxes (Docker + gVisor): the
   agent gets a real shell, files and a document toolchain, reports progress live and hands back
   artifacts.
+- **Bots** — personal assistants every member gets out of the box. A Bot has a name, a role and
+  its own memory; several Bots can share one conversation (@-mention them, let them hand work
+  to each other) and long conversations are summarised instead of truncated. With a computer
+  enabled, each member's Bots share one cloud desktop (a browser and a shell) the member can
+  watch live and take over at any time; logins come from a write-only password vault that
+  Bots fill in without ever seeing the values. Background tasks keep researching while you chat.
+  The organisation configures one Docker host; computers start on demand, stop when idle and
+  queue when the host is full.
 - **Workflows** — a multi-agent task-graph engine (database state machine, human gates,
   pause / retry per node) that the agent can plan from a conversation.
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
@@ -130,7 +138,7 @@ stored secrets need `PROVIDER_TOKEN_ENCRYPTION_KEY`.
 ## Architecture
 
 A pnpm monorepo. The Hono API also serves the built React SPA, so production is a single
-process / single container (plus an optional sandbox-runner image for Missions).
+process / single container (plus optional images for Mission sandboxes and Bots computers).
 
 ```
 greenhouse/
@@ -140,6 +148,7 @@ greenhouse/
 │   ├── web/                  # React + Vite single-page app (hash router)
 │   ├── agent-runner/         # Mission sandbox runner — built into the greenhouse/agent-runtime
 │   │                         #   image; the API never imports it
+│   ├── bot-computer/         # Bots computer image (desktop + Chromium + shell, zero published ports)
 │   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to your
 │   │                         #   instances via saved multi-server "stations"
 │   └── mobile/               # Expo (React Native) app — chat, knowledge, projects, settings;
@@ -246,6 +255,14 @@ Missions need one more piece on the host: Docker with the gVisor runtime, a dedi
 network, and the sandbox image (`bash scripts/build-agent-runtime.sh`). They stay off until
 `MISSION_ENABLED=1` and every preflight passes — see `.env.example`.
 
+Bots work in any deployment. Their computers need the API to run **on the Docker host itself**
+(bare metal / PM2, not the compose image — computers are reached through `docker exec` and
+publish no ports), plus gVisor, a hardened bridge
+(`sudo BOTS_COMPUTER_NETWORK=bots bash scripts/cloud-agent-net.sh --profile bots`) and the computer image
+(`bash scripts/build-bot-computer.sh`). Set `BOTS_COMPUTER_ENABLED=1`; **Administration → Bot
+computers** lists every precheck with the command that fixes it, and the live knobs (idle
+minutes, how many computers run at once) are in Runtime Config.
+
 ## Releases & stability
 
 **Use a tagged release in production.** Two channels, and they are not equally
@@ -333,8 +350,8 @@ its payload. Set `LLM_VISION=false` when `LLM_MODEL` is text-only, and images go
 
 Optional: media (vision `analyze_image` + `generate_image` through `MEDIA_*`, falling back to
 the LLM endpoint; `IMAGE_BASE_URL` + `IMAGE_API_KEY` move generation alone to an image
-provider), external web search, email mailboxes, WeCom / Feishu, missions, usage
-budgets, and object storage. Uploads default to local disk (`data/uploads`), Skill Center
+provider), external web search, email mailboxes, WeCom / Feishu, missions, Bots computers
+(`BOTS_COMPUTER_*`), usage budgets, and object storage. Uploads default to local disk (`data/uploads`), Skill Center
 bundles to `data/skills` — set `SKILLS_S3_*` to keep bundles in S3-compatible storage.
 
 **Admin-configurable at runtime**: the LLM / media / search credentials and the product name

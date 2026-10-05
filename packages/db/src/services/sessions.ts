@@ -3,7 +3,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { eq, and, sql, ne, desc, notInArray, lt, lte, inArray, or } from 'drizzle-orm';
+import { eq, and, sql, ne, desc, notInArray, notLike, like, isNotNull, lt, lte, inArray, or } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 import { safeJsonParse } from '@greenhouse/utils/json';
 
@@ -17,6 +17,7 @@ import type {
   SessionMessagePage,
 } from '@greenhouse/types/session';
 import type { SessionUsage } from '@greenhouse/types/api';
+import { defaultSessionListHiding } from '@greenhouse/types/session';
 
 /** One failed tool call pulled out of a message's recorded pipeline. */
 export interface ToolErrorSample {
@@ -64,6 +65,8 @@ export interface SessionListOpts {
    * user-facing objects, so list consumers exclude them by default.
    */
   excludeChannels?: string[];
+  /** Session id prefixes to hide (Bot background-task children, see HIDDEN_SESSION_ID_PREFIXES). */
+  excludeIdPrefixes?: readonly string[];
   taskId?: number; // filter by scheduled task (via metadata)
 }
 
@@ -157,6 +160,8 @@ function messageValues(input: MessageInput, seq: number, now = nowIso(), id: str
     pipeline: JSON.stringify(input.pipeline ?? []),
     reasoning: input.reasoning ?? null,
     model: input.model ?? null,
+    bot_id: input.bot_id ?? null,
+    bot_event: input.bot_event ?? null,
     images: JSON.stringify(input.images ?? []),
     confidence: input.confidence ?? null,
     grounded: input.grounded != null ? (input.grounded ? 1 : 0) : null,
@@ -192,6 +197,16 @@ function parsePersistedImages(raw: string): PersistedChatImage[] {
   });
 }
 
+/** Escape LIKE metacharacters (`\`, `%`, `_`; PostgreSQL's default escape is `\`). */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
+/** Hide ids starting with each prefix — literally: a `_` in a prefix must not match any character. */
+function excludeIdPrefixConditions(prefixes: readonly string[] | undefined) {
+  return (prefixes ?? []).map((prefix) => notLike(sessions.id, `${escapeLike(prefix)}%`));
+}
+
 /**
  * Status / channel / owner predicates shared by every session list query.
  *
@@ -199,13 +214,23 @@ function parsePersistedImages(raw: string): PersistedChatImage[] {
  * predicates live here instead of being written out twice.
  */
 function sessionListConditions(opts: SessionListOpts) {
-  const { status, includeEval = false, userId, excludeUserId, channel, excludeChannels, taskId } = opts;
+  const {
+    status,
+    includeEval = false,
+    userId,
+    excludeUserId,
+    channel,
+    excludeChannels,
+    excludeIdPrefixes,
+    taskId,
+  } = opts;
   const conditions = [];
 
   if (userId) conditions.push(eq(sessions.user_id, userId));
   if (excludeUserId) conditions.push(sql`${sessions.user_id} IS DISTINCT FROM ${excludeUserId}`);
   if (channel) conditions.push(eq(sessions.channel, channel));
   if (excludeChannels?.length) conditions.push(notInArray(sessions.channel, excludeChannels));
+  conditions.push(...excludeIdPrefixConditions(excludeIdPrefixes));
   if (taskId) conditions.push(sql`${sessions.metadata}::jsonb @> ${JSON.stringify({ task_id: taskId })}::jsonb`);
   if (status && status !== 'all') {
     conditions.push(eq(sessions.status, status));
@@ -423,6 +448,32 @@ export function createSessionService(db: Db) {
       });
     },
 
+    /**
+     * Ids of the sessions that leave together with their owner: the owner's
+     * sessions in `channels` plus the owner's sessions whose id starts with one of
+     * `idPrefixes` (Bots conversations and their `bottask-` children). Other
+     * sessions outlive their user on purpose. `userId: null` selects such
+     * sessions whose owner no longer exists — the sweep for a member deletion that
+     * could not finish because a runtime run was still active.
+     */
+    async listIdsLeavingWithOwner(
+      userId: string | null,
+      scope: { channels: readonly string[]; idPrefixes: readonly string[] },
+    ): Promise<string[]> {
+      const match = or(
+        scope.channels.length ? inArray(sessions.channel, [...scope.channels]) : undefined,
+        // Escaped: a `_` read as a wildcard here would delete other sessions.
+        ...scope.idPrefixes.map((prefix) => like(sessions.id, `${escapeLike(prefix)}%`)),
+      );
+      if (!match) return [];
+      const owner =
+        userId === null
+          ? and(isNotNull(sessions.user_id), sql`NOT EXISTS (SELECT 1 FROM users u WHERE u.id = ${sessions.user_id})`)
+          : eq(sessions.user_id, userId);
+      const rows = await db.select({ id: sessions.id }).from(sessions).where(and(owner, match));
+      return rows.map((row) => row.id);
+    },
+
     async deleteMessagesAfterSeq(sessionId: string, seq: number): Promise<void> {
       await db.delete(messages).where(and(eq(messages.session_id, sessionId), sql`seq >= ${seq}`));
     },
@@ -560,6 +611,24 @@ export function createSessionService(db: Db) {
       if (input.session_id !== sessionId || input.role !== 'assistant') {
         throw new Error('Assistant append must target the same session');
       }
+      return service.appendIfTail(sessionId, expectedTail, input, messageId);
+    },
+
+    /**
+     * Role-generic tail compare-and-set for server-authored rows (assistant
+     * turns and system events). The Bots engine is a conversation's single
+     * writer and appends several rows per run — each Bot turn and each
+     * hand-off event — advancing its expected tail after every write.
+     */
+    async appendIfTail(
+      sessionId: string,
+      expectedTail: { id: string; content: string },
+      input: MessageInput,
+      messageId?: string,
+    ): Promise<AppendAssistantIfTailResult> {
+      if (input.session_id !== sessionId || input.role === 'user') {
+        throw new Error('Tail append must target the same session with a server-authored role');
+      }
 
       return db.transaction(async (tx) => {
         const [lockedSession] = await tx
@@ -575,7 +644,7 @@ export function createSessionService(db: Db) {
           if (existingAssistant) {
             if (
               existingAssistant.session_id !== sessionId ||
-              existingAssistant.role !== 'assistant' ||
+              existingAssistant.role !== input.role ||
               existingAssistant.content !== input.content
             ) {
               throw new Error('Assistant append idempotency key was reused with different content');
@@ -931,13 +1000,17 @@ export function createSessionService(db: Db) {
     },
 
     async searchByTitle(userId: string, query: string, limit = 10, channel?: string): Promise<SessionRow[]> {
-      const pattern = `%${query.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+      const pattern = `%${escapeLike(query)}%`;
       const conditions = [
         eq(sessions.user_id, userId),
         ne(sessions.status, 'eval'),
         sql`${sessions.title} ILIKE ${pattern}`,
       ];
+      // Same hide-by-default rule as the session lists (defaultSessionListHiding).
+      const hiding = defaultSessionListHiding(channel);
       if (channel) conditions.push(eq(sessions.channel, channel));
+      if (hiding.excludeChannels?.length) conditions.push(notInArray(sessions.channel, hiding.excludeChannels));
+      conditions.push(...excludeIdPrefixConditions(hiding.excludeIdPrefixes));
       return (await db
         .select()
         .from(sessions)

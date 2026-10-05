@@ -11,7 +11,7 @@
  */
 
 import { streamText, stepCountIs, wrapLanguageModel, NoSuchToolError } from 'ai';
-import type { StreamTextResult, ToolSet, ModelMessage, ToolCallRepairFunction } from 'ai';
+import type { StreamTextResult, ToolSet, ModelMessage, ToolCallRepairFunction, StopCondition } from 'ai';
 import { createDsmlInterceptor } from './dsml-interceptor.js';
 import { repairJsonArguments } from './repair-tool-json.js';
 import type { DsmlRecoveryEvent } from './dsml-interceptor.js';
@@ -68,6 +68,21 @@ export interface ChatEngineInput {
   abortSignal?: AbortSignal;
   /** Host-owned hard-budget admission at every concrete provider attempt. */
   providerAttemptHook?: ProviderAttemptHook;
+  /** Step cap for THIS turn (default: `profile.max_steps ?? 12`). Bots vary it by trigger. */
+  maxStepsOverride?: number;
+  /**
+   * Extra stop conditions OR-ed with the step cap — e.g. a Bots turn ends right
+   * after an accepted hand-off or a take-over request.
+   */
+  extraStopWhen?: StopCondition<ToolSet>[];
+  /**
+   * Per-step message rewrite, applied before every step (the engine's own
+   * last-step `toolChoice:'none'` still applies). Bots use it to stub earlier
+   * browser snapshots so a long turn's context stays bounded. Must keep every
+   * tool-call/result pair intact and should only change at batch points so the
+   * provider prefix cache survives.
+   */
+  prepareStepMessages?: (args: { stepNumber: number; messages: ModelMessage[] }) => ModelMessage[] | undefined;
 }
 
 export interface ChatEngineResult {
@@ -227,7 +242,7 @@ export async function createChatStreamAsync(input: ChatEngineInput): Promise<{
   })) as ModelMessage[];
 
   const providerOptions = buildProviderOptions(modelConfig);
-  const maxSteps = profile.max_steps ?? 12;
+  const maxSteps = input.maxStepsOverride ?? profile.max_steps ?? 12;
 
   // Sampling params: request override wins, then profile YAML options.
   // AI SDK v6 names the output cap `maxOutputTokens` — the old `maxTokens`
@@ -241,14 +256,15 @@ export async function createChatStreamAsync(input: ChatEngineInput): Promise<{
     messages: enrichedMessages,
     tools,
     experimental_repairToolCall: createToolCallRepair(input.sessionId),
-    stopWhen: stepCountIs(maxSteps),
+    stopWhen: input.extraStopWhen?.length ? [stepCountIs(maxSteps), ...input.extraStopWhen] : stepCountIs(maxSteps),
     timeout: CHAT_STREAM_TIMEOUT,
     toolChoice: (profile.tool_choice ?? 'auto') as any,
-    prepareStep: ({ stepNumber }: { stepNumber: number }) => {
+    prepareStep: ({ stepNumber, messages: stepMessages }: { stepNumber: number; messages: ModelMessage[] }) => {
+      const rewritten = input.prepareStepMessages?.({ stepNumber, messages: stepMessages });
       if (stepNumber === maxSteps - 1) {
-        return { toolChoice: 'none' as const };
+        return { toolChoice: 'none' as const, ...(rewritten ? { messages: rewritten } : {}) };
       }
-      return {};
+      return rewritten ? { messages: rewritten } : {};
     },
     ...(providerOptions ? { providerOptions } : {}),
     ...(temperature !== undefined ? { temperature } : {}),

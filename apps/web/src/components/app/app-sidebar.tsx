@@ -37,10 +37,12 @@ import {
   TablesNavPanel,
 } from './sidebar-panels';
 import { ExtensionSidebarPanel } from '../../extensions/host';
+import { BotsSidebarPanel } from '../bots/bots-sidebar-panel';
 
 type Route =
   | 'home'
   | 'chat'
+  | 'bots'
   | 'extension'
   | 'automations'
   | 'agents'
@@ -374,6 +376,7 @@ export function AppSidebar({
                 {route === 'chat' && (
                   <ChatHistoryPanel currentSessionId={currentSessionId} onSelectSession={onSelectSession} />
                 )}
+                {route === 'bots' && <BotsSidebarPanel />}
                 {route === 'projects' && <ProjectsListPanel />}
                 {/* Knowledge gets the FULL sub-path: its tree highlights the open
                     document, which lives in the later segments. */}

@@ -29,6 +29,8 @@ import { MissionDispatchCard, type MissionDispatchArtifact } from '../cloud-agen
 import { SchemaPlanCard, type TablesSchemaPlanArtifact } from '../tables/schema-plan-card';
 import { TaskCaptureCard, type TaskCaptureData } from '../chat/task-capture-card';
 import { FileAttachmentCard } from '../files/file-attachment-card';
+import { AuthImage, isAuthImageSrc } from '../files/auth-image';
+import { isSafeAttachmentPreview } from '../blocks/attachments-block';
 import { downloadAuthenticatedFile } from '../../lib/file-download';
 import { toast } from '../ui';
 import { MediaPreviewDialog } from '../media-preview-dialog';
@@ -52,7 +54,7 @@ export interface ArtifactCall {
 
 export interface ArtifactCtx {
   /** Callback when an ask_user form is submitted (sends the formatted message). */
-  onAskUserSubmit?: (message: string) => void;
+  onAskUserSubmit?: (message: string) => void | Promise<void>;
   /** Whether the ask_user form was already submitted (a follow-up user message exists). */
   askUserSubmitted?: boolean;
   /** Persisted follow-up message used to rebuild the submitted answer summary. */
@@ -230,7 +232,7 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
     const size = typeof out.size === 'number' ? out.size : undefined;
     const rowCount = typeof out.row_count === 'number' ? out.row_count : undefined;
     const downloadUrl = out.download_url as string;
-    return (
+    const card = (
       <FileAttachmentCard
         name={name}
         size={size}
@@ -242,6 +244,16 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
         }}
         downloadError={() => toast(t('fileArtifact.downloadFailed'), 'error')}
       />
+    );
+    // A picture (a Bot's browser screenshot, a chart it shared) is shown, not
+    // just offered as a download — fetched with the member's token like the file.
+    return isImageFileArtifact(out) ? (
+      <div className="space-y-1.5" data-testid="file-artifact-image">
+        <FileArtifactImage src={downloadUrl} name={name} />
+        {card}
+      </div>
+    ) : (
+      card
     );
   }
 
@@ -307,6 +319,36 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
       return <Card call={call} />;
     }
   }
+}
+
+// ─── Image file artifact ─────────────────────────────────
+
+const IMAGE_FILE_EXT = /\.(png|jpe?g|gif|webp|bmp|avif)$/i;
+
+/** A file artifact that is a raster image behind the authenticated chat-file route. */
+function isImageFileArtifact(out: Record<string, unknown>): boolean {
+  if (!isAuthImageSrc(typeof out.download_url === 'string' ? out.download_url : null)) return false;
+  const type = typeof out.content_type === 'string' ? out.content_type : '';
+  return type ? isSafeAttachmentPreview('image', type) : IMAGE_FILE_EXT.test(String(out.name ?? ''));
+}
+
+function FileArtifactImage({ src, name }: { src: string; name: string }) {
+  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  return (
+    <>
+      <AuthImage
+        src={src}
+        alt={name}
+        className="max-h-80 max-w-full rounded-lg border border-edge object-contain"
+        onOpen={setPreviewUrl}
+      />
+      <MediaPreviewDialog
+        open={previewUrl !== null}
+        files={previewUrl ? [{ src: previewUrl, type: 'image', name }] : []}
+        onClose={() => setPreviewUrl(null)}
+      />
+    </>
+  );
 }
 
 // ─── Spawn-session card ──────────────────────────────────

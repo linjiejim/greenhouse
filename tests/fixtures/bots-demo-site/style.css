@@ -1,0 +1,14 @@
+body { font-family: "Noto Sans CJK SC", system-ui, sans-serif; background: #f3f5f7; color: #1d2733; margin: 0; }
+.card { max-width: 380px; margin: 12vh auto; background: #fff; border-radius: 14px; padding: 32px 36px; box-shadow: 0 8px 30px rgba(20,40,60,.08); }
+.wide { max-width: 860px; margin: 6vh auto; background: #fff; border-radius: 14px; padding: 28px 36px; box-shadow: 0 8px 30px rgba(20,40,60,.08); }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.sub { color: #6b7785; font-size: 13px; margin: 0 0 22px; }
+label { display: block; font-size: 13px; color: #44505c; margin: 14px 0; }
+input { display: block; width: 100%; box-sizing: border-box; margin-top: 6px; padding: 10px 12px; border: 1px solid #cfd6de; border-radius: 8px; font-size: 15px; }
+button { margin-top: 10px; width: 100%; padding: 11px; border: 0; border-radius: 8px; background: #2f6f4f; color: #fff; font-size: 15px; cursor: pointer; }
+.error { color: #b3261e; font-size: 13px; }
+header { display: flex; justify-content: space-between; align-items: baseline; }
+.who { color: #6b7785; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e6ebf0; }
+th { color: #6b7785; font-weight: 500; }

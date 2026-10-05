@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SessionRow } from '@greenhouse/types/session';
+import { BOT_TASK_SESSION_PREFIX, defaultSessionListHiding, type SessionRow } from '@greenhouse/types/session';
 import type { UserRole } from '@greenhouse/types/api';
 import type { AppEnv } from '../../app-env.js';
 
@@ -226,6 +226,52 @@ describe('GET /api/sessions list pagination metadata', () => {
         offset: 0,
       }),
     );
+  });
+});
+
+describe('GET /api/sessions hide-by-default channels', () => {
+  const superUser = { id: 'boss', role: 'super' as const };
+
+  it('hides Bots conversations, workflow internals and Bot task children from the unfiltered list', async () => {
+    await createApp().request('/api/sessions');
+
+    expect(mocks.sessions.list).toHaveBeenCalledWith(
+      expect.objectContaining({ ...defaultSessionListHiding(), userId: 'owner' }),
+    );
+    const opts = mocks.sessions.list.mock.calls[0]![0] as { excludeChannels: string[]; excludeIdPrefixes: string[] };
+    expect(opts.excludeChannels).toEqual(expect.arrayContaining(['bots', 'workflow']));
+    expect(opts.excludeIdPrefixes).toContain(BOT_TASK_SESSION_PREFIX);
+  });
+
+  it('hides nothing once a channel is asked for explicitly', async () => {
+    await createApp().request('/api/sessions?channel=subagent');
+
+    const opts = mocks.sessions.list.mock.calls[0]![0] as Record<string, unknown>;
+    expect(opts.channel).toBe('subagent');
+    expect(opts).not.toHaveProperty('excludeChannels');
+    expect(opts).not.toHaveProperty('excludeIdPrefixes');
+  });
+
+  it('never backfills a filed Bots conversation or Bot task child into the generic list', async () => {
+    mocks.sessionGroups.getOrganizedSessionIds.mockResolvedValue(['filed-web', 'filed-bots', 'bottask-x']);
+    mocks.sessions.getById.mockImplementation(async (id: string) =>
+      id === 'filed-bots'
+        ? { ...makeSession(id), channel: 'bots' }
+        : id === 'bottask-x'
+          ? { ...makeSession(`${BOT_TASK_SESSION_PREFIX}x`), id: `${BOT_TASK_SESSION_PREFIX}x`, channel: 'subagent' }
+          : makeSession(id),
+    );
+    const response = await createApp().request('/api/sessions');
+    const body = (await response.json()) as { sessions: Array<{ id: string }> };
+    expect(body.sessions.map((s) => s.id)).toEqual(['filed-web']);
+  });
+
+  it('lists only the caller’s own Bots conversations, even for a super', async () => {
+    await createApp(superUser).request('/api/sessions?channel=bots');
+
+    expect(mocks.sessions.list).toHaveBeenCalledWith(expect.objectContaining({ channel: 'bots', userId: 'boss' }));
+    // Never shared: no share backfill for a channel-filtered list.
+    expect(mocks.sessions.listSharedWith).not.toHaveBeenCalled();
   });
 });
 

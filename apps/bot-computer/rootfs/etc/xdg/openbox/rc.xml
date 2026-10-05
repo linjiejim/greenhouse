@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Minimal openbox config: no desktops pager, no decorations, every window
+     maximized — the Bot computer shows one full-screen browser at a time. -->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <desktops>
+    <number>1</number>
+  </desktops>
+  <focus>
+    <focusNew>yes</focusNew>
+    <followMouse>no</followMouse>
+  </focus>
+  <applications>
+    <application class="*">
+      <decor>no</decor>
+      <maximized>yes</maximized>
+    </application>
+  </applications>
+</openbox_config>

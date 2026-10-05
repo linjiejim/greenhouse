@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+# Tiny supervisor for the Bot computer, running as uid `browser` under tini:
+#   Xvnc :0 → openbox → Chromium (via gh-cdp-relay), each restarted if it dies.
+#
+# Two uids share the box on purpose:
+#   browser (this process tree) — the display, the browser and its profile in
+#            /home/browser (0700). VNC and DevTools listen ONLY on 0600 Unix
+#            sockets in /tmp/browser (0700); X requires the cookie in
+#            /home/browser/.Xauthority.
+#   agent   — the Bot's shell (`docker exec -u agent`), home /home/agent.
+# The agent can therefore never drive the browser, read the screen, or read a
+# password the vault filled into a page; it shares only /home/agent/Downloads
+# (group `computer`, setgid) with the browser for downloads and uploads.
+set -u
+umask 022
+
+export DISPLAY=:0
+export HOME=/home/browser
+export XAUTHORITY=/home/browser/.Xauthority
+RUN_DIR=/tmp/browser
+GEOMETRY="${GH_COMPUTER_GEOMETRY:-1280x800}"
+WIDTH="${GEOMETRY%x*}"
+HEIGHT="${GEOMETRY#*x}"
+PROFILE=/home/browser/chromium
+START_PAGE="${GH_COMPUTER_START_PAGE:-file:///opt/greenhouse/welcome.html}"
+# Runtime Chromium policy (URL blocklist), symlinked from
+# /etc/chromium/policies/managed/runtime.json — see write_runtime_policy.
+POLICY_FILE="$RUN_DIR/policy.json"
+
+mkdir -p "$RUN_DIR" "$PROFILE" /tmp/.X11-unix 2>/dev/null || true
+chmod 0700 "$RUN_DIR" /home/browser 2>/dev/null || true
+chmod 1777 /tmp/.X11-unix 2>/dev/null || true
+
+log() { echo "[gh-computer] $*"; }
+
+# The sockets' only protection is this directory: it must be ours and 0700. If
+# anything else created it first (it should be impossible on a fresh tmpfs),
+# refuse to run rather than expose VNC and DevTools to the agent uid.
+if [ "$(stat -c '%u %a' "$RUN_DIR" 2>/dev/null)" != "$(id -u) 700" ]; then
+  log "$RUN_DIR is not owned by $(id -un) with mode 0700; refusing to start"
+  exit 1
+fi
+
+# The runtime policy blocks file:// (the profile — cookies, localStorage — is
+# readable through it) and greenhouse's own origins (a Bot must never reach the
+# app that approves its own cards). GH_COMPUTER_URL_BLOCKLIST is the API's
+# comma-separated list of extra URLBlocklist patterns. The static
+# greenhouse.json carries the same file:// rules, so a missing runtime file
+# still fails closed; when present, runtime.json wins (Chromium gives a policy
+# key to the lexicographically LAST file in the managed directory).
+write_runtime_policy() {
+  local tmp="$POLICY_FILE.tmp"
+  if ! jq -n --arg extra "${GH_COMPUTER_URL_BLOCKLIST:-}" '{
+        URLBlocklist: (["file://*"] + ($extra | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)))),
+        URLAllowlist: ["file:///opt/greenhouse/"]
+      }' >"$tmp"; then
+    return 1
+  fi
+  chmod 0600 "$tmp" && mv -f "$tmp" "$POLICY_FILE"
+}
+if ! write_runtime_policy; then
+  log "cannot write the runtime browser policy; refusing to start"
+  exit 1
+fi
+
+# A fresh X cookie each boot; only uid `browser` can read it.
+rm -f "$XAUTHORITY"
+touch "$XAUTHORITY" && chmod 0600 "$XAUTHORITY"
+xauth -q -f "$XAUTHORITY" add :0 . "$(mcookie)"
+
+# Restart a command with a small backoff until the box is stopping; one crash
+# never kills the box. The command runs in its own subshell because the run_*
+# functions `exec` — without it the exec would replace this loop and nothing
+# would ever be restarted.
+STOP_FLAG="$RUN_DIR/stopping"
+rm -f "$STOP_FLAG"
+supervise() {
+  local name="$1"
+  shift
+  while [ ! -e "$STOP_FLAG" ]; do
+    ("$@")
+    local code=$?
+    [ -e "$STOP_FLAG" ] && break
+    log "$name exited ($code), restarting in 1s"
+    sleep 1
+  done
+}
+
+# `docker stop` (SIGTERM, then SIGKILL after 5 s): close the browser FIRST so
+# it writes cookies and history to the volume, and only then take the display
+# away — Chromium killed by a vanished X server never flushes its profile, and
+# the member would find themselves logged out after every idle shutdown.
+shutdown() {
+  touch "$STOP_FLAG"
+  log "stopping: closing the browser first"
+  pkill -TERM -f '/usr/local/bin/gh-cdp-relay' 2>/dev/null
+  # The relay exits right after Chromium does; waiting for it (≤4 s of
+  # docker stop's 5) also lets its "chromium exited" line reach the log.
+  for _ in $(seq 1 40); do
+    pgrep -x chromium >/dev/null || pgrep -f '/usr/local/bin/gh-cdp-relay' >/dev/null || break
+    sleep 0.1
+  done
+  pkill -TERM -x openbox 2>/dev/null
+  pkill -TERM -x Xvnc 2>/dev/null
+  exit 0
+}
+trap shutdown TERM INT
+
+# -rfbport -1 matters: -rfbunixpath ADDS a Unix socket, it does not stop Xvnc
+# from also listening on TCP 5900 — with SecurityTypes None, that would hand
+# the screen and keyboard to the agent uid (and the bridge). -nolisten tcp only
+# covers the X11 protocol.
+run_xvnc() {
+  rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 "$RUN_DIR/vnc.sock"
+  exec Xvnc :0 \
+    -auth "$XAUTHORITY" \
+    -geometry "$GEOMETRY" -depth 24 \
+    -rfbunixpath "$RUN_DIR/vnc.sock" -rfbunixmode 0600 -rfbport -1 \
+    -SecurityTypes None -AlwaysShared -AcceptSetDesktopSize=0 \
+    -desktop greenhouse -nolisten tcp
+}
+
+wait_for_display() {
+  for _ in $(seq 1 100); do
+    if xsetroot -solid '#16211b' 2>/dev/null; then return 0; fi
+    sleep 0.1
+  done
+  log "display :0 did not come up"
+  return 1
+}
+
+run_chromium() {
+  # A container stop is an unclean shutdown from Chromium's point of view: drop
+  # the singleton locks and mark the last exit clean, so the next start shows
+  # no "restore pages?" bubble and opens normally.
+  rm -f "$PROFILE"/Singleton* 2>/dev/null
+  if [ -f "$PROFILE/Default/Preferences" ]; then
+    sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/; s/"exited_cleanly":false/"exited_cleanly":true/' \
+      "$PROFILE/Default/Preferences" 2>/dev/null || true
+  fi
+  # Never start a browser without the runtime policy (it would load file://).
+  if [ ! -s "$POLICY_FILE" ]; then
+    log "runtime browser policy missing; not starting chromium"
+    sleep 5
+    return 1
+  fi
+  # The container's environment never carries a proxy (the API clears the ones
+  # the docker CLI injects); the browser goes direct unless the operator set
+  # BOTS_COMPUTER_PROXY.
+  local proxy_flag="--no-proxy-server"
+  if [ -n "${GH_COMPUTER_PROXY:-}" ]; then
+    proxy_flag="--proxy-server=${GH_COMPUTER_PROXY}"
+  fi
+  # gh-cdp-relay appends --remote-debugging-pipe and serves it on $RUN_DIR/cdp.sock.
+  exec /usr/local/bin/gh-cdp-relay chromium \
+    "$proxy_flag" \
+    --no-sandbox --test-type \
+    --disable-dev-shm-usage --disable-gpu \
+    --no-first-run --no-default-browser-check \
+    --disable-sync --disable-background-networking \
+    --disable-background-timer-throttling --disable-renderer-backgrounding \
+    --disable-backgrounding-occluded-windows \
+    --disable-features=Translate,MediaRouter,OptimizationHints,AutofillServerCommunication \
+    --password-store=basic --hide-crash-restore-bubble \
+    --user-data-dir="$PROFILE" \
+    --window-position=0,0 --window-size="${WIDTH},${HEIGHT}" --start-maximized \
+    --lang="${GH_COMPUTER_LANG:-zh-CN}" \
+    "$START_PAGE"
+}
+
+supervise xvnc run_xvnc &
+wait_for_display
+supervise openbox openbox &
+supervise chromium run_chromium &
+
+log "ready (display :0, sockets in $RUN_DIR)"
+wait
