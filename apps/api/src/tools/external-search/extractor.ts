@@ -8,6 +8,7 @@
  * No API key required for basic usage.
  */
 
+import { fetchPublicPage } from '../../security/network.js';
 import type { ContentExtractor, ExtractedContent } from './types.js';
 
 /** Maximum content size in characters (≈12K tokens) */
@@ -59,41 +60,34 @@ export class JinaReaderExtractor implements ContentExtractor {
 
 // ─── Local Fallback Extractor ────────────────────────────
 
+/**
+ * Fetches the page from the API host itself, so the URL is untrusted input:
+ * it goes through `fetchPublicPage` (public addresses only, checked at connect
+ * time and on every redirect) — a search result, or a redirect from one, must
+ * never reach 127.0.0.1, the LAN or cloud metadata.
+ */
 export class LocalFallbackExtractor implements ContentExtractor {
   async extract(url: string): Promise<ExtractedContent> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const page = await fetchPublicPage(url, {
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; GreenhouseBot/1.0)',
+        Accept: 'text/html,application/xhtml+xml,text/plain',
+      },
+    });
 
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; GreenhouseBot/1.0)',
-          Accept: 'text/html,application/xhtml+xml,text/plain',
-        },
-        signal: controller.signal,
-        redirect: 'follow',
-      });
+    const html = page.text;
+    const title = extractTitleFromHTML(html);
+    const rawText = stripHTMLTags(html);
+    const truncated = page.truncated || rawText.length > MAX_CONTENT_LENGTH;
+    const content = truncated ? rawText.slice(0, MAX_CONTENT_LENGTH) + '\n\n[... content truncated]' : rawText;
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status} fetching ${url}`);
-      }
-
-      const html = await response.text();
-      const title = extractTitleFromHTML(html);
-      const rawText = stripHTMLTags(html);
-      const truncated = rawText.length > MAX_CONTENT_LENGTH;
-      const content = truncated ? rawText.slice(0, MAX_CONTENT_LENGTH) + '\n\n[... content truncated]' : rawText;
-
-      return {
-        title,
-        content,
-        byteLength: rawText.length,
-        truncated,
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
+    return {
+      title,
+      content,
+      byteLength: rawText.length,
+      truncated,
+    };
   }
 }
 
