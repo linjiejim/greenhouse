@@ -6,19 +6,30 @@
  * mermaid, …) or a plain code block. Not full CommonMark; covers what agent
  * replies actually use.
  */
-import type { Align, TableData } from '../table-store';
+
+export type Align = 'left' | 'center' | 'right';
+
+/** A parsed pipe table (also the `/table` full-screen viewer's handoff payload). */
+export interface TableData {
+  head: string[];
+  rows: string[][];
+  align?: Align[];
+}
 
 export type Block =
   | { kind: 'code'; lang: string; text: string }
   | { kind: 'heading'; level: number; text: string }
   | { kind: 'ul'; items: string[] }
-  | { kind: 'ol'; items: string[] }
+  /** `start` = the first item's own number (a list split by prose keeps counting). */
+  | { kind: 'ol'; items: string[]; start: number }
   | { kind: 'table'; data: TableData }
   | { kind: 'quote'; text: string }
   | { kind: 'hr' }
   | { kind: 'p'; text: string };
 
 const PIPE_ROW = /^\s*\|.*\|\s*$/;
+const UL_ITEM = /^\s*[-*+]\s+(.*)$/;
+const OL_ITEM = /^\s*(\d+)[.)]\s+(.*)$/;
 const HR = /^\s*([-*_])(?:\s*\1){2,}\s*$/;
 const splitRow = (l: string) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
 const isSep = (l: string) => splitRow(l).every((c) => /^:?-{2,}:?$/.test(c.replace(/\s/g, '')));
@@ -94,21 +105,42 @@ export function parseBlocks(src: string): Block[] {
       continue;
     }
 
-    const ul = line.match(/^\s*[-*]\s+(.*)$/);
-    const ol = line.match(/^\s*\d+\.\s+(.*)$/);
+    const ul = line.match(UL_ITEM);
+    const ol = line.match(OL_ITEM);
     if (ul || ol) {
       flush();
       const ordered = !!ol;
+      const same = ordered ? OL_ITEM : UL_ITEM;
+      const other = ordered ? UL_ITEM : OL_ITEM;
       const items: string[] = [];
       while (i < lines.length) {
-        const mu = lines[i].match(/^\s*[-*]\s+(.*)$/);
-        const mo = lines[i].match(/^\s*\d+\.\s+(.*)$/);
-        if (ordered && mo) items.push(mo[1]);
-        else if (!ordered && mu) items.push(mu[1]);
-        else break;
-        i++;
+        const l = lines[i];
+        const m = l.match(same);
+        if (m) {
+          items.push(ordered ? m[2] : m[1]);
+          i++;
+          continue;
+        }
+        // Blank lines between items ("loose" lists, common in LLM output)
+        // don't end the list when another item of it follows.
+        if (l.trim() === '') {
+          let j = i;
+          while (j < lines.length && lines[j].trim() === '') j++;
+          if (j < lines.length && same.test(lines[j])) {
+            i = j;
+            continue;
+          }
+          break;
+        }
+        // An indented continuation line belongs to the item above it.
+        if (items.length && /^\s{2,}\S/.test(l) && !other.test(l)) {
+          items[items.length - 1] += `\n${l.trim()}`;
+          i++;
+          continue;
+        }
+        break;
       }
-      blocks.push(ordered ? { kind: 'ol', items } : { kind: 'ul', items });
+      blocks.push(ordered ? { kind: 'ol', items, start: Number(ol![1]) || 1 } : { kind: 'ul', items });
       continue;
     }
 

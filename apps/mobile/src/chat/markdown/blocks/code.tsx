@@ -1,70 +1,72 @@
-import { useState } from 'react';
+/**
+ * Fenced code block — an always-dark card (the `code*` tokens, same in light
+ * and dark like Xcode / GitHub), a header with the language label and a copy
+ * button (system HUD confirmation), and horizontal scrolling for long lines
+ * (`HScroll` — keeps the swipe-anywhere drawer working).
+ */
 import { Text, View } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
 import * as Clipboard from 'expo-clipboard';
 import { useT } from '../../../lib/i18n';
-import { font, makeStyles, mono, radius, useTheme } from '../../../theme';
-import { Icon, Touchable } from '../../../ui';
+import { makeStyles, mono, radius, space, squircle, typo, useTheme, weight } from '../../../theme';
+import { Icon, Touchable } from '../../../ui/core';
+import { toast } from '../../../ui/toast';
+import { HScroll } from './hscroll';
 
-/** Fenced code block — dark, language label + copy, horizontal scroll. */
 export function CodeBlock({ lang, code }: { lang: string; code: string }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
-  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await Clipboard.setStringAsync(code).catch(() => {});
+    toast(t('common.copied'), 'copy');
+  };
   return (
-    <View style={styles.codeWrap}>
-      <View style={styles.codeHeader}>
-        <Text style={styles.codeLang}>{lang}</Text>
+    <View style={styles.wrap}>
+      <View style={styles.header}>
+        <Text style={styles.lang}>{lang}</Text>
         <Touchable
-          haptic="light"
-          onPress={async () => {
-            await Clipboard.setStringAsync(code).catch(() => {});
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1200);
-          }}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+          onPress={copy}
+          hitSlop={10}
+          style={styles.copy}
+          accessibilityRole="button"
+          accessibilityLabel={t('chat.actionCopy')}
         >
-          <Icon name={copied ? 'check' : 'copy'} size={14} color={copied ? c.accent : c.codeLabel} />
-          <Text style={{ fontSize: font.caption, fontWeight: '600', color: copied ? c.accent : c.codeLabel }}>
-            {copied ? t('common.copied') : t('chat.actionCopy')}
-          </Text>
+          <Icon name="copy" size={13} color={c.codeLabel} />
+          <Text style={styles.copyText}>{t('chat.actionCopy')}</Text>
         </Touchable>
       </View>
-      <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={styles.codeScroll}>
-        <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+      <HScroll>
+        <View style={styles.body}>
           {code.split('\n').map((ln, i) => (
-            <Text key={i} style={[styles.codeLine, /^\s*\/\//.test(ln) && { color: c.codeComment }]}>
+            <Text key={i} style={[styles.line, /^\s*(\/\/|#)/.test(ln) && { color: c.codeComment }]}>
               {ln || ' '}
             </Text>
           ))}
         </View>
-      </ScrollView>
+      </HScroll>
     </View>
   );
 }
 
 const useStyles = makeStyles((c) => ({
-  codeWrap: {
-    marginVertical: 12,
-    marginRight: -16,
-    borderTopLeftRadius: radius.md,
-    borderBottomLeftRadius: radius.md,
+  wrap: {
+    marginVertical: space.sm + 2,
+    borderRadius: radius.md,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderRightWidth: 0,
-    borderColor: c.hairline,
     backgroundColor: c.codeBg,
+    ...squircle,
   },
-  codeHeader: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+    paddingVertical: space.sm - 1,
+    paddingHorizontal: space.md,
     backgroundColor: c.codeHeader,
   },
-  codeLang: { fontFamily: mono, fontSize: font.caption, color: c.codeLabel, letterSpacing: 0.4 },
-  codeScroll: { backgroundColor: c.codeBg },
-  codeLine: { fontFamily: mono, fontSize: font.caption, lineHeight: 21, color: c.codeText },
+  lang: { fontFamily: mono, ...typo.caption1, color: c.codeLabel },
+  copy: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  copyText: { ...typo.caption1, fontWeight: weight.semibold, color: c.codeLabel },
+  body: { paddingHorizontal: space.md + 2, paddingVertical: space.md },
+  line: { fontFamily: mono, ...typo.footnote, lineHeight: 20, color: c.codeText },
 }));

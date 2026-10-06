@@ -3,24 +3,37 @@
  * react-native-svg. Reads the same Chart.js spec the web/desktop renderer uses
  * ({ type, title, labels, datasets: [{ label, data }] }) plus loose LLM
  * fallbacks; falls back to a plain code block when the spec carries no numbers.
+ *
+ * SVG paints need real color strings, so grid lines / labels use the `hex`
+ * mirror of the system colors (never the PlatformColor `colors` objects);
+ * series colors are data colors (the shared web palette). Nothing is painted
+ * in a "background" color (the doughnut is a true ring), so charts sit right
+ * on any surface — grouped cards, glass sheets.
  */
-import { Text, View } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Line as SvgLine, Path, Polygon, Polyline, Rect, Text as SvgText } from 'react-native-svg';
-import { font, makeStyles, radius, useTheme } from '../../../theme';
+import { t } from '../../../lib/i18n';
+import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../../theme';
 import { CodeBlock } from './code';
+import { HScroll } from './hscroll';
 
-const toNum = (v: any): number | null => {
+type Loose = Record<string, unknown>;
+const isObj = (v: unknown): v is Loose => !!v && typeof v === 'object' && !Array.isArray(v);
+const arr = (v: unknown): unknown[] | null => (Array.isArray(v) ? v : null);
+
+const toNum = (v: unknown): number | null => {
   if (typeof v === 'number' && isFinite(v)) return v;
   if (typeof v === 'string' && v.trim() !== '' && isFinite(Number(v))) return Number(v);
   return null;
 };
 
+const CHART_TYPES = ['bar', 'line', 'pie', 'doughnut', 'radar'] as const;
+
 // Series palette — mirrors the web ChartBlock order so a chart looks the same
 // across web / desktop / mobile.
 const SERIES_COLORS = ['#6c995e', '#3f6f8a', '#c8881f', '#9b6bd6', '#c4503e', '#3aa0a0', '#d6792e', '#5b6b82'];
 
-type ChartType = 'bar' | 'line' | 'pie' | 'doughnut' | 'radar';
+type ChartType = (typeof CHART_TYPES)[number];
 interface ChartSpec {
   type: ChartType;
   title?: string;
@@ -35,54 +48,51 @@ interface ChartSpec {
  *  with loose fallbacks kept for robustness:
  *    - data: [{ label|name|x, value|y|count }]
  *    - labels|categories + values|series|data parallel arrays */
-function parseChart(cfg: any): ChartSpec | null {
-  if (!cfg || typeof cfg !== 'object') return null;
-  const type: ChartType = ['bar', 'line', 'pie', 'doughnut', 'radar'].includes(cfg.type) ? cfg.type : 'bar';
-  let labels: string[] = Array.isArray(cfg.labels)
-    ? cfg.labels.map(String)
-    : Array.isArray(cfg.categories)
-      ? cfg.categories.map(String)
-      : [];
+function parseChart(cfg: unknown): ChartSpec | null {
+  if (!isObj(cfg)) return null;
+  const type: ChartType = CHART_TYPES.find((x) => x === cfg.type) ?? 'bar';
+  const title = cfg.title != null ? String(cfg.title) : undefined;
+  let labels: string[] = (arr(cfg.labels) ?? arr(cfg.categories) ?? []).map(String);
   let series: { label: string; data: number[] }[] = [];
 
   // canonical: datasets: [{ label, data: number[] }]
-  if (Array.isArray(cfg.datasets)) {
-    series = cfg.datasets
-      .map((ds: any, i: number) => ({
-        label: String(ds?.label ?? `系列 ${i + 1}`),
-        data: (Array.isArray(ds?.data) ? ds.data : []).map((v: any) => toNum(v) ?? 0),
-      }))
-      .filter((s: { data: number[] }) => s.data.length > 0);
+  const datasets = arr(cfg.datasets);
+  if (datasets) {
+    series = datasets
+      .map((ds, i) => {
+        const d = isObj(ds) ? ds : {};
+        return {
+          label: d.label != null ? String(d.label) : t('chat.series', { n: i + 1 }),
+          data: (arr(d.data) ?? []).map((v) => toNum(v) ?? 0),
+        };
+      })
+      .filter((x) => x.data.length > 0);
   }
 
   // loose: data: [{ label|name|x, value|y|count }]
-  if (!series.length && Array.isArray(cfg.data) && cfg.data.some((d: any) => d && typeof d === 'object')) {
-    const pts = cfg.data
-      .map((d: any) => ({ label: String(d?.label ?? d?.name ?? d?.x ?? ''), value: toNum(d?.value ?? d?.y ?? d?.count) }))
-      .filter((p: { value: number | null }) => p.value != null);
-    if (!labels.length) labels = pts.map((p: { label: string }) => p.label);
-    if (pts.length) series = [{ label: String(cfg.title ?? '系列'), data: pts.map((p: { value: number }) => p.value) }];
+  const data = arr(cfg.data);
+  if (!series.length && data?.some(isObj)) {
+    const pts = data.filter(isObj).flatMap((d) => {
+      const value = toNum(d.value ?? d.y ?? d.count);
+      return value == null ? [] : [{ label: String(d.label ?? d.name ?? d.x ?? ''), value }];
+    });
+    if (!labels.length) labels = pts.map((p) => p.label);
+    if (pts.length) series = [{ label: title ?? t('chat.series', { n: 1 }), data: pts.map((p) => p.value) }];
   }
 
   // loose: parallel labels + values/series/data arrays
   if (!series.length) {
-    const vals: any[] = Array.isArray(cfg.values)
-      ? cfg.values
-      : Array.isArray(cfg.series)
-        ? cfg.series
-        : Array.isArray(cfg.data)
-          ? cfg.data
-          : [];
+    const vals = arr(cfg.values) ?? arr(cfg.series) ?? data ?? [];
     const nums = vals
-      .map((v) => toNum(v && typeof v === 'object' ? v.value ?? v.y : v))
+      .map((v) => toNum(isObj(v) ? (v.value ?? v.y) : v))
       .filter((v): v is number => v != null);
-    if (nums.length) series = [{ label: String(cfg.title ?? '系列'), data: nums }];
+    if (nums.length) series = [{ label: title ?? t('chat.series', { n: 1 }), data: nums }];
   }
 
   if (!series.length) return null;
-  const n = Math.max(...series.map((s) => s.data.length));
+  const n = Math.max(...series.map((x) => x.data.length));
   if (labels.length < n) labels = Array.from({ length: n }, (_, k) => labels[k] ?? String(k + 1));
-  return { type, title: cfg.title ? String(cfg.title) : undefined, labels, series };
+  return { type, title, labels, series };
 }
 
 function Legend({ items }: { items: { label: string; color: string }[] }) {
@@ -104,7 +114,7 @@ function Legend({ items }: { items: { label: string; color: string }[] }) {
 
 /** Bar (grouped when multi-series) / line (one polyline per series). */
 function CartesianChart({ spec }: { spec: ChartSpec }) {
-  const { colors: c } = useTheme();
+  const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
   const { type, labels, series } = spec;
   const isLine = type === 'line';
@@ -116,10 +126,10 @@ function CartesianChart({ spec }: { spec: ChartSpec }) {
 
   return (
     <>
-      <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false}>
+      <HScroll>
         <View>
           <Svg width={W} height={plotH + 4}>
-            <SvgLine x1={0} y1={plotH} x2={W} y2={plotH} stroke={c.hairline} strokeWidth={1} />
+            <SvgLine x1={0} y1={plotH} x2={W} y2={plotH} stroke={hex.separator} strokeWidth={1} />
             {isLine
               ? series.map((s, si) => {
                   const color = SERIES_COLORS[si % SERIES_COLORS.length];
@@ -166,7 +176,7 @@ function CartesianChart({ spec }: { spec: ChartSpec }) {
             ))}
           </View>
         </View>
-      </ScrollView>
+      </HScroll>
       {series.length > 1 ? (
         <Legend items={series.map((s, i) => ({ label: s.label, color: SERIES_COLORS[i % SERIES_COLORS.length] }))} />
       ) : null}
@@ -174,15 +184,20 @@ function CartesianChart({ spec }: { spec: ChartSpec }) {
   );
 }
 
-/** Pie / doughnut from the first series. */
+/**
+ * Pie / doughnut from the first series. Slices are sector paths; doughnut
+ * slices are annulus paths (outer arc → inner arc back), never a pie with a
+ * background-colored disc painted over it.
+ */
 function PieChart({ spec }: { spec: ChartSpec }) {
-  const { colors: c } = useTheme();
   const vals = (spec.series[0]?.data ?? []).map((v) => Math.max(0, v));
   const total = vals.reduce((a, b) => a + b, 0);
   const size = 172;
   const r = size / 2;
+  const ri = spec.type === 'doughnut' ? r * 0.56 : 0;
   const cx = r;
   const cy = r;
+  const pt = (rad: number, a: number) => `${cx + rad * Math.cos(a)},${cy + rad * Math.sin(a)}`;
   let angle = -Math.PI / 2;
   const arcs = vals.map((v, i) => {
     const frac = total > 0 ? v / total : 0;
@@ -190,29 +205,28 @@ function PieChart({ spec }: { spec: ChartSpec }) {
     const end = angle + frac * Math.PI * 2;
     angle = end;
     const large = end - start > Math.PI ? 1 : 0;
-    const x1 = cx + r * Math.cos(start);
-    const y1 = cy + r * Math.sin(start);
-    const x2 = cx + r * Math.cos(end);
-    const y2 = cy + r * Math.sin(end);
-    // A full-circle slice can't be drawn with a single arc (start == end), so
-    // special-case it as two half-circles.
-    const d =
-      frac >= 0.999
-        ? `M${cx},${cy - r} A${r},${r} 0 1 1 ${cx},${cy + r} A${r},${r} 0 1 1 ${cx},${cy - r} Z`
-        : `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large} 1 ${x2},${y2} Z`;
+    let d: string;
+    if (frac >= 0.999) {
+      // A full ring can't be one arc (start == end): two half circles each way.
+      d = `M${cx},${cy - r} A${r},${r} 0 1 1 ${cx},${cy + r} A${r},${r} 0 1 1 ${cx},${cy - r} Z`;
+      if (ri) d += ` M${cx},${cy - ri} A${ri},${ri} 0 1 0 ${cx},${cy + ri} A${ri},${ri} 0 1 0 ${cx},${cy - ri} Z`;
+    } else if (ri) {
+      d = `M${pt(r, start)} A${r},${r} 0 ${large} 1 ${pt(r, end)} L${pt(ri, end)} A${ri},${ri} 0 ${large} 0 ${pt(ri, start)} Z`;
+    } else {
+      d = `M${cx},${cy} L${pt(r, start)} A${r},${r} 0 ${large} 1 ${pt(r, end)} Z`;
+    }
     return { d, color: SERIES_COLORS[i % SERIES_COLORS.length] };
   });
   return (
     <View style={{ alignItems: 'center' }}>
       <Svg width={size} height={size}>
         {arcs.map((a, i) => (
-          <Path key={i} d={a.d} fill={a.color} />
+          <Path key={i} d={a.d} fill={a.color} fillRule="evenodd" />
         ))}
-        {spec.type === 'doughnut' ? <Circle cx={cx} cy={cy} r={r * 0.56} fill={c.surface} /> : null}
       </Svg>
       <Legend
         items={spec.labels.map((l, i) => ({
-          label: total > 0 ? `${l} · ${Math.round((vals[i] ?? 0) / total * 100)}%` : l,
+          label: total > 0 ? `${l} · ${Math.round(((vals[i] ?? 0) / total) * 100)}%` : l,
           color: SERIES_COLORS[i % SERIES_COLORS.length],
         }))}
       />
@@ -222,7 +236,7 @@ function PieChart({ spec }: { spec: ChartSpec }) {
 
 /** Radar — one filled polygon per series over a ringed grid. */
 function RadarChart({ spec }: { spec: ChartSpec }) {
-  const { colors: c } = useTheme();
+  const { hex } = useTheme();
   const { labels, series } = spec;
   const n = labels.length;
   const size = 220;
@@ -231,15 +245,30 @@ function RadarChart({ spec }: { spec: ChartSpec }) {
   const R = size / 2 - 30;
   const max = Math.max(0, ...series.flatMap((s) => s.data));
   const angleAt = (i: number) => -Math.PI / 2 + (i / n) * Math.PI * 2;
-  const pt = (i: number, radiusAt: number) => `${cx + radiusAt * Math.cos(angleAt(i))},${cy + radiusAt * Math.sin(angleAt(i))}`;
+  const pt = (i: number, radiusAt: number) =>
+    `${cx + radiusAt * Math.cos(angleAt(i))},${cy + radiusAt * Math.sin(angleAt(i))}`;
   return (
     <View style={{ alignItems: 'center' }}>
       <Svg width={size} height={size}>
         {[0.25, 0.5, 0.75, 1].map((f, ri) => (
-          <Polygon key={ri} points={labels.map((_, i) => pt(i, R * f)).join(' ')} fill="none" stroke={c.hairline} strokeWidth={1} />
+          <Polygon
+            key={ri}
+            points={labels.map((_, i) => pt(i, R * f)).join(' ')}
+            fill="none"
+            stroke={hex.separator}
+            strokeWidth={1}
+          />
         ))}
         {labels.map((_, i) => (
-          <SvgLine key={i} x1={cx} y1={cy} x2={cx + R * Math.cos(angleAt(i))} y2={cy + R * Math.sin(angleAt(i))} stroke={c.hairline} strokeWidth={1} />
+          <SvgLine
+            key={i}
+            x1={cx}
+            y1={cy}
+            x2={cx + R * Math.cos(angleAt(i))}
+            y2={cy + R * Math.sin(angleAt(i))}
+            stroke={hex.separator}
+            strokeWidth={1}
+          />
         ))}
         {series.map((s, si) => {
           const color = SERIES_COLORS[si % SERIES_COLORS.length];
@@ -252,7 +281,15 @@ function RadarChart({ spec }: { spec: ChartSpec }) {
           const ly = cy + (R + 14) * Math.sin(a);
           const anchor = Math.abs(Math.cos(a)) < 0.3 ? 'middle' : Math.cos(a) > 0 ? 'start' : 'end';
           return (
-            <SvgText key={i} x={lx} y={ly} fontSize={10} fill={c.fgMuted} textAnchor={anchor} alignmentBaseline="middle">
+            <SvgText
+              key={i}
+              x={lx}
+              y={ly}
+              fontSize={10}
+              fill={hex.secondaryLabel}
+              textAnchor={anchor}
+              alignmentBaseline="middle"
+            >
               {l.length > 6 ? l.slice(0, 6) + '…' : l}
             </SvgText>
           );
@@ -268,7 +305,7 @@ function RadarChart({ spec }: { spec: ChartSpec }) {
 export function Chart({ spec }: { spec: string }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
-  let cfg: any;
+  let cfg: unknown;
   try {
     cfg = JSON.parse(spec);
   } catch {
@@ -289,17 +326,23 @@ export function Chart({ spec }: { spec: string }) {
 
 const useStyles = makeStyles((c) => ({
   chartWrap: {
-    marginVertical: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: c.hairline,
+    marginVertical: space.sm + 2,
+    padding: space.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.separator,
     borderRadius: radius.md,
-    backgroundColor: c.surface,
+    ...squircle,
   },
-  chartTitle: { fontSize: font.small, fontWeight: '700', color: c.fg, marginBottom: 10 },
-  chartLabel: { fontSize: font.caption, color: c.fgMuted, textAlign: 'center', paddingHorizontal: 2, marginTop: 6 },
-  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12, justifyContent: 'center' },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5, maxWidth: 150 },
+  chartTitle: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label, marginBottom: space.sm + 2 },
+  chartLabel: {
+    ...typo.caption1,
+    color: c.secondaryLabel,
+    textAlign: 'center',
+    paddingHorizontal: 2,
+    marginTop: space.xs + 2,
+  },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm + 2, marginTop: space.md, justifyContent: 'center' },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: space.xs + 1, maxWidth: 150 },
   legendDot: { width: 9, height: 9, borderRadius: 3 },
-  legendText: { fontSize: font.caption, color: c.fgSecondary, flexShrink: 1 },
+  legendText: { ...typo.caption1, color: c.secondaryLabel, flexShrink: 1 },
 }));

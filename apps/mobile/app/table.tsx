@@ -1,45 +1,42 @@
 /**
- * Fullscreen table viewer — opened from the inline table's “全屏” button. Lets a
- * wide grid be read with both-axis scrolling (vertical page scroll + the grid's
- * own horizontal scroll) at a larger type size. The grid is handed over in-memory
- * via table-store (keyed by `k`) rather than serialised through nav params.
+ * Full-screen table viewer — a modal page opened from an inline table's “全屏”
+ * capsule. Native header (title, ✕ close) over a column/row count; the grid
+ * scrolls on both axes (the page vertically, the grid horizontally) at body
+ * size. The grid arrives in memory through the handoff
+ * store (`?k=`, kind `table`), never through navigation params.
  */
 
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getTable } from '../src/chat/table-store';
-import { TableGrid } from '../src/chat/markdown';
-import { ScreenHeader } from '../src/ui';
-import { font, makeStyles, useTheme } from '../src/theme';
+import { Stack, useLocalSearchParams } from 'expo-router';
+import { TableGrid, type TableData } from '../src/chat/markdown';
+import { getHandoff } from '../src/lib/handoff';
+import { useT } from '../src/lib/i18n';
+import { makeStyles, radius, space, squircle, typo, useTheme } from '../src/theme';
+import { EmptyState } from '../src/ui/empty';
+import { SheetClose } from '../src/ui/sheet-chrome';
 
 export default function FullTable() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const t = useT();
   const { k, title } = useLocalSearchParams<{ k?: string; title?: string }>();
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const data = getTable(k);
+  const data = getHandoff<TableData>(k);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 4 }]}>
-      <ScreenHeader
-        variant="compact"
-        leading="close"
-        title={title ? String(title) : '表格'}
-        subtitle={data ? `${data.head.length} 列 · ${data.rows.length} 行 · 横屏阅读更佳` : undefined}
-        onLeading={() => router.back()}
-        bordered
-      />
-
+    <View style={styles.root}>
+      <Stack.Screen options={{ title: title ? String(title) : t('chat.table') }} />
+      <SheetClose />
       {data ? (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: insets.bottom + 24 }}>
-          <TableGrid data={data} big />
+        <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+          <Text style={styles.meta}>{t('chat.tableMeta', { cols: data.head.length, rows: data.rows.length })}</Text>
+          <View style={styles.card}>
+            <TableGrid data={data} big />
+          </View>
         </ScrollView>
       ) : (
         <View style={styles.empty}>
-          <Text style={styles.emptyText}>表格已失效，请返回后重新打开。</Text>
+          <EmptyState icon="table" title={t('chat.expired')} message={t('chat.expiredHint')} />
         </View>
       )}
     </View>
@@ -47,19 +44,17 @@ export default function FullTable() {
 }
 
 const useStyles = makeStyles((c) => ({
-  root: { flex: 1, backgroundColor: c.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 8,
-    paddingBottom: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.hairline,
+  root: { flex: 1, backgroundColor: c.background },
+  content: { padding: space.margin, paddingBottom: space.xxxl },
+  meta: { ...typo.footnote, color: c.secondaryLabel, marginBottom: space.sm },
+  card: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.separator,
+    overflow: 'hidden',
+    ...squircle,
   },
-  btn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: font.title, fontWeight: '700', color: c.fg },
-  sub: { fontSize: font.caption, color: c.fgMuted, marginTop: 1 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  emptyText: { fontSize: font.label, color: c.fgMuted },
+  empty: { flex: 1, justifyContent: 'center' },
 }));

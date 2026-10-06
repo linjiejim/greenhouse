@@ -1,0 +1,577 @@
+/**
+ * The conversation — home of the app, living inside the slide drawer. ONE
+ * screen serves a new and an existing conversation (route params: `id?`
+ * session, `title?` placeholder title, `ro?='1'` shared/read-only,
+ * `compose?='1'` focus the composer — the widget's "新对话" deep link).
+ *
+ *  - New: a minimal hero (Sprouty + greeting) above the composer and an agent
+ *    capsule; the first send creates the session, re-points the route with
+ *    `router.setParams({ id })` (no remount) and the hero fades into the turn.
+ *  - Existing: history loads, new turns stream (src/chat/use-conversation.ts).
+ *
+ * Chrome is native: inline title (live-updated by the server's title event),
+ * Liquid Glass toolbar — ☰ opens the drawer (as does a right swipe from
+ * anywhere), 新对话, and a system menu with the real conversation actions
+ * (标签 / 分享 / 重命名 / 删除). Content is the solid layer (session tag chips,
+ * messages); the composer is the floating glass layer, kept above the keyboard
+ * by KeyboardStickyView while KeyboardChatScrollView keeps the latest turn in
+ * view. Details open as sheets: tool calls, references, sources, tables.
+ *
+ * Streaming re-renders this screen ~30×/s, so everything handed to children is
+ * kept referentially stable (header and composer are memoised, callbacks read
+ * the latest state through a ref) — only the reply being streamed re-renders.
+ */
+
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Linking, Share, StyleSheet, Text, View, type TextInput } from 'react-native';
+import { Stack, useIsFocused, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { DrawerActions, useHeaderHeight } from 'expo-router/react-navigation';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import {
+  KeyboardChatScrollView,
+  KeyboardStickyView,
+  useReanimatedKeyboardAnimation,
+} from 'react-native-keyboard-controller';
+import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
+import type { SessionTag } from '../../../src/shared/greenhouse-types';
+import { deleteSession, updateSessionTitle } from '../../../src/api/sessions';
+import { prepareImage, uploadImage } from '../../../src/api/upload';
+import { useAuth } from '../../../src/store/auth';
+import { useTags } from '../../../src/store/tags';
+import { Composer, ReadOnlyBar, type ComposerImage } from '../../../src/chat/composer';
+import { useComposerBridge } from '../../../src/chat/composer-bridge';
+import { AiMessage, UserMessage, type MessageAction } from '../../../src/chat/message';
+import { excerpt, plainText, transcript, type Annotation, type ChatMessage } from '../../../src/chat/model';
+import { TagChip } from '../../../src/chat/tag-chip';
+import { nextId, useConversation } from '../../../src/chat/use-conversation';
+import { putHandoff } from '../../../src/lib/handoff';
+import { greeting } from '../../../src/lib/format';
+import { t as tNow, useT } from '../../../src/lib/i18n';
+import { makeStyles, space, typo, useTheme } from '../../../src/theme';
+import { NativeButton } from '../../../src/ui/button';
+import { alertError, confirmAction, promptText } from '../../../src/ui/dialogs';
+import { EmptyState, LoadingState } from '../../../src/ui/empty';
+import { SproutyFace } from '../../../src/ui/sprouty';
+import { toast } from '../../../src/ui/toast';
+
+const MAX_IMAGES = 4;
+
+/* ------------------------------ native header ------------------------------ */
+
+interface HeaderActions {
+  openDrawer: () => void;
+  newChat: () => void;
+  openTags: () => void;
+  share: () => void;
+  rename: () => void;
+  remove: () => void;
+}
+
+/**
+ * Title + glass toolbar. Memoised: Stack.Toolbar re-applies the navigation
+ * options whenever it re-renders, which must not happen on every stream tick.
+ */
+const ConversationHeader = memo(function ConversationHeader({
+  title,
+  hasSession,
+  readOnly,
+  actions,
+}: {
+  title: string;
+  hasSession: boolean;
+  readOnly: boolean;
+  actions: HeaderActions;
+}) {
+  const t = useT();
+  return (
+    <>
+      <Stack.Screen options={{ title }} />
+      <Stack.Toolbar placement="left">
+        <Stack.Toolbar.Button
+          icon="line.3.horizontal"
+          accessibilityLabel={t('chat.openDrawer')}
+          onPress={actions.openDrawer}
+        />
+      </Stack.Toolbar>
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          icon="square.and.pencil"
+          hidden={!hasSession}
+          accessibilityLabel={t('drawer.newChat')}
+          onPress={actions.newChat}
+        />
+        <Stack.Toolbar.Menu icon="ellipsis" hidden={!hasSession} accessibilityLabel={t('common.more')}>
+          <Stack.Toolbar.MenuAction icon="tag" hidden={readOnly} onPress={actions.openTags}>
+            {t('chat.actionTags')}
+          </Stack.Toolbar.MenuAction>
+          <Stack.Toolbar.MenuAction icon="square.and.arrow.up" onPress={actions.share}>
+            {t('chat.actionShare')}
+          </Stack.Toolbar.MenuAction>
+          <Stack.Toolbar.MenuAction icon="pencil" hidden={readOnly} onPress={actions.rename}>
+            {t('chat.actionRename')}
+          </Stack.Toolbar.MenuAction>
+          <Stack.Toolbar.Menu inline hidden={readOnly}>
+            <Stack.Toolbar.MenuAction icon="trash" destructive onPress={actions.remove}>
+              {t('chat.actionDelete')}
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
+        </Stack.Toolbar.Menu>
+      </Stack.Toolbar>
+    </>
+  );
+});
+
+/* ------------------------------ screen ------------------------------ */
+
+export default function Conversation() {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  const t = useT();
+  const router = useRouter();
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const params = useLocalSearchParams<{ id?: string; title?: string; ro?: string; compose?: string }>();
+  const user = useAuth((s) => s.user);
+
+  /* ---------- follow-the-stream ---------- */
+  const scrollRef = useRef<React.ComponentRef<typeof KeyboardChatScrollView>>(null);
+  const followRef = useRef(true);
+  const draggingRef = useRef(false);
+  const [showJump, setShowJump] = useState(false);
+  const toEnd = useCallback((animated = false) => scrollRef.current?.scrollToEnd({ animated }), []);
+  const follow = useCallback(() => {
+    if (followRef.current) toEnd();
+  }, [toEnd]);
+  const onEndVisible = useCallback((visible: boolean) => {
+    if (visible) {
+      followRef.current = true;
+      setShowJump(false);
+    } else if (draggingRef.current) {
+      // Only a deliberate scroll away stops following — content growing past
+      // the fold while streaming must not.
+      followRef.current = false;
+      setShowJump(true);
+    }
+  }, []);
+  const onDragStart = useCallback(() => {
+    draggingRef.current = true;
+  }, []);
+  const onDragEnd = useCallback(() => {
+    draggingRef.current = false;
+  }, []);
+  const jumpToLatest = useCallback(() => {
+    followRef.current = true;
+    setShowJump(false);
+    toEnd(true);
+  }, [toEnd]);
+
+  const onCreated = useCallback((s: { id: string }) => router.setParams({ id: s.id }), [router]);
+  const convo = useConversation({ initialId: params.id, onCreated, onTick: follow });
+  // Destructure the stable callbacks — `convo` itself changes on every drain tick.
+  const { sessionId, messages, streaming, rerun, stop, setTitle, send: convoSend, reload } = convo;
+  const readOnly = params.ro === '1' || convo.isOwner === false;
+  // An existing conversation that's still loading has no title yet — show none
+  // rather than flash "新对话".
+  const title = convo.title || params.title || (sessionId && convo.loading ? '' : t('chat.newConversation'));
+  const isNew = !sessionId && messages.length === 0;
+
+  /* ---------- composer state ---------- */
+  const inputRef = useRef<TextInput>(null);
+  const [input, setInput] = useState('');
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [images, setImages] = useState<ComposerImage[]>([]);
+  const [composerH, setComposerH] = useState(60);
+  // Insets are managed here, not by UIKit (`contentInsetAdjustmentBehavior`
+  // "never"): KeyboardChatScrollView's keyboard lift assumes a 0 rest offset,
+  // so the top (header) inset is content padding and the bottom inset = the
+  // floating composer + home indicator, extended by the keyboard while it's up.
+  const extraPad = useSharedValue(60 + insets.bottom + space.md);
+  const onComposerHeight = useCallback(
+    (h: number) => {
+      setComposerH(h);
+      extraPad.value = h + insets.bottom + space.md;
+    },
+    [extraPad, insets.bottom],
+  );
+  const focusInput = useCallback(() => setTimeout(() => inputRef.current?.focus(), 300), []);
+
+  // The widget's 新对话 deep link (`?compose=1`) can land on an already-open
+  // screen (autoFocus only applies on mount): focus, then consume the param.
+  useEffect(() => {
+    if (params.compose !== '1') return;
+    focusInput();
+    router.setParams({ compose: undefined });
+  }, [params.compose, focusInput, router]);
+
+  // Sheets hand context back through the bridge (e.g. a source's "就此提问").
+  // A read-only conversation has no composer — drop it rather than hide it.
+  const pendingCount = useComposerBridge((s) => s.pending.length);
+  useEffect(() => {
+    if (!pendingCount) return;
+    const texts = useComposerBridge.getState().take();
+    if (readOnly) return;
+    setAnnotations((a) => [...a, ...texts.map((text) => ({ id: nextId(), text }))]);
+    focusInput();
+  }, [pendingCount, focusInput, readOnly]);
+
+  const addPicked = useCallback(async (assets: ImagePicker.ImagePickerAsset[]) => {
+    for (const asset of assets) {
+      const localId = nextId();
+      setImages((arr) => [...arr, { id: localId, uri: asset.uri, status: 'uploading' }]);
+      const uri = await prepareImage(asset.uri, asset.width);
+      const up = await uploadImage(uri, asset.mimeType || 'image/jpeg');
+      setImages((arr) =>
+        arr.map((im) =>
+          im.id === localId
+            ? up
+              ? { ...im, status: 'done', remote: { id: up.id, url: up.url } }
+              : { ...im, status: 'error' }
+            : im,
+        ),
+      );
+      if (!up) alertError(tNow('upload.failed'));
+    }
+  }, []);
+
+  const imageCount = images.length;
+  const onAttach = useCallback(
+    async (from: 'camera' | 'library') => {
+      const room = MAX_IMAGES - imageCount;
+      if (room <= 0) {
+        alertError(tNow('chat.maxImages', { n: MAX_IMAGES }));
+        return;
+      }
+      if (from === 'camera') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) {
+          // The system only asks once — after a "Don't Allow" the way back is Settings.
+          const go = await confirmAction({
+            title: tNow('chat.cameraDenied'),
+            message: tNow('chat.cameraDeniedHint'),
+            confirmLabel: tNow('chat.openSettings'),
+          });
+          if (go) void Linking.openSettings();
+          return;
+        }
+        const res = await ImagePicker.launchCameraAsync({ quality: 0.9 });
+        if (!res.canceled) void addPicked(res.assets);
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        selectionLimit: room,
+        quality: 0.9,
+      });
+      if (!res.canceled) void addPicked(res.assets.slice(0, room));
+    },
+    [imageCount, addPicked],
+  );
+  const removeAnnotation = useCallback((id: string) => setAnnotations((a) => a.filter((x) => x.id !== id)), []);
+  const removeImage = useCallback((id: string) => setImages((arr) => arr.filter((im) => im.id !== id)), []);
+
+  // Reset to a new conversation in place (the 新对话 deep link on an open one):
+  // the old conversation's draft doesn't carry over.
+  const prevSession = useRef(sessionId);
+  useEffect(() => {
+    if (prevSession.current && !sessionId) {
+      setInput('');
+      setAnnotations([]);
+      setImages([]);
+    }
+    prevSession.current = sessionId;
+  }, [sessionId]);
+
+  const send = useCallback(async () => {
+    const text = input.trim();
+    const ready = images.filter((im) => im.status === 'done' && im.remote);
+    // Send stays disabled while a picked image is still uploading (see Composer).
+    if ((!text && !ready.length) || streaming || images.some((im) => im.status === 'uploading')) return;
+    const draft = { input, annotations, images };
+    setInput('');
+    setAnnotations([]);
+    setImages([]);
+    followRef.current = true;
+    setShowJump(false);
+    const ok = await convoSend({
+      text,
+      annotation: annotations.length ? annotations.map((a) => a.text).join('\n') : null,
+      images: ready.map((im) => im.remote!),
+    });
+    if (!ok) {
+      setInput(draft.input);
+      setAnnotations(draft.annotations);
+      setImages(draft.images);
+      alertError(tNow('chat.createFailed'));
+    }
+  }, [input, images, annotations, streaming, convoSend]);
+
+  /* ---------- message actions (stable — messages are memoised) ---------- */
+  const onAction = useCallback(
+    async (msg: ChatMessage, action: MessageAction) => {
+      switch (action) {
+        case 'copy':
+          await Clipboard.setStringAsync(msg.text).catch(() => {});
+          toast(tNow('common.copied'), 'copy');
+          break;
+        case 'share':
+          void Share.share({ message: msg.text });
+          break;
+        case 'quote':
+          setAnnotations((a) => [...a, { id: nextId(), text: excerpt(plainText(msg.text), 120) }]);
+          focusInput();
+          break;
+        case 'edit':
+          setInput(msg.text);
+          focusInput();
+          break;
+        case 'regenerate':
+          followRef.current = true;
+          void rerun();
+          break;
+      }
+    },
+    [rerun, focusInput],
+  );
+  const onRetry = useCallback(() => {
+    followRef.current = true;
+    void rerun();
+  }, [rerun]);
+  const onOpenTools = useCallback(
+    (msg: ChatMessage) => router.push({ pathname: '/peek/tools', params: { k: putHandoff('tools', msg.tools ?? []) } }),
+    [router],
+  );
+  const onOpenRefs = useCallback(
+    (msg: ChatMessage) =>
+      router.push({
+        pathname: '/peek/refs',
+        // readOnly: no composer to "ask about" a source in
+        params: { k: putHandoff('refs', { sources: msg.sources, web: msg.web, readOnly }) },
+      }),
+    [router, readOnly],
+  );
+
+  /* ---------- conversation actions (stable; read the latest state via a ref) ---------- */
+  const latest = useRef({ sessionId, title, messages });
+  latest.current = { sessionId, title, messages };
+  const headerActions = useMemo<HeaderActions>(
+    () => ({
+      openDrawer: () => navigation.dispatch(DrawerActions.openDrawer()),
+      newChat: () => router.replace('/'),
+      openTags: () => {
+        const id = latest.current.sessionId;
+        if (id) router.push({ pathname: '/sheets/session-tags', params: { sessionId: id } });
+      },
+      share: () => {
+        const { title: tt, messages: ms } = latest.current;
+        void Share.share({
+          message: transcript(tt, ms, { user: tNow('chat.you'), assistant: tNow('chat.assistant') }),
+        });
+      },
+      rename: async () => {
+        const { sessionId: id, title: current } = latest.current;
+        if (!id) return;
+        const next = await promptText({
+          title: tNow('chat.renameTitle'),
+          defaultValue: current,
+          confirmLabel: tNow('common.save'),
+        });
+        if (!next || next === current) return;
+        if (await updateSessionTitle(id, next)) setTitle(next);
+        else alertError(tNow('chat.renameFailed'));
+      },
+      remove: async () => {
+        const id = latest.current.sessionId;
+        if (!id) return;
+        const ok = await confirmAction({
+          title: tNow('drawer.deleteTitle'),
+          message: tNow('chat.deleteHint'),
+          confirmLabel: tNow('common.delete'),
+          destructive: true,
+        });
+        if (!ok) return;
+        stop();
+        if (await deleteSession(id)) {
+          router.replace('/');
+          toast(tNow('chat.deleted'), 'trash');
+        } else alertError(tNow('chat.deleteFailed'));
+      },
+    }),
+    [navigation, router, setTitle, stop],
+  );
+
+  /* ---------- session tags ---------- */
+  const tags = useTags((s) => (sessionId ? s.sessionTags[sessionId] : undefined));
+  // Through the store: optimistic, serialized with the tags sheet, rolled back on failure.
+  const removeTag = useCallback(
+    (tag: SessionTag) => {
+      if (!sessionId) return;
+      void useTags
+        .getState()
+        .toggleSessionTag(sessionId, tag)
+        .then((r) => {
+          if (r === 'failed') alertError(tNow('tags.assignFailed'));
+        });
+    },
+    [sessionId],
+  );
+
+  /* ---------- layout ---------- */
+  const { height: kbHeight } = useReanimatedKeyboardAnimation();
+  // Keep the hero centred in the space left between the header, composer and keyboard.
+  // …and fade it while a sheet is up: the mascot sits right under a form
+  // sheet's half-height detent, where the sheet's glass edge would refract it
+  // (bright, undimmed) above the dimming.
+  const focused = useIsFocused();
+  const heroAlpha = useSharedValue(1);
+  useEffect(() => {
+    heroAlpha.value = withTiming(focused ? 1 : 0, { duration: focused ? 220 : 120 });
+  }, [focused, heroAlpha]);
+  const heroFade = useAnimatedStyle(() => ({ opacity: heroAlpha.value }));
+  const heroLift = useAnimatedStyle(() => ({
+    transform: [{ translateY: -Math.max(0, Math.abs(kbHeight.value) - insets.bottom) / 2 }],
+  }));
+  const stickyOffset = useMemo(() => ({ closed: 0, opened: insets.bottom - space.sm }), [insets.bottom]);
+  const lastAiId = useMemo(() => [...messages].reverse().find((m) => m.role === 'assistant')?.id, [messages]);
+
+  return (
+    <View style={styles.root}>
+      <ConversationHeader title={title} hasSession={!!sessionId} readOnly={readOnly} actions={headerActions} />
+
+      <KeyboardChatScrollView
+        ref={scrollRef}
+        style={styles.scroll}
+        contentInsetAdjustmentBehavior="never"
+        contentContainerStyle={{ paddingTop: headerHeight + space.sm }}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        keyboardLiftBehavior="always"
+        offset={insets.bottom}
+        extraContentPadding={extraPad}
+        onScrollBeginDrag={onDragStart}
+        onScrollEndDrag={onDragEnd}
+        onEndVisible={onEndVisible}
+        onContentSizeChange={follow}
+      >
+        {tags?.length ? (
+          <View style={styles.tags}>
+            {tags.map((tag) => (
+              <TagChip key={tag.id} tag={tag} onRemove={readOnly ? undefined : () => removeTag(tag)} />
+            ))}
+          </View>
+        ) : null}
+        {messages.map((m) =>
+          m.role === 'user' ? (
+            <UserMessage key={m.id} msg={m} readOnly={readOnly} onAction={onAction} />
+          ) : (
+            <AiMessage
+              key={m.id}
+              msg={m}
+              isLatest={m.id === lastAiId}
+              readOnly={readOnly}
+              onOpenTools={onOpenTools}
+              onOpenRefs={onOpenRefs}
+              onAction={onAction}
+              onRetry={onRetry}
+            />
+          ),
+        )}
+      </KeyboardChatScrollView>
+
+      {/* new conversation: the hero, centred above the composer */}
+      {isNew ? (
+        <Animated.View
+          pointerEvents="none"
+          exiting={FadeOut.duration(180)}
+          style={[styles.heroWrap, { top: headerHeight, bottom: composerH + insets.bottom }]}
+        >
+          <Animated.View style={heroFade}>
+            <Animated.View entering={FadeIn.duration(320)} style={[styles.hero, heroLift]}>
+              <SproutyFace expr="idle" size={76} breathe={focused} />
+              <Text style={styles.heroTitle}>
+                {t('home.greetingFormat', { greeting: greeting(), name: user?.nickname ?? t('home.fallbackName') })}
+              </Text>
+              <Text style={styles.heroSub}>{t('home.title')}</Text>
+            </Animated.View>
+          </Animated.View>
+        </Animated.View>
+      ) : null}
+
+      {convo.loading && !messages.length ? (
+        <LoadingState style={[styles.center, { top: headerHeight, bottom: composerH + insets.bottom }]} />
+      ) : null}
+      {convo.loadFailed ? (
+        <View style={[styles.center, { top: headerHeight, bottom: composerH + insets.bottom }]}>
+          <EmptyState
+            icon="alert"
+            title={t('chat.loadFailed')}
+            onRetry={() => void reload()}
+            style={styles.stretch}
+          />
+        </View>
+      ) : null}
+
+      {/* floating control layer: jump-to-latest + composer, riding the keyboard */}
+      <KeyboardStickyView offset={stickyOffset} style={styles.sticky}>
+        {showJump && messages.length ? (
+          <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(140)} style={styles.jumpWrap}>
+            <NativeButton
+              label={streaming ? t('chat.newContent') : t('chat.jumpLatest')}
+              icon="arrowDown"
+              variant="glass"
+              size="small"
+              onPress={jumpToLatest}
+            />
+          </Animated.View>
+        ) : null}
+        <View style={{ paddingBottom: Math.max(insets.bottom, space.md) }}>
+          {readOnly ? (
+            <ReadOnlyBar onHeight={onComposerHeight} />
+          ) : (
+            <Composer
+              ref={inputRef}
+              value={input}
+              onChangeText={setInput}
+              onSend={send}
+              streaming={streaming}
+              onStop={stop}
+              onAttach={onAttach}
+              annotations={annotations}
+              onRemoveAnnotation={removeAnnotation}
+              images={images}
+              onRemoveImage={removeImage}
+              maxImages={MAX_IMAGES}
+              placeholder={sessionId ? t('chat.followUpPlaceholder') : t('home.heroPlaceholder')}
+              showProfile={isNew}
+              autoFocus={params.compose === '1'}
+              onHeight={onComposerHeight}
+            />
+          )}
+        </View>
+      </KeyboardStickyView>
+    </View>
+  );
+}
+
+const useStyles = makeStyles((c) => ({
+  root: { flex: 1, backgroundColor: c.background },
+  scroll: { flex: 1 },
+  tags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space.xs + 2,
+    paddingHorizontal: space.margin,
+    paddingBottom: space.md,
+  },
+  heroWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
+  hero: { alignItems: 'center', paddingHorizontal: space.xxl, gap: space.xs },
+  heroTitle: { ...typo.title2, color: c.label, textAlign: 'center', marginTop: space.md },
+  heroSub: { ...typo.body, color: c.secondaryLabel, textAlign: 'center' },
+  center: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+  stretch: { alignSelf: 'stretch' },
+  sticky: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  jumpWrap: { position: 'absolute', bottom: '100%', alignSelf: 'center', paddingBottom: space.xs },
+}));

@@ -1,6 +1,7 @@
 /**
  * Session-tags API — per-user tag definitions + per-session assignment.
- * Mirrors the web app's lib/api/session-tags. All endpoints require an
+ * Mirrors the web app's lib/api/session-tags (minus reorder: mobile keeps the
+ * web's order and does not offer drag-to-reorder). All endpoints require an
  * authenticated internal user; the server enforces the limits (20 tags/user,
  * 5 tags/session) and returns an English `error` string we surface to the UI.
  */
@@ -11,10 +12,10 @@ import { api, apiJson } from './client';
 export const MAX_TAGS_PER_USER = 20;
 export const MAX_TAGS_PER_SESSION = 5;
 
-/** Current user's tags, ordered by sort_order. */
-export async function listTags(): Promise<SessionTag[]> {
-  const data = await apiJson<{ tags: SessionTag[] }>('/api/session-tags', { tags: [] });
-  return data.tags ?? [];
+/** Current user's tags, ordered by sort_order. null = the request failed (offline / server error). */
+export async function listTags(): Promise<SessionTag[] | null> {
+  const data = await apiJson<{ tags?: SessionTag[] } | null>('/api/session-tags', null);
+  return data ? (data.tags ?? []) : null;
 }
 
 async function mutate(
@@ -56,8 +57,20 @@ export async function deleteTag(id: number): Promise<boolean> {
   return (await mutate(`/api/session-tags/${id}`, 'DELETE')).ok;
 }
 
-export async function reorderTags(updates: Array<{ id: number; sort_order: number }>): Promise<boolean> {
-  return (await mutate('/api/session-tags/reorder', 'POST', { updates })).ok;
+/**
+ * One session's assigned tags + whether the caller owns it (only owners may
+ * change them). Reads the session detail without its messages, so it is cheap
+ * enough to call whenever the tag sheet opens. null = unreachable / no access.
+ */
+export async function getSessionTags(sessionId: string): Promise<{ tags: SessionTag[]; isOwner: boolean } | null> {
+  try {
+    const res = await api(`/api/sessions/${sessionId}?include_messages=0`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { session?: { tags?: SessionTag[]; is_owner?: boolean } };
+    return { tags: data.session?.tags ?? [], isOwner: data.session?.is_owner !== false };
+  } catch {
+    return null;
+  }
 }
 
 /** Attach a tag to a session (idempotent server-side). */

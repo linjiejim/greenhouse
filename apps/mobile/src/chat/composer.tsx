@@ -1,376 +1,269 @@
 /**
- * Composer — the full-width flat input bar (Home hero + Chat bottom). One
- * compact row: "+" (attach) on the left, an auto-growing multiline input, then
- * — once focused — a fullscreen-expand button, and the primary send button
- * (→ danger stop while streaming) inline on the right. Optional annotation
- * ("引用追问") and image-preview strips above. (Voice input hidden for now.)
+ * Composer — the floating Liquid Glass control layer at the bottom of the
+ * conversation (iOS 26 Messages-style): one `GlassGroup` row of
+ *
+ *   [+]  [ glass capsule: attachments · quote chips · growing text field ]  [↑ / ■]
+ *
+ * `+` opens a native menu (拍照 / 照片图库 — images only, the upload API
+ * rejects other types); the field grows to ~6 lines then scrolls; the send
+ * button is the accent-tinted glass button and turns into stop while a reply
+ * streams. For a new conversation an agent-profile capsule (ProfileMenu) sits
+ * above the row. Pure view: the screen owns the draft, attachments and
+ * keyboard placement (it wraps this in a KeyboardStickyView) and gets the
+ * control layer's height through `onHeight` to pad the message list.
  */
 
-import React, { useState } from 'react';
-import { Image, Modal, StyleSheet, Text, TextInput, View, type ViewStyle } from 'react-native';
-import Animated, { type AnimatedStyle } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { forwardRef, memo } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image } from 'expo-image';
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { useT } from '../lib/i18n';
-import { useBottomPadStyle } from '../lib/keyboard';
-import { font, makeStyles, radius, shadow, useTheme } from '../theme';
-import { Icon, Spinner, Touchable } from '../ui';
+import { makeStyles, radius, space, squircle, typo, useTheme } from '../theme';
+import { Icon, Spinner, Touchable } from '../ui/core';
+import { Glass, GlassGroup, GlassIconButton } from '../ui/glass';
+import { NativeMenu } from '../ui/menu';
+import type { Annotation } from './model';
+import { ProfileMenu } from './profile-menu';
 
-export interface Annotation {
-  id: string;
-  text: string;
-}
+/** A picked image being uploaded (or uploaded) before send. */
 export interface ComposerImage {
   id: string;
   /** Local (picker) uri for the thumbnail preview. */
-  uri?: string;
-  status?: 'uploading' | 'done' | 'error';
+  uri: string;
+  status: 'uploading' | 'done' | 'error';
+  remote?: { id: string; url: string };
 }
 
-export function Composer({
-  value,
-  onChangeText,
-  onSend,
-  hero = false,
-  streaming = false,
-  onStop,
-  onAttach,
-  annotations = [],
-  onClearAnnotation,
-  images = [],
-  onRemoveImage,
-  barStyle,
-  autoFocus = false,
-  profileName,
-  onPickProfile,
-}: {
-  value: string;
-  onChangeText: (v: string) => void;
-  onSend: () => void;
-  hero?: boolean;
-  /** Focus the input on mount (widget/deep-link `compose=1` entry). */
-  autoFocus?: boolean;
-  streaming?: boolean;
-  onStop?: () => void;
-  onAttach?: () => void;
-  recording?: boolean;
-  onMic?: () => void;
-  annotations?: Annotation[];
-  onClearAnnotation?: (id: string) => void;
-  images?: ComposerImage[];
-  onRemoveImage?: (id: string) => void;
-  /** Animated bottom inset for the bar (collapses to 0 as the keyboard opens). */
-  barStyle?: AnimatedStyle<ViewStyle>;
-  /** Current agent-profile name — shown on the profile trigger (Home only). */
-  profileName?: string;
-  /** When set, renders an agent-profile trigger row above the input (Home hero). */
-  onPickProfile?: () => void;
-}) {
+/** Field height cap ≈ 6 lines of body text. */
+const MAX_INPUT_HEIGHT = 6 * 22 + 22;
+
+export const Composer = memo(
+  forwardRef<
+    TextInput,
+    {
+      value: string;
+      onChangeText: (v: string) => void;
+      onSend: () => void;
+      streaming?: boolean;
+      onStop?: () => void;
+      onAttach: (from: 'camera' | 'library') => void;
+      annotations: Annotation[];
+      onRemoveAnnotation: (id: string) => void;
+      images: ComposerImage[];
+      onRemoveImage: (id: string) => void;
+      /** Image cap per message — at the cap the `+` menu explains it and disables its items. */
+      maxImages?: number;
+      placeholder: string;
+      /** Show the agent-profile capsule (new conversations only). */
+      showProfile?: boolean;
+      autoFocus?: boolean;
+      /** Height of the control layer (excluding the bottom safe-area pad). */
+      onHeight?: (h: number) => void;
+    }
+  >(function Composer(
+    {
+      value,
+      onChangeText,
+      onSend,
+      streaming = false,
+      onStop,
+      onAttach,
+      annotations,
+      onRemoveAnnotation,
+      images,
+      onRemoveImage,
+      maxImages = Infinity,
+      placeholder,
+      showProfile = false,
+      autoFocus = false,
+      onHeight,
+    },
+    ref,
+  ) {
+    const { colors: c } = useTheme();
+    const styles = useStyles(c);
+    const t = useT();
+    // Not while a picked image is still uploading — it would be left out of the message.
+    const uploading = images.some((im) => im.status === 'uploading');
+    const canSend = !uploading && (value.trim().length > 0 || images.some((im) => im.status === 'done'));
+    const hasAttachments = images.length > 0 || annotations.length > 0;
+    const full = images.length >= maxImages;
+
+    return (
+      <View style={styles.wrap} onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}>
+        {showProfile ? (
+          <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(150)} style={styles.profileRow}>
+            <ProfileMenu />
+          </Animated.View>
+        ) : null}
+
+        <GlassGroup spacing={8} style={styles.row}>
+          <NativeMenu
+            title={full ? t('chat.maxImages', { n: maxImages }) : undefined}
+            items={[
+              { id: 'camera', title: t('chat.attachCamera'), icon: 'camera', disabled: full },
+              { id: 'library', title: t('chat.attachPhotos'), icon: 'photos', disabled: full },
+            ]}
+            onSelect={(id) => onAttach(id === 'camera' ? 'camera' : 'library')}
+          >
+            <GlassIconButton icon="plus" accessibilityLabel={t('chat.attachTitle')} />
+          </NativeMenu>
+
+          <Glass interactive style={styles.capsule}>
+            {hasAttachments ? (
+              <Animated.View layout={LinearTransition.duration(180)} style={styles.attachments}>
+                {images.length ? (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbs}>
+                    {images.map((im) => (
+                      <Animated.View key={im.id} entering={FadeIn.duration(180)} style={styles.thumb}>
+                        <Image source={{ uri: im.uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
+                        {im.status !== 'done' ? (
+                          <View style={styles.thumbOverlay}>
+                            {im.status === 'uploading' ? (
+                              <Spinner />
+                            ) : (
+                              <Icon name="alert" size={18} weight="semibold" color={c.red} />
+                            )}
+                          </View>
+                        ) : null}
+                        <Touchable
+                          onPress={() => onRemoveImage(im.id)}
+                          hitSlop={8}
+                          style={styles.thumbX}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('chat.removeAttachment')}
+                        >
+                          <View style={styles.thumbXDot}>
+                            <Icon name="x" size={9} weight="bold" color={c.background} />
+                          </View>
+                        </Touchable>
+                      </Animated.View>
+                    ))}
+                  </ScrollView>
+                ) : null}
+                {annotations.map((a) => (
+                  <View key={a.id} style={styles.quote}>
+                    <View style={styles.quoteBar} />
+                    <Text numberOfLines={2} style={styles.quoteText}>
+                      {a.text}
+                    </Text>
+                    <Touchable
+                      onPress={() => onRemoveAnnotation(a.id)}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('chat.removeAttachment')}
+                    >
+                      <Icon name="x" size={13} weight="semibold" color={c.secondaryLabel} />
+                    </Touchable>
+                  </View>
+                ))}
+              </Animated.View>
+            ) : null}
+            <TextInput
+              ref={ref}
+              value={value}
+              onChangeText={onChangeText}
+              autoFocus={autoFocus}
+              placeholder={placeholder}
+              placeholderTextColor={c.placeholder}
+              selectionColor={c.accent}
+              multiline
+              scrollEnabled
+              style={styles.input}
+              testID="composer-input"
+            />
+          </Glass>
+
+          {streaming ? (
+            <GlassIconButton icon="stop" prominent onPress={onStop} accessibilityLabel={t('chat.stop')} />
+          ) : (
+            <GlassIconButton
+              icon="up"
+              prominent
+              disabled={!canSend}
+              onPress={onSend}
+              accessibilityLabel={t('chat.send')}
+            />
+          )}
+        </GlassGroup>
+      </View>
+    );
+  }),
+);
+
+/** The quiet bar that replaces the composer in a shared (read-only) conversation. */
+export function ReadOnlyBar({ onHeight }: { onHeight?: (h: number) => void }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
-  const [h, setH] = useState(30);
-  const [focused, setFocused] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const canSend = value.trim().length > 0 || images.length > 0;
-  const showExpand = focused || value.length > 0;
-
   return (
-    <Animated.View style={[styles.bar, barStyle]}>
-      {/* annotations (引用追问) */}
-      {annotations.length > 0 && (
-        <View style={{ paddingHorizontal: 12, paddingTop: 10 }}>
-          {annotations.map((a) => (
-            <View key={a.id} style={styles.annotation}>
-              <Icon name="quote" size={14} color={c.accentDeep} />
-              <Text numberOfLines={2} style={styles.annotationText}>
-                {a.text}
-              </Text>
-              <Touchable haptic="none" onPress={() => onClearAnnotation?.(a.id)} hitSlop={8}>
-                <Icon name="x" size={14} color={c.fgMuted} />
-              </Touchable>
-            </View>
-          ))}
+    <View style={styles.wrap} onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}>
+      <Glass style={styles.readOnly}>
+        {/* one VoiceOver element: "Shared · read-only" */}
+        <View accessible accessibilityLabel={t('chat.sharedReadOnly')} style={styles.readOnlyInner}>
+          <Icon name="users" size={15} color={c.secondaryLabel} />
+          <Text style={styles.readOnlyText}>{t('chat.sharedReadOnly')}</Text>
         </View>
-      )}
-
-      {/* image previews */}
-      {images.length > 0 && (
-        <View style={styles.imageRow}>
-          {images.map((im) => (
-            <View key={im.id} style={styles.thumb}>
-              {im.uri ? (
-                <Image source={{ uri: im.uri }} style={styles.thumbImg} resizeMode="cover" />
-              ) : (
-                <Icon name="image" size={20} color={c.fgFaint} />
-              )}
-              <Touchable haptic="none" onPress={() => onRemoveImage?.(im.id)} style={styles.thumbX} hitSlop={6}>
-                <Icon name="x" size={10} color="#fff" />
-              </Touchable>
-              {im.status === 'uploading' && (
-                <View style={styles.thumbLoading}>
-                  <Spinner size={16} />
-                </View>
-              )}
-              {im.status === 'error' && (
-                <View style={styles.thumbLoading}>
-                  <Icon name="alert" size={16} color={c.danger} />
-                </View>
-              )}
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* agent-profile trigger (Home hero only) — sits above the input so
-          "pick agent → type → send" reads as one block. */}
-      {onPickProfile && (
-        <Touchable
-          onPress={onPickProfile}
-          style={styles.profileTrigger}
-          pressedStyle={{ opacity: 0.7 }}
-          accessibilityLabel={t('profile.title')}
-        >
-          <Icon name="sparkle" size={15} color={c.accent} />
-          <Text numberOfLines={1} style={styles.profileName}>
-            {profileName ?? t('profile.title')}
-          </Text>
-          <Icon name="chevD" size={15} color={c.fgMuted} />
-        </Touchable>
-      )}
-
-      {/* input row: + (attach) left, auto-growing field, expand (on focus), send right */}
-      <View style={styles.inputRow}>
-        <View style={styles.btnSeat}>
-          <ToolBtn icon="plus" onPress={onAttach} />
-        </View>
-        <TextInput
-          value={value}
-          onChangeText={onChangeText}
-          autoFocus={autoFocus}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder={hero ? t('home.heroPlaceholder') : t('chat.followUpPlaceholder')}
-          placeholderTextColor={c.fgFaint}
-          multiline
-          scrollEnabled
-          onContentSizeChange={(e) => setH(Math.min(132, Math.max(30, e.nativeEvent.contentSize.height)))}
-          style={[styles.input, { height: h + 12 }]}
-        />
-        {showExpand && (
-          <Touchable haptic="none" onPress={() => setExpanded(true)} style={[styles.expandBtn, styles.btnSeat]} hitSlop={6}>
-            <Icon name="expand" size={18} color={c.fgMuted} sw={1.9} />
-          </Touchable>
-        )}
-        <View style={styles.btnSeat}>
-          {streaming ? <SendBtn stop onPress={onStop} /> : <SendBtn disabled={!canSend} onPress={onSend} />}
-        </View>
-      </View>
-
-      <FullScreenComposer
-        visible={expanded}
-        value={value}
-        onChangeText={onChangeText}
-        onClose={() => setExpanded(false)}
-        onSend={() => {
-          setExpanded(false);
-          onSend();
-        }}
-        canSend={canSend}
-        streaming={streaming}
-        onStop={onStop}
-        hero={hero}
-      />
-    </Animated.View>
-  );
-}
-
-/** Immersive fullscreen editor — big textarea, send in the header (so it stays
- * reachable above the keyboard); body pads up with the keyboard. */
-function FullScreenComposer({
-  visible,
-  value,
-  onChangeText,
-  onClose,
-  onSend,
-  canSend,
-  streaming,
-  onStop,
-  hero,
-}: {
-  visible: boolean;
-  value: string;
-  onChangeText: (v: string) => void;
-  onClose: () => void;
-  onSend: () => void;
-  canSend: boolean;
-  streaming?: boolean;
-  onStop?: () => void;
-  hero?: boolean;
-}) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  const t = useT();
-  const insets = useSafeAreaInsets();
-  const pad = useBottomPadStyle(0);
-  return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.fsRoot}>
-        <View style={[styles.fsHeader, { paddingTop: insets.top + 8 }]}>
-          <Touchable haptic="none" onPress={onClose} style={styles.fsHeaderBtn} hitSlop={6}>
-            <Icon name="chevD" size={26} color={c.fg} />
-          </Touchable>
-          <Text style={styles.fsTitle}>{t('chat.editorTitle')}</Text>
-          {streaming ? <SendBtn stop onPress={onStop} /> : <SendBtn disabled={!canSend} onPress={onSend} />}
-        </View>
-        <Animated.View style={[styles.fsBody, pad]}>
-          <TextInput
-            value={value}
-            onChangeText={onChangeText}
-            autoFocus
-            multiline
-            placeholder={hero ? t('home.heroPlaceholder') : t('chat.followUpPlaceholder')}
-            placeholderTextColor={c.fgFaint}
-            style={styles.fsInput}
-            textAlignVertical="top"
-          />
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-}
-
-function ToolBtn({ icon, onPress, active }: { icon: 'plus' | 'mic'; onPress?: () => void; active?: boolean }) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  return (
-    <Touchable
-      onPress={onPress}
-      style={[styles.toolBtn, active && { backgroundColor: c.dangerTint }]}
-      pressedStyle={{ opacity: 0.6 }}
-    >
-      <Icon name={icon} size={21} color={active ? c.danger : c.fgMuted} sw={1.9} />
-    </Touchable>
-  );
-}
-
-function SendBtn({ disabled, stop, onPress }: { disabled?: boolean; stop?: boolean; onPress?: () => void }) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  return (
-    <Touchable
-      onPress={disabled ? undefined : onPress}
-      disabled={disabled}
-      pressedStyle={{ opacity: 0.85, transform: [{ scale: 0.94 }] }}
-      style={[
-        styles.send,
-        stop
-          ? { backgroundColor: c.surface, borderWidth: 1.5, borderColor: c.danger }
-          : { backgroundColor: disabled ? c.surfaceMuted : c.accent },
-        !disabled && !stop && shadow.accent,
-      ]}
-    >
-      <Icon
-        name={stop ? 'stop' : 'up'}
-        size={stop ? 16 : 21}
-        sw={2.4}
-        color={stop ? c.danger : disabled ? c.fgFaint : c.onAccent}
-      />
-    </Touchable>
+      </Glass>
+    </View>
   );
 }
 
 const useStyles = makeStyles((c) => ({
-  // Full-width flat bar (edge-to-edge), separated from the content by a top
-  // hairline — no floating card / rounding / shadow.
-  bar: {
-    backgroundColor: c.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.hairline,
+  wrap: { paddingHorizontal: space.md, paddingTop: space.sm },
+  profileRow: { flexDirection: 'row', paddingLeft: 44 + space.sm, paddingBottom: space.sm },
+  row: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
+  capsule: { flex: 1, minHeight: 44, borderRadius: 22, justifyContent: 'center', overflow: 'hidden' },
+  input: {
+    fontSize: typo.body.fontSize,
+    color: c.label,
+    paddingHorizontal: space.lg,
+    paddingTop: 11,
+    paddingBottom: 11,
+    maxHeight: MAX_INPUT_HEIGHT,
   },
-  annotation: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    backgroundColor: c.accentTint,
-    borderLeftWidth: 3,
-    borderLeftColor: c.accentBorder,
-    borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    marginBottom: 6,
-  },
-  annotationText: { flex: 1, fontSize: font.caption, color: c.fgSecondary, lineHeight: 18 },
-  imageRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10 },
+  attachments: { paddingTop: space.sm, paddingHorizontal: space.sm, gap: space.xs + 2 },
+  thumbs: { gap: space.sm, paddingRight: space.xs },
   thumb: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
-    backgroundColor: c.surfaceMuted,
-    borderWidth: 1,
-    borderColor: c.hairline,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 60,
+    height: 60,
+    borderRadius: radius.md,
     overflow: 'hidden',
+    backgroundColor: c.tertiaryFill,
+    ...squircle,
   },
-  thumbImg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  thumbX: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: 'rgba(17,24,39,0.6)',
+  thumbOverlay: {
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: c.background,
+    opacity: 0.7,
   },
-  thumbLoading: {
-    position: 'absolute',
-    inset: 0,
-    backgroundColor: 'rgba(255,255,255,0.55)',
+  thumbX: { position: 'absolute', top: 4, right: 4 },
+  // label-on-background inverts per scheme: dark dot + light ✕ in light mode, and vice versa
+  thumbXDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: c.label,
+    opacity: 0.72,
   },
-  // agent-profile trigger row (Home) — a light chip-like strip above the input
-  profileTrigger: {
+  quote: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    marginTop: 10,
-    marginLeft: 12,
-    paddingVertical: 6,
-    paddingLeft: 10,
-    paddingRight: 8,
-    borderRadius: radius.full,
-    backgroundColor: c.surfaceMuted,
-    borderWidth: 1,
-    borderColor: c.hairline,
+    gap: space.sm,
+    paddingVertical: space.xs + 2,
+    paddingLeft: space.xs + 2,
+    paddingRight: space.sm + 2,
+    borderRadius: radius.md,
+    backgroundColor: c.quaternaryFill,
+    ...squircle,
   },
-  profileName: { fontSize: font.small, fontWeight: '600', color: c.fgSecondary, maxWidth: 180 },
-  // One compact row; buttons pin to the bottom edge so a growing multiline
-  // field expands upward while + / expand / send stay put.
-  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, paddingLeft: 6, paddingRight: 8, paddingTop: 6, paddingBottom: 8 },
-  btnSeat: { marginBottom: 2 },
-  input: { flex: 1, fontSize: font.body, lineHeight: 21, color: c.fg, padding: 0, paddingHorizontal: 2, textAlignVertical: 'center' },
-  expandBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  toolBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  send: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-
-  // fullscreen editor
-  fsRoot: { flex: 1, backgroundColor: c.bg },
-  fsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-    backgroundColor: c.surface,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.hairline,
-  },
-  fsHeaderBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginLeft: -6 },
-  fsTitle: { flex: 1, fontSize: font.title, fontWeight: '700', color: c.fg },
-  fsBody: { flex: 1 },
-  fsInput: { flex: 1, fontSize: font.heading, lineHeight: 27, color: c.fg, paddingHorizontal: 20, paddingTop: 18, textAlignVertical: 'top' },
+  quoteBar: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: c.accent },
+  quoteText: { flex: 1, ...typo.footnote, color: c.secondaryLabel },
+  readOnly: { height: 44, borderRadius: 22, justifyContent: 'center' },
+  readOnlyInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm },
+  readOnlyText: { ...typo.subheadline, color: c.secondaryLabel },
 }));

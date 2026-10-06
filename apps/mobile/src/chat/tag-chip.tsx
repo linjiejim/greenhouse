@@ -1,55 +1,64 @@
 /**
- * TagChip — a session-tag pill: leading color dot + name, optional remove ✕.
- * Colored inline from the tag's own hex (fill 12% / border 25% / dot+text
- * solid), so it looks identical in light and dark, matching the web TagBadge.
- * `size="sm"` is the compact variant for dense rows (history list).
+ * TagChip — a session tag as a small capsule: the tag's color dot + name on a
+ * faint wash of the same color, optional remove ✕. The tag color is *data*
+ * (shared with the web app), so the wash is derived from its hex with theme
+ * `alpha()`; the name stays in the system label color so it reads in light
+ * and dark at every palette color (colored text fails contrast for yellow).
  */
 
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import type { SessionTag } from '../shared/greenhouse-types';
-import { DEFAULT_TAG_COLOR, withAlpha } from '../lib/tag-colors';
-import { font, radius } from '../theme';
-import { Icon, Touchable } from '../ui';
+import { tagHex } from '../lib/tag-colors';
+import { useT } from '../lib/i18n';
+import { alpha, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
+import { Icon, Touchable } from '../ui/core';
 
-export function TagChip({ tag, onRemove, size = 'md' }: { tag: SessionTag; onRemove?: () => void; size?: 'sm' | 'md' }) {
-  const color = tag.color || DEFAULT_TAG_COLOR;
-  const sm = size === 'sm';
+export function TagChip({
+  tag,
+  onRemove,
+}: {
+  tag: SessionTag;
+  /** Shows a trailing ✕ that calls this. */
+  onRemove?: () => void;
+}) {
+  const { colors: c, isDark } = useTheme();
+  const styles = useStyles(c);
+  const t = useT();
+  const color = tagHex(tag.color);
   return (
-    <View
-      style={[
-        styles.chip,
-        sm && styles.chipSm,
-        { backgroundColor: withAlpha(color, '20'), borderColor: withAlpha(color, '40') },
-      ]}
-    >
-      <View style={[styles.dot, sm && styles.dotSm, { backgroundColor: color }]} />
-      <Text numberOfLines={1} style={[styles.name, { color }]}>
+    <View style={[styles.chip, { backgroundColor: alpha(color, isDark ? 0.2 : 0.12) }]}>
+      <View style={[styles.dot, { backgroundColor: color }]} />
+      <Text numberOfLines={1} style={styles.name}>
         {tag.name}
       </Text>
       {onRemove ? (
-        <Touchable haptic="none" onPress={onRemove} hitSlop={6} style={styles.remove}>
-          <Icon name="x" size={11} color={color} sw={2.4} />
+        <Touchable
+          onPress={onRemove}
+          hitSlop={8}
+          style={styles.remove}
+          accessibilityRole="button"
+          accessibilityLabel={`${t('tags.remove')} ${tag.name}`}
+        >
+          <Icon name="x" size={9} weight="bold" color={c.secondaryLabel} />
         </Touchable>
       ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: space.xs + 1,
     borderRadius: radius.full,
-    borderWidth: 1,
-    paddingVertical: 2,
-    paddingHorizontal: 9,
-    maxWidth: 150,
+    paddingVertical: space.xxs + 1,
+    paddingHorizontal: space.sm + 1,
+    maxWidth: 160,
+    ...squircle,
   },
-  chipSm: { gap: 4, paddingVertical: 1, paddingHorizontal: 7, maxWidth: 88 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
-  dotSm: { width: 5, height: 5, borderRadius: 2.5 },
-  name: { fontSize: font.caption, fontWeight: '500', flexShrink: 1 },
-  remove: { marginLeft: 1 },
-});
+  dot: { width: 7, height: 7, borderRadius: 3.5 },
+  name: { ...typo.caption1, fontWeight: weight.medium, color: c.label, flexShrink: 1 },
+  remove: { marginLeft: 1, padding: 1 },
+}));

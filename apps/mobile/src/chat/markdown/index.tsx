@@ -1,17 +1,27 @@
 /**
- * Rich markdown renderer for AI replies — Sage styled. Re-parses on each
- * streaming flush (memoised on `source`); not full CommonMark, but covers what
- * agent replies use. The pieces:
+ * Rich markdown renderer — agent replies, knowledge documents, task notes.
+ * Set in iOS text styles (body 17 / 24-pt reading line, system label colors,
+ * accent-tinted links). Re-parses on each streaming flush (memoised on
+ * `source`); not full CommonMark, but covers what agent replies use.
  *
+ * PUBLIC API (also used by the knowledge and projects areas — keep stable):
+ *   <Markdown source={string} animated?={boolean} />
+ *     - `source`   the markdown text.
+ *     - `animated` streaming replies only: each block mounts with a soft
+ *       fade-in, so the reply unfolds block by block. Read only at a block's
+ *       mount, so rendered blocks never re-animate; static renders omit it.
+ *   <TableGrid data big? avail? />  the bare table grid (the /table viewer).
+ *   type TableData                  a parsed pipe table.
+ *
+ * Links: entity deeplinks open native preview sheets, http(s) opens the
+ * in-app Safari view, chat files download into the share sheet (see
+ * ./inline). Wide tables offer a full-screen modal (./blocks/table).
+ *
+ * The pieces:
  *   ./parse       — block grammar (pure data, no JSX)
  *   ./inline      — inline marks (**bold**, `code`, links, …)
  *   ./registry    — custom ```<lang> blocks (chart today, mermaid/etc. later)
  *   ./blocks/*    — per-block renderers (code, chart, table, text/lists/quote)
- *
- * `animated` (streaming replies only): each block mounts with a soft fade-in,
- * so the reply unfolds block by block instead of popping in. The prop is only
- * read at a block's mount, so already-rendered blocks never re-animate and
- * history renders (animated=false) stay static.
  *
  * Add a block: register it in ./registry — nothing here changes.
  */
@@ -25,6 +35,7 @@ import { Table } from './blocks/table';
 import { BulletList, Heading, OrderedList, Paragraph, Quote, Rule } from './blocks/text';
 
 export { TableGrid } from './blocks/table';
+export type { TableData } from './parse';
 
 function renderBlock(b: Block, i: number) {
   switch (b.kind) {
@@ -37,7 +48,7 @@ function renderBlock(b: Block, i: number) {
     case 'ul':
       return <BulletList key={i} items={b.items} />;
     case 'ol':
-      return <OrderedList key={i} items={b.items} />;
+      return <OrderedList key={i} items={b.items} start={b.start} />;
     case 'quote':
       return <Quote key={i} text={b.text} />;
     case 'table':
