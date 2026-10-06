@@ -5,14 +5,27 @@
  * bootstrap() is also the station-switch path: it (re)hydrates the station
  * registry, loads the now-active station's tokens into the mirror and
  * revalidates — so callers just `switchTo(...)` then `bootstrap()`.
+ *
+ * Per-user server caches are NOT reset from here: each cache store clears
+ * itself by subscribing to `useAuth` (user id) and `useStations` (activeId)
+ * at module scope — see src/store/tags.ts and src/projects/store.ts. That
+ * keeps this store free of feature imports (and import cycles), and covers
+ * every transition: sign-out, signing in as someone else, station switch.
  */
 
 import { create } from 'zustand';
 import type { AuthenticatedUser } from '../shared/greenhouse-types';
 import { hydrateTokens, getCachedUser, getAccessToken } from '../api/token-storage';
 import { useStations } from './stations';
-import { useTags } from './tags';
 import * as authApi from '../api/auth';
+
+/**
+ * An auth transition reroutes the whole app (the root layout replaces the
+ * stack with home or /login). A screen inside a sheet / modal that triggers
+ * one dismisses its host first and waits this long, so the reroute never
+ * happens under a presented sheet.
+ */
+export const AFTER_DISMISS_MS = 380;
 
 /** Bumped per bootstrap so a superseded run (station switched again mid-flight)
  *  can't stomp the newer one's user/loading state. */
@@ -39,8 +52,6 @@ export const useAuth = create<AuthState>((set) => ({
     if (gen !== bootGeneration) return;
     await hydrateTokens(useStations.getState().activeId);
     if (gen !== bootGeneration) return;
-    // Server-side caches (tags) belong to the previous station/user — drop them.
-    useTags.getState().reset();
     // Optimistically show the cached user, then validate in the background.
     const cached = getCachedUser();
     if (cached) set({ user: cached });
