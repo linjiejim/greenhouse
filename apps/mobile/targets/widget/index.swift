@@ -136,15 +136,15 @@ private func taskLine(_ t: SnapshotTask, zh: Bool) -> TaskLine {
     return TaskLine(icon: "arrow.triangle.2.circlepath", color: Color("$accent"), name: t.name, detail: zh ? "运行中" : "Running")
   }
   if t.lastStatus == "failed", let at = t.lastRunAt {
-    return TaskLine(icon: "exclamationmark.circle.fill", color: Color("StatusDanger"), name: t.name, detail: hm(at, zh: zh) + (zh ? " 失败" : " failed"))
+    return TaskLine(icon: "exclamationmark.circle.fill", color: Color.red, name: t.name, detail: hm(at, zh: zh) + (zh ? " 失败" : " failed"))
   }
   if t.lastStatus == "completed", let at = t.lastRunAt {
-    return TaskLine(icon: "checkmark.circle.fill", color: Color("StatusSuccess"), name: t.name, detail: hm(at, zh: zh) + (zh ? " 完成" : " done"))
+    return TaskLine(icon: "checkmark.circle.fill", color: Color.green, name: t.name, detail: hm(at, zh: zh) + (zh ? " 完成" : " done"))
   }
   if let next = t.nextRunAt {
-    return TaskLine(icon: "clock", color: Color("WidgetMuted"), name: t.name, detail: (zh ? "下次 " : "Next ") + nextRunText(next, zh: zh))
+    return TaskLine(icon: "clock", color: Color.secondary, name: t.name, detail: (zh ? "下次 " : "Next ") + nextRunText(next, zh: zh))
   }
-  return TaskLine(icon: "clock", color: Color("WidgetMuted"), name: t.name, detail: zh ? "未运行" : "Not run yet")
+  return TaskLine(icon: "clock", color: Color.secondary, name: t.name, detail: zh ? "未运行" : "Not run yet")
 }
 
 // MARK: - Deep links (routes in apps/mobile/app/)
@@ -234,9 +234,9 @@ private struct TaskRow: View {
   var body: some View {
     HStack(spacing: 6) {
       Image(systemName: line.icon).font(.system(size: 12, weight: .semibold)).foregroundStyle(line.color)
-      Text(line.name).font(.system(size: 12, weight: .medium)).foregroundStyle(Color("WidgetFg")).lineLimit(1)
+      Text(line.name).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.primary).lineLimit(1)
       Spacer(minLength: 4)
-      Text(line.detail).font(.system(size: 11)).foregroundStyle(Color("WidgetMuted")).lineLimit(1)
+      Text(line.detail).font(.system(size: 11)).foregroundStyle(Color.secondary).lineLimit(1)
     }
   }
 }
@@ -252,7 +252,7 @@ private struct SmallLauncher: View {
     VStack(spacing: 6) {
       Text(greetingText(for: entry.date, zh: zh))
         .font(.system(size: 11, weight: .medium))
-        .foregroundStyle(Color("WidgetMuted"))
+        .foregroundStyle(Color.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
       Image(sproutyImage(for: entry.date, scheme: scheme))
         .resizable()
@@ -282,19 +282,19 @@ private struct MediumLauncher: View {
         Image(sproutyImage(for: entry.date, scheme: scheme)).resizable().scaledToFit().frame(width: 30, height: 30)
         Text(greetingText(for: entry.date, zh: zh) + greetingName(entry.snapshot, zh: zh))
           .font(.system(size: 13, weight: .medium))
-          .foregroundStyle(Color("WidgetFg"))
+          .foregroundStyle(Color.primary)
           .lineLimit(1)
         Spacer(minLength: 4)
         if let snap = entry.snapshot {
           Text(hm(snap.updatedAt, zh: zh) + (zh ? " 更新" : ""))
             .font(.system(size: 10))
-            .foregroundStyle(Color("WidgetMuted"))
+            .foregroundStyle(Color.secondary)
         }
       }
       if tasks.isEmpty {
         Text(zh ? "今天想做点什么？" : "What shall we do today?")
           .font(.system(size: 15, weight: .bold))
-          .foregroundStyle(Color("WidgetFg"))
+          .foregroundStyle(Color.primary)
           .frame(maxHeight: .infinity, alignment: .center)
       } else {
         VStack(alignment: .leading, spacing: 4) {
@@ -324,12 +324,12 @@ private struct LargeLauncher: View {
         VStack(alignment: .leading, spacing: 1) {
           Text(greetingText(for: entry.date, zh: zh) + greetingName(entry.snapshot, zh: zh))
             .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(Color("WidgetFg"))
+            .foregroundStyle(Color.primary)
             .lineLimit(1)
           if let snap = entry.snapshot {
             Text(hm(snap.updatedAt, zh: zh) + (zh ? " 更新" : " updated"))
               .font(.system(size: 10))
-              .foregroundStyle(Color("WidgetMuted"))
+              .foregroundStyle(Color.secondary)
           }
         }
         Spacer(minLength: 0)
@@ -339,7 +339,7 @@ private struct LargeLauncher: View {
       if tasks.isEmpty {
         Text(zh ? "还没有定时任务" : "No scheduled tasks yet")
           .font(.system(size: 12))
-          .foregroundStyle(Color("WidgetMuted"))
+          .foregroundStyle(Color.secondary)
       } else {
         VStack(alignment: .leading, spacing: 6) {
           ForEach(Array(tasks.prefix(3).enumerated()), id: \.offset) { _, t in
@@ -354,7 +354,7 @@ private struct LargeLauncher: View {
       if sessions.isEmpty {
         Text(zh ? "暂无最近会话" : "No recent conversations")
           .font(.system(size: 12))
-          .foregroundStyle(Color("WidgetMuted"))
+          .foregroundStyle(Color.secondary)
       } else {
         VStack(alignment: .leading, spacing: 6) {
           ForEach(sessions.prefix(2), id: \.id) { s in
@@ -363,11 +363,11 @@ private struct LargeLauncher: View {
                 Image(systemName: "message").font(.system(size: 12)).foregroundStyle(Color("$accent"))
                 Text(s.title.isEmpty ? (zh ? "新对话" : "New conversation") : s.title)
                   .font(.system(size: 12, weight: .medium))
-                  .foregroundStyle(Color("WidgetFg"))
+                  .foregroundStyle(Color.primary)
                   .lineLimit(1)
                 Spacer(minLength: 4)
                 if let at = s.updatedAt {
-                  Text(relativeText(at, zh: zh)).font(.system(size: 11)).foregroundStyle(Color("WidgetMuted"))
+                  Text(relativeText(at, zh: zh)).font(.system(size: 11)).foregroundStyle(Color.secondary)
                 }
               }
             }
@@ -382,7 +382,7 @@ private struct LargeLauncher: View {
   }
 
   private func sectionLabel(_ text: String) -> some View {
-    Text(text).font(.system(size: 11, weight: .semibold)).foregroundStyle(Color("WidgetMuted"))
+    Text(text).font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.secondary)
   }
 }
 

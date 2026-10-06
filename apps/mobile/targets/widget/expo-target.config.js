@@ -1,8 +1,8 @@
 /**
- * Greenhouse launcher widget (v1) — static home-screen shortcuts, no data
- * pipeline (no App Group yet). Colors mirror src/theme.ts (Greenhouse Teal
- * light/dark); dark tint/border values are the rgba tokens pre-composited
- * over the dark surface (#1e293b) since colorsets need opaque hexes.
+ * Greenhouse home-screen widget. Colors follow the app's native palette
+ * (src/theme.ts): iOS system background/text + the Teal accent; brand tints
+ * are pre-composited over the widget background (#FFFFFF / #1C1C1E) since
+ * colorsets need opaque hexes.
  */
 
 /** @type {import('@bacons/apple-targets/app.plugin').Config} */
@@ -22,16 +22,15 @@ module.exports = {
   // (every named Color renders transparent; texts/pills vanish).
   colors: {
     // System-recognized: widget editing tint + default background.
-    $accent: { light: '#0d9488', dark: '#5eead4' },
-    $widgetBackground: { light: '#ffffff', dark: '#1e293b' },
-    // App palette (theme.ts light/dark).
-    WidgetFg: { light: '#111827', dark: '#f8fafc' },
-    WidgetMuted: { light: '#6b7280', dark: '#94a3b8' },
-    OnAccent: { light: '#ffffff', dark: '#042f2e' },
-    AccentTint: { light: '#f0fdfa', dark: '#1d3a48' },
-    AccentBorder: { light: '#99f6e4', dark: '#1c4d56' },
-    StatusSuccess: { light: '#059669', dark: '#34d399' },
-    StatusDanger: { light: '#dc2626', dark: '#f87171' },
+    $accent: { light: '#0D9488', dark: '#2DD4BF' },
+    $widgetBackground: { light: '#FFFFFF', dark: '#1C1C1E' },
+    // Brand fills (theme.ts accent / onAccent / accentFill), pre-composited
+    // over the widget background since colorsets need opaque hexes. Text and
+    // status colors are SwiftUI semantic styles (.primary / .secondary /
+    // .green / .red) in index.swift, so they follow the system exactly.
+    OnAccent: { light: '#FFFFFF', dark: '#04201D' },
+    AccentTint: { light: '#E2F2F1', dark: '#1F3938' },
+    AccentBorder: { light: '#B6DFDB', dark: '#215752' },
   },
   // Sprouty's plant avatar, rendered by apps/mobile/scripts/render-widget-art.mjs from the
   // vendored static builder (light + dark palettes; mono = lock-screen knockout silhouette).
