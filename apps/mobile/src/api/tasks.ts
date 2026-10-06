@@ -5,7 +5,7 @@
  * external users get an empty list via the apiJson fallback.
  */
 
-import { api, apiJson } from './client';
+import { apiJson } from './client';
 
 export interface ScheduledTask {
   id: string;
@@ -22,13 +22,4 @@ export interface ScheduledTask {
 export async function listTasks(): Promise<ScheduledTask[]> {
   const data = await apiJson<{ tasks: ScheduledTask[] }>('/api/tasks', { tasks: [] });
   return data.tasks ?? [];
-}
-
-export async function triggerTask(id: string): Promise<boolean> {
-  try {
-    const res = await api(`/api/tasks/${id}/run`, { method: 'POST' });
-    return res.ok;
-  } catch {
-    return false;
-  }
 }

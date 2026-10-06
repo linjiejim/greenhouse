@@ -1,44 +1,53 @@
 /**
- * BoardView — kanban columns (one per task status) as horizontally snapping
- * lanes; each lane scrolls its own cards. Web drags cards between columns —
- * on touch, status moves go through the long-press action sheet instead.
+ * BoardView — kanban lanes (one per task status) as horizontally snapping
+ * columns; each lane scrolls its own cards. Web drags cards between columns —
+ * on touch, status moves go through the card's long-press system menu
+ * (状态 submenu) instead, and tapping a card opens the task. With write
+ * access each lane header carries a `+` that opens the task form preset to
+ * that status (web board parity: per-column add). VoiceOver: a card is one
+ * element with open / mark-done as accessibility actions.
+ *
+ * Surfaces follow iOS layering: lanes are a `secondaryBackground` well, cards
+ * sit on `tertiaryBackground` (white in light, raised gray in dark).
  */
 
 import React, { useMemo } from 'react';
-import { FlatList, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import type { ProjectTask, TaskStatus } from '../shared/greenhouse-types';
 import { useT } from '../lib/i18n';
-import { Icon, Touchable } from '../ui';
-import { font, makeStyles, radius, useTheme, weight } from '../theme';
-import {
-  TASK_STATUSES,
-  forEachTask,
-  isOverdue,
-  priorityColor,
-  shortDate,
-  taskStatusColor,
-  taskStatusIcon,
-  taskStatusLabel,
-  taskStatusTint,
-} from './meta';
+import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
+import { Icon } from '../ui/core';
+import { InitialAvatar } from '../ui/avatar';
+import { NativeMenu } from '../ui/menu';
+import { TASK_STATUSES, forEachTask, taskStatusColor, taskStatusIcon, taskStatusLabel } from './meta';
+import { TaskMeta, TaskStatusButton, taskRowA11y } from './task-list';
+import type { useTaskActions } from './task-actions';
 
-const LANE_GAP = 10;
+type TaskActions = ReturnType<typeof useTaskActions>;
+
+const LANE_GAP = space.md;
 
 export function BoardView({
   tasks,
-  onOpen,
-  onLongPress,
+  actions,
+  canWrite,
+  onAdd,
+  bottomInset = 0,
 }: {
-  /** Task tree — flattened internally (board shows every task). */
+  /** Task tree — flattened internally (the board shows every task). */
   tasks: ProjectTask[];
-  onOpen: (task: ProjectTask) => void;
-  onLongPress: (task: ProjectTask) => void;
+  actions: TaskActions;
+  canWrite: boolean;
+  /** New task in a lane (shown only with write access). */
+  onAdd?: (status: TaskStatus) => void;
+  /** Space under the lanes (home indicator). */
+  bottomInset?: number;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   const { width } = useWindowDimensions();
-  const laneW = Math.min(300, Math.round(width * 0.74));
+  const laneW = Math.min(320, Math.round(width * 0.78));
 
   const byStatus = useMemo(() => {
     const map = new Map<TaskStatus, ProjectTask[]>(TASK_STATUSES.map((s) => [s, []]));
@@ -52,26 +61,35 @@ export function BoardView({
       showsHorizontalScrollIndicator={false}
       snapToInterval={laneW + LANE_GAP}
       decelerationRate="fast"
-      contentContainerStyle={styles.lanes}
+      contentContainerStyle={[styles.lanes, { paddingBottom: Math.max(space.lg, bottomInset) }]}
     >
       {TASK_STATUSES.map((status) => {
         const items = byStatus.get(status) ?? [];
         return (
           <View key={status} style={[styles.lane, { width: laneW }]}>
-            <View style={[styles.laneHeader, { backgroundColor: taskStatusTint(status, c) }]}>
-              <Icon name={taskStatusIcon(status)} size={14} color={taskStatusColor(status, c)} />
-              <Text style={[styles.laneTitle, { color: taskStatusColor(status, c) }]}>{taskStatusLabel(status, t)}</Text>
+            <View style={styles.laneHeader}>
+              <Icon name={taskStatusIcon(status)} size={17} color={taskStatusColor(status, c)} />
+              <Text style={styles.laneTitle}>{taskStatusLabel(status, t)}</Text>
               <Text style={styles.laneCount}>{items.length}</Text>
+              {canWrite && onAdd ? (
+                <Pressable
+                  onPress={() => onAdd(status)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('projects.newTaskIn', { status: taskStatusLabel(status, t) })}
+                  style={({ pressed }) => [styles.laneAdd, pressed && { opacity: 0.5 }]}
+                >
+                  <Icon name="plus" size={17} weight="semibold" color={c.accent} />
+                </Pressable>
+              ) : null}
             </View>
             <FlatList
               data={items}
               keyExtractor={(task) => String(task.id)}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8, paddingBottom: 100, flexGrow: 1 }}
+              contentContainerStyle={styles.laneBody}
               ListEmptyComponent={<View style={styles.laneEmpty} />}
-              renderItem={({ item }) => (
-                <BoardCard task={item} onPress={() => onOpen(item)} onLongPress={() => onLongPress(item)} />
-              )}
+              renderItem={({ item }) => <BoardCard task={item} actions={actions} canWrite={canWrite} />}
             />
           </View>
         );
@@ -80,79 +98,75 @@ export function BoardView({
   );
 }
 
-function BoardCard({ task, onPress, onLongPress }: { task: ProjectTask; onPress: () => void; onLongPress: () => void }) {
+function BoardCard({ task, actions, canWrite }: { task: ProjectTask; actions: TaskActions; canWrite: boolean }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
-  const overdue = isOverdue(task);
-  const childCount = task.children?.length ?? 0;
-  return (
-    <Touchable haptic="none" onPress={onPress} onLongPress={onLongPress} pressedStyle={{ opacity: 0.75 }} style={styles.card}>
-      <View style={styles.cardTitleRow}>
-        {task.task_type === 'milestone' ? <Icon name="diamond" size={12} color={c.warning} /> : null}
-        <Text numberOfLines={2} style={styles.cardTitle}>
+  const t = useT();
+  const closed = task.status === 'done' || task.status === 'cancelled';
+  const card = (
+    <Pressable
+      onPress={() => actions.open(task)}
+      {...taskRowA11y(task, t, { actions, canWrite })}
+      style={({ pressed }) => [styles.card, pressed && { opacity: 0.7 }]}
+    >
+      <View style={styles.cardTop}>
+        <TaskStatusButton
+          task={task}
+          size={20}
+          onToggle={canWrite ? () => void actions.setStatus(task, task.status === 'done' ? 'todo' : 'done') : undefined}
+        />
+        <Text numberOfLines={3} style={[styles.cardTitle, closed && styles.cardTitleClosed]}>
           {task.title}
         </Text>
+        {task.assignee_nickname ? <InitialAvatar name={task.assignee_nickname} size={22} tint={c.gray} /> : null}
       </View>
       <View style={styles.cardMeta}>
-        {task.priority !== 'normal' ? <Icon name="flag" size={11} color={priorityColor(task.priority, c)} /> : null}
-        {childCount > 0 ? (
-          <View style={styles.metaPair}>
-            <Icon name="list" size={11} color={c.fgFaint} />
-            <Text style={styles.metaText}>{childCount}</Text>
-          </View>
-        ) : null}
-        {task.due_date ? (
-          <View style={styles.metaPair}>
-            <Icon name="calendar" size={11} color={overdue ? c.danger : c.fgFaint} />
-            <Text style={[styles.metaText, overdue && { color: c.danger, fontWeight: weight.semibold }]}>
-              {shortDate(task.due_date)}
-            </Text>
-          </View>
-        ) : null}
-        <View style={{ flex: 1 }} />
-        {task.assignee_nickname ? (
-          <Text numberOfLines={1} style={[styles.metaText, { maxWidth: 90 }]}>
-            {task.assignee_nickname}
-          </Text>
-        ) : null}
+        <TaskMeta task={task} />
       </View>
-    </Touchable>
+    </Pressable>
+  );
+  if (!canWrite) return card;
+  return (
+    <NativeMenu trigger="longPress" items={actions.menuItems(task)} onSelect={(id) => actions.onSelect(task, id)}>
+      {card}
+    </NativeMenu>
   );
 }
 
 const useStyles = makeStyles((c) => ({
-  lanes: { paddingHorizontal: 16, gap: LANE_GAP, flexGrow: 1 },
-  lane: { flex: 1 },
+  lanes: { paddingHorizontal: space.margin, gap: LANE_GAP, flexGrow: 1 },
+  lane: { flex: 1, backgroundColor: c.secondaryBackground, borderRadius: radius.xl, ...squircle, overflow: 'hidden' },
   laneHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: radius.md,
-    marginBottom: 8,
+    gap: space.sm,
+    paddingHorizontal: space.md + 2,
+    paddingTop: space.md + 2,
+    paddingBottom: space.sm,
   },
-  laneTitle: { fontSize: font.small, fontWeight: weight.semibold, flex: 1 },
-  laneCount: { fontSize: font.caption, color: c.fgMuted, fontWeight: weight.medium },
+  laneTitle: { ...typo.headline, color: c.label, flex: 1 },
+  laneCount: { ...typo.subheadline, fontWeight: weight.semibold, color: c.secondaryLabel, fontVariant: ['tabular-nums'] },
+  laneAdd: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', marginRight: -space.xs },
+  laneBody: { gap: space.sm, paddingHorizontal: space.sm, paddingBottom: space.xxl, flexGrow: 1 },
   laneEmpty: {
-    height: 72,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: c.hairline,
+    height: 64,
+    marginHorizontal: space.xs,
+    borderRadius: radius.lg,
+    ...squircle,
+    borderWidth: 1.5,
+    borderColor: c.separator,
     borderStyle: 'dashed',
-    opacity: 0.6,
   },
   card: {
-    backgroundColor: c.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: c.hairline,
-    padding: 11,
-    gap: 8,
+    backgroundColor: c.tertiaryBackground,
+    borderRadius: radius.lg,
+    ...squircle,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md - 2,
+    gap: space.xs,
   },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  cardTitle: { flex: 1, fontSize: font.label, color: c.fg, fontWeight: weight.medium, lineHeight: 19 },
-  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  metaPair: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  metaText: { fontSize: font.caption, color: c.fgFaint },
+  cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
+  cardTitle: { ...typo.subheadline, fontWeight: weight.medium, color: c.label, flex: 1, paddingTop: 1 },
+  cardTitleClosed: { color: c.secondaryLabel, textDecorationLine: 'line-through' },
+  cardMeta: { paddingLeft: 20 + space.sm },
 }));

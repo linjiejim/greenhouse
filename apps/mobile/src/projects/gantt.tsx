@@ -4,18 +4,35 @@
  * Semantics mirror the web gantt (apps/web/src/components/project/gantt-*):
  * -7/+14d padded range, day/week/month/year zoom tiers, weekend shading,
  * today line, milestone diamonds, overdue + progress bars, expand/collapse.
- * Rendering is rebuilt for touch: a fixed label column, one shared vertical
- * scroll, a horizontally pannable canvas whose header is scroll-synced on the
- * UI thread, pinch-to-zoom (live scaleX preview → committed re-layout on
- * release) and Segmented zoom presets as the discoverable fallback.
+ * Rendering is rebuilt for touch: a fixed time-axis row on top (outside the
+ * vertical scroll — RN's sticky-header wrapper would swallow a row layout), a
+ * fixed label column, one shared vertical scroll, a horizontally pannable
+ * canvas whose axis is scroll-synced on the UI thread (`useAnimatedReaction` +
+ * `scrollTo`), pinch-to-zoom (live scaleX preview anchored at the focal point
+ * → committed re-layout on release) and a native segmented control with the
+ * zoom presets as the discoverable fallback. It opens on today, or — when
+ * nothing is scheduled around today — on the stretch with the most bars.
+ * `bottomInset` keeps the last rows clear of bottom chrome (home indicator,
+ * the projects hub's bottom search field).
+ *
+ * Colors: the canvas is drawn with real strings (`hex.*` system colors, alpha
+ * via the theme's `alpha()`) — bars tint by status, red when overdue, project bands in the
+ * project's own color. Labels use the dynamic `colors.*`.
+ *
+ * Context menus (single-project mode): long-press a row's label for the task
+ * menu (status / edit / subtask / milestone / delete); tap a label or bar to
+ * open the task. Bars stay plain touch targets inside the pinch canvas.
+ * Parents start expanded; new parents expand as they appear, manual collapses
+ * survive refetches (same rule as the list view). VoiceOver: label cells
+ * expose open + expand/collapse as accessibility actions.
  *
  * Deliberately not ported from web: drag move/resize/create, dependency
  * arrows, batch selection, minimap — poor fits for touch; edits go through
- * the task sheet instead.
+ * the task form sheet instead.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, Text, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -27,15 +44,22 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import type { ProjectTask } from '../shared/greenhouse-types';
-import { useT } from '../lib/i18n';
-import { EmptyState, Icon, Segmented, Touchable } from '../ui';
-import { font, makeStyles, radius, useTheme, weight, type ThemeColors } from '../theme';
+import { translate, useT } from '../lib/i18n';
+import { usePrefs } from '../store/prefs';
+import { alpha, makeStyles, radius, space, typo, useTheme, weight, type HexPalette } from '../theme';
+import { Icon } from '../ui/core';
+import { EmptyState } from '../ui/empty';
+import { NativeMenu, type MenuItem } from '../ui/menu';
+import { Segmented } from '../ui/segmented';
+import { selectionTick } from '../ui/haptics';
+import { ProgressBar } from './progress';
 import {
   collectParentIds,
   dayIndex,
   forEachTask,
-  hexAlpha,
+  isMilestone,
   isOverdue,
+  projectColor,
   subtreeProgress,
   taskStatusColor,
   taskStatusTint,
@@ -44,9 +68,9 @@ import {
 
 // ─── Layout constants ────────────────────────────────────
 
-const LABEL_W = 132;
-const ROW_H = 36;
-const HEADER_H = 40;
+const LABEL_W = 136;
+const ROW_H = 38;
+const HEADER_H = 36;
 const BAR_H = 18;
 const MIN_DW = 3;
 const MAX_DW = 48;
@@ -84,6 +108,12 @@ export interface GanttSection {
   tasks: ProjectTask[];
 }
 
+/** Per-task context menu (single-project mode). */
+export interface GanttTaskMenu {
+  items: (task: ProjectTask) => MenuItem[];
+  onSelect: (task: ProjectTask, id: string) => void;
+}
+
 type Row =
   | { kind: 'project'; key: string; project: GanttSectionProject; start: number | null; end: number | null }
   | { kind: 'task'; key: string; task: ProjectTask; depth: number; isParent: boolean };
@@ -99,28 +129,41 @@ function taskSpan(task: ProjectTask): { start: number | null; end: number | null
 export function GanttChart({
   sections,
   onOpenTask,
-  onLongPressTask,
   onOpenProject,
+  taskMenu,
+  bottomInset = 0,
 }: {
   sections: GanttSection[];
   onOpenTask?: (task: ProjectTask) => void;
-  onLongPressTask?: (task: ProjectTask) => void;
   onOpenProject?: (projectId: number) => void;
+  taskMenu?: GanttTaskMenu;
+  /** Extra space under the last row (bottom chrome the chart sits behind). */
+  bottomInset?: number;
 }) {
-  const { colors: c } = useTheme();
+  const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
   const t = useT();
 
+  const allTasks = useMemo(() => sections.flatMap((s) => s.tasks), [sections]);
   const [dayWidth, setDayWidth] = useState<number>(ZOOM_DW.week);
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [expanded, setExpanded] = useState<Set<number>>(() => collectParentIds(allTasks));
   const [foldedProjects, setFoldedProjects] = useState<Set<number>>(new Set());
   const [bodyW, setBodyW] = useState(0);
 
-  // Auto-expand every parent when the data set changes (web parity).
-  const allTasks = useMemo(() => sections.flatMap((s) => s.tasks), [sections]);
+  // Expand parents as they appear (web parity) but keep manual collapses —
+  // keyed on the parent ids, not the array identity (refetches rebuild it).
+  const parentKey = useMemo(() => [...collectParentIds(allTasks)].join(','), [allTasks]);
+  const seenParents = useRef(parentKey);
   useEffect(() => {
-    setExpanded(collectParentIds(allTasks));
-  }, [allTasks]);
+    if (seenParents.current === parentKey) return;
+    const before = new Set(seenParents.current.split(','));
+    seenParents.current = parentKey;
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const id of parentKey.split(',')) if (id && !before.has(id)) next.add(Number(id));
+      return next;
+    });
+  }, [parentKey]);
 
   // ── Date range (web computeGanttRange parity: pad −7/+14, ≥30 days) ──
   const range = useMemo(() => {
@@ -143,16 +186,21 @@ export function GanttChart({
     return { startIndex, totalDays };
   }, [sections]);
 
-  const hasAnyBar = useMemo(() => {
-    let found = false;
+  // Every drawable span (project bands + task bars), in day indices.
+  const spans = useMemo(() => {
+    const out: Array<{ start: number; end: number }> = [];
     for (const section of sections) {
-      if (section.project?.start_date || section.project?.end_date) found = true;
+      const ps = dayIndex(section.project?.start_date) ?? dayIndex(section.project?.end_date);
+      const pe = dayIndex(section.project?.end_date) ?? ps;
+      if (ps !== null && pe !== null) out.push({ start: ps, end: pe });
       forEachTask(section.tasks, (task) => {
-        if (task.start_date || task.due_date) found = true;
+        const span = taskSpan(task);
+        if (span.start !== null && span.end !== null) out.push({ start: span.start, end: span.end });
       });
     }
-    return found;
+    return out;
   }, [sections]);
+  const hasAnyBar = spans.length > 0;
 
   // ── Row model (expand/collapse applied) ─────────────────
   const rows = useMemo<Row[]>(() => {
@@ -191,7 +239,8 @@ export function GanttChart({
   const tier = tierOf(dayWidth);
 
   // ── Ticks + grid (committed layout; recomputed on zoom commit only) ──
-  const months = useMemo(() => t('date.months').split(','), [t]);
+  const lang = usePrefs((st) => st.lang);
+  const months = useMemo(() => translate(lang, 'date.months').split(','), [lang]);
   const ticks = useMemo(() => {
     const labels: Array<{ x: number; label: string; strong?: boolean }> = [];
     const grid: Array<{ x: number; strong?: boolean }> = [];
@@ -251,16 +300,14 @@ export function GanttChart({
   const pinchActive = useSharedValue(false);
   const pendingScroll = useRef<number | null>(null);
 
-  const commitZoom = useCallback(
-    (scale: number, focalX: number, sx: number) => {
-      setDayWidth((prev) => {
-        const next = Math.min(MAX_DW, Math.max(MIN_DW, prev * scale));
-        if (next !== prev) pendingScroll.current = Math.max(0, (sx + focalX) * (next / prev) - focalX);
-        return next;
-      });
-    },
-    [],
-  );
+  const commitZoom = useCallback((scale: number, focalX: number, sx: number) => {
+    setDayWidth((prev) => {
+      const next = Math.min(MAX_DW, Math.max(MIN_DW, prev * scale));
+      if (next !== prev) pendingScroll.current = Math.max(0, (sx + focalX) * (next / prev) - focalX);
+      if (tierOf(next) !== tierOf(prev)) selectionTick();
+      return next;
+    });
+  }, []);
 
   // Preset switch keeps the date under the viewport center stable.
   const setPresetZoom = useCallback(
@@ -316,13 +363,32 @@ export function GanttChart({
     bodyRef.current?.scrollTo({ x: Math.max(0, todayX - bodyW * 0.4), animated: true });
   }, [bodyRef, todayX, bodyW]);
 
-  // First layout: land on today.
+  // First layout: land on today — unless nothing is scheduled around today
+  // (e.g. a project that ended last quarter): then open on the stretch that
+  // shows the most bars (ties → the one nearest today).
   const didInitScroll = useRef(false);
   useEffect(() => {
     if (didInitScroll.current || bodyW === 0) return;
     didInitScroll.current = true;
-    bodyRef.current?.scrollTo({ x: Math.max(0, todayX - bodyW * 0.4), animated: false });
-  }, [bodyW, todayX, bodyRef]);
+    const todayLeft = Math.max(0, todayX - bodyW * 0.4);
+    let x = todayLeft;
+    const visibleDays = bodyW / dayWidth;
+    const countIn = (left: number) =>
+      spans.reduce((n, sp) => (sp.end + 1 > left && sp.start < left + visibleDays ? n + 1 : n), 0);
+    if (spans.length > 0 && countIn(range.startIndex + todayLeft / dayWidth) === 0) {
+      const today = todayIndex();
+      let best = { left: 0, count: -1 };
+      for (const sp of spans) {
+        const left = sp.start - 1;
+        const count = countIn(left);
+        if (count > best.count || (count === best.count && Math.abs(left - today) < Math.abs(best.left - today))) {
+          best = { left, count };
+        }
+      }
+      x = (best.left - range.startIndex) * dayWidth;
+    }
+    bodyRef.current?.scrollTo({ x: Math.max(0, Math.min(x, totalW - bodyW)), animated: false });
+  }, [bodyW, todayX, bodyRef, spans, range.startIndex, dayWidth, totalW]);
 
   const toggleTask = useCallback((id: number) => {
     setExpanded((prev) => {
@@ -343,15 +409,20 @@ export function GanttChart({
   }, []);
 
   const toggleFoldAll = useCallback(() => {
-    setExpanded((prev) => (prev.size > 0 ? new Set() : collectParentIds(allTasks)));
-  }, [allTasks]);
+    if (sections.some((s) => s.project)) {
+      // global mode: fold / unfold the project bands
+      setFoldedProjects((prev) => (prev.size > 0 ? new Set() : new Set(sections.flatMap((s) => (s.project ? [s.project.id] : [])))));
+    } else {
+      setExpanded((prev) => (prev.size > 0 ? new Set() : collectParentIds(allTasks)));
+    }
+  }, [sections, allTasks]);
 
   const onBodyLayout = useCallback((e: LayoutChangeEvent) => {
     setBodyW(e.nativeEvent.layout.width);
   }, []);
 
   if (!hasAnyBar && rows.length === 0) {
-    return <EmptyState icon="gantt" title={t('projects.noTasks')} sub={t('projects.noTasksHint')} />;
+    return <EmptyState icon="gantt" title={t('projects.noTasks')} message={t('projects.noTasksHint')} />;
   }
 
   return (
@@ -360,35 +431,47 @@ export function GanttChart({
       <View style={styles.controls}>
         <Segmented<Zoom>
           style={{ flex: 1 }}
-          items={[
-            { id: 'day', label: t('projects.zoom_day') },
-            { id: 'week', label: t('projects.zoom_week') },
-            { id: 'month', label: t('projects.zoom_month') },
-            { id: 'year', label: t('projects.zoom_year') },
+          options={[
+            { value: 'day', label: t('projects.zoom_day') },
+            { value: 'week', label: t('projects.zoom_week') },
+            { value: 'month', label: t('projects.zoom_month') },
+            { value: 'year', label: t('projects.zoom_year') },
           ]}
           value={tier}
           onChange={setPresetZoom}
         />
-        <Touchable haptic="selection" onPress={scrollToToday} style={styles.controlBtn} accessibilityLabel={t('projects.today')}>
+        <Pressable
+          onPress={scrollToToday}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t('projects.today')}
+          style={({ pressed }) => [styles.controlBtn, pressed && { opacity: 0.5 }]}
+        >
           <Text style={styles.controlBtnText}>{t('projects.today')}</Text>
-        </Touchable>
-        <Touchable haptic="selection" onPress={toggleFoldAll} style={styles.controlIconBtn} accessibilityLabel={t('projects.foldAll')}>
-          <Icon name="foldAll" size={16} color={c.fgSecondary} />
-        </Touchable>
+        </Pressable>
+        <Pressable
+          onPress={toggleFoldAll}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t('projects.foldAll')}
+          style={({ pressed }) => [styles.controlIcon, pressed && { opacity: 0.5 }]}
+        >
+          <Icon name="foldAll" size={17} weight="medium" color={c.accent} />
+        </Pressable>
       </View>
 
       {!hasAnyBar ? (
-        <EmptyState icon="gantt" title={t('projects.ganttEmpty')} sub={t('projects.ganttHint')} />
+        <EmptyState icon="gantt" title={t('projects.ganttEmpty')} message={t('projects.ganttHint')} />
       ) : (
-        <ScrollView stickyHeaderIndices={[0]} bounces={false} showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-          {/* [0] sticky time-axis header */}
+        <>
+          {/* time axis — a fixed row above the vertical scroll, synced to the canvas */}
           <View style={styles.headerRow}>
             <View style={[styles.cornerCell, { width: LABEL_W }]}>
               <Text style={styles.cornerText} numberOfLines={1}>
                 {t('projects.taskColumn')}
               </Text>
             </View>
-            <View style={{ flex: 1, overflow: 'hidden' }}>
+            <View style={styles.headerTrack} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
               <Animated.ScrollView ref={headerRef} horizontal scrollEnabled={false} showsHorizontalScrollIndicator={false}>
                 <Animated.View style={[{ width: totalW, height: HEADER_H }, previewStyle]}>
                   {ticks.labels.map((tick, i) => (
@@ -400,94 +483,116 @@ export function GanttChart({
                       {tick.label}
                     </Text>
                   ))}
-                  <View style={[styles.todayDot, { left: todayX + dayWidth / 2 - 3 }]} />
+                  <View style={[styles.todayDot, { left: todayX + dayWidth / 2 - 3, backgroundColor: hex.red }]} />
                 </Animated.View>
               </Animated.ScrollView>
             </View>
           </View>
 
-          {/* body: fixed labels + pannable canvas */}
-          <View style={{ flexDirection: 'row' }}>
-            <View style={{ width: LABEL_W }}>
-              {rows.map((row) =>
-                row.kind === 'project' ? (
-                  <ProjectLabelCell
-                    key={row.key}
-                    row={row}
-                    folded={foldedProjects.has(row.project.id)}
-                    onToggle={() => toggleProject(row.project.id)}
-                    onOpen={onOpenProject ? () => onOpenProject(row.project.id) : undefined}
-                  />
-                ) : (
-                  <TaskLabelCell
-                    key={row.key}
-                    row={row}
-                    isExpanded={expanded.has(row.task.id)}
-                    onToggle={() => toggleTask(row.task.id)}
-                    onOpen={onOpenTask ? () => onOpenTask(row.task) : undefined}
-                    onLongPress={onLongPressTask ? () => onLongPressTask(row.task) : undefined}
-                  />
-                ),
-              )}
-            </View>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: bottomInset }}
+          >
+            {/* body: fixed labels + pannable canvas */}
+            <View style={{ flexDirection: 'row' }}>
+              <View style={{ width: LABEL_W }}>
+                {rows.map((row) =>
+                  row.kind === 'project' ? (
+                    <ProjectLabelCell
+                      key={row.key}
+                      row={row}
+                      folded={foldedProjects.has(row.project.id)}
+                      onToggle={() => toggleProject(row.project.id)}
+                      onOpen={onOpenProject ? () => onOpenProject(row.project.id) : undefined}
+                    />
+                  ) : (
+                    <TaskLabelCell
+                      key={row.key}
+                      row={row}
+                      isExpanded={expanded.has(row.task.id)}
+                      onToggle={() => toggleTask(row.task.id)}
+                      onOpen={onOpenTask ? () => onOpenTask(row.task) : undefined}
+                      menu={taskMenu}
+                    />
+                  ),
+                )}
+              </View>
 
-            <View style={{ flex: 1 }} onLayout={onBodyLayout}>
-              <GestureDetector gesture={pinch}>
-                <Animated.ScrollView
-                  ref={bodyRef}
-                  horizontal
-                  bounces={false}
-                  onScroll={onScroll}
-                  scrollEventThrottle={16}
-                  showsHorizontalScrollIndicator={false}
-                >
-                  <Animated.View style={[{ width: totalW, height: canvasH }, previewStyle]}>
-                    {/* weekends */}
-                    {ticks.weekends.map((x, i) => (
-                      <View key={`w${i}`} style={[styles.weekendCol, { left: x, width: dayWidth, height: canvasH }]} />
-                    ))}
-                    {/* grid lines */}
-                    {ticks.grid.map((g, i) => (
-                      <View
-                        key={`g${i}`}
-                        style={[styles.gridLine, { left: g.x, height: canvasH }, g.strong && { backgroundColor: c.hairlineStrong }]}
-                      />
-                    ))}
-                    {/* row separators */}
-                    {rows.map((row, i) => (
-                      <View key={`s${row.key}`} style={[styles.rowSep, { top: (i + 1) * ROW_H - 1, width: totalW }]} />
-                    ))}
-                    {/* today line */}
-                    <View style={[styles.todayLine, { left: todayX + dayWidth / 2, height: canvasH }]} />
-                    {/* bars */}
-                    {rows.map((row, i) =>
-                      row.kind === 'project' ? (
-                        <ProjectBar key={`b${row.key}`} row={row} rowIndex={i} startIndex={range.startIndex} dayWidth={dayWidth} colors={c} />
-                      ) : (
-                        <TaskBar
-                          key={`b${row.key}`}
-                          task={row.task}
-                          rowIndex={i}
-                          startIndex={range.startIndex}
-                          dayWidth={dayWidth}
-                          colors={c}
-                          onPress={onOpenTask ? () => onOpenTask(row.task) : undefined}
-                          onLongPress={onLongPressTask ? () => onLongPressTask(row.task) : undefined}
+              <View style={{ flex: 1 }} onLayout={onBodyLayout}>
+                <GestureDetector gesture={pinch}>
+                  <Animated.ScrollView
+                    ref={bodyRef}
+                    horizontal
+                    bounces={false}
+                    onScroll={onScroll}
+                    scrollEventThrottle={16}
+                    showsHorizontalScrollIndicator={false}
+                  >
+                    <Animated.View style={[{ width: totalW, height: canvasH }, previewStyle]}>
+                      {/* weekends */}
+                      {ticks.weekends.map((x, i) => (
+                        <View key={`w${i}`} style={[styles.weekendCol, { left: x, width: dayWidth, height: canvasH }]} />
+                      ))}
+                      {/* grid lines */}
+                      {ticks.grid.map((g, i) => (
+                        <View
+                          key={`g${i}`}
+                          style={[styles.gridLine, { left: g.x, height: canvasH }, g.strong && { backgroundColor: c.opaqueSeparator }]}
                         />
-                      ),
-                    )}
-                  </Animated.View>
-                </Animated.ScrollView>
-              </GestureDetector>
+                      ))}
+                      {/* row separators */}
+                      {rows.map((row, i) => (
+                        <View key={`s${row.key}`} style={[styles.rowSep, { top: (i + 1) * ROW_H - 1, width: totalW }]} />
+                      ))}
+                      {/* today line */}
+                      <View style={[styles.todayLine, { left: todayX + dayWidth / 2, height: canvasH, backgroundColor: hex.red }]} />
+                      {/* bars */}
+                      {rows.map((row, i) =>
+                        row.kind === 'project' ? (
+                          <ProjectBar key={`b${row.key}`} row={row} rowIndex={i} startIndex={range.startIndex} dayWidth={dayWidth} hex={hex} />
+                        ) : (
+                          <TaskBar
+                            key={`b${row.key}`}
+                            task={row.task}
+                            rowIndex={i}
+                            startIndex={range.startIndex}
+                            dayWidth={dayWidth}
+                            hex={hex}
+                            onPress={onOpenTask ? () => onOpenTask(row.task) : undefined}
+                          />
+                        ),
+                      )}
+                    </Animated.View>
+                  </Animated.ScrollView>
+                </GestureDetector>
+              </View>
             </View>
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </>
       )}
     </View>
   );
 }
 
 // ─── Label cells ─────────────────────────────────────────
+
+/** VoiceOver: open + expand/collapse as actions on the (single) label element. */
+function useCellA11y(onOpen: (() => void) | undefined, toggle: { expanded: boolean; onToggle: () => void } | null) {
+  const t = useT();
+  const actions = [
+    ...(onOpen ? [{ name: 'activate' }] : []),
+    ...(toggle ? [{ name: 'toggle', label: toggle.expanded ? t('projects.collapse') : t('projects.expand') }] : []),
+  ];
+  return {
+    accessibilityActions: actions,
+    accessibilityState: toggle ? { expanded: toggle.expanded } : undefined,
+    onAccessibilityAction: (e: { nativeEvent: { actionName: string } }) => {
+      if (e.nativeEvent.actionName === 'activate') (onOpen ?? toggle?.onToggle)?.();
+      else if (e.nativeEvent.actionName === 'toggle') toggle?.onToggle();
+    },
+  };
+}
 
 function ProjectLabelCell({
   row,
@@ -500,18 +605,32 @@ function ProjectLabelCell({
   onToggle: () => void;
   onOpen?: () => void;
 }) {
-  const { colors: c } = useTheme();
+  const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
+  const t = useT();
+  const a11y = useCellA11y(onOpen ?? onToggle, { expanded: !folded, onToggle });
   return (
-    <Touchable haptic="none" onPress={onOpen ?? onToggle} onLongPress={onToggle} style={[styles.labelCell, styles.projectCell]}>
-      <Touchable haptic="selection" onPress={onToggle} hitSlop={8} style={styles.chevBox}>
-        <Icon name={folded ? 'chevR' : 'chevD'} size={13} color={c.fgFaint} />
-      </Touchable>
-      <View style={[styles.projectDot, { backgroundColor: row.project.color ?? c.accent }]} />
+    <Pressable
+      onPress={onOpen ?? onToggle}
+      accessibilityRole="button"
+      accessibilityLabel={row.project.title}
+      {...a11y}
+      style={({ pressed }) => [styles.labelCell, styles.projectCell, pressed && { backgroundColor: c.fill }]}
+    >
+      <Pressable
+        onPress={onToggle}
+        hitSlop={8}
+        style={styles.chevBox}
+        accessibilityRole="button"
+        accessibilityLabel={folded ? t('projects.expand') : t('projects.collapse')}
+      >
+        <Icon name={folded ? 'chevR' : 'chevD'} size={12} weight="semibold" color={c.tertiaryLabel} />
+      </Pressable>
+      <View style={[styles.projectDot, { backgroundColor: projectColor(row.project.color, hex) }]} />
       <Text numberOfLines={1} style={styles.projectLabelText}>
         {row.project.title}
       </Text>
-    </Touchable>
+    </Pressable>
   );
 }
 
@@ -520,33 +639,56 @@ function TaskLabelCell({
   isExpanded,
   onToggle,
   onOpen,
-  onLongPress,
+  menu,
 }: {
   row: Extract<Row, { kind: 'task' }>;
   isExpanded: boolean;
   onToggle: () => void;
   onOpen?: () => void;
-  onLongPress?: () => void;
+  menu?: GanttTaskMenu;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const t = useT();
   const task = row.task;
-  const isMilestone = task.task_type === 'milestone';
-  const done = task.status === 'done';
-  return (
-    <Touchable haptic="none" onPress={onOpen} onLongPress={onLongPress} style={[styles.labelCell, { paddingLeft: 4 + row.depth * 12 }]}>
+  const done = task.status === 'done' || task.status === 'cancelled';
+  const overdue = isOverdue(task);
+  const a11y = useCellA11y(onOpen, row.isParent ? { expanded: isExpanded, onToggle } : null);
+  const cell = (
+    <Pressable
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel={overdue ? `${task.title}, ${t('projects.overdue')}` : task.title}
+      {...a11y}
+      style={({ pressed }) => [styles.labelCell, { paddingLeft: space.xs + row.depth * 12 }, pressed && { backgroundColor: c.fill }]}
+    >
       {row.isParent ? (
-        <Touchable haptic="selection" onPress={onToggle} hitSlop={8} style={styles.chevBox}>
-          <Icon name={isExpanded ? 'chevD' : 'chevR'} size={13} color={c.fgFaint} />
-        </Touchable>
+        <Pressable
+          onPress={onToggle}
+          hitSlop={8}
+          style={styles.chevBox}
+          accessibilityRole="button"
+          accessibilityLabel={isExpanded ? t('projects.collapse') : t('projects.expand')}
+        >
+          <Icon name={isExpanded ? 'chevD' : 'chevR'} size={12} weight="semibold" color={c.tertiaryLabel} />
+        </Pressable>
       ) : (
         <View style={styles.chevBox} />
       )}
-      {isMilestone ? <Icon name="diamond" size={11} color={c.warning} /> : null}
-      <Text numberOfLines={1} style={[styles.labelText, done && styles.labelDone, isOverdue(task) && { color: c.danger }]}>
+      {isMilestone(task) ? <Icon name="diamondFill" size={10} color={c.orange} /> : null}
+      <Text numberOfLines={1} style={[styles.labelText, done && styles.labelDone, overdue && { color: c.red }]}>
         {task.title}
       </Text>
-    </Touchable>
+    </Pressable>
+  );
+  if (!menu) return cell;
+  // Long-press menus fill their slot (measured, then pinned) — without that
+  // the SwiftUI host sizes the trigger to the text's intrinsic width and long
+  // titles paint across the canvas instead of truncating.
+  return (
+    <NativeMenu trigger="longPress" style={styles.labelSlot} items={menu.items(task)} onSelect={(id) => menu.onSelect(task, id)}>
+      {cell}
+    </NativeMenu>
   );
 }
 
@@ -557,34 +699,21 @@ function ProjectBar({
   rowIndex,
   startIndex,
   dayWidth,
-  colors: c,
+  hex,
 }: {
   row: Extract<Row, { kind: 'project' }>;
   rowIndex: number;
   startIndex: number;
   dayWidth: number;
-  colors: ThemeColors;
+  hex: HexPalette;
 }) {
   if (row.start === null || row.end === null) return null;
   const left = (row.start - startIndex) * dayWidth;
   const width = Math.max((row.end - row.start + 1) * dayWidth, dayWidth);
-  const color = row.project.color ?? c.accent;
-  const progress = Math.max(0, Math.min(100, row.project.progress ?? 0));
+  const color = projectColor(row.project.color, hex);
   return (
-    <View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        top: rowIndex * ROW_H + (ROW_H - 8) / 2,
-        left,
-        width,
-        height: 8,
-        borderRadius: radius.full,
-        backgroundColor: hexAlpha(color, 0.25),
-        overflow: 'hidden',
-      }}
-    >
-      <View style={{ width: `${progress}%`, flex: 1, backgroundColor: color, borderRadius: radius.full }} />
+    <View pointerEvents="none" style={{ position: 'absolute', top: rowIndex * ROW_H + (ROW_H - 8) / 2, left, width }}>
+      <ProgressBar pct={row.project.progress ?? 0} color={color} track={alpha(color, 0.25)} height={8} />
     </View>
   );
 }
@@ -594,73 +723,70 @@ function TaskBar({
   rowIndex,
   startIndex,
   dayWidth,
-  colors: c,
+  hex,
   onPress,
-  onLongPress,
 }: {
   task: ProjectTask;
   rowIndex: number;
   startIndex: number;
   dayWidth: number;
-  colors: ThemeColors;
+  hex: HexPalette;
   onPress?: () => void;
-  onLongPress?: () => void;
 }) {
   const span = taskSpan(task);
   if (span.start === null || span.end === null) return null;
   const top = rowIndex * ROW_H;
   const left = (span.start - startIndex) * dayWidth;
 
-  if (task.task_type === 'milestone') {
+  if (isMilestone(task)) {
     const size = 13;
     return (
-      <Touchable
-        haptic="none"
+      <Pressable
         onPress={onPress}
-        onLongPress={onLongPress}
         hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel={task.title}
         style={{
           position: 'absolute',
           top: top + (ROW_H - size) / 2,
           left: left + dayWidth / 2 - size / 2,
           width: size,
           height: size,
-          backgroundColor: c.warning,
+          backgroundColor: task.status === 'done' ? hex.green : hex.orange,
           borderRadius: 3,
           transform: [{ rotate: '45deg' }],
         }}
-      >
-        {null}
-      </Touchable>
+      />
     );
   }
 
   const overdue = isOverdue(task);
-  const tone = overdue ? c.danger : taskStatusColor(task.status, c);
-  const tint = overdue ? c.dangerTint : taskStatusTint(task.status, c);
+  const tone = overdue ? hex.red : taskStatusColor(task.status, hex);
+  const tint = overdue ? hex.redFill : taskStatusTint(task.status, hex);
   const width = Math.max((span.end - span.start + 1) * dayWidth, Math.max(dayWidth, 6));
   const progress = subtreeProgress(task);
   return (
-    <Touchable
-      haptic="none"
+    <Pressable
       onPress={onPress}
-      onLongPress={onLongPress}
-      pressedStyle={{ opacity: 0.7 }}
-      style={{
+      accessibilityRole="button"
+      accessibilityLabel={task.title}
+      style={({ pressed }) => ({
         position: 'absolute',
         top: top + (ROW_H - BAR_H) / 2,
         left,
         width,
         height: BAR_H,
-        borderRadius: 5,
+        borderRadius: radius.xs,
+        borderCurve: 'continuous',
         backgroundColor: tint,
         borderWidth: 1,
-        borderColor: hexAlpha(tone, 0.55),
+        borderColor: alpha(tone, 0.55),
         overflow: 'hidden',
-      }}
+        opacity: pressed ? 0.6 : 1,
+      })}
     >
-      <View style={{ width: `${progress}%`, flex: 1, backgroundColor: hexAlpha(tone, 0.75) }} />
-    </Touchable>
+      <View style={{ width: `${progress}%`, flex: 1, backgroundColor: alpha(tone, 0.75) }} />
+    </Pressable>
   );
 }
 
@@ -668,60 +794,50 @@ function TaskBar({
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1 },
-  controls: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
-  controlBtn: {
-    paddingHorizontal: 12,
-    height: 34,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: c.hairline,
-    backgroundColor: c.surface,
+  controls: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: space.md,
+    paddingHorizontal: space.margin,
+    paddingBottom: space.sm,
   },
-  controlBtnText: { fontSize: font.small, fontWeight: weight.semibold, color: c.fgSecondary },
-  controlIconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: c.hairline,
-    backgroundColor: c.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  controlBtn: { height: 32, justifyContent: 'center' },
+  controlBtnText: { ...typo.subheadline, fontWeight: weight.semibold, color: c.accent },
+  controlIcon: { width: 28, height: 32, alignItems: 'center', justifyContent: 'center' },
 
   headerRow: {
     flexDirection: 'row',
-    backgroundColor: c.bg,
-    borderBottomWidth: 1,
-    borderBottomColor: c.hairline,
-    zIndex: 2,
+    backgroundColor: c.background,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: c.separator,
   },
-  cornerCell: { height: HEADER_H, justifyContent: 'center', paddingLeft: 16 },
-  cornerText: { fontSize: font.caption, fontWeight: weight.medium, color: c.fgMuted },
-  tickLabel: { position: 'absolute', top: 12, fontSize: font.caption, color: c.fgFaint },
-  tickLabelStrong: { color: c.fgSecondary, fontWeight: weight.semibold },
-  todayDot: { position: 'absolute', bottom: 3, width: 6, height: 6, borderRadius: 3, backgroundColor: c.accent },
+  headerTrack: { flex: 1, overflow: 'hidden' },
+  labelSlot: { width: LABEL_W, overflow: 'hidden' },
+  cornerCell: { height: HEADER_H, justifyContent: 'center', paddingLeft: space.margin },
+  cornerText: { ...typo.footnote, fontWeight: weight.semibold, color: c.secondaryLabel },
+  tickLabel: { position: 'absolute', top: 9, ...typo.caption1, color: c.tertiaryLabel },
+  tickLabelStrong: { color: c.secondaryLabel, fontWeight: weight.semibold },
+  todayDot: { position: 'absolute', bottom: 3, width: 6, height: 6, borderRadius: 3 },
 
   labelCell: {
     height: ROW_H,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    paddingRight: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: c.hairline,
+    paddingRight: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: c.separator,
+    backgroundColor: c.background,
   },
-  projectCell: { backgroundColor: c.surfaceMuted, paddingLeft: 4 },
+  projectCell: { backgroundColor: c.secondaryBackground, paddingLeft: space.xs },
   chevBox: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
-  projectDot: { width: 8, height: 8, borderRadius: 4 },
-  projectLabelText: { flex: 1, fontSize: font.small, fontWeight: weight.semibold, color: c.fg },
-  labelText: { flex: 1, fontSize: font.small, color: c.fgSecondary },
-  labelDone: { textDecorationLine: 'line-through', color: c.fgFaint },
+  projectDot: { width: 8, height: 8, borderRadius: 4, marginRight: 2 },
+  projectLabelText: { flex: 1, ...typo.footnote, fontWeight: weight.semibold, color: c.label },
+  labelText: { flex: 1, ...typo.footnote, color: c.label },
+  labelDone: { textDecorationLine: 'line-through', color: c.tertiaryLabel },
 
-  weekendCol: { position: 'absolute', top: 0, backgroundColor: c.surfaceMuted, opacity: 0.45 },
-  gridLine: { position: 'absolute', top: 0, width: 1, backgroundColor: c.hairline, opacity: 0.6 },
-  rowSep: { position: 'absolute', left: 0, height: 1, backgroundColor: c.hairline, opacity: 0.5 },
-  todayLine: { position: 'absolute', top: 0, width: 1.5, backgroundColor: c.accent, opacity: 0.75 },
+  weekendCol: { position: 'absolute', top: 0, backgroundColor: c.quaternaryFill },
+  gridLine: { position: 'absolute', top: 0, width: StyleSheet.hairlineWidth, backgroundColor: c.separator },
+  rowSep: { position: 'absolute', left: 0, height: StyleSheet.hairlineWidth, backgroundColor: c.separator, opacity: 0.6 },
+  todayLine: { position: 'absolute', top: 0, width: 1.5, opacity: 0.85 },
 }));
