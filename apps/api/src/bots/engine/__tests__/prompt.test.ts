@@ -55,6 +55,16 @@ describe('static rules (S1)', () => {
     expect(full).not.toMatch(/gives you no computer|no saved sign-ins/);
   });
 
+  it('sends a sign-in or code to the secure card and keeps take-over for a CAPTCHA', () => {
+    // A live tour caught the Bot telling the member to "take over the browser"
+    // while the fill-in card was already on screen.
+    const rules = buildStaticRules(toolFaceFlags(ALL, true), 'en');
+    expect(rules).toMatch(/secure sign-in card in this conversation/);
+    expect(rules).toMatch(/fill in the card, not to take over the browser/);
+    expect(rules).toMatch(/For a CAPTCHA or anything else only a person can do, they take over the computer/);
+    expect(buildStaticRules(toolFaceFlags(['browser', 'computer'], false), 'en')).not.toMatch(/secure sign-in card/);
+  });
+
   it('tells a Bot with the computer how to bring an attachment onto it', () => {
     expect(buildStaticRules(toolFaceFlags(['computer'], false), 'en')).toMatch(/import_attachment with its `id`/);
     expect(buildStaticRules(toolFaceFlags(['browser'], false), 'en')).not.toMatch(/import_attachment/);

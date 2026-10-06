@@ -115,8 +115,11 @@ export async function requestTakeover(
     requested: true,
     request_id: requestId,
     card: secureCard ? 'secure_sign_in' : 'take_over',
-    message:
-      'The member now sees a card asking them to step in. End your turn NOW with one short line saying what you need from them. Do not call more tools; you will be woken automatically when they are done.',
+    // Left to itself the model tells the member to "take over the browser"
+    // even when the card is a fill-in form: name what the card actually is.
+    message: secureCard
+      ? 'The member now sees a secure sign-in card in this conversation: they type the details into the card (you never see them) or open the computer themselves. End your turn NOW with one short line asking them to fill in the card above. Do not call more tools; you will be woken automatically when they are done.'
+      : 'The member now sees a card asking them to step in on the computer. End your turn NOW with one short line saying what you need from them. Do not call more tools; you will be woken automatically when they are done.',
   };
 }
 

@@ -149,17 +149,21 @@ describe.skipIf(!chromiumAvailable())('tools on a real page', { timeout: 90_000 
       { expiresInMs: HUMAN_WAIT_HOLD_MS },
     );
     expect(result).toMatchObject({ card: 'secure_sign_in' });
+    // The Bot's closing line must point at the fill-in card, not at a take-over.
+    expect(result.message).toMatch(/fill in the card above/);
     expect(ctx.stopAfterStep).toHaveBeenCalledWith('takeover');
   });
 
   it('raises a take-over card for a CAPTCHA', async () => {
     const ctx = await botOnPage('/captcha');
-    await requestTakeover(ctx, { kind: 'captcha', reason: 'There is a CAPTCHA' }, computer.deps);
+    const result = await requestTakeover(ctx, { kind: 'captcha', reason: 'There is a CAPTCHA' }, computer.deps);
     expect(ctx.createRequest).toHaveBeenCalledWith(
       'takeover',
       { reason: 'There is a CAPTCHA', kind: 'captcha', url: `${site.origin}/captcha` },
       { expiresInMs: HUMAN_WAIT_HOLD_MS },
     );
+    expect(result).toMatchObject({ card: 'take_over' });
+    expect(result.message).not.toMatch(/fill in the card/);
   });
 
   it('lists vault entries as metadata, marking the ones for the current page', async () => {

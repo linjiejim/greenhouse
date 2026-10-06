@@ -52,12 +52,13 @@ Browser downloads land in ~/Downloads. The browser profile and its passwords are
     ...base,
     id: 'request_takeover',
     name: 'Ask the member to step in',
-    brief: 'Hand the computer to the member for a sign-in, code or CAPTCHA',
+    brief: 'Ask the member to sign in through a secure card, or to take over for a CAPTCHA',
     icon: 'Hand',
     sort_order: 92,
-    description: `Ask the member to step in on the computer, then END your turn by telling them what you need.
-kind: login — a sign-in page with no vault entry (they fill a secure form you never see); otp — a one-time code; captcha — a CAPTCHA or bot check; other — anything else only a person can do.
-reason: one sentence the member reads. When they hand back you are woken automatically to continue.`,
+    description: `Ask the member to step in, then END your turn by telling them what you need.
+kind: login — a sign-in page with no vault entry; otp — a one-time code; captcha — a CAPTCHA or bot check; other — anything else only a person can do.
+login and otp put a secure sign-in card in the conversation: the member types into the card (you never see the values) and the server fills the page, so ask them to fill in the card rather than take over the browser. captcha and other ask them to take over the computer and hand it back.
+reason: one sentence the member reads on the card. You are woken automatically when they are done.`,
   },
   {
     ...base,

@@ -130,7 +130,7 @@ export function buildStaticRules(flags: ToolFaceFlags, locale: BotsLocale): stri
   }
   if (flags.takeover) {
     lines.push(
-      `- For a sign-in with no saved entry, a one-time code, a CAPTCHA or anything only a person can do, ask the member to step in and end your turn; you are woken up when they hand back.`,
+      `- For a sign-in with no saved entry or a one-time code, ask the member to step in: they get a secure sign-in card in this conversation and type the details there (you never see them), so ask them to fill in the card, not to take over the browser. For a CAPTCHA or anything else only a person can do, they take over the computer. Either way end your turn; you are woken up when they are done.`,
     );
   }
   if (flags.conversation) {

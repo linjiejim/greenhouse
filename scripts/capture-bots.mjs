@@ -15,13 +15,14 @@
  *
  *   E2E_BASE_URL=http://localhost:3110 node scripts/capture-bots.mjs
  *   BOTS_TOUR_MEMBER_EMAIL=… BOTS_TOUR_MEMBER_PASSWORD=… node scripts/capture-bots.mjs   # another member
+ *   BOTS_TOUR_OUT=docs/specs/assets/bots-next node scripts/capture-bots.mjs           # another output folder
  *
  * The member should start with no Bots (the tour opens on the first visit).
  *   node scripts/capture-bots.mjs --only browse,vault   # login always runs
  *   node scripts/capture-bots.mjs --no-video
  *
  * Writes PNGs (+ WebP when cwebp exists) and bots-tour.{mp4,gif} into
- * docs/specs/assets/bots/. Exits non-zero when a step fails.
+ * docs/specs/assets/bots/ (or BOTS_TOUR_OUT). Exits non-zero when a step fails.
  */
 
 import { chromium } from '@playwright/test';
@@ -31,7 +32,8 @@ import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost:3110';
-const OUT = resolve(process.cwd(), 'docs/specs/assets/bots');
+// BOTS_TOUR_OUT keeps an earlier report's screenshots intact.
+const OUT = resolve(process.cwd(), process.env.BOTS_TOUR_OUT || 'docs/specs/assets/bots');
 // Defaults are the example dataset's documented demo accounts (`pnpm seed`,
 // data/examples/users.json); point the tour at other accounts through env.
 const MEMBER = {
