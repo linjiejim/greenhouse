@@ -246,10 +246,8 @@ export async function loadBotReference(
   return { bot, ...(reference.version ? { version: reference.version } : {}) };
 }
 
-const NON_EXECUTABLE_LIFECYCLES = new Set(['rejected', 'suspended', 'deprecated', 'archived']);
-
-export function isExecutableBot(bot: Pick<BotRow, 'lifecycle_status' | 'status'>): boolean {
-  return bot.status === 'active' && !NON_EXECUTABLE_LIFECYCLES.has(bot.lifecycle_status);
+export function isExecutableBot(bot: Pick<BotRow, 'status'>): boolean {
+  return bot.status === 'active';
 }
 
 /**
@@ -296,9 +294,9 @@ export function profileFromBot(
  * Revalidate a pinned Bot at the execution boundary.
  *
  * Resolving an immutable manifest proves what will run, but not whether the
- * current actor may still run it. Owners / super may exercise drafts for
- * testing; everyone else needs the exact currently published pilot/verified
- * version. Unattended work (automations, subagents) must carry a version.
+ * current actor may still run it: a Bot is private to its owner (super may
+ * exercise it for support). Unattended work (automations, subagents) must
+ * carry a version.
  */
 export async function assertPinnedProfileExecutionAccess(
   database: DatabaseProvider,
@@ -317,16 +315,9 @@ export async function assertPinnedProfileExecutionAccess(
   if (!loaded) return;
   if (!loaded.version) throw new Error(`${surface} Bot reference is not pinned to an immutable version`);
   const { bot, version } = loaded;
-  if (!isExecutableBot(bot)) throw new Error(`${surface} Bot is not executable (${bot.lifecycle_status})`);
+  if (!isExecutableBot(bot)) throw new Error(`${surface} Bot is not executable (${bot.status})`);
   const owns = actor.role === 'super' || bot.user_id === actor.id;
-  if (
-    !owns &&
-    (!bot.is_shared ||
-      (bot.lifecycle_status !== 'pilot' && bot.lifecycle_status !== 'verified') ||
-      bot.published_version !== version)
-  ) {
-    throw new Error(`${surface} Bot access was revoked`);
-  }
+  if (!owns) throw new Error(`${surface} Bot access was revoked`);
   if (!(await database.bots.getVersion(bot.id, version))) {
     throw new Error(`${surface} Bot version no longer exists`);
   }
@@ -509,7 +500,7 @@ export async function resolveProfileAsync(
     if (!loaded) throw new Error(`Invalid profile ID: "${normalized}"`);
     const { bot } = loaded;
     if (!isExecutableBot(bot)) {
-      throw new Error(`Bot is not executable (${bot.lifecycle_status}): "${normalized}"`);
+      throw new Error(`Bot is not executable (${bot.status}): "${normalized}"`);
     }
     let version: BotVersionRow | undefined;
     if (loaded.version) {

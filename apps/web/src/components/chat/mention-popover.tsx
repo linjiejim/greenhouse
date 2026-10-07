@@ -110,7 +110,7 @@ export function MentionPopover({
           const isSelected = idx === selectedIndex;
           const isActive = p.id === selectedProfileId;
           const name = localized(p.name_i18n, p.name);
-          const source = !p.is_custom ? 'system' : p.is_shared ? 'shared' : 'personal';
+          const source = !p.is_custom ? 'system' : 'personal';
           return (
             <button
               key={p.id}
@@ -131,9 +131,7 @@ export function MentionPopover({
               <span className="min-w-0 flex-1 truncate text-sm font-medium" title={name}>
                 {name}
               </span>
-              <Tag tone={source === 'system' ? 'neutral' : source === 'shared' ? 'info' : 'primary'}>
-                {t(`profileSelector.${source}`)}
-              </Tag>
+              <Tag tone={source === 'system' ? 'neutral' : 'primary'}>{t(`profileSelector.${source}`)}</Tag>
               {isActive && <Check size={14} className="flex-shrink-0" />}
             </button>
           );

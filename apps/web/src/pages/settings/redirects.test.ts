@@ -5,8 +5,8 @@ import { administrationModules } from '../../lib/nav-registry';
 const adminKey = (id: string) => id.split('.').pop()!;
 
 describe('resolveSettingsRedirect', () => {
-  it('sends the retired My Agents page to the Bots directory', () => {
-    expect(resolveSettingsRedirect('my-profiles')).toBe('#/bots/directory');
+  it('sends the retired My Agents page to Settings → My Bots', () => {
+    expect(resolveSettingsRedirect('my-profiles')).toBe('#/settings/bots');
   });
 
   it('sends the retired System Agents inventory to Agent Usages', () => {

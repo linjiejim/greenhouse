@@ -12,17 +12,6 @@ import { TEMPLATE_PLANT, plantAvatarConfig } from './plant-avatar.js';
 
 // ─── Bots ────────────────────────────────────────────────
 
-export type BotLifecycleStatus =
-  | 'draft'
-  | 'review'
-  | 'pilot'
-  | 'verified'
-  | 'rejected'
-  | 'suspended'
-  | 'deprecated'
-  | 'archived';
-export type BotRiskLevel = 'low' | 'medium' | 'high';
-
 export interface BotView {
   id: string;
   name: string;
@@ -40,19 +29,10 @@ export interface BotView {
   status: 'active' | 'archived';
   /** The Bot's direct conversation, when it exists. */
   dm_session_id: string | null;
-  /** Sharing lifecycle (draft for every personal Bot; pilot / verified = published to the team). */
-  lifecycle_status: BotLifecycleStatus;
-  lifecycle_note: string | null;
-  is_shared: boolean;
+  /** Latest immutable manifest (`bot_versions.version`): every save appends one. */
   current_version: number;
-  published_version: number | null;
-  next_review_at: string | null;
-  /** Lineage: `sprouty`, `bot:<id>@<v>` or a retired `custom:<id>@<v>`. */
-  forked_from: string | null;
-  /** The owner's user id — set for shared Bots listed from other members. */
+  /** The owner's user id. */
   user_id: string;
-  /** Present when the Bot belongs to another member (shared listings). */
-  owner_nickname?: string;
   last_active_at: string | null;
   created_at: string;
   updated_at: string;
@@ -71,23 +51,8 @@ export interface BotVersionView {
   model_id: string | null;
   max_steps: number | null;
   avatar: AvatarConfig;
-  purpose: string | null;
-  audience: string | null;
-  risk_level: BotRiskLevel;
-  budget_policy: Record<string, unknown>;
-  eval_refs: unknown[];
-  owner_backup_user_id: string | null;
-  review_due_at: string | null;
   created_by: string | null;
   created_at: string;
-}
-
-/** Body of `POST /api/bots/:id/lifecycle`. */
-export interface BotLifecycleInputView {
-  status: BotLifecycleStatus;
-  note?: string | null;
-  publish_version?: number | null;
-  next_review_at?: string | null;
 }
 
 /** Name rules shared by the API validator and the web form. */

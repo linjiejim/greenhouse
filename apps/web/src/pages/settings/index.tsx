@@ -6,12 +6,13 @@
  *
  * Sections (see `settingsSections` in nav-registry):
  * - Preferences + Cloud (one flat block): Preferences, Groups, Agent Connections,
- *   Connections, Email Accounts, Passwords (Bots vault, `bots` flag)
+ *   Connections, Email Accounts, My Bots (the member's Bot identities), Passwords
+ *   (Bots vault, `bots` flag)
  * - Labs (feature-gated): Memory
  * - Desktop: installer download in a browser, native controls inside the shell
  *
- * Personal Chat utilities (Automation, Tasks, My Agents) render inside
- * the Chat workspace and are intentionally absent from Settings.
+ * Personal Chat utilities (Automation, Tasks) render inside the Chat workspace
+ * and are intentionally absent from Settings.
  */
 
 import React from 'react';
@@ -29,6 +30,7 @@ import { PreferencesPanel } from './preferences';
 import { ProviderBindingsPanel } from './provider-bindings';
 import { EmailAccountsPanel } from './email-accounts';
 import { MemoryPanel } from './memory';
+import { BotsPanel } from './bots';
 import { GroupsPanel } from './groups';
 import { OAuthGrantsPanel } from './oauth-grants';
 import { DesktopPanel } from './desktop';
@@ -89,6 +91,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
       {effectiveModule === 'passwords' && <PasswordsPanel />}
       {effectiveModule === 'groups' && <GroupsPanel />}
       {effectiveModule === 'memory' && <MemoryPanel />}
+      {effectiveModule === 'bots' && <BotsPanel />}
       {effectiveModule === 'desktop' && <DesktopPanel />}
       {extensionModule && effectiveModule === moduleKey && <extensionModule.component />}
     </ModulePageShell>

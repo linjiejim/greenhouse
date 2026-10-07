@@ -265,24 +265,21 @@
 - Eval 的领域事实仍在 `eval_runs/eval_results`：`createQueuedRun()` 必须在一个事务内保存 exact dataset selection 与全部 pending result placeholders；Runtime envelope/Step 仍只由 `db.runtime` 创建，API boot reconciler 负责补两者之间的 crash window。driver 完成或报错 result 必须用 `updatePendingResult()` CAS，确保 durable cancel 先把 pending 改 cancelled 后，迟到的 provider 响应不能覆盖取消。`completed|error|cancelled` 都是已处理 case，恢复时不得重复模型调用；只有 pending 可形成新 Runtime Step attempt。
 - `runtime_runs.parent_run_id` 是域内 CASCADE 所有权；Run 的用户/session/source/root、Event actor、Interrupt 决策人、ToolCall Platform Audit 是松散逻辑关联，使永久执行历史不随外域主体删除。Service 写入 step/tool/artifact/interrupt 时必须验证它们属于同一 Run，不能只依赖单列 FK。
 
-### Bot 版本与治理（2026-10-07 从 custom_profiles 搬到 bots）
+### Bot 版本（2026-10-07 从 custom_profiles 搬到 bots；2026-10-08 去掉共享与治理）
 
 - `bots` 是稳定资产身份（也是聊天 / 自动化 / Bots 线程共用的唯一 Agent 身份），`bot_versions` 是不可变完整
   manifest；`createBot` 写 v1、`updateBot` 追加 v(n+1)，生产 Service 不得 update/delete 版本。manifest hash、
-  change log、名字/岗位/用途/守则/tools/模型/步数/头像与 purpose/audience/risk/budget/Eval refs、owner backup/
-  review due 必须随版本冻结。`tools` 为 NULL = 继承主人全部有效工具，列表 = 过滤器。
-- 任何新版本都撤销原审查：回 `draft`，清空 `published_version`、共享、reviewer 与 review date。旧
-  `bot:<id>@<version>` 仍可供已 pin 的计划任务/Eval/子代理重放，但不能继续对其他用户发布。`archiveBot` 同时置
-  `lifecycle_status='archived'` 并停止共享。
-- 共享只能由 lifecycle `pilot` / `verified` 派生；不得直接写 `is_shared=true`。`listShared` 只列他人的已发布行，
-  `listGovernanceQueue` / `listActiveWithOwners` 只列进入过评审的行（个人草稿是私事）。
+  change log、名字/岗位/用途/守则/tools/模型/步数/头像必须随版本冻结。`tools` 为 NULL = 继承主人全部有效工具，列表 = 过滤器。
+- **Bot 是主人私有的**：没有 `is_shared` / lifecycle / published_version / backup owner / review 列，没有
+  `listShared` 一类的跨用户读；所有读写按 `user_id` 作用域（`getBotById` 只给 profile 解析层，访问判定在那里做）。
+  旧 `bot:<id>@<version>` 仍可供已 pin 的计划任务/Eval/子代理重放；`archiveBot` 只置 `status='archived'`。
+- `createBot` 把唯一索引冲突翻译成 `BotsDomainError('bot_name_taken')`：聊天页与 Bots 页并发 bootstrap Sprouty 时
+  输家据此重读（真实竞争只能在 `*.db-commit.test.ts` 复现，`db` 项目所有调用跑在同一条回滚连接上）。
 - **迁移 `0010_bot_identity` 把每条 `custom_profiles` 变成主人的一只 Bot**：id 取 `'bot_' || left(md5('custom:'||id),16)`，
   版本号原样复制，`legacy_custom_id` 保存原 id 供 `custom:<id>[@v]` 继续解析；名字按 Bot 规则清洗（去 `[]:：` 与控制符、
   ≤24 字、与主人现有 active Bot 重名加后缀），`role` 取 purpose/description 首句；已有 Bot 回填 v1（hash 由 SQL 算，
-  仅审计用）。`0011` 再 drop 两张旧表。`sessions` / `scheduled_tasks` / `eval_runs` 存量 `profile_id` **不改写**。
-- 自动治理只消费 `listReviewDue(at, limit)` 与 `listActiveWithOwners(limit, afterId)`；状态变更可用逻辑 actor
-  `system:agent-governance`。发布未显式给 review date 时，low/medium risk 默认 90 天、high risk 默认 60 天，
-  禁止产生永不复核的 pilot/verified。review actor 与版本 created_by/backup snapshot 保持逻辑引用，避免账号删除改写历史。
+  仅审计用）。`0011` 再 drop 两张旧表；`0014_bots_private` 删掉搬来的治理列。`sessions` / `scheduled_tasks` /
+  `eval_runs` 存量 `profile_id` **不改写**（他人 pin 的旧共享 Agent 引用从此 403）。
 
 ### 统一 Notification Center
 

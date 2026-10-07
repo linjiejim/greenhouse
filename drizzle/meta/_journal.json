@@ -99,6 +99,13 @@
       "when": 1791381386823,
       "tag": "0013_kb_fts_index",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791389646566,
+      "tag": "0014_bots_private",
+      "breakpoints": true
     }
   ]
 }

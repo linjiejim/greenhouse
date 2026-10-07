@@ -9,10 +9,12 @@
  * - A Bot is THE agent identity (docs/specs/20261007-agent-bot-convergence.md):
  *   a user-owned row (name, role, instructions, avatar, model, optional tool
  *   filter) that Chat sessions, automations and the Bots engine all run as.
- *   Every create / edit appends an immutable `bot_versions` manifest; sharing
- *   with the team is a reviewed lifecycle (draft → review → pilot / verified),
- *   the governance the retired `custom_profiles` tables used to carry.
- *   `legacy_custom_id` keeps stored `custom:<id>[@v]` references resolvable.
+ *   Every create / edit appends an immutable `bot_versions` manifest (what a
+ *   pinned `bot:<id>@<v>` reference resolves to; the `self` proposal card and
+ *   the drawer's history read it). A Bot is private to its owner: there is no
+ *   sharing, review or clone (the retired `custom_profiles` governance went
+ *   with migration 0014). `legacy_custom_id` keeps stored `custom:<id>[@v]`
+ *   references resolvable.
  * - A conversation is a `sessions` row (channel `bots`) plus one
  *   `bot_conversations` row. A direct conversation belongs to exactly one owner
  *   Bot and never turns into a group; inviting another Bot adds a guest member.
@@ -48,19 +50,6 @@ const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'string
 
 // ─── bots ─────────────────────────────────────────────────
 
-export const BOT_LIFECYCLE_STATUSES = [
-  'draft',
-  'review',
-  'pilot',
-  'verified',
-  'rejected',
-  'suspended',
-  'deprecated',
-  'archived',
-] as const;
-
-export const BOT_RISK_LEVELS = ['low', 'medium', 'high'] as const;
-
 export const bots = pgTable(
   'bots',
   {
@@ -94,22 +83,9 @@ export const bots = pgTable(
     tools: text('tools'),
     /** Per-turn step cap for Chat sessions and automations; NULL = the base preset's default. */
     max_steps: integer('max_steps'),
-    // ── Versions and the reviewed sharing lifecycle (formerly custom_profiles) ──
-    /** Derived from the lifecycle: true only while pilot / verified. Never written directly. */
-    is_shared: boolean('is_shared').notNull().default(false),
-    lifecycle_status: text('lifecycle_status', { enum: BOT_LIFECYCLE_STATUSES }).notNull().default('draft'),
-    lifecycle_note: text('lifecycle_note'),
+    // ── Versions (formerly custom_profiles) ──
     /** Latest immutable manifest (bot_versions.version) — what the owner edits and runs. */
     current_version: integer('current_version').notNull().default(1),
-    /** Reviewed version other members run while the lifecycle is pilot / verified. */
-    published_version: integer('published_version'),
-    owner_backup_user_id: text('owner_backup_user_id').references(() => users.id, { onDelete: 'set null' }),
-    /** Loose reference (a user id or `system:agent-governance`) so lifecycle history survives account deletion. */
-    reviewed_by: text('reviewed_by'),
-    reviewed_at: ts('reviewed_at'),
-    next_review_at: ts('next_review_at'),
-    /** Lineage only: `sprouty`, `bot:<id>@<v>` or a retired `custom:<id>@<v>`. */
-    forked_from: text('forked_from'),
     /** The `custom_profiles.id` this Bot was migrated from; stored `custom:<id>[@v]` references resolve through it. */
     legacy_custom_id: integer('legacy_custom_id'),
     last_active_at: ts('last_active_at'),
@@ -121,8 +97,6 @@ export const bots = pgTable(
     uniqueIndex('uq_bots_user_name_active')
       .on(table.user_id, table.name_key)
       .where(sql`${table.status} = 'active'`),
-    index('idx_bots_shared').on(table.is_shared, table.lifecycle_status),
-    index('idx_bots_backup_owner').on(table.owner_backup_user_id),
     unique('uq_bots_legacy_custom_id').on(table.legacy_custom_id),
   ],
 );
@@ -155,15 +129,6 @@ export const botVersions = pgTable(
     max_steps: integer('max_steps'),
     /** Avatar JSON as on `bots`; hashed into `manifest_hash`, so stored values are never rewritten. */
     avatar: text('avatar').notNull().default('{}'),
-    /** Governance metadata is versioned with the executable manifest. */
-    purpose: text('purpose'),
-    audience: text('audience'),
-    risk_level: text('risk_level', { enum: BOT_RISK_LEVELS }).notNull().default('medium'),
-    budget_policy: text('budget_policy').notNull().default('{}'),
-    eval_refs: text('eval_refs').notNull().default('[]'),
-    /** Snapshot only: no FK, otherwise deleting a user would mutate this immutable row. */
-    owner_backup_user_id: text('owner_backup_user_id'),
-    review_due_at: ts('review_due_at'),
     created_by: text('created_by'),
     created_at: ts('created_at').notNull(),
   },
@@ -415,8 +380,6 @@ export const vaultAccessLog = pgTable(
 
 export type BotRow = typeof bots.$inferSelect;
 export type BotVersionRow = typeof botVersions.$inferSelect;
-export type BotLifecycleStatus = BotRow['lifecycle_status'];
-export type BotRiskLevel = BotVersionRow['risk_level'];
 export type BotConversationRow = typeof botConversations.$inferSelect;
 export type BotConversationMemberRow = typeof botConversationMembers.$inferSelect;
 export type BotSharedNoteRow = typeof botSharedNotes.$inferSelect;

@@ -14,6 +14,7 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: './provider-bindings.tsx', moduleId: 'settings.provider-bindings', layout: 'form' },
   { file: './email-accounts.tsx', moduleId: 'settings.email-accounts', layout: 'list' },
   { file: './memory.tsx', moduleId: 'settings.memory', layout: 'list' },
+  { file: './bots.tsx', moduleId: 'settings.bots', layout: 'list' },
   { file: './desktop.tsx', moduleId: 'settings.desktop', layout: 'form' },
   { file: './passwords.tsx', moduleId: 'settings.passwords', layout: 'list' },
   { file: '../administration/users.tsx', moduleId: 'admin.users', layout: 'list' },
@@ -28,7 +29,6 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: '../administration/branding-studio.tsx', moduleId: 'admin.branding', layout: 'canvas' },
   { file: '../tasks.tsx', moduleId: 'workspace.tasks', layout: 'list' },
   { file: '../automations.tsx', moduleId: 'workspace.automations', layout: 'list' },
-  { file: '../bots/directory.tsx', moduleId: 'workspace.bots-directory', layout: 'list' },
   { file: '../tables/index.tsx', moduleId: 'workspace.tables', layout: 'list' },
   { file: '../projects.tsx', moduleId: 'workspace.projects', layout: 'canvas' },
   { file: '../executions/task-center.tsx', moduleId: 'workspace.executions', layout: 'list' },
@@ -63,8 +63,6 @@ describe('ModulePage coverage', () => {
 
     expect(source).toMatch(/route === 'automations' && <AutomationsPage \/>/);
     expect(source).toMatch(/route === 'tasks' && <PersonalTasksPage \/>/);
-    // The Agents page folded into the Bots directory (spec 20261007); without the flag the route IS the directory.
-    expect(source).toMatch(/<BotsDirectory \/>/);
   });
 
   it('keeps Evaluation confirmations on the shared dialog primitive', () => {

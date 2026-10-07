@@ -20,20 +20,17 @@
  * POST   /api/bots/tasks/:runId/cancel                — 取消后台任务（Runtime 取消语义）
  * GET    /api/bots/requests                           — 「需要你」请求（?status=pending）
  * POST   /api/bots/requests/:id                       — 处理请求（审批 / 建 Bot / 开始任务 / 登录 / 交还），已处理 409 already_decided、处理中 409 deciding
- * GET    /api/bots/shared                             — 其他成员已发布（pilot / verified）的 Bot，只含发布版本的定义
- * PATCH  /api/bots/:id                                — 修改 Bot 资料（追加一个不可变版本；已共享的回到 draft）
+ * PATCH  /api/bots/:id                                — 修改 Bot 资料（追加一个不可变版本）
  * DELETE /api/bots/:id                                — 归档 Bot（Sprouty 不可归档：400 bot_protected）
- * GET    /api/bots/:id/versions                       — 不可变版本历史（他人只看到发布版本）
- * POST   /api/bots/:id/lifecycle                      — 生命周期：owner 提交评审 / 撤回 / 归档；super 试点 / 验证 / 驳回 / 暂停 / 退役
- * POST   /api/bots/:id/clone                          — 把一个已发布的 Bot（或自己的）克隆成自己的 Bot（快照，不跟随）
+ * GET    /api/bots/:id/versions                       — 不可变版本历史
  * GET    /api/bots/:id/memories                       — 该 Bot 的私有记忆
  * DELETE /api/bots/:id/memories/:memoryId             — 删除一条私有记忆
  *
- * 身份类路径（列表、新建、修改、版本、生命周期、克隆、记忆）只要 requireInternal()；
+ * 身份类路径（列表、新建、修改、版本、记忆、文件）只要 requireInternal()；
  * 永续对话、请求、后台任务、bootstrap（建私聊）、电脑与密码库还要 requireFeature('bots')
- * （src/index.ts）——`bots` 开关只管永续线程与电脑，不管身份（spec 20261007 D5）。全部按
- * 当前用户 owner 作用域：他人的行与不存在的行一律 404，super 也不能驱动别人的 Bot（共享 Bot
- * 的发布版本与 super 的治理队列除外）。静态路径先于 /:id 注册（Hono 按注册顺序匹配）。
+ * （src/index.ts）——`bots` 开关只管永续线程与电脑，不管身份（spec 20261007 D5）。Bot 是私有的：
+ * 全部按当前用户 owner 作用域，他人的行与不存在的行一律 404，没有共享、评审或克隆。
+ * 静态路径先于 /:id 注册（Hono 按注册顺序匹配）。
  * 契约：bots/AGENTS.md「HTTP 契约」。
  */
 
@@ -45,16 +42,13 @@ import {
   galleryTemplate,
   isSproutyBot,
   type BotConversationDetail,
-  type BotLifecycleStatus,
   type BotRequestStatus,
-  type BotRiskLevel,
   type BotTemplateKey,
 } from '@greenhouse/types/bots';
-import { isPublishedLifecycle, type BotGovernanceInput, type BotRow } from '@greenhouse/db';
+import type { BotVersionMeta } from '@greenhouse/db';
 import { resolveUserTools } from '../agent.js';
 import { userHasFeature } from '../auth/features.js';
-import { requireSuper } from '../auth/middleware.js';
-import { botProfileId, isExecutableBot } from '../profiles/profile.js';
+import { botProfileId } from '../profiles/profile.js';
 import { getAllToolIds } from '../tools/registry.js';
 import { ensureSproutyBot } from './sprouty.js';
 import { ensureBotFolder, renameBotFolder } from './folder.js';
@@ -187,49 +181,12 @@ function parseMaxSteps(raw: unknown): { ok: true; value: number | null | undefin
   return { ok: true, value: raw };
 }
 
-const RISK_LEVELS: readonly BotRiskLevel[] = ['low', 'medium', 'high'];
-
-/** Governance metadata (versioned with the manifest); every field optional. */
-function parseGovernance(
+/** Provenance of the version this request appends; `change_log` is optional free text. */
+function parseVersionMeta(
   body: Record<string, unknown>,
   actorId: string,
-): { ok: true; value: BotGovernanceInput } | { ok: false; error: string } {
-  const value: BotGovernanceInput = { created_by: actorId };
-  const text = (key: 'purpose' | 'audience' | 'owner_backup_user_id' | 'review_due_at', max: number) => {
-    const raw = body[key];
-    if (raw === undefined) return true;
-    if (raw === null || raw === '') {
-      value[key] = null;
-      return true;
-    }
-    if (typeof raw !== 'string' || raw.length > max) return false;
-    value[key] = raw.trim();
-    return true;
-  };
-  if (
-    !text('purpose', 500) ||
-    !text('audience', 500) ||
-    !text('owner_backup_user_id', 64) ||
-    !text('review_due_at', 64)
-  ) {
-    return { ok: false, error: 'Invalid governance field' };
-  }
-  if (body.risk_level !== undefined) {
-    if (!RISK_LEVELS.includes(body.risk_level as BotRiskLevel)) {
-      return { ok: false, error: 'risk_level must be low, medium, or high' };
-    }
-    value.risk_level = body.risk_level as BotRiskLevel;
-  }
-  if (body.budget_policy !== undefined) {
-    if (!body.budget_policy || typeof body.budget_policy !== 'object' || Array.isArray(body.budget_policy)) {
-      return { ok: false, error: 'budget_policy must be an object' };
-    }
-    value.budget_policy = body.budget_policy as Record<string, unknown>;
-  }
-  if (body.eval_refs !== undefined) {
-    if (!Array.isArray(body.eval_refs)) return { ok: false, error: 'eval_refs must be an array' };
-    value.eval_refs = body.eval_refs;
-  }
+): { ok: true; value: BotVersionMeta } | { ok: false; error: string } {
+  const value: BotVersionMeta = { created_by: actorId };
   if (body.change_log !== undefined) {
     if (typeof body.change_log !== 'string' || body.change_log.length > 500) {
       return { ok: false, error: 'change_log must be text' };
@@ -238,18 +195,6 @@ function parseGovernance(
   }
   return { ok: true, value };
 }
-
-const LIFECYCLE_STATUSES: readonly BotLifecycleStatus[] = [
-  'draft',
-  'review',
-  'pilot',
-  'verified',
-  'rejected',
-  'suspended',
-  'deprecated',
-  'archived',
-];
-const OWNER_LIFECYCLE_STATUSES: readonly BotLifecycleStatus[] = ['draft', 'review', 'archived'];
 
 /** Whether this member may keep Bots conversations (the `bots` flag gates threads, not identity). */
 async function conversationsEnabled(user: Pick<AuthUser, 'id' | 'role'>): Promise<boolean> {
@@ -392,38 +337,6 @@ export function createBotsRoutes() {
         return c.json({ bot: toBotView(bot, dm.session_id), dm_session_id: dm.session_id, created: !existed });
       })
 
-      // ── GET /api/bots/shared — Bots other members published (their reviewed version) ──
-      .get('/shared', async (c) => {
-        const user = getAuthUser(c);
-        const db = getDb();
-        const shared = await db.bots.listShared(user.id);
-        const views: Array<ReturnType<typeof toBotView>> = [];
-        for (const bot of shared) {
-          const version = bot.published_version ? await db.bots.getVersion(bot.id, bot.published_version) : undefined;
-          if (!version) continue;
-          // Show the published manifest, never the owner's newer draft.
-          views.push(
-            toBotView(
-              {
-                ...bot,
-                name: version.name,
-                role: version.role,
-                description: version.description,
-                instructions: version.instructions,
-                avatar: version.avatar,
-                model_id: version.model_id,
-                tools: version.tools,
-                max_steps: version.max_steps,
-              },
-              null,
-            ),
-          );
-        }
-        const owners = await Promise.all([...new Set(views.map((v) => v.user_id))].map((id) => db.users.getById(id)));
-        const nickname = new Map(owners.filter(Boolean).map((u) => [u!.id, u!.nickname]));
-        return c.json({ bots: views.map((v) => ({ ...v, owner_nickname: nickname.get(v.user_id) ?? '' })) });
-      })
-
       // ── POST /api/bots — new Bot (template copy or custom) ──
       .post('/', async (c) => {
         const user = getAuthUser(c);
@@ -463,8 +376,8 @@ export function createBotsRoutes() {
         if (!tools.ok) return c.json({ error: tools.error, code: 'bot_name_invalid' as const }, tools.status);
         const maxSteps = parseMaxSteps(body.max_steps);
         if (!maxSteps.ok) return c.json({ error: maxSteps.error, code: 'bot_name_invalid' as const }, 400);
-        const governance = parseGovernance(body, user.id);
-        if (!governance.ok) return c.json({ error: governance.error, code: 'bot_name_invalid' as const }, 400);
+        const meta = parseVersionMeta(body, user.id);
+        if (!meta.ok) return c.json({ error: meta.error, code: 'bot_name_invalid' as const }, 400);
 
         try {
           const bot = await db.bots.createBot({
@@ -478,7 +391,7 @@ export function createBotsRoutes() {
             tools: tools.value ?? null,
             max_steps: maxSteps.value ?? null,
             template_key: template?.key ?? null,
-            ...governance.value,
+            ...meta.value,
           });
           // The DM only exists where Bots threads do (the `bots` flag); the
           // identity is usable from Chat either way.
@@ -863,8 +776,8 @@ export function createBotsRoutes() {
         const botId = c.req.param('id');
         const body = await readJson(c);
         const owner = await ownerContext(db, user.id);
-        const governance = parseGovernance(body, user.id);
-        if (!governance.ok) return c.json({ error: governance.error, code: 'bot_name_invalid' as const }, 400);
+        const meta = parseVersionMeta(body, user.id);
+        if (!meta.ok) return c.json({ error: meta.error, code: 'bot_name_invalid' as const }, 400);
         const updates: {
           name?: string;
           role?: string;
@@ -874,7 +787,7 @@ export function createBotsRoutes() {
           model_id?: string | null;
           tools?: string[] | null;
           max_steps?: number | null;
-        } & BotGovernanceInput = { ...governance.value };
+        } & BotVersionMeta = { ...meta.value };
         if (body.description !== undefined) {
           const description = parseDescription(body.description);
           if (!description.ok) return c.json({ error: description.error, code: 'bot_name_invalid' as const }, 400);
@@ -958,130 +871,22 @@ export function createBotsRoutes() {
         return c.json({ ok: true as const });
       })
 
-      // ── GET /api/bots/:id/versions — immutable manifest history ──
+      // ── GET /api/bots/:id/versions — immutable manifest history (owner; super for support) ──
       .get('/:id/versions', async (c) => {
         const user = getAuthUser(c);
         const db = getDb();
         const botId = c.req.param('id');
-        const own = await db.bots.getBot(user.id, botId);
-        const bot = own ?? (user.role === 'super' ? await db.bots.getBotById(botId) : undefined);
-        const foreign = !own ? await db.bots.getBotById(botId) : undefined;
-        const target = bot ?? foreign;
+        const target =
+          (await db.bots.getBot(user.id, botId)) ??
+          (user.role === 'super' ? await db.bots.getBotById(botId) : undefined);
         if (!target) return c.json({ error: 'Bot not found' }, 404);
-        const owns = Boolean(own) || user.role === 'super';
-        // Others only ever see the published manifest of a shared Bot.
-        if (!owns && !(target.is_shared && isPublishedLifecycle(target.lifecycle_status) && target.published_version)) {
-          return c.json({ error: 'Bot not found' }, 404);
-        }
         const versions = await db.bots.listVersions(target.id);
-        const visible = owns ? versions : versions.filter((v) => v.version === target.published_version);
         return c.json({
           bot_id: target.id,
           profile_id: botProfileId(target.id),
           current_version: target.current_version,
-          published_version: target.published_version,
-          versions: visible.map(toBotVersionView),
+          versions: versions.map(toBotVersionView),
         });
-      })
-
-      // ── POST /api/bots/:id/lifecycle — governed transition ──
-      .post('/:id/lifecycle', async (c) => {
-        const user = getAuthUser(c);
-        const db = getDb();
-        const botId = c.req.param('id');
-        const bot = user.role === 'super' ? await db.bots.getBotById(botId) : await db.bots.getBot(user.id, botId);
-        if (!bot) return c.json({ error: 'Bot not found' }, 404);
-        if (isSproutyBot(bot)) {
-          return c.json(
-            { error: 'Your main Bot is personal and cannot be shared', code: 'bot_protected' as const },
-            400,
-          );
-        }
-        const body = await readJson(c);
-        const status = body.status as BotLifecycleStatus;
-        if (!LIFECYCLE_STATUSES.includes(status)) return c.json({ error: 'Invalid lifecycle status' }, 400);
-        if (user.role !== 'super' && !OWNER_LIFECYCLE_STATUSES.includes(status)) {
-          return c.json({ error: 'Only super can pilot, verify, reject, suspend, or deprecate Bots' }, 403);
-        }
-        try {
-          const updated = await db.bots.transitionLifecycle(bot.id, {
-            status,
-            actor_user_id: user.id,
-            note: typeof body.note === 'string' ? body.note.trim().slice(0, 500) || null : null,
-            publish_version: Number.isInteger(body.publish_version) ? (body.publish_version as number) : null,
-            next_review_at: typeof body.next_review_at === 'string' ? body.next_review_at : null,
-          });
-          if (!updated) return c.json({ error: 'Bot not found' }, 404);
-          logger.info(
-            `[bots] lifecycle ${bot.lifecycle_status} -> ${updated.lifecycle_status}: ${bot.id} by ${user.id}`,
-          );
-          const dms = await dmIndex(db, updated.user_id);
-          return c.json({ bot: toBotView(updated, dms.get(updated.id) ?? null) });
-        } catch (error) {
-          return c.json({ error: toErrorMessage(error), code: 'lifecycle' as const }, 409);
-        }
-      })
-
-      // ── POST /api/bots/:id/clone — my own copy of a published (or my own) Bot; a snapshot, not a reference ──
-      .post('/:id/clone', async (c) => {
-        const user = getAuthUser(c);
-        const db = getDb();
-        const botId = c.req.param('id');
-        const owner = await ownerContext(db, user.id);
-        const source = await db.bots.getBotById(botId);
-        if (!source) return c.json({ error: 'Bot not found' }, 404);
-        const owns = source.user_id === user.id || user.role === 'super';
-        let manifest: Pick<
-          BotRow,
-          'name' | 'role' | 'description' | 'instructions' | 'avatar' | 'model_id' | 'tools' | 'max_steps'
-        > = source;
-        let sourceRef = botProfileId(source.id, source.current_version);
-        if (!owns) {
-          if (!(source.is_shared && isPublishedLifecycle(source.lifecycle_status) && source.published_version)) {
-            return c.json({ error: 'Bot not found' }, 404);
-          }
-          const published = await db.bots.getVersion(source.id, source.published_version);
-          if (!published) return c.json({ error: 'Bot not found' }, 404);
-          manifest = published;
-          sourceRef = botProfileId(source.id, source.published_version);
-        } else if (!isExecutableBot(source) && source.status !== 'archived') {
-          return c.json({ error: 'This Bot cannot be cloned' }, 409);
-        }
-        const body = await readJson(c);
-        const active = await db.bots.listBots(user.id);
-        const taken = new Set([...active.map((bot) => bot.name_key), botNameKey(owner.nickname)].filter(Boolean));
-        const rawName =
-          typeof body.name === 'string' && body.name.trim() ? body.name : nextFreeName(manifest.name, taken);
-        const name = validateBotName(rawName, owner.nickname);
-        if (!name.ok) return c.json({ error: name.error, code: name.code as BotFieldErrorCode }, 400);
-        // A clone may only hold tools its new owner has (the filter is intersected again at run time).
-        const tools = await parseTools(manifest.tools == null ? null : safeJsonParse(manifest.tools, []), user);
-        const narrowed = tools.ok ? tools.value : null;
-        try {
-          const bot = await db.bots.createBot({
-            user_id: user.id,
-            name: name.name,
-            role: manifest.role,
-            description: manifest.description,
-            instructions: manifest.instructions,
-            avatar: manifest.avatar,
-            model_id: manifest.model_id,
-            tools: narrowed ?? null,
-            max_steps: manifest.max_steps,
-            forked_from: sourceRef,
-            change_log: `Cloned from ${sourceRef}`,
-            created_by: user.id,
-          });
-          if (!(await conversationsEnabled(user))) return c.json({ bot: toBotView(bot, null), dm_session_id: null });
-          const dm = await db.bots.ensureDirectConversation(user.id, bot.id);
-          await writeGreeting(db, dm.session_id, bot);
-          return c.json({ bot: toBotView(bot, dm.session_id), dm_session_id: dm.session_id });
-        } catch (error) {
-          if (error instanceof BotsDomainError && (error.code === 'bot_name_taken' || error.code === 'bot_limit')) {
-            return c.json({ error: error.message, code: error.code as BotFieldErrorCode }, 400);
-          }
-          throw error;
-        }
       })
 
       // ── GET /api/bots/:id/files — the Bot's private reference folder and its documents ──
@@ -1159,20 +964,4 @@ export function createBotsRoutes() {
         return c.json({ ok: true as const });
       })
   );
-}
-
-/**
- * Super's governance queue — /api/admin/bots (mounted behind requireSuper()).
- * Every Bot that entered the review lifecycle; personal drafts are not listed.
- */
-export function createBotsAdminRoutes() {
-  return new Hono<AppEnv>().use('*', requireSuper()).get('/review', async (c) => {
-    const db = getDb();
-    const rows = await db.bots.listGovernanceQueue();
-    const owners = await Promise.all([...new Set(rows.map((bot) => bot.user_id))].map((id) => db.users.getById(id)));
-    const nickname = new Map(owners.filter(Boolean).map((u) => [u!.id, u!.nickname]));
-    return c.json({
-      bots: rows.map((bot) => ({ ...toBotView(bot, null), owner_nickname: nickname.get(bot.user_id) ?? '' })),
-    });
-  });
 }

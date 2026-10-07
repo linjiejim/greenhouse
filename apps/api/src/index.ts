@@ -61,7 +61,7 @@ import {
   shutdownBotComputers,
 } from './bots/computer/index.js';
 import { createComputerTerminalRoutes } from './bots/computer/terminal.js';
-import { createBotsRoutes, initBotsEngine, shutdownBotsEngine, createBotsAdminRoutes } from './bots/engine/index.js';
+import { createBotsRoutes, initBotsEngine, shutdownBotsEngine } from './bots/engine/index.js';
 import { startBotsOrphanSweep, stopBotsOrphanSweep } from './bots/purge.js';
 import clientActionRoutes from './routes/client-actions.js';
 import { CLIENT_ACTIONS_API_PREFIX } from '@greenhouse/types/api';
@@ -135,7 +135,6 @@ import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './ru
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
 import { startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
 import { createRuntimeDomainProjector } from './runtime/domain-projector.js';
-import { startAgentGovernanceWorker } from './agent-governance/worker.js';
 import {
   requireTrustedExecutionSurface,
   resolveTrustedExecutionSwitches,
@@ -305,7 +304,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin/feature-requests', featureRequestRoutes)
       .route('/api/admin/frictions', frictionRoutes)
       .route('/api/admin/bot-computers', createAdminBotComputerRoutes())
-      .route('/api/admin/bots', createBotsAdminRoutes())
       // Project management — all internal users
       .use('/api/platform/*', requireInternal())
       .route('/api/platform', platformRoutes)
@@ -517,9 +515,6 @@ async function main() {
   if (trustedExecutionPlan.evalDriver) await reconcileEvalRuntimeRuns(dbProvider);
   let runtimeWorker: Awaited<ReturnType<typeof startRuntimeWorker>> | null = null;
   let notificationDeliveryWorker: Awaited<ReturnType<typeof startNotificationDeliveryWorker>> | null = null;
-  const agentGovernanceWorker = trustedExecutionPlan.agentGovernance
-    ? await startAgentGovernanceWorker({ db: dbProvider })
-    : null;
 
   // Mount everything (single typed chain — see mountRoutes/AppType above)
   mountRoutes(toolRegistry);
@@ -549,7 +544,6 @@ async function main() {
     runtimeReconciler?.stop();
     runtimeWorker?.stop();
     notificationDeliveryWorker?.stop();
-    agentGovernanceWorker?.stop();
     stopFeishuBot();
     await runExtensionShutdownHooks();
     await chatRunRegistry.shutdown(5000);

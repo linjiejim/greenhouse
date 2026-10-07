@@ -22,7 +22,6 @@ export const TRUSTED_EXECUTION_SWITCH_ENV = {
   notificationProjector: 'RUNTIME_NOTIFICATION_PROJECTOR_ENABLED',
   taskCenter: 'TASK_CENTER_ENABLED',
   approvalInbox: 'RUNTIME_APPROVAL_INBOX_ENABLED',
-  agentGovernance: 'AGENT_GOVERNANCE_ENABLED',
 } as const;
 
 export interface TrustedExecutionSwitches {
@@ -36,7 +35,6 @@ export interface TrustedExecutionSwitches {
   notificationProjector: boolean;
   taskCenter: boolean;
   approvalInbox: boolean;
-  agentGovernance: boolean;
   /** Environment variable names whose non-empty values were not recognised. */
   invalidEnv: string[];
 }
@@ -51,7 +49,6 @@ export interface TrustedExecutionBootPlan {
   notificationProjector: boolean;
   taskCenter: boolean;
   approvalInbox: boolean;
-  agentGovernance: boolean;
 }
 
 type Environment = Record<string, string | undefined>;
@@ -81,7 +78,6 @@ export function resolveTrustedExecutionSwitches(env: Environment = process.env):
     notificationProjector: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.notificationProjector, invalidEnv),
     taskCenter: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.taskCenter, invalidEnv),
     approvalInbox: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.approvalInbox, invalidEnv),
-    agentGovernance: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.agentGovernance, invalidEnv),
     invalidEnv,
   };
 }
@@ -98,7 +94,6 @@ export function trustedExecutionBootPlan(switches: TrustedExecutionSwitches): Tr
     notificationProjector: switches.runtimeWorker && switches.notificationProjector,
     taskCenter: switches.taskCenter,
     approvalInbox: switches.taskCenter && switches.approvalInbox,
-    agentGovernance: switches.agentGovernance,
   };
 }
 
@@ -163,7 +158,6 @@ export function trustedExecutionHealthView(switches: TrustedExecutionSwitches) {
       subagent_driver: effective.subagentDriver,
       notification_projector: effective.notificationProjector,
       notification_delivery: effective.notificationProjector,
-      agent_governance: effective.agentGovernance,
     },
     surfaces: {
       task_center: effective.taskCenter,

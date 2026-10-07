@@ -14,8 +14,7 @@ interface BotListRow {
   user_id: string;
   name: string;
   role: string;
-  lifecycle_status: string;
-  is_shared: boolean;
+  current_version: number;
   status: string;
   updated_at: string;
 }
@@ -28,7 +27,7 @@ export async function run(args: string[]): Promise<number> {
   const db = await openDb();
   const custom = (await db
     .executeRaw(
-      sql`SELECT id, user_id, name, role, lifecycle_status, is_shared, status, updated_at
+      sql`SELECT id, user_id, name, role, current_version, status, updated_at
           FROM bots ORDER BY created_at`,
     )
     .catch(() => [])) as BotListRow[];
@@ -76,13 +75,12 @@ export async function run(args: string[]): Promise<number> {
   } else {
     console.log(
       table(
-        ['ID', 'Name', 'Role', 'Lifecycle', 'Visibility', 'Status', 'Owner'],
+        ['ID', 'Name', 'Role', 'Version', 'Status', 'Owner'],
         custom.map((r) => [
           r.id,
           truncate(r.name, 24),
           truncate(r.role, 20),
-          r.lifecycle_status,
-          r.is_shared ? 'shared' : dim('private'),
+          `v${r.current_version}`,
           r.status,
           String(r.user_id).slice(0, 8),
         ]),

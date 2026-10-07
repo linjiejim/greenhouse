@@ -28,10 +28,7 @@ function row(overrides: Record<string, unknown> = {}) {
     id: BOT,
     user_id: 'owner',
     status: 'active',
-    is_shared: false,
-    lifecycle_status: 'draft',
     current_version: 3,
-    published_version: null,
     ...overrides,
   };
 }
@@ -52,15 +49,13 @@ describe('Bot profile access policy', () => {
     expect(mocks.getBotById).not.toHaveBeenCalled();
   });
 
-  it('allows the owner, a shared reader, and super', async () => {
+  it('allows the owner and super, and nobody else — Bots are private', async () => {
     await expect(assertBotProfileAccess(owner, `bot:${BOT}`)).resolves.toMatchObject({ id: BOT });
-
-    mocks.getBotById.mockResolvedValueOnce(
-      row({ is_shared: true, lifecycle_status: 'verified', published_version: 2 }),
-    );
-    await expect(assertBotProfileAccess(other, `bot:${BOT}`)).resolves.toMatchObject({ id: BOT });
-
     await expect(assertBotProfileAccess(superUser, `bot:${BOT}`)).resolves.toMatchObject({ id: BOT });
+    await expect(assertBotProfileAccess(other, `bot:${BOT}`)).rejects.toMatchObject({
+      name: 'ProfileAccessError',
+      status: 403,
+    } satisfies Partial<ProfileAccessError>);
   });
 
   it('resolves a retired custom:<id> reference through legacy_custom_id', async () => {
@@ -68,33 +63,27 @@ describe('Bot profile access policy', () => {
     await expect(assertBotProfileAccess(owner, 'custom:8')).rejects.toMatchObject({ status: 404 });
   });
 
-  it('fails closed for private, missing, and malformed Bot profile IDs', async () => {
-    await expect(assertBotProfileAccess(other, `bot:${BOT}`)).rejects.toMatchObject({
-      name: 'ProfileAccessError',
-      status: 403,
-    } satisfies Partial<ProfileAccessError>);
-
+  it('fails closed for missing and malformed Bot profile IDs', async () => {
     await expect(assertBotProfileAccess(owner, 'bot:bot_ffffffffffffffff')).rejects.toMatchObject({ status: 404 });
     await expect(assertBotProfileAccess(owner, 'bot:not-an-id')).rejects.toMatchObject({ status: 400 });
     await expect(assertBotProfileAccess(owner, 'custom:not-a-number')).rejects.toMatchObject({ status: 400 });
   });
 
-  it('pins owners to current and shared readers to the reviewed published version', async () => {
+  it('pins the owner to the current version, follows the live definition only on request', async () => {
     await expect(pinProfileIdForUser(owner, `bot:${BOT}`)).resolves.toBe(`bot:${BOT}@3`);
     // The owner's own Chat sessions may follow the latest definition instead.
     await expect(pinProfileIdForUser(owner, `bot:${BOT}`, undefined, { mode: 'live' })).resolves.toBe(`bot:${BOT}`);
     await expect(pinProfileIdForUser(owner, `bot:${BOT}@2`, undefined, { mode: 'live' })).resolves.toBe(`bot:${BOT}@2`);
     // A stored legacy reference is re-spelled on the way through.
     await expect(pinProfileIdForUser(owner, 'custom:7@2')).resolves.toBe(`bot:${BOT}@2`);
-
-    mocks.getBotById.mockResolvedValue(row({ is_shared: true, lifecycle_status: 'pilot', published_version: 2 }));
-    await expect(pinProfileIdForUser(other, `bot:${BOT}`)).resolves.toBe(`bot:${BOT}@2`);
-    await expect(pinProfileIdForUser(other, `bot:${BOT}`, undefined, { mode: 'live' })).resolves.toBe(`bot:${BOT}@2`);
+    // Super may run it for support; another member never can, pinned or not.
+    await expect(pinProfileIdForUser(superUser, `bot:${BOT}`)).resolves.toBe(`bot:${BOT}@3`);
+    await expect(pinProfileIdForUser(other, `bot:${BOT}`)).rejects.toMatchObject({ status: 403 });
     await expect(pinProfileIdForUser(other, `bot:${BOT}@3`)).rejects.toMatchObject({ status: 403 });
   });
 
-  it('fails closed for suspended Bots instead of selecting another one', async () => {
-    mocks.getBotById.mockResolvedValue(row({ lifecycle_status: 'suspended', published_version: 2 }));
+  it('fails closed for archived Bots instead of selecting another one', async () => {
+    mocks.getBotById.mockResolvedValue(row({ status: 'archived' }));
     await expect(pinProfileIdForUser(owner, `bot:${BOT}@2`)).rejects.toMatchObject({ status: 403 });
   });
 });

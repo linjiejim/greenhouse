@@ -289,7 +289,7 @@ function ProfilePickerPopover({
           <button
             onClick={() => {
               onClose();
-              window.location.hash = '#/bots/directory';
+              window.location.hash = '#/settings/bots';
             }}
             className="ml-auto rounded-md px-1.5 py-0.5 text-[11px] text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
           >
@@ -425,7 +425,7 @@ function ProfilePickerDrawer({
           <button
             onClick={() => {
               onClose();
-              window.location.hash = '#/bots/directory';
+              window.location.hash = '#/settings/bots';
             }}
             className="rounded-md px-2 py-1 text-xs text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
           >

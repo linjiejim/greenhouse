@@ -39,13 +39,7 @@ function bot(id: string, name: string, extra: Partial<BotView> = {}): BotView {
     description: '',
     tools: null,
     max_steps: null,
-    lifecycle_status: 'draft',
-    lifecycle_note: null,
-    is_shared: false,
     current_version: 1,
-    published_version: null,
-    next_review_at: null,
-    forked_from: null,
     user_id: 'u1',
     updated_at: '2026-10-05T00:00:00.000Z',
     dm_session_id: `dm-${id}`,
@@ -192,12 +186,12 @@ describe('<BotsSidebarPanel/> list', () => {
     expect(host.querySelector('[data-testid="bots-sidebar-empty"]')!.textContent).toBe('No conversations match');
   });
 
-  it('opens "new Bot" and "new group" from the toolbar', () => {
+  it('opens the create dialog (Bot or group tabs) from the toolbar — the only toolbar action', () => {
     mount('#/bots');
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="New Bot"]')!.click());
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="New"]')!.click());
     expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-bot' });
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="New group"]')!.click());
-    expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-group' });
+    expect(host.querySelector('button[aria-label="New group"]')).toBeNull();
+    expect(host.querySelector('button[aria-label="Bots directory"]')).toBeNull();
   });
 
   it('makes sure a member whose Bots predate Sprouty gets it', async () => {

@@ -275,7 +275,6 @@ export function TopBar({
     chat: chatUtilityTitle || sessionTitle || t('chat.newConversation'),
     bots: t('bots.title'),
     automations: t('navigation.automation'),
-    agents: t('navigation.myAgents'),
     projects: t('app.projects'),
     settings: t('app.settings'),
     administration: t('app.administration'),

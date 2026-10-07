@@ -174,7 +174,7 @@ async function validateAgents(db: DatabaseProvider, userId: string, graph: Workf
       if (!agent) continue;
       if (isBotProfileId(agent)) {
         const row = await loadBotReference(db, agent).catch(() => null);
-        if (!row || !isExecutableBot(row.bot) || (row.bot.user_id !== userId && !row.bot.is_shared)) {
+        if (!row || !isExecutableBot(row.bot) || row.bot.user_id !== userId) {
           errors.push(`node ${node.id}: Bot ${agent} not found or not accessible`);
         }
         continue;

@@ -1,15 +1,14 @@
 /**
  * Bot profile — a read-only drawer (who it is, how it works, what it alone
- * remembers, its versions and sharing state) with the edit form in a centered
- * Dialog, per the Drawer/Dialog convention. Private memories are listed in
- * full and each can be forgotten: nothing a Bot keeps about the member is out
- * of the member's sight. Every save appends an immutable version; "Share with
- * the team" submits the current one for review (spec 20261007 §2.1).
+ * remembers, its files and versions) with the edit form in a centered Dialog,
+ * per the Drawer/Dialog convention. Private memories are listed in full and
+ * each can be forgotten: nothing a Bot keeps about the member is out of the
+ * member's sight. Every save appends an immutable version (spec 20261007 §2.1).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { isSproutyBot, type BotLifecycleStatus, type BotVersionView, type BotView } from '@greenhouse/types/bots';
-import { Button, ConfirmDialog, Dialog, Drawer, IconButton, Spinner, Tag, toast, type TagTone } from '../ui';
+import { isSproutyBot, type BotVersionView, type BotView } from '@greenhouse/types/bots';
+import { Button, ConfirmDialog, Dialog, Drawer, IconButton, Spinner, toast } from '../ui';
 import { FormActions } from '../form';
 import { Archive, FolderOpen, MessageCircle, MessageSquare, Pencil, Trash2, X } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
@@ -22,22 +21,7 @@ import { BotAvatar } from './bot-avatar';
 import { BotFields, useBotNameMessage, type BotDraft } from './bot-form';
 import { botNameIssueFromCode, validateBotName } from './bot-name';
 import { PanelSection } from './bots-side-panel';
-
-const LIFECYCLE_TONE: Record<BotLifecycleStatus, TagTone> = {
-  draft: 'neutral',
-  review: 'warning',
-  pilot: 'info',
-  verified: 'success',
-  rejected: 'danger',
-  suspended: 'danger',
-  deprecated: 'warning',
-  archived: 'neutral',
-};
-
-/** A fresh Chat session with this Bot (by-session mode). */
-function openChatWith(botId: string): void {
-  window.location.hash = `#/chat?profile=${encodeURIComponent(`bot:${botId}`)}`;
-}
+import { openChatWith } from './navigation';
 
 export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => void }) {
   const t = useT();
@@ -46,7 +30,6 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
   const profileEdit = useBotsStore((state) => state.profileEdit);
   const bot = useBotsStore((state) => state.bots.find((candidate) => candidate.id === state.profileBotId));
   const markArchived = useBotsStore((state) => state.markArchived);
-  const upsertBot = useBotsStore((state) => state.upsertBot);
   const loadConversations = useBotsStore((state) => state.loadConversations);
   const models = useProfileStore((state) => state.models);
   const fetchProfiles = useProfileStore((state) => state.fetchProfiles);
@@ -59,7 +42,6 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
   );
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
-  const [lifecycleTarget, setLifecycleTarget] = useState<BotLifecycleStatus | null>(null);
 
   useEffect(() => {
     if (botId && profileEdit) setEditing(true);
@@ -153,29 +135,7 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
     }
   };
 
-  const transition = async () => {
-    if (!bot || !lifecycleTarget) return;
-    const status = lifecycleTarget;
-    setLifecycleTarget(null);
-    try {
-      const { bot: updated } = await botsApi.transitionBotLifecycle(bot.id, { status });
-      upsertBot(updated);
-      void refreshProfiles();
-      toast(t('bots.directory.lifecycleUpdated'), 'success');
-    } catch (err) {
-      toast(err instanceof Error && err.message ? err.message : t('bots.directory.lifecycleFailed'), 'error');
-    }
-  };
-
   const modelName = bot?.model_id ? (models.find((model) => model.id === bot.model_id)?.id ?? bot.model_id) : null;
-  const shareAction: BotLifecycleStatus | null = !bot
-    ? null
-    : bot.lifecycle_status === 'draft' || bot.lifecycle_status === 'rejected'
-      ? 'review'
-      : bot.lifecycle_status === 'review'
-        ? 'draft'
-        : null;
-
   return (
     <>
       <Drawer open={!!bot} onClose={close} side="right" width={400} ariaLabel={t('bots.profile.title')}>
@@ -240,31 +200,6 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
                   </p>
                 )}
               </PanelSection>
-              {!isSproutyBot(bot) && (
-                <PanelSection title={t('bots.profile.sharing')} hint={t('bots.profile.sharingHint')}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Tag tone={LIFECYCLE_TONE[bot.lifecycle_status]}>
-                      {t(`bots.directory.lifecycleStatus.${bot.lifecycle_status}`)}
-                    </Tag>
-                    {bot.published_version !== null && (
-                      <span className="text-[11px] text-fg-faint">
-                        {t('bots.profile.publishedVersion', { version: bot.published_version })}
-                      </span>
-                    )}
-                    {shareAction && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setLifecycleTarget(shareAction)}
-                        data-testid="bots-profile-share"
-                      >
-                        {t(`bots.directory.lifecycleAction.${shareAction}`)}
-                      </Button>
-                    )}
-                  </div>
-                  {bot.lifecycle_note && <p className="mt-2 text-[11px] text-fg-muted">{bot.lifecycle_note}</p>}
-                </PanelSection>
-              )}
               <PanelSection title={t('bots.profile.files')} hint={t('bots.profile.filesHint', { name: bot.name })}>
                 {files === null ? (
                   <Spinner className="h-4 w-4 text-fg-faint" />
@@ -376,17 +311,6 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
         confirmLabel={t('bots.profile.archive')}
         confirmVariant="destructive"
       />
-      <ConfirmDialog
-        open={!!lifecycleTarget}
-        onClose={() => setLifecycleTarget(null)}
-        onConfirm={() => void transition()}
-        title={t('bots.directory.lifecycleConfirmTitle')}
-        description={t('bots.directory.lifecycleConfirmDescription', {
-          name: bot?.name ?? '',
-          status: lifecycleTarget ? t(`bots.directory.lifecycleStatus.${lifecycleTarget}`) : '',
-        })}
-        confirmLabel={lifecycleTarget ? t(`bots.directory.lifecycleAction.${lifecycleTarget}`) : t('common.confirm')}
-      />
     </>
   );
 }
@@ -469,7 +393,6 @@ function EditBotDialog({
         avatarTemplateKey={bot.template_key}
         avatarStableId={bot.id}
       />
-      {bot.is_shared && <p className="mt-3 text-[11px] text-warning">{t('bots.form.editUnshares')}</p>}
       <FormActions className="mt-4">
         <Button variant="ghost" onClick={onClose}>
           {t('common.cancel')}

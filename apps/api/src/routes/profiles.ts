@@ -2,14 +2,14 @@
  * Profile routes — /api/profiles
  *
  * GET  /api/profiles                  — the identities the caller may run: the member's own Sprouty (as
- *                                       `sprouty`), their other Bots and the Bots other members published
- *                                       (`bot:<id>`), plus the per-turn model list
+ *                                       `sprouty`) and their other Bots (`bot:<id>`), plus the per-turn
+ *                                       model list
  * GET  /api/profiles/:id              — 获取 Profile 详情（含 24h/7d 分时段用量，super）
  * POST /api/profiles/reload           — 清除缓存并重新加载所有 Profile 配置（super）
  * GET  /api/profiles/usage/summary    — 全局 LLM 用量汇总（按 profile/caller 维度，super）
  *
- * Bot management (create / edit / versions / lifecycle / sharing) lives under
- * /api/bots (bots/routes.ts) — a Bot is the one agent identity
+ * Bot management (create / edit / versions / archive) lives under /api/bots
+ * (bots/routes.ts) — a Bot is the one agent identity
  * (docs/specs/20261007-agent-bot-convergence.md).
  */
 
@@ -28,13 +28,12 @@ import {
 import { getModelEntry } from '@greenhouse/agent-core';
 import { listChatModels } from '../config/models.js';
 import { getDb } from '@greenhouse/db';
-import type { BotRow, BotVersionRow, DatabaseProvider } from '@greenhouse/db';
+import type { BotRow, DatabaseProvider } from '@greenhouse/db';
 import { isSproutyBot } from '@greenhouse/types/bots';
 import { getAuthUser, requireSuper } from '../auth/middleware.js';
 import { assertBotProfileAccess, ProfileAccessError } from '../profiles/access.js';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import type { AppEnv } from '../app-env.js';
-import { withOwnerNicknames } from '../user-display.js';
 import { normalizeProfileAvatar } from '../profiles/avatar.js';
 import { ensureSproutyBot } from '../bots/sprouty.js';
 
@@ -74,12 +73,9 @@ function displayModel(modelId: string | null, base: AgentProfile): { provider: s
     : { provider: base.model.provider, model: base.model.model };
 }
 
-/**
- * A Bot as a picker entry. The manifest shown is the version the caller may
- * run: owners see the current definition, others the published version.
- */
-function formatBotProfile(bot: BotRow, base: AgentProfile, version?: BotVersionRow) {
-  const manifest = version ?? bot;
+/** A Bot as a picker entry: the owner's current definition. */
+function formatBotProfile(bot: BotRow, base: AgentProfile) {
+  const manifest = bot;
   const tools = manifest.tools == null ? null : (safeJsonParse(manifest.tools, []) as string[]);
   return {
     id: botProfileId(bot.id),
@@ -93,17 +89,11 @@ function formatBotProfile(bot: BotRow, base: AgentProfile, version?: BotVersionR
     system_prompt: manifest.instructions,
     max_steps: manifest.max_steps ?? base.max_steps,
     is_custom: true,
-    is_shared: bot.is_shared,
     user_id: bot.user_id,
-    forked_from: bot.forked_from,
     template_key: bot.template_key,
     created_at: bot.created_at,
     updated_at: bot.updated_at,
-    lifecycle_status: bot.lifecycle_status,
-    lifecycle_note: bot.lifecycle_note,
     current_version: bot.current_version,
-    published_version: bot.published_version,
-    next_review_at: bot.next_review_at,
     avatar: normalizeProfileAvatar(safeJsonParse(manifest.avatar, {})),
     model_id: manifest.model_id ?? base.model.id ?? 'flash',
     model: displayModel(manifest.model_id, base),
@@ -221,25 +211,15 @@ const profiles = new Hono<AppEnv>()
       usage: usageView(usageMap.get(p.id)),
     }));
 
-    // The member's other Bots (their current definition) and the Bots other
-    // members published (their reviewed version only). Super's governance queue
-    // is intentionally confined to /api/admin/bots: this list feeds the picker.
+    // The member's other Bots, in their current definition. Bots are private:
+    // nobody else's Bots appear here.
     const mine = (await db.bots.listBots(authUser.id)).filter((bot) => !isSproutyBot(bot));
-    const shared = await db.bots.listShared(authUser.id);
-    const botProfiles: Array<ReturnType<typeof formatBotProfile> & { usage: ProfileUsageView | null }> = [];
-    if (base) {
-      for (const bot of mine) {
-        botProfiles.push({ ...formatBotProfile(bot, base), usage: usageView(usageMap.get(botProfileId(bot.id))) });
-      }
-      for (const bot of shared) {
-        const version = bot.published_version ? await db.bots.getVersion(bot.id, bot.published_version) : undefined;
-        if (!version) continue;
-        botProfiles.push({ ...formatBotProfile(bot, base, version), usage: null });
-      }
-    }
+    const botProfiles = base
+      ? mine.map((bot) => ({ ...formatBotProfile(bot, base), usage: usageView(usageMap.get(botProfileId(bot.id))) }))
+      : [];
 
     return c.json({
-      profiles: [...systemProfiles, ...(await withOwnerNicknames(db, botProfiles, authUser.id))],
+      profiles: [...systemProfiles, ...botProfiles],
       // The models a user may switch between per turn. Filtered to those with a
       // reachable provider, so a deployment without DEEPSEEK_API_KEY simply never
       // offers `deepseek-flash`.

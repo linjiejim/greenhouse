@@ -28,15 +28,14 @@
   Bot，由 `enrichSystemPrompt(profile, { nickname })` 放在最前（`identity-prompt.ts`，与 Bots 引擎 S2/S3 同一份）。
   `resolveProfileAsync('sprouty', db, { forUserId })` 返回该成员自己的 Sprouty Bot（id 仍是 `sprouty`，用量归属不按
   成员拆分）；没有成员上下文时才是裸预设（`buildFallbackIdentitySection` 补一行「你是 Sprouty」）。
-- **引用形态**：`bot:<id>`（主人的会话，跟随最新定义）、`bot:<id>@<version>`（他人与无人值守，必须固定）、
+- **引用形态**：`bot:<id>`（主人的会话，跟随最新定义）、`bot:<id>@<version>`（无人值守，必须固定）、
   `custom:<id>[@v]`（存量，经 `bots.legacy_custom_id` 映射，版本号一一对应）。`pinProfileIdForUser(user, id, db,
   { mode })` 默认 `pinned`，只有聊天 / 会话创建传 `live`；`assertPinnedProfileExecutionAccess` 对无人值守仍要求
   `@v`；`resolveProfileAsync()` 找不到 Bot / 版本必须明确报错，绝不回落 Sprouty。`profileFromBot()` 是 Bot →
   `AgentProfile` 的唯一构造（`narrow_tools` = 是否有工具过滤器；模型不可达回落基座模型）。
-- **编辑即撤销原审查**：任何新版本都会把 Bot 恢复为 `draft`，清空 published/reviewer/review-date 并停止共享。
-  旧 pinned 引用仍可重放，但不能再被其他用户发现或新选中。只有 super 可发布 `pilot` / `verified`；共享只来自
-  这两个状态。owner 可提交 review/撤回/归档，super 可审核、暂停与退役；版本行不得 update/delete。治理逻辑在
-  `packages/db` 的 `bots` service 与 `agent-governance/worker.ts`。
+- **Bot 是私有的**（2026-10-08）：只有主人（和 super，用于支持）能解析、pin 或运行一只 Bot，任何版本都一样；
+  没有分享 / 评审 / 发布 / 克隆，旧自定义 Agent 的治理（lifecycle、backup owner、review due、governance worker）
+  已删。每次编辑仍追加一个不可变版本（供 `@v` 固定引用、守则提议卡与抽屉「历史」），版本行不得 update/delete。
 - **模型是每轮的选择，不是 Agent 的身份**（2026-08-01 起，推翻旧的「一个 Agent = 一个模型」）：
   `POST /api/chat` 的 `model` 字段按 `isChatModelAllowed()` 对 `models.yaml` 的 `chat.selectable` 校验后作
   `modelOverride` 下发，落库进 `messages.model`；校验不过（模型已下线或 key 已撤）就回落 profile 的

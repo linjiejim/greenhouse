@@ -21,7 +21,6 @@ const AdministrationPage = lazy(() =>
 );
 const DesignPage = lazy(() => import('./pages/design').then((m) => ({ default: m.DesignPage })));
 const KnowledgePage = lazy(() => import('./pages/knowledge').then((m) => ({ default: m.KnowledgePage })));
-const BotsDirectory = lazy(() => import('./pages/bots/directory').then((m) => ({ default: m.BotsDirectory })));
 const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ default: m.AutomationsPanel })));
 const PersonalTasksPage = lazy(() => import('./pages/tasks').then((m) => ({ default: m.PromptsPage })));
 const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
@@ -251,7 +250,7 @@ function parseRoute(hash: string): ParsedRoute {
         : legacyView === 'prompts'
           ? '#/tasks'
           : legacyView === 'agents'
-            ? '#/bots/directory'
+            ? '#/settings/bots'
             : null;
     if (destination) {
       window.location.hash = destination;
@@ -259,10 +258,10 @@ function parseRoute(hash: string): ParsedRoute {
     }
   }
 
-  // Custom Agents folded into Bots (spec 20261007): the Agents page is the Bots directory now.
+  // Custom Agents folded into Bots (spec 20261007): a member manages their Bots under Settings.
   if (topLevel === 'agents') {
-    window.location.hash = '#/bots/directory';
-    return { route: 'bots', subPath: 'directory', params: new URLSearchParams() };
+    window.location.hash = '#/settings/bots';
+    return { route: 'settings', subPath: 'bots', params: new URLSearchParams() };
   }
 
   // Redirect the retired prompt alias into its canonical independent page.
@@ -657,9 +656,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
     applications: orderedApplications,
     chatLabel: t('app.chat'),
     skillhubLabel: t('app.skillhub'),
-    // Always listed: without the `bots` flag the entry opens the directory
-    // (identities), with it the threads.
-    bots: { label: t('bots.title'), badge: botsEnabled ? botsPending : 0 },
+    bots: botsEnabled ? { label: t('bots.title'), badge: botsPending } : null,
   });
   return (
     <>
@@ -832,13 +829,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     }}
                   />
                 )}
-                {route === 'bots' &&
-                  (botsEnabled ? (
-                    <BotsPage params={params} subPath={subPath} />
-                  ) : (
-                    // No persistent threads for this member: the Bots route IS the directory.
-                    <BotsDirectory />
-                  ))}
+                {route === 'bots' && botsEnabled && <BotsPage params={params} />}
                 {route === 'automations' && <AutomationsPage />}
                 {route === 'tasks' && <PersonalTasksPage />}
                 {route === 'skillhub' && <SkillHubPage subPath={subPath} />}

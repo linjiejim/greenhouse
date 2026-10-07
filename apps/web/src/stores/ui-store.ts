@@ -12,7 +12,7 @@ export const SIDEBAR_DEFAULT_WIDTH = 248;
 export const SIDEBAR_MIN_WIDTH = 200;
 export const SIDEBAR_MAX_WIDTH = 420;
 
-export type ChatWorkspaceView = 'conversation' | 'automations' | 'prompts' | 'agents';
+export type ChatWorkspaceView = 'conversation' | 'automations' | 'prompts';
 
 function clampSidebarWidth(width: number): number {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));

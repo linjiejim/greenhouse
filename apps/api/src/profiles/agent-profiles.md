@@ -5,8 +5,9 @@
 > **2026-10-07 起 Bot 是唯一的 Agent 身份**（[spec](../../../../docs/specs/20261007-agent-bot-convergence.md)）：
 > 「自定义 Agent」并入了 Bot（`bots` + `bot_versions`），预设 YAML 只剩**基座**职责——身份中性的静态规则、
 > `rich_output`、模型兜底。聊天页的 `sprouty` 按成员解析成他自己的 Sprouty Bot；`@` 列表里的其余身份是
-> `bot:<id>`。管理（新建 / 编辑 / 版本 / 分享 / 克隆）在 Bots 目录（`#/bots/directory`），契约见
-> [bots/AGENTS.md](../bots/AGENTS.md)。下文凡提到「自定义 Agent」的历史段落按「Bot」读。
+> `bot:<id>`。Bot 是私有的（2026-10-08：没有分享 / 评审 / 克隆）；管理（新建 / 编辑 / 版本 / 归档）在
+> 「设置 → 我的 Bot」（`#/settings/bots`），契约见 [bots/AGENTS.md](../bots/AGENTS.md)。下文凡提到「自定义 Agent」
+> 的历史段落按「Bot」读。
 
 > **四预设已于 2026-08-01 收敛为一个**（见 [附件与预设收敛 spec](../../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3）。quick / deep / K3 三份提示词逐字相同，区别只有模型；`sprouty-workflows` 与 `sprouty-mission` 是把「模式」伪装成「助手」——两个工具（`workflow_plan`、`mission_dispatch`）现在对所有内部会话装配，起草与执行都不再依赖开局选中某个预设。所有退役 id 由 `normalizeProfileId()` 归一到 `sprouty`，**不做数据迁移**。存量 mission 会话继续像 mission 一样工作，靠的是 `channel='mission'` 而不是 profile。
 
@@ -97,36 +98,25 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
 
 ### Bot 的管理体验（取代原「Custom Agent 的管理体验」）
 
-- 管理入口是 Bots 目录（`#/bots/directory`；`#/agents` 永久重定向到它）：我的 / 共享 / 团队（super 治理队列）三档 +
-  super 的用量面板。每行可「开新对话」（`#/chat?profile=bot:<id>`，by-session）、发消息（永续私聊，需 `bots` 开关）、编辑
-  （抽屉 → 编辑对话框）、提交评审 / 撤回；共享 Bot 可「加到我的 Bots」（克隆快照）。
+- 管理入口是「设置 → 我的 Bot」（`#/settings/bots`；`#/agents` 与 `#/settings/my-profiles` 永久重定向到它）：
+  Sprouty 卡片 + 我的其他 Bot 列表 + 已归档列表。每行可「开新对话」（`#/chat?profile=bot:<id>`，by-session）、发消息
+  （永续私聊，需 `bots` 开关）、编辑（抽屉 → 编辑对话框）。没有共享、评审或克隆。
+- 新建走一个对话框两个页签：「新建 Bot」（模板库 → 表单）与「新建群聊」（有 `bots` 开关时）；Bots 页侧栏只有一个「新建」。
 - 编辑表单（`components/bots/bot-form.tsx`）= 名字 / 岗位 / 用途 / 守则（≤8000）/ 工具过滤（`bot-tools-field.tsx`，默认
   继承全部、可勾子集，只来自当前用户的 allow-set）/ 每轮步数上限 / 模型 / 植物头像。用户界面统一称 Bot；Profile 只作为
   服务端契约与内部类型名。
-- Bot 抽屉展示用途、守则、模型、工具、共享状态与版本历史、私有记忆、私有文件夹；Sprouty 私聊首次进入有一张可跳过的命名卡。
+- Bot 抽屉展示用途、守则、模型、工具、版本历史、私有记忆、私有文件夹；Sprouty 私聊首次进入有一条可跳过的命名提示。
 
-### Bot 的版本与生命周期（2026-08-12 定、2026-10-07 搬到 Bot）
+### Bot 的版本（2026-08-12 定、2026-10-07 搬到 Bot、2026-10-08 去掉治理）
 
 - `bots` 是稳定资产身份；每次创建/编辑都会向 `bot_versions` 追加完整、带 SHA-256 `manifest_hash` 的不可变
-  manifest（名字 / 岗位 / 用途 / 守则 / 工具 / 模型 / 步数 / 头像 + change log、purpose、audience、risk、budget policy、
-  Eval refs、backup owner 与 review due date）；服务层不提供版本 update/delete。未共享的 Bot 版本只在抽屉的历史里可见。
-- 生命周期为 `draft → review → pilot|verified|rejected`，发布后还可 `suspended` / `deprecated` / `archived`。
-  owner 只能编辑自己的、提交审核、撤回或归档；super 在 Bots 目录「团队」档看到进入过评审的 Bot（个人草稿不在列），
-  并负责试点、验证、驳回、暂停和退役。只有 `pilot` / `verified` 会共享，非 owner 只能看到 published version。
-  Sprouty 不能分享（400 `bot_protected`）。
-- **编辑已验证 Bot 会立即撤销发布**：创建新版本后回到 draft，`is_shared=false`、published/reviewer/review
-  字段清空，必须重新审核。当前模型没有独立 release channel；但旧的 `bot:<id>@<version>` manifest 保留，已 pin 的
-  定时任务与 Eval 仍按原证据运行。
+  manifest（名字 / 岗位 / 用途 / 守则 / 工具 / 模型 / 步数 / 头像 + change log）；服务层不提供版本 update/delete。
+  版本只在抽屉的历史里可见，也是守则提议卡（`self` 工具）接受后的落点。
+- **Bot 私有**：只有主人（super 为支持可查）能解析任何 `bot:<id>[@v]`；旧自定义 Agent 的 lifecycle / 发布 /
+  backup owner / review due / 自动治理 worker 已随迁移 `0014_bots_private` 一并删除。
 - **主人自己的聊天会话跟随最新定义**（`sessions.profile_id='bot:<id>'`，每轮重新 pin 到当前版本），与 Bots 永续线程一致；
-  他人用的、定时任务、Eval、子代理在落库前 pin 为 `bot:<id>@<version>`；外部 Agent tool proxy 同样先按真实用户权限
-  pin。`resolveProfileAsync()` 对缺失/畸形引用明确失败，绝不静默替换为 Sprouty。
-- 自动复核 worker 在 API boot 先扫一轮、随后每 15 分钟运行：`listReviewDue(at, limit)` 找到到期
-  pilot/verified，`listActiveWithOwners(limit, afterId)` 以稳定游标检查 owner/backup active 状态。超过复核期，
-  或 owner disabled 且没有 active backup 时，都会以逻辑 actor `system:agent-governance` 自动转为 suspended；
-  owner disabled 但 backup active 时保持可用，同时提醒 backup 与 super 复核归属。每条失败独立隔离，不阻断
-  后续 Agent；进程若在状态变更后、通知前退出，下一轮会从 system-suspended 行用同一 dedupe key 补齐永久通知。
-  worker 与通知不在 Profile 解析层实现。发布时若调用方和版本均未指定复核日期，low/medium risk 默认 90 天、
-  high risk 默认 60 天，保证所有已发布 Agent 都能进入到期扫描。
+  定时任务、Eval、子代理在落库前 pin 为 `bot:<id>@<version>`，旧 manifest 永不改写，已 pin 的工作按原证据运行；
+  外部 Agent tool proxy 同样先按真实用户权限 pin。`resolveProfileAsync()` 对缺失/畸形引用明确失败，绝不静默替换为 Sprouty。
 
 ## 默认预设 (`sprouty`)
 

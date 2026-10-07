@@ -339,9 +339,10 @@ git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 > immutable draft v1 and stay unshared until a super publishes them. Knowledge documents are
 > re-tokenized for search on the first boot.
 >
-> **Upgrading from 1.3.x** — custom Agents and Bots merged into one identity: every custom
-> Agent becomes a Bot of its owner (same versions, same sharing state; `custom:<id>@<v>`
-> references keep resolving), the Agents page moved to the Bots directory, and the knowledge
+> **Upgrading from 1.3.x** — custom Agents and Bots merged into one private identity: every
+> custom Agent becomes a Bot of its owner (same versions; `custom:<id>@<v>` references keep
+> resolving), sharing / review / clone are gone (other members' pinned references to a shared
+> Agent stop resolving), the Agents page moved to Settings → My Bots, and the knowledge
 > full-text index is created on migration.
 
 ## Configuration

@@ -100,14 +100,6 @@ describe('Bot avatars and versions', () => {
     expect(JSON.parse(stored!.avatar)).toEqual({ color: 'mint', eyeStyle: 'focused', faceStyle: 'happy', rogue: 1 });
   });
 
-  it('a clone keeps its source look and records the source version', async () => {
-    const source = await createBot({ ...PLANT_AVATAR, accessories: ['pencil'] }, 'Source');
-    const clone = await call('POST', `/${source.id}/clone`, { name: 'Source copy' });
-    expect(clone.status).toBe(200);
-    expect(clone.json.bot.avatar).toEqual({ ...PLANT_AVATAR, accessories: ['pencil'] });
-    expect(clone.json.bot.forked_from).toBe(`bot:${source.id}@1`);
-  });
-
   it('rejects an unknown or unauthorised tool filter and accepts null (inherit everything)', async () => {
     const bad = await call('POST', '', { name: 'Filtered', tools: ['no_such_tool'] });
     expect(bad.status).toBe(400);
@@ -119,12 +111,10 @@ describe('Bot avatars and versions', () => {
     expect(narrowed.json.bot.current_version).toBe(2);
   });
 
-  it('answers 400 bot_name_taken, not 500, for a duplicate name on create and clone', async () => {
-    const first = await createBot({}, 'Twin');
+  it('answers 400 bot_name_taken, not 500, for a duplicate name', async () => {
+    await createBot({}, 'Twin');
     const again = await call('POST', '', { name: 'Twin', instructions: 'Help.' });
     expect(again.status).toBe(400);
     expect(again.json.code).toBe('bot_name_taken');
-    const clone = await call('POST', `/${first.id}/clone`, { name: 'Twin' });
-    expect(clone.status).toBe(400);
   });
 });

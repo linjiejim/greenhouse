@@ -62,8 +62,8 @@
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `bots` | PK `id`(`bot_<hex>`)；部分 UK `(user_id, name_key) WHERE status='active'`；UK `legacy_custom_id`；索引 `(user_id, status)`、`(is_shared, lifecycle_status)`、`owner_backup_user_id` | **唯一的 Agent 身份**（2026-10-07 吸收了自定义 Agent，迁移 0010/0011）：name / `name_key`（NFKC 小写，唯一键）/ role / description / instructions（≤8000，注入前 sanitize）/ avatar（植物头像 JSON）/ model_id / `tools`（JSON 数组 = 只能收窄的过滤器，NULL = 继承主人全部）/ `max_steps` / template_key；版本指针 `current_version` / `published_version` 与 draft/review/pilot/verified/rejected/suspended/deprecated/archived 生命周期（共享只由 pilot/verified 派生，backup owner FK SET NULL，reviewer 为逻辑引用）；`forked_from`（谱系）；`legacy_custom_id`（迁入的自定义 Agent 原 id）；`status=archived` 是成员唯一的「删除」（消息仍能显示作者名）；随 `user_id` 级联硬删 |
-| `bot_versions` | PK `id`；UK `(bot_id, version)` | Bot 的不可变可执行 manifest：名字 / 岗位 / 用途 / 守则 / tools / 模型 / 步数 / 外观（`avatar` JSON 进 manifest hash 永不回写，旧键在渲染时由 `legacyToPlant` 映射）与 purpose/audience/risk/budget/eval refs/review due，含 change log、SHA-256 manifest hash 与创建人；生产 service 无 update/delete |
+| `bots` | PK `id`(`bot_<hex>`)；部分 UK `(user_id, name_key) WHERE status='active'`；UK `legacy_custom_id`；索引 `(user_id, status)` | **唯一的 Agent 身份**（2026-10-07 吸收了自定义 Agent，迁移 0010/0011；2026-10-08 起主人私有，0014 删掉共享 / 治理列）：name / `name_key`（NFKC 小写，唯一键）/ role / description / instructions（≤8000，注入前 sanitize）/ avatar（植物头像 JSON）/ model_id / `tools`（JSON 数组 = 只能收窄的过滤器，NULL = 继承主人全部）/ `max_steps` / template_key；版本指针 `current_version`；`legacy_custom_id`（迁入的自定义 Agent 原 id）；`status=archived` 是成员唯一的「删除」（消息仍能显示作者名）；随 `user_id` 级联硬删 |
+| `bot_versions` | PK `id`；UK `(bot_id, version)` | Bot 的不可变可执行 manifest：名字 / 岗位 / 用途 / 守则 / tools / 模型 / 步数 / 外观（`avatar` JSON 进 manifest hash 永不回写，旧键在渲染时由 `legacyToPlant` 映射），含 change log、SHA-256 manifest hash 与创建人；生产 service 无 update/delete |
 | `bot_conversations` | PK/FK `session_id`；UK `owner_bot_id`；索引 `(user_id, last_activity_at)` | 与 session 1:1 的 Bots 对话：`kind=direct/group`，`owner_bot_id`（私聊主人，每个 Bot 一条规范私聊，私聊永不变群——邀请进来的是 guest）、`lead_bot_id`（未点名消息的应答者）、群规 `description`、`allow_bot_chat`、结构化滚动摘要 `digest` + `digest_upto_seq` / `digest_upto_message_id`（CAS 更新；边界消息消失即重置）、`last_read_at` |
 | `bot_conversation_members` | PK `id`；UK `(session_id, bot_id)` | 对话成员（≤6）：`role=owner/lead/member/guest`、`position`、`added_by`（`user` 或 `bot:<id>`） |
 | `bot_shared_notes` | PK `id`；索引 `(session_id, status)` | 对话级共享笔记（黑板）：title（注入索引）/ body / `author_bot_id`（null=成员写的）/ `status=open/done` / pinned；open ≤50 |
@@ -233,7 +233,6 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `account_password_links.user_id` | `users.id` | CASCADE |
 | `user_features.user_id` | `users.id` | CASCADE |
 | `user_provider_tokens.user_id` | `users.id` | CASCADE |
-| `bots.owner_backup_user_id` | `users.id` | SET NULL |
 | `bot_versions.bot_id` | `bots.id` | CASCADE |
 | `drive_folders.bot_id` | `bots.id` | CASCADE |
 | `user_memories.user_id` | `users.id` | CASCADE |
@@ -386,10 +385,8 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `notification_delivery_attempts.notification_id` | `notifications.id` | FK CASCADE；送达状态独立于业务结果，只随显式通知根删除 |
 | `runtime_events.actor_user_id` | `users.id` | Event actor 审计；账号删除后 Event 仍保留 |
 | `runtime_interrupts.assignee_user_id` / `.decided_by_user_id` | `users.id` | 决策负责人和决定人；完整决议独立保留 |
-| `bots.forked_from` | `sprouty` / `bot:<id>@<v>` / 退役的 `custom:<id>@<v>` | Bot 谱系（克隆来源），不是数据库 FK |
-| `bots.reviewed_by` | `users.id` 或 `system:agent-governance` | 生命周期审查 actor；逻辑引用以保留账号删除后的历史 |
 | `bots.legacy_custom_id` | 已删除的 `custom_profiles.id` | 存量 `custom:<id>[@v]` 引用的解析键 |
-| `bot_versions.created_by` / `.owner_backup_user_id` | `users.id` | 不可变版本快照中的逻辑引用，账号删除不改写证据 |
+| `bot_versions.created_by` | `users.id` | 不可变版本快照中的逻辑引用，账号删除不改写证据 |
 | `knowledge_base.owner_user_id` | `users.id` | private 文档所有者 |
 | `knowledge_base_shares.shared_with` | `users.id` 或 `group:<user_groups.id>` | 用户/小组复合共享目标 |
 | `email_send_log.user_id` | `users.id` | 发起人；审计独立于账号生命周期，刻意无 FK |

@@ -34,7 +34,7 @@ import { safeJsonParse } from '@greenhouse/utils/json';
 import { parseHexKey } from '@greenhouse/utils/crypto';
 import { parseBotEvent } from './engine/transcript.js';
 
-export function toBotView(row: BotRow, dmSessionId: string | null, ownerNickname?: string): BotView {
+export function toBotView(row: BotRow, dmSessionId: string | null): BotView {
   return {
     id: row.id,
     name: row.name,
@@ -48,15 +48,8 @@ export function toBotView(row: BotRow, dmSessionId: string | null, ownerNickname
     template_key: row.template_key,
     status: row.status,
     dm_session_id: dmSessionId,
-    lifecycle_status: row.lifecycle_status,
-    lifecycle_note: row.lifecycle_note,
-    is_shared: row.is_shared,
     current_version: row.current_version,
-    published_version: row.published_version,
-    next_review_at: row.next_review_at,
-    forked_from: row.forked_from,
     user_id: row.user_id,
-    ...(ownerNickname !== undefined ? { owner_nickname: ownerNickname } : {}),
     last_active_at: row.last_active_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -77,13 +70,6 @@ export function toBotVersionView(row: BotVersionRow): BotVersionView {
     model_id: row.model_id,
     max_steps: row.max_steps,
     avatar: safeJsonParse(row.avatar, {}) as AvatarConfig,
-    purpose: row.purpose,
-    audience: row.audience,
-    risk_level: row.risk_level,
-    budget_policy: safeJsonParse(row.budget_policy, {}) as Record<string, unknown>,
-    eval_refs: safeJsonParse(row.eval_refs, []) as unknown[],
-    owner_backup_user_id: row.owner_backup_user_id,
-    review_due_at: row.review_due_at,
     created_by: row.created_by,
     created_at: row.created_at,
   };
