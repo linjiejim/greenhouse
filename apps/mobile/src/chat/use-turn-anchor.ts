@@ -19,7 +19,9 @@
  *    reply) in view instead.
  *  - **Follow to the end** (`followToEnd` — a Bots send with the keyboard up,
  *    Messages-style): one animated scroll to the end after the next layout,
- *    no inset floor, no chasing afterwards.
+ *    no inset floor, then the end stays pinned (like `landOnEnd`) until the
+ *    user drags. With the keyboard up only a few lines are visible, so a reply
+ *    that didn't follow would stream out of sight behind it.
  *  - `jumpToLatest` for the "back to latest" pill (`endVisible` says when the
  *    end is out of view); `shift(Δ)` keeps the bookkeeping right when earlier
  *    rows are prepended above.
@@ -173,6 +175,7 @@ export function useTurnAnchor({
         // IM semantics: the new row sits at the end, above the control layer — no floor under it.
         followRef.current = false;
         anchorRef.current = null;
+        pinEndRef.current = true;
         syncBlank();
         scrollRef.current?.scrollToEnd({ animated: true });
       } else if (anchorRef.current != null) syncBlank();
