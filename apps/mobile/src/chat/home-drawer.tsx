@@ -22,6 +22,12 @@
  * the navigation — no back stack; the (main) stack cross-fades) and slides the
  * drawer shut. The history refreshes in place every time the drawer opens, so
  * conversations started / renamed / deleted on the surface show up.
+ *
+ * With Bots on (iOS, an internal account, `features.bots`), the Bots section
+ * (src/bots/drawer/bots-section.tsx) comes first, above 知识库 / 项目, and the
+ * search filters it too; otherwise it renders nothing and the drawer is exactly
+ * as before. Every route to home goes through src/bots/nav.ts (all seven
+ * params — a Bots thread is the same route with `?c=`).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -33,6 +39,8 @@ import { useAuth } from '../store/auth';
 import { useTags } from '../store/tags';
 import { useActiveStation } from '../stations/use-active-station';
 import { deleteSession } from '../api/sessions';
+import { BotsSection } from '../bots/drawer/bots-section';
+import { openChat, openNewChat } from '../bots/nav';
 import type { Session } from '../shared/greenhouse-types';
 import { parseMs } from '../lib/format';
 import { useT, type TranslationKey } from '../lib/i18n';
@@ -81,7 +89,8 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
   const insets = useSafeAreaInsets();
   const user = useAuth((s) => s.user);
   const station = useActiveStation();
-  const { id: activeId } = useGlobalSearchParams<{ id?: string }>();
+  // `c` = a Bots thread is on screen (no history row is current then).
+  const { id: activeId, c: activeThread } = useGlobalSearchParams<{ id?: string; c?: string }>();
 
   const tags = useTags((s) => s.tags);
   const loadTags = useTags((s) => s.load);
@@ -124,18 +133,15 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
     (s: Session) => {
       close();
       if (s.id === activeId) return;
-      router.replace({
-        pathname: '/',
-        params: { id: s.id, title: s.title ?? '', ro: s.is_owner === false ? '1' : '0' },
-      });
+      openChat(router, { id: s.id, title: s.title ?? '', ro: s.is_owner === false });
     },
     [close, router, activeId],
   );
 
   const newChat = useCallback(() => {
     close();
-    if (activeId) router.replace('/');
-  }, [close, router, activeId]);
+    if (activeId || activeThread) openNewChat(router);
+  }, [close, router, activeId, activeThread]);
 
   // Close first, then push — the panel settles under the incoming page.
   const go = useCallback(
@@ -166,7 +172,7 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
           }
           removeItem(s.id);
           toast(t('chat.deleted'), 'trash');
-          if (s.id === activeId) router.replace('/');
+          if (s.id === activeId) openNewChat(router);
         })();
       }
     },
@@ -238,29 +244,32 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
         }}
         onEndReachedThreshold={0.4}
         ListHeaderComponent={
-          <View style={styles.navBlock}>
-            <NavRow icon="books" label={t('drawer.knowledge')} onPress={() => go('/knowledge')} />
-            <NavRow icon="folder" label={t('drawer.projects')} onPress={() => go('/projects')} />
-            <View style={styles.historyHead}>
-              <Text style={styles.historyTitle}>{activeTag ? activeTag.name : t('drawer.history')}</Text>
-              {tags.length ? (
-                <NativeMenu
-                  title={t('drawer.filterByTag')}
-                  items={filterItems}
-                  onSelect={(id) => setFilter(id === 'all' ? null : Number(id))}
-                >
-                  <View
-                    style={styles.filterBtn}
-                    accessible
-                    accessibilityRole="button"
-                    accessibilityLabel={t('drawer.filterByTag')}
+          <>
+            <BotsSection query={search} onClose={close} />
+            <View style={styles.navBlock}>
+              <NavRow icon="books" label={t('drawer.knowledge')} onPress={() => go('/knowledge')} />
+              <NavRow icon="folder" label={t('drawer.projects')} onPress={() => go('/projects')} />
+              <View style={styles.historyHead}>
+                <Text style={styles.historyTitle}>{activeTag ? activeTag.name : t('drawer.history')}</Text>
+                {tags.length ? (
+                  <NativeMenu
+                    title={t('drawer.filterByTag')}
+                    items={filterItems}
+                    onSelect={(id) => setFilter(id === 'all' ? null : Number(id))}
                   >
-                    <Icon name="filter" size={17} color={activeTag ? c.accent : c.secondaryLabel} weight="medium" />
-                  </View>
-                </NativeMenu>
-              ) : null}
+                    <View
+                      style={styles.filterBtn}
+                      accessible
+                      accessibilityRole="button"
+                      accessibilityLabel={t('drawer.filterByTag')}
+                    >
+                      <Icon name="filter" size={17} color={activeTag ? c.accent : c.secondaryLabel} weight="medium" />
+                    </View>
+                  </NativeMenu>
+                ) : null}
+              </View>
             </View>
-          </View>
+          </>
         }
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHead}>

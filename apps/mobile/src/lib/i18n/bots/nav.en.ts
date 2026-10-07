@@ -17,6 +17,7 @@ export const botsNavEn = {
     markRead: 'Mark as Read',
     freshHint: 'A new chat starts fresh. For ongoing work, talk to your Bots.',
     bridgeNeedsYou: '{name} needs you',
+    bridgeNeedsYouN: '{n} things need you',
     bridgeNew: 'New from {name}',
     bridgeReport: '{name} reported back: {title}',
     bridgeDefault: 'Continue with {name}',
@@ -24,5 +25,25 @@ export const botsNavEn = {
     backTo: 'Back to {name}',
     unavailable: 'Bots aren’t available',
     archivedTitle: 'Archived',
+    // drawer rows
+    addA11y: 'New Bot or Group',
+    templateItem: '{role} · {name}',
+    profile: 'Bot Profile',
+    info: 'Conversation Info',
+    untitledGroup: 'Group',
+    archivedName: '{name} (archived)',
+    botSaid: '{name}: {text}',
+    unread: 'Unread',
+    lastMessage: 'Last message: {text}',
+    listSep: ', ',
+    markReadFailed: 'Couldn’t mark as read',
+    menuBadgeA11y: '{n} need your attention',
+    // the archived sheet
+    archivedEmpty: 'No Archived Conversations',
+    archivedEmptyHint: 'When a Bot is archived, its conversations stay here, read-only.',
+    archivedFooter: 'Nobody here replies any more — the history stays readable.',
+    loadFailedTitle: 'Couldn’t Load Conversations',
+    // the agent capsule (src/chat/profile-menu.tsx)
+    botSuffix: 'Bot',
   },
 };

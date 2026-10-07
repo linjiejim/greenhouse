@@ -17,6 +17,7 @@ export const botsNavZh: typeof botsNavEn = {
     markRead: '标为已读',
     freshHint: '新对话从零开始；长期的事交给你的 Bots。',
     bridgeNeedsYou: '{name} 需要你',
+    bridgeNeedsYouN: '{n} 件事需要你',
     bridgeNew: '{name} 有新消息',
     bridgeReport: '{name} 交回了「{title}」',
     bridgeDefault: '和 {name} 继续长期对话',
@@ -24,5 +25,25 @@ export const botsNavZh: typeof botsNavEn = {
     backTo: '回到 {name}',
     unavailable: 'Bots 暂不可用',
     archivedTitle: '已归档',
+    // drawer rows
+    addA11y: '新建 Bot 或群聊',
+    templateItem: '{role} · {name}',
+    profile: 'Bot 资料',
+    info: '对话信息',
+    untitledGroup: '群聊',
+    archivedName: '{name}（已归档）',
+    botSaid: '{name}：{text}',
+    unread: '未读',
+    lastMessage: '最后一条：{text}',
+    listSep: '，',
+    markReadFailed: '没能标为已读',
+    menuBadgeA11y: '{n} 个对话需要你看看',
+    // the archived sheet
+    archivedEmpty: '没有已归档的对话',
+    archivedEmptyHint: 'Bot 归档后，它的对话会留在这里，只读。',
+    archivedFooter: '这里没有谁会再回复，记录仍可查看。',
+    loadFailedTitle: '对话加载失败',
+    // the agent capsule (src/chat/profile-menu.tsx)
+    botSuffix: 'Bot',
   },
 };
