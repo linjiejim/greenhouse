@@ -41,6 +41,7 @@ export const botsManageZh: typeof botsManageEn = {
     plant: '植物',
     mood: '神态',
     namePlaceholder: '名字',
+    nameHint: '最多 {max} 个字，@ 它时用的就是这个名字',
     rolePlaceholder: '岗位，如：研究员',
     purposePlaceholder: '一句话说明它是做什么的',
     instructionsPlaceholder: '它该怎么做事——每次回复前都会读',

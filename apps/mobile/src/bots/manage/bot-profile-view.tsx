@@ -12,7 +12,8 @@
  *    ongoing thread); an archived Bot only offers 查看对话 (its read-only DM);
  *  - purpose, instructions (six lines + 显示全部);
  *  - what it alone remembers (`GET /api/bots/:id/memories`, active / dormant):
- *    touch and hold → 忘掉这条, removed at once (a 404 means already gone);
+ *    touch and hold → 忘掉这条 (also a VoiceOver action), removed at once (a
+ *    404 means already gone);
  *  - archive: never Sprouty (a footnote says why); otherwise confirmed, then
  *    `DELETE /api/bots/:id` — its conversation stays, read-only.
  *
@@ -359,6 +360,7 @@ function MemoryRow({
   /** Injected by ListSection. */
   last?: boolean;
 }) {
+  const t = useT();
   const { colors: c } = useTheme();
   return (
     <NativeMenu trigger="longPress" items={items} onSelect={(id) => id === 'forget' && onForget()}>
@@ -368,6 +370,14 @@ function MemoryRow({
         subtitleLines={4}
         titleLines={2}
         accessory={memory.pinned ? <Icon name="pin" size={13} color={c.tertiaryLabel} /> : 'none'}
+        // the pin glyph is decorative: say it; and Forget is in the actions rotor
+        accessibilityLabel={[memory.title, memory.content, memory.pinned ? t('bots.nav.pinnedA11y') : null]
+          .filter(Boolean)
+          .join(', ')}
+        accessibilityActions={[{ name: 'forget', label: t('bots.manage.forget') }]}
+        onAccessibilityAction={(e) => {
+          if (e.nativeEvent.actionName === 'forget') onForget();
+        }}
         last={last}
       />
     </NativeMenu>

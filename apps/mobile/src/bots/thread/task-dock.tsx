@@ -9,12 +9,15 @@
  * "Cancel Task" inside — confirmed, then `POST /api/bots/tasks/:id/cancel`;
  * a task that already finished (409) just refreshes. The clock ticks once a
  * second and only re-renders the dock. Owner poses are static (TASK_POSE).
+ * The running time is localized (./task-elapsed.ts — the web's `elapsed()`
+ * bakes in English unit letters): compact on screen, whole words for
+ * VoiceOver.
  */
 
 import React, { memo, useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { cancelBotTask } from '../../api/bots';
-import { useT, type TranslationKey } from '../../lib/i18n';
+import { useT, type TFunction, type TranslationKey } from '../../lib/i18n';
 import type { BotTaskView, BotView } from '../../shared/bots';
 import { HIT, makeStyles, space, typo, useTheme, weight } from '../../theme';
 import { Icon } from '../../ui/core';
@@ -24,13 +27,27 @@ import { NativeMenu, type MenuItem } from '../../ui/menu';
 import { toast } from '../../ui/toast';
 import { AvatarStack } from '../ui/avatar-stack';
 import { BotAvatar } from '../ui/bot-avatar';
-import { TASK_POSE, elapsed } from '../vendor/web-helpers';
+import { TASK_POSE } from '../vendor/web-helpers';
+import { elapsedCompact, elapsedSpoken, taskSeconds } from './task-elapsed';
 
 const STATUS_KEY: Partial<Record<BotTaskView['status'], TranslationKey>> = {
   queued: 'bots.thread.taskQueued',
   running: 'bots.thread.taskRunning',
   waiting: 'bots.thread.taskWaiting',
 };
+
+/** "2m 31s" / "2分31秒" — the clock and the menu. */
+function compact(t: TFunction, task: BotTaskView, now: number): string {
+  const { key, vars } = elapsedCompact(taskSeconds(task, now));
+  return t(key, vars);
+}
+
+/** "2 minutes 31 seconds" / "2 分钟 31 秒" — what VoiceOver says. */
+function spoken(t: TFunction, task: BotTaskView, now: number): string {
+  return elapsedSpoken(taskSeconds(task, now))
+    .map(({ key, vars }) => t(key, vars))
+    .join(' ');
+}
 
 export const TaskDock = memo(function TaskDock({
   active,
@@ -59,7 +76,7 @@ export const TaskDock = memo(function TaskDock({
         title: t('bots.thread.taskMenu', {
           title: task.title,
           status: t(STATUS_KEY[task.status] ?? 'bots.thread.taskRunning'),
-          elapsed: elapsed(task, now),
+          elapsed: compact(t, task, now),
         }),
         icon: 'hourglass',
         children: [{ id: `cancel:${task.run_id}`, title: t('bots.thread.cancelTask'), icon: 'x', destructive: true }],
@@ -87,7 +104,7 @@ export const TaskDock = memo(function TaskDock({
   const several = active.length > 1;
   const label = several
     ? t('bots.thread.tasksN', { n: active.length })
-    : t('bots.thread.task', { title: first.title, elapsed: elapsed(first, now) });
+    : t('bots.thread.task', { title: first.title, elapsed: spoken(t, first, now) });
   const owners = [...new Set(active.map((task) => task.bot_id))].map((id) => byId[id] ?? null);
   return (
     <NativeMenu
@@ -113,7 +130,7 @@ export const TaskDock = memo(function TaskDock({
               <Text numberOfLines={1} style={styles.title}>
                 {first.title}
               </Text>
-              <Text style={styles.clock}>{elapsed(first, now)}</Text>
+              <Text style={styles.clock}>{compact(t, first, now)}</Text>
             </>
           )}
           <Icon name="chevUpDown" size={11} weight="semibold" color={c.tertiaryLabel} />

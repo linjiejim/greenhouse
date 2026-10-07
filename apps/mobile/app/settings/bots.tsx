@@ -114,7 +114,7 @@ export default function SettingsBots() {
                     onSelect={(id) => router.push({ pathname: '/bots/bot-form', params: { template: id } })}
                   >
                     {/* the menu is the tap target; always the section's last row */}
-                    <ListRow title={t('bots.manage.formNew')} icon="plus" last />
+                    <ListRow title={t('bots.manage.formNew')} icon="plus" menuTrigger last />
                   </NativeMenu>
                 ),
               ]}

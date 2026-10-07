@@ -231,7 +231,12 @@ function NoteRow({ note }: { note: BotSharedNoteView }) {
       spacing={10}
       modifiers={[
         accessibilityElement('combine'),
-        accessibilityLabel([note.title, body, done ? t('bots.manage.noteDoneA11y') : null].filter(Boolean).join(', ')),
+        // the ring / check and the pin are hidden glyphs: their state is in the label
+        accessibilityLabel(
+          [note.title, body, done ? t('bots.manage.noteDoneA11y') : null, note.pinned ? t('bots.nav.pinnedA11y') : null]
+            .filter(Boolean)
+            .join(', '),
+        ),
       ]}
     >
       <Image
