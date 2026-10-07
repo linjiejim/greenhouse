@@ -1,6 +1,7 @@
 /**
  * Empty / unavailable states — SwiftUI `ContentUnavailableView` (the system
- * "No Results" layout: large symbol, title, description). Use for empty
+ * "No Results" layout: large symbol, title, description); Android draws the
+ * Material equivalent (./empty.android.tsx, same API). Use for empty
  * lists, no search results, and load failures. Centers itself in the space
  * it's given; pass `style` for list placement.
  *
@@ -14,8 +15,10 @@ import { ContentUnavailableView, Host } from '@expo/ui/swift-ui';
 import { useT } from '../lib/i18n';
 import { useTheme } from '../theme';
 import { NativeButton } from './button';
-import { sfSymbol, Spinner, type IconName } from './core';
+import { sfSymbol, type IconName } from './core';
 import { useLocaleEnv } from './native-form';
+
+export { LoadingState } from './loading-state';
 
 export function EmptyState({
   icon,
@@ -48,15 +51,3 @@ export function EmptyState({
   );
 }
 
-/**
- * The standard loading placeholder: a native spinner centered in the space
- * it's given (page, list or sheet body). Use it instead of hand-placing an
- * ActivityIndicator so first loads look the same everywhere.
- */
-export function LoadingState({ style }: { style?: StyleProp<ViewStyle> }) {
-  return (
-    <View style={[{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 48 }, style]}>
-      <Spinner />
-    </View>
-  );
-}

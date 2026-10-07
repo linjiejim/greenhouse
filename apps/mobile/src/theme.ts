@@ -10,8 +10,9 @@
  *
  * Two views of the same palette:
  *  - `colors` — what views and text use. iOS: PlatformColor / DynamicColorIOS
- *    objects (opaque `ColorValue`s — never string-manipulate them). Android /
- *    web: the hex mirror of the active scheme.
+ *    objects (opaque `ColorValue`s — never string-manipulate them). Android:
+ *    the Material 3 palette seeded from the Teal (./theme-m3.android.ts — the
+ *    same one Compose views are themed with); web: the hex mirror.
  *  - `hex` — plain strings for the few places that need a real color string
  *    (react-native-svg drawing, alpha math, Swift widget assets). Mirrors the
  *    iOS values; keep both in sync when adding a token.
@@ -38,6 +39,7 @@ import {
   type TextStyle,
 } from 'react-native';
 import { usePrefs } from './store/prefs';
+import { materialPalette } from './theme-m3';
 
 /* ------------------------------ hex mirrors ------------------------------ */
 
@@ -109,6 +111,10 @@ const lightHex = {
   codeText: '#E5E5EA',
   codeComment: '#8E8E93',
   codeLabel: '#AEAEB2',
+  /** Syntax colors on the always-dark code card (Xcode's default dark theme). */
+  codeKeyword: '#FC5FA3',
+  codeString: '#FC6A5D',
+  codeNumber: '#D0BF69',
 
   /** Dimming layer under the drawer / custom overlays. */
   scrim: 'rgba(0,0,0,0.22)',
@@ -164,9 +170,20 @@ const darkHex: HexPalette = {
   codeText: '#E5E5EA',
   codeComment: '#8E8E93',
   codeLabel: '#AEAEB2',
+  codeKeyword: '#FC5FA3',
+  codeString: '#FC6A5D',
+  codeNumber: '#D0BF69',
 
   scrim: 'rgba(0,0,0,0.45)',
 };
+
+/* ---------------------------- Android palette ---------------------------- */
+
+/** Brand seed of the Material 3 palette on Android (src/theme-m3.android.ts). */
+export const SEED = TEAL_LIGHT;
+
+const LIGHT = Platform.OS === 'android' ? materialPalette(lightHex, 'light', SEED) : lightHex;
+const DARK = Platform.OS === 'android' ? materialPalette(darkHex, 'dark', SEED) : darkHex;
 
 /* ------------------------------ iOS palette ------------------------------ */
 
@@ -221,7 +238,7 @@ const iosPalette: ThemeColors | null = Platform.OS === 'ios' ? buildIosPalette()
 export function useTheme(): { colors: ThemeColors; hex: HexPalette; isDark: boolean } {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
-  const hex = isDark ? darkHex : lightHex;
+  const hex = isDark ? DARK : LIGHT;
   return { colors: iosPalette ?? hex, hex, isDark };
 }
 
@@ -262,12 +279,13 @@ export function makeStyles<T extends StyleSheet.NamedStyles<T>>(
 /* ------------------------------ typography ------------------------------ */
 
 /**
- * iOS text styles (HIG, default "Large" content size). SF Pro is the system
- * font, so no fontFamily is set; RN scales these with Dynamic Type. Pick the
+ * iOS text styles (HIG, default "Large" content size; Android: the Material
+ * type scale below). SF Pro / Roboto are the system fonts, so no fontFamily is
+ * set; RN scales these with Dynamic Type / font scale. Pick the
  * style by *role* (headline for row titles, footnote for meta…) and adjust
  * weight with `weight.*` only for emphasis — never invent sizes.
  */
-export const typo = {
+const iosTypo = {
   largeTitle: { fontSize: 34, lineHeight: 41, fontWeight: '700' },
   title1: { fontSize: 28, lineHeight: 34, fontWeight: '700' },
   title2: { fontSize: 22, lineHeight: 28, fontWeight: '700' },
@@ -280,6 +298,27 @@ export const typo = {
   caption1: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
   caption2: { fontSize: 11, lineHeight: 13, fontWeight: '400' },
 } as const satisfies Record<string, TextStyle>;
+
+/**
+ * Android: the Material 3 type scale under the same role names (bodyLarge 16 /
+ * 24, titleMedium 16 medium, bodyMedium 14, bodySmall 12…) — Roboto at iOS
+ * point sizes reads a size too large. Weights stay as the roles expect.
+ */
+const androidTypo: { [K in keyof typeof iosTypo]: TextStyle } = {
+  largeTitle: { fontSize: 32, lineHeight: 40, fontWeight: '700' },
+  title1: { fontSize: 26, lineHeight: 34, fontWeight: '700' },
+  title2: { fontSize: 22, lineHeight: 28, fontWeight: '700' },
+  title3: { fontSize: 19, lineHeight: 26, fontWeight: '600' },
+  headline: { fontSize: 16, lineHeight: 24, fontWeight: '600' },
+  body: { fontSize: 16, lineHeight: 24, fontWeight: '400' },
+  callout: { fontSize: 15, lineHeight: 22, fontWeight: '400' },
+  subheadline: { fontSize: 14, lineHeight: 20, fontWeight: '400' },
+  footnote: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
+  caption1: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
+  caption2: { fontSize: 11, lineHeight: 16, fontWeight: '400' },
+};
+
+export const typo = (Platform.OS === 'android' ? androidTypo : iosTypo) as typeof iosTypo;
 
 /** The only font weights in use — name them so call sites read intent. */
 export const weight = {

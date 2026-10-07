@@ -6,7 +6,9 @@
  * every size, weight-matched to adjacent text, animatable) and the matching
  * Material Symbol on Android/web. Call sites use the semantic `IconName`; add
  * a new name here (both platforms) rather than passing raw symbol names around.
- * Navigation-bar items take SF names directly (`Stack.Toolbar.Button icon=`).
+ * Navigation-bar items take `toolbarIcon(name)` (src/ui/toolbar-icon.ts) — an
+ * SF Symbol on iOS, a generated vector drawable on Android (after adding a
+ * name here, re-run `scripts/android-icons.py`).
  */
 
 import React from 'react';
@@ -87,7 +89,12 @@ const ICONS = {
   eye: ['eye', 'visibility'],
   flag: ['flag', 'flag'],
   filter: ['line.3.horizontal.decrease', 'filter_list'],
+  filterOn: ['line.3.horizontal.decrease.circle.fill', 'filter_alt'],
+  // the overflow "more" button: horizontal on iOS, vertical (⋮) on Android
+  more: ['ellipsis', 'more_vert'],
   link: ['link', 'link'],
+  server: ['server.rack', 'dns'],
+  logout: ['rectangle.portrait.and.arrow.right', 'logout'],
   open: ['arrow.up.right.square', 'open_in_new'],
   table: ['tablecells', 'table'],
   wrench: ['wrench.and.screwdriver', 'build'],
@@ -106,6 +113,19 @@ const ICONS = {
   plusCircle: ['plus.circle', 'add_circle'],
   checklist: ['checklist', 'checklist'],
   hourglass: ['hourglass', 'hourglass_empty'],
+  // ── rich replies (forms, artifacts, diagrams) ──
+  send: ['paperplane', 'send'],
+  form: ['list.bullet.clipboard', 'assignment'],
+  branch: ['arrow.triangle.branch', 'call_split'],
+  code: ['chevron.left.forwardslash.chevron.right', 'code'],
+  diagram: ['point.3.connected.trianglepath.dotted', 'account_tree'],
+  attach: ['paperclip', 'attach_file'],
+  // choice indicators: iOS marks a picked option with a trailing checkmark
+  // (single) / a filled check circle (multi); Android uses radios / checkboxes
+  radioOn: ['checkmark', 'radio_button_checked'],
+  radioOff: ['circle', 'radio_button_unchecked'],
+  checkboxOn: ['checkmark.circle.fill', 'check_box'],
+  checkboxOff: ['circle', 'check_box_outline_blank'],
 } as const satisfies Record<string, readonly [SFSymbol, AndroidSymbolName]>;
 
 export type IconName = keyof typeof ICONS;

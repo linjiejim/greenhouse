@@ -11,12 +11,13 @@
  * system controls) is already glass on iOS 26 — these components are only for
  * custom floating controls.
  *
- * Fallback (iOS < 26, Android, web): an opaque elevated surface with a hairline
- * border — same geometry, no blur, so layouts never depend on glass.
+ * Fallback — same geometry, no blur, so layouts never depend on glass: iOS < 26
+ * gets an opaque elevated surface with a hairline border; Android a flat tonal
+ * surface (Material's surfaceContainerHigh).
  */
 
 import React from 'react';
-import { StyleSheet, View, type ColorValue, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
+import { Platform, StyleSheet, View, type ColorValue, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
 import { GlassContainer, GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { HIT, makeStyles, shadow, squircle, useTheme } from '../theme';
 import { Icon, type IconName, Touchable } from './core';
@@ -139,10 +140,15 @@ export function GlassIconButton({
 }
 
 const useStyles = makeStyles((c) => ({
-  fallback: {
-    backgroundColor: c.tertiaryBackground,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.separator,
-    ...shadow.float,
-  },
+  fallback:
+    Platform.OS === 'android'
+      ? // Material: a tonal surface (surfaceContainerHigh), no drop shadow — an
+        // elevation shadow also bleeds past round shapes and gets clipped square
+        { backgroundColor: c.tertiaryFill }
+      : {
+          backgroundColor: c.tertiaryBackground,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: c.separator,
+          ...shadow.float,
+        },
 }));

@@ -14,27 +14,17 @@
  *    bubbles, list rows, task cards). Pair it with a normal `onPress` on the
  *    child for the primary action.
  *
- * Item ids come back through `onSelect(id)`.
+ * Item ids come back through `onSelect(id)`. Android: ./menu.android.tsx
+ * (Material dropdowns, same API).
  */
 
 import React, { useMemo, useState } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 import { MenuView, type MenuAction } from '@expo/ui/community/menu';
-import { sfSymbol, type IconName } from './core';
+import { sfSymbol } from './core';
+import type { MenuItem } from './menu-items';
 
-export interface MenuItem {
-  id: string;
-  title: string;
-  icon?: IconName;
-  destructive?: boolean;
-  disabled?: boolean;
-  /** Renders a checkmark (single/multi-select menus). */
-  checked?: boolean;
-  /** Nested items: a submenu, or an inline section when `inline` is set. */
-  children?: MenuItem[];
-  /** Render `children` inline as a titled section instead of a submenu. */
-  inline?: boolean;
-}
+export { menuSections, type MenuItem } from './menu-items';
 
 function toAction(item: MenuItem): MenuAction {
   return {
@@ -47,17 +37,6 @@ function toAction(item: MenuItem): MenuAction {
     subactions: item.children?.map(toAction),
     displayInline: item.inline,
   };
-}
-
-/**
- * Group items into inline sections (rendered with separators), e.g.
- * `menuSections([[copy, share], [del]])` — the idiomatic way to set the
- * destructive action apart at the bottom.
- */
-export function menuSections(groups: MenuItem[][]): MenuItem[] {
-  return groups
-    .filter((g) => g.length > 0)
-    .map((g, i) => ({ id: `__section-${i}`, title: '', inline: true, children: g }));
 }
 
 export function NativeMenu({
@@ -111,15 +90,22 @@ export function NativeMenu({
   if (!stretch) return menu(children);
   if (fixedWidth != null) return <View style={style}>{menu(<View style={{ width: fixedWidth }}>{children}</View>)}</View>;
   // Measure the slot with the children laid out bare first, then pin the
-  // trigger to that width so text wraps inside the menu host. NOTE: this swap
+  // trigger to that width so text wraps inside the menu host — rounded *up*:
+  // pinned a fraction of a point narrower than measured, a one-line bubble
+  // wraps its last character onto a second line. NOTE: this swap
   // mounts the child subtree twice (once bare, once inside the host). Keeping
   // the tree identical instead (children inside the host from the start, width
   // pinned later) was tried and is wrong: the hosted subtree is measured once
   // at its intrinsic, unconstrained size and text never re-wraps to the pinned
   // width (rows render one overflowing line) — verified on iOS 26.5.
   return (
-    <View style={style} onLayout={(e) => setWidth(Math.round(e.nativeEvent.layout.width))}>
+    <View style={style} onLayout={(e) => setWidth(Math.ceil(e.nativeEvent.layout.width))}>
       {width == null ? children : menu(<View style={{ width }}>{children}</View>)}
     </View>
   );
+}
+
+/** iOS menus are system UIMenus — nothing to mount (Android: the Material menu host). */
+export function MenuHost(): null {
+  return null;
 }

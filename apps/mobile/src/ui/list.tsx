@@ -32,7 +32,7 @@
  */
 
 import React, { Children, isValidElement } from 'react';
-import { Pressable, StyleSheet, Text, View, type ColorValue, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, type ColorValue, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { HIT, alpha, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon, type IconName } from './core';
 
@@ -300,13 +300,17 @@ export function Badge({
 const useStyles = makeStyles((c) => ({
   insetWrap: { marginHorizontal: space.margin, marginBottom: space.xxl },
   outerInset: { marginHorizontal: space.margin },
-  header: {
-    ...typo.footnote,
-    color: c.secondaryLabel,
-    textTransform: 'uppercase',
-    paddingHorizontal: space.margin,
-    paddingBottom: space.sm - 2,
-  },
+  header:
+    Platform.OS === 'android'
+      ? // Material list headers: sentence case in the primary color (as in Android Settings)
+        { ...typo.subheadline, fontWeight: weight.medium, color: c.accent, paddingHorizontal: space.margin, paddingBottom: space.sm }
+      : {
+          ...typo.footnote,
+          color: c.secondaryLabel,
+          textTransform: 'uppercase',
+          paddingHorizontal: space.margin,
+          paddingBottom: space.sm - 2,
+        },
   headerPlain: { ...typo.headline, textTransform: 'none', color: c.label },
   insetCard: {
     backgroundColor: c.secondaryGroupedBackground,

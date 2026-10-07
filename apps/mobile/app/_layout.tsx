@@ -39,6 +39,8 @@ import { setOnUnauthorized } from '../src/api/client';
 import { clearWidgetSnapshot, refreshWidgetSnapshot } from '../src/lib/widget-snapshot';
 import { useApplyAppearance, useTheme } from '../src/theme';
 import { Spinner } from '../src/ui/core';
+import { DialogHost } from '../src/ui/dialogs';
+import { MenuHost } from '../src/ui/menu';
 import { ToastHost } from '../src/ui/toast';
 import { useT } from '../src/lib/i18n';
 import { detailScreen, modalScreen, pageScreen, sheetScreen, stackDefaults } from '../src/ui/nav';
@@ -148,6 +150,8 @@ export default function RootLayout() {
             </Stack>
           )}
           <ToastHost />
+          <MenuHost />
+          <DialogHost />
         </SafeAreaProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

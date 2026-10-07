@@ -4,8 +4,7 @@
  *
  *  - `confirmAction()` — a yes/no question; `destructive` styles the confirm
  *    button red (deleting, discarding, signing out).
- *  - `promptText()`    — a single text field (rename, create a tag). iOS only;
- *    resolves null on other platforms so callers fall back to their own form.
+ *  - `promptText()`    — a single text field (rename, create a tag).
  *  - `alertError()`    — the ONE way to report a failed action (see below).
  *
  * Feedback policy (one rule, app-wide):
@@ -19,10 +18,12 @@
  *    for failures;
  *  - a screen that failed to load → an in-screen `EmptyState` with 重试.
  *
- * Never build a custom modal for these.
+ * Never build a custom modal for these. Android: ./dialogs.android.tsx — the
+ * same API as Material 3 dialogs, shown by `DialogHost` (mounted at the root;
+ * nothing to show on iOS).
  */
 
-import { Alert, Platform } from 'react-native';
+import { Alert } from 'react-native';
 import { translate } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
 
@@ -63,7 +64,6 @@ export function promptText(opts: {
   placeholder?: string;
   confirmLabel?: string;
 }): Promise<string | null> {
-  if (Platform.OS !== 'ios') return Promise.resolve(null);
   return new Promise((resolve) => {
     Alert.prompt(
       opts.title,
@@ -76,4 +76,9 @@ export function promptText(opts: {
       opts.defaultValue,
     );
   });
+}
+
+/** iOS dialogs are UIAlertControllers — nothing to mount (Android: Material dialogs host). */
+export function DialogHost(): null {
+  return null;
 }

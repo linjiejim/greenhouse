@@ -15,10 +15,12 @@
  */
 
 import React, { useCallback } from 'react';
-import { Stack, useRouter, type Href } from 'expo-router';
+import { BackHandler, Platform } from 'react-native';
+import { Stack, useFocusEffect, useRouter, type Href } from 'expo-router';
 import { useT } from '../lib/i18n';
-import { useTheme } from '../theme';
+import { alpha, useTheme } from '../theme';
 import { confirmAction } from './dialogs';
+import { toolbarIcon } from './toolbar-icon';
 
 /** ✕ close on the left of a sheet's navigation bar. Defaults to `router.back()`. */
 export function SheetClose({ onPress }: { onPress?: () => void }) {
@@ -26,7 +28,7 @@ export function SheetClose({ onPress }: { onPress?: () => void }) {
   const router = useRouter();
   return (
     <Stack.Toolbar placement="left">
-      <Stack.Toolbar.Button icon="xmark" accessibilityLabel={t('common.close')} onPress={onPress ?? (() => router.back())} />
+      <Stack.Toolbar.Button icon={toolbarIcon('x')} accessibilityLabel={t('common.close')} onPress={onPress ?? (() => router.back())} />
     </Stack.Toolbar>
   );
 }
@@ -72,12 +74,26 @@ export function FormChrome({
     else router.back();
   }, [dirty, t, router, onCancel]);
 
+  // Android: the system back button / gesture isn't covered by `gestureEnabled`
+  // — with unsaved edits it goes through the same discard check as ✕. (Only
+  // the system back: the screen's own `router.back()` after saving passes.)
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'android' || !dirty || saving) return;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        void cancel();
+        return true;
+      });
+      return () => sub.remove();
+    }, [dirty, saving, cancel]),
+  );
+
   return (
     <>
       <Stack.Screen options={{ title, gestureEnabled: !dirty && !saving }} />
       <Stack.Toolbar placement="left">
         <Stack.Toolbar.Button
-          icon="xmark"
+          icon={toolbarIcon('x')}
           disabled={saving}
           accessibilityLabel={t('common.cancel')}
           onPress={() => void cancel()}
@@ -85,9 +101,10 @@ export function FormChrome({
       </Stack.Toolbar>
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
-          icon="checkmark"
+          icon={toolbarIcon('check')}
           variant="done"
-          tintColor={hex.accent}
+          // Android draws the tint as given, disabled or not — dim it the Material way
+          tintColor={Platform.OS === 'android' && (!canSave || saving) ? alpha(hex.label, 0.38) : hex.accent}
           disabled={!canSave || saving}
           accessibilityLabel={t('common.save')}
           onPress={() => {
