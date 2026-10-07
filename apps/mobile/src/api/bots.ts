@@ -159,6 +159,14 @@ export function deleteBotMemory(botId: string, memoryId: number): Promise<BotsWr
   return call(`/api/bots/${enc(botId)}/memories/${memoryId}`, jsonInit('DELETE'), nothing);
 }
 
+/**
+ * Undo a "remembered for all Bots" receipt: archive the member's own memory
+ * (`PATCH /api/auth/me/memories/:id`, the web's `archiveUserMemory`). 404 = already gone.
+ */
+export function archiveUserMemory(memoryId: number): Promise<BotsWrite<void>> {
+  return call(`/api/auth/me/memories/${memoryId}`, jsonInit('PATCH', { status: 'archived' }), nothing);
+}
+
 // ─── Conversations ───────────────────────────────────────
 
 /** Newest activity first, at most 100, no paging. */
