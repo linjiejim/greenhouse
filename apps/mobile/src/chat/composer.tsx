@@ -12,17 +12,39 @@
  * the screen owns the draft, attachments and keyboard placement (it wraps this
  * in a KeyboardStickyView) and gets the control layer's height through
  * `onHeight` to pad the message list.
+ *
+ * The Bots thread adds optional pieces (none given = the conversation's
+ * composer, unchanged):
+ *  - `stop` — a separate Stop between the capsule and Send while a run is
+ *    live, so sending stays possible (Send never turns into Stop and never
+ *    moves; the capsule narrows as Stop slides in): tap = the caller's
+ *    `onPress` (soft, then hard), long press = a system menu of the two;
+ *    while a hard stop winds down it's a disabled spinner;
+ *  - `accessory` — a row above the input row (the task dock, the @-mention
+ *    strip);
+ *  - `onSelectionChange` — the caret (the mention picker reads the token
+ *    before it);
+ *  - `menuExtra` — more items in the `+` menu (a group's "Mention ▸").
  */
 
-import React, { forwardRef, memo } from 'react';
+import React, { forwardRef, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
-import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useT } from '../lib/i18n';
-import { makeStyles, radius, space, squircle, typo, useTheme } from '../theme';
+import { HIT, makeStyles, radius, space, squircle, typo, useTheme } from '../theme';
+import { NativeButton } from '../ui/button';
 import { Icon, Spinner, Touchable } from '../ui/core';
-import { Glass, GlassGroup, GlassIconButton } from '../ui/glass';
-import { NativeMenu } from '../ui/menu';
+import { Glass, GlassGroup, GlassIconButton, LIQUID_GLASS } from '../ui/glass';
+import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
 import type { Annotation } from './model';
 import { ProfileMenu, useProfiles } from './profile-menu';
 
@@ -35,8 +57,108 @@ export interface ComposerImage {
   remote?: { id: string; url: string };
 }
 
+/**
+ * The Bots composer's Stop (a run is live). `phase`: `running` — tap asks for
+ * a soft stop (finish this step); `soft` — asked, tap again to stop now;
+ * `hard` — stopping now (disabled spinner). Haptics are the caller's (it
+ * knows which stop a tap became).
+ */
+export interface ComposerStop {
+  phase: 'running' | 'soft' | 'hard';
+  onPress(): void;
+  /** The long-press menu's pick. */
+  onMenu(choice: 'soft' | 'hard'): void;
+  /** Says what a tap does in this phase. */
+  accessibilityLabel: string;
+  menuLabels: { soft: string; hard: string };
+}
+
 /** Field height cap ≈ 6 lines of body text. */
 const MAX_INPUT_HEIGHT = 6 * 22 + 22;
+/** The `+` menu's own item ids (`menuExtra` items must use others). */
+const ATTACH_IDS = new Set(['camera', 'library']);
+/** The Stop slot: the button plus the row gap it brings along. */
+const STOP_SLOT = HIT + space.sm;
+const STOP_MS = 180;
+const PRESSED_DIM = { opacity: 0.6 };
+
+/**
+ * Stop, between the capsule and Send. Once a stop has been offered the slot
+ * stays mounted and animates its width (0 ↔ button + gap), so the capsule
+ * narrows / widens smoothly and Send never moves; the last stop is kept
+ * on screen while it slides out.
+ */
+const StopSlot = memo(function StopSlot({ stop }: { stop?: ComposerStop }) {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  const reduceMotion = useReducedMotion();
+  const last = useRef(stop);
+  if (stop) last.current = stop;
+  const shown = stop ?? last.current;
+  const live = !!stop;
+  const open = useSharedValue(0);
+  useEffect(() => {
+    open.value = reduceMotion ? (live ? 1 : 0) : withTiming(live ? 1 : 0, { duration: STOP_MS });
+  }, [live, open, reduceMotion]);
+  const slide = useAnimatedStyle(() => ({ width: open.value * STOP_SLOT, opacity: open.value }));
+  const phase = shown?.phase;
+  const soft = shown?.menuLabels.soft ?? '';
+  const hard = shown?.menuLabels.hard ?? '';
+  const items = useMemo<MenuItem[]>(() => {
+    const now: MenuItem = { id: 'hard', title: hard, icon: 'stop', destructive: true };
+    return phase === 'running' ? [{ id: 'soft', title: soft, icon: 'stopCircle' }, now] : [now];
+  }, [phase, soft, hard]);
+  if (!shown) return null;
+  return (
+    <Animated.View
+      style={[styles.stopSlot, slide]}
+      pointerEvents={live ? 'auto' : 'none'}
+      accessibilityElementsHidden={!live}
+      importantForAccessibility={live ? 'auto' : 'no-hide-descendants'}
+    >
+      {shown.phase === 'hard' ? (
+        <View
+          accessible
+          accessibilityRole="button"
+          accessibilityState={{ disabled: true, busy: true }}
+          accessibilityLabel={shown.accessibilityLabel}
+        >
+          <Glass style={styles.stopButton}>
+            <Spinner />
+          </Glass>
+        </View>
+      ) : (
+        <NativeMenu
+          trigger="longPress"
+          fill={false}
+          items={items}
+          onSelect={(id) => shown.onMenu(id === 'soft' ? 'soft' : 'hard')}
+        >
+          <Touchable
+            onPress={shown.onPress}
+            // interactive glass answers the touch itself (as GlassIconButton)
+            pressedStyle={LIQUID_GLASS ? {} : PRESSED_DIM}
+            accessibilityRole="button"
+            accessibilityLabel={shown.accessibilityLabel}
+          >
+            <Glass interactive style={styles.stopButton}>
+              <Icon
+                name={shown.phase === 'soft' ? 'stopCircle' : 'stop'}
+                size={Math.round(HIT * 0.42)}
+                weight="semibold"
+                color={c.label}
+                // asked to stop: the symbol pulses until the run winds down
+                animationSpec={
+                  shown.phase === 'soft' && !reduceMotion ? { effect: { type: 'pulse' }, repeating: true } : undefined
+                }
+              />
+            </Glass>
+          </Touchable>
+        </NativeMenu>
+      )}
+    </Animated.View>
+  );
+});
 
 export const Composer = memo(
   forwardRef<
@@ -60,6 +182,14 @@ export const Composer = memo(
       autoFocus?: boolean;
       /** Height of the control layer (excluding the bottom safe-area pad). */
       onHeight?: (h: number) => void;
+      /** A Stop beside Send while a run is live (Bots); given → `streaming` / `onStop` are ignored. */
+      stop?: ComposerStop;
+      /** A row above the input row (Bots: the task dock or the @-mention strip). */
+      accessory?: React.ReactNode;
+      /** The text field's selection (the caret) as it moves. */
+      onSelectionChange?: (sel: { start: number; end: number }) => void;
+      /** More `+` menu items, in their own section (ids other than `camera` / `library`). */
+      menuExtra?: { items: MenuItem[]; onSelect(id: string): void };
     }
   >(function Composer(
     {
@@ -78,6 +208,10 @@ export const Composer = memo(
       showProfile = false,
       autoFocus = false,
       onHeight,
+      stop,
+      accessory,
+      onSelectionChange,
+      menuExtra,
     },
     ref,
   ) {
@@ -92,6 +226,15 @@ export const Composer = memo(
     // A single agent is no choice — no capsule (and no empty row) for it.
     const agents = useProfiles();
     const pickAgent = showProfile && (agents?.length ?? 0) > 1;
+    // A separate Stop takes over from the in-place one (Send stays Send).
+    const stopInPlace = streaming && !stop;
+    // Mounted from the first stop on, so it can slide in and out.
+    const [stopSeen, setStopSeen] = useState(false);
+    if (stop && !stopSeen) setStopSeen(true);
+    const attachItems: MenuItem[] = [
+      { id: 'camera', title: t('chat.attachCamera'), icon: 'camera', disabled: full },
+      { id: 'library', title: t('chat.attachPhotos'), icon: 'photos', disabled: full },
+    ];
 
     return (
       <View style={styles.wrap} onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}>
@@ -100,15 +243,16 @@ export const Composer = memo(
             <ProfileMenu />
           </Animated.View>
         ) : null}
+        {accessory ? <View style={styles.accessory}>{accessory}</View> : null}
 
         <GlassGroup spacing={8} style={styles.row}>
           <NativeMenu
             title={full ? t('chat.maxImages', { n: maxImages }) : undefined}
-            items={[
-              { id: 'camera', title: t('chat.attachCamera'), icon: 'camera', disabled: full },
-              { id: 'library', title: t('chat.attachPhotos'), icon: 'photos', disabled: full },
-            ]}
-            onSelect={(id) => onAttach(id === 'camera' ? 'camera' : 'library')}
+            items={menuExtra ? menuSections([attachItems, menuExtra.items]) : attachItems}
+            onSelect={(id) => {
+              if (menuExtra && !ATTACH_IDS.has(id)) menuExtra.onSelect(id);
+              else onAttach(id === 'camera' ? 'camera' : 'library');
+            }}
           >
             <GlassIconButton icon="plus" accessibilityLabel={t('chat.attachTitle')} />
           </NativeMenu>
@@ -175,10 +319,12 @@ export const Composer = memo(
               scrollEnabled
               style={styles.input}
               testID="composer-input"
+              onSelectionChange={onSelectionChange ? (e) => onSelectionChange(e.nativeEvent.selection) : undefined}
             />
           </Glass>
 
-          {streaming ? (
+          {stopSeen ? <StopSlot stop={stop} /> : null}
+          {stopInPlace ? (
             <GlassIconButton icon="stop" prominent onPress={onStop} accessibilityLabel={t('chat.stop')} />
           ) : (
             <GlassIconButton
@@ -195,20 +341,42 @@ export const Composer = memo(
   }),
 );
 
-/** The quiet bar that replaces the composer in a shared (read-only) conversation. */
-export function ReadOnlyBar({ onHeight }: { onHeight?: (h: number) => void }) {
+/**
+ * The quiet bar that replaces the composer in a shared (read-only)
+ * conversation — or, with a `message` (and optionally an `action`), wherever
+ * nobody can be written to (a Bots thread whose Bot is archived, a group
+ * with no one left to reply).
+ */
+export function ReadOnlyBar({
+  onHeight,
+  message,
+  action,
+}: {
+  onHeight?: (h: number) => void;
+  /** Says why there is no composer (default: shared · read-only). */
+  message?: string;
+  /** One way out, beside the message (e.g. "Invite a Bot"). */
+  action?: { label: string; onPress(): void };
+}) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   return (
     <View style={styles.wrap} onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}>
-      <Glass style={styles.readOnly}>
-        {/* one VoiceOver element: "Shared · read-only" */}
-        <View accessible accessibilityLabel={t('chat.sharedReadOnly')} style={styles.readOnlyInner}>
-          <Icon name="users" size={15} color={c.secondaryLabel} />
-          <Text style={styles.readOnlyText}>{t('chat.sharedReadOnly')}</Text>
-        </View>
-      </Glass>
+      {message == null ? (
+        <Glass style={styles.readOnly}>
+          {/* one VoiceOver element: "Shared · read-only" */}
+          <View accessible accessibilityLabel={t('chat.sharedReadOnly')} style={styles.readOnlyInner}>
+            <Icon name="users" size={15} color={c.secondaryLabel} />
+            <Text style={styles.readOnlyText}>{t('chat.sharedReadOnly')}</Text>
+          </View>
+        </Glass>
+      ) : (
+        <Glass style={styles.readOnlyNote}>
+          <Text style={styles.readOnlyNoteText}>{message}</Text>
+          {action ? <NativeButton label={action.label} size="small" onPress={action.onPress} /> : null}
+        </Glass>
+      )}
     </View>
   );
 }
@@ -270,4 +438,25 @@ const useStyles = makeStyles((c) => ({
   readOnly: { height: 44, borderRadius: 22, justifyContent: 'center' },
   readOnlyInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm },
   readOnlyText: { ...typo.subheadline, color: c.secondaryLabel },
+  // grows with Dynamic Type (the message may wrap; the action sits beside it)
+  readOnlyNote: {
+    minHeight: 44,
+    borderRadius: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
+  },
+  readOnlyNoteText: { flexShrink: 1, ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center' },
+  accessory: { paddingBottom: space.sm },
+  stopSlot: {
+    // the slot carries its own share of the row gap, so at width 0 it takes no room at all
+    marginLeft: -space.sm,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+  },
+  stopButton: { width: HIT, height: HIT, borderRadius: HIT / 2, alignItems: 'center', justifyContent: 'center' },
 }));

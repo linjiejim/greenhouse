@@ -346,8 +346,24 @@ export interface LocalToolRequestEvent {
   toolId: string;
   params: Record<string, unknown>;
 }
+/**
+ * Keepalive filler. Carries no information — consumers ignore it.
+ *
+ * A step that runs long without producing output (image generation takes ~30–100s)
+ * otherwise leaves the connection silent, and any reverse proxy in the path will
+ * eventually treat that silence as a dead upstream and close it mid-answer
+ * (nginx's `proxy_read_timeout` defaults to 60s). Bytes on the wire reset that timer.
+ */
+export interface PingEvent {
+  type: 'ping';
+}
 
+/** Discriminated union of all stream event types (the Bots ones are vendored in ./bots.ts). */
 export type StreamingEvent =
+  | import('./bots').BotTurnStartEvent
+  | import('./bots').BotTurnEndEvent
+  | import('./bots').BotRequestEvent
+  | import('./bots').RunInterruptingEvent
   | TextDeltaEvent
   | ReasoningDeltaEvent
   | ToolCallStartEvent
@@ -362,7 +378,8 @@ export type StreamingEvent =
   | StepFinishEvent
   | TitleEvent
   | SourceEvent
-  | LocalToolRequestEvent;
+  | LocalToolRequestEvent
+  | PingEvent;
 
 export interface StreamEventCallbacks {
   onTextDelta?: (text: string) => void;

@@ -1,0 +1,93 @@
+/** "Needs you" copy (`bots.card / login / needs / capsule`) — English, the key source. */
+
+export const botsCardsEn = {
+  card: {
+    waiting: 'Waiting for You',
+    allowed: 'Allowed',
+    done: 'Done',
+    declined: 'Declined',
+    expired: 'Expired',
+    canceled: 'Canceled',
+    askAgain: 'Ask Again',
+    expiresIn: 'Expires in {s}s',
+    expiringNow: 'Expiring now',
+    viewAll: 'View All',
+    moreChars: '…{n} more characters',
+    moreFields: '{n} more fields',
+    approvalTitle: '{name} needs your approval',
+    allowOnce: 'Allow Once',
+    allowAlways: 'Always Allow on This Site…',
+    deny: 'Deny',
+    alwaysTitle: 'Always fill on {site}?',
+    alwaysBody: '{name} won’t ask again before using your saved sign-in on this site.',
+    taskTitle: '{name} wants to start a background task',
+    start: 'Start',
+    cancel: 'Cancel',
+    taskLimit: 'Too many background tasks are running (max 3)',
+    createTitle: '{name} suggests a new Bot',
+    create: 'Create',
+    editFirst: 'Edit First',
+    notNow: 'Not Now',
+    created: 'Created {bot}',
+    instructionsTitle: '{name} proposes new instructions',
+    accept: 'Accept',
+    decline: 'Decline',
+    viewChanges: 'View Changes',
+    diffSummary: '+{added} lines · −{removed} lines',
+    loginTitle: '{name} needs you to sign in to {host}',
+    otpTitle: '{name} needs a code',
+    signIn: 'Sign In…',
+    /** The sign-in card's skip (zh differs from the create card's "Not Now"). */
+    loginNotNow: 'Not Now',
+    vaultHas: 'Saved in Passwords: {label} ({hint})',
+    reissue: 'Ask {name} to start over',
+    handBack: 'Hand Back — Let {name} Continue',
+    handBackTitle: 'You took over the computer — {name} is waiting',
+    waitingComputer: '{name} is waiting for the computer',
+    captchaTitle: '{name} hit a human check',
+    captchaHint:
+      'Human checks have to be done by hand on the computer screen — use the web app. Skip here and {name} will try another way.',
+    skip: 'Skip',
+    otherTitle: '{name} needs you on the computer',
+    otherHint:
+      'The computer isn’t visible on the phone. Skip for now, or handle it on the web and come back to tap “I’ve Done It”.',
+    finished: 'I’ve Done It',
+    finishedConfirm: 'Done on the computer? {name} will carry on.',
+    /** A refused decision, by the server's code (BotRequestErrorCode); the card stays pending. */
+    err: {
+      page_gone: 'The page has already changed, so nothing was filled.',
+      origin_mismatch:
+        'The sign-in page moved to a different address, so nothing was filled — your password stays safe.',
+      no_fields: 'Couldn’t find the sign-in fields on that page, so nothing was filled.',
+      failed: 'That couldn’t be done. Try again, or finish it in the web app.',
+      invalid: 'Those details couldn’t be used. Check them and try again.',
+      limit: 'Too many background tasks are running. Try again when one finishes.',
+      computer_restarted: 'The computer restarted and closed the page — ask the Bot to open it again.',
+      bot_gone: 'The Bot that asked is no longer available, so this can’t continue.',
+      /** 503: the computer or the password vault is down. */
+      unavailable: 'The computer or the password vault isn’t available right now. Try again later.',
+      /** No answer from the server (status 0). */
+      network: 'Couldn’t reach the server. Check your connection and try again.',
+    },
+  },
+  login: {
+    title: 'Sign In to {host}',
+    submit: 'Sign In',
+    username: 'Username',
+    password: 'Password',
+    otp: 'Code',
+    needOtp: 'Need a code?',
+    saveToVault: 'Save to Passwords',
+    footer:
+      'Used once: filled straight into the sign-in page on the computer — never stored in the conversation or shown to the model.',
+  },
+  needs: {
+    title: 'Needs You',
+    empty: 'All caught up',
+  },
+  capsule: {
+    one: '{name} needs your approval · {title}',
+    many: '{n} things need you',
+    report: '{name} reported back: {title}',
+  },
+};

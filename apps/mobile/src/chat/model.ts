@@ -1,7 +1,8 @@
 /**
  * Conversation data model — the client-side shape of a turn (what the screen
  * renders and the streaming hook mutates), plus the pure helpers that build it:
- * hydrating persisted history (`fromStored`), harvesting citations from tool
+ * hydrating persisted history (`fromStored`, `assistantFromParts` — also how a
+ * Bots message becomes a renderable turn), harvesting citations from tool
  * results, and serialising a transcript for the share sheet. No React here.
  */
 
@@ -142,6 +143,48 @@ export function isErrorResult(output: unknown): boolean {
   return isObj(output) && !!output.error;
 }
 
+/**
+ * An assistant turn from its persisted parts: the reply, its tool pipeline
+ * (`{ tool | toolName, input, output, duration_ms }` steps), its references
+ * and reasoning. Shared by chat history (`fromStored`, which parses the
+ * columns first) and Bots messages (src/bots — already arrays).
+ */
+export function assistantFromParts(p: {
+  id: string;
+  content: string;
+  pipeline: unknown[];
+  references: unknown[];
+  reasoning?: string | null;
+  metrics?: Metrics | null;
+}): ChatMessage {
+  const tools: ToolStep[] = p.pipeline.filter(isObj).map((s, i) => ({
+    id: `t${i}`,
+    tool: str(s.tool) ?? str(s.toolName) ?? 'tool',
+    input: s.input,
+    output: s.output,
+    status: isErrorResult(s.output) ? 'error' : 'done',
+    ms: typeof s.duration_ms === 'number' ? s.duration_ms : undefined,
+  }));
+  const sources: Source[] = p.references.filter(isObj).map((r) => ({
+    slug: str(r.slug),
+    title: str(r.title) ?? str(r.slug) ?? '—',
+    category: str(r.category),
+  }));
+  const web = tools.flatMap((s) => webFromResult(s.tool, s.output));
+  return {
+    id: p.id,
+    serverId: p.id,
+    role: 'assistant',
+    text: p.content,
+    tools: tools.length ? tools : undefined,
+    reasoning: p.reasoning || undefined,
+    sources: sources.length ? sources : undefined,
+    web: web.length ? web : undefined,
+    metrics: p.metrics ?? null,
+    status: 'done',
+  };
+}
+
 /** Hydrate a persisted Message row into a renderable ChatMessage. */
 export function fromStored(m: Message): ChatMessage {
   if (m.role === 'user') {
@@ -155,22 +198,6 @@ export function fromStored(m: Message): ChatMessage {
       status: 'done',
     };
   }
-  const pipeline = safeParse<Loose[]>(m.pipeline, []);
-  const tools: ToolStep[] = pipeline.filter(isObj).map((s, i) => ({
-    id: `t${i}`,
-    tool: str(s.tool) ?? str(s.toolName) ?? 'tool',
-    input: s.input,
-    output: s.output,
-    status: isErrorResult(s.output) ? 'error' : 'done',
-    ms: typeof s.duration_ms === 'number' ? s.duration_ms : undefined,
-  }));
-  const refs = safeParse<Loose[]>(m.references_, []);
-  const sources: Source[] = refs.filter(isObj).map((r) => ({
-    slug: str(r.slug),
-    title: str(r.title) ?? str(r.slug) ?? '—',
-    category: str(r.category),
-  }));
-  const web = tools.flatMap((s) => webFromResult(s.tool, s.output));
   const metrics: Metrics | null =
     m.duration_ms != null || m.input_tokens != null || m.output_tokens != null
       ? {
@@ -179,18 +206,14 @@ export function fromStored(m: Message): ChatMessage {
           tokensOut: m.output_tokens ?? undefined,
         }
       : null;
-  return {
+  return assistantFromParts({
     id: m.id,
-    serverId: m.id,
-    role: 'assistant',
-    text: m.content,
-    tools: tools.length ? tools : undefined,
-    reasoning: m.reasoning || undefined,
-    sources: sources.length ? sources : undefined,
-    web: web.length ? web : undefined,
+    content: m.content,
+    pipeline: safeParse<unknown[]>(m.pipeline, []),
+    references: safeParse<unknown[]>(m.references_, []),
+    reasoning: m.reasoning,
     metrics,
-    status: 'done',
-  };
+  });
 }
 
 /** Plain-text transcript for the share sheet. */

@@ -3,10 +3,13 @@
  * gates routes, and declares the app's native navigation map.
  *
  * Navigation map (all native — UINavigationController / sheets):
- *  - `(drawer)`            the conversation surface behind the left drawer (home)
+ *  - `(drawer)`            the conversation surface behind the left drawer (home;
+ *                          a Bots thread is the same route with `?c=`)
  *  - `knowledge/*`, `projects/*`  pushed pages with large titles
  *  - `settings`            a page-sheet modal with its own stack
  *  - `peek/*`, `sheets/*`  form sheets (detail previews, pickers, short forms)
+ *  - `bots/*`              Bots sheets (needs-you, cards, sign-in, management);
+ *                          `bots/index` only forwards a deep link to home
  *  - `table`, `peek/diagram`, `peek/html`  full-screen viewers (modal pages)
  *  - `login`               full screen, shown when signed out
  *
@@ -24,6 +27,9 @@
  * opens → everything above the root is dismissed, then /login replaces it (so
  * no signed-in screen survives under the login page); signed in on /login →
  * home.
+ *
+ * <RealtimeBridge/> runs the app's one WebSocket (src/realtime) — it decides
+ * itself when to connect (signed in, Bots available, foreground).
  */
 
 import 'react-native-gesture-handler';
@@ -44,6 +50,7 @@ import { DialogHost } from '../src/ui/dialogs';
 import { MenuHost } from '../src/ui/menu';
 import { ToastHost } from '../src/ui/toast';
 import { useT } from '../src/lib/i18n';
+import { RealtimeBridge } from '../src/realtime/realtime-bridge';
 import { detailScreen, modalScreen, pageScreen, sheetScreen, stackDefaults } from '../src/ui/nav';
 
 export const unstable_settings = { initialRouteName: '(drawer)' };
@@ -105,6 +112,7 @@ export default function RootLayout() {
       <KeyboardProvider>
         <SafeAreaProvider>
           <StatusBar style="auto" />
+          <RealtimeBridge />
           {loading ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.background }}>
               <Spinner size="large" />
@@ -145,6 +153,20 @@ export default function RootLayout() {
               <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="sheets/session-tags" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="sheets/tag-editor" options={sheetScreen([0.6], { header: true })} />
+
+              {/* ── Bots (spec docs/specs/20261008-mobile-bots.md §2.3) ── */}
+              {/* deep-link forwarder: renders nothing, re-points home at the thread */}
+              <Stack.Screen name="bots/index" options={{ animation: 'none' }} />
+              <Stack.Screen name="bots/needs-you" options={sheetScreen([0.6, 1], { header: true })} />
+              <Stack.Screen name="bots/request" options={sheetScreen([0.6, 1], { header: true })} />
+              <Stack.Screen name="bots/login" options={sheetScreen([1], { header: true })} />
+              <Stack.Screen name="bots/profile" options={sheetScreen([0.6, 1], { header: true })} />
+              <Stack.Screen name="bots/bot-form" options={sheetScreen([1], { header: true })} />
+              <Stack.Screen name="bots/new-group" options={sheetScreen([1], { header: true })} />
+              <Stack.Screen name="bots/info" options={sheetScreen([0.6, 1], { header: true })} />
+              <Stack.Screen name="bots/rules" options={sheetScreen([0.6, 1], { header: true })} />
+              <Stack.Screen name="bots/invite" options={sheetScreen([0.6, 1], { header: true })} />
+              <Stack.Screen name="bots/archived" options={sheetScreen([0.6, 1], { header: true })} />
 
               {/* ── modals with their own stack ── */}
               <Stack.Screen name="settings" options={modalScreen()} />

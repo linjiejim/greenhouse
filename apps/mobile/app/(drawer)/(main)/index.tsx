@@ -26,7 +26,8 @@
  * (ChatGPT / Claude style). KeyboardChatScrollView's `blankSpace` (an inset
  * floor) keeps that offset reachable while the reply is short and shrinks as
  * it grows, so nothing moves; past the fold the reply simply continues below,
- * and "回到最新" appears whenever the end is out of view.
+ * and "回到最新" appears whenever the end is out of view. The rules live in
+ * src/chat/use-turn-anchor.ts (shared with the Bots thread).
  *
  * Streaming re-renders this screen ~30×/s, so everything handed to children is
  * kept referentially stable (header and composer are memoised, callbacks read
@@ -60,6 +61,7 @@ import { excerpt, plainText, transcript, type Annotation, type ChatMessage } fro
 import { openTurn, publishTurns } from '../../../src/chat/live-turn';
 import { TagChip } from '../../../src/chat/tag-chip';
 import { nextId, useConversation } from '../../../src/chat/use-conversation';
+import { useTurnAnchor } from '../../../src/chat/use-turn-anchor';
 import { putHandoff } from '../../../src/lib/handoff';
 import { greeting } from '../../../src/lib/format';
 import { t as tNow, useT } from '../../../src/lib/i18n';
@@ -188,110 +190,48 @@ export default function Conversation() {
   const focusInput = useCallback(() => setTimeout(() => inputRef.current?.focus(), 300), []);
 
   /* ---------- scrolling: land on the end, anchor each turn (see header) ---------- */
-  const scrollRef = useRef<React.ComponentRef<typeof KeyboardChatScrollView>>(null);
-  const topPad = headerHeight + space.sm;
-  /** Inset floor under the content (KeyboardChatScrollView `blankSpace`). */
-  const blankSpace = useSharedValue(0);
-  /** Scroll view height, content height, and where the last user message sits. */
-  const geo = useRef({ viewport: 0, content: 0, user: null as { id: string; y: number; h: number } | null });
-  /** Keep the end in view while a conversation's history lays out (until a drag or a turn). */
-  const pinEndRef = useRef(true);
-  /** The anchored turn's scroll offset; pending = scroll there once its message is laid out. */
-  const anchorRef = useRef<number | null>(null);
-  const anchorPendingRef = useRef(false);
-  const [endVisible, setEndVisible] = useState(true);
+  const {
+    scrollRef,
+    blankSpace,
+    endVisible,
+    onEndVisible,
+    onViewport,
+    onContentSize,
+    onDragStart,
+    onAnchorRowLayout,
+    anchorNext,
+    holdForTurn,
+    cancelTurn,
+    jumpToLatest,
+    landOnEnd,
+  } = useTurnAnchor({
+    topPad: headerHeight + space.sm,
+    // Height a turn can fill without scrolling ends at the composer.
+    bottomInset: () => composerH + composerBottom + space.md,
+  });
   const lastUserId = useMemo(() => [...messages].reverse().find((m) => m.role === 'user')?.id, [messages]);
   const lastUserIdRef = useRef(lastUserId);
   lastUserIdRef.current = lastUserId;
-  const visibleRef = useRef(0);
-  // Height a turn can fill without scrolling: between the nav bar and the composer.
-  visibleRef.current = geo.current.viewport - topPad - (composerH + composerBottom + space.md);
 
-  /** Exactly the inset that keeps the anchor offset reachable (0 once the turn outgrows the screen). */
-  const syncBlank = useCallback(() => {
-    const { viewport, content } = geo.current;
-    const offset = anchorRef.current;
-    blankSpace.value = offset == null ? 0 : Math.max(0, offset + viewport - content);
-  }, [blankSpace]);
-
-  const tryAnchor = useCallback(() => {
-    const u = geo.current.user;
-    if (!anchorPendingRef.current || !u || u.id !== lastUserIdRef.current || !geo.current.viewport) return;
-    anchorPendingRef.current = false;
-    // A long message keeps its last lines (and room for the reply) in view.
-    const room = visibleRef.current * 0.4;
-    const top = u.h > room ? u.y + u.h - room : u.y;
-    const offset = Math.max(0, Math.round(top - topPad));
-    anchorRef.current = offset;
-    syncBlank();
-    // Let the new inset land before scrolling into it.
-    const go = () => requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: offset, animated: true }));
-    go();
-    // A send dismisses the keyboard: while it slides away the chat view keeps
-    // re-pinning its scroll offset (persistent lift), which cuts this scroll
-    // short — land it again once the keyboard is gone.
-    if (Keyboard.isVisible()) {
-      const sub = Keyboard.addListener('keyboardDidHide', () => {
-        sub.remove();
-        if (anchorRef.current === offset) go();
-      });
-      setTimeout(() => sub.remove(), 1500);
-    }
-  }, [syncBlank, topPad]);
-
-  /** Start anchoring the next turn (its message may not be on screen yet). */
-  const anchorNextTurn = useCallback(() => {
-    pinEndRef.current = false;
-    anchorPendingRef.current = true;
-    tryAnchor();
-  }, [tryAnchor]);
-
-  const onViewport = useCallback(
-    (e: LayoutChangeEvent) => {
-      geo.current.viewport = e.nativeEvent.layout.height;
-      syncBlank();
-      tryAnchor();
-    },
-    [syncBlank, tryAnchor],
-  );
-  const onContentSize = useCallback(
-    (_w: number, h: number) => {
-      geo.current.content = h;
-      if (anchorRef.current != null) syncBlank();
-      else if (pinEndRef.current) scrollRef.current?.scrollToEnd({ animated: false });
-    },
-    [syncBlank],
-  );
+  // the last user message reports where it sits — that's what a turn anchors to
   const onLastUserLayout = useCallback(
     (e: LayoutChangeEvent) => {
       const id = lastUserIdRef.current;
-      if (!id) return;
-      const { y, height } = e.nativeEvent.layout;
-      geo.current.user = { id, y, h: height };
-      tryAnchor();
+      if (id) onAnchorRowLayout(id, e);
     },
-    [tryAnchor],
+    [onAnchorRowLayout],
   );
-  const onDragStart = useCallback(() => {
-    pinEndRef.current = false;
-  }, []);
-  const jumpToLatest = useCallback(() => scrollRef.current?.scrollToEnd({ animated: true }), []);
 
   // Every turn is anchored — sent here, re-run, or a live run re-attached on open.
   useEffect(() => {
-    if (streaming) anchorNextTurn();
-  }, [streaming, anchorNextTurn]);
+    if (streaming) anchorNext(lastUserIdRef.current ?? '');
+  }, [streaming, anchorNext]);
 
   // Another conversation (or a fresh one): land on its end again, no anchor.
   const empty = messages.length === 0;
   useEffect(() => {
-    if (!empty) return;
-    pinEndRef.current = true;
-    anchorRef.current = null;
-    anchorPendingRef.current = false;
-    geo.current.user = null;
-    syncBlank();
-  }, [empty, syncBlank]);
+    if (empty) landOnEnd();
+  }, [empty, landOnEnd]);
 
   // The widget's 新对话 deep link (`?compose=1`) can land on an already-open
   // screen (autoFocus only applies on mount): focus, then consume the param.
@@ -397,8 +337,7 @@ export default function Conversation() {
     // The anchor itself starts with the turn (the `streaming` effect), once the
     // new message is in the list — starting it here would anchor the previous
     // message and drop the floor (the next scroll then clamps short).
-    blankSpace.value = geo.current.viewport;
-    pinEndRef.current = false;
+    holdForTurn();
     Keyboard.dismiss();
     const ok = await convoSend({
       text,
@@ -406,14 +345,13 @@ export default function Conversation() {
       images: ready.map((im) => im.remote!),
     });
     if (!ok) {
-      anchorPendingRef.current = false;
-      syncBlank();
+      cancelTurn();
       setInput(draft.input);
       setAnnotations(draft.annotations);
       setImages(draft.images);
       alertError(tNow('chat.createFailed'));
     }
-  }, [input, images, annotations, streaming, convoSend, blankSpace, syncBlank]);
+  }, [input, images, annotations, streaming, convoSend, holdForTurn, cancelTurn]);
 
   /** A follow-up sent from a card in a reply (ask_user answers, a confirm pick). Stable: reads `streaming` live. */
   const streamingRef = useRef(streaming);
@@ -425,18 +363,16 @@ export default function Conversation() {
         return false;
       }
       // same as a composer send (see `send`): floor now, anchor with the turn
-      blankSpace.value = geo.current.viewport;
-      pinEndRef.current = false;
+      holdForTurn();
       Keyboard.dismiss();
       const ok = await convoSend({ text, annotation: null, images: [] });
       if (!ok) {
-        anchorPendingRef.current = false;
-        syncBlank();
+        cancelTurn();
         alertError(tNow('chat.createFailed'));
       }
       return ok;
     },
-    [convoSend, blankSpace, syncBlank],
+    [convoSend, holdForTurn, cancelTurn],
   );
 
   /* ---------- message actions (stable — messages are memoised) ---------- */
@@ -586,7 +522,7 @@ export default function Conversation() {
         blankSpace={blankSpace}
         onLayout={onViewport}
         onScrollBeginDrag={onDragStart}
-        onEndVisible={setEndVisible}
+        onEndVisible={onEndVisible}
         onContentSizeChange={onContentSize}
       >
         {tags?.length ? (

@@ -22,6 +22,13 @@
  *    detaches; the run would keep generating, billing and holding the
  *    session's one-run slot — a follow-up send would get 409).
  *
+ * Bots conversations (`channel: 'bots'`) send through `openBotsChat` instead of
+ * `streamChat`: a busy conversation answers `202 {queued:true}` (the message was
+ * delivered and is read between Bot turns) rather than 409, and a refusal
+ * carries a `code` (`bot_archived`, `no_active_members`) the thread turns into
+ * its read-only state. They also have a soft stop (`interruptChatRun`), and
+ * `listChatRuns` seeds which conversations are busy after a reconnect.
+ *
  * Yields the canonical `StreamingEvent` union (vendored from @greenhouse/types)
  * so callers can drive it through `handleStreamEvent`.
  */
@@ -191,5 +198,108 @@ export async function stopChatRun(sessionId: string): Promise<boolean> {
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+// ─── Bots conversations ──────────────────────────────────
+
+/**
+ * How opening a Bots turn went: the run's NDJSON stream (200 — this request
+ * started the run and is its first reader), `queued` (202 — a Bot is still
+ * talking; the body was read to the end, it is never a stream), or a refusal
+ * with the server's `code` and sentence (`status` 0 = no answer at all).
+ * Yields the raw events: whether the stream ended with `finish` is the
+ * caller's to judge (EOF without one = the transport dropped).
+ */
+export type BotsPost =
+  | { kind: 'stream'; events: AsyncGenerator<RunStreamEvent> }
+  | { kind: 'queued' }
+  | { kind: 'error'; status: number; code: string | null; message: string };
+
+/**
+ * Send a member message to a Bots conversation (`POST /api/chat`). The Bots
+ * branch reads only the last message and `mentions`; `profile_id`,
+ * `model_override` and `regenerate_*` are never sent (a stray `profile_id`
+ * is checked before the branch and can 403).
+ */
+export async function openBotsChat(args: {
+  sessionId: string;
+  content: string;
+  images?: Array<{ id: string; url: string }>;
+  /** Bot ids the member addressed (`@Name`, or a leading "Name:"). */
+  mentions?: string[];
+  signal?: AbortSignal;
+}): Promise<BotsPost> {
+  const message = { role: 'user', content: args.content, ...(args.images?.length ? { images: args.images } : {}) };
+  const body = {
+    session_id: args.sessionId,
+    messages: [message],
+    ...(args.mentions?.length ? { mentions: args.mentions } : {}),
+  };
+  let res: Awaited<ReturnType<typeof openAuthed>>;
+  try {
+    res = await openAuthed('/api/chat', { method: 'POST', body: JSON.stringify(body), signal: args.signal });
+  } catch {
+    return { kind: 'error', status: 0, code: null, message: '' };
+  }
+  if (res.status === 202) {
+    // Drain `{queued:true}` so the connection is released — never read it as a stream.
+    await res.text().catch(() => '');
+    return { kind: 'queued' };
+  }
+  if (!res.ok || !res.body) {
+    let raw = '';
+    try {
+      raw = await res.text();
+    } catch {
+      /* ignore */
+    }
+    return { kind: 'error', status: res.ok ? 0 : res.status, code: errorCode(raw), message: errorDetail(raw) };
+  }
+  return { kind: 'stream', events: readNdjson(res.body) };
+}
+
+/** The server's machine-readable `code`, when a failed body carries one. */
+function errorCode(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw) as { code?: unknown };
+    return typeof parsed.code === 'string' ? parsed.code : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Soft stop (Bots only): the step in flight finishes and is kept, then a
+ * waiting member message is answered or the run ends. `no_run` (404): nothing
+ * left to interrupt — it already finished; `refused`: anything else (offline,
+ * not a Bots conversation) — the caller hard-stops instead.
+ */
+export async function interruptChatRun(sessionId: string): Promise<'interrupting' | 'no_run' | 'refused'> {
+  try {
+    const res = await api(`/api/chat/runs/${encodeURIComponent(sessionId)}/interrupt`, { method: 'POST' });
+    if (res.ok) return 'interrupting';
+    return res.status === 404 ? 'no_run' : 'refused';
+  } catch {
+    return 'refused';
+  }
+}
+
+/** Every run of the caller's still generating — the busy seed after a reconnect. `null` = no answer. */
+export async function listChatRuns(): Promise<Array<{
+  session_id: string;
+  run_id: string;
+  started_at: number;
+  next_seq: number;
+}> | null> {
+  try {
+    const res = await api('/api/chat/runs');
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      runs?: Array<{ session_id: string; run_id: string; started_at: number; next_seq: number }>;
+    };
+    return Array.isArray(data.runs) ? data.runs : null;
+  } catch {
+    return null;
   }
 }
