@@ -6,15 +6,22 @@
  */
 
 import React, { useState } from 'react';
-import { Text, View, type LayoutChangeEvent } from 'react-native';
+import { Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import type { BotRequestView, BotTaskStartPayload } from '../../shared/bots';
 import { Markdown } from '../../chat/markdown';
+import { PROSE_LINE } from '../../chat/markdown/blocks/text';
 import { useT } from '../../lib/i18n';
-import { typo, useTheme, weight } from '../../theme';
+import { space, typo, useTheme, weight } from '../../theme';
 import { MoreLink } from './card-frame';
 
 /** Lines of brief the card shows before "Show More". */
 const BRIEF_LINES = 4;
+/**
+ * A Markdown paragraph's top / bottom margin (`styles.p` in
+ * chat/markdown/blocks/text.tsx — keep in step). Margins stay put under
+ * Dynamic Type; line heights grow with it.
+ */
+const PROSE_GAP = space.xs + 2;
 
 export function TaskStartBody({ request, full = false }: { request: BotRequestView; full?: boolean }) {
   const t = useT();
@@ -24,7 +31,11 @@ export function TaskStartBody({ request, full = false }: { request: BotRequestVi
   const [open, setOpen] = useState(false);
   // The brief's natural height, measured unclamped inside the clipping box.
   const [height, setHeight] = useState(0);
-  const clampAt = Math.ceil((typo.body.lineHeight ?? 22) * BRIEF_LINES);
+  const { fontScale } = useWindowDimensions();
+  // Four whole paragraph lines at the member's text size (RN scales the
+  // paragraph's `lineHeight` by the same factor), the first one a margin down —
+  // a fixed height would slice a line through its glyphs as text grows.
+  const clampAt = Math.ceil(PROSE_GAP + PROSE_LINE * fontScale * BRIEF_LINES);
   const clamped = !full && !open;
   return (
     <>
@@ -40,7 +51,8 @@ export function TaskStartBody({ request, full = false }: { request: BotRequestVi
           </View>
         </View>
       ) : null}
-      {!full && height > clampAt + 1 ? (
+      {/* more than the clamp plus the last paragraph's bottom margin: there's more to read */}
+      {!full && height > clampAt + PROSE_GAP + 1 ? (
         <MoreLink
           label={open ? t('bots.card.showLess') : t('bots.card.showMore')}
           expands

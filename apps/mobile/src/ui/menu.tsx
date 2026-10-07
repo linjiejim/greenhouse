@@ -16,6 +16,12 @@
  *
  * Item ids come back through `onSelect(id)`. Android: ./menu.android.tsx
  * (Material dropdowns, same API).
+ *
+ * Accessibility: the trigger child is what VoiceOver focuses. A tap trigger's
+ * child reads as an enabled button (`accessible accessibilityRole="button"`
+ * plus a label; a `ListRow` sets `menuTrigger`) — never a disabled touchable.
+ * A long-press menu is easy to miss without sight: offer its key items as
+ * `accessibilityActions` on the child too (the actions rotor).
  */
 
 import React, { useMemo, useState } from 'react';

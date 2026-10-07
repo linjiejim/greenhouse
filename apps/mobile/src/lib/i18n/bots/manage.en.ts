@@ -41,6 +41,7 @@ export const botsManageEn = {
     plant: 'Plant',
     mood: 'Mood',
     namePlaceholder: 'Name',
+    nameHint: 'Up to {max} characters — it’s how you @mention it',
     rolePlaceholder: 'Role, e.g. Researcher',
     purposePlaceholder: 'What it’s for, in a line',
     instructionsPlaceholder: 'How it should work — read before every reply',

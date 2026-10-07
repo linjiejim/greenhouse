@@ -7,10 +7,11 @@
  *
  * Fields: the look (a live preview, the species as a menu, the resting mood
  * as a segmented control — written with `withPlant` / `withMood`), name (the
- * server's rules checked as you type; a refusal goes under the field), role,
- * purpose (not for a proposal: the card has none), instructions. No model /
- * tools / step cap on mobile. Chrome is the shared `FormChrome` (✕ confirms
- * discarding edits, swipe-down is blocked while dirty, ✓ saves).
+ * server's rules checked as you type; a refusal, else a length hint, goes
+ * under the field), role, purpose (not for a proposal: the card has none),
+ * instructions. No model / tools / step cap on mobile. Chrome is the shared
+ * `FormChrome` (✕ confirms discarding edits, swipe-down is blocked while
+ * dirty, ✓ saves).
  *
  * After ✓: a new Bot opens its DM (its greeting and starters are there) or
  * the conversation it was made for; an edit or an accepted proposal closes
@@ -187,9 +188,17 @@ function BotForm({ init }: { init: BotFormInit }) {
           </Picker>
         </Section>
 
+        {/* The footer is always a Text — the refusal in red, else the length /
+            @mention hint. Adding or removing a Section footer rebuilds its rows,
+            and the focused name field would drop the keyboard the moment the
+            name turns valid (or invalid) mid-typing (as in app/login.tsx). */}
         <Section
           title={t('bots.manage.name')}
-          footer={nameError ? <Text modifiers={[foregroundStyle(hex.red)]}>{t(nameError)}</Text> : undefined}
+          footer={
+            <Text modifiers={nameError ? [foregroundStyle(hex.red)] : []}>
+              {nameError ? t(nameError) : t('bots.manage.nameHint', { max: BOT_NAME_MAX })}
+            </Text>
+          }
         >
           <TextField
             text={nameText}

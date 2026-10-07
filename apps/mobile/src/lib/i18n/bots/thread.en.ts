@@ -52,6 +52,17 @@ export const botsThreadEn = {
     yesterday: 'Yesterday',
     task: '{title} · {elapsed}',
     taskMenu: '{title} · {status} · {elapsed}',
+    /** A task's running time (src/bots/thread/task-elapsed.ts): on screen… */
+    elapsed: { s: '{s}s', ms: '{m}m {s}s', hm: '{h}h {m}m' },
+    /** …and spoken (VoiceOver), one unit per key, joined with a space. */
+    elapsedA11y: {
+      second: '{n} second',
+      seconds: '{n} seconds',
+      minute: '{n} minute',
+      minutes: '{n} minutes',
+      hour: '{n} hour',
+      hours: '{n} hours',
+    },
     tasksN: '{n} background tasks running',
     taskQueued: 'Queued',
     taskRunning: 'Running',

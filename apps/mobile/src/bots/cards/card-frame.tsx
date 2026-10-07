@@ -55,7 +55,10 @@ import {
   type Copy,
 } from './decision';
 
-/** Above this Dynamic Type scale the buttons stack full-width (HIG: never squeeze a label). */
+/**
+ * Above this Dynamic Type scale the buttons stack full-width and an info row's
+ * label sits above its value (HIG: never squeeze a label).
+ */
 const STACK_FONT_SCALE = 1.35;
 /** How long a deep-linked card stays highlighted. */
 const HIGHLIGHT_MS = 1200;
@@ -322,7 +325,12 @@ function confirmFor(t: TFunction, request: BotRequestView, button: CardButton, n
 
 // ─── Text blocks ─────────────────────────────────────────
 
-/** A "label · value" line (a detail row, the site / page of a sign-in). */
+/**
+ * A "label · value" line (a detail row, the site / page of a sign-in). The
+ * label is never cut — approval labels are the server's raw input keys
+ * (`spreadsheet_id`): a flexible column (72 pt up to 40% of the row) at
+ * regular sizes, its own line above the value at large Dynamic Type.
+ */
 export function InfoRow({
   label,
   value,
@@ -342,12 +350,16 @@ export function InfoRow({
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const { fontScale } = useWindowDimensions();
+  const stacked = fontScale > STACK_FONT_SCALE;
   return (
-    <View style={styles.infoRow} accessible accessibilityLabel={`${label}: ${value}${note ? ` ${note}` : ''}`}>
-      <Text style={styles.infoLabel} numberOfLines={2}>
-        {label}
-      </Text>
-      <View style={styles.infoValueWrap}>
+    <View
+      style={stacked ? styles.infoStack : styles.infoRow}
+      accessible
+      accessibilityLabel={`${label}: ${value}${note ? ` ${note}` : ''}`}
+    >
+      <Text style={stacked ? styles.infoLabelStacked : styles.infoLabel}>{label}</Text>
+      <View style={[styles.infoValueWrap, stacked && styles.infoValueWrapStacked]}>
         {icon ? <Icon name={icon} size={13} color={c.secondaryLabel} style={styles.infoIcon} /> : null}
         <Text style={styles.infoValue} numberOfLines={lines} selectable={selectable} ellipsizeMode="tail">
           {value}
@@ -412,8 +424,12 @@ const useStyles = makeStyles((c) => ({
   body: { gap: space.sm },
   footer: { gap: space.sm },
   infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  infoLabel: { ...typo.footnote, color: c.secondaryLabel, width: 72, paddingTop: 2 },
+  infoStack: { gap: space.xxs },
+  infoLabel: { ...typo.footnote, color: c.secondaryLabel, minWidth: 72, maxWidth: '40%', flexShrink: 0, paddingTop: 2 },
+  infoLabelStacked: { ...typo.footnote, color: c.secondaryLabel },
   infoValueWrap: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: space.xs },
+  // in the column: full width by stretch, its height from the text (not a flex share)
+  infoValueWrapStacked: { flex: 0 },
   infoIcon: { marginTop: 4 },
   infoValue: { ...typo.body, color: c.label, flex: 1 },
   infoNote: { ...typo.footnote, color: c.tertiaryLabel },

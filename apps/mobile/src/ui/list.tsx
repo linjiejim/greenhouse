@@ -17,7 +17,11 @@
  *  - `ListRow` — leading icon tile or custom view, title + optional subtitle,
  *    trailing value / chevron / checkmark / custom accessory, optional
  *    `footer` slot under the row (expanded details). Long-press menus come
- *    from wrapping in `NativeMenu trigger="longPress"`.
+ *    from wrapping in `NativeMenu trigger="longPress"` (mirror the menu's
+ *    actions in `accessibilityActions` for VoiceOver); a row that is the
+ *    trigger of a `NativeMenu trigger="tap"` sets `menuTrigger`. Only an
+ *    explicit `disabled` reads as dimmed — a row without `onPress` is just
+ *    not tappable here.
  *  - Virtualized lists (FlatList / SectionList) can't wrap rows in a
  *    `ListSection`: give each row its `position` ('first' | 'middle' | 'last'
  *    | 'only') and it draws its own slice of the inset card (outer corners,
@@ -32,7 +36,19 @@
  */
 
 import React, { Children, isValidElement } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, type ColorValue, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type AccessibilityActionEvent,
+  type AccessibilityActionInfo,
+  type ColorValue,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 import { HIT, alpha, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon, type IconName } from './core';
 
@@ -141,7 +157,15 @@ export interface ListRowProps {
   disabled?: boolean;
   /** Title lines (default 1). */
   titleLines?: number;
+  /**
+   * The row is the trigger of a wrapping `NativeMenu trigger="tap"` (no
+   * `onPress` of its own): it reads as a button, the menu being its action.
+   */
+  menuTrigger?: boolean;
   accessibilityLabel?: string;
+  /** VoiceOver actions — e.g. the items of a wrapping long-press menu. */
+  accessibilityActions?: readonly AccessibilityActionInfo[];
+  onAccessibilityAction?: (event: AccessibilityActionEvent) => void;
   /** Virtualized inset-grouped lists: this row's place in its card (draws its own corners). */
   position?: RowPosition;
   /** Set by ListSection — hides the separator under the last row. */
@@ -163,7 +187,10 @@ export function ListRow({
   destructive,
   disabled,
   titleLines = 1,
+  menuTrigger,
   accessibilityLabel,
+  accessibilityActions,
+  onAccessibilityAction,
   position,
   last,
 }: ListRowProps) {
@@ -183,13 +210,15 @@ export function ListRow({
           : undefined
       }
     >
-      <Pressable
+      <Row
         onPress={onPress}
-        disabled={disabled || !onPress}
-        accessibilityRole={onPress ? 'button' : undefined}
+        disabled={disabled}
+        menuTrigger={menuTrigger}
         accessibilityLabel={accessibilityLabel}
-        accessibilityState={disabled ? { disabled: true } : undefined}
-        style={({ pressed }) => [styles.row, pressed && onPress ? { backgroundColor: c.fill } : null, disabled && { opacity: 0.4 }]}
+        accessibilityActions={accessibilityActions}
+        onAccessibilityAction={onAccessibilityAction}
+        pressedColor={c.fill}
+        style={[styles.row, disabled && { opacity: 0.4 }]}
       >
         {icon ? <IconTile icon={icon} tint={iconTint} /> : leading}
         <View style={styles.body}>
@@ -216,10 +245,56 @@ export function ListRow({
             accessory
           )}
         </View>
-      </Pressable>
+      </Row>
       {footer ? <View style={[styles.footerSlot, { paddingLeft: inset }]}>{footer}</View> : null}
       {/* separator runs from the text edge to the trailing edge, like UIKit */}
       {!isLast ? <View pointerEvents="none" style={[styles.sepLine, { left: inset }]} /> : null}
+    </View>
+  );
+}
+
+/**
+ * A row's tap target: a Pressable button when it has `onPress`, else one
+ * accessible View. Not a Pressable disabled for want of `onPress` — VoiceOver
+ * would read a menu trigger or a plain information row as "dimmed", the same
+ * as a row that really is off (only `disabled` says that).
+ */
+function Row({
+  onPress,
+  disabled,
+  menuTrigger,
+  accessibilityLabel,
+  accessibilityActions,
+  onAccessibilityAction,
+  pressedColor,
+  style,
+  children,
+}: Pick<
+  ListRowProps,
+  'onPress' | 'disabled' | 'menuTrigger' | 'accessibilityLabel' | 'accessibilityActions' | 'onAccessibilityAction'
+> & { pressedColor: ColorValue; style: StyleProp<ViewStyle>; children: React.ReactNode }) {
+  const a11y = {
+    accessibilityLabel,
+    accessibilityActions,
+    onAccessibilityAction,
+    accessibilityState: disabled ? { disabled: true } : undefined,
+  };
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        accessibilityRole="button"
+        {...a11y}
+        style={({ pressed }) => [style, pressed ? { backgroundColor: pressedColor } : null]}
+      >
+        {children}
+      </Pressable>
+    );
+  }
+  return (
+    <View accessible accessibilityRole={menuTrigger && !disabled ? 'button' : undefined} {...a11y} style={style}>
+      {children}
     </View>
   );
 }

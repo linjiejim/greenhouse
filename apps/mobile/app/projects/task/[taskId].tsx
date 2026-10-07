@@ -504,7 +504,7 @@ function MenuRow({
   if (!enabled) return <ListRow {...row} last={last} />;
   return (
     <NativeMenu trigger="tap" fill items={items} onSelect={onSelect}>
-      <ListRow {...row} last={last} accessory={<Icon name="chevUpDown" size={13} weight="semibold" color={c.tertiaryLabel} />} />
+      <ListRow {...row} last={last} menuTrigger accessory={<Icon name="chevUpDown" size={13} weight="semibold" color={c.tertiaryLabel} />} />
     </NativeMenu>
   );
 }
