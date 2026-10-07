@@ -12,6 +12,7 @@
 
 import { authFetch } from '../auth';
 import { readNdjsonStream } from '../stream-utils';
+import { BotsApiError } from './bots';
 import { CLIENT_ACTION_RESULT_PATH, requireChatStreamFinish } from '@greenhouse/types/api';
 import type { StreamingEvent } from '../stream-events';
 import type {
@@ -90,6 +91,66 @@ export async function* streamChat(
   yield* requireChatStreamFinish(readNdjsonStream<StreamEvent>(reader));
 }
 
+// ─── Bots conversations ─────────────────────────────────────
+
+/**
+ * Opening a Bots turn has two outcomes. An idle conversation answers with the
+ * usual NDJSON stream; a busy one (a Bot is still talking) answers
+ * `202 {queued:true}` — the message was delivered and the engine reads it
+ * between Bot turns, so the composer never has to lock.
+ */
+export type BotsChatOpenResult = { queued: true } | { queued: false; events: AsyncGenerator<StreamEvent> };
+
+export async function openBotsChat({
+  sessionId,
+  message,
+  images,
+  mentions,
+  signal,
+}: {
+  sessionId: string;
+  message: string;
+  images?: Array<{ id: string; url: string }>;
+  /** Bot ids the member addressed (`@Name`, or a leading "Name:"). */
+  mentions?: string[];
+  signal?: AbortSignal;
+}): Promise<BotsChatOpenResult> {
+  const messagePayload: ChatRequestMessage = { role: 'user', content: message };
+  if (images && images.length > 0) messagePayload.images = images;
+  const body: ChatRequestBody = { session_id: sessionId, messages: [messagePayload] };
+  if (mentions && mentions.length > 0) body.mentions = mentions;
+  const wsId = useUIStore.getState().activeWorkspace;
+  if (wsId) body.workspace_id = wsId;
+
+  const res = await authFetch(`${BASE}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (res.status === 202) {
+    await res.body?.cancel().catch(() => {});
+    return { queued: true };
+  }
+  if (!res.ok) {
+    const raw = await res.text();
+    let reason = raw;
+    let code: string | null = null;
+    try {
+      const parsed = JSON.parse(raw) as { error?: unknown; code?: unknown };
+      if (typeof parsed.error === 'string') reason = parsed.error;
+      if (typeof parsed.code === 'string') code = parsed.code;
+    } catch {
+      /* not JSON — keep the raw body */
+    }
+    // A Bots refusal carries a code (409 `bot_archived` / `no_active_members`:
+    // nobody here can reply) the page turns into its read-only state.
+    throw new BotsApiError(reason || `Chat error ${res.status}`, res.status, code);
+  }
+  const reader = res.body!.getReader();
+  return { queued: false, events: requireChatStreamFinish(readNdjsonStream<StreamEvent>(reader)) };
+}
+
 // ─── Background Runs (reconnectable generations) ────────────
 
 /** A stream event as delivered on the wire — may carry the run's replay cursor. */
@@ -139,6 +200,31 @@ export async function* streamChatRun(
 export async function stopChatRun(sessionId: string): Promise<boolean> {
   const res = await authFetch(`${BASE}/api/chat/runs/${sessionId}/stop`, { method: 'POST' });
   return res.ok;
+}
+
+/**
+ * Soft stop (Bots conversations): the current step finishes — its tool calls
+ * complete and are kept, e.g. a generated image — then the turn ends. A
+ * member message waiting in the queue is read next; with none the run ends.
+ * Rejects with a `BotsApiError` when there is no run to interrupt (404) or the
+ * conversation does not support it (400 `not_supported`).
+ */
+export async function interruptChatRun(sessionId: string): Promise<{ run_id: string }> {
+  const res = await authFetch(`${BASE}/api/chat/runs/${encodeURIComponent(sessionId)}/interrupt`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const data: unknown = await res.json().catch(() => null);
+    const body: { error?: unknown; code?: unknown } = data && typeof data === 'object' ? data : {};
+    throw new BotsApiError(
+      typeof body.error === 'string' && body.error ? body.error : `Interrupt failed (${res.status})`,
+      res.status,
+      typeof body.code === 'string' ? body.code : null,
+    );
+  }
+  const data: unknown = await res.json().catch(() => null);
+  const runId = data && typeof data === 'object' && 'run_id' in data ? data.run_id : null;
+  return { run_id: typeof runId === 'string' ? runId : '' };
 }
 
 // ─── Browser Client Action Result ───────────────────────────

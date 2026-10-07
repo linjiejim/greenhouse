@@ -10,7 +10,8 @@
 
 import { randomUUID } from 'node:crypto';
 import type { DatabaseProvider, RuntimeRunRow, RuntimeStepRow } from '@greenhouse/db';
-import { RuntimeKernelError } from '@greenhouse/db';
+import { isBotId, RuntimeKernelError } from '@greenhouse/db';
+import { BOT_TASK_SESSION_PREFIX } from '@greenhouse/types/session';
 import type {
   RuntimePayload,
   RuntimeRunCommandType,
@@ -33,6 +34,7 @@ import {
   resolveProfileAsync,
   type AgentProfile,
 } from '../profiles/profile.js';
+import { applyModelOverride } from '@greenhouse/agent-core';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { logger } from '@greenhouse/utils/logger';
@@ -66,6 +68,11 @@ export interface SubagentRuntimeInput {
   mode: 'sync' | 'async';
   timeout_ms: number;
   workspace_id: string | null;
+  /**
+   * Bots background task: the Bot that runs it (docs/specs/20261005-personal-
+   * assistant-bots.md §7). Absent for `spawn_session` children.
+   */
+  bot_id?: string | null;
 }
 
 interface SubagentRuntimeAdmissionBase extends SubagentRuntimeInput {
@@ -76,6 +83,18 @@ interface SubagentRuntimeAdmissionBase extends SubagentRuntimeInput {
 
 export interface AdmitSubagentRuntimeInput extends SubagentRuntimeAdmissionBase {
   seed_message_id: string;
+  /**
+   * Admit a Bots background task instead of a spawned child: the Bot and the
+   * task title are recorded in the child session's (server-written) metadata,
+   * which execution, listing and the report read back.
+   */
+  bot_task?: { bot_id: string; title: string };
+}
+
+/** The Bot of a Bots background task, from the child session's admission metadata. */
+function botTaskBotId(sessionMetadata: string): string | null {
+  const meta = safeJsonParse(sessionMetadata, {}) as { spawned_by?: unknown; bot_id?: unknown };
+  return meta.spawned_by === 'bot_task' && isBotId(meta.bot_id) ? meta.bot_id : null;
 }
 
 export interface SubagentRuntimeEnvelope {
@@ -102,11 +121,19 @@ export async function admitSubagentRuntimeRun(
     ...(parentRunId ? { parent_run_id: parentRunId } : {}),
     profile_id: input.profile_id,
     title: input.title,
-    metadata: {
-      spawn_depth: input.depth,
-      parent_session_id: input.parent_session_id,
-      spawned_by: 'spawn_session',
-    },
+    metadata: input.bot_task
+      ? {
+          spawn_depth: input.depth,
+          parent_session_id: input.parent_session_id,
+          spawned_by: 'bot_task',
+          bot_id: input.bot_task.bot_id,
+          task_title: input.bot_task.title,
+        }
+      : {
+          spawn_depth: input.depth,
+          parent_session_id: input.parent_session_id,
+          spawned_by: 'spawn_session',
+        },
     prompt: input.prompt,
     depth: input.depth,
     max_steps: input.max_steps,
@@ -172,7 +199,8 @@ function parseInput(run: RuntimeRunRow): SubagentRuntimeInput {
     (value.mode !== 'sync' && value.mode !== 'async') ||
     !Number.isSafeInteger(value.timeout_ms) ||
     Number(value.timeout_ms) < 1_000 ||
-    (value.workspace_id !== null && typeof value.workspace_id !== 'string')
+    (value.workspace_id !== null && typeof value.workspace_id !== 'string') ||
+    (value.bot_id !== undefined && value.bot_id !== null && !isBotId(value.bot_id))
   ) {
     throw new Error(`Subagent Runtime run ${run.id} has malformed durable input`);
   }
@@ -261,6 +289,11 @@ async function transitionStepTerminal(
   });
 }
 
+/**
+ * Settle the Run. Returns whether THIS call made the terminal transition (false
+ * when another path — the reaper, a queued cancel — already settled it), so an
+ * outcome is reported exactly once, by whoever settled it.
+ */
 async function transitionRunTerminal(
   db: DatabaseProvider,
   runId: string,
@@ -269,9 +302,9 @@ async function transitionRunTerminal(
   output: RuntimePayload,
   error?: { code: string; message: string },
   authority?: { workerId: string; leaseMs: number },
-): Promise<void> {
+): Promise<boolean> {
   const run = await db.runtime.getRun(runId);
-  if (!run || TERMINAL_RUN_STATUSES.has(run.status)) return;
+  if (!run || TERMINAL_RUN_STATUSES.has(run.status)) return false;
   await db.runtime.transitionRun({
     id: run.id,
     expected_version: run.version,
@@ -283,6 +316,7 @@ async function transitionRunTerminal(
     settled_at: new Date().toISOString(),
     ...(error ? { error_code: error.code, error_message: error.message } : {}),
   });
+  return true;
 }
 
 async function persistFailureNotice(db: DatabaseProvider, run: RuntimeRunRow, message: string): Promise<void> {
@@ -352,6 +386,20 @@ export async function executeSubagentRuntimeRun(
     abort.abort(error);
   };
   const externalAbort = () => abortWith('external', new Error('Parent execution canceled'));
+  // Bots background task state. `taskScope` outlives `abort`: it is aborted in
+  // `finally` on every outcome so the computer layer closes the task's clean
+  // browser context; `botTaskModule` is loaded lazily (no import cycle with
+  // the Bots engine, which itself admits these runs).
+  let botId: string | null = null;
+  let botTaskModule: typeof import('../bots/engine/background.js') | null = null;
+  const taskScope = new AbortController();
+  abort.signal.addEventListener('abort', () => taskScope.abort(), { once: true });
+  const reportBotTask = async (outcome: import('../bots/engine/background.js').BotTaskOutcome) => {
+    if (!botId) return;
+    botTaskModule ??= await import('../bots/engine/background.js');
+    const latestRun = (await db.runtime.getRun(run.id)) ?? run;
+    await botTaskModule.deliverBotTaskReport(db, latestRun, outcome);
+  };
 
   try {
     if (run.kind !== 'subagent' || run.source_kind !== SUBAGENT_SOURCE_KIND) {
@@ -374,6 +422,10 @@ export async function executeSubagentRuntimeRun(
       session.parent_session_id !== input.parent_session_id
     ) {
       throw new Error('Subagent source session is missing or no longer belongs to its owner');
+    }
+    botId = botTaskBotId(session.metadata);
+    if ((input.bot_id && input.bot_id !== botId) || (session.id.startsWith(BOT_TASK_SESSION_PREFIX) && !botId)) {
+      throw new Error('Subagent Bot binding does not match its admission metadata');
     }
     const latestMessage = await db.sessions.getLatestMessage(session.id);
     if (!latestMessage || latestMessage.role !== 'user' || latestMessage.content !== input.prompt) {
@@ -458,35 +510,55 @@ export async function executeSubagentRuntimeRun(
       else options.externalSignal.addEventListener('abort', externalAbort, { once: true });
     }
 
-    const currentTools = await assembleCurrentTools(
-      {
+    let currentTools: ToolRegistry;
+    let system: string;
+    let modelConfig = profile.model;
+    if (botId) {
+      // A Bots background task: the Bot's identity + context pack, and a
+      // read-only face built by the Bots engine (never the spawn face).
+      botTaskModule = await import('../bots/engine/background.js');
+      const prepared = await botTaskModule.prepareBotTaskExecution({
         db,
-        runtimeRunId: run.id,
+        run,
+        owner: { id: owner.id, role: ownerRole },
         childSessionId: session.id,
-        ownerUserId: owner.id,
-        ownerRole,
-        profile,
-        depth: input.depth,
-        workspaceId: input.workspace_id,
-      },
-      options,
-    );
-    const memory = await (options.resolveMemory ?? resolveMemoryContext)(owner.id, ownerRole as UserRole);
-    const system = memory
-      ? `${enrichSystemPrompt(profile)}\n\n## User Context\n${memory}`
-      : enrichSystemPrompt(profile);
+        conversationId: input.parent_session_id,
+        botId,
+        ...(options.toolRegistry ? { toolRegistry: options.toolRegistry } : {}),
+        signal: taskScope.signal,
+      });
+      currentTools = prepared.tools;
+      system = prepared.system;
+      if (prepared.modelOverride) modelConfig = applyModelOverride(profile.model, prepared.modelOverride);
+    } else {
+      currentTools = await assembleCurrentTools(
+        {
+          db,
+          runtimeRunId: run.id,
+          childSessionId: session.id,
+          ownerUserId: owner.id,
+          ownerRole,
+          profile,
+          depth: input.depth,
+          workspaceId: input.workspace_id,
+        },
+        options,
+      );
+      const memory = await (options.resolveMemory ?? resolveMemoryContext)(owner.id, ownerRole as UserRole);
+      system = memory ? `${enrichSystemPrompt(profile)}\n\n## User Context\n${memory}` : enrichSystemPrompt(profile);
+    }
     const result = await runAgentInSession({
       db,
       sessionId: session.id,
       system,
       prompt: input.prompt,
-      modelConfig: profile.model,
+      modelConfig,
       tools: currentTools,
       maxSteps: input.max_steps,
       toolChoice: profile.tool_choice,
       ...(options.generate ? { generate: options.generate } : {}),
       abortSignal: abort.signal,
-      usageContext: { profileId: profile.id, userId: owner.id, caller: 'spawn_session' },
+      usageContext: { profileId: profile.id, userId: owner.id, caller: botId ? 'bots-task' : 'spawn_session' },
       runtimeToolEvidence: {
         runId: run.id,
         stepId: step.id,
@@ -503,8 +575,27 @@ export async function executeSubagentRuntimeRun(
         partial_result: result,
       });
       const authority = { workerId, leaseMs };
-      await transitionStepTerminal(db, step.id, 'canceled', run.attempt, terminalOutput, undefined, result, authority);
-      await transitionRunTerminal(db, run.id, 'canceled', run.attempt, terminalOutput, undefined, authority);
+      // A `subagent_*` code marks a run this driver settled itself, so the
+      // domain projector's reclaim path does not report it a second time.
+      const abortError =
+        abortReason === 'timeout'
+          ? { code: 'subagent_timeout', message: 'Subagent timed out' }
+          : { code: 'subagent_canceled', message: 'Subagent canceled' };
+      await transitionStepTerminal(db, step.id, 'canceled', run.attempt, terminalOutput, abortError, result, authority);
+      const moved = await transitionRunTerminal(
+        db,
+        run.id,
+        'canceled',
+        run.attempt,
+        terminalOutput,
+        abortError,
+        authority,
+      );
+      if (moved) {
+        await reportBotTask(
+          abortReason === 'timeout' ? { status: 'failed', reason: 'timeout' } : { status: 'canceled' },
+        );
+      }
       return;
     }
     const output = payload({
@@ -522,7 +613,9 @@ export async function executeSubagentRuntimeRun(
     });
     const authority = { workerId, leaseMs };
     await transitionStepTerminal(db, step.id, 'succeeded', run.attempt, output, undefined, result, authority);
-    await transitionRunTerminal(db, run.id, 'succeeded', run.attempt, output, undefined, authority);
+    const moved = await transitionRunTerminal(db, run.id, 'succeeded', run.attempt, output, undefined, authority);
+    // Never a "succeeded" report for a run the reaper already settled.
+    if (moved) await reportBotTask({ status: 'succeeded', text: result.text });
   } catch (error) {
     const latest = await db.runtime.getRun(run.id);
     const needsLeaseAuthority = run.status === 'claimed' || run.status === 'running' || step !== undefined;
@@ -592,7 +685,7 @@ export async function executeSubagentRuntimeRun(
         );
       }
     }
-    await transitionRunTerminal(
+    const moved = await transitionRunTerminal(
       db,
       run.id,
       status,
@@ -609,11 +702,17 @@ export async function executeSubagentRuntimeRun(
           : `⚠️ 子任务执行失败: ${message}`;
       await persistFailureNotice(db, run, notice);
     }
+    if (moved) {
+      await reportBotTask(
+        canceled ? { status: 'canceled' } : { status: 'failed', reason: timedOut ? 'timeout' : 'failed' },
+      );
+    }
   } finally {
     if (heartbeat) clearInterval(heartbeat);
     if (cancelPoll) clearInterval(cancelPoll);
     if (timeout) clearTimeout(timeout);
     options.externalSignal?.removeEventListener('abort', externalAbort);
+    taskScope.abort();
   }
 }
 
@@ -689,7 +788,19 @@ export async function settleQueuedSubagentCancellation(
     settled_at: new Date().toISOString(),
   });
   await persistFailureNotice(db, canceled, '⚠️ 子任务已取消。');
+  await reportReclaimedBotTask(db, canceled, { status: 'canceled' });
   return canceled;
+}
+
+/** Bots background tasks report every terminal outcome back into their conversation. */
+async function reportReclaimedBotTask(
+  db: DatabaseProvider,
+  run: RuntimeRunRow,
+  outcome: import('../bots/engine/background.js').BotTaskOutcome,
+): Promise<void> {
+  if (!run.source_id.startsWith(BOT_TASK_SESSION_PREFIX)) return;
+  const { deliverBotTaskReport } = await import('../bots/engine/background.js');
+  await deliverBotTaskReport(db, run, outcome);
 }
 
 /**
@@ -780,6 +891,16 @@ export async function reconcileReclaimedSubagentRun(db: DatabaseProvider, run: R
       ? '⚠️ 子任务已取消。'
       : '⚠️ 子任务执行进程中断。为避免重复外部操作，本轮不会自动重放；请检查结果后手动重新发起。',
   );
+  // The domain projector calls this for EVERY failed/canceled subagent. When
+  // the driver settled the run itself (error codes `subagent_*`) it already
+  // reported; only a reclaimed (process died) run still owes its report.
+  if (!run.error_code?.startsWith('subagent_')) {
+    await reportReclaimedBotTask(
+      db,
+      run,
+      run.status === 'canceled' ? { status: 'canceled' } : { status: 'failed', reason: 'interrupted' },
+    );
+  }
 }
 
 /** Poll a sync Run that another local worker claimed before the inline caller. */

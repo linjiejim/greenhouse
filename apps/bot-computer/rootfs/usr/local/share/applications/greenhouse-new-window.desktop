@@ -1,0 +1,15 @@
+[Desktop Entry]
+# The tint2 launcher's "new window" button. It must never be the stock
+# chromium.desktop: that starts `chromium` on its default profile — a second,
+# unhardened browser outside gh-cdp-relay. gh-window asks the running browser
+# (same profile, same flags) for a window instead.
+Type=Application
+Version=1.0
+Name=New window
+Name[zh]=新窗口
+Comment=Open a new browser window
+Comment[zh]=打开一个新的浏览器窗口
+Exec=/usr/local/bin/gh-window new
+Icon=/opt/greenhouse/new-window.svg
+Terminal=false
+StartupNotify=false

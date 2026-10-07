@@ -85,6 +85,39 @@ export {
   LOGO_MAX_DATA_URL_LENGTH,
 } from './workspace-settings.js';
 
+// Plant avatars — ids, legacy mapping (resolver) and the writer rule. Runtime
+// values are safe to re-export here: the module is dependency-free (no zod). The
+// renderer lives in @greenhouse/ui/components/plant-avatar.
+export type {
+  PlantId,
+  PlantState,
+  PlantStateAlias,
+  PlantStateInput,
+  PlantMood,
+  ResolvedPlantAvatar,
+} from './plant-avatar.js';
+export {
+  PLANT_IDS,
+  DEFAULT_PLANT,
+  PLANT_STATES,
+  STATE_ALIASES,
+  PLANT_MOODS,
+  TEMPLATE_PLANT,
+  COLOR_FAMILY,
+  PLANT_LEGACY_COLOR,
+  IMPLICIT_POOL,
+  isPlantId,
+  isPlantMood,
+  hashSeed,
+  legacyToPlant,
+  legacyToMood,
+  resolvePlantAvatar,
+  MOOD_FACE_STYLE,
+  withPlant,
+  withMood,
+  plantAvatarConfig,
+} from './plant-avatar.js';
+
 // Agent profile manifest — TYPES ONLY here so the web bundle never pulls in
 // zod. Server code imports the schema *values* from '@greenhouse/types/profile-manifest'.
 export type {

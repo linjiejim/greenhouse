@@ -43,7 +43,11 @@ export const customProfiles = pgTable(
     system_prompt: text('system_prompt').notNull(),
     max_steps: integer('max_steps').notNull().default(12),
     is_shared: boolean('is_shared').notNull().default(false), // shared with all internal users
-    avatar: text('avatar').notNull().default('{}'), // JSON: {color, accessories, leafStyle, eyeStyle, faceStyle}
+    // Avatar JSON (`avatarConfigSchema` fields): `plant` + the nearest legacy `color` + the resting
+    // mood as `faceStyle`; old rows carry the other legacy Sprouty keys (accessories, leafStyle,
+    // eyeStyle, palette). Never rewritten — legacy values resolve to a plant at render time
+    // (`legacyToPlant`).
+    avatar: text('avatar').notNull().default('{}'),
     forked_from: text('forked_from'), // source profile id: 'researcher' | 'custom:42' | null
     /** Latest immutable manifest version visible to the owner/editor. */
     current_version: integer('current_version').notNull().default(1),
@@ -92,6 +96,7 @@ export const customProfileVersions = pgTable(
     tools: text('tools').notNull().default('[]'),
     system_prompt: text('system_prompt').notNull(),
     max_steps: integer('max_steps').notNull().default(12),
+    /** Avatar JSON as above; hashed into `manifest_hash`, so stored values are never rewritten. */
     avatar: text('avatar').notNull().default('{}'),
     /** Governance metadata is versioned with the executable manifest. */
     purpose: text('purpose'),

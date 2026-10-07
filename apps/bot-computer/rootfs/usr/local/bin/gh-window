@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+"""Browser windows on the Bot computer's desktop. Runs as uid `browser` (the display's owner).
+
+  gh-window restore   map + activate every managed Chromium window; none left → open one
+  gh-window new       a new window in the RUNNING browser (same profile and flags)
+  gh-window watch     the watchdog gh-computer supervises: when every Chromium
+                      window has been iconified for 3 s, restore them
+  gh-window list      one line per managed Chromium window: id, normal|iconic, title
+
+Exit 0 on success, 1 on failure (last stderr line says why), 2 on usage.
+
+Why: openbox draws no decorations, but Chromium draws its own minimise button.
+A minimised browser left the member — and the Bot's screenshots — looking at a
+bare desktop with nothing to click (2026-10-06 trial). tint2's taskbar brings a
+window back with one click; the watchdog covers the case where nobody clicks;
+`restore` backs the "back to the browser" button and every hand-back.
+
+Why `new` speaks Chromium's process-singleton protocol instead of running
+`chromium`: a `chromium` started while the browser is down (restarting, or
+before the supervisor has started it) becomes a browser of its own, outside
+gh-cdp-relay — the API could never reach it, and the supervisor's next start
+would only hand its arguments over to it. The singleton socket can only ever
+reach the running browser, which then opens the window on its own profile.
+
+X is reached through libX11 with ctypes, so the helper needs nothing beyond
+what Chromium already pulls in. The X cookie is /home/browser/.Xauthority,
+which only this uid can read.
+"""
+
+import ctypes
+import ctypes.util
+import os
+import socket
+import sys
+import time
+
+DISPLAY = os.environ.get("DISPLAY") or ":0"
+os.environ.setdefault("XAUTHORITY", "/home/browser/.Xauthority")
+PROFILE = os.environ.get("GH_BROWSER_PROFILE", "/home/browser/chromium")
+CHROMIUM = "/usr/lib/chromium/chromium"
+
+ICONIFIED_FOR_S = 3.0
+WATCH_INTERVAL_S = 0.5
+# `restore` with no browser running: the supervisor restarts Chromium within a
+# second or two of a crash, and a cold start takes a few seconds more.
+BROWSER_START_WAIT_S = 10.0
+NEW_WINDOW_WAIT_S = 5.0
+
+# Xlib constants
+ANY_PROPERTY_TYPE = 0
+CLIENT_MESSAGE = 33
+SUBSTRUCTURE_REDIRECT_MASK = 1 << 20
+SUBSTRUCTURE_NOTIFY_MASK = 1 << 19
+ICONIC_STATE = 3
+
+
+def log(message: str) -> None:
+    print(f"[gh-window] {message}", file=sys.stderr, flush=True)
+
+
+class XClientMessageEvent(ctypes.Structure):
+    _fields_ = [
+        ("type", ctypes.c_int),
+        ("serial", ctypes.c_ulong),
+        ("send_event", ctypes.c_int),
+        ("display", ctypes.c_void_p),
+        ("window", ctypes.c_ulong),
+        ("message_type", ctypes.c_ulong),
+        ("format", ctypes.c_int),
+        ("data", ctypes.c_long * 5),
+    ]
+
+
+class XEvent(ctypes.Union):
+    _fields_ = [("type", ctypes.c_int), ("xclient", XClientMessageEvent), ("pad", ctypes.c_long * 24)]
+
+
+ERROR_HANDLER = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)
+# A window can vanish between listing and reading it (BadWindow); Xlib's default
+# handler would exit the process. Kept referenced for the process's lifetime.
+_ignore_errors = ERROR_HANDLER(lambda _display, _event: 0)
+
+
+class Window:
+    def __init__(self, wid: int, iconic: bool, title: str) -> None:
+        self.wid = wid
+        self.iconic = iconic
+        self.title = title
+
+
+class Display:
+    def __init__(self) -> None:
+        x = ctypes.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
+        x.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        x.XOpenDisplay.restype = ctypes.c_void_p
+        x.XSetErrorHandler.argtypes = [ERROR_HANDLER]
+        x.XSetErrorHandler.restype = ctypes.c_void_p
+        x.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+        x.XDefaultRootWindow.restype = ctypes.c_ulong
+        x.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+        x.XInternAtom.restype = ctypes.c_ulong
+        x.XGetWindowProperty.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_ulong,
+            ctypes.c_ulong,
+            ctypes.c_long,
+            ctypes.c_long,
+            ctypes.c_int,
+            ctypes.c_ulong,
+            ctypes.POINTER(ctypes.c_ulong),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_ulong),
+            ctypes.POINTER(ctypes.c_ulong),
+            ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)),
+        ]
+        x.XGetWindowProperty.restype = ctypes.c_int
+        x.XFree.argtypes = [ctypes.c_void_p]
+        x.XMapRaised.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        x.XSendEvent.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_long, ctypes.POINTER(XEvent)]
+        x.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        x.XCloseDisplay.argtypes = [ctypes.c_void_p]
+        self.x = x
+        x.XSetErrorHandler(_ignore_errors)
+        self.dpy = x.XOpenDisplay(DISPLAY.encode())
+        if not self.dpy:
+            raise OSError(f"cannot open display {DISPLAY}")
+        self.root = x.XDefaultRootWindow(self.dpy)
+        self._atoms = {}
+
+    def atom(self, name: str) -> int:
+        if name not in self._atoms:
+            self._atoms[name] = self.x.XInternAtom(self.dpy, name.encode(), 0)
+        return self._atoms[name]
+
+    def prop(self, window: int, name: str, max_items: int = 4096):
+        """(format, values): format 32 → list of ints, format 8 → bytes; (0, None) when unset."""
+        actual_type = ctypes.c_ulong()
+        actual_format = ctypes.c_int()
+        nitems = ctypes.c_ulong()
+        after = ctypes.c_ulong()
+        data = ctypes.POINTER(ctypes.c_ubyte)()
+        status = self.x.XGetWindowProperty(
+            self.dpy,
+            window,
+            self.atom(name),
+            0,
+            max_items,
+            0,
+            ANY_PROPERTY_TYPE,
+            ctypes.byref(actual_type),
+            ctypes.byref(actual_format),
+            ctypes.byref(nitems),
+            ctypes.byref(after),
+            ctypes.byref(data),
+        )
+        if status != 0 or not data:
+            return 0, None
+        try:
+            count = nitems.value
+            if actual_format.value == 32:
+                # Format-32 items come back as C longs, whatever the type.
+                items = ctypes.cast(data, ctypes.POINTER(ctypes.c_ulong))
+                return 32, [items[i] for i in range(count)]
+            if actual_format.value == 8:
+                return 8, ctypes.string_at(data, count)
+            return 0, None
+        finally:
+            self.x.XFree(data)
+
+    def chromium_windows(self) -> list:
+        """Managed Chromium windows, bottom to top."""
+        fmt, clients = self.prop(self.root, "_NET_CLIENT_LIST_STACKING")
+        if fmt != 32:
+            fmt, clients = self.prop(self.root, "_NET_CLIENT_LIST")
+        windows = []
+        for wid in clients if fmt == 32 else []:
+            fmt, wm_class = self.prop(wid, "WM_CLASS")
+            if fmt != 8 or b"chromium" not in wm_class.lower():
+                continue
+            fmt, state = self.prop(wid, "WM_STATE")
+            iconic = fmt == 32 and bool(state) and state[0] == ICONIC_STATE
+            fmt, net_state = self.prop(wid, "_NET_WM_STATE")
+            if fmt == 32 and self.atom("_NET_WM_STATE_HIDDEN") in net_state:
+                iconic = True
+            fmt, title = self.prop(wid, "_NET_WM_NAME")
+            if fmt != 8:
+                fmt, title = self.prop(wid, "WM_NAME")
+            text = title.decode("utf-8", "replace") if fmt == 8 else ""
+            windows.append(Window(wid, iconic, text))
+        return windows
+
+    def activate(self, wid: int) -> None:
+        """Map (an iconified client's MapRequest makes openbox restore it), then ask for focus."""
+        self.x.XMapRaised(self.dpy, wid)
+        event = XEvent()
+        event.xclient.type = CLIENT_MESSAGE
+        event.xclient.send_event = 1
+        event.xclient.window = wid
+        event.xclient.message_type = self.atom("_NET_ACTIVE_WINDOW")
+        event.xclient.format = 32
+        event.xclient.data[0] = 2  # source: a pager — user intent, never focus-stealing prevention
+        event.xclient.data[1] = 0  # CurrentTime
+        event.xclient.data[2] = 0
+        self.x.XSendEvent(
+            self.dpy, self.root, 0, SUBSTRUCTURE_REDIRECT_MASK | SUBSTRUCTURE_NOTIFY_MASK, ctypes.byref(event)
+        )
+        self.x.XSync(self.dpy, 0)
+
+    def restore(self, windows: list) -> None:
+        # Bottom to top, so the window used last ends up in front with focus.
+        for window in windows:
+            self.activate(window.wid)
+
+    def close(self) -> None:
+        self.x.XCloseDisplay(self.dpy)
+
+
+def ask_browser_for_window() -> str:
+    """Hand `--new-window` to the running Chromium; '' on success, else why not."""
+    try:
+        target = os.readlink(os.path.join(PROFILE, "SingletonSocket"))
+        cookie = os.readlink(os.path.join(PROFILE, "SingletonCookie"))
+        # Chromium's own client checks the cookie too: the socket's directory
+        # must be the one this profile's browser created.
+        remote_cookie = os.readlink(os.path.join(os.path.dirname(target), "SingletonCookie"))
+    except OSError:
+        return "the browser is not running"
+    if cookie != remote_cookie:
+        return "the browser's singleton socket is stale"
+    # "START\0<cwd>\0<argv0>\0<args…>", then EOF; the browser answers "ACK".
+    # --test-type as on the browser's own command line: the new window judges
+    # the --no-sandbox warning bar by the command line it was opened with.
+    message = b"\0".join([b"START", b"/home/browser", CHROMIUM.encode(), b"--test-type", b"--new-window"])
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(5)
+    try:
+        sock.connect(target)
+        sock.sendall(message)
+        sock.shutdown(socket.SHUT_WR)
+        reply = b""
+        while len(reply) < 32:
+            chunk = sock.recv(32)
+            if not chunk:
+                break
+            reply += chunk
+    except OSError as err:
+        return f"the browser did not answer: {err}"
+    finally:
+        sock.close()
+    if reply.startswith(b"ACK"):
+        return ""
+    return f"the browser refused the request ({reply[:16]!r})"
+
+
+def wait_for_windows(display: Display, seconds: float, more_than: int = 0) -> list:
+    deadline = time.monotonic() + seconds
+    while True:
+        windows = display.chromium_windows()
+        if len(windows) > more_than or time.monotonic() >= deadline:
+            return windows
+        time.sleep(0.2)
+
+
+def cmd_new(display: Display) -> int:
+    before = len(display.chromium_windows())
+    error = ask_browser_for_window()
+    if error:
+        log(f"no new window: {error}")
+        return 1
+    if len(wait_for_windows(display, NEW_WINDOW_WAIT_S, more_than=before)) <= before:
+        log("the browser accepted the request but no window appeared")
+        return 1
+    return 0
+
+
+def cmd_restore(display: Display) -> int:
+    windows = display.chromium_windows()
+    if not windows:
+        error = ask_browser_for_window()
+        wait = NEW_WINDOW_WAIT_S if not error else BROWSER_START_WAIT_S
+        windows = wait_for_windows(display, wait)
+        if not windows:
+            log(f"no browser window to restore: {error or 'none appeared'}")
+            return 1
+    display.restore(windows)
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        if any(not w.iconic for w in display.chromium_windows()):
+            return 0
+        time.sleep(0.1)
+    log("the browser window is still minimised")
+    return 1
+
+
+def cmd_watch(display: Display) -> int:
+    iconified_since = None
+    while True:
+        windows = display.chromium_windows()
+        if windows and all(w.iconic for w in windows):
+            now = time.monotonic()
+            if iconified_since is None:
+                iconified_since = now
+            elif now - iconified_since >= ICONIFIED_FOR_S:
+                log(f"every browser window was minimised for {ICONIFIED_FOR_S:.0f} s; restoring {len(windows)}")
+                display.restore(windows)
+                iconified_since = None
+        else:
+            iconified_since = None
+        time.sleep(WATCH_INTERVAL_S)
+
+
+def cmd_list(display: Display) -> int:
+    for window in display.chromium_windows():
+        print(f"0x{window.wid:x} {'iconic' if window.iconic else 'normal'} {window.title}")
+    return 0
+
+
+COMMANDS = {"restore": cmd_restore, "new": cmd_new, "watch": cmd_watch, "list": cmd_list}
+
+
+def main() -> int:
+    if len(sys.argv) != 2 or sys.argv[1] not in COMMANDS:
+        print("usage: gh-window restore|new|watch|list", file=sys.stderr)
+        return 2
+    try:
+        display = Display()
+    except OSError as err:
+        log(str(err))
+        return 1
+    try:
+        return COMMANDS[sys.argv[1]](display)
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        display.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

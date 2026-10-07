@@ -72,9 +72,13 @@
       "import": "./src/components/chat/reasoning-panel.tsx",
       "types": "./src/components/chat/reasoning-panel.tsx"
     },
-    "./components/sprouty": {
-      "import": "./src/components/sprouty/index.ts",
-      "types": "./src/components/sprouty/index.ts"
+    "./components/plant-avatar": {
+      "import": "./src/components/plant-avatar/index.ts",
+      "types": "./src/components/plant-avatar/index.ts"
+    },
+    "./components/plant-avatar/svg": {
+      "import": "./src/components/plant-avatar/plant-avatar-svg.ts",
+      "types": "./src/components/plant-avatar/plant-avatar-svg.ts"
     },
     "./lib/icons": {
       "import": "./src/lib/icons.ts",

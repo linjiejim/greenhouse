@@ -1,10 +1,10 @@
 /**
  * Greenhouse widget (v2) — launcher shortcuts + data snapshot:
- *   · systemSmall          greeting + Sprouty (time-of-day expression) → compose
+ *   · systemSmall          greeting + Sprouty's plant avatar (time-of-day pose) → compose
  *   · systemMedium         greeting + scheduled-task rows + [新对话] [知识库]
  *   · systemLarge          tasks + recent sessions (deep link to resume) + pills
  *   · accessoryRectangular latest task result one-liner (lock screen)
- *   · accessoryCircular    Sprouty → compose (lock screen)
+ *   · accessoryCircular    Sprouty silhouette → compose (lock screen)
  *
  * Data comes from the App Group snapshot written by modules/widget-bridge —
  * `Snapshot` below decodes the JSON whose SCHEMA TRUTH lives in
@@ -75,10 +75,23 @@ private func greetingText(for date: Date, zh: Bool) -> String {
   }
 }
 
-/** Sprouty expression by time of day (late night sleeps). */
-private func sproutyImage(for date: Date) -> String {
+/**
+ * Sprouty's plant avatar (the sprout) by time of day — late night it folds into a sleeping
+ * bud — in the palette baked for the widget's colour scheme.
+ * Art: apps/mobile/scripts/render-widget-art.mjs (re-run it, don't hand-edit the PNGs).
+ */
+private func sproutyImage(for date: Date, scheme: ColorScheme) -> String {
   let h = Calendar.current.component(.hour, from: date)
-  return (h < 6 || h >= 22) ? "sproutySleep" : "sprouty"
+  let pose = (h < 6 || h >= 22) ? "sproutySleep" : "sprouty"
+  return scheme == .dark ? pose + "Dark" : pose
+}
+
+/**
+ * Lock-screen accessory families are system-tinted: only alpha survives, so they get the
+ * single-colour silhouette with the eyes knocked out as holes, drawn as a template.
+ */
+private func sproutyMono() -> Image {
+  Image("sproutyMono").renderingMode(.template)
 }
 
 // MARK: - Time formatting
@@ -231,6 +244,7 @@ private struct TaskRow: View {
 // MARK: - Families
 
 private struct SmallLauncher: View {
+  @Environment(\.colorScheme) private var scheme
   let entry: LauncherEntry
 
   var body: some View {
@@ -240,7 +254,7 @@ private struct SmallLauncher: View {
         .font(.system(size: 11, weight: .medium))
         .foregroundStyle(Color("WidgetMuted"))
         .frame(maxWidth: .infinity, alignment: .leading)
-      Image(sproutyImage(for: entry.date))
+      Image(sproutyImage(for: entry.date, scheme: scheme))
         .resizable()
         .scaledToFit()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -257,6 +271,7 @@ private struct SmallLauncher: View {
 }
 
 private struct MediumLauncher: View {
+  @Environment(\.colorScheme) private var scheme
   let entry: LauncherEntry
 
   var body: some View {
@@ -264,7 +279,7 @@ private struct MediumLauncher: View {
     let tasks = entry.snapshot?.tasks ?? []
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 8) {
-        Image(sproutyImage(for: entry.date)).resizable().scaledToFit().frame(width: 30, height: 30)
+        Image(sproutyImage(for: entry.date, scheme: scheme)).resizable().scaledToFit().frame(width: 30, height: 30)
         Text(greetingText(for: entry.date, zh: zh) + greetingName(entry.snapshot, zh: zh))
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(Color("WidgetFg"))
@@ -296,6 +311,7 @@ private struct MediumLauncher: View {
 }
 
 private struct LargeLauncher: View {
+  @Environment(\.colorScheme) private var scheme
   let entry: LauncherEntry
 
   var body: some View {
@@ -304,7 +320,7 @@ private struct LargeLauncher: View {
     let sessions = entry.snapshot?.sessions ?? []
     VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 8) {
-        Image(sproutyImage(for: entry.date)).resizable().scaledToFit().frame(width: 34, height: 34)
+        Image(sproutyImage(for: entry.date, scheme: scheme)).resizable().scaledToFit().frame(width: 34, height: 34)
         VStack(alignment: .leading, spacing: 1) {
           Text(greetingText(for: entry.date, zh: zh) + greetingName(entry.snapshot, zh: zh))
             .font(.system(size: 14, weight: .semibold))
@@ -396,7 +412,7 @@ private struct RectangularLauncher: View {
         }
       } else {
         HStack(spacing: 6) {
-          Image("sprouty").resizable().scaledToFit().frame(width: 22, height: 22)
+          sproutyMono().resizable().scaledToFit().frame(width: 22, height: 22)
           Text(zh ? "开始新对话" : "Start a new chat").font(.system(size: 13, weight: .semibold))
         }
       }
@@ -410,7 +426,7 @@ private struct CircularLauncher: View {
   var body: some View {
     ZStack {
       AccessoryWidgetBackground()
-      Image("sprouty")
+      sproutyMono()
         .resizable()
         .scaledToFit()
         .padding(5)

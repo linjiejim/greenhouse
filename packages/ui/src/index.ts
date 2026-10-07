@@ -27,4 +27,4 @@ export * from './components/tool-call/artifact-renderers';
 export * from './components/chat/ask-user-card';
 export * from './components/chat/streaming-message-bubble';
 export * from './components/chat/reasoning-panel';
-export * from './components/sprouty/index';
+export * from './components/plant-avatar/index';

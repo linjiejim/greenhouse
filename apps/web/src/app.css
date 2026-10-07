@@ -3,6 +3,7 @@
 @source "../**/*.{tsx,ts}";
 /* Workspace packages with Tailwind-classed JSX (pnpm-symlinked → outside auto-detection) */
 @source "../../../packages/crud/src/**/*.{tsx,ts}";
+@source "../../../packages/ui/src/components/plant-avatar/**/*.{tsx,ts}";
 
 html,
 body,
@@ -209,9 +210,16 @@ textarea,
  * compare against on either side, so the fill is unambiguous on its own; a small
  * bounded control sitting in a row of identical siblings still needs its edge.
  * That is why `--t-primary-edge` stays strong and is deliberately absent here.
+ *
+ * The fill is `--t-sidebar-active`: the same colour as `primary-subtle-hover`
+ * over the chrome, but OPAQUE. Dark's subtle-hover is a translucent overlay, and
+ * anything that has to match the row exactly — the ring that separates a group
+ * row's overlapped avatar chips (`ring-sidebar-active`) — composites a
+ * translucent ring over the chip it overlaps, not over the chrome, and shows as
+ * a halo. One opaque value for the row and its rings cannot drift apart.
  */
 .sidebar-active-item {
-  background: var(--t-primary-subtle-hover);
+  background: var(--t-sidebar-active);
   color: var(--t-primary-fg-strong);
 }
 
@@ -399,6 +407,7 @@ textarea,
   /* Primary semantic tokens — adapt to dark mode */
   --color-primary-subtle: var(--t-primary-subtle);
   --color-primary-subtle-hover: var(--t-primary-subtle-hover);
+  --color-sidebar-active: var(--t-sidebar-active);
   --color-primary-edge: var(--t-primary-edge);
   --color-primary-fg: var(--t-primary-fg);
   --color-primary-fg-strong: var(--t-primary-fg-strong);
@@ -481,6 +490,8 @@ textarea,
    */
   --t-primary-subtle: #e1edd6;
   --t-primary-subtle-hover: #d8e7cc;
+  /* Active sidebar row (see `.sidebar-active-item`): already opaque in light. */
+  --t-sidebar-active: var(--t-primary-subtle-hover);
   --t-primary-edge: rgb(var(--primary-500));
   --t-primary-fg: rgb(var(--primary-600));
   --t-primary-fg-strong: rgb(var(--primary-700));
@@ -554,6 +565,8 @@ textarea,
      deliberately left alone. */
   --t-primary-subtle: rgb(var(--primary-500) / 0.12);
   --t-primary-subtle-hover: rgb(var(--primary-500) / 0.2);
+  /* subtle-hover flattened over the chrome — keep the 20% in step with it. */
+  --t-sidebar-active: color-mix(in srgb, rgb(var(--primary-500)) 20%, var(--t-surface-chrome));
   --t-primary-edge: rgb(var(--primary-500) / 0.25);
   --t-primary-fg: rgb(var(--primary-300));
   --t-primary-fg-strong: rgb(var(--primary-200));

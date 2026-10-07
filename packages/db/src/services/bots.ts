@@ -1,0 +1,1011 @@
+/**
+ * Bots service — Bot identities, Bots conversations, members, shared notes,
+ * "needs you" requests and the single-writer inbox (PostgreSQL).
+ *
+ * Every read and write is owner-scoped: callers pass the owning user id and a
+ * row of another user is indistinguishable from a missing one. Ownership of
+ * cross-references (a member Bot, a note author) is checked here, not left to
+ * routes, so a forged id can never attach user Y's Bot to user X's
+ * conversation.
+ *
+ * Design: docs/specs/20261005-personal-assistant-bots.md.
+ */
+
+import { randomBytes } from 'node:crypto';
+import { and, asc, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { PgTransaction } from 'drizzle-orm/pg-core';
+import { nowIso } from '@greenhouse/utils/date';
+
+import type { Db, DbClient } from '../client.js';
+import {
+  bots,
+  botConversations,
+  botConversationMembers,
+  botSharedNotes,
+  botRequests,
+  botInbox,
+  sessions,
+  messages,
+  users,
+} from '../schema/index.js';
+import type {
+  BotRow,
+  BotConversationRow,
+  BotConversationMemberRow,
+  BotSharedNoteRow,
+  BotRequestRow,
+  BotRequestKind,
+  BotRequestStatus,
+  BotInboxRow,
+  BotInboxKind,
+} from '../schema/bots.js';
+
+/** Per-user cap on active Bots. */
+export const MAX_ACTIVE_BOTS_PER_USER = 12;
+/** Bots in one conversation (owner/lead included). */
+export const MAX_BOTS_PER_CONVERSATION = 6;
+/** Open shared notes in one conversation. */
+export const MAX_OPEN_NOTES_PER_CONVERSATION = 50;
+
+export class BotsDomainError extends Error {
+  constructor(
+    readonly code:
+      | 'bot_not_found'
+      | 'bot_limit'
+      | 'bot_name_taken'
+      | 'conversation_not_found'
+      | 'member_limit'
+      | 'already_member'
+      | 'not_member'
+      | 'cannot_remove_owner'
+      | 'note_limit'
+      | 'note_not_found',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'BotsDomainError';
+  }
+}
+
+/** Normalised uniqueness key for a Bot name (full/half width and case folded). */
+export function botNameKey(name: string): string {
+  return name.normalize('NFKC').trim().toLowerCase();
+}
+
+function hexId(prefix: string): string {
+  return `${prefix}_${randomBytes(8).toString('hex')}`;
+}
+
+/** The shape `hexId('bot')` produces — the one place other modules validate a Bot id against. */
+export const BOT_ID_PATTERN = /^bot_[0-9a-f]{16}$/;
+
+export function isBotId(value: unknown): value is string {
+  return typeof value === 'string' && BOT_ID_PATTERN.test(value);
+}
+
+/** Failed applies after which an inbox row is quarantined (consumed, logged) instead of retried forever. */
+export const INBOX_MAX_ATTEMPTS = 5;
+
+/** Advisory-lock key namespace of a conversation's run (see `tryLockConversationRun`). */
+const RUN_LOCK_PREFIX = 'bots-run:';
+
+export interface BotInput {
+  user_id: string;
+  name: string;
+  role?: string;
+  instructions?: string;
+  avatar?: string;
+  model_id?: string | null;
+  template_key?: string | null;
+  /** The built-in Sprouty: not counted against MAX_ACTIVE_BOTS_PER_USER (every member has it). */
+  builtIn?: boolean;
+}
+
+export interface BotUpdateInput {
+  name?: string;
+  role?: string;
+  instructions?: string;
+  avatar?: string;
+  model_id?: string | null;
+}
+
+export interface ConversationWithMembers extends BotConversationRow {
+  members: Array<BotConversationMemberRow>;
+}
+
+export interface CreateGroupInput {
+  user_id: string;
+  bot_ids: string[];
+  title?: string | null;
+  description?: string;
+}
+
+export interface NoteInput {
+  title: string;
+  body?: string;
+  author_bot_id?: string | null;
+  pinned?: boolean;
+}
+
+export interface RequestInput {
+  user_id: string;
+  session_id: string;
+  bot_id?: string | null;
+  kind: BotRequestKind;
+  payload: Record<string, unknown>;
+  expires_at?: string | null;
+}
+
+export function createBotsService(db: Db) {
+  async function assertOwnedBots(tx: Db, userId: string, botIds: string[]): Promise<BotRow[]> {
+    if (botIds.length === 0) return [];
+    const rows = await tx
+      .select()
+      .from(bots)
+      .where(and(eq(bots.user_id, userId), eq(bots.status, 'active'), inArray(bots.id, botIds)));
+    if (rows.length !== new Set(botIds).size) {
+      throw new BotsDomainError('bot_not_found', 'One or more Bots do not exist');
+    }
+    return rows;
+  }
+
+  async function membersOf(tx: Db, sessionId: string): Promise<BotConversationMemberRow[]> {
+    return await tx
+      .select()
+      .from(botConversationMembers)
+      .where(eq(botConversationMembers.session_id, sessionId))
+      .orderBy(asc(botConversationMembers.position), asc(botConversationMembers.id));
+  }
+
+  /** The first member by position whose Bot is still active (the successor of a lead that left). */
+  async function nextActiveMember(tx: Db, sessionId: string, excludeBotId: string): Promise<string | null> {
+    const [row] = await tx
+      .select({ bot_id: botConversationMembers.bot_id })
+      .from(botConversationMembers)
+      .innerJoin(bots, eq(bots.id, botConversationMembers.bot_id))
+      .where(
+        and(
+          eq(botConversationMembers.session_id, sessionId),
+          eq(bots.status, 'active'),
+          sql`${botConversationMembers.bot_id} <> ${excludeBotId}`,
+        ),
+      )
+      .orderBy(asc(botConversationMembers.position), asc(botConversationMembers.id))
+      .limit(1);
+    return row?.bot_id ?? null;
+  }
+
+  /**
+   * Point a group at a new lead and keep the member roles in step: exactly the
+   * lead holds `lead`, everyone else is `member`. The roster the Bots read
+   * ("answers unaddressed messages") comes from the role, the floor controller
+   * from `lead_bot_id` — they must never disagree. A DM's roles (owner/guest)
+   * never change: its owner always leads.
+   */
+  async function setGroupLead(tx: Db, sessionId: string, leadBotId: string | null): Promise<void> {
+    const now = nowIso();
+    await tx
+      .update(botConversations)
+      .set({ lead_bot_id: leadBotId, updated_at: now })
+      .where(eq(botConversations.session_id, sessionId));
+    await tx
+      .update(botConversationMembers)
+      .set({ role: 'member' })
+      .where(
+        and(
+          eq(botConversationMembers.session_id, sessionId),
+          eq(botConversationMembers.role, 'lead'),
+          leadBotId ? sql`${botConversationMembers.bot_id} <> ${leadBotId}` : undefined,
+        ),
+      );
+    if (leadBotId) {
+      await tx
+        .update(botConversationMembers)
+        .set({ role: 'lead' })
+        .where(and(eq(botConversationMembers.session_id, sessionId), eq(botConversationMembers.bot_id, leadBotId)));
+    }
+  }
+
+  const service = {
+    // ─── Bots ──────────────────────────────────────────
+
+    async createBot(input: BotInput): Promise<BotRow> {
+      return db.transaction(async (tx) => {
+        const [count] = await tx
+          .select({ n: sql<string>`count(*)` })
+          .from(bots)
+          .where(and(eq(bots.user_id, input.user_id), eq(bots.status, 'active')));
+        if (!input.builtIn && Number(count?.n ?? 0) >= MAX_ACTIVE_BOTS_PER_USER) {
+          throw new BotsDomainError('bot_limit', `At most ${MAX_ACTIVE_BOTS_PER_USER} active Bots per member`);
+        }
+        const nameKey = botNameKey(input.name);
+        const [clash] = await tx
+          .select({ id: bots.id })
+          .from(bots)
+          .where(and(eq(bots.user_id, input.user_id), eq(bots.status, 'active'), eq(bots.name_key, nameKey)))
+          .limit(1);
+        if (clash) throw new BotsDomainError('bot_name_taken', 'You already have a Bot with this name');
+
+        const now = nowIso();
+        const [row] = await tx
+          .insert(bots)
+          .values({
+            id: hexId('bot'),
+            user_id: input.user_id,
+            name: input.name.trim(),
+            name_key: nameKey,
+            role: input.role?.trim() ?? '',
+            instructions: input.instructions?.trim() ?? '',
+            avatar: input.avatar ?? '{}',
+            model_id: input.model_id ?? null,
+            template_key: input.template_key ?? null,
+            status: 'active',
+            created_at: now,
+            updated_at: now,
+          })
+          .returning();
+        return row!;
+      });
+    },
+
+    async listBots(userId: string, opts: { includeArchived?: boolean } = {}): Promise<BotRow[]> {
+      const where = opts.includeArchived
+        ? eq(bots.user_id, userId)
+        : and(eq(bots.user_id, userId), eq(bots.status, 'active'));
+      return await db.select().from(bots).where(where).orderBy(asc(bots.created_at));
+    },
+
+    /** Owner-scoped lookup; archived Bots are returned too (their messages keep a name). */
+    async getBot(userId: string, botId: string): Promise<BotRow | undefined> {
+      const [row] = await db
+        .select()
+        .from(bots)
+        .where(and(eq(bots.id, botId), eq(bots.user_id, userId)));
+      return row;
+    },
+
+    async getBotsByIds(userId: string, botIds: string[]): Promise<BotRow[]> {
+      if (botIds.length === 0) return [];
+      return await db
+        .select()
+        .from(bots)
+        .where(and(eq(bots.user_id, userId), inArray(bots.id, botIds)));
+    },
+
+    async updateBot(userId: string, botId: string, updates: BotUpdateInput): Promise<BotRow | undefined> {
+      return db.transaction(async (tx) => {
+        const [existing] = await tx
+          .select()
+          .from(bots)
+          .where(and(eq(bots.id, botId), eq(bots.user_id, userId), eq(bots.status, 'active')))
+          .limit(1)
+          .for('update');
+        if (!existing) return undefined;
+        const set: Partial<typeof bots.$inferInsert> = { updated_at: nowIso() };
+        if (updates.name !== undefined) {
+          const nameKey = botNameKey(updates.name);
+          if (nameKey !== existing.name_key) {
+            const [clash] = await tx
+              .select({ id: bots.id })
+              .from(bots)
+              .where(and(eq(bots.user_id, userId), eq(bots.status, 'active'), eq(bots.name_key, nameKey)))
+              .limit(1);
+            if (clash) throw new BotsDomainError('bot_name_taken', 'You already have a Bot with this name');
+          }
+          set.name = updates.name.trim();
+          set.name_key = nameKey;
+        }
+        if (updates.role !== undefined) set.role = updates.role.trim();
+        if (updates.instructions !== undefined) set.instructions = updates.instructions.trim();
+        if (updates.avatar !== undefined) set.avatar = updates.avatar;
+        if (updates.model_id !== undefined) set.model_id = updates.model_id;
+        const [row] = await tx.update(bots).set(set).where(eq(bots.id, botId)).returning();
+        return row;
+      });
+    },
+
+    /**
+     * Archive (the only "delete"): the Bot leaves every group, its DM is kept
+     * readable, its private memories stay until the user deletes them. A group
+     * it led passes the lead to the next active member by position (role
+     * included); its own DM keeps no lead — nobody answers there unaddressed.
+     */
+    async archiveBot(userId: string, botId: string): Promise<boolean> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx
+          .update(bots)
+          .set({ status: 'archived', updated_at: nowIso() })
+          .where(and(eq(bots.id, botId), eq(bots.user_id, userId), eq(bots.status, 'active')))
+          .returning({ id: bots.id });
+        if (!row) return false;
+        // Leave group conversations; DMs keep their owner row so history renders.
+        await tx
+          .delete(botConversationMembers)
+          .where(and(eq(botConversationMembers.bot_id, botId), sql`${botConversationMembers.role} <> 'owner'`));
+        const led = await tx
+          .select({ session_id: botConversations.session_id, kind: botConversations.kind })
+          .from(botConversations)
+          .where(and(eq(botConversations.user_id, userId), eq(botConversations.lead_bot_id, botId)));
+        for (const conversation of led) {
+          if (conversation.kind === 'group') {
+            await setGroupLead(tx, conversation.session_id, await nextActiveMember(tx, conversation.session_id, botId));
+          } else {
+            await tx
+              .update(botConversations)
+              .set({ lead_bot_id: null, updated_at: nowIso() })
+              .where(eq(botConversations.session_id, conversation.session_id));
+          }
+        }
+        return true;
+      });
+    },
+
+    async touchBot(botId: string): Promise<void> {
+      await db.update(bots).set({ last_active_at: nowIso() }).where(eq(bots.id, botId));
+    },
+
+    // ─── Conversations ─────────────────────────────────
+
+    /**
+     * The Bot's direct conversation, created on first use. One per Bot
+     * (uq_bot_conversations_owner_bot); the session is channel `bots`.
+     */
+    async ensureDirectConversation(userId: string, botId: string): Promise<ConversationWithMembers> {
+      return db.transaction(async (tx) => {
+        const [bot] = await assertOwnedBots(tx, userId, [botId]);
+        const [existing] = await tx
+          .select()
+          .from(botConversations)
+          .where(and(eq(botConversations.owner_bot_id, botId), eq(botConversations.user_id, userId)))
+          .limit(1);
+        if (existing) return { ...existing, members: await membersOf(tx, existing.session_id) };
+
+        const now = nowIso();
+        const sessionId = randomBytes(16).toString('hex');
+        await tx.insert(sessions).values({
+          id: sessionId,
+          title: bot!.name,
+          status: 'active',
+          profile_id: 'sprouty',
+          user_id: userId,
+          channel: 'bots',
+          metadata: '{}',
+          created_at: now,
+          updated_at: now,
+        });
+        const [conversation] = await tx
+          .insert(botConversations)
+          .values({
+            session_id: sessionId,
+            user_id: userId,
+            kind: 'direct',
+            owner_bot_id: botId,
+            lead_bot_id: botId,
+            last_activity_at: now,
+            created_at: now,
+            updated_at: now,
+          })
+          .returning();
+        await tx.insert(botConversationMembers).values({
+          session_id: sessionId,
+          user_id: userId,
+          bot_id: botId,
+          role: 'owner',
+          position: 0,
+          added_by: 'user',
+          joined_at: now,
+        });
+        return { ...conversation!, members: await membersOf(tx, sessionId) };
+      });
+    },
+
+    async createGroupConversation(input: CreateGroupInput): Promise<ConversationWithMembers> {
+      const botIds = [...new Set(input.bot_ids)];
+      if (botIds.length === 0) throw new BotsDomainError('bot_not_found', 'A group needs at least one Bot');
+      if (botIds.length > MAX_BOTS_PER_CONVERSATION) {
+        throw new BotsDomainError('member_limit', `At most ${MAX_BOTS_PER_CONVERSATION} Bots per conversation`);
+      }
+      return db.transaction(async (tx) => {
+        await assertOwnedBots(tx, input.user_id, botIds);
+        const now = nowIso();
+        const sessionId = randomBytes(16).toString('hex');
+        await tx.insert(sessions).values({
+          id: sessionId,
+          title: input.title ?? null,
+          status: 'active',
+          profile_id: 'sprouty',
+          user_id: input.user_id,
+          channel: 'bots',
+          metadata: '{}',
+          created_at: now,
+          updated_at: now,
+        });
+        const [conversation] = await tx
+          .insert(botConversations)
+          .values({
+            session_id: sessionId,
+            user_id: input.user_id,
+            kind: 'group',
+            owner_bot_id: null,
+            lead_bot_id: botIds[0]!,
+            title: input.title ?? null,
+            description: input.description ?? '',
+            last_activity_at: now,
+            created_at: now,
+            updated_at: now,
+          })
+          .returning();
+        await tx.insert(botConversationMembers).values(
+          botIds.map((botId, index) => ({
+            session_id: sessionId,
+            user_id: input.user_id,
+            bot_id: botId,
+            role: index === 0 ? ('lead' as const) : ('member' as const),
+            position: index,
+            added_by: 'user',
+            joined_at: now,
+          })),
+        );
+        return { ...conversation!, members: await membersOf(tx, sessionId) };
+      });
+    },
+
+    async getConversation(userId: string, sessionId: string): Promise<ConversationWithMembers | undefined> {
+      const [row] = await db
+        .select()
+        .from(botConversations)
+        .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.user_id, userId)));
+      if (!row) return undefined;
+      return { ...row, members: await membersOf(db, sessionId) };
+    },
+
+    /** Conversations by recent activity, with members — the Bots sidebar list. */
+    async listConversations(userId: string, limit = 100): Promise<ConversationWithMembers[]> {
+      const rows = await db
+        .select()
+        .from(botConversations)
+        .where(eq(botConversations.user_id, userId))
+        .orderBy(desc(botConversations.last_activity_at))
+        .limit(limit);
+      if (rows.length === 0) return [];
+      const allMembers = await db
+        .select()
+        .from(botConversationMembers)
+        .where(
+          inArray(
+            botConversationMembers.session_id,
+            rows.map((r) => r.session_id),
+          ),
+        )
+        .orderBy(asc(botConversationMembers.position), asc(botConversationMembers.id));
+      const bySession = new Map<string, BotConversationMemberRow[]>();
+      for (const m of allMembers) {
+        const list = bySession.get(m.session_id) ?? [];
+        list.push(m);
+        bySession.set(m.session_id, list);
+      }
+      return rows.map((r) => ({ ...r, members: bySession.get(r.session_id) ?? [] }));
+    },
+
+    /** Latest message per conversation (preview + unread computation). */
+    async latestMessages(
+      sessionIds: string[],
+    ): Promise<Map<string, { content: string; role: string; bot_id: string | null; created_at: string; seq: number }>> {
+      const result = new Map<
+        string,
+        { content: string; role: string; bot_id: string | null; created_at: string; seq: number }
+      >();
+      if (sessionIds.length === 0) return result;
+      const rows = await db.execute<{
+        session_id: string;
+        content: string;
+        role: string;
+        bot_id: string | null;
+        created_at: string;
+        seq: number;
+      }>(sql`
+        SELECT DISTINCT ON (session_id) session_id, content, role, bot_id, created_at::text AS created_at, seq
+        FROM ${messages}
+        WHERE session_id IN (${sql.join(
+          sessionIds.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+        ORDER BY session_id, seq DESC
+      `);
+      for (const row of rows as unknown as Array<{
+        session_id: string;
+        content: string;
+        role: string;
+        bot_id: string | null;
+        created_at: string;
+        seq: number;
+      }>) {
+        result.set(row.session_id, {
+          content: row.content,
+          role: row.role,
+          bot_id: row.bot_id,
+          created_at: row.created_at,
+          seq: Number(row.seq),
+        });
+      }
+      return result;
+    },
+
+    async updateConversation(
+      userId: string,
+      sessionId: string,
+      updates: { title?: string | null; description?: string; lead_bot_id?: string; allow_bot_chat?: boolean },
+    ): Promise<BotConversationRow | undefined> {
+      return db.transaction(async (tx) => {
+        const set: Partial<typeof botConversations.$inferInsert> = { updated_at: nowIso() };
+        if (updates.title !== undefined) set.title = updates.title;
+        if (updates.description !== undefined) set.description = updates.description;
+        if (updates.allow_bot_chat !== undefined) set.allow_bot_chat = updates.allow_bot_chat;
+        let newLead: string | null = null;
+        if (updates.lead_bot_id !== undefined) {
+          const members = await membersOf(tx, sessionId);
+          if (!members.some((m) => m.bot_id === updates.lead_bot_id)) {
+            throw new BotsDomainError('not_member', 'The lead must be a member of the conversation');
+          }
+          set.lead_bot_id = updates.lead_bot_id;
+          newLead = updates.lead_bot_id;
+        }
+        const [row] = await tx
+          .update(botConversations)
+          .set(set)
+          .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.user_id, userId)))
+          .returning();
+        if (row && newLead && row.kind === 'group') await setGroupLead(tx, sessionId, newLead);
+        if (row && updates.title !== undefined && row.kind === 'group') {
+          await tx
+            .update(sessions)
+            .set({ title: updates.title, updated_at: nowIso() })
+            .where(eq(sessions.id, sessionId));
+        }
+        return row;
+      });
+    },
+
+    async addMember(
+      userId: string,
+      sessionId: string,
+      botId: string,
+      addedBy: string,
+    ): Promise<BotConversationMemberRow> {
+      return db.transaction(async (tx) => {
+        const [conversation] = await tx
+          .select()
+          .from(botConversations)
+          .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.user_id, userId)))
+          .limit(1)
+          .for('update');
+        if (!conversation) throw new BotsDomainError('conversation_not_found', 'Conversation not found');
+        await assertOwnedBots(tx, userId, [botId]);
+        const members = await membersOf(tx, sessionId);
+        if (members.some((m) => m.bot_id === botId)) {
+          throw new BotsDomainError('already_member', 'This Bot is already in the conversation');
+        }
+        if (members.length >= MAX_BOTS_PER_CONVERSATION) {
+          throw new BotsDomainError('member_limit', `At most ${MAX_BOTS_PER_CONVERSATION} Bots per conversation`);
+        }
+        const now = nowIso();
+        const [row] = await tx
+          .insert(botConversationMembers)
+          .values({
+            session_id: sessionId,
+            user_id: userId,
+            bot_id: botId,
+            role: conversation.kind === 'direct' ? 'guest' : 'member',
+            position: members.length,
+            added_by: addedBy,
+            joined_at: now,
+          })
+          .returning();
+        await tx
+          .update(botConversations)
+          .set({ updated_at: now, last_activity_at: now })
+          .where(eq(botConversations.session_id, sessionId));
+        return row!;
+      });
+    },
+
+    async removeMember(userId: string, sessionId: string, botId: string): Promise<boolean> {
+      return db.transaction(async (tx) => {
+        const [conversation] = await tx
+          .select()
+          .from(botConversations)
+          .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.user_id, userId)))
+          .limit(1)
+          .for('update');
+        if (!conversation) throw new BotsDomainError('conversation_not_found', 'Conversation not found');
+        const members = await membersOf(tx, sessionId);
+        const target = members.find((m) => m.bot_id === botId);
+        if (!target) return false;
+        if (target.role === 'owner') {
+          throw new BotsDomainError('cannot_remove_owner', 'A Bot cannot leave its own direct conversation');
+        }
+        await tx.delete(botConversationMembers).where(eq(botConversationMembers.id, target.id));
+        // Only a group's lead can leave (a DM's lead is its owner, which never does).
+        if (conversation.kind === 'group' && conversation.lead_bot_id === botId) {
+          await setGroupLead(tx, sessionId, await nextActiveMember(tx, sessionId, botId));
+        }
+        return true;
+      });
+    },
+
+    async markRead(userId: string, sessionId: string): Promise<void> {
+      await db
+        .update(botConversations)
+        .set({ last_read_at: nowIso() })
+        .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.user_id, userId)));
+    },
+
+    async touchActivity(sessionId: string): Promise<void> {
+      const now = nowIso();
+      await db
+        .update(botConversations)
+        .set({ last_activity_at: now, updated_at: now })
+        .where(eq(botConversations.session_id, sessionId));
+    },
+
+    /**
+     * Compare-and-set the rolling digest: only writes when the stored boundary
+     * is still the one the summariser started from.
+     */
+    async setDigest(
+      sessionId: string,
+      expectedUptoSeq: number,
+      digest: { text: string; upto_seq: number; upto_message_id: string | null },
+    ): Promise<boolean> {
+      const rows = await db
+        .update(botConversations)
+        .set({
+          digest: digest.text,
+          digest_upto_seq: digest.upto_seq,
+          digest_upto_message_id: digest.upto_message_id,
+          digest_updated_at: nowIso(),
+        })
+        .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.digest_upto_seq, expectedUptoSeq)))
+        .returning({ id: botConversations.session_id });
+      return rows.length > 0;
+    },
+
+    async resetDigest(sessionId: string): Promise<void> {
+      await db
+        .update(botConversations)
+        .set({ digest: '', digest_upto_seq: 0, digest_upto_message_id: null, digest_updated_at: nowIso() })
+        .where(eq(botConversations.session_id, sessionId));
+    },
+
+    // ─── Shared notes ──────────────────────────────────
+
+    async listNotes(sessionId: string, opts: { status?: 'open' | 'done' } = {}): Promise<BotSharedNoteRow[]> {
+      const where = opts.status
+        ? and(eq(botSharedNotes.session_id, sessionId), eq(botSharedNotes.status, opts.status))
+        : eq(botSharedNotes.session_id, sessionId);
+      return await db
+        .select()
+        .from(botSharedNotes)
+        .where(where)
+        .orderBy(desc(botSharedNotes.pinned), desc(botSharedNotes.updated_at));
+    },
+
+    async addNote(sessionId: string, input: NoteInput): Promise<BotSharedNoteRow> {
+      return db.transaction(async (tx) => {
+        const [count] = await tx
+          .select({ n: sql<string>`count(*)` })
+          .from(botSharedNotes)
+          .where(and(eq(botSharedNotes.session_id, sessionId), eq(botSharedNotes.status, 'open')));
+        if (Number(count?.n ?? 0) >= MAX_OPEN_NOTES_PER_CONVERSATION) {
+          throw new BotsDomainError(
+            'note_limit',
+            `At most ${MAX_OPEN_NOTES_PER_CONVERSATION} open notes — resolve some first`,
+          );
+        }
+        const now = nowIso();
+        const [row] = await tx
+          .insert(botSharedNotes)
+          .values({
+            session_id: sessionId,
+            title: input.title.trim(),
+            body: input.body?.trim() ?? '',
+            author_bot_id: input.author_bot_id ?? null,
+            pinned: input.pinned ?? false,
+            status: 'open',
+            created_at: now,
+            updated_at: now,
+          })
+          .returning();
+        return row!;
+      });
+    },
+
+    async updateNote(
+      sessionId: string,
+      noteId: number,
+      updates: { title?: string; body?: string; status?: 'open' | 'done'; pinned?: boolean },
+    ): Promise<BotSharedNoteRow | undefined> {
+      const set: Partial<typeof botSharedNotes.$inferInsert> = { updated_at: nowIso() };
+      if (updates.title !== undefined) set.title = updates.title.trim();
+      if (updates.body !== undefined) set.body = updates.body.trim();
+      if (updates.status !== undefined) set.status = updates.status;
+      if (updates.pinned !== undefined) set.pinned = updates.pinned;
+      const [row] = await db
+        .update(botSharedNotes)
+        .set(set)
+        .where(and(eq(botSharedNotes.id, noteId), eq(botSharedNotes.session_id, sessionId)))
+        .returning();
+      return row;
+    },
+
+    async deleteNote(sessionId: string, noteId: number): Promise<boolean> {
+      const rows = await db
+        .delete(botSharedNotes)
+        .where(and(eq(botSharedNotes.id, noteId), eq(botSharedNotes.session_id, sessionId)))
+        .returning({ id: botSharedNotes.id });
+      return rows.length > 0;
+    },
+
+    // ─── "Needs you" requests ──────────────────────────
+
+    async createRequest(input: RequestInput): Promise<BotRequestRow> {
+      const now = nowIso();
+      const [row] = await db
+        .insert(botRequests)
+        .values({
+          id: hexId('brq'),
+          user_id: input.user_id,
+          session_id: input.session_id,
+          bot_id: input.bot_id ?? null,
+          kind: input.kind,
+          status: 'pending',
+          payload: JSON.stringify(input.payload),
+          expires_at: input.expires_at ?? null,
+          created_at: now,
+          updated_at: now,
+        })
+        .returning();
+      return row!;
+    },
+
+    async getRequest(userId: string, requestId: string): Promise<BotRequestRow | undefined> {
+      const [row] = await db
+        .select()
+        .from(botRequests)
+        .where(and(eq(botRequests.id, requestId), eq(botRequests.user_id, userId)));
+      return row;
+    },
+
+    async listRequests(
+      userId: string,
+      opts: { sessionId?: string; status?: BotRequestStatus; kinds?: BotRequestKind[] } = {},
+    ): Promise<BotRequestRow[]> {
+      const conditions = [eq(botRequests.user_id, userId)];
+      if (opts.sessionId) conditions.push(eq(botRequests.session_id, opts.sessionId));
+      if (opts.status) conditions.push(eq(botRequests.status, opts.status));
+      if (opts.kinds?.length) conditions.push(inArray(botRequests.kind, opts.kinds));
+      return await db
+        .select()
+        .from(botRequests)
+        .where(and(...conditions))
+        .orderBy(desc(botRequests.created_at));
+    },
+
+    /**
+     * Settle a pending request exactly once. Returns the settled row, or
+     * undefined when it was already settled (a double click, a race between
+     * slots) — the caller must then do nothing.
+     */
+    async settleRequest(
+      userId: string,
+      requestId: string,
+      status: Exclude<BotRequestStatus, 'pending'>,
+      result?: Record<string, unknown>,
+    ): Promise<BotRequestRow | undefined> {
+      const [row] = await db
+        .update(botRequests)
+        .set({ status, result: result ? JSON.stringify(result) : null, updated_at: nowIso() })
+        .where(and(eq(botRequests.id, requestId), eq(botRequests.user_id, userId), eq(botRequests.status, 'pending')))
+        .returning();
+      return row;
+    },
+
+    /** Expire pending requests whose deadline passed; returns the expired rows. */
+    async expireDueRequests(now = nowIso()): Promise<BotRequestRow[]> {
+      return await db
+        .update(botRequests)
+        .set({ status: 'expired', updated_at: now })
+        .where(and(eq(botRequests.status, 'pending'), lt(botRequests.expires_at, now)))
+        .returning();
+    },
+
+    async countPendingRequests(userId: string): Promise<number> {
+      const [row] = await db
+        .select({ n: sql<string>`count(*)` })
+        .from(botRequests)
+        .where(and(eq(botRequests.user_id, userId), eq(botRequests.status, 'pending')));
+      return Number(row?.n ?? 0);
+    },
+
+    // ─── Inbox (single-writer queue) ───────────────────
+
+    async enqueueInbox(sessionId: string, kind: BotInboxKind, payload: Record<string, unknown>): Promise<BotInboxRow> {
+      const [row] = await db
+        .insert(botInbox)
+        .values({ session_id: sessionId, kind, payload: JSON.stringify(payload), created_at: nowIso() })
+        .returning();
+      return row!;
+    },
+
+    async listPendingInbox(sessionId: string): Promise<BotInboxRow[]> {
+      return await db
+        .select()
+        .from(botInbox)
+        .where(and(eq(botInbox.session_id, sessionId), isNull(botInbox.consumed_at)))
+        .orderBy(asc(botInbox.id));
+    },
+
+    /**
+     * Mark one inbox item consumed — called AFTER the item was applied
+     * (claim-then-apply: every apply is idempotent through a stable message id,
+     * so a crash between the two re-applies harmlessly). False when another
+     * drainer already consumed it.
+     */
+    async consumeInbox(id: number): Promise<boolean> {
+      const rows = await db
+        .update(botInbox)
+        .set({ consumed_at: nowIso() })
+        .where(and(eq(botInbox.id, id), isNull(botInbox.consumed_at)))
+        .returning({ id: botInbox.id });
+      return rows.length > 0;
+    },
+
+    /**
+     * Count one failed apply of a pending item; returns the attempts so far.
+     * The count lives in the payload (`_attempts`, `_last_error`) so it is
+     * durable across slots and restarts — and it only grows while the database
+     * accepts writes, so an outage never quarantines healthy items.
+     */
+    async recordInboxFailure(id: number, error: string): Promise<number> {
+      const [row] = await db
+        .select({ payload: botInbox.payload })
+        .from(botInbox)
+        .where(and(eq(botInbox.id, id), isNull(botInbox.consumed_at)));
+      if (!row) return 0;
+      let parsed: Record<string, unknown> = {};
+      try {
+        const value: unknown = JSON.parse(row.payload);
+        if (value && typeof value === 'object' && !Array.isArray(value)) parsed = value as Record<string, unknown>;
+      } catch {
+        // A malformed payload is quarantined by the caller; count from zero.
+      }
+      const attempts = (typeof parsed._attempts === 'number' ? parsed._attempts : 0) + 1;
+      await db
+        .update(botInbox)
+        .set({ payload: JSON.stringify({ ...parsed, _attempts: attempts, _last_error: error.slice(0, 300) }) })
+        .where(and(eq(botInbox.id, id), isNull(botInbox.consumed_at)));
+      return attempts;
+    },
+
+    /** Take a poison item out of the queue for good (consumed without being applied; the row stays for forensics). */
+    async quarantineInbox(id: number): Promise<boolean> {
+      return service.consumeInbox(id);
+    },
+
+    /**
+     * Sessions with undrained inbox items (the idle sweeper's work list),
+     * oldest pending work first. Conversations whose owner may not run Bots
+     * (suspended, mid-reset, demoted) are left out: their items stay queued —
+     * answered once the owner is active again — without taking sweep slots.
+     */
+    async listSessionsWithPendingInbox(limit = 50): Promise<string[]> {
+      const rows = await db
+        .select({ session_id: botInbox.session_id })
+        .from(botInbox)
+        .innerJoin(sessions, eq(sessions.id, botInbox.session_id))
+        .innerJoin(users, eq(users.id, sessions.user_id))
+        .where(and(isNull(botInbox.consumed_at), eq(users.status, 'active'), inArray(users.role, ['team', 'super'])))
+        .groupBy(botInbox.session_id)
+        .orderBy(sql`min(${botInbox.id}) asc`)
+        .limit(limit);
+      return rows.map((r) => r.session_id);
+    },
+
+    /**
+     * Cross-process ownership of a conversation's run (blue/green slots both
+     * run the inbox sweeper). A session-level advisory lock, held on ONE
+     * reserved connection per process for every run this process owns: it
+     * costs a single pooled connection however many runs are live (handed back
+     * to the pool as soon as no run is held, so shutdown never waits on it),
+     * and the database releases the locks by itself if the process dies.
+     * Within a process the ChatRun registry already serialises runs, so a
+     * second attempt for a key this process holds is refused, not stacked.
+     *
+     * Throws when the lock cannot be checked (the caller does not start a
+     * run). If the reserved connection fails, its locks go with it; the
+     * transcript's tail CAS is then the remaining guard.
+     */
+    tryLockConversationRun(sessionId: string): Promise<boolean> {
+      return serialLock(async () => {
+        if (heldRunLocks.has(sessionId)) return false;
+        const conn = await lockConnection();
+        if (!conn) return true; // no raw client (mock / transaction provider): in-process exclusion only
+        try {
+          const [row] = await conn<Array<{ locked: boolean }>>`
+            SELECT pg_try_advisory_lock(hashtextextended(${RUN_LOCK_PREFIX + sessionId}, 0)) AS locked`;
+          if (!row?.locked) {
+            releaseIfIdle();
+            return false;
+          }
+          heldRunLocks.add(sessionId);
+          return true;
+        } catch (error) {
+          dropLockConnection();
+          throw error;
+        }
+      });
+    },
+
+    /** Release `tryLockConversationRun` (idempotent; a lost connection already released it). */
+    unlockConversationRun(sessionId: string): Promise<void> {
+      return serialLock(async () => {
+        if (!heldRunLocks.delete(sessionId) || !reserved) return;
+        try {
+          await reserved`SELECT pg_advisory_unlock(hashtextextended(${RUN_LOCK_PREFIX + sessionId}, 0))`;
+        } catch {
+          dropLockConnection();
+          return;
+        }
+        releaseIfIdle();
+      });
+    },
+  };
+
+  // ── The run-lock connection (see tryLockConversationRun) ──
+  // Every lock operation is serialised, so the connection is never handed back
+  // while another operation is about to use it.
+  type ReservedSql = Awaited<ReturnType<DbClient['client']['reserve']>>;
+  const heldRunLocks = new Set<string>();
+  let reserved: ReservedSql | null = null;
+  let lockOps: Promise<unknown> = Promise.resolve();
+  function serialLock<T>(op: () => Promise<T>): Promise<T> {
+    const next = lockOps.then(op, op);
+    lockOps = next.catch(() => undefined);
+    return next;
+  }
+  async function lockConnection(): Promise<ReservedSql | null> {
+    if (reserved) return reserved;
+    // A transaction-scoped provider (integration tests) has no pool to reserve from.
+    if ((db as unknown) instanceof PgTransaction) return null;
+    const client = (db as unknown as { $client?: DbClient['client'] }).$client;
+    if (!client || typeof client.reserve !== 'function') return null;
+    reserved = await client.reserve();
+    return reserved;
+  }
+  /** No run held: the connection (now without locks) goes back to the pool. */
+  function releaseIfIdle(): void {
+    if (heldRunLocks.size > 0 || !reserved) return;
+    const conn = reserved;
+    reserved = null;
+    conn.release();
+  }
+  /**
+   * The connection failed: forget its locks. A connection that is still alive
+   * goes back to the pool and the pool's idle timeout closes it, releasing
+   * whatever it held.
+   */
+  function dropLockConnection(): void {
+    const conn = reserved;
+    reserved = null;
+    heldRunLocks.clear();
+    try {
+      conn?.release();
+    } catch {
+      // Already gone.
+    }
+  }
+
+  return service;
+}
+
+export type BotsService = ReturnType<typeof createBotsService>;

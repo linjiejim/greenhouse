@@ -12,9 +12,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bot, ChevronDown, Check, X } from '../../lib/icons';
 import { getToolIcon, getToolBrief } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
-import { SproutyAvatar } from '../sprouty/index.js';
 import { OverlayPanel } from '../app/overlay-panel';
-import type { EyeStyle, SproutyVariant, LeafStyle } from '../sprouty/index.js';
+import { AgentAvatar } from './agent-avatar';
 import { useLocalized, useT, type TranslationKey } from '../../lib/i18n';
 import { DEFAULT_AGENT_ID } from '../../lib/agent-constants';
 import { useHoverFlyout } from '../../hooks/use-hover-flyout';
@@ -51,28 +50,6 @@ function getProfilesByCategory(profiles: Profile[]): Record<ProfileCategory, Pro
     system: profiles.filter((p) => getProfileCategory(p) === 'system'),
     custom: profiles.filter((p) => getProfileCategory(p) === 'custom'),
   };
-}
-
-/** Resolve profile appearance fields to Sprouty props. */
-export function profileToSprouty(p: Profile): {
-  variant: SproutyVariant;
-  color?: string;
-  accessories?: string[];
-  leafStyle?: LeafStyle;
-  eyeStyle?: EyeStyle;
-} {
-  if (p.is_custom) {
-    const avatar = p.avatar;
-    return {
-      variant: 'custom',
-      color: avatar?.color,
-      accessories: avatar?.accessories,
-      leafStyle: avatar?.leafStyle,
-      eyeStyle: avatar?.eyeStyle,
-    };
-  }
-  if (p.id === 'team') return { variant: 'team' };
-  return { variant: 'default' };
 }
 
 // ─── Shared Profile Row Renderer ─────────────────────────
@@ -228,7 +205,7 @@ function renderProfileRow(
             : 'border border-transparent hover:bg-surface-sunken'
       }`}
     >
-      <SproutyAvatar {...profileToSprouty(p)} state="idle" size="xs" animate={isHovered} />
+      <AgentAvatar profile={p} size="xs" animate={false} />
       <span className="flex-1 min-w-0 overflow-hidden">
         <span
           className={`text-[13px] leading-tight font-medium truncate block ${isSelected ? 'text-primary-fg-strong' : 'text-fg-secondary'}`}
@@ -409,7 +386,7 @@ function ProfilePickerDrawer({
         }`}
       >
         <div className="mt-0.5 flex-shrink-0">
-          <SproutyAvatar {...profileToSprouty(p)} state="idle" size="sm" />
+          <AgentAvatar profile={p} size="sm" animate={false} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
@@ -542,7 +519,7 @@ export function ProfileSelector({
           readonly ? 'text-fg-muted cursor-default' : 'text-primary-fg-strong hover:bg-primary-subtle cursor-pointer'
         }`}
       >
-        <SproutyAvatar {...profileToSprouty(selectedProfile)} state="idle" size="xs" animate={false} />
+        <AgentAvatar profile={selectedProfile} size="xs" animate={false} />
         <span className="truncate max-w-[110px] sm:max-w-[200px]">{profileName(selectedProfile, localized)}</span>
         {!readonly && profiles.length > 1 && (
           <ChevronDown size={12} className={`flex-shrink-0 transition-transform ${showPicker ? 'rotate-180' : ''}`} />

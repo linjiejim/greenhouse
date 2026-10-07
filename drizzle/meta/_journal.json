@@ -57,6 +57,20 @@
       "when": 1789376813701,
       "tag": "0007_drive_extension_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791140528296,
+      "tag": "0008_bots",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791312791765,
+      "tag": "0009_bot_computer_timezone",
+      "breakpoints": true
     }
   ]
 }

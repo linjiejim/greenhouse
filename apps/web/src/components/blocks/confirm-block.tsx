@@ -27,7 +27,8 @@ export function ConfirmBlock({
 }: {
   data: ConfirmData;
   compact?: boolean;
-  onAction?: (value: string) => void;
+  /** A returned promise that rejects means the choice was not delivered: the buttons re-arm. */
+  onAction?: (value: string) => void | Promise<void>;
   /** Persisted next user message, when it matches one of this block's values. */
   resolvedValue?: string;
 }) {
@@ -40,7 +41,10 @@ export function ConfirmBlock({
     if (selectedValue || submittingRef.current) return;
     submittingRef.current = true;
     setLocalValue(value);
-    onAction?.(value);
+    Promise.resolve(onAction?.(value)).catch(() => {
+      submittingRef.current = false;
+      setLocalValue(null);
+    });
   };
 
   const isResolved = selectedValue !== null;

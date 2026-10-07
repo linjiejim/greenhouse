@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Minimal openbox config (gh-computer runs openbox with exactly this file):
+     one desktop, no decorations, every browser window maximized into the area
+     tint2's bottom panel leaves free (openbox honours the panel's strut).
+
+     Bindings are spelled out because openbox falls back to built-in ones when
+     a section is missing (Alt+F4 closing the browser, desktop-click menus).
+     No menu is bound at all: the stock root menu's "Web browser" entry would
+     start a second, unhardened Chromium. Nothing here iconifies or hides a
+     window; Chromium's own minimise button still can, which is what tint2's
+     taskbar and the gh-window watchdog are for. -->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <desktops>
+    <number>1</number>
+  </desktops>
+  <focus>
+    <focusNew>yes</focusNew>
+    <followMouse>no</followMouse>
+  </focus>
+  <placement>
+    <policy>Smart</policy>
+    <center>yes</center>
+  </placement>
+  <keyboard>
+    <keybind key="A-Tab">
+      <action name="NextWindow"/>
+    </keybind>
+    <keybind key="S-A-Tab">
+      <action name="PreviousWindow"/>
+    </keybind>
+  </keyboard>
+  <mouse>
+    <dragThreshold>8</dragThreshold>
+    <doubleClickTime>500</doubleClickTime>
+    <context name="Client">
+      <mousebind button="Left" action="Press">
+        <action name="Focus"/>
+        <action name="Raise"/>
+      </mousebind>
+      <mousebind button="Middle" action="Press">
+        <action name="Focus"/>
+        <action name="Raise"/>
+      </mousebind>
+      <mousebind button="Right" action="Press">
+        <action name="Focus"/>
+        <action name="Raise"/>
+      </mousebind>
+    </context>
+  </mouse>
+  <applications>
+    <application class="*">
+      <decor>no</decor>
+    </application>
+    <!-- Normal windows only: the panel (a dock) and dialogs keep their size. -->
+    <application class="*" type="normal">
+      <maximized>yes</maximized>
+    </application>
+  </applications>
+</openbox_config>

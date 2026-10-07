@@ -29,11 +29,16 @@ import {
   type AccountPasswordLinkRow,
   type IssuedAccountPasswordLink,
 } from '@greenhouse/db';
+import { logger } from '@greenhouse/utils/logger';
+import { toErrorMessage } from '@greenhouse/utils/error';
 import { hashPassword } from '../auth/password.js';
 import { getAuthUser } from '../auth/middleware.js';
 import { getAllToolIds } from '../tools/registry.js';
 import { FEATURE_OWNED_TOOL_IDS, buildUserAccessView } from '../platform/feature-points.js';
 import type { AppEnv } from '../app-env.js';
+import { purgeUserComputer } from '../bots/computer/index.js';
+import { stopBotsRunsForUser } from '../bots/engine/run-slot.js';
+import { purgeBotsConversations } from '../bots/purge.js';
 import {
   deliverAccountPasswordLink,
   getPasswordLinkCapability,
@@ -43,6 +48,18 @@ import {
 } from '../security/account.js';
 
 const RETIRED_EXTERNAL_PASSWORD_HASH = 'EXTERNAL_ACCOUNT_RETIRED_NOLOGIN';
+
+/**
+ * The `bots` feature was switched off for a member: stop their in-flight Bots
+ * runs first (a running turn would otherwise keep driving the computer), then
+ * stop the computer, which also cancels their background tasks. The home
+ * volume is kept for a re-enable. The toggle is already committed and every
+ * Bots entry point re-checks it, so this is prompt cleanup, not the gate.
+ */
+async function revokeBots(userId: string): Promise<void> {
+  await stopBotsRunsForUser(getDb(), userId);
+  await purgeUserComputer(userId, { wipe: false, reason: 'admin' });
+}
 
 function safePasswordLink(link: AccountPasswordLinkRow) {
   return {
@@ -435,6 +452,26 @@ const admin = new Hono<AppEnv>()
       return c.json({ error: 'Cannot delete super admin' }, 403);
     }
 
+    // Stop everything the account still runs, and remove its Bots computer with
+    // the home volume (browser logins and files) BEFORE the row goes: the DB
+    // cascade would forget the container while it kept running. A broken
+    // Docker host never blocks the deletion (nor leaves the account half
+    // suspended): the row cascades away and reconcile removes the orphan
+    // container and volume once the host is back.
+    await suspendUserRuntime(id);
+    try {
+      await purgeUserComputer(id, { wipe: true, reason: 'admin' });
+    } catch (err) {
+      logger.warn('[admin] bots computer wipe deferred during account deletion', {
+        user_id: id,
+        error: toErrorMessage(err),
+      });
+    }
+    // Bots transcripts carry the member's private context and nobody could
+    // open or delete them once the owner is gone; never throws — a session
+    // still winding down is left to the hourly orphan sweep.
+    await purgeBotsConversations(id);
+
     const deleted = await getDb().users.delete(id);
     if (!deleted) return c.json({ error: 'Delete failed' }, 500);
 
@@ -695,6 +732,7 @@ const admin = new Hono<AppEnv>()
       enabled: body.enabled,
       granted_by: currentUser?.id,
     });
+    if (body.feature === 'bots' && !body.enabled) await revokeBots(userId);
     return c.json(result);
   })
   /** PUT /api/admin/features — set a user's feature toggle */
@@ -724,6 +762,7 @@ const admin = new Hono<AppEnv>()
       config: body.config,
       granted_by: currentUser?.id,
     });
+    if (body.feature === 'bots' && !body.enabled) await revokeBots(body.user_id);
 
     return c.json(result);
   })

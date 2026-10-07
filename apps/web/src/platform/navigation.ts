@@ -1,6 +1,6 @@
 /** Shared desktop/mobile primary navigation composition. */
 
-import { MessageCircle, Package, type LucideIcon } from '../lib/icons';
+import { Bot, MessageCircle, Package, type LucideIcon } from '../lib/icons';
 import {
   PRIMARY_NAV_APPLICATION_IDS,
   platformApplicationHref,
@@ -31,12 +31,19 @@ interface BuildPrimaryNavigationArgs {
   applications: readonly PlatformApplication[];
   chatLabel: string;
   skillhubLabel: string;
+  /**
+   * Bots, when the member has the `bots` feature (the caller decides with
+   * `canUseFeature`; the API enforces it again). `badge` = pending "needs
+   * you" requests — the one place a waiting Bot is visible from every page.
+   */
+  bots?: { label: string; badge?: number } | null;
 }
 
 export function buildPrimaryNavigation({
   applications,
   chatLabel,
   skillhubLabel,
+  bots,
 }: BuildPrimaryNavigationArgs): PrimaryNavigation {
   const applicationItems = applications.flatMap((application) => {
     const href = platformApplicationHref(application);
@@ -59,10 +66,11 @@ export function buildPrimaryNavigation({
   });
   const overflowApplicationItems = applicationItems.filter((item) => !primaryApplicationIds.has(item.key));
 
-  // Visible sidebar order: Chat, then the authorized primary apps (Knowledge,
-  // Projects, CRM). SkillHub and secondary destinations collapse into "More".
-  // Chat leads because it is also the home page — a new conversation opens onto
-  // the user's workbench.
+  // Visible sidebar order: Chat, Bots, then the authorized primary apps
+  // (Knowledge, Projects, CRM). SkillHub and secondary destinations collapse
+  // into "More". Chat leads because it is also the home page — a new
+  // conversation opens onto the user's workbench; Bots sit right after it as
+  // the other place you talk.
   const primary: PrimaryNavigationItem[] = [
     {
       key: 'chat',
@@ -70,6 +78,7 @@ export function buildPrimaryNavigation({
       icon: MessageCircle,
       href: '#/chat',
     },
+    ...(bots ? [{ key: 'bots', label: bots.label, icon: Bot, href: '#/bots', badge: bots.badge || undefined }] : []),
     ...primaryApplicationItems,
   ];
 

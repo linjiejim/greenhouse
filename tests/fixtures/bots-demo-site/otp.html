@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Acme 采购门户 · 两步验证</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="card">
+    <h1>两步验证 · Two-step verification</h1>
+    <p class="sub">输入身份验证器中的 6 位动态码 · Enter the 6-digit code from your authenticator</p>
+    <form id="otp">
+      <label>动态码 Code<input id="code" name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="\d{6}" maxlength="6" required></label>
+      <button type="submit">验证 Verify</button>
+      <p id="error" class="error" role="alert" hidden>动态码不正确 · Wrong code</p>
+    </form>
+  </main>
+  <script src="app.js"></script>
+  <script>
+    if (sessionStorage.getItem('acme-step') !== 'otp') location.href = 'index.html';
+    document.getElementById('otp').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (await AcmeDemo.checkTotp(document.getElementById('code').value)) {
+        sessionStorage.setItem('acme-step', 'in');
+        location.href = 'orders.html';
+      } else {
+        document.getElementById('error').hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>

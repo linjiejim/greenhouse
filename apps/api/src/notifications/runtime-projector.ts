@@ -2,6 +2,8 @@
 
 import type { DatabaseProvider, RuntimeInterruptRow, RuntimeRunRow } from '@greenhouse/db';
 import type { RuntimeJsonValue } from '@greenhouse/types/runtime';
+import { BOT_TASK_SESSION_PREFIX } from '@greenhouse/types/session';
+import { safeJsonParse } from '@greenhouse/utils/json';
 
 import type { RuntimeEventEnvelope } from '../runtime/worker.js';
 import { connectionManager } from '../ws/connection-manager.js';
@@ -28,6 +30,17 @@ function runLabel(run: RuntimeRunRow): string {
   if (run.kind === 'subagent') return 'Subagent';
   if (run.kind === 'eval') return 'Eval';
   return 'Run';
+}
+
+/**
+ * A Bots background task (a subagent run whose child session is `bottask-…`)
+ * reads as the Bot and its task, not as "Subagent": the member started it from
+ * a card in a conversation and the report lands back there.
+ */
+function botTaskTitle(run: RuntimeRunRow): string | null {
+  if (run.kind !== 'subagent' || !run.source_id.startsWith(BOT_TASK_SESSION_PREFIX)) return null;
+  const input = safeJsonParse(run.input, {}) as { title?: unknown };
+  return typeof input.title === 'string' && input.title.trim() ? input.title.trim() : 'Background task';
 }
 
 function interruptCopy(interrupt: RuntimeInterruptRow, run: RuntimeRunRow): { title: string; body: string } {
@@ -131,13 +144,24 @@ export function createRuntimeNotificationProjector(db: DatabaseProvider) {
     const failed = eventStatus !== 'succeeded';
     const eventError = typeof immutableResult.error_message === 'string' ? immutableResult.error_message : null;
     const eventErrorCode = typeof immutableResult.error_code === 'string' ? immutableResult.error_code : null;
+    const botTask = botTaskTitle(run);
     await publishNew(db, {
       user_id: run.owner_user_id,
       kind: failed ? 'runtime_failed' : 'runtime_completed',
-      title: failed ? `${label} needs review` : `${label} completed`,
-      body: failed
-        ? eventError || `Open Execution Center to review ${label.toLowerCase()} ${run.source_id}.`
-        : `Open Execution Center to review the result for ${label.toLowerCase()} ${run.source_id}.`,
+      title: botTask
+        ? failed
+          ? `Background task did not finish: ${botTask}`
+          : `Background task finished: ${botTask}`
+        : failed
+          ? `${label} needs review`
+          : `${label} completed`,
+      body: botTask
+        ? failed
+          ? 'The Bot reported what happened in its conversation.'
+          : 'The Bot reported back in its conversation.'
+        : failed
+          ? eventError || `Open Execution Center to review ${label.toLowerCase()} ${run.source_id}.`
+          : `Open Execution Center to review the result for ${label.toLowerCase()} ${run.source_id}.`,
       payload: {
         runtime_kind: run.kind,
         source_kind: run.source_kind,

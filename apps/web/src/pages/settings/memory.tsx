@@ -14,6 +14,8 @@ import { formatDay } from '../../lib/utils';
 import { Brain, Pencil, Trash2, Check, X, Sparkles, User, Wrench, Pin, Archive, RotateCcw } from '../../lib/icons';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { ModulePage } from '../../components/app/module-page';
+import { canUseFeature } from '../../lib/features';
+import { useAuthStore } from '../../stores/auth-store';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -31,7 +33,17 @@ interface Memory {
   last_used_at: string | null;
   created_at: string;
   updated_at: string;
+  /**
+   * Which Bot alone reads this memory (null = shared: Chat and every Bot).
+   * Absent from servers that predate Bots — the Source UI then stays hidden.
+   */
+  bot_id?: string | null;
+  /** That Bot's name (archived Bots included), sent alongside `bot_id`. */
+  bot_name?: string | null;
 }
+
+/** Source filter: everything, the shared pool, or one Bot's private memories (`bot:<id>`). */
+type SourceFilter = 'all' | 'shared' | `bot:${string}`;
 
 const CATEGORY_META: Record<string, { labelKey: TranslationKey; icon: React.ElementType; color: string }> = {
   preference: { labelKey: 'memory.preference', icon: Sparkles, color: 'text-purple-500' },
@@ -69,6 +81,8 @@ export function MemoryPanel() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'live' | MemoryStatus>('live');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+  const botsEnabled = useAuthStore((state) => canUseFeature(state.currentUser, 'bots'));
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
@@ -149,16 +163,29 @@ export function MemoryPanel() {
     }
   };
 
+  // Source shows once the server says where each memory belongs and the member
+  // has Bots — for everyone else every memory is simply "theirs".
+  const showSource = botsEnabled && memories.some((m) => m.bot_id !== undefined);
+  const sourceBots = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const m of memories) if (m.bot_id) names.set(m.bot_id, m.bot_name || t('memory.sourceBotUnknown'));
+    return [...names.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [memories, t]);
+
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
     return memories.filter((m) => {
       const statusOk =
         statusFilter === 'live' ? m.status === 'active' || m.status === 'dormant' : m.status === statusFilter;
       if (!statusOk) return false;
+      if (showSource && sourceFilter !== 'all') {
+        const sourceOk = sourceFilter === 'shared' ? !m.bot_id : m.bot_id === sourceFilter.slice('bot:'.length);
+        if (!sourceOk) return false;
+      }
       if (!term) return true;
       return m.title.toLowerCase().includes(term) || m.content.toLowerCase().includes(term);
     });
-  }, [memories, search, statusFilter]);
+  }, [memories, search, showSource, sourceFilter, statusFilter]);
 
   const grouped = useMemo(() => {
     const map: Record<string, Memory[]> = {};
@@ -221,6 +248,24 @@ export function MemoryPanel() {
             <option value="archived">{t('memory.archived')}</option>
             <option value="superseded">{t('memory.superseded')}</option>
           </Select>
+          {showSource && (
+            <Select
+              size="sm"
+              inline
+              value={sourceFilter}
+              aria-label={t('memory.source')}
+              onChange={(e) => setSourceFilter(e.target.value as SourceFilter)}
+              data-testid="memory-source-filter"
+            >
+              <option value="all">{t('memory.sourceAllFilter')}</option>
+              <option value="shared">{t('memory.sourceShared')}</option>
+              {sourceBots.map(([id, name]) => (
+                <option key={id} value={`bot:${id}`}>
+                  {t('memory.sourceBot', { name })}
+                </option>
+              ))}
+            </Select>
+          )}
           <div className="flex-1" />
           <span className="text-xs text-fg-faint">{t('memory.shown', { count: visible.length })}</span>
         </div>
@@ -305,6 +350,21 @@ export function MemoryPanel() {
                                 <Tag tone={STATUS_TONE[mem.status]} truncate title={t(STATUS_HINT[mem.status])}>
                                   {t(STATUS_LABEL[mem.status])}
                                 </Tag>
+                              )}
+                              {showSource && (
+                                <span data-testid="memory-source">
+                                  {mem.bot_id ? (
+                                    <Tag tone="info" truncate title={t('memory.sourceBotHint')}>
+                                      {t('memory.sourceBot', {
+                                        name: mem.bot_name || t('memory.sourceBotUnknown'),
+                                      })}
+                                    </Tag>
+                                  ) : (
+                                    <Tag truncate title={t('memory.sourceSharedHint')}>
+                                      {t('memory.sourceShared')}
+                                    </Tag>
+                                  )}
+                                </span>
                               )}
                             </div>
                             <p className="text-sm text-fg-secondary mt-1">{mem.content}</p>

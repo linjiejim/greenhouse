@@ -6,6 +6,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { DatabaseProvider } from '@greenhouse/db';
+import { BOTS_SESSION_CHANNEL, defaultSessionListHiding, isOwnerOnlySession } from '@greenhouse/types/session';
 import { defineTool, type ToolMeta } from './define.js';
 
 const sessionQuerySchema = z.object({
@@ -48,9 +49,14 @@ export function createSessionQueryTool(db: DatabaseProvider, ctx: SessionQueryCo
         const limit = input.limit ?? 20;
 
         if (input.action === 'list') {
+          // Bots conversations are owner-only, super included (sessions/access.ts):
+          // asking for that channel lists the caller's own, whatever the role.
+          const ownerOnly = ctx.userRole !== 'super' || input.channel === BOTS_SESSION_CHANNEL;
           const sessions = await db.sessions.list({
-            userId: ctx.userRole === 'super' ? undefined : ctx.userId,
+            viewerUserId: ctx.userId,
+            userId: ownerOnly ? ctx.userId : undefined,
             channel: input.channel,
+            ...defaultSessionListHiding(input.channel),
             limit,
             offset: input.offset,
           });
@@ -88,7 +94,8 @@ export function createSessionQueryTool(db: DatabaseProvider, ctx: SessionQueryCo
         if (!input.session_id) return { error: 'session_id is required' };
         const session = await db.sessions.getById(input.session_id);
         if (!session) return { error: 'Session not found' };
-        if (ctx.userRole !== 'super' && session.user_id !== ctx.userId) {
+        const ownerOnly = ctx.userRole !== 'super' || isOwnerOnlySession(session);
+        if (ownerOnly && session.user_id !== ctx.userId) {
           return { error: 'Access denied — you can only read your own sessions' };
         }
 

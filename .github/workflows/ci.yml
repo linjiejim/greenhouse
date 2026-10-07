@@ -64,6 +64,13 @@ jobs:
         run: npx drizzle-kit migrate
         env:
           DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
+      # The Bots browser-adapter suites (vault fills, secure sign-in, snapshot
+      # masking, BrowserSession, tab leases, page tools) drive a real Chromium
+      # and prove the vault's security properties. The headless shell is
+      # enough (~100 MB, no full browser); without it they fail in CI instead
+      # of silently skipping (apps/api/src/bots/__tests__/helpers/chromium.ts).
+      - name: Install Chromium headless shell (Bots browser suites)
+        run: pnpm exec playwright install --with-deps --only-shell chromium
       - run: pnpm test
 
   # Live-server integration/security suite (tests/e2e). Boots the real API and

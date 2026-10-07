@@ -43,7 +43,11 @@ export interface AskUserData {
 
 interface AskUserCardProps {
   data: AskUserData;
-  onSubmit: (message: string) => void;
+  /**
+   * Sends the formatted answers. A returned promise that rejects means the
+   * answer was not delivered: the form opens again so it can be resent.
+   */
+  onSubmit: (message: string) => void | Promise<void>;
   /** Whether this form was already submitted (has follow-up user message) */
   submitted?: boolean;
   /** Persisted formatted follow-up message, available after a session reload. */
@@ -133,7 +137,12 @@ export function AskUserCard({ data, onSubmit, submitted = false, submittedMessag
 
     setLocalSubmitted(true);
     setExpanded(false);
-    onSubmit(lines.join('\n'));
+    Promise.resolve(onSubmit(lines.join('\n'))).catch(() => {
+      // Not delivered (the caller already said why) — keep the answers and let them resend.
+      submittingRef.current = false;
+      setLocalSubmitted(false);
+      setExpanded(true);
+    });
   }, [canSubmit, isSubmitted, answers, questions, onSubmit]);
 
   const submittedAnswers = getSubmittedAnswers(questions, answers, submittedMessage);

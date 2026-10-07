@@ -90,6 +90,11 @@ interface ChatInputProps {
   placeholder?: string;
   /** Hide the arrow/stop control when the rightSlot owns the primary action. */
   hideSendButton?: boolean;
+  /**
+   * Pending images or attachments alone make a sendable message (Bots: the
+   * API takes an image-only turn). Off by default — elsewhere a send needs text.
+   */
+  sendWithoutText?: boolean;
 
   // ── Generic file attachments (every conversation) ──
   // Providing onAttachmentSelect switches the paperclip to an any-file-type
@@ -168,6 +173,7 @@ export function ChatInput({
   attachmentsDisabled = false,
   placeholder,
   hideSendButton = false,
+  sendWithoutText = false,
   pendingAttachments = [],
   onAttachmentSelect,
   onRemoveAttachment,
@@ -202,6 +208,11 @@ export function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const attachmentsUploading = pendingAttachments.some((a) => a.uploading);
+  const hasMessage =
+    !!input.trim() ||
+    !!selectedPrompt ||
+    !!selectedSkill ||
+    (sendWithoutText && (pendingImages.length > 0 || pendingAttachments.length > 0));
   const inputAreaRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pendingTaskFocusRef = useRef<{ promptId: number; fallbackCaret: number } | null>(null);
@@ -524,7 +535,7 @@ export function ChatInput({
                   <Button
                     onClick={handleSend}
                     data-testid="chat-send"
-                    disabled={(!input.trim() && !selectedPrompt && !selectedSkill) || sendDisabled || sendWaiting}
+                    disabled={!hasMessage || sendDisabled || sendWaiting}
                     size="icon"
                     className="h-11 w-11 rounded-full p-0"
                     title={sendWaiting ? t('chat.uploadingImages') : t('common.send')}
@@ -586,7 +597,7 @@ export function ChatInput({
                   ) : (
                     <Button
                       onClick={handleSend}
-                      disabled={(!input.trim() && !selectedPrompt && !selectedSkill) || sendDisabled || sendWaiting}
+                      disabled={!hasMessage || sendDisabled || sendWaiting}
                       size="icon"
                       className="h-8 w-8 rounded-full p-0"
                       title={sendWaiting ? t('chat.uploadingImages') : t('common.send')}

@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""The take-over kill: SIGKILL every process of uid `agent` except the member's and the jobs'.
+
+The API runs this (`docker exec -u agent <c> gh-agent-kill`) when the member
+takes over the computer, in place of `pkill -KILL -u agent`: the Bot's commands
+still running for other API slots and whatever its shell left behind go. These
+stay, with everything that descends from them:
+
+  - this process and its ancestors;
+  - background jobs — every process in a session `gh-jobs sids` lists;
+  - the member's terminals — each live gh-term bridge and the sessions it
+    registered in /tmp/gh-term/<pid>.sid;
+  - tmux — the server, the shells in its panes and what runs in them.
+
+Prints how many processes were killed. Exit 0; 1 when the jobs could not be
+listed — then nothing is killed: losing a member's long job to a bookkeeping
+error is worse than a Bot process outliving a take-over (the lease already
+stops the Bot from acting on the computer); 2 when run as another uid.
+
+Sparing is a convenience, not a boundary: the Bot and the member's terminal are
+the same uid, which is walled off from the browser either way.
+"""
+
+import os
+import pwd
+import signal
+import subprocess
+import sys
+
+REGISTRY = "/tmp/gh-term"
+GH_TERM = "/usr/local/bin/gh-term"
+# A process forking while we kill can slip past one pass.
+PASSES = 3
+
+
+def processes() -> dict:
+    """pid → (ppid, sid, euid, state, comm) for every process we can see."""
+    table = {}
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/stat", "rb") as handle:
+                stat = handle.read()
+            with open(f"/proc/{entry}/status", "rb") as handle:
+                status = handle.read()
+        except OSError:
+            continue  # gone meanwhile
+        head, _, rest = stat.rpartition(b")")
+        fields = rest.split()
+        euid = -1
+        for line in status.splitlines():
+            if line.startswith(b"Uid:"):
+                euid = int(line.split()[2])
+                break
+        comm = head.partition(b"(")[2].decode("utf-8", "replace")
+        table[int(entry)] = (int(fields[1]), int(fields[3]), euid, fields[0].decode(), comm)
+    return table
+
+
+def cmdline(pid: int) -> list:
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as handle:
+            return [part.decode("utf-8", "replace") for part in handle.read().split(b"\0")[:-1]]
+    except OSError:
+        return []
+
+
+def job_sessions() -> set:
+    result = subprocess.run(["/usr/local/bin/gh-jobs", "sids"], capture_output=True, text=True, timeout=20)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"gh-jobs sids exited {result.returncode}")
+    return {int(line) for line in result.stdout.split() if line.isdigit() and int(line) > 1}
+
+
+def terminals(table: dict, uid: int):
+    """(pids, sids) of the live gh-term bridges; stale registrations are removed."""
+    pids, sids = set(), set()
+    try:
+        names = os.listdir(REGISTRY)
+    except OSError:
+        return pids, sids
+    for name in names:
+        if not name.endswith(".sid") or not name[:-4].isdigit():
+            continue
+        pid = int(name[:-4])
+        path = os.path.join(REGISTRY, name)
+        if pid not in table or table[pid][2] != uid or GH_TERM not in cmdline(pid)[:2]:
+            try:
+                os.unlink(path)  # the bridge is gone; its pid may belong to anything now
+            except OSError:
+                pass
+            continue
+        pids.add(pid)
+        try:
+            with open(path) as handle:
+                sids.update(int(line) for line in handle.read().split() if line.isdigit() and int(line) > 1)
+        except OSError:
+            pass
+    return pids, sids
+
+
+def spared(table: dict, uid: int, jobs: set) -> set:
+    children = {}
+    for pid, (ppid, *_rest) in table.items():
+        children.setdefault(ppid, []).append(pid)
+
+    def with_descendants(roots) -> set:
+        found, stack = set(), list(roots)
+        while stack:
+            pid = stack.pop()
+            if pid in found:
+                continue
+            found.add(pid)
+            stack.extend(children.get(pid, ()))
+        return found
+
+    keep = set()
+    pid = os.getpid()
+    while pid > 1 and pid in table and pid not in keep:  # ourselves and our ancestors
+        keep.add(pid)
+        pid = table[pid][0]
+
+    term_pids, term_sids = terminals(table, uid)
+    tmux = with_descendants(pid for pid, row in table.items() if row[2] == uid and row[4].startswith("tmux"))
+    # Sessions 0 and 1 are never spared: 0 is how a session led from outside
+    # the container looks (a runtime may start every exec in one), 1 is init's.
+    sessions = jobs | term_sids | {table[pid][1] for pid in tmux if table[pid][1] > 1}
+    roots = term_pids | tmux | {pid for pid, row in table.items() if row[1] in sessions}
+    return keep | with_descendants(roots)
+
+
+def main() -> int:
+    uid = os.getuid()
+    if pwd.getpwuid(uid).pw_name != "agent":
+        print("gh-agent-kill: runs as uid agent only", file=sys.stderr)
+        return 2
+    try:
+        jobs = job_sessions()
+    except (OSError, RuntimeError, subprocess.SubprocessError) as err:
+        print(f"gh-agent-kill: cannot list the background jobs, killing nothing: {err}", file=sys.stderr)
+        return 1
+
+    killed = set()
+    for _ in range(PASSES):
+        table = processes()
+        keep = spared(table, uid, jobs)
+        before = len(killed)
+        for pid, (_ppid, _sid, euid, state, _comm) in table.items():
+            # A process killed in an earlier pass may not have turned into a zombie yet.
+            if euid != uid or pid in keep or pid in killed or state == "Z":
+                continue
+            try:
+                os.kill(pid, signal.SIGKILL)
+                killed.add(pid)
+            except OSError:
+                pass  # gone already
+        if len(killed) == before:
+            break
+    print(len(killed))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

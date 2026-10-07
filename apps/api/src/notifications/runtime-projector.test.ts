@@ -184,4 +184,39 @@ describe('Runtime notification projector', () => {
     expect(createWithStatus).not.toHaveBeenCalled();
     expect(ws.sendToUser).not.toHaveBeenCalled();
   });
+
+  it('names a Bots background task by its Bot and title instead of "Subagent"', async () => {
+    const createWithStatus = vi.fn().mockResolvedValue({
+      created: true,
+      notification: { id: 'ntf-bot', user_id: 'owner-1', kind: 'runtime_completed', run_id: 'rtm_task_1' },
+    });
+    const run = {
+      ...succeededRun(),
+      id: 'rtm_task_1',
+      kind: 'subagent',
+      source_kind: 'spawned_session',
+      source_id: 'bottask-abc',
+      input: JSON.stringify({ title: 'Sage · Check links' }),
+    } as RuntimeRunRow;
+    const db = {
+      runtime: { getRun: vi.fn().mockResolvedValue(run) },
+      notifications: { createWithStatus, countUnread: vi.fn().mockResolvedValue(1) },
+    } as unknown as DatabaseProvider;
+    await createRuntimeNotificationProjector(db)({
+      event_id: 'rte-bot',
+      run_id: 'rtm_task_1',
+      step_id: null,
+      seq: 5,
+      type: 'run.status_changed',
+      payload: { result: { status: 'succeeded', version: 3 } },
+      actor_user_id: 'owner-1',
+      created_at: '2026-10-05T00:01:00.000Z',
+    });
+    expect(createWithStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Background task finished: Sage · Check links',
+        body: 'The Bot reported back in its conversation.',
+      }),
+    );
+  });
 });

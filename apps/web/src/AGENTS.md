@@ -100,8 +100,21 @@
 ### 设计系统预览页
 - 访问路径：`#/design`（不在导航栏显示，仅直接 URL 访问）
 - 文件：`pages/design.tsx`（lazy-loaded，不影响主包体积）
-- 覆盖所有共享组件：颜色 token、字体、间距、Button、Badge、Tag、TagList、Pagination、Input、FormField/FormGrid/FormActions、SettingsSection、ModulePage、Card、Tabs、Dialog、Drawer、详情 kit（DetailHeader/DetailSection/FieldGrid/Field）、Toast、Spinner、Skeleton、EmptyState、StarRating、DataTableBlock、ChartBlock、ConfirmBlock、Markdown、RichMarkdown、ErrorBoundary、AppLogo
+- 覆盖所有共享组件：颜色 token、字体、间距、Button、Badge、Tag、TagList、Pagination、Input、FormField/FormGrid/FormActions、SettingsSection、ModulePage、Card、Tabs、Dialog、Drawer、详情 kit（DetailHeader/DetailSection/FieldGrid/Field）、Toast、Spinner、Skeleton、EmptyState、StarRating、DataTableBlock、ChartBlock、ConfirmBlock、Markdown、RichMarkdown、ErrorBoundary、AppLogo、Plant Avatar（16 种 × 尺寸、状态 morph、神态、堆叠、主色底行——取代已删除的 Sprouty Avatar Lab）
 - 新增共享组件时同步更新此页面
+
+### Agent / Bot 头像（植物头像）
+- **唯一渲染器**：`@greenhouse/ui/components/plant-avatar`（`<PlantAvatar/>` / `<PlantAvatarStack/>`，SVG 字符串 + 一次性注入的 CSS；2026-10 起是平涂几何植物 + 小号墨色五官（嘴、portrait 才有的眉毛和状态标记），无描边、无渐变、无高光；设计稿在本地 `design/bot-characters/`）。web 只从这个子路径 import（不要从 `@greenhouse/ui` 根 barrel 拉，会带上 chart.js 等）；解析器（legacyToPlant / legacyToMood）与写入规则（withPlant / withMood：plant + 最近的旧 color，mood 存为 faceStyle）在 `@greenhouse/types`（与 API 共用一份）。旧的 canvas `SproutyAvatar`、`components/sprouty/*` 与 Sprouty Lab 已删除，不要复活。
+- **调用点用适配器，不要手拼身份**：Bot → `components/bots/bot-avatar.tsx` 的 `BotAvatar` / `BotAvatarStack`（传 `avatar` + `template_key` + `bot.id`）；Agent → `components/chat/agent-avatar.tsx` 的 `AgentAvatar`（`avatar` + profile id；自定义 Agent 的 id 已是 `custom:<id>`，系统 `sprouty` 解析为 sprout，没有 profile = 默认 Agent）。同一个 Bot/Agent 在每个表面必须解析出同一株植物，且循环相位来自 stableId，不会同步呼吸。
+- **存量头像不改写**：`custom_profile_versions.avatar` 参与 `manifest_hash`。旧配置（color/accessories/leafStyle/faceStyle/eyeStyle/palette）只在渲染时经 `legacyToPlant` / `legacyToMood` 映射。
+- **编辑器写法唯一**：Bot AvatarPicker 与 Agent Appearance 共用 `components/plant-picker.tsx`（16 种 32px 静态 + 4 种神态），写回只走 `lib/plant-avatar.ts`：`withPlant` 写 `plant` + `PLANT_LEGACY_COLOR` 最近旧色（旧客户端仍显示相近色），`withMood` 把神态存成旧 `faceStyle` 并去掉 `mood` 键；其余键全部保留（合并，不替换整对象）。新 Bot / 新 Agent 用 `freshPlant(兄弟已用的植物)`，模板 Bot 固定为模板植物（`TEMPLATE_PLANT`），从 Agent 建 Bot 时按 Agent 自己的 id 解析并固化植物（`botDraftFromAgent`）。
+- **动画预算**：列表、行、堆叠、选择器、发言人头、交接 chip、任务坞、@ 列表一律静态（适配器默认不动；Agent 列表显式 `animate={false}`）。只有正在说话的 Bot 动（DM 头部 `speaking`，停下后 `BotAvatar` 再保持 ~0.7s 动画以 morph 回 idle）；≥80px 的 hero（新对话空态带 `intro`、Bot 资料抽屉、编辑器预览）可以播放封顶 3 轮的 idle。Transcript 里的 80px 开场头像保持静态——消息流里的动作只意味着「它在说话」；同理 transcript 里的「新 Bot」请求卡（`BotFields compact`）给 `AvatarPicker` 传 `animate={false}`，预览不播 idle。
+- **静态姿态表达结果**：任务坞行用所属 Bot 的静态姿态说明任务结局（failed / interrupted → `error`，succeeded → `done`，waiting → `waiting`，canceled → `sleep`，queued / running → `idle`，见 `bot-task-dock.tsx` 的 `TASK_POSE`），必须显式 `animate={false}`（waiting / done / error 是活态，适配器默认会动），并传 `label={bot.name}`（这一行印的是任务，不是 Bot 名）。侧栏里已归档 Bot 的 DM 头像为 `sleep`。
+- **堆叠的分隔环 = 脚下的底色**：`BotAvatarStack` 的 `ringClassName` 必须在每个状态都等于它所在的那块底色，否则每个 chip 外面一圈光晕。默认 `ring-surface-raised`（会话头、弹窗）；transcript 开场坐在 canvas 上 → `ring-surface-canvas`；侧栏群聊行（行本身是 `group`）静止 `ring-surface-chrome` + `group-hover:ring-surface-muted`，当前行 `ring-sidebar-active`。`.sidebar-active-item` 的底色是 `--t-sidebar-active`：`primary-subtle-hover` 压平在 chrome 上的**不透明**值（Dark 下 subtle-hover 是 20% 叠层），行和环共用这一个值。**不要拿半透明 token 当环色**——它合成在被压住的头像上而不是 chrome 上，照样是光晕。护栏：`lib/theme-contrast.test.ts`（token 不透明且等于合成色）+ `bots-sidebar-panel.interaction.test.tsx`。
+- **选择器选中环**：物种 chip 是一排相同兄弟里的有界控件，选中用实心 `ring-2 ring-primary-500`（两套主题对弹窗与选中填充都 ≥3:1）；Dark 的 `primary-edge` 是 25% 叠层（对弹窗约 1.35:1，过不了 WCAG 1.4.11），只做 hover 线索。
+- **颜色与主题**：植物色值只活在 ui 的 avatar 模块里（烘焙的 light/dark 调色板），web 不写任何植物 hex，也不把它们写进主题 token；web 一律 `theme:'auto'`，`.dark-theme` 切换无需重渲染。
+- **可访问名**：行里已经印着名字 → 不传 `label`（`aria-hidden`）；独立出现时由调用方传完整本地化名字（`plantAvatar.name.*` + `plantAvatar.state.*`，如「常春藤 · 思考中」），builder 不追加英文。
+- **小尺寸状态不靠头像**：24px 下 thinking / speaking / waiting 与 idle 只差一点姿态，行里的 StatusDot + 文字状态行仍是承载者，别删。
 
 ### 组件目录 (`components/`)
 ```
@@ -206,10 +219,31 @@ stores/
 - 消费端使用 `handleStreamEvent(event, callbacks)` 分发——不要写 `switch(event.type)`
 - 新增流事件类型时更新 `stream-events.ts` 中的 `StreamingEvent` 联合和 `handleStreamEvent` 分发
 
+### Bots 工作区（`#/bots`，`components/bots/` + `pages/bots/`）
+
+- **一个 API 客户端**：所有 Bots 资源（`/api/bots*`、`/api/bots/computer/*`、`/api/bots/vault/*`、`/api/admin/bot-computers/*`）都在 `lib/api/bots.ts`，走 `rpc`；失败统一抛 `BotsApiError(message, status, code, reason)`，调用点只用 `isBotsApiError(err, code?)` 判断，按 `code` 映射 i18n 文案（未知 code 回落到服务端消息或动作自己的兜底文案）。单测用**部分 mock**（`importOriginal` + 覆盖调用函数），保留真实错误类型，让 code→文案映射被测到。
+- **code→文案表按共享类型写全**：`@greenhouse/types/bots` 的 `ComputerErrorCode` / `VaultErrorCode` / `BotRequestErrorCode` 列出每族路由会返回的 code；文案表声明为 `Partial<Record<Code, TranslationKey>>` 并 `satisfies Record<Code, TranslationKey>`（服务端加 code 没配文案 = 编译错误），查表只用 `copyForCode(map, code)`（只认自有 key，`constructor` 之类不会命中）。`over_quota` 带 `reason: 'host_disk'` = 宿主 Docker 磁盘快满（管理员的事），不能说成「你的电脑磁盘满了」。新 code 由电脑 / 引擎侧告知 web 侧再补进这些类型。
+- **Bots 侧栏 = 一个对话列表**：没有头像条。顶部 `SidebarToolbar`（搜索对话标题 / Bot 名 / 最后一条消息 + 「新建 Bot」「新建群聊」），Sprouty（内置主 Bot，`isSproutyBot`）的私聊永远置顶（`data-pinned`），其余按活跃排序，已归档沉底。每个 Bot 建好就有私聊，所以列表能到达所有 Bot。成员缺 Sprouty（老账号）时侧栏调 `ensureSprouty()`（`bots-store.ts`，一页一次的 bootstrap）；落地页没有可落的对话时也走它。资料抽屉对 Sprouty 不给「归档」。
+- **Bot 目录 = 活跃 + 已归档**：`useBotsStore().bots` 只有活跃 Bot（选择器、@ 列表、邀请）；`GET /api/bots` 恒带 `archived_bots`，历史渲染（标题、发言人、卡片、回执）用 `useBotDirectory()`，已归档 Bot 显示真名。`useBotsLoadState()` 为 `loading` 时，未知 id 意味着「还没加载」，渲染骨架而不是「已删除的 Bot」；加载失败要露出并给重试。DM 的 Bot 已归档 / 群里没有活跃 Bot（`conversationReplyable`）→ 对话只读：composer 换成说明 + 「新建 Bot」/「邀请 Bot」，侧栏沉到「已归档」分组，落地页不选它。
+- **电脑状态单一来源**：Bots 页持有唯一的 `useComputerStatus`，经 `computer` prop 传给 `ComputerPane`（不传则 pane 自持，供独立使用）；离开电脑面板的每条路径（✕、头部 Computer/Info、「查看摘要」）都经 `ComputerPaneHandle.requestClose`，接管中先确认并交还。
+- **请求卡片 key = `request:<id>`**（live 与持久化同 key），否则运行结束时卡片重挂载会吞掉成员正在编辑的名字 / 输入到一半的登录信息。同一请求的后续行（「已跳过 x 的登录」、拒绝、任务不可用）是系统行而不是第二张卡：按顺序判（卡片行在前），卡片行在未加载的更早一页时按时间判（`buildTranscript` 的 `requests`，晚于请求创建 2 分钟以上即后续行）。
+- **请求卡片的状态**：登录卡只发填了的字段（只填密码 / 只填用户名都能提交——服务端会跟到两步登录的下一屏）；`computer_restarted` 等页面已不在的拒绝给「让 Bot 重新打开页面」+ 再问一次。过期的登录 / 接管卡不再有任何操作（登录卡说「已过期，请让 Bot 重新发起」）。电脑自己发起的接管卡（payload `{implicit: true, reason: 'interrupted' | 'waiting', host?, title?}`，用 `implicitTakeover()` 读，`reason` 是代码不是文案）显示「你在 X 工作时接管了电脑」/「X 正在等待使用电脑」，主操作「交还——让 X 继续」= `approve`。审批卡详情整段显示（`whitespace-pre-wrap` + 行内滚动），服务端的 `…(+N more characters)` / `+K more fields` 截断标记渲染成本地化注释。
+- **交还电脑**：`handbackComputer({ note, requestId, sessionId })` 恒带当前对话的 `session_id`（从卡片 / 横幅接管时再带 `request_id`），服务端据此结清这张卡并唤醒对应 Bot；电脑面板横幅对 implicit 卡给「交还——让 X 继续」而不是「接管」。
+- **每条发送路径同一种失败说明**：composer、重试/继续/再问一次、ask_user 表单、confirm 块都走 `ConversationView` 的 `send`；它报告失败后再 reject，表单据此重新可提交（`AskUserCard.onSubmit` / `ConfirmBlock.onAction` 可返回 Promise）。`POST /api/chat` 409 `bot_archived` / `no_active_members` 立即换成只读说明（本地标记，不等 Bot 列表重读；对话切换或成员变化时清除），`no_active_members` 还会打开邀请对话框。
+- 附件与 Chat 同一流程：图片走内联，其他文件成为附件 chip，发送时上传 `/api/chat-files` 并追加 ` ```attachments ` 围栏（Bot 用 `read_attachment` 读取）；整个对话区可拖放。只发图片 / 只发文件也可以（`ChatInput` 的 `sendWithoutText`，仅 Bots 打开）。
+- **`/api/chat-files/:id/content` 的图片必须带 token**：Markdown 里的此类图片和图片类文件产物（Bot 的浏览器截图、分享的图）都经 `components/files/auth-image.tsx`（authFetch → blob URL，只显示位图类型，卸载即 revoke）；Markdown 把它们标成 `data-auth-src` 再由 `hydrateAuthImages` 填充。其他图片（`/api/upload/` 公共 id、外链）保持普通 `<img>`。
+- 路由隐藏了 TopBar，所以 Bots 的每个状态（加载、失败、找不到、无权限）都要带手机端导航按钮（`BotsBareHeader` / `BotsMobileNavButton`）。
+- **电脑面板四个标签**（运行中才有）：屏幕 / 终端 / 文件 / 进程（`computer-pane.tsx` 的 `Tabs`，`data-testid="computer-tab-<key>"`）。后三个是 Bot 的沙箱（uid agent、`/home/agent`），**不需要接管租约**。标签**首次打开后保持挂载、只隐藏**：屏幕的 noVNC 连接（以及接管中的 viewer 心跳，否则 3 分钟后租约被自动收回）、终端的 scrollback、进行中的上传都不因切标签而断。屏幕标签的观看栏/控制栏都有「回到浏览器」（`POST /restore-window`，无需租约）。
+- **终端**（`computer-terminal.tsx`）：xterm.js 经 `lib/xterm/loader.ts` 懒加载（不进主包，UMD 包两种 interop 形状都认）；协议 = 按键以 UTF-8 **二进制帧**上行、`{"type":"resize","cols","rows"}` 文本帧（连上时发一次、每次 fit 后发），下行是原始 PTY 字节。重连规则与屏幕一致（每次新票据 `/terminal-token`、1→15 s 退避、后台 60 s 断开，共用 `useBackgrounded`）；4001（票据过期）/4009/4010/1011（shell 退出、电脑停了）都带新票据重连（tmux 会话还在）；4009 `too_many`（每人最多 4 个终端）与 4003（Bots 被关）**不自动重试**，等成员手动重连。文件/进程的 `not_found` / `too_large` 走 `computerErrorKey` 的统一文案。配色从 `--t-*` 读、随 `data-theme` 重设，并开 `minimumContrastRatio: 4.5`（ANSI 颜色在浅色底上仍可读）。
+- **文件上传要进度** → `lib/upload-progress.ts` 的 `postWithProgress` 是全前端**唯一的 XMLHttpRequest**（fetch 没有上传进度）：首发带存储的 Bearer，401 时由 `uploadComputerFile` 改走 `authFetch` 重发（刷新 token / 去登录）。下载走 `authFetch` → `saveBlobAs`（`lib/file-download.ts`）。单文件 ≤100 MiB 先在前端拦下；上传按添加顺序**一个一个**传。
+- **人机验证卡**（`human-check-card.tsx`，`takeover` 且 payload `kind === 'captcha'`、非 implicit，`humanCheckTakeover()` 判定）：卡内嵌 `ComputerScreen`（只读）→「在这里验证」= `POST /takeover`，嵌入屏幕随页面的同一份 `useComputerStatus`（`computer` prop 一路传到卡片）变为可操作；成员完成后点卡上的「完成，交还」结清卡片、唤醒 Bot（服务端不判断验证是否通过）。Bot 从不解/绕人机验证。
+- **停止分两步 + 立即处理**：第一次按 Stop = 软停止（`POST /api/chat/runs/:id/interrupt`，这一步做完再停，按钮变「正在停止…」），同一 run 里再按 = 硬停止（`/stop`）。软停止状态在 `SessionManager`：`run-interrupting` 事件（多标签同步）或 POST 成功时置位，**下一个 `bot-turn-start` 或 run 结束时清除**；`interruptSession` 返回 `interrupting | no_run | refused`——`no_run`（404，已经结束）不报错，`refused` 时 Stop 退回硬停止、「立即处理」才提示失败。排队消息被 `interjection` 轮次接手后显示为已发送（`pickUpQueued`，逐个增量匹配，结清后不重复匹配），不再给「立即处理」。
+- 时区：Bots 页拿到电脑状态后，若 `status.timezone` 与浏览器 IANA 时区不同，每次页面加载 `PUT /api/bots/computer/settings {timezone}` **一次**（`useComputerTimezoneSync`，失败静默，下次启动电脑生效）。
+
 ### 页面上下文注入
 - `components/conversation/conversation-pane.tsx` 是 full Chat 与右上角 Assistant overlay 的唯一会话 UI/控制器；新增 split-pane host 必须复用它，不得复制发送、上传、流恢复或消息 reconcile。
 - Surface 差异集中在 `components/conversation/surface-policy.ts`，只隐藏分享、评分、Profile 管理、翻译/引用等外围 affordance；附件、工具卡、ask_user、confirm、编辑/重试与错误恢复不得因 Surface 缩减。Workflow 是唯一额外的角色 rollout 门：当前仅 super 渲染计划卡、工具轨迹与 Task Dock，team 也不得发 workflow 查询；这不是 Surface 差异，开放时须按 [rollout spec](../../../docs/specs/20260812-workflow-super-only-rollout.md) 三层一起撤销。
-- **Thinking 与普通工具轨迹默认折叠且分层展示**：动态摘要只属于进行中状态——Thinking 在下一段开始后才把上一段首行提升为摘要，工具只显示当前 calling 项；完成后右侧摘要清空，Thinking 文案切成无省略号的完成态。初始等待只画绿色状态点，不在消息流重复 Sprouty 头像。禁止把原始 JSON 横铺在消息里；Thinking 展开看完整推理，单条工具点击开右侧 Drawer，以占满剩余高度的克制树形视图看 input/output 与耗时。artifact/确认卡仍按各自产品形态渲染，不塞进这套技术详情。
+- **Thinking 与普通工具轨迹默认折叠且分层展示**：动态摘要只属于进行中状态——Thinking 在下一段开始后才把上一段首行提升为摘要，工具只显示当前 calling 项；完成后右侧摘要清空，Thinking 文案切成无省略号的完成态。初始等待只画绿色状态点，不在消息流放 Agent 头像。禁止把原始 JSON 横铺在消息里；Thinking 展开看完整推理，单条工具点击开右侧 Drawer，以占满剩余高度的克制树形视图看 input/output 与耗时。artifact/确认卡仍按各自产品形态渲染，不塞进这套技术详情。
 - **附件按「文件类型」分流，不按会话类型**：picker / 粘贴 / 拖拽三个入口都走 `conversation-pane.tsx` 的同一个 `handleFileSelect`——图片进内联图片盘（模型直接看得见），其余进附件药丸并在发送时上传成 `chat_files`。**唯一的例外是 mission composer**（没有内联图片通路，全部进附件）。别在 `ChatInput` 里再分一次流：它只负责把文件交给宿主。
 - **模型选择器与 Profile 选择器互斥占用 Composer 同一槽位**：默认 `sprouty` 是隐式身份，不渲染 ProfileSelector，只显示 `chat/model-selector.tsx` 供每轮选引擎；经 `@` 选择任一非默认 Agent 后，隐藏模型选择器、显示该 Agent（其 `model_id` 随选择同步），避免同时出现两个相互约束的选项。模型偏好仍记在**用户**维度（`greenhouse_last_model:<userId>`），列表由 `GET /api/profiles` 的 `models` 下发，`models.length < 2` 时控件不渲染。选项显示裸 id（`flash`/`pro`/`deepseek-flash`）+ 目录 `name` 作副标题；localStorage 里记着的模型不在 `models` 中（已下线/key 已撤）时不发送，本轮走 Agent 默认模型（服务端同样回落）。`ProfileSelector` 对默认 Sprouty 在新旧会话都返回空——不要为了“完整”把默认身份标签补回来。
 - **仪表进 Dock，交付留消息流**：`components/conversation/task-dock.tsx` 挂在 `ChatInput.aboveSlot`，无外 padding，用极淡中性边界和浅灰底与正文分层，轻微向下叠进 Composer 后方但必须让折叠头完整可见，层级低于输入框；一类后台任务一行——workflow 行（当前只对 super 启用查询与渲染）展开是既有 `WorkflowRunBody`（DAG + Inspector + gate），mission 头不重复 prompt/title，也不放状态 tag，只显示 `Mission + 当前 tool/已执行步数 + 用时`（run 没有预先计划的总步数，不伪造 `x/y`）。Mission 展开区是独立的有界滚动列表，新事件自动滚底；每行只留灰色序号、一个按状态着色的类型 icon、摘要与时间（当天只显示钟点），行间用浅分割线，不画卡片边框、不重复成功/失败 icon，也不展开原始 tool output 或承载 `message.assistant` 正文。Mission 运行中的可读 `message.assistant` 事件临时渲染在 Chat 消息流；settle 后 outcome 仍是独立持久消息（幂等投递、刷新/分享/审计事实不变），但有 `dispatch_id` 的首轮任务在 Web 上按该稳定 id 归组到原 `mission_dispatch` assistant turn 尾部，不再画成一轮新的回复；无 dispatch 的 follow-up outcome 保持独立，禁止用 prompt/title 猜归属。「追加指令」只把下方真 Composer 切到一个紧凑的 Mission 路由 chip（不是已排队消息），用户点击发送后才直接 enqueue follow-up run、**不经 chat agent 转发**，接收成功的指令作为 user message 留在上方 Chat。需要通读的产物（workflow 计划卡、mission 任务卡、交付/失败的 assistant 消息、`mission-artifacts` 产物卡）恒在消息流。**不要**把进度卡再塞回消息流——`MissionRunCard` 就是因此删掉的（20260731）。数据源在客户端组合两个既有 hook（`workflow/use-workflow-run` + `conversation/use-mission-run`），没有、也不要加服务端聚合端点。
@@ -336,10 +370,11 @@ stores/
 **触摸交互：**
 - 移动端主要按钮与纯图标操作的实际命中区至少 44×44px；视觉图标可以保持 14–20px
 - Markdown 图片与用户消息缩略图都必须走共享 `MediaPreviewDialog`，禁止手写无标题栏/关闭按钮的全屏 lightbox，也禁止把移动 WebView 直接导航到 raw image；媒体翻页、下载与关闭在移动端都要保持至少 44×44px 命中区。
-- **禁止仅依赖 hover 显示关键操作。** 配合 `group-hover:opacity-100` 使用 `.touch-visible` CSS 辅助类，确保触屏设备上按钮可见：
+- **禁止仅依赖 hover 显示关键操作。** 配合 `group-hover:opacity-100` 使用 `.touch-visible` CSS 辅助类，确保触屏设备上按钮可见；再加 `group-focus-within:opacity-100 focus-within:opacity-100`，让键盘 Tab 到这一行（或这颗按钮）时操作同样可见——否则焦点会落在一颗完全透明的（可能是删除）按钮上：
   ```tsx
-  className="opacity-0 group-hover:opacity-100 touch-visible"
+  className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 touch-visible"
   ```
+  （包裹层自己不获得焦点，所以用 `focus-within` 而不是 `focus-visible`；`group-focus-within` 指向行级 `li.group`。）
 - `touch-visible` 类定义在 `index.html`，通过 `@media (hover: none)` 设置 `opacity: 1`
 - Assistant 消息底部的耗时与复制/重试等操作栏保留固定高度，桌面端仅在整条消息 hover 或键盘 focus-within 时显示，触屏端恒显；正文代码块使用扁平浅底与细边框，禁止 `shadow-*` 悬浮卡片效果。
 

@@ -593,7 +593,8 @@ export function Input({ size = 'md', className = '', ...props }: InputProps) {
 // ─── Tabs ────────────────────────────────────────────────
 
 interface TabsProps {
-  tabs: Array<{ key: string; label: React.ReactNode; count?: number }>;
+  /** `testId` lands on the tab button itself (`role="tab"`), for tests and automation. */
+  tabs: Array<{ key: string; label: React.ReactNode; count?: number; testId?: string }>;
   active: string;
   onChange: (key: string) => void;
   ariaLabel?: string;
@@ -625,6 +626,7 @@ export function Tabs({ tabs, active, onChange, ariaLabel }: TabsProps) {
           role="tab"
           aria-selected={active === tab.key}
           tabIndex={active === tab.key ? 0 : -1}
+          data-testid={tab.testId}
           onClick={() => onChange(tab.key)}
           onKeyDown={(event) => {
             if (event.key === 'ArrowRight') {

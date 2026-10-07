@@ -125,6 +125,28 @@ describe('stop/abort wiring', () => {
     expect(run.stopReason).toBe('user');
   });
 
+  it('requestInterrupt is a soft stop: flagged and announced once, nothing aborted, cleared by the engine', () => {
+    const run = new ChatRun(uniqueSession(), 'u1');
+    const live = collect();
+    run.subscribe(-1, live.sub);
+    expect(run.interruptRequested).toBe(false);
+
+    expect(run.requestInterrupt()).toBe(true);
+    expect(run.requestInterrupt()).toBe(true); // a second press while pending: no second event
+    expect(run.interruptRequested).toBe(true);
+    expect(run.signal.aborted).toBe(false);
+    expect(run.stopReason).toBeUndefined();
+    expect(live.events).toEqual([{ type: 'run-interrupting', seq: 0 }]);
+
+    run.clearInterrupt();
+    expect(run.interruptRequested).toBe(false);
+    expect(run.requestInterrupt()).toBe(true); // a later request is a new one
+    expect(live.events.filter((e) => e.type === 'run-interrupting')).toHaveLength(2);
+
+    run.end('completed');
+    expect(run.requestInterrupt()).toBe(false);
+  });
+
   it('resolves `ended` when the run ends', async () => {
     const run = new ChatRun(uniqueSession(), 'u1');
     let resolved = false;

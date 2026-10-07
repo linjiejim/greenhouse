@@ -1,0 +1,364 @@
+#!/usr/bin/env python3
+"""Run Chromium with --remote-debugging-pipe and expose that pipe on a 0600 Unix socket.
+
+Why not --remote-debugging-port: a TCP DevTools port on 127.0.0.1 is reachable by
+every uid in the container, and DevTools has no authentication — the Bot's shell
+(uid `agent`) could then read a password the vault just filled into a page. The
+pipe belongs to this process (uid `browser`), the socket is mode 0600 inside a
+0700 directory, so only `docker exec -u browser` (the API) can reach it.
+
+Protocol: the DevTools pipe protocol — JSON messages terminated by NUL. The API
+side converts it to the WebSocket framing Playwright's connectOverCDP expects.
+
+One client at a time; a new connection replaces the old one. Chromium only ever
+sees ONE DevTools session (the pipe), so it never notices a client going away.
+That makes the hand-off between clients this relay's job (review N-1):
+
+- Framing: only whole NUL-terminated messages cross in either direction, so a
+  half-written command from a dying client can never splice into the next one.
+- Ids: every client starts counting command ids at 1. The relay rewrites each
+  command id to a relay-wide one and maps responses back, so a late response
+  to the OLD client's command can never resolve the new client's command.
+- Sessions: Playwright auto-attaches to every target with
+  `waitForDebuggerOnStart: true`. Those attachments outlive the client, so after
+  an API restart every new tab or popup would sit paused waiting for a debugger
+  that is gone, and Chromium would believe the targets are already attached and
+  never announce them to the new client. Whenever a client disconnects or is
+  replaced, the relay detaches every tracked session and switches auto-attach
+  and discovery off, using private ids (>= 2_000_000_000) whose responses it
+  swallows, together with any late events of the detached sessions.
+
+While no client is attached, Chromium's output is still read (and tracked) so
+the pipe never fills and stalls the browser.
+"""
+
+import json
+import os
+import re
+import signal
+import socket
+import subprocess
+import sys
+import threading
+
+SOCK_DIR = os.environ.get("GH_BROWSER_RUN_DIR", "/tmp/browser")
+SOCK_PATH = os.path.join(SOCK_DIR, "cdp.sock")
+
+# Ids the relay uses for its own reset commands; client ids are remapped below it.
+PRIVATE_ID_BASE = 2_000_000_000
+# Chromium (and Playwright) serialise "id" as the first key of a message, which
+# lets the hot path rewrite ids without re-encoding multi-megabyte screenshots.
+ID_PREFIX = re.compile(rb'^\{"id":(\d+)')
+SESSION_SUFFIX = b',"sessionId":"'
+
+
+def log(message: str) -> None:
+    print(f"[gh-cdp-relay] {message}", file=sys.stderr, flush=True)
+
+
+class Relay:
+    def __init__(self, cmd_write: int) -> None:
+        self.cmd_write = cmd_write
+        # state_lock guards the fields below and is never held across I/O.
+        # write_lock serialises whole messages onto the command pipe; it may be
+        # held while taking state_lock (never the other way round).
+        self.state_lock = threading.Lock()
+        self.write_lock = threading.Lock()
+        self.client = None  # the current socket, or None
+        self.generation = 0  # bumped on every connect/disconnect
+        self.next_id = 1
+        self.inflight = {}  # relay id -> (generation, client id)
+        self.sessions = set()  # every attached DevTools session id
+        self.stale = set()  # sessions of a previous client, being detached
+        self.next_private = PRIVATE_ID_BASE
+
+    # ── Chromium → client ──────────────────────────────────────────────
+
+    def on_browser_message(self, msg: bytes) -> None:
+        target_event = b'"Target.attachedToTarget"' in msg or b'"Target.detachedFromTarget"' in msg
+        if target_event:
+            try:
+                obj = json.loads(msg)
+            except ValueError:
+                obj = None
+            if isinstance(obj, dict):
+                method = obj.get("method")
+                sid = (obj.get("params") or {}).get("sessionId")
+                if method == "Target.attachedToTarget" and isinstance(sid, str):
+                    with self.state_lock:
+                        self.sessions.add(sid)
+                elif method == "Target.detachedFromTarget" and isinstance(sid, str):
+                    with self.state_lock:
+                        self.sessions.discard(sid)
+                        was_stale = sid in self.stale
+                        self.stale.discard(sid)
+                    if was_stale:
+                        return
+
+        match = ID_PREFIX.match(msg)
+        with self.state_lock:
+            sock = self.client
+            if match:
+                relay_id = int(match.group(1))
+                if relay_id >= PRIVATE_ID_BASE:
+                    return  # the relay's own reset command
+                entry = self.inflight.pop(relay_id, None)
+                if entry is None or entry[0] != self.generation:
+                    return  # answer to a replaced client's command
+                msg = b'{"id":%d' % entry[1] + msg[match.end() :]
+            elif self.stale:
+                sid = top_level_session(msg)
+                if sid is not None and sid in self.stale:
+                    return  # late event of a session being detached
+        if sock is None:
+            return
+        try:
+            sock.sendall(msg + b"\0")
+        except OSError:
+            self.drop_client(sock)
+
+    # ── client → Chromium ──────────────────────────────────────────────
+
+    def on_client_message(self, generation: int, msg: bytes) -> None:
+        match = ID_PREFIX.match(msg)
+        obj = None
+        if match:
+            client_id = int(match.group(1))
+        else:
+            try:
+                obj = json.loads(msg)
+            except ValueError:
+                return
+            client_id = obj.get("id") if isinstance(obj, dict) else None
+            if not isinstance(client_id, int):
+                return
+        with self.write_lock:
+            with self.state_lock:
+                if generation != self.generation:
+                    return  # this client has been replaced
+                relay_id = self.next_id
+                self.next_id = self.next_id + 1 if self.next_id + 1 < PRIVATE_ID_BASE else 1
+                self.inflight[relay_id] = (generation, client_id)
+            if obj is None:
+                data = b'{"id":%d' % relay_id + msg[match.end() :]
+            else:
+                obj["id"] = relay_id
+                data = json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+            self.write_raw(data + b"\0")
+
+    # ── hand-off ───────────────────────────────────────────────────────
+
+    def attach(self, sock: socket.socket) -> int:
+        """Make `sock` the current client after resetting the previous one's state."""
+        with self.write_lock:
+            with self.state_lock:
+                previous = self.client
+                self.client = sock
+                self.generation += 1
+                generation = self.generation
+                reset = self.reset_commands_locked()
+            for command in reset:
+                self.write_raw(command)
+        if previous is not None:
+            close_quietly(previous)
+        return generation
+
+    def drop_client(self, sock: socket.socket) -> None:
+        """The client went away: forget it and release everything it attached."""
+        with self.write_lock:
+            with self.state_lock:
+                if self.client is not sock:
+                    return
+                self.client = None
+                self.generation += 1
+                reset = self.reset_commands_locked()
+            for command in reset:
+                self.write_raw(command)
+        close_quietly(sock)
+
+    def reset_commands_locked(self) -> list:
+        self.inflight.clear()
+        self.stale = set(self.sessions)
+        commands = []
+        for sid in sorted(self.stale):
+            commands.append(self.private_command("Target.detachFromTarget", {"sessionId": sid}))
+        commands.append(
+            self.private_command(
+                "Target.setAutoAttach",
+                {"autoAttach": False, "waitForDebuggerOnStart": False, "flatten": True},
+            )
+        )
+        commands.append(self.private_command("Target.setDiscoverTargets", {"discover": False}))
+        return commands
+
+    def private_command(self, method: str, params: dict) -> bytes:
+        command_id = self.next_private
+        self.next_private = self.next_private + 1 if self.next_private < 2**31 - 2 else PRIVATE_ID_BASE
+        body = {"id": command_id, "method": method, "params": params}
+        return json.dumps(body, separators=(",", ":")).encode("utf-8") + b"\0"
+
+    def close_browser(self) -> None:
+        """Ask Chromium to quit the way a person would (flushes the profile)."""
+        with self.write_lock:
+            with self.state_lock:
+                command = self.private_command("Browser.close", {})
+            self.write_raw(command)
+
+    def write_raw(self, data: bytes) -> None:
+        view = memoryview(data)
+        while view:
+            written = os.write(self.cmd_write, view)
+            view = view[written:]
+
+
+def top_level_session(msg: bytes):
+    """The routing sessionId Chromium appends as the LAST key of a session message."""
+    if not msg.endswith(b'"}'):
+        return None
+    index = msg.rfind(SESSION_SUFFIX)
+    if index < 0:
+        return None
+    sid = msg[index + len(SESSION_SUFFIX) : -2]
+    if b'"' in sid:
+        return None
+    return sid.decode("ascii", "replace")
+
+
+def close_quietly(sock: socket.socket) -> None:
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+
+def split_messages(buffer: bytearray, chunk: bytes, on_message) -> None:
+    """Append `chunk` and hand every complete NUL-terminated message to `on_message`."""
+    buffer.extend(chunk)
+    start = 0
+    while True:
+        end = buffer.find(b"\0", start)
+        if end < 0:
+            break
+        if end > start:
+            on_message(bytes(buffer[start:end]))
+        start = end + 1
+    if start:
+        del buffer[:start]
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    if not argv:
+        print("usage: gh-cdp-relay <chromium> [args…]", file=sys.stderr)
+        return 2
+
+    os.makedirs(SOCK_DIR, mode=0o700, exist_ok=True)
+    os.chmod(SOCK_DIR, 0o700)
+    try:
+        os.unlink(SOCK_PATH)
+    except FileNotFoundError:
+        pass
+
+    # Chromium reads commands from fd 3 and writes responses/events to fd 4.
+    cmd_read, cmd_write = os.pipe()
+    out_read, out_write = os.pipe()
+
+    def wire_fds() -> None:
+        # os.pipe() fds are close-on-exec and may already BE 3/4, where dup2(3, 3)
+        # is a no-op that keeps the flag. Duplicate to fresh numbers first; dup2
+        # onto 3/4 then always yields inheritable descriptors.
+        cmd_copy = os.dup(cmd_read)
+        out_copy = os.dup(out_write)
+        os.dup2(cmd_copy, 3)
+        os.dup2(out_copy, 4)
+
+    browser = subprocess.Popen(argv + ["--remote-debugging-pipe"], preexec_fn=wire_fds, close_fds=False)
+    os.close(cmd_read)
+    os.close(out_write)
+
+    relay = Relay(cmd_write)
+
+    # The supervisor's shutdown sends SIGTERM here. A SIGTERM'd Chromium exits
+    # without flushing its cookie store (verified: logins set seconds earlier
+    # were lost), while CDP Browser.close runs the full shutdown that writes
+    # the profile. So: Browser.close first, SIGTERM/SIGKILL only as a fallback
+    # inside docker stop's 5 s. Work happens on a thread: the handler runs on
+    # the main thread, which may be holding the write lock in relay.attach().
+    def graceful_close() -> None:
+        try:
+            relay.close_browser()
+        except OSError:
+            pass
+        try:
+            browser.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            browser.terminate()
+            try:
+                browser.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                browser.kill()
+
+    signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=graceful_close, daemon=True).start())
+
+    exiting = threading.Lock()
+
+    def exit_with_browser() -> None:
+        # Both threads below end here when Chromium goes; log once, exit with
+        # its status (0 = a clean shutdown, which the supervisor and the smoke
+        # test look for).
+        if not exiting.acquire(blocking=False):
+            return
+        code = browser.wait()
+        log(f"chromium exited ({code})")
+        os._exit(0 if code == 0 else 1)
+
+    def pump_browser_output() -> None:
+        buffer = bytearray()
+        while True:
+            try:
+                chunk = os.read(out_read, 1 << 20)
+            except OSError:
+                chunk = b""
+            if not chunk:
+                break
+            split_messages(buffer, chunk, relay.on_browser_message)
+        exit_with_browser()
+
+    threading.Thread(target=pump_browser_output, daemon=True).start()
+    threading.Thread(target=exit_with_browser, daemon=True).start()
+
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    old_umask = os.umask(0o177)
+    server.bind(SOCK_PATH)
+    os.umask(old_umask)
+    os.chmod(SOCK_PATH, 0o600)
+    server.listen(4)
+    log(f"listening on {SOCK_PATH}")
+
+    while True:
+        conn, _ = server.accept()
+        generation = relay.attach(conn)
+        threading.Thread(target=pump_client_input, args=(relay, conn, generation), daemon=True).start()
+
+
+def pump_client_input(relay: Relay, conn: socket.socket, generation: int) -> None:
+    buffer = bytearray()
+    try:
+        while True:
+            chunk = conn.recv(1 << 20)
+            if not chunk:
+                break
+            split_messages(buffer, chunk, lambda msg: relay.on_client_message(generation, msg))
+    except OSError:
+        pass
+    finally:
+        # A partial command left in `buffer` is dropped with the client.
+        relay.drop_client(conn)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

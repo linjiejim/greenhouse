@@ -1,12 +1,13 @@
 /**
- * Agent Profile manifest schemas (zod) and the Sprouty avatar option vocabulary.
+ * Agent Profile manifest schemas (zod) and the avatar DSL (plant + legacy Sprouty keys).
  *
  * Not the runtime validator: system profiles are YAML files in
  * `apps/api/src/profiles/` (plus any `packs.profiles` directory) checked on load
  * by the hand-written `validateProfile()` in `apps/api/src/profiles/profile.ts`,
- * and custom Agents are checked by `apps/api/src/routes/profiles.ts`. Today the
- * only part anything imports is the Sprouty option-ID types (re-exported by the
- * package index), which `packages/ui` pins its avatar metadata against.
+ * and custom Agents are checked by `apps/api/src/routes/profiles.ts`. The legacy
+ * Sprouty option-ID types are re-exported by the package index: the plant-avatar
+ * legacy mapping (`legacyToPlant` / `legacyToMood` in `@greenhouse/types/plant-avatar`)
+ * pins its input tables against them.
  *
  * NOTE on bundling: this module imports zod (a runtime value). It is exported
  * via the dedicated `@greenhouse/types/profile-manifest` subpath and ONLY
@@ -39,12 +40,13 @@ export type Capability = z.infer<typeof capabilitySchema>;
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
-// ─── Sprouty avatar DSL vocabulary ───────────────────────
-// Canonical option-id catalogs — the single source the renderer metadata
-// (@greenhouse/ui sprouty-constants pins its records to these unions), the
-// designer UI and the design_sprouty_avatar tool all derive from. The zod
-// schema below deliberately stays permissive (plain strings) so forks can add
-// options and the renderer can ignore unknowns gracefully.
+// ─── Legacy Sprouty avatar vocabulary ────────────────────
+// The option ids the retired Sprouty mascot stored. Avatars are no longer drawn
+// from them, but stored rows are never rewritten (custom_profile_versions.avatar
+// is hashed), so they stay readable: the plant-avatar legacy mapping
+// (COLOR_FAMILY, accessory / leafStyle hints, faceStyle → mood) is typed against
+// these unions. The zod schema below deliberately stays permissive (plain
+// strings) so forks can add options and the resolver can ignore unknowns.
 
 export const SPROUTY_COLOR_IDS = [
   'forest',
@@ -81,20 +83,25 @@ export const SPROUTY_FACE_STYLE_IDS = ['default', 'happy', 'sparkle', 'sleepy'] 
 export type SproutyFaceStyleId = (typeof SPROUTY_FACE_STYLE_IDS)[number];
 
 /**
- * Sprouty avatar DSL — the "sculpt your own Sprouty" contract, shared by
- * per-profile avatars, the workspace default (`branding.team_avatar` setting)
- * and agent-generated configs (design_sprouty_avatar tool).
+ * Avatar DSL — shared by custom Agent avatars and Bots.
  *
- * `palette` overrides the preset `color` with free body/leaf hexes (derived
- * shades are computed by the renderer). Visual metadata (hexes, emoji, names)
- * lives with the renderer in @greenhouse/ui sprouty-constants, keyed by the
- * id catalogs above.
+ * `plant` is the species id (PLANT_IDS in `@greenhouse/types/plant-avatar`) and
+ * `mood` the resting eyes (PLANT_MOODS). Every legacy Sprouty key stays accepted
+ * and readable — `color`, `accessories`, `leafStyle`, `faceStyle`, the profile
+ * editor's `eyeStyle` and the free `palette` hexes — and resolves to a plant at
+ * render time (`legacyToPlant` / `legacyToMood`); nothing is migrated. Writers
+ * store `plant` plus the nearest legacy `color` (PLANT_LEGACY_COLOR) so older
+ * clients still show a matching hue. Plain strings: unknown ids are kept and
+ * render through the resolver's fallbacks.
  */
 export const avatarConfigSchema = z.object({
+  plant: z.string().max(40).optional(),
+  mood: z.string().max(40).optional(),
   color: z.string().max(40).optional(),
   accessories: z.array(z.string().max(40)).max(10).optional(),
   leafStyle: z.string().max(40).optional(),
   faceStyle: z.string().max(40).optional(),
+  eyeStyle: z.string().max(40).optional(),
   palette: z
     .object({
       body: z.string().regex(HEX_COLOR_RE, 'body must be a #rrggbb hex color'),

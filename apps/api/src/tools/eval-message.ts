@@ -13,6 +13,7 @@ import { tool } from 'ai';
 import { defineTool, type ToolMeta } from './define.js';
 import { z } from 'zod';
 import type { DatabaseProvider } from '@greenhouse/db';
+import { isOwnerOnlySession } from '@greenhouse/types/session';
 import { judgeChatAnswer, buildEvalContext, loadReferenceSources, retrieveKbForJudge } from '../chat/eval.js';
 
 const evalMessageSchema = z.object({
@@ -61,7 +62,11 @@ export function createEvalMessageTool(db: DatabaseProvider, ctx: EvalMessageTool
       // Step 1: Check the parent session before reading any messages. A tool
       // grant must never turn an opaque session UUID into a cross-user read.
       const session = await db.sessions.getById(session_id);
-      if (!session || (ctx.userRole !== 'super' && ctx.userRole !== 'team')) {
+      if (
+        !session ||
+        (ctx.userRole !== 'super' && ctx.userRole !== 'team') ||
+        (isOwnerOnlySession(session) && session.user_id !== ctx.userId)
+      ) {
         return { error: 'Session not found or unavailable', steps };
       }
       if (ctx.userRole !== 'super' && session.user_id !== ctx.userId) {

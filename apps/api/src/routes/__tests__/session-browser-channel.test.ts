@@ -139,6 +139,31 @@ describe('GET /api/sessions channel-filtered list', () => {
     expect(body.sessions.map((s) => s.id)).toEqual(['browser-session']);
   });
 
+  it('folds no shared sessions into a channel-filtered list', async () => {
+    mocks.sessionShares.getSharedSessionIds.mockResolvedValue(['shared-web-session']);
+    mocks.sessions.listSharedWith.mockResolvedValue([makeSession('shared-web-session')]);
+
+    const response = await createApp().request('/api/sessions?channel=browser');
+
+    expect(mocks.sessions.listSharedWith).not.toHaveBeenCalled();
+    const body = (await response.json()) as { sessions: Array<{ id: string }> };
+    expect(body.sessions).toEqual([]);
+  });
+
+  it("lists only the caller's own Bots conversations, even for a super", async () => {
+    const superApp = createApp({ id: 'admin', role: 'super' });
+
+    const unscoped = await superApp.request('/api/sessions?channel=bots');
+    expect(unscoped.status).toBe(200);
+    expect(mocks.sessions.list).toHaveBeenCalledWith(expect.objectContaining({ channel: 'bots', userId: 'admin' }));
+
+    mocks.sessions.list.mockClear();
+    const team = await superApp.request('/api/sessions?channel=bots&scope=team');
+    expect(team.status).toBe(200);
+    expect(mocks.sessions.list).not.toHaveBeenCalled();
+    await expect(team.json()).resolves.toMatchObject({ sessions: [] });
+  });
+
   it('still backfills filed sessions into the unfiltered sidebar list', async () => {
     const response = await createApp().request('/api/sessions?scope=mine');
 

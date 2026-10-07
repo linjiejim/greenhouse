@@ -3,7 +3,7 @@
  * run-dev 引擎 —— 一键拉起本地验收环境（方案见 docs/specs/20260730-run-dev-and-local-sandbox.md）
  *
  * 用法（供 /run-dev 技能驱动，也可手动跑）：
- *   node scripts/run-dev.mjs up [all|web|api] [--fresh] [--sandbox] [--mission] [--db <name>]
+ *   node scripts/run-dev.mjs up [all|web|api] [--fresh] [--sandbox] [--mission] [--bots] [--db <name>]
  *   node scripts/run-dev.mjs stop [--wipe]
  *   node scripts/run-dev.mjs status
  *
@@ -250,6 +250,80 @@ function stopMissionInfra(state) {
   const removed = sh('docker', ['network', 'rm', mission.network]);
   if (removed.code === 0) info(`已删本树 Mission 网络 ${mission.network}`);
   else warn(`Mission 网络 ${mission.network} 未删：${removed.err.split('\n')[0]}`);
+}
+
+// ============================================================================
+// 可选 Bots 电脑本地执行面（显式 --bots；docs/specs/20261005-personal-assistant-bots.md）
+// ============================================================================
+const BOTS_COMPUTER_IMAGE_DEFAULT = 'greenhouse/bot-computer:latest';
+
+/**
+ * One namespace per tree: computers/volumes of two worktrees never collide on
+ * the shared daemon. The API accepts 1–16 lowercase letters or digits.
+ */
+function botsNamespace() {
+  return `wt${worktreeSlug().replace(/[^a-z0-9]/g, '')}`.slice(0, 16);
+}
+
+/**
+ * The docker CLI injects ~/.docker/config.json proxies into every container,
+ * where 127.0.0.1 is the container itself. The computer clears them; when the
+ * developer runs a local proxy (CN networks), hand the computer the same proxy
+ * through the host gateway instead.
+ */
+function localProxyForComputer(fileEnv) {
+  const explicit = process.env.BOTS_COMPUTER_PROXY ?? fileEnv.BOTS_COMPUTER_PROXY;
+  if (explicit !== undefined) return explicit;
+  const hostProxy = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || '';
+  const match = hostProxy.match(/^(https?):\/\/(127\.0\.0\.1|localhost):(\d+)\/?$/);
+  return match ? `${match[1]}://host.docker.internal:${match[3]}` : '';
+}
+
+function ensureBotsInfra(state, fileEnv) {
+  if (sh('docker', ['info']).code !== 0) throw new Error('--bots 需要可用的本地 Docker daemon');
+  const image = process.env.BOTS_COMPUTER_IMAGE || fileEnv.BOTS_COMPUTER_IMAGE || BOTS_COMPUTER_IMAGE_DEFAULT;
+  if (sh('docker', ['image', 'inspect', image]).code !== 0) {
+    throw new Error(`缺少 Bots 电脑镜像 ${image}；先运行 bash scripts/build-bot-computer.sh`);
+  }
+  state.bots = { image, namespace: botsNamespace(), proxy: localProxyForComputer(fileEnv) };
+  writeState(state);
+}
+
+async function assertBotsReady(state, port) {
+  const deadline = Date.now() + 60_000;
+  let lastState = 'unknown';
+  while (Date.now() < deadline) {
+    const health = await readHealth(port);
+    lastState = health?.bots?.state ?? 'unknown';
+    if (lastState === 'ready') {
+      state.bots.health = health.bots;
+      writeState(state);
+      info('Bots 电脑 ready ✓（本地 runc，非加固开发模式）');
+      return;
+    }
+    await sleep(500);
+  }
+  throw new Error(`Bots 电脑 60 秒内未就绪（state=${lastState}），查 .run-dev/logs/api.log`);
+}
+
+/** Remove this tree's computers (keep their home volumes unless wiping). */
+function stopBotsInfra(state, wipe) {
+  const ns = state?.bots?.namespace;
+  if (!ns) return;
+  const label = `greenhouse.bots.computer.namespace=${ns}`;
+  const listed = sh('docker', ['ps', '-aq', '--filter', `label=${label}`]);
+  for (const id of listed.out.split('\n').filter(Boolean)) {
+    const removed = sh('docker', ['rm', '-f', id]);
+    if (removed.code === 0) info(`停 Bots 电脑 ${id.slice(0, 12)}`);
+    else warn(`Bots 电脑 ${id.slice(0, 12)} 回收失败：${removed.err.split('\n')[0]}`);
+  }
+  if (!wipe) return;
+  const volumes = sh('docker', ['volume', 'ls', '-q', '--filter', `label=${label}`]);
+  for (const name of volumes.out.split('\n').filter(Boolean)) {
+    const removed = sh('docker', ['volume', 'rm', name]);
+    if (removed.code === 0) info(`删 Bots 电脑卷 ${name}`);
+    else warn(`Bots 电脑卷 ${name} 未删：${removed.err.split('\n')[0]}`);
+  }
 }
 
 // ============================================================================
@@ -641,6 +715,8 @@ async function cmdUp(argv) {
   state.ports = ports;
   writeState(state);
 
+  if (flags.has('--bots')) ensureBotsInfra(state, fileEnv);
+
   if (flags.has('--mission')) {
     const image =
       process.env.SANDBOX_RUNNER_IMAGE ||
@@ -672,6 +748,16 @@ async function cmdUp(argv) {
           SANDBOX_RUNNER_DATA_ROOT: state.mission.dataRoot,
         }
       : {}),
+    ...(state.bots
+      ? {
+          BOTS_COMPUTER_ENABLED: '1',
+          BOTS_COMPUTER_ALLOW_UNHARDENED: '1',
+          BOTS_COMPUTER_RUNTIME: 'runc',
+          BOTS_COMPUTER_IMAGE: state.bots.image,
+          BOTS_COMPUTER_NAMESPACE: state.bots.namespace,
+          BOTS_COMPUTER_PROXY: state.bots.proxy,
+        }
+      : {}),
   };
   launch(state, 'api', 'pnpm', ['api'], apiEnv, ports.api);
   if (!(await waitHealthy('api', ports.api))) {
@@ -679,6 +765,7 @@ async function cmdUp(argv) {
   }
   info('api 健康 ✓');
   if (state.mission) await assertMissionReady(state, ports.api);
+  if (state.bots) await assertBotsReady(state, ports.api);
 
   // 4. 账号确保（api 起来了说明库是通的）
   const account = ensureAccount(dbUrl);
@@ -743,6 +830,7 @@ async function cmdStop(argv) {
       }
     }
     stopMissionInfra(state);
+    stopBotsInfra(state, flags.has('--wipe'));
   }
 
   // Postgres 容器不关：主树、别的 worktree、别的项目都连着它（本地库是共用基建）。
@@ -813,6 +901,19 @@ function printSummary(state) {
     },
   ]);
 
+  if (state.bots) {
+    console.log('');
+    info('Bots 电脑：');
+    table([
+      {
+        state: state.bots.health?.state ?? 'pending',
+        namespace: state.bots.namespace,
+        proxy: state.bots.proxy || '（直连）',
+        image: state.bots.image,
+      },
+    ]);
+  }
+
   if (state.mission) {
     console.log('');
     info('Mission：');
@@ -869,7 +970,7 @@ try {
   else if (cmd === 'status') cmdStatus();
   else {
     console.log(
-      '用法: node scripts/run-dev.mjs {up [all|web|api] [--sandbox|--fresh|--mission|--db=<name>] | stop [--wipe] | status}',
+      '用法: node scripts/run-dev.mjs {up [all|web|api] [--sandbox|--fresh|--mission|--bots|--db=<name>] | stop [--wipe] | status}',
     );
     process.exit(cmd ? 1 : 0);
   }

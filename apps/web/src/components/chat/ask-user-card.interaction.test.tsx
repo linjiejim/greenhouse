@@ -17,7 +17,7 @@ afterEach(async () => {
   container = null;
 });
 
-async function mount(data: AskUserData, onSubmit: (message: string) => void) {
+async function mount(data: AskUserData, onSubmit: (message: string) => void | Promise<void>) {
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -83,5 +83,37 @@ describe('AskUserCard choice submission', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(onSubmit.mock.calls[0][0]).toContain('**1. Send from jim@example.com?**: Cancel');
     expect(onSubmit.mock.calls[0][0]).not.toContain('Cancel (cancel)');
+  });
+});
+
+describe('AskUserCard delivery failure', () => {
+  it('opens the form again, answers kept, when the send is rejected', async () => {
+    let reject: (err: Error) => void = () => {};
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<void>((_resolve, rejectSend) => {
+          reject = rejectSend;
+        }),
+    );
+    await mount(
+      confirmCard([
+        { value: 'yes', label: 'Yes' },
+        { value: 'no', label: 'No' },
+      ]),
+      onSubmit,
+    );
+
+    await choose('yes');
+    await submit();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    // While sending it reads as submitted…
+    expect(container!.querySelector('input[type="radio"][value="yes"]')).toBeNull();
+
+    await act(async () => reject(new Error('403')));
+    // …and comes back, still answered, so the member can resend.
+    const radio = container!.querySelector('input[type="radio"][value="yes"]') as HTMLInputElement | null;
+    expect(radio?.checked).toBe(true);
+    await submit();
+    expect(onSubmit).toHaveBeenCalledTimes(2);
   });
 });

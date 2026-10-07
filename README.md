@@ -98,6 +98,20 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Missions** *(optional)* — long-running tasks in disposable sandboxes (Docker + gVisor): the
   agent gets a real shell, files and a document toolchain, reports progress live and hands back
   artifacts.
+- **Bots** — personal assistants every member gets out of the box. Every member starts with
+  **Sprouty**, the main Bot pinned first: talk to it straight away, or let it bring in, brief and
+  create other Bots (researcher, operator, writer, analyst or your own). A Bot has a name, a role
+  and its own memory; several Bots can share one conversation (@-mention them, let them hand work
+  to each other) and long conversations are summarised instead of truncated. With a computer
+  enabled, each member's Bots share one cloud desktop (a browser with a taskbar, a shell, files
+  and long-running jobs) the member can watch live, take over, or use directly through its
+  terminal and file tabs; logins come from a write-only password vault that Bots fill in without
+  ever seeing the values, and a site's "verify you are human" check is handed to the member with
+  one click in the chat. Background tasks start from the brief you approve; reading private notes or history then
+  disables all further browser actions. Their transcripts and execution traces stay owner-only, including
+  against other admins. A new message can
+  interrupt a Bot after its current step. The organisation configures one Docker host; computers
+  start on demand, stop when idle (unless a job is still running) and queue when the host is full.
 - **Workflows** — a multi-agent task-graph engine (database state machine, human gates,
   pause / retry per node) that the agent can plan from a conversation.
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
@@ -121,7 +135,11 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Workspace branding & runtime config** — rebrand from the web (name, logo, theme tokens) and
   manage runtime credentials (LLM / media / search) in Administration; values live in the
   database with env-var fallback and apply without a restart, from the login screen on.
-- **Sprouty** — the mascot is a parametric SVG; members design their own agent look.
+- **Plant avatars** — every agent and Bot is a flat, geometric plant with a small face (16
+  species, light and dark). Its pose, face and a small mark show what it is doing (thinking,
+  working, done, needs you, error, asleep, saying hi), only the one that is speaking moves, and
+  members pick their own plant and mood. The Bot templates are named after theirs: Ivy 藤藤,
+  Dandy 蒲蒲 (dandelion), Cactus 仙仙, Fern 卷卷 and Clover 叶叶.
 
 Roles: **super > team**, plus per-user feature flags and platform policies that gate optional
 modules. Auth is fail-closed — the server refuses to start without `TOKEN_SIGNING_KEY`, and
@@ -130,7 +148,7 @@ stored secrets need `PROVIDER_TOKEN_ENCRYPTION_KEY`.
 ## Architecture
 
 A pnpm monorepo. The Hono API also serves the built React SPA, so production is a single
-process / single container (plus an optional sandbox-runner image for Missions).
+process / single container (plus optional images for Mission sandboxes and Bots computers).
 
 ```
 greenhouse/
@@ -140,6 +158,7 @@ greenhouse/
 │   ├── web/                  # React + Vite single-page app (hash router)
 │   ├── agent-runner/         # Mission sandbox runner — built into the greenhouse/agent-runtime
 │   │                         #   image; the API never imports it
+│   ├── bot-computer/         # Bots computer image (desktop + Chromium + shell, zero published ports)
 │   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to your
 │   │                         #   instances via saved multi-server "stations"
 │   └── mobile/               # Expo (React Native) app — chat, knowledge, projects, settings;
@@ -153,7 +172,7 @@ greenhouse/
 │   ├── db/                   # Database layer — Drizzle schema + domain services
 │   ├── knowledge-editor/     # Tiptap schema + server-side Markdown ↔ Tiptap JSON
 │   ├── crud/                 # Low-code CRUD framework (one schema → list / form / detail)
-│   ├── ui/                   # Shared React UI kit (atoms, markdown, tool-call cards, tokens)
+│   ├── ui/                   # Shared React UI kit (atoms, markdown, tool-call cards, plant avatars, tokens)
 │   └── contract/             # Typed API contract — re-exports the API's AppType + hc
 ├── skillhub/                 # First-party skill packs (synced into the Skill Center on boot)
 ├── drizzle/                  # Migration files (the single source of truth for the schema)
@@ -246,6 +265,16 @@ Missions need one more piece on the host: Docker with the gVisor runtime, a dedi
 network, and the sandbox image (`bash scripts/build-agent-runtime.sh`). They stay off until
 `MISSION_ENABLED=1` and every preflight passes — see `.env.example`.
 
+Bots work in any deployment. Their computers need the API to run **on the Docker host itself**
+(bare metal / PM2, not the compose image — computers are reached through `docker exec` and
+publish no ports), plus gVisor, a hardened bridge
+(`sudo BOTS_COMPUTER_NETWORK=bots bash scripts/cloud-agent-net.sh --profile bots`) and the computer image
+(`bash scripts/build-bot-computer.sh`; add organisation-wide Debian packages with
+`BOTS_COMPUTER_EXTRA_PACKAGES="…"`). Set `BOTS_COMPUTER_ENABLED=1`; **Administration → Bot
+computers** lists every precheck with the command that fixes it, and the live knobs (idle
+minutes, how many computers run at once) are in Runtime Config. The API only accepts an image of
+its own contract version, so rebuild the image whenever you upgrade.
+
 ## Releases & stability
 
 **Use a tagged release in production.** Two channels, and they are not equally
@@ -333,8 +362,8 @@ its payload. Set `LLM_VISION=false` when `LLM_MODEL` is text-only, and images go
 
 Optional: media (vision `analyze_image` + `generate_image` through `MEDIA_*`, falling back to
 the LLM endpoint; `IMAGE_BASE_URL` + `IMAGE_API_KEY` move generation alone to an image
-provider), external web search, email mailboxes, WeCom / Feishu, missions, usage
-budgets, and object storage. Uploads default to local disk (`data/uploads`), Skill Center
+provider), external web search, email mailboxes, WeCom / Feishu, missions, Bots computers
+(`BOTS_COMPUTER_*`), usage budgets, and object storage. Uploads default to local disk (`data/uploads`), Skill Center
 bundles to `data/skills` — set `SKILLS_S3_*` to keep bundles in S3-compatible storage.
 
 **Admin-configurable at runtime**: the LLM / media / search credentials and the product name

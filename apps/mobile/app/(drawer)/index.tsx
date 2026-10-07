@@ -23,7 +23,7 @@ import { ProfileSheet, useProfileName } from '../../src/chat/profile-sheet';
 import { greeting } from '../../src/lib/format';
 import { useT } from '../../src/lib/i18n';
 import { useBottomPadStyle, useCollapsingInsetStyle } from '../../src/lib/keyboard';
-import { Icon, IconName, SproutyFace, Touchable } from '../../src/ui';
+import { Icon, IconName, PlantAvatar, Touchable } from '../../src/ui';
 import { font, makeStyles, useTheme } from '../../src/theme';
 
 export default function Home() {
@@ -94,7 +94,7 @@ export default function Home() {
         {/* hero */}
         <ScrollView contentContainerStyle={styles.hero} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={{ marginBottom: 14 }}>
-            <SproutyFace expr="idle" size={84} />
+            <PlantAvatar size={84} />
           </View>
           <Text style={styles.greeting}>
             {greeting()}，{nickname}

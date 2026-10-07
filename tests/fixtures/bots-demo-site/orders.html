@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Acme 采购门户 · 订单</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wide">
+    <header><h1>九月采购订单 · September orders</h1><span class="who">jim@acme.test</span></header>
+    <table>
+      <thead><tr><th>订单号</th><th>供应商</th><th>品类</th><th>金额 (CNY)</th><th>状态</th></tr></thead>
+      <tbody>
+        <tr><td>PO-2609-001</td><td>青禾办公</td><td>办公用品</td><td>3,280.00</td><td>已签收</td></tr>
+        <tr><td>PO-2609-002</td><td>云杉科技</td><td>笔记本电脑 ×4</td><td>31,960.00</td><td>运输中</td></tr>
+        <tr><td>PO-2609-003</td><td>绿野餐饮</td><td>团建餐饮</td><td>4,650.00</td><td>待付款</td></tr>
+        <tr><td>PO-2609-004</td><td>云杉科技</td><td>显示器 ×6</td><td>8,940.00</td><td>已签收</td></tr>
+        <tr><td>PO-2609-005</td><td>远山物流</td><td>仓储服务（季度）</td><td>12,000.00</td><td>待审批</td></tr>
+      </tbody>
+    </table>
+    <p class="sub">合计 60,830.00 · 5 张订单 · 其中 2 张未完成付款或审批</p>
+  </main>
+  <script>
+    if (sessionStorage.getItem('acme-step') !== 'in') location.href = 'index.html';
+  </script>
+</body>
+</html>

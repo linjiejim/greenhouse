@@ -16,10 +16,32 @@ import { handleStreamEvent } from './stream-events';
 import { collectVisibleSessionIds } from './session-visibility';
 import { wsClient } from './ws';
 import type { ChatTurnEnvironment } from '@greenhouse/types/api';
+import type { BotRequestView, BotTurnReason } from '@greenhouse/types/bots';
 import { notifyWorkbenchChanged } from './workbench/sync';
 import { entityDomainForTool, notifyEntityChanged } from './entity-sync';
+import { isBotsApiError } from './api/bots';
 
 // ─── Types ───────────────────────────────────────────────
+
+/**
+ * One Bot's part of a multi-speaker Bots run: everything between its
+ * `bot-turn-start` and `bot-turn-end`. Text, reasoning and tool events in that
+ * window belong to this Bot, never to the session-level fields.
+ */
+export interface BotStreamSegment {
+  botId: string;
+  reason: BotTurnReason;
+  /** The Bot that handed over (reason `ask`). */
+  askedBy?: string;
+  /** `skipped`: a wrap-up turn with nothing to add — nothing persisted, nothing to show. */
+  status: 'streaming' | 'completed' | 'error' | 'stopped' | 'skipped';
+  text: string;
+  reasoning: string;
+  toolCalls: StreamingToolCall[];
+  /** The persisted message, once the turn ended (dedupes against a transcript reload). */
+  messageId?: string;
+  error?: string;
+}
 
 export interface ManagedSession {
   sessionId: string;
@@ -27,9 +49,68 @@ export interface ManagedSession {
   streamText: string;
   streamReasoning: string;
   streamToolCalls: StreamingToolCall[];
+  /** Bots conversations only: one segment per Bot turn of this run, in speaking order. */
+  botSegments: BotStreamSegment[];
+  /** Bots conversations only: "needs you" cards raised during this run (latest state per id). */
+  botRequests: BotRequestView[];
   generatedTitle?: string;
   error?: string;
   startedAt: number;
+  /**
+   * Bots: the member asked this run to stop after the current step (the soft
+   * stop — `POST /api/chat/runs/:id/interrupt`, or its `run-interrupting`
+   * event, which reaches every tab). Cleared by the next Bot turn that starts
+   * (the run went on to answer a message that was waiting — the server used
+   * the request up) or when the run ends.
+   */
+  interrupting?: boolean;
+}
+
+/**
+ * How a soft-stop request went: taken (`interrupting`), no run to interrupt —
+ * it had already finished (`no_run`), or refused (not a Bots conversation, an
+ * older server, the network) — the caller decides what to do instead.
+ */
+export type InterruptOutcome = 'interrupting' | 'no_run' | 'refused';
+
+/** Mutable per-run accumulator behind the RAF-batched `ManagedSession` snapshots. */
+interface StreamData {
+  text: string;
+  reasoning: string;
+  toolCalls: StreamingToolCall[];
+  botSegments: BotStreamSegment[];
+  /** Index of the Bot currently speaking, or -1 between Bot turns / in ordinary chats. */
+  botCurrent: number;
+  botRequests: BotRequestView[];
+  /** A soft stop is pending (see ManagedSession.interrupting). */
+  interrupting: boolean;
+  /** Bot turns started so far — tells a soft-stop answer that arrives after the run moved on. */
+  turnStarts: number;
+}
+
+function newStreamData(): StreamData {
+  return {
+    text: '',
+    reasoning: '',
+    toolCalls: [],
+    botSegments: [],
+    botCurrent: -1,
+    botRequests: [],
+    interrupting: false,
+    turnStarts: 0,
+  };
+}
+
+/** Copy the mutable segments into a fresh snapshot so memoized consumers see the change. */
+function snapshotSegments(segments: BotStreamSegment[]): BotStreamSegment[] {
+  return segments.map((segment) => ({ ...segment, toolCalls: [...segment.toolCalls] }));
+}
+
+/** Close any segment the run ended without a `bot-turn-end` for (stop, transport loss, server error). */
+function settleOpenSegments(segments: BotStreamSegment[], status: BotStreamSegment['status']): BotStreamSegment[] {
+  return segments.map((segment) =>
+    segment.status === 'streaming' ? { ...segment, status, toolCalls: [...segment.toolCalls] } : { ...segment },
+  );
 }
 
 export interface SessionManagerContextValue {
@@ -62,11 +143,26 @@ export interface SessionManagerContextValue {
     regenerateAssistantMessageId?: string,
   ) => void;
 
+  /**
+   * Send a member message into a Bots conversation. Resolves `queued: true`
+   * when the conversation was busy (the engine reads it between Bot turns);
+   * otherwise the multi-speaker run streams into `activeSessions` like any
+   * other turn. Rejects when the API refused the message.
+   */
+  sendBotsMessage: (
+    sessionId: string,
+    message: string,
+    options?: { images?: Array<{ id: string; url: string }>; mentions?: string[] },
+  ) => Promise<{ queued: boolean }>;
+
   /** Attach to a generation already running server-side (after refresh / other tab) */
   attachSession: (sessionId: string) => void;
 
   /** Stop a streaming session */
   stopSession: (sessionId: string) => void;
+
+  /** Bots: ask the run to stop after the current step (soft stop). */
+  interruptSession: (sessionId: string) => Promise<InterruptOutcome>;
 
   /** Mark a session as read (clear unread status) */
   markRead: (sessionId: string) => void;
@@ -120,10 +216,14 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   const stoppingRef = useRef<Set<string>>(new Set());
 
   // Refs for RAF-based streaming updates
-  const streamDataRef = useRef<Map<string, { text: string; reasoning: string; toolCalls: StreamingToolCall[] }>>(
+  const streamDataRef = useRef<Map<string, StreamData>>(new Map());
+  const rafRef = useRef<Map<string, number>>(new Map());
+  // A Bots stream opened while the previous run of the same session was still
+  // winding down locally (its `finish` not yet consumed). It starts the moment
+  // that consumer lets go, so there is still exactly one consumer per session.
+  const pendingSourcesRef = useRef<Map<string, { source: AsyncIterable<SeqStreamEvent>; abort: AbortController }>>(
     new Map(),
   );
-  const rafRef = useRef<Map<string, number>>(new Map());
 
   // Persist important sessions to localStorage
   useEffect(() => {
@@ -145,6 +245,9 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
             streamText: data.text,
             streamReasoning: data.reasoning,
             streamToolCalls: [...data.toolCalls],
+            botSegments: snapshotSegments(data.botSegments),
+            botRequests: [...data.botRequests],
+            interrupting: data.interrupting,
           });
         }
         return next;
@@ -167,16 +270,19 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         images?: Array<{ id: string; url: string }>;
         environment?: ChatTurnEnvironment;
         regenerateAssistantMessageId?: string;
+        /** An already-opened response (Bots: the POST decided between streaming and queueing). */
+        source?: AsyncIterable<SeqStreamEvent>;
+        abortController?: AbortController;
       },
     ) => {
       // One local consumer per session — a duplicate send would 409 anyway.
       if (streamDataRef.current.has(sessionId)) return;
 
-      const abortController = new AbortController();
+      const abortController = initial?.abortController ?? new AbortController();
       abortControllersRef.current.set(sessionId, abortController);
 
       // Initialize stream data ref
-      streamDataRef.current.set(sessionId, { text: '', reasoning: '', toolCalls: [] });
+      streamDataRef.current.set(sessionId, newStreamData());
 
       // Add to active sessions as streaming
       setActiveSessions((prev) => {
@@ -187,6 +293,8 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
           streamText: '',
           streamReasoning: '',
           streamToolCalls: [],
+          botSegments: [],
+          botRequests: [],
           startedAt: Date.now(),
         });
         return next;
@@ -207,16 +315,18 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         let lastSeq = -1;
         let resumeAttempts = 0;
         try {
-          let source: AsyncIterable<SeqStreamEvent> = initial
-            ? (api.streamChat(
-                sessionId,
-                initial.message,
-                initial.images,
-                abortController.signal,
-                initial.environment,
-                initial.regenerateAssistantMessageId,
-              ) as AsyncIterable<SeqStreamEvent>)
-            : api.streamChatRun(sessionId, lastSeq, abortController.signal);
+          let source: AsyncIterable<SeqStreamEvent> = initial?.source
+            ? initial.source
+            : initial
+              ? (api.streamChat(
+                  sessionId,
+                  initial.message,
+                  initial.images,
+                  abortController.signal,
+                  initial.environment,
+                  initial.regenerateAssistantMessageId,
+                ) as AsyncIterable<SeqStreamEvent>)
+              : api.streamChatRun(sessionId, lastSeq, abortController.signal);
 
           let finished = false;
           let runGone = false;
@@ -232,34 +342,50 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
                 // server-side bridge self-resolves via its timeout).
                 if (event.type === 'local-tool-request' && event.replayed) continue;
 
+                // Bots soft stop, asked for here or in another tab (and replayed
+                // after a refresh): the run ends once the current step is done.
+                if (event.type === 'run-interrupting') {
+                  data.interrupting = true;
+                  scheduleUpdate(sessionId);
+                  continue;
+                }
+
+                // Inside a Bots run, text and tool events belong to whichever Bot
+                // is speaking (between its bot-turn-start and bot-turn-end).
+                const speaking = data.botCurrent >= 0 ? data.botSegments[data.botCurrent] : null;
+                const updateCalls = (fn: (calls: StreamingToolCall[]) => StreamingToolCall[]) => {
+                  if (speaking) speaking.toolCalls = fn(speaking.toolCalls);
+                  else data.toolCalls = fn(data.toolCalls);
+                };
+
                 handleStreamEvent(event, {
                   onTextDelta: (text) => {
-                    data.text += text;
+                    if (speaking) speaking.text += text;
+                    else data.text += text;
                     scheduleUpdate(sessionId);
                   },
                   onReasoningDelta: (text) => {
-                    data.reasoning += text;
+                    if (speaking) speaking.reasoning += text;
+                    else data.reasoning += text;
                     scheduleUpdate(sessionId);
                   },
                   onToolCallStart: (id, toolName) => {
-                    data.toolCalls = [...data.toolCalls, { id, name: toolName, input: '', status: 'calling' as const }];
+                    updateCalls((calls) => [...calls, { id, name: toolName, input: '', status: 'calling' as const }]);
                     scheduleUpdate(sessionId);
                   },
                   onToolCallDelta: (id, delta) => {
-                    data.toolCalls = data.toolCalls.map((tc) =>
-                      tc.id === id ? { ...tc, input: tc.input + delta } : tc,
-                    );
+                    updateCalls((calls) => calls.map((tc) => (tc.id === id ? { ...tc, input: tc.input + delta } : tc)));
                     scheduleUpdate(sessionId);
                   },
                   onToolCall: (_toolName, input, id) => {
-                    data.toolCalls = data.toolCalls.map((tc) =>
-                      tc.id === id ? { ...tc, input: JSON.stringify(input) } : tc,
+                    updateCalls((calls) =>
+                      calls.map((tc) => (tc.id === id ? { ...tc, input: JSON.stringify(input) } : tc)),
                     );
                     scheduleUpdate(sessionId);
                   },
                   onToolResult: (id, toolName, output) => {
-                    data.toolCalls = data.toolCalls.map((tc) =>
-                      tc.id === id ? { ...tc, output, status: 'done' as const } : tc,
+                    updateCalls((calls) =>
+                      calls.map((tc) => (tc.id === id ? { ...tc, output, status: 'done' as const } : tc)),
                     );
                     if (toolName === 'workbench_mutation') notifyWorkbenchChanged();
                     // A record open in the side pane was fetched before this
@@ -267,6 +393,45 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
                     // pre-edit version while the user watches.
                     const domain = entityDomainForTool(toolName);
                     if (domain) notifyEntityChanged(domain);
+                    scheduleUpdate(sessionId);
+                  },
+                  onBotTurnStart: (turn) => {
+                    data.botSegments.push({
+                      botId: turn.bot_id,
+                      reason: turn.reason,
+                      askedBy: turn.asked_by,
+                      status: 'streaming',
+                      text: '',
+                      reasoning: '',
+                      toolCalls: [],
+                    });
+                    data.botCurrent = data.botSegments.length - 1;
+                    data.turnStarts += 1;
+                    // A turn after a soft stop answers a message that was
+                    // waiting: the server used the request up.
+                    data.interrupting = false;
+                    scheduleUpdate(sessionId);
+                  },
+                  onBotTurnEnd: (turn) => {
+                    // The open segment normally; fall back to the Bot's latest one
+                    // so a replayed end after a resume still lands.
+                    let index = data.botCurrent;
+                    if (index < 0 || data.botSegments[index]?.botId !== turn.bot_id) {
+                      index = data.botSegments.map((segment) => segment.botId).lastIndexOf(turn.bot_id);
+                    }
+                    const segment = index >= 0 ? data.botSegments[index] : undefined;
+                    if (segment) {
+                      segment.status = turn.status;
+                      segment.messageId = turn.message_id;
+                      segment.error = turn.error;
+                    }
+                    data.botCurrent = -1;
+                    scheduleUpdate(sessionId);
+                  },
+                  onBotRequest: (request) => {
+                    const known = data.botRequests.findIndex((existing) => existing.id === request.id);
+                    if (known >= 0) data.botRequests[known] = request;
+                    else data.botRequests.push(request);
                     scheduleUpdate(sessionId);
                   },
                   onLocalToolRequest: (toolCallId, toolId, params, scopeId) => {
@@ -344,6 +509,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
 
           // Stream completed successfully
           const finalData = streamDataRef.current.get(sessionId);
+          const completedAsStop = stoppingRef.current.has(sessionId);
           setActiveSessions((prev) => {
             const next = new Map(prev);
             const session = next.get(sessionId);
@@ -354,6 +520,12 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
                 streamText: finalData?.text ?? session.streamText,
                 streamReasoning: finalData?.reasoning ?? session.streamReasoning,
                 streamToolCalls: finalData?.toolCalls ?? session.streamToolCalls,
+                botSegments: settleOpenSegments(
+                  finalData?.botSegments ?? session.botSegments,
+                  completedAsStop ? 'stopped' : 'completed',
+                ),
+                botRequests: finalData ? [...finalData.botRequests] : session.botRequests,
+                interrupting: false,
               });
             }
             return next;
@@ -387,6 +559,12 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
                   streamText: finalData?.text ?? session.streamText,
                   streamReasoning: finalData?.reasoning ?? session.streamReasoning,
                   streamToolCalls: finalData?.toolCalls ?? session.streamToolCalls,
+                  botSegments: settleOpenSegments(
+                    finalData?.botSegments ?? session.botSegments,
+                    wasStopping ? 'stopped' : 'error',
+                  ),
+                  botRequests: finalData ? [...finalData.botRequests] : session.botRequests,
+                  interrupting: false,
                 });
               }
               return next;
@@ -402,11 +580,19 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
             cancelAnimationFrame(rafId);
             rafRef.current.delete(sessionId);
           }
+          // A Bots stream that opened while this one was finishing takes over now.
+          const queued = pendingSourcesRef.current.get(sessionId);
+          if (queued) {
+            pendingSourcesRef.current.delete(sessionId);
+            runStreamRef.current?.(sessionId, { source: queued.source, abortController: queued.abort });
+          }
         }
       })();
     },
     [scheduleUpdate],
   );
+  const runStreamRef = useRef<typeof runStream | null>(null);
+  runStreamRef.current = runStream;
 
   const sendMessage = useCallback(
     (
@@ -417,6 +603,35 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       regenerateAssistantMessageId?: string,
     ) => {
       runStream(sessionId, { message, images, environment, regenerateAssistantMessageId });
+    },
+    [runStream],
+  );
+
+  const sendBotsMessage = useCallback(
+    async (
+      sessionId: string,
+      message: string,
+      options: { images?: Array<{ id: string; url: string }>; mentions?: string[] } = {},
+    ): Promise<{ queued: boolean }> => {
+      const abort = new AbortController();
+      const opened = await api.openBotsChat({
+        sessionId,
+        message,
+        images: options.images,
+        mentions: options.mentions,
+        signal: abort.signal,
+      });
+      if (opened.queued) return { queued: true };
+      if (streamDataRef.current.has(sessionId)) {
+        // The server had already finished the previous run (or it would have
+        // queued us) but this tab is still draining its tail. Hand the new
+        // stream over when that consumer releases the session.
+        pendingSourcesRef.current.get(sessionId)?.abort.abort();
+        pendingSourcesRef.current.set(sessionId, { source: opened.events, abort });
+      } else {
+        runStream(sessionId, { source: opened.events, abortController: abort });
+      }
+      return { queued: false };
     },
     [runStream],
   );
@@ -531,6 +746,26 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       .catch(() => localStop());
   }, []);
 
+  const interruptSession = useCallback(
+    async (sessionId: string): Promise<InterruptOutcome> => {
+      const turnsBefore = streamDataRef.current.get(sessionId)?.turnStarts;
+      try {
+        await api.interruptChatRun(sessionId);
+      } catch (err) {
+        return isBotsApiError(err) && err.status === 404 ? 'no_run' : 'refused';
+      }
+      // The run's own `run-interrupting` event says the same; marking it here
+      // too shows it at once — unless the run already moved on meanwhile.
+      const data = streamDataRef.current.get(sessionId);
+      if (data && data.turnStarts === turnsBefore) {
+        data.interrupting = true;
+        scheduleUpdate(sessionId);
+      }
+      return 'interrupting';
+    },
+    [scheduleUpdate],
+  );
+
   const markRead = useCallback((sessionId: string) => {
     setUnreadSessions((prev) => {
       if (!prev.has(sessionId)) return prev;
@@ -609,8 +844,10 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     registerViewport,
     unregisterViewport,
     sendMessage,
+    sendBotsMessage,
     attachSession,
     stopSession,
+    interruptSession,
     markRead,
     markImportant,
     isSessionStreaming,

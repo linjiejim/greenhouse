@@ -36,6 +36,7 @@ import { MessageFeedback } from '../chat/message-feedback';
 type Route =
   | 'home'
   | 'chat'
+  | 'bots'
   | 'extension'
   | 'automations'
   | 'agents'
@@ -272,6 +273,7 @@ export function TopBar({
   const pageTitles: Record<string, string> = {
     workbench: 'Workbench',
     chat: chatUtilityTitle || sessionTitle || t('chat.newConversation'),
+    bots: t('bots.title'),
     automations: t('navigation.automation'),
     agents: t('navigation.myAgents'),
     projects: t('app.projects'),
@@ -289,8 +291,10 @@ export function TopBar({
   // Module pages (Projects/Knowledge/Settings) render their own
   // header, so this breadcrumb bar would duplicate it — hide it on desktop and
   // keep only the mobile nav trigger. Chat has no page header of its own, so its
-  // session title/tags/share bar stays visible at every width.
-  const visibility = route === 'chat' ? 'flex' : 'flex md:hidden';
+  // session title/tags/share bar stays visible at every width. Bots render a
+  // full conversation header (with the mobile nav trigger) at every width, so
+  // a second bar above it would only cost a phone 40px.
+  const visibility = route === 'chat' ? 'flex' : route === 'bots' ? 'hidden' : 'flex md:hidden';
 
   return (
     <header

@@ -17,7 +17,7 @@ vi.mock('../../lib/api', async (importOriginal) => ({
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function renderTopBar(route: 'chat' | 'projects' | 'executions' | 'tasks') {
+function renderTopBar(route: 'chat' | 'bots' | 'projects' | 'executions' | 'tasks') {
   return renderToStaticMarkup(
     createElement(I18nProvider, {
       initialLocale: 'en',
@@ -56,6 +56,12 @@ describe('TopBar mobile chat actions', () => {
 
   it('names the independent prompt library Tasks', () => {
     expect(renderTopBar('tasks')).toContain('>Tasks<');
+  });
+
+  it('stays out of the Bots workspace, which carries its own conversation header at every width', () => {
+    const html = renderTopBar('bots');
+    expect(html).toMatch(/<header class="hidden /);
+    expect(html).not.toContain('aria-label="Session history"');
   });
 
   it('renders sharing as an icon-only conversation action', () => {

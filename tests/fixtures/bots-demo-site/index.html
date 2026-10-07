@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Acme 采购门户 · 登录</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="card">
+    <h1>Acme 采购门户</h1>
+    <p class="sub">Procurement portal — demo fixture for greenhouse Bots</p>
+    <form id="login" autocomplete="on">
+      <label>邮箱 Email<input id="email" name="username" type="email" autocomplete="username" required></label>
+      <label>密码 Password<input id="password" name="password" type="password" autocomplete="current-password" required></label>
+      <button type="submit">登录 Sign in</button>
+      <p id="error" class="error" role="alert" hidden>邮箱或密码不正确 · Wrong email or password</p>
+    </form>
+  </main>
+  <script src="app.js"></script>
+  <script>
+    document.getElementById('login').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const ok = AcmeDemo.checkPassword(
+        document.getElementById('email').value,
+        document.getElementById('password').value,
+      );
+      if (ok) {
+        sessionStorage.setItem('acme-step', 'otp');
+        location.href = 'otp.html';
+      } else {
+        document.getElementById('error').hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>

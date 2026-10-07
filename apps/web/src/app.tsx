@@ -26,6 +26,7 @@ const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ 
 const PersonalTasksPage = lazy(() => import('./pages/tasks').then((m) => ({ default: m.PromptsPage })));
 const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
 const ExecutionCenterPage = lazy(() => import('./pages/executions').then((m) => ({ default: m.ExecutionsPage })));
+const BotsPage = lazy(() => import('./pages/bots').then((m) => ({ default: m.BotsPage })));
 const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
 const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => ({ default: m.OAuthConsentPage })));
 const AccountPasswordPage = lazy(() =>
@@ -85,6 +86,12 @@ import { buildPrimaryNavigation } from './platform/navigation';
 import { usePlatformCatalog, usePlatformStore } from './stores/platform-store';
 import { useMobileKeyboardViewport } from './hooks/use-mobile-keyboard-viewport';
 import { legacyExecutionRedirect } from './lib/execution-route';
+import { canUseFeature } from './lib/features';
+import { useBotsSync } from './components/bots/use-bots-sync';
+import { useBotsStore } from './components/bots/bots-store';
+import { BotsSidebarPanel } from './components/bots/bots-sidebar-panel';
+import { botsConversationHash } from './components/bots/navigation';
+import { BotsBareHeader } from './components/bots/conversation-header';
 
 /**
  * `#/desktop/*` is the desktop shell's satellite-window surface (quick capture,
@@ -110,6 +117,7 @@ initScrollActivity();
 
 type Route =
   | 'chat'
+  | 'bots'
   | 'extension'
   | 'automations'
   | 'agents'
@@ -207,6 +215,7 @@ function LeaveConfirmDialog({
 /** Top-level hashes core owns (plus `DESKTOP_SATELLITE_ROUTE`); an extension alias can never take one over. */
 const CORE_ROUTES: ReadonlySet<string> = new Set([
   'chat',
+  'bots',
   'automations',
   'agents',
   'settings',
@@ -532,6 +541,12 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
 
   const { orderedApplications, hasApplication, loading: catalogLoading } = usePlatformCatalog();
   const loadPlatformCatalog = usePlatformStore((state) => state.load);
+  // Bots: one shell-level sync feeds the nav badge, the tab title and the
+  // `#/chat?session=` redirect below, whichever page is open.
+  const botsEnabled = canUseFeature(currentUser, 'bots');
+  useBotsSync(botsEnabled);
+  const botsPending = useBotsStore((state) => state.pending);
+  const botsSessionIds = useBotsStore((state) => state.knownSessionIds);
   const [chatLaunchRequest, setChatLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
   const chatLaunchIdRef = useRef(0);
 
@@ -610,12 +625,22 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
     [setChatWorkspaceView],
   );
 
+  // A Bots conversation has a multi-speaker transcript the single-agent Chat
+  // page cannot render (no authors, no mentions); an old or shared
+  // `#/chat?session=` link to one lands on the Bots page instead.
+  const chatSessionParam = route === 'chat' ? params.get('session') : null;
+  const chatSessionIsBots = !!chatSessionParam && botsSessionIds.has(chatSessionParam);
+  useEffect(() => {
+    if (chatSessionIsBots && chatSessionParam) window.location.replace(botsConversationHash(chatSessionParam));
+  }, [chatSessionIsBots, chatSessionParam]);
+
   // One permission-aware navigation model feeds both the desktop sidebar and
   // mobile drawer. Presentation differs, visibility and ordering do not.
   const primaryNavigation = buildPrimaryNavigation({
     applications: orderedApplications,
     chatLabel: t('app.chat'),
     skillhubLabel: t('app.skillhub'),
+    bots: botsEnabled ? { label: t('bots.title'), badge: botsPending } : null,
   });
   return (
     <>
@@ -715,6 +740,11 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                         }}
                       />
                     </div>
+                  ) : route === 'bots' && botsEnabled ? (
+                    // On a phone the conversation list lives here, like Chat history.
+                    <div className="flex min-h-0 flex-1 flex-col pt-1">
+                      <BotsSidebarPanel onNavigate={() => setNavOpen(false)} />
+                    </div>
                   ) : route === 'knowledge' ? (
                     // The tree is the ONLY way to reach an internal doc (the page
                     // body stopped listing documents when the tree shipped), so
@@ -773,7 +803,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     <Spinner className="h-6 w-6 text-fg-faint" />
                   </div>
                 )}
-                {route === 'chat' && (
+                {route === 'chat' && !chatSessionIsBots && (
                   <ChatPage
                     key={params.get('session') || params.get('new') || 'new'}
                     initialSessionId={params.get('session') || undefined}
@@ -783,6 +813,18 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     }}
                   />
                 )}
+                {route === 'bots' &&
+                  (botsEnabled ? (
+                    <BotsPage params={params} />
+                  ) : (
+                    // The TopBar is hidden on #/bots, so a phone needs this header's menu button.
+                    <div className="flex h-full flex-col">
+                      <BotsBareHeader title={t('bots.title')} />
+                      <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-fg-faint">
+                        {t('app.noPermission')}
+                      </div>
+                    </div>
+                  ))}
                 {route === 'automations' && <AutomationsPage />}
                 {route === 'tasks' && <PersonalTasksPage />}
                 {route === 'agents' && <AgentsPage />}

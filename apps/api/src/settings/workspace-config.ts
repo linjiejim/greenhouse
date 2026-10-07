@@ -40,6 +40,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { decryptToken } from '../auth/crypto.js';
 import { reloadModelCatalog } from '../config/models.js';
+import { IDLE_MINUTES_RANGE, MAX_RUNNING_RANGE } from '../bots/computer/limits.js';
 
 // ─── State ───────────────────────────────────────────────
 
@@ -170,6 +171,14 @@ export function validateWorkspaceValue(def: WorkspaceSettingDef, raw: unknown): 
       if (!(LOGO_ALLOWED_MIME as readonly string[]).includes(match[1].toLowerCase()))
         return { ok: false, error: `branding.logo mime must be one of: ${LOGO_ALLOWED_MIME.join(', ')}` };
       if (value.length > LOGO_MAX_DATA_URL_LENGTH) return { ok: false, error: 'branding.logo exceeds 256 KB' };
+    }
+    // Bot computer knobs are integers in a range; the runtime re-reads them on every decision.
+    if (def.key === 'bots.computer_idle_minutes' || def.key === 'bots.computer_max_running') {
+      const range = def.key === 'bots.computer_idle_minutes' ? IDLE_MINUTES_RANGE : MAX_RUNNING_RANGE;
+      if (!/^\d+$/.test(value) || Number(value) < range.min || Number(value) > range.max) {
+        return { ok: false, error: `${def.key} must be a whole number from ${range.min} to ${range.max}` };
+      }
+      return { ok: true, value: String(Number(value)) };
     }
     if (def.key.endsWith('base_url')) {
       try {

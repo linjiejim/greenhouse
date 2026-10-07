@@ -22,6 +22,7 @@ import type { DatabaseProvider, UserRow } from '@greenhouse/db';
 import { getPlatformRuntime, PLATFORM_ORG_ID } from './runtime.js';
 import { humanActor } from './actor.js';
 import { TOOL_DEFINITIONS, getToolMeta, getGlobalToolIds } from '../tools/registry.js';
+import { BOT_TOOL_IDS } from '../bots/tools/meta.js';
 
 // ─── Registry ────────────────────────────────────────────
 
@@ -83,6 +84,17 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
     group: 'basic',
     flag: 'cloud-agent',
     toolIds: ['mission_dispatch'],
+  },
+  {
+    key: 'bots',
+    title: 'Bots',
+    description:
+      'Personal assistant Bots — the Bots page, their computer, the password vault and every Bot-only tool. Bot tools are built only inside Bots conversations.',
+    icon: 'Bot',
+    kind: 'flag',
+    group: 'basic',
+    flag: 'bots',
+    toolIds: BOT_TOOL_IDS,
   },
   {
     key: 'memory',

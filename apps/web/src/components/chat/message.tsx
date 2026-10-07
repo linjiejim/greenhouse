@@ -76,9 +76,9 @@ interface MessageProps {
   onRegenerate?: (messageId: string) => void;
   onQuote?: (text: string, note: string) => void;
   /** Callback for ask_user form submission (sends formatted message) */
-  onAskUserSubmit?: (message: string) => void;
+  onAskUserSubmit?: (message: string) => void | Promise<void>;
   /** Callback for a confirm-block button click (sends the picked value as a follow-up message) */
-  onConfirmAction?: (value: string) => void;
+  onConfirmAction?: (value: string) => void | Promise<void>;
   /** Whether the message after this one is a user response (ask_user submitted) */
   hasFollowUpUserMessage?: boolean;
   /** Previous user message content — used as fullscreen dialog title */

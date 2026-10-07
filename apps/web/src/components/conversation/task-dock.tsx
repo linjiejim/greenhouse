@@ -99,7 +99,8 @@ export function TaskDock({
 
 // ─── Shared row shell ────────────────────────────────────
 
-function DockRow({
+/** The Task Dock row shell — also rendered by the Bots task dock (components/bots/bot-task-dock.tsx). */
+export function DockRow({
   kind,
   testId,
   icon,

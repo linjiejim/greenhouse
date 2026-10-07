@@ -23,6 +23,20 @@ export interface UserMemoryInput {
   pinned?: boolean;
   source?: UserMemorySource;
   source_session_id?: string;
+  /** null/absent = user-level; a Bot id = that Bot's private memory. */
+  bot_id?: string | null;
+}
+
+/**
+ * Which memories a reader may see. REQUIRED on every read path so a caller can
+ * never forget it (docs/specs/20261005-personal-assistant-bots.md §4.6):
+ * - `{ botId: null }` — user-level rows only (every non-Bot caller);
+ * - `{ botId }` — user-level rows plus that Bot's private rows;
+ * - `{ botId, exact: true }` — exactly one partition (consolidation, management).
+ */
+export interface MemoryScope {
+  botId: string | null;
+  exact?: boolean;
 }
 
 export interface UserMemoryUpdateInput {
@@ -43,6 +57,13 @@ export const MEMORY_DORMANT_AFTER_DAYS = 90;
 /** "Last touched" for ordering/decay — a memory never recalled falls back to when it was written. */
 const lastTouched = sql`coalesce(${userMemories.last_used_at}, ${userMemories.created_at})`;
 
+/** The single scope predicate every read path uses. */
+export function memoryScopeCondition(scope: MemoryScope) {
+  if (scope.botId === null) return isNull(userMemories.bot_id);
+  if (scope.exact) return eq(userMemories.bot_id, scope.botId);
+  return or(isNull(userMemories.bot_id), eq(userMemories.bot_id, scope.botId))!;
+}
+
 export function createUserMemoryService(db: Db) {
   const service = {
     /** Add a memory. Add-only by design — no write-time dedup verdict. */
@@ -59,6 +80,7 @@ export function createUserMemoryService(db: Db) {
           pinned: input.pinned ?? false,
           source: input.source ?? 'agent',
           source_session_id: input.source_session_id ?? null,
+          bot_id: input.bot_id ?? null,
           created_at: now,
           updated_at: now,
         })
@@ -81,19 +103,31 @@ export function createUserMemoryService(db: Db) {
      * Rows eligible for the injected index: active (or pinned) memories,
      * pinned first, then most recently used.
      */
-    async listForIndex(userId: string, limit = 100): Promise<UserMemoryRow[]> {
+    async listForIndex(userId: string, scope: MemoryScope, limit = 100): Promise<UserMemoryRow[]> {
       return await db
         .select()
         .from(userMemories)
-        .where(and(eq(userMemories.user_id, userId), eq(userMemories.status, 'active')))
+        .where(and(eq(userMemories.user_id, userId), eq(userMemories.status, 'active'), memoryScopeCondition(scope)))
         .orderBy(desc(userMemories.pinned), desc(lastTouched))
         .limit(limit);
+    },
+
+    /** Distinct scopes (null = user-level) holding at least `minActive` active rows — consolidation partitions. */
+    async listActiveScopes(userId: string, minActive = 1): Promise<Array<{ bot_id: string | null; count: number }>> {
+      const rows = await db
+        .select({ bot_id: userMemories.bot_id, count: sql<string>`count(*)` })
+        .from(userMemories)
+        .where(and(eq(userMemories.user_id, userId), eq(userMemories.status, 'active')))
+        .groupBy(userMemories.bot_id)
+        .having(sql`count(*) >= ${minActive}`);
+      return rows.map((r) => ({ bot_id: r.bot_id, count: Number(r.count) }));
     },
 
     /** Keyword search over title + content. Dormant/archived included on request. */
     async search(
       userId: string,
       query: string,
+      scope: MemoryScope,
       opts: { includeInactive?: boolean; limit?: number } = {},
     ): Promise<UserMemoryRow[]> {
       const term = `%${query.replace(/[%_\\]/g, (ch) => `\\${ch}`)}%`;
@@ -108,6 +142,7 @@ export function createUserMemoryService(db: Db) {
           and(
             eq(userMemories.user_id, userId),
             statusFilter,
+            memoryScopeCondition(scope),
             or(ilike(userMemories.title, term), ilike(userMemories.content, term)),
           ),
         )
@@ -120,12 +155,28 @@ export function createUserMemoryService(db: Db) {
       return rows[0];
     },
 
-    /** Fetch by id, scoped to an owner — the ownership check for API/tool paths. */
+    /**
+     * Fetch by id, scoped to an owner — the ownership check for the owner's own
+     * management paths (settings page), which see every scope. Agent-facing
+     * paths use getOwnedInScope instead.
+     */
     async getOwned(id: number, userId: string): Promise<UserMemoryRow | undefined> {
       const rows = await db
         .select()
         .from(userMemories)
         .where(and(eq(userMemories.id, id), eq(userMemories.user_id, userId)));
+      return rows[0];
+    },
+
+    /**
+     * Fetch by id within a read scope — the check every agent-facing path uses,
+     * so one Bot can never open another Bot's private memory by guessing its id.
+     */
+    async getOwnedInScope(id: number, userId: string, scope: MemoryScope): Promise<UserMemoryRow | undefined> {
+      const rows = await db
+        .select()
+        .from(userMemories)
+        .where(and(eq(userMemories.id, id), eq(userMemories.user_id, userId), memoryScopeCondition(scope)));
       return rows[0];
     },
 

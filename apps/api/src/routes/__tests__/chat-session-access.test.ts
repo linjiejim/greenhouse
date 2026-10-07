@@ -149,6 +149,22 @@ describe('session access policy', () => {
     expect(canWriteSession(shared, session)).toBe(false);
     expect(canWriteSession(superUser, session)).toBe(true);
   });
+
+  it('keeps Bots conversations owner-only for reading and writing, super included', async () => {
+    const session: SessionRow = { ...makeSession(), channel: 'bots' };
+    const owner: AuthUser = { id: 'owner', role: 'team' };
+    const shared: AuthUser = { id: 'shared-reader', role: 'team' };
+    const superUser: AuthUser = { id: 'admin', role: 'super' };
+
+    // Even a stray share row must not open a Bots conversation.
+    mocks.sessionShares.getSharedSessionIds.mockResolvedValue([session.id]);
+
+    await expect(canAccessSession(owner, session)).resolves.toBe(true);
+    await expect(canAccessSession(shared, session)).resolves.toBe(false);
+    await expect(canAccessSession(superUser, session)).resolves.toBe(false);
+    expect(canWriteSession(owner, session)).toBe(true);
+    expect(canWriteSession(superUser, session)).toBe(false);
+  });
 });
 
 describe('POST /api/chat session authorization', () => {

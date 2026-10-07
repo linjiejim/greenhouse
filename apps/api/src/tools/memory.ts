@@ -56,7 +56,34 @@ type MemoryInput = z.infer<typeof memorySchema>;
 export interface MemoryToolContext {
   userId: string;
   sessionId?: string;
+  /**
+   * Present only when the Bots engine builds the tool for a Bot turn. The tool
+   * then reads user-level + this Bot's private memories and gains a `scope`
+   * input; every other caller reads and writes user-level memories only.
+   */
+  bot?: {
+    botId: string;
+    /**
+     * Evaluated when an action executes (not when the tool is built): may this
+     * call touch USER-level memories — the layer every surface reads (ordinary
+     * chats, scheduled tasks, every Bot)? False once the turn read untrusted
+     * content or when the member did not start it. Then `remember` is forced
+     * into the Bot's private scope whatever the model asks, and `update` /
+     * `forget` refuse user-level rows.
+     */
+    userScopeAllowed: () => boolean;
+  };
 }
+
+const botScopeSchema = memorySchema.extend({
+  scope: z
+    .enum(['user', 'bot'])
+    .optional()
+    .describe(
+      'remember only. user: a fact about the user every Bot should know. bot: a note about how YOU do your job, visible only to you.',
+    ),
+});
+type BotMemoryInput = z.infer<typeof botScopeSchema>;
 
 const meta: ToolMeta = {
   id: 'memory',
@@ -94,11 +121,17 @@ function publicShape(row: UserMemoryRow) {
   };
 }
 
+/** Why a Bot turn may not change a memory every Bot (and every chat) reads. */
+const SHARED_MEMORY_LOCKED =
+  "This memory is shared with all of the member's Bots and chats, and it can't be changed in a turn that read outside content or wasn't started by the member. Ask the member to confirm in their next message.";
+
 export function createMemoryTool(db: DatabaseProvider, ctx: MemoryToolContext) {
+  // Read scope: user-level only, or user-level + this Bot's private notes.
+  const readScope = { botId: ctx.bot?.botId ?? null };
   return tool({
     description: meta.description,
-    inputSchema: memorySchema,
-    execute: async (input: MemoryInput) => {
+    inputSchema: ctx.bot ? botScopeSchema : memorySchema,
+    execute: async (input: MemoryInput | BotMemoryInput) => {
       try {
         switch (input.action) {
           case 'remember': {
@@ -108,25 +141,45 @@ export function createMemoryTool(db: DatabaseProvider, ctx: MemoryToolContext) {
             const check = validateMemoryText({ title: input.title, content: input.content });
             if (!check.ok) return { action: input.action, error: check.error };
 
+            // A Bot turn that read untrusted content (or that the member did not
+            // start) writes only to its own private notes: a model-supplied
+            // `scope: 'user'` is ignored there, and an injected note cannot pin itself.
+            const allowUser = ctx.bot ? ctx.bot.userScopeAllowed() : true;
+            const requested = ctx.bot && 'scope' in input && input.scope ? input.scope : 'user';
+            const scope: 'user' | 'bot' = !ctx.bot ? 'user' : allowUser ? requested : 'bot';
+            const forced = Boolean(ctx.bot) && !allowUser && requested === 'user';
             const row = await db.userMemories.create({
               user_id: ctx.userId,
               category: input.category ?? 'fact',
               title: input.title.trim(),
               content: input.content.trim(),
-              pinned: input.pinned,
+              pinned: allowUser ? input.pinned : undefined,
               source: 'agent',
               source_session_id: ctx.sessionId,
+              bot_id: scope === 'bot' && ctx.bot ? ctx.bot.botId : null,
             });
-            return { action: input.action, remembered: publicShape(row) };
+            return {
+              action: input.action,
+              remembered: publicShape(row),
+              ...(ctx.bot ? { scope } : {}),
+              ...(forced
+                ? {
+                    scope_forced: true,
+                    note: 'Saved to your private notes only: this turn read outside content (or was not started by the member), so it cannot change what every Bot knows. Tell the member; they can share it under Settings → Memory.',
+                  }
+                : {}),
+            };
           }
 
           case 'recall': {
             let rows: UserMemoryRow[] = [];
             if (input.ids && input.ids.length > 0) {
-              const found = await Promise.all(input.ids.map((id) => db.userMemories.getOwned(id, ctx.userId)));
+              const found = await Promise.all(
+                input.ids.map((id) => db.userMemories.getOwnedInScope(id, ctx.userId, readScope)),
+              );
               rows = found.filter((r): r is UserMemoryRow => Boolean(r));
             } else if (input.query) {
-              rows = await db.userMemories.search(ctx.userId, input.query, {
+              rows = await db.userMemories.search(ctx.userId, input.query, readScope, {
                 includeInactive: input.include_inactive,
               });
             } else {
@@ -144,8 +197,11 @@ export function createMemoryTool(db: DatabaseProvider, ctx: MemoryToolContext) {
 
           case 'update': {
             if (input.id === undefined) return { action: input.action, error: 'id is required for update' };
-            const existing = await db.userMemories.getOwned(input.id, ctx.userId);
+            const existing = await db.userMemories.getOwnedInScope(input.id, ctx.userId, readScope);
             if (!existing) return { action: input.action, error: `memory ${input.id} not found` };
+            if (ctx.bot && existing.bot_id === null && !ctx.bot.userScopeAllowed()) {
+              return { action: input.action, error: SHARED_MEMORY_LOCKED };
+            }
 
             const check = validateMemoryText({ title: input.title, content: input.content });
             if (!check.ok) return { action: input.action, error: check.error };
@@ -162,8 +218,11 @@ export function createMemoryTool(db: DatabaseProvider, ctx: MemoryToolContext) {
 
           case 'forget': {
             if (input.id === undefined) return { action: input.action, error: 'id is required for forget' };
-            const existing = await db.userMemories.getOwned(input.id, ctx.userId);
+            const existing = await db.userMemories.getOwnedInScope(input.id, ctx.userId, readScope);
             if (!existing) return { action: input.action, error: `memory ${input.id} not found` };
+            if (ctx.bot && existing.bot_id === null && !ctx.bot.userScopeAllowed()) {
+              return { action: input.action, error: SHARED_MEMORY_LOCKED };
+            }
 
             await db.userMemories.setStatus(input.id, ctx.userId, 'archived');
             return { action: input.action, forgotten: input.id, note: 'Archived — the user can restore it.' };

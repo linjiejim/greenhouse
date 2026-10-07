@@ -139,7 +139,7 @@ export function StreamingMessageBubble({ text, reasoning, toolCalls, isStreaming
         )}
 
         {/* Initial loading — a quiet status dot keeps the transcript aligned
-            without introducing a second Sprouty avatar into the message flow. */}
+            without putting an agent avatar into the message flow. */}
         {isStreaming && !text && !reasoning && toolCalls.length === 0 && (
           <div className="flex items-center gap-2 py-1">
             <span className="h-2 w-2 animate-pulse rounded-full bg-primary-500" />

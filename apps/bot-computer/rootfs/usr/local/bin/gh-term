@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+"""The member's terminal: a tmux session on a PTY, bridged to stdin/stdout.
+
+Runs as uid `agent` — the Bot's own sandbox, never the browser's — through
+`docker exec -i -u agent -e HOME=/home/agent -w /home/agent/work <c> gh-term`
+(the API's terminal WebSocket). That exec has no TTY (it streams over a
+WebSocket), so this process makes one: tmux runs on a PTY whose size the
+member's browser sets.
+
+stdin   frames: type u8, length u32 big-endian, payload
+          0  bytes for the PTY (keystrokes, pastes)
+          1  resize, JSON {"cols":N,"rows":M}, clamped to 10..500 × 5..200
+        Other types are skipped, so a newer API can add frames.
+stdout  the PTY's output, raw.
+
+`tmux new-session -A -s gh` attaches when the session exists, so a page reload
+(a new exec) lands in the same shell. stdin EOF (the WebSocket closed) hangs up
+the tmux client and exits 0 — the session and whatever runs in it stay; the
+client exiting by itself (detach, or the last shell exited) exits with its code.
+
+The take-over kill (gh-agent-kill) spares this bridge: it runs in a session of
+its own, and both its session and the tmux client's are registered in
+/tmp/gh-term/<pid>.sid while it runs. gh-agent-kill spares the tmux server and
+the shells under it on its own.
+"""
+
+import errno
+import fcntl
+import json
+import os
+import pwd
+import select
+import signal
+import struct
+import sys
+import termios
+
+REGISTRY = "/tmp/gh-term"
+SESSION = "gh"
+HEADER = struct.Struct(">BI")
+FRAME_DATA = 0
+FRAME_RESIZE = 1
+# Far above any paste a browser sends in one message; a larger length means
+# the stream is out of step and nothing after it can be trusted.
+MAX_FRAME = 8 << 20
+# Stop reading stdin while this much input waits for the PTY (backpressure).
+MAX_PENDING = 1 << 20
+COLS = (10, 500)
+ROWS = (5, 200)
+
+
+class Hangup(Exception):
+    """stdin closed, stdout broke, or a signal asked us to go: detach and exit (0)."""
+
+    def __init__(self, code: int = 0) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def clamp(value, bounds):
+    low, high = bounds
+    return max(low, min(high, value))
+
+
+def set_size(fd: int, rows: int, cols: int) -> None:
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+
+def write_all(fd: int, data: bytes) -> None:
+    view = memoryview(data)
+    while view:
+        try:
+            written = os.write(fd, view)
+        except BrokenPipeError:
+            raise Hangup()
+        view = view[written:]
+
+
+def exit_code(status: int) -> int:
+    code = os.waitstatus_to_exitcode(status)
+    return 128 - code if code < 0 else code
+
+
+def spawn_tmux(home: str, work: str):
+    """Fork the tmux client on a fresh PTY (80x24 until the first resize); returns (pid, master)."""
+    master, slave = os.openpty()
+    set_size(slave, 24, 80)
+    account = pwd.getpwuid(os.getuid())
+    env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE", "GH_EXEC_ID")}
+    env.update(
+        TERM="xterm-256color",
+        HOME=home,
+        USER=account.pw_name,
+        LOGNAME=account.pw_name,
+        SHELL=account.pw_shell or "/bin/bash",
+    )
+    pid = os.fork()
+    if pid == 0:
+        try:
+            os.close(master)
+            os.setsid()
+            fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
+            for fd in (0, 1, 2):
+                os.dup2(slave, fd)
+            if slave > 2:
+                os.close(slave)
+            os.chdir(work)
+            os.execvpe("tmux", ["tmux", "new-session", "-A", "-s", SESSION, "-c", work], env)
+        except BaseException:  # noqa: BLE001 — the child must never return into the bridge
+            os._exit(127)
+    os.close(slave)
+    return pid, master
+
+
+def register(sids) -> str:
+    """Record our sessions for gh-agent-kill; best effort (a failure only loses the protection)."""
+    path = os.path.join(REGISTRY, f"{os.getpid()}.sid")
+    try:
+        os.makedirs(REGISTRY, mode=0o700, exist_ok=True)
+        tmp = f"{path}.tmp"
+        with open(tmp, "w") as handle:
+            handle.write("".join(f"{sid}\n" for sid in sids))
+        os.replace(tmp, path)
+        return path
+    except OSError as err:
+        print(f"gh-term: cannot register the session: {err}", file=sys.stderr)
+        return ""
+
+
+def main() -> int:
+    # Lead a session of our own, so the take-over kill can tell this bridge
+    # apart. runc already starts an exec as a session leader (setsid then fails,
+    # which is fine); a runtime may instead leave it in a session led from
+    # outside the container and shared by every exec. gh-agent-kill also
+    # spares the registered pid itself, whichever way it went.
+    try:
+        os.setsid()
+    except OSError:
+        pass
+
+    home = pwd.getpwuid(os.getuid()).pw_dir
+    work = os.path.join(home, "work")
+    try:
+        os.makedirs(work, exist_ok=True)
+    except OSError:
+        work = home
+
+    def on_signal(_signum, _frame):
+        raise Hangup()
+
+    child, master = spawn_tmux(home, work)
+    registration = register([os.getsid(0), child])
+    code = 0
+    try:
+        for signum in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+            signal.signal(signum, on_signal)
+        code = bridge(child, master)
+        if code is None:
+            # The tmux client exited on its own (detach, or the session's last
+            # shell ended): pass its status on.
+            _, status = os.waitpid(child, 0)
+            code = exit_code(status)
+    except Hangup as hangup:
+        code = hangup.code
+        hang_up(child, master)
+    finally:
+        if registration:
+            try:
+                os.unlink(registration)
+            except OSError:
+                pass
+    return code
+
+
+def bridge(child: int, master: int):
+    """Pump until the client goes (None) or stdin ends (Hangup)."""
+    stdin_fd, stdout_fd = 0, 1
+    os.set_blocking(master, False)
+    inbox = bytearray()  # stdin bytes not yet parsed into frames
+    pending = bytearray()  # keystrokes waiting for the PTY
+    while True:
+        readers = [master]
+        if len(pending) < MAX_PENDING:
+            readers.append(stdin_fd)
+        writers = [master] if pending else []
+        readable, writable, _ = select.select(readers, writers, [])
+
+        if writable:
+            try:
+                del pending[: os.write(master, pending)]
+            except BlockingIOError:
+                pass
+            except OSError as err:
+                if err.errno != errno.EIO:
+                    raise
+                return None  # the client is gone
+
+        if master in readable:
+            try:
+                output = os.read(master, 65536)
+            except BlockingIOError:
+                output = None
+            except OSError as err:
+                if err.errno != errno.EIO:
+                    raise
+                output = b""  # EIO: the last holder of the PTY exited
+            if output == b"":
+                return None
+            if output:
+                write_all(stdout_fd, output)
+
+        if stdin_fd in readable:
+            chunk = os.read(stdin_fd, 65536)
+            if not chunk:
+                raise Hangup()
+            inbox += chunk
+            while len(inbox) >= HEADER.size:
+                frame_type, length = HEADER.unpack_from(inbox)
+                if length > MAX_FRAME:
+                    print(f"gh-term: a frame of {length} bytes; closing", file=sys.stderr)
+                    raise Hangup(code=2)
+                end = HEADER.size + length
+                if len(inbox) < end:
+                    break
+                payload = bytes(inbox[HEADER.size : end])
+                del inbox[:end]
+                if frame_type == FRAME_DATA:
+                    pending += payload
+                elif frame_type == FRAME_RESIZE:
+                    resize(master, child, payload)
+
+
+def resize(master: int, child: int, payload: bytes) -> None:
+    try:
+        size = json.loads(payload)
+        cols = clamp(int(size["cols"]), COLS)
+        rows = clamp(int(size["rows"]), ROWS)
+    except (ValueError, TypeError, KeyError, OverflowError):
+        return  # a malformed resize is dropped, never fatal
+    set_size(master, rows, cols)
+    try:
+        os.kill(child, signal.SIGWINCH)
+    except ProcessLookupError:
+        pass
+
+
+def hang_up(child: int, master: int) -> None:
+    """Detach the tmux client (SIGHUP, as a closing terminal would); the session lives on."""
+    for signum in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        signal.signal(signum, signal.SIG_DFL)
+    try:
+        os.kill(child, signal.SIGHUP)
+    except ProcessLookupError:
+        pass
+    try:
+        os.close(master)
+    except OSError:
+        pass
+    # Reap it if it goes quickly (it does); never hang on it.
+    for _ in range(20):
+        try:
+            pid, _ = os.waitpid(child, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if pid:
+            return
+        select.select([], [], [], 0.05)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

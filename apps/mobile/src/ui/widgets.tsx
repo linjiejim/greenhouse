@@ -18,37 +18,11 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import { font, makeStyles, radius, shadow, space, useTheme, weight } from '../theme';
 import { Caret, Icon, IconName, Touchable } from './core';
 
 /* ----------------------------- Avatars ----------------------------- */
-export function AiAvatar({ size = 34, rad = 10 }: { size?: number; rad?: number }) {
-  const { colors: c } = useTheme();
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: rad,
-        backgroundColor: c.accentTint,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <Svg width={size * 0.58} height={size * 0.58} viewBox="0 0 24 24" fill="none">
-        <Path
-          d="M12 8c-4 0-6 3-6 6 0 4 3 6 6 6M12 8c4 0 6 3 6 6 0 4-3 6-6 6M12 4v18"
-          stroke={c.accentDeep}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </Svg>
-    </View>
-  );
-}
-
 export function UserAvatar({ size = 30, label = '我' }: { size?: number; label?: string }) {
   return (
     <View

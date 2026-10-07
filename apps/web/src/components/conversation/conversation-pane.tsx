@@ -9,9 +9,9 @@ import { MessageBubble, StreamingMessageBubble } from '../chat/message';
 import { ChatInput } from '../chat/chat-input';
 import type { PendingImage } from '../chat/chat-input';
 import { composePromptMessage } from '../chat/prompt-selection';
-import { ProfileSelector, profileToSprouty } from '../chat/profile-selector';
+import { ProfileSelector } from '../chat/profile-selector';
+import { AgentAvatar } from '../chat/agent-avatar';
 import { ModelSelector } from '../chat/model-selector';
-import { SproutyAvatar } from '../sprouty/index.js';
 import { useAgentContext } from '../agent-context';
 import { useSessionManager } from '../../lib/session-manager';
 import { useUIStore, useAuthStore, useProfileStore } from '../../stores';
@@ -2183,12 +2183,8 @@ function ProfileEmptyState({ profile, onCustomize }: { profile?: api.Profile; on
 
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center gap-3 px-2 py-10 text-center md:py-16">
-      <SproutyAvatar
-        {...profileToSprouty(profile || ({ id: 'team', name: '', tools: [] } as any))}
-        state="idle"
-        size="xl"
-        animate
-      />
+      {/* Hero: unfurls on arrival (and when the Agent changes), then a capped idle (plant-avatar spec §6). */}
+      <AgentAvatar profile={profile} size="xl" animate intro />
       <div>
         <h3 className="text-lg font-medium text-fg-secondary">
           {localized(profile?.name_i18n, profile?.name ?? '') || t('chat.startConversation')}

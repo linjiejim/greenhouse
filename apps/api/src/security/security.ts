@@ -133,6 +133,9 @@ interface RateLimitConfig {
 
 const RATE_LIMITS: Record<string, RateLimitConfig> = {
   '/api/auth/password-link': { windowMs: 5 * 60_000, max: 20 }, // public IP boundary; token limiter is route-local
+  // Token refresh presents a long random secret, not a guessable password: every tab refreshes
+  // on its own schedule, and a whole office may share one source IP.
+  '/api/auth/refresh': { windowMs: 5 * 60_000, max: 60 },
   '/api/auth': { windowMs: 5 * 60_000, max: 10 }, // 10 attempts per 5 min
   // Run control (probe/list/attach/stop) is cheap registry access, not LLM
   // spend — auto-resume retries and multi-tab attaches must not eat the chat
@@ -155,7 +158,16 @@ const INTERNAL_RATE_LIMITS: Record<string, RateLimitConfig> = {
   '/api/skills/publish': { windowMs: 60_000, max: 20 }, // bulk skill sync runs are legitimate
 };
 
+/**
+ * Authenticated session reads that live under `/api/auth` but are not credential attempts: every
+ * page load and every tab asks `/me` (and its `/me/*` siblings). Throttling them with the login
+ * budget signed people out after ten reloads per source IP — a valid token is their guard, like
+ * every other authenticated endpoint.
+ */
+const UNTHROTTLED_PREFIXES = ['/api/auth/me'] as const;
+
 function matchRateLimit(path: string): RateLimitConfig | null {
+  if (UNTHROTTLED_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix + '/'))) return null;
   for (const [prefix, config] of Object.entries(RATE_LIMITS)) {
     if (path === prefix || path.startsWith(prefix + '/')) {
       return config;

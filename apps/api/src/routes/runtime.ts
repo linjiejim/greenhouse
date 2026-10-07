@@ -132,6 +132,7 @@ async function authorizedKinds(user: AuthUser, raw: string | undefined): Promise
 }
 
 async function canAccessRunSource(user: AuthUser, run: RuntimeRunRow): Promise<boolean> {
+  if (!(await getDb().runtime.getRun(run.id, user.id))) return false;
   if (user.role === 'super') return true;
   if (run.kind === 'workflow' || run.source_kind === 'workflow_run' || run.kind === 'chat' || run.kind === 'eval') {
     return false;
@@ -312,6 +313,7 @@ export const runtimeRoutes = new Hono<AppEnv>()
       const scope = requestedScope(c.req.query('scope'), user.role === 'super');
       const kinds = await authorizedKinds(user, c.req.query('kinds'));
       const result = await getDb().runtime.listRuns({
+        viewer_user_id: user.id,
         ...(scope === 'own' ? { owner_user_id: user.id } : {}),
         kinds,
         cursor: decodeCursor(c.req.query('cursor')),
@@ -326,7 +328,7 @@ export const runtimeRoutes = new Hono<AppEnv>()
   .get('/runs/:id', async (c) => {
     const run = await ownedRun(c, c.req.param('id'));
     if (!run) return c.json({ error: 'Run not found' }, 404);
-    const detail = await getDb().runtime.getRunDetail(run.id);
+    const detail = await getDb().runtime.getRunDetail(run.id, getAuthUser(c).id);
     if (!detail) return c.json({ error: 'Run not found' }, 404);
     const interrupts = detail.interrupts.map(interruptView);
     const approvalInboxAvailable = approvalInboxEnabled();
@@ -441,6 +443,7 @@ export const runtimeRoutes = new Hono<AppEnv>()
         return c.json({ error: 'status is not a Runtime interrupt status' }, 400);
       }
       const result = await getDb().runtime.listInterruptsPage({
+        viewer_user_id: user.id,
         ...(scope === 'own' ? { assignee_user_id: user.id } : {}),
         status: statusRaw as RuntimeInterruptStatus,
         kinds,
@@ -620,6 +623,7 @@ export const runtimeRoutes = new Hono<AppEnv>()
       const scope = requestedScope(c.req.query('scope'), user.role === 'super');
       const kinds = await authorizedKinds(user, c.req.query('kinds'));
       const summary = await getDb().runtime.summarize({
+        viewer_user_id: user.id,
         ...(scope === 'own' ? { owner_user_id: user.id, assignee_user_id: user.id } : {}),
         kinds,
       });

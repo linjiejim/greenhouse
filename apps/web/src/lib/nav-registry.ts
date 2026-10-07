@@ -29,6 +29,8 @@ import {
   Table2,
   FolderKanban,
   Monitor,
+  Lock,
+  Server,
 } from './icons';
 import type { LucideIcon } from './icons';
 import type { FeatureKey } from '@greenhouse/types/features';
@@ -141,6 +143,15 @@ const SETTINGS_TOP: NavModule[] = [
     parent: 'settings',
     description: 'Bind a mailbox so the agent can read and send your email',
   },
+  {
+    id: 'settings.passwords',
+    label: 'Passwords',
+    icon: Lock,
+    path: '#/settings/passwords',
+    parent: 'settings',
+    description: 'Logins your Bots can fill in without ever seeing them',
+    requireFeature: 'bots',
+  },
 ];
 
 const SETTINGS_LABS: NavModule[] = [
@@ -205,6 +216,15 @@ const ADMINISTRATION_MODULES: NavModule[] = [
     path: '#/administration/runtime-config',
     parent: 'administration',
     description: 'LLM / media / search credentials — DB-backed, env fallback',
+    requireRole: ['super'],
+  },
+  {
+    id: 'admin.bot-computers',
+    label: 'Bot computers',
+    icon: Server,
+    path: '#/administration/bot-computers',
+    parent: 'administration',
+    description: "Members' Bot computers — runtime checks, capacity, stop and reset",
     requireRole: ['super'],
   },
   {
@@ -288,6 +308,18 @@ const KNOWLEDGE_MODULES: NavModule[] = [];
 // Settings/Administration navigation panel. Registering their page identity
 // here lets them share ModulePage without creating a second header registry.
 const STANDALONE_MODULES: NavModule[] = [
+  {
+    // Immersive workspace like Chat (no ModulePage header); registered so the
+    // breadcrumb, pins and feature gating resolve the page identity here.
+    id: 'workspace.bots',
+    label: 'Bots',
+    icon: Bot,
+    path: '#/bots',
+    parent: 'standalone',
+    description: 'Partners with their own computer and memory',
+    pinnable: false,
+    requireFeature: 'bots',
+  },
   {
     id: 'workspace.tasks',
     label: 'Tasks',
@@ -381,8 +413,10 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   },
   'settings.memory': { label: 'navigation.memory', description: 'navigation.memoryDesc' },
   'settings.desktop': { label: 'navigation.desktop', description: 'navigation.desktopDesc' },
+  'settings.passwords': { label: 'botsVault.navLabel', description: 'botsVault.navDesc' },
   'admin.users': { label: 'navigation.users', description: 'navigation.usersDesc' },
   'admin.runtime-config': { label: 'navigation.runtimeConfig', description: 'navigation.runtimeConfigDesc' },
+  'admin.bot-computers': { label: 'botsAdmin.navLabel', description: 'botsAdmin.navDesc' },
   'admin.branding': { label: 'navigation.branding', description: 'navigation.brandingDesc' },
   'admin.usage': { label: 'navigation.agentUsages', description: 'navigation.agentUsagesDesc' },
   'admin.feature-requests': {
@@ -393,6 +427,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   'admin.eval': { label: 'navigation.evaluation', description: 'navigation.evaluationDesc' },
   'admin.llm-gateway': { label: 'navigation.aiGateway', description: 'navigation.aiGatewayDesc' },
   'admin.mcp-keys': { label: 'navigation.mcpAccess', description: 'navigation.mcpAccessDesc' },
+  'workspace.bots': { label: 'bots.title', description: 'bots.description' },
   'workspace.tasks': { label: 'navigation.myPrompts', description: 'navigation.tasksDesc' },
   'workspace.automations': { label: 'navigation.automation', description: 'navigation.automationDesc' },
   'workspace.agents': { label: 'navigation.myAgents', description: 'navigation.myAgentsDesc' },

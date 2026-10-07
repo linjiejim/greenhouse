@@ -9,6 +9,8 @@
 import { eq, and, or, ne, desc, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
+import { ownerOnlySessionCondition } from '../bots-privacy.js';
+import { BOT_TASK_SESSION_PREFIX } from '@greenhouse/types/session';
 import type { Db } from '../client.js';
 import * as schema from '../schema/index.js';
 
@@ -36,6 +38,13 @@ export interface SessionShareInput {
 /** Sentinel value for "shared with entire team". */
 const TEAM = '__team__';
 
+/** Ignore legacy private shares, including task rows whose session has gone away. */
+function shareableSession() {
+  return sql`not starts_with(${schema.sessionShares.session_id}, ${BOT_TASK_SESSION_PREFIX})
+    and not exists (select 1 from ${schema.sessions}
+      where ${schema.sessions.id} = ${schema.sessionShares.session_id} and ${ownerOnlySessionCondition()})`;
+}
+
 export function createSessionShareService(db: Db) {
   const service = {
     async createMany(inputs: SessionShareInput[]): Promise<void> {
@@ -62,6 +71,7 @@ export function createSessionShareService(db: Db) {
         .where(
           and(
             or(eq(schema.sessionShares.shared_with, userId), eq(schema.sessionShares.shared_with, TEAM)),
+            shareableSession(),
             // Exclude shares created by this user (don't notify yourself)
             ne(schema.sessionShares.shared_by, userId),
             // Exclude shares the user has already read (per-user tracking)
@@ -99,6 +109,7 @@ export function createSessionShareService(db: Db) {
         .where(
           and(
             or(eq(schema.sessionShares.shared_with, userId), eq(schema.sessionShares.shared_with, TEAM)),
+            shareableSession(),
             // Exclude self-shared
             ne(schema.sessionShares.shared_by, userId),
           ),
@@ -125,6 +136,7 @@ export function createSessionShareService(db: Db) {
           and(
             eq(schema.sessionShares.id, shareId),
             or(eq(schema.sessionShares.shared_with, userId), eq(schema.sessionShares.shared_with, TEAM)),
+            shareableSession(),
             ne(schema.sessionShares.shared_by, userId),
           ),
         )
@@ -147,6 +159,7 @@ export function createSessionShareService(db: Db) {
           and(
             eq(schema.sessionShares.session_id, sessionId),
             or(eq(schema.sessionShares.shared_with, userId), eq(schema.sessionShares.shared_with, TEAM)),
+            shareableSession(),
             ne(schema.sessionShares.shared_by, userId),
           ),
         )
@@ -171,6 +184,7 @@ export function createSessionShareService(db: Db) {
         .where(
           and(
             or(eq(schema.sessionShares.shared_with, userId), eq(schema.sessionShares.shared_with, TEAM)),
+            shareableSession(),
             ne(schema.sessionShares.shared_by, userId),
           ),
         );
@@ -187,7 +201,12 @@ export function createSessionShareService(db: Db) {
       const rows = await db
         .selectDistinct({ session_id: schema.sessionShares.session_id })
         .from(schema.sessionShares)
-        .where(or(eq(schema.sessionShares.shared_with, userId), eq(schema.sessionShares.shared_with, TEAM)));
+        .where(
+          and(
+            or(eq(schema.sessionShares.shared_with, userId), eq(schema.sessionShares.shared_with, TEAM)),
+            shareableSession(),
+          ),
+        );
       return rows.map((r) => r.session_id);
     },
 

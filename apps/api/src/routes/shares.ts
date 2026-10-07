@@ -11,6 +11,7 @@
 
 import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
+import { isOwnerOnlySession } from '@greenhouse/types/session';
 import { getAuthUser } from '../auth/middleware.js';
 import { connectionManager } from '../ws/connection-manager.js';
 import type { AppEnv } from '../app-env.js';
@@ -67,6 +68,11 @@ const shares = new Hono<AppEnv>()
     // Only session owner or super can share
     if (session.user_id !== user.id && user.role !== 'super') {
       return c.json({ error: 'Only session owner can share' }, 403);
+    }
+    // A Bots conversation carries the owner's computer sessions and private
+    // context; it is never shared (v1).
+    if (isOwnerOnlySession(session)) {
+      return c.json({ error: 'Bots conversations cannot be shared' }, 400);
     }
 
     const inputs: Array<{ session_id: string; shared_with: string; shared_by: string; message?: string }> = [];

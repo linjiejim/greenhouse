@@ -73,6 +73,9 @@ export async function issueUserSession(user: UserRow) {
   const refresh = createRefreshToken();
   await getDb().refreshTokens.create(user.id, refresh.hash, refresh.expiresAt, user.auth_version);
   await getDb().users.updateLastLogin(user.id);
+  // Same resolved flags /api/auth/me returns: the web gates navigation on them
+  // straight after sign-in, before any page reload fetches /me.
+  const features = await resolveUserFeatures(user.id, user.role).catch(() => ({}));
   return {
     accessToken,
     refreshToken: refresh.raw,
@@ -83,6 +86,7 @@ export async function issueUserSession(user: UserRow) {
       role: user.role,
       monthly_token_limit: user.monthly_token_limit,
       locale: user.locale ?? 'en',
+      features,
     },
   };
 }
@@ -214,6 +218,7 @@ const auth = new Hono<AppEnv>()
     const accessToken = createAccessToken(user.id, user.role, user.auth_version);
     const newRefresh = createRefreshToken();
     await getDb().refreshTokens.create(user.id, newRefresh.hash, newRefresh.expiresAt, user.auth_version);
+    const features = await resolveUserFeatures(user.id, user.role).catch(() => ({}));
 
     return c.json({
       accessToken,
@@ -225,6 +230,7 @@ const auth = new Hono<AppEnv>()
         role: user.role,
         monthly_token_limit: user.monthly_token_limit,
         locale: user.locale ?? 'en',
+        features,
       },
     });
   })
@@ -347,7 +353,12 @@ const auth = new Hono<AppEnv>()
   // v1 gated only the GET, and gated it against the raw table so super users —
   // who are enabled by role, not by row — got a 403 on their own memories.
 
-  /** GET /api/auth/me/memories — list the caller's memories (any status) */
+  /**
+   * GET /api/auth/me/memories — list the caller's memories (any status), each
+   * with its source: `bot_id` null = shared with every Bot and chat, else one
+   * Bot's private note (`bot_name` resolved here, archived Bots included —
+   * they still own their rows).
+   */
   .get('/me/memories', async (c) => {
     const authUser = getAuthUser(c);
     if (!authUser) return c.json({ error: 'Not authenticated' }, 401);
@@ -355,7 +366,16 @@ const auth = new Hono<AppEnv>()
       return c.json({ error: 'Memory feature not enabled for your account' }, 403);
     }
 
-    const memories = await getDb().userMemories.listByUser(authUser.id);
+    const db = getDb();
+    const [rows, bots] = await Promise.all([
+      db.userMemories.listByUser(authUser.id),
+      db.bots.listBots(authUser.id, { includeArchived: true }),
+    ]);
+    const botNames = new Map(bots.map((bot) => [bot.id, bot.name]));
+    const memories = rows.map((row) => ({
+      ...row,
+      bot_name: row.bot_id ? (botNames.get(row.bot_id) ?? null) : null,
+    }));
     return c.json({ memories });
   })
   /** PATCH /api/auth/me/memories/:id — edit content/category/pinned, or move status */

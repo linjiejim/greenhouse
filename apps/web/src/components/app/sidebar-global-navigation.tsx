@@ -44,6 +44,12 @@ function directItemClasses(active: boolean, compact: boolean): string {
       }`;
 }
 
+/** "3" / "99+" — or null when there is nothing to count. */
+function badgeText(badge: number | undefined): string | null {
+  if (!badge) return null;
+  return badge > 99 ? '99+' : String(badge);
+}
+
 function PrimaryLink({
   item,
   active,
@@ -55,7 +61,9 @@ function PrimaryLink({
   compact: boolean;
   onNavigate?: () => void;
 }) {
+  const t = useT();
   const Icon = item.icon;
+  const badge = badgeText(item.badge);
   return (
     <a
       href={item.href}
@@ -63,6 +71,8 @@ function PrimaryLink({
       aria-current={active ? 'page' : undefined}
       className={directItemClasses(active, compact)}
       title={item.label}
+      // The name says what the number means; otherwise the collapsed rail reads "3, link".
+      aria-label={badge ? `${item.label}, ${t('navigation.pendingBadge', { count: badge })}` : undefined}
     >
       <Icon
         size={compact ? 16 : 14}
@@ -70,11 +80,12 @@ function PrimaryLink({
         aria-hidden="true"
       />
       {!compact && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
-      {!!item.badge && (
+      {badge && (
         <span
+          aria-hidden="true"
           className={`${compact ? 'absolute -right-1 -top-1' : ''} inline-flex min-w-4 items-center justify-center rounded-full bg-warning-subtle px-1 text-[9px] font-semibold text-warning`}
         >
-          {item.badge > 99 ? '99+' : item.badge}
+          {badge}
         </span>
       )}
     </a>
@@ -287,10 +298,18 @@ export function SidebarGlobalNavigation({
                       aria-hidden="true"
                     />
                     <span className="truncate">{item.label}</span>
-                    {!!item.badge && (
-                      <span className="ml-auto inline-flex min-w-4 items-center justify-center rounded-full bg-warning-subtle px-1 text-[9px] font-semibold text-warning">
-                        {item.badge > 99 ? '99+' : item.badge}
-                      </span>
+                    {badgeText(item.badge) && (
+                      <>
+                        <span
+                          aria-hidden="true"
+                          className="ml-auto inline-flex min-w-4 items-center justify-center rounded-full bg-warning-subtle px-1 text-[9px] font-semibold text-warning"
+                        >
+                          {badgeText(item.badge)}
+                        </span>
+                        <span className="sr-only">
+                          {t('navigation.pendingBadge', { count: badgeText(item.badge) ?? '' })}
+                        </span>
+                      </>
                     )}
                   </a>
                 );

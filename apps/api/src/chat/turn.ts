@@ -87,6 +87,52 @@ export async function streamRunToResponse(run: ChatRun, stream: NdjsonStream, af
   }
 }
 
+// ─── Stream part → wire event ────────────────────────────
+
+/**
+ * Map one engine stream part to the NDJSON wire event the web consumes, or
+ * null for parts that never reach the wire. Shared by the single-agent pump
+ * below and the Bots engine (bots/engine), which streams several Bots inside
+ * one run and handles `finish` itself.
+ */
+export function streamPartToWireEvent(
+  part: { type: string } & Record<string, any>,
+  interruptionText: () => string,
+): Record<string, unknown> | null {
+  switch (part.type) {
+    case 'text-delta':
+      return { type: 'text-delta', text: part.text };
+    case 'reasoning-delta':
+      return { type: 'reasoning-delta', text: part.text };
+    case 'tool-input-start':
+      return { type: 'tool-call-start', id: part.id, toolName: part.toolName };
+    case 'tool-input-delta':
+      return { type: 'tool-call-delta', id: part.id, delta: part.delta };
+    case 'tool-input-end':
+      return { type: 'tool-call-end', id: part.id };
+    case 'tool-call':
+      return { type: 'tool-call', id: part.toolCallId, toolName: part.toolName, input: part.input };
+    case 'tool-result':
+      return {
+        type: 'tool-result',
+        id: part.toolCallId,
+        toolName: part.toolName,
+        output: part.output as Record<string, unknown>,
+      };
+    case 'start-step':
+      return { type: 'step-start' };
+    case 'finish-step':
+      return { type: 'step-finish', finishReason: part.finishReason, usage: part.usage };
+    case 'finish':
+      return { type: 'finish', finishReason: part.finishReason, usage: part.totalUsage };
+    case 'error':
+    case 'abort':
+      return { type: 'error', error: interruptionText() };
+    default:
+      return null;
+  }
+}
+
 // ─── Detached Agent Turn ─────────────────────────────────
 
 export interface ChatTurnArgs {
@@ -219,79 +265,21 @@ export async function pumpChatTurn(args: ChatTurnArgs): Promise<void> {
       processStreamPart(part, collectors);
       if (part.type === 'text-delta' || part.type === 'reasoning-delta') persistCheckpoint();
 
-      // Emit NDJSON events (internal format — unchanged for Web/CLI)
-      let event: Record<string, unknown> | null = null;
-
-      switch (part.type) {
-        case 'text-delta':
-          event = { type: 'text-delta', text: part.text };
-          break;
-
-        case 'reasoning-delta':
-          event = { type: 'reasoning-delta', text: part.text };
-          break;
-
-        case 'tool-input-start':
-          event = { type: 'tool-call-start', id: part.id, toolName: part.toolName };
-          break;
-
-        case 'tool-input-delta':
-          event = { type: 'tool-call-delta', id: part.id, delta: part.delta };
-          break;
-
-        case 'tool-input-end':
-          event = { type: 'tool-call-end', id: part.id };
-          break;
-
-        case 'tool-call':
-          rawToolEvidence.push({
-            type: 'tool-call',
-            id: part.toolCallId,
-            tool_name: part.toolName,
-            input: part.input,
-          });
-          event = { type: 'tool-call', id: part.toolCallId, toolName: part.toolName, input: part.input };
-          break;
-
-        case 'tool-result':
-          rawToolEvidence.push({
-            type: 'tool-result',
-            id: part.toolCallId,
-            tool_name: part.toolName,
-            output: part.output,
-          });
-          event = {
-            type: 'tool-result',
-            id: part.toolCallId,
-            toolName: part.toolName,
-            output: part.output as Record<string, unknown>,
-          };
-          break;
-
-        case 'start-step':
-          event = { type: 'step-start' };
-          break;
-
-        case 'finish-step':
-          event = { type: 'step-finish', finishReason: part.finishReason, usage: part.usage };
-          break;
-
-        case 'finish':
-          event = { type: 'finish', finishReason: part.finishReason, usage: part.totalUsage };
-          break;
-
-        case 'error':
-          noteAdmissionRefusal(part.error);
-          event = { type: 'error', error: interruptionText() };
-          break;
-
-        case 'abort':
-          event = { type: 'error', error: interruptionText() };
-          break;
-
-        default:
-          break;
+      if (part.type === 'tool-call') {
+        rawToolEvidence.push({ type: 'tool-call', id: part.toolCallId, tool_name: part.toolName, input: part.input });
+      } else if (part.type === 'tool-result') {
+        rawToolEvidence.push({
+          type: 'tool-result',
+          id: part.toolCallId,
+          tool_name: part.toolName,
+          output: part.output,
+        });
+      } else if (part.type === 'error') {
+        noteAdmissionRefusal(part.error);
       }
+
+      // Emit NDJSON events (internal format — unchanged for Web/CLI)
+      const event = streamPartToWireEvent(part, interruptionText);
 
       if (event) {
         run.emit(event);

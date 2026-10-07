@@ -6,12 +6,18 @@
  * - 16-byte authentication tag (integrity check)
  * - Caller-provided 32-byte key
  *
+ * - Optional additional authenticated data (AAD): binds a ciphertext to where
+ *   it lives (e.g. `vault:<user>:<item>:<field>`), so a value copied into
+ *   another row or field fails authentication instead of decrypting. AAD is not
+ *   stored in the output — the caller must pass the same AAD to decrypt.
+ *
  * Output format: base64(IV + ciphertext + authTag)
  *
  * Usage:
  *   const key = getKeyFromEnv('MY_ENCRYPTION_KEY');
  *   const encrypted = encrypt('secret', key);
  *   const decrypted = decrypt(encrypted, key);
+ *   const bound = encrypt('secret', key, 'vault:u1:item1:password');
  */
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
@@ -41,11 +47,13 @@ export function parseHexKey(keyHex: string, envVarName?: string): Buffer {
 
 /**
  * Encrypt a plaintext string using AES-256-GCM.
+ * @param aad optional additional authenticated data; decrypt must receive the same value
  * @returns base64-encoded string containing iv + ciphertext + authTag
  */
-export function encrypt(plaintext: string, key: Buffer): string {
+export function encrypt(plaintext: string, key: Buffer, aad?: string): string {
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
+  if (aad !== undefined) cipher.setAAD(Buffer.from(aad, 'utf8'));
 
   const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();
@@ -55,10 +63,11 @@ export function encrypt(plaintext: string, key: Buffer): string {
 
 /**
  * Decrypt a base64-encoded ciphertext string.
+ * @param aad the additional authenticated data the value was encrypted with, if any
  * @returns the original plaintext
- * @throws if the key is wrong, data is tampered, or format is invalid
+ * @throws if the key is wrong, the AAD differs, data is tampered, or format is invalid
  */
-export function decrypt(ciphertext: string, key: Buffer): string {
+export function decrypt(ciphertext: string, key: Buffer, aad?: string): string {
   const packed = Buffer.from(ciphertext, 'base64');
 
   if (packed.length < IV_LENGTH + AUTH_TAG_LENGTH) {
@@ -71,6 +80,7 @@ export function decrypt(ciphertext: string, key: Buffer): string {
 
   const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
   decipher.setAuthTag(authTag);
+  if (aad !== undefined) decipher.setAAD(Buffer.from(aad, 'utf8'));
 
   const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
   return decrypted.toString('utf8');

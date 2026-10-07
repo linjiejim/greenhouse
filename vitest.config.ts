@@ -21,6 +21,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@greenhouse/types/api': resolve(__dirname, 'packages/types/src/api.ts'),
+      '@greenhouse/types/plant-avatar': resolve(__dirname, 'packages/types/src/plant-avatar.ts'),
       '@greenhouse/types/session': resolve(__dirname, 'packages/types/src/session.ts'),
       '@greenhouse/types/eval': resolve(__dirname, 'packages/types/src/eval.ts'),
       '@greenhouse/types/source': resolve(__dirname, 'packages/types/src/source.ts'),
@@ -40,6 +41,7 @@ export default defineConfig({
       '@greenhouse/types/entity-links': resolve(__dirname, 'packages/types/src/entity-links.ts'),
       '@greenhouse/types/search': resolve(__dirname, 'packages/types/src/search.ts'),
       '@greenhouse/types/notification': resolve(__dirname, 'packages/types/src/notification.ts'),
+      '@greenhouse/types/bots': resolve(__dirname, 'packages/types/src/bots.ts'),
       '@greenhouse/types/email': resolve(__dirname, 'packages/types/src/email.ts'),
       '@greenhouse/types/runtime': resolve(__dirname, 'packages/types/src/runtime.ts'),
       '@greenhouse/types/workbench': resolve(__dirname, 'packages/types/src/workbench.ts'),

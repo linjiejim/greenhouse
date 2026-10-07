@@ -40,7 +40,7 @@ interface RichMarkdownProps {
   /** Use compact (tight) variant for chat/agent messages. */
   compact?: boolean;
   /** Callback for confirm block actions. If not provided, confirm buttons are rendered but disabled. */
-  onConfirmAction?: (value: string) => void;
+  onConfirmAction?: (value: string) => void | Promise<void>;
   /** Persisted follow-up user message used to restore confirm selection after reload. */
   resolvedConfirmValue?: string;
   /** Where ordinary navigating links go; forwarded to <Markdown>. */
@@ -118,7 +118,7 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
 }: {
   segment: Segment;
   compact?: boolean;
-  onConfirmAction?: (value: string) => void;
+  onConfirmAction?: (value: string) => void | Promise<void>;
   resolvedConfirmValue?: string;
   linkTarget?: MarkdownLinkTarget;
 }) {

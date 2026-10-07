@@ -53,6 +53,10 @@ import { ArtifactCard, ArtifactCardActions } from '../components/chat/artifact-c
 import { MermaidBlock } from '../components/blocks/mermaid-block';
 import { InlineEditCell } from '../components/tables';
 import type { ChartData, DataTableData } from '../components/blocks/index';
+import { PLANT_IDS, PLANT_MOODS, PLANT_STATES, type PlantId, type PlantState } from '@greenhouse/types';
+import { PlantAvatar, PlantAvatarStack } from '@greenhouse/ui/components/plant-avatar';
+import { PlantPicker } from '../components/plant-picker';
+import { useT } from '../lib/i18n';
 import {
   Search,
   Mail,
@@ -172,6 +176,7 @@ const NAV_SECTIONS = [
       { id: 'cards', label: 'Cards' },
       { id: 'tabs', label: 'Tabs' },
       { id: 'avatar', label: 'Avatar' },
+      { id: 'plant-avatar', label: 'Plant Avatar' },
       { id: 'status-dot', label: 'StatusDot' },
     ],
   },
@@ -305,6 +310,7 @@ export function DesignPage() {
         <CardsSection />
         <TabsSection />
         <AvatarSection />
+        <PlantAvatarSection />
         <StatusDotSection />
 
         {/* Overlays */}
@@ -2113,6 +2119,110 @@ function AvatarSection() {
         </DemoRow>
       </SubSection>
       <CodeSnippet code={`<Avatar name="Jim" size="md" variant="primary" />\n<Avatar size="sm" />  // fallback icon`} />
+    </Section>
+  );
+}
+
+/**
+ * The plant-avatar gallery (replaces the retired Sprouty Avatar Lab). Review sheets
+ * and the measured QA live in docs/specs/assets/avatar-proto/final/; regenerate the
+ * PNG gallery with `node --import tsx scripts/plant-avatar-gallery.mjs`.
+ */
+function PlantAvatarSection() {
+  const t = useT();
+  const [plant, setPlant] = useState<PlantId>('ivy');
+  const [state, setState] = useState<PlantState>('idle');
+  const [speaking, setSpeaking] = useState(false);
+  const roster = (['ivy', 'sage', 'basil', 'fern', 'clover'] as const).map((id) => ({
+    id: `bot_${id}`,
+    plant: id,
+    name: t(`plantAvatar.name.${id}`),
+  }));
+  return (
+    <Section
+      id="plant-avatar"
+      title="Plant Avatar"
+      description="@greenhouse/ui/components/plant-avatar — every Bot / Agent is one plant + two eyes on a tinted disc. Lists are static; only the speaking Bot moves. Toggle the theme to check dark mode (one 'auto' string, no re-render)."
+    >
+      <SubSection title="Presets × sizes (16 / 24 / 24 compact / 32 / 48 / 80)">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-2 2xl:grid-cols-3">
+          {PLANT_IDS.map((id) => (
+            <div key={id} className="flex items-center gap-2">
+              <span className="w-24 flex-shrink-0 truncate text-xs text-fg-muted">{t(`plantAvatar.name.${id}`)}</span>
+              <PlantAvatar plant={id} stableId={id} size={16} animate={false} />
+              <PlantAvatar plant={id} stableId={id} size="xs" animate={false} />
+              <PlantAvatar plant={id} stableId={id} size="xs" compact animate={false} />
+              <PlantAvatar plant={id} stableId={id} size="sm" animate={false} />
+              <PlantAvatar plant={id} stableId={id} size="md" animate={false} />
+              <PlantAvatar plant={id} stableId={id} size="lg" animate={false} />
+            </div>
+          ))}
+        </div>
+      </SubSection>
+      <SubSection title="States — 120px morphs in place; 48px strip is static">
+        <div className="flex flex-wrap items-start gap-6">
+          <div className="flex flex-col items-center gap-2">
+            <PlantAvatar
+              plant={plant}
+              stableId={`design:${plant}`}
+              state={state}
+              size="xl"
+              animate
+              label={`${t(`plantAvatar.name.${plant}`)} · ${t(`plantAvatar.state.${state}`)}`}
+            />
+            <DemoRow className="max-w-[16rem] justify-center gap-1">
+              {PLANT_STATES.map((s) => (
+                <Button key={s} size="sm" variant={s === state ? 'default' : 'outline'} onClick={() => setState(s)}>
+                  {s}
+                </Button>
+              ))}
+            </DemoRow>
+          </div>
+          <div className="space-y-3">
+            <DemoRow>
+              {PLANT_STATES.map((s) => (
+                <div key={s} className="flex flex-col items-center gap-1">
+                  <PlantAvatar plant={plant} stableId={plant} state={s} size="md" animate={false} />
+                  <CodeLabel>{s}</CodeLabel>
+                </div>
+              ))}
+            </DemoRow>
+            <DemoRow>
+              {PLANT_MOODS.map((mood) => (
+                <div key={mood} className="flex flex-col items-center gap-1">
+                  <PlantAvatar plant={plant} avatar={{ mood }} stableId={plant} size="md" animate={false} />
+                  <CodeLabel>{mood}</CodeLabel>
+                </div>
+              ))}
+            </DemoRow>
+          </div>
+        </div>
+      </SubSection>
+      <SubSection title="Picker (both editors)">
+        <div className="max-w-md">
+          <PlantPicker plant={plant} mood="calm" onPlantChange={setPlant} onMoodChange={() => undefined} />
+        </div>
+      </SubSection>
+      <SubSection title="Stacks — −6px at 24px, compact glyph LOD, sized +N; the speaking Bot moves first">
+        <DemoRow>
+          <PlantAvatarStack items={roster} max={2} size="xs" speakingId={speaking ? 'bot_clover' : null} />
+          <PlantAvatarStack items={roster} max={4} size="xs" speakingId={speaking ? 'bot_clover' : null} />
+          <PlantAvatarStack items={roster} max={5} size="md" />
+          <Button size="sm" variant="outline" onClick={() => setSpeaking((value) => !value)}>
+            {speaking ? 'Clover stops speaking' : 'Clover speaks'}
+          </Button>
+        </DemoRow>
+      </SubSection>
+      <SubSection title="On a primary fill (mention popover selected row)">
+        <div className="flex max-w-xs items-center gap-2 rounded-md bg-primary-600 px-2.5 py-1.5 text-white">
+          <PlantAvatar plant="basil" stableId="basil" size="xs" animate={false} />
+          <span className="text-sm font-medium">{t('plantAvatar.name.basil')}</span>
+        </div>
+      </SubSection>
+      <CodeSnippet
+        code={`<PlantAvatar avatar={bot.avatar} templateKey={bot.template_key} stableId={bot.id} size="xs" animate={false} />
+<PlantAvatarStack items={bots.map((b) => ({ id: b.id, avatar: b.avatar, templateKey: b.template_key }))} max={2} />`}
+      />
     </Section>
   );
 }
