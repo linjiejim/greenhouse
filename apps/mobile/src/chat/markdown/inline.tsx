@@ -24,6 +24,10 @@
  *    → authenticated download + the system share sheet (Save to Files,
  *    AirDrop…; src/lib/share-file.ts), named after the link text; a short
  *    "正在准备文件…" HUD while it downloads, a system alert if it fails,
+ *  - a Bots thread (`#/bots?c=<session>`) opens on home with Bots on; a
+ *    session's full record (`#/chat?session=<id>` — a background task's
+ *    report links its transcript) opens read-only on home (spec
+ *    docs/specs/20261008-mobile-bots.md §2.4),
  *  - any other web-app route (`#/…`) or relative path has no surface here →
  *    a system alert saying it opens in the web app.
  */
@@ -37,6 +41,8 @@ import { openLink } from '../../lib/links';
 import { makeStyles, mono, type ThemeColors, typo, useTheme, weight } from '../../theme';
 import { alertError } from '../../ui/dialogs';
 import { saveFile } from '../file-card';
+import { botsEnabledNow } from '../../bots/availability';
+import { openChat, openThread } from '../../bots/nav';
 
 /** No-break space — keeps inline-code padding glued to the code when lines wrap. */
 const NBSP = '\u00a0';
@@ -237,12 +243,38 @@ function useOpenLink(): OpenLink {
         saveFile(href, label ?? '');
         return;
       }
+      // Web-app routes with a home surface here (a link may sit in a sheet: dismiss back to home).
+      const thread = webRouteParam(href, 'bots', 'c');
+      if (thread && botsEnabledNow()) {
+        openThread(router, { c: thread }, 'dismissTo');
+        return;
+      }
+      const record = webRouteParam(href, 'chat', 'session');
+      if (record) {
+        openChat(router, { id: record, ro: true }, 'dismissTo');
+        return;
+      }
       // Any other web-app route (`#/…`, incl. records with no mobile surface)
       // or relative link has no surface here.
       alertError(t('chat.webOnlyLink'));
     },
     [router, t, hex.accent],
   );
+}
+
+/** `name` from a web-app route's query (`#/<route>?…&name=value`), or null. */
+function webRouteParam(href: string, route: string, name: string): string | null {
+  const query = href.match(new RegExp(`^#/${route}\\?([^#]*)$`))?.[1];
+  const value = query
+    ?.split('&')
+    .find((pair) => pair.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
 }
 
 /** An HTML line break (`<br>`, `<br/>`, `<br />`) — common in model-written table cells. */

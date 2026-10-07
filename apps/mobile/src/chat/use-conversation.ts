@@ -35,6 +35,15 @@
  * (or simply shown, when the stream had only dropped), a persisted message
  * with no reply is continued, and a message the server never received is
  * re-sent.
+ *
+ * Bots (spec docs/specs/20261008-mobile-bots.md §2.5.2): `profile` starts the
+ * new conversation with a given Bot (`bot:<id>` / `sprouty`) instead of the
+ * saved default — that conversation only, never written to prefs. A Bots
+ * conversation reached by id (`greenhouse://chat/<id>`) is not this engine's
+ * to render (one turn, many speakers; a 202 that is no stream): `leave` sees
+ * the loaded session first and, when it takes the session elsewhere, the load
+ * stops before anything is shown or a run attached. `channel` is the loaded
+ * session's channel.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -77,16 +86,26 @@ const runStart = (ms: number | undefined) =>
 export function useConversation({
   initialId,
   onCreated,
+  profile,
+  leave,
 }: {
   /** Session id from the route (absent = a new conversation). */
   initialId?: string;
   /** A new conversation's session now exists (point the route at it). */
   onCreated: (session: Session) => void;
+  /** Start a new conversation with this agent (`bot:<id>` / `sprouty`) instead of the saved default — not saved. */
+  profile?: string;
+  /**
+   * A loaded session this screen must not render (a Bots conversation): return
+   * true once it has been taken elsewhere — the load stops there, still loading.
+   */
+  leave?: (session: Session) => boolean;
 }) {
   const [sessionId, setSessionId] = useState<string | undefined>(initialId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [title, setTitle] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState<boolean | null>(null);
+  const [channel, setChannel] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(!!initialId);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -98,6 +117,10 @@ export function useConversation({
   const creatingRef = useRef(false);
   const onCreatedRef = useRef(onCreated);
   onCreatedRef.current = onCreated;
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+  const leaveRef = useRef(leave);
+  leaveRef.current = leave;
 
   const abortRef = useRef<AbortController | null>(null);
   const textBufRef = useRef('');
@@ -436,6 +459,9 @@ export function useConversation({
         if (!opts?.quiet) setLoadFailed(true);
         return;
       }
+      setChannel(data.session?.channel ?? null);
+      // Not ours to render (a Bots conversation): stop before showing or attaching anything.
+      if (data.session && leaveRef.current?.(data.session)) return;
       setTitle(data.session?.title ?? null);
       setIsOwner(data.session?.is_owner !== false);
       useTags.getState().setSessionTags(id, data.session?.tags ?? []);
@@ -473,6 +499,7 @@ export function useConversation({
     setMessages([]);
     setTitle(null);
     setIsOwner(null);
+    setChannel(null);
     setLoadFailed(false);
     if (initialId) void load(initialId);
     else setLoading(false);
@@ -529,7 +556,7 @@ export function useConversation({
         creatingRef.current = true; // block a double tap (and stop) while creating
         streamingRef.current = true;
         setStreaming(true);
-        const s = await createSession(usePrefs.getState().profileId);
+        const s = await createSession(profileRef.current || usePrefs.getState().profileId);
         creatingRef.current = false;
         if (!s) {
           streamingRef.current = false;
@@ -640,6 +667,8 @@ export function useConversation({
       setTitle,
       /** null until known (new conversations are owned). */
       isOwner,
+      /** The loaded session's channel (`web`, `bots`…); null for a new one or until loaded. */
+      channel,
       streaming,
       loading,
       loadFailed,
@@ -648,6 +677,6 @@ export function useConversation({
       stop,
       rerun,
     }),
-    [sessionId, messages, title, isOwner, streaming, loading, loadFailed, reload, send, stop, rerun],
+    [sessionId, messages, title, isOwner, channel, streaming, loading, loadFailed, reload, send, stop, rerun],
   );
 }

@@ -1,0 +1,199 @@
+/**
+ * `ConversationRow` — one Bots conversation in the drawer (spec
+ * docs/specs/20261008-mobile-bots.md §2.5.1), the web sidebar's row in native
+ * pieces: the Bot's plant (a group: its first two, overlapped), the title, a
+ * one-line preview of the last message, the time — and at most one signal:
+ * "needs you" (an orange badge with the card count) over unread (an accent dot
+ * and a bold title). A Bot replying right now rewrites the preview to
+ * "Replying…" instead of adding a badge; the server's `working` is never shown
+ * (D14 — only `running` is the client's truth). Sprouty's DM carries a pin.
+ *
+ * Static by design: list avatars never animate (the web's are static too, and
+ * a breathing row keeps XCUITest from ever going idle), and the row is one
+ * VoiceOver element — "Dandy, needs you, last message: …, 3 min ago".
+ *
+ * `width` pins the long-press menu's trigger up front (no measure-then-remount
+ * pass, AGENTS «菜单»); without `onMenu` the row has no menu at all.
+ */
+
+import React, { memo, useMemo } from 'react';
+import { Pressable, Text, View } from 'react-native';
+import { isSproutyBot, type BotConversationSummary } from '../../shared/bots';
+import { relativeTime } from '../../lib/format';
+import { useT } from '../../lib/i18n';
+import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
+import { Icon } from '../../ui/core';
+import { Badge } from '../../ui/list';
+import { NativeMenu, menuSections, type MenuItem } from '../../ui/menu';
+import { rowSignal, useBots } from '../store';
+import { AvatarStack } from '../ui/avatar-stack';
+import { BotAvatar } from '../ui/bot-avatar';
+import { conversationReplyable } from '../vendor/web-helpers';
+import { rowPreview, rowTitle, type RowCopy } from './row-text';
+
+/** Leading column: a DM's 32-pt plant, or a group's first two 22-pt plants overlapped — titles stay aligned. */
+const LEAD_W = 44;
+const DM_AVATAR = 32;
+const GROUP_AVATAR = 22;
+
+/** The localized copy ./row-text.ts needs — stable until the language changes. */
+export function useRowCopy(): RowCopy {
+  const t = useT();
+  return useMemo<RowCopy>(
+    () => ({
+      deletedBot: t('bots.common.deletedBot'),
+      untitledGroup: t('bots.nav.untitledGroup'),
+      archivedName: (name) => t('bots.nav.archivedName', { name }),
+      youSaid: (text) => t('bots.common.youSaid', { text }),
+      botSaid: (name, text) => t('bots.nav.botSaid', { name, text }),
+      noMessages: t('bots.common.noMessages'),
+    }),
+    [t],
+  );
+}
+
+/** Long-press menu actions; the caller routes them (the drawer closes first). */
+export type RowMenuAction = 'open' | 'profile' | 'info' | 'markRead';
+
+export const ConversationRow = memo(function ConversationRow({
+  row,
+  current,
+  onPress,
+  width,
+  onMenu,
+}: {
+  row: BotConversationSummary;
+  /** The thread on screen right now: highlighted, and never "unread". */
+  current: boolean;
+  onPress(): void;
+  /** The row's width (the drawer's `DRAWER_W − 2 × inset`), for the menu trigger. */
+  width: number;
+  /** Long-press menu: DM → open / Bot profile / mark read; group → open / info / mark read. */
+  onMenu?: (action: RowMenuAction) => void;
+}) {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  const t = useT();
+  const copy = useRowCopy();
+  const byId = useBots((s) => s.byId);
+  const botsLoaded = useBots((s) => s.botsLoaded);
+  const running = useBots((s) => s.running);
+  // Before the Bot list is in, every row counts as replyable (a sleeping plant would be a guess).
+  const replyable = useBots((s) => !s.botsLoaded || conversationReplyable(row, new Set(s.bots.map((bot) => bot.id))));
+
+  const dir = useMemo(() => ({ byId, botsLoaded }), [byId, botsLoaded]);
+  const title = rowTitle(row, dir, copy);
+  const signal = rowSignal({ running }, row, current ? row.session_id : null);
+  const preview = signal.working ? t('bots.common.replying') : rowPreview(row, dir, copy);
+  const owner = row.owner_bot_id ? (byId[row.owner_bot_id] ?? null) : null;
+  const pinned = row.kind === 'direct' && isSproutyBot(owner);
+  const unread = signal.badge === 'unread';
+  const time = relativeTime(row.last_activity_at);
+  const needsYou =
+    signal.badge === 'needs_you'
+      ? signal.needsYouCount > 1
+        ? t('bots.common.needsYouN', { n: signal.needsYouCount })
+        : t('bots.common.needsYou')
+      : null;
+
+  const a11yLabel = [
+    title,
+    pinned && t('bots.nav.pinnedA11y'),
+    needsYou ?? (unread && t('bots.nav.unread')),
+    signal.working ? preview : t('bots.nav.lastMessage', { text: preview }),
+    time,
+  ]
+    .filter(Boolean)
+    .join(t('bots.nav.listSep'));
+
+  const menuItems = useMemo<MenuItem[]>(
+    () =>
+      menuSections([
+        [
+          { id: 'open', title: t('bots.nav.open'), icon: 'msg' },
+          row.kind === 'direct'
+            ? { id: 'profile', title: t('bots.nav.profile'), icon: 'person' }
+            : { id: 'info', title: t('bots.nav.info'), icon: 'users' },
+        ],
+        unread ? [{ id: 'markRead', title: t('bots.nav.markRead'), icon: 'checkCircle' }] : [],
+      ]),
+    [row.kind, unread, t],
+  );
+
+  const members = useMemo(() => [...row.members].sort((a, b) => a.position - b.position).slice(0, 2), [row.members]);
+
+  const body = (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      accessibilityState={{ selected: current }}
+      style={({ pressed }) => [
+        styles.row,
+        current && { backgroundColor: c.tertiaryFill },
+        pressed && { backgroundColor: c.fill },
+      ]}
+    >
+      <View style={styles.lead}>
+        {row.kind === 'direct' ? (
+          <BotAvatar bot={owner} size={DM_AVATAR} state={replyable ? 'idle' : 'sleep'} animate={false} />
+        ) : (
+          <AvatarStack bots={members.map((m) => byId[m.bot_id] ?? null)} size={GROUP_AVATAR} max={2} />
+        )}
+      </View>
+      <View style={styles.body}>
+        <View style={styles.line}>
+          {title ? (
+            <Text numberOfLines={1} style={[styles.title, (unread || current) && styles.titleStrong]}>
+              {title}
+            </Text>
+          ) : (
+            <View style={styles.titleSkeleton} />
+          )}
+          {pinned ? <Icon name="pin" size={11} color={c.tertiaryLabel} /> : null}
+          {time ? <Text style={styles.time}>{time}</Text> : null}
+        </View>
+        <View style={styles.line}>
+          <Text numberOfLines={1} style={[styles.preview, signal.working && { color: c.accent }]}>
+            {preview}
+          </Text>
+          {needsYou ? (
+            <Badge label={needsYou} tone="orange" />
+          ) : unread ? (
+            <View style={[styles.dot, { backgroundColor: c.accent }]} />
+          ) : null}
+        </View>
+      </View>
+    </Pressable>
+  );
+
+  return onMenu ? (
+    <NativeMenu trigger="longPress" items={menuItems} onSelect={(id) => onMenu(id as RowMenuAction)} width={width}>
+      {body}
+    </NativeMenu>
+  ) : (
+    <View style={{ width }}>{body}</View>
+  );
+});
+
+const useStyles = makeStyles((c) => ({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm + 2,
+    minHeight: HIT + space.md,
+    paddingVertical: space.xs + 2,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.md,
+    ...squircle,
+  },
+  lead: { width: LEAD_W, alignItems: 'center', justifyContent: 'center' },
+  body: { flex: 1, minWidth: 0, gap: 1 },
+  line: { flexDirection: 'row', alignItems: 'center', gap: space.xs + 2 },
+  title: { flexShrink: 1, ...typo.body, color: c.label },
+  titleStrong: { fontWeight: weight.semibold },
+  titleSkeleton: { width: 88, height: 12, marginVertical: 5, borderRadius: 6, backgroundColor: c.tertiaryFill },
+  time: { marginLeft: 'auto', ...typo.footnote, color: c.secondaryLabel },
+  preview: { flex: 1, ...typo.subheadline, color: c.secondaryLabel },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+}));

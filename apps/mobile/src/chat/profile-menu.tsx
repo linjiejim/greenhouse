@@ -10,6 +10,10 @@
  * background whenever a picker mounts), `effectiveProfile()` (which agent a
  * new conversation will actually get) and `profileLabel()` (the localized
  * name, marked when it's a custom agent).
+ *
+ * With Bots on (spec docs/specs/20261008-mobile-bots.md §2.5.10), the member's
+ * Bots in the catalog (`sprouty`, `bot:<id>`) read "Name · Bot" and the chip
+ * shows the picked Bot's plant — they are the same Bots the drawer lists.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -21,6 +25,9 @@ import { makeStyles, space, typo, useTheme, weight } from '../theme';
 import { Icon } from '../ui/core';
 import { Glass } from '../ui/glass';
 import { NativeMenu, type MenuItem } from '../ui/menu';
+import { useBotsEnabled } from '../bots/availability';
+import { sproutyBot, useBots } from '../bots/store';
+import { BotAvatar } from '../bots/ui/bot-avatar';
 
 let cache: LocalizedProfile[] | null = null;
 let inflight: Promise<LocalizedProfile[]> | null = null;
@@ -72,9 +79,18 @@ export function effectiveProfile<P extends Profile>(rows: P[] | null, profileId:
   return rows.find((p) => p.id === profileId) ?? rows.find((p) => p.id === SERVER_DEFAULT_PROFILE) ?? rows[0];
 }
 
-/** The agent's display name in `lang`, marked " · 自定义" for a custom agent. */
-export function profileLabel(p: LocalizedProfile, lang: LangPref, t: ReturnType<typeof useT>): string {
+/** A member's Bot in the catalog: the built-in Sprouty or `bot:<id>`. */
+function isBotProfile(id: string): boolean {
+  return id === SERVER_DEFAULT_PROFILE || id.startsWith('bot:');
+}
+
+/**
+ * The agent's display name in `lang`, marked " · 自定义" for a custom agent —
+ * or, with `bots` (Bots on), " · Bot" for the member's Bots.
+ */
+export function profileLabel(p: LocalizedProfile, lang: LangPref, t: ReturnType<typeof useT>, bots = false): string {
   const name = p.name_i18n?.[lang] || p.name;
+  if (bots && isBotProfile(p.id)) return `${name} · ${t('bots.nav.botSuffix')}`;
   return p.is_custom ? `${name} · ${t('profile.custom')}` : name;
 }
 
@@ -87,16 +103,24 @@ export function ProfileMenu() {
   const setProfileId = usePrefs((s) => s.setProfileId);
   const rows = useProfiles();
   const current = effectiveProfile(rows, profileId);
-  const name = current ? profileLabel(current, lang, t) : undefined;
+  const bots = useBotsEnabled();
+  const name = current ? profileLabel(current, lang, t, bots) : undefined;
+  // The picked Bot's plant (null until the Bot list is in — the sparkle stands in).
+  const pickedBot = useBots((s) => {
+    if (!bots || !current) return null;
+    if (current.id === SERVER_DEFAULT_PROFILE) return sproutyBot(s);
+    // `bot:<id>`, possibly pinned to a version (`bot:<id>@<v>`)
+    return current.id.startsWith('bot:') ? (s.byId[current.id.slice('bot:'.length).split('@')[0]!] ?? null) : null;
+  });
 
   const items = useMemo<MenuItem[]>(
     () =>
       (rows ?? []).map((p) => ({
         id: p.id,
-        title: profileLabel(p, lang, t),
+        title: profileLabel(p, lang, t, bots),
         checked: p.id === current?.id,
       })),
-    [rows, current, lang, t],
+    [rows, current, lang, t, bots],
   );
 
   if (!rows?.length) return null;
@@ -104,7 +128,11 @@ export function ProfileMenu() {
     <NativeMenu title={t('profile.hint')} items={items} onSelect={setProfileId}>
       <View accessible accessibilityRole="button" accessibilityLabel={`${t('profile.title')}: ${name ?? ''}`}>
         <Glass interactive style={styles.chip}>
-          <Icon name="sparkle" size={13} weight="semibold" color={c.accent} />
+          {pickedBot ? (
+            <BotAvatar bot={pickedBot} size={18} animate={false} />
+          ) : (
+            <Icon name="sparkle" size={13} weight="semibold" color={c.accent} />
+          )}
           <Text numberOfLines={1} style={styles.name}>
             {name ?? t('profile.title')}
           </Text>

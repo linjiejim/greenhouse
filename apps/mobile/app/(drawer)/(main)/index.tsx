@@ -32,6 +32,21 @@
  * Streaming re-renders this screen ~30×/s, so everything handed to children is
  * kept referentially stable (header and composer are memoised, callbacks read
  * the latest state through a ref) — only the reply being streamed re-renders.
+ *
+ * Bots (spec docs/specs/20261008-mobile-bots.md §2.2 / §2.5.2, D2–D4): the
+ * default export is `Home`, a dispatcher — `?c=<session>` renders the Bots
+ * thread (src/bots/thread/thread-screen.tsx, remounted per thread), anything
+ * else this conversation screen. Every route here carries all seven home
+ * params (src/bots/nav.ts). On a cold start a bare home reopens the Bots
+ * thread the member left the app in (src/bots/home/initial-surface.ts), once
+ * per process. With Bots on, the conversation screen also gets: the hero's
+ * "a new chat starts fresh" hint, the bridge row back into the Bots and a
+ * shelf of their faces; a `?profile=` new chat with one Bot (its face and
+ * name in the hero, a "Back to …" button; the profile is never saved); the ☰
+ * badge (other conversations that need the member or have something unread)
+ * and — over an existing conversation — the "needs you" capsule; a Bots
+ * session reached by id is forwarded to its thread. With Bots off (or on
+ * Android) none of this renders and the screen is exactly what it was.
  */
 
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -48,7 +63,7 @@ import {
 } from 'react-native-keyboard-controller';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
-import type { SessionTag } from '../../../src/shared/greenhouse-types';
+import type { Session, SessionTag } from '../../../src/shared/greenhouse-types';
 import { splitAttachments } from '../../../src/shared/rich-output';
 import { deleteSession, updateSessionTitle } from '../../../src/api/sessions';
 import { prepareImage, uploadImage } from '../../../src/api/upload';
@@ -72,6 +87,24 @@ import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { PlantAvatar } from '../../../src/ui/plant-avatar';
 import { toast } from '../../../src/ui/toast';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
+import {
+  BOTS_PLATFORM_READY,
+  botsEnabledNow,
+  useBotIdentityEnabled,
+  useBotsEnabled,
+} from '../../../src/bots/availability';
+import { AttentionCapsule } from '../../../src/bots/cards/attention-capsule';
+import { useRowCopy } from '../../../src/bots/drawer/conversation-row';
+import { rowTitle } from '../../../src/bots/drawer/row-text';
+import { BotsShelf } from '../../../src/bots/home/bots-shelf';
+import { HomeBridge, useBotsWarm, useProfileBot } from '../../../src/bots/home/home-bridge';
+import { initialSurface } from '../../../src/bots/home/initial-surface';
+import { forgetThread, lastThread, rememberThread, type LastThread } from '../../../src/bots/last-surface';
+import { homeParams, openNewChat, openThread, type HomeParams } from '../../../src/bots/nav';
+import { attentionCount, useBots } from '../../../src/bots/store';
+import { BotThreadScreen } from '../../../src/bots/thread/thread-screen';
+import { BotAvatar } from '../../../src/bots/ui/bot-avatar';
+import { usePrefs } from '../../../src/store/prefs';
 
 const MAX_IMAGES = 4;
 
@@ -97,11 +130,14 @@ const ConversationHeader = memo(function ConversationHeader({
   title,
   hasSession,
   readOnly,
+  badge,
   actions,
 }: {
   title: string;
   hasSession: boolean;
   readOnly: boolean;
+  /** The ☰ badge — Bots conversations that need the member or have something unread ('' = none). */
+  badge: string;
   actions: HeaderActions;
 }) {
   const t = useT();
@@ -111,9 +147,15 @@ const ConversationHeader = memo(function ConversationHeader({
       <Stack.Toolbar placement="left">
         <Stack.Toolbar.Button
           icon={toolbarIcon('menu')}
-          accessibilityLabel={t('chat.openDrawer')}
+          accessibilityLabel={
+            badge
+              ? [t('chat.openDrawer'), t('bots.nav.menuBadgeA11y', { n: badge })].join(t('bots.nav.listSep'))
+              : t('chat.openDrawer')
+          }
           onPress={actions.openDrawer}
-        />
+        >
+          {badge ? <Stack.Toolbar.Badge>{badge}</Stack.Toolbar.Badge> : null}
+        </Stack.Toolbar.Button>
       </Stack.Toolbar>
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
@@ -145,7 +187,7 @@ const ConversationHeader = memo(function ConversationHeader({
 
 /* ------------------------------ screen ------------------------------ */
 
-export default function Conversation() {
+function Conversation() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
@@ -153,11 +195,36 @@ export default function Conversation() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderInset();
-  const params = useLocalSearchParams<{ id?: string; title?: string; ro?: string; compose?: string }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    title?: string;
+    ro?: string;
+    compose?: string;
+    profile?: string;
+  }>();
   const user = useAuth((s) => s.user);
 
+  /* ---------- Bots: hint, bridge, ☰ badge, capsule, `?profile=` (see header) ---------- */
+  const botsOn = useBotsEnabled();
+  const identityOn = useBotIdentityEnabled();
+  useBotsWarm(botsOn);
+  const attention = useBots((s) => (botsOn ? attentionCount(s, null) : 0));
+  const badge = attention > 99 ? '99+' : attention > 0 ? String(attention) : '';
+  // A new chat with one Bot ("Ask Dandy in a New Chat"): this chat only, never the saved default.
+  const profile = identityOn && params.profile ? params.profile : undefined;
+  const profileBot = useProfileBot(profile);
+
   const onCreated = useCallback((s: { id: string }) => router.setParams({ id: s.id }), [router]);
-  const convo = useConversation({ initialId: params.id, onCreated });
+  // A Bots conversation reached by id (`greenhouse://chat/<id>`) belongs on its thread.
+  const leave = useCallback(
+    (session: Session) => {
+      if (session.channel !== 'bots' || !botsEnabledNow()) return false;
+      openThread(router, { c: session.id, title: session.title ?? '' });
+      return true;
+    },
+    [router],
+  );
+  const convo = useConversation({ initialId: params.id || undefined, onCreated, profile, leave });
   // Destructure the stable callbacks — `convo` itself changes on every drain tick.
   const { sessionId, messages, streaming, rerun, stop, setTitle, send: convoSend, reload } = convo;
   const readOnly = params.ro === '1' || convo.isOwner === false;
@@ -428,7 +495,7 @@ export default function Conversation() {
   const headerActions = useMemo<HeaderActions>(
     () => ({
       openDrawer: () => navigation.dispatch(DrawerActions.openDrawer()),
-      newChat: () => router.replace('/'),
+      newChat: () => openNewChat(router),
       openTags: () => {
         const id = latest.current.sessionId;
         if (id) router.push({ pathname: '/sheets/session-tags', params: { sessionId: id } });
@@ -463,7 +530,7 @@ export default function Conversation() {
         if (!ok) return;
         stop();
         if (await deleteSession(id)) {
-          router.replace('/');
+          openNewChat(router);
           toast(tNow('chat.deleted'), 'trash');
         } else alertError(tNow('chat.deleteFailed'));
       },
@@ -507,7 +574,13 @@ export default function Conversation() {
 
   return (
     <View style={styles.root}>
-      <ConversationHeader title={title} hasSession={!!sessionId} readOnly={readOnly} actions={headerActions} />
+      <ConversationHeader
+        title={title}
+        hasSession={!!sessionId}
+        readOnly={readOnly}
+        badge={badge}
+        actions={headerActions}
+      />
 
       <KeyboardChatScrollView
         ref={scrollRef}
@@ -556,23 +629,60 @@ export default function Conversation() {
         )}
       </KeyboardChatScrollView>
 
-      {/* new conversation: the hero, centred above the composer */}
+      {/* new conversation: the hero, centred above the composer (only the Bots links in it take touches) */}
       {isNew ? (
         <Animated.View
-          pointerEvents="none"
+          pointerEvents="box-none"
           exiting={FadeOut.duration(180)}
           style={[styles.heroWrap, { top: headerHeight, bottom: composerH + composerBottom }]}
         >
-          <Animated.View style={heroFade}>
-            <Animated.View entering={FadeIn.duration(320)} style={[styles.hero, heroLift]}>
-              <PlantAvatar size={76} animate={focused} />
-              <Text style={styles.heroTitle}>
-                {t('home.greetingFormat', { greeting: greeting(), name: user?.nickname ?? t('home.fallbackName') })}
-              </Text>
-              <Text style={styles.heroSub}>{t('home.title')}</Text>
+          <Animated.View pointerEvents="box-none" style={heroFade}>
+            <Animated.View pointerEvents="box-none" entering={FadeIn.duration(320)} style={[styles.hero, heroLift]}>
+              {profileBot ? (
+                <View pointerEvents="none" style={styles.heroFace}>
+                  <BotAvatar bot={profileBot.bot} size={76} animate={focused} />
+                  {profileBot.bot ? (
+                    <>
+                      <Text style={styles.heroTitle}>{profileBot.bot.name}</Text>
+                      <Text style={styles.heroSub}>{t('bots.nav.profileHint', { name: profileBot.bot.name })}</Text>
+                    </>
+                  ) : null}
+                </View>
+              ) : (
+                <View pointerEvents="none" style={styles.heroFace}>
+                  <PlantAvatar size={76} animate={focused} />
+                  <Text style={styles.heroTitle}>
+                    {t('home.greetingFormat', { greeting: greeting(), name: user?.nickname ?? t('home.fallbackName') })}
+                  </Text>
+                  <Text style={styles.heroSub}>{t('home.title')}</Text>
+                  {botsOn ? <Text style={styles.heroHint}>{t('bots.nav.freshHint')}</Text> : null}
+                </View>
+              )}
+              {profileBot?.bot && profileBot.dm && botsOn ? (
+                <NativeButton
+                  label={t('bots.nav.backTo', { name: profileBot.bot.name })}
+                  variant="glass"
+                  size="small"
+                  style={styles.heroAction}
+                  onPress={() => openThread(router, { c: profileBot.dm!, title: profileBot.bot!.name })}
+                />
+              ) : null}
+              {botsOn && !profileBot ? (
+                <>
+                  <HomeBridge />
+                  <BotsShelf />
+                </>
+              ) : null}
             </Animated.View>
           </Animated.View>
         </Animated.View>
+      ) : null}
+
+      {/* an existing conversation: another Bots conversation needing the member floats under the nav bar */}
+      {botsOn && sessionId ? (
+        <View pointerEvents="box-none" style={[styles.capsule, { top: headerHeight + space.xs }]}>
+          <AttentionCapsule excludeSid={null} />
+        </View>
       ) : null}
 
       {convo.loading && !messages.length ? (
@@ -622,7 +732,7 @@ export default function Conversation() {
               onRemoveImage={removeImage}
               maxImages={MAX_IMAGES}
               placeholder={sessionId ? t('chat.followUpPlaceholder') : t('home.heroPlaceholder')}
-              showProfile={isNew}
+              showProfile={isNew && !profileBot}
               autoFocus={params.compose === '1'}
               onHeight={onComposerHeight}
             />
@@ -630,6 +740,116 @@ export default function Conversation() {
         </View>
       </KeyboardStickyView>
     </View>
+  );
+}
+
+/* ------------------------------ home: a Bots thread or the conversation ------------------------------ */
+
+/** A cold start reopens the last Bots thread at most once per process (D3); warm starts stay where they are. */
+let restoreSettled = false;
+/** How long a cold start waits for persisted prefs before settling on a new chat. */
+const RESTORE_WAIT_MS = 400;
+
+/**
+ * The home route (D2): `?c=` renders the Bots thread — keyed by session, so
+ * another thread is a fresh screen and its engine — anything else the
+ * conversation screen, which stays exactly as it was. The first time a bare
+ * home mounts in a process, the thread the member left the app in comes back
+ * (src/bots/home/initial-surface.ts): rendered at once, and the route is
+ * pointed at it with `setParams` (same screen, no animation). Which thread is
+ * open is remembered per station + account for the next cold start; any chat
+ * or new chat forgets it.
+ */
+export default function Home() {
+  const raw = useLocalSearchParams<{ [K in keyof HomeParams]?: string }>();
+  const params = homeParams({
+    id: raw.id,
+    c: raw.c,
+    title: raw.title,
+    ro: raw.ro === '1' ? '1' : '0',
+    compose: raw.compose === '1' ? '1' : '',
+    request: raw.request,
+    profile: raw.profile,
+  });
+  const router = useRouter();
+  const focused = useIsFocused();
+  const hydrated = usePrefs((s) => s.hydrated);
+  const [settled, setSettled] = useState(restoreSettled);
+  const [gaveUp, setGaveUp] = useState(false);
+  // The restored thread, shown until the route's own `c` catches up with `setParams`.
+  const [restored, setRestored] = useState<LastThread | null>(null);
+
+  const surface = settled
+    ? null
+    : initialSurface({
+        params,
+        hydrated: hydrated || gaveUp,
+        last: hydrated ? lastThread() : null,
+        botsEnabled: botsEnabledNow(),
+        restored: restoreSettled,
+        // a cold-start deep link stacked over home decides where home points
+        covered: !focused,
+      });
+  const kind = surface?.kind;
+  const target = surface?.kind === 'thread' ? surface : null;
+  const targetC = target?.c;
+  const targetTitle = target?.title;
+
+  useEffect(() => {
+    if (settled || !kind) return;
+    if (kind === 'wait') {
+      const timer = setTimeout(() => setGaveUp(true), RESTORE_WAIT_MS);
+      return () => clearTimeout(timer);
+    }
+    restoreSettled = true;
+    if (kind === 'thread' && targetC) {
+      setRestored({ c: targetC, title: targetTitle ?? '' });
+      // all seven keys (a fresh literal: router params want an index signature)
+      router.setParams({ ...homeParams({ c: targetC, title: targetTitle }) });
+    }
+    setSettled(true);
+  }, [settled, kind, targetC, targetTitle, router]);
+
+  useEffect(() => {
+    if (restored && params.c === restored.c) setRestored(null);
+  }, [restored, params.c]);
+
+  const pending = target ?? restored;
+  const c = params.c || pending?.c || '';
+  const title = params.c ? params.title : (pending?.title ?? '');
+  // Android has no Bots surfaces in v1 (§2.9): a stray `?c=` stays the conversation screen.
+  const thread = BOTS_PLATFORM_READY && !!c;
+
+  // Remember the open thread for the next cold start — with its real title once the list knows it.
+  const copy = useRowCopy();
+  const knownTitle = useBots((s) => {
+    if (!thread) return '';
+    const row = s.conversations.find((r) => r.session_id === c);
+    return row ? rowTitle(row, s, copy) : '';
+  });
+  useEffect(() => {
+    if (!settled || !hydrated) return;
+    if (thread) rememberThread({ c, title: knownTitle || title });
+    else forgetThread();
+  }, [settled, hydrated, thread, c, knownTitle, title]);
+
+  if (kind === 'wait') return <RestoreWait />;
+  return thread ? (
+    <BotThreadScreen key={c} sessionId={c} title={title} request={params.request} compose={params.compose === '1'} />
+  ) : (
+    <Conversation />
+  );
+}
+
+/** The plain surface a cold start shows while it waits (≤ 400 ms) for prefs — no hero to flash away. */
+function RestoreWait() {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  return (
+    <>
+      <Stack.Screen options={{ title: '' }} />
+      <View style={styles.root} />
+    </>
   );
 }
 
@@ -645,8 +865,12 @@ const useStyles = makeStyles((c) => ({
   },
   heroWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
   hero: { alignItems: 'center', paddingHorizontal: space.xxl, gap: space.xs },
+  heroFace: { alignItems: 'center', gap: space.xs },
   heroTitle: { ...typo.title2, color: c.label, textAlign: 'center', marginTop: space.md },
   heroSub: { ...typo.body, color: c.secondaryLabel, textAlign: 'center' },
+  heroHint: { ...typo.footnote, color: c.secondaryLabel, textAlign: 'center', marginTop: space.xs },
+  heroAction: { marginTop: space.md },
+  capsule: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   center: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   stretch: { alignSelf: 'stretch' },
   sticky: { position: 'absolute', left: 0, right: 0, bottom: 0 },
