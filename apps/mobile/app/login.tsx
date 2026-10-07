@@ -1,5 +1,6 @@
 /**
- * Login — a native SwiftUI form: brand header, the server (station) row,
+ * Login — a native SwiftUI form (Android: ./login.android.tsx, Material; the
+ * flow itself is the shared src/login/use-login.ts): brand header, the server (station) row,
  * email + password with system AutoFill (username / password content types →
  * iCloud Keychain suggestions), and a prominent Liquid Glass sign-in button.
  *
@@ -9,9 +10,9 @@
  * fields (in place of the members-only note) until the user edits a field.
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { Text as RNText, useWindowDimensions, View } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import {
   Button,
   ProgressView,
@@ -39,8 +40,7 @@ import {
   textContentType,
   textInputAutocapitalization,
 } from '@expo/ui/swift-ui/modifiers';
-import { useAuth } from '../src/store/auth';
-import { useActiveStation } from '../src/stations/use-active-station';
+import { useLogin } from '../src/login/use-login';
 import { useT } from '../src/lib/i18n';
 import { GreenhouseMark } from '../src/ui/logo';
 import { LIQUID_GLASS } from '../src/ui/glass';
@@ -51,42 +51,15 @@ export default function Login() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
-  const doLogin = useAuth((s) => s.login);
-  const router = useRouter();
-  const station = useActiveStation();
   const { width } = useWindowDimensions();
   // The native fields own the text (AutoFill writes straight into them);
   // onTextChange is async, so submit reads the native values.
   const emailState = useNativeState('');
   const passwordState = useNativeState('');
   const passwordRef = useRef<SecureFieldRef>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const openStations = useCallback(() => router.push('/sheets/stations'), [router]);
-  // a stale error goes away as soon as the user starts fixing the input
-  const clearError = useCallback(() => setError(null), []);
-
-  const submit = useCallback(async () => {
-    if (busy) return;
-    if (!station) {
-      setError(t('login.noStation'));
-      openStations();
-      return;
-    }
-    const email = (emailState.get() ?? '').trim();
-    const password = passwordState.get() ?? '';
-    if (!email || !password) {
-      setError(t('login.missingFields'));
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    const res = await doLogin(email, password);
-    setBusy(false);
-    if (res.ok) router.replace('/');
-    else setError(res.error || t('login.failed'));
-  }, [busy, station, emailState, passwordState, doLogin, router, t, openStations]);
+  const readEmail = useCallback(() => emailState.get(), [emailState]);
+  const readPassword = useCallback(() => passwordState.get(), [passwordState]);
+  const { station, error, busy, submit, clearError, openStations } = useLogin({ email: readEmail, password: readPassword });
 
   return (
     <>

@@ -5,6 +5,7 @@
 
 export const en = {
   common: {
+    loading: 'Loading…',
     cancel: 'Cancel',
     ok: 'OK',
     done: 'Done',
@@ -37,6 +38,7 @@ export const en = {
   station: {
     title: 'Stations',
     hint: 'Self-hosted Greenhouse servers this app can connect to. Tap one to switch — each keeps its own sign-in.',
+    hintAndroid: 'Self-hosted Greenhouse servers this app can connect to. Tap one to switch — each keeps its own sign-in. Touch and hold to remove one.',
     lockedHint: 'This build is locked to {name} — the server cannot be changed here.',
     empty: 'No stations yet',
     addFirst: 'Add your server…',
@@ -44,6 +46,7 @@ export const en = {
     addAction: 'Add',
     checking: 'Connecting…',
     urlPlaceholder: 'https://greenhouse.example.com',
+    urlLabel: 'Server address',
     invalidUrl: 'Enter a valid server address',
     unreachable: 'Could not reach a Greenhouse API at this address',
     authDisabled: 'This server runs without authentication (dev mode) and cannot be used',
@@ -468,6 +471,8 @@ export const en = {
     assignFailed: 'Couldn’t update this conversation’s tags',
     readOnly: 'This conversation was shared with you — only its owner can change its tags.',
     manageHint: 'Swipe or touch and hold a tag to edit or delete it.',
+    manageHintAndroid: 'Tap a tag to edit it; touch and hold to delete it.',
+    assignHintAndroid: 'Tap a tag to add or remove it; touch and hold to edit it.',
     loadFailed: 'Couldn’t load tags',
     noneOnSession: 'No tags on this conversation',
     createdNotAttached: 'Tag created, but not added to this conversation',

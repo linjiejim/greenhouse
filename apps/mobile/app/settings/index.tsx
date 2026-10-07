@@ -15,10 +15,8 @@
  * Drill-down rows are the shared `FormNavRow` (label · muted value · chevron).
  */
 
-import React, { useEffect, useMemo } from 'react';
-import Constants from 'expo-constants';
-import * as Updates from 'expo-updates';
-import { Stack, useNavigation, useRouter } from 'expo-router';
+import React from 'react';
+import { Stack, useRouter } from 'expo-router';
 import { Button, Circle, HStack, LabeledContent, Picker, ProgressView, Section, Text, VStack, ZStack } from '@expo/ui/swift-ui';
 import {
   accessibilityElement,
@@ -31,80 +29,31 @@ import {
   pickerStyle,
   tag,
 } from '@expo/ui/swift-ui/modifiers';
-import { AFTER_DISMISS_MS, useAuth } from '../../src/store/auth';
-import { usePrefs, type LangPref, type ThemePref } from '../../src/store/prefs';
-import { useTags } from '../../src/store/tags';
-import { useActiveStation } from '../../src/stations/use-active-station';
-import { effectiveProfile, profileLabel, useProfiles } from '../../src/chat/profile-menu';
-import type { UserRole } from '../../src/shared/greenhouse-types';
+import type { LangPref, ThemePref } from '../../src/store/prefs';
+import { profileLabel } from '../../src/chat/profile-menu';
 import { compactNumber } from '../../src/lib/format';
-import { useT, type TranslationKey } from '../../src/lib/i18n';
+import { useT } from '../../src/lib/i18n';
+import { ROLE_LABEL, useSettings } from '../../src/settings/use-settings';
 import { useTheme } from '../../src/theme';
-import { confirmAction } from '../../src/ui/dialogs';
 import { FormNavRow, NativeForm } from '../../src/ui/native-form';
+import { toolbarIcon } from '../../src/ui/toolbar-icon';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
-
-const ROLE_LABEL: Record<UserRole, TranslationKey> = {
-  super: 'settings.roleSuper',
-  team: 'settings.roleTeam',
-  external: 'settings.roleExternal',
-};
 
 export default function Settings() {
   const t = useT();
   const { hex } = useTheme();
   const router = useRouter();
-  const navigation = useNavigation();
-  const user = useAuth((s) => s.user);
-  const logout = useAuth((s) => s.logout);
-  const theme = usePrefs((s) => s.theme);
-  const setTheme = usePrefs((s) => s.setTheme);
-  const lang = usePrefs((s) => s.lang);
-  const setLang = usePrefs((s) => s.setLang);
-  const profileId = usePrefs((s) => s.profileId);
-  const setProfileId = usePrefs((s) => s.setProfileId);
-  const station = useActiveStation();
-  const tagCount = useTags((s) => s.tags.length);
-  const tagsLoaded = useTags((s) => s.loaded);
-  const loadTags = useTags((s) => s.load);
-  // the composer's catalog cache — both pickers edit `prefs.profileId`
-  const profiles = useProfiles();
-
-  useEffect(() => {
-    void loadTags();
-  }, [loadTags]);
-
-  // The stored id may be unset ('default') or stale (picked on another
-  // station); show the agent the server will actually use.
-  const shownProfile = useMemo(
-    () => effectiveProfile(profiles, profileId)?.id,
-    [profiles, profileId],
-  );
-
-  const nickname = user?.nickname || t('settings.fallbackName');
-  // iOS convention: "1.3.2 (5)" — marketing version + build number
-  const build = Constants.platform?.ios?.buildNumber;
-  const version = `${Constants.expoConfig?.version ?? ''}${build ? ` (${build})` : ''}`.trim();
-
-  const signOut = async () => {
-    const ok = await confirmAction({
-      title: t('settings.logout'),
-      message: t('settings.logoutConfirm'),
-      confirmLabel: t('settings.logout'),
-      destructive: true,
-    });
-    if (!ok) return;
-    navigation.getParent()?.goBack();
-    setTimeout(logout, AFTER_DISMISS_MS);
-  };
+  const { user, nickname, station, prefs, profiles, shownProfile, tagCount, tagsLoaded, version, update, signOut } =
+    useSettings();
+  const { theme, setTheme, lang, setLang, setProfileId } = prefs;
 
   return (
     <>
       <Stack.Screen options={{ title: t('settings.title') }} />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
-          icon="checkmark"
+          icon={toolbarIcon('check')}
           variant="done"
           tintColor={hex.accent}
           accessibilityLabel={t('common.done')}
@@ -224,7 +173,7 @@ export default function Settings() {
             <Text>{version || '—'}</Text>
           </LabeledContent>
           <LabeledContent label={t('settings.update')}>
-            <Text>{updateLabel(t)}</Text>
+            <Text>{update}</Text>
           </LabeledContent>
         </Section>
 
@@ -236,13 +185,4 @@ export default function Settings() {
       </NativeForm>
     </>
   );
-}
-
-
-/** Which JS bundle is running: dev server, the binary's embedded bundle, or an OTA update. */
-function updateLabel(t: ReturnType<typeof useT>): string {
-  if (__DEV__) return t('settings.updateDev');
-  if (!Updates.isEnabled || Updates.isEmbeddedLaunch || !Updates.updateId) return t('settings.updateEmbedded');
-  const day = Updates.createdAt ? Updates.createdAt.toISOString().slice(0, 10) : '';
-  return [Updates.updateId.slice(0, 8), day].filter(Boolean).join(' · ');
 }

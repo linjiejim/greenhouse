@@ -1,30 +1,30 @@
 /**
- * Tag editor sheet — create (`/sheets/tag-editor`) or edit
- * (`/sheets/tag-editor?id=`) a session tag (Android: ./tag-editor.android.tsx;
- * behaviour: src/chat/use-tag-editor.ts). A SwiftUI Form: live chip preview,
- * name field, the 10-color palette (`ColorSwatchPicker`, spoken color names)
- * and (edit only) a destructive 删除标签. Chrome is the shared `FormChrome`:
- * ✕ asks before discarding unsaved edits, ✓ saves, swipe-to-dismiss is
- * blocked while dirty. Writes go through the tags store, so the library list
- * and any open conversation's chips update in place; failures are system
- * alerts (`alertError`). Opened from a conversation's tag sheet
- * (`?sessionId=`), a newly created tag is attached to that conversation right
- * away (the library refuses to open it for a full conversation; if attaching
- * still fails, the tag stays created and the user is told).
+ * Tag editor on Android — a Material 3 form over the shared behaviour
+ * (src/chat/use-tag-editor.ts; iOS view: ./tag-editor.tsx): live chip
+ * preview, the name field, the 10-color palette and (edit only) 删除标签.
+ * Chrome is the shared `FormChrome` (✕ / ✓; system back asks before
+ * discarding unsaved edits).
  */
 
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Button, RNHostView, Section, TextField, useNativeState } from '@expo/ui/swift-ui';
-import { onSubmit, submitLabel } from '@expo/ui/swift-ui/modifiers';
+import { RNHostView } from '@expo/ui/jetpack-compose';
 import type { SessionTag } from '../../src/shared/greenhouse-types';
 import { useTags } from '../../src/store/tags';
 import { TAG_COLORS, tagColorNameKey } from '../../src/lib/tag-colors';
 import { useT } from '../../src/lib/i18n';
-import { makeStyles, space, useTheme } from '../../src/theme';
+import { space } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { ColorSwatchPicker, NativeForm } from '../../src/ui/native-form';
+import {
+  FormActionRow,
+  FormFields,
+  FormSection,
+  FormSwatchRow,
+  FormTextField,
+  NativeForm,
+  useNativeState,
+} from '../../src/ui/native-form.android';
 import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
 import { TagChip } from '../../src/chat/tag-chip';
 import { useTagEditor } from '../../src/chat/use-tag-editor';
@@ -56,10 +56,6 @@ export default function TagEditorSheet() {
 
 function TagEditorForm({ tag, sessionId }: { tag?: SessionTag; sessionId?: string }) {
   const t = useT();
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  // The native field owns the text; `name` mirrors it for rendering (preview,
-  // Save enabled). onTextChange is async, so actions read the native value.
   const nameState = useNativeState(tag?.name ?? '');
   const { setName, color, setColor, busy, trimmed, canSave, dirty, save, confirmDelete } = useTagEditor(
     tag,
@@ -77,26 +73,25 @@ function TagEditorForm({ tag, sessionId }: { tag?: SessionTag; sessionId?: strin
         onSave={() => void save()}
       />
       <NativeForm>
-        <Section
-          header={
-            <RNHostView matchContents>
-              <View style={styles.preview}>
-                <TagChip tag={{ id: -1, name: trimmed || t('tags.namePlaceholder'), color }} />
-              </View>
-            </RNHostView>
-          }
-        >
-          <TextField
-            text={nameState}
-            placeholder={t('tags.namePlaceholder')}
-            autoFocus={!tag}
-            onTextChange={setName}
-            modifiers={[submitLabel('done'), onSubmit(() => void save())]}
-          />
-        </Section>
+        <RNHostView matchContents>
+          <View style={{ paddingTop: space.sm, paddingHorizontal: space.xs }}>
+            <TagChip tag={{ id: -1, name: trimmed || t('tags.namePlaceholder'), color }} />
+          </View>
+        </RNHostView>
 
-        <Section title={t('tags.color')}>
-          <ColorSwatchPicker
+        <FormFields>
+          <FormTextField
+            label={t('tags.namePlaceholder')}
+            state={nameState}
+            autoFocus={!tag}
+            onChangeText={setName}
+            imeAction="done"
+            onSubmit={() => void save()}
+          />
+        </FormFields>
+
+        <FormSection title={t('tags.color')}>
+          <FormSwatchRow
             colors={TAG_COLORS}
             value={color}
             onChange={(col) => col && setColor(col)}
@@ -105,18 +100,14 @@ function TagEditorForm({ tag, sessionId }: { tag?: SessionTag; sessionId?: strin
               return key ? t(key) : null;
             }}
           />
-        </Section>
+        </FormSection>
 
         {tag ? (
-          <Section>
-            <Button role="destructive" label={t('tags.deleteTag')} onPress={() => void confirmDelete()} />
-          </Section>
+          <FormSection>
+            <FormActionRow label={t('tags.deleteTag')} icon="trash" destructive onPress={() => void confirmDelete()} />
+          </FormSection>
         ) : null}
       </NativeForm>
     </>
   );
 }
-
-const useStyles = makeStyles(() => ({
-  preview: { alignItems: 'flex-start', paddingTop: space.sm, paddingBottom: space.xs },
-}));

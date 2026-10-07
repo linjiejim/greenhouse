@@ -1,7 +1,9 @@
 /**
  * StationsForm — the body of the stations screen (saved Greenhouse servers),
  * shared by the login screen's sheet (/sheets/stations) and the pushed
- * Settings page (/settings/stations). A real SwiftUI Form:
+ * Settings page (/settings/stations). The behaviour is the shared
+ * ./use-stations-form.ts; this is the iOS view (Android:
+ * ./stations-form.android.tsx). A real SwiftUI Form:
  *
  *  - one row per station (name + origin, ✓ on the active one); tap switches,
  *    swipe left or touch-and-hold for 移除 (system swipe actions / context
@@ -46,13 +48,11 @@ import {
   textInputAutocapitalization,
   tint,
 } from '@expo/ui/swift-ui/modifiers';
-import { IS_SINGLE_STATION } from '../config';
-import { normalizeBaseUrl, probeStation, useStations, type StationRecord } from '../store/stations';
-import { AFTER_DISMISS_MS, useAuth } from '../store/auth';
+import type { StationRecord } from '../store/stations';
 import { useT } from '../lib/i18n';
 import { useTheme } from '../theme';
-import { alertError, confirmAction } from '../ui/dialogs';
 import { FormCheckRow, NativeForm } from '../ui/native-form';
+import { useStationsForm } from './use-stations-form';
 
 export function StationsForm({ onDone, onLeave }: {
   /** Nothing changed (the active station was tapped) — just close / go back. */
@@ -61,10 +61,7 @@ export function StationsForm({ onDone, onLeave }: {
   onLeave: () => void;
 }) {
   const t = useT();
-  const stations = useStations((s) => s.stations);
-  const activeId = useStations((s) => s.activeId);
-  const locked = IS_SINGLE_STATION;
-  const active = stations.find((s) => s.id === activeId) ?? null;
+  const { stations, activeId, active, locked, busy, select, remove, add: addStation } = useStationsForm({ onDone, onLeave });
 
   // The native fields own the text (`url` mirrors it to enable 添加); onTextChange
   // is async, so submitting reads the native values.
@@ -72,66 +69,10 @@ export function StationsForm({ onDone, onLeave }: {
   const nameState = useNativeState('');
   const nameRef = useRef<TextFieldRef>(null);
   const [url, setUrl] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  /** Dismiss, then mutate the registry and re-bootstrap auth for the new active station. */
-  const leaveThen = useCallback(
-    (mutate: () => Promise<unknown>) => {
-      onLeave();
-      setTimeout(() => {
-        void mutate().then(() => useAuth.getState().bootstrap());
-      }, AFTER_DISMISS_MS);
-    },
-    [onLeave],
+  const add = useCallback(
+    () => addStation(urlState.get() ?? url, nameState.get() ?? ''),
+    [addStation, urlState, nameState, url],
   );
-
-  const select = useCallback(
-    (station: StationRecord) => {
-      if (station.id === activeId) onDone();
-      else leaveThen(() => useStations.getState().switchTo(station.id));
-    },
-    [activeId, onDone, leaveThen],
-  );
-
-  const remove = useCallback(
-    async (station: StationRecord) => {
-      const ok = await confirmAction({
-        title: t('station.deleteTitle'),
-        message: t('station.deleteHint', { name: station.name }),
-        confirmLabel: t('station.delete'),
-        destructive: true,
-      });
-      if (!ok) return;
-      // Removing the active station changes where the app points — leave first.
-      if (station.id === activeId) leaveThen(() => useStations.getState().remove(station.id));
-      else void useStations.getState().remove(station.id);
-    },
-    [activeId, leaveThen, t],
-  );
-
-  const add = useCallback(async () => {
-    if (busy) return;
-    const baseUrl = normalizeBaseUrl(urlState.get() ?? url);
-    if (!baseUrl) {
-      alertError(t('station.addFailed'), t('station.invalidUrl'));
-      return;
-    }
-    setBusy(true);
-    const probe = await probeStation(baseUrl);
-    setBusy(false);
-    if (!probe.ok) {
-      alertError(t('station.addFailed'), t('station.unreachable'));
-      return;
-    }
-    if (probe.authEnabled === false) {
-      alertError(t('station.addFailed'), t('station.authDisabled'));
-      return;
-    }
-    // A duplicate origin just switches to the saved entry (store rule). With
-    // no name typed, the server's own product name beats the bare host.
-    const label = (nameState.get() ?? '').trim() || probe.productName;
-    leaveThen(() => useStations.getState().add(baseUrl, label || undefined));
-  }, [busy, url, urlState, nameState, t, leaveThen]);
 
   const canAdd = !busy && !!url.trim();
 

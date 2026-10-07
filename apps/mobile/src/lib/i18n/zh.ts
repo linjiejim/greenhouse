@@ -2,6 +2,7 @@ import type { Catalog } from './en';
 
 export const zh: Catalog = {
   common: {
+    loading: '加载中…',
     cancel: '取消',
     ok: '好',
     done: '完成',
@@ -34,6 +35,7 @@ export const zh: Catalog = {
   station: {
     title: '工作站',
     hint: '本应用可连接的自部署 Greenhouse 服务器，点按即可切换——每个工作站的登录状态相互独立。',
+    hintAndroid: '本应用可连接的自部署 Greenhouse 服务器，点按即可切换——每个工作站的登录状态相互独立。长按可移除。',
     lockedHint: '此版本已固定连接到 {name}，无法在此更换服务器。',
     empty: '还没有工作站',
     addFirst: '添加你的服务器…',
@@ -41,6 +43,7 @@ export const zh: Catalog = {
     addAction: '添加',
     checking: '连接中…',
     urlPlaceholder: 'https://greenhouse.example.com',
+    urlLabel: '服务器地址',
     invalidUrl: '请输入有效的服务器地址',
     unreachable: '无法在该地址访问到 Greenhouse API',
     authDisabled: '该服务器未开启认证（开发模式），暂不支持连接',
@@ -464,6 +467,8 @@ export const zh: Catalog = {
     assignFailed: '更新会话标签失败',
     readOnly: '这是共享给你的会话，只有创建者可以修改标签。',
     manageHint: '左滑或按住标签可编辑、删除。',
+    manageHintAndroid: '点按标签编辑，长按删除。',
+    assignHintAndroid: '点按标签添加或移除，长按编辑。',
     loadFailed: '无法加载标签',
     noneOnSession: '这个会话没有标签',
     createdNotAttached: '标签已创建，但没有添加到这个会话',
