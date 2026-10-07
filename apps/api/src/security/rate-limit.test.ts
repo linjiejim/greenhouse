@@ -55,8 +55,8 @@ describe('password-link IP rate limit', () => {
 });
 
 describe('session reads under /api/auth', () => {
-  const hit = (app: Hono, path: string, sourceIp: string, method = 'GET') =>
-    app.request(path, { method, headers: { 'x-forwarded-for': sourceIp } }).then((r) => r.status);
+  const hit = async (app: Hono, path: string, sourceIp: string, method = 'GET') =>
+    (await app.request(path, { method, headers: { 'x-forwarded-for': sourceIp } })).status;
 
   it('never throttles /me and its siblings with the login budget (every page load asks)', async () => {
     const app = new Hono()
