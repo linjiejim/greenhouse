@@ -12,6 +12,7 @@
  * | `chat:run completed / error`  | busy mark cleared; a known Bots conversation → list reload |
  * | `bots:conversation`           | list reload                                            |
  * | `bots:attention {pending}`    | the count at once + pending list reload                |
+ * | poll (socket down, foreground) | conversations + pending + busy seed                    |
  * List / pending reloads are debounced (400 ms): a burst of pushes is one read.
  *
  * Report arrivals (the capsule's "Fern handed back '…'"): a background task's
@@ -24,8 +25,13 @@
  * arrival. A server that sends `last_message.event_kind` (optional server
  * change S2) answers "not a report" without any request.
  *
- * Polling fallback (socket down ≥ 10 s, foreground): lists every 30 s, so the
- * badge and the capsule still move without a socket.
+ * A row skipped only because it had a busy mark is remembered and looked at on
+ * the next list after the mark goes (a stale mark — its run's end was missed —
+ * must not swallow a report that landed meanwhile).
+ *
+ * Polling fallback (socket down ≥ 10 s, foreground): lists and the busy seed
+ * every 30 s, so the badge, the capsule and "Replying…" still move without a
+ * socket (a run's end pushed while it was down is never heard).
  *
  * Started by <RealtimeBridge/> (src/realtime/realtime-bridge.tsx) only while
  * Bots are available; everything injected for the root vitest (./sync.test.ts).
@@ -123,6 +129,8 @@ export function startBotsSync(deps: BotsSyncDeps): BotsSync {
 
   /** `sessionId \n created_at` of last messages already looked at (this store generation). */
   const checked = new Set<string>();
+  /** Rows that changed while they had a busy mark: looked at once the mark goes, changed again or not. */
+  const skippedBusy = new Set<string>();
   const queue: Array<{ sessionId: string; generation: number }> = [];
   let inFlight = false;
 
@@ -131,13 +139,25 @@ export function startBotsSync(deps: BotsSyncDeps): BotsSync {
     const before = new Map(previous.map((row) => [row.session_id, row]));
     for (const row of next) {
       const last = row.last_message;
-      if (!last || row.session_id === state.visibleThread) continue;
+      if (row.session_id === state.visibleThread) {
+        // On screen: whatever landed is seen there.
+        skippedBusy.delete(row.session_id);
+        continue;
+      }
+      if (!last) continue;
       const old = before.get(row.session_id);
       const changed =
         !old ||
         (row.attention === 'unread' && old.attention !== 'unread') ||
-        old.last_message?.created_at !== last.created_at;
-      if (!changed || state.running[row.session_id] !== undefined || last.role === 'user') continue;
+        old.last_message?.created_at !== last.created_at ||
+        skippedBusy.has(row.session_id);
+      if (!changed) continue;
+      if (state.running[row.session_id] !== undefined) {
+        skippedBusy.add(row.session_id);
+        continue;
+      }
+      skippedBusy.delete(row.session_id);
+      if (last.role === 'user') continue;
       const key = `${row.session_id}\n${last.created_at}`;
       if (checked.has(key)) continue;
       checked.add(key);
@@ -182,6 +202,7 @@ export function startBotsSync(deps: BotsSyncDeps): BotsSync {
     if (state.generation !== previous.generation) {
       // Another account / station: nothing from before applies.
       checked.clear();
+      skippedBusy.clear();
       queue.length = 0;
       return;
     }
@@ -199,6 +220,8 @@ export function startBotsSync(deps: BotsSyncDeps): BotsSync {
       const state = store.getState();
       void state.loadConversations();
       void state.loadPending();
+      // No socket, no `chat:run` pushes: the busy marks come from the seed alone.
+      void state.seedRuns();
     },
   });
 
@@ -218,6 +241,7 @@ export function startBotsSync(deps: BotsSyncDeps): BotsSync {
       unsubscribeEvents();
       unsubscribeStore();
       queue.length = 0;
+      skippedBusy.clear();
     },
   };
 }

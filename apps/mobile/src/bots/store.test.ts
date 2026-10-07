@@ -421,6 +421,32 @@ describe('loads', () => {
     await store.get().seedRuns();
     expect(store.get().running).toEqual({ s1: 'r1' });
   });
+
+  it('a seed answer never undoes a busy mark that changed while it was out', async () => {
+    type Runs = Array<{ session_id: string; run_id: string; started_at: number; next_seq: number }>;
+    const answer = deferred<Runs | null>();
+    const store = makeStore({ listChatRuns: vi.fn(() => answer.promise) });
+    store.get().setRunning('s1', 'r1');
+    store.get().setRunning('s_stale', 'r0');
+    const seeding = store.get().seedRuns();
+    // Meanwhile: r1's completed push, and a new run announced in s2.
+    store.get().setRunning('s1', null);
+    store.get().setRunning('s2', 'r2');
+    answer.resolve([
+      { session_id: 's1', run_id: 'r1', started_at: 1, next_seq: 0 },
+      { session_id: 's3', run_id: 'r3', started_at: 1, next_seq: 0 },
+    ]);
+    await seeding;
+    expect(store.get().running).toEqual({ s2: 'r2', s3: 'r3' });
+
+    // The next seed (nothing changed while it was out) is the truth again.
+    const next = deferred<Runs | null>();
+    store.api.listChatRuns = vi.fn(() => next.promise);
+    const again = store.get().seedRuns();
+    next.resolve([]);
+    await again;
+    expect(store.get().running).toEqual({});
+  });
 });
 
 describe('ensureSprouty', () => {

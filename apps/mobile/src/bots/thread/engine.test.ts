@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { BotsPost, RunStreamEvent } from '../../api/chat';
+import type { BotsPost, ChatRunProbe, RunStreamEvent } from '../../api/chat';
 import type { BotMessage, BotRequestView } from '../../shared/bots';
 import type { RealtimeStatus, ThreadEffect } from '../contract';
 import type { BotsStoreDeps } from '../store-core';
@@ -51,6 +51,10 @@ const text = (value: string, extra: Partial<RunStreamEvent> = {}) =>
   ({ type: 'text-delta', text: value, ...extra }) as RunStreamEvent;
 const FINISH = { type: 'finish' } as RunStreamEvent;
 const userRow = (seq: number, content: string) => message(seq, { id: `u${seq}`, role: 'user', bot_id: null, content });
+const rows = (from: number, count: number) => Array.from({ length: count }, (_, i) => message(from + i));
+const seqs = (messages: readonly BotMessage[]) => messages.map((m) => m.seq);
+const runStarts = (effects: ThreadEffect[], runKey: string) =>
+  effects.filter((e) => e.type === 'run-started' && e.runKey === runKey);
 
 async function setup(
   o: {
@@ -59,6 +63,7 @@ async function setup(
     visible?: boolean;
     storeApi?: Partial<BotsStoreDeps['api']>;
     prepare?: (fake: FakeThreadApi) => void;
+    cache?: ThreadCache;
   } = {},
 ) {
   const time = new FakeClock();
@@ -70,7 +75,7 @@ async function setup(
   const engine = new ThreadEngine(
     SID,
     { api: fake.api, realtime: rt, store, clock: time.clock },
-    { cache: new ThreadCache() },
+    { cache: o.cache ?? new ThreadCache() },
   );
   const effects: ThreadEffect[] = [];
   engine.onEffect((e) => effects.push(e));
@@ -386,7 +391,7 @@ describe('one reader at a time', () => {
 });
 
 describe('resuming', () => {
-  it('same run: resumes after the last seq; gives up after 5 attempts and reloads', async () => {
+  it('same run: resumes after the last seq; after 5 failed re-attaches in a row it lets go and reloads — the busy mark stays while the run goes on', async () => {
     const t = await setup();
     t.fake.probe = live('r1');
     const { stream } = await startRun(t);
@@ -401,6 +406,9 @@ describe('resuming', () => {
     expect(t.snap().run).toBeNull();
     expect(t.reloads()).toBeGreaterThan(reloads);
     expect(t.snap().runError).toBeNull();
+    // The last look found it still running: "Working…" and Stop stay; a push, resync or poll picks it up.
+    expect(t.store.getState().running[SID]).toBe('r1');
+    expect(t.snap().runActive).toBe(true);
   });
 
   it('another run in the slot: the old one settles, the new one is read from its start', async () => {
@@ -882,5 +890,331 @@ describe('paging & lifecycle', () => {
     expect(t.store.getState().visibleThread).toBeNull();
     expect(t.fake.calls.stop).toBe(0);
     expect(t.engine.getSnapshot().run?.segments[0].text).toBe('');
+  });
+});
+
+describe('the newest page after a long absence', () => {
+  it('more than a page landed since the last load: the newest page replaces what is loaded — no hole', async () => {
+    const t = await setup({ messages: rows(0, 40) });
+    expect(t.snap().hasMore).toBe(false);
+    // 150 rows land while the app is in the background (a busy group, another device).
+    t.engine.setForeground(false);
+    t.fake.server.messages.push(...rows(40, 150));
+    t.engine.setForeground(true);
+    await t.time.advance(0);
+    expect(seqs(t.snap().messages)).toEqual(seqs(rows(130, 60)));
+    expect(t.snap().hasMore).toBe(true);
+    // Paging up fills in from there, without a gap.
+    await t.engine.loadEarlier();
+    expect(seqs(t.snap().messages)).toEqual(seqs(rows(70, 120)));
+  });
+
+  it('reopened from the cache after a long absence: the hole is neither shown nor cached', async () => {
+    const cache = new ThreadCache();
+    const first = await setup({ messages: rows(0, 40), cache });
+    first.engine.dispose();
+    const second = await setup({ cache, prepare: (fake) => (fake.server.messages = rows(0, 190)) });
+    expect(seqs(second.snap().messages)).toEqual(seqs(rows(130, 60)));
+    expect(second.snap().hasMore).toBe(true);
+    expect(seqs(cache.get(SID, 0)?.messages ?? [])).toEqual(seqs(rows(130, 60)));
+  });
+
+  it('an earlier page that lands after such a reset is dropped (it would sit below a hole)', async () => {
+    const t = await setup({ messages: rows(0, 130) });
+    expect(seqs(t.snap().messages)).toEqual(seqs(rows(70, 60)));
+    const gate = deferred<void>();
+    t.fake.conversationGate = gate.promise;
+    t.fake.server.messages.push(...rows(130, 150));
+    const reloading = t.engine.reload();
+    const paging = t.engine.loadEarlier();
+    t.fake.conversationGate = null;
+    gate.resolve();
+    await Promise.all([reloading, paging]);
+    expect(seqs(t.snap().messages)).toEqual(seqs(rows(220, 60)));
+    expect(t.snap().earlier).toBe('idle');
+    await t.engine.loadEarlier();
+    expect(seqs(t.snap().messages)).toEqual(seqs(rows(160, 120)));
+  });
+
+  it('a newest page that meets what is loaded is merged (the history scrolled to is kept)', async () => {
+    const t = await setup({ messages: rows(0, 40) });
+    t.fake.server.messages.push(...rows(40, 60));
+    await t.engine.reload();
+    expect(seqs(t.snap().messages)).toEqual(seqs(rows(0, 100)));
+  });
+});
+
+describe('retrying while a run is going', () => {
+  it('a lost 202: the message may wait in the run’s inbox — Try Again does not send it again', async () => {
+    const t = await setup();
+    t.fake.posts.push({ kind: 'error', status: 0, code: null, message: '' });
+    await t.engine.send({ text: 'also this', images: [], mentions: [] });
+    await t.time.advance(0);
+    const [failed] = t.snap().pending;
+
+    t.fake.probe = live('r1');
+    const run = new FakeStream([turnStart('bot_a', 'user', { seq: 0, replayed: true })]);
+    t.fake.attaches.push(run);
+    expect(await t.engine.retry(failed.clientId)).toEqual({ ok: true, startedRun: false });
+    await t.time.advance(0);
+    expect(t.fake.calls.open).toHaveLength(1);
+    expect(t.fake.calls.attach).toEqual([-1]);
+    expect(t.snap().pending).toEqual([
+      expect.objectContaining({ clientId: failed.clientId, status: 'queued', failed: false }),
+    ]);
+
+    // The next turn boundary drains the inbox: the copy is persisted and the bubble settles.
+    t.fake.server.messages.push(userRow(1, 'also this'));
+    t.fake.probe = { active: false };
+    run.push(turnEnd('bot_a', 'm9', { seq: 1 }), turnStart('bot_a', 'interjection', { seq: 2 }), FINISH).end();
+    await t.time.advance(1_000);
+    expect(t.snap().pending).toEqual([]);
+    expect(t.fake.calls.open).toHaveLength(1);
+  });
+
+  it('the run ends and the message is still not there: Try Again comes back, and then it is sent', async () => {
+    const t = await setup();
+    t.fake.posts.push({ kind: 'error', status: 0, code: null, message: '' });
+    await t.engine.send({ text: 'ping', images: [], mentions: [] });
+    await t.time.advance(0);
+    const [failed] = t.snap().pending;
+    t.fake.probe = live('r1');
+    const run = new FakeStream([turnStart('bot_a', 'user', { seq: 0, replayed: true })]);
+    t.fake.attaches.push(run);
+    await t.engine.retry(failed.clientId);
+    await t.time.advance(0);
+
+    t.fake.probe = { active: false };
+    run.push(FINISH).end();
+    await t.time.advance(1_000);
+    expect(t.snap().pending).toEqual([
+      expect.objectContaining({ clientId: failed.clientId, status: 'sending', failed: true }),
+    ]);
+
+    t.fake.posts.push({ kind: 'queued' });
+    expect(await t.engine.retry(failed.clientId)).toEqual({ ok: true, startedRun: false });
+    expect(t.fake.calls.open).toHaveLength(2);
+  });
+
+  it('a retry that cannot ask whether a run is going sends nothing', async () => {
+    const t = await setup();
+    t.fake.posts.push({ kind: 'error', status: 0, code: null, message: '' });
+    await t.engine.send({ text: 'ping', images: [], mentions: [] });
+    await t.time.advance(0);
+    const [failed] = t.snap().pending;
+    t.fake.probe = null;
+    expect(await t.engine.retry(failed.clientId)).toEqual({ ok: false, kind: 'not_delivered' });
+    expect(t.fake.calls.open).toHaveLength(1);
+    expect(t.snap().pending).toEqual([expect.objectContaining({ failed: true })]);
+  });
+});
+
+describe('run identity across readers', () => {
+  it('the old reader’s resume finds the run a waiting POST owns: it lets go, the run is read once', async () => {
+    const t = await setup();
+    t.fake.probe = live('r1');
+    const { stream } = await startRun(t, 'one');
+    stream.push(turnStart('bot_a', 'user', { seq: 0 }), text('First', { seq: 1 }), turnEnd('bot_a', 'm2', { seq: 2 }));
+    await t.time.advance(100);
+    // r1's tail is lost with the transport; r1 finishes server-side.
+    stream.fail();
+    await t.time.advance(0);
+
+    // The member's next send claims r2 (announced while the POST is out): its 200 waits behind the old reader.
+    const post = deferred<BotsPost>();
+    t.fake.posts.push(post.promise);
+    const sending = t.engine.send({ text: 'two', images: [], mentions: [] });
+    await t.time.advance(0);
+    t.rt.emit({ type: 'chat:run', sessionId: SID, runId: 'r2', status: 'running' });
+    const second = new FakeStream([
+      turnStart('bot_b', 'user', { seq: 0 }),
+      text('Second', { seq: 1 }),
+      turnEnd('bot_b', 'm4', { seq: 2 }),
+      FINISH,
+    ]).end();
+    post.resolve({ kind: 'stream', events: second.events });
+    await sending;
+
+    // The old reader's resume probe now finds r2 in the slot.
+    t.fake.probe = live('r2');
+    t.fake.attaches.push(new FakeStream([turnStart('bot_b', 'user', { seq: 0, replayed: true }), FINISH]).end());
+    t.fake.server.messages.push(
+      userRow(1, 'one'),
+      message(2, { content: 'First' }),
+      userRow(3, 'two'),
+      message(4, { bot_id: 'bot_b', content: 'Second' }),
+    );
+    await t.time.advance(5_000);
+
+    expect(t.fake.calls.attach).toEqual([]);
+    expect(runStarts(t.effects, `${SID}:r2`)).toHaveLength(1);
+    expect(t.effects.filter((e) => e.type === 'segment-start' && e.botId === 'bot_b')).toEqual([
+      { type: 'segment-start', botId: 'bot_b', replayed: false },
+    ]);
+    expect(t.snap().run).toBeNull();
+    expect(t.snap().pending).toEqual([]);
+  });
+
+  it('a POST that learns its run only after the old reader switched onto it never reads it again', async () => {
+    const t = await setup();
+    t.fake.probe = live('r1');
+    const { stream } = await startRun(t, 'one');
+    stream.push(turnStart('bot_a', 'user', { seq: 0 }), text('First', { seq: 1 }));
+    await t.time.advance(100);
+    // The member sends; no push reaches this device (nothing latched).
+    const post = deferred<BotsPost>();
+    t.fake.posts.push(post.promise);
+    const sending = t.engine.send({ text: 'two', images: [], mentions: [] });
+    await t.time.advance(0);
+    // r1's transport drops; the resume finds r2 and reads it from its start.
+    t.fake.probe = live('r2');
+    const replay = new FakeStream([turnStart('bot_b', 'user', { seq: 0, replayed: true })]);
+    t.fake.attaches.push(replay);
+    stream.fail();
+    await t.time.advance(1_000);
+    expect(t.fake.calls.attach).toEqual([-1]);
+
+    // The POST answers 200 with no run id; its probe names r2 — already being read here.
+    const second = new FakeStream([turnStart('bot_b', 'user', { seq: 0 }), text('Second', { seq: 1 })]);
+    post.resolve({ kind: 'stream', events: second.events });
+    await sending;
+    await t.time.advance(100);
+    replay.push(text('Second', { seq: 1 }), turnEnd('bot_b', 'm4', { seq: 2 }), FINISH).end();
+    await t.time.advance(1_000);
+
+    expect(second.opened).toBe(false);
+    expect(runStarts(t.effects, `${SID}:r2`)).toHaveLength(1);
+  });
+
+  it('a POST whose run was already read to its end here is not read again', async () => {
+    const t = await setup();
+    t.fake.probe = live('r1');
+    const { stream } = await startRun(t, 'one');
+    stream.push(turnStart('bot_a', 'user', { seq: 0 }));
+    await t.time.advance(100);
+    const post = deferred<BotsPost>();
+    t.fake.posts.push(post.promise);
+    const sending = t.engine.send({ text: 'two', images: [], mentions: [] });
+    await t.time.advance(0);
+    t.fake.probe = live('r2');
+    const replay = new FakeStream([turnStart('bot_b', 'user', { seq: 0, replayed: true })]);
+    t.fake.attaches.push(replay);
+    stream.fail();
+    await t.time.advance(1_000);
+    // r2 is announced only now (latched by the POST still out), and read to its end by the old reader.
+    t.rt.emit({ type: 'chat:run', sessionId: SID, runId: 'r2', status: 'running' });
+    replay.push(turnEnd('bot_b', 'm4', { seq: 1 }), FINISH).end();
+    await t.time.advance(1_000);
+    expect(runStarts(t.effects, `${SID}:r2`)).toHaveLength(1);
+
+    const second = new FakeStream([turnStart('bot_b', 'user', { seq: 0 }), turnEnd('bot_b', 'm4', { seq: 1 }), FINISH]);
+    post.resolve({ kind: 'stream', events: second.events });
+    await sending;
+    await t.time.advance(1_000);
+    expect(second.opened).toBe(false);
+    expect(runStarts(t.effects, `${SID}:r2`)).toHaveLength(1);
+  });
+});
+
+describe('resuming a long run', () => {
+  it('drops spread over a long run never use up the resumes: a source that delivered anything starts the count again', async () => {
+    const t = await setup();
+    t.fake.probe = live('r1');
+    const { stream } = await startRun(t);
+    stream.push(turnStart('bot_a', 'user', { seq: 0 }));
+    await t.time.advance(100);
+    const drops = MAX_RESUMES + 2;
+    for (let i = 1; i <= drops; i += 1) t.fake.attaches.push(new FakeStream([text(`${i} `, { seq: i })]).fail());
+    t.fake.attaches.push(new FakeStream());
+    stream.fail();
+    await t.time.advance(30_000);
+    expect(t.fake.calls.attach).toHaveLength(drops + 1);
+    expect(t.snap().run?.segments[0].text).toBe('1 2 3 4 5 6 7 ');
+    expect(t.store.getState().running[SID]).toBe('r1');
+    expect(t.snap().runActive).toBe(true);
+  });
+
+  it('back from the background again and again: the forced re-attaches are no failures', async () => {
+    const t = await setup();
+    t.fake.probe = live('r1');
+    const { stream } = await startRun(t);
+    stream.push(turnStart('bot_a', 'user', { seq: 0 }));
+    await t.time.advance(0);
+    const returns = 2 * (MAX_RESUMES + 1);
+    for (let i = 0; i < returns; i += 1) {
+      t.fake.attaches.push(new FakeStream());
+      t.engine.setForeground(false);
+      await t.time.advance(STALE_MS + 1);
+      t.engine.setForeground(true);
+      await t.time.advance(100);
+    }
+    expect(t.fake.calls.attach).toHaveLength(returns);
+    expect(t.snap().run).not.toBeNull();
+    expect(t.store.getState().running[SID]).toBe('r1');
+  });
+
+  it('5 failed re-attaches in a row and the last look finds the run over: the busy mark goes', async () => {
+    const t = await setup();
+    t.fake.probe = live('r1');
+    const { stream } = await startRun(t);
+    stream.push(turnStart('bot_a', 'user', { seq: 0 }), text('partial', { seq: 1 }));
+    await t.time.advance(100);
+    for (let i = 0; i < MAX_RESUMES; i += 1) {
+      t.fake.probes.push(live('r1'));
+      t.fake.attaches.push(new FakeStream().fail());
+    }
+    t.fake.probe = { active: false, run: { run_id: 'r1', status: 'completed', started_at: 0, next_seq: 9 } };
+    stream.fail();
+    await t.time.advance(20_000);
+    expect(t.fake.calls.attach).toEqual([1, 1, 1, 1, 1]);
+    expect(t.store.getState().running[SID]).toBeUndefined();
+    expect(t.snap().runActive).toBe(false);
+  });
+});
+
+describe('stale probe answers', () => {
+  it('a running push that overtakes an in-flight probe’s stale "idle": the mark stays, the new run is attached', async () => {
+    const t = await setup();
+    const stale = deferred<ChatRunProbe | null>();
+    t.fake.probes.push(stale.promise);
+    t.rt.emit({ type: 'resync' });
+    await t.time.advance(0);
+    // r2 is claimed and announced before that probe's answer arrives.
+    t.store.getState().setRunning(SID, 'r2');
+    t.rt.emit({ type: 'chat:run', sessionId: SID, runId: 'r2', status: 'running' });
+    t.fake.probe = live('r2');
+    t.fake.attaches.push(new FakeStream([turnStart('bot_a', 'user', { seq: 0, replayed: true })]));
+    stale.resolve({ active: false });
+    await t.time.advance(100);
+    expect(t.store.getState().running[SID]).toBe('r2');
+    expect(t.fake.calls.attach).toEqual([-1]);
+    expect(runStarts(t.effects, `${SID}:r2`)).toHaveLength(1);
+    expect(t.snap().runActive).toBe(true);
+  });
+
+  it('the opening probe’s stale "idle" never clears a run announced after it was asked', async () => {
+    const stale = deferred<ChatRunProbe | null>();
+    const t = await setup({ prepare: (fake) => fake.probes.push(stale.promise) });
+    t.store.getState().setRunning(SID, 'r2');
+    t.fake.probe = live('r2');
+    t.fake.attaches.push(new FakeStream([turnStart('bot_a', 'user', { seq: 0, replayed: true })]));
+    stale.resolve({ active: false });
+    await t.time.advance(100);
+    expect(t.store.getState().running[SID]).toBe('r2');
+    expect(t.fake.calls.attach).toEqual([-1]);
+  });
+
+  it('a polling probe’s stale "idle" never clears a newer mark either', async () => {
+    const t = await setup({ status: 'backoff' });
+    const stale = deferred<ChatRunProbe | null>();
+    t.fake.probes.push(stale.promise);
+    await t.time.advance(POLL_GRACE_MS);
+    t.store.getState().setRunning(SID, 'r2');
+    t.fake.probe = live('r2');
+    t.fake.attaches.push(new FakeStream([turnStart('bot_a', 'user', { seq: 0, replayed: true })]));
+    stale.resolve({ active: false });
+    await t.time.advance(100);
+    expect(t.store.getState().running[SID]).toBe('r2');
+    expect(t.fake.calls.attach).toEqual([-1]);
   });
 });
