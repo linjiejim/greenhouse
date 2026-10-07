@@ -721,6 +721,28 @@ describe('cards', () => {
     expect(t.fake.calls.attach).toEqual([-1]);
   });
 
+  it('a card of this thread decided in a sheet (the store) → the same one probe', async () => {
+    const card = request('brq_3', { session_id: SID });
+    const other = request('brq_4', { session_id: 'elsewhere' });
+    const t = await setup({
+      storeApi: {
+        decideRequest: async (id: string) => ({
+          ok: true as const,
+          value: { ...(id === card.id ? card : other), status: 'resolved' as const },
+        }),
+      },
+    });
+    const probes = t.fake.calls.probe;
+    await t.store.getState().decide(other, { decision: 'approve' });
+    await t.time.advance(DECIDE_PROBE_MS);
+    expect(t.fake.calls.probe).toBe(probes);
+
+    await t.store.getState().decide(card, { decision: 'approve' });
+    await t.store.getState().decide(card, { decision: 'approve' });
+    await t.time.advance(DECIDE_PROBE_MS);
+    expect(t.fake.calls.probe).toBe(probes + 1);
+  });
+
   it('settled elsewhere (stale) → re-read quietly', async () => {
     const card: BotRequestView = request('brq_2', { session_id: SID });
     const t = await setup({
