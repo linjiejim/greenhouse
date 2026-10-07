@@ -1,0 +1,166 @@
+# The Bot computer's bottom panel (tint2 17; gh-computer runs `tint2 -c` on
+# exactly this file, so a stale copy in the profile volume can never win).
+#
+#   [+]  new browser window — gh-window new, via the running browser
+#   [tasks]  one button per window with its title; a click brings it back
+#   [clock]  the member's time zone (TZ per container)
+#
+# Why it exists: openbox draws no decorations, so a browser window minimised
+# with Chromium's own button used to leave a bare desktop and nothing to click.
+# Task buttons only ever activate: no click or wheel on the panel iconifies or
+# closes a window, and clicks on the panel never reach openbox (wm_menu = 0).
+
+#-------------------------------------
+# Backgrounds (referenced by position, from 1)
+
+# 1: panel
+rounded = 0
+border_width = 1
+border_sides = T
+background_color = #1d2b24 100
+border_color = #2f4238 100
+background_color_hover = #1d2b24 100
+border_color_hover = #2f4238 100
+background_color_pressed = #1d2b24 100
+border_color_pressed = #2f4238 100
+
+# 2: task
+rounded = 4
+border_width = 0
+border_sides = TBLR
+background_color = #ffffff 7
+border_color = #ffffff 0
+background_color_hover = #ffffff 16
+border_color_hover = #ffffff 0
+background_color_pressed = #ffffff 24
+border_color_pressed = #ffffff 0
+
+# 3: active task
+rounded = 4
+border_width = 0
+border_sides = TBLR
+background_color = #2f7d6d 100
+border_color = #2f7d6d 0
+background_color_hover = #378f7d 100
+border_color_hover = #378f7d 0
+background_color_pressed = #2a6f61 100
+border_color_pressed = #2a6f61 0
+
+# 4: iconified task
+rounded = 4
+border_width = 1
+border_sides = TBLR
+background_color = #ffffff 0
+border_color = #9fb8ab 45
+background_color_hover = #ffffff 12
+border_color_hover = #9fb8ab 60
+background_color_pressed = #ffffff 20
+border_color_pressed = #9fb8ab 60
+
+# 5: tooltip
+rounded = 3
+border_width = 1
+border_sides = TBLR
+background_color = #0f1713 100
+border_color = #2f4238 100
+background_color_hover = #0f1713 100
+border_color_hover = #2f4238 100
+background_color_pressed = #0f1713 100
+border_color_pressed = #2f4238 100
+
+#-------------------------------------
+# Panel
+panel_items = LTC
+panel_size = 100% 30
+panel_margin = 0 0
+panel_padding = 6 3 6
+panel_background_id = 1
+wm_menu = 0
+panel_dock = 0
+panel_position = bottom center horizontal
+panel_layer = top
+panel_monitor = all
+panel_shrink = 0
+autohide = 0
+strut_policy = follow_size
+panel_window_name = tint2
+disable_transparency = 1
+mouse_effects = 1
+font_shadow = 0
+mouse_hover_icon_asb = 100 0 10
+mouse_pressed_icon_asb = 100 0 0
+scale_relative_to_dpi = 0
+scale_relative_to_screen_height = 0
+
+#-------------------------------------
+# Taskbar
+taskbar_mode = single_desktop
+taskbar_hide_if_empty = 0
+taskbar_padding = 0 0 4
+taskbar_background_id = 0
+taskbar_active_background_id = 0
+taskbar_name = 0
+taskbar_hide_inactive_tasks = 0
+taskbar_hide_different_monitor = 0
+taskbar_hide_different_desktop = 0
+taskbar_always_show_all_desktop_tasks = 0
+taskbar_distribute_size = 0
+taskbar_sort_order = none
+task_align = left
+
+#-------------------------------------
+# Task
+task_text = 1
+task_icon = 1
+task_centered = 0
+urgent_nb_of_blink = 0
+task_maximum_size = 260 30
+task_padding = 6 2 6
+task_tooltip = 1
+task_thumbnail = 0
+task_font = Noto Sans CJK SC 9
+task_font_color = #ffffff 80
+task_active_font_color = #ffffff 100
+task_iconified_font_color = #ffffff 55
+task_background_id = 2
+task_active_background_id = 3
+task_urgent_background_id = 2
+task_iconified_background_id = 4
+mouse_left = toggle
+mouse_middle = none
+mouse_right = none
+mouse_scroll_up = none
+mouse_scroll_down = none
+
+#-------------------------------------
+# Launcher
+launcher_padding = 4 2 4
+launcher_background_id = 0
+launcher_icon_background_id = 0
+launcher_icon_size = 24
+launcher_icon_asb = 100 0 0
+launcher_icon_theme_override = 0
+startup_notifications = 0
+launcher_tooltip = 1
+launcher_item_app = /usr/local/share/applications/greenhouse-new-window.desktop
+
+#-------------------------------------
+# Clock
+# One line: a second (date) line does not fit a 30 px panel.
+time1_format = %m-%d %H:%M
+time1_font = Noto Sans CJK SC 9
+clock_font_color = #ffffff 85
+clock_padding = 6 0
+clock_background_id = 0
+clock_tooltip = %Y-%m-%d
+clock_lclick_command =
+clock_rclick_command =
+
+#-------------------------------------
+# Tooltip
+tooltip_show_timeout = 0.4
+tooltip_hide_timeout = 0.1
+tooltip_padding = 6 4
+tooltip_background_id = 5
+tooltip_font_color = #ffffff 100
+tooltip_font = Noto Sans CJK SC 9

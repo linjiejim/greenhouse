@@ -1,0 +1,521 @@
+#!/usr/bin/env python3
+"""Background jobs on the Bot computer, for uid `agent` (the Bots, and the member in the terminal).
+
+  gh-jobs start [--name NAME] [--cwd DIR] -- COMMAND…   → {"id","name","pid","started_at"}
+  gh-jobs list                                           → [{"id","name","command","cwd","status",
+                                                              "exit_code","started_at","ended_at",
+                                                              "log_bytes"}, …] newest first
+  gh-jobs log ID [--lines N]                             → the last N lines (default 200, max 2000)
+  gh-jobs stop ID                                        → {"id","stopped":true|false}
+  gh-jobs running                                        → how many jobs are running
+  gh-jobs sids                                           → session ids of running jobs, one per line
+
+Exit codes: 0 ok, 2 usage, 3 unknown job id, 1 anything else.
+
+A Bot's shell call ends after 120 s, so anything longer (a build, a download, a
+data run) runs as a job: detached in a session of its own, stdout+stderr in a
+log, its exit code recorded when it ends. COMMAND is one shell string run with
+`bash -lc` in DIR (default ~/work); several words after `--` are quoted back
+into one, so `gh-jobs start -- python3 -c 'print(1)'` runs what it says.
+
+State lives in ~/.local/state/gh-jobs/<id>/ on the home volume: meta.json
+{id,name,command,cwd,started_at,pid,sid}, log, ended (ISO time), exit (code).
+Each job has a small monitor — this script, as `gh-jobs _run` — that leads the
+job's session, waits for the command and writes `ended` and `exit`. Status:
+running while the monitor lives; exited once `exit` exists; lost when the
+monitor is gone without one (the computer restarted under it). The API reads
+all of this through apps/api/src/bots/computer/jobs.ts.
+
+Jobs outlive the shell call that started them: they leave its session, and the
+call's GH_EXEC_ID (the API's cleanup tag) is dropped from their environment.
+The take-over kill (gh-agent-kill) spares the sessions `sids` lists.
+"""
+
+import json
+import os
+import pwd
+import re
+import secrets
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+
+SCRIPT = os.path.realpath(__file__)
+ACCOUNT = pwd.getpwuid(os.getuid())
+# The passwd home, not $HOME: an exec without -e HOME inherits the image's
+# HOME=/home/browser, which this uid cannot write.
+HOME = ACCOUNT.pw_dir
+STATE = os.path.join(HOME, ".local", "state", "gh-jobs")
+JOB_ID = re.compile(r"j[0-9a-f]{8}")
+NAME_MAX = 60
+# Per-entry caps in `list`, so 50 jobs stay well inside what the API reads (256 KiB).
+LIST_TEXT_MAX = 1000
+LOG_LINES_DEFAULT = 200
+LOG_LINES_MAX = 2000
+# The API reads at most this much of a log tail.
+LOG_BYTES_MAX = 512 * 1024
+KEEP_DAYS = 7
+KEEP_MAX = 50
+STOP_GRACE_S = 3.0
+START_WAIT_S = 5.0
+
+EXIT_OK, EXIT_FAIL, EXIT_USAGE, EXIT_UNKNOWN = 0, 1, 2, 3
+
+
+class UsageError(Exception):
+    pass
+
+
+class UnknownJob(Exception):
+    pass
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def print_json(value) -> None:
+    sys.stdout.write(json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
+def clean_label(value: str) -> str:
+    return " ".join(re.sub(r"[\x00-\x1f\x7f]+", " ", value).split())
+
+
+def job_dir(job_id: str) -> str:
+    if not JOB_ID.fullmatch(job_id):
+        raise UnknownJob(job_id)
+    path = os.path.join(STATE, job_id)
+    if not os.path.isfile(os.path.join(path, "meta.json")):
+        raise UnknownJob(job_id)
+    return path
+
+
+def read_text(path: str):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            return handle.read().strip()
+    except OSError:
+        return None
+
+
+def read_meta(path: str):
+    try:
+        with open(os.path.join(path, "meta.json"), encoding="utf-8") as handle:
+            meta = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(meta, dict) or not JOB_ID.fullmatch(str(meta.get("id", ""))):
+        return None
+    return meta
+
+
+def write_atomic(path: str, text: str) -> None:
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    os.replace(tmp, path)
+
+
+def proc_args(pid: int) -> list:
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as handle:
+            return [part.decode("utf-8", "replace") for part in handle.read().split(b"\0")[:-1]]
+    except OSError:
+        return []
+
+
+def monitor_alive(meta: dict) -> bool:
+    """The job's monitor still runs — checked by identity, since pids are reused after a restart."""
+    sid = meta.get("sid")
+    if not isinstance(sid, int) or sid <= 1:
+        return False
+    return proc_args(sid)[1:4] == [SCRIPT, "_run", meta["id"]]
+
+
+def has_exit(path: str) -> bool:
+    return os.path.exists(os.path.join(path, "exit"))
+
+
+def session_members(sid: int) -> list:
+    """Pids in session `sid` (field 6 of /proc/<pid>/stat)."""
+    members = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/stat", "rb") as handle:
+                fields = handle.read().rsplit(b")", 1)[1].split()
+        except (OSError, IndexError):
+            continue
+        if len(fields) > 3 and int(fields[3]) == sid:
+            members.append(int(entry))
+    return members
+
+
+def describe(path: str, meta: dict) -> dict:
+    exit_text = read_text(os.path.join(path, "exit"))
+    exit_code = None
+    if exit_text is not None:
+        status = "exited"
+        try:
+            exit_code = int(exit_text)
+        except ValueError:
+            pass
+    elif monitor_alive(meta):
+        status = "running"
+    else:
+        status = "lost"
+    try:
+        log_bytes = os.path.getsize(os.path.join(path, "log"))
+    except OSError:
+        log_bytes = 0
+    ended = read_text(os.path.join(path, "ended")) if status == "exited" else None
+    return {
+        "id": meta["id"],
+        "name": str(meta.get("name") or meta["id"])[:NAME_MAX],
+        "command": str(meta.get("command") or "")[:LIST_TEXT_MAX],
+        "cwd": str(meta.get("cwd") or "")[:LIST_TEXT_MAX],
+        "status": status,
+        "exit_code": exit_code,
+        "started_at": str(meta.get("started_at") or ""),
+        "ended_at": ended or None,
+        "log_bytes": log_bytes,
+    }
+
+
+def all_jobs() -> list:
+    """(path, meta, view) of every readable job, newest first."""
+    try:
+        entries = os.listdir(STATE)
+    except FileNotFoundError:
+        return []
+    jobs = []
+    for entry in entries:
+        if not JOB_ID.fullmatch(entry):
+            continue
+        path = os.path.join(STATE, entry)
+        meta = read_meta(path)
+        if meta is None or meta["id"] != entry:
+            # Being created (the monitor writes meta.json within milliseconds),
+            # or a monitor that died before it could: cleared after a day.
+            try:
+                if os.path.getmtime(path) < time.time() - 86400:
+                    shutil.rmtree(path, ignore_errors=True)
+            except OSError:
+                pass
+            continue
+        jobs.append((path, meta, describe(path, meta)))
+    jobs.sort(key=lambda job: (job[2]["started_at"], job[2]["id"]), reverse=True)
+    return jobs
+
+
+def prune(jobs: list) -> list:
+    """Drop finished jobs older than KEEP_DAYS, then the oldest finished beyond KEEP_MAX."""
+    cutoff = time.time() - KEEP_DAYS * 86400
+    kept, finished = [], []
+    for job in jobs:
+        path, _, view = job
+        if view["status"] == "running":
+            kept.append(job)
+            continue
+        try:
+            age_ref = os.path.getmtime(os.path.join(path, "exit" if view["status"] == "exited" else "meta.json"))
+        except OSError:
+            age_ref = 0
+        if age_ref < cutoff:
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            finished.append(job)
+            kept.append(job)
+    excess = len(kept) - KEEP_MAX
+    for job in reversed(finished):  # oldest first
+        if excess <= 0:
+            break
+        shutil.rmtree(job[0], ignore_errors=True)
+        kept.remove(job)
+        excess -= 1
+    return kept
+
+
+# ── commands ──────────────────────────────────────────────────────────
+
+
+def cmd_start(args: list) -> int:
+    name, cwd, words = "", os.path.join(HOME, "work"), None
+    rest = list(args)
+    while rest:
+        arg = rest.pop(0)
+        if arg == "--":
+            words = rest
+            break
+        if arg in ("--name", "--cwd") and rest:
+            value = rest.pop(0)
+            if arg == "--name":
+                name = value
+            else:
+                cwd = value
+        else:
+            raise UsageError(f"unexpected argument: {arg}")
+    if not words:
+        raise UsageError("start needs a command after --")
+    command = words[0] if len(words) == 1 else " ".join(shlex.quote(word) for word in words)
+    if not command.strip():
+        raise UsageError("start needs a command after --")
+    if cwd == "~" or cwd.startswith("~/"):
+        cwd = HOME + cwd[1:]
+    cwd = os.path.abspath(cwd)
+    if cwd == os.path.join(HOME, "work"):
+        os.makedirs(cwd, exist_ok=True)
+    if not os.path.isdir(cwd):
+        raise UsageError(f"no such directory: {cwd}")
+    name = clean_label(name)[:NAME_MAX] or clean_label(command).split(" ")[0][:NAME_MAX] or "job"
+
+    os.makedirs(STATE, mode=0o700, exist_ok=True)
+    while True:
+        job_id = "j" + secrets.token_hex(4)
+        path = os.path.join(STATE, job_id)
+        try:
+            os.mkdir(path, 0o700)
+            break
+        except FileExistsError:
+            continue
+    env = {k: v for k, v in os.environ.items() if k != "GH_EXEC_ID"}
+    monitor = subprocess.Popen(
+        [sys.executable, SCRIPT, "_run", job_id, name, cwd, command],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+        start_new_session=True,
+        cwd=HOME,
+        env=env,
+    )
+    # The monitor writes meta.json once the command runs; report from it.
+    deadline = time.monotonic() + START_WAIT_S
+    while True:
+        meta = read_meta(path)
+        if meta is not None:
+            print_json({"id": job_id, "name": meta["name"], "pid": meta["pid"], "started_at": meta["started_at"]})
+            prune(all_jobs())
+            return EXIT_OK
+        if monitor.poll() is not None or time.monotonic() >= deadline:
+            print(f"gh-jobs: the job did not start (monitor exit {monitor.poll()})", file=sys.stderr)
+            return EXIT_FAIL
+        time.sleep(0.02)
+
+
+def cmd_run(args: list) -> int:
+    """The monitor (internal): session leader of the job; runs it, records how it ended."""
+    job_id, name, cwd, command = args
+    path = os.path.join(STATE, job_id)
+    # Survive signals aimed at the whole session (stop signals the job's
+    # processes, never this one) so the exit code is always recorded. A Python
+    # handler — unlike SIG_IGN — is reset to the default in the child at exec.
+    for signum in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        signal.signal(signum, lambda *_: None)
+    env = {k: v for k, v in os.environ.items() if k != "GH_EXEC_ID"}
+    env.update(HOME=HOME, USER=ACCOUNT.pw_name, LOGNAME=ACCOUNT.pw_name, GH_JOB_ID=job_id)
+    # The log is the only window into a running job, and Python block-buffers
+    # stdout into a file: a script's progress would show up only at its end.
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    log = os.open(os.path.join(path, "log"), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    started_at = now_iso()
+    try:
+        child = subprocess.Popen(
+            ["bash", "-lc", command],
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=log,
+            env=env,
+            close_fds=True,
+            # Its own process group inside our session: `stop` can signal the
+            # whole group (and the session) without touching this monitor.
+            process_group=0,
+        )
+    except OSError as err:
+        os.write(log, f"gh-jobs: cannot start: {err}\n".encode())
+        child = None
+    meta = {
+        "id": job_id,
+        "name": name,
+        "command": command,
+        "cwd": cwd,
+        "started_at": started_at,
+        "pid": child.pid if child else None,
+        "sid": os.getsid(0),
+    }
+    write_atomic(os.path.join(path, "meta.json"), json.dumps(meta, ensure_ascii=False) + "\n")
+    code = 127
+    if child is not None:
+        returncode = child.wait()
+        code = 128 - returncode if returncode < 0 else returncode
+    os.close(log)
+    write_atomic(os.path.join(path, "ended"), now_iso() + "\n")
+    write_atomic(os.path.join(path, "exit"), f"{code}\n")
+    return EXIT_OK
+
+
+def cmd_list(args: list) -> int:
+    if args:
+        raise UsageError("list takes no arguments")
+    print_json([view for _, _, view in prune(all_jobs())])
+    return EXIT_OK
+
+
+def cmd_log(args: list) -> int:
+    lines = LOG_LINES_DEFAULT
+    rest = list(args)
+    if not rest or rest[0].startswith("-"):
+        raise UsageError("log needs a job id")
+    job_id = rest.pop(0)
+    while rest:
+        arg = rest.pop(0)
+        if arg == "--lines" and rest:
+            try:
+                lines = int(rest.pop(0))
+            except ValueError:
+                raise UsageError("--lines takes a number")
+            if lines < 1:
+                raise UsageError("--lines must be at least 1")
+            lines = min(lines, LOG_LINES_MAX)
+        else:
+            raise UsageError(f"unexpected argument: {arg}")
+    path = job_dir(job_id)
+    sys.stdout.buffer.write(tail(os.path.join(path, "log"), lines))
+    sys.stdout.buffer.flush()
+    return EXIT_OK
+
+
+def tail(path: str, lines: int) -> bytes:
+    """The last `lines` lines, at most LOG_BYTES_MAX bytes (a line cut by that cap stays cut)."""
+    try:
+        handle = open(path, "rb")
+    except FileNotFoundError:
+        return b""
+    with handle:
+        position = handle.seek(0, os.SEEK_END)
+        start = max(0, position - LOG_BYTES_MAX)
+        data = b""
+        # Read backwards until the line before the wanted ones has ended too.
+        while position > start and data.count(b"\n") <= lines:
+            step = min(65536, position - start)
+            position -= step
+            handle.seek(position)
+            data = handle.read(step) + data
+    ends_with_newline = data.endswith(b"\n")
+    parts = (data[:-1] if ends_with_newline else data).split(b"\n")
+    if len(parts) > lines:
+        data = b"\n".join(parts[-lines:]) + (b"\n" if ends_with_newline else b"")
+    return data
+
+
+def cmd_stop(args: list) -> int:
+    if len(args) != 1:
+        raise UsageError("stop needs exactly one job id")
+    path = job_dir(args[0])
+    meta = read_meta(path)
+    if meta is None:
+        raise UnknownJob(args[0])
+    if describe(path, meta)["status"] != "running":
+        print_json({"id": meta["id"], "stopped": False})
+        return EXIT_OK
+    sid = meta["sid"]
+
+    def signal_job(signum: int) -> None:
+        """The command's process group, then every other process of the session but the monitor."""
+        child = meta.get("pid")
+        if isinstance(child, int) and child > 1:
+            try:
+                os.killpg(child, signum)
+            except OSError:
+                pass
+        for pid in session_members(sid):
+            if pid != sid:
+                try:
+                    os.kill(pid, signum)
+                except OSError:
+                    pass
+
+    def running() -> bool:
+        return not has_exit(path) and monitor_alive(meta)
+
+    signal_job(signal.SIGTERM)
+    deadline = time.monotonic() + STOP_GRACE_S
+    while time.monotonic() < deadline and running():
+        time.sleep(0.1)
+    if running():
+        signal_job(signal.SIGKILL)
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and running():
+            time.sleep(0.05)
+    if not has_exit(path) and not monitor_alive(meta):
+        # The monitor went down with its job (only SIGKILL can do that): record it.
+        write_atomic(os.path.join(path, "ended"), now_iso() + "\n")
+        write_atomic(os.path.join(path, "exit"), f"{128 + signal.SIGKILL}\n")
+    print_json({"id": meta["id"], "stopped": not running()})
+    return EXIT_OK
+
+
+def cmd_running(args: list) -> int:
+    if args:
+        raise UsageError("running takes no arguments")
+    print(sum(1 for _, _, view in all_jobs() if view["status"] == "running"))
+    return EXIT_OK
+
+
+def cmd_sids(args: list) -> int:
+    if args:
+        raise UsageError("sids takes no arguments")
+    for _, meta, view in all_jobs():
+        if view["status"] == "running":
+            print(meta["sid"])
+    return EXIT_OK
+
+
+COMMANDS = {
+    "start": cmd_start,
+    "list": cmd_list,
+    "log": cmd_log,
+    "stop": cmd_stop,
+    "running": cmd_running,
+    "sids": cmd_sids,
+}
+USAGE = """usage: gh-jobs start [--name NAME] [--cwd DIR] -- COMMAND…
+       gh-jobs list
+       gh-jobs log ID [--lines N]
+       gh-jobs stop ID
+       gh-jobs running
+       gh-jobs sids"""
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    if argv[:1] == ["_run"] and len(argv) == 5:
+        return cmd_run(argv[1:])
+    if argv[:1] in (["-h"], ["--help"], ["help"]):
+        print(USAGE)
+        return EXIT_OK
+    if not argv or argv[0] not in COMMANDS:
+        print(USAGE, file=sys.stderr)
+        return EXIT_USAGE
+    try:
+        return COMMANDS[argv[0]](argv[1:])
+    except UsageError as err:
+        print(f"gh-jobs: {err}\n{USAGE}", file=sys.stderr)
+        return EXIT_USAGE
+    except UnknownJob as err:
+        print(f"gh-jobs: no such job: {err}", file=sys.stderr)
+        return EXIT_UNKNOWN
+    except OSError as err:
+        print(f"gh-jobs: {err}", file=sys.stderr)
+        return EXIT_FAIL
+
+
+if __name__ == "__main__":
+    sys.exit(main())
