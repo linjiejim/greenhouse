@@ -145,6 +145,7 @@ describe('Runtime API authorization and wire', () => {
     expect(body.runs[0]!.input).toEqual({ prompt: 'keep exact', nested: { value: 1 } });
     expect(body.next_cursor).toEqual(expect.any(String));
     expect(runtime.listRuns).toHaveBeenCalledWith({
+      viewer_user_id: 'owner',
       owner_user_id: 'owner',
       kinds: ['mission', 'automation', 'subagent'],
       cursor: undefined,
@@ -168,7 +169,12 @@ describe('Runtime API authorization and wire', () => {
     mocks.getDb.mockReturnValue({ runtime });
     const response = await appFor({ id: 'admin', role: 'super' }).request('/runs?scope=all&kinds=eval');
     expect(response.status).toBe(200);
-    expect(runtime.listRuns).toHaveBeenCalledWith({ kinds: ['eval'], cursor: undefined, limit: 50 });
+    expect(runtime.listRuns).toHaveBeenCalledWith({
+      viewer_user_id: 'admin',
+      kinds: ['eval'],
+      cursor: undefined,
+      limit: 50,
+    });
   });
 
   it('returns a full owner detail with orthogonal projection and source-limited capabilities', async () => {
@@ -238,6 +244,7 @@ describe('Runtime API authorization and wire', () => {
     const body = (await response.json()) as { items: Array<{ interrupt: { payload: unknown } }> };
     expect(body.items[0]!.interrupt.payload).toEqual({ source: 'mission_approval', input: { exact: true } });
     expect(runtime.listInterruptsPage).toHaveBeenCalledWith({
+      viewer_user_id: 'owner',
       assignee_user_id: 'owner',
       status: 'pending',
       kinds: ['mission', 'automation', 'subagent'],
@@ -256,6 +263,7 @@ describe('Runtime API authorization and wire', () => {
     const app = appFor({ id: 'owner', role: 'team' });
     expect(await (await app.request('/summary')).json()).toEqual(result);
     expect(runtime.summarize).toHaveBeenCalledWith({
+      viewer_user_id: 'owner',
       owner_user_id: 'owner',
       assignee_user_id: 'owner',
       kinds: ['mission', 'automation', 'subagent'],

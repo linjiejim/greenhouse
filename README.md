@@ -107,7 +107,9 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   and long-running jobs) the member can watch live, take over, or use directly through its
   terminal and file tabs; logins come from a write-only password vault that Bots fill in without
   ever seeing the values, and a site's "verify you are human" check is handed to the member with
-  one click in the chat. Background tasks keep researching while you chat; a new message can
+  one click in the chat. Background tasks start from the brief you approve; reading private notes or history then
+  disables all further browser actions. Their transcripts and execution traces stay owner-only, including
+  against other admins. A new message can
   interrupt a Bot after its current step. The organisation configures one Docker host; computers
   start on demand, stop when idle (unless a job is still running) and queue when the host is full.
 - **Workflows** — a multi-agent task-graph engine (database state machine, human gates,

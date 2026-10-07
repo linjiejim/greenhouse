@@ -8,6 +8,7 @@ import { nowIso } from '@greenhouse/utils/date';
 import { safeJsonParse } from '@greenhouse/utils/json';
 
 import type { Db } from '../client.js';
+import { sessionVisibleTo } from '../bots-privacy.js';
 import { sessions, messages, runtimeRuns } from '../schema/index.js';
 import type {
   SessionRow,
@@ -46,6 +47,8 @@ export class SessionActiveRuntimeError extends Error {
 }
 
 export interface SessionListOpts {
+  /** Enforce owner-only Bots privacy, including on explicitly requested channels. */
+  viewerUserId?: string;
   status?: string;
   limit?: number;
   offset?: number;
@@ -225,6 +228,7 @@ function sessionListConditions(opts: SessionListOpts) {
     taskId,
   } = opts;
   const conditions = [];
+  if (opts.viewerUserId) conditions.push(sessionVisibleTo(opts.viewerUserId));
 
   if (userId) conditions.push(eq(sessions.user_id, userId));
   if (excludeUserId) conditions.push(sql`${sessions.user_id} IS DISTINCT FROM ${excludeUserId}`);

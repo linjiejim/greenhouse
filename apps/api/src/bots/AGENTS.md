@@ -44,10 +44,13 @@ bots/
   汇报、忙时插话）走 `deliverToConversation()` → 抢到 run 就直接写，否则进 `bot_inbox`。inbox 是
   **先应用后消费**（稳定 message id `bot-inbox:<id>`，失败计数，5 次后隔离），跨进程互斥是会话级
   pg advisory lock（`bots-run:<sessionId>`，每进程一条保留连接）——蓝绿两个槽位共享一个库。
-- **只有主人**：Bots 会话读写都只比 `user_id`（super 也不行，`sessions/access.ts`）；所有 `/api/bots/*`
+- **只有主人**：Bots 会话及 `bottask-` 子会话读写都只比 `user_id`（super 也不行，`sessions/access.ts`）；所有 `/api/bots/*`
   对他人的行一律 404。停用 / 删除 / 关掉 `bots` 开关 → 先停掉该成员进程内的 Bots run（关开关走
   `stopBotsRunsForUser()`，停用走 `chatRunRegistry.stopForUser`），再 `purgeUserComputer()`（停容器、断观看、
   取消后台任务，撤权类原因下 Docker 不可达也不抛）；删除成员另调 `purgeBotsConversations()`。
+- **派生记录继承隐私**：Runtime 列表/详情/事件/命令/审批/统计与评测提取同样只有主人；
+  使用持久的 `bots:` / `bottask-` 标记和 `source_mode=bots`，删除原会话不能重新开放历史 trace。
+  禁止分享子会话，旧分享也不能在列表或未读数中泄露内容。
 - **不可信输入会话**：一个回合里 Bot 会读网页、shell 输出、别的 Bot 的话，同时又能行动，所以：
   - 写 greenhouse 数据的工具（`BOT_APPROVAL_TOOL_IDS` + 目录里 `surface.proxy:'write'` 的）一律先出
     审批卡，成员点「允许」才执行；模型传 `confirm:true` 不算同意。审批等待 ≤110 s（回合的流超时 120 s
@@ -60,7 +63,9 @@ bots/
     remember 强制落 Bot 私有、update/forget 拒绝动用户级记忆；密码库代填一律要卡。
   - 历史投影给每条非本 Bot 的消息加保留说话人标签，伪造的 `[名字]:` 头被中和成引用。
 - **后台任务只读且不把私有数据带上公网**：执行面是只读子集（无点击/输入/shell/密码库/团队/卡片），
-  不给 mail 与其他会话；任何私有读取之后浏览器不能再打开或后退到新页面。汇报经单写者回到对话。
+  不给 mail 与其他会话；初始上下文只有成员确认卡上的完整 brief，不自动注入历史、摘要、笔记索引、
+  记忆或个人/Bot 指令。需要本会话私有上下文时显式调用 `conversation notes/recall`；它们与文件、
+  内部资源一样，在读取前就锁住后续全部浏览器动作（包括滚动/查看/等待，已加载页面的事件也能外发数据）。汇报经单写者回到对话。
 - **电脑零端口**：容器不发布端口、不访问 API；一切走 `docker exec`（VNC / CDP 是容器内 0600 的
   Unix socket，`agent` uid 读不到 `browser` uid 的东西）。硬化模式必须：gVisor `runsc`、IPv6 off +
   ICC off 网桥、`scripts/cloud-agent-net.sh --profile bots` 的出口规则（预检 + 每 10 分钟复验 +

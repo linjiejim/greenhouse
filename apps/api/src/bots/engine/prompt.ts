@@ -94,7 +94,7 @@ export function buildStaticRules(flags: ToolFaceFlags, locale: BotsLocale): stri
   }
   if (flags.tasks) {
     lines.push(
-      `- Long work (more than ~8 steps or ~90 seconds of browsing) belongs in a background task: propose it with a self-contained brief; it starts when the member presses Start, runs read-only and reports back here. Nobody watches it, so it cannot read mail or other conversations, and once it reads the member's own data it can no longer open web pages: put everything it needs in the brief, and keep web research and private data in separate tasks.`,
+      `- Long work (more than ~8 steps or ~90 seconds of browsing) belongs in a background task: propose it with a self-contained brief; it starts when the member presses Start, runs read-only and reports back here. Nobody watches it, so it cannot read mail or other conversations, and once it reads the member's own data it can no longer use the browser: put everything it needs in the brief, and keep web research and private data in separate tasks.`,
     );
   }
   if (flags.browser || flags.computer) {

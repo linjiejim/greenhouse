@@ -2,7 +2,7 @@
  * Background tasks on the Runtime `subagent` kind (design review R15): admitted
  * only from the member's Start, bound to the Bot through server-written
  * metadata, ≤3 running per member, executed with a read-only face and the
- * Bot's context pack, and reported back into the conversation.
+ * approved brief, and reported back into the conversation.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -113,7 +113,22 @@ describe('background tasks', () => {
     ).rejects.toBeInstanceOf(BotTaskError);
   });
 
-  it('executes read-only with the Bot’s identity and context, then reports into the conversation', async () => {
+  it('starts from only the approved brief, then reports into the conversation', async () => {
+    await db.users.update(user.id, { notes: 'private-member-note' });
+    await db.userMemories.create({
+      user_id: user.id,
+      bot_id: sage.id,
+      category: 'fact',
+      title: 'private-memory-title',
+      content: 'private-memory-body',
+      pinned: true,
+    });
+    await db.bots.addNote(conversationId, { title: 'private-note-title', body: 'private-note-body' });
+    await db.bots.setDigest(conversationId, 0, {
+      text: 'private-digest',
+      upto_seq: 0,
+      upto_message_id: null,
+    });
     const { runId } = await admitBotTask({
       db,
       userId: user.id,
@@ -136,9 +151,16 @@ describe('background tasks', () => {
     await createSubagentRuntimeDriver({
       heartbeatIntervalMs: 60_000,
       generate: async ({ system, tools, messages }) => {
+        expect(system + JSON.stringify(messages)).not.toContain('private-');
         seen.system = system;
         seen.tools = Object.keys(tools ?? {});
         seen.prompt = messages.at(-1)!.content;
+        // Private context remains available explicitly, after web research.
+        const notes = await tools!.conversation!.execute!({ action: 'notes' }, {
+          toolCallId: 'notes-test',
+          messages: [],
+        } as never);
+        expect(JSON.stringify(notes)).toContain('private-note-body');
         return {
           text: 'Report: 2 of 12 links are broken (a.com, b.com).',
           usage: { inputTokens: 10, outputTokens: 5 },
@@ -146,11 +168,13 @@ describe('background tasks', () => {
       },
     })({ db, run: claimed!, workerId, leaseMs: 60_000 });
 
-    expect((await db.runtime.getRun(runId))?.status).toBe('succeeded');
+    const completed = await db.runtime.getRun(runId);
+    expect(completed?.status, completed?.error_message ?? undefined).toBe('succeeded');
     expect(seen.system).toContain('# Background task');
-    expect(seen.system).toContain('You are **Sage** — Researcher');
-    expect(seen.system).toContain('Cite sources.');
-    expect(seen.system).toContain('Check these links in the background'); // context pack excerpt
+    expect(seen.system).not.toContain('Sage');
+    expect(seen.system).not.toContain('Researcher');
+    expect(seen.system).not.toContain('Cite sources.');
+    expect(seen.system).not.toContain('Check these links in the background');
     expect(seen.prompt).toBe('Open each link and report the broken ones.');
     expect(seen.tools).toContain('conversation');
     for (const writer of [

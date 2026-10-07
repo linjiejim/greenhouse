@@ -49,6 +49,11 @@ export const HIDDEN_SESSION_CHANNELS: readonly SessionChannel[] = ['workflow', '
  */
 export const BOT_TASK_SESSION_PREFIX = 'bottask-';
 
+/** Bots conversations and their task transcripts never inherit super/share access. */
+export function isOwnerOnlySession(session: { id: string; channel: string }): boolean {
+  return session.channel === BOTS_SESSION_CHANNEL || session.id.startsWith(BOT_TASK_SESSION_PREFIX);
+}
+
 /**
  * Session id prefixes the same default lists hide: a Bot's background task
  * belongs to its Bots conversation (it is reported there), not to the member's

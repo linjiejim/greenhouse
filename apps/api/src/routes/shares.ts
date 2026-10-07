@@ -11,6 +11,7 @@
 
 import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
+import { isOwnerOnlySession } from '@greenhouse/types/session';
 import { getAuthUser } from '../auth/middleware.js';
 import { connectionManager } from '../ws/connection-manager.js';
 import type { AppEnv } from '../app-env.js';
@@ -70,7 +71,7 @@ const shares = new Hono<AppEnv>()
     }
     // A Bots conversation carries the owner's computer sessions and private
     // context; it is never shared (v1).
-    if (session.channel === 'bots') {
+    if (isOwnerOnlySession(session)) {
       return c.json({ error: 'Bots conversations cannot be shared' }, 400);
     }
 

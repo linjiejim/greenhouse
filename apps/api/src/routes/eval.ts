@@ -192,8 +192,8 @@ function draftFromEvidence(evidence: RuntimeDatasetEvidence): {
   };
 }
 
-async function runtimeDatasetEvidence(runId: string): Promise<RuntimeDatasetEvidence | null> {
-  const detail = await getDb().runtime.getRunDetail(runId);
+async function runtimeDatasetEvidence(runId: string, viewerUserId: string): Promise<RuntimeDatasetEvidence | null> {
+  const detail = await getDb().runtime.getRunDetail(runId, viewerUserId);
   if (!detail) return null;
   const run = runtimeRunView(detail.run);
   let evalResults: EvalResultWithQuestion[] = [];
@@ -420,7 +420,7 @@ const evalRoutes = new Hono<AppEnv>()
     }
     const user = getAuthUser(c);
     if (user.role !== 'super') return c.json({ error: 'Super role required' }, 403);
-    const evidence = await runtimeDatasetEvidence(c.req.param('runId'));
+    const evidence = await runtimeDatasetEvidence(c.req.param('runId'), user.id);
     if (!evidence) return c.json({ error: 'Runtime run not found' }, 404);
     return c.json(buildRuntimeDatasetPreview(evidence));
   })
@@ -441,7 +441,7 @@ const evalRoutes = new Hono<AppEnv>()
     if (!dataset) {
       return c.json({ error: 'dataset fields are malformed; question and ground_truth are required' }, 400);
     }
-    const evidence = await runtimeDatasetEvidence(c.req.param('runId'));
+    const evidence = await runtimeDatasetEvidence(c.req.param('runId'), user.id);
     if (!evidence) return c.json({ error: 'Runtime run not found' }, 404);
     const source = traceSource(evidence.run);
     try {

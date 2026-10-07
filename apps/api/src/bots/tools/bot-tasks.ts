@@ -26,7 +26,7 @@ const tasksSchema = z.object({
     .max(BOT_TASK_BRIEF_MAX)
     .optional()
     .describe(
-      `start: a self-contained brief (≤${BOT_TASK_BRIEF_MAX} chars) — the task cannot see this chat beyond a short summary: say what to find, where to look, and what the report should contain.`,
+      `start: a self-contained brief (≤${BOT_TASK_BRIEF_MAX} chars) — the task starts with only this approved brief; reading conversation notes/history later disables all further browser actions: say what to find, where to look, and what the report should contain.`,
     ),
   run_id: z.string().max(80).optional().describe('cancel: the task run id from list.'),
 });

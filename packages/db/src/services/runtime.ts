@@ -25,6 +25,7 @@ import {
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
+import { runtimeVisibleTo } from '../bots-privacy.js';
 import {
   messages,
   runtimeArtifacts,
@@ -220,6 +221,8 @@ export interface RuntimeChatTraceAdmissionResult {
 }
 
 export interface RuntimeRunListInput {
+  /** Apply owner-only Bots privacy before pagination/aggregation; internal callers may omit. */
+  viewer_user_id?: string;
   owner_user_id?: string;
   kinds?: readonly RuntimeRunKind[];
   statuses?: readonly RuntimeRunStatus[];
@@ -404,6 +407,8 @@ export interface RuntimeOutboxClaimInput {
 }
 
 export interface RuntimeInterruptListInput {
+  /** Apply owner-only Bots privacy before pagination/aggregation; internal callers may omit. */
+  viewer_user_id?: string;
   assignee_user_id?: string;
   status?: RuntimeInterruptStatus;
   kinds?: readonly RuntimeRunKind[];
@@ -417,6 +422,8 @@ export interface RuntimeInterruptListResult {
 }
 
 export interface RuntimeSummaryInput {
+  /** Apply owner-only Bots privacy before pagination/aggregation; internal callers may omit. */
+  viewer_user_id?: string;
   owner_user_id?: string;
   assignee_user_id?: string;
   kinds?: readonly RuntimeRunKind[];
@@ -1085,8 +1092,12 @@ export function createRuntimeService(db: Db) {
       });
     },
 
-    async getRun(id: string): Promise<RuntimeRunRow | undefined> {
-      const [row] = await db.select().from(runtimeRuns).where(eq(runtimeRuns.id, id)).limit(1);
+    async getRun(id: string, viewerUserId?: string): Promise<RuntimeRunRow | undefined> {
+      const [row] = await db
+        .select()
+        .from(runtimeRuns)
+        .where(and(eq(runtimeRuns.id, id), runtimeVisibleTo(viewerUserId)))
+        .limit(1);
       return row;
     },
 
@@ -1184,6 +1195,7 @@ export function createRuntimeService(db: Db) {
         .from(runtimeRuns)
         .where(
           and(
+            runtimeVisibleTo(input.viewer_user_id),
             ...(ownerUserId ? [eq(runtimeRuns.owner_user_id, ownerUserId)] : []),
             ...(kinds ? [inArray(runtimeRuns.kind, kinds)] : []),
             ...(statuses ? [inArray(runtimeRuns.status, statuses)] : []),
@@ -1214,9 +1226,9 @@ export function createRuntimeService(db: Db) {
       };
     },
 
-    async getRunDetail(id: string): Promise<RuntimeRunDetail | undefined> {
+    async getRunDetail(id: string, viewerUserId?: string): Promise<RuntimeRunDetail | undefined> {
       const runId = assertIdentifier(id, 'id');
-      const run = await service.getRun(runId);
+      const run = await service.getRun(runId, viewerUserId);
       if (!run) return undefined;
       const [events, steps, toolCalls, artifacts, interrupts] = await Promise.all([
         // Detail/Trace capture is the explicit full-fidelity surface. The
@@ -2897,6 +2909,7 @@ export function createRuntimeService(db: Db) {
             ...(assigneeUserId ? [eq(runtimeInterrupts.assignee_user_id, assigneeUserId)] : []),
             ...(input.status ? [eq(runtimeInterrupts.status, input.status)] : []),
             ...(kinds ? [inArray(runtimeRuns.kind, kinds)] : []),
+            runtimeVisibleTo(input.viewer_user_id),
             ...(cursor
               ? [
                   or(
@@ -2941,6 +2954,7 @@ export function createRuntimeService(db: Db) {
                 and(
                   ...(ownerUserId ? [eq(runtimeRuns.owner_user_id, ownerUserId)] : []),
                   ...(kinds ? [inArray(runtimeRuns.kind, kinds)] : []),
+                  runtimeVisibleTo(input.viewer_user_id),
                 ),
               )
               .groupBy(runtimeRuns.kind, runtimeRuns.status);
@@ -2956,6 +2970,7 @@ export function createRuntimeService(db: Db) {
                   eq(runtimeInterrupts.status, 'pending'),
                   ...(assigneeUserId ? [eq(runtimeInterrupts.assignee_user_id, assigneeUserId)] : []),
                   ...(kinds ? [inArray(runtimeRuns.kind, kinds)] : []),
+                  runtimeVisibleTo(input.viewer_user_id),
                 ),
               );
       const byStatus = Object.fromEntries(

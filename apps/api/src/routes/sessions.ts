@@ -133,6 +133,7 @@ const sessions = new Hono<AppEnv>()
     // (/api/bots) — neither belongs in the generic session list.
     // `?channel=workflow` is the explicit debug back door.
     const listOpts = {
+      viewerUserId: authUser.id,
       status,
       limit: includePageMeta ? limit + 1 : limit,
       offset,
@@ -179,6 +180,7 @@ const sessions = new Hono<AppEnv>()
     // so does a channel-filtered list ("my conversations on <channel>").
     if (scope === undefined && !channel && authUser.role !== 'super' && sharedSessionIds.length > 0) {
       const sharedRows = await getDb().sessions.listSharedWith(authUser.id, {
+        viewerUserId: authUser.id,
         status,
         includeEval,
         limit: SHARED_BACKFILL_LIMIT,

@@ -291,3 +291,8 @@
 4. 在包根 `index.ts` 加 `export * from './services/xxx.js'`
 5. 运行 `pnpm drizzle-kit generate` 生成迁移并 **review 生成的 SQL**（见上「push vs migrate」）；本地可 `migrate` 到 scratch 库自测，**不要 push 到共享/持久库**
 6. 更新 `db-schema.md`
+
+### Bots 派生记录的隐私
+
+- `bots-privacy.ts` 是 session 列表、旧分享与 Runtime 的共同 SQL 边界。对外 session 列表必须传 `viewerUserId`；Runtime 列表/详情/审批/统计必须传 `viewer_user_id` 或对应方法的 viewer 参数，在 LIMIT/游标/COUNT 前过滤。引擎内部查询可省略，不把该可见性过滤当成通用授权。
+- Runtime 独立于 session 的生命周期：`source_id=bots:*`、`source_id/session_id=bottask-*`、`input.source_mode=bots` 的记录始终只有 owner 可见，即使原 session 已删除。不要只用活着的 session JOIN 判断。

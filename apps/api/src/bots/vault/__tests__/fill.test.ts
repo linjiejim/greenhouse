@@ -353,16 +353,28 @@ describe.skipIf(!chromiumAvailable())('vault fills on a real browser', { timeout
     it('a take-over in this process ends a fill that waits on the approval card', async () => {
       store.rows.set('t2', item('t2', [site.origin], { username: 'me@example.com', password: 'pw-t2' }));
       let release: () => void = () => undefined;
+      let notifyApproval: () => void = () => undefined;
+      const approvalRequested = new Promise<void>((resolve) => {
+        notifyApproval = resolve;
+      });
       const { turn, page } = await botOn(`${site.origin}/login`, {
         requestApproval: vi.fn(
           () =>
             new Promise<'approve'>((resolve) => {
               release = () => resolve('approve');
+              notifyApproval();
             }),
         ),
       });
       const filling = fillLogin(turn, { item_id: 't2' }, computer.deps);
-      await vi.waitFor(() => expect(turn.requestApproval).toHaveBeenCalled());
+      // Wait for the actual card boundary, not vi.waitFor's 1 s default: real
+      // Chromium preflight can take longer on a busy host. Fail if it ends early.
+      await Promise.race([
+        approvalRequested,
+        filling.then((result) => {
+          throw new Error(`Fill ended before approval: ${JSON.stringify(result)}`);
+        }),
+      ]);
       // What takeoverComputer does: the lease goes to the member, then work in flight is aborted.
       computer.lease = { controller: 'user', epoch: 1 };
       expect(abortComputerActions(USER)).toBe(1);
