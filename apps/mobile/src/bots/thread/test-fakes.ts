@@ -291,6 +291,8 @@ export class FakeThreadApi {
   /** What `GET /conversations/:id` returns (newest page = the last `PAGE_SIZE`). */
   server: { conversation: BotConversationDetail; messages: BotMessage[]; hasMore: boolean };
   probe: ChatRunProbe | null = { active: false };
+  /** One-off probe answers, consumed in order before `probe` (a deferred holds that one probe open). */
+  probes: Array<ChatRunProbe | null | Promise<ChatRunProbe | null>> = [];
   /** POST answers, consumed in order (a deferred lets the test hold the POST open). */
   posts: Array<BotsPost | Promise<BotsPost>> = [];
   /** `streamChatRun` answers, consumed in order (default: a stream that fails with 404). */
@@ -353,6 +355,8 @@ export class FakeThreadApi {
     },
     getChatRun: async () => {
       this.calls.probe += 1;
+      const scripted = this.probes.shift();
+      if (scripted !== undefined) return scripted;
       await (this.probeGate ?? Promise.resolve());
       return this.probe;
     },

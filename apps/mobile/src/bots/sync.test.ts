@@ -274,4 +274,41 @@ describe('polling fallback', () => {
     await t.time.advance(5 * LIST_POLL_MS);
     expect(t.calls.listConversations).toBe(lists + 2);
   });
+
+  it('each poll re-reads the busy seed too: a mark whose end was missed is cleared, a run started elsewhere shows', async () => {
+    const t = setup({ status: 'open' });
+    await t.time.advance(0);
+    // The socket goes down: this run's completed push never arrives.
+    t.store.getState().setRunning('s1', 'r1');
+    t.rt.setStatus('backoff');
+    const runs = t.calls.listChatRuns;
+    await t.time.advance(POLL_GRACE_MS);
+    expect(t.calls.listChatRuns).toBe(runs + 1);
+    expect(t.store.getState().running).toEqual({});
+    await t.time.advance(LIST_POLL_MS);
+    expect(t.calls.listChatRuns).toBe(runs + 2);
+  });
+});
+
+describe('report arrivals behind a busy mark', () => {
+  it('a row skipped while busy is looked at once the mark goes, even when the list did not change again', async () => {
+    const t = setup();
+    const at = '2026-10-08T05:10:00.000Z';
+    t.answers.set('s1', { ok: true, value: { conversation: conversation('s1'), messages: [report('s1')], has_more: false } });
+    await t.setRows([row('s1', { last_message: last('2026-10-08T05:00:00.000Z') })]);
+    // A stale busy mark (its end was missed): the report that lands meanwhile is skipped.
+    t.store.getState().setRunning('s1', 'r1');
+    await t.setRows([row('s1', { attention: 'unread', last_message: last(at) })]);
+    expect(t.lookups).toEqual([]);
+
+    // The seed (or a push) clears the mark; the next list is the same as before.
+    t.store.getState().setRunning('s1', null);
+    await t.setRows([row('s1', { attention: 'unread', last_message: last(at) })]);
+    expect(t.lookups).toEqual(['s1:1']);
+    expect(t.store.getState().arrivals.s1).toMatchObject({ title: 'Meeting notes' });
+
+    // Looked at once.
+    await t.setRows([row('s1', { attention: 'unread', last_message: last(at) })]);
+    expect(t.lookups).toEqual(['s1:1']);
+  });
 });

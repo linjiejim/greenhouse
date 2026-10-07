@@ -23,10 +23,25 @@
  *   attached to: the POST's own stream is that run's reader.
  * - Single-flight attach. At most one "probe, then re-attach" at a time, and
  *   the reader check is repeated after the probe answers.
- * - Run identity. A second source for a run already being read (or waiting) is
- *   cancelled, never queued to replay it again; a dropped transport resumes
- *   with `after=lastSeq` only on the same run id (a new run's seq starts at 0),
- *   otherwise the run is read again from its start.
+ * - Run identity. A second source for a run already being read (or waiting),
+ *   or one already read to its end here, is cancelled, never queued to replay
+ *   it again — checked whenever a run id becomes known (enqueue, a POST's
+ *   probe, a resume, its turn on the chain). A dropped transport resumes with
+ *   `after=lastSeq` only on the same run id (a new run's seq starts at 0),
+ *   otherwise the run is read again from its start — unless a waiting reader
+ *   (or the send in flight) owns that run: then this reader settles and lets
+ *   it. Resumes count failures in a row (a source that delivered anything
+ *   starts the count again; a re-attach this device forced is none), and when
+ *   they run out a last probe decides: a run still going keeps its busy mark.
+ * - Probes answer for the moment they were asked: an "idle" answer only clears
+ *   the busy mark it saw, and a run announced while a probe was out is looked
+ *   for again once it answers.
+ * - The newest page never leaves a hole: when it does not reach what is loaded
+ *   (more than a page landed meanwhile), it replaces it — paging up refills.
+ * - Try Again never re-posts while a run goes on: a message delivered to a busy
+ *   run waits in its inbox (not in the transcript) until the next turn, so the
+ *   bubble waits as queued; only a run that ends without it brings Try Again
+ *   back.
  * - "Busy" is only ever a real signal (D14): a local reader, a run the socket
  *   or a probe reported, or a queued send this device could not attach to
  *   (`remoteBusy` — the run lives in another API slot): a bounded reload
@@ -166,7 +181,11 @@ interface Reader {
   letGo: boolean;
   /** …and show its open segments as stopped. */
   stopped: boolean;
+  /** This device cut the transport to re-attach (a dead socket on the way back): no failure. */
+  forced: boolean;
   lastEventAt: number;
+  /** Events read from every source so far (pings included) — progress between drops. */
+  events: number;
 }
 
 /** The run being read (or replayed), with what of it is on screen. */
@@ -183,6 +202,14 @@ interface LiveRun {
 }
 
 type AttachResult = 'attached' | 'idle' | 'busy' | 'failed';
+/**
+ * How a reader's turn ended. `done` — the run's `finish` (or declared error)
+ * was read; `ended` — the run is over without that being read here (404, no
+ * run, another run took the slot); `gone` — let go without knowing (a stop);
+ * `alive` — re-attaching kept failing while the run goes on (settle what is on
+ * screen, keep the busy mark); `detached` — dropped (dispose, a duplicate).
+ */
+type ReadOutcome = 'done' | 'ended' | 'gone' | 'alive' | 'detached';
 type ReloadResult = 'ok' | 'failed';
 
 export class ThreadEngine implements ThreadController {
@@ -213,6 +240,8 @@ export class ThreadEngine implements ThreadController {
   private latchRunId: string | null = null;
   private readOnly: ThreadSnapshot['readOnly'] = null;
   private runError: string | null = null;
+  /** Retried while a run was going and found in no transcript yet: maybe waiting in that run's inbox. */
+  private readonly unconfirmed = new Set<string>();
 
   // The run
   private run: LiveRun | null = null;
@@ -222,6 +251,12 @@ export class ThreadEngine implements ThreadController {
   private attaching: Promise<AttachResult> | null = null;
   /** An attach was turned away because a reader was busy: look again once it has settled. */
   private recheck = false;
+  /** A run was announced while an attach's probe was out (its answer may predate it): look again after. */
+  private attachAgain = false;
+  /** …that run, when known: no second look if it is being read by then. */
+  private attachAgainRun: string | null = null;
+  /** The last run read here to its end (or known to be over): never read again. */
+  private lastReadRunId: string | null = null;
   /** Interrupt requests in flight (the button already says "Stopping"). */
   private softAsked = 0;
   /** A soft stop taken for a run no reader here has yet (it shows until a reader replays it, or the run ends). */
@@ -340,7 +375,10 @@ export class ThreadEngine implements ThreadController {
     const reader = this.reader;
     if (reader && !this.run?.state.finished) {
       // Reading, but silent past the server's keepalive: a dead socket — re-attach (resume rules).
-      if (this.deps.clock.now() - reader.lastEventAt > STALE_MS) reader.transport.abort();
+      if (this.deps.clock.now() - reader.lastEventAt > STALE_MS) {
+        reader.forced = true;
+        reader.transport.abort();
+      }
       return;
     }
     // Pick up what happened meanwhile: a run started elsewhere, reports that landed.
@@ -375,8 +413,13 @@ export class ThreadEngine implements ThreadController {
   /**
    * Try a "Not Delivered" send again — after a reload, because the POST may
    * have reached the server and only its answer was lost: then the persisted
-   * copy settles the bubble and nothing is sent twice. A reload that fails
-   * sends nothing either (it could not tell).
+   * copy settles the bubble. Not in the transcript is not "never received"
+   * while a run goes on: a message delivered to a busy run (202) waits in its
+   * inbox until the next turn — so then the bubble waits as queued and the
+   * run is read; Try Again comes back only if the run ends without the copy
+   * (`reviewUnconfirmed`). A reload or probe that fails sends nothing (it could
+   * not tell). One race is left for a server-side idempotency key: a run that
+   * ends right after the probe, its inbox starting a new one.
    */
   async retry(clientId: string): Promise<SendOutcome> {
     if (this.disposed) return { ok: false, kind: 'not_delivered' };
@@ -385,6 +428,18 @@ export class ThreadEngine implements ThreadController {
     if (this.disposed) return { ok: false, kind: 'not_delivered' };
     if (!this.findPending(clientId)) return { ok: true, startedRun: false };
     if (reloaded !== 'ok') return { ok: false, kind: 'not_delivered' };
+    const probe = await this.deps.api.getChatRun(this.sessionId);
+    if (this.disposed) return { ok: false, kind: 'not_delivered' };
+    if (!this.findPending(clientId)) return { ok: true, startedRun: false };
+    if (!probe) return { ok: false, kind: 'not_delivered' };
+    if (probe.active && probe.run) {
+      this.unconfirmed.add(clientId);
+      this.patchPending(clientId, { failed: false, status: 'queued' });
+      const attach = await this.ensureAttached(probe);
+      // Nobody here reads it (yet): reload for a while — the copy, or the run's end, shows up.
+      if (!this.disposed && attach !== 'attached' && this.findPending(clientId)) this.startRemoteBusy(clientId);
+      return { ok: true, startedRun: false };
+    }
     this.patchPending(clientId, { failed: false, status: 'sending' });
     return this.post(clientId);
   }
@@ -393,6 +448,7 @@ export class ThreadEngine implements ThreadController {
     if (!this.findPending(clientId)) return;
     this.pending = this.pending.filter((send) => send.clientId !== clientId);
     this.mentions.delete(clientId);
+    this.unconfirmed.delete(clientId);
     if (this.remoteBusy?.clientId === clientId) this.stopRemoteBusy();
     this.publish();
   }
@@ -452,6 +508,13 @@ export class ThreadEngine implements ThreadController {
     const page = result.value;
     await this.deps.store.getState().ensureBotsKnown(page.messages.flatMap((m) => (m.bot_id ? [m.bot_id] : [])));
     if (this.disposed) return;
+    if (this.messages[0]?.seq !== oldest.seq) {
+      // The newest page replaced what was loaded meanwhile (`applyLatest`, a hole): this page sits below
+      // a gap now — drop it; the next "load earlier" asks below the new oldest row.
+      this.earlier = 'idle';
+      this.publish();
+      return;
+    }
     const known = new Set(this.messages.map((message) => message.id));
     this.messages = [...page.messages.filter((message) => !known.has(message.id)), ...this.messages].sort(
       (a, b) => a.seq - b.seq,
@@ -512,13 +575,14 @@ export class ThreadEngine implements ThreadController {
       this.publish();
     }
     store.clearArrival(this.sessionId);
+    const markBefore = this.mark();
     const probing = this.deps.api.getChatRun(this.sessionId);
     const loaded = await this.reloadLatest();
     const probe = await probing;
     if (this.disposed) return;
     if (loaded !== 'ok' && this.load !== 'ready') return;
     if (probe?.active) void this.ensureAttached(probe);
-    else if (probe) this.noteIdle();
+    else if (probe && !this.noteIdle(markBefore, probe.run?.run_id ?? null)) void this.ensureAttached();
     if (loaded === 'ok') this.markRead();
   }
 
@@ -551,6 +615,7 @@ export class ThreadEngine implements ThreadController {
     if (this.disposed) return 'failed';
     if (ticket !== this.ticket) return superseded();
     this.applyLatest(page);
+    this.reviewUnconfirmed();
     if (!quiet) this.publish();
     return 'ok';
   }
@@ -576,11 +641,16 @@ export class ThreadEngine implements ThreadController {
       const known = previous.get(message.id);
       return known && sameMessage(known, message) ? known : message;
     });
-    const merged = mergeLatest(loaded, latest);
+    // More than a page landed since the last load (backgrounded, reopened from the cache): the newest
+    // page does not reach what is loaded. Merging would leave a hole paging up can never fill (it only
+    // asks below the oldest row) — start over from the newest page; paging up refills from there.
+    const floor = latest.length > 0 ? Math.min(...latest.map((message) => message.seq)) : Infinity;
+    const gapped = page.has_more && loaded.length > 0 && floor > maxSeq(loaded) + 1;
+    const merged = gapped ? latest : mergeLatest(loaded, latest);
     const unchanged = merged.length === loaded.length && merged.every((message, index) => message === loaded[index]);
     if (!unchanged) this.messages = merged;
     // Paged up already: the newest page's `has_more` speaks for the page, not for what is loaded.
-    this.hasMore = loaded.length > page.messages.length ? this.hasMore : page.has_more;
+    this.hasMore = !gapped && loaded.length > page.messages.length ? this.hasMore : page.has_more;
     this.conversation = page.conversation;
     const members = memberKey(page.conversation);
     if (members !== this.members) {
@@ -602,7 +672,11 @@ export class ThreadEngine implements ThreadController {
     const left = settlePending(this.pending, this.messages) as MobilePending[];
     if (left.length === this.pending.length) return;
     const kept = new Set(left.map((send) => send.clientId));
-    for (const send of this.pending) if (!kept.has(send.clientId)) this.mentions.delete(send.clientId);
+    for (const send of this.pending) {
+      if (kept.has(send.clientId)) continue;
+      this.mentions.delete(send.clientId);
+      this.unconfirmed.delete(send.clientId);
+    }
     this.pending = left;
     if (this.remoteBusy && !kept.has(this.remoteBusy.clientId)) this.stopRemoteBusy();
   }
@@ -666,6 +740,7 @@ export class ThreadEngine implements ThreadController {
         void this.deps.api.getChatRun(this.sessionId).then((probe) => {
           if (reader.runId || reader.detached || !probe?.run) return;
           reader.runId = probe.run.run_id;
+          if (this.dropDuplicate(reader)) return;
           if (this.reader === reader && this.run && !this.run.runId) {
             this.run.runId = reader.runId;
             this.noteOwnRunning(reader.runId);
@@ -724,7 +799,25 @@ export class ThreadEngine implements ThreadController {
   private removePending(clientId: string): void {
     this.pending = this.pending.filter((send) => send.clientId !== clientId);
     this.mentions.delete(clientId);
+    this.unconfirmed.delete(clientId);
     if (this.remoteBusy?.clientId === clientId) this.stopRemoteBusy();
+  }
+
+  /**
+   * Sends Try Again found no copy of while a run was going (`retry`): once
+   * nothing runs any more and a reload still has no copy, the server never got
+   * them — "Not Delivered" again, so Try Again comes back. `settling`: the
+   * reader whose run just ended is still on the chain.
+   */
+  private reviewUnconfirmed(settling = false): void {
+    if (this.unconfirmed.size === 0) return;
+    if ((this.reader && !settling) || this.waiting.length > 0 || this.remoteBusy || this.sendsInFlight > 0) return;
+    if (this.mark() !== null) return;
+    const ids = [...this.unconfirmed];
+    this.unconfirmed.clear();
+    for (const clientId of ids) {
+      if (this.findPending(clientId)) this.patchPending(clientId, { failed: true, status: 'sending' });
+    }
   }
 
   /**
@@ -744,6 +837,7 @@ export class ThreadEngine implements ThreadController {
           if (this.remoteBusy !== busy) return;
           if (this.deps.clock.now() + REMOTE_BUSY_EVERY_MS - busy.since > REMOTE_BUSY_MAX_MS) {
             this.stopRemoteBusy();
+            this.reviewUnconfirmed();
             this.publish();
             return;
           }
@@ -854,7 +948,9 @@ export class ThreadEngine implements ThreadController {
       detached: false,
       letGo: false,
       stopped: false,
+      forced: false,
       lastEventAt: this.deps.clock.now(),
+      events: 0,
     };
   }
 
@@ -880,6 +976,7 @@ export class ThreadEngine implements ThreadController {
     }
     if (this.sendsInFlight > 0) return Promise.resolve('busy');
     const attempt = (async (): Promise<AttachResult> => {
+      const markBefore = this.mark();
       const probe = known !== undefined ? known : await this.deps.api.getChatRun(this.sessionId);
       if (this.disposed) return 'busy';
       if (this.busyReading()) {
@@ -889,7 +986,8 @@ export class ThreadEngine implements ThreadController {
       if (this.sendsInFlight > 0) return 'busy';
       if (!probe) return 'failed';
       if (!probe.active || !probe.run) {
-        this.noteIdle();
+        // A run announced after this probe was asked: its "idle" is older than that — ask again.
+        if (!this.noteIdle(markBefore, probe.run?.run_id ?? null)) this.lookAgain(this.mark());
         return 'idle';
       }
       this.enqueue(this.newReader({ kind: 'attach', runId: probe.run.run_id, byMe: false }));
@@ -898,16 +996,49 @@ export class ThreadEngine implements ThreadController {
     this.attaching = attempt;
     void attempt.finally(() => {
       if (this.attaching === attempt) this.attaching = null;
+      this.attachAgainIfAsked();
     });
     return attempt;
   }
 
-  /** The server says nothing runs here: forget a stale busy mark (nobody reads one locally). */
-  private noteIdle(): void {
-    if (this.busyReading()) return;
+  /** A `chat:run running` push: attach — or, with a probe already out (it may predate the run), look again after it. */
+  private attachForPush(runId: string): void {
+    if (this.attaching) {
+      this.lookAgain(runId);
+      return;
+    }
+    void this.ensureAttached();
+  }
+
+  private lookAgain(runId: string | null): void {
+    this.attachAgain = true;
+    this.attachAgainRun = runId;
+  }
+
+  private attachAgainIfAsked(): void {
+    if (!this.attachAgain || this.disposed || this.attaching) return;
+    const runId = this.attachAgainRun ?? this.mark();
+    this.attachAgain = false;
+    this.attachAgainRun = null;
+    // The attempt that just answered already reads the run announced meanwhile.
+    if (runId !== null && this.readsRun(runId)) return;
+    void this.ensureAttached();
+  }
+
+  /**
+   * The server says nothing runs here: forget a stale busy mark (nobody reads
+   * one locally). The answer is only as fresh as the probe: a mark that changed
+   * after it was asked (`markBefore`) — and is not the probed run itself — is a
+   * newer run; it stays, and false asks the caller to look again.
+   */
+  private noteIdle(markBefore: string | null, probed: string | null): boolean {
+    if (this.busyReading()) return true;
+    const mark = this.mark();
+    if (mark !== null && mark !== markBefore && mark !== probed) return false;
     this.softRemote = false;
     this.clearRunning(null);
     this.publish();
+    return true;
   }
 
   private enqueue(reader: Reader): void {
@@ -929,19 +1060,62 @@ export class ThreadEngine implements ThreadController {
     if (reader.source && this.reader !== reader) void reader.source.return(undefined).catch(() => {});
   }
 
+  /**
+   * A reader that just learned its run id (a POST's probe) duplicates another:
+   * of two readers of one run the later in the chain goes; a run already read
+   * to its end here is never read again (a reader already reading it settles
+   * quietly). True when `reader` was let go.
+   */
+  private dropDuplicate(reader: Reader): boolean {
+    const runId = reader.runId;
+    if (!runId) return false;
+    const chain = [this.reader, ...this.waiting].filter((r): r is Reader => r !== null && !r.detached);
+    const at = chain.indexOf(reader);
+    if (at < 0) return false;
+    if (runId === this.lastReadRunId) {
+      if (this.reader === reader) {
+        // Settle quietly — and clear only that run's busy mark, never a newer one.
+        reader.letGo = true;
+        if (this.run && !this.run.runId) this.run.runId = runId;
+      }
+      this.detach(reader);
+      return true;
+    }
+    const twin = chain.findIndex((other, index) => index !== at && other.runId === runId);
+    if (twin < 0) return false;
+    if (twin < at) {
+      this.detach(reader);
+      return true;
+    }
+    this.detach(chain[twin]);
+    return false;
+  }
+
+  /** A reader waiting its turn owns this run: its id, or a POST's 200 (the newest claim on the slot); or the send in flight it was announced to. */
+  private ownedElsewhere(reader: Reader, runId: string): boolean {
+    if (this.sendsInFlight > 0 && this.latchRunId === runId) return true;
+    return this.waiting.some(
+      (other) => other !== reader && !other.detached && (other.runId === runId || (other.kind === 'post' && other.runId === null)),
+    );
+  }
+
   /** One reader's turn on the chain: read its run to the end, then settle. */
   private async pump(reader: Reader): Promise<void> {
     this.waiting = this.waiting.filter((waiting) => waiting !== reader);
-    if (reader.detached || this.disposed) return;
-    this.reader = reader;
-    try {
-      await this.consume(reader);
-    } catch {
-      /* consume settles every path itself */
-    } finally {
-      if (this.reader === reader) this.reader = null;
-    }
     if (this.disposed) return;
+    // Its run was read to its end here meanwhile (by a reader that switched onto it): nothing left to show.
+    if (reader.runId !== null && reader.runId === this.lastReadRunId) this.detach(reader);
+    if (!reader.detached) {
+      this.reader = reader;
+      try {
+        await this.consume(reader);
+      } catch {
+        /* consume settles every path itself */
+      } finally {
+        if (this.reader === reader) this.reader = null;
+      }
+      if (this.disposed) return;
+    }
     this.publish();
     // A run that started while this one was winding down (or was pushed meanwhile).
     const running = this.deps.store.getState().running[this.sessionId];
@@ -955,11 +1129,13 @@ export class ThreadEngine implements ThreadController {
     this.beginRun(reader, { reload: true });
     let source: AsyncIterable<RunStreamEvent> | null =
       reader.source ?? this.deps.api.streamChatRun(this.sessionId, -1, reader.transport.signal);
+    /** Failed re-attaches in a row: a source that delivered anything (even a ping) starts the count again. */
     let attempts = 0;
-    let outcome: 'done' | 'gone' | 'detached';
-    const cut = () => (reader.letGo && !this.disposed ? 'gone' : 'detached');
+    let outcome: ReadOutcome;
+    const cut = (): ReadOutcome => (reader.letGo && !this.disposed ? 'gone' : 'detached');
     for (;;) {
       if (source) {
+        const seen = reader.events;
         try {
           await this.read(reader, source);
           if (reader.detached) throw ABORTED;
@@ -976,7 +1152,7 @@ export class ThreadEngine implements ThreadController {
           }
           // Re-attaching found no run (404): it ended — the persisted rows are final.
           if (httpStatus(error) === 404) {
-            outcome = 'gone';
+            outcome = 'ended';
             break;
           }
           // A failure the server declared: its partial is persisted — never retried.
@@ -989,15 +1165,22 @@ export class ThreadEngine implements ThreadController {
             outcome = 'gone';
             break;
           }
+          // It worked for a while and dropped (a long run, a network handover): not a failure streak.
+          if (reader.events > seen) attempts = 0;
         }
       }
       // The transport dropped (or a forced re-attach): the run goes on server-side — resume it.
-      if (attempts >= MAX_RESUMES) {
-        outcome = 'gone';
-        break;
+      const forced = reader.forced;
+      reader.forced = false;
+      if (!forced) {
+        if (attempts >= MAX_RESUMES) {
+          outcome = await this.lastLook(reader);
+          if (outcome === 'detached') outcome = cut();
+          break;
+        }
+        attempts += 1;
       }
-      attempts += 1;
-      await this.sleep(resumeDelay(attempts));
+      await this.sleep(forced ? 0 : resumeDelay(attempts));
       if (reader.detached || this.disposed) {
         outcome = cut();
         break;
@@ -1013,15 +1196,22 @@ export class ThreadEngine implements ThreadController {
         continue;
       }
       if (!probe.run) {
-        outcome = 'gone';
+        outcome = 'ended';
         break;
       }
       reader.transport = new AbortController();
+      reader.forced = false;
       reader.lastEventAt = this.deps.clock.now();
       if (reader.runId !== null && probe.run.run_id === reader.runId) {
         // Same run: replay only what was missed.
         source = this.deps.api.streamChatRun(this.sessionId, this.run?.state.lastSeq ?? -1, reader.transport.signal);
         continue;
+      }
+      // Another run in the slot, which a waiting reader (or the send in flight) owns: this one is over —
+      // settle it and let that reader read the new run (switching here would read it twice).
+      if (this.ownedElsewhere(reader, probe.run.run_id)) {
+        outcome = 'ended';
+        break;
       }
       // Another run (its seq starts at 0) — or ours, never identified: read it from its start.
       await this.switchRun(reader, probe.run.run_id);
@@ -1034,11 +1224,13 @@ export class ThreadEngine implements ThreadController {
 
     if (outcome === 'detached') return;
     const run = this.run;
+    if ((outcome === 'done' || outcome === 'ended') && reader.runId) this.lastReadRunId = reader.runId;
     if (run) {
       const stopped = this.hardStopping || reader.stopped;
       run.state = settleRun(run.state, stopped ? 'stopped' : run.state.serverError ? 'error' : 'completed');
       if (run.state.serverError && !stopped) this.runError = run.state.serverError;
-      this.clearRunning(run.runId);
+      // Still going server-side: the busy mark stays (Stop with it); a push, a resync or polling picks it up.
+      if (outcome !== 'alive') this.clearRunning(run.runId);
       if (outcome === 'done') {
         // Let the typing catch up before the persisted rows take over.
         this.publish();
@@ -1052,6 +1244,33 @@ export class ThreadEngine implements ThreadController {
     await this.settle();
   }
 
+  /**
+   * Re-attaching failed `MAX_RESUMES` times in a row. Ask once more before
+   * letting the run go: one that still runs (or no answer — offline) keeps its
+   * busy mark (`alive`); another run in the slot is looked for once this reader
+   * has settled; otherwise it is over.
+   */
+  private async lastLook(reader: Reader): Promise<ReadOutcome> {
+    const probe = await this.deps.api.getChatRun(this.sessionId);
+    if (reader.detached || this.disposed) return 'detached';
+    if (!probe) return 'alive';
+    const current = probe.active ? (probe.run?.run_id ?? null) : null;
+    if (current === null) return 'ended';
+    const owned = this.ownedElsewhere(reader, current);
+    // Its own run (one never identified is taken to be the run in the slot, unless a waiting reader owns that).
+    if (current === reader.runId || (reader.runId === null && !owned)) {
+      if (reader.runId === null) {
+        reader.runId = current;
+        if (this.run && !this.run.runId) this.run.runId = current;
+      }
+      this.noteOwnRunning(current);
+      return 'alive';
+    }
+    // Another run took the slot: a waiting reader reads it, or it is looked for once this one has settled.
+    if (!owned) this.recheck = true;
+    return 'ended';
+  }
+
   /** Feed one source to the run until it ends (returns) or the transport fails / is cut (throws). */
   private async read(reader: Reader, source: AsyncIterable<RunStreamEvent>): Promise<void> {
     const it = source[Symbol.asyncIterator]();
@@ -1062,6 +1281,7 @@ export class ThreadEngine implements ThreadController {
         if (step.done) return;
         if (reader.detached) throw ABORTED;
         reader.lastEventAt = this.deps.clock.now();
+        reader.events += 1;
         this.apply(step.value);
       }
     } finally {
@@ -1134,6 +1354,7 @@ export class ThreadEngine implements ThreadController {
     }
     this.hardStopping = false;
     this.softRemote = false;
+    if (reloaded === 'ok') this.reviewUnconfirmed(true);
     if (run) this.emit({ type: 'run-settled', runKey: run.key });
     this.publish();
     this.markRead();
@@ -1184,6 +1405,11 @@ export class ThreadEngine implements ThreadController {
   }
 
   // ─── Busy bookkeeping (the store's `running`) ────────────
+
+  /** The store's busy mark for this thread (null: none). */
+  private mark(): string | null {
+    return this.deps.store.getState().running[this.sessionId] ?? null;
+  }
 
   /** This device reads `runId`: busy for the drawer too (the socket may be down). Never overrides another id. */
   private noteOwnRunning(runId: string): void {
@@ -1249,7 +1475,7 @@ export class ThreadEngine implements ThreadController {
             return;
           }
           if (this.readsRun(e.runId)) return;
-          void this.ensureAttached();
+          this.attachForPush(e.runId);
           return;
         }
         if (this.latchRunId === e.runId) this.latchRunId = null;
@@ -1312,10 +1538,11 @@ export class ThreadEngine implements ThreadController {
   /** Socket down for a while, thread visible: probe every beat, reload every 3rd. */
   private pollBeat(n: number): void {
     if (this.disposed) return;
+    const markBefore = this.mark();
     void this.deps.api.getChatRun(this.sessionId).then((probe) => {
       if (this.disposed || !probe) return;
       if (probe.active && probe.run && !this.readsRun(probe.run.run_id)) void this.ensureAttached(probe);
-      else if (!probe.active) this.noteIdle();
+      else if (!probe.active && !this.noteIdle(markBefore, probe.run?.run_id ?? null)) void this.ensureAttached();
     });
     if (n % POLL_RELOAD_EVERY === 0) {
       void this.reloadLatest().then((result) => {

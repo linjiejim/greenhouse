@@ -79,7 +79,11 @@ export interface BotsState extends BotsData {
   loadBots(): Promise<void>;
   loadConversations(): Promise<void>;
   loadPending(): Promise<void>;
-  /** Rebuild `running` from `GET /api/chat/runs` (after a reconnect). */
+  /**
+   * Rebuild `running` from `GET /api/chat/runs` (after a reconnect, on each
+   * socket-down poll). A conversation whose mark changed while the request was
+   * out (a push, the open thread) keeps its live mark: the snapshot is older.
+   */
   seedRuns(): Promise<void>;
   /** Sprouty's DM session id, bootstrapping it when missing — at most once per app session / station. */
   ensureSprouty(): Promise<string | null>;
@@ -190,6 +194,8 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
   const refreshedForIds = new Set<string>();
   let sproutyOnce: Promise<string | null> | null = null;
   let pendingTimer: unknown = null;
+  /** One set per `seedRuns` request in flight: the conversations whose busy mark changed meanwhile. */
+  const seedsInFlight = new Set<Set<string>>();
 
   /** The thread surfaces are closed for this app session (403 / older server). */
   const closed = () => get().error === 'forbidden' || get().error === 'missing';
@@ -303,9 +309,24 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
     async seedRuns() {
       if (closed()) return;
       const asked = get().generation;
-      const runs = await api.listChatRuns();
-      if (get().generation !== asked || !runs) return;
-      set({ running: Object.fromEntries(runs.map((run) => [run.session_id, run.run_id])) });
+      const touched = new Set<string>();
+      seedsInFlight.add(touched);
+      try {
+        const runs = await api.listChatRuns();
+        if (get().generation !== asked || !runs) return;
+        set((state) => {
+          const running: Record<string, string> = {};
+          for (const run of runs) if (!touched.has(run.session_id)) running[run.session_id] = run.run_id;
+          // Changed while the request was out (a run's end or start pushed, the open thread reading one): newer.
+          for (const sessionId of touched) {
+            const live = state.running[sessionId];
+            if (live !== undefined) running[sessionId] = live;
+          }
+          return { running };
+        });
+      } finally {
+        seedsInFlight.delete(touched);
+      }
     },
 
     async ensureSprouty() {
@@ -352,6 +373,7 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
     },
 
     setRunning(sessionId, runId) {
+      for (const touched of seedsInFlight) touched.add(sessionId);
       set((state) => {
         if (runId === null) {
           if (!(sessionId in state.running)) return {};
