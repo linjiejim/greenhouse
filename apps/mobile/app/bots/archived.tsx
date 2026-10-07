@@ -17,6 +17,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useRowCopy } from '../../src/bots/drawer/conversation-row';
 import { rowPreview, rowTitle } from '../../src/bots/drawer/row-text';
 import { openThread } from '../../src/bots/nav';
+import { BotsRouteGate } from '../../src/bots/route-gate';
 import { drawerRows, useBots } from '../../src/bots/store';
 import { AvatarStack } from '../../src/bots/ui/avatar-stack';
 import { BotAvatar } from '../../src/bots/ui/bot-avatar';
@@ -31,7 +32,16 @@ import { SheetClose } from '../../src/ui/sheet-chrome';
 /** Leading column: a 32-pt plant, or a group's first two 22-pt plants overlapped. */
 const LEAD_W = 44;
 
-export default function ArchivedSheet() {
+/** Closed Bots (Android, switched off, refused) → home: src/bots/route-gate.tsx. */
+export default function ArchivedRoute() {
+  return (
+    <BotsRouteGate kind="threads">
+      <ArchivedSheet />
+    </BotsRouteGate>
+  );
+}
+
+function ArchivedSheet() {
   const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
   const t = useT();

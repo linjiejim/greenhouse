@@ -10,9 +10,19 @@
 import React from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { BotProfileView } from '../../src/bots/manage/bot-profile-view';
+import { BotsRouteGate } from '../../src/bots/route-gate';
 import { SheetClose } from '../../src/ui/sheet-chrome';
 
-export default function BotProfileSheet() {
+/** Bot identity only (an internal account; the conversations may be off) — closed → home: src/bots/route-gate.tsx. */
+export default function BotProfileRoute() {
+  return (
+    <BotsRouteGate kind="identity">
+      <BotProfileSheet />
+    </BotsRouteGate>
+  );
+}
+
+function BotProfileSheet() {
   const { botId, from } = useLocalSearchParams<{ botId?: string; from?: string }>();
   return (
     <>

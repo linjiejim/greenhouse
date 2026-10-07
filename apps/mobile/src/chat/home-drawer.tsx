@@ -89,8 +89,13 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
   const insets = useSafeAreaInsets();
   const user = useAuth((s) => s.user);
   const station = useActiveStation();
-  // `c` = a Bots thread is on screen (no history row is current then).
-  const { id: activeId, c: activeThread } = useGlobalSearchParams<{ id?: string; c?: string }>();
+  // `c` = a Bots thread is on screen (no history row is current then); `profile` = a
+  // new chat with one Bot ("Ask Dandy in a New Chat") — not the plain new chat either.
+  const {
+    id: activeId,
+    c: activeThread,
+    profile: activeProfile,
+  } = useGlobalSearchParams<{ id?: string; c?: string; profile?: string }>();
 
   const tags = useTags((s) => s.tags);
   const loadTags = useTags((s) => s.load);
@@ -138,10 +143,12 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
     [close, router, activeId],
   );
 
+  // Already on a plain new chat → just close; anything else (a chat, a thread, a one-Bot
+  // new chat) → a plain one (`openNewChat` clears every home param, `profile` included).
   const newChat = useCallback(() => {
     close();
-    if (activeId || activeThread) openNewChat(router);
-  }, [close, router, activeId, activeThread]);
+    if (activeId || activeThread || activeProfile) openNewChat(router);
+  }, [close, router, activeId, activeThread, activeProfile]);
 
   // Close first, then push — the panel settles under the incoming page.
   const go = useCallback(

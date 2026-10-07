@@ -50,7 +50,19 @@
  */
 
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, Linking, Platform, Share, StyleSheet, Text, View, type LayoutChangeEvent, type TextInput } from 'react-native';
+import {
+  Keyboard,
+  Linking,
+  Platform,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+  type TextInput,
+} from 'react-native';
 import { Stack, useIsFocused, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { DrawerActions } from 'expo-router/react-navigation';
 import { useHeaderInset } from '../../../src/ui/header-inset';
@@ -107,6 +119,12 @@ import { BotAvatar } from '../../../src/bots/ui/bot-avatar';
 import { usePrefs } from '../../../src/store/prefs';
 
 const MAX_IMAGES = 4;
+/**
+ * Above this Dynamic Type scale the new-chat hero sheds its extras — the Bots
+ * hint and the shelf of faces (the bridge row stays). The accessibility sizes
+ * start at 1.79× (AX1); up to xxxLarge (1.35×) the hero keeps everything.
+ */
+const HERO_COMPACT_FONT_SCALE = 1.5;
 
 /** What a message shows — a user turn without its attachments fence (that's for chips, not for copying). */
 const visibleText = (msg: ChatMessage) => (msg.role === 'user' ? splitAttachments(msg.text).text : msg.text);
@@ -569,8 +587,68 @@ function Conversation() {
   const heroLift = useAnimatedStyle(() => ({
     transform: [{ translateY: -Math.max(0, Math.abs(kbHeight.value) - insets.bottom) / 2 }],
   }));
+  // Large text (spec §2.5.9): a hero taller than the room between the nav bar and the
+  // composer would spill under both (its Bots links untappable under the composer), so it
+  // scrolls in that room instead — measured, not guessed. At the usual sizes it fits and
+  // the tree is the plain centred one (touches pass through to the chat underneath).
+  const { fontScale } = useWindowDimensions();
+  const heroCompact = fontScale > HERO_COMPACT_FONT_SCALE;
+  const [heroRoom, setHeroRoom] = useState(0);
+  const [heroHeight, setHeroHeight] = useState(0);
+  const onHeroRoom = useCallback((e: LayoutChangeEvent) => setHeroRoom(e.nativeEvent.layout.height), []);
+  const onHeroHeight = useCallback((e: LayoutChangeEvent) => setHeroHeight(e.nativeEvent.layout.height), []);
+  const heroScrolls = heroRoom > 0 && heroHeight > heroRoom + 1;
   const stickyOffset = useMemo(() => ({ closed: 0, opened: insets.bottom - space.sm }), [insets.bottom]);
   const lastAiId = useMemo(() => [...messages].reverse().find((m) => m.role === 'assistant')?.id, [messages]);
+
+  // The new-chat hero (only its Bots links take touches) — the same tree centred or scrolling.
+  const hero = isNew ? (
+    <Animated.View pointerEvents="box-none" style={heroFade}>
+      <Animated.View
+        pointerEvents="box-none"
+        entering={FadeIn.duration(320)}
+        onLayout={onHeroHeight}
+        // scrolling, it stays put while the keyboard is up (a lift would push its top out of reach)
+        style={[styles.hero, heroScrolls ? null : heroLift]}
+      >
+        {profileBot ? (
+          <View pointerEvents="none" style={styles.heroFace}>
+            <BotAvatar bot={profileBot.bot} size={76} animate={focused} />
+            {profileBot.bot ? (
+              <>
+                <Text style={styles.heroTitle}>{profileBot.bot.name}</Text>
+                <Text style={styles.heroSub}>{t('bots.nav.profileHint', { name: profileBot.bot.name })}</Text>
+              </>
+            ) : null}
+          </View>
+        ) : (
+          <View pointerEvents="none" style={styles.heroFace}>
+            <PlantAvatar size={76} animate={focused} />
+            <Text style={styles.heroTitle}>
+              {t('home.greetingFormat', { greeting: greeting(), name: user?.nickname ?? t('home.fallbackName') })}
+            </Text>
+            <Text style={styles.heroSub}>{t('home.title')}</Text>
+            {botsOn && !heroCompact ? <Text style={styles.heroHint}>{t('bots.nav.freshHint')}</Text> : null}
+          </View>
+        )}
+        {profileBot?.bot && profileBot.dm && botsOn ? (
+          <NativeButton
+            label={t('bots.nav.backTo', { name: profileBot.bot.name })}
+            variant="glass"
+            size="small"
+            style={styles.heroAction}
+            onPress={() => openThread(router, { c: profileBot.dm!, title: profileBot.bot!.name })}
+          />
+        ) : null}
+        {botsOn && !profileBot ? (
+          <>
+            <HomeBridge />
+            {heroCompact ? null : <BotsShelf />}
+          </>
+        ) : null}
+      </Animated.View>
+    </Animated.View>
+  ) : null;
 
   return (
     <View style={styles.root}>
@@ -629,52 +707,27 @@ function Conversation() {
         )}
       </KeyboardChatScrollView>
 
-      {/* new conversation: the hero, centred above the composer (only the Bots links in it take touches) */}
+      {/* new conversation: the hero, centred above the composer — scrolling when large text overflows it */}
       {isNew ? (
         <Animated.View
           pointerEvents="box-none"
           exiting={FadeOut.duration(180)}
+          onLayout={onHeroRoom}
           style={[styles.heroWrap, { top: headerHeight, bottom: composerH + composerBottom }]}
         >
-          <Animated.View pointerEvents="box-none" style={heroFade}>
-            <Animated.View pointerEvents="box-none" entering={FadeIn.duration(320)} style={[styles.hero, heroLift]}>
-              {profileBot ? (
-                <View pointerEvents="none" style={styles.heroFace}>
-                  <BotAvatar bot={profileBot.bot} size={76} animate={focused} />
-                  {profileBot.bot ? (
-                    <>
-                      <Text style={styles.heroTitle}>{profileBot.bot.name}</Text>
-                      <Text style={styles.heroSub}>{t('bots.nav.profileHint', { name: profileBot.bot.name })}</Text>
-                    </>
-                  ) : null}
-                </View>
-              ) : (
-                <View pointerEvents="none" style={styles.heroFace}>
-                  <PlantAvatar size={76} animate={focused} />
-                  <Text style={styles.heroTitle}>
-                    {t('home.greetingFormat', { greeting: greeting(), name: user?.nickname ?? t('home.fallbackName') })}
-                  </Text>
-                  <Text style={styles.heroSub}>{t('home.title')}</Text>
-                  {botsOn ? <Text style={styles.heroHint}>{t('bots.nav.freshHint')}</Text> : null}
-                </View>
-              )}
-              {profileBot?.bot && profileBot.dm && botsOn ? (
-                <NativeButton
-                  label={t('bots.nav.backTo', { name: profileBot.bot.name })}
-                  variant="glass"
-                  size="small"
-                  style={styles.heroAction}
-                  onPress={() => openThread(router, { c: profileBot.dm!, title: profileBot.bot!.name })}
-                />
-              ) : null}
-              {botsOn && !profileBot ? (
-                <>
-                  <HomeBridge />
-                  <BotsShelf />
-                </>
-              ) : null}
-            </Animated.View>
-          </Animated.View>
+          {heroScrolls ? (
+            <ScrollView
+              style={StyleSheet.absoluteFill}
+              contentContainerStyle={styles.heroScroll}
+              contentInsetAdjustmentBehavior="never"
+              keyboardDismissMode="interactive"
+              keyboardShouldPersistTaps="handled"
+            >
+              {hero}
+            </ScrollView>
+          ) : (
+            hero
+          )}
         </Animated.View>
       ) : null}
 
@@ -864,6 +917,7 @@ const useStyles = makeStyles((c) => ({
     paddingBottom: space.md,
   },
   heroWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
+  heroScroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: space.md },
   hero: { alignItems: 'center', paddingHorizontal: space.xxl, gap: space.xs },
   heroFace: { alignItems: 'center', gap: space.xs },
   heroTitle: { ...typo.title2, color: c.label, textAlign: 'center', marginTop: space.md },

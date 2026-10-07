@@ -15,6 +15,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useT } from '../../src/lib/i18n';
 import { canInviteMore, inviteCandidates } from '../../src/bots/manage/group-model';
 import { useConversationInfo } from '../../src/bots/manage/use-conversation-info';
+import { BotsRouteGate } from '../../src/bots/route-gate';
 import { useBots } from '../../src/bots/store';
 import { BotAvatar } from '../../src/bots/ui/bot-avatar';
 import { space, useTheme } from '../../src/theme';
@@ -27,7 +28,16 @@ const AVATAR = 32;
 /** Empty / failed states sit in the middle of the sheet. */
 const CENTERED = { flexGrow: 1, justifyContent: 'center' } as const;
 
-export default function InviteSheet() {
+/** Closed Bots (Android, switched off, refused) → home: src/bots/route-gate.tsx. */
+export default function InviteRoute() {
+  return (
+    <BotsRouteGate kind="threads">
+      <InviteSheet />
+    </BotsRouteGate>
+  );
+}
+
+function InviteSheet() {
   const t = useT();
   const router = useRouter();
   const { colors: c } = useTheme();
