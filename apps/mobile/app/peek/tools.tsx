@@ -1,20 +1,25 @@
 /**
  * Tool-call peek (form sheet, native header) — the pipeline behind a reply,
- * opened from its "调用了 N 个工具" row. One inset-grouped row per call: tool
- * icon, friendly name, a one-line preview of the input, duration and status;
- * tap to expand the full input / output as pretty-printed JSON in the
- * always-dark code style (with copy). Steps arrive via the handoff store
- * (`?k=`, kind `tools`); a missing key renders the "no longer available" state.
+ * opened from its "调用了 N 个工具" row (or, while the reply runs, its
+ * "正在调用工具" row). One inset-grouped row per call: tool icon, friendly
+ * name, a one-line preview of the input, duration and status; tap to expand
+ * the full input / output as pretty-printed JSON in the always-dark code style
+ * (with copy). The sheet follows the turn live (`?id=`, src/chat/live-turn.ts):
+ * new calls slide in, running ones finish in place, expanded rows stay open.
+ * Calls that render as cards in the reply (an ask_user form, a file, a
+ * sub-session — src/chat/artifacts.tsx) aren't listed again. An unknown id
+ * renders the "no longer available" state.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { replacesRow } from '../../src/chat/artifacts';
+import { useLiveTurn } from '../../src/chat/live-turn';
 import { CodeBlock } from '../../src/chat/markdown/blocks/code';
 import { excerpt, type ToolStep } from '../../src/chat/model';
 import { toolIcon, toolLabel } from '../../src/lib/format';
-import { getHandoff } from '../../src/lib/handoff';
 import { useT } from '../../src/lib/i18n';
 import { HIT, makeStyles, radius, space, squircle, typo, useTheme } from '../../src/theme';
 import { Icon, Spinner } from '../../src/ui/core';
@@ -57,7 +62,7 @@ function StepRow({ step, last }: { step: ToolStep; last: boolean }) {
   const tint = step.status === 'error' ? c.red : step.status === 'running' ? c.gray : c.accent;
 
   return (
-    <View>
+    <Animated.View entering={FadeIn.duration(200)}>
       <Pressable
         onPress={() => setOpen((o) => !o)}
         accessibilityRole="button"
@@ -102,7 +107,7 @@ function StepRow({ step, last }: { step: ToolStep; last: boolean }) {
         </Animated.View>
       ) : null}
       {!last ? <View style={styles.sep} /> : null}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -110,8 +115,9 @@ export default function ToolsPeek() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
-  const { k } = useLocalSearchParams<{ k?: string }>();
-  const steps = getHandoff<ToolStep[]>(k);
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const turn = useLiveTurn(id);
+  const steps = useMemo(() => turn?.tools?.filter((s) => !replacesRow(s)), [turn?.tools]);
 
   return (
     <>

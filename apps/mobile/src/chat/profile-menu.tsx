@@ -1,7 +1,8 @@
 /**
  * Agent-profile picker — a small glass capsule above the composer of a NEW
  * conversation ("Sprouty ⌃⌄") that opens a native menu of the agents from
- * GET /api/profiles, with a checkmark on the current pick. The pick lives in
+ * GET /api/profiles, with a checkmark on the current pick. The composer only
+ * offers it when the catalog has more than one agent. The pick lives in
  * prefs and binds to the next session created (existing sessions keep theirs).
  *
  * Also the agent catalog's one home for the rest of the app (settings' default

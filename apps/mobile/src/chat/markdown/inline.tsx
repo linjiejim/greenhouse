@@ -11,11 +11,15 @@
  * short space-free spans are glued with word joiners so `/v1` or `a.b()`
  * moves to the next line whole instead of splitting into two grey fragments.
  *
+ * Bare URLs and `<https://…>` are links too (GFM autolinks; a URL ends at
+ * whitespace, a CJK character or trailing punctuation), and an HTML `<br>` —
+ * models put them in table cells — is a line break.
+ *
  * Links (iOS text-link styling: tinted, no underline):
  *  - entity deeplinks (`#/knowledge/doc/<id>-<slug>`, `#/projects/<id>`) open
  *    the native preview sheet (src/lib/entity-links.ts),
- *  - http(s) → the in-app Safari view (src/lib/links.ts `openLink`); mailto /
- *    tel → the system (Mail, Phone),
+ *  - http(s) and uploaded images (`/api/upload/…`) → the in-app Safari view
+ *    (src/lib/links.ts `openLink`); mailto / tel → the system (Mail, Phone),
  *  - chat files (`/api/chat-files/<id>/content`, e.g. an export_table result)
  *    → authenticated download + the system share sheet (Save to Files,
  *    AirDrop…; src/lib/share-file.ts), named after the link text; a short
@@ -26,16 +30,13 @@
 import { type ReactNode, useCallback } from 'react';
 import { Text } from 'react-native';
 import { useRouter } from 'expo-router';
+import { uploadUrl } from '../../api/upload';
 import { entityRoute, parseEntityUrl } from '../../lib/entity-links';
 import { useT } from '../../lib/i18n';
 import { openLink } from '../../lib/links';
-import { downloadAndShare } from '../../lib/share-file';
 import { makeStyles, mono, type ThemeColors, typo, useTheme, weight } from '../../theme';
 import { alertError } from '../../ui/dialogs';
-import { toast } from '../../ui/toast';
-
-/** One chat-file download at a time (a double tap must not open two share sheets). */
-let downloading = false;
+import { saveFile } from '../file-card';
 
 /** No-break space — keeps inline-code padding glued to the code when lines wrap. */
 const NBSP = '\u00a0';
@@ -69,10 +70,28 @@ interface Ctx {
 
 type InlineTok = {
   re: RegExp;
-  boundary?: boolean;
+  /** Only fire after this kind of character (or at the start). */
+  after?: RegExp;
   /** `inner(text)` renders nested marks inside this one. */
   node: (m: RegExpExecArray, key: number, ctx: Ctx, inner: (text: string) => ReactNode[]) => ReactNode;
 };
+
+/** A word boundary for `_` emphasis (snake_case / foo_bar stay literal). */
+const WORD_START = /[\s([{<"'　-〿]/;
+/** Not glued to a Latin word / number (`xhttp://` isn't a link; `见http://…` is). */
+const NOT_ALNUM = /[^A-Za-z0-9]/;
+
+/** Characters a bare URL never contains: whitespace, quotes, angle brackets, CJK text and punctuation. */
+const URL_STOP = '\\s<>"\'`\\u2e80-\\u9fff\\u3000-\\u303f\\uff00-\\uffef';
+/** …and may not end with (sentence punctuation after a link stays prose). */
+const URL_TAIL = '.,;:!?)\\]}*_~';
+const BARE_URL = new RegExp(`^https?:\\/\\/[^${URL_STOP}]*[^${URL_STOP}${URL_TAIL}]`);
+
+const linkNode = (href: string, label: ReactNode, k: number, { s, open }: Ctx, name?: string) => (
+  <Text key={k} style={s.link} onPress={() => open(href, name)} accessibilityRole="link">
+    {label}
+  </Text>
+);
 
 const INLINE_TOKENS: InlineTok[] = [
   {
@@ -85,11 +104,7 @@ const INLINE_TOKENS: InlineTok[] = [
   },
   {
     re: /^\[([^\]]+)\]\(([^)\s]+)\)/,
-    node: (m, k, { s, open }, inner) => (
-      <Text key={k} style={s.link} onPress={() => open(m[2], m[1])} accessibilityRole="link">
-        {inner(m[1])}
-      </Text>
-    ),
+    node: (m, k, ctx, inner) => linkNode(m[2], inner(m[1]), k, ctx, m[1]),
   },
   {
     re: /^\*\*(.+?)\*\*/,
@@ -101,7 +116,7 @@ const INLINE_TOKENS: InlineTok[] = [
   },
   {
     re: /^__(.+?)__/,
-    boundary: true,
+    after: WORD_START,
     node: (m, k, { s }, inner) => (
       <Text key={k} style={s.bold}>
         {inner(m[1])}
@@ -127,7 +142,7 @@ const INLINE_TOKENS: InlineTok[] = [
   },
   {
     re: /^_([^\s_](?:[^_\n]*?[^\s_])?)_/,
-    boundary: true,
+    after: WORD_START,
     node: (m, k, { s }, inner) => (
       <Text key={k} style={s.italic}>
         {inner(m[1])}
@@ -142,9 +157,20 @@ const INLINE_TOKENS: InlineTok[] = [
       </Text>
     ),
   },
+  {
+    // <https://…> — a CommonMark autolink
+    re: /^<(https?:\/\/[^\s<>]+)>/,
+    node: (m, k, ctx) => linkNode(m[1], m[1], k, ctx),
+  },
+  {
+    // a bare URL (GFM autolink)
+    re: BARE_URL,
+    after: NOT_ALNUM,
+    node: (m, k, ctx) => linkNode(m[0], m[0], k, ctx),
+  },
 ];
 
-const MARKERS = new Set(['!', '[', '*', '_', '~', '`']);
+const MARKERS = new Set(['!', '[', '*', '_', '~', '`', '<', 'h']);
 
 /** Tokenize `text` into spans (recursing into the nested marks). */
 function renderInline(text: string, ctx: Ctx): ReactNode[] {
@@ -162,11 +188,11 @@ function renderInline(text: string, ctx: Ctx): ReactNode[] {
   while (i < text.length) {
     const ch = text[i];
     if (MARKERS.has(ch)) {
-      const prevBoundary = i === 0 || /[\s([{<"'　-〿]/.test(text[i - 1]);
+      const prev = i === 0 ? '' : text[i - 1];
       const rest = text.slice(i);
       let hit = false;
       for (const tok of INLINE_TOKENS) {
-        if (tok.boundary && !prevBoundary) continue;
+        if (tok.after && prev && !tok.after.test(prev)) continue;
         const m = tok.re.exec(rest);
         if (m) {
           flush();
@@ -202,14 +228,13 @@ function useOpenLink(): OpenLink {
         void openLink(href, hex.accent).catch(() => alertError(t('chat.linkFailed')));
         return;
       }
+      // an uploaded / generated image (public, like the bubbles' thumbnails)
+      if (/^\/api\/upload\//.test(href)) {
+        void openLink(uploadUrl(href), hex.accent).catch(() => alertError(t('chat.linkFailed')));
+        return;
+      }
       if (/^\/api\/chat-files\//.test(href)) {
-        if (downloading) return;
-        downloading = true;
-        toast(t('chat.preparingFile'), 'download');
-        void downloadAndShare(href, label?.trim() || 'download').then((ok) => {
-          downloading = false;
-          if (!ok) alertError(t('chat.downloadFailed'));
-        });
+        saveFile(href, label ?? '');
         return;
       }
       // Any other web-app route (`#/…`, incl. records with no mobile surface)
@@ -220,10 +245,13 @@ function useOpenLink(): OpenLink {
   );
 }
 
+/** An HTML line break (`<br>`, `<br/>`, `<br />`) — common in model-written table cells. */
+const BR = /<br\s*\/?>/gi;
+
 export function Inline({ text }: { text: string }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const open = useOpenLink();
   const t = useT();
-  return <>{renderInline(text, { s: styles, open, imageLabel: t('chat.image') })}</>;
+  return <>{renderInline(text.replace(BR, '\n'), { s: styles, open, imageLabel: t('chat.image') })}</>;
 }

@@ -8,9 +8,10 @@
  * rejects other types); the field grows to ~6 lines then scrolls; the send
  * button is the accent-tinted glass button and turns into stop while a reply
  * streams. For a new conversation an agent-profile capsule (ProfileMenu) sits
- * above the row. Pure view: the screen owns the draft, attachments and
- * keyboard placement (it wraps this in a KeyboardStickyView) and gets the
- * control layer's height through `onHeight` to pad the message list.
+ * above the row — only when there is more than one agent to pick. Pure view:
+ * the screen owns the draft, attachments and keyboard placement (it wraps this
+ * in a KeyboardStickyView) and gets the control layer's height through
+ * `onHeight` to pad the message list.
  */
 
 import React, { forwardRef, memo } from 'react';
@@ -23,7 +24,7 @@ import { Icon, Spinner, Touchable } from '../ui/core';
 import { Glass, GlassGroup, GlassIconButton } from '../ui/glass';
 import { NativeMenu } from '../ui/menu';
 import type { Annotation } from './model';
-import { ProfileMenu } from './profile-menu';
+import { ProfileMenu, useProfiles } from './profile-menu';
 
 /** A picked image being uploaded (or uploaded) before send. */
 export interface ComposerImage {
@@ -54,7 +55,7 @@ export const Composer = memo(
       /** Image cap per message — at the cap the `+` menu explains it and disables its items. */
       maxImages?: number;
       placeholder: string;
-      /** Show the agent-profile capsule (new conversations only). */
+      /** Offer the agent-profile capsule (new conversations; shown only with a choice of agents). */
       showProfile?: boolean;
       autoFocus?: boolean;
       /** Height of the control layer (excluding the bottom safe-area pad). */
@@ -88,10 +89,13 @@ export const Composer = memo(
     const canSend = !uploading && (value.trim().length > 0 || images.some((im) => im.status === 'done'));
     const hasAttachments = images.length > 0 || annotations.length > 0;
     const full = images.length >= maxImages;
+    // A single agent is no choice — no capsule (and no empty row) for it.
+    const agents = useProfiles();
+    const pickAgent = showProfile && (agents?.length ?? 0) > 1;
 
     return (
       <View style={styles.wrap} onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}>
-        {showProfile ? (
+        {pickAgent ? (
           <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(150)} style={styles.profileRow}>
             <ProfileMenu />
           </Animated.View>

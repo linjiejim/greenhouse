@@ -4,10 +4,11 @@
  * conversation, and streams agent turns.
  *
  * Streaming: NDJSON deltas (expo/fetch) append to a buffer that a ~30fps
- * "drain" reveals a little at a time (a fraction of the backlog per tick,
- * snapped to word edges, never splitting a surrogate pair) — the reply unfolds
- * like calm typing instead of slamming in whole chunks, and React sees at most
- * one commit per tick. The turn is only finalized once the drain has caught up
+ * "drain" reveals at a steady pace (a small share of the backlog per tick, a
+ * few characters at most — Latin words whole, CJK character by character,
+ * never splitting a surrogate pair) — the reply unfolds like calm typing
+ * instead of slamming in whole chunks or lines, and React sees at most one
+ * commit per tick. The turn is only finalized once the drain has caught up
  * with the closed stream. Tool calls (timed client-side), citations harvested
  * from tool results, reasoning, the live title, usage metrics and errors all
  * land on the assistant message.
@@ -59,6 +60,15 @@ interface TurnRequest {
 type TurnSource = { kind: 'post'; req: TurnRequest } | { kind: 'attach'; after: number };
 
 const TICK_MS = 33;
+/**
+ * Reveal pace, per tick: backlog ÷ `share`, clamped to [min, max] chars —
+ * live, the text trails the model by ~⅓ s at up to 240 chars/s; once the
+ * wire has closed, the rest flows out faster.
+ */
+const DRAIN_LIVE = { share: 10, min: 1, max: 8 };
+const DRAIN_END = { share: 5, min: 3, max: 40 };
+/** Characters that continue a Latin word (revealed whole; CJK has no word gaps). */
+const WORD_CHAR = /[A-Za-z0-9\u00C0-\u024F_'’-]/;
 /** Re-attach attempts after a transport drop before the turn is shown as interrupted. */
 const MAX_RESUMES = 3;
 /** No event (not even the server's 15 s keepalive ping) for this long = a dead socket. */
@@ -75,14 +85,11 @@ const runStart = (ms: number | undefined) =>
 export function useConversation({
   initialId,
   onCreated,
-  onTick,
 }: {
   /** Session id from the route (absent = a new conversation). */
   initialId?: string;
   /** A new conversation's session now exists (point the route at it). */
   onCreated: (session: Session) => void;
-  /** Content grew (a drain tick / a new message) — the screen may follow it. */
-  onTick?: () => void;
 }) {
   const [sessionId, setSessionId] = useState<string | undefined>(initialId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -99,8 +106,6 @@ export function useConversation({
   const creatingRef = useRef(false);
   const onCreatedRef = useRef(onCreated);
   onCreatedRef.current = onCreated;
-  const onTickRef = useRef(onTick);
-  onTickRef.current = onTick;
 
   const abortRef = useRef<AbortController | null>(null);
   const textBufRef = useRef('');
@@ -120,8 +125,6 @@ export function useConversation({
   const reconnectRef = useRef<(() => void) | null>(null);
   /** A stopped run still winding down server-side (the next turn waits for it). */
   const windDownRef = useRef<{ sid: string; done: Promise<void> } | null>(null);
-
-  const tick = useCallback(() => onTickRef.current?.(), []);
 
   const patchAssistant = useCallback((fn: (m: ChatMessage) => ChatMessage) => {
     const id = aIdRef.current;
@@ -153,8 +156,7 @@ export function useConversation({
     }));
     streamingRef.current = false;
     setStreaming(false);
-    requestAnimationFrame(tick);
-  }, [stopDrain, patchAssistant, tick]);
+  }, [stopDrain, patchAssistant]);
 
   const ensureDrain = useCallback(() => {
     if (drainRef.current) return;
@@ -167,13 +169,14 @@ export function useConversation({
         return;
       }
       if (backlog > 0) {
-        // Reveal a fraction of the backlog (min 2 chars — faster once the wire
-        // closed), then extend to the next whitespace so words appear whole
-        // (capped so CJK prose without spaces still flows).
-        let next = shownRef.current + Math.max(2, Math.ceil(backlog * (streamEndRef.current ? 0.3 : 0.12)));
+        // A small share of the backlog, then finish a Latin word in progress
+        // (bounded). CJK isn't extended: with no spaces to stop at, snapping
+        // ran a dozen characters ahead and lines popped in whole.
+        const pace = streamEndRef.current ? DRAIN_END : DRAIN_LIVE;
+        let next = shownRef.current + Math.min(pace.max, Math.max(pace.min, Math.ceil(backlog / pace.share)));
         if (next < buf.length) {
-          const cap = Math.min(buf.length, next + 16);
-          while (next < cap && !/\s/.test(buf[next])) next++;
+          const cap = Math.min(buf.length, next + 12);
+          while (next < cap && WORD_CHAR.test(buf[next - 1]) && WORD_CHAR.test(buf[next])) next++;
           const tail = buf.charCodeAt(next - 1);
           if (tail >= 0xd800 && tail <= 0xdbff) next++; // never split a surrogate pair
         }
@@ -195,9 +198,8 @@ export function useConversation({
         // shouldn't blank the row — it only renders once done).
         status: m.status === 'thinking' && shownRef.current > 0 ? 'streaming' : m.status,
       }));
-      tick();
     }, TICK_MS);
-  }, [finalize, patchAssistant, tick]);
+  }, [finalize, patchAssistant]);
 
   /**
    * Leave the current turn locally (another conversation / a new one / unmount)
@@ -238,9 +240,8 @@ export function useConversation({
         }
         return { ...m, tools, status: m.status === 'thinking' ? 'streaming' : m.status };
       });
-      tick();
     },
-    [patchAssistant, tick],
+    [patchAssistant],
   );
 
   const harvest = useCallback(
@@ -276,10 +277,9 @@ export function useConversation({
       streamingRef.current = true;
       setStreaming(true);
       setMessages((ms) => [...ms, { id: aId, role: 'assistant', text: '', tools: [], status: 'thinking', fresh: true }]);
-      requestAnimationFrame(tick);
       return turnRef.current;
     },
-    [stopDrain, tick],
+    [stopDrain],
   );
 
   /** End the live turn without the drain (its result is being reloaded instead). */
@@ -551,7 +551,6 @@ export function useConversation({
         fresh: true,
       };
       setMessages((ms) => [...ms, userMsg]);
-      requestAnimationFrame(tick);
 
       if (!sessionRef.current) {
         creatingRef.current = true; // block a double tap (and stop) while creating
@@ -578,7 +577,7 @@ export function useConversation({
       void pump({ kind: 'post', req: { message: wire, images: input.images.length ? input.images : undefined } });
       return true;
     },
-    [beginTurn, pump, tick, awaitWindDown],
+    [beginTurn, pump, awaitWindDown],
   );
 
   const stop = useCallback(() => {

@@ -7,6 +7,7 @@
  *  - `knowledge/*`, `projects/*`  pushed pages with large titles
  *  - `settings`            a page-sheet modal with its own stack
  *  - `peek/*`, `sheets/*`  form sheets (detail previews, pickers, short forms)
+ *  - `table`, `peek/diagram`, `peek/html`  full-screen viewers (modal pages)
  *  - `login`               full screen, shown when signed out
  *
  * Presentation (push / sheet / modal) is decided here, because it must be
@@ -137,6 +138,7 @@ export default function RootLayout() {
               <Stack.Screen name="peek/project/[id]" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="peek/source" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="peek/tools" options={sheetScreen([0.6, 1], { header: true })} />
+              <Stack.Screen name="peek/reasoning" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="peek/refs" options={sheetScreen([0.6, 1], { header: true })} />
 
               {/* ── pickers / short forms ── */}
@@ -147,6 +149,8 @@ export default function RootLayout() {
               {/* ── modals with their own stack ── */}
               <Stack.Screen name="settings" options={modalScreen()} />
               <Stack.Screen name="table" options={{ ...detailScreen(c), presentation: 'modal' }} />
+              <Stack.Screen name="peek/diagram" options={{ ...detailScreen(c), presentation: 'modal' }} />
+              <Stack.Screen name="peek/html" options={{ ...detailScreen(c), presentation: 'modal' }} />
             </Stack>
           )}
           <ToastHost />

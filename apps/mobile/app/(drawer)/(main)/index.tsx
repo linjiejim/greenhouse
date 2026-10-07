@@ -4,8 +4,8 @@
  * session, `title?` placeholder title, `ro?='1'` shared/read-only,
  * `compose?='1'` focus the composer — the widget's "新对话" deep link).
  *
- *  - New: a minimal hero (Sprouty + greeting) above the composer and an agent
- *    capsule; the first send creates the session, re-points the route with
+ *  - New: a minimal hero (Sprouty + greeting) above the composer (plus an
+ *    agent capsule when there is more than one agent); the first send creates the session, re-points the route with
  *    `router.setParams({ id })` (no remount) and the hero fades into the turn.
  *  - Existing: history loads, new turns stream (src/chat/use-conversation.ts).
  *
@@ -14,8 +14,19 @@
  * anywhere), 新对话, and a system menu with the real conversation actions
  * (标签 / 分享 / 重命名 / 删除). Content is the solid layer (session tag chips,
  * messages); the composer is the floating glass layer, kept above the keyboard
- * by KeyboardStickyView while KeyboardChatScrollView keeps the latest turn in
- * view. Details open as sheets: tool calls, references, sources, tables.
+ * by KeyboardStickyView. Details open as sheets: reasoning and tool calls
+ * (following a streaming reply live — src/chat/live-turn.ts), references,
+ * sources, tables. Cards in a reply (an ask_user form, a ```confirm) answer
+ * through `reply()` — a send like the composer's, anchored the same way.
+ *
+ * Scrolling never chases the stream (pinning the end on every drain tick made
+ * a reply judder). Opening a conversation lands on its end; every turn — a
+ * send, 重新生成, a run re-attached on open — is *anchored*: the user's message
+ * slides up under the nav bar and the reply unfolds below it in place
+ * (ChatGPT / Claude style). KeyboardChatScrollView's `blankSpace` (an inset
+ * floor) keeps that offset reachable while the reply is short and shrinks as
+ * it grows, so nothing moves; past the fold the reply simply continues below,
+ * and "回到最新" appears whenever the end is out of view.
  *
  * Streaming re-renders this screen ~30×/s, so everything handed to children is
  * kept referentially stable (header and composer are memoised, callbacks read
@@ -23,9 +34,10 @@
  */
 
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Share, StyleSheet, Text, View, type TextInput } from 'react-native';
+import { Keyboard, Linking, Platform, Share, StyleSheet, Text, View, type LayoutChangeEvent, type TextInput } from 'react-native';
 import { Stack, useIsFocused, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { DrawerActions, useHeaderHeight } from 'expo-router/react-navigation';
+import { DrawerActions } from 'expo-router/react-navigation';
+import { useHeaderInset } from '../../../src/ui/header-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import {
@@ -36,6 +48,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import type { SessionTag } from '../../../src/shared/greenhouse-types';
+import { splitAttachments } from '../../../src/shared/rich-output';
 import { deleteSession, updateSessionTitle } from '../../../src/api/sessions';
 import { prepareImage, uploadImage } from '../../../src/api/upload';
 import { useAuth } from '../../../src/store/auth';
@@ -44,6 +57,7 @@ import { Composer, ReadOnlyBar, type ComposerImage } from '../../../src/chat/com
 import { useComposerBridge } from '../../../src/chat/composer-bridge';
 import { AiMessage, UserMessage, type MessageAction } from '../../../src/chat/message';
 import { excerpt, plainText, transcript, type Annotation, type ChatMessage } from '../../../src/chat/model';
+import { openTurn, publishTurns } from '../../../src/chat/live-turn';
 import { TagChip } from '../../../src/chat/tag-chip';
 import { nextId, useConversation } from '../../../src/chat/use-conversation';
 import { putHandoff } from '../../../src/lib/handoff';
@@ -55,8 +69,12 @@ import { alertError, confirmAction, promptText } from '../../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { SproutyFace } from '../../../src/ui/sprouty';
 import { toast } from '../../../src/ui/toast';
+import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 
 const MAX_IMAGES = 4;
+
+/** What a message shows — a user turn without its attachments fence (that's for chips, not for copying). */
+const visibleText = (msg: ChatMessage) => (msg.role === 'user' ? splitAttachments(msg.text).text : msg.text);
 
 /* ------------------------------ native header ------------------------------ */
 
@@ -90,30 +108,30 @@ const ConversationHeader = memo(function ConversationHeader({
       <Stack.Screen options={{ title }} />
       <Stack.Toolbar placement="left">
         <Stack.Toolbar.Button
-          icon="line.3.horizontal"
+          icon={toolbarIcon('menu')}
           accessibilityLabel={t('chat.openDrawer')}
           onPress={actions.openDrawer}
         />
       </Stack.Toolbar>
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
-          icon="square.and.pencil"
+          icon={toolbarIcon('compose')}
           hidden={!hasSession}
           accessibilityLabel={t('drawer.newChat')}
           onPress={actions.newChat}
         />
-        <Stack.Toolbar.Menu icon="ellipsis" hidden={!hasSession} accessibilityLabel={t('common.more')}>
-          <Stack.Toolbar.MenuAction icon="tag" hidden={readOnly} onPress={actions.openTags}>
+        <Stack.Toolbar.Menu icon={toolbarIcon('more')} hidden={!hasSession} accessibilityLabel={t('common.more')}>
+          <Stack.Toolbar.MenuAction icon={toolbarIcon('tag')} hidden={readOnly} onPress={actions.openTags}>
             {t('chat.actionTags')}
           </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon="square.and.arrow.up" onPress={actions.share}>
+          <Stack.Toolbar.MenuAction icon={toolbarIcon('share')} onPress={actions.share}>
             {t('chat.actionShare')}
           </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon="pencil" hidden={readOnly} onPress={actions.rename}>
+          <Stack.Toolbar.MenuAction icon={toolbarIcon('pen')} hidden={readOnly} onPress={actions.rename}>
             {t('chat.actionRename')}
           </Stack.Toolbar.MenuAction>
           <Stack.Toolbar.Menu inline hidden={readOnly}>
-            <Stack.Toolbar.MenuAction icon="trash" destructive onPress={actions.remove}>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('trash')} destructive onPress={actions.remove}>
               {t('chat.actionDelete')}
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
@@ -132,44 +150,12 @@ export default function Conversation() {
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const headerHeight = useHeaderHeight();
+  const headerHeight = useHeaderInset();
   const params = useLocalSearchParams<{ id?: string; title?: string; ro?: string; compose?: string }>();
   const user = useAuth((s) => s.user);
 
-  /* ---------- follow-the-stream ---------- */
-  const scrollRef = useRef<React.ComponentRef<typeof KeyboardChatScrollView>>(null);
-  const followRef = useRef(true);
-  const draggingRef = useRef(false);
-  const [showJump, setShowJump] = useState(false);
-  const toEnd = useCallback((animated = false) => scrollRef.current?.scrollToEnd({ animated }), []);
-  const follow = useCallback(() => {
-    if (followRef.current) toEnd();
-  }, [toEnd]);
-  const onEndVisible = useCallback((visible: boolean) => {
-    if (visible) {
-      followRef.current = true;
-      setShowJump(false);
-    } else if (draggingRef.current) {
-      // Only a deliberate scroll away stops following — content growing past
-      // the fold while streaming must not.
-      followRef.current = false;
-      setShowJump(true);
-    }
-  }, []);
-  const onDragStart = useCallback(() => {
-    draggingRef.current = true;
-  }, []);
-  const onDragEnd = useCallback(() => {
-    draggingRef.current = false;
-  }, []);
-  const jumpToLatest = useCallback(() => {
-    followRef.current = true;
-    setShowJump(false);
-    toEnd(true);
-  }, [toEnd]);
-
   const onCreated = useCallback((s: { id: string }) => router.setParams({ id: s.id }), [router]);
-  const convo = useConversation({ initialId: params.id, onCreated, onTick: follow });
+  const convo = useConversation({ initialId: params.id, onCreated });
   // Destructure the stable callbacks — `convo` itself changes on every drain tick.
   const { sessionId, messages, streaming, rerun, stop, setTitle, send: convoSend, reload } = convo;
   const readOnly = params.ro === '1' || convo.isOwner === false;
@@ -188,15 +174,124 @@ export default function Conversation() {
   // "never"): KeyboardChatScrollView's keyboard lift assumes a 0 rest offset,
   // so the top (header) inset is content padding and the bottom inset = the
   // floating composer + home indicator, extended by the keyboard while it's up.
-  const extraPad = useSharedValue(60 + insets.bottom + space.md);
+  // Space under the composer: the home indicator / gesture bar inset (Android
+  // adds a little air — its gesture handle sits right on the inset's edge).
+  const composerBottom = Math.max(insets.bottom, space.md) + (Platform.OS === 'android' ? space.sm : 0);
+  const extraPad = useSharedValue(60 + composerBottom + space.md);
   const onComposerHeight = useCallback(
     (h: number) => {
       setComposerH(h);
-      extraPad.value = h + insets.bottom + space.md;
+      extraPad.value = h + composerBottom + space.md;
     },
-    [extraPad, insets.bottom],
+    [extraPad, composerBottom],
   );
   const focusInput = useCallback(() => setTimeout(() => inputRef.current?.focus(), 300), []);
+
+  /* ---------- scrolling: land on the end, anchor each turn (see header) ---------- */
+  const scrollRef = useRef<React.ComponentRef<typeof KeyboardChatScrollView>>(null);
+  const topPad = headerHeight + space.sm;
+  /** Inset floor under the content (KeyboardChatScrollView `blankSpace`). */
+  const blankSpace = useSharedValue(0);
+  /** Scroll view height, content height, and where the last user message sits. */
+  const geo = useRef({ viewport: 0, content: 0, user: null as { id: string; y: number; h: number } | null });
+  /** Keep the end in view while a conversation's history lays out (until a drag or a turn). */
+  const pinEndRef = useRef(true);
+  /** The anchored turn's scroll offset; pending = scroll there once its message is laid out. */
+  const anchorRef = useRef<number | null>(null);
+  const anchorPendingRef = useRef(false);
+  const [endVisible, setEndVisible] = useState(true);
+  const lastUserId = useMemo(() => [...messages].reverse().find((m) => m.role === 'user')?.id, [messages]);
+  const lastUserIdRef = useRef(lastUserId);
+  lastUserIdRef.current = lastUserId;
+  const visibleRef = useRef(0);
+  // Height a turn can fill without scrolling: between the nav bar and the composer.
+  visibleRef.current = geo.current.viewport - topPad - (composerH + composerBottom + space.md);
+
+  /** Exactly the inset that keeps the anchor offset reachable (0 once the turn outgrows the screen). */
+  const syncBlank = useCallback(() => {
+    const { viewport, content } = geo.current;
+    const offset = anchorRef.current;
+    blankSpace.value = offset == null ? 0 : Math.max(0, offset + viewport - content);
+  }, [blankSpace]);
+
+  const tryAnchor = useCallback(() => {
+    const u = geo.current.user;
+    if (!anchorPendingRef.current || !u || u.id !== lastUserIdRef.current || !geo.current.viewport) return;
+    anchorPendingRef.current = false;
+    // A long message keeps its last lines (and room for the reply) in view.
+    const room = visibleRef.current * 0.4;
+    const top = u.h > room ? u.y + u.h - room : u.y;
+    const offset = Math.max(0, Math.round(top - topPad));
+    anchorRef.current = offset;
+    syncBlank();
+    // Let the new inset land before scrolling into it.
+    const go = () => requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: offset, animated: true }));
+    go();
+    // A send dismisses the keyboard: while it slides away the chat view keeps
+    // re-pinning its scroll offset (persistent lift), which cuts this scroll
+    // short — land it again once the keyboard is gone.
+    if (Keyboard.isVisible()) {
+      const sub = Keyboard.addListener('keyboardDidHide', () => {
+        sub.remove();
+        if (anchorRef.current === offset) go();
+      });
+      setTimeout(() => sub.remove(), 1500);
+    }
+  }, [syncBlank, topPad]);
+
+  /** Start anchoring the next turn (its message may not be on screen yet). */
+  const anchorNextTurn = useCallback(() => {
+    pinEndRef.current = false;
+    anchorPendingRef.current = true;
+    tryAnchor();
+  }, [tryAnchor]);
+
+  const onViewport = useCallback(
+    (e: LayoutChangeEvent) => {
+      geo.current.viewport = e.nativeEvent.layout.height;
+      syncBlank();
+      tryAnchor();
+    },
+    [syncBlank, tryAnchor],
+  );
+  const onContentSize = useCallback(
+    (_w: number, h: number) => {
+      geo.current.content = h;
+      if (anchorRef.current != null) syncBlank();
+      else if (pinEndRef.current) scrollRef.current?.scrollToEnd({ animated: false });
+    },
+    [syncBlank],
+  );
+  const onLastUserLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const id = lastUserIdRef.current;
+      if (!id) return;
+      const { y, height } = e.nativeEvent.layout;
+      geo.current.user = { id, y, h: height };
+      tryAnchor();
+    },
+    [tryAnchor],
+  );
+  const onDragStart = useCallback(() => {
+    pinEndRef.current = false;
+  }, []);
+  const jumpToLatest = useCallback(() => scrollRef.current?.scrollToEnd({ animated: true }), []);
+
+  // Every turn is anchored — sent here, re-run, or a live run re-attached on open.
+  useEffect(() => {
+    if (streaming) anchorNextTurn();
+  }, [streaming, anchorNextTurn]);
+
+  // Another conversation (or a fresh one): land on its end again, no anchor.
+  const empty = messages.length === 0;
+  useEffect(() => {
+    if (!empty) return;
+    pinEndRef.current = true;
+    anchorRef.current = null;
+    anchorPendingRef.current = false;
+    geo.current.user = null;
+    syncBlank();
+  }, [empty, syncBlank]);
 
   // The widget's 新对话 deep link (`?compose=1`) can land on an already-open
   // screen (autoFocus only applies on mount): focus, then consume the param.
@@ -292,29 +387,64 @@ export default function Conversation() {
     if ((!text && !ready.length) || streaming || images.some((im) => im.status === 'uploading')) return;
     const draft = { input, annotations, images };
     setInput('');
+    // Clear natively too: a multiline field emptied only through `value` keeps
+    // its grown height on iOS (Fabric doesn't re-measure the emptied text view).
+    inputRef.current?.clear();
     setAnnotations([]);
     setImages([]);
-    followRef.current = true;
-    setShowJump(false);
+    // Read the reply, not the keyboard. A temporary floor first: with the
+    // keyboard gone, the current offset must stay valid until the anchor lands.
+    // The anchor itself starts with the turn (the `streaming` effect), once the
+    // new message is in the list — starting it here would anchor the previous
+    // message and drop the floor (the next scroll then clamps short).
+    blankSpace.value = geo.current.viewport;
+    pinEndRef.current = false;
+    Keyboard.dismiss();
     const ok = await convoSend({
       text,
       annotation: annotations.length ? annotations.map((a) => a.text).join('\n') : null,
       images: ready.map((im) => im.remote!),
     });
     if (!ok) {
+      anchorPendingRef.current = false;
+      syncBlank();
       setInput(draft.input);
       setAnnotations(draft.annotations);
       setImages(draft.images);
       alertError(tNow('chat.createFailed'));
     }
-  }, [input, images, annotations, streaming, convoSend]);
+  }, [input, images, annotations, streaming, convoSend, blankSpace, syncBlank]);
+
+  /** A follow-up sent from a card in a reply (ask_user answers, a confirm pick). Stable: reads `streaming` live. */
+  const streamingRef = useRef(streaming);
+  streamingRef.current = streaming;
+  const reply = useCallback(
+    async (text: string) => {
+      if (streamingRef.current) {
+        toast(tNow('chat.busy'), 'clock');
+        return false;
+      }
+      // same as a composer send (see `send`): floor now, anchor with the turn
+      blankSpace.value = geo.current.viewport;
+      pinEndRef.current = false;
+      Keyboard.dismiss();
+      const ok = await convoSend({ text, annotation: null, images: [] });
+      if (!ok) {
+        anchorPendingRef.current = false;
+        syncBlank();
+        alertError(tNow('chat.createFailed'));
+      }
+      return ok;
+    },
+    [convoSend, blankSpace, syncBlank],
+  );
 
   /* ---------- message actions (stable — messages are memoised) ---------- */
   const onAction = useCallback(
     async (msg: ChatMessage, action: MessageAction) => {
       switch (action) {
         case 'copy':
-          await Clipboard.setStringAsync(msg.text).catch(() => {});
+          await Clipboard.setStringAsync(visibleText(msg)).catch(() => {});
           toast(tNow('common.copied'), 'copy');
           break;
         case 'share':
@@ -325,23 +455,25 @@ export default function Conversation() {
           focusInput();
           break;
         case 'edit':
-          setInput(msg.text);
+          setInput(visibleText(msg));
           focusInput();
           break;
         case 'regenerate':
-          followRef.current = true;
           void rerun();
           break;
       }
     },
     [rerun, focusInput],
   );
-  const onRetry = useCallback(() => {
-    followRef.current = true;
-    void rerun();
-  }, [rerun]);
+  const onRetry = useCallback(() => void rerun(), [rerun]);
+  // the reply's sheets follow it while it streams
+  useEffect(() => publishTurns(messages), [messages]);
   const onOpenTools = useCallback(
-    (msg: ChatMessage) => router.push({ pathname: '/peek/tools', params: { k: putHandoff('tools', msg.tools ?? []) } }),
+    (msg: ChatMessage) => router.push({ pathname: '/peek/tools', params: { id: openTurn(msg) } }),
+    [router],
+  );
+  const onOpenReasoning = useCallback(
+    (msg: ChatMessage) => router.push({ pathname: '/peek/reasoning', params: { id: openTurn(msg) } }),
     [router],
   );
   const onOpenRefs = useCallback(
@@ -448,13 +580,14 @@ export default function Conversation() {
         contentContainerStyle={{ paddingTop: headerHeight + space.sm }}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
-        keyboardLiftBehavior="always"
+        keyboardLiftBehavior="persistent"
         offset={insets.bottom}
         extraContentPadding={extraPad}
+        blankSpace={blankSpace}
+        onLayout={onViewport}
         onScrollBeginDrag={onDragStart}
-        onScrollEndDrag={onDragEnd}
-        onEndVisible={onEndVisible}
-        onContentSizeChange={follow}
+        onEndVisible={setEndVisible}
+        onContentSizeChange={onContentSize}
       >
         {tags?.length ? (
           <View style={styles.tags}>
@@ -463,19 +596,25 @@ export default function Conversation() {
             ))}
           </View>
         ) : null}
-        {messages.map((m) =>
+        {messages.map((m, i) =>
           m.role === 'user' ? (
-            <UserMessage key={m.id} msg={m} readOnly={readOnly} onAction={onAction} />
+            // the last user message reports where it sits — that's what a turn anchors to
+            <View key={m.id} onLayout={m.id === lastUserId ? onLastUserLayout : undefined}>
+              <UserMessage msg={m} readOnly={readOnly} onAction={onAction} />
+            </View>
           ) : (
             <AiMessage
               key={m.id}
               msg={m}
               isLatest={m.id === lastAiId}
               readOnly={readOnly}
+              followUp={messages[i + 1]?.role === 'user' ? (messages[i + 1].wire ?? messages[i + 1].text) : undefined}
               onOpenTools={onOpenTools}
+              onOpenReasoning={onOpenReasoning}
               onOpenRefs={onOpenRefs}
               onAction={onAction}
               onRetry={onRetry}
+              onReply={reply}
             />
           ),
         )}
@@ -486,7 +625,7 @@ export default function Conversation() {
         <Animated.View
           pointerEvents="none"
           exiting={FadeOut.duration(180)}
-          style={[styles.heroWrap, { top: headerHeight, bottom: composerH + insets.bottom }]}
+          style={[styles.heroWrap, { top: headerHeight, bottom: composerH + composerBottom }]}
         >
           <Animated.View style={heroFade}>
             <Animated.View entering={FadeIn.duration(320)} style={[styles.hero, heroLift]}>
@@ -501,10 +640,10 @@ export default function Conversation() {
       ) : null}
 
       {convo.loading && !messages.length ? (
-        <LoadingState style={[styles.center, { top: headerHeight, bottom: composerH + insets.bottom }]} />
+        <LoadingState style={[styles.center, { top: headerHeight, bottom: composerH + composerBottom }]} />
       ) : null}
       {convo.loadFailed ? (
-        <View style={[styles.center, { top: headerHeight, bottom: composerH + insets.bottom }]}>
+        <View style={[styles.center, { top: headerHeight, bottom: composerH + composerBottom }]}>
           <EmptyState
             icon="alert"
             title={t('chat.loadFailed')}
@@ -516,7 +655,7 @@ export default function Conversation() {
 
       {/* floating control layer: jump-to-latest + composer, riding the keyboard */}
       <KeyboardStickyView offset={stickyOffset} style={styles.sticky}>
-        {showJump && messages.length ? (
+        {!endVisible && messages.length && !convo.loading ? (
           <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(140)} style={styles.jumpWrap}>
             <NativeButton
               label={streaming ? t('chat.newContent') : t('chat.jumpLatest')}
@@ -527,7 +666,9 @@ export default function Conversation() {
             />
           </Animated.View>
         ) : null}
-        <View style={{ paddingBottom: Math.max(insets.bottom, space.md) }}>
+        {/* Android: the input row sits on the page surface (Material, as in Messages) —
+            iOS lets content flow under its glass */}
+        <View style={[{ paddingBottom: composerBottom }, Platform.OS === 'android' && { backgroundColor: c.background }]}>
           {readOnly ? (
             <ReadOnlyBar onHeight={onComposerHeight} />
           ) : (

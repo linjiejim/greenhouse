@@ -27,6 +27,7 @@ import { NativeButton } from '../../src/ui/button';
 import { Badge } from '../../src/ui/list';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { SheetClose } from '../../src/ui/sheet-chrome';
+import { toolbarIcon } from '../../src/ui/toolbar-icon';
 
 /** How much of a fetched doc to show (the full read is one tap away). */
 const EXCERPT_CHARS = 1200;
@@ -74,7 +75,7 @@ export default function SourcePeek() {
       <SheetClose />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
-          icon="doc.text"
+          icon={toolbarIcon('file')}
           hidden={!slug}
           accessibilityLabel={t('common.open')}
           onPress={() => slug && router.replace({ pathname: '/peek/doc/[slug]', params: { slug } })}
