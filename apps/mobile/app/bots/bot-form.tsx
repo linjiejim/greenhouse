@@ -18,12 +18,13 @@
  * the sheet (the profile / the card underneath updates in place).
  */
 
-import React from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Text as RNText, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   HStack,
   Picker,
+  ProgressView,
   RNHostView,
   Section,
   Spacer,
@@ -47,10 +48,12 @@ import { useBotForm, useBotFormSource, type BotFormInit } from '../../src/bots/m
 import { openThread } from '../../src/bots/nav';
 import { BotAvatar } from '../../src/bots/ui/bot-avatar';
 import { makeStyles, space, typo, useTheme } from '../../src/theme';
-import { EmptyState, LoadingState } from '../../src/ui/empty';
+import { EmptyState } from '../../src/ui/empty';
 import { NativeForm } from '../../src/ui/native-form';
 import { PLANT_IDS, PLANT_MOODS, type PlantId, type PlantMood } from '../../src/ui/plant-avatar/plant-ids';
 import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
+
+type Chrome = React.ComponentProps<typeof FormChrome>;
 
 export default function BotFormSheet() {
   const t = useT();
@@ -61,29 +64,34 @@ export default function BotFormSheet() {
     requestId: params.request || undefined,
     inviteTo: params.inviteTo || undefined,
   });
-
-  if (source.status === 'ready') {
-    const { init } = source;
-    // Keyed: the (uncontrolled) fields capture their text from the right source once.
-    return (
-      <BotForm key={`${init.mode}:${init.bot?.id ?? init.request?.id ?? init.templateKey ?? 'custom'}`} init={init} />
-    );
-  }
+  // ✕ / ✓ for the ready form (handed up by BotFormSections: nav chrome can't sit among the Form's
+  // SwiftUI children).
+  const [chrome, setChrome] = useState<Chrome | null>(null);
+  const init = source.status === 'ready' ? source.init : null;
 
   const title = params.request
     ? t('bots.manage.formProposal')
     : params.botId
       ? t('bots.manage.edit')
       : t('bots.manage.formNew');
+  // The Form is mounted from the first frame, loading included: a SwiftUI Form that
+  // only mounts once the sheet is up doesn't get the nav bar's top inset, and its
+  // first (untitled) section slides under the bar.
   return (
     <>
-      <Stack.Screen options={{ title }} />
-      <SheetClose />
-      <View style={{ flex: 1, justifyContent: 'center' }}>
-        {source.status === 'failed' ? (
-          <EmptyState icon="alert" title={t('bots.manage.loadFailed')} onRetry={source.retry} />
-        ) : source.status === 'missing' ? (
-          params.request ? (
+      {chrome && init ? (
+        <FormChrome {...chrome} />
+      ) : (
+        <>
+          <Stack.Screen options={{ title }} />
+          <SheetClose />
+        </>
+      )}
+      {source.status === 'failed' || source.status === 'missing' ? (
+        <View style={{ flex: 1, justifyContent: 'center' }}>
+          {source.status === 'failed' ? (
+            <EmptyState icon="alert" title={t('bots.manage.loadFailed')} onRetry={source.retry} />
+          ) : params.request ? (
             <EmptyState
               icon="sparkle"
               title={t('bots.manage.proposalGone')}
@@ -91,16 +99,40 @@ export default function BotFormSheet() {
             />
           ) : (
             <EmptyState icon="person" title={t('bots.manage.botMissing')} message={t('bots.manage.botMissingHint')} />
-          )
-        ) : (
-          <LoadingState />
-        )}
-      </View>
+          )}
+        </View>
+      ) : (
+        <NativeForm>
+          {init ? (
+            // Keyed: the (uncontrolled) fields capture their text from the right source once.
+            <BotFormSections
+              key={`${init.mode}:${init.bot?.id ?? init.request?.id ?? init.templateKey ?? 'custom'}`}
+              init={init}
+              onChrome={setChrome}
+            />
+          ) : (
+            <Section>
+              <HStack>
+                <Spacer />
+                <ProgressView />
+                <Spacer />
+              </HStack>
+            </Section>
+          )}
+        </NativeForm>
+      )}
     </>
   );
 }
 
-function BotForm({ init }: { init: BotFormInit }) {
+function BotFormSections({
+  init,
+  onChrome,
+}: {
+  init: BotFormInit;
+  /** The sheet draws ✕ / ✓ outside the Form: this form's state for them (null once it is gone). */
+  onChrome: (chrome: Chrome | null) => void;
+}) {
   const t = useT();
   const router = useRouter();
   const { colors: c, hex } = useTheme();
@@ -125,139 +157,142 @@ function BotForm({ init }: { init: BotFormInit }) {
     else router.back();
   };
 
+  // ✓ runs the latest `save` (it reads this render's form and fields).
+  const latestSave = useRef(save);
+  useLayoutEffect(() => {
+    latestSave.current = save;
+  });
+  const title = t(form.title.key, form.title.vars);
+  const { dirty, canSave, saving } = form;
+  useLayoutEffect(() => {
+    onChrome({ title, dirty, canSave, saving, onSave: () => void latestSave.current() });
+    return () => onChrome(null);
+  }, [onChrome, title, dirty, canSave, saving]);
+
   const nameError = nameIssueKey(form.nameIssue);
   const look = `${t(`bots.manage.plantName.${form.plant}`)} · ${t(`bots.manage.moodName.${form.mood}`)}`;
 
   return (
     <>
-      <FormChrome
-        title={t(form.title.key, form.title.vars)}
-        dirty={form.dirty}
-        canSave={form.canSave}
-        saving={form.saving}
-        onSave={() => void save()}
-      />
-      <NativeForm>
-        <Section
-          header={
-            <HStack>
-              <Spacer />
-              <RNHostView matchContents>
-                <View style={styles.preview}>
-                  <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                    <BotAvatar
-                      bot={{ id: form.stableId, avatar: values.avatar, template_key: init.templateKey }}
-                      size={80}
-                      state="hello"
-                      animate={false}
-                    />
-                  </View>
-                  <RNText style={styles.look} accessibilityLabel={`${t('bots.manage.look')}: ${look}`}>
-                    {look}
-                  </RNText>
+      <Section
+        header={
+          <HStack>
+            <Spacer />
+            <RNHostView matchContents>
+              <View style={styles.preview}>
+                <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                  <BotAvatar
+                    bot={{ id: form.stableId, avatar: values.avatar, template_key: init.templateKey }}
+                    size={80}
+                    state="hello"
+                    animate={false}
+                  />
                 </View>
-              </RNHostView>
-              <Spacer />
-            </HStack>
-          }
+                <RNText style={styles.look} accessibilityLabel={`${t('bots.manage.look')}: ${look}`}>
+                  {look}
+                </RNText>
+              </View>
+            </RNHostView>
+            <Spacer />
+          </HStack>
+        }
+      >
+        <Picker
+          label={t('bots.manage.plant')}
+          selection={form.plant}
+          onSelectionChange={(plant) => form.setPlant(plant as PlantId)}
+          modifiers={[pickerStyle('menu')]}
         >
-          <Picker
-            label={t('bots.manage.plant')}
-            selection={form.plant}
-            onSelectionChange={(plant) => form.setPlant(plant as PlantId)}
-            modifiers={[pickerStyle('menu')]}
-          >
-            {PLANT_IDS.map((plant) => (
-              <Text key={plant} modifiers={[tag(plant)]}>
-                {t(`bots.manage.plantName.${plant}`)}
-              </Text>
-            ))}
-          </Picker>
-          <Picker
-            label={t('bots.manage.mood')}
-            selection={form.mood}
-            onSelectionChange={(mood) => form.setMood(mood as PlantMood)}
-            // segmented hides the label — keep it for VoiceOver
-            modifiers={[pickerStyle('segmented'), accessibilityLabel(t('bots.manage.mood'))]}
-          >
-            {PLANT_MOODS.map((mood) => (
-              <Text key={mood} modifiers={[tag(mood)]}>
-                {t(`bots.manage.moodName.${mood}`)}
-              </Text>
-            ))}
-          </Picker>
-        </Section>
-
-        {/* The footer is always a Text — the refusal in red, else the length /
-            @mention hint. Adding or removing a Section footer rebuilds its rows,
-            and the focused name field would drop the keyboard the moment the
-            name turns valid (or invalid) mid-typing (as in app/login.tsx). */}
-        <Section
-          title={t('bots.manage.name')}
-          footer={
-            <Text modifiers={nameError ? [foregroundStyle(hex.red)] : []}>
-              {nameError ? t(nameError) : t('bots.manage.nameHint', { max: BOT_NAME_MAX })}
+          {PLANT_IDS.map((plant) => (
+            <Text key={plant} modifiers={[tag(plant)]}>
+              {t(`bots.manage.plantName.${plant}`)}
             </Text>
-          }
+          ))}
+        </Picker>
+        <Picker
+          label={t('bots.manage.mood')}
+          selection={form.mood}
+          onSelectionChange={(mood) => form.setMood(mood as PlantMood)}
+          // segmented hides the label — keep it for VoiceOver
+          modifiers={[pickerStyle('segmented'), accessibilityLabel(t('bots.manage.mood'))]}
         >
-          <TextField
-            text={nameText}
-            // A little over the limit, so "at most 24" shows instead of silently stopping
-            maxLength={BOT_NAME_MAX * 2}
-            autoFocus={init.mode === 'create' && !init.templateKey}
-            placeholder={t('bots.manage.namePlaceholder')}
-            onTextChange={(text) => form.set('name', text)}
-            modifiers={[autocorrectionDisabled()]}
-          />
-        </Section>
+          {PLANT_MOODS.map((mood) => (
+            <Text key={mood} modifiers={[tag(mood)]}>
+              {t(`bots.manage.moodName.${mood}`)}
+            </Text>
+          ))}
+        </Picker>
+      </Section>
 
-        <Section title={t('bots.manage.role')}>
-          <TextField
-            text={roleText}
-            maxLength={BOT_ROLE_MAX}
-            placeholder={t('bots.manage.rolePlaceholder')}
-            onTextChange={(text) => form.set('role', text)}
-          />
-        </Section>
+      {/* The footer is always a Text — the refusal in red, else the length /
+          @mention hint. Adding or removing a Section footer rebuilds its rows,
+          and the focused name field would drop the keyboard the moment the
+          name turns valid (or invalid) mid-typing (as in app/login.tsx). */}
+      <Section
+        title={t('bots.manage.name')}
+        footer={
+          <Text modifiers={nameError ? [foregroundStyle(hex.red)] : []}>
+            {nameError ? t(nameError) : t('bots.manage.nameHint', { max: BOT_NAME_MAX })}
+          </Text>
+        }
+      >
+        <TextField
+          text={nameText}
+          // A little over the limit, so "at most 24" shows instead of silently stopping
+          maxLength={BOT_NAME_MAX * 2}
+          autoFocus={init.mode === 'create' && !init.templateKey}
+          placeholder={t('bots.manage.namePlaceholder')}
+          onTextChange={(text) => form.set('name', text)}
+          modifiers={[autocorrectionDisabled()]}
+        />
+      </Section>
 
-        {init.mode === 'proposal' ? null : (
-          <Section title={t('bots.manage.purpose')}>
-            <TextField
-              text={purposeText}
-              axis="vertical"
-              maxLength={BOT_DESCRIPTION_MAX}
-              placeholder={t('bots.manage.purposePlaceholder')}
-              onTextChange={(text) => form.set('description', text)}
-              modifiers={[lineLimit({ min: 1, max: 4 })]}
-            />
-          </Section>
-        )}
+      <Section title={t('bots.manage.role')}>
+        <TextField
+          text={roleText}
+          maxLength={BOT_ROLE_MAX}
+          placeholder={t('bots.manage.rolePlaceholder')}
+          onTextChange={(text) => form.set('role', text)}
+        />
+      </Section>
 
-        <Section
-          title={t('bots.manage.instructions')}
-          footer={
-            <VStack alignment="leading" spacing={6}>
-              <Text>
-                {init.mode === 'proposal'
-                  ? t('bots.manage.proposalFooter', { name: values.name.trim() || t('bots.manage.formNew') })
-                  : t('bots.manage.versionFooter')}
-              </Text>
-              {form.computerWarning ? (
-                <Text modifiers={[foregroundStyle(hex.orange)]}>{t('bots.manage.computerWarn')}</Text>
-              ) : null}
-            </VStack>
-          }
-        >
+      {init.mode === 'proposal' ? null : (
+        <Section title={t('bots.manage.purpose')}>
           <TextField
-            text={instructionsText}
+            text={purposeText}
             axis="vertical"
-            maxLength={BOT_INSTRUCTIONS_MAX}
-            placeholder={t('bots.manage.instructionsPlaceholder')}
-            onTextChange={(text) => form.set('instructions', text)}
-            modifiers={[lineLimit({ min: 4, max: 12 })]}
+            maxLength={BOT_DESCRIPTION_MAX}
+            placeholder={t('bots.manage.purposePlaceholder')}
+            onTextChange={(text) => form.set('description', text)}
+            modifiers={[lineLimit({ min: 1, max: 4 })]}
           />
         </Section>
-      </NativeForm>
+      )}
+
+      <Section
+        title={t('bots.manage.instructions')}
+        footer={
+          <VStack alignment="leading" spacing={6}>
+            <Text>
+              {init.mode === 'proposal'
+                ? t('bots.manage.proposalFooter', { name: values.name.trim() || t('bots.manage.formNew') })
+                : t('bots.manage.versionFooter')}
+            </Text>
+            {form.computerWarning ? (
+              <Text modifiers={[foregroundStyle(hex.orange)]}>{t('bots.manage.computerWarn')}</Text>
+            ) : null}
+          </VStack>
+        }
+      >
+        <TextField
+          text={instructionsText}
+          axis="vertical"
+          maxLength={BOT_INSTRUCTIONS_MAX}
+          placeholder={t('bots.manage.instructionsPlaceholder')}
+          onTextChange={(text) => form.set('instructions', text)}
+          modifiers={[lineLimit({ min: 4, max: 12 })]}
+        />
+      </Section>
     </>
   );
 }
