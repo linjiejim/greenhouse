@@ -67,7 +67,7 @@ import { makeStyles, space, typo, useTheme } from '../../../src/theme';
 import { NativeButton } from '../../../src/ui/button';
 import { alertError, confirmAction, promptText } from '../../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
-import { SproutyFace } from '../../../src/ui/sprouty';
+import { PlantAvatar } from '../../../src/ui/plant-avatar';
 import { toast } from '../../../src/ui/toast';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 
@@ -629,7 +629,7 @@ export default function Conversation() {
         >
           <Animated.View style={heroFade}>
             <Animated.View entering={FadeIn.duration(320)} style={[styles.hero, heroLift]}>
-              <SproutyFace expr="idle" size={76} breathe={focused} />
+              <PlantAvatar size={76} animate={focused} />
               <Text style={styles.heroTitle}>
                 {t('home.greetingFormat', { greeting: greeting(), name: user?.nickname ?? t('home.fallbackName') })}
               </Text>

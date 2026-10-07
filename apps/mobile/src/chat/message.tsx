@@ -39,7 +39,7 @@ import { makeStyles, radius, space, squircle, typo, useTheme } from '../theme';
 import { NativeButton } from '../ui/button';
 import { Icon, type IconName, Spinner, Touchable } from '../ui/core';
 import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
-import { SproutyFace } from '../ui/sprouty';
+import { PlantAvatar } from '../ui/plant-avatar';
 import { ArtifactCards, isBelowProse, replacesRow } from './artifacts';
 import { AttachmentChip } from './file-card';
 import { Markdown, RichContext, type RichEnv } from './markdown';
@@ -124,7 +124,7 @@ function Thinking({ headline, onOpen }: { headline?: string; onOpen?: () => void
       accessibilityLabel={headline ? `${t('chat.thinking')}, ${headline}` : t('chat.thinking')}
       style={({ pressed }) => [styles.thinking, pressed && { opacity: 0.6 }]}
     >
-      <SproutyFace expr="thinking" size={34} />
+      <PlantAvatar state="thinking" size={34} />
       <View style={styles.thinkingTexts}>
         <View style={styles.thinkingLine}>
           <Animated.Text style={[styles.thinkingText, fade]}>{t('chat.thinking')}</Animated.Text>

@@ -1,7 +1,7 @@
 /**
  * Avatars. `InitialAvatar` is a filled circle with the first letter of a name
- * (accounts, members, assignees); the AI's identity is the Sprouty mascot
- * (src/ui/sprouty.tsx), never a letter.
+ * (accounts, members, assignees); an agent's identity is its plant avatar
+ * (src/ui/plant-avatar), never a letter.
  */
 
 import React from 'react';
