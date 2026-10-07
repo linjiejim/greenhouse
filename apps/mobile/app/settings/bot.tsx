@@ -1,24 +1,16 @@
 /**
  * Settings → My Bots → a Bot (`/settings/bot?id=`, pushed in the settings
- * stack): the full-page Bot profile (the same `BotProfileView` as the
- * `/bots/profile` sheet; spec docs/specs/20261008-mobile-bots.md §2.5.7).
- *
- * P0 STUB (package E implements it): a loading placeholder, so the route
- * resolves.
+ * stack): the full-page Bot profile — the same `BotProfileView` as the
+ * `/bots/profile` sheet (spec docs/specs/20261008-mobile-bots.md §2.5.7), the
+ * name as the inline bar title. 发消息 / 新对话 close the whole Settings modal
+ * on their way home; 编辑 opens the Bot form sheet over this page.
  */
 
 import React from 'react';
-import { ScrollView } from 'react-native';
-import { Stack } from 'expo-router';
-import { LoadingState } from '../../src/ui/empty';
+import { useLocalSearchParams } from 'expo-router';
+import { BotProfileView } from '../../src/bots/manage/bot-profile-view';
 
 export default function SettingsBot() {
-  return (
-    <>
-      <Stack.Screen options={{ title: '' }} />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ flexGrow: 1 }}>
-        <LoadingState style={{ flex: 1 }} />
-      </ScrollView>
-    </>
-  );
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  return <BotProfileView botId={id ?? ''} presentation="page" />;
 }
