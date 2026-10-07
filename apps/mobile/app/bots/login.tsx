@@ -23,14 +23,17 @@
  * is held mounted through its own decision until the sheet is gone
  * (src/bots/cards/login-sheet.ts says why).
  *
- * Fallback if a simulator check ever shows iOS's "Save Password?" after
- * submitting: swap the two fields for an `RNHostView` island of RN
- * `TextInput secureTextEntry textContentType="none" autoComplete="off"` (and
- * note it under AGENTS.md 已知坑).
+ * iOS still reads a username field next to a SecureField as a login and
+ * offered "Save Password?" when the sheet closed with them filled (simulator,
+ * 2026-10-08) — leaving the content types off is not enough. However the
+ * sheet goes, `beforeRemove` empties every field and dismisses the keyboard
+ * first, so there is nothing to save (and no focused field inside a deleted
+ * Form section, which UIKit throws on).
  */
 
-import React, { useCallback, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Keyboard } from 'react-native';
+import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import {
   Button,
   DisclosureGroup,
@@ -88,6 +91,7 @@ export default function BotLoginSheet() {
     if (!request) rerender();
   }, []);
   const done = useCallback(() => router.back(), [router]);
+
   // ✕ / ✓ for the card's form (handed up by LoginSections: nav chrome can't sit among the Form's
   // SwiftUI children).
   const [chrome, setChrome] = useState<Chrome | null>(null);
@@ -177,6 +181,22 @@ function LoginSections({
   );
   const form = useLoginForm({ request, fields });
   const [showOtp, setShowOtp] = useState(false);
+
+  // However the sheet goes (✕, discard, swipe, a decision), empty the fields and let the focused
+  // one go before its sections are torn down (both seen on the simulator, 2026-10-08):
+  // - iOS offers "Save Password?" when a view holding a filled secure field disappears — it would
+  //   keep a third-party site's credentials under Greenhouse's name; empty fields leave nothing to save;
+  // - UIKit throws ("the first responder contained inside of a deleted section … refused to resign")
+  //   when a Form section is deleted while its text field still has focus.
+  const navigation = useNavigation();
+  useEffect(
+    () =>
+      navigation.addListener('beforeRemove', () => {
+        fields.clear('all');
+        Keyboard.dismiss();
+      }),
+    [navigation, fields],
+  );
   const origin = form.payload.origin ?? form.payload.url ?? '';
   const reason = typeof form.payload.reason === 'string' ? form.payload.reason.trim() : '';
   const matches = form.payload.vault_matches ?? [];
