@@ -20,6 +20,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { RequestCard } from '../../src/bots/cards/request-card';
 import { openThread } from '../../src/bots/nav';
+import { BotsRouteGate } from '../../src/bots/route-gate';
 import { useBots } from '../../src/bots/store';
 import { AvatarStack } from '../../src/bots/ui/avatar-stack';
 import { BotAvatar } from '../../src/bots/ui/bot-avatar';
@@ -45,7 +46,20 @@ function urgency(a: BotRequestView, b: BotRequestView): number {
   return Date.parse(a.created_at) - Date.parse(b.created_at);
 }
 
-export default function NeedsYouSheet() {
+/**
+ * Closed Bots (Android, switched off, refused) → home: src/bots/route-gate.tsx. A 403 on this
+ * sheet's own list closes the gate too, so it goes home with "Bots aren't available" — never a
+ * fake "All caught up" (the sheet unmounts before its auto-close could run).
+ */
+export default function NeedsYouRoute() {
+  return (
+    <BotsRouteGate kind="threads">
+      <NeedsYouSheet />
+    </BotsRouteGate>
+  );
+}
+
+function NeedsYouSheet() {
   const t = useT();
   const router = useRouter();
   const { colors: c } = useTheme();

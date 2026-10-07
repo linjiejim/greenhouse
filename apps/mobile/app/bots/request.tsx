@@ -20,6 +20,7 @@ import { Countdown } from '../../src/bots/cards/countdown';
 import { CARD_ICON, cardKind, cardTitle, statusBadge, type CardButton } from '../../src/bots/cards/decision';
 import { RequestBody } from '../../src/bots/cards/request-card';
 import { useRequestLookup } from '../../src/bots/cards/use-login-form';
+import { BotsRouteGate } from '../../src/bots/route-gate';
 import { useBots } from '../../src/bots/store';
 import type { BotRequestDecision, BotRequestView } from '../../src/shared/bots';
 import { useT } from '../../src/lib/i18n';
@@ -27,7 +28,16 @@ import { space } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { SheetClose } from '../../src/ui/sheet-chrome';
 
-export default function RequestSheet() {
+/** Closed Bots (Android, switched off, refused) → home: src/bots/route-gate.tsx. */
+export default function RequestRoute() {
+  return (
+    <BotsRouteGate kind="threads">
+      <RequestSheet />
+    </BotsRouteGate>
+  );
+}
+
+function RequestSheet() {
   const t = useT();
   const { id, c } = useLocalSearchParams<{ id?: string; c?: string }>();
   const lookup = useRequestLookup(id, c);
