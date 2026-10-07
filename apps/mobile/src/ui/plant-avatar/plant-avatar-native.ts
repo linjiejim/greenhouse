@@ -4,7 +4,7 @@
  * can pin them (plant-avatar-native.test.ts) without a React Native renderer.
  */
 
-import { FIT_TARGET, lodFor, poseFor, rimUnits } from './plant-avatar-svg';
+import { FIT_TARGET, lodFor, poseFor } from './plant-avatar-svg';
 import { PLANT_PRESETS, type PlantLod } from './plant-catalogue';
 import { PLANT_FIT } from './plant-fit.generated';
 import type { PlantId, PlantStateInput } from './plant-ids';
@@ -37,7 +37,7 @@ export function motionFor(state: PlantStateInput | undefined, size: number, anim
 export function pivotOrigin(plant: PlantId, size: number): [x: number, y: number, z: number] {
   const lod = lodFor(size);
   const [maxR, dx, dy] = PLANT_FIT[plant][lod];
-  const s = Math.min(1.3, (FIT_TARGET[lod] - rimUnits(size)) / maxR);
+  const s = Math.min(1.3, FIT_TARGET[lod] / maxR); // no keyline: the flat design paints none
   const [px, py] = PLANT_PRESETS[plant].pivot;
   const unit = size / 100;
   return [(50 + s * (px + dx - 50)) * unit, (50 + s * (py + dy - 50)) * unit, 0];

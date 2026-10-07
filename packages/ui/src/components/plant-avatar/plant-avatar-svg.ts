@@ -3,7 +3,8 @@
  *
  * Skeleton (spec §2): tinted disc → [done bloom] → fit group (optical fit) → pose group
  * (state pose about the species pivot) → [motion hooks] → rim underlay pass → fill pass
- * → look group → eyes. Guarantees:
+ * → look group → face (eyes, brows at portrait, mouth above glyph) → [state mark, portrait].
+ * Guarantees:
  *   - no `id=`, `<defs>` or `url(#)` — safe to repeat 50× on a page and to rasterise;
  *   - deterministic: the same options always produce the same string;
  *   - static poses are SVG transform ATTRIBUTES, so `animate:false` + an explicit theme
@@ -47,7 +48,9 @@ export const FIT_TARGET = Object.freeze({ glyph: 48, avatar: 47.5, portrait: 47 
 
 // ─── states, poses, eyes ────────────────────────────────────────────────────
 
-type EyeKind = 'calm' | 'soft' | 'bright' | 'drowsy' | 'look' | 'happy' | 'sad' | 'attentive' | 'closed';
+type EyeKind = 'calm' | 'soft' | 'bright' | 'drowsy' | 'look' | 'focus' | 'happy' | 'sad' | 'attentive' | 'closed';
+type MouthKind = 'smile' | 'grin' | 'side' | 'talk' | 'o' | 'wobble' | 'small';
+type BrowKind = 'focus' | 'worried' | 'arched';
 
 export interface PlantPose {
   /** Canonical state (aliases and unknown values resolved). */
@@ -73,11 +76,14 @@ export interface PlantPose {
   fx?: 'bloom';
 }
 
-/** State poses. rot/tx/ty/sx/sy act about the species pivot. */
+/**
+ * State poses. rot/tx/ty/sx/sy act about the species pivot; `fold` > 0 droops / closes paired
+ * parts, < 0 raises / opens them (per-part overrides in `parts`).
+ */
 const POSES: Record<PlantState, Omit<PlantPose, 'state'>> = {
   idle: { eyes: 'rest', look: [0, 0], rot: 0, tx: 0, ty: 0, sx: 1, sy: 1, fold: 0, desat: 0 },
   thinking: { eyes: 'look', look: [3, -3.4], rot: -3, tx: 1, ty: 0, sx: 1, sy: 1, fold: 0.15, desat: 0 },
-  speaking: { eyes: 'bright', look: [0, -1], rot: 0, tx: 0, ty: -1.6, sx: 1, sy: 1.035, fold: -0.15, desat: 0 },
+  speaking: { eyes: 'focus', look: [0, -0.6], rot: 0, tx: 0, ty: -1.6, sx: 1, sy: 1.035, fold: -0.15, desat: 0 },
   done: {
     eyes: 'happy',
     look: [0, -0.6],
@@ -86,23 +92,23 @@ const POSES: Record<PlantState, Omit<PlantPose, 'state'>> = {
     ty: -1.6,
     sx: 1.01,
     sy: 1.04,
-    fold: -0.3,
+    fold: -0.45,
     desat: 0,
     fx: 'bloom',
   },
   error: {
     eyes: 'sad',
-    look: [0, 2.2],
-    rot: 9,
-    tx: -3.5,
+    look: [0, 1.6],
+    rot: 7,
+    tx: -3,
     ty: 2.5,
     sx: 0.97,
     sy: 0.95,
-    fold: 0.35,
+    fold: 0.5,
     desat: 0.22,
-    eyeRot: -9,
+    eyeRot: -7,
   },
-  // leaning in toward you (phototropism); paired species reach with one leaf; expectant eyes
+  // leaning in toward you (phototropism); paired species raise one leaf like a hand; expectant eyes
   waiting: {
     eyes: 'attentive',
     look: [-0.6, -1.8],
@@ -112,7 +118,7 @@ const POSES: Record<PlantState, Omit<PlantPose, 'state'>> = {
     sx: 1.025,
     sy: 1.04,
     fold: 0,
-    parts: { l: -0.1, r: 0.55 },
+    parts: { l: 0.1, r: -0.9 },
     desat: 0,
   },
   sleep: {
@@ -126,6 +132,19 @@ const POSES: Record<PlantState, Omit<PlantPose, 'state'>> = {
     fold: 1,
     desat: 0.3,
     dim: 0.14,
+  },
+  // a new Bot says hi: one leaf (or arm) up and waving
+  hello: {
+    eyes: 'bright',
+    look: [0, -1],
+    rot: 0,
+    tx: 0,
+    ty: -1.4,
+    sx: 1,
+    sy: 1.03,
+    fold: 0,
+    parts: { l: 0.1, r: -0.8 },
+    desat: 0,
   },
 };
 
@@ -155,11 +174,36 @@ export function rimUnits(px: number, w = px <= 20 ? 0.75 : 1): number {
  * minimum half gap between the eyes' inner edges, so they never merge into a dash.
  */
 export const EYE = Object.freeze({
-  glyph: { rx: 6.8, ry: 8.2, inner: 5.6, arc: 6 },
-  avatar: { rx: 5.9, ry: 7.3, inner: 4.6, arc: 4.8 },
-  portrait: { rx: 5.2, ry: 6.6, inner: 4.2, arc: 3.8 },
+  glyph: { rx: 3.9, ry: 4.9, inner: 4.8, arc: 3.2 },
+  avatar: { rx: 3.3, ry: 4.2, inner: 3.8, arc: 2.6 },
+  portrait: { rx: 2.9, ry: 3.7, inner: 3.6, arc: 2.1 },
 } as const satisfies Record<PlantLod, { rx: number; ry: number; inner: number; arc: number }>);
 type EyeMetrics = (typeof EYE)[PlantLod];
+
+/**
+ * Mouth metrics (viewBox units before FIT, × face scale): half width, height, stroke and the
+ * drop below the eye line. No mouth at glyph sizes — two eyes are all 16–20px can carry.
+ */
+export const MOUTH = Object.freeze({
+  avatar: { w: 4.4, h: 3, sw: 2.5, dy: 8.6 },
+  portrait: { w: 3.9, h: 2.7, sw: 2.1, dy: 7.8 },
+} as const satisfies Record<Exclude<PlantLod, 'glyph'>, { w: number; h: number; sw: number; dy: number }>);
+type MouthMetrics = (typeof MOUTH)[keyof typeof MOUTH];
+
+const STATE_MOUTH: Record<PlantState, MouthKind> = {
+  idle: 'smile',
+  thinking: 'side',
+  speaking: 'talk',
+  done: 'grin',
+  error: 'wobble',
+  waiting: 'o',
+  sleep: 'small',
+  hello: 'grin',
+};
+const MOOD_MOUTH: Record<PlantMood, MouthKind> = { calm: 'smile', soft: 'smile', bright: 'grin', drowsy: 'small' };
+
+/** Brows: portrait only (a 1px line at list sizes reads as noise). */
+const STATE_BROWS: Partial<Record<PlantState, BrowKind>> = { speaking: 'focus', error: 'worried', waiting: 'arched' };
 
 function eyeKind(poseEyes: PlantPose['eyes'], mood: unknown, lod: PlantLod): EyeKind {
   const k: EyeKind =
@@ -187,24 +231,15 @@ interface Paint {
   both: (tone: keyof PlantPalette) => string;
 }
 
-function eyeSvg(
-  kind: EyeKind,
-  cx: number,
-  cy: number,
-  m: EyeMetrics,
-  side: number,
-  s: number,
-  paint: Paint,
-  showCatch: boolean,
-): string {
+function eyeSvg(kind: EyeKind, cx: number, cy: number, m: EyeMetrics, side: number, s: number, paint: Paint): string {
   const rx = m.rx * s;
   const ry = m.ry * s;
   const arcW = m.arc * s;
   const fill = paint.fill('ink');
   const strokeArc = (d: string) =>
     `<path d="${d}" fill="none" ${paint.stroke('ink')} stroke-width="${f(arcW)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-  const catchDot = (x: number, y: number, r: number) =>
-    showCatch ? `<circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" ${paint.fill('catch')}/>` : '';
+  const oval = (x: number, y: number, ex: number, ey: number) =>
+    `<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(ex)}" ry="${f(ey)}" ${fill}/>`;
   switch (kind) {
     case 'happy':
       return strokeArc(
@@ -221,54 +256,142 @@ function eyeSvg(
       const [ox, oy] = p(outer);
       const [ix, iy] = p(inner);
       const sweep = side < 0 ? 1 : 0;
-      return (
-        `<path d="M${f(ox)} ${f(oy)}L${f(ix)} ${f(iy)}A${f(rx)} ${f(ry)} 0 1 ${sweep} ${f(ox)} ${f(oy)}Z" ${fill}/>` +
-        catchDot(cx - side * rx * 0.28, cy + ry * 0.3, 1.4 * s) // low, inner: a watery glint
-      );
+      return `<path d="M${f(ox)} ${f(oy)}L${f(ix)} ${f(iy)}A${f(rx)} ${f(ry)} 0 1 ${sweep} ${f(ox)} ${f(oy)}Z" ${fill}/>`;
     }
     case 'drowsy':
       // Relaxed, heavy-lidded: a lower, rounder eye (no hard lid line — that reads "unimpressed").
-      return (
-        `<ellipse cx="${f(cx)}" cy="${f(cy + ry * 0.22)}" rx="${f(rx * 0.98)}" ry="${f(ry * 0.68)}" ${fill}/>` +
-        catchDot(cx + rx * 0.32, cy + ry * 0.02, 1.4 * s)
-      );
+      return oval(cx, cy + ry * 0.22, rx * 0.98, ry * 0.68);
     case 'soft': {
       // Content: a wider, shorter eye — cheeks lift the lower lid into a shallow upward bow.
       const w = rx * 1.04;
       const yb = cy + ry * 0.4;
-      return (
-        `<path d="M${f(cx - w)} ${f(yb)}A${f(w)} ${f(ry * 1.2)} 0 0 1 ${f(cx + w)} ${f(yb)}Q${f(cx)} ${f(cy + ry * 0.02)} ${f(cx - w)} ${f(yb)}Z" ${fill}/>` +
-        catchDot(cx + rx * 0.32, cy - ry * 0.32, 1.5 * s)
-      );
+      return `<path d="M${f(cx - w)} ${f(yb)}A${f(w)} ${f(ry * 1.2)} 0 0 1 ${f(cx + w)} ${f(yb)}Q${f(cx)} ${f(cy + ry * 0.02)} ${f(cx - w)} ${f(yb)}Z" ${fill}/>`;
     }
     case 'attentive':
-      // Expectant: bigger and rounder, two catch-lights at portrait size.
-      return (
-        `<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(rx * 1.15)}" ry="${f(ry * 1.1)}" ${fill}/>` +
-        catchDot(cx + rx * 0.4, cy - ry * 0.42, 2.1 * s) +
-        catchDot(cx - rx * 0.38, cy + ry * 0.45, 1 * s)
-      );
+      // Expectant: bigger and rounder.
+      return oval(cx, cy, rx * 1.15, ry * 1.1);
     case 'bright':
-      // Speaking: taller, brighter eyes (a static cue that differs from idle at 24px).
-      return (
-        `<ellipse cx="${f(cx)}" cy="${f(cy - ry * 0.06)}" rx="${f(rx * 1.04)}" ry="${f(ry * 1.14)}" ${fill}/>` +
-        catchDot(cx + rx * 0.34, cy - ry * 0.46, 2 * s)
-      );
+      // Lit up (hello, bright mood): taller.
+      return oval(cx, cy - ry * 0.06, rx * 1.04, ry * 1.14);
+    case 'focus':
+      // Concentrating (speaking / working): flatter.
+      return oval(cx, cy + ry * 0.1, rx * 1.02, ry * 0.74);
     case 'look':
-      return (
-        `<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(rx)}" ry="${f(ry * 0.9)}" ${fill}/>` +
-        catchDot(cx + rx * 0.36, cy - ry * 0.36, 1.6 * s)
-      );
+      return oval(cx, cy, rx, ry * 0.9);
     case 'calm':
     default:
-      return (
-        `<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(rx)}" ry="${f(ry)}" ${fill}/>` +
-        catchDot(cx + rx * 0.34, cy - ry * 0.38, 1.7 * s)
-      );
+      return oval(cx, cy, rx, ry);
   }
 }
 
-const BLINKS = new Set<EyeKind>(['calm', 'soft', 'bright', 'look', 'attentive', 'drowsy']);
+/** A brow over one eye (`side` −1 left, 1 right). */
+function browSvg(kind: BrowKind, cx: number, cy: number, m: EyeMetrics, side: number, s: number, paint: Paint): string {
+  const rx = m.rx * s;
+  const ry = m.ry * s;
+  const out = cx + side * rx * 1.12; // outer end
+  const inn = cx - side * rx * 0.98; // inner end, toward the nose
+  const stroke = `fill="none" ${paint.stroke('ink')} stroke-width="${f(m.arc * 0.62 * s)}" stroke-linecap="round"`;
+  if (kind === 'arched')
+    return `<path d="M${f(out)} ${f(cy - ry * 1.28)}Q${f(cx)} ${f(cy - ry * 1.9)} ${f(inn)} ${f(cy - ry * 1.28)}" ${stroke}/>`;
+  const [yo, yi] = kind === 'focus' ? [1.48, 1.2] : [1.22, 1.62]; // focus: inner end low; worried: inner end high
+  return `<path d="M${f(out)} ${f(cy - ry * yo)}L${f(inn)} ${f(cy - ry * yi)}" ${stroke}/>`;
+}
+
+/** The mouth, centred at (cx, cy). */
+function mouthSvg(kind: MouthKind, cx: number, cy: number, mm: MouthMetrics, s: number, paint: Paint): string {
+  const w = mm.w * s;
+  const h = mm.h * s;
+  const fill = paint.fill('ink');
+  const stroke = (d: string, k = 1) =>
+    `<path d="${d}" fill="none" ${paint.stroke('ink')} stroke-width="${f(mm.sw * s * k)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  switch (kind) {
+    case 'grin':
+      return `<path d="M${f(cx - w * 1.05)} ${f(cy - h * 0.45)}Q${f(cx)} ${f(cy + h * 1.9)} ${f(cx + w * 1.05)} ${f(cy - h * 0.45)}Z" ${fill}/>`;
+    case 'side':
+      return stroke(
+        `M${f(cx - w * 0.35)} ${f(cy)}Q${f(cx + w * 0.3)} ${f(cy + h * 0.75)} ${f(cx + w * 0.95)} ${f(cy - h * 0.25)}`,
+      );
+    case 'talk':
+      return `<ellipse cx="${f(cx)}" cy="${f(cy + h * 0.15)}" rx="${f(w * 0.52)}" ry="${f(h * 0.62)}" ${fill}/>`;
+    case 'o':
+      return `<ellipse cx="${f(cx)}" cy="${f(cy + h * 0.2)}" rx="${f(w * 0.42)}" ry="${f(h * 0.78)}" ${fill}/>`;
+    case 'wobble': {
+      // four shallow waves; explicit Q segments (no T — the contrast sampler reads M/L/Q/C/A only)
+      const y = cy + h * 0.25;
+      const step = (w * 2) / 4;
+      let d = `M${f(cx - w)} ${f(y)}`;
+      for (let i = 0; i < 4; i++) {
+        const x0 = cx - w + step * i;
+        d += `Q${f(x0 + step / 2)} ${f(y + (i % 2 ? h * 0.7 : -h * 0.7))} ${f(x0 + step)} ${f(y)}`;
+      }
+      return stroke(d, 0.82);
+    }
+    case 'small':
+      return stroke(`M${f(cx - w * 0.45)} ${f(cy)}Q${f(cx)} ${f(cy + h * 0.6)} ${f(cx + w * 0.45)} ${f(cy)}`, 0.9);
+    case 'smile':
+    default:
+      return stroke(`M${f(cx - w)} ${f(cy - h * 0.3)}Q${f(cx)} ${f(cy + h * 1.1)} ${f(cx + w)} ${f(cy - h * 0.3)}`);
+  }
+}
+
+/** State marks for portraits, on the disc (not fitted): fixed badge colours, the rest in `mark`. */
+const MARK = Object.freeze({ badge: '#F2B53A', done: '#3F9B6E', glyph: '#FFFFFF', drop: '#6FB4DE' });
+
+function marksSvg(state: PlantState, paint: Paint, animate: boolean): string {
+  const c = (name: string) => (animate ? ` class="pa-mk-${name}"` : '');
+  const line = (d: string, w: number, name: string, op = 1) =>
+    `<path${c(name)} d="${d}" fill="none" ${paint.stroke('mark')} stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"${op < 1 ? ` opacity="${op}"` : ''}/>`;
+  const badge = (fill: string, glyph: string) =>
+    `<g${c('badge')}><circle cx="84" cy="16" r="11" fill="${fill}"/>${glyph}</g>`;
+  const star = (x: number, y: number, r: number) => {
+    const k = r * 0.22;
+    return (
+      `<path${c('spark')} d="M${f(x)} ${f(y - r)}Q${f(x + k)} ${f(y - k)} ${f(x + r)} ${f(y)}Q${f(x + k)} ${f(y + k)} ${f(x)} ${f(y + r)}` +
+      `Q${f(x - k)} ${f(y + k)} ${f(x - r)} ${f(y)}Q${f(x - k)} ${f(y - k)} ${f(x)} ${f(y - r)}Z" fill="${MARK.badge}"/>`
+    );
+  };
+  switch (state) {
+    case 'hello':
+      return line('M80 14Q86 19 85 27', 2.6, 'arc', 0.7) + line('M86.5 7Q95 16 92.5 29', 2.6, 'arc', 0.7);
+    case 'thinking':
+      return [
+        [73, 21, 2.8],
+        [81, 14, 3.4],
+        [90, 7.5, 4.1],
+      ]
+        .map(([x, y, r]) => `<circle${c('dot')} cx="${x}" cy="${y}" r="${r}" ${paint.fill('mark')}/>`)
+        .join('');
+    case 'speaking':
+      return line('M6 44H16M3 54H15', 2.6, 'dash', 0.55) + line('M84 44H94M85 54H97', 2.6, 'dash', 0.55);
+    case 'waiting':
+      return badge(
+        MARK.badge,
+        `<path d="M84 9.5V17.5" fill="none" stroke="${MARK.glyph}" stroke-width="3.2" stroke-linecap="round"/><circle cx="84" cy="22" r="1.9" fill="${MARK.glyph}"/>`,
+      );
+    case 'done':
+      return (
+        badge(
+          MARK.done,
+          `<path d="M78.6 16.4L82.4 20.2L89.4 12.6" fill="none" stroke="${MARK.glyph}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>`,
+        ) +
+        star(15, 20, 5.2) +
+        star(91, 40, 3.8) +
+        star(25, 6, 3.2)
+      );
+    case 'error':
+      return `<path${c('drop')} d="M83 9C87.6 15.6 88.8 19 86.3 21.9C84.3 24.2 80.7 23.5 80.4 20.3C80.2 17.6 81.5 15 83 9Z" fill="${MARK.drop}"/>`;
+    case 'sleep':
+      return (
+        line('M68 26h6l-6 6h6', 2.4, 'z', 0.8) +
+        line('M78 15h7.5l-7.5 7.5h7.5', 2.4, 'z', 0.8) +
+        line('M88 3h9l-9 9h9', 2.4, 'z', 0.8)
+      );
+    default:
+      return '';
+  }
+}
+
+const BLINKS = new Set<EyeKind>(['calm', 'soft', 'bright', 'look', 'focus', 'attentive', 'drowsy']);
 
 // ─── palettes ───────────────────────────────────────────────────────────────
 
@@ -306,9 +429,9 @@ export type PlantAvatarTheme = 'light' | 'dark' | 'auto';
 export interface PlantAvatarSvgOptions {
   /** Species id; unknown → 'sprout'. */
   plant?: PlantId | string;
-  /** idle|thinking|speaking|done|error|waiting|sleep or a product alias; unknown → idle. */
+  /** idle|thinking|speaking|done|error|waiting|sleep|hello or a product alias; unknown → idle. */
   state?: PlantStateInput;
-  /** Render px — drives LOD, keyline weight and motion amplitude (default 32). */
+  /** Render px — drives LOD, the opt-in keyline's weight and motion amplitude (default 32). */
   size?: number;
   /** 'auto' paints through CSS vars switched by `.dark-theme` (web); explicit for static targets. Default 'light'. */
   theme?: PlantAvatarTheme;
@@ -316,7 +439,7 @@ export interface PlantAvatarSvgOptions {
   animate?: boolean;
   /** Tinted backing disc (default true). */
   disc?: boolean;
-  /** Keyline underlay (default true; only measurement turns it off). */
+  /** Opt-in keyline underlay in the `rim` tone (busy export backgrounds). The flat design paints none. */
   rim?: boolean;
   /** Resting eyes (idle only). */
   mood?: PlantMood;
@@ -360,6 +483,7 @@ const MOTION_CLASS: Record<PlantState, string> = {
   error: 'pa-m-sigh',
   waiting: 'pa-m-lean',
   sleep: 'pa-m-sleep',
+  hello: 'pa-m-hello',
 };
 const ONE_SHOT_CLASS: Partial<Record<PlantState, string>> = {
   idle: 'pa-o-sway',
@@ -367,6 +491,7 @@ const ONE_SHOT_CLASS: Partial<Record<PlantState, string>> = {
   done: 'pa-o-perk',
   error: 'pa-o-droop',
   sleep: 'pa-o-settle',
+  hello: 'pa-o-perk',
 };
 
 export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
@@ -380,7 +505,7 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
   const animate = o.animate !== false && !mono;
   const theme: PlantAvatarTheme = o.theme === 'dark' || o.theme === 'auto' ? o.theme : 'light';
   const disc = o.disc !== false && !mono;
-  const rimOn = o.rim !== false && !mono && !o.raw;
+  const rimOn = o.rim === true && !mono && !o.raw;
 
   // ── paint: explicit theme → presentation attributes; 'auto' → CSS vars with the light fallback
   const pals = statePalettes(P, pose);
@@ -463,23 +588,39 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
     }
   }
 
-  // ── eyes
+  // ── face: eyes (+ brows at portrait), then the mouth from the avatar LOD up
   const m = EYE[lod];
   const fs = P.face.scale || 1;
   const gap = eyeHalfGap(key, lod);
   const kind = eyeKind(pose.eyes, o.mood, lod);
-  const showCatch = lod === 'portrait' && !mono;
   const blink = animate && BLINKS.has(kind);
+  const brow = lod === 'portrait' ? STATE_BROWS[pose.state] : undefined;
   let eyes = '';
   if (mono !== 'silhouette') {
+    let brows = '';
     for (const side of [-1, 1]) {
       const ex = P.face.x + side * gap;
       const ey = P.face.y;
       const turn = kind === 'look' && pose.look[0] * side > 0 ? 0.92 : 1; // far eye narrows: a cheap 3D turn
-      const inner = eyeSvg(kind, ex, ey, m, side, fs * turn, paint, showCatch);
+      const inner = eyeSvg(kind, ex, ey, m, side, fs * turn, paint);
       eyes += blink ? `<g class="pa-blink" style="transform-origin:${f(ex)}px ${f(ey)}px">${inner}</g>` : inner;
+      if (brow) brows += browSvg(brow, ex, ey, m, side, fs, paint);
     }
     if (animate && pose.state === 'thinking') eyes = `<g class="pa-glance">${eyes}</g>`;
+    if (lod !== 'glyph') {
+      const mm = MOUTH[lod];
+      const my = P.face.y + mm.dy * fs;
+      const mk =
+        pose.state === 'idle' && (PLANT_MOODS as readonly unknown[]).includes(o.mood)
+          ? MOOD_MOUTH[o.mood as PlantMood]
+          : STATE_MOUTH[pose.state];
+      const mouth = mouthSvg(mk, P.face.x, my, mm, fs, paint);
+      eyes +=
+        brows +
+        (animate && pose.state === 'speaking'
+          ? `<g class="pa-talk" style="transform-origin:${f(P.face.x)}px ${f(my)}px">${mouth}</g>`
+          : mouth);
+    }
   }
   const [lx, ly] = pose.look;
   const er = pose.eyeRot || 0;
@@ -551,12 +692,16 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
   const inner = animate ? `<g class="pa-mo ${mo}"><g class="pa-os ${os}">${plant}</g></g>` : plant;
   const posed = poseT ? `<g${animate ? ' class="pa-pose"' : ''} transform="${poseT.trim()}">${inner}</g>` : inner;
 
+  // ── state mark: portrait only, on the disc above the plant (never in knockout layers)
+  const mk = lod === 'portrait' && !mono ? marksSvg(pose.state, paint, animate) : '';
+  const marks = mk ? `<g${animate ? ' class="pa-mk"' : ''}>${mk}</g>` : '';
+
   return (
     `<svg class="${cls}" viewBox="0 0 100 100" width="${size}" height="${size}" ` +
     `xmlns="http://www.w3.org/2000/svg" focusable="false" ${a11y}${data}${styleAttr}>` +
     discEl +
     fx +
-    `<g${animate ? ' class="pa-fit"' : ''} transform="${fitT}">${posed}</g></svg>`
+    `<g${animate ? ' class="pa-fit"' : ''} transform="${fitT}">${posed}</g>${marks}</svg>`
   );
 }
 
@@ -621,6 +766,23 @@ export const PLANT_AVATAR_CSS = `
 .pa .pa-m-sleep{animation:pa-breathe-slow 7s ease-in-out ${LAG} var(--pa-cycles)}
 .pa .pa-o-settle{animation:pa-settle 1.2s cubic-bezier(.45,0,.55,1) both}
 .pa .pa-o-unfurl{animation:pa-unfurl 1.1s cubic-bezier(.3,1.35,.55,1) both}
+.pa .pa-m-hello{animation:pa-hop 1.1s cubic-bezier(.3,0,.3,1) 3}
+.pa.pa-s-hello .pa-reach{animation:pa-wave .45s ease-in-out 6 alternate}
+.pa.pa-s-hello.pa-morph .pa-reach{animation-delay:.5s}
+.pa .pa-talk{animation:pa-chat .45s ease-in-out var(--pa-phase) infinite alternate}
+.pa .pa-mk-dot{transform-box:fill-box;transform-origin:center;animation:pa-dot 1.4s ease-in-out infinite}
+.pa .pa-mk-dot:nth-child(2){animation-delay:.2s}
+.pa .pa-mk-dot:nth-child(3){animation-delay:.4s}
+.pa .pa-mk-dash{animation:pa-dash .4s linear infinite alternate}
+.pa .pa-mk-badge{transform-box:fill-box;transform-origin:center;animation:pa-pop .5s cubic-bezier(.3,1.6,.5,1) backwards,pa-pulse .7s ease-in-out .5s 4 alternate}
+.pa .pa-mk-spark{transform-box:fill-box;transform-origin:center;animation:pa-twinkle 1.3s ease-in-out 2 backwards}
+.pa .pa-mk-spark:nth-of-type(3){animation-delay:.35s}
+.pa .pa-mk-spark:nth-of-type(4){animation-delay:.7s}
+.pa .pa-mk-drop{animation:pa-drip 1.6s ease-in 3 backwards}
+.pa .pa-mk-z{transform-box:fill-box;transform-origin:center;animation:pa-z 3s ease-out 3 backwards}
+.pa .pa-mk-z:nth-child(2){animation-delay:1s}
+.pa .pa-mk-z:nth-child(3){animation-delay:2s}
+.pa .pa-mk-arc{animation:pa-flick .45s ease-in-out 6 alternate}
 .pa-paused .pa *,.pa.pa-paused *{animation-play-state:paused!important}
 @keyframes pa-breathe{0%,100%{transform:none}40%{transform:translateY(calc(var(--pa-amp)*-.7px)) scale(1.006,calc(1 + var(--pa-amp)*.02))}}
 @keyframes pa-breathe-slow{0%,100%{transform:none}45%{transform:scale(1.004,calc(1 + var(--pa-amp)*.012))}}
@@ -638,6 +800,17 @@ export const PLANT_AVATAR_CSS = `
 @keyframes pa-reach{0%,100%{transform:none}35%{transform:rotate(-9deg)}60%{transform:rotate(-3deg)}}
 @keyframes pa-settle{0%{transform:rotate(-3deg) scale(1.02,1.05)}100%{transform:none}}
 @keyframes pa-unfurl{0%{opacity:0;transform:scale(.25) rotate(-28deg)}55%{opacity:1}100%{opacity:1;transform:none}}
+@keyframes pa-hop{0%,40%,100%{transform:none}20%{transform:translateY(calc(var(--pa-amp)*-2.6px))}}
+@keyframes pa-wave{0%{transform:rotate(8deg)}100%{transform:rotate(-16deg)}}
+@keyframes pa-chat{0%{transform:none}100%{transform:scaleY(.45)}}
+@keyframes pa-dot{0%,100%{opacity:.25;transform:scale(.8)}40%{opacity:1;transform:scale(1.1)}}
+@keyframes pa-dash{0%{transform:translateX(-1.5px)}100%{transform:translateX(1.5px)}}
+@keyframes pa-pop{0%{transform:scale(0)}100%{transform:none}}
+@keyframes pa-pulse{0%{transform:none}100%{transform:scale(1.12)}}
+@keyframes pa-twinkle{0%,100%{opacity:0;transform:scale(.3)}50%{opacity:1;transform:scale(1) rotate(45deg)}}
+@keyframes pa-drip{0%{opacity:0;transform:translateY(-3px)}25%{opacity:1}100%{opacity:0;transform:translateY(7px)}}
+@keyframes pa-z{0%{opacity:0;transform:translate(-2px,4px) scale(.6)}30%{opacity:1}100%{opacity:0;transform:translate(3px,-6px) scale(1.1)}}
+@keyframes pa-flick{0%{opacity:.25}100%{opacity:1}}
 @media (prefers-reduced-motion:reduce){.pa *{animation:none!important;transition-duration:0s!important}.pa .pa-eyes{transition:opacity .15s!important}.pa .pa-eyes.pa-shut{transform:none;opacity:0}}
 `;
 

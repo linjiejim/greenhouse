@@ -31,6 +31,7 @@ import {
   NewGroupDialog,
   conversationReplyable,
   conversationTitle,
+  ensureSprouty,
   openBotsConversation,
   speakingSegment,
   useBotConversation,
@@ -94,9 +95,6 @@ function BotsDialogs({ onInvited }: { onInvited?: () => void }) {
   );
 }
 
-// StrictMode runs mount effects twice; one bootstrap per page load is enough.
-let bootstrapInFlight: Promise<{ dm_session_id: string }> | null = null;
-
 export function BotsPage({ params }: { params: URLSearchParams }) {
   const sessionId = params.get('c');
   return sessionId ? <BotsWorkspace sessionId={sessionId} /> : <BotsLanding />;
@@ -136,17 +134,10 @@ function BotsLanding() {
       openBotsConversation(recent, { replace: true });
       return;
     }
-    // First visit (or every Bot archived): the API creates a Bot, its DM and
-    // a fixed greeting (no model call), idempotently.
-    bootstrapInFlight ??= botsApi.bootstrapBots().finally(() => {
-      bootstrapInFlight = null;
-    });
-    bootstrapInFlight
-      .then(({ dm_session_id }) => {
-        void loadBots().catch(() => {});
-        void loadConversations().catch(() => {});
-        openBotsConversation(dm_session_id, { replace: true });
-      })
+    // First visit (or every other Bot archived): the API makes sure Sprouty exists, with its DM
+    // and a fixed greeting (no model call), idempotently — then we land in that DM.
+    ensureSprouty()
+      .then(({ dm_session_id }) => openBotsConversation(dm_session_id, { replace: true }))
       .catch((err: unknown) =>
         setFailure({
           status: botsApi.isBotsApiError(err) ? err.status : 0,

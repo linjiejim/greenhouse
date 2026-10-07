@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { BotView } from '@greenhouse/types/bots';
+import { isSproutyBot, type BotView } from '@greenhouse/types/bots';
 import { Button, ConfirmDialog, Dialog, Drawer, IconButton, Spinner, toast } from '../ui';
 import { FormActions } from '../form';
 import { Archive, MessageCircle, Pencil, Trash2, X } from '../../lib/icons';
@@ -160,10 +160,17 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
                 )}
               </PanelSection>
               <div className="px-4 py-4">
-                <Button size="sm" variant="outline" onClick={() => setArchiving(true)}>
-                  <Archive size={13} className="mr-1" />
-                  {t('bots.profile.archive')}
-                </Button>
+                {isSproutyBot(bot) ? (
+                  // Every member's main Bot stays; it can still be renamed or re-instructed.
+                  <p className="text-[11px] text-fg-faint" data-testid="bots-profile-main-bot">
+                    {t('bots.profile.mainBot', { name: bot.name })}
+                  </p>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setArchiving(true)}>
+                    <Archive size={13} className="mr-1" />
+                    {t('bots.profile.archive')}
+                  </Button>
+                )}
               </div>
             </div>
           </div>

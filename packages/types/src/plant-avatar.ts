@@ -1,8 +1,8 @@
 /**
  * Plant avatars — the zod-free vocabulary every Bot / Agent avatar is built from.
  *
- * One real plant silhouette + two ink eyes on a tinted disc. Identity = species
- * (`plant`), live state = pose + eyes. The renderer (geometry, baked palettes,
+ * One flat, geometric plant + an ink face on a tinted disc. Identity = species
+ * (`plant`), live state = pose + face (+ a state mark at portrait size). The renderer (geometry, baked palettes,
  * SVG builder, React wrapper) lives in `@greenhouse/ui/components/plant-avatar`;
  * this module only holds the ids and the legacy-mapping tables, so the API, the
  * web pickers and the mobile app can import them at runtime without zod.
@@ -23,7 +23,10 @@ import type {
   SproutyLeafStyleId,
 } from './profile-manifest.js';
 
-/** The fifteen species, in catalogue order (the order also drives hash picks — never reorder). */
+/**
+ * The sixteen species, in catalogue order. Never reorder, and only ever append: the first
+ * fifteen also drive the legacy hash picks (IMPLICIT_POOL / COLOR_FAMILY).
+ */
 export const PLANT_IDS = Object.freeze([
   'sprout',
   'ivy',
@@ -40,6 +43,7 @@ export const PLANT_IDS = Object.freeze([
   'eucalyptus',
   'lavender',
   'sunflower',
+  'dandelion',
 ] as const);
 export type PlantId = (typeof PLANT_IDS)[number];
 
@@ -54,6 +58,7 @@ export const PLANT_STATES = Object.freeze([
   'error',
   'waiting',
   'sleep',
+  'hello',
 ] as const);
 export type PlantState = (typeof PLANT_STATES)[number];
 
@@ -77,11 +82,17 @@ export type PlantStateInput = PlantState | PlantStateAlias;
 export const PLANT_MOODS = Object.freeze(['calm', 'soft', 'bright', 'drowsy'] as const);
 export type PlantMood = (typeof PLANT_MOODS)[number];
 
-/** Bot template key → species (the templates are already named after these plants). */
+/**
+ * Bot template key → species: the built-in Sprouty is the sprout; the gallery templates are named
+ * after theirs (蒲蒲 Dandy, 仙仙 Cactus, 卷卷 Fern, 叶叶 Clover); the retired chief of staff was
+ * ivy. Bots store their `plant`, so changing a row here only affects new Bots — and
+ * template-keyed avatars that never stored one.
+ */
 export const TEMPLATE_PLANT = Object.freeze({
+  sprouty: 'sprout',
   chief: 'ivy',
-  researcher: 'sage',
-  operator: 'basil',
+  researcher: 'dandelion',
+  operator: 'opuntia',
   writer: 'fern',
   analyst: 'clover',
 } as const satisfies Record<string, PlantId>);
@@ -120,12 +131,31 @@ export const PLANT_LEGACY_COLOR = Object.freeze({
   eucalyptus: 'midnight',
   lavender: 'lavender',
   sunflower: 'sunshine',
+  dandelion: 'sunshine',
 } as const satisfies Record<PlantId, SproutyColorId>);
 
-/** Species a fresh Agent / Bot may land on implicitly (everything but the reserved sprout). */
-export const IMPLICIT_POOL: readonly Exclude<PlantId, 'sprout'>[] = Object.freeze(
-  PLANT_IDS.filter((id): id is Exclude<PlantId, 'sprout'> => id !== DEFAULT_PLANT),
-);
+/**
+ * Species a stored avatar without a `plant` may land on implicitly (resolution steps 4–6). FROZEN
+ * to the fifteen species that existed when plant avatars shipped (minus the reserved sprout): a
+ * longer pool would move every legacy avatar's hash pick. Later species are reachable through
+ * templates and pickers only.
+ */
+export const IMPLICIT_POOL: readonly Exclude<PlantId, 'sprout'>[] = Object.freeze([
+  'ivy',
+  'sage',
+  'basil',
+  'fern',
+  'clover',
+  'monstera',
+  'ginkgo',
+  'maple',
+  'echeveria',
+  'opuntia',
+  'lotus',
+  'eucalyptus',
+  'lavender',
+  'sunflower',
+] as const);
 
 export function isPlantId(value: unknown): value is PlantId {
   return typeof value === 'string' && (PLANT_IDS as readonly string[]).includes(value);
@@ -150,7 +180,7 @@ export function hashSeed(str: unknown = ''): number {
 // Pure, total (never throws; any input → a valid id) and deterministic; no DOM.
 // Resolution order:
 //   1. `avatar.plant` if it is a known id
-//   2. `templateKey` (chief → ivy, researcher → sage, operator → basil, writer → fern, analyst → clover)
+//   2. `templateKey` (TEMPLATE_PLANT: chief → ivy, researcher → dandelion, operator → opuntia, …)
 //   3. exact template fingerprint (template avatars copied into Agents / Bot proposals)
 //   4. legacy colour family (+ role-cue accessory, else leafStyle hint, else stable-id hash)
 //   5. free `palette.leaf` / `palette.body` hex → nearest colour family by hue, then as 4

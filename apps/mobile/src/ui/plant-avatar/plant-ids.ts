@@ -3,7 +3,7 @@
 // aliases and moods. The legacy-mapping tables and hashSeed stay in the canonical module: mobile
 // only renders the built-in Sprouty (plant 'sprout') and never resolves stored avatar configs.
 
-/** The fifteen species, in catalogue order (the order also drives hash picks — never reorder). */
+/** The sixteen species, in catalogue order (never reorder; only ever append). */
 export const PLANT_IDS = Object.freeze([
   'sprout',
   'ivy',
@@ -20,6 +20,7 @@ export const PLANT_IDS = Object.freeze([
   'eucalyptus',
   'lavender',
   'sunflower',
+  'dandelion',
 ] as const);
 export type PlantId = (typeof PLANT_IDS)[number];
 
@@ -34,6 +35,7 @@ export const PLANT_STATES = Object.freeze([
   'error',
   'waiting',
   'sleep',
+  'hello',
 ] as const);
 export type PlantState = (typeof PLANT_STATES)[number];
 

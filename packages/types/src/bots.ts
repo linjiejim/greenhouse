@@ -36,7 +36,7 @@ export const BOT_RESERVED_NAMES = ['用户', '系统', '事件', 'user', 'system
 
 // ─── Templates ───────────────────────────────────────────
 
-export type BotTemplateKey = 'chief' | 'researcher' | 'operator' | 'writer' | 'analyst';
+export type BotTemplateKey = 'sprouty' | 'chief' | 'researcher' | 'operator' | 'writer' | 'analyst';
 
 export interface BotTemplateCopy {
   name: string;
@@ -68,7 +68,42 @@ export interface BotTemplate {
   copy: { en: BotTemplateCopy; zh: BotTemplateCopy };
 }
 
-export const BOT_TEMPLATES: readonly BotTemplate[] = [
+/**
+ * Sprouty — every member's built-in main Bot (key `sprouty`, the sprout plant). Created by
+ * `POST /api/bots/bootstrap` for every member, pinned above every conversation, never archived
+ * and never offered in the gallery. It is the one to talk to first: it helps directly, and
+ * brings in the member's other Bots (adds them to the conversation, hands work over, proposes
+ * new ones) when a job needs a specialist.
+ */
+export const SPROUTY_BOT_TEMPLATE: BotTemplate = {
+  key: 'sprouty',
+  avatar: plantAvatarConfig(TEMPLATE_PLANT.sprouty, 'calm'),
+  needsComputer: false,
+  copy: {
+    en: {
+      name: 'Sprouty',
+      role: 'Main assistant',
+      pitch: 'Ask me anything or hand me an errand — I bring in the right Bot when a job needs a specialist.',
+      instructions:
+        "You are Sprouty, the member's main assistant and the one they talk to first. Help directly with questions, writing, research and everyday errands. Clarify what they actually want, break bigger asks into steps, and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, bring in the right Bot — add one of the member's Bots to this conversation or propose a new one — and hand it over with a precise brief. Keep the member informed in short, concrete updates.",
+      starters: ['Plan my week from my open projects', 'What can my Bots do for me?', 'Create a researcher Bot for me'],
+    },
+    zh: {
+      name: 'Sprouty',
+      role: '主助手',
+      pitch: '有问题直接问，有事直接交给我；需要专家时，我来请合适的 Bot 帮忙。',
+      instructions:
+        '你是 Sprouty，这位成员的主助手，也是对方最先找的那一个。问答、写作、调研和日常杂事都直接帮忙。先弄清对方真正想要什么，把大的请求拆成步骤，用共享笔记跟踪未完成的事项。小事自己做；明显属于专家的活，就请合适的 Bot 来——把成员已有的 Bot 拉进这个对话，或者提议新建一个——并给出准确的交接说明。用简短、具体的进展汇报让对方随时心里有数。',
+      starters: ['根据我手上的项目帮我排一下这周', '我的 Bot 们能帮我做什么？', '帮我建一个研究员 Bot'],
+    },
+  },
+};
+
+/**
+ * Retired templates: the chief of staff (藤藤 / Ivy) became Sprouty in 2026-10. Kept so Bots
+ * created from it still find their pitch and starters; never offered for new Bots.
+ */
+const RETIRED_TEMPLATES: readonly BotTemplate[] = [
   {
     key: 'chief',
     avatar: plantAvatarConfig(TEMPLATE_PLANT.chief, 'calm'),
@@ -87,7 +122,7 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
         ],
       },
       zh: {
-        name: '小青',
+        name: '藤藤',
         role: '总管',
         pitch: '你的第一联系人：理清需求、安排工作，需要时请合适的 Bot 来帮忙。',
         instructions:
@@ -96,13 +131,17 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
       },
     },
   },
+];
+
+/** The gallery: the specialists a member can add next to Sprouty. */
+export const BOT_TEMPLATES: readonly BotTemplate[] = [
   {
     key: 'researcher',
     avatar: plantAvatarConfig(TEMPLATE_PLANT.researcher, 'calm'),
     needsComputer: true,
     copy: {
       en: {
-        name: 'Sage',
+        name: 'Dandy',
         role: 'Researcher',
         pitch: 'Searches the web on your computer, reads the sources, and cites them.',
         pitchNoComputer: 'Helps you research a question and organise the sources.',
@@ -115,7 +154,7 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
         ],
       },
       zh: {
-        name: '小研',
+        name: '蒲蒲',
         role: '研究员',
         pitch: '在你的电脑上搜索网页、阅读原始资料，并注明出处。',
         pitchNoComputer: '帮你调研问题、整理资料来源。',
@@ -131,7 +170,7 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
     needsComputer: true,
     copy: {
       en: {
-        name: 'Basil',
+        name: 'Cactus',
         role: 'Operator',
         pitch: 'Operates websites for you — forms, downloads, routine admin.',
         pitchNoComputer: 'Walks you through routine online admin, step by step.',
@@ -144,7 +183,7 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
         ],
       },
       zh: {
-        name: '小操',
+        name: '仙仙',
         role: '操作员',
         pitch: '替你操作网站：填表、下载、日常事务。',
         pitchNoComputer: '一步步帮你处理日常的线上事务。',
@@ -172,7 +211,7 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
         ],
       },
       zh: {
-        name: '小文',
+        name: '卷卷',
         role: '写手',
         pitch: '用你的口吻起草和润色文档、邮件和帖子。',
         instructions:
@@ -200,7 +239,7 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
         ],
       },
       zh: {
-        name: '小析',
+        name: '叶叶',
         role: '分析师',
         pitch: '在你的电脑上用 Python 处理数据，并把数字讲清楚。',
         pitchNoComputer: '处理你贴进来的数据，把数字讲清楚。',
@@ -212,8 +251,20 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
   },
 ];
 
+/** Any template a stored Bot may carry: Sprouty, the gallery, retired ones. */
 export function botTemplate(key: string | null | undefined): BotTemplate | undefined {
+  if (key === SPROUTY_BOT_TEMPLATE.key) return SPROUTY_BOT_TEMPLATE;
+  return BOT_TEMPLATES.find((t) => t.key === key) ?? RETIRED_TEMPLATES.find((t) => t.key === key);
+}
+
+/** A template a member may create a Bot from — the gallery only (Sprouty comes from bootstrap). */
+export function galleryTemplate(key: string | null | undefined): BotTemplate | undefined {
   return BOT_TEMPLATES.find((t) => t.key === key);
+}
+
+/** The member's built-in main Bot: pinned first, never archived. */
+export function isSproutyBot(bot: { template_key?: string | null } | null | undefined): boolean {
+  return bot?.template_key === SPROUTY_BOT_TEMPLATE.key;
 }
 
 // ─── Conversations ───────────────────────────────────────

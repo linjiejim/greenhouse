@@ -1,5 +1,5 @@
 /**
- * Plant avatars — every Bot / Agent is one real plant + two ink eyes on a tinted disc.
+ * Plant avatars — every Bot / Agent is one flat, geometric plant with a small ink face on a tinted disc.
  * Ids, the legacy resolver and the writer rule: `@greenhouse/types/plant-avatar`
  * (re-exported here for convenience). Design spec:
  * docs/specs/assets/avatar-proto/final/spec.md.

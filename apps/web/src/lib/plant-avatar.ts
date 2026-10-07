@@ -12,22 +12,25 @@
  * resolve at render time (`legacyToPlant`).
  */
 
-import { DEFAULT_PLANT, IMPLICIT_POOL, TEMPLATE_PLANT, legacyToPlant, type PlantId } from '@greenhouse/types';
+import { DEFAULT_PLANT, PLANT_IDS, TEMPLATE_PLANT, legacyToPlant, type PlantId } from '@greenhouse/types';
 import { DEFAULT_AGENT_ID } from './agent-constants';
 
 /**
- * Fresh picks try the non-template species first: the five template plants
- * (Ivy, Sage, Basil, Fern, Clover) stay free for the templates the member may add.
+ * Fresh picks try the non-template species first: the five template plants (藤藤 ivy,
+ * 蒲蒲 dandelion, 仙仙 cactus, 卷卷 fern, 叶叶 clover) stay free for the templates the member
+ * may add. Every species but the reserved sprout is pickable — including those added after the
+ * frozen IMPLICIT_POOL (a fresh pick is written, never re-resolved).
  */
 const TEMPLATE_PLANTS = new Set<PlantId>(Object.values(TEMPLATE_PLANT));
+const PICKABLE = PLANT_IDS.filter((plant) => plant !== DEFAULT_PLANT);
 const FRESH_ORDER: readonly PlantId[] = [
-  ...IMPLICIT_POOL.filter((plant) => !TEMPLATE_PLANTS.has(plant)),
-  ...IMPLICIT_POOL.filter((plant) => TEMPLATE_PLANTS.has(plant)),
+  ...PICKABLE.filter((plant) => !TEMPLATE_PLANTS.has(plant)),
+  ...PICKABLE.filter((plant) => TEMPLATE_PLANTS.has(plant)),
 ];
 
 /**
  * A species none of `taken` wears yet, so a new Bot or Agent is told apart from
- * its siblings at a glance. Never the reserved sprout; cycles once all 14 are used.
+ * its siblings at a glance. Never the reserved sprout; cycles once every species is used.
  */
 export function freshPlant(taken: readonly PlantId[]): PlantId {
   const used = new Set<PlantId>(taken);

@@ -2,8 +2,8 @@
  * Bots 路由 — /api/bots（个人助理 Bot、对话、共享笔记、需要你、后台任务）
  *
  * GET    /api/bots                                    — 我的 Bot 列表（bots 仅 active；archived_bots 另列）+ 电脑运行时 + 密码库可用性 + 待处理请求数
- * POST   /api/bots/bootstrap                          — 首次进入：建第一个 Bot「总管」+ 私聊 + 固定欢迎语（幂等）
- * POST   /api/bots                                    — 新建 Bot（模板或自定义），同时建私聊并写欢迎语
+ * POST   /api/bots/bootstrap                          — 确保内置主 Bot Sprouty 存在（+ 私聊 + 固定欢迎语）；幂等，每次进入都可调
+ * POST   /api/bots                                    — 新建 Bot（模板库模板或自定义；不能建 Sprouty），同时建私聊并写欢迎语
  * GET    /api/bots/conversations                      — 对话列表（按活跃排序，含徽标状态）
  * POST   /api/bots/conversations                      — 1 个 Bot → 它的私聊；2–6 个 → 新群聊
  * GET    /api/bots/conversations/:id                  — 对话详情 + 消息分页（before_seq / limit）+ 本页记忆回执的当前状态
@@ -21,7 +21,7 @@
  * GET    /api/bots/requests                           — 「需要你」请求（?status=pending）
  * POST   /api/bots/requests/:id                       — 处理请求（审批 / 建 Bot / 开始任务 / 登录 / 交还），已处理 409 already_decided、处理中 409 deciding
  * PATCH  /api/bots/:id                                — 修改 Bot 资料
- * DELETE /api/bots/:id                                — 归档 Bot
+ * DELETE /api/bots/:id                                — 归档 Bot（Sprouty 不可归档：400 bot_protected）
  * GET    /api/bots/:id/memories                       — 该 Bot 的私有记忆
  * DELETE /api/bots/:id/memories/:memoryId             — 删除一条私有记忆
  *
@@ -34,7 +34,9 @@ import { Hono } from 'hono';
 import { BotsDomainError, getDb, type ConversationWithMembers, type DatabaseProvider } from '@greenhouse/db';
 import { avatarConfigSchema, type AvatarConfig } from '@greenhouse/types/profile-manifest';
 import {
-  botTemplate,
+  SPROUTY_BOT_TEMPLATE,
+  galleryTemplate,
+  isSproutyBot,
   type BotConversationDetail,
   type BotRequestStatus,
   type BotTemplateKey,
@@ -233,20 +235,22 @@ export function createBotsRoutes() {
         });
       })
 
-      // ── POST /api/bots/bootstrap — idempotent first visit ──
+      // ── POST /api/bots/bootstrap — idempotent: every member has Sprouty ──
       .post('/bootstrap', async (c) => {
         const user = getAuthUser(c);
         const db = getDb();
         const owner = await ownerContext(db, user.id);
-        const existing = await db.bots.listBots(user.id);
-        if (existing.length > 0) {
-          const first = existing[0]!;
-          const dm = await db.bots.ensureDirectConversation(user.id, first.id);
-          return c.json({ bot: toBotView(first, dm.session_id), dm_session_id: dm.session_id, created: false });
-        }
-        const template = botTemplate('chief')!;
+        const answer = async (bot: Parameters<typeof toBotView>[0], created: boolean) => {
+          const dm = await db.bots.ensureDirectConversation(user.id, bot.id);
+          return c.json({ bot: toBotView(bot, dm.session_id), dm_session_id: dm.session_id, created });
+        };
+        const findSprouty = async () => (await db.bots.listBots(user.id)).find((bot) => isSproutyBot(bot));
+        const existing = await findSprouty();
+        if (existing) return answer(existing, false);
+        const template = SPROUTY_BOT_TEMPLATE;
         const copyFor = template.copy[owner.locale];
-        const taken = new Set([botNameKey(owner.nickname)].filter(Boolean));
+        const active = await db.bots.listBots(user.id);
+        const taken = new Set([...active.map((bot) => bot.name_key), botNameKey(owner.nickname)].filter(Boolean));
         try {
           const bot = await db.bots.createBot({
             user_id: user.id,
@@ -255,17 +259,17 @@ export function createBotsRoutes() {
             instructions: copyFor.instructions,
             avatar: JSON.stringify(template.avatar),
             template_key: template.key,
+            builtIn: true,
           });
           const dm = await db.bots.ensureDirectConversation(user.id, bot.id);
           await writeGreeting(db, dm.session_id, bot);
           return c.json({ bot: toBotView(bot, dm.session_id), dm_session_id: dm.session_id, created: true });
         } catch (error) {
-          // A concurrent first visit created it: return that one.
+          // A concurrent visit created it: return that one.
           if (!(error instanceof BotsDomainError)) throw error;
-          const raced = await db.bots.listBots(user.id);
-          if (raced.length === 0) throw error;
-          const dm = await db.bots.ensureDirectConversation(user.id, raced[0]!.id);
-          return c.json({ bot: toBotView(raced[0]!, dm.session_id), dm_session_id: dm.session_id, created: false });
+          const raced = await findSprouty();
+          if (!raced) throw error;
+          return answer(raced, false);
         }
       })
 
@@ -276,7 +280,8 @@ export function createBotsRoutes() {
         const body = await readJson(c);
         const owner = await ownerContext(db, user.id);
         const templateKey = typeof body.template_key === 'string' ? (body.template_key as BotTemplateKey) : undefined;
-        const template = templateKey ? botTemplate(templateKey) : undefined;
+        // The gallery only: Sprouty comes from bootstrap, retired templates are history.
+        const template = templateKey ? galleryTemplate(templateKey) : undefined;
         if (templateKey && !template)
           return c.json({ error: 'Unknown template', code: 'bot_name_invalid' as const }, 400);
         const templateCopy = template?.copy[owner.locale];
@@ -746,6 +751,12 @@ export function createBotsRoutes() {
         const user = getAuthUser(c);
         const db = getDb();
         const botId = c.req.param('id');
+        // Sprouty is every member's main Bot: it stays (it can be renamed or re-instructed).
+        if (isSproutyBot(await db.bots.getBot(user.id, botId)))
+          return c.json(
+            { error: 'Sprouty is your main Bot and cannot be archived', code: 'bot_protected' as const },
+            400,
+          );
         const archived = await db.bots.archiveBot(user.id, botId);
         if (!archived) return c.json({ error: 'Bot not found' }, 404);
         // Its open cards can no longer be acted on: withdraw them so "needs you"

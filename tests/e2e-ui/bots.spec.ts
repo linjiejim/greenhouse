@@ -15,7 +15,8 @@ import { test, expect } from './fixtures';
  * greeting), so it runs end to end: GET /api/bots, the conversation list,
  * POST /api/bots/bootstrap and the conversation detail are the real routes,
  * which is what catches a renamed field (`dm_session_id`…) the stubs would hide.
- * It archives the test user's Bots before and after.
+ * It archives the test user's Bots before and after — all but Sprouty, the built-in main Bot,
+ * which cannot be archived.
  *
  * Streaming, cards and the 202 busy path stay STUBBED — deterministic, no
  * model: every `/api/bots*` call and `POST /api/chat` is answered by
@@ -50,6 +51,7 @@ function bot(
 }
 
 const IVY = bot('bot_ivy', 'Ivy', 'Chief of staff', 'forest', 'dm-ivy', 'chief');
+const SPROUTY = bot('bot_sprouty', 'Sprouty', 'Main assistant', 'forest', 'dm-sprouty', 'sprouty');
 const SAGE = bot('bot_sage', 'Sage', 'Researcher', 'ocean', 'dm-sage', 'researcher');
 const FERN = bot('bot_fern', 'Fern', 'Writer', 'blossom', 'dm-fern', 'writer');
 
@@ -140,6 +142,10 @@ async function stubBots(page: Page, state: FakeState) {
       });
     }
     if (path === '/conversations' && method === 'GET') return json(route, { conversations: state.conversations });
+    // The sidebar makes sure Sprouty exists; these fixtures are about other Bots.
+    if (path === '/bootstrap' && method === 'POST') {
+      return json(route, { bot: SPROUTY, dm_session_id: SPROUTY.dm_session_id, created: false });
+    }
     if (path === '/computer' && method === 'GET') {
       return json(route, {
         runtime: { state: 'disabled', reason: null, hardened: false },
@@ -196,12 +202,16 @@ function freshState(): FakeState {
   return { bots: [], conversations: [], pages: {}, decisions: [] };
 }
 
-/** Archive every active Bot the e2e user owns (their DMs stay, read-only — that is the product). */
+/**
+ * Archive every active Bot the e2e user owns but Sprouty, which cannot be archived (their DMs
+ * stay, read-only — that is the product).
+ */
 async function archiveAllBots(api: APIRequestContext): Promise<void> {
   const res = await api.get('/api/bots');
   expect(res.ok(), `GET /api/bots → ${res.status()}`).toBe(true);
-  const { bots } = (await res.json()) as { bots: Array<Pick<BotView, 'id'>> };
-  for (const { id } of bots) {
+  const { bots } = (await res.json()) as { bots: Array<Pick<BotView, 'id' | 'template_key'>> };
+  for (const { id, template_key } of bots) {
+    if (template_key === 'sprouty') continue;
     const archived = await api.delete(`/api/bots/${encodeURIComponent(id)}`);
     expect(archived.ok(), `DELETE /api/bots/${id} → ${archived.status()}`).toBe(true);
   }
@@ -211,15 +221,19 @@ test.describe('bots — real API', () => {
   test.beforeEach(async ({ api }) => archiveAllBots(api));
   test.afterEach(async ({ api }) => archiveAllBots(api));
 
-  test('first visit creates the first Bot and opens its DM with a fixed greeting', async ({ page, api }) => {
+  test('first visit lands in the DM of Sprouty, the built-in main Bot, with a fixed greeting', async ({
+    page,
+    api,
+  }) => {
     await page.goto('/#/bots');
 
-    // Bootstrap made exactly one active Bot, and the page opened its DM.
+    // Bootstrap made sure Sprouty exists (it is the only active Bot), and the page opened its DM.
     await expect(page).toHaveURL(/#\/bots\?c=[^&]+$/);
     const res = await api.get('/api/bots');
     const { bots } = (await res.json()) as { bots: BotView[] };
     expect(bots).toHaveLength(1);
     const [first] = bots;
+    expect(first).toMatchObject({ name: 'Sprouty', template_key: 'sprouty' });
     expect(first.dm_session_id).toBeTruthy();
     await expect(page).toHaveURL(new RegExp(`#/bots\\?c=${first.dm_session_id}$`));
 
@@ -232,17 +246,16 @@ test.describe('bots — real API', () => {
     await expect(starter).toBeVisible();
     await starter.click();
     await expect(page.getByTestId('chat-input')).not.toHaveValue('');
-    // The sidebar lists the new DM among the live conversations.
-    await expect(
-      page
-        .getByTestId('bots-sidebar')
-        .locator(`[data-testid="bots-conversation-row"][data-session-id="${first.dm_session_id}"]`),
-    ).toBeVisible();
+    // The sidebar pins its DM first.
+    const firstRow = page.getByTestId('bots-sidebar').getByTestId('bots-conversation-row').first();
+    await expect(firstRow).toHaveAttribute('data-session-id', first.dm_session_id!);
+    await expect(firstRow).toHaveAttribute('data-pinned', 'true');
   });
 
   test("an archived Bot's DM is read-only and points to a new Bot", async ({ page, api }) => {
-    const boot = await api.post('/api/bots/bootstrap');
-    const { bot: created, dm_session_id: dm } = (await boot.json()) as { bot: BotView; dm_session_id: string };
+    const made = await api.post('/api/bots', { data: { template_key: 'writer' } });
+    expect(made.ok(), `POST /api/bots → ${made.status()}`).toBe(true);
+    const { bot: created, dm_session_id: dm } = (await made.json()) as { bot: BotView; dm_session_id: string };
     await archiveAllBots(api);
 
     await page.goto(`/#/bots?c=${encodeURIComponent(dm)}`);
@@ -324,12 +337,13 @@ test.describe('bots', () => {
     await expect(transcript.getByText('@Sage Compare the top 3 vendors')).toHaveCount(1);
     // `@Sage` became a mention the server resolves.
     expect(posted).toMatchObject({ session_id: 'grp-1', mentions: [SAGE.id] });
-    // Plant avatars: each Bot wears its template plant (stored avatars predate `plant`)
-    // in the speaker headers, the header roster and the sidebar group stack.
-    await expect(transcript.locator('svg.pa-sage').first()).toBeVisible();
+    // Plant avatars: each Bot wears its template plant (stored avatars predate `plant`; the
+    // researcher template is the dandelion) in the speaker headers, the header roster and the
+    // sidebar group stack.
+    await expect(transcript.locator('svg.pa-dandelion').first()).toBeVisible();
     await expect(transcript.locator('svg.pa-fern').first()).toBeVisible();
     const header = page.getByTestId('bots-conversation-header');
-    await expect(header.locator('svg.pa-sage')).toHaveCount(1);
+    await expect(header.locator('svg.pa-dandelion')).toHaveCount(1);
     await expect(header.locator('svg.pa-fern')).toHaveCount(1);
     await expect(page.getByTestId('bots-sidebar').locator('[data-testid="plant-avatar-stack"] svg')).toHaveCount(2);
     // The turn is over, so nothing moves: in a roster, motion means exactly "this Bot is talking".

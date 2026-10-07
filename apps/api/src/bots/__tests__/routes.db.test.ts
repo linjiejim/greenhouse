@@ -56,14 +56,14 @@ beforeEach(async () => {
 });
 
 describe('bootstrap', () => {
-  it('creates the first Bot from the chief template with a fixed greeting, once', async () => {
+  it('creates Sprouty, the built-in main Bot, with a fixed greeting, once', async () => {
     const first = await call(jim, 'POST', '/bootstrap');
     expect(first.status).toBe(200);
     expect(first.json.created).toBe(true);
     expect(first.json.bot).toMatchObject({
-      name: '小青',
-      role: '总管',
-      template_key: 'chief',
+      name: 'Sprouty',
+      role: '主助手',
+      template_key: 'sprouty',
       dm_session_id: first.json.dm_session_id,
     });
 
@@ -71,7 +71,7 @@ describe('bootstrap', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ role: 'assistant', bot_id: first.json.bot.id });
     expect(JSON.parse(rows[0]!.bot_event!)).toEqual({ kind: 'greeting', bot_id: first.json.bot.id });
-    expect(rows[0]!.content).toContain('你好，我是 **小青**');
+    expect(rows[0]!.content).toContain('你好，我是 **Sprouty**');
 
     const again = await call(jim, 'POST', '/bootstrap');
     expect(again.json).toMatchObject({ created: false, dm_session_id: first.json.dm_session_id });
@@ -82,8 +82,33 @@ describe('bootstrap', () => {
   it('is per member: a second member gets their own first Bot in their own locale', async () => {
     await call(jim, 'POST', '/bootstrap');
     const anas = await call(ana, 'POST', '/bootstrap');
-    expect(anas.json.bot.name).toBe('Ivy');
+    expect(anas.json.bot).toMatchObject({ name: 'Sprouty', role: 'Main assistant' });
     expect((await call(ana, 'GET', '')).json.bots).toHaveLength(1);
+  });
+
+  it('adds Sprouty for a member whose Bots predate it, and only once', async () => {
+    const older = await call(jim, 'POST', '', { name: 'Moss' });
+    expect(older.status).toBe(200);
+    const first = await call(jim, 'POST', '/bootstrap');
+    expect(first.json).toMatchObject({ created: true, bot: { template_key: 'sprouty' } });
+    const again = await call(jim, 'POST', '/bootstrap');
+    expect(again.json).toMatchObject({ created: false, bot: { id: first.json.bot.id } });
+    const names = (await call(jim, 'GET', '')).json.bots.map((b: { name: string }) => b.name);
+    expect(names.sort()).toEqual(['Moss', 'Sprouty']);
+  });
+
+  it('keeps Sprouty: it cannot be archived, created from a template, or created twice', async () => {
+    const { json } = await call(jim, 'POST', '/bootstrap');
+    const archive = await call(jim, 'DELETE', `/${json.bot.id}`);
+    expect(archive).toMatchObject({ status: 400, json: { code: 'bot_protected' } });
+    expect((await call(jim, 'GET', '')).json.bots.map((b: { id: string }) => b.id)).toContain(json.bot.id);
+    // Only the gallery seeds Bots: Sprouty comes from bootstrap, the chief of staff is retired.
+    for (const template_key of ['sprouty', 'chief'])
+      expect((await call(jim, 'POST', '', { template_key })).status).toBe(400);
+    // It can still be renamed and re-instructed.
+    const renamed = await call(jim, 'PATCH', `/${json.bot.id}`, { name: 'Sprout' });
+    expect(renamed.json.bot).toMatchObject({ name: 'Sprout', template_key: 'sprouty' });
+    expect((await call(jim, 'POST', '/bootstrap')).json).toMatchObject({ created: false, bot: { id: json.bot.id } });
   });
 });
 
@@ -102,8 +127,8 @@ describe('Bot names', () => {
   it('numbers template copies and creates the DM with a greeting', async () => {
     const one = await call(jim, 'POST', '', { template_key: 'researcher' });
     const two = await call(jim, 'POST', '', { template_key: 'researcher' });
-    expect(one.json.bot.name).toBe('小研');
-    expect(two.json.bot.name).toBe('小研 2');
+    expect(one.json.bot.name).toBe('蒲蒲');
+    expect(two.json.bot.name).toBe('蒲蒲 2');
     expect(await db.sessions.getMessageCount(two.json.dm_session_id)).toBe(1);
   });
 });
@@ -395,12 +420,12 @@ describe('Bot avatars', () => {
   it('a template copy is the plant the template is named after', async () => {
     const boot = await call(jim, 'POST', '/bootstrap');
     // Tracks the template (not a copy of its values), so a template edit cannot strand this test.
-    expect(boot.json.bot.avatar).toEqual(botTemplate('chief')!.avatar);
-    expect(boot.json.bot.avatar.plant).toBe('ivy');
+    expect(boot.json.bot.avatar).toEqual(botTemplate('sprouty')!.avatar);
+    expect(boot.json.bot.avatar.plant).toBe('sprout');
     const researcher = await call(jim, 'POST', '', { template_key: 'researcher' });
-    expect(researcher.json.bot.avatar).toEqual({ plant: 'sage', color: 'forest', faceStyle: 'default' });
+    expect(researcher.json.bot.avatar).toEqual({ plant: 'dandelion', color: 'sunshine', faceStyle: 'default' });
     const stored = await db.bots.getBot(jim.id, researcher.json.bot.id);
-    expect(JSON.parse(stored!.avatar)).toEqual({ plant: 'sage', color: 'forest', faceStyle: 'default' });
+    expect(JSON.parse(stored!.avatar)).toEqual({ plant: 'dandelion', color: 'sunshine', faceStyle: 'default' });
   });
 
   it('create and patch keep the plant and mood, strip unknown keys, reject out-of-bounds values', async () => {

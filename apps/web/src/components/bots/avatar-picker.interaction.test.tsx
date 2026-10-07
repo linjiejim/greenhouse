@@ -45,11 +45,13 @@ const chip = (plant: string) => host.querySelector<HTMLButtonElement>(`button[da
 const moodChip = (mood: string) => host.querySelector<HTMLButtonElement>(`button[data-mood="${mood}"]`)!;
 
 describe('<AvatarPicker/>', () => {
-  it('offers all fifteen species as static, named chips', () => {
+  it('offers all sixteen species as static, named chips', () => {
     mount({ plant: 'ivy' });
     const chips = [...host.querySelectorAll<HTMLButtonElement>('[data-testid="plant-picker-species"] button')];
-    expect(chips).toHaveLength(15);
-    expect(chips.map((button) => button.getAttribute('aria-label'))).toContain('Prickly Pear');
+    expect(chips).toHaveLength(16);
+    expect(chips.map((button) => button.getAttribute('aria-label'))).toEqual(
+      expect.arrayContaining(['Cactus', 'Dandelion']),
+    );
     // A picker is a list: none of the chips animate.
     expect(host.querySelectorAll('[data-testid="plant-picker-species"] .pa-mo')).toHaveLength(0);
   });

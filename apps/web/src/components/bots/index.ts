@@ -9,6 +9,7 @@ export {
   botsById,
   computerReady,
   conversationReplyable,
+  ensureSprouty,
   useBotDirectory,
   useBotsLoadState,
   type BotsDialog,

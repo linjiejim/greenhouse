@@ -133,7 +133,9 @@ what exists." These rules are as binding as the "add" rules:
   non-zero on any console error or failed `/api` request. Re-run it after visible UI changes
   so the docs stay truthful — never hand-edit or mock the captures. Needs `ffmpeg` + `cwebp`.
 - **Plant avatars (visual review)**: every Agent / Bot avatar is drawn by one SVG-string builder in
-  `packages/ui/src/components/plant-avatar/`. After touching it, render the review sheet with
+  `packages/ui/src/components/plant-avatar/` — flat geometric plants (circles, arcs, straight
+  lines; no gradients, highlights or keyline) with a small ink face; design source
+  `design/bot-characters/` (local). After touching it, render the review sheet with
   `node --import tsx scripts/plant-avatar-gallery.mjs [--out=path]` (default
   `/tmp/plant-avatar-gallery.png`) and look at it. After editing a silhouette, add `--fit`: it
   re-measures the optical fit in Chromium and rewrites `plant-fit.generated.ts`. Then refresh the

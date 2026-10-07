@@ -150,20 +150,26 @@ describe('ProfileEditorDrawer appearance', () => {
     useProfileStore.setState({
       profiles: [
         { id: 'sprouty', name: 'Sprouty', tools: [] },
-        { id: 'custom:1', name: 'A', tools: [], is_custom: true, avatar: { plant: 'monstera' } },
-        { id: 'custom:2', name: 'B', tools: [], is_custom: true, avatar: { color: 'sunset' } },
+        { id: 'custom:1', name: 'A', tools: [], is_custom: true, avatar: { plant: 'basil' } },
+        {
+          id: 'custom:2',
+          name: 'B',
+          tools: [],
+          is_custom: true,
+          avatar: { color: 'forest', accessories: ['magnifier'] },
+        },
       ] as unknown as Profile[],
     });
     try {
       await mount(null);
-      // monstera is taken outright, ginkgo by a legacy sunset avatar → the next free species.
-      expect(summary()).toBe('Maple · Calm');
+      // basil is taken outright, sage by a legacy magnifier avatar → the next free species.
+      expect(summary()).toBe('Monstera · Calm');
     } finally {
       useProfileStore.setState({ profiles: [] });
     }
   });
 
-  it('previews all seven states at 120px, morphing the same avatar in place', async () => {
+  it('previews all eight states at 120px, morphing the same avatar in place', async () => {
     await mount(legacyAgent);
     await openAppearance();
     const preview = () => document.querySelector<HTMLSpanElement>('.pa-root[role="img"]')!;
@@ -177,6 +183,7 @@ describe('ProfileEditorDrawer appearance', () => {
       'Error',
       'Waiting',
       'Asleep',
+      'Saying hi',
     ]);
     const svg = preview().querySelector('svg')!;
     await act(async () => stateChips[1]!.click());

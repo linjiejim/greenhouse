@@ -11,7 +11,8 @@
  * Plant-avatar SVG builder — options → markup string (no DOM, no React).
  *
  * Skeleton (spec §2): tinted disc → fit group (optical fit) → pose group (state pose about
- * the species pivot) → rim underlay pass → fill pass → look group → eyes. Guarantees:
+ * the species pivot) → rim underlay pass → fill pass → look group → face (eyes, brows at
+ * portrait, mouth above glyph) → [state mark, portrait]. Guarantees:
  *   - no `id=`, `<defs>` or `url(#)`; deterministic;
  *   - static poses are SVG transform ATTRIBUTES with plain presentation-attribute paint, so
  *     the string renders without any CSS (SvgXml, librsvg PNG export for the iOS widget).
@@ -48,7 +49,9 @@ export const FIT_TARGET = Object.freeze({ glyph: 48, avatar: 47.5, portrait: 47 
 
 // ─── states, poses, eyes ────────────────────────────────────────────────────
 
-type EyeKind = 'calm' | 'soft' | 'bright' | 'drowsy' | 'look' | 'happy' | 'sad' | 'attentive' | 'closed';
+type EyeKind = 'calm' | 'soft' | 'bright' | 'drowsy' | 'look' | 'focus' | 'happy' | 'sad' | 'attentive' | 'closed';
+type MouthKind = 'smile' | 'grin' | 'side' | 'talk' | 'o' | 'wobble' | 'small';
+type BrowKind = 'focus' | 'worried' | 'arched';
 
 export interface PlantPose {
   /** Canonical state (aliases and unknown values resolved). */
@@ -74,11 +77,14 @@ export interface PlantPose {
   fx?: 'bloom';
 }
 
-/** State poses. rot/tx/ty/sx/sy act about the species pivot. */
+/**
+ * State poses. rot/tx/ty/sx/sy act about the species pivot; `fold` > 0 droops / closes paired
+ * parts, < 0 raises / opens them (per-part overrides in `parts`).
+ */
 const POSES: Record<PlantState, Omit<PlantPose, 'state'>> = {
   idle: { eyes: 'rest', look: [0, 0], rot: 0, tx: 0, ty: 0, sx: 1, sy: 1, fold: 0, desat: 0 },
   thinking: { eyes: 'look', look: [3, -3.4], rot: -3, tx: 1, ty: 0, sx: 1, sy: 1, fold: 0.15, desat: 0 },
-  speaking: { eyes: 'bright', look: [0, -1], rot: 0, tx: 0, ty: -1.6, sx: 1, sy: 1.035, fold: -0.15, desat: 0 },
+  speaking: { eyes: 'focus', look: [0, -0.6], rot: 0, tx: 0, ty: -1.6, sx: 1, sy: 1.035, fold: -0.15, desat: 0 },
   done: {
     eyes: 'happy',
     look: [0, -0.6],
@@ -87,23 +93,23 @@ const POSES: Record<PlantState, Omit<PlantPose, 'state'>> = {
     ty: -1.6,
     sx: 1.01,
     sy: 1.04,
-    fold: -0.3,
+    fold: -0.45,
     desat: 0,
     fx: 'bloom',
   },
   error: {
     eyes: 'sad',
-    look: [0, 2.2],
-    rot: 9,
-    tx: -3.5,
+    look: [0, 1.6],
+    rot: 7,
+    tx: -3,
     ty: 2.5,
     sx: 0.97,
     sy: 0.95,
-    fold: 0.35,
+    fold: 0.5,
     desat: 0.22,
-    eyeRot: -9,
+    eyeRot: -7,
   },
-  // leaning in toward you (phototropism); paired species reach with one leaf; expectant eyes
+  // leaning in toward you (phototropism); paired species raise one leaf like a hand; expectant eyes
   waiting: {
     eyes: 'attentive',
     look: [-0.6, -1.8],
@@ -113,7 +119,7 @@ const POSES: Record<PlantState, Omit<PlantPose, 'state'>> = {
     sx: 1.025,
     sy: 1.04,
     fold: 0,
-    parts: { l: -0.1, r: 0.55 },
+    parts: { l: 0.1, r: -0.9 },
     desat: 0,
   },
   sleep: {
@@ -127,6 +133,19 @@ const POSES: Record<PlantState, Omit<PlantPose, 'state'>> = {
     fold: 1,
     desat: 0.3,
     dim: 0.14,
+  },
+  // a new Bot says hi: one leaf (or arm) up and waving
+  hello: {
+    eyes: 'bright',
+    look: [0, -1],
+    rot: 0,
+    tx: 0,
+    ty: -1.4,
+    sx: 1,
+    sy: 1.03,
+    fold: 0,
+    parts: { l: 0.1, r: -0.8 },
+    desat: 0,
   },
 };
 
@@ -156,11 +175,36 @@ export function rimUnits(px: number, w = px <= 20 ? 0.75 : 1): number {
  * minimum half gap between the eyes' inner edges, so they never merge into a dash.
  */
 export const EYE = Object.freeze({
-  glyph: { rx: 6.8, ry: 8.2, inner: 5.6, arc: 6 },
-  avatar: { rx: 5.9, ry: 7.3, inner: 4.6, arc: 4.8 },
-  portrait: { rx: 5.2, ry: 6.6, inner: 4.2, arc: 3.8 },
+  glyph: { rx: 3.9, ry: 4.9, inner: 4.8, arc: 3.2 },
+  avatar: { rx: 3.3, ry: 4.2, inner: 3.8, arc: 2.6 },
+  portrait: { rx: 2.9, ry: 3.7, inner: 3.6, arc: 2.1 },
 } as const satisfies Record<PlantLod, { rx: number; ry: number; inner: number; arc: number }>);
 type EyeMetrics = (typeof EYE)[PlantLod];
+
+/**
+ * Mouth metrics (viewBox units before FIT, × face scale): half width, height, stroke and the
+ * drop below the eye line. No mouth at glyph sizes — two eyes are all 16–20px can carry.
+ */
+export const MOUTH = Object.freeze({
+  avatar: { w: 4.4, h: 3, sw: 2.5, dy: 8.6 },
+  portrait: { w: 3.9, h: 2.7, sw: 2.1, dy: 7.8 },
+} as const satisfies Record<Exclude<PlantLod, 'glyph'>, { w: number; h: number; sw: number; dy: number }>);
+type MouthMetrics = (typeof MOUTH)[keyof typeof MOUTH];
+
+const STATE_MOUTH: Record<PlantState, MouthKind> = {
+  idle: 'smile',
+  thinking: 'side',
+  speaking: 'talk',
+  done: 'grin',
+  error: 'wobble',
+  waiting: 'o',
+  sleep: 'small',
+  hello: 'grin',
+};
+const MOOD_MOUTH: Record<PlantMood, MouthKind> = { calm: 'smile', soft: 'smile', bright: 'grin', drowsy: 'small' };
+
+/** Brows: portrait only (a 1px line at list sizes reads as noise). */
+const STATE_BROWS: Partial<Record<PlantState, BrowKind>> = { speaking: 'focus', error: 'worried', waiting: 'arched' };
 
 function eyeKind(poseEyes: PlantPose['eyes'], mood: unknown, lod: PlantLod): EyeKind {
   const k: EyeKind =
@@ -183,27 +227,17 @@ export function eyeHalfGap(plant: PlantId | string, lod: PlantLod): number {
 interface Paint {
   fill: (tone: keyof PlantPalette) => string;
   stroke: (tone: keyof PlantPalette) => string;
-  both: (tone: keyof PlantPalette) => string;
 }
 
-function eyeSvg(
-  kind: EyeKind,
-  cx: number,
-  cy: number,
-  m: EyeMetrics,
-  side: number,
-  s: number,
-  paint: Paint,
-  showCatch: boolean,
-): string {
+function eyeSvg(kind: EyeKind, cx: number, cy: number, m: EyeMetrics, side: number, s: number, paint: Paint): string {
   const rx = m.rx * s;
   const ry = m.ry * s;
   const arcW = m.arc * s;
   const fill = paint.fill('ink');
   const strokeArc = (d: string) =>
     `<path d="${d}" fill="none" ${paint.stroke('ink')} stroke-width="${f(arcW)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-  const catchDot = (x: number, y: number, r: number) =>
-    showCatch ? `<circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" ${paint.fill('catch')}/>` : '';
+  const oval = (x: number, y: number, ex: number, ey: number) =>
+    `<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(ex)}" ry="${f(ey)}" ${fill}/>`;
   switch (kind) {
     case 'happy':
       return strokeArc(
@@ -220,50 +254,130 @@ function eyeSvg(
       const [ox, oy] = p(outer);
       const [ix, iy] = p(inner);
       const sweep = side < 0 ? 1 : 0;
-      return (
-        `<path d="M${f(ox)} ${f(oy)}L${f(ix)} ${f(iy)}A${f(rx)} ${f(ry)} 0 1 ${sweep} ${f(ox)} ${f(oy)}Z" ${fill}/>` +
-        catchDot(cx - side * rx * 0.28, cy + ry * 0.3, 1.4 * s) // low, inner: a watery glint
-      );
+      return `<path d="M${f(ox)} ${f(oy)}L${f(ix)} ${f(iy)}A${f(rx)} ${f(ry)} 0 1 ${sweep} ${f(ox)} ${f(oy)}Z" ${fill}/>`;
     }
     case 'drowsy':
       // Relaxed, heavy-lidded: a lower, rounder eye (no hard lid line — that reads "unimpressed").
-      return (
-        `<ellipse cx="${f(cx)}" cy="${f(cy + ry * 0.22)}" rx="${f(rx * 0.98)}" ry="${f(ry * 0.68)}" ${fill}/>` +
-        catchDot(cx + rx * 0.32, cy + ry * 0.02, 1.4 * s)
-      );
+      return oval(cx, cy + ry * 0.22, rx * 0.98, ry * 0.68);
     case 'soft': {
       // Content: a wider, shorter eye — cheeks lift the lower lid into a shallow upward bow.
       const w = rx * 1.04;
       const yb = cy + ry * 0.4;
-      return (
-        `<path d="M${f(cx - w)} ${f(yb)}A${f(w)} ${f(ry * 1.2)} 0 0 1 ${f(cx + w)} ${f(yb)}Q${f(cx)} ${f(cy + ry * 0.02)} ${f(cx - w)} ${f(yb)}Z" ${fill}/>` +
-        catchDot(cx + rx * 0.32, cy - ry * 0.32, 1.5 * s)
-      );
+      return `<path d="M${f(cx - w)} ${f(yb)}A${f(w)} ${f(ry * 1.2)} 0 0 1 ${f(cx + w)} ${f(yb)}Q${f(cx)} ${f(cy + ry * 0.02)} ${f(cx - w)} ${f(yb)}Z" ${fill}/>`;
     }
     case 'attentive':
-      // Expectant: bigger and rounder, two catch-lights at portrait size.
-      return (
-        `<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(rx * 1.15)}" ry="${f(ry * 1.1)}" ${fill}/>` +
-        catchDot(cx + rx * 0.4, cy - ry * 0.42, 2.1 * s) +
-        catchDot(cx - rx * 0.38, cy + ry * 0.45, 1 * s)
-      );
+      // Expectant: bigger and rounder.
+      return oval(cx, cy, rx * 1.15, ry * 1.1);
     case 'bright':
-      // Speaking: taller, brighter eyes (a static cue that differs from idle at 24px).
-      return (
-        `<ellipse cx="${f(cx)}" cy="${f(cy - ry * 0.06)}" rx="${f(rx * 1.04)}" ry="${f(ry * 1.14)}" ${fill}/>` +
-        catchDot(cx + rx * 0.34, cy - ry * 0.46, 2 * s)
-      );
+      // Lit up (hello, bright mood): taller.
+      return oval(cx, cy - ry * 0.06, rx * 1.04, ry * 1.14);
+    case 'focus':
+      // Concentrating (speaking / working): flatter.
+      return oval(cx, cy + ry * 0.1, rx * 1.02, ry * 0.74);
     case 'look':
-      return (
-        `<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(rx)}" ry="${f(ry * 0.9)}" ${fill}/>` +
-        catchDot(cx + rx * 0.36, cy - ry * 0.36, 1.6 * s)
-      );
+      return oval(cx, cy, rx, ry * 0.9);
     case 'calm':
     default:
-      return (
-        `<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(rx)}" ry="${f(ry)}" ${fill}/>` +
-        catchDot(cx + rx * 0.34, cy - ry * 0.38, 1.7 * s)
+      return oval(cx, cy, rx, ry);
+  }
+}
+
+/** A brow over one eye (`side` −1 left, 1 right). */
+function browSvg(kind: BrowKind, cx: number, cy: number, m: EyeMetrics, side: number, s: number, paint: Paint): string {
+  const rx = m.rx * s;
+  const ry = m.ry * s;
+  const out = cx + side * rx * 1.12; // outer end
+  const inn = cx - side * rx * 0.98; // inner end, toward the nose
+  const stroke = `fill="none" ${paint.stroke('ink')} stroke-width="${f(m.arc * 0.62 * s)}" stroke-linecap="round"`;
+  if (kind === 'arched')
+    return `<path d="M${f(out)} ${f(cy - ry * 1.28)}Q${f(cx)} ${f(cy - ry * 1.9)} ${f(inn)} ${f(cy - ry * 1.28)}" ${stroke}/>`;
+  const [yo, yi] = kind === 'focus' ? [1.48, 1.2] : [1.22, 1.62]; // focus: inner end low; worried: inner end high
+  return `<path d="M${f(out)} ${f(cy - ry * yo)}L${f(inn)} ${f(cy - ry * yi)}" ${stroke}/>`;
+}
+
+/** The mouth, centred at (cx, cy). */
+function mouthSvg(kind: MouthKind, cx: number, cy: number, mm: MouthMetrics, s: number, paint: Paint): string {
+  const w = mm.w * s;
+  const h = mm.h * s;
+  const fill = paint.fill('ink');
+  const stroke = (d: string, k = 1) =>
+    `<path d="${d}" fill="none" ${paint.stroke('ink')} stroke-width="${f(mm.sw * s * k)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  switch (kind) {
+    case 'grin':
+      return `<path d="M${f(cx - w * 1.05)} ${f(cy - h * 0.45)}Q${f(cx)} ${f(cy + h * 1.9)} ${f(cx + w * 1.05)} ${f(cy - h * 0.45)}Z" ${fill}/>`;
+    case 'side':
+      return stroke(`M${f(cx - w * 0.35)} ${f(cy)}Q${f(cx + w * 0.3)} ${f(cy + h * 0.75)} ${f(cx + w * 0.95)} ${f(cy - h * 0.25)}`);
+    case 'talk':
+      return `<ellipse cx="${f(cx)}" cy="${f(cy + h * 0.15)}" rx="${f(w * 0.52)}" ry="${f(h * 0.62)}" ${fill}/>`;
+    case 'o':
+      return `<ellipse cx="${f(cx)}" cy="${f(cy + h * 0.2)}" rx="${f(w * 0.42)}" ry="${f(h * 0.78)}" ${fill}/>`;
+    case 'wobble': {
+      // four shallow waves; explicit Q segments (no T — the contrast sampler reads M/L/Q/C/A only)
+      const y = cy + h * 0.25;
+      const step = (w * 2) / 4;
+      let d = `M${f(cx - w)} ${f(y)}`;
+      for (let i = 0; i < 4; i++) {
+        const x0 = cx - w + step * i;
+        d += `Q${f(x0 + step / 2)} ${f(y + (i % 2 ? h * 0.7 : -h * 0.7))} ${f(x0 + step)} ${f(y)}`;
+      }
+      return stroke(d, 0.82);
+    }
+    case 'small':
+      return stroke(`M${f(cx - w * 0.45)} ${f(cy)}Q${f(cx)} ${f(cy + h * 0.6)} ${f(cx + w * 0.45)} ${f(cy)}`, 0.9);
+    case 'smile':
+    default:
+      return stroke(`M${f(cx - w)} ${f(cy - h * 0.3)}Q${f(cx)} ${f(cy + h * 1.1)} ${f(cx + w)} ${f(cy - h * 0.3)}`);
+  }
+}
+
+/** State marks for portraits, on the disc (not fitted): fixed badge colours, the rest in `mark`. */
+const MARK = Object.freeze({ badge: '#F2B53A', done: '#3F9B6E', glyph: '#FFFFFF', drop: '#6FB4DE' });
+
+function marksSvg(state: PlantState, paint: Paint): string {
+  const line = (d: string, w: number, _name: string, op = 1) =>
+    `<path d="${d}" fill="none" ${paint.stroke('mark')} stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"${op < 1 ? ` opacity="${op}"` : ''}/>`;
+  const badge = (fill: string, glyph: string) => `<g><circle cx="84" cy="16" r="11" fill="${fill}"/>${glyph}</g>`;
+  const star = (x: number, y: number, r: number) => {
+    const k = r * 0.22;
+    return (
+      `<path d="M${f(x)} ${f(y - r)}Q${f(x + k)} ${f(y - k)} ${f(x + r)} ${f(y)}Q${f(x + k)} ${f(y + k)} ${f(x)} ${f(y + r)}` +
+      `Q${f(x - k)} ${f(y + k)} ${f(x - r)} ${f(y)}Q${f(x - k)} ${f(y - k)} ${f(x)} ${f(y - r)}Z" fill="${MARK.badge}"/>`
+    );
+  };
+  switch (state) {
+    case 'hello':
+      return line('M80 14Q86 19 85 27', 2.6, 'arc', 0.7) + line('M86.5 7Q95 16 92.5 29', 2.6, 'arc', 0.7);
+    case 'thinking':
+      return [
+        [73, 21, 2.8],
+        [81, 14, 3.4],
+        [90, 7.5, 4.1],
+      ]
+        .map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" ${paint.fill('mark')}/>`)
+        .join('');
+    case 'speaking':
+      return line('M6 44H16M3 54H15', 2.6, 'dash', 0.55) + line('M84 44H94M85 54H97', 2.6, 'dash', 0.55);
+    case 'waiting':
+      return badge(
+        MARK.badge,
+        `<path d="M84 9.5V17.5" fill="none" stroke="${MARK.glyph}" stroke-width="3.2" stroke-linecap="round"/><circle cx="84" cy="22" r="1.9" fill="${MARK.glyph}"/>`,
       );
+    case 'done':
+      return (
+        badge(
+          MARK.done,
+          `<path d="M78.6 16.4L82.4 20.2L89.4 12.6" fill="none" stroke="${MARK.glyph}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>`,
+        ) +
+        star(15, 20, 5.2) +
+        star(91, 40, 3.8) +
+        star(25, 6, 3.2)
+      );
+    case 'error':
+      return `<path d="M83 9C87.6 15.6 88.8 19 86.3 21.9C84.3 24.2 80.7 23.5 80.4 20.3C80.2 17.6 81.5 15 83 9Z" fill="${MARK.drop}"/>`;
+    case 'sleep':
+      return line('M68 26h6l-6 6h6', 2.4, 'z', 0.8) + line('M78 15h7.5l-7.5 7.5h7.5', 2.4, 'z', 0.8) + line('M88 3h9l-9 9h9', 2.4, 'z', 0.8);
+    default:
+      return '';
   }
 }
 
@@ -304,9 +418,9 @@ export type PlantAvatarTheme = 'light' | 'dark';
 export interface PlantAvatarSvgOptions {
   /** Species id; unknown → 'sprout'. */
   plant?: PlantId | string;
-  /** idle|thinking|speaking|done|error|waiting|sleep or a product alias; unknown → idle. */
+  /** idle|thinking|speaking|done|error|waiting|sleep|hello or a product alias; unknown → idle. */
   state?: PlantStateInput;
-  /** Render px — drives LOD and keyline weight (default 32). */
+  /** Render px — drives LOD (default 32). */
   size?: number;
   /** Default 'light'. */
   theme?: PlantAvatarTheme;
@@ -330,7 +444,6 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
   const mono = o.mono === 'silhouette' || o.mono === 'eyes' ? o.mono : null;
   const theme: PlantAvatarTheme = o.theme === 'dark' ? 'dark' : 'light';
   const disc = o.disc !== false && !mono;
-  const rimOn = !mono;
 
   // ── paint: presentation attributes in the named theme (mono → currentColor)
   const pals = statePalettes(P, pose);
@@ -339,20 +452,17 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
     ? {
         fill: () => 'fill="currentColor"',
         stroke: () => 'stroke="currentColor"',
-        both: () => 'fill="currentColor" stroke="currentColor"',
       }
     : {
         fill: (t) => `fill="${val(t)}"`,
         stroke: (t) => `stroke="${val(t)}"`,
-        both: (t) => `fill="${val(t)}" stroke="${val(t)}"`,
       };
 
-  // ── fit (static attribute) — the rimmed silhouette lands on FIT_TARGET whatever the size
-  const rimU = rimOn ? rimUnits(size) : 0;
+  // ── fit (static attribute) — the silhouette lands on FIT_TARGET whatever the size (no keyline:
+  // the core's opt-in `rim` is not vendored)
   const [maxR, fitDx, fitDy] = PLANT_FIT[key][lod];
-  const fitS = Math.min(1.3, (FIT_TARGET[lod] - rimU) / maxR);
+  const fitS = Math.min(1.3, FIT_TARGET[lod] / maxR);
   const fitT = `translate(50 50) scale(${f2(fitS)}) translate(${f(fitDx - 50)} ${f(fitDy - 50)})`;
-  const rimLocal = rimU / fitS; // stroke widths live inside the fit group
 
   // ── parts (paired organs fold about their base)
   const [px, py] = P.pivot;
@@ -369,21 +479,14 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
     return t ? `<g transform="${t}">${inner}</g>` : inner;
   };
 
-  // ── layers: rim underlay pass (silhouette only), then fills
+  // ── layers: fills (mono: the silhouette layers only)
   const visible = P.layers.filter((l) => l.lods.includes(lodCode));
   const silhouette = (l: (typeof visible)[number]) => l.op == null && l.rim !== false;
-  let rimPass = '';
   let body = '';
   if (mono !== 'eyes') {
     for (const layer of visible) {
       if (mono && !silhouette(layer)) continue;
       const w = layer.stroke ? (lod === 'glyph' ? layer.stroke * 1.15 : layer.stroke) : 0;
-      if (rimOn && silhouette(layer)) {
-        const el = layer.stroke
-          ? `<path d="${layer.d}" fill="none" ${paint.stroke('rim')} stroke-width="${f(w + 2 * rimLocal)}" stroke-linecap="round" stroke-linejoin="round"/>`
-          : `<path d="${layer.d}" ${paint.both('rim')} stroke-width="${f(2 * rimLocal)}" stroke-linejoin="round"/>`;
-        rimPass += layer.part ? wrapPart(layer.part, el) : el;
-      }
       const op = layer.op != null ? ` opacity="${layer.op}"` : '';
       const el = layer.stroke
         ? `<path d="${layer.d}" fill="none" ${paint.stroke(layer.tone)} stroke-width="${f(w)}" stroke-linecap="round" stroke-linejoin="round"${op}/>`
@@ -392,19 +495,30 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
     }
   }
 
-  // ── eyes
+  // ── face: eyes (+ brows at portrait), then the mouth from the avatar LOD up
   const m = EYE[lod];
   const fs = P.face.scale || 1;
   const gap = eyeHalfGap(key, lod);
   const kind = eyeKind(pose.eyes, o.mood, lod);
-  const showCatch = lod === 'portrait' && !mono;
+  const brow = lod === 'portrait' ? STATE_BROWS[pose.state] : undefined;
   let eyes = '';
   if (mono !== 'silhouette') {
+    let brows = '';
     for (const side of [-1, 1]) {
       const ex = P.face.x + side * gap;
       const ey = P.face.y;
       const turn = kind === 'look' && pose.look[0] * side > 0 ? 0.92 : 1; // far eye narrows: a cheap 3D turn
-      eyes += eyeSvg(kind, ex, ey, m, side, fs * turn, paint, showCatch);
+      eyes += eyeSvg(kind, ex, ey, m, side, fs * turn, paint);
+      if (brow) brows += browSvg(brow, ex, ey, m, side, fs, paint);
+    }
+    if (lod !== 'glyph') {
+      const mm = MOUTH[lod];
+      const my = P.face.y + mm.dy * fs;
+      const mk =
+        pose.state === 'idle' && (PLANT_MOODS as readonly unknown[]).includes(o.mood)
+          ? MOOD_MOUTH[o.mood as PlantMood]
+          : STATE_MOUTH[pose.state];
+      eyes += brows + mouthSvg(mk, P.face.x, my, mm, fs, paint);
     }
   }
   const [lx, ly] = pose.look;
@@ -432,14 +546,18 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
   const discEl = disc ? `<circle cx="50" cy="50" r="50" ${paint.fill('disc')}/>` : '';
   const cls = mono ? `pa pa-mono pa-${key}` : `pa pa-${key} pa-s-${pose.state} pa-lod-${lod}`;
 
-  const plant = rimPass + body + face;
+  const plant = body + face;
   const posed = poseT ? `<g transform="${poseT.trim()}">${plant}</g>` : plant;
+
+  // ── state mark: portrait only, on the disc above the plant (never in knockout layers)
+  const mk = lod === 'portrait' && !mono ? marksSvg(pose.state, paint) : '';
+  const marks = mk ? `<g>${mk}</g>` : '';
 
   return (
     `<svg class="${cls}" viewBox="0 0 100 100" width="${size}" height="${size}" ` +
     `xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">` +
     discEl +
-    `<g transform="${fitT}">${posed}</g></svg>`
+    `<g transform="${fitT}">${posed}</g>${marks}</svg>`
   );
 }
 

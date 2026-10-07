@@ -15,10 +15,24 @@ import {
 import { SPROUTY_COLOR_IDS } from './profile-manifest';
 
 describe('plant-avatar vocabulary', () => {
-  it('has fifteen species with sprout reserved outside the implicit pool', () => {
-    expect(PLANT_IDS).toHaveLength(15);
+  it('has sixteen species; the implicit pool is frozen to the first fifteen, sprout reserved', () => {
+    expect(PLANT_IDS).toHaveLength(16);
     expect(DEFAULT_PLANT).toBe('sprout');
-    expect(IMPLICIT_POOL).toEqual(PLANT_IDS.filter((id) => id !== 'sprout'));
+    // a longer pool would move every legacy avatar's hash pick: later species stay out of it
+    expect(IMPLICIT_POOL).toEqual(PLANT_IDS.slice(1, 15));
+    expect(IMPLICIT_POOL).not.toContain('dandelion');
+  });
+
+  it('names the Bot templates after their plants', () => {
+    expect(TEMPLATE_PLANT).toEqual({
+      sprouty: 'sprout',
+      chief: 'ivy',
+      researcher: 'dandelion',
+      operator: 'opuntia',
+      writer: 'fern',
+      analyst: 'clover',
+    });
+    expect(PLANT_STATES).toContain('hello');
   });
 
   it('guards ids and moods without trusting the prototype chain', () => {

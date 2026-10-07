@@ -181,7 +181,7 @@ export function NewBotDialog({
                   className="flex items-start gap-3 rounded-xl border border-edge bg-surface-card p-3 text-left transition-colors hover:border-primary-edge hover:bg-primary-subtle"
                   data-template={template.key}
                 >
-                  <BotAvatar avatar={template.avatar} templateKey={template.key} size="md" />
+                  <BotAvatar avatar={template.avatar} templateKey={template.key} size="md" state="hello" />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                       <span className="truncate text-sm font-semibold text-fg">{copy.role}</span>

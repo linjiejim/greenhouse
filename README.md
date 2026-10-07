@@ -98,8 +98,10 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Missions** *(optional)* — long-running tasks in disposable sandboxes (Docker + gVisor): the
   agent gets a real shell, files and a document toolchain, reports progress live and hands back
   artifacts.
-- **Bots** — personal assistants every member gets out of the box. A Bot has a name, a role and
-  its own memory; several Bots can share one conversation (@-mention them, let them hand work
+- **Bots** — personal assistants every member gets out of the box. Every member starts with
+  **Sprouty**, the main Bot pinned first: talk to it straight away, or let it bring in, brief and
+  create other Bots (researcher, operator, writer, analyst or your own). A Bot has a name, a role
+  and its own memory; several Bots can share one conversation (@-mention them, let them hand work
   to each other) and long conversations are summarised instead of truncated. With a computer
   enabled, each member's Bots share one cloud desktop (a browser with a taskbar, a shell, files
   and long-running jobs) the member can watch live, take over, or use directly through its
@@ -131,9 +133,11 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Workspace branding & runtime config** — rebrand from the web (name, logo, theme tokens) and
   manage runtime credentials (LLM / media / search) in Administration; values live in the
   database with env-var fallback and apply without a restart, from the login screen on.
-- **Plant avatars** — every agent and Bot is a real plant with two ink eyes (15 species, light
-  and dark). Its pose and eyes show what it is doing, only the one that is speaking moves, and
-  members pick their own plant and mood.
+- **Plant avatars** — every agent and Bot is a flat, geometric plant with a small face (16
+  species, light and dark). Its pose, face and a small mark show what it is doing (thinking,
+  working, done, needs you, error, asleep, saying hi), only the one that is speaking moves, and
+  members pick their own plant and mood. The Bot templates are named after theirs: Ivy 藤藤,
+  Dandy 蒲蒲 (dandelion), Cactus 仙仙, Fern 卷卷 and Clover 叶叶.
 
 Roles: **super > team**, plus per-user feature flags and platform policies that gate optional
 modules. Auth is fail-closed — the server refuses to start without `TOKEN_SIGNING_KEY`, and

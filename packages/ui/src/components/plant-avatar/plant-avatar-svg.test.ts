@@ -3,11 +3,12 @@
  * builds well-formed XML, is deterministic, has no ids / defs / url(#), and the static
  * explicit-theme output needs no CSS (no class, no style; poses are transform attributes).
  *
- * Byte budget — measured over every preset × state (worst case named), October 2026:
- *   theme 'auto' (what the web ships): static 24px 4.58 KB (lotus sleep), animated 24px
- *   5.42 KB (lotus sleep), animated 120px 10.51 KB (sunflower waiting);
- *   explicit theme (mobile SvgXml, PNG exports): static 24px 4.04 KB (lotus done), static
- *   120px 9.60 KB (sunflower waiting).
+ * Byte budget — measured over every preset × state (worst case named), 2026-10-07 (flat redesign,
+ * no keyline pass):
+ *   theme 'auto' (what the web ships): static 24px 2.29 KB (dandelion sleep), animated 24px
+ *   2.67 KB (dandelion sleep), animated 120px 5.66 KB (sunflower done);
+ *   explicit theme (mobile SvgXml, PNG exports): static 24px 1.94 KB (dandelion sleep), static
+ *   120px 4.77 KB (sunflower done).
  * 'auto' costs ≈ 0.6 KB over an explicit theme: every paint is `style="fill:var(--pa-<tone>,
  * <light hex>)"`. The root carries only the dark tones that differ from light (the per-paint
  * fallback already is the light palette).
@@ -118,9 +119,10 @@ describe('buildPlantAvatarSvg — structural guarantees', () => {
     }
   });
 
-  it("keeps the keyline in theme 'auto': the rim underlay paints fill and stroke from one style attribute", () => {
-    const svg = buildPlantAvatarSvg({ plant: 'ivy', size: 24, theme: 'auto', animate: false });
-    expect(svg).toContain('style="fill:var(--pa-rim,#1D4429);stroke:var(--pa-rim,#1D4429)" stroke-width=');
+  it("paints no keyline by default; the opt-in one keeps one style attribute in theme 'auto'", () => {
+    expect(buildPlantAvatarSvg({ plant: 'ivy', size: 24, theme: 'light', animate: false })).not.toContain('#2A5F51');
+    const svg = buildPlantAvatarSvg({ plant: 'ivy', size: 24, theme: 'auto', animate: false, rim: true });
+    expect(svg).toContain('style="fill:var(--pa-rim,#2A5F51);stroke:var(--pa-rim,#2A5F51)" stroke-width=');
     expect(svg).not.toMatch(/style="[^"]*" style=/);
   });
 
@@ -150,7 +152,7 @@ describe('buildPlantAvatarSvg — structural guarantees', () => {
 
   it("theme 'auto' paints through CSS vars with the light hex as fallback and carries only the dark tones that differ", () => {
     const svg = buildPlantAvatarSvg({ plant: 'ivy', theme: 'auto', animate: false });
-    expect(svg).toContain('style="fill:var(--pa-body,#468C5A)"');
+    expect(svg).toContain('style="fill:var(--pa-body,#4A8C7B)"');
     const { light, dark } = plantPalette('ivy');
     const differing = PLANT_TONES.filter((t) => dark[t] !== light[t]);
     expect(differing).toContain('body');
@@ -167,13 +169,13 @@ describe('buildPlantAvatarSvg — structural guarantees', () => {
     // static output carries no motion vars
     expect(rootTag).not.toContain('--pa-phase');
     expect(buildPlantAvatarSvg({ plant: 'ivy', theme: 'auto' })).toMatch(
-      /^<svg[^>]* style="--pa-ox:[^"]*--pa-d-body:#5AA06C/,
+      /^<svg[^>]* style="--pa-ox:[^"]*--pa-d-body:#62A894/,
     );
   });
 
   it('labels are escaped into role="img"; no label → aria-hidden; never a <title>', () => {
-    const labelled = buildPlantAvatarSvg({ plant: 'ivy', label: '小青 · <思考中> & "x"' });
-    expect(labelled).toContain('role="img" aria-label="小青 · &lt;思考中&gt; &amp; &quot;x&quot;"');
+    const labelled = buildPlantAvatarSvg({ plant: 'ivy', label: '藤藤 · <思考中> & "x"' });
+    expect(labelled).toContain('role="img" aria-label="藤藤 · &lt;思考中&gt; &amp; &quot;x&quot;"');
     expect(labelled).not.toContain('<title');
     expect(buildPlantAvatarSvg({ plant: 'ivy' })).toContain('aria-hidden="true"');
   });
@@ -198,11 +200,11 @@ describe('buildPlantAvatarSvg — structural guarantees', () => {
   it("stays within the byte budget, theme 'auto' as shipped (see the header for the measured worst cases)", () => {
     const KB = 1024;
     const budgets: [PlantAvatarSvgOptions, number][] = [
-      [{ size: 24, theme: 'auto', animate: false }, 4.75 * KB],
-      [{ size: 24, theme: 'auto' }, 5.5 * KB],
-      [{ size: 120, theme: 'auto' }, 10.75 * KB],
-      [{ size: 24, theme: 'light', animate: false }, 4.25 * KB],
-      [{ size: 120, theme: 'light', animate: false }, 9.75 * KB],
+      [{ size: 24, theme: 'auto', animate: false }, 2.75 * KB],
+      [{ size: 24, theme: 'auto' }, 3.25 * KB],
+      [{ size: 120, theme: 'auto' }, 6.5 * KB],
+      [{ size: 24, theme: 'light', animate: false }, 2.5 * KB],
+      [{ size: 120, theme: 'light', animate: false }, 5.5 * KB],
     ];
     for (const [o, budget] of budgets)
       for (const plant of PLANT_IDS)
@@ -220,8 +222,41 @@ describe('buildPlantAvatarSvg — structural guarantees', () => {
       expect(s).not.toContain('r="50"');
     }
     expect(silhouette).not.toContain('<ellipse');
-    expect(eyes).toContain('<ellipse');
-    expect(eyes).not.toContain('<path d="M');
+    expect(eyes.match(/<ellipse /g)).toHaveLength(2); // the eyes
+    expect(eyes.match(/<path /g)).toHaveLength(1); // the mouth: a face, not just eyes
+    expect(silhouette + eyes).not.toMatch(/#F2B53A|#3F9B6E|pa-mk/); // no state mark in knockout layers
+  });
+
+  it('draws a mouth above 20px, brows and a state mark only on portraits', () => {
+    const ink = (s: string) => (s.match(/fill="#14200F"|stroke="#14200F"/g) ?? []).length; // sprout's ink
+    const at = (state: PlantState, size: number) =>
+      buildPlantAvatarSvg({ plant: 'sprout', state, size, theme: 'light', animate: false });
+    expect(ink(at('idle', 16))).toBe(2); // glyph: two eyes only
+    expect(ink(at('idle', 32))).toBe(3); // + mouth
+    expect(ink(at('error', 32))).toBe(3); // no brows below portrait
+    expect(ink(at('error', 64))).toBe(5); // + two worried brows
+    for (const state of PLANT_STATES) {
+      const big = at(state, 64);
+      // static marks sit in the only attribute-less <g>; idle has none
+      expect(big.includes('<g>'), state).toBe(state !== 'idle');
+      expect(at(state, 44), state).not.toMatch(/#F2B53A|#3F9B6E|#6FB4DE/);
+    }
+    // animated marks carry their motion hooks; static ones stay attribute-only (checked above)
+    expect(buildPlantAvatarSvg({ plant: 'sprout', state: 'thinking', size: 64 })).toContain('class="pa-mk-dot"');
+  });
+
+  it('raises the right leaf to wave hello and to ask for you; folds both to sleep', () => {
+    const part = (state: PlantState) =>
+      [
+        ...buildPlantAvatarSvg({ plant: 'sprout', state, size: 48, theme: 'light', animate: false }).matchAll(
+          /rotate\((-?[\d.]+) 50 25\)/g,
+        ),
+      ].map((m) => Number(m[1]));
+    expect(part('hello')[1]).toBeLessThan(0); // r: up
+    expect(part('waiting')[1]).toBeLessThan(0);
+    const [l, r] = part('sleep');
+    expect(l).toBeLessThan(0); // l droops anticlockwise …
+    expect(r).toBeGreaterThan(0); // … r clockwise
   });
 
   it('is total over unknown and prototype-named options', () => {
@@ -261,7 +296,7 @@ describe('pose, LOD and metrics helpers', () => {
   it('keeps ≥ 1.5px between the eyes at 16px for every species (must-fix #2)', () => {
     for (const plant of PLANT_IDS) {
       const m = EYE.glyph;
-      const scale = Math.min(1.3, (FIT_TARGET.glyph - rimUnits(16)) / PLANT_FIT[plant].glyph[0]);
+      const scale = Math.min(1.3, FIT_TARGET.glyph / PLANT_FIT[plant].glyph[0]); // no keyline
       const innerGap = 2 * (eyeHalfGap(plant, 'glyph') - m.rx * (PLANT_PRESETS[plant].face.scale || 1));
       expect(innerGap * scale * 0.16, plant).toBeGreaterThanOrEqual(1.5);
     }

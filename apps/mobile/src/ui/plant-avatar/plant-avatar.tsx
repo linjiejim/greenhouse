@@ -1,6 +1,6 @@
 /**
  * PlantAvatar for React Native — the agent face (spec docs/specs/assets/avatar-proto/final/spec.md
- * §10.8): one plant silhouette + two ink eyes on a tinted disc, rendered from the vendored static
+ * §10.8): one flat geometric plant + a small ink face on a tinted disc, rendered from the vendored static
  * builder through SvgXml. State lives in the static string (pose, fold, eyes and the error/sleep
  * colour treatment are SVG attributes), so a state change is just a new string.
  *
@@ -34,7 +34,7 @@ export interface PlantAvatarProps {
   plant?: PlantId;
   /** idle|thinking|speaking|done|error|waiting|sleep or a product alias; default idle. */
   state?: PlantStateInput;
-  /** Render size in px (drives level of detail and keyline weight). Default 32. */
+  /** Render size in px (drives level of detail). Default 32. */
   size?: number;
   /** Resting eyes (idle only). */
   mood?: PlantMood;

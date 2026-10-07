@@ -58,7 +58,7 @@ describe('<BotAvatar/>', () => {
 
     // A template Bot whose stored avatar predates `plant` still wears its template plant.
     render(createElement(BotAvatar, { bot: bot('bot_b', { template_key: 'researcher', avatar: { color: 'ocean' } }) }));
-    expect(classes()).toContain('pa-sage');
+    expect(classes()).toContain('pa-dandelion');
 
     // Legacy forest with no cue: the family pick is seeded by the Bot id (same as everywhere else).
     const legacy = bot('bot_c7', { avatar: { color: 'forest' } });

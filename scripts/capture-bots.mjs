@@ -282,7 +282,7 @@ async function newPage(video = false) {
   return p;
 }
 
-/** Steps re-run alone (`--only`) find the tour's Bots by template. */
+/** Steps re-run alone (`--only`) find the tour's Bots by template (`state.ivy` = Sprouty, the main Bot). */
 async function ensureBots() {
   if (!state.group) {
     const { conversations } = await api('GET', '/api/bots/conversations');
@@ -290,7 +290,7 @@ async function ensureBots() {
   }
   if (state.ivy && state.basil) return;
   const { bots } = await api('GET', '/api/bots');
-  state.ivy ??= bots.find((b) => b.template_key === 'chief') ?? bots[0];
+  state.ivy ??= bots.find((b) => b.template_key === 'sprouty') ?? bots[0];
   state.sage ??= bots.find((b) => b.template_key === 'researcher');
   state.fern ??= bots.find((b) => b.template_key === 'writer');
   state.basil ??= bots.find((b) => b.template_key === 'operator');
@@ -307,12 +307,12 @@ await step('first-run', async () => {
   await page.getByTestId('bots-starters').waitFor({ timeout: 40_000 });
   await snap(page, '01-first-run', { wait: 1500 });
   const { bots } = await api('GET', '/api/bots');
-  state.ivy = bots.find((b) => b.template_key === 'chief') ?? bots[0];
+  state.ivy = bots.find((b) => b.template_key === 'sprouty') ?? bots[0];
 });
 
 await step('gallery', async () => {
   const { bots } = await api('GET', '/api/bots');
-  state.ivy ??= bots.find((b) => b.template_key === 'chief') ?? bots[0];
+  state.ivy ??= bots.find((b) => b.template_key === 'sprouty') ?? bots[0];
   await page
     .getByRole('button', { name: /新建 Bot|New Bot/ })
     .first()
@@ -354,7 +354,7 @@ await step('handoff', async () => {
   await openConversation(page, state.group);
   await send(
     page,
-    '我们下周要介绍 Greenhouse 的 Bots 功能。请小研先在网上查一下 Grok Bot、Meta Muse、OpenAI dots 各自最核心的一个卖点，再请小文据此写一段 120 字左右的中文开场白。',
+    '我们下周要介绍 Greenhouse 的 Bots 功能。请蒲蒲先在网上查一下 Grok Bot、Meta Muse、OpenAI dots 各自最核心的一个卖点，再请卷卷据此写一段 120 字左右的中文开场白。',
   );
   await waitIdle(api, state.group, 420_000);
   await snap(page, '05-group-handoff', { wait: 1500 });

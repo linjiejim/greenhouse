@@ -1,12 +1,14 @@
 /**
  * Baked palettes are only allowed because their contrast is a test (spec §7, D14):
- *   - eyes (ink) vs EVERYTHING they are drawn over ≥ 4.5:1, in both themes, for every state
+ *   - the face (eyes, mouth, brows — all ink) vs EVERYTHING it is drawn over ≥ 4.5:1, in both themes, for every state
  *     (error desaturates, sleep desaturates and dims) and resting mood, at every LOD. What
  *     an eye sits on is not declared by hand: `underEyes` samples the builder's own static
  *     output and composites, point by point, every layer painted before the eyes (two-tone
  *     halves like basil's and sprout's crease, detail layers at their opacity);
- *   - the boundary ≥ 3:1 against the real app surfaces and the avatar's own disc —
- *     light: the keyline (rim) vs #FFFFFF / #F1F7ED; dark: the lifted body vs #1A231B / #0F1510.
+ *   - the boundary: the flat design draws no keyline, so in light the body and shade must stand
+ *     off their own disc (≥ 1.8:1 — colour on a tint, the name sits beside every avatar); dark: the
+ *     lifted body vs #1A231B / #0F1510 and its disc ≥ 3:1. The opt-in keyline (`rim: true`, exports
+ *     on busy backgrounds) keeps its 3:1 floor.
  * The surface hexes are the app's canvas / chrome tokens (apps/web/src/app.css), copied here
  * as fixtures only — the builder never emits them.
  */
@@ -313,8 +315,9 @@ describe('plant palettes', () => {
       new Set(underEyes({ plant, state: 'idle', size }).map((s) => s[0]!.tone)); // the opaque base
     expect(tones('basil', 48)).toEqual(new Set(['body', 'shade'])); // right eye on the crease's shade half
     expect(tones('basil', 16)).toEqual(new Set(['body'])); // no crease at glyph size
-    expect(tones('sprout', 48)).toEqual(new Set(['body', 'shade']));
-    expect(tones('fern', 48)).toEqual(new Set(['light']));
+    expect(tones('sprout', 48)).toEqual(new Set(['body'])); // the face sits on the seed, under the leaves
+    expect(tones('echeveria', 48)).toEqual(new Set(['light'])); // pale heart of the rosette
+    expect(tones('lotus', 48)).toEqual(new Set(['light']));
     expect(tones('sunflower', 120)).toContain('accent');
   });
 
@@ -340,7 +343,15 @@ describe('plant palettes', () => {
     expect(failures).toEqual([]);
   }, 30_000); // every plant × state × mood × LOD × theme: ~3 s alone, far more under a loaded full suite
 
-  it('the light keyline reaches 3:1 against light surfaces and its own disc', () => {
+  it('without a keyline, the light body and shade stand off their own disc', () => {
+    for (const plant of PLANT_IDS) {
+      const p = PLANT_PRESETS[plant].palette.light;
+      for (const tone of ['body', 'shade'] as const)
+        expect(contrast(p[tone], p.disc), `${plant}.${tone} vs ${p.disc}`).toBeGreaterThanOrEqual(1.8);
+    }
+  });
+
+  it('the opt-in light keyline reaches 3:1 against light surfaces and its own disc', () => {
     for (const plant of PLANT_IDS) {
       const p = PLANT_PRESETS[plant].palette.light;
       for (const surface of [...SURFACES.light, p.disc])
@@ -357,7 +368,7 @@ describe('plant palettes', () => {
   });
 
   it('separates the five Bot templates by lightness (greyscale / deuteranopia stack)', () => {
-    const order = (['ivy', 'clover', 'basil', 'fern', 'sage'] as const).map((p) =>
+    const order = (['ivy', 'clover', 'opuntia', 'fern', 'dandelion'] as const).map((p) =>
       luminance(PLANT_PRESETS[p].palette.light.body),
     );
     expect([...order].sort((a, b) => a - b)).toEqual(order);

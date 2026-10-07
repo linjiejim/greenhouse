@@ -1,6 +1,9 @@
 /**
  * @vitest-environment happy-dom
  *
+ * The Bots sidebar is one conversation list: Sprouty's DM pinned first, a search over titles,
+ * Bot names and the last message, and the "new Bot" / "new group" actions in its toolbar.
+ *
  * Sidebar conversation rows: a group row's overlapped avatar chips are separated
  * by a ring painted in the row's own colour, so the ring has to follow the row
  * through every state — at rest, under the pointer, active — or it shows as a
@@ -9,11 +12,17 @@
 
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BotConversationSummary, BotView } from '@greenhouse/types/bots';
 import { I18nProvider } from '../../lib/i18n';
 import { useBotsStore } from './bots-store';
 import { BotsSidebarPanel } from './bots-sidebar-panel';
+
+const api = vi.hoisted(() => ({ bootstrapBots: vi.fn() }));
+vi.mock('../../lib/api/bots', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/api/bots')>()),
+  bootstrapBots: api.bootstrapBots,
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -55,6 +64,7 @@ function conversation(
   } as BotConversationSummary;
 }
 
+const sprouty = bot('bot_sprouty', 'Sprouty', { template_key: 'sprouty', avatar: { plant: 'sprout' } });
 const sage = bot('bot_sage', 'Sage');
 const fern = bot('bot_fern', 'Fern');
 const moss = bot('bot_moss', 'Moss', { status: 'archived' });
@@ -68,13 +78,18 @@ beforeEach(() => {
   document.body.append(host);
   root = createRoot(host);
   // Loaded already: the panel's mount-time refresh must not reach for the network.
+  api.bootstrapBots.mockReset();
   useBotsStore.setState({
-    bots: [sage, fern],
+    bots: [sprouty, sage, fern],
     archivedBots: [moss],
+    // By activity: Sprouty's DM is the quietest, and still comes first.
     conversations: [
-      conversation(GROUP, 'group', [sage.id, fern.id]),
+      conversation(GROUP, 'group', [sage.id, fern.id], {
+        last_message: { role: 'assistant', bot_id: fern.id, preview: 'Draft is ready', created_at: '' },
+      } as Partial<BotConversationSummary>),
       conversation('dm-bot_sage', 'direct', [sage.id]),
       conversation('dm-bot_moss', 'direct', [moss.id]),
+      conversation('dm-bot_sprouty', 'direct', [sprouty.id], { last_activity_at: '2026-10-01T00:00:00.000Z' }),
     ],
     botsLoaded: true,
     conversationsLoaded: true,
@@ -130,5 +145,54 @@ describe('<BotsSidebarPanel/> DM rows', () => {
     expect(svg('dm-bot_moss')).toContain('pa-s-sleep');
     expect(svg('dm-bot_sage')).toContain('pa-s-idle');
     expect(host.querySelectorAll('[data-testid="bots-conversation-row"] .pa-mo')).toHaveLength(0);
+  });
+});
+
+describe('<BotsSidebarPanel/> list', () => {
+  const order = () =>
+    [...host.querySelectorAll<HTMLElement>('[data-testid="bots-conversation-row"]')].map((el) => el.dataset.sessionId);
+
+  it("is one list: Sprouty's DM pinned first, then by activity, archived last — no avatar strip", () => {
+    mount('#/bots');
+    expect(order()).toEqual(['dm-bot_sprouty', GROUP, 'dm-bot_sage', 'dm-bot_moss']);
+    expect(row('dm-bot_sprouty').dataset.pinned).toBe('true');
+    expect(row(GROUP).dataset.pinned).toBeUndefined();
+    expect(host.textContent).not.toContain('Your Bots');
+    expect(api.bootstrapBots).not.toHaveBeenCalled(); // Sprouty is here already
+  });
+
+  it('searches titles, Bot names and the last message, and says when nothing matches', async () => {
+    mount('#/bots');
+    const input = host.querySelector<HTMLInputElement>('input[placeholder="Search conversations…"]')!;
+    const type = (value: string) =>
+      act(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    type('draft');
+    expect(order()).toEqual([GROUP]); // last message
+    type('SAGE');
+    expect(order()).toEqual([GROUP, 'dm-bot_sage']); // a member's name, case-insensitive
+    type('sprout');
+    expect(order()).toEqual(['dm-bot_sprouty']);
+    type('nobody');
+    expect(order()).toEqual([]);
+    expect(host.querySelector('[data-testid="bots-sidebar-empty"]')!.textContent).toBe('No conversations match');
+  });
+
+  it('opens "new Bot" and "new group" from the toolbar', () => {
+    mount('#/bots');
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="New Bot"]')!.click());
+    expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-bot' });
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="New group"]')!.click());
+    expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-group' });
+  });
+
+  it('makes sure a member whose Bots predate Sprouty gets it', async () => {
+    api.bootstrapBots.mockResolvedValue({ bot: sprouty, dm_session_id: 'dm-bot_sprouty', created: true });
+    useBotsStore.setState({ bots: [sage, fern] });
+    mount('#/bots');
+    await act(async () => {});
+    expect(api.bootstrapBots).toHaveBeenCalledTimes(1);
   });
 });

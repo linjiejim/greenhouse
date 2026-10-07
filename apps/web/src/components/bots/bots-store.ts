@@ -5,7 +5,7 @@
  *
  * One store because three surfaces render the same facts at once: the shell
  * (nav badge, document title, `#/chat?session=` redirect), the contextual
- * sidebar (avatar strip + conversation list) and the Bots page. Each reading
+ * sidebar (the conversation list, Sprouty pinned first) and the Bots page. Each reading
  * its own copy would mean three fetches and three subtly different "needs
  * you" numbers. The server stays the source of truth: this is a cache that WS
  * events (`bots:*`) invalidate, never a place a decision is made.
@@ -216,10 +216,35 @@ export const useBotsStore = create<BotsState>((set, get) => ({
     generation += 1;
     botsInFlight = null;
     conversationsInFlight = null;
+    sproutyOnce = null;
     refreshedForIds.clear();
     set({ ...INITIAL, knownSessionIds: new Set<string>() });
   },
 }));
+
+let sproutyOnce: Promise<{ dm_session_id: string }> | null = null;
+
+/**
+ * Every member has Sprouty, the built-in main Bot: `POST /bootstrap` creates it (with its DM and
+ * greeting) when missing and is idempotent. Called by the landing (no conversation yet) and by
+ * the sidebar (a member whose Bots predate Sprouty); one request per page load — a failure may be
+ * retried. The lists reload once it answers.
+ */
+export function ensureSprouty(): Promise<{ dm_session_id: string }> {
+  if (!sproutyOnce) {
+    const once = botsApi.bootstrapBots().then((result) => {
+      const { loadBots, loadConversations } = useBotsStore.getState();
+      void loadBots().catch(() => {});
+      void loadConversations().catch(() => {});
+      return result;
+    });
+    once.catch(() => {
+      if (sproutyOnce === once) sproutyOnce = null;
+    });
+    sproutyOnce = once;
+  }
+  return sproutyOnce;
+}
 
 /** Whether the org has a usable computer runtime (templates marked "needs computer" warn otherwise). */
 export function computerReady(runtime: ComputerRuntimeView | null): boolean {

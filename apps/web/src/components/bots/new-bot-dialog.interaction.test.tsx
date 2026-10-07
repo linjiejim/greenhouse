@@ -120,20 +120,20 @@ describe('NewBotDialog from Invite', () => {
 
 describe('New Bot look', () => {
   it("dresses a blank Bot in a plant none of the member's Bots wears", () => {
-    expect(emptyBotDraft([]).avatar).toEqual({ plant: 'monstera', color: 'forest' });
-    expect(emptyBotDraft(['monstera', 'ivy']).avatar).toEqual({ plant: 'ginkgo', color: 'sunset' });
+    expect(emptyBotDraft([]).avatar).toEqual({ plant: 'sage', color: 'forest' });
+    expect(emptyBotDraft(['sage', 'basil', 'ivy']).avatar).toEqual({ plant: 'monstera', color: 'forest' });
   });
 
   it('pins each template to its plant, keeping the template look for old clients', () => {
     const plants = BOT_TEMPLATES.map((template) => templateBotDraft(template, 'en').avatar.plant);
-    expect(plants).toEqual(['ivy', 'sage', 'basil', 'fern', 'clover']);
+    expect(plants).toEqual(['dandelion', 'opuntia', 'fern', 'clover']); // Sprouty is built in, not a template card
     const chief = templateBotDraft(BOT_TEMPLATES[0]!, 'zh');
     expect(chief.name).toBe(BOT_TEMPLATES[0]!.copy.zh.name);
     expect(chief.avatar.faceStyle).toBe(BOT_TEMPLATES[0]!.avatar.faceStyle);
   });
 
   it('opens the blank form on the next free plant and creates the Bot wearing it', async () => {
-    useBotsStore.setState({ bots: [{ ...IVY, avatar: { plant: 'monstera' } }] });
+    useBotsStore.setState({ bots: [{ ...IVY, avatar: { plant: 'sage' } }] });
     api.createBot.mockResolvedValue({ bot: { ...IVY, id: 'bot_new', name: 'Rue' }, dm_session_id: 'dm-new' });
     const container = document.createElement('div');
     document.body.appendChild(container);
@@ -148,7 +148,7 @@ describe('New Bot look', () => {
     );
     await flush();
     await click(document.querySelector('[data-template="custom"]'));
-    expect(document.querySelector('button[data-plant="ginkgo"]')!.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('button[data-plant="basil"]')!.getAttribute('aria-pressed')).toBe('true');
     await click(document.querySelector('button[data-plant="sunflower"]'));
     const name = document.querySelector<HTMLInputElement>('[data-testid="bots-new-bot-form"] input');
     await act(async () => {

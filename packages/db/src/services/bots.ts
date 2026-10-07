@@ -97,6 +97,8 @@ export interface BotInput {
   avatar?: string;
   model_id?: string | null;
   template_key?: string | null;
+  /** The built-in Sprouty: not counted against MAX_ACTIVE_BOTS_PER_USER (every member has it). */
+  builtIn?: boolean;
 }
 
 export interface BotUpdateInput {
@@ -213,7 +215,7 @@ export function createBotsService(db: Db) {
           .select({ n: sql<string>`count(*)` })
           .from(bots)
           .where(and(eq(bots.user_id, input.user_id), eq(bots.status, 'active')));
-        if (Number(count?.n ?? 0) >= MAX_ACTIVE_BOTS_PER_USER) {
+        if (!input.builtIn && Number(count?.n ?? 0) >= MAX_ACTIVE_BOTS_PER_USER) {
           throw new BotsDomainError('bot_limit', `At most ${MAX_ACTIVE_BOTS_PER_USER} active Bots per member`);
         }
         const nameKey = botNameKey(input.name);

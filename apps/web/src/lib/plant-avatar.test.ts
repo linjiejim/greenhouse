@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IMPLICIT_POOL, PLANT_IDS, PLANT_MOODS, type PlantId } from '@greenhouse/types';
+import { PLANT_IDS, PLANT_MOODS, TEMPLATE_PLANT, type PlantId } from '@greenhouse/types';
 import { legacyToMood, legacyToPlant } from '@greenhouse/types';
 import { MOOD_FACE_STYLE, withMood, withPlant } from '@greenhouse/types';
 import { botPlant, freshPlant, profilePlant } from './plant-avatar';
@@ -40,18 +40,20 @@ describe('withMood', () => {
 
 describe('freshPlant', () => {
   it('picks the first species no sibling wears, leaving the template plants for last', () => {
-    expect(freshPlant([])).toBe('monstera');
-    expect(freshPlant(['ivy', 'sage', 'basil', 'fern', 'clover'])).toBe('monstera');
-    expect(freshPlant(['monstera', 'ginkgo'])).toBe('maple');
-    const nonTemplate = IMPLICIT_POOL.filter((plant) => !['ivy', 'sage', 'basil', 'fern', 'clover'].includes(plant));
+    const templates: PlantId[] = Object.values(TEMPLATE_PLANT);
+    expect(freshPlant([])).toBe('sage');
+    expect(freshPlant(templates)).toBe('sage');
+    expect(freshPlant(['sage', 'basil'])).toBe('monstera');
+    const nonTemplate = PLANT_IDS.filter((plant) => plant !== 'sprout' && !templates.includes(plant));
     expect(freshPlant(nonTemplate)).toBe('ivy');
+    expect(freshPlant([...nonTemplate, 'ivy'])).toBe('fern');
     expect(freshPlant(['sprout'])).not.toBe('sprout');
   });
 
-  it('cycles once every species is taken', () => {
-    const all: PlantId[] = [...IMPLICIT_POOL];
-    expect(IMPLICIT_POOL).toContain(freshPlant(all));
-    expect(freshPlant(all)).not.toBe('sprout');
+  it('cycles once every species is taken, never onto the sprout', () => {
+    const all = PLANT_IDS.filter((plant) => plant !== 'sprout');
+    expect(all).toContain(freshPlant(all));
+    expect(freshPlant([...PLANT_IDS])).not.toBe('sprout');
   });
 });
 

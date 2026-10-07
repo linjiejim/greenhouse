@@ -353,8 +353,8 @@ export function ConversationIntro({ kind, title, bots }: { kind: 'direct' | 'gro
   return (
     <div className="flex flex-col items-center gap-2 px-4 pb-4 pt-6 text-center">
       {kind === 'direct' && owner ? (
-        // Static: in a transcript, motion means "this Bot is talking".
-        <BotAvatar bot={owner} size="lg" animate={false} />
+        // The thread starts with the Bot saying hi. Static: in a transcript, motion means "this Bot is talking".
+        <BotAvatar bot={owner} size="lg" state="hello" animate={false} />
       ) : (
         // The transcript has no surface of its own: it sits on the canvas, so the chip ring does too
         // (the stack's default `surface-raised` ring is a visible halo on dark's darker canvas).

@@ -24,6 +24,12 @@ bots/
 
 ### 铁律
 
+- **每个成员都有 Sprouty**：内置主 Bot（`template_key = 'sprouty'`，sprout 植物，中英文都叫 Sprouty，岗位「主助手」），
+  由 `POST /bootstrap` 保证存在（幂等，每次进入都可调；早于它的老成员下次进入补建，不占 12 个上限）。它在侧栏
+  置顶、**不能归档**（`DELETE` 返回 400 `bot_protected`），可以改名改守则；它就是原来的「总管」——用 `team`
+  工具把成员的其他 Bot 拉进对话（私聊里是客串）、转交工作、提议新建。`POST /api/bots` 只接受模板库模板
+  （`galleryTemplate`：研究员/操作员/写手/分析师）：Sprouty 只来自 bootstrap，「总管」模板已退役（旧的 chief Bot
+  照常工作，`botTemplate('chief')` 仍能查到它的开场白与 starters）。
 - **Bot ≠ 自定义 Agent**：Bot 是轻量身份（名字 / 角色 / 守则 / 头像 / 可选模型）跑在 sprouty 基座上，
   工具面 = 主人自己的有效工具（Bot 永远不超过主人）+ Bot 工具。不要把 Bot 做成 profile 版本。
 - **头像是一株植物**：`bots.avatar` 每次写入（创建 / PATCH / 确认 `bot_create` 卡）都过 `avatarConfigSchema`，
@@ -31,7 +37,8 @@ bots/
   `color`（给不认识 `plant` 的老客户端），静息眼神存成旧的 `faceStyle`。这和 Web 编辑器是同一条规则，都不写
   `mood` 键：`legacyToMood` 先读 `mood`，旧客户端改了 `faceStyle` 会被一个过期的 `mood` 盖住。`plant` 不校验
   是否在 `PLANT_IDS` 里，未知值由渲染端的 `legacyToPlant` 兜底。模板就是同名植物（`TEMPLATE_PLANT`：
-  chief → ivy、researcher → sage、operator → basil、writer → fern、analyst → clover）。`team` create 提议的
+  sprouty → sprout（内置主 Bot）、researcher → dandelion 蒲蒲、operator → opuntia（仙人掌）仙仙、writer → fern 卷卷、
+  analyst → clover 叶叶，退役的 chief → ivy；默认名在 `SPROUTY_BOT_TEMPLATE` / `BOT_TEMPLATES`）。已建的 Bot 存了自己的 `plant`，改这张表只影响新 Bot。`team` create 提议的
   Bot 取 `IMPLICIT_POOL[hashSeed(名字) % 14]`：同名总是同一株，也永远不会落到内置 Sprouty 专用的 sprout。
 - **单写者**：Bots 对话只有持有该会话 run 的引擎写。服务端在对话进行中产生的一切（交还、续跑、后台
   汇报、忙时插话）走 `deliverToConversation()` → 抢到 run 就直接写，否则进 `bot_inbox`。inbox 是
@@ -136,9 +143,9 @@ bots/
 | 方法 | 路径 | 请求 | 响应 |
 |---|---|---|---|
 | GET | `/api/bots` | — | `{ bots, archived_bots, computer, vault_available, pending_requests }`（`bots` 只含 active） |
-| POST | `/api/bots/bootstrap` | — | `{ bot, dm_session_id, created }`——首个 Bot（模板 `chief`）+ 私聊 + 固定欢迎语；幂等 |
-| POST | `/api/bots` | `{ template_key?, name?, role?, instructions?, avatar?, model_id? }` | `{ bot, dm_session_id }` |
-| PATCH / DELETE | `/api/bots/:id` | 同上字段 | `{ bot }` / `{ ok }`（删除 = 归档） |
+| POST | `/api/bots/bootstrap` | — | `{ bot, dm_session_id, created }`——确保 Sprouty（模板 `sprouty`）+ 私聊 + 固定欢迎语存在；幂等，老成员也会补建 |
+| POST | `/api/bots` | `{ template_key?, name?, role?, instructions?, avatar?, model_id? }`（`template_key` 只收模板库：`sprouty` / `chief` → 400） | `{ bot, dm_session_id }` |
+| PATCH / DELETE | `/api/bots/:id` | 同上字段 | `{ bot }` / `{ ok }`（删除 = 归档；Sprouty → 400 `bot_protected`） |
 | GET / DELETE | `/api/bots/:id/memories[/:memoryId]` | — | 该 Bot 的私有记忆 / `{ ok }` |
 | GET / POST | `/api/bots/conversations` | `{ bot_ids, title? }` | 列表 / `{ conversation }`（1 个 id = 该 Bot 私聊，2–6 = 新群聊） |
 | GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states? }` |

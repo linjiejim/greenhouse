@@ -6,6 +6,12 @@
  * review the gallery (`node --import tsx scripts/plant-avatar-gallery.mjs`), then re-run this
  * file with `-u` and say below what changed.
  *
+ * Regenerated 2026-10-07 for the flat geometric redesign (all intentional, reviewed on the gallery
+ * sheet): every preset redrawn from circles, arcs and straight lines; the dandelion added; the
+ * opuntia redrawn as the cactus; smaller eyes, a mouth from the avatar LOD up, brows and a state
+ * mark on portraits; the `hello` state; no keyline unless `rim: true`; the stylesheet gained the
+ * hello / talking / mark keyframes.
+ *
  * Regenerated 2026-10 after the review fixes (all intentional):
  *   - basil's light body/shade and dark body/shade were lifted so ink holds 4.5:1 on the
  *     shade half in error and sleep (basil digest);
@@ -63,28 +69,29 @@ describe('golden output', () => {
   it('matches the reviewed digests for every preset', () => {
     expect(Object.fromEntries(PLANT_IDS.map((plant) => [plant, digestOf(plant)]))).toMatchInlineSnapshot(`
       {
-        "basil": "e97dfe8fca856288",
-        "clover": "e1754b6849c777fd",
-        "echeveria": "f81cab59f067e45f",
-        "eucalyptus": "1b28fccfe8ffddc7",
-        "fern": "a3e5339417a5a77b",
-        "ginkgo": "6345d18a0d5ff236",
-        "ivy": "f6f435e7858e8cf6",
-        "lavender": "432668ca417c582e",
-        "lotus": "2cfc78025fbd9dcc",
-        "maple": "160c467b2ced2c99",
-        "monstera": "1d66e3f643163c89",
-        "opuntia": "88fb72696d875210",
-        "sage": "cfbec84f27250740",
-        "sprout": "7b4727caab6bb30f",
-        "sunflower": "3a495596a45e84ea",
+        "basil": "b35c21733ceda515",
+        "clover": "f5cd2a757d3d679f",
+        "dandelion": "46220ae9c083d416",
+        "echeveria": "6a56f3274642c91c",
+        "eucalyptus": "9f3e39b17f8d3a94",
+        "fern": "072154cf69a77007",
+        "ginkgo": "72e254ae3b26e234",
+        "ivy": "dc6de4f866db883f",
+        "lavender": "baf9f8c7914dcc57",
+        "lotus": "8eac5a6ec0b6842a",
+        "maple": "359a67fc0d1b54f9",
+        "monstera": "54ef2ca790601066",
+        "opuntia": "b6c047baada5010f",
+        "sage": "03c1bf5686958363",
+        "sprout": "a0cced3e7f9d153e",
+        "sunflower": "5be8a3ebbc383445",
       }
     `);
   });
 
   it('matches the reviewed stylesheet', () => {
     expect(createHash('sha256').update(PLANT_AVATAR_CSS).digest('hex').slice(0, 16)).toMatchInlineSnapshot(
-      `"358aefb8a5163e14"`,
+      `"8fc3fe9ae481e5a4"`,
     );
   });
 });

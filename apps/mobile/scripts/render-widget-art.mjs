@@ -14,8 +14,8 @@
  *   sprouty-idle-dark.png / -sleep-dark.png  dark palette    → assets sproutyDark / sproutySleepDark
  *   sprouty-mono.png                         knockout        → asset  sproutyMono
  *
- * The colour art is drawn at a 48px design size (portrait detail, a 1px keyline at ≈ 48pt),
- * then scaled to 1024: the widget shows it at 30–80pt. The mono art is the lock-screen
+ * The colour art is drawn at a 48px design size (portrait detail: the small face, brows and the
+ * sleep state's Zzz mark), then scaled to 1024: the widget shows it at 30–80pt. The mono art is the lock-screen
  * accessory silhouette (22pt rectangular / circular families, which iOS tints): white
  * silhouette with the eyes punched out as transparent holes — the eyes layer is applied as
  * destination-out (a luminance mask, export-only; the builder itself never emits ids/masks).
