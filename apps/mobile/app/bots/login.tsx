@@ -19,13 +19,17 @@
  * request is awaited, and everything when the sheet goes. ✓ signs in; "Not
  * Now" tells the Bot the member skipped it; ✕ leaves the card waiting.
  *
+ * Only a sign-in card gets the form (any other id reads as gone), and the form
+ * is held mounted through its own decision until the sheet is gone
+ * (src/bots/cards/login-sheet.ts says why).
+ *
  * Fallback if a simulator check ever shows iOS's "Save Password?" after
  * submitting: swap the two fields for an `RNHostView` island of RN
  * `TextInput secureTextEntry textContentType="none" autoComplete="off"` (and
  * note it under AGENTS.md 已知坑).
  */
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useReducer, useRef, useState } from 'react';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Button,
@@ -54,6 +58,7 @@ import {
   truncationMode,
 } from '@expo/ui/swift-ui/modifiers';
 import type { BotRequestView } from '../../src/shared/bots';
+import { loginSheetRequest } from '../../src/bots/cards/login-sheet';
 import { useLoginForm, useRequestLookup, type LoginFieldsIO } from '../../src/bots/cards/use-login-form';
 import { refusalCopy } from '../../src/bots/cards/decision';
 import { useT } from '../../src/lib/i18n';
@@ -68,16 +73,20 @@ export default function BotLoginSheet() {
   const router = useRouter();
   const { id, c } = useLocalSearchParams<{ id?: string; c?: string }>();
   const lookup = useRequestLookup(id, c);
-  // Once this sheet's own decision went through, keep the form until the sheet is gone.
-  const [closing, setClosing] = useState(false);
-  const done = () => {
-    setClosing(true);
-    router.back();
-  };
+  // The card this sheet's own decision is out (or went through) for: its form stays until the sheet
+  // is gone. A ref read in render, set before the request goes — the decision settles the card in the
+  // store (a synchronous re-render) before the awaited call returns, ahead of any state update; a
+  // release (nothing decided) re-renders.
+  const held = useRef<BotRequestView | null>(null);
+  const [, rerender] = useReducer((n: number) => n + 1, 0);
+  const hold = useCallback((request: BotRequestView | null) => {
+    held.current = request;
+    if (!request) rerender();
+  }, []);
+  const done = useCallback(() => router.back(), [router]);
 
-  if (lookup.state === 'ready' && (lookup.request.status === 'pending' || closing)) {
-    return <LoginForm key={lookup.request.id} request={lookup.request} onDone={done} />;
-  }
+  const request = loginSheetRequest(lookup, held.current);
+  if (request) return <LoginForm key={request.id} request={request} onHold={hold} onDone={done} />;
   return (
     <>
       <Stack.Screen options={{ title: '' }} />
@@ -99,7 +108,17 @@ export default function BotLoginSheet() {
   );
 }
 
-function LoginForm({ request, onDone }: { request: BotRequestView; onDone: () => void }) {
+function LoginForm({
+  request,
+  onHold,
+  onDone,
+}: {
+  request: BotRequestView;
+  /** Keep this form mounted (a card) or let it go (null) — see BotLoginSheet. */
+  onHold: (request: BotRequestView | null) => void;
+  /** The decision went through: close the sheet. */
+  onDone: () => void;
+}) {
   const t = useT();
   const { hex } = useTheme();
   const usernameState = useNativeState('');
@@ -110,9 +129,15 @@ function LoginForm({ request, onDone }: { request: BotRequestView; onDone: () =>
     () => ({
       read: () => ({ username: usernameState.get(), password: passwordState.get(), otp: otpState.get() }),
       clear: (which) => {
-        passwordState.set('');
-        otpState.set('');
-        if (which === 'all') usernameState.set('');
+        // A native state released with the sheet throws; nothing is left to clear then, and a
+        // decision that already went must not fail over it.
+        try {
+          passwordState.set('');
+          otpState.set('');
+          if (which === 'all') usernameState.set('');
+        } catch {
+          // released
+        }
       },
     }),
     [usernameState, passwordState, otpState],
@@ -123,12 +148,32 @@ function LoginForm({ request, onDone }: { request: BotRequestView; onDone: () =>
   const reason = typeof form.payload.reason === 'string' ? form.payload.reason.trim() : '';
   const matches = form.payload.vault_matches ?? [];
 
+  // One decision at a time, the form held for its whole flight: a second tap must not release the
+  // first one's hold. One that went through keeps the hold (and ignores taps) while the sheet goes.
+  const inFlight = useRef(false);
+  const decideHeld = async <T,>(decide: () => Promise<T>, wentThrough: (outcome: T) => boolean): Promise<T | null> => {
+    if (inFlight.current) return null;
+    inFlight.current = true;
+    onHold(request);
+    let through = false;
+    try {
+      const outcome = await decide();
+      through = wentThrough(outcome);
+      return outcome;
+    } finally {
+      if (!through) {
+        inFlight.current = false;
+        onHold(null);
+      }
+    }
+  };
+
   const submit = async () => {
-    const outcome = await form.submit();
+    const outcome = await decideHeld(form.submit, (o) => o === 'ok' || o === 'stale');
     if (outcome === 'ok' || outcome === 'stale') onDone();
   };
   const skip = async () => {
-    const outcome = await form.skip();
+    const outcome = await decideHeld(form.skip, (o) => o !== null && o.kind !== 'refused');
     if (!outcome) return;
     if (outcome.kind === 'refused') {
       const copy = refusalCopy(outcome);

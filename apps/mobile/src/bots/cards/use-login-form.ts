@@ -28,6 +28,7 @@ import { mergeRequests } from '../requests';
 import { useBots } from '../store';
 import { loginValues } from '../vendor/web-helpers';
 import { LOGIN_PAGE_MOVED, hostOf } from './decision';
+import { isLoginCard } from './login-sheet';
 
 // ─── Finding the card a sheet was opened for ─────────────
 
@@ -150,7 +151,8 @@ export function useLoginForm({ request, fields }: { request: BotRequestView; fie
 
   /** Sign in. Resolves to the outcome (the view closes on `ok` / `stale`), null when nothing was sent. */
   const submit = useCallback(async (): Promise<DecideOutcome['kind'] | null> => {
-    if (busy) return null;
+    // The values only ever go with a sign-in card (an approve on any other kind would approve that).
+    if (busy || !isLoginCard(request)) return null;
     const login = loginValues(fields.read(), { otpOnly, saveToVault: vaultOffered && save });
     if (!login) return null;
     // Before awaiting: the secrets must not outlive the request.

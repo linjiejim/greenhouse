@@ -1,9 +1,9 @@
 {
-  // Stops Vite's nearest-tsconfig lookup for the drain the ROOT vitest compiles from this folder
-  // (stream-drain.test.ts and the module it imports): ../../tsconfig.json extends
+  // Stops Vite's nearest-tsconfig lookup for the pure modules the ROOT vitest compiles from this
+  // folder (stream-drain, chat-file-url: each *.test.ts and the module it imports): ../../tsconfig.json extends
   // expo/tsconfig.base, which cannot resolve in CI where apps/mobile's own install is absent
   // (TSConfckParseError). Same reason and shape as ../bots/tsconfig.json. `include` lists only
-  // those two files so editors (TypeScript ≥ 5.6 searches ancestor configs) keep the rest of
+  // those files so editors (TypeScript ≥ 5.6 searches ancestor configs) keep the rest of
   // src/chat on the app's own tsconfig; Vite reads the nearest file regardless of `include`.
   // The app's type check is unchanged — `tsc` in apps/mobile uses apps/mobile/tsconfig.json.
   "compilerOptions": {
@@ -15,5 +15,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["stream-drain.ts", "stream-drain.test.ts"]
+  "include": ["stream-drain.ts", "stream-drain.test.ts", "chat-file-url.ts", "chat-file-url.test.ts"]
 }

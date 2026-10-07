@@ -11,7 +11,9 @@
  *    image/* — a Bot's browser screenshot, a shared picture) shows inline,
  *    fetched with the bearer token (the URL alone would 401), kept in memory
  *    only; tap → the share sheet (its preview, Save Image…), a failed load →
- *    the file card;
+ *    the file card. Only a `download_url` of the exact chat-file route on the
+ *    active station counts (./chat-file-url — the token rides every load and
+ *    tap); any other URL leaves the call an ordinary row in the tools sheet;
  *  - generate_image → the picture (an image-shaped placeholder while it
  *    renders; nothing when the reply's markdown already embeds it — and its
  *    row stays in the tools sheet, it was the slowest step of the turn);
@@ -27,11 +29,12 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { getAccessToken } from '../api/token-storage';
-import { uploadUrl } from '../api/upload';
 import { useT } from '../lib/i18n';
+import { getApiBase } from '../store/stations';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon, Spinner, Touchable } from '../ui/core';
 import { AskUserCard, isAskUserData } from './ask-user-card';
+import { chatFilePath, chatFileUrl } from './chat-file-url';
 import { FileCard, fileDetail, saveFile } from './file-card';
 import { Thumb } from './markdown/blocks/images';
 import type { ToolStep } from './model';
@@ -51,8 +54,9 @@ export function outputOf(step: ToolStep): Loose | undefined {
   return out && typeof out === 'object' && !Array.isArray(out) ? (out as Loose) : undefined;
 }
 
+/** A file on the station's authenticated chat-file route (any other URL is not fetched with the token). */
 const isFile = (out: Loose | undefined) =>
-  out?.type === 'file' && typeof out.name === 'string' && typeof out.download_url === 'string';
+  out?.type === 'file' && typeof out.name === 'string' && chatFilePath(out.download_url) !== null;
 
 const isImageFile = (out: Loose | undefined) =>
   typeof out?.content_type === 'string' && out.content_type.startsWith('image/');
@@ -110,11 +114,12 @@ export function ArtifactCards({
     }
     if (isFile(out)) {
       const rows = typeof out!.row_count === 'number' ? (out!.row_count as number) : undefined;
+      const path = chatFilePath(out!.download_url)!;
       const card = (
         <FileCard
           key={step.id}
           name={out!.name as string}
-          path={out!.download_url as string}
+          path={path}
           detail={fileDetail(
             typeof out!.size === 'number' ? (out!.size as number) : undefined,
             rows != null ? t('chat.fileRows', { n: rows }) : undefined,
@@ -122,7 +127,7 @@ export function ArtifactCards({
         />
       );
       return isImageFile(out) ? (
-        <ImageFile key={step.id} name={out!.name as string} path={out!.download_url as string} fallback={card} />
+        <ImageFile key={step.id} name={out!.name as string} path={path} fallback={card} />
       ) : (
         card
       );
@@ -144,7 +149,8 @@ export function ArtifactCards({
 /**
  * An image the server only hands out with the bearer token (`/api/chat-files/…`),
  * inline at reading width. Memory-cached only — a private conversation's
- * pictures never land in the disk cache. Falls back to the file card.
+ * pictures never land in the disk cache. Falls back to the file card. The token
+ * goes only with a URL `chatFileUrl` vouches for (that route, this station).
  */
 function ImageFile({ name, path, fallback }: { name: string; path: string; fallback: ReactNode }) {
   const { colors: c } = useTheme();
@@ -152,11 +158,12 @@ function ImageFile({ name, path, fallback }: { name: string; path: string; fallb
   const [ratio, setRatio] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
   const token = getAccessToken();
-  const source = useMemo(
-    () => ({ uri: uploadUrl(path), headers: token ? { Authorization: `Bearer ${token}` } : undefined }),
-    [path, token],
-  );
-  if (failed) return fallback;
+  const base = getApiBase();
+  const source = useMemo(() => {
+    const uri = chatFileUrl(path, base);
+    return uri ? { uri, headers: token ? { Authorization: `Bearer ${token}` } : undefined } : null;
+  }, [path, base, token]);
+  if (failed || !source) return fallback;
   return (
     <Touchable
       onPress={() => saveFile(path, name)}
