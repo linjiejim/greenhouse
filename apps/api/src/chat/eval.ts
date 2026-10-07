@@ -20,6 +20,7 @@ import { extractJson } from '@greenhouse/utils/json';
 import { scoreDimension } from '../llm/judge.js';
 import { resolveProfile } from '../profiles/profile.js';
 import { searchKnowledgeScopes } from '../knowledge/search.js';
+import { canRead, resolveKbAccess } from '../knowledge/access.js';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -409,9 +410,17 @@ export function buildEvalContext(
 
 // ─── Reference loading (shared with the eval_message tool) ─
 
+/**
+ * Load the full text of every knowledge doc the answer cited, as the EVALUATING
+ * identity may read it. The judge's verdict (and the passages it quotes back) is
+ * visible to whoever ran the eval — a super or a session-share recipient — so a
+ * doc the citing session's owner could read but the evaluator cannot is reported
+ * as an unresolved reference and never loaded.
+ */
 export async function loadReferenceSources(
   db: DatabaseProvider,
   referencesJson: string | null | undefined,
+  opts: { userId: string },
 ): Promise<{
   referenceSources: Array<{ slug: string; title: string; content: string; category?: string }>;
   referencesChecked: ReferenceChecked[];
@@ -437,7 +446,7 @@ export async function loadReferenceSources(
       relevant,
     });
     try {
-      const doc = await resolveKnowledgeReference(db, ref.source_id || ref.slug);
+      const doc = await resolveKnowledgeReference(db, ref.source_id || ref.slug, opts.userId);
       if (doc) {
         referenceSources.push({
           slug: ref.slug || doc.doc_id,
@@ -458,12 +467,24 @@ export async function loadReferenceSources(
 }
 
 /**
- * Resolve a reference key to a knowledge-base document. Keys arrive as the
- * string `doc_id`, the numeric row id (as a string) or a slug — all three are
- * what knowledge_query results and in-app links expose.
+ * Resolve a reference key to a knowledge-base document the given user may read.
+ * None of the lookups below filter by visibility or owner, so the knowledge ACL
+ * is applied to whatever they return: a doc the user cannot read resolves to
+ * "not found", exactly as it does on the web and tool surfaces.
  */
-async function resolveKnowledgeReference(db: DatabaseProvider, key: string | undefined) {
+async function resolveKnowledgeReference(db: DatabaseProvider, key: string | undefined, userId: string) {
   if (!key) return undefined;
+  const doc = await lookupKnowledgeReference(db, key);
+  if (!doc) return undefined;
+  return canRead(await resolveKbAccess(db, doc, userId)) ? doc : undefined;
+}
+
+/**
+ * Unscoped lookup. Keys arrive as the string `doc_id`, the numeric row id (as a
+ * string) or a slug — all three are what knowledge_query results and in-app
+ * links expose.
+ */
+async function lookupKnowledgeReference(db: DatabaseProvider, key: string) {
   const byDocId = await db.knowledgeBase.get(key, 'shared');
   if (byDocId) return byDocId;
   if (/^[1-9][0-9]*$/.test(key)) {

@@ -360,8 +360,9 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
         if (input.action === 'get' || input.action === 'versions') {
           if (!input.doc_id) return { error: `doc_id is required for action=${input.action}` };
           const doc = await resolveDoc(db, input.doc_id, scope);
-          // Team and personal docs both have user_id=NULL; personal ownership is
-          // enforced by the owner check below, not by user_id.
+          // Team and personal docs share one table and one `scope`; which of the
+          // two the caller asked for is enforced by the visibility check here and,
+          // for personal, by the owner check below.
           if (!doc || doc.status === 'archived' || doc.visibility !== visibility) {
             return { error: notFound(input.doc_id) };
           }
