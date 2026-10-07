@@ -5,7 +5,8 @@
  *             Browsing github.com
  *
  *  - Left: ☰ opens the drawer, with a system badge counting the other
- *    conversations that need the member (cards + unread).
+ *    conversations that need the member (cards + unread) — VoiceOver hears
+ *    the count in the button's label ("Open sidebar, 3 need your attention").
  *  - Title view (`ThreadTitle`): the Bot's plant (a group: up to three, the
  *    one speaking first) + the name and a live status line, each truncating
  *    on its own; capped at 1.3× Dynamic Type (the bar has the system's large
@@ -38,6 +39,7 @@ import type { PlantState } from '../../ui/plant-avatar/plant-ids';
 import { toolbarIcon } from '../../ui/toolbar-icon';
 import { AvatarStack } from '../ui/avatar-stack';
 import { BotAvatar, type AvatarSource } from '../ui/bot-avatar';
+import { drawerButtonLabel, menuBadge } from './thread-screen-model';
 
 /** Navigation-bar text never grows past this Dynamic Type multiple (the system's large content viewer covers it). */
 const MAX_FONT_SCALE = 1.3;
@@ -178,6 +180,8 @@ export const ThreadHeader = memo(function ThreadHeader({
   actions: ThreadHeaderActions;
 }) {
   const t = useT();
+  // UIKit draws the badge but never reads it: the count goes into the label, as on the chat's bar.
+  const shownBadge = menuBadge(badge);
   return (
     <>
       <Stack.Screen options={{ title }} />
@@ -188,10 +192,13 @@ export const ThreadHeader = memo(function ThreadHeader({
       <Stack.Toolbar placement="left">
         <Stack.Toolbar.Button
           icon={toolbarIcon('menu')}
-          accessibilityLabel={t('chat.openDrawer')}
+          accessibilityLabel={drawerButtonLabel(t('chat.openDrawer'), shownBadge, {
+            badge: (n) => t('bots.nav.menuBadgeA11y', { n }),
+            separator: t('bots.nav.listSep'),
+          })}
           onPress={actions.openDrawer}
         >
-          {badge > 0 ? <Stack.Toolbar.Badge>{badge > 99 ? '99+' : String(badge)}</Stack.Toolbar.Badge> : null}
+          {shownBadge ? <Stack.Toolbar.Badge>{shownBadge}</Stack.Toolbar.Badge> : null}
         </Stack.Toolbar.Button>
       </Stack.Toolbar>
       <Stack.Toolbar placement="right">
