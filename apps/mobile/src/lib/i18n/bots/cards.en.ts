@@ -2,12 +2,19 @@
 
 export const botsCardsEn = {
   card: {
+    /** Status badge: pending, then one label per settled state (the web's settledLabelKey). */
     waiting: 'Waiting for You',
     allowed: 'Allowed',
+    allowedAlways: 'Always Allowed',
+    handedBack: 'Handed Back',
+    createdShort: 'Created',
+    started: 'Started',
     done: 'Done',
     declined: 'Declined',
     expired: 'Expired',
     canceled: 'Canceled',
+    /** A Bot the directory has not answered for yet (never "Deleted Bot" before it has). */
+    aBot: 'Your Bot',
     askAgain: 'Ask Again',
     expiresIn: 'Expires in {s}s',
     expiringNow: 'Expiring now',
@@ -20,10 +27,16 @@ export const botsCardsEn = {
     deny: 'Deny',
     alwaysTitle: 'Always fill on {site}?',
     alwaysBody: '{name} won’t ask again before using your saved sign-in on this site.',
+    /** The confirm button of the "always" question. */
+    alwaysConfirm: 'Always Allow',
+    /** `{site}` when no detail row names the site. */
+    thisSite: 'this site',
     taskTitle: '{name} wants to start a background task',
     start: 'Start',
     cancel: 'Cancel',
     taskLimit: 'Too many background tasks are running (max 3)',
+    showMore: 'Show More',
+    showLess: 'Show Less',
     createTitle: '{name} suggests a new Bot',
     create: 'Create',
     editFirst: 'Edit First',
@@ -34,6 +47,11 @@ export const botsCardsEn = {
     decline: 'Decline',
     viewChanges: 'View Changes',
     diffSummary: '+{added} lines · −{removed} lines',
+    /** VoiceOver for a diff line (the +/− glyphs are hidden). */
+    diffAdded: 'Added: {text}',
+    diffRemoved: 'Removed: {text}',
+    current: 'Current',
+    proposed: 'Proposed',
     loginTitle: '{name} needs you to sign in to {host}',
     otpTitle: '{name} needs a code',
     signIn: 'Sign In…',
@@ -53,6 +71,34 @@ export const botsCardsEn = {
       'The computer isn’t visible on the phone. Skip for now, or handle it on the web and come back to tap “I’ve Done It”.',
     finished: 'I’ve Done It',
     finishedConfirm: 'Done on the computer? {name} will carry on.',
+    /** A kind this app version does not know: say so instead of rendering nothing. */
+    unknownTitle: '{name} needs you',
+    unknownHint: 'Open the web app to see this request.',
+    /** Detail rows on the sheet / the sign-in card. */
+    site: 'Site',
+    page: 'Page',
+    reason: 'Reason',
+    /** Title of the alert when a decision was not carried out (the message says why). */
+    failedTitle: 'Couldn’t Do That',
+    /** One-line receipt of a settled card. */
+    receipt: {
+      allowed: 'Allowed · {title}',
+      allowedAlways: 'Always allowed · {title}',
+      started: 'Started · {title}',
+      handedBack: 'Handed the computer back',
+      instructions: 'New instructions accepted',
+      signedIn: 'Signed in',
+      signedInHost: 'Signed in · {host}',
+      skipped: 'Skipped',
+      skippedHost: 'Skipped · {host}',
+      declined: 'Declined',
+      declinedTitle: 'Declined · {title}',
+      expired: 'Expired',
+      expiredTitle: 'Expired · {title}',
+      canceled: 'Canceled',
+      canceledTitle: 'Canceled · {title}',
+      done: 'Done',
+    },
     /** A refused decision, by the server's code (BotRequestErrorCode); the card stays pending. */
     err: {
       page_gone: 'The page has already changed, so nothing was filled.',
@@ -80,14 +126,31 @@ export const botsCardsEn = {
     saveToVault: 'Save to Passwords',
     footer:
       'Used once: filled straight into the sign-in page on the computer — never stored in the conversation or shown to the model.',
+    /** The card is no longer waiting (settled elsewhere, expired) or was never found. */
+    gone: 'This sign-in request is no longer open',
+    goneHint: 'It was answered elsewhere or has expired.',
   },
   needs: {
     title: 'Needs You',
     empty: 'All caught up',
+    /** A group with no title and no known member. */
+    group: 'Group',
+    archivedName: '{name} (archived)',
+    /** VoiceOver hint on a group header. */
+    openHint: 'Opens the conversation',
+    /** The pending list could not be read (the counters say something is waiting). */
+    loadFailed: 'Couldn’t Load',
+    /** The card sheet (`/bots/request`) for a card that is gone. */
+    goneTitle: 'This request is no longer available',
   },
   capsule: {
     one: '{name} needs your approval · {title}',
     many: '{n} things need you',
     report: '{name} reported back: {title}',
+    /** Any other card: its headline, then what it is about. */
+    detail: '{text} · {detail}',
+    /** VoiceOver hints. */
+    needsHint: 'Decide here without leaving this conversation',
+    reportHint: 'Opens the conversation',
   },
 };
