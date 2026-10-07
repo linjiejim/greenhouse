@@ -228,6 +228,8 @@ export class ThreadEngine implements ThreadController {
   private softRemote = false;
   private hardStopping = false;
   private remoteBusy: { clientId: string; since: number; timer: unknown } | null = null;
+  /** The probe after a card decision is scheduled (one per burst of decisions). */
+  private decideProbe = false;
 
   // Reloads
   private ticket = 0;
@@ -428,7 +430,7 @@ export class ThreadEngine implements ThreadController {
     if (this.disposed) return outcome;
     if (outcome.kind === 'ok') {
       // A settled sign-in / hand-back / new Bot / task wakes a Bot up server-side.
-      this.after(DECIDE_PROBE_MS, () => void this.ensureAttached());
+      this.probeAfterDecision();
     } else if (outcome.kind === 'stale') {
       void this.reload();
     }
@@ -1276,11 +1278,35 @@ export class ThreadEngine implements ThreadController {
     const state = this.deps.store.getState();
     const running = state.running[this.sessionId] ?? null;
     if (running === this.seenRunning && state.requestOverrides === this.seenOverrides) return;
+    // A card of this thread settled in a sheet (needs-you, sign-in, the Bot form decide through the store).
+    if (state.requestOverrides !== this.seenOverrides && this.settledHere(state.requestOverrides)) {
+      this.probeAfterDecision();
+    }
     this.seenRunning = running;
     this.seenOverrides = state.requestOverrides;
     // The run nobody here was reading has ended: a soft stop asked for it is over too.
     if (running === null && !this.busyReading() && !this.remoteBusy) this.softRemote = false;
     this.publish();
+  }
+
+  /** A new override settles one of this thread's cards. */
+  private settledHere(overrides: Record<string, BotRequestView>): boolean {
+    const seen = this.seenOverrides;
+    for (const id in overrides) {
+      const request = overrides[id];
+      if (request !== seen[id] && request.session_id === this.sessionId && request.status !== 'pending') return true;
+    }
+    return false;
+  }
+
+  /** After a card decision — here or in a sheet — look once for the run it may have started. */
+  private probeAfterDecision(): void {
+    if (this.decideProbe) return;
+    this.decideProbe = true;
+    this.after(DECIDE_PROBE_MS, () => {
+      this.decideProbe = false;
+      void this.ensureAttached();
+    });
   }
 
   /** Socket down for a while, thread visible: probe every beat, reload every 3rd. */
