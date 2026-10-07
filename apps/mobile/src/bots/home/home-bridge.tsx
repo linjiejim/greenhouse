@@ -14,6 +14,10 @@
  *  - `useBotsWarm` — the home reads the Bots lists for the ☰ badge, the
  *    capsule and the bridge; the realtime bridge keeps them fresh, this only
  *    fills what nobody has read yet (a cold start before the WS is up).
+ *
+ * Both loaders wait while auth is loading (`useAuth.loading`: startup and a
+ * station switch, whose store reset clears `botsLoaded` before the new
+ * station's session is in) — whatever the caller passes.
  */
 
 import React, { useEffect, useMemo } from 'react';
@@ -23,6 +27,7 @@ import { useRouter } from 'expo-router';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 import type { BotView } from '../../shared/bots';
 import { useT } from '../../lib/i18n';
+import { useAuth } from '../../store/auth';
 import { HIT, makeStyles, space, typo, useTheme } from '../../theme';
 import { Icon } from '../../ui/core';
 import { alertError } from '../../ui/dialogs';
@@ -150,14 +155,16 @@ export function useProfileBot(profile: string | undefined): { bot: BotView | nul
     );
   });
   const botsLoaded = useBots((s) => s.botsLoaded);
+  const settled = useAuth((s) => !s.loading);
   useEffect(() => {
-    if (isBot && !botsLoaded) void useBots.getState().loadBots();
-  }, [isBot, botsLoaded]);
+    if (settled && isBot && !botsLoaded) void useBots.getState().loadBots();
+  }, [settled, isBot, botsLoaded]);
   return useMemo(() => (isBot ? { bot, dm } : null), [isBot, bot, dm]);
 }
 
 /** Fill the lists the home reads (☰ badge, capsule, bridge) when nothing has read them yet. */
-export function useBotsWarm(enabled: boolean): void {
+export function useBotsWarm(wanted: boolean): void {
+  const enabled = useAuth((s) => wanted && !s.loading);
   const botsLoaded = useBots((s) => s.botsLoaded);
   const conversationsLoaded = useBots((s) => s.conversationsLoaded);
   // Cards are waiting (the list says so) but the pending list itself was never read.

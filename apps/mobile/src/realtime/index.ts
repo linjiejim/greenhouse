@@ -6,20 +6,28 @@
  * which owns the gates (iOS, internal account, `bots` on, foreground).
  *
  * The URL is computed at every (re)connect, so it always carries the active
- * station's current access token.
+ * station's current access token — and only ever that station's: the token
+ * goes to the origin of the station the token mirror belongs to, and only
+ * when that is the active station (null otherwise — the client stops, and
+ * the bridge restarts it once the switch has settled).
  */
 
 import { refreshTokens } from '../api/client';
-import { getAccessToken } from '../api/token-storage';
+import { getAccessToken, getTokenStationId } from '../api/token-storage';
 import { RealtimeClient, realtimeUrl } from '../api/ws';
-import { getApiBase } from '../store/stations';
+import { getActiveStation } from '../store/stations';
+
+/** The socket URL for the active station's own token, or null (signed out / mid-switch). */
+export function socketUrl(): string | null {
+  const station = getActiveStation();
+  const token = getAccessToken();
+  if (!station || !token || getTokenStationId() !== station.id) return null;
+  return realtimeUrl(station.baseUrl, token);
+}
 
 export const realtime = new RealtimeClient({
   WebSocketImpl: WebSocket,
-  url: () => {
-    const token = getAccessToken();
-    return token ? realtimeUrl(getApiBase(), token) : null;
-  },
+  url: socketUrl,
   refreshTokens,
   clock: {
     now: () => Date.now(),

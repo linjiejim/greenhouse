@@ -4,6 +4,12 @@
  * origin at call time via getApiBase(). Tokens live per station in
  * token-storage, so switching keeps each deployment's session.
  *
+ * Every change of the active station repoints the token mirror first
+ * (`detachTokens`, synchronously, before the `set` its subscribers react to):
+ * the moment getApiBase() answers with the new origin, getAccessToken() holds
+ * that station's token or none — never the previous station's. Callers then
+ * load the new pair (auth.switchStation → bootstrap → hydrateTokens).
+ *
  * First-launch seeding: the build's default stations (STATIONS.defaults, from
  * EXPO_PUBLIC_API_BASE_URL) are seeded signed-out with the first one active,
  * and a legacy (pre-station) signed-in session is adopted onto that first
@@ -19,7 +25,7 @@
 import { create } from 'zustand';
 import { DEFAULT_API_BASE, IS_SINGLE_STATION, STATIONS } from '../config';
 import type { StationConfig } from '../shared/greenhouse-config';
-import { loadPref, savePref, migrateLegacyTokens, purgeStationTokens } from '../api/token-storage';
+import { detachTokens, loadPref, savePref, migrateLegacyTokens, purgeStationTokens } from '../api/token-storage';
 
 export interface StationRecord {
   id: string;
@@ -190,6 +196,7 @@ export const useStations = create<StationsState>((set, get) => ({
     }
 
     if (activeId && !stations.some((s) => s.id === activeId)) activeId = stations[0]?.id ?? null;
+    detachTokens(activeId);
     set({ stations, activeId, hydrated: true });
   },
 
@@ -206,6 +213,7 @@ export const useStations = create<StationsState>((set, get) => ({
     }
     const station: StationRecord = { id: newStationId(), baseUrl, name: name?.trim() || hostLabel(baseUrl) };
     const next = [...stations, station];
+    detachTokens(station.id);
     set({ stations: next, activeId: station.id });
     await persist(next, station.id);
     return station;
@@ -215,6 +223,7 @@ export const useStations = create<StationsState>((set, get) => ({
     if (IS_SINGLE_STATION) return;
     const { stations, activeId } = get();
     if (activeId === id || !stations.some((s) => s.id === id)) return;
+    detachTokens(id);
     set({ activeId: id });
     await savePref(ACTIVE_PREF, id);
   },
@@ -225,6 +234,7 @@ export const useStations = create<StationsState>((set, get) => ({
     const next = stations.filter((s) => s.id !== id);
     const nextActive = activeId === id ? (next[0]?.id ?? null) : activeId;
     purgeStationTokens(id);
+    if (nextActive !== activeId) detachTokens(nextActive);
     set({ stations: next, activeId: nextActive });
     await persist(next, nextActive);
   },

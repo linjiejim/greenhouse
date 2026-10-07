@@ -4,14 +4,18 @@
  * pushes into the Bots store (spec docs/specs/20261008-mobile-bots.md §2.7.2).
  *
  * - Connected only while it is wanted: signed in on an internal account with
- *   Bots available (`useBotsEnabled`: iOS, `super`/`team`, `features.bots`,
- *   not refused by the server) AND in the foreground. An external account
- *   never connects (the server would answer 4001 forever).
+ *   Bots available (`useBotsEnabled`: iOS, settled auth, `super`/`team`,
+ *   `features.bots`, not refused by the server) AND in the foreground. An
+ *   external account never connects (the server would answer 4001 forever).
  * - Background → closed at once (1000): iOS would suspend it anyway, and it
  *   frees the server's per-user socket slots. Foreground → a fresh connection,
  *   whose `connected` frame makes every listener resync.
  * - Another station or account → closed, then reopened against the new base
- *   URL and token.
+ *   URL and token. A station switch raises `useAuth.loading` in the same tick
+ *   as the change (auth.switchStation), which closes `useBotsEnabled` — so the
+ *   socket is closed for the whole switch and reopens only once bootstrap()
+ *   has loaded the new station's session (the URL itself also refuses a token
+ *   that isn't the active station's: ./index.ts).
  * - The Bots sync (src/bots/sync.ts) lives while Bots are available — in the
  *   background too, idle — and is told about the foreground for its polling
  *   fallback.
