@@ -99,6 +99,7 @@ import { mentionToken, parseMentions } from '../vendor/mentions';
 import { buildTranscript, type TranscriptItem } from '../vendor/transcript';
 import { conversationTitle } from '../vendor/web-helpers';
 import { fromSegment } from './adapters';
+import { threadCache } from './cache';
 import { useThreadDraft } from './drafts';
 import { MentionStrip } from './mention-strip';
 import { EventRow } from './rows/event-row';
@@ -124,6 +125,15 @@ import { StopHint, useComposerStop } from './stop-control';
 import { TaskDock } from './task-dock';
 import { dropThreadHeader, publishThreadHeader, ThreadHeader, type ThreadHeaderActions } from './thread-header';
 import { threadRows, type ThreadRow } from './thread-rows';
+import {
+  deepLinkStep,
+  expectOnRunSettled,
+  expectOnRunStarted,
+  prependStep,
+  pruneRowGeometry,
+  showsFreshPage,
+  type ExpectAnchor,
+} from './thread-screen-model';
 import { useBotTasks } from './use-bot-tasks';
 import { useMentionPicker } from './use-mention-picker';
 
@@ -151,6 +161,16 @@ const AUTO_PAGES = 5;
 /** A deep-linked card stays highlighted this long. */
 const HIGHLIGHT_MS = 1200;
 const MVCP = { minIndexForVisible: 1 } as const;
+/** The jump control's drawn height; its touch frame is a full `HIT` (padding handed back by negative margins). */
+const JUMP_H = 38;
+/** The "couldn't refresh" pill's drawn height; its touch frame too is a full `HIT`. */
+const REFRESH_H = HIT - 10;
+/** Not a row key (rows are never keyed ''): resets the row the anchor hook last measured. */
+const NO_ROW = '';
+
+/** A row's geometry as the `onLayout` event the anchor hook takes. */
+const layoutEvent = (y: number, h: number) =>
+  ({ nativeEvent: { layout: { x: 0, y, width: 0, height: h } } }) as LayoutChangeEvent;
 
 const EMPTY_SEGMENTS: BotStreamSegment[] = [];
 const EMPTY_REQUESTS: BotRequestView[] = [];
@@ -175,13 +195,25 @@ const JumpButton = memo(function JumpButton({
   const t = useT();
   if (kind === 'latest') {
     return (
-      <GlassIconButton icon="arrowDown" size={38} accessibilityLabel={t('bots.thread.latest')} onPress={onPress} />
+      <GlassIconButton
+        icon="arrowDown"
+        size={JUMP_H}
+        style={styles.jumpHitRound}
+        accessibilityLabel={t('bots.thread.latest')}
+        onPress={onPress}
+      />
     );
   }
   const label = kind === 'needs' ? t('bots.thread.needsYouJump') : t('bots.thread.newMessages');
   const tint = kind === 'needs' ? c.orange : c.label;
   return (
-    <Touchable onPress={onPress} pressedStyle={{}} accessibilityRole="button" accessibilityLabel={label}>
+    <Touchable
+      onPress={onPress}
+      pressedStyle={{}}
+      style={styles.jumpHitPill}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
       <Glass interactive style={styles.jumpPill}>
         {bot ? <BotAvatar bot={bot} size={22} animate={false} /> : null}
         <Text style={[styles.jumpText, { color: tint }]}>{label}</Text>
@@ -279,6 +311,8 @@ export function BotThreadScreen({
   }, [gone]);
 
   /* ---------- transcript rows ---------- */
+  const ready = snap.load === 'ready';
+  const showRows = ready || snap.messages.length > 0;
   const segments = snap.run?.segments ?? EMPTY_SEGMENTS;
   const items = useMemo(
     () =>
@@ -415,19 +449,23 @@ export function BotThreadScreen({
   const rowGeo = useRef(new Map<string, { y: number; h: number }>());
   /** The row the next anchor is waiting for. */
   const anchorKey = useRef<string | null>(null);
-  /** A send / server run whose first row should be anchored once it appears. */
-  const expectAnchor = useRef<'pending' | 'segment' | null>(null);
+  /** A send / server run whose first row should be anchored once it appears (./thread-screen-model.ts). */
+  const expectAnchor = useRef<ExpectAnchor>(null);
 
+  /**
+   * Anchor the turn to this row. A key can come back as another row (every
+   * run's first reply is `segment:0`), so only the row mounted now may place
+   * the anchor: the anchor hook forgets the row it measured last, and the
+   * cached geometry is replayed only if this row has been laid out already —
+   * otherwise its own `onLayout` lands it.
+   */
   const anchorTo = useCallback(
     (key: string) => {
       anchorKey.current = key;
+      onAnchorRowLayout(NO_ROW, layoutEvent(0, 0));
       anchorNext(key);
       const g = rowGeo.current.get(key);
-      if (g) {
-        onAnchorRowLayout(key, {
-          nativeEvent: { layout: { x: 0, y: g.y, width: 0, height: g.h } },
-        } as LayoutChangeEvent);
-      }
+      if (g) onAnchorRowLayout(key, layoutEvent(g.y, g.h));
     },
     [anchorNext, onAnchorRowLayout],
   );
@@ -448,6 +486,12 @@ export function BotThreadScreen({
     }
     return handler;
   }, []);
+  // Geometry lives as long as its row (before this commit's effects can anchor anything).
+  useLayoutEffect(() => {
+    const mounted = showRows ? rows.map((row) => row.key) : [];
+    pruneRowGeometry(rowGeo.current, mounted);
+    pruneRowGeometry(layoutHandlers.current, mounted);
+  }, [rows, showRows]);
 
   // A send's bubble appeared: anchor it (keyboard down — see `dispatchSend`).
   const seenPending = useRef(new Set<string>());
@@ -455,7 +499,7 @@ export function BotThreadScreen({
     for (const pending of snap.pending) {
       if (seenPending.current.has(pending.clientId)) continue;
       seenPending.current.add(pending.clientId);
-      if (expectAnchor.current === 'pending') {
+      if (expectAnchor.current?.kind === 'pending') {
         expectAnchor.current = null;
         anchorTo(`pending:${pending.clientId}`);
       }
@@ -464,7 +508,7 @@ export function BotThreadScreen({
   // A run the server started by itself: anchor its first speaker (when the end was in view).
   const firstSegmentKey = segments.length ? (items.find((item) => item.kind === 'segment')?.key ?? null) : null;
   useEffect(() => {
-    if (expectAnchor.current !== 'segment' || !firstSegmentKey) return;
+    if (expectAnchor.current?.kind !== 'segment' || !firstSegmentKey) return;
     expectAnchor.current = null;
     anchorTo(firstSegmentKey);
   }, [firstSegmentKey, anchorTo]);
@@ -552,15 +596,22 @@ export function BotThreadScreen({
   const onContentSize = useCallback(
     (w: number, h: number) => {
       const p = prepend.current;
-      if (p && firstMessageRef.current !== p.first) {
-        // An earlier page landed above: keep what the member was reading in place.
-        prepend.current = null;
-        const delta = h - p.height;
-        if (delta > 0) {
-          if (PREPEND_MODE === 'delta') scrollRef.current?.scrollTo({ y: geo.current.offset + delta, animated: false });
-          shift(delta);
+      if (p) {
+        const step = prependStep(p, firstMessageRef.current, h);
+        if (step.landed) {
+          // An earlier page landed above: keep what the member was reading in place.
+          prepend.current = null;
+          if (step.delta > 0) {
+            if (PREPEND_MODE === 'delta') {
+              scrollRef.current?.scrollTo({ y: geo.current.offset + step.delta, animated: false });
+            }
+            shift(step.delta);
+          }
+          if (PREPEND_MODE === 'mvcp') requestAnimationFrame(() => setMvcp(false));
+        } else {
+          // Still in flight: what grew meanwhile (a reply streaming) is not the page's.
+          prepend.current = step.hold;
         }
-        if (PREPEND_MODE === 'mvcp') requestAnimationFrame(() => setMvcp(false));
       }
       geo.current.content = h;
       anchorContentSize(w, h);
@@ -583,18 +634,29 @@ export function BotThreadScreen({
 
   /* ---------- deep link: scroll to a card and highlight it ---------- */
   const [highlighted, setHighlighted] = useState<string | null>(null);
-  const rowsRef = useRef(rows);
-  rowsRef.current = rows;
-  const ready = snap.load === 'ready';
+  // The in-memory copy this thread opens with (the engine shows it first): a card raised since is not in it.
+  const openedWith = useMemo(
+    () => threadCache.get(sessionId, useBots.getState().generation)?.conversation ?? null,
+    [sessionId],
+  );
+  const fresh = showsFreshPage({ conversation: snap.conversation, openedWith, refreshFailed: snap.refreshFailed });
+  const handledRequest = useRef<string | null>(null);
   useEffect(() => {
-    if (!request || !ready) return;
+    if (!request) {
+      handledRequest.current = null;
+      return;
+    }
+    if (handledRequest.current === request) return; // the param is on its way out
     const key = `request:${request}`;
-    if (rowsRef.current.some((row) => row.key === key)) {
+    const step = deepLinkStep({ ready, found: rows.some((row) => row.key === key), fresh });
+    if (step === 'wait') return;
+    handledRequest.current = request;
+    if (step === 'anchor') {
       anchorTo(key);
       setHighlighted(request);
     }
     router.setParams({ request: '' });
-  }, [request, ready, anchorTo, router]);
+  }, [request, ready, rows, fresh, anchorTo, router]);
   useEffect(() => {
     if (!highlighted) return;
     const timer = setTimeout(() => setHighlighted(null), HIGHLIGHT_MS);
@@ -631,7 +693,13 @@ export function BotThreadScreen({
           AccessibilityInfo.announceForAccessibility(tNow('bots.thread.announceNeedsYou', { name }));
         } else if (e.type === 'run-started') {
           // A run nobody here sent: follow it only if the member is at the end with the keyboard down.
-          if (!e.byMe && endVisibleRef.current && !Keyboard.isVisible()) expectAnchor.current = 'segment';
+          expectAnchor.current = expectOnRunStarted(expectAnchor.current, e, {
+            endVisible: endVisibleRef.current,
+            keyboardUp: Keyboard.isVisible(),
+          });
+        } else if (e.type === 'run-settled') {
+          // It never showed a reply: nothing is waiting for one any more.
+          expectAnchor.current = expectOnRunSettled(expectAnchor.current, e.runKey);
         }
       }),
     [ctl],
@@ -655,7 +723,8 @@ export function BotThreadScreen({
     async (body: SendInput, via: 'composer' | 'card'): Promise<SendOutcome> => {
       const keyboardUp = Keyboard.isVisible();
       if (keyboardUp && via === 'composer' && KEEP_KEYBOARD_ON_SEND) {
-        // Messages: the keyboard stays, the new bubble is scrolled into view once.
+        // Messages: the keyboard stays, the new bubble is scrolled into view once (over any anchor still waiting).
+        expectAnchor.current = null;
         followToEnd();
       } else if (!snapRef.current.runActive) {
         // The conversation's turn: the bubble slides under the bar once it is in the list.
@@ -663,12 +732,12 @@ export function BotThreadScreen({
           holdForTurn();
           Keyboard.dismiss();
         }
-        expectAnchor.current = 'pending';
+        expectAnchor.current = { kind: 'pending' };
       }
       // (sent while Bots work: queued in place — no re-anchoring)
       const outcome = await ctl.send(body);
       if (outcome.ok || outcome.kind === 'not_delivered') return outcome;
-      expectAnchor.current = null;
+      if (expectAnchor.current?.kind === 'pending') expectAnchor.current = null;
       cancelTurn();
       if (outcome.kind === 'read_only') {
         if (outcome.code === 'no_active_members' && canInviteRef.current) openInvite();
@@ -1061,7 +1130,6 @@ export function BotThreadScreen({
 
   /* ---------- layout ---------- */
   const stickyOffset = useMemo(() => ({ closed: 0, opened: insets.bottom - space.sm }), [insets.bottom]);
-  const showRows = ready || snap.messages.length > 0;
   const jumpKind: 'latest' | 'new' | 'needs' = cardBelow ? 'needs' : hasNew ? 'new' : 'latest';
   const newestSpeaker = useMemo(() => {
     for (let i = items.length - 1; i >= 0; i -= 1) {
@@ -1151,7 +1219,7 @@ export function BotThreadScreen({
             <AttentionCapsule excludeSid={sessionId} />
             {snap.refreshFailed && showRows ? (
               <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(140)} style={styles.refreshWrap}>
-                <Touchable onPress={reload} pressedStyle={{}} accessibilityRole="button">
+                <Touchable onPress={reload} pressedStyle={{}} style={styles.refreshHit} accessibilityRole="button">
                   <Glass interactive style={styles.refreshPill}>
                     <Icon name="refresh" size={13} weight="semibold" color={c.secondaryLabel} />
                     <Text style={styles.refreshText}>{t('bots.thread.refreshFailed')}</Text>
@@ -1217,22 +1285,27 @@ const useStyles = makeStyles((c) => ({
   stretch: { alignSelf: 'stretch' },
   topLayer: { position: 'absolute', left: 0, right: 0, alignItems: 'center', gap: space.xs },
   refreshWrap: { alignItems: 'center' },
+  // a HIT-tall touch frame around the drawn pill, its extra height handed back
+  refreshHit: { paddingVertical: (HIT - REFRESH_H) / 2, marginVertical: -(HIT - REFRESH_H) / 2 },
   refreshPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.xs + 2,
-    minHeight: HIT - 10,
+    minHeight: REFRESH_H,
     paddingHorizontal: space.md,
-    borderRadius: (HIT - 10) / 2,
+    borderRadius: REFRESH_H / 2,
   },
   refreshText: { ...typo.footnote, color: c.secondaryLabel },
   sticky: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   jumpWrap: { position: 'absolute', bottom: '100%', right: space.md, paddingBottom: space.sm },
+  // HIT-sized touch frames around the drawn controls (negative margins keep them where they were)
+  jumpHitRound: { padding: (HIT - JUMP_H) / 2, margin: -(HIT - JUMP_H) / 2 },
+  jumpHitPill: { paddingVertical: (HIT - JUMP_H) / 2, marginVertical: -(HIT - JUMP_H) / 2 },
   jumpPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.xs + 2,
-    minHeight: 38,
+    minHeight: JUMP_H,
     paddingVertical: space.xs,
     paddingLeft: space.xs + 2,
     paddingRight: space.md,

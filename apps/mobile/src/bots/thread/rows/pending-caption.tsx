@@ -25,6 +25,14 @@ import type { MobilePending } from '../../contract';
 
 /** How long a send may take before "Sending…" shows. */
 const SENDING_GRACE_MS = 600;
+/** The caption's drawn height (a footnote line in a 24-pt row). */
+const CAPTION_H = 24;
+/**
+ * "Not Delivered" is the only way to retry or delete a send: its trigger is a
+ * full `HIT` tall (the menu host takes its child's size and has no hitSlop),
+ * and negative margins hand the extra back so the caption sits where it did.
+ */
+const FAILED_PAD = (HIT - CAPTION_H) / 2;
 
 export const PendingCaption = memo(function PendingCaption({
   pending,
@@ -65,6 +73,7 @@ export const PendingCaption = memo(function PendingCaption({
       <NativeMenu
         items={items}
         onSelect={(id) => (id === 'retry' ? onRetry(pending.clientId) : onDiscard(pending.clientId))}
+        style={styles.failedHost}
       >
         <View
           accessible
@@ -110,7 +119,9 @@ const useStyles = makeStyles((c) => ({
     rowGap: space.xxs,
     marginTop: space.xs,
   },
-  tap: { minHeight: 24, gap: space.xs },
+  // the trigger: HIT tall, its row margin moved out to the menu host (below)
+  tap: { minHeight: HIT, paddingVertical: FAILED_PAD, marginTop: 0, gap: space.xs },
+  failedHost: { marginTop: space.xs - FAILED_PAD, marginBottom: -FAILED_PAD },
   text: { ...typo.footnote, color: c.secondaryLabel, textAlign: 'right' },
   failed: { color: c.red, fontWeight: weight.medium },
   action: { ...typo.footnote, fontWeight: weight.semibold, color: c.accent },

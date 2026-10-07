@@ -80,13 +80,18 @@ const ATTACH_IDS = new Set(['camera', 'library']);
 /** The Stop slot: the button plus the row gap it brings along. */
 const STOP_SLOT = HIT + space.sm;
 const STOP_MS = 180;
+/** A little past the slide-out, so the button leaves the tree only once nothing of it is drawn. */
+const STOP_GONE_MS = STOP_MS + 60;
 const PRESSED_DIM = { opacity: 0.6 };
 
 /**
  * Stop, between the capsule and Send. Once a stop has been offered the slot
  * stays mounted and animates its width (0 ↔ button + gap), so the capsule
  * narrows / widens smoothly and Send never moves; the last stop is kept
- * on screen while it slides out.
+ * on screen while it slides out. The button itself leaves the tree once it
+ * has slid out: a zero-width, clipped, transparent button still has its full
+ * 44-pt frame, and VoiceOver could focus (and a tap reach) an invisible Stop.
+ * While sliding out it is already hidden from both.
  */
 const StopSlot = memo(function StopSlot({ stop }: { stop?: ComposerStop }) {
   const { colors: c } = useTheme();
@@ -96,9 +101,15 @@ const StopSlot = memo(function StopSlot({ stop }: { stop?: ComposerStop }) {
   if (stop) last.current = stop;
   const shown = stop ?? last.current;
   const live = !!stop;
+  // the button is in the tree while offered and while it slides out — then not at all
+  const [present, setPresent] = useState(live);
+  if (live && !present) setPresent(true);
   const open = useSharedValue(0);
   useEffect(() => {
     open.value = reduceMotion ? (live ? 1 : 0) : withTiming(live ? 1 : 0, { duration: STOP_MS });
+    if (live) return;
+    const timer = setTimeout(() => setPresent(false), reduceMotion ? 0 : STOP_GONE_MS);
+    return () => clearTimeout(timer);
   }, [live, open, reduceMotion]);
   const slide = useAnimatedStyle(() => ({ width: open.value * STOP_SLOT, opacity: open.value }));
   const phase = shown?.phase;
@@ -116,7 +127,7 @@ const StopSlot = memo(function StopSlot({ stop }: { stop?: ComposerStop }) {
       accessibilityElementsHidden={!live}
       importantForAccessibility={live ? 'auto' : 'no-hide-descendants'}
     >
-      {shown.phase === 'hard' ? (
+      {!present ? null : shown.phase === 'hard' ? (
         <View
           accessible
           accessibilityRole="button"
