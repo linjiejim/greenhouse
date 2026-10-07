@@ -74,7 +74,7 @@ expose to Claude, Cursor, or any MCP client.
   <img src="docs/assets/screens/chat-knowledge-answer-dark.webp" alt="Dark theme" width="66%" />
   <img src="docs/assets/screens/mobile-chat.webp" alt="Mobile layout" width="19%" />
 </p>
-<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat, knowledge and projects with a fully native iOS UI — system navigation, Liquid Glass, native sheets, menus and SwiftUI forms.</sub></p>
+<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts, Mermaid diagrams, HTML previews, question forms), knowledge and projects with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
 
 Every image above is produced by `node scripts/capture-screens.mjs` against a seeded dev stack — the
 same script doubles as an end-to-end smoke tour (see [Development](#development)).
@@ -162,8 +162,8 @@ greenhouse/
 │   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to your
 │   │                         #   instances via saved multi-server "stations"
 │   └── mobile/               # Expo (React Native) app — chat, knowledge, projects, settings;
-│                             #   native iOS UI (native stack, form sheets, SwiftUI forms via
-│                             #   @expo/ui, Liquid Glass); isolated install (pnpm mobile:install,
+│                             #   native UI: iOS SwiftUI forms + Liquid Glass, Android Material 3
+│                             #   (both via @expo/ui); isolated install (pnpm mobile:install,
 │                             #   then pnpm mobile)
 ├── packages/
 │   ├── agent-core/           # Agent kernel — streamText loop, OpenAI-compatible model factory
