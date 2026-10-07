@@ -56,23 +56,33 @@ async function doRefresh(): Promise<boolean> {
   }
 }
 
-/** Authenticated fetch against the API. Pass an API-relative path like `/api/sessions`. */
+/**
+ * Authenticated fetch against the API. Pass an API-relative path like `/api/sessions`.
+ *
+ * The origin and the station whose token rides along are read together. A 401 that
+ * comes back after the active station changed belongs to the previous station, so it
+ * is handed back untouched: refreshing would rotate the new station's pair and retry
+ * it to the old origin, and signing out would end the new station's session.
+ */
 export async function api(path: string, init: RequestInit = {}): Promise<Response> {
   const url = path.startsWith('http') ? path : `${getApiBase()}${path}`;
+  const sid = getTokenStationId();
+  const sameStation = () => getTokenStationId() === sid;
   const token = getAccessToken();
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
   let res = await fetch(url, { ...init, headers });
 
-  if (res.status === 401) {
+  if (res.status === 401 && sameStation()) {
     const ok = await refreshTokens();
+    if (!sameStation()) return res;
     if (ok) {
       const retryHeaders = new Headers(init.headers);
       const newToken = getAccessToken();
       if (newToken) retryHeaders.set('Authorization', `Bearer ${newToken}`);
       res = await fetch(url, { ...init, headers: retryHeaders });
-      if (res.status === 401) {
+      if (res.status === 401 && sameStation()) {
         clearTokens();
         onUnauthorized?.();
       }

@@ -11,10 +11,12 @@
  *    (with no name typed, the server's own product name beats the bare host);
  *    failures are system alerts.
  *
- * Every change of the active station re-runs `auth.bootstrap()` (rehydrates
- * that station's tokens and revalidates; the root layout then routes home or
- * to /login) — after the host is dismissed (`onLeave`), so the reroute never
- * happens under a presented sheet.
+ * Every change of the active station goes through `auth.switchStation()`
+ * (raises `loading` in the same tick as the change, so no screen or Bots
+ * request runs against the new station with the old one's session, then
+ * rehydrates that station's tokens and revalidates; the root layout then
+ * routes home or to /login) — after the host is dismissed (`onLeave`), so the
+ * reroute never happens under a presented sheet.
  */
 
 import { useCallback, useState } from 'react';
@@ -32,12 +34,12 @@ export function useStationsForm({ onDone, onLeave }: { onDone: () => void; onLea
   const active = stations.find((s) => s.id === activeId) ?? null;
   const [busy, setBusy] = useState(false);
 
-  /** Dismiss, then mutate the registry and re-bootstrap auth for the new active station. */
+  /** Dismiss, then mutate the registry and sign in to the new active station. */
   const leaveThen = useCallback(
     (mutate: () => Promise<unknown>) => {
       onLeave();
       setTimeout(() => {
-        void mutate().then(() => useAuth.getState().bootstrap());
+        void useAuth.getState().switchStation(mutate);
       }, AFTER_DISMISS_MS);
     },
     [onLeave],

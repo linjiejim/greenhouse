@@ -4,7 +4,11 @@
  *
  * bootstrap() is also the station-switch path: it (re)hydrates the station
  * registry, loads the now-active station's tokens into the mirror and
- * revalidates — so callers just `switchTo(...)` then `bootstrap()`.
+ * revalidates. A change of the active station goes through
+ * `switchStation(() => useStations.getState().switchTo(...))`, which raises
+ * `loading` in the same tick as the change and then bootstraps — so nothing
+ * gated on `loading` (the screens, the Bots socket and loads) runs against
+ * the new station before its own session is loaded.
  *
  * Per-user server caches are NOT reset from here: each cache store clears
  * itself by subscribing to `useAuth` (user id) and `useStations` (activeId)
@@ -36,12 +40,20 @@ interface AuthState {
   /** true until the current hydrate + validate completes */
   loading: boolean;
   bootstrap: () => Promise<void>;
+  /**
+   * Change the active station (`change` is a useStations mutation: switchTo /
+   * add / remove) and sign in to it. `loading` goes up synchronously, before
+   * `change` repoints the registry, so the switch never renders with
+   * `loading: false` against the new station; bootstrap() then loads its
+   * tokens, revalidates and lowers it.
+   */
+  switchStation: (change: () => Promise<unknown>) => Promise<void>;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
   setUser: (user: AuthenticatedUser | null) => void;
 }
 
-export const useAuth = create<AuthState>((set) => ({
+export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   loading: true,
 
@@ -58,6 +70,18 @@ export const useAuth = create<AuthState>((set) => ({
     const validated = getAccessToken() ? await authApi.validateSession() : null;
     if (gen !== bootGeneration) return;
     set({ user: validated, loading: false });
+  },
+
+  async switchStation(change) {
+    // Supersede an in-flight bootstrap first: it must not lower `loading`
+    // between this change and the bootstrap that follows it.
+    bootGeneration += 1;
+    set({ loading: true });
+    try {
+      await change();
+    } finally {
+      await get().bootstrap();
+    }
   },
 
   async login(email, password) {
