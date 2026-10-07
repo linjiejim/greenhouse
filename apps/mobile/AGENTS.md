@@ -33,6 +33,8 @@ Expo SDK 57 / React Native 0.86 / React 19.2 的**原生 App：iOS 走系统组�
   - 根 Stack 的 `initialRouteName` 是 `(drawer)`：深链页面下面总有首页。**重定向到首页不要用 `<Redirect>` / `router.replace`**（会在旧首页上再叠一个新的 `(drawer)`），用 `router.dismissTo('/…')` 或 `navigate`。
   - SwiftUI 控件的语言跟设备而不是 App——见上「表单」的 `useLocaleEnv()`。
   - **sheet 里的 SwiftUI Form 要从首帧挂载**（2026-10-08 在 `/bots/info` 实测）：先渲染 RN 加载态、数据到了再挂 `NativeForm` 的话，晚挂载的 `Host` 拿不到 sheet 导航栏的顶部内边距，第一个**无标题** Section 会钻到导航栏下面。做法：同一个 `NativeForm` 实例从第一帧就在（加载中放一行 `ProgressView` Section），数据到了只换它的 children；原生输入框照旧在数据就绪后才挂（它们只在挂载时取初值）。错误态可以留在 Form 外用 RN `EmptyState`。
+  - **Form 里的输入框有焦点时不能删掉它所在的 section**（2026-10-08 实测）：UIKit 抛 `NSInternalInconsistencyException`（"first responder contained inside of a deleted section … refused to resign"）直接崩。会在关闭时换掉 Form children 的 sheet，在 `navigation.addListener('beforeRemove')` 里先 `Keyboard.dismiss()`。
+  - **iOS 会把「普通 TextField + SecureField」当登录表单**：不给 content type 也一样，含已填 SecureField 的视图消失时弹「存储密码？」（会把第三方网站的账号存到 Greenhouse 名下）。代人登录别处的表单（`/bots/login`）要在 `beforeRemove` 里先清空字段再走。
 
 
 ## Android 规范（Material 3，2026-10 起支持）
