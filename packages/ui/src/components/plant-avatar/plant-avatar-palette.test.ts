@@ -338,7 +338,7 @@ describe('plant palettes', () => {
       }
     }
     expect(failures).toEqual([]);
-  });
+  }, 30_000); // every plant × state × mood × LOD × theme: ~3 s alone, far more under a loaded full suite
 
   it('the light keyline reaches 3:1 against light surfaces and its own disc', () => {
     for (const plant of PLANT_IDS) {
