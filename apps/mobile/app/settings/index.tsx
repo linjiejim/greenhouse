@@ -6,8 +6,11 @@
  *    decoration), role, and the 工作站 row (→ stations page),
  *  - 外观: theme (segmented; applied app-wide at once via Appearance) and
  *    language (menu picker),
- *  - 对话: default agent for new conversations (menu of GET /api/profiles) and
- *    标签 (→ tag library page),
+ *  - 对话: default agent for new conversations (menu of GET /api/profiles),
+ *    标签 (→ tag library page) and — internal accounts on iOS — 我的 Bot · {n}
+ *    (→ /settings/bots); when that default is one of the member's Bots and
+ *    Bots threads are on, the footer also says the ongoing conversation in
+ *    Bots is the same Bot (spec docs/specs/20261008-mobile-bots.md D4),
  *  - 用量 (when the account has limits), 关于 (version, OTA update),
  *  - 退出登录 (destructive, confirmed): the modal closes first, then the auth
  *    store signs out and the root layout routes to /login (local — can't fail).
@@ -15,7 +18,7 @@
  * Drill-down rows are the shared `FormNavRow` (label · muted value · chevron).
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { Button, Circle, HStack, LabeledContent, Picker, ProgressView, Section, Text, VStack, ZStack } from '@expo/ui/swift-ui';
 import {
@@ -30,6 +33,8 @@ import {
   tag,
 } from '@expo/ui/swift-ui/modifiers';
 import type { LangPref, ThemePref } from '../../src/store/prefs';
+import { useBotIdentityEnabled, useBotsEnabled } from '../../src/bots/availability';
+import { sproutyBot, useBots } from '../../src/bots/store';
 import { profileLabel } from '../../src/chat/profile-menu';
 import { compactNumber } from '../../src/lib/format';
 import { useT } from '../../src/lib/i18n';
@@ -47,6 +52,7 @@ export default function Settings() {
   const { user, nickname, station, prefs, profiles, shownProfile, tagCount, tagsLoaded, version, update, signOut } =
     useSettings();
   const { theme, setTheme, lang, setLang, setProfileId } = prefs;
+  const myBots = useMyBots(shownProfile);
 
   return (
     <>
@@ -121,7 +127,16 @@ export default function Settings() {
         </Section>
 
         {/* ── conversations ── */}
-        <Section title={t('settings.conversations')} footer={<Text>{t('settings.defaultAgentHint')}</Text>}>
+        <Section
+          title={t('settings.conversations')}
+          footer={
+            <Text>
+              {myBots.defaultBot
+                ? `${t('settings.defaultAgentHint')}\n${t('bots.manage.mainFooter', { name: myBots.defaultBot })}`
+                : t('settings.defaultAgentHint')}
+            </Text>
+          }
+        >
           {profiles === null ? (
             <LabeledContent label={t('settings.defaultAgent')}>
               <ProgressView />
@@ -149,6 +164,13 @@ export default function Settings() {
             value={tagsLoaded ? String(tagCount) : ''}
             onPress={() => router.push('/settings/tags')}
           />
+          {myBots.shown ? (
+            <FormNavRow
+              label={t('settings.myBots')}
+              value={myBots.count === null ? '' : String(myBots.count)}
+              onPress={() => router.push('/settings/bots')}
+            />
+          ) : null}
         </Section>
 
         {/* ── usage ── */}
@@ -185,4 +207,32 @@ export default function Settings() {
       </NativeForm>
     </>
   );
+}
+
+/**
+ * The 我的 Bot row (internal accounts on iOS — the identity routes need no
+ * more, whatever the `bots` switch says) with the active Bot count, and the
+ * name of the Bot new chats start with when the default agent is one of the
+ * member's Bots (`sprouty` → the main Bot, `bot:<id>[@v]` → that Bot) and
+ * Bots threads exist to have an ongoing conversation with it.
+ */
+function useMyBots(profileId: string | undefined) {
+  const shown = useBotIdentityEnabled();
+  const threads = useBotsEnabled();
+  const botsLoaded = useBots((s) => s.botsLoaded);
+  const count = useBots((s) => (s.botsLoaded ? s.bots.length : null));
+  const loadBots = useBots((s) => s.loadBots);
+  const defaultBot = useBots((s) => {
+    if (!profileId) return null;
+    if (profileId === 'sprouty') return sproutyBot(s)?.name ?? null;
+    const id = profileId.startsWith('bot:') ? profileId.slice(4).split('@')[0] : null;
+    const bot = id ? s.byId[id] : undefined;
+    return bot && bot.status === 'active' ? bot.name : null;
+  });
+
+  useEffect(() => {
+    if (shown && !botsLoaded) void loadBots();
+  }, [shown, botsLoaded, loadBots]);
+
+  return { shown, count, defaultBot: shown && threads ? defaultBot : null };
 }

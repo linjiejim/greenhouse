@@ -1,25 +1,23 @@
 /**
- * `/bots/profile?botId=&from=` — a Bot's profile: hero, actions, purpose,
- * instructions, private memories, archive (spec §2.5.7).
- *
- * P0 STUB (spec docs/specs/20261008-mobile-bots.md §8 — package E implements
- * it): the sheet's ✕ over a loading placeholder, so the route resolves.
+ * `/bots/profile?botId=&from=` — a Bot's profile as a sheet: who it is, what
+ * it is for, how it works, what it alone remembers (each memory can be
+ * forgotten), and archive (spec docs/specs/20261008-mobile-bots.md §2.5.7).
+ * `from` is the conversation it was opened from — its DM hides 发消息. The
+ * body is the shared `BotProfileView` (also the Settings → My Bots page);
+ * the bar: ✕ here, 编辑 from the view.
  */
 
 import React from 'react';
-import { ScrollView } from 'react-native';
-import { Stack } from 'expo-router';
-import { LoadingState } from '../../src/ui/empty';
+import { useLocalSearchParams } from 'expo-router';
+import { BotProfileView } from '../../src/bots/manage/bot-profile-view';
 import { SheetClose } from '../../src/ui/sheet-chrome';
 
 export default function BotProfileSheet() {
+  const { botId, from } = useLocalSearchParams<{ botId?: string; from?: string }>();
   return (
     <>
-      <Stack.Screen options={{ title: '' }} />
       <SheetClose />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ flexGrow: 1 }}>
-        <LoadingState style={{ flex: 1 }} />
-      </ScrollView>
+      <BotProfileView botId={botId ?? ''} from={from || undefined} presentation="sheet" />
     </>
   );
 }
