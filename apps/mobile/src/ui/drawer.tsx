@@ -1,166 +1,42 @@
 /**
- * Native left-drawer building blocks (react-native-drawer-layout via expo-router's
- * `Drawer` layout — see app/(drawer)/_layout.tsx). The navigator owns the panel
- * slide, scrim, and the iOS-style left edge-swipe to open; these are the reusable
- * *pieces* you compose into any drawer:
- *
- *  - `drawerScreenOptions(colors)` — consistent panel chrome (sized panel, surface
- *     background, rounded outer edge, scrim, comfortable left edge-swipe). Spread
- *     into a `Drawer`'s `screenOptions`.
- *  - `DrawerScaffold` — the panel body: account header on top, a scrollable
- *     caller `children` area (e.g. the history list), an optional fixed `footer`
- *     (e.g. 设置 / 工作站), then the version pinned to the bottom.
- *  - `DrawerRow` — a drawer nav row (leading rounded icon, label, optional muted
- *     value, chevron).
- *
- * Reuse: build a `drawerContent` from `DrawerScaffold` + `DrawerRow` and hand
- * `drawerScreenOptions` to the `Drawer`. See src/chat/home-drawer.tsx for the
- * Home wiring; other screens can drop in their own content the same way.
+ * Drawer behaviour for the conversation surface (react-native-drawer-layout via
+ * expo-router's `Drawer` — see app/(drawer)/_layout.tsx). The panel body is
+ * src/chat/home-drawer.tsx.
  */
 
-import React from 'react';
-import { Dimensions, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Dimensions } from 'react-native';
 import type { DrawerNavigationOptions } from 'expo-router/drawer';
-import { font, makeStyles, radius, useTheme, type ThemeColors } from '../theme';
-import { Icon, IconName, Touchable } from './core';
-import { Tile, UserAvatar } from './widgets';
+import type { HexPalette, ThemeColors } from '../theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-/** Panel width — capped, but never more than 82% of the screen. */
-export const DRAWER_W = Math.min(320, SCREEN_W * 0.82);
+/** Panel width — ChatGPT/Claude-style: most of the screen, the conversation peeks out. */
+export const DRAWER_W = Math.min(340, Math.round(SCREEN_W * 0.84));
 
 /**
- * Consistent native-drawer options: a sized panel on the surface colour with a
- * rounded outer edge, a themed scrim, and a comfortable left edge-swipe zone.
- * Headerless (screens draw their own header). Spread into a `Drawer`'s
- * `screenOptions` so every app drawer looks and opens the same way.
+ * The conversation drawer's behaviour — tuned to feel like a native iOS
+ * sidebar you can grab from anywhere:
+ *  - `slide`: the conversation slides away with the panel (no floating card),
+ *  - swipe from *anywhere* on the surface (not just the edge) to open,
+ *  - the pan only activates on a deliberate horizontal move and fails fast on
+ *    vertical ones, so chat scrolling and text selection keep priority,
+ *  - a light dim over the pushed-aside conversation; tap it to close.
+ * Runs on the UI thread (react-native-drawer-layout on Reanimated + RNGH).
  */
-export function drawerScreenOptions(c: ThemeColors): DrawerNavigationOptions {
+export function drawerScreenOptions(c: ThemeColors, hex: HexPalette): DrawerNavigationOptions {
   return {
     headerShown: false,
-    drawerType: 'front',
+    drawerType: 'slide',
     drawerPosition: 'left',
     swipeEnabled: true,
-    swipeEdgeWidth: 44,
-    overlayColor: c.scrim,
+    swipeEdgeWidth: SCREEN_W,
+    swipeMinDistance: 24,
+    configureGestureHandler: (g) => g.activeOffsetX([-14, 14]).failOffsetY([-12, 12]),
+    overlayColor: hex.scrim,
+    keyboardDismissMode: 'on-drag',
     drawerStyle: {
       width: DRAWER_W,
-      backgroundColor: c.surface,
-      borderTopRightRadius: 22,
-      borderBottomRightRadius: 22,
+      backgroundColor: c.background,
     },
+    sceneStyle: { backgroundColor: c.background },
   };
 }
-
-/** A drawer nav row — leading rounded icon, label, optional muted trailing
- *  value (e.g. the active station name), optional trailing chevron. */
-export function DrawerRow({
-  icon,
-  label,
-  value,
-  onPress,
-  danger,
-}: {
-  icon: IconName;
-  label: string;
-  value?: string;
-  onPress: () => void;
-  danger?: boolean;
-}) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  return (
-    <Touchable onPress={onPress} pressedStyle={{ backgroundColor: c.surfaceMuted }} style={styles.row}>
-      <Tile icon={icon} size={34} iconSize={20} tint={danger ? 'danger' : 'accent'} />
-      <Text style={[styles.rowLabel, danger && { color: c.danger }]}>{label}</Text>
-      {value ? (
-        <Text numberOfLines={1} style={styles.rowValue}>
-          {value}
-        </Text>
-      ) : null}
-      {danger ? null : <Icon name="chevR" size={16} color={c.fgFaint} />}
-    </Touchable>
-  );
-}
-
-/**
- * The drawer panel body. Presentational only: account header on top, a
- * caller-provided scrollable `children` area (fills available height), an
- * optional fixed `footer` (e.g. 设置 / 工作站 rows), then the version pinned to
- * the bottom. Sign-out lives on the Settings screen, not here. Sits inside the
- * native drawer panel, so it owns padding/safe-area but not the
- * slide/scrim/gesture (those come from `drawerScreenOptions`).
- */
-export function DrawerScaffold({
-  name,
-  email,
-  version,
-  children,
-  footer,
-}: {
-  name: string;
-  email?: string;
-  version?: string;
-  /** Scrollable middle content (e.g. the history list). Fills available height. */
-  children?: React.ReactNode;
-  /** Fixed rows pinned above the version foot (e.g. 设置 / 工作站). */
-  footer?: React.ReactNode;
-}) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  const insets = useSafeAreaInsets();
-
-  return (
-    <View style={[styles.panel, { paddingTop: insets.top + 16 }]}>
-      {/* account header */}
-      <View style={styles.account}>
-        <UserAvatar size={46} label={name[0]} />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text numberOfLines={1} style={styles.name}>
-            {name}
-          </Text>
-          {email ? (
-            <Text numberOfLines={1} style={styles.email}>
-              {email}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-
-      {/* middle: caller content (history) */}
-      <View style={{ flex: 1, minHeight: 0 }}>{children}</View>
-
-      {/* footer rows (e.g. 设置 / 工作站), pinned to the bottom */}
-      {footer ? <View style={styles.footerRows}>{footer}</View> : null}
-
-      {version ? (
-        <Text style={[styles.foot, { paddingBottom: insets.bottom + 14 }]}>Greenhouse · v{version}</Text>
-      ) : (
-        <View style={{ height: insets.bottom + 14 }} />
-      )}
-    </View>
-  );
-}
-
-const useStyles = makeStyles((c) => ({
-  // Panel surface/shape/scrim come from `drawerScreenOptions` (drawerStyle); this
-  // is just the transparent body so the rounded surface shows through the edges.
-  panel: { flex: 1 },
-  account: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.hairline,
-  },
-  name: { fontSize: font.title, fontWeight: '700', color: c.fg },
-  email: { fontSize: font.caption, color: c.fgMuted, marginTop: 2 },
-  footerRows: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.hairline, paddingTop: 6 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 13, paddingVertical: 11, paddingHorizontal: 16, borderRadius: radius.md },
-  rowLabel: { flex: 1, fontSize: font.body, fontWeight: '600', color: c.fg },
-  rowValue: { fontSize: font.label, color: c.fgMuted, maxWidth: 120, flexShrink: 0 },
-  foot: { textAlign: 'center', fontSize: font.caption, color: c.fgFaint, marginTop: 10 },
-}));

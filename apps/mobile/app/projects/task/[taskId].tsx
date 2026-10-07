@@ -1,425 +1,600 @@
 /**
- * Task detail — fields, markdown description, subtasks, dependencies and the
- * comment stream (web parity: task-drawer.tsx). The task itself comes from the
- * project's task tree (the API has no single-task GET); edits go through the
- * shared TaskFormSheet / TaskActionsHost.
+ * Task detail — a grouped-background page in the Reminders "details" idiom
+ * (web parity: task-drawer.tsx):
+ *
+ *  - header: title (title1 — same as knowledge docs; it slides into the
+ *    navigation bar once scrolled under it), status / milestone / overdue
+ *    pills, project name,
+ *  - details: iOS list rows with colored symbol tiles — 状态 / 优先级 / 负责人
+ *    are pop-up menus that change the value in place; 开始 / 截止 open the
+ *    form; milestone, parent task, estimate, tags, dependencies when present,
+ *  - description (Markdown), subtasks (tap the glyph to complete, tap the row
+ *    to open, + 添加子任务), the comment thread (long-press: copy / delete;
+ *    a failed load says so and offers a retry),
+ *  - a Liquid Glass comment composer pinned above the keyboard.
+ *
+ * Navigation bar: pencil = edit (form sheet); `…` = 状态 submenu / 添加子任务 /
+ * 里程碑 / 删除. The API has no single-task GET — the task is found in the
+ * project's tree from the shared projects store (refetched on focus).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Text, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  addComment,
-  deleteComment,
-  getProject,
-  listAssignableUsers,
-  listComments,
-  type AssignableUser,
-  type ProjectTask,
-  type TaskComment,
-} from '../../../src/api/projects';
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useHeaderInset } from '../../../src/ui/header-inset';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
+import { addComment, deleteComment, listComments, updateTask, type Priority, type ProjectTask, type TaskComment } from '../../../src/api/projects';
 import { Markdown } from '../../../src/chat/markdown';
 import { relativeTime } from '../../../src/lib/format';
 import { useT } from '../../../src/lib/i18n';
-import { useBottomPadStyle } from '../../../src/lib/keyboard';
+import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import { useAuth } from '../../../src/store/auth';
+import { usePrefs } from '../../../src/store/prefs';
 import {
+  PRIORITIES,
+  TASK_STATUSES,
   findTask,
   forEachTask,
+  formatDay,
+  isMilestone,
   isOverdue,
   parseDeps,
   parseTags,
   priorityColor,
   priorityLabel,
-  shortDate,
+  projectAccess,
+  projectColor,
   taskStatusColor,
   taskStatusIcon,
   taskStatusLabel,
-  taskStatusTint,
+  taskStatusTone,
 } from '../../../src/projects/meta';
-import { TaskActionsHost } from '../../../src/projects/task-action-sheets';
-import { TaskFormSheet } from '../../../src/projects/task-form-sheet';
-import { EmptyState, Field, Icon, ScreenHeader, Skeleton, Touchable, UserAvatar } from '../../../src/ui';
-import Animated from 'react-native-reanimated';
-import { font, makeStyles, radius, useTheme, weight } from '../../../src/theme';
+import { useAssignableUsers, useProjectDetail, useProjects } from '../../../src/projects/store';
+import { useTaskActions } from '../../../src/projects/task-actions';
+import { TaskStatusButton } from '../../../src/projects/task-list';
+import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../../src/theme';
+import { Icon } from '../../../src/ui/core';
+import { InitialAvatar } from '../../../src/ui/avatar';
+import { alertError, confirmAction } from '../../../src/ui/dialogs';
+import { EmptyState, LoadingState } from '../../../src/ui/empty';
+import { Glass, GlassGroup, GlassIconButton } from '../../../src/ui/glass';
+import { tapLight } from '../../../src/ui/haptics';
+import { Badge, ListRow, ListSection, type ListRowProps } from '../../../src/ui/list';
+import { NativeMenu, menuSections, type MenuItem } from '../../../src/ui/menu';
+import { toast } from '../../../src/ui/toast';
+import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 
 export default function TaskDetailScreen() {
-  const { colors: c } = useTheme();
+  const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderInset();
+  const lang = usePrefs((s) => s.lang);
   const me = useAuth((s) => s.user);
-  const params = useLocalSearchParams<{ taskId: string; projectId: string; title?: string }>();
+  const params = useLocalSearchParams<{ taskId: string; projectId: string }>();
   const taskId = Number(params.taskId);
   const projectId = Number(params.projectId);
 
-  const [tree, setTree] = useState<ProjectTask[] | null>(null);
+  const { detail, failed, reload } = useProjectDetail(projectId, { refetchOnFocus: true });
+  const patchTask = useProjects((s) => s.patchTask);
+  const users = useAssignableUsers();
+  const actions = useTaskActions(projectId);
   const [comments, setComments] = useState<TaskComment[] | null>(null);
-  const [users, setUsers] = useState<AssignableUser[]>([]);
-  const [comment, setComment] = useState('');
+  const [commentsFailed, setCommentsFailed] = useState(false);
+  const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [subtaskFormOpen, setSubtaskFormOpen] = useState(false);
-  const [actionsOpen, setActionsOpen] = useState(false);
-  const rootPad = useBottomPadStyle(0);
 
-  const load = useCallback(async () => {
-    const [detail, cms] = await Promise.all([getProject(projectId), listComments(taskId)]);
-    setTree(detail?.tasks ?? []);
-    setComments(cms);
-  }, [projectId, taskId]);
-
+  // Refetch on focus; a failure keeps what's shown (or flags the empty thread).
+  const commentsSeq = useRef(0);
+  const loadComments = useCallback(() => {
+    const mine = ++commentsSeq.current;
+    void listComments(taskId).then((rows) => {
+      if (mine !== commentsSeq.current) return;
+      if (rows) setComments(rows);
+      else setComments((prev) => prev ?? []);
+      setCommentsFailed(!rows);
+    });
+  }, [taskId]);
   useFocusEffect(
     useCallback(() => {
-      void load();
-    }, [load]),
+      loadComments();
+      return () => {
+        commentsSeq.current++; // drop a response that lands after blur / unmount
+      };
+    }, [loadComments]),
   );
 
-  useEffect(() => {
-    void listAssignableUsers().then(setUsers);
-  }, []);
+  // Nav-bar title appears once the heading has scrolled under the bar.
+  const titleBottom = useRef(0);
+  const [navTitle, setNavTitle] = useState(false);
+  const navTitleRef = useRef(false);
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const under = e.nativeEvent.contentOffset.y + headerHeight > titleBottom.current;
+      if (under !== navTitleRef.current) {
+        navTitleRef.current = under;
+        setNavTitle(under);
+      }
+    },
+    [headerHeight],
+  );
 
-  const task = useMemo(() => (tree ? findTask(tree, taskId) : null), [tree, taskId]);
+  const task = useMemo(() => (detail ? findTask(detail.tasks, taskId) : null), [detail, taskId]);
+  const access = detail ? projectAccess(detail.project, detail.members, me) : { canWrite: false, canManage: false };
 
-  // Dependency ids → titles (resolved against the whole project tree).
-  const depTitles = useMemo(() => {
-    if (!task || !tree) return [];
+  // Parent + dependency titles (resolved against the whole project tree).
+  const related = useMemo(() => {
+    if (!task || !detail) return { parent: null as ProjectTask | null, deps: [] as ProjectTask[] };
     const wanted = new Set(parseDeps(task.dependencies));
-    const out: string[] = [];
-    forEachTask(tree, (candidate) => {
-      if (wanted.has(candidate.id)) out.push(candidate.title);
+    const deps: ProjectTask[] = [];
+    forEachTask(detail.tasks, (x) => {
+      if (wanted.has(x.id)) deps.push(x);
     });
-    return out;
-  }, [task, tree]);
+    return { parent: task.parent_id ? findTask(detail.tasks, task.parent_id) : null, deps };
+  }, [task, detail]);
+
+  // ── in-place field edits (status / priority / assignee) ──
+  const patch = useCallback(
+    async (body: Parameters<typeof updateTask>[1], local: Partial<ProjectTask>) => {
+      if (!task) return;
+      patchTask(projectId, task.id, local);
+      const ok = !!(await updateTask(task.id, body));
+      // the fresh reload below rolls the optimistic patch back on failure
+      if (!ok) alertError(t('projects.updateFailed'));
+      void reload({ fresh: true });
+    },
+    [task, patchTask, projectId, reload, t],
+  );
 
   const send = useCallback(async () => {
-    const text = comment.trim();
+    const text = draft.trim();
     if (!text || sending) return;
+    tapLight();
     setSending(true);
     const created = await addComment(taskId, text);
     setSending(false);
-    if (created) {
-      setComment('');
-      setComments((prev) => [...(prev ?? []), created]);
+    if (!created) {
+      alertError(t('projects.commentFailed'));
+      return;
     }
-  }, [comment, sending, taskId]);
+    setDraft('');
+    setComments((prev) => [...(prev ?? []), { ...created, user_nickname: created.user_nickname ?? me?.nickname }]);
+  }, [draft, sending, taskId, t, me]);
 
-  const removeComment = useCallback(
-    (cm: TaskComment) => {
-      void deleteComment(cm.id).then((ok) => {
-        if (ok) setComments((prev) => (prev ?? []).filter((x) => x.id !== cm.id));
+  const onCommentMenu = useCallback(
+    async (cm: TaskComment, id: string) => {
+      if (id === 'copy') {
+        await Clipboard.setStringAsync(cm.content).catch(() => {});
+        toast(t('common.copied'), 'copy');
+        return;
+      }
+      if (id !== 'delete') return;
+      const yes = await confirmAction({
+        title: t('projects.deleteComment'),
+        confirmLabel: t('common.delete'),
+        destructive: true,
       });
+      if (!yes) return;
+      if (await deleteComment(cm.id)) setComments((prev) => (prev ?? []).filter((x) => x.id !== cm.id));
+      else alertError(t('projects.deleteFailed'));
     },
-    [],
+    [t],
   );
 
-  const tags = task ? parseTags(task.tags) : [];
+  const deleteThis = useCallback(async () => {
+    if (task && (await actions.remove(task))) router.back();
+  }, [task, actions, router]);
+
+  // ── keyboard-pinned composer ──
+  const { height: kbHeight, progress: kbProgress } = useReanimatedKeyboardAnimation();
+  const composerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: kbHeight.value + insets.bottom * kbProgress.value }],
+  }));
+
+  const showComposer = !!task && access.canWrite;
+  const pid = String(projectId);
+
+  if (!task) {
+    return (
+      <>
+        <Stack.Screen options={{ title: '' }} />
+        {detail || failed ? (
+          <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+            {detail ? (
+              <EmptyState icon="alert" title={t('projects.taskMissing')} />
+            ) : (
+              <EmptyState
+                icon="alert"
+                title={t('projects.projectMissing')}
+                message={t('projects.projectMissingHint')}
+                onRetry={() => void reload()}
+              />
+            )}
+          </ScrollView>
+        ) : (
+          <LoadingState style={{ paddingTop: headerHeight }} />
+        )}
+      </>
+    );
+  }
+
+  const overdue = isOverdue(task);
+  const tags = parseTags(task.tags);
+  const kids = task.children ?? [];
+  const statusItems: MenuItem[] = TASK_STATUSES.map((s) => ({
+    id: s,
+    title: taskStatusLabel(s, t),
+    icon: taskStatusIcon(s),
+    checked: s === task.status,
+  }));
+  const priorityItems: MenuItem[] = PRIORITIES.map((p) => ({ id: p, title: priorityLabel(p, t), checked: p === task.priority }));
+  const assigneeItems: MenuItem[] = menuSections([
+    [{ id: '', title: t('projects.unassigned'), checked: !task.assignee_id }],
+    users.map((u) => ({ id: u.id, title: u.nickname, checked: u.id === task.assignee_id })),
+  ]);
+  const canDeleteComment = (cm: TaskComment) => !!me && (cm.user_id === me.id || access.canManage);
 
   return (
-    <Animated.View style={[styles.root, { paddingTop: insets.top + 2 }, rootPad]}>
-      <ScreenHeader
-        variant="compact"
-        align="left"
-        title={task?.title ?? params.title ?? t('projects.title')}
-        onLeading={() => router.back()}
-        right={
-          task ? (
-            <Touchable haptic="none" onPress={() => setActionsOpen(true)} style={styles.headerBtn} accessibilityLabel="menu">
-              <Icon name="more" size={20} color={c.fg} />
-            </Touchable>
-          ) : undefined
-        }
-      />
+    <>
+      <Stack.Screen options={{ title: navTitle ? task.title : '' }} />
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          icon={toolbarIcon('pen')}
+          hidden={!access.canWrite}
+          onPress={() => actions.edit(task)}
+          accessibilityLabel={t('projects.editTask')}
+        />
+        <Stack.Toolbar.Menu icon={toolbarIcon('more')} hidden={!access.canWrite} accessibilityLabel={t('common.more')}>
+          <Stack.Toolbar.Menu title={t('projects.changeStatus')} icon={toolbarIcon('statusProgress')}>
+            {TASK_STATUSES.map((s) => (
+              <Stack.Toolbar.MenuAction key={s} isOn={task.status === s} onPress={() => void actions.setStatus(task, s)}>
+                {taskStatusLabel(s, t)}
+              </Stack.Toolbar.MenuAction>
+            ))}
+          </Stack.Toolbar.Menu>
+          <Stack.Toolbar.Menu inline>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('subtask')} onPress={() => actions.addSubtask(task)}>
+              {t('projects.newSubtask')}
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('diamond')} onPress={() => void actions.toggleMilestone(task)}>
+              {isMilestone(task) ? t('projects.unmakeMilestone') : t('projects.makeMilestone')}
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
+          <Stack.Toolbar.MenuAction icon={toolbarIcon('trash')} destructive onPress={() => void deleteThis()}>
+            {t('projects.deleteTask')}
+          </Stack.Toolbar.MenuAction>
+        </Stack.Toolbar.Menu>
+      </Stack.Toolbar>
 
-      {tree === null ? (
-        <View style={{ paddingHorizontal: 16, gap: 10 }}>
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} style={{ height: 60, borderRadius: radius.md }} />
-          ))}
-        </View>
-      ) : !task ? (
-        <EmptyState icon="alert" title={t('projects.taskMissing')} />
-      ) : (
-        <FlatList
-          data={comments ?? []}
-          keyExtractor={(cm) => String(cm.id)}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16 }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          ListHeaderComponent={
-            <View style={{ gap: 14, paddingBottom: 14 }}>
-              {/* status / priority / milestone strip */}
-              <View style={styles.pillRow}>
-                <View style={[styles.statusPill, { backgroundColor: taskStatusTint(task.status, c) }]}>
-                  <Icon name={taskStatusIcon(task.status)} size={13} color={taskStatusColor(task.status, c)} />
-                  <Text style={[styles.statusPillText, { color: taskStatusColor(task.status, c) }]}>
-                    {taskStatusLabel(task.status, t)}
-                  </Text>
-                </View>
-                {task.task_type === 'milestone' ? (
-                  <View style={[styles.statusPill, { backgroundColor: c.warningTint }]}>
-                    <Icon name="diamond" size={12} color={c.warning} />
-                    <Text style={[styles.statusPillText, { color: c.warning }]}>{t('projects.milestone')}</Text>
-                  </View>
-                ) : null}
-                {isOverdue(task) ? (
-                  <View style={[styles.statusPill, { backgroundColor: c.dangerTint }]}>
-                    <Text style={[styles.statusPillText, { color: c.danger }]}>{t('projects.overdue')}</Text>
-                  </View>
-                ) : null}
-              </View>
-
-              {/* field grid */}
-              <View style={styles.fieldCard}>
-                <FieldRow label={t('projects.assignee')} value={task.assignee_nickname ?? t('projects.unassigned')} />
-                <FieldRow label={t('projects.priority')} value={priorityLabel(task.priority, t)} valueColor={priorityColor(task.priority, c)} />
-                <FieldRow label={t('projects.startDate')} value={task.start_date ? shortDate(task.start_date) : '—'} />
-                <FieldRow
-                  label={t('projects.dueDate')}
-                  value={task.due_date ? shortDate(task.due_date) : '—'}
-                  valueColor={isOverdue(task) ? c.danger : undefined}
-                />
-                {task.estimated_hours != null ? <FieldRow label={t('projects.estimatedHours')} value={`${task.estimated_hours}h`} /> : null}
-                {tags.length > 0 ? <FieldRow label={t('projects.tags')} value={tags.join(' · ')} /> : null}
-              </View>
-
-              {/* description */}
-              {task.description ? (
-                <View>
-                  <Text style={styles.sectionTitle}>{t('projects.description')}</Text>
-                  <View style={styles.descCard}>
-                    <Markdown source={task.description} />
-                  </View>
-                </View>
-              ) : null}
-
-              {/* dependencies */}
-              {depTitles.length > 0 ? (
-                <View>
-                  <Text style={styles.sectionTitle}>{t('projects.dependencies')}</Text>
-                  <View style={styles.depWrap}>
-                    {depTitles.map((title, i) => (
-                      <View key={i} style={styles.depChip}>
-                        <Text numberOfLines={1} style={styles.depChipText}>
-                          {title}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              ) : null}
-
-              {/* subtasks */}
-              {task.children?.length ? (
-                <View>
-                  <Text style={styles.sectionTitle}>
-                    {t('projects.subtasks')} ({task.children.length})
-                  </Text>
-                  {task.children.map((child) => (
-                    <Touchable
-                      key={child.id}
-                      haptic="none"
-                      pressedStyle={{ opacity: 0.7 }}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/projects/task/[taskId]',
-                          params: { taskId: String(child.id), projectId: String(projectId), title: child.title },
-                        })
-                      }
-                      style={styles.subtaskRow}
-                    >
-                      <Icon name={taskStatusIcon(child.status)} size={14} color={taskStatusColor(child.status, c)} />
-                      <Text numberOfLines={1} style={[styles.subtaskText, child.status === 'done' && styles.subtaskDone]}>
-                        {child.title}
-                      </Text>
-                      <Icon name="chevR" size={14} color={c.fgFaint} />
-                    </Touchable>
-                  ))}
-                </View>
-              ) : null}
-
-              <Text style={styles.sectionTitle}>
-                {t('projects.comments')}
-                {comments && comments.length > 0 ? ` (${comments.length})` : ''}
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: (showComposer ? 76 : space.xxl) + insets.bottom }}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+      >
+        {/* ── header ── */}
+        <View style={styles.head}>
+          <Text
+            selectable
+            accessibilityRole="header"
+            onLayout={(e) => {
+              // the header block is the first thing in the scroll content
+              titleBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height;
+            }}
+            style={[styles.title, task.status === 'cancelled' && styles.titleCancelled]}
+          >
+            {task.title}
+          </Text>
+          <View style={styles.pills}>
+            <Badge icon={taskStatusIcon(task.status)} label={taskStatusLabel(task.status, t)} tone={taskStatusTone(task.status)} />
+            {isMilestone(task) ? <Badge icon="diamondFill" label={t('projects.milestone')} tone="orange" /> : null}
+            {overdue ? <Badge icon="alert" label={t('projects.overdue')} tone="red" /> : null}
+          </View>
+          {detail ? (
+            <View style={styles.projectLine}>
+              <View style={[styles.projectDot, { backgroundColor: projectColor(detail.project.color, hex) }]} />
+              <Text numberOfLines={1} style={styles.projectName}>
+                {detail.project.title}
               </Text>
             </View>
-          }
-          renderItem={({ item }) => (
-            <Touchable
-              haptic="none"
-              onLongPress={me && item.user_id === me.id ? () => removeComment(item) : undefined}
-              pressedStyle={{}}
-              style={styles.commentRow}
-            >
-              <UserAvatar size={28} label={(item.user_nickname ?? item.user_id).slice(0, 1)} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <View style={styles.commentHead}>
-                  <Text style={styles.commentAuthor}>{item.user_nickname ?? item.user_id}</Text>
-                  <Text style={styles.commentTime}>{relativeTime(item.created_at)}</Text>
-                </View>
-                <Text style={styles.commentBody}>{item.content}</Text>
-              </View>
-            </Touchable>
-          )}
-        />
-      )}
-
-      {/* comment composer */}
-      {task ? (
-        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-          <View style={{ flex: 1 }}>
-            <Field placeholder={t('projects.commentPlaceholder')} value={comment} onChangeText={setComment} multiline style={{ maxHeight: 90 }} />
-          </View>
-          <Touchable
-            haptic="light"
-            accessibilityLabel={t('projects.comments')}
-            onPress={() => void send()}
-            disabled={sending || !comment.trim()}
-            style={[styles.sendBtn, (!comment.trim() || sending) && { opacity: 0.4 }]}
-          >
-            <Icon name="up" size={20} color={c.onAccent} sw={2.4} />
-          </Touchable>
+          ) : null}
         </View>
-      ) : null}
 
-      {task ? (
-        <>
-          <TaskActionsHost
-            task={actionsOpen ? task : null}
-            onClose={() => setActionsOpen(false)}
-            onChanged={() => void load()}
-            onEdit={() => setEditOpen(true)}
-            onAddSubtask={() => setSubtaskFormOpen(true)}
-            showView={false}
+        {/* ── details ── */}
+        <ListSection>
+          <MenuRow
+            enabled={access.canWrite}
+            items={statusItems}
+            onSelect={(s) => void actions.setStatus(task, s as ProjectTask['status'])}
+            title={t('projects.status')}
+            icon={taskStatusIcon(task.status)}
+            iconTint={taskStatusColor(task.status, c)}
+            value={taskStatusLabel(task.status, t)}
           />
-          <TaskFormSheet
-            visible={editOpen}
-            onClose={() => setEditOpen(false)}
-            projectId={projectId}
-            task={task}
-            users={users}
-            onSaved={() => void load()}
+          <MenuRow
+            enabled={access.canWrite}
+            items={priorityItems}
+            onSelect={(p) => void patch({ priority: p as Priority }, { priority: p as Priority })}
+            title={t('projects.priority')}
+            icon="flagFill"
+            iconTint={priorityColor(task.priority, c)}
+            value={priorityLabel(task.priority, t)}
           />
-          <TaskFormSheet
-            visible={subtaskFormOpen}
-            onClose={() => setSubtaskFormOpen(false)}
-            projectId={projectId}
-            parentId={task.id}
-            users={users}
-            onSaved={() => void load()}
+          <MenuRow
+            enabled={access.canWrite}
+            items={assigneeItems}
+            onSelect={(id) => {
+              const nick = users.find((u) => u.id === id)?.nickname ?? null;
+              void patch({ assignee_id: id || null }, { assignee_id: id || null, assignee_nickname: id ? nick : null });
+            }}
+            title={t('projects.assignee')}
+            icon="person2"
+            iconTint={c.indigo}
+            value={task.assignee_nickname ?? t('projects.unassigned')}
           />
-        </>
+          <ListRow
+            title={t('projects.startDate')}
+            icon="calendar"
+            iconTint={c.blue}
+            value={task.start_date ? formatDay(task.start_date, lang) : t('projects.noDate')}
+            accessory={access.canWrite ? 'chevron' : 'none'}
+            onPress={access.canWrite ? () => actions.edit(task) : undefined}
+          />
+          <ListRow
+            title={t('projects.dueDate')}
+            icon="calendar"
+            iconTint={overdue ? c.red : c.orange}
+            value={task.due_date ? formatDay(task.due_date, lang) : t('projects.noDate')}
+            accessory={access.canWrite ? 'chevron' : 'none'}
+            onPress={access.canWrite ? () => actions.edit(task) : undefined}
+          />
+          {related.parent ? (
+            <ListRow
+              title={t('projects.parentTask')}
+              icon="subtask"
+              iconTint={c.gray}
+              value={related.parent.title}
+              accessory="chevron"
+              onPress={() => actions.open(related.parent!)}
+            />
+          ) : null}
+          {task.estimated_hours != null ? (
+            <ListRow title={t('projects.estimatedHours')} icon="hourglass" iconTint={c.purple} value={`${task.estimated_hours} h`} />
+          ) : null}
+          {tags.length > 0 ? <ListRow title={t('projects.tags')} icon="tag" iconTint={c.blue} value={tags.join(' · ')} /> : null}
+        </ListSection>
+
+        {related.deps.length > 0 ? (
+          <ListSection header={t('projects.dependencies')}>
+            {related.deps.map((dep) => (
+              <ListRow
+                key={dep.id}
+                title={dep.title}
+                leading={<TaskStatusButton task={dep} size={22} />}
+                accessory="chevron"
+                onPress={() => actions.open(dep)}
+              />
+            ))}
+          </ListSection>
+        ) : null}
+
+        {task.description ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionHeader}>{t('projects.description')}</Text>
+            <View style={styles.card}>
+              <Markdown source={task.description} />
+            </View>
+          </View>
+        ) : null}
+
+        {kids.length > 0 || access.canWrite ? (
+          <ListSection header={kids.length ? `${t('projects.subtasks')} · ${kids.filter((k) => k.status === 'done').length}/${kids.length}` : t('projects.subtasks')}>
+            {kids.map((child) => (
+              <ListRow
+                key={child.id}
+                title={child.title}
+                leading={
+                  <TaskStatusButton
+                    task={child}
+                    size={22}
+                    onToggle={access.canWrite ? () => void actions.setStatus(child, child.status === 'done' ? 'todo' : 'done') : undefined}
+                  />
+                }
+                accessory="chevron"
+                onPress={() => actions.open(child)}
+              />
+            ))}
+            {access.canWrite ? (
+              <ListRow
+                title={t('projects.newSubtask')}
+                leading={<Icon name="plusCircle" size={22} color={c.accent} />}
+                onPress={() =>
+                  router.push({ pathname: '/projects/task-form', params: { projectId: pid, parentId: String(task.id) } })
+                }
+              />
+            ) : null}
+          </ListSection>
+        ) : null}
+
+        {/* ── comments ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>
+            {t('projects.comments')}
+            {comments && comments.length > 0 ? ` · ${comments.length}` : ''}
+          </Text>
+          {comments === null ? (
+            <LoadingState style={styles.commentsLoading} />
+          ) : comments.length === 0 && commentsFailed ? (
+            <EmptyState icon="comment" title={t('projects.commentsFailed')} onRetry={loadComments} style={styles.commentsFailed} />
+          ) : comments.length === 0 ? (
+            <Text style={styles.noComments}>{t('projects.noComments')}</Text>
+          ) : (
+            <View style={styles.card}>
+              {comments.map((cm, i) => (
+                <CommentRow
+                  key={cm.id}
+                  comment={cm}
+                  last={i === comments.length - 1}
+                  items={menuSections([
+                    [{ id: 'copy', title: t('projects.copyComment'), icon: 'copy' }],
+                    canDeleteComment(cm) ? [{ id: 'delete', title: t('common.delete'), icon: 'trash', destructive: true }] : [],
+                  ])}
+                  onSelect={(id) => void onCommentMenu(cm, id)}
+                />
+              ))}
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      {showComposer ? (
+        <Animated.View style={[styles.composerWrap, { paddingBottom: insets.bottom + space.sm }, composerStyle]}>
+          <GlassGroup spacing={10} style={styles.composerRow}>
+            <Glass style={styles.inputGlass}>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                placeholder={t('projects.commentPlaceholder')}
+                placeholderTextColor={c.placeholder}
+                multiline
+                style={styles.input}
+              />
+            </Glass>
+            <GlassIconButton
+              icon="up"
+              prominent
+              size={40}
+              disabled={!draft.trim() || sending}
+              onPress={() => void send()}
+              accessibilityLabel={t('projects.sendComment')}
+            />
+          </GlassGroup>
+        </Animated.View>
       ) : null}
-    </Animated.View>
+    </>
   );
 }
 
-function FieldRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+// ─── Pieces ──────────────────────────────────────────────
+
+/** A details row whose value is a pop-up menu (Settings / Reminders style). */
+function MenuRow({
+  enabled,
+  items,
+  onSelect,
+  last,
+  ...row
+}: Omit<ListRowProps, 'accessory' | 'onPress'> & { enabled: boolean; items: MenuItem[]; onSelect: (id: string) => void }) {
+  const { colors: c } = useTheme();
+  if (!enabled) return <ListRow {...row} last={last} />;
+  return (
+    <NativeMenu trigger="tap" fill items={items} onSelect={onSelect}>
+      <ListRow {...row} last={last} accessory={<Icon name="chevUpDown" size={13} weight="semibold" color={c.tertiaryLabel} />} />
+    </NativeMenu>
+  );
+}
+
+function CommentRow({
+  comment,
+  last,
+  items,
+  onSelect,
+}: {
+  comment: TaskComment;
+  last: boolean;
+  items: MenuItem[];
+  onSelect: (id: string) => void;
+}) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const name = comment.user_nickname ?? comment.user_id;
   return (
-    <View style={styles.fieldRow}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <Text numberOfLines={1} style={[styles.fieldValue, valueColor ? { color: valueColor } : null]}>
-        {value}
-      </Text>
-    </View>
+    <NativeMenu trigger="longPress" items={items} onSelect={onSelect}>
+      <View style={styles.comment}>
+        <InitialAvatar name={name} size={30} tint={c.gray} />
+        <View style={styles.commentBody}>
+          <View style={styles.commentHead}>
+            <Text numberOfLines={1} style={styles.commentAuthor}>
+              {name}
+            </Text>
+            <Text style={styles.commentTime}>{relativeTime(comment.created_at)}</Text>
+          </View>
+          <Text style={styles.commentText}>{comment.content}</Text>
+        </View>
+        {!last ? <View pointerEvents="none" style={styles.commentSep} /> : null}
+      </View>
+    </NativeMenu>
   );
 }
 
 const useStyles = makeStyles((c) => ({
-  root: { flex: 1, backgroundColor: c.bg },
-  headerBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  head: { paddingHorizontal: space.margin + space.xs, paddingTop: space.sm, paddingBottom: space.xl, gap: space.sm + 2 },
+  title: { ...typo.title1, color: c.label },
+  titleCancelled: { textDecorationLine: 'line-through', color: c.secondaryLabel },
+  pills: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  projectLine: { flexDirection: 'row', alignItems: 'center', gap: space.sm - 2 },
+  projectDot: { width: 9, height: 9, borderRadius: 5 },
+  projectName: { ...typo.subheadline, color: c.secondaryLabel, flexShrink: 1 },
 
-  pillRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radius.full,
+  section: { marginHorizontal: space.margin, marginBottom: space.xxl },
+  sectionHeader: {
+    ...typo.footnote,
+    color: c.secondaryLabel,
+    textTransform: 'uppercase',
+    paddingHorizontal: space.margin,
+    paddingBottom: space.sm - 2,
   },
-  statusPillText: { fontSize: font.caption, fontWeight: weight.semibold },
+  card: {
+    backgroundColor: c.secondaryGroupedBackground,
+    borderRadius: radius.group,
+    ...squircle,
+    paddingHorizontal: space.margin,
+    paddingVertical: space.xs,
+    overflow: 'hidden',
+  },
+  noComments: { ...typo.subheadline, color: c.tertiaryLabel, paddingHorizontal: space.margin },
+  commentsLoading: { flexGrow: 0, paddingVertical: space.lg },
+  commentsFailed: { paddingVertical: space.sm },
 
-  fieldCard: {
-    backgroundColor: c.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: c.hairline,
-    paddingHorizontal: 14,
-  },
-  fieldRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingVertical: 11,
-    borderBottomWidth: 1,
-    borderBottomColor: c.hairline,
-  },
-  fieldLabel: { fontSize: font.small, color: c.fgMuted },
-  fieldValue: { flex: 1, textAlign: 'right', fontSize: font.small, color: c.fg, fontWeight: weight.medium },
-
-  sectionTitle: { fontSize: font.small, fontWeight: weight.semibold, color: c.fgMuted, marginBottom: 8 },
-  descCard: {
-    backgroundColor: c.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: c.hairline,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
+  comment: { flexDirection: 'row', gap: space.md, paddingVertical: space.md, minHeight: HIT },
+  commentBody: { flex: 1, minWidth: 0, gap: 2 },
+  commentHead: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm },
+  commentAuthor: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label, flexShrink: 1 },
+  commentTime: { ...typo.footnote, color: c.tertiaryLabel },
+  commentText: { ...typo.body, color: c.label },
+  commentSep: {
+    position: 'absolute',
+    right: -space.margin,
+    bottom: 0,
+    left: 30 + space.md,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: c.separator,
   },
 
-  depWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  depChip: {
-    maxWidth: '100%',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radius.full,
-    backgroundColor: c.surfaceMuted,
-  },
-  depChipText: { fontSize: font.caption, color: c.fgSecondary },
-
-  subtaskRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    backgroundColor: c.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: c.hairline,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    marginBottom: 6,
-  },
-  subtaskText: { flex: 1, fontSize: font.label, color: c.fg },
-  subtaskDone: { textDecorationLine: 'line-through', color: c.fgFaint },
-
-  commentRow: { flexDirection: 'row', gap: 10, paddingVertical: 9 },
-  commentHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  commentAuthor: { fontSize: font.small, fontWeight: weight.semibold, color: c.fg },
-  commentTime: { fontSize: font.caption, color: c.fgFaint },
-  commentBody: { fontSize: font.label, color: c.fgSecondary, marginTop: 3, lineHeight: 20 },
-
-  composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: c.hairline,
-    backgroundColor: c.bg,
-  },
-  sendBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: c.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
+  composerWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: space.md },
+  composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
+  inputGlass: { flex: 1, borderRadius: 22, minHeight: 44, justifyContent: 'center' },
+  input: {
+    ...typo.body,
+    color: c.label,
+    paddingHorizontal: space.lg,
+    paddingTop: 11,
+    paddingBottom: 11,
+    maxHeight: 120,
   },
 }));

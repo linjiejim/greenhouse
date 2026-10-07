@@ -1,140 +1,159 @@
 /**
- * Knowledge doc detail — renders content_markdown through the chat markdown
- * renderer. Header actions: edit (own/editor docs → the native editor screen)
- * and version history (sheet with restore). Refetches on focus so returning
- * from the editor always shows the saved content.
+ * Knowledge doc detail — a pushed page with an inline navigation bar. The
+ * document title is set large at the top of the content and slides into the
+ * (glass) navigation bar only once it has scrolled under it, like Apple's
+ * document views. Below it: the meta line, tags and the Markdown body
+ * (src/knowledge/doc-body.tsx, shared with the bottom-sheet peek).
+ *
+ * Toolbar (right): ✏️ 编辑 (owners / editors → the editor modal) and a `…`
+ * menu with 修改历史 (history sheet) and 分享 (system share sheet: title +
+ * Markdown); both sub-routes get the slug + the authoritative id. Refetches on
+ * every focus so saved edits and restored versions show up on return. Accepts
+ * `?id=` (authoritative, from entity links / the peek) and an optional
+ * `?title=` to paint the heading while loading (the spinner then sits under
+ * it; without a title the spinner is centered). Missing / failed states are
+ * centered `EmptyState`s (failed → 重试).
  */
 
-import React, { useCallback, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useRef, useState } from 'react';
+import { ScrollView, Share, Text, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useHeaderInset } from '../../src/ui/header-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { canEditDoc, getDoc, docTags, type KnowledgeDoc } from '../../src/api/knowledge';
-import { KnowledgeVersionsSheet } from '../../src/knowledge/versions-sheet';
-import { Markdown } from '../../src/chat/markdown';
-import { relativeTime } from '../../src/lib/format';
+import { canEditDoc, resolveDoc, type DocMiss, type KnowledgeDoc } from '../../src/api/knowledge';
+import { DocBody, withoutTitleHeading } from '../../src/knowledge/doc-body';
 import { useT } from '../../src/lib/i18n';
-import { EmptyState, Icon, ScreenHeader, Skeleton, Touchable } from '../../src/ui';
-import { font, makeStyles, radius, useTheme } from '../../src/theme';
+import { makeStyles, space, typo, useTheme } from '../../src/theme';
+import { EmptyState, LoadingState } from '../../src/ui/empty';
+import { toolbarIcon } from '../../src/ui/toolbar-icon';
 
 export default function KnowledgeDetail() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
-  const params = useLocalSearchParams<{ slug: string; title?: string }>();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const [doc, setDoc] = useState<KnowledgeDoc | null | 'missing'>(null);
-  const [versionsOpen, setVersionsOpen] = useState(false);
+  const params = useLocalSearchParams<{ slug: string; id?: string; title?: string }>();
+  const headerHeight = useHeaderInset();
+  const { bottom: bottomInset } = useSafeAreaInsets();
+  const [doc, setDoc] = useState<KnowledgeDoc | DocMiss | null>(null);
 
-  // Refetch on every focus — the editor and version restore both change the doc.
-  useFocusEffect(
-    useCallback(() => {
-      let alive = true;
-      (async () => {
-        const d = await getDoc(String(params.slug));
-        if (alive) setDoc(d ?? 'missing');
-      })();
-      return () => {
-        alive = false;
-      };
-    }, [params.slug]),
+  // Refetch on every focus — the editor and version restore both change the
+  // doc. A failed refetch keeps what is already on screen; a doc that is gone
+  // (deleted / access revoked) switches to the missing state.
+  const load = useCallback(() => {
+    let alive = true;
+    void resolveDoc({ slug: params.slug, id: params.id }).then((d) => {
+      if (alive) setDoc((prev) => (d === 'failed' && prev && typeof prev !== 'string' ? prev : d));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [params.slug, params.id]);
+  useFocusEffect(load);
+
+  const retry = useCallback(() => {
+    setDoc(null);
+    load();
+  }, [load]);
+
+  // Nav-bar title appears once the content heading has scrolled under the bar.
+  const titleBottom = useRef(0);
+  const [navTitle, setNavTitle] = useState(false);
+  const navTitleRef = useRef(false);
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const under = e.nativeEvent.contentOffset.y + headerHeight > titleBottom.current;
+      if (under !== navTitleRef.current) {
+        navTitleRef.current = under;
+        setNavTitle(under);
+      }
+    },
+    [headerHeight],
   );
 
-  const loaded = doc !== null && doc !== 'missing' ? doc : null;
-  const title = loaded ? loaded.title : params.title ? String(params.title) : t('knowledge.doc');
+  const loaded = doc !== null && typeof doc !== 'string' ? doc : null;
+  const heading = loaded?.title ?? (doc === null && params.title ? String(params.title) : '');
   const editable = !!loaded && canEditDoc(loaded);
+  // Nothing but a state to show (no heading yet) → center it in the page: the
+  // content grows to the scroll view's frame, minus the bar insets the scroll
+  // view adds above and below (else the center lands that much too low).
+  const centered = doc === 'missing' || doc === 'failed' || (doc === null && !heading);
 
-  const scopeLabel = loaded
-    ? loaded.visibility === 'team'
-      ? t('knowledge.scopeTeam')
-      : loaded.access === 'owner'
-        ? t('knowledge.scopeMine')
-        : t('knowledge.scopeShared')
-    : '';
+  const share = useCallback(() => {
+    if (!loaded) return;
+    // The body usually opens with the same `# Title` heading — don't repeat it.
+    const body = withoutTitleHeading(loaded.content_markdown || loaded.summary || '', loaded.title);
+    void Share.share({ title: loaded.title, message: `# ${loaded.title}\n\n${body.trim()}`.trim() }).catch(() => {});
+  }, [loaded]);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 2 }]}>
-      <ScreenHeader
-        variant="compact"
-        align="left"
-        title={title}
-        onLeading={() => router.back()}
-        right={
-          loaded ? (
-            <View style={styles.headerActions}>
-              {editable ? (
-                <Touchable
-                  haptic="none"
-                  accessibilityLabel={t('knowledge.edit')}
-                  onPress={() => router.push({ pathname: '/knowledge/edit', params: { slug: loaded.slug } })}
-                  style={styles.headerBtn}
-                >
-                  <Icon name="pen" size={16} color={c.fgMuted} />
-                </Touchable>
-              ) : null}
-              <Touchable
-                haptic="none"
-                accessibilityLabel={t('knowledge.history')}
-                onPress={() => setVersionsOpen(true)}
-                style={styles.headerBtn}
-              >
-                <Icon name="clock" size={16} color={c.fgMuted} />
-              </Touchable>
-            </View>
-          ) : undefined
-        }
-      />
-
-      {doc === null ? (
-        <View style={{ paddingHorizontal: 16, gap: 12, paddingTop: 8 }}>
-          <Skeleton style={{ height: 28, width: '70%', borderRadius: 8 }} />
-          <Skeleton style={{ height: 16, borderRadius: 8 }} />
-          <Skeleton style={{ height: 16, borderRadius: 8 }} />
-          <Skeleton style={{ height: 16, width: '85%', borderRadius: 8 }} />
-        </View>
-      ) : doc === 'missing' ? (
-        <EmptyState icon="book" title={t('knowledge.missing')} sub={t('knowledge.missingHint')} />
-      ) : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 32 }} showsVerticalScrollIndicator={false}>
-          <Text style={styles.docTitle}>{doc.title}</Text>
-          <Text style={styles.metaLine}>
-            {[scopeLabel, doc.space, relativeTime(doc.updated_at)].filter(Boolean).join(' · ')}
-          </Text>
-          {docTags(doc).length > 0 && (
-            <View style={styles.tagRow}>
-              {docTags(doc).map((tag) => (
-                <View key={tag} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-          <Markdown source={doc.content_markdown || doc.summary || ''} />
-        </ScrollView>
-      )}
-
+    <>
+      <Stack.Screen options={{ title: navTitle && loaded ? loaded.title : '' }} />
       {loaded ? (
-        <KnowledgeVersionsSheet
-          doc={loaded}
-          canRestore={editable}
-          visible={versionsOpen}
-          onClose={() => setVersionsOpen(false)}
-          onRestored={setDoc}
-        />
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon={toolbarIcon('pen')}
+            hidden={!editable}
+            accessibilityLabel={t('knowledge.edit')}
+            onPress={() =>
+              router.push({ pathname: '/knowledge/edit', params: { slug: loaded.slug, id: String(loaded.id) } })
+            }
+          />
+          <Stack.Toolbar.Menu icon={toolbarIcon('more')} accessibilityLabel={t('common.more')}>
+            <Stack.Toolbar.MenuAction
+              icon={toolbarIcon('activity')}
+              onPress={() =>
+                router.push({ pathname: '/knowledge/versions', params: { slug: loaded.slug, id: String(loaded.id) } })
+              }
+            >
+              {t('knowledge.history')}
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('share')} onPress={share}>
+              {t('knowledge.share')}
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
+        </Stack.Toolbar>
       ) : null}
-    </View>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={[
+          styles.content,
+          centered && { flexGrow: 1, justifyContent: 'center', paddingBottom: headerHeight + bottomInset },
+        ]}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+      >
+        {doc === 'missing' ? (
+          <EmptyState icon="book" title={t('knowledge.missing')} message={t('knowledge.missingHint')} />
+        ) : doc === 'failed' ? (
+          <EmptyState
+            icon="alert"
+            title={t('knowledge.docFailed')}
+            message={t('knowledge.loadFailedHint')}
+            onRetry={retry}
+          />
+        ) : (
+          <>
+            {heading ? (
+              <Text
+                style={styles.title}
+                accessibilityRole="header"
+                onLayout={(e) => {
+                  titleBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height;
+                }}
+              >
+                {heading}
+              </Text>
+            ) : null}
+            {loaded ? <DocBody doc={loaded} /> : <LoadingState />}
+          </>
+        )}
+      </ScrollView>
+    </>
   );
 }
 
 const useStyles = makeStyles((c) => ({
-  root: { flex: 1, backgroundColor: c.bg },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 8 },
-  headerBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: c.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
-
-  docTitle: { fontSize: font.large, fontWeight: '700', color: c.fg, lineHeight: 32, marginTop: 6, marginBottom: 4 },
-  metaLine: { fontSize: font.caption, color: c.fgFaint, marginBottom: 10 },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 },
-  tag: { backgroundColor: c.accentTint, borderRadius: radius.full, paddingVertical: 3, paddingHorizontal: 10 },
-  tagText: { fontSize: font.caption, color: c.accentDeep, fontWeight: '600' },
+  content: { paddingHorizontal: space.margin, paddingTop: space.sm, paddingBottom: space.xxxl * 2 },
+  title: { ...typo.title1, color: c.label, marginBottom: space.sm },
 }));

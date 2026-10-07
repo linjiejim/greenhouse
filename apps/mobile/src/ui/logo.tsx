@@ -29,10 +29,12 @@ function markSvg(color: string): string {
 
 /** Greenhouse brand mark (house + sprout), accent-tinted. */
 export function GreenhouseMark({ size = 72, color }: { size?: number; color?: string }) {
-  const { colors: c } = useTheme();
+  // SVG markup needs a real color string — use the hex mirror, not the
+  // PlatformColor palette.
+  const { hex } = useTheme();
   return (
     <View style={{ width: size, height: size }}>
-      <SvgXml xml={markSvg(color ?? c.accent)} width="100%" height="100%" />
+      <SvgXml xml={markSvg(color ?? hex.accent)} width="100%" height="100%" />
     </View>
   );
 }

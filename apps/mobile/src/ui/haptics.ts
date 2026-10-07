@@ -1,8 +1,8 @@
 /**
- * Thin wrappers over expo-haptics. Used for the "physical" feel the PRD calls
- * for: light impact on send / tab / long-press, selection tick on toggles,
- * success notification on task completion. All calls are best-effort and never
- * throw (haptics are unavailable on some devices / the simulator).
+ * Thin wrappers over expo-haptics for *custom* controls (native controls
+ * bring their own): light impact on send, medium on long-press, selection
+ * tick on picks / toggles. Best-effort, never throw (haptics are unavailable
+ * on some devices and the simulator).
  */
 
 import * as Haptics from 'expo-haptics';
@@ -17,8 +17,4 @@ export function tapMedium(): void {
 
 export function selectionTick(): void {
   Haptics.selectionAsync().catch(() => {});
-}
-
-export function notifySuccess(): void {
-  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 }

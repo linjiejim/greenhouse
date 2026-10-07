@@ -1,5 +1,7 @@
 /**
- * Formatting helpers + friendly label/icon maps shared across screens.
+ * Formatting helpers + friendly (localized) label/icon maps shared across
+ * screens: timestamps (Hermes-safe parsing), greetings, tool and source-category
+ * names, compact numbers.
  */
 
 import type { IconName } from '../ui/core';
@@ -36,24 +38,6 @@ export function relativeTime(iso?: string | null): string {
   return new Date(d).toLocaleDateString();
 }
 
-/** Compact relative time, mirrors web (`3m` / `2h` / `5d` / `3mo` / `1y`). */
-export function shortTime(iso?: string | null): string {
-  const then = parseMs(iso);
-  if (Number.isNaN(then)) return '';
-  const diff = Date.now() - then;
-  if (diff < 0) return 'now';
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'now';
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d`;
-  const mo = Math.floor(d / 30);
-  if (mo < 12) return `${mo}mo`;
-  return `${Math.floor(mo / 12)}y`;
-}
-
 /** Time-of-day greeting prefix. */
 export function greeting(): string {
   const h = new Date().getHours();
@@ -64,74 +48,92 @@ export function greeting(): string {
   return t('home.greetingEvening');
 }
 
-/** Friendly Chinese names for server tools (mirrors web TOOL_BRIEFS in @greenhouse/ui icons.ts). */
-export const TOOL_LABELS: Record<string, string> = {
-  search: '检索知识',
-  get_page: '查看文档',
-  update_page: '更新文档',
-  knowledge_query: '检索知识',
-  knowledge_mutation: '更新知识',
-  external_search: '联网搜索',
-  ask_user: '向你提问',
-  ecommerce: '查询电商数据',
-  analyze_image: '分析图片',
-  generate_image: '生成图片',
-  project_manager: '项目管理',
-  email_manager: '邮件',
-  feature_request: '需求反馈',
-  compute: '计算',
-};
+/** Server tools with a friendly name in the catalogs (`tools.*`, mirrors web TOOL_BRIEFS). */
+const TOOL_KEYS = [
+  'search',
+  'get_page',
+  'update_page',
+  'knowledge_query',
+  'knowledge_mutation',
+  'external_search',
+  'web_search',
+  'ask_user',
+  'ecommerce',
+  'analyze_image',
+  'generate_image',
+  'project_manager',
+  'email_manager',
+  'feature_request',
+  'compute',
+  'export_table',
+] as const;
+type ToolKey = (typeof TOOL_KEYS)[number];
+const isToolKey = (name: string): name is ToolKey => (TOOL_KEYS as readonly string[]).includes(name);
 
+/** Friendly, localized name for a server tool (falls back to the raw name). */
 export function toolLabel(name: string): string {
-  return TOOL_LABELS[name] ?? name;
+  return isToolKey(name) ? t(`tools.${name}`) : name;
 }
 
-/** Lucide icon per tool (best-effort, mirrors web TOOL_ICONS). */
-export const TOOL_ICONS: Record<string, IconName> = {
+/** SF-symbol per tool (best-effort, mirrors web TOOL_ICONS). */
+const TOOL_ICONS: Record<string, IconName> = {
   search: 'book',
   get_page: 'file',
-  update_page: 'file',
+  update_page: 'pen',
   knowledge_query: 'book',
-  knowledge_mutation: 'book',
+  knowledge_mutation: 'pen',
   external_search: 'globe',
-  ask_user: 'file',
+  web_search: 'globe',
+  ask_user: 'msg',
   ecommerce: 'bar',
   analyze_image: 'image',
   generate_image: 'image',
   project_manager: 'folder',
-  email_manager: 'file',
-  feature_request: 'file',
+  email_manager: 'msg',
+  feature_request: 'flag',
   compute: 'bar',
+  export_table: 'table',
 };
 
 export function toolIcon(name: string): IconName {
-  return TOOL_ICONS[name] ?? 'file';
+  return TOOL_ICONS[name] ?? 'wrench';
 }
 
-/** Source category → label / icon. */
-export const CAT_LABELS: Record<string, string> = {
-  wiki: '知识库',
-  doc: '文档',
-  data: '业务数据',
-  web: '网页',
-  source: '知识源',
-  team: '团队知识',
-  public: '对外资料',
-  personal: '个人知识',
-};
-export const CAT_ICONS: Record<string, IconName> = {
+/** Source category → localized label / icon (`sourceCat.*`). */
+const CAT_KEYS = ['wiki', 'doc', 'data', 'web', 'source', 'team', 'public', 'personal'] as const;
+type CatKey = (typeof CAT_KEYS)[number];
+const isCatKey = (cat: string): cat is CatKey => (CAT_KEYS as readonly string[]).includes(cat);
+
+const CAT_ICONS: Record<CatKey, IconName> = {
   wiki: 'book',
   doc: 'file',
   data: 'bar',
   web: 'globe',
   source: 'book',
-  team: 'book',
-  public: 'book',
-  personal: 'book',
+  team: 'users',
+  public: 'globe',
+  personal: 'lock',
 };
+
 export function catLabel(cat?: string): string {
-  return (cat && CAT_LABELS[cat]) || '资料';
+  return cat && isCatKey(cat) ? t(`sourceCat.${cat}`) : t('sourceCat.other');
 }
 export function catIcon(cat?: string): IconName {
-  return (cat && CAT_ICONS[cat]) || 'file';
+  return (cat && isCatKey(cat) && CAT_ICONS[cat]) || 'file';
+}
+
+/** Compact count: 1234 → "1.2k". */
+export function compactNumber(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 10_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+  if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
+  if (n < 10_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  return `${Math.round(n / 1_000_000)}M`;
+}
+
+/** File size: 512 → "512 B", 12_345 → "12.1 KB", 3_400_000 → "3.2 MB". */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1).replace(/\.0$/, '')} KB`;
+  return `${(n / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} MB`;
 }

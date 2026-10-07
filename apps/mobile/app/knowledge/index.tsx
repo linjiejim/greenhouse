@@ -1,160 +1,238 @@
 /**
- * Knowledge list — browse the knowledge base. Header with back + title, a
- * search field (debounced server-side search), scope tabs (all / team /
- * personal / shared-with-me → the API's `visibility` filter), and a FlatList
- * of doc rows (title, summary, space + updated time, per-scope icon).
+ * Knowledge list (知识库) — a pushed page with a collapsing large title and the
+ * system search bar in its default iOS 26 place (the bottom toolbar, same as
+ * 项目; server-side search, debounced). The
+ * scope filter (全部 / 团队 / 个人 / 共享 → the API's `?visibility=`) is a
+ * native segmented control at the top of the list content.
+ *
+ * Rows are Mail/Notes-style (src/knowledge/doc-row.tsx); tap opens the doc,
+ * long-press opens its system context menu: 打开 · 预览 (bottom-sheet peek) ·
+ * 编辑 (editors only) · 修改历史 — the two menus are built once, and rows are
+ * full-width so the menu gets the window width up front. Every route gets the
+ * slug + the authoritative id. Pull to refresh; the list also refetches
+ * silently on every focus so edits and restores made deeper in the stack show
+ * up on return. First load = `LoadingState`, a failed load = `EmptyState` with
+ * 重试 (a failed silent refetch keeps the rows on screen). Creating documents
+ * stays web-only.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, RefreshControl, View, useWindowDimensions } from 'react-native';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { useHeaderInset } from '../../src/ui/header-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { listDocs, type KnowledgeDoc, type KnowledgeScope } from '../../src/api/knowledge';
-import { shortTime } from '../../src/lib/format';
+import { canEditDoc, listDocs, type KnowledgeDoc, type KnowledgeScope } from '../../src/api/knowledge';
+import { DocRow } from '../../src/knowledge/doc-row';
 import { useT } from '../../src/lib/i18n';
-import { EmptyState, Field, Icon, ScreenHeader, Segmented, Skeleton, Tile, Touchable, type IconName } from '../../src/ui';
-import { font, makeStyles, radius, useTheme } from '../../src/theme';
+import { makeStyles, space, useTheme } from '../../src/theme';
+import { EmptyState, LoadingState } from '../../src/ui/empty';
+import { NativeMenu, menuSections, type MenuItem } from '../../src/ui/menu';
+import { Segmented } from '../../src/ui/segmented';
+
+type DocAction = 'open' | 'preview' | 'edit' | 'history';
 
 export default function KnowledgeList() {
-  const { colors: c } = useTheme();
+  const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const headerHeight = useHeaderInset();
+  const { bottom: bottomInset } = useSafeAreaInsets();
+
   const [docs, setDocs] = useState<KnowledgeDoc[] | null>(null);
+  const [failed, setFailed] = useState(false);
   const [search, setSearch] = useState('');
   const [scope, setScope] = useState<KnowledgeScope>('all');
   const [refreshing, setRefreshing] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Guards against a slow response landing after the user switched scope/search.
-  const requestSeq = useRef(0);
 
-  const load = useCallback(async (q: string, s: KnowledgeScope) => {
-    const seq = ++requestSeq.current;
+  // The current query lives in a ref so focus refetches / debounced searches
+  // always read the latest values; `seq` drops responses that arrive late.
+  const query = useRef<{ search: string; scope: KnowledgeScope }>({ search: '', scope: 'all' });
+  const seq = useRef(0);
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const load = useCallback(async () => {
+    const mine = ++seq.current;
+    const { search: q, scope: s } = query.current;
     const rows = await listDocs({ search: q.trim() || undefined, scope: s });
-    if (seq === requestSeq.current) setDocs(rows);
+    if (mine !== seq.current) return;
+    if (rows) {
+      setDocs(rows);
+      setFailed(false);
+    } else {
+      setFailed(true);
+      setDocs((prev) => prev ?? []);
+    }
   }, []);
 
-  useEffect(() => {
-    load('', 'all');
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  useEffect(
+    () => () => {
+      if (debounce.current) clearTimeout(debounce.current);
+    },
+    [],
+  );
 
   const onSearch = useCallback(
-    (v: string) => {
-      setSearch(v);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => load(v, scope), 300);
+    (text: string) => {
+      setSearch(text);
+      query.current.search = text;
+      if (debounce.current) clearTimeout(debounce.current);
+      debounce.current = setTimeout(() => void load(), 300);
     },
-    [load, scope],
+    [load],
   );
 
   const onScope = useCallback(
     (s: KnowledgeScope) => {
+      if (s === query.current.scope) return;
       setScope(s);
+      query.current.scope = s;
       setDocs(null);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      load(search, s);
+      if (debounce.current) clearTimeout(debounce.current);
+      void load();
     },
-    [load, search],
+    [load],
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load(search, scope);
+    await load();
     setRefreshing(false);
-  }, [load, search, scope]);
+  }, [load]);
+
+  const retry = useCallback(() => {
+    setDocs(null);
+    setFailed(false);
+    void load();
+  }, [load]);
+
+  const onAction = useCallback(
+    (action: DocAction, doc: KnowledgeDoc) => {
+      const id = String(doc.id);
+      switch (action) {
+        case 'open':
+          router.push({ pathname: '/knowledge/[slug]', params: { slug: doc.slug, id, title: doc.title } });
+          return;
+        case 'preview':
+          router.push({ pathname: '/peek/doc/[slug]', params: { slug: doc.slug, id } });
+          return;
+        case 'edit':
+          router.push({ pathname: '/knowledge/edit', params: { slug: doc.slug, id } });
+          return;
+        case 'history':
+          router.push({ pathname: '/knowledge/versions', params: { slug: doc.slug, id } });
+          return;
+      }
+    },
+    [router],
+  );
+
+  // Two menus cover every row: with 编辑 (editors) and without (readers).
+  const menus = useMemo(() => {
+    const build = (editable: boolean): MenuItem[] =>
+      menuSections([
+        [
+          { id: 'open', title: t('common.open'), icon: 'file' },
+          { id: 'preview', title: t('knowledge.preview'), icon: 'eye' },
+        ],
+        [
+          ...(editable ? [{ id: 'edit', title: t('knowledge.edit'), icon: 'pen' } as const] : []),
+          { id: 'history', title: t('knowledge.history'), icon: 'activity' },
+        ],
+      ]);
+    return { editor: build(true), reader: build(false) };
+  }, [t]);
+
+  const searching = search.trim().length > 0;
+  const list = docs ?? [];
+
+  // Loading / failed / empty states fill the space under the scope control and
+  // center in it: while the list is empty the content container grows to the
+  // list's frame, minus the bar insets the scroll view adds above and below
+  // (otherwise the center lands that much too low). "No results" stays at the
+  // top, above the keyboard of the search being typed.
+  const empty =
+    docs === null ? (
+      <LoadingState />
+    ) : failed ? (
+      <EmptyState
+        icon="alert"
+        title={t('knowledge.loadFailed')}
+        message={t('knowledge.loadFailedHint')}
+        onRetry={retry}
+        style={styles.centered}
+      />
+    ) : searching ? (
+      <EmptyState icon="search" title={t('knowledge.emptySearch')} message={t('knowledge.emptySearchHint')} />
+    ) : (
+      <EmptyState
+        icon="books"
+        title={scope === 'all' ? t('knowledge.empty') : t('knowledge.emptyScope')}
+        message={scope === 'shared' ? t('knowledge.emptySharedHint') : t('knowledge.emptyHint')}
+        style={styles.centered}
+      />
+    );
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 2 }]}>
-      <ScreenHeader variant="large" title={t('knowledge.title')} onLeading={() => router.back()} />
-
-      <View style={{ paddingHorizontal: 16, paddingBottom: 10, gap: 10 }}>
-        <Field icon="search" placeholder={t('knowledge.searchPlaceholder')} value={search} onChangeText={onSearch} autoCapitalize="none" />
-        <Segmented<KnowledgeScope>
-          items={[
-            { id: 'all', label: t('knowledge.scopeAll') },
-            { id: 'team', label: t('knowledge.scopeTeam') },
-            { id: 'private', label: t('knowledge.scopeMine') },
-            { id: 'shared', label: t('knowledge.scopeShared') },
-          ]}
-          value={scope}
-          onChange={onScope}
-        />
-      </View>
-
-      {docs === null ? (
-        <View style={{ paddingHorizontal: 16, gap: 10 }}>
-          {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} style={{ height: 74, borderRadius: radius.lg }} />
-          ))}
-        </View>
-      ) : (
-        <FlatList
-          data={docs}
-          keyExtractor={(d) => String(d.id)}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24 }}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <EmptyState icon="book" title={search ? t('knowledge.emptySearch') : t('knowledge.empty')} sub={search ? t('knowledge.emptySearchHint') : t('knowledge.emptyHint')} />
-          }
-          renderItem={({ item }) => <DocRow doc={item} onPress={() => router.push({ pathname: '/knowledge/[slug]', params: { slug: item.slug, title: item.title } })} />}
-        />
-      )}
-    </View>
+    <>
+      <Stack.Screen options={{ title: t('knowledge.title') }} />
+      <Stack.SearchBar
+        placeholder={t('knowledge.searchPlaceholder')}
+        autoCapitalize="none"
+        tintColor={hex.accent}
+        onChangeText={(e) => onSearch(e.nativeEvent.text)}
+        onCancelButtonPress={() => onSearch('')}
+      />
+      <FlatList
+        data={list}
+        keyExtractor={(d) => String(d.id)}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[
+          styles.content,
+          list.length === 0 && { flexGrow: 1, paddingBottom: headerHeight + bottomInset },
+        ]}
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <Segmented<KnowledgeScope>
+              value={scope}
+              onChange={onScope}
+              options={[
+                { value: 'all', label: t('knowledge.scopeAll') },
+                { value: 'team', label: t('knowledge.scopeTeam') },
+                { value: 'private', label: t('knowledge.scopeMine') },
+                { value: 'shared', label: t('knowledge.scopeShared') },
+              ]}
+            />
+          </View>
+        }
+        ListEmptyComponent={empty}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={hex.accent} />}
+        renderItem={({ item, index }) => (
+          <NativeMenu
+            trigger="longPress"
+            width={windowWidth}
+            items={canEditDoc(item) ? menus.editor : menus.reader}
+            onSelect={(id) => onAction(id as DocAction, item)}
+          >
+            <DocRow doc={item} last={index === list.length - 1} onPress={() => onAction('open', item)} />
+          </NativeMenu>
+        )}
+      />
+    </>
   );
 }
 
-/** Team docs read as books; my private docs as locks; docs shared to me as shares. */
-function docScopeIcon(doc: KnowledgeDoc): IconName {
-  if (doc.visibility === 'team') return 'book';
-  return doc.access === 'owner' ? 'lock' : 'share';
-}
-
-function DocRow({ doc, onPress }: { doc: KnowledgeDoc; onPress: () => void }) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  const t = useT();
-  return (
-    <Touchable onPress={onPress} style={styles.row} pressedStyle={{ opacity: 0.7 }}>
-      <Tile icon={docScopeIcon(doc)} />
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={styles.rowTitle}>
-          {doc.title}
-        </Text>
-        {doc.summary ? (
-          <Text numberOfLines={1} style={styles.rowSummary}>
-            {doc.summary}
-          </Text>
-        ) : null}
-        <View style={styles.rowMeta}>
-          {doc.space ? <Text style={styles.rowMetaText}>{doc.space}</Text> : null}
-          {doc.access === 'reader' ? <Text style={styles.rowMetaText}>{t('knowledge.readOnly')}</Text> : null}
-          <Text style={styles.rowMetaText}>{shortTime(doc.updated_at)}</Text>
-        </View>
-      </View>
-      <Icon name="chevR" size={16} color={c.fgFaint} />
-    </Touchable>
-  );
-}
-
-const useStyles = makeStyles((c) => ({
-  root: { flex: 1, backgroundColor: c.bg },
-
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: c.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: c.hairline,
-    padding: 13,
-    marginBottom: 10,
-  },
-  rowTitle: { fontSize: font.body, fontWeight: '600', color: c.fg },
-  rowSummary: { fontSize: font.small, color: c.fgMuted, marginTop: 3, lineHeight: 18 },
-  rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 },
-  rowMetaText: { fontSize: font.caption, color: c.fgFaint },
+const useStyles = makeStyles(() => ({
+  content: { paddingBottom: space.xxxl },
+  centered: { flexGrow: 1, justifyContent: 'center' },
+  header: { paddingHorizontal: space.margin, paddingTop: space.xs, paddingBottom: space.md },
 }));

@@ -1,6 +1,14 @@
 /**
  * Project management — full read/write client for /api/projects
- * (mirrors the web pages/projects + project-detail API usage).
+ * (mirrors the web pages/projects + project-detail API usage; route contract
+ * in apps/api/src/routes/projects.ts). Mutations resolve to the saved row or
+ * null/false on any failure — callers surface a generic error. Reads resolve
+ * to `null` on failure (never a fake empty list), so screens can tell "none"
+ * from "couldn't load" and offer a retry.
+ *
+ * Permission note: PATCH /:id with `owner_id` or `visibility` needs *manage*
+ * rights (owner / creator / super) while other fields only need membership —
+ * send those two keys only when they actually changed.
  */
 
 import type {
@@ -15,6 +23,7 @@ import type {
   ProjectTask,
   ProjectVisibility,
   TaskComment,
+  TaskStatus,
 } from '../shared/greenhouse-types';
 import { api, apiJson } from './client';
 
@@ -26,9 +35,11 @@ export type {
   ProjectMember,
   ProjectStats,
   ProjectStatus,
+  ProjectMemberRole,
   ProjectTask,
   ProjectVisibility,
   TaskComment,
+  TaskStatus,
 };
 
 export interface ProjectDetail {
@@ -90,21 +101,32 @@ export async function listProjects(opts?: {
   search?: string;
   limit?: number;
   offset?: number;
-}): Promise<{ total: number; projects: Project[] }> {
+}): Promise<{ total: number; projects: Project[] } | null> {
   const q = new URLSearchParams();
   if (opts?.status) q.set('status', opts.status);
   if (opts?.priority) q.set('priority', opts.priority);
   if (opts?.search) q.set('search', opts.search);
   q.set('limit', String(opts?.limit ?? 50));
   q.set('offset', String(opts?.offset ?? 0));
-  return apiJson(`/api/projects?${q}`, { total: 0, projects: [] });
+  const data = await apiJson<{ total: number; projects: Project[] } | null>(`/api/projects?${q}`, null);
+  return data ? { total: data.total ?? 0, projects: data.projects ?? [] } : null;
 }
 
-export async function getProject(id: number): Promise<ProjectDetail | null> {
+/**
+ * One project's detail. A failure says whether it is *definitive* (403/404:
+ * deleted or no access — drop any cached copy) or transient (offline, 5xx —
+ * keep showing what we have).
+ */
+export type ProjectFetch = { ok: true; detail: ProjectDetail } | { ok: false; definitive: boolean };
+
+export async function getProject(id: number): Promise<ProjectFetch> {
   try {
-    return await jsonOrNull<ProjectDetail>(await api(`/api/projects/${id}`));
+    const res = await api(`/api/projects/${id}`);
+    const detail = await jsonOrNull<ProjectDetail>(res);
+    if (detail) return { ok: true, detail };
+    return { ok: false, definitive: res.status === 403 || res.status === 404 };
   } catch {
-    return null;
+    return { ok: false, definitive: false };
   }
 }
 
@@ -139,9 +161,9 @@ export async function deleteProject(id: number): Promise<boolean> {
 }
 
 /** All projects with task trees for the global gantt (archived excluded server-side). */
-export async function getGlobalGantt(): Promise<GanttProject[]> {
-  const data = await apiJson<{ projects: GanttProject[] }>('/api/projects/gantt', { projects: [] });
-  return data.projects ?? [];
+export async function getGlobalGantt(): Promise<GanttProject[] | null> {
+  const data = await apiJson<{ projects: GanttProject[] } | null>('/api/projects/gantt', null);
+  return data ? (data.projects ?? []) : null;
 }
 
 // ─── Tasks ───────────────────────────────────────────────
@@ -186,9 +208,9 @@ export async function deleteTask(taskId: number): Promise<boolean> {
 
 // ─── Comments ────────────────────────────────────────────
 
-export async function listComments(taskId: number): Promise<TaskComment[]> {
-  const data = await apiJson<{ comments: TaskComment[] }>(`/api/projects/tasks/${taskId}/comments`, { comments: [] });
-  return data.comments ?? [];
+export async function listComments(taskId: number): Promise<TaskComment[] | null> {
+  const data = await apiJson<{ comments: TaskComment[] } | null>(`/api/projects/tasks/${taskId}/comments`, null);
+  return data ? (data.comments ?? []) : null;
 }
 
 export async function addComment(taskId: number, content: string): Promise<TaskComment | null> {
@@ -216,15 +238,12 @@ export async function deleteComment(commentId: number): Promise<boolean> {
 
 // ─── Activities / users / members ────────────────────────
 
-export async function listActivities(projectId: number, limit = 30): Promise<ProjectActivity[]> {
-  const data = await apiJson<{ activities: ProjectActivity[] }>(
-    `/api/projects/${projectId}/activities?limit=${limit}`,
-    { activities: [] },
-  );
-  return data.activities ?? [];
+export async function listActivities(projectId: number, limit = 30): Promise<ProjectActivity[] | null> {
+  const data = await apiJson<{ activities: ProjectActivity[] } | null>(`/api/projects/${projectId}/activities?limit=${limit}`, null);
+  return data ? (data.activities ?? []) : null;
 }
 
-/** Active internal users for assignment / ownership / membership pickers. */
+/** Active internal users for assignment / ownership / membership pickers (`[]` on failure). */
 export async function listAssignableUsers(): Promise<AssignableUser[]> {
   const data = await apiJson<{ users: AssignableUser[] }>('/api/projects/meta/users', { users: [] });
   return data.users ?? [];
@@ -242,6 +261,20 @@ export async function addMember(projectId: number, userId: string, role?: Projec
     return data?.member ?? null;
   } catch {
     return null;
+  }
+}
+
+/** Promote / demote a member (owner ⇄ member). */
+export async function updateMemberRole(projectId: number, userId: string, role: ProjectMemberRole): Promise<boolean> {
+  try {
+    const res = await api(`/api/projects/${projectId}/members/${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 

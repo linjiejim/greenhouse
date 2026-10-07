@@ -1,153 +1,209 @@
 /**
- * Knowledge editor — a notes-style native editor for one doc: a borderless
- * title input over a full-bleed multiline Markdown source input (plain
- * TextInputs, so selection / autocorrect / scroll-to-caret are the OS's own).
- * Saving PUTs title + content_markdown (the server records the version and
- * re-derives the rich-editor JSON); closing with unsaved changes asks first.
+ * Knowledge editor — a page-sheet modal with its own native navigation bar
+ * (presentation declared in app/_layout.tsx). The bar is the shared
+ * `FormChrome`: ✕ 取消 (asks before discarding unsaved changes), ✓ 保存
+ * (accent "done" button, enabled only when there is a change and a title;
+ * both disabled while saving) — and swipe-to-dismiss is blocked while there
+ * are unsaved changes or a save is in flight, so an accidental swipe never
+ * loses edits (a clean editor swipes away like any sheet).
+ *
+ * The body is Notes-style: a borderless bold title over a hairline and the
+ * Markdown source in a growing multiline input, both plain system TextInputs
+ * (selection, autocorrect, dictation, undo are the OS's own). The keyboard-aware
+ * scroll view (react-native-keyboard-controller) keeps the caret above the
+ * keyboard while typing anywhere in a long document. The source input has no
+ * auto-capitalization / autocorrect (they rewrite Markdown syntax and code,
+ * and smart quotes follow autocorrect). ✓ puts the keyboard away and locks the
+ * inputs until the request settles.
+ *
+ * Saving PUTs title + content_markdown + `base_updated_at` (the `updated_at`
+ * loaded here) — the server records a version, re-derives the rich-editor JSON
+ * and flags a concurrent edit (`conflict`; the save still wins). Feedback
+ * (src/ui/dialogs.ts policy): saved → toast; failed → `alertError`, the editor
+ * stays open with the edits; saved-with-conflict → `alertError` too (see
+ * `save`). A doc the viewer can only read gets a no-permission state; a failed
+ * load offers 重试. Accepts `?slug=` and the authoritative `?id=`.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Text, TextInput, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Keyboard, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { canEditDoc, getDoc, updateDoc, type KnowledgeDoc } from '../../src/api/knowledge';
-import { useBottomPadStyle } from '../../src/lib/keyboard';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { canEditDoc, resolveDoc, updateDoc, type DocMiss, type KnowledgeDoc } from '../../src/api/knowledge';
 import { useT } from '../../src/lib/i18n';
-import { EmptyState, ScreenHeader, Skeleton, Spinner, Touchable } from '../../src/ui';
-import { font, makeStyles, useTheme, weight } from '../../src/theme';
+import { makeStyles, space, typo, useTheme } from '../../src/theme';
+import { alertError } from '../../src/ui/dialogs';
+import { EmptyState, LoadingState } from '../../src/ui/empty';
+import { FormChrome } from '../../src/ui/sheet-chrome';
+import { toast } from '../../src/ui/toast';
 
 export default function KnowledgeEdit() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
-  const params = useLocalSearchParams<{ slug: string }>();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const rootPad = useBottomPadStyle(insets.bottom);
+  const { slug, id } = useLocalSearchParams<{ slug: string; id?: string }>();
+  const { height: windowHeight } = useWindowDimensions();
+  const bodyRef = useRef<TextInput>(null);
 
-  const [doc, setDoc] = useState<KnowledgeDoc | null | 'missing'>(null);
+  const [doc, setDoc] = useState<KnowledgeDoc | DocMiss | 'readOnly' | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
+  // ✕ and swipe-to-dismiss are off while saving (FormChrome), but the screen
+  // can still be torn down underneath (sign-out, station switch) — never pop
+  // whatever is below then.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const d = await getDoc(String(params.slug));
+    void resolveDoc({ slug, id }).then((d) => {
       if (!alive) return;
-      if (!d || !canEditDoc(d)) {
-        setDoc('missing');
+      if (typeof d === 'string') {
+        setDoc(d);
+        return;
+      }
+      if (!canEditDoc(d)) {
+        setDoc('readOnly');
         return;
       }
       setDoc(d);
       setTitle(d.title);
       setContent(d.content_markdown || '');
-    })();
+    });
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, id, attempt]);
+
+  const retry = useCallback(() => {
+    setDoc(null);
+    setAttempt((n) => n + 1);
   }, []);
 
-  const loaded = doc !== null && doc !== 'missing' ? doc : null;
+  const loaded = doc !== null && typeof doc !== 'string' ? doc : null;
   const dirty = !!loaded && (title !== loaded.title || content !== (loaded.content_markdown || ''));
-  const canSave = !!loaded && dirty && !!title.trim() && !saving;
+  const canSave = dirty && !!title.trim(); // dirty ⇒ loaded
 
-  const close = useCallback(() => {
-    if (!dirty) {
-      router.back();
-      return;
-    }
-    Alert.alert(t('knowledge.discardTitle'), t('knowledge.discardHint'), [
-      { text: t('knowledge.discardKeep'), style: 'cancel' },
-      { text: t('knowledge.discardDrop'), style: 'destructive', onPress: () => router.back() },
-    ]);
-  }, [dirty, router, t]);
+  const cancel = useCallback(() => {
+    Keyboard.dismiss();
+    router.back();
+  }, [router]);
 
   const save = useCallback(async () => {
-    if (!loaded || !canSave) return;
+    if (!loaded || !canSave || saving) return;
+    Keyboard.dismiss();
     setSaving(true);
-    const updated = await updateDoc(loaded.id, { title: title.trim(), content_markdown: content });
-    setSaving(false);
-    if (!updated) {
-      Alert.alert(t('knowledge.saveFailed'));
+    const result = await updateDoc(loaded.id, {
+      title: title.trim(),
+      content_markdown: content,
+      base_updated_at: loaded.updated_at ?? undefined,
+    });
+    if (!result) {
+      // Failed: say so and keep the editor open with the edits intact.
+      alertError(t('knowledge.saveFailed'));
+      if (mounted.current) setSaving(false);
       return;
     }
-    router.back();
-  }, [loaded, canSave, title, content, router, t]);
+    if (mounted.current) router.back();
+    if (result.conflict) {
+      // Saved, but over someone else's edit made since this editor loaded
+      // (last write wins). That is not a plain confirmation — the other
+      // person's change was just replaced, and the user should know it can be
+      // brought back from 修改历史 — so it gets the system alert, not a toast
+      // that vanishes as the modal closes. (RN alerts present in their own
+      // window, so dismissing the modal underneath is fine.)
+      alertError(t('knowledge.conflictSaved'), t('knowledge.conflictSavedHint'));
+    } else {
+      toast(t('knowledge.saved'), 'check');
+    }
+  }, [loaded, canSave, saving, title, content, router, t]);
 
   return (
-    <Animated.View style={[styles.root, { paddingTop: insets.top + 2 }, rootPad]}>
-      <ScreenHeader
-        variant="compact"
-        align="left"
-        leading="close"
+    <>
+      <FormChrome
         title={t('knowledge.editTitle')}
-        onLeading={close}
-        bordered
-        right={
-          <Touchable haptic="none" onPress={save} disabled={!canSave} style={styles.saveBtn}>
-            {saving ? <Spinner size={15} /> : <Text style={[styles.saveText, !canSave && { color: c.fgFaint }]}>{t('knowledge.save')}</Text>}
-          </Touchable>
-        }
+        dirty={dirty}
+        canSave={canSave}
+        saving={saving}
+        onSave={() => void save()}
+        onCancel={cancel}
       />
-
       {doc === null ? (
-        <View style={{ paddingHorizontal: 16, gap: 12, paddingTop: 16 }}>
-          <Skeleton style={{ height: 28, width: '70%', borderRadius: 8 }} />
-          <Skeleton style={{ height: 16, borderRadius: 8 }} />
-          <Skeleton style={{ height: 16, width: '85%', borderRadius: 8 }} />
-        </View>
+        <LoadingState />
       ) : doc === 'missing' ? (
-        <EmptyState icon="book" title={t('knowledge.missing')} sub={t('knowledge.missingHint')} />
+        <View style={styles.center}>
+          <EmptyState icon="book" title={t('knowledge.missing')} message={t('knowledge.missingHint')} />
+        </View>
+      ) : doc === 'readOnly' ? (
+        <View style={styles.center}>
+          <EmptyState icon="lock" title={t('knowledge.noEditAccess')} message={t('knowledge.noEditAccessHint')} />
+        </View>
+      ) : doc === 'failed' ? (
+        <View style={styles.center}>
+          <EmptyState
+            icon="alert"
+            title={t('knowledge.docFailed')}
+            message={t('knowledge.loadFailedHint')}
+            onRetry={retry}
+          />
+        </View>
       ) : (
-        <>
+        <KeyboardAwareScrollView
+          contentInsetAdjustmentBehavior="automatic"
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          bottomOffset={space.xxl}
+          contentContainerStyle={styles.content}
+        >
           <TextInput
             value={title}
             onChangeText={setTitle}
+            editable={!saving}
             placeholder={t('knowledge.titlePlaceholder')}
-            placeholderTextColor={c.fgFaint}
-            style={styles.titleInput}
+            placeholderTextColor={c.placeholder}
+            selectionColor={c.accent}
+            style={styles.title}
+            multiline
+            submitBehavior="submit"
             returnKeyType="next"
+            onSubmitEditing={() => bodyRef.current?.focus()}
+            accessibilityLabel={t('knowledge.fieldTitle')}
           />
+          <View style={styles.hairline} />
           <TextInput
+            ref={bodyRef}
             value={content}
             onChangeText={setContent}
+            editable={!saving}
             placeholder={t('knowledge.contentPlaceholder')}
-            placeholderTextColor={c.fgFaint}
-            style={styles.contentInput}
+            placeholderTextColor={c.placeholder}
+            selectionColor={c.accent}
+            style={[styles.body, { minHeight: windowHeight * 0.6 }]}
             multiline
-            textAlignVertical="top"
-            scrollEnabled
             autoCapitalize="none"
+            autoCorrect={false}
+            scrollEnabled={false}
+            textAlignVertical="top"
+            accessibilityLabel={t('knowledge.fieldContent')}
           />
-        </>
+        </KeyboardAwareScrollView>
       )}
-    </Animated.View>
+    </>
   );
 }
 
 const useStyles = makeStyles((c) => ({
-  root: { flex: 1, backgroundColor: c.bg },
-  saveBtn: { minWidth: 52, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
-  saveText: { fontSize: font.title, fontWeight: weight.semibold, color: c.accent },
-
-  titleInput: {
-    fontSize: font.large,
-    fontWeight: weight.bold,
-    color: c.fg,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 10,
-  },
-  contentInput: {
-    flex: 1,
-    fontSize: font.body,
-    lineHeight: 24,
-    color: c.fg,
-    paddingHorizontal: 16,
-    paddingTop: 2,
-    paddingBottom: 16,
-  },
+  center: { flex: 1, justifyContent: 'center' },
+  content: { paddingHorizontal: space.margin, paddingTop: space.sm, paddingBottom: space.xxxl },
+  title: { ...typo.title2, color: c.label, paddingVertical: space.sm },
+  hairline: { height: StyleSheet.hairlineWidth, backgroundColor: c.separator, marginVertical: space.xs },
+  body: { ...typo.body, color: c.label, paddingTop: space.sm },
 }));

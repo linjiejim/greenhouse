@@ -1,26 +1,31 @@
 /**
  * The plain prose blocks: headings, paragraphs, rules, block quotes, and
- * bullet / numbered / task (- [ ] / - [x]) lists. All share the inline span
- * renderer for their text content.
+ * bullet / numbered / task (- [ ] / - [x]) lists — set in iOS text styles
+ * (body 17 with a comfortable 24-pt reading line height, headings on
+ * title3 / headline / subheadline) and system label colors. All share the
+ * inline span renderer for their text content.
  */
-import { Text, View } from 'react-native';
-import { font, makeStyles, radius, useTheme } from '../../../theme';
-import { Icon } from '../../../ui';
+import { StyleSheet, Text, View } from 'react-native';
+import { makeStyles, space, typo, useTheme, weight } from '../../../theme';
+import { Icon } from '../../../ui/core';
 import { Inline } from '../inline';
 
-// Prose heading ramp (distinct from chrome): descending steps off the type scale.
+/** Reading line height for long-form replies (body is 17 pt). */
+export const PROSE_LINE = 24;
+
+// h1 → title3, h2 → headline, h3 → callout, h4 → subheadline (all semibold+).
 const HEADING = [
-  { fontSize: font.heading, lineHeight: 27, marginTop: 18 },
-  { fontSize: font.title, lineHeight: 25, marginTop: 16 },
-  { fontSize: font.body, lineHeight: 23, marginTop: 14 },
-  { fontSize: font.label, lineHeight: 22, marginTop: 12 },
-];
+  { ...typo.title3, fontWeight: weight.bold, marginTop: space.xl },
+  { ...typo.headline, marginTop: space.lg + 2 },
+  { ...typo.callout, fontWeight: weight.semibold, marginTop: space.lg },
+  { ...typo.subheadline, fontWeight: weight.semibold, marginTop: space.md },
+] as const;
 
 export function Heading({ level, text }: { level: number; text: string }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   return (
-    <Text style={[styles.h, HEADING[Math.min(level, 4) - 1]]}>
+    <Text style={[styles.h, HEADING[Math.min(Math.max(level, 1), 4) - 1]]} accessibilityRole="header">
       <Inline text={text} />
     </Text>
   );
@@ -47,7 +52,8 @@ export function Quote({ text }: { text: string }) {
   const styles = useStyles(c);
   return (
     <View style={styles.quote}>
-      <Text style={[styles.p, { color: c.fgSecondary, marginVertical: 0 }]}>
+      <View style={styles.quoteBar} />
+      <Text style={[styles.p, styles.quoteText]}>
         <Inline text={text} />
       </Text>
     </View>
@@ -65,10 +71,10 @@ export function BulletList({ items }: { items: string[] }) {
           const done = task[1].toLowerCase() === 'x';
           return (
             <View key={j} style={styles.li}>
-              <View style={[styles.checkbox, done && styles.checkboxOn]}>
-                {done ? <Icon name="check" size={11} color={c.onAccent} sw={3} /> : null}
+              <View style={styles.marker}>
+                <Icon name={done ? 'checkCircleFill' : 'circle'} size={18} color={done ? c.accent : c.tertiaryLabel} />
               </View>
-              <Text style={[styles.p, { flex: 1, marginVertical: 0 }, done && styles.taskDone]}>
+              <Text style={[styles.p, styles.liText, done && styles.taskDone]}>
                 <Inline text={task[2]} />
               </Text>
             </View>
@@ -76,8 +82,10 @@ export function BulletList({ items }: { items: string[] }) {
         }
         return (
           <View key={j} style={styles.li}>
-            <Text style={styles.bullet}>•</Text>
-            <Text style={[styles.p, { flex: 1, marginVertical: 0 }]}>
+            <View style={styles.marker}>
+              <View style={styles.bullet} />
+            </View>
+            <Text style={[styles.p, styles.liText]}>
               <Inline text={it} />
             </Text>
           </View>
@@ -87,17 +95,15 @@ export function BulletList({ items }: { items: string[] }) {
   );
 }
 
-export function OrderedList({ items }: { items: string[] }) {
+export function OrderedList({ items, start = 1 }: { items: string[]; start?: number }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   return (
     <View style={styles.list}>
       {items.map((it, j) => (
         <View key={j} style={styles.li}>
-          <View style={styles.num}>
-            <Text style={styles.numText}>{j + 1}</Text>
-          </View>
-          <Text style={[styles.p, { flex: 1, marginVertical: 0 }]}>
+          <Text style={[styles.p, styles.num]}>{start + j}.</Text>
+          <Text style={[styles.p, styles.liText]}>
             <Inline text={it} />
           </Text>
         </View>
@@ -107,44 +113,25 @@ export function OrderedList({ items }: { items: string[] }) {
 }
 
 const useStyles = makeStyles((c) => ({
-  p: { fontSize: font.body, lineHeight: 25, color: c.fgSecondary, marginVertical: 6 },
-  h: { fontWeight: '700', color: c.fg, marginBottom: 6 },
-  hr: { height: 1, backgroundColor: c.hairline, marginVertical: 16 },
+  p: { ...typo.body, lineHeight: PROSE_LINE, color: c.label, marginVertical: space.xs + 2 },
+  h: { color: c.label, marginBottom: space.xs },
+  hr: { height: StyleSheet.hairlineWidth, backgroundColor: c.separator, marginVertical: space.lg },
 
-  list: { marginVertical: 5, gap: 5 },
-  li: { flexDirection: 'row', gap: 9, alignItems: 'flex-start' },
-  bullet: { color: c.accent, fontSize: font.title, lineHeight: 25 },
+  list: { marginVertical: space.xs, gap: space.xs },
+  li: { flexDirection: 'row', alignItems: 'flex-start' },
+  liText: { flex: 1, marginVertical: 0 },
+  marker: { width: 22, height: PROSE_LINE, alignItems: 'flex-start', justifyContent: 'center' },
+  bullet: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: c.secondaryLabel, marginLeft: 4 },
   num: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: c.accentTint,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 3,
+    minWidth: 22,
+    marginVertical: 0,
+    paddingRight: space.xs,
+    color: c.secondaryLabel,
+    fontVariant: ['tabular-nums'],
   },
-  numText: { fontSize: font.caption, fontWeight: '700', color: c.accentDeep },
-  checkbox: {
-    width: 18,
-    height: 18,
-    borderRadius: 5,
-    borderWidth: 1.5,
-    borderColor: c.fgFaint,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 3,
-  },
-  checkboxOn: { backgroundColor: c.accent, borderColor: c.accent },
-  taskDone: { color: c.fgFaint, textDecorationLine: 'line-through' },
+  taskDone: { color: c.secondaryLabel, textDecorationLine: 'line-through' },
 
-  quote: {
-    marginVertical: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderLeftWidth: 3,
-    borderLeftColor: c.accentBorder,
-    backgroundColor: c.accentTint,
-    borderTopRightRadius: radius.sm,
-    borderBottomRightRadius: radius.sm,
-  },
+  quote: { flexDirection: 'row', gap: space.md, marginVertical: space.sm },
+  quoteBar: { width: 3, borderRadius: 1.5, backgroundColor: c.accent },
+  quoteText: { flex: 1, color: c.secondaryLabel, marginVertical: 0 },
 }));

@@ -69,19 +69,41 @@ function defaultScheme(input: string): 'http' | 'https' {
   return 'https';
 }
 
-/** GET /api/auth/status — reachability + auth-enabled probe (no auth needed). */
-export async function probeStation(baseUrl: string): Promise<{ ok: boolean; authEnabled?: boolean }> {
+async function getJson(url: string): Promise<Record<string, unknown> | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6000);
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 6000);
-    const res = await fetch(`${baseUrl}/api/auth/status`, { signal: ctrl.signal });
-    clearTimeout(timer);
-    if (!res.ok) return { ok: false };
-    const body = (await res.json()) as { authEnabled?: boolean };
-    return { ok: typeof body.authEnabled === 'boolean', authEnabled: body.authEnabled };
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) return null;
+    const body: unknown = await res.json();
+    return body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
   } catch {
-    return { ok: false };
+    return null;
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+/**
+ * Is there a Greenhouse API at this origin? (no auth needed)
+ *
+ * Current servers: `GET /api/bootstrap` — the public, side-effect-free pre-login
+ * personalization endpoint (`{ product_name, logo, theme_tokens }`); auth is
+ * always on, and `productName` doubles as a default station name. Older
+ * servers (before the 2026-09 platform sync removed it): `GET /api/auth/status`
+ * → `{ authEnabled }`, where `false` means a dev server the app can't use.
+ */
+export async function probeStation(
+  baseUrl: string,
+): Promise<{ ok: boolean; authEnabled?: boolean; productName?: string }> {
+  const boot = await getJson(`${baseUrl}/api/bootstrap`);
+  if (boot && 'product_name' in boot) {
+    const name = typeof boot.product_name === 'string' ? boot.product_name.trim() : '';
+    return { ok: true, authEnabled: true, productName: name || undefined };
+  }
+  const legacy = await getJson(`${baseUrl}/api/auth/status`);
+  if (legacy && typeof legacy.authEnabled === 'boolean') return { ok: true, authEnabled: legacy.authEnabled };
+  return { ok: false };
 }
 
 /** Signed-out record for a configured default: config id, normalized origin. */

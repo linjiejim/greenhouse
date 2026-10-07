@@ -5,6 +5,7 @@
  * and the fallback. `{n}` placeholders interpolate via the second arg.
  */
 
+import { useMemo } from 'react';
 import { usePrefs, type LangPref } from '../../store/prefs';
 import { en, type Catalog } from './en';
 import { zh } from './zh';
@@ -32,10 +33,30 @@ export function translate(lang: LangPref, key: TranslationKey, vars?: Record<str
   return raw.replace(/\{(\w+)\}/g, (m, name) => (name in vars ? String(vars[name]) : m));
 }
 
-/** Hook: returns t() bound to the current language preference. */
-export function useT(): (key: TranslationKey, vars?: Record<string, string | number>) => string {
+export type TFunction = (key: TranslationKey, vars?: Record<string, string | number>) => string;
+
+/**
+ * Hook: returns t() bound to the current language preference. The function is
+ * stable until the language changes, so it is safe in hook dependency lists
+ * (menus, callbacks and memoised items only rebuild on a language switch).
+ */
+export function useT(): TFunction {
   const lang = usePrefs((s) => s.lang);
-  return (key, vars) => translate(lang, key, vars);
+  return useMemo<TFunction>(() => (key, vars) => translate(lang, key, vars), [lang]);
+}
+
+/**
+ * The BCP-47 locale for a language preference — use it for `toLocale*` / `Intl`
+ * formatting and SwiftUI's `locale` environment, so system controls (date
+ * pickers) speak the app's language rather than the device's.
+ */
+export function localeOf(lang: LangPref): string {
+  return lang === 'zh' ? 'zh-CN' : 'en-US';
+}
+
+/** Hook: the current app locale (see `localeOf`). */
+export function useLocale(): string {
+  return localeOf(usePrefs((s) => s.lang));
 }
 
 /** Non-hook accessor for helpers outside React (reads the store directly). */
