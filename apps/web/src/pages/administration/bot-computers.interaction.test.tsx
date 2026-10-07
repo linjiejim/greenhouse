@@ -228,6 +228,8 @@ describe('BotComputersPanel', () => {
       last_active_at: null,
       queue_position: null,
       disk_bytes: null,
+      timezone: null,
+      lang: 'zh-CN',
     });
     await renderPanel();
 

@@ -32,9 +32,9 @@ export const BOT_TOOL_METAS: readonly ToolMeta[] = [
     runtime_risk: 'r1',
     sort_order: 90,
     description: `Your own tab in the browser on the member's computer (a real Chromium they can watch live).
-Actions: open {url} — open or navigate your tab; snapshot — read the page as an accessibility tree with [ref=eN] handles; click {ref}; type {ref, text, submit?}; select {ref, value}; press {key}; scroll {direction}; back; tabs — list your tabs; close; screenshot — save a picture of the page for the member.
+Actions: open {url} — open or navigate your tab; snapshot — read the page as an accessibility tree with [ref=eN] handles; click {ref}; type {ref, text, submit?}; select {ref, value}; hover {ref}; drag {ref, to_ref}; upload {ref, path} — put a file from the computer into a file input (≤20 MB); press {key}; scroll {direction}; wait {text?, timeout_s?} — until text appears, or a few seconds (≤30 s); back; tabs — list your tabs; close; screenshot — save a picture of the page for the member.
 Every action returns the URL, title and a fresh snapshot; refs are valid only for the latest snapshot. Password, one-time-code and card fields always appear masked.
-Sign in with the vault tool; for CAPTCHAs or anything a person must do, call request_takeover. Never submit a payment, send a message to someone, delete something or accept terms without the member's explicit go-ahead.`,
+Sign in with the vault tool. A CAPTCHA or "verify you are human" page goes to the member automatically (blocked: human_check): end your turn, never try another address on that site. For anything else a person must do, call request_takeover. Never submit a payment, send a message to someone, delete something or accept terms without the member's explicit go-ahead.`,
   },
   {
     ...base,
@@ -45,8 +45,8 @@ Sign in with the vault tool; for CAPTCHAs or anything a person must do, call req
     runtime_risk: 'r1',
     sort_order: 91,
     description: `The member's computer (Linux; shared by all their Bots; files persist).
-Actions: shell {command, timeout_s?} — run bash in ~/work as user "agent" (no sudo, at most 120 s, long output is truncated); read_file {path}; write_file {path, content}; share_file {path} — give the member a download link (≤20 MB); import_attachment {file_id, path?} — copy a file attached in this conversation into ~/work/inbox (or a path inside ~/work) to work on it with the shell (≤20 MB); status — whether the computer is up and who controls it.
-Browser downloads land in ~/Downloads. The browser profile and its passwords are not reachable from the shell.`,
+Actions: shell {command, timeout_s?} — run bash in ~/work as user "agent" (no sudo, at most 120 s, long output is truncated); run_background {command, name?} — start long work (installs, builds, downloads, data runs) that keeps running after the call, output to a log; processes — list background processes; process_log {id, lines?} — the end of a process's log; stop_process {id}; read_file {path}; write_file {path, content}; share_file {path} — give the member a download link (≤20 MB); import_attachment {file_id, path?} — copy a file attached in this conversation into ~/work/inbox (or a path inside ~/work) to work on it with the shell (≤20 MB); status — whether the computer is up and who controls it.
+pip, npm -g and pipx installs go to your home and persist. Browser downloads land in ~/Downloads. The browser profile and its passwords are not reachable from the shell.`,
   },
   {
     ...base,

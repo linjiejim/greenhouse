@@ -54,6 +54,13 @@ export class ChatRun {
   readonly startedAt = Date.now();
   status: ChatRunStatus = 'running';
   stopReason?: ChatRunStopReason;
+  /**
+   * A soft stop was asked for ("stop after this step"): unlike `requestStop`
+   * nothing is aborted — the engine lets the step in flight finish (its tool
+   * calls complete and are saved) and stops at the next step boundary. Only
+   * the Bots engine reads it (POST /api/chat/runs/:sessionId/interrupt).
+   */
+  interruptRequested = false;
 
   private events: ChatRunEvent[] = [];
   private bufferBytes = 0;
@@ -135,6 +142,25 @@ export class ChatRun {
     if (this.status !== 'running') return;
     this.stopReason ??= reason;
     this.abortController.abort();
+  }
+
+  /**
+   * Ask for a soft stop (see `interruptRequested`). Emits `run-interrupting`
+   * once per request so every attached client can show "stopping…". Returns
+   * false when the run already ended.
+   */
+  requestInterrupt(): boolean {
+    if (this.status !== 'running') return false;
+    if (!this.interruptRequested) {
+      this.interruptRequested = true;
+      this.emit({ type: 'run-interrupting' });
+    }
+    return true;
+  }
+
+  /** The engine took the interrupt: a later one is a new request. */
+  clearInterrupt(): void {
+    this.interruptRequested = false;
   }
 
   /**

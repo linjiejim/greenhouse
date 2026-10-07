@@ -19,6 +19,7 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
+import { Readable } from 'node:stream';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
 
@@ -44,7 +45,9 @@ export interface ComputerRunSpec {
   proxy: string | null;
   /** Extra Chromium URLBlocklist patterns (greenhouse's own origins). */
   urlBlocklist: string[];
+  /** The member's own IANA zone, else the deployment default. */
   timezone: string;
+  /** Browser language (BCP 47): the operator override, else the member's locale. */
   lang: string | null;
 }
 
@@ -96,7 +99,10 @@ export function buildComputerRunArgs(spec: ComputerRunSpec): string[] {
     '--oom-score-adj',
     '500',
     '--tmpfs',
-    '/tmp:rw,nosuid,nodev,size=1g',
+    // `exec`: Docker's default tmpfs is noexec, which breaks venvs and source
+    // builds that run test programs from /tmp — while /home (a volume) runs
+    // anything anyway, so noexec here protected nothing.
+    '/tmp:rw,exec,nosuid,nodev,size=1g',
     '--log-driver',
     'local',
     '--log-opt',
@@ -198,7 +204,8 @@ export function isDockerExecutableMissing(err: unknown): boolean {
 // ─── spawn ────────────────────────────────────────────────
 
 export interface DockerSpawnOptions {
-  input?: Buffer | string;
+  /** Stdin: bytes, or a stream piped through (an upload); a stream that fails kills the CLI. */
+  input?: Buffer | string | Readable;
   /** Kill the docker CLI after this long (default 60 s). */
   timeoutMs?: number;
   /** Captured stdout cap; the rest is drained and dropped (default 1 MiB). */
@@ -311,7 +318,12 @@ export const spawnDocker: DockerSpawner = (args, options = {}) =>
       });
     });
 
-    if (options.input !== undefined) child.stdin!.end(options.input);
+    if (options.input instanceof Readable) {
+      // The caller's stream broke (a client aborting an upload): stop the
+      // command rather than let it take a short read for the whole input.
+      options.input.once('error', kill);
+      options.input.pipe(child.stdin!);
+    } else if (options.input !== undefined) child.stdin!.end(options.input);
     else child.stdin!.end();
   });
 
@@ -431,8 +443,8 @@ export interface ExecSpec {
   argv: string[];
   cwd?: string;
   env?: Record<string, string>;
-  /** Attached as stdin (`docker exec -i`); omitted = no stdin. */
-  input?: Buffer;
+  /** Attached as stdin (`docker exec -i`), bytes or a stream; omitted = no stdin. */
+  input?: Buffer | Readable;
   timeoutMs: number;
   maxStdoutBytes?: number;
   maxStderrBytes?: number;
@@ -465,8 +477,13 @@ export interface DockerClient {
   memoryUsage(names: string[]): Promise<Map<string, number>>;
   /** `docker exec`; resolves with the process status, throws only for docker-side failures. */
   exec(spec: ExecSpec): Promise<DockerSpawnResult>;
-  /** A streaming `docker exec -i` (tunnels). */
-  execStream(container: string, user: 'agent' | 'browser', argv: string[]): ChildProcess;
+  /** A streaming `docker exec -i` (tunnels, file downloads). */
+  execStream(
+    container: string,
+    user: 'agent' | 'browser',
+    argv: string[],
+    opts?: { cwd?: string; env?: Record<string, string> },
+  ): ChildProcess;
 }
 
 function ensureOk(result: DockerSpawnResult, what: string): DockerSpawnResult {
@@ -493,7 +510,10 @@ function looksLikeDaemonExecFailure(result: DockerSpawnResult): boolean {
   );
 }
 
-export function createDockerClient(run: DockerSpawner = spawnDocker): DockerClient {
+export function createDockerClient(
+  run: DockerSpawner = spawnDocker,
+  stream: (args: string[]) => ChildProcess = spawnDockerStream,
+): DockerClient {
   /**
    * Is a daemon-looking exec failure real? A process that prints
    * "Error: x is not running" must never get a healthy computer marked broken
@@ -738,8 +758,11 @@ export function createDockerClient(run: DockerSpawner = spawnDocker): DockerClie
       return result;
     },
 
-    execStream(container, user, argv) {
-      return spawnDockerStream(['exec', '-i', '-u', user, container, ...argv]);
+    execStream(container, user, argv, opts = {}) {
+      const args = ['exec', '-i', '-u', user];
+      if (opts.cwd) args.push('-w', opts.cwd);
+      for (const [key, value] of Object.entries(opts.env ?? {})) args.push('-e', `${key}=${value}`);
+      return stream([...args, container, ...argv]);
     },
   };
   return client;

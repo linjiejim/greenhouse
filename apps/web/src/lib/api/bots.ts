@@ -12,7 +12,9 @@
  * (the wire types in @greenhouse/types/bots), so a server shape change is a
  * compile error here — never cast over it. Routes without a validator take
  * their json/query through a variable (hc types no input for them); param
- * values are `encodeURIComponent`-ed explicitly because hc does not.
+ * values are `encodeURIComponent`-ed explicitly because hc does not. The one
+ * exception is the computer's file transfer — binary bodies, so the download
+ * is a raw authFetch and the upload an XHR with progress (../upload-progress).
  *
  * Every failure is a `BotsApiError` carrying the HTTP status and the server's
  * machine-readable `code` (`vault_unavailable`, `user_in_control`,
@@ -38,6 +40,10 @@ import type {
   BotTemplateKey,
   BotView,
   ComputerAdminRow,
+  ComputerFileEntry,
+  ComputerFileList,
+  ComputerProcessLog,
+  ComputerProcessView,
   ComputerRuntimeView,
   ComputerStatusView,
   VaultAccessView,
@@ -45,6 +51,9 @@ import type {
   VaultItemWrite,
 } from '@greenhouse/types/bots';
 import { apiWebSocketUrl } from '../api-base';
+import { authFetch } from '../auth';
+import { saveBlobAs } from '../file-download';
+import { postWithProgress } from '../upload-progress';
 import { rpc } from './client';
 import { saveWorkspaceSettings } from './workspace-settings';
 
@@ -467,6 +476,118 @@ export async function typeIntoComputer(text: string): Promise<void> {
   const args = { json: { text } };
   const res = await rpc.api.bots.computer.type.$post(args);
   if (!res.ok) throw await failure(res);
+}
+
+/**
+ * Bring the computer's browser back on screen: restores minimised windows, or
+ * opens a new one when every window was closed. 409 `stopped` when the
+ * computer is not running. Needs no take-over lease.
+ */
+export async function restoreComputerWindow(): Promise<void> {
+  const res = await rpc.api.bots.computer['restore-window'].$post();
+  if (!res.ok) throw await failure(res);
+}
+
+/**
+ * The member's computer settings — today the timezone it starts with (IANA
+ * name; takes effect at the next start). Returns the fresh status view.
+ */
+export async function updateComputerSettings(settings: { timezone: string }): Promise<ComputerStatusView> {
+  const args = { json: settings };
+  const res = await rpc.api.bots.computer.settings.$put(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+// ─── The computer's terminal, files and processes ────────
+//
+// The member's view of the Bots' sandbox (uid agent, home /home/agent): none
+// of these need the take-over lease.
+
+/**
+ * One-time ticket for the terminal WebSocket — the same scheme as the viewer's,
+ * with its own purpose (a view ticket never opens a terminal, and vice versa).
+ * Fetch it right before connecting.
+ */
+export async function createComputerTerminalToken(): Promise<{ token: string; expires_at: string }> {
+  const res = await rpc.api.bots.computer['terminal-token'].$post();
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** WebSocket URL of the terminal (respects the desktop shell's / split-hosting API base). */
+export function computerTerminalUrl(token: string): string {
+  return apiWebSocketUrl(`/api/ws/computer-terminal?token=${encodeURIComponent(token)}`);
+}
+
+/** Largest file the upload route takes, per file. */
+export const COMPUTER_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
+
+/**
+ * List a folder of the computer (default `~/work`; `~` = /home/agent, a
+ * relative path is under ~/work). Directories first, then by name; at most
+ * 500 entries (`truncated` when there are more). Starts the computer if needed.
+ */
+export async function listComputerFiles(path?: string): Promise<ComputerFileList> {
+  const query: Record<string, string> = {};
+  if (path) query.path = path;
+  const args = { query };
+  const res = await rpc.api.bots.computer.files.$get(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** Save a file from the computer to the member's device (fetched with auth, then handed to the browser). */
+export async function downloadComputerFile(path: string, filename: string): Promise<void> {
+  const res = await authFetch(`/api/bots/computer/files/download?path=${enc(path)}`);
+  if (!res.ok) throw await failure(res);
+  saveBlobAs(await res.blob(), filename);
+}
+
+/**
+ * Upload one file (≤ 100 MiB) into a folder of the computer, reporting bytes
+ * sent. The server sanitises the name and never overwrites (`name (1).ext`…),
+ * so the returned entry is what was actually written.
+ */
+export async function uploadComputerFile(
+  dir: string,
+  file: File,
+  options: { onProgress?: (loaded: number, total: number) => void; signal?: AbortSignal } = {},
+): Promise<{ entry: ComputerFileEntry; path: string }> {
+  const url = `/api/bots/computer/files/upload?dir=${enc(dir)}&name=${enc(file.name)}`;
+  const headers = { 'Content-Type': 'application/octet-stream' };
+  let res = await postWithProgress(url, file, { headers, onProgress: options.onProgress, signal: options.signal });
+  if (res.status === 401) {
+    // The access token expired meanwhile: authFetch refreshes it (or sends the
+    // member to sign in) and sends the file again — without byte progress.
+    res = await authFetch(url, { method: 'POST', headers, body: file, signal: options.signal });
+  }
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** Long jobs started with `gh-jobs` (a Bot's run_background, or the terminal). Empty while the computer is off — never starts it. */
+export async function listComputerProcesses(): Promise<ComputerProcessView[]> {
+  const res = await rpc.api.bots.computer.processes.$get();
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).processes;
+}
+
+/** The tail of a job's log (redacted server-side); `truncated` when earlier output was cut. */
+export async function fetchComputerProcessLog(id: string, lines?: number): Promise<ComputerProcessLog> {
+  const query: Record<string, string> = {};
+  if (lines !== undefined) query.lines = String(lines);
+  const args = { param: { id: enc(id) }, query };
+  const res = await rpc.api.bots.computer.processes[':id'].log.$get(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** Stop a job (SIGTERM, then SIGKILL after 3 s). `stopped: false` = it had already ended. */
+export async function stopComputerProcess(id: string): Promise<{ id: string; stopped: boolean }> {
+  const res = await rpc.api.bots.computer.processes[':id'].stop.$post({ param: { id: enc(id) } });
+  if (!res.ok) throw await failure(res);
+  return res.json();
 }
 
 // ─── Password vault ──────────────────────────────────────

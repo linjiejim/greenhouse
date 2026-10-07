@@ -48,6 +48,7 @@ import { connectionManager } from '../../ws/connection-manager.js';
 import {
   clampMaxRunning,
   ComputerConfigError,
+  computerLang,
   greenhouseUrlBlocklist,
   isBotsComputerEnabled,
   loadBotsComputerConfig,
@@ -63,12 +64,23 @@ import {
 } from './controller.js';
 import { ComputerRuntimeError, createDockerClient, type DockerClient, type ImageInfo } from './docker.js';
 import { ComputerUnavailableError } from './errors.js';
-import { LABEL_IMAGE_CHROMIUM, LABEL_IMAGE_CONTRACT, LABEL_NAMESPACE, LABEL_COMPUTER } from './namespace.js';
+import {
+  LABEL_COMPUTER,
+  LABEL_IMAGE_CHROMIUM,
+  LABEL_IMAGE_CONTRACT,
+  LABEL_IMAGE_EXTRA_PACKAGES,
+  LABEL_NAMESPACE,
+} from './namespace.js';
 import { computerLifecycleHooks } from './hooks.js';
 import { HUMAN_WAIT_HOLD_MS } from './limits.js';
 
-/** The image contract this API speaks (apps/bot-computer/Dockerfile LABEL). */
-export const IMAGE_CONTRACT = '1';
+/**
+ * The image contract this API speaks (apps/bot-computer/Dockerfile LABEL).
+ * 2 = the desktop panel and window helper (gh-window), the terminal bridge
+ * (gh-term), background jobs (gh-jobs) and the take-over kill that spares
+ * them (gh-agent-kill), user-level pip/npm installs, per-member GH_COMPUTER_LANG.
+ */
+export const IMAGE_CONTRACT = '2';
 /** Images older than this get a freshness warning (Chromium runs with --no-sandbox, spec D15). */
 const IMAGE_STALE_MS = 30 * 24 * 60 * 60_000;
 
@@ -263,10 +275,14 @@ export async function runComputerPrechecks(
     });
   }
   const chromium = image.labels[LABEL_IMAGE_CHROMIUM];
+  // What an operator baked in (BOTS_COMPUTER_EXTRA_PACKAGES) — the admin page's only record of it.
+  const extraPackages = image.labels[LABEL_IMAGE_EXTRA_PACKAGES]?.trim().replace(/\s+/g, ' ');
   checks.push({
     id: 'image',
     ok: true,
-    detail: `${config.image} · ${image.id.slice(7, 19)}${chromium ? ` · Chromium ${chromium}` : ''}`,
+    detail: `${config.image} · ${image.id.slice(7, 19)}${chromium ? ` · Chromium ${chromium}` : ''}${
+      extraPackages ? ` · extra packages: ${extraPackages}` : ''
+    }`,
   });
   const builtAt = Date.parse(image.created);
   const stale = Number.isFinite(builtAt) && Date.now() - builtAt > IMAGE_STALE_MS;
@@ -544,6 +560,9 @@ export async function initBotComputers(): Promise<void> {
     environment,
     userIsActive,
     awaitingHuman,
+    memberLocale: async (userId) => (await getDb().users.getById(userId))?.locale ?? null,
+    // Loaded lazily: jobs.ts sits above the runtime (it reaches containers through it).
+    runningJobs: async (container) => (await import('./jobs.js')).runningJobCount(container, { docker: () => docker }),
     onState: notifyOwner,
     onStopped: (userId, reason) => computerLifecycleHooks.stopped(userId, reason),
     onRuntimeError,
@@ -595,6 +614,15 @@ export function requireComputerRuntime(): {
 }
 
 /**
+ * The deployment namespace once BOTS_COMPUTER_* is loaded — even while the
+ * host is unavailable — for writes that only need the member's row (their
+ * timezone); null when computers are off or misconfigured.
+ */
+export function computerNamespace(): string | null {
+  return state.config?.namespace ?? null;
+}
+
+/**
  * Timestamps leave the API as ISO 8601: Postgres' text form
  * ("2026-10-05 08:00:00.123+00") is not parseable by every browser's Date.
  */
@@ -605,7 +633,8 @@ function iso(value: string | null | undefined): string | null {
 }
 
 export async function computerStatusFor(userId: string): Promise<ComputerStatusView> {
-  const row = await getDb().botComputers.get(userId);
+  const db = getDb();
+  const [row, user] = await Promise.all([db.botComputers.get(userId), db.users.getById(userId)]);
   return {
     runtime: getComputerRuntime(),
     state: row?.state ?? 'absent',
@@ -615,6 +644,8 @@ export async function computerStatusFor(userId: string): Promise<ComputerStatusV
     last_active_at: iso(row?.last_active_at),
     queue_position: controller?.queuePosition(userId) ?? null,
     disk_bytes: row?.disk_bytes ?? null,
+    timezone: row?.timezone ?? null,
+    lang: computerLang(state.config?.lang ?? null, user?.locale),
   };
 }
 

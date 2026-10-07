@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { rows, cancelBotTasksForUser } = vi.hoisted(() => ({
+const { rows, users, cancelBotTasksForUser } = vi.hoisted(() => ({
   /** bot_computers rows, by user (empty unless a test seeds one). */
   rows: new Map<string, Record<string, unknown>>(),
+  /** users rows, by id (empty unless a test seeds one). */
+  users: new Map<string, Record<string, unknown>>(),
   cancelBotTasksForUser: vi.fn(async () => 0),
 }));
 
@@ -22,7 +24,7 @@ vi.mock('@greenhouse/db', () => ({
       },
       delete: async (userId: string) => void rows.delete(userId),
     },
-    users: { getById: async () => undefined },
+    users: { getById: async (id: string) => users.get(id) },
   }),
 }));
 vi.mock('../engine/index.js', () => ({ cancelBotTasksForUser }));
@@ -36,6 +38,8 @@ import {
   _setComputerRuntimeForTests,
   adminComputersView,
   botsComputerHealthView,
+  computerNamespace,
+  computerStatusFor,
   type EgressCheck,
   getComputerRuntime,
   IMAGE_CONTRACT,
@@ -59,6 +63,7 @@ const config: BotsComputerConfig = {
   namespace: 'ns1',
   timezone: 'UTC',
   lang: null,
+  jobMaxHours: 8,
   missionNetwork: 'cloud-agent',
 };
 
@@ -122,6 +127,44 @@ describe('computer prechecks', () => {
       ['egress', true],
     ]);
     expect(result.checks.find((c) => c.id === 'image')?.detail).toContain('Chromium 154.0.1.2');
+  });
+
+  it('speaks image contract 2, and shows the packages an operator baked in', async () => {
+    expect(IMAGE_CONTRACT).toBe('2');
+    const old = await runComputerPrechecks(
+      fakeClient({
+        imageInspect: async () => ({ ...goodImage, labels: { 'greenhouse.bots.computer.contract': '1' } }),
+      }),
+      config,
+      { egressCheck: egressOk },
+    );
+    expect(old).toMatchObject({ ok: false, reason: 'image_outdated' });
+    expect(old.checks.find((c) => c.id === 'image')?.detail).toMatch(/contract 1; this API needs 2/);
+
+    const extra = await runComputerPrechecks(
+      fakeClient({
+        imageInspect: async () => ({
+          ...goodImage,
+          labels: { ...goodImage.labels, 'greenhouse.bots.computer.extra-packages': ' libreoffice-writer\tgimp ' },
+        }),
+      }),
+      config,
+      { egressCheck: egressOk },
+    );
+    expect(extra.checks.find((c) => c.id === 'image')?.detail).toMatch(
+      /Chromium 154\.0\.1\.2 · extra packages: libreoffice-writer gimp$/,
+    );
+    const plain = await runComputerPrechecks(
+      fakeClient({
+        imageInspect: async () => ({
+          ...goodImage,
+          labels: { ...goodImage.labels, 'greenhouse.bots.computer.extra-packages': '' },
+        }),
+      }),
+      config,
+      { egressCheck: egressOk },
+    );
+    expect(plain.checks.find((c) => c.id === 'image')?.detail).not.toContain('extra packages');
   });
 
   it('names the missing piece and how to fix it', async () => {
@@ -308,6 +351,30 @@ describe('computer runtime state', () => {
       detail: '7% free on the Docker disk',
       fix: expect.stringContaining('docker image prune'),
     });
+  });
+
+  it('reports the member’s stored timezone and effective browser language in the status', async () => {
+    users.set('zh-member', { id: 'zh-member', locale: 'zh-CN' });
+    rows.set('zh-member', {
+      user_id: 'zh-member',
+      state: 'absent',
+      timezone: 'Asia/Shanghai',
+      lease_controller: 'bot',
+    });
+    users.set('en-member', { id: 'en-member', locale: 'en' });
+    try {
+      expect(await computerStatusFor('zh-member')).toMatchObject({ timezone: 'Asia/Shanghai', lang: 'zh-CN' });
+      expect(await computerStatusFor('en-member')).toMatchObject({ state: 'absent', timezone: null, lang: 'en-US' });
+      expect(computerNamespace()).toBeNull(); // computers off: nothing to write a timezone into
+
+      // The operator's BOTS_COMPUTER_LANG wins over every member's locale.
+      Object.assign(process.env, { BOTS_COMPUTER_LANG: 'ja-JP' });
+      await readyDevRuntime(fakeClient());
+      expect(await computerStatusFor('zh-member')).toMatchObject({ lang: 'ja-JP' });
+      expect(computerNamespace()).toBe('purge');
+    } finally {
+      users.clear();
+    }
   });
 
   it('is disabled without BOTS_COMPUTER_ENABLED and says so to callers', async () => {

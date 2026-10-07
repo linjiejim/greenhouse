@@ -71,6 +71,16 @@ export function shellEnv(user: 'agent' | 'browser', execId: string, proxy: strin
   return env;
 }
 
+/**
+ * The env of everything else that runs as uid `agent` — the member's terminal
+ * and long jobs: the identity and proxies of a Bot's shell call (without its
+ * kill tag), so the three reach the same internet.
+ */
+export function agentEnv(proxy: string | null): Record<string, string> {
+  const { GH_EXEC_ID: _killTag, ...env } = shellEnv('agent', '', proxy);
+  return env;
+}
+
 /** argv after `docker exec … <container>`. The command is one argument — never interpolated. */
 export function shellArgv(command: string, timeoutSec: number): string[] {
   const seconds = Math.max(1, Math.ceil(timeoutSec));

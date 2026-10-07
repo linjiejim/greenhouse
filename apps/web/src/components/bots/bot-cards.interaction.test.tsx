@@ -6,27 +6,61 @@
  * not "already handled"), and an undone memory stays undone.
  */
 
-import { act, createElement, type ReactElement } from 'react';
+import { act, createElement, useState, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BotRequestView, BotView } from '@greenhouse/types/bots';
+import type { BotRequestView, BotView, ComputerStatusView } from '@greenhouse/types/bots';
 import { I18nProvider } from '../../lib/i18n';
 import { BotsApiError, type BotMessage } from '../../lib/api/bots';
 import type { BotStreamSegment } from '../../lib/session-manager';
 import { ToastContainer } from '../ui';
 import { BotTranscript, type BotTranscriptProps } from './bot-transcript';
+import { computerPhase } from './computer-phase';
 import { MemoryReceipts, resetUndoneMemoriesForTest } from './memory-receipts';
+import type { PendingSend } from './transcript';
+
+const fakes = vi.hoisted(() => {
+  class FakeRfb {
+    static instances: FakeRfb[] = [];
+    viewOnly = false;
+    focusOnClick = true;
+    scaleViewport = false;
+    resizeSession = true;
+    clipViewport = true;
+    background = '';
+    disconnected = false;
+    constructor(
+      public target: HTMLElement,
+      public url: string,
+    ) {
+      FakeRfb.instances.push(this);
+    }
+    addEventListener() {}
+    removeEventListener() {}
+    disconnect() {
+      this.disconnected = true;
+    }
+    sendKey() {}
+    focus() {}
+    blur() {}
+  }
+  return { FakeRfb };
+});
 
 const api = vi.hoisted(() => ({
   decideRequest: vi.fn(),
   deleteBotMemory: vi.fn(),
   archiveUserMemory: vi.fn(),
   listBots: vi.fn(),
+  takeoverComputer: vi.fn(),
+  createComputerViewToken: vi.fn(),
+  computerViewerUrl: (token: string) => `ws://greenhouse.test/api/ws/computer?token=${token}`,
 }));
 vi.mock('../../lib/api/bots', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api/bots')>()),
   ...api,
 }));
+vi.mock('../../lib/novnc/loader', () => ({ loadRfb: async () => fakes.FakeRfb }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -156,7 +190,9 @@ function inputs(): HTMLInputElement[] {
 }
 
 beforeEach(() => {
-  for (const fn of Object.values(api)) fn.mockReset();
+  for (const fn of Object.values(api)) if (vi.isMockFunction(fn)) fn.mockReset();
+  api.createComputerViewToken.mockResolvedValue({ token: 'tok-1', expires_at: new Date().toISOString() });
+  fakes.FakeRfb.instances.length = 0;
   resetUndoneMemoriesForTest();
 });
 
@@ -526,5 +562,207 @@ describe('memory receipts', () => {
     await flush();
     expect(document.body.textContent).toContain('Forgotten');
     expect(document.body.textContent).not.toContain('Could not undo');
+  });
+});
+
+describe('the human-check card', () => {
+  function computerStatus(overrides: Partial<ComputerStatusView> = {}): ComputerStatusView {
+    return {
+      runtime: { state: 'ready', reason: null, hardened: true },
+      state: 'running',
+      state_reason: null,
+      controller: 'bot',
+      controller_since: null,
+      last_active_at: null,
+      queue_position: null,
+      disk_bytes: null,
+      timezone: null,
+      lang: 'en-US',
+      ...overrides,
+    };
+  }
+  const IN_CONTROL = computerStatus({ controller: 'user', controller_since: new Date().toISOString() });
+
+  const captcha = (partial: Partial<BotRequestView> = {}) =>
+    request({
+      id: 'brq_check',
+      kind: 'takeover',
+      payload: {
+        reason: 'example.com asks for human verification — please complete it on the computer',
+        kind: 'captcha',
+        url: 'https://example.com/login',
+      },
+      ...partial,
+    });
+
+  /** What the Bots page does: one computer status the card reads and updates. */
+  function Host({
+    req,
+    initial,
+    onOpenComputer,
+  }: {
+    req: BotRequestView;
+    initial: ComputerStatusView;
+    onOpenComputer?: () => void;
+  }) {
+    const [status, setStatus] = useState(initial);
+    return createElement(BotTranscript, {
+      ...props({
+        messages: [requestRow(req, 1)],
+        requests: new Map([[req.id, req]]),
+        onOpenComputer: onOpenComputer ?? vi.fn(),
+      }),
+      computer: { phase: computerPhase(status), apply: setStatus, refresh: vi.fn(async () => {}) },
+    });
+  }
+
+  const card = () => document.querySelector('[data-testid="bots-request-card"]')!;
+  const screen = () => card().querySelector('[data-testid="computer-screen"]');
+
+  it('shows the live screen, view only, with the way to verify right there', async () => {
+    await mount(createElement(Host, { req: captcha(), initial: computerStatus() }));
+    expect(card().textContent).toContain('Sage needs you to complete a human check');
+    expect(card().textContent).toContain('example.com asks for human verification');
+    expect(card().textContent).toContain("When you're through, choose “I'm done” and Sage carries on.");
+    expect(screen()?.getAttribute('data-view-only')).toBe('true');
+    expect(fakes.FakeRfb.instances[0]?.viewOnly).toBe(true);
+    expect(card().querySelector('[data-testid="bots-request-verify-here"]')).not.toBeNull();
+  });
+
+  it('takes the computer over in place: the embedded screen becomes interactive', async () => {
+    api.takeoverComputer.mockResolvedValue(IN_CONTROL);
+    await mount(createElement(Host, { req: captcha(), initial: computerStatus() }));
+
+    await act(async () => {
+      card()
+        .querySelector('[data-testid="bots-request-verify-here"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flush();
+    expect(api.takeoverComputer).toHaveBeenCalledTimes(1);
+    expect(screen()?.getAttribute('data-view-only')).toBe('false');
+    expect(fakes.FakeRfb.instances.at(-1)?.viewOnly).toBe(false);
+    // In control: no second "Verify here"; "I'm done" hands back for this card.
+    expect(card().querySelector('[data-testid="bots-request-verify-here"]')).toBeNull();
+    api.decideRequest.mockResolvedValueOnce({ request: captcha({ status: 'resolved' }) });
+    const done = [...card().querySelectorAll('button')].find((button) => button.textContent === "I'm done");
+    await act(async () => done?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await flush();
+    expect(api.decideRequest).toHaveBeenCalledWith('brq_check', { decision: 'approve' });
+  });
+
+  it('explains a refused take-over', async () => {
+    api.takeoverComputer.mockRejectedValueOnce(new BotsApiError('busy', 503, 'busy'));
+    await mount(createElement(Host, { req: captcha(), initial: computerStatus() }));
+    await act(async () => {
+      card()
+        .querySelector('[data-testid="bots-request-verify-here"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flush();
+    expect(document.body.textContent).toContain('All computers are busy right now');
+    expect(screen()?.getAttribute('data-view-only')).toBe('true');
+  });
+
+  it('skips (declines) and opens the computer', async () => {
+    const onOpenComputer = vi.fn();
+    api.decideRequest.mockResolvedValueOnce({ request: captcha({ status: 'denied' }) });
+    await mount(createElement(Host, { req: captcha(), initial: computerStatus(), onOpenComputer }));
+
+    await act(async () => {
+      card()
+        .querySelector('[data-testid="bots-request-open-computer"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onOpenComputer).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      card()
+        .querySelector('[data-testid="bots-request-skip"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flush();
+    expect(api.decideRequest).toHaveBeenCalledWith('brq_check', { decision: 'deny' });
+  });
+
+  it('says how to wake an asleep computer, without connecting to it', async () => {
+    api.takeoverComputer.mockResolvedValue(IN_CONTROL);
+    await mount(createElement(Host, { req: captcha(), initial: computerStatus({ state: 'absent' }) }));
+    expect(card().textContent).toContain('The computer is asleep — Verify here wakes it up.');
+    expect(screen()).toBeNull();
+    expect(fakes.FakeRfb.instances).toHaveLength(0);
+
+    await act(async () => {
+      card()
+        .querySelector('[data-testid="bots-request-verify-here"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flush();
+    // The take-over woke it: the screen is there, and it is the member's.
+    expect(screen()?.getAttribute('data-view-only')).toBe('false');
+  });
+
+  it('collapses once settled — no screen, no actions', async () => {
+    await mount(createElement(Host, { req: captcha({ status: 'resolved' }), initial: computerStatus() }));
+    expect(card().textContent).toContain('Handed back');
+    expect(screen()).toBeNull();
+    expect(fakes.FakeRfb.instances).toHaveLength(0);
+    expect(card().querySelector('[data-testid="bots-request-verify-here"]')).toBeNull();
+  });
+
+  it('stays a plain take-over card for anything that is not a human check', async () => {
+    const other = request({
+      id: 'brq_other',
+      kind: 'takeover',
+      payload: { reason: 'Pick the delivery slot', kind: 'other', url: null },
+    });
+    await mount(createElement(Host, { req: other, initial: computerStatus() }));
+    expect(card().textContent).toContain('Sage needs you to take over');
+    expect(screen()).toBeNull();
+  });
+});
+
+describe('a message waiting for the current reply', () => {
+  const queued: PendingSend = {
+    clientId: 'send-1',
+    content: 'Also check the invoices',
+    images: [],
+    status: 'queued',
+    afterSegment: 0,
+  };
+
+  it('offers "Handle now" while a run is going', async () => {
+    const onHandleNow = vi.fn();
+    await mount(createElement(BotTranscript, props({ pending: [queued], busy: true, onHandleNow })));
+    const bubble = document.querySelector('[data-testid="bots-pending-send"]')!;
+    expect(bubble.textContent).toContain('Delivered — read after the current reply');
+
+    await act(async () => {
+      bubble
+        .querySelector('[data-testid="bots-pending-handle-now"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onHandleNow).toHaveBeenCalledWith('send-1');
+  });
+
+  it('says it is next once the run stops after this step (or the member asked)', async () => {
+    await mount(
+      createElement(BotTranscript, props({ pending: [queued], busy: true, interrupting: true, onHandleNow: vi.fn() })),
+    );
+    const bubble = document.querySelector('[data-testid="bots-pending-send"]')!;
+    expect(bubble.textContent).toContain('Read as soon as the current step finishes');
+    expect(bubble.querySelector('[data-testid="bots-pending-handle-now"]')).toBeNull();
+
+    await rerender(
+      createElement(BotTranscript, props({ pending: [{ ...queued, nudged: true }], busy: true, onHandleNow: vi.fn() })),
+    );
+    expect(document.querySelector('[data-testid="bots-pending-send"]')?.textContent).toContain(
+      'Read as soon as the current step finishes',
+    );
+  });
+
+  it('offers nothing to hurry when no run is going', async () => {
+    await mount(createElement(BotTranscript, props({ pending: [queued], busy: false, onHandleNow: vi.fn() })));
+    expect(document.querySelector('[data-testid="bots-pending-handle-now"]')).toBeNull();
   });
 });

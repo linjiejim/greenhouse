@@ -23,7 +23,8 @@ vi.mock('../runtime.js', () => ({
   computerStatusFor: vi.fn(),
 }));
 
-const { buildComputerTools, describeSecureLogin, handleLoginDecision, SecureLoginError } = await import('../tools.js');
+const { buildComputerTools, computerTurnFrom, describeSecureLogin, handleLoginDecision, SecureLoginError } =
+  await import('../tools.js');
 const { BrowserSession } = await import('../browser-session.js');
 const { leaseRegistryFor } = await import('../tab-leases.js');
 
@@ -73,10 +74,29 @@ describe('buildComputerTools', () => {
     for (const action of ['click', 'type', 'select', 'press', 'close']) {
       expect(browser.safeParse({ action, ref: 'e1' }).success).toBe(false);
     }
+    expect(browser.safeParse({ action: 'wait', text: 'Results', timeout_s: 10 }).success).toBe(true);
+    for (const action of ['hover', 'drag', 'upload']) {
+      expect(browser.safeParse({ action, ref: 'e1', to_ref: 'e2', path: 'a.pdf' }).success).toBe(false);
+    }
     const computer = schemaOf(tools.computer!);
     expect(computer.safeParse({ action: 'read_file', path: 'a' }).success).toBe(true);
+    expect(computer.safeParse({ action: 'process_log', id: 'j0000beef' }).success).toBe(true);
     expect(computer.safeParse({ action: 'shell', command: 'ls' }).success).toBe(false);
+    expect(computer.safeParse({ action: 'run_background', command: 'make' }).success).toBe(false);
     expect(tools.browser!.description).toMatch(/background task only open, snapshot/);
+  });
+
+  it('offers the new page actions to foreground turns, with bounded inputs', () => {
+    const browser = schemaOf(buildComputerTools(testTurn()).browser!);
+    expect(browser.safeParse({ action: 'drag', ref: 'e1', to_ref: 'e2' }).success).toBe(true);
+    expect(browser.safeParse({ action: 'upload', ref: 'e1', path: '~/Downloads/a.pdf' }).success).toBe(true);
+    expect(browser.safeParse({ action: 'hover', ref: 'e1' }).success).toBe(true);
+    expect(browser.safeParse({ action: 'wait', timeout_s: 31 }).success).toBe(false);
+  });
+
+  it('wires the verification card into foreground turns only', () => {
+    expect(computerTurnFrom(testTurn()).humanCheck).toBeTypeOf('function');
+    expect(computerTurnFrom(testTurn({ background: true, userTriggered: false })).humanCheck).toBeUndefined();
   });
 });
 

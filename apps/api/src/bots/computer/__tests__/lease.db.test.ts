@@ -1,6 +1,8 @@
 /**
  * Take-over / hand-back against real PostgreSQL (rolled back per test): the
- * lease epoch, the Bot shell kill, exactly-once settlement of the card the
+ * lease epoch, the Bot shell kill (gh-agent-kill, which spares background
+ * jobs and terminals), the browser window brought back on every hand-back,
+ * exactly-once settlement of the card the
  * member answered — never a card in another conversation — and exactly one
  * wake-up for the Bot that asked; the abandoned-viewer auto-release that never
  * resumes anyone; and typing that requires the lease. The engine's single
@@ -14,8 +16,9 @@ import { createInternalTestUser } from '../../../../../../tests/helpers/internal
 import type { InboxItem } from '../../engine/inbox-types.js';
 
 const mocks = vi.hoisted(() => ({
-  exec: vi.fn(async () => ({ code: 0, stdout: Buffer.alloc(0), stderr: '' })),
+  exec: vi.fn(async () => ({ code: 0, stdout: Buffer.from('3\n'), stderr: '' })),
   getBrowser: vi.fn(),
+  restoreWindow: vi.fn(async (_userId: string) => {}),
   deliver: vi.fn<(sessionId: string, item: InboxItem) => Promise<void>>(async () => {}),
 }));
 
@@ -25,6 +28,7 @@ vi.mock('../access.js', () => ({
   abortComputerActions: () => 0,
   getBrowser: mocks.getBrowser,
   rememberFilledSecret: vi.fn(),
+  restoreBrowserWindow: mocks.restoreWindow,
 }));
 vi.mock('../runtime.js', () => ({ requireComputerRuntime: () => ({ docker: { exec: mocks.exec } }) }));
 vi.mock('../../engine/index.js', () => ({ deliverToConversation: mocks.deliver }));
@@ -58,6 +62,7 @@ beforeEach(async () => {
   });
   mocks.exec.mockClear();
   mocks.getBrowser.mockClear();
+  mocks.restoreWindow.mockClear();
   mocks.deliver.mockClear();
 });
 
@@ -89,14 +94,15 @@ describe('take-over and hand-back', () => {
     await takeoverComputer(user.id);
     expect(await lease()).toMatchObject({ lease_controller: 'user', lease_epoch: before.lease_epoch + 1 });
     expect(mocks.exec).toHaveBeenCalledTimes(1);
-    expect(mocks.exec).toHaveBeenCalledWith(
-      expect.objectContaining({ user: 'agent', argv: ['pkill', '-KILL', '-u', 'agent'] }),
-    );
+    // Not `pkill -u agent`: background jobs and the member's terminals survive a take-over.
+    expect(mocks.exec).toHaveBeenCalledWith(expect.objectContaining({ user: 'agent', argv: ['gh-agent-kill'] }));
     await takeoverComputer(user.id); // already theirs: nothing more
     expect(mocks.exec).toHaveBeenCalledTimes(1);
+    expect(mocks.restoreWindow).not.toHaveBeenCalled();
 
     await handbackComputer(user.id, { note: 'done  \n ok', requestId: request.id });
     expect(await lease()).toMatchObject({ lease_controller: 'bot', lease_epoch: before.lease_epoch + 2 });
+    expect(mocks.restoreWindow).toHaveBeenCalledWith(user.id); // the Bot gets its window back
     const settled = await db.bots.getRequest(user.id, request.id);
     expect(settled?.status).toBe('resolved');
     expect(JSON.parse(settled!.result!)).toEqual({ by: 'member', note: 'done ok' });
@@ -156,9 +162,11 @@ describe('take-over card decisions', () => {
   it('skip denies the card with the skipped note, and a stale double submit delivers once', async () => {
     const { bot, sessionId } = await conversationWith('Scout');
     const request = await card(sessionId, bot);
+    await takeoverComputer(user.id);
     await handleTakeoverDecision({ userId: user.id, request, decision: { decision: 'deny' } });
     await handleTakeoverDecision({ userId: user.id, request, decision: { decision: 'deny' } });
     expect((await db.bots.getRequest(user.id, request.id))?.status).toBe('denied');
+    expect(mocks.restoreWindow).toHaveBeenCalledTimes(1); // only the decision that moved the lease
     expect(mocks.deliver).toHaveBeenCalledTimes(1);
     const item = mocks.deliver.mock.calls[0]![1];
     expect(item.kind === 'continue' && item.note).toMatch(/skipped your take-over request/);
@@ -179,6 +187,7 @@ describe('abandoned take-overs', () => {
 
     await releaseAbandonedLeases(since + ABANDONED_LEASE_MS + 1_000);
     expect((await lease()).lease_controller).toBe('bot');
+    expect(mocks.restoreWindow).toHaveBeenCalledWith(user.id);
     expect(mocks.deliver).toHaveBeenCalledTimes(1);
     const [deliveredTo, item] = mocks.deliver.mock.calls[0]!;
     expect(deliveredTo).toBe(sessionId);

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<!-- The title and the "verify you are human" line are what the Bots computer's
+     human-check sniffer recognises (apps/api/src/bots/computer/needs-human.ts). -->
+<title>Just a moment...</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="card">
+    <h1>Acme 采购门户</h1>
+    <p class="sub">Verify you are human · 请先确认你是真人（演示用的验证页，不连接任何真实服务）</p>
+    <label class="check"><input id="human" type="checkbox"> 我是真人 I'm human</label>
+    <p id="status" class="sub" role="status"></p>
+  </main>
+  <script>
+    // Stays until a person ticks the box — it never clears by itself, so the
+    // flow (card → "verify here" → automatic hand-back) is deterministic.
+    document.getElementById('human').addEventListener('change', (event) => {
+      if (!event.target.checked) return;
+      document.getElementById('status').textContent = '验证通过，正在进入… Verified, continuing…';
+      setTimeout(() => location.replace('report.html'), 1200);
+    });
+  </script>
+</body>
+</html>

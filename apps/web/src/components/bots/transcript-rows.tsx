@@ -41,10 +41,12 @@ export type BotLookup = (botIdOrName: string | null | undefined) => BotView | un
 export function InlineAction({
   onClick,
   disabled,
+  testId,
   children,
 }: {
   onClick: () => void;
   disabled?: boolean;
+  testId?: string;
   children: ReactNode;
 }) {
   return (
@@ -52,6 +54,7 @@ export function InlineAction({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      data-testid={testId}
       className="inline-flex min-h-6 items-center gap-1 rounded px-1 font-medium text-primary-fg-strong transition-colors hover:bg-primary-subtle disabled:cursor-not-allowed disabled:opacity-50"
     >
       {children}
@@ -279,11 +282,26 @@ export function TaskReportRow({
   );
 }
 
-/** A member message the transcript has not confirmed yet. */
-export function PendingBubble({ pending }: { pending: PendingSend }) {
+/**
+ * A member message the transcript has not confirmed yet. One delivered while
+ * Bots work waits for the current reply; "Handle now" (`onHandleNow`, offered
+ * while a run is going) lets the current step finish and reads it next.
+ */
+export function PendingBubble({
+  pending,
+  onHandleNow,
+  interrupting = false,
+}: {
+  pending: PendingSend;
+  onHandleNow?: () => void;
+  /** The run already stops after the current step (a soft stop, or "Handle now" on another message). */
+  interrupting?: boolean;
+}) {
   const t = useT();
   // The attachments fence renders as chips, exactly as the persisted copy will.
   const { text, attachments } = splitAttachments(pending.content);
+  const queued = pending.status === 'queued';
+  const handlingNext = queued && (pending.nudged === true || interrupting);
   return (
     <div className="flex flex-col items-end gap-1 animate-fade-in" data-testid="bots-pending-send">
       <div className="max-w-[80%] rounded-2xl rounded-br-md border border-edge bg-surface-muted px-4 py-3 text-sm text-fg shadow-sm">
@@ -307,8 +325,21 @@ export function PendingBubble({ pending }: { pending: PendingSend }) {
         )}
       </div>
       {pending.status !== 'sent' && (
-        <span className="text-[10px] text-fg-faint">
-          {pending.status === 'queued' ? t('bots.transcript.delivered') : t('bots.transcript.sending')}
+        <span className="flex flex-wrap items-center justify-end gap-x-1 text-[10px] text-fg-faint">
+          <span>
+            {handlingNext
+              ? t('bots.transcript.handlingNext')
+              : queued
+                ? t('bots.transcript.delivered')
+                : t('bots.transcript.sending')}
+          </span>
+          {queued && !handlingNext && onHandleNow && (
+            <span className="text-[11px]">
+              <InlineAction onClick={onHandleNow} testId="bots-pending-handle-now">
+                {t('bots.transcript.handleNow')}
+              </InlineAction>
+            </span>
+          )}
         </span>
       )}
     </div>

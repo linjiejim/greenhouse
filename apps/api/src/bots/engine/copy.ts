@@ -168,6 +168,19 @@ export const copy = {
       : `${bot} is waiting for the computer${where} — hand it back when you're done and it will carry on`;
   },
 
+  /**
+   * The reason on a verification card the browser raised when a site asked
+   * for human verification: the host only (server-derived), never page content.
+   */
+  humanCheckReason: (l: BotsLocale, host: string | null) =>
+    l === 'zh'
+      ? `${host ?? '这个网站'} 要求人机验证，请在电脑上完成验证`
+      : `${host ?? 'This site'} asks for human verification — please complete it on the computer`,
+
+  /** A turn the member interrupted ("stop after this step") before it wrote anything. */
+  interruptedWithoutText: (l: BotsLocale) =>
+    l === 'zh' ? '（在这一步之后停下了，见上面的步骤）' : '(Stopped after this step — see the steps above.)',
+
   declined: (l: BotsLocale, kind: BotRequestKind, subject: string) => {
     if (kind === 'bot_create') return l === 'zh' ? `你没有新建「${subject}」` : `You declined to create “${subject}”`;
     if (kind === 'task_start')

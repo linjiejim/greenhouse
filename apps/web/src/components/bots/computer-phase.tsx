@@ -7,11 +7,15 @@
  * The phase is what the member reads; the raw `ComputerStatusView` is what the
  * server knows. Keeping the mapping pure (`computerPhase`) makes every state of
  * the pane testable without a server.
+ *
+ * `useComputerTimezoneSync` keeps the computer on the member's own clock: the
+ * page tells the server the browser's timezone once per page load when the
+ * computer's differs (it takes effect at the next start).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ComputerRuntimeView, ComputerStatusView } from '@greenhouse/types/bots';
-import { fetchComputerStatus, startComputer } from '../../lib/api/bots';
+import { fetchComputerStatus, startComputer, updateComputerSettings } from '../../lib/api/bots';
 import { wsClient } from '../../lib/ws';
 import type { TranslationKey } from '../../lib/i18n';
 import { StatusDot } from '../ui';
@@ -224,4 +228,40 @@ export function useComputerStatus(enabled: boolean): ComputerStatusState {
     apply: setStatus,
     start,
   };
+}
+
+// ─── Timezone ────────────────────────────────────────────
+
+/** Once per page load: switching conversations (or remounting the page) asks no second time. */
+let timezoneChecked = false;
+
+/** Test-only: forget that this page load already checked. */
+export function resetComputerTimezoneSyncForTest(): void {
+  timezoneChecked = false;
+}
+
+/** The browser's IANA timezone, when it reports one. */
+export function browserTimeZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * After the computer status loads: if the computer's stored timezone is not
+ * the browser's, store the browser's (`PUT /api/bots/computer/settings`). Quiet
+ * on failure — the computer keeps the deployment default and the next page
+ * load tries again.
+ */
+export function useComputerTimezoneSync(computer: Pick<ComputerStatusState, 'status' | 'apply'>): void {
+  const { status, apply } = computer;
+  useEffect(() => {
+    if (!status || timezoneChecked) return;
+    timezoneChecked = true;
+    const timezone = browserTimeZone();
+    if (!timezone || status.timezone === timezone) return;
+    updateComputerSettings({ timezone }).then(apply, () => {});
+  }, [status, apply]);
 }

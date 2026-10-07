@@ -1,0 +1,1 @@
+ALTER TABLE "bot_computers" ADD COLUMN "timezone" text;

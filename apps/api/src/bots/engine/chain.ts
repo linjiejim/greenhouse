@@ -27,6 +27,12 @@
  * - a member Stop ends the run: queued wake-ups are written but not run (the
  *   Bot stays quiet until the member asks), queued member messages stay and
  *   are answered right after;
+ * - a soft stop (`ChatRun.requestInterrupt`: "handle my queued message now",
+ *   or the first press of Stop) lets the speaking Bot finish its step (turn.ts),
+ *   then drops the chain's planned turns: a queued member message starts the
+ *   next chain at once (as an interjection would), otherwise the run ends the
+ *   way a Stop ends it — but nothing in flight was thrown away. A chain that
+ *   starts for a member message has taken the interrupt: it answers it;
  * - exactly ONE wire `finish` ends the run, then the run lock and the slot are
  *   released, `chat:run` is pushed, and the digest check is scheduled.
  */
@@ -46,7 +52,7 @@ import { botsEngineDeps } from './deps.js';
 import { digestView, effectiveDigestUpto, scheduleDigestCheck } from './digest.js';
 import { CHAIN_LIMITS, FloorController, type FloorItem } from './floor.js';
 import { botsOwnerEligible, unlockBotsRun } from './run-slot.js';
-import { runBotTurn, type ChainState, type LimitReason, type RunContext } from './turn.js';
+import { memberMessageQueued, runBotTurn, type ChainState, type LimitReason, type RunContext } from './turn.js';
 import { TranscriptChangedError, TranscriptWriter } from './writer.js';
 
 type WakeUp = { botId: string; note: string };
@@ -82,6 +88,8 @@ export interface BotsRunOutcome {
 class RunAbortError extends Error {}
 /** The conversation was deleted while the run was going: end quietly. */
 class ConversationGoneError extends Error {}
+/** A soft stop with no member message waiting: the run ends (completed), nothing more runs. */
+class RunInterruptedError extends Error {}
 
 /** Parse a persisted inbox row back into its item (malformed rows are quarantined by the caller). */
 export function parseInboxRow(row: { kind: string; payload: string }): InboxItem | null {
@@ -336,8 +344,41 @@ async function writeLimit(rc: RunContext, chain: ChainState, reason: LimitReason
   await rc.writer.appendEvent({ text: copy.limit(rc.user.locale, reason), event: { kind: 'limit', reason } });
 }
 
+/**
+ * Take the member's soft stop (see the module comment) once the turn that was
+ * running has finished its step. `dropped` are the wake-ups the chain had
+ * planned but not run. A queued member message starts the next chain, those
+ * wake-ups carried after it as for any interjection; with none the run ends:
+ * queued wake-ups are written but not run, and dropped ones say so, as after
+ * a Stop. Throws RunInterruptedError to end the run.
+ */
+async function takeInterrupt(rc: RunContext, dropped: WakeUp[]): Promise<ChainTrigger> {
+  rc.run.clearInterrupt();
+  const carry = [...dropped];
+  if (await memberMessageQueued(rc.db, rc.sessionId)) {
+    const drained = await drainInbox(rc, (botId, note) => carry.push({ botId, note }), 'run');
+    if (drained.interjection) {
+      return { ...drained.interjection, carry: [...(drained.interjection.carry ?? []), ...carry] };
+    }
+    // The message could not be applied: it stays queued and the next run answers it.
+  }
+  await drainInbox(rc, () => undefined, 'stop');
+  for (const wake of carry) {
+    const name = rc.bots.get(wake.botId)?.name ?? wake.botId;
+    await rc.writer.appendEvent({
+      text: copy.stoppedWakeup(rc.user.locale, name),
+      event: { kind: 'stopped', bot_id: wake.botId },
+      botId: wake.botId,
+    });
+  }
+  throw new RunInterruptedError();
+}
+
 /** Run one chain. Returns the next trigger when a member message interrupted it. */
 async function runChain(rc: RunContext, trigger: ChainTrigger): Promise<ChainTrigger | null> {
+  // Answering a member message is what a soft stop asked for (or came
+  // before it): it applies to the work after this point, not to the answer.
+  if (trigger.kind === 'message') rc.run.clearInterrupt();
   await refreshRoster(rc);
   const floor = new FloorController({
     members: rc.members,
@@ -367,6 +408,8 @@ async function runChain(rc: RunContext, trigger: ChainTrigger): Promise<ChainTri
 
   for (;;) {
     if (rc.run.signal.aborted) throw new RunAbortError();
+    // Soft stop: the Bot that was speaking finished its step; nothing planned runs.
+    if (rc.run.interruptRequested) return await takeInterrupt(rc, floor.clear());
     // After a budget hit only the reserved follow-ups run: new turns wait in the
     // inbox for a fresh chain (the final drain of the run starts one).
     const drained = await drainInbox(
@@ -544,6 +587,10 @@ export async function runBotsRun(args: BotsRunArgs): Promise<BotsRunOutcome> {
       if (trigger) continue;
       // Before finishing: anything that arrived during the last turn.
       if (rc.run.signal.aborted) break;
+      if (rc.run.interruptRequested) {
+        trigger = await takeInterrupt(rc, []);
+        continue;
+      }
       const pending: WakeUp[] = [];
       const drained = await drainInbox(
         rc,
@@ -557,6 +604,8 @@ export async function runBotsRun(args: BotsRunArgs): Promise<BotsRunOutcome> {
   } catch (error) {
     if (error instanceof RunAbortError) {
       // Member Stop / shutdown: completed turns stay (the Stop drain is below).
+    } else if (error instanceof RunInterruptedError) {
+      // Soft stop with nobody waiting: the run ends normally (takeInterrupt drained it).
     } else if (error instanceof ConversationGoneError) {
       logger.info('[bots] conversation deleted during a run', { sessionId });
     } else {

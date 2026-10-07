@@ -19,7 +19,7 @@ import { AlertTriangle, Bot } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import * as botsApi from '../../lib/api/bots';
 import { ComputerPane, type ComputerPaneHandle } from '../../components/bots/computer-pane';
-import { useComputerStatus } from '../../components/bots/computer-phase';
+import { useComputerStatus, useComputerTimezoneSync } from '../../components/bots/computer-phase';
 import {
   BotProfileDrawer,
   BotsBareHeader,
@@ -197,9 +197,12 @@ type Pane = 'info' | 'computer' | null;
 function BotsWorkspace({ sessionId }: { sessionId: string }) {
   const t = useT();
   const controller = useBotConversation(sessionId);
-  // The one computer status of this page: the header's dot and the pane read
-  // the same copy (no second poller, and an action's result shows in both).
+  // The one computer status of this page: the header's dot, the pane and the
+  // human-check cards read the same copy (no second poller, and an action's
+  // result shows everywhere at once).
   const computer = useComputerStatus(true);
+  // The computer keeps the member's clock (stored once per page load when it differs).
+  useComputerTimezoneSync(computer);
   const split = useSplitCapable();
   const bots = useBotsStore((state) => state.bots);
   const directory = useBotDirectory();
@@ -333,6 +336,7 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
           onReadOnly={onReadOnly}
           vaultAvailable={vaultAvailable}
           computerPhase={computer.phase}
+          computer={computer}
           activePane={pane}
           onPane={changePane}
           onInvite={() => openDialog({ kind: 'invite', sessionId })}

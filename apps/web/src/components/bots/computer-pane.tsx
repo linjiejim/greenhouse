@@ -12,6 +12,13 @@
  *   running     → watch (view only) → Take over → in control → Done, hand back
  *   error       → reason + Start again
  *
+ * While it runs the pane has four tabs: Screen (the above, plus "Back to the
+ * browser"), Terminal, Files and Processes — the last three are the Bots'
+ * sandbox and need no take-over. A tab stays mounted once opened (hidden when
+ * another one shows), so the live screen keeps its connection (and a held
+ * lease its viewer heartbeat), the shell its scrollback and an upload its
+ * progress while the member looks elsewhere.
+ *
  * Hosts mount it with `{open, onClose, sessionId?, focus?}`; `onFocusChange`
  * and `busyBotName` are optional refinements (focus layout on takeover, a
  * named takeover confirmation). A host that already keeps the computer status
@@ -22,8 +29,20 @@
 
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { ComputerErrorCode } from '@greenhouse/types/bots';
-import { Button, ConfirmDialog, EmptyState, IconButton, Skeleton, Spinner, toast } from '../ui';
-import { AlertTriangle, Maximize2, Minimize2, Monitor, PanelLeftClose, PanelLeftOpen, X } from '../../lib/icons';
+import { Button, ConfirmDialog, EmptyState, IconButton, Skeleton, Spinner, Tabs, toast } from '../ui';
+import {
+  Activity,
+  AlertTriangle,
+  Folder,
+  Maximize2,
+  Minimize2,
+  Monitor,
+  PanelLeftClose,
+  PanelLeftOpen,
+  SquareTerminal,
+  X,
+  type LucideIcon,
+} from '../../lib/icons';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { useAuthStore } from '../../stores/auth-store';
 import {
@@ -31,6 +50,7 @@ import {
   handbackComputer,
   isBotsApiError,
   resetComputer,
+  restoreComputerWindow,
   stopComputer,
   takeoverComputer,
   typeIntoComputer,
@@ -41,6 +61,9 @@ import { ComputerControlBar, ComputerTypePanel, ComputerWatchBar } from './compu
 import { ComputerResetDialog } from './computer-reset-dialog';
 import { ComputerPhasePanel } from './computer-phase-panel';
 import { NeedsYouBanner, usePendingRequest } from './computer-needs-you';
+import { ComputerTerminal } from './computer-terminal';
+import { ComputerFiles } from './computer-files';
+import { ComputerProcesses } from './computer-processes';
 
 export interface ComputerPaneProps {
   open: boolean;
@@ -90,13 +113,21 @@ const ERROR_KEYS: Partial<Record<ComputerErrorCode, TranslationKey>> = {
   user_in_control: 'botsComputer.err_userInControl',
   lease_required: 'botsComputer.err_notInControl',
   invalid: 'botsComputer.err_invalid',
+  // Files and processes: the thing asked for is gone, or a transfer is over the cap.
+  not_found: 'botsComputer.err_notFound',
+  too_large: 'botsComputer.err_tooLarge',
 } satisfies Record<ComputerErrorCode, TranslationKey>;
 
-export function computerErrorText(t: Translate, err: unknown, fallback: TranslationKey): string {
+/** The sentence for a computer route's failure code, or null when the code is not one every route shares. */
+export function computerErrorKey(err: unknown): TranslationKey | null {
   // The Docker host's disk is nearly full: no computer starts — an admin's job,
   // nothing the member can clean up on their own computer.
-  if (isBotsApiError(err, 'over_quota') && err.reason === 'host_disk') return t('botsComputer.err_hostDisk');
-  return t(copyForCode(ERROR_KEYS, isBotsApiError(err) ? err.code : null) ?? fallback);
+  if (isBotsApiError(err, 'over_quota') && err.reason === 'host_disk') return 'botsComputer.err_hostDisk';
+  return copyForCode(ERROR_KEYS, isBotsApiError(err) ? err.code : null) ?? null;
+}
+
+export function computerErrorText(t: Translate, err: unknown, fallback: TranslationKey): string {
+  return t(computerErrorKey(err) ?? fallback);
 }
 
 export const ComputerPane = forwardRef<ComputerPaneHandle, ComputerPaneProps>(function ComputerPane(props, ref) {
@@ -104,7 +135,20 @@ export const ComputerPane = forwardRef<ComputerPaneHandle, ComputerPaneProps>(fu
   return <ComputerPaneBody {...props} ref={ref} />;
 });
 
-type BusyAction = 'start' | 'takeover' | 'handback' | 'sleep' | 'reset';
+type BusyAction = 'start' | 'takeover' | 'handback' | 'sleep' | 'reset' | 'restore';
+
+export type ComputerTab = 'screen' | 'terminal' | 'files' | 'processes';
+
+const TABS: ReadonlyArray<{ key: ComputerTab; label: TranslationKey; icon: LucideIcon }> = [
+  { key: 'screen', label: 'botsComputer.tab_screen', icon: Monitor },
+  { key: 'terminal', label: 'botsComputer.tab_terminal', icon: SquareTerminal },
+  { key: 'files', label: 'botsComputer.tab_files', icon: Folder },
+  { key: 'processes', label: 'botsComputer.tab_processes', icon: Activity },
+];
+
+function asTab(key: string): ComputerTab {
+  return TABS.find((tab) => tab.key === key)?.key ?? 'screen';
+}
 
 const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(function ComputerPaneBody(
   { onClose, sessionId, focus = false, onFocusChange, busyBotName, computer: shared },
@@ -129,6 +173,13 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
   const [pasting, setPasting] = useState(false);
   // The request a take-over answers, so handing back resumes exactly that Bot.
   const [answering, setAnswering] = useState<string | undefined>(undefined);
+  const [tab, setTab] = useState<ComputerTab>('screen');
+  // Tabs opened so far stay mounted (hidden) — see the header comment.
+  const [opened, setOpened] = useState<ReadonlySet<ComputerTab>>(() => new Set<ComputerTab>(['screen']));
+  const showTab = useCallback((next: ComputerTab) => {
+    setTab(next);
+    setOpened((current) => (current.has(next) ? current : new Set(current).add(next)));
+  }, []);
 
   const inControl = phase?.kind === 'running' && phase.controller === 'user';
   const expanded = focus || fullscreen.active;
@@ -140,6 +191,7 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
   const takeOver = async (requestId?: string) => {
     setConfirmTakeover(false);
     setBusy('takeover');
+    showTab('screen');
     try {
       computer.apply(await takeoverComputer());
       setAnswering(requestId);
@@ -239,6 +291,19 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
       computer.apply(await stopComputer());
     } catch (err) {
       toast(computerErrorText(t, err, 'botsComputer.sleepFailed'), 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** Minimised or closed the browser window? Bring it back (no lease needed). */
+  const restoreWindow = async () => {
+    setBusy('restore');
+    try {
+      await restoreComputerWindow();
+    } catch (err) {
+      toast(computerErrorText(t, err, 'botsComputer.restoreWindowFailed'), 'error');
+      void computer.refresh();
     } finally {
       setBusy(null);
     }
@@ -344,34 +409,93 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
           )
         ) : phase?.kind === 'running' ? (
           <>
-            <ComputerScreen
-              ref={screenRef}
-              viewOnly={!inControl}
-              onTakeOver={() => requestTakeOver(pending?.request.id)}
-              onDisconnected={() => void computer.refresh()}
-              className={expanded ? 'min-h-[240px] flex-1' : 'aspect-[16/10] w-full flex-shrink-0'}
+            <Tabs
+              ariaLabel={t('botsComputer.tabsLabel')}
+              active={tab}
+              onChange={(key) => showTab(asTab(key))}
+              tabs={TABS.map(({ key, label, icon: Icon }) => ({
+                key,
+                testId: `computer-tab-${key}`,
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Icon size={14} className="hidden sm:inline-block" aria-hidden="true" />
+                    {t(label)}
+                  </span>
+                ),
+              }))}
             />
-            {inControl ? (
-              <ComputerControlBar
-                since={phase.since}
-                busy={busy === 'handback'}
-                typeOpen={typePanel !== null}
-                pasting={pasting}
-                onToggleType={() => setTypePanel((open) => (open ? null : { masked: false, pasteFallback: false }))}
-                onPaste={() => void paste()}
-                onHandBack={(note) => void handBack(note)}
+            <div
+              role="tabpanel"
+              aria-label={t('botsComputer.tab_screen')}
+              hidden={tab !== 'screen'}
+              className={`flex flex-col gap-3 ${expanded ? 'min-h-0 flex-1' : ''}`}
+            >
+              <ComputerScreen
+                ref={screenRef}
+                viewOnly={!inControl}
+                onTakeOver={() => requestTakeOver(pending?.request.id)}
+                onDisconnected={() => void computer.refresh()}
+                className={expanded ? 'min-h-[240px] flex-1' : 'aspect-[16/10] w-full flex-shrink-0'}
+              />
+              {inControl ? (
+                <ComputerControlBar
+                  since={phase.since}
+                  busy={busy === 'handback'}
+                  typeOpen={typePanel !== null}
+                  pasting={pasting}
+                  onToggleType={() => setTypePanel((open) => (open ? null : { masked: false, pasteFallback: false }))}
+                  onPaste={() => void paste()}
+                  onHandBack={(note) => void handBack(note)}
+                  restoring={busy === 'restore'}
+                  onRestoreWindow={() => void restoreWindow()}
+                >
+                  {typePanel && (
+                    <ComputerTypePanel
+                      initiallyMasked={typePanel.masked}
+                      pasteFallback={typePanel.pasteFallback}
+                      onSubmit={typeText}
+                      onKey={(key) => screenRef.current?.sendKey(key)}
+                    />
+                  )}
+                </ComputerControlBar>
+              ) : (
+                <ComputerWatchBar
+                  busy={busy === 'takeover'}
+                  onTakeOver={() => requestTakeOver(pending?.request.id)}
+                  restoring={busy === 'restore'}
+                  onRestoreWindow={() => void restoreWindow()}
+                />
+              )}
+            </div>
+            {opened.has('terminal') && (
+              <div
+                role="tabpanel"
+                aria-label={t('botsComputer.tab_terminal')}
+                hidden={tab !== 'terminal'}
+                className="flex min-h-0 flex-1 flex-col"
               >
-                {typePanel && (
-                  <ComputerTypePanel
-                    initiallyMasked={typePanel.masked}
-                    pasteFallback={typePanel.pasteFallback}
-                    onSubmit={typeText}
-                    onKey={(key) => screenRef.current?.sendKey(key)}
-                  />
-                )}
-              </ComputerControlBar>
-            ) : (
-              <ComputerWatchBar busy={busy === 'takeover'} onTakeOver={() => requestTakeOver(pending?.request.id)} />
+                <ComputerTerminal active={tab === 'terminal'} onDisconnected={() => void computer.refresh()} />
+              </div>
+            )}
+            {opened.has('files') && (
+              <div
+                role="tabpanel"
+                aria-label={t('botsComputer.tab_files')}
+                hidden={tab !== 'files'}
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                <ComputerFiles active={tab === 'files'} onStale={() => void computer.refresh()} />
+              </div>
+            )}
+            {opened.has('processes') && (
+              <div
+                role="tabpanel"
+                aria-label={t('botsComputer.tab_processes')}
+                hidden={tab !== 'processes'}
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                <ComputerProcesses active={tab === 'processes'} onStale={() => void computer.refresh()} />
+              </div>
             )}
           </>
         ) : (

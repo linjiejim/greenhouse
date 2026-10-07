@@ -7,7 +7,10 @@
  * computers (nothing is stubbed): first run, the template gallery, a Bot
  * browsing on its computer while you watch, a group hand-off, signing in with
  * the password vault (approval card + TOTP), the secure sign-in card, a
- * background task, the profile drawer and info pane, the admin page, mobile.
+ * background task, the profile drawer and info pane, the computer as a
+ * computer (taskbar and minimise recovery, terminal, files, a background
+ * process), a human check on the demo site's verify.html handed to the member
+ * and passed on the card, "handle now", the admin page, mobile.
  *
  * The demo site (tests/fixtures/bots-demo-site) is served inside the member's
  * computer on http://localhost:8000 (vault entry) and :8001 (no vault entry, for
@@ -28,7 +31,7 @@
 import { chromium } from '@playwright/test';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
-import { mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost:3110';
@@ -157,26 +160,25 @@ function startDemoSite(container) {
     { input: archive },
   );
   for (const port of [8000, 8001]) {
-    // Probe the port, then start python directly: a `pgrep -f … || python3 …`
-    // one-liner matches its own shell's command line and never starts it.
     const up = spawnSync('docker', ['exec', container, 'curl', '-fs', '-o', '/dev/null', `http://127.0.0.1:${port}/`]);
     if (up.status === 0) continue;
+    // A gh-jobs job, not a bare `docker exec -d`: a take-over kills the agent's
+    // stray processes but spares jobs, and the human-check step takes over.
     execFileSync('docker', [
       'exec',
-      '-d',
       '-u',
       'agent',
+      '-e',
+      'HOME=/home/agent',
       '-w',
       '/home/agent',
       container,
-      'python3',
-      '-m',
-      'http.server',
-      String(port),
-      '--bind',
-      '127.0.0.1',
-      '--directory',
-      '/home/agent/work/acme',
+      'gh-jobs',
+      'start',
+      '--name',
+      `acme-demo-${port}`,
+      '--',
+      `python3 -m http.server ${port} --bind 127.0.0.1 --directory /home/agent/work/acme`,
     ]);
   }
 }
@@ -487,6 +489,181 @@ await step('profile', async () => {
   await page.getByTestId('bots-info-button').click();
   await page.getByTestId('bots-info-panel').waitFor();
   await snap(page, '16-info-panel', { wait: 800 });
+});
+
+// ─── The computer as a computer (image contract 2) ──────
+
+async function openComputerTab(target, key) {
+  await openComputerPane(target);
+  await target.getByTestId(`computer-tab-${key}`).click();
+}
+
+/** A PNG of the whole remote desktop, straight from the container (what the viewer shows). */
+function desktopPng(container, name) {
+  const png = execFileSync(
+    'docker',
+    [
+      'exec',
+      '-u',
+      'browser',
+      '-e',
+      'DISPLAY=:0',
+      '-e',
+      'XAUTHORITY=/home/browser/.Xauthority',
+      container,
+      'import',
+      '-window',
+      'root',
+      'png:-',
+    ],
+    { maxBuffer: 32 * 1024 * 1024 },
+  );
+  writeFileSync(resolve(OUT, `${name}.png`), png);
+  log(`  📸 ${name}`);
+}
+
+await step('desktop', async () => {
+  await ensureBots();
+  await api('POST', '/api/bots/computer/start');
+  const container = computerContainer(me.id);
+  if (!container) throw new Error('the member has no running computer');
+  await openConversation(page, state.ivy.dm_session_id);
+  await openComputerPane(page);
+  await waitScreen(page);
+  await snap(page, '19-desktop-taskbar', { wait: 1200 });
+  // The trial's blank screen: minimise the browser the way Chromium's own button does…
+  spawnSync('docker', [
+    'exec',
+    '-u',
+    'browser',
+    '-e',
+    'DISPLAY=:0',
+    '-e',
+    'XAUTHORITY=/home/browser/.Xauthority',
+    container,
+    'sh',
+    '-c',
+    'for w in $(xdotool search --onlyvisible --class chromium); do xdotool windowminimize "$w"; done',
+  ]);
+  await page.waitForTimeout(700);
+  desktopPng(container, '19b-minimised');
+  // …and the watchdog brings it back within a few seconds.
+  await page.waitForTimeout(5000);
+  desktopPng(container, '19c-restored');
+});
+
+await step('terminal', async () => {
+  await ensureBots();
+  await openConversation(page, state.ivy.dm_session_id);
+  await openComputerTab(page, 'terminal');
+  const terminal = page.getByTestId('computer-terminal');
+  await terminal.waitFor({ timeout: 30_000 });
+  await page.waitForTimeout(2500);
+  await terminal.click();
+  await page.keyboard.type(
+    'clear; whoami; python3 --version; node --version; pip --version | cut -c1-30; ffmpeg -version | head -1 | cut -c1-40; ls ~/work | head -5',
+  );
+  await page.keyboard.press('Enter');
+  await snap(page, '20-terminal', { wait: 3500 });
+});
+
+await step('files', async () => {
+  await ensureBots();
+  await openConversation(page, state.ivy.dm_session_id);
+  await openComputerTab(page, 'files');
+  await page.getByTestId('computer-file-list').waitFor({ timeout: 30_000 });
+  await page.getByTestId('computer-files-input').setInputFiles({
+    name: '采购清单-十月.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('品类,数量,预算\n办公用品,12,3600\n显示器,6,8940\n', 'utf8'),
+  });
+  await page
+    .getByTestId('computer-file-row')
+    .filter({ hasText: '采购清单-十月.csv' })
+    .first()
+    .waitFor({ timeout: 30_000 });
+  await snap(page, '21-files', { wait: 1200 });
+});
+
+await step('processes', async () => {
+  await ensureBots();
+  const dm = state.basil.dm_session_id;
+  await openConversation(page, dm);
+  await send(
+    page,
+    '在电脑上用后台进程跑一个约 60 秒的任务：每 5 秒打印一行「第 N 步完成」，名字叫「演示进度」。启动后告诉我进程编号就行，不用等它跑完。',
+  );
+  await waitIdle(api, dm, 240_000);
+  await openComputerTab(page, 'processes');
+  const row = page.getByTestId('computer-process-row').first();
+  await row.waitFor({ timeout: 30_000 });
+  await row.click();
+  await page.getByTestId('computer-process-log-text').waitFor({ timeout: 20_000 });
+  await snap(page, '22-processes', { wait: 6000 });
+});
+
+await step('human-check', async () => {
+  await ensureBots();
+  await api('POST', '/api/bots/computer/start');
+  const container = computerContainer(me.id);
+  if (!container) throw new Error('the member has no running computer');
+  startDemoSite(container);
+  const dm = state.basil.dm_session_id;
+  await openConversation(page, dm);
+  await send(page, '打开 http://localhost:8000/verify.html ，进去后告诉我九月公开报表的订单合计金额。');
+  const request = await waitRequest(api, dm, ['takeover'], 240_000);
+  const card = page.getByTestId('bots-human-check').last();
+  await card.waitFor({ timeout: 30_000 });
+  await card.locator('canvas').first().waitFor({ timeout: 45_000 });
+  await snap(page, '23-human-check-card', { wait: 2500 });
+  // The member does the step on the embedded screen (the fixture's box: Tab,
+  // Space), then hands back from the card, which wakes the Bot.
+  await page.getByTestId('bots-request-verify-here').last().click();
+  await page
+    .waitForFunction(
+      () =>
+        document.querySelector('[data-testid="bots-human-check"]:last-of-type')?.getAttribute('data-in-control') ===
+        'true',
+      null,
+      { timeout: 20_000 },
+    )
+    .catch(() => {});
+  const canvas = card.locator('canvas').first();
+  await canvas.click({ position: { x: 20, y: 20 } });
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(3000);
+  await snap(page, '23b-human-check-in-control', { wait: 500 });
+  await page
+    .getByTestId('bots-request-card')
+    .filter({ has: page.getByTestId('bots-human-check') })
+    .last()
+    .getByRole('button', { name: /完成，交还|I'm done/ })
+    .click();
+  void request;
+  await waitIdle(api, dm, 300_000);
+  await openConversation(page, dm);
+  await snap(page, '24-human-check-passed', { wait: 1500 });
+});
+
+await step('interrupt', async () => {
+  await ensureBots();
+  const dm = state.sage.dm_session_id;
+  await openConversation(page, dm);
+  await send(
+    page,
+    '在电脑上依次打开 https://gvisor.dev 、https://playwright.dev 、https://novnc.com 、https://www.tmux.org ，每个读一下首页再各写两句介绍。',
+  );
+  await page.getByTestId('bots-live-segment').waitFor({ timeout: 60_000 });
+  await page.waitForTimeout(6000);
+  await send(page, '先停一下：直接用一句话告诉我 tmux 是做什么的。');
+  const handleNow = page.getByTestId('bots-pending-handle-now').last();
+  await handleNow.waitFor({ timeout: 20_000 });
+  await snap(page, '25-handle-now', { wait: 600 });
+  await handleNow.click();
+  await waitIdle(api, dm, 300_000);
+  await openConversation(page, dm);
+  await snap(page, '26-interrupted', { wait: 1500 });
 });
 
 await step('admin', async () => {

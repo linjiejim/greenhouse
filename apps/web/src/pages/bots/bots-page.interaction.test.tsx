@@ -19,6 +19,7 @@ import { BotsApiError } from '../../lib/api/bots';
 import { useAuthStore, useProfileStore } from '../../stores';
 import { ToastContainer } from '../../components/ui';
 import { useBotsStore } from '../../components/bots/bots-store';
+import { browserTimeZone, resetComputerTimezoneSyncForTest } from '../../components/bots/computer-phase';
 import { BotsPage } from './index';
 
 const api = vi.hoisted(() => ({
@@ -32,6 +33,7 @@ const api = vi.hoisted(() => ({
   fetchComputerStatus: vi.fn(),
   handbackComputer: vi.fn(),
   createComputerViewToken: vi.fn(),
+  updateComputerSettings: vi.fn(),
 }));
 vi.mock('../../lib/api/bots', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api/bots')>()),
@@ -118,6 +120,9 @@ function computer(overrides: Partial<ComputerStatusView>): ComputerStatusView {
     last_active_at: null,
     queue_position: null,
     disk_bytes: null,
+    // Already on the browser's clock: only the timezone tests below make the page store it.
+    timezone: browserTimeZone(),
+    lang: 'zh-CN',
     ...overrides,
   };
 }
@@ -175,6 +180,8 @@ beforeEach(() => {
   api.listConversationTasks.mockResolvedValue({ tasks: [] });
   api.listRequests.mockResolvedValue({ requests: [] });
   api.createComputerViewToken.mockResolvedValue({ token: 't', expires_at: '2026-10-05T00:00:00.000Z' });
+  api.updateComputerSettings.mockImplementation(async ({ timezone }: { timezone: string }) => computer({ timezone }));
+  resetComputerTimezoneSyncForTest();
   window.location.hash = '#/bots';
 });
 
@@ -289,5 +296,40 @@ describe('Bots workspace', () => {
     expect(api.handbackComputer).toHaveBeenCalledWith({ note: '', requestId: undefined, sessionId: 'dm-sage' });
     expect(document.querySelector('[data-testid="bots-computer-host"]')).toBeNull();
     expect(document.querySelector('[data-testid="bots-info-pane"]')).not.toBeNull();
+  });
+});
+
+describe('the computer keeps the member’s clock', () => {
+  const zone = browserTimeZone();
+
+  it('stores the browser’s timezone once per page load when the computer’s differs', async () => {
+    expect(zone).toBeTruthy();
+    api.getConversation.mockResolvedValue({ conversation: detail('dm-sage', SAGE), messages: [], has_more: false });
+    api.fetchComputerStatus.mockResolvedValue(computer({ timezone: null }));
+    await renderPage('c=dm-sage');
+    expect(api.updateComputerSettings).toHaveBeenCalledTimes(1);
+    expect(api.updateComputerSettings).toHaveBeenCalledWith({ timezone: zone });
+
+    // Back on the page (another conversation, a remount): not asked again this page load.
+    await act(async () => root?.unmount());
+    root = null;
+    await renderPage('c=dm-sage');
+    expect(api.updateComputerSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a computer already on the browser’s timezone alone', async () => {
+    api.getConversation.mockResolvedValue({ conversation: detail('dm-sage', SAGE), messages: [], has_more: false });
+    api.fetchComputerStatus.mockResolvedValue(computer({ timezone: zone }));
+    await renderPage('c=dm-sage');
+    expect(api.updateComputerSettings).not.toHaveBeenCalled();
+  });
+
+  it('stays quiet when the server refuses (the next page load tries again)', async () => {
+    api.getConversation.mockResolvedValue({ conversation: detail('dm-sage', SAGE), messages: [], has_more: false });
+    api.fetchComputerStatus.mockResolvedValue(computer({ timezone: 'Etc/UTC' === zone ? null : 'Etc/UTC' }));
+    api.updateComputerSettings.mockRejectedValueOnce(new BotsApiError('nope', 400, 'invalid'));
+    await renderPage('c=dm-sage');
+    expect(api.updateComputerSettings).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).not.toContain('nope');
   });
 });

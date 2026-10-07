@@ -188,6 +188,15 @@ export function fakeComputer(browser: Browser, overrides: Partial<ComputerDeps> 
         const id = `cf_shot_${state.screenshots.length}`;
         return { file_id: id, name: 'screenshot.png', size: png.length, download_url: `/api/chat-files/${id}/content` };
       },
+      // No gh-jobs on a test browser: suites that need processes override these.
+      startJob: async () => {
+        throw new Error('no background processes in this test');
+      },
+      listJobs: async () => [],
+      jobLog: async () => {
+        throw new Error('no background processes in this test');
+      },
+      stopJob: async (_userId, id) => ({ id, stopped: false }),
       ...overrides,
     },
   };

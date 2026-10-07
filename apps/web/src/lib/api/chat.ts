@@ -202,6 +202,31 @@ export async function stopChatRun(sessionId: string): Promise<boolean> {
   return res.ok;
 }
 
+/**
+ * Soft stop (Bots conversations): the current step finishes — its tool calls
+ * complete and are kept, e.g. a generated image — then the turn ends. A
+ * member message waiting in the queue is read next; with none the run ends.
+ * Rejects with a `BotsApiError` when there is no run to interrupt (404) or the
+ * conversation does not support it (400 `not_supported`).
+ */
+export async function interruptChatRun(sessionId: string): Promise<{ run_id: string }> {
+  const res = await authFetch(`${BASE}/api/chat/runs/${encodeURIComponent(sessionId)}/interrupt`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const data: unknown = await res.json().catch(() => null);
+    const body: { error?: unknown; code?: unknown } = data && typeof data === 'object' ? data : {};
+    throw new BotsApiError(
+      typeof body.error === 'string' && body.error ? body.error : `Interrupt failed (${res.status})`,
+      res.status,
+      typeof body.code === 'string' ? body.code : null,
+    );
+  }
+  const data: unknown = await res.json().catch(() => null);
+  const runId = data && typeof data === 'object' && 'run_id' in data ? data.run_id : null;
+  return { run_id: typeof runId === 'string' ? runId : '' };
+}
+
 // ─── Browser Client Action Result ───────────────────────────
 
 /**

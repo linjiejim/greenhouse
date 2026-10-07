@@ -199,6 +199,9 @@ import {
   Columns3,
   Workflow,
   Flag,
+  FileIcon,
+  SquareTerminal,
+  Activity,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -396,6 +399,9 @@ export {
   Columns3,
   Workflow,
   Flag,
+  FileIcon,
+  SquareTerminal,
+  Activity,
 };
 export type { LucideIcon };
 

@@ -214,6 +214,58 @@ describe('POST /api/chat/runs/:sessionId/stop', () => {
   });
 });
 
+describe('POST /api/chat/runs/:sessionId/interrupt', () => {
+  const botsSession = (id: string, ownerId = 'owner'): SessionRow => ({ ...makeSession(id, ownerId), channel: 'bots' });
+  const interrupt = (app: ReturnType<typeof createApp>, sessionId: string, user = asUser('owner')) =>
+    app.request(`/api/chat/runs/${sessionId}/interrupt`, { method: 'POST', headers: user });
+
+  it('asks the running Bots run to stop after its step: flagged, announced, nothing aborted', async () => {
+    const sessionId = uniqueSession();
+    mocks.sessions.getById.mockResolvedValue(botsSession(sessionId));
+    const run = chatRunRegistry.claim(sessionId, 'owner')!;
+    const events: Array<Record<string, unknown>> = [];
+    run.subscribe(-1, { onEvent: (event) => events.push(event), onEnd: () => undefined });
+
+    const response = await interrupt(createApp(), sessionId);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true, run_id: run.runId });
+    expect(run.interruptRequested).toBe(true);
+    expect(run.signal.aborted).toBe(false);
+    expect(events).toEqual([expect.objectContaining({ type: 'run-interrupting' })]);
+    chatRunRegistry.finish(run, 'completed');
+  });
+
+  it('is the owner’s only — a super included — and 404s when nothing runs', async () => {
+    const sessionId = uniqueSession();
+    mocks.sessions.getById.mockResolvedValue(botsSession(sessionId));
+    const app = createApp();
+    expect((await interrupt(app, sessionId)).status).toBe(404); // no run
+
+    const run = chatRunRegistry.claim(sessionId, 'owner')!;
+    for (const user of [asUser('other'), asUser('root', 'super')]) {
+      const response = await interrupt(app, sessionId, user);
+      expect(response.status).toBe(404);
+    }
+    expect(run.interruptRequested).toBe(false);
+
+    mocks.sessions.getById.mockResolvedValue(undefined);
+    expect((await interrupt(app, sessionId)).status).toBe(404);
+    expect(run.interruptRequested).toBe(false);
+    chatRunRegistry.finish(run, 'completed');
+  });
+
+  it('refuses any other conversation with not_supported (only the Bots engine stops at a step)', async () => {
+    const sessionId = uniqueSession();
+    mocks.sessions.getById.mockResolvedValue(makeSession(sessionId));
+    const run = chatRunRegistry.claim(sessionId, 'owner')!;
+    const response = await interrupt(createApp(), sessionId);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: 'not_supported' });
+    expect(run.interruptRequested).toBe(false);
+    chatRunRegistry.finish(run, 'completed');
+  });
+});
+
 describe('GET /api/chat/runs/:sessionId/stream (reconnect)', () => {
   it('replays events after the requested seq, then tails live until the run ends', async () => {
     const sessionId = uniqueSession();

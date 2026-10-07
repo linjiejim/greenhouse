@@ -7,6 +7,7 @@ import type { BotView } from '@greenhouse/types/bots';
 import { I18nProvider } from '../../lib/i18n';
 import { ToastContainer } from '../ui';
 import { BotsComposer, type BotsComposerHandle } from './bots-composer';
+import type { StopPhase } from './use-bot-conversation';
 
 const uploads = vi.hoisted(() => ({ uploadChatFile: vi.fn(), uploadImage: vi.fn() }));
 vi.mock('../../lib/api/chat-files', async (importOriginal) => ({
@@ -39,7 +40,9 @@ const onSend = vi.fn<(text: string, images: Array<{ id: string; url: string }>, 
 const onInvite = vi.fn();
 const handle = { current: null as BotsComposerHandle | null };
 
-function Harness() {
+const onStop = vi.fn();
+
+function Harness({ busy = false, stopPhase = null }: { busy?: boolean; stopPhase?: StopPhase }) {
   const [input, setInput] = useState('');
   const inputRef = { current: null as HTMLTextAreaElement | null };
   return createElement(BotsComposer, {
@@ -47,11 +50,12 @@ function Harness() {
     sessionId: 'dm-1',
     members: [SPROUTY],
     placeholder: 'Message Sprouty…',
-    busy: false,
+    busy,
+    stopPhase,
     input,
     setInput,
     onSend,
-    onStop: vi.fn(),
+    onStop,
     onInvite,
     canInvite: true,
     inputRef,
@@ -66,15 +70,17 @@ async function flush() {
   }
 }
 
-async function render() {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  root = createRoot(container);
+async function render(harness: { busy?: boolean; stopPhase?: StopPhase } = {}) {
+  if (!root) {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  }
   await act(async () => {
     root?.render(
       createElement(I18nProvider, {
         initialLocale: 'en',
-        children: [createElement(Harness, { key: 'c' }), createElement(ToastContainer, { key: 't' })],
+        children: [createElement(Harness, { key: 'c', ...harness }), createElement(ToastContainer, { key: 't' })],
       }),
     );
   });
@@ -110,6 +116,7 @@ beforeEach(() => {
   onSend.mockReset();
   onSend.mockResolvedValue(undefined);
   onInvite.mockReset();
+  onStop.mockReset();
   uploads.uploadChatFile.mockReset();
   uploads.uploadImage.mockReset();
 });
@@ -237,5 +244,41 @@ describe('BotsComposer attachments', () => {
     await render();
     await press('Enter');
     expect(onSend).not.toHaveBeenCalled();
+  });
+});
+
+describe('BotsComposer Stop', () => {
+  const stop = () => document.querySelector<HTMLButtonElement>('[data-testid="bots-stop"]');
+
+  it('shows no Stop while nothing runs', async () => {
+    await render();
+    expect(stop()).toBeNull();
+  });
+
+  it('first stops after the current step, then offers to stop at once', async () => {
+    await render({ busy: true });
+    expect(stop()?.getAttribute('aria-label')).toBe('Stop after this step');
+    // Its own control, apart from Send.
+    expect(document.querySelector('[data-testid="bots-stop-control"]')?.contains(stop()!)).toBe(true);
+    await act(async () => stop()?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(onStop).toHaveBeenCalledTimes(1);
+
+    await render({ busy: true, stopPhase: 'soft' });
+    expect(stop()?.textContent).toBe('Stopping…');
+    expect(stop()?.title).toBe('Click again to stop right away');
+    expect(stop()?.disabled).toBe(false);
+    await act(async () => stop()?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(onStop).toHaveBeenCalledTimes(2);
+
+    await render({ busy: true, stopPhase: 'hard' });
+    expect(stop()?.textContent).toBe('Stopping…');
+    expect(stop()?.disabled).toBe(true);
+  });
+
+  it('keeps sending while Bots work', async () => {
+    await render({ busy: true });
+    await type('one more thing');
+    await press('Enter');
+    expect(onSend).toHaveBeenCalledWith('one more thing', [], []);
   });
 });

@@ -2,7 +2,11 @@
  * Composer for a Bots conversation — Chat's ChatInput with the Bots rules:
  * - It never locks. While Bots work the member can keep talking; the message
  *   is delivered and read between Bot turns (202 queued), and Stop sits next
- *   to Send instead of replacing it.
+ *   to Send instead of replacing it (kept apart from it, so a hurried click
+ *   does not hit the wrong one).
+ * - Stop works in two steps: the first press lets the current step finish
+ *   (its tool calls complete and are kept) and reads "Stopping…"; a second
+ *   press in the same run stops at once.
  * - `@` lists this conversation's Bots (plus "Invite another Bot"), and a
  *   leading "Name," / "Name:" addresses a Bot too.
  * - Files go in the same way as Chat: images inline (the model sees them),
@@ -27,13 +31,14 @@ import {
   uploadPendingAttachments,
   type PendingAttachment,
 } from '../conversation/attachments';
-import { IconButton, toast } from '../ui';
+import { Button, IconButton, Spinner, toast } from '../ui';
 import { Square } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import * as api from '../../lib/api';
 import { uploadChatFile, type ChatFileRef } from '../../lib/api/chat-files';
 import { BotMentionPopover } from './bot-mention-popover';
 import { mentionToken, parseMentions } from './mentions';
+import type { StopPhase } from './use-bot-conversation';
 
 const MAX_IMAGES = 3;
 
@@ -57,6 +62,8 @@ export interface BotsComposerProps {
   placeholder: string;
   /** A run is streaming — show Stop beside Send (sending stays allowed). */
   busy: boolean;
+  /** Where a stop stands (`soft`: after this step — pressing again stops at once; `hard`: stopping now). */
+  stopPhase?: StopPhase;
   input: string;
   setInput: (value: string) => void;
   /** Rejects when nothing was delivered (the host has already said why). */
@@ -69,7 +76,21 @@ export interface BotsComposerProps {
 }
 
 export const BotsComposer = forwardRef<BotsComposerHandle, BotsComposerProps>(function BotsComposer(
-  { sessionId, members, placeholder, busy, input, setInput, onSend, onStop, onInvite, canInvite, aboveSlot, inputRef },
+  {
+    sessionId,
+    members,
+    placeholder,
+    busy,
+    stopPhase = null,
+    input,
+    setInput,
+    onSend,
+    onStop,
+    onInvite,
+    canInvite,
+    aboveSlot,
+    inputRef,
+  },
   ref,
 ) {
   const t = useT();
@@ -262,19 +283,49 @@ export const BotsComposer = forwardRef<BotsComposerHandle, BotsComposerProps>(fu
             )}
           </>
         }
-        rightSlot={
-          busy ? (
-            <IconButton
-              label={t('bots.composer.stop')}
-              onClick={onStop}
-              className="rounded-full border border-danger text-danger hover:bg-danger-subtle"
-              tooltip="top"
-            >
-              <Square size={13} />
-            </IconButton>
-          ) : null
-        }
+        rightSlot={busy ? <StopControl phase={stopPhase} onStop={onStop} /> : null}
       />
     </div>
   );
 });
+
+/**
+ * Stop, kept a clear step away from Send. First press: "stop after this
+ * step"; while that is under way it reads "Stopping…" and a second press stops
+ * at once; once that is asked for there is nothing left to press.
+ */
+function StopControl({ phase, onStop }: { phase: StopPhase; onStop: () => void }) {
+  const t = useT();
+  return (
+    <span
+      className="mr-1.5 flex items-center md:mr-3"
+      data-testid="bots-stop-control"
+      data-stop-phase={phase ?? 'none'}
+    >
+      {phase === null ? (
+        <IconButton
+          label={t('bots.composer.stopAfterStep')}
+          onClick={onStop}
+          className="rounded-full border border-danger text-danger hover:bg-danger-subtle"
+          tooltip="top"
+          data-testid="bots-stop"
+        >
+          <Square size={13} />
+        </IconButton>
+      ) : (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onStop}
+          disabled={phase === 'hard'}
+          title={phase === 'soft' ? t('bots.composer.stopNow') : undefined}
+          className="h-11 rounded-full border border-danger text-danger hover:bg-danger-subtle sm:h-8"
+          data-testid="bots-stop"
+        >
+          <Spinner className="mr-1.5 h-3 w-3" />
+          {t('bots.composer.stopping')}
+        </Button>
+      )}
+    </span>
+  );
+}

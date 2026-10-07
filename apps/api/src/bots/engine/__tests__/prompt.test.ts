@@ -70,6 +70,23 @@ describe('static rules (S1)', () => {
     expect(buildStaticRules(toolFaceFlags(['browser'], false), 'en')).not.toMatch(/import_attachment/);
   });
 
+  it('sends a long command to a background process, not to a shell call or a background task', () => {
+    expect(buildStaticRules(toolFaceFlags(['computer'], false), 'en')).toContain(
+      '- A long command (an install, a build, a big download) runs as a background process: computer run_background, then process_log to check on it.',
+    );
+    expect(buildStaticRules(toolFaceFlags(['browser'], false), 'en')).not.toMatch(/run_background/);
+  });
+
+  it('stops at a human check: no other address on the site, no other way in, never solved', () => {
+    // A trial Bot hopped between URLs of a site after its CAPTCHA (2026-10-06 review).
+    const rule = `- If a site asks for human verification (CAPTCHA, 'verify you are human', 'Just a moment…'), stop: do not try other addresses on that site or reach it another way (shell, search). The computer raises a verification card for the member. Never try to solve or bypass it.`;
+    expect(buildStaticRules(toolFaceFlags(ALL, true), 'en').split('\n')).toContain(rule);
+    expect(buildStaticRules(toolFaceFlags(['browser', 'request_takeover'], false), 'zh').split('\n')).toContain(rule);
+    // Only where the card can actually be raised.
+    expect(buildStaticRules(toolFaceFlags(['browser'], false), 'en')).not.toMatch(/human verification/);
+    expect(buildStaticRules(toolFaceFlags(['team', 'conversation'], false), 'en')).not.toMatch(/human verification/);
+  });
+
   it('states the trust rule with the exact speaker tags of the locale', () => {
     const zh = buildStaticRules(toolFaceFlags([], false), 'zh');
     expect(zh).toContain('[Name（用户）]:');

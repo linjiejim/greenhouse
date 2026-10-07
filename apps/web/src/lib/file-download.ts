@@ -14,7 +14,15 @@ export async function fetchAuthenticatedBlob(url: string): Promise<Blob> {
 export async function downloadAuthenticatedFile(url: string, filename: string): Promise<void> {
   const response = await authFetch(url);
   if (!response.ok) throw new Error('Download failed');
-  const objectUrl = URL.createObjectURL(await response.blob());
+  saveBlobAs(await response.blob(), filename);
+}
+
+/**
+ * Hand bytes the page already holds to the browser as a download — for
+ * callers that fetched them with auth and read the failure themselves.
+ */
+export function saveBlobAs(blob: Blob, filename: string): void {
+  const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = objectUrl;
   anchor.download = filename;

@@ -101,11 +101,13 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Bots** — personal assistants every member gets out of the box. A Bot has a name, a role and
   its own memory; several Bots can share one conversation (@-mention them, let them hand work
   to each other) and long conversations are summarised instead of truncated. With a computer
-  enabled, each member's Bots share one cloud desktop (a browser and a shell) the member can
-  watch live and take over at any time; logins come from a write-only password vault that
-  Bots fill in without ever seeing the values. Background tasks keep researching while you chat.
-  The organisation configures one Docker host; computers start on demand, stop when idle and
-  queue when the host is full.
+  enabled, each member's Bots share one cloud desktop (a browser with a taskbar, a shell, files
+  and long-running jobs) the member can watch live, take over, or use directly through its
+  terminal and file tabs; logins come from a write-only password vault that Bots fill in without
+  ever seeing the values, and a site's "verify you are human" check is handed to the member with
+  one click in the chat. Background tasks keep researching while you chat; a new message can
+  interrupt a Bot after its current step. The organisation configures one Docker host; computers
+  start on demand, stop when idle (unless a job is still running) and queue when the host is full.
 - **Workflows** — a multi-agent task-graph engine (database state machine, human gates,
   pause / retry per node) that the agent can plan from a conversation.
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
@@ -261,9 +263,11 @@ Bots work in any deployment. Their computers need the API to run **on the Docker
 (bare metal / PM2, not the compose image — computers are reached through `docker exec` and
 publish no ports), plus gVisor, a hardened bridge
 (`sudo BOTS_COMPUTER_NETWORK=bots bash scripts/cloud-agent-net.sh --profile bots`) and the computer image
-(`bash scripts/build-bot-computer.sh`). Set `BOTS_COMPUTER_ENABLED=1`; **Administration → Bot
+(`bash scripts/build-bot-computer.sh`; add organisation-wide Debian packages with
+`BOTS_COMPUTER_EXTRA_PACKAGES="…"`). Set `BOTS_COMPUTER_ENABLED=1`; **Administration → Bot
 computers** lists every precheck with the command that fixes it, and the live knobs (idle
-minutes, how many computers run at once) are in Runtime Config.
+minutes, how many computers run at once) are in Runtime Config. The API only accepts an image of
+its own contract version, so rebuild the image whenever you upgrade.
 
 ## Releases & stability
 

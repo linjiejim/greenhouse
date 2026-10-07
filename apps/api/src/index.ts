@@ -60,6 +60,7 @@ import {
   initBotComputers,
   shutdownBotComputers,
 } from './bots/computer/index.js';
+import { createComputerTerminalRoutes } from './bots/computer/terminal.js';
 import { createBotsRoutes, initBotsEngine, shutdownBotsEngine } from './bots/engine/index.js';
 import { startBotsOrphanSweep, stopBotsOrphanSweep } from './bots/purge.js';
 import clientActionRoutes from './routes/client-actions.js';
@@ -356,6 +357,9 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // browser WebSocket cannot send a Bearer header: isPublicPath exempts the
       // prefix and the route authenticates a one-time, purpose-bound token itself.
       .route('/api/ws/computer', createComputerViewerRoutes())
+      // The member's terminal on that computer (uid agent, gh-term) — same
+      // scheme: its own one-time ticket purpose, checked by the route itself.
+      .route('/api/ws/computer-terminal', createComputerTerminalRoutes())
       // WebSocket endpoint — internal users only (auth via query token)
       .route('/api/ws', wsRoutes)
       // Browser client-action results — internal user-bound and part of the typed contract

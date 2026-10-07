@@ -58,6 +58,12 @@ bots/
   Unix socket，`agent` uid 读不到 `browser` uid 的东西）。硬化模式必须：gVisor `runsc`、IPv6 off +
   ICC off 网桥、`scripts/cloud-agent-net.sh --profile bots` 的出口规则（预检 + 每 10 分钟复验 +
   启动后探测宿主 API 端口与元数据地址必须不通）；任何一项不过只关电脑，Bots 照常聊天。
+- **镜像契约 2**：API 只认 `IMAGE_CONTRACT` 同版本的镜像（`greenhouse.bots.computer.contract`），升级 API 必须
+  重建镜像。契约 2 = 桌面（tint2 任务栏 + `gh-window` 看门狗：所有浏览器窗口都被最小化 3 s 后自动恢复）、
+  软件 WebGL（`--enable-unsafe-swiftshader`，边界仍是 gVisor）、浏览器语言用 `LANGUAGE` + `--accept-lang`
+  （Linux Chromium 不认 `--lang`）、`gh-term` / `gh-jobs` / `gh-window` / `gh-agent-kill`，以及预装的
+  pip / Node / ffmpeg / pandoc / sqlite 等；`agent` 的 pip / npm / pipx 用户级安装落在 home 卷，系统目录仍只读；
+  组织级额外软件包在构建时用 `BOTS_COMPUTER_EXTRA_PACKAGES`（镜像标签记录，预检里展示）。
 - **群聊的负责人**：归档 / 移除 Bot 时 `lead_bot_id` 交给按位置的下一个 active 成员，成员角色
   （`lead` / `member`）同步；私聊的 owner / guest 角色从不变。
 - **DB 权威生命周期**：`bot_computers` 每次迁移都是 `version` CAS，单成员操作在用户锁里、容量判断在
@@ -76,6 +82,20 @@ bots/
   （电脑重启过）才回 `computer_restarted`。`request_takeover` 的 login / otp 出的是安全登录卡：S1 规则、
   工具说明和工具返回都要求 Bot 请成员「填写上面的卡片」，别说「接管浏览器」（模型默认会这么说）；
   captcha / other 才是接管卡。
+- **人机验证只交给人**：浏览器在导航 / 提交后嗅探（`needs-human.ts`）：「Just a moment…」类过渡页每 1.5 s
+  复查、最多 6 s（自己会放行的不出卡）；仍是过渡页、页面上有验证组件，或导航响应是带 Cloudflare 信号
+  （`cf-mitigated`，或 `server: cloudflare` + 挑战标题）的 403 / 406 / 429 / 503 → 前台回合由浏览器工具
+  **自己**出 `takeover` 卡（`payload.kind:'captcha'`，同会话同 Bot 去重）并在这一步后结束回合；同一回合
+  里再 `open` 这个站点直接拒绝（`human_check`），后台回合只给提示、不出卡。成员在卡片里「在这里验证」
+  （接管）、自己完成，再点「完成，交还」唤醒 Bot——交还永远由成员决定，服务端不判断验证是否通过。
+  不解验证码、不隐藏自动化特征、不伪装指纹、不接打码服务。
+- **长任务走 `gh-jobs`**：shell 每条 ≤120 s；更长的用 `computer run_background`（独立会话、日志在
+  `~/.local/state/gh-jobs/<id>/`）。运行中的作业让电脑不因闲置休眠（自 `last_active_at` 起最多
+  `BOTS_COMPUTER_JOB_MAX_HOURS`，默认 8 小时）；接管时的杀进程（`gh-agent-kill`）放过作业和成员的终端 /
+  tmux 会话；容器回收后作业显示 `lost`。
+- **打断 ≠ 停止**：`POST /api/chat/runs/:sessionId/interrupt` 让当前回合**这一步做完**再结束（在途工具
+  照常完成并落库，比如已经在生成的图），丢掉链里排好的回合；有排队的成员消息就开新链回答它，否则
+  结束 run 并写停止提示。`/stop` 仍是立即硬停（在途工具结果丢弃）。
 - **隐式接管卡**：成员在 Bot 动作进行中接管，或 Bot 要用电脑时成员正持有，电脑工具会留一张
   `takeover` 卡（`payload.implicit`，同会话同 Bot 去重，60 分钟过期，不发应用内通知——成员就在电脑前），
   交还即唤醒那个 Bot。卡上的页面标题是页面内容，只给成员看，绝不进转录行或通知。
@@ -100,7 +120,8 @@ bots/
   job 已安装；`CI` 下缺浏览器直接失败。fork 的 CI 若跑 `pnpm test` 要加同一步，或设
   `BOTS_BROWSER_TESTS=skip`。
 - 真容器套件（`computer.live.db-commit.test.ts`、`browser.live.db-commit.test.ts`）只在 `BOTS_LIVE=1` 且
-  本机有镜像时跑；镜像本身用 `scripts/bot-computer-smoke.sh` 验（双 uid 隔离、零端口、CDP 中继）。
+  本机有镜像时跑；镜像本身用 `scripts/bot-computer-smoke.sh` 验（双 uid 隔离、零端口、CDP 中继，以及
+  契约 2 的任务栏 / 窗口恢复 / WebGL / 语言 / gh-term / gh-jobs / gh-agent-kill / 用户级安装持久化）。
 - 浏览器端：`tests/e2e-ui/bots.spec.ts`；带真模型真电脑的截图巡游 `scripts/capture-bots.mjs`
   （`node scripts/run-dev.mjs up web --bots` 之后跑）。
 
@@ -136,11 +157,15 @@ bots/
 `bot-turn-start` → 常规事件 → `bot-turn-end`，卡片 `bot-request`，整条只有一个 `finish`。会话忙时
 `202 { queued:true }`（回合之间送达）。私聊主人已归档 `409 { code:'bot_archived' }`；群里没有 active
 Bot `409 { code:'no_active_members' }`。编辑 / 重新生成对 Bots 会话一律 409；停止走
-`POST /api/chat/runs/:sessionId/stop`。
+`POST /api/chat/runs/:sessionId/stop`；打断（这一步做完再停，排队的消息接着处理）走
+`POST /api/chat/runs/:sessionId/interrupt` → `{ ok, run_id }`（只限主人；非 Bots 会话 400
+`not_supported`；没有在跑的 run 404），流里发一次 `{ type:'run-interrupting' }`，之后照常是下一条链的
+`bot-turn-start`。
 
 **卡片种类**：`approval`（`always` = 此站点以后自动代填）、`login`（安全登录，值服务端代填不落库；
 两步登录会继续跟到密码页或再出一张卡）、`takeover`（`payload.implicit` = 成员在 Bot 干活时自己接管 /
-Bot 等着用电脑，交还即唤醒它）、`bot_create`、`task_start`。登录 / 接管卡 60 分钟过期（`expired`）。
+Bot 等着用电脑，交还即唤醒它；`payload.kind:'captcha'` = 人机验证卡，由浏览器工具自己出，成员完成后
+交还）、`bot_create`、`task_start`。登录 / 接管卡 60 分钟过期（`expired`）。
 
 **电脑**（`computer/routes.ts`）
 
@@ -153,6 +178,20 @@ Bot 等着用电脑，交还即唤醒它）、`bot_create`、`task_start`。登�
 | POST | `/api/bots/computer/handback` | `{ note?, request_id?, session_id? }` | 结算点名的接管 / 登录卡（须属于 `session_id`），否则该会话里唯一的待处理接管 / 登录卡，否则只释放租约——从不跨会话猜 |
 | POST | `/api/bots/computer/type` | `{ text }` | `{ ok }`（成员持有租约；写入焦点，支持中文） |
 | GET | `/api/bots/computer/screenshot` | — | `image/png`；不唤醒电脑，停着时 `409 stopped` |
+| PUT | `/api/bots/computer/settings` | `{ timezone: string \| null }`（IANA；null = 部署默认） | `ComputerStatusView`（下次启动生效；`lang` 来自成员 locale，`BOTS_COMPUTER_LANG` 覆盖） |
+| POST | `/api/bots/computer/restore-window` | — | `{ ok }`（`gh-window restore`；停着时 `409 stopped`；每次交还后也会自动跑） |
+| POST | `/api/bots/computer/terminal-token` | — | `{ token, expires_at }`（60 s、一次性，用途与观看票据互不通用） |
+| WS | `/api/ws/computer-terminal?token=` | 二进制 = 键入；文本 `{"type":"resize","cols","rows"}` | 二进制终端输出；`gh-term` + tmux，`agent` uid、成员的终端不需要租约；每进程每成员 ≤4 个 |
+| GET | `/api/bots/computer/files` | `?path=`（默认 `~/work`） | `ComputerFileList`（≤500 项，目录在前；路径须在 `/home/agent` 内，容器里 `realpath` 复核） |
+| GET | `/api/bots/computer/files/download` | `?path=` | 文件流（≤1 GiB；`Content-Disposition: attachment`、`nosniff`、`no-store`） |
+| POST | `/api/bots/computer/files/upload` | `?dir=&name=` + 原始字节（≤100 MiB） | `{ entry, path }`；同名不覆盖（`name (1).ext`）；`413 too_large` |
+| GET | `/api/bots/computer/processes` | — | `{ processes: ComputerProcessView[] }`（不唤醒电脑） |
+| GET | `/api/bots/computer/processes/:id/log` | `?lines=`（≤2000） | `ComputerProcessLog`（打码后） |
+| POST | `/api/bots/computer/processes/:id/stop` | — | `{ id, stopped }` |
+
+文件 / 进程另有 `not_found`（404）与 `too_large`（413）。终端关闭码：4001 票据无效或成员被撤权、4003 开关
+关闭、4009 电脑不可用（`too_many` = 第 5 个终端）、4010 清除 / 关机、1008 协议错误、1011 shell 退出或电脑
+停止。终端、作业和 Bot 的 shell 用同一套身份与 `BOTS_COMPUTER_PROXY`（`shell.ts` `agentEnv`）。
 
 错误 code 见 `ComputerErrorCode`：`disabled`（含该成员没有 `bots`）、`unavailable`、`busy`（503 +
 Retry-After；也可能是另一个 API 槽位正持有这台电脑的浏览器）、`start_failed`（502）、`user_in_control`、
@@ -170,7 +209,14 @@ docker / runtime / image / network / egress / host_disk …，每项带修复命
 `bots.computer_max_running`。
 
 **电脑工具 `import_attachment {file_id, path?}`**：只在前台回合；把本对话的聊天附件拷进
-`~/work/inbox/`（或 `~/work` 内指定路径），≤20 MB，二进制安全。
+`~/work/inbox/`（或 `~/work` 内指定路径），≤20 MB，二进制安全。后台进程：`run_background {command, name?}`
+· `processes` · `process_log {id, lines?}`（打码、从尾部截断、污染回合）· `stop_process {id}`；后台回合
+只有 `status` / `read_file` / `processes` / `process_log`。
+
+**浏览器工具新增**：`hover {ref}`、`drag {ref, to_ref}`、`upload {ref, path}`（~ 内的文件，≤20 MB；不是
+file input 就点它并接住弹出的文件选择框）、`wait {text?, timeout_s?}`（≤30 s；后台回合也可用）。新错误码：
+`human_check`、`not_a_file_input`、`file_unreadable`、`wait_timeout`；观测里 `blocked:'human_check'` 表示已
+交给成员。
 
 **相关面**：`GET /api/auth/me/memories` 每行带 `bot_id` + `bot_name`（null = 用户级）；浏览器截图工具的
 结果是本会话的聊天文件（`/api/chat-files/<id>/content`，主人鉴权），不进公共上传区。

@@ -23,7 +23,7 @@ import { BotTaskDock, useBotTasks } from './bot-task-dock';
 import { speakingSegment } from './transcript';
 import type { BotConversationController } from './use-bot-conversation';
 import type { BotLookup } from './transcript-rows';
-import type { ComputerPhase } from './computer-phase';
+import type { ComputerPhase, ComputerStatusState } from './computer-phase';
 
 const MAX_MEMBERS = 6;
 
@@ -58,6 +58,8 @@ export interface ConversationViewProps {
   onReadOnly: () => void;
   vaultAvailable: boolean;
   computerPhase: ComputerPhase | null;
+  /** The page's one computer status — a human-check card embeds the screen and takes over through it. */
+  computer?: ComputerStatusState;
   activePane: 'info' | 'computer' | null;
   onPane: (pane: 'info' | 'computer' | null) => void;
   onInvite: () => void;
@@ -253,6 +255,7 @@ function ConversationColumn({
   readOnly,
   vaultAvailable,
   computerPhase,
+  computer,
   activePane,
   onPane,
   onInvite,
@@ -378,6 +381,9 @@ function ConversationColumn({
         requests={controller.requests}
         memoryStates={controller.memoryStates}
         busy={controller.streaming}
+        interrupting={controller.interrupting}
+        onHandleNow={(clientId) => void controller.handleNow(clientId)}
+        computer={computer}
         computerNotice={
           computerPhase?.kind === 'starting' ? 'starting' : computerPhase?.kind === 'queued' ? 'queued' : null
         }
@@ -411,6 +417,7 @@ function ConversationColumn({
           members={members}
           placeholder={placeholder}
           busy={controller.streaming}
+          stopPhase={controller.stopPhase}
           input={draft}
           setInput={setDraft}
           onSend={send}

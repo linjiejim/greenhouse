@@ -772,6 +772,7 @@ export type StreamingEvent =
   | import('./bots.js').BotTurnStartEvent
   | import('./bots.js').BotTurnEndEvent
   | import('./bots.js').BotRequestEvent
+  | import('./bots.js').RunInterruptingEvent
   | TextDeltaEvent
   | ReasoningDeltaEvent
   | ToolCallStartEvent

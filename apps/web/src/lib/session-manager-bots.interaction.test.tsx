@@ -7,12 +7,20 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StreamingEvent } from '@greenhouse/types/api';
 import type { BotRequestView } from '@greenhouse/types/bots';
-import { SessionManagerProvider, useSessionManager, type SessionManagerContextValue } from './session-manager';
+import { BotsApiError } from './api/bots';
+import {
+  SessionManagerProvider,
+  useSessionManager,
+  type InterruptOutcome,
+  type SessionManagerContextValue,
+} from './session-manager';
 
 const openBotsChat = vi.fn();
+const interruptChatRun = vi.fn();
 
 vi.mock('./api', () => ({
   openBotsChat: (...args: unknown[]) => openBotsChat(...args),
+  interruptChatRun: (...args: unknown[]) => interruptChatRun(...args),
   listChatRuns: vi.fn().mockResolvedValue({ runs: [] }),
   getChatRun: vi.fn().mockResolvedValue({ active: false }),
   streamChatRun: vi.fn(),
@@ -67,6 +75,7 @@ describe('SessionManager — Bots runs', () => {
   beforeEach(async () => {
     manager = null;
     openBotsChat.mockReset();
+    interruptChatRun.mockReset();
     container = document.createElement('div');
     document.body.appendChild(container);
     act(() => {
@@ -158,5 +167,177 @@ describe('SessionManager — Bots runs', () => {
       await expect(manager!.sendBotsMessage('s1', 'hi')).rejects.toThrow('not enabled');
     });
     expect(manager!.activeSessions.has('s1')).toBe(false);
+  });
+});
+
+/** A stream the test feeds event by event, to look at the run between events. */
+function controlledStream() {
+  const queue: StreamingEvent[] = [];
+  let wake: (() => void) | null = null;
+  let ended = false;
+  async function* events(): AsyncGenerator<StreamingEvent> {
+    while (true) {
+      if (queue.length > 0) {
+        yield queue.shift()!;
+        continue;
+      }
+      if (ended) return;
+      await new Promise<void>((resolve) => (wake = resolve));
+    }
+  }
+  return {
+    events: events(),
+    push(event: unknown) {
+      // `run-interrupting` is new on the wire; the stream type may not list it yet.
+      queue.push(event as StreamingEvent);
+      wake?.();
+      wake = null;
+    },
+    end() {
+      ended = true;
+      wake?.();
+      wake = null;
+    },
+  };
+}
+
+describe('SessionManager — Bots soft stop', () => {
+  beforeEach(async () => {
+    manager = null;
+    openBotsChat.mockReset();
+    interruptChatRun.mockReset();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    act(() => {
+      createRoot(container).render(createElement(SessionManagerProvider, null, createElement(Probe)));
+    });
+    await settle();
+  });
+
+  afterEach(() => {
+    container.remove();
+  });
+
+  async function startRun() {
+    const stream = controlledStream();
+    openBotsChat.mockResolvedValue({ queued: false, events: stream.events });
+    await act(async () => {
+      await manager!.sendBotsMessage('s1', 'hi');
+    });
+    return stream;
+  }
+
+  it('follows run-interrupting (from any tab) and clears it when the next turn starts', async () => {
+    const stream = await startRun();
+    stream.push({ type: 'bot-turn-start', bot_id: 'bot_a', reason: 'user' });
+    await settle();
+    expect(manager!.activeSessions.get('s1')?.interrupting).toBe(false);
+
+    stream.push({ type: 'run-interrupting' });
+    await settle();
+    expect(manager!.activeSessions.get('s1')?.interrupting).toBe(true);
+
+    // The interrupted turn ends: still stopping — the run may simply end now.
+    stream.push({ type: 'bot-turn-end', bot_id: 'bot_a', status: 'completed', message_id: 'm1' });
+    await settle();
+    expect(manager!.activeSessions.get('s1')?.interrupting).toBe(true);
+
+    // A later turn starts (the member's waiting message): the soft stop was used up.
+    stream.push({ type: 'bot-turn-start', bot_id: 'bot_a', reason: 'user' });
+    await settle();
+    expect(manager!.activeSessions.get('s1')?.interrupting).toBe(false);
+
+    // Asked between turns: the next turn to start is the waiting message's.
+    stream.push({ type: 'bot-turn-end', bot_id: 'bot_a', status: 'completed', message_id: 'm2' });
+    stream.push({ type: 'run-interrupting' });
+    await settle();
+    expect(manager!.activeSessions.get('s1')?.interrupting).toBe(true);
+    stream.push({ type: 'bot-turn-start', bot_id: 'bot_a', reason: 'interjection' });
+    await settle();
+    expect(manager!.activeSessions.get('s1')?.interrupting).toBe(false);
+
+    stream.push({ type: 'finish', finishReason: 'stop' });
+    stream.end();
+    await settle();
+    expect(manager!.activeSessions.get('s1')?.status).toBe('completed');
+    expect(manager!.activeSessions.get('s1')?.interrupting).toBe(false);
+  });
+
+  it('ends a soft-stopped run with nothing waiting as completed — no error', async () => {
+    const stream = await startRun();
+    stream.push({ type: 'bot-turn-start', bot_id: 'bot_a', reason: 'user' });
+    stream.push({ type: 'run-interrupting' });
+    await settle();
+    expect(manager!.activeSessions.get('s1')?.interrupting).toBe(true);
+    stream.push({ type: 'bot-turn-end', bot_id: 'bot_a', status: 'completed', message_id: 'm1' });
+    stream.push({ type: 'finish', finishReason: 'stop' });
+    stream.end();
+    await settle();
+    const session = manager!.activeSessions.get('s1');
+    expect(session?.status).toBe('completed');
+    expect(session?.error).toBeUndefined();
+    expect(session?.interrupting).toBe(false);
+  });
+
+  it('asks the server for a soft stop and shows it at once', async () => {
+    const stream = await startRun();
+    stream.push({ type: 'bot-turn-start', bot_id: 'bot_a', reason: 'user' });
+    await settle();
+
+    interruptChatRun.mockResolvedValue({ run_id: 'run-1' });
+    let outcome: InterruptOutcome | undefined;
+    await act(async () => {
+      outcome = await manager!.interruptSession('s1');
+    });
+    await settle();
+    expect(outcome).toBe('interrupting');
+    expect(interruptChatRun).toHaveBeenCalledWith('s1');
+    expect(manager!.activeSessions.get('s1')?.interrupting).toBe(true);
+
+    stream.push({ type: 'finish', finishReason: 'stop' });
+    stream.end();
+    await settle();
+  });
+
+  it('does not mark a soft stop the run already moved past', async () => {
+    const stream = await startRun();
+    stream.push({ type: 'bot-turn-start', bot_id: 'bot_a', reason: 'user' });
+    await settle();
+
+    // The answer comes back after the next turn already started.
+    let answer: (value: { run_id: string }) => void = () => {};
+    interruptChatRun.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    let outcome: Promise<InterruptOutcome> | undefined;
+    act(() => {
+      outcome = manager!.interruptSession('s1');
+    });
+    stream.push({ type: 'bot-turn-end', bot_id: 'bot_a', status: 'completed', message_id: 'm1' });
+    stream.push({ type: 'bot-turn-start', bot_id: 'bot_a', reason: 'interjection' });
+    await settle();
+    await act(async () => {
+      answer({ run_id: 'run-1' });
+      await outcome;
+    });
+    await settle();
+    expect(manager!.activeSessions.get('s1')?.interrupting).toBe(false);
+
+    stream.push({ type: 'finish', finishReason: 'stop' });
+    stream.end();
+    await settle();
+  });
+
+  it('tells a run that already finished (404) from a refusal', async () => {
+    const outcomes: InterruptOutcome[] = [];
+    interruptChatRun.mockRejectedValueOnce(new BotsApiError('No active run', 404));
+    interruptChatRun.mockRejectedValueOnce(
+      new BotsApiError('Only Bots conversations can be interrupted', 400, 'not_supported'),
+    );
+    interruptChatRun.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await act(async () => {
+      outcomes.push(await manager!.interruptSession('s1'));
+      outcomes.push(await manager!.interruptSession('s1'));
+      outcomes.push(await manager!.interruptSession('s1'));
+    });
+    expect(outcomes).toEqual(['no_run', 'refused', 'refused']);
   });
 });

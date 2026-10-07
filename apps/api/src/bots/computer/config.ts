@@ -1,7 +1,10 @@
 /**
  * Bot computer configuration — the Docker host is `.env` infrastructure
  * (BOTS_COMPUTER_*), the two live knobs are workspace settings
- * (`bots.computer_idle_minutes`, `bots.computer_max_running`).
+ * (`bots.computer_idle_minutes`, `bots.computer_max_running`), and two things
+ * are the member's own: the browser language follows their account locale
+ * (BOTS_COMPUTER_LANG overrides it for everyone) and the timezone is the one
+ * their browser reported (`bot_computers.timezone`, else BOTS_COMPUTER_TZ).
  *
  * Hardened is the default: gVisor (`runsc`) and a dedicated bridge with IPv6
  * and inter-container traffic off. The only way out is the local escape hatch
@@ -58,12 +61,21 @@ export interface BotsComputerConfig {
   proxy: string | null;
   /** Keeps worktrees and blue/green slots apart on one Docker daemon; in names and labels. */
   namespace: string;
+  /** The deployment default; a member's own (`bot_computers.timezone`) wins. */
   timezone: string;
-  /** Browser UI language (`--lang`); null keeps the image default. */
+  /** BOTS_COMPUTER_LANG — the operator's override of every member's browser language; null = per member. */
   lang: string | null;
+  /**
+   * How long running background jobs (gh-jobs) keep an otherwise idle computer
+   * awake, counted from its last activity; 0 = never.
+   */
+  jobMaxHours: number;
   /** Mission's network, refused for computers (it allows the API port). */
   missionNetwork: string;
 }
+
+/** Range of BOTS_COMPUTER_JOB_MAX_HOURS (a week at most: a forgotten job must not hold a slot for ever). */
+export const JOB_MAX_HOURS_RANGE = { min: 0, max: 168, fallback: 8 } as const;
 
 function flag(value: string | undefined): boolean {
   return value === '1' || value === 'true';
@@ -212,6 +224,14 @@ export function loadBotsComputerConfig(env: NodeJS.ProcessEnv = process.env): Bo
   if (!/^[A-Za-z0-9_+\-/]+$/.test(timezone)) {
     throw new ComputerConfigError('config_invalid', 'BOTS_COMPUTER_TZ must be an IANA time zone');
   }
+  const jobMaxHoursRaw = env.BOTS_COMPUTER_JOB_MAX_HOURS?.trim() || String(JOB_MAX_HOURS_RANGE.fallback);
+  const jobMaxHours = Number(jobMaxHoursRaw);
+  if (!/^\d+$/.test(jobMaxHoursRaw) || jobMaxHours < JOB_MAX_HOURS_RANGE.min || jobMaxHours > JOB_MAX_HOURS_RANGE.max) {
+    throw new ComputerConfigError(
+      'config_invalid',
+      `BOTS_COMPUTER_JOB_MAX_HOURS must be a whole number of hours from ${JOB_MAX_HOURS_RANGE.min} to ${JOB_MAX_HOURS_RANGE.max}`,
+    );
+  }
 
   return {
     image: env.BOTS_COMPUTER_IMAGE?.trim() || DEFAULT_COMPUTER_IMAGE,
@@ -226,8 +246,46 @@ export function loadBotsComputerConfig(env: NodeJS.ProcessEnv = process.env): Bo
     namespace,
     timezone,
     lang,
+    jobMaxHours,
     missionNetwork,
   };
+}
+
+// ─── Per member: browser language and timezone ───────────
+
+/**
+ * The browser language a member's computer starts with (BCP 47): the
+ * operator's BOTS_COMPUTER_LANG when set, else the member's account locale —
+ * any Chinese locale is zh-CN, everything else en-US.
+ */
+export function computerLang(operatorLang: string | null, locale: string | null | undefined): string {
+  if (operatorLang) return operatorLang;
+  return locale?.trim().toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US';
+}
+
+/** Longest timezone a member may store (IANA names are far shorter). */
+export const TIMEZONE_MAX_CHARS = 64;
+
+/**
+ * A member's timezone as the computer will use it (`TZ`, Chromium), or null
+ * when it is not an IANA zone name: at most 64 characters a zone name uses —
+ * starting with a letter, so no raw offsets (`TZ=+08:00` means something else
+ * entirely) — and a zone Intl knows. Only the letter case is normalised
+ * (`asia/shanghai` would not resolve on the container's case-sensitive zone
+ * files); aliases stay as given, so a browser that reports its own zone sees
+ * the same string back and never re-sends it.
+ */
+export function parseTimezone(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const value = raw.trim();
+  if (!value || value.length > TIMEZONE_MAX_CHARS || !/^[A-Za-z][A-Za-z0-9_+\-/]*$/.test(value)) return null;
+  let resolved: string;
+  try {
+    resolved = new Intl.DateTimeFormat(undefined, { timeZone: value }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
+  return resolved.toLowerCase() === value.toLowerCase() ? resolved : value;
 }
 
 // ─── Greenhouse's own origins (Chromium URLBlocklist) ─────

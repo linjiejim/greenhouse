@@ -130,6 +130,33 @@ export function createBotComputerService(db: Db) {
     },
 
     /**
+     * The member's own timezone for the computer (an IANA name the caller has
+     * validated; null = the deployment default), applied at the next start.
+     * Creates the row on first use — the page sets it before the computer
+     * ever ran. Not a lifecycle change: no `version` bump, and `updated_at`
+     * keeps dating the last transition (the sweeps judge stale rows by it).
+     */
+    async setTimezone(identity: ComputerIdentity, timezone: string | null): Promise<BotComputerRow> {
+      const now = nowIso();
+      const [row] = await db
+        .insert(botComputers)
+        .values({
+          user_id: identity.user_id,
+          namespace: identity.namespace,
+          container_name: identity.container_name,
+          volume_name: identity.volume_name,
+          state: 'absent',
+          timezone,
+          last_active_at: now,
+          created_at: now,
+          updated_at: now,
+        })
+        .onConflictDoUpdate({ target: botComputers.user_id, set: { timezone } })
+        .returning();
+      return row!;
+    },
+
+    /**
      * Running computers that nobody is using: no viewer heartbeat since the
      * cutoff, nobody holding the take-over lease, no activity since the cutoff.
      * Oldest activity first (the eviction order).

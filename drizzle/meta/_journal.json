@@ -64,6 +64,13 @@
       "when": 1791140528296,
       "tag": "0008_bots",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791312791765,
+      "tag": "0009_bot_computer_timezone",
+      "breakpoints": true
     }
   ]
 }

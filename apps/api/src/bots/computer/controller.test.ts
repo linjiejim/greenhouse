@@ -89,6 +89,7 @@ class FakeStore implements ComputerStore {
       image_id: null,
       disk_bytes: null,
       disk_measured_at: null,
+      timezone: null,
       created_at: now,
       updated_at: now,
       ...patch,
@@ -291,6 +292,12 @@ function setup(
     awaitingHuman?: (userId: string) => boolean;
     tryLock?: boolean;
     egressProbe?: string[];
+    /** Account locale per member (unknown = null). */
+    locale?: (userId: string) => string | null;
+    /** Running background jobs per container (the gh-jobs count). */
+    runningJobs?: (container: string) => number;
+    operatorLang?: string | null;
+    jobMaxHours?: number;
   } = {},
 ) {
   const clock = new FakeClock();
@@ -308,7 +315,8 @@ function setup(
     proxy: null,
     namespace: NS,
     timezone: 'UTC',
-    lang: null,
+    lang: opts.operatorLang ?? null,
+    jobMaxHours: opts.jobMaxHours ?? 8,
     missionNetwork: 'cloud-agent',
   } satisfies BotsComputerConfig;
   const env: ControllerEnvironment = {
@@ -331,6 +339,8 @@ function setup(
     environment: async () => env,
     userIsActive: async (userId) => (opts.active ? opts.active(userId) : true),
     awaitingHuman: async (userId) => opts.awaitingHuman?.(userId) ?? false,
+    memberLocale: async (userId) => opts.locale?.(userId) ?? null,
+    ...(opts.runningJobs ? { runningJobs: async (container: string) => opts.runningJobs!(container) } : {}),
     clock,
     onState: (row) => events.states.push([row.user_id, row.state, row.state_reason]),
     onStopped: (userId, reason) => events.stopped.push([userId, reason]),
@@ -440,6 +450,83 @@ describe('computer lifecycle', () => {
     clock.ms += 10 * MIN;
     await controller.idleTick();
     expect((await store.get('idle'))?.state).toBe('running');
+  });
+
+  it('starts each computer with its member’s browser language and timezone', async () => {
+    const locales: Record<string, string> = { zh: 'zh-CN', 'zh-tw': 'zh-TW', en: 'en' };
+    const { controller, store, docker } = setup({ maxRunning: 5, locale: (userId) => locales[userId] ?? null });
+    const envOf = (userId: string) =>
+      docker.containers.get(computerContainerName(NS, userId))!.args.filter((_, i, args) => args[i - 1] === '-e');
+
+    store.seed('zh', { timezone: 'Asia/Shanghai' });
+    await controller.ensureRunning('zh');
+    expect(envOf('zh')).toEqual(expect.arrayContaining(['GH_COMPUTER_LANG=zh-CN', 'TZ=Asia/Shanghai']));
+
+    await controller.ensureRunning('zh-tw'); // any Chinese locale; no timezone of its own → the deployment's
+    expect(envOf('zh-tw')).toEqual(expect.arrayContaining(['GH_COMPUTER_LANG=zh-CN', 'TZ=UTC']));
+
+    await controller.ensureRunning('en'); // everything else, unknown included
+    await controller.ensureRunning('nobody');
+    expect(envOf('en')).toContain('GH_COMPUTER_LANG=en-US');
+    expect(envOf('nobody')).toContain('GH_COMPUTER_LANG=en-US');
+
+    // A stored value that is not a zone never reaches TZ.
+    store.seed('odd', { timezone: '+08:00' });
+    await controller.ensureRunning('odd');
+    expect(envOf('odd')).toContain('TZ=UTC');
+  });
+
+  it('lets the operator’s BOTS_COMPUTER_LANG override every member’s locale', async () => {
+    const { controller, docker } = setup({ operatorLang: 'ja-JP', locale: () => 'zh-CN' });
+    await controller.ensureRunning('u1');
+    expect(docker.containers.get(computerContainerName(NS, 'u1'))!.args).toContain('GH_COMPUTER_LANG=ja-JP');
+  });
+
+  it('keeps an idle computer awake while background jobs run, for at most BOTS_COMPUTER_JOB_MAX_HOURS', async () => {
+    const jobs = new Map<string, number>();
+    const asked: string[] = [];
+    const { controller, store, clock } = setup({
+      idleMinutes: 15,
+      maxRunning: 5,
+      jobMaxHours: 8,
+      runningJobs: (container) => {
+        asked.push(container);
+        return jobs.get(container) ?? 0;
+      },
+    });
+    for (const user of ['busy', 'quiet']) await controller.ensureRunning(user);
+    jobs.set(computerContainerName(NS, 'busy'), 2);
+    clock.ms += 20 * MIN;
+    await controller.idleTick();
+    expect((await store.get('busy'))?.state).toBe('running');
+    expect(await store.get('quiet')).toMatchObject({ state: 'absent', state_reason: 'idle' });
+
+    // Hours later the job still runs, but nobody has touched the computer for 8 hours: it goes.
+    clock.ms += 7 * 60 * MIN;
+    await controller.idleTick();
+    expect((await store.get('busy'))?.state).toBe('running');
+    asked.length = 0;
+    clock.ms += 60 * MIN;
+    await controller.idleTick();
+    expect(await store.get('busy')).toMatchObject({ state: 'absent', state_reason: 'idle' });
+    expect(asked).toEqual([]); // past the limit the container is not even asked
+  });
+
+  it('never keeps a computer awake for jobs when BOTS_COMPUTER_JOB_MAX_HOURS is 0, and only asks idle ones', async () => {
+    const asked: string[] = [];
+    const off = setup({ idleMinutes: 15, jobMaxHours: 0, runningJobs: (c) => (asked.push(c), 3) });
+    await off.controller.ensureRunning('u1');
+    off.clock.ms += 20 * MIN;
+    await off.controller.idleTick();
+    expect(await off.store.get('u1')).toMatchObject({ state: 'absent', state_reason: 'idle' });
+    expect(asked).toEqual([]);
+
+    // A computer in use is never asked about jobs at all.
+    const used = setup({ idleMinutes: 15, runningJobs: (c) => (asked.push(c), 3) });
+    await used.controller.ensureRunning('u1');
+    used.clock.ms += 5 * MIN;
+    await used.controller.idleTick();
+    expect(asked).toEqual([]);
   });
 
   it('notices OOM kills and exits on the health tick and rebuilds on next use', async () => {

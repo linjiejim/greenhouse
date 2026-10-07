@@ -6,12 +6,14 @@ vi.mock('../../settings/workspace-config.js', () => ({ getWorkspaceValue: vi.fn(
 import {
   clampMaxRunning,
   ComputerConfigError,
+  computerLang,
   greenhouseUrlBlocklist,
   loadBotsComputerConfig,
   namespaceFromDatabaseUrl,
   parseIdleMinutes,
   parseMaxRunning,
   parseMemoryBytes,
+  parseTimezone,
 } from './config.js';
 
 const DB = 'postgresql://greenhouse:pw@localhost:5432/greenhouse';
@@ -150,6 +152,54 @@ describe('bots computer config', () => {
       'localhost:4400',
       'metadata.google.internal',
     ]);
+  });
+});
+
+describe('per member: browser language, timezone, job keep-awake', () => {
+  it('takes the language from the member’s locale unless the operator set BOTS_COMPUTER_LANG', () => {
+    expect(computerLang(null, 'zh')).toBe('zh-CN');
+    expect(computerLang(null, 'zh-TW')).toBe('zh-CN');
+    expect(computerLang(null, ' ZH-cn ')).toBe('zh-CN');
+    expect(computerLang(null, 'en')).toBe('en-US');
+    expect(computerLang(null, 'ja')).toBe('en-US');
+    expect(computerLang(null, null)).toBe('en-US');
+    expect(computerLang('ja-JP', 'zh')).toBe('ja-JP');
+    expect(loadBotsComputerConfig(dev).lang).toBeNull(); // per member unless overridden
+    expect(loadBotsComputerConfig({ ...dev, BOTS_COMPUTER_LANG: 'zh-CN' }).lang).toBe('zh-CN');
+  });
+
+  it('accepts IANA zone names only, as the browser reports them', () => {
+    expect(parseTimezone('Asia/Shanghai')).toBe('Asia/Shanghai');
+    expect(parseTimezone(' America/Argentina/Buenos_Aires ')).toBe('America/Argentina/Buenos_Aires');
+    expect(parseTimezone('UTC')).toBe('UTC');
+    expect(parseTimezone('Etc/GMT+8')).toBe('Etc/GMT+8');
+    expect(parseTimezone('asia/shanghai')).toBe('Asia/Shanghai'); // the container's zone files are case-sensitive
+    for (const bad of [
+      'Mars/Olympus_Mons',
+      '+08:00',
+      '+0800',
+      '',
+      '   ',
+      'Asia/Shanghai; rm -rf /',
+      `Asia/${'x'.repeat(70)}`,
+    ]) {
+      expect(parseTimezone(bad), bad).toBeNull();
+    }
+    expect(parseTimezone(8)).toBeNull();
+    expect(parseTimezone(null)).toBeNull();
+  });
+
+  it('validates BOTS_COMPUTER_JOB_MAX_HOURS (default 8, 0 = never, at most a week)', () => {
+    expect(loadBotsComputerConfig(dev).jobMaxHours).toBe(8);
+    expect(loadBotsComputerConfig({ ...dev, BOTS_COMPUTER_JOB_MAX_HOURS: '' }).jobMaxHours).toBe(8);
+    expect(loadBotsComputerConfig({ ...dev, BOTS_COMPUTER_JOB_MAX_HOURS: '0' }).jobMaxHours).toBe(0);
+    expect(loadBotsComputerConfig({ ...dev, BOTS_COMPUTER_JOB_MAX_HOURS: '168' }).jobMaxHours).toBe(168);
+    for (const bad of ['169', '-1', '2.5', 'forever']) {
+      expect(
+        reasonOf(() => loadBotsComputerConfig({ ...dev, BOTS_COMPUTER_JOB_MAX_HOURS: bad })),
+        bad,
+      ).toBe('config_invalid');
+    }
   });
 });
 

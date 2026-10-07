@@ -26,6 +26,8 @@ export interface PendingSend {
   status: 'sending' | 'queued' | 'sent';
   /** Live segments that existed when it was sent — it renders after them. */
   afterSegment: number;
+  /** Queued, and the member pressed "Handle now": read once the current step finishes. */
+  nudged?: boolean;
 }
 
 export interface Handoff {
@@ -271,6 +273,23 @@ export function buildTranscript({
     });
   }
   return items;
+}
+
+/**
+ * Queued messages a run picks up. Between turns the engine reads one waiting
+ * member message at a time and answers it with `interjection` turns, so each
+ * new interjection turn picks up the oldest message still queued that was sent
+ * before it started. Those read as sent — "read after the current reply" and
+ * "Handle now" no longer apply. Feed every interjection turn once (the caller
+ * keeps count): a turn must not be matched again after its message settled.
+ */
+export function pickUpQueued<T extends PendingSend>(pending: readonly T[], interjectionTurns: readonly number[]): T[] {
+  const next = [...pending];
+  for (const turn of interjectionTurns) {
+    const index = next.findIndex((send) => send.status === 'queued' && send.afterSegment <= turn);
+    if (index >= 0) next[index] = { ...next[index], status: 'sent' };
+  }
+  return next;
 }
 
 /** The Bot speaking right now, if any (header roster animation, status line). */

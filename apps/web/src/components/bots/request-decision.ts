@@ -105,6 +105,21 @@ export function implicitTakeover(
   };
 }
 
+/**
+ * A take-over card a Bot raised because a site asked for human verification
+ * (payload `kind: 'captcha'` — never one the computer raised itself), read
+ * defensively: the card then embeds the screen and offers "Verify here".
+ */
+export function humanCheckTakeover(payload: unknown): { reason: string; url: string | null } | null {
+  if (!payload || typeof payload !== 'object' || implicitTakeover(payload)) return null;
+  const fields = payload as Record<string, unknown>;
+  if (fields.kind !== 'captcha') return null;
+  return {
+    reason: typeof fields.reason === 'string' ? fields.reason.trim() : '',
+    url: typeof fields.url === 'string' && fields.url.trim() ? fields.url.trim() : null,
+  };
+}
+
 /** One label per settled state; approvals also say whether "always" was chosen. */
 export function settledLabelKey(request: BotRequestView): TranslationKey {
   const status: BotRequestStatus = request.status;

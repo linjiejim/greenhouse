@@ -12,3 +12,5 @@ header { display: flex; justify-content: space-between; align-items: baseline; }
 table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
 th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e6ebf0; }
 th { color: #6b7785; font-weight: 500; }
+.check { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border: 1px solid #cfd6de; border-radius: 8px; font-size: 15px; color: #1d2733; cursor: pointer; }
+.check input { display: inline-block; width: 20px; height: 20px; margin: 0; }

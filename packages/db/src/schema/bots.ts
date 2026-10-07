@@ -242,6 +242,8 @@ export const botComputers = pgTable('bot_computers', {
   /** Last measured size of the home volume, bytes. */
   disk_bytes: bigint('disk_bytes', { mode: 'number' }),
   disk_measured_at: ts('disk_measured_at'),
+  /** The member's own IANA timezone for the computer; null = the deployment default. Applied at the next start. */
+  timezone: text('timezone'),
   created_at: ts('created_at').notNull(),
   updated_at: ts('updated_at').notNull(),
 });

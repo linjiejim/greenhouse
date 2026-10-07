@@ -19,6 +19,7 @@ import type { ChatTurnEnvironment } from '@greenhouse/types/api';
 import type { BotRequestView, BotTurnReason } from '@greenhouse/types/bots';
 import { notifyWorkbenchChanged } from './workbench/sync';
 import { entityDomainForTool, notifyEntityChanged } from './entity-sync';
+import { isBotsApiError } from './api/bots';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -55,7 +56,22 @@ export interface ManagedSession {
   generatedTitle?: string;
   error?: string;
   startedAt: number;
+  /**
+   * Bots: the member asked this run to stop after the current step (the soft
+   * stop — `POST /api/chat/runs/:id/interrupt`, or its `run-interrupting`
+   * event, which reaches every tab). Cleared by the next Bot turn that starts
+   * (the run went on to answer a message that was waiting — the server used
+   * the request up) or when the run ends.
+   */
+  interrupting?: boolean;
 }
+
+/**
+ * How a soft-stop request went: taken (`interrupting`), no run to interrupt —
+ * it had already finished (`no_run`), or refused (not a Bots conversation, an
+ * older server, the network) — the caller decides what to do instead.
+ */
+export type InterruptOutcome = 'interrupting' | 'no_run' | 'refused';
 
 /** Mutable per-run accumulator behind the RAF-batched `ManagedSession` snapshots. */
 interface StreamData {
@@ -66,10 +82,23 @@ interface StreamData {
   /** Index of the Bot currently speaking, or -1 between Bot turns / in ordinary chats. */
   botCurrent: number;
   botRequests: BotRequestView[];
+  /** A soft stop is pending (see ManagedSession.interrupting). */
+  interrupting: boolean;
+  /** Bot turns started so far — tells a soft-stop answer that arrives after the run moved on. */
+  turnStarts: number;
 }
 
 function newStreamData(): StreamData {
-  return { text: '', reasoning: '', toolCalls: [], botSegments: [], botCurrent: -1, botRequests: [] };
+  return {
+    text: '',
+    reasoning: '',
+    toolCalls: [],
+    botSegments: [],
+    botCurrent: -1,
+    botRequests: [],
+    interrupting: false,
+    turnStarts: 0,
+  };
 }
 
 /** Copy the mutable segments into a fresh snapshot so memoized consumers see the change. */
@@ -131,6 +160,9 @@ export interface SessionManagerContextValue {
 
   /** Stop a streaming session */
   stopSession: (sessionId: string) => void;
+
+  /** Bots: ask the run to stop after the current step (soft stop). */
+  interruptSession: (sessionId: string) => Promise<InterruptOutcome>;
 
   /** Mark a session as read (clear unread status) */
   markRead: (sessionId: string) => void;
@@ -215,6 +247,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
             streamToolCalls: [...data.toolCalls],
             botSegments: snapshotSegments(data.botSegments),
             botRequests: [...data.botRequests],
+            interrupting: data.interrupting,
           });
         }
         return next;
@@ -309,6 +342,14 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
                 // server-side bridge self-resolves via its timeout).
                 if (event.type === 'local-tool-request' && event.replayed) continue;
 
+                // Bots soft stop, asked for here or in another tab (and replayed
+                // after a refresh): the run ends once the current step is done.
+                if (event.type === 'run-interrupting') {
+                  data.interrupting = true;
+                  scheduleUpdate(sessionId);
+                  continue;
+                }
+
                 // Inside a Bots run, text and tool events belong to whichever Bot
                 // is speaking (between its bot-turn-start and bot-turn-end).
                 const speaking = data.botCurrent >= 0 ? data.botSegments[data.botCurrent] : null;
@@ -365,6 +406,10 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
                       toolCalls: [],
                     });
                     data.botCurrent = data.botSegments.length - 1;
+                    data.turnStarts += 1;
+                    // A turn after a soft stop answers a message that was
+                    // waiting: the server used the request up.
+                    data.interrupting = false;
                     scheduleUpdate(sessionId);
                   },
                   onBotTurnEnd: (turn) => {
@@ -480,6 +525,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
                   completedAsStop ? 'stopped' : 'completed',
                 ),
                 botRequests: finalData ? [...finalData.botRequests] : session.botRequests,
+                interrupting: false,
               });
             }
             return next;
@@ -518,6 +564,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
                     wasStopping ? 'stopped' : 'error',
                   ),
                   botRequests: finalData ? [...finalData.botRequests] : session.botRequests,
+                  interrupting: false,
                 });
               }
               return next;
@@ -699,6 +746,26 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
       .catch(() => localStop());
   }, []);
 
+  const interruptSession = useCallback(
+    async (sessionId: string): Promise<InterruptOutcome> => {
+      const turnsBefore = streamDataRef.current.get(sessionId)?.turnStarts;
+      try {
+        await api.interruptChatRun(sessionId);
+      } catch (err) {
+        return isBotsApiError(err) && err.status === 404 ? 'no_run' : 'refused';
+      }
+      // The run's own `run-interrupting` event says the same; marking it here
+      // too shows it at once — unless the run already moved on meanwhile.
+      const data = streamDataRef.current.get(sessionId);
+      if (data && data.turnStarts === turnsBefore) {
+        data.interrupting = true;
+        scheduleUpdate(sessionId);
+      }
+      return 'interrupting';
+    },
+    [scheduleUpdate],
+  );
+
   const markRead = useCallback((sessionId: string) => {
     setUnreadSessions((prev) => {
       if (!prev.has(sessionId)) return prev;
@@ -780,6 +847,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     sendBotsMessage,
     attachSession,
     stopSession,
+    interruptSession,
     markRead,
     markImportant,
     isSessionStreaming,

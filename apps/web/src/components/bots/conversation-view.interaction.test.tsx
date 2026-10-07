@@ -80,6 +80,9 @@ function controller(overrides: Partial<BotConversationController> = {}): BotConv
     reload: vi.fn(async () => {}),
     send: vi.fn(async () => {}),
     stop: vi.fn(),
+    stopPhase: null,
+    interrupting: false,
+    handleNow: vi.fn(async () => {}),
     ...overrides,
   };
 }

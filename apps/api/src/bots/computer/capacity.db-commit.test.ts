@@ -34,6 +34,7 @@ const config: BotsComputerConfig = {
   namespace: 'capacity',
   timezone: 'UTC',
   lang: null,
+  jobMaxHours: 8,
   missionNetwork: 'cloud-agent',
 };
 

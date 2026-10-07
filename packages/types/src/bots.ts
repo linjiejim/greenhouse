@@ -382,6 +382,51 @@ export interface ComputerStatusView {
   /** Position in the start queue when the org's computers are all busy. */
   queue_position: number | null;
   disk_bytes: number | null;
+  /** The member's own timezone for the computer (IANA), when set; the deployment default applies otherwise. */
+  timezone: string | null;
+  /** The browser language the computer starts with (BCP 47, e.g. zh-CN). */
+  lang: string;
+}
+
+// ─── Computer files & processes (the member's view of ~/) ─
+
+export interface ComputerFileEntry {
+  name: string;
+  type: 'file' | 'dir' | 'link' | 'other';
+  /** Bytes (0 for directories). */
+  size: number;
+  /** ISO time of the last modification. */
+  mtime: string;
+}
+
+export interface ComputerFileList {
+  /** Absolute path of the listed directory (always under /home/agent). */
+  path: string;
+  entries: ComputerFileEntry[];
+  /** More entries exist than were returned. */
+  truncated: boolean;
+}
+
+/** `lost`: the process was running when the computer stopped, so its end was never recorded. */
+export type ComputerProcessStatus = 'running' | 'exited' | 'lost';
+
+/** A long job started with `gh-jobs` (by a Bot's run_background or from the terminal). */
+export interface ComputerProcessView {
+  id: string;
+  name: string;
+  command: string;
+  cwd: string;
+  status: ComputerProcessStatus;
+  exit_code: number | null;
+  started_at: string;
+  ended_at: string | null;
+  log_bytes: number;
+}
+
+export interface ComputerProcessLog {
+  id: string;
+  text: string;
+  truncated: boolean;
 }
 
 /** One running/known computer, for the administration page. */
@@ -449,6 +494,15 @@ export interface BotTurnStartEvent {
   reason: BotTurnReason;
   /** The Bot that asked (reason `ask`). */
   asked_by?: string;
+}
+
+/**
+ * A soft stop was asked for (`POST /api/chat/runs/:sessionId/interrupt`): the
+ * Bot speaking finishes its current step, then a queued member message is
+ * answered, or the run ends. Sent once per request, replayed after a refresh.
+ */
+export interface RunInterruptingEvent {
+  type: 'run-interrupting';
 }
 
 export interface BotTurnEndEvent {
@@ -560,7 +614,11 @@ export type ComputerErrorCode =
   | 'stopped'
   | 'over_quota'
   | 'lease_required'
-  | 'invalid';
+  | 'invalid'
+  /** Files / processes: no such file, folder or job. */
+  | 'not_found'
+  /** Files: an upload over 100 MiB (or a download over 1 GiB). */
+  | 'too_large';
 
 /** Every `code` an `/api/bots/vault*` route answers with (apps/api/src/bots/vault/crypto.ts). */
 export type VaultErrorCode =

@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import type { ChildProcess } from 'node:child_process';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Readable } from 'node:stream';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   buildComputerRunArgs,
@@ -8,6 +13,7 @@ import {
   createDockerClient,
   parseMemUsage,
   parsePsOutput,
+  spawnDocker,
   type ComputerRunSpec,
   type DockerSpawner,
   type DockerSpawnResult,
@@ -65,7 +71,7 @@ describe('computer docker run argv', () => {
       '--oom-score-adj',
       '500',
       '--tmpfs',
-      '/tmp:rw,nosuid,nodev,size=1g',
+      '/tmp:rw,exec,nosuid,nodev,size=1g',
       '--log-driver',
       'local',
       '--log-opt',
@@ -114,6 +120,12 @@ describe('computer docker run argv', () => {
     expect(valuesOf(args, '--network')).toEqual(['gh-bots-dev']);
     expect(valuesOf(args, '--runtime')).toEqual(['runc']);
     expect(args.at(-1)).toBe('greenhouse/bot-computer:latest');
+  });
+
+  it('passes the member’s timezone and language through', () => {
+    const env = valuesOf(buildComputerRunArgs({ ...spec, timezone: 'America/New_York', lang: 'zh-CN' }), '-e');
+    expect(env).toContain('TZ=America/New_York');
+    expect(env).toContain('GH_COMPUTER_LANG=zh-CN');
   });
 
   it('passes the operator proxy only to the browser flag, and the language when set', () => {
@@ -225,6 +237,43 @@ describe('docker client', () => {
     });
     expect(out.stdout.toString()).toBe('ok');
     expect(calls[0]).toEqual(['exec', '-i', '-u', 'agent', '-w', '/home/agent', '-e', 'HOME=/home/agent', 'c1', 'cat']);
+  });
+
+  it('streams stdin from a readable (uploads) without buffering it', async () => {
+    const body = Readable.from([Buffer.from('chunk')]);
+    let seen: unknown;
+    const calls: string[][] = [];
+    const spawner: DockerSpawner = async (args, options) => {
+      calls.push(args);
+      seen = options?.input;
+      return result({});
+    };
+    await createDockerClient(spawner).exec({
+      container: 'c1',
+      user: 'agent',
+      argv: ['sh'],
+      input: body,
+      timeoutMs: 1000,
+    });
+    expect(seen).toBe(body);
+    expect(calls[0]).toEqual(['exec', '-i', '-u', 'agent', 'c1', 'sh']);
+  });
+
+  it('builds streaming exec argv with cwd and env (the terminal, downloads) and keeps the tunnels’ plain form', () => {
+    const streamed: string[][] = [];
+    const client = createDockerClient(
+      async () => result({}),
+      (args) => {
+        streamed.push(args);
+        return {} as ChildProcess;
+      },
+    );
+    client.execStream('c1', 'agent', ['gh-term'], { cwd: '/home/agent', env: { HOME: '/home/agent' } });
+    client.execStream('c1', 'browser', ['socat', 'STDIO', 'UNIX-CONNECT:/tmp/browser/vnc.sock']);
+    expect(streamed).toEqual([
+      ['exec', '-i', '-u', 'agent', '-w', '/home/agent', '-e', 'HOME=/home/agent', 'c1', 'gh-term'],
+      ['exec', '-i', '-u', 'browser', 'c1', 'socat', 'STDIO', 'UNIX-CONNECT:/tmp/browser/vnc.sock'],
+    ]);
   });
 
   it('turns a daemon-side exec failure into a per-computer error, but keeps a command failure a result', async () => {
@@ -341,5 +390,36 @@ describe('docker client', () => {
 
     const down: DockerSpawner = async () => result({ code: 1, stderr: 'Cannot connect to the Docker daemon' });
     await expect(createDockerClient(down).remove('c1')).rejects.toBeInstanceOf(ComputerRuntimeError);
+  });
+});
+
+describe('spawnDocker stdin streams', () => {
+  // A stand-in `docker` on PATH that echoes its stdin: what reaches it is what the container would read.
+  const dir = mkdtempSync(join(tmpdir(), 'gh-fake-docker-'));
+  const savedPath = process.env.PATH;
+  beforeAll(() => {
+    writeFileSync(join(dir, 'docker'), '#!/bin/sh\nexec cat\n');
+    chmodSync(join(dir, 'docker'), 0o755);
+    process.env.PATH = `${dir}:${savedPath}`;
+  });
+  afterAll(() => {
+    process.env.PATH = savedPath;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('pipes a readable through to the process, in order and to the end', async () => {
+    const chunks = Array.from({ length: 50 }, (_, i) => Buffer.from(`chunk-${i};`));
+    const out = await spawnDocker(['exec'], { input: Readable.from(chunks), timeoutMs: 10_000 });
+    expect(out.code).toBe(0);
+    expect(out.stdout.toString()).toBe(Buffer.concat(chunks).toString());
+  });
+
+  it('kills the process when the readable breaks (an upload the client abandoned)', async () => {
+    const input = new Readable({ read() {} });
+    input.push('partial');
+    setTimeout(() => input.destroy(new Error('client went away')), 50);
+    const out = await spawnDocker(['exec'], { input, timeoutMs: 10_000 });
+    expect(out.signal).toBe('SIGKILL');
+    expect(out.code).toBeNull();
   });
 });

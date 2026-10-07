@@ -8,7 +8,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BotRequestRow, DatabaseProvider } from '@greenhouse/db';
 import { HUMAN_WAIT_HOLD_MS } from '../../computer/limits.js';
-import { implicitTakeoverFor } from '../takeover.js';
+import { humanCheckFor, implicitTakeoverFor } from '../takeover.js';
 import { testTurn } from '../../__tests__/helpers/turn.js';
 
 function withRequests(pending: Array<Partial<BotRequestRow>> = []) {
@@ -75,5 +75,50 @@ describe('implicit take-over card', () => {
         reason: 'interrupted',
       }),
     ).toBe('card');
+  });
+});
+
+describe('verification card (a site asks for human verification)', () => {
+  const check = {
+    origin: 'https://shop.example.com',
+    url: 'https://shop.example.com/cart?session=tok#pay',
+    title: 'Just a moment...',
+    kind: 'challenge' as const,
+  };
+
+  it('is never raised for a background turn', () => {
+    expect(humanCheckFor(testTurn({ background: true }))).toBeUndefined();
+  });
+
+  it('raises one captcha take-over card per check, server-written, expiring with the hold, and ends the turn', async () => {
+    const { ctx } = withRequests();
+    const raise = humanCheckFor(ctx)!;
+    expect(await Promise.all([raise(check), raise({ ...check, kind: 'captcha' })])).toEqual(['card', 'card']);
+    expect(ctx.createRequest).toHaveBeenCalledTimes(1);
+    expect(ctx.createRequest).toHaveBeenCalledWith(
+      'takeover',
+      {
+        kind: 'captcha',
+        reason: 'shop.example.com asks for human verification — please complete it on the computer',
+        url: 'https://shop.example.com/cart',
+      },
+      { expiresInMs: HUMAN_WAIT_HOLD_MS },
+    );
+    expect(ctx.stopAfterStep).toHaveBeenCalledWith('takeover');
+  });
+
+  it('speaks the member’s language and reuses this Bot’s pending take-over card', async () => {
+    const zh = withRequests();
+    await humanCheckFor({ ...zh.ctx, locale: 'zh' })!(check);
+    expect(zh.ctx.createRequest).toHaveBeenCalledWith(
+      'takeover',
+      expect.objectContaining({ reason: 'shop.example.com 要求人机验证，请在电脑上完成验证' }),
+      { expiresInMs: HUMAN_WAIT_HOLD_MS },
+    );
+
+    const mine = withRequests([{ id: 'brq_asked', bot_id: 'bot_test', kind: 'takeover' }]);
+    expect(await humanCheckFor(mine.ctx)!(check)).toBe('already_pending');
+    expect(mine.ctx.createRequest).not.toHaveBeenCalled();
+    expect(mine.ctx.stopAfterStep).toHaveBeenCalledWith('takeover');
   });
 });

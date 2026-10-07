@@ -222,6 +222,31 @@ export function capSnapshot(
   return { text: [...head, marker(omitted), ...tail].join('\n'), truncated: true };
 }
 
+/**
+ * Keep the END of a text within ≈`maxTokens` — for a log, whose latest lines
+ * are what matters — with a visible marker for the lines cut from the top.
+ */
+export function capTail(
+  text: string,
+  maxTokens: number,
+  marker: (omittedLines: number) => string,
+): { text: string; truncated: boolean } {
+  const lines = text
+    .split('\n')
+    .map((line) => (line.length > LINE_CHAR_CAP ? `${line.slice(0, LINE_CHAR_CAP)}… [line truncated]` : line));
+  const joined = lines.join('\n');
+  if (estimateTokens(joined) <= maxTokens) return { text: joined, truncated: joined !== text };
+  const tail: string[] = [];
+  let used = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const cost = estimateTokens(lines[i]!) + 1;
+    if (used + cost > maxTokens) break;
+    tail.unshift(lines[i]!);
+    used += cost;
+  }
+  return { text: [marker(lines.length - tail.length), ...tail].join('\n'), truncated: true };
+}
+
 function pageOmission(omitted: number): string {
   return `… [${omitted} lines of the page omitted to save context — scroll, or click into the part you need, then snapshot again] …`;
 }

@@ -784,3 +784,145 @@ describe('who may run a conversation', () => {
     }
   });
 });
+
+describe('soft stop (interrupt)', () => {
+  const noteTool = (title: string) => ({ toolName: 'conversation', input: { action: 'add_note', title } });
+
+  it('the step in flight finishes and is kept, then the queued member message is answered next', async () => {
+    const ivy = await bot('Ivy');
+    const fern = await bot('Fern');
+    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id] });
+    await say(group.session_id, 'Outline the launch plan, both of you');
+
+    const { events } = await runWith(
+      group.session_id,
+      {
+        Ivy: [
+          [
+            { text: 'Saving the outline first.', toolCalls: [noteTool('Launch outline')] },
+            { text: 'SHOULD NOT APPEAR' },
+          ],
+          [{ text: 'The date is 12 March.' }],
+        ],
+        Fern: [[{ text: 'SHOULD NOT SPEAK' }]],
+      },
+      { kind: 'message', reason: 'user', mentions: [ivy.id, fern.id] },
+      {
+        onTurn: async (turn) => {
+          if (turn.bot !== 'Ivy' || turn.input.messages.some((m) => String(m.content).includes('just the date')))
+            return;
+          // While Ivy's step runs the member sends a message (queued: 202) and presses "Handle now".
+          await deliverToConversation(group.session_id, {
+            kind: 'user_message',
+            content: 'Skip the plan, just the date',
+            mentions: [],
+          });
+          expect(chatRunRegistry.getActive(group.session_id)!.requestInterrupt()).toBe(true);
+        },
+      },
+    );
+
+    // Ivy's step completed (not stopped); Fern's planned turn was dropped; the message got the floor.
+    expect(botEvents(events)).toEqual([
+      `start:${ivy.id}:mention`,
+      `end:${ivy.id}:completed:msg`,
+      `start:${ivy.id}:interjection`,
+      `end:${ivy.id}:completed:msg`,
+      'finish',
+    ]);
+    expect(events.filter((e) => e.type === 'run-interrupting')).toHaveLength(1);
+    expect(events.find((e) => e.type === 'finish')!.finishReason).toBe('stop');
+    const rows = await db.sessions.getMessages(group.session_id);
+    expect(rows.map((r) => [r.role, r.bot_id ?? null, r.content])).toEqual([
+      ['user', null, 'Outline the launch plan, both of you'],
+      ['assistant', ivy.id, 'Saving the outline first.'], // no stop notice: the member's message is answered
+      ['user', null, 'Skip the plan, just the date'],
+      ['assistant', ivy.id, 'The date is 12 March.'],
+    ]);
+    // The tool call of the interrupted step ran, and the turn keeps it.
+    expect(rows[1]!.pipeline).toContain('conversation');
+    const notes = await db.bots.listNotes(group.session_id, { status: 'open' });
+    expect(notes.map((note) => note.title)).toEqual(['Launch outline']);
+    expect(await db.bots.listPendingInbox(group.session_id)).toHaveLength(0);
+  });
+
+  it('with no member message waiting the run ends after the step, and the turn says it was stopped', async () => {
+    const ivy = await bot('Ivy');
+    const fern = await bot('Fern');
+    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id] });
+    await say(group.session_id, 'Research and write it up, both of you');
+
+    const { events } = await runWith(
+      group.session_id,
+      {
+        Ivy: [[{ toolCalls: [noteTool('Sources')] }, { text: 'SHOULD NOT APPEAR' }]],
+        Fern: [[{ text: 'SHOULD NOT SPEAK' }]],
+      },
+      { kind: 'message', reason: 'user', mentions: [ivy.id, fern.id] },
+      { onTurn: async () => void chatRunRegistry.getActive(group.session_id)!.requestInterrupt() },
+    );
+
+    expect(botEvents(events)).toEqual([`start:${ivy.id}:mention`, `end:${ivy.id}:completed:msg`, 'finish']);
+    expect(events.find((e) => e.type === 'finish')!.finishReason).toBe('stop');
+    const rows = await db.sessions.getMessages(group.session_id);
+    expect(rows).toHaveLength(2);
+    // A tool-only step: the stop notice is the turn's line (the member's locale), its steps kept.
+    expect(rows[1]).toMatchObject({ role: 'assistant', bot_id: ivy.id, content: '> 已按要求停止生成。' });
+    expect(rows[1]!.pipeline).toContain('Sources');
+    expect(chatRunRegistry.getActive(group.session_id)).toBeUndefined();
+  });
+
+  it('a wake-up queued meanwhile is recorded but not run, and text already written keeps the notice below it', async () => {
+    const ivy = await bot('Ivy');
+    const fern = await bot('Fern');
+    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id] });
+    await say(group.session_id, 'Book the venue');
+
+    const { events } = await runWith(
+      group.session_id,
+      {
+        Ivy: [[{ text: 'Checking the venue site.', toolCalls: [noteTool('Venue')] }, { text: 'SHOULD NOT APPEAR' }]],
+        Fern: [[{ text: 'SHOULD NOT SPEAK' }]],
+      },
+      userTrigger,
+      {
+        onTurn: async () => {
+          await deliverToConversation(group.session_id, {
+            kind: 'continue',
+            botId: fern.id,
+            note: 'The member handed the computer back.',
+            eventText: 'Jim handed the computer back',
+            event: { kind: 'takeover_done', request_id: null, bot_id: fern.id },
+          });
+          chatRunRegistry.getActive(group.session_id)!.requestInterrupt();
+        },
+      },
+    );
+
+    expect(botEvents(events)).toEqual([`start:${ivy.id}:user`, `end:${ivy.id}:completed:msg`, 'finish']);
+    const rows = await db.sessions.getMessages(group.session_id);
+    expect(rows[1]!.content).toBe('Checking the venue site.\n\n> 已按要求停止生成。');
+    const kinds = rows.map((r) => (r.bot_event ? (JSON.parse(r.bot_event) as { kind: string }).kind : null));
+    expect(kinds).toContain('takeover_done');
+    expect(kinds).toContain('stopped');
+    expect(await db.bots.listPendingInbox(group.session_id)).toHaveLength(0);
+  });
+
+  it('a turn that is already writing its answer finishes it; only what was planned after it is dropped', async () => {
+    const ivy = await bot('Ivy');
+    const fern = await bot('Fern');
+    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id] });
+    await say(group.session_id, 'Both of you, quickly');
+
+    const { events } = await runWith(
+      group.session_id,
+      { Ivy: [[{ text: 'Done on my side.' }]], Fern: [[{ text: 'SHOULD NOT SPEAK' }]] },
+      { kind: 'message', reason: 'user', mentions: [ivy.id, fern.id] },
+      { onTurn: async () => void chatRunRegistry.getActive(group.session_id)!.requestInterrupt() },
+    );
+
+    expect(botEvents(events)).toEqual([`start:${ivy.id}:mention`, `end:${ivy.id}:completed:msg`, 'finish']);
+    const rows = await db.sessions.getMessages(group.session_id);
+    expect(rows.map((r) => r.content)).toEqual(['Both of you, quickly', 'Done on my side.']);
+  });
+});

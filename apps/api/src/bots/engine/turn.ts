@@ -11,7 +11,11 @@
  *   run's (member Stop, shutdown);
  * - a follow-up's text is held back until it is clearly not `<<skip>>`, so the
  *   member never sees the skip token flash by;
- * - earlier browser/computer observations are stubbed in-turn (context-trim).
+ * - earlier browser/computer observations are stubbed in-turn (context-trim);
+ * - a soft stop (`ChatRun.requestInterrupt`) ends the turn at the next step
+ *   boundary as `completed`: the step in flight finishes and is saved (a
+ *   generated image is not thrown away), no new step starts, and when no
+ *   member message waits the saved turn carries the stop notice.
  */
 
 import type { StopCondition, ToolSet } from 'ai';
@@ -153,10 +157,25 @@ function readUsage(usage: StepUsage | undefined) {
 const HANDOFF_STOP = Symbol('bots-handoff-stop');
 
 /**
- * A turn that ended because of a hand-off or a take-over request is SUPPOSED
- * to stop without a final answer. DeepSeek's final-answer guarantee would
- * otherwise splice one in — making the asker answer for the Bot it just asked.
- * A trailing synthetic `abort` keeps the splice off; the consumer drops it.
+ * Whether a member message waits in the conversation's inbox (the chain
+ * answers it right after an interrupt). Unreadable counts as none: the worst
+ * case is a stop notice above a message that is then answered anyway.
+ */
+export async function memberMessageQueued(db: DatabaseProvider, sessionId: string): Promise<boolean> {
+  try {
+    return (await db.bots.listPendingInbox(sessionId)).some((row) => row.kind === 'user_message');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A turn that ended because of a hand-off, a take-over request or the
+ * member's soft stop is SUPPOSED to stop without a final answer. DeepSeek's
+ * final-answer guarantee would otherwise splice one in — making the asker
+ * answer for the Bot it just asked, or keeping the floor from a member who
+ * asked for it. A trailing synthetic `abort` keeps the splice off; the
+ * consumer drops it.
  */
 function guardStopAfterStep<T extends object>(
   streamResult: T & { fullStream: AsyncIterable<unknown> },
@@ -224,6 +243,8 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
   wallTimer.unref?.();
 
   let stopAfter: 'handoff' | 'takeover' | null = null;
+  /** The loop stopped at a step boundary because the member asked to (soft stop). */
+  let interrupted = false;
   let tainted = false;
   const handoffs: Array<{ toBotId: string; message: string }> = [];
   const emit = (event: Record<string, unknown> & { type: string }) => run.emit(event);
@@ -480,6 +501,12 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       metadata: { max_steps: maxSteps, bot_id: bot.id, reason: item.reason },
     });
     const stopWhenHandedOff: StopCondition<ToolSet> = () => stopAfter !== null;
+    // Soft stop: read after each step's tool calls completed, so the step in
+    // flight (and its results) is kept and only the next one never starts.
+    const stopWhenInterrupted: StopCondition<ToolSet> = () => {
+      if (run.interruptRequested) interrupted = true;
+      return interrupted;
+    };
     const stream = await botsEngineDeps().createStream({
       profile: rc.profile,
       messages: engineMessages,
@@ -490,15 +517,17 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       providerAttemptHook,
       ...(modelOverride ? { modelOverride } : {}),
       maxStepsOverride: maxSteps,
-      extraStopWhen: [stopWhenHandedOff],
+      extraStopWhen: [stopWhenHandedOff, stopWhenInterrupted],
       prepareStepMessages: createObservationTrimmer(),
     });
     modelId = stream.modelId;
 
     const interruption = () => '';
     try {
+      // An interrupted turn stops without a final answer on purpose: no
+      // spliced-in extra model call either (the member wants the floor back).
       for await (const raw of withFinalAnswerGuarantee(
-        guardStopAfterStep(stream.streamResult, () => stopAfter !== null),
+        guardStopAfterStep(stream.streamResult, () => stopAfter !== null || interrupted),
         { profile: rc.profile, systemPrompt, baseMessages: engineMessages, providerAttemptHook },
       )) {
         const part = raw as { type: string; [HANDOFF_STOP]?: boolean } & Record<string, unknown>;
@@ -592,8 +621,12 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
     const shouldPersist = Boolean(text) || (completed && engineResult.pipelineSteps.length > 0 && !onlyHandoffs);
     let status: TurnResult['status'];
     let notice: string | undefined;
+    // Soft-stopped with nobody waiting: the run ends with this turn, which says
+    // so like a Stop does. A queued member message is answered next instead.
+    const stopNotice = interrupted && completed && !(await memberMessageQueued(db, sessionId));
     if (completed) {
       status = 'completed';
+      if (stopNotice) notice = chatStopNotice(locale);
     } else if (stoppedByMember || limit) {
       status = 'stopped';
       notice = stoppedByMember ? chatStopNotice(locale) : copy.limitInterruption(locale);
@@ -616,15 +649,22 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
         interruptionNotice: notice ?? chatInterruptionNotice(locale),
         expectedTail: rc.writer.tail ?? undefined,
         botId: bot.id,
-        emptyTextFallback:
-          handoffs.length > 0
-            ? copy.handedOver(
-                locale,
-                handoffs.map((h) => rc.bots.get(h.toBotId)?.name ?? h.toBotId),
-              )
-            : stopAfter === 'takeover'
-              ? copy.waitingForMember(locale)
-              : copy.workedWithoutText(locale),
+        // A soft-stopped turn that keeps the stop notice needs no placeholder: the notice is its line.
+        ...(stopNotice && handoffs.length === 0 && stopAfter === null
+          ? {}
+          : {
+              emptyTextFallback:
+                handoffs.length > 0
+                  ? copy.handedOver(
+                      locale,
+                      handoffs.map((h) => rc.bots.get(h.toBotId)?.name ?? h.toBotId),
+                    )
+                  : stopAfter === 'takeover'
+                    ? copy.waitingForMember(locale)
+                    : interrupted
+                      ? copy.interruptedWithoutText(locale)
+                      : copy.workedWithoutText(locale),
+            }),
         ...(trace
           ? { resultMessageId: chatRuntimeResultMessageId(trace.runId, completed ? 'succeeded' : 'interrupted') }
           : {}),

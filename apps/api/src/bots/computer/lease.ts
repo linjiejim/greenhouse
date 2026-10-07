@@ -6,13 +6,16 @@
  * `lease_epoch`, both slots see it). Taking over bumps the epoch, aborts every
  * computer action this process tracks for the member (shell and file
  * commands, and the browser/vault steps registered through
- * access.trackComputerAction) and kills the Bot shell's processes; Bot tools
+ * access.trackComputerAction) and kills the Bot shell's processes
+ * (`gh-agent-kill`: everything of uid agent except background jobs and the
+ * member's open terminals); Bot tools
  * re-check the lease before every step that cannot be undone and the epoch
  * before returning any observation, so nothing taken under the old lease
- * leaks out. Handing back bumps it again and settles exactly the card the
- * member answered (CAS) — the one named, or the single card waiting in the
- * conversation they are in; never a guess across conversations — waking the
- * Bot that asked through the conversation's single writer
+ * leaks out. Handing back bumps it again, brings the browser window back
+ * (best effort — the member may have minimised it) and settles exactly the
+ * card the member answered (CAS) — the one named, or the single card waiting
+ * in the conversation they are in; never a guess across conversations —
+ * waking the Bot that asked through the conversation's single writer
  * (deliverToConversation). Viewers gone for more than 3 minutes release the
  * lease back to the Bots but never continue on their own — a phone that
  * dropped its socket to read an SMS code must not have the Bot resume on a
@@ -25,7 +28,13 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import type { BotEvent, BotRequestDecision } from '@greenhouse/types/bots';
 import type { InboxItem } from '../engine/inbox-types.js';
 
-import { abortComputerActions, ensureComputerReady, getBrowser, rememberFilledSecret } from './access.js';
+import {
+  abortComputerActions,
+  ensureComputerReady,
+  getBrowser,
+  rememberFilledSecret,
+  restoreBrowserWindow,
+} from './access.js';
 import { ComputerUnavailableError } from './errors.js';
 import { computerLifecycleHooks } from './hooks.js';
 import { leaseChanged } from './lease-events.js';
@@ -40,7 +49,8 @@ const MAX_TYPE_CHARS = 10_000;
 
 type Locale = 'en' | 'zh';
 
-async function localeOf(userId: string): Promise<Locale> {
+/** The member's copy language (cards, notes the server writes on their behalf). */
+export async function localeOf(userId: string): Promise<Locale> {
   const user = await getDb().users.getById(userId);
   return user?.locale?.toLowerCase().startsWith('zh') ? 'zh' : 'en';
 }
@@ -137,28 +147,54 @@ async function settleAndContinue(
 
 // ─── Take over / hand back ────────────────────────────────
 
+/** Kills every process of uid agent except background jobs and terminals (image contract 2). */
+const AGENT_KILL_ARGV = ['gh-agent-kill'];
+
 /** The member takes the screen and input. Idempotent. */
 export async function takeoverComputer(userId: string): Promise<void> {
   await ensureComputerReady(userId);
   const row = await getDb().botComputers.setLease(userId, 'user');
   if (!row) return; // already theirs
   const aborted = abortComputerActions(userId);
-  // Commands of other API slots and anything the Bot left running in the
-  // background: the shell's whole uid goes. The browser (another uid) stays.
+  // Commands of other API slots and anything the Bot's shell left behind: the
+  // agent uid's processes go — except background jobs (they are meant to
+  // outlive a take-over) and the member's own terminals. The browser
+  // (another uid) stays.
+  let killed: number | null = null;
   try {
     const { docker } = requireComputerRuntime();
-    await docker.exec({
+    const result = await docker.exec({
       container: row.container_name,
       user: 'agent',
-      argv: ['pkill', '-KILL', '-u', 'agent'],
+      argv: AGENT_KILL_ARGV,
       timeoutMs: 15_000,
       maxStdoutBytes: 1024,
     });
+    if (result.code !== 0) throw new Error(result.stderr.trim() || `gh-agent-kill exited ${result.code}`);
+    const count = Number.parseInt(result.stdout.toString('utf8').trim(), 10);
+    killed = Number.isFinite(count) ? count : null;
   } catch (err) {
     logger.warn(`[bots-computer] could not stop the Bot shell on take-over: ${toErrorMessage(err)}`);
   }
-  logger.info('[bots-computer] takeover', { user_id: userId, epoch: row.lease_epoch, aborted_actions: aborted });
+  logger.info('[bots-computer] takeover', {
+    user_id: userId,
+    epoch: row.lease_epoch,
+    aborted_actions: aborted,
+    killed_processes: killed,
+  });
   leaseChanged(row);
+}
+
+/**
+ * The Bots have the computer again: bring the browser window back for them
+ * (the member may have minimised it). Best effort, never awaited — it must
+ * not hold up the hand-back, and a stopped computer has no window to restore.
+ */
+function restoreWindowAfterHandback(userId: string): void {
+  void restoreBrowserWindow(userId).catch((err: unknown) => {
+    if (err instanceof ComputerUnavailableError) return;
+    logger.warn(`[bots-computer] could not restore the browser window after a hand-back: ${toErrorMessage(err)}`);
+  });
 }
 
 /**
@@ -202,6 +238,7 @@ export async function handbackComputer(
     logger.info('[bots-computer] handback', { user_id: userId, epoch: row.lease_epoch });
     leaseChanged(row);
   }
+  restoreWindowAfterHandback(userId);
   const request = await requestToSettle(userId, opts);
   if (!request) return;
   await settleAndContinue(userId, request, { status: 'resolved', note: cleanNote(opts.note) });
@@ -220,7 +257,10 @@ export async function handleTakeoverDecision(args: {
   const { userId, request, decision } = args;
   const db = getDb();
   const row = await db.botComputers.setLease(userId, 'bot');
-  if (row) leaseChanged(row);
+  if (row) {
+    leaseChanged(row);
+    restoreWindowAfterHandback(userId);
+  }
   // false = a double click or the other slot settled it first; that one woke the Bot.
   await settleAndContinue(userId, request, {
     status: decision.decision === 'deny' ? 'denied' : 'resolved',
@@ -240,6 +280,7 @@ export async function releaseAbandonedLeases(now = Date.now()): Promise<void> {
     if (!row) continue;
     logger.info('[bots-computer] lease auto-released', { user_id: row.user_id, epoch: row.lease_epoch });
     leaseChanged(row);
+    restoreWindowAfterHandback(row.user_id);
     // The note goes to the conversation whose card is still waiting — only
     // when that is unambiguous; the lease change itself reaches every tab.
     const waiting = await db.bots.listRequests(row.user_id, { status: 'pending', kinds: [...HUMAN_STEP_KINDS] });

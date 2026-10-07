@@ -18,6 +18,9 @@
  * `implicitTakeoverFor` raises the card nobody asked for: the member took the
  * computer while a Bot was using it (or holds it when a Bot comes), and their
  * hand-back must wake that Bot — which the computer tools then promise it.
+ * `humanCheckFor` raises the one the browser asks for when a site wants human
+ * verification: a `captcha` take-over card, so the member passes the check
+ * (the human-check watcher hands back by itself once the page is clean).
  */
 
 import { tool, type Tool } from 'ai';
@@ -25,16 +28,19 @@ import { z } from 'zod';
 import type { BotImplicitTakeoverPayload, BotLoginPayload, BotTakeoverPayload } from '@greenhouse/types/bots';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import type { BotTurnContext } from '../engine/context.js';
+import { copy } from '../engine/copy.js';
 import {
   defaultComputerDeps,
   findLeasePage,
   type ComputerDeps,
+  type HumanCheck,
+  type HumanCheckOutcome,
   type ImplicitTakeover,
   type ImplicitTakeoverOutcome,
 } from '../computer/browser-session.js';
 import { HUMAN_WAIT_HOLD_MS } from '../computer/limits.js';
 import { isVaultAvailable } from '../vault/crypto.js';
-import { originOfUrl } from '../vault/origin.js';
+import { hostOfOrigin, originOfUrl } from '../vault/origin.js';
 import { vaultMatchesForOrigin } from '../vault/service.js';
 import { BOT_TOOL_METAS } from './meta.js';
 
@@ -182,6 +188,50 @@ async function raiseImplicitTakeover(
       if (withdrawn) return 'handed_back';
     }
   }
+  ctx.stopAfterStep('takeover');
+  return 'card';
+}
+
+// ─── Human checks ─────────────────────────────────────────
+
+/** Raising in flight per turn: parallel browser calls that hit one check share one card. */
+const checking = new WeakMap<BotTurnContext, Promise<HumanCheckOutcome>>();
+
+/**
+ * The verification card for ComputerTurn.humanCheck — undefined for
+ * background turns (nobody would answer it). Deduplicated like
+ * request_takeover: a pending take-over card of this Bot in this
+ * conversation is reused. Ends the turn after this step either way.
+ */
+export function humanCheckFor(ctx: BotTurnContext): ((info: HumanCheck) => Promise<HumanCheckOutcome>) | undefined {
+  if (ctx.background) return undefined;
+  return (info) => {
+    let pending = checking.get(ctx);
+    if (!pending) {
+      pending = raiseHumanCheck(ctx, info).finally(() => checking.delete(ctx));
+      checking.set(ctx, pending);
+    }
+    return pending;
+  };
+}
+
+async function raiseHumanCheck(ctx: BotTurnContext, info: HumanCheck): Promise<HumanCheckOutcome> {
+  const pending = await ctx.db.bots.listRequests(ctx.userId, {
+    sessionId: ctx.sessionId,
+    status: 'pending',
+    kinds: ['takeover'],
+  });
+  if (pending.some((row) => row.bot_id === ctx.bot.id)) {
+    ctx.stopAfterStep('takeover');
+    return 'already_pending';
+  }
+  const payload: BotTakeoverPayload = {
+    kind: 'captcha',
+    // Server-written from the host: the page's own words never reach a card line.
+    reason: copy.humanCheckReason(ctx.locale, info.origin ? hostOfOrigin(info.origin) : null),
+    url: displayUrl(info.url),
+  };
+  await ctx.createRequest('takeover', payload, { expiresInMs: HUMAN_WAIT_HOLD_MS });
   ctx.stopAfterStep('takeover');
   return 'card';
 }

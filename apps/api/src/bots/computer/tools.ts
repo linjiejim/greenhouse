@@ -7,10 +7,11 @@
  * - foreground → browser, computer, request_takeover, and vault when the
  *   vault is configured; meeting the member at the computer leaves an
  *   implicit take-over card (tools/takeover.ts), so their hand-back wakes
- *   the Bot;
- * - background → browser (open/snapshot/scroll/back/tabs/screenshot, in a
- *   clean signed-out context) and computer (status/read_file). No vault, no
- *   take-over: nobody is there to answer a card.
+ *   the Bot, and a site asking for human verification raises the
+ *   verification card (`humanCheck`), which ends the turn;
+ * - background → browser (open/snapshot/scroll/wait/back/tabs/screenshot, in
+ *   a clean signed-out context) and computer (status/read_file/processes/
+ *   process_log). No vault, no take-over: nobody is there to answer a card.
  *
  * `handleLoginDecision` runs when the member submits a secure sign-in card or
  * dismisses it ("Not now"); either way the asking Bot is woken exactly once,
@@ -29,7 +30,7 @@ import type { BotTurnContext } from '../engine/context.js';
 import type { InboxItem } from '../engine/inbox-types.js';
 import { createBrowserTool } from '../tools/browser.js';
 import { createComputerTool } from '../tools/computer.js';
-import { createTakeoverTool, implicitTakeoverFor } from '../tools/takeover.js';
+import { createTakeoverTool, humanCheckFor, implicitTakeoverFor } from '../tools/takeover.js';
 import { createVaultTool } from '../tools/vault.js';
 import { isVaultAvailable } from '../vault/crypto.js';
 import { SecureLoginError, fillSecureLogin, type SecureLoginResult } from '../vault/fill.js';
@@ -45,6 +46,8 @@ export { releaseTurnLeases } from './browser-session.js';
 export function computerTurnFrom(ctx: BotTurnContext, deps: ComputerDeps = defaultComputerDeps): ComputerTurn {
   const withVault = !ctx.background && isVaultAvailable();
   const implicitTakeover = implicitTakeoverFor(ctx, deps);
+  // A site asking for human verification raises the verification card (tools/takeover.ts).
+  const humanCheck = humanCheckFor(ctx);
   return {
     db: ctx.db,
     userId: ctx.userId,
@@ -57,6 +60,7 @@ export function computerTurnFrom(ctx: BotTurnContext, deps: ComputerDeps = defau
     noteObservation: (origin) => noteTurnObservation(ctx, origin, ctx.isTainted()),
     vaultMatches: withVault ? (origin) => vaultMatchesForOrigin(ctx.db, ctx.userId, origin) : null,
     ...(implicitTakeover ? { implicitTakeover } : {}),
+    ...(humanCheck ? { humanCheck } : {}),
   };
 }
 

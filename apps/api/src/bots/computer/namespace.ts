@@ -17,6 +17,8 @@ export const LABEL_USER = 'greenhouse.bots.computer.user';
 /** Image labels (apps/bot-computer/Dockerfile, scripts/build-bot-computer.sh). */
 export const LABEL_IMAGE_CONTRACT = 'greenhouse.bots.computer.contract';
 export const LABEL_IMAGE_CHROMIUM = 'greenhouse.bots.computer.chromium';
+/** Operator-chosen apt packages baked in at build time (BOTS_COMPUTER_EXTRA_PACKAGES); empty = none. */
+export const LABEL_IMAGE_EXTRA_PACKAGES = 'greenhouse.bots.computer.extra-packages';
 
 /** User ids are UUIDs; keep only what a Docker name allows, bounded. */
 function slug(userId: string): string {
@@ -31,6 +33,19 @@ export function computerContainerName(namespace: string, userId: string): string
 
 export function computerVolumeName(namespace: string, userId: string): string {
   return `gh-computer-${namespace}-${slug(userId)}-home`;
+}
+
+/** What a member's `bot_computers` row is created with (the names are sticky afterwards). */
+export function computerIdentity(
+  namespace: string,
+  userId: string,
+): { user_id: string; namespace: string; container_name: string; volume_name: string } {
+  return {
+    user_id: userId,
+    namespace,
+    container_name: computerContainerName(namespace, userId),
+    volume_name: computerVolumeName(namespace, userId),
+  };
 }
 
 /** The development-mode bridge the API creates itself (hardened hosts configure their own). */

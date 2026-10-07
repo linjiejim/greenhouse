@@ -20,8 +20,14 @@
  *   (never one whose Bot waits on a sign-in or take-over card younger than
  *   HUMAN_WAIT_HOLD_MS); otherwise the caller waits in line (≤45 s) and then
  *   gets `busy`.
+ * - Each start carries the member's own settings: their timezone
+ *   (`bot_computers.timezone`, else the deployment default) and a browser
+ *   language from their account locale (unless BOTS_COMPUTER_LANG overrides
+ *   it for everyone).
  * - Loops (scheduled by runtime.ts): idle (60 s) stops computers nobody used
- *   for `idleMinutes`; health (30 s) settles starts/stops whose process died
+ *   for `idleMinutes` — unless background jobs still run on one, which keeps
+ *   it up to BOTS_COMPUTER_JOB_MAX_HOURS after its last activity; health
+ *   (30 s) settles starts/stops whose process died
  *   and reconciles running rows against ONE `docker ps`; disk (hourly, every
  *   2 min for a home over the soft limit) measures the homes; reconcile (boot
  *   and every time the host comes back) clears orphans inside this namespace.
@@ -45,7 +51,7 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import type { BotComputerRow, BotComputerService } from '@greenhouse/db';
 
-import type { BotsComputerConfig } from './config.js';
+import { computerLang, parseTimezone, type BotsComputerConfig } from './config.js';
 import {
   buildComputerRunArgs,
   ComputerDockerError,
@@ -54,7 +60,7 @@ import {
   type DockerClient,
 } from './docker.js';
 import { ComputerUnavailableError } from './errors.js';
-import { computerContainerName, computerLabels, computerVolumeName, LABEL_USER, namespaceFilter } from './namespace.js';
+import { computerIdentity, computerLabels, LABEL_USER, namespaceFilter } from './namespace.js';
 
 /** safeJsonParse with the caller's expected shape (still validated field by field). */
 function parseJson<T>(text: string): T | null {
@@ -205,6 +211,10 @@ export interface ComputerControllerDeps {
   onRuntimeError?(err: ComputerRuntimeError): void;
   /** A new free-space reading of the Docker disk (the runtime keeps the latest). */
   onHostDisk?(reading: HostDiskReading): void;
+  /** The member's account locale (the browser language follows it); null = unknown. */
+  memberLocale?(userId: string): Promise<string | null>;
+  /** Background jobs running on a container (gh-jobs); never throws, 0 when unreadable. */
+  runningJobs?(container: string): Promise<number>;
 }
 
 export interface EnsureRunningOptions {
@@ -365,12 +375,18 @@ export function createComputerController(deps: ComputerControllerDeps) {
   }
 
   async function ensureRow(userId: string, namespace: string): Promise<BotComputerRow> {
-    return await store.ensure({
-      user_id: userId,
-      namespace,
-      container_name: computerContainerName(namespace, userId),
-      volume_name: computerVolumeName(namespace, userId),
-    });
+    return await store.ensure(computerIdentity(namespace, userId));
+  }
+
+  /** The browser language for the member's next start (a failed lookup falls back like an unknown locale). */
+  async function langFor(userId: string, config: BotsComputerConfig): Promise<string> {
+    if (config.lang || !deps.memberLocale) return computerLang(config.lang, null);
+    try {
+      return computerLang(null, await deps.memberLocale(userId));
+    } catch (err) {
+      logger.warn(`[bots-computer] could not read the locale of ${userId}: ${toErrorMessage(err)}`);
+      return computerLang(null, null);
+    }
   }
 
   async function removeQuietly(container: string): Promise<void> {
@@ -522,8 +538,9 @@ export function createComputerController(deps: ComputerControllerDeps) {
           cpus: config.cpus,
           proxy: config.proxy,
           urlBlocklist: env.urlBlocklist,
-          timezone: config.timezone,
-          lang: config.lang,
+          // Validated when stored; re-checked here because it becomes the container's TZ.
+          timezone: parseTimezone(row.timezone) ?? config.timezone,
+          lang: await langFor(row.user_id, config),
         }),
       );
       const product = await waitReady(row.container_name);
@@ -785,10 +802,28 @@ export function createComputerController(deps: ComputerControllerDeps) {
     emitState(broken);
   }
 
+  /**
+   * Background jobs keep an otherwise idle computer awake, for at most
+   * `jobMaxHours` after its last activity (a job that never ends must not
+   * hold one of the organisation's few slots for ever). One exec, asked only
+   * of a computer that is idle by every other measure, and outside the
+   * member's lock (an exec is slow; the lock re-checks idleness anyway).
+   */
+  async function jobsKeepAwake(row: BotComputerRow, env: ControllerEnvironment): Promise<boolean> {
+    const maxMs = env.config.jobMaxHours * 3_600_000;
+    if (!deps.runningJobs || maxMs <= 0 || clock.now() - Date.parse(row.last_active_at) >= maxMs) return false;
+    try {
+      return (await deps.runningJobs(row.container_name)) > 0;
+    } catch {
+      return false;
+    }
+  }
+
   async function idleTick(): Promise<void> {
     const env = await deps.environment();
     const cutoff = iso(clock.now() - env.idleMinutes * 60_000);
     for (const candidate of await store.listIdle(cutoff)) {
+      if (await jobsKeepAwake(candidate, env)) continue;
       await store.withUserLock(candidate.user_id, async () => {
         // Re-check under the lock: a Bot or a viewer may have just used it.
         const row = await store.get(candidate.user_id);

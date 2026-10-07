@@ -86,7 +86,7 @@ export async function ensureComputerReady(userId: string, opts: EnsureOptions = 
 }
 
 /** Map a docker failure on a running container to the member's row and a tool-friendly error. */
-async function containerFailed(userId: string, err: unknown): Promise<never> {
+export async function containerFailed(userId: string, err: unknown): Promise<never> {
   if (err instanceof ComputerDockerError && (err.code === 'not_found' || err.code === 'not_running')) {
     try {
       await requireComputerRuntime().controller.markBroken(userId, 'exited');
@@ -429,6 +429,9 @@ export async function writeComputerFile(
   }
 }
 
+/** Environment of the API-side helpers that talk to the X display as uid `browser`. */
+const DESKTOP_ENV = { DISPLAY: ':0', XAUTHORITY: '/home/browser/.Xauthority', HOME: '/home/browser' };
+
 /**
  * Full-desktop PNG (what the member's viewer shows), taken as uid `browser`.
  * Never starts the computer and never counts as activity: a page polling for
@@ -442,7 +445,7 @@ export async function captureDesktop(userId: string): Promise<Buffer> {
     const result = await docker.exec({
       container: row.container_name,
       user: 'browser',
-      env: { DISPLAY: ':0', XAUTHORITY: '/home/browser/.Xauthority', HOME: '/home/browser' },
+      env: DESKTOP_ENV,
       argv: ['import', '-window', 'root', 'png:-'],
       timeoutMs: 30_000,
       maxStdoutBytes: 32 * 1024 * 1024,
@@ -454,6 +457,37 @@ export async function captureDesktop(userId: string): Promise<Buffer> {
   } catch (err) {
     return await containerFailed(userId, err);
   }
+}
+
+/**
+ * Bring the browser window back (`gh-window restore`, as uid `browser`):
+ * every Chromium window mapped and raised, a new one opened when none is
+ * left. Backs the "back to the browser" button and every hand-back: a
+ * minimised or closed window otherwise leaves the member watching a bare
+ * desktop. Never starts the computer (`stopped` when it is not running).
+ */
+export async function restoreBrowserWindow(userId: string): Promise<void> {
+  const { docker } = requireComputerRuntime();
+  const row = await getDb().botComputers.get(userId);
+  if (row?.state !== 'running') throw new ComputerUnavailableError('stopped', 'The computer is not running');
+  try {
+    const result = await docker.exec({
+      container: row.container_name,
+      user: 'browser',
+      env: DESKTOP_ENV,
+      argv: ['gh-window', 'restore'],
+      timeoutMs: 20_000,
+      maxStdoutBytes: 4096,
+      maxStderrBytes: 4096,
+    });
+    if (result.code !== 0) {
+      const reason = result.stderr.trim().split('\n').pop() || `exit ${result.code}`;
+      throw new ComputerDockerError('failed', `gh-window restore failed: ${reason}`);
+    }
+  } catch (err) {
+    await containerFailed(userId, err);
+  }
+  void touchComputer(userId);
 }
 
 export async function touchComputer(userId: string): Promise<void> {

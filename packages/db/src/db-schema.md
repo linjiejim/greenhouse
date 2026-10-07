@@ -70,7 +70,7 @@
 | `bot_shared_notes` | PK `id`；索引 `(session_id, status)` | 对话级共享笔记（黑板）：title（注入索引）/ body / `author_bot_id`（null=成员写的）/ `status=open/done` / pinned；open ≤50 |
 | `bot_requests` | PK `id`(`brq_<hex>`)；索引 `(user_id, status)`、`(session_id, status)` | 所有「需要你」：`kind=takeover/login/approval/bot_create/task_start`，`status` 只经 `settleRequest` 从 pending 单次 CAS 结算；`payload` 为服务端派生的展示/执行数据（**从不含秘密**），`expires_at` 到期由清扫置 expired |
 | `bot_inbox` | PK `id`；部分索引 `(session_id, id) WHERE consumed_at IS NULL` | 单写者规则的持久队列：会话忙时外部产生的事件 / 续跑 / 后台汇报 / 插话消息落这里，由持有 ChatRun 的引擎在 Bot 回合之间排空（`consumeInbox` CAS） |
-| `bot_computers` | PK/FK `user_id` | 每成员一台电脑的 DB 权威生命周期：namespace / 容器名 / 卷名、`state=absent/starting/running/stopping/error` + `state_reason`、`version`（所有迁移 CAS）、接管租约 `lease_controller=bot/user` + 单调 `lease_epoch`、`viewer_heartbeat_at`（持有观看连接的槽位刷新）、`last_active_at`（闲置判定）、`image_id`、`disk_bytes` |
+| `bot_computers` | PK/FK `user_id` | 每成员一台电脑的 DB 权威生命周期：namespace / 容器名 / 卷名、`state=absent/starting/running/stopping/error` + `state_reason`、`version`（所有迁移 CAS）、接管租约 `lease_controller=bot/user` + 单调 `lease_epoch`、`viewer_heartbeat_at`（持有观看连接的槽位刷新）、`last_active_at`（闲置判定）、`image_id`、`disk_bytes`、`timezone`（成员自己的 IANA 时区，空 = 部署默认，下次启动生效；0009） |
 | `vault_items` | PK `id`(`vlt_<hex>`)；索引 `user_id` | 密码库条目：`origins`（JSON，精确 `https://host[:port]` 或显式 `*.host`）、`username_enc` / `password_enc` / `totp_enc`（AES-256-GCM，AAD=`vault:<user_id>:<item_id>:<field>`，任何读路径都不返回）、`username_hint`（打码展示）、`policy=ask/auto`、`always_origins`（「此站点总是允许」） |
 | `vault_access_log` | PK `id`；索引 `(user_id, created_at)` | 每次代填的元数据审计：条目标签快照、bot/session、真实 origin、`action=fill_login/fill_totp/secure_login`、`outcome`、`approval`；不记录任何值 |
 

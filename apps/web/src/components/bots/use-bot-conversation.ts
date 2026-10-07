@@ -18,7 +18,7 @@ import { wsClient } from '../../lib/ws';
 import { useT } from '../../lib/i18n';
 import { toast } from '../ui';
 import { conversationBotIds, useBotsStore } from './bots-store';
-import type { PendingSend } from './transcript';
+import { pickUpQueued, type PendingSend } from './transcript';
 
 const VIEWPORT_ID = 'bots-page';
 const PAGE_SIZE = 60;
@@ -62,9 +62,16 @@ function settlePending(pending: readonly PendingWithBase[], messages: readonly B
   });
 }
 
+/**
+ * Where a stop stands: `soft` — the run stops once the current step is done
+ * (a second press stops it at once); `hard` — stopping right now.
+ */
+export type StopPhase = 'soft' | 'hard' | null;
+
 export function useBotConversation(sessionId: string) {
   const sessionManager = useSessionManager();
-  const { registerViewport, unregisterViewport, clearSession, sendBotsMessage, stopSession } = sessionManager;
+  const { registerViewport, unregisterViewport, clearSession, sendBotsMessage, stopSession, interruptSession } =
+    sessionManager;
   const managed: ManagedSession | undefined = sessionManager.activeSessions.get(sessionId);
   const streaming = managed?.status === 'streaming' || managed?.status === 'stopping';
 
@@ -78,6 +85,9 @@ export function useBotConversation(sessionId: string) {
   const [runError, setRunError] = useState<string | null>(null);
   const [requestOverrides, setRequestOverrides] = useState<Map<string, BotRequestView>>(new Map());
   const [memoryStates, setMemoryStates] = useState<Record<string, string>>({});
+  // The conversation whose soft stop is being asked for right now (the POST in
+  // flight) — the button already says "Stopping…", so a second press is the hard stop.
+  const [interruptAskedFor, setInterruptAskedFor] = useState<string | null>(null);
   const messagesRef = useRef<BotMessage[]>([]);
   messagesRef.current = messages;
   const loadSeqRef = useRef(0);
@@ -267,7 +277,63 @@ export function useBotConversation(sessionId: string) {
     [managed?.botSegments.length, sendBotsMessage, sessionId, streaming],
   );
 
-  const stop = useCallback(() => stopSession(sessionId), [sessionId, stopSession]);
+  // ── A queued message the run picked up (an interjection turn answers it) ──
+  // Each interjection turn of this run is matched once, as it appears.
+  const segmentsNow = managed?.botSegments;
+  const runKey = `${sessionId}:${managed?.startedAt ?? ''}`;
+  const matchedTurns = useRef({ run: '', count: 0 });
+  useEffect(() => {
+    if (!segmentsNow) return;
+    if (matchedTurns.current.run !== runKey) matchedTurns.current = { run: runKey, count: 0 };
+    const turns = segmentsNow.flatMap((segment, index) => (segment.reason === 'interjection' ? [index] : []));
+    const fresh = turns.slice(matchedTurns.current.count);
+    if (fresh.length === 0) return;
+    matchedTurns.current.count = turns.length;
+    setPending((current) => pickUpQueued(current, fresh));
+  }, [segmentsNow, runKey]);
+
+  const hardStopping = managed?.status === 'stopping';
+  const interrupting =
+    streaming && !hardStopping && (managed?.interrupting === true || interruptAskedFor === sessionId);
+  const stopPhase: StopPhase = hardStopping ? 'hard' : interrupting ? 'soft' : null;
+
+  /**
+   * Stop in two steps: the first press lets the current step finish (its tool
+   * calls complete and are kept — a generated image is not thrown away), a
+   * second press within the same run stops at once. A run the server cannot
+   * soft-stop gets the hard stop straight away; one that had already finished
+   * (`no_run`) only needs this tab to let go of it — the hard stop does that,
+   * quietly.
+   */
+  const stop = useCallback(() => {
+    if (!streaming || interrupting || hardStopping) {
+      stopSession(sessionId);
+      return;
+    }
+    setInterruptAskedFor(sessionId);
+    void interruptSession(sessionId).then((outcome) => {
+      setInterruptAskedFor((current) => (current === sessionId ? null : current));
+      if (outcome !== 'interrupting') stopSession(sessionId);
+    });
+  }, [hardStopping, interruptSession, interrupting, sessionId, stopSession, streaming]);
+
+  /**
+   * "Handle now" on a message waiting in the queue: the current step finishes,
+   * the turn ends, and the run reads the waiting message next. No run any more
+   * (`no_run`) means it already finished — the message is read anyway, nothing
+   * to say; only a refusal is worth a word.
+   */
+  const handleNow = useCallback(
+    async (clientId: string) => {
+      const mark = (nudged: boolean) =>
+        setPending((current) => current.map((send) => (send.clientId === clientId ? { ...send, nudged } : send)));
+      mark(true);
+      if ((await interruptSession(sessionId)) !== 'refused') return;
+      mark(false);
+      if (sessionRef.current === sessionId) toast(t('bots.composer.handleNowFailed'), 'error');
+    },
+    [interruptSession, sessionId, t],
+  );
 
   /**
    * Latest state of every card, from three sources (the reloaded detail, the
@@ -312,6 +378,10 @@ export function useBotConversation(sessionId: string) {
     reload,
     send,
     stop,
+    stopPhase,
+    /** The run stops (or reads a waiting message) once the current step is done. */
+    interrupting,
+    handleNow,
   };
 }
 

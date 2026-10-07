@@ -5,6 +5,8 @@
  * - `ComputerControlBar` — the member holds the lease: elapsed time, the
  *   typing helpers and one big "Done, hand back" (with an optional note the
  *   waiting Bot reads when it resumes).
+ * - Both carry "Back to the browser": a minimised or closed browser window
+ *   comes back on screen (it needs no lease — the server restores it).
  * - `ComputerTypePanel` — the IME-safe keyboard: text goes to the server, which
  *   inserts it into the focused field over CDP. Raw VNC key events cannot carry
  *   Chinese input or a pasted password, and a phone has no keyboard for the
@@ -14,7 +16,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, IconButton, Input, Spinner } from '../ui';
-import { Check, CheckCircle2, ClipboardList, Eye, EyeOff, LogIn, Type } from '../../lib/icons';
+import { AppWindow, Check, CheckCircle2, ClipboardList, Eye, EyeOff, LogIn, Type } from '../../lib/icons';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import type { RfbHelperKey } from '../../lib/novnc/types';
 
@@ -38,13 +40,42 @@ function useElapsed(since: string | null): string {
   return formatElapsed(Number.isNaN(start) ? 0 : now - start);
 }
 
-export function ComputerWatchBar({ busy, onTakeOver }: { busy: boolean; onTakeOver: () => void }) {
+/** Bring the browser window back on screen (restores a minimised one, or opens a new one). */
+export function RestoreWindowButton({ busy, onRestore }: { busy: boolean; onRestore: () => void }) {
   const t = useT();
   return (
-    <div className="flex items-center gap-3">
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={onRestore}
+      disabled={busy}
+      title={t('botsComputer.restoreWindowHint')}
+      data-testid="computer-restore-window"
+    >
+      {busy ? <Spinner className="mr-1" /> : <AppWindow size={14} className="mr-1" aria-hidden="true" />}
+      {t('botsComputer.restoreWindow')}
+    </Button>
+  );
+}
+
+interface RestoreProps {
+  restoring: boolean;
+  onRestoreWindow: () => void;
+}
+
+export function ComputerWatchBar({
+  busy,
+  onTakeOver,
+  restoring,
+  onRestoreWindow,
+}: { busy: boolean; onTakeOver: () => void } & RestoreProps) {
+  const t = useT();
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <span className="min-w-0 flex-1 truncate text-xs text-fg-muted" title={t('botsComputer.watching')}>
         {t('botsComputer.watching')}
       </span>
+      <RestoreWindowButton busy={restoring} onRestore={onRestoreWindow} />
       <Button size="sm" onClick={onTakeOver} disabled={busy} data-testid="computer-take-over">
         {busy ? <Spinner className="mr-1" /> : <LogIn size={14} className="mr-1" aria-hidden="true" />}
         {t('botsComputer.takeOver')}
@@ -53,7 +84,7 @@ export function ComputerWatchBar({ busy, onTakeOver }: { busy: boolean; onTakeOv
   );
 }
 
-interface ControlBarProps {
+interface ControlBarProps extends RestoreProps {
   since: string | null;
   busy: boolean;
   typeOpen: boolean;
@@ -73,6 +104,8 @@ export function ComputerControlBar({
   onToggleType,
   onPaste,
   onHandBack,
+  restoring,
+  onRestoreWindow,
   children,
 }: ControlBarProps) {
   const t = useT();
@@ -93,6 +126,7 @@ export function ComputerControlBar({
           {pasting ? <Spinner className="mr-1" /> : <ClipboardList size={14} className="mr-1" aria-hidden="true" />}
           {t('botsComputer.paste')}
         </Button>
+        <RestoreWindowButton busy={restoring} onRestore={onRestoreWindow} />
       </div>
       {children}
       <Input

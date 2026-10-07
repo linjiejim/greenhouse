@@ -107,6 +107,8 @@ export function buildStaticRules(flags: ToolFaceFlags, locale: BotsLocale): stri
     // without this line it has no way to connect one to the computer.
     lines.push(
       `- A file the member attaches shows up in an \`attachments\` block. To work on it with the shell, copy it onto the computer first: computer import_attachment with its \`id\` as file_id.`,
+      // Not a background task (bot_tasks, read-only): a command that outlives a shell call.
+      `- A long command (an install, a build, a big download) runs as a background process: computer run_background, then process_log to check on it.`,
     );
   }
   if (flags.vault) {
@@ -131,6 +133,13 @@ export function buildStaticRules(flags: ToolFaceFlags, locale: BotsLocale): stri
   if (flags.takeover) {
     lines.push(
       `- For a sign-in with no saved entry or a one-time code, ask the member to step in: they get a secure sign-in card in this conversation and type the details there (you never see them), so ask them to fill in the card, not to take over the browser. For a CAPTCHA or anything else only a person can do, they take over the computer. Either way end your turn; you are woken up when they are done.`,
+    );
+  }
+  if (flags.browser && flags.takeover) {
+    // The browser raises the card itself (browser-session.ts): a model left to
+    // itself hops to other URLs of the site, or curls it, after a block.
+    lines.push(
+      `- If a site asks for human verification (CAPTCHA, 'verify you are human', 'Just a moment…'), stop: do not try other addresses on that site or reach it another way (shell, search). The computer raises a verification card for the member. Never try to solve or bypass it.`,
     );
   }
   if (flags.conversation) {

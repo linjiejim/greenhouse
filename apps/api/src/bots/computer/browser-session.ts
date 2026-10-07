@@ -27,18 +27,27 @@
  *   the entry's own site from one another site could have steered.
  * - Screenshots of the member's signed-in pages are chat files of the
  *   conversation (owner-authenticated download), never public uploads.
+ * - Human checks go to the member at the first block: a CAPTCHA, a "checking
+ *   your browser" page that does not clear within seconds, or a Cloudflare
+ *   challenge response raises a verification card (`ComputerTurn.humanCheck`)
+ *   and ends the turn; the site cannot be opened again in that turn. Nothing
+ *   here solves, retries or routes around a check.
  *
  * Test seam: everything that touches the computer goes through
  * `ComputerDeps`; tests inject a locally launched Chromium.
  */
 
 import { randomUUID } from 'node:crypto';
-import type { Browser, Page } from 'playwright-core';
+import { posix } from 'node:path';
+import type { Browser, Page, Response } from 'playwright-core';
 import type { DatabaseProvider } from '@greenhouse/db';
+import type { ComputerProcessLog, ComputerProcessView } from '@greenhouse/types/bots';
 import { nowIso } from '@greenhouse/utils/date';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
+import { sanitizeUploadName } from '../../storage/filename.js';
 import { deleteObjectAtKey, putObjectAtKey } from '../../storage/uploads.js';
+import { contentTypeFor, isUnderAgentHome, resolveAgentPath } from '../tools/agent-paths.js';
 import { hostOfOrigin, isGreenhouseOrigin, originOfUrl } from '../vault/origin.js';
 import * as access from './access.js';
 import {
@@ -49,8 +58,19 @@ import {
   type ExecOptions,
   type TrackedComputerAction,
 } from './access.js';
+import { ComputerDockerError } from './docker.js';
+import * as jobs from './jobs.js';
 import { computerStatusFor } from './runtime.js';
-import { needsHumanHint, sniffNeedsHuman, type VaultMatch } from './needs-human.js';
+import {
+  humanCheckHint,
+  humanCheckRefusal,
+  isCloudflareBlock,
+  needsHumanHint,
+  sniffNeedsHuman,
+  type NavigationResponse,
+  type NeedsHumanKind,
+  type VaultMatch,
+} from './needs-human.js';
 import { takeSnapshot } from './snapshot.js';
 import { leaseRegistryFor, withTimeout, type LeaseRegistry, type LeaseSpec, type TabLease } from './tab-leases.js';
 
@@ -75,6 +95,9 @@ export interface StoredScreenshot {
 /** A registered in-flight action: `signal` aborts with the turn and on a take-over / purge in this process. */
 export type TrackedAction = TrackedComputerAction;
 
+/** A long job `run_background` started (jobs.ts `startJob`). */
+export type StartedJob = Awaited<ReturnType<typeof jobs.startJob>>;
+
 export interface ComputerDeps {
   getBrowser(userId: string, opts?: EnsureOptions): Promise<Browser>;
   /** Make sure the computer is running (start / capacity queue) without doing anything on it. */
@@ -98,6 +121,18 @@ export interface ComputerDeps {
   writeFile: typeof access.writeComputerFile;
   /** Persist a PNG for the member to see, as a chat file of the conversation. */
   storeScreenshot(png: Buffer, owner: ScreenshotOwner): Promise<StoredScreenshot>;
+  /**
+   * Long jobs (`gh-jobs`, jobs.ts). Acting on a job needs the computer
+   * running (it does not start it); listing never starts it — [] when stopped.
+   */
+  startJob(
+    userId: string,
+    input: { command: string; name?: string },
+    opts?: { signal?: AbortSignal },
+  ): Promise<StartedJob>;
+  listJobs(userId: string): Promise<ComputerProcessView[]>;
+  jobLog(userId: string, id: string, opts?: { lines?: number; signal?: AbortSignal }): Promise<ComputerProcessLog>;
+  stopJob(userId: string, id: string): Promise<{ id: string; stopped: boolean }>;
 }
 
 export const defaultComputerDeps: ComputerDeps = {
@@ -113,6 +148,10 @@ export const defaultComputerDeps: ComputerDeps = {
   readFile: (userId, path, opts) => access.readComputerFile(userId, path, opts),
   writeFile: (userId, path, content, opts) => access.writeComputerFile(userId, path, content, opts),
   storeScreenshot: (png, owner) => storeScreenshotAsChatFile(png, owner),
+  startJob: (userId, input, opts) => jobs.startJob(userId, input, opts),
+  listJobs: (userId) => jobs.listJobs(userId),
+  jobLog: (userId, id, opts) => jobs.jobLog(userId, id, opts),
+  stopJob: (userId, id) => jobs.stopJob(userId, id),
 };
 
 /**
@@ -195,7 +234,27 @@ export interface ComputerTurn {
    * a hand-back could not wake them.
    */
   implicitTakeover?(info: ImplicitTakeover): Promise<ImplicitTakeoverOutcome>;
+  /**
+   * The Bot's page asks for human verification: raise the verification card
+   * (a `captcha` take-over card; one per conversation and Bot) and end the
+   * turn after this step. Absent for background turns — nobody would answer.
+   */
+  humanCheck?(info: HumanCheck): Promise<HumanCheckOutcome>;
 }
+
+/** A page that asks for human verification, as the browser saw it (all server-derived). */
+export interface HumanCheck {
+  origin: string | null;
+  /** The page's URL (redacted); the card shows origin + path only. */
+  url: string;
+  /** The page's title — page content, never written into a transcript line. */
+  title: string;
+  /** captcha = a visible widget; challenge = an interstitial that did not clear, or a Cloudflare challenge response. */
+  kind: 'captcha' | 'challenge';
+}
+
+/** card = a verification card now waits for the member; already_pending = this Bot's earlier card still does. */
+export type HumanCheckOutcome = 'card' | 'already_pending';
 
 /** Why a Bot met the member at the computer — the implicit take-over card's payload. */
 export interface ImplicitTakeover {
@@ -376,8 +435,12 @@ export const BROWSER_ACTIONS = [
   'click',
   'type',
   'select',
+  'hover',
+  'drag',
+  'upload',
   'press',
   'scroll',
+  'wait',
   'back',
   'tabs',
   'close',
@@ -385,20 +448,39 @@ export const BROWSER_ACTIONS = [
 ] as const;
 export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
 
-/** Background tasks are read-only: they can look, never act. */
-export const BACKGROUND_BROWSER_ACTIONS = ['open', 'snapshot', 'scroll', 'back', 'tabs', 'screenshot'] as const;
+/** Background tasks are read-only: they can look (and wait for a page), never act. */
+export const BACKGROUND_BROWSER_ACTIONS = ['open', 'snapshot', 'scroll', 'wait', 'back', 'tabs', 'screenshot'] as const;
 
 export interface BrowserInput {
   action: BrowserAction;
   url?: string;
   ref?: string;
+  /** drag: the element to drop onto. */
+  to_ref?: string;
   text?: string;
   submit?: boolean;
   value?: string;
   key?: string;
   direction?: 'up' | 'down' | 'left' | 'right';
   tab?: number;
+  /** upload: a file on the computer (agent home). */
+  path?: string;
+  /** wait: seconds, at most WAIT_MAX_S. */
+  timeout_s?: number;
 }
+
+/** A file `upload` may put into a page — the same cap as share_file / import_attachment. */
+export const UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
+export const WAIT_MAX_S = 30;
+const WAIT_DEFAULT_TEXT_S = 10;
+const WAIT_DEFAULT_PLAIN_S = 3;
+
+/**
+ * How long a "checking your browser" interstitial gets to clear by itself
+ * before it counts as a human check (most do within a few seconds). Mutable
+ * for tests only.
+ */
+export const CHALLENGE_TIMING = { settleMs: 6_000, recheckMs: 1_500 };
 
 const REF = /^(?:f\d+)?e\d+$/;
 const KEY =
@@ -437,6 +519,8 @@ export interface Observation {
   snapshot: string;
   truncated?: boolean;
   hint?: string;
+  /** The page asks for human verification: handed to the member (foreground) — the hint says what to do. */
+  blocked?: 'human_check';
   tabs?: TabView[];
   /** screenshot: the picture as a chat-file attachment (same shape as share_file). */
   type?: 'file';
@@ -456,6 +540,39 @@ export interface Observation {
  * observation ledger once the result is known to be returned.
  */
 const observedOrigins = new WeakMap<object, Array<string | null>>();
+
+/**
+ * Sites that asked for human verification in a turn (keyed by the turn's
+ * ComputerTurn, which every browser call of the turn shares): another `open`
+ * of them is refused — the URL-hopping a model tries after a block, which a
+ * site's bot defences only read as more evidence.
+ */
+const humanCheckOrigins = new WeakMap<ComputerTurn, Set<string>>();
+
+function blockedOrigins(turn: ComputerTurn): Set<string> {
+  let origins = humanCheckOrigins.get(turn);
+  if (!origins) humanCheckOrigins.set(turn, (origins = new Set()));
+  return origins;
+}
+
+/**
+ * The last main-frame navigation response of a page while an action runs:
+ * a challenge page's status and headers say "Cloudflare" even when its DOM
+ * does not. Redirects come first, so the last one is where the page landed.
+ */
+function watchNavigations(page: Page): { last(): NavigationResponse | null; stop(): void } {
+  let last: NavigationResponse | null = null;
+  const onResponse = (response: Response) => {
+    try {
+      if (response.frame() !== page.mainFrame() || !response.request().isNavigationRequest()) return;
+      last = { status: response.status(), headers: response.headers() };
+    } catch {
+      // A service-worker response has no frame.
+    }
+  };
+  page.on('response', onResponse);
+  return { last: () => last, stop: () => page.off('response', onResponse) };
+}
 
 export interface TabView {
   tab: number;
@@ -532,6 +649,10 @@ export class BrowserSession {
     // Refuse a bad address before a window is opened for it.
     const target = input.action === 'open' ? normalizeBrowseUrl(input.url ?? '') : null;
     if (target && 'code' in target) return target;
+    const targetOrigin = target ? originOfUrl(target.url) : null;
+    if (targetOrigin && humanCheckOrigins.get(turn)?.has(targetOrigin)) {
+      return failure('human_check', humanCheckRefusal(targetOrigin, turn.background));
+    }
     // Aborts with the turn, and when the member takes over in this process.
     const action = deps.trackAction(turn.userId, turn.signal);
     const signal = action.signal;
@@ -564,6 +685,10 @@ export class BrowserSession {
           // Taken over while this call waited: handled with every other take-over below.
           if (now.controller === 'user') throw new ComputerUnavailableError('user_in_control', 'Taken over');
           if (now.epoch !== before.epoch) return failure('observation_dropped', HANDED_BACK);
+          // A call queued behind the one that met the human check (parallel tool calls).
+          if (targetOrigin && humanCheckOrigins.get(turn)?.has(targetOrigin)) {
+            return failure('human_check', humanCheckRefusal(targetOrigin, turn.background));
+          }
           return this.perform(resolved, registry, lease, before.epoch, signal);
         }),
         signal,
@@ -638,7 +763,7 @@ export class BrowserSession {
     const locate = async (ref: string | undefined) => {
       if (!ref || !REF.test(ref)) throw new RefError(ref);
       const locator = actionPage.locator(`aria-ref=${ref}`);
-      if ((await locator.count().catch(() => 0)) === 0) throw new StaleRefError();
+      if ((await locator.count().catch(() => 0)) === 0) throw new StaleRefError(ref);
       return locator;
     };
     // Called right before every step that changes the page or the screen: a
@@ -660,212 +785,405 @@ export class BrowserSession {
       step();
       if (!this.turn.background) await actionPage.bringToFront().catch(() => undefined);
     };
-
+    // Where the action's navigations landed, until the observation is made:
+    // a challenge that clears reloads the page while observe() waits for it.
+    const navigations = watchNavigations(actionPage);
     try {
-      switch (input.action) {
-        case 'open': {
-          await front();
-          try {
-            await page.goto(input.url ?? 'about:blank', { waitUntil: 'domcontentloaded', timeout: 30_000 });
-          } catch (err) {
-            // A failed navigation still leaves a page (Chromium's error page);
-            // report the reason next to whatever is showing.
-            actionError = toFailure(err, this.redact, 'navigation_failed');
-          }
-          await page.waitForLoadState('load', { timeout: 3_000 }).catch(() => undefined);
-          sniff = true;
-          break;
-        }
-        case 'snapshot':
-          break;
-        case 'click': {
-          const locator = await locate(input.ref);
-          await front();
-          step();
-          await locator.click({ timeout: 10_000 });
-          await settle(page);
-          // A target=_blank link moved the lease to the new tab (registry popup handler).
-          const next = lease.currentPage() ?? page;
-          if (next !== page) {
-            page = next;
-            await settle(page);
-          }
-          sniff = true;
-          break;
-        }
-        case 'type': {
-          const locator = await locate(input.ref);
-          const kind = await locator
-            .evaluate((el) => {
-              const input = el as HTMLInputElement;
-              const type = (input.getAttribute?.('type') ?? '').toLowerCase();
-              const auto = (input.getAttribute?.('autocomplete') ?? '').toLowerCase();
-              if (type === 'password' || /current-password|new-password/.test(auto)) return 'password';
-              if (/cc-number|cc-csc|cc-exp/.test(auto)) return 'card';
-              return 'text';
-            })
-            .catch(() => 'text');
-          if (kind === 'password') {
-            return failure(
-              'secret_field',
-              'That is a password field. Never type passwords yourself: use vault fill_login, or request_takeover with kind "login".',
-            );
-          }
-          if (kind === 'card') {
-            return failure('secret_field', 'That is a payment card field. Ask the member to take over for payments.');
-          }
-          await front();
-          step();
-          await locator.fill(input.text ?? '', { timeout: 10_000 });
-          if (input.submit) {
-            await stillOurs();
-            await locator.press('Enter', { timeout: 5_000 });
-            await settle(page);
-            page = lease.currentPage() ?? page;
+      try {
+        switch (input.action) {
+          case 'open': {
+            await front();
+            try {
+              await page.goto(input.url ?? 'about:blank', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+            } catch (err) {
+              // A failed navigation still leaves a page (Chromium's error page);
+              // report the reason next to whatever is showing.
+              actionError = toFailure(err, this.redact, 'navigation_failed');
+            }
+            await page.waitForLoadState('load', { timeout: 3_000 }).catch(() => undefined);
             sniff = true;
+            break;
           }
-          break;
-        }
-        case 'select': {
-          if (!input.value) return failure('invalid', 'select needs a value (the option text or value).');
-          const locator = await locate(input.ref);
-          step();
-          await locator.selectOption(input.value, { timeout: 10_000 });
-          await settle(page);
-          break;
-        }
-        case 'press': {
-          const key = (input.key ?? '').trim();
-          if (!KEY.test(key))
-            return failure('invalid', 'press needs a key such as Enter, Tab, Escape, ArrowDown or Control+A.');
-          step();
-          await page.keyboard.press(key === 'Space' ? ' ' : key);
-          await settle(page);
-          page = lease.currentPage() ?? page;
-          sniff = key === 'Enter';
-          break;
-        }
-        case 'scroll': {
-          if (input.ref) {
+          case 'snapshot':
+            break;
+          case 'click': {
+            const locator = await locate(input.ref);
+            await front();
+            step();
+            await locator.click({ timeout: 10_000 });
+            await settle(page);
+            // A target=_blank link moved the lease to the new tab (registry popup handler).
+            const next = lease.currentPage() ?? page;
+            if (next !== page) {
+              page = next;
+              await settle(page);
+            }
+            sniff = true;
+            break;
+          }
+          case 'type': {
+            const locator = await locate(input.ref);
+            const kind = await locator
+              .evaluate((el) => {
+                const input = el as HTMLInputElement;
+                const type = (input.getAttribute?.('type') ?? '').toLowerCase();
+                const auto = (input.getAttribute?.('autocomplete') ?? '').toLowerCase();
+                if (type === 'password' || /current-password|new-password/.test(auto)) return 'password';
+                if (/cc-number|cc-csc|cc-exp/.test(auto)) return 'card';
+                return 'text';
+              })
+              .catch(() => 'text');
+            if (kind === 'password') {
+              return failure(
+                'secret_field',
+                'That is a password field. Never type passwords yourself: use vault fill_login, or request_takeover with kind "login".',
+              );
+            }
+            if (kind === 'card') {
+              return failure('secret_field', 'That is a payment card field. Ask the member to take over for payments.');
+            }
+            await front();
+            step();
+            await locator.fill(input.text ?? '', { timeout: 10_000 });
+            if (input.submit) {
+              await stillOurs();
+              await locator.press('Enter', { timeout: 5_000 });
+              await settle(page);
+              page = lease.currentPage() ?? page;
+              sniff = true;
+            }
+            break;
+          }
+          case 'select': {
+            if (!input.value) return failure('invalid', 'select needs a value (the option text or value).');
             const locator = await locate(input.ref);
             step();
-            await locator.scrollIntoViewIfNeeded({ timeout: 5_000 });
-          } else {
-            const { w, h } = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
-            const distance = Math.round(h * 0.8);
-            const dir = input.direction ?? 'down';
+            await locator.selectOption(input.value, { timeout: 10_000 });
+            await settle(page);
+            break;
+          }
+          case 'hover': {
+            const locator = await locate(input.ref);
+            await front();
             step();
-            await page.mouse.move(Math.round(w / 2), Math.round(h / 2));
-            await page.mouse.wheel(
-              dir === 'left' ? -distance : dir === 'right' ? distance : 0,
-              dir === 'up' ? -distance : dir === 'down' ? distance : 0,
+            await locator.hover({ timeout: 10_000 });
+            await sleep(300); // menus and tooltips open on a delay
+            break;
+          }
+          case 'drag': {
+            if (!input.to_ref) return failure('invalid', 'drag needs to_ref: the ref of the element to drop onto.');
+            const source = await locate(input.ref);
+            const target = await locate(input.to_ref);
+            await front();
+            step();
+            await source.dragTo(target, { timeout: 10_000 });
+            await settle(page);
+            break;
+          }
+          case 'upload': {
+            // The ref first: a stale one should not cost reading a 20 MB file.
+            const locator = await locate(input.ref);
+            const file = await this.uploadFile(input.path, signal);
+            if ('code' in file) return file;
+            const fileInput = await locator
+              .evaluate((el) => el instanceof HTMLInputElement && el.type === 'file')
+              .catch(() => false);
+            await front();
+            step();
+            if (fileInput) {
+              await locator.setInputFiles(file, { timeout: 10_000 });
+            } else {
+              // A styled "Upload" button in front of a hidden input: press it
+              // and answer the file picker it opens (never shown on screen).
+              // Caught at once: a click that throws leaves nobody to await it.
+              const chooser = actionPage.waitForEvent('filechooser', { timeout: 5_000 }).catch(() => null);
+              await locator.click({ timeout: 10_000 });
+              const picker = await chooser;
+              if (!picker) {
+                actionError = failure(
+                  'not_a_file_input',
+                  `${input.ref} did not open a file picker. Give the ref of the file input, or of the button that opens the picker.`,
+                );
+                break;
+              }
+              await stillOurs();
+              await picker.setFiles(file, { timeout: 10_000 });
+            }
+            await settle(page);
+            break;
+          }
+          case 'press': {
+            const key = (input.key ?? '').trim();
+            if (!KEY.test(key))
+              return failure('invalid', 'press needs a key such as Enter, Tab, Escape, ArrowDown or Control+A.');
+            step();
+            await page.keyboard.press(key === 'Space' ? ' ' : key);
+            await settle(page);
+            page = lease.currentPage() ?? page;
+            sniff = key === 'Enter';
+            break;
+          }
+          case 'scroll': {
+            if (input.ref) {
+              const locator = await locate(input.ref);
+              step();
+              await locator.scrollIntoViewIfNeeded({ timeout: 5_000 });
+            } else {
+              const { w, h } = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+              const distance = Math.round(h * 0.8);
+              const dir = input.direction ?? 'down';
+              step();
+              await page.mouse.move(Math.round(w / 2), Math.round(h / 2));
+              await page.mouse.wheel(
+                dir === 'left' ? -distance : dir === 'right' ? distance : 0,
+                dir === 'up' ? -distance : dir === 'down' ? distance : 0,
+              );
+            }
+            await sleep(350);
+            break;
+          }
+          case 'wait': {
+            const text = input.text?.trim();
+            const seconds = Math.min(
+              Math.max(Math.round(input.timeout_s ?? (text ? WAIT_DEFAULT_TEXT_S : WAIT_DEFAULT_PLAIN_S)), 1),
+              WAIT_MAX_S,
             );
+            if (text) {
+              try {
+                // abortable(): a take-over or Stop ends the wait at once.
+                await abortable(
+                  page
+                    .getByText(text)
+                    .first()
+                    .waitFor({ state: 'visible', timeout: seconds * 1000 }),
+                  signal,
+                );
+              } catch (err) {
+                if (err instanceof AbortedError || err instanceof ComputerUnavailableError) throw err;
+                actionError = failure(
+                  'wait_timeout',
+                  `"${text.slice(0, 80)}" did not appear within ${seconds} s. The page as it is now is below.`,
+                );
+              }
+            } else {
+              await abortable(sleep(seconds * 1000), signal);
+            }
+            page = lease.currentPage() ?? page;
+            sniff = true;
+            break;
           }
-          await sleep(350);
-          break;
-        }
-        case 'back': {
-          const before = page.url();
-          step();
-          const response = await page.goBack({ waitUntil: 'domcontentloaded', timeout: 15_000 });
-          if (!response && page.url() === before) {
-            actionError = failure('no_history', 'There is no earlier page in this tab.');
-          }
-          sniff = true;
-          break;
-        }
-        case 'tabs': {
-          if (input.tab !== undefined) {
-            const entry = lease.tabs[input.tab - 1];
-            if (!entry) return failure('invalid', `There is no tab ${input.tab}.`);
+          case 'back': {
+            const before = page.url();
             step();
-            lease.select(entry.page);
-            page = entry.page;
-            if (!this.turn.background) await page.bringToFront().catch(() => undefined);
+            const response = await page.goBack({ waitUntil: 'domcontentloaded', timeout: 15_000 });
+            if (!response && page.url() === before) {
+              actionError = failure('no_history', 'There is no earlier page in this tab.');
+            }
+            sniff = true;
+            break;
           }
-          break;
-        }
-        case 'close': {
-          step();
-          await page.close();
-          const next = lease.currentPage();
-          if (!next) {
-            return {
-              url: '',
-              title: '',
+          case 'tabs': {
+            if (input.tab !== undefined) {
+              const entry = lease.tabs[input.tab - 1];
+              if (!entry) return failure('invalid', `There is no tab ${input.tab}.`);
+              step();
+              lease.select(entry.page);
+              page = entry.page;
+              if (!this.turn.background) await page.bringToFront().catch(() => undefined);
+            }
+            break;
+          }
+          case 'close': {
+            step();
+            await page.close();
+            const next = lease.currentPage();
+            if (!next) {
+              return {
+                url: '',
+                title: '',
+                snapshot: '',
+                tabs: [],
+                note: 'Your tab is closed. open {url} starts a new one.',
+              };
+            }
+            page = next;
+            break;
+          }
+          case 'screenshot': {
+            const blocked = await guardLocation(page);
+            if (blocked) return blocked;
+            const png = await page.screenshot({ type: 'png', timeout: 15_000 });
+            // Store the image only once it is known to be taken under the
+            // Bot's lease — a picture of the member's take-over must not exist.
+            const now = await this.deps.currentLease(this.turn.userId);
+            if (now.controller === 'user') throw new ComputerUnavailableError('user_in_control', 'Taken over');
+            if (now.epoch !== epoch) return failure('observation_dropped', HANDED_BACK);
+            const file = await this.deps.storeScreenshot(png, {
+              db: this.turn.db,
+              userId: this.turn.userId,
+              sessionId: this.turn.sessionId,
+            });
+            const shot: Observation = {
+              url: this.redact(page.url()),
+              title: this.redact(await page.title().catch(() => '')),
               snapshot: '',
-              tabs: [],
-              note: 'Your tab is closed. open {url} starts a new one.',
+              type: 'file',
+              ...file,
+              content_type: 'image/png',
+              note: 'Screenshot saved. The member sees it as an image card in this conversation (only they can open it); do not paste its link. Mention it only if they asked to see the page.',
             };
+            observedOrigins.set(shot, [originOfUrl(page.url())]);
+            return shot;
           }
-          page = next;
-          break;
         }
-        case 'screenshot': {
-          const blocked = await guardLocation(page);
-          if (blocked) return blocked;
-          const png = await page.screenshot({ type: 'png', timeout: 15_000 });
-          // Store the image only once it is known to be taken under the
-          // Bot's lease — a picture of the member's take-over must not exist.
-          const now = await this.deps.currentLease(this.turn.userId);
-          if (now.controller === 'user') throw new ComputerUnavailableError('user_in_control', 'Taken over');
-          if (now.epoch !== epoch) return failure('observation_dropped', HANDED_BACK);
-          const file = await this.deps.storeScreenshot(png, {
-            db: this.turn.db,
-            userId: this.turn.userId,
-            sessionId: this.turn.sessionId,
-          });
-          const shot: Observation = {
-            url: this.redact(page.url()),
-            title: this.redact(await page.title().catch(() => '')),
-            snapshot: '',
-            type: 'file',
-            ...file,
-            content_type: 'image/png',
-            note: 'Screenshot saved. The member sees it as an image card in this conversation (only they can open it); do not paste its link. Mention it only if they asked to see the page.',
-          };
-          observedOrigins.set(shot, [originOfUrl(page.url())]);
-          return shot;
+      } catch (err) {
+        // Stopped (turn Stop, take-over, computer stopped): no observation.
+        if (err instanceof AbortedError || err instanceof ComputerUnavailableError) throw err;
+        if (err instanceof RefError) {
+          return failure('invalid', 'Give the ref of an element from the latest snapshot (like e12).');
         }
+        const fail = toFailure(err, this.redact);
+        // A stale ref is the common case: tell the model how to recover.
+        if (err instanceof StaleRefError || (/aria-ref|not found|Timeout/i.test(toErrorMessage(err)) && input.ref)) {
+          const ref = err instanceof StaleRefError ? err.ref : input.ref;
+          actionError = failure(
+            'stale_ref',
+            `Could not ${input.action} ${ref}: it is not on the page any more or is not interactable. Use the fresh snapshot below.`,
+          );
+        } else {
+          actionError = fail;
+        }
+        page = lease.currentPage() ?? page;
       }
-    } catch (err) {
-      // Stopped (turn Stop, take-over, computer stopped): no observation.
-      if (err instanceof AbortedError || err instanceof ComputerUnavailableError) throw err;
-      if (err instanceof RefError) {
-        return failure('invalid', 'Give the ref of an element from the latest snapshot (like e12).');
-      }
-      const fail = toFailure(err, this.redact);
-      // A stale ref is the common case: tell the model how to recover.
-      if (err instanceof StaleRefError || (/aria-ref|not found|Timeout/i.test(toErrorMessage(err)) && input.ref)) {
-        actionError = failure(
-          'stale_ref',
-          `Could not ${input.action} ${input.ref}: it is not on the page any more or is not interactable. Use the fresh snapshot below.`,
-        );
-      } else {
-        actionError = fail;
-      }
-      page = lease.currentPage() ?? page;
-    }
 
-    step(); // stopped meanwhile: nothing to observe
-    return this.observe(registry, lease, page, { sniff, actionError, withTabs: input.action === 'tabs' });
+      step(); // stopped meanwhile: nothing to observe
+      return await this.observe(registry, lease, page, {
+        sniff,
+        actionError,
+        withTabs: input.action === 'tabs',
+        navigation: navigations.last,
+        signal,
+      });
+    } finally {
+      navigations.stop();
+    }
+  }
+
+  /**
+   * The file an `upload` puts into the page: read from the agent home (the
+   * Bot's own sandbox — the browser profile is not reachable from there),
+   * at most UPLOAD_MAX_BYTES.
+   */
+  private async uploadFile(
+    raw: string | undefined,
+    signal: AbortSignal,
+  ): Promise<{ name: string; mimeType: string; buffer: Buffer } | ToolFailure> {
+    if (!raw?.trim()) return failure('invalid', 'upload needs a path: a file on the computer (relative to ~/work).');
+    const path = resolveAgentPath(raw);
+    if (!isUnderAgentHome(path)) return failure('forbidden_path', 'Only files inside /home/agent can be uploaded.');
+    const name = sanitizeUploadName(posix.basename(path));
+    if (!name) return failure('invalid', 'That file name cannot be used; rename the file first.');
+    const tooLarge = () => failure('too_large', `${name} is larger than 20 MB, so it cannot be uploaded from here.`);
+    let buffer: Buffer;
+    try {
+      buffer = await this.deps.readFile(this.turn.userId, path, { maxBytes: UPLOAD_MAX_BYTES + 1, signal });
+    } catch (err) {
+      throwIfAborted(signal);
+      if (err instanceof ComputerUnavailableError) throw err;
+      if (err instanceof ComputerDockerError && err.code === 'too_large') return tooLarge();
+      return failure('file_unreadable', `Could not read ${path}: ${toFailure(err, this.redact).error}`);
+    }
+    if (buffer.length > UPLOAD_MAX_BYTES) return tooLarge();
+    return { name, mimeType: contentTypeFor(name), buffer };
+  }
+
+  /**
+   * A "checking your browser" interstitial usually clears by itself within a
+   * few seconds: look again every CHALLENGE_TIMING.recheckMs for up to
+   * CHALLENGE_TIMING.settleMs before it counts as a human check. A CAPTCHA
+   * counts at once. Never interacts with the page.
+   */
+  private async settleChallenge(
+    lease: TabLease,
+    page: Page,
+    navigation: () => NavigationResponse | null,
+    signal: AbortSignal,
+  ): Promise<{ page: Page; needsHuman: NeedsHumanKind | null; cloudflare: boolean }> {
+    const read = async (current: Page) => ({
+      needsHuman: await sniffNeedsHuman(current),
+      cloudflare: isCloudflareBlock(navigation(), await withTimeout(current.title(), 2_000).catch(() => '')),
+    });
+    const deadline = Date.now() + CHALLENGE_TIMING.settleMs;
+    let state = await read(page);
+    while ((state.needsHuman === 'challenge' || state.cloudflare) && Date.now() < deadline) {
+      await abortable(sleep(CHALLENGE_TIMING.recheckMs), signal);
+      page = lease.currentPage() ?? page;
+      state = await read(page);
+    }
+    return { page, ...state };
+  }
+
+  /**
+   * The page asks for human verification (see the module comment): mark the
+   * observation, refuse the site for the rest of the turn, and in the
+   * foreground hand it to the member — the verification card, which ends
+   * the turn after this step. Background turns cannot raise cards: they note
+   * it and move on.
+   */
+  private async handOverHumanCheck(observation: Observation, check: HumanCheck, signal: AbortSignal): Promise<void> {
+    observation.blocked = 'human_check';
+    if (check.origin) blockedOrigins(this.turn).add(check.origin);
+    if (this.turn.background) {
+      observation.hint = needsHumanHint(check.kind, check.origin, null, false);
+      return;
+    }
+    let outcome: HumanCheckOutcome | null = null;
+    if (this.turn.humanCheck) {
+      throwIfAborted(signal); // stopped meanwhile: no card
+      try {
+        outcome = await this.turn.humanCheck(check);
+      } catch (err) {
+        logger.warn('[bots/browser] could not raise the verification card', {
+          userId: this.turn.userId,
+          error: toErrorMessage(err),
+        });
+      }
+    }
+    // Without a card the Bot asks for one itself (request_takeover).
+    observation.hint = outcome ? humanCheckHint(check.origin) : needsHumanHint(check.kind, check.origin, null, true);
   }
 
   private async observe(
     registry: LeaseRegistry,
     lease: TabLease,
     page: Page,
-    opts: { sniff: boolean; actionError: ToolFailure | null; withTabs: boolean },
+    opts: {
+      sniff: boolean;
+      actionError: ToolFailure | null;
+      withTabs: boolean;
+      /** The action's last main-frame navigation response. */
+      navigation: () => NavigationResponse | null;
+      signal: AbortSignal;
+    },
   ): Promise<Observation | ToolFailure> {
-    const blocked = await guardLocation(page);
+    let blocked = await guardLocation(page);
     if (blocked) return blocked;
+    let needsHuman: NeedsHumanKind | null = null;
+    let cloudflare = false;
+    if (opts.sniff) {
+      ({ page, needsHuman, cloudflare } = await this.settleChallenge(lease, page, opts.navigation, opts.signal));
+      // Wherever the interstitial went meanwhile must be viewable too.
+      blocked = await guardLocation(page);
+      if (blocked) return blocked;
+    }
     await registry.retag(lease, page);
     lease.touch(page);
     const snap = await takeSnapshot(page, this.redact);
     const url = page.url();
+    const title = await page.title().catch(() => '');
     const observation: Observation = {
       url: this.redact(url),
-      title: this.redact(await page.title().catch(() => '')),
+      title: this.redact(title),
       snapshot: snap.snapshot,
     };
     if (snap.truncated) observation.truncated = true;
@@ -880,24 +1198,36 @@ export class BrowserSession {
       observation.error = opts.actionError.error;
       observation.code = opts.actionError.code;
     }
-    if (opts.sniff) {
-      const kind = await sniffNeedsHuman(page);
-      if (kind) {
-        const origin = originOfUrl(url);
-        const matches =
-          this.turn.vaultMatches && origin
-            ? await this.turn.vaultMatches(origin).catch(() => [])
-            : this.turn.vaultMatches
-              ? []
-              : null;
-        observation.hint = needsHumanHint(kind, origin, matches, !this.turn.background);
-      }
+    const origin = originOfUrl(url);
+    if (needsHuman === 'challenge' || needsHuman === 'captcha' || cloudflare) {
+      await this.handOverHumanCheck(
+        observation,
+        {
+          origin,
+          url: this.redact(url),
+          title: this.redact(title),
+          kind: needsHuman === 'captcha' ? 'captcha' : 'challenge',
+        },
+        opts.signal,
+      );
+    } else if (needsHuman) {
+      const matches =
+        this.turn.vaultMatches && origin
+          ? await this.turn.vaultMatches(origin).catch(() => [])
+          : this.turn.vaultMatches
+            ? []
+            : null;
+      observation.hint = needsHumanHint(needsHuman, origin, matches, !this.turn.background);
     }
     return observation;
   }
 }
 
-class StaleRefError extends Error {}
+class StaleRefError extends Error {
+  constructor(readonly ref: string) {
+    super(`stale ref ${ref}`);
+  }
+}
 
 class RefError extends Error {
   constructor(ref: string | undefined) {

@@ -13,6 +13,12 @@
  * `import_attachment` is the way back: a file attached in THIS conversation
  * is copied (bytes, never shown) into ~/work for the shell to work on.
  *
+ * Long work (installs, builds, downloads, data runs) outlives a 120 s shell
+ * call as a background process (`run_background`, computer/jobs.ts over the
+ * image's `gh-jobs`): detached in its own session with its output in a log,
+ * spared by a take-over, keeping the computer awake while it runs. Its log is
+ * command output like any other — redacted, capped, and it taints the turn.
+ *
  * Take-over: the lease is checked when the call arrives and again once the
  * computer is up (starting it or waiting in the capacity queue can take a
  * minute), and the command is registered so a take-over in this process
@@ -20,8 +26,9 @@
  * card for a foreground Bot (browser-session.ts `memberInControl`), whose
  * hand-back wakes it.
  *
- * Background turns get `status` and `read_file` only (never import_attachment:
- * a task's files are the ones its brief names, not the member's uploads).
+ * Background turns get `status`, `read_file`, `processes` and `process_log`
+ * only (never import_attachment: a task's files are the ones its brief names,
+ * not the member's uploads; never starting or stopping a process).
  */
 
 import { randomUUID } from 'node:crypto';
@@ -44,14 +51,18 @@ import {
   type ComputerTurn,
   type ToolFailure,
 } from '../computer/browser-session.js';
+import { ComputerUnavailableError } from '../computer/access.js';
+import { ComputerDockerError } from '../computer/docker.js';
+import { JOB_ID, JOB_LOG_DEFAULT_LINES, JOB_LOG_MAX_LINES, JOB_NAME_MAX } from '../computer/jobs.js';
 import { computerStatusFor } from '../computer/runtime.js';
-import { capSnapshot } from '../computer/snapshot.js';
+import { capSnapshot, capTail } from '../computer/snapshot.js';
+import { AGENT_HOME, AGENT_WORKDIR, contentTypeFor, isUnderAgentHome, resolveAgentPath } from './agent-paths.js';
 import { BOT_TOOL_METAS } from './meta.js';
+
+export { AGENT_HOME, AGENT_WORKDIR, isUnderAgentHome, resolveAgentPath } from './agent-paths.js';
 
 const meta = BOT_TOOL_METAS.find((m) => m.id === 'computer')!;
 
-export const AGENT_HOME = '/home/agent';
-export const AGENT_WORKDIR = '/home/agent/work';
 /** Where import_attachment puts a file unless told otherwise. */
 const IMPORT_DIR = `${AGENT_WORKDIR}/inbox`;
 const SHELL_DEFAULT_TIMEOUT_S = 60;
@@ -62,17 +73,31 @@ const SHARE_MAX_BYTES = 20 * 1024 * 1024;
 const STDOUT_TOKENS = 2_500;
 const STDERR_TOKENS = 800;
 const FILE_TOKENS = 6_000;
+/** `processes` lists the newest jobs only, each command cut short: the log is where the detail is. */
+const PROCESS_LIST_MAX = 20;
+const PROCESS_COMMAND_CHARS = 300;
 
-const COMPUTER_ACTIONS = ['shell', 'read_file', 'write_file', 'share_file', 'import_attachment', 'status'] as const;
-const BACKGROUND_COMPUTER_ACTIONS = ['status', 'read_file'] as const;
+const COMPUTER_ACTIONS = [
+  'shell',
+  'run_background',
+  'processes',
+  'process_log',
+  'stop_process',
+  'read_file',
+  'write_file',
+  'share_file',
+  'import_attachment',
+  'status',
+] as const;
+const BACKGROUND_COMPUTER_ACTIONS = ['status', 'read_file', 'processes', 'process_log'] as const;
 
 /**
- * How to run long work. A background job must detach all three stdio
- * streams: `nohup cmd &` keeps the exec's stdout pipe open, so the call runs
- * into its timeout and the job is killed with it.
+ * How to run long work: as a background process, never a shell call that
+ * waits (it is killed at the timeout, and a hand-rolled `nohup cmd &` keeps
+ * the call's output pipe open until then).
  */
 const LONG_JOB_HINT =
-  'For long work start a detached job that writes to a log: `setsid -f cmd > ~/work/job.log 2>&1 < /dev/null` (or `nohup cmd > ~/work/job.log 2>&1 < /dev/null &`), then check it later with `tail ~/work/job.log`. Without the redirects the call waits for the job and it is killed at the timeout.';
+  'For long work (installs, builds, downloads, data runs) use run_background {command}: it keeps running after this call, with its output in a log — check it with process_log {id}, stop it with stop_process {id}.';
 
 const fields = {
   command: z
@@ -80,8 +105,21 @@ const fields = {
     .max(20_000)
     .optional()
     .describe(
-      'shell: bash script, runs in ~/work. Long jobs: `setsid -f cmd > ~/work/job.log 2>&1 < /dev/null`, then tail the log.',
+      'shell: bash script, runs in ~/work (≤120 s). run_background: the command to run as a background process in ~/work.',
     ),
+  name: z
+    .string()
+    .max(JOB_NAME_MAX)
+    .optional()
+    .describe('run_background: a short label for the process list (default: the command’s first word).'),
+  id: z.string().max(16).optional().describe('process_log/stop_process: the process id, like j1a2b3c4d.'),
+  lines: z
+    .number()
+    .int()
+    .min(1)
+    .max(JOB_LOG_MAX_LINES)
+    .optional()
+    .describe(`process_log: how many lines from the end (default ${JOB_LOG_DEFAULT_LINES}).`),
   timeout_s: z
     .number()
     .int()
@@ -107,23 +145,14 @@ const fields = {
 type ComputerInput = {
   action: (typeof COMPUTER_ACTIONS)[number];
   command?: string;
+  name?: string;
+  id?: string;
+  lines?: number;
   timeout_s?: number;
   path?: string;
   content?: string;
   file_id?: string;
 };
-
-/** Resolve a path the model gave: `~` is the agent's home, relative paths are in ~/work. */
-export function resolveAgentPath(raw: string): string {
-  const value = raw.trim();
-  if (value === '~') return AGENT_HOME;
-  if (value.startsWith('~/')) return posix.resolve(AGENT_HOME, value.slice(2));
-  return posix.resolve(AGENT_WORKDIR, value);
-}
-
-export function isUnderAgentHome(path: string): boolean {
-  return path === AGENT_HOME || path.startsWith(`${AGENT_HOME}/`);
-}
 
 /** Text if the bytes are UTF-8 without NULs; null for binary. */
 export function decodeText(buffer: Buffer): string | null {
@@ -144,28 +173,17 @@ export function capOutput(text: string, maxTokens: number): string {
   ).text;
 }
 
-const CONTENT_TYPES: Record<string, string> = {
-  '.pdf': 'application/pdf',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.csv': 'text/csv',
-  '.txt': 'text/plain',
-  '.md': 'text/markdown',
-  '.json': 'application/json',
-  '.html': 'text/html',
-  '.zip': 'application/zip',
-  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  '.mp4': 'video/mp4',
-};
+function invalidProcessId(action: string): ToolFailure {
+  return failure('invalid', `${action} needs the id of a process (like j1a2b3c4d) from run_background or processes.`);
+}
 
-function contentTypeFor(name: string): string {
-  return CONTENT_TYPES[posix.extname(name).toLowerCase()] ?? 'application/octet-stream';
+/** gh-jobs exits 3 for an id it does not know (jobs.ts maps it to not_found). */
+function isUnknownJob(err: unknown): boolean {
+  return err instanceof ComputerDockerError && err.code === 'not_found';
+}
+
+function unknownProcess(id: string): ToolFailure {
+  return failure('not_found', `There is no process "${id}" on the computer. List them with processes.`);
 }
 
 class ComputerActions {
@@ -194,6 +212,9 @@ class ComputerActions {
       const memberHasIt = async () => (await deps.currentLease(turn.userId)).controller === 'user';
       // Fast path: do not start the computer for a Bot that may not act.
       if (await memberHasIt()) return await memberInControl(turn, { reason: 'waiting' });
+      // A stopped computer runs no processes: listing or stopping one never starts it.
+      if (input.action === 'processes') return await this.processes();
+      if (input.action === 'stop_process') return await this.stopProcess(input.id);
       // Start it (or wait in the queue) first, then check again: the member
       // may have taken over during that wait.
       await deps.ensureReady(turn.userId, { signal: action.signal });
@@ -203,6 +224,10 @@ class ComputerActions {
       switch (input.action) {
         case 'shell':
           return await this.shell(input.command, input.timeout_s, action.signal);
+        case 'run_background':
+          return await this.runBackground(input.command, input.name, action.signal);
+        case 'process_log':
+          return await this.processLog(input.id, input.lines, action.signal);
         case 'read_file':
           return await this.readFile(input.path, action.signal);
         case 'write_file':
@@ -272,6 +297,110 @@ class ComputerActions {
       ...(result.truncated ? { truncated: true } : {}),
       ...(result.timedOut ? { timed_out: true, note: `Killed after ${timeoutSec} s. ${LONG_JOB_HINT}` } : {}),
     };
+  }
+
+  /** Start a background process; its output goes to its log, never into this result. */
+  private async runBackground(
+    command: string | undefined,
+    name: string | undefined,
+    signal: AbortSignal,
+  ): Promise<Record<string, unknown> | ToolFailure> {
+    if (!command?.trim()) return failure('invalid', 'run_background needs a command.');
+    let job;
+    try {
+      job = await this.deps.startJob(this.turn.userId, { command, ...(name?.trim() ? { name } : {}) }, { signal });
+    } catch (err) {
+      throwIfAborted(signal); // a take-over killed the start: say so, not "exit -1"
+      throw err;
+    }
+    return {
+      id: job.id,
+      name: this.redact(job.name),
+      status: 'running',
+      started_at: job.started_at,
+      note: `Running in the background in ~/work. It keeps going after your turn (also if the member takes over the computer); its output goes to its log. Check it with process_log {id: "${job.id}"} and tell the member it is running rather than waiting for it.`,
+    };
+  }
+
+  /** The member's background processes, newest first (the Bots' and the member's own). */
+  private async processes(): Promise<Record<string, unknown>> {
+    const jobs = await this.deps.listJobs(this.turn.userId);
+    // Names and commands were written on the computer: outside content.
+    this.turn.noteObservation(null);
+    this.turn.markTainted();
+    const shown = jobs.slice(0, PROCESS_LIST_MAX).map((job) => {
+      const command = this.redact(job.command);
+      return {
+        id: job.id,
+        name: this.redact(job.name),
+        command: command.length > PROCESS_COMMAND_CHARS ? `${command.slice(0, PROCESS_COMMAND_CHARS)}…` : command,
+        status: job.status,
+        exit_code: job.exit_code,
+        started_at: job.started_at,
+        ended_at: job.ended_at,
+        log_bytes: job.log_bytes,
+      };
+    });
+    const note =
+      jobs.length === 0
+        ? 'No background processes (run_background starts one).'
+        : jobs.some((job) => job.status === 'lost')
+          ? 'lost = it was running when the computer stopped, so it has no exit code; its log is still readable.'
+          : undefined;
+    return {
+      processes: shown,
+      ...(jobs.length > shown.length ? { more: jobs.length - shown.length } : {}),
+      ...(note ? { note } : {}),
+    };
+  }
+
+  /** The end of a process's log — command output: redacted, capped, and it taints the turn. */
+  private async processLog(
+    rawId: string | undefined,
+    lines: number | undefined,
+    signal: AbortSignal,
+  ): Promise<Record<string, unknown> | ToolFailure> {
+    const id = rawId?.trim() ?? '';
+    if (!JOB_ID.test(id)) return invalidProcessId('process_log');
+    let log;
+    try {
+      log = await this.deps.jobLog(this.turn.userId, id, { ...(lines ? { lines } : {}), signal });
+    } catch (err) {
+      throwIfAborted(signal);
+      if (isUnknownJob(err)) return unknownProcess(id);
+      throw err;
+    }
+    throwIfAborted(signal);
+    this.turn.noteObservation(null);
+    this.turn.markTainted();
+    const capped = capTail(
+      this.redact(log.text),
+      STDOUT_TOKENS,
+      (n) => `… [${n} earlier lines omitted — the whole log is ~/.local/state/gh-jobs/${id}/log] …`,
+    );
+    return {
+      id,
+      text: capped.text,
+      ...(log.truncated || capped.truncated ? { truncated: true } : {}),
+      ...(log.text.trim() ? {} : { note: 'The log is empty so far.' }),
+    };
+  }
+
+  private async stopProcess(rawId: string | undefined): Promise<Record<string, unknown> | ToolFailure> {
+    const id = rawId?.trim() ?? '';
+    if (!JOB_ID.test(id)) return invalidProcessId('stop_process');
+    try {
+      const result = await this.deps.stopJob(this.turn.userId, id);
+      return result.stopped
+        ? { id, stopped: true }
+        : { id, stopped: false, note: 'It was not running any more (see processes for how it ended).' };
+    } catch (err) {
+      if (isUnknownJob(err)) return unknownProcess(id);
+      if (err instanceof ComputerUnavailableError && err.code === 'stopped') {
+        return { id, stopped: false, note: 'The computer is not running, so neither is this process.' };
+      }
+      throw err;
+    }
   }
 
   private async readFile(raw: string | undefined, signal: AbortSignal): Promise<Record<string, unknown> | ToolFailure> {
@@ -401,12 +530,17 @@ class ComputerActions {
 }
 
 const foregroundSchema = z.object({ action: z.enum(COMPUTER_ACTIONS), ...fields });
-const backgroundSchema = z.object({ action: z.enum(BACKGROUND_COMPUTER_ACTIONS), path: fields.path });
+const backgroundSchema = z.object({
+  action: z.enum(BACKGROUND_COMPUTER_ACTIONS),
+  path: fields.path,
+  id: fields.id,
+  lines: fields.lines,
+});
 
 export function createComputerTool(turn: ComputerTurn, deps: ComputerDeps = defaultComputerDeps): Tool {
   if (turn.background) {
     return tool({
-      description: `${meta.description}\nIn this background task only status and read_file work (read-only).`,
+      description: `${meta.description}\nIn this background task only status, read_file, processes and process_log work (read-only).`,
       inputSchema: backgroundSchema,
       execute: (input) => new ComputerActions(turn, deps).run(input),
     });

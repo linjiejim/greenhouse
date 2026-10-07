@@ -15,7 +15,7 @@ import { useI18n } from '../../lib/i18n';
 import type { BotStreamSegment } from '../../lib/session-manager';
 import type { BotMessage } from '../../lib/api/bots';
 import { MemoryReceipts, memoryReceiptsFromCalls } from './memory-receipts';
-import { RequestCard } from './request-card';
+import { RequestCard, type RequestCardComputer } from './request-card';
 import { LiveSegment } from './live-segment';
 import { buildTranscript, type PendingSend, type TranscriptItem } from './transcript';
 import {
@@ -49,6 +49,12 @@ export interface BotTranscriptProps {
   /** Server-reported status of the memories receipts name (undone ones stay undone after a reload). */
   memoryStates?: Readonly<Record<string, string>>;
   busy: boolean;
+  /** The run stops (or reads a waiting message) once the current step is done. */
+  interrupting?: boolean;
+  /** "Handle now" on a message waiting in the queue (offered while a run is going). */
+  onHandleNow?: (clientId: string) => void;
+  /** The page's computer status: a human-check card shows the live screen and takes over in place. */
+  computer?: RequestCardComputer;
   /** Nobody here can reply any more: no starters, and no one-click lines that would address a Bot. */
   readOnly?: boolean;
   /** The computer is waking for this run — said under the live reply, not just in the header. */
@@ -92,6 +98,9 @@ export function BotTranscript(props: BotTranscriptProps) {
     requests,
     memoryStates,
     busy,
+    interrupting = false,
+    onHandleNow,
+    computer,
     readOnly = false,
     computerNotice = null,
     runError,
@@ -244,10 +253,19 @@ export function BotTranscript(props: BotTranscriptProps) {
             onStale={onStale}
             onOpenComputer={onOpenComputer}
             onAskAgain={(botId) => onAddress(botId, 'retry')}
+            computer={computer}
           />
         );
-      case 'pending':
-        return <PendingBubble pending={item.pending} />;
+      case 'pending': {
+        const { clientId } = item.pending;
+        return (
+          <PendingBubble
+            pending={item.pending}
+            interrupting={interrupting}
+            onHandleNow={busy && onHandleNow ? () => onHandleNow(clientId) : undefined}
+          />
+        );
+      }
     }
   };
 

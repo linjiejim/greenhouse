@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { BotRequestView } from '@greenhouse/types/bots';
 import type { BotMessage } from '../../lib/api/bots';
 import type { BotStreamSegment } from '../../lib/session-manager';
-import { buildTranscript, handoffsFromCalls, speakingSegment, type TranscriptItem } from './transcript';
+import {
+  buildTranscript,
+  handoffsFromCalls,
+  pickUpQueued,
+  speakingSegment,
+  type PendingSend,
+  type TranscriptItem,
+} from './transcript';
 
 let seq = 0;
 function msg(partial: Partial<BotMessage>): BotMessage {
@@ -256,5 +263,31 @@ describe('buildTranscript', () => {
       speakingSegment([segment({ botId: 'bot_a', status: 'completed' }), segment({ botId: 'bot_b' })])?.botId,
     ).toBe('bot_b');
     expect(speakingSegment([segment({ status: 'completed' })])).toBeNull();
+  });
+});
+
+describe('pickUpQueued', () => {
+  const send = (clientId: string, status: PendingSend['status'], afterSegment: number): PendingSend => ({
+    clientId,
+    content: clientId,
+    images: [],
+    status,
+    afterSegment,
+  });
+
+  it('gives each new interjection turn to the oldest message still waiting that was sent before it', () => {
+    const pending = [send('a', 'queued', 1), send('b', 'queued', 1), send('c', 'sending', 0)];
+    expect(pickUpQueued(pending, [2]).map((item) => item.status)).toEqual(['sent', 'queued', 'sending']);
+    expect(pickUpQueued(pending, [2, 4]).map((item) => item.status)).toEqual(['sent', 'sent', 'sending']);
+  });
+
+  it('never gives a message a turn that started before it was sent', () => {
+    expect(pickUpQueued([send('late', 'queued', 3)], [2]).map((item) => item.status)).toEqual(['queued']);
+    expect(pickUpQueued([send('late', 'queued', 3)], [3]).map((item) => item.status)).toEqual(['sent']);
+  });
+
+  it('leaves the list alone with no new turns', () => {
+    const pending = [send('a', 'queued', 1)];
+    expect(pickUpQueued(pending, [])).toEqual(pending);
   });
 });

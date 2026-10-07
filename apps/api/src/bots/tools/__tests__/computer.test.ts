@@ -47,6 +47,15 @@ function setup(overrides: Partial<ComputerDeps> = {}, turnOverrides: Partial<Com
       size: 1,
       download_url: '/api/chat-files/cf_x/content',
     }),
+    startJob: vi.fn(async (_userId: string, input: { command: string; name?: string }) => ({
+      id: 'j0000beef',
+      name: input.name ?? input.command.split(' ')[0]!,
+      pid: 4242,
+      started_at: '2026-10-07T01:00:00Z',
+    })),
+    listJobs: vi.fn(async () => []),
+    jobLog: vi.fn(async (_userId: string, id: string) => ({ id, text: 'step 1\nstep 2\n', truncated: false })),
+    stopJob: vi.fn(async (_userId: string, id: string) => ({ id, stopped: true })),
     ...overrides,
   };
   const chatFiles = {
@@ -144,20 +153,20 @@ describe('shell', () => {
     expect(vi.mocked(deps.exec).mock.calls[0]![2].timeoutSec).toBe(60);
     expect(result).toMatchObject({ timed_out: true });
     expect(String(result.note)).toMatch(/Killed after 60 s/);
-    // A background job must detach all three streams, or it keeps the exec
-    // attached and dies at the timeout (plain `nohup cmd &` does not).
-    expect(String(result.note)).toContain('2>&1');
-    expect(String(result.note)).toContain('< /dev/null');
-    expect(String(result.note)).not.toMatch(/nohup … &/);
+    // Long work goes to a background process, not a hand-rolled detached job.
+    expect(String(result.note)).toMatch(/use run_background \{command\}/);
+    expect(String(result.note)).toMatch(/process_log/);
+    expect(String(result.note)).not.toMatch(/setsid|nohup/);
   });
 
-  it('tells the model how to start long jobs before it ever hits a timeout', async () => {
+  it('tells the model how to start long work before it ever hits a timeout', async () => {
     const { createComputerTool } = await import('../computer.js');
     const { turn, deps } = setup();
-    const schema = createComputerTool(turn, deps).inputSchema as unknown as {
-      shape: { command: { description?: string } };
-    };
-    expect(schema.shape.command.description).toMatch(/setsid -f .*2>&1 < \/dev\/null/);
+    const tool = createComputerTool(turn, deps);
+    const schema = tool.inputSchema as unknown as { shape: { command: { description?: string } } };
+    expect(schema.shape.command.description).toMatch(/≤120 s\). run_background: the command/);
+    expect(tool.description).toMatch(/run_background \{command, name\?\}/);
+    expect(tool.description).not.toMatch(/setsid/);
   });
 
   it('checks the lease again once the computer is up: a take-over during the start wins', async () => {
@@ -412,15 +421,188 @@ describe('import_attachment', () => {
 });
 
 describe('background turns', () => {
-  it('only allow status and read_file', async () => {
+  it('only allow status, read_file, processes and process_log', async () => {
     const { deps, turn } = setup({}, { background: true });
-    for (const action of ['shell', 'write_file', 'share_file'] as const) {
-      expect(await runComputerAction(turn, { action, path: 'a', command: 'ls', content: 'x' }, deps)).toMatchObject({
-        code: 'not_allowed',
-      });
+    for (const action of ['shell', 'write_file', 'share_file', 'run_background', 'stop_process'] as const) {
+      expect(
+        await runComputerAction(turn, { action, path: 'a', command: 'ls', content: 'x', id: 'j0000beef' }, deps),
+      ).toMatchObject({ code: 'not_allowed' });
     }
+    expect(deps.startJob).not.toHaveBeenCalled();
+    expect(deps.stopJob).not.toHaveBeenCalled();
     expect(await runComputerAction(turn, { action: 'read_file', path: 'a.txt' }, deps)).toMatchObject({
       content: 'hello file',
     });
+    expect(await runComputerAction(turn, { action: 'processes' }, deps)).toMatchObject({ processes: [] });
+    expect(await runComputerAction(turn, { action: 'process_log', id: 'j0000beef' }, deps)).toMatchObject({
+      id: 'j0000beef',
+      text: 'step 1\nstep 2\n',
+    });
+  });
+
+  it('offer the process readers in the schema, never run_background or stop_process', async () => {
+    const { createComputerTool } = await import('../computer.js');
+    const bg = setup({}, { background: true });
+    const tool = createComputerTool(bg.turn, bg.deps);
+    const schema = tool.inputSchema as unknown as { safeParse(v: unknown): { success: boolean } };
+    expect(schema.safeParse({ action: 'processes' }).success).toBe(true);
+    expect(schema.safeParse({ action: 'process_log', id: 'j0000beef', lines: 50 }).success).toBe(true);
+    expect(schema.safeParse({ action: 'run_background', command: 'make' }).success).toBe(false);
+    expect(schema.safeParse({ action: 'stop_process', id: 'j0000beef' }).success).toBe(false);
+    expect(tool.description).toMatch(/only status, read_file, processes and process_log work/);
+  });
+});
+
+describe('background processes', () => {
+  it('run_background starts a job in the running computer, under the tracked signal', async () => {
+    const tracked = new AbortController();
+    const { deps, turn } = setup({ trackAction: () => ({ signal: tracked.signal, done: () => undefined }) });
+    const result = await runComputerAction(
+      turn,
+      { action: 'run_background', command: 'pip install pandas && python3 train.py', name: 'train' },
+      deps,
+    );
+    expect(deps.ensureReady).toHaveBeenCalled();
+    expect(deps.startJob).toHaveBeenCalledWith(
+      'u1',
+      { command: 'pip install pandas && python3 train.py', name: 'train' },
+      { signal: tracked.signal },
+    );
+    expect(result).toMatchObject({ id: 'j0000beef', name: 'train', status: 'running' });
+    expect(String((result as Record<string, unknown>).note)).toMatch(/process_log \{id: "j0000beef"\}/);
+    expect(await runComputerAction(turn, { action: 'run_background', command: '  ' }, deps)).toMatchObject({
+      code: 'invalid',
+    });
+  });
+
+  it('run_background is refused while the member holds the computer, and a take-over during the start says so', async () => {
+    const { deps, turn, lease } = setup();
+    lease.controller = 'user';
+    expect(await runComputerAction(turn, { action: 'run_background', command: 'make' }, deps)).toMatchObject({
+      code: 'user_in_control',
+    });
+    expect(deps.startJob).not.toHaveBeenCalled();
+
+    lease.controller = 'bot';
+    const tracked = new AbortController();
+    const { ComputerActionsAbortedError } = await import('../../computer/access.js');
+    const killed = setup({
+      trackAction: () => ({ signal: tracked.signal, done: () => undefined }),
+      // gh-jobs killed mid-start reports a plain failure (exit -1).
+      startJob: vi.fn(async () => {
+        killed.lease.controller = 'user';
+        tracked.abort(new ComputerActionsAbortedError('takeover'));
+        throw new Error('Starting the job failed (exit -1)');
+      }),
+    });
+    const result = await runComputerAction(killed.turn, { action: 'run_background', command: 'make' }, killed.deps);
+    expect(result).toMatchObject({ code: 'user_in_control' });
+    expect(String(result.error)).not.toMatch(/exit -1/);
+  });
+
+  it('processes lists jobs redacted and trimmed, never starting the computer, and taints the turn', async () => {
+    const job = (i: number, extra: Record<string, unknown> = {}) => ({
+      id: `j${String(i).padStart(8, '0')}`,
+      name: `job ${i}`,
+      command: `printf 'token: vault-secret' > note-${i}.txt`,
+      cwd: '/home/agent/work',
+      status: 'running' as const,
+      exit_code: null,
+      started_at: '2026-10-07T01:00:00Z',
+      ended_at: null,
+      log_bytes: 10,
+      ...extra,
+    });
+    const { deps, turn } = setup({
+      listJobs: vi.fn(async () => [
+        job(1, { command: `python3 -c "${'x'.repeat(1000)}"` }),
+        job(2, { status: 'lost' }),
+        ...Array.from({ length: 23 }, (_, i) => job(i + 3)),
+      ]),
+    });
+    const result = (await runComputerAction(turn, { action: 'processes' }, deps)) as {
+      processes: Array<Record<string, unknown>>;
+      more?: number;
+      note?: string;
+    };
+    expect(deps.ensureReady).not.toHaveBeenCalled();
+    expect(result.processes).toHaveLength(20);
+    expect(result.more).toBe(5);
+    expect(String(result.processes[0]!.command).length).toBeLessThanOrEqual(301);
+    expect(String(result.processes[1]!.command)).toContain('token: [REDACTED]');
+    expect(JSON.stringify(result)).not.toContain('vault-secret');
+    expect(result.note).toMatch(/lost = it was running when the computer stopped/);
+    expect(turn.markTainted).toHaveBeenCalled();
+    expect(turn.noteObservation).toHaveBeenCalledWith(null);
+
+    const none = setup();
+    expect(await runComputerAction(none.turn, { action: 'processes' }, none.deps)).toMatchObject({
+      processes: [],
+      note: expect.stringMatching(/No background processes/),
+    });
+  });
+
+  it('process_log returns the end of the log, redacted and capped, and taints the turn', async () => {
+    const lines = Array.from({ length: 3000 }, (_, i) => `epoch ${i} loss=0.${i} key=vault-secret`).join('\n');
+    const { deps, turn } = setup({
+      jobLog: vi.fn(async (_u: string, id: string) => ({ id, text: lines, truncated: true })),
+    });
+    const result = await runComputerAction(turn, { action: 'process_log', id: ' j0000beef ', lines: 2000 }, deps);
+    expect(deps.jobLog).toHaveBeenCalledWith('u1', 'j0000beef', expect.objectContaining({ lines: 2000 }));
+    const text = String((result as Record<string, unknown>).text);
+    expect(text).toContain('epoch 2999'); // the newest lines survive the cap
+    expect(text).not.toContain('epoch 0 ');
+    expect(text).toMatch(/earlier lines omitted — the whole log is ~\/\.local\/state\/gh-jobs\/j0000beef\/log/);
+    expect(text).not.toContain('vault-secret');
+    expect(result).toMatchObject({ id: 'j0000beef', truncated: true });
+    expect(turn.markTainted).toHaveBeenCalled();
+    expect(turn.noteObservation).toHaveBeenCalledWith(null);
+  });
+
+  it('process_log and stop_process validate the id and report unknown jobs', async () => {
+    const { ComputerDockerError } = await import('../../computer/docker.js');
+    const unknown = vi.fn(async () => {
+      throw new ComputerDockerError('not_found', 'no such job');
+    });
+    const { deps, turn } = setup({ jobLog: unknown, stopJob: unknown });
+    for (const action of ['process_log', 'stop_process'] as const) {
+      expect(await runComputerAction(turn, { action, id: '--help' }, deps)).toMatchObject({ code: 'invalid' });
+      const missing = await runComputerAction(turn, { action, id: 'j12345678' }, deps);
+      expect(missing).toMatchObject({ code: 'not_found' });
+      expect(String(missing.error)).toMatch(/There is no process "j12345678".*processes/);
+    }
+    expect(turn.markTainted).not.toHaveBeenCalled();
+  });
+
+  it('stop_process stops a job without starting a stopped computer', async () => {
+    const { deps, turn } = setup();
+    expect(await runComputerAction(turn, { action: 'stop_process', id: 'j0000beef' }, deps)).toEqual({
+      id: 'j0000beef',
+      stopped: true,
+    });
+    vi.mocked(deps.stopJob).mockResolvedValueOnce({ id: 'j0000beef', stopped: false });
+    expect(await runComputerAction(turn, { action: 'stop_process', id: 'j0000beef' }, deps)).toMatchObject({
+      stopped: false,
+      note: expect.stringMatching(/not running any more/),
+    });
+    vi.mocked(deps.stopJob).mockRejectedValueOnce(new ComputerUnavailableError('stopped', 'not running'));
+    expect(await runComputerAction(turn, { action: 'stop_process', id: 'j0000beef' }, deps)).toMatchObject({
+      stopped: false,
+      note: expect.stringMatching(/computer is not running/),
+    });
+    expect(deps.ensureReady).not.toHaveBeenCalled();
+  });
+
+  it('every process action is refused while the member holds the computer', async () => {
+    const { deps, turn, lease } = setup();
+    lease.controller = 'user';
+    for (const action of ['processes', 'process_log', 'stop_process'] as const) {
+      expect(await runComputerAction(turn, { action, id: 'j0000beef' }, deps)).toMatchObject({
+        code: 'user_in_control',
+      });
+    }
+    expect(deps.listJobs).not.toHaveBeenCalled();
+    expect(deps.jobLog).not.toHaveBeenCalled();
+    expect(deps.stopJob).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,8 @@
  * GET  /api/chat/runs/:sessionId          — 探测某会话是否有生成中/刚结束的 run
  * GET  /api/chat/runs/:sessionId/stream   — 重连流：按 seq 回放缓冲事件后实时尾随（NDJSON）
  * POST /api/chat/runs/:sessionId/stop     — 服务端停止生成（abort agent loop，安全部分照常落库）
+ * POST /api/chat/runs/:sessionId/interrupt — 软停止（仅 Bots 对话、仅主人）：当前这一步做完再停；
+ *                                           排队的成员消息随即开始新一轮，没有则整个 run 结束
  *
  * 生成与 HTTP 响应解耦：agent loop 泵进 ChatRun 的事件缓冲（chat-runs.ts），
  * POST 响应只是 0 号订阅者。客户端断连/刷新不影响生成；重开页面经 runs 端点连回。
@@ -854,6 +856,33 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           return c.json({ error: 'Session not found' }, 404);
         }
         return c.json({ error: 'No active generation for this session' }, 404);
+      })
+
+      // ── POST /api/chat/runs/:sessionId/interrupt — soft stop (Bots only) ──
+      // The step in flight finishes (its tool calls complete and are saved);
+      // the Bots engine then stops: a queued member message is answered next,
+      // otherwise the run ends. Only the Bots engine has step boundaries to
+      // stop at, so any other conversation says so instead of hard-stopping.
+      .post('/runs/:sessionId/interrupt', async (c) => {
+        const authUser = (c.get as (key: string) => AuthUser | undefined)('user');
+        if (!authUser) return c.json({ error: 'Authentication required' }, 401);
+        const sessionId = c.req.param('sessionId');
+        const session = await getDb().sessions.getById(sessionId);
+        // Owner only, super included: nobody interrupts someone else's Bots.
+        if (!session || session.user_id !== authUser.id) {
+          return c.json({ error: 'Session not found' }, 404);
+        }
+        if (session.channel !== BOTS_SESSION_CHANNEL) {
+          return c.json(
+            { error: 'Only Bots conversations can be interrupted; use stop instead', code: 'not_supported' as const },
+            400,
+          );
+        }
+        const activeRun = chatRunRegistry.getActive(sessionId);
+        if (!activeRun || activeRun.userId !== authUser.id || !activeRun.requestInterrupt()) {
+          return c.json({ error: 'No active generation for this session' }, 404);
+        }
+        return c.json({ ok: true as const, run_id: activeRun.runId });
       })
   );
 }

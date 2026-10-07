@@ -16,12 +16,13 @@ vi.mock('../../lib/api/bots', async (importOriginal) => ({
 }));
 vi.mock('../../lib/ws', () => ({ wsClient: { onEvent: () => () => {}, onStatusChange: () => () => {} } }));
 const sessionManager = vi.hoisted(() => ({
-  activeSessions: new Map(),
+  activeSessions: new Map<string, Record<string, unknown>>(),
   registerViewport: () => {},
   unregisterViewport: () => {},
   clearSession: () => {},
-  sendBotsMessage: async () => ({ queued: false }),
-  stopSession: () => {},
+  sendBotsMessage: vi.fn(async () => ({ queued: false })),
+  stopSession: vi.fn(),
+  interruptSession: vi.fn(async (): Promise<'interrupting' | 'no_run' | 'refused'> => 'interrupting'),
 }));
 vi.mock('../../lib/session-manager', () => ({ useSessionManager: () => sessionManager }));
 
@@ -93,6 +94,10 @@ beforeEach(() => {
   api.getConversation.mockReset();
   api.markConversationRead.mockReset();
   api.markConversationRead.mockResolvedValue(undefined);
+  sessionManager.activeSessions.clear();
+  sessionManager.sendBotsMessage.mockReset().mockResolvedValue({ queued: false });
+  sessionManager.stopSession.mockReset();
+  sessionManager.interruptSession.mockReset().mockResolvedValue('interrupting');
   latest = null;
 });
 
@@ -185,5 +190,179 @@ describe('useBotConversation — memory receipt states', () => {
     await flush();
     // An older page adds its receipts' states without dropping the latest page's.
     expect(latest?.memoryStates).toEqual({ '41': 'archived', '42': 'deleted', '7': 'superseded' });
+  });
+});
+
+describe('useBotConversation — stopping a run', () => {
+  /** A run in progress, as SessionManager reports it. */
+  function streaming(overrides: Record<string, unknown> = {}) {
+    sessionManager.activeSessions.set('A', {
+      sessionId: 'A',
+      status: 'streaming',
+      streamText: '',
+      streamReasoning: '',
+      streamToolCalls: [],
+      botSegments: [],
+      botRequests: [],
+      startedAt: 1,
+      ...overrides,
+    });
+  }
+
+  /** What SessionManager does once the server took the soft stop. */
+  function serverTookIt() {
+    const session = sessionManager.activeSessions.get('A');
+    if (session) session.interrupting = true;
+    return 'interrupting' as const;
+  }
+
+  async function open() {
+    api.getConversation.mockResolvedValue(page('A', [], false));
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => root?.render(tree('A')));
+    await flush();
+  }
+
+  it('first lets the current step finish, and stops at once on a second press', async () => {
+    streaming();
+    sessionManager.interruptSession.mockImplementation(async () => serverTookIt());
+    await open();
+    expect(latest?.stopPhase).toBeNull();
+
+    await act(async () => latest?.stop());
+    await flush();
+    expect(sessionManager.interruptSession).toHaveBeenCalledWith('A');
+    expect(sessionManager.stopSession).not.toHaveBeenCalled();
+    expect(latest?.stopPhase).toBe('soft');
+    expect(latest?.interrupting).toBe(true);
+
+    await act(async () => latest?.stop());
+    expect(sessionManager.stopSession).toHaveBeenCalledWith('A');
+    expect(sessionManager.interruptSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('already reads "stopping" while the soft stop is being asked for — a second press is the hard stop', async () => {
+    streaming();
+    sessionManager.interruptSession.mockImplementation(() => new Promise<'interrupting'>(() => {}));
+    await open();
+    await act(async () => latest?.stop());
+    expect(latest?.stopPhase).toBe('soft');
+    await act(async () => latest?.stop());
+    expect(sessionManager.stopSession).toHaveBeenCalledWith('A');
+  });
+
+  it.each(['refused', 'no_run'] as const)(
+    'falls back to the hard stop (quietly) when the soft stop comes back %s',
+    async (outcome) => {
+      streaming();
+      sessionManager.interruptSession.mockResolvedValue(outcome);
+      await open();
+      await act(async () => latest?.stop());
+      await flush();
+      expect(sessionManager.stopSession).toHaveBeenCalledWith('A');
+      expect(document.body.textContent).not.toContain("Couldn't");
+    },
+  );
+
+  it('reports a hard stop under way', async () => {
+    streaming({ status: 'stopping' });
+    await open();
+    expect(latest?.stopPhase).toBe('hard');
+  });
+
+  it('"Handle now" lets the current step finish and marks the waiting message', async () => {
+    streaming();
+    sessionManager.sendBotsMessage.mockResolvedValue({ queued: true });
+    sessionManager.interruptSession.mockImplementation(async () => serverTookIt());
+    await open();
+    await act(async () => {
+      await latest?.send('also check the invoices');
+    });
+    const [waiting] = latest?.pending ?? [];
+    expect(waiting?.status).toBe('queued');
+
+    await act(async () => {
+      await latest?.handleNow(waiting!.clientId);
+    });
+    await flush();
+    expect(sessionManager.interruptSession).toHaveBeenCalledWith('A');
+    expect(latest?.pending[0]?.nudged).toBe(true);
+  });
+
+  it('says nothing when the run had already finished', async () => {
+    streaming();
+    sessionManager.sendBotsMessage.mockResolvedValue({ queued: true });
+    sessionManager.interruptSession.mockResolvedValue('no_run');
+    await open();
+    await act(async () => {
+      await latest?.send('also check the invoices');
+    });
+    await act(async () => {
+      await latest?.handleNow(latest!.pending[0]!.clientId);
+    });
+    await flush();
+    expect(document.body.textContent).not.toContain("Couldn't jump the queue");
+    expect(sessionManager.stopSession).not.toHaveBeenCalled();
+  });
+
+  it('marks a waiting message picked up once a turn answers it — once, even after it settles', async () => {
+    streaming({
+      botSegments: [{ botId: 'bot_a', reason: 'user', status: 'streaming', text: '', reasoning: '', toolCalls: [] }],
+    });
+    sessionManager.sendBotsMessage.mockResolvedValue({ queued: true });
+    await open();
+    await act(async () => {
+      await latest?.send('first');
+    });
+    await act(async () => {
+      await latest?.send('second');
+    });
+    expect(latest?.pending.map((send) => send.status)).toEqual(['queued', 'queued']);
+
+    // The run reads "first": an interjection turn starts.
+    const segment = (reason: string, status = 'streaming') => ({
+      botId: 'bot_a',
+      reason,
+      status,
+      text: '',
+      reasoning: '',
+      toolCalls: [],
+    });
+    streaming({ botSegments: [segment('user', 'completed'), segment('interjection')] });
+    await act(async () => root?.render(tree('A')));
+    await flush();
+    expect(latest?.pending.map((send) => [send.content, send.status])).toEqual([
+      ['first', 'sent'],
+      ['second', 'queued'],
+    ]);
+
+    // "first" settles (its persisted copy arrives): the same turn must not pick up "second".
+    api.getConversation.mockResolvedValue(page('A', [{ ...message('first', 1), content: 'first' }], false));
+    await act(async () => {
+      await latest?.reload();
+    });
+    streaming({ botSegments: [segment('user', 'completed'), segment('interjection', 'completed')] });
+    await act(async () => root?.render(tree('A')));
+    await flush();
+    expect(latest?.pending.map((send) => [send.content, send.status])).toEqual([['second', 'queued']]);
+  });
+
+  it('says so when "Handle now" does not go through, and offers it again', async () => {
+    streaming();
+    sessionManager.sendBotsMessage.mockResolvedValue({ queued: true });
+    sessionManager.interruptSession.mockResolvedValue('refused');
+    await open();
+    await act(async () => {
+      await latest?.send('also check the invoices');
+    });
+    await act(async () => {
+      await latest?.handleNow(latest!.pending[0]!.clientId);
+    });
+    await flush();
+    expect(latest?.pending[0]?.nudged).toBe(false);
+    expect(document.body.textContent).toContain("Couldn't jump the queue");
+    expect(sessionManager.stopSession).not.toHaveBeenCalled();
   });
 });

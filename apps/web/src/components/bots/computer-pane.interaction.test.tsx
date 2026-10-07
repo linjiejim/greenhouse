@@ -58,7 +58,48 @@ const fakes = vi.hoisted(() => {
     blur() {}
   }
   const wsHandlers = new Set<(event: { type: string; [key: string]: unknown }) => void>();
-  return { FakeRfb, wsHandlers };
+  // The Terminal tab's xterm and socket, just enough to mount it.
+  class FakeTerminal {
+    static instances: FakeTerminal[] = [];
+    cols = 80;
+    rows = 24;
+    constructor() {
+      FakeTerminal.instances.push(this);
+    }
+    loadAddon() {}
+    open() {}
+    onData() {
+      return { dispose() {} };
+    }
+    onBinary() {
+      return { dispose() {} };
+    }
+    onResize() {
+      return { dispose() {} };
+    }
+    write() {}
+    focus() {}
+    dispose() {}
+  }
+  class FakeFitAddon {
+    fit() {}
+  }
+  class FakeSocket {
+    static instances: FakeSocket[] = [];
+    readyState = 0;
+    binaryType = 'blob';
+    onopen: (() => void) | null = null;
+    onmessage: (() => void) | null = null;
+    onclose: (() => void) | null = null;
+    constructor(public url: string) {
+      FakeSocket.instances.push(this);
+    }
+    send() {}
+    close() {
+      this.readyState = 3;
+    }
+  }
+  return { FakeRfb, wsHandlers, FakeTerminal, FakeFitAddon, FakeSocket };
 });
 
 const api = vi.hoisted(() => ({
@@ -73,6 +114,11 @@ const api = vi.hoisted(() => ({
   typeIntoComputer: vi.fn(),
   listRequests: vi.fn(),
   listBots: vi.fn(),
+  restoreComputerWindow: vi.fn(),
+  createComputerTerminalToken: vi.fn(),
+  computerTerminalUrl: (token: string) => `ws://greenhouse.test/api/ws/computer-terminal?token=${token}`,
+  listComputerFiles: vi.fn(),
+  listComputerProcesses: vi.fn(),
 }));
 
 // Partial mock: the real BotsApiError / isBotsApiError stay, so the code →
@@ -82,6 +128,9 @@ vi.mock('../../lib/api/bots', async (importOriginal) => ({
   ...api,
 }));
 vi.mock('../../lib/novnc/loader', () => ({ loadRfb: async () => fakes.FakeRfb }));
+vi.mock('../../lib/xterm/loader', () => ({
+  loadXterm: async () => ({ Terminal: fakes.FakeTerminal, FitAddon: fakes.FakeFitAddon }),
+}));
 vi.mock('../../lib/ws', () => ({
   wsClient: {
     onEvent: (handler: (event: { type: string }) => void) => {
@@ -103,6 +152,8 @@ function status(overrides: Partial<ComputerStatusView> = {}): ComputerStatusView
     last_active_at: null,
     queue_position: null,
     disk_bytes: null,
+    timezone: null,
+    lang: 'zh-CN',
     ...overrides,
   };
 }
@@ -169,10 +220,17 @@ function latestRfb() {
 
 beforeEach(() => {
   fakes.FakeRfb.instances.length = 0;
+  fakes.FakeTerminal.instances.length = 0;
+  fakes.FakeSocket.instances.length = 0;
+  vi.stubGlobal('WebSocket', fakes.FakeSocket);
   fakes.wsHandlers.clear();
   for (const fn of Object.values(api)) if (vi.isMockFunction(fn)) fn.mockReset();
   api.createComputerViewToken.mockResolvedValue({ token: 'tok-1', expires_at: new Date().toISOString() });
   api.listRequests.mockResolvedValue({ requests: [] });
+  api.createComputerTerminalToken.mockResolvedValue({ token: 'term-1', expires_at: new Date().toISOString() });
+  api.listComputerFiles.mockResolvedValue({ path: '/home/agent/work', entries: [], truncated: false });
+  api.listComputerProcesses.mockResolvedValue([]);
+  api.restoreComputerWindow.mockResolvedValue(undefined);
   api.listBots.mockResolvedValue({
     bots: [],
     archived_bots: [],
@@ -191,6 +249,7 @@ afterEach(async () => {
   root = null;
   container = null;
   document.body.innerHTML = '';
+  vi.unstubAllGlobals();
 });
 
 // ─── Phases ──────────────────────────────────────────────
@@ -681,5 +740,119 @@ describe('ComputerPane with a host-owned status', () => {
     expect(document.querySelector('[data-testid="header-controller"]')?.textContent).toBe('user');
     expect(document.querySelector('[data-testid="computer-pane"]')?.getAttribute('data-phase')).toBe('running');
     expect(document.querySelector('[data-testid="computer-hand-back"]')).not.toBeNull();
+  });
+});
+
+describe('ComputerPane tabs', () => {
+  const panel = (testId: string) => document.querySelector(`[data-testid="${testId}"]`)?.closest('[role="tabpanel"]');
+  const tab = (key: string) => document.querySelector(`[data-testid="computer-tab-${key}"]`);
+
+  it('offers Screen, Terminal, Files and Processes while running — none of them needs a take-over', async () => {
+    api.fetchComputerStatus.mockResolvedValue(RUNNING);
+    await renderPane();
+    expect([...document.querySelectorAll('[role="tab"]')].map((el) => el.textContent)).toEqual([
+      'Screen',
+      'Terminal',
+      'Files',
+      'Processes',
+    ]);
+    expect(tab('screen')?.getAttribute('aria-selected')).toBe('true');
+    const screen = latestRfb();
+
+    await click(tab('files')!);
+    expect(tab('files')?.getAttribute('aria-selected')).toBe('true');
+    expect(api.listComputerFiles).toHaveBeenCalledWith('~/work');
+    expect(panel('computer-files')?.hasAttribute('hidden')).toBe(false);
+    // The screen keeps its connection (and a held lease its viewer) while another tab shows.
+    expect(panel('computer-screen')?.hasAttribute('hidden')).toBe(true);
+    expect(screen.disconnected).toBe(false);
+
+    await click(tab('terminal')!);
+    expect(document.querySelector('[data-testid="computer-terminal"]')).not.toBeNull();
+    expect(api.createComputerTerminalToken).toHaveBeenCalledTimes(1);
+    expect(fakes.FakeSocket.instances[0]?.url).toBe('ws://greenhouse.test/api/ws/computer-terminal?token=term-1');
+
+    await click(tab('processes')!);
+    expect(api.listComputerProcesses).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain('No background processes yet');
+
+    await click(tab('screen')!);
+    expect(panel('computer-screen')?.hasAttribute('hidden')).toBe(false);
+    // Back on the screen: the same viewer, the same terminal — nothing reconnected.
+    expect(fakes.FakeRfb.instances).toHaveLength(1);
+    expect(fakes.FakeTerminal.instances).toHaveLength(1);
+    expect(fakes.FakeSocket.instances).toHaveLength(1);
+    expect(api.takeoverComputer).not.toHaveBeenCalled();
+  });
+
+  it('shows no tabs while the computer sleeps', async () => {
+    api.fetchComputerStatus.mockResolvedValue(status());
+    await renderPane();
+    expect(document.querySelector('[role="tablist"]')).toBeNull();
+  });
+
+  it('returns to the screen when the member takes over from the banner while another tab shows', async () => {
+    api.fetchComputerStatus.mockResolvedValue(RUNNING);
+    api.listRequests.mockResolvedValue({
+      requests: [
+        {
+          id: 'brq_7',
+          session_id: 'sess-1',
+          bot_id: 'bot_sage',
+          kind: 'takeover',
+          status: 'pending',
+          payload: { reason: 'Sign the delivery form', kind: 'other', url: null },
+          result: null,
+          expires_at: null,
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
+    api.takeoverComputer.mockResolvedValue(IN_CONTROL);
+    await renderPane({ sessionId: 'sess-1' });
+    await click(tab('files')!);
+    expect(tab('files')?.getAttribute('aria-selected')).toBe('true');
+
+    // The banner sits above the tabs: answering it is a take-over of the screen.
+    api.fetchComputerStatus.mockResolvedValue(IN_CONTROL);
+    await click(document.querySelector('[data-testid="computer-needs-you"] button')!);
+    expect(api.takeoverComputer).toHaveBeenCalledTimes(1);
+    expect(tab('screen')?.getAttribute('aria-selected')).toBe('true');
+    expect(document.querySelector('[data-testid="computer-hand-back"]')).not.toBeNull();
+  });
+});
+
+describe('ComputerPane — Back to the browser', () => {
+  it('brings the browser back while watching and while in control', async () => {
+    api.fetchComputerStatus.mockResolvedValue(RUNNING);
+    await renderPane();
+    await click(document.querySelector('[data-testid="computer-restore-window"]')!);
+    expect(api.restoreComputerWindow).toHaveBeenCalledTimes(1);
+    // No take-over needed for it.
+    expect(api.takeoverComputer).not.toHaveBeenCalled();
+
+    await act(async () => root?.unmount());
+    root = null;
+    api.fetchComputerStatus.mockResolvedValue(IN_CONTROL);
+    await renderPane();
+    const controlBar = document.querySelector('[data-testid="computer-control-bar"]')!;
+    await click(controlBar.querySelector('[data-testid="computer-restore-window"]')!);
+    expect(api.restoreComputerWindow).toHaveBeenCalledTimes(2);
+  });
+
+  it('explains a computer that is no longer running', async () => {
+    api.fetchComputerStatus.mockResolvedValue(RUNNING);
+    api.restoreComputerWindow.mockRejectedValueOnce(new BotsApiError('stopped', 409, 'stopped'));
+    await renderPane();
+    await click(document.querySelector('[data-testid="computer-restore-window"]')!);
+    expect(document.body.textContent).toContain("The computer isn't running.");
+  });
+
+  it("falls back to its own line for a failure it can't name", async () => {
+    api.fetchComputerStatus.mockResolvedValue(RUNNING);
+    api.restoreComputerWindow.mockRejectedValueOnce(new BotsApiError('boom', 500));
+    await renderPane();
+    await click(document.querySelector('[data-testid="computer-restore-window"]')!);
+    expect(document.body.textContent).toContain("Couldn't bring the browser back.");
   });
 });

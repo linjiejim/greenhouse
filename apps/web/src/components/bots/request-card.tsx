@@ -1,6 +1,7 @@
 /**
- * "Needs you" cards in the transcript — approvals, sign-in, take-over, a Bot
- * proposing a new Bot, a background task waiting for "Start".
+ * "Needs you" cards in the transcript — approvals, sign-in, take-over (a
+ * human check embeds the screen: human-check-card.tsx), a Bot proposing a new
+ * Bot, a background task waiting for "Start".
  *
  * All on the shared ArtifactCard skeleton: pending cards are open with their
  * actions; settled ones collapse to a one-line receipt (expandable), and an
@@ -23,9 +24,17 @@ import { RichMarkdown } from '../rich-markdown';
 import type { BotMessage } from '../../lib/api/bots';
 import { LoginRequestCard } from './login-request-card';
 import { BotCreateCard } from './bot-create-card';
-import { implicitTakeover, useRequestDecision, type RequestCardCallbacks } from './request-decision';
+import { HumanCheckCard, type RequestCardComputer } from './human-check-card';
+import {
+  humanCheckTakeover,
+  implicitTakeover,
+  useRequestDecision,
+  type RequestCardCallbacks,
+} from './request-decision';
 import { DetailList, ExpiredFooter, useSettledStatus } from './request-card-parts';
 import type { BotLookup } from './transcript-rows';
+
+export type { RequestCardComputer } from './human-check-card';
 
 export interface RequestCardProps extends RequestCardCallbacks {
   request: BotRequestView | undefined;
@@ -35,6 +44,8 @@ export interface RequestCardProps extends RequestCardCallbacks {
   vaultAvailable: boolean;
   onOpenComputer: () => void;
   onAskAgain: (botId: string) => void;
+  /** The page's computer status, for the human-check card's embedded screen. */
+  computer?: RequestCardComputer;
 }
 
 export function RequestCard(props: RequestCardProps) {
@@ -105,7 +116,14 @@ function ApprovalCard({ request, lookup, onSettled, onStale, onAskAgain }: Known
   );
 }
 
-function TakeoverCard({ request, lookup, onSettled, onStale, onOpenComputer }: KnownRequestProps) {
+function TakeoverCard(props: KnownRequestProps) {
+  const check = humanCheckTakeover(props.request.payload);
+  // A site asked for human verification: the member does it on the card.
+  if (check) return <HumanCheckCard {...props} check={check} />;
+  return <PlainTakeoverCard {...props} />;
+}
+
+function PlainTakeoverCard({ request, lookup, onSettled, onStale, onOpenComputer }: KnownRequestProps) {
   const t = useT();
   const payload = request.payload as BotTakeoverPayload;
   const implicit = implicitTakeover(request.payload);

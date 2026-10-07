@@ -25,7 +25,8 @@ import { computerViewerUrl, createComputerViewToken } from '../../lib/api/bots';
 import { loadRfb } from '../../lib/novnc/loader';
 import { RFB_KEY_CODES, RFB_KEYSYMS, type RfbClient, type RfbHelperKey } from '../../lib/novnc/types';
 
-const MAX_RETRIES = 6;
+/** Reconnect attempts before the member gets a manual "Reconnect" (the terminal uses the same budget). */
+export const MAX_RETRIES = 6;
 const MAX_BACKOFF_MS = 15_000;
 const HIDDEN_DISCONNECT_MS = 60_000;
 const HINT_MS = 3_000;
@@ -51,6 +52,32 @@ export function backoffDelay(failures: number): number {
   return Math.min(1000 * 2 ** Math.max(0, failures - 1), MAX_BACKOFF_MS);
 }
 
+/**
+ * True once the page has been in the background for a minute (R19): forgotten
+ * tabs must not keep the computer awake or hold a slot. Back in front → false,
+ * and the owner reconnects.
+ */
+export function useBackgrounded(afterMs = HIDDEN_DISCONNECT_MS): boolean {
+  const [backgrounded, setBackgrounded] = useState(false);
+  useEffect(() => {
+    let timer: number | undefined;
+    const onVisibility = () => {
+      window.clearTimeout(timer);
+      if (document.visibilityState === 'hidden') {
+        timer = window.setTimeout(() => setBackgrounded(true), afterMs);
+      } else {
+        setBackgrounded(false);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [afterMs]);
+  return backgrounded;
+}
+
 export const ComputerScreen = forwardRef<ComputerScreenHandle, ComputerScreenProps>(function ComputerScreen(
   { viewOnly, onTakeOver, onDisconnected, className = '' },
   ref,
@@ -62,7 +89,7 @@ export const ComputerScreen = forwardRef<ComputerScreenHandle, ComputerScreenPro
   const onDisconnectedRef = useRef(onDisconnected);
   const [connection, setConnection] = useState<ScreenConnection>('connecting');
   const [generation, setGeneration] = useState(0);
-  const [backgrounded, setBackgrounded] = useState(false);
+  const backgrounded = useBackgrounded();
   const [hint, setHint] = useState(false);
 
   onDisconnectedRef.current = onDisconnected;
@@ -78,24 +105,6 @@ export const ComputerScreen = forwardRef<ComputerScreenHandle, ComputerScreenPro
     }),
     [],
   );
-
-  // Page Visibility: disconnect after a minute in the background.
-  useEffect(() => {
-    let timer: number | undefined;
-    const onVisibility = () => {
-      window.clearTimeout(timer);
-      if (document.visibilityState === 'hidden') {
-        timer = window.setTimeout(() => setBackgrounded(true), HIDDEN_DISCONNECT_MS);
-      } else {
-        setBackgrounded(false);
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      window.clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, []);
 
   useEffect(() => {
     if (backgrounded) {
