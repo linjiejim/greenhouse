@@ -20,33 +20,47 @@
  * POST   /api/bots/tasks/:runId/cancel                — 取消后台任务（Runtime 取消语义）
  * GET    /api/bots/requests                           — 「需要你」请求（?status=pending）
  * POST   /api/bots/requests/:id                       — 处理请求（审批 / 建 Bot / 开始任务 / 登录 / 交还），已处理 409 already_decided、处理中 409 deciding
- * PATCH  /api/bots/:id                                — 修改 Bot 资料
+ * PATCH  /api/bots/:id                                — 修改 Bot 资料（追加一个不可变版本）
  * DELETE /api/bots/:id                                — 归档 Bot（Sprouty 不可归档：400 bot_protected）
+ * GET    /api/bots/:id/versions                       — 不可变版本历史
  * GET    /api/bots/:id/memories                       — 该 Bot 的私有记忆
  * DELETE /api/bots/:id/memories/:memoryId             — 删除一条私有记忆
  *
- * 挂载在 requireInternal() + requireFeature('bots') 之后（src/index.ts）。全部按
- * 当前用户 owner 作用域：他人的行与不存在的行一律 404，super 也不能驱动别人的 Bot。
- * 静态路径先于 /:id 注册（Hono 按注册顺序匹配）。契约：bots/AGENTS.md「HTTP 契约」。
+ * 身份类路径（列表、新建、修改、版本、记忆、文件）只要 requireInternal()；
+ * 永续对话、请求、后台任务、bootstrap（建私聊）、电脑与密码库还要 requireFeature('bots')
+ * （src/index.ts）——`bots` 开关只管永续线程与电脑，不管身份（spec 20261007 D5）。Bot 是私有的：
+ * 全部按当前用户 owner 作用域，他人的行与不存在的行一律 404，没有共享、评审或克隆。
+ * 静态路径先于 /:id 注册（Hono 按注册顺序匹配）。
+ * 契约：bots/AGENTS.md「HTTP 契约」。
  */
 
 import { Hono } from 'hono';
 import { BotsDomainError, getDb, type ConversationWithMembers, type DatabaseProvider } from '@greenhouse/db';
 import { avatarConfigSchema, type AvatarConfig } from '@greenhouse/types/profile-manifest';
 import {
-  SPROUTY_BOT_TEMPLATE,
+  BOT_DESCRIPTION_MAX,
   galleryTemplate,
   isSproutyBot,
   type BotConversationDetail,
   type BotRequestStatus,
   type BotTemplateKey,
 } from '@greenhouse/types/bots';
+import type { BotVersionMeta } from '@greenhouse/db';
+import { resolveUserTools } from '../agent.js';
+import { userHasFeature } from '../auth/features.js';
+import { botProfileId } from '../profiles/profile.js';
+import { getAllToolIds } from '../tools/registry.js';
+import { ensureSproutyBot } from './sprouty.js';
+import { ensureBotFolder, renameBotFolder } from './folder.js';
+import { kbFolderSubtreeIds } from '../knowledge/folders.js';
+import { entityUrl } from '@greenhouse/types/entity-links';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { botNameKey } from '@greenhouse/db';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
+import type { AuthUser } from '../auth/token.js';
 import { chatRunRegistry } from '../chat/runs.js';
 import { isChatModelAllowed } from '../config/models.js';
 import { connectionManager } from '../ws/connection-manager.js';
@@ -62,6 +76,7 @@ import { cancelBotTask, listConversationTasks } from './engine/tasks.js';
 import { estimateRows, readTail } from './engine/transcript.js';
 import { NOTE_BODY_MAX, NOTE_TITLE_MAX } from './tools/conversation.js';
 import {
+  toBotVersionView,
   toBotView,
   toConversationSummary,
   toMessageView,
@@ -112,6 +127,78 @@ function parseAvatar(raw: unknown): { ok: true; value: AvatarConfig | undefined 
   if (raw === undefined) return { ok: true, value: undefined };
   const parsed = avatarConfigSchema.safeParse(raw);
   return parsed.success ? { ok: true, value: parsed.data } : { ok: false };
+}
+
+function parseDescription(raw: unknown): { ok: true; value: string | undefined } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true, value: undefined };
+  if (raw === null) return { ok: true, value: '' };
+  if (typeof raw !== 'string') return { ok: false, error: 'description must be text' };
+  const value = raw.replace(/[\r\n]+/g, ' ').trim();
+  if ([...value].length > BOT_DESCRIPTION_MAX) {
+    return { ok: false, error: `A description has at most ${BOT_DESCRIPTION_MAX} characters` };
+  }
+  return { ok: true, value };
+}
+
+/**
+ * The Bot's tool filter. `null` / omitted = inherit the owner's whole allowed
+ * set; a list must name known tools the owner may use (super skips the
+ * ownership check, as the Agent editor always did) — a Bot can only narrow.
+ */
+async function parseTools(
+  raw: unknown,
+  user: Pick<AuthUser, 'id' | 'role'>,
+): Promise<{ ok: true; value: string[] | null | undefined } | { ok: false; error: string; status: 400 | 403 }> {
+  if (raw === undefined) return { ok: true, value: undefined };
+  if (raw === null) return { ok: true, value: null };
+  if (!Array.isArray(raw) || raw.some((t) => typeof t !== 'string')) {
+    return { ok: false, error: 'tools must be an array of tool ids or null', status: 400 };
+  }
+  const tools = [...new Set(raw as string[])];
+  const known = new Set(getAllToolIds());
+  const unknown = tools.filter((t) => !known.has(t));
+  if (unknown.length > 0) return { ok: false, error: `Unknown tools: ${unknown.join(', ')}`, status: 400 };
+  if (user.role !== 'super') {
+    // The same resolver the tool picker is built from — see resolveUserTools.
+    const { allowedTools } = await resolveUserTools(user.id, user.role);
+    const allowed = new Set(allowedTools);
+    const unauthorized = tools.filter((t) => !allowed.has(t));
+    if (unauthorized.length > 0) {
+      return { ok: false, error: `You don't have access to these tools: ${unauthorized.join(', ')}`, status: 403 };
+    }
+  }
+  return { ok: true, value: tools };
+}
+
+const MAX_STEPS_LIMIT = 50;
+
+function parseMaxSteps(raw: unknown): { ok: true; value: number | null | undefined } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true, value: undefined };
+  if (raw === null || raw === '') return { ok: true, value: null };
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1 || raw > MAX_STEPS_LIMIT) {
+    return { ok: false, error: `max_steps must be an integer between 1 and ${MAX_STEPS_LIMIT}` };
+  }
+  return { ok: true, value: raw };
+}
+
+/** Provenance of the version this request appends; `change_log` is optional free text. */
+function parseVersionMeta(
+  body: Record<string, unknown>,
+  actorId: string,
+): { ok: true; value: BotVersionMeta } | { ok: false; error: string } {
+  const value: BotVersionMeta = { created_by: actorId };
+  if (body.change_log !== undefined) {
+    if (typeof body.change_log !== 'string' || body.change_log.length > 500) {
+      return { ok: false, error: 'change_log must be text' };
+    }
+    value.change_log = body.change_log;
+  }
+  return { ok: true, value };
+}
+
+/** Whether this member may keep Bots conversations (the `bots` flag gates threads, not identity). */
+async function conversationsEnabled(user: Pick<AuthUser, 'id' | 'role'>): Promise<boolean> {
+  return userHasFeature(user.id, user.role, 'bots');
 }
 
 async function conversationDetail(
@@ -239,38 +326,15 @@ export function createBotsRoutes() {
       .post('/bootstrap', async (c) => {
         const user = getAuthUser(c);
         const db = getDb();
-        const owner = await ownerContext(db, user.id);
-        const answer = async (bot: Parameters<typeof toBotView>[0], created: boolean) => {
-          const dm = await db.bots.ensureDirectConversation(user.id, bot.id);
-          return c.json({ bot: toBotView(bot, dm.session_id), dm_session_id: dm.session_id, created });
-        };
-        const findSprouty = async () => (await db.bots.listBots(user.id)).find((bot) => isSproutyBot(bot));
-        const existing = await findSprouty();
-        if (existing) return answer(existing, false);
-        const template = SPROUTY_BOT_TEMPLATE;
-        const copyFor = template.copy[owner.locale];
-        const active = await db.bots.listBots(user.id);
-        const taken = new Set([...active.map((bot) => bot.name_key), botNameKey(owner.nickname)].filter(Boolean));
-        try {
-          const bot = await db.bots.createBot({
-            user_id: user.id,
-            name: nextFreeName(copyFor.name, taken),
-            role: copyFor.role,
-            instructions: copyFor.instructions,
-            avatar: JSON.stringify(template.avatar),
-            template_key: template.key,
-            builtIn: true,
-          });
-          const dm = await db.bots.ensureDirectConversation(user.id, bot.id);
-          await writeGreeting(db, dm.session_id, bot);
-          return c.json({ bot: toBotView(bot, dm.session_id), dm_session_id: dm.session_id, created: true });
-        } catch (error) {
-          // A concurrent visit created it: return that one.
-          if (!(error instanceof BotsDomainError)) throw error;
-          const raced = await findSprouty();
-          if (!raced) throw error;
-          return answer(raced, false);
-        }
+        // The Bot row itself may already exist (Chat creates it on first use);
+        // this route additionally guarantees the DM and its fixed greeting.
+        const existed = Boolean((await db.bots.listBots(user.id)).find((bot) => isSproutyBot(bot)));
+        const bot = await ensureSproutyBot(db, user.id);
+        const dms = await dmIndex(db, user.id);
+        const hadDm = dms.has(bot.id);
+        const dm = await db.bots.ensureDirectConversation(user.id, bot.id);
+        if (!hadDm) await writeGreeting(db, dm.session_id, bot);
+        return c.json({ bot: toBotView(bot, dm.session_id), dm_session_id: dm.session_id, created: !existed });
       })
 
       // ── POST /api/bots — new Bot (template copy or custom) ──
@@ -306,17 +370,32 @@ export function createBotsRoutes() {
         const modelId = parseModelId(body.model_id);
         if (!modelId.ok)
           return c.json({ error: 'That model is not available', code: 'bot_name_invalid' as const }, 400);
+        const description = parseDescription(body.description ?? templateCopy?.pitch);
+        if (!description.ok) return c.json({ error: description.error, code: 'bot_name_invalid' as const }, 400);
+        const tools = await parseTools(body.tools, user);
+        if (!tools.ok) return c.json({ error: tools.error, code: 'bot_name_invalid' as const }, tools.status);
+        const maxSteps = parseMaxSteps(body.max_steps);
+        if (!maxSteps.ok) return c.json({ error: maxSteps.error, code: 'bot_name_invalid' as const }, 400);
+        const meta = parseVersionMeta(body, user.id);
+        if (!meta.ok) return c.json({ error: meta.error, code: 'bot_name_invalid' as const }, 400);
 
         try {
           const bot = await db.bots.createBot({
             user_id: user.id,
             name: name.name,
             role: role.role,
+            description: description.value ?? '',
             instructions: instructions.instructions,
             avatar: JSON.stringify(avatar.value ?? {}),
             model_id: modelId.value ?? null,
+            tools: tools.value ?? null,
+            max_steps: maxSteps.value ?? null,
             template_key: template?.key ?? null,
+            ...meta.value,
           });
+          // The DM only exists where Bots threads do (the `bots` flag); the
+          // identity is usable from Chat either way.
+          if (!(await conversationsEnabled(user))) return c.json({ bot: toBotView(bot, null), dm_session_id: null });
           const dm = await db.bots.ensureDirectConversation(user.id, bot.id);
           await writeGreeting(db, dm.session_id, bot);
           return c.json({ bot: toBotView(bot, dm.session_id), dm_session_id: dm.session_id });
@@ -697,13 +776,33 @@ export function createBotsRoutes() {
         const botId = c.req.param('id');
         const body = await readJson(c);
         const owner = await ownerContext(db, user.id);
+        const meta = parseVersionMeta(body, user.id);
+        if (!meta.ok) return c.json({ error: meta.error, code: 'bot_name_invalid' as const }, 400);
         const updates: {
           name?: string;
           role?: string;
+          description?: string;
           instructions?: string;
           avatar?: string;
           model_id?: string | null;
-        } = {};
+          tools?: string[] | null;
+          max_steps?: number | null;
+        } & BotVersionMeta = { ...meta.value };
+        if (body.description !== undefined) {
+          const description = parseDescription(body.description);
+          if (!description.ok) return c.json({ error: description.error, code: 'bot_name_invalid' as const }, 400);
+          updates.description = description.value;
+        }
+        if (body.tools !== undefined) {
+          const tools = await parseTools(body.tools, user);
+          if (!tools.ok) return c.json({ error: tools.error, code: 'bot_name_invalid' as const }, tools.status);
+          updates.tools = tools.value;
+        }
+        if (body.max_steps !== undefined) {
+          const maxSteps = parseMaxSteps(body.max_steps);
+          if (!maxSteps.ok) return c.json({ error: maxSteps.error, code: 'bot_name_invalid' as const }, 400);
+          updates.max_steps = maxSteps.value;
+        }
         if (body.name !== undefined) {
           const name = validateBotName(body.name, owner.nickname);
           if (!name.ok) return c.json({ error: name.error, code: name.code as BotFieldErrorCode }, 400);
@@ -736,7 +835,10 @@ export function createBotsRoutes() {
           if (!bot) return c.json({ error: 'Bot not found' }, 404);
           const dms = await dmIndex(db, user.id);
           const dm = dms.get(bot.id) ?? null;
-          if (dm && updates.name) await db.sessions.updateTitle(dm, bot.name);
+          if (updates.name) {
+            if (dm) await db.sessions.updateTitle(dm, bot.name);
+            await renameBotFolder(db, bot);
+          }
           return c.json({ bot: toBotView(bot, dm) });
         } catch (error) {
           if (error instanceof BotsDomainError && error.code === 'bot_name_taken') {
@@ -767,6 +869,63 @@ export function createBotsRoutes() {
         }
         await pushAttention(db, user.id);
         return c.json({ ok: true as const });
+      })
+
+      // ── GET /api/bots/:id/versions — immutable manifest history (owner; super for support) ──
+      .get('/:id/versions', async (c) => {
+        const user = getAuthUser(c);
+        const db = getDb();
+        const botId = c.req.param('id');
+        const target =
+          (await db.bots.getBot(user.id, botId)) ??
+          (user.role === 'super' ? await db.bots.getBotById(botId) : undefined);
+        if (!target) return c.json({ error: 'Bot not found' }, 404);
+        const versions = await db.bots.listVersions(target.id);
+        return c.json({
+          bot_id: target.id,
+          profile_id: botProfileId(target.id),
+          current_version: target.current_version,
+          versions: versions.map(toBotVersionView),
+        });
+      })
+
+      // ── GET /api/bots/:id/files — the Bot's private reference folder and its documents ──
+      .get('/:id/files', async (c) => {
+        const user = getAuthUser(c);
+        const db = getDb();
+        const bot = await db.bots.getBot(user.id, c.req.param('id'));
+        if (!bot) return c.json({ error: 'Bot not found' }, 404);
+        const folder = await db.drive.getBotFolder(bot.id);
+        if (!folder) return c.json({ folder: null, docs: [] });
+        const folderIds = await kbFolderSubtreeIds(db, folder.id, { visibility: 'private', ownerUserId: user.id });
+        const docs = await db.knowledgeBase.list({
+          scope: 'shared',
+          status: 'published',
+          visibility: 'private',
+          ownerUserId: user.id,
+          folderIds,
+          limit: 100,
+        });
+        return c.json({
+          folder: { id: folder.id, name: folder.name, url: `#/knowledge/folder/${folder.id}` },
+          docs: docs.map((doc) => ({
+            id: doc.id,
+            doc_id: doc.doc_id,
+            title: doc.title,
+            url: entityUrl({ kind: 'kb_doc', id: doc.id, slug: doc.doc_id }),
+            updated_at: doc.updated_at,
+          })),
+        });
+      })
+
+      // ── POST /api/bots/:id/files/ensure — create the folder on first use ──
+      .post('/:id/files/ensure', async (c) => {
+        const user = getAuthUser(c);
+        const db = getDb();
+        const bot = await db.bots.getBot(user.id, c.req.param('id'));
+        if (!bot) return c.json({ error: 'Bot not found' }, 404);
+        const folder = await ensureBotFolder(db, bot);
+        return c.json({ folder: { id: folder.id, name: folder.name, url: `#/knowledge/folder/${folder.id}` } });
       })
 
       // ── GET /api/bots/:id/memories ──

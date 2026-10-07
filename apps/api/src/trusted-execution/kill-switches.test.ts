@@ -24,7 +24,6 @@ describe('trusted-execution kill switches', () => {
       notificationProjector: true,
       taskCenter: true,
       approvalInbox: true,
-      agentGovernance: true,
       invalidEnv: [],
     });
     expect(runtimeAdapterEnabled('mission', switches)).toBe(true);
@@ -47,7 +46,6 @@ describe('trusted-execution kill switches', () => {
       RUNTIME_NOTIFICATION_PROJECTOR_ENABLED: 'yes',
       TASK_CENTER_ENABLED: 'tru',
       RUNTIME_APPROVAL_INBOX_ENABLED: '1',
-      AGENT_GOVERNANCE_ENABLED: 'no',
     });
     expect(switches).toMatchObject({
       missionAdapter: false,
@@ -60,7 +58,6 @@ describe('trusted-execution kill switches', () => {
       notificationProjector: true,
       taskCenter: false,
       approvalInbox: true,
-      agentGovernance: false,
       invalidEnv: ['RUNTIME_SUBAGENT_DRIVER_ENABLED', 'TASK_CENTER_ENABLED'],
     });
   });
@@ -88,7 +85,6 @@ describe('trusted-execution kill switches', () => {
       notificationProjector: false,
       taskCenter: false,
       approvalInbox: false,
-      agentGovernance: true,
     });
     expect(trustedExecutionHealthView(switches)).toEqual({
       adapters: { mission: false, workflow: false, chat: false },
@@ -99,7 +95,6 @@ describe('trusted-execution kill switches', () => {
         subagent_driver: false,
         notification_projector: false,
         notification_delivery: false,
-        agent_governance: true,
       },
       surfaces: { task_center: false, approval_inbox: false },
       invalid_env: [],

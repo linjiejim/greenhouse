@@ -100,9 +100,12 @@ export function createEvalMessageTool(db: DatabaseProvider, ctx: EvalMessageTool
 
       const context = buildEvalContext(messages, targetIdx);
 
-      // Step 4: Parse and fetch the AI's cited sources
+      // Step 4: Parse and fetch the AI's cited sources — as the evaluating user
+      // may read them, since the verdict is shown to that user, not the author.
       steps.push('Fetching referenced knowledge-base sources...');
-      const { referenceSources, referencesChecked } = await loadReferenceSources(db, targetMsg.references_);
+      const { referenceSources, referencesChecked } = await loadReferenceSources(db, targetMsg.references_, {
+        userId: ctx.userId,
+      });
       steps.push(
         `Found ${referenceSources.length} reference source(s)` +
           (referenceSources.length === 0 ? ' — evaluating as a no-citation answer' : ''),

@@ -40,8 +40,8 @@ export function resolveSettingsRedirect(subPath: string): string | null {
   const segments = subPath.split('/').filter(Boolean);
   const moduleKey = segments[0] || DEFAULT_MODULE;
 
-  // Custom agents moved out of Settings into their own surface (v3).
-  if (moduleKey === 'my-profiles') return '#/agents';
+  // Custom agents moved out of Settings (v3) and then into the Bots directory (2026-10).
+  if (moduleKey === 'my-profiles') return '#/settings/bots';
 
   // The read-only System Agents inventory was retired once the product
   // converged on one built-in preset. Keep historical links useful by landing

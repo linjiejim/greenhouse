@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { Card, EmptyState, Spinner, SkeletonCard, Tag } from '../../components/ui';
-import { BarChart3, Users, Bot, Wrench, type LucideIcon } from '../../lib/icons';
+import { Activity, BarChart3, Users, Bot, Wrench, type LucideIcon } from '../../lib/icons';
 import { fetchUsageSummary, fetchUserUsageSummary, formatTokens, formatDuration } from '../../lib/api';
 import type { UsageSummary, UserUsageSummary } from '../../lib/api';
 import { ROLE_TONE, type TagTone } from '../../lib/utils';
@@ -17,6 +17,7 @@ import {
   KpiCard,
   DistributionBar,
 } from '../../components/usage/usage-widgets';
+import { CostValuePanel } from '../../components/agents/cost-value-panel';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { ModulePage } from '../../components/app/module-page';
 
@@ -28,12 +29,14 @@ const CALLER_TONE: Record<string, TagTone> = {
 
 // ─── Sub-tab Definitions ─────────────────────────────────
 
-type SubTab = 'users' | 'profiles' | 'callers';
+type SubTab = 'users' | 'profiles' | 'callers' | 'agents';
 
 const SUB_TABS: Array<{ key: SubTab; labelKey: TranslationKey; icon: LucideIcon }> = [
   { key: 'users', labelKey: 'usage.byUsers', icon: Users },
   { key: 'profiles', labelKey: 'usage.byProfiles', icon: Bot },
   { key: 'callers', labelKey: 'usage.byCallers', icon: Wrench },
+  // Agent / runtime operating panel (settled USD, runs, frictions) — super-only like the rest of this page.
+  { key: 'agents', labelKey: 'usage.byAgents', icon: Activity },
 ];
 
 // ─── By Users Tab ────────────────────────────────────────
@@ -351,13 +354,14 @@ export function UsagePanelWithUsers() {
         <div className="flex justify-center py-20">
           <Spinner className="text-primary-500" />
         </div>
-      ) : !summary && activeTab !== 'users' ? (
+      ) : !summary && activeTab !== 'users' && activeTab !== 'agents' ? (
         <div className="text-center py-20 text-fg-faint">{t('common.loadFailed')}</div>
       ) : (
         <>
           {activeTab === 'users' && <ByUsersTab period={period} />}
           {activeTab === 'profiles' && summary && <ByProfilesTab summary={summary} />}
           {activeTab === 'callers' && summary && <ByCallersTab summary={summary} />}
+          {activeTab === 'agents' && <CostValuePanel />}
         </>
       )}
     </ModulePage>

@@ -64,7 +64,6 @@ export * from './services/session-shares.js';
 export * from './services/scheduled-tasks.js';
 export * from './services/provider-tokens.js';
 export * from './services/feishu-bot.js';
-export * from './services/custom-profiles.js';
 export * from './services/session-tags.js';
 export * from './services/kb-comments.js';
 // Shared full-text helpers: an extension that keeps its own searchable table

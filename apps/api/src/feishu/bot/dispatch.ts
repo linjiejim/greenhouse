@@ -115,7 +115,7 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
   await db.sessions.addMessage({ session_id: sessionId, role: 'user', content: prompt });
 
   // ── 4. 工具面：用户自己的权限，再按飞书面收窄（spec D4/D6）──
-  const profile = await resolveProfileAsync(undefined, db);
+  const profile = await resolveProfileAsync(undefined, db, { forUserId: owner.id });
   const { effectiveTools } = await resolveEffectiveTools({
     userId: owner.id,
     userRole: owner.role,
@@ -141,8 +141,13 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
     }),
   );
 
-  const memoryBlock = await resolveMemoryContext(owner.id, owner.role as UserRole);
-  const systemPrompt = buildSystemPrompt(profile, memoryBlock ? { userInfo: memoryBlock } : undefined);
+  const memoryBlock = await resolveMemoryContext(owner.id, owner.role as UserRole, {
+    botId: profile.identity?.botId ?? null,
+  });
+  const systemPrompt = buildSystemPrompt(profile, {
+    ...(memoryBlock ? { userInfo: memoryBlock } : {}),
+    nickname: owner.nickname,
+  });
 
   // ── 5. 跑既有 runner ─────────────────────────────────────
   const result = await runAgentInSession({

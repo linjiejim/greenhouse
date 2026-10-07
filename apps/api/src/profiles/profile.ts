@@ -16,7 +16,8 @@ import { logger } from '@greenhouse/utils/logger';
 import { composeRichOutput } from '@greenhouse/utils/prompts';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type { DatabaseProvider } from '@greenhouse/db';
+import type { BotRow, BotVersionRow, DatabaseProvider } from '@greenhouse/db';
+import { buildFallbackIdentitySection, buildIdentitySection } from './identity-prompt.js';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -32,6 +33,22 @@ export interface AccessConfig {
   rich_output: boolean; // inject rich output formatting guide
 }
 
+/**
+ * The Bot a resolved profile runs as (spec 20261007 §2.2). Present on every
+ * `bot:<id>[@v]` profile and on `sprouty` when resolved for a known member
+ * (their own Sprouty Bot); absent on the hidden runtimes and on a preset
+ * resolved without a user, which fall back to the preset's own name.
+ */
+export interface ProfileIdentity {
+  botId: string;
+  ownerUserId: string;
+  name: string;
+  role: string;
+  instructions: string;
+  /** Avatar JSON text, as stored. */
+  avatar: string;
+}
+
 export interface AgentProfile {
   id: string;
   name: string;
@@ -42,10 +59,17 @@ export interface AgentProfile {
   access: AccessConfig; // declarative access control
   model: ModelConfig;
   tools: string[]; // tool names from the registry
+  /**
+   * True when `tools` is a FILTER on the user's allowed set (a Bot with an
+   * explicit tool list). False / absent = the user's whole allowed set; the
+   * preset YAML `tools:` list is documentation, not a runtime restriction.
+   */
+  narrow_tools?: boolean;
   system_prompt: string;
   max_steps?: number; // default: 8
   tool_choice?: 'auto' | 'none' | 'required'; // default: "auto"
   version?: string; // last modified date (e.g. "2026-05-21")
+  identity?: ProfileIdentity;
 }
 
 // ─── Known Tools (for validation) ────────────────────────
@@ -144,9 +168,6 @@ const LEGACY_TEAM_PROFILE_IDS = new Set([
 
 const LEGACY_DESKTOP_PROFILE_IDS = new Set(['local-dev', 'local-pi']);
 
-/** Custom agents may be forked from any selectable preset. */
-export const CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS;
-
 /**
  * Map removed/legacy interactive profile IDs to their canonical replacement.
  * Stored rows (sessions, eval runs, scheduled tasks, custom bases) still carry
@@ -160,8 +181,15 @@ export function normalizeProfileId(profileId?: string | null): string | undefine
   return profileId;
 }
 
+/** A retired `custom:<id>[@v]` reference — stored rows keep them; they resolve through `bots.legacy_custom_id`. */
 export interface CustomProfileReference {
   profileId: number;
+  version?: number;
+}
+
+/** `bot:<id>` (follows the Bot's latest definition) or `bot:<id>@<v>` (one immutable version). */
+export interface BotProfileReference {
+  botId: string;
   version?: number;
 }
 
@@ -170,7 +198,7 @@ export interface ProfileExecutionActor {
   role: 'team' | 'super';
 }
 
-/** Parse the canonical mutable (`custom:7`) or immutable (`custom:7@3`) reference. */
+/** Parse the retired mutable (`custom:7`) or immutable (`custom:7@3`) reference. */
 export function parseCustomProfileReference(profileId: string): CustomProfileReference | null {
   const match = /^custom:(\d+)(?:@(\d+))?$/.exec(profileId);
   if (!match) return null;
@@ -178,12 +206,97 @@ export function parseCustomProfileReference(profileId: string): CustomProfileRef
   return { profileId: Number(match[1]), ...(version ? { version } : {}) };
 }
 
+export function parseBotProfileReference(profileId: string): BotProfileReference | null {
+  const match = /^bot:(bot_[0-9a-f]{16})(?:@(\d+))?$/.exec(profileId);
+  if (!match) return null;
+  const version = match[2] ? Number(match[2]) : undefined;
+  return { botId: match[1], ...(version ? { version } : {}) };
+}
+
+export function botProfileId(botId: string, version?: number | null): string {
+  return version ? `bot:${botId}@${version}` : `bot:${botId}`;
+}
+
+/** Is this a Bot-backed reference (`bot:` or a retired `custom:`)? */
+export function isBotProfileId(profileId: string): boolean {
+  return profileId.startsWith('bot:') || profileId.startsWith('custom:');
+}
+
 /**
- * Revalidate a pinned custom Agent at the execution boundary.
+ * Resolve any Bot-backed reference to the Bot row it names and the version it
+ * pins (if any). `custom:<id>` maps through `legacy_custom_id`. Returns null for
+ * ids that are not Bot references; throws for a malformed or missing one.
+ */
+export async function loadBotReference(
+  database: DatabaseProvider,
+  profileId: string,
+): Promise<{ bot: BotRow; version?: number } | null> {
+  if (profileId.startsWith('custom:')) {
+    const legacy = parseCustomProfileReference(profileId);
+    if (!legacy) throw new Error(`Invalid custom profile ID: "${profileId}"`);
+    const bot = await database.bots.getByLegacyCustomId(legacy.profileId);
+    if (!bot) throw new Error(`Custom profile not found: "${profileId}"`);
+    return { bot, ...(legacy.version ? { version: legacy.version } : {}) };
+  }
+  if (!profileId.startsWith('bot:')) return null;
+  const reference = parseBotProfileReference(profileId);
+  if (!reference) throw new Error(`Invalid Bot profile ID: "${profileId}"`);
+  const bot = await database.bots.getBotById(reference.botId);
+  if (!bot) throw new Error(`Bot not found: "${profileId}"`);
+  return { bot, ...(reference.version ? { version: reference.version } : {}) };
+}
+
+export function isExecutableBot(bot: Pick<BotRow, 'status'>): boolean {
+  return bot.status === 'active';
+}
+
+/**
+ * Build the profile a Bot runs as, on top of the base preset: the Bot owns its
+ * name, instructions, optional tool filter, model and step cap; the base only
+ * supplies the static rules, `rich_output` and the model FALLBACK (a model this
+ * deployment cannot reach never fails a turn).
+ */
+export function profileFromBot(
+  bot: BotRow,
+  base: AgentProfile,
+  opts: { id: string; version?: BotVersionRow },
+): AgentProfile {
+  const source = opts.version ?? bot;
+  const toolsJson = source.tools;
+  const tools: string[] | null = toolsJson == null ? null : (JSON.parse(toolsJson) as string[]);
+  return {
+    id: opts.id,
+    name: source.name,
+    description: source.description || undefined,
+    hidden: false,
+    access: { level: 'internal', rich_output: base.access.rich_output },
+    model:
+      source.model_id && getAvailableProviders(source.model_id).length > 0
+        ? { ...base.model, id: source.model_id }
+        : base.model,
+    tools: tools ?? base.tools,
+    narrow_tools: tools !== null,
+    system_prompt: base.system_prompt,
+    max_steps: source.max_steps ?? base.max_steps,
+    tool_choice: 'auto',
+    identity: {
+      botId: bot.id,
+      ownerUserId: bot.user_id,
+      name: source.name,
+      role: source.role,
+      instructions: source.instructions,
+      avatar: source.avatar,
+    },
+  };
+}
+
+/**
+ * Revalidate a pinned Bot at the execution boundary.
  *
  * Resolving an immutable manifest proves what will run, but not whether the
- * current actor may still run it. Owners/super may exercise drafts for testing;
- * everyone else needs the exact currently published pilot/verified version.
+ * current actor may still run it: a Bot is private to its owner (super may
+ * exercise it for support). Unattended work (automations, subagents) must
+ * carry a version.
  */
 export async function assertPinnedProfileExecutionAccess(
   database: DatabaseProvider,
@@ -192,45 +305,44 @@ export async function assertPinnedProfileExecutionAccess(
   surface = 'Agent execution',
 ): Promise<void> {
   const normalized = normalizeProfileId(profileId) ?? profileId;
-  if (!normalized.startsWith('custom:')) return;
-  const reference = parseCustomProfileReference(normalized);
-  if (!reference?.version) {
-    throw new Error(`${surface} custom Agent reference is not pinned to an immutable version`);
+  if (!isBotProfileId(normalized)) return;
+  let loaded: Awaited<ReturnType<typeof loadBotReference>>;
+  try {
+    loaded = await loadBotReference(database, normalized);
+  } catch {
+    throw new Error(`${surface} Bot no longer exists`);
   }
-  const asset = await database.customProfiles.getById(reference.profileId);
-  if (!asset) throw new Error(`${surface} custom Agent no longer exists`);
-  if (['rejected', 'suspended', 'deprecated', 'archived'].includes(asset.lifecycle_status)) {
-    throw new Error(`${surface} custom Agent is not executable (${asset.lifecycle_status})`);
-  }
-  const owns = actor.role === 'super' || asset.user_id === actor.id;
-  if (
-    !owns &&
-    (!asset.is_shared ||
-      (asset.lifecycle_status !== 'pilot' && asset.lifecycle_status !== 'verified') ||
-      asset.published_version !== reference.version)
-  ) {
-    throw new Error(`${surface} custom Agent access was revoked`);
-  }
-  if (!(await database.customProfiles.getVersion(reference.profileId, reference.version))) {
-    throw new Error(`${surface} custom Agent version no longer exists`);
+  if (!loaded) return;
+  if (!loaded.version) throw new Error(`${surface} Bot reference is not pinned to an immutable version`);
+  const { bot, version } = loaded;
+  if (!isExecutableBot(bot)) throw new Error(`${surface} Bot is not executable (${bot.status})`);
+  const owns = actor.role === 'super' || bot.user_id === actor.id;
+  if (!owns) throw new Error(`${surface} Bot access was revoked`);
+  if (!(await database.bots.getVersion(bot.id, version))) {
+    throw new Error(`${surface} Bot version no longer exists`);
   }
 }
 
-/** Pin an unversioned custom reference to the asset's immutable current manifest. */
+/**
+ * The canonical spelling of a stored reference: a retired `custom:<id>[@v]`
+ * becomes `bot:<id>[@v]` (same version number), everything else is returned
+ * normalized. Used where a resolved profile's id is compared with its input.
+ */
+export async function canonicalizeProfileId(database: DatabaseProvider, profileId: string): Promise<string> {
+  const normalized = normalizeProfileId(profileId) ?? profileId;
+  if (!normalized.startsWith('custom:')) return normalized;
+  const loaded = await loadBotReference(database, normalized);
+  return loaded ? botProfileId(loaded.bot.id, loaded.version) : normalized;
+}
+
+/** Pin an unversioned Bot reference to its immutable current manifest. */
 export async function pinProfileVersion(profileId?: string | null): Promise<string> {
   const normalized = normalizeProfileId(profileId) ?? DEFAULT_PROFILE_ID;
-  if (!normalized.startsWith('custom:')) return normalized;
-  const reference = parseCustomProfileReference(normalized);
-  if (!reference) throw new Error(`Invalid custom profile ID: "${normalized}"`);
-  if (reference.version) return normalized;
+  if (!isBotProfileId(normalized)) return normalized;
   const { getDb } = await import('@greenhouse/db');
-  const row = await getDb().customProfiles.getById(reference.profileId);
-  if (!row) throw new Error(`Custom profile not found: "${normalized}"`);
-  return `custom:${reference.profileId}@${row.current_version}`;
-}
-
-export function isValidCustomBaseProfileId(profileId: string): boolean {
-  return (CUSTOM_BASE_PROFILE_IDS as readonly string[]).includes(profileId);
+  const loaded = await loadBotReference(getDb(), normalized);
+  if (!loaded) return normalized;
+  return botProfileId(loaded.bot.id, loaded.version ?? loaded.bot.current_version);
 }
 
 /**
@@ -333,84 +445,72 @@ export function resolveProfile(profileId?: string | null): AgentProfile {
   if (!normalized || normalized === DEFAULT_PROFILE_ID) {
     return getDefaultProfile();
   }
-  if (normalized.startsWith('custom:')) {
-    throw new Error(`Custom profile requires async resolution: "${normalized}"`);
+  if (isBotProfileId(normalized)) {
+    throw new Error(`Bot profile requires async resolution: "${normalized}"`);
   }
   return loadProfile(normalized);
 }
 
+export interface ResolveProfileOptions {
+  /**
+   * The member the profile runs for. With it, the default preset resolves to
+   * the member's own Sprouty Bot (identity, instructions, model, tool filter),
+   * created on first use. Without it, `sprouty` is the bare preset.
+   */
+  forUserId?: string | null;
+}
+
 /**
- * Resolve profile by ID, with async support for custom profiles from DB.
- * Use this instead of resolveProfile() when custom:* IDs may be passed.
+ * Resolve profile by ID, with async support for Bot-backed profiles from the DB.
+ * Use this instead of resolveProfile() when `bot:` / `custom:` IDs may be passed.
  */
 export async function resolveProfileAsync(
   profileId?: string | null,
   database?: DatabaseProvider,
+  options: ResolveProfileOptions = {},
 ): Promise<AgentProfile> {
   const normalized = normalizeProfileId(profileId);
   if (!normalized || normalized === DEFAULT_PROFILE_ID) {
-    return getDefaultProfile();
+    const base = getDefaultProfile();
+    if (!options.forUserId) return base;
+    // The member's Sprouty Bot is the default identity (spec 20261007 D6):
+    // renaming or re-instructing it in Bots changes every Chat session too.
+    // The id stays `sprouty` so usage attribution and the picker's default
+    // handle never fragment per member.
+    const db = database ?? (await import('@greenhouse/db')).getDb();
+    const { ensureSproutyBot } = await import('../bots/sprouty.js');
+    const bot = await ensureSproutyBot(db, options.forUserId);
+    return profileFromBot(bot, base, { id: DEFAULT_PROFILE_ID });
   }
 
-  // Custom profile: load from database
-  if (normalized.startsWith('custom:')) {
-    const reference = parseCustomProfileReference(normalized);
-    if (!reference) {
-      throw new Error(`Invalid custom profile ID: "${normalized}"`);
-    }
+  if (isBotProfileId(normalized)) {
     // Reject malformed IDs before loading the full DB provider graph. Besides
     // avoiding needless work on bad requests, this keeps the pure validation
     // path fast in CLI startup and tests.
+    if (normalized.startsWith('bot:') && !parseBotProfileReference(normalized)) {
+      throw new Error(`Invalid Bot profile ID: "${normalized}"`);
+    }
+    if (normalized.startsWith('custom:') && !parseCustomProfileReference(normalized)) {
+      throw new Error(`Invalid custom profile ID: "${normalized}"`);
+    }
     const db = database ?? (await import('@greenhouse/db')).getDb();
-    const row = await db.customProfiles.getById(reference.profileId);
-    if (!row) {
-      // Never silently substitute another Agent: that changes identity, tools,
-      // instructions and cost policy while presenting the missing Agent's id.
-      throw new Error(`Custom profile not found: "${normalized}"`);
+    // Never silently substitute another Bot: that changes identity, tools,
+    // instructions and cost policy while presenting the missing Bot's id.
+    const loaded = await loadBotReference(db, normalized);
+    if (!loaded) throw new Error(`Invalid profile ID: "${normalized}"`);
+    const { bot } = loaded;
+    if (!isExecutableBot(bot)) {
+      throw new Error(`Bot is not executable (${bot.status}): "${normalized}"`);
     }
-    if (['rejected', 'suspended', 'deprecated', 'archived'].includes(row.lifecycle_status)) {
-      throw new Error(`Custom profile is not executable (${row.lifecycle_status}): "${normalized}"`);
+    let version: BotVersionRow | undefined;
+    if (loaded.version) {
+      version = await db.bots.getVersion(bot.id, loaded.version);
+      if (!version) throw new Error(`Bot version not found: "${botProfileId(bot.id, loaded.version)}"`);
     }
-
-    const versionNumber = reference.version ?? row.current_version;
-    const version = await db.customProfiles.getVersion(reference.profileId, versionNumber);
-    if (!version) throw new Error(`Custom profile version not found: "custom:${reference.profileId}@${versionNumber}"`);
-
-    // The base preset only supplies access flags and the model FALLBACK — a
-    // custom agent owns its model (row.model_id), so changing a preset's model
-    // can never silently change a forked agent's behaviour. The fallback is
-    // also what an agent pinned to a model this deployment can no longer reach
-    // (removed from the catalog, or its key unset) runs on, instead of failing
-    // every message with "No available providers".
-    let baseProfile: AgentProfile;
-    try {
-      const normalizedBase = normalizeProfileId(version.base_profile_id) ?? DEFAULT_PROFILE_ID;
-      baseProfile = isValidCustomBaseProfileId(normalizedBase)
-        ? loadProfile(normalizedBase)
-        : loadProfile(DEFAULT_PROFILE_ID);
-    } catch {
-      baseProfile = getDefaultProfile();
-    }
-    const tools: string[] = JSON.parse(version.tools);
-
-    return {
-      id: `custom:${reference.profileId}@${versionNumber}`,
-      name: version.name,
-      description: version.description ?? undefined,
-      hidden: false,
-      access: {
-        level: 'internal',
-        rich_output: baseProfile.access.rich_output,
-      },
-      model:
-        version.model_id && getAvailableProviders(version.model_id).length > 0
-          ? { ...baseProfile.model, id: version.model_id }
-          : baseProfile.model,
-      tools,
-      system_prompt: version.system_prompt,
-      max_steps: version.max_steps,
-      tool_choice: 'auto',
-    };
+    return profileFromBot(bot, getDefaultProfile(), {
+      id: botProfileId(bot.id, loaded.version),
+      ...(version ? { version } : {}),
+    });
   }
 
   return loadProfile(normalized);
@@ -433,12 +533,28 @@ export function clearProfileCache(): void {
  * Applies to any profile with `access.rich_output: true`; these also get the
  * confirm-button block. Profiles without rich output are unchanged.
  */
-export function enrichSystemPrompt(profile: AgentProfile): string {
-  if (!profile.access.rich_output) {
-    return profile.system_prompt;
-  }
+export interface EnrichOptions {
+  /** The member this turn runs for — named in the identity section ("You work for …"). */
+  nickname?: string | null;
+}
 
-  return profile.system_prompt + '\n' + composeRichOutput({ confirm: true });
+/**
+ * Enrich a profile's system prompt: the identity section first (the Bot's
+ * name, role and instructions, or the preset's own name when no Bot backs it),
+ * then the static rules, then the rich output formatting guide for profiles
+ * with `access.rich_output: true` (these also get the confirm-button block).
+ * Hidden runtimes (`access.level: hidden`) carry their own complete prompt.
+ */
+export function enrichSystemPrompt(profile: AgentProfile, options: EnrichOptions = {}): string {
+  const parts: string[] = [];
+  if (profile.identity) {
+    parts.push(buildIdentitySection(profile.identity, options.nickname));
+  } else if (profile.access.level !== 'hidden' && !profile.hidden) {
+    parts.push(buildFallbackIdentitySection(profile.name));
+  }
+  parts.push(profile.system_prompt);
+  if (profile.access.rich_output) parts.push(composeRichOutput({ confirm: true }));
+  return parts.join('\n\n');
 }
 
 // ─── File Watcher (dev hot-reload) ───────────────────────

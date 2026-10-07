@@ -13,6 +13,7 @@ import type {
   BotRequestRow,
   BotRow,
   BotSharedNoteRow,
+  BotVersionRow,
   ConversationWithMembers,
   UserMemoryStatus,
 } from '@greenhouse/db';
@@ -24,6 +25,7 @@ import type {
   BotRequestPayload,
   BotRequestView,
   BotSharedNoteView,
+  BotVersionView,
   BotView,
 } from '@greenhouse/types/bots';
 import type { AvatarConfig } from '@greenhouse/types/profile-manifest';
@@ -37,13 +39,38 @@ export function toBotView(row: BotRow, dmSessionId: string | null): BotView {
     id: row.id,
     name: row.name,
     role: row.role,
+    description: row.description,
     instructions: row.instructions,
     avatar: safeJsonParse(row.avatar, {}) as AvatarConfig,
     model_id: row.model_id,
+    tools: row.tools == null ? null : (safeJsonParse(row.tools, []) as string[]),
+    max_steps: row.max_steps,
     template_key: row.template_key,
     status: row.status,
     dm_session_id: dmSessionId,
+    current_version: row.current_version,
+    user_id: row.user_id,
     last_active_at: row.last_active_at,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+/** A version row on the wire (`GET /api/bots/:id/versions`). */
+export function toBotVersionView(row: BotVersionRow): BotVersionView {
+  return {
+    version: row.version,
+    manifest_hash: row.manifest_hash,
+    change_log: row.change_log,
+    name: row.name,
+    role: row.role,
+    description: row.description,
+    instructions: row.instructions,
+    tools: row.tools == null ? null : (safeJsonParse(row.tools, []) as string[]),
+    model_id: row.model_id,
+    max_steps: row.max_steps,
+    avatar: safeJsonParse(row.avatar, {}) as AvatarConfig,
+    created_by: row.created_by,
     created_at: row.created_at,
   };
 }

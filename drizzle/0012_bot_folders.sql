@@ -1,0 +1,4 @@
+ALTER TABLE "drive_folders" ADD COLUMN "bot_id" text;--> statement-breakpoint
+ALTER TABLE "drive_folders" ADD CONSTRAINT "drive_folders_bot_id_bots_id_fk" FOREIGN KEY ("bot_id") REFERENCES "public"."bots"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "idx_drive_folders_bot" ON "drive_folders" USING btree ("bot_id");--> statement-breakpoint
+ALTER TABLE "drive_folders" ADD CONSTRAINT "chk_drive_folders_bot" CHECK (("drive_folders"."bot_id" IS NULL OR ("drive_folders"."scope" = 'kb' AND "drive_folders"."visibility" = 'private' AND "drive_folders"."owner_user_id" IS NOT NULL)));

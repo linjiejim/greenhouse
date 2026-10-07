@@ -26,10 +26,12 @@ import { peekDraftToken } from '../../email/security.js';
 import { getSharedMailboxCredentials } from '../../email/service.js';
 import { getToolMeta } from '../../tools/registry.js';
 import { createMemoryTool } from '../../tools/memory.js';
+import { botProfileId } from '../../profiles/profile.js';
 import { runtimeDriverEnabled } from '../../trusted-execution/kill-switches.js';
 import { buildComputerTools } from '../computer/index.js';
 import { BOT_TOOL_IDS } from '../tools/meta.js';
 import { createTeamTool } from '../tools/team.js';
+import { createSelfTool } from '../tools/self.js';
 import { createConversationTool } from '../tools/conversation.js';
 import { createBotTasksTool } from '../tools/bot-tasks.js';
 import type { BotTurnContext } from './context.js';
@@ -239,7 +241,10 @@ export function assembleInteractiveTools(input: InteractiveToolsInput): Interact
         userId: ctx.userId,
         userRole: ctx.userRole,
         sessionId: ctx.sessionId,
-        profileId: 'sprouty',
+        // Sub-calls (call_llm) pick their model from the speaking Bot; the
+        // knowledge tools see its reference folder and no other Bot's.
+        profileId: botProfileId(ctx.bot.id),
+        botId: ctx.bot.id,
         toolRegistry: input.toolRegistry,
         unattended: false,
         runtimeRunId: input.runtimeRunId,
@@ -268,6 +273,7 @@ export function assembleInteractiveTools(input: InteractiveToolsInput): Interact
 
   registry.team = createTeamTool(ctx, input.team);
   registry.conversation = createConversationTool(ctx, input.conversation);
+  registry.self = createSelfTool(ctx);
   // Offered only where background tasks can actually run (same check as the
   // greeting): otherwise S1 would promise them and every Start would fail.
   if (runtimeDriverEnabled('subagent')) registry.bot_tasks = createBotTasksTool(ctx);

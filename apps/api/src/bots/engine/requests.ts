@@ -19,7 +19,12 @@
 
 import { BotsDomainError, getDb, type BotRequestRow, type DatabaseProvider } from '@greenhouse/db';
 import { avatarConfigSchema } from '@greenhouse/types/profile-manifest';
-import type { BotCreatePayload, BotRequestDecision, BotTaskStartPayload } from '@greenhouse/types/bots';
+import type {
+  BotCreatePayload,
+  BotInstructionsUpdatePayload,
+  BotRequestDecision,
+  BotTaskStartPayload,
+} from '@greenhouse/types/bots';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
@@ -62,6 +67,40 @@ async function settle(
 ): Promise<BotRequestRow> {
   const settled = await db.bots.settleRequest(row.user_id, row.id, status, result);
   if (!settled) throw new RequestDecisionError(409, 'This request was already decided', 'already_decided');
+  return settled;
+}
+
+/** A Bot's proposal to change its own instructions: accepted = a new version of the Bot. */
+async function decideInstructionsUpdate(db: DatabaseProvider, row: BotRequestRow, decision: BotRequestDecision) {
+  const user = await db.users.getById(row.user_id);
+  const locale = botsLocale(user?.locale);
+  const proposal = safeJsonParse(row.payload, {}) as BotInstructionsUpdatePayload;
+  const bot = row.bot_id ? await db.bots.getBot(row.user_id, row.bot_id) : undefined;
+  const botName = bot?.name ?? 'Bot';
+  if (decision.decision === 'deny') {
+    const settled = await settle(db, row, 'denied', { decision: 'deny' });
+    await deliverToConversation(row.session_id, {
+      kind: 'event',
+      text: copy.declined(locale, 'instructions_update', proposal.reason ?? ''),
+      event: { kind: 'request', request_id: row.id, request_kind: 'instructions_update', bot_id: row.bot_id },
+    });
+    return settled;
+  }
+  if (!bot || bot.status !== 'active') throw new RequestDecisionError(409, 'The Bot no longer exists', 'bot_gone');
+  const instructions = validateBotInstructions(decision.instructions ?? proposal.instructions);
+  if (!instructions.ok) throw new RequestDecisionError(400, instructions.error, instructions.code);
+  const updated = await db.bots.updateBot(row.user_id, bot.id, {
+    instructions: instructions.instructions,
+    change_log: `Proposed by ${botName}: ${(proposal.reason ?? '').slice(0, 200)}`,
+    created_by: row.user_id,
+  });
+  if (!updated) throw new RequestDecisionError(409, 'The Bot no longer exists', 'bot_gone');
+  const settled = await settle(db, row, 'resolved', { decision: decision.decision, version: updated.current_version });
+  await deliverToConversation(row.session_id, {
+    kind: 'event',
+    text: copy.instructionsUpdated(locale, updated.name, updated.current_version),
+    event: { kind: 'instructions_updated', bot_id: updated.id, version: updated.current_version },
+  });
   return settled;
 }
 
@@ -279,6 +318,9 @@ export async function decideBotRequest(
         break;
       case 'task_start':
         settled = await decideTaskStart(db, row, decision);
+        break;
+      case 'instructions_update':
+        settled = await decideInstructionsUpdate(db, row, decision);
         break;
       case 'login':
       case 'takeover':

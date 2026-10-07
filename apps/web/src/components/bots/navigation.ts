@@ -75,3 +75,8 @@ export function conversationTitle(
   });
   return names.length > 0 ? names.join(', ') : copy.group;
 }
+
+/** A fresh Chat session with this Bot (by-session mode): the Chat page reads `profile`. */
+export function openChatWith(botId: string): void {
+  window.location.hash = `#/chat?profile=${encodeURIComponent(`bot:${botId}`)}`;
+}

@@ -23,7 +23,7 @@ import { FEATURE_POINTS } from '../../platform/feature-points.js';
 describe('Bot tool catalog', () => {
   it('pins the Bot tool ids', () => {
     expect([...BOT_TOOL_IDS].sort()).toEqual(
-      ['bot_tasks', 'browser', 'computer', 'conversation', 'request_takeover', 'team', 'vault'].sort(),
+      ['bot_tasks', 'browser', 'computer', 'conversation', 'request_takeover', 'self', 'team', 'vault'].sort(),
     );
   });
 

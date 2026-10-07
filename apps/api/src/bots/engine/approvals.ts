@@ -56,6 +56,8 @@ export function requestSubject(kind: BotRequestKind, payload: BotRequestPayload)
       return pick('name');
     case 'task_start':
       return pick('title');
+    case 'instructions_update':
+      return pick('reason');
   }
 }
 

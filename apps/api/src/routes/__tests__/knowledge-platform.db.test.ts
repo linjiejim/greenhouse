@@ -24,6 +24,9 @@ import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../p
 import { createKnowledgeQueryTool } from '../../tools/knowledge-query.js';
 import { createKnowledgeMutationTool } from '../../tools/knowledge-mutation.js';
 import { buildMcpServer, filterMcpToolIdsByPlatform } from '../mcp.js';
+import { MUTATING_PROXY_ALLOWLIST } from '../../agent-runtime/tool-proxy.js';
+import type { AgentIdentity } from '../../agent-runtime/api-auth.js';
+import { mcpToolIdsForGroups } from '../../tools/registry.js';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 
@@ -158,18 +161,21 @@ async function executeTool(tool: unknown, input: unknown): Promise<unknown> {
   return executable.execute(input, { toolCallId: 'knowledge-platform-test', messages: [] });
 }
 
-async function connectResources(user: UserRow) {
+/** The identity mcp-auth builds for a read-only token granted exactly these resource groups. */
+function mcpIdentityFor(user: UserRow, groups: readonly string[]): AgentIdentity {
+  return {
+    userId: user.id,
+    userRole: user.role as AgentIdentity['userRole'],
+    allowedTools: [...mcpToolIdsForGroups(groups)].filter((id) => !MUTATING_PROXY_ALLOWLIST.has(id)),
+    allowedWriteTools: [],
+    allowedWorkspaces: [],
+  };
+}
+
+async function connectResources(user: UserRow, groups: readonly string[] = ['knowledge']) {
+  const identity = mcpIdentityFor(user, groups);
   const fakeContext = {
-    get: (key: string) =>
-      key === 'agentIdentity'
-        ? {
-            userId: user.id,
-            userRole: user.role,
-            allowedTools: [],
-            allowedWriteTools: [],
-            allowedWorkspaces: [],
-          }
-        : undefined,
+    get: (key: string) => (key === 'agentIdentity' ? identity : undefined),
     req: { method: 'POST', header: () => undefined },
   } as unknown as Context;
   const server = buildMcpServer(fakeContext, { toolIds: [], registry: {} });
@@ -264,6 +270,36 @@ describe('Knowledge Platform migration', () => {
     );
     await client.close();
     await server.close();
+  });
+
+  it('hides every knowledge Resource from a token whose grant lacks the knowledge group', async () => {
+    await setupTeamDoc();
+    const uri = `greenhouse://knowledge/doc/${teamDoc.doc_id}`;
+
+    // Granted another group only: the token still has read tools, just none of knowledge's.
+    expect(mcpIdentityFor(owner, ['projects']).allowedTools).toContain('project_query');
+    const ungranted = await connectResources(owner, ['projects']);
+    expect((await ungranted.client.listResources()).resources).toEqual([]);
+    await expect(ungranted.client.readResource({ uri })).rejects.toThrow(/Resource not found/);
+    await ungranted.client.close();
+    await ungranted.server.close();
+
+    // The same user with the knowledge group granted still lists and reads.
+    const granted = await connectResources(owner, ['projects', 'knowledge']);
+    expect((await granted.client.listResources()).resources.map((resource) => resource.uri)).toContain(uri);
+    const read = await granted.client.readResource({ uri });
+    expect((read.contents[0] as { text?: string }).text).toContain(`private marker ${teamDoc.doc_id}`);
+    await granted.client.close();
+    await granted.server.close();
+
+    // The refusals are audited like any other MCP request.
+    const audits = await db.apiAudit.list({ app_id: 'mcp:unknown', limit: 20 });
+    expect(audits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ endpoint: 'mcp:resources/list', status_code: 403, user_id: owner.id }),
+        expect.objectContaining({ endpoint: 'mcp:resources/read', status_code: 403, user_id: owner.id }),
+      ]),
+    );
   });
 
   it('intersects platform capability denial with every transport', async () => {

@@ -49,6 +49,7 @@ import type {
   VaultAccessView,
   VaultItemView,
   VaultItemWrite,
+  BotVersionView,
 } from '@greenhouse/types/bots';
 import { apiWebSocketUrl } from '../api-base';
 import { authFetch } from '../auth';
@@ -144,11 +145,17 @@ export interface BotWriteInput {
   template_key?: BotTemplateKey;
   name?: string;
   role?: string;
+  description?: string;
   instructions?: string;
   avatar?: AvatarConfig;
   model_id?: string | null;
+  /** Tool ids the Bot may use; null = inherit the owner's whole allowed set. */
+  tools?: string[] | null;
+  max_steps?: number | null;
+  change_log?: string;
 }
 
+/** A shared Bot as listed to other members (published manifest + owner). */
 export interface ConversationPage {
   conversation: BotConversationDetail;
   messages: BotMessage[];
@@ -179,7 +186,7 @@ export async function bootstrapBots(): Promise<{ bot: BotView; dm_session_id: st
   return res.json();
 }
 
-export async function createBot(input: BotWriteInput): Promise<{ bot: BotView; dm_session_id: string }> {
+export async function createBot(input: BotWriteInput): Promise<{ bot: BotView; dm_session_id: string | null }> {
   const args = { json: input };
   const res = await rpc.api.bots.$post(args);
   if (!res.ok) throw await failure(res);
@@ -196,6 +203,46 @@ export async function updateBot(botId: string, input: Omit<BotWriteInput, 'templ
 export async function archiveBot(botId: string): Promise<void> {
   const res = await rpc.api.bots[':id'].$delete({ param: { id: enc(botId) } });
   if (!res.ok) throw await failure(res);
+}
+
+export async function listBotVersions(botId: string): Promise<{
+  bot_id: string;
+  profile_id: string;
+  current_version: number;
+  versions: BotVersionView[];
+}> {
+  const res = await rpc.api.bots[':id'].versions.$get({ param: { id: enc(botId) } });
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+export interface BotFolderView {
+  id: number;
+  name: string;
+  /** The folder in the Knowledge library (`#/knowledge/folder/<id>`). */
+  url: string;
+}
+
+export interface BotFileView {
+  id: number;
+  doc_id: string;
+  title: string;
+  url: string;
+  updated_at: string;
+}
+
+/** The Bot's private reference folder and its documents (folder null until first use). */
+export async function listBotFiles(botId: string): Promise<{ folder: BotFolderView | null; docs: BotFileView[] }> {
+  const res = await rpc.api.bots[':id'].files.$get({ param: { id: enc(botId) } });
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as { folder: BotFolderView | null; docs: BotFileView[] };
+}
+
+/** Create the Bot's reference folder on first use. */
+export async function ensureBotFolder(botId: string): Promise<{ folder: BotFolderView }> {
+  const res = await rpc.api.bots[':id'].files.ensure.$post({ param: { id: enc(botId) } });
+  if (!res.ok) throw await failure(res);
+  return res.json();
 }
 
 export async function listBotMemories(botId: string): Promise<{ memories: BotMemoryView[] }> {

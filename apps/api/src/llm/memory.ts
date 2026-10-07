@@ -65,7 +65,7 @@ function ageMarker(row: UserMemoryRow, now: number): string {
 }
 
 /** Budget split when a Bot reads both layers: user-level first, then its own notes. */
-const BOT_PRIVATE_INDEX_BUDGET_CHARS = 600;
+const BOT_PRIVATE_INDEX_BUDGET_CHARS = 1200;
 
 function renderIndexLines(rows: UserMemoryRow[], budget: number, now: number): { lines: string[]; dropped: number } {
   const lines: string[] = [];

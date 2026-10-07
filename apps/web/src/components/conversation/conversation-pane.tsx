@@ -35,7 +35,6 @@ import { AlertTriangle, Image, Paperclip, Share2, Eye, X, ChevronDown, GitFork }
 import type { LucideIcon } from '../../lib/icons';
 import * as api from '../../lib/api';
 import { ShareDialog } from '../chat/share-dialog';
-import { ProfileEditorDrawer } from '../chat/profile-editor';
 import { Button, Skeleton, toast } from '../ui';
 import { MAX_IMAGES } from '../../lib/constants';
 import { TaskDock } from './task-dock';
@@ -360,7 +359,6 @@ export function ConversationPane({
   const preferredProfileId = preferredProfileIds[preferenceKey];
 
   // Tool list for profile editor (fork)
-  const { availableTools, fetchTools: loadTools } = useProfileStore();
 
   // Update profile selection (don't override user's thinking mode preference)
   const handleModelChange = useCallback(
@@ -423,32 +421,6 @@ export function ConversationPane({
   }, [currentUser?.id, preferredProfileId]);
 
   // Fork profile state
-  const [forkDrawerOpen, setForkDrawerOpen] = useState(false);
-  const [forkedProfile, setForkedProfile] = useState<api.Profile | null>(null);
-
-  const handleFork = useCallback(async (profileId: string) => {
-    try {
-      const forked = await api.forkProfile(profileId);
-      setForkedProfile(forked);
-      setForkDrawerOpen(true);
-    } catch (err: any) {
-      toast(err.message || 'Failed to fork Agent', 'error');
-    }
-  }, []);
-
-  const handleForkSave = useCallback(
-    async (input: api.CustomProfileInput, editId?: number) => {
-      if (editId !== undefined) {
-        await api.updateCustomProfile(editId, input);
-      }
-      setForkDrawerOpen(false);
-      setForkedProfile(null);
-      toast('Agent forked successfully', 'success');
-      // Refresh profiles and switch to the forked one
-      loadProfiles();
-    },
-    [loadProfiles],
-  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Ref to the composer textarea — used to focus after "quote & follow up"
@@ -464,8 +436,7 @@ export function ConversationPane({
   // Load profiles on mount (tools loaded lazily by profile store for fork editor)
   useEffect(() => {
     loadProfiles();
-    if (policy.showProfileManagement) loadTools();
-  }, [loadProfiles, loadTools, policy.showProfileManagement]);
+  }, [loadProfiles]);
 
   useEffect(() => {
     const persisted = hydratePreferredProfile(currentUser?.id);
@@ -2071,7 +2042,6 @@ export function ConversationPane({
                   selectedProfileId={sessionId ? sessionProfileId : selectedProfileId}
                   onSelectProfile={handleProfileChange}
                   readonly={!!sessionId}
-                  onFork={policy.showProfileManagement && !sessionId ? handleFork : undefined}
                 />
                 {activeProfile?.id === DEFAULT_AGENT_ID && (
                   <ModelSelector
@@ -2114,21 +2084,6 @@ export function ConversationPane({
         onClose={() => setPendingFork(null)}
         onConfirm={confirmForkSession}
       />
-
-      {/* Fork Profile Editor */}
-      {policy.showProfileManagement && (
-        <ProfileEditorDrawer
-          open={forkDrawerOpen}
-          onClose={() => {
-            setForkDrawerOpen(false);
-            setForkedProfile(null);
-          }}
-          profile={forkedProfile}
-          availableTools={availableTools}
-          isSuper={currentUser?.role === 'super'}
-          onSave={handleForkSave}
-        />
-      )}
     </div>
   );
 }

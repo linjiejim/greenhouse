@@ -2,9 +2,16 @@
 
 系统 Profiles 共 3 个：**一个可选预设** Sprouty + 两个 `hidden` 的系统 profile。
 
+> **2026-10-07 起 Bot 是唯一的 Agent 身份**（[spec](../../../../docs/specs/20261007-agent-bot-convergence.md)）：
+> 「自定义 Agent」并入了 Bot（`bots` + `bot_versions`），预设 YAML 只剩**基座**职责——身份中性的静态规则、
+> `rich_output`、模型兜底。聊天页的 `sprouty` 按成员解析成他自己的 Sprouty Bot；`@` 列表里的其余身份是
+> `bot:<id>`。Bot 是私有的（2026-10-08：没有分享 / 评审 / 克隆）；管理（新建 / 编辑 / 版本 / 归档）在
+> 「设置 → 我的 Bot」（`#/settings/bots`），契约见 [bots/AGENTS.md](../bots/AGENTS.md)。下文凡提到「自定义 Agent」
+> 的历史段落按「Bot」读。
+
 > **四预设已于 2026-08-01 收敛为一个**（见 [附件与预设收敛 spec](../../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3）。quick / deep / K3 三份提示词逐字相同，区别只有模型；`sprouty-workflows` 与 `sprouty-mission` 是把「模式」伪装成「助手」——两个工具（`workflow_plan`、`mission_dispatch`）现在对所有内部会话装配，起草与执行都不再依赖开局选中某个预设。所有退役 id 由 `normalizeProfileId()` 归一到 `sprouty`，**不做数据迁移**。存量 mission 会话继续像 mission 一样工作，靠的是 `channel='mission'` 而不是 profile。
 
-**模型改由每轮选择**，所以「这个预设跑不跑得起来」的判断也从 profile 挪到了模型：`GET /api/profiles` 除 profiles 外返回 `models: listChatModels()`，该函数过掉在目录里没有任何可达 provider（`api_key_env` 未配）的模型——没配 `DEEPSEEK_API_KEY` 的部署就看不到 `deepseek-flash`，不会出现"选得到、一发消息就吃 No available providers"的虚假能力。**自定义 Agent 不参与任何过滤**：那是用户自己的数据，从他自己的列表里悄悄消失更像丢数据；它钉的模型不可达时改跑 base preset 的模型。
+**模型改由每轮选择**，所以「这个预设跑不跑得起来」的判断也从 profile 挪到了模型：`GET /api/profiles` 除 profiles 外返回 `models: listChatModels()`，该函数过掉在目录里没有任何可达 provider（`api_key_env` 未配）的模型——没配 `DEEPSEEK_API_KEY` 的部署就看不到 `deepseek-flash`，不会出现"选得到、一发消息就吃 No available providers"的虚假能力。**Bot 不参与任何过滤**：那是用户自己的数据，从他自己的列表里悄悄消失更像丢数据；它钉的模型不可达时改跑基座预设的模型。
 
 | ID | Name | Runtime | Visibility | Notes |
 | --- | --- | --- | --- | --- |
@@ -28,7 +35,7 @@ system prompt 末尾追加 `composeRichOutput({ confirm: true })` —— chart /
 
 **只有一份副本，改一次即改全部**：`RICH_OUTPUT_GUIDE` 在 `packages/utils/src/prompts.ts`。
 `sprouty` 与 `eval-judge` 声明 `rich_output: true` 因此都拿到它；`desktop` 是 `false`，原样返回。
-自定义 Agent 从 `base_profile_id` 继承 `rich_output`（`profile.ts`），因此也走同一份。
+Bot 从 sprouty 基座继承 `rich_output`（`profileFromBot`），因此也走同一份；身份段由 `enrichSystemPrompt` 放在最前。
 **不要在某个 YAML 里另写一份块格式说明**——两份副本必然漂移。
 
 其中「富块写作纪律」是硬约束，来自一次真实事故（2026-07-30，dev 会话 c0b6bf83
@@ -82,42 +89,34 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
   名字，fallback 时并不改变，记它等于指认一个没跑过的 provider。
 - **选中的模型记在用户维度**（`greenhouse_last_model:<userId>`），不是会话维度：一次会话里前几轮用 flash
   摸情况、发现要动脑再切 pro 是正常用法，把选择钉死在会话上反而拦住它。
-- **自定义 Agent 也能切**，但选中一个自定义 Agent 时选择器默认跳到它自己的 `custom_profiles.model_id`
-  ——那是作者对"这个 Agent 该怎么跑"的决定，不该被用户上一次的随手选择静默盖掉。仍是默认，可覆盖。
+- **Bot 也能切**，但选中一个 Bot 时选择器默认跳到它自己的 `bots.model_id`
+  ——那是作者对"这个 Bot 该怎么跑"的决定，不该被用户上一次的随手选择静默盖掉。仍是默认，可覆盖。
 - **采样参数归模型目录**：`temperature` / `thinking` / `max_tokens` 等写进 `models.yaml` 的 `options`，由
   `resolveModelConfig()` 合并（profile 显式给的优先）。
 - **`extends` 已删除**：它只为「同一个 Agent、换个模型」而生，模型下放之后零消费者。
-- 自定义 Agent 仍自带 `custom_profiles.model_id`，**不从 base profile 继承**：否则预设换模型会连带改掉
-  所有 fork 出去的 Agent。`base_profile_id` 是 fork 溯源与 `rich_output` 等访问属性的来源。
+- Bot 自带 `bots.model_id`，**不从基座继承**：否则预设换模型会连带改掉所有 Bot。
 
-### Custom Agent 的管理体验
+### Bot 的管理体验（取代原「Custom Agent 的管理体验」）
 
-- My Agents 中点击 built-in preset 先出现用途确认：确认后才调用 fork API 创建个人副本，并立即打开编辑器。取消确认不得产生数据库记录。
-- fork 后的模型、prompt、tools 与外观都属于个人副本，不影响 built-in preset；外观字段包括颜色、配件、叶片和基础眼型，状态表情可临时覆盖基础眼型；可选 tools 仍然只来自当前用户的 allow-set，编辑器不能扩大权限。
-- Agent 编辑器桌面端使用 90vw 双栏工作区：左侧编辑身份、紧凑可折叠的外观、模型、prompt 与快捷能力，右侧独立选择 Tools；两列分别滚动。移动端回退为单列顺序滚动。
-- 用户界面统一称 Agent；Profile 只作为服务端契约与内部类型名。Name / System Prompt 是前端必填项，未保存改动关闭前必须确认。
-- Tools 的友好说明来自 registry `brief`；只对 registry 已明确声明的 proxy surface 展示 Read / Write 风险，Write 同时展示 Confirm。该展示不改变 allow-set、confirm gate 或 runtime 权限交集。
+- 管理入口是「设置 → 我的 Bot」（`#/settings/bots`；`#/agents` 与 `#/settings/my-profiles` 永久重定向到它）：
+  Sprouty 卡片 + 我的其他 Bot 列表 + 已归档列表。每行可「开新对话」（`#/chat?profile=bot:<id>`，by-session）、发消息
+  （永续私聊，需 `bots` 开关）、编辑（抽屉 → 编辑对话框）。没有共享、评审或克隆。
+- 新建走一个对话框两个页签：「新建 Bot」（模板库 → 表单）与「新建群聊」（有 `bots` 开关时）；Bots 页侧栏只有一个「新建」。
+- 编辑表单（`components/bots/bot-form.tsx`）= 名字 / 岗位 / 用途 / 守则（≤8000）/ 工具过滤（`bot-tools-field.tsx`，默认
+  继承全部、可勾子集，只来自当前用户的 allow-set）/ 每轮步数上限 / 模型 / 植物头像。用户界面统一称 Bot；Profile 只作为
+  服务端契约与内部类型名。
+- Bot 抽屉展示用途、守则、模型、工具、版本历史、私有记忆、私有文件夹；Sprouty 私聊首次进入有一条可跳过的命名提示。
 
-### Custom Agent 的版本与生命周期（2026-08-12）
+### Bot 的版本（2026-08-12 定、2026-10-07 搬到 Bot、2026-10-08 去掉治理）
 
-- `custom_profiles` 是稳定资产身份；每次创建/编辑都会向 `custom_profile_versions` 追加完整、带 SHA-256
-  `manifest_hash` 的不可变 manifest。版本同时记录 change log、purpose、audience、risk、budget policy、Eval refs、
-  backup owner 与 review due date；服务层不提供版本 update/delete。
-- 生命周期为 `draft → review → pilot|verified|rejected`，发布后还可 `suspended` / `deprecated` / `archived`。
-  owner 只能编辑自己的 draft、提交审核、撤回或归档；super 在 Agents 页看到所有未归档资产，包括未共享 review，
-  并负责试点、验证、驳回、暂停和退役。只有 `pilot` / `verified` 会共享，非 owner 只能看到 published version。
-- **编辑已验证 Agent 会立即撤销发布**：创建新版本后资产回到 draft，`is_shared=false`、published/reviewer/review
-  字段清空，必须重新审核。当前模型没有独立 release channel，所以不会让旧 verified 继续出现在选择器；但旧的
-  `custom:<id>@<version>` manifest 保留，已 pin 的会话、定时任务与 Eval 仍按原证据运行。
-- 新会话、Scheduler task 与 Eval run 在落库前把 `custom:<id>` pin 为 `custom:<id>@<version>`；外部 Agent tool
-  proxy 同样先按真实用户权限 pin。`resolveProfileAsync()` 对缺失/畸形 custom 引用明确失败，绝不静默替换为 Sprouty。
-- 自动复核 worker 在 API boot 先扫一轮、随后每 15 分钟运行：`listReviewDue(at, limit)` 找到到期
-  pilot/verified，`listActiveWithOwners(limit, afterId)` 以稳定游标检查 owner/backup active 状态。超过复核期，
-  或 owner disabled 且没有 active backup 时，都会以逻辑 actor `system:agent-governance` 自动转为 suspended；
-  owner disabled 但 backup active 时保持可用，同时提醒 backup 与 super 复核归属。每条失败独立隔离，不阻断
-  后续 Agent；进程若在状态变更后、通知前退出，下一轮会从 system-suspended 行用同一 dedupe key 补齐永久通知。
-  worker 与通知不在 Profile 解析层实现。发布时若调用方和版本均未指定复核日期，low/medium risk 默认 90 天、
-  high risk 默认 60 天，保证所有已发布 Agent 都能进入到期扫描。
+- `bots` 是稳定资产身份；每次创建/编辑都会向 `bot_versions` 追加完整、带 SHA-256 `manifest_hash` 的不可变
+  manifest（名字 / 岗位 / 用途 / 守则 / 工具 / 模型 / 步数 / 头像 + change log）；服务层不提供版本 update/delete。
+  版本只在抽屉的历史里可见，也是守则提议卡（`self` 工具）接受后的落点。
+- **Bot 私有**：只有主人（super 为支持可查）能解析任何 `bot:<id>[@v]`；旧自定义 Agent 的 lifecycle / 发布 /
+  backup owner / review due / 自动治理 worker 已随迁移 `0014_bots_private` 一并删除。
+- **主人自己的聊天会话跟随最新定义**（`sessions.profile_id='bot:<id>'`，每轮重新 pin 到当前版本），与 Bots 永续线程一致；
+  定时任务、Eval、子代理在落库前 pin 为 `bot:<id>@<version>`，旧 manifest 永不改写，已 pin 的工作按原证据运行；
+  外部 Agent tool proxy 同样先按真实用户权限 pin。`resolveProfileAsync()` 对缺失/畸形引用明确失败，绝不静默替换为 Sprouty。
 
 ## 默认预设 (`sprouty`)
 
@@ -263,15 +262,15 @@ stateless Agent/MCP 不开放该文件工具。
 
 兼容规则（`normalizeProfileId()`）：
 
-- `team` / `default` / `workflow-planner` / `sprouty-agents` 与四个退役预设等旧 preset ID 一律映射为 `sprouty`，用于历史 session / eval run / 定时任务 / custom profile base 的解析。
+- `team` / `default` / `workflow-planner` / `sprouty-agents` 与四个退役预设等旧 preset ID 一律映射为 `sprouty`，用于历史 session / eval run / 定时任务的解析。
 - `local-dev` / `local-pi` 映射为 `desktop`（agent-runtime profile）。
-- custom profile 的 `base_profile_id` 只能是预设之一（`CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS`）；存量旧值先归一再校验，归一后仍不合法的回落 `sprouty`。
+- `custom:<id>[@v]`（退役的自定义 Agent 引用）经 `bots.legacy_custom_id` 解析成对应的 Bot，版本号一一对应（迁移 `0010_bot_identity` 原样复制）；存量 `profile_id` 不改写。
 
-### 自建 Agent 的工具集 = 声明 ∪ 内置，再 ∩ 用户权限
+### Bot 的工具集 = 过滤器 ∪ 内置，再 ∩ 用户权限
 
-- **系统 profile 的 YAML `tools:` 运行时不读**——系统 Agent 跑的是用户完整 allow-set（所以上表 sprouty 那行写「工具由用户权限/分配控制」）。它只在 fork 时被读过一次，且读错了：见 api AGENTS.md 的 fork 修复条目。
-- **自建 Agent 的 `tools` 是交集过滤器**，另有 10 个 `builtin: true` 的工具无条件并入该过滤器（`BUILTIN_AGENT_TOOL_IDS`），使作者不必知道它们存在也能得到一个会追问、会读附件、会定时的 Agent。判据、清单与「必须并进过滤集而非结果集」的理由写在 api AGENTS.md「内置 Agent 工具」一节。
-- 内置只影响自建 Agent；系统 profile 本就拿全量 allow-set，不受影响。无人值守面（定时任务 / workflow 节点 / spawn 子会话）另有 fail-closed 白名单 `filterUnattendedToolIds` 收窄，内置不给它新增任何工具。
+- **系统 profile 的 YAML `tools:` 运行时不读**——预设跑的是用户完整 allow-set（所以上表 sprouty 那行写「工具由用户权限/分配控制」）。`tools: null` 的 Bot 同样如此。
+- **Bot 的 `tools` 列表是交集过滤器**（`profile.narrow_tools`），另有 10 个 `builtin: true` 的工具无条件并入该过滤器（`BUILTIN_AGENT_TOOL_IDS`），使作者不必知道它们存在也能得到一个会追问、会读附件、会定时的 Bot。判据、清单与「必须并进过滤集而非结果集」的理由写在 api AGENTS.md「内置 Agent 工具」一节。Bots 永续线程里同一条规则由 `bots/engine/bot-tools.ts` 施加。
+- 内置只影响带过滤器的 Bot；预设与 `tools: null` 的 Bot 本就拿全量 allow-set，不受影响。无人值守面（定时任务 / workflow 节点 / spawn 子会话）另有 fail-closed 白名单 `filterUnattendedToolIds` 收窄，内置不给它新增任何工具。
 
 ## Task-specific LLM Configs
 

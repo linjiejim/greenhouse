@@ -26,6 +26,7 @@ import {
   UserPlus,
   XCircle,
   type LucideIcon,
+  Pencil,
 } from '../../lib/icons';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import type { BotMessage } from '../../lib/api/bots';
@@ -139,6 +140,7 @@ const EVENT_ICON: Partial<Record<BotEvent['kind'], LucideIcon>> = {
   takeover_released: Monitor,
   login_done: Lock,
   task_started: Play,
+  instructions_updated: Pencil,
   limit: AlertTriangle,
   turn_error: AlertTriangle,
   // Nobody could answer (the Bot was archived) — the engine says so instead of going quiet.
@@ -156,6 +158,7 @@ const REQUEST_ICON: Record<BotRequestKind, LucideIcon> = {
   approval: ShieldCheck,
   bot_create: Sparkles,
   task_start: Play,
+  instructions_update: Pencil,
 };
 
 /** A system line: who joined, what finished, what stopped — with the one action that helps. */

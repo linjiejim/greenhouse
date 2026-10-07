@@ -1,17 +1,24 @@
 /**
- * "New Bot": a template gallery (chief / researcher / operator / writer /
- * analyst / custom / from an Agent), then the same editable form for all of
- * them. A template or Agent only pre-fills — the member can rename, re-role and re-dress
+ * The create dialog: "New Bot" — a template gallery (researcher / operator /
+ * writer / analyst / custom), then the same editable form for all of them — and,
+ * where Bots threads are enabled, a "New group" tab (new-group-dialog.tsx).
+ * A template only pre-fills — the member can rename, re-role and re-dress
  * before anything is created. Templates that need the computer say so when
  * the organization has none, instead of promising browsing that won't work.
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import { TEMPLATE_PLANT, withPlant, type PlantId } from '@greenhouse/types';
-import { BOT_TEMPLATES, type BotTemplate, type BotTemplateKey, type BotView } from '@greenhouse/types/bots';
-import { Button, Dialog, Tag, toast } from '../ui';
+import {
+  BOT_TEMPLATES,
+  type BotConversationDetail,
+  type BotTemplate,
+  type BotTemplateKey,
+  type BotView,
+} from '@greenhouse/types/bots';
+import { Button, Dialog, Tabs, Tag, toast } from '../ui';
 import { FormActions } from '../form';
-import { ArrowLeft, Bot, Monitor, Plus } from '../../lib/icons';
+import { ArrowLeft, Monitor, Plus } from '../../lib/icons';
 import { useI18n } from '../../lib/i18n';
 import { useAuthStore, useProfileStore } from '../../stores';
 import { botPlant, freshPlant } from '../../lib/plant-avatar';
@@ -20,12 +27,22 @@ import { computerReady, useBotsStore } from './bots-store';
 import { BotAvatar } from './bot-avatar';
 import { BotFields, useBotNameMessage, type BotDraft } from './bot-form';
 import { botNameIssueFromCode, validateBotName } from './bot-name';
-import { AgentPicker, snapshotableAgents } from './agent-picker';
-import { botDraftFromAgent } from './agent-snapshot';
+import { NewGroupPanel } from './new-group-dialog';
+
+export type CreateTab = 'bot' | 'group';
 
 /** A blank Bot wears a plant none of the member's Bots has yet. */
 export function emptyBotDraft(taken: readonly PlantId[]): BotDraft {
-  return { name: '', role: '', instructions: '', avatar: withPlant({}, freshPlant(taken)), model_id: null };
+  return {
+    name: '',
+    role: '',
+    description: '',
+    instructions: '',
+    avatar: withPlant({}, freshPlant(taken)),
+    model_id: null,
+    tools: null,
+    max_steps: null,
+  };
 }
 
 /** A template pre-fills its copy and pins its plant (Ivy → ivy …), whatever the stored template avatar says. */
@@ -34,28 +51,39 @@ export function templateBotDraft(template: BotTemplate, copyLocale: 'en' | 'zh')
   return {
     name: copy.name,
     role: copy.role,
+    description: copy.pitch,
     instructions: copy.instructions,
     avatar: withPlant(template.avatar, TEMPLATE_PLANT[template.key]),
     model_id: null,
+    tools: null,
+    max_steps: null,
   };
 }
 
 export function NewBotDialog({
   open,
   inviteTo,
+  initialTab = 'bot',
+  groupEnabled = false,
   onClose,
   onCreated,
+  onGroupCreated,
 }: {
   open: boolean;
   /** Add the new Bot to this conversation (Invite → "Create a new Bot"). */
   inviteTo?: string;
+  /** Which tab opens first; the toolbar's "New" opens on `bot`. */
+  initialTab?: CreateTab;
+  /** Show the "New group" tab (Bots threads are enabled and this is not the Invite flow). */
+  groupEnabled?: boolean;
   onClose: () => void;
   /**
    * The Bot exists. `invitedTo` is set when it also joined `inviteTo`;
    * `inviteFailed` when it was created but could not join (the member stays
    * where they were — the toast already said why).
    */
-  onCreated: (result: { bot: BotView; dmSessionId: string; invitedTo?: string; inviteFailed?: boolean }) => void;
+  onCreated: (result: { bot: BotView; dmSessionId: string | null; invitedTo?: string; inviteFailed?: boolean }) => void;
+  onGroupCreated?: (conversation: BotConversationDetail) => void;
 }) {
   const { t, locale } = useI18n();
   const copyLocale = locale === 'zh' ? 'zh' : 'en';
@@ -64,10 +92,11 @@ export function NewBotDialog({
   const upsertBot = useBotsStore((state) => state.upsertBot);
   const nickname = useAuthStore((state) => state.currentUser?.nickname ?? null);
   const models = useProfileStore((state) => state.models);
-  const profiles = useProfileStore((state) => state.profiles);
   const fetchProfiles = useProfileStore((state) => state.fetchProfiles);
   const nameMessage = useBotNameMessage();
-  const [step, setStep] = useState<'gallery' | 'agents' | 'form'>('gallery');
+  const [step, setStep] = useState<'gallery' | 'form'>('gallery');
+  const [tab, setTab] = useState<CreateTab>(initialTab);
+  const tabbed = groupEnabled && !inviteTo;
   const [templateKey, setTemplateKey] = useState<BotTemplateKey | null>(null);
   const takenPlants = useMemo(() => bots.map(botPlant), [bots]);
   const [draft, setDraft] = useState<BotDraft>(() => emptyBotDraft(takenPlants));
@@ -75,10 +104,10 @@ export function NewBotDialog({
   const [saving, setSaving] = useState(false);
   const [serverIssue, setServerIssue] = useState<ReturnType<typeof botNameIssueFromCode>>(null);
   const hasComputer = computerReady(runtime);
-  const agents = useMemo(() => snapshotableAgents(profiles), [profiles]);
 
   useEffect(() => {
     if (!open) return;
+    setTab(initialTab);
     setStep('gallery');
     setTemplateKey(null);
     setDraft(emptyBotDraft(takenPlants));
@@ -87,7 +116,7 @@ export function NewBotDialog({
     void fetchProfiles();
     // Reset on open only: a Bot list refresh must not re-dress the draft mid-edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchProfiles, open]);
+  }, [fetchProfiles, initialTab, open]);
 
   const issue = useMemo(
     () => validateBotName(draft.name, { otherNames: bots.map((bot) => bot.name), nickname }),
@@ -103,28 +132,23 @@ export function NewBotDialog({
     setStep('form');
   };
 
-  const chooseAgent = (agent: (typeof agents)[number]) => {
-    setTemplateKey(null);
-    setDraft(botDraftFromAgent(agent));
-    setTouched(true);
-    setServerIssue(null);
-    setStep('form');
-  };
-
   const create = async () => {
     setTouched(true);
     if (issue) return;
     setSaving(true);
     setServerIssue(null);
-    let created: { bot: BotView; dm_session_id: string };
+    let created: { bot: BotView; dm_session_id: string | null };
     try {
       created = await botsApi.createBot({
         ...(templateKey ? { template_key: templateKey } : {}),
         name: draft.name.trim(),
         role: draft.role.trim(),
+        description: draft.description.trim(),
         instructions: draft.instructions.trim(),
         avatar: draft.avatar,
         model_id: draft.model_id,
+        tools: draft.tools,
+        max_steps: draft.max_steps,
       });
     } catch (err) {
       const code = botsApi.isBotsApiError(err) ? botNameIssueFromCode(err.code) : null;
@@ -165,8 +189,32 @@ export function NewBotDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={t('bots.gallery.title')} size="lg">
-      {step === 'gallery' ? (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={tabbed ? t('bots.create.title') : t('bots.gallery.title')}
+      size="lg"
+      tabs={
+        tabbed ? (
+          <Tabs
+            tabs={[
+              { key: 'bot', label: t('bots.create.tabBot'), testId: 'bots-create-tab-bot' },
+              { key: 'group', label: t('bots.create.tabGroup'), testId: 'bots-create-tab-group' },
+            ]}
+            active={tab}
+            onChange={(key) => setTab(key as CreateTab)}
+            ariaLabel={t('bots.create.title')}
+          />
+        ) : undefined
+      }
+    >
+      {tabbed && tab === 'group' ? (
+        <NewGroupPanel
+          onClose={onClose}
+          onCreated={(conversation) => onGroupCreated?.(conversation)}
+          onNewBot={() => setTab('bot')}
+        />
+      ) : step === 'gallery' ? (
         <div data-testid="bots-template-gallery">
           <p className="mb-3 text-sm text-fg-muted">{t('bots.gallery.subtitle')}</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -213,35 +261,7 @@ export function NewBotDialog({
                 <span className="mt-0.5 block text-xs leading-5 text-fg-muted">{t('bots.gallery.customPitch')}</span>
               </span>
             </button>
-            {agents.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setStep('agents')}
-                className="flex items-start gap-3 rounded-xl border border-dashed border-edge-strong p-3 text-left transition-colors hover:border-primary-edge hover:bg-primary-subtle"
-                data-template="agent"
-              >
-                <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-surface-muted text-fg-muted">
-                  <Bot size={20} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-fg">{t('bots.gallery.fromAgent')}</span>
-                  <span className="mt-0.5 block text-xs leading-5 text-fg-muted">
-                    {t('bots.gallery.fromAgentPitch')}
-                  </span>
-                </span>
-              </button>
-            )}
           </div>
-        </div>
-      ) : step === 'agents' ? (
-        <div>
-          <AgentPicker agents={agents} onPick={chooseAgent} />
-          <FormActions className="mt-4">
-            <Button variant="ghost" onClick={() => setStep('gallery')}>
-              <ArrowLeft size={14} className="mr-1" />
-              {t('bots.gallery.back')}
-            </Button>
-          </FormActions>
         </div>
       ) : (
         <div data-testid="bots-new-bot-form">

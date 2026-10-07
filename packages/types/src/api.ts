@@ -50,38 +50,24 @@ export interface Profile {
   /** Registry model id this agent is pinned to (v3: one agent = one model). */
   model_id?: string;
   tools: string[];
+  /** True when the Bot inherits its owner's whole allowed set (`tools` is then empty, not a filter). */
+  tools_inherited?: boolean;
   max_steps?: number;
   tool_choice?: string;
   system_prompt?: string;
   usage?: ProfileUsage | null;
-  // Custom profile fields
+  /** The Bot behind this entry (every entry but the hidden runtimes; `sprouty` = the member's own Sprouty). */
+  bot_id?: string;
+  role?: string;
+  template_key?: string | null;
+  // Bot fields (`bot:<id>` entries)
   is_custom?: boolean;
-  is_shared?: boolean;
-  base_profile_id?: string;
   user_id?: string;
-  /** Present when the custom Agent belongs to another internal user. */
-  owner_nickname?: string;
-  slug?: string;
-  forked_from?: string | null;
   avatar?: ProfileAvatar;
   created_at?: string;
   updated_at?: string;
-  /** Stable asset lifecycle and immutable executable version metadata. */
-  lifecycle_status?: 'draft' | 'review' | 'pilot' | 'verified' | 'rejected' | 'suspended' | 'deprecated' | 'archived';
-  lifecycle_note?: string | null;
+  /** Latest immutable version of the Bot (every save appends one). */
   current_version?: number;
-  published_version?: number | null;
-  manifest_hash?: string;
-  change_log?: string;
-  purpose?: string | null;
-  audience?: string | null;
-  risk_level?: 'low' | 'medium' | 'high';
-  budget_policy?: Record<string, unknown>;
-  eval_refs?: unknown[];
-  owner_backup_user_id?: string | null;
-  reviewed_by?: string | null;
-  reviewed_at?: string | null;
-  next_review_at?: string | null;
 }
 
 export interface ProfileUsage {

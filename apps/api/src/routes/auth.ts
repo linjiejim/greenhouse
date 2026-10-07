@@ -91,6 +91,9 @@ export async function issueUserSession(user: UserRow) {
   };
 }
 
+/** Standing notes every Bot and chat reads (identity-prompt S3). */
+export const USER_NOTES_MAX = 2000;
+
 const auth = new Hono<AppEnv>()
   .use(
     '/password-link/*',
@@ -320,10 +323,11 @@ const auth = new Hono<AppEnv>()
 
     const body = (await c.req.json().catch(() => ({}))) as { notes?: string; locale?: string };
 
-    // Validate notes length (max 500 chars)
+    // Validate notes length (max 2000 chars — the member's standing notes are
+    // the USER.md of every Bot and chat, spec 20261007 phase 4)
     const notes = body.notes ?? undefined;
-    if (notes !== undefined && notes !== null && notes.length > 500) {
-      return c.json({ error: 'Notes must be 500 characters or less' }, 400);
+    if (notes !== undefined && notes !== null && notes.length > USER_NOTES_MAX) {
+      return c.json({ error: `Notes must be ${USER_NOTES_MAX} characters or less` }, 400);
     }
 
     // Validate locale
@@ -378,7 +382,11 @@ const auth = new Hono<AppEnv>()
     }));
     return c.json({ memories });
   })
-  /** PATCH /api/auth/me/memories/:id — edit content/category/pinned, or move status */
+  /**
+   * PATCH /api/auth/me/memories/:id — edit content/category/pinned, move status, or
+   * move a Bot's private note to the shared layer (`bot_id: null`) / into one of the
+   * caller's Bots (`bot_id: <id>`).
+   */
   .patch('/me/memories/:id', async (c) => {
     const authUser = getAuthUser(c);
     if (!authUser) return c.json({ error: 'Not authenticated' }, 401);
@@ -395,13 +403,15 @@ const auth = new Hono<AppEnv>()
       category?: UserMemoryCategory;
       pinned?: boolean;
       status?: UserMemoryStatus;
+      bot_id?: string | null;
     };
     if (
       body.title === undefined &&
       body.content === undefined &&
       body.category === undefined &&
       body.pinned === undefined &&
-      body.status === undefined
+      body.status === undefined &&
+      body.bot_id === undefined
     ) {
       return c.json({ error: 'Nothing to update' }, 400);
     }
@@ -411,6 +421,12 @@ const auth = new Hono<AppEnv>()
 
     const check = validateMemoryText({ title: body.title, content: body.content });
     if (!check.ok) return c.json({ error: check.error }, 400);
+
+    if (body.bot_id !== undefined && body.bot_id !== null) {
+      if (typeof body.bot_id !== 'string' || !(await getDb().bots.getBot(authUser.id, body.bot_id))) {
+        return c.json({ error: 'Bot not found' }, 400);
+      }
+    }
 
     if (body.status !== undefined) {
       // Restoring, archiving, or waking a dormant memory. `superseded` is a
@@ -422,12 +438,17 @@ const auth = new Hono<AppEnv>()
     }
 
     const updated =
-      body.title !== undefined || body.content !== undefined || body.category !== undefined || body.pinned !== undefined
+      body.title !== undefined ||
+      body.content !== undefined ||
+      body.category !== undefined ||
+      body.pinned !== undefined ||
+      body.bot_id !== undefined
         ? await getDb().userMemories.update(id, authUser.id, {
             title: body.title?.trim(),
             content: body.content?.trim(),
             category: body.category,
             pinned: body.pinned,
+            ...(body.bot_id !== undefined ? { bot_id: body.bot_id } : {}),
           })
         : await getDb().userMemories.getOwned(id, authUser.id);
 

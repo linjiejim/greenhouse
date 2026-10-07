@@ -102,6 +102,15 @@ Actions: notes — list the shared notes (decisions, open items, facts every Bot
     description: `Background work that keeps going while the member chats.
 Actions: start {title, brief} — propose a background task; the member presses Start on a card. It runs read-only (browse, read, summarise — no form submits, no shell) and reports back here when done, so write a self-contained brief. list — this conversation's tasks; cancel {run_id}.`,
   },
+  {
+    ...base,
+    id: 'self',
+    name: 'Self',
+    brief: 'Propose a change to your own standing instructions (the member decides)',
+    icon: 'Pencil',
+    sort_order: 97,
+    description: `Propose a change to your own standing instructions. Action: propose_instructions {instructions, reason} — the complete new text (≤8000 characters) and why, in one or two sentences. Nothing changes until the member accepts the card they get; tell them in one line what you proposed. Use it when you learned a lasting lesson about how to do your job, never to bypass a rule they wrote.`,
+  },
 ];
 
 export const BOT_TOOL_IDS: readonly string[] = BOT_TOOL_METAS.map((m) => m.id);

@@ -1,21 +1,21 @@
 /**
- * `pnpm cli profiles` — list built-in profiles + custom database profiles.
+ * `pnpm cli profiles` — list built-in profiles + every member's Bots.
  *
- * Built-ins come from the in-process registry; custom profiles are read
- * directly from `custom_profiles` (there is no cross-user list service).
+ * Built-ins come from the in-process registry; Bots are read directly from
+ * `bots` (there is no cross-user list service).
  */
 
 import { sql } from 'drizzle-orm';
 import { loadAllProfiles } from '../../profiles/profile.js';
 import { openDb, parseFlags, flagBool, table, heading, dim, truncate } from './shared.js';
 
-interface CustomProfileRow {
-  id: number;
-  slug: string;
+interface BotListRow {
+  id: string;
   user_id: string;
   name: string;
-  base_profile_id: string;
-  is_shared: boolean;
+  role: string;
+  current_version: number;
+  status: string;
   updated_at: string;
 }
 
@@ -27,10 +27,10 @@ export async function run(args: string[]): Promise<number> {
   const db = await openDb();
   const custom = (await db
     .executeRaw(
-      sql`SELECT id, slug, user_id, name, base_profile_id, is_shared, updated_at
-          FROM custom_profiles ORDER BY id`,
+      sql`SELECT id, user_id, name, role, current_version, status, updated_at
+          FROM bots ORDER BY created_at`,
     )
-    .catch(() => [])) as CustomProfileRow[];
+    .catch(() => [])) as BotListRow[];
 
   if (json) {
     console.log(
@@ -69,19 +69,19 @@ export async function run(args: string[]): Promise<number> {
     ),
   );
 
-  console.log(heading(`Custom profiles (${custom.length})`));
+  console.log(heading(`Bots (${custom.length})`));
   if (!custom.length) {
     console.log(dim('  (none)'));
   } else {
     console.log(
       table(
-        ['ID', 'Slug', 'Name', 'Base', 'Visibility', 'Owner'],
+        ['ID', 'Name', 'Role', 'Version', 'Status', 'Owner'],
         custom.map((r) => [
-          String(r.id),
-          r.slug,
+          r.id,
           truncate(r.name, 24),
-          r.base_profile_id,
-          r.is_shared ? 'shared' : dim('private'),
+          truncate(r.role, 20),
+          `v${r.current_version}`,
+          r.status,
           String(r.user_id).slice(0, 8),
         ]),
       ),

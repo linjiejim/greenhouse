@@ -21,7 +21,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { sql } from 'drizzle-orm';
 import chalk from 'chalk';
-import type { CustomProfileInput } from '@greenhouse/db';
+import type { BotInput } from '@greenhouse/db';
 import { DATA_DIR } from '../../paths.js';
 import { hashPassword } from '../../auth/password.js';
 import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
@@ -62,7 +62,7 @@ const LOAD_ORDER = [
   'user_memories',
   'scheduled_tasks',
   'feature_requests',
-  'custom_profiles',
+  'bots',
   'user_features',
 ];
 
@@ -159,13 +159,17 @@ export async function run(args: string[]): Promise<number> {
       continue;
     }
 
-    // Custom agents go through the service: it writes the asset AND its immutable
-    // draft v1 (custom_profile_versions) in one transaction, which raw inserts
-    // cannot reproduce without duplicating the manifest-hash logic.
-    if (table === 'custom_profiles') {
+    // Bots go through the service: it writes the identity AND its immutable
+    // version 1 (bot_versions) in one transaction, which raw inserts cannot
+    // reproduce without duplicating the manifest-hash logic.
+    if (table === 'bots') {
       for (const row of rows) {
-        const { id: _id, created_at: _createdAt, updated_at: _updatedAt, ...input } = row;
-        await db.customProfiles.create(input as unknown as CustomProfileInput);
+        const { id: _id, created_at: _createdAt, updated_at: _updatedAt, avatar, ...input } = row;
+        // The dataset keeps the avatar as an object (like every other JSON column here); the service stores text.
+        await db.bots.createBot({
+          ...(input as unknown as BotInput),
+          avatar: typeof avatar === 'string' ? avatar : JSON.stringify(avatar ?? {}),
+        });
       }
       totalRows += rows.length;
       console.log(`• ${table}: ${rows.length} rows`);

@@ -338,6 +338,12 @@ git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 > Settings → Email with explicit IMAP/SMTP settings). Existing custom agents become
 > immutable draft v1 and stay unshared until a super publishes them. Knowledge documents are
 > re-tokenized for search on the first boot.
+>
+> **Upgrading from 1.3.x** — custom Agents and Bots merged into one private identity: every
+> custom Agent becomes a Bot of its owner (same versions; `custom:<id>@<v>` references keep
+> resolving), sharing / review / clone are gone (other members' pinned references to a shared
+> Agent stop resolving), the Agents page moved to Settings → My Bots, and the knowledge
+> full-text index is created on migration.
 
 ## Configuration
 
@@ -453,8 +459,8 @@ if (effectiveTools.includes('my_user_tool')) {
 
 There is no per-tool access guard to declare. Who may call a tool is resolved before anything
 is built: `super` gets every tool; a `team` member gets the `is_global` tools, the tools owned
-by each feature flag they have, and any tools assigned to them individually. A custom Agent can
-only narrow that set, and each surface narrows it again (the proxy allowlists and OAuth scopes,
+by each feature flag they have, and any tools assigned to them individually. A Bot's tool
+filter can only narrow that set, and each surface narrows it again (the proxy allowlists and OAuth scopes,
 the unattended denylist for scheduled runs). Ownership of the data itself is checked inside the
 tool, against the `userId` its factory received.
 

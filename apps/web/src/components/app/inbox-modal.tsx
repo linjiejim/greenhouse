@@ -32,7 +32,7 @@ function notificationHref(item: PlatformNotification): string | null {
     // router keeps this compatibility form readable.
     return executionNotificationHref(item.run_id, item.payload);
   }
-  if (item.agent_id) return '#/agents';
+  if (item.agent_id) return '#/settings/bots';
   return null;
 }
 

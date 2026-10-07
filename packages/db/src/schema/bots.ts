@@ -1,13 +1,20 @@
 /**
  * Drizzle schema — Bots: personal assistants with a shared computer (PostgreSQL).
  *
- * Tables: bots, bot_conversations, bot_conversation_members, bot_shared_notes,
+ * Tables: bots, bot_versions, bot_conversations, bot_conversation_members, bot_shared_notes,
  *         bot_requests, bot_inbox, bot_computers, vault_items, vault_access_log
  *
  * Design: docs/specs/20261005-personal-assistant-bots.md.
  *
- * - A Bot is a lightweight, user-owned persistent identity (name, role,
- *   instructions, avatar, model). It is NOT a custom Agent version.
+ * - A Bot is THE agent identity (docs/specs/20261007-agent-bot-convergence.md):
+ *   a user-owned row (name, role, instructions, avatar, model, optional tool
+ *   filter) that Chat sessions, automations and the Bots engine all run as.
+ *   Every create / edit appends an immutable `bot_versions` manifest (what a
+ *   pinned `bot:<id>@<v>` reference resolves to; the `self` proposal card and
+ *   the drawer's history read it). A Bot is private to its owner: there is no
+ *   sharing, review or clone (the retired `custom_profiles` governance went
+ *   with migration 0014). `legacy_custom_id` keeps stored `custom:<id>[@v]`
+ *   references resolvable.
  * - A conversation is a `sessions` row (channel `bots`) plus one
  *   `bot_conversations` row. A direct conversation belongs to exactly one owner
  *   Bot and never turns into a group; inviting another Bot adds a guest member.
@@ -23,7 +30,18 @@
  *   and are never returned by any read path.
  */
 
-import { pgTable, serial, text, integer, bigint, boolean, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  serial,
+  text,
+  integer,
+  bigint,
+  boolean,
+  timestamp,
+  index,
+  uniqueIndex,
+  unique,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './user.js';
 import { sessions } from './session.js';
@@ -55,6 +73,21 @@ export const bots = pgTable(
     status: text('status', { enum: ['active', 'archived'] })
       .notNull()
       .default('active'),
+    /** One line on what the Bot is for (gallery, picker, `@` list). */
+    description: text('description').notNull().default(''),
+    /**
+     * JSON array of tool ids the Bot may use, or NULL = the owner's whole allowed
+     * set (what the built-in preset runs with). A list only ever narrows: it is
+     * intersected with the owner's permissions at run time (resolveEffectiveTools).
+     */
+    tools: text('tools'),
+    /** Per-turn step cap for Chat sessions and automations; NULL = the base preset's default. */
+    max_steps: integer('max_steps'),
+    // ── Versions (formerly custom_profiles) ──
+    /** Latest immutable manifest (bot_versions.version) — what the owner edits and runs. */
+    current_version: integer('current_version').notNull().default(1),
+    /** The `custom_profiles.id` this Bot was migrated from; stored `custom:<id>[@v]` references resolve through it. */
+    legacy_custom_id: integer('legacy_custom_id'),
     last_active_at: ts('last_active_at'),
     created_at: ts('created_at').notNull(),
     updated_at: ts('updated_at').notNull(),
@@ -64,6 +97,45 @@ export const bots = pgTable(
     uniqueIndex('uq_bots_user_name_active')
       .on(table.user_id, table.name_key)
       .where(sql`${table.status} = 'active'`),
+    unique('uq_bots_legacy_custom_id').on(table.legacy_custom_id),
+  ],
+);
+
+// ─── bot_versions ─────────────────────────────────────────
+
+/**
+ * Immutable executable manifests. Editing a Bot appends a row and advances
+ * `bots.current_version`; there is intentionally no update / delete service.
+ * `custom:<id>@<v>` references from before the convergence map onto the same
+ * version numbers (the migration copied them one-to-one).
+ */
+export const botVersions = pgTable(
+  'bot_versions',
+  {
+    id: serial('id').primaryKey(),
+    bot_id: text('bot_id')
+      .notNull()
+      .references(() => bots.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    manifest_hash: text('manifest_hash').notNull(),
+    change_log: text('change_log').notNull().default(''),
+    name: text('name').notNull(),
+    role: text('role').notNull().default(''),
+    description: text('description').notNull().default(''),
+    instructions: text('instructions').notNull().default(''),
+    /** JSON array or NULL (= the owner's whole allowed set), as on `bots`. */
+    tools: text('tools'),
+    model_id: text('model_id'),
+    max_steps: integer('max_steps'),
+    /** Avatar JSON as on `bots`; hashed into `manifest_hash`, so stored values are never rewritten. */
+    avatar: text('avatar').notNull().default('{}'),
+    created_by: text('created_by'),
+    created_at: ts('created_at').notNull(),
+  },
+  (table) => [
+    unique('uq_bot_versions_bot_version').on(table.bot_id, table.version),
+    index('idx_bot_versions_bot').on(table.bot_id),
+    index('idx_bot_versions_created').on(table.created_at),
   ],
 );
 
@@ -171,7 +243,9 @@ export const botRequests = pgTable(
       .notNull()
       .references(() => botConversations.session_id, { onDelete: 'cascade' }),
     bot_id: text('bot_id').references(() => bots.id, { onDelete: 'set null' }),
-    kind: text('kind', { enum: ['takeover', 'login', 'approval', 'bot_create', 'task_start'] }).notNull(),
+    kind: text('kind', {
+      enum: ['takeover', 'login', 'approval', 'bot_create', 'task_start', 'instructions_update'],
+    }).notNull(),
     status: text('status', { enum: ['pending', 'resolved', 'denied', 'expired', 'canceled'] })
       .notNull()
       .default('pending'),
@@ -305,6 +379,7 @@ export const vaultAccessLog = pgTable(
 // ─── Row types ────────────────────────────────────────────
 
 export type BotRow = typeof bots.$inferSelect;
+export type BotVersionRow = typeof botVersions.$inferSelect;
 export type BotConversationRow = typeof botConversations.$inferSelect;
 export type BotConversationMemberRow = typeof botConversationMembers.$inferSelect;
 export type BotSharedNoteRow = typeof botSharedNotes.$inferSelect;

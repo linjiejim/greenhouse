@@ -31,12 +31,22 @@ export interface KnowledgeSearchHit {
  * `scope` omitted keeps the historical default (team + the caller's own private
  * docs) — `all` minus shared-with-me.
  */
+export interface KnowledgeSearchOptions {
+  /**
+   * Personal-channel folders to leave out (expanded subtrees): a Bot turn hides
+   * the owner's other Bots' reference folders, an identity-less agent surface
+   * hides all of them (bots/folder.ts). The owner's own UI passes nothing.
+   */
+  excludeFolderIds?: number[];
+}
+
 export async function searchKnowledgeScopes(
   db: DatabaseProvider,
   userId: string,
   query: string,
   scope: KnowledgeSearchScope | undefined,
   limit: number,
+  options: KnowledgeSearchOptions = {},
 ): Promise<KnowledgeSearchHit[]> {
   const wantTeam = scope === undefined || scope === 'all' || scope === 'team';
   const wantPersonal = scope === undefined || scope === 'all' || scope === 'personal';
@@ -52,6 +62,7 @@ export async function searchKnowledgeScopes(
           status: 'published',
           visibility: 'private',
           ownerUserId: userId,
+          ...(options.excludeFolderIds?.length ? { excludeFolderIds: options.excludeFolderIds } : {}),
           limit,
         })
       : Promise.resolve([]),

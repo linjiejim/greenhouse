@@ -23,6 +23,8 @@ export interface DriveFolderInput {
   base_id?: number | null;
   /** Owner of an extension scope — opaque to core. */
   owner_key?: string | null;
+  /** A Bot's private reference folder (kb, private, owned by the Bot's owner). */
+  bot_id?: string | null;
   created_by?: string | null;
 }
 
@@ -34,6 +36,8 @@ export interface DriveFolderListOpts {
   owner_key?: string | null;
   visibility?: DriveFolderRow['visibility'];
   owner_user_id?: string | null;
+  /** null = only folders that belong to no Bot; a Bot id = that Bot's folders; undefined = any. */
+  bot_id?: string | null;
 }
 
 export interface DriveFileInput {
@@ -75,12 +79,23 @@ export function createDriveService(db: Db) {
           owner_user_id: input.owner_user_id ?? null,
           base_id: input.base_id ?? null,
           owner_key: input.owner_key ?? null,
+          bot_id: input.bot_id ?? null,
           created_by: input.created_by ?? null,
           created_at: now,
           updated_at: now,
         })
         .returning();
       return row!;
+    },
+
+    /** A Bot's private reference folder (its root), if it has one. */
+    async getBotFolder(botId: string): Promise<DriveFolderRow | undefined> {
+      const rows = await db
+        .select()
+        .from(driveFolders)
+        .where(and(eq(driveFolders.scope, 'kb'), eq(driveFolders.bot_id, botId), isNull(driveFolders.parent_id)))
+        .limit(1);
+      return rows[0];
     },
 
     async listFolders(opts: DriveFolderListOpts): Promise<DriveFolderRow[]> {
@@ -91,6 +106,8 @@ export function createDriveService(db: Db) {
       if (opts.owner_key != null) conditions.push(eq(driveFolders.owner_key, opts.owner_key));
       if (opts.visibility) conditions.push(eq(driveFolders.visibility, opts.visibility));
       if (opts.owner_user_id != null) conditions.push(eq(driveFolders.owner_user_id, opts.owner_user_id));
+      if (opts.bot_id === null) conditions.push(isNull(driveFolders.bot_id));
+      else if (opts.bot_id !== undefined) conditions.push(eq(driveFolders.bot_id, opts.bot_id));
       // (sort_order, name): every row defaults to 0, so a tree nobody has dragged
       // stays alphabetical and the tables scope is unaffected.
       return db

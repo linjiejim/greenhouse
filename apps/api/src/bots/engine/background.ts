@@ -35,6 +35,7 @@ import {
 } from '../../agent-runtime/tool-resolution.js';
 import { isChatModelAllowed } from '../../config/models.js';
 import { resolveProfileAsync } from '../../profiles/profile.js';
+import { botEffectiveTools } from './bot-tools.js';
 import { buildComputerTools } from '../computer/index.js';
 import { failure } from '../computer/browser-session.js';
 import { AGENT_WORKDIR, resolveAgentPath } from '../tools/computer.js';
@@ -206,7 +207,8 @@ export async function prepareBotTaskExecution(input: BotTaskExecutionInput): Pro
     profile: await resolveProfileAsync('sprouty', db),
     profileId: 'sprouty',
   });
-  const ids = backgroundMemberToolIds(effectiveTools);
+  // The Bot's own tool filter applies to its background tasks too.
+  const ids = backgroundMemberToolIds(botEffectiveTools(effectiveTools, bot));
   const tools: ToolRegistry = input.toolRegistry
     ? selectTools(
         input.toolRegistry,
@@ -220,6 +222,7 @@ export async function prepareBotTaskExecution(input: BotTaskExecutionInput): Pro
       userRole: owner.role,
       sessionId: input.childSessionId,
       profileId: 'sprouty',
+      botId: bot.id,
       ...(input.toolRegistry ? { toolRegistry: input.toolRegistry } : {}),
       unattended: true,
       runtimeRunId: input.run.id,

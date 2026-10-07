@@ -20,9 +20,9 @@
 
 ### 页面分组与权限
 **Settings（个人配置，内部全员可见，见 `settingsSections`）**
-- **Preferences + Cloud（一个无标题扁平区）**：Preferences、Groups、Agent Connections、Connections（企微 / 飞书绑定）、Email Accounts、Passwords（Bots 密码库，`requireFeature: 'bots'`；只写不读，列表只显示元数据）
+- **Preferences + Cloud（一个无标题扁平区）**：Preferences、Groups、Agent Connections、Connections（企微 / 飞书绑定）、Email Accounts、My Bots（`bots.tsx`：成员的 Bot 身份——Sprouty 卡片 / 我的 Bot 列表 / 已归档，新建与编辑复用 `components/bots` 的对话框与抽屉；不需要 `bots` 开关）、Passwords（Bots 密码库，`requireFeature: 'bots'`；只写不读，列表只显示元数据）
 - **Labs（feature-gated）**：Memory（`requireFeature: 'memory'`）
-- **个人工具独立页面**：Automation、Prompt Tasks、My Agents 分别使用 `#/automations`、`#/tasks`、`#/agents`，入口位于全局 `More`，刷新、后退和深链必须保持当前页面；历史 Settings/`#/chat?view=...` 深链只重定向到这些 canonical 地址。持久执行统一使用 `#/executions` 的「执行中心」，入口位于账户浮层 Inbox 下方，不与 Prompt Tasks 共用命名或 URL；Mission 的主要发起面仍是 Chat。`#/bots` 是与 Chat 同级的沉浸式独立页（`STANDALONE_MODULES` 的 `workspace.bots`，不走 `ModulePage` 页头）。
+- **个人工具独立页面**：Automation、Prompt Tasks 分别使用 `#/automations`、`#/tasks`（`#/agents` 与 `#/settings/my-profiles` 永久重定向到 `#/settings/bots`），入口位于全局 `More`，刷新、后退和深链必须保持当前页面；历史 Settings/`#/chat?view=...` 深链只重定向到这些 canonical 地址。持久执行统一使用 `#/executions` 的「执行中心」，入口位于账户浮层 Inbox 下方，不与 Prompt Tasks 共用命名或 URL；Mission 的主要发起面仍是 Chat。`#/bots` 是与 Chat 同级的沉浸式独立页（`STANDALONE_MODULES` 的 `workspace.bots`，不走 `ModulePage` 页头）。
 
 **Administration（super only，独立顶层界面，入口在侧边栏账户浮层，见 `administrationModules`）**：Users、Agent Usages、Feature Requests、Frictions、Evaluation、AI Gateway、MCP Access、Runtime Config、Bot computers（运行时检查清单与修复命令、每台电脑状态 / 停止 / 重置；容量旋钮在 Runtime Config 的 `bots` 组）、Branding Studio。内置 Agent 已收敛为单一默认预设，不再提供只读 System Agents 清单；历史 `#/administration/profiles` 与 `#/settings/profiles` 链接落到 Agent Usages。
 - Users 行的「权限」按钮打开 `user-permissions-modal.tsx` 统一弹框（功能点优先，tab 归属由服务端注册表的 `group` 驱动：基础权限（默认开放的 Tables/Missions/AI Memory + 只读全局工具）/ 应用权限（Knowledge/Projects/Tables）/ 高级权限（Advanced tools）/ 用量限制 四 tab），已吸收原工具分配弹框、功能开关弹框与独立的 App Permissions 页；用量限制只配置月度 Token 上限（每日消息只保留统计、不限额）；写走既有细粒度端点，读走 `GET /api/admin/users/:id/access`（服务端 `feature-points.ts` 聚合）。详见 [spec](../../../../docs/specs/20260723-user-permissions-unified-modal.md)。

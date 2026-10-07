@@ -32,7 +32,9 @@ export async function createOwnedSession(
 ): Promise<SessionRow> {
   let profileId: string;
   try {
-    profileId = await pinProfileIdForUser(actor, input.profileId);
+    // The owner's own conversations follow the Bot's latest definition
+    // (spec 20261007 D2); other members are pinned to the published version.
+    profileId = await pinProfileIdForUser(actor, input.profileId, getDb(), { mode: 'live' });
   } catch (err) {
     if (err instanceof ProfileAccessError) throw new SessionCreationError(err.message, err.status);
     throw err;
@@ -40,6 +42,7 @@ export async function createOwnedSession(
 
   let profile;
   try {
+    // Validation only (hidden-profile check): the member identity is resolved per turn.
     profile = await resolveProfileAsync(profileId);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

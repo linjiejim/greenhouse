@@ -22,13 +22,15 @@ export { ConversationView } from './conversation-view';
 export { BotsSidePanel, PanelSection, useSplitCapable } from './bots-side-panel';
 export { InfoPanel } from './info-panel';
 export { BotProfileDrawer } from './bot-profile-drawer';
-export { NewBotDialog } from './new-bot-dialog';
-export { NewGroupDialog } from './new-group-dialog';
+export { NewBotDialog, type CreateTab } from './new-bot-dialog';
+export { NewGroupPanel } from './new-group-dialog';
+export { BotsDialogs } from './bots-dialogs';
 export { InviteDialog } from './invite-dialog';
 export { BotAvatar, BotAvatarStack } from './bot-avatar';
 export {
   conversationTitle,
   openBotsConversation,
+  openChatWith,
   botsConversationHash,
   useCurrentBotsConversation,
 } from './navigation';

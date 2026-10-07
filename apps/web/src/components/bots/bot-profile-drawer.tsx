@@ -1,15 +1,16 @@
 /**
  * Bot profile — a read-only drawer (who it is, how it works, what it alone
- * remembers) with the edit form in a centered Dialog, per the Drawer/Dialog
- * convention. Private memories are listed in full and each can be forgotten:
- * nothing a Bot keeps about the member is out of the member's sight.
+ * remembers, its files and versions) with the edit form in a centered Dialog,
+ * per the Drawer/Dialog convention. Private memories are listed in full and
+ * each can be forgotten: nothing a Bot keeps about the member is out of the
+ * member's sight. Every save appends an immutable version (spec 20261007 §2.1).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { isSproutyBot, type BotView } from '@greenhouse/types/bots';
+import { isSproutyBot, type BotVersionView, type BotView } from '@greenhouse/types/bots';
 import { Button, ConfirmDialog, Dialog, Drawer, IconButton, Spinner, toast } from '../ui';
 import { FormActions } from '../form';
-import { Archive, MessageCircle, Pencil, Trash2, X } from '../../lib/icons';
+import { Archive, FolderOpen, MessageCircle, MessageSquare, Pencil, Trash2, X } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { formatDay } from '../../lib/utils';
 import { useAuthStore, useProfileStore } from '../../stores';
@@ -20,20 +21,31 @@ import { BotAvatar } from './bot-avatar';
 import { BotFields, useBotNameMessage, type BotDraft } from './bot-form';
 import { botNameIssueFromCode, validateBotName } from './bot-name';
 import { PanelSection } from './bots-side-panel';
+import { openChatWith } from './navigation';
 
 export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => void }) {
   const t = useT();
   const botId = useBotsStore((state) => state.profileBotId);
   const openProfile = useBotsStore((state) => state.openProfile);
+  const profileEdit = useBotsStore((state) => state.profileEdit);
   const bot = useBotsStore((state) => state.bots.find((candidate) => candidate.id === state.profileBotId));
   const markArchived = useBotsStore((state) => state.markArchived);
   const loadConversations = useBotsStore((state) => state.loadConversations);
   const models = useProfileStore((state) => state.models);
   const fetchProfiles = useProfileStore((state) => state.fetchProfiles);
+  const refreshProfiles = useProfileStore((state) => state.refresh);
   const [memories, setMemories] = useState<BotMemoryView[] | null>(null);
   const [memoriesError, setMemoriesError] = useState(false);
+  const [versions, setVersions] = useState<BotVersionView[] | null>(null);
+  const [files, setFiles] = useState<{ folder: botsApi.BotFolderView | null; docs: botsApi.BotFileView[] } | null>(
+    null,
+  );
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
+
+  useEffect(() => {
+    if (botId && profileEdit) setEditing(true);
+  }, [botId, profileEdit]);
 
   useEffect(() => {
     void fetchProfiles();
@@ -51,9 +63,48 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
     }
   }, []);
 
+  const loadVersions = useCallback(async (id: string) => {
+    setVersions(null);
+    try {
+      const { versions: rows } = await botsApi.listBotVersions(id);
+      setVersions(rows);
+    } catch {
+      setVersions([]);
+    }
+  }, []);
+
+  const loadFiles = useCallback(async (id: string) => {
+    setFiles(null);
+    try {
+      setFiles(await botsApi.listBotFiles(id));
+    } catch {
+      setFiles({ folder: null, docs: [] });
+    }
+  }, []);
+
   useEffect(() => {
-    if (botId) void loadMemories(botId);
-  }, [botId, loadMemories]);
+    if (botId) {
+      void loadMemories(botId);
+      void loadVersions(botId);
+      void loadFiles(botId);
+    }
+  }, [botId, loadFiles, loadMemories, loadVersions]);
+
+  const openFolder = async () => {
+    if (!bot) return;
+    try {
+      const folder = files?.folder ?? (await botsApi.ensureBotFolder(bot.id)).folder;
+      window.location.hash = folder.url;
+      close();
+    } catch (err) {
+      toast(err instanceof Error && err.message ? err.message : t('bots.loadFailed'), 'error');
+    }
+  };
+
+  // A save appends a version: refresh the history the drawer shows.
+  useEffect(() => {
+    if (bot?.id && versions && versions[0]?.version !== bot.current_version) void loadVersions(bot.id);
+  }, [bot?.id, bot?.current_version, loadVersions, versions]);
 
   const close = () => openProfile(null);
 
@@ -77,6 +128,7 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
       markArchived(bot.id);
       close();
       void loadConversations().catch(() => {});
+      void refreshProfiles();
       toast(t('bots.profile.archived', { name: bot.name }), 'success');
     } catch (err) {
       toast(err instanceof Error && err.message ? err.message : t('bots.profile.archiveFailed'), 'error');
@@ -84,7 +136,6 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
   };
 
   const modelName = bot?.model_id ? (models.find((model) => model.id === bot.model_id)?.id ?? bot.model_id) : null;
-
   return (
     <>
       <Drawer open={!!bot} onClose={close} side="right" width={400} ariaLabel={t('bots.profile.title')}>
@@ -98,13 +149,19 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
                 </h2>
                 {bot.role && <p className="truncate text-xs text-fg-muted">{bot.role}</p>}
                 <p className="mt-1 text-[10px] text-fg-faint">
-                  {t('bots.profile.created', { date: formatDay(bot.created_at) })}
+                  {t('bots.profile.created', { date: formatDay(bot.created_at) })} · v{bot.current_version}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Button size="sm" onClick={() => onOpenDm(bot)}>
-                    <MessageCircle size={13} className="mr-1" />
-                    {t('bots.profile.message')}
+                  <Button size="sm" onClick={() => openChatWith(bot.id)} data-testid="bots-profile-chat">
+                    <MessageSquare size={13} className="mr-1" />
+                    {t('bots.profile.chat')}
                   </Button>
+                  {bot.dm_session_id !== null && (
+                    <Button size="sm" variant="outline" onClick={() => onOpenDm(bot)}>
+                      <MessageCircle size={13} className="mr-1" />
+                      {t('bots.profile.message')}
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
                     <Pencil size={13} className="mr-1" />
                     {t('bots.profile.edit')}
@@ -116,6 +173,11 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
               </IconButton>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
+              {bot.description && (
+                <PanelSection title={t('bots.profile.description')}>
+                  <p className="text-xs leading-5 text-fg-secondary">{bot.description}</p>
+                </PanelSection>
+              )}
               <PanelSection title={t('bots.profile.instructions')}>
                 <p className="whitespace-pre-wrap text-xs leading-5 text-fg-secondary">
                   {bot.instructions || t('bots.profile.instructionsEmpty')}
@@ -123,6 +185,69 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
               </PanelSection>
               <PanelSection title={t('bots.profile.model')}>
                 <p className="text-xs text-fg-secondary">{modelName ?? t('bots.profile.modelDefault')}</p>
+              </PanelSection>
+              <PanelSection title={t('bots.profile.tools')}>
+                <p className="text-xs text-fg-secondary" data-testid="bots-profile-tools">
+                  {bot.tools === null
+                    ? t('bots.profile.toolsInherited')
+                    : bot.tools.length === 0
+                      ? t('bots.profile.toolsNone')
+                      : bot.tools.join(', ')}
+                </p>
+                {bot.max_steps !== null && (
+                  <p className="mt-1 text-[11px] text-fg-faint">
+                    {t('bots.profile.maxSteps', { count: bot.max_steps })}
+                  </p>
+                )}
+              </PanelSection>
+              <PanelSection title={t('bots.profile.files')} hint={t('bots.profile.filesHint', { name: bot.name })}>
+                {files === null ? (
+                  <Spinner className="h-4 w-4 text-fg-faint" />
+                ) : (
+                  <div className="space-y-2" data-testid="bots-profile-files">
+                    {files.docs.length === 0 ? (
+                      <p className="text-xs text-fg-faint">{t('bots.profile.filesEmpty')}</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {files.docs.map((doc) => (
+                          <li key={doc.id}>
+                            <a href={doc.url} className="text-xs text-primary-fg hover:underline" title={doc.title}>
+                              {doc.title}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void openFolder()}
+                      data-testid="bots-profile-open-folder"
+                    >
+                      <FolderOpen size={13} className="mr-1" />
+                      {t('bots.profile.openFolder')}
+                    </Button>
+                  </div>
+                )}
+              </PanelSection>
+              <PanelSection title={t('bots.profile.versions')}>
+                {versions === null ? (
+                  <Spinner className="h-4 w-4 text-fg-faint" />
+                ) : versions.length === 0 ? (
+                  <p className="text-xs text-fg-faint">{t('bots.profile.versionsEmpty')}</p>
+                ) : (
+                  <ul className="space-y-1" data-testid="bots-profile-versions">
+                    {versions.slice(0, 10).map((version) => (
+                      <li key={version.version} className="flex items-baseline gap-2 text-xs">
+                        <span className="w-8 flex-shrink-0 font-medium text-fg">v{version.version}</span>
+                        <span className="min-w-0 flex-1 truncate text-fg-muted" title={version.change_log}>
+                          {version.change_log}
+                        </span>
+                        <span className="flex-shrink-0 text-[10px] text-fg-faint">{formatDay(version.created_at)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </PanelSection>
               <PanelSection
                 title={t('bots.profile.memories')}
@@ -203,13 +328,17 @@ function EditBotDialog({
   const nickname = useAuthStore((state) => state.currentUser?.nickname ?? null);
   const bots = useBotsStore((state) => state.bots);
   const upsertBot = useBotsStore((state) => state.upsertBot);
+  const refreshProfiles = useProfileStore((state) => state.refresh);
   const nameMessage = useBotNameMessage();
   const [draft, setDraft] = useState<BotDraft>({
     name: bot.name,
     role: bot.role,
+    description: bot.description,
     instructions: bot.instructions,
     avatar: bot.avatar,
     model_id: bot.model_id,
+    tools: bot.tools,
+    max_steps: bot.max_steps,
   });
   const [saving, setSaving] = useState(false);
   const [serverIssue, setServerIssue] = useState<ReturnType<typeof botNameIssueFromCode>>(null);
@@ -230,11 +359,16 @@ function EditBotDialog({
       const { bot: saved } = await botsApi.updateBot(bot.id, {
         name: draft.name.trim(),
         role: draft.role.trim(),
+        description: draft.description.trim(),
         instructions: draft.instructions.trim(),
         avatar: draft.avatar,
         model_id: draft.model_id,
+        tools: draft.tools,
+        max_steps: draft.max_steps,
       });
       upsertBot(saved);
+      // The Chat picker shows the same identity (name, face, instructions).
+      void refreshProfiles();
       toast(t('bots.form.saved'), 'success');
       onClose();
     } catch (err) {

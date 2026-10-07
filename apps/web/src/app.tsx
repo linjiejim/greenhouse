@@ -21,7 +21,6 @@ const AdministrationPage = lazy(() =>
 );
 const DesignPage = lazy(() => import('./pages/design').then((m) => ({ default: m.DesignPage })));
 const KnowledgePage = lazy(() => import('./pages/knowledge').then((m) => ({ default: m.KnowledgePage })));
-const AgentsPage = lazy(() => import('./pages/agents').then((m) => ({ default: m.AgentsPage })));
 const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ default: m.AutomationsPanel })));
 const PersonalTasksPage = lazy(() => import('./pages/tasks').then((m) => ({ default: m.PromptsPage })));
 const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
@@ -91,7 +90,6 @@ import { useBotsSync } from './components/bots/use-bots-sync';
 import { useBotsStore } from './components/bots/bots-store';
 import { BotsSidebarPanel } from './components/bots/bots-sidebar-panel';
 import { botsConversationHash } from './components/bots/navigation';
-import { BotsBareHeader } from './components/bots/conversation-header';
 
 /**
  * `#/desktop/*` is the desktop shell's satellite-window surface (quick capture,
@@ -252,12 +250,18 @@ function parseRoute(hash: string): ParsedRoute {
         : legacyView === 'prompts'
           ? '#/tasks'
           : legacyView === 'agents'
-            ? '#/agents'
+            ? '#/settings/bots'
             : null;
     if (destination) {
       window.location.hash = destination;
       return parseRoute(destination);
     }
+  }
+
+  // Custom Agents folded into Bots (spec 20261007): a member manages their Bots under Settings.
+  if (topLevel === 'agents') {
+    window.location.hash = '#/settings/bots';
+    return { route: 'settings', subPath: 'bots', params: new URLSearchParams() };
   }
 
   // Redirect the retired prompt alias into its canonical independent page.
@@ -569,6 +573,18 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
     [setChatWorkspaceView],
   );
 
+  // `#/chat?profile=<id>` (the Bots directory's "Chat"): a fresh session with
+  // that identity. Consumed once, then the address becomes a plain new chat.
+  const chatProfileParam = route === 'chat' ? params.get('profile') : null;
+  useEffect(() => {
+    if (!chatProfileParam) return;
+    chatLaunchIdRef.current += 1;
+    const launchId = chatLaunchIdRef.current;
+    setChatLaunchRequest({ id: launchId, profileId: chatProfileParam, newConversation: true });
+    setChatWorkspaceView('conversation');
+    window.location.replace(`#/chat?new=${launchId}`);
+  }, [chatProfileParam, setChatWorkspaceView]);
+
   const loadExtensions = useExtensionsStore((state) => state.load);
   useEffect(() => {
     void loadExtensions();
@@ -813,21 +829,9 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     }}
                   />
                 )}
-                {route === 'bots' &&
-                  (botsEnabled ? (
-                    <BotsPage params={params} />
-                  ) : (
-                    // The TopBar is hidden on #/bots, so a phone needs this header's menu button.
-                    <div className="flex h-full flex-col">
-                      <BotsBareHeader title={t('bots.title')} />
-                      <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-fg-faint">
-                        {t('app.noPermission')}
-                      </div>
-                    </div>
-                  ))}
+                {route === 'bots' && botsEnabled && <BotsPage params={params} />}
                 {route === 'automations' && <AutomationsPage />}
                 {route === 'tasks' && <PersonalTasksPage />}
-                {route === 'agents' && <AgentsPage />}
                 {route === 'skillhub' && <SkillHubPage subPath={subPath} />}
                 {route === 'settings' && <SettingsPage subPath={subPath} />}
                 {route === 'administration' && <AdministrationPage subPath={subPath} />}

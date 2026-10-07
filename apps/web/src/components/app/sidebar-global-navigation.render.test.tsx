@@ -64,17 +64,15 @@ describe('SidebarGlobalNavigation', () => {
     expect(html).toMatch(/<span aria-hidden="true"[^>]*>2<\/span>/);
   });
 
-  it('moves Automation, Tasks, and My Agents into More with overflow applications', () => {
+  it('moves Automation and Tasks into More with overflow applications', () => {
     const html = render('tasks');
 
     expect(html.indexOf('More')).toBeLessThan(html.indexOf('Automation'));
     expect(html.indexOf('Tasks')).toBeLessThan(html.indexOf('Automation'));
-    expect(html.indexOf('Automation')).toBeLessThan(html.indexOf('My Agents'));
     expect(html).toContain('SkillHub');
     expect(html).toContain('Tables');
     expect(html).toContain('href="#/automations"');
     expect(html).toContain('href="#/tasks"');
-    expect(html).toContain('href="#/agents"');
     expect(html).toMatch(/aria-haspopup="menu"[^>]*aria-expanded="true"[^>]*aria-current="page"/);
     expect(html).toMatch(/href="#\/tasks"[^>]*aria-current="page"/);
     expect(html).toMatch(/role="menu"[^>]*class="[^"]*pl-1/);

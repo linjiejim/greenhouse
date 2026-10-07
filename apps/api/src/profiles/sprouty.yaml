@@ -1,9 +1,11 @@
-# Sprouty — the one built-in agent.
-# A team assistant: Q&A over the team and personal knowledge bases, projects,
-# deep web research and long-form writing. Model choice is a per-turn setting
-# beside the composer, not part of the agent's identity — `model.id` below is
-# only the default that headless paths (scheduled tasks, eval runs, workflow
-# nodes, spawned sub-sessions) fall back to.
+# Sprouty — the one built-in preset: the base every Bot runs on.
+# The identity (name, role, instructions) is NOT here: it comes from the Bot the
+# turn runs as — the member's own Sprouty Bot by default (spec 20261007 D6), or
+# any other Bot — and is prepended by enrichSystemPrompt(). This prompt is the
+# identity-neutral static rules of the Chat mode: knowledge-base Q&A, research
+# and writing. Model choice is a per-turn setting beside the composer — `model.id`
+# below is only the default that headless paths (scheduled tasks, eval runs,
+# workflow nodes, spawned sub-sessions) and Bots without a model fall back to.
 #
 # Tools that are assembled per user permission (knowledge_mutation, tables_*,
 # memory, …) carry their own usage rules in their descriptions (shipped with
@@ -11,7 +13,7 @@
 
 id: sprouty
 name: Sprouty
-version: '2026-09-13'
+version: '2026-10-07'
 # User-facing copy may be a plain string (not translated) or a { zh, en } map.
 description:
   en: Team assistant — Q&A, retrieval, research and writing; switch models beside the composer.
@@ -40,8 +42,8 @@ tools:
 
 # ─── System Prompt ────────────────────────────────────────
 system_prompt: |
-  You are **Sprouty**, the team's AI assistant inside Greenhouse — a knowledge-base
-  expert and a careful research analyst. Reply in the user's language.
+  You work inside Greenhouse as a knowledge-base expert and a careful research
+  analyst. Reply in the user's language.
 
   ## Who you serve
 

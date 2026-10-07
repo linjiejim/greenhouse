@@ -1,5 +1,5 @@
 /**
- * Bots — `#/bots` and `#/bots?c=<sessionId>`.
+ * Bots — `#/bots`, `#/bots?c=<sessionId>` and `#/bots/directory` (./directory.tsx).
  *
  * An immersive workspace like Chat (its own conversation header, no
  * ModulePage frame). The page decides where the member lands — first visit
@@ -21,14 +21,12 @@ import * as botsApi from '../../lib/api/bots';
 import { ComputerPane, type ComputerPaneHandle } from '../../components/bots/computer-pane';
 import { useComputerStatus, useComputerTimezoneSync } from '../../components/bots/computer-phase';
 import {
-  BotProfileDrawer,
   BotsBareHeader,
+  BotsDialogs,
   BotsSidePanel,
   ConversationView,
   InfoPanel,
   InviteDialog,
-  NewBotDialog,
-  NewGroupDialog,
   conversationReplyable,
   conversationTitle,
   ensureSprouty,
@@ -40,60 +38,6 @@ import {
   useBotsStore,
   useSplitCapable,
 } from '../../components/bots';
-
-/**
- * Create dialogs and the profile drawer, opened from the sidebar or the page.
- * Mounted on both the landing and the workspace so "New Bot" works even
- * while no conversation is open.
- */
-function BotsDialogs({ onInvited }: { onInvited?: () => void }) {
-  const dialog = useBotsStore((state) => state.dialog);
-  const openDialog = useBotsStore((state) => state.openDialog);
-  const openProfile = useBotsStore((state) => state.openProfile);
-  const loadConversations = useBotsStore((state) => state.loadConversations);
-
-  const openDm = useCallback(
-    async (bot: BotView) => {
-      openProfile(null);
-      if (bot.dm_session_id) {
-        openBotsConversation(bot.dm_session_id);
-        return;
-      }
-      const { conversation: dm } = await botsApi.createConversation({ bot_ids: [bot.id] });
-      openBotsConversation(dm.session_id);
-    },
-    [openProfile],
-  );
-
-  return (
-    <>
-      <BotProfileDrawer onOpenDm={(bot) => void openDm(bot).catch(() => {})} />
-      <NewBotDialog
-        open={dialog?.kind === 'new-bot'}
-        inviteTo={dialog?.kind === 'new-bot' ? dialog.inviteTo : undefined}
-        onClose={() => openDialog(null)}
-        onCreated={({ dmSessionId, invitedTo, inviteFailed }) => {
-          openDialog(null);
-          void loadConversations().catch(() => {});
-          // Created from Invite: stay in the group either way (a failed join
-          // was explained by the dialog); otherwise meet the new Bot.
-          if (invitedTo || inviteFailed) onInvited?.();
-          else openBotsConversation(dmSessionId);
-        }}
-      />
-      <NewGroupDialog
-        open={dialog?.kind === 'new-group'}
-        onClose={() => openDialog(null)}
-        onNewBot={() => openDialog({ kind: 'new-bot' })}
-        onCreated={(created) => {
-          openDialog(null);
-          void loadConversations().catch(() => {});
-          openBotsConversation(created.session_id);
-        }}
-      />
-    </>
-  );
-}
 
 export function BotsPage({ params }: { params: URLSearchParams }) {
   const sessionId = params.get('c');
@@ -151,7 +95,7 @@ function BotsLanding() {
     return (
       <div className="flex h-full flex-col" data-testid="bots-landing-error">
         <BotsBareHeader title={t('bots.title')} />
-        {!forbidden && <BotsDialogs />}
+        {!forbidden && <BotsDialogs threadsEnabled />}
         <div className="flex min-h-0 flex-1 items-center justify-center">
           <EmptyState
             icon={forbidden ? Bot : AlertTriangle}
@@ -373,7 +317,7 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
           </div>
         ))}
 
-      <BotsDialogs onInvited={() => void controller.reload()} />
+      <BotsDialogs threadsEnabled onInvited={() => void controller.reload()} />
       <InviteDialog
         conversation={dialog?.kind === 'invite' ? conversation : null}
         onClose={() => openDialog(null)}

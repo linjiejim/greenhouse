@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isSproutyBot, type BotConversationSummary, type BotView } from '@greenhouse/types/bots';
 import { Button, Skeleton, StatusDot, Tag } from '../ui';
-import { Pin, Plus, Users } from '../../lib/icons';
+import { Pin, Plus } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { relativeTime } from '../../lib/utils';
 import { SidebarToolbar } from '../app/sidebar-toolbar';
@@ -37,11 +37,14 @@ export function BotsSidebarPanel({ onNavigate }: { onNavigate?: () => void }) {
     void loadConversations().catch(() => {});
   }, [loadBots, loadConversations]);
 
-  // Every member has Sprouty; a member whose Bots predate it gets it on the next visit.
+  // Every member has Sprouty with a DM pinned here. A member whose Bots predate it,
+  // or whose Sprouty row was created by Chat (the identity without a thread), gets
+  // the Bot and its DM on the next visit — the bootstrap is idempotent.
   const sprouty = bots.find((bot) => isSproutyBot(bot));
+  const sproutyDm = sprouty?.dm_session_id ?? null;
   useEffect(() => {
-    if (botsState === 'ready' && !sprouty) void ensureSprouty().catch(() => {});
-  }, [botsState, sprouty]);
+    if (botsState === 'ready' && (!sprouty || !sproutyDm)) void ensureSprouty().catch(() => {});
+  }, [botsState, sprouty, sproutyDm]);
 
   const titleOf = useCallback(
     (conversation: BotConversationSummary) =>
@@ -108,10 +111,7 @@ export function BotsSidebarPanel({ onNavigate }: { onNavigate?: () => void }) {
           value={query}
           onChange={setQuery}
           placeholder={t('bots.sidebar.search')}
-          actions={[
-            { label: t('bots.sidebar.newBot'), icon: Plus, onClick: () => openDialog({ kind: 'new-bot' }) },
-            { label: t('bots.sidebar.newGroup'), icon: Users, onClick: () => openDialog({ kind: 'new-group' }) },
-          ]}
+          actions={[{ label: t('bots.sidebar.create'), icon: Plus, onClick: () => openDialog({ kind: 'new-bot' }) }]}
         />
       </div>
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-3" aria-label={t('bots.sidebar.conversations')}>

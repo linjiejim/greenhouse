@@ -301,14 +301,8 @@ describe('ChatInput Agent Profile keyboard flow', () => {
     const onSelect = vi.fn();
     const profiles = [
       { id: 'sprouty', name: 'Sprouty', description: 'Default assistant' },
-      {
-        id: 'shared-agent',
-        name: 'Shared analyst',
-        description: 'Shared description',
-        is_custom: true,
-        is_shared: true,
-      },
-      { id: 'my-agent', name: 'My writer', description: 'Personal description', is_custom: true, is_shared: false },
+      { id: 'analyst-bot', name: 'Analyst', description: 'Analyst description', is_custom: true },
+      { id: 'my-agent', name: 'My writer', description: 'Personal description', is_custom: true },
     ] as Profile[];
 
     await act(async () => {
@@ -331,7 +325,7 @@ describe('ChatInput Agent Profile keyboard flow', () => {
     expect(rows).toHaveLength(3);
     expect(rows[0]?.getAttribute('aria-selected')).toBe('true');
     expect(rows[0]?.className).toContain('bg-primary-600');
-    expect(rows.map((row) => row.textContent)).toEqual(['SproutySystem', 'Shared analystShared', 'My writerPersonal']);
+    expect(rows.map((row) => row.textContent)).toEqual(['SproutySystem', 'AnalystPersonal', 'My writerPersonal']);
     expect(container.textContent).not.toContain('description');
 
     await act(async () => {
@@ -342,6 +336,6 @@ describe('ChatInput Agent Profile keyboard flow', () => {
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
     });
-    expect(onSelect).toHaveBeenCalledWith('shared-agent');
+    expect(onSelect).toHaveBeenCalledWith('analyst-bot');
   });
 });

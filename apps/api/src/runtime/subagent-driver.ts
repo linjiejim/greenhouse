@@ -30,7 +30,7 @@ import { resolveMemoryContext } from '../llm/memory.js';
 import {
   enrichSystemPrompt,
   assertPinnedProfileExecutionAccess,
-  normalizeProfileId,
+  canonicalizeProfileId,
   resolveProfileAsync,
   type AgentProfile,
 } from '../profiles/profile.js';
@@ -163,7 +163,7 @@ export interface SubagentRuntimeDriverOptions {
   assembleTools?: (input: SubagentToolAssemblyInput) => Promise<ToolRegistry> | ToolRegistry;
   generate?: AgentGenerate;
   resolveProfile?: (profileId: string) => Promise<AgentProfile>;
-  resolveMemory?: (userId: string, role: UserRole) => Promise<string | null>;
+  resolveMemory?: (userId: string, role: UserRole, opts?: { botId?: string | null }) => Promise<string | null>;
   heartbeatIntervalMs?: number;
   cancelPollIntervalMs?: number;
   /** Sync inline execution only. Worker executions do not inherit an HTTP signal. */
@@ -434,8 +434,10 @@ export async function executeSubagentRuntimeRun(
     await assertPinnedProfileExecutionAccess(db, { id: owner.id, role: ownerRole }, input.profile_id, 'Subagent');
     const profile = options.resolveProfile
       ? await options.resolveProfile(input.profile_id)
-      : await resolveProfileAsync(input.profile_id, db);
-    const expectedProfileId = normalizeProfileId(input.profile_id) ?? input.profile_id;
+      : await resolveProfileAsync(input.profile_id, db, { forUserId: owner.id });
+    // A retired `custom:<id>@<v>` admission resolves to the same version under
+    // its `bot:<id>@<v>` spelling — still immutable, so compare canonical forms.
+    const expectedProfileId = await canonicalizeProfileId(db, input.profile_id);
     if (profile.id !== expectedProfileId) throw new Error('Subagent Agent reference did not resolve immutably');
 
     run = await db.runtime.transitionRun({
@@ -544,8 +546,11 @@ export async function executeSubagentRuntimeRun(
         },
         options,
       );
-      const memory = await (options.resolveMemory ?? resolveMemoryContext)(owner.id, ownerRole as UserRole);
-      system = memory ? `${enrichSystemPrompt(profile)}\n\n## User Context\n${memory}` : enrichSystemPrompt(profile);
+      const memory = await (options.resolveMemory ?? resolveMemoryContext)(owner.id, ownerRole as UserRole, {
+        botId: profile.identity?.botId ?? null,
+      });
+      const identityPrompt = enrichSystemPrompt(profile, { nickname: owner.nickname });
+      system = memory ? `${identityPrompt}\n\n## User Context\n${memory}` : identityPrompt;
     }
     const result = await runAgentInSession({
       db,

@@ -17,6 +17,7 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import { defineTool, type ToolMeta } from './define.js';
 import { resolveKbAccess, canWrite, canArchive } from '../knowledge/access.js';
 import { resolveKbFolderPath } from '../knowledge/folders.js';
+import { botFolderScope, ensureBotFolder } from '../bots/folder.js';
 // Shared with knowledge_query's mode=outline|section: read and write must
 // address the same span, or a model edits something other than what it read.
 import { replaceSection } from '../knowledge/sections.js';
@@ -38,7 +39,12 @@ export const knowledgeMutationSchema = z.object({
       'knowledge.unshare_doc',
     ])
     .describe('Bounded knowledge mutation action.'),
-  scope: z.enum(['team', 'personal']).default('team').describe('Team shared doc or current-user personal doc.'),
+  scope: z
+    .enum(['team', 'personal', 'bot'])
+    .default('team')
+    .describe(
+      'Team shared doc, current-user personal doc, or "bot": the private reference folder of the Bot you are running as (create files there; omit folder).',
+    ),
   doc_id: z
     .string()
     .optional()
@@ -101,6 +107,8 @@ type KnowledgeMutationInput = z.infer<typeof knowledgeMutationSchema>;
 
 export interface KnowledgeMutationContext {
   userId: string;
+  /** The Bot this turn runs as (see KnowledgeQueryContext.botId); null = no Bot identity. */
+  botId?: string | null;
 }
 
 function makeDocId(title: string): string {
@@ -112,7 +120,7 @@ function makeDocId(title: string): string {
   return `${slug || 'doc'}-${randomUUID().slice(0, 8)}`;
 }
 
-function docScope(scope: 'team' | 'personal') {
+function docScope(scope: 'team' | 'personal' | 'bot') {
   return {
     dbScope: 'shared',
     visibility: scope === 'team' ? 'team' : 'private',
@@ -147,6 +155,19 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
         // Both team and personal docs live in the 'shared' scope. Personal
         // ownership is tracked by owner_user_id + visibility='private'.
 
+        // The personal library as this identity sees it: another Bot's
+        // reference folder is out of reach for writes too (bots/folder.ts).
+        let hiddenFolders = new Set<number>();
+        let ownBotFolderIds: number[] | null = null;
+        if (visibility === 'private' && ctx.botId !== undefined) {
+          const scoped = await botFolderScope(db, ctx.userId, ctx.botId);
+          hiddenFolders = new Set(scoped.excludeFolderIds);
+          ownBotFolderIds = scoped.ownFolderIds;
+        }
+        if (scope === 'bot' && !ctx.botId) {
+          return { action: input.action, error: 'scope "bot" is only available when running as a Bot' };
+        }
+
         if (input.action === 'knowledge.create_doc') {
           if (!input.title) return { action: input.action, error: 'title is required' };
           if (!input.content) return { action: input.action, error: 'content is required' };
@@ -157,9 +178,19 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
 
           let folderId: number | null = null;
           let folderPath: string | undefined;
-          if (input.folder !== undefined) {
+          if (scope === 'bot' && ctx.botId) {
+            // Files of the Bot go into its own folder, created on first use.
+            const bot = await db.bots.getBot(ctx.userId, ctx.botId);
+            if (!bot) return { action: input.action, error: 'The Bot no longer exists' };
+            const folder = await ensureBotFolder(db, bot);
+            folderId = folder.id;
+            folderPath = folder.name;
+          } else if (input.folder !== undefined) {
             const folder = await resolveKbFolderPath(db, input.folder, { visibility, ownerUserId: ctx.userId });
             if (!folder.ok) return { action: input.action, error: folder.error };
+            if (folder.folderId != null && hiddenFolders.has(folder.folderId)) {
+              return { action: input.action, error: `Folder not found: ${input.folder}` };
+            }
             folderId = folder.folderId;
             if (folder.folderId != null) folderPath = folder.path;
           }
@@ -207,6 +238,13 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
         if (!existing || existing.status === 'archived' || existing.visibility !== visibility) {
           return { action: input.action, error: `Document not found: ${input.doc_id}` };
         }
+        // Another Bot's reference doc, or (scope "bot") a doc outside this Bot's folder.
+        if (existing.folder_id != null && hiddenFolders.has(existing.folder_id)) {
+          return { action: input.action, error: `Document not found: ${input.doc_id}` };
+        }
+        if (scope === 'bot' && (existing.folder_id == null || !ownBotFolderIds?.includes(existing.folder_id))) {
+          return { action: input.action, error: `Document not found: ${input.doc_id}` };
+        }
         // Access folds in owner / team-collaborative / editor+reader grants (incl. groups).
         const access = await resolveKbAccess(db, existing, ctx.userId);
         if (!canWrite(access)) {
@@ -217,7 +255,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
           if (access !== 'owner') {
             return { action: input.action, error: 'Only the document owner can manage sharing' };
           }
-          if (scope !== 'personal' || existing.visibility !== 'private') {
+          if (scope === 'team' || existing.visibility !== 'private') {
             return { action: input.action, error: 'Only personal (private) docs can be shared with specific people' };
           }
           const targets = input.share_targets ?? [];

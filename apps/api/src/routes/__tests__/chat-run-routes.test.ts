@@ -21,8 +21,12 @@ const mocks = vi.hoisted(() => ({
   sessionShares: {
     getSharedSessionIds: vi.fn(),
   },
-  customProfiles: {
-    getById: vi.fn(),
+  bots: {
+    getBotById: vi.fn(),
+    getByLegacyCustomId: vi.fn(),
+    getVersion: vi.fn(),
+    listBots: vi.fn(),
+    createBot: vi.fn(),
   },
   users: {
     getById: vi.fn(),
@@ -82,6 +86,29 @@ const asUser = (id: string, role: 'team' | 'super' = 'team') => ({
   'x-user-role': role,
 });
 
+function sproutyBot() {
+  return {
+    id: 'bot_0000000000000001',
+    user_id: 'owner',
+    name: 'Sprouty',
+    name_key: 'sprouty',
+    role: 'Main assistant',
+    description: '',
+    instructions: '',
+    avatar: '{}',
+    model_id: null,
+    tools: null,
+    max_steps: null,
+    template_key: 'sprouty',
+    status: 'active',
+    current_version: 1,
+    legacy_custom_id: null,
+    last_active_at: null,
+    created_at: '2026-10-05T00:00:00.000Z',
+    updated_at: '2026-10-05T00:00:00.000Z',
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.sessions.addMessage.mockImplementation(async (input: { content: string }) => ({
@@ -91,7 +118,10 @@ beforeEach(() => {
   mocks.sessions.buildChatMessages.mockResolvedValue([]);
   mocks.sessions.updateTitle.mockResolvedValue(undefined);
   mocks.sessionShares.getSharedSessionIds.mockResolvedValue([]);
-  mocks.customProfiles.getById.mockResolvedValue(undefined);
+  mocks.bots.getBotById.mockResolvedValue(undefined);
+  mocks.bots.getByLegacyCustomId.mockResolvedValue(undefined);
+  // The member's Sprouty Bot is the default identity (resolved per turn).
+  mocks.bots.listBots.mockResolvedValue([sproutyBot()]);
   mocks.users.getById.mockResolvedValue({
     id: 'owner',
     role: 'team',

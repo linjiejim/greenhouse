@@ -518,6 +518,9 @@ async function loadRunContext(args: BotsRunArgs, db: DatabaseProvider): Promise<
   const botNames = new Map(allBots.map((bot) => [bot.id, bot.name]));
   const digest = digestView(stored, uptoSeq, conversation.digest_updated_at, locale, botNames);
 
+  // The base preset (static rules, rich output, model fallback, usage
+  // attribution). Each Bot's turn narrows the member's allowed tools to the
+  // Bot's own filter and overrides the model (turn.ts, profileFromBot).
   const profile = await botsEngineDeps().resolveProfile('sprouty');
   const { effectiveTools } = await resolveEffectiveTools({
     userId: user.id,
