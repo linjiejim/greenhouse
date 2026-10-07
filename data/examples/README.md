@@ -23,7 +23,7 @@ Then log in at the app with any seeded user and the shared demo password:
 | `maya@greenhouse.example` | super admin | admin, all settings, everything |
 | `leo@greenhouse.example` | team | engineering docs, SOC 2 project, sub-agents |
 | `priya@greenhouse.example` | team | roadmap, projects, launch |
-| `sam@greenhouse.example` | team | brand voice, blog drafts, custom profile |
+| `sam@greenhouse.example` | team | brand voice, blog drafts, a Bot (Sales Assistant) |
 
 **Password for every seeded user: `greenhouse`** (override with
 `pnpm seed --password <pw>`). `dana@greenhouse.example` is intentionally
@@ -49,7 +49,7 @@ shared demo password.
   app's own inserts don't collide.
 - **JSON-as-text columns** (`tags`, `dependencies`, `pipeline`, `references_`,
   `_questions`, `capabilities`, …) are authored as **native arrays/objects**; the
-  importer stringifies them for the underlying `text` columns. Custom agents (`custom_profiles.json`) are loaded through the service so each one also gets its immutable draft v1 version row.
+  importer stringifies them for the underlying `text` columns. Bots (`bots.json`) are loaded through `db.bots.createBot()` so each one also gets its immutable version 1 row (the avatar object is stringified for the service).
 - **Secrets are never baked in.** `users.json` rows carry a plaintext `password`
   (not `password_hash`); the importer scrypt-hashes it at load. Tables whose
   values are encrypted/hashed with the instance secret (`api_clients`,

@@ -16,7 +16,7 @@ import type { ThemeKey } from '../../lib/theme';
 import { useI18n, LOCALE_OPTIONS } from '../../lib/i18n';
 import { useAuthStore } from '../../stores';
 
-const MAX_NOTES_LENGTH = 500;
+const MAX_NOTES_LENGTH = 2000;
 const THEME_CHOICES: ThemeKey[] = ['system', 'light', 'dark'];
 
 export function PreferencesPanel() {

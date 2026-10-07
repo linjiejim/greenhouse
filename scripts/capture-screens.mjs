@@ -428,15 +428,16 @@ async function seedAgent(client) {
   const tools = ['knowledge_search', 'knowledge_query', 'tables_query', 'project_query', 'web_search'].filter((id) =>
     available.has(id),
   );
-  const r = await client.post('/api/profiles/custom', {
+  // A Bot is the agent identity (spec 20261007): the Chat picker lists it as `bot:<id>`.
+  const r = await client.post('/api/bots', {
     name: 'Support Triage',
+    role: 'Support triage',
     description: 'Reads new customer feedback, checks the policy docs and drafts a reply for the owner to approve.',
-    base_profile_id: 'sprouty',
     tools,
-    system_prompt:
+    instructions:
       'You triage customer feedback for the support team.\n\n1. Read the record the user points at (or the newest negative ones in the Customer Feedback base).\n2. Check the knowledge base for the relevant policy before answering.\n3. Draft a reply the owner can send as-is: acknowledge, state what we will do, give a date.\n\nNever promise a fix date that is not in a project plan.',
   });
-  if (r.status >= 300) log(`  ⚠ custom agent ${r.status}: ${JSON.stringify(r.body).slice(0, 160)}`);
+  if (r.status >= 300) log(`  ⚠ bot ${r.status}: ${JSON.stringify(r.body).slice(0, 160)}`);
 }
 
 async function seedMachineClient(client, users) {

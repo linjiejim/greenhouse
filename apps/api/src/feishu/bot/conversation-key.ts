@@ -62,6 +62,7 @@ export const FEISHU_DENIED_TOOL_IDS: readonly string[] = [
   'team',
   'conversation',
   'bot_tasks',
+  'self',
 ];
 
 const DENIED = new Set(FEISHU_DENIED_TOOL_IDS);

@@ -1,5 +1,5 @@
 /**
- * Bots — `#/bots` and `#/bots?c=<sessionId>`.
+ * Bots — `#/bots`, `#/bots?c=<sessionId>` and `#/bots/directory` (./directory.tsx).
  *
  * An immersive workspace like Chat (its own conversation header, no
  * ModulePage frame). The page decides where the member lands — first visit
@@ -18,6 +18,7 @@ import { Button, EmptyState, Spinner } from '../../components/ui';
 import { AlertTriangle, Bot } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import * as botsApi from '../../lib/api/bots';
+import { BotsDirectory } from './directory';
 import { ComputerPane, type ComputerPaneHandle } from '../../components/bots/computer-pane';
 import { useComputerStatus, useComputerTimezoneSync } from '../../components/bots/computer-phase';
 import {
@@ -52,6 +53,10 @@ function BotsDialogs({ onInvited }: { onInvited?: () => void }) {
   const openProfile = useBotsStore((state) => state.openProfile);
   const loadConversations = useBotsStore((state) => state.loadConversations);
 
+  // A drawer left open when the member navigated away must not reappear on
+  // the next visit (the store outlives the page).
+  useEffect(() => () => openProfile(null), [openProfile]);
+
   const openDm = useCallback(
     async (bot: BotView) => {
       openProfile(null);
@@ -78,7 +83,7 @@ function BotsDialogs({ onInvited }: { onInvited?: () => void }) {
           // Created from Invite: stay in the group either way (a failed join
           // was explained by the dialog); otherwise meet the new Bot.
           if (invitedTo || inviteFailed) onInvited?.();
-          else openBotsConversation(dmSessionId);
+          else if (dmSessionId) openBotsConversation(dmSessionId);
         }}
       />
       <NewGroupDialog
@@ -95,8 +100,10 @@ function BotsDialogs({ onInvited }: { onInvited?: () => void }) {
   );
 }
 
-export function BotsPage({ params }: { params: URLSearchParams }) {
+export function BotsPage({ params, subPath = '' }: { params: URLSearchParams; subPath?: string }) {
   const sessionId = params.get('c');
+  // `#/bots/directory`: the identities (manage, share, clone) rather than a thread.
+  if (subPath.split('/')[0] === 'directory') return <BotsDirectory />;
   return sessionId ? <BotsWorkspace sessionId={sessionId} /> : <BotsLanding />;
 }
 

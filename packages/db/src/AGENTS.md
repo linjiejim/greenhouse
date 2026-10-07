@@ -129,7 +129,7 @@
 
 ### 全文搜索
 
-`knowledge_base` 用 `to_tsvector`/`to_tsquery` + GIN 表达式索引。**FTS 索引由迁移链持有**（drizzle DSL 不追踪表达式索引），运行时不建索引、无 `ensureFtsIndex`。实现在 `services/fts.ts` + `services/knowledge-base.ts`。
+`knowledge_base` 用 `to_tsvector`/`to_tsquery` + GIN 表达式索引。**FTS 索引由迁移链持有**（drizzle DSL 不追踪表达式索引，所以是 `drizzle-kit generate --custom` 手写的 `0013_kb_fts_index`；此前两个月的 FTS 一直全表扫），运行时不建索引、无 `ensureFtsIndex`。表达式必须与 `services/knowledge-base.ts` 的 `weightedTsVector` 逐字一致，否则 planner 不用它。实现在 `services/fts.ts` + `services/knowledge-base.ts`。
 
 - **jieba 分词列**:各表 `_tokens_a/b/c`(`@node-rs/jieba` napi 预编译,无 build 脚本/不进 allowBuilds),写路径(create/update/upsert)与 `updateKeywordsEn`/`updateEnrichment` 每次重算;索引 `idx_kb_fts_seg`。配置 `simple`(分词已在应用层做,PG 只按空格切)
 - 权重:kb A=title+tags / B=\_summary+\_questions / C=content+\_topics
@@ -166,6 +166,7 @@
 - **`bot_computers` 的每次状态迁移都是 `version` CAS**，单用户的 start/stop/evict 在 `withUserLock`、容量判断在 `withCapacityLock` 里做——蓝绿两个 API 槽位共享同一个 Docker daemon 和这张表，进程内状态不能当事实。接管租约的 `lease_epoch` 单调递增：观察（快照/截图）返回前要复核 epoch，变了就丢弃。
 - **密码库只存密文、只回元数据**：service 原样存取 `*_enc` 列，加解密（AAD=`vault:<user_id>:<item_id>:<field>`）在 API 的 vault 模块里做；HTTP 与工具的读路径只返回 `VaultItemView`。新 id 先用 `newVaultItemId()` 生成再加密（id 是 AAD 的一部分）。
 - `bot_requests` 只经 `settleRequest` 从 pending 单次 CAS 结算（双击、两个槽位竞争都只有一个赢家）；`payload` 只放服务端派生的展示/执行数据，**永不放秘密**（安全登录卡的输入值只经过一次请求体，不落库）。
+- **Bot 私有参考资料夹**（`drive_folders.bot_id`，2026-10-07）：每 Bot 至多一个根文件夹，CHECK 约束要求它是 `scope='kb'` + `visibility='private'` + 有 owner 的个人文件夹；随 Bot 级联删除。读侧只新增**排除**：`KnowledgeListOpts` / `KnowledgeSearchOpts` 的 `excludeFolderIds`（`AND (folder_id IS NULL OR folder_id NOT IN …)`，四个 SQL 变体与 `kbTree` 同步），空数组 = 不排除。排除集由 `apps/api/src/bots/folder.ts` 按身份算，HTTP 路由（主人自己）不传。
 
 ### 邮箱绑定与发信审计
 
@@ -264,15 +265,21 @@
 - Eval 的领域事实仍在 `eval_runs/eval_results`：`createQueuedRun()` 必须在一个事务内保存 exact dataset selection 与全部 pending result placeholders；Runtime envelope/Step 仍只由 `db.runtime` 创建，API boot reconciler 负责补两者之间的 crash window。driver 完成或报错 result 必须用 `updatePendingResult()` CAS，确保 durable cancel 先把 pending 改 cancelled 后，迟到的 provider 响应不能覆盖取消。`completed|error|cancelled` 都是已处理 case，恢复时不得重复模型调用；只有 pending 可形成新 Runtime Step attempt。
 - `runtime_runs.parent_run_id` 是域内 CASCADE 所有权；Run 的用户/session/source/root、Event actor、Interrupt 决策人、ToolCall Platform Audit 是松散逻辑关联，使永久执行历史不随外域主体删除。Service 写入 step/tool/artifact/interrupt 时必须验证它们属于同一 Run，不能只依赖单列 FK。
 
-### Custom Agent 版本与治理
+### Bot 版本与治理（2026-10-07 从 custom_profiles 搬到 bots）
 
-- `custom_profiles` 是稳定资产身份，`custom_profile_versions` 是不可变完整 manifest；生产 Service 只能 append，
-  不得 update/delete 版本。manifest hash、change log、模型/tools/prompt、purpose/audience/risk/budget/Eval refs 与
-  owner backup/review due 必须随版本冻结。
-- 任何新版本都撤销原审查：资产回 `draft`，清空 `published_version`、共享、reviewer 与 review date。旧
-  `custom:<id>@<version>` 仍可供已 pin 的会话/计划任务/Eval 重放，但不能继续对其他用户发布。
-- 共享只能由 lifecycle `pilot` / `verified` 派生；不得直接写 `is_shared=true`。迁移把存量行转成 draft v1，
-  并把 sessions/scheduled_tasks/eval_runs 的存量 custom 引用 pin 到 `@1`。
+- `bots` 是稳定资产身份（也是聊天 / 自动化 / Bots 线程共用的唯一 Agent 身份），`bot_versions` 是不可变完整
+  manifest；`createBot` 写 v1、`updateBot` 追加 v(n+1)，生产 Service 不得 update/delete 版本。manifest hash、
+  change log、名字/岗位/用途/守则/tools/模型/步数/头像与 purpose/audience/risk/budget/Eval refs、owner backup/
+  review due 必须随版本冻结。`tools` 为 NULL = 继承主人全部有效工具，列表 = 过滤器。
+- 任何新版本都撤销原审查：回 `draft`，清空 `published_version`、共享、reviewer 与 review date。旧
+  `bot:<id>@<version>` 仍可供已 pin 的计划任务/Eval/子代理重放，但不能继续对其他用户发布。`archiveBot` 同时置
+  `lifecycle_status='archived'` 并停止共享。
+- 共享只能由 lifecycle `pilot` / `verified` 派生；不得直接写 `is_shared=true`。`listShared` 只列他人的已发布行，
+  `listGovernanceQueue` / `listActiveWithOwners` 只列进入过评审的行（个人草稿是私事）。
+- **迁移 `0010_bot_identity` 把每条 `custom_profiles` 变成主人的一只 Bot**：id 取 `'bot_' || left(md5('custom:'||id),16)`，
+  版本号原样复制，`legacy_custom_id` 保存原 id 供 `custom:<id>[@v]` 继续解析；名字按 Bot 规则清洗（去 `[]:：` 与控制符、
+  ≤24 字、与主人现有 active Bot 重名加后缀），`role` 取 purpose/description 首句；已有 Bot 回填 v1（hash 由 SQL 算，
+  仅审计用）。`0011` 再 drop 两张旧表。`sessions` / `scheduled_tasks` / `eval_runs` 存量 `profile_id` **不改写**。
 - 自动治理只消费 `listReviewDue(at, limit)` 与 `listActiveWithOwners(limit, afterId)`；状态变更可用逻辑 actor
   `system:agent-governance`。发布未显式给 review date 时，low/medium risk 默认 90 天、high risk 默认 60 天，
   禁止产生永不复核的 pilot/verified。review actor 与版本 created_by/backup snapshot 保持逻辑引用，避免账号删除改写历史。

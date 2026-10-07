@@ -32,7 +32,7 @@ import {
 import type { InboxItem } from './inbox-types.js';
 
 export type { InboxItem } from './inbox-types.js';
-export { createBotsRoutes } from '../routes.js';
+export { createBotsRoutes, createBotsAdminRoutes } from '../routes.js';
 export { cancelBotTasksForUser } from './tasks.js';
 export { claimBotsRun, releaseBotsRun, stopBotsRunsForUser } from './run-slot.js';
 

@@ -24,6 +24,7 @@ import { RichMarkdown } from '../rich-markdown';
 import type { BotMessage } from '../../lib/api/bots';
 import { LoginRequestCard } from './login-request-card';
 import { BotCreateCard } from './bot-create-card';
+import { InstructionsUpdateCard } from './instructions-update-card';
 import { HumanCheckCard, type RequestCardComputer } from './human-check-card';
 import {
   humanCheckTakeover,
@@ -68,6 +69,7 @@ export function RequestCard(props: RequestCardProps) {
       {request.kind === 'approval' && <ApprovalCard {...props} request={request} />}
       {request.kind === 'takeover' && <TakeoverCard {...props} request={request} />}
       {request.kind === 'task_start' && <TaskStartCard {...props} request={request} />}
+      {request.kind === 'instructions_update' && <InstructionsUpdateCard {...props} request={request} />}
     </div>
   );
 }

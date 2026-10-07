@@ -6,7 +6,7 @@
  * versions, FTS, and incremental ingest via content_hash.
  */
 
-import { eq, and, sql, isNull, ilike, like, or, desc, asc, gt, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, like, notInArray, or, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -116,6 +116,12 @@ export interface KnowledgeListOpts {
    * `undefined` means no folder restriction at all.
    */
   folderIds?: number[];
+  /**
+   * Drop documents filed in these folders (already expanded subtrees) while
+   * keeping root-level docs and every other folder — how a Bot turn hides the
+   * owner's other Bots' reference folders. Empty = no exclusion.
+   */
+  excludeFolderIds?: number[];
   limit?: number;
   offset?: number;
 }
@@ -128,6 +134,8 @@ export interface KnowledgeSearchOpts {
   status?: string;
   /** Same semantics as KnowledgeListOpts.folderIds. */
   folderIds?: number[];
+  /** Same semantics as KnowledgeListOpts.excludeFolderIds. */
+  excludeFolderIds?: number[];
   limit?: number;
 }
 
@@ -145,6 +153,16 @@ function folderFilter(folderIds: number[] | undefined, prefix: '' | 'kb.') {
     folderIds.map((id) => sql`${id}`),
     sql`, `,
   )})`}`;
+}
+
+/** `AND (folder_id IS NULL OR folder_id NOT IN (…))` — the mirror of folderFilter; empty = no clause. */
+function folderExcludeFilter(folderIds: number[] | undefined, prefix: '' | 'kb.') {
+  if (!folderIds || folderIds.length === 0) return sql``;
+  const column = prefix === 'kb.' ? sql`kb.folder_id` : sql`folder_id`;
+  return sql`AND (${column} IS NULL OR ${column} NOT IN ${sql`(${sql.join(
+    folderIds.map((id) => sql`${id}`),
+    sql`, `,
+  )})`})`;
 }
 
 export function createKnowledgeBaseService(db: Db) {
@@ -348,7 +366,7 @@ export function createKnowledgeBaseService(db: Db) {
 
       const ownerClause = opts?.ownerUserId ? sql`AND kb.owner_user_id = ${opts.ownerUserId}` : sql``;
       const visibilityClause = opts?.visibility ? sql`AND kb.visibility = ${opts.visibility}` : sql``;
-      const folderClause = folderFilter(opts?.folderIds, 'kb.');
+      const folderClause = sql`${folderFilter(opts?.folderIds, 'kb.')} ${folderExcludeFilter(opts?.excludeFolderIds, 'kb.')}`;
 
       // Query the jieba-segmented token columns so Chinese sentences word-match.
       const weightedTsVector = sql`(
@@ -519,6 +537,11 @@ export function createKnowledgeBaseService(db: Db) {
       // An empty folder set matches nothing (see folderFilter) — never widen.
       if (opts?.folderIds !== undefined) {
         conditions.push(opts.folderIds.length === 0 ? sql`false` : inArray(knowledgeBase.folder_id, opts.folderIds));
+      }
+      if (opts?.excludeFolderIds && opts.excludeFolderIds.length > 0) {
+        conditions.push(
+          or(isNull(knowledgeBase.folder_id), notInArray(knowledgeBase.folder_id, opts.excludeFolderIds))!,
+        );
       }
       if (opts?.search) {
         const like = `%${opts.search}%`;
@@ -816,7 +839,7 @@ export function createKnowledgeBaseService(db: Db) {
       const status = opts.status ?? 'published';
       const ownerClause = opts.ownerUserId ? sql`AND owner_user_id = ${opts.ownerUserId}` : sql``;
       const visibilityClause = opts.visibility ? sql`AND visibility = ${opts.visibility}` : sql``;
-      const folderClause = folderFilter(opts.folderIds, '');
+      const folderClause = sql`${folderFilter(opts.folderIds, '')} ${folderExcludeFilter(opts.excludeFolderIds, '')}`;
       const result = await db.execute(sql`
         SELECT id, doc_id, title, _summary, tags, folder_id,
                SUBSTRING(content, 1, 240) as snippet, 1.0 as relevance

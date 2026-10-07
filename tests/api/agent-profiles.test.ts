@@ -219,19 +219,6 @@ describe('Profile module loading and legacy compatibility', () => {
     }
   });
 
-  it('validates custom base profile IDs', async () => {
-    const { isValidCustomBaseProfileId } = await import('../../apps/api/src/profiles/profile.js');
-    expect(isValidCustomBaseProfileId('sprouty')).toBe(true);
-    // Retired preset ids are not fork bases (stored rows normalize first).
-    expect(isValidCustomBaseProfileId('sprouty-quick')).toBe(false);
-    expect(isValidCustomBaseProfileId('sprouty-workflows')).toBe(false);
-    // Hidden/system and removed ids are never fork bases.
-    expect(isValidCustomBaseProfileId('default')).toBe(false);
-    expect(isValidCustomBaseProfileId('team')).toBe(false);
-    expect(isValidCustomBaseProfileId('desktop')).toBe(false);
-    expect(isValidCustomBaseProfileId('eval-judge')).toBe(false);
-  });
-
   it('resolveProfileAsync handles custom malformed IDs', async () => {
     const { resolveProfileAsync } = await import('../../apps/api/src/profiles/profile.js');
     await expect(resolveProfileAsync('custom:abc')).rejects.toThrow(/Invalid custom profile ID/);

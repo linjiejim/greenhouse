@@ -8,7 +8,7 @@
 
 - 数据访问统一通过 `getDb()` 返回的域 service；业务代码不直接写 SQL。
 - 内部有效用户角色只有 `team` 与 `super`。数据库仍允许读取历史 `external` 角色值以完成迁移兼容，但这类账号必须为 `disabled`，中央鉴权必须拒绝其 token。
-- Agent Profile 的持久化默认值是 `team`：`sessions.profile_id`、`eval_runs.profile_id`、`scheduled_tasks.profile_id` 与 `custom_profiles.base_profile_id`。
+- Agent Profile 的持久化默认值是 `team`（解析时归一到 `sprouty`）：`sessions.profile_id`、`eval_runs.profile_id`、`scheduled_tasks.profile_id`。身份引用的三种写法：`sprouty`（按成员解析成他的 Sprouty Bot）、`bot:<id>` / `bot:<id>@<v>`、存量 `custom:<id>[@v]`（经 `bots.legacy_custom_id`）。
 - 域内强所有权使用 FK，并明确 `CASCADE` / `SET NULL`；审计、统计、跨域主体引用通常保持逻辑关联，避免主体删除时丢失历史。
 - `tags`、`meta`、`config`、`scopes` 等 JSON 数据目前以 `TEXT NOT NULL` 保存，默认值为 `[]` 或 `{}`。
 - `table_records.values/computed_values` 是动态字段检索的真实数据库路径查询需求，按列例外使用 `JSONB NOT NULL DEFAULT '{}'`；Tables 的 field/view/widget 配置使用 JSON 文本，Form/Automation 配置使用类型化 JSONB。
@@ -31,8 +31,6 @@
 | `feishu_conversations` | PK `id`；UK `feishu_key` | 飞书对话 ↔ Greenhouse 会话映射（迁移 0066）。`feishu_key` = `thread_id ?? root_id ?? message_id` 的回退结果：话题群命中 thread_id（每个话题一个会话）、普通回复链命中 root_id、首次发言用自己的 message_id。**实测 `root_id` 在整条回复链里恒定**，所以用户回复链上任意一条旧消息都续同一个会话。唯一键同时是并发仲裁者——同一串对话的两条消息同时到达时，`DO NOTHING` 让先到的赢，绝不会建出两个会话 |
 | `feishu_message_receipts` | PK `message_id` | 已处理的飞书消息 id（迁移 0066）。飞书会重投事件，而处理一条消息 = 跑一轮 agent = 花钱且会回消息；**先写回执再干活**，写冲突即丢弃。回执只为去重，保留 7 天足够覆盖任何重投窗口 |
 | `user_provider_tokens` | PK `id`；UK `(user_id, provider, workspace_id)`，NULLS NOT DISTINCT | 通用外部 provider 绑定；access/refresh/credential 为加密文本，含 scope、过期时间与 metadata。**`access_token` 自 0056 起可空**——企微这类绑定存的是**身份**而非凭证（应用 token 是 corp 全局、进程内缓存），塞一个空串会让该列自己的契约变成假的；`provider_user_id` 即企微 UserId（`provider='wecom'`）或飞书 open_id（`provider='feishu'`），是个人消息推送的收件人来源；飞书绑定同时是扫码登录的查表键 |
-| `custom_profiles` | PK `id`；UK `(user_id, slug)` | 自定义 Agent 稳定资产身份；owner/current/published version 指针与 draft/review/pilot/verified/rejected/suspended/deprecated/archived 生命周期。共享只由 pilot/verified 派生；backup owner FK SET NULL，reviewer 为保留历史的逻辑引用 |
-| `custom_profile_versions` | PK `id`；UK `(profile_id, version)` | 不可变可执行 manifest；模型、tools、prompt、外观（`avatar` JSON：`plant` + 最近的旧 `color` + 以 `faceStyle` 存的静息眼神；旧行带 Sprouty 时代的 accessories / leafStyle / eyeStyle / palette 等键——因进 manifest hash 永不回写，渲染时由 `legacyToPlant` 映射成植物）与 purpose/audience/risk/budget/eval refs/review due 一起版本化，含 change log、SHA-256 manifest hash 与创建人；生产 service 无 update/delete |
 | `user_memories` | PK `id`；部分索引 `bot_id` | 用户长期记忆；`title`（注入 prompt 的召回索引行）+ `content` + 类别、状态机（active/dormant/archived/superseded）、pinned、来源、`superseded_by` 自引用、`last_used_at`；`bot_id` 为作用域：null=用户级（所有 Agent 与 Bot 都看得到），非空=该 Bot 私有 |
 | `tool_frictions` | PK `id`, UNIQUE `fingerprint` | Agent 踩坑信号（团队级，永不注入 prompt）；工具/类型/摘要/证据、`occurrence_count` 聚合计数、样本会话、复盘状态与解决备注 |
 | `user_prompts` | PK `id`；UK `artifact_action_id` | **Tasks**（可复用任务，用户面已改叫 Tasks，表名保留）；`description` 一句话用途说明（选择器里展示）、`variables` JSON 存 `{{占位符}}` 定义、`expected_tools` JSON 存该流程实际用过的工具（**仅展示，不做权限判定**）、`source_session_id` 逻辑指向固化来源会话（无 FK，任务比会话活得久）、`created_via` 区分手写与会话固化。聊天固化时 `artifact_action_id` 是 exactly-once 恢复键；无变量无工具的行 = 原来的快捷 Prompt，行为逐字段不变 |
@@ -64,11 +62,12 @@
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `bots` | PK `id`(`bot_<hex>`)；部分 UK `(user_id, name_key) WHERE status='active'`；索引 `(user_id, status)` | 成员私有的持久 Bot 身份（≠ 自定义 Agent 版本）：name / `name_key`（NFKC 小写，唯一键）/ role / instructions（长期规则，注入前 sanitize）/ avatar（植物头像 JSON：`plant` + 最近的旧 `color` + 以 `faceStyle` 存的静息眼神）/ model_id / template_key；`status=archived` 是成员唯一的「删除」（消息仍能显示作者名）；随 `user_id` 级联硬删 |
+| `bots` | PK `id`(`bot_<hex>`)；部分 UK `(user_id, name_key) WHERE status='active'`；UK `legacy_custom_id`；索引 `(user_id, status)`、`(is_shared, lifecycle_status)`、`owner_backup_user_id` | **唯一的 Agent 身份**（2026-10-07 吸收了自定义 Agent，迁移 0010/0011）：name / `name_key`（NFKC 小写，唯一键）/ role / description / instructions（≤8000，注入前 sanitize）/ avatar（植物头像 JSON）/ model_id / `tools`（JSON 数组 = 只能收窄的过滤器，NULL = 继承主人全部）/ `max_steps` / template_key；版本指针 `current_version` / `published_version` 与 draft/review/pilot/verified/rejected/suspended/deprecated/archived 生命周期（共享只由 pilot/verified 派生，backup owner FK SET NULL，reviewer 为逻辑引用）；`forked_from`（谱系）；`legacy_custom_id`（迁入的自定义 Agent 原 id）；`status=archived` 是成员唯一的「删除」（消息仍能显示作者名）；随 `user_id` 级联硬删 |
+| `bot_versions` | PK `id`；UK `(bot_id, version)` | Bot 的不可变可执行 manifest：名字 / 岗位 / 用途 / 守则 / tools / 模型 / 步数 / 外观（`avatar` JSON 进 manifest hash 永不回写，旧键在渲染时由 `legacyToPlant` 映射）与 purpose/audience/risk/budget/eval refs/review due，含 change log、SHA-256 manifest hash 与创建人；生产 service 无 update/delete |
 | `bot_conversations` | PK/FK `session_id`；UK `owner_bot_id`；索引 `(user_id, last_activity_at)` | 与 session 1:1 的 Bots 对话：`kind=direct/group`，`owner_bot_id`（私聊主人，每个 Bot 一条规范私聊，私聊永不变群——邀请进来的是 guest）、`lead_bot_id`（未点名消息的应答者）、群规 `description`、`allow_bot_chat`、结构化滚动摘要 `digest` + `digest_upto_seq` / `digest_upto_message_id`（CAS 更新；边界消息消失即重置）、`last_read_at` |
 | `bot_conversation_members` | PK `id`；UK `(session_id, bot_id)` | 对话成员（≤6）：`role=owner/lead/member/guest`、`position`、`added_by`（`user` 或 `bot:<id>`） |
 | `bot_shared_notes` | PK `id`；索引 `(session_id, status)` | 对话级共享笔记（黑板）：title（注入索引）/ body / `author_bot_id`（null=成员写的）/ `status=open/done` / pinned；open ≤50 |
-| `bot_requests` | PK `id`(`brq_<hex>`)；索引 `(user_id, status)`、`(session_id, status)` | 所有「需要你」：`kind=takeover/login/approval/bot_create/task_start`，`status` 只经 `settleRequest` 从 pending 单次 CAS 结算；`payload` 为服务端派生的展示/执行数据（**从不含秘密**），`expires_at` 到期由清扫置 expired |
+| `bot_requests` | PK `id`(`brq_<hex>`)；索引 `(user_id, status)`、`(session_id, status)` | 所有「需要你」：`kind=takeover/login/approval/bot_create/task_start/instructions_update`（最后一种是 Bot 用 `self` 工具提议改自己的守则），`status` 只经 `settleRequest` 从 pending 单次 CAS 结算；`payload` 为服务端派生的展示/执行数据（**从不含秘密**），`expires_at` 到期由清扫置 expired |
 | `bot_inbox` | PK `id`；部分索引 `(session_id, id) WHERE consumed_at IS NULL` | 单写者规则的持久队列：会话忙时外部产生的事件 / 续跑 / 后台汇报 / 插话消息落这里，由持有 ChatRun 的引擎在 Bot 回合之间排空（`consumeInbox` CAS） |
 | `bot_computers` | PK/FK `user_id` | 每成员一台电脑的 DB 权威生命周期：namespace / 容器名 / 卷名、`state=absent/starting/running/stopping/error` + `state_reason`、`version`（所有迁移 CAS）、接管租约 `lease_controller=bot/user` + 单调 `lease_epoch`、`viewer_heartbeat_at`（持有观看连接的槽位刷新）、`last_active_at`（闲置判定）、`image_id`、`disk_bytes`、`timezone`（成员自己的 IANA 时区，空 = 部署默认，下次启动生效；0009） |
 | `vault_items` | PK `id`(`vlt_<hex>`)；索引 `user_id` | 密码库条目：`origins`（JSON，精确 `https://host[:port]` 或显式 `*.host`）、`username_enc` / `password_enc` / `totp_enc`（AES-256-GCM，AAD=`vault:<user_id>:<item_id>:<field>`，任何读路径都不返回）、`username_hint`（打码展示）、`policy=ask/auto`、`always_origins`（「此站点总是允许」） |
@@ -142,7 +141,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `knowledge_base` | PK `id`；UK `(doc_id, scope)` | 内部知识文档；Markdown + Tiptap JSON，team/private 可见性、状态、owner、AI 增强字段；`sort_order` 为侧栏树同级手工顺序（0 = 从没排过，读侧排最后） |
 | `knowledge_base_versions` | PK `id`；UK `(doc_id, version)` | 知识文档不可变版本快照；标题、正文、编辑器 JSON、摘要、变更人/原因 |
 | `knowledge_base_shares` | PK `id`；UK `(doc_id, shared_with)` | private 文档共享；目标为 user id 或 `group:<id>`，角色 reader/editor |
-| `drive_folders` | PK `id` | `kb/crm/tables` 三 scope 文件夹树；自引用 parent；KB 用 visibility/owner，CRM 用 company，Tables 用 Base；`sort_order` 同 `knowledge_base`（同级手工顺序，0 排最后） |
+| `drive_folders` | PK `id`；索引 `bot_id` | `kb/crm/tables` 三 scope 文件夹树；自引用 parent；KB 用 visibility/owner，CRM 用 company，Tables 用 Base；`sort_order` 同 `knowledge_base`（同级手工顺序，0 排最后）；`bot_id`（0012）= 某 Bot 的私有参考资料夹根（CHECK：必须是 `kb` + `private` + 有 owner），读侧按身份排除其他 Bot 的子树 |
 | `drive_files` | PK `id`；UK `cos_key` | 文件元数据；folder、对象存储 key、content type、size、pending/active/deleted 状态与 scope 权属；scope-owner check 防止跨域混挂 |
 | `email_accounts` | PK `id`；UK `(user_id, email_address)`；IDX `user_id` | per-user IMAP/SMTP 邮箱绑定；连接配置为明文列（便于运维排查），**仅 `password_encrypted` 是 AES-256-GCM 密文**；`preset` 只作 UI 提示不参与分支；`use_proxy` 决定是否走 `MAIL_EGRESS_PROXY`。共享的 greenhouse@ 邮箱**不在此表**，只从 env 读（运维所有物，无 owner） |
 | `email_send_log` | PK `id`；IDX `(user_id, created_at)`、`(account_scope, created_at)` | 发信审计 + 日限计数源；`account_scope` 区分 personal/shared，`origin` 区分 chat/automation/account-security，成功与失败都记。**无 FK 指向 `email_accounts`**：审计必须比它描述的绑定活得久（跨域松散关联） |
@@ -234,9 +233,9 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `account_password_links.user_id` | `users.id` | CASCADE |
 | `user_features.user_id` | `users.id` | CASCADE |
 | `user_provider_tokens.user_id` | `users.id` | CASCADE |
-| `custom_profiles.user_id` | `users.id` | CASCADE |
-| `custom_profiles.owner_backup_user_id` | `users.id` | SET NULL |
-| `custom_profile_versions.profile_id` | `custom_profiles.id` | CASCADE |
+| `bots.owner_backup_user_id` | `users.id` | SET NULL |
+| `bot_versions.bot_id` | `bots.id` | CASCADE |
+| `drive_folders.bot_id` | `bots.id` | CASCADE |
 | `user_memories.user_id` | `users.id` | CASCADE |
 | `group_members.group_id` | `user_groups.id` | CASCADE |
 | `group_members.user_id` | `users.id` | CASCADE |
@@ -387,9 +386,10 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `notification_delivery_attempts.notification_id` | `notifications.id` | FK CASCADE；送达状态独立于业务结果，只随显式通知根删除 |
 | `runtime_events.actor_user_id` | `users.id` | Event actor 审计；账号删除后 Event 仍保留 |
 | `runtime_interrupts.assignee_user_id` / `.decided_by_user_id` | `users.id` | 决策负责人和决定人；完整决议独立保留 |
-| `custom_profiles.forked_from` | 系统或自定义 profile id | profile 谱系，不是数据库 FK |
-| `custom_profiles.reviewed_by` | `users.id` 或 `system:agent-governance` | 生命周期审查 actor；逻辑引用以保留账号删除后的历史 |
-| `custom_profile_versions.created_by` / `.owner_backup_user_id` | `users.id` | 不可变版本快照中的逻辑引用，账号删除不改写证据 |
+| `bots.forked_from` | `sprouty` / `bot:<id>@<v>` / 退役的 `custom:<id>@<v>` | Bot 谱系（克隆来源），不是数据库 FK |
+| `bots.reviewed_by` | `users.id` 或 `system:agent-governance` | 生命周期审查 actor；逻辑引用以保留账号删除后的历史 |
+| `bots.legacy_custom_id` | 已删除的 `custom_profiles.id` | 存量 `custom:<id>[@v]` 引用的解析键 |
+| `bot_versions.created_by` / `.owner_backup_user_id` | `users.id` | 不可变版本快照中的逻辑引用，账号删除不改写证据 |
 | `knowledge_base.owner_user_id` | `users.id` | private 文档所有者 |
 | `knowledge_base_shares.shared_with` | `users.id` 或 `group:<user_groups.id>` | 用户/小组复合共享目标 |
 | `email_send_log.user_id` | `users.id` | 发起人；审计独立于账号生命周期，刻意无 FK |
@@ -428,9 +428,9 @@ erDiagram
     users ||--o{ account_password_links : "FK CASCADE"
     users ||--o{ user_features : "FK CASCADE"
     users ||--o{ user_provider_tokens : "FK CASCADE"
-    users ||--o{ custom_profiles : "FK CASCADE"
-    users ||--o{ custom_profiles : "backup owner SET NULL"
-    custom_profiles ||--o{ custom_profile_versions : "FK CASCADE"
+    users ||--o{ bots : "backup owner SET NULL"
+    bots ||--o{ bot_versions : "FK CASCADE"
+    bots ||--o{ drive_folders : "bot folder FK CASCADE"
     users ||--o{ user_memories : "FK CASCADE"
     users ||--o{ group_members : "FK CASCADE"
     user_groups ||--o{ group_members : "FK CASCADE"

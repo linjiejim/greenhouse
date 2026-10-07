@@ -59,6 +59,7 @@ describe('filterFeishuToolIds', () => {
       'conversation',
       'mission_dispatch',
       'request_takeover',
+      'self',
       'spawn_session',
       'tables_schema_plan',
       'task_capture',

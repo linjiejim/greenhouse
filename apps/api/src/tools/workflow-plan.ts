@@ -23,7 +23,14 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import type { DatabaseProvider } from '@greenhouse/db';
 import type { WorkflowGraph, WorkflowPlanArtifact } from '@greenhouse/types/workflow';
 import { validateWorkflowGraph, resolveBudget } from '../workflow-engine/graph.js';
-import { loadProfile, listProfileIds, normalizeProfileId } from '../profiles/profile.js';
+import {
+  loadProfile,
+  listProfileIds,
+  normalizeProfileId,
+  isBotProfileId,
+  loadBotReference,
+  isExecutableBot,
+} from '../profiles/profile.js';
 import { sanitizeForPrompt } from '../security/security.js';
 import { defineTool, type ToolMeta } from './define.js';
 
@@ -165,11 +172,10 @@ async function validateAgents(db: DatabaseProvider, userId: string, graph: Workf
     const agents = [node.agent, ...(node.checks ?? []).map((c) => (c.type === 'reviewer' ? c.agent : undefined))];
     for (const agent of agents) {
       if (!agent) continue;
-      if (agent.startsWith('custom:')) {
-        const id = Number.parseInt(agent.slice(7), 10);
-        const row = Number.isNaN(id) ? undefined : await db.customProfiles.getById(id);
-        if (!row || (row.user_id !== userId && !row.is_shared)) {
-          errors.push(`node ${node.id}: custom profile ${agent} not found or not accessible`);
+      if (isBotProfileId(agent)) {
+        const row = await loadBotReference(db, agent).catch(() => null);
+        if (!row || !isExecutableBot(row.bot) || (row.bot.user_id !== userId && !row.bot.is_shared)) {
+          errors.push(`node ${node.id}: Bot ${agent} not found or not accessible`);
         }
         continue;
       }

@@ -36,6 +36,18 @@ function bot(id: string, name: string, extra: Partial<BotView> = {}): BotView {
     model_id: null,
     template_key: null,
     status: 'active',
+    description: '',
+    tools: null,
+    max_steps: null,
+    lifecycle_status: 'draft',
+    lifecycle_note: null,
+    is_shared: false,
+    current_version: 1,
+    published_version: null,
+    next_review_at: null,
+    forked_from: null,
+    user_id: 'u1',
+    updated_at: '2026-10-05T00:00:00.000Z',
     dm_session_id: `dm-${id}`,
     last_active_at: null,
     created_at: '2026-10-05T00:00:00.000Z',
@@ -191,6 +203,15 @@ describe('<BotsSidebarPanel/> list', () => {
   it('makes sure a member whose Bots predate Sprouty gets it', async () => {
     api.bootstrapBots.mockResolvedValue({ bot: sprouty, dm_session_id: 'dm-bot_sprouty', created: true });
     useBotsStore.setState({ bots: [sage, fern] });
+    mount('#/bots');
+    await act(async () => {});
+    expect(api.bootstrapBots).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives a Sprouty that Chat created without a thread its DM', async () => {
+    useBotsStore.getState().reset(); // a fresh page load: the once-per-load guard is clear
+    api.bootstrapBots.mockResolvedValue({ bot: sprouty, dm_session_id: 'dm-bot_sprouty', created: false });
+    useBotsStore.setState({ bots: [{ ...sprouty, dm_session_id: null }, sage, fern], botsLoaded: true });
     mount('#/bots');
     await act(async () => {});
     expect(api.bootstrapBots).toHaveBeenCalledTimes(1);

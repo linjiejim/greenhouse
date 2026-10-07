@@ -97,7 +97,7 @@ export async function validateTaskExecution(task: ScheduledTaskRow, db: Database
   }
   const owner = await requireActiveTaskOwner(task, db);
   await assertPinnedProfileExecutionAccess(db, owner, task.profile_id, 'Automation');
-  await resolveProfileAsync(task.profile_id, db);
+  await resolveProfileAsync(task.profile_id, db, { forUserId: owner.id });
 }
 
 /**
@@ -148,7 +148,7 @@ export async function prepareTask(
   await assertPinnedProfileExecutionAccess(db, owner, task.profile_id, 'Automation');
 
   // 2. Resolve the immutable/pinned profile (validate it still exists).
-  await resolveProfileAsync(task.profile_id, db);
+  await resolveProfileAsync(task.profile_id, db, { forUserId: owner.id });
 
   // 3. Create a new session for this execution
   const reference = options.scheduledFor ? new Date(options.scheduledFor) : new Date();
@@ -219,7 +219,7 @@ export async function executeTaskInSession(
 
     // Execute agent (non-streaming) via the shared runner — it builds the
     // model, runs the bounded loop, and persists the assistant message + pipeline.
-    const profile = await resolveProfileAsync(task.profile_id, db);
+    const profile = await resolveProfileAsync(task.profile_id, db, { forUserId: owner.id });
     // The prepared session message is the canonical task prompt. Rebuilding it
     // here would change its time context (and historically sanitized only this
     // copy), defeating the exact-tail compare-and-set in the shared runner.
@@ -254,8 +254,14 @@ export async function executeTaskInSession(
     // Scheduled runs act for their owner, so they get the owner's memory index
     // (same gate as chat). Without this, "remember I want X" silently fails to
     // apply on exactly the unattended runs the user isn't watching.
-    const memoryBlock = await resolveMemoryContext(owner.id, owner.role as UserRole);
-    const systemPrompt = buildSystemPrompt(profile, memoryBlock ? { userInfo: memoryBlock } : undefined);
+    const memoryBlock = await resolveMemoryContext(owner.id, owner.role as UserRole, {
+      botId: profile.identity?.botId ?? null,
+    });
+    const ownerUser = await db.users.getById(owner.id);
+    const systemPrompt = buildSystemPrompt(profile, {
+      ...(memoryBlock ? { userInfo: memoryBlock } : {}),
+      nickname: ownerUser?.nickname ?? null,
+    });
     const maxSteps = task.max_steps ?? profile.max_steps ?? 12;
 
     const result = await runAgentInSession({

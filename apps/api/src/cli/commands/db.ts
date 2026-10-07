@@ -37,7 +37,7 @@ const STAT_TABLES = [
   'projects',
   'tasks',
   'knowledge_base',
-  'custom_profiles',
+  'bots',
   'api_clients',
   'scheduled_tasks',
   'feature_requests',

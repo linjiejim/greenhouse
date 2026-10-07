@@ -140,6 +140,7 @@ export const copy = {
       takeover: `${bot} 请你接管电脑：${subject}`,
       bot_create: `${bot} 提议新建 Bot「${subject}」`,
       task_start: `${bot} 提议后台任务「${subject}」`,
+      instructions_update: `${bot} 提议修改自己的守则：${subject}`,
     };
     const en: Record<BotRequestKind, string> = {
       approval: `${bot} asks you to approve: ${subject}`,
@@ -147,6 +148,7 @@ export const copy = {
       takeover: `${bot} asks you to take over the computer: ${subject}`,
       bot_create: `${bot} proposes a new Bot “${subject}”`,
       task_start: `${bot} proposes the background task “${subject}”`,
+      instructions_update: `${bot} proposes a change to its own instructions: ${subject}`,
     };
     return (l === 'zh' ? zh : en)[kind];
   },
@@ -185,8 +187,14 @@ export const copy = {
     if (kind === 'bot_create') return l === 'zh' ? `你没有新建「${subject}」` : `You declined to create “${subject}”`;
     if (kind === 'task_start')
       return l === 'zh' ? `你没有开始后台任务「${subject}」` : `You declined the background task “${subject}”`;
+    if (kind === 'instructions_update')
+      return l === 'zh' ? `你没有采纳守则修改：${subject}` : `You declined the instructions change: ${subject}`;
     return l === 'zh' ? `你拒绝了：${subject}` : `You declined: ${subject}`;
   },
+
+  /** The member accepted a Bot's proposed instructions (now version N). */
+  instructionsUpdated: (l: BotsLocale, bot: string, version: number) =>
+    l === 'zh' ? `${bot} 的守则已更新（v${version}）` : `${bot}'s instructions were updated (v${version})`,
 
   approvalTitle: (l: BotsLocale, bot: string, toolName: string) =>
     l === 'zh' ? `允许 ${bot} 使用「${toolName}」？` : `Allow ${bot} to use ${toolName}?`,

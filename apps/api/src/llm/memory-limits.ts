@@ -9,7 +9,12 @@
  */
 
 /** Characters of memory titles injected into a system prompt. */
-export const MEMORY_INDEX_BUDGET_CHARS = 2000;
+/**
+ * 3000 since the Bot convergence (spec 20261007 §2.3 / phase 4): every Chat
+ * session now runs as a Bot that may carry private notes, so the index holds
+ * the shared layer (1800) plus the Bot's own partition (1200, llm/memory.ts).
+ */
+export const MEMORY_INDEX_BUDGET_CHARS = 3000;
 
 export const MEMORY_TITLE_MAX = 80;
 export const MEMORY_CONTENT_MAX = 2000;

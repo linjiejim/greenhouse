@@ -18,7 +18,6 @@ export * from './session-share.js';
 export * from './scheduled-task.js';
 export * from './provider-token.js';
 export * from './feishu-bot.js';
-export * from './custom-profile.js';
 export * from './session-tag.js';
 export * from './session-group.js';
 export * from './knowledge-base.js';

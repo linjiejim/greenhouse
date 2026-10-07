@@ -206,7 +206,7 @@ prints the choices: `--reset` (wipes all rows first — gated behind typing the 
 `--yes`) or `--keep` (load on top). When you add/rename a table or change a column that the
 dataset populates, update the matching `data/examples/<table>.json` and its
 [`README.md`](data/examples/README.md), and add the table to `LOAD_ORDER` (FK-safe order).
-Custom agents load through `db.customProfiles.create()` so they get their immutable draft v1.
+Bots (`bots.json`, the former custom agents) load through `db.bots.createBot()` so they get their immutable draft v1.
 Auth secrets are never baked in: `users.json` carries a plaintext `password` hashed at load;
 `api_clients` / `email_accounts` (instance-secret-encrypted) are not seeded.
 
@@ -406,7 +406,7 @@ Detailed rules live next to the code:
 |---|---|---|
 | Database | [packages/db/src/AGENTS.md](./packages/db/src/AGENTS.md) | Service pattern, PostgreSQL, Drizzle, migrations, test isolation |
 | Backend API | [apps/api/src/AGENTS.md](./apps/api/src/AGENTS.md) | Routes, auth, security, tool system, proxy/MCP, runtime, missions, integrations |
-| Bots | [apps/api/src/bots/AGENTS.md](./apps/api/src/bots/AGENTS.md) | Personal-assistant Bots: conversation engine, context, memory scopes, computer, vault, HTTP contract |
+| Bots | [apps/api/src/bots/AGENTS.md](./apps/api/src/bots/AGENTS.md) | Bots — the one agent identity (versions, sharing lifecycle, tool filter, reference folder): conversation engine, context, memory scopes, computer, vault, HTTP contract |
 | Frontend | [apps/web/src/AGENTS.md](./apps/web/src/AGENTS.md) | Design system, components, styling, i18n, platform navigation |
 | Settings pages | [apps/web/src/pages/settings/AGENTS.md](./apps/web/src/pages/settings/AGENTS.md) | Settings / Administration modules, CRUD page conventions |
 | Browser extension | [apps/browser/src/AGENTS.md](./apps/browser/src/AGENTS.md) | MV3 lifecycle, stations, token refresh |
@@ -538,7 +538,7 @@ in 2026-09). `options` belong to the model (sampling / reasoning), never to an a
 instead of routing them through `analyze_image`; `vision_env` lets a deployment override it
 (`flash` declares `vision: true` + `vision_env: LLM_VISION`, because the default model is
 whatever `LLM_MODEL` names). A requested model the deployment can no longer reach — retired from
-the catalog or its key unset — never fails a turn: Chat, Mission launch and custom Agents fall
+the catalog or its key unset — never fails a turn: Chat, Mission launch and Bots fall
 back to the agent / deployment default.
 `@greenhouse/agent-core` keeps an env-derived fallback registry for tests and for consumers
 that boot without the file. A `flash` / `pro` entry whose `LLM_MODEL` / `LLM_BASE_URL` point at

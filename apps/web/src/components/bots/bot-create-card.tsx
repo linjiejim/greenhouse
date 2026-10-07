@@ -47,7 +47,10 @@ export function BotCreateCard({
     role: payload.role ?? '',
     instructions: payload.instructions ?? '',
     avatar: payload.avatar ?? {},
+    description: '',
     model_id: null,
+    tools: null,
+    max_steps: null,
   }));
   const [touched, setTouched] = useState(false);
   const issue = useMemo(

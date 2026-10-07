@@ -22,6 +22,7 @@
 import { composeRichOutput } from '@greenhouse/utils/prompts';
 import type { BotRow } from '@greenhouse/db';
 import { sanitizeForPrompt } from '../../security/security.js';
+import { buildIdentitySection, buildMemberNotesSection } from '../../profiles/identity-prompt.js';
 import { SPEAKER_TAGS, type BotsLocale } from './copy.js';
 
 /** Tools whose calls the engine gates behind an approval card (see tools-assembly.ts). */
@@ -34,6 +35,7 @@ export interface ToolFaceFlags {
   conversation: boolean;
   tasks: boolean;
   memory: boolean;
+  self: boolean;
   approvalGated: boolean;
 }
 
@@ -48,6 +50,7 @@ export function toolFaceFlags(toolIds: readonly string[], approvalGated: boolean
     conversation: has('conversation'),
     tasks: has('bot_tasks'),
     memory: has('memory'),
+    self: has('self'),
     approvalGated,
   };
 }
@@ -152,6 +155,11 @@ export function buildStaticRules(flags: ToolFaceFlags, locale: BotsLocale): stri
       `- Memory: remember durable facts and preferences about the member (scope user, shared with all their Bots) and notes about how you do your job (scope bot, private to you). Never store task details or anything secret.`,
     );
   }
+  if (flags.self) {
+    lines.push(
+      `- Your instructions are the member's: when you learn a lasting lesson about how to do your job, propose the change with the self tool and say in one line what you proposed; it takes effect only after they accept the card. Never use it to loosen a rule they wrote.`,
+    );
+  }
   if (flags.approvalGated) {
     lines.push(
       `- Tools that change the member's Greenhouse data (documents, tables, projects, workbench, skills, automations, email) show the member an approval card before they run, so do not ask for confirmation in chat first. If the member declines, do not retry unless they ask.`,
@@ -167,22 +175,17 @@ export function buildStaticRules(flags: ToolFaceFlags, locale: BotsLocale): stri
   return lines.join('\n');
 }
 
-/** S2 — the Bot's identity and the instructions the member wrote or approved. */
+/**
+ * S2 — the Bot's identity and the instructions the member wrote or approved.
+ * The same section a Chat session with this Bot gets (profiles/identity-prompt.ts).
+ */
 export function buildIdentity(bot: Pick<BotRow, 'name' | 'role' | 'instructions'>, nickname: string): string {
-  const role = bot.role.trim() ? ` — ${sanitizeForPrompt(bot.role.trim())}` : '';
-  const parts = [`## Who you are`, `You are **${bot.name}**${role}. You work for ${sanitizeForPrompt(nickname)}.`];
-  const instructions = bot.instructions.trim();
-  if (instructions) {
-    parts.push(``, `## Your instructions (from ${sanitizeForPrompt(nickname)})`, sanitizeForPrompt(instructions));
-  }
-  return parts.join('\n');
+  return buildIdentitySection(bot, nickname);
 }
 
-/** S3 — the member's standing preferences (users.notes). */
+/** S3 — the member's standing preferences (users.notes); shared with the Chat path. */
 export function buildMemberNotes(nickname: string, notes: string | null | undefined): string | null {
-  const text = notes?.trim();
-  if (!text) return null;
-  return `## About ${sanitizeForPrompt(nickname)}\nThey have set these preferences — follow them:\n${sanitizeForPrompt(text)}`;
+  return buildMemberNotesSection(nickname, notes);
 }
 
 /** S4 — the rolling summary, fenced: it was written by a model from untrusted turns. */

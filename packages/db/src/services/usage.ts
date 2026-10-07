@@ -374,11 +374,18 @@ export function createUsageService(db: Db) {
         `),
       );
 
-      type AgentAssetRow = { id: number; name: string; user_id: string };
+      // Usage rows name a Bot as `bot:<id>[@v]`, or — historically — as the
+      // retired `custom:<id>[@v]`, which maps through `bots.legacy_custom_id`.
+      type AgentAssetRow = { id: string; name: string; user_id: string; legacy_custom_id: number | null };
       const agentAssetRows = resultRows<AgentAssetRow>(
-        await db.execute(sql`SELECT id, name, user_id FROM custom_profiles`),
+        await db.execute(sql`SELECT id, name, user_id, legacy_custom_id FROM bots`),
       );
-      const agentAssets = new Map(agentAssetRows.map((row) => [Number(row.id), row]));
+      const botAssets = new Map(agentAssetRows.map((row) => [row.id, row]));
+      const legacyAssets = new Map(
+        agentAssetRows
+          .filter((row) => row.legacy_custom_id != null)
+          .map((row) => [Number(row.legacy_custom_id), row] as const),
+      );
 
       type AgentUsdRow = { profile_id: string; actual_usd_micros: string | number };
       const agentUsdRows = resultRows<AgentUsdRow>(
@@ -402,15 +409,23 @@ export function createUsageService(db: Db) {
       );
       const usdByProfile = new Map(agentUsdRows.map((row) => [row.profile_id, Number(row.actual_usd_micros)]));
 
+      const botReference = /^bot:(bot_[0-9a-f]{16})(?:@(\d+))?$/;
       const customReference = /^custom:(\d+)(?:@(\d+))?$/;
       const agents: CostValueAgentMetric[] = agentRows.map((row) => {
-        const match = customReference.exec(row.profile_id);
-        const customId = match ? Number(match[1]) : null;
-        const asset = customId == null ? undefined : agentAssets.get(customId);
+        const bot = botReference.exec(row.profile_id);
+        const legacy = bot ? null : customReference.exec(row.profile_id);
+        const asset = bot ? botAssets.get(bot[1]) : legacy ? legacyAssets.get(Number(legacy[1])) : undefined;
+        const match = bot ?? legacy;
+        // The stable identity: the Bot when it still exists, else the reference as recorded.
+        const agentId = asset
+          ? `bot:${asset.id}`
+          : match
+            ? `${match[0].startsWith('bot:') ? 'bot' : 'custom'}:${match[1]}`
+            : row.profile_id;
         return {
           ...usageMetric(row),
           profile_id: row.profile_id,
-          agent_id: customId == null ? row.profile_id : `custom:${customId}`,
+          agent_id: agentId,
           agent_version: match?.[2] ? Number(match[2]) : null,
           name: asset?.name ?? row.profile_id,
           owner_user_id: asset?.user_id ?? null,

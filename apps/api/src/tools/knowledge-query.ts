@@ -25,6 +25,7 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import { defineTool, type ToolMeta } from './define.js';
 import { CITE_URL_INSTRUCTION } from './cite-url.js';
 import { kbFolderPath, kbFolderPaths, kbFolderSubtreeIds, kbTree, resolveKbFolderPath } from '../knowledge/folders.js';
+import { botFolderScope } from '../bots/folder.js';
 import { outlineSections, readSection } from '../knowledge/sections.js';
 import { runKnowledgeAgentAction } from '../platform/knowledge/agent-adapter.js';
 import type { KnowledgeActionId } from '../platform/knowledge/adapter.js';
@@ -71,9 +72,11 @@ const knowledgeQuerySchema = z.object({
       '"tree": browse folders and the docs filed in each (team/personal only) — use it first when you do not know what exists. "search": keyword search. "get": read one doc. "list": recent docs. "versions": a doc\'s change history.',
     ),
   scope: z
-    .enum(['team', 'personal', 'shared'])
+    .enum(['team', 'personal', 'shared', 'bot'])
     .default('team')
-    .describe('Knowledge scope: team docs, your own personal docs, or docs others shared with you.'),
+    .describe(
+      'Knowledge scope: team docs, your own personal docs, docs others shared with you, or "bot" — the private reference folder of the Bot you are running as (your own files; omit folder).',
+    ),
   query: z.string().optional().describe('Search query for search/list filtering.'),
   doc_id: z
     .string()
@@ -102,6 +105,13 @@ type KnowledgeQueryInput = z.infer<typeof knowledgeQuerySchema>;
 
 export interface KnowledgeQueryContext {
   userId: string;
+  /**
+   * The Bot this turn runs as, or null for an identity-less agent surface. It
+   * scopes the personal library (bots/folder.ts): the Bot's own reference folder
+   * is readable as scope "bot", the owner's other Bots' folders are never seen.
+   * Omitted (undefined) on the owner's own surfaces, which see everything.
+   */
+  botId?: string | null;
 }
 
 /**
@@ -285,21 +295,42 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
           };
         }
 
-        // ─── team / personal: the same table, two access boundaries ───
+        // ─── team / personal / bot: the same table, two access boundaries ───
         const scope = 'shared';
         const visibility = input.scope === 'team' ? 'team' : 'private';
-        const ownerUserId = input.scope === 'personal' ? ctx.userId : undefined;
+        const ownerUserId = input.scope === 'team' ? undefined : ctx.userId;
         const folderScope = { visibility, ownerUserId: ctx.userId } as const;
+
+        // The personal library as this identity sees it: a Bot reads it minus
+        // the owner's other Bots' reference folders; scope "bot" is its own folder.
+        let excludeFolderIds: number[] | undefined;
+        let botFolderIds: number[] | null = null;
+        if (visibility === 'private' && ctx.botId !== undefined) {
+          const scoped = await botFolderScope(db, ctx.userId, ctx.botId);
+          excludeFolderIds = scoped.excludeFolderIds;
+          botFolderIds = scoped.ownFolderIds;
+        }
+        if (input.scope === 'bot') {
+          if (!ctx.botId) return { error: 'scope "bot" is only available when running as a Bot' };
+          // No folder yet = no files yet: an empty answer, never the whole library.
+          if (!botFolderIds) botFolderIds = [];
+        }
 
         // Folder → subtree ids, shared by tree/search/list. Resolution is scoped
         // exactly like a move is guarded: a team doc only ever sees team folders,
         // a personal doc only the owner's own.
-        let folderIds: number[] | undefined;
+        let folderIds: number[] | undefined = input.scope === 'bot' ? (botFolderIds ?? []) : undefined;
         let folderPath: string | undefined;
-        if (input.folder !== undefined && input.action !== 'get' && input.action !== 'versions') {
+        if (
+          input.scope !== 'bot' &&
+          input.folder !== undefined &&
+          input.action !== 'get' &&
+          input.action !== 'versions'
+        ) {
           const resolved = await resolveKbFolderPath(db, input.folder, folderScope);
           if (!resolved.ok) return { error: resolved.error };
           if (resolved.folderId != null) {
+            if (excludeFolderIds?.includes(resolved.folderId)) return { error: notFound(input.folder) };
             folderIds = await kbFolderSubtreeIds(db, resolved.folderId, folderScope);
             folderPath = resolved.path;
           }
@@ -309,6 +340,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
           const tree = await kbTree(db, folderScope, {
             rootId: folderIds ? folderIds[0] : null,
             docLimit: TREE_DOC_LIMIT,
+            ...(excludeFolderIds?.length ? { excludeFolderIds } : {}),
           });
           return {
             scope: input.scope,
@@ -332,6 +364,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
             visibility,
             ownerUserId,
             folderIds,
+            ...(excludeFolderIds?.length ? { excludeFolderIds } : {}),
             limit,
           });
           const paths = await kbFolderPaths(
@@ -366,7 +399,14 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
           if (!doc || doc.status === 'archived' || doc.visibility !== visibility) {
             return { error: notFound(input.doc_id) };
           }
-          if (input.scope === 'personal' && doc.owner_user_id !== ctx.userId) {
+          if (visibility === 'private' && doc.owner_user_id !== ctx.userId) {
+            return { error: notFound(input.doc_id) };
+          }
+          // Another Bot's reference doc, or (scope "bot") a doc outside this Bot's folder.
+          if (doc.folder_id != null && excludeFolderIds?.includes(doc.folder_id)) {
+            return { error: notFound(input.doc_id) };
+          }
+          if (input.scope === 'bot' && (doc.folder_id == null || !folderIds?.includes(doc.folder_id))) {
             return { error: notFound(input.doc_id) };
           }
 
@@ -404,6 +444,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
           visibility,
           ownerUserId,
           folderIds,
+          ...(excludeFolderIds?.length ? { excludeFolderIds } : {}),
           search: input.query,
           limit,
           offset: input.offset,

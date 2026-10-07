@@ -121,10 +121,7 @@ export {
 // Agent profile manifest — TYPES ONLY here so the web bundle never pulls in
 // zod. Server code imports the schema *values* from '@greenhouse/types/profile-manifest'.
 export type {
-  Capability,
   AvatarConfig,
-  ProfileManifest,
-  ProfileData,
   SproutyColorId,
   SproutyAccessoryId,
   SproutyLeafStyleId,

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CustomProfileOwnershipCandidate, CustomProfileRow, DatabaseProvider, UserRow } from '@greenhouse/db';
+import type { BotOwnershipCandidate, BotRow, DatabaseProvider, UserRow } from '@greenhouse/db';
 
 import { startAgentGovernanceWorker } from './worker.js';
 
@@ -26,20 +26,27 @@ function user(id: string, overrides: Partial<UserRow> = {}): UserRow {
   };
 }
 
-function profile(id: number, overrides: Partial<CustomProfileRow> = {}): CustomProfileRow {
+/** Numeric ids keep the fixtures readable; the worker only treats them as opaque strings. */
+function botId(id: number): string {
+  return `bot_${String(id).padStart(16, '0')}`;
+}
+
+function profile(id: number, overrides: Partial<BotRow> = {}): BotRow {
   return {
-    id,
-    slug: `agent-${id}`,
+    id: botId(id),
     user_id: `owner-${id}`,
     name: `Agent ${id}`,
-    description: null,
-    base_profile_id: 'team',
+    name_key: `agent ${id}`,
+    role: '',
+    description: '',
+    instructions: 'Help the team.',
+    avatar: '{}',
     model_id: 'flash',
     tools: '[]',
-    system_prompt: 'Help the team.',
     max_steps: 12,
+    template_key: null,
+    status: 'active',
     is_shared: true,
-    avatar: '{}',
     forked_from: null,
     current_version: 3,
     published_version: 3,
@@ -49,6 +56,8 @@ function profile(id: number, overrides: Partial<CustomProfileRow> = {}): CustomP
     reviewed_by: 'reviewer',
     reviewed_at: AT,
     next_review_at: '2026-08-12T07:00:00.000Z',
+    legacy_custom_id: null,
+    last_active_at: null,
     created_at: AT,
     updated_at: AT,
     ...overrides,
@@ -56,24 +65,22 @@ function profile(id: number, overrides: Partial<CustomProfileRow> = {}): CustomP
 }
 
 function candidate(
-  row: CustomProfileRow,
-  ownerStatus: CustomProfileOwnershipCandidate['owner_status'],
-  backupStatus: CustomProfileOwnershipCandidate['backup_owner_status'] = null,
-): CustomProfileOwnershipCandidate {
-  return { profile: row, owner_status: ownerStatus, backup_owner_status: backupStatus };
+  row: BotRow,
+  ownerStatus: BotOwnershipCandidate['owner_status'],
+  backupStatus: BotOwnershipCandidate['backup_owner_status'] = null,
+): BotOwnershipCandidate {
+  return { bot: row, owner_status: ownerStatus, backup_owner_status: backupStatus };
 }
 
 function fakeDb(input: {
   users?: UserRow[];
-  due?: CustomProfileRow[];
-  ownership?: (limit: number, afterId: number) => Promise<CustomProfileOwnershipCandidate[]>;
+  due?: BotRow[];
+  ownership?: (limit: number, afterId: string) => Promise<BotOwnershipCandidate[]>;
 }) {
   const users = { list: vi.fn().mockResolvedValue(input.users ?? []) };
-  const customProfiles = {
+  const botsService = {
     listReviewDue: vi.fn().mockResolvedValue(input.due ?? []),
-    listActiveWithOwners: vi
-      .fn()
-      .mockImplementation(input.ownership ?? (async () => [] as CustomProfileOwnershipCandidate[])),
+    listActiveWithOwners: vi.fn().mockImplementation(input.ownership ?? (async () => [] as BotOwnershipCandidate[])),
     transitionLifecycle: vi.fn(),
   };
   let notificationSequence = 0;
@@ -89,9 +96,9 @@ function fakeDb(input: {
     countUnread: vi.fn().mockResolvedValue(1),
   };
   return {
-    db: { users, customProfiles, notifications } as unknown as DatabaseProvider,
+    db: { users, bots: botsService, notifications } as unknown as DatabaseProvider,
     users,
-    customProfiles,
+    botsService,
     notifications,
   };
 }
@@ -118,7 +125,7 @@ describe('Agent governance worker', () => {
         user('disabled-super', { role: 'super', status: 'disabled' }),
       ],
     });
-    state.customProfiles.transitionLifecycle.mockResolvedValue(suspended);
+    state.botsService.transitionLifecycle.mockResolvedValue(suspended);
     const worker = await startAgentGovernanceWorker({
       db: state.db,
       skipBootPass: true,
@@ -129,8 +136,8 @@ describe('Agent governance worker', () => {
     await worker.runOnce();
     worker.stop();
 
-    expect(state.customProfiles.listReviewDue).toHaveBeenCalledWith(AT, 100);
-    expect(state.customProfiles.transitionLifecycle).toHaveBeenCalledWith(7, {
+    expect(state.botsService.listReviewDue).toHaveBeenCalledWith(AT, 100);
+    expect(state.botsService.transitionLifecycle).toHaveBeenCalledWith(botId(7), {
       status: 'suspended',
       actor_user_id: 'system:agent-governance',
       note: 'Automatic suspension: review deadline elapsed at 2026-08-12T07:00:00.000Z.',
@@ -145,8 +152,8 @@ describe('Agent governance worker', () => {
     ]);
     expect(state.notifications.createWithStatus).toHaveBeenCalledWith(
       expect.objectContaining({
-        agent_id: 'custom:7',
-        dedupe_key: 'agent-governance:review_due:7:v3:2026-08-12T08:00:01.000Z',
+        agent_id: `bot:${botId(7)}`,
+        dedupe_key: `agent-governance:review_due:${botId(7)}:v3:2026-08-12T08:00:01.000Z`,
       }),
     );
   });
@@ -168,12 +175,12 @@ describe('Agent governance worker', () => {
         user('super-1', { role: 'super' }),
       ],
       ownership: async (_limit, afterId) => {
-        if (afterId === 0) return [candidate(first, 'disabled'), candidate(second, 'disabled')];
-        if (afterId === 2) return [candidate(third, 'disabled', 'active')];
+        if (afterId === '') return [candidate(first, 'disabled'), candidate(second, 'disabled')];
+        if (afterId === botId(2)) return [candidate(third, 'disabled', 'active')];
         return [];
       },
     });
-    state.customProfiles.transitionLifecycle
+    state.botsService.transitionLifecycle
       .mockRejectedValueOnce(new Error('concurrent transition'))
       .mockResolvedValueOnce(
         profile(2, {
@@ -195,22 +202,22 @@ describe('Agent governance worker', () => {
     await worker.runOnce();
     worker.stop();
 
-    expect(state.customProfiles.listActiveWithOwners.mock.calls).toEqual([
-      [2, 0],
-      [2, 2],
+    expect(state.botsService.listActiveWithOwners.mock.calls).toEqual([
+      [2, ''],
+      [2, botId(2)],
     ]);
-    expect(state.customProfiles.transitionLifecycle).toHaveBeenCalledTimes(2);
-    expect(state.customProfiles.transitionLifecycle).toHaveBeenLastCalledWith(
-      2,
+    expect(state.botsService.transitionLifecycle).toHaveBeenCalledTimes(2);
+    expect(state.botsService.transitionLifecycle).toHaveBeenLastCalledWith(
+      botId(2),
       expect.objectContaining({ status: 'suspended', actor_user_id: 'system:agent-governance' }),
     );
     expect(state.notifications.createWithStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: 'super-1', kind: 'agent_suspended', agent_id: 'custom:2' }),
+      expect.objectContaining({ user_id: 'super-1', kind: 'agent_suspended', agent_id: `bot:${botId(2)}` }),
     );
     expect(state.notifications.createWithStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: 'backup-3', kind: 'agent_review_due', agent_id: 'custom:3' }),
+      expect.objectContaining({ user_id: 'backup-3', kind: 'agent_review_due', agent_id: `bot:${botId(3)}` }),
     );
-    expect(state.customProfiles.transitionLifecycle).not.toHaveBeenCalledWith(3, expect.anything());
+    expect(state.botsService.transitionLifecycle).not.toHaveBeenCalledWith(botId(3), expect.anything());
   });
 
   it('recovers notifications after a transition-to-notification crash with one stable dedupe key', async () => {
@@ -236,15 +243,15 @@ describe('Agent governance worker', () => {
     await worker.runOnce();
     worker.stop();
 
-    expect(state.customProfiles.transitionLifecycle).not.toHaveBeenCalled();
+    expect(state.botsService.transitionLifecycle).not.toHaveBeenCalled();
     expect(state.notifications.createWithStatus).toHaveBeenCalledTimes(4);
     const keys = new Set(
       state.notifications.createWithStatus.mock.calls.map(([entry]) => `${entry.user_id}:${entry.dedupe_key}`),
     );
     expect(keys).toEqual(
       new Set([
-        'owner-9:agent-governance:review_due:9:v3:2026-08-12T08:00:09.000Z',
-        'super-1:agent-governance:review_due:9:v3:2026-08-12T08:00:09.000Z',
+        `owner-9:agent-governance:review_due:${botId(9)}:v3:2026-08-12T08:00:09.000Z`,
+        `super-1:agent-governance:review_due:${botId(9)}:v3:2026-08-12T08:00:09.000Z`,
       ]),
     );
   });

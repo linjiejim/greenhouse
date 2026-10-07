@@ -44,6 +44,51 @@ function makeFakeDb() {
         return { id, role: 'team', status: 'active', monthly_token_limit: 1_000_000 };
       },
     },
+    // The default identity is the member's Sprouty Bot (resolved by resolveProfileAsync).
+    bots: {
+      async listBots(userId: string) {
+        return [
+          {
+            id: 'bot_0000000000000001',
+            user_id: userId,
+            name: 'Sprouty',
+            name_key: 'sprouty',
+            role: 'Main assistant',
+            description: '',
+            instructions: '',
+            avatar: '{}',
+            model_id: null,
+            tools: null,
+            max_steps: null,
+            template_key: 'sprouty',
+            status: 'active',
+            is_shared: false,
+            lifecycle_status: 'draft',
+            lifecycle_note: null,
+            current_version: 1,
+            published_version: null,
+            owner_backup_user_id: null,
+            reviewed_by: null,
+            reviewed_at: null,
+            next_review_at: null,
+            forked_from: null,
+            legacy_custom_id: null,
+            last_active_at: null,
+            created_at: '2026-06-18T00:00:00Z',
+            updated_at: '2026-06-18T00:00:00Z',
+          },
+        ];
+      },
+      async getBotById() {
+        return undefined;
+      },
+      async getByLegacyCustomId() {
+        return undefined;
+      },
+      async getVersion() {
+        return undefined;
+      },
+    },
     usageBudget: {
       async reserveMonthlyUser(input: any) {
         budgetReservations.push(input);

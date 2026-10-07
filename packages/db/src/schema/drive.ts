@@ -34,6 +34,7 @@ import {
   uniqueIndex,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
+import { bots } from './bots.js';
 
 // ─── drive_folders ────────────────────────────────────────
 
@@ -54,6 +55,11 @@ export const driveFolders = pgTable(
     base_id: integer('base_id'),
     // Owner of an extension scope — opaque to core (e.g. a CRM company id).
     owner_key: text('owner_key'),
+    // A Bot's private reference folder (spec 20261007 §2.5): a personal kb folder
+    // (visibility='private' + owner) that only that Bot's turns and the owner's
+    // own UI see — the owner's other Bots and identity-less agent surfaces
+    // exclude it. One root folder per Bot; deleting the Bot deletes the folder.
+    bot_id: text('bot_id').references(() => bots.id, { onDelete: 'cascade' }),
     // Manual order among siblings, ascending. 0 = never ordered by hand, which is
     // every row until someone drags one — readers sort by (sort_order, name), so an
     // untouched tree stays alphabetical.
@@ -67,6 +73,11 @@ export const driveFolders = pgTable(
     index('idx_drive_folders_kb').on(table.scope, table.visibility, table.owner_user_id),
     index('idx_drive_folders_tables').on(table.scope, table.base_id),
     index('idx_drive_folders_ext').on(table.scope, table.owner_key),
+    index('idx_drive_folders_bot').on(table.bot_id),
+    check(
+      'chk_drive_folders_bot',
+      sql`(${table.bot_id} IS NULL OR (${table.scope} = 'kb' AND ${table.visibility} = 'private' AND ${table.owner_user_id} IS NOT NULL))`,
+    ),
     check(
       'chk_drive_folders_scope_owner',
       sql`(

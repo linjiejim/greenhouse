@@ -12,25 +12,92 @@ import { TEMPLATE_PLANT, plantAvatarConfig } from './plant-avatar.js';
 
 // ─── Bots ────────────────────────────────────────────────
 
+export type BotLifecycleStatus =
+  | 'draft'
+  | 'review'
+  | 'pilot'
+  | 'verified'
+  | 'rejected'
+  | 'suspended'
+  | 'deprecated'
+  | 'archived';
+export type BotRiskLevel = 'low' | 'medium' | 'high';
+
 export interface BotView {
   id: string;
   name: string;
   role: string;
+  /** One line on what the Bot is for (gallery, picker, `@` list). */
+  description: string;
   instructions: string;
   avatar: AvatarConfig;
   model_id: string | null;
+  /** Tool ids the Bot may use; null = the owner's whole allowed set. A list only narrows. */
+  tools: string[] | null;
+  /** Step cap per Chat turn / automation run; null = the base preset's default. */
+  max_steps: number | null;
   template_key: string | null;
   status: 'active' | 'archived';
   /** The Bot's direct conversation, when it exists. */
   dm_session_id: string | null;
+  /** Sharing lifecycle (draft for every personal Bot; pilot / verified = published to the team). */
+  lifecycle_status: BotLifecycleStatus;
+  lifecycle_note: string | null;
+  is_shared: boolean;
+  current_version: number;
+  published_version: number | null;
+  next_review_at: string | null;
+  /** Lineage: `sprouty`, `bot:<id>@<v>` or a retired `custom:<id>@<v>`. */
+  forked_from: string | null;
+  /** The owner's user id — set for shared Bots listed from other members. */
+  user_id: string;
+  /** Present when the Bot belongs to another member (shared listings). */
+  owner_nickname?: string;
   last_active_at: string | null;
   created_at: string;
+  updated_at: string;
+}
+
+/** One immutable manifest of a Bot (`GET /api/bots/:id/versions`). */
+export interface BotVersionView {
+  version: number;
+  manifest_hash: string;
+  change_log: string;
+  name: string;
+  role: string;
+  description: string;
+  instructions: string;
+  tools: string[] | null;
+  model_id: string | null;
+  max_steps: number | null;
+  avatar: AvatarConfig;
+  purpose: string | null;
+  audience: string | null;
+  risk_level: BotRiskLevel;
+  budget_policy: Record<string, unknown>;
+  eval_refs: unknown[];
+  owner_backup_user_id: string | null;
+  review_due_at: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Body of `POST /api/bots/:id/lifecycle`. */
+export interface BotLifecycleInputView {
+  status: BotLifecycleStatus;
+  note?: string | null;
+  publish_version?: number | null;
+  next_review_at?: string | null;
 }
 
 /** Name rules shared by the API validator and the web form. */
 export const BOT_NAME_MAX = 24;
 export const BOT_ROLE_MAX = 40;
-export const BOT_INSTRUCTIONS_MAX = 4000;
+export const BOT_DESCRIPTION_MAX = 500;
+/** Matches what custom Agents allowed before the convergence (spec 20261007 §2.3). */
+export const BOT_INSTRUCTIONS_MAX = 8000;
+/** Per-member cap on active Bots (the built-in Sprouty is not counted). */
+export const MAX_ACTIVE_BOTS = 20;
 /** Words a Bot may not be called — they are speaker tags in the projected transcript. */
 export const BOT_RESERVED_NAMES = ['用户', '系统', '事件', 'user', 'system', 'assistant', 'event', 'bot'] as const;
 
@@ -322,7 +389,7 @@ export interface BotConversationDetail extends BotConversationSummary {
 
 // ─── "Needs you" requests ────────────────────────────────
 
-export type BotRequestKind = 'takeover' | 'login' | 'approval' | 'bot_create' | 'task_start';
+export type BotRequestKind = 'takeover' | 'login' | 'approval' | 'bot_create' | 'task_start' | 'instructions_update';
 export type BotRequestStatus = 'pending' | 'resolved' | 'denied' | 'expired' | 'canceled';
 
 export interface BotTakeoverPayload {
@@ -366,6 +433,18 @@ export interface BotTaskStartPayload {
 }
 
 /**
+ * A Bot proposing a change to its own standing instructions (`self` tool):
+ * nothing changes until the member accepts the card — a Bot rewriting its own
+ * rules after reading a page would otherwise be a persistent injection.
+ * `current` is the text the proposal was made against (for the diff).
+ */
+export interface BotInstructionsUpdatePayload {
+  instructions: string;
+  reason: string;
+  current: string;
+}
+
+/**
  * A take-over card the computer raised by itself: the member took over while a
  * Bot was mid-action (`interrupted`), or a Bot needed the computer while the
  * member held it (`waiting`). Handing back wakes that Bot. `title` is page
@@ -384,7 +463,8 @@ export type BotRequestPayload =
   | BotLoginPayload
   | BotApprovalPayload
   | BotCreatePayload
-  | BotTaskStartPayload;
+  | BotTaskStartPayload
+  | BotInstructionsUpdatePayload;
 
 export interface BotRequestView {
   id: string;
@@ -403,6 +483,8 @@ export interface BotRequestDecision {
   decision: 'approve' | 'always' | 'deny';
   /** bot_create: user-edited fields. */
   bot?: Partial<Pick<BotCreatePayload, 'name' | 'role' | 'instructions' | 'avatar'>>;
+  /** instructions_update: the member's edited text (defaults to the proposal). */
+  instructions?: string;
   /** login: secure sign-in values — sent once, filled server-side, never stored in the transcript. */
   login?: { username?: string; password?: string; otp?: string; save_to_vault?: boolean; submit?: boolean };
   /** takeover/login handback note. */
@@ -599,6 +681,8 @@ export type BotEvent =
   | { kind: 'turn_error'; bot_id: string; error: string }
   | { kind: 'digest'; upto_seq: number }
   | { kind: 'request'; request_id: string; request_kind: BotRequestKind; bot_id: string | null }
+  /** The member accepted a Bot's proposal to change its own instructions (a new version). */
+  | { kind: 'instructions_updated'; bot_id: string; version: number }
   | { kind: 'greeting'; bot_id: string }
   /**
    * Nobody could answer: the addressed Bot was archived or removed, or no

@@ -44,6 +44,8 @@ export interface UserMemoryUpdateInput {
   title?: string;
   content?: string;
   pinned?: boolean;
+  /** Move between partitions: null = shared with every Bot and chat, a Bot id = that Bot's private note. */
+  bot_id?: string | null;
 }
 
 export interface UserMemoryListOpts {
@@ -186,6 +188,7 @@ export function createUserMemoryService(db: Db) {
       if (updates.title !== undefined) set.title = updates.title;
       if (updates.content !== undefined) set.content = updates.content;
       if (updates.pinned !== undefined) set.pinned = updates.pinned;
+      if (updates.bot_id !== undefined) set.bot_id = updates.bot_id;
 
       const rows = await db
         .update(userMemories)

@@ -25,13 +25,30 @@ bots/
 ### 铁律
 
 - **每个成员都有 Sprouty**：内置主 Bot（`template_key = 'sprouty'`，sprout 植物，中英文都叫 Sprouty，岗位「主助手」），
-  由 `POST /bootstrap` 保证存在（幂等，每次进入都可调；早于它的老成员下次进入补建，不占 12 个上限）。它在侧栏
+  由 `POST /bootstrap` 保证存在（幂等，每次进入都可调；早于它的老成员下次进入补建，不占 20 个上限）——Bot 行本身也可能由
+  聊天页先建（`ensureSproutyBot`），bootstrap 只补私聊与欢迎语。它在侧栏
   置顶、**不能归档**（`DELETE` 返回 400 `bot_protected`），可以改名改守则；它就是原来的「总管」——用 `team`
   工具把成员的其他 Bot 拉进对话（私聊里是客串）、转交工作、提议新建。`POST /api/bots` 只接受模板库模板
   （`galleryTemplate`：研究员/操作员/写手/分析师）：Sprouty 只来自 bootstrap，「总管」模板已退役（旧的 chief Bot
   照常工作，`botTemplate('chief')` 仍能查到它的开场白与 starters）。
-- **Bot ≠ 自定义 Agent**：Bot 是轻量身份（名字 / 角色 / 守则 / 头像 / 可选模型）跑在 sprouty 基座上，
-  工具面 = 主人自己的有效工具（Bot 永远不超过主人）+ Bot 工具。不要把 Bot 做成 profile 版本。
+- **Bot 就是 Agent 身份**（2026-10-07 收敛，[spec](../../../../docs/specs/20261007-agent-bot-convergence.md)；
+  推翻 20261005 的 D2）：原「自定义 Agent」表已删，`bots` 吸收了它的 `description` / `tools`（null = 继承主人全部
+  有效工具，列表 = 只能收窄的过滤器）/ `max_steps` / 不可变版本（`bot_versions`，每次创建或编辑追加一版）/
+  审核发布生命周期（draft → review → pilot / verified，只有 super 能发布；编辑已共享的 Bot 自动回 draft 并停止共享）。
+  同一个 Bot 有两种对话模式：**Bots 页的永续线程**（本引擎：摘要 / recall / 多 Bot / 电脑 / 审批卡）与**聊天页的新上下文**
+  （chat 引擎，窗口化历史；`sessions.profile_id = 'bot:<id>'` 跟随主人的最新定义，他人与无人值守固定 `bot:<id>@<v>`）。
+  聊天页的默认身份 `sprouty` 按成员解析成**他自己的 Sprouty Bot**（`bots/sprouty.ts`，首次使用即建行），所以改名
+  改守则到处生效。本引擎每回合按发言 Bot 的工具过滤与模型跑（`engine/bot-tools.ts`、`profileFromBot`），用量归属仍记
+  `sprouty`。存量 `custom:<id>[@v]` 引用经 `bots.legacy_custom_id` 继续解析，不改写任何已存的 profile_id。
+- **`bots` 开关只管永续线程与电脑，不管身份**：`/api/bots` 的身份类路径（列表 / 新建 / 修改 / 版本 / 生命周期 /
+  克隆 / 记忆 / 文件）只要 `requireInternal()`；`bootstrap`、conversations、requests、tasks、computer、vault 才要
+  `requireFeature('bots')`。开关关闭时 `POST /api/bots` 不建私聊（`dm_session_id: null`），Web 的 `#/bots` 直接是目录。
+- **Bot 私有参考资料夹**（`bots/folder.ts`，`drive_folders.bot_id`）：成员个人知识库下每 Bot 一个顶层私有文件夹，
+  首次使用即建、随 Bot 改名。只新增一条**排除**规则：以 Bot X 身份跑的回合读个人知识库时看不到其他 Bot 的文件夹，
+  `scope:'bot'` 只看自己的；没有 Bot 身份的面（MCP `desktop`、无身份的无人值守）看不到任何 Bot 文件夹；主人自己的
+  HTTP 面什么都不排除。写入仍过审批卡。
+- **守则由成员说了算**：`self` 工具只能**提议**（`instructions_update` 卡带理由与 diff，有效 7 天），成员接受才
+  追加一版；污染回合也能提议，因为提议本身没有效果。
 - **头像是一株植物**：`bots.avatar` 每次写入（创建 / PATCH / 确认 `bot_create` 卡）都过 `avatarConfigSchema`，
   未知键被剥掉，超长值返回 400。服务端统一用 `plantAvatarConfig()` 写：`plant`（物种 id）加最近的旧
   `color`（给不认识 `plant` 的老客户端），静息眼神存成旧的 `faceStyle`。这和 Web 编辑器是同一条规则，都不写
@@ -120,7 +137,7 @@ bots/
 | 历史投影 | 摘要边界之后的行逐行 sanitize + 说话人标签，按预算 48k token 开窗 |
 | 滚动摘要 | 投影超过 24k token 时在**链边界**折叠，保留最近 ≥2 条链 / 8k token；结构化 JSON（目标、决定、待办、事实…），CAS 更新 |
 | 回合内 | `browser` / `computer` 观测超过 12k token 时旧观测压成存根；文件产物（截图、share_file）整条保留 |
-| 记忆 | 用户级 + 本 Bot 私有两个分区；Bot 只看自己的私有分区 |
+| 记忆 | 用户级 + 本 Bot 私有两个分区；Bot 只看自己的私有分区；索引预算 3000 字 = 用户级 1800 + 私有 1200（`llm/memory.ts`） |
 | 预算 | 每条成员消息一条链：Bot 回合 ≤8、交接 ≤4、深度 <3、输入 600k（缓存 ×0.25）、输出 30k、步数 60、墙钟 20 分钟；单回合步数：点名 / 续跑 30、被问 12、收尾 4 |
 
 ### 测试
@@ -149,9 +166,14 @@ bots/
 |---|---|---|---|
 | GET | `/api/bots` | — | `{ bots, archived_bots, computer, vault_available, pending_requests }`（`bots` 只含 active） |
 | POST | `/api/bots/bootstrap` | — | `{ bot, dm_session_id, created }`——确保 Sprouty（模板 `sprouty`）+ 私聊 + 固定欢迎语存在；幂等，老成员也会补建 |
-| POST | `/api/bots` | `{ template_key?, name?, role?, instructions?, avatar?, model_id? }`（`template_key` 只收模板库：`sprouty` / `chief` → 400） | `{ bot, dm_session_id }` |
-| PATCH / DELETE | `/api/bots/:id` | 同上字段 | `{ bot }` / `{ ok }`（删除 = 归档；Sprouty → 400 `bot_protected`） |
-| GET / DELETE | `/api/bots/:id/memories[/:memoryId]` | — | 该 Bot 的私有记忆 / `{ ok }` |
+| POST | `/api/bots` | `{ template_key?, name?, role?, description?, instructions?, avatar?, model_id?, tools?, max_steps?, purpose?, audience?, risk_level?, budget_policy?, eval_refs?, owner_backup_user_id?, review_due_at?, change_log? }`（`template_key` 只收模板库：`sprouty` / `chief` → 400；`tools` null = 继承、列表须在主人 allow-set 内否则 400/403） | `{ bot, dm_session_id }`（`bots` 开关关闭时 `dm_session_id: null`） |
+| PATCH / DELETE | `/api/bots/:id` | 同上字段（每次 PATCH 追加一版，已共享的回到 draft） | `{ bot }` / `{ ok }`（删除 = 归档；Sprouty → 400 `bot_protected`） |
+| GET | `/api/bots/shared` | — | `{ bots }`：他人已发布 Bot 的**发布版本**定义 + `owner_nickname` |
+| GET | `/api/bots/:id/versions` | — | `{ bot_id, profile_id, current_version, published_version, versions }`（他人只看到发布版本） |
+| POST | `/api/bots/:id/lifecycle` | `{ status, note?, publish_version?, next_review_at? }` | `{ bot }`；owner 只能 draft / review / archived，super 可 pilot / verified / rejected / suspended / deprecated；Sprouty → 400 `bot_protected`；非法跳转 409 |
+| POST | `/api/bots/:id/clone` | `{ name? }` | `{ bot, dm_session_id }`：自己的 Bot 或他人已发布 Bot 的快照副本（`forked_from = bot:<id>@<v>`，工具按新主人权限再交一次） |
+| GET / POST | `/api/bots/:id/files` · `/api/bots/:id/files/ensure` | — | `{ folder, docs }`（无文件夹时 `folder: null`）· `{ folder }`（首次使用建文件夹） |
+| GET / DELETE | `/api/bots/:id/memories[/:memoryId]` | — | 该 Bot 的私有记忆 / `{ ok }`；改为共享走 `PATCH /api/auth/me/memories/:id { bot_id: null }` |
 | GET / POST | `/api/bots/conversations` | `{ bot_ids, title? }` | 列表 / `{ conversation }`（1 个 id = 该 Bot 私聊，2–6 = 新群聊） |
 | GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states? }` |
 | PATCH | `/api/bots/conversations/:id` | `{ title?, description?, lead_bot_id?, allow_bot_chat? }` | `{ conversation }` |
@@ -174,7 +196,7 @@ Bot `409 { code:'no_active_members' }`。编辑 / 重新生成对 Bots 会话一
 `not_supported`；没有在跑的 run 404），流里发一次 `{ type:'run-interrupting' }`，之后照常是下一条链的
 `bot-turn-start`。
 
-**卡片种类**：`approval`（`always` = 此站点以后自动代填）、`login`（安全登录，值服务端代填不落库；
+**卡片种类**：`instructions_update`（Bot 用 `self` 工具提议改自己的守则：payload `{ instructions, reason, current }`，接受可带编辑后的 `instructions`，接受 = 追加一版 + 事件 `instructions_updated`，7 天过期）、`approval`（`always` = 此站点以后自动代填）、`login`（安全登录，值服务端代填不落库；
 两步登录会继续跟到密码页或再出一张卡）、`takeover`（`payload.implicit` = 成员在 Bot 干活时自己接管 /
 Bot 等着用电脑，交还即唤醒它；`payload.kind:'captcha'` = 人机验证卡，由浏览器工具自己出，成员完成后
 交还）、`bot_create`、`task_start`。登录 / 接管卡 60 分钟过期（`expired`）。
@@ -215,7 +237,7 @@ Retry-After；也可能是另一个 API 槽位正持有这台电脑的浏览器�
 `GET /api/bots/vault/log`。条目只返回元数据；未配置 `PROVIDER_TOKEN_ENCRYPTION_KEY` → `503 vault_unavailable`；
 其余错误见 `VaultErrorCode`。
 
-**管理端**（super）：`GET /api/admin/bot-computers`（运行时、每台电脑、旋钮、检查清单 `checks[]`：
+**管理端**（super）：`GET /api/admin/bots/review`（治理队列：进入过评审生命周期的 Bot，不含个人草稿）；`GET /api/admin/bot-computers`（运行时、每台电脑、旋钮、检查清单 `checks[]`：
 docker / runtime / image / network / egress / host_disk …，每项带修复命令）、
 `POST /api/admin/bot-computers/:userId/stop|reset`。旋钮是工作区设置 `bots.computer_idle_minutes` /
 `bots.computer_max_running`。

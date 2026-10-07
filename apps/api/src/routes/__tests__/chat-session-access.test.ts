@@ -22,8 +22,12 @@ const mocks = vi.hoisted(() => ({
   sessionShares: {
     getSharedSessionIds: vi.fn(),
   },
-  customProfiles: {
-    getById: vi.fn(),
+  bots: {
+    getBotById: vi.fn(),
+    getByLegacyCustomId: vi.fn(),
+    getVersion: vi.fn(),
+    listBots: vi.fn(),
+    createBot: vi.fn(),
   },
   users: {
     getById: vi.fn(),
@@ -49,6 +53,38 @@ vi.mock('../../llm/title.js', () => ({
 
 import { createChatRoute, isTrustedEvalExecution } from '../chat.js';
 import { canAccessSession, canWriteSession } from '../../sessions/access.js';
+
+function sproutyBot() {
+  return {
+    id: 'bot_0000000000000001',
+    user_id: 'owner',
+    name: 'Sprouty',
+    name_key: 'sprouty',
+    role: 'Main assistant',
+    description: '',
+    instructions: '',
+    avatar: '{}',
+    model_id: null,
+    tools: null,
+    max_steps: null,
+    template_key: 'sprouty',
+    status: 'active',
+    is_shared: false,
+    lifecycle_status: 'draft',
+    lifecycle_note: null,
+    current_version: 1,
+    published_version: null,
+    owner_backup_user_id: null,
+    reviewed_by: null,
+    reviewed_at: null,
+    next_review_at: null,
+    forked_from: null,
+    legacy_custom_id: null,
+    last_active_at: null,
+    created_at: '2026-10-05T00:00:00.000Z',
+    updated_at: '2026-10-05T00:00:00.000Z',
+  };
+}
 
 function makeSession(ownerId = 'owner'): SessionRow {
   return {
@@ -116,7 +152,10 @@ beforeEach(() => {
   mocks.sessions.buildChatMessages.mockResolvedValue([]);
   mocks.sessions.updateTitle.mockResolvedValue(undefined);
   mocks.sessionShares.getSharedSessionIds.mockResolvedValue([]);
-  mocks.customProfiles.getById.mockResolvedValue(undefined);
+  mocks.bots.getBotById.mockResolvedValue(undefined);
+  mocks.bots.getByLegacyCustomId.mockResolvedValue(undefined);
+  // The member's Sprouty Bot is the default identity (resolved per turn).
+  mocks.bots.listBots.mockResolvedValue([sproutyBot()]);
   mocks.generateSessionTitle.mockResolvedValue('Generated title');
   mocks.users.getById.mockResolvedValue({
     id: 'owner',
@@ -170,17 +209,22 @@ describe('session access policy', () => {
 describe('POST /api/chat session authorization', () => {
   it('rechecks custom-profile access when continuing an existing session', async () => {
     mocks.sessions.getById.mockResolvedValue({ ...makeSession(), profile_id: 'custom:7' });
-    mocks.customProfiles.getById.mockResolvedValue({
-      id: 7,
+    mocks.bots.getByLegacyCustomId.mockResolvedValue({
+      id: 'bot_0123456789abcdef',
       user_id: 'profile-owner',
+      status: 'active',
+      lifecycle_status: 'draft',
       is_shared: false,
+      current_version: 1,
+      published_version: null,
+      legacy_custom_id: 7,
     });
 
     const response = await continueSession(createApp(), { id: 'owner', role: 'team' });
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
-      error: 'You do not have access to this custom profile',
+      error: 'You do not have access to this Bot',
     });
     expect(mocks.sessions.addMessage).not.toHaveBeenCalled();
     expect(mocks.sessions.buildChatMessages).not.toHaveBeenCalled();

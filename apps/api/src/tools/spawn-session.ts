@@ -158,7 +158,7 @@ export function createSpawnSessionTool(db: DatabaseProvider, ctx: SpawnSessionCo
             input.profile_id ?? ctx.parentProfileId ?? undefined,
             db,
           );
-          profile = await resolveProfileAsync(profileId, db);
+          profile = await resolveProfileAsync(profileId, db, { forUserId: ctx.userId });
         } catch (err) {
           return { error: `Invalid profile: ${toErrorMessage(err)}` };
         }

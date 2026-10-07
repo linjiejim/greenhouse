@@ -121,7 +121,7 @@ describe('memory index block', () => {
     expect(scopes).toEqual([{ botId: null }, { botId: 'botA', exact: true }]);
     // The private part has its own small budget.
     const privatePart = block!.split('Your own private notes (only you see these):\n')[1]!.split('\n\n')[0]!;
-    expect(privatePart.length).toBeLessThanOrEqual(600 + 200);
+    expect(privatePart.length).toBeLessThanOrEqual(1200 + 200);
   });
 
   it('a non-Bot caller never reads Bot notes', async () => {

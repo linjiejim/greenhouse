@@ -49,6 +49,8 @@ import type {
   VaultAccessView,
   VaultItemView,
   VaultItemWrite,
+  BotVersionView,
+  BotLifecycleInputView,
 } from '@greenhouse/types/bots';
 import { apiWebSocketUrl } from '../api-base';
 import { authFetch } from '../auth';
@@ -144,10 +146,18 @@ export interface BotWriteInput {
   template_key?: BotTemplateKey;
   name?: string;
   role?: string;
+  description?: string;
   instructions?: string;
   avatar?: AvatarConfig;
   model_id?: string | null;
+  /** Tool ids the Bot may use; null = inherit the owner's whole allowed set. */
+  tools?: string[] | null;
+  max_steps?: number | null;
+  change_log?: string;
 }
+
+/** A shared Bot as listed to other members (published manifest + owner). */
+export type SharedBotView = BotView & { owner_nickname: string };
 
 export interface ConversationPage {
   conversation: BotConversationDetail;
@@ -179,7 +189,7 @@ export async function bootstrapBots(): Promise<{ bot: BotView; dm_session_id: st
   return res.json();
 }
 
-export async function createBot(input: BotWriteInput): Promise<{ bot: BotView; dm_session_id: string }> {
+export async function createBot(input: BotWriteInput): Promise<{ bot: BotView; dm_session_id: string | null }> {
   const args = { json: input };
   const res = await rpc.api.bots.$post(args);
   if (!res.ok) throw await failure(res);
@@ -196,6 +206,77 @@ export async function updateBot(botId: string, input: Omit<BotWriteInput, 'templ
 export async function archiveBot(botId: string): Promise<void> {
   const res = await rpc.api.bots[':id'].$delete({ param: { id: enc(botId) } });
   if (!res.ok) throw await failure(res);
+}
+
+/** Bots other members published — their reviewed version only. */
+export async function listSharedBots(): Promise<{ bots: SharedBotView[] }> {
+  const res = await rpc.api.bots.shared.$get();
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+export async function listBotVersions(botId: string): Promise<{
+  bot_id: string;
+  profile_id: string;
+  current_version: number;
+  published_version: number | null;
+  versions: BotVersionView[];
+}> {
+  const res = await rpc.api.bots[':id'].versions.$get({ param: { id: enc(botId) } });
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** Owner: submit for review / withdraw / archive. Super: pilot / verify / reject / suspend / deprecate. */
+export async function transitionBotLifecycle(botId: string, input: BotLifecycleInputView): Promise<{ bot: BotView }> {
+  const args = { param: { id: enc(botId) }, json: input };
+  const res = await rpc.api.bots[':id'].lifecycle.$post(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** My own copy of a published (or my own) Bot — a snapshot that does not follow the source. */
+export async function cloneBot(botId: string, name?: string): Promise<{ bot: BotView; dm_session_id: string | null }> {
+  const args = { param: { id: enc(botId) }, json: name ? { name } : {} };
+  const res = await rpc.api.bots[':id'].clone.$post(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+export interface BotFolderView {
+  id: number;
+  name: string;
+  /** The folder in the Knowledge library (`#/knowledge/folder/<id>`). */
+  url: string;
+}
+
+export interface BotFileView {
+  id: number;
+  doc_id: string;
+  title: string;
+  url: string;
+  updated_at: string;
+}
+
+/** The Bot's private reference folder and its documents (folder null until first use). */
+export async function listBotFiles(botId: string): Promise<{ folder: BotFolderView | null; docs: BotFileView[] }> {
+  const res = await rpc.api.bots[':id'].files.$get({ param: { id: enc(botId) } });
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as { folder: BotFolderView | null; docs: BotFileView[] };
+}
+
+/** Create the Bot's reference folder on first use. */
+export async function ensureBotFolder(botId: string): Promise<{ folder: BotFolderView }> {
+  const res = await rpc.api.bots[':id'].files.ensure.$post({ param: { id: enc(botId) } });
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** Super's governance queue: every Bot that entered the review lifecycle. */
+export async function fetchAdminBotReview(): Promise<{ bots: SharedBotView[] }> {
+  const res = await rpc.api.admin.bots.review.$get();
+  if (!res.ok) throw await failure(res);
+  return res.json();
 }
 
 export async function listBotMemories(botId: string): Promise<{ memories: BotMemoryView[] }> {

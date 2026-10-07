@@ -46,6 +46,7 @@ import {
   type ChatRuntimeTrace,
 } from '../../chat/runtime.js';
 import { isChatModelAllowed } from '../../config/models.js';
+import { botEffectiveTools } from './bot-tools.js';
 import { resolveMemoryContext } from '../../llm/memory.js';
 import { createProviderAttemptBudgetHook } from '../../llm/usage-budget.js';
 import type { AgentProfile } from '../../profiles/profile.js';
@@ -383,7 +384,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       db,
       ctx,
       toolRegistry: rc.toolRegistry,
-      effectiveTools: rc.effectiveTools,
+      effectiveTools: botEffectiveTools(rc.effectiveTools, bot),
       team,
       conversation: conversationPort,
       runtimeRunId: null,

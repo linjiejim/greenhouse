@@ -61,7 +61,7 @@ import {
   shutdownBotComputers,
 } from './bots/computer/index.js';
 import { createComputerTerminalRoutes } from './bots/computer/terminal.js';
-import { createBotsRoutes, initBotsEngine, shutdownBotsEngine } from './bots/engine/index.js';
+import { createBotsRoutes, initBotsEngine, shutdownBotsEngine, createBotsAdminRoutes } from './bots/engine/index.js';
 import { startBotsOrphanSweep, stopBotsOrphanSweep } from './bots/purge.js';
 import clientActionRoutes from './routes/client-actions.js';
 import { CLIENT_ACTIONS_API_PREFIX } from '@greenhouse/types/api';
@@ -305,6 +305,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin/feature-requests', featureRequestRoutes)
       .route('/api/admin/frictions', frictionRoutes)
       .route('/api/admin/bot-computers', createAdminBotComputerRoutes())
+      .route('/api/admin/bots', createBotsAdminRoutes())
       // Project management — all internal users
       .use('/api/platform/*', requireInternal())
       .route('/api/platform', platformRoutes)
@@ -367,13 +368,25 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route(CLIENT_ACTIONS_API_PREFIX, clientActionRoutes)
       // ── Registry-dependent routes (need DB-backed toolRegistry) ──
       .route('/api/chat', createChatRoute(toolRegistry))
-      // Bots — every internal user behind the `bots` flag. Owner-only on every
-      // path inside the routes (super included). The bare collection path is
-      // not matched by `/*`, so it is guarded explicitly.
+      // Bots — every internal user. A Bot is the agent identity, so listing,
+      // creating and editing Bots (versions, lifecycle, memories) only need an
+      // internal account; the persistent threads, "needs you" cards, background
+      // tasks, the computer and the vault stay behind the `bots` flag (spec
+      // 20261007 D5). Owner-only on every path inside the routes (super
+      // included). The bare collection path is not matched by `/*`, so it is
+      // guarded explicitly.
       .use('/api/bots', requireInternal())
-      .use('/api/bots', requireFeature('bots'))
       .use('/api/bots/*', requireInternal())
-      .use('/api/bots/*', requireFeature('bots'))
+      .use('/api/bots/bootstrap', requireFeature('bots'))
+      .use('/api/bots/conversations', requireFeature('bots'))
+      .use('/api/bots/conversations/*', requireFeature('bots'))
+      .use('/api/bots/requests', requireFeature('bots'))
+      .use('/api/bots/requests/*', requireFeature('bots'))
+      .use('/api/bots/tasks/*', requireFeature('bots'))
+      .use('/api/bots/computer', requireFeature('bots'))
+      .use('/api/bots/computer/*', requireFeature('bots'))
+      .use('/api/bots/vault', requireFeature('bots'))
+      .use('/api/bots/vault/*', requireFeature('bots'))
       .route('/api/bots/computer', createBotsComputerRoutes())
       .route('/api/bots/vault', createBotsVaultRoutes())
       .route('/api/bots', createBotsRoutes())

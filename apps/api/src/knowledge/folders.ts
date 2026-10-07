@@ -135,13 +135,15 @@ export interface KbTreeFolder {
 export async function kbTree(
   db: DatabaseProvider,
   scope: KbFolderScope,
-  opts: { rootId?: number | null; docLimit: number },
+  opts: { rootId?: number | null; docLimit: number; excludeFolderIds?: number[] },
 ): Promise<{ folders: KbTreeFolder[]; total_docs: number; truncated: boolean }> {
   // One flat pass over the folders, so a doc's path is a lookup rather than a
   // breadcrumb query per document.
   const pathById = new Map<number, string>();
   const rootId = opts.rootId ?? null;
   const rootPath = rootId == null ? '' : await kbFolderPath(db, rootId);
+  // Hidden subtrees (another Bot's reference folder) are never walked or listed.
+  const excluded = new Set(opts.excludeFolderIds ?? []);
 
   let frontier: Array<{ id: number | null; path: string }> = [{ id: rootId, path: rootPath }];
   for (let depth = 0; depth < MAX_TREE_DEPTH && frontier.length > 0; depth++) {
@@ -154,7 +156,7 @@ export async function kbTree(
         owner_user_id: scope.visibility === 'private' ? scope.ownerUserId : undefined,
       });
       for (const child of children) {
-        if (pathById.has(child.id)) continue;
+        if (pathById.has(child.id) || excluded.has(child.id)) continue;
         const path = node.path ? `${node.path}/${child.name}` : child.name;
         pathById.set(child.id, path);
         next.push({ id: child.id, path });
@@ -170,6 +172,7 @@ export async function kbTree(
     ownerUserId: scope.visibility === 'private' ? scope.ownerUserId : undefined,
     // Restricting to the subtree also drops root-level docs when a root is given.
     folderIds: rootId == null ? undefined : [rootId, ...pathById.keys()],
+    ...(excluded.size > 0 ? { excludeFolderIds: [...excluded] } : {}),
     limit: opts.docLimit + 1,
   });
   const truncated = docs.length > opts.docLimit;

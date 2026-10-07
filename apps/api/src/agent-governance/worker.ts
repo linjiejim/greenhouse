@@ -1,12 +1,12 @@
 /**
- * Automatic governance for published custom Agents.
+ * Automatic governance for published Bots (shared agent identities).
  *
  * The worker is deliberately a thin policy loop over the DB service: lifecycle
- * transitions stay serialized by `customProfiles.transitionLifecycle`, while
- * permanent notification rows provide the durable user-facing evidence.
+ * transitions stay serialized by `bots.transitionLifecycle`, while permanent
+ * notification rows provide the durable user-facing evidence.
  */
 
-import type { CustomProfileOwnershipCandidate, CustomProfileRow, DatabaseProvider, UserRow } from '@greenhouse/db';
+import type { BotOwnershipCandidate, BotRow, DatabaseProvider, UserRow } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { connectionManager } from '../ws/connection-manager.js';
@@ -32,15 +32,15 @@ export interface AgentGovernanceWorker {
   stop(): void;
 }
 
-function isPublished(profile: CustomProfileRow): boolean {
+function isPublished(profile: BotRow): boolean {
   return profile.lifecycle_status === 'pilot' || profile.lifecycle_status === 'verified';
 }
 
-function reviewNote(profile: CustomProfileRow): string {
+function reviewNote(profile: BotRow): string {
   return profile.next_review_at ? `${REVIEW_NOTE_PREFIX} at ${profile.next_review_at}.` : `${REVIEW_NOTE_PREFIX}.`;
 }
 
-function governanceReason(profile: CustomProfileRow): GovernanceReason | null {
+function governanceReason(profile: BotRow): GovernanceReason | null {
   if (profile.reviewed_by !== SYSTEM_ACTOR || profile.lifecycle_status !== 'suspended') return null;
   if (profile.lifecycle_note?.startsWith(REVIEW_NOTE_PREFIX)) return 'review_due';
   if (profile.lifecycle_note?.startsWith(OWNER_NOTE_PREFIX)) return 'owner_unavailable';
@@ -55,7 +55,7 @@ function activeUsersById(users: UserRow[]): Map<string, UserRow> {
   );
 }
 
-function recipients(profile: CustomProfileRow, users: Map<string, UserRow>): string[] {
+function recipients(profile: BotRow, users: Map<string, UserRow>): string[] {
   const ids = new Set<string>();
   if (users.has(profile.user_id)) ids.add(profile.user_id);
   if (profile.owner_backup_user_id && users.has(profile.owner_backup_user_id)) {
@@ -69,7 +69,7 @@ function recipients(profile: CustomProfileRow, users: Map<string, UserRow>): str
 
 function notificationCopy(
   reason: GovernanceReason,
-  profile: CustomProfileRow,
+  profile: BotRow,
 ): {
   kind: 'agent_review_due' | 'agent_suspended';
   title: string;
@@ -79,19 +79,19 @@ function notificationCopy(
     return {
       kind: 'agent_review_due',
       title: `${profile.name} needs review`,
-      body: 'The Agent was automatically suspended after its review deadline. Review and republish it before reuse.',
+      body: 'The Bot was automatically suspended after its review deadline. Review and republish it before reuse.',
     };
   }
   return {
     kind: 'agent_suspended',
     title: `${profile.name} was suspended`,
-    body: 'The Agent owner is disabled and no active backup owner is available. Assign continuity ownership before republishing it.',
+    body: 'The Bot owner is disabled and no active backup owner is available. Assign continuity ownership before republishing it.',
   };
 }
 
 async function notifySuspension(
   db: DatabaseProvider,
-  profile: CustomProfileRow,
+  profile: BotRow,
   reason: GovernanceReason,
   users: Map<string, UserRow>,
 ): Promise<void> {
@@ -104,14 +104,14 @@ async function notifySuspension(
         title: copy.title,
         body: copy.body,
         payload: {
-          agent_id: `custom:${profile.id}`,
+          agent_id: `bot:${profile.id}`,
           profile_id: profile.id,
           version: profile.current_version,
           lifecycle_status: profile.lifecycle_status,
           reason,
           transitioned_at: profile.updated_at,
         },
-        agent_id: `custom:${profile.id}`,
+        agent_id: `bot:${profile.id}`,
         dedupe_key: `agent-governance:${reason}:${profile.id}:v${profile.current_version}:${profile.updated_at}`,
       });
       if (result.created) {
@@ -139,11 +139,11 @@ async function notifySuspension(
 
 async function notifyContinuityWarning(
   db: DatabaseProvider,
-  candidate: CustomProfileOwnershipCandidate,
+  candidate: BotOwnershipCandidate,
   users: Map<string, UserRow>,
   ownerStateKey: string,
 ): Promise<void> {
-  const { profile } = candidate;
+  const { bot: profile } = candidate;
   const activeBackup = profile.owner_backup_user_id ? users.get(profile.owner_backup_user_id) : undefined;
   if (!activeBackup) return;
   const targetIds = new Set<string>([activeBackup.id]);
@@ -156,16 +156,16 @@ async function notifyContinuityWarning(
         user_id: userId,
         kind: 'agent_review_due',
         title: `${profile.name} needs an active owner`,
-        body: 'The primary owner is disabled. The active backup owner can keep the Agent available, but ownership should be reviewed.',
+        body: 'The primary owner is disabled. The active backup owner can keep the Bot available, but ownership should be reviewed.',
         payload: {
-          agent_id: `custom:${profile.id}`,
+          agent_id: `bot:${profile.id}`,
           profile_id: profile.id,
           version: profile.current_version,
           reason: 'owner_backup_active',
           owner_user_id: profile.user_id,
           backup_owner_user_id: activeBackup.id,
         },
-        agent_id: `custom:${profile.id}`,
+        agent_id: `bot:${profile.id}`,
         dedupe_key: `agent-governance:owner-backup-active:${profile.id}:v${profile.current_version}:${ownerStateKey}`,
       });
       if (result.created) {
@@ -213,12 +213,12 @@ export async function startAgentGovernanceWorker(
         logger.error('[agent-governance] active-user scan failed', { error: toErrorMessage(error) });
       }
 
-      const processed = new Set<number>();
+      const processed = new Set<string>();
       const scanAt = now().toISOString();
       for (;;) {
-        let due: CustomProfileRow[];
+        let due: BotRow[];
         try {
-          due = await db.customProfiles.listReviewDue(scanAt, pageSize);
+          due = await db.bots.listReviewDue(scanAt, pageSize);
         } catch (error) {
           logger.error('[agent-governance] review-due scan failed', { error: toErrorMessage(error) });
           break;
@@ -228,7 +228,7 @@ export async function startAgentGovernanceWorker(
         for (const profile of unattempted) {
           processed.add(profile.id);
           try {
-            const suspended = await db.customProfiles.transitionLifecycle(profile.id, {
+            const suspended = await db.bots.transitionLifecycle(profile.id, {
               status: 'suspended',
               actor_user_id: SYSTEM_ACTOR,
               note: reviewNote(profile),
@@ -247,20 +247,20 @@ export async function startAgentGovernanceWorker(
         if (due.length < pageSize) break;
       }
 
-      let afterId = 0;
+      let afterId = '';
       for (;;) {
-        let page: CustomProfileOwnershipCandidate[];
+        let page: BotOwnershipCandidate[];
         try {
-          page = await db.customProfiles.listActiveWithOwners(pageSize, afterId);
+          page = await db.bots.listActiveWithOwners(pageSize, afterId);
         } catch (error) {
           logger.error('[agent-governance] ownership scan failed', { afterId, error: toErrorMessage(error) });
           break;
         }
         if (page.length === 0) break;
-        afterId = page.at(-1)!.profile.id;
+        afterId = page.at(-1)!.bot.id;
 
         for (const candidate of page) {
-          const { profile } = candidate;
+          const { bot: profile } = candidate;
           if (processed.has(profile.id)) continue;
 
           const recoveredReason = governanceReason(profile);
@@ -280,7 +280,7 @@ export async function startAgentGovernanceWorker(
           }
 
           try {
-            const suspended = await db.customProfiles.transitionLifecycle(profile.id, {
+            const suspended = await db.bots.transitionLifecycle(profile.id, {
               status: 'suspended',
               actor_user_id: SYSTEM_ACTOR,
               note: `${OWNER_NOTE_PREFIX}.`,

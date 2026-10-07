@@ -29,8 +29,8 @@ const MORE_UTILITY_ITEMS = (['prompts', 'automations', 'agents'] as const).map((
   const item = CHAT_WORKSPACE_ITEMS.find((candidate) => candidate.id === id)!;
   return {
     ...item,
-    route: id === 'prompts' ? 'tasks' : id,
-    href: id === 'prompts' ? '#/tasks' : `#/${id}`,
+    route: id === 'prompts' ? 'tasks' : id === 'agents' ? 'bots' : id,
+    href: id === 'prompts' ? '#/tasks' : id === 'agents' ? '#/bots/directory' : `#/${id}`,
   };
 });
 

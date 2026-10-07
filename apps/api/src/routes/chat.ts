@@ -19,6 +19,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { stream as honoStream } from 'hono/streaming';
 import { getDb } from '@greenhouse/db';
 import { selectTools, buildSystemPrompt } from '../agent.js';
+import { buildMemberNotesSection } from '../profiles/identity-prompt.js';
 import type { ToolRegistry } from '../agent.js';
 import {
   buildLazyServerTools,
@@ -161,7 +162,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         // ── Profile access control (MUST run before quota check) ──
         let earlyProfile: AgentProfile;
         try {
-          earlyProfile = await resolveProfileAsync(profileId);
+          earlyProfile = await resolveProfileAsync(profileId, undefined, { forUserId: userId });
         } catch (err) {
           return c.json({ error: `Invalid profile: ${err instanceof Error ? err.message : 'unknown error'}` }, 400);
         }
@@ -314,7 +315,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             }
             let sessionProfile: AgentProfile;
             try {
-              sessionProfile = await resolveProfileAsync(profileId);
+              sessionProfile = await resolveProfileAsync(profileId, undefined, { forUserId: userId });
             } catch (err) {
               return c.json(
                 { error: `Invalid session profile: ${err instanceof Error ? err.message : 'unknown error'}` },
@@ -424,7 +425,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // ── Resolve profile → model, tools, prompt ──
           let profile: AgentProfile;
           try {
-            profile = await resolveProfileAsync(profileId);
+            profile = await resolveProfileAsync(profileId, undefined, { forUserId: userId });
           } catch (err) {
             releaseClaim();
             return c.json({ error: `Invalid profile: ${err instanceof Error ? err.message : err}` }, 400);
@@ -562,6 +563,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               sessionId,
               workspaceId: body.workspace_id,
               profileId: profile.id,
+              botId: profile.identity?.botId ?? null,
               runtimeRunId: runtimeTrace?.runId ?? null,
               toolRegistry,
               unattended: unattendedExecution,
@@ -903,27 +905,28 @@ async function buildSystemPromptWithUserNotes(
 ): Promise<string> {
   let userInfo: string | undefined;
   let userLocale: string | undefined;
+  let nickname: string | undefined;
 
   if (userId) {
     try {
       const user = await getDb().users.getById(userId);
       userLocale = user?.locale ?? undefined;
-      if (user?.notes) {
-        const sanitizedNotes = sanitizeForPrompt(user.notes);
-        const notesHint = `User "${user.nickname}" has set the following preferences — adhere to them:\n${sanitizedNotes}`;
-        userInfo = userInfo ? `${userInfo}\n\n${notesHint}` : notesHint;
-      }
+      nickname = user?.nickname;
+      // The member's standing notes — the same section a Bots thread renders (S3).
+      const notesSection = buildMemberNotesSection(user?.nickname, user?.notes);
+      if (notesSection) userInfo = notesSection;
     } catch {
       /* ignore */
     }
 
     // Memory index (feature-gated inside resolveMemoryContext, which also
-    // sanitises — memory text is model-written and user-editable).
-    const memoryBlock = await resolveMemoryContext(userId);
-    if (memoryBlock) userInfo = userInfo ? `${userInfo}\n${memoryBlock}` : memoryBlock;
+    // sanitises — memory text is model-written and user-editable). A session
+    // bound to a Bot also sees that Bot's private partition.
+    const memoryBlock = await resolveMemoryContext(userId, undefined, { botId: profile.identity?.botId ?? null });
+    if (memoryBlock) userInfo = userInfo ? `${userInfo}\n\n${memoryBlock}` : memoryBlock;
   }
 
-  let prompt = buildSystemPrompt(profile, userInfo ? { userInfo } : undefined);
+  let prompt = buildSystemPrompt(profile, { ...(userInfo ? { userInfo } : {}), nickname });
   if (hasTools) {
     prompt += `\n\n## Tool Guidance\nUse your available tools proactively when they are relevant to the user's request.`;
   }

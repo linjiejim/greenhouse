@@ -122,15 +122,17 @@ export function selectTools(registry: ToolRegistry, toolNames: string[]): ToolRe
 export interface AgentContext {
   /** Server-assembled user context (notes + memories) — never client-supplied. */
   userInfo?: string;
+  /** The member this turn runs for — named in the identity section. */
+  nickname?: string | null;
 }
 
 /**
- * Build the full system prompt: static profile prompt + dynamic context.
- * Profile provides the static identity/instructions; context appends the
- * server-assembled user info block.
+ * Build the full system prompt: identity + static profile prompt + dynamic
+ * context. The profile (a Bot, or the bare preset) provides the identity and
+ * the static rules; context appends the server-assembled user info block.
  */
 export function buildSystemPrompt(profile: AgentProfile, context?: AgentContext): string {
-  const parts: string[] = [enrichSystemPrompt(profile)];
+  const parts: string[] = [enrichSystemPrompt(profile, { nickname: context?.nickname })];
 
   if (context?.userInfo) {
     parts.push(`\n## User Context\n${context.userInfo}`);

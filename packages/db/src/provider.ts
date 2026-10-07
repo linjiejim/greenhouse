@@ -31,7 +31,6 @@ import { createSessionShareService } from './services/session-shares.js';
 import { createScheduledTaskService } from './services/scheduled-tasks.js';
 import { createFeishuBotService } from './services/feishu-bot.js';
 import { createProviderTokenService } from './services/provider-tokens.js';
-import { createCustomProfileService } from './services/custom-profiles.js';
 import { createSessionTagService } from './services/session-tags.js';
 import { createSessionGroupService } from './services/session-groups.js';
 import { createKnowledgeBaseService } from './services/knowledge-base.js';
@@ -85,7 +84,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     scheduledTasks: createScheduledTaskService(db),
     providerTokens: createProviderTokenService(db),
     feishuBot: createFeishuBotService(db),
-    customProfiles: createCustomProfileService(db),
     sessionTags: createSessionTagService(db),
     sessionGroups: createSessionGroupService(db),
     knowledgeBase: createKnowledgeBaseService(db),
@@ -162,6 +160,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
         'bot_shared_notes',
         'bot_conversation_members',
         'bot_conversations',
+        'bot_versions',
         'bots',
         'workspace_settings',
         'notification_delivery_attempts',
@@ -241,7 +240,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
         'session_tags',
         'session_shares',
         'scheduled_tasks',
-        'custom_profiles',
         'user_provider_tokens',
         'user_prompts',
         'api_audit_log',

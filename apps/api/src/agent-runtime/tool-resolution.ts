@@ -109,18 +109,21 @@ export interface EffectiveToolsResult {
 export async function resolveEffectiveTools(args: ResolveEffectiveToolsArgs): Promise<EffectiveToolsResult> {
   const { userId, userRole, profile, profileId } = args;
 
-  const isCustomProfile = profileId.startsWith('custom:');
+  // A Bot with an explicit tool list narrows (spec 20261007 D8); the preset and
+  // a Bot without one run on the user's whole allowed set. The id-prefix check
+  // only covers hand-built profiles that never went through resolveProfileAsync.
+  const narrows = profile.narrow_tools ?? (profileId.startsWith('custom:') || profileId.startsWith('bot:'));
   const userTools = await resolveUserTools(userId, userRole);
 
-  // Custom profiles persist tool id arrays in the DB; expand retired ids to
-  // their successors so a tool retirement never silently strips a saved agent.
+  // Bots persist tool id arrays in the DB; expand retired ids to their
+  // successors so a tool retirement never silently strips a saved Bot.
   //
   // The built-ins join the FILTER, not the result. Written the other way round
   // — unioned into `effectiveTools` below — this would hand out tools the user
   // does not have: `memory` to someone whose flag is off, or a super-only tool
   // to a team member. The intersection with `activeTools` is what keeps the
   // module's promise that a profile can only ever narrow.
-  const profileTools = isCustomProfile
+  const profileTools = narrows
     ? new Set([...profile.tools.flatMap((t) => [t, ...(RETIRED_TOOL_ALIASES[t] ?? [])]), ...BUILTIN_AGENT_TOOL_IDS])
     : null;
 
@@ -154,6 +157,13 @@ export interface LazyServerToolContext {
   unattended?: boolean;
   /** Current durable parent Run; spawn_session uses it for root lineage. */
   runtimeRunId?: string | null;
+  /**
+   * The Bot this turn runs as (`profile.identity.botId`). The memory tool then
+   * reads user-level + this Bot's private notes and gains a `scope` input; the
+   * knowledge tools see the Bot's own reference folder. The Bots engine builds
+   * its own memory tool (taint-aware) and passes nothing here.
+   */
+  botId?: string | null;
 }
 
 /**
@@ -263,7 +273,7 @@ export function buildLazyServerTools(
   effectiveTools: string[],
   ctx: LazyServerToolContext,
 ): ToolRegistry {
-  const { userId, userRole, sessionId } = ctx;
+  const { userId, userRole, sessionId, botId } = ctx;
   const tools: ToolRegistry = {};
 
   // Cost-bearing provider tool: built per request so budget attribution is
@@ -318,11 +328,15 @@ export function buildLazyServerTools(
   if (effectiveTools.includes('session_query')) {
     tools.session_query = createSessionQueryTool(db, { userId, userRole });
   }
+  // The personal library as this identity sees it (bots/folder.ts): a Bot
+  // reads its own reference folder and never another Bot's; a surface without a
+  // Bot identity (`botId` null) reads none of them.
+  const knowledgeIdentity = botId === undefined ? { botId: null } : { botId };
   if (effectiveTools.includes('knowledge_query')) {
-    tools.knowledge_query = createKnowledgeQueryTool(db, { userId });
+    tools.knowledge_query = createKnowledgeQueryTool(db, { userId, ...knowledgeIdentity });
   }
   if (effectiveTools.includes('knowledge_mutation')) {
-    tools.knowledge_mutation = createKnowledgeMutationTool(db, { userId });
+    tools.knowledge_mutation = createKnowledgeMutationTool(db, { userId, ...knowledgeIdentity });
   }
   // Skill Center writes — owner/super checks live in skills/center.ts; the
   // read side (skill_query) is static and comes from the base registry.
@@ -353,7 +367,13 @@ export function buildLazyServerTools(
   // provenance (which conversation produced this), never the access boundary, so
   // both stay available on headless runs where there is no session.
   if (effectiveTools.includes('memory')) {
-    tools.memory = createMemoryTool(db, { userId, sessionId });
+    // A member is present (or configured this run): the user-level layer stays
+    // writable; the Bot's private partition is simply visible as well.
+    tools.memory = createMemoryTool(db, {
+      userId,
+      sessionId,
+      ...(botId ? { bot: { botId, userScopeAllowed: () => true } } : {}),
+    });
   }
   if (effectiveTools.includes('log_friction')) {
     tools.log_friction = createLogFrictionTool(db, { sessionId });

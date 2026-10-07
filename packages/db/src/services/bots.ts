@@ -11,14 +11,16 @@
  * Design: docs/specs/20261005-personal-assistant-bots.md.
  */
 
-import { randomBytes } from 'node:crypto';
-import { and, asc, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
-import { PgTransaction } from 'drizzle-orm/pg-core';
+import { createHash, randomBytes } from 'node:crypto';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm';
+import { PgTransaction, alias } from 'drizzle-orm/pg-core';
 import { nowIso } from '@greenhouse/utils/date';
+import { isUniqueViolation } from '@greenhouse/utils/error';
 
 import type { Db, DbClient } from '../client.js';
 import {
   bots,
+  botVersions,
   botConversations,
   botConversationMembers,
   botSharedNotes,
@@ -30,6 +32,9 @@ import {
 } from '../schema/index.js';
 import type {
   BotRow,
+  BotVersionRow,
+  BotLifecycleStatus,
+  BotRiskLevel,
   BotConversationRow,
   BotConversationMemberRow,
   BotSharedNoteRow,
@@ -39,9 +44,11 @@ import type {
   BotInboxRow,
   BotInboxKind,
 } from '../schema/bots.js';
+import type { UserStatus } from '../schema/user.js';
 
 /** Per-user cap on active Bots. */
-export const MAX_ACTIVE_BOTS_PER_USER = 12;
+/** The former custom-Agent cap (20) — Bots absorbed custom Agents, so the two limits merged. */
+export const MAX_ACTIVE_BOTS_PER_USER = 20;
 /** Bots in one conversation (owner/lead included). */
 export const MAX_BOTS_PER_CONVERSATION = 6;
 /** Open shared notes in one conversation. */
@@ -89,24 +96,137 @@ export const INBOX_MAX_ATTEMPTS = 5;
 /** Advisory-lock key namespace of a conversation's run (see `tryLockConversationRun`). */
 const RUN_LOCK_PREFIX = 'bots-run:';
 
-export interface BotInput {
+/** Governance metadata, versioned with the executable manifest (all optional). */
+export interface BotGovernanceInput {
+  purpose?: string | null;
+  audience?: string | null;
+  risk_level?: BotRiskLevel;
+  budget_policy?: Record<string, unknown>;
+  eval_refs?: unknown[];
+  owner_backup_user_id?: string | null;
+  review_due_at?: string | null;
+  change_log?: string;
+  created_by?: string | null;
+}
+
+export interface BotInput extends BotGovernanceInput {
   user_id: string;
   name: string;
   role?: string;
+  description?: string;
   instructions?: string;
+  /** Avatar JSON text. */
   avatar?: string;
   model_id?: string | null;
+  /** Tool ids the Bot may use; null / omitted = the owner's whole allowed set. */
+  tools?: string[] | null;
+  max_steps?: number | null;
   template_key?: string | null;
+  forked_from?: string | null;
   /** The built-in Sprouty: not counted against MAX_ACTIVE_BOTS_PER_USER (every member has it). */
   builtIn?: boolean;
 }
 
-export interface BotUpdateInput {
+export interface BotUpdateInput extends BotGovernanceInput {
   name?: string;
   role?: string;
+  description?: string;
   instructions?: string;
   avatar?: string;
   model_id?: string | null;
+  tools?: string[] | null;
+  max_steps?: number | null;
+}
+
+export interface BotLifecycleInput {
+  status: BotLifecycleStatus;
+  actor_user_id: string;
+  note?: string | null;
+  publish_version?: number | null;
+  next_review_at?: string | null;
+}
+
+export interface BotOwnershipCandidate {
+  bot: BotRow;
+  owner_status: UserStatus;
+  backup_owner_status: UserStatus | null;
+}
+
+/** The fields hashed into `bot_versions.manifest_hash`, in this fixed key order. */
+type VersionManifest = Pick<
+  BotVersionRow,
+  | 'name'
+  | 'role'
+  | 'description'
+  | 'instructions'
+  | 'tools'
+  | 'model_id'
+  | 'max_steps'
+  | 'avatar'
+  | 'purpose'
+  | 'audience'
+  | 'risk_level'
+  | 'budget_policy'
+  | 'eval_refs'
+  | 'owner_backup_user_id'
+  | 'review_due_at'
+>;
+
+function manifestHash(manifest: VersionManifest): string {
+  // Built below in a fixed key order; arrays / objects are their persisted JSON
+  // text, so the hash is deterministic across hosts.
+  return createHash('sha256').update(JSON.stringify(manifest)).digest('hex');
+}
+
+/** The next manifest: the row's current values, the previous version's governance fields, then the edits. */
+function manifestFrom(row: BotRow, updates: BotUpdateInput, previous?: BotVersionRow): VersionManifest {
+  return {
+    name: updates.name !== undefined ? updates.name.trim() : row.name,
+    role: updates.role !== undefined ? updates.role.trim() : row.role,
+    description: updates.description !== undefined ? updates.description.trim() : row.description,
+    instructions: updates.instructions !== undefined ? updates.instructions.trim() : row.instructions,
+    tools: updates.tools !== undefined ? (updates.tools === null ? null : JSON.stringify(updates.tools)) : row.tools,
+    model_id: updates.model_id !== undefined ? updates.model_id : row.model_id,
+    max_steps: updates.max_steps !== undefined ? updates.max_steps : row.max_steps,
+    avatar: updates.avatar !== undefined ? updates.avatar : row.avatar,
+    purpose: updates.purpose !== undefined ? updates.purpose : (previous?.purpose ?? null),
+    audience: updates.audience !== undefined ? updates.audience : (previous?.audience ?? null),
+    risk_level: updates.risk_level ?? previous?.risk_level ?? 'medium',
+    budget_policy:
+      updates.budget_policy !== undefined ? JSON.stringify(updates.budget_policy) : (previous?.budget_policy ?? '{}'),
+    eval_refs: updates.eval_refs !== undefined ? JSON.stringify(updates.eval_refs) : (previous?.eval_refs ?? '[]'),
+    owner_backup_user_id:
+      updates.owner_backup_user_id !== undefined
+        ? updates.owner_backup_user_id
+        : (previous?.owner_backup_user_id ?? row.owner_backup_user_id),
+    review_due_at: updates.review_due_at !== undefined ? updates.review_due_at : (previous?.review_due_at ?? null),
+  };
+}
+
+const ALLOWED_LIFECYCLE_TRANSITIONS: Record<BotLifecycleStatus, ReadonlySet<BotLifecycleStatus>> = {
+  draft: new Set(['review', 'archived']),
+  review: new Set(['draft', 'pilot', 'verified', 'rejected', 'archived']),
+  pilot: new Set(['verified', 'rejected', 'suspended', 'deprecated', 'archived']),
+  verified: new Set(['suspended', 'deprecated', 'archived']),
+  rejected: new Set(['draft', 'review', 'archived']),
+  suspended: new Set(['pilot', 'verified', 'deprecated', 'archived']),
+  deprecated: new Set(['archived']),
+  archived: new Set(),
+};
+
+/** Lifecycle states in which a Bot is shared with the team (always at `published_version`). */
+export const PUBLISHED_LIFECYCLE_STATUSES: readonly BotLifecycleStatus[] = ['pilot', 'verified'];
+
+/** Lifecycle states in which a Bot may still be run (by anyone with access). */
+export const EXECUTABLE_LIFECYCLE_STATUSES: readonly BotLifecycleStatus[] = ['draft', 'review', 'pilot', 'verified'];
+
+export function isPublishedLifecycle(status: BotLifecycleStatus): boolean {
+  return PUBLISHED_LIFECYCLE_STATUSES.includes(status);
+}
+
+function defaultReviewAt(now: string, riskLevel: BotRiskLevel): string {
+  const reviewDays = riskLevel === 'high' ? 60 : 90;
+  return new Date(Date.parse(now) + reviewDays * 24 * 60 * 60 * 1000).toISOString();
 }
 
 export interface ConversationWithMembers extends BotConversationRow {
@@ -136,7 +256,67 @@ export interface RequestInput {
   expires_at?: string | null;
 }
 
+/** One transaction: enforce the per-member cap and name uniqueness, insert the row and its v1. */
+function insertBotFactory(db: Db) {
+  return async function insertBot(input: BotInput): Promise<BotRow> {
+    return db.transaction(async (tx) => {
+      const [count] = await tx
+        .select({ n: sql<string>`count(*)` })
+        .from(bots)
+        .where(and(eq(bots.user_id, input.user_id), eq(bots.status, 'active')));
+      if (!input.builtIn && Number(count?.n ?? 0) >= MAX_ACTIVE_BOTS_PER_USER) {
+        throw new BotsDomainError('bot_limit', `At most ${MAX_ACTIVE_BOTS_PER_USER} active Bots per member`);
+      }
+      const nameKey = botNameKey(input.name);
+      const [clash] = await tx
+        .select({ id: bots.id })
+        .from(bots)
+        .where(and(eq(bots.user_id, input.user_id), eq(bots.status, 'active'), eq(bots.name_key, nameKey)))
+        .limit(1);
+      if (clash) throw new BotsDomainError('bot_name_taken', 'You already have a Bot with this name');
+
+      const now = nowIso();
+      const [row] = await tx
+        .insert(bots)
+        .values({
+          id: hexId('bot'),
+          user_id: input.user_id,
+          name: input.name.trim(),
+          name_key: nameKey,
+          role: input.role?.trim() ?? '',
+          description: input.description?.trim() ?? '',
+          instructions: input.instructions?.trim() ?? '',
+          avatar: input.avatar ?? '{}',
+          model_id: input.model_id ?? null,
+          tools: input.tools == null ? null : JSON.stringify(input.tools),
+          max_steps: input.max_steps ?? null,
+          template_key: input.template_key ?? null,
+          forked_from: input.forked_from ?? null,
+          owner_backup_user_id: input.owner_backup_user_id ?? null,
+          status: 'active',
+          current_version: 1,
+          created_at: now,
+          updated_at: now,
+        })
+        .returning();
+      const manifest = manifestFrom(row!, input);
+      await tx.insert(botVersions).values({
+        bot_id: row!.id,
+        version: 1,
+        manifest_hash: manifestHash(manifest),
+        change_log: input.change_log?.trim() || 'Initial version',
+        ...manifest,
+        created_by: input.created_by ?? input.user_id,
+        created_at: now,
+      });
+      return row!;
+    });
+  };
+}
+
 export function createBotsService(db: Db) {
+  const insertBot = insertBotFactory(db);
+
   async function assertOwnedBots(tx: Db, userId: string, botIds: string[]): Promise<BotRow[]> {
     if (botIds.length === 0) return [];
     const rows = await tx
@@ -210,41 +390,169 @@ export function createBotsService(db: Db) {
     // ─── Bots ──────────────────────────────────────────
 
     async createBot(input: BotInput): Promise<BotRow> {
-      return db.transaction(async (tx) => {
-        const [count] = await tx
-          .select({ n: sql<string>`count(*)` })
-          .from(bots)
-          .where(and(eq(bots.user_id, input.user_id), eq(bots.status, 'active')));
-        if (!input.builtIn && Number(count?.n ?? 0) >= MAX_ACTIVE_BOTS_PER_USER) {
-          throw new BotsDomainError('bot_limit', `At most ${MAX_ACTIVE_BOTS_PER_USER} active Bots per member`);
+      try {
+        return await insertBot(input);
+      } catch (error) {
+        // Two surfaces creating the same Bot at once (Chat and the Bots page both
+        // bootstrapping Sprouty on a member's first visit) can both pass the
+        // name pre-check; the unique index then decides. Report it as the same
+        // domain error so callers retry by re-reading instead of surfacing a 500.
+        if (isUniqueViolation(error)) {
+          throw new BotsDomainError('bot_name_taken', 'You already have a Bot with this name');
         }
-        const nameKey = botNameKey(input.name);
-        const [clash] = await tx
-          .select({ id: bots.id })
-          .from(bots)
-          .where(and(eq(bots.user_id, input.user_id), eq(bots.status, 'active'), eq(bots.name_key, nameKey)))
-          .limit(1);
-        if (clash) throw new BotsDomainError('bot_name_taken', 'You already have a Bot with this name');
+        throw error;
+      }
+    },
 
-        const now = nowIso();
-        const [row] = await tx
-          .insert(bots)
-          .values({
-            id: hexId('bot'),
-            user_id: input.user_id,
-            name: input.name.trim(),
-            name_key: nameKey,
-            role: input.role?.trim() ?? '',
-            instructions: input.instructions?.trim() ?? '',
-            avatar: input.avatar ?? '{}',
-            model_id: input.model_id ?? null,
-            template_key: input.template_key ?? null,
-            status: 'active',
-            created_at: now,
+    /** Lookup without an owner (profile resolution of a shared Bot); callers enforce access. */
+    async getBotById(botId: string): Promise<BotRow | undefined> {
+      const [row] = await db.select().from(bots).where(eq(bots.id, botId)).limit(1);
+      return row;
+    },
+
+    /** The Bot a retired `custom:<id>` reference now means. */
+    async getByLegacyCustomId(legacyId: number): Promise<BotRow | undefined> {
+      const [row] = await db.select().from(bots).where(eq(bots.legacy_custom_id, legacyId)).limit(1);
+      return row;
+    },
+
+    // ─── Versions ──────────────────────────────────────
+
+    async getVersion(botId: string, version: number): Promise<BotVersionRow | undefined> {
+      const [row] = await db
+        .select()
+        .from(botVersions)
+        .where(and(eq(botVersions.bot_id, botId), eq(botVersions.version, version)))
+        .limit(1);
+      return row;
+    },
+
+    async getCurrentVersion(botId: string): Promise<BotVersionRow | undefined> {
+      const bot = await service.getBotById(botId);
+      return bot ? service.getVersion(botId, bot.current_version) : undefined;
+    },
+
+    async getPublishedVersion(botId: string): Promise<BotVersionRow | undefined> {
+      const bot = await service.getBotById(botId);
+      return bot?.published_version ? service.getVersion(botId, bot.published_version) : undefined;
+    },
+
+    async listVersions(botId: string): Promise<BotVersionRow[]> {
+      return db.select().from(botVersions).where(eq(botVersions.bot_id, botId)).orderBy(desc(botVersions.version));
+    },
+
+    // ─── Sharing and governance ────────────────────────
+
+    /** Bots other members published (pilot / verified with a published version), active only. */
+    async listShared(excludeUserId?: string): Promise<BotRow[]> {
+      return db
+        .select()
+        .from(bots)
+        .where(
+          and(
+            eq(bots.status, 'active'),
+            eq(bots.is_shared, true),
+            inArray(bots.lifecycle_status, [...PUBLISHED_LIFECYCLE_STATUSES]),
+            isNotNull(bots.published_version),
+            excludeUserId ? sql`${bots.user_id} <> ${excludeUserId}` : undefined,
+          ),
+        )
+        .orderBy(asc(bots.name));
+    },
+
+    /**
+     * Super's governance queue: every Bot that entered the review lifecycle
+     * (review / pilot / verified / rejected / suspended / deprecated). Personal
+     * drafts stay personal — a member's unshared Bots are nobody else's business.
+     */
+    async listGovernanceQueue(): Promise<BotRow[]> {
+      return db
+        .select()
+        .from(bots)
+        .where(
+          and(
+            sql`${bots.lifecycle_status} <> 'archived'`,
+            sql`${bots.lifecycle_status} <> 'draft'`,
+            eq(bots.status, 'active'),
+          ),
+        )
+        .orderBy(asc(bots.name));
+    },
+
+    /** Stable input for the review-due sweeper; the worker owns transition policy. */
+    async listReviewDue(at: string, limit = 100): Promise<BotRow[]> {
+      return db
+        .select()
+        .from(bots)
+        .where(and(inArray(bots.lifecycle_status, [...PUBLISHED_LIFECYCLE_STATUSES]), lte(bots.next_review_at, at)))
+        .orderBy(asc(bots.next_review_at), asc(bots.id))
+        .limit(Math.max(1, Math.min(limit, 500)));
+    },
+
+    /**
+     * Stable cursor query over governed Bots with their owners' statuses, for
+     * the owner-continuity sweep (`system:agent-governance`). Personal drafts
+     * are excluded: nothing to govern until a Bot is shared.
+     */
+    async listActiveWithOwners(limit = 100, afterId = ''): Promise<BotOwnershipCandidate[]> {
+      const backupOwner = alias(users, 'bot_backup_owner');
+      return db
+        .select({ bot: bots, owner_status: users.status, backup_owner_status: backupOwner.status })
+        .from(bots)
+        .innerJoin(users, eq(bots.user_id, users.id))
+        .leftJoin(backupOwner, eq(bots.owner_backup_user_id, backupOwner.id))
+        .where(
+          and(
+            sql`${bots.lifecycle_status} <> 'archived'`,
+            sql`${bots.lifecycle_status} <> 'draft'`,
+            gt(bots.id, afterId),
+          ),
+        )
+        .orderBy(asc(bots.id))
+        .limit(Math.max(1, Math.min(limit, 500)));
+    },
+
+    async transitionLifecycle(botId: string, input: BotLifecycleInput): Promise<BotRow | undefined> {
+      const now = nowIso();
+      return db.transaction(async (tx) => {
+        const [bot] = await tx.select().from(bots).where(eq(bots.id, botId)).for('update').limit(1);
+        if (!bot) return undefined;
+        if (bot.lifecycle_status === input.status) {
+          throw new Error(`Bot lifecycle is already ${input.status}; no state change was applied`);
+        }
+        if (!ALLOWED_LIFECYCLE_TRANSITIONS[bot.lifecycle_status].has(input.status)) {
+          throw new Error(`Invalid Bot lifecycle transition: ${bot.lifecycle_status} -> ${input.status}`);
+        }
+
+        const shared = isPublishedLifecycle(input.status);
+        let publishVersion = bot.published_version;
+        let publishedReviewDueAt: string | null = null;
+        if (shared) {
+          publishVersion = input.publish_version ?? bot.current_version;
+          const [candidate] = await tx
+            .select({ review_due_at: botVersions.review_due_at, risk_level: botVersions.risk_level })
+            .from(botVersions)
+            .where(and(eq(botVersions.bot_id, botId), eq(botVersions.version, publishVersion)))
+            .limit(1);
+          if (!candidate) throw new Error(`Bot version does not exist: bot:${botId}@${publishVersion}`);
+          publishedReviewDueAt = candidate.review_due_at ?? defaultReviewAt(now, candidate.risk_level);
+        }
+        const resetsReview = input.status === 'review' || input.status === 'draft';
+        const [updated] = await tx
+          .update(bots)
+          .set({
+            lifecycle_status: input.status,
+            lifecycle_note: input.note ?? null,
+            published_version: publishVersion,
+            is_shared: shared,
+            reviewed_by: resetsReview ? null : input.actor_user_id,
+            reviewed_at: resetsReview ? null : now,
+            next_review_at: shared ? (input.next_review_at ?? publishedReviewDueAt) : null,
             updated_at: now,
           })
+          .where(eq(bots.id, botId))
           .returning();
-        return row!;
+        return updated;
       });
     },
 
@@ -295,10 +603,43 @@ export function createBotsService(db: Db) {
           set.name = updates.name.trim();
           set.name_key = nameKey;
         }
-        if (updates.role !== undefined) set.role = updates.role.trim();
-        if (updates.instructions !== undefined) set.instructions = updates.instructions.trim();
-        if (updates.avatar !== undefined) set.avatar = updates.avatar;
-        if (updates.model_id !== undefined) set.model_id = updates.model_id;
+        const [previous] = await tx
+          .select()
+          .from(botVersions)
+          .where(and(eq(botVersions.bot_id, botId), eq(botVersions.version, existing.current_version)))
+          .limit(1);
+        const manifest = manifestFrom(existing, updates, previous);
+        const nextVersion = existing.current_version + 1;
+        const now = nowIso();
+        await tx.insert(botVersions).values({
+          bot_id: botId,
+          version: nextVersion,
+          manifest_hash: manifestHash(manifest),
+          change_log: updates.change_log?.trim() || `Version ${nextVersion}`,
+          ...manifest,
+          created_by: updates.created_by ?? existing.user_id,
+          created_at: now,
+        });
+        set.role = manifest.role;
+        set.description = manifest.description;
+        set.instructions = manifest.instructions;
+        set.avatar = manifest.avatar;
+        set.model_id = manifest.model_id;
+        set.tools = manifest.tools;
+        set.max_steps = manifest.max_steps;
+        set.owner_backup_user_id = manifest.owner_backup_user_id;
+        set.current_version = nextVersion;
+        // Any executable or governance edit invalidates the prior review: the
+        // old pinned reference still resolves for already-pinned work, but the
+        // Bot is no longer discoverable or selectable by other members.
+        set.lifecycle_status = 'draft';
+        set.lifecycle_note = null;
+        set.published_version = null;
+        set.is_shared = false;
+        set.reviewed_by = null;
+        set.reviewed_at = null;
+        set.next_review_at = null;
+        set.updated_at = now;
         const [row] = await tx.update(bots).set(set).where(eq(bots.id, botId)).returning();
         return row;
       });
@@ -314,7 +655,14 @@ export function createBotsService(db: Db) {
       return db.transaction(async (tx) => {
         const [row] = await tx
           .update(bots)
-          .set({ status: 'archived', updated_at: nowIso() })
+          .set({
+            status: 'archived',
+            lifecycle_status: 'archived',
+            is_shared: false,
+            published_version: null,
+            next_review_at: null,
+            updated_at: nowIso(),
+          })
           .where(and(eq(bots.id, botId), eq(bots.user_id, userId), eq(bots.status, 'active')))
           .returning({ id: bots.id });
         if (!row) return false;

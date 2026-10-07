@@ -366,7 +366,7 @@ const sessions = new Hono<AppEnv>()
 
     let profileId: string;
     try {
-      profileId = await pinProfileIdForUser(authUser, source.profile_id);
+      profileId = await pinProfileIdForUser(authUser, source.profile_id, getDb(), { mode: 'live' });
     } catch (err) {
       if (err instanceof ProfileAccessError) return c.json({ error: err.message }, err.status);
       throw err;

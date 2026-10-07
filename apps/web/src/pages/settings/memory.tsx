@@ -11,7 +11,20 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button, Input, Textarea, Select, SearchInput, EmptyState, Tag } from '../../components/ui';
 import { authFetch } from '../../lib/auth';
 import { formatDay } from '../../lib/utils';
-import { Brain, Pencil, Trash2, Check, X, Sparkles, User, Wrench, Pin, Archive, RotateCcw } from '../../lib/icons';
+import {
+  Brain,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  Sparkles,
+  User,
+  Wrench,
+  Pin,
+  Archive,
+  RotateCcw,
+  Users,
+} from '../../lib/icons';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { ModulePage } from '../../components/app/module-page';
 import { canUseFeature } from '../../lib/features';
@@ -412,6 +425,17 @@ export function MemoryPanel() {
                                 title={t('memory.archive')}
                               >
                                 <Archive className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {showSource && mem.bot_id && (
+                              <button
+                                onClick={() => patchMemory(mem.id, { bot_id: null })}
+                                disabled={busyId === mem.id}
+                                className="p-1 text-fg-muted hover:text-primary-600 rounded transition-colors"
+                                title={t('memory.makeShared')}
+                                data-testid="memory-make-shared"
+                              >
+                                <Users className="w-3.5 h-3.5" />
                               </button>
                             )}
                             <button

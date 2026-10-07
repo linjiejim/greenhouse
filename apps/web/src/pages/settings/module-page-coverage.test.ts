@@ -28,7 +28,7 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: '../administration/branding-studio.tsx', moduleId: 'admin.branding', layout: 'canvas' },
   { file: '../tasks.tsx', moduleId: 'workspace.tasks', layout: 'list' },
   { file: '../automations.tsx', moduleId: 'workspace.automations', layout: 'list' },
-  { file: '../agents.tsx', moduleId: 'workspace.agents', layout: 'list' },
+  { file: '../bots/directory.tsx', moduleId: 'workspace.bots-directory', layout: 'list' },
   { file: '../tables/index.tsx', moduleId: 'workspace.tables', layout: 'list' },
   { file: '../projects.tsx', moduleId: 'workspace.projects', layout: 'canvas' },
   { file: '../executions/task-center.tsx', moduleId: 'workspace.executions', layout: 'list' },
@@ -63,7 +63,8 @@ describe('ModulePage coverage', () => {
 
     expect(source).toMatch(/route === 'automations' && <AutomationsPage \/>/);
     expect(source).toMatch(/route === 'tasks' && <PersonalTasksPage \/>/);
-    expect(source).toMatch(/route === 'agents' && <AgentsPage \/>/);
+    // The Agents page folded into the Bots directory (spec 20261007); without the flag the route IS the directory.
+    expect(source).toMatch(/<BotsDirectory \/>/);
   });
 
   it('keeps Evaluation confirmations on the shared dialog primitive', () => {
