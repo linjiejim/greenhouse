@@ -22,7 +22,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Button, HStack, Image, Picker, Section, Spacer, Text, Toggle, VStack } from '@expo/ui/swift-ui';
+import { Button, HStack, Image, Picker, ProgressView, Section, Spacer, Text, Toggle, VStack } from '@expo/ui/swift-ui';
 import {
   accessibilityElement,
   accessibilityHidden,
@@ -50,7 +50,7 @@ import { MemberRow } from '../../src/bots/manage/member-row';
 import { useConversationInfo } from '../../src/bots/manage/use-conversation-info';
 import { useBots } from '../../src/bots/store';
 import { promptText } from '../../src/ui/dialogs';
-import { EmptyState, LoadingState } from '../../src/ui/empty';
+import { EmptyState } from '../../src/ui/empty';
 import { FormNavRow, NativeForm } from '../../src/ui/native-form';
 import { useTheme } from '../../src/theme';
 import { SheetClose } from '../../src/ui/sheet-chrome';
@@ -77,27 +77,48 @@ export default function ConversationInfoSheet() {
     }, [reload]),
   );
 
-  if (!info.detail) {
-    return (
-      <>
-        <Stack.Screen options={{ title: t('bots.manage.infoTitle') }} />
-        <SheetClose />
+  // The Form is mounted from the first frame, loading included: a SwiftUI Form that
+  // only mounts once the sheet is up doesn't get the nav bar's top inset, and its
+  // first (untitled) section slides under the bar.
+  const failed = !info.detail && info.load !== 'loading';
+  return (
+    <>
+      <Stack.Screen options={{ title: t('bots.manage.infoTitle') }} />
+      <SheetClose />
+      {failed ? (
         <View style={{ flex: 1, justifyContent: 'center' }}>
-          {info.load === 'loading' ? (
-            <LoadingState />
-          ) : info.load === 'not_found' || info.load === 'forbidden' ? (
+          {info.load === 'not_found' || info.load === 'forbidden' ? (
             <EmptyState icon="msgs" title={t('bots.manage.conversationMissing')} />
           ) : (
             <EmptyState icon="alert" title={t('bots.manage.loadFailed')} onRetry={() => void reload()} />
           )}
         </View>
-      </>
-    );
-  }
-  return <InfoForm detail={info.detail} info={info} />;
+      ) : (
+        <NativeForm>
+          {info.detail ? (
+            <InfoSections detail={info.detail} info={info} />
+          ) : (
+            <Section>
+              <HStack>
+                <Spacer />
+                <ProgressView />
+                <Spacer />
+              </HStack>
+            </Section>
+          )}
+        </NativeForm>
+      )}
+    </>
+  );
 }
 
-function InfoForm({ detail, info }: { detail: BotConversationDetail; info: ReturnType<typeof useConversationInfo> }) {
+function InfoSections({
+  detail,
+  info,
+}: {
+  detail: BotConversationDetail;
+  info: ReturnType<typeof useConversationInfo>;
+}) {
   const t = useT();
   const router = useRouter();
   const byId = useBots((s) => s.byId);
@@ -127,95 +148,91 @@ function InfoForm({ detail, info }: { detail: BotConversationDetail; info: Retur
 
   return (
     <>
-      <Stack.Screen options={{ title: t('bots.manage.infoTitle') }} />
-      <SheetClose />
-      <NativeForm>
-        {digest ? (
-          <Section
-            title={t('bots.manage.digest')}
-            footer={
-              detail.digest?.updated_at ? (
-                <Text>{t('bots.manage.digestUpdated', { time: relativeTime(detail.digest.updated_at) })}</Text>
-              ) : undefined
-            }
+      {digest ? (
+        <Section
+          title={t('bots.manage.digest')}
+          footer={
+            detail.digest?.updated_at ? (
+              <Text>{t('bots.manage.digestUpdated', { time: relativeTime(detail.digest.updated_at) })}</Text>
+            ) : undefined
+          }
+        >
+          <Text modifiers={folds && !expanded ? [lineLimit(FOLD_LINES)] : []}>{digest}</Text>
+          {folds ? (
+            <Button
+              label={expanded ? t('bots.manage.showLess') : t('bots.manage.showAll')}
+              onPress={() => setExpanded((v) => !v)}
+            />
+          ) : null}
+        </Section>
+      ) : null}
+
+      {group ? (
+        <Section footer={<Text>{t('bots.manage.leadFooter')}</Text>}>
+          <FormNavRow label={t('bots.manage.groupName')} value={detail.title ?? ''} onPress={() => void rename()} />
+          <FormNavRow
+            label={t('bots.manage.rules')}
+            value={rulesLine || t('bots.manage.rulesNone')}
+            onPress={() => router.push({ pathname: '/bots/rules', params: { c } })}
+          />
+          <Picker
+            label={t('bots.manage.lead')}
+            selection={leadKnown ? (detail.lead_bot_id ?? '') : ''}
+            onSelectionChange={(id) => {
+              if (id) void info.setLead(String(id));
+            }}
+            modifiers={[pickerStyle('menu')]}
           >
-            <Text modifiers={folds && !expanded ? [lineLimit(FOLD_LINES)] : []}>{digest}</Text>
-            {folds ? (
-              <Button
-                label={expanded ? t('bots.manage.showLess') : t('bots.manage.showAll')}
-                onPress={() => setExpanded((v) => !v)}
-              />
-            ) : null}
-          </Section>
-        ) : null}
+            {/* No active lead (it was archived): say so, rather than showing the first member as if it led. */}
+            {leadKnown ? null : <Text modifiers={[tag(''), SECONDARY]}>{t('bots.manage.noLead')}</Text>}
+            {leads.map((bot) => (
+              <Text key={bot.id} modifiers={[tag(bot.id)]}>
+                {bot.name}
+              </Text>
+            ))}
+          </Picker>
+        </Section>
+      ) : null}
 
-        {group ? (
-          <Section footer={<Text>{t('bots.manage.leadFooter')}</Text>}>
-            <FormNavRow label={t('bots.manage.groupName')} value={detail.title ?? ''} onPress={() => void rename()} />
-            <FormNavRow
-              label={t('bots.manage.rules')}
-              value={rulesLine || t('bots.manage.rulesNone')}
-              onPress={() => router.push({ pathname: '/bots/rules', params: { c } })}
-            />
-            <Picker
-              label={t('bots.manage.lead')}
-              selection={leadKnown ? (detail.lead_bot_id ?? '') : ''}
-              onSelectionChange={(id) => {
-                if (id) void info.setLead(String(id));
-              }}
-              modifiers={[pickerStyle('menu')]}
-            >
-              {/* No active lead (it was archived): say so, rather than showing the first member as if it led. */}
-              {leadKnown ? null : <Text modifiers={[tag(''), SECONDARY]}>{t('bots.manage.noLead')}</Text>}
-              {leads.map((bot) => (
-                <Text key={bot.id} modifiers={[tag(bot.id)]}>
-                  {bot.name}
-                </Text>
-              ))}
-            </Picker>
-          </Section>
-        ) : null}
-
-        {group ? (
-          <Section footer={<Text>{t('bots.manage.allowBotChatFooter')}</Text>}>
-            <Toggle
-              label={t('bots.manage.allowBotChat')}
-              isOn={detail.allow_bot_chat}
-              onIsOnChange={(on) => void info.setAllowBotChat(on)}
-            />
-          </Section>
-        ) : null}
-
-        <Section title={t('bots.manage.members')} footer={membersFooter ? <Text>{membersFooter}</Text> : undefined}>
-          {members.map((member) => {
-            const bot = byId[member.bot_id] ?? null;
-            return (
-              <MemberRow
-                key={member.bot_id}
-                bot={bot}
-                label={memberLabel(member, bot)}
-                removable={memberRemovable(detail, member)}
-                onPress={() => router.push({ pathname: '/bots/profile', params: { botId: member.bot_id, from: c } })}
-                onRemove={() => void info.remove(member.bot_id)}
-              />
-            );
-          })}
-          <Button
-            label={t('bots.manage.inviteRow')}
-            systemImage="person.badge.plus"
-            onPress={() => router.push({ pathname: '/bots/invite', params: { c } })}
-            modifiers={[disabled(!roomForMore)]}
+      {group ? (
+        <Section footer={<Text>{t('bots.manage.allowBotChatFooter')}</Text>}>
+          <Toggle
+            label={t('bots.manage.allowBotChat')}
+            isOn={detail.allow_bot_chat}
+            onIsOnChange={(on) => void info.setAllowBotChat(on)}
           />
         </Section>
+      ) : null}
 
-        {notes.length > 0 ? (
-          <Section title={t('bots.manage.notes')} footer={<Text>{t('bots.manage.notesFooter')}</Text>}>
-            {notes.map((note) => (
-              <NoteRow key={note.id} note={note} />
-            ))}
-          </Section>
-        ) : null}
-      </NativeForm>
+      <Section title={t('bots.manage.members')} footer={membersFooter ? <Text>{membersFooter}</Text> : undefined}>
+        {members.map((member) => {
+          const bot = byId[member.bot_id] ?? null;
+          return (
+            <MemberRow
+              key={member.bot_id}
+              bot={bot}
+              label={memberLabel(member, bot)}
+              removable={memberRemovable(detail, member)}
+              onPress={() => router.push({ pathname: '/bots/profile', params: { botId: member.bot_id, from: c } })}
+              onRemove={() => void info.remove(member.bot_id)}
+            />
+          );
+        })}
+        <Button
+          label={t('bots.manage.inviteRow')}
+          systemImage="person.badge.plus"
+          onPress={() => router.push({ pathname: '/bots/invite', params: { c } })}
+          modifiers={[disabled(!roomForMore)]}
+        />
+      </Section>
+
+      {notes.length > 0 ? (
+        <Section title={t('bots.manage.notes')} footer={<Text>{t('bots.manage.notesFooter')}</Text>}>
+          {notes.map((note) => (
+            <NoteRow key={note.id} note={note} />
+          ))}
+        </Section>
+      ) : null}
     </>
   );
 }

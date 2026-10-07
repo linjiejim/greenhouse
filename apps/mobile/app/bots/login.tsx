@@ -29,7 +29,7 @@
  * note it under AGENTS.md 已知坑).
  */
 
-import React, { useCallback, useMemo, useReducer, useRef, useState } from 'react';
+import React, { useCallback, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Button,
@@ -37,8 +37,10 @@ import {
   HStack,
   Image,
   LabeledContent,
+  ProgressView,
   Section,
   SecureField,
+  Spacer,
   Text,
   TextField,
   Toggle,
@@ -64,9 +66,11 @@ import { refusalCopy } from '../../src/bots/cards/decision';
 import { useT } from '../../src/lib/i18n';
 import { useTheme } from '../../src/theme';
 import { alertError } from '../../src/ui/dialogs';
-import { EmptyState, LoadingState } from '../../src/ui/empty';
+import { EmptyState } from '../../src/ui/empty';
 import { NativeForm } from '../../src/ui/native-form';
 import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
+
+type Chrome = React.ComponentProps<typeof FormChrome>;
 
 export default function BotLoginSheet() {
   const t = useT();
@@ -84,40 +88,69 @@ export default function BotLoginSheet() {
     if (!request) rerender();
   }, []);
   const done = useCallback(() => router.back(), [router]);
+  // ✕ / ✓ for the card's form (handed up by LoginSections: nav chrome can't sit among the Form's
+  // SwiftUI children).
+  const [chrome, setChrome] = useState<Chrome | null>(null);
 
   const request = loginSheetRequest(lookup, held.current);
-  if (request) return <LoginForm key={request.id} request={request} onHold={hold} onDone={done} />;
+  // The Form is mounted from the first frame, loading included: a SwiftUI Form that
+  // only mounts once the sheet is up doesn't get the nav bar's top inset, and its
+  // first (untitled) section slides under the bar.
+  const failed = !request && lookup.state !== 'loading';
   return (
     <>
-      <Stack.Screen options={{ title: '' }} />
-      <SheetClose />
-      {lookup.state === 'loading' ? (
-        <LoadingState style={{ flex: 1 }} />
-      ) : lookup.state === 'error' ? (
-        <EmptyState
-          icon="alertCircle"
-          title={t('bots.needs.loadFailed')}
-          message={t('bots.card.err.network')}
-          onRetry={lookup.retry}
-          style={{ flex: 1 }}
-        />
+      {chrome && request ? (
+        <FormChrome {...chrome} />
       ) : (
-        <EmptyState icon="lock" title={t('bots.login.gone')} message={t('bots.login.goneHint')} style={{ flex: 1 }} />
+        <>
+          <Stack.Screen options={{ title: '' }} />
+          <SheetClose />
+        </>
+      )}
+      {failed ? (
+        lookup.state === 'error' ? (
+          <EmptyState
+            icon="alertCircle"
+            title={t('bots.needs.loadFailed')}
+            message={t('bots.card.err.network')}
+            onRetry={lookup.retry}
+            style={{ flex: 1 }}
+          />
+        ) : (
+          <EmptyState icon="lock" title={t('bots.login.gone')} message={t('bots.login.goneHint')} style={{ flex: 1 }} />
+        )
+      ) : (
+        <NativeForm>
+          {request ? (
+            <LoginSections key={request.id} request={request} onHold={hold} onDone={done} onChrome={setChrome} />
+          ) : (
+            <Section>
+              <HStack>
+                <Spacer />
+                <ProgressView />
+                <Spacer />
+              </HStack>
+            </Section>
+          )}
+        </NativeForm>
       )}
     </>
   );
 }
 
-function LoginForm({
+function LoginSections({
   request,
   onHold,
   onDone,
+  onChrome,
 }: {
   request: BotRequestView;
   /** Keep this form mounted (a card) or let it go (null) — see BotLoginSheet. */
   onHold: (request: BotRequestView | null) => void;
   /** The decision went through: close the sheet. */
   onDone: () => void;
+  /** The sheet draws ✕ / ✓ outside the Form: this form's state for them (null once it is gone). */
+  onChrome: (chrome: Chrome | null) => void;
 }) {
   const t = useT();
   const { hex } = useTheme();
@@ -183,6 +216,20 @@ function LoginForm({
     onDone();
   };
 
+  // ✓ runs the latest `submit` (it reads this render's form).
+  const latestSubmit = useRef(submit);
+  useLayoutEffect(() => {
+    latestSubmit.current = submit;
+  });
+  const title = t('bots.login.title', { host: form.host });
+  const saveLabel = t('bots.login.submit');
+  const { dirty, canSubmit } = form;
+  const saving = form.busy !== null;
+  useLayoutEffect(() => {
+    onChrome({ title, dirty, canSave: canSubmit, saving, onSave: () => void latestSubmit.current(), saveLabel });
+    return () => onChrome(null);
+  }, [onChrome, title, dirty, canSubmit, saving, saveLabel]);
+
   const refusal = form.refusal ? refusalCopy(form.refusal) : null;
   const codeField = (
     <TextField
@@ -203,93 +250,83 @@ function LoginForm({
 
   return (
     <>
-      <FormChrome
-        title={t('bots.login.title', { host: form.host })}
-        dirty={form.dirty}
-        canSave={form.canSubmit}
-        saving={form.busy !== null}
-        onSave={() => void submit()}
-        saveLabel={t('bots.login.submit')}
-      />
-      <NativeForm>
-        <Section footer={reason ? <Text>{reason}</Text> : undefined}>
-          {origin ? (
-            <LabeledContent label={t('bots.card.site')}>
-              <HStack spacing={4}>
-                <Image systemName="lock.fill" size={12} color={hex.secondaryLabel} />
-                <Text modifiers={[lineLimit(1), truncationMode('middle')]}>{origin}</Text>
-              </HStack>
-            </LabeledContent>
-          ) : null}
-          {form.page ? (
-            <LabeledContent label={t('bots.card.page')}>
-              <Text modifiers={[lineLimit(2), truncationMode('middle')]}>{form.page}</Text>
-            </LabeledContent>
-          ) : null}
-        </Section>
+      <Section footer={reason ? <Text>{reason}</Text> : undefined}>
+        {origin ? (
+          <LabeledContent label={t('bots.card.site')}>
+            <HStack spacing={4}>
+              <Image systemName="lock.fill" size={12} color={hex.secondaryLabel} />
+              <Text modifiers={[lineLimit(1), truncationMode('middle')]}>{origin}</Text>
+            </HStack>
+          </LabeledContent>
+        ) : null}
+        {form.page ? (
+          <LabeledContent label={t('bots.card.page')}>
+            <Text modifiers={[lineLimit(2), truncationMode('middle')]}>{form.page}</Text>
+          </LabeledContent>
+        ) : null}
+      </Section>
 
-        {/* The footer is always a Text (the refusal in red, else what the values are used for):
-            adding / removing a footer rebuilds the section and the focused field loses focus. */}
+      {/* The footer is always a Text (the refusal in red, else what the values are used for):
+          adding / removing a footer rebuilds the section and the focused field loses focus. */}
+      <Section
+        footer={
+          <Text modifiers={refusal ? [foregroundStyle(hex.red)] : []}>
+            {refusal ? ('text' in refusal ? refusal.text : t(refusal.key, refusal.vars)) : t('bots.login.footer')}
+          </Text>
+        }
+      >
+        {form.otpOnly ? (
+          codeField
+        ) : (
+          <>
+            <TextField
+              text={usernameState}
+              placeholder={t('bots.login.username')}
+              autoFocus
+              onTextChange={(value) => form.noteInput('username', value)}
+              modifiers={[
+                autocorrectionDisabled(),
+                textInputAutocapitalization('never'),
+                privacySensitive(),
+                submitLabel('next'),
+                onSubmit(() => void passwordRef.current?.focus()),
+              ]}
+            />
+            <SecureField
+              ref={passwordRef}
+              text={passwordState}
+              placeholder={t('bots.login.password')}
+              onTextChange={(value) => form.noteInput('password', value)}
+              modifiers={[privacySensitive(), submitLabel('go'), onSubmit(() => void submit())]}
+            />
+            <DisclosureGroup label={t('bots.login.needOtp')} isExpanded={showOtp} onIsExpandedChange={setShowOtp}>
+              {codeField}
+            </DisclosureGroup>
+          </>
+        )}
+      </Section>
+
+      {form.vaultOffered ? (
         <Section
           footer={
-            <Text modifiers={refusal ? [foregroundStyle(hex.red)] : []}>
-              {refusal ? ('text' in refusal ? refusal.text : t(refusal.key, refusal.vars)) : t('bots.login.footer')}
-            </Text>
+            matches.length > 0 ? (
+              <Text>
+                {matches.map((m) => t('bots.card.vaultHas', { label: m.label, hint: m.username_hint })).join('\n')}
+              </Text>
+            ) : undefined
           }
         >
-          {form.otpOnly ? (
-            codeField
-          ) : (
-            <>
-              <TextField
-                text={usernameState}
-                placeholder={t('bots.login.username')}
-                autoFocus
-                onTextChange={(value) => form.noteInput('username', value)}
-                modifiers={[
-                  autocorrectionDisabled(),
-                  textInputAutocapitalization('never'),
-                  privacySensitive(),
-                  submitLabel('next'),
-                  onSubmit(() => void passwordRef.current?.focus()),
-                ]}
-              />
-              <SecureField
-                ref={passwordRef}
-                text={passwordState}
-                placeholder={t('bots.login.password')}
-                onTextChange={(value) => form.noteInput('password', value)}
-                modifiers={[privacySensitive(), submitLabel('go'), onSubmit(() => void submit())]}
-              />
-              <DisclosureGroup label={t('bots.login.needOtp')} isExpanded={showOtp} onIsExpandedChange={setShowOtp}>
-                {codeField}
-              </DisclosureGroup>
-            </>
-          )}
+          <Toggle label={t('bots.login.saveToVault')} isOn={form.save} onIsOnChange={form.setSave} />
         </Section>
+      ) : null}
 
-        {form.vaultOffered ? (
-          <Section
-            footer={
-              matches.length > 0 ? (
-                <Text>
-                  {matches.map((m) => t('bots.card.vaultHas', { label: m.label, hint: m.username_hint })).join('\n')}
-                </Text>
-              ) : undefined
-            }
-          >
-            <Toggle label={t('bots.login.saveToVault')} isOn={form.save} onIsOnChange={form.setSave} />
-          </Section>
-        ) : null}
-
-        <Section>
-          <Button
-            label={t('bots.card.loginNotNow')}
-            onPress={() => void skip()}
-            modifiers={[disabled(form.busy !== null)]}
-          />
-        </Section>
-      </NativeForm>
+      <Section>
+        <Button
+          label={t('bots.card.loginNotNow')}
+          onPress={() => void skip()}
+          modifiers={[disabled(form.busy !== null)]}
+        />
+      </Section>
     </>
   );
 }
