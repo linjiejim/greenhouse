@@ -44,13 +44,14 @@ import { resolveProfileAsync } from '../profiles/profile.js';
 import { resolveEffectiveTools, buildLazyServerTools } from '../agent-runtime/tool-resolution.js';
 // Derived from each tool's `meta.surface.mcp` (tools/registry.ts); re-exported
 // for tests/consumers that previously imported the hand-maintained list here.
-import { MCP_EXPOSED_TOOL_IDS } from '../tools/registry.js';
+import { MCP_EXPOSED_TOOL_IDS, mcpToolIdsForGroups } from '../tools/registry.js';
 export { MCP_EXPOSED_TOOL_IDS };
 import {
   resolveProxyToolIds,
   buildProxyManifest,
   executeProxyTool,
   isMutatingProxyTool,
+  MUTATING_PROXY_ALLOWLIST,
   ProxyToolError,
   type ProxyToolManifestEntry,
 } from '../agent-runtime/tool-proxy.js';
@@ -234,6 +235,27 @@ export function toMcpInputSchema(entry: ProxyToolManifestEntry): Record<string, 
   return base;
 }
 
+/**
+ * Knowledge Resources (`resources/list` + `resources/read`) are the knowledge
+ * group's projection, so they follow the same resource-group narrowing as its
+ * tools. mcp-auth derives `allowedTools` from the granted `mcp:<group>` scopes
+ * (each group's read tools), so the group was granted exactly when one of its
+ * read tools survived that narrowing. `undefined` means no narrowing at all
+ * (CLI / sandbox identities); `[]` means nothing was granted — never "everything".
+ */
+function hasKnowledgeResourceGroup(identity: AgentIdentity): boolean {
+  if (identity.allowedTools === undefined) return true;
+  const reads = new Set(identity.allowedTools);
+  return [...mcpToolIdsForGroups(['knowledge'])].some((id) => !MUTATING_PROXY_ALLOWLIST.has(id) && reads.has(id));
+}
+
+const KNOWLEDGE_GROUP_NOT_GRANTED = 'The credential was not granted the knowledge resource group';
+
+/** One answer for an unreadable and a nonexistent URI — probing must not reveal which. */
+function resourceNotFound(): McpError {
+  return new McpError(ErrorCode.InvalidParams, 'Resource not found');
+}
+
 /** Build a fresh per-request MCP server wired to this request's tool context. */
 export function buildMcpServer(c: Context, ctx: McpContext): Server {
   const server = new Server(
@@ -298,6 +320,15 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
     const start = Date.now();
+    if (!hasKnowledgeResourceGroup(identity)) {
+      await recordMcpAudit(c, {
+        endpoint: 'mcp:resources/list',
+        statusCode: 403,
+        durationMs: Date.now() - start,
+        error: KNOWLEDGE_GROUP_NOT_GRANTED,
+      });
+      return { resources: [] };
+    }
     const result = await dispatchKnowledgeOperation(
       actor,
       'listDocuments',
@@ -343,6 +374,16 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
 
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const start = Date.now();
+    if (!hasKnowledgeResourceGroup(identity)) {
+      await recordMcpAudit(c, {
+        endpoint: 'mcp:resources/read',
+        statusCode: 403,
+        durationMs: Date.now() - start,
+        error: KNOWLEDGE_GROUP_NOT_GRANTED,
+        meta: { uri: req.params.uri },
+      });
+      throw resourceNotFound();
+    }
     const result = await dispatchKnowledgeOperation(
       actor,
       'readDocument',
@@ -361,7 +402,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
       error: result.ok ? undefined : result.message,
       meta: { uri: req.params.uri },
     });
-    if (!result.ok) throw new McpError(ErrorCode.InvalidParams, 'Resource not found');
+    if (!result.ok) throw resourceNotFound();
     return result.data;
   });
 
