@@ -17,7 +17,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useHeaderHeight } from 'expo-router/react-navigation';
+import { useHeaderInset } from '../../src/ui/header-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { deleteProject, type TaskStatus } from '../../src/api/projects';
 import { useT } from '../../src/lib/i18n';
@@ -34,6 +34,7 @@ import { alertError, confirmAction } from '../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { Segmented } from '../../src/ui/segmented';
 import { toast } from '../../src/ui/toast';
+import { overflowLast, toolbarIcon } from '../../src/ui/toolbar-icon';
 
 type ViewMode = 'list' | 'board' | 'gantt';
 
@@ -42,7 +43,7 @@ export default function ProjectDetailScreen() {
   const styles = useStyles(c);
   const t = useT();
   const router = useRouter();
-  const headerHeight = useHeaderHeight();
+  const headerHeight = useHeaderInset();
   const insets = useSafeAreaInsets();
   const me = useAuth((s) => s.user);
   const forget = useProjects((s) => s.forget);
@@ -105,44 +106,47 @@ export default function ProjectDetailScreen() {
     <>
       <Stack.Screen options={{ title: project?.title ?? '' }} />
       <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Menu icon="ellipsis" accessibilityLabel={t('common.more')} hidden={!detail}>
-          <Stack.Toolbar.Menu inline>
-            <Stack.Toolbar.MenuAction
-              icon="pencil"
-              hidden={!access.canWrite}
-              onPress={() => router.push({ pathname: '/projects/project-form', params: { id: pid } })}
-            >
-              {t('projects.editProject')}
+        {overflowLast(
+          <Stack.Toolbar.Menu key="more" icon={toolbarIcon('more')} accessibilityLabel={t('common.more')} hidden={!detail}>
+            <Stack.Toolbar.Menu inline>
+              <Stack.Toolbar.MenuAction
+                icon={toolbarIcon('pen')}
+                hidden={!access.canWrite}
+                onPress={() => router.push({ pathname: '/projects/project-form', params: { id: pid } })}
+              >
+                {t('projects.editProject')}
+              </Stack.Toolbar.MenuAction>
+              <Stack.Toolbar.MenuAction icon={toolbarIcon('diamond')} hidden={!access.canWrite} onPress={() => newTask({ milestone: true })}>
+                {t('projects.newMilestone')}
+              </Stack.Toolbar.MenuAction>
+            </Stack.Toolbar.Menu>
+            <Stack.Toolbar.Menu inline>
+              <Stack.Toolbar.MenuAction
+                icon={toolbarIcon('users')}
+                subtitle={detail ? t('projects.memberCount', { n: detail.members.length }) : undefined}
+                onPress={() => router.push({ pathname: '/projects/members', params: { id: pid } })}
+              >
+                {t('projects.members')}
+              </Stack.Toolbar.MenuAction>
+              <Stack.Toolbar.MenuAction
+                icon={toolbarIcon('activity')}
+                onPress={() => router.push({ pathname: '/projects/activity', params: { id: pid } })}
+              >
+                {t('projects.activities')}
+              </Stack.Toolbar.MenuAction>
+            </Stack.Toolbar.Menu>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('trash')} destructive hidden={!access.canManage} onPress={() => void removeProject()}>
+              {t('projects.deleteProject')}
             </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction icon="diamond" hidden={!access.canWrite} onPress={() => newTask({ milestone: true })}>
-              {t('projects.newMilestone')}
-            </Stack.Toolbar.MenuAction>
-          </Stack.Toolbar.Menu>
-          <Stack.Toolbar.Menu inline>
-            <Stack.Toolbar.MenuAction
-              icon="person.2"
-              subtitle={detail ? t('projects.memberCount', { n: detail.members.length }) : undefined}
-              onPress={() => router.push({ pathname: '/projects/members', params: { id: pid } })}
-            >
-              {t('projects.members')}
-            </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction
-              icon="clock.arrow.circlepath"
-              onPress={() => router.push({ pathname: '/projects/activity', params: { id: pid } })}
-            >
-              {t('projects.activities')}
-            </Stack.Toolbar.MenuAction>
-          </Stack.Toolbar.Menu>
-          <Stack.Toolbar.MenuAction icon="trash" destructive hidden={!access.canManage} onPress={() => void removeProject()}>
-            {t('projects.deleteProject')}
-          </Stack.Toolbar.MenuAction>
-        </Stack.Toolbar.Menu>
-        <Stack.Toolbar.Button
-          icon="plus"
-          hidden={!access.canWrite}
-          onPress={() => newTask()}
-          accessibilityLabel={t('projects.newTask')}
-        />
+          </Stack.Toolbar.Menu>,
+          <Stack.Toolbar.Button
+            key="add"
+            icon={toolbarIcon('plus')}
+            hidden={!access.canWrite}
+            onPress={() => newTask()}
+            accessibilityLabel={t('projects.newTask')}
+          />,
+        )}
       </Stack.Toolbar>
 
       {!detail ? (

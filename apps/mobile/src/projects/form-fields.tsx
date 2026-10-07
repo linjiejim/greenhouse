@@ -19,7 +19,7 @@ import { contentShape, datePickerStyle, environment, font, foregroundStyle, fram
 import { useLocale, useT } from '../lib/i18n';
 import { usePrefs, type LangPref } from '../store/prefs';
 import { useTheme } from '../theme';
-import { dateToStamp, stampToDate, todayStamp } from './meta';
+import { dateSubtitle, dateToStamp, stampToDate, todayStamp } from './meta';
 
 /**
  * ICU locale identifier for the inline calendar. The shared `useLocaleEnv()`
@@ -29,23 +29,6 @@ import { dateToStamp, stampToDate, todayStamp } from './meta';
  */
 function calendarLocale(lang: LangPref): string {
   return lang === 'zh' ? 'zh_Hans_CN' : 'en_US';
-}
-
-/** "今天" / "10月6日 周二" / "Tue, Oct 6" (+ year when not this year). */
-function dateSubtitle(stamp: string, locale: string, todayLabel: string): string {
-  if (stamp === todayStamp()) return todayLabel;
-  const d = stampToDate(stamp);
-  const sameYear = d.getFullYear() === new Date().getFullYear();
-  try {
-    return d.toLocaleDateString(locale, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      ...(sameYear ? null : { year: 'numeric' }),
-    });
-  } catch {
-    return stamp;
-  }
 }
 
 export function OptionalDateField({

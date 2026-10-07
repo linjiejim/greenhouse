@@ -38,6 +38,7 @@ import { Icon } from '../../../src/ui/core';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { Badge, IconTile, ListRow, ListSection } from '../../../src/ui/list';
 import { SheetClose, useLeaveSheetTo } from '../../../src/ui/sheet-chrome';
+import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 
 const NEXT_LIMIT = 5;
 
@@ -72,7 +73,7 @@ export default function ProjectPeek() {
       <SheetClose />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
-          icon="arrow.up.right.square"
+          icon={toolbarIcon('open')}
           hidden={!detail}
           onPress={() => leaveTo({ pathname: '/projects/[id]', params: { id: String(projectId) } })}
           accessibilityLabel={t('projects.openFull')}

@@ -361,6 +361,23 @@ export function todayStamp(): string {
   return dateToStamp(new Date());
 }
 
+/** "今天" / "10月6日 周二" / "Tue, Oct 6" (+ year when not this year). */
+export function dateSubtitle(stamp: string, locale: string, todayLabel: string): string {
+  if (stamp === todayStamp()) return todayLabel;
+  const d = stampToDate(stamp);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  try {
+    return d.toLocaleDateString(locale, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      ...(sameYear ? null : { year: 'numeric' }),
+    });
+  } catch {
+    return stamp;
+  }
+}
+
 export function isOverdue(task: Pick<ProjectTask, 'due_date' | 'status'>): boolean {
   if (!task.due_date) return false;
   if (task.status === 'done' || task.status === 'cancelled') return false;

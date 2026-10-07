@@ -22,6 +22,7 @@ import { useT } from '../../../src/lib/i18n';
 import { makeStyles, space, useTheme } from '../../../src/theme';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { SheetClose, useLeaveSheetTo } from '../../../src/ui/sheet-chrome';
+import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 
 export default function DocPeek() {
   const { colors: c } = useTheme();
@@ -63,7 +64,7 @@ export default function DocPeek() {
       <SheetClose />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
-          icon="arrow.up.right.square"
+          icon={toolbarIcon('open')}
           accessibilityLabel={t('common.open')}
           disabled={!loaded}
           onPress={openFull}

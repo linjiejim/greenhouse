@@ -19,7 +19,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, RefreshControl, View, useWindowDimensions } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { useHeaderHeight } from 'expo-router/react-navigation';
+import { useHeaderInset } from '../../src/ui/header-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { canEditDoc, listDocs, type KnowledgeDoc, type KnowledgeScope } from '../../src/api/knowledge';
 import { DocRow } from '../../src/knowledge/doc-row';
@@ -37,7 +37,7 @@ export default function KnowledgeList() {
   const t = useT();
   const router = useRouter();
   const { width: windowWidth } = useWindowDimensions();
-  const headerHeight = useHeaderHeight();
+  const headerHeight = useHeaderInset();
   const { bottom: bottomInset } = useSafeAreaInsets();
 
   const [docs, setDocs] = useState<KnowledgeDoc[] | null>(null);

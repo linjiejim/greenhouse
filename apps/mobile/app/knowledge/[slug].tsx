@@ -18,13 +18,14 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { ScrollView, Share, Text, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useHeaderHeight } from 'expo-router/react-navigation';
+import { useHeaderInset } from '../../src/ui/header-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { canEditDoc, resolveDoc, type DocMiss, type KnowledgeDoc } from '../../src/api/knowledge';
 import { DocBody, withoutTitleHeading } from '../../src/knowledge/doc-body';
 import { useT } from '../../src/lib/i18n';
 import { makeStyles, space, typo, useTheme } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
+import { toolbarIcon } from '../../src/ui/toolbar-icon';
 
 export default function KnowledgeDetail() {
   const { colors: c } = useTheme();
@@ -32,7 +33,7 @@ export default function KnowledgeDetail() {
   const t = useT();
   const router = useRouter();
   const params = useLocalSearchParams<{ slug: string; id?: string; title?: string }>();
-  const headerHeight = useHeaderHeight();
+  const headerHeight = useHeaderInset();
   const { bottom: bottomInset } = useSafeAreaInsets();
   const [doc, setDoc] = useState<KnowledgeDoc | DocMiss | null>(null);
 
@@ -91,23 +92,23 @@ export default function KnowledgeDetail() {
       {loaded ? (
         <Stack.Toolbar placement="right">
           <Stack.Toolbar.Button
-            icon="pencil"
+            icon={toolbarIcon('pen')}
             hidden={!editable}
             accessibilityLabel={t('knowledge.edit')}
             onPress={() =>
               router.push({ pathname: '/knowledge/edit', params: { slug: loaded.slug, id: String(loaded.id) } })
             }
           />
-          <Stack.Toolbar.Menu icon="ellipsis" accessibilityLabel={t('common.more')}>
+          <Stack.Toolbar.Menu icon={toolbarIcon('more')} accessibilityLabel={t('common.more')}>
             <Stack.Toolbar.MenuAction
-              icon="clock.arrow.circlepath"
+              icon={toolbarIcon('activity')}
               onPress={() =>
                 router.push({ pathname: '/knowledge/versions', params: { slug: loaded.slug, id: String(loaded.id) } })
               }
             >
               {t('knowledge.history')}
             </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction icon="square.and.arrow.up" onPress={share}>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('share')} onPress={share}>
               {t('knowledge.share')}
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>

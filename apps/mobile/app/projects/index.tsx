@@ -16,9 +16,9 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, RefreshControl, Text, View } from 'react-native';
+import { FlatList, Platform, RefreshControl, Text, View } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { useHeaderHeight } from 'expo-router/react-navigation';
+import { useHeaderInset } from '../../src/ui/header-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   deleteProject,
@@ -41,6 +41,7 @@ import { alertError, confirmAction } from '../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { menuSections, type MenuItem } from '../../src/ui/menu';
 import { toast } from '../../src/ui/toast';
+import { toolbarIcon } from '../../src/ui/toolbar-icon';
 
 type ViewMode = 'list' | 'gantt';
 
@@ -54,7 +55,7 @@ export default function ProjectsScreen() {
   const router = useRouter();
   const me = useAuth((s) => s.user);
   const forget = useProjects((s) => s.forget);
-  const headerHeight = useHeaderHeight();
+  const headerHeight = useHeaderInset();
   const insets = useSafeAreaInsets();
 
   const [view, setView] = useState<ViewMode>('list');
@@ -223,18 +224,19 @@ export default function ProjectsScreen() {
       />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Menu
-          icon={filtered ? 'line.3.horizontal.decrease.circle.fill' : 'ellipsis'}
+          // Android: its search action always sits last in the bar, so ⋮ wouldn't be — a filter glyph reads right in the middle
+          icon={toolbarIcon(filtered ? 'filterOn' : Platform.OS === 'android' ? 'filter' : 'more')}
           accessibilityLabel={t('projects.viewOptions')}
         >
           <Stack.Toolbar.Menu inline>
-            <Stack.Toolbar.MenuAction icon="list.bullet" isOn={view === 'list'} onPress={() => setView('list')}>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('list')} isOn={view === 'list'} onPress={() => setView('list')}>
               {t('projects.view_list')}
             </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction icon="chart.bar.xaxis" isOn={view === 'gantt'} onPress={() => setView('gantt')}>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('gantt')} isOn={view === 'gantt'} onPress={() => setView('gantt')}>
               {t('projects.view_gantt')}
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
-          <Stack.Toolbar.Menu title={t('projects.status')} icon="circle.lefthalf.filled">
+          <Stack.Toolbar.Menu title={t('projects.status')} icon={toolbarIcon('statusProgress')}>
             <Stack.Toolbar.MenuAction isOn={status === null} onPress={() => setStatus(null)}>
               {t('projects.all')}
             </Stack.Toolbar.MenuAction>
@@ -244,7 +246,7 @@ export default function ProjectsScreen() {
               </Stack.Toolbar.MenuAction>
             ))}
           </Stack.Toolbar.Menu>
-          <Stack.Toolbar.Menu title={t('projects.priority')} icon="flag">
+          <Stack.Toolbar.Menu title={t('projects.priority')} icon={toolbarIcon('flag')}>
             <Stack.Toolbar.MenuAction isOn={priority === null} onPress={() => setPriority(null)}>
               {t('projects.all')}
             </Stack.Toolbar.MenuAction>
@@ -255,7 +257,7 @@ export default function ProjectsScreen() {
             ))}
           </Stack.Toolbar.Menu>
           <Stack.Toolbar.MenuAction
-            icon="xmark.circle"
+            icon={toolbarIcon('statusCancelled')}
             hidden={!filtered}
             onPress={() => {
               setStatus(null);
@@ -265,7 +267,7 @@ export default function ProjectsScreen() {
             {t('projects.clearFilters')}
           </Stack.Toolbar.MenuAction>
         </Stack.Toolbar.Menu>
-        <Stack.Toolbar.Button icon="plus" onPress={newProject} accessibilityLabel={t('projects.newProject')} />
+        <Stack.Toolbar.Button icon={toolbarIcon('plus')} onPress={newProject} accessibilityLabel={t('projects.newProject')} />
       </Stack.Toolbar>
 
       {view === 'gantt' ? (

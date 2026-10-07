@@ -30,7 +30,7 @@ import {
 } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useHeaderHeight } from 'expo-router/react-navigation';
+import { useHeaderInset } from '../../../src/ui/header-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { addComment, deleteComment, listComments, updateTask, type Priority, type ProjectTask, type TaskComment } from '../../../src/api/projects';
@@ -72,6 +72,7 @@ import { tapLight } from '../../../src/ui/haptics';
 import { Badge, ListRow, ListSection, type ListRowProps } from '../../../src/ui/list';
 import { NativeMenu, menuSections, type MenuItem } from '../../../src/ui/menu';
 import { toast } from '../../../src/ui/toast';
+import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 
 export default function TaskDetailScreen() {
   const { colors: c, hex } = useTheme();
@@ -79,7 +80,7 @@ export default function TaskDetailScreen() {
   const t = useT();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const headerHeight = useHeaderHeight();
+  const headerHeight = useHeaderInset();
   const lang = usePrefs((s) => s.lang);
   const me = useAuth((s) => s.user);
   const params = useLocalSearchParams<{ taskId: string; projectId: string }>();
@@ -250,13 +251,13 @@ export default function TaskDetailScreen() {
       <Stack.Screen options={{ title: navTitle ? task.title : '' }} />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
-          icon="pencil"
+          icon={toolbarIcon('pen')}
           hidden={!access.canWrite}
           onPress={() => actions.edit(task)}
           accessibilityLabel={t('projects.editTask')}
         />
-        <Stack.Toolbar.Menu icon="ellipsis" hidden={!access.canWrite} accessibilityLabel={t('common.more')}>
-          <Stack.Toolbar.Menu title={t('projects.changeStatus')} icon="circle.lefthalf.filled">
+        <Stack.Toolbar.Menu icon={toolbarIcon('more')} hidden={!access.canWrite} accessibilityLabel={t('common.more')}>
+          <Stack.Toolbar.Menu title={t('projects.changeStatus')} icon={toolbarIcon('statusProgress')}>
             {TASK_STATUSES.map((s) => (
               <Stack.Toolbar.MenuAction key={s} isOn={task.status === s} onPress={() => void actions.setStatus(task, s)}>
                 {taskStatusLabel(s, t)}
@@ -264,14 +265,14 @@ export default function TaskDetailScreen() {
             ))}
           </Stack.Toolbar.Menu>
           <Stack.Toolbar.Menu inline>
-            <Stack.Toolbar.MenuAction icon="arrow.turn.down.right" onPress={() => actions.addSubtask(task)}>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('subtask')} onPress={() => actions.addSubtask(task)}>
               {t('projects.newSubtask')}
             </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction icon="diamond" onPress={() => void actions.toggleMilestone(task)}>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('diamond')} onPress={() => void actions.toggleMilestone(task)}>
               {isMilestone(task) ? t('projects.unmakeMilestone') : t('projects.makeMilestone')}
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
-          <Stack.Toolbar.MenuAction icon="trash" destructive onPress={() => void deleteThis()}>
+          <Stack.Toolbar.MenuAction icon={toolbarIcon('trash')} destructive onPress={() => void deleteThis()}>
             {t('projects.deleteTask')}
           </Stack.Toolbar.MenuAction>
         </Stack.Toolbar.Menu>
