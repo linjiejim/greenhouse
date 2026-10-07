@@ -56,6 +56,7 @@ export function FormChrome({
   saving = false,
   onSave,
   onCancel,
+  saveLabel,
 }: {
   title: string;
   dirty: boolean;
@@ -63,6 +64,8 @@ export function FormChrome({
   saving?: boolean;
   onSave: () => void;
   onCancel?: () => void;
+  /** What ✓ does, for VoiceOver when it is not "Save" (the Bots sign-in sheet's 登录). */
+  saveLabel?: string;
 }) {
   const t = useT();
   const router = useRouter();
@@ -106,7 +109,7 @@ export function FormChrome({
           // Android draws the tint as given, disabled or not — dim it the Material way
           tintColor={Platform.OS === 'android' && (!canSave || saving) ? alpha(hex.label, 0.38) : hex.accent}
           disabled={!canSave || saving}
-          accessibilityLabel={t('common.save')}
+          accessibilityLabel={saveLabel ?? t('common.save')}
           onPress={() => {
             if (canSave && !saving) onSave();
           }}
