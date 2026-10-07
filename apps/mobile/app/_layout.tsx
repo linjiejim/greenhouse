@@ -19,9 +19,10 @@
  * underneath (a back button, a sheet that can be dismissed) instead of
  * becoming the stack root. Home itself is never swipe-popped.
  *
- * Auth gate: signed out → everything above the root is dismissed, then
- * /login replaces it (so no signed-in screen survives under the login page);
- * signed in on /login → home.
+ * Auth gate: signed out on any route but /login and the stations sheet it
+ * opens → everything above the root is dismissed, then /login replaces it (so
+ * no signed-in screen survives under the login page); signed in on /login →
+ * home.
  */
 
 import 'react-native-gesture-handler';
@@ -43,6 +44,9 @@ import { useT } from '../src/lib/i18n';
 import { detailScreen, modalScreen, pageScreen, sheetScreen, stackDefaults } from '../src/ui/nav';
 
 export const unstable_settings = { initialRouteName: '(drawer)' };
+
+/** Routes a signed-out user may be on: the login page and the stations sheet it opens. */
+const SIGNED_OUT_ROUTES = new Set(['login', 'sheets/stations']);
 
 export default function RootLayout() {
   useApplyAppearance();
@@ -67,7 +71,7 @@ export default function RootLayout() {
   useEffect(() => {
     if (loading) return;
     const inAuthGroup = segments[0] === 'login';
-    if (!user && !inAuthGroup) {
+    if (!user && !SIGNED_OUT_ROUTES.has(segments.join('/'))) {
       // drop pages / sheets stacked over home first, or they'd stay mounted
       // under the login page (and come back after the next sign-in)
       if (router.canDismiss()) router.dismissAll();
