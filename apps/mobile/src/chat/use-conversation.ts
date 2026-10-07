@@ -6,9 +6,10 @@
  * Streaming: NDJSON deltas (expo/fetch) append to a buffer that a ~30fps
  * "drain" reveals at a steady pace (a small share of the backlog per tick, a
  * few characters at most — Latin words whole, CJK character by character,
- * never splitting a surrogate pair) — the reply unfolds like calm typing
- * instead of slamming in whole chunks or lines, and React sees at most one
- * commit per tick. The turn is only finalized once the drain has caught up
+ * never splitting a surrogate pair; the pace is ./stream-drain.ts, shared
+ * with the Bots thread) — the reply unfolds like calm typing instead of
+ * slamming in whole chunks or lines, and React sees at most one commit per
+ * tick. The turn is only finalized once the drain has caught up
  * with the closed stream. Tool calls (timed client-side), citations harvested
  * from tool results, reasoning, the live title, usage metrics and errors all
  * land on the assistant message.
@@ -45,6 +46,7 @@ import { t } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
 import { useTags } from '../store/tags';
 import { fromStored, isErrorResult, sourceFromResult, webFromResult, type ChatMessage, type ToolStep } from './model';
+import { nextReveal, TICK_MS } from './stream-drain';
 
 let seq = 0;
 export const nextId = (): string => `m${Date.now().toString(36)}-${seq++}`;
@@ -59,16 +61,6 @@ interface TurnRequest {
 /** Where a turn's events come from: a new POST, or an existing run to follow. */
 type TurnSource = { kind: 'post'; req: TurnRequest } | { kind: 'attach'; after: number };
 
-const TICK_MS = 33;
-/**
- * Reveal pace, per tick: backlog ÷ `share`, clamped to [min, max] chars —
- * live, the text trails the model by ~⅓ s at up to 240 chars/s; once the
- * wire has closed, the rest flows out faster.
- */
-const DRAIN_LIVE = { share: 10, min: 1, max: 8 };
-const DRAIN_END = { share: 5, min: 3, max: 40 };
-/** Characters that continue a Latin word (revealed whole; CJK has no word gaps). */
-const WORD_CHAR = /[A-Za-z0-9\u00C0-\u024F_'’-]/;
 /** Re-attach attempts after a transport drop before the turn is shown as interrupted. */
 const MAX_RESUMES = 3;
 /** No event (not even the server's 15 s keepalive ping) for this long = a dead socket. */
@@ -168,27 +160,8 @@ export function useConversation({
         if (streamEndRef.current) finalize();
         return;
       }
-      if (backlog > 0) {
-        // A small share of the backlog, then finish a Latin word in progress
-        // (bounded). CJK isn't extended: with no spaces to stop at, snapping
-        // ran a dozen characters ahead and lines popped in whole.
-        const pace = streamEndRef.current ? DRAIN_END : DRAIN_LIVE;
-        let next = shownRef.current + Math.min(pace.max, Math.max(pace.min, Math.ceil(backlog / pace.share)));
-        if (next < buf.length) {
-          const cap = Math.min(buf.length, next + 12);
-          while (next < cap && WORD_CHAR.test(buf[next - 1]) && WORD_CHAR.test(buf[next])) next++;
-          const tail = buf.charCodeAt(next - 1);
-          if (tail >= 0xd800 && tail <= 0xdbff) next++; // never split a surrogate pair
-        }
-        next = Math.min(next, buf.length);
-        // A high surrogate at the very end of a still-open buffer means the
-        // pair was split across network chunks — hold it until the other half.
-        if (next === buf.length && !streamEndRef.current) {
-          const tail = buf.charCodeAt(next - 1);
-          if (tail >= 0xd800 && tail <= 0xdbff) next--;
-        }
-        shownRef.current = Math.max(shownRef.current, next);
-      }
+      // the pace (Latin words whole, CJK char by char, faster once the wire closed) — ./stream-drain.ts
+      if (backlog > 0) shownRef.current = nextReveal(buf, shownRef.current, streamEndRef.current);
       reasonShownRef.current = reasonBufRef.current.length;
       patchAssistant((m) => ({
         ...m,

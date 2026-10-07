@@ -100,6 +100,16 @@ const SOURCES: Record<IconName, ImageSourcePropType> = {
   radioOff: require('../../assets/icons/android/radio_button_unchecked.xml'),
   checkboxOn: require('../../assets/icons/android/check_box.xml'),
   checkboxOff: require('../../assets/icons/android/check_box_outline_blank.xml'),
+  pin: require('../../assets/icons/android/push_pin.xml'),
+  stopCircle: require('../../assets/icons/android/stop_circle.xml'),
+  hand: require('../../assets/icons/android/front_hand.xml'),
+  shieldCheck: require('../../assets/icons/android/verified_user.xml'),
+  shieldAlert: require('../../assets/icons/android/gpp_maybe.xml'),
+  key: require('../../assets/icons/android/key.xml'),
+  unlock: require('../../assets/icons/android/lock_open.xml'),
+  sleep: require('../../assets/icons/android/bedtime.xml'),
+  at: require('../../assets/icons/android/alternate_email.xml'),
+  alertCircle: require('../../assets/icons/android/error.xml'),
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 

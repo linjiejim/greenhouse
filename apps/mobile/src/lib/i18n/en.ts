@@ -3,6 +3,12 @@
  * the web catalogs (apps/web/src/lib/i18n) where concepts overlap.
  */
 
+import { botsCommonEn } from './bots/common.en';
+import { botsThreadEn } from './bots/thread.en';
+import { botsCardsEn } from './bots/cards.en';
+import { botsNavEn } from './bots/nav.en';
+import { botsManageEn } from './bots/manage.en';
+
 export const en = {
   common: {
     loading: 'Loading…',
@@ -239,6 +245,7 @@ export const en = {
     defaultAgent: 'Default agent',
     defaultAgentHint: 'New conversations start with this agent; existing ones keep theirs.',
     tags: 'Tags',
+    myBots: 'My Bots',
     unavailable: 'Unavailable',
     update: 'Update',
     updateDev: 'Development build',
@@ -510,6 +517,14 @@ export const en = {
     colorGray: 'Gray',
     colorTeal: 'Teal',
     colorIndigo: 'Indigo',
+  },
+  /** Bots — split by owning package under ./bots (spec §2.6), mounted here once. */
+  bots: {
+    ...botsCommonEn,
+    ...botsThreadEn,
+    ...botsCardsEn,
+    ...botsNavEn,
+    ...botsManageEn,
   },
 };
 

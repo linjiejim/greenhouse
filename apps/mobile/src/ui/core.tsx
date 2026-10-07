@@ -126,6 +126,17 @@ const ICONS = {
   radioOff: ['circle', 'radio_button_unchecked'],
   checkboxOn: ['checkmark.circle.fill', 'check_box'],
   checkboxOff: ['circle', 'check_box_outline_blank'],
+  // ── Bots (pinned row, stop, "needs you" cards, sign-in, mentions) ──
+  pin: ['pin.fill', 'push_pin'],
+  stopCircle: ['stop.circle', 'stop_circle'],
+  hand: ['hand.raised', 'front_hand'],
+  shieldCheck: ['checkmark.shield', 'verified_user'],
+  shieldAlert: ['exclamationmark.shield', 'gpp_maybe'],
+  key: ['key.fill', 'key'],
+  unlock: ['lock.open', 'lock_open'],
+  sleep: ['moon.zzz', 'bedtime'],
+  at: ['at', 'alternate_email'],
+  alertCircle: ['exclamationmark.circle', 'error'],
 } as const satisfies Record<string, readonly [SFSymbol, AndroidSymbolName]>;
 
 export type IconName = keyof typeof ICONS;

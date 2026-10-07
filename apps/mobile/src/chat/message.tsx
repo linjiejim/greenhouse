@@ -23,6 +23,13 @@
  *
  * Both are memoised on the message object — during streaming only the turn
  * being patched re-renders. Menu ids come back through `onAction(msg, id)`.
+ *
+ * The Bots thread (src/bots/thread) reuses both with a few optional props —
+ * all off by default, so the conversation renders exactly as described above:
+ * `thinkingAvatar` (the speaking Bot's plant instead of Sprouty, or none),
+ * `allowRegenerate={false}` (Bots replies can't be regenerated),
+ * `allowEdit={false}` (nor sent messages edited) and a `footer` under a
+ * bubble (a pending send's "Delivered · …" caption).
  */
 
 import React, { memo, useEffect, useMemo } from 'react';
@@ -107,7 +114,16 @@ function reasoningHeadline(reasoning: string): string {
 /* ----------------------------- assistant ----------------------------- */
 
 /** The thinking Sprouty; with reasoning streaming in, it shows the latest headline and opens the live sheet. */
-function Thinking({ headline, onOpen }: { headline?: string; onOpen?: () => void }) {
+function Thinking({
+  headline,
+  onOpen,
+  avatar,
+}: {
+  headline?: string;
+  onOpen?: () => void;
+  /** In place of the Sprouty (undefined); null = no avatar. */
+  avatar?: React.ReactNode | null;
+}) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
@@ -124,7 +140,7 @@ function Thinking({ headline, onOpen }: { headline?: string; onOpen?: () => void
       accessibilityLabel={headline ? `${t('chat.thinking')}, ${headline}` : t('chat.thinking')}
       style={({ pressed }) => [styles.thinking, pressed && { opacity: 0.6 }]}
     >
-      <PlantAvatar state="thinking" size={34} />
+      {avatar === undefined ? <PlantAvatar state="thinking" size={34} /> : avatar}
       <View style={styles.thinkingTexts}>
         <View style={styles.thinkingLine}>
           <Animated.Text style={[styles.thinkingText, fade]}>{t('chat.thinking')}</Animated.Text>
@@ -206,6 +222,8 @@ export const AiMessage = memo(function AiMessage({
   onAction,
   onRetry,
   onReply,
+  thinkingAvatar,
+  allowRegenerate = true,
 }: {
   msg: ChatMessage;
   /** The newest reply — the only one that can be regenerated / retried. */
@@ -220,6 +238,14 @@ export const AiMessage = memo(function AiMessage({
   onRetry: () => void;
   /** Send a follow-up message from a card in the reply (resolves false if it didn't go). */
   onReply: (text: string) => Promise<boolean>;
+  /**
+   * The avatar of the thinking row: undefined = the Sprouty, null = none (a
+   * speaker line above already shows who it is). Keep it referentially stable
+   * — the row is memoised.
+   */
+  thinkingAvatar?: React.ReactNode | null;
+  /** Offer 重新生成 in the menu (latest reply only; 重试 on an error is `onRetry`'s). */
+  allowRegenerate?: boolean;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -247,9 +273,11 @@ export const AiMessage = memo(function AiMessage({
           { id: 'share', title: translate(lang, 'chat.actionShare'), icon: 'share' },
           ...(readOnly ? [] : [{ id: 'quote', title: translate(lang, 'chat.actionQuote'), icon: 'quote' as const }]),
         ],
-        canRerun ? [{ id: 'regenerate', title: translate(lang, 'chat.actionRegenerate'), icon: 'refresh' }] : [],
+        canRerun && allowRegenerate
+          ? [{ id: 'regenerate', title: translate(lang, 'chat.actionRegenerate'), icon: 'refresh' }]
+          : [],
       ]),
-    [lang, readOnly, canRerun],
+    [lang, readOnly, canRerun, allowRegenerate],
   );
 
   const body = (
@@ -258,6 +286,7 @@ export const AiMessage = memo(function AiMessage({
         <Thinking
           headline={msg.reasoning ? reasoningHeadline(msg.reasoning) || undefined : undefined}
           onOpen={msg.reasoning ? () => onOpenReasoning(msg) : undefined}
+          avatar={thinkingAvatar}
         />
       ) : null}
       {/* with the first text / tool, not at the end — appearing then would push the whole reply down */}
@@ -321,10 +350,16 @@ export const UserMessage = memo(function UserMessage({
   msg,
   readOnly,
   onAction,
+  allowEdit = true,
+  footer,
 }: {
   msg: ChatMessage;
   readOnly: boolean;
   onAction: (msg: ChatMessage, action: MessageAction) => void;
+  /** Offer 编辑后重发 in the menu. */
+  allowEdit?: boolean;
+  /** Under the bubble, outside its menu (a pending send's status caption). Keep it stable — the row is memoised. */
+  footer?: React.ReactNode;
 }) {
   const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
@@ -335,9 +370,11 @@ export const UserMessage = memo(function UserMessage({
   const items = useMemo<MenuItem[]>(
     () => [
       ...(text ? [{ id: 'copy', title: translate(lang, 'chat.actionCopy'), icon: 'copy' as const }] : []),
-      ...(readOnly || !text ? [] : [{ id: 'edit', title: translate(lang, 'chat.actionEditResend'), icon: 'pen' as const }]),
+      ...(readOnly || !text || !allowEdit
+        ? []
+        : [{ id: 'edit', title: translate(lang, 'chat.actionEditResend'), icon: 'pen' as const }]),
     ],
-    [lang, readOnly, text],
+    [lang, readOnly, text, allowEdit],
   );
   const images = msg.images ?? [];
 
@@ -417,6 +454,7 @@ export const UserMessage = memo(function UserMessage({
       ) : (
         content
       )}
+      {footer}
     </Animated.View>
   );
 });

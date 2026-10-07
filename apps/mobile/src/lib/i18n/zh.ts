@@ -1,4 +1,9 @@
 import type { Catalog } from './en';
+import { botsCommonZh } from './bots/common.zh';
+import { botsThreadZh } from './bots/thread.zh';
+import { botsCardsZh } from './bots/cards.zh';
+import { botsNavZh } from './bots/nav.zh';
+import { botsManageZh } from './bots/manage.zh';
 
 export const zh: Catalog = {
   common: {
@@ -236,6 +241,7 @@ export const zh: Catalog = {
     defaultAgent: '默认智能体',
     defaultAgentHint: '新建对话时使用该智能体，已有对话保持不变。',
     tags: '标签',
+    myBots: '我的 Bot',
     unavailable: '暂不可用',
     update: '更新',
     updateDev: '开发构建',
@@ -506,5 +512,12 @@ export const zh: Catalog = {
     colorGray: '灰色',
     colorTeal: '青色',
     colorIndigo: '靛蓝',
+  },
+  bots: {
+    ...botsCommonZh,
+    ...botsThreadZh,
+    ...botsCardsZh,
+    ...botsNavZh,
+    ...botsManageZh,
   },
 };
