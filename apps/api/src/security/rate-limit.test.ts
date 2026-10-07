@@ -53,3 +53,32 @@ describe('password-link IP rate limit', () => {
     ).toBe(429);
   });
 });
+
+describe('session reads under /api/auth', () => {
+  const hit = (app: Hono, path: string, sourceIp: string, method = 'GET') =>
+    app.request(path, { method, headers: { 'x-forwarded-for': sourceIp } }).then((r) => r.status);
+
+  it('never throttles /me and its siblings with the login budget (every page load asks)', async () => {
+    const app = new Hono()
+      .use('*', rateLimitMiddleware)
+      .get('/api/auth/me', (c) => c.json({ ok: true }))
+      .get('/api/auth/me/features', (c) => c.json({ ok: true }));
+    const sourceIp = `192.0.2.${Math.floor(Math.random() * 200) + 1}`;
+    for (let i = 0; i < 40; i++) {
+      expect(await hit(app, '/api/auth/me', sourceIp)).toBe(200);
+      expect(await hit(app, '/api/auth/me/features', sourceIp)).toBe(200);
+    }
+  });
+
+  it('keeps the login budget at ten attempts per source, and gives token refresh its own', async () => {
+    const app = new Hono()
+      .use('*', rateLimitMiddleware)
+      .post('/api/auth/login', (c) => c.json({ ok: true }))
+      .post('/api/auth/refresh', (c) => c.json({ ok: true }));
+    const sourceIp = `192.0.2.${Math.floor(Math.random() * 200) + 1}`;
+    for (let i = 0; i < 10; i++) expect(await hit(app, '/api/auth/login', sourceIp, 'POST')).toBe(200);
+    expect(await hit(app, '/api/auth/login', sourceIp, 'POST')).toBe(429);
+    for (let i = 0; i < 60; i++) expect(await hit(app, '/api/auth/refresh', sourceIp, 'POST')).toBe(200);
+    expect(await hit(app, '/api/auth/refresh', sourceIp, 'POST')).toBe(429);
+  });
+});

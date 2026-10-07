@@ -98,7 +98,9 @@ export async function launchTestChromium(): Promise<TestChromium> {
       ...(process.platform === 'linux' ? ['--no-sandbox'] : []),
       'about:blank',
     ],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
+    // Its own process group, so close() can take the renderer / GPU / crashpad children down with it:
+    // a child that outlives the browser keeps writing into the profile while it is removed.
+    { stdio: ['ignore', 'ignore', 'pipe'], detached: process.platform !== 'win32' },
   );
   const wsEndpoint = await new Promise<string>((resolve, reject) => {
     let buffer = '';
@@ -133,9 +135,19 @@ export async function launchTestChromium(): Promise<TestChromium> {
         if (proc.exitCode !== null) resolve();
         else proc.once('exit', () => resolve());
       });
-      proc.kill('SIGKILL');
+      if (proc.pid && process.platform !== 'win32') {
+        try {
+          process.kill(-proc.pid, 'SIGKILL');
+        } catch {
+          proc.kill('SIGKILL'); // the group is already gone
+        }
+      } else proc.kill('SIGKILL');
       await exited;
-      rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      try {
+        rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      } catch {
+        // A temp profile left behind is harmless; a failed test over it is not (CI: ENOTEMPTY).
+      }
     },
   };
 }
