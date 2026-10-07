@@ -159,8 +159,11 @@ bots/
 ### HTTP 契约
 
 类型在 `packages/types/src/bots.ts`（`@greenhouse/types/bots`），Web 端唯一客户端是
-`apps/web/src/lib/api/bots.ts`（rpc）。所有 `/api/bots/*` 在 `requireInternal()` + `requireFeature('bots')`
-之后，且按主人隔离（他人的行 = 404）。错误形如 `{ error, code }`。
+`apps/web/src/lib/api/bots.ts`（rpc），移动端是 `apps/mobile/src/api/bots.ts`（vendored 类型
+`apps/mobile/src/shared/bots.ts`）。所有 `/api/bots/*` 都在 `requireInternal()` 之后；`requireFeature('bots')`
+只挡永续线程那一侧——`bootstrap`、`conversations*`、`requests*`、`tasks/*`、`computer*`、`vault*`；
+Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只要内部账号（见 `apps/api/src/index.ts`）。
+全部按主人隔离（他人的行 = 404）。错误形如 `{ error, code }`。
 
 **Bot 与对话**（`routes.ts`）
 
