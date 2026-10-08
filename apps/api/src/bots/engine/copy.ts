@@ -331,9 +331,12 @@ export const copy = {
   instructionsUpdated: (l: BotsLocale, bot: string, version: number) =>
     l === 'zh' ? `${bot} 的守则已更新（v${version}）` : `${bot}'s instructions were updated (v${version})`,
 
-  /** An approval card's title from its verb phrase (`toolActionPhrase`). */
-  approvalTitle: (l: BotsLocale, bot: string, phrase: string) =>
-    l === 'zh' ? `允许 ${bot} ${phrase}？` : `Allow ${bot} to ${phrase}?`,
+  /**
+   * An approval card's title from its verb phrase (`toolActionPhrase`): the question alone —
+   * every client's card header already names the Bot ("Sage needs your approval").
+   */
+  approvalTitle: (l: BotsLocale, phrase: string) =>
+    l === 'zh' ? `${phrase}？` : `${phrase.charAt(0).toUpperCase()}${phrase.slice(1)}?`,
 
   /** The transcript line / notification title of an approval card: the Bot named once. */
   approvalLine: (l: BotsLocale, bot: string, phrase: string) =>

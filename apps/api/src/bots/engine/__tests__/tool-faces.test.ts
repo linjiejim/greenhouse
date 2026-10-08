@@ -82,14 +82,13 @@ describe('interactive tool face', () => {
       await wrapped.execute(input, {});
       return (ctx.requestApproval.mock.calls[0]![0] as { title: string }).title;
     };
-    expect(await titleOf('knowledge_mutation', 'zh')).toBe('允许 Sage 修改知识库？');
-    expect(await titleOf('knowledge_mutation', 'en')).toBe('Allow Sage to edit the knowledge base?');
+    // The question alone: every card header already names the Bot.
+    expect(await titleOf('knowledge_mutation', 'zh')).toBe('修改知识库？');
+    expect(await titleOf('knowledge_mutation', 'en')).toBe('Edit the knowledge base?');
     // A draft sends nothing, so its card must not say "send".
-    expect(await titleOf('email_mutation', 'zh', { action: 'draft' })).toBe('允许 Sage 起草邮件？');
-    expect(await titleOf('email_mutation', 'en', { action: 'send' })).toBe('Allow Sage to send an email?');
-    expect(await titleOf('email_mutation', 'en', { action: 'constructor' })).toBe(
-      'Allow Sage to draft or send an email?',
-    );
+    expect(await titleOf('email_mutation', 'zh', { action: 'draft' })).toBe('起草邮件？');
+    expect(await titleOf('email_mutation', 'en', { action: 'send' })).toBe('Send an email?');
+    expect(await titleOf('email_mutation', 'en', { action: 'constructor' })).toBe('Draft or send an email?');
     // Every built-in writer has its own phrase in both locales.
     for (const id of BOT_APPROVAL_TOOL_IDS) {
       for (const locale of ['en', 'zh'] as const) {
@@ -98,8 +97,8 @@ describe('interactive tool face', () => {
       }
     }
     // A writer without one (an extension tool) falls back to its catalog name.
-    expect(await titleOf('crm_mutation', 'zh')).toBe('允许 Sage 使用「crm mutation」？');
-    expect(await titleOf('crm_mutation', 'en')).toBe('Allow Sage to use crm mutation?');
+    expect(await titleOf('crm_mutation', 'zh')).toBe('使用「crm mutation」？');
+    expect(await titleOf('crm_mutation', 'en')).toBe('Use crm mutation?');
     // The card also carries the phrase alone, for the transcript line and the notification.
     const ctx = ctxWith('deny', 'zh');
     await (
