@@ -31,6 +31,14 @@ bots/
   工具把成员的其他 Bot 拉进对话（私聊里是客串）、转交工作、提议新建。`POST /api/bots` 只接受模板库模板
   （`galleryTemplate`：研究员/操作员/写手/分析师）：Sprouty 只来自 bootstrap，「总管」模板已退役（旧的 chief Bot
   照常工作，`botTemplate('chief')` 仍能查到它的开场白与 starters）。
+- **欢迎语一两句**（`engine/greeting.ts`，不调模型）：`你好，我是 **{名字}**，你的{岗位}。{pitch}`（无岗位就省掉那半句），
+  不列能力清单、不写记忆行、不收尾提问——起手式由客户端显示在下面。它不能承诺部署没有的能力：`needsComputer`
+  模板在电脑未就绪时用 `pitchNoComputer`。模板 pitch 保持短（中文 ≤30 字、英文 ≤90 字符，`greeting.test.ts` 守着）。
+  已写入的欢迎语从不改写，改文案只影响之后新建的 Bot。
+- **回复风格**：S1 的「Reply style」就是 `REPLY_STYLE_RULE`（`@greenhouse/utils/prompts`，开门见山、不复述不收尾客套、
+  显而易见且安全的下一步直接做、否则最多给一个具体的下一步提议），与聊天页 `sprouty.yaml` 的 `## Communication`
+  同一份措辞；模板守则只补岗位相关的话，不重复它。紧跟其后的「Cards speak for themselves」：Bot 发起卡片（审批 / 新建 Bot /
+  后台任务 / 登录 / 守则修改）后不复述卡片内容，最多一句「你决定后会怎样」——成员看得到卡片。
 - **Bot 就是 Agent 身份**（2026-10-07 收敛，[spec](../../../../docs/specs/20261007-agent-bot-convergence.md)；
   推翻 20261005 的 D2）：原「自定义 Agent」表已删，`bots` 吸收了它的 `description` / `tools`（null = 继承主人全部
   有效工具，列表 = 只能收窄的过滤器）/ `max_steps` / 不可变版本（`bot_versions`，每次创建或编辑追加一版，供
@@ -74,7 +82,13 @@ bots/
   - 写 greenhouse 数据的工具（`BOT_APPROVAL_TOOL_IDS` + 目录里 `surface.proxy:'write'` 的）一律先出
     审批卡，成员点「允许」才执行；模型传 `confirm:true` 不算同意。审批等待 ≤110 s（回合的流超时 120 s
     覆盖工具执行）。卡片展示的是**将要发生的事**，不是模型的参数：发邮件卡经 `peekDraftToken` 显示已存
-    草稿的发件人 / 收件人 / 主题 / 正文开头。
+    草稿的发件人 / 收件人 / 主题 / 正文开头。卡片标题按成员 locale 写成动作短语（`copy.ts` `toolAction`：
+    `允许 X 修改知识库？` / `Allow X to edit the knowledge base?`；`email_mutation` 分 draft / send），工具目录的
+    英文 `name`（「Knowledge Mutation」）只给没有短语的写工具（扩展工具）兜底（`使用「name」`）；新增内置写工具要同时补短语。
+    同一短语存进 `payload.summary`，转录行 / 通知只点一次名（`Sprouty 请你批准：修改知识库` / `Sprouty asks to edit the
+    knowledge base`；没有 summary 的旧卡照旧用标题）。参数行的标签按 locale 译（`approvalFieldLabel`，没收录的键人性化
+    显示），值保持调用原样；只藏 `APPROVAL_HIDDEN_FIELDS`（`confirm` / `user_confirmed` / `revision` / `draft_token`），
+    目标 ID 照常显示。截断标记 `…(+N more characters)` 与 `…` / `+K more fields` 是客户端解析的协议，保持英文。
   - 污染判定：`engine/taint.ts` 是兜底（`TAINTING_TOOLS`），浏览器 / 电脑在真正读到外部内容时自己标记；
     `import_attachment` 不算污染（成员自己给的文件），但和其他外部来源一样记进密码库的外部读取账本——
     同一回合读过别的网站或外部内容后，代填一律要卡（`policy=auto` 也一样）。

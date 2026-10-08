@@ -21,12 +21,14 @@ import { buildStaticRules, toolFaceFlags } from '../prompt.js';
 import {
   approvalDetails,
   assembleInteractiveTools,
+  BOT_APPROVAL_TOOL_IDS,
   describeToolInput,
   interactiveMemberToolIds,
   needsBotApproval,
   withBotApproval,
 } from '../tools-assembly.js';
 import { nextFreeName, validateBotName } from '../naming.js';
+import { toolAction } from '../copy.js';
 import { clearAllDrafts, consumeDraftToken, createDraftToken } from '../../../email/security.js';
 
 afterEach(() => {
@@ -63,13 +65,50 @@ describe('interactive tool face', () => {
     expect(needsBotApproval('memory')).toBe(false);
   });
 
-  function ctxWith(decision: 'approve' | 'always' | 'deny' | 'expired') {
+  function ctxWith(decision: 'approve' | 'always' | 'deny' | 'expired', locale: 'en' | 'zh' = 'en') {
     return {
-      locale: 'en',
+      locale,
       bot: { name: 'Sage' },
       requestApproval: vi.fn(async () => decision),
     } as unknown as BotTurnContext & { requestApproval: ReturnType<typeof vi.fn> };
   }
+
+  it('titles the card with what the Bot will do, in the member’s words — never the raw tool name', async () => {
+    const titleOf = async (toolId: string, locale: 'en' | 'zh', input: unknown = {}) => {
+      const ctx = ctxWith('deny', locale);
+      const wrapped = withBotApproval(toolId, { execute: vi.fn() }, ctx) as {
+        execute: (input: unknown, options: unknown) => Promise<unknown>;
+      };
+      await wrapped.execute(input, {});
+      return (ctx.requestApproval.mock.calls[0]![0] as { title: string }).title;
+    };
+    expect(await titleOf('knowledge_mutation', 'zh')).toBe('允许 Sage 修改知识库？');
+    expect(await titleOf('knowledge_mutation', 'en')).toBe('Allow Sage to edit the knowledge base?');
+    // A draft sends nothing, so its card must not say "send".
+    expect(await titleOf('email_mutation', 'zh', { action: 'draft' })).toBe('允许 Sage 起草邮件？');
+    expect(await titleOf('email_mutation', 'en', { action: 'send' })).toBe('Allow Sage to send an email?');
+    expect(await titleOf('email_mutation', 'en', { action: 'constructor' })).toBe(
+      'Allow Sage to draft or send an email?',
+    );
+    // Every built-in writer has its own phrase in both locales.
+    for (const id of BOT_APPROVAL_TOOL_IDS) {
+      for (const locale of ['en', 'zh'] as const) {
+        expect(toolAction(locale, id), `${id} ${locale}`).toBeTruthy();
+        expect(await titleOf(id, locale)).not.toMatch(/Mutation|_/);
+      }
+    }
+    // A writer without one (an extension tool) falls back to its catalog name.
+    expect(await titleOf('crm_mutation', 'zh')).toBe('允许 Sage 使用「crm mutation」？');
+    expect(await titleOf('crm_mutation', 'en')).toBe('Allow Sage to use crm mutation?');
+    // The card also carries the phrase alone, for the transcript line and the notification.
+    const ctx = ctxWith('deny', 'zh');
+    await (
+      withBotApproval('crm_mutation', { execute: vi.fn() }, ctx) as {
+        execute: (i: unknown, o: unknown) => Promise<unknown>;
+      }
+    ).execute({}, {});
+    expect(ctx.requestApproval.mock.calls[0]![0]).toMatchObject({ summary: '使用「crm mutation」' });
+  });
 
   it('runs a wrapped writer only after the member allows this exact call', async () => {
     const execute = vi.fn(async () => ({ ok: true }));
@@ -83,9 +122,10 @@ describe('interactive tool face', () => {
     expect(ctx.requestApproval).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'tool_call',
+        summary: 'edit the knowledge base',
         details: [
-          { label: 'action', value: 'create' },
-          { label: 'title', value: 'Q3 plan' },
+          { label: 'Action', value: 'create' },
+          { label: 'Title', value: 'Q3 plan' },
         ],
       }),
     );
@@ -106,7 +146,7 @@ describe('interactive tool face', () => {
 
   it('describes inputs from the call itself, never the model’s consent flags', () => {
     const lines = describeToolInput({ confirm: true, content: 'z'.repeat(500), rows: [{ a: 1 }] });
-    expect(lines.map((l) => l.label)).toEqual(['content', 'rows']);
+    expect(lines.map((l) => l.label)).toEqual(['Content', 'Rows']);
     // Shown whole: a plausible prefix must not hide what follows.
     expect(lines[0]!.value).toBe('z'.repeat(500));
   });
@@ -148,22 +188,66 @@ describe('interactive tool face', () => {
     );
     const byLabel = Object.fromEntries(details.map((d) => [d.label, d.value]));
     expect(byLabel).toMatchObject({
-      action: 'send',
-      draft_token: token,
-      from: 'jim@example.com',
-      to: 'Ana <ana@example.com>',
-      cc: 'cc@example.com',
-      bcc: 'hidden@example.com',
-      subject: 'Q3 numbers',
-      attachments: '1 file',
+      Action: 'send',
+      From: 'jim@example.com',
+      To: 'Ana <ana@example.com>',
+      Cc: 'cc@example.com',
+      Bcc: 'hidden@example.com',
+      Subject: 'Q3 numbers',
+      Attachments: '1 file',
     });
-    expect(byLabel.body).toMatch(/^Hi Ana,\n/);
-    expect(byLabel.body).toMatch(/…\(\+\d+ more characters\)$/);
+    // The token is plumbing: the card shows the draft it names instead.
+    expect(JSON.stringify(details)).not.toContain(token);
+    expect(byLabel.Body).toMatch(/^Hi Ana,\n/);
+    expect(byLabel.Body).toMatch(/…\(\+\d+ more characters\)$/);
     expect(JSON.stringify(details)).not.toContain('evil.example');
     expect(JSON.stringify(details)).not.toContain('innocent');
     expect(getAccount).toHaveBeenCalledWith(42);
     // Peeking does not consume: the send still finds its draft.
     expect(consumeDraftToken(token, 'u1')?.subject).toBe('Q3 numbers');
+  });
+
+  it('labels the rows in the member’s locale, keeps the values verbatim and hides only plumbing', async () => {
+    const input = {
+      action: 'knowledge.update_doc',
+      doc_id: 'kb_42',
+      content: 'y'.repeat(4100),
+      revision: 7,
+      confirm: true,
+      some_new_field: 'x',
+    };
+    const zh = describeToolInput(input, 'zh');
+    expect(zh.map((l) => l.label)).toEqual(['操作', '文档 ID', '内容', 'Some new field']);
+    expect(zh[0]!.value).toBe('knowledge.update_doc');
+    expect(zh[1]!.value).toBe('kb_42');
+    // The truncation marker is protocol: the clients parse it and translate it themselves.
+    expect(zh[2]!.value).toMatch(/…\(\+100 more characters\)$/);
+    expect(JSON.stringify(zh)).not.toMatch(/revision|confirm|"7"/);
+    expect(describeToolInput(input, 'en').map((l) => l.label)).toEqual([
+      'Action',
+      'Document ID',
+      'Content',
+      'Some new field',
+    ]);
+
+    clearAllDrafts();
+    const token = createDraftToken('u1', 'shared', { to: [{ address: 'ana@example.com' }], subject: 'Hi' });
+    const db = { email: { getAccount: vi.fn() } } as unknown as DatabaseProvider;
+    const card = await approvalDetails(
+      'email_mutation',
+      { action: 'send', draft_token: token },
+      { db, userId: 'u1' },
+      'zh',
+    );
+    expect(card.map((l) => l.label)).toEqual(['操作', '发件人', '收件人', '主题', '说明']);
+    expect(card.at(-1)!.value).toMatch(/按上面显示的已存草稿原样发送/);
+    const missing = await approvalDetails(
+      'email_mutation',
+      { action: 'send', draft_token: 'nope' },
+      { db, userId: 'u1' },
+      'zh',
+    );
+    expect(missing.at(-1)).toEqual({ label: '说明', value: expect.stringMatching(/不会发出任何邮件/) });
   });
 
   it('an email send card for a missing or foreign draft says nothing will be sent', async () => {
@@ -176,7 +260,7 @@ describe('interactive tool face', () => {
         { action: 'send', draft_token: token },
         { db, userId: 'u1' },
       );
-      expect(details.map((d) => d.label)).toEqual(['action', 'draft_token', 'note']);
+      expect(details.map((d) => d.label)).toEqual(['Action', 'Note']);
       expect(details.at(-1)!.value).toMatch(/sends nothing/);
       expect(JSON.stringify(details)).not.toContain('theirs');
     }

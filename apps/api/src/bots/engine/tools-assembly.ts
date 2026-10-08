@@ -36,7 +36,7 @@ import { createConversationTool } from '../tools/conversation.js';
 import { createBotTasksTool } from '../tools/bot-tasks.js';
 import type { BotTurnContext } from './context.js';
 import type { ConversationPort, TeamPort } from './ports.js';
-import { copy } from './copy.js';
+import { approvalFieldLabel, copy, toolActionPhrase, type BotsLocale } from './copy.js';
 
 /**
  * Greenhouse writers that always need the member's approval in a Bots turn,
@@ -70,19 +70,34 @@ export const APPROVAL_VALUE_MAX_CHARS = 4000;
 export const APPROVAL_TOTAL_MAX_CHARS = 12_000;
 
 /**
- * Detail lines for an approval card: the exact arguments THIS call will run
- * with (never the model's own wording of intent). Nothing is dropped silently
- * — the member must be able to see what they allow: a long value ends with an
- * explicit "+N more characters" marker, and fields beyond the card's total
- * budget are counted on a final line.
+ * Argument keys an approval card never shows: consent flags the model sets
+ * (not consent — the card is) and plumbing that does not change what the call
+ * does: a Tables `revision` only guards against a concurrent edit, and an
+ * email send's `draft_token` is replaced by the stored draft it names.
  */
-export function describeToolInput(input: unknown): Array<{ label: string; value: string }> {
+export const APPROVAL_HIDDEN_FIELDS: ReadonlySet<string> = new Set([
+  'confirm',
+  'user_confirmed',
+  'revision',
+  'draft_token',
+]);
+
+/**
+ * Detail lines for an approval card: the exact arguments THIS call will run
+ * with (never the model's own wording of intent), labelled in the member's
+ * locale. Nothing is dropped silently beyond `APPROVAL_HIDDEN_FIELDS` — the
+ * member must be able to see what they allow: a long value ends with an
+ * explicit "+N more characters" marker, and fields beyond the card's total
+ * budget are counted on a final line. Both markers stay English: the clients
+ * parse them and say them in the member's language.
+ */
+export function describeToolInput(input: unknown, locale: BotsLocale = 'en'): Array<{ label: string; value: string }> {
   if (!input || typeof input !== 'object') return [];
   const lines: Array<{ label: string; value: string }> = [];
   let used = 0;
   let hidden = 0;
   for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-    if (key === 'confirm' || key === 'user_confirmed' || value === undefined || value === null) continue;
+    if (APPROVAL_HIDDEN_FIELDS.has(key) || value === undefined || value === null) continue;
     const text =
       typeof value === 'string'
         ? value
@@ -96,7 +111,7 @@ export function describeToolInput(input: unknown): Array<{ label: string; value:
       continue;
     }
     const shown = text.length > room ? `${text.slice(0, room)}…(+${text.length - room} more characters)` : text;
-    lines.push({ label: key, value: shown });
+    lines.push({ label: approvalFieldLabel(locale, key), value: shown });
     used += Math.min(text.length, room);
   }
   if (hidden > 0) lines.push({ label: '…', value: `+${hidden} more field${hidden === 1 ? '' : 's'}` });
@@ -111,8 +126,10 @@ function formatAddresses(addresses: ReadonlyArray<{ address: string; name?: stri
 }
 
 /** The address a draft will go out from — never a guess: unknown stays a mailbox reference. */
-async function draftSender(db: DatabaseProvider, userId: string, accountRef: string): Promise<string> {
-  if (accountRef === 'shared') return getSharedMailboxCredentials()?.email_address ?? 'the shared mailbox';
+async function draftSender(db: DatabaseProvider, userId: string, accountRef: string, l: BotsLocale): Promise<string> {
+  if (accountRef === 'shared') {
+    return getSharedMailboxCredentials()?.email_address ?? copy.emailCard.sharedMailbox(l);
+  }
   const id = Number(accountRef);
   try {
     const account = Number.isInteger(id) && id > 0 ? await db.email.getAccount(id) : undefined;
@@ -120,7 +137,7 @@ async function draftSender(db: DatabaseProvider, userId: string, accountRef: str
   } catch {
     // The card still says which draft it sends; the send resolves the mailbox itself.
   }
-  return `mailbox ${accountRef}`;
+  return copy.emailCard.mailbox(l, accountRef);
 }
 
 /**
@@ -134,47 +151,38 @@ export async function approvalDetails(
   toolId: string,
   input: unknown,
   owner: { db: DatabaseProvider; userId: string },
+  locale: BotsLocale = 'en',
 ): Promise<Array<{ label: string; value: string }>> {
   const fields = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   if (toolId === 'email_mutation' && fields.action === 'send') {
+    const label = (key: string) => approvalFieldLabel(locale, key);
     const token = typeof fields.draft_token === 'string' ? fields.draft_token : '';
-    const lines = [
-      { label: 'action', value: 'send' },
-      { label: 'draft_token', value: token },
-    ];
+    const lines = [{ label: label('action'), value: 'send' }];
     const draft = token ? peekDraftToken(token, owner.userId) : null;
     if (!draft) {
-      lines.push({
-        label: 'note',
-        value: 'No such draft (expired, already sent or never made) — allowing this sends nothing.',
-      });
+      lines.push({ label: label('note'), value: copy.emailCard.noDraft(locale) });
       return lines;
     }
     const body = draft.bodyText ?? '';
     const room = APPROVAL_EMAIL_BODY_PREVIEW_CHARS;
-    lines.push({ label: 'from', value: await draftSender(owner.db, owner.userId, draft.accountRef) });
-    lines.push({ label: 'to', value: formatAddresses(draft.to) });
-    if (draft.cc?.length) lines.push({ label: 'cc', value: formatAddresses(draft.cc) });
-    if (draft.bcc?.length) lines.push({ label: 'bcc', value: formatAddresses(draft.bcc) });
-    lines.push({ label: 'subject', value: draft.subject });
+    lines.push({ label: label('from'), value: await draftSender(owner.db, owner.userId, draft.accountRef, locale) });
+    lines.push({ label: label('to'), value: formatAddresses(draft.to) });
+    if (draft.cc?.length) lines.push({ label: label('cc'), value: formatAddresses(draft.cc) });
+    if (draft.bcc?.length) lines.push({ label: label('bcc'), value: formatAddresses(draft.bcc) });
+    lines.push({ label: label('subject'), value: draft.subject });
     if (body) {
       lines.push({
-        label: 'body',
+        label: label('body'),
         value: body.length > room ? `${body.slice(0, room)}…(+${body.length - room} more characters)` : body,
       });
     }
     if (draft.attachmentIds?.length) {
-      const n = draft.attachmentIds.length;
-      lines.push({ label: 'attachments', value: `${n} file${n === 1 ? '' : 's'}` });
+      lines.push({ label: label('attachments'), value: copy.emailCard.files(locale, draft.attachmentIds.length) });
     }
-    lines.push({
-      label: 'note',
-      value:
-        'Sends the stored draft exactly as shown — any recipients, subject or body passed with this call are ignored.',
-    });
+    lines.push({ label: label('note'), value: copy.emailCard.sendsStored(locale) });
     return lines;
   }
-  return describeToolInput(input);
+  return describeToolInput(input, locale);
 }
 
 type ExecutableTool = { execute?: (input: unknown, options: unknown) => unknown } & Record<string, unknown>;
@@ -184,14 +192,17 @@ export function withBotApproval(toolId: string, original: unknown, ctx: BotTurnC
   const tool = original as ExecutableTool;
   if (!tool || typeof tool.execute !== 'function') return original;
   const execute = tool.execute;
-  const label = getToolMeta(toolId)?.name ?? toolId;
+  // The fallback when the tool has no localized action phrase (copy.toolAction).
+  const name = getToolMeta(toolId)?.name ?? toolId.replace(/_/g, ' ');
   return {
     ...tool,
     execute: async (input: unknown, options: unknown) => {
+      const summary = toolActionPhrase(ctx.locale, { id: toolId, name, input });
       const decision = await ctx.requestApproval({
         action: 'tool_call',
-        title: copy.approvalTitle(ctx.locale, ctx.bot.name, label),
-        details: await approvalDetails(toolId, input, { db: ctx.db, userId: ctx.userId }),
+        title: copy.approvalTitle(ctx.locale, ctx.bot.name, summary),
+        summary,
+        details: await approvalDetails(toolId, input, { db: ctx.db, userId: ctx.userId }, ctx.locale),
         allow_always: false,
       });
       if (decision === 'approve' || decision === 'always') return execute(input, options);

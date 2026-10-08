@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { REPLY_STYLE_RULE } from '@greenhouse/utils/prompts';
 import {
   buildDigestSection,
   buildIdentity,
@@ -85,6 +86,16 @@ describe('static rules (S1)', () => {
     // Only where the card can actually be raised.
     expect(buildStaticRules(toolFaceFlags(['browser'], false), 'en')).not.toMatch(/human verification/);
     expect(buildStaticRules(toolFaceFlags(['team', 'conversation'], false), 'en')).not.toMatch(/human verification/);
+  });
+
+  it('asks for concise but proactive replies, whatever the tools', () => {
+    for (const flags of [toolFaceFlags([], false), toolFaceFlags(ALL, true)]) {
+      const lines = buildStaticRules(flags, 'zh').split('\n');
+      expect(lines).toContain(`- Reply style: ${REPLY_STYLE_RULE} If anything is still open, say so in one line.`);
+      expect(lines.some((line) => line.startsWith('- Cards speak for themselves:'))).toBe(true);
+    }
+    expect(REPLY_STYLE_RULE).toMatch(/^Lead with the answer or the result\./);
+    expect(REPLY_STYLE_RULE).toMatch(/at most one concrete next-step offer/);
   });
 
   it('states the trust rule with the exact speaker tags of the locale', () => {

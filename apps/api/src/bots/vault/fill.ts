@@ -377,7 +377,16 @@ function approvalPayload(
       : zh
         ? `允许 ${turn.botName} 在 ${host} 填入动态验证码？`
         : `Let ${turn.botName} fill a one-time code on ${host}?`;
-  return { action: 'vault_fill', title, details, allow_always: opts.allowAlways };
+  // The transcript line / notification: "<Bot> asks to <summary>" (engine/copy.ts approvalLine).
+  const summary =
+    kind === 'login'
+      ? zh
+        ? `用密码库登录 ${host}`
+        : `sign in to ${host} with your saved login`
+      : zh
+        ? `在 ${host} 填入动态验证码`
+        : `fill a one-time code on ${host}`;
+  return { action: 'vault_fill', title, summary, details, allow_always: opts.allowAlways };
 }
 
 // ─── Tool entry points ────────────────────────────────────
