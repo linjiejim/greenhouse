@@ -15,11 +15,14 @@
  *
  * After ✓: a new Bot opens its DM (its greeting and starters are there) or
  * the conversation it was made for; an edit or an accepted proposal closes
- * the sheet (the profile / the card underneath updates in place).
+ * the sheet (the profile / the card underneath updates in place). The form is
+ * held from ✓ until the sheet is gone (`useBotForm`'s `onHold`): accepting
+ * settles the card before the sheet closes, and the "already decided" state
+ * must not flash in between.
  */
 
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import { Text as RNText, View } from 'react-native';
+import { Text as RNText, View, useWindowDimensions } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   HStack,
@@ -46,6 +49,7 @@ import { BOT_DESCRIPTION_MAX, BOT_INSTRUCTIONS_MAX, BOT_NAME_MAX, BOT_ROLE_MAX }
 import { nameIssueKey } from '../../src/bots/manage/bot-form-model';
 import { useBotForm, useBotFormSource, type BotFormInit } from '../../src/bots/manage/use-bot-form';
 import { openThread } from '../../src/bots/nav';
+import { BotsRouteGate } from '../../src/bots/route-gate';
 import { BotAvatar } from '../../src/bots/ui/bot-avatar';
 import { makeStyles, space, typo, useTheme } from '../../src/theme';
 import { EmptyState } from '../../src/ui/empty';
@@ -55,7 +59,21 @@ import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
 
 type Chrome = React.ComponentProps<typeof FormChrome>;
 
-export default function BotFormSheet() {
+/**
+ * Closed Bots → home + "unavailable" (src/bots/route-gate.tsx; latched, as every SwiftUI sheet).
+ * A Bot's identity (create / edit) needs the identity gate only, like Settings → My Bots; a
+ * proposal, or a Bot made for a conversation, belongs to the conversations.
+ */
+export default function BotFormRoute() {
+  const { request, inviteTo } = useLocalSearchParams<{ request?: string; inviteTo?: string }>();
+  return (
+    <BotsRouteGate kind={request || inviteTo ? 'threads' : 'identity'} latched>
+      <BotFormSheet />
+    </BotsRouteGate>
+  );
+}
+
+function BotFormSheet() {
   const t = useT();
   const params = useLocalSearchParams<{ botId?: string; template?: string; request?: string; inviteTo?: string }>();
   const source = useBotFormSource({
@@ -67,7 +85,11 @@ export default function BotFormSheet() {
   // ✕ / ✓ for the ready form (handed up by BotFormSections: nav chrome can't sit among the Form's
   // SwiftUI children).
   const [chrome, setChrome] = useState<Chrome | null>(null);
-  const init = source.status === 'ready' ? source.init : null;
+  // The form whose own save is out or went through: it stays (same init, same key) whatever the
+  // source reads by then — an accepted proposal's card is settled before the sheet closes. Set in
+  // the ✓ press, before the request goes; the card only settles once the server has answered.
+  const [held, setHeld] = useState<BotFormInit | null>(null);
+  const init = source.status === 'ready' ? source.init : held;
 
   const title = params.request
     ? t('bots.manage.formProposal')
@@ -87,7 +109,7 @@ export default function BotFormSheet() {
           <SheetClose />
         </>
       )}
-      {source.status === 'failed' || source.status === 'missing' ? (
+      {!init && (source.status === 'failed' || source.status === 'missing') ? (
         <View style={{ flex: 1, justifyContent: 'center' }}>
           {source.status === 'failed' ? (
             <EmptyState icon="alert" title={t('bots.manage.loadFailed')} onRetry={source.retry} />
@@ -108,6 +130,7 @@ export default function BotFormSheet() {
             <BotFormSections
               key={`${init.mode}:${init.bot?.id ?? init.request?.id ?? init.templateKey ?? 'custom'}`}
               init={init}
+              onHold={setHeld}
               onChrome={setChrome}
             />
           ) : (
@@ -127,9 +150,12 @@ export default function BotFormSheet() {
 
 function BotFormSections({
   init,
+  onHold,
   onChrome,
 }: {
   init: BotFormInit;
+  /** Keep this form up (its own save is out / went through) or let it go (null) — see BotFormSheet. */
+  onHold: (init: BotFormInit | null) => void;
   /** The sheet draws ✕ / ✓ outside the Form: this form's state for them (null once it is gone). */
   onChrome: (chrome: Chrome | null) => void;
 }) {
@@ -137,7 +163,7 @@ function BotFormSections({
   const router = useRouter();
   const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
-  const form = useBotForm(init);
+  const form = useBotForm(init, { onHold });
   const { values } = form;
   // The native fields own their text; `form.values` mirrors it (change events are async).
   const nameText = useNativeState(init.values.name);
@@ -169,6 +195,9 @@ function BotFormSections({
     return () => onChrome(null);
   }, [onChrome, title, dirty, canSave, saving]);
 
+  // The RN preview is keyed on the text size: on iOS (RN 0.86 Fabric) a Dynamic Type change leaves
+  // mounted RN text measured at the old size (facebook/react-native#57512); SwiftUI rows follow it.
+  const { fontScale } = useWindowDimensions();
   const nameError = nameIssueKey(form.nameIssue);
   const look = `${t(`bots.manage.plantName.${form.plant}`)} · ${t(`bots.manage.moodName.${form.mood}`)}`;
 
@@ -179,7 +208,7 @@ function BotFormSections({
           <HStack>
             <Spacer />
             <RNHostView matchContents>
-              <View style={styles.preview}>
+              <View key={fontScale} style={styles.preview}>
                 <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
                   <BotAvatar
                     bot={{ id: form.stableId, avatar: values.avatar, template_key: init.templateKey }}

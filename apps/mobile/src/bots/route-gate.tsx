@@ -9,6 +9,10 @@
  * loads fire. The gate is live: a 403 that closes the Bots while a sheet is up
  * (`useBots.error = 'forbidden'`) takes the member home the same way. While
  * auth is loading or signed out it only waits — the root layout owns those.
+ * An open gate renders the sheet in the same render pass (no frame of
+ * nothing — a SwiftUI sheet's Form must mount on the first frame); a `latched`
+ * sheet (the SwiftUI forms) stays mounted when its gate closes under it, until
+ * the navigation removes it (`botsGateShows` says why).
  *
  * No `app/bots/_layout.tsx` on purpose: a nested navigator would move the
  * sheets' presentations out of the root Stack. `app/bots/index.tsx` (the
@@ -16,13 +20,13 @@
  * `.android.tsx` forwarders for the platform half.
  */
 
-import React, { useEffect, type ReactNode } from 'react';
+import React, { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'expo-router';
 import { t } from '../lib/i18n';
 import { useAuth } from '../store/auth';
 import { alertError } from '../ui/dialogs';
 import { BOTS_PLATFORM_READY, useBotIdentityEnabled, useBotsEnabled } from './availability';
-import { botsRouteGate, bounceOnce, type BotsRouteKind } from './route-gate-model';
+import { botsGateShows, botsRouteGate, bounceOnce, type BotsRouteKind } from './route-gate-model';
 
 export type { BotsRouteKind } from './route-gate-model';
 
@@ -47,7 +51,22 @@ export function useBotsRouteGate(kind: BotsRouteKind): boolean {
   return gate === 'open';
 }
 
-/** Renders `children` (the sheet) only while `useBotsRouteGate(kind)` is open. */
-export function BotsRouteGate({ kind, children }: { kind: BotsRouteKind; children: ReactNode }) {
-  return useBotsRouteGate(kind) ? <>{children}</> : null;
+/**
+ * Renders `children` (the sheet) while `useBotsRouteGate(kind)` is open — and,
+ * `latched`, from then on until the sheet is gone (see the file header).
+ */
+export function BotsRouteGate({
+  kind,
+  latched = false,
+  children,
+}: {
+  kind: BotsRouteKind;
+  latched?: boolean;
+  children: ReactNode;
+}) {
+  const open = useBotsRouteGate(kind);
+  const [wasOpen, setWasOpen] = useState(open);
+  // Remembered during render (not in an effect), so it holds from the very render that opened it.
+  if (open && !wasOpen) setWasOpen(true);
+  return botsGateShows({ open, wasOpen, latched }) ? <>{children}</> : null;
 }

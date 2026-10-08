@@ -46,6 +46,20 @@ export function botsRouteGate(input: {
 }
 
 /**
+ * Whether the gated sheet renders. An open gate always does, in the same
+ * render pass that opened it (a SwiftUI Form sheet must mount its Form on the
+ * first frame). A closed one renders nothing — so a sheet reached with its
+ * gate closed fires none of its loads — unless the sheet is `latched` and was
+ * already up: then it stays mounted until the navigation home removes it. The
+ * SwiftUI form sheets latch: deleting a Form's sections under a focused field
+ * throws in UIKit, and a sign-in form has to be emptied by its own
+ * `beforeRemove` (iOS offers to save a filled password field that disappears).
+ */
+export function botsGateShows(input: { open: boolean; wasOpen: boolean; latched: boolean }): boolean {
+  return input.open || (input.latched && input.wasOpen);
+}
+
+/**
  * Sheets stack (a card's full view over needs-you), and one closed gate
  * closes them all at once: only the first bounce within `windowMs` navigates
  * and alerts — its `dismissTo('/')` already takes every sheet above home.
