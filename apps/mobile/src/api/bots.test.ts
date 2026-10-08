@@ -16,7 +16,7 @@ vi.mock('./client', () => ({
   refreshTokens: () => refreshMock(),
 }));
 vi.mock('expo/fetch', () => ({ fetch: (url: string, init: Record<string, unknown>) => expoFetchMock(url, init) }));
-vi.mock('./token-storage', () => ({ getAccessToken: () => 'access-token' }));
+vi.mock('./token-storage', () => ({ getAccessToken: () => 'access-token', getTokenStationId: () => 'st-1' }));
 vi.mock('../store/stations', () => ({ getApiBase: () => 'http://api.test' }));
 vi.mock('../lib/i18n', () => ({ t: (key: string) => key }));
 

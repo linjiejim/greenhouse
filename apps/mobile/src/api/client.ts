@@ -5,6 +5,10 @@
  * async-persisted token store. Used for all JSON requests. The streaming chat
  * path (chat.ts) reuses `refreshTokens()` and `getAccessToken()` directly
  * because it needs expo/fetch for response-body streaming.
+ *
+ * The bearer token only ever goes to the active station's own origin
+ * (`onStation`): an absolute URL elsewhere is fetched bare, and its 401 says
+ * nothing about this station's session (no refresh, no sign-out).
  */
 
 import { getApiBase } from '../store/stations';
@@ -22,21 +26,32 @@ export function setOnUnauthorized(cb: () => void): void {
   onUnauthorized = cb;
 }
 
-let refreshPromise: Promise<boolean> | null = null;
+/** The refresh in flight, per station the token mirror belonged to when it started. */
+const refreshing = new Map<string | null, Promise<boolean>>();
 
-/** Attempt to refresh the access token. De-duped across concurrent callers. */
+/**
+ * Refresh the active station's access token. Concurrent callers on one station
+ * share one refresh (a refresh token rotates: a second one would race the
+ * first). Keyed by station: a caller never joins a refresh another station
+ * started — that one answers false once a switch made it stale, and a caller
+ * on the new station would read that false as "this session is over" and sign
+ * the new station out.
+ */
 export function refreshTokens(): Promise<boolean> {
-  if (refreshPromise) return refreshPromise;
-  refreshPromise = doRefresh().finally(() => {
-    refreshPromise = null;
+  const sid = getTokenStationId();
+  const pending = refreshing.get(sid);
+  if (pending) return pending;
+  const run: Promise<boolean> = doRefresh(sid).finally(() => {
+    if (refreshing.get(sid) === run) refreshing.delete(sid);
   });
-  return refreshPromise;
+  refreshing.set(sid, run);
+  return run;
 }
 
-async function doRefresh(): Promise<boolean> {
+async function doRefresh(sid: string | null): Promise<boolean> {
+  // Origin and refresh token are read in the same tick as `sid` (the mirror follows the active station synchronously).
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
-  const sid = getTokenStationId();
   try {
     const res = await fetch(`${getApiBase()}/api/auth/refresh`, {
       method: 'POST',
@@ -57,7 +72,23 @@ async function doRefresh(): Promise<boolean> {
 }
 
 /**
- * Authenticated fetch against the API. Pass an API-relative path like `/api/sessions`.
+ * Whether `url` is on the station at `base` (same origin, compared parsed — so
+ * `@host` userinfo tricks and case differences can't fool it). Only such a URL
+ * may carry the station's bearer token.
+ */
+export function onStation(url: string, base: string): boolean {
+  try {
+    const station = new URL(base);
+    if (station.protocol !== 'https:' && station.protocol !== 'http:') return false;
+    return new URL(url).origin === station.origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Authenticated fetch against the API. Pass an API-relative path like `/api/sessions`
+ * (an absolute URL is fetched as given; it gets the token only on the active station's origin).
  *
  * The origin and the station whose token rides along are read together. A 401 that
  * comes back after the active station changed belongs to the previous station, so it
@@ -65,14 +96,18 @@ async function doRefresh(): Promise<boolean> {
  * it to the old origin, and signing out would end the new station's session.
  */
 export async function api(path: string, init: RequestInit = {}): Promise<Response> {
-  const url = path.startsWith('http') ? path : `${getApiBase()}${path}`;
+  const base = getApiBase();
+  const url = /^https?:\/\//i.test(path) ? path : `${base}${path}`;
+  const own = onStation(url, base);
   const sid = getTokenStationId();
   const sameStation = () => getTokenStationId() === sid;
-  const token = getAccessToken();
+  const token = own ? getAccessToken() : null;
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
   let res = await fetch(url, { ...init, headers });
+  // Another origin's 401 is about no session of ours.
+  if (!own) return res;
 
   if (res.status === 401 && sameStation()) {
     const ok = await refreshTokens();

@@ -37,7 +37,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 import type { StreamingEvent } from '../shared/greenhouse-types';
 import { t } from '../lib/i18n';
 import { getApiBase } from '../store/stations';
-import { getAccessToken } from './token-storage';
+import { getAccessToken, getTokenStationId } from './token-storage';
 import { api, refreshTokens } from './client';
 
 /** A wire event; run streams stamp the replay cursor (`seq`) and `replayed`. */
@@ -70,16 +70,28 @@ export interface ChatRunProbe {
   run?: { run_id: string; status: 'running' | 'completed' | 'error'; started_at: number; next_seq: number };
 }
 
-/** An authenticated expo/fetch with one refresh+retry on 401 (before the body is read). */
+/**
+ * An authenticated expo/fetch with one refresh+retry on 401 (before the body is read).
+ *
+ * Same station rule as `api()` (./client.ts): the origin and the station whose token rides
+ * along are read together, and a 401 that comes back after the active station changed is
+ * handed back untouched — refreshing would rotate the new station's pair, and the retry would
+ * send its token (and this request) to the old origin.
+ */
 async function openAuthed(path: string, init: { method: string; body?: string; signal?: AbortSignal }) {
+  const url = `${getApiBase()}${path}`;
+  const sid = getTokenStationId();
+  const sameStation = () => getTokenStationId() === sid;
   const go = (token: string | null) => {
     const headers: Record<string, string> = {};
     if (init.body) headers['Content-Type'] = 'application/json';
     if (token) headers.Authorization = `Bearer ${token}`;
-    return expoFetch(`${getApiBase()}${path}`, { ...init, headers });
+    return expoFetch(url, { ...init, headers });
   };
   let res = await go(getAccessToken());
-  if (res.status === 401 && (await refreshTokens())) res = await go(getAccessToken());
+  if (res.status !== 401 || !sameStation()) return res;
+  const refreshed = await refreshTokens();
+  if (refreshed && sameStation()) res = await go(getAccessToken());
   return res;
 }
 
