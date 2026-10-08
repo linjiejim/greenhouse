@@ -36,10 +36,6 @@
       "import": "./src/components/blocks/datatable-block.tsx",
       "types": "./src/components/blocks/datatable-block.tsx"
     },
-    "./components/blocks/local-files-block": {
-      "import": "./src/components/blocks/local-files-block.tsx",
-      "types": "./src/components/blocks/local-files-block.tsx"
-    },
     "./components/tool-call": {
       "import": "./src/components/tool-call/index.tsx",
       "types": "./src/components/tool-call/index.tsx"

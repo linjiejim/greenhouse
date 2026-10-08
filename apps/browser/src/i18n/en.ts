@@ -9,6 +9,15 @@ export const en = {
     settings: 'Settings',
   },
 
+  // Shared kit: Rich Output blocks the panel cannot draw, or has not finished drawing.
+  richBlocks: {
+    pending: 'Writing…',
+    previewElsewhere: 'HTML preview "{title}" — open this conversation in Greenhouse to view it.',
+    previewElsewhereUntitled: 'HTML preview — open this conversation in Greenhouse to view it.',
+    filesHeading: 'Files',
+    renderFailed: "This block couldn't be displayed",
+  },
+
   // Shared kit: the file card a tool's download renders as (export_data).
   fileArtifact: {
     download: 'Download',

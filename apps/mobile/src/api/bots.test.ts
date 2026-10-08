@@ -22,6 +22,7 @@ vi.mock('../lib/i18n', () => ({ t: (key: string) => key }));
 
 import * as bots from './bots';
 import { interruptChatRun, listChatRuns, openBotsChat, type RunStreamEvent } from './chat';
+import { MOBILE_RICH_BLOCKS } from '../chat/markdown/rich';
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -93,7 +94,7 @@ describe('openBotsChat', () => {
     expect(await send()).toEqual({ kind: 'error', status: 0, code: null, message: '' });
   });
 
-  it('sends only the Bots fields: the message (+ images) and mentions when there are any', async () => {
+  it('sends only the Bots fields: the message (+ images), what the app draws, and mentions when there are any', async () => {
     expoFetchMock.mockResolvedValue(json(202, { queued: true }));
     await send({ images: [{ id: 'img_1', url: '/api/upload/img_1' }], mentions: ['bot_b'] });
     await send({ mentions: [] });
@@ -104,11 +105,13 @@ describe('openBotsChat', () => {
     expect(JSON.parse(first.init.body as string)).toEqual({
       session_id: 'sess_1',
       messages: [{ role: 'user', content: 'hello', images: [{ id: 'img_1', url: '/api/upload/img_1' }] }],
+      rich_blocks: [...MOBILE_RICH_BLOCKS],
       mentions: ['bot_b'],
     });
     expect(JSON.parse(second.init.body as string)).toEqual({
       session_id: 'sess_1',
       messages: [{ role: 'user', content: 'hello' }],
+      rich_blocks: [...MOBILE_RICH_BLOCKS],
     });
   });
 

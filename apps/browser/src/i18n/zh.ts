@@ -6,6 +6,15 @@ export const zh = {
     settings: '设置',
   },
 
+  // 共享组件：侧栏画不了、或还没写完的富输出块。
+  richBlocks: {
+    pending: '生成中…',
+    previewElsewhere: '网页预览「{title}」—— 请在 Greenhouse 网页端打开本会话查看。',
+    previewElsewhereUntitled: '网页预览 —— 请在 Greenhouse 网页端打开本会话查看。',
+    filesHeading: '文件',
+    renderFailed: '该内容块无法显示',
+  },
+
   // 共享组件：工具返回的文件下载卡（export_data）。
   fileArtifact: {
     download: '下载',

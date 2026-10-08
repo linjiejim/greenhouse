@@ -7,7 +7,7 @@
  * - Image lightbox: click any image to view fullscreen
  */
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { createContext, useContext, useMemo, useState, useCallback } from 'react';
 import { marked } from 'marked';
 import { apiUrl } from '../lib/api-base';
 import { sanitizeHtml } from '../lib/utils';
@@ -180,7 +180,8 @@ function addSyntaxHighlighting(html: string): string {
 /**
  * Tags safe in markdown context — broader than the generic sanitizeHtml
  * because markdown legitimately produces block elements, tables, lists, etc.
- * Strips: script, iframe, object, embed, form, input, textarea, select, style.
+ * Strips: script, iframe, object, embed, form, textarea, select, style, and every
+ * input except a read-only task-list checkbox.
  */
 const MD_SAFE_TAGS = new Set([
   // Inline
@@ -244,12 +245,53 @@ const MD_SAFE_ATTRS = new Set([
   'rowspan',
 ]);
 
-function sanitizeMarkdownNode(node: Node): void {
+/**
+ * Where an in-app link (`#/projects/42` — the record references the agent
+ * cites) opens. This kit renders inside hosts that are not the web app (the
+ * browser extension's side panel), where `#/…` would navigate the host's own
+ * page; the host provides the web app's origin and such links open there in a
+ * new tab. Without a provider an in-app link renders as plain text.
+ */
+export const AppLinkOriginContext = createContext<string | null>(null);
+
+function sanitizeMarkdownNode(node: Node, appOrigin: string | null): void {
   const children = Array.from(node.childNodes);
   for (const child of children) {
     if (child.nodeType === Node.ELEMENT_NODE) {
       const el = child as Element;
       const tag = el.tagName.toLowerCase();
+
+      // GFM task lists: marked renders `- [x]` as a disabled checkbox. Keep
+      // exactly that — a read-only checkbox — and nothing else an <input> can be.
+      if (tag === 'input') {
+        if ((el.getAttribute('type') || '').toLowerCase() === 'checkbox') {
+          const checked = el.hasAttribute('checked');
+          for (const attr of Array.from(el.attributes)) el.removeAttribute(attr.name);
+          el.setAttribute('type', 'checkbox');
+          el.setAttribute('disabled', '');
+          el.setAttribute('class', 'task-list-checkbox');
+          if (checked) el.setAttribute('checked', '');
+        } else {
+          node.removeChild(el);
+        }
+        continue;
+      }
+
+      // In-app links point into the web app, not into this host.
+      if (tag === 'a' && (el.getAttribute('href') || '').trim().startsWith('#/')) {
+        const hash = (el.getAttribute('href') || '').trim();
+        if (!appOrigin) {
+          while (el.firstChild) node.insertBefore(el.firstChild, el);
+          node.removeChild(el);
+          continue;
+        }
+        for (const attr of Array.from(el.attributes)) el.removeAttribute(attr.name);
+        el.setAttribute('href', `${appOrigin.replace(/\/+$/, '')}/${hash}`);
+        el.setAttribute('target', '_blank');
+        el.setAttribute('rel', 'noopener noreferrer');
+        sanitizeMarkdownNode(el, appOrigin);
+        continue;
+      }
 
       if (!MD_SAFE_TAGS.has(tag)) {
         while (el.firstChild) node.insertBefore(el.firstChild, el);
@@ -283,7 +325,7 @@ function sanitizeMarkdownNode(node: Node): void {
         el.setAttribute('rel', 'noopener noreferrer');
       }
 
-      sanitizeMarkdownNode(el);
+      sanitizeMarkdownNode(el, appOrigin);
     }
   }
 }
@@ -292,11 +334,11 @@ function sanitizeMarkdownNode(node: Node): void {
  * Sanitize HTML output from marked parser.
  * Allows markdown block elements but strips scripts, iframes, event handlers.
  */
-function sanitizeMarkdownHtml(html: string): string {
+function sanitizeMarkdownHtml(html: string, appOrigin: string | null): string {
   if (!html) return '';
   try {
     const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
-    sanitizeMarkdownNode(doc.body);
+    sanitizeMarkdownNode(doc.body, appOrigin);
     // Wrap each table in a horizontal-scroll container: narrow tables stretch to
     // fill the width, wide ones scroll instead of overflowing the message (see
     // .table-scroll in components.css).
@@ -324,6 +366,7 @@ interface MarkdownProps {
 
 export const Markdown = React.memo(function Markdown({ content, className = '', compact }: MarkdownProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const appOrigin = useContext(AppLinkOriginContext);
 
   const html = useMemo(() => {
     if (!content) return '';
@@ -332,11 +375,11 @@ export const Markdown = React.memo(function Markdown({ content, className = '', 
       const result = marked.parse(fixed);
       const parsed = typeof result === 'string' ? result : '';
       const highlighted = addSyntaxHighlighting(parsed);
-      return sanitizeMarkdownHtml(highlighted);
+      return sanitizeMarkdownHtml(highlighted, appOrigin);
     } catch (_err) {
       return `<p>${sanitizeHtml(content)}</p>`;
     }
-  }, [content]);
+  }, [appOrigin, content]);
 
   // Image lightbox: delegate clicks on <img> inside the markdown container
   const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {

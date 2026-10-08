@@ -956,6 +956,15 @@ textarea,
 .prose-compact li > ol {
   @apply mt-1 mb-0;
 }
+/* GFM task lists (`- [x]`): the checkbox is the marker. */
+.prose-base li:has(> input.task-list-checkbox),
+.prose-compact li:has(> input.task-list-checkbox) {
+  list-style: none;
+}
+.task-list-checkbox {
+  @apply mr-1.5 align-[-0.1em];
+  accent-color: rgb(var(--primary-600));
+}
 
 /* ─── prose-base: spacious variant for wiki / docs ─── */
 .prose-base {

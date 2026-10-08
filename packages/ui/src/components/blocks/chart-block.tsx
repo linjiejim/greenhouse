@@ -42,8 +42,8 @@ export function ChartBlock({ data }: { data: ChartData }) {
         return {
           label: ds.label,
           data: ds.data,
-          backgroundColor: ds.backgroundColor || PIE_PALETTE.slice(0, ds.data.length),
-          borderColor: ds.borderColor || PIE_BORDER_PALETTE.slice(0, ds.data.length),
+          backgroundColor: PIE_PALETTE.slice(0, ds.data.length),
+          borderColor: PIE_BORDER_PALETTE.slice(0, ds.data.length),
           borderWidth: 1,
         };
       }
@@ -51,8 +51,8 @@ export function ChartBlock({ data }: { data: ChartData }) {
       return {
         label: ds.label,
         data: ds.data,
-        backgroundColor: ds.backgroundColor || fill(color.rgb),
-        borderColor: ds.borderColor || solid(color.rgb),
+        backgroundColor: fill(color.rgb),
+        borderColor: solid(color.rgb),
         borderWidth: data.type === 'line' ? 2 : 1,
         tension: data.type === 'line' ? 0.3 : undefined,
         fill: data.type === 'line' ? false : undefined,

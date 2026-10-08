@@ -5,18 +5,35 @@
  * If no onConfirmAction callback is provided, buttons are rendered but non-interactive.
  */
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import type { ConfirmData } from './index';
 
 // ─── Component ───────────────────────────────────────────
 
-export function ConfirmBlock({ data, onAction }: { data: ConfirmData; onAction?: (value: string) => void }) {
-  const [selectedValue, setSelectedValue] = useState<string | null>(null);
+export function ConfirmBlock({
+  data,
+  onAction,
+  resolvedValue,
+}: {
+  data: ConfirmData;
+  /** A returned promise that rejects means the choice was not delivered: the buttons re-arm. */
+  onAction?: (value: string) => void | Promise<void>;
+  /** The next user message, when it matches one of this block's values (restores the choice after reload). */
+  resolvedValue?: string;
+}) {
+  const persistedValue = data.actions.some((action) => action.value === resolvedValue) ? resolvedValue! : null;
+  const [localValue, setLocalValue] = useState<string | null>(null);
+  const selectedValue = persistedValue ?? localValue;
+  const submittingRef = useRef(false);
 
   const handleClick = (value: string) => {
-    if (selectedValue) return; // Already clicked
-    setSelectedValue(value);
-    onAction?.(value);
+    if (selectedValue || submittingRef.current) return; // Already clicked
+    submittingRef.current = true;
+    setLocalValue(value);
+    Promise.resolve(onAction?.(value)).catch(() => {
+      submittingRef.current = false;
+      setLocalValue(null);
+    });
   };
 
   const isResolved = selectedValue !== null;

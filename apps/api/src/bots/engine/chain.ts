@@ -77,6 +77,12 @@ export interface BotsRunArgs {
   /** Correlates the run's Runtime traces (`bots:<key>:<turn>`): the member message id, or the inbox item. */
   triggerKey: string;
   db?: DatabaseProvider;
+  /**
+   * Rich Output blocks the screen that started this run can draw. Runs nobody's
+   * request started (background reports, queued wake-ups) leave it unset and
+   * are taught the default set.
+   */
+  richBlocks?: readonly string[];
 }
 
 export interface BotsRunOutcome {
@@ -542,6 +548,7 @@ async function loadRunContext(args: BotsRunArgs, db: DatabaseProvider): Promise<
     effectiveTools,
     profile,
     triggerKey: args.triggerKey,
+    richBlocks: args.richBlocks,
     turnCounter: 0,
     usage: { input: 0, output: 0, cached: 0, reasoning: 0 },
     startedAt: Date.now(),

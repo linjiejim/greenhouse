@@ -26,7 +26,7 @@
 
 import { logger } from '@greenhouse/utils/logger';
 import type { DatabaseProvider, ScheduledTaskRow } from '@greenhouse/db';
-import { flattenRichOutput, renderNotificationEmail } from '../notifications/render.js';
+import { flattenForDelivery, renderNotificationEmail } from '../notifications/render.js';
 import { notifyWebhookKind } from './task-limits.js';
 import { connectionManager } from '../ws/connection-manager.js';
 
@@ -54,7 +54,7 @@ function truncate(text: string, limit = MAX_SUMMARY_CHARS): string {
  * the presentation is decided here.
  */
 function deliveryBody(summary: string, limit = MAX_SUMMARY_CHARS): string {
-  return truncate(flattenRichOutput(summary), limit) || '(no output)';
+  return truncate(flattenForDelivery(summary), limit) || '(no output)';
 }
 
 export interface TaskNotification {

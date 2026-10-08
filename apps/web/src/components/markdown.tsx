@@ -193,7 +193,8 @@ function addSyntaxHighlighting(html: string): string {
 /**
  * Tags safe in markdown context — broader than the generic sanitizeHtml
  * because markdown legitimately produces block elements, tables, lists, etc.
- * Strips: script, iframe, object, embed, form, input, textarea, select, style.
+ * Strips: script, iframe, object, embed, form, textarea, select, style, and every
+ * input except a read-only task-list checkbox.
  */
 const MD_SAFE_TAGS = new Set([
   // Inline
@@ -290,6 +291,22 @@ function sanitizeMarkdownNode(node: Node, linkTarget: MarkdownLinkTarget): void 
     if (child.nodeType === Node.ELEMENT_NODE) {
       const el = child as Element;
       const tag = el.tagName.toLowerCase();
+
+      // GFM task lists: marked renders `- [x]` as a disabled checkbox. Keep
+      // exactly that — a read-only checkbox — and nothing else an <input> can be.
+      if (tag === 'input') {
+        if ((el.getAttribute('type') || '').toLowerCase() === 'checkbox') {
+          const checked = el.hasAttribute('checked');
+          for (const attr of Array.from(el.attributes)) el.removeAttribute(attr.name);
+          el.setAttribute('type', 'checkbox');
+          el.setAttribute('disabled', '');
+          el.setAttribute('class', 'task-list-checkbox');
+          if (checked) el.setAttribute('checked', '');
+        } else {
+          node.removeChild(el);
+        }
+        continue;
+      }
 
       if (!MD_SAFE_TAGS.has(tag)) {
         while (el.firstChild) node.insertBefore(el.firstChild, el);

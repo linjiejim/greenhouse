@@ -19,11 +19,17 @@ import { DataTableBlock } from './blocks/datatable';
 import { MissionArtifactsBlock } from './blocks/files';
 import { HtmlPreviewBlock } from './blocks/html-preview';
 import { MermaidBlock } from './blocks/mermaid';
+import type { RichFence } from '../../shared/rich-output';
 
 /** Renders the raw body between the ``` fences for its registered language. */
 export type FenceBlock = (props: { raw: string }) => ReactElement | null;
 
-export const fenceBlocks: Record<string, FenceBlock> = {
+/**
+ * One renderer per registered fence (plus the historical alias). `satisfies`
+ * makes a block added to the shared registry fail to compile here until it has
+ * a renderer — MOBILE_RICH_BLOCKS (./rich) declares every model-authored one.
+ */
+const REGISTRY = {
   chart: ({ raw }) => <Chart spec={raw} />,
   datatable: ({ raw }) => <DataTableBlock raw={raw} />,
   mermaid: ({ raw }) => <MermaidBlock raw={raw} />,
@@ -32,4 +38,6 @@ export const fenceBlocks: Record<string, FenceBlock> = {
   'mission-artifacts': ({ raw }) => <MissionArtifactsBlock raw={raw} />,
   attachments: () => null,
   'mission-attachments': () => null,
-};
+} satisfies Record<RichFence | 'mission-attachments', FenceBlock>;
+
+export const fenceBlocks: Record<string, FenceBlock> = REGISTRY;

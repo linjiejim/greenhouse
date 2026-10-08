@@ -5,13 +5,15 @@
  * high-quality PDF output. Supports full CJK characters and special symbols
  * via native browser fonts.
  *
- * Flow: Markdown → marked → HTML → styled iframe → window.print() → PDF
+ * Flow: Markdown → Rich Output stand-ins → marked → HTML → styled iframe → window.print() → PDF
  */
 
 import React, { useCallback, useState } from 'react';
 import { marked } from 'marked';
 import { FileDown } from '../lib/icons';
 import { useI18n, useT } from '../lib/i18n';
+import { flattenRichOutput } from '@greenhouse/types/rich-output';
+import { useFlattenNotes } from '../lib/rich-output';
 
 // ─── PDF Print Stylesheet ────────────────────────────────
 
@@ -298,16 +300,18 @@ export function ExportPdfButton({ markdown, label, isStreaming, iconOnly = false
   const t = useT();
   const { locale } = useI18n();
   const [exporting, setExporting] = useState(false);
+  const flattenNotes = useFlattenNotes();
 
   const handleExport = useCallback(() => {
     setExporting(true);
     try {
-      triggerPdfPrint(markdown, t('common.report'), locale === 'zh' ? 'zh-CN' : 'en');
+      // Rich Output blocks print as their plain stand-ins (a chart → its table).
+      triggerPdfPrint(flattenRichOutput(markdown, flattenNotes), t('common.report'), locale === 'zh' ? 'zh-CN' : 'en');
     } finally {
       // Reset after print dialog opens
       setTimeout(() => setExporting(false), 1000);
     }
-  }, [locale, markdown, t]);
+  }, [flattenNotes, locale, markdown, t]);
 
   // Only show for substantial content (likely a report)
   if (isStreaming || !markdown || markdown.length < 500) {

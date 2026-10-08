@@ -106,6 +106,8 @@ export interface RunContext {
   profile: AgentProfile;
   /** Correlates Runtime traces of this run's turns. */
   triggerKey: string;
+  /** Rich Output blocks the screen that started the run can draw (undefined = the default set). */
+  richBlocks?: readonly string[];
   turnCounter: number;
   usage: { input: number; output: number; cached: number; reasoning: number };
   startedAt: number;
@@ -392,7 +394,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
     const modelOverride = resolveTurnModel(bot);
     const effectiveModel = modelOverride ?? rc.profile.model.id;
     const systemPrompt = assembleSystemPrompt([
-      buildStaticRules(toolFaceFlags(Object.keys(tools), approvalGated), locale),
+      buildStaticRules(toolFaceFlags(Object.keys(tools), approvalGated), locale, rc.richBlocks),
       buildIdentity(bot, user.nickname),
       buildMemberNotes(user.nickname, user.notes),
       buildDigestSection(rc.digest.rendered),

@@ -33,6 +33,7 @@ import type { ClientActionBridge } from '../tools/client-action-bridge.js';
 import { createClientActionTools } from '../tools/client-actions.js';
 import type { ChatRequestBody, ChatRequestMessage } from '@greenhouse/types/api';
 import { BOTS_SESSION_CHANNEL, BROWSER_SESSION_CHANNEL, type SessionChannel } from '@greenhouse/types/session';
+import { admitRichBlocks } from '@greenhouse/types/rich-output';
 import { userHasFeature } from '../auth/features.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
 import { isChatModelAllowed } from '../config/models.js';
@@ -292,6 +293,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                   run: botsRun,
                   message: botsMessage,
                   db: botsDb,
+                  richBlocks: admitRichBlocks(body.rich_blocks),
                 });
               } catch (err) {
                 await botsEngine.releaseBotsRun(botsDb, botsRun);
@@ -608,6 +610,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             Object.keys(tools).length > 0,
             userId,
             ambientContext,
+            admitRichBlocks(body.rich_blocks),
           );
 
           // Vision models see attached images directly, but analyze_image's own
@@ -902,6 +905,8 @@ async function buildSystemPromptWithUserNotes(
   hasTools: boolean,
   userId: string | null,
   ambientContext?: AmbientContextEnvelope,
+  /** What the requesting screen can draw (`rich_blocks`); undefined = the default set. */
+  richBlocks?: readonly string[],
 ): Promise<string> {
   let userInfo: string | undefined;
   let userLocale: string | undefined;
@@ -926,7 +931,7 @@ async function buildSystemPromptWithUserNotes(
     if (memoryBlock) userInfo = userInfo ? `${userInfo}\n\n${memoryBlock}` : memoryBlock;
   }
 
-  let prompt = buildSystemPrompt(profile, { ...(userInfo ? { userInfo } : {}), nickname });
+  let prompt = buildSystemPrompt(profile, { ...(userInfo ? { userInfo } : {}), nickname, richBlocks });
   if (hasTools) {
     prompt += `\n\n## Tool Guidance\nUse your available tools proactively when they are relevant to the user's request.`;
   }

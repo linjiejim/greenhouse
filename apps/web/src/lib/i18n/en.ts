@@ -3756,6 +3756,18 @@ export default {
     fullscreen: 'Full screen',
     exitFullscreen: 'Exit full screen',
   },
+  richBlocks: {
+    pendingChart: 'Drawing the chart…',
+    pendingTable: 'Building the table…',
+    pendingConfirm: 'Preparing the options…',
+    pendingDiagram: 'Drawing the diagram…',
+    pendingPage: 'Building the page…',
+    pendingFiles: 'Collecting the files…',
+    previewElsewhere: '(HTML preview "{title}" — open it in the conversation)',
+    previewElsewhereUntitled: '(HTML preview — open it in the conversation)',
+    filesHeading: 'Files',
+    attachmentsHeading: 'Attachments',
+  },
   entityPeek: {
     title: 'Details',
     openFullPage: 'Open full page',

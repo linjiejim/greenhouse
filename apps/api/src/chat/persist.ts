@@ -12,6 +12,7 @@ import { getDb } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import type { ChatEngineResult, DsmlRecoveryEvent } from '@greenhouse/agent-core';
 import type { MessageRow } from '@greenhouse/types/session';
+import { findIncompleteRichBlock } from '@greenhouse/types/rich-output';
 
 // ─── Persist ─────────────────────────────────────────────
 
@@ -50,22 +51,13 @@ export type PersistChatOutcome =
   | { status: 'skipped'; reason: string }
   | { status: 'empty' };
 
-function incompleteRichBlockStart(content: string): number | null {
-  const openFence = /```(?:chart|confirm|datatable)[^\S\r\n]*\r?\n/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = openFence.exec(content)) !== null) {
-    const closingFence = content.indexOf('```', openFence.lastIndex);
-    if (closingFence === -1) return match.index;
-    openFence.lastIndex = closingFence + 3;
-  }
-
-  return null;
-}
-
-/** Make an interrupted partial answer safe to render and durable after reload. */
+/**
+ * Make an interrupted partial answer safe to render and durable after reload:
+ * any registered Rich Output block that never closed is cut off (it would
+ * otherwise be stored as half a block and render as a code block forever).
+ */
 export function finalizeInterruptedChatContent(content: string, notice: string): string {
-  const incompleteAt = incompleteRichBlockStart(content);
+  const incompleteAt = findIncompleteRichBlock(content);
   const safeContent = (incompleteAt == null ? content : content.slice(0, incompleteAt)).trimEnd();
   const noticeBlock = `> ${notice}`;
   return safeContent ? `${safeContent}\n\n${noticeBlock}` : noticeBlock;
@@ -91,7 +83,7 @@ export async function persistChatResult(input: PersistInput): Promise<PersistCha
     botId,
     emptyTextFallback,
   } = input;
-  const hasIncompleteRichBlock = incompleteRichBlockStart(engineResult.text) != null;
+  const hasIncompleteRichBlock = findIncompleteRichBlock(engineResult.text) != null;
   const rawText =
     !engineResult.text.trim() && emptyTextFallback && engineResult.pipelineSteps.length > 0
       ? emptyTextFallback

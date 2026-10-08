@@ -3690,6 +3690,18 @@ const zh: Messages = {
     fullscreen: '全屏',
     exitFullscreen: '退出全屏',
   },
+  richBlocks: {
+    pendingChart: '正在生成图表…',
+    pendingTable: '正在整理表格…',
+    pendingConfirm: '正在准备选项…',
+    pendingDiagram: '正在绘制图示…',
+    pendingPage: '正在生成网页…',
+    pendingFiles: '正在整理文件…',
+    previewElsewhere: '（网页预览「{title}」请在对话中打开）',
+    previewElsewhereUntitled: '（网页预览请在对话中打开）',
+    filesHeading: '文件',
+    attachmentsHeading: '附件',
+  },
   entityPeek: {
     title: '详情',
     openFullPage: '在完整页面打开',

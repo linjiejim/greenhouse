@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { RICH_OUTPUT_LIMITS, isChartData, isConfirmData, isDataTableData, parseSegments } from './rich-output.js';
+import {
+  DEFAULT_CLIENT_BLOCKS,
+  DEFAULT_FLATTEN_NOTES,
+  MODEL_FENCES,
+  RICH_BLOCKS,
+  RICH_OUTPUT_LIMITS,
+  admitRichBlocks,
+  diagnoseRichOutput,
+  findIncompleteRichBlock,
+  flattenRichOutput,
+  isChartData,
+  isConfirmData,
+  isDataTableData,
+  parseSegments,
+  type RichFence,
+} from './rich-output.js';
 
 const fence = (type: string, payload: unknown) => `\`\`\`${type}\n${JSON.stringify(payload)}\n\`\`\``;
 
@@ -59,7 +74,10 @@ describe('Rich Output parser', () => {
   it('hides an unfinished streaming datatable payload behind a pending segment', () => {
     const segments = parseSegments('Summary\n\n```datatable\n{"columns":[{"key":"name"');
 
-    expect(segments).toEqual([{ type: 'markdown', content: 'Summary\n\n' }, { type: 'datatable-pending' }]);
+    expect(segments).toEqual([
+      { type: 'markdown', content: 'Summary\n\n' },
+      { type: 'pending', fence: 'datatable' },
+    ]);
     expect(JSON.stringify(segments)).not.toContain('"columns"');
   });
 
@@ -92,12 +110,15 @@ describe('Rich Output parser', () => {
     ]);
   });
 
-  it('leaves an unclosed mermaid fence as ordinary markdown until it closes', () => {
-    // Half a diagram is not a diagram — it renders as a code block while the
-    // model is still writing, and becomes a figure only once the fence closes.
+  it('hides an unclosed mermaid fence behind a pending segment until it closes', () => {
+    // Half a diagram is not a diagram — the renderer reserves space while the
+    // model is still writing, and draws the figure once the fence closes.
     const partial = 'Here:\n\n```mermaid\nflowchart LR\n  A --> ';
 
-    expect(parseSegments(partial)).toEqual([{ type: 'markdown', content: partial }]);
+    expect(parseSegments(partial)).toEqual([
+      { type: 'markdown', content: 'Here:\n\n' },
+      { type: 'pending', fence: 'mermaid' },
+    ]);
   });
 
   it('falls back to a code block for empty or oversized mermaid payloads', () => {
@@ -141,5 +162,150 @@ describe('Rich Output parser', () => {
         datasets: [{ label: 'Series', data: [Number.POSITIVE_INFINITY] }],
       }),
     ).toBe(false);
+  });
+});
+
+// ─── Registry-derived behaviour ──────────────────────────
+
+/**
+ * One valid body per registered fence. Typed as a full record so registering a
+ * new block fails to compile here until it has a sample — and then every
+ * derived behaviour below is checked for it with no other test edits.
+ */
+const SAMPLES: Record<RichFence, string> = {
+  chart: JSON.stringify({ type: 'bar', labels: ['A'], datasets: [{ label: 'S', data: [1] }] }),
+  datatable: JSON.stringify({ columns: [{ key: 'name', label: 'Name' }], rows: [{ name: 'x' }] }),
+  confirm: JSON.stringify({ text: 'Go?', actions: [{ label: 'Yes', value: 'yes' }] }),
+  mermaid: 'flowchart LR\n  A --> B',
+  'html-preview': '<!doctype html><title>T</title><p>hi</p>',
+  'mission-artifacts': JSON.stringify([{ id: 1, run_id: 'r', path: 'out.txt', size_bytes: 2048 }]),
+  attachments: JSON.stringify([{ id: 'f1', name: 'a.pdf' }]),
+};
+
+describe('Rich Output registry', () => {
+  it.each(RICH_BLOCKS.map((def) => [def.fence, def] as const))('%s: parse, pending, trim, flatten', (fence, def) => {
+    const body = SAMPLES[fence];
+    const closed = `Intro\n\n\`\`\`${fence}\n${body}\n\`\`\``;
+    const segments = parseSegments(closed);
+    expect(segments[1]?.type).toBe(fence);
+    expect(diagnoseRichOutput(closed)).toEqual([{ fence, outcome: 'ok' }]);
+
+    const open = `Intro\n\n\`\`\`${fence}\n${body.slice(0, 5)}`;
+    expect(parseSegments(open)).toEqual([
+      { type: 'markdown', content: 'Intro\n\n' },
+      { type: 'pending', fence },
+    ]);
+    expect(findIncompleteRichBlock(open)).toBe('Intro\n\n'.length);
+    expect(findIncompleteRichBlock(closed)).toBeNull();
+    expect(diagnoseRichOutput(open)).toEqual([{ fence, outcome: 'unterminated' }]);
+
+    // Stand-ins that never echo source, so any leftover fence is the registry's fault.
+    const notes = { ...DEFAULT_FLATTEN_NOTES, diagram: () => '(diagram)', preview: () => '(page)' };
+    expect(flattenRichOutput(closed, notes)).not.toContain('```' + fence);
+    if (def.author === 'model') expect(MODEL_FENCES).toContain(fence);
+  });
+
+  it('reads historical aliases into the canonical segment', () => {
+    const legacy = '```mission-attachments\n' + SAMPLES.attachments + '\n```';
+    expect(parseSegments(legacy)).toEqual([{ type: 'attachments', data: [{ id: 'f1', name: 'a.pdf' }] }]);
+  });
+
+  it('classifies why a block fell back', () => {
+    const md = [
+      '```chart\n{not json\n```',
+      '```datatable\n{"columns":[{"key":"a"}],"rows":[]}\n```',
+      '```mermaid\n\n```',
+      '```confirm\n' +
+        JSON.stringify({ text: 'x', actions: Array.from({ length: 21 }, () => ({ label: 'a', value: 'a' })) }) +
+        '\n```',
+    ].join('\n\n');
+    expect(diagnoseRichOutput(md)).toEqual([
+      { fence: 'chart', outcome: 'invalid', reason: 'json' },
+      { fence: 'datatable', outcome: 'invalid', reason: 'shape' },
+      { fence: 'mermaid', outcome: 'invalid', reason: 'empty' },
+      { fence: 'confirm', outcome: 'invalid', reason: 'too_large' },
+    ]);
+  });
+
+  it('ignores fences it does not own', () => {
+    expect(diagnoseRichOutput('```python\nprint(1)\n```\n\n```html\n<b>x</b>\n```')).toEqual([]);
+    expect(findIncompleteRichBlock('```python\nprint(1)')).toBeNull();
+  });
+});
+
+describe('chart normalization', () => {
+  const chart = (payload: unknown) => parseSegments(fence('chart', payload))[0];
+
+  it('accepts the loose point-list form as one series', () => {
+    expect(
+      chart({
+        type: 'pie',
+        title: 'Share',
+        data: [
+          { name: 'A', value: 3 },
+          { label: 'B', count: '5' },
+        ],
+      }),
+    ).toEqual({
+      type: 'chart',
+      data: { type: 'pie', title: 'Share', labels: ['A', 'B'], datasets: [{ label: 'Share', data: [3, 5] }] },
+    });
+  });
+
+  it('accepts parallel categories + values arrays and pads missing labels', () => {
+    expect(chart({ categories: ['Q1'], values: [1, 2] })).toEqual({
+      type: 'chart',
+      data: { type: 'bar', labels: ['Q1', '2'], datasets: [{ label: '', data: [1, 2] }] },
+    });
+  });
+
+  it('draws an unknown type as bars and coerces numeric strings', () => {
+    expect(chart({ type: 'area', labels: ['a'], datasets: [{ label: 'S', data: ['4.5'] }] })).toEqual({
+      type: 'chart',
+      data: { type: 'bar', labels: ['a'], datasets: [{ label: 'S', data: [4.5] }] },
+    });
+  });
+
+  it('still rejects a point it cannot plot', () => {
+    expect(chart({ labels: ['a'], values: ['n/a'] })).toMatchObject({ type: 'markdown' });
+    expect(chart({ labels: ['a'] })).toMatchObject({ type: 'markdown' });
+  });
+});
+
+describe('flattenRichOutput', () => {
+  it('turns charts and tables into Markdown tables with the default notes', () => {
+    const out = flattenRichOutput(
+      'Result\n\n' +
+        fence('chart', { type: 'bar', title: 'Sales', labels: ['Q1'], datasets: [{ label: '2026', data: [3] }] }) +
+        '\n\n' +
+        fence('datatable', { columns: [{ key: 'ok', label: 'OK' }], rows: [{ ok: true }] }),
+    );
+    expect(out).toBe('Result\n\n**Sales**\n\n|  | 2026 |\n| --- | --- |\n| Q1 | 3 |\n\n| OK |\n| --- |\n| true |');
+  });
+
+  it('keeps diagram source by default and lets the caller replace it', () => {
+    const md = '```mermaid\nA-->B\n```';
+    expect(flattenRichOutput(md)).toBe('```mermaid\nA-->B\n```');
+    expect(flattenRichOutput(md, { ...DEFAULT_FLATTEN_NOTES, diagram: () => '(diagram)' })).toBe('(diagram)');
+  });
+
+  it('drops an unterminated block entirely', () => {
+    expect(flattenRichOutput('Done\n\n```datatable\n{"columns":')).toBe('Done');
+  });
+});
+
+describe('admitRichBlocks', () => {
+  it('teaches the default set when nothing is declared', () => {
+    expect(admitRichBlocks(undefined)).toBeUndefined();
+    expect(admitRichBlocks('chart')).toBeUndefined();
+  });
+
+  it('keeps only known model fences, in registry order', () => {
+    expect(admitRichBlocks(['mermaid', 'nope', 'chart', 'attachments', 3])).toEqual(['chart', 'mermaid']);
+    expect(admitRichBlocks([])).toEqual([]);
+  });
+
+  it('defaults to exactly the five blocks every client drew before capabilities existed', () => {
+    expect(DEFAULT_CLIENT_BLOCKS).toEqual(['chart', 'datatable', 'confirm', 'mermaid', 'html-preview']);
   });
 });

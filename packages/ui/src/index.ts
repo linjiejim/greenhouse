@@ -18,7 +18,6 @@ export * from './components/blocks/index';
 export * from './components/blocks/chart-block';
 export * from './components/blocks/confirm-block';
 export * from './components/blocks/datatable-block';
-export * from './components/blocks/local-files-block';
 export * from './components/tool-call/index';
 export * from './components/tool-call/tool-call-card';
 export * from './components/tool-call/body-artifacts';

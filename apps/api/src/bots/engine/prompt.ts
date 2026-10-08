@@ -20,6 +20,7 @@
  */
 
 import { composeRichOutput, REPLY_STYLE_RULE } from '@greenhouse/utils/prompts';
+import { DEFAULT_CLIENT_BLOCKS } from '@greenhouse/types/rich-output';
 import type { BotRow } from '@greenhouse/db';
 import { sanitizeForPrompt } from '../../security/security.js';
 import { buildIdentitySection, buildMemberNotesSection } from '../../profiles/identity-prompt.js';
@@ -66,7 +67,12 @@ export function fenceData(text: string): string {
  * S1 — the static rules. Paragraphs about a tool appear only when that tool is
  * registered this turn (never describe a tool the model does not have).
  */
-export function buildStaticRules(flags: ToolFaceFlags, locale: BotsLocale): string {
+export function buildStaticRules(
+  flags: ToolFaceFlags,
+  locale: BotsLocale,
+  /** Rich Output blocks the member's screen can draw — only these are taught. */
+  richBlocks: readonly string[] = DEFAULT_CLIENT_BLOCKS,
+): string {
   const tags = SPEAKER_TAGS[locale];
   const lines: string[] = [];
   lines.push(
@@ -171,7 +177,7 @@ export function buildStaticRules(flags: ToolFaceFlags, locale: BotsLocale): stri
     `## Response language`,
     `Reply in the language of the member's latest message. When that is unclear, use ${LANGUAGE_NAME[locale]} — the member's interface language.`,
     ``,
-    composeRichOutput({ confirm: true }),
+    composeRichOutput({ blocks: richBlocks }),
   );
   return lines.join('\n');
 }

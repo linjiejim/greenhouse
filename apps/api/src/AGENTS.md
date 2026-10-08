@@ -65,6 +65,7 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - 固定提示必须明确 Context 可能无关或过期、不是用户请求/指令/授权；只有与当前用户消息自然相关时才使用，歧义时先询问。
 - 浏览器 Client Actions 必须同时带 `client_action_scope_id`；有 Ambient Context 时两个 scope 必须一致，否则不装配 UI 工具。`local-tool-request` 回传同一 scope，由浏览器在当前页面实例中 fail closed。
 - **请求体只有一份定义**：`@greenhouse/types/api` 的 `ChatRequestBody`（字段表 `CHAT_REQUEST_BODY_KEYS` 编译期穷举），路由、web、浏览器扩展共用。服务端不再读的字段必须从类型里删掉，让还在发的客户端编译失败——扩展曾在服务端改契约后继续发 `context_hint` / `omit_write_tools` 近两个月，页面上下文和浏览器工具全部静默消失。准入规则在 `chat/turn-environment.ts`（`admitTurnEnvironment`），`tests/browser/chat-contract.test.ts` 用扩展真实构造的请求去跑它；Envelope 各字段上限是共享的 `AMBIENT_CONTEXT_LIMITS`，客户端按它裁剪，本地只做同一份常量的兜底截断。结果回传路径是 `CLIENT_ACTION_RESULT_PATH`，`index.ts` 以 `CLIENT_ACTIONS_API_PREFIX` 挂载（`routes/__tests__/client-actions-route.test.ts` 钉住）。
+- **`rich_blocks`（富块能力声明）**：客户端每轮声明它**这个界面**画得出来的 Rich Output 块，`admitRichBlocks()`（`@greenhouse/types/rich-output`）与已知块名取交集后经 `buildSystemPromptWithUserNotes` → `enrichSystemPrompt(profile, { richBlocks })`、Bots 经 `startBotsChain` → `RunContext.richBlocks` → `buildStaticRules` 传给 `composeRichOutput`。不带 = `DEFAULT_CLIENT_BLOCKS`（老客户端行为不变）；新块不进默认集。只决定「教不教」，不决定「能不能显示」——每个端对每个已登记块都要能降级（[spec](../../../docs/specs/20261008-rich-output-foundation.md) D2/D3）。
 - **浏览器扩展会话（`channel='browser'`）的内联工具面 fail-closed**：`agent-runtime/tool-resolution.ts` 的 `filterBrowserSessionToolIds` 只放行 `surface.proxy:'read'` 的工具加 `ask_user` / `export_data`，业务写工具、`memory`、`workbench_mutation`、`feature_request`、起草类与会话编排类一律不在。理由是**输入不可信**：扩展把网页选区/正文放进 turn，浏览器动作还会在执行中读更多页面；它唯一的写路径是面板先出确认卡、再走带 confirm 代理的 `save_to_knowledge` Client Action（在此过滤之后装配，不受影响）。**按服务端记录的会话 channel 判定，不接受客户端逐轮 flag**——曾经的 `omit_write_tools` 在服务端不读之后，写工具就静默回到了扩展会话里；web 续聊一个浏览器会话同样只读（历史里有网页内容）。与 `UNATTENDED_TOOL_DENYLIST`（没人能按确认）、`FEISHU_DENIED_TOOL_IDS`（交互形态承载不了）刻意分开。`POST /api/sessions` 只接受客户端传 `channel:'browser'`（`BROWSER_SESSION_CHANNEL`），其余值一律忽略、落 `web`；带 `channel` 的列表查询不做置顶/分组回填（扩展历史 = 本人在该 channel 的会话，扩展另传 `scope=mine`）。
 - **`routes/chat.ts` 不直接 import 工具目录（`tools/registry.ts`）**：目录会加载每个已启用的扩展，而 chat 路由测试 mock 的是 `agent-runtime/tool-resolution`、`@greenhouse/db` 只给了 `getDb`。私有 fork 带着自己的扩展跑上游测试时，直接 import 会让 `chat-*` 路由测试在模块加载阶段就失败（v1.3.1 的 fork 同步踩过：`registerExtensionServices` 不在 mock 里）。需要工具元数据的逻辑放进 `tool-resolution.ts`，路由只调函数。
 - Client Actions 只处理当前浏览器的读取、导航、填充等 UI 动作；真实数据写入继续走既有服务端 mutation 工具、确认门与 Platform 权限链。
@@ -181,7 +182,7 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - **聊天卡片固化是 exactly-once，旧 API 保持兼容**：卡片随 POST 成对传 `artifact_action_id + artifact_session_id`，服务端先在 `chat_artifact_receipts` 原子 claim，再创建 Task；`user_prompts.artifact_action_id` 唯一键补偿「业务行已写、回执未写」窗口，刷新与重复请求返回同一 Task。两字段只传一个是 400；旧的 capture 调用两者都不传仍按原语义创建，不强迫非聊天客户端伪造 message id。
 - **`expected_tools` 由服务端从会话真实调用记录派生，不收模型自报**（`toolsUsedIn` 扫 `messages.pipeline`）。它回答的是「这个任务够得着什么」，不是「这个用户能跑什么」——**不做权限判定**，运行时仍由既有 per-user 工具解析层管辖。加第二道闸只会在「作者有、运行者没有」时误伤，而那种情况下模型本就会如实报告缺工具。
 - **变量必须与正文里的 `{{占位符}}` 对得上**（`validateVariables`，create 与 update 两处）。声明了却没有占位符的变量会渲染出一个「填了也不影响任何东西」的输入框，而用户从界面上看不出来，所以是 400 拒绝而不是静默丢弃。update 时按**本次请求要保存的正文**校验（没传 content 才回落到库里那份），否则「同时重命名占位符和变量」这个最自然的编辑永远过不了。
-- **未填的占位符原样进消息**，不补空字符串：空白会静默改变任务的语义，而一个可见的 `{{region}}` 是 `RICH_OUTPUT_GUIDE` 明确要求模型先用 `ask_user` 问清楚的东西。
+- **未填的占位符原样进消息**，不补空字符串：空白会静默改变任务的语义，而一个可见的 `{{region}}` 是富文本提示词（`composeRichOutput` 的「未填的任务变量」常驻段）明确要求模型先用 `ask_user` 问清楚的东西。
 - 变量填写的主路径是 composer 里的内联表单（确定性、不耗模型轮次），`ask_user` 只兜底旁路进入的情况（spec D3）。
 
 ### Email（`email/` + `/api/email` + `email_query`/`email_mutation`）
@@ -211,9 +212,9 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - `notify_email` → **布尔，不是地址**。收件人由 task owner 反查得到，所以这条通道**根本没有可供任何人瞄准的参数**——这正是它能免确认的原因。发件走共享邮箱的 `sendFromSharedMailbox()`，绕过 resolveMailbox 的 super-only 门（那道门是给模型面的，这条路径上没有模型）。
 - 共享邮箱未配置 / owner 无邮箱 → 只 `logger.warn` 并跳过，**绝不把一次成功的 run 变成失败**。
 
-**送达正文必须经 `notifications/render.ts`，不能直接转发 `summary`**（2026-08-17 起，方案与决策 D1–D10 见 [spec](../../../docs/specs/20260817-notification-delivery-rendering.md)）。`summary` 是 assistant 的终答，写给**聊天渲染器**：Markdown + `RICH_OUTPUT_GUIDE` 主动要求产出的富块围栏。懂那些围栏的渲染器只活在浏览器里，邮件里没有浏览器。
+**送达正文必须经 `notifications/render.ts`，不能直接转发 `summary`**（2026-08-17 起，方案与决策 D1–D10 见 [spec](../../../docs/specs/20260817-notification-delivery-rendering.md)）。`summary` 是 assistant 的终答，写给**聊天渲染器**：Markdown + 富文本提示词（`composeRichOutput`）主动要求产出的富块围栏。懂那些围栏的渲染器只活在浏览器里，邮件里没有浏览器。
 
-- **两步单向管线**：`flattenRichOutput()`（围栏 → 普通 Markdown，复用浏览器同一份 `parseSegments`）→ `renderNotificationEmail()`（Markdown → HTML 文档）。**HTML 由文本那份产出**，所以 multipart 的两部分无从漂移。三个通道（邮件 / 企微 / 站内）都用第一步的输出。
+- **两步单向管线**：`flattenForDelivery()`（围栏 → 普通 Markdown：每块的替身由共享块注册表 `@greenhouse/types/rich-output` 的 `flattenRichOutput` 给出，这里只提供送达措辞 `DELIVERY_NOTES`）→ `renderNotificationEmail()`（Markdown → HTML 文档）。**HTML 由文本那份产出**，所以 multipart 的两部分无从漂移。三个通道（邮件 / 企微 / 站内）都用第一步的输出。
 - **截断在扁平化之后**：卡片与收件箱行仍 600 字符，邮件 20000。此前 600 的卡片上限直接作用在原文上，一个 datatable 围栏常被拦腰砍断。
 - **`marked` 原样透传 raw HTML**，而 summary 是模型写的——`renderer.html` 那一处 escape 是承重的，旧实现的「整段 escape」顺带在做这件事。`href`/`src` 同理只放行 `http(s)`/`mailto`，站内相对路径按 `PUBLIC_BASE_URL` 补全，`#/chat/...` 这类退化成纯文本（点不动的链接比没有链接更糟）。
 - ⚠️ **`marked` 的渲染器覆写必须写成普通对象**：`Marked.use()` 用 `Object.keys` 收方法，只看得见自有属性，`Renderer` 子类的原型方法**全部静默失效**（实现时踩到，三条覆写一条都没生效）。

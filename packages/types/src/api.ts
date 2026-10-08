@@ -608,6 +608,12 @@ export interface ChatRequestBody {
   regenerate_assistant_message_id?: unknown;
   /** Bots conversations only: Bot ids the user addressed (resolved against the member list server-side). */
   mentions?: string[];
+  /**
+   * The Rich Output blocks this screen can draw (`ModelFence` names from
+   * @greenhouse/types/rich-output). Only these are taught to the model; omitted
+   * = the five every client drew before capabilities existed.
+   */
+  rich_blocks?: string[];
 }
 
 /**
@@ -626,6 +632,7 @@ export const CHAT_REQUEST_BODY_KEYS = [
   'client_action_scope_id',
   'regenerate_assistant_message_id',
   'mentions',
+  'rich_blocks',
 ] as const satisfies readonly (keyof ChatRequestBody)[];
 
 type UnlistedChatRequestKeys = Exclude<keyof ChatRequestBody, (typeof CHAT_REQUEST_BODY_KEYS)[number]>;
@@ -642,6 +649,8 @@ export interface ChatTurnEnvironment {
    * that sets it (spec: 20260731-attachment-and-preset-convergence M3).
    */
   model?: string;
+  /** Rich Output blocks the sending screen can draw → `rich_blocks`. */
+  richBlocks?: readonly string[];
 }
 
 // ─── Streaming Types ─────────────────────────────────────

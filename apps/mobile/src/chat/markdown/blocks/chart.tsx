@@ -1,8 +1,8 @@
 /**
  * ```chart fenced block — bar / line / pie / doughnut / radar rendered with
- * react-native-svg. Reads the same Chart.js spec the web/desktop renderer uses
- * ({ type, title, labels, datasets: [{ label, data }] }) plus loose LLM
- * fallbacks; falls back to a plain code block when the spec carries no numbers.
+ * react-native-svg. Validated by the vendored shared parser (src/shared/
+ * rich-output.ts) exactly like the web: the same loose LLM shapes are accepted
+ * and the same payloads fall back to a plain code block.
  *
  * SVG paints need real color strings, so grid lines / labels use the `hex`
  * mirror of the system colors (never the PlatformColor `colors` objects);
@@ -15,25 +15,14 @@ import Svg, { Circle, G, Line as SvgLine, Path, Polygon, Polyline, Rect, Text as
 import { t } from '../../../lib/i18n';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../../theme';
 import { CodeBlock } from './code';
+import { richSegment } from '../rich';
+import type { ChartData, ChartType } from '../../../shared/rich-output';
 import { HScroll } from './hscroll';
-
-type Loose = Record<string, unknown>;
-const isObj = (v: unknown): v is Loose => !!v && typeof v === 'object' && !Array.isArray(v);
-const arr = (v: unknown): unknown[] | null => (Array.isArray(v) ? v : null);
-
-const toNum = (v: unknown): number | null => {
-  if (typeof v === 'number' && isFinite(v)) return v;
-  if (typeof v === 'string' && v.trim() !== '' && isFinite(Number(v))) return Number(v);
-  return null;
-};
-
-const CHART_TYPES = ['bar', 'line', 'pie', 'doughnut', 'radar'] as const;
 
 // Series palette — mirrors the web ChartBlock order so a chart looks the same
 // across web / desktop / mobile.
 const SERIES_COLORS = ['#6c995e', '#3f6f8a', '#c8881f', '#9b6bd6', '#c4503e', '#3aa0a0', '#d6792e', '#5b6b82'];
 
-type ChartType = (typeof CHART_TYPES)[number];
 interface ChartSpec {
   type: ChartType;
   title?: string;
@@ -41,58 +30,21 @@ interface ChartSpec {
   series: { label: string; data: number[] }[];
 }
 
-/** Normalise the chart JSON shapes an LLM emits into a uniform multi-series spec.
- *  Primary form is the canonical Chart.js spec the agent is told to use and that
- *  the web/desktop renderer consumes:
- *    { type, title, labels: [...], datasets: [{ label, data: [...] }] }
- *  with loose fallbacks kept for robustness:
- *    - data: [{ label|name|x, value|y|count }]
- *    - labels|categories + values|series|data parallel arrays */
-function parseChart(cfg: unknown): ChartSpec | null {
-  if (!isObj(cfg)) return null;
-  const type: ChartType = CHART_TYPES.find((x) => x === cfg.type) ?? 'bar';
-  const title = cfg.title != null ? String(cfg.title) : undefined;
-  let labels: string[] = (arr(cfg.labels) ?? arr(cfg.categories) ?? []).map(String);
-  let series: { label: string; data: number[] }[] = [];
-
-  // canonical: datasets: [{ label, data: number[] }]
-  const datasets = arr(cfg.datasets);
-  if (datasets) {
-    series = datasets
-      .map((ds, i) => {
-        const d = isObj(ds) ? ds : {};
-        return {
-          label: d.label != null ? String(d.label) : t('chat.series', { n: i + 1 }),
-          data: (arr(d.data) ?? []).map((v) => toNum(v) ?? 0),
-        };
-      })
-      .filter((x) => x.data.length > 0);
-  }
-
-  // loose: data: [{ label|name|x, value|y|count }]
-  const data = arr(cfg.data);
-  if (!series.length && data?.some(isObj)) {
-    const pts = data.filter(isObj).flatMap((d) => {
-      const value = toNum(d.value ?? d.y ?? d.count);
-      return value == null ? [] : [{ label: String(d.label ?? d.name ?? d.x ?? ''), value }];
-    });
-    if (!labels.length) labels = pts.map((p) => p.label);
-    if (pts.length) series = [{ label: title ?? t('chat.series', { n: 1 }), data: pts.map((p) => p.value) }];
-  }
-
-  // loose: parallel labels + values/series/data arrays
-  if (!series.length) {
-    const vals = arr(cfg.values) ?? arr(cfg.series) ?? data ?? [];
-    const nums = vals
-      .map((v) => toNum(isObj(v) ? (v.value ?? v.y) : v))
-      .filter((v): v is number => v != null);
-    if (nums.length) series = [{ label: title ?? t('chat.series', { n: 1 }), data: nums }];
-  }
-
-  if (!series.length) return null;
-  const n = Math.max(...series.map((x) => x.data.length));
-  if (labels.length < n) labels = Array.from({ length: n }, (_, k) => labels[k] ?? String(k + 1));
-  return { type, title, labels, series };
+/**
+ * The validated chart (the shared parser already accepted the loose shapes
+ * models write and rejected anything it cannot plot — the same verdict as the
+ * web) as this renderer's series list. An unlabelled series gets a local name.
+ */
+function toSpec(data: ChartData): ChartSpec {
+  return {
+    type: data.type,
+    title: data.title,
+    labels: data.labels,
+    series: data.datasets.map((dataset, i) => ({
+      label: dataset.label || t('chat.series', { n: i + 1 }),
+      data: dataset.data,
+    })),
+  };
 }
 
 function Legend({ items }: { items: { label: string; color: string }[] }) {
@@ -305,14 +257,9 @@ function RadarChart({ spec }: { spec: ChartSpec }) {
 export function Chart({ spec }: { spec: string }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
-  let cfg: unknown;
-  try {
-    cfg = JSON.parse(spec);
-  } catch {
-    cfg = null;
-  }
-  const parsed = parseChart(cfg);
-  if (!parsed) return <CodeBlock lang="chart" code={spec} />;
+  const segment = richSegment('chart', spec);
+  if (segment?.type !== 'chart') return <CodeBlock lang="chart" code={spec} />;
+  const parsed = toSpec(segment.data);
   // A radar needs ≥3 axes to read as a polygon; degenerate cases fall back to bars.
   const radar = parsed.type === 'radar' && parsed.labels.length >= 3;
   const pie = parsed.type === 'pie' || parsed.type === 'doughnut';

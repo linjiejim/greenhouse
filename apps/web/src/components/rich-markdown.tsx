@@ -1,9 +1,13 @@
 /**
  * RichMarkdown — enhanced markdown renderer with custom block support.
  *
- * Parses markdown content into segments, rendering:
+ * Parses markdown content into segments (the shared registry in
+ * @greenhouse/types/rich-output), rendering:
  * - Plain markdown via the existing <Markdown> component
- * - Custom blocks (chart, confirm, datatable) via specialized React components
+ * - Every registered block via its specialized React component — the switch
+ *   below is exhaustive, so registering a block without a web renderer fails
+ *   to compile
+ * - A block still being streamed as a stable placeholder
  *
  * Drop-in replacement for <Markdown> in chat/agent contexts.
  * Wiki/source detail pages should continue using <Markdown> directly.
@@ -24,7 +28,8 @@ import type {
 } from './blocks/index';
 import { ChartBlock } from './blocks/chart-block';
 import { ConfirmBlock } from './blocks/confirm-block';
-import { DataTableBlock, DataTablePendingBlock } from './blocks/datatable-block';
+import { DataTableBlock } from './blocks/datatable-block';
+import { RichBlockPending } from './blocks/pending-block';
 import { HtmlPreviewBlock } from './blocks/html-preview-block';
 import { MermaidBlock } from './blocks/mermaid-block';
 import { MissionArtifactsBlock } from './blocks/mission-artifacts-block';
@@ -73,7 +78,7 @@ export function RichMarkdown({
       if (seg.type === 'markdown') {
         return seg.content === (prevSeg as MarkdownSegment).content ? prevSeg : seg;
       }
-      if (seg.type === 'datatable-pending') return prevSeg;
+      if (seg.type === 'pending') return seg.fence === (prevSeg as typeof seg).fence ? prevSeg : seg;
       if (seg.type === 'mermaid' || seg.type === 'html-preview') {
         // These two carry `code`, not `data`. Falling through to the generic
         // compare below would read `undefined` on both sides and call every
@@ -152,8 +157,8 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
         </BlockBoundary>
       );
 
-    case 'datatable-pending':
-      return <DataTablePendingBlock compact={compact} />;
+    case 'pending':
+      return <RichBlockPending fence={segment.fence} compact={compact} />;
 
     case 'mermaid':
       return (
@@ -176,8 +181,14 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
         </BlockBoundary>
       );
 
-    default:
+    case 'attachments':
+      // Turn INPUTS: drawn on the user's bubble (splitAttachments), never in a reply.
       return null;
+
+    default: {
+      const unhandled: never = segment;
+      return unhandled;
+    }
   }
 });
 

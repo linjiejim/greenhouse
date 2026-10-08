@@ -65,6 +65,7 @@ import { pageActionScopeId } from '../../lib/page-action-scope';
 import type { AgentAttachment } from '../../lib/desktop/attach';
 import { CONVERSATION_SURFACE_POLICIES, type ConversationSurface } from './surface-policy';
 import { onComposerDraft } from '../../lib/composer-draft';
+import { webRichBlocks } from '../../lib/rich-output';
 import { MissionProgressMessages } from './mission-progress-messages';
 import { groupMissionOutcomes } from './mission-outcome-grouping';
 
@@ -169,11 +170,14 @@ export function ConversationPane({
    * No ambient context is attached: there is no page to describe. The server
    * only requires the two scopes to match *when* ambient context is present.
    */
-  const turnEnvironment = useCallback((): ChatTurnEnvironment | undefined => {
-    if (getTurnEnvironment) return getTurnEnvironment();
+  const turnEnvironment = useCallback((): ChatTurnEnvironment => {
+    // Every turn says which Rich Output blocks this screen can draw, so the
+    // model is only taught what will actually render here.
+    const richBlocks = webRichBlocks();
+    if (getTurnEnvironment) return { ...getTurnEnvironment(), richBlocks };
     const scopeId = pageActionScopeId();
     const actions = snapshotClientActions(scopeId);
-    return actions.length > 0 ? { clientActions: { scopeId, actions } } : undefined;
+    return actions.length > 0 ? { clientActions: { scopeId, actions }, richBlocks } : { richBlocks };
   }, [getTurnEnvironment]);
   const stableViewportId = useRef(viewportId ?? `${surface}-${Math.random().toString(36).slice(2)}`).current;
   const newDraftKey = `${DRAFT_KEY_NEW}:${stableViewportId}`;

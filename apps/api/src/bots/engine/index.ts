@@ -50,6 +50,8 @@ export interface StartBotsChainArgs {
   run: ChatRun;
   message: BotsMemberMessage;
   db?: DatabaseProvider;
+  /** Rich Output blocks the member's screen can draw (`rich_blocks`); undefined = the default set. */
+  richBlocks?: readonly string[];
 }
 
 function logCrash(sessionId: string) {
@@ -89,6 +91,7 @@ export async function startBotsChain(args: StartBotsChainArgs): Promise<void> {
       trigger: { kind: 'continue', items: [] },
       triggerKey: `inbox-${older.id}`,
       db,
+      richBlocks: args.richBlocks,
     }).catch(logCrash(sessionId));
     return;
   }
@@ -106,6 +109,7 @@ export async function startBotsChain(args: StartBotsChainArgs): Promise<void> {
     trigger: { kind: 'message', reason: 'user', mentions },
     triggerKey: persisted.id,
     db,
+    richBlocks: args.richBlocks,
   }).catch(logCrash(sessionId));
 }
 

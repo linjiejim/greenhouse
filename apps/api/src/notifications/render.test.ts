@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { flattenRichOutput, renderNotificationEmail } from './render.js';
+import { flattenForDelivery, renderNotificationEmail } from './render.js';
 
 const originalBaseUrl = process.env.PUBLIC_BASE_URL;
 
@@ -25,9 +25,9 @@ const datatable = [
   '```',
 ].join('\n');
 
-describe('flattenRichOutput', () => {
+describe('flattenForDelivery', () => {
   it('turns a datatable fence into a Markdown table', () => {
-    const out = flattenRichOutput(`素材采集完毕。\n\n${datatable}`);
+    const out = flattenForDelivery(`素材采集完毕。\n\n${datatable}`);
 
     expect(out).toContain('素材采集完毕。');
     expect(out).toContain('**2026-08-15 新增选题总览**');
@@ -39,7 +39,7 @@ describe('flattenRichOutput', () => {
   });
 
   it('keeps cell content inside its cell', () => {
-    const out = flattenRichOutput(
+    const out = flattenForDelivery(
       ['```datatable', JSON.stringify({ columns: [{ key: 'a', label: 'A' }], rows: [{ a: 'x | y\nz' }] }), '```'].join(
         '\n',
       ),
@@ -50,7 +50,7 @@ describe('flattenRichOutput', () => {
   });
 
   it('renders chart data as the table it was built from', () => {
-    const out = flattenRichOutput(
+    const out = flattenForDelivery(
       [
         '```chart',
         JSON.stringify({
@@ -69,12 +69,12 @@ describe('flattenRichOutput', () => {
   });
 
   it('replaces undrawable blocks with a note instead of dropping them', () => {
-    expect(flattenRichOutput('```mermaid\ngraph TD; A-->B;\n```')).toContain('图示无法在邮件中显示');
-    expect(flattenRichOutput('```html-preview\n<h1>hi</h1>\n```')).toContain('网页预览无法在邮件中显示');
+    expect(flattenForDelivery('```mermaid\ngraph TD; A-->B;\n```')).toContain('图示无法在邮件中显示');
+    expect(flattenForDelivery('```html-preview\n<h1>hi</h1>\n```')).toContain('网页预览无法在邮件中显示');
   });
 
   it('lists mission artifacts by name and size', () => {
-    const out = flattenRichOutput(
+    const out = flattenForDelivery(
       [
         '```mission-artifacts',
         JSON.stringify([{ id: 1, run_id: 'r', path: '报告.pdf', size_bytes: 2048 }]),
@@ -89,23 +89,23 @@ describe('flattenRichOutput', () => {
   it('drops a datatable that was cut off mid-stream', () => {
     // An interrupted turn leaves an open fence; there are no rows to show and
     // announcing a table that never arrived would be worse than silence.
-    expect(flattenRichOutput('结果如下\n\n```datatable\n{"columns":')).toBe('结果如下');
+    expect(flattenForDelivery('结果如下\n\n```datatable\n{"columns":')).toBe('结果如下');
   });
 
   it('leaves ordinary Markdown alone', () => {
     const md = '## 标题\n\n- 一\n- 二\n\n| a | b |\n| --- | --- |\n| 1 | 2 |';
-    expect(flattenRichOutput(md)).toBe(md);
+    expect(flattenForDelivery(md)).toBe(md);
   });
 
   it('is empty for an empty summary', () => {
-    expect(flattenRichOutput('')).toBe('');
-    expect(flattenRichOutput('   \n ')).toBe('');
+    expect(flattenForDelivery('')).toBe('');
+    expect(flattenForDelivery('   \n ')).toBe('');
   });
 });
 
 describe('renderNotificationEmail', () => {
   it('renders Markdown as HTML rather than as text', () => {
-    const html = renderNotificationEmail({ heading: '✅ 每日选题', body: flattenRichOutput(datatable) });
+    const html = renderNotificationEmail({ heading: '✅ 每日选题', body: flattenForDelivery(datatable) });
 
     expect(html).toContain('<table>');
     expect(html).toContain('<th>标题</th>');
