@@ -1,3 +1,4 @@
+import { BrandText as Text } from '../../src/ui/brand-text.android';
 /**
  * Settings on Android — the Settings modal's root as a Material 3 form (iOS:
  * ./index.tsx, SwiftUI; both read src/settings/use-settings.ts):
@@ -11,7 +12,7 @@
 
 import React from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { Box, ListItem, Text } from '@expo/ui/jetpack-compose';
+import { Box, ListItem } from '@expo/ui/jetpack-compose';
 import { background, clip, fillMaxWidth, Shapes, size } from '@expo/ui/jetpack-compose/modifiers';
 import { saveAccountLocale } from '../../src/api/auth';
 import type { LangPref, ThemePref } from '../../src/store/prefs';

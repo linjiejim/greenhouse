@@ -50,16 +50,16 @@ export interface ThemeDef {
 }
 
 const BRAND_PRIMARY: ThemeDef['primary'] = {
-  50: '244 248 241', // wash #F4F8F1
-  100: '238 245 234', // wash2 #EEF5EA
-  200: '221 235 213',
-  300: '199 217 216', // sage #C7D9D8
-  400: '140 198 63', // lime #8CC63F
-  500: '46 139 61', // green #2E8B3D
-  600: '39 122 53', // accessible brand action green
-  700: '31 107 52', // green-d #1F6B34
-  800: '24 85 42',
-  900: '18 63 32',
+  50: '244 247 240', // wash #F4F7F0
+  100: '234 242 232', // wash2 #EAF2E8
+  200: '212 229 216',
+  300: '177 210 191', // pale sage #B1D2BF
+  400: '116 172 145', // sage #74AC91
+  500: '53 133 102', // forest #358566
+  600: '42 110 86', // accessible brand action green
+  700: '35 93 77', // Haven #235D4D
+  800: '25 70 54',
+  900: '18 52 39',
 };
 
 export const THEMES: ThemeDef[] = [

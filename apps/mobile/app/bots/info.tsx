@@ -1,3 +1,4 @@
+import { brandFont as font } from '../../src/ui/brand-font';
 /**
  * `/bots/info?c=` — everything about a conversation that is not the talk
  * itself (spec docs/specs/20261008-mobile-bots.md §2.5.7). A SwiftUI Form,
@@ -28,7 +29,6 @@ import {
   accessibilityHidden,
   accessibilityLabel,
   disabled,
-  font,
   foregroundStyle,
   lineLimit,
   pickerStyle,

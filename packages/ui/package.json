@@ -117,7 +117,13 @@
       "types": "./src/lib/wiki-diff.ts"
     },
     "./styles/tokens.css": "./src/styles/tokens.css",
-    "./styles/components.css": "./src/styles/components.css"
+    "./styles/components.css": "./src/styles/components.css",
+    "./components/brand": {
+      "import": "./src/components/brand/greenhouse-mark.tsx",
+      "types": "./src/components/brand/greenhouse-mark.tsx"
+    },
+    "./styles/brand.css": "./src/styles/brand.css",
+    "./styles/fonts.css": "./src/styles/fonts.css"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

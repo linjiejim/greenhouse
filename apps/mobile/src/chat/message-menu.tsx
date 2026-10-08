@@ -1,3 +1,4 @@
+import { brandFont as font } from '../ui/brand-font';
 /**
  * MessageMenu — the long-press context menu of an assistant reply, with a
  * *bounded* lifted preview.
@@ -21,7 +22,7 @@
 import React, { useMemo } from 'react';
 import { Platform, View, useWindowDimensions } from 'react-native';
 import { Button, ContextMenu, Host, RNHostView, Section, Text, VStack } from '@expo/ui/swift-ui';
-import { font, frame, lineLimit, padding } from '@expo/ui/swift-ui/modifiers';
+import { frame, lineLimit, padding } from '@expo/ui/swift-ui/modifiers';
 import { useTheme } from '../theme';
 import { sfSymbol } from '../ui/core';
 import { NativeMenu, type MenuItem } from '../ui/menu';

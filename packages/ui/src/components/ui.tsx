@@ -806,7 +806,7 @@ export function SkeletonRow({ cols = 4 }: { cols?: number }) {
     <tr>
       {Array.from({ length: cols }).map((_, i) => (
         <td key={i} className="px-3 py-3">
-          <Skeleton className={`h-4 ${i === 0 ? 'w-32' : 'w-20'}`} />
+          <Skeleton className={`h-4 w-full ${i === 0 ? 'max-w-32' : 'max-w-20'}`} />
         </td>
       ))}
     </tr>

@@ -1,17 +1,17 @@
 /**
- * Design tokens — iOS system colors + the Greenhouse Teal accent.
+ * Design tokens — iOS system colors + the Greenhouse Haven green accent.
  *
  * The app follows the iOS Human Interface Guidelines: surfaces, text,
  * separators and fills are the *system semantic colors* (on iOS they are
  * `PlatformColor`s, so they track light/dark, Increased Contrast and every iOS
- * release exactly), and brand identity comes from a single tint — Teal — used
+ * release exactly), and brand identity comes from a single tint — Haven green — used
  * for interactive elements, selection and the brand mascot. Never hard-code a
  * hex for a surface or text: pick the semantic token.
  *
  * Two views of the same palette:
  *  - `colors` — what views and text use. iOS: PlatformColor / DynamicColorIOS
  *    objects (opaque `ColorValue`s — never string-manipulate them). Android:
- *    the Material 3 palette seeded from the Teal (./theme-m3.android.ts — the
+ *    the Material 3 palette seeded from the Haven green (./theme-m3.android.ts — the
  *    same one Compose views are themed with); web: the hex mirror.
  *  - `hex` — plain strings for the few places that need a real color string
  *    (react-native-svg drawing, alpha math, Swift widget assets). Mirrors the
@@ -43,19 +43,19 @@ import { materialPalette } from './theme-m3';
 
 /* ------------------------------ hex mirrors ------------------------------ */
 
-/** Brand Teal (web --primary-600 light / a brighter teal for dark, iOS-style). */
-const TEAL_LIGHT = '#0D9488';
-const TEAL_DARK = '#2DD4BF';
+/** Haven forest green in light mode and pale sage in dark mode. */
+const BRAND_LIGHT = '#235D4D';
+const BRAND_DARK = '#B1D2BF';
 
 const lightHex = {
   // ── Brand ──
-  accent: TEAL_LIGHT,
+  accent: BRAND_LIGHT,
   /** Text/icons on a filled accent surface. */
   onAccent: '#FFFFFF',
   /** Tinted fill behind accent content (selected rows, AI avatar, chips). */
-  accentFill: 'rgba(13,148,136,0.12)',
+  accentFill: 'rgba(35,93,77,0.12)',
   /** Accent-colored text that must stay readable on `accentFill`. */
-  accentText: '#0F766E',
+  accentText: '#235D4D',
   /**
    * Glyphs / text on a filled *non-accent* color (a system-color icon tile, a
    * gray avatar, a project's color) — white in both schemes, like the icons
@@ -77,7 +77,7 @@ const lightHex = {
   tertiaryLabel: 'rgba(60,60,67,0.3)',
   quaternaryLabel: 'rgba(60,60,67,0.18)',
   placeholder: 'rgba(60,60,67,0.3)',
-  link: TEAL_LIGHT,
+  link: BRAND_LIGHT,
 
   // ── Separators / fills ──
   separator: 'rgba(60,60,67,0.29)',
@@ -123,10 +123,10 @@ const lightHex = {
 export type HexPalette = typeof lightHex;
 
 const darkHex: HexPalette = {
-  accent: TEAL_DARK,
-  onAccent: '#04201D',
-  accentFill: 'rgba(45,212,191,0.16)',
-  accentText: '#5EEAD4',
+  accent: BRAND_DARK,
+  onAccent: '#123427',
+  accentFill: 'rgba(177,210,191,0.16)',
+  accentText: '#D7EFDD',
   onTint: '#FFFFFF',
 
   background: '#000000',
@@ -141,7 +141,7 @@ const darkHex: HexPalette = {
   tertiaryLabel: 'rgba(235,235,245,0.3)',
   quaternaryLabel: 'rgba(235,235,245,0.16)',
   placeholder: 'rgba(235,235,245,0.3)',
-  link: TEAL_DARK,
+  link: BRAND_DARK,
 
   separator: 'rgba(84,84,88,0.6)',
   opaqueSeparator: '#38383A',
@@ -180,7 +180,7 @@ const darkHex: HexPalette = {
 /* ---------------------------- Android palette ---------------------------- */
 
 /** Brand seed of the Material 3 palette on Android (src/theme-m3.android.ts). */
-export const SEED = TEAL_LIGHT;
+export const SEED = BRAND_LIGHT;
 
 const LIGHT = Platform.OS === 'android' ? materialPalette(lightHex, 'light', SEED) : lightHex;
 const DARK = Platform.OS === 'android' ? materialPalette(darkHex, 'dark', SEED) : darkHex;
@@ -262,9 +262,7 @@ export function useApplyAppearance(): void {
  *   const styles = useStyles(c);
  * Sheets are created once per palette object and cached.
  */
-export function makeStyles<T extends StyleSheet.NamedStyles<T>>(
-  fn: (c: ThemeColors) => T,
-): (c: ThemeColors) => T {
+export function makeStyles<T extends StyleSheet.NamedStyles<T>>(fn: (c: ThemeColors) => T): (c: ThemeColors) => T {
   const cache = new Map<ThemeColors, T>();
   return (c: ThemeColors): T => {
     let s = cache.get(c);
@@ -280,8 +278,7 @@ export function makeStyles<T extends StyleSheet.NamedStyles<T>>(
 
 /**
  * iOS text styles (HIG, default "Large" content size; Android: the Material
- * type scale below). SF Pro / Roboto are the system fonts, so no fontFamily is
- * set; RN scales these with Dynamic Type / font scale. Pick the
+ * type scale below). Nunito is bundled locally; RN still scales these with Dynamic Type / font scale. Pick the
  * style by *role* (headline for row titles, footnote for meta…) and adjust
  * weight with `weight.*` only for emphasis — never invent sizes.
  */
@@ -301,8 +298,8 @@ const iosTypo = {
 
 /**
  * Android: the Material 3 type scale under the same role names (bodyLarge 16 /
- * 24, titleMedium 16 medium, bodyMedium 14, bodySmall 12…) — Roboto at iOS
- * point sizes reads a size too large. Weights stay as the roles expect.
+ * 24, titleMedium 16 medium, bodyMedium 14, bodySmall 12…). Nunito uses the
+ * platform-specific scale rather than reusing iOS point sizes. Weights stay as the roles expect.
  */
 const androidTypo: { [K in keyof typeof iosTypo]: TextStyle } = {
   largeTitle: { fontSize: 32, lineHeight: 40, fontWeight: '700' },
@@ -318,7 +315,12 @@ const androidTypo: { [K in keyof typeof iosTypo]: TextStyle } = {
   caption2: { fontSize: 11, lineHeight: 16, fontWeight: '400' },
 };
 
-export const typo = (Platform.OS === 'android' ? androidTypo : iosTypo) as typeof iosTypo;
+export const typo = Object.fromEntries(
+  Object.entries(Platform.OS === 'android' ? androidTypo : iosTypo).map(([role, style]) => [
+    role,
+    { ...style, fontFamily: 'Nunito' },
+  ]),
+) as { [K in keyof typeof iosTypo]: (typeof iosTypo)[K] & { fontFamily: string } };
 
 /** The only font weights in use — name them so call sites read intent. */
 export const weight = {
@@ -363,7 +365,10 @@ export function alpha(color: string, a: number): string {
     rgb = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
     if (h.length === 8) base = parseInt(h.slice(6, 8), 16) / 255;
   } else {
-    const parts = /^rgba?\(([^)]+)\)$/i.exec(src)?.[1].split(',').map((p) => parseFloat(p));
+    const parts = /^rgba?\(([^)]+)\)$/i
+      .exec(src)?.[1]
+      .split(',')
+      .map((p) => parseFloat(p));
     if (!parts || parts.length < 3) return color;
     rgb = parts.slice(0, 3);
     if (parts.length > 3) base = parts[3];

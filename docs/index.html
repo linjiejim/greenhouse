@@ -7,7 +7,7 @@
 <meta name="description" content="An open-source AI assistant for your whole team, on your own server. It knows your documents, projects and data, and the same tools work in team chat, in your apps, and in Claude or Cursor." />
 <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
 <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-<meta name="theme-color" content="#0d9488" />
+<meta name="theme-color" content="#235d4d" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://greenhouse.linjiejim.com/" />
 <meta property="og:title" content="Greenhouse — an organization's shared AI brain" />
@@ -20,28 +20,28 @@
 <meta name="twitter:description" content="Open-source, AI-native agent workbench. One tool layer for your team, your app, and any MCP client." />
 <link rel="stylesheet" href="./tailwind.css" />
 <style>
-  @font-face{ font-family:'Inter'; font-style:normal; font-weight:400 800; font-display:swap; src:url('./fonts/inter-var.woff2') format('woff2'); }
+  @font-face{ font-family:'Nunito'; font-style:normal; font-weight:200 1000; font-display:swap; src:url('./fonts/nunito-variable.woff2') format('woff2'); }
   @font-face{ font-family:'JetBrains Mono'; font-style:normal; font-weight:400 500; font-display:swap; src:url('./fonts/jbmono-var.woff2') format('woff2'); }
   body{ -webkit-font-smoothing:antialiased; }
   .grid-bg{
     background-image:
-      linear-gradient(to right, rgba(13,148,136,.06) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(13,148,136,.06) 1px, transparent 1px);
+      linear-gradient(to right, rgba(35,93,77,.06) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(35,93,77,.06) 1px, transparent 1px);
     background-size: 48px 48px;
     -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 80%);
     mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 80%);
   }
-  .glow{ background: radial-gradient(60% 60% at 50% 0%, rgba(20,184,166,.12), transparent 70%); }
+  .glow{ background: radial-gradient(60% 60% at 50% 0%, rgba(182,202,104,.12), transparent 70%); }
   .card-shadow{ box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 12px 32px -12px rgba(15,23,42,.10); }
   .soft-shadow{ box-shadow: 0 1px 2px rgba(15,23,42,.04); }
   .shot-shadow{ box-shadow: 0 1px 2px rgba(15,23,42,.05), 0 24px 48px -20px rgba(15,23,42,.22); }
   /* Product tour: the active tab is styled here so the JS only toggles aria-selected */
   .tour-tab{ border-color: transparent; }
-  .tour-tab[aria-selected="true"]{ border-color:#99f6e4; background:#f0fdfa; }
-  .tour-tab[aria-selected="true"] .tour-tab-title{ color:#0f766e; }
+  .tour-tab[aria-selected="true"]{ border-color:#b1d2bf; background:#f4f7f0; }
+  .tour-tab[aria-selected="true"] .tour-tab-title{ color:#235d4d; }
   .tour-panel[hidden]{ display:none; }
   /* i18n: Chinese typography — CJK-friendly font stack, and drop negative tracking that cramps CJK headings */
-  html[lang^="zh"] body{ font-family:'Inter','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif; }
+  html[lang^="zh"] body{ font-family:'Nunito','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif; }
   html[lang^="zh"] h1,html[lang^="zh"] h2{ letter-spacing:normal; }
 </style>
 </head>
@@ -51,14 +51,7 @@
 <header class="sticky top-0 z-40 border-b border-edge/70 bg-white/80 backdrop-blur">
   <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
     <a href="#top" class="flex items-center gap-2.5">
-      <svg viewBox="9 7 112 112" class="h-7 w-7 text-brand-600" aria-hidden="true">
-        <g fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/><path d="M22 56 L108 56"/>
-          <path d="M44 56 L44 104"/><path d="M86 56 L86 104"/><path d="M65 104 L65 84"/>
-          <path d="M65 84 C69 78 74 75 76 65 C72 69 67 77 65 84 Z"/>
-          <path d="M65 84 C61 78 56 75 54 65 C58 69 63 77 65 84 Z"/>
-        </g>
-      </svg>
+      <img src="./favicon.svg" class="h-7 w-7 text-brand-600" alt="" />
       <span class="text-[17px] font-bold tracking-tight">Greenhouse</span>
     </a>
     <nav class="hidden items-center gap-7 text-sm font-medium text-ink-soft md:flex">
@@ -745,14 +738,7 @@ docker compose exec api pnpm admin:create
 <section class="relative overflow-hidden border-t border-edge">
   <div class="absolute inset-0 grid-bg opacity-70"></div>
   <div class="relative mx-auto max-w-3xl px-6 py-24 text-center">
-    <svg viewBox="9 7 112 112" class="mx-auto mb-6 h-12 w-12 text-brand-600" aria-hidden="true">
-      <g fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/><path d="M22 56 L108 56"/>
-        <path d="M44 56 L44 104"/><path d="M86 56 L86 104"/><path d="M65 104 L65 84"/>
-        <path d="M65 84 C69 78 74 75 76 65 C72 69 67 77 65 84 Z"/>
-        <path d="M65 84 C61 78 56 75 54 65 C58 69 63 77 65 84 Z"/>
-      </g>
-    </svg>
+    <img src="./favicon.svg" class="mx-auto mb-6 h-12 w-12 text-brand-600" alt="" />
     <h2 class="text-4xl font-extrabold tracking-tight text-ink sm:text-5xl" data-i18n="cta.h2">Clone it. Write your first tool.</h2>
     <p class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-ink-soft" data-i18n="cta.p">
       Greenhouse is an answer to what "the agent at the center of an organization" actually looks like — and an invitation.
@@ -773,7 +759,7 @@ docker compose exec api pnpm admin:create
 <footer class="border-t border-edge bg-white">
   <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-10 sm:flex-row">
     <div class="flex items-center gap-2.5">
-      <svg viewBox="9 7 112 112" class="h-6 w-6 text-brand-600" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/><path d="M22 56 L108 56"/><path d="M44 56 L44 104"/><path d="M86 56 L86 104"/></g></svg>
+      <img src="./favicon.svg" class="h-6 w-6 text-brand-600" alt="" />
       <span class="text-sm font-semibold text-ink">Greenhouse</span>
       <span class="text-sm text-ink-faint" data-i18n="footer.tagline">— an organization's shared AI brain</span>
     </div>

@@ -162,9 +162,9 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
         onSubmit={handleSubmit}
         className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-edge bg-surface-raised p-6 shadow-xl shadow-primary-900/10 md:p-8 dark:shadow-black/30"
       >
-        <div className="brand-gradient absolute inset-x-0 top-0 h-1" aria-hidden="true" />
+        <div className="brand-rule absolute inset-x-0 top-0 h-1" aria-hidden="true" />
         <div className="text-center mb-6">
-          <div className="mx-auto flex w-fit justify-center rounded-2xl bg-logo-safe p-2">
+          <div className="mx-auto flex w-fit justify-center p-2">
             <AppLogo size="xl" logoOnly />
           </div>
           <h1 className="font-display text-xl font-bold text-fg mt-3">{t('login.title')}</h1>

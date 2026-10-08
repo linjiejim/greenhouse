@@ -34,7 +34,8 @@
 
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
-import { AppState, View } from 'react-native';
+import { AppState, Text, View } from 'react-native';
+import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -44,14 +45,18 @@ import { useAuth } from '../src/store/auth';
 import { usePrefs } from '../src/store/prefs';
 import { setOnUnauthorized } from '../src/api/client';
 import { clearWidgetSnapshot, refreshWidgetSnapshot } from '../src/lib/widget-snapshot';
-import { useApplyAppearance, useTheme } from '../src/theme';
-import { Spinner } from '../src/ui/core';
+import { typo, useApplyAppearance, useTheme } from '../src/theme';
+import { GreenhouseMark } from '../src/ui/logo';
 import { DialogHost } from '../src/ui/dialogs';
 import { MenuHost } from '../src/ui/menu';
 import { ToastHost } from '../src/ui/toast';
 import { useT } from '../src/lib/i18n';
 import { RealtimeBridge } from '../src/realtime/realtime-bridge';
 import { detailScreen, modalScreen, pageScreen, sheetScreen, stackDefaults } from '../src/ui/nav';
+import nunitoRegular from '../assets/fonts/Nunito-Regular.ttf';
+import nunitoMedium from '../assets/fonts/Nunito-Medium.ttf';
+import nunitoSemiBold from '../assets/fonts/Nunito-SemiBold.ttf';
+import nunitoBold from '../assets/fonts/Nunito-Bold.ttf';
 
 export const unstable_settings = { initialRouteName: '(drawer)' };
 
@@ -59,6 +64,12 @@ export const unstable_settings = { initialRouteName: '(drawer)' };
 const SIGNED_OUT_ROUTES = new Set(['login', 'sheets/stations']);
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    Nunito: nunitoRegular,
+    'Nunito-Medium': nunitoMedium,
+    'Nunito-SemiBold': nunitoSemiBold,
+    'Nunito-Bold': nunitoBold,
+  });
   useApplyAppearance();
   const { colors: c, hex } = useTheme();
   const t = useT();
@@ -79,7 +90,7 @@ export default function RootLayout() {
 
   // Redirect based on auth state once bootstrap resolves.
   useEffect(() => {
-    if (loading) return;
+    if (loading || (!fontsLoaded && !fontError)) return;
     const inAuthGroup = segments[0] === 'login';
     if (!user && !SIGNED_OUT_ROUTES.has(segments.join('/'))) {
       // drop pages / sheets stacked over home first, or they'd stay mounted
@@ -89,7 +100,7 @@ export default function RootLayout() {
     } else if (user && inAuthGroup) {
       router.replace('/');
     }
-  }, [loading, user, segments, router]);
+  }, [loading, fontsLoaded, fontError, user, segments, router]);
 
   // Home-screen widget snapshot: publish after login resolves and on every
   // background transition; clear on logout so the widget degrades to launcher.
@@ -113,9 +124,10 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <StatusBar style="auto" />
           <RealtimeBridge />
-          {loading ? (
+          {loading || (!fontsLoaded && !fontError) ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.background }}>
-              <Spinner size="large" />
+              <GreenhouseMark size={96} animate />
+              <Text style={{ ...typo.title2, color: c.label, marginTop: 16 }}>Greenhouse</Text>
             </View>
           ) : (
             <Stack screenOptions={{ ...stackDefaults(c, hex), headerShown: false }}>

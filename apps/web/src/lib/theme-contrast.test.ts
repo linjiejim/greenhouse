@@ -18,7 +18,9 @@ import { getThemeDefinition } from './theme.js';
  * what matters is whether a user can tell selected from unselected where they do.
  */
 
-const CSS = readFileSync(new URL('../app.css', import.meta.url), 'utf8');
+const CSS =
+  readFileSync(new URL('../../../../packages/ui/src/styles/tokens.css', import.meta.url), 'utf8') +
+  readFileSync(new URL('../app.css', import.meta.url), 'utf8');
 
 /** Pull one `--name: value;` declaration out of a specific rule block. */
 function readBlock(selector: string): Map<string, string> {

@@ -132,6 +132,11 @@ what exists." These rules are as binding as the "add" rules:
   (+ `chat-knowledge.gif` / `.mp4`) that the README and `docs/index.html` embed. It exits
   non-zero on any console error or failed `/api` request. Re-run it after visible UI changes
   so the docs stay truthful — never hand-edit or mock the captures. Needs `ffmpeg` + `cwebp`.
+- **Brand identity**: Haven (negative-space greenhouse), local Nunito, shared rounded UI tokens.
+  `packages/ui/src/assets/greenhouse-mark.svg` is the one geometry source; run
+  `python3 scripts/build-brand-assets.py` for all web/browser/desktop/mobile icons and font exports.
+  Use shared `GreenhouseMark` (web: `AppLogo`, which preserves workspace overrides).
+  See [logos/README.md](logos/README.md) for palette, motion, regeneration and native rebuild limits.
 - **Plant avatars (visual review)**: every Agent / Bot avatar is drawn by one SVG-string builder in
   `packages/ui/src/components/plant-avatar/` — flat geometric plants (circles, arcs, straight
   lines; no gradients, highlights or keyline) with a small ink face; design source

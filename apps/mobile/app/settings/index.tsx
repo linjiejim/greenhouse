@@ -1,3 +1,4 @@
+import { brandFont as font } from '../../src/ui/brand-font';
 /**
  * Settings — the root of the Settings modal (page sheet with its own native
  * stack, large title, ✓ Done). A real SwiftUI Form, iOS Settings–style:
@@ -20,12 +21,22 @@
 
 import React, { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { Button, Circle, HStack, LabeledContent, Picker, ProgressView, Section, Text, VStack, ZStack } from '@expo/ui/swift-ui';
+import {
+  Button,
+  Circle,
+  HStack,
+  LabeledContent,
+  Picker,
+  ProgressView,
+  Section,
+  Text,
+  VStack,
+  ZStack,
+} from '@expo/ui/swift-ui';
 import {
   accessibilityElement,
   accessibilityHidden,
   accessibilityLabel,
-  font,
   foregroundStyle,
   frame,
   lineLimit,
@@ -73,7 +84,9 @@ export default function Settings() {
           {/* one VoiceOver element: "name, email" — the initial avatar is decoration */}
           <HStack spacing={14} modifiers={[accessibilityElement('combine')]}>
             <ZStack modifiers={[accessibilityHidden()]}>
-              <Circle modifiers={[foregroundStyle(hex.accent), frame({ width: 56, height: 56 }), accessibilityHidden()]} />
+              <Circle
+                modifiers={[foregroundStyle(hex.accent), frame({ width: 56, height: 56 }), accessibilityHidden()]}
+              />
               <Text
                 modifiers={[
                   font({ textStyle: 'title2', weight: 'semibold' }),

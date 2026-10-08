@@ -1,3 +1,4 @@
+import { BrandText as Text } from './brand-text.android';
 /**
  * Native menus on Android — Material 3 dropdown menus (Jetpack Compose), with
  * the same API as ./menu.tsx (iOS system menus).
@@ -23,7 +24,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { create } from 'zustand';
-import { Box, DropdownMenu, DropdownMenuItem, HorizontalDivider, Icon, Text } from '@expo/ui/jetpack-compose';
+import { Box, DropdownMenu, DropdownMenuItem, HorizontalDivider, Icon } from '@expo/ui/jetpack-compose';
 import { size } from '@expo/ui/jetpack-compose/modifiers';
 import { selectionTick, tapMedium } from './haptics';
 import { M3Host, useM3 } from './m3';
