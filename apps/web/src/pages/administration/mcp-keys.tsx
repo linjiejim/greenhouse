@@ -59,9 +59,9 @@ function userLabel(u: InternalUser): string {
 }
 
 export function McpKeysPanel() {
-  const activeExtensionIds = useExtensionsStore((state) => state.extensions.map((extension) => extension.id));
+  const extensions = useExtensionsStore((state) => state.extensions);
   // Core groups plus those of the extensions this deployment runs.
-  const groupIds = useMemo(() => mcpGroupIds(activeExtensionIds), [activeExtensionIds]);
+  const groupIds = useMemo(() => mcpGroupIds(extensions.map((extension) => extension.id)), [extensions]);
   const t = useT();
   const [clients, setClients] = useState<OAuthClient[]>([]);
   const [users, setUsers] = useState<InternalUser[]>([]);
