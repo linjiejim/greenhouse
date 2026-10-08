@@ -15,6 +15,7 @@ import { useT } from '../../lib/i18n';
 import { makeStyles, radius, space, squircle, typo, useTheme } from '../../theme';
 import { NativeButton } from '../../ui/button';
 import { Icon } from '../../ui/core';
+import { useFontScaleKey } from '../../ui/font-scale';
 import { useBots } from '../store';
 import { HighlightWash, tr } from './card-frame';
 import { CARD_ICON, cardKind, settledReceipt, statusBadge } from './decision';
@@ -41,8 +42,10 @@ export function Receipt({
   );
   const tone = statusBadge(request).tone;
   const color = tone === 'green' ? c.green : tone === 'red' ? c.red : c.secondaryLabel;
+  // keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts)
+  const fontKey = useFontScaleKey();
   return (
-    <View style={styles.wrap}>
+    <View key={fontKey} style={styles.wrap}>
       <HighlightWash highlighted={highlighted} radius={radius.lg} />
       <Pressable
         onPress={onExpand}

@@ -12,6 +12,7 @@ import { AiMessage } from '../../../chat/message';
 import { useT, type TranslationKey } from '../../../lib/i18n';
 import type { BotEvent, BotMessage, BotView } from '../../../shared/bots';
 import { makeStyles, space, typo, useTheme } from '../../../theme';
+import { useFontScaleKey } from '../../../ui/font-scale';
 import { Badge, type BadgeTone } from '../../../ui/list';
 import { fromBotMessage } from '../adapters';
 import { SpeakerLine } from './speaker-line';
@@ -47,10 +48,12 @@ export const TaskReport = memo(function TaskReport({
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  // keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts)
+  const fontKey = useFontScaleKey();
   const t = useT();
   const status = STATUS[event.status] ?? STATUS.failed;
   return (
-    <View>
+    <View key={fontKey}>
       <SpeakerLine bot={bot} loaded={loaded} onPress={onOpenProfile} />
       <View style={styles.meta}>
         <Text numberOfLines={2} style={styles.title}>

@@ -39,6 +39,7 @@ import { useT } from '../../lib/i18n';
 import { usePrefs } from '../../store/prefs';
 import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
 import { Icon } from '../../ui/core';
+import { useFontScaleKey } from '../../ui/font-scale';
 import { alertError } from '../../ui/dialogs';
 import { DRAWER_W } from '../../ui/drawer';
 import { NativeMenu, type MenuItem } from '../../ui/menu';
@@ -70,6 +71,8 @@ export function BotsSection({ query, onClose }: { query: string; onClose(): void
 function Section({ query, onClose }: { query: string; onClose(): void }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  // keyed on the text size: the head and footer lines re-measure when Dynamic Type changes (src/ui/font-scale.ts)
+  const fontKey = useFontScaleKey();
   const t = useT();
   const router = useRouter();
   const copy = useRowCopy();
@@ -224,7 +227,7 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
 
   return (
     <View style={styles.section}>
-      <View style={styles.head}>
+      <View key={`head:${fontKey}`} style={styles.head}>
         <Text accessibilityRole="header" style={styles.headTitle}>
           {t('bots.nav.section')}
         </Text>
@@ -257,6 +260,7 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
       {rows.moreCount > 0 ? (
         <Animated.View layout={ROW_LAYOUT}>
           <Pressable
+            key={fontKey}
             onPress={expand}
             accessibilityRole="button"
             style={({ pressed }) => [styles.textRow, pressed && { backgroundColor: c.fill }]}
@@ -268,6 +272,7 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
       {rows.archived.length > 0 ? (
         <Animated.View layout={ROW_LAYOUT}>
           <Pressable
+            key={fontKey}
             onPress={openArchived}
             accessibilityRole="button"
             style={({ pressed }) => [styles.textRow, pressed && { backgroundColor: c.fill }]}

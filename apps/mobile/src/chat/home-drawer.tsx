@@ -46,6 +46,7 @@ import { parseMs } from '../lib/format';
 import { useT, type TranslationKey } from '../lib/i18n';
 import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon, type IconName, Touchable } from '../ui/core';
+import { useFontScaleKey } from '../ui/font-scale';
 import { InitialAvatar } from '../ui/avatar';
 import { alertError, confirmAction } from '../ui/dialogs';
 import { DRAWER_W } from '../ui/drawer';
@@ -89,6 +90,8 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
   const insets = useSafeAreaInsets();
   const user = useAuth((s) => s.user);
   const station = useActiveStation();
+  // Text containers are keyed on the text size so they re-measure when Dynamic Type changes (src/ui/font-scale.ts).
+  const fontKey = useFontScaleKey();
   // `c` = a Bots thread is on screen (no history row is current then); `profile` = a
   // new chat with one Bot ("Ask Dandy in a New Chat") — not the plain new chat either.
   const {
@@ -220,6 +223,9 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
         <View style={styles.search}>
           <Icon name="search" size={16} color={c.secondaryLabel} />
           <TextInput
+            key={fontKey}
+            // a fixed-height field, like the system search bar: its text stops growing at 1.3×
+            maxFontSizeMultiplier={1.3}
             value={search}
             onChangeText={setSearch}
             placeholder={t('drawer.search')}
@@ -250,10 +256,11 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
           if (!done) void loadMore();
         }}
         onEndReachedThreshold={0.4}
+        extraData={fontKey}
         ListHeaderComponent={
           <>
             <BotsSection query={search} onClose={close} />
-            <View style={styles.navBlock}>
+            <View key={fontKey} style={styles.navBlock}>
               <NavRow icon="books" label={t('drawer.knowledge')} onPress={() => go('/knowledge')} />
               <NavRow icon="folder" label={t('drawer.projects')} onPress={() => go('/projects')} />
               <View style={styles.historyHead}>
@@ -279,13 +286,14 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
           </>
         }
         renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHead}>
+          <View key={fontKey} style={styles.sectionHead}>
             <Text style={styles.sectionText}>{section.title}</Text>
           </View>
         )}
         renderItem={({ item }) => {
           const row = (
             <Pressable
+              key={fontKey}
               onPress={() => openConversation(item)}
               accessibilityRole="button"
               accessibilityLabel={item.title || t('chat.newConversation')}
@@ -343,7 +351,7 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
         accessibilityLabel={t('drawer.settings')}
       >
         <InitialAvatar name={nickname} size={34} />
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <View key={fontKey} style={{ flex: 1, minWidth: 0 }}>
           <Text numberOfLines={1} style={styles.accountName}>
             {nickname}
           </Text>

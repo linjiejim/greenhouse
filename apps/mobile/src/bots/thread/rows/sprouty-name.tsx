@@ -14,6 +14,7 @@ import { loadPref, savePref } from '../../../api/token-storage';
 import { useT } from '../../../lib/i18n';
 import { isSproutyBot, SPROUTY_BOT_TEMPLATE, type BotView } from '../../../shared/bots';
 import { makeStyles, radius, space, squircle, typo, useTheme } from '../../../theme';
+import { useFontScaleKey } from '../../../ui/font-scale';
 import { NativeButton } from '../../../ui/button';
 import { BotAvatar } from '../../ui/bot-avatar';
 
@@ -39,6 +40,8 @@ export const SproutyNameHint = memo(function SproutyNameHint({
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  // keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts)
+  const fontKey = useFontScaleKey();
   const t = useT();
   const [shown, setShown] = useState<boolean | null>(null);
   useEffect(() => {
@@ -56,7 +59,7 @@ export const SproutyNameHint = memo(function SproutyNameHint({
     void savePref(prefKey(bot.id), '1');
   };
   return (
-    <View style={styles.card}>
+    <View key={fontKey} style={styles.card}>
       <View style={styles.head}>
         <BotAvatar bot={bot} size={28} animate={false} />
         <Text style={styles.text}>{t('bots.thread.nameHint', { name: bot.name })}</Text>

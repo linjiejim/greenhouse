@@ -8,11 +8,14 @@ import React, { memo } from 'react';
 import { Text, View } from 'react-native';
 import { useLocale, useT } from '../../../lib/i18n';
 import { makeStyles, space, typo, useTheme, weight } from '../../../theme';
+import { useFontScaleKey } from '../../../ui/font-scale';
 import { separatorDay } from '../thread-rows';
 
 export const TimeSeparator = memo(function TimeSeparator({ at }: { at: string }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  // keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts)
+  const fontKey = useFontScaleKey();
   const t = useT();
   const locale = useLocale();
   const ms = Date.parse(at);
@@ -32,7 +35,7 @@ export const TimeSeparator = memo(function TimeSeparator({ at }: { at: string })
           });
   const time = when.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
   return (
-    <View style={styles.wrap}>
+    <View key={fontKey} style={styles.wrap}>
       <Text style={styles.text}>
         <Text style={styles.day}>{day}</Text> {time}
       </Text>
