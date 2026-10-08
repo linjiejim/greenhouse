@@ -118,3 +118,5 @@ Expo SDK 57 / React Native 0.86 / React 19.2 的**原生 App：iOS 走系统组�
 - 根布局等待 auth 与字体准备期间展示一次 `GreenhouseMark animate`，约 1.3s、无需播完再进入；系统减少动态效果时静态。此为 JS 内容开屏，系统原生 launch screen 仍静态。
 - Mermaid 的普通矩形节点/时序参与者框使用 `radius.md`；WebView 从生成的 `brand-web-font.generated.ts` 内置 Nunito WOFF2，并等待字体就绪后布局。与原生文字共享字体源，不依赖额外字体网络请求。
 - 修改 app icon 或 expo-font 插件后需重新构建 native binary；OTA 无法更新系统图标/字体注册。
+
+- 登录成功后的首页跳转只由根布局 auth gate 执行；共享 `useLogin` 仅提交认证并显示失败原因，不重复 `router.replace`，避免更新已卸载的原生导航头。
