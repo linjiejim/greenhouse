@@ -125,7 +125,11 @@ export function cardSubject(r: Pick<BotRequestView, 'kind' | 'payload'>): string
   return null;
 }
 
-/** The card's headline ("{name} needs your approval"); `name` is the Bot's, already resolved. */
+/**
+ * The card's headline ("{name} needs your approval"); `name` is the Bot's, already resolved.
+ * Short in every language — it shares the card's width with the kind icon and must stay on one or
+ * two lines with a 24-character name; what the card is about (the site, the task) is its body.
+ */
 export function cardTitle(r: Pick<BotRequestView, 'kind' | 'payload'>, name: string): Copy {
   switch (cardKind(r)) {
     case 'approval':
@@ -139,7 +143,7 @@ export function cardTitle(r: Pick<BotRequestView, 'kind' | 'payload'>, name: str
     case 'login': {
       const payload = r.payload as BotLoginPayload;
       if (payload.kind === 'otp') return { key: 'bots.card.otpTitle', vars: { name } };
-      return { key: 'bots.card.loginTitle', vars: { name, host: cardSubject(r) ?? '' } };
+      return { key: 'bots.card.loginTitle', vars: { name } };
     }
     case 'handback':
       return implicitTakeover(r.payload)?.reason === 'waiting'
@@ -213,8 +217,8 @@ export function cardButtons(r: BotRequestView): CardButton[] {
   }
 }
 
-/** A button's label; `name` is the asking Bot's. */
-export function buttonLabel(r: Pick<BotRequestView, 'kind' | 'payload'>, id: CardButton['id'], name: string): Copy {
+/** A button's label — one or two words in every language (three may share a row on the card). */
+export function buttonLabel(r: Pick<BotRequestView, 'kind' | 'payload'>, id: CardButton['id']): Copy {
   const kind = cardKind(r);
   switch (id) {
     case 'always':
@@ -237,7 +241,7 @@ export function buttonLabel(r: Pick<BotRequestView, 'kind' | 'payload'>, id: Car
       return { key: deny[kind] ?? 'bots.card.deny' };
     }
     case 'approve': {
-      if (kind === 'handback') return { key: 'bots.card.handBack', vars: { name } };
+      if (kind === 'handback') return { key: 'bots.card.handBack' };
       const approve: Partial<Record<CardKind, TranslationKey>> = {
         task_start: 'bots.card.start',
         bot_create: 'bots.card.create',

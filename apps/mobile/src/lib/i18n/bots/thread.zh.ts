@@ -3,7 +3,7 @@ import type { botsThreadEn } from './thread.en';
 export const botsThreadZh: typeof botsThreadEn = {
   thread: {
     dmStart: '{name} 会记得这里聊过的事',
-    groupStart: '这是「{title}」的开始。',
+    groupStart: '群聊从这里开始',
     group: '群聊',
     askedBy: '应 {name} 之邀',
     handoff: '{from} 请 {to}：{brief}',
@@ -29,7 +29,7 @@ export const botsThreadZh: typeof botsThreadEn = {
     notFound: '找不到这个对话',
     unavailable: 'Bots 暂不可用',
     backToNewChat: '回到新对话',
-    askInChat: '在新对话里问 {name}',
+    askInChat: '新对话',
     profile: 'Bot 资料',
     info: '对话信息',
     invite: '邀请 Bot',
@@ -103,7 +103,7 @@ export const botsThreadZh: typeof botsThreadEn = {
   },
   pending: {
     sending: '发送中…',
-    delivered: '已送达 · 当前回复后处理',
+    delivered: '已送达 · 这条回复后处理',
     handleNow: '立即处理',
     next: '这一步完成后处理',
     notDelivered: '未送达',
@@ -111,6 +111,7 @@ export const botsThreadZh: typeof botsThreadEn = {
     delete: '删除',
   },
   composer: {
+    placeholder: '发消息',
     placeholderDm: '给 {name} 发消息',
     placeholderGroup: '发消息，用 @ 点名',
     mention: '点名',

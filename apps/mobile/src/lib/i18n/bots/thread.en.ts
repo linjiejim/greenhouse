@@ -3,7 +3,8 @@
 export const botsThreadEn = {
   thread: {
     dmStart: '{name} remembers what you talk about here',
-    groupStart: 'This is the beginning of {title}.',
+    /** Under the group's title (never repeats it — titles run long). */
+    groupStart: 'The start of this group',
     /** A group without a title or a known member. */
     group: 'Group',
     askedBy: 'asked by {name}',
@@ -30,7 +31,8 @@ export const botsThreadEn = {
     notFound: 'Conversation not found',
     unavailable: 'Bots aren’t available',
     backToNewChat: 'Back to New Chat',
-    askInChat: 'Ask {name} in a New Chat',
+    /** ⋯ menu: the title; its subtitle is the Bot's name. */
+    askInChat: 'New Chat',
     profile: 'Bot Profile',
     info: 'Conversation Info',
     invite: 'Invite a Bot',
@@ -108,7 +110,7 @@ export const botsThreadEn = {
   },
   pending: {
     sending: 'Sending…',
-    delivered: 'Delivered · Read after the current reply',
+    delivered: 'Delivered · after this reply',
     handleNow: 'Handle Now',
     next: 'Up next',
     notDelivered: 'Not Delivered',
@@ -116,8 +118,9 @@ export const botsThreadEn = {
     delete: 'Delete',
   },
   composer: {
+    placeholder: 'Message',
     placeholderDm: 'Message {name}',
-    placeholderGroup: 'Message — use @ to address a Bot',
+    placeholderGroup: 'Message — @ to mention',
     mention: 'Mention',
     mentionA11y: 'Mention {name}',
     inviteOther: 'Invite Another Bot…',

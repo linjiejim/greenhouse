@@ -13,7 +13,7 @@
  *    content viewer). Tap → the Bot's profile (a DM) / the conversation info
  *    (a group). One VoiceOver button: "Sprouty, Browsing github.com".
  *  - Right: a system menu — a DM: Bot Profile · Conversation Info · Invite a
- *    Bot | Ask {name} in a New Chat; a group: Conversation Info · Invite a Bot
+ *    Bot | New Chat (subtitle: the Bot's name); a group: Conversation Info · Invite a Bot
  *    · Rename Group; both end with Show › (the reply details, global —
  *    src/chat/reply-details-menu.tsx). No ✎ (a thread is not a session), no
  *    share (the server refuses to share Bots conversations), no delete.
@@ -224,8 +224,13 @@ export const ThreadHeader = memo(function ThreadHeader({
             {t('bots.thread.rename')}
           </Stack.Toolbar.MenuAction>
           <Stack.Toolbar.Menu inline hidden={group || !canAsk}>
-            <Stack.Toolbar.MenuAction icon={toolbarIcon('compose')} onPress={actions.askInChat}>
-              {t('bots.thread.askInChat', { name: ownerName ?? '' })}
+            {/* "New Chat" over the Bot's name: one short line in any language, however long the name */}
+            <Stack.Toolbar.MenuAction
+              icon={toolbarIcon('compose')}
+              subtitle={ownerName ?? undefined}
+              onPress={actions.askInChat}
+            >
+              {t('bots.thread.askInChat')}
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
           <Stack.Toolbar.Menu inline>{replyDetailsMenu(t, details, setDetail)}</Stack.Toolbar.Menu>

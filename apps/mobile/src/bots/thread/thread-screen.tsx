@@ -1145,9 +1145,7 @@ export function BotThreadScreen({
     if (card) scrollRef.current?.scrollTo({ y: Math.max(0, card.y - topPad), animated: true });
     else jumpToLatest();
   }, [cardBelow, scrollRef, topPad, jumpToLatest]);
-  const placeholder = group
-    ? t('bots.composer.placeholderGroup')
-    : t('bots.composer.placeholderDm', { name: owner?.name ?? displayTitle });
+  const placeholder = composerPlaceholder(t, group, owner?.name ?? displayTitle);
 
   return (
     <View style={styles.root}>
@@ -1313,3 +1311,14 @@ const useStyles = makeStyles((c) => ({
   },
   jumpText: { ...typo.subheadline, fontWeight: weight.semibold },
 }));
+
+/** Names longer than this leave the placeholder generic: it must fit one line beside the composer's buttons. */
+const PLACEHOLDER_NAME_MAX = 12;
+
+/** The composer's hint: "Message Sage" in a DM (plain "Message" for a long name), the @ hint in a group. */
+function composerPlaceholder(t: ReturnType<typeof useT>, group: boolean, name: string): string {
+  if (group) return t('bots.composer.placeholderGroup');
+  return [...name].length > PLACEHOLDER_NAME_MAX
+    ? t('bots.composer.placeholder')
+    : t('bots.composer.placeholderDm', { name });
+}

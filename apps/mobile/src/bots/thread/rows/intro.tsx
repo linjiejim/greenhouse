@@ -38,8 +38,10 @@ export const Intro = memo(function Intro({
     return (
       <View key={fontKey} style={styles.wrap}>
         <AvatarStack bots={members} size={40} max={5} />
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.body}>{t('bots.thread.groupStart', { title })}</Text>
+        <Text style={styles.title} numberOfLines={3}>
+          {title}
+        </Text>
+        <Text style={styles.body}>{t('bots.thread.groupStart')}</Text>
       </View>
     );
   }

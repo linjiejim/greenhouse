@@ -25,7 +25,13 @@ export function Segmented<T extends string>({
   const { isDark } = useTheme();
   const locale = useLocaleEnv();
   return (
-    <Host matchContents={{ vertical: true }} style={style} colorScheme={isDark ? 'dark' : 'light'} modifiers={[locale]}>
+    <Host
+      matchContents={{ vertical: true }}
+      ignoreSafeArea="all"
+      style={style}
+      colorScheme={isDark ? 'dark' : 'light'}
+      modifiers={[locale]}
+    >
       <Picker selection={value} onSelectionChange={(v) => onChange(v as T)} modifiers={[pickerStyle('segmented')]}>
         {options.map((o) => (
           <Text key={o.value} modifiers={[tag(o.value)]}>

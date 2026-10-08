@@ -88,13 +88,13 @@ function RequestDetail({ request, sessionId }: { request: BotRequestView; sessio
       <CardFrame
         icon={CARD_ICON[cardKind(request)]}
         title={tr(t, cardTitle(request, name))}
-        badge={{ label: t(badge.key), tone: badge.tone }}
+        badge={pending ? undefined : { label: t(badge.key), tone: badge.tone }}
         settled={!pending}
         footer={
           pending ? (
             <>
               <Countdown request={request} />
-              <DecisionBar request={request} name={name} busy={busy} onPress={onPress} />
+              <DecisionBar request={request} busy={busy} onPress={onPress} />
             </>
           ) : undefined
         }

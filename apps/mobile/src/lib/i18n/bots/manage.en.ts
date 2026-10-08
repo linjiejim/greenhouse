@@ -30,7 +30,8 @@ export const botsManageEn = {
     loadFailed: 'Couldn’t load',
     formNew: 'New Bot',
     formTemplate: 'New · {role}',
-    formEdit: 'Edit {name}',
+    /** The name is the first field below — a title with it truncates. */
+    formEdit: 'Edit Bot',
     formProposal: 'Confirm New Bot',
     custom: 'Custom…',
     needsComputerShort: 'Needs the computer',

@@ -43,7 +43,12 @@ export function EmptyState({
   const below = action ?? (onRetry ? <NativeButton label={t('common.retry')} icon="refresh" onPress={onRetry} /> : null);
   return (
     <View style={[{ alignItems: 'stretch', paddingVertical: 24 }, style]}>
-      <Host matchContents={{ vertical: true }} colorScheme={isDark ? 'dark' : 'light'} modifiers={[locale]}>
+      <Host
+        matchContents={{ vertical: true }}
+        ignoreSafeArea="all"
+        colorScheme={isDark ? 'dark' : 'light'}
+        modifiers={[locale]}
+      >
         <ContentUnavailableView title={title} systemImage={sfSymbol(icon)} description={message} />
       </Host>
       {below ? <View style={{ alignItems: 'center', marginTop: 8 }}>{below}</View> : null}
