@@ -57,3 +57,31 @@ export function rowPreview(row: Row, dir: RowDirectory, copy: RowCopy): string {
   }
   return text;
 }
+
+/**
+ * The row's time, short and Messages-style (it shares the line with the name,
+ * so it must stay narrow at large text sizes): the time of day today,
+ * "Yesterday", the weekday within the week, else the date — with the year
+ * when it isn't this year. '' for an unreadable timestamp.
+ */
+export function rowTime(at: number, now: number, locale: string, yesterday: string): string {
+  if (!Number.isFinite(at)) return '';
+  const day = (ms: number) => {
+    const d = new Date(ms);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  };
+  const days = Math.round((day(now) - day(at)) / 86_400_000);
+  const date = new Date(at);
+  try {
+    if (days <= 0) return date.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
+    if (days === 1) return yesterday;
+    if (days < 7) return date.toLocaleDateString(locale, { weekday: 'short' });
+    const sameYear = date.getFullYear() === new Date(now).getFullYear();
+    return date.toLocaleDateString(
+      locale,
+      sameYear ? { month: 'numeric', day: 'numeric' } : { year: 'numeric', month: 'numeric', day: 'numeric' },
+    );
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}

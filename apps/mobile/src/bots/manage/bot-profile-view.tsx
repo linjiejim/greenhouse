@@ -5,12 +5,12 @@
  * `ScrollView` with the list kit (Contacts-card layout), not a Form:
  *
  *  - hero: the plant (it breathes while the screen is focused; an archived Bot
- *    sleeps), name, role, "v{n} · Created {date}";
+ *    sleeps), name, role (no version / date — bookkeeping, not identity);
  *  - actions: 发消息 (its DM — opened, or made with `POST /api/bots/conversations`;
  *    hidden when we came from that DM or Bots threads are off) and 新对话 (a
  *    fresh chat with this Bot, `profile=bot:<id>` / `sprouty`, never its
  *    ongoing thread); an archived Bot only offers 查看对话 (its read-only DM);
- *  - purpose, instructions (six lines + 显示全部);
+ *  - purpose, instructions (four lines + 显示全部);
  *  - what it alone remembers (`GET /api/bots/:id/memories`, active / dormant):
  *    touch and hold → 忘掉这条 (also a VoiceOver action), removed at once (a
  *    404 means already gone);
@@ -26,7 +26,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Stack, useIsFocused, useRouter } from 'expo-router';
 import { archiveBot, createConversation, deleteBotMemory, listBotMemories } from '../../api/bots';
-import { useLocale, useT } from '../../lib/i18n';
+import { useT } from '../../lib/i18n';
 import { isSproutyBot, type BotView } from '../../shared/bots';
 import type { BotMemoryView } from '../../shared/bots-wire';
 import { makeStyles, space, squircle, typo, useTheme, weight } from '../../theme';
@@ -44,8 +44,8 @@ import { BotAvatar } from '../ui/bot-avatar';
 import { useBotDirectory } from './use-bot-directory';
 
 /** Instructions longer than this read as "more than six lines" and fold. */
-const FOLD_LINES = 6;
-const FOLD_CHARS = 280;
+const FOLD_LINES = 4;
+const FOLD_CHARS = 160;
 
 export function BotProfileView({
   botId,
@@ -98,7 +98,6 @@ export function BotProfileView({
 
 function Profile({ bot, from, presentation }: { bot: BotView; from?: string; presentation: 'sheet' | 'page' }) {
   const t = useT();
-  const locale = useLocale();
   const router = useRouter();
   const focused = useIsFocused();
   const { colors: c } = useTheme();
@@ -108,16 +107,6 @@ function Profile({ bot, from, presentation }: { bot: BotView; from?: string; pre
   const main = isSproutyBot(bot);
   const [opening, setOpening] = useState(false);
   const [expanded, setExpanded] = useState(false);
-
-  const created = useMemo(() => {
-    const at = Date.parse(bot.created_at);
-    if (!Number.isFinite(at)) return '';
-    try {
-      return new Date(at).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
-    } catch {
-      return bot.created_at.slice(0, 10);
-    }
-  }, [bot.created_at, locale]);
 
   const dm = bot.dm_session_id;
   const showMessage = botsOn && !archived && (!dm || dm !== from);
@@ -186,7 +175,6 @@ function Profile({ bot, from, presentation }: { bot: BotView; from?: string; pre
             {bot.name}
           </Text>
           {bot.role ? <Text style={styles.role}>{bot.role}</Text> : null}
-          <Text style={styles.version}>{t('bots.manage.versionLine', { n: bot.current_version, date: created })}</Text>
         </View>
 
         <View style={styles.actions}>
@@ -389,7 +377,6 @@ const useStyles = makeStyles((c) => ({
   hero: { alignItems: 'center', paddingTop: space.lg, paddingHorizontal: space.margin, gap: space.xs },
   name: { ...typo.title2, color: c.label, textAlign: 'center', marginTop: space.sm },
   role: { ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center' },
-  version: { ...typo.footnote, color: c.tertiaryLabel, textAlign: 'center' },
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',

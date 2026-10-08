@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { BotConversationSummary, BotView } from '../../shared/bots';
-import { rowPreview, rowTitle, type RowCopy, type RowDirectory } from './row-text';
+import { rowPreview, rowTime, rowTitle, type RowCopy, type RowDirectory } from './row-text';
 
 const COPY: RowCopy = {
   deletedBot: 'Deleted Bot',
@@ -128,5 +128,22 @@ describe('rowPreview', () => {
     expect(rowPreview(dm('b_fern', said('assistant', '  line one\n\nline   two ')), DIR, COPY)).toBe(
       'line one line two',
     );
+  });
+});
+
+describe('rowTime', () => {
+  const now = new Date(2026, 9, 8, 15, 30).getTime();
+  const at = (d: number, h = 9, m = 5, y = 2026) => new Date(y, 9, d, h, m).getTime();
+
+  it('today: the time of day; yesterday: the word; this week: the weekday', () => {
+    expect(rowTime(at(8, 9, 5), now, 'en-US', 'Yesterday')).toBe('9:05 AM');
+    expect(rowTime(at(7, 23, 59), now, 'en-US', 'Yesterday')).toBe('Yesterday');
+    expect(rowTime(at(5), now, 'en-US', 'Yesterday')).toBe('Mon');
+  });
+
+  it('older: the date, with the year only when it isn’t this year; junk: empty', () => {
+    expect(rowTime(at(1), now, 'en-US', 'Yesterday')).toBe('10/1');
+    expect(rowTime(new Date(2025, 11, 31, 8).getTime(), now, 'en-US', 'Yesterday')).toBe('12/31/2025');
+    expect(rowTime(Number.NaN, now, 'en-US', 'Yesterday')).toBe('');
   });
 });

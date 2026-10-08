@@ -120,24 +120,10 @@ function input(snap: Partial<StatusInput['snap']> = {}, kind: 'direct' | 'group'
 const requests = (...list: BotRequestView[]) => new Map(list.map((r) => [r.id, r]));
 
 describe('statusLine', () => {
-  it('idle DM: the Bot’s role, else a neutral line', () => {
-    expect(statusLine(input())).toEqual({ key: 'bots.status.role', vars: { role: 'Researcher' } });
-    const roleless = { ...BY_ID, [SAGE.id]: { ...SAGE, role: '  ' } };
-    expect(statusLine({ ...input(), byId: roleless })).toEqual({ key: 'bots.status.idle' });
-    expect(statusLine(input({ conversation: null }))).toEqual({ key: 'bots.status.idle' });
-  });
-
-  it('idle group: size and lead (active members only), size alone without a known lead', () => {
-    expect(statusLine(input({}, 'group'))).toEqual({ key: 'bots.status.group', vars: { n: 2, name: 'Fern' } });
-    const withArchived = conversation({
-      ...GROUP,
-      lead_bot_id: 'b_unknown',
-      members: [...GROUP.members, { bot_id: OLD.id, role: 'member', position: 2 }],
-    });
-    expect(statusLine(input({ conversation: withArchived }, 'group'))).toEqual({
-      key: 'bots.status.groupCount',
-      vars: { n: 2 },
-    });
+  it('idle: no line, in a DM and in a group', () => {
+    expect(statusLine(input())).toBeNull();
+    expect(statusLine(input({ conversation: null }))).toBeNull();
+    expect(statusLine(input({}, 'group'))).toBeNull();
   });
 
   it('busy without a segment: Working…', () => {
@@ -221,10 +207,7 @@ describe('statusLine', () => {
     const newer = request('new', { created_at: '2026-10-08T11:00:00.000Z' });
     const settled = request('done', { status: 'resolved', created_at: '2026-10-08T12:00:00.000Z' });
     expect(latestPending(requests(newer, older, settled))).toBe(newer);
-    expect(statusLine(input({ requests: requests(settled) }))).toEqual({
-      key: 'bots.status.role',
-      vars: { role: 'Researcher' },
-    });
+    expect(statusLine(input({ requests: requests(settled) }))).toBeNull();
   });
 
   it('read-only beats everything', () => {

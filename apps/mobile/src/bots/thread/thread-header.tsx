@@ -14,8 +14,9 @@
  *    (a group). One VoiceOver button: "Sprouty, Browsing github.com".
  *  - Right: a system menu — a DM: Bot Profile · Conversation Info · Invite a
  *    Bot | Ask {name} in a New Chat; a group: Conversation Info · Invite a Bot
- *    · Rename Group. No ✎ (a thread is not a session), no share (the server
- *    refuses to share Bots conversations), no delete.
+ *    · Rename Group; both end with Show › (the reply details, global —
+ *    src/chat/reply-details-menu.tsx). No ✎ (a thread is not a session), no
+ *    share (the server refuses to share Bots conversations), no delete.
  *
  * The title view reads a tiny store the screen publishes to
  * (`publishThreadHeader`, only when a field changed) instead of taking props:
@@ -32,9 +33,12 @@ import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { Stack, useRouter } from 'expo-router';
 import { create } from 'zustand';
+import { replyDetailsMenu } from '../../chat/reply-details-menu';
 import { useT } from '../../lib/i18n';
+import { usePrefs } from '../../store/prefs';
 import { makeStyles, space, typo, useTheme, weight } from '../../theme';
 import { Icon } from '../../ui/core';
+import { useFontScaleKey } from '../../ui/font-scale';
 import type { PlantState } from '../../ui/plant-avatar/plant-ids';
 import { toolbarIcon } from '../../ui/toolbar-icon';
 import { AvatarStack } from '../ui/avatar-stack';
@@ -97,6 +101,7 @@ export function ThreadTitle({ sessionId, fallbackTitle }: { sessionId: string; f
   const router = useRouter();
   const { width } = useWindowDimensions();
   const header = useHeaders((s) => s.bySid[sessionId]);
+  const fontKey = useFontScaleKey();
   const title = header?.title || fallbackTitle;
   const status = header?.status ?? '';
   const open = () => {
@@ -119,7 +124,8 @@ export function ThreadTitle({ sessionId, fallbackTitle }: { sessionId: string; f
       ) : (
         <BotAvatar bot={header?.bots[0] ?? null} size={26} state={header?.pose} animate={header?.pose === 'thinking'} />
       )}
-      <View style={styles.texts}>
+      {/* keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts) */}
+      <View key={fontKey} style={styles.texts}>
         <View style={styles.nameRow}>
           <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.name}>
             {title}
@@ -180,6 +186,8 @@ export const ThreadHeader = memo(function ThreadHeader({
   actions: ThreadHeaderActions;
 }) {
   const t = useT();
+  const details = usePrefs((s) => s.details);
+  const setDetail = usePrefs((s) => s.setDetail);
   // UIKit draws the badge but never reads it: the count goes into the label, as on the chat's bar.
   const shownBadge = menuBadge(badge);
   return (
@@ -220,6 +228,7 @@ export const ThreadHeader = memo(function ThreadHeader({
               {t('bots.thread.askInChat', { name: ownerName ?? '' })}
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
+          <Stack.Toolbar.Menu inline>{replyDetailsMenu(t, details, setDetail)}</Stack.Toolbar.Menu>
         </Stack.Toolbar.Menu>
       </Stack.Toolbar>
     </>

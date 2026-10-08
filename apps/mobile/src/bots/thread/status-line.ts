@@ -1,7 +1,7 @@
 /**
  * What a Bots thread is doing right now, as the member would say it — the
  * second line of the title view ("Browsing github.com", "Waiting for your
- * approval", the Bot's role when idle) and the pose of the avatar beside it.
+ * approval"; nothing when idle) and the pose of the avatar beside it.
  * Pure and React-free (tested in ./status-line.test.ts).
  *
  * A rewrite of the web's `useStatusLine`
@@ -17,7 +17,8 @@
  *     the computer / handing off / working), else replying (text on screen)
  *     or thinking — named in a group, and in a DM when a guest is speaking
  *   > busy without a segment (between turns, another API slot): "Working…"
- *   > idle: a DM shows the Bot's role, a group its size and lead.
+ *   > idle: no line at all — the title alone (the role and a group's size
+ *     and lead live in the profile / conversation info, one tap away).
  *
  * "Busy" only ever comes from real signals (`snap.runActive` — D14); the web
  * header's computer-phase branch ("you're in control") has no phone
@@ -25,7 +26,7 @@
  */
 
 import type { TranslationKey } from '../../lib/i18n';
-import type { BotConversationDetail, BotRequestView, BotView } from '../../shared/bots';
+import type { BotRequestView, BotView } from '../../shared/bots';
 import type { BotStreamSegment } from '../../shared/bots-wire';
 import type { PlantState } from '../../ui/plant-avatar/plant-ids';
 import type { ThreadSnapshot } from '../contract';
@@ -95,14 +96,7 @@ function waitingKey(request: BotRequestView): TranslationKey {
   return 'bots.status.waitConfirm';
 }
 
-function activeMembers(conversation: BotConversationDetail, byId: Record<string, BotView>): number {
-  const known = conversation.members.filter((member) => byId[member.bot_id]);
-  // Before the directory answers, every member counts.
-  if (known.length === 0) return conversation.members.length;
-  return known.filter((member) => byId[member.bot_id]?.status === 'active').length;
-}
-
-export function statusLine({ snap, byId, kind }: StatusInput): StatusLine {
+export function statusLine({ snap, byId, kind }: StatusInput): StatusLine | null {
   const readOnly = threadReadOnly(snap, byId);
   if (readOnly) return { key: readOnly === 'bot_archived' ? 'bots.status.archived' : 'bots.status.noReplier' };
 
@@ -134,19 +128,7 @@ export function statusLine({ snap, byId, kind }: StatusInput): StatusLine {
   }
 
   if (snap.runActive) return { key: 'bots.status.working' };
-
-  if (!conversation) return { key: 'bots.status.idle' };
-  if (kind === 'group') {
-    const n = activeMembers(conversation, byId);
-    const lead = conversation.lead_bot_id ? byId[conversation.lead_bot_id] : undefined;
-    return lead
-      ? { key: 'bots.status.group', vars: { n, name: lead.name } }
-      : { key: 'bots.status.groupCount', vars: { n } };
-  }
-  const owner = conversation.owner_bot_id ? byId[conversation.owner_bot_id] : undefined;
-  return owner?.role.trim()
-    ? { key: 'bots.status.role', vars: { role: owner.role.trim() } }
-    : { key: 'bots.status.idle' };
+  return null;
 }
 
 /**

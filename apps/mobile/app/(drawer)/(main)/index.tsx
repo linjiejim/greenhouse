@@ -12,7 +12,7 @@
  * Chrome is native: inline title (live-updated by the server's title event),
  * Liquid Glass toolbar — ☰ opens the drawer (as does a right swipe from
  * anywhere), 新对话, and a system menu with the real conversation actions
- * (标签 / 分享 / 重命名 / 删除). Content is the solid layer (session tag chips,
+ * (标签 / 分享 / 重命名 / 显示 › / 删除). Content is the solid layer (session tag chips,
  * messages); the composer is the floating glass layer, kept above the keyboard
  * by KeyboardStickyView. Details open as sheets: reasoning and tool calls
  * (following a streaming reply live — src/chat/live-turn.ts), references,
@@ -40,8 +40,8 @@
  * params (src/bots/nav.ts). On a cold start a bare home reopens the Bots
  * thread the member left the app in (src/bots/home/initial-surface.ts), once
  * per process. With Bots on, the conversation screen also gets: the hero's
- * "a new chat starts fresh" hint, the bridge row back into the Bots and a
- * shelf of their faces; a `?profile=` new chat with one Bot (its face and
+ * shelf of the Bots' faces and, when there is news (someone needs the member,
+ * a report, something unread), one bridge row back into them; a `?profile=` new chat with one Bot (its face and
  * name in the hero, a "Back to …" button; the profile is never saved); the ☰
  * badge (other conversations that need the member or have something unread)
  * and — over an existing conversation — the "needs you" capsule; a Bots
@@ -86,6 +86,7 @@ import { useComposerBridge } from '../../../src/chat/composer-bridge';
 import { AiMessage, UserMessage, type MessageAction } from '../../../src/chat/message';
 import { excerpt, plainText, transcript, type Annotation, type ChatMessage } from '../../../src/chat/model';
 import { openTurn, publishTurns } from '../../../src/chat/live-turn';
+import { replyDetailsMenu } from '../../../src/chat/reply-details-menu';
 import { TagChip } from '../../../src/chat/tag-chip';
 import { nextId, useConversation } from '../../../src/chat/use-conversation';
 import { useTurnAnchor } from '../../../src/chat/use-turn-anchor';
@@ -120,8 +121,8 @@ import { usePrefs } from '../../../src/store/prefs';
 
 const MAX_IMAGES = 4;
 /**
- * Above this Dynamic Type scale the new-chat hero sheds its extras — the Bots
- * hint and the shelf of faces (the bridge row stays). The accessibility sizes
+ * Above this Dynamic Type scale the new-chat hero sheds its shelf of faces
+ * (the bridge row stays, and then also offers "Continue with …"). The accessibility sizes
  * start at 1.79× (AX1); up to xxxLarge (1.35×) the hero keeps everything.
  */
 const HERO_COMPACT_FONT_SCALE = 1.5;
@@ -159,6 +160,8 @@ const ConversationHeader = memo(function ConversationHeader({
   actions: HeaderActions;
 }) {
   const t = useT();
+  const details = usePrefs((s) => s.details);
+  const setDetail = usePrefs((s) => s.setDetail);
   return (
     <>
       <Stack.Screen options={{ title }} />
@@ -192,6 +195,7 @@ const ConversationHeader = memo(function ConversationHeader({
           <Stack.Toolbar.MenuAction icon={toolbarIcon('pen')} hidden={readOnly} onPress={actions.rename}>
             {t('chat.actionRename')}
           </Stack.Toolbar.MenuAction>
+          <Stack.Toolbar.Menu inline>{replyDetailsMenu(t, details, setDetail)}</Stack.Toolbar.Menu>
           <Stack.Toolbar.Menu inline hidden={readOnly}>
             <Stack.Toolbar.MenuAction icon={toolbarIcon('trash')} destructive onPress={actions.remove}>
               {t('chat.actionDelete')}
@@ -222,7 +226,7 @@ function Conversation() {
   }>();
   const user = useAuth((s) => s.user);
 
-  /* ---------- Bots: hint, bridge, ☰ badge, capsule, `?profile=` (see header) ---------- */
+  /* ---------- Bots: bridge, ☰ badge, capsule, `?profile=` (see header) ---------- */
   const botsOn = useBotsEnabled();
   const identityOn = useBotIdentityEnabled();
   useBotsWarm(botsOn);
@@ -628,7 +632,6 @@ function Conversation() {
               {t('home.greetingFormat', { greeting: greeting(), name: user?.nickname ?? t('home.fallbackName') })}
             </Text>
             <Text style={styles.heroSub}>{t('home.title')}</Text>
-            {botsOn && !heroCompact ? <Text style={styles.heroHint}>{t('bots.nav.freshHint')}</Text> : null}
           </View>
         )}
         {profileBot?.bot && profileBot.dm && botsOn ? (
@@ -642,7 +645,7 @@ function Conversation() {
         ) : null}
         {botsOn && !profileBot ? (
           <>
-            <HomeBridge />
+            <HomeBridge idleLine={heroCompact} />
             {heroCompact ? null : <BotsShelf />}
           </>
         ) : null}
@@ -922,7 +925,6 @@ const useStyles = makeStyles((c) => ({
   heroFace: { alignItems: 'center', gap: space.xs },
   heroTitle: { ...typo.title2, color: c.label, textAlign: 'center', marginTop: space.md },
   heroSub: { ...typo.body, color: c.secondaryLabel, textAlign: 'center' },
-  heroHint: { ...typo.footnote, color: c.secondaryLabel, textAlign: 'center', marginTop: space.xs },
   heroAction: { marginTop: space.md },
   capsule: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   center: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },

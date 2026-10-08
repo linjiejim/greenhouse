@@ -63,12 +63,10 @@ export const botsCardsEn = {
     handBackTitle: 'You took over the computer — {name} is waiting',
     waitingComputer: '{name} is waiting for the computer',
     captchaTitle: '{name} hit a human check',
-    captchaHint:
-      'Human checks have to be done by hand on the computer screen — use the web app. Skip here and {name} will try another way.',
+    captchaHint: 'Do it by hand on the computer screen in the web app — or skip and {name} will try another way.',
     skip: 'Skip',
     otherTitle: '{name} needs you on the computer',
-    otherHint:
-      'The computer isn’t visible on the phone. Skip for now, or handle it on the web and come back to tap “I’ve Done It”.',
+    otherHint: 'The computer isn’t visible on the phone: skip, or handle it on the web, then tap “I’ve Done It”.',
     finished: 'I’ve Done It',
     finishedConfirm: 'Done on the computer? {name} will carry on.',
     /** A kind this app version does not know: say so instead of rendering nothing. */
@@ -124,8 +122,7 @@ export const botsCardsEn = {
     otp: 'Code',
     needOtp: 'Need a code?',
     saveToVault: 'Save to Passwords',
-    footer:
-      'Used once: filled straight into the sign-in page on the computer — never stored in the conversation or shown to the model.',
+    footer: 'Used once: filled straight into the sign-in page — never kept in the chat or shown to the model.',
     /** The card is no longer waiting (settled elsewhere, expired) or was never found. */
     gone: 'This sign-in request is no longer open',
     goneHint: 'It was answered elsewhere or has expired.',

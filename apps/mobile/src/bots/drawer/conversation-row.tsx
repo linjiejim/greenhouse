@@ -17,22 +17,25 @@
  */
 
 import React, { memo, useMemo } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { isSproutyBot, type BotConversationSummary } from '../../shared/bots';
-import { relativeTime } from '../../lib/format';
-import { useT } from '../../lib/i18n';
+import { parseMs } from '../../lib/format';
+import { useLocale, useT } from '../../lib/i18n';
 import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
 import { Icon } from '../../ui/core';
+import { useFontScaleKey } from '../../ui/font-scale';
 import { Badge } from '../../ui/list';
 import { NativeMenu, menuSections, type MenuItem } from '../../ui/menu';
 import { rowSignal, useBots } from '../store';
 import { AvatarStack } from '../ui/avatar-stack';
 import { BotAvatar } from '../ui/bot-avatar';
 import { conversationReplyable } from '../vendor/web-helpers';
-import { rowPreview, rowTitle, type RowCopy } from './row-text';
+import { rowPreview, rowTime, rowTitle, type RowCopy } from './row-text';
 
 /** Leading column: a DM's 32-pt plant, or a group's first two 22-pt plants overlapped — titles stay aligned. */
 const LEAD_W = 44;
+/** From the accessibility sizes (AX1 = 1.79×) the time leaves the name's line. */
+const TIME_HIDDEN_SCALE = 1.75;
 const DM_AVATAR = 32;
 const GROUP_AVATAR = 22;
 
@@ -75,6 +78,9 @@ export const ConversationRow = memo(function ConversationRow({
   const styles = useStyles(c);
   const t = useT();
   const copy = useRowCopy();
+  const locale = useLocale();
+  const fontKey = useFontScaleKey();
+  const { fontScale } = useWindowDimensions();
   const byId = useBots((s) => s.byId);
   const botsLoaded = useBots((s) => s.botsLoaded);
   const running = useBots((s) => s.running);
@@ -88,7 +94,10 @@ export const ConversationRow = memo(function ConversationRow({
   const owner = row.owner_bot_id ? (byId[row.owner_bot_id] ?? null) : null;
   const pinned = row.kind === 'direct' && isSproutyBot(owner);
   const unread = signal.badge === 'unread';
-  const time = relativeTime(row.last_activity_at);
+  // Short (09:41 · 昨天 · 周二 · 10/1) — it shares the line with the name; at the
+  // accessibility sizes it gives the name the whole line (VoiceOver still hears it).
+  const fullTime = rowTime(parseMs(row.last_activity_at), Date.now(), locale, t('time.yesterday'));
+  const time = fontScale >= TIME_HIDDEN_SCALE ? '' : fullTime;
   const needsYou =
     signal.badge === 'needs_you'
       ? signal.needsYouCount > 1
@@ -101,7 +110,7 @@ export const ConversationRow = memo(function ConversationRow({
     pinned && t('bots.nav.pinnedA11y'),
     needsYou ?? (unread && t('bots.nav.unread')),
     signal.working ? preview : t('bots.nav.lastMessage', { text: preview }),
-    time,
+    fullTime,
   ]
     .filter(Boolean)
     .join(t('bots.nav.listSep'));
@@ -141,7 +150,8 @@ export const ConversationRow = memo(function ConversationRow({
           <AvatarStack bots={members.map((m) => byId[m.bot_id] ?? null)} size={GROUP_AVATAR} max={2} />
         )}
       </View>
-      <View style={styles.body}>
+      {/* keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts) */}
+      <View key={fontKey} style={styles.body}>
         <View style={styles.line}>
           {title ? (
             <Text numberOfLines={1} style={[styles.title, (unread || current) && styles.titleStrong]}>

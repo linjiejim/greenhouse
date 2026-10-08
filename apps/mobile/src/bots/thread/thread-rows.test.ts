@@ -120,6 +120,25 @@ describe('threadRows', () => {
   });
 });
 
+describe('echo lines', () => {
+  it('drops `created` and `task_started` (the card’s receipt says them), keeps `joined` and the rest', () => {
+    const event = (at: number, bot_event: BotMessage['bot_event'], content: string) =>
+      message(at, { role: 'system', bot_id: null, bot_event, content });
+    const rows = threadRows(
+      items([
+        user(local(8, 9)),
+        event(local(8, 9, 1), { kind: 'created', bot_id: 'b_new' }, 'Created the Bot “Nib”'),
+        event(local(8, 9, 1), { kind: 'joined', bot_id: 'b_new', by: 'bot', by_bot_id: 'b_sage' }, 'Sage added Nib'),
+        event(local(8, 9, 2), { kind: 'task_started', run_id: 'r1', bot_id: 'b_sage', title: 'T' }, 'Sage started “T”'),
+        event(local(8, 9, 3), { kind: 'left', bot_id: 'b_new' }, 'Nib left the conversation'),
+      ]),
+      OPTS,
+    );
+    const events = rows.flatMap((row) => (row.kind === 'event' ? [row.event?.kind] : []));
+    expect(events).toEqual(['joined', 'left']);
+  });
+});
+
 describe('days', () => {
   it('sameDay is the local calendar day', () => {
     expect(sameDay(local(8, 0, 0), local(8, 23, 59))).toBe(true);
