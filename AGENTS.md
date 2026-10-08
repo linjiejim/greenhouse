@@ -160,6 +160,13 @@ what exists." These rules are as binding as the "add" rules:
   `greenhouse_wt_<dir>`** (cloned from the local `greenhouse` DB as a template, then
   migrated) — never run migrations against the main DB from a worktree, and let the engine
   arbitrate port conflicts instead of hand-killing processes.
+- **Local test accounts**: verify locally (browser, mobile simulator/device, API scripts) with
+  the fixed accounts `super@greenhouse.local` (super) and `team@greenhouse.local` (team); any
+  extra account differs only by its prefix (`<purpose>@greenhouse.local`), and every password is
+  `greenhouse`. `run-dev up` creates the two fixed ones in its database when missing. They are
+  throwaway local-dev fixtures only — never a production default: never seed them from
+  migrations, `docker-compose.yml`, the image or a release; production's first admin still comes
+  from `admin:create`.
 
 ## Deploy (one-command Docker)
 

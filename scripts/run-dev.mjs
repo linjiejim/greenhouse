@@ -39,11 +39,14 @@ const DEFAULT_DB_URL = 'postgresql://greenhouse:greenhouse@localhost:5432/greenh
 const SANDBOX_DB_PREFIX = 'greenhouse_wt_';
 const MISSION_NETWORK_LABEL = 'greenhouse.run-dev.root';
 
-// 本地种子账号：仅当目标库里**一个 super 都没有**时才建（真实账密不入库，
-// 见 AGENTS.md「测试」；已有账号的库只提醒、不改密）。可用 env 覆盖。
-const SEED_EMAIL = process.env.RUN_DEV_EMAIL || 'admin@example.com';
-const SEED_PASSWORD = process.env.RUN_DEV_PASSWORD || 'greenhouse';
-const SEED_NICKNAME = process.env.RUN_DEV_NICKNAME || 'Test';
+// 本地固定测试账号（AGENTS.md「Acceptance environment」）：run-dev 起的库里缺哪个补哪个，
+// 密码统一 `greenhouse`；已有的不动（不改密）。仅限本地开发验证——绝不进迁移、
+// docker-compose、镜像或任何生产默认值。
+const TEST_PASSWORD = 'greenhouse';
+const TEST_ACCOUNTS = [
+  { email: 'super@greenhouse.local', role: 'super', nickname: 'Super' },
+  { email: 'team@greenhouse.local', role: 'team', nickname: 'Team' },
+];
 
 // 服务定义：基准端口 + 健康路径 + 健康超时（秒）。基准与 `pnpm dev` 一致，
 // 主树占用时按 +10 梯度避让（3110/3111、3120/3121…，与既有 worktree 习惯同型）。
@@ -596,7 +599,7 @@ function warnPendingMigrations(container, cfg, dbUrl) {
 }
 
 // ============================================================================
-// 账号确保（库里一个 super 都没有才种；已有账号只提醒）
+// 账号确保（固定测试账号缺哪个补哪个；已有的不改密）
 // ============================================================================
 function cliJson(args, dbUrl) {
   const r = sh('pnpm', ['cli', ...args], { cwd: ROOT, env: { ...process.env, DATABASE_URL: dbUrl } });
@@ -615,31 +618,34 @@ function ensureAccount(dbUrl) {
   const users = cliJson(['users', 'list', '--json'], dbUrl);
   if (users === null) {
     warn('读取用户列表失败（库没 migrate？）——跳过账号确保');
-    return { seeded: false, supers: [] };
+    return { seeded: [], accounts: [] };
   }
-  const supers = users.filter((u) => u.role === 'super' && u.status === 'active').map((u) => u.email);
-  if (supers.length) return { seeded: false, supers };
-
-  info(`库里没有 super —— 种一个本地账号 ${SEED_EMAIL}…`);
-  const r = spawnSync(
-    'pnpm',
-    [
-      'cli',
-      'users',
-      'create',
-      '--email',
-      SEED_EMAIL,
-      '--password',
-      SEED_PASSWORD,
-      '--nickname',
-      SEED_NICKNAME,
-      '--role',
-      'super',
-    ],
-    { cwd: ROOT, stdio: 'inherit', env: { ...process.env, DATABASE_URL: dbUrl } },
-  );
-  if (r.status !== 0) throw new Error('users create 失败');
-  return { seeded: true, supers: [SEED_EMAIL] };
+  const known = new Set(users.map((u) => u.email));
+  const seeded = [];
+  for (const account of TEST_ACCOUNTS) {
+    if (known.has(account.email)) continue;
+    info(`种本地测试账号 ${account.email}（${account.role}）…`);
+    const r = spawnSync(
+      'pnpm',
+      [
+        'cli',
+        'users',
+        'create',
+        '--email',
+        account.email,
+        '--password',
+        TEST_PASSWORD,
+        '--nickname',
+        account.nickname,
+        '--role',
+        account.role,
+      ],
+      { cwd: ROOT, stdio: 'inherit', env: { ...process.env, DATABASE_URL: dbUrl } },
+    );
+    if (r.status !== 0) throw new Error(`users create ${account.email} 失败`);
+    seeded.push(account.email);
+  }
+  return { seeded, accounts: TEST_ACCOUNTS.map((a) => a.email) };
 }
 
 // ============================================================================
@@ -929,13 +935,9 @@ function printSummary(state) {
   }
 
   console.log('');
-  if (state.account?.seeded) {
-    info(`登录账号（新种）：${C.c}${SEED_EMAIL} / ${SEED_PASSWORD}${C.x}`);
-  } else if (state.account?.supers?.length) {
-    info(`super 账号：${C.c}${state.account.supers.join(', ')}${C.x}`);
-    console.log(
-      `  ${C.d}密码见 docs/local/test-accounts.md（gitignored）；不知道就用 TOKEN_SIGNING_KEY 自签 token${C.x}`,
-    );
+  if (state.account?.accounts?.length) {
+    const fresh = state.account.seeded?.length ? `（新种：${state.account.seeded.join(', ')}）` : '';
+    info(`测试账号：${C.c}${state.account.accounts.join(', ')}${C.x} / 密码 ${C.c}${TEST_PASSWORD}${C.x}${fresh}`);
   }
   console.log(`  ${C.d}收摊：node scripts/run-dev.mjs stop${C.x}`);
 }
