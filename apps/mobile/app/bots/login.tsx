@@ -72,10 +72,20 @@ import { alertError } from '../../src/ui/dialogs';
 import { EmptyState } from '../../src/ui/empty';
 import { NativeForm } from '../../src/ui/native-form';
 import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
+import { BotsRouteGate } from '../../src/bots/route-gate';
 
 type Chrome = React.ComponentProps<typeof FormChrome>;
 
-export default function BotLoginSheet() {
+/** Closed Bots (switched off, refused) → home + "unavailable"; `latched`: src/bots/route-gate.tsx. */
+export default function BotLoginRoute() {
+  return (
+    <BotsRouteGate kind="threads" latched>
+      <BotLoginSheet />
+    </BotsRouteGate>
+  );
+}
+
+function BotLoginSheet() {
   const t = useT();
   const router = useRouter();
   const { id, c } = useLocalSearchParams<{ id?: string; c?: string }>();

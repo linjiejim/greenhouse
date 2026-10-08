@@ -4,7 +4,7 @@
  * every change applied at once (✕ only); Android: ./info.android.tsx.
  * Behaviour: src/bots/manage/use-conversation-info.ts.
  *
- *  - 它记得的近况: the rolling summary the Bots carry, verbatim (six lines,
+ *  - 它记得的近况: the rolling summary the Bots carry, verbatim (four lines,
  *    显示全部), with when it was last updated — only once there is one;
  *  - a group's settings: name (system prompt), rules (→ /bots/rules), lead
  *    (menu of its active members), "let Bots ask each other";
@@ -54,14 +54,24 @@ import { EmptyState } from '../../src/ui/empty';
 import { FormNavRow, NativeForm } from '../../src/ui/native-form';
 import { useTheme } from '../../src/theme';
 import { SheetClose } from '../../src/ui/sheet-chrome';
+import { BotsRouteGate } from '../../src/bots/route-gate';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 const TERTIARY = foregroundStyle({ type: 'hierarchical', style: 'tertiary' });
-/** A summary longer than this reads as more than six lines and folds. */
-const FOLD_LINES = 6;
-const FOLD_CHARS = 280;
+/** A summary longer than this reads as more than four lines and folds. */
+const FOLD_LINES = 4;
+const FOLD_CHARS = 160;
 
-export default function ConversationInfoSheet() {
+/** Closed Bots (switched off, refused) → home + "unavailable"; `latched`: src/bots/route-gate.tsx. */
+export default function ConversationInfoRoute() {
+  return (
+    <BotsRouteGate kind="threads" latched>
+      <ConversationInfoSheet />
+    </BotsRouteGate>
+  );
+}
+
+function ConversationInfoSheet() {
   const t = useT();
   const { c = '' } = useLocalSearchParams<{ c?: string }>();
   const info = useConversationInfo(c);

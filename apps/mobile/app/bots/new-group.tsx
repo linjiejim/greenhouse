@@ -4,8 +4,9 @@
  * plants): each active Bot with its role, the main one first; a tap picks or
  * drops it, the pick order shows as a numbered circle, and the first pick is
  * the lead (主理 badge — it answers and delegates when no one is
- * @-mentioned). The circle grows with Dynamic Type, so the number never
- * spills out of it. Once six are picked the rest are disabled. ✓ creates the
+ * @-mentioned). The circle and its digit grow with Dynamic Type up to 1.3×,
+ * so the number never spills out of it and the largest sizes still leave the
+ * Bot's name its room. Once six are picked the rest are disabled. ✓ creates the
  * group and opens it (named later, from its info sheet). Fewer than two Bots:
  * an empty state that offers to make one. Behaviour:
  * src/bots/manage/use-group-form.ts.
@@ -151,7 +152,11 @@ function PickRow({
     .filter(Boolean)
     .join(', ');
   return (
+    // Keyed on the text size: a Dynamic Type change while the sheet is up leaves mounted text
+    // measured at the old size on iOS (RN 0.86 Fabric, facebook/react-native#57512); a fresh row is
+    // measured at the new one.
     <ListRow
+      key={fontScale}
       title={bot.name}
       subtitle={bot.role || undefined}
       subtitleLines={1}
@@ -162,7 +167,9 @@ function PickRow({
           {lead ? <Badge label={t('bots.manage.lead')} tone="accent" /> : null}
           {number !== null ? (
             <View style={[styles.circle, circle, styles.picked]}>
-              <Text style={styles.number}>{number}</Text>
+              <Text style={styles.number} maxFontSizeMultiplier={MAX_SCALE}>
+                {number}
+              </Text>
             </View>
           ) : (
             <View style={[styles.circle, circle, styles.open]} />
@@ -179,14 +186,20 @@ function PickRow({
 
 /** The pick circle at the default text size: a footnote digit (18-pt line) with room around it. */
 const CIRCLE = 24;
+/**
+ * How far the digit (and so the circle) follows Dynamic Type. Uncapped, footnote
+ * reaches 2.6× at accessibility-extra-large and a 62-pt circle squeezed the Bot's
+ * name to a few characters; a one-digit count (1–6) stays legible at 1.3×.
+ */
+const MAX_SCALE = 1.3;
 
 /**
- * The circle scales with the digit inside it (footnote follows Dynamic Type —
- * 2.6× at accessibility-extra-large), picked and open alike so a pick never
- * changes the row's size; never smaller than at the default size.
+ * The circle scales with the digit inside it, picked and open alike so a pick
+ * never changes the row's size; never smaller than at the default size, never
+ * past `MAX_SCALE` (the digit's own `maxFontSizeMultiplier`).
  */
 function circleSize(fontScale: number) {
-  const size = Math.round(CIRCLE * Math.max(1, fontScale));
+  const size = Math.round(CIRCLE * Math.min(MAX_SCALE, Math.max(1, fontScale)));
   return { width: size, height: size, borderRadius: size / 2 };
 }
 

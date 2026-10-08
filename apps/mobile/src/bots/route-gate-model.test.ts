@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { botsRouteGate, bounceOnce } from './route-gate-model';
+import { botsGateShows, botsRouteGate, bounceOnce } from './route-gate-model';
 
 const ios = { auth: 'signed-in', platformReady: true } as const;
 const android = { auth: 'signed-in', platformReady: false, threadsOn: false, identityOn: false } as const;
@@ -62,5 +62,22 @@ describe('bounceOnce', () => {
     const b = bounceOnce(1000);
     expect(a(0)).toBe(true);
     expect(b(0)).toBe(true);
+  });
+});
+
+describe('botsGateShows', () => {
+  it('shows an open gate at once, whether or not it was open before', () => {
+    expect(botsGateShows({ open: true, wasOpen: false, latched: false })).toBe(true);
+    expect(botsGateShows({ open: true, wasOpen: false, latched: true })).toBe(true);
+  });
+
+  it('never shows a sheet reached with its gate closed', () => {
+    expect(botsGateShows({ open: false, wasOpen: false, latched: false })).toBe(false);
+    expect(botsGateShows({ open: false, wasOpen: false, latched: true })).toBe(false);
+  });
+
+  it('keeps a latched sheet that was up when its gate closed (until the navigation removes it)', () => {
+    expect(botsGateShows({ open: false, wasOpen: true, latched: true })).toBe(true);
+    expect(botsGateShows({ open: false, wasOpen: true, latched: false })).toBe(false);
   });
 });

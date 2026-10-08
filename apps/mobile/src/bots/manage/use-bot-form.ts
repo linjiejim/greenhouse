@@ -17,9 +17,16 @@
  *      flips with it (a card settled elsewhere just closes the sheet).
  *    A refused name goes back under the name field, the 20-Bot limit and
  *    everything else are system alerts. The view navigates on `ok`.
+ *
+ *    One save at a time, and the form is *held* (`onHold`) from the moment ✓
+ *    goes until the sheet is gone: accepting a proposal settles its card in
+ *    the store before `save` resolves, so the source turns `missing` ("already
+ *    decided") while the sheet is still up — without the hold the form would
+ *    unmount and the "gone" state flash before the sheet closes. A save that
+ *    doesn't go through (refused, invalid) releases it.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { addConversationMember, createBot, updateBot } from '../../api/bots';
 import { useT } from '../../lib/i18n';
 import type { BotConversationDetail, BotView } from '../../shared/bots';
@@ -96,7 +103,18 @@ export function useBotFormSource(params: BotFormParams): BotFormGate {
 
 export type BotFormSaveResult = { ok: true; openThread?: { c: string; title: string } } | { ok: false };
 
-export function useBotForm(initProp: BotFormInit) {
+export function useBotForm(
+  initProp: BotFormInit,
+  {
+    onHold,
+  }: {
+    /**
+     * Keep showing this form (its init) while its own save is out or went through, whatever the
+     * source says by then; `null` lets it go (the save didn't go through). See the file header.
+     */
+    onHold?: (init: BotFormInit | null) => void;
+  } = {},
+) {
   // Frozen at mount: a Bot list refresh must not re-dress the draft mid-edit.
   const [init] = useState(initProp);
   const t = useT();
@@ -156,6 +174,48 @@ export function useBotForm(initProp: BotFormInit) {
     [t],
   );
 
+  /** Send the values: the decision, the PATCH or the create (see the file header). */
+  const commit = useCallback(
+    async (next: BotFormValues): Promise<BotFormSaveResult> => {
+      if (init.mode === 'proposal' && init.request) {
+        const outcome = await useBots.getState().decide(init.request, proposalDecision(next));
+        if (outcome.kind === 'refused') {
+          refused(outcome.code, outcome.message, 'bots.manage.createFailed');
+          return { ok: false };
+        }
+        // `stale`: settled elsewhere — the card flips by itself; nothing to explain.
+        if (outcome.kind === 'ok') notifySuccess();
+        return { ok: true };
+      }
+
+      if (init.mode === 'edit' && init.bot) {
+        const patch = updatePatch(init.bot, next);
+        if (Object.keys(patch).length === 0) return { ok: true };
+        const result = await updateBot(init.bot.id, patch);
+        if (!result.ok) {
+          refused(result.code, result.message, 'bots.manage.saveFailed');
+          return { ok: false };
+        }
+        // The profile under this sheet reads the directory: refresh it before closing.
+        await useBots.getState().loadBots();
+        toast(t('bots.manage.saved'), 'check');
+        return { ok: true };
+      }
+
+      const result = await createBot(createInput(init, next));
+      if (!result.ok) {
+        refused(result.code, result.message, 'bots.manage.createFailed');
+        return { ok: false };
+      }
+      return await afterCreate(result.value.bot, result.value.dm_session_id, init.inviteTo, t);
+    },
+    [init, refused, t],
+  );
+
+  // One save at a time: a second ✓ before the first one re-rendered must neither send twice nor
+  // release the first one's hold. A save that went through keeps it (the sheet is going).
+  const inFlight = useRef(false);
+
   /**
    * `latest`: the native fields' text, read at the moment ✓ is pressed (their
    * change events arrive asynchronously, so the last keystroke may not be in
@@ -163,50 +223,30 @@ export function useBotForm(initProp: BotFormInit) {
    */
   const save = useCallback(
     async (latest: Partial<BotFormValues> = {}): Promise<BotFormSaveResult> => {
-      if (saving) return { ok: false };
+      if (inFlight.current) return { ok: false };
       const next = { ...values, ...latest };
       setValues(next);
       if (!botFormCanSave({ mode: init.mode, initial: init.values, values: next, nameIssue: issueOf(next.name) })) {
         return { ok: false };
       }
+      inFlight.current = true;
       setSaving(true);
+      // Before the request goes: the card settles (and the source reads `missing`) once the server answered.
+      onHold?.(init);
+      let through = false;
       try {
-        if (init.mode === 'proposal' && init.request) {
-          const outcome = await useBots.getState().decide(init.request, proposalDecision(next));
-          if (outcome.kind === 'refused') {
-            refused(outcome.code, outcome.message, 'bots.manage.createFailed');
-            return { ok: false };
-          }
-          // `stale`: settled elsewhere — the card flips by itself; nothing to explain.
-          if (outcome.kind === 'ok') notifySuccess();
-          return { ok: true };
-        }
-
-        if (init.mode === 'edit' && init.bot) {
-          const patch = updatePatch(init.bot, next);
-          if (Object.keys(patch).length === 0) return { ok: true };
-          const result = await updateBot(init.bot.id, patch);
-          if (!result.ok) {
-            refused(result.code, result.message, 'bots.manage.saveFailed');
-            return { ok: false };
-          }
-          // The profile under this sheet reads the directory: refresh it before closing.
-          await useBots.getState().loadBots();
-          toast(t('bots.manage.saved'), 'check');
-          return { ok: true };
-        }
-
-        const result = await createBot(createInput(init, next));
-        if (!result.ok) {
-          refused(result.code, result.message, 'bots.manage.createFailed');
-          return { ok: false };
-        }
-        return await afterCreate(result.value.bot, result.value.dm_session_id, init.inviteTo, t);
+        const result = await commit(next);
+        through = result.ok;
+        return result;
       } finally {
         setSaving(false);
+        if (!through) {
+          inFlight.current = false;
+          onHold?.(null);
+        }
       }
     },
-    [saving, values, init, issueOf, refused, t],
+    [values, init, issueOf, commit, onHold],
   );
 
   return {

@@ -20,10 +20,20 @@ import { useTheme } from '../../src/theme';
 import { EmptyState } from '../../src/ui/empty';
 import { NativeForm } from '../../src/ui/native-form';
 import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
+import { BotsRouteGate } from '../../src/bots/route-gate';
 
 type Chrome = React.ComponentProps<typeof FormChrome>;
 
-export default function GroupRulesSheet() {
+/** Closed Bots (switched off, refused) → home + "unavailable"; `latched`: src/bots/route-gate.tsx. */
+export default function GroupRulesRoute() {
+  return (
+    <BotsRouteGate kind="threads" latched>
+      <GroupRulesSheet />
+    </BotsRouteGate>
+  );
+}
+
+function GroupRulesSheet() {
   const t = useT();
   const { c = '' } = useLocalSearchParams<{ c?: string }>();
   const info = useConversationInfo(c);
