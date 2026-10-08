@@ -15,10 +15,11 @@
  *
  * Rows are the shared `FormCheckRow` (server symbol, name, origin, ✓ active).
  *
- * Every change of the active station re-runs `auth.bootstrap()` (rehydrates
- * that station's tokens and revalidates; the root layout then routes home or
- * to /login). The host is dismissed *first* (`onLeave`) so the reroute never
- * happens under a presented sheet.
+ * Every change of the active station goes through `useAuth.switchStation()`
+ * (./use-stations-form.ts): `loading` goes up in the same tick as the registry
+ * change, then `bootstrap()` rehydrates that station's tokens and revalidates;
+ * the root layout then routes home or to /login. The host is dismissed *first*
+ * (`onLeave`) so the reroute never happens under a presented sheet.
  *
  * Single-station builds (IS_SINGLE_STATION) show only the locked station,
  * with no add / remove, and a footer explaining the lock.

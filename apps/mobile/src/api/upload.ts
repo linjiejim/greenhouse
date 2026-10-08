@@ -44,7 +44,17 @@ export async function uploadImage(uri: string, mime = 'image/jpeg'): Promise<Upl
   }
 }
 
-/** Absolute URL for a (possibly relative) upload url. */
+/**
+ * Absolute URL for a (possibly relative) upload url, resolved against the active station with
+ * `new URL` — the way a browser resolves an `src` — never by joining strings: a path lands on the
+ * station (`@host…` stays a path instead of turning the station into userinfo), an absolute URL is
+ * kept. Loaded without the token (thumbnails, the Safari view), so another origin costs nothing.
+ * An unparsable value comes back as given (it then fails to load).
+ */
 export function uploadUrl(url: string): string {
-  return url.startsWith('http') ? url : `${getApiBase()}${url}`;
+  try {
+    return new URL(url, getApiBase()).href;
+  } catch {
+    return url;
+  }
 }
