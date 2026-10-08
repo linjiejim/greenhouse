@@ -1,11 +1,11 @@
 /**
- * The mention picker's pure pieces (./use-mention-picker.ts): which `@` token the caret sits
+ * The mention picker's pure pieces (./mention-query.ts): which `@` token the caret sits
  * in, who matches it, and what a pick writes (and where the caret lands).
  */
 
 import { describe, expect, it } from 'vitest';
 import { parseMentions } from '../vendor/mentions';
-import { applyMention, mentionCandidates, mentionQuery, type MentionMember } from './use-mention-picker';
+import { applyMention, mentionCandidates, mentionQuery, type MentionMember } from './mention-query';
 
 const SAGE: MentionMember = { id: 'b_sage', name: 'Sage', role: 'Researcher' };
 const FERN: MentionMember = { id: 'b_fern', name: 'Fern', role: 'Writer' };
