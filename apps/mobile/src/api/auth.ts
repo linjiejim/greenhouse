@@ -1,5 +1,7 @@
 /**
- * Auth API — internal email/password login, session validation, logout.
+ * Auth API — internal email/password login, session validation, logout, and
+ * the account's language (what the server writes in: Bot greetings, event
+ * lines, notifications).
  */
 
 import { getApiBase } from '../store/stations';
@@ -58,4 +60,23 @@ export async function validateSession(): Promise<AuthenticatedUser | null> {
 
 export function logout(): void {
   clearTokens();
+}
+
+/**
+ * Tell the server the account's language (`PUT /api/auth/me/preferences`), as
+ * the web does when the member picks one — fire and forget: it only shapes
+ * text the server writes from now on. Never sent unasked (the app's default
+ * language is not a choice the member made).
+ */
+export async function saveAccountLocale(locale: 'zh' | 'en'): Promise<boolean> {
+  try {
+    const res = await api('/api/auth/me/preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locale }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
