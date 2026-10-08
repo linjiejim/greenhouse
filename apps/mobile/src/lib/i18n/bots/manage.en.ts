@@ -11,14 +11,13 @@ export const botsManageEn = {
     archiveAction: 'Archive',
     archivedToast: 'Archived {name}',
     archiveFailed: 'Couldn’t archive {name}',
-    mainBot: '{name} is your main assistant — always here, can’t be archived.',
-    versionLine: 'v{n} · Created {date}',
+    mainBot: '{name} is your main assistant and can’t be archived.',
     purpose: 'Purpose',
     instructions: 'Instructions',
     showAll: 'Show All',
     showLess: 'Show Less',
     memories: 'What it remembers',
-    memoriesFooter: 'Only {name} keeps these. Touch and hold one to forget it.',
+    memoriesFooter: 'Only {name} keeps these. Touch and hold to forget one.',
     memoriesFailed: 'Couldn’t load memories · Tap to retry',
     forget: 'Forget This',
     forgotten: 'Forgotten',
@@ -46,7 +45,7 @@ export const botsManageEn = {
     purposePlaceholder: 'What it’s for, in a line',
     instructionsPlaceholder: 'How it should work — read before every reply',
     versionFooter: 'Each save adds a version',
-    computerWarn: 'This template uses the computer, which your deployment doesn’t have yet — browsing work won’t run.',
+    computerWarn: 'This template needs a computer your deployment doesn’t have yet — browsing won’t work.',
     limit: 'Up to 20 Bots (Sprouty doesn’t count)',
     /** BotNameIssue → a sentence (the server's codes map onto the same issues). */
     nameErr: {
@@ -87,7 +86,7 @@ export const botsManageEn = {
     rules: 'Group Rules',
     rulesNone: 'None',
     rulesPlaceholder: 'What every Bot here should keep in mind',
-    rulesFooter: 'Every Bot in this group reads these before it replies. Up to {max} characters.',
+    rulesFooter: 'Every Bot reads these before replying. Up to {max} characters.',
     allowBotChat: 'Let Bots ask each other',
     allowBotChatFooter: 'Bots in this conversation can @-mention each other for help.',
     leadFooter: 'The lead answers and delegates when no one is @-mentioned.',
@@ -99,7 +98,7 @@ export const botsManageEn = {
     removeFailed: 'Couldn’t remove {name}',
     inviteRow: 'Invite a Bot…',
     notes: 'Shared Notes',
-    notesFooter: 'The Bots keep these for this conversation. Edit them on the web.',
+    notesFooter: 'Kept by the Bots. Edit them on the web.',
     noteDoneA11y: 'Done',
     guestFooter: 'A guest Bot only speaks when @-mentioned',
     /** A member's role in a conversation (BotMemberRole) or an archived member. */
@@ -113,7 +112,7 @@ export const botsManageEn = {
     mainSection: 'Main Assistant',
     othersSection: 'Other Bots',
     archivedSection: 'Archived',
-    mainFooter: 'New Chat uses {name} by default; your ongoing conversation in Bots is with the same {name}.',
+    mainFooter: 'New Chat uses {name} by default.',
     /** Species names, as the web's `plantAvatar.name.*`. */
     plantName: {
       sprout: 'Sprout',

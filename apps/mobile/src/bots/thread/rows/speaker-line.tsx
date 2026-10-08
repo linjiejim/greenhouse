@@ -2,8 +2,9 @@
  * Who speaks next — shown only when the speaker changes (the vendored
  * transcript decides; a DM's own Bot never gets one, its title already says
  * who it is): the Bot's plant (static — in a transcript only the Bot talking
- * right now may move), its name, its role, and why it is speaking when it was
- * asked by another Bot ("asked by Sprouty"). A header for VoiceOver (the rotor
+ * right now may move) and its name. Nothing more on screen: the role is one
+ * tap away (the profile), and who handed the turn over is the hand-off strip
+ * right above — VoiceOver still hears both. A header for VoiceOver (the rotor
  * jumps between speakers); tapping opens the Bot's profile.
  *
  * `bot` undefined while the directory has not answered: a placeholder bar,
@@ -15,6 +16,7 @@ import { Pressable, Text, View } from 'react-native';
 import { useT } from '../../../lib/i18n';
 import type { BotView } from '../../../shared/bots';
 import { makeStyles, radius, space, typo, useTheme, weight } from '../../../theme';
+import { useFontScaleKey } from '../../../ui/font-scale';
 import { BotAvatar } from '../../ui/bot-avatar';
 
 export const SpeakerLine = memo(function SpeakerLine({
@@ -32,6 +34,8 @@ export const SpeakerLine = memo(function SpeakerLine({
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  // keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts)
+  const fontKey = useFontScaleKey();
   const t = useT();
   const name = bot?.name ?? (loaded ? t('bots.common.deletedBot') : null);
   const meta = [bot?.role.trim(), askedBy ? t('bots.thread.askedBy', { name: askedBy }) : null]
@@ -40,6 +44,7 @@ export const SpeakerLine = memo(function SpeakerLine({
   const label = [name, meta].filter(Boolean).join(', ');
   return (
     <Pressable
+      key={fontKey}
       onPress={bot && onPress ? () => onPress(bot.id) : undefined}
       disabled={!bot || !onPress}
       accessibilityRole="header"
@@ -47,11 +52,8 @@ export const SpeakerLine = memo(function SpeakerLine({
       accessibilityHint={bot && onPress ? t('bots.thread.titleHintDm') : undefined}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
-      <BotAvatar bot={bot ?? null} size={24} animate={false} />
-      <View style={styles.texts}>
-        {name ? <Text style={styles.name}>{name}</Text> : <View style={styles.skeleton} />}
-        {meta ? <Text style={styles.meta}>{meta}</Text> : null}
-      </View>
+      <BotAvatar bot={bot ?? null} size={22} animate={false} />
+      {name ? <Text style={styles.name}>{name}</Text> : <View style={styles.skeleton} />}
     </Pressable>
   );
 });
@@ -67,9 +69,6 @@ const useStyles = makeStyles((c) => ({
     paddingBottom: space.xxs,
   },
   pressed: { opacity: 0.55 },
-  // the role wraps under the name at large Dynamic Type sizes
-  texts: { flexShrink: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: space.sm },
-  name: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
-  meta: { ...typo.footnote, color: c.secondaryLabel },
+  name: { flexShrink: 1, ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
   skeleton: { width: 72, height: 12, borderRadius: radius.xs, backgroundColor: c.tertiaryFill },
 }));

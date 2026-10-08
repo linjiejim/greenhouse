@@ -83,6 +83,9 @@ export const zh: Catalog = {
     reasoning: '思考过程',
     references: '引用',
     toolCalls: '工具调用',
+    /** ⋯ → 显示 › 思考过程 / 工具调用 / 引用来源 (global switches, all off by default). */
+    show: '显示',
+    showSources: '引用来源',
     sourceDetail: '来源详情',
     sourceEmpty: '该来源的详细内容暂未加载。可在对话中继续追问以获取更多上下文。',
     askAboutSource: '就此提问',

@@ -13,6 +13,12 @@
  *    can reply (they only prefill the composer);
  *  - `tail` — the run's footer (static "Working…", a failed run's reason).
  *
+ * And what it leaves out: lines that only repeat a card's own receipt right
+ * above them — `created` (the card already reads "Created {name}"; the
+ * `joined` line that follows says it is here) and `task_started` (the card
+ * reads "Started · {title}", the task dock tracks it, its report closes it).
+ * Both are only ever written when the member accepts such a card.
+ *
  * Pure (tested in ./thread-rows.test.ts); never edits the vendored module.
  */
 
@@ -25,6 +31,13 @@ export type ThreadRow =
   | { key: string; kind: 'starters'; botId: string }
   | { key: string; kind: 'top' }
   | { key: string; kind: 'tail' };
+
+/** Event lines a card's receipt already says (see the header). */
+const ECHOES = new Set(['created', 'task_started']);
+
+function isEcho(item: TranscriptItem): boolean {
+  return item.kind === 'event' && !!item.event && ECHOES.has(item.event.kind);
+}
 
 /** A gap at least this long gets a time separator. */
 export const SEPARATOR_GAP_MS = 60 * 60_000;
@@ -85,6 +98,7 @@ export function threadRows(
   const rows: ThreadRow[] = [o.hasMore ? { key: 'top', kind: 'top' } : { key: 'intro', kind: 'intro' }];
   let last: number | null = null;
   for (const item of items) {
+    if (isEcho(item)) continue;
     const at = writtenAt(item, now);
     if (at != null) {
       if (last == null || at - last >= SEPARATOR_GAP_MS || !sameDay(at, last)) {

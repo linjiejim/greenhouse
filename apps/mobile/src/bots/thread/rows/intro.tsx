@@ -1,10 +1,10 @@
 /**
- * The start of a thread (only once the whole history is loaded): who this is
- * and what the thread is for. A DM: the Bot saying hello (static — in a
- * transcript, motion means "this Bot is talking"), its name and role, and the
- * line that tells the two Sproutys apart — this is the ongoing conversation;
- * for a quick question, a New Chat (tappable). A group: its roster, its
- * title, "This is the beginning of …".
+ * The start of a thread (only once the whole history is loaded): who this is.
+ * A DM: the Bot saying hello (static — in a transcript, motion means "this
+ * Bot is talking"), its name, and one quiet line saying the thread keeps its
+ * context (the role is in the greeting right below; a quick question goes to
+ * New Chat from the drawer or ⋯). A group: its roster, its title, "This is
+ * the beginning of …".
  */
 
 import React, { memo } from 'react';
@@ -12,6 +12,7 @@ import { Text, View } from 'react-native';
 import { useT } from '../../../lib/i18n';
 import type { BotView } from '../../../shared/bots';
 import { makeStyles, space, typo, useTheme, weight } from '../../../theme';
+import { useFontScaleKey } from '../../../ui/font-scale';
 import { AvatarStack } from '../../ui/avatar-stack';
 import { BotAvatar } from '../../ui/bot-avatar';
 
@@ -20,7 +21,6 @@ export const Intro = memo(function Intro({
   title,
   owner,
   members,
-  onNewChat,
 }: {
   kind: 'direct' | 'group';
   title: string;
@@ -28,14 +28,15 @@ export const Intro = memo(function Intro({
   owner: BotView | undefined;
   /** A group's roster. */
   members: BotView[];
-  onNewChat: () => void;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  // keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts)
+  const fontKey = useFontScaleKey();
   const t = useT();
   if (kind === 'group') {
     return (
-      <View style={styles.wrap}>
+      <View key={fontKey} style={styles.wrap}>
         <AvatarStack bots={members} size={40} max={5} />
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.body}>{t('bots.thread.groupStart', { title })}</Text>
@@ -43,22 +44,11 @@ export const Intro = memo(function Intro({
     );
   }
   const name = owner?.name ?? title;
-  // The line names the way out ("New Chat") — that part is a link.
-  const [before, after] = t('bots.thread.dmStart', { name, newChat: '\u0000' }).split('\u0000');
   return (
-    <View style={styles.wrap}>
-      <BotAvatar bot={owner ?? null} size={80} state="hello" animate={false} />
-      <View style={styles.names}>
-        <Text style={styles.title}>{name}</Text>
-        {owner?.role.trim() ? <Text style={styles.role}>{owner.role.trim()}</Text> : null}
-      </View>
-      <Text style={styles.body}>
-        {before}
-        <Text style={styles.link} onPress={onNewChat} accessibilityRole="link">
-          {t('bots.thread.dmStartLink')}
-        </Text>
-        {after}
-      </Text>
+    <View key={fontKey} style={styles.wrap}>
+      <BotAvatar bot={owner ?? null} size={64} state="hello" animate={false} />
+      <Text style={[styles.title, styles.name]}>{name}</Text>
+      <Text style={styles.body}>{t('bots.thread.dmStart', { name })}</Text>
     </View>
   );
 });
@@ -71,9 +61,7 @@ const useStyles = makeStyles((c) => ({
     paddingTop: space.xl,
     paddingBottom: space.lg,
   },
-  names: { alignItems: 'center', gap: space.xxs, marginTop: space.xs },
-  title: { ...typo.title2, color: c.label, textAlign: 'center' },
-  role: { ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center' },
-  body: { ...typo.footnote, color: c.secondaryLabel, textAlign: 'center', marginTop: space.xs },
-  link: { color: c.accent, fontWeight: weight.semibold },
+  title: { ...typo.title3, fontWeight: weight.semibold, color: c.label, textAlign: 'center' },
+  name: { marginTop: space.xs },
+  body: { ...typo.footnote, color: c.secondaryLabel, textAlign: 'center' },
 }));

@@ -87,6 +87,9 @@ export const en = {
     reasoning: 'Reasoning',
     references: 'References',
     toolCalls: 'Tool calls',
+    /** ⋯ → Show › Reasoning / Tool Calls / Sources (global switches, all off by default). */
+    show: 'Show',
+    showSources: 'Sources',
     sourceDetail: 'Source detail',
     sourceEmpty: 'Details for this source are not loaded yet. Keep asking in the conversation for more context.',
     askAboutSource: 'Ask about this',

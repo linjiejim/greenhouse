@@ -2,10 +2,7 @@
 
 export const botsThreadEn = {
   thread: {
-    /** `{newChat}` is the tappable `dmStartLink`. */
-    dmStart:
-      'This is your ongoing conversation with {name}. It remembers what you talk about here — for a quick question, start a {newChat}.',
-    dmStartLink: 'New Chat',
+    dmStart: '{name} remembers what you talk about here',
     groupStart: 'This is the beginning of {title}.',
     /** A group without a title or a known member. */
     group: 'Group',
@@ -17,7 +14,7 @@ export const botsThreadEn = {
     needsYouJump: 'Needs You',
     latest: 'Latest',
     loadEarlier: 'Load Earlier Messages',
-    earlierFailed: 'Couldn’t load earlier messages · Tap to retry',
+    earlierFailed: 'Couldn’t load · Tap to retry',
     retry: 'Retry',
     continue: 'Continue',
     retryMessage: 'Please try that again.',
@@ -26,7 +23,7 @@ export const botsThreadEn = {
     summarized: 'Earlier messages were summarized',
     view: 'View',
     working: 'Working…',
-    runFailed: 'This reply was interrupted: {reason}',
+    runFailed: 'Reply interrupted: {reason}',
     refreshFailed: 'Couldn’t refresh · Retry',
     sendFailed: 'Couldn’t send',
     handleNowFailed: 'Couldn’t handle it now',
@@ -43,8 +40,7 @@ export const botsThreadEn = {
     titleHintGroup: 'Shows the conversation info',
     readOnlyDm: '{name} is archived and won’t reply',
     readOnlyGroup: 'No Bot here can reply',
-    startersTitle: 'Try asking',
-    nameHint: 'Your main assistant is called {name} — want to give it a name of your own?',
+    nameHint: 'Give {name} a name of your own?',
     nameHintRename: 'Rename',
     nameHintKeep: 'Keep {name}',
     /** Time separators: the day part (bold) before the time. */
@@ -99,11 +95,6 @@ export const botsThreadEn = {
     waitConfirm: 'Waiting for your go-ahead',
     stopping: 'Stopping after this step…',
     stoppingNow: 'Stopping…',
-    group: '{n} Bots · Lead: {name}',
-    groupCount: '{n} Bots',
-    /** An idle DM: the Bot's role, as written by the member. */
-    role: '{role}',
-    idle: 'Ready when you are',
     archived: 'Archived',
     noReplier: 'No Bot can reply',
   },

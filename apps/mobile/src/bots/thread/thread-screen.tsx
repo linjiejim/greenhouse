@@ -366,7 +366,7 @@ export function BotThreadScreen({
 
   /* ---------- the title view ---------- */
   const status = statusLine({ snap, byId, kind });
-  const statusText = t(status.key, status.vars);
+  const statusText = status ? t(status.key, status.vars) : '';
   const pose = titlePose({ snap, byId, kind });
   const speakingId = talkingSegment(snap.run)?.botId ?? null;
   const headerBots = useMemo<Array<AvatarSource | null>>(() => {
@@ -1012,7 +1012,7 @@ export function BotThreadScreen({
       case 'top':
         return <TopLoader state={snap.earlier} manual={manualEarlier} onLoad={loadEarlierByHand} />;
       case 'intro':
-        return <Intro kind={kind} title={displayTitle} owner={owner} members={members} onNewChat={onNewChat} />;
+        return <Intro kind={kind} title={displayTitle} owner={owner} members={members} />;
       case 'time':
         return <TimeSeparator at={row.at} />;
       case 'user':

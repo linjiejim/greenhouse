@@ -20,6 +20,10 @@
  *    "已停止生成" for a reply the user stopped), and inline errors with 重试.
  *    Context menu (src/chat/message-menu.tsx — bounded excerpt preview, not
  *    the whole reply): 复制 / 分享 / 引用 / 重新生成 (latest reply only).
+ *    The reasoning row, the tools row (with the metrics caption) and the
+ *    references row show only when the member switched them on (⋯ → 显示,
+ *    global, all off by default — src/chat/reply-details-menu.tsx); a live
+ *    reply with nothing else to show keeps the thinking row until its text.
  *
  * Both are memoised on the message object — during streaming only the turn
  * being patched re-renders. Menu ids come back through `onAction(msg, id)`.
@@ -45,6 +49,7 @@ import { usePrefs } from '../store/prefs';
 import { makeStyles, radius, space, squircle, typo, useTheme } from '../theme';
 import { NativeButton } from '../ui/button';
 import { Icon, type IconName, Spinner, Touchable } from '../ui/core';
+import { useFontScaleKey } from '../ui/font-scale';
 import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
 import { PlantAvatar } from '../ui/plant-avatar';
 import { ArtifactCards, isBelowProse, replacesRow } from './artifacts';
@@ -260,7 +265,16 @@ export const AiMessage = memo(function AiMessage({
   const cardsAbove = useMemo(() => (tools ?? []).filter((s) => !isBelowProse(s)), [tools]);
   const cardsBelow = useMemo(() => (tools ?? []).filter(isBelowProse), [tools]);
   const rich = useMemo<RichEnv>(() => ({ reply, followUp }), [reply, followUp]);
-  const thinking = msg.status === 'thinking';
+  // What else shows besides the answer (⋯ → 显示; global, all off by default — src/store/prefs.ts).
+  const details = usePrefs((s) => s.details);
+  const fontKey = useFontScaleKey();
+  const showReasoning = details.reasoning && !!msg.reasoning;
+  const showTrace = details.tools && trace.length > 0;
+  // Until the first text, a live reply always shows that it is working: the thinking row
+  // stays up while the rows it would otherwise hand over to are switched off.
+  const thinking =
+    msg.status === 'thinking' ||
+    (live && !msg.text && !msg.error && !msg.stopped && !showReasoning && !showTrace && !cardsAbove.length);
 
   // Keyed on the language (not `t`, which is new every render) so a streaming
   // reply doesn't rebuild its native menu on every tick.
@@ -284,16 +298,16 @@ export const AiMessage = memo(function AiMessage({
     <View style={styles.aiBody}>
       {thinking ? (
         <Thinking
-          headline={msg.reasoning ? reasoningHeadline(msg.reasoning) || undefined : undefined}
-          onOpen={msg.reasoning ? () => onOpenReasoning(msg) : undefined}
+          headline={showReasoning ? reasoningHeadline(msg.reasoning!) || undefined : undefined}
+          onOpen={showReasoning ? () => onOpenReasoning(msg) : undefined}
           avatar={thinkingAvatar}
         />
       ) : null}
       {/* with the first text / tool, not at the end — appearing then would push the whole reply down */}
-      {msg.reasoning && !thinking ? (
-        <ReasoningRow text={msg.reasoning} active={live && !msg.text} onOpen={() => onOpenReasoning(msg)} />
+      {showReasoning && !thinking ? (
+        <ReasoningRow text={msg.reasoning!} active={live && !msg.text} onOpen={() => onOpenReasoning(msg)} />
       ) : null}
-      {trace.length && !thinking ? <ToolsRow steps={trace} live={live} onOpen={() => onOpenTools(msg)} /> : null}
+      {showTrace && !thinking ? <ToolsRow steps={trace} live={live} onOpen={() => onOpenTools(msg)} /> : null}
       {!thinking && cardsAbove.length ? <ArtifactCards steps={cardsAbove} text={msg.text} live={live} /> : null}
       {!thinking && msg.text ? (
         <RichContext.Provider value={rich}>
@@ -311,7 +325,7 @@ export const AiMessage = memo(function AiMessage({
       <ArtifactCards key="cards" steps={cardsBelow} text={msg.text} live={live} followUp={followUp} onReply={reply} />
     ) : null,
     msg.error ? <ErrorLine key="error" error={msg.error} onRetry={canRerun ? onRetry : undefined} /> : null,
-    !live && refCount ? (
+    !live && refCount && details.sources ? (
       <DisclosureRow
         key="refs"
         icon="book"
@@ -323,14 +337,15 @@ export const AiMessage = memo(function AiMessage({
       <Text key="stopped" style={styles.metrics}>
         {t('chat.stopped')}
       </Text>
-    ) : !live && msg.metrics && !msg.error ? (
+    ) : !live && msg.metrics && !msg.error && details.tools ? (
       <MetricsCaption key="metrics" m={msg.metrics} />
     ) : null,
   ];
   const tail = tailItems.some(Boolean) ? <View style={styles.aiTail}>{tailItems}</View> : null;
 
   return (
-    <Animated.View entering={msg.fresh ? FadeIn.duration(220) : undefined} style={styles.aiRow}>
+    // keyed on the text size: mounted text re-measures when Dynamic Type changes (src/ui/font-scale.ts)
+    <Animated.View key={fontKey} entering={msg.fresh ? FadeIn.duration(220) : undefined} style={styles.aiRow}>
       {/* nothing to act on until text arrives */}
       {msg.text ? (
         <MessageMenu items={items} text={msg.text} onSelect={(id) => onAction(msg, id as MessageAction)}>
@@ -365,6 +380,7 @@ export const UserMessage = memo(function UserMessage({
   const styles = useStyles(c);
   const t = useT();
   const lang = usePrefs((s) => s.lang);
+  const fontKey = useFontScaleKey();
   // a turn's attached files ride in the text as a server-written fence
   const { text, attachments } = useMemo(() => splitAttachments(msg.text), [msg.text]);
   const items = useMemo<MenuItem[]>(
@@ -441,7 +457,7 @@ export const UserMessage = memo(function UserMessage({
   );
 
   return (
-    <Animated.View entering={msg.fresh ? FadeIn.duration(200) : undefined} style={styles.userRow}>
+    <Animated.View key={fontKey} entering={msg.fresh ? FadeIn.duration(200) : undefined} style={styles.userRow}>
       {items.length ? (
         <NativeMenu
           trigger="longPress"

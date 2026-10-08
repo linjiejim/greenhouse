@@ -6,8 +6,10 @@
  *    into the Bots: someone waiting for the member (orange — one card opens its
  *    thread at the card, several open the needs-you sheet) > a background task
  *    that reported back > something unread > "Continue with Sprouty" (the
- *    priority is ./bridge-item.ts). Hidden while the keyboard is up — the hero
- *    is squeezed then, and the member is typing a fresh question anyway.
+ *    priority is ./bridge-item.ts) — that last, idle line only with `idleLine`
+ *    (the hero passes it when the shelf of faces is hidden; otherwise the
+ *    faces already lead to every Bot). Hidden while the keyboard is up — the
+ *    hero is squeezed then, and the member is typing a fresh question anyway.
  *  - `useProfileBot` — the Bot behind a `?profile=` new chat ("Ask Dandy in a
  *    New Chat"): its directory entry and its ongoing DM, for the hero's name
  *    and the "Back to Dandy" button.
@@ -37,7 +39,7 @@ import { openThread } from '../nav';
 import { sproutyBot, sproutyDm, useBots } from '../store';
 import { bridgeItem } from './bridge-item';
 
-export function HomeBridge() {
+export function HomeBridge({ idleLine = true }: { idleLine?: boolean }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
@@ -102,6 +104,7 @@ export function HomeBridge() {
         };
       }
       case 'sprouty': {
+        if (!idleLine) return null;
         const { bot, sessionId } = item;
         return {
           label: t('bots.nav.bridgeDefault', { name: bot.name }),
@@ -114,7 +117,7 @@ export function HomeBridge() {
         };
       }
     }
-  }, [item, byId, botsLoaded, conversations, copy, router, t]);
+  }, [item, idleLine, byId, botsLoaded, conversations, copy, router, t]);
 
   if (!view || keyboardUp) return null;
   const tint = view.urgent ? c.orange : c.accent;
