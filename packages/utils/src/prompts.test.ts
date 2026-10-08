@@ -26,6 +26,24 @@ describe('composeRichOutput', () => {
     expect(guide).toMatch(/数据没齐就不要开 fence/);
   });
 
+  it('teaches the business blocks and their buttons only when declared', () => {
+    const guide = composeRichOutput({ blocks: ['datatable', 'stats', 'cards', 'steps'] });
+    expect(guide).toContain('```stats');
+    expect(guide).toContain('```cards');
+    expect(guide).toContain('```steps');
+    expect(guide).toContain('块按钮（actions）');
+    expect(guide.indexOf('```datatable')).toBeLessThan(guide.indexOf('```stats'));
+    expect(composeRichOutput({ blocks: DEFAULT_CLIENT_BLOCKS })).not.toContain('块按钮');
+  });
+
+  it('teaches the html-preview reply channel only with html-preview and the declared bridge', () => {
+    expect(composeRichOutput({ blocks: ['html-preview', 'html-preview-bridge'] })).toContain(
+      'window.greenhouse?.sendPrompt',
+    );
+    expect(composeRichOutput({ blocks: ['html-preview'] })).not.toContain('sendPrompt');
+    expect(composeRichOutput({ blocks: ['html-preview-bridge'] })).not.toContain('sendPrompt');
+  });
+
   it('keeps the always-on rules and drops the JSON discipline when no JSON block is taught', () => {
     const guide = composeRichOutput({ blocks: ['mermaid'] });
     expect(guide).toContain('站内实体引用');

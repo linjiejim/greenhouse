@@ -80,7 +80,7 @@ interface MessageProps {
   /** Callback for ask_user form submission (sends formatted message) */
   onAskUserSubmit?: (message: string) => void | Promise<void>;
   /** Callback for a confirm-block button click (sends the picked value as a follow-up message) */
-  onConfirmAction?: (value: string) => void | Promise<void>;
+  onBlockAction?: (value: string) => void | Promise<void>;
   /** Whether the message after this one is a user response (ask_user submitted) */
   hasFollowUpUserMessage?: boolean;
   /** Previous user message content — used as fullscreen dialog title */
@@ -134,7 +134,7 @@ function MessageBubbleImpl(props: MessageProps) {
     onRegenerate,
     onQuote,
     onAskUserSubmit,
-    onConfirmAction,
+    onBlockAction,
     hasFollowUpUserMessage,
     previousUserMessage,
     submittedUserMessage,
@@ -399,8 +399,8 @@ function MessageBubbleImpl(props: MessageProps) {
             <RichMarkdown
               content={content}
               compact
-              onConfirmAction={onConfirmAction}
-              resolvedConfirmValue={confirmedActionValue}
+              onBlockAction={onBlockAction}
+              resolvedActionValue={confirmedActionValue}
               linkTarget="new-window"
             />
           </div>

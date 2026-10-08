@@ -36,6 +36,26 @@
       "import": "./src/components/blocks/datatable-block.tsx",
       "types": "./src/components/blocks/datatable-block.tsx"
     },
+    "./components/blocks/rich-block-shell": {
+      "import": "./src/components/blocks/rich-block-shell.tsx",
+      "types": "./src/components/blocks/rich-block-shell.tsx"
+    },
+    "./components/blocks/block-actions": {
+      "import": "./src/components/blocks/block-actions.tsx",
+      "types": "./src/components/blocks/block-actions.tsx"
+    },
+    "./components/blocks/stats-block": {
+      "import": "./src/components/blocks/stats-block.tsx",
+      "types": "./src/components/blocks/stats-block.tsx"
+    },
+    "./components/blocks/cards-block": {
+      "import": "./src/components/blocks/cards-block.tsx",
+      "types": "./src/components/blocks/cards-block.tsx"
+    },
+    "./components/blocks/steps-block": {
+      "import": "./src/components/blocks/steps-block.tsx",
+      "types": "./src/components/blocks/steps-block.tsx"
+    },
     "./components/tool-call": {
       "import": "./src/components/tool-call/index.tsx",
       "types": "./src/components/tool-call/index.tsx"
@@ -113,7 +133,11 @@
       "types": "./src/lib/wiki-diff.ts"
     },
     "./styles/tokens.css": "./src/styles/tokens.css",
-    "./styles/components.css": "./src/styles/components.css"
+    "./styles/components.css": "./src/styles/components.css",
+    "./lib/number-format": {
+      "import": "./src/lib/number-format.ts",
+      "types": "./src/lib/number-format.ts"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

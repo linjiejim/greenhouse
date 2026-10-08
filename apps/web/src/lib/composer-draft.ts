@@ -18,6 +18,13 @@ export interface ComposerDraft {
   text: string;
   /** Already-uploaded images to attach, in order. */
   images: Array<{ id: string; url: string }>;
+  /** Add after what the user already typed instead of replacing it. */
+  append?: boolean;
+  /**
+   * Offered by a page in the html-preview pane (`window.greenhouse.sendPrompt`).
+   * A viewer who cannot write to the conversation ignores it.
+   */
+  fromPage?: boolean;
 }
 
 export function requestComposerDraft(draft: ComposerDraft): void {

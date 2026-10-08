@@ -33,13 +33,24 @@
  * `allow-modals`, which is what makes the print dialog open at all. It lives
  * for one export and is torn down after.
  *
+ * One narrow channel back out (spec docs/specs/20261008-html-preview-bridge.md):
+ * when `bridge` is on — an inline ```html-preview, never a Mission artifact —
+ * the PREVIEW copy (not the download, not the print copy) gets
+ * `window.greenhouse.sendPrompt(text)`, which posts a message to this window.
+ * Only a message from this very frame is read; its text is put into the
+ * composer (appended, never sent), at most once per second, cut at 2,000
+ * characters. The sandbox tokens do not change: the page still cannot read or
+ * do anything as the user; it can only offer words the user then reviews.
+ *
  * The pane's header row is the toolbar (see ./header-slot) — this component
  * renders no chrome of its own.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { HTML_BRIDGE, injectHtmlBridge, latestWithin, readHtmlBridgeMessage } from '@greenhouse/types/rich-output';
+import { requestComposerDraft } from '../../lib/composer-draft';
 import { Code2, Download, Eye, FileDown, RefreshCw } from '../../lib/icons';
-import { IconButton } from '../ui';
+import { IconButton, toast } from '../ui';
 import { useT } from '../../lib/i18n';
 import { SidePaneHeaderActions } from './header-slot';
 
@@ -85,8 +96,38 @@ function fileStem(title?: string): string {
   return (title || 'preview').replace(/[^\w.-]+/g, '_');
 }
 
-export function HtmlPreview({ code, title }: { code: string; title?: string }) {
+export function HtmlPreview({
+  code,
+  title,
+  bridge = false,
+}: {
+  code: string;
+  title?: string;
+  /** Give the page `window.greenhouse.sendPrompt` (inline previews only — see the file header). */
+  bridge?: boolean;
+}) {
   const t = useT();
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const previewDoc = useMemo(() => (bridge ? injectHtmlBridge(code) : code), [bridge, code]);
+
+  useEffect(() => {
+    if (!bridge) return;
+    const fill = latestWithin<{ text: string; truncated: boolean }>(HTML_BRIDGE.throttleMs, ({ text, truncated }) => {
+      requestComposerDraft({ text, images: [], append: true, fromPage: true });
+      toast(truncated ? t('richBlocks.pageTextTruncated') : t('richBlocks.pageFilledComposer'), 'info');
+    });
+    const onMessage = (event: MessageEvent) => {
+      // Only this preview's own frame — never another window pretending to be it.
+      if (!frameRef.current || event.source !== frameRef.current.contentWindow) return;
+      const message = readHtmlBridgeMessage(event.data);
+      if (message) fill.push(message);
+    };
+    window.addEventListener('message', onMessage);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      fill.cancel();
+    };
+  }, [bridge, t]);
   const [showSource, setShowSource] = useState(false);
   // Remounts the iframe, which is the only way to re-run a document that has
   // already scribbled on itself.
@@ -157,10 +198,11 @@ export function HtmlPreview({ code, title }: { code: string; title?: string }) {
       ) : (
         <iframe
           key={reloadKey}
+          ref={frameRef}
           // Opaque origin: scripts yes, access to this session no. See the file
           // header before touching this attribute.
           sandbox={SANDBOX}
-          srcDoc={code}
+          srcDoc={previewDoc}
           title={title || t('sidePane.htmlPreview')}
           className="min-h-0 flex-1 border-0 bg-white"
         />

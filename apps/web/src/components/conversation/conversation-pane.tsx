@@ -1481,12 +1481,17 @@ export function ConversationPane({
    *
    * Deliberately staged, never sent: the drawing says where, the user still
    * gets to say what. Auto-sending would make one mis-drawn circle cost a full
-   * image generation.
+   * image generation. The html-preview pane's `sendPrompt` lands here too
+   * (appended to what is already typed), for the same reason.
    */
+  const isOwnerRef = useRef(isOwner);
+  isOwnerRef.current = isOwner;
   useEffect(
     () =>
       onComposerDraft((incoming) => {
-        setInput(incoming.text);
+        // A preview page's text is for whoever may write here, nobody else.
+        if (incoming.fromPage && !isOwnerRef.current) return;
+        setInput((current) => (incoming.append && current.trim() ? `${current}\n${incoming.text}` : incoming.text));
         setPendingImages((prev) => [
           ...prev,
           ...incoming.images.map((image) => ({
@@ -1834,7 +1839,7 @@ export function ConversationPane({
                           : undefined
                         : undefined
                     }
-                    onConfirmAction={msg.role === 'assistant' && isOwner ? handleSend : undefined}
+                    onBlockAction={msg.role === 'assistant' && isOwner ? handleSend : undefined}
                     hasFollowUpUserMessage={hasFollowUpUserMessage}
                     submittedUserMessage={submittedUserMessage}
                     confirmedActionValue={followUpUserMessage}

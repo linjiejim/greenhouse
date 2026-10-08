@@ -39,6 +39,8 @@ system prompt 末尾追加 `composeRichOutput({ blocks })` —— **只教发起
   `DEFAULT_CLIENT_BLOCKS`（今天的 5 块）。默认集的拼装结果与重构前**逐字一致**，由
   `packages/utils/src/prompts.test.ts` 对 `__fixtures__/rich-output-guide.default.txt` 金样钉住。
 - 新块永远不进默认集：客户端声明了才教。Bots 引擎同理（`RunContext.richBlocks` → `buildStaticRules`）。
+- 能力名 `html-preview-bridge`（不是块）：web Chat 页与移动端声明，教模型在 html-preview 里用 `window.greenhouse?.sendPrompt(...)` 把文字交回输入框（[spec](../../../../docs/specs/20261008-html-preview-bridge.md)）。
+- 业务块 `stats` / `cards` / `steps`（[spec](../../../../docs/specs/20261008-interactive-rich-blocks.md)）各有一段说明，教了其中任一块时再追加「块按钮（actions）」一段：按钮 value 写成用户会说的一句话、只是可见的下一条消息，不直接执行操作。
 
 **只有一份副本，改一次即改全部**：每块一段说明（`RICH_BLOCK_GUIDES`）+ 常驻段 + 写作纪律，都在
 `packages/utils/src/prompts.ts`，按固定顺序拼装。

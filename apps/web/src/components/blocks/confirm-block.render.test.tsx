@@ -1,6 +1,6 @@
 /**
  * Regression test: confirm-block buttons were inert in chat because the message
- * bubbles never passed `onConfirmAction` to <RichMarkdown>. ConfirmBlock disables
+ * bubbles never passed `onBlockAction` to <RichMarkdown>. ConfirmBlock disables
  * its buttons when no handler is wired. These tests pin the behavior at the
  * RichMarkdown seam: a handler → interactive buttons; no handler → disabled.
  */
@@ -22,9 +22,9 @@ const confirmContent =
   '\n```';
 
 describe('confirm block interactivity', () => {
-  it('renders enabled buttons when onConfirmAction is wired (chat)', () => {
+  it('renders enabled buttons when onBlockAction is wired (chat)', () => {
     const html = renderToStaticMarkup(
-      createElement(RichMarkdown, { content: confirmContent, onConfirmAction: () => {} }),
+      createElement(RichMarkdown, { content: confirmContent, onBlockAction: () => {} }),
     );
     expect(html).toContain('Yes, proceed');
     expect(html).not.toMatch(/<button[^>]*\sdisabled(?:=|>)/);
@@ -42,7 +42,7 @@ describe('confirm block interactivity', () => {
         content: confirmContent,
         compact: true,
         className: 'test-scope',
-        onConfirmAction: () => {},
+        onBlockAction: () => {},
       }),
     );
     expect(html).toContain('rich-markdown-compact');

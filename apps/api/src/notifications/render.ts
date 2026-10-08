@@ -62,6 +62,8 @@ const DELIVERY_NOTES: FlattenNotes = {
   artifactsHeading: HEADING_ARTIFACTS,
   attachmentsHeading: HEADING_ATTACHMENTS,
   boolean: (value) => (value ? '是' : '否'),
+  stepStatus: (status) =>
+    ({ done: '已完成', active: '进行中', pending: '待开始', blocked: '受阻', skipped: '已跳过' })[status],
 };
 
 /**

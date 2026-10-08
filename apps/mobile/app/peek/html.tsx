@@ -3,16 +3,24 @@
  * fence, src/chat/markdown/blocks/html-preview.tsx) in a WebView: native
  * header (the page's <title>, ✕ close, copy source). The page is untrusted
  * model output, so it runs isolated: an ephemeral (incognito) web context, no
- * bridge into the app (no `onMessage`), no pop-up windows, and it can't
- * navigate away — a link it opens goes to the in-app Safari view instead.
+ * pop-up windows, and it can't navigate away — a link it opens goes to the
+ * in-app Safari view instead.
+ *
+ * Exactly one bridge back into the app, and only when the reply is the
+ * member's own (`bridge` in the handoff): `window.greenhouse.sendPrompt(text)`
+ * (spec docs/specs/20261008-html-preview-bridge.md). Its text goes INTO the
+ * composer — appended, never sent — and the viewer closes so the member sees
+ * it. Nothing else crosses: no data, no tools, no app state.
  * The source arrives in memory through the handoff store (`?k=`, kind `html`).
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { View } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { WebView, type WebViewNavigation } from 'react-native-webview';
+import { WebView, type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
+import { fillComposer } from '../../src/chat/composer-bridge';
+import { htmlBridgeSource, readHtmlBridgeMessage } from '../../src/shared/rich-output';
 import { getHandoff } from '../../src/lib/handoff';
 import { useT } from '../../src/lib/i18n';
 import { openLink } from '../../src/lib/links';
@@ -30,8 +38,22 @@ export default function HtmlViewer() {
   const styles = useStyles(c);
   const t = useT();
   const { k } = useLocalSearchParams<{ k?: string }>();
-  const page = getHandoff<{ code: string; title?: string }>(k);
+  const router = useRouter();
+  const page = getHandoff<{ code: string; title?: string; bridge?: boolean }>(k);
   const source = useMemo(() => (page ? { html: page.code } : null), [page]);
+  const handedBack = useRef(false);
+
+  // The first sendPrompt wins: its text goes into the composer and the viewer
+  // closes, so a page cannot queue a stream of messages behind the member's back.
+  const onMessage = (event: WebViewMessageEvent) => {
+    if (!page?.bridge || handedBack.current) return;
+    const message = readHtmlBridgeMessage(event.nativeEvent.data);
+    if (!message) return;
+    handedBack.current = true;
+    fillComposer(message.text);
+    toast(t(message.truncated ? 'chat.pageTextTruncated' : 'chat.pageFilledComposer'), 'check');
+    router.back();
+  };
 
   const onNavigate = (req: WebViewNavigation & { isTopFrame?: boolean }) => {
     if (INITIAL.test(req.url) || req.isTopFrame === false) return true;
@@ -62,6 +84,9 @@ export default function HtmlViewer() {
           incognito
           onShouldStartLoadWithRequest={onNavigate}
           javaScriptCanOpenWindowsAutomatically={false}
+          {...(page?.bridge
+            ? { injectedJavaScriptBeforeContentLoaded: `${htmlBridgeSource('react-native')}true;`, onMessage }
+            : {})}
           setSupportMultipleWindows={false}
           allowsInlineMediaPlayback
           contentInsetAdjustmentBehavior="automatic"

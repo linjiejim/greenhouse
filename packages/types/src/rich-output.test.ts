@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_CLIENT_BLOCKS,
   DEFAULT_FLATTEN_NOTES,
@@ -9,10 +9,15 @@ import {
   diagnoseRichOutput,
   findIncompleteRichBlock,
   flattenRichOutput,
+  htmlBridgeSource,
+  injectHtmlBridge,
+  latestWithin,
+  readHtmlBridgeMessage,
   isChartData,
   isConfirmData,
   isDataTableData,
   parseSegments,
+  resolveBlockAction,
   type RichFence,
 } from './rich-output.js';
 
@@ -121,15 +126,16 @@ describe('Rich Output parser', () => {
     ]);
   });
 
-  it('falls back to a code block for empty or oversized mermaid payloads', () => {
-    const empty = parseSegments('```mermaid\n\n```');
+  it('drops an empty mermaid fence and falls back to a code block for an oversized one', () => {
+    const empty = parseSegments('Before\n\n```mermaid\n\n```\n\nAfter');
     const huge = parseSegments('```mermaid\n' + 'A --> B\n'.repeat(RICH_OUTPUT_LIMITS.mermaidChars) + '```');
 
-    // The fence is preserved as markdown (the reconstruction normalizes blank
-    // lines, so assert the shape rather than byte equality).
-    expect(empty).toHaveLength(1);
-    expect(empty[0]).toMatchObject({ type: 'markdown', content: expect.stringContaining('```mermaid') });
-    expect(huge[0]).toMatchObject({ type: 'markdown' });
+    // An empty block says nothing: it disappears instead of showing an empty code block.
+    expect(empty).toEqual([
+      { type: 'markdown', content: 'Before\n\n' },
+      { type: 'markdown', content: '\n\nAfter' },
+    ]);
+    expect(huge[0]).toMatchObject({ type: 'markdown', content: expect.stringContaining('```mermaid') });
   });
 
   it('keeps an html-preview fence as source and lifts its <title>', () => {
@@ -176,6 +182,9 @@ const SAMPLES: Record<RichFence, string> = {
   chart: JSON.stringify({ type: 'bar', labels: ['A'], datasets: [{ label: 'S', data: [1] }] }),
   datatable: JSON.stringify({ columns: [{ key: 'name', label: 'Name' }], rows: [{ name: 'x' }] }),
   confirm: JSON.stringify({ text: 'Go?', actions: [{ label: 'Yes', value: 'yes' }] }),
+  stats: JSON.stringify({ items: [{ label: 'New customers', value: 128 }] }),
+  cards: JSON.stringify({ items: [{ title: 'Site redesign', url: '#/projects/42' }] }),
+  steps: JSON.stringify({ items: [{ title: 'Review', status: 'done' }] }),
   mermaid: 'flowchart LR\n  A --> B',
   'html-preview': '<!doctype html><title>T</title><p>hi</p>',
   'mission-artifacts': JSON.stringify([{ id: 1, run_id: 'r', path: 'out.txt', size_bytes: 2048 }]),
@@ -307,5 +316,205 @@ describe('admitRichBlocks', () => {
 
   it('defaults to exactly the five blocks every client drew before capabilities existed', () => {
     expect(DEFAULT_CLIENT_BLOCKS).toEqual(['chart', 'datatable', 'confirm', 'mermaid', 'html-preview']);
+  });
+});
+
+describe('business blocks', () => {
+  const block = (type: string, payload: unknown) => parseSegments(fence(type, payload))[0];
+
+  it('accepts stats and keeps direction and colour apart', () => {
+    expect(
+      block('stats', {
+        title: 'October',
+        items: [
+          { label: 'Cost', value: 4200, unit: 'USD', delta: '+8%', trend: 'up', tone: 'negative', hint: 'vs Sep' },
+        ],
+        actions: [{ label: 'Break down', value: 'Break October cost down by team' }],
+      }),
+    ).toEqual({
+      type: 'stats',
+      data: {
+        title: 'October',
+        items: [
+          { label: 'Cost', value: 4200, unit: 'USD', delta: '+8%', trend: 'up', tone: 'negative', hint: 'vs Sep' },
+        ],
+        actions: [{ label: 'Break down', value: 'Break October cost down by team' }],
+      },
+    });
+  });
+
+  it('clips over-long text instead of throwing the block away, but stays strict on structure', () => {
+    const long = 'x'.repeat(100);
+    const stats = block('stats', { items: [{ label: long, value: 1 }] });
+    expect(stats).toMatchObject({ type: 'stats' });
+    expect((stats as { data: { items: { label: string }[] } }).data.items[0]!.label).toHaveLength(40);
+
+    // An empty block (models leave one behind after changing their mind) renders nothing.
+    expect(parseSegments('Done.\n\n' + fence('steps', { title: '', items: [] }))).toEqual([
+      { type: 'markdown', content: 'Done.\n\n' },
+    ]);
+    expect(diagnoseRichOutput(fence('stats', { items: [] }))).toEqual([
+      { fence: 'stats', outcome: 'invalid', reason: 'empty' },
+    ]);
+    expect(block('stats', { items: Array.from({ length: 9 }, (_, i) => ({ label: 'a', value: i })) })).toMatchObject({
+      type: 'markdown',
+    });
+    expect(block('stats', { items: [{ label: 'a', value: {} }] })).toMatchObject({ type: 'markdown' });
+  });
+
+  it('only lets a card link to an in-app route or http(s)', () => {
+    expect(block('cards', { items: [{ title: 'Doc', url: 'https://example.com/a' }] })).toMatchObject({
+      type: 'cards',
+    });
+    expect(block('cards', { items: [{ title: 'Doc', url: 'javascript:alert(1)' }] })).toMatchObject({
+      type: 'markdown',
+    });
+    expect(block('cards', { items: [{ title: 'Doc', url: '/api/secret' }] })).toMatchObject({ type: 'markdown' });
+  });
+
+  it('keeps card badges and fields within their caps', () => {
+    const card = {
+      title: 'Site redesign',
+      badges: [
+        { label: 'Late', tone: 'danger' },
+        { label: 'Odd', tone: 'purple' },
+      ],
+      fields: [{ label: 'Due', value: '10-15' }],
+    };
+    expect(block('cards', { items: [card] })).toEqual({
+      type: 'cards',
+      data: {
+        items: [
+          {
+            title: 'Site redesign',
+            badges: [{ label: 'Late', tone: 'danger' }, { label: 'Odd' }],
+            fields: [{ label: 'Due', value: '10-15' }],
+          },
+        ],
+      },
+    });
+    expect(
+      block('cards', { items: [{ ...card, badges: Array.from({ length: 4 }, () => ({ label: 'b' })) }] }),
+    ).toMatchObject({
+      type: 'markdown',
+    });
+  });
+
+  it('requires a known status on every step', () => {
+    expect(block('steps', { items: [{ title: 'Build', status: 'active' }] })).toMatchObject({ type: 'steps' });
+    expect(block('steps', { items: [{ title: 'Build', status: 'doing' }] })).toMatchObject({ type: 'markdown' });
+  });
+
+  it('caps block actions at four', () => {
+    const actions = Array.from({ length: 5 }, (_, i) => ({ label: `a${i}`, value: `v${i}` }));
+    expect(block('steps', { items: [{ title: 'Build', status: 'done' }], actions })).toMatchObject({
+      type: 'markdown',
+    });
+  });
+
+  it('flattens to readable Markdown', () => {
+    const md = [
+      fence('stats', { title: 'Oct', items: [{ label: 'New', value: 128, unit: 'users', delta: '+12%' }] }),
+      fence('cards', {
+        items: [{ title: 'Redesign', url: '#/projects/42', subtitle: 'Owner Ann', badges: [{ label: 'Late' }] }],
+      }),
+      fence('steps', {
+        items: [
+          { title: 'Review', status: 'done', time: '10-02' },
+          { title: 'Build', status: 'active' },
+        ],
+      }),
+    ].join('\n\n');
+    expect(flattenRichOutput(md)).toBe(
+      [
+        '**Oct**\n\n- **New**: 128 users (+12%)',
+        '- [Redesign](#/projects/42) — Owner Ann · Late',
+        '- [x] Review (10-02)\n- [ ] Build (in progress)',
+      ].join('\n\n'),
+    );
+  });
+
+  it('resolves which button was pressed from the next message only', () => {
+    const actions = [
+      { label: 'A', value: 'do a' },
+      { label: 'B', value: 'do b' },
+    ];
+    expect(resolveBlockAction(actions, 'do b')).toBe('do b');
+    expect(resolveBlockAction(actions, 'something else')).toBeNull();
+    expect(resolveBlockAction(undefined, 'do a')).toBeNull();
+    expect(resolveBlockAction(actions, undefined)).toBeNull();
+  });
+});
+
+describe('html-preview bridge', () => {
+  it('injects the page API inside <head>, keeping the doctype first', () => {
+    const page = '<!doctype html><html><head><title>Calc</title></head><body></body></html>';
+    const out = injectHtmlBridge(page);
+    expect(out.startsWith('<!doctype html><html><head><script>')).toBe(true);
+    expect(out).toContain('window.greenhouse = Object.freeze');
+    expect(out).toContain('parent.postMessage');
+    expect(injectHtmlBridge('<p>bare</p>').startsWith('<script>')).toBe(true);
+  });
+
+  it('builds a React Native flavour that posts a string', () => {
+    expect(htmlBridgeSource('react-native')).toContain('ReactNativeWebView.postMessage(JSON.stringify(message))');
+  });
+
+  it('reads only well-formed messages, from either transport, and caps their length', () => {
+    expect(readHtmlBridgeMessage({ type: 'greenhouse:prompt', text: '  hi  ' })).toEqual({
+      text: 'hi',
+      truncated: false,
+    });
+    expect(readHtmlBridgeMessage(JSON.stringify({ type: 'greenhouse:prompt', text: 'hi' }))).toEqual({
+      text: 'hi',
+      truncated: false,
+    });
+    expect(readHtmlBridgeMessage({ type: 'greenhouse:print', text: 'x' })).toBeNull();
+    expect(readHtmlBridgeMessage({ type: 'greenhouse:prompt', text: '   ' })).toBeNull();
+    expect(readHtmlBridgeMessage('not json')).toBeNull();
+    const long = readHtmlBridgeMessage({ type: 'greenhouse:prompt', text: 'x'.repeat(2_500) });
+    expect(long?.text).toHaveLength(2_000);
+    expect(long?.truncated).toBe(true);
+  });
+
+  it('collapses a burst into the last value', () => {
+    vi.useFakeTimers();
+    try {
+      const seen: string[] = [];
+      const fill = latestWithin<string>(1_000, (value) => seen.push(value));
+      fill.push('a');
+      fill.push('b');
+      vi.advanceTimersByTime(999);
+      expect(seen).toEqual([]);
+      fill.push('c');
+      vi.advanceTimersByTime(1);
+      expect(seen).toEqual(['c']);
+      fill.push('d');
+      fill.cancel();
+      vi.advanceTimersByTime(2_000);
+      expect(seen).toEqual(['c']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('admits the bridge as a capability alongside blocks', () => {
+    expect(admitRichBlocks(['html-preview', 'html-preview-bridge'])).toEqual(['html-preview', 'html-preview-bridge']);
+  });
+});
+
+describe('JSON repair', () => {
+  it('closes brackets a model left off the very end, then validates as usual', () => {
+    const body = '{"items":[{"title":"Doc","fields":[{"label":"Due","value":"10-31"}]}]';
+    expect(parseSegments('```cards\n' + body + '\n```')[0]).toMatchObject({ type: 'cards' });
+  });
+
+  it('repairs nothing else', () => {
+    expect(diagnoseRichOutput('```cards\n{"items":[{"title":"a}\n```')).toEqual([
+      { fence: 'cards', outcome: 'invalid', reason: 'json' },
+    ]);
+    expect(diagnoseRichOutput('```stats\n{"items":[{"label":"a","value":1}]]}\n```')).toEqual([
+      { fence: 'stats', outcome: 'invalid', reason: 'json' },
+    ]);
   });
 });

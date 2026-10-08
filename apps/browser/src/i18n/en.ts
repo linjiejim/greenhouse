@@ -16,6 +16,11 @@ export const en = {
     previewElsewhereUntitled: 'HTML preview — open this conversation in Greenhouse to view it.',
     filesHeading: 'Files',
     renderFailed: "This block couldn't be displayed",
+    stepDone: 'Done',
+    stepActive: 'In progress',
+    stepPending: 'To do',
+    stepBlocked: 'Blocked',
+    stepSkipped: 'Skipped',
   },
 
   // Shared kit: the file card a tool's download renders as (export_data).

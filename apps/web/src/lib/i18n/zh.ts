@@ -3693,6 +3693,9 @@ const zh: Messages = {
   richBlocks: {
     pendingChart: '正在生成图表…',
     pendingTable: '正在整理表格…',
+    pendingStats: '正在整理指标…',
+    pendingCards: '正在整理记录…',
+    pendingSteps: '正在整理步骤…',
     pendingConfirm: '正在准备选项…',
     pendingDiagram: '正在绘制图示…',
     pendingPage: '正在生成网页…',
@@ -3701,6 +3704,13 @@ const zh: Messages = {
     previewElsewhereUntitled: '（网页预览请在对话中打开）',
     filesHeading: '文件',
     attachmentsHeading: '附件',
+    pageFilledComposer: '网页预览把一段内容放进了输入框，确认后再发送',
+    pageTextTruncated: '网页预览传回的内容太长，只放进了前 2000 字',
+    stepDone: '已完成',
+    stepActive: '进行中',
+    stepPending: '待开始',
+    stepBlocked: '受阻',
+    stepSkipped: '已跳过',
   },
   entityPeek: {
     title: '详情',

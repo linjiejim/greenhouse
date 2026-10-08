@@ -5,8 +5,8 @@
  * (@greenhouse/types/rich-output — the same validation the web and mobile
  * clients run), rendering:
  * - Plain markdown via the existing <Markdown> component
- * - The blocks this kit draws (chart, datatable, confirm) via their components,
- *   each inside its own error boundary
+ * - The blocks this kit draws (chart, datatable, stats, cards, steps, confirm)
+ *   via their components, each inside its own error boundary
  * - A block still being streamed as a stable placeholder
  * - Every other registered block (mermaid, html-preview, mission files) as its
  *   plain-Markdown stand-in: those messages can be opened here even though the
@@ -17,12 +17,15 @@
  * Wiki/source detail pages should continue using <Markdown> directly.
  */
 
-import React, { useMemo, useRef } from 'react';
-import { Markdown } from './markdown';
+import React, { useCallback, useContext, useMemo, useRef } from 'react';
+import { AppLinkOriginContext, Markdown } from './markdown';
 import { DEFAULT_FLATTEN_NOTES, flattenSegment, parseSegments, type FlattenNotes, type Segment } from './blocks/index';
+import { CardsBlock } from './blocks/cards-block';
 import { ChartBlock } from './blocks/chart-block';
 import { ConfirmBlock } from './blocks/confirm-block';
 import { DataTableBlock } from './blocks/datatable-block';
+import { StatsBlock } from './blocks/stats-block';
+import { StepsBlock, type StepsCopy } from './blocks/steps-block';
 import { ErrorBoundary, Skeleton } from './ui';
 import { useT } from '../lib/i18n';
 
@@ -33,10 +36,13 @@ interface RichMarkdownProps {
   className?: string;
   /** Use compact (tight) variant for chat/agent messages. */
   compact?: boolean;
-  /** Callback for confirm block actions. If not provided, confirm buttons are rendered but disabled. */
-  onConfirmAction?: (value: string) => void | Promise<void>;
-  /** Persisted follow-up user message used to restore a confirm selection after reload. */
-  resolvedConfirmValue?: string;
+  /**
+   * A block button was pressed (confirm, stats, cards, steps): send its value as
+   * the member's next message. Without it the buttons render disabled.
+   */
+  onBlockAction?: (value: string) => void | Promise<void>;
+  /** The member's next message — restores which button was pressed after a reload. */
+  resolvedActionValue?: string;
 }
 
 // ─── Component ───────────────────────────────────────────
@@ -45,8 +51,8 @@ export function RichMarkdown({
   content,
   className = '',
   compact,
-  onConfirmAction,
-  resolvedConfirmValue,
+  onBlockAction,
+  resolvedActionValue,
 }: RichMarkdownProps) {
   const rawSegments = useMemo(() => parseSegments(content), [content]);
 
@@ -79,8 +85,8 @@ export function RichMarkdown({
           key={i}
           segment={segment}
           compact={compact}
-          onConfirmAction={onConfirmAction}
-          resolvedConfirmValue={resolvedConfirmValue}
+          onBlockAction={onBlockAction}
+          resolvedActionValue={resolvedActionValue}
         />
       ))}
     </div>
@@ -92,15 +98,17 @@ export function RichMarkdown({
 const MemoSegmentRenderer = React.memo(function SegmentRenderer({
   segment,
   compact,
-  onConfirmAction,
-  resolvedConfirmValue,
+  onBlockAction,
+  resolvedActionValue,
 }: {
   segment: Segment;
   compact?: boolean;
-  onConfirmAction?: (value: string) => void | Promise<void>;
-  resolvedConfirmValue?: string;
+  onBlockAction?: (value: string) => void | Promise<void>;
+  resolvedActionValue?: string;
 }) {
   const notes = useFallbackNotes();
+  const stepsCopy = useStepsCopy();
+  const openUrl = useOpenUrl();
 
   switch (segment.type) {
     case 'markdown':
@@ -119,7 +127,7 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
     case 'confirm':
       return (
         <BlockBoundary>
-          <ConfirmBlock data={segment.data} onAction={onConfirmAction} resolvedValue={resolvedConfirmValue} />
+          <ConfirmBlock data={segment.data} onAction={onBlockAction} resolvedValue={resolvedActionValue} />
         </BlockBoundary>
       );
 
@@ -127,6 +135,44 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
       return (
         <BlockBoundary>
           <DataTableBlock data={segment.data} />
+        </BlockBoundary>
+      );
+
+    case 'stats':
+      return (
+        <BlockBoundary>
+          <StatsBlock
+            data={segment.data}
+            compact={compact}
+            onAction={onBlockAction}
+            resolvedValue={resolvedActionValue}
+          />
+        </BlockBoundary>
+      );
+
+    case 'cards':
+      return (
+        <BlockBoundary>
+          <CardsBlock
+            data={segment.data}
+            compact={compact}
+            onAction={onBlockAction}
+            resolvedValue={resolvedActionValue}
+            onOpenUrl={openUrl}
+          />
+        </BlockBoundary>
+      );
+
+    case 'steps':
+      return (
+        <BlockBoundary>
+          <StepsBlock
+            data={segment.data}
+            copy={stepsCopy}
+            compact={compact}
+            onAction={onBlockAction}
+            resolvedValue={resolvedActionValue}
+          />
         </BlockBoundary>
       );
 
@@ -157,8 +203,40 @@ function useFallbackNotes(): FlattenNotes {
         `> ${segment.title ? t('richBlocks.previewElsewhere', { title: segment.title }) : t('richBlocks.previewElsewhereUntitled')}`,
       artifactsHeading: t('richBlocks.filesHeading'),
       attachmentsHeading: t('richBlocks.filesHeading'),
+      stepStatus: (status) => t(`richBlocks.step${status[0]!.toUpperCase()}${status.slice(1)}`),
     }),
     [t],
+  );
+}
+
+function useStepsCopy(): StepsCopy {
+  const t = useT();
+  return useMemo(
+    () => ({
+      status: {
+        done: t('richBlocks.stepDone'),
+        active: t('richBlocks.stepActive'),
+        pending: t('richBlocks.stepPending'),
+        blocked: t('richBlocks.stepBlocked'),
+        skipped: t('richBlocks.stepSkipped'),
+      },
+    }),
+    [t],
+  );
+}
+
+/**
+ * Cards open outside this host: an in-app `#/…` link in the web app of the
+ * station (AppLinkOriginContext), an http(s) link as itself — always a new tab.
+ */
+function useOpenUrl(): (url: string) => void {
+  const appOrigin = useContext(AppLinkOriginContext);
+  return useCallback(
+    (url: string) => {
+      const target = url.startsWith('#/') ? (appOrigin ? `${appOrigin.replace(/\/+$/, '')}/${url}` : null) : url;
+      if (target) window.open(target, '_blank', 'noopener,noreferrer');
+    },
+    [appOrigin],
   );
 }
 

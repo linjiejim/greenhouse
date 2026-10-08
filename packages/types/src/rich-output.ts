@@ -28,17 +28,74 @@ export interface ChartData {
   datasets: ChartDataset[];
 }
 
-export type ConfirmActionVariant = 'primary' | 'secondary' | 'destructive';
+export type BlockActionVariant = 'primary' | 'secondary' | 'destructive';
 
-export interface ConfirmAction {
+/**
+ * A button on a block. Pressing it sends `value` as the member's next message —
+ * visibly, through the same path as typing it; nothing runs behind the user's
+ * back (spec docs/specs/20261008-interactive-rich-blocks.md D3).
+ */
+export interface BlockAction {
   label: string;
   value: string;
-  variant?: ConfirmActionVariant;
+  variant?: BlockActionVariant;
 }
 
 export interface ConfirmData {
   text: string;
-  actions: ConfirmAction[];
+  actions: BlockAction[];
+}
+
+export type StatTrend = 'up' | 'down' | 'flat';
+/** Colour, separate from direction: a rising cost is bad news (spec D7). */
+export type StatTone = 'positive' | 'negative' | 'neutral';
+
+export interface StatItem {
+  label: string;
+  value: number | string;
+  unit?: string;
+  delta?: number | string;
+  trend?: StatTrend;
+  tone?: StatTone;
+  hint?: string;
+}
+
+export interface StatsData {
+  title?: string;
+  items: StatItem[];
+  actions?: BlockAction[];
+}
+
+export type CardBadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
+
+export interface CardItem {
+  title: string;
+  /** An in-app link (`#/projects/42`) or an http(s) URL — only ever a value a tool returned. */
+  url?: string;
+  subtitle?: string;
+  badges?: Array<{ label: string; tone?: CardBadgeTone }>;
+  fields?: Array<{ label: string; value: string }>;
+}
+
+export interface CardsData {
+  title?: string;
+  items: CardItem[];
+  actions?: BlockAction[];
+}
+
+export type StepStatus = 'done' | 'active' | 'pending' | 'blocked' | 'skipped';
+
+export interface StepItem {
+  title: string;
+  status: StepStatus;
+  time?: string;
+  detail?: string;
+}
+
+export interface StepsData {
+  title?: string;
+  items: StepItem[];
+  actions?: BlockAction[];
 }
 
 export type DataTableColumnType = 'text' | 'number' | 'currency' | 'percent' | 'boolean' | 'badge';
@@ -89,13 +146,22 @@ export type ChatAttachmentsData = ChatAttachmentItem[];
 // ─── Fences ──────────────────────────────────────────────
 
 /** Blocks the model writes: taught in the prompt, gated by the client's declared capabilities. */
-export type ModelFence = 'chart' | 'datatable' | 'confirm' | 'mermaid' | 'html-preview';
+export type ModelFence = 'chart' | 'datatable' | 'stats' | 'cards' | 'steps' | 'confirm' | 'mermaid' | 'html-preview';
 /** Blocks only the server writes: never taught, but every client must at least degrade them. */
 export type ServerFence = 'mission-artifacts' | 'attachments';
 export type RichFence = ModelFence | ServerFence;
 
 /** Every model-authored block, in prompt order. */
-export const MODEL_FENCES: readonly ModelFence[] = ['chart', 'datatable', 'confirm', 'mermaid', 'html-preview'];
+export const MODEL_FENCES: readonly ModelFence[] = [
+  'chart',
+  'datatable',
+  'stats',
+  'cards',
+  'steps',
+  'confirm',
+  'mermaid',
+  'html-preview',
+];
 
 /**
  * What a request that declares nothing is taught — exactly the five blocks
@@ -112,17 +178,27 @@ export const DEFAULT_CLIENT_BLOCKS: readonly ModelFence[] = [
 ];
 
 /**
- * Turn a request's `rich_blocks` into the blocks to teach.
+ * A capability a screen can declare beyond the blocks themselves: a feature of
+ * one block. `html-preview-bridge` = the preview can hand text back to the
+ * composer (`window.greenhouse.sendPrompt`, spec 20261008-html-preview-bridge).
+ */
+export type RichCapability = ModelFence | 'html-preview-bridge';
+
+/** Everything a client may declare in `rich_blocks`, in prompt order. */
+export const RICH_CAPABILITIES: readonly RichCapability[] = [...MODEL_FENCES, 'html-preview-bridge'];
+
+/**
+ * Turn a request's `rich_blocks` into what to teach.
  *
  * Not an array → `undefined` (teach {@link DEFAULT_CLIENT_BLOCKS}). An array is
  * intersected with the known names, unknown entries dropped silently — a newer
  * client talking to an older server must not fail its turn. `[]` means a
  * client that draws nothing special.
  */
-export function admitRichBlocks(raw: unknown): ModelFence[] | undefined {
+export function admitRichBlocks(raw: unknown): RichCapability[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const declared = new Set(raw.filter((value): value is string => typeof value === 'string'));
-  return MODEL_FENCES.filter((fence) => declared.has(fence));
+  return RICH_CAPABILITIES.filter((name) => declared.has(name));
 }
 
 // ─── Segments ────────────────────────────────────────────
@@ -179,6 +255,21 @@ export interface DataTableSegment {
   data: DataTableData;
 }
 
+export interface StatsSegment {
+  type: 'stats';
+  data: StatsData;
+}
+
+export interface CardsSegment {
+  type: 'cards';
+  data: CardsData;
+}
+
+export interface StepsSegment {
+  type: 'steps';
+  data: StepsData;
+}
+
 /**
  * A registered fence that has opened but not closed yet — the model is still
  * writing it. Renderers reserve stable space instead of exposing half a JSON
@@ -204,6 +295,9 @@ export type BlockSegment =
   | ChartSegment
   | ConfirmSegment
   | DataTableSegment
+  | StatsSegment
+  | CardsSegment
+  | StepsSegment
   | MissionArtifactsSegment
   | ChatAttachmentsSegment
   | MermaidSegment
@@ -224,6 +318,13 @@ export const RICH_OUTPUT_LIMITS = {
   dataTableColumns: 50,
   dataTableRows: 1_000,
   confirmActions: 20,
+  /** Buttons under a stats / cards / steps block. */
+  blockActions: 4,
+  statsItems: 8,
+  cardsItems: 20,
+  cardBadges: 3,
+  cardFields: 4,
+  stepsItems: 20,
   missionFiles: 200,
   /** Mermaid source characters. Past this, layout cost stops being worth it and
    * the diagram stops being readable — show the source instead. */
@@ -234,7 +335,41 @@ export const RICH_OUTPUT_LIMITS = {
 } as const;
 
 const CHART_TYPES: ReadonlySet<string> = new Set<ChartType>(['bar', 'line', 'pie', 'doughnut', 'radar']);
-const CONFIRM_VARIANTS: ReadonlySet<string> = new Set<ConfirmActionVariant>(['primary', 'secondary', 'destructive']);
+const ACTION_VARIANTS: ReadonlySet<string> = new Set<BlockActionVariant>(['primary', 'secondary', 'destructive']);
+const STAT_TRENDS: ReadonlySet<string> = new Set<StatTrend>(['up', 'down', 'flat']);
+const STAT_TONES: ReadonlySet<string> = new Set<StatTone>(['positive', 'negative', 'neutral']);
+const BADGE_TONES: ReadonlySet<string> = new Set<CardBadgeTone>([
+  'neutral',
+  'primary',
+  'success',
+  'warning',
+  'danger',
+  'info',
+]);
+const STEP_STATUSES: ReadonlySet<string> = new Set<StepStatus>(['done', 'active', 'pending', 'blocked', 'skipped']);
+
+/**
+ * Display-length caps for the business blocks' text. Over-long text is cut
+ * with an ellipsis rather than rejected: one wordy label must not turn a whole
+ * card list back into raw JSON. Structure (types, counts) is still strict.
+ */
+const TEXT_LIMITS = {
+  title: 60,
+  label: 40,
+  shortValue: 24,
+  unit: 8,
+  delta: 16,
+  hint: 40,
+  itemTitle: 80,
+  subtitle: 120,
+  badge: 16,
+  fieldLabel: 16,
+  fieldValue: 60,
+  time: 24,
+  detail: 200,
+  actionLabel: 40,
+  actionValue: 500,
+} as const;
 const DATA_TABLE_COLUMN_TYPES: ReadonlySet<string> = new Set<DataTableColumnType>([
   'text',
   'number',
@@ -246,7 +381,13 @@ const DATA_TABLE_COLUMN_TYPES: ReadonlySet<string> = new Set<DataTableColumnType
 
 // ─── Failures ────────────────────────────────────────────
 
-/** Why a closed fence fell back to a code block (`pnpm cli rich-output stats`). */
+/**
+ * Why a closed fence did not render (`pnpm cli rich-output stats`). Every
+ * failure falls back to a code block except `empty`: a block with nothing in it
+ * (an empty mermaid body, `{"items":[]}`) carries no information, so it is
+ * dropped rather than shown as raw JSON — models do leave one behind after
+ * changing their mind mid-answer.
+ */
 export type RichBlockFailure = 'json' | 'shape' | 'too_large' | 'empty';
 
 export class RichBlockError extends Error {
@@ -298,12 +439,12 @@ export function isChartData(value: unknown): value is ChartData {
   );
 }
 
-function isConfirmAction(value: unknown): value is ConfirmAction {
+function isBlockAction(value: unknown): value is BlockAction {
   return (
     isRecord(value) &&
     typeof value.label === 'string' &&
     typeof value.value === 'string' &&
-    (value.variant === undefined || (typeof value.variant === 'string' && CONFIRM_VARIANTS.has(value.variant)))
+    (value.variant === undefined || (typeof value.variant === 'string' && ACTION_VARIANTS.has(value.variant)))
   );
 }
 
@@ -314,7 +455,7 @@ export function isConfirmData(value: unknown): value is ConfirmData {
     Array.isArray(value.actions) &&
     value.actions.length > 0 &&
     value.actions.length <= RICH_OUTPUT_LIMITS.confirmActions &&
-    value.actions.every(isConfirmAction)
+    value.actions.every(isBlockAction)
   );
 }
 
@@ -388,8 +529,42 @@ function parseJson(body: string): unknown {
   try {
     return JSON.parse(body);
   } catch {
+    const repaired = closeUnbalanced(body);
+    if (repaired) {
+      try {
+        return JSON.parse(repaired);
+      } catch {
+        // fall through: not the one slip this repairs
+      }
+    }
     return fail('json', 'payload is not valid JSON');
   }
+}
+
+/**
+ * The one JSON slip models make often enough to repair: the closing brackets
+ * at the very end left off (`…]}]` with the final `}` missing). Only when every
+ * string is closed and at most three closers are missing; anything else stays
+ * invalid, and the repaired payload still goes through the full shape check.
+ */
+function closeUnbalanced(text: string): string | null {
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+  for (const ch of text) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') stack.push('}');
+    else if (ch === '[') stack.push(']');
+    else if ((ch === '}' || ch === ']') && stack.pop() !== ch) return null;
+  }
+  if (inString || stack.length === 0 || stack.length > 3) return null;
+  return text + stack.reverse().join('');
 }
 
 function parseJsonObject(body: string, fence: string): Record<string, unknown> {
@@ -505,6 +680,137 @@ function toConfirmData(payload: Record<string, unknown>): ConfirmData {
   return normalized;
 }
 
+/** Trimmed text cut to its display cap, or undefined when absent / empty. */
+function clipText(value: unknown, max: number): string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) value = String(value);
+  if (typeof value !== 'string') return undefined;
+  const text = value.trim();
+  if (!text) return undefined;
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function requireText(value: unknown, max: number, what: string): string {
+  return clipText(value, max) ?? fail('shape', `${what} is required`);
+}
+
+function optionalText(key: string, value: unknown, max: number): Record<string, string> {
+  const text = clipText(value, max);
+  return text === undefined ? {} : { [key]: text };
+}
+
+function oneOf<T extends string>(value: unknown, allowed: ReadonlySet<string>): T | undefined {
+  return typeof value === 'string' && allowed.has(value) ? (value as T) : undefined;
+}
+
+/** A bounded list of records; anything that is not a record fails the block. */
+function itemsOf(value: unknown, max: number, what: string, min = 1): Record<string, unknown>[] {
+  if (!Array.isArray(value)) fail('shape', `${what} must be an array`);
+  if (value.length < min) fail('empty', `${what} is empty`);
+  if (value.length > max) fail('too_large', `${what} has more than ${max} entries`);
+  if (!value.every(isRecord)) fail('shape', `${what} entries must be objects`);
+  return value;
+}
+
+function toBlockActions(value: unknown): { actions?: BlockAction[] } {
+  if (value === undefined) return {};
+  const actions = itemsOf(value, RICH_OUTPUT_LIMITS.blockActions, 'actions', 0).map((action) => ({
+    label: requireText(action.label, TEXT_LIMITS.actionLabel, 'action label'),
+    value: requireText(action.value, TEXT_LIMITS.actionValue, 'action value'),
+    ...(oneOf<BlockActionVariant>(action.variant, ACTION_VARIANTS)
+      ? { variant: action.variant as BlockActionVariant }
+      : {}),
+  }));
+  return actions.length ? { actions } : {};
+}
+
+function toStatsData(payload: Record<string, unknown>): StatsData {
+  const items = itemsOf(payload.items, RICH_OUTPUT_LIMITS.statsItems, 'stats items').map((item): StatItem => {
+    const value =
+      typeof item.value === 'number'
+        ? Number.isFinite(item.value)
+          ? item.value
+          : fail('shape', 'stat value is not finite')
+        : requireText(item.value, TEXT_LIMITS.shortValue, 'stat value');
+    const delta =
+      typeof item.delta === 'number' && Number.isFinite(item.delta)
+        ? { delta: item.delta }
+        : optionalText('delta', item.delta, TEXT_LIMITS.delta);
+    const trend = oneOf<StatTrend>(item.trend, STAT_TRENDS);
+    const tone = oneOf<StatTone>(item.tone, STAT_TONES);
+    return {
+      label: requireText(item.label, TEXT_LIMITS.label, 'stat label'),
+      value,
+      ...optionalText('unit', item.unit, TEXT_LIMITS.unit),
+      ...delta,
+      ...(trend ? { trend } : {}),
+      ...(tone ? { tone } : {}),
+      ...optionalText('hint', item.hint, TEXT_LIMITS.hint),
+    };
+  });
+  return { ...optionalText('title', payload.title, TEXT_LIMITS.title), items, ...toBlockActions(payload.actions) };
+}
+
+/** Only an in-app route or an http(s) URL — never `javascript:`, `data:` or a relative path. */
+function toCardUrl(value: unknown): { url?: string } {
+  if (value === undefined || value === null || value === '') return {};
+  if (typeof value !== 'string') fail('shape', 'card url must be a string');
+  const url = value.trim();
+  if (/^#\/[^\s]+$/.test(url) || /^https?:\/\/[^\s]+$/i.test(url)) return { url };
+  return fail('shape', 'card url must be an in-app #/ route or an http(s) URL');
+}
+
+function toCardsData(payload: Record<string, unknown>): CardsData {
+  const items = itemsOf(payload.items, RICH_OUTPUT_LIMITS.cardsItems, 'cards items').map((item): CardItem => {
+    const badges =
+      item.badges === undefined
+        ? []
+        : itemsOf(item.badges, RICH_OUTPUT_LIMITS.cardBadges, 'card badges', 0).map((badge) => {
+            const tone = oneOf<CardBadgeTone>(badge.tone, BADGE_TONES);
+            return { label: requireText(badge.label, TEXT_LIMITS.badge, 'badge label'), ...(tone ? { tone } : {}) };
+          });
+    const fields =
+      item.fields === undefined
+        ? []
+        : itemsOf(item.fields, RICH_OUTPUT_LIMITS.cardFields, 'card fields', 0).map((field) => ({
+            label: requireText(field.label, TEXT_LIMITS.fieldLabel, 'field label'),
+            value: requireText(field.value, TEXT_LIMITS.fieldValue, 'field value'),
+          }));
+    return {
+      title: requireText(item.title, TEXT_LIMITS.itemTitle, 'card title'),
+      ...toCardUrl(item.url),
+      ...optionalText('subtitle', item.subtitle, TEXT_LIMITS.subtitle),
+      ...(badges.length ? { badges } : {}),
+      ...(fields.length ? { fields } : {}),
+    };
+  });
+  return { ...optionalText('title', payload.title, TEXT_LIMITS.title), items, ...toBlockActions(payload.actions) };
+}
+
+function toStepsData(payload: Record<string, unknown>): StepsData {
+  const items = itemsOf(payload.items, RICH_OUTPUT_LIMITS.stepsItems, 'steps items').map(
+    (item): StepItem => ({
+      title: requireText(item.title, TEXT_LIMITS.itemTitle, 'step title'),
+      status: oneOf<StepStatus>(item.status, STEP_STATUSES) ?? fail('shape', 'step status is not recognised'),
+      ...optionalText('time', item.time, TEXT_LIMITS.time),
+      ...optionalText('detail', item.detail, TEXT_LIMITS.detail),
+    }),
+  );
+  return { ...optionalText('title', payload.title, TEXT_LIMITS.title), items, ...toBlockActions(payload.actions) };
+}
+
+/**
+ * Which button of a block was pressed: the member's next message, when it is
+ * exactly one of the block's values. One rule for every client, so a reload
+ * (or another device) shows the same choice.
+ */
+export function resolveBlockAction(
+  actions: readonly BlockAction[] | undefined,
+  followUp: string | undefined,
+): string | null {
+  if (!actions || followUp === undefined) return null;
+  return actions.some((action) => action.value === followUp) ? followUp : null;
+}
+
 function toMissionArtifactsData(payload: unknown): MissionArtifactsData {
   if (!Array.isArray(payload)) fail('shape', 'mission-artifacts payload must be an array');
   const normalized = payload.filter(isMissionArtifact);
@@ -549,6 +855,8 @@ export interface FlattenNotes {
   artifactsHeading: string;
   attachmentsHeading: string;
   boolean(value: boolean): string;
+  /** How a step that is not simply done / to do reads ("in progress", "blocked"…). */
+  stepStatus(status: StepStatus): string;
 }
 
 /** Keep what cannot be drawn as copyable source — the right default for a client. */
@@ -560,6 +868,8 @@ export const DEFAULT_FLATTEN_NOTES: FlattenNotes = {
   artifactsHeading: 'Files',
   attachmentsHeading: 'Attachments',
   boolean: (value) => (value ? 'true' : 'false'),
+  stepStatus: (status) =>
+    ({ done: 'done', active: 'in progress', pending: 'to do', blocked: 'blocked', skipped: 'skipped' })[status],
 };
 
 /** Newlines and pipes would break out of the cell and take the whole table with them. */
@@ -613,6 +923,39 @@ function chartAsTable(data: ChartData, notes: FlattenNotes): string {
     },
     notes,
   );
+}
+
+function statsMarkdown(data: StatsData): string {
+  const lines = data.items.map((item) => {
+    const value = [String(item.value), item.unit].filter(Boolean).join(' ');
+    const extra = [item.delta === undefined ? undefined : String(item.delta), item.hint].filter(Boolean).join(', ');
+    return `- **${item.label}**: ${value}${extra ? ` (${extra})` : ''}`;
+  });
+  return [data.title ? `**${data.title}**` : '', lines.join('\n')].filter(Boolean).join('\n\n');
+}
+
+function cardsMarkdown(data: CardsData): string {
+  const lines = data.items.map((item) => {
+    const head = item.url ? `[${item.title}](${item.url})` : `**${item.title}**`;
+    const tail = [
+      item.subtitle,
+      ...(item.badges ?? []).map((badge) => badge.label),
+      ...(item.fields ?? []).map((field) => `${field.label} ${field.value}`),
+    ].filter(Boolean);
+    return `- ${head}${tail.length ? ` — ${tail.join(' · ')}` : ''}`;
+  });
+  return [data.title ? `**${data.title}**` : '', lines.join('\n')].filter(Boolean).join('\n\n');
+}
+
+/** A GFM task list: done ticks, everything else is open and says its state. */
+function stepsMarkdown(data: StepsData, notes: FlattenNotes): string {
+  const lines = data.items.map((item) => {
+    const box = item.status === 'done' ? '[x]' : '[ ]';
+    const state = item.status === 'done' || item.status === 'pending' ? '' : notes.stepStatus(item.status);
+    const meta = [item.time, state].filter(Boolean).join(', ');
+    return `- ${box} ${item.title}${meta ? ` (${meta})` : ''}${item.detail ? ` — ${item.detail}` : ''}`;
+  });
+  return [data.title ? `**${data.title}**` : '', lines.join('\n')].filter(Boolean).join('\n\n');
 }
 
 function formatBytes(bytes: number): string {
@@ -674,6 +1017,24 @@ export const RICH_BLOCKS: readonly RichBlockDef[] = [
         data: toDataTableData(parseJsonObject(body.replace(/,\s*"rows"\s*:\s*\[\s*\]\s*(?=\}\s*$)/, ''), 'datatable')),
       }),
     toMarkdown: (segment, notes) => markdownTable(segment.data, notes),
+  }),
+  defineBlock<StatsSegment>({
+    fence: 'stats',
+    author: 'model',
+    parse: (body) => ({ type: 'stats', data: toStatsData(parseJsonObject(body, 'stats')) }),
+    toMarkdown: (segment) => statsMarkdown(segment.data),
+  }),
+  defineBlock<CardsSegment>({
+    fence: 'cards',
+    author: 'model',
+    parse: (body) => ({ type: 'cards', data: toCardsData(parseJsonObject(body, 'cards')) }),
+    toMarkdown: (segment) => cardsMarkdown(segment.data),
+  }),
+  defineBlock<StepsSegment>({
+    fence: 'steps',
+    author: 'model',
+    parse: (body) => ({ type: 'steps', data: toStepsData(parseJsonObject(body, 'steps')) }),
+    toMarkdown: (segment, notes) => stepsMarkdown(segment.data, notes),
   }),
   defineBlock<ConfirmSegment>({
     fence: 'confirm',
@@ -797,6 +1158,7 @@ export function parseSegments(markdown: string): Segment[] {
   if (!markdown) return [{ type: 'markdown', content: '' }];
 
   const segments: Segment[] = [];
+  let dropped = false;
   for (const token of scan(markdown)) {
     if (token.kind === 'text') {
       appendMarkdownSegment(segments, token.content);
@@ -805,13 +1167,18 @@ export function parseSegments(markdown: string): Segment[] {
     } else {
       try {
         segments.push(token.def.parse(token.payload.trim()));
-      } catch {
+      } catch (error) {
+        if (error instanceof RichBlockError && error.reason === 'empty') {
+          dropped = true;
+          continue;
+        }
         segments.push({ type: 'markdown', content: '```' + token.name + '\n' + token.payload + '```' });
       }
     }
   }
 
-  return segments.length ? segments : [{ type: 'markdown', content: markdown }];
+  if (segments.length) return segments;
+  return [{ type: 'markdown', content: dropped ? '' : markdown }];
 }
 
 function appendMarkdownSegment(segments: Segment[], content: string): void {
@@ -921,4 +1288,99 @@ export function diagnoseRichOutput(markdown: string): RichBlockDiagnosis[] {
     }
   }
   return out;
+}
+
+// ─── html-preview reply channel ──────────────────────────
+
+/**
+ * The one way an html-preview page talks back: `window.greenhouse.sendPrompt(text)`
+ * puts text into the member's composer — never sends it (spec
+ * docs/specs/20261008-html-preview-bridge.md D1). Both hosts (the web side pane
+ * and the mobile viewer) speak this exact message.
+ */
+export const HTML_BRIDGE = {
+  messageType: 'greenhouse:prompt',
+  /** Longer text is cut here (and the member is told). */
+  maxChars: 2_000,
+  /** Calls closer together than this collapse into the last one. */
+  throttleMs: 1_000,
+} as const;
+
+/**
+ * The page-side API as plain JavaScript. `parent` posts to the embedding window
+ * (the web's sandboxed iframe); `react-native` posts through the WebView bridge.
+ */
+export function htmlBridgeSource(transport: 'parent' | 'react-native'): string {
+  const post =
+    transport === 'parent'
+      ? "parent.postMessage(message, '*');"
+      : 'if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(message));';
+  return (
+    '(function () {' +
+    'window.greenhouse = Object.freeze({' +
+    'sendPrompt: function (text) {' +
+    `var message = { type: ${JSON.stringify(HTML_BRIDGE.messageType)}, text: String(text) };` +
+    post +
+    '}' +
+    '});' +
+    '})();'
+  );
+}
+
+/**
+ * The preview copy of a page with the bridge in it — inside <head> (or right
+ * after the doctype / at the very top), before the page's own scripts run.
+ * Never the downloaded file or the print copy: there is no host there.
+ */
+export function injectHtmlBridge(html: string): string {
+  const script = `<script>${htmlBridgeSource('parent')}</script>`;
+  const anchor = /<head\b[^>]*>/i.exec(html) ?? /<html\b[^>]*>/i.exec(html) ?? /<!doctype[^>]*>/i.exec(html);
+  if (!anchor) return script + html;
+  const at = anchor.index + anchor[0].length;
+  return html.slice(0, at) + script + html.slice(at);
+}
+
+/**
+ * A bridge message as the text to place, or null when it is not one. Accepts
+ * the object a window receives and the string a WebView receives; trims, and
+ * cuts at {@link HTML_BRIDGE.maxChars}.
+ */
+export function readHtmlBridgeMessage(data: unknown): { text: string; truncated: boolean } | null {
+  let value = data;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!isRecord(value) || value.type !== HTML_BRIDGE.messageType || typeof value.text !== 'string') return null;
+  const text = value.text.trim();
+  if (!text) return null;
+  return text.length > HTML_BRIDGE.maxChars
+    ? { text: text.slice(0, HTML_BRIDGE.maxChars), truncated: true }
+    : { text, truncated: false };
+}
+
+/**
+ * Collapse a burst of calls into the last one: the first call opens a window of
+ * `ms`, and when it closes the most recent value is delivered once.
+ */
+export function latestWithin<T>(ms: number, deliver: (value: T) => void): { push(value: T): void; cancel(): void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let latest: T;
+  return {
+    push(value: T) {
+      latest = value;
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        deliver(latest);
+      }, ms);
+    },
+    cancel() {
+      if (timer) clearTimeout(timer);
+      timer = null;
+    },
+  };
 }

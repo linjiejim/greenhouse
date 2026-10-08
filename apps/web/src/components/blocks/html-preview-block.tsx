@@ -14,7 +14,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, Code2, PanelRight } from 'lucide-react';
 import { Button } from '../ui';
-import { RichBlockShell, richBlockBodyClass } from './rich-block-shell';
+import { RichBlockShell, richBlockBodyClass } from '@greenhouse/ui/components/blocks/rich-block-shell';
 import { useT } from '../../lib/i18n';
 import { openSidePane, useSidePaneStore } from '../../stores/side-pane-store';
 

@@ -79,7 +79,7 @@ function AssistantMessage({
   message: ChatMessage;
   onAskUserSubmit: (m: string) => void;
   hasFollowUp: boolean;
-  /** The user message right after this one — restores which confirm button was chosen. */
+  /** The user message right after this one — restores which block button was chosen. */
   followUp?: string;
 }) {
   const t = useT();
@@ -111,9 +111,9 @@ function AssistantMessage({
         <RichMarkdown
           compact
           content={message.content}
-          // A confirm button sends its value as the next message, like on the web.
-          onConfirmAction={onAskUserSubmit}
-          resolvedConfirmValue={followUp}
+          // A block button sends its value as the next message, like on the web.
+          onBlockAction={onAskUserSubmit}
+          resolvedActionValue={followUp}
         />
       )}
       {artifacts.length > 0 && <MessageAttachments calls={artifacts} ctx={artifactCtx} />}

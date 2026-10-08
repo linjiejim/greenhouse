@@ -14,7 +14,7 @@ import { useT } from '../../lib/i18n';
 import { BADGE_PALETTE } from '../../lib/utils';
 import type { TagTone } from '../../lib/utils';
 import { ArrowDown, ArrowUp, ArrowUpDown, Download } from '../../lib/icons';
-import { RichBlockShell } from './rich-block-shell';
+import { RichBlockShell } from '@greenhouse/ui/components/blocks/rich-block-shell';
 import { downloadCsv, safeCsvFilename, serializeCsv } from '../../lib/csv-export';
 
 // ─── Colors for badges ──────────────────────────────────

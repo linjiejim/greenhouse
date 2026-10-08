@@ -8,7 +8,7 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import type { ChartData } from './index';
 import { CHART_PALETTE } from '../../lib/utils';
-import { RichBlockShell, richBlockBodyClass } from './rich-block-shell';
+import { RichBlockShell, richBlockBodyClass } from '@greenhouse/ui/components/blocks/rich-block-shell';
 
 // ─── Default Colors ──────────────────────────────────────
 // Chart.js renders to canvas, so it needs literal color strings rather than

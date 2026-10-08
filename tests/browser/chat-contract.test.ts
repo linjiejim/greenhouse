@@ -85,7 +85,7 @@ describe('Greenhouse Bridge → POST /api/chat', () => {
   it.each(Object.entries(TURNS))('asks only for the Rich Output blocks the panel draws (%s)', (_name, body) => {
     // The panel cannot draw mermaid or html-preview; if it stopped declaring,
     // the server would teach it the default set and those would come back.
-    expect(admitRichBlocks(body.rich_blocks)).toEqual(['chart', 'datatable', 'confirm']);
+    expect(admitRichBlocks(body.rich_blocks)).toEqual(['chart', 'datatable', 'stats', 'cards', 'steps', 'confirm']);
     expect(enrichSystemPrompt(SPROUTY as never, { richBlocks: admitRichBlocks(body.rich_blocks) })).not.toContain(
       '```mermaid',
     );

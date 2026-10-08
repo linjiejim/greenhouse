@@ -3759,6 +3759,9 @@ export default {
   richBlocks: {
     pendingChart: 'Drawing the chart…',
     pendingTable: 'Building the table…',
+    pendingStats: 'Gathering the figures…',
+    pendingCards: 'Gathering the records…',
+    pendingSteps: 'Laying out the steps…',
     pendingConfirm: 'Preparing the options…',
     pendingDiagram: 'Drawing the diagram…',
     pendingPage: 'Building the page…',
@@ -3767,6 +3770,13 @@ export default {
     previewElsewhereUntitled: '(HTML preview — open it in the conversation)',
     filesHeading: 'Files',
     attachmentsHeading: 'Attachments',
+    pageFilledComposer: 'The preview put some text in the message box — review it, then send',
+    pageTextTruncated: 'The preview’s text was too long; only the first 2,000 characters were added',
+    stepDone: 'Done',
+    stepActive: 'In progress',
+    stepPending: 'To do',
+    stepBlocked: 'Blocked',
+    stepSkipped: 'Skipped',
   },
   entityPeek: {
     title: 'Details',

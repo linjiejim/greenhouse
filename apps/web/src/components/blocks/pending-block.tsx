@@ -8,13 +8,16 @@
 
 import type { RichFence } from './index';
 import { DataTablePendingBlock } from './datatable-block';
-import { RichBlockShell, richBlockBodyClass } from './rich-block-shell';
+import { RichBlockShell, richBlockBodyClass } from '@greenhouse/ui/components/blocks/rich-block-shell';
 import { Skeleton, Spinner } from '../ui';
 import { useT } from '../../lib/i18n';
 
 const LABEL_KEYS = {
   chart: 'richBlocks.pendingChart',
   datatable: 'richBlocks.pendingTable',
+  stats: 'richBlocks.pendingStats',
+  cards: 'richBlocks.pendingCards',
+  steps: 'richBlocks.pendingSteps',
   confirm: 'richBlocks.pendingConfirm',
   mermaid: 'richBlocks.pendingDiagram',
   'html-preview': 'richBlocks.pendingPage',

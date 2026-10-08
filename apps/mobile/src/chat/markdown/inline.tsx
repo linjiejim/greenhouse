@@ -217,8 +217,8 @@ function renderInline(text: string, ctx: Ctx): ReactNode[] {
   return out;
 }
 
-/** Route a tapped markdown link (see file header). */
-function useOpenLink(): OpenLink {
+/** Route a tapped markdown link (see file header). Also opens ```cards items. */
+export function useOpenLink(): OpenLink {
   const router = useRouter();
   const t = useT();
   const { hex } = useTheme();

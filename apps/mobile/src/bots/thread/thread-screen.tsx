@@ -413,6 +413,16 @@ export function BotThreadScreen({
     addQuotes(texts);
     focusInput();
   }, [bridged, focusInput, addQuotes]);
+  // An html-preview page's sendPrompt: text INTO the composer, after what is typed — never sent.
+  const drafted = useComposerBridge((s) => s.drafts.length);
+  useEffect(() => {
+    if (!drafted) return;
+    const texts = useComposerBridge.getState().takeDrafts();
+    if (readOnlyNow.current) return;
+    setInput([input.trim() ? input : '', ...texts].filter(Boolean).join('\n'));
+    focusInput();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- append to the input as it is when the text arrives
+  }, [drafted, focusInput]);
 
   /* ---------- the floating layer under the bar: the needs-you capsule, "couldn't refresh" ---------- */
   const [topLayerH, setTopLayerH] = useState(0);

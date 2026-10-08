@@ -13,6 +13,11 @@ export const zh = {
     previewElsewhereUntitled: '网页预览 —— 请在 Greenhouse 网页端打开本会话查看。',
     filesHeading: '文件',
     renderFailed: '该内容块无法显示',
+    stepDone: '已完成',
+    stepActive: '进行中',
+    stepPending: '待开始',
+    stepBlocked: '受阻',
+    stepSkipped: '已跳过',
   },
 
   // 共享组件：工具返回的文件下载卡（export_data）。

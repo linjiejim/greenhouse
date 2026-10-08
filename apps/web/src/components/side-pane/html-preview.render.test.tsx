@@ -65,3 +65,16 @@ describe('HtmlPreview PDF export frame', () => {
     expect(tokens).not.toContain('allow-same-origin');
   });
 });
+
+describe('HtmlPreview reply channel', () => {
+  it('gives an inline preview window.greenhouse without loosening the sandbox', () => {
+    const html = renderToStaticMarkup(<HtmlPreview code={PAGE} title="Calc" bridge />);
+    expect(html).toContain('sandbox="allow-scripts"');
+    expect(html).not.toContain('allow-same-origin');
+    expect(html).toContain('window.greenhouse');
+  });
+
+  it('leaves a preview without the bridge (a Mission artifact) untouched', () => {
+    expect(renderToStaticMarkup(<HtmlPreview code={PAGE} title="Calc" />)).not.toContain('window.greenhouse');
+  });
+});

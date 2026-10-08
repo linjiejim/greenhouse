@@ -48,6 +48,30 @@ export const RICH_BLOCK_GUIDES: Readonly<Record<string, string>> = {
 
 使用场景：对比表格、搜索结果汇总、数据分析结果、统计报表。
 纯文字说明不需要用这些格式，保持普通 Markdown 即可。`,
+  stats: `### 指标卡（stats）
+需要并列展示 2–8 个关键数字（概况、汇总、与上期对比）时用：
+\`\`\`stats
+{"title":"10 月概览","items":[{"label":"新增客户","value":128,"unit":"家","delta":"+12%","trend":"up","tone":"positive","hint":"较 9 月"}]}
+\`\`\`
+- value 是数字或很短的文字；delta 是变化量（如 "+12%"）；hint 是一句很短的注脚。
+- trend（up / down / flat）只决定箭头方向；tone（positive / negative / neutral）决定颜色——
+  涨不一定是好事（成本上涨是 negative），拿不准就不写 tone。
+- 只有一个数字就直接写在正文里；按月、按周的时间序列用 chart。`,
+  cards: `### 记录卡片（cards）
+列出 3 条以上、每条都有状态或几个字段值得扫一眼的记录（项目、客户、文档、任务……）时用：
+\`\`\`cards
+{"title":"需要关注的项目","items":[{"title":"官网改版","url":"#/projects/42","subtitle":"负责人 张三","badges":[{"label":"延期 3 天","tone":"danger"}],"fields":[{"label":"截止","value":"10-15"}]}]}
+\`\`\`
+- url 只能用工具返回的原值（站内链接或 https 外链），没有就不写——绝不自己拼接或猜测。
+- badges 最多 3 个（tone：neutral / primary / success / warning / danger / info），fields 最多 4 个，都是纯文本。
+- 一两条记录、或者每条只有名字时，用普通列表。`,
+  steps: `### 步骤 / 时间线（steps）
+计划、进度汇报、按时间排列的历史（如跟进记录）用：
+\`\`\`steps
+{"title":"官网改版上线计划","items":[{"title":"需求评审","status":"done","time":"10-02","detail":"已确认范围"},{"title":"开发","status":"active","detail":"前端 60%"},{"title":"验收","status":"pending"}]}
+\`\`\`
+- status 只能是 done / active / pending / blocked / skipped；time 原样显示；detail 是一两句纯文本。
+- 没有状态之分的操作说明，用普通有序列表。`,
   mermaid: `### 图示（mermaid）
 
 需要表达**结构或流程**（而非数值）时，用 mermaid 代码块，前端会渲染成矢量图：
@@ -87,6 +111,24 @@ flowchart LR
 仅在需要用户明确授权的操作前使用（如修改 Wiki、删除数据）。`,
 };
 
+/** Buttons under stats / cards / steps — taught once, when any of them is. */
+const RICH_BLOCK_ACTIONS = `### 块按钮（actions）
+stats、cards、steps 的 JSON 里可以带一个 \`actions\` 字段，和 \`items\` 并列（最多 4 个），显示在块的底部：
+\`{"items":[…],"actions":[{"label":"按行业拆开","value":"把 10 月新增客户按行业拆开看"}]}\`
+用户点了，value 会作为他的下一条消息原样发出。
+- actions 只能写在块自己的 JSON 里；不要另开一个 actions 代码块——那只会显示成一段代码。
+- value 写成用户会说的一句完整的话，不要写 "yes"、"confirm" 这种代号——它会出现在对话记录里。
+- 只放真正可能的下一步，不要为了凑数加按钮。按钮不会直接执行任何操作，后续改动照常走工具与确认。
+- stats / cards / steps 至少要有一项；没有内容就不要开块，绝不在答案末尾留一个空块。`;
+
+/** Taught after html-preview when the screen declares `html-preview-bridge`. */
+const RICH_HTML_BRIDGE = `### 网页预览里的回传按钮
+这个界面上的网页预览可以调用 \`window.greenhouse?.sendPrompt(文字)\`，把一段文字放进用户的输入框——
+用户确认后才会发送，页面自己不能替用户发消息：
+- 用在「算完 / 选完还要继续问」的场景，比如报价计算器的「用这组参数生成报价单」；按钮文案写清楚是「放进输入框」。
+- 传回的文字写成用户会说的一句完整请求（如「按以下参数生成报价单：3 台 × ¥4,200，含税」）。
+- 一定写成 \`window.greenhouse?.sendPrompt(...)\`（带 \`?.\`）：下载到本地打开的文件里没有这个对象，页面照样要能用。`;
+
 /** Rules that hold whatever the client can draw. */
 const RICH_TASK_VARIABLES = `### 未填的任务变量
 
@@ -122,13 +164,16 @@ const RICH_BLOCK_DISCIPLINE = `### 富块写作纪律（硬约束）
   成规模数据用的；三五行的对照、边说明边列举的场合，普通表格更合适。`;
 
 /** Blocks whose payload is JSON written in one go — the discipline section applies to them. */
-const JSON_BLOCKS = new Set(['chart', 'datatable', 'confirm']);
+const JSON_BLOCKS = new Set(['chart', 'datatable', 'stats', 'cards', 'steps', 'confirm']);
+
+/** Blocks that can carry buttons. */
+const ACTION_BLOCKS = new Set(['stats', 'cards', 'steps']);
 
 /**
  * Prompt order. Data blocks come first, then diagrams and pages; confirm is
  * last because it is about acting, not presenting.
  */
-const GUIDE_ORDER = ['chart', 'datatable', 'mermaid', 'html-preview'] as const;
+const GUIDE_ORDER = ['chart', 'datatable', 'stats', 'cards', 'steps', 'mermaid', 'html-preview'] as const;
 
 /**
  * Compose the rich-output guide for the blocks a client can draw. Unknown names
@@ -139,6 +184,10 @@ export function composeRichOutput(opts: { blocks: readonly string[] }): string {
   const sections = [RICH_INTRO];
   for (const block of GUIDE_ORDER) {
     if (taught.has(block)) sections.push(RICH_BLOCK_GUIDES[block]!);
+    if (block === 'steps' && [...taught].some((name) => ACTION_BLOCKS.has(name))) sections.push(RICH_BLOCK_ACTIONS);
+    if (block === 'html-preview' && taught.has('html-preview') && taught.has('html-preview-bridge')) {
+      sections.push(RICH_HTML_BRIDGE);
+    }
   }
   sections.push(RICH_TASK_VARIABLES, RICH_ENTITY_LINKS);
   if ([...taught].some((block) => JSON_BLOCKS.has(block))) sections.push(RICH_BLOCK_DISCIPLINE);

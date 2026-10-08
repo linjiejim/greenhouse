@@ -17,6 +17,7 @@ import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../
 import { NativeButton } from '../../../ui/button';
 import { Icon } from '../../../ui/core';
 import { toast } from '../../../ui/toast';
+import { useRich } from '../context';
 import { richSegment } from '../rich';
 import { CodeBlock } from './code';
 
@@ -41,10 +42,12 @@ function HtmlPreview({ code, title }: { code: string; title?: string }) {
   const styles = useStyles(c);
   const t = useT();
   const router = useRouter();
+  // The page may hand text back only where the member can write (a reply they own).
+  const { reply } = useRich();
   const open = () =>
     router.push({
       pathname: '/peek/html',
-      params: { k: putHandoff('html', { code, title }) },
+      params: { k: putHandoff('html', { code, title, bridge: Boolean(reply) }) },
     });
   const copy = async () => {
     await Clipboard.setStringAsync(code).catch(() => {});

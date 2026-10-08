@@ -12,4 +12,4 @@ import type { ModelFence } from '@greenhouse/types/rich-output';
  * The model-authored blocks this kit draws (RichMarkdown) — what a host built on
  * it declares as `rich_blocks`, so the model never writes one it cannot show.
  */
-export const RICH_BLOCKS_DRAWN: readonly ModelFence[] = ['chart', 'datatable', 'confirm'];
+export const RICH_BLOCKS_DRAWN: readonly ModelFence[] = ['chart', 'datatable', 'stats', 'cards', 'steps', 'confirm'];
