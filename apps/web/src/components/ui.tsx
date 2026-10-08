@@ -3,6 +3,7 @@
  */
 
 import React from 'react';
+import { GreenhouseMark } from '@greenhouse/ui/components/brand';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, X, Star as StarIcon, Search as SearchIcon, User as UserIcon } from '../lib/icons';
 import type { LucideIcon } from '../lib/icons';
@@ -944,7 +945,7 @@ export function ConfirmDialog({
 
 // ─── AppLogo ─────────────────────────────────────────────
 
-// The product mark ships with the web bundle (apps/web/public/favicon.svg) and
+// The Haven product mark comes from the shared UI brand component and
 // the product name follows PRODUCT_NAME at build time (vite.config.ts).
 declare const __PRODUCT_NAME__: string | undefined;
 export const PRODUCT_NAME: string =
@@ -955,24 +956,34 @@ export function AppLogo({
   showVersion = false,
   showAttribution = false,
   logoOnly = false,
+  animate = false,
+  elapsed = 0,
 }: {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   showVersion?: boolean;
   showAttribution?: boolean;
   logoOnly?: boolean;
+  /** Only launch/showcase surfaces animate; navigation stays still. */
+  animate?: boolean;
+  elapsed?: number;
 }) {
   const t = useT();
   const sizeClasses = { sm: 'w-6 h-6', md: 'w-8 h-8', lg: 'w-10 h-10', xl: 'w-16 h-16' };
   const logoRounding = size === 'xl' ? 'rounded-2xl' : 'rounded-lg';
   // Workspace branding (Administration → Branding Studio) wins over the bundled mark.
   const productName = getRuntimeProductName();
-  const logoSrc = getRuntimeLogo() ?? '/favicon.svg';
+  const logoSrc = getRuntimeLogo();
+  const mark = logoSrc ? (
+    <img src={logoSrc} alt={productName} className={`${sizeClasses[size]} ${logoRounding} object-contain`} />
+  ) : (
+    <GreenhouseMark label={productName} className={sizeClasses[size]} animate={animate} elapsed={elapsed} />
+  );
   if (logoOnly) {
-    return <img src={logoSrc} alt={productName} className={`${sizeClasses[size]} ${logoRounding} object-contain`} />;
+    return mark;
   }
   return (
     <div className="flex items-center gap-2">
-      <img src={logoSrc} alt={productName} className={`${sizeClasses[size]} ${logoRounding} object-contain`} />
+      {mark}
       <div className="flex flex-col">
         <span className="font-display font-bold text-fg text-sm leading-tight">{productName}</span>
         {showAttribution && (
@@ -1167,7 +1178,7 @@ export function SkeletonRow({ cols = 4 }: { cols?: number }) {
     <tr>
       {Array.from({ length: cols }).map((_, i) => (
         <td key={i} className="px-3 py-3">
-          <Skeleton className={`h-4 ${i === 0 ? 'w-32' : 'w-20'}`} />
+          <Skeleton className={`h-4 w-full ${i === 0 ? 'max-w-32' : 'max-w-20'}`} />
         </td>
       ))}
     </tr>

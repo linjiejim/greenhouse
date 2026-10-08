@@ -156,6 +156,7 @@ const NAV_SECTIONS = [
   {
     group: 'Foundations',
     items: [
+      { id: 'logo', label: 'Logo' },
       { id: 'colors', label: 'Colors' },
       { id: 'typography', label: 'Typography' },
       { id: 'spacing', label: 'Spacing & Radius' },
@@ -217,7 +218,6 @@ const NAV_SECTIONS = [
       { id: 'markdown', label: 'Markdown' },
       { id: 'rich-markdown', label: 'Rich Markdown' },
       { id: 'error-boundary', label: 'Error Boundary' },
-      { id: 'logo', label: 'Logo' },
     ],
   },
 ];
@@ -225,7 +225,7 @@ const NAV_SECTIONS = [
 // ─── Main Page ───────────────────────────────────────────
 
 export function DesignPage() {
-  const [activeSection, setActiveSection] = useState('colors');
+  const [activeSection, setActiveSection] = useState('logo');
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -293,6 +293,7 @@ export function DesignPage() {
         </div>
 
         {/* Foundations */}
+        <LogoSection />
         <ColorsSection />
         <TypographySection />
         <SpacingSection />
@@ -340,7 +341,6 @@ export function DesignPage() {
         <MarkdownSection />
         <RichMarkdownSection />
         <ErrorBoundarySection />
-        <LogoSection />
 
         {/* Footer spacer */}
         <div className="h-16" />
@@ -449,7 +449,11 @@ function ColorsSection() {
 
 function TypographySection() {
   return (
-    <Section id="typography" title="Typography" description="Font scale and weight conventions used across the app.">
+    <Section
+      id="typography"
+      title="Typography — Nunito"
+      description="Locally bundled Nunito for headings, body and controls. CJK uses system fallbacks; code stays monospace."
+    >
       <div className="space-y-3 bg-surface-raised rounded-lg p-4 border border-edge">
         <div className="flex items-baseline gap-3">
           <CodeLabel>text-lg</CodeLabel>
@@ -859,8 +863,8 @@ function ModulePageSection() {
             </div>
           }
         >
-          <Card>
-            <div className="grid grid-cols-[1fr_auto] gap-3 text-sm">
+          <Card className="p-4">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 text-sm">
               <div>
                 <div className="font-medium text-fg">Module content</div>
                 <div className="mt-1 text-xs text-fg-muted">
@@ -1533,8 +1537,8 @@ function SkeletonsSection() {
       </SubSection>
 
       <SubSection title="Skeleton Table Rows">
-        <Card>
-          <table className="w-full">
+        <Card className="overflow-hidden">
+          <table className="w-full table-fixed">
             <thead>
               <tr className="border-b border-edge">
                 <th className="px-3 py-2 text-left text-xs font-medium text-fg-muted">Name</th>
@@ -2450,8 +2454,13 @@ function ErrorBoundarySection() {
 }
 
 function LogoSection() {
+  const [intro, setIntro] = useState(0);
   return (
-    <Section id="logo" title="App Logo" description="components/ui.tsx — AppLogo component with size variants.">
+    <Section
+      id="logo"
+      title="App Logo"
+      description="Haven — an open doorway around a seed. Nunito, forest green, soft corners."
+    >
       <DemoRow>
         <div className="flex flex-col items-center gap-2">
           <AppLogo size="sm" />
@@ -2488,6 +2497,16 @@ function LogoSection() {
           <CodeLabel>xl logoOnly</CodeLabel>
         </div>
       </DemoRow>
+      <div className="mt-6 flex flex-wrap items-center gap-6 rounded-2xl bg-surface-chrome p-6">
+        <AppLogo key={intro} size="xl" logoOnly animate />
+        <div className="flex flex-col gap-2">
+          <span className="font-display text-xl font-bold text-fg">Greenhouse</span>
+          <CodeLabel>Nunito · 200–1000 · local font / one-shot motion</CodeLabel>
+          <Button variant="secondary" size="sm" onClick={() => setIntro((value) => value + 1)}>
+            Replay intro
+          </Button>
+        </div>
+      </div>
     </Section>
   );
 }

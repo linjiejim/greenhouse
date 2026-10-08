@@ -15,12 +15,14 @@ cat > "$TMP" <<'CSS'
 @import "tailwindcss" source(none);
 @source "../../docs/index.html";
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Nunito', 'PingFang SC', ui-sans-serif, system-ui, sans-serif;
+  --radius-sm: .375rem; --radius-md: .5rem; --radius-lg: .75rem;
+  --radius-xl: 1rem; --radius-2xl: 1.5rem; --radius-3xl: 2rem;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-  --color-brand-50:#f0fdfa; --color-brand-100:#ccfbf1; --color-brand-200:#99f6e4;
-  --color-brand-300:#5eead4; --color-brand-400:#2dd4bf; --color-brand-500:#14b8a6;
-  --color-brand-600:#0d9488; --color-brand-700:#0f766e; --color-brand-800:#115e59;
-  --color-brand-900:#134e4a;
+  --color-brand-50:#f4f7f0; --color-brand-100:#eaf2e8; --color-brand-200:#d4e5d8;
+  --color-brand-300:#b1d2bf; --color-brand-400:#74ac91; --color-brand-500:#358566;
+  --color-brand-600:#2a6e56; --color-brand-700:#235d4d; --color-brand-800:#194636;
+  --color-brand-900:#123427;
   --color-ink:#111827; --color-ink-soft:#374151; --color-ink-mut:#6b7280; --color-ink-faint:#9ca3af;
   --color-edge:#e5e7eb; --color-edge-strong:#d1d5db;
 }

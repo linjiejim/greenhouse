@@ -1,3 +1,4 @@
+import { BrandText as Text } from './brand-text.android';
 /**
  * Material 3 forms — Android's counterpart of ./native-form.tsx (iOS: SwiftUI
  * `Form`). The standard for every Android settings / edit / create screen.
@@ -40,7 +41,6 @@ import {
   SegmentedButton,
   SingleChoiceSegmentedButtonRow,
   Switch,
-  Text,
   type TextFieldImeAction,
   type TextFieldKeyboardType,
   type TextFieldRef,
@@ -132,7 +132,11 @@ export function FormSection({
       ) : null}
       {footer ? (
         typeof footer === 'string' ? (
-          <Text color={footerError ? m.error : m.onSurfaceVariant} style={{ typography: 'bodySmall' }} modifiers={[padding(16, 0, 16, 0)]}>
+          <Text
+            color={footerError ? m.error : m.onSurfaceVariant}
+            style={{ typography: 'bodySmall' }}
+            modifiers={[padding(16, 0, 16, 0)]}
+          >
             {footer}
           </Text>
         ) : (
@@ -500,7 +504,11 @@ export function FormSwatchRow({
   return (
     <ListItem colors={{ containerColor: m.surfaceContainer }} modifiers={[fillMaxWidth()]}>
       <ListItem.HeadlineContent>
-        <FlowRow horizontalArrangement={{ spacedBy: 14 }} verticalArrangement={{ spacedBy: 14 }} modifiers={[padding(0, 4, 0, 4)]}>
+        <FlowRow
+          horizontalArrangement={{ spacedBy: 14 }}
+          verticalArrangement={{ spacedBy: 14 }}
+          modifiers={[padding(0, 4, 0, 4)]}
+        >
           {colors.map((col) => {
             const selected = same(value, col);
             return (
@@ -596,6 +604,7 @@ export function FormTextField({
       ref={fieldRef}
       value={state}
       onValueChange={onChangeText}
+      textStyle={{ fontFamily: 'Nunito' }}
       singleLine={!multiline}
       minLines={multiline ? 3 : undefined}
       autoFocus={autoFocus}

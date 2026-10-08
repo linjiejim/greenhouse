@@ -1,3 +1,4 @@
+import { BrandText as Text } from './brand-text.android';
 /**
  * Dialogs as promises — Android: Material 3 dialogs (Jetpack Compose
  * `AlertDialog`: rounded container, sentence-case text buttons, error-colored
@@ -10,7 +11,7 @@
 
 import React from 'react';
 import { create } from 'zustand';
-import { AlertDialog, OutlinedTextField, Text, TextButton, useNativeState } from '@expo/ui/jetpack-compose';
+import { AlertDialog, OutlinedTextField, TextButton, useNativeState } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers';
 import { translate } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
@@ -21,9 +22,21 @@ function tr(key: 'common.cancel' | 'common.ok'): string {
 }
 
 type Request = { id: number; title: string; message?: string } & (
-  | { kind: 'confirm'; confirmLabel: string; cancelLabel?: string; destructive?: boolean; resolve: (ok: boolean) => void }
+  | {
+      kind: 'confirm';
+      confirmLabel: string;
+      cancelLabel?: string;
+      destructive?: boolean;
+      resolve: (ok: boolean) => void;
+    }
   | { kind: 'alert' }
-  | { kind: 'prompt'; defaultValue?: string; placeholder?: string; confirmLabel?: string; resolve: (v: string | null) => void }
+  | {
+      kind: 'prompt';
+      defaultValue?: string;
+      placeholder?: string;
+      confirmLabel?: string;
+      resolve: (v: string | null) => void;
+    }
 );
 
 type RequestInput = Request extends infer R ? (R extends Request ? Omit<R, 'id'> : never) : never;

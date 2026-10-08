@@ -1,3 +1,4 @@
+import { brandFont as font } from '../ui/brand-font';
 /**
  * Field helpers for the project / task form sheets (SwiftUI forms — see
  * src/ui/native-form.tsx; the sheet chrome is the shared `FormChrome` from
@@ -15,7 +16,15 @@
 
 import React from 'react';
 import { DatePicker, Label, Text, Toggle, VStack } from '@expo/ui/swift-ui';
-import { contentShape, datePickerStyle, environment, font, foregroundStyle, frame, onTapGesture, shapes } from '@expo/ui/swift-ui/modifiers';
+import {
+  contentShape,
+  datePickerStyle,
+  environment,
+  foregroundStyle,
+  frame,
+  onTapGesture,
+  shapes,
+} from '@expo/ui/swift-ui/modifiers';
 import { useLocale, useT } from '../lib/i18n';
 import { usePrefs, type LangPref } from '../store/prefs';
 import { useTheme } from '../theme';

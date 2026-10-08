@@ -21,6 +21,7 @@ import { putHandoff } from '../../../lib/handoff';
 import { useT } from '../../../lib/i18n';
 import { type HexPalette, makeStyles, radius, space, squircle, useTheme } from '../../../theme';
 import { Icon, Spinner } from '../../../ui/core';
+import { NUNITO_WEB_FONT_CSS } from '../../../ui/brand-web-font.generated';
 import { richSegment } from '../rich';
 import { CodeBlock } from './code';
 
@@ -46,7 +47,8 @@ export function mermaidHtml(code: string, hex: HexPalette, isDark: boolean, zoom
     startOnLoad: false,
     securityLevel: 'strict',
     theme: 'base',
-    fontFamily: '-apple-system, system-ui, Roboto, sans-serif',
+    fontFamily: 'Nunito, system-ui, sans-serif',
+    themeCSS: `.node > rect:not([rx]), .node > rect[rx="0"], rect.actor { rx: ${radius.md}px; ry: ${radius.md}px; }`,
     themeVariables: {
       darkMode: isDark,
       background: hex.background,
@@ -68,12 +70,14 @@ export function mermaidHtml(code: string, hex: HexPalette, isDark: boolean, zoom
       clusterBorder: hex.opaqueSeparator,
       edgeLabelBackground: hex.background,
       fontSize: '14px',
+      fontFamily: 'Nunito, system-ui, sans-serif',
     },
   };
   const maxH = zoom ? 0 : INLINE_MAX_H;
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,${zoom ? 'maximum-scale=6,user-scalable=yes' : 'maximum-scale=1,user-scalable=no'}">
-<style>html,body{margin:0;padding:0;background:transparent;-webkit-text-size-adjust:100%}
+<style>${NUNITO_WEB_FONT_CSS}
+html,body{margin:0;padding:0;background:transparent;-webkit-text-size-adjust:100%}
 #d{display:flex;justify-content:center;align-items:center;box-sizing:border-box;padding:${zoom ? 16 : 0}px${zoom ? ';min-height:80vh' : ''}}</style></head>
 <body><div id="d"></div><script>(function(){
 var CODE=${js(code)},CFG=${js(config)},SRC=${js(MERMAID.sources)},SRI=${js(MERMAID.integrity)},MAXH=${maxH};
@@ -88,7 +92,7 @@ function render(){try{mermaid.initialize(CFG)}catch(e){post({type:'error'});retu
 mermaid.render('gh-mermaid',CODE).then(function(r){d.innerHTML=r.svg;fit();window.addEventListener('resize',fit)})
 .catch(function(){post({type:'error'})})}
 function load(i){if(i>=SRC.length){post({type:'error'});return}var s=document.createElement('script');
-s.src=SRC[i];s.integrity=SRI;s.crossOrigin='anonymous';s.onload=render;s.onerror=function(){load(i+1)};
+s.src=SRC[i];s.integrity=SRI;s.crossOrigin='anonymous';s.onload=function(){document.fonts.load('14px Nunito').then(render,render)};s.onerror=function(){load(i+1)};
 document.head.appendChild(s)}
 load(0)})();</script></body></html>`;
 }

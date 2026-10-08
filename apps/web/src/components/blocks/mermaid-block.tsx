@@ -13,7 +13,7 @@
  *    syntax wrong, and showing what they drew beats an empty card.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Copy, Download } from 'lucide-react';
 import { RichBlockShell, richBlockBodyClass } from '@greenhouse/ui/components/blocks/rich-block-shell';
 import { IconButton } from '../ui';
@@ -25,34 +25,44 @@ function readThemeVar(variable: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(variable).trim() || fallback;
 }
 
-function readMermaidTheme(_revision: number) {
+function readMermaidTheme() {
   const surface = readThemeVar('--t-surface-raised', '#ffffff');
   const text = readThemeVar('--t-fg', '#1f2a20');
   const edge = readThemeVar('--t-edge-strong', '#cbd7c8');
-  const primary = readThemeVar('--t-primary-500', '#2E8B3D');
+  const primary = `rgb(${readThemeVar('--primary-500', '53 133 102').replace(/\s+/g, ', ')})`;
   const muted = readThemeVar('--t-surface-muted', '#f2f6f0');
+  const radiusToken = readThemeVar('--radius-md', '0.5rem');
+  const rootFontSize =
+    typeof document === 'undefined' ? 16 : parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const radiusValue = parseFloat(radiusToken) * (radiusToken.endsWith('rem') ? rootFontSize : 1);
+  const radius = Number.isFinite(radiusValue) ? Math.max(0, radiusValue) : 8;
   return {
-    // `base` is the only built-in theme that honours themeVariables wholesale.
-    background: surface,
-    primaryColor: muted,
-    primaryTextColor: text,
-    primaryBorderColor: primary,
-    secondaryColor: surface,
-    secondaryTextColor: text,
-    secondaryBorderColor: edge,
-    tertiaryColor: surface,
-    tertiaryTextColor: text,
-    tertiaryBorderColor: edge,
-    lineColor: edge,
-    textColor: text,
-    mainBkg: muted,
-    nodeBorder: primary,
-    clusterBkg: surface,
-    clusterBorder: edge,
-    titleColor: text,
-    edgeLabelBackground: surface,
-    fontFamily: '"Nunito Sans", system-ui, sans-serif',
-    fontSize: '14px',
+    // Bake the radius into the SVG so downloads look the same as the preview.
+    // Preserve explicit rounded/capsule shapes and non-rectangular node semantics.
+    themeCSS: `.node > rect:not([rx]), .node > rect[rx="0"], rect.actor { rx: ${radius}px; ry: ${radius}px; }`,
+    themeVariables: {
+      // `base` is the only built-in theme that honours themeVariables wholesale.
+      background: surface,
+      primaryColor: muted,
+      primaryTextColor: text,
+      primaryBorderColor: primary,
+      secondaryColor: surface,
+      secondaryTextColor: text,
+      secondaryBorderColor: edge,
+      tertiaryColor: surface,
+      tertiaryTextColor: text,
+      tertiaryBorderColor: edge,
+      lineColor: edge,
+      textColor: text,
+      mainBkg: muted,
+      nodeBorder: primary,
+      clusterBkg: surface,
+      clusterBorder: edge,
+      titleColor: text,
+      edgeLabelBackground: surface,
+      fontFamily: readThemeVar('--font-sans', 'Nunito, system-ui, sans-serif'),
+      fontSize: '14px',
+    },
   };
 }
 
@@ -78,16 +88,20 @@ export function MermaidBlock({ code, compact = false }: { code: string; compact?
   const t = useT();
   const [svg, setSvg] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const [themeRevision, setThemeRevision] = useState(0);
+  const [theme, setTheme] = useState(readMermaidTheme);
   const idRef = useRef(`mermaid-${(renderSeq += 1)}`);
 
-  const themeVariables = useMemo(() => readMermaidTheme(themeRevision), [themeRevision]);
-
-  // Theme switches flip data-theme on the root; the SVG carries baked-in colors
-  // so it has to be re-rendered rather than restyled.
+  // The SVG carries baked-in colors, fonts and radius. React to both theme
+  // switches and Branding Studio edits, ignoring unrelated root style changes.
   useEffect(() => {
-    const observer = new MutationObserver(() => setThemeRevision((value) => value + 1));
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    const observer = new MutationObserver(() => {
+      const next = readMermaidTheme();
+      setTheme((previous) => (JSON.stringify(previous) === JSON.stringify(next) ? previous : next));
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'style'],
+    });
     return () => observer.disconnect();
   }, []);
 
@@ -110,7 +124,7 @@ export function MermaidBlock({ code, compact = false }: { code: string; compact?
           // ever takes it away. We render our own fallback instead.
           suppressErrorRendering: true,
           theme: 'base',
-          themeVariables,
+          ...theme,
           flowchart: { htmlLabels: false, curve: 'basis' },
         });
         // Validate BEFORE rendering. `parse()` runs the grammar and touches no
@@ -129,7 +143,7 @@ export function MermaidBlock({ code, compact = false }: { code: string; compact?
       mounted = false;
       removeMermaidScratch(renderId);
     };
-  }, [code, themeVariables]);
+  }, [code, theme]);
 
   const copySource = async () => {
     try {

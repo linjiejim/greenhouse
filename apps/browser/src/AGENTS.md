@@ -10,7 +10,7 @@ context, calls the active station's API and renders.
 ```
 public/manifest.json   # static MV3 manifest, copied verbatim into dist/
 public/icons/          # app icons (16/32/48/128/512) rendered from assets/icon.svg
-assets/icon.svg        # icon source — re-render PNGs with rsvg-convert on change
+assets/icon.svg        # generated from packages/ui/src/assets/greenhouse-mark.svg
 PRIVACY.md             # privacy policy (store listing requires a hosted copy)
 sidepanel.html         # side panel entry (React)
 options.html           # options page entry (React)
@@ -25,8 +25,8 @@ src/
 ```
 
 Product name is **Greenhouse Bridge** (manifest `name`, i18n `options.title`,
-page `<title>`s — keep in sync). Re-render icons with
-`for s in 16 32 48 128 512; do rsvg-convert -w $s -h $s assets/icon.svg -o public/icons/icon-$s.png; done`.
+page `<title>`s — keep in sync). Icons come from root `python3 scripts/build-brand-assets.py`;
+see `logos/README.md`. UI uses shared Haven tokens, Nunito fonts and `GreenhouseMark`.
 
 ## Rules
 

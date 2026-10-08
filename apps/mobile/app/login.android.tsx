@@ -1,3 +1,4 @@
+import { BrandText as Text } from '../src/ui/brand-text.android';
 /**
  * Login on Android — a Material 3 form (iOS: ./login.tsx, SwiftUI; the flow is
  * the shared src/login/use-login.ts): brand header, the server (station) row,
@@ -9,12 +10,19 @@
 import React, { useCallback, useRef } from 'react';
 import { Text as RNText, useWindowDimensions, View } from 'react-native';
 import { Stack } from 'expo-router';
-import { Button, CircularProgressIndicator, RNHostView, Text, type TextFieldRef } from '@expo/ui/jetpack-compose';
+import { Button, CircularProgressIndicator, RNHostView, type TextFieldRef } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, padding, size } from '@expo/ui/jetpack-compose/modifiers';
 import { useLogin } from '../src/login/use-login';
 import { useT } from '../src/lib/i18n';
 import { GreenhouseMark } from '../src/ui/logo';
-import { FormFields, FormNavRow, FormSection, FormTextField, NativeForm, useNativeState } from '../src/ui/native-form.android';
+import {
+  FormFields,
+  FormNavRow,
+  FormSection,
+  FormTextField,
+  NativeForm,
+  useNativeState,
+} from '../src/ui/native-form.android';
 import { makeStyles, space, typo, useTheme } from '../src/theme';
 
 export default function Login() {
@@ -27,7 +35,10 @@ export default function Login() {
   const passwordRef = useRef<TextFieldRef>(null);
   const readEmail = useCallback(() => emailState.get(), [emailState]);
   const readPassword = useCallback(() => passwordState.get(), [passwordState]);
-  const { station, error, busy, submit, clearError, openStations } = useLogin({ email: readEmail, password: readPassword });
+  const { station, error, busy, submit, clearError, openStations } = useLogin({
+    email: readEmail,
+    password: readPassword,
+  });
 
   return (
     <>
@@ -74,7 +85,12 @@ export default function Login() {
           />
         </FormFields>
 
-        <Button onClick={() => void submit()} enabled={!busy} modifiers={[fillMaxWidth(), padding(0, 8, 0, 0)]} contentPadding={{ start: 24, end: 24, top: 14, bottom: 14 }}>
+        <Button
+          onClick={() => void submit()}
+          enabled={!busy}
+          modifiers={[fillMaxWidth(), padding(0, 8, 0, 0)]}
+          contentPadding={{ start: 24, end: 24, top: 14, bottom: 14 }}
+        >
           {busy ? (
             <CircularProgressIndicator modifiers={[size(20, 20)]} />
           ) : (

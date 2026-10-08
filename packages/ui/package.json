@@ -137,7 +137,13 @@
     "./lib/number-format": {
       "import": "./src/lib/number-format.ts",
       "types": "./src/lib/number-format.ts"
-    }
+    },
+    "./components/brand": {
+      "import": "./src/components/brand/greenhouse-mark.tsx",
+      "types": "./src/components/brand/greenhouse-mark.tsx"
+    },
+    "./styles/brand.css": "./src/styles/brand.css",
+    "./styles/fonts.css": "./src/styles/fonts.css"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

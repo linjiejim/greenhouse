@@ -8,24 +8,24 @@
 <meta name="robots" content="index,follow" />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <link rel="apple-touch-icon" href="../apple-touch-icon.png" />
-<meta name="theme-color" content="#0d9488" />
+<meta name="theme-color" content="#235D4D" />
 <style>
-  @font-face{ font-family:'Inter'; font-style:normal; font-weight:400 800; font-display:swap; src:url('../fonts/inter-var.woff2') format('woff2'); }
+  @font-face{ font-family:'Nunito'; font-style:normal; font-weight:200 1000; font-display:swap; src:url('../fonts/nunito-variable.woff2') format('woff2'); }
   :root{
-    --brand:#0d9488; --brand-700:#0f766e;
+    --brand:#235D4D; --brand-700:#1D4636;
     --ink:#111827; --ink-soft:#374151; --ink-mut:#6b7280; --edge:#e5e7eb; --bg:#ffffff; --bg-soft:#f8fafc;
   }
   *{ box-sizing:border-box; }
   html{ -webkit-text-size-adjust:100%; }
   body{
     margin:0; background:var(--bg); color:var(--ink-soft);
-    font-family:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+    font-family:'Nunito',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
     -webkit-font-smoothing:antialiased; line-height:1.7; font-size:16px;
   }
-  html[lang^="zh"] body{ font-family:'Inter','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif; }
+  html[lang^="zh"] body{ font-family:'Nunito','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif; }
   .wrap{ max-width:760px; margin:0 auto; padding:56px 24px 96px; }
   header.brand{ display:flex; align-items:center; gap:12px; margin-bottom:8px; }
-  header.brand svg{ width:40px; height:40px; color:var(--brand); flex:none; }
+  header.brand img{ width:40px; height:40px; color:var(--brand); flex:none; }
   header.brand .name{ font-weight:700; font-size:20px; color:var(--ink); letter-spacing:-.01em; }
   h1{ color:var(--ink); font-size:30px; line-height:1.25; letter-spacing:-.02em; margin:20px 0 4px; }
   .updated{ color:var(--ink-mut); font-size:14px; margin:0 0 28px; }
@@ -45,15 +45,7 @@
 <body>
   <main class="wrap">
     <header class="brand">
-      <svg viewBox="12 16 106 96" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/>
-        <path d="M22 56 L108 56"/>
-        <path d="M44 56 L44 104"/>
-        <path d="M86 56 L86 104"/>
-        <path d="M65 104 L65 84"/>
-        <path d="M65 84 C69 78 74 75 76 65 C72 69 67 77 65 84 Z"/>
-        <path d="M65 84 C61 78 56 75 54 65 C58 69 63 77 65 84 Z"/>
-      </svg>
+      <img src="../favicon.svg" alt="" />
       <span class="name">Greenhouse Bridge</span>
     </header>
 

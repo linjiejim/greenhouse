@@ -2,14 +2,14 @@
 /**
  * Screenshot + smoke tour of a running Greenhouse instance.
  *
- * Logs in as the seeded super admin, seeds a little demo content over the API
+ * Logs in as the local acceptance super admin (E2E_EMAIL / E2E_PASSWORD can override), seeds a little demo content over the API
  * (a Tables base, a Home workbench layout, two skills, one automation run),
  * walks every major surface, and writes screenshots (WebP, plus a short chat
  * video → gif/mp4) into docs/assets/screens/. Every step records console errors
  * and failed /api requests, so the run doubles as an end-to-end smoke check.
  *
  * Prerequisites: a dev stack on E2E_BASE_URL (default http://localhost:4400)
- * with the example dataset loaded (`pnpm seed`); ffmpeg (gif/mp4) and cwebp
+ * with the local super account and example dataset loaded (`pnpm seed`); ffmpeg (gif/mp4) and cwebp
  * (png → webp) on PATH — each is skipped with a warning when missing.
  *
  *   node scripts/capture-screens.mjs            # light theme, all surfaces
@@ -25,7 +25,10 @@ import { resolve } from 'node:path';
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost:4400';
 const OUT = resolve(process.cwd(), 'docs/assets/screens');
-const ACCOUNT = { email: 'maya@greenhouse.example', password: 'greenhouse' };
+const ACCOUNT = {
+  email: process.env.E2E_EMAIL || 'super@greenhouse.local',
+  password: process.env.E2E_PASSWORD || 'greenhouse',
+};
 const args = process.argv.slice(2);
 const NO_VIDEO = args.includes('--no-video');
 const FORCE_CLEANUP = args.includes('--cleanup');
@@ -50,9 +53,10 @@ function log(msg) {
 function attachDiagnostics(page, label) {
   const issues = [];
   page.on('console', (m) => {
-    if (m.type() === 'error' && !/502|ERR_CONNECTION/.test(m.text())) issues.push(`console: ${m.text().slice(0, 200)}`);
+    if (m.type() === 'error' && !/502|ERR_CONNECTION/.test(m.text()))
+      issues.push(`console at ${page.url()}: ${m.text().slice(0, 400)}`);
   });
-  page.on('pageerror', (e) => issues.push(`pageerror: ${String(e).slice(0, 200)}`));
+  page.on('pageerror', (e) => issues.push(`pageerror at ${page.url()}: ${String(e).slice(0, 400)}`));
   page.on('response', (r) => {
     const url = r.url();
     if (r.status() >= 400 && url.includes('/api/'))
@@ -659,7 +663,7 @@ await step('administration', async () => {
   }
   await page.goto(`${BASE}/#/administration/users`);
   await settle(page, 1000);
-  const row = page.locator('tr', { hasText: 'leo@greenhouse.example' }).first();
+  const row = page.locator('tr', { hasText: 'team@greenhouse.local' }).first();
   await row.getByRole('button', { name: 'Permissions' }).first().click();
   await snap(page, 'admin-permissions-dialog', { wait: 1500 });
   await page.keyboard.press('Escape');
@@ -669,10 +673,7 @@ await step('inbox', async () => {
   await page.goto(`${BASE}/#/chat`);
   await settle(page);
   // The user menu opens on hover — a click on the trigger navigates to Settings.
-  await page
-    .getByRole('button', { name: /Maya Chen/ })
-    .first()
-    .hover();
+  await page.locator('button[aria-haspopup="menu"][title]:not([title="More"])').first().hover();
   await page.getByRole('menuitem', { name: /Inbox/ }).first().click();
   await snap(page, 'inbox', { wait: 1200 });
   await page.keyboard.press('Escape');

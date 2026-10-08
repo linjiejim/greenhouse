@@ -3,7 +3,7 @@
  * app/login.android.tsx — Material): the active station, the inline error
  * (shown under the fields, cleared as soon as the user edits), and `submit`,
  * which reads the native fields (they own their text — AutoFill writes into
- * them directly) and routes home on success.
+ * them directly). The root auth gate alone routes home on success.
  */
 
 import { useCallback, useState } from 'react';
@@ -42,9 +42,10 @@ export function useLogin(fields: { email: () => string | undefined; password: ()
     setError(null);
     const res = await doLogin(email, password);
     setBusy(false);
-    if (res.ok) router.replace('/');
-    else setError(res.error || t('login.failed'));
-  }, [busy, station, readEmail, readPassword, doLogin, router, t, openStations]);
+    // Updating auth already triggers the root layout's redirect. A second
+    // replace here can update a native-stack header after its screen detached.
+    if (!res.ok) setError(res.error || t('login.failed'));
+  }, [busy, station, readEmail, readPassword, doLogin, t, openStations]);
 
   return { station, error, busy, submit, clearError, openStations };
 }

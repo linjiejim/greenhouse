@@ -8,9 +8,14 @@
 - 辅助函数：`getCategoryIcon()`、`getToolIcon()`、`getContextIcon()`
 - 标准尺寸：`size={12}` 行内、`size={14}` 按钮、`size={16}` 导航、`size={20}` 标题
 
+**品牌字体与开屏**
+- 正文、标题、控件均用本地 Nunito，`fonts.css` 打包可变 WOFF2 与 italic；中文走系统 fallback，代码/终端保持等宽。字体由 `--font-sans` 决定，不能硬编码绕过工作区 Branding Studio。
+- `app.tsx` 在 bootstrap/auth 期间显示一次 Haven 围合/萌发动画（约 1.3s），就绪立即进入，无最低停留时间；路由加载不重播，`prefers-reduced-motion` 静态，桌面卫星窗口不显示开屏。
+- 品牌资源与更新方法见 [logos/README.md](../../../logos/README.md)。
+
 **Logo**
 - 使用 `components/ui.tsx` 中的 `<AppLogo />`
-- Logo 统一走 `AppLogo`（`components/ui.tsx`）：默认 `public/favicon.svg`，工作区品牌（Administration → Branding Studio）可覆盖产品名与 logo（`getRuntimeProductName()` / `getRuntimeLogo()`）；侧边栏展开态显示产品名 + 小字标语（`navigation.brandTagline`），收起态只显示 logo
+- Logo 统一走 `AppLogo`（`components/ui.tsx`）：默认 `@greenhouse/ui/components/brand` 的 Haven 负形温室（唯一几何源在 `packages/ui/src/assets/greenhouse-mark.svg`），工作区品牌（Administration → Branding Studio）可覆盖产品名与 logo（`getRuntimeProductName()` / `getRuntimeLogo()`）；侧边栏展开态显示产品名 + 小字标语（`navigation.brandTagline`），收起态只显示 logo
 
 > **CRUD 页面**统一用 `@greenhouse/crud`（`defineCrud` + `CrudPage`），约定见 [settings AGENTS](./pages/settings/AGENTS.md)。曾经并存的第二套只读 CRUD 框架 `components/dashboard/` 已随 dashboard UI 一起删除（2026-08-14）。
 
@@ -49,7 +54,7 @@
 - 确认 → `<ConfirmDialog>` 配合 state——禁止 `window.confirm()`
 - 加载 → `<Skeleton>` / `<SkeletonRow>` / `<SkeletonCard>` 用于布局占位；`<Spinner>` 用于行内指示
 - 错误边界 → `<ErrorBoundary>` 包裹可能出错的子树
-- `<AppLogo>` 支持 `size`（`sm|md|lg|xl`）、`showVersion`、`showAttribution`、`logoOnly` prop——禁止在业务组件直接引用 Logo 文件
+- `<AppLogo>` 支持 `size`（`sm|md|lg|xl`）、`showVersion`、`showAttribution`、`logoOnly`、`animate`（仅启动/展示页）prop——禁止在业务组件直接引用 Logo 文件
 - `<Input>` / `<Select>` 支持 `size` prop（`xs` | `sm` | `md` | `lg`），**禁止用 `!important` 覆盖 padding/font-size**
 
 - `<Select>` 支持 `inline` prop（`w-auto` 而非 `w-full`），用于行内筛选器场景
@@ -69,7 +74,7 @@
 - `<FileAttachmentCard>` — 文件附件统一展示；EditorJS attachment 与 Chat file artifact 共用，鉴权下载统一走 `lib/file-download.ts`
 - `<ConfirmBlock>` — 行内确认按钮组，用于 Agent 交互
 - `<HtmlPreviewBlock>` — ```html-preview fence 的消息流卡片（标题 + 「打开预览」+ 可折叠源码），真正渲染在右侧分栏的 `side-pane/html-preview.tsx`。**fence 名是 `html-preview` 不是 `html`**：后者是所有人展示 HTML 源码时写的，抢了它就会把「给我一段能复制的代码」变成不可复制的预览卡。**沙箱口径是承重的**：`<iframe srcdoc sandbox="allow-scripts">` 且**绝不加 `allow-same-origin`**——两者同时给等于完全没有 sandbox，文档就能读本页 localStorage 里的 token。不用 `blob:` URL、不给「新窗口打开」，理由与 `attachments-block.tsx` 拒绝预览 HTML 的注释完全一样（blob 继承本页 origin）。回归护栏 `side-pane/html-preview.render.test.tsx` 逐条断言这些属性。**唯一的回传通道**（[spec](../../../docs/specs/20261008-html-preview-bridge.md)）：inline 预览（`bridge`，Mission 产物不开）的**预览副本**注入 `window.greenhouse.sendPrompt(text)`（`injectHtmlBridge`，下载件与打印件不注入），只认 `event.source === 本 iframe` 的消息，经 `requestComposerDraft({ append, fromPage })` 追加进输入框、**从不发送**，1 秒节流、2000 字截断；`ConversationPane` 对非主人忽略 `fromPage` 草稿。sandbox 令牌不变
-- `<MermaidBlock>` — ```mermaid fence 渲染成矢量图（流程/时序/状态/ER/甘特）。三条硬约束：**`mermaid` 只在首个图示出现时 `import('mermaid')`**（它是全仓最重的前端依赖，主 bundle 不为没用到的人付费，形状同 ChartBlock 的 chart.js）；**`securityLevel: 'strict'`**——图源是模型输出即不可信输入，strict 关掉 `click`/`href` 指令，图不会变成导航或脚本面；**解析失败回退成普通代码块**而不是空卡片——模型确实会写错语法，让用户看到它想画什么比看到一片空白强。主题色从 `--t-*` CSS 变量读进 `themeVariables`，`data-theme` 变化时**重渲染**（SVG 里的颜色是烤死的，改样式没用）。数值对比仍走 `<ChartBlock>`，别用图示画柱状图
+- `<MermaidBlock>` — ```mermaid fence 渲染成矢量图（流程/时序/状态/ER/甘特）。三条硬约束：**`mermaid` 只在首个图示出现时 `import('mermaid')`**（它是全仓最重的前端依赖，主 bundle 不为没用到的人付费，形状同 ChartBlock 的 chart.js）；**`securityLevel: 'strict'`**——图源是模型输出即不可信输入，strict 关掉 `click`/`href` 指令，图不会变成导航或脚本面；**解析失败回退成普通代码块**而不是空卡片——模型确实会写错语法，让用户看到它想画什么比看到一片空白强。主题色从 `--t-*` CSS 变量读进 `themeVariables`，字体读 `--font-sans`；普通矩形节点与时序参与者框用 `--radius-md`，保留菱形/胶囊等语义形状。颜色、字体、圆角写入 SVG，导出与预览一致；主题或品牌 token 变化时**重渲染**。数值对比仍走 `<ChartBlock>`，别用图示画柱状图
 - `<MissionArtifactsBlock>` — Mission 产物文件卡（```mission-artifacts fence，服务端写入的交付清单）；复用 `<FileAttachmentCard>`，下载走 canonical `/api/missions/.../download` 鉴权端点（旧 `/api/cloud-agent` 仅兼容）
 - `<AttachmentsBlock>` — 用户**输入**附件药丸（```attachments fence；```mission-attachments 是历史名，只读不再写）。刻意比产物卡轻：输入是「用户问了什么」的上下文，产物才是交付物，所以药丸渲染在用户气泡内、正文与时间戳之间。用户消息**不过 `parseSegments`**，只用 `splitAttachments()` 摘出这一种 fence。两种 handle：`id`=`chat_files` 行、`key`=mission 暂存 blob，各自走对应鉴权下载端点。图片/PDF 预览必须同时满足扩展名与响应 MIME allowlist（图片不含 SVG，PDF 仅 `application/pdf`）；文件名伪装成 png/pdf 但响应是 `text/html` 时拒绝预览。其它类型只下载。
 - **业务块 `stats` / `cards` / `steps` 与块按钮只写一份，在 `@greenhouse/ui/components/blocks/`**（`StatsBlock` / `CardsBlock` / `StepsBlock` / `BlockActions`，外壳 `RichBlockShell` 也在那里；[spec](../../../docs/specs/20261008-interactive-rich-blocks.md) D5）——web 与浏览器扩展共用，web 只经子路径 import（不走根 barrel），`app.css` 的 `@source` 扫描该目录。文案由宿主注入（`StepsBlock` 的 `copy`，web 用 `lib/rich-output.ts` 的 `useStepsCopy()`），卡片点开由宿主注入（`onOpenUrl` = `openCardUrl`：实体链接走侧栏 / peek，其它链接新标签）。`ConfirmBlock` 的按钮也是 `BlockActions`。
@@ -99,7 +104,7 @@
   - **图片批注（`side-pane/image-annotator.tsx`）**：lightbox 的「批注修改」→ 分栏里画圈/框/箭头/自由笔/文字 → 合成 PNG 上传 → 经 `lib/composer-draft.ts` 把**双图 + 可编辑文案**填进 composer（原图在前作底、批注图在后作空间参考；只传批注图会把红圈烤进结果）。三条约束：**坐标全存图片自身像素**（overlay 按 pane 宽显示、导出按原分辨率，存屏幕坐标必错位）；**换算按 `object-contain` 的适配尺寸**而不是元素尺寸（否则整体偏移一个留白带的距离）；**`setPointerCapture` 必须 try/catch**（pointer 失效时它抛 `NotFoundError`，而它在 `pointerdown` 头部，异常会让整笔画根本不开始）。草稿**只填不发**——画错一个圈不该等于一次真金白银的生图。见 [spec](../../../docs/specs/20260808-image-annotation-editing.md)
   - **对话式编辑的实时刷新走 `lib/entity-sync.ts`**：SessionManager 在 `project_mutation`/`knowledge_mutation`/… 的 tool result 到达时按**域**广播（不是记录 id——mutation 工具不上报改了哪一行，在这里编一个 id 等于在最该刷新的时候静默失效），分栏把它折进 `bodyKey` 触发重挂载重取。形状抄 `onWorkbenchChanged`。
 - **实体 peek（`components/entity-peek/`）**：右侧 Drawer + 栈（`stores/entity-peek-store.ts`），直接复用既有详情组件（Projects + KB 适配器），**不用 iframe**。URL 不变、不进浏览器历史——peek 是「看一眼」，要固定地址就按头部的「在完整页面打开」。详情组件里两处只在整页成立的行为（返回列表按钮、跨记录 `window.location.hash` 跳转）经 `useInEntityPeek()` / `useEntityNavigate()` 分流：在 peek 里前者隐藏、后者压栈。新增可 peek 的实体 = 在 `@greenhouse/types/entity-links` 加 kind + 在 `entity-peek/registry.tsx` 加一行，别在调用侧写 if。方案见 [spec](../../../docs/specs/20260804-entity-references-and-peek.md)。
-- 两套 prose 的正文继承全站 `Nunito Sans`，标题沿用全局 display family，颜色只用语义 token：正文常规字重、强调/标题最高 `font-semibold`；`prose-base` 用文档级层级与宽松行距，`prose-compact` 保持 `text-sm` 与紧凑节奏。Markdown 表格必须保留原生 table layout，由 `.md-table-shell > .md-table-scroll` 负责工具栏与横向滚动，禁止再给 `<table>` 本身加 `display:block`；工具栏的 CSV 导出、全屏与复制统一为 icon-only + tooltip，复制为可直接粘贴到 Sheets/Excel 的 TSV。CSV/TSV 都收敛在共享 `lib/csv-export.ts`，不得各写一套表格序列化。
+- 两套 prose 的正文继承全站 `Nunito`，标题沿用全局 display family，颜色只用语义 token：正文常规字重、强调/标题最高 `font-semibold`；`prose-base` 用文档级层级与宽松行距，`prose-compact` 保持 `text-sm` 与紧凑节奏。Markdown 表格必须保留原生 table layout，由 `.md-table-shell > .md-table-scroll` 负责工具栏与横向滚动，禁止再给 `<table>` 本身加 `display:block`；工具栏的 CSV 导出、全屏与复制统一为 icon-only + tooltip，复制为可直接粘贴到 Sheets/Excel 的 TSV。CSV/TSV 都收敛在共享 `lib/csv-export.ts`，不得各写一套表格序列化。
 - **图片**：任何 prose 里的 `<img>` 点击都开 lightbox（`markdown.tsx` 上的委托点击，故 CSS 给了 `cursor: zoom-in`）。`compact` 时额外跑 `groupImageRuns()`：连续的「只含图片的段落」合并成一个 `div.md-image-row` flex 行，缩略图**固定 260px 宽**——1:1 的生成图原来会撑满整条消息列。marked 开了 `breaks: true`，所以「空行分隔」得到多个 `<p>`、「单换行分隔」得到一个带 `<br>` 的 `<p>`，两种都要归并（否则 DOM 形状取决于作者怎么敲空行）。**只在 compact 生效**，文档页要的是全宽阅读尺寸；CSS 也必须整段挂在 `.prose-compact` 下。
 - `generate_image` 进入 calling 且尚无 output 时，`BodyArtifacts` 立即渲染与最终缩略图同宽的 1:1 Skeleton；成功后原位换成图片，失败仍回到工具轨迹展示错误。不要用只有文字/Spinner 的等待态——高耗时生图需要稳定占住最终布局。
 - ⚠️ 宽度上限必须挂在 **`.prose-compact img` 自己**身上，不能只挂在 `.md-image-row` 上：流式过程中 `breaks: true` 会把 `![img](url)\n**文字**` 先解析成**一个**段落（img + `<br>` + 文字），要等第二个换行到达才拆开——那一刻它不是「只含图片的段落」，进不了 image-row。宽度若只由行容器给，图片会先按 `max-w-full` 撑到 ~890px 再跳回 260px，每次生图都闪一下（20260728 实测复现）。行容器现在只管布局。
@@ -285,7 +290,7 @@ stores/
   - **禁止使用 `bg-white`、`text-gray-*`、`border-gray-*`、`bg-gray-*`、`bg-red-*`、`text-red-*`**——始终用上述语义 token
   - 开关/Toggle 圆点用 `bg-surface-raised` 替代 `bg-white`
 - 主色：基于 CSS 变量的 `primary-*` 品牌色板（如 `primary-500`、`primary-600`）
-  - 主题定义在 `lib/theme.ts`，通过 CSS 自定义属性应用；固定锚点为品牌绿 `#2E8B3D`、深绿 `#1F6B34`、青柠 `#8CC63F`
+  - 主题定义在共享 `packages/ui/src/styles/tokens.css` 与 `lib/theme.ts`，通过 CSS 自定义属性应用；品牌锚点为深林绿 `#235D4D`、交互绿 `#358566`、嫩芽色 `#B6CA68`（嫩芽色不作正文）
   - **禁止硬编码颜色名**（如 `teal-500`、`emerald-500`）——始终用 `primary-*` 或语义 token（`text-success`、`bg-success-subtle`）
   - 用户主题偏好为 `Follow System` / `Light` / `Dark`；`Follow System` 只动态解析到既有 Light/Dark，不是第三套皮肤。两种实际模式共享同一品牌主色，只切换 surface/text/edge/status 语义 token。新增皮肤或换品牌主色前必须先更新品牌规范，不得恢复多皮肤选择器
 - **选中态分两种形状，别混用**——判据是「这个元素本来有没有边界」：
@@ -304,7 +309,7 @@ stores/
 - 侧栏一级导航、`More` 当前项与 Chat 历史当前会话统一使用 `.sidebar-active-item`：**主色背景 + 强前景 + 字重**，并暴露 `aria-current="page"`。禁止再加内描边或左右指示条（见上方「选中态分两种形状」）。Chat 历史的批量勾选行用更浅的 `bg-primary-subtle` 与当前会话区分，勾选语义由 checkbox 承担。
 - 动画：`animate-fade-in`、`animate-slide-up`、`animate-slide-in-left/right`、`animate-toast-in/out`、`animate-skeleton`
 - 间距：`px-3 md:px-4` 区块、`p-3` 卡片、`gap-2` flex
-- 圆角：`rounded-md` 小、`rounded-lg` 卡片、`rounded-xl` 弹窗、`rounded-full` 徽章
+- 圆角：`rounded-md` 8px 控件、`rounded-lg` 12px 卡片、`rounded-xl` 16px 弹窗、`rounded-2xl` 24px 大容器；密集表格不胶囊化；Branding Studio 的 radius 默认值必须同步
 - z-index：`z-10` sticky、`z-20` dropdown、`z-40` backdrop、`z-50` modal、`z-[60]` 嵌套弹窗
 - 字号：`text-[10px]` 时间戳、`text-xs` 标签、`text-sm` 正文、`text-base` 标题、`text-lg` 大标题
 - 文本截断：`truncate` 旁边始终加 `title={value}`，悬停显示完整内容

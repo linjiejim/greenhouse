@@ -103,11 +103,13 @@ const PER_MODE_VARS = [...ALL_TOKEN_VARS, ...ALL_SEMANTIC_VARS];
 
 /** Web-safe font stacks a fork can preview without shipping a webfont. */
 const FONT_DEFAULT = '';
+const FONT_NUNITO = "Nunito, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif";
 const FONT_INTER = "'Inter', ui-sans-serif, system-ui, sans-serif";
 const FONT_HUMANIST = "Seravek, 'Gill Sans Nova', Ubuntu, Calibri, 'DejaVu Sans', sans-serif";
 const FONT_SERIF = "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, Georgia, serif";
 
 const FONT_SANS_PRESETS: Array<{ label: string; stack: string }> = [
+  { label: 'Nunito', stack: FONT_NUNITO },
   { label: 'Inter', stack: FONT_INTER },
   { label: 'Humanist', stack: FONT_HUMANIST },
   { label: 'Serif', stack: FONT_SERIF },
@@ -124,7 +126,7 @@ interface StylePreset {
 }
 
 const STYLE_PRESETS: StylePreset[] = [
-  { key: 'greenhouse', swatch: '#2e8b3d', brand: '#2e8b3d', fontSans: FONT_DEFAULT, textScale: 1, radiusScale: 1 },
+  { key: 'greenhouse', swatch: '#235d4d', brand: '#358566', fontSans: FONT_DEFAULT, textScale: 1, radiusScale: 1 },
   { key: 'slate', swatch: '#4f46e5', brand: '#4f46e5', fontSans: FONT_INTER, textScale: 1, radiusScale: 0.5 },
   { key: 'sunset', swatch: '#ea580c', brand: '#ea580c', fontSans: FONT_HUMANIST, textScale: 1, radiusScale: 1.75 },
   { key: 'editorial', swatch: '#9f1239', brand: '#9f1239', fontSans: FONT_SERIF, textScale: 1.05, radiusScale: 0.75 },

@@ -1,3 +1,4 @@
+import { brandFont as font } from './brand-font';
 /**
  * `NativeButton` — the one in-content action button: a real SwiftUI `Button`
  * (system press / disabled / Dynamic Type / VoiceOver), accent-tinted. Use it
@@ -21,7 +22,7 @@
 import React from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { Button, Host, Label, ProgressView, Text } from '@expo/ui/swift-ui';
-import { buttonStyle, controlSize, disabled as disabledMod, font, frame, tint } from '@expo/ui/swift-ui/modifiers';
+import { buttonStyle, controlSize, disabled as disabledMod, frame, tint } from '@expo/ui/swift-ui/modifiers';
 import { useTheme } from '../theme';
 import { sfSymbol, type IconName } from './core';
 import { LIQUID_GLASS } from './glass';
@@ -74,7 +75,7 @@ export function NativeButton({
       ignoreSafeArea="all"
       style={style}
       colorScheme={isDark ? 'dark' : 'light'}
-      modifiers={[locale]}
+      modifiers={[font({ weight: variant === 'prominent' ? 'semibold' : 'regular' }), locale]}
       testID={testID}
     >
       <Button
@@ -92,7 +93,9 @@ export function NativeButton({
         ) : icon ? (
           <Label title={label} systemImage={sfSymbol(icon)} modifiers={stretch} />
         ) : (
-          <Text modifiers={variant === 'prominent' ? [font({ weight: 'semibold' }), ...stretch] : stretch}>{label}</Text>
+          <Text modifiers={variant === 'prominent' ? [font({ weight: 'semibold' }), ...stretch] : stretch}>
+            {label}
+          </Text>
         )}
       </Button>
     </Host>

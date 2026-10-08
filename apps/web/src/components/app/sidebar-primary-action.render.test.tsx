@@ -48,7 +48,7 @@ describe('SidebarPrimaryAction', () => {
     const collapsed = render(<SidebarBrandHeader collapsed onToggle={vi.fn()} />);
     const collapseControl = render(<SidebarCollapseButton onClick={vi.fn()} />);
 
-    expect(expanded).toContain('favicon.svg');
+    expect(expanded).toContain('role="img" aria-label="Greenhouse"');
     expect(expanded).toContain('Greenhouse');
     expect(expanded).toContain('AI-native workbench');
     expect(expanded).not.toContain('Localhost');
@@ -59,7 +59,7 @@ describe('SidebarPrimaryAction', () => {
     expect(expanded).toContain('aria-label="Global Agent"');
     expect(expanded.indexOf('Global Search')).toBeLessThan(expanded.indexOf('Global Agent'));
     expect(collapsed).not.toContain('aria-label="Greenhouse home"');
-    expect(collapsed).not.toContain('favicon.svg');
+    expect(collapsed).not.toContain('role="img" aria-label="Greenhouse"');
     expect(collapsed).not.toContain('Greenhouse');
     expect(collapsed).not.toContain('bg-primary-900');
     expect(collapsed).toContain('aria-label="Expand sidebar"');
