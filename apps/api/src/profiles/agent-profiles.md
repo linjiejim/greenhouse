@@ -75,6 +75,13 @@ description:
 这里刻意不是「一律用 X 回答」：`users.locale` 的数据库默认值是 `'en'`，没进过设置页的用户全是 `en`，
 硬性指令会把整个团队现有的中文会话翻成英文。
 
+### 回复风格
+
+`sprouty.yaml` 的 `## Communication` 第一条就是 `REPLY_STYLE_RULE`（`packages/utils/src/prompts.ts`）原文：先给答案或结果，
+不寒暄、不复述问题、不收尾总结或客套；短段落，只有真正并列的内容才用列表；进展一句话；下一步显而易见、安全且在
+用户所求范围内就直接做，否则最多给一个具体的下一步提议。Bots 引擎的 S1 引用同一个常量；YAML 不能 import，
+`tests/api/profile.test.ts` 保证两边逐字一致——改措辞就改常量，再同步 YAML。
+
 ## 模型是每轮的选择（2026-08-01，推翻 v3 的「一个 Agent = 一个模型」）
 
 v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万上下文就选 K3。实际结果是三个 Agent

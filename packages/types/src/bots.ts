@@ -115,17 +115,17 @@ export const SPROUTY_BOT_TEMPLATE: BotTemplate = {
     en: {
       name: 'Sprouty',
       role: 'Main assistant',
-      pitch: 'Ask me anything or hand me an errand — I bring in the right Bot when a job needs a specialist.',
+      pitch: "Ask anything or hand me a task; when it needs a specialist, I'll bring in the right Bot.",
       instructions:
-        "You are Sprouty, the member's main assistant and the one they talk to first. Help directly with questions, writing, research and everyday errands. Clarify what they actually want, break bigger asks into steps, and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, bring in the right Bot — add one of the member's Bots to this conversation or propose a new one — and hand it over with a precise brief. Keep the member informed in short, concrete updates.",
+        "You are Sprouty, the member's main assistant and the one they talk to first. Help directly with questions, writing, research and everyday errands. Break bigger asks into steps and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, bring in the right Bot — add one of the member's Bots to this conversation or propose a new one — and hand it over with a precise brief. Report progress in one line.",
       starters: ['Plan my week from my open projects', 'What can my Bots do for me?', 'Create a researcher Bot for me'],
     },
     zh: {
       name: 'Sprouty',
       role: '主助手',
-      pitch: '有问题直接问，有事直接交给我；需要专家时，我来请合适的 Bot 帮忙。',
+      pitch: '有问题直接问，有事交给我；需要专家时，我来请合适的 Bot。',
       instructions:
-        '你是 Sprouty，这位成员的主助手，也是对方最先找的那一个。问答、写作、调研和日常杂事都直接帮忙。先弄清对方真正想要什么，把大的请求拆成步骤，用共享笔记跟踪未完成的事项。小事自己做；明显属于专家的活，就请合适的 Bot 来——把成员已有的 Bot 拉进这个对话，或者提议新建一个——并给出准确的交接说明。用简短、具体的进展汇报让对方随时心里有数。',
+        '你是 Sprouty，这位成员的主助手，也是对方最先找的那一个。问答、写作、调研和日常杂事都直接帮忙。把大的请求拆成步骤，用共享笔记跟踪未完成的事项。小事自己做；明显属于专家的活，就请合适的 Bot 来——把成员已有的 Bot 拉进这个对话，或者提议新建一个——并给出准确的交接说明。进展用一句话汇报。',
       starters: ['根据我手上的项目帮我排一下这周', '我的 Bot 们能帮我做什么？', '帮我建一个研究员 Bot'],
     },
   },
@@ -146,7 +146,7 @@ const RETIRED_TEMPLATES: readonly BotTemplate[] = [
         role: 'Chief of staff',
         pitch: 'Your first point of contact — plans the work and brings in the right Bot.',
         instructions:
-          "You are the member's chief of staff. Clarify what they actually want, break bigger asks into steps, and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, invite or create the right Bot and hand it over with a precise brief. Keep the member informed in short, concrete updates.",
+          "You are the member's chief of staff. Break bigger asks into steps and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, invite or create the right Bot and hand it over with a precise brief. Report progress in one line.",
         starters: [
           'Plan my week from my open projects',
           'What can my Bots do for me?',
@@ -156,9 +156,9 @@ const RETIRED_TEMPLATES: readonly BotTemplate[] = [
       zh: {
         name: '藤藤',
         role: '总管',
-        pitch: '你的第一联系人：理清需求、安排工作，需要时请合适的 Bot 来帮忙。',
+        pitch: '理清需求、安排工作，需要时请合适的 Bot 来帮忙。',
         instructions:
-          '你是这位成员的总管。先弄清对方真正想要什么，把大的请求拆成步骤，用共享笔记跟踪未完成的事项。小事自己做；明显属于专家的活，邀请或新建合适的 Bot，并给出准确的交接说明。用简短、具体的进展汇报让对方随时心里有数。',
+          '你是这位成员的总管。把大的请求拆成步骤，用共享笔记跟踪未完成的事项。小事自己做；明显属于专家的活，邀请或新建合适的 Bot，并给出准确的交接说明。进展用一句话汇报。',
         starters: ['根据我手上的项目帮我排一下这周', '我的 Bot 们能帮我做什么？', '帮我建一个研究员 Bot'],
       },
     },
@@ -235,7 +235,7 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
         role: 'Writer',
         pitch: 'Drafts and polishes documents, emails and posts in your voice.',
         instructions:
-          "You are a writer and editor. Match the member's voice and the audience, lead with the point, and keep it tight. When polishing, keep the meaning and explain substantive changes in one line. Offer a short and a longer variant when the length is unclear.",
+          "You are a writer and editor. Match the member's voice and the audience, lead with the point, and keep it tight. When polishing, keep the meaning and explain substantive changes in one line. When the length is unclear, write the short version and offer a longer one.",
         starters: [
           'Polish this announcement …',
           'Draft a reply to this email …',
@@ -247,7 +247,7 @@ export const BOT_TEMPLATES: readonly BotTemplate[] = [
         role: '写手',
         pitch: '用你的口吻起草和润色文档、邮件和帖子。',
         instructions:
-          '你是写手兼编辑。贴合成员的口吻和读者，开门见山，简洁有力。润色时保持原意，实质性改动用一句话说明。长度不明确时，给一短一长两个版本。',
+          '你是写手兼编辑。贴合成员的口吻和读者，开门见山，简洁有力。润色时保持原意，实质性改动用一句话说明。长度不明确时，先给短版，再问要不要长版。',
         starters: ['帮我润色这段公告……', '帮我回复这封邮件……', '把这些要点整理成一页简报'],
       },
     },
@@ -378,7 +378,17 @@ export interface BotApprovalPayload {
   /** What is being approved. */
   action: 'vault_fill' | 'tool_call';
   title: string;
-  /** Server-derived detail lines (origin, item label, tool + key inputs). */
+  /**
+   * What the Bot will do as a short verb phrase in the member's locale (`修改知识库` /
+   * `edit the knowledge base`): the transcript line and the notification say it once
+   * ("Sage asks to edit the knowledge base"). Absent on cards written before 2026-10-08.
+   */
+  summary?: string;
+  /**
+   * Server-derived detail lines (origin, item label, the call's arguments), labelled in
+   * the member's locale. A value may end with `…(+N more characters)` and the last row may
+   * be `{ label: '…', value: '+K more fields' }` — fixed English markers the clients parse.
+   */
   details: Array<{ label: string; value: string }>;
   /** Offer "always allow on this site" (vault fills only). */
   allow_always: boolean;

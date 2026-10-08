@@ -19,7 +19,7 @@
  * it is fenced as untrusted data.
  */
 
-import { composeRichOutput } from '@greenhouse/utils/prompts';
+import { composeRichOutput, REPLY_STYLE_RULE } from '@greenhouse/utils/prompts';
 import type { BotRow } from '@greenhouse/db';
 import { sanitizeForPrompt } from '../../security/security.js';
 import { buildIdentitySection, buildMemberNotesSection } from '../../profiles/identity-prompt.js';
@@ -87,7 +87,8 @@ export function buildStaticRules(flags: ToolFaceFlags, locale: BotsLocale): stri
     `## Working rules`,
     `- Irreversible actions — paying, sending a message or email to someone, deleting, changing permissions or sharing, accepting terms — need the member's explicit go-ahead first.`,
     `- Never ask for, repeat or store a password or one-time code in chat.`,
-    `- Be concise and concrete. Say plainly what you did, what you found and what is still open.`,
+    `- Reply style: ${REPLY_STYLE_RULE} If anything is still open, say so in one line.`,
+    `- Cards speak for themselves: when you raise one (approval, new Bot, background task, sign-in, instructions change), the member sees its full contents — do not restate them; at most one short line, such as what happens once they decide.`,
     `- When several Bots are here: one owner per step; do not repeat or re-check what another Bot already did; add only what is new.`,
   );
   if (flags.team) {

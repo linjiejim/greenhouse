@@ -435,6 +435,7 @@ Always import these — don't reimplement:
 | `escapeHtml(value)` | `@greenhouse/utils/html` | Escape text into hand-built HTML (emails) |
 | `sendWeComMarkdown` / `sendFeishuMarkdown` | `@greenhouse/utils/wecom` / `feishu` | Group-bot webhook posts (both check the JSON body, not just the HTTP status) |
 | `composeRichOutput({confirm?})` | `@greenhouse/utils/prompts` | The single copy of the rich-output prompt guide shared by every profile |
+| `REPLY_STYLE_RULE` | `@greenhouse/utils/prompts` | The one wording of the reply-style rule (concise but proactive): Bots S1 embeds it, `sprouty.yaml` repeats it verbatim (test-guarded) |
 
 ## Auth & permissions
 

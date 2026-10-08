@@ -227,6 +227,25 @@ describe('requestLine', () => {
     expect(raw.notifications.createWithStatus).toHaveBeenCalledTimes(1);
   });
 
+  it('names the Bot once on an approval line, from the card’s summary', () => {
+    const card = { action: 'tool_call' as const, details: [], allow_always: false };
+    expect(
+      requestLine('zh', 'Sprouty', 'approval', { ...card, title: '允许 Sprouty 修改知识库？', summary: '修改知识库' }),
+    ).toBe('Sprouty 请你批准：修改知识库');
+    expect(
+      requestLine('en', 'Sprouty', 'approval', {
+        ...card,
+        title: 'Allow Sprouty to edit the knowledge base?',
+        summary: 'edit the knowledge base',
+      }),
+    ).toBe('Sprouty asks to edit the knowledge base');
+    expect(requestSubject('approval', { ...card, title: 'Allow Sprouty to x?', summary: 'x' })).toBe('x');
+    // A card written before the summary existed keeps its old line.
+    expect(requestLine('en', 'Ivy', 'approval', { ...card, title: 'Save the doc' })).toBe(
+      'Ivy asks you to approve: Save the doc',
+    );
+  });
+
   it('keeps the explicit take-over and other cards on their usual line', () => {
     expect(requestLine('en', 'Ivy', 'takeover', { reason: 'Solve the captcha', kind: 'captcha', url: null })).toBe(
       'Ivy asks you to take over the computer: Solve the captcha',

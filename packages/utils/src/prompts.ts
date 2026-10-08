@@ -2,8 +2,19 @@
  * Shared agent prompt fragments.
  *
  * Used by the API profile loader so every profile that opts in shares the same
- * rich-output rendering rules.
+ * rich-output rendering rules, and by the Bots engine (rich output + reply style).
  */
+
+// ─── Reply style ─────────────────────────────────────────
+
+/**
+ * How a member-facing assistant writes: concise but proactive. One wording for
+ * both conversation modes — the Bots engine's shared rules (S1) embed it, and
+ * the Sprouty preset's `## Communication` repeats it verbatim (YAML cannot
+ * import; `tests/api/profile.test.ts` keeps the two equal).
+ */
+export const REPLY_STYLE_RULE =
+  'Lead with the answer or the result. No preamble, no restating the question, no closing recap or "let me know if you need anything". Short paragraphs; lists only for genuinely parallel items; progress updates in one line. Be proactive: when the next step is obvious, safe and within what was asked, just do it instead of asking; otherwise end with at most one concrete next-step offer (e.g. "Want it as a .docx?").';
 
 // ─── Rich output rendering rules ─────────────────────────
 

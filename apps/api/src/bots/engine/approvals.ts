@@ -45,7 +45,8 @@ export function requestSubject(kind: BotRequestKind, payload: BotRequestPayload)
   const pick = (key: string) => (typeof p[key] === 'string' ? (p[key] as string) : '');
   switch (kind) {
     case 'approval':
-      return pick('title');
+      // Cards written before 2026-10-08 carry only the title.
+      return pick('summary') || pick('title');
     case 'login':
       return pick('origin') || pick('url');
     case 'takeover':
@@ -67,6 +68,10 @@ export function requestLine(locale: BotsLocale, botName: string, kind: BotReques
   if (kind === 'takeover' && p.implicit === true) {
     const host = typeof p.host === 'string' ? p.host : '';
     return copy.implicitTakeover(locale, botName, p.reason === 'interrupted' ? 'interrupted' : 'waiting', host);
+  }
+  // The title repeats the Bot's name ("Allow Sage to …?"); the summary names it once.
+  if (kind === 'approval' && typeof p.summary === 'string' && p.summary) {
+    return copy.approvalLine(locale, botName, p.summary);
   }
   return copy.requestEvent(locale, botName, kind, requestSubject(kind, payload));
 }

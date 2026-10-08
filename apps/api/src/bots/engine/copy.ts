@@ -72,14 +72,149 @@ const LIMIT_REASON: Record<BotsLocale, Record<Extract<BotEvent, { kind: 'limit' 
   },
 };
 
+// ─── Approval cards ──────────────────────────────────────
+
+/**
+ * What an approval-gated Greenhouse writer (`BOT_APPROVAL_TOOL_IDS`) is about to
+ * do, as a verb phrase in the member's locale. The tool catalog's `name` is an
+ * untranslated developer label ("Knowledge Mutation"), so it is only the
+ * fallback for a writer missing here (an extension's `surface.proxy:'write'`
+ * tool). `email_mutation` names the step: a draft sends nothing.
+ */
+const TOOL_ACTIONS: Record<string, Record<BotsLocale, string>> = {
+  knowledge_mutation: { zh: '修改知识库', en: 'edit the knowledge base' },
+  tables_mutation: { zh: '修改数据表记录', en: 'edit Tables records' },
+  project_mutation: { zh: '修改项目和任务', en: 'edit projects and tasks' },
+  workbench_mutation: { zh: '修改首页工作台', en: 'edit your home workbench' },
+  skill_mutation: { zh: '修改技能中心', en: 'change the Skill Center' },
+  automation_mutation: { zh: '修改自动化任务', en: 'change your automations' },
+  email_mutation: { zh: '起草或发送邮件', en: 'draft or send an email' },
+  feature_request: { zh: '提交或修改功能建议', en: 'file or update a feature request' },
+};
+
+const EMAIL_ACTIONS: Record<string, Record<BotsLocale, string>> = {
+  draft: { zh: '起草邮件', en: 'draft an email' },
+  send: { zh: '发送邮件', en: 'send an email' },
+};
+
+/** The localized verb phrase for a gated tool call, or null when the tool has none. */
+export function toolAction(l: BotsLocale, toolId: string, input?: unknown): string | null {
+  if (toolId === 'email_mutation' && input && typeof input === 'object') {
+    const step = (input as Record<string, unknown>).action;
+    if (typeof step === 'string' && Object.hasOwn(EMAIL_ACTIONS, step)) return EMAIL_ACTIONS[step][l];
+  }
+  return Object.hasOwn(TOOL_ACTIONS, toolId) ? TOOL_ACTIONS[toolId][l] : null;
+}
+
+/** `toolAction`, or "use «catalog name»" for a writer without a phrase. */
+export function toolActionPhrase(l: BotsLocale, tool: { id: string; name: string; input?: unknown }): string {
+  return toolAction(l, tool.id, tool.input) ?? (l === 'zh' ? `使用「${tool.name}」` : `use ${tool.name}`);
+}
+
+/**
+ * Labels for the argument rows of a tool-call approval card: the call's own
+ * keys in the member's words. The values stay exactly what the call will run
+ * with. A key missing here is shown humanized (`content_json` → "Content json").
+ */
+const FIELD_LABELS: Record<string, Record<BotsLocale, string>> = {
+  action: { zh: '操作', en: 'Action' },
+  // Knowledge
+  scope: { zh: '范围', en: 'Scope' },
+  doc_id: { zh: '文档 ID', en: 'Document ID' },
+  title: { zh: '标题', en: 'Title' },
+  content: { zh: '内容', en: 'Content' },
+  content_json: { zh: '内容（编辑器格式）', en: 'Content (editor format)' },
+  find: { zh: '查找', en: 'Find' },
+  replace: { zh: '替换为', en: 'Replace with' },
+  heading: { zh: '章节', en: 'Section' },
+  folder: { zh: '文件夹', en: 'Folder' },
+  tags: { zh: '标签', en: 'Tags' },
+  summary: { zh: '摘要', en: 'Summary' },
+  version: { zh: '版本', en: 'Version' },
+  share_role: { zh: '共享权限', en: 'Share role' },
+  share_targets: { zh: '共享给', en: 'Share with' },
+  change_reason: { zh: '修改原因', en: 'Reason for change' },
+  meta: { zh: '元数据', en: 'Metadata' },
+  // Tables
+  table_id: { zh: '数据表 ID', en: 'Table ID' },
+  record_id: { zh: '记录 ID', en: 'Record ID' },
+  values: { zh: '字段值', en: 'Values' },
+  items: { zh: '批量记录', en: 'Records' },
+  // Projects
+  project_id: { zh: '项目 ID', en: 'Project ID' },
+  task_id: { zh: '任务 ID', en: 'Task ID' },
+  description: { zh: '描述', en: 'Description' },
+  status: { zh: '状态', en: 'Status' },
+  priority: { zh: '优先级', en: 'Priority' },
+  owner_id: { zh: '负责人', en: 'Owner' },
+  assignee_id: { zh: '指派给', en: 'Assignee' },
+  visibility: { zh: '可见范围', en: 'Visibility' },
+  parent_id: { zh: '上级任务', en: 'Parent task' },
+  start_date: { zh: '开始日期', en: 'Start date' },
+  end_date: { zh: '结束日期', en: 'End date' },
+  due_date: { zh: '截止日期', en: 'Due date' },
+  estimated_hours: { zh: '预估工时', en: 'Estimated hours' },
+  // Automations, feature requests, skills
+  id: { zh: 'ID', en: 'ID' },
+  name: { zh: '名称', en: 'Name' },
+  task_prompt: { zh: '任务指令', en: 'Task prompt' },
+  schedule: { zh: '执行计划', en: 'Schedule' },
+  timezone: { zh: '时区', en: 'Time zone' },
+  profile_id: { zh: 'Agent', en: 'Agent' },
+  max_steps: { zh: '最大步数', en: 'Max steps' },
+  enabled: { zh: '启用', en: 'Enabled' },
+  notify_webhook: { zh: '群机器人 Webhook', en: 'Group webhook' },
+  notify_email: { zh: '邮件通知', en: 'Email summary' },
+  new_status: { zh: '新状态', en: 'New status' },
+  new_priority: { zh: '新优先级', en: 'New priority' },
+  admin_note: { zh: '管理员备注', en: 'Admin note' },
+  limit: { zh: '数量上限', en: 'Limit' },
+  offset: { zh: '偏移', en: 'Offset' },
+  display_name: { zh: '显示名称', en: 'Display name' },
+  changelog: { zh: '更新说明', en: 'Changelog' },
+  files: { zh: '文件', en: 'Files' },
+  // Workbench
+  template_id: { zh: '模板', en: 'Template' },
+  widget_id: { zh: '卡片 ID', en: 'Card ID' },
+  tab_id: { zh: '标签页 ID', en: 'Tab ID' },
+  recipe_id: { zh: '卡片配方', en: 'Recipe' },
+  tool_id: { zh: '工具', en: 'Tool' },
+  input: { zh: '查询参数', en: 'Query input' },
+  display: { zh: '显示方式', en: 'Display' },
+  chart_type: { zh: '图表类型', en: 'Chart type' },
+  map: { zh: '字段映射', en: 'Field mapping' },
+  markdown: { zh: 'Markdown', en: 'Markdown' },
+  nav: { zh: '导航', en: 'Navigation' },
+  size: { zh: '尺寸', en: 'Size' },
+  // Email (the send card shows the stored draft — tools-assembly.ts approvalDetails)
+  mailbox: { zh: '发件邮箱', en: 'Mailbox' },
+  from: { zh: '发件人', en: 'From' },
+  to: { zh: '收件人', en: 'To' },
+  cc: { zh: '抄送', en: 'Cc' },
+  bcc: { zh: '密送', en: 'Bcc' },
+  subject: { zh: '主题', en: 'Subject' },
+  body: { zh: '正文', en: 'Body' },
+  attachments: { zh: '附件', en: 'Attachments' },
+  attachment_ids: { zh: '附件', en: 'Attachments' },
+  reply_to_uid: { zh: '回复的邮件', en: 'In reply to' },
+  note: { zh: '说明', en: 'Note' },
+};
+
+/** An approval card's row label for one argument key. */
+export function approvalFieldLabel(l: BotsLocale, key: string): string {
+  if (Object.hasOwn(FIELD_LABELS, key)) return FIELD_LABELS[key][l];
+  const words = key.replace(/[_-]+/g, ' ').trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : key;
+}
+
 export const copy = {
   ask: (l: BotsLocale, from: string, to: string, message: string) =>
     l === 'zh' ? `${from} → @${to}：${message}` : `${from} → @${to}: ${message}`,
 
   limit: (l: BotsLocale, reason: Extract<BotEvent, { kind: 'limit' }>['reason']) =>
     l === 'zh'
-      ? `已达协作上限（${LIMIT_REASON.zh[reason]}），这一轮先到这里。需要继续就再说一声。`
-      : `Collaboration limit reached (${LIMIT_REASON.en[reason]}), so this round stops here. Say so if you want them to keep going.`,
+      ? `协作已达上限（${LIMIT_REASON.zh[reason]}），先停在这里。`
+      : `Collaboration limit reached (${LIMIT_REASON.en[reason]}) — stopped here.`,
 
   turnError: (l: BotsLocale, bot: string, reason: string) =>
     l === 'zh' ? `${bot} 没能回复（${reason}）` : `${bot} couldn't reply (${reason})`,
@@ -89,16 +224,16 @@ export const copy = {
   joined: (l: BotsLocale, name: string, byBot?: string) =>
     l === 'zh'
       ? byBot
-        ? `${name} 应 ${byBot} 的邀请加入了对话`
+        ? `${byBot} 邀请了 ${name}`
         : `${name} 加入了对话`
       : byBot
-        ? `${name} joined at ${byBot}'s invitation`
-        : `${name} joined the conversation`,
+        ? `${byBot} added ${name}`
+        : `${name} joined`,
 
   left: (l: BotsLocale, name: string) => (l === 'zh' ? `${name} 离开了对话` : `${name} left the conversation`),
 
   taskStarted: (l: BotsLocale, bot: string, title: string) =>
-    l === 'zh' ? `${bot} 开始了后台任务「${title}」` : `${bot} started the background task “${title}”`,
+    l === 'zh' ? `${bot} 开始后台任务「${title}」` : `${bot} started “${title}” in the background`,
 
   taskUnavailable: (l: BotsLocale, title: string) =>
     l === 'zh'
@@ -196,8 +331,28 @@ export const copy = {
   instructionsUpdated: (l: BotsLocale, bot: string, version: number) =>
     l === 'zh' ? `${bot} 的守则已更新（v${version}）` : `${bot}'s instructions were updated (v${version})`,
 
-  approvalTitle: (l: BotsLocale, bot: string, toolName: string) =>
-    l === 'zh' ? `允许 ${bot} 使用「${toolName}」？` : `Allow ${bot} to use ${toolName}?`,
+  /** An approval card's title from its verb phrase (`toolActionPhrase`). */
+  approvalTitle: (l: BotsLocale, bot: string, phrase: string) =>
+    l === 'zh' ? `允许 ${bot} ${phrase}？` : `Allow ${bot} to ${phrase}?`,
+
+  /** The transcript line / notification title of an approval card: the Bot named once. */
+  approvalLine: (l: BotsLocale, bot: string, phrase: string) =>
+    l === 'zh' ? `${bot} 请你批准：${phrase}` : `${bot} asks to ${phrase}`,
+
+  /** Server-written values on an email send card. */
+  emailCard: {
+    noDraft: (l: BotsLocale) =>
+      l === 'zh'
+        ? '没有这份草稿（已过期、已发送或从未起草）——允许也不会发出任何邮件。'
+        : 'No such draft (expired, already sent or never made) — allowing this sends nothing.',
+    sendsStored: (l: BotsLocale) =>
+      l === 'zh'
+        ? '按上面显示的已存草稿原样发送——这次调用带的收件人、主题或正文都会被忽略。'
+        : 'Sends the stored draft exactly as shown — any recipients, subject or body passed with this call are ignored.',
+    files: (l: BotsLocale, n: number) => (l === 'zh' ? `${n} 个文件` : `${n} file${n === 1 ? '' : 's'}`),
+    sharedMailbox: (l: BotsLocale) => (l === 'zh' ? '共享邮箱' : 'the shared mailbox'),
+    mailbox: (l: BotsLocale, ref: string) => (l === 'zh' ? `邮箱 ${ref}` : `mailbox ${ref}`),
+  },
 
   notificationBody: (l: BotsLocale) => (l === 'zh' ? '打开 Bots 查看并处理。' : 'Open Bots to review it.'),
 
