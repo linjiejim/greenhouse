@@ -38,6 +38,7 @@ import { useAuth } from '../../store/auth';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
 import { NativeButton } from '../../ui/button';
 import { Icon, Touchable, type IconName } from '../../ui/core';
+import { useFontScaleKey } from '../../ui/font-scale';
 import { alertError, confirmAction } from '../../ui/dialogs';
 import { notifySuccess } from '../../ui/haptics';
 import { Badge, IconTile, type BadgeTone } from '../../ui/list';
@@ -157,8 +158,10 @@ export function CardFrame({
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  // keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts)
+  const fontKey = useFontScaleKey();
   const header = (
-    <View style={styles.header}>
+    <View key={`head:${fontKey}`} style={styles.header}>
       <IconTile icon={icon} tint={settled ? c.gray : undefined} />
       <Text style={styles.title} accessibilityRole="header">
         {title}
@@ -183,7 +186,11 @@ export function CardFrame({
       ) : (
         header
       )}
-      {children ? <View style={styles.body}>{children}</View> : null}
+      {children ? (
+        <View key={`body:${fontKey}`} style={styles.body}>
+          {children}
+        </View>
+      ) : null}
       {footer ? <View style={styles.footer}>{footer}</View> : null}
     </View>
   );

@@ -51,6 +51,7 @@ import {
 } from 'react-native';
 import { HIT, alpha, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon, type IconName } from './core';
+import { useFontScaleKey } from './font-scale';
 
 /** Default leading tile size (Settings-style icon tile). */
 export const LIST_TILE = 30;
@@ -197,6 +198,7 @@ export function ListRow({
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const inset = separatorInset(icon ? TILE : leading ? (leadingWidth ?? TILE) : undefined);
+  const fontKey = useFontScaleKey();
   const isLast = last || position === 'last' || position === 'only';
   return (
     <View
@@ -222,7 +224,8 @@ export function ListRow({
       >
         {icon ? <IconTile icon={icon} tint={iconTint} /> : leading}
         <View style={styles.body}>
-          <View style={styles.texts}>
+          {/* keyed on the text size: re-measures when Dynamic Type changes (./font-scale.ts) */}
+          <View key={fontKey} style={styles.texts}>
             <Text numberOfLines={titleLines} style={[styles.title, destructive && { color: c.red }]}>
               {title}
             </Text>

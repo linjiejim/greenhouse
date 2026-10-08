@@ -17,6 +17,7 @@ import { Pressable, Text, View } from 'react-native';
 import { archiveUserMemory, deleteBotMemory } from '../../../api/bots';
 import { useT } from '../../../lib/i18n';
 import { HIT, makeStyles, space, typo, useTheme, weight } from '../../../theme';
+import { useFontScaleKey } from '../../../ui/font-scale';
 import { Icon } from '../../../ui/core';
 import { alertError } from '../../../ui/dialogs';
 import type { MemoryReceipt } from '../../vendor/web-helpers';
@@ -57,6 +58,8 @@ export const MemoryReceipts = memo(function MemoryReceipts({
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  // keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts)
+  const fontKey = useFontScaleKey();
   const t = useT();
   useSyncExternalStore(subscribe, () => version);
   const [busy, setBusy] = useState<number | null>(null);
@@ -75,7 +78,7 @@ export const MemoryReceipts = memo(function MemoryReceipts({
   };
 
   return (
-    <View style={styles.wrap}>
+    <View key={fontKey} style={styles.wrap}>
       {receipts.map((receipt) => {
         const state = memoryStates[String(receipt.memoryId)];
         const isUndone = undone.has(receipt.memoryId) || (state !== undefined && !STANDING.has(state));

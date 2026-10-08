@@ -18,6 +18,7 @@ import type { BotEvent, BotMessage, BotRequestKind } from '../../../shared/bots'
 import { HIT, makeStyles, space, typo, useTheme, weight } from '../../../theme';
 import { NativeButton } from '../../../ui/button';
 import { Icon, type IconName } from '../../../ui/core';
+import { useFontScaleKey } from '../../../ui/font-scale';
 
 const EVENT_ICON: Partial<Record<BotEvent['kind'], IconName>> = {
   joined: 'userPlus',
@@ -82,6 +83,8 @@ export const EventRow = memo(function EventRow({
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
+  // keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts)
+  const fontKey = useFontScaleKey();
 
   if (event?.kind === 'digest') {
     return (
@@ -111,7 +114,7 @@ export const EventRow = memo(function EventRow({
   const retryBot = event?.kind === 'turn_error' && failedBotName && canAct ? event.bot_id : null;
   const tint = danger ? c.red : c.secondaryLabel;
   return (
-    <View style={styles.wrap}>
+    <View key={fontKey} style={styles.wrap}>
       <View style={styles.line}>
         {icon ? <Icon name={icon} size={12} weight="medium" color={tint} /> : null}
         <Text style={[styles.text, { color: tint }]}>{text}</Text>
