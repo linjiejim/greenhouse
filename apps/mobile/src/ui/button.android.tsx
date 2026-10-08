@@ -1,3 +1,4 @@
+import { BrandText as Text } from './brand-text.android';
 /**
  * `NativeButton` on Android — Material 3 buttons (Jetpack Compose): ripple,
  * state layers, disabled styling and TalkBack are native. Same API as
@@ -18,7 +19,6 @@ import {
   FilledTonalButton,
   Icon,
   Row,
-  Text,
 } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, size as sizeMod } from '@expo/ui/jetpack-compose/modifiers';
 import type { IconName } from './core';

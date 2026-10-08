@@ -1,6 +1,6 @@
 /**
  * Android speaks Material 3: the theme tokens are backed by the M3 color roles
- * of a tonal palette seeded from the brand Teal — the same palette every
+ * of a tonal palette seeded from Haven forest green — the same palette every
  * Compose `Host` in the app is themed with (`seedColor`), so RN surfaces and
  * native Material components match exactly (and follow the brand, not the
  * wallpaper). Grouped lists follow @expo/ui's `FieldGroup`: rows on

@@ -1,3 +1,4 @@
+import { GreenhouseMark } from '@greenhouse/ui/components/brand';
 /**
  * Chat view — header (profile / history / new chat), selection context card,
  * message list, quick actions and the composer.
@@ -347,28 +348,9 @@ function KnowledgeConfirmCard({ pending }: { pending: NonNullable<ReturnType<typ
   );
 }
 
-/** Greenhouse house-glyph mark, shown on the empty new-conversation screen. */
+/** Same Haven mark as the web workbench. */
 function BridgeLogo() {
-  return (
-    <svg
-      viewBox="12 16 106 96"
-      className="mb-1 h-12 w-12 text-primary-600"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={7}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z" />
-      <path d="M22 56 L108 56" />
-      <path d="M44 56 L44 104" />
-      <path d="M86 56 L86 104" />
-      <path d="M65 104 L65 84" />
-      <path d="M65 84 C69 78 74 75 76 65 C72 69 67 77 65 84 Z" />
-      <path d="M65 84 C61 78 56 75 54 65 C58 69 63 77 65 84 Z" />
-    </svg>
-  );
+  return <GreenhouseMark className="mb-1 h-12 w-12" />;
 }
 
 /**

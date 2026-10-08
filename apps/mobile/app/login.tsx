@@ -1,3 +1,4 @@
+import { brandFont as font } from '../src/ui/brand-font';
 /**
  * Login — a native SwiftUI form (Android: ./login.android.tsx, Material; the
  * flow itself is the shared src/login/use-login.ts): brand header, the server (station) row,
@@ -29,7 +30,6 @@ import {
   buttonStyle,
   controlSize,
   disabled,
-  font,
   foregroundStyle,
   frame,
   keyboardType,
@@ -59,7 +59,10 @@ export default function Login() {
   const passwordRef = useRef<SecureFieldRef>(null);
   const readEmail = useCallback(() => emailState.get(), [emailState]);
   const readPassword = useCallback(() => passwordState.get(), [passwordState]);
-  const { station, error, busy, submit, clearError, openStations } = useLogin({ email: readEmail, password: readPassword });
+  const { station, error, busy, submit, clearError, openStations } = useLogin({
+    email: readEmail,
+    password: readPassword,
+  });
 
   return (
     <>
@@ -87,11 +90,7 @@ export default function Login() {
         {/* The footer is always a Text — the error in red, else the members-only
             note. Adding / removing a Section footer rebuilds its rows, and the
             focused field would lose focus mid-typing when the error clears. */}
-        <Section
-          footer={
-            <Text modifiers={error ? [foregroundStyle('red')] : []}>{error ?? t('login.footer')}</Text>
-          }
-        >
+        <Section footer={<Text modifiers={error ? [foregroundStyle('red')] : []}>{error ?? t('login.footer')}</Text>}>
           <TextField
             text={emailState}
             placeholder={t('login.emailPlaceholder')}

@@ -1,3 +1,4 @@
+import { BrandText as Text } from './brand-text.android';
 /**
  * Segmented control on Android — a Material 3 single-choice segmented button
  * row (Jetpack Compose). Same API as ./segmented.tsx (iOS: SwiftUI segmented
@@ -6,7 +7,7 @@
 
 import React from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { SegmentedButton, SingleChoiceSegmentedButtonRow, Text } from '@expo/ui/jetpack-compose';
+import { SegmentedButton, SingleChoiceSegmentedButtonRow } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers';
 import { selectionTick } from './haptics';
 import { M3Host } from './m3';

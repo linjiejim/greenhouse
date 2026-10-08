@@ -1,40 +1,108 @@
-/**
- * GreenhouseMark — the brand house-with-sprout mark as an inline SVG, tinted
- * with the theme accent. Canonical geometry: logos/greenhouse-mark.svg (keep in
- * sync if the brand mark changes). Used on the login screen (the agent face,
- * PlantAvatar, is for the agent only); pass `color` to override the accent tint.
- */
-
-import React from 'react';
-import { View } from 'react-native';
-import { SvgXml } from 'react-native-svg';
+/** Haven geometry is generated from the shared brand SVG; no hand-copied paths. */
+import React, { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '../theme';
+import { GREENHOUSE_PATHS } from './brand.generated';
 
-const PATHS =
-  '<path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/>' +
-  '<path d="M22 56 L108 56"/>' +
-  '<path d="M44 56 L44 104"/>' +
-  '<path d="M86 56 L86 104"/>' +
-  '<path d="M65 104 L65 84"/>' +
-  '<path d="M65 84 C69 78 74 75 76 65 C72 69 67 77 65 84 Z"/>' +
-  '<path d="M65 84 C61 78 56 75 54 65 C58 69 63 77 65 84 Z"/>';
-
-function markSvg(color: string): string {
-  return (
-    `<svg viewBox="9 7 112 112" xmlns="http://www.w3.org/2000/svg">` +
-    `<g fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">${PATHS}</g>` +
-    `</svg>`
-  );
-}
-
-/** Greenhouse brand mark (house + sprout), accent-tinted. */
-export function GreenhouseMark({ size = 72, color }: { size?: number; color?: string }) {
-  // SVG markup needs a real color string — use the hex mirror, not the
-  // PlatformColor palette.
+export function GreenhouseMark({
+  size = 72,
+  color,
+  animate = false,
+}: {
+  size?: number;
+  color?: string;
+  animate?: boolean;
+}) {
   const { hex } = useTheme();
+  const [motionFinished, setMotionFinished] = useState(false);
+  const progress = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!animate) return;
+    let alive = true;
+    const stop = () => {
+      progress.stopAnimation();
+      progress.setValue(1);
+      if (alive) setMotionFinished(true);
+    };
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', (reduced) => {
+      if (reduced) stop();
+    });
+    void AccessibilityInfo.isReduceMotionEnabled()
+      .then((reduced) => {
+        if (!alive) return;
+        if (reduced) {
+          stop();
+          return;
+        }
+        progress.setValue(0);
+        setMotionFinished(false);
+        Animated.timing(progress, { toValue: 1, duration: 1300, useNativeDriver: true }).start(({ finished }) => {
+          if (alive && finished) setMotionFinished(true);
+        });
+      })
+      .catch(() => {
+        if (alive) stop();
+      });
+    return () => {
+      alive = false;
+      subscription.remove();
+      stop();
+    };
+  }, [animate, progress]);
+  const markColor = color ?? hex.accent;
   return (
-    <View style={{ width: size, height: size }}>
-      <SvgXml xml={markSvg(color ?? hex.accent)} width="100%" height="100%" />
+    <View style={{ width: size, height: size }} accessible accessibilityLabel="Greenhouse">
+      {!animate || motionFinished ? (
+        <Svg viewBox="0 0 224 224" width={size} height={size} accessible={false}>
+          <Path
+            d={GREENHOUSE_PATHS.filter(({ id }) => id !== 'seed')
+              .map(({ d }) => d)
+              .join(' ')}
+            fill={markColor}
+          />
+          <Path d={GREENHOUSE_PATHS[2].d} fill={color ?? GREENHOUSE_PATHS[2].fill} />
+        </Svg>
+      ) : (
+        GREENHOUSE_PATHS.map(({ id, d, fill }) => {
+          const seed = id === 'seed';
+          return (
+            <Animated.View
+              key={id}
+              style={{
+                position: 'absolute',
+                width: size,
+                height: size,
+                opacity: progress.interpolate({
+                  inputRange: seed ? [0, 0.35, 1] : [0, 0.65, 1],
+                  outputRange: [0, seed ? 0 : 1, 1],
+                }),
+                transform: seed
+                  ? [
+                      {
+                        scale: progress.interpolate({
+                          inputRange: [0, 0.35, 0.9, 1],
+                          outputRange: [0.05, 0.05, 1.04, 1],
+                        }),
+                      },
+                    ]
+                  : [
+                      {
+                        translateX: progress.interpolate({
+                          inputRange: [0, 0.7, 1],
+                          outputRange: [((id === 'house-left' ? -28 : 28) * size) / 224, 0, 0],
+                        }),
+                      },
+                    ],
+              }}
+            >
+              <Svg viewBox="0 0 224 224" width={size} height={size} accessible={false}>
+                <Path d={d} fill={seed && !color ? fill : markColor} />
+              </Svg>
+            </Animated.View>
+          );
+        })
+      )}
     </View>
   );
 }

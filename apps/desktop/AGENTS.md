@@ -266,3 +266,10 @@ are capped at warn, so a launch is a dozen useful lines rather than hundreds of 
 - **The API's CORS allow-list must include the desktop origins** (`greenhouse://localhost`,
   `http://greenhouse.localhost` — `DEFAULT_CORS_ORIGINS` in `apps/api/src/security/security.ts`),
   or the app loads but every request fails preflight and login spins forever.
+
+## Haven branding
+
+App icons and the monochrome menubar template are generated from the shared SVG by
+`python3 scripts/build-brand-assets.py` at the repo root (see `logos/README.md`).
+The web shell owns Nunito, rounded controls and the one-shot startup intro; satellite
+windows stay transparent and skip the intro. Icon changes require a new native bundle.

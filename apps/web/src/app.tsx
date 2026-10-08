@@ -74,7 +74,7 @@ import { SearchNavButton } from './components/search/search-nav-button';
 import { useAuthStore, useUIStore, useProfileStore } from './stores';
 import { useWsStore } from './stores/ws-store';
 import { initTheme } from './lib/theme';
-import { initWorkspaceBranding } from './lib/workspace-branding';
+import { getRuntimeProductName, initWorkspaceBranding } from './lib/workspace-branding';
 import { initScrollActivity } from './lib/scroll-activity';
 import { initDesktop, isDesktop, reportDesktopBootOk } from './lib/desktop';
 import { loadReleaseNotes } from './lib/desktop/updates';
@@ -355,6 +355,9 @@ function DesktopPreferencesLayer() {
   );
 }
 
+// Shared between the bootstrap and auth screens: a handoff never restarts the intro.
+const launchStartedAt = performance.now();
+
 function App() {
   // One viewport coordinator covers login, route pages and every shared
   // overlay. Call it above the auth branches so no mobile input falls back to
@@ -476,7 +479,7 @@ function App() {
   if (authState === 'checking') {
     return (
       <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
-        <LoadingScreen />
+        <LoadingScreen animate />
       </I18nProvider>
     );
   }
@@ -870,15 +873,22 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
 
 // ─── Loading Screen ──────────────────────────────────────
 
-function LoadingScreen() {
+function LoadingScreen({ animate = false }: { animate?: boolean }) {
   const t = useT();
   return (
-    <div className="app-viewport flex items-center justify-center bg-surface-sunken" data-tauri-drag-region>
+    <div
+      className="app-viewport flex items-center justify-center bg-surface-canvas"
+      data-tauri-drag-region
+      data-testid="launch-screen"
+      role="status"
+      aria-label={t('common.loading')}
+    >
       <div className="text-center">
         <div className="mx-auto flex justify-center">
-          <AppLogo size="xl" logoOnly />
+          <AppLogo size="xl" logoOnly animate={animate} elapsed={performance.now() - launchStartedAt} />
         </div>
-        <p className="text-sm text-fg-faint mt-2">{t('common.loading')}</p>
+        <p className="font-display text-xl font-bold text-fg mt-4">{getRuntimeProductName()}</p>
+        <p className="text-xs text-fg-faint mt-2">{t('common.loading')}</p>
       </div>
     </div>
   );
@@ -888,10 +898,18 @@ function LoadingScreen() {
 
 const container = document.getElementById('root');
 if (container) {
-  // Workspace branding (name / logo / theme) loads before first paint so the
-  // login screen is already branded; it fails open to the build defaults.
+  const root = createRoot(container);
+  // Paint a bounded, one-shot intro while bootstrap resolves instead of a blank
+  // canvas. Never delay a ready app for motion. Satellite windows stay transparent.
+  if (!(isDesktop() && window.location.hash.startsWith(`#/${DESKTOP_SATELLITE_ROUTE}/`))) {
+    root.render(
+      <I18nProvider initialLocale={getStoredLocale()}>
+        <LoadingScreen animate />
+      </I18nProvider>,
+    );
+  }
+  // Workspace branding wins before login/auth renders; failure uses bundle defaults.
   void initWorkspaceBranding().finally(() => {
-    const root = createRoot(container);
     root.render(
       <ErrorBoundary>
         <App />

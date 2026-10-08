@@ -1,3 +1,4 @@
+import { brandFont as font } from './brand-font';
 /**
  * Real SwiftUI forms — the standard for every settings / edit / create screen.
  *
@@ -38,7 +39,6 @@ import {
   accessibilityHidden,
   accessibilityLabel,
   environment,
-  font,
   foregroundStyle,
   lineLimit,
   opacity,
@@ -63,7 +63,7 @@ export function NativeForm({ children, style }: { children: React.ReactNode; sty
   const { hex } = useTheme();
   const locale = useLocaleEnv();
   return (
-    <Host style={[{ flex: 1 }, style]} modifiers={[tint(hex.accent), locale]}>
+    <Host style={[{ flex: 1 }, style]} modifiers={[font({ textStyle: 'body' }), tint(hex.accent), locale]}>
       <Form>{children}</Form>
     </Host>
   );
@@ -210,7 +210,10 @@ export function FormCheckRow({
 }) {
   const { hex } = useTheme();
   return (
-    <Button onPress={onPress} modifiers={[PRIMARY, accessibilityAddTraits(checked ? ['isButton', 'isSelected'] : ['isButton'])]}>
+    <Button
+      onPress={onPress}
+      modifiers={[PRIMARY, accessibilityAddTraits(checked ? ['isButton', 'isSelected'] : ['isButton'])]}
+    >
       <HStack spacing={10}>
         {systemImage ? (
           <Image
@@ -225,7 +228,10 @@ export function FormCheckRow({
         <Spacer />
         {checked ? (
           // foregroundStyle, not tint: inside a primary-styled Button tint doesn't recolor an Image
-          <Image systemName="checkmark" modifiers={[font({ weight: 'semibold' }), foregroundStyle(hex.accent), accessibilityHidden(true)]} />
+          <Image
+            systemName="checkmark"
+            modifiers={[font({ weight: 'semibold' }), foregroundStyle(hex.accent), accessibilityHidden(true)]}
+          />
         ) : null}
       </HStack>
     </Button>

@@ -43,8 +43,8 @@ export function stackDefaults(c: ThemeColors, hex: HexPalette): NativeStackNavig
     // top app bar icons are onSurface (Material), iOS bar buttons the tint.
     headerTintColor: ANDROID ? hex.label : hex.accent,
     // titles are content, not controls — label color, never the tint
-    headerTitleStyle: { color: hex.label },
-    headerLargeTitleStyle: { color: hex.label },
+    headerTitleStyle: { color: hex.label, fontFamily: 'Nunito' },
+    headerLargeTitleStyle: { color: hex.label, fontFamily: 'Nunito' },
     headerBackButtonDisplayMode: 'minimal',
     headerShadowVisible: false,
     // Android's top app bar takes the page surface (pages override it for grouped backgrounds)

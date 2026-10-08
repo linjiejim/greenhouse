@@ -1,20 +1,11 @@
-/* ─── @greenhouse/ui design tokens ───────────────────────────────────────────
- *
- * Single source of the semantic color tokens shared by every Greenhouse
- * frontend. Consumed by the web app via `@import '@greenhouse/ui/styles/tokens.css'`
- * in apps/web/src/app.css (and by future shells the same way).
- *
- * - `@theme static inline` maps Tailwind v4 utility colors onto the CSS vars.
- * - `:root` holds the light defaults; `.dark-theme` holds the dark overrides
- *   (JS only toggles the class — see @greenhouse/ui/lib/theme).
- * - Downstream forks override the raw `--primary-*` / `--t-*` vars in the
- *   app-level branding.css seam; keep token VALUES out of JS so that cascade
- *   always wins.
- */
+/* Shared Haven identity: Web and Bridge use the same appearance and shape scales. */
 
 /* ─── Theme: Semantic color tokens mapped to CSS variables ─── */
 @theme static inline {
+  --color-surface-canvas: var(--t-surface-canvas);
+  --color-surface-chrome: var(--t-surface-chrome);
   --color-surface: var(--t-surface);
+  --color-surface-card: var(--t-surface-card);
   --color-surface-raised: var(--t-surface-raised);
   --color-surface-muted: var(--t-surface-muted);
   --color-surface-sunken: var(--t-surface-sunken);
@@ -26,8 +17,9 @@
 
   --color-edge: var(--t-edge);
   --color-edge-strong: var(--t-edge-strong);
+  --color-logo-safe: var(--t-surface-raised);
 
-  /* Primary brand color palette (RGB triplets; fork-overridable in branding.css) */
+  /* Fixed Greenhouse brand palette; appearance mode only changes semantic surfaces. */
   --color-primary-50: rgb(var(--primary-50));
   --color-primary-100: rgb(var(--primary-100));
   --color-primary-200: rgb(var(--primary-200));
@@ -70,129 +62,185 @@
   /* Primary semantic tokens — adapt to dark mode */
   --color-primary-subtle: var(--t-primary-subtle);
   --color-primary-subtle-hover: var(--t-primary-subtle-hover);
+  --color-sidebar-active: var(--t-sidebar-active);
   --color-primary-edge: var(--t-primary-edge);
   --color-primary-fg: var(--t-primary-fg);
   --color-primary-fg-strong: var(--t-primary-fg-strong);
 }
 
-/* ─── Light theme (default) ─── */
-:root {
-  /* Primary palette — Teal upstream default (override in branding.css) */
-  --primary-50: 240 253 250;
-  --primary-100: 204 251 241;
-  --primary-200: 153 246 228;
-  --primary-300: 94 234 212;
-  --primary-400: 45 212 191;
-  --primary-500: 20 184 166;
-  --primary-600: 13 148 136;
-  --primary-700: 15 118 110;
-  --primary-800: 17 94 89;
-  --primary-900: 19 78 74;
-
-  /* Surface */
-  --t-surface: #ffffff;
-  --t-surface-raised: #ffffff;
-  --t-surface-muted: #f3f4f6;
-  --t-surface-sunken: #f9fafb;
-
-  /* Text */
-  --t-fg: #111827;
-  --t-fg-secondary: #4b5563;
-  --t-fg-muted: #6b7280;
-  --t-fg-faint: #9ca3af;
-
-  /* Border */
-  --t-edge: #e5e7eb;
-  --t-edge-strong: #d1d5db;
-
-  /* Status: Success */
-  --t-success: #059669;
-  --t-success-subtle: #ecfdf5;
-  --t-success-fg: #065f46;
-
-  /* Status: Warning */
-  --t-warning: #d97706;
-  --t-warning-subtle: #fffbeb;
-  --t-warning-fg: #92400e;
-
-  /* Status: Danger */
-  --t-danger: #dc2626;
-  --t-danger-subtle: #fef2f2;
-  --t-danger-fg: #991b1b;
-
-  /* Destructive action */
-  --t-destructive: #dc2626;
-  --t-destructive-hover: #b91c1c;
-
-  /* Star rating */
-  --t-star: #f59e0b;
-  --t-star-hover: #d97706;
-
-  /* Status: Info */
-  --t-info: #2563eb;
-  --t-info-subtle: #eff6ff;
-  --t-info-fg: #1e40af;
-
-  /* Primary semantic (light defaults — use actual primary-50/100/200/600/700) */
-  --t-primary-subtle: rgb(var(--primary-50));
-  --t-primary-subtle-hover: rgb(var(--primary-100));
-  --t-primary-edge: rgb(var(--primary-200));
-  --t-primary-fg: rgb(var(--primary-600));
-  --t-primary-fg-strong: rgb(var(--primary-700));
+@theme {
+  --radius-xs: 0.1875rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+  --radius-4xl: 2.5rem;
 }
 
-/* ─── Dark theme: Midnight ─── */
+/* ─── Light (default) ─── */
+:root {
+  --t-brand-mark: rgb(var(--primary-700));
+  --t-brand-seed: #b6ca68;
+  /* Haven: soft sage → forest green. The seed has its own accent token. */
+  --primary-50: 244 247 240;
+  --primary-100: 234 242 232;
+  --primary-200: 212 229 216;
+  --primary-300: 177 210 191;
+  --primary-400: 116 172 145;
+  --primary-500: 53 133 102;
+  --primary-600: 42 110 86;
+  --primary-700: 35 93 77;
+  --primary-800: 25 70 54;
+  --primary-900: 18 52 39;
+
+  /* Surface */
+  --t-surface-canvas: #ffffff;
+  --t-surface-chrome: #f1f7ed;
+  --t-surface: #f4f8f1;
+  --t-surface-card: #f7faf5;
+  --t-surface-raised: #ffffff;
+  --t-surface-muted: #eef5ea;
+  --t-surface-sunken: #f7f9f5;
+
+  /* Text */
+  --t-fg: #2b2b2b;
+  --t-fg-secondary: #455147;
+  --t-fg-muted: #5f6a61;
+  --t-fg-faint: #657067;
+
+  /* Border */
+  --t-edge: #e6ece3;
+  --t-edge-strong: #cbd6c8;
+
+  /* Status: Success */
+  --t-success: #2e8b3d;
+  --t-success-subtle: #eef5ea;
+  --t-success-fg: #1f6b34;
+
+  /* Status: Warning */
+  --t-warning: #a84d21;
+  --t-warning-subtle: #fff3ec;
+  --t-warning-fg: #7a3517;
+
+  /* Status: Danger */
+  --t-danger: #c2413b;
+  --t-danger-subtle: #fff0ef;
+  --t-danger-fg: #8f2f2b;
+
+  /* Destructive action */
+  --t-destructive: #c2413b;
+  --t-destructive-hover: #a93631;
+
+  /* Star rating */
+  --t-star: #b7791f;
+  --t-star-hover: #925f18;
+
+  /* Status: Info */
+  --t-info: #2d6e8e;
+  --t-info-subtle: #edf7fa;
+  --t-info-fg: #24566e;
+
+  /*
+   * Primary semantic — these carry SELECTED / ACTIVE state across the app, so in
+   * light mode they must not be drawn from the brand wash the neutral surfaces are
+   * already made of. They used to be primary-50/100/200, which made
+   * `primary-subtle` byte-identical to `--t-surface` and `primary-subtle-hover`
+   * byte-identical to `--t-surface-muted`: a selected chip differed from its
+   * unselected neighbour by 1.01:1, i.e. not at all. Values below keep dark-green
+   * label text at 5.4:1 while giving the fill a ~5 L* step off every neutral.
+   *
+   * The load-bearing cue is the EDGE, not the fill: no light fill can reach the
+   * 3:1 that WCAG 2.2 SC 1.4.11 wants for a state indicator and still take dark
+   * green text (the best candidate tops out near 1.26:1). primary-500 clears 3:1
+   * against the fill, the hover fill, the canvas and the sunken track alike.
+   */
+  --t-primary-subtle: #e1edd6;
+  --t-primary-subtle-hover: #d8e7cc;
+  /* Active sidebar row (see `.sidebar-active-item`): already opaque in light. */
+  --t-sidebar-active: var(--t-primary-subtle-hover);
+  --t-primary-edge: rgb(var(--primary-500));
+  --t-primary-fg: rgb(var(--primary-600));
+  --t-primary-fg-strong: rgb(var(--primary-700));
+
+  /*
+   * Reading surfaces opt out. Inline code, @-mentions and entity-link hover want a
+   * brand tint, not a state indicator — they sit inside running prose, where the
+   * selection-strength fill above reads as highlighting half the paragraph. This is
+   * the old primary-subtle value, kept for exactly those three consumers.
+   */
+  --t-primary-wash: rgb(var(--primary-50));
+
+  /* Focus indicator — see the `:root …:focus-visible` rule near the bottom. */
+  --t-focus-ring: rgb(var(--primary-600));
+}
+
+/* ─── Dark ─── */
 .dark-theme {
+  --t-brand-mark: #d7efdd;
+  --t-brand-seed: #b6ca68;
   color-scheme: dark;
 
   /* Surface */
-  --t-surface: #0f172a;
-  --t-surface-raised: #1e293b;
-  --t-surface-muted: #334155;
-  --t-surface-sunken: #0f172a;
+  --t-surface-canvas: #0f1510;
+  --t-surface-chrome: #1a231b;
+  --t-surface: #151c16;
+  --t-surface-card: #1a231b;
+  --t-surface-raised: #1a231b;
+  --t-surface-muted: #243026;
+  --t-surface-sunken: #0f1510;
 
   /* Text */
-  --t-fg: #f8fafc;
-  --t-fg-secondary: #cbd5e1;
-  --t-fg-muted: #94a3b8;
-  --t-fg-faint: #64748b;
+  --t-fg: #f2f6f0;
+  --t-fg-secondary: #c6d0c3;
+  --t-fg-muted: #95a292;
+  --t-fg-faint: #82917f;
 
   /* Border */
-  --t-edge: #334155;
-  --t-edge-strong: #475569;
+  --t-edge: #2c392e;
+  --t-edge-strong: #405143;
 
   /* Status: Success */
-  --t-success: #34d399;
-  --t-success-subtle: rgba(16, 185, 129, 0.12);
-  --t-success-fg: #6ee7b7;
+  --t-success: #76c97d;
+  --t-success-subtle: rgba(76, 175, 80, 0.14);
+  --t-success-fg: #a5dda9;
 
   /* Status: Warning */
-  --t-warning: #fbbf24;
-  --t-warning-subtle: rgba(245, 158, 11, 0.12);
-  --t-warning-fg: #fcd34d;
+  --t-warning: #e7a16b;
+  --t-warning-subtle: rgba(217, 102, 43, 0.15);
+  --t-warning-fg: #f0b98f;
 
   /* Status: Danger */
-  --t-danger: #f87171;
-  --t-danger-subtle: rgba(239, 68, 68, 0.12);
-  --t-danger-fg: #fca5a5;
+  --t-danger: #ee837d;
+  --t-danger-subtle: rgba(224, 80, 73, 0.14);
+  --t-danger-fg: #f4aaa6;
 
   /* Destructive action */
-  --t-destructive: #ef4444;
-  --t-destructive-hover: #f87171;
+  --t-destructive: #d75650;
+  --t-destructive-hover: #e16c66;
 
   /* Star rating */
-  --t-star: #fbbf24;
-  --t-star-hover: #f59e0b;
+  --t-star: #e6b45d;
+  --t-star-hover: #f0c472;
 
   /* Status: Info */
-  --t-info: #60a5fa;
-  --t-info-subtle: rgba(59, 130, 246, 0.12);
-  --t-info-fg: #93c5fd;
+  --t-info: #72b4cf;
+  --t-info-subtle: rgba(70, 145, 176, 0.15);
+  --t-info-fg: #a1cfe1;
 
-  /* Primary semantic (dark — translucent overlays instead of pastel) */
-  --t-primary-subtle: rgba(var(--primary-500), 0.12);
-  --t-primary-subtle-hover: rgba(var(--primary-500), 0.2);
-  --t-primary-edge: rgba(var(--primary-500), 0.25);
+  /* Primary semantic (dark — translucent overlays instead of pastel).
+     Dark never had the light mode's problem: a green overlay on a near-black
+     surface already separates selected from unselected by 1.30:1, so these are
+     deliberately left alone. */
+  --t-primary-subtle: rgb(var(--primary-500) / 0.12);
+  --t-primary-subtle-hover: rgb(var(--primary-500) / 0.2);
+  /* subtle-hover flattened over the chrome — keep the 20% in step with it. */
+  --t-sidebar-active: color-mix(in srgb, rgb(var(--primary-500)) 20%, var(--t-surface-chrome));
+  --t-primary-edge: rgb(var(--primary-500) / 0.25);
   --t-primary-fg: rgb(var(--primary-300));
   --t-primary-fg-strong: rgb(var(--primary-200));
+  --t-primary-wash: rgb(var(--primary-500) / 0.12);
+
+  --t-focus-ring: rgb(var(--primary-400));
 }

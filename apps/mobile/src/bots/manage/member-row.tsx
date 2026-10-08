@@ -1,3 +1,4 @@
+import { brandFont as font } from '../../ui/brand-font';
 /**
  * One member in the conversation-info sheet's SwiftUI Form (app/bots/info.tsx;
  * spec docs/specs/20261008-mobile-bots.md §2.5.7): the plant (a small RN
@@ -10,7 +11,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { Button, ContextMenu, HStack, RNHostView, SwipeActions, Text, VStack } from '@expo/ui/swift-ui';
-import { accessibilityLabel, badge, font, foregroundStyle, lineLimit, tint } from '@expo/ui/swift-ui/modifiers';
+import { accessibilityLabel, badge, foregroundStyle, lineLimit, tint } from '@expo/ui/swift-ui/modifiers';
 import { useT } from '../../lib/i18n';
 import type { BotView } from '../../shared/bots';
 import { useTheme } from '../../theme';

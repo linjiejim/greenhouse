@@ -69,6 +69,8 @@ export function ChartBlock({
 
   // Build Chart.js config
   const config = useMemo(() => {
+    const fontFamily =
+      typeof document === 'undefined' ? 'Nunito, sans-serif' : getComputedStyle(document.body).fontFamily;
     const datasets = data.datasets.map((ds, i) => {
       const color = CHART_PALETTE[i % CHART_PALETTE.length];
 
@@ -116,15 +118,15 @@ export function ChartBlock({
             // messages. Keeping it below the plot centers the chart and remains
             // readable when the message becomes narrow.
             position: isPieType ? ('bottom' as const) : ('top' as const),
-            labels: { color: themeColors.text, font: { size: 11 }, padding: 12 },
+            labels: { color: themeColors.text, font: { family: fontFamily, size: 11 }, padding: 12 },
           },
           title: {
             display: false, // We render title ourselves
           },
           tooltip: {
             enabled: true,
-            titleFont: { size: 11 },
-            bodyFont: { size: 11 },
+            titleFont: { family: fontFamily, size: 11 },
+            bodyFont: { family: fontFamily, size: 11 },
             backgroundColor: themeColors.surface,
             titleColor: themeColors.text,
             bodyColor: themeColors.text,
@@ -139,11 +141,11 @@ export function ChartBlock({
                 r: {
                   angleLines: { color: themeColors.edge },
                   grid: { color: themeColors.edge },
-                  pointLabels: { color: themeColors.text, font: { size: 11 } },
+                  pointLabels: { color: themeColors.text, font: { family: fontFamily, size: 11 } },
                   ticks: {
                     color: themeColors.textMuted,
                     backdropColor: 'transparent',
-                    font: { size: 10 },
+                    font: { family: fontFamily, size: 10 },
                   },
                 },
               }
@@ -151,12 +153,12 @@ export function ChartBlock({
                 x: {
                   border: { color: themeColors.edge },
                   grid: { display: false },
-                  ticks: { color: themeColors.textMuted, font: { size: 11 } },
+                  ticks: { color: themeColors.textMuted, font: { family: fontFamily, size: 11 } },
                 },
                 y: {
                   border: { color: themeColors.edge },
                   grid: { color: themeColors.edge },
-                  ticks: { color: themeColors.textMuted, font: { size: 11 } },
+                  ticks: { color: themeColors.textMuted, font: { family: fontFamily, size: 11 } },
                 },
               },
       },

@@ -51,7 +51,9 @@ export function CodeBlock({ lang, code }: { lang: string; code: string }) {
             <Text key={i} style={styles.line}>
               {toks.length
                 ? toks.map((tk, j) =>
-                    tk.kind === 'plain' ? tk.text : (
+                    tk.kind === 'plain' ? (
+                      tk.text
+                    ) : (
                       <Text key={j} style={{ color: tint[tk.kind] }}>
                         {tk.text}
                       </Text>
@@ -82,9 +84,9 @@ const useStyles = makeStyles((c) => ({
     paddingHorizontal: space.md,
     backgroundColor: c.codeHeader,
   },
-  lang: { fontFamily: mono, ...typo.caption1, color: c.codeLabel },
+  lang: { ...typo.caption1, fontFamily: mono, color: c.codeLabel },
   copy: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   copyText: { ...typo.caption1, fontWeight: weight.semibold, color: c.codeLabel },
   body: { paddingHorizontal: space.md + 2, paddingVertical: space.md },
-  line: { fontFamily: mono, ...typo.footnote, lineHeight: 20, color: c.codeText },
+  line: { ...typo.footnote, fontFamily: mono, lineHeight: 20, color: c.codeText },
 }));

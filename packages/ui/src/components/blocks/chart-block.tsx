@@ -35,6 +35,8 @@ export function ChartBlock({ data }: { data: ChartData }) {
 
   // Build Chart.js config
   const config = useMemo(() => {
+    const fontFamily =
+      typeof document === 'undefined' ? 'Nunito, sans-serif' : getComputedStyle(document.body).fontFamily;
     const datasets = data.datasets.map((ds, i) => {
       const color = CHART_PALETTE[i % CHART_PALETTE.length];
 
@@ -73,23 +75,23 @@ export function ChartBlock({ data }: { data: ChartData }) {
           legend: {
             display: data.datasets.length > 1 || isPieType,
             position: isPieType ? ('right' as const) : ('top' as const),
-            labels: { font: { size: 11 }, padding: 12 },
+            labels: { font: { family: fontFamily, size: 11 }, padding: 12 },
           },
           title: {
             display: false, // We render title ourselves
           },
           tooltip: {
             enabled: true,
-            titleFont: { size: 11 },
-            bodyFont: { size: 11 },
+            titleFont: { family: fontFamily, size: 11 },
+            bodyFont: { family: fontFamily, size: 11 },
           },
         },
         scales:
           isPieType || data.type === 'radar'
             ? undefined
             : {
-                x: { grid: { display: false }, ticks: { font: { size: 11 } } },
-                y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 11 } } },
+                x: { grid: { display: false }, ticks: { font: { family: fontFamily, size: 11 } } },
+                y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { family: fontFamily, size: 11 } } },
               },
       },
     };

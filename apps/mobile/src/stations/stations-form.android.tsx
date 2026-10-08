@@ -1,3 +1,4 @@
+import { BrandText as Text } from '../ui/brand-text.android';
 /**
  * StationsForm on Android — a Material 3 form over the shared behaviour
  * (./use-stations-form.ts; iOS view: ./stations-form.tsx). Same props, same
@@ -10,13 +11,23 @@
  */
 
 import React, { useState } from 'react';
-import { Button, CircularProgressIndicator, Column, Text } from '@expo/ui/jetpack-compose';
+import { Button, CircularProgressIndicator, Column } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, padding, size } from '@expo/ui/jetpack-compose/modifiers';
 import { useT } from '../lib/i18n';
-import { FormCheckRow, FormSection, FormValueRow, NativeForm, FormTextField, useNativeState } from '../ui/native-form.android';
+import {
+  FormCheckRow,
+  FormSection,
+  FormValueRow,
+  NativeForm,
+  FormTextField,
+  useNativeState,
+} from '../ui/native-form.android';
 import { useStationsForm } from './use-stations-form';
 
-export function StationsForm({ onDone, onLeave }: {
+export function StationsForm({
+  onDone,
+  onLeave,
+}: {
   /** Nothing changed (the active station was tapped) — just close / go back. */
   onDone: () => void;
   /** The active station is about to change — dismiss whatever hosts this form. */
@@ -31,9 +42,7 @@ export function StationsForm({ onDone, onLeave }: {
 
   return (
     <NativeForm>
-      <FormSection
-        footer={locked ? t('station.lockedHint', { name: active?.name ?? '' }) : t('station.hintAndroid')}
-      >
+      <FormSection footer={locked ? t('station.lockedHint', { name: active?.name ?? '' }) : t('station.hintAndroid')}>
         {stations.length === 0 ? (
           <FormValueRow label={t('station.empty')} />
         ) : (

@@ -1,7 +1,7 @@
 /**
  * Workspace branding — runtime personalization from GET /api/bootstrap.
  *
- * Fetched ONCE before the app renders (app.tsx awaits initWorkspaceBranding):
+ * Fetched ONCE while the startup mark renders, before login/auth mounts:
  * product name, logo (data URL) and theme tokens saved in Settings →
  * Administration → Branding Studio. DB-configured values win; the build-time
  * PRODUCT_NAME / bundled mark remain the fallback when nothing is configured.
@@ -32,16 +32,16 @@ export const TEXT_SIZE_DEFAULTS: Record<string, number> = {
   '--text-xl': 1.25,
 };
 
-/** Tailwind v4 default radii (rem) — scaled by the roundness slider. */
+/** Haven default radii (rem) — scaled by the roundness slider. */
 export const RADIUS_DEFAULTS: Record<string, number> = {
-  '--radius-xs': 0.125,
-  '--radius-sm': 0.25,
-  '--radius-md': 0.375,
-  '--radius-lg': 0.5,
-  '--radius-xl': 0.75,
-  '--radius-2xl': 1,
-  '--radius-3xl': 1.5,
-  '--radius-4xl': 2,
+  '--radius-xs': 0.1875,
+  '--radius-sm': 0.375,
+  '--radius-md': 0.5,
+  '--radius-lg': 0.75,
+  '--radius-xl': 1,
+  '--radius-2xl': 1.5,
+  '--radius-3xl': 2,
+  '--radius-4xl': 2.5,
 };
 
 export const scaledRem = (base: number, scale: number) => `${+(base * scale).toFixed(4)}rem`;

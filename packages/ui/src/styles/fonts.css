@@ -1,0 +1,20 @@
+/* Bundled Nunito, SIL OFL 1.1. No external font request at runtime. */
+@font-face {
+  font-family: Nunito;
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('../assets/fonts/nunito-variable.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: Nunito;
+  font-style: italic;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('../assets/fonts/nunito-italic-variable.woff2') format('woff2');
+}
+
+@theme {
+  --font-sans: Nunito, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+}

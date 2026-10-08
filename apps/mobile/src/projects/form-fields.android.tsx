@@ -1,3 +1,4 @@
+import { BrandText as Text } from '../ui/brand-text.android';
 /**
  * `OptionalDateField` on Android — the date row of the project / task forms
  * (iOS: ./form-fields.tsx, a Reminders-style toggle + inline calendar). Here:
@@ -9,7 +10,7 @@
  */
 
 import React from 'react';
-import { DatePickerDialog, Icon, ListItem, Switch, Text } from '@expo/ui/jetpack-compose';
+import { DatePickerDialog, Icon, ListItem, Switch } from '@expo/ui/jetpack-compose';
 import { clickable, fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers';
 import { useLocale, useT } from '../lib/i18n';
 import type { IconName } from '../ui/core';
