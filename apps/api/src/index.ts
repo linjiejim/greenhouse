@@ -6,6 +6,7 @@
 
 import { resolve } from 'node:path';
 import { logger } from '@greenhouse/utils/logger';
+import { toErrorMessage } from '@greenhouse/utils/error';
 import { readFileSync, existsSync } from 'node:fs';
 import { config } from 'dotenv';
 import { ENV_FILE, PUBLIC_DIR, REPO_ROOT } from './paths.js';
@@ -572,8 +573,15 @@ async function main() {
   // Mission admission instead of delaying Chat and health availability.
   await initMissionRuntime();
 
-  // Heartbeat: ping all WS connections every 30s
-  setInterval(() => void connectionManager.pingAll(), 30_000);
+  // Heartbeat: ping all WS connections every 30s. Never an unhandled rejection:
+  // Node would exit the whole API over one failed tick.
+  setInterval(
+    () =>
+      void connectionManager
+        .pingAll()
+        .catch((error) => logger.warn('[WS] heartbeat tick failed', { error: toErrorMessage(error) })),
+    30_000,
+  );
 }
 
 main().catch((err) => {
