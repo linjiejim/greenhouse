@@ -17,7 +17,7 @@ import { space, typo, useTheme } from '../../theme';
 import { NativeButton } from '../../ui/button';
 import { Icon } from '../../ui/core';
 import { CardNote, InfoRow } from './card-frame';
-import { decisionErrorKey } from './decision';
+import { decisionErrorKey, hostOf } from './decision';
 import { useLoginRefusals } from './use-login-form';
 
 /** Saved logins listed on the card (the sheet's footer does not repeat them). */
@@ -25,12 +25,10 @@ const MATCHES_SHOWN = 2;
 
 export function LoginBody({
   request,
-  name,
   full = false,
   onAskAgain,
 }: {
   request: BotRequestView;
-  name: string;
   full?: boolean;
   /** Offered after a page-moved refusal (a thread that can still send). */
   onAskAgain?: () => void;
@@ -52,7 +50,8 @@ export function LoginBody({
         >
           <Icon name="lock" size={13} weight="semibold" color={c.secondaryLabel} />
           <Text style={{ ...typo.subheadline, color: c.label, flex: 1 }} numberOfLines={1} ellipsizeMode="middle">
-            {origin}
+            {/* the host reads at a glance; the full origin is in the label and on the sheet */}
+            {hostOf(origin) ?? origin}
           </Text>
         </View>
       ) : null}
@@ -77,7 +76,7 @@ export function LoginBody({
           <CardNote text={t(decisionErrorKey(refused as BotRequestErrorCode, 409))} tone={c.orange} />
           {onAskAgain ? (
             <View style={{ alignSelf: 'flex-start' }}>
-              <NativeButton label={t('bots.card.reissue', { name })} size="small" onPress={onAskAgain} />
+              <NativeButton label={t('bots.card.reissue')} size="small" onPress={onAskAgain} />
             </View>
           ) : null}
         </>

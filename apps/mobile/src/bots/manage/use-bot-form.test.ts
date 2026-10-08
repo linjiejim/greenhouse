@@ -155,7 +155,7 @@ describe('pre-fill', () => {
     expect(init.mode).toBe('edit');
     expect(init.bot).toBe(sage);
     expect(init.values).toEqual(botValues(sage));
-    expect(botFormTitle(init, 'en')).toEqual({ key: 'bots.manage.formEdit', vars: { name: 'Sage' } });
+    expect(botFormTitle(init, 'en')).toEqual({ key: 'bots.manage.formEdit' });
     expect(resolveBotForm({ botId: 'b-old' }, data()).status).toBe('missing');
     expect(resolveBotForm({ botId: 'b-none' }, data()).status).toBe('missing');
   });

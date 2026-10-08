@@ -221,7 +221,7 @@ export function botFormTitle(
   lang: 'en' | 'zh',
 ): { key: TranslationKey; vars?: Record<string, string> } {
   if (init.mode === 'proposal') return { key: 'bots.manage.formProposal' };
-  if (init.mode === 'edit') return { key: 'bots.manage.formEdit', vars: { name: init.bot?.name ?? '' } };
+  if (init.mode === 'edit') return { key: 'bots.manage.formEdit' };
   const template = galleryTemplate(init.templateKey);
   return template
     ? { key: 'bots.manage.formTemplate', vars: { role: template.copy[lang].role } }

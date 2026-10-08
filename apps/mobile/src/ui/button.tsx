@@ -69,6 +69,9 @@ export function NativeButton({
   return (
     <Host
       matchContents={fullWidth ? { vertical: true } : true}
+      // inline content, never a screen: a button mounted under the nav bar (a card near the top of a
+      // long thread opened at its end) would otherwise draw its label pushed down by the bar's inset
+      ignoreSafeArea="all"
       style={style}
       colorScheme={isDark ? 'dark' : 'light'}
       modifiers={[locale]}

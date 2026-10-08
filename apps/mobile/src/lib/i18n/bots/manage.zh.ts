@@ -30,7 +30,7 @@ export const botsManageZh: typeof botsManageEn = {
     loadFailed: '加载失败',
     formNew: '新建 Bot',
     formTemplate: '新建 · {role}',
-    formEdit: '编辑 {name}',
+    formEdit: '编辑 Bot',
     formProposal: '确认新建',
     custom: '自定义…',
     needsComputerShort: '需要电脑',

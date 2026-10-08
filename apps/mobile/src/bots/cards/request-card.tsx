@@ -5,7 +5,7 @@
  * docs/specs/20261008-mobile-bots.md §2.5.4; props: ../contract.ts
  * `RequestCardProps`).
  *
- * A pending card is open: headline, status, body (./approval.tsx …), the
+ * A pending card is open: headline, body (./approval.tsx …), the
  * last-minute countdown and the buttons (./decision.ts `cardButtons` — the
  * honest mapping). A settled one collapses to a one-line receipt
  * (./receipt.tsx) that opens back into the card, read-only. The card holds no
@@ -63,7 +63,7 @@ export function RequestBody({
     case 'instructions_update':
       return <InstructionsBody request={request} sessionId={sessionId} full={full} />;
     case 'login':
-      return <LoginBody request={request} name={name} full={full} onAskAgain={onAskAgain} />;
+      return <LoginBody request={request} full={full} onAskAgain={onAskAgain} />;
     case 'handback':
     case 'captcha':
     case 'takeover':
@@ -110,7 +110,7 @@ export const RequestCard: React.NamedExoticComponent<RequestCardProps> = memo(fu
     <CardFrame
       icon={CARD_ICON[kind]}
       title={tr(t, cardTitle(request, name))}
-      badge={{ label: t(badge.key), tone: badge.tone }}
+      badge={pending ? undefined : { label: t(badge.key), tone: badge.tone }}
       settled={!pending}
       highlighted={highlighted}
       onHeaderPress={!pending && kind !== 'unknown' ? () => setOpen(false) : undefined}
@@ -119,7 +119,7 @@ export const RequestCard: React.NamedExoticComponent<RequestCardProps> = memo(fu
         pending ? (
           <>
             <Countdown request={request} />
-            <DecisionBar request={request} name={name} busy={busy} onPress={onPress} />
+            <DecisionBar request={request} busy={busy} onPress={onPress} />
           </>
         ) : reAsk ? (
           <View style={{ alignSelf: 'flex-end' }}>

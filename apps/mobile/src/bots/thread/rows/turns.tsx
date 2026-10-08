@@ -7,7 +7,9 @@
  *  - `UserRow` — a member message (copy only: Bots messages can't be edited).
  *  - `BotRow` — a persisted Bot reply under its speaker line (on a change of
  *    speaker), its memory receipts, and — under the main Bot's greeting — the
- *    naming hint. Answers from its cards go back to that Bot (D22).
+ *    naming hint. Answers from its cards go back to that Bot (D22). A
+ *    server placeholder for a turn with no text is left out while the tool
+ *    steps are hidden (../filler.ts).
  *  - `SegmentRow` — a live turn: the thinking row draws the speaking Bot's
  *    plant (not Sprouty), a failed turn offers Retry ("@Name Please try that
  *    again.").
@@ -26,7 +28,9 @@ import { RequestCard } from '../../cards/request-card';
 import type { DecideOutcome, MobilePending, ThreadController } from '../../contract';
 import { BotAvatar } from '../../ui/bot-avatar';
 import { memoryReceiptsFromCalls } from '../../vendor/web-helpers';
+import { usePrefs } from '../../../store/prefs';
 import { fromBotMessage, fromPending } from '../adapters';
+import { isFillerReply } from '../filler';
 import { EventRow } from './event-row';
 import { MemoryReceipts } from './memory-receipts';
 import { PendingCaption } from './pending-caption';
@@ -97,6 +101,10 @@ export const BotRow = memo(function BotRow({
     () => memoryReceiptsFromCalls(message.pipeline.map((step) => ({ name: step.tool, output: step.output }))),
     [message],
   );
+  // A placeholder for a turn with no text ("Over to you — see the card above") points at what is
+  // right above it; with the tool steps hidden it says nothing new (./../filler.ts).
+  const showTools = usePrefs((s) => s.details.tools);
+  if (!showTools && receipts.length === 0 && isFillerReply(message.content)) return null;
   return (
     <View>
       {header ? <SpeakerLine bot={bot} loaded={loaded} onPress={onOpenProfile} /> : null}

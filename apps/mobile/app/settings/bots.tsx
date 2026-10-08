@@ -6,7 +6,7 @@
  *
  *  - 主助手: Sprouty, with the footnote tying the two Sproutys together (New
  *    Chat uses it; the ongoing conversation in Bots is the same one);
- *  - 其他 Bot: plant, name, role, version; the last row 新建 Bot is a menu of
+ *  - 其他 Bot: plant, name, role; the last row 新建 Bot is a menu of
  *    the gallery templates + 自定义… (off at the 20-Bot limit, which the
  *    footer then states) → the Bot form sheet;
  *  - 已归档: asleep — still openable (their conversations stay readable).
@@ -67,7 +67,7 @@ export default function SettingsBots() {
     <ListRow
       key={bot.id}
       title={bot.name}
-      subtitle={[bot.role, `v${bot.current_version}`].filter(Boolean).join(' · ')}
+      subtitle={bot.role || undefined}
       subtitleLines={1}
       leading={<BotAvatar bot={bot} size={AVATAR} state={opts.asleep ? 'sleep' : undefined} animate={false} />}
       leadingWidth={AVATAR}

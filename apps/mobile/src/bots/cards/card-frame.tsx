@@ -127,9 +127,11 @@ export function HighlightWash({ highlighted, radius: r }: { highlighted?: boolea
 // ─── Frame ───────────────────────────────────────────────
 
 /**
- * The card: kind icon tile, headline and status badge on top; the body; the
- * footer (countdown + buttons, or "Ask Again"). `onHeaderPress` makes the
- * header a button — an expanded receipt collapses back through it.
+ * The card: kind icon tile and headline on top — plus the status badge once
+ * it is settled (a pending card's buttons already say it waits for the
+ * member, and the headline needs the width); the body; the footer (countdown
+ * + buttons, or "Ask Again"). `onHeaderPress` makes the header a button — an
+ * expanded receipt collapses back through it.
  */
 export function CardFrame({
   icon,
@@ -145,7 +147,8 @@ export function CardFrame({
 }: {
   icon: IconName;
   title: string;
-  badge: { label: string; tone: BadgeTone };
+  /** Settled cards only (see above). */
+  badge?: { label: string; tone: BadgeTone };
   /** A settled card dims its tile to gray (the decision is over). */
   settled?: boolean;
   highlighted?: boolean;
@@ -163,10 +166,11 @@ export function CardFrame({
   const header = (
     <View key={`head:${fontKey}`} style={styles.header}>
       <IconTile icon={icon} tint={settled ? c.gray : undefined} />
-      <Text style={styles.title} accessibilityRole="header">
+      {/* two lines hold every headline with a 24-character name; never more */}
+      <Text style={styles.title} numberOfLines={2} accessibilityRole="header">
         {title}
       </Text>
-      <Badge label={badge.label} tone={badge.tone} style={styles.badge} />
+      {badge ? <Badge label={badge.label} tone={badge.tone} style={styles.badge} /> : null}
     </View>
   );
   return (
@@ -176,7 +180,7 @@ export function CardFrame({
         <Pressable
           onPress={onHeaderPress}
           accessibilityRole="button"
-          accessibilityLabel={`${title}, ${badge.label}`}
+          accessibilityLabel={badge ? `${title}, ${badge.label}` : title}
           accessibilityHint={headerHint}
           accessibilityState={{ expanded: true }}
           style={({ pressed }) => (pressed ? { opacity: 0.55 } : null)}
@@ -206,12 +210,10 @@ export function CardFrame({
  */
 export function DecisionBar({
   request,
-  name,
   busy,
   onPress,
 }: {
   request: BotRequestView;
-  name: string;
   busy: CardButton['id'] | null;
   onPress: (button: CardButton) => void;
 }) {
@@ -232,7 +234,7 @@ export function DecisionBar({
       {ordered.map((button) => (
         <NativeButton
           key={button.id}
-          label={tr(t, buttonLabel(request, button.id, name))}
+          label={tr(t, buttonLabel(request, button.id))}
           variant={button.prominent ? 'prominent' : 'tinted'}
           fullWidth={stacked}
           style={stacked ? { alignSelf: 'stretch' } : undefined}

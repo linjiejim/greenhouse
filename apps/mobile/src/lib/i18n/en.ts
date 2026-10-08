@@ -86,7 +86,7 @@ export const en = {
     thinking: 'Thinking…',
     reasoning: 'Reasoning',
     references: 'References',
-    toolCalls: 'Tool calls',
+    toolCalls: 'Tool Calls',
     /** ⋯ → Show › Reasoning / Tool Calls / Sources (global switches, all off by default). */
     show: 'Show',
     showSources: 'Sources',

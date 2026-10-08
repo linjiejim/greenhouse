@@ -151,32 +151,30 @@ describe('cardButtons (the honest mapping, D11)', () => {
   });
 
   it('labels buttons by kind', () => {
-    expect(buttonLabel(approval(), 'approve', 'Pip').key).toBe('bots.card.allowOnce');
-    expect(buttonLabel(approval(), 'deny', 'Pip').key).toBe('bots.card.deny');
-    expect(buttonLabel(task(), 'approve', 'Pip').key).toBe('bots.card.start');
-    expect(buttonLabel(task(), 'deny', 'Pip').key).toBe('bots.card.cancel');
-    expect(buttonLabel(create(), 'deny', 'Pip').key).toBe('bots.card.notNow');
-    expect(buttonLabel(create(), 'edit', 'Pip').key).toBe('bots.card.editFirst');
-    expect(buttonLabel(create(), 'approve', 'Pip').key).toBe('bots.card.create');
-    expect(buttonLabel(instructions(), 'approve', 'Pip').key).toBe('bots.card.accept');
-    expect(buttonLabel(instructions(), 'deny', 'Pip').key).toBe('bots.card.decline');
-    expect(buttonLabel(login(), 'deny', 'Pip').key).toBe('bots.card.loginNotNow');
-    expect(buttonLabel(login(), 'signIn', 'Pip').key).toBe('bots.card.signIn');
-    expect(buttonLabel(handback(), 'approve', 'Pip')).toEqual({ key: 'bots.card.handBack', vars: { name: 'Pip' } });
-    expect(buttonLabel(captcha(), 'deny', 'Pip').key).toBe('bots.card.skip');
-    expect(buttonLabel(other(), 'deny', 'Pip').key).toBe('bots.card.skip');
-    expect(buttonLabel(other(), 'finished', 'Pip').key).toBe('bots.card.finished');
-    expect(buttonLabel(approval(true), 'always', 'Pip').key).toBe('bots.card.allowAlways');
+    expect(buttonLabel(approval(), 'approve').key).toBe('bots.card.allowOnce');
+    expect(buttonLabel(approval(), 'deny').key).toBe('bots.card.deny');
+    expect(buttonLabel(task(), 'approve').key).toBe('bots.card.start');
+    expect(buttonLabel(task(), 'deny').key).toBe('bots.card.cancel');
+    expect(buttonLabel(create(), 'deny').key).toBe('bots.card.notNow');
+    expect(buttonLabel(create(), 'edit').key).toBe('bots.card.editFirst');
+    expect(buttonLabel(create(), 'approve').key).toBe('bots.card.create');
+    expect(buttonLabel(instructions(), 'approve').key).toBe('bots.card.accept');
+    expect(buttonLabel(instructions(), 'deny').key).toBe('bots.card.decline');
+    expect(buttonLabel(login(), 'deny').key).toBe('bots.card.loginNotNow');
+    expect(buttonLabel(login(), 'signIn').key).toBe('bots.card.signIn');
+    expect(buttonLabel(handback(), 'approve')).toEqual({ key: 'bots.card.handBack' });
+    expect(buttonLabel(captcha(), 'deny').key).toBe('bots.card.skip');
+    expect(buttonLabel(other(), 'deny').key).toBe('bots.card.skip');
+    expect(buttonLabel(other(), 'finished').key).toBe('bots.card.finished');
+    expect(buttonLabel(approval(true), 'always').key).toBe('bots.card.allowAlways');
   });
 });
 
 describe('titles and subjects', () => {
   it('names the Bot and what the card is about', () => {
     expect(cardTitle(approval(), 'Pip')).toEqual({ key: 'bots.card.approvalTitle', vars: { name: 'Pip' } });
-    expect(cardTitle(login('login'), 'Pip')).toEqual({
-      key: 'bots.card.loginTitle',
-      vars: { name: 'Pip', host: 'github.com' },
-    });
+    // the site is the card's lock row, not the headline (it would wrap)
+    expect(cardTitle(login('login'), 'Pip')).toEqual({ key: 'bots.card.loginTitle', vars: { name: 'Pip' } });
     expect(cardTitle(login('otp'), 'Pip').key).toBe('bots.card.otpTitle');
     expect(cardTitle(handback('interrupted'), 'Pip').key).toBe('bots.card.handBackTitle');
     expect(cardTitle(handback('waiting'), 'Pip').key).toBe('bots.card.waitingComputer');
