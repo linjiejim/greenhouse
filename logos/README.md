@@ -64,3 +64,5 @@ requires a new native build, not only a web/OTA update.
 
 The web design showcase (`#/design`) includes logo sizes, an intro replay button,
 the typography scale, radius samples and light/dark colour tokens.
+
+The two animated house contours use the same winding direction, so their overlap stays solid when combined into the static mark (including Android SVG rendering).
