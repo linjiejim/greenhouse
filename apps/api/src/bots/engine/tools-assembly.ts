@@ -200,7 +200,7 @@ export function withBotApproval(toolId: string, original: unknown, ctx: BotTurnC
       const summary = toolActionPhrase(ctx.locale, { id: toolId, name, input });
       const decision = await ctx.requestApproval({
         action: 'tool_call',
-        title: copy.approvalTitle(ctx.locale, ctx.bot.name, summary),
+        title: copy.approvalTitle(ctx.locale, summary),
         summary,
         details: await approvalDetails(toolId, input, { db: ctx.db, userId: ctx.userId }, ctx.locale),
         allow_always: false,

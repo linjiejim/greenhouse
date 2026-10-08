@@ -61,6 +61,7 @@ import {
   type ToolFailure,
 } from '../computer/browser-session.js';
 import { ComputerUnavailableError } from '../computer/access.js';
+import { copy } from '../engine/copy.js';
 import { sniffNeedsHuman, type NeedsHumanKind } from '../computer/needs-human.js';
 import { VaultError, isVaultAvailable } from './crypto.js';
 import { hostOfOrigin, isGreenhouseOrigin, originMatches, originOfUrl } from './origin.js';
@@ -369,14 +370,6 @@ function approvalPayload(
       value: zh ? `这一轮里 Bot 还读了其他内容：${list}` : `In this turn the Bot also read: ${list}`,
     });
   }
-  const title =
-    kind === 'login'
-      ? zh
-        ? `允许 ${turn.botName} 用密码库登录 ${host}？`
-        : `Let ${turn.botName} sign in to ${host} with your saved login?`
-      : zh
-        ? `允许 ${turn.botName} 在 ${host} 填入动态验证码？`
-        : `Let ${turn.botName} fill a one-time code on ${host}?`;
   // The transcript line / notification: "<Bot> asks to <summary>" (engine/copy.ts approvalLine).
   const summary =
     kind === 'login'
@@ -386,6 +379,8 @@ function approvalPayload(
       : zh
         ? `在 ${host} 填入动态验证码`
         : `fill a one-time code on ${host}`;
+  // The card's question; its header already names the Bot.
+  const title = copy.approvalTitle(zh ? 'zh' : 'en', summary);
   return { action: 'vault_fill', title, summary, details, allow_always: opts.allowAlways };
 }
 

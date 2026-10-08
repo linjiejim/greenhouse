@@ -69,7 +69,7 @@ export function requestLine(locale: BotsLocale, botName: string, kind: BotReques
     const host = typeof p.host === 'string' ? p.host : '';
     return copy.implicitTakeover(locale, botName, p.reason === 'interrupted' ? 'interrupted' : 'waiting', host);
   }
-  // The title repeats the Bot's name ("Allow Sage to …?"); the summary names it once.
+  // The summary is the bare verb phrase; the line names the Bot once ("Sage asks to …").
   if (kind === 'approval' && typeof p.summary === 'string' && p.summary) {
     return copy.approvalLine(locale, botName, p.summary);
   }
