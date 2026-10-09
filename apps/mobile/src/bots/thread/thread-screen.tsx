@@ -298,7 +298,6 @@ export function BotThreadScreen({
         archived: (name) => `${name} ${t('bots.common.archivedSuffix')}`,
       })) ||
     titleParam;
-  const lead = conversation?.lead_bot_id ? byId[conversation.lead_bot_id] : undefined;
   const canInvite =
     !!conversation && (group || readOnlyCode !== 'bot_archived') && conversation.members.length < MEMBER_LIMIT;
   const canInviteRef = useRef(canInvite);
@@ -1147,14 +1146,7 @@ export function BotThreadScreen({
         return <Starters starters={template?.copy[lang].starters ?? NO_STARTERS} onPick={onStarter} />;
       }
       case 'tail':
-        return (
-          <RunTail
-            working={snap.remoteBusy && segments.length === 0}
-            bot={group ? (lead ?? members[0] ?? null) : (owner ?? null)}
-            runError={snap.runError}
-            onDismissError={dismissRunError}
-          />
-        );
+        return <RunTail runError={snap.runError} onDismissError={dismissRunError} />;
     }
   };
 
