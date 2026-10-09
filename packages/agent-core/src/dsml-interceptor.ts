@@ -79,9 +79,13 @@ export function normalizeToolCall(call: ParsedToolCall): ParsedToolCall {
 // Official format: <｜DSML｜tool_calls>  (single full-width bars)
 // Observed variant: <｜｜DSML｜｜tool_calls>  (double full-width bars)
 // Rendered variant: < | DSML | | tool_calls>  (ASCII with spaces)
+// Observed 2026-10-09 (deepseek-v4-flash, forced final step): <｜｜DSML｜｜ calls>
+//   — the wrapper tag without the `tool_` prefix, which leaked to the user
+//   verbatim because only `tool_calls` was recognised.
 const BAR = '[｜|]'; // either full-width or ASCII pipe
-const DSML_START_RE = new RegExp(`<${BAR}{1,2}\\s*DSML\\s*${BAR}{1,2}\\s*tool_calls\\s*>`);
-const DSML_END_RE = new RegExp(`</${BAR}{1,2}\\s*DSML\\s*${BAR}{1,2}\\s*tool_calls\\s*>`);
+const CALLS = '(?:tool_)?calls';
+const DSML_START_RE = new RegExp(`<${BAR}{1,2}\\s*DSML\\s*${BAR}{1,2}\\s*${CALLS}\\s*>`);
+const DSML_END_RE = new RegExp(`</${BAR}{1,2}\\s*DSML\\s*${BAR}{1,2}\\s*${CALLS}\\s*>`);
 
 // Potential start: a '<' that could begin a DSML tag
 const POTENTIAL_START_CHAR = '<';
@@ -447,20 +451,24 @@ function emitTextDelta(
  * Check if a string tail could be the beginning of a DSML start marker.
  * This handles chunk-boundary cases like "<", "<｜", "<｜DSML", etc.
  */
+/** Every start-marker shape DSML_START_RE accepts, with whitespace removed and bars full-width. */
+const START_MARKER_FORMS: readonly string[] = (() => {
+  const forms: string[] = [];
+  for (const left of ['｜', '｜｜']) {
+    for (const right of ['｜', '｜｜']) {
+      for (const tag of ['tool_calls', 'calls']) forms.push(`<${left}DSML${right}${tag}>`);
+    }
+  }
+  return forms;
+})();
+
 function couldBeDsmlStart(tail: string): boolean {
-  // The full start marker looks like: <｜DSML｜tool_calls> or <｜｜DSML｜｜tool_calls>
-  // We check if the tail is a prefix of any valid DSML start marker pattern
-  const candidates = [
-    '<｜DSML｜tool_calls>',
-    '<｜｜DSML｜｜tool_calls>',
-    '<|DSML|tool_calls>',
-    '<||DSML||tool_calls>',
-    '< | DSML | tool_calls>',
-    '< | DSML | | tool_calls>',
-    '< || DSML || tool_calls>',
-  ];
-  const normalized = tail.trim();
-  return candidates.some((c) => c.startsWith(normalized) && normalized.length < c.length);
+  // Is the tail a strict prefix of some start marker? Compared on a canonical
+  // form (no whitespace, ASCII pipes as full-width) so every spacing variant
+  // the regex accepts is covered without listing each one.
+  const normalized = tail.replace(/\s+/g, '').replace(/\|/g, '｜');
+  if (!normalized) return false;
+  return START_MARKER_FORMS.some((c) => c.startsWith(normalized) && normalized.length < c.length);
 }
 
 // ─── Middleware Factory ──────────────────────────────────
