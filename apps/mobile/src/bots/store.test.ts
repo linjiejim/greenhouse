@@ -516,9 +516,17 @@ describe('decide', () => {
 describe('small writes', () => {
   it('noteRead, running, visible thread, pending total, a 403 seen elsewhere', () => {
     const store = makeStore();
-    store.set({ conversations: [dm('s1', 'a', { attention: 'unread' }), dm('s2', 'b', { attention: 'unread' })] });
+    store.set({
+      conversations: [
+        dm('s1', 'a', { attention: 'unread', unread_count: 3 }),
+        dm('s2', 'b', { attention: 'unread', unread_count: 1 }),
+      ],
+    });
     store.get().noteRead('s1');
-    expect(store.get().conversations.map((r) => r.attention)).toEqual(['idle', 'unread']);
+    expect(store.get().conversations.map((r) => [r.attention, r.unread_count])).toEqual([
+      ['idle', 0],
+      ['unread', 1],
+    ]);
     store.get().setRunning('s1', 'r1');
     store.get().setRunning('s2', 'r2');
     store.get().setRunning('s1', null);

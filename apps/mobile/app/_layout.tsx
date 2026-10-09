@@ -30,11 +30,12 @@
  *
  * <RealtimeBridge/> runs the app's one WebSocket (src/realtime) — it decides
  * itself when to connect (signed in, Bots available, foreground).
+ * <WidgetArtHost/> draws the home-screen widget's avatars off screen (src/widget).
  */
 
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
-import { AppState, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -44,7 +45,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuth } from '../src/store/auth';
 import { usePrefs } from '../src/store/prefs';
 import { setOnUnauthorized } from '../src/api/client';
-import { clearWidgetSnapshot, refreshWidgetSnapshot } from '../src/lib/widget-snapshot';
+import { useWidgetSnapshot } from '../src/widget/snapshot';
+import { WidgetArtHost } from '../src/widget/art-host';
 import { typo, useApplyAppearance, useTheme } from '../src/theme';
 import { GreenhouseMark } from '../src/ui/logo';
 import { DialogHost } from '../src/ui/dialogs';
@@ -102,21 +104,10 @@ export default function RootLayout() {
     }
   }, [loading, fontsLoaded, fontError, user, segments, router]);
 
-  // Home-screen widget snapshot: publish after login resolves and on every
-  // background transition; clear on logout so the widget degrades to launcher.
-  const lang = usePrefs((s) => s.lang);
-  useEffect(() => {
-    if (loading) return;
-    if (!user) {
-      clearWidgetSnapshot();
-      return;
-    }
-    void refreshWidgetSnapshot(user.nickname ?? '', lang);
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'background') void refreshWidgetSnapshot(user.nickname ?? '', lang);
-    });
-    return () => sub.remove();
-  }, [loading, user, lang]);
+  // Home-screen widget snapshot (src/widget/snapshot.ts): published after sign-in, as the
+  // Bots store changes in the foreground and on every background transition; cleared on
+  // sign-out and station switch so the widget degrades to launcher-only.
+  useWidgetSnapshot();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -124,6 +115,7 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <StatusBar style="auto" />
           <RealtimeBridge />
+          <WidgetArtHost />
           {loading || (!fontsLoaded && !fontError) ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.background }}>
               <GreenhouseMark size={96} animate />

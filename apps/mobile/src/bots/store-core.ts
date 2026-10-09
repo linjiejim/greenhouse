@@ -85,7 +85,7 @@ export interface BotsState extends BotsData {
    * close the surfaces for this app session, like a 403 the store saw itself.
    */
   noteForbidden(): void;
-  /** Optimistic: `unread` → `idle`. */
+  /** Optimistic: `unread` → `idle`, unread count → 0. */
   noteRead(sessionId: string): void;
   setVisibleThread(sessionId: string | null): void;
   /** `POST /api/bots/requests/:id`, classified; `ok` is remembered in `requestOverrides`. */
@@ -381,7 +381,9 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
     noteRead(sessionId) {
       set((state) => ({
         conversations: state.conversations.map((row) =>
-          row.session_id === sessionId && row.attention === 'unread' ? { ...row, attention: 'idle' } : row,
+          row.session_id === sessionId && row.attention === 'unread'
+            ? { ...row, attention: 'idle', ...(row.unread_count === undefined ? {} : { unread_count: 0 }) }
+            : row,
         ),
       }));
     },
