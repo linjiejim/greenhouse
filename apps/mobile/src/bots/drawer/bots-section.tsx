@@ -23,7 +23,7 @@
  */
 
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { useGlobalSearchParams, useRouter } from 'expo-router';
 import { useDrawerStatus } from 'expo-router/drawer';
@@ -46,7 +46,7 @@ import { NativeMenu, type MenuItem } from '../../ui/menu';
 import { useBotsEnabled } from '../availability';
 import { openThread } from '../nav';
 import { drawerRows, sproutyBot, sproutyDm, useBots } from '../store';
-import { ConversationRow, useRowCopy, type RowMenuAction } from './conversation-row';
+import { ConversationRow, ROW_TEXT_INSET, useRowCopy, type RowMenuAction } from './conversation-row';
 import { rowTitle } from './row-text';
 
 /** Rows sit inset in the panel like the history's; their menus get this width up front. */
@@ -224,6 +224,10 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
   const total = rows.recent.length + rows.moreCount;
   // A search that matches no Bot hides the section; the history below carries the results.
   if (searching && !pinned && rows.recent.length === 0 && rows.archived.length === 0) return null;
+  // Hairlines run between rows — not after the last, and not against the highlighted current row.
+  const pinnedCurrent = !!pinned?.session_id && pinned.session_id === currentSid;
+  const separated = (current: boolean, next: BotConversationSummary | undefined) =>
+    !!next && !current && next.session_id !== currentSid;
 
   return (
     <View style={styles.section}>
@@ -242,16 +246,18 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
         <DrawerRow
           row={pinned}
           current={!!pinned.session_id && pinned.session_id === currentSid}
+          separator={separated(pinnedCurrent, rows.recent[0])}
           onOpen={open}
           // the stand-in has no conversation to act on yet
           onMenu={pinned.session_id && rows.pinned ? onRowMenu : undefined}
         />
       ) : null}
-      {rows.recent.map((row) => (
+      {rows.recent.map((row, index) => (
         <DrawerRow
           key={row.session_id}
           row={row}
           current={row.session_id === currentSid}
+          separator={separated(row.session_id === currentSid, rows.recent[index + 1])}
           onOpen={open}
           onMenu={onRowMenu}
         />
@@ -299,11 +305,14 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
 const DrawerRow = memo(function DrawerRow({
   row,
   current,
+  separator,
   onOpen,
   onMenu,
 }: {
   row: BotConversationSummary;
   current: boolean;
+  /** A hairline under the row, from its text column on (not after the last row). */
+  separator: boolean;
   onOpen(row: BotConversationSummary): void;
   onMenu?: (row: BotConversationSummary, action: RowMenuAction) => void;
 }) {
@@ -312,9 +321,19 @@ const DrawerRow = memo(function DrawerRow({
   return (
     <Animated.View layout={ROW_LAYOUT} entering={ROW_ENTER} style={{ marginHorizontal: ROW_INSET }}>
       <ConversationRow row={row} current={current} onPress={press} width={ROW_W} onMenu={onMenu ? menu : undefined} />
+      {separator ? <Separator /> : null}
     </Animated.View>
   );
 });
+
+function Separator() {
+  const { colors: c } = useTheme();
+  return (
+    <View
+      style={{ height: StyleSheet.hairlineWidth, marginLeft: ROW_TEXT_INSET, marginRight: space.sm, backgroundColor: c.separator }}
+    />
+  );
+}
 
 /** Sprouty's row before its DM is listed: its name and plant, nothing said yet. */
 function standIn(sprouty: BotView, sessionId: string | null): BotConversationSummary {

@@ -39,6 +39,8 @@ import { rowPose, rowPreview, rowTime, rowTitle, type RowCopy } from './row-text
 
 /** Leading column: a DM's 32-pt plant, or a group's first two 22-pt plants overlapped — titles stay aligned. */
 const LEAD_W = 44;
+/** Where a row's text starts (padding + leading column + gap): separators between rows begin here. */
+export const ROW_TEXT_INSET = space.sm + LEAD_W + space.sm + 2;
 /** From the accessibility sizes (AX1 = 1.79×) the time leaves the name's line. */
 const TIME_HIDDEN_SCALE = 1.75;
 const DM_AVATAR = 32;
@@ -97,9 +99,9 @@ export const ConversationRow = memo(function ConversationRow({
   const signal = rowSignal({ running }, row, current ? row.session_id : null);
   const preview = signal.working ? t('bots.common.replying') : rowPreview(row, dir, copy);
   const owner = row.owner_bot_id ? (byId[row.owner_bot_id] ?? null) : null;
+  const pose = rowPose(signal, replyable);
   const pinned = row.kind === 'direct' && isSproutyBot(owner);
   const unread = signal.badge === 'unread';
-  const pose = rowPose(signal, replyable);
   // Short (09:41 · 昨天 · 周二 · 10/1) — it shares the line with the name; at the
   // accessibility sizes it gives the name the whole line (VoiceOver still hears it).
   const fullTime = rowTime(parseMs(row.last_activity_at), Date.now(), locale, t('time.yesterday'));
@@ -210,6 +212,6 @@ const useStyles = makeStyles((c) => ({
   titleStrong: { fontWeight: weight.semibold },
   titleSkeleton: { width: 88, height: 12, marginVertical: 5, borderRadius: 6, backgroundColor: c.tertiaryFill },
   time: { marginLeft: 'auto', ...typo.footnote, color: c.secondaryLabel },
-  preview: { flex: 1, ...typo.subheadline, color: c.secondaryLabel },
+  preview: { flex: 1, ...typo.footnote, color: c.secondaryLabel },
   dot: { width: 8, height: 8, borderRadius: 4 },
 }));
