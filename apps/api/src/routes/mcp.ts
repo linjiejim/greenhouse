@@ -236,6 +236,17 @@ export function toMcpInputSchema(entry: ProxyToolManifestEntry): Record<string, 
 }
 
 /**
+ * MCP tool annotations from the proxy's own read / write split, so a client
+ * can tell which calls leave the user's data alone — without them every MCP
+ * client (Greenhouse's own connectors included) has to treat a search as a
+ * write and ask first. `generate_image` sits in the read tier (no confirm) but
+ * spends money and stores a file, so it is not advertised as read-only.
+ */
+export function toMcpAnnotations(entry: Pick<ProxyToolManifestEntry, 'id' | 'mutating'>): { readOnlyHint: boolean } {
+  return { readOnlyHint: !entry.mutating && entry.id !== 'generate_image' };
+}
+
+/**
  * Knowledge Resources (`resources/list` + `resources/read`) are the knowledge
  * group's projection, so they follow the same resource-group narrowing as its
  * tools. mcp-auth derives `allowedTools` from the granted `mcp:<group>` scopes
@@ -276,6 +287,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
       name: entry.id,
       description: entry.mutating ? `${entry.description} (write — requires confirm:true)` : entry.description,
       inputSchema: toMcpInputSchema(entry),
+      annotations: toMcpAnnotations(entry),
     })),
   }));
 
