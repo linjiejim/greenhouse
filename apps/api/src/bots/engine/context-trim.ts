@@ -6,16 +6,17 @@
  * dozen actions would push a single turn past the provider's window and cost
  * millions of input tokens. Once the turn's browser/computer output passes
  * ~12k estimated tokens, every such result except the newest is replaced by a
- * short stub (url / title / action). Stubbing happens in batches and is never
- * undone, so the message prefix only changes at batch points and the
- * provider's prefix cache keeps working between them. Tool-call/result pairs
- * stay intact (only the result's payload shrinks).
+ * short stub (url / title / action) — a later page supersedes an earlier one.
+ *
+ * The batching/masking mechanics are agent-core's `createToolResultMasker`,
+ * the same one chat uses with a larger budget; this file owns only the Bots
+ * policy (which tools, keep just the newest, the observation stub).
  *
  * The same compaction keeps snapshots out of `messages.pipeline`.
  */
 
 import type { ModelMessage } from 'ai';
-import { estimateTokens } from '@greenhouse/agent-core';
+import { createToolResultMasker } from '@greenhouse/agent-core';
 import type { PipelineStep } from '@greenhouse/types/session';
 
 /** Tools whose results are bulky page/terminal observations. */
@@ -50,56 +51,19 @@ export function observationStub(toolName: string, value: unknown): string {
   return parts.join(' ').slice(0, STUB_MAX_CHARS);
 }
 
-interface ToolResultPartLike {
-  type: string;
-  toolCallId?: string;
-  toolName?: string;
-  output?: { type?: string; value?: unknown };
-}
-
-function resultValue(part: ToolResultPartLike): unknown {
-  return part.output?.value;
-}
-
-function resultTokens(part: ToolResultPartLike): number {
-  const value = resultValue(part);
-  return estimateTokens(typeof value === 'string' ? value : JSON.stringify(value ?? ''));
-}
-
 /**
  * Build the `prepareStepMessages` hook for one turn. Returns undefined (no
  * rewrite) until the first batch point.
  */
-export function createObservationTrimmer(budgetTokens = IN_TURN_TOOL_TOKEN_BUDGET) {
-  const stubbed = new Set<string>();
-  return ({ messages }: { stepNumber: number; messages: ModelMessage[] }): ModelMessage[] | undefined => {
-    const live: ToolResultPartLike[] = [];
-    for (const message of messages) {
-      if (message.role !== 'tool' || !Array.isArray(message.content)) continue;
-      for (const part of message.content as ToolResultPartLike[]) {
-        if (part.type !== 'tool-result' || !part.toolCallId || !OBSERVATION_TOOLS.has(part.toolName ?? '')) continue;
-        if (!stubbed.has(part.toolCallId)) live.push(part);
-      }
-    }
-    const liveTokens = live.reduce((sum, part) => sum + resultTokens(part), 0);
-    if (liveTokens > budgetTokens && live.length > 1) {
-      for (const part of live.slice(0, -1)) stubbed.add(part.toolCallId!);
-    }
-    if (stubbed.size === 0) return undefined;
-    return messages.map((message) => {
-      if (message.role !== 'tool' || !Array.isArray(message.content)) return message;
-      let changed = false;
-      const content = (message.content as ToolResultPartLike[]).map((part) => {
-        if (part.type !== 'tool-result' || !part.toolCallId || !stubbed.has(part.toolCallId)) return part;
-        changed = true;
-        return {
-          ...part,
-          output: { type: 'text', value: observationStub(part.toolName ?? 'tool', resultValue(part)) },
-        };
-      });
-      return changed ? ({ ...message, content } as ModelMessage) : message;
-    });
-  };
+export function createObservationTrimmer(
+  budgetTokens = IN_TURN_TOOL_TOKEN_BUDGET,
+): (args: { stepNumber: number; messages: ModelMessage[] }) => ModelMessage[] | undefined {
+  return createToolResultMasker({
+    budgetTokens,
+    retainTokens: 0,
+    isMaskable: (toolName) => OBSERVATION_TOOLS.has(toolName),
+    stub: (toolName, value) => observationStub(toolName, value),
+  });
 }
 
 const PIPELINE_KEEP_KEYS = [

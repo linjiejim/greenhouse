@@ -51,23 +51,30 @@ vi.mock('../../chat/runtime.js', () => ({
   chatRuntimePayload: (value: unknown) => value,
 }));
 
-vi.mock('@greenhouse/agent-core', async (importOriginal) => ({
-  // The real wire-usage projection: it is the contract under test, not a seam.
-  usageTotalsFrom: (await importOriginal<typeof import('@greenhouse/agent-core')>()).usageTotalsFrom,
-  createChatStreamAsync: mocks.createChatStreamAsync,
-  withFinalAnswerGuarantee: mocks.withFinalAnswerGuarantee,
-  requiresFinalAnswerGuarantee: vi.fn(() => true),
-  FINAL_ANSWER_MAX_ATTEMPTS: 3,
-  createCollectors: mocks.createCollectors,
-  processStreamPart: mocks.processStreamPart,
-  buildEngineResult: mocks.buildEngineResult,
-  // Pass-through stubs of the pure history window (real impl unit-tested in agent-core).
-  windowMessagesByBudget: <T>(messages: T[]) => ({ messages, dropped: 0, estimatedTokens: 0 }),
-  resolveHistoryBudget: () => 80_000,
-  // Text-only default — the vision inline path has its own unit tests (chat-vision.test.ts).
-  modelSupportsVision: () => false,
-  getModelEntry: () => ({ options: { max_tokens: 100 } }),
-}));
+vi.mock('@greenhouse/agent-core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@greenhouse/agent-core')>();
+  return {
+    // The real pure helpers — the wire-usage projection and the in-turn masker
+    // are contracts the route relies on, not seams.
+    usageTotalsFrom: actual.usageTotalsFrom,
+    createToolResultMasker: actual.createToolResultMasker,
+    chatMaskStub: actual.chatMaskStub,
+    resolveInTurnToolBudget: actual.resolveInTurnToolBudget,
+    createChatStreamAsync: mocks.createChatStreamAsync,
+    withFinalAnswerGuarantee: mocks.withFinalAnswerGuarantee,
+    requiresFinalAnswerGuarantee: vi.fn(() => true),
+    FINAL_ANSWER_MAX_ATTEMPTS: 3,
+    createCollectors: mocks.createCollectors,
+    processStreamPart: mocks.processStreamPart,
+    buildEngineResult: mocks.buildEngineResult,
+    // Pass-through stubs of the pure history window (real impl unit-tested in agent-core).
+    windowMessagesByBudget: <T>(messages: T[]) => ({ messages, dropped: 0, estimatedTokens: 0 }),
+    resolveHistoryBudget: () => 80_000,
+    // Text-only default — the vision inline path has its own unit tests (chat-vision.test.ts).
+    modelSupportsVision: () => false,
+    getModelEntry: () => ({ options: { max_tokens: 100 } }),
+  };
+});
 
 vi.mock('../../config/models.js', () => ({
   isChatModelAllowed: (id: string) => id === 'test-model' || id === 'other-model',
