@@ -18,7 +18,7 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  legacyToMood,
+  avatarTint,
   resolvePlantAvatar,
   type AvatarConfig,
   type PlantId,
@@ -85,7 +85,7 @@ export function PlantAvatar({
   const resolved = useMemo(
     () =>
       plant
-        ? { plant, mood: legacyToMood(avatar), seed: stableId }
+        ? { plant, tint: avatarTint(avatar), seed: stableId }
         : resolvePlantAvatar(avatar, { templateKey, stableId }),
     [plant, avatarKey, templateKey, stableId], // eslint-disable-line react-hooks/exhaustive-deps
   );
@@ -97,7 +97,7 @@ export function PlantAvatar({
     () =>
       buildPlantAvatarSvg({
         plant: resolved.plant,
-        mood: resolved.mood,
+        tint: resolved.tint,
         seed: resolved.seed,
         state: poseState,
         size: px,
@@ -123,7 +123,7 @@ export function PlantAvatar({
     if (!svg || svg.getAttribute('data-state') === poseState) return;
     morphPlantAvatar(svg, {
       plant: resolved.plant,
-      mood: resolved.mood,
+      tint: resolved.tint,
       seed: resolved.seed,
       state: poseState,
       size: px,

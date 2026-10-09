@@ -7,6 +7,11 @@ describe('avatarConfigSchema', () => {
     expect(parsed).toEqual({ plant: 'maple', mood: 'soft', eyeStyle: 'focused', color: 'autumn' });
   });
 
+  it('keeps the colour (tint), bounded like every other id', () => {
+    expect(avatarConfigSchema.parse({ plant: 'fern', tint: 'rose' })).toEqual({ plant: 'fern', tint: 'rose' });
+    expect(avatarConfigSchema.safeParse({ tint: 'x'.repeat(41) }).success).toBe(false);
+  });
+
   it('stays permissive about ids (forks, legacy rows) but bounds their length', () => {
     expect(avatarConfigSchema.parse({ plant: 'cultivar-x' }).plant).toBe('cultivar-x');
     expect(avatarConfigSchema.safeParse({ plant: 'x'.repeat(41) }).success).toBe(false);

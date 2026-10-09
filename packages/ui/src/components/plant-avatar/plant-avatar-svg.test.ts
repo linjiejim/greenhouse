@@ -270,6 +270,50 @@ describe('buildPlantAvatarSvg — structural guarantees', () => {
   });
 });
 
+describe('native-renderer options (layers, blink, mouth, tint)', () => {
+  const opts = { plant: 'ivy', size: 44, theme: 'light', animate: false } as const;
+  const pal = plantPalette('ivy', 'idle').light;
+
+  it('splits into a body layer and a face layer that share the viewBox and transforms', () => {
+    const body = buildPlantAvatarSvg({ ...opts, layer: 'body' });
+    const face = buildPlantAvatarSvg({ ...opts, layer: 'face', disc: false });
+    expect(body).toContain(`fill="${pal.disc}"`);
+    expect(body).not.toContain(pal.ink);
+    expect(face).toContain(pal.ink);
+    expect(face).not.toContain(`fill="${pal.disc}"`);
+    expect(face).not.toContain(`fill="${pal.body}"`);
+    // the same fit group opens both, so they stack into the whole avatar
+    const fit = /<g transform="translate\(50 50\) scale\([^"]+">/;
+    expect(body.match(fit)?.[0]).toBe(face.match(fit)?.[0]);
+    expect(buildPlantAvatarSvg({ ...opts, layer: 'face' })).not.toContain('r="50"'); // a face layer never draws the disc
+  });
+
+  it('shuts the eyes for a blink frame, and only the eyes', () => {
+    const open = buildPlantAvatarSvg({ ...opts, layer: 'face' });
+    const shut = buildPlantAvatarSvg({ ...opts, layer: 'face', blink: true });
+    expect(shut.match(/scale\(1 0\.1\)/g)).toHaveLength(2);
+    expect(open).not.toContain('scale(1 0.1)');
+    expect(shut.length - open.length).toBeGreaterThan(0); // wrappers around the two eyes, nothing removed
+    expect(buildPlantAvatarSvg({ ...opts, layer: 'body', blink: true })).toBe(
+      buildPlantAvatarSvg({ ...opts, layer: 'body' }),
+    );
+  });
+
+  it('overrides the mouth (a talking mouth closing between beats); unknown keeps the state mouth', () => {
+    const talking = buildPlantAvatarSvg({ ...opts, state: 'speaking' });
+    const closed = buildPlantAvatarSvg({ ...opts, state: 'speaking', mouth: 'small' });
+    expect(talking).toContain('<ellipse');
+    expect(closed).not.toBe(talking);
+    expect(buildPlantAvatarSvg({ ...opts, state: 'speaking', mouth: 'yell' as never })).toBe(talking);
+  });
+
+  it('paints a tint into the body family and leaves the default output alone', () => {
+    const sky = plantPalette('ivy', 'idle', 'sky').light;
+    expect(buildPlantAvatarSvg({ ...opts, tint: 'sky' })).toContain(`fill="${sky.body}"`);
+    expect(buildPlantAvatarSvg({ ...opts, tint: 'plant' })).toBe(buildPlantAvatarSvg(opts));
+  });
+});
+
 describe('pose, LOD and metrics helpers', () => {
   it('maps product aliases onto plant states', () => {
     expect(poseFor('responding').state).toBe('speaking');

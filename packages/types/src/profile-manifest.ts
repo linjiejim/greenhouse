@@ -66,7 +66,8 @@ export type SproutyFaceStyleId = (typeof SPROUTY_FACE_STYLE_IDS)[number];
  * Avatar DSL — shared by custom Agent avatars and Bots.
  *
  * `plant` is the species id (PLANT_IDS in `@greenhouse/types/plant-avatar`) and
- * `mood` the resting eyes (PLANT_MOODS). Every legacy Sprouty key stays accepted
+ * `tint` its colour (PLANT_TINTS); `mood` (resting eyes) is legacy — still
+ * accepted, no longer rendered (a face follows state). Every legacy Sprouty key stays accepted
  * and readable — `color`, `accessories`, `leafStyle`, `faceStyle`, the profile
  * editor's `eyeStyle` and the free `palette` hexes — and resolves to a plant at
  * render time (`legacyToPlant` / `legacyToMood`); nothing is migrated. Writers
@@ -88,5 +89,7 @@ export const avatarConfigSchema = z.object({
       leaf: z.string().regex(HEX_COLOR_RE, 'leaf must be a #rrggbb hex color'),
     })
     .optional(),
+  /** Colour (PLANT_TINTS; absent = the species' own). */
+  tint: z.string().max(40).optional(),
 });
 export type AvatarConfig = z.infer<typeof avatarConfigSchema>;

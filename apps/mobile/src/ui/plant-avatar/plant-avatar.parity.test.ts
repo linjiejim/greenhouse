@@ -105,6 +105,38 @@ describe('vendored static builder', () => {
     expect(vendored.buildPlantAvatarSvg()).toBe(core.buildPlantAvatarSvg({ animate: false }));
   });
 
+  it('matches for tints, face / body layers, blink frames and mouth overrides', () => {
+    let checked = 0;
+    for (const plant of PLANT_IDS) {
+      for (const theme of THEMES) {
+        for (const tint of [...ids.PLANT_TINTS, 'neon']) {
+          for (const size of [22, 44, 84]) {
+            const o = { plant, theme, tint, size, state: 'speaking' as const };
+            expect(vendored.buildPlantAvatarSvg(o), `${plant}/${tint}/${size}/${theme}`).toBe(
+              core.buildPlantAvatarSvg({ ...o, animate: false }),
+            );
+            checked++;
+          }
+        }
+        for (const layer of ['body', 'face'] as const) {
+          for (const state of ['idle', 'thinking', 'speaking', 'done', 'error', 'waiting', 'sleep'] as const) {
+            for (const extra of [{}, { blink: true }, { mouth: 'small' as const }, { tint: 'sky' }]) {
+              const o = { plant, theme, layer, state, size: 44, disc: false, ...extra };
+              expect(vendored.buildPlantAvatarSvg(o), `${plant}/${layer}/${state}/${JSON.stringify(extra)}`).toBe(
+                core.buildPlantAvatarSvg({ ...o, animate: false }),
+              );
+              checked++;
+            }
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+    for (const tint of ids.PLANT_TINTS) {
+      expect(vendored.plantPalette('fern', 'sleep', tint)).toEqual(core.plantPalette('fern', 'sleep', tint));
+    }
+  });
+
   it('produces the same knockout layers for the lock-screen widget', () => {
     for (const plant of PLANT_IDS) {
       for (const size of [22, 32, 64]) {
@@ -155,6 +187,8 @@ const AVATARS: unknown[] = [
   ...SPROUTY_FACE_STYLE_IDS.map((faceStyle) => ({ faceStyle })),
   ...['classic', 'dot', 'soft', 'focused', 'nope'].map((eyeStyle) => ({ eyeStyle })),
   ...coreIds.PLANT_MOODS.map((mood) => ({ mood, faceStyle: 'sleepy' })),
+  ...coreIds.PLANT_TINTS.map((tint) => ({ plant: 'fern', tint })),
+  { plant: 'fern', tint: 'neon' },
   { palette: { body: '#ff8800', leaf: '#22aa44' } },
   { palette: { body: '#3355ff', leaf: 'not-a-hex' } },
   { palette: { body: '#777777', leaf: '#888888' } },
@@ -191,12 +225,19 @@ describe('vendored plant-avatar resolver', () => {
     expect(checked).toBe(AVATARS.length * TEMPLATE_KEYS.length * STABLE_IDS.length);
   });
 
-  it('writes avatars the same way (withPlant / withMood / plantAvatarConfig)', () => {
-    const bases = [{}, { color: 'ocean', faceStyle: 'happy' }, { plant: 'ivy', mood: 'soft', accessories: ['cap'] }];
+  it('writes avatars the same way (withPlant / withTint / withMood / plantAvatarConfig)', () => {
+    const bases = [
+      {},
+      { color: 'ocean', faceStyle: 'happy' },
+      { plant: 'ivy', mood: 'soft', accessories: ['cap'] },
+      { plant: 'fern', tint: 'rose' },
+    ];
     for (const base of bases) {
       for (const plant of coreIds.PLANT_IDS) expect(ids.withPlant(base, plant)).toEqual(coreIds.withPlant(base, plant));
       for (const mood of coreIds.PLANT_MOODS) expect(ids.withMood(base, mood)).toEqual(coreIds.withMood(base, mood));
+      for (const tint of coreIds.PLANT_TINTS) expect(ids.withTint(base, tint)).toEqual(coreIds.withTint(base, tint));
     }
+    expect(ids.PLANT_TINTS).toEqual(coreIds.PLANT_TINTS);
     for (const plant of coreIds.PLANT_IDS) {
       expect(ids.plantAvatarConfig(plant)).toEqual(coreIds.plantAvatarConfig(plant));
       for (const mood of coreIds.PLANT_MOODS) {
