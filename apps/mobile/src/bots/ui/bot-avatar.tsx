@@ -1,12 +1,16 @@
 /**
  * A Bot's face: its stored avatar resolved to a plant (the web's resolution —
  * `resolvePlantAvatar(avatar, { templateKey, stableId: id })` — so a Bot shows
- * the same species and mood on every surface and client), drawn by the RN
+ * the same species and colour on every surface and client), drawn by the RN
  * `PlantAvatar`.
  *
- * Motion budget (plant-avatar spec §6, web bot-avatar.tsx): lists, rows,
- * pickers and speaker lines pass `animate={false}` — only the Bot speaking
- * right now may move. Decorative: the name is always printed next to it.
+ * Motion budget (plant-avatar spec §6, src/ui/plant-avatar/plant-avatar-native.ts):
+ * the avatars that stand for a Bot being here — a DM's title, the thread's
+ * start, a profile, the Bot talking right now — pass `animate` and play their
+ * state (an idle float every few seconds, thinking's nod, speaking's stretch,
+ * waiting's lean, …); lists, rows and pickers pass `animate={false}` and only
+ * change face. The float is offset by the Bot's id, so two never move in
+ * step. Decorative: the name is always printed next to it.
  * `bot` null = the directory has not answered yet → a neutral placeholder
  * disc, never "Deleted Bot".
  */
@@ -30,7 +34,7 @@ export function BotAvatar({
   size: number;
   /** idle (default) | thinking | speaking | waiting | sleep (archived) … or a product alias. */
   state?: PlantStateInput;
-  /** Default: PlantAvatar's (thinking nods; hero sizes breathe). Lists pass false. */
+  /** Play the state's motion. Default: PlantAvatar's (thinking nods; hero sizes float). Lists pass false. */
   animate?: boolean;
 }) {
   const { colors: c } = useTheme();
@@ -50,5 +54,7 @@ export function BotAvatar({
       />
     );
   }
-  return <PlantAvatar plant={resolved.plant} mood={resolved.mood} state={state} size={size} animate={animate} />;
+  return (
+    <PlantAvatar plant={resolved.plant} tint={resolved.tint} state={state} size={size} animate={animate} seed={id} />
+  );
 }

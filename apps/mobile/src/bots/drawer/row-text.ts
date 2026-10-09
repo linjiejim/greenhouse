@@ -11,6 +11,7 @@
  */
 
 import type { BotConversationSummary, BotView } from '../../shared/bots';
+import type { PlantState } from '../../ui/plant-avatar/plant-ids';
 import { conversationBotIds, conversationTitle } from '../vendor/web-helpers';
 
 /** Localized copy, built by the caller (this module never reads the language). */
@@ -84,4 +85,19 @@ export function rowTime(at: number, now: number, locale: string, yesterday: stri
   } catch {
     return date.toISOString().slice(0, 10);
   }
+}
+
+/**
+ * A DM row's plant face (lists change face, they don't move — except the Bot
+ * replying right now): asleep when no one can reply, leaning in when a card
+ * waits, talking while it replies, else at rest.
+ */
+export function rowPose(
+  signal: { badge: 'needs_you' | 'unread' | null; working: boolean },
+  replyable: boolean,
+): { state: PlantState; animate: boolean } {
+  if (!replyable) return { state: 'sleep', animate: false };
+  if (signal.badge === 'needs_you') return { state: 'waiting', animate: false };
+  if (signal.working) return { state: 'speaking', animate: true };
+  return { state: 'idle', animate: false };
 }

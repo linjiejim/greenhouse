@@ -56,7 +56,7 @@ export interface ThreadHeaderState {
   status: string;
   /** A DM: its Bot; a group: up to three members, the one speaking first (null = not loaded yet). */
   bots: Array<AvatarSource | null>;
-  /** A DM avatar's pose (thinking is the only one that moves). */
+  /** The title avatar's pose (a DM's Bot; a group's first — the one speaking). */
   pose: PlantState;
   group: boolean;
   /** A DM's Bot — the title opens its profile. */
@@ -119,10 +119,11 @@ export function ThreadTitle({ sessionId, fallbackTitle }: { sessionId: string; f
       accessibilityHint={header?.group ? t('bots.thread.titleHintGroup') : t('bots.thread.titleHintDm')}
       style={({ pressed }) => [styles.title, { maxWidth: width - BAR_BUTTONS_W }, pressed && styles.pressed]}
     >
+      {/* the Bot this thread is with (a group: the one speaking, first) shows how it's doing, and moves */}
       {header?.group ? (
-        <AvatarStack bots={header.bots} size={20} max={3} />
+        <AvatarStack bots={header.bots} size={20} max={3} lead={header.pose} />
       ) : (
-        <BotAvatar bot={header?.bots[0] ?? null} size={26} state={header?.pose} animate={header?.pose === 'thinking'} />
+        <BotAvatar bot={header?.bots[0] ?? null} size={26} state={header?.pose} animate />
       )}
       {/* keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts) */}
       <View key={fontKey} style={styles.texts}>

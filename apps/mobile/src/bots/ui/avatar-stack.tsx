@@ -1,14 +1,16 @@
 /**
  * A group's roster as overlapping plant discs (drawer rows, the thread title):
  * the first `max` members, each overlapping the previous by a quarter of its
- * size, then a "+N" chip for the rest — the web's PlantAvatarStack. Always
- * static (a list); decorative (the row prints the title). A ring in the
- * surface colour separates the overlapped discs.
+ * size, then a "+N" chip for the rest — the web's PlantAvatarStack. Static
+ * in lists; the thread title passes `lead`, the first disc's pose (the Bot
+ * speaking), and that one moves. Decorative (the row prints the title). A
+ * ring in the surface colour separates the overlapped discs.
  */
 
 import React from 'react';
 import { Text, View, type ColorValue } from 'react-native';
 import { makeStyles, space, typo, useTheme, weight } from '../../theme';
+import type { PlantStateInput } from '../../ui/plant-avatar/plant-ids';
 import { BotAvatar, type AvatarSource } from './bot-avatar';
 
 /** Ring width around each overlapped disc (pt). */
@@ -19,6 +21,7 @@ export function AvatarStack({
   size,
   max = 3,
   ring,
+  lead,
 }: {
   /** null = a member the directory has not answered for yet (placeholder disc). */
   bots: Array<AvatarSource | null>;
@@ -26,6 +29,8 @@ export function AvatarStack({
   max?: number;
   /** The surface behind the stack (default `background`, the drawer's); null = no ring. */
   ring?: ColorValue | null;
+  /** The first disc's pose, animated (the thread title); unset = every disc idle and still. */
+  lead?: PlantStateInput;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -45,7 +50,11 @@ export function AvatarStack({
           key={bot?.id ?? `pending-${index}`}
           style={[ringStyle, { zIndex: shown.length - index, marginLeft: index > 0 ? -overlap : 0 }]}
         >
-          <BotAvatar bot={bot} size={size} animate={false} />
+          {index === 0 && lead ? (
+            <BotAvatar bot={bot} size={size} state={lead} animate />
+          ) : (
+            <BotAvatar bot={bot} size={size} animate={false} />
+          )}
         </View>
       ))}
       {rest > 0 && (

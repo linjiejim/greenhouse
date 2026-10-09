@@ -48,7 +48,8 @@ export const Intro = memo(function Intro({
   const name = owner?.name ?? title;
   return (
     <View key={fontKey} style={styles.wrap}>
-      <BotAvatar bot={owner ?? null} size={64} state="hello" animate={false} />
+      {/* says hi once (a hop), then holds still — the title's plant is the one that stays alive */}
+      <BotAvatar bot={owner ?? null} size={64} state="hello" animate />
       <Text style={[styles.title, styles.name]}>{name}</Text>
       <Text style={styles.body}>{t('bots.thread.dmStart', { name })}</Text>
     </View>
