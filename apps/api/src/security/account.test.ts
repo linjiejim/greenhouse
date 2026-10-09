@@ -16,7 +16,8 @@ vi.mock('../cloud-agent/index.js', () => ({ getCloudAgentController: () => null 
 vi.mock('../workflow-engine/index.js', () => ({ getWorkflowEngine: () => ({ cancelRunsForUser: vi.fn() }) }));
 vi.mock('../platform/runtime.js', () => ({ PLATFORM_ORG_ID: 'default' }));
 
-const { deliverAccountPasswordLink, getPasswordLinkCapability, maskEmail } = await import('./account.js');
+const { deliverAccountPasswordLink, getPasswordLinkCapability, maskEmail, passwordLinkForLog } =
+  await import('./account.js');
 
 const originalPublicBaseUrl = process.env.PUBLIC_BASE_URL;
 
@@ -71,5 +72,28 @@ describe('account password-link delivery', () => {
   it('reveals only a small part of the mailbox local name', () => {
     expect(maskEmail('teammate@example.com')).toBe('te***@example.com');
     expect(maskEmail('a@example.com')).toBe('a***@example.com');
+  });
+});
+
+describe('password link for a log line (first-admin bootstrap)', () => {
+  const token = 'b'.repeat(43);
+
+  it('is absolute for any usable origin, plain http included — nothing is emailed', () => {
+    expect(passwordLinkForLog(token, 'https://greenhouse.example.com/')).toBe(
+      `https://greenhouse.example.com/#/activate?token=${token}`,
+    );
+    expect(passwordLinkForLog(token, 'http://203.0.113.7:3000')).toBe(
+      `http://203.0.113.7:3000/#/activate?token=${token}`,
+    );
+  });
+
+  it('falls back to the path when the base is missing or not a plain origin', () => {
+    const path = `/#/activate?token=${token}`;
+    expect(passwordLinkForLog(token, undefined)).toBe(path);
+    expect(passwordLinkForLog(token, '  ')).toBe(path);
+    expect(passwordLinkForLog(token, 'not a url')).toBe(path);
+    expect(passwordLinkForLog(token, 'ftp://greenhouse.example.com')).toBe(path);
+    expect(passwordLinkForLog(token, 'https://user:pw@greenhouse.example.com')).toBe(path);
+    expect(passwordLinkForLog(token, 'https://greenhouse.example.com/?x=1')).toBe(path);
   });
 });

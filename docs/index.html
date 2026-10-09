@@ -107,9 +107,9 @@
           Take the tour
         </a>
       </div>
-      <div class="mt-7 inline-flex items-center gap-3 rounded-xl border border-edge bg-gray-50 px-4 py-2.5 font-mono text-[13px] text-ink-soft">
+      <div class="mt-7 inline-flex max-w-full items-center gap-3 rounded-xl border border-edge bg-gray-50 px-4 py-2.5 font-mono text-[13px] text-ink-soft">
         <span class="select-none text-brand-600">$</span>
-        <span>git clone greenhouse &amp;&amp; docker compose up -d</span>
+        <span class="min-w-0 break-all">curl -fsSL https://greenhouse.linjiejim.com/install.sh | bash</span>
       </div>
     </div>
 
@@ -580,23 +580,21 @@
     <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="self.kicker">Self-host</p>
     <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="self.h2">One command. Your infrastructure.</h2>
     <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="self.p">A single container serves the app and the API; Postgres and the database migration come with
-      it. All you need is Docker and an API key for any OpenAI-compatible model. People sign in with an
-      account — there is nothing to install.</p>
+      it. All you need is a server with Docker — the installer sets that up too — and an API key for any
+      OpenAI-compatible model. People sign in with an account — there is nothing to install.</p>
   </div>
   <div class="mx-auto mt-12 max-w-5xl overflow-hidden rounded-2xl border border-edge bg-[#0c1512] card-shadow">
     <div class="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
       <span class="h-2.5 w-2.5 rounded-full bg-white/20"></span><span class="h-2.5 w-2.5 rounded-full bg-white/20"></span><span class="h-2.5 w-2.5 rounded-full bg-white/20"></span>
       <span class="ml-2 font-mono text-[12px] text-white/40">deploy</span>
     </div>
-    <pre class="overflow-x-auto p-5 font-mono text-[13px] leading-relaxed text-emerald-50/90"><span class="text-white/35"># 1. configure secrets + your LLM endpoint</span>
-cp .env.example .env &amp;&amp; ./scripts/gen-secrets.sh
+    <pre class="overflow-x-auto p-5 font-mono text-[13px] leading-relaxed text-emerald-50/90"><span class="text-white/35"># 1. install — asks for the admin's email, an optional domain (HTTPS) and a model key</span>
+curl -fsSL https://greenhouse.linjiejim.com/install.sh | bash
 
-<span class="text-white/35"># 2. bring it up — Postgres, migrate, API + SPA</span>
-docker compose up -d --build
+<span class="text-white/35"># 2. open the one-time link it prints and choose a password — you are the admin</span>
+<span class="text-teal-300">→</span> https://your-domain   or   http://your-server:3000
 
-<span class="text-white/35"># 3. create the first super-admin</span>
-docker compose exec api pnpm admin:create
-<span class="text-teal-300">→</span> app at http://localhost:3000</pre>
+<span class="text-white/35"># no server? the same image runs on Railway — see the README</span></pre>
   </div>
   <div class="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-ink-mut">
     <span class="font-medium text-ink-soft" data-i18n="self.stack">Stack</span>
@@ -934,7 +932,7 @@ docker compose exec api pnpm admin:create
 
     'self.kicker': '自托管',
     'self.h2': '一条命令，部署在你自己的基础设施上。',
-    'self.p': '一个容器同时跑应用和 API，Postgres 和数据库迁移都带着。你只需要 Docker，以及任意一个 OpenAI 兼容模型的 API key。成员用账号登录，什么都不用装。',
+    'self.p': '一个容器同时跑应用和 API，Postgres 和数据库迁移都带着。你只需要一台装了 Docker 的服务器（没装的话安装脚本会帮你装），以及任意一个 OpenAI 兼容模型的 API key。成员用账号登录，什么都不用装。',
     'self.stack': '技术栈',
     'self.configT': '然后，在浏览器里把它配好。',
     'self.configP': 'API key、产品名、Logo 和配色都在「管理」里改——加密存储，改完立刻生效，连登录页都跟着变。',

@@ -89,6 +89,10 @@
   或把 SQL 拼接后 `psql -v ON_ERROR_STOP=1` 跑，才能看到真正失败的语句。
 - migrate 只比对 `__drizzle_migrations` 的 `max(created_at)`（**不校验 hash**）来决定应用哪些——
   给已 push 建好的库"补盖" journal 时，插入 `created_at = _journal.json 对应 when` 即可让 migrate no-op。
+- **进程内迁移 `applyCoreMigrations()`（`core-migrations.ts`）**：API 的 `MIGRATE_ON_START=1` 走它——给跑不了
+  compose 一次性 `migrate` 服务的宿主（Railway、单容器）。就是 drizzle 自己的 migrator（同一张 journal 表、同一条
+  判定）外加一把会话级 advisory lock（独立单连接客户端），多副本同时启动只有一个真正执行；与 `drizzle-kit migrate`
+  在同一个库上可以互换。仍然只应用 `drizzle/` 里已提交的链——它不是 push，也不生成任何 DDL。
 
 #### 快照（meta/）必须与 journal 同步
 

@@ -43,4 +43,45 @@ describe('request source IP resolution', () => {
       }),
     ).toBe('unknown');
   });
+
+  describe('TRUSTED_PROXY_HOPS (proxies without fixed addresses)', () => {
+    // Railway: rotating 100.64/10 router → edge that appends its own address.
+    const railway = { remoteAddress: '::ffff:100.64.0.7', proxyHops: 2 };
+
+    it('takes the address right before the trusted hops', () => {
+      expect(resolveRequestSourceIp({ ...railway, forwardedFor: '198.51.100.42, 203.0.113.9' })).toBe('198.51.100.42');
+    });
+
+    it('cannot be steered by entries a client prepends', () => {
+      expect(resolveRequestSourceIp({ ...railway, forwardedFor: '1.2.3.4, 198.51.100.42, 203.0.113.9' })).toBe(
+        '198.51.100.42',
+      );
+    });
+
+    it('falls back to the leftmost address when the chain is shorter than the hop count', () => {
+      expect(resolveRequestSourceIp({ ...railway, forwardedFor: '198.51.100.42' })).toBe('198.51.100.42');
+      expect(resolveRequestSourceIp({ ...railway })).toBe('100.64.0.7');
+    });
+
+    it('with one hop trusts only the socket peer, whatever its address', () => {
+      expect(
+        resolveRequestSourceIp({
+          remoteAddress: '172.30.250.10',
+          forwardedFor: '1.2.3.4, 198.51.100.42',
+          proxyHops: 1,
+        }),
+      ).toBe('198.51.100.42');
+    });
+
+    it('is off by default: an unlisted peer stays the source', () => {
+      expect(
+        resolveRequestSourceIp({
+          remoteAddress: '100.64.0.7',
+          forwardedFor: '198.51.100.42',
+          trustedProxies: trusted,
+          proxyHops: 0,
+        }),
+      ).toBe('100.64.0.7');
+    });
+  });
 });

@@ -73,6 +73,7 @@ export type {
   WorkspaceSettingSource,
   WorkspaceSettingView,
   WorkspaceBootstrap,
+  WorkspaceBranding,
   ThemeTokens,
 } from './workspace-settings.js';
 export {

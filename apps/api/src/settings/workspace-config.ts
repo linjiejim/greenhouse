@@ -32,7 +32,7 @@ import {
   type WorkspaceSettingDef,
   type WorkspaceSettingView,
   type WorkspaceSettingSource,
-  type WorkspaceBootstrap,
+  type WorkspaceBranding,
   type ThemeTokens,
 } from '@greenhouse/types/workspace-settings';
 import { getDb, isDbInitialized } from '@greenhouse/db';
@@ -233,7 +233,7 @@ export async function getWorkspaceSettingViews(): Promise<WorkspaceSettingView[]
 
 /** Non-sensitive personalization for GET /api/bootstrap. Fails open to
  *  defaults — the login page must render even if the DB is unreachable. */
-export async function getWorkspaceBootstrap(): Promise<WorkspaceBootstrap> {
+export async function getWorkspaceBranding(): Promise<WorkspaceBranding> {
   try {
     const productName = (await getWorkspaceValue('branding.product_name')) as string | undefined;
     const logo = (await getWorkspaceValue('branding.logo')) as string | undefined;

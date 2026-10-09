@@ -36,7 +36,7 @@ export type {
   ExtensionMigrationStatus,
   ExtensionMigrationRunner,
 } from './extension-migrations.js';
-export { readCoreMigrations } from './core-migrations.js';
+export { applyCoreMigrations, readCoreMigrations } from './core-migrations.js';
 export type { CoreMigrationFile } from './core-migrations.js';
 
 // ─── Public types ────────────────────────────────────────

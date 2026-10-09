@@ -1,5 +1,6 @@
 /**
  * 登录界面 — 内部用户邮箱密码登录 + 飞书扫码登录（部署配置了飞书应用才显示）。
+ * 实例还没有管理员时（/api/bootstrap 的 setup_pending），顶部说明去哪里找首个管理员的激活链接。
  */
 
 import React, { useEffect, useState } from 'react';
@@ -15,6 +16,7 @@ import {
   startFeishuLogin,
 } from '../../lib/api/feishu';
 import { useT } from '../../lib/i18n';
+import { isWorkspaceSetupPending } from '../../lib/workspace-branding';
 
 export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser) => void }) {
   const t = useT();
@@ -181,6 +183,17 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
             </span>
           </p>
         </div>
+
+        {isWorkspaceSetupPending() && (
+          <div
+            role="note"
+            data-testid="login-setup-pending"
+            className="mb-4 rounded-xl border border-info/30 bg-info-subtle px-4 py-3 text-left"
+          >
+            <p className="text-sm font-medium text-fg">{t('login.setupPendingTitle')}</p>
+            <p className="mt-1 text-xs leading-5 text-fg-muted">{t('login.setupPendingBody')}</p>
+          </div>
+        )}
 
         <Input
           type="email"
