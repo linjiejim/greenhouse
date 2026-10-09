@@ -356,7 +356,6 @@ export class ThreadEngine implements ThreadController {
     const store = this.deps.store.getState();
     if (visible) {
       store.setVisibleThread(this.sessionId);
-      store.clearArrival(this.sessionId);
       // Whatever landed while something covered the thread is on screen now.
       this.markRead();
     } else if (store.visibleThread === this.sessionId) {
@@ -574,7 +573,6 @@ export class ThreadEngine implements ThreadController {
       this.load = 'ready';
       this.publish();
     }
-    store.clearArrival(this.sessionId);
     const markBefore = this.mark();
     const probing = this.deps.api.getChatRun(this.sessionId);
     const loaded = await this.reloadLatest();

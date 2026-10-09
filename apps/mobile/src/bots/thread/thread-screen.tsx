@@ -8,8 +8,7 @@
  *    a live status line — "Browsing github.com", "Waiting for your approval",
  *    its role when idle), ☰ with a badge for the other conversations that need
  *    the member, `⋯` for profile / info / invite / "Ask in a New Chat". No ✎:
- *    a thread is not a session. A "needs you" capsule floats under the bar
- *    for cards elsewhere (`AttentionCapsule`).
+ *    a thread is not a session.
  *  - Transcript (the vendored `buildTranscript` + ./thread-rows.ts): member
  *    bubbles and Bot replies reuse the conversation's `UserMessage` /
  *    `AiMessage` through ./adapters.ts (markdown, tool rows and their live
@@ -53,8 +52,8 @@ import {
   Share,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
+  useWindowDimensions,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -89,7 +88,6 @@ import { notifyWarning, selectionTick } from '../../ui/haptics';
 import { useHeaderInset } from '../../ui/header-inset';
 import type { MenuItem } from '../../ui/menu';
 import { toast } from '../../ui/toast';
-import { AttentionCapsule } from '../cards/attention-capsule';
 import type { MobilePending, SendInput, SendOutcome } from '../contract';
 import { forgetThread } from '../last-surface';
 import { openNewChat } from '../nav';
@@ -130,9 +128,9 @@ import {
   deepLinkStep,
   expectOnRunSettled,
   expectOnRunStarted,
-  hintFits,
   prependStep,
   pruneRowGeometry,
+  hintFits,
   showsFreshPage,
   type ExpectAnchor,
 } from './thread-screen-model';
@@ -246,9 +244,9 @@ export function BotThreadScreen({
   const t = useT();
   const lang = usePrefs((s) => s.lang);
   const router = useRouter();
-  const { width: winWidth, fontScale } = useWindowDimensions();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const { width: winWidth, fontScale } = useWindowDimensions();
   const headerHeight = useHeaderInset();
   const focused = useIsFocused();
 
@@ -446,7 +444,7 @@ export function BotThreadScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- append to the input as it is when the text arrives
   }, [drafted, focusInput]);
 
-  /* ---------- the floating layer under the bar: the needs-you capsule, "couldn't refresh" ---------- */
+  /* ---------- the floating layer under the bar: "couldn't refresh" ---------- */
   const [topLayerH, setTopLayerH] = useState(0);
   const onTopLayer = useCallback((e: LayoutChangeEvent) => setTopLayerH(Math.round(e.nativeEvent.layout.height)), []);
   const topPad = headerHeight + space.sm + (topLayerH ? topLayerH + space.xs : 0);
@@ -1233,13 +1231,12 @@ export function BotThreadScreen({
             </View>
           ) : null}
 
-          {/* control layer under the bar: cards elsewhere, a failed refresh */}
+          {/* control layer under the bar: a failed refresh */}
           <View
             style={[styles.topLayer, { top: headerHeight + space.xs }]}
             pointerEvents="box-none"
             onLayout={onTopLayer}
           >
-            <AttentionCapsule excludeSid={sessionId} />
             {snap.refreshFailed && showRows ? (
               <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(140)} style={styles.refreshWrap}>
                 <Touchable onPress={reload} pressedStyle={{}} style={styles.refreshHit} accessibilityRole="button">

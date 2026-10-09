@@ -23,7 +23,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { getConversation } from '../api/bots';
 import { useBotsEnabled } from '../bots/availability';
 import { useBots } from '../bots/store';
 import { startBotsSync, type BotsSync } from '../bots/sync';
@@ -64,12 +63,7 @@ export function RealtimeBridge(): null {
   // The store side, per identity while Bots are available.
   useEffect(() => {
     if (!enabled) return;
-    const started = startBotsSync({
-      realtime,
-      store: { getState: useBots.getState, subscribe: (listener) => useBots.subscribe(listener) },
-      api: { getConversation },
-      clock,
-    });
+    const started = startBotsSync({ realtime, store: { getState: useBots.getState }, clock });
     sync.current = started;
     return () => {
       started.dispose();

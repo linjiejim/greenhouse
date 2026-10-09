@@ -35,7 +35,6 @@ import type {
 import type { TranslationKey } from '../../lib/i18n';
 import type { IconName } from '../../ui/core';
 import type { BadgeTone } from '../../ui/list';
-import type { CapsuleItem } from '../store';
 import { humanCheckTakeover, implicitTakeover, lineDiff } from '../vendor/web-helpers';
 
 /** A translation: the key and its `{placeholders}`. */
@@ -109,7 +108,7 @@ export function hostOf(url: string | null | undefined): string | null {
   return host || null;
 }
 
-/** What a card is about, for receipts, the capsule and the sheet's title line; null when nothing is. */
+/** What a card is about, for receipts and the sheet's title line; null when nothing is. */
 export function cardSubject(r: Pick<BotRequestView, 'kind' | 'payload'>): string | null {
   const kind = cardKind(r);
   if (kind === 'approval') return text((r.payload as BotApprovalPayload).title) || null;
@@ -511,35 +510,4 @@ export function diffCounts(payload: Pick<BotInstructionsUpdatePayload, 'current'
     else if (line.kind === 'removed') removed += 1;
   }
   return { added, removed };
-}
-
-// ─── The capsule ─────────────────────────────────────────
-
-/**
- * The capsule's line: one approval → "{name} needs your approval · {title}";
- * any other single card → its headline, then what it is about; several →
- * "{n} things need you"; a report → "{name} reported back: {title}".
- * `detail` (when set) joins the headline through `bots.capsule.detail`.
- * `name` resolves a Bot id (the asking Bot, the reporting one).
- */
-export function capsuleLine(
-  item: CapsuleItem,
-  name: (botId: string | null) => string,
-): Copy & { detail: string | null } {
-  if (item.kind === 'arrival') {
-    return {
-      key: 'bots.capsule.report',
-      vars: { name: name(item.arrival.botId), title: item.arrival.title },
-      detail: null,
-    };
-  }
-  if (item.count > 1) return { key: 'bots.capsule.many', vars: { n: String(item.count) }, detail: null };
-  const r = item.request;
-  const who = name(r.bot_id);
-  const subject = cardSubject(r);
-  if (cardKind(r) === 'approval' && subject)
-    return { key: 'bots.capsule.one', vars: { name: who, title: subject }, detail: null };
-  const title = cardTitle(r, who);
-  // The login headline already names the host.
-  return { ...title, detail: cardKind(r) === 'login' ? null : subject };
 }

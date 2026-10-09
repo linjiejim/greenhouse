@@ -1,4 +1,4 @@
-/** "Needs you" copy (`bots.card / login / needs / capsule`) — English, the key source. */
+/** "Needs you" copy (`bots.card / login / needs`) — English, the key source. */
 
 export const botsCardsEn = {
   card: {
@@ -140,16 +140,5 @@ export const botsCardsEn = {
     loadFailed: 'Couldn’t Load',
     /** The card sheet (`/bots/request`) for a card that is gone. */
     goneTitle: 'This request is no longer available',
-  },
-  capsule: {
-    /** One line in a pill: the approval's question already says what is asked. */
-    one: '{name}: {title}',
-    many: '{n} things need you',
-    report: '{name} reported back: {title}',
-    /** Any other card: its headline, then what it is about. */
-    detail: '{text} · {detail}',
-    /** VoiceOver hints. */
-    needsHint: 'Decide here without leaving this conversation',
-    reportHint: 'Opens the conversation',
   },
 };

@@ -39,14 +39,12 @@
  * else this conversation screen. Every route here carries all seven home
  * params (src/bots/nav.ts). On a cold start a bare home reopens the Bots
  * thread the member left the app in (src/bots/home/initial-surface.ts), once
- * per process. With Bots on, the conversation screen also gets: the hero's
- * shelf of the Bots' faces and, when there is news (someone needs the member,
- * a report, something unread), one bridge row back into them; a `?profile=` new chat with one Bot (its face and
- * name in the hero, a "Back to …" button; the profile is never saved); the ☰
- * badge (other conversations that need the member or have something unread)
- * and — over an existing conversation — the "needs you" capsule; a Bots
- * session reached by id is forwarded to its thread. With Bots off (or on
- * Android) none of this renders and the screen is exactly what it was.
+ * per process. With Bots on, the conversation screen also gets: a `?profile=`
+ * new chat with one Bot (its face and name in the hero, a "Back to …" button;
+ * the profile is never saved); the ☰ badge (other conversations that need the
+ * member or have something unread); a Bots session reached by id is forwarded
+ * to its thread. With Bots off (or on Android) none of this renders and the
+ * screen is exactly what it was.
  */
 
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -59,7 +57,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
   type LayoutChangeEvent,
   type TextInput,
 } from 'react-native';
@@ -106,11 +103,9 @@ import {
   useBotIdentityEnabled,
   useBotsEnabled,
 } from '../../../src/bots/availability';
-import { AttentionCapsule } from '../../../src/bots/cards/attention-capsule';
 import { useRowCopy } from '../../../src/bots/drawer/conversation-row';
 import { rowTitle } from '../../../src/bots/drawer/row-text';
-import { BotsShelf } from '../../../src/bots/home/bots-shelf';
-import { HomeBridge, useBotsWarm, useProfileBot } from '../../../src/bots/home/home-bridge';
+import { useBotsWarm, useProfileBot } from '../../../src/bots/home/home-bridge';
 import { initialSurface } from '../../../src/bots/home/initial-surface';
 import { forgetThread, lastThread, rememberThread, type LastThread } from '../../../src/bots/last-surface';
 import { homeParams, openNewChat, openThread, type HomeParams } from '../../../src/bots/nav';
@@ -120,12 +115,6 @@ import { BotAvatar } from '../../../src/bots/ui/bot-avatar';
 import { usePrefs } from '../../../src/store/prefs';
 
 const MAX_IMAGES = 4;
-/**
- * Above this Dynamic Type scale the new-chat hero sheds its shelf of faces
- * (the bridge row stays, and then also offers "Continue with …"). The accessibility sizes
- * start at 1.79× (AX1); up to xxxLarge (1.35×) the hero keeps everything.
- */
-const HERO_COMPACT_FONT_SCALE = 1.5;
 
 /** What a message shows — a user turn without its attachments fence (that's for chips, not for copying). */
 const visibleText = (msg: ChatMessage) => (msg.role === 'user' ? splitAttachments(msg.text).text : msg.text);
@@ -226,7 +215,7 @@ function Conversation() {
   }>();
   const user = useAuth((s) => s.user);
 
-  /* ---------- Bots: bridge, ☰ badge, capsule, `?profile=` (see header) ---------- */
+  /* ---------- Bots: ☰ badge, `?profile=` (see header) ---------- */
   const botsOn = useBotsEnabled();
   const identityOn = useBotIdentityEnabled();
   useBotsWarm(botsOn);
@@ -601,11 +590,9 @@ function Conversation() {
     transform: [{ translateY: -Math.max(0, Math.abs(kbHeight.value) - insets.bottom) / 2 }],
   }));
   // Large text (spec §2.5.9): a hero taller than the room between the nav bar and the
-  // composer would spill under both (its Bots links untappable under the composer), so it
-  // scrolls in that room instead — measured, not guessed. At the usual sizes it fits and
+  // composer would spill under both (its "Back to …" button untappable under the composer), so
+  // it scrolls in that room instead — measured, not guessed. At the usual sizes it fits and
   // the tree is the plain centred one (touches pass through to the chat underneath).
-  const { fontScale } = useWindowDimensions();
-  const heroCompact = fontScale > HERO_COMPACT_FONT_SCALE;
   const [heroRoom, setHeroRoom] = useState(0);
   const [heroHeight, setHeroHeight] = useState(0);
   const onHeroRoom = useCallback((e: LayoutChangeEvent) => setHeroRoom(e.nativeEvent.layout.height), []);
@@ -614,7 +601,7 @@ function Conversation() {
   const stickyOffset = useMemo(() => ({ closed: 0, opened: insets.bottom - space.sm }), [insets.bottom]);
   const lastAiId = useMemo(() => [...messages].reverse().find((m) => m.role === 'assistant')?.id, [messages]);
 
-  // The new-chat hero (only its Bots links take touches) — the same tree centred or scrolling.
+  // The new-chat hero (only its "Back to …" button takes touches) — the same tree centred or scrolling.
   const hero = isNew ? (
     <Animated.View pointerEvents="box-none" style={heroFade}>
       <Animated.View
@@ -651,12 +638,6 @@ function Conversation() {
             style={styles.heroAction}
             onPress={() => openThread(router, { c: profileBot.dm!, title: profileBot.bot!.name })}
           />
-        ) : null}
-        {botsOn && !profileBot ? (
-          <>
-            <HomeBridge idleLine={heroCompact} />
-            {heroCompact ? null : <BotsShelf />}
-          </>
         ) : null}
       </Animated.View>
     </Animated.View>
@@ -741,13 +722,6 @@ function Conversation() {
             hero
           )}
         </Animated.View>
-      ) : null}
-
-      {/* an existing conversation: another Bots conversation needing the member floats under the nav bar */}
-      {botsOn && sessionId ? (
-        <View pointerEvents="box-none" style={[styles.capsule, { top: headerHeight + space.xs }]}>
-          <AttentionCapsule excludeSid={null} />
-        </View>
       ) : null}
 
       {convo.loading && !messages.length ? (
@@ -932,7 +906,6 @@ const useStyles = makeStyles((c) => ({
   heroTitle: { ...typo.title2, color: c.label, textAlign: 'center', marginTop: space.md },
   heroSub: { ...typo.body, color: c.secondaryLabel, textAlign: 'center' },
   heroAction: { marginTop: space.md },
-  capsule: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   center: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   stretch: { alignSelf: 'stretch' },
   sticky: { position: 'absolute', left: 0, right: 0, bottom: 0 },

@@ -121,12 +121,4 @@ export const botsCardsZh: typeof botsCardsEn = {
     loadFailed: '没能加载',
     goneTitle: '这个请求已经不在了',
   },
-  capsule: {
-    one: '{name}：{title}',
-    many: '{n} 件事需要你',
-    report: '{name} 交回了「{title}」',
-    detail: '{text} · {detail}',
-    needsHint: '在这里直接处理，不用离开当前对话',
-    reportHint: '打开这个对话',
-  },
 };

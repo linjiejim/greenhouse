@@ -11,7 +11,6 @@ import {
   alwaysSite,
   askAgainOffered,
   buttonLabel,
-  capsuleLine,
   cardButtons,
   cardKind,
   cardSubject,
@@ -383,41 +382,5 @@ describe('details and diffs', () => {
   it('counts added and removed instruction lines', () => {
     expect(diffCounts({ current: 'a\nold', instructions: 'a\nb\nc' })).toEqual({ added: 2, removed: 1 });
     expect(diffCounts({ current: 'same', instructions: 'same' })).toEqual({ added: 0, removed: 0 });
-  });
-});
-
-describe('capsuleLine', () => {
-  const name = (id: string | null) => (id === 'bot_a' ? 'Pip' : 'Bot');
-
-  it('one approval: name, then what it asks', () => {
-    expect(capsuleLine({ kind: 'needs_you', request: approval(), count: 1 }, name)).toEqual({
-      key: 'bots.capsule.one',
-      vars: { name: 'Pip', title: 'Send the weekly report' },
-      detail: null,
-    });
-  });
-
-  it('another single card: its headline and subject; several: a count', () => {
-    expect(capsuleLine({ kind: 'needs_you', request: task(), count: 1 }, name)).toEqual({
-      key: 'bots.card.taskTitle',
-      vars: { name: 'Pip' },
-      detail: 'Tidy the meeting notes',
-    });
-    // The sign-in headline already names the host.
-    expect(capsuleLine({ kind: 'needs_you', request: login(), count: 1 }, name).detail).toBeNull();
-    expect(capsuleLine({ kind: 'needs_you', request: approval(), count: 3 }, name)).toEqual({
-      key: 'bots.capsule.many',
-      vars: { n: '3' },
-      detail: null,
-    });
-  });
-
-  it('a report that landed elsewhere', () => {
-    expect(
-      capsuleLine(
-        { kind: 'arrival', sessionId: 's2', arrival: { botId: 'bot_a', title: 'Notes', status: 'succeeded', at: T0 } },
-        name,
-      ),
-    ).toEqual({ key: 'bots.capsule.report', vars: { name: 'Pip', title: 'Notes' }, detail: null });
   });
 });
