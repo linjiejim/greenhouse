@@ -83,9 +83,11 @@ interface WorkspaceBrandingSnapshot {
   productName: string | null;
   logo: string | null;
   themeTokens: ThemeTokens | null;
+  /** No administrator owns the instance yet (first-run setup pending). */
+  setupPending: boolean;
 }
 
-let snapshot: WorkspaceBrandingSnapshot = { productName: null, logo: null, themeTokens: null };
+let snapshot: WorkspaceBrandingSnapshot = { productName: null, logo: null, themeTokens: null, setupPending: false };
 
 function applySnapshot(): void {
   document.title = getRuntimeProductName();
@@ -109,7 +111,12 @@ export async function initWorkspaceBranding(): Promise<void> {
     const res = await fetch(`${getApiBaseUrl()}/api/bootstrap`, { signal: AbortSignal.timeout(2500) });
     if (!res.ok) return;
     const data = (await res.json()) as WorkspaceBootstrap;
-    snapshot = { productName: data.product_name, logo: data.logo, themeTokens: data.theme_tokens };
+    snapshot = {
+      productName: data.product_name,
+      logo: data.logo,
+      themeTokens: data.theme_tokens,
+      setupPending: data.setup_pending === true,
+    };
     applySnapshot();
   } catch {
     // fail open — defaults already in place
@@ -135,4 +142,9 @@ export function getRuntimeProductName(): string {
 /** Workspace logo data URL, or null to use the built-in mark. */
 export function getRuntimeLogo(): string | null {
   return snapshot.logo;
+}
+
+/** True while no administrator owns the instance — the login screen explains the first-run activation link. */
+export function isWorkspaceSetupPending(): boolean {
+  return snapshot.setupPending;
 }

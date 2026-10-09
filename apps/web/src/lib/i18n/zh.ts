@@ -240,6 +240,9 @@ const zh: Messages = {
     feishuSigningIn: '飞书登录中...',
     feishuNotBound: '该飞书账号尚未绑定。请先用邮箱登录，再到设置里绑定飞书。',
     feishuFailed: '飞书登录失败，请重试。',
+    setupPendingTitle: '先完成这个工作区的初始化',
+    setupPendingBody:
+      '这个实例还没有管理员。打开服务日志里的一次性激活链接（设置了 BOOTSTRAP_ADMIN_EMAIL 才会生成），或在服务器上运行 pnpm admin:create。',
   },
 
   accountPassword: {

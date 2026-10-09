@@ -306,12 +306,23 @@ export interface WorkspaceSettingView {
   source: WorkspaceSettingSource;
 }
 
-/** Pre-login personalization payload served by GET /api/bootstrap. */
-export interface WorkspaceBootstrap {
+/** The workspace branding half of GET /api/bootstrap (Branding Studio values). */
+export interface WorkspaceBranding {
   product_name: string | null;
   /** Logo data URL, or null to use the built-in mark. */
   logo: string | null;
   theme_tokens: ThemeTokens | null;
+}
+
+/** Pre-login payload served by GET /api/bootstrap. */
+export interface WorkspaceBootstrap extends WorkspaceBranding {
+  /**
+   * True until someone owns the instance (no active super admin yet): the login
+   * screen then says where the first administrator's activation link is.
+   * Deployment state, not user data — it only reveals that the instance is
+   * unclaimed, which no credential follows from.
+   */
+  setup_pending: boolean;
 }
 
 // ─── Theme tokens (Branding Studio payload) ──────────────

@@ -232,6 +232,9 @@ export default {
     feishuSigningIn: 'Signing in with Feishu...',
     feishuNotBound: 'This Feishu account is not linked yet. Sign in with email first, then connect Feishu in Settings.',
     feishuFailed: 'Feishu sign-in failed. Please try again.',
+    setupPendingTitle: 'Finish setting up this workspace',
+    setupPendingBody:
+      'No administrator has activated this instance yet. Open the one-time activation link in the server log (it appears when BOOTSTRAP_ADMIN_EMAIL is set), or run pnpm admin:create on the server.',
   },
 
   accountPassword: {

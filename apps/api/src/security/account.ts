@@ -61,6 +61,30 @@ function passwordLinkUrl(token: string): string {
   return `${base.baseUrl}/#/activate?token=${encodeURIComponent(token)}`;
 }
 
+/**
+ * A password link as an operator reads it in a log line (the first-admin
+ * bootstrap): absolute when PUBLIC_BASE_URL is a usable origin — plain http
+ * included, since nothing is emailed — otherwise the path to open on the
+ * server's own address.
+ */
+export function passwordLinkForLog(token: string, publicBaseUrl: string | undefined): string {
+  const path = `/#/activate?token=${encodeURIComponent(token)}`;
+  const raw = publicBaseUrl?.trim();
+  if (!raw) return path;
+  try {
+    const url = new URL(raw);
+    const usable =
+      (url.protocol === 'https:' || url.protocol === 'http:') &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash;
+    return usable ? `${url.href.replace(/\/$/, '')}${path}` : path;
+  } catch {
+    return path;
+  }
+}
+
 export function maskEmail(email: string): string {
   const at = email.lastIndexOf('@');
   if (at <= 0) return '***';

@@ -40,6 +40,7 @@ import type { AppEnv } from './app-env.js';
 import { listProfileIds, startProfileWatcher } from './profiles/profile.js';
 import { authMiddleware, requireSuper, requireInternal, requireFeature } from './auth/middleware.js';
 import { assertAuthEnv } from './auth/token.js';
+import { bootstrapFirstAdmin } from './security/first-admin.js';
 import {
   corsMiddleware,
   rateLimitMiddleware,
@@ -488,6 +489,13 @@ async function main() {
   ) {
     logger.info('[Platform] Kernel bootstrap applied', { ...platformBootstrap });
   }
+
+  // A fresh instance's first administrator (BOOTSTRAP_ADMIN_EMAIL → a one-time
+  // activation link in this log). Inert once someone owns the instance; never
+  // blocks the boot.
+  await bootstrapFirstAdmin(dbProvider).catch((err) => {
+    logger.error('[setup] first-administrator bootstrap failed', toErrorMessage(err));
+  });
 
   // First-party skill packs ride the release: sync the repo's skillhub/ into
   // the Skill Center on boot (no-op without the directory; never blocks boot).
