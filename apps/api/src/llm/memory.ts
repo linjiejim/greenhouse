@@ -67,8 +67,16 @@ function ageMarker(row: UserMemoryRow, now: number): string {
 /** Budget split when a Bot reads both layers: user-level first, then its own notes. */
 const BOT_PRIVATE_INDEX_BUDGET_CHARS = 1200;
 
+/**
+ * WHICH memories make the index is decided by recency (`rows` arrive pinned
+ * first, then most recently used); the order they are WRITTEN in is stable —
+ * pinned first, then by id. Recall touches `last_used_at`, so rendering in
+ * recency order rewrote the system prompt (and lost the provider's prefix
+ * cache for the whole conversation) after every recall even when the same
+ * memories were listed (spec 20261009 D7).
+ */
 function renderIndexLines(rows: UserMemoryRow[], budget: number, now: number): { lines: string[]; dropped: number } {
-  const lines: string[] = [];
+  const selected: Array<{ row: UserMemoryRow; line: string }> = [];
   let used = 0;
   let dropped = 0;
   for (const row of rows) {
@@ -77,17 +85,19 @@ function renderIndexLines(rows: UserMemoryRow[], budget: number, now: number): {
       dropped++;
       continue;
     }
-    lines.push(line);
+    selected.push({ row, line });
     used += line.length + 1;
   }
-  return { lines, dropped };
+  selected.sort((a, b) => Number(b.row.pinned) - Number(a.row.pinned) || a.row.id - b.row.id);
+  return { lines: selected.map((entry) => entry.line), dropped };
 }
 
 /**
  * Build the `## User Memory` block for a system prompt.
  *
- * Titles only, pinned first, newest-used next, cut off at a hard character
- * budget. Everything is sanitised: memory text is model-written and
+ * Titles only: the most recently used fit the hard character budget, and are
+ * listed in a stable order (pinned first, then by id) so a recall does not
+ * rewrite the prompt prefix. Everything is sanitised: memory text is model-written and
  * user-editable, so it is untrusted input that gets replayed every turn.
  *
  * Without a Bot the block holds user-level memories only. A Bot reads the
@@ -175,6 +185,7 @@ Rules:
 - Write in English. Keep proper nouns and literal values (identifiers, enum values such as 潜在, document titles, customer names, error strings) EXACTLY as they appear — never translate them.
 - A merged title must be one line, under 80 characters, and written so a reader can judge relevance without opening the body.
 - Be conservative. If two memories are merely related, leave them alone. Prefer returning [] over a speculative edit.
+- A merge keeps every negation, limit and number from its sources word for word ("never", "not", "不", "不超过", "5 columns", dates). A merge that would soften or drop one is not a merge — leave those memories alone.
 - Never merge or demote a memory marked [pinned].
 - Output ONLY the JSON array.`;
 
@@ -190,8 +201,51 @@ interface ConsolidationOp {
 
 const VALID_CATEGORIES = new Set(['preference', 'fact', 'behavior']);
 
-/** Parse + shape-check the model's operation list. Anything malformed is dropped. */
-export function parseConsolidationOps(raw: string, knownIds: Set<number>): ConsolidationOp[] {
+// ─── Anti-dilution (spec 20261009 D7) ───────────────────
+
+/** Negations and limits whose loss inverts or widens a memory. */
+const NEGATION =
+  /\b(?:not|never|no|don't|doesn't|didn't|won't|can't|cannot|isn't|aren't|shouldn't|mustn't|avoid|without|except|unless|only)\b|不|没|别|勿|未|禁止|避免|除了|无需/gi;
+const NUMBER = /\d+(?:[.,:/-]\d+)*%?/g;
+
+function negationCount(text: string): number {
+  return text.match(NEGATION)?.length ?? 0;
+}
+
+/**
+ * Why a merged memory would lose meaning its sources carried, or null.
+ *
+ * A merge is an LLM rewrite of user facts. The failure that matters is
+ * dilution: "never send reports on Friday" + "no Friday reports" merged into
+ * "send weekly reports", or "表格不超过五列" losing its limit — a memory that
+ * now says the opposite and is replayed in every future conversation. Octop
+ * Memory pins high-importance assertions to the user's own words for the same
+ * reason. Checked deterministically: the merge must keep as many negations as
+ * its most negated source, and every number any source states.
+ */
+export function mergeDilutes(sources: readonly string[], merged: string): string | null {
+  const needed = Math.max(0, ...sources.map(negationCount));
+  if (negationCount(merged) < needed) return 'drops a negation or limit';
+  const kept = new Set(merged.match(NUMBER) ?? []);
+  const lost = [...new Set(sources.flatMap((text) => text.match(NUMBER) ?? []))].filter((n) => !kept.has(n));
+  if (lost.length > 0)
+    return `drops ${lost
+      .slice(0, 3)
+      .map((n) => `"${n}"`)
+      .join(', ')}`;
+  return null;
+}
+
+/**
+ * Parse + shape-check the model's operation list. Anything malformed is
+ * dropped, and so is a merge that dilutes its sources (`sourceText`: id →
+ * title + content of every listed memory).
+ */
+export function parseConsolidationOps(
+  raw: string,
+  knownIds: Set<number>,
+  sourceText: ReadonlyMap<number, string> = new Map(),
+): ConsolidationOp[] {
   const jsonStr = extractJson(raw);
   if (!jsonStr) return [];
 
@@ -215,6 +269,12 @@ export function parseConsolidationOps(raw: string, knownIds: Set<number>): Conso
       const category = typeof op.category === 'string' && VALID_CATEGORIES.has(op.category) ? op.category : 'fact';
       if (ids.length < 2 || !ids.every((id) => knownIds.has(id)) || !title || !content) continue;
       if (!validateMemoryText({ title, content }).ok) continue;
+      const sources = ids.map((id) => sourceText.get(id)).filter((text): text is string => text !== undefined);
+      const dilution = sources.length > 0 ? mergeDilutes(sources, `${title}\n${content}`) : null;
+      if (dilution) {
+        logger.info('[memory] consolidation merge refused — it would dilute its sources', { ids, reason: dilution });
+        continue;
+      }
       ops.push({ op: 'merge', ids, title, content, category });
       continue;
     }
@@ -291,7 +351,11 @@ async function consolidatePartition(userId: string, botId: string | null): Promi
   });
 
   const pinned = new Set(rows.filter((r) => r.pinned).map((r) => r.id));
-  const ops = parseConsolidationOps(result.text, new Set(rows.map((r) => r.id)));
+  const ops = parseConsolidationOps(
+    result.text,
+    new Set(rows.map((r) => r.id)),
+    new Map(rows.map((r) => [r.id, `${r.title}\n${r.content}`])),
+  );
   let applied = 0;
 
   for (const op of ops) {

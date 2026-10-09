@@ -74,7 +74,13 @@ vi.mock('ai', async (importOriginal) => {
       if (listing.includes('id=101 ')) {
         return {
           text: JSON.stringify([
-            { op: 'merge', ids: [101, 102], title: 'Merged bot note', content: 'merged', category: 'fact' },
+            {
+              op: 'merge',
+              ids: [101, 102],
+              title: 'Merged bot note',
+              content: 'content 101 and content 102',
+              category: 'fact',
+            },
             { op: 'merge', ids: [103, 1], title: 'Cross-scope merge', content: 'nope', category: 'fact' },
           ]),
         };
