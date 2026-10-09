@@ -9,7 +9,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { readFileSync, existsSync } from 'node:fs';
 import { config } from 'dotenv';
-import { ENV_FILE, PUBLIC_DIR, REPO_ROOT } from './paths.js';
+import { DRIZZLE_DIR, ENV_FILE, PUBLIC_DIR, REPO_ROOT } from './paths.js';
 
 // Load .env before anything else
 config({ path: ENV_FILE });
@@ -33,7 +33,7 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://greenhouse:greenhouse@localhost:5432/greenhouse';
-import { initDatabase } from '@greenhouse/db';
+import { applyCoreMigrations, initDatabase } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { createToolRegistry, type ToolRegistry } from './agent.js';
 import type { AppEnv } from './app-env.js';
@@ -454,6 +454,13 @@ async function main() {
   // Resolve the Skill Center bundle store now: a PARTIAL SKILLS_S3_* config must
   // refuse to start (silently falling back to disk would strand new bundles).
   const skillStore = getSkillStore();
+  // Hosts that cannot run compose's one-shot `migrate` service (a Railway
+  // template, a single container) let the API apply the core chain itself,
+  // under a lock, before anything reads the schema.
+  if (process.env.MIGRATE_ON_START === '1' || process.env.MIGRATE_ON_START === 'true') {
+    const { applied } = await applyCoreMigrations(DATABASE_URL, DRIZZLE_DIR);
+    logger.info(`[DB] MIGRATE_ON_START: applied ${applied} core migration(s)`);
+  }
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
   // Extension-owned tables live in their own migration lane (core DDL stays in
   // drizzle/*.sql, applied before boot). Pending files are applied here, under

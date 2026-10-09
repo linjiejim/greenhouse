@@ -1,5 +1,6 @@
 /**
- * Core migration bookkeeping — reading and seeding drizzle's own journal table.
+ * Core migration bookkeeping — reading, seeding and (for `MIGRATE_ON_START`)
+ * applying drizzle's own journal.
  *
  * `drizzle-kit migrate` records every applied file in `drizzle.__drizzle_migrations`
  * and skips anything whose journal timestamp is not newer than the last row. An
@@ -13,8 +14,53 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import postgres from 'postgres';
 import { sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import type { Db } from './client.js';
+
+/** Arbitrary but fixed, and distinct from the extension lane's key. */
+const CORE_MIGRATION_LOCK_KEY = 74_192_027;
+
+async function countRecorded(client: postgres.Sql): Promise<number> {
+  const [table] = await client`SELECT to_regclass('drizzle.__drizzle_migrations') IS NOT NULL AS present`;
+  if (!table?.present) return 0;
+  const [row] = await client`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`;
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * Apply the pending core migrations from inside a process — the API's
+ * `MIGRATE_ON_START` path, for hosts that cannot run compose's one-shot
+ * `migrate` service (a Railway template, a single container).
+ *
+ * This is `drizzle-kit migrate` plus a lock: drizzle's own migrator, so the same
+ * journal table and the same "newer than the last row" rule — the two paths are
+ * interchangeable on one database. A dedicated single-connection client holds a
+ * session advisory lock for the whole run, so replicas booting together apply
+ * the chain once: the others wait, then find nothing pending. A dropped
+ * connection releases the lock with it.
+ */
+export async function applyCoreMigrations(
+  connectionString: string,
+  migrationsFolder: string,
+): Promise<{ applied: number }> {
+  const client = postgres(connectionString, { max: 1, onnotice: () => {} });
+  try {
+    await client`SELECT pg_advisory_lock(${CORE_MIGRATION_LOCK_KEY}::bigint)`;
+    try {
+      const before = await countRecorded(client);
+      await migrate(drizzle(client), { migrationsFolder });
+      return { applied: (await countRecorded(client)) - before };
+    } finally {
+      // Closing the session below releases it anyway; never mask a migration error.
+      await client`SELECT pg_advisory_unlock(${CORE_MIGRATION_LOCK_KEY}::bigint)`.catch(() => undefined);
+    }
+  } finally {
+    await client.end();
+  }
+}
 
 export interface CoreMigrationFile {
   tag: string;
