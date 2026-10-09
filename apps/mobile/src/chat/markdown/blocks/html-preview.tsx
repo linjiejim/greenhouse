@@ -3,20 +3,20 @@
  * prototype, a small interactive tool). Like the web, it is NOT rendered
  * inline (a page assumes it owns a viewport, and every re-render of a long
  * conversation would re-run its scripts): the reply carries a compact card —
- * the page's own <title>, its size — with 打开预览 (the full-screen viewer,
- * `/peek/html`, where it runs in an isolated WebView) and 复制源码.
+ * the page's own <title>, its size and a chevron — and the whole card opens
+ * the full-screen viewer (`/peek/html`, an isolated WebView), whose ⤴ menu
+ * copies the source or saves it as an .html file (2026-10: no buttons on the
+ * card).
  */
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
+import { ChatCard } from '../../chat-card';
 import { putHandoff } from '../../../lib/handoff';
 import { formatBytes } from '../../../lib/format';
 import { useT } from '../../../lib/i18n';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../../theme';
-import { NativeButton } from '../../../ui/button';
 import { Icon } from '../../../ui/core';
-import { toast } from '../../../ui/toast';
 import { useRich } from '../context';
 import { richSegment } from '../rich';
 import { CodeBlock } from './code';
@@ -49,43 +49,35 @@ function HtmlPreview({ code, title }: { code: string; title?: string }) {
       pathname: '/peek/html',
       params: { k: putHandoff('html', { code, title, bridge: Boolean(reply) }) },
     });
-  const copy = async () => {
-    await Clipboard.setStringAsync(code).catch(() => {});
-    toast(t('common.copied'), 'copy');
-  };
+  const name = title || t('chat.htmlPreview');
+  const size = formatBytes(utf8Bytes(code));
   return (
-    <View style={styles.card}>
+    <ChatCard
+      onPress={open}
+      style={styles.card}
+      accessibilityLabel={`${name}, ${t('chat.htmlPreview')} · ${size}`}
+      accessibilityHint={t('chat.openPreview')}
+    >
       <View style={styles.head}>
         <View style={styles.tile}>
           <Icon name="code" size={17} weight="semibold" color={c.accent} />
         </View>
         <View style={styles.texts}>
           <Text numberOfLines={2} style={styles.title}>
-            {title || t('chat.htmlPreview')}
+            {name}
           </Text>
           <Text style={styles.meta}>
-            {t('chat.htmlPreview')} · {formatBytes(utf8Bytes(code))}
+            {t('chat.htmlPreview')} · {size}
           </Text>
         </View>
+        <Icon name="chevR" size={13} weight="semibold" color={c.tertiaryLabel} />
       </View>
-      <View style={styles.actions}>
-        <NativeButton label={t('chat.openPreview')} icon="open" size="small" variant="prominent" onPress={open} />
-        <NativeButton label={t('chat.copySource')} icon="copy" size="small" onPress={() => void copy()} />
-      </View>
-    </View>
+    </ChatCard>
   );
 }
 
 const useStyles = makeStyles((c) => ({
-  card: {
-    marginVertical: space.sm + 2,
-    padding: space.md + 2,
-    gap: space.md,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.separator,
-    ...squircle,
-  },
+  card: { marginVertical: space.sm + 2, padding: space.md + 2 },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   tile: {
     width: 36,
@@ -99,5 +91,4 @@ const useStyles = makeStyles((c) => ({
   texts: { flex: 1, minWidth: 0 },
   title: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
   meta: { ...typo.footnote, color: c.secondaryLabel, marginTop: 1 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 }));

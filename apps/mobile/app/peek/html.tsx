@@ -1,7 +1,9 @@
 /**
  * HTML preview — a modal page running an agent-built page (an ```html-preview
  * fence, src/chat/markdown/blocks/html-preview.tsx) in a WebView: native
- * header (the page's <title>, ✕ close, copy source). The page is untrusted
+ * header (the page's <title>, ✕ close, and a ⤴ share menu — copy the source,
+ * or save it as an .html file through the system share sheet: Save to Files,
+ * AirDrop, another app). The page is untrusted
  * model output, so it runs isolated: an ephemeral (incognito) web context, no
  * pop-up windows, and it can't navigate away — a link it opens goes to the
  * in-app Safari view instead.
@@ -33,6 +35,8 @@ import { useT } from '../../src/lib/i18n';
 import { openLink } from '../../src/lib/links';
 import { makeStyles, useTheme } from '../../src/theme';
 import { EmptyState } from '../../src/ui/empty';
+import { fileStem, shareTextFile } from '../../src/lib/share-file';
+import { alertError } from '../../src/ui/dialogs';
 import { SheetClose } from '../../src/ui/sheet-chrome';
 import { toast } from '../../src/ui/toast';
 import { toolbarIcon } from '../../src/ui/toolbar-icon';
@@ -83,14 +87,27 @@ export default function HtmlViewer() {
       <SheetClose />
       {page ? (
         <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Button
-            icon={toolbarIcon('copy')}
-            accessibilityLabel={t('chat.copySource')}
-            onPress={() => {
-              void Clipboard.setStringAsync(page.code).catch(() => {});
-              toast(t('common.copied'), 'copy');
-            }}
-          />
+          <Stack.Toolbar.Menu icon={toolbarIcon('share')} accessibilityLabel={t('chat.actionShare')}>
+            <Stack.Toolbar.MenuAction
+              icon={toolbarIcon('copy')}
+              onPress={() => {
+                void Clipboard.setStringAsync(page.code).catch(() => {});
+                toast(t('common.copied'), 'copy');
+              }}
+            >
+              {t('chat.copySource')}
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction
+              icon={toolbarIcon('download')}
+              onPress={() =>
+                void shareTextFile(`${fileStem(page.title, 'page')}.html`, page.code, 'text/html').then((ok) => {
+                  if (!ok) alertError(t('chat.saveFileFailed'));
+                })
+              }
+            >
+              {t('chat.saveAsFile')}
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
         </Stack.Toolbar>
       ) : null}
       {source ? (
