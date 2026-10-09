@@ -50,6 +50,16 @@ const PUBLIC_PATHS = new Set([
   // the probe would seed a pending state nobody consumes on every password
   // login — a probe must have no side effects.
   '/api/feishu/login-available',
+  // A connector's OAuth provider redirects the BROWSER here after the member
+  // signs in (spec 20261009-mcp-connectors D4), so there is no Bearer. The
+  // credential is `state`: AES-GCM sealed, purpose-bound, 10-minute expiry,
+  // naming the member and connector; the route re-reads both before storing.
+  // Everything else under /api/connectors requires a Bearer. (Not under
+  // `/api/mcp…`: that whole prefix is public below — Greenhouse's own MCP server.)
+  '/api/connectors/oauth/callback',
+  // The client-id metadata document an authorization server fetches (SEP-991):
+  // static, public by definition.
+  '/api/connectors/oauth/client-metadata.json',
 ]);
 
 /** Exported for the boundary regression test — see routes/__tests__/attachment-boundary.test.ts. */

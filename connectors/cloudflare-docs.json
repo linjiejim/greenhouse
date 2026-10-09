@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.cloudflare.mcp/mcp",
+  "title": "Cloudflare Docs",
+  "description": "Search the Cloudflare developer documentation.",
+  "version": "0.4.13",
+  "websiteUrl": "https://github.com/cloudflare/mcp-server-cloudflare",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://docs.mcp.cloudflare.com/mcp"
+    }
+  ],
+  "_meta": {
+    "com.linjiejim.greenhouse/connector": {
+      "slug": "cloudflare-docs",
+      "category": "docs",
+      "title_zh": "Cloudflare 文档",
+      "description_zh": "检索 Cloudflare 开发者文档。",
+      "auth": {
+        "mode": "none",
+        "zero_config": true
+      },
+      "read_only_tools": [],
+      "verification": {
+        "level": "call",
+        "date": "2026-10-09",
+        "notes": "The Registry entry com.cloudflare.mcp/mcp lists Cloudflare's servers; this is its documentation endpoint."
+      }
+    }
+  }
+}

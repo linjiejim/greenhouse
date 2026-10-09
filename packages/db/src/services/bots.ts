@@ -123,6 +123,8 @@ export interface BotInput extends BotVersionMeta {
   model_id?: string | null;
   /** Tool ids the Bot may use; null / omitted = the owner's whole allowed set. */
   tools?: string[] | null;
+  /** Connector slugs the Bot may reach through `mcp_call`; null / omitted = every connector the owner can use. */
+  connectors?: string[] | null;
   max_steps?: number | null;
   template_key?: string | null;
   /** The built-in Sprouty: not counted against MAX_ACTIVE_BOTS_PER_USER (every member has it). */
@@ -137,19 +139,28 @@ export interface BotUpdateInput extends BotVersionMeta {
   avatar?: string;
   model_id?: string | null;
   tools?: string[] | null;
+  connectors?: string[] | null;
   max_steps?: number | null;
 }
 
 /** The fields hashed into `bot_versions.manifest_hash`, in this fixed key order. */
 type VersionManifest = Pick<
   BotVersionRow,
-  'name' | 'role' | 'description' | 'instructions' | 'tools' | 'model_id' | 'max_steps' | 'avatar'
+  'name' | 'role' | 'description' | 'instructions' | 'tools' | 'model_id' | 'max_steps' | 'avatar' | 'connectors'
 >;
 
 function manifestHash(manifest: VersionManifest): string {
   // Built below in a fixed key order; arrays / objects are their persisted JSON
-  // text, so the hash is deterministic across hosts.
-  return createHash('sha256').update(JSON.stringify(manifest)).digest('hex');
+  // text, so the hash is deterministic across hosts. `connectors` joins the
+  // hashed object only when set: every version written before connectors
+  // existed (and every version without a list) keeps the exact hash it had.
+  const { connectors, ...base } = manifest;
+  const hashed = connectors === null ? base : { ...base, connectors };
+  return createHash('sha256').update(JSON.stringify(hashed)).digest('hex');
+}
+
+function listText(value: string[] | null | undefined): string | null {
+  return value == null ? null : JSON.stringify(value);
 }
 
 /** The next manifest: the row's current values, then the edits. */
@@ -163,6 +174,7 @@ function manifestFrom(row: BotRow, updates: BotUpdateInput): VersionManifest {
     model_id: updates.model_id !== undefined ? updates.model_id : row.model_id,
     max_steps: updates.max_steps !== undefined ? updates.max_steps : row.max_steps,
     avatar: updates.avatar !== undefined ? updates.avatar : row.avatar,
+    connectors: updates.connectors !== undefined ? listText(updates.connectors) : row.connectors,
   };
 }
 
@@ -219,6 +231,7 @@ function insertBotFactory(db: Db) {
           avatar: input.avatar ?? '{}',
           model_id: input.model_id ?? null,
           tools: input.tools == null ? null : JSON.stringify(input.tools),
+          connectors: listText(input.connectors),
           max_steps: input.max_steps ?? null,
           template_key: input.template_key ?? null,
           status: 'active',
@@ -382,6 +395,7 @@ export function createBotsService(db: Db) {
         set.avatar = manifest.avatar;
         set.model_id = manifest.model_id;
         set.tools = manifest.tools;
+        set.connectors = manifest.connectors;
         set.max_steps = manifest.max_steps;
         set.current_version = nextVersion;
         set.updated_at = now;

@@ -18,6 +18,12 @@ tokens.)
 > resources over the standard MCP protocol with OAuth 2.1. Tokens are scoped by action and
 > resource group, and the proxy can only narrow the bound user's permissions — it is a
 > restricted subset, not a separate plane. See `apps/api/src/AGENTS.md`.
+>
+> **MCP client ("connectors")** goes the other way: a super installs remote MCP servers (from the
+> official catalog in `connectors/`, the MCP Registry or by URL); members connect their own
+> accounts (OAuth or their own key) and use them from chat and their Bots through the one
+> `mcp_call` gateway tool. Member routes live at `/api/connectors` — never under `/api/mcp…`,
+> which `isPublicPath` exempts wholesale. See the connector section of `apps/api/src/AGENTS.md`.
 
 ## Rules
 

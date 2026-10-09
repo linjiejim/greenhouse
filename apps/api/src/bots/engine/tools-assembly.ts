@@ -26,9 +26,10 @@ import { peekDraftToken } from '../../email/security.js';
 import { getSharedMailboxCredentials } from '../../email/service.js';
 import { getToolMeta } from '../../tools/registry.js';
 import { createMemoryTool } from '../../tools/memory.js';
-import { botProfileId } from '../../profiles/profile.js';
 import { runtimeDriverEnabled } from '../../trusted-execution/kill-switches.js';
 import { buildComputerTools } from '../computer/index.js';
+import { createMcpCallTool } from '../../tools/mcp-call.js';
+import { botProfileId, parseBotConnectors } from '../../profiles/profile.js';
 import { BOT_TOOL_IDS } from '../tools/meta.js';
 import { createTeamTool } from '../tools/team.js';
 import { createSelfTool } from '../tools/self.js';
@@ -54,16 +55,14 @@ export const BOT_APPROVAL_TOOL_IDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Never in a Bots turn: card-only drafts and recursive spawning (D14), and the
- * external MCP gateway — its writes would need the approval card and its
- * results the taint flag, neither of which it is wired to yet (spec 20261009 D5).
+ * Never in a Bots turn: card-only drafts and recursive spawning (D14).
+ *
+ * The external MCP gateway (`mcp_call`) is in: its results taint the turn
+ * (taint.ts) and each call to a remote tool that is not read-only asks the
+ * member on an approval card (`createBotMcpCallTool`) — spec
+ * 20261009-mcp-connectors D8.
  */
-const EXCLUDED_TOOL_IDS: ReadonlySet<string> = new Set([
-  ...DISPATCH_TOOL_IDS,
-  'spawn_session',
-  'mcp_call',
-  ...BOT_TOOL_IDS,
-]);
+const EXCLUDED_TOOL_IDS: ReadonlySet<string> = new Set([...DISPATCH_TOOL_IDS, 'spawn_session', ...BOT_TOOL_IDS]);
 
 export function needsBotApproval(toolId: string): boolean {
   return BOT_APPROVAL_TOOL_IDS.has(toolId) || getToolMeta(toolId)?.surface?.proxy === 'write';
@@ -196,6 +195,38 @@ export async function approvalDetails(
 
 type ExecutableTool = { execute?: (input: unknown, options: unknown) => unknown } & Record<string, unknown>;
 
+/**
+ * The Bots face of `mcp_call`: the Bot's connector list narrows what it sees,
+ * and a remote tool that is not read-only runs only after the member allows
+ * THIS call on a card — the gate lives inside the tool, because only it knows
+ * whether the remote tool is read-only. Read-only calls run without a card.
+ */
+export function createBotMcpCallTool(ctx: BotTurnContext): Tool | null {
+  return createMcpCallTool(ctx.db, {
+    userId: ctx.userId,
+    sessionId: ctx.sessionId,
+    connectors: parseBotConnectors(ctx.bot.connectors),
+    approve: async (call) => {
+      const summary = copy.mcpCallAction(ctx.locale, call.serverName, call.tool);
+      const decision = await ctx.requestApproval({
+        action: 'tool_call',
+        title: copy.approvalTitle(ctx.locale, summary),
+        summary,
+        details: [
+          { label: approvalFieldLabel(ctx.locale, 'connector'), value: `${call.serverName} (${call.server})` },
+          { label: approvalFieldLabel(ctx.locale, 'remote_tool'), value: call.tool },
+          ...describeToolInput(call.arguments, ctx.locale),
+          ...(call.destructive
+            ? [{ label: approvalFieldLabel(ctx.locale, 'note'), value: copy.mcpDestructiveNote(ctx.locale) }]
+            : []),
+        ],
+        allow_always: false,
+      });
+      return decision === 'approve' || decision === 'always' ? 'approve' : decision === 'expired' ? 'expired' : 'deny';
+    },
+  }) as Tool | null;
+}
+
 /** Wrap a writer so it runs only after the member allows THIS call on a card. */
 export function withBotApproval(toolId: string, original: unknown, ctx: BotTurnContext): unknown {
   const tool = original as ExecutableTool;
@@ -256,7 +287,7 @@ export function assembleInteractiveTools(input: InteractiveToolsInput): Interact
     registry,
     buildLazyServerTools(
       db,
-      ids.filter((id) => id !== 'memory'),
+      ids.filter((id) => id !== 'memory' && id !== 'mcp_call'),
       {
         userId: ctx.userId,
         userRole: ctx.userRole,
@@ -289,6 +320,14 @@ export function assembleInteractiveTools(input: InteractiveToolsInput): Interact
     if (!needsBotApproval(id)) continue;
     registry[id] = withBotApproval(id, registry[id], ctx);
     approvalGated = true;
+  }
+  // Its own per-call gate (above), so it is built after the blanket wrap.
+  if (ids.includes('mcp_call')) {
+    const mcp = createBotMcpCallTool(ctx);
+    if (mcp) {
+      registry.mcp_call = mcp;
+      approvalGated = true;
+    }
   }
 
   registry.team = createTeamTool(ctx, input.team);

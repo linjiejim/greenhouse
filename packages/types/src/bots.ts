@@ -23,6 +23,8 @@ export interface BotView {
   model_id: string | null;
   /** Tool ids the Bot may use; null = the owner's whole allowed set. A list only narrows. */
   tools: string[] | null;
+  /** Connector slugs the Bot may reach through `mcp_call`; null = every connector the owner can use. */
+  connectors: string[] | null;
   /** Step cap per Chat turn / automation run; null = the base preset's default. */
   max_steps: number | null;
   template_key: string | null;
@@ -48,6 +50,7 @@ export interface BotVersionView {
   description: string;
   instructions: string;
   tools: string[] | null;
+  connectors: string[] | null;
   model_id: string | null;
   max_steps: number | null;
   avatar: AvatarConfig;

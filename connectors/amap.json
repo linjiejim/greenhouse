@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.amap/mcp",
+  "title": "Amap Maps",
+  "description": "Geocoding, places, routes and weather from Amap (高德地图).",
+  "version": "1.0.0",
+  "websiteUrl": "https://lbs.amap.com/api/mcp-server/gettingstarted",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.amap.com/mcp"
+    }
+  ],
+  "_meta": {
+    "com.linjiejim.greenhouse/connector": {
+      "slug": "amap",
+      "category": "maps",
+      "title_zh": "高德地图",
+      "description_zh": "高德地图的地理编码、地点搜索、路线规划与天气查询。",
+      "auth": {
+        "mode": "per_user",
+        "query_param": "key",
+        "help": "An Amap Web Service key (create an app in the Amap console, then add a key of type \"Web 服务\").",
+        "help_zh": "高德开放平台的「Web 服务」Key：在控制台创建应用并添加 Key 即可。",
+        "help_url": "https://console.amap.com/dev/key/app",
+        "zero_config": true
+      },
+      "read_only_tools": [],
+      "verification": {
+        "level": "handshake",
+        "date": "2026-10-09",
+        "notes": "The key travels as the `key` query parameter (Greenhouse stores it encrypted and adds it at call time). Without a valid key the server answers INVALID_USER_KEY outside JSON-RPC. The SSE endpoint was retired on 2026-03-17. Not listed in the MCP Registry; the version is the catalog entry's own (the server reports none without a key)."
+      }
+    }
+  }
+}

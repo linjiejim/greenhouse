@@ -71,6 +71,11 @@ export interface AgentProfile {
   tool_choice?: 'auto' | 'none' | 'required'; // default: "auto"
   version?: string; // last modified date (e.g. "2026-05-21")
   identity?: ProfileIdentity;
+  /**
+   * A Bot's connector list (`mcp_servers.slug`) — what `mcp_call` may reach.
+   * Absent / null = every connector the user can use.
+   */
+  mcp_connectors?: string[] | null;
 }
 
 // ─── Known Tools (for validation) ────────────────────────
@@ -247,6 +252,18 @@ export async function loadBotReference(
   return { bot, ...(reference.version ? { version: reference.version } : {}) };
 }
 
+/** A Bot's stored connector list (JSON text), or null = every connector the owner can use. */
+export function parseBotConnectors(json: string | null | undefined): string[] | null {
+  if (json == null) return null;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((slug): slug is string => typeof slug === 'string') : [];
+  } catch {
+    // Unreadable is not "everything": fail closed to none.
+    return [];
+  }
+}
+
 export function isExecutableBot(bot: Pick<BotRow, 'status'>): boolean {
   return bot.status === 'active';
 }
@@ -265,6 +282,7 @@ export function profileFromBot(
   const source = opts.version ?? bot;
   const toolsJson = source.tools;
   const tools: string[] | null = toolsJson == null ? null : (JSON.parse(toolsJson) as string[]);
+  const connectors = parseBotConnectors(source.connectors);
   return {
     id: opts.id,
     name: source.name,
@@ -280,6 +298,7 @@ export function profileFromBot(
     system_prompt: base.system_prompt,
     max_steps: source.max_steps ?? base.max_steps,
     tool_choice: 'auto',
+    mcp_connectors: connectors,
     identity: {
       botId: bot.id,
       ownerUserId: bot.user_id,

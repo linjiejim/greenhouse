@@ -165,6 +165,12 @@ export interface LazyServerToolContext {
    * its own memory tool (taint-aware) and passes nothing here.
    */
   botId?: string | null;
+  /**
+   * The connectors (`mcp_servers.slug`) this identity may reach through
+   * `mcp_call` — a Bot's connector list. null / undefined = every connector
+   * (spec 20261009-mcp-connectors D9).
+   */
+  mcpConnectors?: readonly string[] | null;
 }
 
 /**
@@ -380,11 +386,16 @@ export function buildLazyServerTools(
     tools.log_friction = createLogFrictionTool(db, { sessionId });
   }
 
-  // External MCP tools — built only while an admin-connected server has
-  // something callable (no server, no capability to declare). Owner-scoped
-  // like email: the credential is the server's, the grant is the member's.
+  // External MCP tools (connectors) — built only while an installed server has
+  // something callable for this identity (no server, no capability to
+  // declare). Owner-scoped like email: a per_user / oauth server is called with
+  // the member's own connection, read when the call runs.
   if (effectiveTools.includes('mcp_call')) {
-    const mcp = createMcpCallTool(db, { userId, ...(sessionId ? { sessionId } : {}) });
+    const mcp = createMcpCallTool(db, {
+      userId,
+      ...(sessionId ? { sessionId } : {}),
+      connectors: ctx.mcpConnectors ?? null,
+    });
     if (mcp) tools.mcp_call = mcp;
   }
 

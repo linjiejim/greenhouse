@@ -76,6 +76,7 @@ function bot(id: string, name: string, status: 'active' | 'archived', dm: string
     status,
     description: '',
     tools: null,
+    connectors: null,
     max_steps: null,
     current_version: 1,
     user_id: 'u1',
