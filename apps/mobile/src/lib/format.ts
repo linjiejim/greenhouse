@@ -66,6 +66,7 @@ const TOOL_KEYS = [
   'feature_request',
   'compute',
   'export_table',
+  'mcp_call',
 ] as const;
 type ToolKey = (typeof TOOL_KEYS)[number];
 const isToolKey = (name: string): name is ToolKey => (TOOL_KEYS as readonly string[]).includes(name);
@@ -93,6 +94,7 @@ const TOOL_ICONS: Record<string, IconName> = {
   feature_request: 'flag',
   compute: 'bar',
   export_table: 'table',
+  mcp_call: 'plug',
 };
 
 export function toolIcon(name: string): IconName {

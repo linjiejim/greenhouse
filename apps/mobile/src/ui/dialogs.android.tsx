@@ -35,6 +35,7 @@ type Request = { id: number; title: string; message?: string } & (
       defaultValue?: string;
       placeholder?: string;
       confirmLabel?: string;
+      secure?: boolean;
       resolve: (v: string | null) => void;
     }
 );
@@ -75,6 +76,8 @@ export function promptText(opts: {
   defaultValue?: string;
   placeholder?: string;
   confirmLabel?: string;
+  /** A secret (an API key): the field masks what is typed. */
+  secure?: boolean;
 }): Promise<string | null> {
   return new Promise((resolve) => push({ kind: 'prompt', ...opts, resolve }));
 }
@@ -122,7 +125,8 @@ function Dialog({ request: r }: { request: Request }) {
               value={field}
               autoFocus
               singleLine
-              keyboardOptions={{ imeAction: 'done' }}
+              keyboardOptions={{ imeAction: 'done', ...(r.secure ? { keyboardType: 'password' as const } : null) }}
+              {...(r.secure ? { visualTransformation: 'password' as const } : null)}
               keyboardActions={{ onDone: confirm }}
               modifiers={[fillMaxWidth()]}
             >

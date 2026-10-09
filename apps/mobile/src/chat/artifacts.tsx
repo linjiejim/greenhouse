@@ -18,7 +18,11 @@
  *    renders; nothing when the reply's markdown already embeds it — and its
  *    row stays in the tools sheet, it was the slowest step of the turn);
  *  - spawn_session → the child session: a live timer while it runs, then
- *    done / failed and 打开 (switches the conversation to the child).
+ *    done / failed and 打开 (switches the conversation to the child);
+ *  - mcp_call answering "connect first" (a connector on the member's own
+ *    account, not connected yet) → `ConnectCard` (src/connectors), below the
+ *    prose that explains it, once the reply has finished; every real result
+ *    of an external tool stays a row in the tools sheet.
  *
  * The web's other cards (workflow plan, mission dispatch, schema plan, task
  * capture, eval, extension cards) have no mobile counterpart: those calls
@@ -33,6 +37,8 @@ import { useT } from '../lib/i18n';
 import { getApiBase } from '../store/stations';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon, Spinner, Touchable } from '../ui/core';
+import { isNeedsConnection } from '../api/connectors';
+import { ConnectCard } from '../connectors/connect-card';
 import { AskUserCard, isAskUserData } from './ask-user-card';
 import { chatFilePath, chatFileUrl } from './chat-file-url';
 import { FileCard, fileDetail, saveFile } from './file-card';
@@ -72,6 +78,9 @@ export function isArtifact(step: ToolStep): boolean {
     case 'spawn_session':
       // a card while in flight and once a child exists; refusals stay rows
       return !out || typeof out.child_session_id === 'string';
+    case 'mcp_call':
+      // only "connect first" becomes a card
+      return isNeedsConnection(out);
     default:
       return false;
   }
@@ -84,7 +93,8 @@ export function replacesRow(step: ToolStep): boolean {
 
 /** Cards that sit below the reply's text (the prose leads up to them). */
 export function isBelowProse(step: ToolStep): boolean {
-  return isAskUserData(outputOf(step));
+  const out = outputOf(step);
+  return isAskUserData(out) || (step.tool === 'mcp_call' && isNeedsConnection(out));
 }
 
 export function ArtifactCards({
@@ -140,6 +150,10 @@ export function ArtifactCards({
       return <Thumb key={step.id} image={{ alt: String(out.prompt ?? ''), src: url }} single />;
     }
     if (step.tool === 'spawn_session') return <SpawnCard key={step.id} step={step} out={out} live={live} />;
+    if (step.tool === 'mcp_call' && isNeedsConnection(out)) {
+      // its buttons act once the turn is over (继续 goes out as the next message)
+      return live ? null : <ConnectCard key={step.id} data={out} followUp={followUp} onReply={onReply} />;
+    }
     return null;
   });
   if (!cards.some(Boolean)) return null;

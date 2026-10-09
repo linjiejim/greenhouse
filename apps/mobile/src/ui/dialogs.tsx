@@ -63,6 +63,8 @@ export function promptText(opts: {
   defaultValue?: string;
   placeholder?: string;
   confirmLabel?: string;
+  /** A secret (an API key): the field hides what is typed. */
+  secure?: boolean;
 }): Promise<string | null> {
   return new Promise((resolve) => {
     Alert.prompt(
@@ -72,7 +74,7 @@ export function promptText(opts: {
         { text: tr('common.cancel'), style: 'cancel', onPress: () => resolve(null) },
         { text: opts.confirmLabel ?? tr('common.ok'), onPress: (value?: string) => resolve((value ?? '').trim() || null) },
       ],
-      'plain-text',
+      opts.secure ? 'secure-text' : 'plain-text',
       opts.defaultValue,
     );
   });

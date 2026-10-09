@@ -48,6 +48,16 @@ function brief(v: unknown): string {
   return excerpt(typeof v === 'string' ? v : (JSON.stringify(v) ?? ''), 70);
 }
 
+/** The row's second line: an external call says which tool it reached ("amap/maps_geo"), not its envelope. */
+function stepBrief(step: ToolStep): string {
+  const input = step.input as Record<string, unknown> | null | undefined;
+  if (step.tool === 'mcp_call' && input && typeof input === 'object') {
+    const target = [input.server, input.tool].filter((part) => typeof part === 'string' && part).join('/');
+    if (target) return target;
+  }
+  return brief(step.input);
+}
+
 function formatMs(ms: number): string {
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
@@ -76,7 +86,7 @@ function StepRow({ step, last }: { step: ToolStep; last: boolean }) {
           </Text>
           {step.input != null ? (
             <Text numberOfLines={1} style={styles.subtitle}>
-              {brief(step.input)}
+              {stepBrief(step)}
             </Text>
           ) : null}
         </View>
