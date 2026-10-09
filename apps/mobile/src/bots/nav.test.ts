@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { homeParams, openChat, openNewChat, openThread, type AppRouter } from './nav';
+import { homeParams, openChat, openNewChat, openThread, type AppRouter, homeNavCount, onHomeNav } from './nav';
 
 const KEYS = ['c', 'compose', 'id', 'profile', 'request', 'ro', 'title'];
 
@@ -53,5 +53,21 @@ describe('open*', () => {
     const { router, replace } = fakeRouter();
     openNewChat(router);
     expect(replace).toHaveBeenCalledWith({ pathname: '/', params: homeParams() });
+  });
+});
+
+describe('home navigation signal', () => {
+  it('counts every navigation to home, even to the params it already has', () => {
+    const { router } = fakeRouter();
+    const seen: number[] = [];
+    const off = onHomeNav(() => seen.push(homeNavCount()));
+    const before = homeNavCount();
+    openNewChat(router);
+    openNewChat(router); // identical params: the router would swallow it, the signal does not
+    openThread(router, { c: 's1' }, 'dismissTo');
+    off();
+    openNewChat(router);
+    expect(seen).toEqual([before + 1, before + 2, before + 3]);
+    expect(homeNavCount()).toBe(before + 4);
   });
 });

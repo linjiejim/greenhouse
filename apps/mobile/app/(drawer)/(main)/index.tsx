@@ -47,7 +47,7 @@
  * screen is exactly what it was.
  */
 
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   Keyboard,
   Linking,
@@ -108,7 +108,7 @@ import { rowTitle } from '../../../src/bots/drawer/row-text';
 import { useBotsWarm, useProfileBot } from '../../../src/bots/home/home-bridge';
 import { initialSurface } from '../../../src/bots/home/initial-surface';
 import { forgetThread, lastThread, rememberThread, type LastThread } from '../../../src/bots/last-surface';
-import { homeParams, openNewChat, openThread, type HomeParams } from '../../../src/bots/nav';
+import { homeNavCount, homeParams, onHomeNav, openNewChat, openThread, type HomeParams } from '../../../src/bots/nav';
 import { attentionCount, useBots } from '../../../src/bots/store';
 import { BotThreadScreen } from '../../../src/bots/thread/thread-screen';
 import { BotAvatar } from '../../../src/bots/ui/bot-avatar';
@@ -814,6 +814,9 @@ export default function Home() {
   const [gaveUp, setGaveUp] = useState(false);
   // The restored thread, shown until the route's own `c` catches up with `setParams`.
   const [restored, setRestored] = useState<LastThread | null>(null);
+  // Navigations to home since the restore (see the stand-in's effect below).
+  const homeNavs = useSyncExternalStore(onHomeNav, homeNavCount);
+  const navsAtRestore = useRef(0);
 
   const surface = settled
     ? null
@@ -839,6 +842,7 @@ export default function Home() {
     }
     restoreSettled = true;
     if (kind === 'thread' && targetC) {
+      navsAtRestore.current = homeNavCount();
       setRestored({ c: targetC, title: targetTitle ?? '' });
       // all seven keys (a fresh literal: router params want an index signature)
       router.setParams({ ...homeParams({ c: targetC, title: targetTitle }) });
@@ -846,9 +850,13 @@ export default function Home() {
     setSettled(true);
   }, [settled, kind, targetC, targetTitle, router]);
 
+  // The stand-in gives way once the route names a thread itself (the restored one caught up, or
+  // the member went elsewhere first) or on any navigation to home: `setParams` does not always
+  // land on a cold start, and "New chat" to a bare home is a no-op for the router — kept, the
+  // stand-in would bounce every new chat straight back into the restored thread.
   useEffect(() => {
-    if (restored && params.c === restored.c) setRestored(null);
-  }, [restored, params.c]);
+    if (restored && (params.c || homeNavs !== navsAtRestore.current)) setRestored(null);
+  }, [restored, params.c, homeNavs]);
 
   const pending = target ?? restored;
   const c = params.c || pending?.c || '';
