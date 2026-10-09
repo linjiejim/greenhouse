@@ -1,89 +1,45 @@
 /**
- * Chat Engine — the single streaming agent loop for every host
- * (/api/chat NDJSON, evaluation, scheduled tasks, and spawned sessions).
+ * Chat Engine — the STREAMING host of the shared agent loop (agent-loop.ts):
+ * /api/chat NDJSON and the Bots engine. Headless hosts (scheduled tasks,
+ * spawn_session, workflow nodes, the Feishu bot) run the very same assembly
+ * through runAgentLoop() instead.
  *
- * Encapsulates: model creation, DSML interceptor, streamText(), tool loop,
- * pipeline/reference collection, usage accounting.
+ * What lives here is only what streaming needs on top of the loop: the
+ * final-answer guarantee spliced into the live stream, the stream collectors
+ * and usage accounting for persistence.
  *
  * Hosts remain thin shells: auth → format parsing → createChatStreamAsync()
  * → format output → persist (persistence stays host-side; the kernel has no
  * database dependency).
  */
 
-import { streamText, stepCountIs, wrapLanguageModel, NoSuchToolError } from 'ai';
-import type { StreamTextResult, ToolSet, ModelMessage, ToolCallRepairFunction, StopCondition } from 'ai';
-import { createDsmlInterceptor } from './dsml-interceptor.js';
-import { repairJsonArguments } from './repair-tool-json.js';
+import { streamText } from 'ai';
+import type { StreamTextResult, ToolSet } from 'ai';
 import type { DsmlRecoveryEvent } from './dsml-interceptor.js';
+import { resolvesToDeepSeek, type ProviderAttemptHook } from './model.js';
+import { prepareAgentLoop, type AgentLoopInput, type EngineProfile } from './agent-loop.js';
 import {
-  createModelFromConfig,
-  buildProviderOptions,
-  applyModelOverride,
-  resolveModelConfig,
-  resolvesToDeepSeek,
-  type ModelConfig,
-  type ProviderAttemptHook,
-} from './model.js';
-import { injectTimeContext, type EngineMessage } from './time-context.js';
+  addUsage,
+  emptyUsageTotals,
+  finalAnswerParts,
+  FINAL_ANSWER_MAX_ATTEMPTS,
+  requiresFinalAnswerGuarantee,
+  type FinalAnswerStreamFactory,
+  type UsageTotals,
+} from './final-answer.js';
+import type { TimeContextOption } from './loop-shared.js';
+import type { EngineMessage } from './time-context.js';
 import type { PipelineStep, Reference } from '@greenhouse/types/session';
-import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
+
+export { CHAT_STREAM_TIMEOUT } from './loop-shared.js';
+export { FINAL_ANSWER_MAX_ATTEMPTS, requiresFinalAnswerGuarantee };
+export type { EngineProfile };
 
 // ─── Types ───────────────────────────────────────────────
 
-/**
- * The slice of an agent profile the engine actually consumes. Hosts pass their
- * full profile objects (e.g. the api's YAML AgentProfile) — structural typing
- * keeps the kernel decoupled from host profile schemas.
- */
-export interface EngineProfile {
-  model: ModelConfig;
-  max_steps?: number;
-  tool_choice?: 'auto' | 'none' | 'required';
-}
-
-export interface ChatEngineInput {
-  profile: EngineProfile;
-  /**
-   * Plain strings for every host except the vision path: user messages may
-   * carry multimodal content parts when the catalog marks the model
-   * `vision: true` (the api's chat-vision builder is the only producer).
-   */
-  messages: EngineMessage[];
-  tools: Record<string, any>;
-  systemPrompt: string;
-  sessionId?: string;
-
-  /** Override profile model (e.g. model_override from frontend) */
-  modelOverride?: string;
-  /** Override profile temperature */
-  temperatureOverride?: number;
-  /** Override profile max_tokens */
-  maxTokensOverride?: number;
-  /**
-   * External cancellation (server-side stop / graceful shutdown). The SDK
-   * surfaces it as an `abort` stream part — same shape as its idle timeout —
-   * so hosts handle both through one path.
-   */
-  abortSignal?: AbortSignal;
-  /** Host-owned hard-budget admission at every concrete provider attempt. */
-  providerAttemptHook?: ProviderAttemptHook;
-  /** Step cap for THIS turn (default: `profile.max_steps ?? 12`). Bots vary it by trigger. */
-  maxStepsOverride?: number;
-  /**
-   * Extra stop conditions OR-ed with the step cap — e.g. a Bots turn ends right
-   * after an accepted hand-off or a take-over request.
-   */
-  extraStopWhen?: StopCondition<ToolSet>[];
-  /**
-   * Per-step message rewrite, applied before every step (the engine's own
-   * last-step `toolChoice:'none'` still applies). Bots use it to stub earlier
-   * browser snapshots so a long turn's context stays bounded. Must keep every
-   * tool-call/result pair intact and should only change at batch points so the
-   * provider prefix cache survives.
-   */
-  prepareStepMessages?: (args: { stepNumber: number; messages: ModelMessage[] }) => ModelMessage[] | undefined;
-}
+/** The streaming host takes exactly the shared loop input. */
+export type ChatEngineInput = AgentLoopInput;
 
 export interface ChatEngineResult {
   text: string;
@@ -100,20 +56,6 @@ export interface ChatEngineResult {
   durationMs: number;
   dsmlRecoveries: DsmlRecoveryEvent[];
 }
-
-/**
- * Bound every chat turn at the SDK layer, independently from the NDJSON
- * keepalive sent to the browser.
- *
- * `chunkMs` also spans local tool execution in AI SDK v6, so it must stay above
- * the observed 30–100s image-generation window. The total bound prevents a
- * multi-step agent loop from living forever.
- */
-export const CHAT_STREAM_TIMEOUT = {
-  totalMs: 15 * 60_000,
-  stepMs: 4 * 60_000,
-  chunkMs: 2 * 60_000,
-} as const;
 
 // ─── Summarize Output ────────────────────────────────────
 
@@ -168,7 +110,7 @@ export function summarizeOutput(toolName: string, output: Record<string, unknown
 // ─── Chat Stream ─────────────────────────────────────────
 
 /**
- * Create a streaming chat session.
+ * Create a streaming chat session on the shared loop assembly.
  *
  * Returns the AI SDK StreamTextResult plus metadata for the caller.
  * The caller (route) is responsible for iterating the stream and persisting results.
@@ -177,322 +119,32 @@ export async function createChatStreamAsync(input: ChatEngineInput): Promise<{
   streamResult: StreamTextResult<ToolSet, never>;
   dsmlRecoveries: DsmlRecoveryEvent[];
   startTime: number;
-  /**
-   * Registry id (`flash`, `pro`, …) when the model came from the catalog,
-   * otherwise the raw upstream name. Deliberately NOT `modelConfig.model` —
-   * that is the *primary* provider's name and does not change when the chain
-   * falls through to a backup, so it would claim a provider that never ran.
-   */
+  /** Registry id when the model came from the catalog — see PreparedAgentLoop.modelId. */
   modelId: string;
 }> {
-  const {
-    profile,
-    messages,
-    tools,
-    systemPrompt,
-    modelOverride,
-    temperatureOverride,
-    maxTokensOverride,
-    abortSignal,
-    providerAttemptHook,
-  } = input;
-
-  const startTime = Date.now();
-  // Apply model override (e.g. fast/slow thinking toggle from frontend).
-  // Must go through applyModelOverride — profiles resolve via the registry
-  // (`id`), so naively setting `.model` would be silently ignored.
-  // resolveModelConfig folds in the catalog's per-model options — the profile
-  // no longer carries them, and an override must run on the NEW model's
-  // behavior, not the previous one's.
-  const modelConfig = resolveModelConfig(
-    modelOverride ? applyModelOverride(profile.model, modelOverride) : { ...profile.model },
-  );
-
-  // ── Create model ──
-  const rawModel = await createModelFromConfig(
-    modelConfig,
-    providerAttemptHook ? { onProviderAttempt: providerAttemptHook } : {},
-  );
-
-  // ── DSML interceptor for DeepSeek models ──
-  // Registry-id profiles (the default, e.g. `id: flash`) don't populate
-  // `modelConfig.provider`, so the old bare `=== 'deepseek'` check silently
-  // skipped interception and leaked raw DSML tool-call markup into the answer.
-  // resolvesToDeepSeek() looks through the registry entry to the real model.
-  const dsmlRecoveries: DsmlRecoveryEvent[] = [];
-  const model = resolvesToDeepSeek(modelConfig)
-    ? wrapLanguageModel({
-        model: rawModel as Parameters<typeof wrapLanguageModel>[0]['model'],
-        middleware: createDsmlInterceptor((event) => {
-          dsmlRecoveries.push(event);
-          logger.warn('[chat-engine] DSML tool call recovered', {
-            sessionId: input.sessionId,
-            tools: event.toolCalls.map((t) => t.name),
-          });
-        }),
-      })
-    : rawModel;
-
-  // ── Prepare messages with time context ──
-  // Cast: only user messages ever carry image parts (chat-vision contract),
-  // which is exactly what ModelMessage's per-role content types require.
-  const enrichedMessages = injectTimeContext(messages).map((m) => ({
-    role: m.role as 'user' | 'assistant' | 'system',
-    content: m.content,
-  })) as ModelMessage[];
-
-  const providerOptions = buildProviderOptions(modelConfig);
-  const maxSteps = input.maxStepsOverride ?? profile.max_steps ?? 12;
-
-  // Sampling params: request override wins, then profile YAML options.
-  // AI SDK v6 names the output cap `maxOutputTokens` — the old `maxTokens`
-  // spread was silently dropped.
-  const temperature = temperatureOverride ?? modelConfig.options?.temperature;
-  const maxOutputTokens = maxTokensOverride ?? modelConfig.options?.max_tokens;
-
-  const streamResult = streamText({
-    model,
-    system: systemPrompt,
-    messages: enrichedMessages,
-    tools,
-    experimental_repairToolCall: createToolCallRepair(input.sessionId),
-    stopWhen: input.extraStopWhen?.length ? [stepCountIs(maxSteps), ...input.extraStopWhen] : stepCountIs(maxSteps),
-    timeout: CHAT_STREAM_TIMEOUT,
-    toolChoice: (profile.tool_choice ?? 'auto') as any,
-    prepareStep: ({ stepNumber, messages: stepMessages }: { stepNumber: number; messages: ModelMessage[] }) => {
-      const rewritten = input.prepareStepMessages?.({ stepNumber, messages: stepMessages });
-      if (stepNumber === maxSteps - 1) {
-        return { toolChoice: 'none' as const, ...(rewritten ? { messages: rewritten } : {}) };
-      }
-      return rewritten ? { messages: rewritten } : {};
-    },
-    ...(providerOptions ? { providerOptions } : {}),
-    ...(temperature !== undefined ? { temperature } : {}),
-    ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
-    ...(abortSignal ? { abortSignal } : {}),
-  });
-
-  return { streamResult, dsmlRecoveries, startTime, modelId: modelConfig.id ?? modelConfig.model };
-}
-
-/**
- * Last chance for a tool call whose arguments would not parse.
- *
- * A malformed argument string otherwise discards the whole call, and the model
- * does not reliably recover: on dev, three consecutive `workflow_plan` drafts
- * broke this way and the model abandoned orchestration entirely rather than
- * retrying a fourth time. The repair is local and deterministic (see
- * `repair-tool-json.ts`); a wrong TOOL NAME is not repairable here and is left
- * to fail, since guessing which tool was meant is a different and worse bet.
- *
- * Repairs are logged: a model that needs this often is telling us its tool
- * schema is too big or its description too vague, and that belongs in the
- * friction queue rather than being silently absorbed.
- */
-function createToolCallRepair(sessionId?: string): ToolCallRepairFunction<ToolSet> {
-  return async ({ toolCall, error }) => {
-    if (NoSuchToolError.isInstance(error)) return null;
-
-    const repaired = repairJsonArguments(toolCall.input);
-    if (repaired === null || repaired === toolCall.input) {
-      logger.warn('[chat-engine] tool call arguments could not be repaired', {
-        sessionId,
-        tool: toolCall.toolName,
-        bytes: toolCall.input?.length,
-      });
-      return null;
-    }
-
-    logger.warn('[chat-engine] repaired malformed tool call arguments', {
-      sessionId,
-      tool: toolCall.toolName,
-      bytes: toolCall.input.length,
-    });
-    return { ...toolCall, input: repaired };
+  const prepared = await prepareAgentLoop(input);
+  const streamResult = streamText(prepared.settings);
+  return {
+    streamResult,
+    dsmlRecoveries: prepared.dsmlRecoveries,
+    startTime: prepared.startTime,
+    modelId: prepared.modelId,
   };
 }
 
-// ─── Final-Answer Guarantee ──────────────────────────────
-
-/**
- * Build a "answer now, no tools" continuation stream.
- *
- * The agent loop occasionally exhausts `max_steps` calling tools without ever
- * emitting an assistant answer (the model keeps searching, or leaks a DSML tool
- * call on the forced final step). Both the streaming and non-stream hosts end
- * up with empty text. When a host detects that (no text produced but tools did
- * run), it calls this to run ONE more generation — the original conversation
- * plus a PLAIN-TEXT digest of the tool results already gathered, tools disabled
- * — so the consumer never gets an empty assistant turn.
- *
- * The gathered evidence is flattened to plain text rather than replayed as
- * structured tool-call/tool-result messages on purpose: replaying that history
- * primes the model to keep calling tools (and leak DSML), which is exactly the
- * loop we're escaping. Thinking is disabled for speed; `toolChoice: 'none'`
- * keeps the DSML interceptor from recovering any residual leak.
- */
-interface FinalAnswerInput {
-  profile: EngineProfile;
-  systemPrompt: string;
-  /** The original conversation passed to createChatStreamAsync. */
-  baseMessages: EngineMessage[];
-  /** The completed primary stream — its gathered tool results are reused. */
-  priorResult: StreamTextResult<ToolSet, never>;
-  providerAttemptHook?: ProviderAttemptHook;
-}
-
-type FinalAnswerStreamFactory = (input: FinalAnswerInput) => Promise<StreamTextResult<ToolSet, never>>;
-
-interface UsageTotals {
-  inputTokens: number;
-  outputTokens: number;
-  cachedInputTokens: number;
-  reasoningTokens: number;
-}
+// ─── Final-Answer Guarantee (streaming) ──────────────────
 
 /** Extra provider calls are not part of the primary StreamTextResult promises. */
 const finalAnswerUsageByPrimary = new WeakMap<object, UsageTotals>();
 
-function emptyUsageTotals(): UsageTotals {
-  return { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, reasoningTokens: 0 };
-}
-
-function addUsage(target: UsageTotals, usage: unknown): void {
-  if (!usage || typeof usage !== 'object') return;
-  const value = usage as Record<string, unknown>;
-  const add = (key: keyof UsageTotals) => {
-    const amount = value[key];
-    if (typeof amount === 'number' && Number.isFinite(amount) && amount > 0) target[key] += amount;
-  };
-  add('inputTokens');
-  add('outputTokens');
-  add('cachedInputTokens');
-  add('reasoningTokens');
-}
-
-/** Flatten the prior turn's tool-result messages into a plain-text evidence digest. */
-function digestToolResults(priorTurn: ModelMessage[]): string {
-  const MAX_PER_RESULT = 2000;
-  const MAX_TOTAL = 16000;
-  const blocks: string[] = [];
-  for (const m of priorTurn as Array<{ role: string; content: unknown }>) {
-    if (m.role !== 'tool' || !Array.isArray(m.content)) continue;
-    for (const part of m.content as Array<{ type?: string; toolName?: string; output?: unknown }>) {
-      if (part?.type !== 'tool-result') continue;
-      const raw = (part.output as { value?: unknown })?.value ?? part.output;
-      let text: string;
-      try {
-        text = typeof raw === 'string' ? raw : JSON.stringify(raw);
-      } catch {
-        text = String(raw);
-      }
-      blocks.push(`### ${part.toolName ?? 'tool'}\n${text.slice(0, MAX_PER_RESULT)}`);
-    }
-  }
-  return blocks.join('\n\n').slice(0, MAX_TOTAL);
-}
-
-async function createFinalAnswerStreamAsync(input: FinalAnswerInput): Promise<StreamTextResult<ToolSet, never>> {
-  const { profile, systemPrompt, baseMessages, priorResult, providerAttemptHook } = input;
-
-  const modelConfig = resolveModelConfig({
-    ...profile.model,
-    options: { ...profile.model.options, thinking: false },
-  });
-  const rawModel = await createModelFromConfig(
-    modelConfig,
-    providerAttemptHook ? { onProviderAttempt: providerAttemptHook } : {},
-  );
-  const model = resolvesToDeepSeek(modelConfig)
-    ? wrapLanguageModel({
-        model: rawModel as Parameters<typeof wrapLanguageModel>[0]['model'],
-        middleware: createDsmlInterceptor(),
-      })
-    : rawModel;
-
-  const digest = digestToolResults((await priorResult.response).messages ?? []);
-  const messages: ModelMessage[] = [
-    ...injectTimeContext(baseMessages).map(
-      (m) => ({ role: m.role as 'user' | 'assistant' | 'system', content: m.content }) as ModelMessage,
-    ),
-    {
-      role: 'user',
-      content:
-        `[Information already gathered from the knowledge base:]\n\n${digest || '(no results)'}\n\n` +
-        `[Tool use is now disabled. Using only the information above, answer my most recent question in plain text. ` +
-        `If the information is insufficient, say so briefly. Do not call any tools.]`,
-    },
-  ];
-
-  const providerOptions = buildProviderOptions(modelConfig);
-  const maxOutputTokens = modelConfig.options?.max_tokens;
-
-  return streamText({
-    model,
-    system: systemPrompt,
-    messages,
-    tools: {},
-    toolChoice: 'none',
-    timeout: CHAT_STREAM_TIMEOUT,
-    ...(providerOptions ? { providerOptions } : {}),
-    ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
-  });
-}
-
-/**
- * One final-answer pass, emitted as synthetic fullStream `text-delta` parts and
- * retried up to `maxAttempts` if a pass yields nothing. A pass can come back
- * empty when the model leaks DSML even here (the interceptor strips it); leaks
- * are intermittent per generation so a retry almost always lands a clean answer.
- * Empty passes yield nothing, so retrying never duplicates content.
- */
-async function* finalAnswerParts(
-  input: FinalAnswerInput,
-  onUsage: (usage: unknown) => void,
-  maxAttempts = FINAL_ANSWER_MAX_ATTEMPTS,
-  createStream: FinalAnswerStreamFactory = createFinalAnswerStreamAsync,
-): AsyncGenerator<{ type: 'text-delta'; text: string }> {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    let produced = '';
-    let fallbackStream: StreamTextResult<ToolSet, never> | undefined;
-    try {
-      fallbackStream = await createStream(input);
-      for await (const part of fallbackStream.fullStream) {
-        if (part.type === 'text-delta' && part.text) {
-          produced += part.text;
-          yield { type: 'text-delta', text: part.text };
-        }
-      }
-    } catch (err) {
-      logger.warn('[chat-engine] final-answer attempt failed', { attempt, err: String(err) });
-    } finally {
-      if (fallbackStream) {
-        const usage = await Promise.resolve(fallbackStream.totalUsage).catch(() => null);
-        onUsage(usage);
-      }
-    }
-    if (produced.trim()) return;
-  }
-}
-
-export const FINAL_ANSWER_MAX_ATTEMPTS = 3;
-
-/** Whether this model can enter the DeepSeek-only fallback path. */
-export function requiresFinalAnswerGuarantee(modelConfig: ModelConfig): boolean {
-  return resolvesToDeepSeek(modelConfig);
-}
-
 /**
  * Wrap a primary chat stream so it never ends with an empty assistant answer.
  *
- * This is the single host-facing seam for the DeepSeek-only failure mode where
+ * This is the streaming host's seam for the DeepSeek-only failure mode where
  * the agent loop exhausts its tool budget (or leaks a DSML call on the forced
- * `toolChoice:'none'` final step) and emits no text. Hosts iterate THIS instead
- * of `streamResult.fullStream` — the only line they change. Everything else (the
- * DSML interceptor, the digest, the retry) is quarantined in the kernel and
- * gated on `resolvesToDeepSeek`, so the whole workaround is removable in one
- * place once DeepSeek fixes their parser: delete dsml-interceptor.ts + this
- * section, then revert each host's one-line iteration swap.
+ * `toolChoice:'none'` final step) and emits no text (see final-answer.ts).
+ * Hosts iterate THIS instead of `streamResult.fullStream` — the only line they
+ * change.
  *
  * Mechanics: pass every part through untouched but hold back the terminal
  * `finish` part; if the loop produced no text yet ran tools, splice in the
@@ -506,6 +158,8 @@ export async function* withFinalAnswerGuarantee(
     systemPrompt: string;
     baseMessages: EngineMessage[];
     providerAttemptHook?: ProviderAttemptHook;
+    /** Same time-context choice as the primary loop. */
+    timeContext?: TimeContextOption;
     /** Deterministic provider seam for the fallback accounting test. */
     finalAnswerStreamFactory?: FinalAnswerStreamFactory;
   },
@@ -538,13 +192,15 @@ export async function* withFinalAnswerGuarantee(
   if (!sawText && toolRan && !sawAbort) {
     const extraUsage = emptyUsageTotals();
     finalAnswerUsageByPrimary.set(streamResult, extraUsage);
+    const gatheredMessages = (await Promise.resolve(streamResult.response).catch(() => null))?.messages ?? [];
     yield* finalAnswerParts(
       {
         profile: ctx.profile,
         systemPrompt: ctx.systemPrompt,
         baseMessages: ctx.baseMessages,
-        priorResult: streamResult,
+        gatheredMessages,
         ...(ctx.providerAttemptHook ? { providerAttemptHook: ctx.providerAttemptHook } : {}),
+        ...(ctx.timeContext !== undefined ? { timeContext: ctx.timeContext } : {}),
       },
       (usage) => addUsage(extraUsage, usage),
       FINAL_ANSWER_MAX_ATTEMPTS,

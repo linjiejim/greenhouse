@@ -300,4 +300,55 @@ describe('runAgentInSession transcript persistence', () => {
     expect(fixture.generate).not.toHaveBeenCalled();
     expect(fixture.appendAssistantIfTail).not.toHaveBeenCalled();
   });
+
+  it('sends prior turns before the prompt and forwards the time-context choice to the loop', async () => {
+    const fixture = createRunnerFixture();
+
+    await runAgentInSession({
+      db: fixture.db as never,
+      sessionId: 'session-1',
+      system: 'System',
+      prompt: 'Current prompt',
+      priorMessages: [
+        { role: 'user', content: 'Earlier question', created_at: '2026-10-01T02:00:00.000Z' },
+        { role: 'assistant', content: 'Earlier answer' },
+      ],
+      timeContext: false,
+      modelConfig: {} as never,
+      maxSteps: 2,
+      generate: fixture.generate,
+      usageContext,
+    });
+
+    expect(fixture.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          { role: 'user', content: 'Earlier question', created_at: '2026-10-01T02:00:00.000Z' },
+          { role: 'assistant', content: 'Earlier answer' },
+          { role: 'user', content: 'Current prompt' },
+        ],
+        timeContext: false,
+        sessionId: 'session-1',
+      }),
+    );
+  });
+
+  it('defaults to a single-prompt turn with the loop deciding the time context', async () => {
+    const fixture = createRunnerFixture();
+
+    await runAgentInSession({
+      db: fixture.db as never,
+      sessionId: 'session-1',
+      system: 'System',
+      prompt: 'Current prompt',
+      modelConfig: {} as never,
+      maxSteps: 2,
+      generate: fixture.generate,
+      usageContext,
+    });
+
+    const args = fixture.generate.mock.calls[0]![0];
+    expect(args.messages).toEqual([{ role: 'user', content: 'Current prompt' }]);
+    expect('timeContext' in args).toBe(false);
+  });
 });
