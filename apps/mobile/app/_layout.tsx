@@ -28,14 +28,17 @@
  * no signed-in screen survives under the login page); signed in on /login →
  * home.
  *
+ * Launch: the routes mount once auth and fonts are in; <Splash/> covers them
+ * until its mark has built itself in full, then fades away (src/ui/splash.tsx).
+ *
  * <RealtimeBridge/> runs the app's one WebSocket (src/realtime) — it decides
  * itself when to connect (signed in, Bots available, foreground).
  * <WidgetArtHost/> draws the home-screen widget's avatars off screen (src/widget).
  */
 
 import 'react-native-gesture-handler';
-import React, { useEffect } from 'react';
-import { Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -47,8 +50,8 @@ import { usePrefs } from '../src/store/prefs';
 import { setOnUnauthorized } from '../src/api/client';
 import { useWidgetSnapshot } from '../src/widget/snapshot';
 import { WidgetArtHost } from '../src/widget/art-host';
-import { typo, useApplyAppearance, useTheme } from '../src/theme';
-import { GreenhouseMark } from '../src/ui/logo';
+import { useApplyAppearance, useTheme } from '../src/theme';
+import { Splash } from '../src/ui/splash';
 import { DialogHost } from '../src/ui/dialogs';
 import { MenuHost } from '../src/ui/menu';
 import { ToastHost } from '../src/ui/toast';
@@ -90,9 +93,12 @@ export default function RootLayout() {
     setOnUnauthorized(() => logout());
   }, [bootstrap, hydratePrefs, logout]);
 
+  const ready = !loading && (fontsLoaded || !!fontError);
+  const [splashGone, setSplashGone] = useState(false);
+
   // Redirect based on auth state once bootstrap resolves.
   useEffect(() => {
-    if (loading || (!fontsLoaded && !fontError)) return;
+    if (!ready) return;
     const inAuthGroup = segments[0] === 'login';
     if (!user && !SIGNED_OUT_ROUTES.has(segments.join('/'))) {
       // drop pages / sheets stacked over home first, or they'd stay mounted
@@ -102,7 +108,7 @@ export default function RootLayout() {
     } else if (user && inAuthGroup) {
       router.replace('/');
     }
-  }, [loading, fontsLoaded, fontError, user, segments, router]);
+  }, [ready, user, segments, router]);
 
   // Home-screen widget snapshot (src/widget/snapshot.ts): published after sign-in, as the
   // Bots store changes in the foreground and on every background transition; cleared on
@@ -116,11 +122,8 @@ export default function RootLayout() {
           <StatusBar style="auto" />
           <RealtimeBridge />
           <WidgetArtHost />
-          {loading || (!fontsLoaded && !fontError) ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.background }}>
-              <GreenhouseMark size={96} animate />
-              <Text style={{ ...typo.title2, color: c.label, marginTop: 16 }}>Greenhouse</Text>
-            </View>
+          {!ready ? (
+            <View style={{ flex: 1, backgroundColor: c.background }} />
           ) : (
             <Stack screenOptions={{ ...stackDefaults(c, hex), headerShown: false }}>
               {/* title = the back-button label (a11y) for pages pushed over the conversation */}
@@ -162,12 +165,14 @@ export default function RootLayout() {
               {/* deep-link forwarder: renders nothing, re-points home at the thread */}
               <Stack.Screen name="bots/index" options={{ animation: 'none' }} />
               <Stack.Screen name="bots/needs-you" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="bots/request" options={sheetScreen([0.6, 1], { header: true })} />
+              {/* a card's decision: read in full (opaque, full height), then the pinned buttons */}
+              <Stack.Screen name="bots/request" options={sheetScreen([1], { header: true })} />
               <Stack.Screen name="bots/login" options={sheetScreen([1], { header: true })} />
               <Stack.Screen name="bots/profile" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="bots/bot-form" options={sheetScreen([1], { header: true })} />
-              <Stack.Screen name="bots/info" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="bots/invite" options={sheetScreen([0.6, 1], { header: true })} />
+              {/* Settings → My Bots: how a Bot is made (ask Sprouty first), one example Bot */}
+              <Stack.Screen name="bots/new-bot" options={sheetScreen([0.6, 1], { header: true })} />
+              <Stack.Screen name="bots/example" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="bots/archived" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="bots/relay" options={sheetScreen([0.6, 1], { header: true })} />
 
@@ -178,6 +183,8 @@ export default function RootLayout() {
               <Stack.Screen name="peek/html" options={{ ...detailScreen(c), presentation: 'modal' }} />
             </Stack>
           )}
+          {/* over the app until its mark is built and the app is ready, then it fades away */}
+          {splashGone ? null : <Splash ready={ready} onGone={() => setSplashGone(true)} />}
           <ToastHost />
           <MenuHost />
           <DialogHost />

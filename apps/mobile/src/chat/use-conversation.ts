@@ -52,7 +52,6 @@ import { handleStreamEvent, type Session, type StreamEventCallbacks } from '../s
 import { createSession, getSession } from '../api/sessions';
 import { ChatHttpError, getChatRun, stopChatRun, streamChat, streamChatRun, type RunStreamEvent } from '../api/chat';
 import { t } from '../lib/i18n';
-import { usePrefs } from '../store/prefs';
 import { useTags } from '../store/tags';
 import { fromStored, isErrorResult, sourceFromResult, webFromResult, type ChatMessage, type ToolStep } from './model';
 import { nextReveal, TICK_MS } from './stream-drain';
@@ -93,7 +92,7 @@ export function useConversation({
   initialId?: string;
   /** A new conversation's session now exists (point the route at it). */
   onCreated: (session: Session) => void;
-  /** Start a new conversation with this agent (`bot:<id>` / `sprouty`) instead of the saved default — not saved. */
+  /** Start a new conversation with this agent (`bot:<id>`) instead of Sprouty, the main Bot. */
   profile?: string;
   /**
    * A loaded session this screen must not render (a Bots conversation): return
@@ -556,7 +555,7 @@ export function useConversation({
         creatingRef.current = true; // block a double tap (and stop) while creating
         streamingRef.current = true;
         setStreaming(true);
-        const s = await createSession(profileRef.current || usePrefs.getState().profileId);
+        const s = await createSession(profileRef.current || 'sprouty');
         creatingRef.current = false;
         if (!s) {
           streamingRef.current = false;

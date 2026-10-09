@@ -5,25 +5,36 @@ import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '../theme';
 import { GREENHOUSE_PATHS } from './brand.generated';
 
+/** How long the mark takes to build itself (the launch splash plays it in full). */
+export const MARK_BUILD_MS = 1800;
+
 export function GreenhouseMark({
   size = 72,
   color,
   animate = false,
+  onBuilt,
 }: {
   size?: number;
   color?: string;
   animate?: boolean;
+  /** `animate`: the mark is whole — built, or static at once with Reduce Motion. */
+  onBuilt?: () => void;
 }) {
   const { hex } = useTheme();
   const [motionFinished, setMotionFinished] = useState(false);
   const progress = useRef(new Animated.Value(1)).current;
+  const onBuiltRef = useRef(onBuilt);
+  onBuiltRef.current = onBuilt;
   useEffect(() => {
     if (!animate) return;
     let alive = true;
     const stop = () => {
       progress.stopAnimation();
       progress.setValue(1);
-      if (alive) setMotionFinished(true);
+      if (alive) {
+        setMotionFinished(true);
+        onBuiltRef.current?.();
+      }
     };
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', (reduced) => {
       if (reduced) stop();
@@ -37,8 +48,14 @@ export function GreenhouseMark({
         }
         progress.setValue(0);
         setMotionFinished(false);
-        Animated.timing(progress, { toValue: 1, duration: 1300, useNativeDriver: true }).start(({ finished }) => {
-          if (alive && finished) setMotionFinished(true);
+        Animated.timing(progress, {
+          toValue: 1,
+          duration: MARK_BUILD_MS,
+          useNativeDriver: true,
+        }).start(({ finished }) => {
+          if (!alive || !finished) return;
+          setMotionFinished(true);
+          onBuiltRef.current?.();
         });
       })
       .catch(() => {

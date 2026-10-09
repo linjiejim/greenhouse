@@ -7,11 +7,12 @@ import { brandFont as font } from '../../src/ui/brand-font';
  *    decoration), role, and the 工作站 row (→ stations page),
  *  - 外观: theme (segmented; applied app-wide at once via Appearance) and
  *    language (menu picker),
- *  - 对话: default agent for new conversations (menu of GET /api/profiles),
- *    标签 (→ tag library page) and — internal accounts on iOS — 我的 Bot · {n}
- *    (→ /settings/bots); when that default is one of the member's Bots and
- *    Bots threads are on, the footer also says the ongoing conversation in
- *    Bots is the same Bot (spec docs/specs/20261008-mobile-bots.md D4),
+ *  - 对话: 标签 (→ tag library page), — internal accounts on iOS — 我的 Bot
+ *    · {n} (→ /settings/bots, where Bots are made and managed) and — when the
+ *    account has external tools — 连接器 · {n} (→ /settings/connectors: the
+ *    member's own keys and sign-ins). No default agent to pick (2026-10): new
+ *    chats start with Sprouty — the footer says so, and how to talk to one
+ *    Bot on its own (its profile → 新对话),
  *  - 用量 (when the account has limits), 关于 (version, OTA update),
  *  - 退出登录 (destructive, confirmed): the modal closes first, then the auth
  *    store signs out and the root layout routes to /login (local — can't fail).
@@ -27,7 +28,6 @@ import {
   HStack,
   LabeledContent,
   Picker,
-  ProgressView,
   Section,
   Text,
   VStack,
@@ -45,9 +45,8 @@ import {
 } from '@expo/ui/swift-ui/modifiers';
 import { saveAccountLocale } from '../../src/api/auth';
 import type { LangPref, ThemePref } from '../../src/store/prefs';
-import { useBotIdentityEnabled, useBotsEnabled } from '../../src/bots/availability';
+import { useBotIdentityEnabled } from '../../src/bots/availability';
 import { sproutyBot, useBots } from '../../src/bots/store';
-import { profileLabel } from '../../src/chat/profile-menu';
 import { compactNumber } from '../../src/lib/format';
 import { useT } from '../../src/lib/i18n';
 import { ROLE_LABEL, useSettings } from '../../src/settings/use-settings';
@@ -61,10 +60,10 @@ export default function Settings() {
   const t = useT();
   const { hex } = useTheme();
   const router = useRouter();
-  const { user, nickname, station, prefs, profiles, shownProfile, tagCount, tagsLoaded, version, update, signOut } =
+  const { user, nickname, station, prefs, tagCount, tagsLoaded, version, update, signOut, connectors } =
     useSettings();
-  const { theme, setTheme, lang, setLang, setProfileId } = prefs;
-  const myBots = useMyBots(shownProfile);
+  const { theme, setTheme, lang, setLang } = prefs;
+  const myBots = useMyBots();
 
   return (
     <>
@@ -147,36 +146,8 @@ export default function Settings() {
         {/* ── conversations ── */}
         <Section
           title={t('settings.conversations')}
-          footer={
-            <Text>
-              {myBots.defaultBot
-                ? `${t('settings.defaultAgentHint')}\n${t('bots.manage.mainFooter', { name: myBots.defaultBot })}`
-                : t('settings.defaultAgentHint')}
-            </Text>
-          }
+          footer={myBots.main ? <Text>{t('settings.newChatHint', { name: myBots.main })}</Text> : undefined}
         >
-          {profiles === null ? (
-            <LabeledContent label={t('settings.defaultAgent')}>
-              <ProgressView />
-            </LabeledContent>
-          ) : profiles.length === 0 ? (
-            <LabeledContent label={t('settings.defaultAgent')}>
-              <Text>{t('settings.unavailable')}</Text>
-            </LabeledContent>
-          ) : (
-            <Picker
-              label={t('settings.defaultAgent')}
-              selection={shownProfile}
-              onSelectionChange={(v) => setProfileId(String(v))}
-              modifiers={[pickerStyle('menu')]}
-            >
-              {profiles.map((p) => (
-                <Text key={p.id} modifiers={[tag(p.id)]}>
-                  {profileLabel(p, lang, t)}
-                </Text>
-              ))}
-            </Picker>
-          )}
           <FormNavRow
             label={t('settings.tags')}
             value={tagsLoaded ? String(tagCount) : ''}
@@ -187,6 +158,13 @@ export default function Settings() {
               label={t('settings.myBots')}
               value={myBots.count === null ? '' : String(myBots.count)}
               onPress={() => router.push('/settings/bots')}
+            />
+          ) : null}
+          {connectors !== null ? (
+            <FormNavRow
+              label={t('settings.connectors')}
+              value={String(connectors)}
+              onPress={() => router.push('/settings/connectors')}
             />
           ) : null}
         </Section>
@@ -230,27 +208,18 @@ export default function Settings() {
 /**
  * The 我的 Bot row (internal accounts on iOS — the identity routes need no
  * more, whatever the `bots` switch says) with the active Bot count, and the
- * name of the Bot new chats start with when the default agent is one of the
- * member's Bots (`sprouty` → the main Bot, `bot:<id>[@v]` → that Bot) and
- * Bots threads exist to have an ongoing conversation with it.
+ * main Bot's name (Sprouty, whom new chats start with) for the footer.
  */
-function useMyBots(profileId: string | undefined) {
+function useMyBots() {
   const shown = useBotIdentityEnabled();
-  const threads = useBotsEnabled();
   const botsLoaded = useBots((s) => s.botsLoaded);
   const count = useBots((s) => (s.botsLoaded ? s.bots.length : null));
   const loadBots = useBots((s) => s.loadBots);
-  const defaultBot = useBots((s) => {
-    if (!profileId) return null;
-    if (profileId === 'sprouty') return sproutyBot(s)?.name ?? null;
-    const id = profileId.startsWith('bot:') ? profileId.slice(4).split('@')[0] : null;
-    const bot = id ? s.byId[id] : undefined;
-    return bot && bot.status === 'active' ? bot.name : null;
-  });
+  const main = useBots((s) => sproutyBot(s)?.name ?? null);
 
   useEffect(() => {
     if (shown && !botsLoaded) void loadBots();
   }, [shown, botsLoaded, loadBots]);
 
-  return { shown, count, defaultBot: shown && threads ? defaultBot : null };
+  return { shown, count, main: shown ? main : null };
 }

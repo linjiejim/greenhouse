@@ -1,11 +1,14 @@
 /**
  * Everything the Settings root shows and changes, shared by both platforms'
  * views (app/settings/index.tsx — SwiftUI, index.android.tsx — Material):
- * account, preferences (theme / language / default agent), the station, tag
- * count, usage limits, version + which JS bundle is running, and sign-out.
+ * account, preferences (theme / language), the station, tag count, how many
+ * connectors the account can use (null: none / not for this account), usage
+ * limits, version + which JS bundle is running, and sign-out. There is no
+ * default agent to pick any more (2026-10): a new chat starts with Sprouty,
+ * a chat with one Bot from that Bot's profile.
  */
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
@@ -14,8 +17,8 @@ import { AFTER_DISMISS_MS, useAuth } from '../store/auth';
 import { usePrefs } from '../store/prefs';
 import { useTags } from '../store/tags';
 import { useActiveStation } from '../stations/use-active-station';
-import { effectiveProfile, useProfiles } from '../chat/profile-menu';
 import type { UserRole } from '../shared/greenhouse-types';
+import { listConnectors } from '../api/connectors';
 import { useT, type TranslationKey } from '../lib/i18n';
 import { confirmAction } from '../ui/dialogs';
 
@@ -35,16 +38,24 @@ export function useSettings() {
   const tagCount = useTags((s) => s.tags.length);
   const tagsLoaded = useTags((s) => s.loaded);
   const loadTags = useTags((s) => s.load);
-  // the composer's catalog cache — both pickers edit `prefs.profileId`
-  const profiles = useProfiles();
 
   useEffect(() => {
     void loadTags();
   }, [loadTags]);
 
-  // The stored id may be unset ('default') or stale (picked on another
-  // station); show the agent the server will actually use.
-  const shownProfile = useMemo(() => effectiveProfile(profiles, prefs.profileId)?.id, [profiles, prefs.profileId]);
+  // 连接器: only for an account with external tools (an internal member granted `mcp_call`)
+  const [connectors, setConnectors] = useState<number | null>(null);
+  const internal = !!user && user.role !== 'external';
+  useEffect(() => {
+    if (!internal) return undefined;
+    let alive = true;
+    void listConnectors().then((result) => {
+      if (alive) setConnectors(result?.enabled && result.connectors.length ? result.connectors.length : null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [internal]);
 
   const nickname = user?.nickname || t('settings.fallbackName');
   // "1.3.2 (5)" — marketing version + build number
@@ -71,10 +82,9 @@ export function useSettings() {
     nickname,
     station,
     prefs,
-    profiles,
-    shownProfile,
     tagCount,
     tagsLoaded,
+    connectors,
     version,
     update: updateLabel(t),
     signOut,

@@ -4,9 +4,10 @@
  * session, `title?` placeholder title, `ro?='1'` shared/read-only,
  * `compose?='1'` focus the composer — the widget's "新对话" deep link).
  *
- *  - New: a minimal hero (Sprouty + greeting) above the composer (plus an
- *    agent capsule when there is more than one agent); the first send creates the session, re-points the route with
- *    `router.setParams({ id })` (no remount) and the hero fades into the turn.
+ *  - New: a minimal hero (the member's Sprouty — tap it — + greeting) above
+ *    the composer; the first send creates the session (with Sprouty, or the
+ *    Bot of `?profile=`), re-points the route with `router.setParams({ id })`
+ *    (no remount) and the hero fades into the turn.
  *  - Existing: history loads, new turns stream (src/chat/use-conversation.ts).
  *
  * Chrome is native: inline title (live-updated by the server's title event),
@@ -79,7 +80,7 @@ import { prepareImage, uploadImage } from '../../../src/api/upload';
 import { useAuth } from '../../../src/store/auth';
 import { useTags } from '../../../src/store/tags';
 import { Composer, ReadOnlyBar, type ComposerImage } from '../../../src/chat/composer';
-import { useComposerBridge } from '../../../src/chat/composer-bridge';
+import { draftsFor, useComposerBridge } from '../../../src/chat/composer-bridge';
 import { AiMessage, UserMessage, type MessageAction } from '../../../src/chat/message';
 import { excerpt, plainText, transcript, type Annotation, type ChatMessage } from '../../../src/chat/model';
 import { openTurn, publishTurns } from '../../../src/chat/live-turn';
@@ -94,7 +95,7 @@ import { makeStyles, space, typo, useTheme } from '../../../src/theme';
 import { NativeButton } from '../../../src/ui/button';
 import { alertError, confirmAction, promptText } from '../../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
-import { PlantAvatar } from '../../../src/ui/plant-avatar';
+import { HeroAvatar } from '../../../src/chat/hero-avatar';
 import { toast } from '../../../src/ui/toast';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 import {
@@ -107,11 +108,11 @@ import { useRowCopy } from '../../../src/bots/drawer/conversation-row';
 import { rowTitle } from '../../../src/bots/drawer/row-text';
 import { useBotsWarm, useProfileBot } from '../../../src/bots/home/home-bridge';
 import { initialSurface } from '../../../src/bots/home/initial-surface';
+import { useHomeSurface } from '../../../src/bots/home/surface';
 import { forgetThread, lastThread, rememberThread, type LastThread } from '../../../src/bots/last-surface';
 import { homeNavCount, homeParams, onHomeNav, openNewChat, openThread, type HomeParams } from '../../../src/bots/nav';
-import { attentionCount, useBots } from '../../../src/bots/store';
+import { attentionCount, sproutyBot, useBots } from '../../../src/bots/store';
 import { BotThreadScreen } from '../../../src/bots/thread/thread-screen';
-import { BotAvatar } from '../../../src/bots/ui/bot-avatar';
 import { usePrefs } from '../../../src/store/prefs';
 
 const MAX_IMAGES = 4;
@@ -224,6 +225,8 @@ function Conversation() {
   // A new chat with one Bot ("Ask Dandy in a New Chat"): this chat only, never the saved default.
   const profile = identityOn && params.profile ? params.profile : undefined;
   const profileBot = useProfileBot(profile);
+  // the member's own Sprouty in the hero (its plant and colour), once the Bots list is in
+  const sprouty = useBots((st) => (botsOn ? sproutyBot(st) : null));
 
   const onCreated = useCallback((s: { id: string }) => router.setParams({ id: s.id }), [router]);
   // A Bots conversation reached by id (`greenhouse://chat/<id>`) belongs on its thread.
@@ -330,7 +333,7 @@ function Conversation() {
     focusInput();
   }, [pendingCount, focusInput, readOnly]);
   // An html-preview page's sendPrompt: text INTO the composer, after what is typed — never sent.
-  const draftCount = useComposerBridge((s) => s.drafts.length);
+  const draftCount = useComposerBridge(draftsFor());
   useEffect(() => {
     if (!draftCount) return;
     const texts = useComposerBridge.getState().takeDrafts();
@@ -611,23 +614,26 @@ function Conversation() {
         // scrolling, it stays put while the keyboard is up (a lift would push its top out of reach)
         style={[styles.hero, heroScrolls ? null : heroLift]}
       >
+        {/* the plant answers a tap (src/chat/hero-avatar.tsx); the words let touches through */}
         {profileBot ? (
-          <View pointerEvents="none" style={styles.heroFace}>
-            <BotAvatar bot={profileBot.bot} size={76} animate={focused} />
+          <View pointerEvents="box-none" style={styles.heroFace}>
+            <HeroAvatar bot={profileBot.bot} size={76} animate={focused} />
             {profileBot.bot ? (
-              <>
+              <View pointerEvents="none" style={styles.heroFace}>
                 <Text style={styles.heroTitle}>{profileBot.bot.name}</Text>
                 <Text style={styles.heroSub}>{t('bots.nav.profileHint', { name: profileBot.bot.name })}</Text>
-              </>
+              </View>
             ) : null}
           </View>
         ) : (
-          <View pointerEvents="none" style={styles.heroFace}>
-            <PlantAvatar size={76} animate={focused} />
-            <Text style={styles.heroTitle}>
-              {t('home.greetingFormat', { greeting: greeting(), name: user?.nickname ?? t('home.fallbackName') })}
-            </Text>
-            <Text style={styles.heroSub}>{t('home.title')}</Text>
+          <View pointerEvents="box-none" style={styles.heroFace}>
+            <HeroAvatar bot={sprouty} size={76} animate={focused} />
+            <View pointerEvents="none" style={styles.heroFace}>
+              <Text style={styles.heroTitle}>
+                {t('home.greetingFormat', { greeting: greeting(), name: user?.nickname ?? t('home.fallbackName') })}
+              </Text>
+              <Text style={styles.heroSub}>{t('home.title')}</Text>
+            </View>
           </View>
         )}
         {profileBot?.bot && profileBot.dm && botsOn ? (
@@ -875,6 +881,14 @@ export default function Home() {
     if (thread) rememberThread({ c, title: knownTitle || title });
     else forgetThread();
   }, [settled, hydrated, thread, c, knownTitle, title]);
+
+  // What is on screen — the drawer reads this, not the route (src/bots/home/surface.ts).
+  const publishSurface = useHomeSurface((s) => s.publish);
+  useEffect(() => {
+    publishSurface(
+      thread ? { id: '', c, profile: '' } : { id: params.id, c: '', profile: kind === 'wait' ? '' : params.profile },
+    );
+  }, [publishSurface, thread, c, params.id, params.profile, kind]);
 
   if (kind === 'wait') return <RestoreWait />;
   return thread ? (

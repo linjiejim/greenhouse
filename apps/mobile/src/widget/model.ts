@@ -14,7 +14,7 @@
  *   signal — "needs you" (pending cards) beats unread — and the avatar face
  *   that goes with it. `null` = Bots unavailable: the widget shows recent
  *   `sessions` instead.
- * - `defaultAgent` — who "New Chat" starts with (Settings → default agent).
+ * - `defaultAgent` — who "New Chat" starts with (Sprouty, the main Bot).
  *
  * Avatars: the widget can't draw SVG, so every face is rendered by the app
  * (./art-host.tsx) to `<key>.png` in the App Group. `artKey` hashes the SVG

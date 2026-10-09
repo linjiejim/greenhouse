@@ -5,7 +5,9 @@ import { BrandText as Text } from '../../src/ui/brand-text.android';
  *
  *  - account card (initial avatar, name, email), role, 工作站 → stations page,
  *  - 外观: theme (segmented; applied app-wide at once) and language (menu),
- *  - 对话: default agent (menu of GET /api/profiles) and 标签 → tag library,
+ *  - 对话: 标签 → tag library, 连接器 → /settings/connectors when the account
+ *    has external tools (no default agent to pick: new chats start with
+ *    Sprouty, 2026-10),
  *  - 用量 (when the account has limits), 关于 (version, which JS bundle runs),
  *  - 退出登录 (error color, confirmed).
  */
@@ -16,7 +18,6 @@ import { Box, ListItem } from '@expo/ui/jetpack-compose';
 import { background, clip, fillMaxWidth, Shapes, size } from '@expo/ui/jetpack-compose/modifiers';
 import { saveAccountLocale } from '../../src/api/auth';
 import type { LangPref, ThemePref } from '../../src/store/prefs';
-import { profileLabel } from '../../src/chat/profile-menu';
 import { compactNumber } from '../../src/lib/format';
 import { useT } from '../../src/lib/i18n';
 import { ROLE_LABEL, useSettings } from '../../src/settings/use-settings';
@@ -35,9 +36,9 @@ export default function Settings() {
   const t = useT();
   const m = useM3();
   const router = useRouter();
-  const { user, nickname, station, prefs, profiles, shownProfile, tagCount, tagsLoaded, version, update, signOut } =
+  const { user, nickname, station, prefs, tagCount, tagsLoaded, version, update, signOut, connectors } =
     useSettings();
-  const { theme, setTheme, lang, setLang, setProfileId } = prefs;
+  const { theme, setTheme, lang, setLang } = prefs;
 
   return (
     <>
@@ -103,25 +104,21 @@ export default function Settings() {
         </FormSection>
 
         {/* ── conversations ── */}
-        <FormSection title={t('settings.conversations')} footer={t('settings.defaultAgentHint')}>
-          {profiles === null ? (
-            <FormValueRow label={t('settings.defaultAgent')} loading />
-          ) : profiles.length === 0 ? (
-            <FormValueRow label={t('settings.defaultAgent')} value={t('settings.unavailable')} />
-          ) : (
-            <FormSelectRow
-              label={t('settings.defaultAgent')}
-              value={shownProfile}
-              onChange={setProfileId}
-              options={profiles.map((p) => ({ value: p.id, label: profileLabel(p, lang, t) }))}
-            />
-          )}
+        <FormSection title={t('settings.conversations')}>
           <FormNavRow
             label={t('settings.tags')}
             value={tagsLoaded ? String(tagCount) : undefined}
             icon="tag"
             onPress={() => router.push('/settings/tags')}
           />
+          {connectors !== null ? (
+            <FormNavRow
+              label={t('settings.connectors')}
+              value={String(connectors)}
+              icon="plug"
+              onPress={() => router.push('/settings/connectors')}
+            />
+          ) : null}
         </FormSection>
 
         {/* ── usage ── */}

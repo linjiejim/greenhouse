@@ -1,7 +1,6 @@
 /**
- * Lightweight UI preferences shared across screens (theme, language, default
- * agent profile, the Bots thread to reopen on a cold start, which details a
- * reply shows). In-memory store
+ * Lightweight UI preferences shared across screens (theme, language, the Bots
+ * thread to reopen on a cold start, which details a reply shows). In-memory store
  * hydrated from persistent storage at startup (SecureStore on native,
  * localStorage on web — same backend as tokens).
  */
@@ -45,9 +44,6 @@ interface Prefs {
   setTheme: (t: ThemePref) => void;
   lang: LangPref;
   setLang: (l: LangPref) => void;
-  /** Agent profile used when starting a new conversation. */
-  profileId: string;
-  setProfileId: (id: string) => void;
   /** Which reply details are shown (all off by default). */
   details: ReplyDetails;
   setDetail: (detail: ReplyDetail, on: boolean) => void;
@@ -72,11 +68,6 @@ export const usePrefs = create<Prefs>((set, get) => ({
     set({ lang });
     void savePref('lang', lang);
   },
-  profileId: 'default',
-  setProfileId: (profileId) => {
-    set({ profileId });
-    void savePref('profile', profileId);
-  },
   details: DETAILS_OFF,
   setDetail: (detail, on) => {
     if (get().details[detail] === on) return;
@@ -98,17 +89,15 @@ export const usePrefs = create<Prefs>((set, get) => ({
     void savePref('lastThreads', entries.length ? JSON.stringify(lastThreads) : null);
   },
   hydrate: async () => {
-    const [theme, lang, profileId, lastThreads, details] = await Promise.all([
+    const [theme, lang, lastThreads, details] = await Promise.all([
       loadPref('theme'),
       loadPref('lang'),
-      loadPref('profile'),
       loadPref('lastThreads'),
       loadPref('details'),
     ]);
     set({
       ...(theme === 'light' || theme === 'dark' || theme === 'system' ? { theme } : {}),
       ...(lang === 'zh' || lang === 'en' ? { lang } : {}),
-      ...(profileId ? { profileId } : {}),
       lastThreads: parseLastThreads(lastThreads),
       details: parseDetails(details),
       hydrated: true,

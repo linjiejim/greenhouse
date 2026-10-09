@@ -7,8 +7,8 @@
  * Timing (`useWidgetSnapshot`, mounted in app/_layout.tsx):
  * - signed in (startup, sign-in, after a station switch): a refresh — the Bots
  *   lists or, without Bots, recent sessions, plus the agent catalog — then publish;
- * - in the foreground: whenever the Bots store, the default agent or the
- *   language changes, 2 s after it settles (the WebSocket keeps the store live;
+ * - in the foreground: whenever the Bots store or the language changes, 2 s
+ *   after it settles (the WebSocket keeps the store live;
  *   reloads triggered from the foreground don't count against WidgetKit's budget);
  * - going to the background: published at once from what the app holds;
  * - signed out, or a station switch starting: cleared (launcher-only) — the
@@ -32,7 +32,6 @@ import {
   buildWidgetSnapshot,
   snapshotArtKeys,
   withoutMissingArt,
-  type AvatarSource,
   type WidgetInput,
   type WidgetSession,
 } from './model';
@@ -46,16 +45,12 @@ let sessions: WidgetSession[] = [];
 /** Bumped by every publish / clear: an older publish still drawing faces never writes after it. */
 let generation = 0;
 
-/** The default agent: the catalog's effective pick, drawn as the Bot it is when we know it. */
+/** Who "New Chat" starts with — always Sprouty: the member's main Bot when we know it, else the catalog's entry. */
 function defaultAgent(bots: BotsState): WidgetInput['defaultAgent'] {
-  const { lang, profileId } = usePrefs.getState();
-  const profile = effectiveProfile(cachedProfiles(), profileId);
   const sprouty = sproutyBot(bots);
-  if (!profile) return sprouty ? { name: sprouty.name, avatar: sprouty } : null;
-  let bot: (AvatarSource & { name: string }) | null = null;
-  if (profile.id === 'sprouty') bot = sprouty;
-  else if (profile.id.startsWith('bot:')) bot = bots.byId[profile.id.slice(4).split('@')[0]] ?? null;
-  return { name: bot?.name ?? (profile.name_i18n?.[lang] || profile.name), avatar: bot };
+  if (sprouty) return { name: sprouty.name, avatar: sprouty };
+  const profile = effectiveProfile(cachedProfiles(), 'sprouty');
+  return profile ? { name: profile.name_i18n?.[usePrefs.getState().lang] || profile.name, avatar: null } : null;
 }
 
 async function fetchSessions(): Promise<void> {
@@ -167,7 +162,7 @@ export function useWidgetSnapshot(): void {
       }
     });
     const offPrefs = usePrefs.subscribe((s, prev) => {
-      if (s.lang !== prev.lang || s.profileId !== prev.profileId) settle();
+      if (s.lang !== prev.lang) settle();
     });
     const offApp = AppState.addEventListener('change', (state) => {
       if (state === 'background') {
