@@ -12,7 +12,13 @@
 
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildProviderOptions, createModelFromConfig, hasCheapPromptCache, isDeepSeekFamily } from '../model.js';
+import {
+  buildProviderOptions,
+  createModelFromConfig,
+  hasCheapPromptCache,
+  isDeepSeekFamily,
+  runsDeepSeekThinking,
+} from '../model.js';
 import { DEFAULT_MODEL_REGISTRY, setModelRegistry, type ModelEntry } from '../registry.js';
 
 const KEY_ENV = 'TEST_DEEPSEEK_FAMILY_KEY';
@@ -32,6 +38,18 @@ const REGISTRY: Record<string, ModelEntry> = {
   generic: {
     name: 'Some other OpenAI-compatible endpoint',
     providers: [
+      { provider: 'openai-compatible', model: 'gpt-4o-mini', apiKeyEnv: KEY_ENV, baseUrl: 'https://api.openai.com/v1' },
+    ],
+  },
+  mixed: {
+    name: 'DeepSeek first, an OpenAI model as fallback',
+    providers: [
+      {
+        provider: 'openai-compatible',
+        model: 'deepseek-v4-flash',
+        apiKeyEnv: KEY_ENV,
+        baseUrl: 'https://api.deepseek.com',
+      },
       { provider: 'openai-compatible', model: 'gpt-4o-mini', apiKeyEnv: KEY_ENV, baseUrl: 'https://api.openai.com/v1' },
     ],
   },
@@ -137,5 +155,24 @@ describe('hasCheapPromptCache', () => {
     expect(hasCheapPromptCache(config('generic'))).toBe(false);
     expect(hasCheapPromptCache(config('gateway'))).toBe(false);
     expect(hasCheapPromptCache({ id: 'missing', provider: '', model: '' })).toBe(false);
+  });
+});
+
+describe('runsDeepSeekThinking', () => {
+  // Where it is true, callers send no temperature: DeepSeek ignores it while
+  // thinking and @ai-sdk/deepseek warns on every call.
+  it('follows the catalog switch, else the provider default (V4 and the reasoner think)', () => {
+    expect(runsDeepSeekThinking(config('flash'))).toBe(true);
+    expect(runsDeepSeekThinking(config('flash', { thinking: true }))).toBe(true);
+    expect(runsDeepSeekThinking(config('flash', { thinking: false }))).toBe(false);
+    expect(runsDeepSeekThinking({ provider: 'deepseek', model: 'deepseek-reasoner' })).toBe(true);
+    expect(runsDeepSeekThinking({ provider: 'deepseek', model: 'deepseek-chat' })).toBe(false);
+  });
+
+  it('is false off the DeepSeek client, and when a fallback would not think', () => {
+    expect(runsDeepSeekThinking(config('generic', { thinking: true }))).toBe(false);
+    expect(runsDeepSeekThinking(config('gateway'))).toBe(false);
+    expect(runsDeepSeekThinking(config('mixed'))).toBe(false);
+    expect(runsDeepSeekThinking({ id: 'missing', provider: '', model: '' })).toBe(false);
   });
 });

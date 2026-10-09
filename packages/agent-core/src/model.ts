@@ -438,8 +438,51 @@ export function hasCheapPromptCache(config: ModelConfig): boolean {
     : config.provider
       ? { provider: config.provider, model: config.model ?? '', baseUrl: config.baseUrl }
       : undefined;
-  if (!primary) return false;
-  return primary.provider === 'deepseek' || isDeepSeekFamily(primary.model, primary.baseUrl);
+  return primary ? usesDeepSeekClient(primary) : false;
+}
+
+/**
+ * Would the factory build this provider entry on the DeepSeek client? The
+ * one test createModelDirect, buildProviderOptions, hasCheapPromptCache and
+ * runsDeepSeekThinking share, so they cannot drift apart.
+ */
+function usesDeepSeekClient(p: { provider: string; model: string; baseUrl?: string }): boolean {
+  return (
+    p.provider === 'deepseek' ||
+    (p.provider === 'openai-compatible' && isDeepSeekFamily(p.model, p.baseUrl || process.env.LLM_BASE_URL))
+  );
+}
+
+/** @ai-sdk/deepseek's own test for the family that thinks by default. */
+function isDeepSeekV4Model(model: string): boolean {
+  return model.includes('deepseek-v4') || model.startsWith('deepseek-flash') || model.startsWith('deepseek-pro');
+}
+
+/**
+ * Will DeepSeek answer this config with thinking on?
+ *
+ * In that mode DeepSeek ignores `temperature`, and @ai-sdk/deepseek drops it
+ * with a warning on every call — once per agent step. Callers leave it out
+ * then: same answer, quiet log. Mirrors the provider: the catalog's
+ * `thinking` option wins (buildProviderOptions puts it on the wire); without
+ * one, `deepseek-reasoner` and the V4 family think by default. Every provider
+ * in a fallback chain must agree, so a non-thinking fallback keeps its
+ * temperature. Errs toward "no": an unrecognised model keeps its sampling
+ * settings — the worst case is the warning, never a different answer.
+ */
+export function runsDeepSeekThinking(config: ModelConfig): boolean {
+  const chain = config.id
+    ? getAvailableProviders(config.id)
+    : config.provider
+      ? [{ provider: config.provider, model: config.model ?? '', baseUrl: config.baseUrl }]
+      : [];
+  if (chain.length === 0) return false;
+  const explicit = config.options?.thinking;
+  return chain.every(
+    (p) =>
+      usesDeepSeekClient(p) &&
+      (explicit !== undefined ? explicit === true : p.model === 'deepseek-reasoner' || isDeepSeekV4Model(p.model)),
+  );
 }
 
 /**
@@ -472,19 +515,11 @@ export function buildProviderOptions(config: ModelConfig): any {
   const primary = config.id
     ? getModelEntry(config.id)?.providers[0]
     : { provider: config.provider, model: config.model, baseUrl: config.baseUrl };
-  let effectiveProvider = primary?.provider;
-  if (
-    effectiveProvider === 'openai-compatible' &&
-    primary &&
-    isDeepSeekFamily(primary.model, primary.baseUrl || process.env.LLM_BASE_URL)
-  ) {
-    effectiveProvider = 'deepseek';
-  }
 
   // Only DeepSeek has a thinking switch. V4 thinks by default, so both values
   // go on the wire explicitly: the catalog's `thinking` option is then the
   // truth, not a hint the endpoint may or may not share.
-  if (effectiveProvider !== 'deepseek') return undefined;
+  if (!primary || !usesDeepSeekClient(primary)) return undefined;
   if (config.options?.thinking === true) return { deepseek: { thinking: { type: 'enabled' } } };
   if (config.options?.thinking === false) return { deepseek: { thinking: { type: 'disabled' } } };
   return undefined;

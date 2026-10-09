@@ -15,6 +15,7 @@ import {
   createModelFromConfig,
   buildProviderOptions,
   resolveModelConfig,
+  runsDeepSeekThinking,
   usageTotalsFrom,
 } from '@greenhouse/agent-core';
 import { resolveProfileAsync } from '../profiles/profile.js';
@@ -113,7 +114,11 @@ export async function complete(
   });
   const model = await createModelFromConfig(modelConfig, { onProviderAttempt: providerAttemptHook });
   const providerOptions = buildProviderOptions(modelConfig);
-  const temperature = options.temperature ?? (modelConfig.options?.temperature as number | undefined) ?? 0.7;
+  // Left out where DeepSeek thinks: it ignores temperature there and the
+  // provider warns on every call (runsDeepSeekThinking).
+  const temperature = runsDeepSeekThinking(modelConfig)
+    ? undefined
+    : (options.temperature ?? (modelConfig.options?.temperature as number | undefined) ?? 0.7);
   const maxTokens = options.maxTokens ?? (modelConfig.options?.max_tokens as number | undefined) ?? 4096;
   const systemPrompt = options.systemPrompt ?? profile.system_prompt;
 
@@ -128,7 +133,7 @@ export async function complete(
     messages: options.messages
       .filter((m): m is CompletionMessage & { role: 'user' | 'assistant' } => m.role !== 'system')
       .map((m) => ({ role: m.role, content: m.content })),
-    temperature,
+    ...(temperature !== undefined ? { temperature } : {}),
     maxOutputTokens: maxTokens,
     maxRetries: options.maxRetries ?? 3,
     ...(providerOptions ? { providerOptions } : {}),

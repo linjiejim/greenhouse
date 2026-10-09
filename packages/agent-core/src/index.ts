@@ -53,6 +53,7 @@ export {
   applyModelOverride,
   resolveModelConfig,
   hasCheapPromptCache,
+  runsDeepSeekThinking,
   DEFAULT_PROVIDER_MAX_OUTPUT_TOKENS,
 } from './model.js';
 export type {

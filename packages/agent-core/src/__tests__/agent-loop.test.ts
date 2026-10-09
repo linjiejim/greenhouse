@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   deepseek: false,
+  thinking: false,
   options: {} as Record<string, unknown>,
   model: null as unknown,
 }));
@@ -26,6 +27,7 @@ vi.mock('../model.js', () => ({
     options: { ...state.options, ...config.options },
   }),
   resolvesToDeepSeek: () => state.deepseek,
+  runsDeepSeekThinking: () => state.thinking,
 }));
 
 import { prepareAgentLoop, runAgentLoop, type AgentLoopInput } from '../agent-loop.js';
@@ -92,6 +94,7 @@ function lastUserText(prompt: Array<{ role: string; content: unknown }>): string
 
 beforeEach(() => {
   state.deepseek = false;
+  state.thinking = false;
   state.options = {};
   state.model = null;
 });
@@ -134,6 +137,18 @@ describe('runAgentLoop — the headless host of the shared assembly', () => {
     await runAgentLoop(input());
 
     expect(calls[0]!.temperature).toBe(0.3);
+    expect(calls[0]!.maxOutputTokens).toBe(1234);
+  });
+
+  it('sends no temperature where DeepSeek thinks — it is ignored there and warned about on every step', async () => {
+    const { model, calls } = scripted([step([{ type: 'text', text: 'ok' }], 'stop')]);
+    state.model = model;
+    state.options = { temperature: 0.3, max_tokens: 1234 };
+    state.thinking = true;
+
+    await runAgentLoop(input({ temperatureOverride: 0.9 }));
+
+    expect(calls[0]!.temperature).toBeUndefined();
     expect(calls[0]!.maxOutputTokens).toBe(1234);
   });
 
