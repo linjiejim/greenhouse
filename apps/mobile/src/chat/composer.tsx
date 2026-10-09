@@ -7,8 +7,9 @@
  * `+` opens a native menu (拍照 / 照片图库 — images only, the upload API
  * rejects other types); the field grows to ~6 lines then scrolls; the send
  * button is the accent-tinted glass button and turns into stop while a reply
- * streams. For a new conversation an agent-profile capsule (ProfileMenu) sits
- * above the row — only when there is more than one agent to pick. Pure view:
+ * streams. No agent picker above it (2026-10-09): a new chat takes the
+ * default agent from Settings, and a chat with one Bot starts from that Bot
+ * (the drawer, its profile, "New Chat" in its thread). Pure view:
  * the screen owns the draft, attachments and keyboard placement (it wraps this
  * in a KeyboardStickyView) and gets the control layer's height through
  * `onHeight` to pad the message list.
@@ -32,7 +33,6 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import Animated, {
   FadeIn,
-  FadeOut,
   LinearTransition,
   useAnimatedStyle,
   useReducedMotion,
@@ -46,7 +46,6 @@ import { Icon, Spinner, Touchable } from '../ui/core';
 import { Glass, GlassGroup, GlassIconButton, LIQUID_GLASS } from '../ui/glass';
 import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
 import type { Annotation } from './model';
-import { ProfileMenu, useProfiles } from './profile-menu';
 
 /** A picked image being uploaded (or uploaded) before send. */
 export interface ComposerImage {
@@ -188,8 +187,6 @@ export const Composer = memo(
       /** Image cap per message — at the cap the `+` menu explains it and disables its items. */
       maxImages?: number;
       placeholder: string;
-      /** Offer the agent-profile capsule (new conversations; shown only with a choice of agents). */
-      showProfile?: boolean;
       autoFocus?: boolean;
       /** Height of the control layer (excluding the bottom safe-area pad). */
       onHeight?: (h: number) => void;
@@ -216,7 +213,6 @@ export const Composer = memo(
       onRemoveImage,
       maxImages = Infinity,
       placeholder,
-      showProfile = false,
       autoFocus = false,
       onHeight,
       stop,
@@ -235,8 +231,6 @@ export const Composer = memo(
     const hasAttachments = images.length > 0 || annotations.length > 0;
     const full = images.length >= maxImages;
     // A single agent is no choice — no capsule (and no empty row) for it.
-    const agents = useProfiles();
-    const pickAgent = showProfile && (agents?.length ?? 0) > 1;
     // A separate Stop takes over from the in-place one (Send stays Send).
     const stopInPlace = streaming && !stop;
     // Mounted from the first stop on, so it can slide in and out.
@@ -249,11 +243,6 @@ export const Composer = memo(
 
     return (
       <View style={styles.wrap} onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}>
-        {pickAgent ? (
-          <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(150)} style={styles.profileRow}>
-            <ProfileMenu />
-          </Animated.View>
-        ) : null}
         {accessory ? <View style={styles.accessory}>{accessory}</View> : null}
 
         <GlassGroup spacing={8} style={styles.row}>
@@ -394,7 +383,6 @@ export function ReadOnlyBar({
 
 const useStyles = makeStyles((c) => ({
   wrap: { paddingHorizontal: space.md, paddingTop: space.sm },
-  profileRow: { flexDirection: 'row', paddingLeft: 44 + space.sm, paddingBottom: space.sm },
   row: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
   capsule: { flex: 1, minHeight: 44, borderRadius: 22, justifyContent: 'center', overflow: 'hidden' },
   input: {
