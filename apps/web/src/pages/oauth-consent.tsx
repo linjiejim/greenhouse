@@ -28,7 +28,11 @@ function actionScopeLabel(scope: string): { title: TranslationKey; detail: Trans
 }
 
 export function OAuthConsentPage() {
-  const activeExtensionIds = useExtensionsStore((state) => state.extensions.map((extension) => extension.id));
+  // Select the stable array and derive from it: a selector that maps returns a
+  // new array on every snapshot, which React reads as a changed store and
+  // re-renders forever ("Maximum update depth exceeded").
+  const extensions = useExtensionsStore((state) => state.extensions);
+  const activeExtensionIds = useMemo(() => extensions.map((extension) => extension.id), [extensions]);
   const t = useT();
   const params = useMemo(() => {
     const next = new URLSearchParams(window.location.search);
