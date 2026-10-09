@@ -409,6 +409,24 @@ function sanitizeMarkdownHtml(
   }
 }
 
+/**
+ * Sanitize marked output for a copy that leaves the chat: the PDF print
+ * document and copy-as-HTML. Same allowlist as the on-screen renderer, without
+ * its chrome (table / code toolbars, heading anchors). Answers are untrusted
+ * model output, so a raw `<img onerror>` in one must not survive into markup
+ * handed to a same-origin print frame or the clipboard.
+ */
+export function sanitizeExportHtml(html: string): string {
+  if (!html) return '';
+  try {
+    const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+    sanitizeMarkdownNode(doc.body, 'new-window');
+    return doc.body.innerHTML;
+  } catch {
+    return sanitizeHtml(html);
+  }
+}
+
 // ─── Scrollable code blocks ─────────────────────────────
 
 function createCodeFullscreenButton(document: Document, label: string): HTMLButtonElement {
