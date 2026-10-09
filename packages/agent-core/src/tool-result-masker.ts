@@ -229,9 +229,21 @@ export const CHAT_IN_TURN_TOOL_TOKEN_BUDGET = 32_000;
 /**
  * The chat budget for a model: 32k tokens of live tool output, or a quarter
  * of a smaller model's window (history already gets half of it — see
- * resolveHistoryBudget — and the rest is system prompt, tools and output).
+ * resolveHistoryBudget — and the rest is system prompt, tools and output),
+ * plus `unusedHistoryTokens` when the caller lends the history budget its
+ * history left unused.
+ *
+ * Lend it only where cache hits are nearly free (hasCheapPromptCache): a fold
+ * turns the cached suffix after it into misses. At a hit priced 1/50 of a miss
+ * (DeepSeek, 2026-10) an 8-fetch turn masked at 32k came out ~19% dearer than
+ * resending everything, so there masking is kept for what only it does —
+ * holding a long conversation inside the window. Above a hit ≈1/10 of a miss
+ * the same turn is cheaper masked and the base budget stands (spec 20261009
+ * D6). Either way the payload never grows past a full history plus the base.
  */
-export function resolveInTurnToolBudget(contextWindow: number | undefined): number {
-  if (!contextWindow) return CHAT_IN_TURN_TOOL_TOKEN_BUDGET;
-  return Math.min(CHAT_IN_TURN_TOOL_TOKEN_BUDGET, Math.floor(contextWindow * 0.25));
+export function resolveInTurnToolBudget(contextWindow: number | undefined, unusedHistoryTokens = 0): number {
+  const base = contextWindow
+    ? Math.min(CHAT_IN_TURN_TOOL_TOKEN_BUDGET, Math.floor(contextWindow * 0.25))
+    : CHAT_IN_TURN_TOOL_TOKEN_BUDGET;
+  return base + Math.max(0, Math.floor(unusedHistoryTokens));
 }

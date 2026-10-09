@@ -420,6 +420,29 @@ export function resolvesToDeepSeek(config: ModelConfig): boolean {
 }
 
 /**
+ * Does this model's primary provider bill a cached prompt prefix at a small
+ * fraction of a miss?
+ *
+ * Chat lends its unused history budget to in-turn tool output only then
+ * (resolveInTurnToolBudget): every fold re-reads the suffix after it as cache
+ * misses, and that stops paying for itself once a hit costs under ≈1/10 of a
+ * miss (break-even measured 2026-10-09, spec 20261009 D6). DeepSeek's own API
+ * bills 1/50 (flash) and 1/30 (pro); OpenAI cached input is 1/10–1/2. Pricing
+ * follows the endpoint, not the weights — DeepSeek on a third-party gateway
+ * bills that gateway's rates — hence isDeepSeekFamily's official-id /
+ * official-host test rather than resolvesToDeepSeek's family match.
+ */
+export function hasCheapPromptCache(config: ModelConfig): boolean {
+  const primary = config.id
+    ? getModelEntry(config.id)?.providers[0]
+    : config.provider
+      ? { provider: config.provider, model: config.model ?? '', baseUrl: config.baseUrl }
+      : undefined;
+  if (!primary) return false;
+  return primary.provider === 'deepseek' || isDeepSeekFamily(primary.model, primary.baseUrl);
+}
+
+/**
  * Materialize the options a model config actually runs with.
  *
  * Two legitimate layers, and the order matters:
