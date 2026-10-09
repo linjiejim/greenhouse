@@ -3,9 +3,8 @@
  * bar, ./thread-header.tsx), kept pure so the root vitest can pin them — the
  * screen only wires them to refs, effects and the engine's events:
  *
- *  - row geometry lives only as long as its row (`pruneRowGeometry`): every
- *    run's first live reply is keyed `segment:0`, so a stale entry would anchor
- *    a new reply where an old one used to be;
+ *  - row geometry lives only as long as its row (`pruneRowGeometry`): a stale
+ *    entry would anchor a new reply where an old one used to be;
  *  - what a run starting / settling does to a pending anchor
  *    (`expectOnRunStarted` / `expectOnRunSettled`);
  *  - an earlier page in flight (`prependStep`): growth below it (a reply still
@@ -19,9 +18,10 @@
 /* ---------- row geometry ---------- */
 
 /**
- * Drop the geometry of rows that are no longer mounted. Keys come back as
- * *different* rows (each run's live replies are `segment:<index>`), and only
- * a freshly mounted row's own layout may place an anchor on it.
+ * Drop the geometry of rows that are no longer mounted: only a freshly
+ * mounted row's own layout may place an anchor on it (a key that came back as
+ * another row — the vendored transcript keys every run's first reply
+ * `segment:0` — must be measured afresh).
  */
 export function pruneRowGeometry<V>(geometry: Map<string, V>, mounted: Iterable<string>): void {
   if (geometry.size === 0) return;
@@ -39,17 +39,19 @@ export function pruneRowGeometry<V>(geometry: Map<string, V>, mounted: Iterable<
 export type ExpectAnchor = { kind: 'pending' } | { kind: 'segment'; runKey: string } | null;
 
 /**
- * A run started. One nobody here sent is followed only when the member is at
- * the end with the keyboard down; otherwise a `segment` left over from an
- * earlier run (one that never showed a reply) is dropped — it would yank the
- * scroll to some later, unrelated reply. A send's `pending` stays.
+ * A run started. One nobody here sent is anchored (its first reply slides
+ * under the bar, the rest unfolds below — nothing is followed) when the member
+ * is at the end, keyboard up or not: a reply that isn't anchored is never
+ * chased either, it lights "New messages ↓". Otherwise a `segment` left over
+ * from an earlier run (one that never showed a reply) is dropped — it would
+ * yank the scroll to some later, unrelated reply. A send's `pending` stays.
  */
 export function expectOnRunStarted(
   current: ExpectAnchor,
   run: { runKey: string; byMe: boolean },
-  view: { endVisible: boolean; keyboardUp: boolean },
+  view: { endVisible: boolean },
 ): ExpectAnchor {
-  if (!run.byMe && view.endVisible && !view.keyboardUp) return { kind: 'segment', runKey: run.runKey };
+  if (!run.byMe && view.endVisible) return { kind: 'segment', runKey: run.runKey };
   return current?.kind === 'segment' ? null : current;
 }
 

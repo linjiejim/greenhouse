@@ -20,16 +20,11 @@ import { CardNote, InfoRow } from './card-frame';
 import { decisionErrorKey, hostOf } from './decision';
 import { useLoginRefusals } from './use-login-form';
 
-/** Saved logins listed on the card (the sheet's footer does not repeat them). */
-const MATCHES_SHOWN = 2;
-
 export function LoginBody({
   request,
-  full = false,
   onAskAgain,
 }: {
   request: BotRequestView;
-  full?: boolean;
   /** Offered after a page-moved refusal (a thread that can still send). */
   onAskAgain?: () => void;
 }) {
@@ -39,7 +34,7 @@ export function LoginBody({
   const refused = useLoginRefusals((s) => s.byId[request.id]);
   const origin = payload.origin ?? payload.url ?? '';
   const reason = typeof payload.reason === 'string' ? payload.reason.trim() : '';
-  const matches = (payload.vault_matches ?? []).slice(0, full ? undefined : MATCHES_SHOWN);
+  const matches = payload.vault_matches ?? [];
   return (
     <>
       {origin ? (
@@ -50,16 +45,16 @@ export function LoginBody({
         >
           <Icon name="lock" size={13} weight="semibold" color={c.secondaryLabel} />
           <Text style={{ ...typo.subheadline, color: c.label, flex: 1 }} numberOfLines={1} ellipsizeMode="middle">
-            {/* the host reads at a glance; the full origin is in the label and on the sheet */}
+            {/* the host reads at a glance; the full origin is in the label */}
             {hostOf(origin) ?? origin}
           </Text>
         </View>
       ) : null}
-      {full && payload.url && payload.url !== payload.origin ? (
+      {payload.url && payload.url !== payload.origin ? (
         <InfoRow label={t('bots.card.page')} value={payload.url} selectable />
       ) : null}
       {reason ? (
-        <Text style={{ ...typo.body, color: c.label }} numberOfLines={full ? undefined : 3}>
+        <Text style={{ ...typo.body, color: c.label }} selectable>
           {reason}
         </Text>
       ) : null}

@@ -161,7 +161,7 @@ function shallowEqual<T extends object>(a: T, b: T): boolean {
   return true;
 }
 
-/** Members in order — a change (an invite, a removal) lifts a read-only refusal. */
+/** Members in order — a change (a Bot joining, a removal) lifts a read-only refusal. */
 const memberKey = (conversation: BotConversationDetail) =>
   conversation.members.map((member) => member.bot_id).join(',');
 

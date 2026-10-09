@@ -8,7 +8,8 @@
 import { describe, expect, it } from 'vitest';
 import type { BotMessage } from '../../shared/bots';
 import { buildTranscript, type PendingSend, type TranscriptItem } from '../vendor/transcript';
-import { SEPARATOR_GAP_MS, sameDay, separatorDay, threadRows, type ThreadRow } from './thread-rows';
+import type { BotStreamSegment } from '../../shared/bots-wire';
+import { SEPARATOR_GAP_MS, sameDay, separatorDay, stableTurnKeys, threadRows, type ThreadRow } from './thread-rows';
 
 const local = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).getTime();
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -151,5 +152,63 @@ describe('days', () => {
     expect(separatorDay(local(7, 23, 59), now)).toBe('yesterday');
     expect(separatorDay(local(3, 14), now)).toBe('date');
     expect(separatorDay(new Date(2025, 11, 31, 10).getTime(), now)).toBe('dateYear');
+  });
+});
+
+describe('stableTurnKeys', () => {
+  const live = (partial: Partial<BotStreamSegment> = {}): BotStreamSegment => ({
+    botId: 'b_sage',
+    reason: 'user',
+    status: 'streaming',
+    text: 'hello',
+    reasoning: '',
+    toolCalls: [],
+    ...partial,
+  });
+  const ask = { name: 'team', input: { action: 'ask', bot_id: 'b_fern', message: 'brief' }, output: { to: 'Fern' } };
+
+  it('keeps one key from the first streamed word to the persisted reply, hand-off strips included', () => {
+    const known = new Map<string, string>();
+    const t0 = local(9, 10);
+    const first = user(t0);
+    const streaming = live({ toolCalls: [{ ...ask, id: 'c1', status: 'done' }] as BotStreamSegment['toolCalls'] });
+    const during = stableTurnKeys(
+      buildTranscript({ messages: [first], conversationKind: 'direct', ownerBotId: 'b_sage', segments: [streaming] }),
+      { runKey: 'r1', segments: [streaming], known },
+    );
+    const ended = live({ ...streaming, status: 'completed', messageId: 'reply-1' });
+    const before = stableTurnKeys(
+      buildTranscript({ messages: [first], conversationKind: 'direct', ownerBotId: 'b_sage', segments: [ended] }),
+      { runKey: 'r1', segments: [ended], known },
+    );
+    const reply = message(t0, { id: 'reply-1', pipeline: [{ step: 1, tool: 'team', input: ask.input, output: ask.output, duration_ms: 1 }] });
+    const after = stableTurnKeys(items([first, reply]), { runKey: '', segments: [], known });
+    const keys = (rows: TranscriptItem[]) => rows.filter((row) => row.kind !== 'user').map((row) => row.key);
+    expect(keys(during)).toEqual(['turn:r1:0', 'turn:r1:0:handoff:0']);
+    expect(keys(before)).toEqual(keys(during));
+    expect(keys(after)).toEqual(keys(during));
+  });
+
+  it("never lets a new run's first reply take an older reply's key", () => {
+    const known = new Map([['reply-1', 'turn:r1:0']]);
+    const t0 = local(9, 10);
+    const segments = [live()];
+    const rows = stableTurnKeys(
+      buildTranscript({
+        messages: [user(t0), message(t0, { id: 'reply-1' }), user(t0)],
+        conversationKind: 'direct',
+        ownerBotId: 'b_sage',
+        segments,
+      }),
+      { runKey: 'r2', segments, known },
+    );
+    const turnKeys = rows.filter((row) => row.kind === 'bot' || row.kind === 'segment').map((row) => row.key);
+    expect(turnKeys).toEqual(['turn:r1:0', 'turn:r2:0']);
+    expect(new Set(rows.map((row) => row.key)).size).toBe(rows.length);
+  });
+
+  it('returns the same array when nothing is a turn it knows (memoised consumers see no change)', () => {
+    const rows = items([user(local(9, 10)), message(local(9, 10))]);
+    expect(stableTurnKeys(rows, { runKey: '', segments: [], known: new Map() })).toBe(rows);
   });
 });

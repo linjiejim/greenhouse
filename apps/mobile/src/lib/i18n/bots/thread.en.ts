@@ -35,11 +35,7 @@ export const botsThreadEn = {
     backToNewChat: 'Back to New Chat',
     /** ⋯ menu: the title; its subtitle is the Bot's name. */
     askInChat: 'New Chat',
-    profile: 'Bot Profile',
-    info: 'Conversation Info',
-    invite: 'Invite a Bot',
     titleHintDm: 'Shows the Bot’s profile',
-    titleHintGroup: 'Shows the conversation info',
     readOnlyDm: '{name} is archived and won’t reply',
     /** An old group chat: group chats were retired. */
     readOnlyClosed: 'Group chats were retired — this one stays as a record.',
@@ -122,8 +118,6 @@ export const botsThreadEn = {
   composer: {
     placeholder: 'Message',
     placeholderDm: 'Message {name}',
-    mention: 'Mention',
     mentionA11y: 'Mention {name}',
-    inviteOther: 'Invite Another Bot…',
   },
 };

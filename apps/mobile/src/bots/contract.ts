@@ -163,8 +163,6 @@ export interface RequestCardProps {
   sessionId: string;
   readOnly: boolean;
   highlighted?: boolean;
-  /** Thread → `ctl.decide`; needs-you sheet → `useBots.decide`. */
-  onDecide(body: BotRequestDecision): Promise<DecideOutcome>;
   /** Sends `@Name Please try that again.` with `mentions`; not passed in the needs-you sheet. */
   onAskAgain?: (botId: string) => void;
 }

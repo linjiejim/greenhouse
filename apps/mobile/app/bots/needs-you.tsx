@@ -15,7 +15,7 @@
  * the sign-in sheet on top.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { RequestCard } from '../../src/bots/cards/request-card';
@@ -25,7 +25,7 @@ import { useBots } from '../../src/bots/store';
 import { AvatarStack } from '../../src/bots/ui/avatar-stack';
 import { BotAvatar } from '../../src/bots/ui/bot-avatar';
 import { botsById, conversationBotIds, conversationTitle } from '../../src/bots/vendor/web-helpers';
-import type { BotConversationSummary, BotRequestDecision, BotRequestView } from '../../src/shared/bots';
+import type { BotConversationSummary, BotRequestView } from '../../src/shared/bots';
 import { useT } from '../../src/lib/i18n';
 import { makeStyles, space, typo, useTheme, weight } from '../../src/theme';
 import { Icon } from '../../src/ui/core';
@@ -161,11 +161,9 @@ function NeedsYouSheet() {
   );
 }
 
-/** One card, deciding through the store (no "Ask Again" here: this sheet sends no messages). */
+/** One card — a summary that opens its sheet, where it is decided (no "Ask Again" here: this sheet sends no messages). */
 function NeedsCard({ request }: { request: BotRequestView }) {
-  const decide = useBots((s) => s.decide);
-  const onDecide = useCallback((body: BotRequestDecision) => decide(request, body), [decide, request]);
-  return <RequestCard request={request} sessionId={request.session_id} readOnly={false} onDecide={onDecide} />;
+  return <RequestCard request={request} sessionId={request.session_id} readOnly={false} />;
 }
 
 /** The conversation a group of cards came from — a compact row that opens its thread. */

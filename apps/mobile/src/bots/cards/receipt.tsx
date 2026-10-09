@@ -2,10 +2,10 @@
  * A settled card, collapsed to one line: the kind's symbol in the outcome's
  * color and what happened — "Allowed · Send the weekly report", "Declined",
  * "Created Curly", "Started · Tidy the notes" (./decision.ts
- * `settledReceipt`). Tapping it opens the card read-only (the host renders
- * the expanded card; its header collapses it again). An expired card that may
- * be re-asked offers "Ask Again" on the line itself — a message to the Bot,
- * never a resurrected request.
+ * `settledReceipt`). Tapping it opens the card's sheet, read-only
+ * (app/bots/request.tsx). An expired card that may be re-asked offers "Ask
+ * Again" on the line itself — a message to the Bot, never a resurrected
+ * request.
  */
 
 import React from 'react';
@@ -23,12 +23,12 @@ import { CARD_ICON, cardKind, settledReceipt, statusBadge } from './decision';
 export function Receipt({
   request,
   highlighted,
-  onExpand,
+  onOpen,
   onAskAgain,
 }: {
   request: BotRequestView;
   highlighted?: boolean;
-  onExpand: () => void;
+  onOpen: () => void;
   /** Set only when "Ask Again" is offered here (expired, re-askable, a thread that can still send). */
   onAskAgain?: () => void;
 }) {
@@ -48,17 +48,16 @@ export function Receipt({
     <View key={fontKey} style={styles.wrap}>
       <HighlightWash highlighted={highlighted} radius={radius.lg} />
       <Pressable
-        onPress={onExpand}
+        onPress={onOpen}
         accessibilityRole="button"
         accessibilityLabel={line}
-        accessibilityState={{ expanded: false }}
         style={({ pressed }) => [styles.row, pressed ? { backgroundColor: c.fill } : null]}
       >
         <Icon name={CARD_ICON[cardKind(request)]} size={15} weight="medium" color={color} />
         <Text style={styles.text} numberOfLines={2}>
           {line}
         </Text>
-        {onAskAgain ? null : <Icon name="chevD" size={12} weight="semibold" color={c.tertiaryLabel} />}
+        {onAskAgain ? null : <Icon name="chevR" size={12} weight="semibold" color={c.tertiaryLabel} />}
       </Pressable>
       {onAskAgain ? (
         <View style={styles.askAgain}>
@@ -73,7 +72,7 @@ const useStyles = makeStyles((c) => ({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: c.secondaryGroupedBackground,
+    backgroundColor: c.tertiaryFill,
     borderRadius: radius.lg,
     overflow: 'hidden',
     ...squircle,

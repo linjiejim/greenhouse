@@ -10,13 +10,16 @@
  *  - Title view (`ThreadTitle`): the Bot's plant (a group: up to three, the
  *    one speaking first) + the name and a live status line, each truncating
  *    on its own; capped at 1.3× Dynamic Type (the bar has the system's large
- *    content viewer). Tap → the Bot's profile (a DM) / the conversation info
- *    (a group). One VoiceOver button: "Sprouty, Browsing github.com".
- *  - Right: a system menu — a DM: Bot Profile · Conversation Info · Invite a
- *    Bot | New Chat (subtitle: the Bot's name); a group: Conversation Info · Invite a Bot
- *    · Rename Group; both end with Show › (the reply details, global —
- *    src/chat/reply-details-menu.tsx). No ✎ (a thread is not a session), no
- *    share (the server refuses to share Bots conversations), no delete.
+ *    content viewer). Tap → the Bot's profile (a DM — its tabs hold everything
+ *    about it: overview, memory, notes, schedules, separate chats); an old
+ *    group is a closed record and opens nothing. One VoiceOver button:
+ *    "Sprouty, Browsing github.com".
+ *  - Right: one system menu, kept short (2026-10: Bot Profile, Conversation
+ *    Info and Invite a Bot left it — the title opens the profile, Bots bring
+ *    each other in): New Chat (subtitle: the Bot's name) and Show › (the reply
+ *    details, global — src/chat/reply-details-menu.tsx). No ✎ (a thread is not
+ *    a session), no share (the server refuses to share Bots conversations), no
+ *    delete.
  *
  * The title view reads a tiny store the screen publishes to
  * (`publishThreadHeader`, only when a field changed) instead of taking props:
@@ -104,19 +107,21 @@ export function ThreadTitle({ sessionId, fallbackTitle }: { sessionId: string; f
   const fontKey = useFontScaleKey();
   const title = header?.title || fallbackTitle;
   const status = header?.status ?? '';
+  // A DM's title opens its Bot's profile (everything about it: notes, memory, schedules, chats);
+  // an old group is a closed record — nothing to open.
+  const openable = !!header && !header.group && !!header.ownerBotId;
   const open = () => {
-    if (!header) return;
-    if (!header.group && header.ownerBotId) {
+    if (openable && header?.ownerBotId) {
       router.push({ pathname: '/bots/profile', params: { botId: header.ownerBotId, from: sessionId } });
-    } else router.push({ pathname: '/bots/info', params: { c: sessionId } });
+    }
   };
   return (
     <Pressable
       onPress={open}
-      disabled={!header}
+      disabled={!openable}
       accessibilityRole="button"
       accessibilityLabel={status ? `${title}, ${status}` : title}
-      accessibilityHint={header?.group ? t('bots.thread.titleHintGroup') : t('bots.thread.titleHintDm')}
+      accessibilityHint={openable ? t('bots.thread.titleHintDm') : undefined}
       style={({ pressed }) => [styles.title, { maxWidth: width - BAR_BUTTONS_W }, pressed && styles.pressed]}
     >
       {/* the Bot this thread is with (a group: the one speaking, first) shows how it's doing, and moves */}
@@ -151,9 +156,6 @@ export function ThreadTitle({ sessionId, fallbackTitle }: { sessionId: string; f
 
 export interface ThreadHeaderActions {
   openDrawer: () => void;
-  profile: () => void;
-  info: () => void;
-  invite: () => void;
   askInChat: () => void;
 }
 
@@ -166,9 +168,7 @@ export const ThreadHeader = memo(function ThreadHeader({
   sessionId,
   title,
   badge,
-  group,
   ownerName,
-  canInvite,
   canAsk,
   actions,
 }: {
@@ -177,10 +177,8 @@ export const ThreadHeader = memo(function ThreadHeader({
   title: string;
   /** Other conversations that need the member (0 = no badge). */
   badge: number;
-  group: boolean;
-  /** A DM's Bot, for "Ask {name} in a New Chat". */
+  /** A DM's Bot, the subtitle of "New Chat". */
   ownerName: string | null;
-  canInvite: boolean;
   /** A DM whose Bot can still answer a new chat. */
   canAsk: boolean;
   actions: ThreadHeaderActions;
@@ -211,16 +209,7 @@ export const ThreadHeader = memo(function ThreadHeader({
       </Stack.Toolbar>
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Menu icon={toolbarIcon('more')} accessibilityLabel={t('common.more')}>
-          <Stack.Toolbar.MenuAction icon={toolbarIcon('person')} hidden={group || !ownerName} onPress={actions.profile}>
-            {t('bots.thread.profile')}
-          </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon={toolbarIcon('msgs')} onPress={actions.info}>
-            {t('bots.thread.info')}
-          </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon={toolbarIcon('userPlus')} hidden={!canInvite} onPress={actions.invite}>
-            {t('bots.thread.invite')}
-          </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.Menu inline hidden={group || !canAsk}>
+          <Stack.Toolbar.Menu inline hidden={!canAsk}>
             {/* "New Chat" over the Bot's name: one short line in any language, however long the name */}
             <Stack.Toolbar.MenuAction
               icon={toolbarIcon('compose')}

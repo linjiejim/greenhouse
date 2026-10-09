@@ -201,6 +201,7 @@ export function bot(id: string, partial: Partial<BotView> = {}): BotView {
     avatar: {},
     model_id: null,
     tools: null,
+    connectors: null,
     max_steps: null,
     template_key: null,
     status: 'active',

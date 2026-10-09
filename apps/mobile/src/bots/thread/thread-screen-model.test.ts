@@ -45,14 +45,11 @@ describe('pruneRowGeometry', () => {
 });
 
 describe('expectOnRunStarted / expectOnRunSettled', () => {
-  const atEnd = { endVisible: true, keyboardUp: false };
+  const atEnd = { endVisible: true };
 
-  it('follows a server run only at the end with the keyboard down', () => {
+  it('anchors a server run whenever the member is at the end — keyboard up or down — and never one of theirs', () => {
     expect(expectOnRunStarted(null, { runKey: 'r1', byMe: false }, atEnd)).toEqual({ kind: 'segment', runKey: 'r1' });
-    expect(
-      expectOnRunStarted(null, { runKey: 'r1', byMe: false }, { endVisible: false, keyboardUp: false }),
-    ).toBeNull();
-    expect(expectOnRunStarted(null, { runKey: 'r1', byMe: false }, { endVisible: true, keyboardUp: true })).toBeNull();
+    expect(expectOnRunStarted(null, { runKey: 'r1', byMe: false }, { endVisible: false })).toBeNull();
     expect(expectOnRunStarted(null, { runKey: 'r1', byMe: true }, atEnd)).toBeNull();
   });
 
@@ -65,11 +62,9 @@ describe('expectOnRunStarted / expectOnRunSettled', () => {
   it("a later run drops an earlier run's leftover when it isn't followed itself", () => {
     const left: ExpectAnchor = { kind: 'segment', runKey: 'r1' };
     // the member scrolled up meanwhile: the new run lights the pill instead
-    expect(
-      expectOnRunStarted(left, { runKey: 'r2', byMe: false }, { endVisible: false, keyboardUp: false }),
-    ).toBeNull();
-    // the member's own send (keyboard up): Messages-style, nothing anchored
-    expect(expectOnRunStarted(left, { runKey: 'r2', byMe: true }, { endVisible: true, keyboardUp: true })).toBeNull();
+    expect(expectOnRunStarted(left, { runKey: 'r2', byMe: false }, { endVisible: false })).toBeNull();
+    // the member's own send: its bubble is what gets anchored, not a server segment
+    expect(expectOnRunStarted(left, { runKey: 'r2', byMe: true }, { endVisible: true })).toBeNull();
   });
 
   it("a send's pending anchor survives runs starting and settling", () => {

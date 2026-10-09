@@ -157,6 +157,63 @@ export function cardTitle(r: Pick<BotRequestView, 'kind' | 'payload'>, name: str
   }
 }
 
+// ─── The card in a transcript: a summary ─────────────────
+
+/** A detail value short enough for the summary line (one line at the card's width). */
+const GIST_VALUE = 32;
+
+/**
+ * What a card says in a transcript (2026-10: a card there is only a summary —
+ * every detail and every decision is in its sheet, app/bots/request.tsx):
+ * `what` — what it would do or is about, the body's line (an approval's
+ * title, a task's title, a proposed Bot's "name · role", why the instructions
+ * change, the site); `detail` — the one quiet line under it (an approval's
+ * first short argument values — "Create · Weekly due tasks" — a sign-in's
+ * reason, the instructions' line counts). Either may be null.
+ */
+export function cardGist(r: Pick<BotRequestView, 'kind' | 'payload'>): {
+  what: string | null;
+  detail: string | Copy | null;
+} {
+  switch (cardKind(r)) {
+    case 'approval': {
+      const payload = r.payload as BotApprovalPayload;
+      const values = detailRows(payload.details)
+        .rows.map((row) => row.value.trim())
+        .filter((value) => value && !value.includes('\n') && value.length <= GIST_VALUE)
+        .slice(0, 2);
+      return { what: text(payload.title) || null, detail: values.length ? values.join(' · ') : null };
+    }
+    case 'task_start':
+      return { what: cardSubject(r), detail: firstLine(text((r.payload as BotTaskStartPayload).brief)) };
+    case 'bot_create': {
+      const payload = r.payload as BotCreatePayload;
+      return { what: [text(payload.name), text(payload.role)].filter(Boolean).join(' · ') || null, detail: null };
+    }
+    case 'instructions_update': {
+      const payload = r.payload as BotInstructionsUpdatePayload;
+      const counts = diffCounts(payload);
+      return {
+        what: text(payload.reason) || null,
+        detail: { key: 'bots.card.diffSummary', vars: { added: String(counts.added), removed: String(counts.removed) } },
+      };
+    }
+    case 'login':
+      return { what: cardSubject(r), detail: firstLine(text((r.payload as BotLoginPayload).reason)) };
+    case 'handback':
+    case 'captcha':
+    case 'takeover':
+      return { what: cardSubject(r), detail: firstLine(text((r.payload as BotTakeoverPayload).reason)) };
+    default:
+      return { what: null, detail: null };
+  }
+}
+
+/** The first non-empty line of a text (markdown marks and all — it is a one-line preview). */
+function firstLine(value: string): string | null {
+  return value.split('\n').find((line) => line.trim())?.trim() || null;
+}
+
 // ─── Buttons ─────────────────────────────────────────────
 
 /**
@@ -485,18 +542,15 @@ export function detailRows(details: ReadonlyArray<{ label: string; value: string
   return { rows, hiddenFields };
 }
 
-/** Detail rows on the card itself; the rest is behind "View All" (the card sheet). */
-export const CARD_DETAIL_ROWS = 3;
-/** A value longer than this likely wraps past the card's two lines. */
-const LONG_VALUE = 80;
+/** A value longer than this reads better under its label, across the whole row. */
+const STACKED_VALUE = 40;
 
-/** Whether the card's preview hides anything the sheet would show. */
-export function detailsTruncated(d: ReturnType<typeof detailRows>): boolean {
-  return (
-    d.rows.length > CARD_DETAIL_ROWS ||
-    d.hiddenFields !== null ||
-    d.rows.some((row) => row.moreChars !== null || row.value.length > LONG_VALUE || row.value.includes('\n'))
-  );
+/**
+ * Whether a detail row puts its value under the label, full width (a task
+ * prompt, a message body, anything cut by the server) instead of beside it.
+ */
+export function detailStacked(row: DetailRow): boolean {
+  return row.moreChars !== null || row.value.length > STACKED_VALUE || row.value.includes('\n');
 }
 
 /** "+3 lines · −1 line" for an instructions proposal: lines only one side has. */

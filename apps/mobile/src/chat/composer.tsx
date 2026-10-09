@@ -355,7 +355,7 @@ export function ReadOnlyBar({
   onHeight?: (h: number) => void;
   /** Says why there is no composer (default: shared · read-only). */
   message?: string;
-  /** One way out, beside the message (e.g. "Invite a Bot"). */
+  /** One way out, beside the message (e.g. "View Profile"). */
   action?: { label: string; onPress(): void };
 }) {
   const { colors: c } = useTheme();

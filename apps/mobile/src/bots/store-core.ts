@@ -33,7 +33,7 @@ import { botsById, conversationBotIds, conversationReplyable, mergeArchived } fr
 export interface BotsData {
   /** Bumped by `reset()`: answers to requests made before it are dropped. */
   generation: number;
-  /** Active Bots — pickers, mentions, the invite list. */
+  /** Active Bots — pickers, mentions, the drawer. */
   bots: BotView[];
   /** Archived Bots: they never reply again, but history still needs their names and faces. */
   archived: BotView[];

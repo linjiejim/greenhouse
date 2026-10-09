@@ -21,15 +21,7 @@ import { humanCheckTakeover, implicitTakeover } from '../vendor/web-helpers';
 import { CardNote, InfoRow } from './card-frame';
 import { cardKind, hostOf } from './decision';
 
-export function TakeoverBody({
-  request,
-  name,
-  full = false,
-}: {
-  request: BotRequestView;
-  name: string;
-  full?: boolean;
-}) {
+export function TakeoverBody({ request, name }: { request: BotRequestView; name: string }) {
   const t = useT();
   const { colors: c } = useTheme();
   const kind = cardKind(request);
@@ -40,7 +32,7 @@ export function TakeoverBody({
     return (
       <>
         {implicit?.title ? (
-          <InfoRow label={t('bots.card.page')} value={implicit.title} lines={full ? undefined : 2} />
+          <InfoRow label={t('bots.card.page')} value={implicit.title} />
         ) : null}
         {implicit?.host ? <InfoRow label={t('bots.card.site')} value={implicit.host} lines={1} /> : null}
       </>
@@ -55,11 +47,11 @@ export function TakeoverBody({
   return (
     <>
       {reason ? (
-        <Text style={{ ...typo.body, color: c.label }} numberOfLines={full ? undefined : 3} selectable={full}>
+        <Text style={{ ...typo.body, color: c.label }} selectable>
           {reason}
         </Text>
       ) : null}
-      {full && url ? (
+      {url ? (
         <InfoRow label={t('bots.card.page')} value={url} selectable />
       ) : host ? (
         <InfoRow label={t('bots.card.site')} value={host} lines={1} />

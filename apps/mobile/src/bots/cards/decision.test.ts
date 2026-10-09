@@ -20,7 +20,8 @@ import {
   decisionErrorKey,
   decisionFor,
   detailRows,
-  detailsTruncated,
+  detailStacked,
+  cardGist,
   diffCounts,
   hostOf,
   refusalCopy,
@@ -371,12 +372,48 @@ describe('details and diffs', () => {
     expect(detailRows(null)).toEqual({ rows: [], hiddenFields: null });
   });
 
-  it('knows when the card preview hides something', () => {
-    expect(detailsTruncated(detailRows([{ label: 'a', value: 'b' }]))).toBe(false);
-    expect(detailsTruncated(detailRows([1, 2, 3, 4].map((n) => ({ label: `l${n}`, value: 'v' }))))).toBe(true);
-    expect(detailsTruncated(detailRows([{ label: 'a', value: 'x…(+3 more characters)' }]))).toBe(true);
-    expect(detailsTruncated(detailRows([{ label: 'a', value: 'one\ntwo' }]))).toBe(true);
-    expect(detailsTruncated(detailRows([{ label: 'a', value: 'x'.repeat(81) }]))).toBe(true);
+  it('puts a long, multi-line or cut value under its label, across the row', () => {
+    const [short] = detailRows([{ label: 'a', value: 'create' }]).rows;
+    expect(detailStacked(short)).toBe(false);
+    expect(detailStacked(detailRows([{ label: 'a', value: 'x…(+3 more characters)' }]).rows[0])).toBe(true);
+    expect(detailStacked(detailRows([{ label: 'a', value: 'one\ntwo' }]).rows[0])).toBe(true);
+    expect(detailStacked(detailRows([{ label: 'a', value: 'x'.repeat(41) }]).rows[0])).toBe(true);
+  });
+
+  it('says what a card is about in two short lines (cardGist)', () => {
+    const approval = {
+      kind: 'approval' as const,
+      payload: {
+        action: 'tool_call',
+        title: 'Change your automations?',
+        summary: 'change your automations',
+        details: [
+          { label: 'Action', value: 'Create' },
+          { label: 'Name', value: 'Weekly due tasks' },
+          { label: 'Task prompt', value: 'Collect every task due this week…(+400 more characters)' },
+        ],
+        allow_always: false,
+      },
+    } as unknown as Parameters<typeof cardGist>[0];
+    expect(cardGist(approval)).toEqual({ what: 'Change your automations?', detail: 'Create · Weekly due tasks' });
+    const proposal = {
+      kind: 'bot_create' as const,
+      payload: { name: 'Juniper', role: 'Researcher', instructions: 'Find sources.' },
+    } as unknown as Parameters<typeof cardGist>[0];
+    expect(cardGist(proposal)).toEqual({ what: 'Juniper · Researcher', detail: null });
+    const task = {
+      kind: 'task_start' as const,
+      payload: { title: 'Tidy the notes', brief: '\n\nRead every note.\nThen merge.' },
+    } as unknown as Parameters<typeof cardGist>[0];
+    expect(cardGist(task)).toEqual({ what: 'Tidy the notes', detail: 'Read every note.' });
+    const change = {
+      kind: 'instructions_update' as const,
+      payload: { reason: 'Be shorter', current: 'a', instructions: 'a\nb' },
+    } as unknown as Parameters<typeof cardGist>[0];
+    expect(cardGist(change)).toEqual({
+      what: 'Be shorter',
+      detail: { key: 'bots.card.diffSummary', vars: { added: '1', removed: '0' } },
+    });
   });
 
   it('counts added and removed instruction lines', () => {

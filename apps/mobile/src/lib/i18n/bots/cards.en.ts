@@ -18,7 +18,8 @@ export const botsCardsEn = {
     askAgain: 'Ask Again',
     expiresIn: 'Expires in {s}s',
     expiringNow: 'Expiring now',
-    viewAll: 'View All',
+    /** VoiceOver hint of a card in a transcript: it opens its sheet, the only place to decide. */
+    openHint: 'Opens the card to review it and decide',
     moreChars: '…{n} more characters',
     moreFields: '{n} more fields',
     approvalTitle: '{name} needs your approval',
@@ -35,8 +36,6 @@ export const botsCardsEn = {
     start: 'Start',
     cancel: 'Cancel',
     taskLimit: 'Too many background tasks are running (max 3)',
-    showMore: 'Show More',
-    showLess: 'Show Less',
     createTitle: '{name} suggests a new Bot',
     create: 'Create',
     editFirst: 'Edit First',
@@ -45,7 +44,6 @@ export const botsCardsEn = {
     instructionsTitle: 'New instructions from {name}',
     accept: 'Accept',
     decline: 'Decline',
-    viewChanges: 'View Changes',
     diffSummary: '+{added} lines · −{removed} lines',
     /** VoiceOver for a diff line (the +/− glyphs are hidden). */
     diffAdded: 'Added: {text}',

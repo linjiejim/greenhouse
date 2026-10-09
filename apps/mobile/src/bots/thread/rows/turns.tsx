@@ -5,17 +5,18 @@
  * message / segment / send / card changed re-renders.
  *
  *  - `UserRow` — a member message (copy only: Bots messages can't be edited).
- *  - `BotRow` — a persisted Bot reply under its speaker line (on a change of
- *    speaker), its memory receipts, and — under the main Bot's greeting — the
- *    naming hint. Answers from its cards go back to that Bot (D22). A
- *    server placeholder for a turn with no text is left out while the tool
- *    steps are hidden (../filler.ts).
- *  - `SegmentRow` — a live turn, quiet until it has something to show: no
- *    thinking row and no speaker line while the Bot is still thinking (the
- *    title says "Thinking…"), so a send isn't followed by a face that comes
- *    and goes; with the first words the speaker line arrives, its plant
- *    talking. A failed turn offers Retry ("@Name Please try that again.").
- *    Both rows draw nothing at all for a turn with nothing on screen.
+ *  - `ReplyRow` — a Bot reply, live or persisted, as one component type so
+ *    the persisted reply takes over the live row's instance when a run
+ *    settles (no end-of-turn jump). Persisted: under its speaker line (on a
+ *    change of speaker), its memory receipts, and — under the main Bot's
+ *    greeting — the naming hint; a server placeholder for a turn with no text
+ *    is left out while the tool steps are hidden (../filler.ts). Live: quiet
+ *    until it has something to show — no thinking row and no speaker line
+ *    while the Bot is still thinking (the title says "Thinking…"); with the
+ *    first words the speaker line arrives, its plant talking. A failed turn
+ *    offers Retry ("@Name Please try that again."). Answers from its cards go
+ *    back to that Bot (D22). It draws nothing for a turn with nothing on
+ *    screen.
  *  - `PendingRow` — a send in flight with its Messages-style caption.
  *  - `RequestRow` — a "needs you" card (`RequestCard`); one the thread holds
  *    no state for (an old card past the detail window) reads as its line.
@@ -23,12 +24,13 @@
 
 import React, { memo, useCallback, useMemo } from 'react';
 import { View } from 'react-native';
+import { space } from '../../../theme';
 import { AiMessage, UserMessage, type MessageAction } from '../../../chat/message';
 import type { ChatMessage } from '../../../chat/model';
-import type { BotMessage, BotRequestDecision, BotRequestView, BotView } from '../../../shared/bots';
+import type { BotMessage, BotRequestView, BotView } from '../../../shared/bots';
 import type { BotStreamSegment } from '../../../shared/bots-wire';
 import { RequestCard } from '../../cards/request-card';
-import type { DecideOutcome, MobilePending, ThreadController } from '../../contract';
+import type { MobilePending } from '../../contract';
 import { memoryReceiptsFromCalls } from '../../vendor/web-helpers';
 import { usePrefs } from '../../../store/prefs';
 import { fromBotMessage, fromPending } from '../adapters';
@@ -74,57 +76,104 @@ export const UserRow = memo(function UserRow({
   return <UserMessage msg={fromBotMessage(message)} readOnly={readOnly} onAction={onAction} allowEdit={false} />;
 });
 
-export const BotRow = memo(function BotRow({
+/**
+ * A Bot's reply — live (`segment` + its `msg`) or persisted (`message`) — as ONE component type:
+ * under the turn's stable key (../thread-rows.ts `stableTurnKeys`) the persisted reply takes over the
+ * live row's instance when the run settles, so the text, its measured tables and its diagrams stay
+ * put instead of mounting again (the end-of-turn jump). Props stay flat and stable — rows are memoised.
+ *
+ * Persisted: under its speaker line (on a change of speaker), its memory receipts and — under the main
+ * Bot's greeting — the naming hint; a server placeholder for a turn with no text is left out while the
+ * tool steps are hidden (../filler.ts). Live: quiet until it has something to show; with the first
+ * words the speaker line arrives, its plant talking; a failed turn offers Retry.
+ */
+export const ReplyRow = memo(function ReplyRow({
+  segment,
+  msg,
+  askedBy,
+  onRetryBot,
   message,
-  botId,
+  botId: persistedBotId,
+  followUp,
+  nameHint,
+  onRename,
   header,
   bot,
-  followUp,
   readOnly,
   loaded,
   memoryStates,
   handlers,
   onReplyAs,
   onOpenProfile,
-  nameHint,
-  onRename,
 }: ReplyRowProps & {
-  message: BotMessage;
-  botId: string | null;
   header: boolean;
   bot: BotView | undefined;
+  /** Live: the streaming turn, its reply (./adapters.ts `fromSegment` — id unique across runs), who asked. */
+  segment?: BotStreamSegment;
+  msg?: ChatMessage;
+  askedBy?: string | null;
+  onRetryBot?: (botId: string) => void;
+  /** Persisted: the reply and who wrote it. */
+  message?: BotMessage;
+  botId?: string | null;
   followUp?: string;
   /** Under the main Bot's greeting while it still has its built-in name (./rows/sprouty-name.tsx). */
   nameHint?: BotView;
   onRename?: (botId: string) => void;
 }) {
+  const botId = segment ? segment.botId : (persistedBotId ?? null);
   const onReply = useCallback((text: string) => onReplyAs(botId, text), [onReplyAs, botId]);
+  const onRetry = useCallback(() => {
+    if (botId && onRetryBot) onRetryBot(botId);
+  }, [botId, onRetryBot]);
+  const streaming = segment?.status === 'streaming';
+  const failed = segment?.status === 'error';
+  const typing = streaming && (segment?.text.length ?? 0) > 0;
+  const speaker = useMemo(
+    () =>
+      header ? (
+        <SpeakerLine
+          bot={bot}
+          loaded={loaded}
+          askedBy={segment ? askedBy : undefined}
+          state={segment ? (failed ? 'error' : typing ? 'speaking' : streaming ? 'thinking' : undefined) : undefined}
+          animate={streaming}
+          onPress={onOpenProfile}
+        />
+      ) : null,
+    [header, bot, loaded, segment, askedBy, failed, typing, streaming, onOpenProfile],
+  );
+  const shown = useMemo(() => msg ?? (message ? fromBotMessage(message) : undefined), [msg, message]);
   const receipts = useMemo(
-    () => memoryReceiptsFromCalls(message.pipeline.map((step) => ({ name: step.tool, output: step.output }))),
-    [message],
+    () =>
+      memoryReceiptsFromCalls(
+        segment
+          ? segment.toolCalls
+              .filter((call) => call.status === 'done')
+              .map((call) => ({ name: call.name, output: call.output }))
+          : (message?.pipeline ?? []).map((step) => ({ name: step.tool, output: step.output })),
+      ),
+    [segment, message],
   );
   // A placeholder for a turn with no text ("Over to you — see the card above") points at what is
   // right above it; with the tool steps hidden it says nothing new (./../filler.ts).
   const showTools = usePrefs((s) => s.details.tools);
-  const speaker = useMemo(
-    () => (header ? <SpeakerLine bot={bot} loaded={loaded} onPress={onOpenProfile} /> : null),
-    [header, bot, loaded, onOpenProfile],
-  );
-  if (!showTools && receipts.length === 0 && isFillerReply(message.content)) return null;
+  if (!shown) return null;
+  if (!segment && message && !showTools && receipts.length === 0 && isFillerReply(message.content)) return null;
   return (
     <View>
       <AiMessage
         quiet
         header={speaker}
-        msg={fromBotMessage(message)}
-        isLatest={false}
+        msg={shown}
+        isLatest={!!segment}
         readOnly={readOnly}
         followUp={followUp}
         onOpenTools={handlers.onOpenTools}
         onOpenReasoning={handlers.onOpenReasoning}
         onOpenRefs={handlers.onOpenRefs}
         onAction={handlers.onAction}
-        onRetry={noop}
+        onRetry={segment ? onRetry : noop}
         onReply={onReply}
         allowRegenerate={false}
       />
@@ -136,85 +185,6 @@ export const BotRow = memo(function BotRow({
         readOnly={readOnly}
       />
       {nameHint && onRename ? <SproutyNameHint bot={nameHint} onRename={onRename} /> : null}
-    </View>
-  );
-});
-
-/** One Bot's live turn: its speaker line (on a change of speaker) and the reply as it streams. */
-export const SegmentRow = memo(function SegmentRow({
-  segment,
-  msg,
-  header,
-  bot,
-  askedBy,
-  readOnly,
-  loaded,
-  memoryStates,
-  handlers,
-  onReplyAs,
-  onRetryBot,
-  onOpenProfile,
-}: ReplyRowProps & {
-  segment: BotStreamSegment;
-  /** The segment as a reply (./adapters.ts `fromSegment` — its id is unique across runs). */
-  msg: ChatMessage;
-  header: boolean;
-  bot: BotView | undefined;
-  askedBy: string | null;
-  onRetryBot: (botId: string) => void;
-}) {
-  const botId = segment.botId;
-  const onReply = useCallback((text: string) => onReplyAs(botId, text), [onReplyAs, botId]);
-  const onRetry = useCallback(() => onRetryBot(botId), [onRetryBot, botId]);
-  const live = segment.status === 'streaming';
-  const failed = segment.status === 'error';
-  const typing = live && segment.text.length > 0;
-  const speaker = useMemo(
-    () =>
-      header ? (
-        <SpeakerLine
-          bot={bot}
-          loaded={loaded}
-          askedBy={askedBy}
-          state={failed ? 'error' : typing ? 'speaking' : live ? 'thinking' : undefined}
-          animate={live}
-          onPress={onOpenProfile}
-        />
-      ) : null,
-    [header, bot, loaded, askedBy, failed, typing, live, onOpenProfile],
-  );
-  const receipts = useMemo(
-    () =>
-      memoryReceiptsFromCalls(
-        segment.toolCalls
-          .filter((call) => call.status === 'done')
-          .map((call) => ({ name: call.name, output: call.output })),
-      ),
-    [segment],
-  );
-  return (
-    <View>
-      <AiMessage
-        quiet
-        header={speaker}
-        msg={msg}
-        isLatest
-        readOnly={readOnly}
-        onOpenTools={handlers.onOpenTools}
-        onOpenReasoning={handlers.onOpenReasoning}
-        onOpenRefs={handlers.onOpenRefs}
-        onAction={handlers.onAction}
-        onRetry={onRetry}
-        onReply={onReply}
-        allowRegenerate={false}
-      />
-      <MemoryReceipts
-        receipts={receipts}
-        botId={botId}
-        botName={bot?.name}
-        memoryStates={memoryStates}
-        readOnly={readOnly}
-      />
     </View>
   );
 });
@@ -252,14 +222,17 @@ export const PendingRow = memo(function PendingRow({
   return <UserMessage msg={fromPending(pending)} readOnly onAction={onAction} allowEdit={false} footer={footer} />;
 });
 
-/** A "needs you" card; one the thread has no state for (an old card past the detail window) reads as its line. */
+/**
+ * A "needs you" card — a summary that opens its sheet (../../cards/request-card.tsx), inset like
+ * the replies around it; one the thread has no state for (an old card past the detail window)
+ * reads as its line.
+ */
 export const RequestRow = memo(function RequestRow({
   request,
   fallback,
   sessionId,
   readOnly,
   highlighted,
-  ctl,
   onAskAgain,
 }: {
   request: BotRequestView | undefined;
@@ -267,14 +240,8 @@ export const RequestRow = memo(function RequestRow({
   sessionId: string;
   readOnly: boolean;
   highlighted: boolean;
-  ctl: ThreadController;
   onAskAgain: (botId: string) => void;
 }) {
-  const onDecide = useCallback(
-    (body: BotRequestDecision): Promise<DecideOutcome> =>
-      request ? ctl.decide(request, body) : Promise.resolve<DecideOutcome>({ kind: 'stale' }),
-    [ctl, request],
-  );
   if (!request) {
     return fallback ? (
       <EventRow
@@ -290,13 +257,14 @@ export const RequestRow = memo(function RequestRow({
     ) : null;
   }
   return (
-    <RequestCard
-      request={request}
-      sessionId={sessionId}
-      readOnly={readOnly}
-      highlighted={highlighted}
-      onDecide={onDecide}
-      onAskAgain={readOnly ? undefined : onAskAgain}
-    />
+    <View style={{ paddingHorizontal: space.margin, paddingVertical: space.xs }}>
+      <RequestCard
+        request={request}
+        sessionId={sessionId}
+        readOnly={readOnly}
+        highlighted={highlighted}
+        onAskAgain={readOnly ? undefined : onAskAgain}
+      />
+    </View>
   );
 });

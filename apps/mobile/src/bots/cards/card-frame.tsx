@@ -1,8 +1,9 @@
 /**
  * The pieces every "needs you" card shares (spec docs/specs/20261008-mobile-bots.md
- * §2.5.4): the frame (a content-layer solid card — never glass), the decision
- * buttons, the action hook that turns a button into a decision, and the
- * small text blocks the kind bodies are built from. Pure RN + `NativeButton`,
+ * §2.5.4): the highlight a deep-linked card gets, the decision buttons (only
+ * in the card's sheet — a card in a list is a summary, ./request-card.tsx),
+ * the action hook that turns a button into a decision, and the small text
+ * blocks the kind bodies are built from. Pure RN + `NativeButton`,
  * so the same cards render on Android (its NativeButton is Material).
  *
  * Feedback (one rule per outcome): a decision that went through gets the
@@ -14,15 +15,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Pressable,
-  Text,
-  useWindowDimensions,
-  View,
-  type ColorValue,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+import { Text, useWindowDimensions, View, type ColorValue } from 'react-native';
 import { useRouter } from 'expo-router';
 import Animated, {
   useAnimatedStyle,
@@ -35,13 +28,11 @@ import Animated, {
 import type { BotApprovalPayload, BotCreatePayload, BotRequestDecision, BotRequestView } from '../../shared/bots';
 import { useT, type TFunction } from '../../lib/i18n';
 import { useAuth } from '../../store/auth';
-import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
+import { makeStyles, space, squircle, typo, useTheme } from '../../theme';
 import { NativeButton } from '../../ui/button';
-import { Icon, Touchable, type IconName } from '../../ui/core';
-import { useFontScaleKey } from '../../ui/font-scale';
+import { Icon, type IconName } from '../../ui/core';
 import { alertError, confirmAction } from '../../ui/dialogs';
 import { notifySuccess } from '../../ui/haptics';
-import { Badge, IconTile, type BadgeTone } from '../../ui/list';
 import type { DecideOutcome } from '../contract';
 import { useBots } from '../store';
 import { validateBotName } from '../vendor/bot-name';
@@ -124,89 +115,13 @@ export function HighlightWash({ highlighted, radius: r }: { highlighted?: boolea
   );
 }
 
-// ─── Frame ───────────────────────────────────────────────
-
-/**
- * The card: kind icon tile and headline on top — plus the status badge once
- * it is settled (a pending card's buttons already say it waits for the
- * member, and the headline needs the width); the body; the footer (countdown
- * + buttons, or "Ask Again"). `onHeaderPress` makes the header a button — an
- * expanded receipt collapses back through it.
- */
-export function CardFrame({
-  icon,
-  title,
-  badge,
-  settled,
-  highlighted,
-  onHeaderPress,
-  headerHint,
-  children,
-  footer,
-  style,
-}: {
-  icon: IconName;
-  title: string;
-  /** Settled cards only (see above). */
-  badge?: { label: string; tone: BadgeTone };
-  /** A settled card dims its tile to gray (the decision is over). */
-  settled?: boolean;
-  highlighted?: boolean;
-  onHeaderPress?: () => void;
-  /** VoiceOver hint for the header button. */
-  headerHint?: string;
-  children?: React.ReactNode;
-  footer?: React.ReactNode;
-  style?: StyleProp<ViewStyle>;
-}) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  // keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts)
-  const fontKey = useFontScaleKey();
-  const header = (
-    <View key={`head:${fontKey}`} style={styles.header}>
-      <IconTile icon={icon} tint={settled ? c.gray : undefined} />
-      {/* two lines hold every headline with a 24-character name; never more */}
-      <Text style={styles.title} numberOfLines={2} accessibilityRole="header">
-        {title}
-      </Text>
-      {badge ? <Badge label={badge.label} tone={badge.tone} style={styles.badge} /> : null}
-    </View>
-  );
-  return (
-    <View style={[styles.card, style]}>
-      <HighlightWash highlighted={highlighted} radius={radius.group} />
-      {onHeaderPress ? (
-        <Pressable
-          onPress={onHeaderPress}
-          accessibilityRole="button"
-          accessibilityLabel={badge ? `${title}, ${badge.label}` : title}
-          accessibilityHint={headerHint}
-          accessibilityState={{ expanded: true }}
-          style={({ pressed }) => (pressed ? { opacity: 0.55 } : null)}
-        >
-          {header}
-        </Pressable>
-      ) : (
-        header
-      )}
-      {children ? (
-        <View key={`body:${fontKey}`} style={styles.body}>
-          {children}
-        </View>
-      ) : null}
-      {footer ? <View style={styles.footer}>{footer}</View> : null}
-    </View>
-  );
-}
-
 // ─── Buttons ─────────────────────────────────────────────
 
 /**
- * The card's decision buttons (`cardButtons`): a trailing row with the
- * prominent one last, wrapping when the labels do not fit; at large Dynamic
- * Type sizes a full-width stack with the prominent one on top. While a
- * decision is in flight its button spins and the others wait.
+ * The card sheet's decision buttons (`cardButtons`), pinned under its content:
+ * one row of equal widths with the prominent one last (nearest the thumb); at
+ * large Dynamic Type sizes a full-width stack with the prominent one on top.
+ * While a decision is in flight its button spins and the others wait.
  */
 export function DecisionBar({
   request,
@@ -224,24 +139,19 @@ export function DecisionBar({
   const stacked = fontScale > STACK_FONT_SCALE;
   const ordered = stacked ? [...buttons].reverse() : buttons;
   return (
-    <View
-      style={
-        stacked
-          ? { alignSelf: 'stretch', gap: space.sm }
-          : { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: space.sm }
-      }
-    >
+    <View style={stacked ? { alignSelf: 'stretch', gap: space.sm } : { flexDirection: 'row', gap: space.sm }}>
       {ordered.map((button) => (
-        <NativeButton
-          key={button.id}
-          label={tr(t, buttonLabel(request, button.id))}
-          variant={button.prominent ? 'prominent' : 'tinted'}
-          fullWidth={stacked}
-          style={stacked ? { alignSelf: 'stretch' } : undefined}
-          loading={busy === button.id}
-          disabled={busy !== null && busy !== button.id}
-          onPress={() => onPress(button)}
-        />
+        <View key={button.id} style={stacked ? { alignSelf: 'stretch' } : { flex: 1 }}>
+          <NativeButton
+            label={tr(t, buttonLabel(request, button.id))}
+            variant={button.prominent ? 'prominent' : 'tinted'}
+            size="large"
+            fullWidth
+            loading={busy === button.id}
+            disabled={busy !== null && busy !== button.id}
+            onPress={() => onPress(button)}
+          />
+        </View>
       ))}
     </View>
   );
@@ -347,6 +257,7 @@ export function InfoRow({
   icon,
   note,
   selectable,
+  stack,
 }: {
   label: string;
   value: string;
@@ -356,11 +267,13 @@ export function InfoRow({
   /** A quiet note after the value (the server cut it: "…120 more characters"). */
   note?: string;
   selectable?: boolean;
+  /** The value under its label, across the whole row (a long one — ./decision.ts `detailStacked`). */
+  stack?: boolean;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const { fontScale } = useWindowDimensions();
-  const stacked = fontScale > STACK_FONT_SCALE;
+  const stacked = stack || fontScale > STACK_FONT_SCALE;
   return (
     <View
       style={stacked ? styles.infoStack : styles.infoRow}
@@ -386,52 +299,7 @@ export function CardNote({ text, tone }: { text: string; tone?: ColorValue }) {
   return <Text style={[styles.note, tone ? { color: tone } : null]}>{text}</Text>;
 }
 
-/**
- * A text link under a card's body: "View All ›" / "View Changes ›" open the
- * card sheet with everything the card leaves out (`opens`); "Show More ⌄"
- * expands in place (`expands`, `expanded` flips the chevron).
- */
-export function MoreLink({
-  label,
-  onPress,
-  expands,
-  expanded,
-}: {
-  label: string;
-  onPress: () => void;
-  expands?: boolean;
-  expanded?: boolean;
-}) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  return (
-    <Touchable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.more} hitSlop={8}>
-      <Text style={styles.moreText}>{label}</Text>
-      <Icon
-        name={expands ? 'chevD' : 'chevR'}
-        size={12}
-        weight="semibold"
-        color={c.accentText}
-        style={expands && expanded ? { transform: [{ rotate: '180deg' }] } : undefined}
-      />
-    </Touchable>
-  );
-}
-
 const useStyles = makeStyles((c) => ({
-  card: {
-    backgroundColor: c.secondaryGroupedBackground,
-    borderRadius: radius.group,
-    padding: space.lg,
-    gap: space.md,
-    overflow: 'hidden',
-    ...squircle,
-  },
-  header: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  title: { ...typo.headline, color: c.label, flex: 1 },
-  badge: { alignSelf: 'flex-start', marginTop: 2 },
-  body: { gap: space.sm },
-  footer: { gap: space.sm },
   infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
   infoStack: { gap: space.xxs },
   infoLabel: { ...typo.footnote, color: c.secondaryLabel, minWidth: 72, maxWidth: '40%', flexShrink: 0, paddingTop: 2 },
@@ -443,6 +311,4 @@ const useStyles = makeStyles((c) => ({
   infoValue: { ...typo.body, color: c.label, flex: 1 },
   infoNote: { ...typo.footnote, color: c.tertiaryLabel },
   note: { ...typo.footnote, color: c.secondaryLabel },
-  more: { flexDirection: 'row', alignItems: 'center', gap: space.xxs, alignSelf: 'flex-start', minHeight: 28 },
-  moreText: { ...typo.subheadline, fontWeight: weight.medium, color: c.accentText },
 }));

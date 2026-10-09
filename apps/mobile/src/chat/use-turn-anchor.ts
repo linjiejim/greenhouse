@@ -5,23 +5,24 @@
  * (`ref`, `blankSpace`, `onLayout`, `onContentSizeChange`,
  * `onScrollBeginDrag`, `onEndVisible`) and into the row a turn anchors to.
  *
- * Scrolling never chases the stream (pinning the end on every drain tick made
- * a reply judder):
+ * Scrolling never chases the stream — pinning the end on every drain tick
+ * made a reply judder until it was unreadable (a Bots send with the keyboard
+ * up used to "follow to the end", Messages-style; 2026-10 it anchors like
+ * every other turn):
  *  - **Land on the end** (`landOnEnd`): opening a transcript keeps its end in
- *    view while the history lays out, until the user drags or a turn starts.
- *  - **Anchor a turn** (`anchorNext(rowId)` — the conversation's every turn,
- *    a Bots send with the keyboard down): once that row is laid out it slides
- *    up under the nav bar and the reply unfolds below it in place. The
+ *    view while the history lays out, until the user drags or a turn anchors.
+ *    Only static rows are held this way: a turn that starts streaming is
+ *    anchored by the screen (`holdingEnd()` says whether the end is still
+ *    held), never followed.
+ *  - **Anchor a turn** (`anchorNext(rowId)` — every send, and a reply the
+ *    server started while the end was in view): once that row is laid out it
+ *    slides up under the nav bar and the reply unfolds below it in place. The
  *    `blankSpace` inset floor keeps that offset reachable while the reply is
  *    short (= anchor offset + viewport − content) and shrinks to 0 as it
- *    grows, so nothing moves; past the fold the reply simply continues below.
- *    A row too tall for the screen keeps its last lines (and room for the
- *    reply) in view instead.
- *  - **Follow to the end** (`followToEnd` — a Bots send with the keyboard up,
- *    Messages-style): one animated scroll to the end after the next layout,
- *    no inset floor, then the end stays pinned (like `landOnEnd`) until the
- *    user drags. With the keyboard up only a few lines are visible, so a reply
- *    that didn't follow would stream out of sight behind it.
+ *    grows, so nothing moves; past the fold the reply simply continues below
+ *    — the screen offers "New messages ↓", it never scrolls by itself. A row
+ *    too tall for the screen keeps its last lines (and room for the reply) in
+ *    view instead.
  *  - `jumpToLatest` for the "back to latest" pill (`endVisible` says when the
  *    end is out of view); `shift(Δ)` keeps the bookkeeping right when earlier
  *    rows are prepended above.
@@ -61,8 +62,8 @@ export interface TurnAnchor {
   onAnchorRowLayout(rowId: string, e: LayoutChangeEvent): void;
   /** Anchor the next turn to this row: it slides under the nav bar once laid out, the reply unfolds below. */
   anchorNext(rowId: string): void;
-  /** Messages-style: one animated scroll to the end after the next layout, no inset floor. */
-  followToEnd(): void;
+  /** The end is still held from opening (no drag, no anchored turn since). */
+  holdingEnd(): boolean;
   /** A send is starting (keyboard about to hide): floor the inset at one viewport, stop holding the end. */
   holdForTurn(): void;
   /** The send didn't go: drop a pending anchor and re-fit the inset. */
@@ -93,8 +94,6 @@ export function useTurnAnchor({
   const anchorRef = useRef<number | null>(null);
   /** The row the next turn anchors to, once it is laid out (null = none pending). */
   const pendingRef = useRef<string | null>(null);
-  /** Scroll to the end on the next content layout (followToEnd). */
-  const followRef = useRef(false);
   const [endVisible, setEndVisible] = useState(true);
   const bottomInsetRef = useRef(bottomInset);
   bottomInsetRef.current = bottomInset;
@@ -136,18 +135,13 @@ export function useTurnAnchor({
   const anchorNext = useCallback(
     (rowId: string) => {
       pinEndRef.current = false;
-      followRef.current = false;
       pendingRef.current = rowId;
       tryAnchor();
     },
     [tryAnchor],
   );
 
-  const followToEnd = useCallback(() => {
-    pinEndRef.current = false;
-    pendingRef.current = null;
-    followRef.current = true;
-  }, []);
+  const holdingEnd = useCallback(() => pinEndRef.current, []);
 
   const holdForTurn = useCallback(() => {
     blankSpace.value = geo.current.viewport;
@@ -156,7 +150,6 @@ export function useTurnAnchor({
 
   const cancelTurn = useCallback(() => {
     pendingRef.current = null;
-    followRef.current = false;
     syncBlank();
   }, [syncBlank]);
 
@@ -171,14 +164,7 @@ export function useTurnAnchor({
   const onContentSize = useCallback(
     (_w: number, h: number) => {
       geo.current.content = h;
-      if (followRef.current) {
-        // IM semantics: the new row sits at the end, above the control layer — no floor under it.
-        followRef.current = false;
-        anchorRef.current = null;
-        pinEndRef.current = true;
-        syncBlank();
-        scrollRef.current?.scrollToEnd({ animated: true });
-      } else if (anchorRef.current != null) syncBlank();
+      if (anchorRef.current != null) syncBlank();
       else if (pinEndRef.current) scrollRef.current?.scrollToEnd({ animated: false });
     },
     [syncBlank],
@@ -203,7 +189,6 @@ export function useTurnAnchor({
     pinEndRef.current = true;
     anchorRef.current = null;
     pendingRef.current = null;
-    followRef.current = false;
     geo.current.row = null;
     syncBlank();
   }, [syncBlank]);
@@ -231,7 +216,7 @@ export function useTurnAnchor({
     onDragStart,
     onAnchorRowLayout,
     anchorNext,
-    followToEnd,
+    holdingEnd,
     holdForTurn,
     cancelTurn,
     jumpToLatest,

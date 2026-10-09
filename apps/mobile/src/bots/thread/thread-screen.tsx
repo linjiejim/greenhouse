@@ -6,9 +6,9 @@
  *
  *  - Chrome (./thread-header.tsx): the title view is the Bot (plant + name +
  *    a live status line — "Browsing github.com", "Waiting for your approval",
- *    its role when idle), ☰ with a badge for the other conversations that need
- *    the member, `⋯` for profile / info / invite / "Ask in a New Chat". No ✎:
- *    a thread is not a session.
+ *    its role when idle — tap it for the Bot's profile), ☰ with a badge for
+ *    the other conversations that need the member, `⋯` for "New Chat" and
+ *    the reply details. No ✎: a thread is not a session.
  *  - Transcript (the vendored `buildTranscript` + ./thread-rows.ts): member
  *    bubbles and Bot replies reuse the conversation's `UserMessage` /
  *    `AiMessage` through ./adapters.ts (markdown, tool rows and their live
@@ -22,14 +22,18 @@
  *    the accessory slot above the input (the @-mention strip, else the stop
  *    hint, else the task dock), group "Mention ▸" in `+`, quotes, images
  *    (≤ 3). It never locks: a message sent while Bots work is queued.
- *  - Scrolling (`useTurnAnchor`, D10): opening lands on the end. Sending with
- *    the keyboard up keeps it up and scrolls to the end once (Messages);
- *    with it down (a card answer, a starter sent) the turn is anchored like
- *    the conversation's — the bubble slides under the bar, replies unfold
- *    below. A queued send never re-anchors. A run the server started by
- *    itself anchors its first speaker when the end is in view, otherwise the
- *    "New Messages ↓" pill lights up ("Needs You ↓" for a card below). Earlier
- *    pages load near the top, keeping the reading position (D15).
+ *  - Scrolling (`useTurnAnchor`): opening lands on the end. Every send is
+ *    anchored like the conversation's — the keyboard goes down, the bubble
+ *    slides under the bar, replies unfold below and the view never chases
+ *    them (2026-10: the Messages-style "follow to the end" with the keyboard
+ *    up re-scrolled on every streamed word). A queued send never re-anchors.
+ *    A run the server started by itself — or one already streaming when the
+ *    thread opens — anchors its first speaker when the end is in view,
+ *    otherwise the "New Messages ↓" pill lights up ("Needs You ↓" for a card
+ *    below). A reply keeps its row from its first word to its persisted copy
+ *    (`stableTurnKeys` + one `ReplyRow` type), so nothing jumps when a run
+ *    settles. Earlier pages load near the top, keeping the reading position
+ *    (D15).
  *  - Effects from the engine: a card arriving in the thread on screen →
  *    warning haptic + one VoiceOver announcement; a Bot starting to reply →
  *    one announcement (never replays, never per token).
@@ -66,7 +70,7 @@ import Animated, { FadeIn, FadeOut, useSharedValue } from 'react-native-reanimat
 import { KeyboardChatScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import * as Clipboard from 'expo-clipboard';
 import { Composer, ReadOnlyBar } from '../../chat/composer';
-import { useComposerBridge } from '../../chat/composer-bridge';
+import { draftsFor, useComposerBridge } from '../../chat/composer-bridge';
 import { openTurn, publishTurns } from '../../chat/live-turn';
 import type { MessageAction } from '../../chat/message';
 import { excerpt, plainText, type ChatMessage } from '../../chat/model';
@@ -85,7 +89,6 @@ import { EmptyState, LoadingState } from '../../ui/empty';
 import { Glass, GlassIconButton } from '../../ui/glass';
 import { notifyWarning, selectionTick } from '../../ui/haptics';
 import { useHeaderInset } from '../../ui/header-inset';
-import type { MenuItem } from '../../ui/menu';
 import { toast } from '../../ui/toast';
 import type { BotsReadOnly, MobilePending, SendInput, SendOutcome } from '../contract';
 import { forgetThread } from '../last-surface';
@@ -107,22 +110,14 @@ import { RunTail } from './rows/run-tail';
 import { wantsNameHint } from './rows/sprouty-name';
 import { Starters } from './rows/starters';
 import { TaskReport } from './rows/task-report';
-import {
-  BotRow,
-  PendingRow,
-  RequestRow,
-  SegmentRow,
-  UserRow,
-  type ReplyHandlers,
-  type ReplyRowProps,
-} from './rows/turns';
+import { PendingRow, ReplyRow, RequestRow, UserRow, type ReplyHandlers, type ReplyRowProps } from './rows/turns';
 import { TimeSeparator } from './rows/time-separator';
 import { TopLoader } from './rows/top-loader';
 import { CHEER_MS, cheerPose, statusLine, threadReadOnly, talkingSegment, titlePose } from './status-line';
 import { StopHint, useComposerStop } from './stop-control';
 import { TaskDock } from './task-dock';
 import { dropThreadHeader, publishThreadHeader, ThreadHeader, type ThreadHeaderActions } from './thread-header';
-import { threadRows, type ThreadRow } from './thread-rows';
+import { stableTurnKeys, threadRows, type ThreadRow } from './thread-rows';
 import {
   deepLinkStep,
   expectOnRunSettled,
@@ -137,12 +132,6 @@ import { useBotTasks } from './use-bot-tasks';
 import { useMentionPicker } from './use-mention-picker';
 
 /**
- * D10: a send with the keyboard up keeps it up and scrolls to the end once.
- * The way back if the keyboard-up geometry misbehaves on a device: false =
- * the conversation's behaviour (dismiss, then anchor the turn).
- */
-const KEEP_KEYBOARD_ON_SEND = true;
-/**
  * D15: how prepended pages keep the reading position — `mvcp` lets the
  * scroll view do it (maintainVisibleContentPosition, on only while a page
  * lands), `delta` scrolls by the height the page added. Flip if MVCP proves
@@ -151,8 +140,6 @@ const KEEP_KEYBOARD_ON_SEND = true;
 const PREPEND_MODE: 'mvcp' | 'delta' = 'mvcp';
 /** Images per message (the web's Bots composer allows the same). */
 const MAX_IMAGES = 3;
-/** A conversation holds at most this many Bots (POST /api/bots/conversations, the members route). */
-const MEMBER_LIMIT = 6;
 /** Earlier pages load by themselves within this distance of the top… */
 const EARLIER_THRESHOLD = 400;
 /** …this many in a row; the next one waits for a tap. */
@@ -298,8 +285,6 @@ export function BotThreadScreen({
         archived: (name) => `${name} ${t('bots.common.archivedSuffix')}`,
       })) ||
     titleParam;
-  // Guests join a live DM only (an old group chat is a closed record).
-  const canInvite = !!conversation && !group && !readOnlyCode && conversation.members.length < MEMBER_LIMIT;
 
   /* ---------- a thread that is gone is not reopened on the next cold start (D3; home remembers it) ---------- */
   const gone = snap.load === 'not_found' || snap.load === 'forbidden';
@@ -311,18 +296,24 @@ export function BotThreadScreen({
   const ready = snap.load === 'ready';
   const showRows = ready || snap.messages.length > 0;
   const segments = snap.run?.segments ?? EMPTY_SEGMENTS;
+  const runKey = snap.run?.key ?? '';
+  // A reply keeps one row key from its first word to its persisted copy (./thread-rows.ts).
+  const turnKeys = useRef(new Map<string, string>());
   const items = useMemo(
     () =>
-      buildTranscript({
-        messages: snap.messages,
-        conversationKind: kind,
-        ownerBotId: conversation?.owner_bot_id ?? null,
-        segments,
-        liveRequests: snap.run?.requests ?? EMPTY_REQUESTS,
-        pending: snap.pending,
-        requests: snap.requests,
-      }),
-    [snap.messages, kind, conversation?.owner_bot_id, segments, snap.run?.requests, snap.pending, snap.requests],
+      stableTurnKeys(
+        buildTranscript({
+          messages: snap.messages,
+          conversationKind: kind,
+          ownerBotId: conversation?.owner_bot_id ?? null,
+          segments,
+          liveRequests: snap.run?.requests ?? EMPTY_REQUESTS,
+          pending: snap.pending,
+          requests: snap.requests,
+        }),
+        { runKey, segments, known: turnKeys.current },
+      ),
+    [snap.messages, kind, conversation?.owner_bot_id, segments, snap.run?.requests, snap.pending, snap.requests, runKey],
   );
   const rows = useMemo(
     () => threadRows(items, { hasMore: snap.hasMore, replyable: !readOnly, locale: lang }),
@@ -345,7 +336,6 @@ export function BotThreadScreen({
     [snap.messages],
   );
   /** The live segments as replies — one object per segment, shared by the rows and the live sheets. */
-  const runKey = snap.run?.key ?? '';
   const liveMessages = useMemo(
     () =>
       segments.map((segment, index) =>
@@ -431,15 +421,15 @@ export function BotThreadScreen({
     focusInput();
   }, [bridged, focusInput, addQuotes]);
   // An html-preview page's sendPrompt: text INTO the composer, after what is typed — never sent.
-  const drafted = useComposerBridge((s) => s.drafts.length);
+  const drafted = useComposerBridge(draftsFor(sessionId));
   useEffect(() => {
     if (!drafted) return;
-    const texts = useComposerBridge.getState().takeDrafts();
+    const texts = useComposerBridge.getState().takeDrafts(sessionId);
     if (readOnlyNow.current) return;
     setInput([input.trim() ? input : '', ...texts].filter(Boolean).join('\n'));
     focusInput();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- append to the input as it is when the text arrives
-  }, [drafted, focusInput]);
+  }, [drafted, focusInput, sessionId]);
 
   /* ---------- the floating layer under the bar: "couldn't refresh" ---------- */
   const [topLayerH, setTopLayerH] = useState(0);
@@ -462,7 +452,7 @@ export function BotThreadScreen({
     onDragStart: anchorDragStart,
     onAnchorRowLayout,
     anchorNext,
-    followToEnd,
+    holdingEnd,
     holdForTurn,
     cancelTurn,
     jumpToLatest,
@@ -532,13 +522,17 @@ export function BotThreadScreen({
       }
     }
   }, [snap.pending, anchorTo]);
-  // A run the server started by itself: anchor its first speaker (when the end was in view).
+  // A run the server started by itself: anchor its first speaker (when the end was in view) — and
+  // one already streaming when the thread opened (its start may predate this screen's listener):
+  // while the end is still held from opening, its reply is anchored, never followed.
   const firstSegmentKey = segments.length ? (items.find((item) => item.kind === 'segment')?.key ?? null) : null;
   useEffect(() => {
-    if (expectAnchor.current?.kind !== 'segment' || !firstSegmentKey) return;
-    expectAnchor.current = null;
-    anchorTo(firstSegmentKey);
-  }, [firstSegmentKey, anchorTo]);
+    if (!firstSegmentKey) return;
+    if (expectAnchor.current?.kind === 'segment' || (expectAnchor.current === null && holdingEnd())) {
+      expectAnchor.current = null;
+      anchorTo(firstSegmentKey);
+    }
+  }, [firstSegmentKey, anchorTo, holdingEnd]);
 
   /* ---------- earlier pages (D15) ---------- */
   const dragged = useRef(false);
@@ -720,10 +714,7 @@ export function BotThreadScreen({
           AccessibilityInfo.announceForAccessibility(tNow('bots.thread.announceNeedsYou', { name }));
         } else if (e.type === 'run-started') {
           // A run nobody here sent: follow it only if the member is at the end with the keyboard down.
-          expectAnchor.current = expectOnRunStarted(expectAnchor.current, e, {
-            endVisible: endVisibleRef.current,
-            keyboardUp: Keyboard.isVisible(),
-          });
+          expectAnchor.current = expectOnRunStarted(expectAnchor.current, e, { endVisible: endVisibleRef.current });
         } else if (e.type === 'run-settled') {
           // It never showed a reply: nothing is waiting for one any more.
           expectAnchor.current = expectOnRunSettled(expectAnchor.current, e.runKey);
@@ -740,28 +731,22 @@ export function BotThreadScreen({
         : tNow('bots.thread.readOnlyClosed'),
     [owner],
   );
-  const openInvite = useCallback(
-    () => router.push({ pathname: '/bots/invite', params: { c: sessionId } }),
-    [router, sessionId],
-  );
-
   /** Every send goes through here: where the transcript moves, and what a refusal says. */
   const dispatchSend = useCallback(
     async (body: SendInput, via: 'composer' | 'card'): Promise<SendOutcome> => {
       const keyboardUp = Keyboard.isVisible();
-      if (keyboardUp && via === 'composer' && KEEP_KEYBOARD_ON_SEND) {
-        // Messages: the keyboard stays, the new bubble is scrolled into view once (over any anchor still waiting).
-        expectAnchor.current = null;
-        followToEnd();
-      } else if (!snapRef.current.runActive) {
-        // The conversation's turn: the bubble slides under the bar once it is in the list.
+      if (!snapRef.current.runActive) {
+        // The conversation's turn: the keyboard goes down and the bubble slides under the bar once it
+        // is in the list; the replies unfold below it — the view never follows them.
         if (keyboardUp) {
           holdForTurn();
           Keyboard.dismiss();
         }
         expectAnchor.current = { kind: 'pending' };
+      } else if (keyboardUp && via === 'composer') {
+        // Sent while Bots work: queued in place, no re-anchoring — just the keyboard out of the way.
+        Keyboard.dismiss();
       }
-      // (sent while Bots work: queued in place — no re-anchoring)
       const outcome = await ctl.send(body);
       if (outcome.ok || outcome.kind === 'not_delivered') return outcome;
       if (expectAnchor.current?.kind === 'pending') expectAnchor.current = null;
@@ -770,7 +755,7 @@ export function BotThreadScreen({
       else alertError(tNow('bots.thread.sendFailed'), outcome.message || undefined);
       return outcome;
     },
-    [ctl, followToEnd, holdForTurn, cancelTurn, readOnlyMessage],
+    [ctl, holdForTurn, cancelTurn, readOnlyMessage],
   );
 
   const membersRef = useRef(members);
@@ -876,32 +861,6 @@ export function BotThreadScreen({
     },
     [pickMention, placeCaret, focusInput, input, setInput],
   );
-  const menuExtra = useMemo(() => {
-    if (!group || readOnly || !members.length) return undefined;
-    const menu: MenuItem[] = [
-      {
-        id: 'mention',
-        title: t('bots.composer.mention'),
-        icon: 'at',
-        children: [
-          ...members.map((bot) => ({ id: `mention:${bot.id}`, title: bot.name })),
-          ...(canInvite
-            ? [{ id: 'mention-invite', title: t('bots.composer.inviteOther'), icon: 'userPlus' as const }]
-            : []),
-        ],
-      },
-    ];
-    return {
-      items: menu,
-      onSelect: (id: string) => {
-        if (id === 'mention-invite') openInvite();
-        else {
-          const bot = members.find((m) => `mention:${m.id}` === id);
-          if (bot) mention(bot);
-        }
-      },
-    };
-  }, [group, readOnly, members, canInvite, t, openInvite, mention]);
 
   /* ---------- the accessory slot: mention strip > stop hint > task dock ---------- */
   const stop = useComposerStop(snap, ctl);
@@ -913,7 +872,7 @@ export function BotThreadScreen({
   const accessory = useMemo(() => {
     if (picker.open) {
       return (
-        <MentionStrip candidates={picker.candidates} onPick={mention} onInvite={canInvite ? openInvite : undefined} />
+        <MentionStrip candidates={picker.candidates} onPick={mention} />
       );
     }
     if (softStopping && stop?.phase === 'soft') return <StopHint />;
@@ -923,8 +882,6 @@ export function BotThreadScreen({
     picker.open,
     picker.candidates,
     mention,
-    canInvite,
-    openInvite,
     softStopping,
     stop?.phase,
     activeTasks,
@@ -968,10 +925,13 @@ export function BotThreadScreen({
     (botId: string) => router.push({ pathname: '/bots/profile', params: { botId, from: sessionId } }),
     [router, sessionId],
   );
-  const onViewSummary = useCallback(
-    () => router.push({ pathname: '/bots/info', params: { c: sessionId } }),
-    [router, sessionId],
-  );
+  // "Earlier messages were summarized · View": the summary lives in the Bot's profile, Memory tab.
+  const ownerIdRef = useRef(owner?.id);
+  ownerIdRef.current = owner?.id;
+  const onViewSummary = useCallback(() => {
+    const botId = ownerIdRef.current;
+    if (botId) router.push({ pathname: '/bots/profile', params: { botId, from: sessionId, tab: 'memory' } });
+  }, [router, sessionId]);
   const onNewChat = useCallback(() => openNewChat(router), [router]);
   const onRename = useCallback(
     (botId: string) => router.push({ pathname: '/bots/bot-form', params: { botId } }),
@@ -993,18 +953,12 @@ export function BotThreadScreen({
   const headerActions = useMemo<ThreadHeaderActions>(
     () => ({
       openDrawer: () => navigation.dispatch(DrawerActions.openDrawer()),
-      profile: () => {
-        const bot = latest.current.owner;
-        if (bot) onOpenProfile(bot.id);
-      },
-      info: onViewSummary,
-      invite: openInvite,
       askInChat: () => {
         const bot = latest.current.owner;
         if (bot) openNewChat(router, { profile: isSproutyBot(bot) ? 'sprouty' : `bot:${bot.id}` });
       },
     }),
-    [navigation, onOpenProfile, onViewSummary, openInvite, router],
+    [navigation, router],
   );
 
   /* ---------- rows ---------- */
@@ -1028,7 +982,7 @@ export function BotThreadScreen({
         return <UserRow message={row.message} readOnly={readOnly} onAction={onAction} />;
       case 'bot':
         return (
-          <BotRow
+          <ReplyRow
             {...reply}
             readOnly={readOnly}
             message={row.message}
@@ -1048,7 +1002,7 @@ export function BotThreadScreen({
         const index = segments.indexOf(row.segment);
         const askedBy = row.segment.reason === 'ask' ? (lookup(row.segment.askedBy)?.name ?? null) : null;
         return (
-          <SegmentRow
+          <ReplyRow
             {...reply}
             readOnly={readOnly}
             segment={row.segment}
@@ -1105,7 +1059,6 @@ export function BotThreadScreen({
             sessionId={sessionId}
             readOnly={readOnly}
             highlighted={highlighted === row.requestId}
-            ctl={ctl}
             onAskAgain={retryBot}
           />
         );
@@ -1155,9 +1108,7 @@ export function BotThreadScreen({
         sessionId={sessionId}
         title={displayTitle}
         badge={badge}
-        group={group}
         ownerName={owner?.name ?? null}
-        canInvite={canInvite && !gone}
         canAsk={!group && !!owner && owner.status === 'active'}
         actions={headerActions}
       />
@@ -1262,7 +1213,6 @@ export function BotThreadScreen({
                   stop={stop}
                   accessory={accessory}
                   onSelectionChange={onSelectionChange}
-                  menuExtra={menuExtra}
                 />
               )}
             </View>

@@ -10,8 +10,8 @@
 
 /**
  * Which gate a route sits behind (./availability.ts):
- * - `threads` — the conversation surfaces (needs-you, cards, groups, invite,
- *   archived): an internal account with the server's `bots` feature on;
+ * - `threads` — the conversation surfaces (needs-you, cards, archived): an
+ *   internal account with the server's `bots` feature on;
  * - `identity` — Bot identity (a Bot's profile): an internal account on a
  *   server that has Bots, whether or not the conversations are switched on.
  */

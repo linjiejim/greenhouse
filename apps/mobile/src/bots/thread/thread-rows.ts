@@ -22,6 +22,7 @@
  * Pure (tested in ./thread-rows.test.ts); never edits the vendored module.
  */
 
+import type { BotStreamSegment } from '../../shared/bots-wire';
 import type { TranscriptItem } from '../vendor/transcript';
 
 export type ThreadRow =
@@ -114,4 +115,56 @@ export function threadRows(
   }
   rows.push({ key: 'tail', kind: 'tail' });
   return rows;
+}
+
+/**
+ * One key per turn, from its first streamed word to its persisted reply. The
+ * vendored transcript keys a live reply by its index in the run (`segment:0`,
+ * and every run starts again at 0) and the persisted reply by its message id,
+ * so when a run settles React would drop the live row and mount a new one:
+ * its tables measure their columns again, its diagrams reload, and the text
+ * the member is reading jumps. Live replies become `turn:<runKey>:<index>`;
+ * once a reply knows its message id (`bot-turn-end`), that message keeps the
+ * turn's key for as long as the thread is open (`known`, owned by the screen).
+ * Hand-off strips follow their turn's key. Everything else is untouched.
+ */
+export function stableTurnKeys(
+  items: TranscriptItem[],
+  o: { runKey: string; segments: readonly BotStreamSegment[]; known: Map<string, string> },
+): TranscriptItem[] {
+  let changed = false;
+  const out = items.map((item) => {
+    if (item.kind === 'segment') {
+      const index = o.segments.indexOf(item.segment);
+      if (index < 0) return item;
+      const key = (item.segment.messageId && o.known.get(item.segment.messageId)) || `turn:${o.runKey}:${index}`;
+      if (item.segment.messageId && !o.known.has(item.segment.messageId)) o.known.set(item.segment.messageId, key);
+      changed = true;
+      return { ...item, key };
+    }
+    if (item.kind === 'bot') {
+      const key = o.known.get(item.message.id);
+      if (!key) return item;
+      changed = true;
+      return { ...item, key };
+    }
+    if (item.kind === 'handoff') {
+      // `segment:<index>:handoff:<n>` (live) / `<messageId>:handoff:<n>` (persisted)
+      const at = item.key.lastIndexOf(':handoff:');
+      if (at < 0) return item;
+      const owner = item.key.slice(0, at);
+      const live = /^segment:(\d+)$/.exec(owner);
+      const key = live
+        ? (() => {
+            const segment = o.segments[Number(live[1])];
+            return (segment?.messageId && o.known.get(segment.messageId)) || `turn:${o.runKey}:${live[1]}`;
+          })()
+        : o.known.get(owner);
+      if (!key) return item;
+      changed = true;
+      return { ...item, key: `${key}${item.key.slice(at)}` };
+    }
+    return item;
+  });
+  return changed ? out : items;
 }

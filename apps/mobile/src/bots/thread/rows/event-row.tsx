@@ -6,7 +6,7 @@
  * decision carries an action: a failed turn offers Retry (an honest new
  * message "@Name Please try that again."), a hit limit offers Continue. The
  * summary marker is a thin rule: "Earlier messages were summarized · View"
- * (→ the conversation info, where the digest lives). Text comes from the
+ * (→ the Bot's profile, 记忆 tab, where the digest lives). Text comes from the
  * server (its `content`, in the account's language); the icon from the
  * event's kind.
  */

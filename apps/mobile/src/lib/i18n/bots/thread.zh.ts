@@ -31,11 +31,7 @@ export const botsThreadZh: typeof botsThreadEn = {
     unavailable: 'Bots 暂不可用',
     backToNewChat: '回到新对话',
     askInChat: '新对话',
-    profile: 'Bot 资料',
-    info: '对话信息',
-    invite: '邀请 Bot',
     titleHintDm: '显示 Bot 资料',
-    titleHintGroup: '显示对话信息',
     readOnlyDm: '{name} 已归档，不会再回复',
     readOnlyClosed: '群聊已下线，这里保留为记录。',
     nameHint: '给 {name} 起个名字？',
@@ -112,8 +108,6 @@ export const botsThreadZh: typeof botsThreadEn = {
   composer: {
     placeholder: '发消息',
     placeholderDm: '给 {name} 发消息',
-    mention: '点名',
     mentionA11y: '点名 {name}',
-    inviteOther: '邀请其他 Bot…',
   },
 };
