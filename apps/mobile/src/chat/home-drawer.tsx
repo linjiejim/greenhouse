@@ -4,12 +4,12 @@
  *
  *  - top: a search field (filters the loaded history by title — see
  *    use-sessions; there is no server-side title search) + a new-chat button,
- *  - navigation rows to 知识库 / 项目,
  *  - the conversation history, grouped by recency (置顶 / 今天 / 昨天 / 7 天内 /
  *    30 天内 / 更早) with sticky section headers and infinite scroll; the active
  *    conversation is highlighted; long-press a row for its native context menu
  *    (标签 / 删除); a tag filter lives in a native menu on the header,
- *  - footer: the account row (avatar · name · station) → Settings.
+ *  - footer, pinned to the bottom: navigation rows to 知识库 / 项目, then the
+ *    account row (avatar · name · station) → Settings.
  *
  * History states: LoadingState while the first page loads, then EmptyState
  * (ContentUnavailableView) for 暂无对话 / 无匹配结果 / 加载失败 (with 重试).
@@ -24,7 +24,7 @@
  * conversations started / renamed / deleted on the surface show up.
  *
  * With Bots on (iOS, an internal account, `features.bots`), the Bots section
- * (src/bots/drawer/bots-section.tsx) comes first, above 知识库 / 项目, and the
+ * (src/bots/drawer/bots-section.tsx) comes first, above the history, and the
  * search filters it too; otherwise it renders nothing and the drawer is exactly
  * as before. Every route to home goes through src/bots/nav.ts (all seven
  * params — a Bots thread is the same route with `?c=`).
@@ -261,8 +261,6 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
           <>
             <BotsSection query={search} onClose={close} />
             <View key={fontKey} style={styles.navBlock}>
-              <NavRow icon="books" label={t('drawer.knowledge')} onPress={() => go('/knowledge')} />
-              <NavRow icon="folder" label={t('drawer.projects')} onPress={() => go('/projects')} />
               <View style={styles.historyHead}>
                 <Text style={styles.historyTitle}>{activeTag ? activeTag.name : t('drawer.history')}</Text>
                 {tags.length ? (
@@ -339,7 +337,11 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
         style={{ flex: 1 }}
       />
 
-      {/* account → settings */}
+      {/* pinned to the bottom: 知识库 / 项目, then account → settings */}
+      <View key={fontKey} style={styles.footer}>
+        <NavRow icon="books" label={t('drawer.knowledge')} onPress={() => go('/knowledge')} />
+        <NavRow icon="folder" label={t('drawer.projects')} onPress={() => go('/projects')} />
+      </View>
       <Pressable
         onPress={() => go('/settings')}
         style={({ pressed }) => [
@@ -405,7 +407,13 @@ const useStyles = makeStyles((c) => ({
   },
   searchInput: { flex: 1, ...typo.body, color: c.label, paddingVertical: 0 },
   topBtn: { width: HIT, height: HIT, alignItems: 'center', justifyContent: 'center' },
-  navBlock: { paddingHorizontal: space.sm, paddingTop: space.xs },
+  navBlock: { paddingHorizontal: space.sm },
+  footer: {
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: c.separator,
+  },
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -416,7 +424,7 @@ const useStyles = makeStyles((c) => ({
     ...squircle,
   },
   navText: { ...typo.body, color: c.label },
-  historyHead: { flexDirection: 'row', alignItems: 'center', marginTop: space.md, paddingLeft: space.sm + 2 },
+  historyHead: { flexDirection: 'row', alignItems: 'center', marginTop: space.xs, paddingLeft: space.sm + 2 },
   historyTitle: { ...typo.footnote, fontWeight: weight.semibold, color: c.secondaryLabel, flex: 1 },
   filterBtn: { width: 36, height: 32, alignItems: 'center', justifyContent: 'center' },
   sectionHead: {
@@ -444,9 +452,7 @@ const useStyles = makeStyles((c) => ({
     alignItems: 'center',
     gap: space.md,
     paddingHorizontal: space.lg,
-    paddingTop: space.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.separator,
+    paddingTop: space.sm,
   },
   accountName: { ...typo.headline, color: c.label },
   accountSub: { ...typo.footnote, color: c.secondaryLabel },
