@@ -3,8 +3,8 @@
  * unless BOTS_LIVE=1). Loads the repo-root `.env` for the LLM keys and runs
  * real chains against the test database:
  * - a DM: the owner Bot answers;
- * - a group: the lead hands the writing to a second Bot via team.ask, which
- *   answers; rows carry bot_id / bot_event, and the run ends with one finish.
+ * - a DM with a guest: the owner hands the writing to the guest via team.ask,
+ *   which answers; rows carry bot_id / bot_event, and the run ends with one finish.
  *
  *   BOTS_LIVE=1 TEST_DATABASE_URL=… npx vitest run --project db apps/api/src/bots/engine/__tests__/live.db.test.ts
  */
@@ -83,7 +83,7 @@ describe.skipIf(!LIVE)('Bots engine — live model', () => {
     expect(rows.at(-1)!.content.length).toBeGreaterThan(4);
   }, 120_000);
 
-  it('a group: the lead hands the writing to the writer, who answers', async () => {
+  it('a DM with a guest: the owner hands the writing to the writer, who answers', async () => {
     const ivy = await db.bots.createBot({
       user_id: user.id,
       name: '小青',
@@ -97,20 +97,17 @@ describe.skipIf(!LIVE)('Bots engine — live model', () => {
       role: '写手',
       instructions: '你是写手，产出简短有力的中文文案。',
     });
-    const group = await db.bots.createGroupConversation({
-      user_id: user.id,
-      bot_ids: [ivy.id, fern.id],
-      title: '新品发布',
-    });
+    const dm = await db.bots.ensureDirectConversation(user.id, ivy.id);
+    await db.bots.addMember(user.id, dm.session_id, fern.id, 'user');
     await db.sessions.addMessage({
-      session_id: group.session_id,
+      session_id: dm.session_id,
       role: 'user',
       content: '请为我们的新产品「温室」写一句不超过 12 个字的中文口号。',
     });
 
-    const events = await run(group.session_id);
-    const rows = await db.sessions.getMessages(group.session_id);
-    console.info('[bots-live] group events', summary(events));
+    const events = await run(dm.session_id);
+    const rows = await db.sessions.getMessages(dm.session_id);
+    console.info('[bots-live] guest hand-off events', summary(events));
     for (const row of rows)
       console.info(
         `[bots-live] #${row.seq} ${row.role} ${row.bot_id ?? '-'} ${row.bot_event ?? ''} :: ${row.content.slice(0, 200)}`,

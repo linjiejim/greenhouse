@@ -1,13 +1,15 @@
 /**
  * Bots runs against real PostgreSQL with a scripted model (design review
  * R4/R5/R13): one run persists several Bot turns with distinct rows, a
- * hand-off writes its line and ends the asker's turn, the owner's follow-up
- * may skip, a member message queued mid-chain interrupts it, a Bot failure is
- * contained, a foreign write stops the chain — and every run ends with exactly
- * one `finish`.
+ * hand-off to a guest writes its line and ends the asker's turn (always
+ * allowed — there is no switch), a Bot brings another in with team.add, the
+ * owner's follow-up may skip, a member message queued mid-chain interrupts it,
+ * a Bot failure is contained, a foreign write stops the chain, a retired group
+ * chat never runs a turn — and every run ends with exactly one `finish`.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sql } from 'drizzle-orm';
 import {
   _resetProvider,
   createDatabase,
@@ -18,7 +20,9 @@ import {
 } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../../../../../../tests/helpers/internal-user.js';
+import { insertLegacyGroup } from '../../__tests__/helpers/legacy-group.js';
 import { chatRunRegistry, type ChatRunEvent } from '../../../chat/runs.js';
+import { connectionManager } from '../../../ws/connection-manager.js';
 import { runBotsRun, type ChainTrigger } from '../chain.js';
 import { setBotsEngineDepsForTest } from '../deps.js';
 import {
@@ -58,6 +62,13 @@ afterEach(() => {
 
 async function bot(name: string, role = ''): Promise<BotRow> {
   return db.bots.createBot({ user_id: user.id, name, role });
+}
+
+/** A Bot's DM with other Bots invited as guests — every conversation since group chats were retired. */
+async function dmWith(owner: BotRow, ...guests: BotRow[]) {
+  const dm = await db.bots.ensureDirectConversation(user.id, owner.id);
+  for (const guest of guests) await db.bots.addMember(user.id, dm.session_id, guest.id, 'user');
+  return dm;
 }
 
 interface RunOutcome {
@@ -142,18 +153,14 @@ describe('Bots runs', () => {
     expect(input.maxStepsOverride).toBe(30);
   });
 
-  it('a group hand-off: line persisted, asker stops after the step, B answers, owner follow-up skips', async () => {
+  it('a hand-off to a guest: line persisted, asker stops after the step, B answers, owner follow-up skips', async () => {
     const ivy = await bot('Ivy');
     const fern = await bot('Fern', 'Writer');
-    const group = await db.bots.createGroupConversation({
-      user_id: user.id,
-      bot_ids: [ivy.id, fern.id],
-      title: 'Launch',
-    });
-    await say(group.session_id, 'We need a tagline');
+    const dm = await dmWith(ivy, fern);
+    await say(dm.session_id, 'We need a tagline');
 
     const { events, captured } = await runWith(
-      group.session_id,
+      dm.session_id,
       {
         Ivy: [
           [
@@ -188,7 +195,7 @@ describe('Bots runs', () => {
     // The skip token never reaches the member.
     expect(events.some((e) => e.type === 'text-delta' && String(e.text).includes('<<skip>>'))).toBe(false);
 
-    const rows = await db.sessions.getMessages(group.session_id);
+    const rows = await db.sessions.getMessages(dm.session_id);
     expect(rows.map((r) => [r.role, r.bot_id ?? null])).toEqual([
       ['user', null],
       ['system', ivy.id],
@@ -214,11 +221,11 @@ describe('Bots runs', () => {
   it('a member message queued mid-chain drops the rest of the queue and starts a new chain in the same run', async () => {
     const ivy = await bot('Ivy');
     const fern = await bot('Fern');
-    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id] });
-    await say(group.session_id, 'Write a tagline');
+    const dm = await dmWith(ivy, fern);
+    await say(dm.session_id, 'Write a tagline');
 
     const { events } = await runWith(
-      group.session_id,
+      dm.session_id,
       {
         Ivy: [
           [{ toolCalls: [{ toolName: 'team', input: { action: 'ask', bot_id: fern.id, message: 'tagline please' } }] }],
@@ -231,7 +238,7 @@ describe('Bots runs', () => {
         onTurn: async (turn) => {
           // While Fern works, the member sends another message (the route queues it: 202).
           if (turn.bot === 'Fern') {
-            await deliverToConversation(group.session_id, {
+            await deliverToConversation(dm.session_id, {
               kind: 'user_message',
               content: 'Actually, a slogan',
               mentions: [],
@@ -250,7 +257,7 @@ describe('Bots runs', () => {
       `end:${ivy.id}:completed:msg`,
       'finish',
     ]);
-    const rows = await db.sessions.getMessages(group.session_id);
+    const rows = await db.sessions.getMessages(dm.session_id);
     expect(rows.map((r) => [r.role, r.bot_id ?? null, r.content])).toEqual([
       ['user', null, 'Write a tagline'],
       ['system', ivy.id, 'Ivy → @Fern：tagline please'],
@@ -258,7 +265,7 @@ describe('Bots runs', () => {
       ['user', null, 'Actually, a slogan'],
       ['assistant', ivy.id, 'Switching to the new request.'],
     ]);
-    expect(await db.bots.listPendingInbox(group.session_id)).toHaveLength(0);
+    expect(await db.bots.listPendingInbox(dm.session_id)).toHaveLength(0);
   });
 
   it('a failing Bot ends its turn with an error line; the run still ends with one finish', async () => {
@@ -367,24 +374,24 @@ describe('the roster is live during a run', () => {
   it('a Bot invited mid-run can be addressed by a queued message right away', async () => {
     const ivy = await bot('Ivy');
     const fern = await bot('Fern', 'Writer');
-    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id] });
-    await say(group.session_id, 'Research the market');
+    const dm = await dmWith(ivy);
+    await say(dm.session_id, 'Research the market');
 
     const { events } = await runWith(
-      group.session_id,
+      dm.session_id,
       { Ivy: [[{ text: 'Browsing…' }]], Fern: [[{ text: 'Intro drafted.' }]] },
       userTrigger,
       {
         onTurn: async (turn) => {
           if (turn.bot !== 'Ivy') return;
           // The member clicks "+ Invite" and then writes to the new Bot (202 queued).
-          await db.bots.addMember(user.id, group.session_id, fern.id, 'user');
-          await deliverToConversation(group.session_id, {
+          await db.bots.addMember(user.id, dm.session_id, fern.id, 'user');
+          await deliverToConversation(dm.session_id, {
             kind: 'event',
             text: 'Fern joined the conversation',
             event: { kind: 'joined', bot_id: fern.id, by: 'user' },
           });
-          await deliverToConversation(group.session_id, {
+          await deliverToConversation(dm.session_id, {
             kind: 'user_message',
             content: '@Fern draft an intro meanwhile',
             mentions: [fern.id],
@@ -405,12 +412,12 @@ describe('the roster is live during a run', () => {
   it('a Bot created mid-run is a valid hand-off target for the proposer’s continue turn', async () => {
     const ivy = await bot('Ivy');
     const sage = await bot('Sage');
-    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, sage.id] });
-    await say(group.session_id, 'Get this researched and written up');
+    const dm = await dmWith(ivy, sage);
+    await say(dm.session_id, 'Get this researched and written up');
     let clover: BotRow | null = null;
 
     const { events } = await runWith(
-      group.session_id,
+      dm.session_id,
       {
         Ivy: [[{ text: 'Sage is on it.' }]],
         Sage: [
@@ -433,8 +440,8 @@ describe('the roster is live during a run', () => {
           // The member confirms Sage's earlier proposal while Ivy is still talking:
           // decideBotCreate creates the Bot, adds it and wakes the proposer.
           clover = await bot('Clover', 'Analyst');
-          await db.bots.addMember(user.id, group.session_id, clover.id, `bot:${sage.id}`);
-          await deliverToConversation(group.session_id, {
+          await db.bots.addMember(user.id, dm.session_id, clover.id, `bot:${sage.id}`);
+          await deliverToConversation(dm.session_id, {
             kind: 'continue',
             botId: sage.id,
             note: 'Clover joined; hand it the numbers.',
@@ -460,57 +467,121 @@ describe('the roster is live during a run', () => {
       `end:${sage.id}:skipped`,
       'finish',
     ]);
-    const rows = await db.sessions.getMessages(group.session_id);
+    const rows = await db.sessions.getMessages(dm.session_id);
     expect(rows.some((r) => r.content.includes('→ @Clover'))).toBe(true);
   });
 
-  it('switching Bot chat off mid-run refuses the next hand-off', async () => {
+  it('a hand-off needs no switch — even where the retired allow_bot_chat column still says false', async () => {
     const ivy = await bot('Ivy');
     const fern = await bot('Fern');
     const sage = await bot('Sage');
-    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id, sage.id] });
-    await say(group.session_id, 'Both of you, please');
+    const dm = await dmWith(ivy, fern, sage);
+    // An old row that had the Bot-chat switch off (before migration 0015): nothing reads it any more.
+    await db.executeRaw(sql`UPDATE bot_conversations SET allow_bot_chat = false WHERE session_id = ${dm.session_id}`);
+    await say(dm.session_id, 'Both of you, please');
 
     const { events } = await runWith(
-      group.session_id,
+      dm.session_id,
       {
         Ivy: [[{ text: 'My part.' }]],
         Fern: [
           [
             { toolCalls: [{ toolName: 'team', input: { action: 'ask', bot_id: sage.id, message: 'help' } }] },
-            { text: 'Doing it myself then.' },
+            { text: 'SHOULD NOT APPEAR' },
           ],
+          [{ text: '<<skip>>' }],
         ],
+        Sage: [[{ text: 'Sage helped.' }]],
       },
       { kind: 'message', reason: 'user', mentions: [ivy.id, fern.id] },
-      {
-        onTurn: async (turn) => {
-          if (turn.bot === 'Ivy')
-            await db.bots.updateConversation(user.id, group.session_id, { allow_bot_chat: false });
-        },
-      },
     );
 
-    expect(botEvents(events).some((e) => e.startsWith(`start:${sage.id}`))).toBe(false);
-    const rows = await db.sessions.getMessages(group.session_id);
-    expect(rows.some((r) => r.bot_event?.includes('"kind":"ask"'))).toBe(false);
-    const fernRow = rows.find((r) => r.bot_id === fern.id && r.role === 'assistant')!;
-    expect(fernRow.pipeline).toContain('switched off');
+    expect(botEvents(events)).toEqual([
+      `start:${ivy.id}:mention`,
+      `end:${ivy.id}:completed:msg`,
+      `start:${fern.id}:mention`,
+      `end:${fern.id}:completed`,
+      `start:${sage.id}:ask`,
+      `end:${sage.id}:completed:msg`,
+      `start:${fern.id}:followup`,
+      `end:${fern.id}:skipped`,
+      'finish',
+    ]);
+    const rows = await db.sessions.getMessages(dm.session_id);
+    expect(rows.find((r) => r.bot_event?.includes('"kind":"ask"'))?.content).toBe('Fern → @Sage：help');
+    expect(rows.some((r) => r.content.includes('SHOULD NOT APPEAR'))).toBe(false);
+  });
+
+  it('a Bot brings another of the member’s Bots in with team.add and hands it work', async () => {
+    const ivy = await bot('Ivy');
+    const fern = await bot('Fern', 'Writer');
+    const dm = await dmWith(ivy);
+    await say(dm.session_id, 'We need a tagline');
+
+    const { events, captured } = await runWith(
+      dm.session_id,
+      {
+        Ivy: [
+          [
+            { toolCalls: [{ toolName: 'team', input: { action: 'add', bot_id: 'Fern' } }] },
+            {
+              toolCalls: [
+                { toolName: 'team', input: { action: 'ask', bot_id: fern.id, message: 'A tagline, please' } },
+              ],
+            },
+            { text: 'SHOULD NOT APPEAR' },
+          ],
+          [{ text: '<<skip>>' }],
+        ],
+        Fern: [[{ text: 'Grow together.' }]],
+      },
+      userTrigger,
+    );
+
+    expect(botEvents(events)).toEqual([
+      `start:${ivy.id}:user`,
+      `end:${ivy.id}:completed`,
+      `start:${fern.id}:ask`,
+      `end:${fern.id}:completed:msg`,
+      `start:${ivy.id}:followup`,
+      `end:${ivy.id}:skipped`,
+      'finish',
+    ]);
+    const conversation = await db.bots.getConversation(user.id, dm.session_id);
+    expect(conversation?.kind).toBe('direct');
+    expect(conversation?.members.map((m) => [m.bot_id, m.role, m.added_by])).toEqual([
+      [ivy.id, 'owner', 'user'],
+      [fern.id, 'guest', `bot:${ivy.id}`],
+    ]);
+    const rows = await db.sessions.getMessages(dm.session_id);
+    expect(rows.map((r) => (r.bot_event ? (JSON.parse(r.bot_event) as { kind: string }).kind : r.role))).toEqual([
+      'user',
+      'joined',
+      'ask',
+      'assistant',
+    ]);
+    expect(rows.at(-1)).toMatchObject({ bot_id: fern.id, content: 'Grow together.' });
+    // Fern's roster says what it is here.
+    const fernTail = String(captured.find((t) => t.bot === 'Fern')!.input.messages.at(-1)!.content);
+    expect(fernTail).toContain(
+      `- Fern [id ${fern.id}] — Writer (you; guest — speaks only when mentioned or handed work)`,
+    );
+    expect(fernTail).toContain(`- Ivy [id ${ivy.id}] (answers unaddressed messages)`);
   });
 
   it('a Bot removed mid-run does not take its queued turn', async () => {
     const ivy = await bot('Ivy');
     const fern = await bot('Fern');
-    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id] });
-    await say(group.session_id, 'Both of you');
+    const dm = await dmWith(ivy, fern);
+    await say(dm.session_id, 'Both of you');
 
     const { events } = await runWith(
-      group.session_id,
+      dm.session_id,
       { Ivy: [[{ text: 'Mine.' }]], Fern: [[{ text: 'SHOULD NOT SPEAK' }]] },
       { kind: 'message', reason: 'user', mentions: [ivy.id, fern.id] },
       {
         onTurn: async (turn) => {
-          if (turn.bot === 'Ivy') await db.bots.removeMember(user.id, group.session_id, fern.id);
+          if (turn.bot === 'Ivy') await db.bots.removeMember(user.id, dm.session_id, fern.id);
         },
       },
     );
@@ -648,24 +719,24 @@ describe('inbox: claim-then-apply', () => {
   it('an interjection carries a wake-up drained in the same pass into the new chain', async () => {
     const ivy = await bot('Ivy');
     const fern = await bot('Fern');
-    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id] });
-    await say(group.session_id, 'start');
+    const dm = await dmWith(ivy, fern);
+    await say(dm.session_id, 'start');
 
     const { events } = await runWith(
-      group.session_id,
+      dm.session_id,
       { Ivy: [[{ text: 'Started.' }], [{ text: 'Sure, switching.' }]], Fern: [[{ text: 'Resuming my task.' }]] },
       userTrigger,
       {
         onTurn: async (turn) => {
           if (turn.bot !== 'Ivy' || turn.input.messages.some((m) => String(m.content).includes('new request'))) return;
-          await deliverToConversation(group.session_id, {
+          await deliverToConversation(dm.session_id, {
             kind: 'continue',
             botId: fern.id,
             note: 'The member handed the computer back.',
             eventText: 'Jim handed the computer back',
             event: { kind: 'takeover_done', request_id: null, bot_id: fern.id },
           });
-          await deliverToConversation(group.session_id, { kind: 'user_message', content: 'new request', mentions: [] });
+          await deliverToConversation(dm.session_id, { kind: 'user_message', content: 'new request', mentions: [] });
         },
       },
     );
@@ -679,9 +750,9 @@ describe('inbox: claim-then-apply', () => {
       `end:${fern.id}:completed:msg`,
       'finish',
     ]);
-    const rows = await db.sessions.getMessages(group.session_id);
+    const rows = await db.sessions.getMessages(dm.session_id);
     expect(rows.filter((r) => r.content === 'Jim handed the computer back')).toHaveLength(1);
-    expect(await db.bots.listPendingInbox(group.session_id)).toHaveLength(0);
+    expect(await db.bots.listPendingInbox(dm.session_id)).toHaveLength(0);
   });
 });
 
@@ -701,15 +772,86 @@ describe('nobody can answer', () => {
   });
 });
 
+describe('a retired group chat', () => {
+  const wakeUp = (botId: string) => ({
+    kind: 'continue' as const,
+    botId,
+    note: 'The member handed the computer back.',
+    eventText: 'Jim handed the computer back',
+    event: { kind: 'takeover_done' as const, request_id: null, bot_id: botId },
+  });
+
+  it('never starts a turn: wake-ups, task reports and a queued message are recorded, nobody is woken', async () => {
+    const ivy = await bot('Ivy');
+    const fern = await bot('Fern');
+    const groupId = await insertLegacyGroup(db, { userId: user.id, botIds: [ivy.id, fern.id], title: 'Launch' });
+    const captured: CapturedTurn[] = [];
+    restoreDeps = setBotsEngineDepsForTest(
+      scriptedDeps({ Ivy: [[{ text: 'SHOULD NOT SPEAK' }]], Fern: [[{ text: 'SHOULD NOT SPEAK' }]] }, captured),
+    );
+    setInboxToolRegistry({}); // server-initiated runs could start — they must not here
+
+    // A member message queued before the group closed, then a hand-back and a finished task.
+    await db.bots.enqueueInbox(groupId, 'user_message', {
+      kind: 'user_message',
+      content: 'still there?',
+      mentions: [],
+    });
+    await deliverToConversation(groupId, wakeUp(ivy.id));
+    await deliverToConversation(groupId, {
+      kind: 'task_report',
+      botId: fern.id,
+      runId: 'run-group',
+      title: 'Check links',
+      status: 'succeeded',
+      report: 'All 12 links work.',
+    });
+    await sweepInboxes(db);
+
+    expect(chatRunRegistry.getActive(groupId)).toBeUndefined();
+    // No run was even opened (a client would attach to its stream): the items were written as records.
+    const runPushes = vi
+      .mocked(connectionManager.sendToUser)
+      .mock.calls.filter(([, event]) => event.type === 'chat:run' && event.sessionId === groupId);
+    expect(runPushes).toHaveLength(0);
+    expect(captured).toHaveLength(0);
+    expect(await db.bots.listPendingInbox(groupId)).toHaveLength(0);
+    const rows = await db.sessions.getMessages(groupId);
+    expect(rows.map((r) => [r.role, r.bot_id ?? null, r.content])).toEqual([
+      ['user', null, 'still there?'],
+      ['system', ivy.id, 'Jim handed the computer back'],
+      ['assistant', fern.id, 'All 12 links work.'],
+    ]);
+  });
+
+  it('a run that lands there anyway records what is queued and ends without a turn', async () => {
+    const ivy = await bot('Ivy');
+    const groupId = await insertLegacyGroup(db, { userId: user.id, botIds: [ivy.id] });
+    await db.bots.enqueueInbox(groupId, 'continue', wakeUp(ivy.id));
+
+    const { events, captured } = await runWith(
+      groupId,
+      { Ivy: [[{ text: 'SHOULD NOT SPEAK' }]] },
+      { kind: 'continue', items: [{ botId: ivy.id, note: 'carry on' }] },
+    );
+
+    expect(botEvents(events)).toEqual(['finish']);
+    expect(captured).toHaveLength(0);
+    const rows = await db.sessions.getMessages(groupId);
+    expect(rows.map((r) => r.content)).toEqual(['Jim handed the computer back']);
+    expect(await db.bots.listPendingInbox(groupId)).toHaveLength(0);
+  });
+});
+
 describe('follow-up skip token', () => {
   it('a follow-up that used a tool and then said <<skip>> never shows or stores the token', async () => {
     const ivy = await bot('Ivy');
     const fern = await bot('Fern');
-    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id] });
-    await say(group.session_id, 'tagline?');
+    const dm = await dmWith(ivy, fern);
+    await say(dm.session_id, 'tagline?');
 
     const { events } = await runWith(
-      group.session_id,
+      dm.session_id,
       {
         Ivy: [
           [{ toolCalls: [{ toolName: 'team', input: { action: 'ask', bot_id: fern.id, message: 'tagline' } }] }],
@@ -721,7 +863,7 @@ describe('follow-up skip token', () => {
     );
 
     expect(events.some((e) => e.type === 'text-delta' && String(e.text).includes('<<skip>>'))).toBe(false);
-    const rows = await db.sessions.getMessages(group.session_id);
+    const rows = await db.sessions.getMessages(dm.session_id);
     expect(rows.some((r) => r.content.includes('<<skip>>'))).toBe(false);
   });
 });
@@ -791,11 +933,11 @@ describe('soft stop (interrupt)', () => {
   it('the step in flight finishes and is kept, then the queued member message is answered next', async () => {
     const ivy = await bot('Ivy');
     const fern = await bot('Fern');
-    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id] });
-    await say(group.session_id, 'Outline the launch plan, both of you');
+    const dm = await dmWith(ivy, fern);
+    await say(dm.session_id, 'Outline the launch plan, both of you');
 
     const { events } = await runWith(
-      group.session_id,
+      dm.session_id,
       {
         Ivy: [
           [
@@ -812,12 +954,12 @@ describe('soft stop (interrupt)', () => {
           if (turn.bot !== 'Ivy' || turn.input.messages.some((m) => String(m.content).includes('just the date')))
             return;
           // While Ivy's step runs the member sends a message (queued: 202) and presses "Handle now".
-          await deliverToConversation(group.session_id, {
+          await deliverToConversation(dm.session_id, {
             kind: 'user_message',
             content: 'Skip the plan, just the date',
             mentions: [],
           });
-          expect(chatRunRegistry.getActive(group.session_id)!.requestInterrupt()).toBe(true);
+          expect(chatRunRegistry.getActive(dm.session_id)!.requestInterrupt()).toBe(true);
         },
       },
     );
@@ -832,7 +974,7 @@ describe('soft stop (interrupt)', () => {
     ]);
     expect(events.filter((e) => e.type === 'run-interrupting')).toHaveLength(1);
     expect(events.find((e) => e.type === 'finish')!.finishReason).toBe('stop');
-    const rows = await db.sessions.getMessages(group.session_id);
+    const rows = await db.sessions.getMessages(dm.session_id);
     expect(rows.map((r) => [r.role, r.bot_id ?? null, r.content])).toEqual([
       ['user', null, 'Outline the launch plan, both of you'],
       ['assistant', ivy.id, 'Saving the outline first.'], // no stop notice: the member's message is answered
@@ -841,45 +983,45 @@ describe('soft stop (interrupt)', () => {
     ]);
     // The tool call of the interrupted step ran, and the turn keeps it.
     expect(rows[1]!.pipeline).toContain('conversation');
-    const notes = await db.bots.listNotes(group.session_id, { status: 'open' });
+    const notes = await db.bots.listNotes(dm.session_id, { status: 'open' });
     expect(notes.map((note) => note.title)).toEqual(['Launch outline']);
-    expect(await db.bots.listPendingInbox(group.session_id)).toHaveLength(0);
+    expect(await db.bots.listPendingInbox(dm.session_id)).toHaveLength(0);
   });
 
   it('with no member message waiting the run ends after the step, and the turn says it was stopped', async () => {
     const ivy = await bot('Ivy');
     const fern = await bot('Fern');
-    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id] });
-    await say(group.session_id, 'Research and write it up, both of you');
+    const dm = await dmWith(ivy, fern);
+    await say(dm.session_id, 'Research and write it up, both of you');
 
     const { events } = await runWith(
-      group.session_id,
+      dm.session_id,
       {
         Ivy: [[{ toolCalls: [noteTool('Sources')] }, { text: 'SHOULD NOT APPEAR' }]],
         Fern: [[{ text: 'SHOULD NOT SPEAK' }]],
       },
       { kind: 'message', reason: 'user', mentions: [ivy.id, fern.id] },
-      { onTurn: async () => void chatRunRegistry.getActive(group.session_id)!.requestInterrupt() },
+      { onTurn: async () => void chatRunRegistry.getActive(dm.session_id)!.requestInterrupt() },
     );
 
     expect(botEvents(events)).toEqual([`start:${ivy.id}:mention`, `end:${ivy.id}:completed:msg`, 'finish']);
     expect(events.find((e) => e.type === 'finish')!.finishReason).toBe('stop');
-    const rows = await db.sessions.getMessages(group.session_id);
+    const rows = await db.sessions.getMessages(dm.session_id);
     expect(rows).toHaveLength(2);
     // A tool-only step: the stop notice is the turn's line (the member's locale), its steps kept.
     expect(rows[1]).toMatchObject({ role: 'assistant', bot_id: ivy.id, content: '> 已按要求停止生成。' });
     expect(rows[1]!.pipeline).toContain('Sources');
-    expect(chatRunRegistry.getActive(group.session_id)).toBeUndefined();
+    expect(chatRunRegistry.getActive(dm.session_id)).toBeUndefined();
   });
 
   it('a wake-up queued meanwhile is recorded but not run, and text already written keeps the notice below it', async () => {
     const ivy = await bot('Ivy');
     const fern = await bot('Fern');
-    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id] });
-    await say(group.session_id, 'Book the venue');
+    const dm = await dmWith(ivy, fern);
+    await say(dm.session_id, 'Book the venue');
 
     const { events } = await runWith(
-      group.session_id,
+      dm.session_id,
       {
         Ivy: [[{ text: 'Checking the venue site.', toolCalls: [noteTool('Venue')] }, { text: 'SHOULD NOT APPEAR' }]],
         Fern: [[{ text: 'SHOULD NOT SPEAK' }]],
@@ -887,42 +1029,42 @@ describe('soft stop (interrupt)', () => {
       userTrigger,
       {
         onTurn: async () => {
-          await deliverToConversation(group.session_id, {
+          await deliverToConversation(dm.session_id, {
             kind: 'continue',
             botId: fern.id,
             note: 'The member handed the computer back.',
             eventText: 'Jim handed the computer back',
             event: { kind: 'takeover_done', request_id: null, bot_id: fern.id },
           });
-          chatRunRegistry.getActive(group.session_id)!.requestInterrupt();
+          chatRunRegistry.getActive(dm.session_id)!.requestInterrupt();
         },
       },
     );
 
     expect(botEvents(events)).toEqual([`start:${ivy.id}:user`, `end:${ivy.id}:completed:msg`, 'finish']);
-    const rows = await db.sessions.getMessages(group.session_id);
+    const rows = await db.sessions.getMessages(dm.session_id);
     expect(rows[1]!.content).toBe('Checking the venue site.\n\n> 已按要求停止生成。');
     const kinds = rows.map((r) => (r.bot_event ? (JSON.parse(r.bot_event) as { kind: string }).kind : null));
     expect(kinds).toContain('takeover_done');
     expect(kinds).toContain('stopped');
-    expect(await db.bots.listPendingInbox(group.session_id)).toHaveLength(0);
+    expect(await db.bots.listPendingInbox(dm.session_id)).toHaveLength(0);
   });
 
   it('a turn that is already writing its answer finishes it; only what was planned after it is dropped', async () => {
     const ivy = await bot('Ivy');
     const fern = await bot('Fern');
-    const group = await db.bots.createGroupConversation({ user_id: user.id, bot_ids: [ivy.id, fern.id] });
-    await say(group.session_id, 'Both of you, quickly');
+    const dm = await dmWith(ivy, fern);
+    await say(dm.session_id, 'Both of you, quickly');
 
     const { events } = await runWith(
-      group.session_id,
+      dm.session_id,
       { Ivy: [[{ text: 'Done on my side.' }]], Fern: [[{ text: 'SHOULD NOT SPEAK' }]] },
       { kind: 'message', reason: 'user', mentions: [ivy.id, fern.id] },
-      { onTurn: async () => void chatRunRegistry.getActive(group.session_id)!.requestInterrupt() },
+      { onTurn: async () => void chatRunRegistry.getActive(dm.session_id)!.requestInterrupt() },
     );
 
     expect(botEvents(events)).toEqual([`start:${ivy.id}:mention`, `end:${ivy.id}:completed:msg`, 'finish']);
-    const rows = await db.sessions.getMessages(group.session_id);
+    const rows = await db.sessions.getMessages(dm.session_id);
     expect(rows.map((r) => r.content)).toEqual(['Both of you, quickly', 'Done on my side.']);
   });
 });

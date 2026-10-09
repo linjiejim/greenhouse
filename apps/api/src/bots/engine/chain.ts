@@ -11,9 +11,10 @@
  *   ordered by the FloorController (depth-first hand-offs, the owner's single
  *   follow-up) and bounded by the chain budgets (8 turns, 4 asks, depth 3,
  *   600k weighted input / 30k output tokens, 60 steps, 20 minutes);
- * - before every chain and before every turn the roster is re-read (members,
- *   Bots, lead, group rules, the Bot-chat switch): a Bot invited or created
- *   mid-run can be addressed at once, one removed or archived stops speaking;
+ * - before every chain and before every turn the roster is re-read (members
+ *   and Bots): a Bot invited or created mid-run can be addressed at once, one
+ *   removed or archived stops speaking. Hand-offs need no switch — a Bot brings
+ *   another in (`team.add`) and hands it work (`team.ask`) whenever it helps;
  * - between turns and before finishing, the durable inbox is drained in id
  *   order, claim-then-apply: an item is consumed only after it was applied,
  *   and every apply is idempotent (stable message ids), so a failure leaves it
@@ -33,6 +34,9 @@
  *   next chain at once (as an interjection would), otherwise the run ends the
  *   way a Stop ends it — but nothing in flight was thrown away. A chain that
  *   starts for a member message has taken the interrupt: it answers it;
+ * - a retired group chat (`kind = 'group'`, read-only history) never gets a
+ *   turn: a run that lands there only records what is queued (events, task
+ *   reports, wake-up lines) and ends — no chain starts or resumes in it;
  * - exactly ONE wire `finish` ends the run, then the run lock and the slot are
  *   released, `chat:run` is pushed, and the digest check is scheduled.
  */
@@ -240,9 +244,12 @@ async function refreshRoster(rc: RunContext): Promise<void> {
  * - `writes`: this run may not start more turns — stop at the first item that
  *   needs one, so it (and everything after it) waits for the next run in order;
  * - `stop`: after a member Stop — write events and wake-ups' lines but never
- *   run a Bot; stop at the first member message (answered by the next run).
+ *   run a Bot; stop at the first member message (answered by the next run);
+ * - `record`: a retired group chat — write every item as a record (events,
+ *   task reports, wake-up lines, a member message queued before it closed)
+ *   and never wake anyone: nothing will ever run there.
  */
-type DrainMode = 'run' | 'writes' | 'stop';
+type DrainMode = 'run' | 'writes' | 'stop' | 'record';
 
 interface DrainResult {
   /** A member message was delivered: the current chain ends, a new one starts. */
@@ -271,6 +278,7 @@ async function drainInbox(
     if (outcome === 'failed') break;
     if (outcome === 'taken' || outcome === 'quarantined') continue;
     wrote = true;
+    if (mode === 'record') continue;
     if (item.kind === 'user_message') {
       // Before any turn ran (a server-initiated run opened for this message) it is
       // an ordinary message, not an interjection into Bots at work.
@@ -311,35 +319,19 @@ function ownersFor(
       reason: trigger.reason === 'interjection' ? 'interjection' : 'mention',
     }));
   }
-  const conversation = rc.conversation;
   // A DM is its owner's: when the owner is archived nobody answers there (its
-  // guests only speak when addressed). A group falls back from its lead to
-  // the first active member.
-  const fallback =
-    conversation.kind === 'direct'
-      ? isActiveMember(rc, conversation.owner_bot_id)
-        ? conversation.owner_bot_id
-        : null
-      : isActiveMember(rc, conversation.lead_bot_id)
-        ? conversation.lead_bot_id
-        : (conversation.members.find((m) => isActiveMember(rc, m.bot_id))?.bot_id ?? null);
-  return fallback ? [{ botId: fallback, reason: trigger.reason }] : [];
+  // guests only speak when addressed).
+  const ownerId = rc.conversation.owner_bot_id;
+  return isActiveMember(rc, ownerId) ? [{ botId: ownerId, reason: trigger.reason }] : [];
 }
 
-/** Nobody can answer a member message: a line in the transcript instead of a silent, empty run. */
+/** Nobody can answer a member message (the DM's owner was archived): a line instead of a silent, empty run. */
 async function writeUnavailable(rc: RunContext): Promise<void> {
-  const conversation = rc.conversation;
-  if (conversation.kind === 'direct') {
-    const owner = conversation.owner_bot_id ? rc.bots.get(conversation.owner_bot_id) : undefined;
-    await rc.writer.appendEvent({
-      text: copy.botArchived(rc.user.locale, owner?.name ?? '?'),
-      event: { kind: 'unavailable', bot_id: owner?.id ?? null, reason: 'archived' },
-    });
-    return;
-  }
+  const ownerId = rc.conversation.owner_bot_id;
+  const owner = ownerId ? rc.bots.get(ownerId) : undefined;
   await rc.writer.appendEvent({
-    text: copy.noActiveMembers(rc.user.locale),
-    event: { kind: 'unavailable', bot_id: null, reason: 'no_active_members' },
+    text: copy.botArchived(rc.user.locale, owner?.name ?? '?'),
+    event: { kind: 'unavailable', bot_id: owner?.id ?? null, reason: 'archived' },
   });
 }
 
@@ -388,7 +380,6 @@ async function runChain(rc: RunContext, trigger: ChainTrigger): Promise<ChainTri
   await refreshRoster(rc);
   const floor = new FloorController({
     members: rc.members,
-    allowBotChat: () => rc.conversation.allow_bot_chat,
     turnBudget: Math.min(CHAIN_LIMITS.turns, CHAIN_LIMITS.runTurns - rc.turnCounter),
   });
   const owners = ownersFor(rc, trigger);
@@ -591,7 +582,12 @@ export async function runBotsRun(args: BotsRunArgs): Promise<BotsRunOutcome> {
   let status: 'completed' | 'error' = 'completed';
   try {
     rc = await loadRunContext(args, db);
+    // A retired group chat is read-only history: record what is queued, run nobody.
     let trigger: ChainTrigger | null = args.trigger;
+    if (rc.conversation.kind === 'group') {
+      trigger = null;
+      await drainInbox(rc, () => undefined, 'record');
+    }
     while (trigger) {
       trigger = await runChain(rc, trigger);
       if (trigger) continue;

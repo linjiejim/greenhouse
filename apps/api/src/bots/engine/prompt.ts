@@ -10,8 +10,9 @@
  *          + S4 the rolling conversation summary (changes only on compaction)
  *   messages = the projected history (append-only between compactions)
  *            + ONE synthetic tail, rebuilt every turn and never persisted:
- *              roster, group rules, memory index, shared-notes index, and
- *              the instruction for this turn (ask content, follow-up, …).
+ *              roster (the DM's owner and its guests), memory index,
+ *              shared-notes index, and the instruction for this turn (ask
+ *              content, follow-up, …).
  *
  * Everything that changes per turn lives in the tail, so the system prompt and
  * the history prefix stay cacheable across a whole chain. Bot-written text
@@ -22,6 +23,7 @@
 import { composeRichOutput, REPLY_STYLE_RULE } from '@greenhouse/utils/prompts';
 import { DEFAULT_CLIENT_BLOCKS } from '@greenhouse/types/rich-output';
 import type { BotRow } from '@greenhouse/db';
+import type { BotMemberRole } from '@greenhouse/types/bots';
 import { sanitizeForPrompt } from '../../security/security.js';
 import { buildIdentitySection, buildMemberNotesSection } from '../../profiles/identity-prompt.js';
 import { SPEAKER_TAGS, type BotsLocale } from './copy.js';
@@ -99,7 +101,7 @@ export function buildStaticRules(
   );
   if (flags.team) {
     lines.push(
-      `- Hand-offs: when a Bot in this conversation is clearly better placed for part of the work, hand it over with the team tool and a precise, self-contained brief. Your turn ends right after the hand-off — say in one line what you handed over and never answer on the other Bot's behalf; it replies next, visibly. New Bots only exist after the member confirms the proposal card.`,
+      `- Hand-offs: when another of the member's Bots is clearly better placed for part of the work, bring it into this conversation with the team tool if it is not here yet, and hand it over with a precise, self-contained brief. Your turn ends right after the hand-off — say in one line what you handed over and never answer on the other Bot's behalf; it replies next, visibly. New Bots only exist after the member confirms the proposal card.`,
     );
   }
   if (flags.tasks) {
@@ -217,7 +219,8 @@ export interface RosterEntry {
   id: string;
   name: string;
   role: string;
-  memberRole: 'owner' | 'lead' | 'member' | 'guest';
+  /** owner / guest — turns only run in DMs (lead / member are retired group roles). */
+  memberRole: BotMemberRole;
 }
 
 export interface NoteIndexEntry {
@@ -253,9 +256,7 @@ export function renderNotesIndex(notes: readonly NoteIndexEntry[], locale: BotsL
 export interface TurnTailInput {
   locale: BotsLocale;
   selfBotId: string;
-  kind: 'direct' | 'group';
   roster: readonly RosterEntry[];
-  groupRules: string;
   memoryBlock: string | null;
   notesIndex: string | null;
   instruction: string;
@@ -264,7 +265,7 @@ export interface TurnTailInput {
 function rosterLine(entry: RosterEntry, selfBotId: string): string {
   const flags = [
     entry.id === selfBotId ? 'you' : null,
-    entry.memberRole === 'lead' || entry.memberRole === 'owner' ? 'answers unaddressed messages' : null,
+    entry.memberRole === 'owner' ? 'answers unaddressed messages' : null,
     entry.memberRole === 'guest' ? 'guest — speaks only when mentioned or handed work' : null,
   ].filter(Boolean);
   const role = entry.role ? ` — ${sanitizeForPrompt(entry.role)}` : '';
@@ -275,10 +276,6 @@ function rosterLine(entry: RosterEntry, selfBotId: string): string {
 export function buildTurnTail(input: TurnTailInput): string {
   const blocks: string[] = ['<turn_context note="Rebuilt by the system for this turn.">'];
   blocks.push(`## In this conversation`, ...input.roster.map((entry) => rosterLine(entry, input.selfBotId)));
-  const rules = input.groupRules.trim();
-  if (input.kind === 'group' && rules) {
-    blocks.push(``, `## Group rules (written by the member)`, fenceData(sanitizeForPrompt(rules)));
-  }
   if (input.memoryBlock) blocks.push(``, input.memoryBlock);
   if (input.notesIndex) {
     blocks.push(``, `## Shared notes`, `<shared_notes untrusted="true">`, input.notesIndex, `</shared_notes>`);

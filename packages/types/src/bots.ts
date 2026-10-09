@@ -301,6 +301,7 @@ export function isSproutyBot(bot: { template_key?: string | null } | null | unde
 
 // ─── Conversations ───────────────────────────────────────
 
+/** owner = the DM's Bot, guest = a Bot invited into it; `lead` / `member` only on retired group chats. */
 export type BotMemberRole = 'owner' | 'lead' | 'member' | 'guest';
 
 export interface BotMemberView {
@@ -314,6 +315,11 @@ export type BotConversationAttention = 'needs_you' | 'unread' | 'working' | 'idl
 
 export interface BotConversationSummary {
   session_id: string;
+  /**
+   * `group` = a retired group chat (2026-10-09): readable history, closed to new messages,
+   * invites and card decisions (409 `group_closed`). Every conversation since is a Bot's DM;
+   * other Bots join it as guests.
+   */
   kind: 'direct' | 'group';
   title: string | null;
   owner_bot_id: string | null;
@@ -343,7 +349,9 @@ export interface BotDigestView {
 }
 
 export interface BotConversationDetail extends BotConversationSummary {
+  /** A retired group's rules (history only); empty for a DM. */
   description: string;
+  /** @deprecated Always true; hand-offs are always allowed. Kept for clients that still read it. */
   allow_bot_chat: boolean;
   digest: BotDigestView | null;
   notes: BotSharedNoteView[];
@@ -660,8 +668,8 @@ export type BotEvent =
   | { kind: 'instructions_updated'; bot_id: string; version: number }
   | { kind: 'greeting'; bot_id: string }
   /**
-   * Nobody could answer: the addressed Bot was archived or removed, or no
-   * active Bot is left in the conversation. Written instead of ending silently.
+   * Nobody could answer: the addressed Bot was archived or removed. Written instead of
+   * ending silently. `no_active_members` only appears on rows from retired group chats.
    */
   | { kind: 'unavailable'; bot_id: string | null; reason: 'archived' | 'no_active_members' }
   /** The member pressed Stop while a wake-up (hand-back, joined Bot…) was queued: it was not resumed. */
@@ -741,14 +749,29 @@ export type VaultErrorCode =
   | 'not_found';
 
 /**
+ * Why a Bots conversation takes no new member message (`POST /api/chat`, 409) — it stays
+ * readable either way: the DM's Bot was archived (`bot_archived`), or it is a retired group
+ * chat (`group_closed`, which the member routes — invite / remove a Bot — answer too).
+ */
+export type BotConversationReadOnlyCode = 'bot_archived' | 'group_closed';
+
+/**
+ * `POST /api/bots/conversations` takes exactly one Bot id (that Bot's DM); any other count is
+ * `400 groups_retired` — group chats are retired, a Bot brings others into its DM as guests.
+ */
+export type BotConversationErrorCode = 'groups_retired';
+
+/**
  * `POST /api/bots/requests/:id` conflicts (409). `already_decided` /
  * `deciding` mean someone else settled it (or is settling it right now);
- * every other code is a decision the server could not carry out while the
- * request stays pending.
+ * `group_closed` means the card belongs to a retired group chat (a pending one
+ * is withdrawn as `canceled`); every other code is a decision the server could
+ * not carry out while the request stays pending.
  */
 export type BotRequestErrorCode =
   | 'already_decided'
   | 'deciding'
+  | 'group_closed'
   | 'page_gone'
   | 'origin_mismatch'
   | 'no_fields'

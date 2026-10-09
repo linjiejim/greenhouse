@@ -17,7 +17,9 @@
  *   references resolvable.
  * - A conversation is a `sessions` row (channel `bots`) plus one
  *   `bot_conversations` row. A direct conversation belongs to exactly one owner
- *   Bot and never turns into a group; inviting another Bot adds a guest member.
+ *   Bot; inviting another Bot (the member, or a Bot's `team.add`) adds a guest
+ *   member. Group conversations (`kind = 'group'`) were retired on 2026-10-09:
+ *   the rows that exist are read-only history (migration 0015).
  * - `bot_requests` holds every "needs you" item (takeover, secure sign-in,
  *   approval, Bot-creation and task-start confirmations); cards bind to its id.
  * - `bot_inbox` is the durable queue behind the single-writer rule: only the
@@ -150,16 +152,20 @@ export const botConversations = pgTable(
     user_id: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** `group` = a retired group chat (read-only history); every new conversation is `direct`. */
     kind: text('kind', { enum: ['direct', 'group'] }).notNull(),
     /** Direct conversations only: the Bot whose DM this is (one DM per Bot). */
     owner_bot_id: text('owner_bot_id').references(() => bots.id, { onDelete: 'cascade' }),
-    /** Who answers an unaddressed message (DM: the owner; group: the coordinator). */
+    /** Who answers an unaddressed message: a DM's owner (null once it is archived); a retired group's old coordinator. */
     lead_bot_id: text('lead_bot_id').references(() => bots.id, { onDelete: 'set null' }),
-    /** Group title; DMs show the owner Bot's name. */
+    /** A retired group's title; DMs show the owner Bot's name. */
     title: text('title'),
-    /** Group rules every member reads each turn. */
+    /** A retired group's rules (history only; no Bot reads them any more). */
     description: text('description').notNull().default(''),
-    /** Whether Bots may hand work to each other (team.ask). */
+    /**
+     * Deprecated, always true (migration 0015): Bot-to-Bot hand-offs are always
+     * allowed and nothing reads this column. Kept so old rows / clients stay valid.
+     */
     allow_bot_chat: boolean('allow_bot_chat').notNull().default(true),
     /** Structured rolling summary (JSON text) covering messages up to digest_upto_seq. */
     digest: text('digest').notNull().default(''),
@@ -193,7 +199,7 @@ export const botConversationMembers = pgTable(
     bot_id: text('bot_id')
       .notNull()
       .references(() => bots.id, { onDelete: 'cascade' }),
-    /** owner = the DM's Bot; lead = group coordinator; guest = invited into a DM. */
+    /** owner = the DM's Bot; guest = invited into a DM; lead / member = a retired group's roster. */
     role: text('role', { enum: ['owner', 'lead', 'member', 'guest'] }).notNull(),
     position: integer('position').notNull().default(0),
     /** `user` or `bot:<id>`. */

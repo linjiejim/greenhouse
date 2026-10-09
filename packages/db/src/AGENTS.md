@@ -165,6 +165,10 @@
 - **Bots 对话只有一个写者**：持有该会话 ChatRun 的引擎。服务端在对话进行中产生的东西（交还事件、续跑、后台汇报、忙时插话）一律进 `bot_inbox`，不要直接 `addMessage`——任何半路插入的行都会让进行中回合的 tail-CAS 失败、它刚流式展示的回答在刷新后消失。引擎自己的多行写入用 `sessions.appendIfTail`（角色通用的尾 CAS），每写一行推进 expected tail。
 - **`bot_computers` 的每次状态迁移都是 `version` CAS**，单用户的 start/stop/evict 在 `withUserLock`、容量判断在 `withCapacityLock` 里做——蓝绿两个 API 槽位共享同一个 Docker daemon 和这张表，进程内状态不能当事实。接管租约的 `lease_epoch` 单调递增：观察（快照/截图）返回前要复核 epoch，变了就丢弃。
 - **密码库只存密文、只回元数据**：service 原样存取 `*_enc` 列，加解密（AAD=`vault:<user_id>:<item_id>:<field>`）在 API 的 vault 模块里做；HTTP 与工具的读路径只返回 `VaultItemView`。新 id 先用 `newVaultItemId()` 生成再加密（id 是 AAD 的一部分）。
+- **群聊已退役（2026-10-09，迁移 `0015_bots_groups_retired`，纯数据、不删行不删列）**：service 不再建群（无
+  `createGroupConversation` / `updateConversation` / 负责人接替），`addMember` 只加 guest，对 `kind = 'group'` 的对话
+  `addMember` / `removeMember` 抛 `BotsDomainError('group_closed')`；迁移把群里仍待处理的 `bot_requests` 置 `canceled`
+  （`result = {"decision":"group_closed"}`）、`allow_bot_chat` 全置 true（列保留，无人读取）。
 - `bot_requests` 只经 `settleRequest` 从 pending 单次 CAS 结算（双击、两个槽位竞争都只有一个赢家）；`payload` 只放服务端派生的展示/执行数据，**永不放秘密**（安全登录卡的输入值只经过一次请求体，不落库）。
 - **Bot 私有参考资料夹**（`drive_folders.bot_id`，2026-10-07）：每 Bot 至多一个根文件夹，CHECK 约束要求它是 `scope='kb'` + `visibility='private'` + 有 owner 的个人文件夹；随 Bot 级联删除。读侧只新增**排除**：`KnowledgeListOpts` / `KnowledgeSearchOpts` 的 `excludeFolderIds`（`AND (folder_id IS NULL OR folder_id NOT IN …)`，四个 SQL 变体与 `kbTree` 同步），空数组 = 不排除。排除集由 `apps/api/src/bots/folder.ts` 按身份算，HTTP 路由（主人自己）不传。
 

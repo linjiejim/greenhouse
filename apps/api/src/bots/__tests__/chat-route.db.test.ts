@@ -4,7 +4,8 @@
  * into the NDJSON response with exactly one `finish`, a second POST while the
  * conversation is busy is queued (202) and answered in the same run. Only the
  * owner drives their Bots — a super included (spec §10); a conversation
- * nobody can answer is refused (409); a message never jumps an older queued one.
+ * nobody can answer is refused (409: a retired group chat, an archived DM
+ * owner); a message never jumps an older queued one.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +14,7 @@ import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } fro
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type { AppEnv } from '../../app-env.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
+import { insertLegacyGroup } from './helpers/legacy-group.js';
 import { chatRunRegistry } from '../../chat/runs.js';
 import { createChatRoute } from '../../routes/chat.js';
 import { canWriteSession } from '../../sessions/access.js';
@@ -158,24 +160,37 @@ describe('POST /api/chat on a Bots conversation', () => {
     }
   });
 
-  it('refuses a message nobody can answer: an archived DM owner, a group without active Bots', async () => {
+  it('refuses a message nobody can answer: a retired group chat, an archived DM owner', async () => {
     const ivy = await db.bots.createBot({ user_id: jim.id, name: 'Ivy' });
     const fern = await db.bots.createBot({ user_id: jim.id, name: 'Fern' });
     const sage = await db.bots.createBot({ user_id: jim.id, name: 'Sage' });
     const dm = await db.bots.ensureDirectConversation(jim.id, ivy.id);
-    const group = await db.bots.createGroupConversation({ user_id: jim.id, bot_ids: [fern.id, sage.id] });
+    // Its Bots are all active: the group is closed all the same.
+    const groupId = await insertLegacyGroup(db, { userId: jim.id, botIds: [fern.id, sage.id] });
     await db.bots.archiveBot(jim.id, ivy.id);
-    await db.bots.archiveBot(jim.id, fern.id);
-    await db.bots.archiveBot(jim.id, sage.id);
+    restore = setBotsEngineDepsForTest(scriptedDeps({ Fern: [[{ text: 'SHOULD NOT SPEAK' }]] }));
 
     const toDm = await post(jim, { session_id: dm.session_id, messages: [{ role: 'user', content: 'hello?' }] });
     expect(toDm.status).toBe(409);
     expect(await toDm.json()).toMatchObject({ code: 'bot_archived' });
-    const toGroup = await post(jim, { session_id: group.session_id, messages: [{ role: 'user', content: 'anyone?' }] });
+    const toGroup = await post(jim, {
+      session_id: groupId,
+      messages: [{ role: 'user', content: '@Fern anyone?' }],
+      mentions: [fern.id],
+    });
     expect(toGroup.status).toBe(409);
-    expect(await toGroup.json()).toMatchObject({ code: 'no_active_members' });
+    expect(await toGroup.json()).toMatchObject({ code: 'group_closed', error: expect.any(String) });
     expect(await db.sessions.getMessageCount(dm.session_id)).toBe(0);
-    expect(await db.sessions.getMessageCount(group.session_id)).toBe(0);
+    expect(await db.sessions.getMessageCount(groupId)).toBe(0);
+    // Not queued either, even while a run holds the slot.
+    const busy = chatRunRegistry.claim(groupId, jim.id)!;
+    try {
+      const queued = await post(jim, { session_id: groupId, messages: [{ role: 'user', content: 'later?' }] });
+      expect(queued.status).toBe(409);
+      expect(await db.bots.listPendingInbox(groupId)).toHaveLength(0);
+    } finally {
+      chatRunRegistry.release(busy);
+    }
   });
 
   it('accepts an image-only message', async () => {
@@ -199,9 +214,10 @@ describe('POST /api/chat on a Bots conversation', () => {
   it('a new message never jumps an older queued one: both are written in order and the newer one leads', async () => {
     const ivy = await db.bots.createBot({ user_id: jim.id, name: 'Ivy' });
     const fern = await db.bots.createBot({ user_id: jim.id, name: 'Fern' });
-    const group = await db.bots.createGroupConversation({ user_id: jim.id, bot_ids: [ivy.id, fern.id] });
+    const dm = await db.bots.ensureDirectConversation(jim.id, ivy.id);
+    await db.bots.addMember(jim.id, dm.session_id, fern.id, 'user');
     // Left behind by a stopped run: "also check X" (no mention).
-    await db.bots.enqueueInbox(group.session_id, 'user_message', {
+    await db.bots.enqueueInbox(dm.session_id, 'user_message', {
       kind: 'user_message',
       content: 'also check X',
       mentions: [],
@@ -209,7 +225,7 @@ describe('POST /api/chat on a Bots conversation', () => {
     restore = setBotsEngineDepsForTest(scriptedDeps({ Fern: [[{ text: 'Drafting now.' }]] }));
 
     const res = await post(jim, {
-      session_id: group.session_id,
+      session_id: dm.session_id,
       messages: [{ role: 'user', content: '@Fern draft it now' }],
       mentions: [fern.id],
     });
@@ -217,12 +233,12 @@ describe('POST /api/chat on a Bots conversation', () => {
     const lines = ndjson(await res.text());
     expect(lines.find((line) => line.type === 'bot-turn-start')).toMatchObject({ bot_id: fern.id, reason: 'mention' });
     expect(lines.filter((line) => line.type === 'finish')).toHaveLength(1);
-    const rows = await db.sessions.getMessages(group.session_id);
+    const rows = await db.sessions.getMessages(dm.session_id);
     expect(rows.map((r) => [r.role, r.content])).toEqual([
       ['user', 'also check X'],
       ['user', '@Fern draft it now'],
       ['assistant', 'Drafting now.'],
     ]);
-    expect(await db.bots.listPendingInbox(group.session_id)).toHaveLength(0);
+    expect(await db.bots.listPendingInbox(dm.session_id)).toHaveLength(0);
   });
 });

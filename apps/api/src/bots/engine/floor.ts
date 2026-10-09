@@ -4,15 +4,16 @@
  * One member message starts one chain: a sequence of Bot turns inside a single
  * ChatRun. The rules (spec §4.2, design review R13):
  * - owners = the addressees of the message (mentions in order, else the DM's
- *   owner Bot, else the group's lead), queued in order;
+ *   owner Bot), queued in order;
  * - depth-first: when a turn ends, the hand-offs it made (`team.ask`) jump to
  *   the FRONT of the queue in the order they were made, so an answer is never
  *   left hanging behind someone else's summary;
  * - an owner that handed work off gets exactly ONE reserved follow-up, placed
  *   after its whole ask subtree, and nothing can squeeze it out; other askers
  *   get none (their answer is visible to the owner anyway);
- * - an ask is refused (as a tool result, not an error) for: Bot chat switched
- *   off, asking yourself or a non-member, asking a Bot already up the asker
+ * - hand-offs are always allowed (there is no switch); an ask is refused (as a
+ *   tool result, not an error) for: asking yourself or a non-member (a Bot is
+ *   brought in with `team.add` first), asking a Bot already up the asker
  *   chain (cycle / ping-pong), asking the same Bot twice in one chain, asking
  *   a Bot that was itself addressed and has not spoken yet (it answers after
  *   you anyway — handing it work would make it speak twice), more than 4 asks,
@@ -71,7 +72,6 @@ export interface FloorItem {
 }
 
 export type AskRejection =
-  | 'bot_chat_off'
   | 'self'
   | 'not_member'
   | 'cycle'
@@ -85,8 +85,6 @@ export type AskRejection =
 export interface FloorOptions {
   /** Live member set (the run refreshes it in place between turns). */
   members: ReadonlySet<string>;
-  /** Read on every ask: the member can switch Bot-to-Bot chat off mid-run. */
-  allowBotChat: () => boolean;
   /** Turns this chain may still take (≤ CHAIN_LIMITS.turns, less when the run is near its cap). */
   turnBudget?: number;
 }
@@ -153,7 +151,6 @@ export class FloorController {
   checkAsk(toBotId: string): AskRejection | null {
     const from = this.current;
     if (!from) return 'not_member';
-    if (!this.opts.allowBotChat()) return 'bot_chat_off';
     if (toBotId === from.botId) return 'self';
     if (!this.opts.members.has(toBotId)) return 'not_member';
     // A reserved follow-up after a budget hit must wrap up, not start new work.

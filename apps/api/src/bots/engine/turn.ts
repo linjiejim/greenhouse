@@ -314,11 +314,6 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
   };
 
   const team: TeamPort = {
-    kind: rc.conversation.kind,
-    // A getter: the member may switch Bot-to-Bot chat off while this turn runs.
-    get allowBotChat() {
-      return rc.conversation.allow_bot_chat;
-    },
     members: () => rosterOf(rc).map((entry) => ({ bot: rc.bots.get(entry.id)!, role: entry.memberRole })),
     others: () => [...rc.bots.values()].filter((other) => other.status === 'active' && !rc.members.has(other.id)),
     checkAsk: (toBotId) => chain.floor.checkAsk(toBotId),
@@ -423,9 +418,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
     const tailText = buildTurnTail({
       locale,
       selfBotId: bot.id,
-      kind: rc.conversation.kind,
       roster: rosterOf(rc),
-      groupRules: rc.conversation.description,
       memoryBlock,
       notesIndex: renderNotesIndex(
         openNotes.map((note) => ({
