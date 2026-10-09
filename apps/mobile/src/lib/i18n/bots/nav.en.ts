@@ -37,7 +37,7 @@ export const botsNavEn = {
     archivedEmptyHint: 'When a Bot is archived, its conversations stay here, read-only.',
     archivedFooter: 'Nobody here replies any more — the history stays readable.',
     loadFailedTitle: 'Couldn’t Load Conversations',
-    // the agent capsule (src/chat/profile-menu.tsx)
+    // "Name · Bot" in agent lists (src/chat/profile-menu.ts profileLabel)
     botSuffix: 'Bot',
   },
 };
