@@ -342,7 +342,7 @@ greenhouse/
 
 | Package | Path | Purpose |
 |---|---|---|
-| `@greenhouse/agent-core` | `packages/agent-core/` | Agent kernel — chat-engine, model registry/factory, DSML interceptor |
+| `@greenhouse/agent-core` | `packages/agent-core/` | Agent kernel — one loop assembly (streaming chat-engine + headless runAgentLoop), model registry/factory, DSML interceptor |
 | `@greenhouse/platform-kernel` | `packages/platform-kernel/` | Manifest v2, actor context, authz, registry (`contract` / `dsl` / `authz` / `registry` subpaths) |
 | `@greenhouse/types` | `packages/types/` | Shared type definitions and registries (feature flags, workspace settings, entity links, workbench recipes) |
 | `@greenhouse/utils` | `packages/utils/` | Shared helpers |
@@ -431,7 +431,7 @@ Detailed rules live next to the code:
 | Desktop shell | [apps/desktop/AGENTS.md](./apps/desktop/AGENTS.md) | Tauri shell: hot updates (two version lines), deployment variables, native capabilities, signing |
 | Mobile | [apps/mobile/AGENTS.md](./apps/mobile/AGENTS.md) | Expo app — workspace isolation, vendored types, theme/i18n rules |
 | Agent profiles | [apps/api/src/profiles/agent-profiles.md](./apps/api/src/profiles/agent-profiles.md) | Profiles, model switching, tool scoping |
-| LLM / Agent kernel | `packages/agent-core/` + `apps/api/src/llm/` | Kernel (model factory/registry, chat-engine) in the package; completion/title/memory/relay/budget consumers in api |
+| LLM / Agent kernel | `packages/agent-core/` + `apps/api/src/llm/` | Kernel (model factory/registry, loop assembly, chat-engine) in the package; completion/title/memory/relay/budget consumers in api |
 | Skill packs | [skillhub/README.md](./skillhub/README.md) | Pack layout, skills vs. MCP tools, publishing |
 
 ## Shared helpers (`packages/utils/`)

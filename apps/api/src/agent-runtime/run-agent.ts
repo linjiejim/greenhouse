@@ -1,25 +1,19 @@
 /**
  * Shared headless agent runner.
  *
- * The single "run an agent turn to completion in a session" loop, factored out so
- * BOTH the scheduled-task executor and the spawn_session tool drive the agent the
- * same way — build model → generateText (bounded by maxSteps) → extract pipeline +
- * references → persist the assistant message. No scheduled-task specifics live
- * here, so it is reusable by any caller that already has a session + a prompt.
+ * The single "run an agent turn to completion in a session" entry, so every
+ * headless caller — scheduled tasks, spawn_session, workflow nodes, the Feishu
+ * bot — drives the agent the same way: the shared loop assembly (agent-core's
+ * runAgentLoop, the same settings chat streams with) → extract pipeline +
+ * references → persist the assistant message. No caller specifics live here.
  *
- * `generate` and `model` are injectable seams so callers (and tests) can stub the
- * LLM without touching the real provider.
+ * `generate` is an injectable seam so callers (and tests) can stub the LLM
+ * without touching the real provider.
  */
 
 import { randomUUID } from 'node:crypto';
-import { generateText, stepCountIs } from 'ai';
-import {
-  createModelFromConfig,
-  buildProviderOptions,
-  summarizeOutput,
-  CHAT_STREAM_TIMEOUT,
-} from '@greenhouse/agent-core';
-import type { ModelConfig, ProviderAttemptHook } from '@greenhouse/agent-core';
+import { runAgentLoop, summarizeOutput } from '@greenhouse/agent-core';
+import type { ModelConfig, ProviderAttemptHook, TimeContextOption } from '@greenhouse/agent-core';
 import { getDb, type DatabaseProvider } from '@greenhouse/db';
 import type { PipelineStep, Reference } from '@greenhouse/types/session';
 import { logger } from '@greenhouse/utils/logger';
@@ -32,6 +26,17 @@ import {
   settleAndRecordBudgetedUsage,
 } from '../llm/usage-budget.js';
 
+/**
+ * A transcript turn as the headless runner sends it: text only (no surface that
+ * runs headless uploads images mid-conversation), with the stored timestamp so
+ * the loop's time context can date earlier turns the way chat does.
+ */
+export interface HeadlessMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  created_at?: string;
+}
+
 // ─── Generate seam ───────────────────────────────────────
 //
 // The seam takes the ModelConfig (not a built model) so the default impl owns
@@ -40,7 +45,8 @@ import {
 export interface AgentGenerateArgs {
   modelConfig: ModelConfig;
   system: string;
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /** Prior turns (if any) followed by the current user prompt. */
+  messages: HeadlessMessage[];
   tools?: ToolRegistry;
   maxSteps: number;
   toolChoice?: 'auto' | 'none' | 'required';
@@ -48,6 +54,9 @@ export interface AgentGenerateArgs {
   /** Aborts the underlying LLM call (timeout / parent-turn cancellation). */
   abortSignal?: AbortSignal;
   providerAttemptHook?: ProviderAttemptHook;
+  /** See RunAgentInSessionArgs.timeContext. */
+  timeContext?: TimeContextOption;
+  sessionId?: string;
 }
 
 export interface AgentGenerateResult {
@@ -65,31 +74,26 @@ export class SessionTranscriptChangedError extends Error {
   }
 }
 
-/** Real generateText-backed implementation (the production default). */
+/**
+ * The production default: agent-core's runAgentLoop — the same assembly the
+ * streaming chat path uses (DSML interception, tool-call JSON repair, forced
+ * final step, timeouts, catalog sampling options, time context), run with
+ * `generateText`, plus the DeepSeek final-answer guarantee.
+ */
 const defaultGenerate: AgentGenerate = async (args) => {
-  const model = await createModelFromConfig(
-    args.modelConfig,
-    args.providerAttemptHook ? { onProviderAttempt: args.providerAttemptHook } : {},
-  );
-  const providerOptions = args.providerOptions ?? buildProviderOptions(args.modelConfig);
-  const result = await generateText({
-    model,
-    system: args.system,
+  const result = await runAgentLoop({
+    profile: { model: args.modelConfig, ...(args.toolChoice ? { tool_choice: args.toolChoice } : {}) },
+    maxStepsOverride: args.maxSteps,
     messages: args.messages,
-    tools: args.tools,
-    stopWhen: stepCountIs(args.maxSteps),
-    // Same SDK-layer bound as the streaming chat path — without it a headless
-    // run (notably the scheduler, which passes no abortSignal) has no time limit.
-    timeout: CHAT_STREAM_TIMEOUT,
-    toolChoice: (args.toolChoice ?? 'auto') as any,
-    // Force a final text answer on the last step so the run never ends mid-tool-call.
-    prepareStep: ({ stepNumber }: { stepNumber: number }) =>
-      stepNumber === args.maxSteps - 1 ? { toolChoice: 'none' as const } : {},
+    tools: args.tools ?? {},
+    systemPrompt: args.system,
+    ...(args.sessionId ? { sessionId: args.sessionId } : {}),
     ...(args.abortSignal ? { abortSignal: args.abortSignal } : {}),
-    ...(providerOptions ? { providerOptions } : {}),
-  } as any);
-  // totalUsage spans every step of the loop; `usage` is only the final step.
-  return { text: result.text, usage: (result.totalUsage ?? result.usage) as any, steps: result.steps as any };
+    ...(args.providerAttemptHook ? { providerAttemptHook: args.providerAttemptHook } : {}),
+    ...(args.timeContext !== undefined ? { timeContext: args.timeContext } : {}),
+    ...(args.providerOptions !== undefined ? { providerOptionsOverride: args.providerOptions } : {}),
+  });
+  return { text: result.text, usage: result.usage, steps: result.steps as any[] };
 };
 
 // ─── Runner ──────────────────────────────────────────────
@@ -101,6 +105,20 @@ export interface RunAgentInSessionArgs {
   system: string;
   /** The user turn to send. The caller is responsible for persisting it first. */
   prompt: string;
+  /**
+   * Earlier turns of this conversation, oldest first, sent before `prompt`.
+   * Only callers whose session really IS an ongoing conversation pass this
+   * (the Feishu bot); scheduled tasks, spawn_session and workflow nodes are
+   * single-prompt by design. The caller owns windowing — use the same
+   * `resolveHistoryBudget` / `windowMessagesByBudget` budget as chat.
+   */
+  priorMessages?: HeadlessMessage[];
+  /**
+   * Time context for the user messages (default on, like chat). The scheduler
+   * passes `false`: its prompt already carries a timezone-aware stamp, and a
+   * second clock in another zone would contradict it.
+   */
+  timeContext?: TimeContextOption;
   modelConfig: ModelConfig;
   tools?: ToolRegistry;
   maxSteps: number;
@@ -186,10 +204,11 @@ export async function runAgentInSession(args: RunAgentInSessionArgs): Promise<Ru
   // around the explicit test/override seam.
   let injectedBudget: Awaited<ReturnType<typeof reserveUserTokenBudget>> | null = null;
   let injectedEstimate = 0;
+  const messages: HeadlessMessage[] = [...(args.priorMessages ?? []), { role: 'user', content: args.prompt }];
   if (args.generate) {
     injectedEstimate = estimateAgentLoopTokens({
       system: args.system,
-      messages: [{ role: 'user', content: args.prompt }],
+      messages,
       maxSteps: args.maxSteps,
       maxOutputTokens: args.modelConfig.options?.max_tokens,
     });
@@ -212,13 +231,15 @@ export async function runAgentInSession(args: RunAgentInSessionArgs): Promise<Ru
   const result: AgentGenerateResult = await generate({
     modelConfig: args.modelConfig,
     system: args.system,
-    messages: [{ role: 'user', content: args.prompt }],
+    messages,
     tools: executionTools,
     maxSteps: args.maxSteps,
     toolChoice: args.toolChoice,
     providerOptions: args.providerOptions,
     abortSignal: args.abortSignal,
     providerAttemptHook,
+    sessionId: args.sessionId,
+    ...(args.timeContext !== undefined ? { timeContext: args.timeContext } : {}),
   });
 
   const { pipeline, references } = extractPipelineAndReferences(result.steps ?? []);

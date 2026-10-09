@@ -1,16 +1,30 @@
 /**
  * @greenhouse/agent-core — the single agent kernel.
  *
- * One streamText loop, one model registry/resolution path, DSML interception
- * as provider middleware, stream collectors and usage accounting. Every host
- * (API chat route, evaluation, scheduler, and spawned sessions) drives this
- * engine and only adapts protocol/persistence around it.
+ * One loop assembly (agent-loop.ts) with every safeguard — DSML interception
+ * as provider middleware, tool-call JSON repair, time context, step/timeout
+ * bounds, the forced final step, the DeepSeek final-answer guarantee — run
+ * either streaming (createChatStreamAsync: /api/chat, Bots) or headless
+ * (runAgentLoop: scheduler, spawn_session, workflow nodes, Feishu). Plus one
+ * model registry/resolution path, stream collectors and usage accounting.
+ * Hosts only adapt protocol/persistence around it.
  *
  * Deliberately database-free: persistence is host-side (see the api's
  * chat-persist.ts).
  */
 
-// Engine
+// Loop assembly (shared by every host)
+export { prepareAgentLoop, runAgentLoop } from './agent-loop.js';
+export type {
+  AgentLoopInput,
+  AgentLoopSettings,
+  AgentLoopRunResult,
+  PreparedAgentLoop,
+  RunAgentLoopOptions,
+  TimeContextOption,
+} from './agent-loop.js';
+
+// Streaming host
 export {
   createChatStreamAsync,
   withFinalAnswerGuarantee,

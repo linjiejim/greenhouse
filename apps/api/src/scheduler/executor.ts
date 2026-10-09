@@ -274,6 +274,10 @@ export async function executeTaskInSession(
       maxSteps,
       toolChoice: profile.tool_choice,
       usageContext: { profileId: profile.id, userId: owner.id, caller: 'scheduled-task' },
+      // The prepared prompt already opens with a timezone-aware stamp
+      // (buildTaskPrompt); the loop's default Asia/Shanghai stamp would be a
+      // second, unlabelled clock that disagrees whenever the task's zone differs.
+      timeContext: false,
       ...(options.runtimeToolEvidence ? { runtimeToolEvidence: options.runtimeToolEvidence } : {}),
       ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
     });

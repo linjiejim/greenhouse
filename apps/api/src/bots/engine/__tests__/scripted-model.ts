@@ -4,8 +4,8 @@
  * (text and/or tool calls). Runs the REAL `streamText` loop through
  * MockLanguageModelV3, so tools execute and stop conditions fire.
  *
- * The `streamText` wiring below REPRODUCES `createChatStreamAsync`
- * (packages/agent-core/src/chat-engine.ts) — step cap from `maxStepsOverride`
+ * The `streamText` wiring below REPRODUCES the shared loop assembly
+ * (`prepareAgentLoop` in packages/agent-core/src/agent-loop.ts) — step cap from `maxStepsOverride`
  * else the profile, extra stop conditions OR-ed with the cap, and on the last
  * step `toolChoice: 'none'` together with the rewritten messages — it does not
  * run it. Keep the two in step; the production wiring has its own test in
