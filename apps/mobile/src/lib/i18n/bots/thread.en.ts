@@ -122,7 +122,7 @@ export const botsThreadEn = {
   composer: {
     placeholder: 'Message',
     placeholderDm: 'Message {name}',
-    placeholderGroup: 'Message — @ to mention',
+    placeholderGroup: 'Message or @ a Bot',
     mention: 'Mention',
     mentionA11y: 'Mention {name}',
     inviteOther: 'Invite Another Bot…',
