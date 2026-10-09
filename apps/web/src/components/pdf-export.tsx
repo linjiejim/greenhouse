@@ -5,15 +5,24 @@
  * high-quality PDF output. Supports full CJK characters and special symbols
  * via native browser fonts.
  *
- * Flow: Markdown → Rich Output stand-ins → marked → HTML → styled iframe → window.print() → PDF
+ * Flow: Markdown → Rich Output stand-ins → marked → sanitized HTML → sandboxed
+ * iframe → print() → PDF
+ *
+ * The Markdown is model output, so it is untrusted: marked passes raw HTML
+ * through, and the print frame is same-origin with this page (it has to be, or
+ * we could not call its print()). Two layers keep an injected `<img onerror>`
+ * from running as the member: the same allowlist the on-screen renderer uses,
+ * and a sandbox without `allow-scripts`.
  */
 
 import React, { useCallback, useState } from 'react';
 import { marked } from 'marked';
+import { escapeHtml } from '@greenhouse/utils/html';
 import { FileDown } from '../lib/icons';
 import { useI18n, useT } from '../lib/i18n';
 import { flattenRichOutput } from '@greenhouse/types/rich-output';
 import { useFlattenNotes } from '../lib/rich-output';
+import { sanitizeExportHtml } from './markdown';
 
 // ─── PDF Print Stylesheet ────────────────────────────────
 
@@ -209,25 +218,26 @@ img { max-width: 100%; }
 // ─── Markdown → HTML ─────────────────────────────────────
 
 function renderMarkdownToHtml(markdown: string): string {
-  return marked.parse(markdown, {
+  const html = marked.parse(markdown, {
     gfm: true,
     breaks: false,
   }) as string;
+  return sanitizeExportHtml(html);
 }
 
 // ─── Build Full HTML Document ────────────────────────────
 
-function buildPrintDocument(markdown: string, title: string, lang: string): string {
+export function buildPrintDocument(markdown: string, title: string, lang: string): string {
   const htmlContent = renderMarkdownToHtml(markdown);
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
   return `<!DOCTYPE html>
-<html lang="${lang}">
+<html lang="${escapeHtml(lang)}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <title>${escapeHtml(title)}</title>
   <style>${PDF_CSS}</style>
 </head>
 <body>
@@ -241,46 +251,33 @@ ${htmlContent}
 
 // ─── Export PDF via Print ────────────────────────────────
 
-function triggerPdfPrint(markdown: string, title: string, lang: string): void {
-  const html = buildPrintDocument(markdown, title, lang);
+/**
+ * Sandbox for the print frame. `allow-same-origin` lets this page call the
+ * frame's print(); `allow-modals` lets print() open its dialog. Never add
+ * `allow-scripts`: next to `allow-same-origin` it would leave no sandbox at all.
+ */
+export const PRINT_FRAME_SANDBOX = 'allow-same-origin allow-modals';
 
-  // Create a hidden iframe for isolated print context
+export function triggerPdfPrint(markdown: string, title: string, lang: string): HTMLIFrameElement {
   const iframe = document.createElement('iframe');
+  iframe.setAttribute('sandbox', PRINT_FRAME_SANDBOX);
   iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:0;height:0;border:none;';
-  document.body.appendChild(iframe);
 
-  const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-  if (!iframeDoc) {
-    document.body.removeChild(iframe);
-    return;
-  }
-
-  iframeDoc.open();
-  iframeDoc.write(html);
-  iframeDoc.close();
-
-  // Wait for content to render, then print (single trigger)
-  const doPrint = () => {
+  let printed = false;
+  iframe.onload = () => {
+    // Some engines fire a load for the initial about:blank before the srcdoc;
+    // print once, and only the real document.
+    if (printed || iframe.contentWindow?.location.href !== 'about:srcdoc') return;
+    printed = true;
     setTimeout(() => {
       iframe.contentWindow?.print();
       // Clean up after print dialog closes
-      setTimeout(() => {
-        try {
-          document.body.removeChild(iframe);
-        } catch (_err) {
-          /* already removed */
-        }
-      }, 1000);
+      setTimeout(() => iframe.remove(), 1000);
     }, 300);
   };
-
-  // Use onload for async-loaded iframes, but after write()+close()
-  // the readyState is already 'complete', so just call directly.
-  if (iframeDoc.readyState === 'complete') {
-    doPrint();
-  } else {
-    iframe.onload = doPrint;
-  }
+  iframe.srcdoc = buildPrintDocument(markdown, title, lang);
+  document.body.appendChild(iframe);
+  return iframe;
 }
 
 // ─── React Component ─────────────────────────────────────
