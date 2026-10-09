@@ -185,6 +185,8 @@ describe('conversations', () => {
     const list = await call(jim, 'GET', '/conversations');
     const row = list.json.conversations.find((c: { session_id: string }) => c.session_id === dm.session_id);
     expect(row).toMatchObject({ attention: 'unread', last_message: { preview: 'done', bot_id: fern.id } });
+    // Bot replies only: Ivy's greeting and Fern's "done" — not the user turn, not the hand-off event.
+    expect(row.unread_count).toBe(2);
 
     const page = await call(jim, 'GET', `/conversations/${dm.session_id}?limit=2`);
     expect(page.json.has_more).toBe(true);
@@ -193,9 +195,8 @@ describe('conversations', () => {
 
     expect((await call(jim, 'POST', `/conversations/${dm.session_id}/read`)).json).toEqual({ ok: true });
     const after = await call(jim, 'GET', '/conversations');
-    expect(after.json.conversations.find((c: { session_id: string }) => c.session_id === dm.session_id).attention).toBe(
-      'idle',
-    );
+    const read = after.json.conversations.find((c: { session_id: string }) => c.session_id === dm.session_id);
+    expect(read).toMatchObject({ attention: 'idle', unread_count: 0 });
   });
 
   it('takes exactly one Bot id: none or several is 400 groups_retired and creates nothing', async () => {

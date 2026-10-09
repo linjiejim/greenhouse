@@ -140,6 +140,8 @@ export function toConversationSummary(
   extras: {
     lastMessage: { content: string; role: string; bot_id: string | null; created_at: string } | null;
     pendingRequests: number;
+    /** Bot replies since `last_read_at` (`db.bots.unreadCounts`, capped). */
+    unreadCount: number;
     working: boolean;
   },
 ): BotConversationSummary {
@@ -165,6 +167,7 @@ export function toConversationSummary(
       working: extras.working,
     }),
     pending_requests: extras.pendingRequests,
+    unread_count: extras.unreadCount,
     last_activity_at: conversation.last_activity_at,
   };
 }

@@ -207,8 +207,9 @@ async function conversationDetail(
   locale: BotsLocale,
 ): Promise<BotConversationDetail> {
   const sessionId = conversation.session_id;
-  const [latest, requests, notes, allBots, tail] = await Promise.all([
+  const [latest, unread, requests, notes, allBots, tail] = await Promise.all([
     db.bots.latestMessages([sessionId]),
+    db.bots.unreadCounts([sessionId]),
     db.bots.listRequests(userId, { sessionId }),
     db.bots.listNotes(sessionId),
     db.bots.listBots(userId, { includeArchived: true }),
@@ -219,6 +220,7 @@ async function conversationDetail(
   const summary = toConversationSummary(conversation, {
     lastMessage: latest.get(sessionId) ?? null,
     pendingRequests: pending,
+    unreadCount: unread.get(sessionId) ?? 0,
     working: Boolean(chatRunRegistry.getActive(sessionId)),
   });
   return {
@@ -416,7 +418,11 @@ export function createBotsRoutes() {
           db.bots.listConversations(user.id),
           db.bots.listRequests(user.id, { status: 'pending' }),
         ]);
-        const latest = await db.bots.latestMessages(conversations.map((conversation) => conversation.session_id));
+        const sessionIds = conversations.map((conversation) => conversation.session_id);
+        const [latest, unread] = await Promise.all([
+          db.bots.latestMessages(sessionIds),
+          db.bots.unreadCounts(sessionIds),
+        ]);
         const pendingBySession = new Map<string, number>();
         for (const request of pending) {
           pendingBySession.set(request.session_id, (pendingBySession.get(request.session_id) ?? 0) + 1);
@@ -426,6 +432,7 @@ export function createBotsRoutes() {
             toConversationSummary(conversation, {
               lastMessage: latest.get(conversation.session_id) ?? null,
               pendingRequests: pendingBySession.get(conversation.session_id) ?? 0,
+              unreadCount: unread.get(conversation.session_id) ?? 0,
               working: Boolean(chatRunRegistry.getActive(conversation.session_id)),
             }),
           ),

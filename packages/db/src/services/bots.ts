@@ -50,6 +50,8 @@ export const MAX_ACTIVE_BOTS_PER_USER = 20;
 export const MAX_BOTS_PER_CONVERSATION = 6;
 /** Open shared notes in one conversation. */
 export const MAX_OPEN_NOTES_PER_CONVERSATION = 50;
+/** Where a conversation's unread count stops (`unreadCounts`; clients show "99+"). */
+const UNREAD_COUNT_CAP = 99;
 
 export class BotsDomainError extends Error {
   constructor(
@@ -552,6 +554,32 @@ export function createBotsService(db: Db) {
           created_at: row.created_at,
           seq: Number(row.seq),
         });
+      }
+      return result;
+    },
+
+    /**
+     * Bot replies (`assistant` rows) after each conversation's `last_read_at`, capped at
+     * UNREAD_COUNT_CAP — the badge number beside `attention: 'unread'`. Sessions with none
+     * are absent from the map.
+     */
+    async unreadCounts(sessionIds: string[]): Promise<Map<string, number>> {
+      const result = new Map<string, number>();
+      if (sessionIds.length === 0) return result;
+      const rows = await db.execute<{ session_id: string; n: number }>(sql`
+        SELECT m.session_id, LEAST(COUNT(*), ${UNREAD_COUNT_CAP})::int AS n
+        FROM ${messages} m
+        JOIN ${botConversations} c ON c.session_id = m.session_id
+        WHERE m.session_id IN (${sql.join(
+          sessionIds.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+          AND m.role = 'assistant'
+          AND (c.last_read_at IS NULL OR m.created_at > c.last_read_at)
+        GROUP BY m.session_id
+      `);
+      for (const row of rows as unknown as Array<{ session_id: string; n: number }>) {
+        result.set(row.session_id, Number(row.n));
       }
       return result;
     },
