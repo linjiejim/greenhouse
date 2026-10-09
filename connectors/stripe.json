@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.stripe/mcp",
+  "title": "Stripe",
+  "description": "Look up and manage Stripe customers, payments, invoices and products.",
+  "version": "0.2.4",
+  "websiteUrl": "https://docs.stripe.com/mcp",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.stripe.com"
+    }
+  ],
+  "_meta": {
+    "com.linjiejim.greenhouse/connector": {
+      "slug": "stripe",
+      "category": "data",
+      "title_zh": "Stripe",
+      "description_zh": "查询与管理 Stripe 的客户、支付、发票和商品。",
+      "auth": {
+        "mode": "oauth",
+        "zero_config": true
+      },
+      "read_only_tools": [],
+      "verification": {
+        "level": "sign_in",
+        "date": "2026-10-09",
+        "notes": "Dynamic registration for public clients only — which is what Greenhouse registers as."
+      }
+    }
+  }
+}

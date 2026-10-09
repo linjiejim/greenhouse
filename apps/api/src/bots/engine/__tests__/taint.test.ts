@@ -19,6 +19,12 @@ describe('resultTaintsTurn', () => {
     }
   });
 
+  it("taints on every external connector action — a remote tool's description is the remote side's words too", () => {
+    for (const action of ['list', 'describe', 'call']) {
+      expect(resultTaintsTurn('mcp_call', { action, server: 'linear', tool: 'list_issues' })).toBe(true);
+    }
+  });
+
   it('does not taint on an import_attachment copy, or on Greenhouse reads', () => {
     expect(resultTaintsTurn('computer', { action: 'import_attachment', file_id: 'f1' })).toBe(false);
     expect(resultTaintsTurn('knowledge_query', { query: 'q' })).toBe(false);

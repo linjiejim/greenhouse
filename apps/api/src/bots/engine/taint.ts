@@ -9,7 +9,12 @@
 
 import { noteTurnObservation } from '../vault/turn-observations.js';
 
-/** Tools whose results are untrusted outside content: reading one taints the turn. */
+/**
+ * Tools whose results are untrusted outside content: reading one taints the turn.
+ * `mcp_call` taints on every action, `list` and `describe` included: a remote
+ * tool's description and schema are the remote server's own words (spec
+ * 20261009-mcp-connectors D8).
+ */
 export const TAINTING_TOOLS: ReadonlySet<string> = new Set([
   'browser',
   'computer',
@@ -17,6 +22,7 @@ export const TAINTING_TOOLS: ReadonlySet<string> = new Set([
   'email_query',
   'read_attachment',
   'analyze_image',
+  'mcp_call',
 ]);
 
 /**

@@ -18,9 +18,11 @@ import { BOT_BACKGROUND_DENYLIST, backgroundMemberToolIds, guardBackgroundTools 
 import type { BotTurnContext } from '../context.js';
 import type { ConversationPort, TeamPort } from '../ports.js';
 import { buildStaticRules, toolFaceFlags } from '../prompt.js';
+import { _setMcpDirectory } from '../../../mcp-client/directory.js';
 import {
   approvalDetails,
   assembleInteractiveTools,
+  createBotMcpCallTool,
   BOT_APPROVAL_TOOL_IDS,
   describeToolInput,
   interactiveMemberToolIds,
@@ -304,6 +306,118 @@ describe('bot_tasks only where background tasks can run', () => {
       );
     });
   }
+});
+
+describe('external connectors (mcp_call) in a Bots turn', () => {
+  const team = {} as TeamPort;
+  const conversation = {} as ConversationPort;
+  const tools = [
+    {
+      name: 'list_issues',
+      description: 'List issues',
+      input_schema: { type: 'object' },
+      read_only: true,
+      destructive: false,
+    },
+    {
+      name: 'create_issue',
+      description: 'Create an issue',
+      input_schema: { type: 'object' },
+      read_only: false,
+      destructive: false,
+    },
+  ];
+
+  afterEach(() => _setMcpDirectory([]));
+
+  it('is part of the interactive face (it was excluded before connectors had cards and taint)', () => {
+    expect(interactiveMemberToolIds(['knowledge_query', 'mcp_call'])).toEqual(['knowledge_query', 'mcp_call']);
+  });
+
+  it("is built with the card face: no confirm flag, and only the Bot's connectors", () => {
+    _setMcpDirectory([
+      { id: 1, slug: 'linear', name: 'Linear', description: null, auth_mode: 'oauth', tools },
+      { id: 2, slug: 'docs', name: 'Docs', description: null, auth_mode: 'none', tools },
+    ]);
+    const ctx = testTurn();
+    ctx.bot = { ...ctx.bot, connectors: JSON.stringify(['linear']) };
+    const { tools: face, approvalGated } = assembleInteractiveTools({
+      db: {} as DatabaseProvider,
+      ctx,
+      toolRegistry: {},
+      effectiveTools: ['mcp_call'],
+      team,
+      conversation,
+      runtimeRunId: null,
+    });
+    const mcp = face.mcp_call as { description?: string };
+    expect(mcp).toBeDefined();
+    expect(approvalGated).toBe(true);
+    expect(mcp.description).toContain('"linear" — Linear [own account]');
+    expect(mcp.description).not.toContain('"docs"');
+    expect(mcp.description).toContain('approval card');
+    expect(mcp.description).not.toContain('confirm:true');
+  });
+
+  it('a Bot whose list names no installed connector gets no gateway at all', () => {
+    _setMcpDirectory([{ id: 2, slug: 'docs', name: 'Docs', description: null, auth_mode: 'none', tools }]);
+    const ctx = testTurn();
+    ctx.bot = { ...ctx.bot, connectors: '[]' };
+    const { tools: face } = assembleInteractiveTools({
+      db: {} as DatabaseProvider,
+      ctx,
+      toolRegistry: {},
+      effectiveTools: ['mcp_call'],
+      team,
+      conversation,
+      runtimeRunId: null,
+    });
+    expect(face.mcp_call).toBeUndefined();
+  });
+
+  it('asks on a card titled with the connector and tool, showing the exact arguments', async () => {
+    const ctx = testTurn();
+    const requestApproval = vi.fn(async (_payload: unknown) => 'deny' as const);
+    ctx.requestApproval = requestApproval;
+    _setMcpDirectory([{ id: 1, slug: 'linear', name: 'Linear', description: null, auth_mode: 'none', tools }]);
+    const db = {
+      mcpServers: {
+        getById: async () => ({
+          id: 1,
+          slug: 'linear',
+          name: 'Linear',
+          url: 'http://127.0.0.1:9/mcp',
+          transport: 'streamable_http',
+          auth_mode: 'none',
+          enabled: true,
+        }),
+      },
+    } as unknown as DatabaseProvider;
+    const tool = createBotMcpCallTool({ ...ctx, db }) as unknown as {
+      execute: (input: unknown, options: unknown) => Promise<Record<string, unknown>>;
+    };
+    const out = await tool.execute(
+      { action: 'call', server: 'linear', tool: 'create_issue', arguments: { title: 'Printer on fire' } },
+      { toolCallId: 't', messages: [] },
+    );
+    expect(out.status).toBe('denied');
+    const card = requestApproval.mock.calls[0]![0] as {
+      title: string;
+      details: Array<{ label: string; value: string }>;
+    };
+    expect(card.title).toBe('Run create_issue on Linear?');
+    expect(card.details).toEqual(
+      expect.arrayContaining([
+        { label: 'Connector', value: 'Linear (linear)' },
+        { label: 'Tool', value: 'create_issue' },
+        { label: 'Title', value: 'Printer on fire' },
+      ]),
+    );
+  });
+
+  it('stays out of the unattended background face', () => {
+    expect(backgroundMemberToolIds(['knowledge_query', 'mcp_call'])).not.toContain('mcp_call');
+  });
 });
 
 describe('background face (unattended)', () => {

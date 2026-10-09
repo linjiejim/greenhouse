@@ -111,6 +111,28 @@ describe('E2E: Admin Endpoint Protection', () => {
     expect(create.status).toBe(403);
   });
 
+  it('connectors: the member API needs a login; the public callback refuses a forged sign-in', async () => {
+    // `/api/connectors` must not ride the public `/api/mcp…` prefix exemption
+    // (Greenhouse's own MCP server authenticates itself): no Bearer, no answer.
+    for (const [method, path] of [
+      ['GET', '/api/connectors'],
+      ['POST', '/api/connectors/1/authorize'],
+      ['PUT', '/api/connectors/1/key'],
+      ['DELETE', '/api/connectors/1'],
+    ] as const) {
+      const res = await fetch(`${BASE_URL}${path}`, { method, headers: { 'content-type': 'application/json' } });
+      expect(res.status, `${method} ${path}`).toBe(401);
+    }
+    // A member without the External MCP tools grant sees nothing to connect.
+    const mine = await fetch(`${BASE_URL}/api/connectors`, { headers: authHeaders(memberToken) });
+    expect(mine.status).toBe(200);
+    expect(await mine.json()).toEqual({ enabled: false, connectors: [] });
+    // The callback is public (a browser redirect) but its state is sealed.
+    const forged = await fetch(`${BASE_URL}/api/connectors/oauth/callback?code=x&state=forged-state-value`);
+    expect(forged.status).toBe(400);
+    expect(await forged.text()).toContain('data-ok="false"');
+  });
+
   it('member cannot create users via admin API', async () => {
     const res = await fetch(`${BASE_URL}/api/admin/users`, {
       method: 'POST',

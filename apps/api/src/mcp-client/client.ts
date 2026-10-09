@@ -9,29 +9,37 @@
  *
  * Remote transports only (Streamable HTTP, legacy SSE). Private addresses are
  * allowed on purpose: an internal MCP server on the team's own network is the
- * main use case, and only a super can register a URL (spec 20261009 D5).
+ * main use case, and only a super can register a URL (spec 20261009 D5). Who
+ * the call is made AS — nobody, the shared credential, a member's key or a
+ * member's OAuth sign-in — is decided by `credentials.ts`, which hands this
+ * module a ready target.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import { EnvHttpProxyAgent, fetch as undiciFetch, type Dispatcher } from 'undici';
 import type { McpRemoteTool, McpServerTransport } from '@greenhouse/types/mcp-servers';
 import { toErrorMessage } from '@greenhouse/utils/error';
 
-export const MCP_CONNECT_TIMEOUT_MS = 10_000;
+/** Generous: public servers are often reached through an egress proxy, and a cold first handshake is slow. */
+export const MCP_CONNECT_TIMEOUT_MS = 15_000;
 export const MCP_LIST_TIMEOUT_MS = 15_000;
 export const MCP_CALL_TIMEOUT_MS = 60_000;
 /** A server advertising more than this is truncated; nobody reads 500 tools. */
 export const MCP_MAX_TOOLS = 200;
 const MCP_TOOL_DESCRIPTION_MAX = 1000;
 
-/** Everything needed to reach one server, credential already decrypted. */
+/** Everything needed to reach one server as one caller, credential already in place. */
 export interface McpConnectTarget {
+  /** The endpoint — with a query-parameter credential already appended, so never log it. */
   url: string;
   transport: McpServerTransport;
-  authHeader: string | null;
-  authValue: string | null;
+  /** Extra request headers (a header credential). */
+  headers: Record<string, string>;
+  /** A member's OAuth sign-in: the SDK adds the bearer token and refreshes it on 401. */
+  authProvider?: OAuthClientProvider;
 }
 
 /** A call result flattened for the model: text it can read, never raw binary. */
@@ -39,6 +47,8 @@ export interface McpCallOutcome {
   isError: boolean;
   text: string;
 }
+
+type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
 
 /**
  * The API's global dispatcher sends EVERY request through HTTPS_PROXY when one
@@ -49,21 +59,49 @@ export interface McpCallOutcome {
  * from this undici (see apps/api/src/AGENTS.md).
  */
 let proxyDispatcher: Dispatcher | null | undefined;
-function mcpFetch(url: string | URL, init?: RequestInit): Promise<Response> {
+/** Statuses whose response may not carry a body (the Response constructor rejects one). */
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
+export async function mcpFetch(url: string | URL, init?: RequestInit): Promise<Response> {
   if (proxyDispatcher === undefined) {
     const proxied = Boolean(
       process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy,
     );
     proxyDispatcher = proxied ? new EnvHttpProxyAgent() : null;
   }
-  return undiciFetch(url, {
+  const res = await undiciFetch(url, {
     ...(init as Parameters<typeof undiciFetch>[1]),
     ...(proxyDispatcher ? { dispatcher: proxyDispatcher } : {}),
-  }) as unknown as Promise<Response>;
+  });
+  // Re-wrapped as the GLOBAL Response: the SDK reads an OAuth error body only
+  // after `input instanceof Response`, and this undici's Response is another
+  // class — `invalid_grant` / `invalid_client` were otherwise downgraded to a
+  // generic server error, so a dead client was never re-registered and a
+  // refused refresh never invalidated. The body stays a stream (SSE keeps flowing).
+  return new Response(NULL_BODY_STATUSES.has(res.status) ? null : (res.body as ReadableStream<Uint8Array> | null), {
+    status: res.status,
+    statusText: res.statusText,
+    headers: new Headers([...res.headers]),
+  });
 }
 
-function headersFor(target: McpConnectTarget): Record<string, string> {
-  return target.authHeader && target.authValue ? { [target.authHeader]: target.authValue } : {};
+/**
+ * `mcpFetch` restricted to what one server may make us fetch: its own origin,
+ * or any https URL. The OAuth hops (protected-resource metadata → authorization
+ * server → token endpoint) go wherever the remote server's metadata points;
+ * without this a server could aim the API at any plain-http address on the
+ * internal network (spec 20261009-mcp-connectors D3).
+ */
+export function guardedMcpFetch(serverUrl: string): FetchLike {
+  const origin = new URL(serverUrl).origin;
+  return (url, init) => {
+    const target = new URL(String(url));
+    if (target.origin !== origin && target.protocol !== 'https:') {
+      return Promise.reject(
+        new Error(`refused to follow "${target.origin}": only https or the MCP server's own origin are allowed`),
+      );
+    }
+    return mcpFetch(target, init);
+  };
 }
 
 async function withClient<T>(
@@ -72,11 +110,13 @@ async function withClient<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   const url = new URL(target.url);
-  const requestInit = { headers: headersFor(target) };
+  const options = {
+    requestInit: { headers: target.headers },
+    fetch: guardedMcpFetch(target.url),
+    ...(target.authProvider ? { authProvider: target.authProvider } : {}),
+  };
   const transport =
-    target.transport === 'sse'
-      ? new SSEClientTransport(url, { requestInit, fetch: mcpFetch })
-      : new StreamableHTTPClientTransport(url, { requestInit, fetch: mcpFetch });
+    target.transport === 'sse' ? new SSEClientTransport(url, options) : new StreamableHTTPClientTransport(url, options);
   const client = new Client({ name: 'greenhouse', version: process.env.APP_VERSION || '0.1.0' });
   try {
     await client.connect(transport, { timeout: MCP_CONNECT_TIMEOUT_MS, ...(signal ? { signal } : {}) });
@@ -91,13 +131,63 @@ async function withClient<T>(
  * can act on. The SDK's own messages name HTTP statuses and error codes, which
  * is fine for the admin page; the URL and credential never appear in them.
  */
-export function describeMcpError(err: unknown): string {
+/** undici says only "fetch failed"; the reason (ECONNRESET, a TLS error, a proxy refusal) is on `cause`. */
+function withCause(err: unknown): string {
   const message = toErrorMessage(err);
+  const cause =
+    err && typeof err === 'object' ? (err as { cause?: { code?: unknown; message?: unknown } }).cause : null;
+  if (!cause || !/fetch failed/i.test(message)) return message;
+  const detail = [cause.code, cause.message].filter((part) => typeof part === 'string' && part).join(': ');
+  return detail ? `${message}: ${detail}` : message;
+}
+
+export function describeMcpError(err: unknown): string {
+  const message = withCause(err);
+  // The SDK rejects a reply that is not JSON-RPC with its schema validator's
+  // issue list — pages of JSON that tell an admin nothing.
+  if (/^\s*\[\s*\{/.test(message) && /"code":\s*"invalid_/.test(message)) {
+    return 'the server answered with something that is not valid MCP (JSON-RPC)';
+  }
   if (/401|unauthori[sz]ed/i.test(message)) return `the server rejected the credential (${message})`;
   if (/403|forbidden/i.test(message)) return `the server refused access (${message})`;
   if (/ECONNREFUSED|ENOTFOUND|EAI_AGAIN|fetch failed/i.test(message)) return `could not reach the server (${message})`;
   if (/timed? ?out|-32001/i.test(message)) return `the server did not answer in time (${message})`;
   return message;
+}
+
+/**
+ * When a connection fails, knock once more without the SDK and say what the
+ * server actually answered. Some services report a bad key in their own format
+ * — HTTP 200 with a JSON body that is not JSON-RPC (Amap answers
+ * `{"status":"0","info":"INVALID_USER_KEY"}`) — which the SDK can only wait
+ * out, so the member would otherwise read "did not answer in time". Returns
+ * null when there is nothing better to say. Callers redact secrets.
+ */
+export async function explainFailedConnect(target: McpConnectTarget): Promise<string | null> {
+  try {
+    const res = await guardedMcpFetch(target.url)(target.url, {
+      method: 'POST',
+      headers: { ...target.headers, 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 0,
+        method: 'initialize',
+        params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'greenhouse', version: '0' } },
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
+    const type = res.headers.get('content-type') ?? '';
+    if (!res.ok || !type.includes('application/json')) return null;
+    const text = (await res.text()).slice(0, 16_384);
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === 'object' && !('jsonrpc' in parsed)) {
+      const excerpt = text.length > 200 ? `${text.slice(0, 200)}…` : text;
+      return `the server answered with something that is not MCP: ${excerpt}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /** List every tool the server advertises (paginated), shaped for the cache. */

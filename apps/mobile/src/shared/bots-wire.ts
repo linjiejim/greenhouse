@@ -111,6 +111,8 @@ export interface BotWriteInput {
   model_id?: string | null;
   /** Tool ids the Bot may use; null = inherit the owner's whole allowed set. */
   tools?: string[] | null;
+  /** Connector slugs the Bot may reach; null = every connector the owner can use. */
+  connectors?: string[] | null;
   max_steps?: number | null;
   change_log?: string;
 }

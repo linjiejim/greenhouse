@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.microsoft/microsoft-learn-mcp",
+  "title": "Microsoft Learn",
+  "description": "Search and fetch official Microsoft and Azure documentation and code samples.",
+  "version": "1.0.0",
+  "websiteUrl": "https://learn.microsoft.com/en-us/training/support/mcp",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://learn.microsoft.com/api/mcp"
+    }
+  ],
+  "_meta": {
+    "com.linjiejim.greenhouse/connector": {
+      "slug": "mslearn",
+      "category": "docs",
+      "title_zh": "Microsoft Learn",
+      "description_zh": "检索并读取微软与 Azure 官方文档和代码示例。",
+      "auth": {
+        "mode": "none",
+        "zero_config": true
+      },
+      "read_only_tools": [],
+      "verification": {
+        "level": "call",
+        "date": "2026-10-09"
+      }
+    }
+  }
+}

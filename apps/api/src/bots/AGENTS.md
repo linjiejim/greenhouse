@@ -90,7 +90,13 @@ bots/
     knowledge base`；没有 summary 的旧卡照旧用标题）。参数行的标签按 locale 译（`approvalFieldLabel`，没收录的键人性化
     显示），值保持调用原样；只藏 `APPROVAL_HIDDEN_FIELDS`（`confirm` / `user_confirmed` / `revision` / `draft_token`），
     目标 ID 照常显示。截断标记 `…(+N more characters)` 与 `…` / `+K more fields` 是客户端解析的协议，保持英文。
-  - 污染判定：`engine/taint.ts` 是兜底（`TAINTING_TOOLS`），浏览器 / 电脑在真正读到外部内容时自己标记；
+  - **外部连接器（`mcp_call`，spec 20261009-mcp-connectors D8/D9）**：不走上面的整工具包装——同一个工具里有只读也有写，
+    读写只有它自己知道，所以 `createBotMcpCallTool` 把审批做成工具内回调：非只读远程工具每次 `call` 弹卡（标题
+    `在「Linear」上运行 create_issue？` / `Run create_issue on Linear?`，参数行加「连接器」「工具」两行再列原样参数，
+    服务器声明 destructive 时多一行说明），只读调用不弹；Bots 脸的 schema 里没有 `confirm`。成员没连接时先返回
+    `needs_connection`（不弹卡、不碰远端）。Bot 的 `connectors`（JSON 文本，null = 主人能用的全部，`[]` = 不用）
+    随版本走，manifest hash 只在非 null 时纳入（老版本 hash 不变）。后台任务仍拿不到（无人审批）。
+  - 污染判定：`engine/taint.ts` 是兜底（`TAINTING_TOOLS`，含 `mcp_call` 的所有动作——远程工具的描述也是外部文本），浏览器 / 电脑在真正读到外部内容时自己标记；
     `import_attachment` 不算污染（成员自己给的文件），但和其他外部来源一样记进密码库的外部读取账本——
     同一回合读过别的网站或外部内容后，代填一律要卡（`policy=auto` 也一样）。
   - 回合被污染（读过网页 / 外部内容）或不是成员直接发起（ask / followup / continue）时：`memory`

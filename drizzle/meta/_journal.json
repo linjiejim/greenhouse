@@ -127,6 +127,13 @@
       "when": 1791531327059,
       "tag": "0017_feishu_logical_dedup",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791556101052,
+      "tag": "0018_mcp_connectors",
+      "breakpoints": true
     }
   ]
 }

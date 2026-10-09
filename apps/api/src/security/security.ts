@@ -145,6 +145,9 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
   '/oauth/register': { windowMs: 60 * 60_000, max: 10 }, // bound anonymous dynamic client registration
   '/oauth/token': { windowMs: 60_000, max: 60 }, // bound anonymous code/refresh credential attempts
   '/oauth/revoke': { windowMs: 60_000, max: 60 }, // bound anonymous revocation probing
+  // The connector sign-in callback is public (a browser redirect) and spends an
+  // outbound token exchange per hit; a real member lands here a few times a day.
+  '/api/connectors/oauth': { windowMs: 60_000, max: 30 },
   // Publishing is now a user-facing action (SkillHub Upload), and every call
   // writes an object to the skill store — bound it per user/IP.
   '/api/skills/publish': { windowMs: 60_000, max: 10 },

@@ -198,6 +198,9 @@ const FIELD_LABELS: Record<string, Record<BotsLocale, string>> = {
   attachment_ids: { zh: '附件', en: 'Attachments' },
   reply_to_uid: { zh: '回复的邮件', en: 'In reply to' },
   note: { zh: '说明', en: 'Note' },
+  // External connectors (mcp_call)
+  connector: { zh: '连接器', en: 'Connector' },
+  remote_tool: { zh: '工具', en: 'Tool' },
 };
 
 /** An approval card's row label for one argument key. */
@@ -208,6 +211,19 @@ export function approvalFieldLabel(l: BotsLocale, key: string): string {
 }
 
 export const copy = {
+  /**
+   * The verb phrase of an approval card for a remote connector tool. The
+   * connector name is the admin's; the tool name is the remote server's own
+   * and shown verbatim (the card's rows carry the exact arguments).
+   */
+  mcpCallAction: (l: BotsLocale, connector: string, toolName: string) =>
+    l === 'zh' ? `在「${connector}」上运行 ${toolName}` : `run ${toolName} on ${connector}`,
+
+  mcpDestructiveNote: (l: BotsLocale) =>
+    l === 'zh'
+      ? '这个工具的服务器声明它可能删除或覆盖数据。'
+      : 'The server says this tool may delete or overwrite data.',
+
   ask: (l: BotsLocale, from: string, to: string, message: string) =>
     l === 'zh' ? `${from} → @${to}：${message}` : `${from} → @${to}: ${message}`,
 

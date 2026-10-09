@@ -1,0 +1,45 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.github/github-mcp-server",
+  "title": "GitHub",
+  "description": "Work with repositories, issues, pull requests and code on GitHub.",
+  "version": "2.0.2",
+  "websiteUrl": "https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Authorization header with authentication token (PAT or App token)",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ],
+  "_meta": {
+    "com.linjiejim.greenhouse/connector": {
+      "slug": "github",
+      "category": "dev",
+      "title_zh": "GitHub",
+      "description_zh": "操作 GitHub 上的仓库、issue、PR 和代码——用每位成员自己的访问令牌。",
+      "auth": {
+        "mode": "per_user",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "help": "A GitHub personal access token (fine-grained recommended) with access to the repositories you want the agent to use.",
+        "help_zh": "一个 GitHub 个人访问令牌（推荐 fine-grained），授予你希望 Agent 使用的仓库权限。",
+        "help_url": "https://github.com/settings/personal-access-tokens/new",
+        "zero_config": true
+      },
+      "read_only_tools": [],
+      "verification": {
+        "level": "handshake",
+        "date": "2026-10-09",
+        "notes": "GitHub's OAuth has neither dynamic registration nor client-id metadata documents, so the zero-setup path is each member's own PAT. A team can instead register its own OAuth app and switch the connector to OAuth with that client id."
+      }
+    }
+  }
+}

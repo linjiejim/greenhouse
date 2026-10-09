@@ -31,6 +31,7 @@ function bot(id: string, name: string): BotView {
     status: 'active',
     description: '',
     tools: null,
+    connectors: null,
     max_steps: null,
     current_version: 1,
     user_id: 'u1',

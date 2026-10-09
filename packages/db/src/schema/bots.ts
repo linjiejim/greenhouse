@@ -83,6 +83,12 @@ export const bots = pgTable(
      * intersected with the owner's permissions at run time (resolveEffectiveTools).
      */
     tools: text('tools'),
+    /**
+     * JSON array of connector slugs (`mcp_servers.slug`) the Bot may reach
+     * through `mcp_call`, or NULL = every connector the owner can use. Like
+     * `tools` it only narrows; `[]` = none (spec 20261009-mcp-connectors D9).
+     */
+    connectors: text('connectors'),
     /** Per-turn step cap for Chat sessions and automations; NULL = the base preset's default. */
     max_steps: integer('max_steps'),
     // ── Versions (formerly custom_profiles) ──
@@ -127,6 +133,8 @@ export const botVersions = pgTable(
     instructions: text('instructions').notNull().default(''),
     /** JSON array or NULL (= the owner's whole allowed set), as on `bots`. */
     tools: text('tools'),
+    /** JSON array of connector slugs or NULL (= every connector the owner can use), as on `bots`. */
+    connectors: text('connectors'),
     model_id: text('model_id'),
     max_steps: integer('max_steps'),
     /** Avatar JSON as on `bots`; hashed into `manifest_hash`, so stored values are never rewritten. */

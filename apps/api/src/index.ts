@@ -87,6 +87,7 @@ import adminRoutes from './routes/admin.js';
 import costValueRoutes from './routes/cost-value.js';
 import adminGatewayRoutes from './routes/admin-llm-gateway.js';
 import adminMcpServerRoutes from './routes/admin-mcp-servers.js';
+import connectorRoutes from './routes/connectors.js';
 import { refreshMcpDirectory } from './mcp-client/directory.js';
 import { wecomOAuthRoutes } from './routes/wecom-oauth.js';
 import { feishuOAuthRoutes } from './routes/feishu-oauth.js';
@@ -298,6 +299,11 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // exchange serve the not-yet-logged-in QR login), so no wildcard role guard;
       // `/oauth/start` and `/binding` guard themselves.
       .route('/api/feishu', feishuOAuthRoutes)
+      // Connectors — a member's own MCP connections. `/oauth/callback` and
+      // `/oauth/client-metadata.json` are public paths (a provider's browser
+      // redirect / a provider's fetch), so no wildcard guard here; every other
+      // route carries requireInternal() itself.
+      .route('/api/connectors', connectorRoutes)
       // Super-admin-only routes
       .use('/api/admin/*', requireSuper())
       .route('/api/admin/platform', platformAdminRoutes)

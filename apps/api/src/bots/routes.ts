@@ -169,6 +169,34 @@ async function parseTools(
   return { ok: true, value: tools };
 }
 
+/** More than any instance installs; a list this long is a mistake, not a choice. */
+const MAX_BOT_CONNECTORS = 100;
+
+/**
+ * The Bot's connector list (spec 20261009-mcp-connectors D9). `null` /
+ * omitted = every connector the owner can use; a list must name installed
+ * connectors. Whether the owner may call them at all is decided at run time
+ * (the `mcp_call` grant and their own connections) — a list only narrows.
+ */
+async function parseConnectors(
+  raw: unknown,
+): Promise<{ ok: true; value: string[] | null | undefined } | { ok: false; error: string }> {
+  if (raw === undefined) return { ok: true, value: undefined };
+  if (raw === null) return { ok: true, value: null };
+  if (!Array.isArray(raw) || raw.some((s) => typeof s !== 'string')) {
+    return { ok: false, error: 'connectors must be an array of connector ids or null' };
+  }
+  const slugs = [...new Set(raw as string[])];
+  if (slugs.length > MAX_BOT_CONNECTORS) {
+    return { ok: false, error: `A Bot lists at most ${MAX_BOT_CONNECTORS} connectors` };
+  }
+  if (slugs.length === 0) return { ok: true, value: [] };
+  const installed = new Set((await getDb().mcpServers.list()).map((row) => row.slug));
+  const unknown = slugs.filter((slug) => !installed.has(slug));
+  if (unknown.length > 0) return { ok: false, error: `Unknown connectors: ${unknown.join(', ')}` };
+  return { ok: true, value: slugs };
+}
+
 const MAX_STEPS_LIMIT = 50;
 
 function parseMaxSteps(raw: unknown): { ok: true; value: number | null | undefined } | { ok: false; error: string } {
@@ -377,6 +405,8 @@ export function createBotsRoutes() {
         if (!description.ok) return c.json({ error: description.error, code: 'bot_name_invalid' as const }, 400);
         const tools = await parseTools(body.tools, user);
         if (!tools.ok) return c.json({ error: tools.error, code: 'bot_name_invalid' as const }, tools.status);
+        const connectors = await parseConnectors(body.connectors);
+        if (!connectors.ok) return c.json({ error: connectors.error, code: 'bot_name_invalid' as const }, 400);
         const maxSteps = parseMaxSteps(body.max_steps);
         if (!maxSteps.ok) return c.json({ error: maxSteps.error, code: 'bot_name_invalid' as const }, 400);
         const meta = parseVersionMeta(body, user.id);
@@ -392,6 +422,7 @@ export function createBotsRoutes() {
             avatar: JSON.stringify(avatar.value ?? {}),
             model_id: modelId.value ?? null,
             tools: tools.value ?? null,
+            connectors: connectors.value ?? null,
             max_steps: maxSteps.value ?? null,
             template_key: template?.key ?? null,
             ...meta.value,
@@ -743,6 +774,7 @@ export function createBotsRoutes() {
           avatar?: string;
           model_id?: string | null;
           tools?: string[] | null;
+          connectors?: string[] | null;
           max_steps?: number | null;
         } & BotVersionMeta = { ...meta.value };
         if (body.description !== undefined) {
@@ -754,6 +786,11 @@ export function createBotsRoutes() {
           const tools = await parseTools(body.tools, user);
           if (!tools.ok) return c.json({ error: tools.error, code: 'bot_name_invalid' as const }, tools.status);
           updates.tools = tools.value;
+        }
+        if (body.connectors !== undefined) {
+          const connectors = await parseConnectors(body.connectors);
+          if (!connectors.ok) return c.json({ error: connectors.error, code: 'bot_name_invalid' as const }, 400);
+          updates.connectors = connectors.value;
         }
         if (body.max_steps !== undefined) {
           const maxSteps = parseMaxSteps(body.max_steps);

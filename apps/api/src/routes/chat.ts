@@ -578,6 +578,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               workspaceId: body.workspace_id,
               profileId: profile.id,
               botId: profile.identity?.botId ?? null,
+              mcpConnectors: profile.mcp_connectors ?? null,
               runtimeRunId: runtimeTrace?.runId ?? null,
               toolRegistry,
               unattended: unattendedExecution,

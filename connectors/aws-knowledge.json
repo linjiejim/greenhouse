@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.amazonaws/aws-knowledge-mcp-server",
+  "title": "AWS Knowledge",
+  "description": "Search and read AWS documentation, regional availability and AWS skills.",
+  "version": "1.0.0",
+  "websiteUrl": "https://github.com/awslabs/mcp/tree/main/src/aws-knowledge-mcp-server",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://knowledge-mcp.global.api.aws"
+    }
+  ],
+  "_meta": {
+    "com.linjiejim.greenhouse/connector": {
+      "slug": "aws-knowledge",
+      "category": "docs",
+      "title_zh": "AWS 知识库",
+      "description_zh": "检索并阅读 AWS 文档、各区域服务可用性与 AWS 技能。",
+      "auth": {
+        "mode": "none",
+        "zero_config": true
+      },
+      "read_only_tools": [],
+      "verification": {
+        "level": "call",
+        "date": "2026-10-09",
+        "notes": "Not listed in the MCP Registry; the endpoint is AWS-hosted (awslabs)."
+      }
+    }
+  }
+}

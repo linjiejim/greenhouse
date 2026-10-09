@@ -22,6 +22,7 @@ export function testBot(id = 'bot_test', name = 'Sage'): BotRow {
     status: 'active',
     description: '',
     tools: null,
+    connectors: null,
     max_steps: null,
     current_version: 1,
     legacy_custom_id: null,

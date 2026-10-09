@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.getsentry/sentry-mcp",
+  "title": "Sentry",
+  "description": "Investigate Sentry issues, errors, traces and releases.",
+  "version": "0.42.0",
+  "websiteUrl": "https://mcp.sentry.dev",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.sentry.dev/mcp"
+    }
+  ],
+  "_meta": {
+    "com.linjiejim.greenhouse/connector": {
+      "slug": "sentry",
+      "category": "dev",
+      "title_zh": "Sentry",
+      "description_zh": "排查 Sentry 里的 issue、错误、链路与发布。",
+      "auth": {
+        "mode": "oauth",
+        "zero_config": true
+      },
+      "read_only_tools": [],
+      "verification": {
+        "level": "sign_in",
+        "date": "2026-10-09"
+      }
+    }
+  }
+}
