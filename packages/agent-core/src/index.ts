@@ -82,6 +82,14 @@ export type { DsmlRecoveryEvent } from './dsml-interceptor.js';
 export { injectTimeContext } from './time-context.js';
 export type { EngineMessage, EngineContentPart } from './time-context.js';
 export {
+  createToolResultMasker,
+  chatMaskStub,
+  resolveInTurnToolBudget,
+  toolResultTokens,
+  CHAT_IN_TURN_TOOL_TOKEN_BUDGET,
+} from './tool-result-masker.js';
+export type { ToolResultMaskerOptions, ToolResultMaskBatch } from './tool-result-masker.js';
+export {
   estimateTokens,
   windowMessagesByBudget,
   resolveHistoryBudget,

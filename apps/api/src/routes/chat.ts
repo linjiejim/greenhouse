@@ -47,6 +47,10 @@ import type { AppEnv } from '../app-env.js';
 import {
   createChatStreamAsync,
   createCollectors,
+  createToolResultMasker,
+  chatMaskStub,
+  getModelEntry,
+  resolveInTurnToolBudget,
   windowMessagesByBudget,
   resolveHistoryBudget,
   modelSupportsVision,
@@ -458,11 +462,17 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           const historyBudget = resolveHistoryBudget(requestedModel ?? profile.model.id);
           const historyWindow = windowMessagesByBudget(chatMessages, historyBudget);
           if (historyWindow.dropped > 0) {
-            logger.info(
-              `[Chat] history window dropped ${historyWindow.dropped} oldest message(s), ` +
-                `kept ${historyWindow.messages.length} (~${historyWindow.estimatedTokens} est. tokens, ` +
-                `budget ${historyBudget} for model ${requestedModel ?? profile.model.id ?? 'direct'})`,
-            );
+            // Structured on purpose: "how often do real sessions drop history,
+            // and how much" is the evidence that decides whether fold
+            // summarisation gets built (spec 20261009 D6).
+            logger.info('[Chat] history window dropped oldest messages', {
+              sessionId: sessionId ?? null,
+              dropped: historyWindow.dropped,
+              kept: historyWindow.messages.length,
+              estimatedTokens: historyWindow.estimatedTokens,
+              budget: historyBudget,
+              model: requestedModel ?? profile.model.id ?? 'direct',
+            });
             chatMessages = historyWindow.messages;
           }
 
@@ -698,12 +708,39 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             metadata: { max_steps: maxSteps },
           });
 
+          // ── In-turn tool-output budget ──
+          // A long research turn resends every earlier tool result on every
+          // step; past the budget the oldest are masked (stub + "call again"),
+          // keeping the newest half. Short turns never reach it.
+          const inTurnBudget = resolveInTurnToolBudget(getModelEntry(effectiveModelId ?? '')?.contextWindow);
+          const maskToolResults = createToolResultMasker({
+            budgetTokens: inTurnBudget,
+            retainTokens: Math.floor(inTurnBudget / 2),
+            stub: chatMaskStub,
+            // Chat's tools are reads of a document / page / record: an exact
+            // repeat of a masked call means the model needs it back.
+            pinRefetched: true,
+            onBatch: (batch) =>
+              logger.info('[Chat] masked earlier tool results', {
+                sessionId: sessionId ?? null,
+                budget: inTurnBudget,
+                ...batch,
+              }),
+            onRefetch: ({ stepNumber, toolName }) =>
+              logger.info('[Chat] model re-fetched a masked tool result — pinned', {
+                sessionId: sessionId ?? null,
+                stepNumber,
+                toolName,
+              }),
+          });
+
           // ── Create chat stream via shared engine ──
           const stream = await createChatStreamAsync({
             profile,
             messages: engineMessages,
             tools: executionToolRegistry,
             systemPrompt,
+            prepareStepMessages: maskToolResults,
             ...(sessionId ? { sessionId } : {}),
             // Server-side stop / graceful shutdown aborts the loop; the SDK
             // surfaces it as an `abort` part handled in the pump.
