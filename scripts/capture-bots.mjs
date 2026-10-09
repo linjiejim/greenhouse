@@ -5,7 +5,8 @@
  * Drives a running dev stack started with `node scripts/run-dev.mjs up web --bots`
  * as a Chinese-locale team member, against the REAL configured model and REAL
  * computers (nothing is stubbed): first run, the template gallery, a Bot
- * browsing on its computer while you watch, a group hand-off, signing in with
+ * browsing on its computer while you watch, a hand-off between Bots in the main
+ * Bot's conversation (group chats are retired — Bots join as guests), signing in with
  * the password vault (approval card + TOTP), the secure sign-in card, a
  * background task, the profile drawer and info pane, the computer as a
  * computer (taskbar and minimise recovery, terminal, files, a background
@@ -284,10 +285,6 @@ async function newPage(video = false) {
 
 /** Steps re-run alone (`--only`) find the tour's Bots by template (`state.ivy` = Sprouty, the main Bot). */
 async function ensureBots() {
-  if (!state.group) {
-    const { conversations } = await api('GET', '/api/bots/conversations');
-    state.group = conversations.find((c) => c.kind === 'group')?.session_id;
-  }
   if (state.ivy && state.basil) return;
   const { bots } = await api('GET', '/api/bots');
   state.ivy ??= bots.find((b) => b.template_key === 'sprouty') ?? bots[0];
@@ -346,20 +343,21 @@ await step('browse', async () => {
 });
 
 await step('handoff', async () => {
-  const { conversation } = await api('POST', '/api/bots/conversations', {
-    bot_ids: [state.ivy.id, state.sage.id, state.fern.id],
-    title: '发布会筹备',
-  });
-  state.group = conversation.session_id;
-  await openConversation(page, state.group);
+  // No groups (retired): the main Bot's own conversation, the other two invited in as guests —
+  // a Bot brings them in by itself as well (`team add`), inviting first keeps the tour repeatable.
+  const dm = state.ivy.dm_session_id;
+  for (const bot of [state.sage, state.fern]) {
+    await api('POST', `/api/bots/conversations/${dm}/members`, { bot_id: bot.id }).catch(() => undefined);
+  }
+  await openConversation(page, dm);
   await send(
     page,
     '我们下周要介绍 Greenhouse 的 Bots 功能。请蒲蒲先在网上查一下 Grok Bot、Meta Muse、OpenAI dots 各自最核心的一个卖点，再请卷卷据此写一段 120 字左右的中文开场白。',
   );
-  await waitIdle(api, state.group, 420_000);
-  await snap(page, '05-group-handoff', { wait: 1500 });
+  await waitIdle(api, dm, 420_000);
+  await snap(page, '05-handoff', { wait: 1500 });
   await page.getByTestId('bots-transcript').evaluate((el) => el.scrollTo({ top: 0 }));
-  await snap(page, '05b-group-handoff-top', { wait: 800 });
+  await snap(page, '05b-handoff-top', { wait: 800 });
 });
 
 await step('vault', async () => {
@@ -485,7 +483,7 @@ await step('profile', async () => {
   await page.getByTestId('bots-profile-drawer').waitFor({ timeout: 10_000 });
   await snap(page, '15-profile-drawer', { wait: 800 });
   await page.keyboard.press('Escape');
-  await openConversation(page, state.group);
+  await openConversation(page, state.ivy.dm_session_id);
   await page.getByTestId('bots-info-button').click();
   await page.getByTestId('bots-info-panel').waitFor();
   await snap(page, '16-info-panel', { wait: 800 });
@@ -679,7 +677,7 @@ await step('mobile', async () => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'zh-CN', isMobile: true });
   const mobile = await context.newPage();
   await loginUi(mobile, MEMBER);
-  await mobile.goto(`${BASE}/#/bots?c=${state.group ?? state.ivy.dm_session_id}`);
+  await mobile.goto(`${BASE}/#/bots?c=${state.ivy.dm_session_id}`);
   await mobile.getByTestId('bots-transcript').waitFor({ timeout: 30_000 });
   await snap(mobile, '18-mobile', { wait: 1500 });
   await context.close();
