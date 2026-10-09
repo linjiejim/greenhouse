@@ -25,11 +25,23 @@ function configuredTrustedProxies(): Set<string> {
   return new Set([...LOOPBACK_PROXIES, ...configured]);
 }
 
+/**
+ * TRUSTED_PROXY_HOPS — how many proxies stand in front of the API, for
+ * platforms whose proxies have no fixed address (Railway: a rotating
+ * 100.64.0.0/10 router, then an edge that appends its own rotating public
+ * address). 0 / unset keeps the exact-address rule above.
+ */
+function configuredProxyHops(): number {
+  const hops = Number.parseInt(process.env.TRUSTED_PROXY_HOPS ?? '', 10);
+  return Number.isInteger(hops) && hops > 0 ? hops : 0;
+}
+
 export interface RequestSourceInput {
   remoteAddress?: string;
   forwardedFor?: string;
   realIp?: string;
   trustedProxies?: ReadonlySet<string>;
+  proxyHops?: number;
 }
 
 /** Pure resolver exposed for policy tests. */
@@ -37,13 +49,23 @@ export function resolveRequestSourceIp(input: RequestSourceInput): string {
   const remote = normalizeIp(input.remoteAddress);
   if (!remote) return 'unknown';
 
-  const trusted = input.trustedProxies ?? configuredTrustedProxies();
-  if (!trusted.has(remote)) return remote;
-
   const forwarded = (input.forwardedFor ?? '')
     .split(',')
     .map((entry) => normalizeIp(entry))
     .filter((entry): entry is string => entry !== null);
+
+  // Hop count: the socket peer is hop 1 and each X-Forwarded-For entry from the
+  // right is the next one; the client is the first address past the last
+  // trusted hop (the leftmost one when the chain is shorter). Entries a client
+  // prepends stay to the left of it, so they cannot win.
+  const hops = input.proxyHops ?? configuredProxyHops();
+  if (hops > 0) {
+    const chain = [...forwarded, remote];
+    return chain[Math.max(0, chain.length - 1 - hops)]!;
+  }
+
+  const trusted = input.trustedProxies ?? configuredTrustedProxies();
+  if (!trusted.has(remote)) return remote;
 
   // Walk right-to-left: trusted proxies are removed from the end of the
   // chain, and the first untrusted address is the actual client. This resists
