@@ -179,6 +179,7 @@ export default function RootLayout() {
               <Stack.Screen name="bots/rules" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="bots/invite" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="bots/archived" options={sheetScreen([0.6, 1], { header: true })} />
+              <Stack.Screen name="bots/relay" options={sheetScreen([0.6, 1], { header: true })} />
 
               {/* ── modals with their own stack ── */}
               <Stack.Screen name="settings" options={modalScreen()} />
