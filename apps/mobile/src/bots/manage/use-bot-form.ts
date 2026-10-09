@@ -9,8 +9,9 @@
  *    and its pre-fill. The route mounts the form only once this is `ready`, so
  *    the (uncontrolled) native fields start from the right text.
  *  - `useBotForm(init)` — the values (initial frozen at mount), the live name
- *    check (the server's rules, vendored), plant / mood picks written through
- *    `withPlant` / `withMood`, dirty / ✓, and `save`:
+ *    check (the server's rules, vendored), plant / colour picks written through
+ *    `withPlant` / `withTint` (no expression to pick — a face follows state),
+ *    dirty / ✓, and `save`:
  *      create → `POST /api/bots` (+ join `inviteTo`), then the new DM to open;
  *      edit → `PATCH /api/bots/:id` with only what changed, toast 已保存;
  *      proposal → `useBots.decide(approve + bot)`, so the card in the thread
@@ -35,12 +36,12 @@ import { usePrefs } from '../../store/prefs';
 import { alertError } from '../../ui/dialogs';
 import { notifySuccess } from '../../ui/haptics';
 import {
-  legacyToMood,
+  avatarTint,
   legacyToPlant,
-  withMood,
   withPlant,
+  withTint,
   type PlantId,
-  type PlantMood,
+  type PlantTint,
 } from '../../ui/plant-avatar/plant-ids';
 import { toast } from '../../ui/toast';
 import { botsEnabledNow } from '../availability';
@@ -147,12 +148,12 @@ export function useBotForm(
     (plant: PlantId) => setValues((v) => ({ ...v, avatar: withPlant(v.avatar, plant) })),
     [],
   );
-  const setMood = useCallback((mood: PlantMood) => setValues((v) => ({ ...v, avatar: withMood(v.avatar, mood) })), []);
+  const setTint = useCallback((tint: PlantTint) => setValues((v) => ({ ...v, avatar: withTint(v.avatar, tint) })), []);
 
   /** Resolves a legacy avatar exactly as the Bot shows everywhere else. */
   const stableId = init.bot?.id ?? '';
   const plant = legacyToPlant(values.avatar, init.templateKey, stableId);
-  const mood = legacyToMood(values.avatar);
+  const tint = avatarTint(values.avatar);
 
   const dirty = botFormDirty(init.values, values);
   const canSave = !saving && botFormCanSave({ mode: init.mode, initial: init.values, values, nameIssue });
@@ -255,9 +256,9 @@ export function useBotForm(
     values,
     set,
     plant,
-    mood,
+    tint,
     setPlant,
-    setMood,
+    setTint,
     stableId,
     nameIssue,
     dirty,

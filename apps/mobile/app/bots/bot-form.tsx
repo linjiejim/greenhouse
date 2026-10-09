@@ -5,8 +5,9 @@
  * docs/specs/20261008-mobile-bots.md §2.5.7). A SwiftUI Form sheet; Android:
  * ./bot-form.android.tsx. The behaviour is src/bots/manage/use-bot-form.ts.
  *
- * Fields: the look (a live preview, the species as a menu, the resting mood
- * as a segmented control — written with `withPlant` / `withMood`), name (the
+ * Fields: the look (a live preview, the species as a menu, the colour as a
+ * row of swatches — the chosen plant in each — written with `withPlant` /
+ * `withTint`; no expression to pick: a face follows what the Bot does), name (the
  * server's rules checked as you type; a refusal, else a length hint, goes
  * under the field), role, purpose (not for a proposal: the card has none),
  * instructions. No model / tools / step cap on mobile. Chrome is the shared
@@ -22,7 +23,7 @@
  */
 
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import { Text as RNText, View, useWindowDimensions } from 'react-native';
+import { Pressable, Text as RNText, View, useWindowDimensions } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   HStack,
@@ -37,7 +38,6 @@ import {
   useNativeState,
 } from '@expo/ui/swift-ui';
 import {
-  accessibilityLabel,
   autocorrectionDisabled,
   foregroundStyle,
   lineLimit,
@@ -54,7 +54,7 @@ import { BotAvatar } from '../../src/bots/ui/bot-avatar';
 import { makeStyles, space, typo, useTheme } from '../../src/theme';
 import { EmptyState } from '../../src/ui/empty';
 import { NativeForm } from '../../src/ui/native-form';
-import { PLANT_IDS, PLANT_MOODS, type PlantId, type PlantMood } from '../../src/ui/plant-avatar/plant-ids';
+import { PLANT_IDS, PLANT_TINTS, type PlantId, type PlantTint } from '../../src/ui/plant-avatar/plant-ids';
 import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
 
 type Chrome = React.ComponentProps<typeof FormChrome>;
@@ -199,7 +199,7 @@ function BotFormSections({
   // mounted RN text measured at the old size (facebook/react-native#57512); SwiftUI rows follow it.
   const { fontScale } = useWindowDimensions();
   const nameError = nameIssueKey(form.nameIssue);
-  const look = `${t(`bots.manage.plantName.${form.plant}`)} · ${t(`bots.manage.moodName.${form.mood}`)}`;
+  const look = `${t(`bots.manage.plantName.${form.plant}`)} · ${t(`bots.manage.tintName.${form.tint}`)}`;
 
   return (
     <>
@@ -213,8 +213,7 @@ function BotFormSections({
                   <BotAvatar
                     bot={{ id: form.stableId, avatar: values.avatar, template_key: init.templateKey }}
                     size={80}
-                    state="hello"
-                    animate={false}
+                    animate
                   />
                 </View>
                 <RNText style={styles.look} accessibilityLabel={`${t('bots.manage.look')}: ${look}`}>
@@ -238,19 +237,15 @@ function BotFormSections({
             </Text>
           ))}
         </Picker>
-        <Picker
-          label={t('bots.manage.mood')}
-          selection={form.mood}
-          onSelectionChange={(mood) => form.setMood(mood as PlantMood)}
-          // segmented hides the label — keep it for VoiceOver
-          modifiers={[pickerStyle('segmented'), accessibilityLabel(t('bots.manage.mood'))]}
-        >
-          {PLANT_MOODS.map((mood) => (
-            <Text key={mood} modifiers={[tag(mood)]}>
-              {t(`bots.manage.moodName.${mood}`)}
-            </Text>
-          ))}
-        </Picker>
+        <RNHostView matchContents>
+          <TintSwatches
+            key={fontScale}
+            plant={form.plant}
+            stableId={form.stableId}
+            tint={form.tint}
+            onChange={form.setTint}
+          />
+        </RNHostView>
       </Section>
 
       {/* The footer is always a Text — the refusal in red, else the length /
@@ -326,7 +321,49 @@ function BotFormSections({
   );
 }
 
+/** The colour row: the chosen plant in each colour (its own first), the pick ringed in the accent. */
+function TintSwatches({
+  plant,
+  stableId,
+  tint,
+  onChange,
+}: {
+  plant: PlantId;
+  stableId: string;
+  tint: PlantTint;
+  onChange: (tint: PlantTint) => void;
+}) {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  const t = useT();
+  return (
+    <View style={styles.swatches} accessibilityRole="radiogroup" accessibilityLabel={t('bots.manage.tint')}>
+      {PLANT_TINTS.map((id) => {
+        const selected = id === tint;
+        return (
+          <Pressable
+            key={id}
+            onPress={() => onChange(id)}
+            accessibilityRole="radio"
+            accessibilityLabel={t(`bots.manage.tintName.${id}`)}
+            accessibilityState={{ selected }}
+            hitSlop={4}
+            style={({ pressed }) => [styles.swatch, selected && { borderColor: c.accent }, pressed && { opacity: 0.6 }]}
+          >
+            <BotAvatar bot={{ id: stableId, avatar: { plant, tint: id }, template_key: null }} size={SWATCH} animate={false} />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** A swatch's plant (pt); the ring around it adds 2 × (gap + width). */
+const SWATCH = 32;
+
 const useStyles = makeStyles((c) => ({
+  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs + 2, paddingVertical: space.xs },
+  swatch: { padding: 2, borderRadius: SWATCH, borderWidth: 2, borderColor: 'transparent' },
   preview: { alignItems: 'center', gap: space.sm, paddingTop: space.sm, paddingBottom: space.md },
   look: { ...typo.footnote, color: c.secondaryLabel, textAlign: 'center' },
 }));

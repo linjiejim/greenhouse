@@ -39,7 +39,7 @@ export const botsManageEn = {
     role: 'Role',
     look: 'Look',
     plant: 'Plant',
-    mood: 'Mood',
+    tint: 'Color',
     namePlaceholder: 'Name',
     nameHint: 'Up to {max} characters — it’s how you @mention it',
     rolePlaceholder: 'Role, e.g. Researcher',
@@ -134,6 +134,6 @@ export const botsManageEn = {
       dandelion: 'Dandelion',
     },
     /** Resting moods, as the web's `plantAvatar.mood.*`. */
-    moodName: { calm: 'Calm', soft: 'Content', bright: 'Bright', drowsy: 'Drowsy' },
+    tintName: { plant: 'Natural', sky: 'Sky', violet: 'Violet', rose: 'Rose', coral: 'Coral', gold: 'Gold', teal: 'Teal' },
   },
 };
