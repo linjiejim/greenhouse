@@ -137,6 +137,20 @@ describe('runAgentLoop — the headless host of the shared assembly', () => {
     expect(calls[0]!.maxOutputTokens).toBe(1234);
   });
 
+  it('passes generateText only the timeouts that apply to a non-streaming call', async () => {
+    const { model } = scripted([step([{ type: 'text', text: 'ok' }], 'stop')]);
+    state.model = model;
+    const warnings: unknown[] = [];
+    const previous = (globalThis as { AI_SDK_LOG_WARNINGS?: unknown }).AI_SDK_LOG_WARNINGS;
+    (globalThis as { AI_SDK_LOG_WARNINGS?: unknown }).AI_SDK_LOG_WARNINGS = (w: unknown) => warnings.push(w);
+    try {
+      await runAgentLoop(input());
+    } finally {
+      (globalThis as { AI_SDK_LOG_WARNINGS?: unknown }).AI_SDK_LOG_WARNINGS = previous;
+    }
+    expect(JSON.stringify(warnings)).not.toMatch(/chunkMs/);
+  });
+
   it('forces a text-only last step', async () => {
     const seen: unknown[] = [];
     const { model, calls } = scripted([
