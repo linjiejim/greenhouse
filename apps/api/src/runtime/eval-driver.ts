@@ -9,7 +9,7 @@
 
 import type { DatabaseProvider, EvalService, ResultUpdateData, RuntimeRunRow, RuntimeStepRow } from '@greenhouse/db';
 import { RuntimeKernelError } from '@greenhouse/db';
-import type { EvalResultWithQuestion, EvalRun } from '@greenhouse/types/eval';
+import { parseGroundTruth, type EvalResultWithQuestion, type EvalRun } from '@greenhouse/types/eval';
 import type { RuntimePayload, RuntimeRunStatus, RuntimeStepStatus } from '@greenhouse/types/runtime';
 import { runWithConcurrency } from '@greenhouse/utils/concurrency';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -177,10 +177,8 @@ export async function reconcileEvalRuntimeRuns(db: DatabaseProvider): Promise<vo
 }
 
 export const executeEvalCase: EvalCaseExecutor = async (input) => {
-  const groundTruth = JSON.parse(input.result.ground_truth) as unknown;
-  if (!Array.isArray(groundTruth) || groundTruth.some((fact) => typeof fact !== 'string')) {
-    throw new Error(`Eval dataset ${input.result.dataset_id} has malformed ground_truth`);
-  }
+  // Legacy rows hold a plain sentence instead of a JSON array: one fact, not a malformed case.
+  const groundTruth = parseGroundTruth(input.result.ground_truth);
   const agent = await callAgent(
     input.apiBase,
     input.result.question,

@@ -25,6 +25,8 @@ import { formatDate } from '../../lib/utils';
 
 const CATEGORY_KEYS: Record<string, TranslationKey> = {
   faq: 'eval.categoryFaq',
+  general: 'eval.categoryGeneral',
+  boundary: 'eval.categoryBoundary',
   plant: 'eval.categoryPlant',
   product: 'eval.categoryProduct',
   guide: 'eval.categoryGuide',

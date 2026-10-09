@@ -5,6 +5,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { eq, and, sql, like, or, desc, inArray, gte, lte } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
+import { serializeGroundTruth } from '@greenhouse/types/eval';
 import type {
   EvalDataset,
   EvalRun,
@@ -145,7 +146,8 @@ function datasetValues(input: DatasetInput, now: string) {
     category: input.category,
     difficulty: input.difficulty ?? 'medium',
     question: input.question,
-    ground_truth: input.ground_truth,
+    // The runners read a JSON array of facts; a plain string is one fact.
+    ground_truth: serializeGroundTruth(input.ground_truth),
     expected_behavior: input.expected_behavior ?? null,
     tags: JSON.stringify(input.tags ?? []),
     language: input.language ?? 'en',
@@ -384,7 +386,7 @@ export function createEvalService(db: Db) {
             category: item.category,
             difficulty: item.difficulty ?? 'medium',
             question: item.question,
-            ground_truth: item.ground_truth,
+            ground_truth: serializeGroundTruth(item.ground_truth),
             expected_behavior: item.expected_behavior ?? null,
             tags: JSON.stringify(item.tags ?? []),
             language: item.language ?? 'en',

@@ -144,6 +144,13 @@ what exists." These rules are as binding as the "add" rules:
   (+ `chat-knowledge.gif` / `.mp4`) that the README and `docs/index.html` embed. It exits
   non-zero on any console error or failed `/api` request. Re-run it after visible UI changes
   so the docs stay truthful — never hand-edit or mock the captures. Needs `ffmpeg` + `cwebp`.
+- **Agent scenario bank** ([docs/evals/](docs/evals/README.md)): 43 end-to-end scenarios run by
+  hand and scored on a 3 × 0–2 rubric. `agent-scenarios.md` (people) and `agent-scenarios.yaml`
+  (the future runner) are one bank — change both together. No reference answers. Every demo-data
+  fact a scenario states must match `data/examples/` and the seeding scripts/fixtures, and every
+  tool capability it assumes must be real (check the tool's output, e.g. `project_query` returns
+  no task comments or dependencies). The batch eval (Administration → Evaluation,
+  `apps/api/src/eval.ts`) is single-turn with replay-safe reads only and cannot run them.
 - **Brand identity**: Haven (negative-space greenhouse), local Nunito, shared rounded UI tokens.
   `packages/ui/src/assets/greenhouse-mark.svg` is the one geometry source; run
   `python3 scripts/build-brand-assets.py` for all web/browser/desktop/mobile icons and font exports.

@@ -30,6 +30,7 @@ import { Markdown } from '../../components/markdown';
 import { PipelineStageChart } from '../../components/chat/pipeline-stage-chart';
 import * as evalApi from '../../lib/eval-api';
 import type { PipelineStep } from '@greenhouse/types/session';
+import { parseGroundTruth } from '@greenhouse/types/eval';
 import { ScoreCell, scoreColor, scoreBg, safeParse, entityIcon, MetricBox } from './helpers';
 import { RunDuration, StartRunDialog } from './runs';
 import { useT, type TranslationKey } from '../../lib/i18n';
@@ -69,10 +70,8 @@ function ResultDetailModal({ result, onClose }: { result: evalApi.EvalResult; on
   const reasoning = result.judge_reasoning ? JSON.parse(result.judge_reasoning) : null;
   const refs: Array<string | { slug: string; title: string; category?: string; type?: string; source_id?: string }> =
     result.references_used ? JSON.parse(result.references_used) : [];
-  const groundTruth = useMemo<string[]>(
-    () => (result.ground_truth ? JSON.parse(result.ground_truth) : []),
-    [result.ground_truth],
-  );
+  // tolerant: a hand-written fact that isn't JSON still reads as that one fact
+  const groundTruth = useMemo<string[]>(() => parseGroundTruth(result.ground_truth), [result.ground_truth]);
   const pipelineSteps: PipelineStep[] = safeParse(result.pipeline, []);
 
   const matchStatus = useMemo(() => {

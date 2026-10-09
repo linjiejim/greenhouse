@@ -39,10 +39,23 @@ import { useT, type TranslationKey } from '../../lib/i18n';
 import { formatDate } from '../../lib/utils';
 import { usePersistedPageSize } from '../../hooks/use-persisted-page-size';
 import { parseEvalTraceNotes } from '../../lib/eval-trace-provenance';
+import { parseGroundTruth } from '@greenhouse/types/eval';
 
 // ─── Constants ───────────────────────────────────────────
 
-const CATEGORIES = ['faq', 'plant', 'product', 'guide', 'troubleshooting', 'comparison', 'negative', 'edge', 'topic'];
+const CATEGORIES = [
+  'faq',
+  'general',
+  'product',
+  'guide',
+  'troubleshooting',
+  'comparison',
+  'boundary',
+  'negative',
+  'edge',
+  'topic',
+  'plant',
+];
 const DIFFICULTIES = ['easy', 'medium', 'hard'];
 const LANGUAGES = ['en', 'zh'];
 const STATUSES = ['active', 'archived', 'deprecated'];
@@ -50,6 +63,8 @@ const SOURCES = ['manual', 'agent', 'import', 'seed'];
 
 const CATEGORY_KEYS: Record<string, TranslationKey> = {
   faq: 'eval.categoryFaq',
+  general: 'eval.categoryGeneral',
+  boundary: 'eval.categoryBoundary',
   plant: 'eval.categoryPlant',
   product: 'eval.categoryProduct',
   guide: 'eval.categoryGuide',
@@ -117,11 +132,7 @@ function DatasetDialog({
   useEffect(() => {
     if (editing) {
       setQuestion(editing.question);
-      try {
-        setGroundTruth(JSON.parse(editing.ground_truth).join('\n'));
-      } catch {
-        setGroundTruth(editing.ground_truth);
-      }
+      setGroundTruth(parseGroundTruth(editing.ground_truth).join('\n'));
       setCategory(editing.category);
       setDifficulty(editing.difficulty);
       setLanguage(editing.language);
@@ -706,13 +717,7 @@ export function DatasetsPanel() {
                             <span className="font-medium text-fg-muted">{t('eval.groundTruthShort')}</span>
                           </div>
                           <ul className="list-disc list-inside text-fg-secondary space-y-0.5">
-                            {(() => {
-                              try {
-                                return JSON.parse(ds.ground_truth);
-                              } catch {
-                                return [ds.ground_truth];
-                              }
-                            })().map((fact: string, i: number) => (
+                            {parseGroundTruth(ds.ground_truth).map((fact, i) => (
                               <li key={i}>{fact}</li>
                             ))}
                           </ul>

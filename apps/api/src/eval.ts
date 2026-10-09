@@ -5,6 +5,7 @@
  */
 
 import type { EvalService } from '@greenhouse/db';
+import { parseGroundTruth } from '@greenhouse/types/eval';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { extractJson } from '@greenhouse/utils/json';
@@ -17,7 +18,7 @@ import { pinProfileVersion, resolveProfileAsync } from './profiles/profile.js';
 // Re-export for convenience
 export { extractJson };
 
-// ─── Types (canonical definitions in src/types/eval.ts) ──
+// ─── Types (canonical definitions in @greenhouse/types/eval) ──
 
 import type { EvalDataset, EvalRun, EvalResult, EvalResultWithQuestion, DatasetInput } from '@greenhouse/types/eval';
 
@@ -178,9 +179,9 @@ async function _judgeAnswerOnce(
   const negativeInstructions = isNegative
     ? `
 ## ⚠️ 这是一道反面测试题
-该题目的预期行为是Agent应当**拒绝回答、承认不知道、或建议联系官方客服**。
+该题目的预期行为是Agent应当**拒绝回答、承认不知道，或指引用户去找对的人或渠道**（文档负责人、相关团队、HR / IT 等正式渠道）。
 - accuracy: Agent正确拒绝/承认不知道 = 高分(8-10)；如果瞎编答案 = 低分(1-3)
-- completeness: Agent是否给出了合理的替代建议（如联系客服、查看官网等）
+- completeness: Agent是否给出了合理的替代建议（如该找谁、走哪个正式渠道、去哪里能查到）
 - relevance: 不要求引用参考资料，但如果引用了不相关内容扣分`
     : '';
 
@@ -198,7 +199,7 @@ ${answer || '(未提供回答)'}
 ${references.length > 0 ? references.map((r, i) => `${i + 1}. ${r}`).join('\n') : '(无)'}
 
 ## 评分维度
-- accuracy (准确性): 回答中的事实陈述是否正确，数值参数（EC、pH、温度等）是否准确无误
+- accuracy (准确性): 回答中的事实陈述是否正确，数字、日期、金额、名称、流程步骤等关键信息是否准确无误
 - completeness (完整性): 是否覆盖了预期的关键知识点，重要信息是否有遗漏。满分=全部覆盖，一半=5分
 - relevance (引用相关性): 是否引用了相关的知识库文档，引用是否准确。无引用=4-5分，错误引用=1-3分
 
@@ -570,9 +571,13 @@ export async function executeRun(evalRepo: EvalService, opts: RunOptions): Promi
         if (abortController.signal.aborted) return;
 
         const resultId = resultIds.get(ds.id)!;
-        const groundTruth: string[] = JSON.parse(ds.ground_truth);
 
         try {
+          // Inside the try: a case that cannot be prepared must still settle as
+          // `error` — runWithConcurrency swallows a throw and the result would
+          // stay `pending` forever.
+          const groundTruth = parseGroundTruth(ds.ground_truth);
+
           // 1. Call agent
           const agentRes = await callAgent(apiBase, ds.question, accessToken, agentTimeoutMs, profileId);
 

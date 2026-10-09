@@ -660,6 +660,16 @@ The tour writes `docs/assets/screens/*.webp` (plus a chat `gif`/`mp4`, needs `ff
 and exits non-zero on any console error or failed `/api` request, so it doubles as a real-browser
 smoke test. Re-run it after visible UI changes so the README and landing page stay truthful.
 
+### Agent evaluation
+
+Two layers. **Administration → Evaluation** (`pnpm cli eval`) replays single-question regression
+cases against the live agent and an LLM judge scores each answer against its expected facts; the
+starter set (`pnpm cli eval seed`) asks about the example dataset's knowledge base. The
+**[Agent scenario bank](docs/evals/README.md)** — 43 end-to-end tasks across Chat, Bots and mobile,
+scored by a reviewer on process, deliverable and safety — covers what one turn can't (approval
+cards, permissions, Bots computers, attachments). It is run by hand today; a scenario runner is
+the planned follow-up.
+
 A husky + lint-staged pre-commit hook runs `eslint --fix` + `prettier --write` on staged
 files. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → e2e → secret-scan on
 `main` and every PR.

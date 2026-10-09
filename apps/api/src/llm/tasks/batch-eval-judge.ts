@@ -27,11 +27,11 @@ export const BATCH_EVAL_JUDGE_PROFILE: AgentProfile = {
     },
   },
   tools: [],
-  system_prompt: `你是一个严格但公正的 AI 助手评估专家，负责评估 Greenhouse 水培系统 AI 助手的回答质量。
+  system_prompt: `你是一个严格但公正的 AI 助手评估专家，负责评估企业内部知识工作台里 AI 助手的回答质量。这个助手服务公司内部成员，依据团队知识库（制度、流程、产品与项目文档等）回答问题。
 
 ## 评分维度（各维度 1-10 分）
 
-1. **accuracy（准确性）**：回答中的事实是否正确？是否与预期关键事实一致？产品参数、种植条件等关键数据是否准确？存在幻觉（编造不存在的功能或参数）=低分。
+1. **accuracy（准确性）**：回答中的事实是否正确？是否与预期关键事实一致？数字、日期、金额、名称、流程步骤等关键信息是否准确？存在幻觉（编造知识库里没有的规定、数字、功能或流程）=低分。
 2. **completeness（完整性）**：是否覆盖了预期关键事实中的所有要点？满分=全部覆盖且无重大遗漏。一半=5分。
 3. **relevance（相关性）**：回答是否紧扣问题？是否引用了知识库文档来支撑？有无离题或不必要的信息？引用了相关来源=高分；未引用但内容准确=5-6分；错误引用=低分。
 
@@ -57,5 +57,5 @@ export const BATCH_EVAL_JUDGE_PROFILE: AgentProfile = {
 {"accuracy":{"score":<1-10>,"reason":"<中文一句话>"},"completeness":{"score":<1-10>,"reason":"<中文一句话>"},"relevance":{"score":<1-10>,"reason":"<中文一句话>"}}`,
   max_steps: 1,
   tool_choice: 'none',
-  version: '2026-06-03',
+  version: '2026-10-10',
 };

@@ -5,7 +5,7 @@
  * Usage:
  *   pnpm cli eval run                  Run all enabled test cases
  *   pnpm cli eval run --name "v1.0"    Run with a custom name
- *   pnpm cli eval seed                 Seed initial 30 test cases
+ *   pnpm cli eval seed                 Seed the starter test cases (packages/db/src/seeds/eval-seed.ts)
  *   pnpm cli eval list                 List datasets
  *   pnpm cli eval runs                 List past runs
  *   pnpm cli eval report <run-id>      Show run results
@@ -45,7 +45,7 @@ function printHelp() {
   console.log(`
   Usage:
     pnpm cli eval run [--name "..."] [--profile <id>]  Run evaluation with all enabled test cases
-    pnpm cli eval seed                                 Seed initial 30 test cases into DB
+    pnpm cli eval seed                                 Seed the ${SEED_DATASETS.length} starter test cases into DB
     pnpm cli eval list                                 List all datasets
     pnpm cli eval runs                                 List past eval runs
     pnpm cli eval report <run-id>                      Show detailed results for a run
@@ -66,7 +66,8 @@ async function cmdSeed() {
     console.log(chalk.gray('  Delete existing datasets first if you want to re-seed.\n'));
     return;
   }
-  const count = await getDb().eval.importDatasets(SEED_DATASETS);
+  // Same provenance as POST /api/eval/datasets/seed, so the page labels them "Seed".
+  const count = await getDb().eval.importDatasets(SEED_DATASETS.map((d) => ({ ...d, source: 'seed' })));
   console.log(chalk.green(`\n  ✅ Seeded ${count} test cases.\n`));
 }
 

@@ -1,7 +1,8 @@
 /**
  * Eval type definitions — shared across DB and API layers.
  *
- * DB row types and input contracts for the evaluation system.
+ * DB row types and input contracts for the evaluation system, plus the one
+ * reader/writer of `ground_truth` (parseGroundTruth / serializeGroundTruth).
  * Moved here from api/eval.ts to eliminate the upward dependency (db/ → api/).
  */
 
@@ -43,6 +44,7 @@ export interface DatasetInput {
   category: string;
   difficulty?: string;
   question: string;
+  /** JSON array of the facts the answer must contain; create/import store a plain string as one fact. */
   ground_truth: string;
   expected_behavior?: string;
   tags?: string[];
@@ -59,6 +61,43 @@ export interface DatasetInput {
 
 export type DatasetStatus = 'active' | 'archived' | 'deprecated';
 export type DatasetSource = 'manual' | 'agent' | 'import' | 'seed';
+
+// ─── Ground truth ────────────────────────────────────────
+
+/**
+ * Read `eval_datasets.ground_truth` as the list of facts an answer must contain.
+ *
+ * The stored form is a JSON array of strings. Older rows (the first starter seed,
+ * hand-written imports) hold one plain sentence instead: that is one fact, never
+ * an error. Items are trimmed and empty ones dropped.
+ */
+export function parseGroundTruth(raw: unknown): string[] {
+  let value = raw;
+  if (typeof raw === 'string') {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return groundTruthFacts([raw]);
+    }
+    // A bare JSON number, object or null someone typed is still the fact they wrote.
+    if (!Array.isArray(value) && typeof value !== 'string') return groundTruthFacts([raw]);
+  }
+  return groundTruthFacts(Array.isArray(value) ? value : [value]);
+}
+
+/** The stored form of {@link parseGroundTruth}: always a JSON array of strings. */
+export function serializeGroundTruth(raw: unknown): string {
+  return JSON.stringify(parseGroundTruth(raw));
+}
+
+function groundTruthFacts(items: readonly unknown[]): string[] {
+  return items
+    .map((item) =>
+      typeof item === 'string' ? item : typeof item === 'number' || typeof item === 'boolean' ? String(item) : '',
+    )
+    .map((fact) => fact.trim())
+    .filter(Boolean);
+}
 
 // ─── Trace → Dataset ────────────────────────────────────
 

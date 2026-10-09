@@ -29,6 +29,7 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { EvalTraceIdempotencyConflictError, getDb } from '@greenhouse/db';
 import type { DatasetInput } from '../eval.js';
+import { parseGroundTruth } from '@greenhouse/types/eval';
 import type {
   EvalResultWithQuestion,
   RuntimeDatasetCreateInput,
@@ -283,6 +284,17 @@ function buildRuntimeDatasetPreview(evidence: RuntimeDatasetEvidence): RuntimeDa
   };
 }
 
+/** The first field a created or imported case lacks, in the order the API has always reported them. */
+function missingDatasetField(item: unknown): 'question' | 'ground_truth' | 'category' | null {
+  const record = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
+  const filled = (value: unknown) => typeof value === 'string' && value.trim() !== '';
+  if (!filled(record.question)) return 'question';
+  // A JSON array of facts or one plain-string fact; "[]" or blanks leave nothing to grade against.
+  if (parseGroundTruth(record.ground_truth).length === 0) return 'ground_truth';
+  if (!filled(record.category)) return 'category';
+  return null;
+}
+
 function getUserId(c: any): string | undefined {
   try {
     return getAuthUser(c)?.id;
@@ -336,17 +348,10 @@ const evalRoutes = new Hono<AppEnv>()
     const body = (await c.req.json()) as DatasetInput;
     const userId = getUserId(c);
 
-    // Validate required fields
-    if (!body.question?.trim()) {
-      return c.json({ error: 'Missing required field: question' }, 400);
-    }
-    if (!body.ground_truth?.trim()) {
-      return c.json({ error: 'Missing required field: ground_truth' }, 400);
-    }
-    if (!body.category?.trim()) {
-      return c.json({ error: 'Missing required field: category' }, 400);
-    }
+    const missing = missingDatasetField(body);
+    if (missing) return c.json({ error: `Missing required field: ${missing}` }, 400);
 
+    // createDataset stores ground_truth as a JSON array; a plain string is one fact.
     const dataset = await getDb().eval.createDataset({
       ...body,
       created_by: body.created_by ?? userId ?? null,
@@ -371,7 +376,13 @@ const evalRoutes = new Hono<AppEnv>()
   })
   .post('/datasets/import', async (c) => {
     const body = (await c.req.json()) as { datasets: DatasetInput[] };
+    if (!Array.isArray(body?.datasets)) return c.json({ error: 'datasets must be an array' }, 400);
+    for (const [index, item] of body.datasets.entries()) {
+      const missing = missingDatasetField(item);
+      if (missing) return c.json({ error: `datasets[${index}]: Missing required field: ${missing}` }, 400);
+    }
     const user = getAuthUser(c);
+    // importDatasets stores each ground_truth as a JSON array; a plain string is one fact.
     const datasets = body.datasets.map((d) => ({
       ...d,
       created_by: d.created_by ?? user?.id,

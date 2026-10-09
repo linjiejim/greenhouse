@@ -11,6 +11,7 @@ import { tool } from 'ai';
 import { defineTool, type ToolMeta } from './define.js';
 import { z } from 'zod';
 import type { DatabaseProvider } from '@greenhouse/db';
+import { parseGroundTruth } from '@greenhouse/types/eval';
 
 const manageEvalDatasetSchema = z.object({
   action: z
@@ -81,7 +82,7 @@ export function createManageEvalDatasetTool(db: DatabaseProvider) {
               category: d.category,
               difficulty: d.difficulty,
               question: d.question,
-              ground_truth_count: JSON.parse(d.ground_truth).length,
+              ground_truth_count: parseGroundTruth(d.ground_truth).length,
               language: d.language,
               is_negative: d.is_negative === 1,
               enabled: d.enabled === 1,
@@ -101,7 +102,7 @@ export function createManageEvalDatasetTool(db: DatabaseProvider) {
             action: 'get',
             dataset: {
               ...dataset,
-              ground_truth: JSON.parse(dataset.ground_truth),
+              ground_truth: parseGroundTruth(dataset.ground_truth),
               tags: JSON.parse(dataset.tags),
               is_negative: dataset.is_negative === 1,
               enabled: dataset.enabled === 1,
@@ -136,7 +137,7 @@ export function createManageEvalDatasetTool(db: DatabaseProvider) {
               category: dataset.category,
               difficulty: dataset.difficulty,
               question: dataset.question,
-              ground_truth: JSON.parse(dataset.ground_truth),
+              ground_truth: parseGroundTruth(dataset.ground_truth),
               language: dataset.language,
               is_negative: dataset.is_negative === 1,
               enabled: dataset.enabled === 1,
@@ -174,7 +175,7 @@ export function createManageEvalDatasetTool(db: DatabaseProvider) {
               category: dataset.category,
               difficulty: dataset.difficulty,
               question: dataset.question,
-              ground_truth: JSON.parse(dataset.ground_truth),
+              ground_truth: parseGroundTruth(dataset.ground_truth),
               language: dataset.language,
               is_negative: dataset.is_negative === 1,
               enabled: dataset.enabled === 1,
