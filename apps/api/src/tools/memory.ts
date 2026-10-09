@@ -43,7 +43,10 @@ const memorySchema = z.object({
     ),
   pinned: z.boolean().optional().describe('Pinned memories never go dormant and sort first. Use sparingly.'),
   ids: z.number().int().array().optional().describe('Memory ids to open — for recall.'),
-  query: z.string().optional().describe('Keyword search over titles and bodies — for recall.'),
+  query: z
+    .string()
+    .optional()
+    .describe('Words to look for in titles and bodies — for recall. Any word can match; best matches come first.'),
   include_inactive: z
     .boolean()
     .optional()

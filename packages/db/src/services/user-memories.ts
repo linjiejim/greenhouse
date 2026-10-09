@@ -8,12 +8,16 @@
  * from the settings page.
  */
 
-import { eq, and, or, desc, asc, sql, inArray, lt, isNull, ilike, ne } from 'drizzle-orm';
+import { eq, and, or, desc, asc, sql, inArray, lt, isNull, ne } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
 import { userMemories } from '../schema/index.js';
 import type { UserMemoryRow, UserMemoryCategory, UserMemoryStatus, UserMemorySource } from '../schema/user-memory.js';
+import { rankMemories } from './memory-rank.js';
+
+/** Most rows a recall ranks — far above any real user's memory count. */
+const MEMORY_SEARCH_CANDIDATES = 500;
 
 export interface UserMemoryInput {
   user_id: string;
@@ -125,31 +129,33 @@ export function createUserMemoryService(db: Db) {
       return rows.map((r) => ({ bot_id: r.bot_id, count: Number(r.count) }));
     },
 
-    /** Keyword search over title + content. Dormant/archived included on request. */
+    /**
+     * Recall search over title + content, ranked (see memory-rank.ts): any
+     * query word can match, the best matches come first, near-duplicates are
+     * dropped and the bodies stay within a character budget. Dormant/archived
+     * included on request. Ranking runs in the app over the scope's candidates
+     * — a few hundred rows at most per user (memory-v2 D3).
+     */
     async search(
       userId: string,
       query: string,
       scope: MemoryScope,
-      opts: { includeInactive?: boolean; limit?: number } = {},
+      opts: { includeInactive?: boolean; limit?: number; budgetChars?: number } = {},
     ): Promise<UserMemoryRow[]> {
-      const term = `%${query.replace(/[%_\\]/g, (ch) => `\\${ch}`)}%`;
       const statusFilter = opts.includeInactive
         ? ne(userMemories.status, 'superseded')
         : eq(userMemories.status, 'active');
 
-      return await db
+      const candidates = await db
         .select()
         .from(userMemories)
-        .where(
-          and(
-            eq(userMemories.user_id, userId),
-            statusFilter,
-            memoryScopeCondition(scope),
-            or(ilike(userMemories.title, term), ilike(userMemories.content, term)),
-          ),
-        )
-        .orderBy(desc(userMemories.pinned), desc(lastTouched))
-        .limit(opts.limit ?? 20);
+        .where(and(eq(userMemories.user_id, userId), statusFilter, memoryScopeCondition(scope)))
+        .orderBy(desc(lastTouched))
+        .limit(MEMORY_SEARCH_CANDIDATES);
+      return rankMemories(candidates, query, {
+        ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+        ...(opts.budgetChars !== undefined ? { budgetChars: opts.budgetChars } : {}),
+      });
     },
 
     async getById(id: number): Promise<UserMemoryRow | undefined> {
