@@ -48,7 +48,24 @@ export function homeParams(p: Partial<HomeParams> = {}): HomeParams {
 
 export type NavHow = 'replace' | 'dismissTo';
 
+/**
+ * Every navigation to home bumps this — even one to the params home already has, which the router
+ * swallows: the home screen's cold-start stand-in (the restored thread, shown before the route
+ * names it) must give way to "New chat" even when the route never caught up.
+ */
+let homeNavs = 0;
+const homeNavListeners = new Set<() => void>();
+export function homeNavCount(): number {
+  return homeNavs;
+}
+export function onHomeNav(listener: () => void): () => void {
+  homeNavListeners.add(listener);
+  return () => homeNavListeners.delete(listener);
+}
+
 function goHome(router: AppRouter, params: HomeParams, how: NavHow): void {
+  homeNavs += 1;
+  homeNavListeners.forEach((listener) => listener());
   // Spread into a fresh object literal: router params want an index signature.
   const href = { pathname: '/' as const, params: { ...params } };
   if (how === 'dismissTo') router.dismissTo(href);
