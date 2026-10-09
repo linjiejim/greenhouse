@@ -457,6 +457,7 @@ export const TOOL_ICONS: Record<string, LucideIcon> = {
   tables_query: Table2,
   tables_mutation: Table2,
   tables_schema_plan: Columns3,
+  mcp_call: Plug,
 };
 
 /** Get the Lucide icon for a tool name. */
