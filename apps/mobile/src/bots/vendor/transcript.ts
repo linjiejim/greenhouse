@@ -14,6 +14,10 @@
  *   (dedupe by message id), so a mid-run reload never doubles a reply.
  * - A message sent while Bots were working stays where it was sent, between
  *   the segments before and after it.
+ * - A card sits under the reply of the turn that raised it — live and once
+ *   persisted alike. The server writes the card's row mid-turn and the reply
+ *   only when the turn ends, so in `seq` order the card comes first; drawn in
+ *   that order it would jump above the text it was streaming under.
  */
 
 import type { BotEvent, BotMessage, BotRequestView } from '../../shared/bots';
@@ -132,6 +136,19 @@ function requestKey(requestId: string): string {
   return `request:${requestId}`;
 }
 
+/**
+ * The tool call that raised this card: its result names the request (team
+ * `create`, bot_tasks `start`, `self`, takeover and sign-in cards all do).
+ * An approval's result is the gated tool's own — the turn waited on the card,
+ * so its reply is simply the Bot's next one (see `buildTranscript`).
+ */
+function raisedBy(calls: ReadonlyArray<{ output?: unknown }>, requestId: string): boolean {
+  return calls.some((call) => {
+    const output = readInput(call.output);
+    return !!output && (output.request_id === requestId || output.bots_request_id === requestId);
+  });
+}
+
 export function buildTranscript({
   messages,
   conversationKind,
@@ -176,8 +193,49 @@ export function buildTranscript({
   const askRecorded = (message: BotMessage, from: string) =>
     askEventsByChain.get(chainOf.get(message.id) ?? -1)?.has(from) ?? false;
 
+  // ── Where a card goes: under the reply of the turn that raised it ──
+  type CardItem = Extract<TranscriptItem, { kind: 'request' }>;
+  const isLive = (index: number) => {
+    const segment = segments[index];
+    return segment.status !== 'skipped' && !(segment.messageId && persistedIds.has(segment.messageId));
+  };
+  /** The live segment a card hangs under: the one whose tool call raised it, else the Bot's latest (-1: none). */
+  const segmentFor = (requestId: string, botId: string | null): number => {
+    let latest = -1;
+    for (let index = 0; index < segments.length; index += 1) {
+      if (segments[index].botId !== botId || !isLive(index)) continue;
+      if (raisedBy(segments[index].toolCalls, requestId)) return index;
+      latest = index;
+    }
+    return latest;
+  };
+  /**
+   * The persisted reply of the turn that raised the card written at `at`: the
+   * reply whose tool call names it, else the Bot's next reply in the same chain
+   * (an approval holds its turn until it is decided, so that reply is its own).
+   * Null while the turn is still running.
+   */
+  const replyFor = (at: number, requestId: string, botId: string | null): string | null => {
+    if (!botId) return null;
+    const cardChain = chainOf.get(ordered[at].id);
+    let next: string | null = null;
+    for (let index = at + 1; index < ordered.length; index += 1) {
+      const message = ordered[index];
+      if (message.role !== 'assistant' || message.bot_event || message.bot_id !== botId) continue;
+      if (raisedBy(pipelineCalls(message.pipeline), requestId)) return message.id;
+      if (next === null && chainOf.get(message.id) === cardChain) next = message.id;
+    }
+    return next;
+  };
+  const runRequests = new Set(liveRequests.map((request) => request.id));
+  /** Persisted cards held back for their reply (by message id) or their live segment (by index). */
+  const underReply = new Map<string, CardItem[]>();
+  const underSegment = new Map<number, CardItem[]>();
+  const hold = <K>(held: Map<K, CardItem[]>, at: K, card: CardItem) => held.set(at, [...(held.get(at) ?? []), card]);
+
   const renderedRequests = new Set<string>();
-  for (const message of ordered) {
+  for (let index = 0; index < ordered.length; index += 1) {
+    const message = ordered[index];
     const event = message.bot_event;
     if (event?.kind === 'greeting') {
       items.push({ key: message.id, kind: 'bot', message, botId: event.bot_id, header: wantsHeader(event.bot_id) });
@@ -202,13 +260,18 @@ export function buildTranscript({
       // Keyed by request id — the same key the live copy used — so React keeps
       // the card's instance (an edited name, a half-typed sign-in) when the
       // persisted row replaces it mid-run.
-      items.push({
+      const card: CardItem = {
         key: requestKey(event.request_id),
         kind: 'request',
         requestId: event.request_id,
         botId: event.bot_id,
         message,
-      });
+      };
+      const reply = replyFor(index, event.request_id, event.bot_id);
+      const live = reply || !runRequests.has(event.request_id) ? -1 : segmentFor(event.request_id, event.bot_id);
+      if (reply) hold(underReply, reply, card);
+      else if (live >= 0) hold(underSegment, live, card);
+      else items.push(card); // its turn left no reply (or it is not this run's): where it was written
       continue;
     }
     if (event || message.role === 'system') {
@@ -223,15 +286,15 @@ export function buildTranscript({
     const botId = message.bot_id;
     items.push({ key: message.id, kind: 'bot', message, botId, header: wantsHeader(botId) });
     if (botId && !askRecorded(message, botId)) {
-      handoffsFromCalls(botId, pipelineCalls(message.pipeline)).forEach((handoff, index) =>
-        items.push({ key: `${message.id}:handoff:${index}`, kind: 'handoff', handoff }),
+      handoffsFromCalls(botId, pipelineCalls(message.pipeline)).forEach((handoff, handoffIndex) =>
+        items.push({ key: `${message.id}:handoff:${handoffIndex}`, kind: 'handoff', handoff }),
       );
     }
+    items.push(...(underReply.get(message.id) ?? []));
   }
 
   // ── The live run: segments not persisted yet, with sends and cards in place ──
   const placedRequests = new Set<string>();
-  const lastSegmentOf = (botId: string) => segments.map((segment) => segment.botId).lastIndexOf(botId);
   for (let index = 0; index <= segments.length; index += 1) {
     // Sends made after `index` segments existed sit right here — persisted
     // segments already render above, so this is still "after what they saw".
@@ -249,10 +312,11 @@ export function buildTranscript({
     handoffsFromCalls(segment.botId, segment.toolCalls).forEach((handoff, handoffIndex) =>
       items.push({ key: `segment:${index}:handoff:${handoffIndex}`, kind: 'handoff', handoff }),
     );
-    // A card belongs under the latest turn of the Bot that raised it.
+    // A card belongs under the turn that raised it (its persisted row too, until that turn's reply lands).
+    items.push(...(underSegment.get(index) ?? []));
     for (const request of liveRequests) {
       if (persistedRequests.has(request.id) || placedRequests.has(request.id)) continue;
-      if (request.bot_id !== segment.botId || lastSegmentOf(segment.botId) !== index) continue;
+      if (segmentFor(request.id, request.bot_id) !== index) continue;
       placedRequests.add(request.id);
       items.push({
         key: requestKey(request.id),

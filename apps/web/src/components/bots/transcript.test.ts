@@ -213,6 +213,129 @@ describe('buildTranscript', () => {
     expect(persisted.find((item) => item.kind === 'request')?.key).toBe(liveKey);
   });
 
+  describe('a card sits under the reply of the turn that raised it', () => {
+    const cardRow = (requestId: string, botId = 'bot_a', kind: 'approval' | 'bot_create' = 'bot_create') =>
+      msg({
+        id: `row-${requestId}`,
+        role: 'system',
+        bot_event: { kind: 'request', request_id: requestId, request_kind: kind, bot_id: botId },
+      });
+    const raised = (requestId: string) => [
+      {
+        step: 1,
+        tool: 'team',
+        input: { action: 'create' },
+        output: { status: 'proposed', request_id: requestId },
+        duration_ms: 1,
+      },
+    ];
+    const dm = { conversationKind: 'direct' as const, ownerBotId: 'bot_a' };
+
+    it('persisted: the card row is written mid-turn, the reply at its end — the card still follows the reply', () => {
+      const items = buildTranscript({
+        ...dm,
+        messages: [msg({ role: 'user' }), cardRow('brq_1'), msg({ id: 'reply', bot_id: 'bot_a' })],
+      });
+      expect(summary(items)).toEqual(['user', 'bot:bot_a', 'request:brq_1']);
+    });
+
+    it('an approval (its result does not name the card) follows the Bot’s next reply in the same chain', () => {
+      const items = buildTranscript({
+        ...dm,
+        messages: [msg({ role: 'user' }), cardRow('brq_2', 'bot_a', 'approval'), msg({ bot_id: 'bot_a' })],
+      });
+      expect(summary(items)).toEqual(['user', 'bot:bot_a', 'request:brq_2']);
+    });
+
+    it('follows the reply whose tool call raised it, even past a message the member sent meanwhile', () => {
+      const items = buildTranscript({
+        ...dm,
+        messages: [
+          msg({ role: 'user', content: 'build me a researcher' }),
+          cardRow('brq_3'),
+          msg({ role: 'user', content: 'and make it fast' }),
+          msg({ bot_id: 'bot_a', pipeline: raised('brq_3') }),
+        ],
+      });
+      expect(summary(items)).toEqual(['user', 'user', 'bot:bot_a', 'request:brq_3']);
+    });
+
+    it('keeps the card under its live turn across a mid-run reload, and under the reply once it lands — one key', () => {
+      const request = { id: 'brq_4', bot_id: 'bot_a' } as BotRequestView;
+      const live = buildTranscript({
+        ...dm,
+        messages: [msg({ role: 'user' })],
+        segments: [segment({ botId: 'bot_a', text: 'Here is my proposal', toolCalls: [] })],
+        liveRequests: [request],
+      });
+      const reloaded = buildTranscript({
+        ...dm,
+        messages: [msg({ role: 'user' }), cardRow('brq_4')],
+        segments: [segment({ botId: 'bot_a', text: 'Here is my proposal — and more' })],
+        liveRequests: [request],
+      });
+      const settled = buildTranscript({
+        ...dm,
+        messages: [msg({ role: 'user' }), cardRow('brq_4'), msg({ id: 'reply-4', bot_id: 'bot_a' })],
+        segments: [segment({ botId: 'bot_a', status: 'completed', messageId: 'reply-4' })],
+        liveRequests: [request],
+      });
+      expect(summary(live)).toEqual(['user', 'seg:bot_a', 'request:brq_4']);
+      expect(summary(reloaded)).toEqual(['user', 'seg:bot_a', 'request:brq_4']);
+      expect(summary(settled)).toEqual(['user', 'bot:bot_a', 'request:brq_4']);
+      const key = (items: TranscriptItem[]) => items.find((item) => item.kind === 'request')?.key;
+      expect(key(reloaded)).toBe(key(live));
+      expect(key(settled)).toBe(key(live));
+    });
+
+    it('a live card goes under the segment whose tool call raised it, not a later turn of the same Bot', () => {
+      const request = { id: 'brq_5', bot_id: 'bot_a' } as BotRequestView;
+      const items = buildTranscript({
+        conversationKind: 'group',
+        ownerBotId: null,
+        messages: [],
+        segments: [
+          segment({
+            botId: 'bot_a',
+            status: 'completed',
+            toolCalls: [{ id: 't1', name: 'bot_tasks', input: {}, output: { request_id: 'brq_5' }, status: 'done' }],
+          } as Partial<BotStreamSegment>),
+          segment({ botId: 'bot_b', status: 'completed' }),
+          segment({ botId: 'bot_a' }),
+        ],
+        liveRequests: [request],
+      });
+      expect(summary(items)).toEqual(['seg:bot_a+h', 'request:brq_5', 'seg:bot_b+h', 'seg:bot_a+h']);
+    });
+
+    it('two cards from one turn keep their order under its reply', () => {
+      const items = buildTranscript({
+        ...dm,
+        messages: [msg({ role: 'user' }), cardRow('brq_6'), cardRow('brq_7'), msg({ bot_id: 'bot_a' })],
+      });
+      expect(summary(items)).toEqual(['user', 'bot:bot_a', 'request:brq_6', 'request:brq_7']);
+    });
+
+    it('a card whose turn left no reply stays where it was written — an earlier run’s card never joins a new live turn', () => {
+      const items = buildTranscript({
+        ...dm,
+        messages: [msg({ role: 'user' }), cardRow('brq_8'), msg({ role: 'user' })],
+        segments: [segment({ botId: 'bot_a', text: 'new turn' })],
+        liveRequests: [],
+      });
+      expect(summary(items)).toEqual(['user', 'request:brq_8', 'user', 'seg:bot_a']);
+    });
+
+    it('never moves a card under another Bot’s reply', () => {
+      const items = buildTranscript({
+        conversationKind: 'direct',
+        ownerBotId: 'bot_a',
+        messages: [msg({ role: 'user' }), cardRow('brq_9', 'bot_b'), msg({ bot_id: 'bot_a' })],
+      });
+      expect(summary(items)).toEqual(['user', 'request:brq_9', 'bot:bot_a']);
+    });
+  });
+
   it('draws one card per request; a later row for the same request is a plain event line', () => {
     const items = buildTranscript({
       conversationKind: 'direct',
