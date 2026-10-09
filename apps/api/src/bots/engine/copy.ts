@@ -359,15 +359,11 @@ export const copy = {
 
   notificationBody: (l: BotsLocale) => (l === 'zh' ? '打开 Bots 查看并处理。' : 'Open Bots to review it.'),
 
-  /** The addressed Bot is archived (a DM's owner, or a mentioned member): the message gets this line, not silence. */
+  /** The addressed Bot is archived (a DM's owner, or a mentioned guest): the message gets this line, not silence. */
   botArchived: (l: BotsLocale, name: string) =>
     l === 'zh'
       ? `${name} 已归档，无法回复；这段对话保留为只读记录。`
       : `${name} was archived and can't reply — this conversation stays readable.`,
-  noActiveMembers: (l: BotsLocale) =>
-    l === 'zh'
-      ? '这里没有能回复的 Bot——先邀请一个 Bot 加入。'
-      : 'No Bot here can reply — invite one to the conversation first.',
 
   /** Stop drained a queued wake-up without running it. */
   stoppedWakeup: (l: BotsLocale, name: string) =>

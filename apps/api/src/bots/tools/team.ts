@@ -6,7 +6,8 @@
  *   (cycle / repeat / depth / budget refusals come back as a reason, not an
  *   error); an accepted ask writes a visible hand-off line, queues the target
  *   to answer next and ends the asker's turn after this step;
- * - add: invite one of the member's existing Bots;
+ * - add: invite one of the member's existing Bots into this DM as a guest
+ *   (hand-offs need no switch: a Bot brings another in whenever it helps);
  * - create: PROPOSE a new Bot — a confirmation card; the Bot only exists after
  *   the member confirms it with their own credentials (a model can never
  *   persist a new identity with standing instructions on its own).
@@ -47,8 +48,6 @@ const teamSchema = z.object({
 type TeamInput = z.infer<typeof teamSchema>;
 
 const REFUSAL: Record<AskRejection, string> = {
-  bot_chat_off:
-    'The member switched off Bot-to-Bot hand-offs in this conversation. Do the work yourself or tell the member who could help.',
   self: 'You cannot hand work to yourself.',
   not_member: 'That Bot is not in this conversation. Use list; invite it with add first if the member has it.',
   cycle:
@@ -89,7 +88,6 @@ export function createTeamTool(ctx: BotTurnContext, port: TeamPort) {
           case 'list': {
             return {
               action: 'list',
-              hand_offs_enabled: port.allowBotChat,
               members: port.members().map((m) => ({
                 id: m.bot.id,
                 name: m.bot.name,
@@ -137,10 +135,7 @@ export function createTeamTool(ctx: BotTurnContext, port: TeamPort) {
               action: 'add',
               status: 'added',
               bot: { id: bot.id, name: bot.name, role: bot.role },
-              note:
-                port.kind === 'direct'
-                  ? `${bot.name} joined as a guest: it speaks only when the member mentions it or you hand it work.`
-                  : `${bot.name} joined the group.`,
+              note: `${bot.name} joined as a guest: it speaks only when the member mentions it or you hand it work.`,
             };
           }
 

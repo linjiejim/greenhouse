@@ -1,7 +1,8 @@
 /**
  * /api/bots against real PostgreSQL: owner scoping (another member's rows and
  * a super's attempts are 404), idempotent bootstrap with a fixed greeting,
- * Bot name rules, conversations, notes, exactly-once request decisions, and
+ * Bot name rules, conversations (one Bot's DM — group chats are retired and
+ * the old ones are read-only), notes, exactly-once request decisions, and
  * plant avatars (template plants, plant kept and junk stripped on every write).
  */
 
@@ -11,6 +12,7 @@ import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } fro
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type { AppEnv } from '../../app-env.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
+import { insertLegacyGroup } from './helpers/legacy-group.js';
 import { chatRunRegistry } from '../../chat/runs.js';
 import { botTemplate } from '@greenhouse/types/bots';
 import { createBotsRoutes } from '../routes.js';
@@ -159,50 +161,74 @@ describe('owner scoping', () => {
 });
 
 describe('conversations', () => {
-  it('creates a group, lists it with attention, pages its messages with parsed events', async () => {
+  it('opens a Bot’s DM, lists it with attention, pages its messages with parsed events', async () => {
     const ivy = (await call(jim, 'POST', '', { name: 'Ivy' })).json.bot;
     const fern = (await call(jim, 'POST', '', { name: 'Fern' })).json.bot;
-    const created = await call(jim, 'POST', '/conversations', { bot_ids: [ivy.id, fern.id], title: 'Launch' });
-    expect(created.status).toBe(200);
-    const group = created.json.conversation;
-    expect(group).toMatchObject({ kind: 'group', title: 'Launch', lead_bot_id: ivy.id, allow_bot_chat: true });
-    expect(group.members.map((m: { role: string }) => m.role)).toEqual(['lead', 'member']);
-    expect(group.context.threshold).toBe(24_000);
+    const opened = await call(jim, 'POST', '/conversations', { bot_ids: [ivy.id] });
+    expect(opened.status).toBe(200);
+    const dm = opened.json.conversation;
+    expect(dm).toMatchObject({ kind: 'direct', owner_bot_id: ivy.id, lead_bot_id: ivy.id, allow_bot_chat: true });
+    expect(dm.session_id).toBe(ivy.dm_session_id);
+    expect(dm.context.threshold).toBe(24_000);
+    await call(jim, 'POST', `/conversations/${dm.session_id}/members`, { bot_id: fern.id });
 
-    await db.sessions.addMessage({ session_id: group.session_id, role: 'user', content: 'hi' });
+    await db.sessions.addMessage({ session_id: dm.session_id, role: 'user', content: 'hi' });
     await db.sessions.addMessage({
-      session_id: group.session_id,
+      session_id: dm.session_id,
       role: 'system',
       content: 'Ivy → @Fern：go',
       bot_id: ivy.id,
       bot_event: JSON.stringify({ kind: 'ask', from: ivy.id, to: fern.id }),
     });
-    await db.sessions.addMessage({ session_id: group.session_id, role: 'assistant', content: 'done', bot_id: fern.id });
+    await db.sessions.addMessage({ session_id: dm.session_id, role: 'assistant', content: 'done', bot_id: fern.id });
 
     const list = await call(jim, 'GET', '/conversations');
-    const row = list.json.conversations.find((c: { session_id: string }) => c.session_id === group.session_id);
+    const row = list.json.conversations.find((c: { session_id: string }) => c.session_id === dm.session_id);
     expect(row).toMatchObject({ attention: 'unread', last_message: { preview: 'done', bot_id: fern.id } });
 
-    const page = await call(jim, 'GET', `/conversations/${group.session_id}?limit=2`);
+    const page = await call(jim, 'GET', `/conversations/${dm.session_id}?limit=2`);
     expect(page.json.has_more).toBe(true);
     expect(page.json.messages.map((m: { role: string }) => m.role)).toEqual(['system', 'assistant']);
     expect(page.json.messages[0].bot_event).toEqual({ kind: 'ask', from: ivy.id, to: fern.id });
 
-    expect((await call(jim, 'POST', `/conversations/${group.session_id}/read`)).json).toEqual({ ok: true });
+    expect((await call(jim, 'POST', `/conversations/${dm.session_id}/read`)).json).toEqual({ ok: true });
     const after = await call(jim, 'GET', '/conversations');
-    expect(
-      after.json.conversations.find((c: { session_id: string }) => c.session_id === group.session_id).attention,
-    ).toBe('idle');
+    expect(after.json.conversations.find((c: { session_id: string }) => c.session_id === dm.session_id).attention).toBe(
+      'idle',
+    );
   });
 
-  it('keeps a DM a DM: invited Bots are guests, its title and lead are fixed', async () => {
+  it('takes exactly one Bot id: none or several is 400 groups_retired and creates nothing', async () => {
+    const ivy = (await call(jim, 'POST', '', { name: 'Ivy' })).json.bot;
+    const fern = (await call(jim, 'POST', '', { name: 'Fern' })).json.bot;
+    const before = (await call(jim, 'GET', '/conversations')).json.conversations.length;
+    for (const bot_ids of [[ivy.id, fern.id], [], [ivy.id, fern.id, ivy.id]]) {
+      const res = await call(jim, 'POST', '/conversations', { bot_ids, title: 'Launch' });
+      expect(res.status).toBe(400);
+      expect(res.json).toMatchObject({ code: 'groups_retired' });
+      expect(typeof res.json.error).toBe('string');
+    }
+    expect((await call(jim, 'POST', '/conversations', { bot_ids: 'nope' })).status).toBe(400);
+    // The same id twice is still one Bot: its DM.
+    const same = await call(jim, 'POST', '/conversations', { bot_ids: [ivy.id, ivy.id] });
+    expect(same.json.conversation).toMatchObject({ kind: 'direct', owner_bot_id: ivy.id });
+    expect((await call(jim, 'GET', '/conversations')).json.conversations).toHaveLength(before);
+  });
+
+  it('keeps a DM a DM: invited Bots are guests, its owner stays, nothing to edit', async () => {
     const ivy = (await call(jim, 'POST', '', { name: 'Ivy' })).json;
     const sage = (await call(jim, 'POST', '', { name: 'Sage' })).json.bot;
     const added = await call(jim, 'POST', `/conversations/${ivy.dm_session_id}/members`, { bot_id: sage.id });
     expect(added.status).toBe(200);
     expect(added.json.conversation.kind).toBe('direct');
     expect(added.json.conversation.members.map((m: { role: string }) => m.role)).toEqual(['owner', 'guest']);
-    expect((await call(jim, 'PATCH', `/conversations/${ivy.dm_session_id}`, { title: 'x' })).status).toBe(400);
+    // There is nothing to edit on a conversation any more: the PATCH route is gone.
+    const patch = await app().request(`/api/bots/conversations/${ivy.dm_session_id}`, {
+      method: 'PATCH',
+      headers: { 'x-test-user': jim.id, 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'x', allow_bot_chat: false }),
+    });
+    expect(patch.status).toBe(404);
     expect((await call(jim, 'DELETE', `/conversations/${ivy.dm_session_id}/members/${ivy.bot.id}`)).status).toBe(400);
     const rows = await db.sessions.getMessages(ivy.dm_session_id);
     expect(JSON.parse(rows.at(-1)!.bot_event!)).toMatchObject({ kind: 'joined', bot_id: sage.id, by: 'user' });
@@ -327,6 +353,78 @@ describe('requests', () => {
 
     expect((await call(jim, 'POST', `/requests/${request.id}`, { decision: 'approve' })).status).toBe(409);
     expect((await call(jim, 'GET', '')).json.bots.map((b: { name: string }) => b.name)).toContain('小文');
+  });
+});
+
+describe('retired group chats', () => {
+  async function legacyGroup() {
+    const ivy = (await call(jim, 'POST', '', { name: 'Ivy' })).json.bot;
+    const fern = (await call(jim, 'POST', '', { name: 'Fern' })).json.bot;
+    const sage = (await call(jim, 'POST', '', { name: 'Sage' })).json.bot;
+    const sessionId = await insertLegacyGroup(db, {
+      userId: jim.id,
+      botIds: [ivy.id, fern.id],
+      title: 'Launch',
+      description: 'Reply in bullet points.',
+      allowBotChat: false,
+    });
+    return { ivy, fern, sage, sessionId };
+  }
+
+  it('stay readable: listed and paged, the deprecated switch reported as true', async () => {
+    const { ivy, fern, sessionId } = await legacyGroup();
+    await db.sessions.addMessage({ session_id: sessionId, role: 'assistant', content: 'old answer', bot_id: fern.id });
+    const listed = (await call(jim, 'GET', '/conversations')).json.conversations;
+    expect(listed.find((c: { session_id: string }) => c.session_id === sessionId)).toMatchObject({
+      kind: 'group',
+      title: 'Launch',
+    });
+    const detail = await call(jim, 'GET', `/conversations/${sessionId}`);
+    expect(detail.status).toBe(200);
+    expect(detail.json.conversation).toMatchObject({
+      kind: 'group',
+      lead_bot_id: ivy.id,
+      description: 'Reply in bullet points.',
+      allow_bot_chat: true,
+    });
+    expect(detail.json.messages.map((m: { content: string }) => m.content)).toEqual(['old answer']);
+  });
+
+  it('take no invites or removals: 409 group_closed, the roster unchanged', async () => {
+    const { ivy, fern, sage, sessionId } = await legacyGroup();
+    const invite = await call(jim, 'POST', `/conversations/${sessionId}/members`, { bot_id: sage.id });
+    expect(invite).toMatchObject({ status: 409, json: { code: 'group_closed' } });
+    const remove = await call(jim, 'DELETE', `/conversations/${sessionId}/members/${fern.id}`);
+    expect(remove).toMatchObject({ status: 409, json: { code: 'group_closed' } });
+    const roster = (await db.bots.getConversation(jim.id, sessionId))!.members.map((m) => [m.bot_id, m.role]);
+    expect(roster).toEqual([
+      [ivy.id, 'lead'],
+      [fern.id, 'member'],
+    ]);
+    expect(await db.sessions.getMessageCount(sessionId)).toBe(0);
+    // Another member still gets 404, not a hint that the conversation exists.
+    expect((await call(ana, 'POST', `/conversations/${sessionId}/members`, { bot_id: sage.id })).status).toBe(404);
+  });
+
+  it('cards there cannot be decided: 409 group_closed, a pending one is withdrawn', async () => {
+    const { ivy, sessionId } = await legacyGroup();
+    const card = await db.bots.createRequest({
+      user_id: jim.id,
+      session_id: sessionId,
+      bot_id: ivy.id,
+      kind: 'bot_create',
+      payload: { name: 'Writer', role: 'Writer', instructions: 'Write well.', avatar: {}, template_key: null },
+    });
+    const res = await call(jim, 'POST', `/requests/${card.id}`, { decision: 'approve' });
+    expect(res).toMatchObject({ status: 409, json: { code: 'group_closed' } });
+    expect(await db.bots.getRequest(jim.id, card.id)).toMatchObject({ status: 'canceled' });
+    expect((await call(jim, 'GET', '')).json.bots.map((b: { name: string }) => b.name)).not.toContain('Writer');
+    // Already withdrawn (or cancelled by migration 0015): still group_closed, not already_decided.
+    expect(await call(jim, 'POST', `/requests/${card.id}`, { decision: 'deny' })).toMatchObject({
+      status: 409,
+      json: { code: 'group_closed' },
+    });
+    expect((await call(jim, 'GET', '/requests?status=pending')).json.requests).toHaveLength(0);
   });
 });
 

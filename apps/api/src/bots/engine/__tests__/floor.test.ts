@@ -6,10 +6,9 @@
 import { describe, expect, it } from 'vitest';
 import { CHAIN_LIMITS, FloorController, type FloorItem } from '../floor.js';
 
-function floor(members: string[], opts: { allowBotChat?: boolean; turnBudget?: number } = {}) {
+function floor(members: string[], opts: { turnBudget?: number } = {}) {
   return new FloorController({
     members: new Set(members),
-    allowBotChat: () => opts.allowBotChat ?? true,
     ...(opts.turnBudget !== undefined ? { turnBudget: opts.turnBudget } : {}),
   });
 }
@@ -80,7 +79,7 @@ describe('FloorController', () => {
     expect(f.checkAsk('C')).toBe('repeat');
   });
 
-  it('refuses asks beyond depth 2, outside the conversation, or with Bot chat off', () => {
+  it('refuses asks beyond depth 2 or outside the conversation', () => {
     const f = floor(['A', 'B', 'C', 'D']);
     f.start([{ botId: 'A', reason: 'user' }]);
     take(f, 'A', 'user');
@@ -92,11 +91,6 @@ describe('FloorController', () => {
     take(f, 'C', 'ask');
     expect(f.checkAsk('D')).toBe('depth');
     expect(f.checkAsk('Z')).toBe('not_member');
-
-    const off = floor(['A', 'B'], { allowBotChat: false });
-    off.start([{ botId: 'A', reason: 'user' }]);
-    take(off, 'A', 'user');
-    expect(off.checkAsk('B')).toBe('bot_chat_off');
   });
 
   it('caps asks per chain at 4', () => {
@@ -194,14 +188,14 @@ describe('FloorController', () => {
     expect(f.checkAsk('D')).toBeNull();
   });
 
-  it('reads the Bot-chat switch live (the member can turn it off mid-run)', () => {
-    let allow = true;
-    const f = new FloorController({ members: new Set(['A', 'B']), allowBotChat: () => allow });
+  it('hand-offs need no switch; a Bot joining mid-chain is a valid target at once', () => {
+    const members = new Set(['A']);
+    const f = new FloorController({ members });
     f.start([{ botId: 'A', reason: 'user' }]);
     take(f, 'A', 'user');
+    expect(f.checkAsk('B')).toBe('not_member');
+    members.add('B'); // team.add — the run refreshes the live set in place
     expect(f.checkAsk('B')).toBeNull();
-    allow = false;
-    expect(f.checkAsk('B')).toBe('bot_chat_off');
   });
 
   it('an exhausted turn budget reports `turns` and keeps only follow-ups', () => {

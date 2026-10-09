@@ -163,33 +163,22 @@ describe('identity, digest and tail', () => {
     expect(index).toMatch(/\d+ more — list them with notes/);
   });
 
-  it('builds the per-turn tail with roster flags and group rules only in groups', () => {
+  it('builds the per-turn tail with the DM roster: the owner answers, guests speak when addressed', () => {
     const tail = buildTurnTail({
       locale: 'en',
-      selfBotId: 'b1',
-      kind: 'group',
+      selfBotId: 'b2',
       roster: [
-        { id: 'b1', name: 'Ivy', role: 'Chief', memberRole: 'lead' },
-        { id: 'b2', name: 'Fern', role: 'Writer', memberRole: 'member' },
+        { id: 'b1', name: 'Ivy', role: 'Chief', memberRole: 'owner' },
+        { id: 'b2', name: 'Fern', role: 'Writer', memberRole: 'guest' },
       ],
-      groupRules: 'Reply in bullet points.',
       memoryBlock: '### Memory\n- prefers tables',
       notesIndex: null,
       instruction: 'Reply to Jim.',
     });
-    expect(tail).toContain('- Ivy [id b1] — Chief (you; answers unaddressed messages)');
-    expect(tail).toContain('Reply in bullet points.');
+    expect(tail).toContain('- Ivy [id b1] — Chief (answers unaddressed messages)');
+    expect(tail).toContain('- Fern [id b2] — Writer (you; guest — speaks only when mentioned or handed work)');
+    expect(tail).toContain('- prefers tables');
+    expect(tail).not.toMatch(/group/i);
     expect(tail.trim().endsWith('Reply to Jim.')).toBe(true);
-    const dm = buildTurnTail({
-      locale: 'en',
-      selfBotId: 'b1',
-      kind: 'direct',
-      roster: [],
-      groupRules: 'ignored in a DM',
-      memoryBlock: null,
-      notesIndex: null,
-      instruction: 'x',
-    });
-    expect(dm).not.toContain('ignored in a DM');
   });
 });

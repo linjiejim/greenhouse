@@ -126,8 +126,6 @@ describe('memory scope isolation', () => {
   it('the Bot turn’s memory tool locks the shared layer as soon as the turn reads outside content', async () => {
     const ctx = testTurn({ db, userId: user.id, bot: botA, sessionId: 'sess_x' });
     const team = {
-      kind: 'direct' as const,
-      allowBotChat: true,
       members: () => [],
       others: () => [],
       checkAsk: () => null,

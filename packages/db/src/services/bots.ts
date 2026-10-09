@@ -46,7 +46,7 @@ import type {
 /** Per-user cap on active Bots. */
 /** The former custom-Agent cap (20) — Bots absorbed custom Agents, so the two limits merged. */
 export const MAX_ACTIVE_BOTS_PER_USER = 20;
-/** Bots in one conversation (owner/lead included). */
+/** Bots in one conversation (the DM's owner included). */
 export const MAX_BOTS_PER_CONVERSATION = 6;
 /** Open shared notes in one conversation. */
 export const MAX_OPEN_NOTES_PER_CONVERSATION = 50;
@@ -60,8 +60,9 @@ export class BotsDomainError extends Error {
       | 'conversation_not_found'
       | 'member_limit'
       | 'already_member'
-      | 'not_member'
       | 'cannot_remove_owner'
+      /** A retired group chat: readable history, no invites or removals. */
+      | 'group_closed'
       | 'note_limit'
       | 'note_not_found',
     message: string,
@@ -69,6 +70,15 @@ export class BotsDomainError extends Error {
     super(message);
     this.name = 'BotsDomainError';
   }
+}
+
+/**
+ * Group chats were retired on 2026-10-09: the rows that exist stay readable
+ * history, but nothing joins, leaves or speaks there any more. A Bot brings
+ * others into its own DM instead (`team.add` / `team.ask`).
+ */
+function groupClosed(): BotsDomainError {
+  return new BotsDomainError('group_closed', 'Group chats are retired — this conversation is read-only');
 }
 
 /** Normalised uniqueness key for a Bot name (full/half width and case folded). */
@@ -156,13 +166,6 @@ function manifestFrom(row: BotRow, updates: BotUpdateInput): VersionManifest {
 
 export interface ConversationWithMembers extends BotConversationRow {
   members: Array<BotConversationMemberRow>;
-}
-
-export interface CreateGroupInput {
-  user_id: string;
-  bot_ids: string[];
-  title?: string | null;
-  description?: string;
 }
 
 export interface NoteInput {
@@ -258,55 +261,6 @@ export function createBotsService(db: Db) {
       .from(botConversationMembers)
       .where(eq(botConversationMembers.session_id, sessionId))
       .orderBy(asc(botConversationMembers.position), asc(botConversationMembers.id));
-  }
-
-  /** The first member by position whose Bot is still active (the successor of a lead that left). */
-  async function nextActiveMember(tx: Db, sessionId: string, excludeBotId: string): Promise<string | null> {
-    const [row] = await tx
-      .select({ bot_id: botConversationMembers.bot_id })
-      .from(botConversationMembers)
-      .innerJoin(bots, eq(bots.id, botConversationMembers.bot_id))
-      .where(
-        and(
-          eq(botConversationMembers.session_id, sessionId),
-          eq(bots.status, 'active'),
-          sql`${botConversationMembers.bot_id} <> ${excludeBotId}`,
-        ),
-      )
-      .orderBy(asc(botConversationMembers.position), asc(botConversationMembers.id))
-      .limit(1);
-    return row?.bot_id ?? null;
-  }
-
-  /**
-   * Point a group at a new lead and keep the member roles in step: exactly the
-   * lead holds `lead`, everyone else is `member`. The roster the Bots read
-   * ("answers unaddressed messages") comes from the role, the floor controller
-   * from `lead_bot_id` — they must never disagree. A DM's roles (owner/guest)
-   * never change: its owner always leads.
-   */
-  async function setGroupLead(tx: Db, sessionId: string, leadBotId: string | null): Promise<void> {
-    const now = nowIso();
-    await tx
-      .update(botConversations)
-      .set({ lead_bot_id: leadBotId, updated_at: now })
-      .where(eq(botConversations.session_id, sessionId));
-    await tx
-      .update(botConversationMembers)
-      .set({ role: 'member' })
-      .where(
-        and(
-          eq(botConversationMembers.session_id, sessionId),
-          eq(botConversationMembers.role, 'lead'),
-          leadBotId ? sql`${botConversationMembers.bot_id} <> ${leadBotId}` : undefined,
-        ),
-      );
-    if (leadBotId) {
-      await tx
-        .update(botConversationMembers)
-        .set({ role: 'lead' })
-        .where(and(eq(botConversationMembers.session_id, sessionId), eq(botConversationMembers.bot_id, leadBotId)));
-    }
   }
 
   const service = {
@@ -435,37 +389,29 @@ export function createBotsService(db: Db) {
     },
 
     /**
-     * Archive (the only "delete"): the Bot leaves every group, its DM is kept
-     * readable, its private memories stay until the user deletes them. A group
-     * it led passes the lead to the next active member by position (role
-     * included); its own DM keeps no lead — nobody answers there unaddressed.
+     * Archive (the only "delete"): the Bot leaves every conversation it was a
+     * guest in, its DM is kept readable (the owner row stays so history
+     * renders), its private memories stay until the user deletes them. Its own
+     * DM keeps no lead — nobody answers there unaddressed. (A retired group
+     * chat it was in loses it from the roster the same way; nothing is
+     * re-appointed there, nobody speaks in a closed group.)
      */
     async archiveBot(userId: string, botId: string): Promise<boolean> {
       return db.transaction(async (tx) => {
+        const now = nowIso();
         const [row] = await tx
           .update(bots)
-          .set({ status: 'archived', updated_at: nowIso() })
+          .set({ status: 'archived', updated_at: now })
           .where(and(eq(bots.id, botId), eq(bots.user_id, userId), eq(bots.status, 'active')))
           .returning({ id: bots.id });
         if (!row) return false;
-        // Leave group conversations; DMs keep their owner row so history renders.
         await tx
           .delete(botConversationMembers)
           .where(and(eq(botConversationMembers.bot_id, botId), sql`${botConversationMembers.role} <> 'owner'`));
-        const led = await tx
-          .select({ session_id: botConversations.session_id, kind: botConversations.kind })
-          .from(botConversations)
+        await tx
+          .update(botConversations)
+          .set({ lead_bot_id: null, updated_at: now })
           .where(and(eq(botConversations.user_id, userId), eq(botConversations.lead_bot_id, botId)));
-        for (const conversation of led) {
-          if (conversation.kind === 'group') {
-            await setGroupLead(tx, conversation.session_id, await nextActiveMember(tx, conversation.session_id, botId));
-          } else {
-            await tx
-              .update(botConversations)
-              .set({ lead_bot_id: null, updated_at: nowIso() })
-              .where(eq(botConversations.session_id, conversation.session_id));
-          }
-        }
         return true;
       });
     },
@@ -525,57 +471,6 @@ export function createBotsService(db: Db) {
           added_by: 'user',
           joined_at: now,
         });
-        return { ...conversation!, members: await membersOf(tx, sessionId) };
-      });
-    },
-
-    async createGroupConversation(input: CreateGroupInput): Promise<ConversationWithMembers> {
-      const botIds = [...new Set(input.bot_ids)];
-      if (botIds.length === 0) throw new BotsDomainError('bot_not_found', 'A group needs at least one Bot');
-      if (botIds.length > MAX_BOTS_PER_CONVERSATION) {
-        throw new BotsDomainError('member_limit', `At most ${MAX_BOTS_PER_CONVERSATION} Bots per conversation`);
-      }
-      return db.transaction(async (tx) => {
-        await assertOwnedBots(tx, input.user_id, botIds);
-        const now = nowIso();
-        const sessionId = randomBytes(16).toString('hex');
-        await tx.insert(sessions).values({
-          id: sessionId,
-          title: input.title ?? null,
-          status: 'active',
-          profile_id: 'sprouty',
-          user_id: input.user_id,
-          channel: 'bots',
-          metadata: '{}',
-          created_at: now,
-          updated_at: now,
-        });
-        const [conversation] = await tx
-          .insert(botConversations)
-          .values({
-            session_id: sessionId,
-            user_id: input.user_id,
-            kind: 'group',
-            owner_bot_id: null,
-            lead_bot_id: botIds[0]!,
-            title: input.title ?? null,
-            description: input.description ?? '',
-            last_activity_at: now,
-            created_at: now,
-            updated_at: now,
-          })
-          .returning();
-        await tx.insert(botConversationMembers).values(
-          botIds.map((botId, index) => ({
-            session_id: sessionId,
-            user_id: input.user_id,
-            bot_id: botId,
-            role: index === 0 ? ('lead' as const) : ('member' as const),
-            position: index,
-            added_by: 'user',
-            joined_at: now,
-          })),
-        );
         return { ...conversation!, members: await membersOf(tx, sessionId) };
       });
     },
@@ -661,41 +556,11 @@ export function createBotsService(db: Db) {
       return result;
     },
 
-    async updateConversation(
-      userId: string,
-      sessionId: string,
-      updates: { title?: string | null; description?: string; lead_bot_id?: string; allow_bot_chat?: boolean },
-    ): Promise<BotConversationRow | undefined> {
-      return db.transaction(async (tx) => {
-        const set: Partial<typeof botConversations.$inferInsert> = { updated_at: nowIso() };
-        if (updates.title !== undefined) set.title = updates.title;
-        if (updates.description !== undefined) set.description = updates.description;
-        if (updates.allow_bot_chat !== undefined) set.allow_bot_chat = updates.allow_bot_chat;
-        let newLead: string | null = null;
-        if (updates.lead_bot_id !== undefined) {
-          const members = await membersOf(tx, sessionId);
-          if (!members.some((m) => m.bot_id === updates.lead_bot_id)) {
-            throw new BotsDomainError('not_member', 'The lead must be a member of the conversation');
-          }
-          set.lead_bot_id = updates.lead_bot_id;
-          newLead = updates.lead_bot_id;
-        }
-        const [row] = await tx
-          .update(botConversations)
-          .set(set)
-          .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.user_id, userId)))
-          .returning();
-        if (row && newLead && row.kind === 'group') await setGroupLead(tx, sessionId, newLead);
-        if (row && updates.title !== undefined && row.kind === 'group') {
-          await tx
-            .update(sessions)
-            .set({ title: updates.title, updated_at: nowIso() })
-            .where(eq(sessions.id, sessionId));
-        }
-        return row;
-      });
-    },
-
+    /**
+     * Invite one of the member's Bots into a DM as a guest (by the member, or
+     * by a Bot's `team.add`: `addedBy` = `user` / `bot:<id>`). A retired group
+     * chat takes no new members (`group_closed`).
+     */
     async addMember(
       userId: string,
       sessionId: string,
@@ -710,6 +575,7 @@ export function createBotsService(db: Db) {
           .limit(1)
           .for('update');
         if (!conversation) throw new BotsDomainError('conversation_not_found', 'Conversation not found');
+        if (conversation.kind === 'group') throw groupClosed();
         await assertOwnedBots(tx, userId, [botId]);
         const members = await membersOf(tx, sessionId);
         if (members.some((m) => m.bot_id === botId)) {
@@ -725,7 +591,7 @@ export function createBotsService(db: Db) {
             session_id: sessionId,
             user_id: userId,
             bot_id: botId,
-            role: conversation.kind === 'direct' ? 'guest' : 'member',
+            role: 'guest',
             position: members.length,
             added_by: addedBy,
             joined_at: now,
@@ -739,6 +605,7 @@ export function createBotsService(db: Db) {
       });
     },
 
+    /** Take a guest out of a DM (its owner never leaves; a retired group chat is closed: `group_closed`). */
     async removeMember(userId: string, sessionId: string, botId: string): Promise<boolean> {
       return db.transaction(async (tx) => {
         const [conversation] = await tx
@@ -748,6 +615,7 @@ export function createBotsService(db: Db) {
           .limit(1)
           .for('update');
         if (!conversation) throw new BotsDomainError('conversation_not_found', 'Conversation not found');
+        if (conversation.kind === 'group') throw groupClosed();
         const members = await membersOf(tx, sessionId);
         const target = members.find((m) => m.bot_id === botId);
         if (!target) return false;
@@ -755,10 +623,6 @@ export function createBotsService(db: Db) {
           throw new BotsDomainError('cannot_remove_owner', 'A Bot cannot leave its own direct conversation');
         }
         await tx.delete(botConversationMembers).where(eq(botConversationMembers.id, target.id));
-        // Only a group's lead can leave (a DM's lead is its owner, which never does).
-        if (conversation.kind === 'group' && conversation.lead_bot_id === botId) {
-          await setGroupLead(tx, sessionId, await nextActiveMember(tx, sessionId, botId));
-        }
         return true;
       });
     },

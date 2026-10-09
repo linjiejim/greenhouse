@@ -5,16 +5,17 @@
  * effect, always under the member's own credentials:
  * - approval   → wakes the waiting tool call (allow / always / deny);
  * - bot_create → creates the Bot with the member's edits, adds it to the
- *                conversation (guest in a DM, member in a group), writes the
- *                "created"/"joined" lines and its greeting, then wakes the
- *                proposing Bot to hand the work over;
+ *                DM as a guest, writes the "created"/"joined" lines and its
+ *                greeting, then wakes the proposing Bot to hand the work over;
  * - task_start → admits the background task (≤3 running per member);
  * - login / takeover → the computer layer (secure fill / hand-back).
  * Settling is exactly once (`db.bots.settleRequest` is a CAS on `pending`);
  * a second click gets 409 `already_decided` (`deciding` while the first is
  * still in flight), which a card reads as "settled elsewhere" — every other
  * 409 carries its own code (page_gone, limit, bot_gone, …) and keeps the card
- * open. Transcript lines go through the single writer.
+ * open. A card in a retired group chat is never carried out: 409 `group_closed`
+ * (a still-pending one is withdrawn as `canceled`). Transcript lines go through
+ * the single writer.
  */
 
 import { BotsDomainError, getDb, type BotRequestRow, type DatabaseProvider } from '@greenhouse/db';
@@ -299,6 +300,19 @@ export async function decideBotRequest(
   const decision = parseDecision(rawDecision);
   const row = await db.bots.getRequest(userId, requestId);
   if (!row) throw new RequestDecisionError(404, 'Request not found');
+  if ((await db.bots.getConversation(userId, row.session_id))?.kind === 'group') {
+    // Group chats are retired: nothing runs there, so no card of one can take
+    // effect. Withdraw it if it is still open (migration 0015 cancelled the
+    // ones that existed) so it stops asking.
+    if (
+      row.status === 'pending' &&
+      (await db.bots.settleRequest(userId, row.id, 'canceled', { decision: 'group_closed' }))
+    ) {
+      resolveApprovalWaiter(row.id, 'deny');
+      await pushAttention(db, userId);
+    }
+    throw new RequestDecisionError(409, 'Group chats are retired — this card can no longer be decided', 'group_closed');
+  }
   if (row.status !== 'pending')
     throw new RequestDecisionError(409, 'This request was already decided', 'already_decided');
   if (inFlight.has(row.id)) throw new RequestDecisionError(409, 'This request is being decided', 'deciding');

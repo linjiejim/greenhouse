@@ -262,19 +262,19 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               // stack, which an ordinary chat turn never needs.
               const botsEngine = await import('../bots/engine/index.js');
               const botsDb = getDb();
-              // Nobody here can answer (an archived DM owner, a group without
-              // active Bots): refuse plainly instead of accepting a message that
-              // would get no reply.
+              // Nobody here can answer (a retired group chat, an archived DM
+              // owner): refuse plainly instead of accepting a message that would
+              // get no reply.
               const replyState = await botsEngine.conversationReplyState(botsDb, userId, sessionId);
-              if (replyState === 'bot_archived') {
+              if (replyState === 'group_closed') {
                 return c.json(
-                  { error: 'This Bot was archived — its conversation is read-only', code: replyState },
+                  { error: 'Group chats are retired — this conversation is read-only', code: replyState },
                   409,
                 );
               }
-              if (replyState === 'no_active_members') {
+              if (replyState === 'bot_archived') {
                 return c.json(
-                  { error: 'No Bot in this conversation can reply — invite one first', code: replyState },
+                  { error: 'This Bot was archived — its conversation is read-only', code: replyState },
                   409,
                 );
               }

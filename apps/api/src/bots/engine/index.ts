@@ -7,7 +7,7 @@
  *   here, which persists it — or queues it behind an older queued message —
  *   and runs the chain;
  * - conversationReplyState: whether anyone in the conversation can answer
- *   (an archived DM owner / a group without active Bots → the route says 409);
+ *   (a retired group chat / an archived DM owner → the route says 409);
  * - deliverToConversation: the single-writer entry for everything else
  *   (hand-backs, decided cards, task reports, busy-time member messages);
  * - initBotsEngine / shutdownBotsEngine: inbox sweeper + request expiry;
@@ -18,6 +18,7 @@ import type { AuthUser } from '../../auth/token.js';
 import type { ToolRegistry } from '../../agent.js';
 import type { ChatRun } from '../../chat/runs.js';
 import type { SessionRow } from '@greenhouse/types/session';
+import type { BotConversationReadOnlyCode } from '@greenhouse/types/bots';
 import { getDb, type DatabaseProvider } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -113,13 +114,14 @@ export async function startBotsChain(args: StartBotsChainArgs): Promise<void> {
   }).catch(logCrash(sessionId));
 }
 
-export type BotsReplyState = 'ok' | 'bot_archived' | 'no_active_members';
+export type BotsReplyState = 'ok' | BotConversationReadOnlyCode;
 
 /**
- * Can anyone answer a member message here? A DM belongs to its owner Bot: when
- * that Bot is archived the conversation is read-only. A group needs at least
- * one active member. The route refuses with 409 rather than accepting a
- * message nobody will answer (the chain also writes a line as a backstop).
+ * Can anyone answer a member message here? Group chats are retired: one is
+ * readable history and takes no message (`group_closed`). A DM belongs to its
+ * owner Bot: when that Bot is archived the conversation is read-only. The
+ * route refuses with 409 rather than accepting a message nobody will answer
+ * (the chain also writes a line as a backstop for an archived owner).
  */
 export async function conversationReplyState(
   db: DatabaseProvider,
@@ -131,11 +133,9 @@ export async function conversationReplyState(
     db.bots.listBots(userId, { includeArchived: true }),
   ]);
   if (!conversation) return 'ok'; // the run reports a missing conversation itself
+  if (conversation.kind === 'group') return 'group_closed';
   const active = new Set(bots.filter((bot) => bot.status === 'active').map((bot) => bot.id));
-  if (conversation.kind === 'direct') {
-    return conversation.owner_bot_id && active.has(conversation.owner_bot_id) ? 'ok' : 'bot_archived';
-  }
-  return conversation.members.some((member) => active.has(member.bot_id)) ? 'ok' : 'no_active_members';
+  return conversation.owner_bot_id && active.has(conversation.owner_bot_id) ? 'ok' : 'bot_archived';
 }
 
 /** Single-writer delivery into a Bots conversation (see inbox-types.ts). */

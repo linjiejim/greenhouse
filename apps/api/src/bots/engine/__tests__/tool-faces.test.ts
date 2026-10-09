@@ -268,8 +268,6 @@ describe('interactive tool face', () => {
 
 describe('bot_tasks only where background tasks can run', () => {
   const team: TeamPort = {
-    kind: 'direct',
-    allowBotChat: true,
     members: () => [],
     others: () => [],
     checkAsk: () => null,

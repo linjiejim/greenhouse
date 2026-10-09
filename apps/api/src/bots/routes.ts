@@ -5,11 +5,10 @@
  * POST   /api/bots/bootstrap                          — 确保内置主 Bot Sprouty 存在（+ 私聊 + 固定欢迎语）；幂等，每次进入都可调
  * POST   /api/bots                                    — 新建 Bot（模板库模板或自定义；不能建 Sprouty），同时建私聊并写欢迎语
  * GET    /api/bots/conversations                      — 对话列表（按活跃排序，含徽标状态）
- * POST   /api/bots/conversations                      — 1 个 Bot → 它的私聊；2–6 个 → 新群聊
+ * POST   /api/bots/conversations                      — 恰好 1 个 Bot → 它的私聊（群聊已退役：其他数量 400 groups_retired）
  * GET    /api/bots/conversations/:id                  — 对话详情 + 消息分页（before_seq / limit）+ 本页记忆回执的当前状态
- * PATCH  /api/bots/conversations/:id                  — 改标题 / 群规 / 主理 Bot / Bot 互聊开关
- * POST   /api/bots/conversations/:id/members          — 邀请 Bot（私聊里为客串）
- * DELETE /api/bots/conversations/:id/members/:botId   — 移出 Bot
+ * POST   /api/bots/conversations/:id/members          — 邀请 Bot 进私聊做客串（旧群聊只读：409 group_closed）
+ * DELETE /api/bots/conversations/:id/members/:botId   — 移出客串 Bot（旧群聊只读：409 group_closed）
  * POST   /api/bots/conversations/:id/read             — 标记已读
  * POST   /api/bots/conversations/:id/compact          — 立即整理摘要（有回合在跑时 409）
  * GET    /api/bots/conversations/:id/notes            — 共享笔记列表
@@ -19,7 +18,7 @@
  * GET    /api/bots/conversations/:id/tasks            — 本对话的后台任务
  * POST   /api/bots/tasks/:runId/cancel                — 取消后台任务（Runtime 取消语义）
  * GET    /api/bots/requests                           — 「需要你」请求（?status=pending）
- * POST   /api/bots/requests/:id                       — 处理请求（审批 / 建 Bot / 开始任务 / 登录 / 交还），已处理 409 already_decided、处理中 409 deciding
+ * POST   /api/bots/requests/:id                       — 处理请求（审批 / 建 Bot / 开始任务 / 登录 / 交还），已处理 409 already_decided、处理中 409 deciding、旧群聊的卡 409 group_closed
  * PATCH  /api/bots/:id                                — 修改 Bot 资料（追加一个不可变版本）
  * DELETE /api/bots/:id                                — 归档 Bot（Sprouty 不可归档：400 bot_protected）
  * GET    /api/bots/:id/versions                       — 不可变版本历史
@@ -30,6 +29,8 @@
  * 永续对话、请求、后台任务、bootstrap（建私聊）、电脑与密码库还要 requireFeature('bots')
  * （src/index.ts）——`bots` 开关只管永续线程与电脑，不管身份（spec 20261007 D5）。Bot 是私有的：
  * 全部按当前用户 owner 作用域，他人的行与不存在的行一律 404，没有共享、评审或克隆。
+ * 群聊已退役（2026-10-09）：对话就是某个 Bot 的私聊，其他 Bot 以客串身份加入（成员手动邀请或 Bot 的
+ * team.add），交接永远允许；旧群聊保留为只读历史（发消息 / 邀请 / 移出 / 处理卡片一律 409 group_closed）。
  * 静态路径先于 /:id 注册（Hono 按注册顺序匹配）。
  * 契约：bots/AGENTS.md「HTTP 契约」。
  */
@@ -89,8 +90,6 @@ import {
 
 const MESSAGES_PAGE_DEFAULT = 60;
 const MESSAGES_PAGE_MAX = 200;
-const GROUP_TITLE_MAX = 80;
-const GROUP_RULES_MAX = 2000;
 const REQUESTS_IN_DETAIL = 50;
 
 type BotFieldErrorCode = 'bot_name_invalid' | 'bot_name_taken' | 'bot_limit';
@@ -225,7 +224,8 @@ async function conversationDetail(
   return {
     ...summary,
     description: conversation.description,
-    allow_bot_chat: conversation.allow_bot_chat,
+    // Hand-offs are always allowed; the column is deprecated (old clients still read the field).
+    allow_bot_chat: true,
     digest: digestView(
       conversation.digest,
       conversation.digest_upto_seq,
@@ -287,6 +287,7 @@ function domainStatus(error: BotsDomainError): 400 | 404 | 409 {
     case 'note_not_found':
       return 404;
     case 'already_member':
+    case 'group_closed':
       return 409;
     default:
       return 400;
@@ -431,31 +432,28 @@ export function createBotsRoutes() {
         });
       })
 
-      // ── POST /api/bots/conversations — DM (1 Bot) or new group (2–6) ──
+      // ── POST /api/bots/conversations — the one Bot's DM (group chats are retired) ──
       .post('/conversations', async (c) => {
         const user = getAuthUser(c);
         const db = getDb();
         const body = await readJson(c);
         const botIds = Array.isArray(body.bot_ids) ? body.bot_ids : null;
-        if (!botIds || botIds.length === 0 || botIds.length > 6 || botIds.some((id) => typeof id !== 'string')) {
-          return c.json({ error: 'bot_ids must list 1–6 Bots' }, 400);
+        if (!botIds || botIds.some((id) => typeof id !== 'string')) {
+          return c.json({ error: 'bot_ids must be a list of Bot ids' }, 400);
         }
         const ids = [...new Set(botIds as string[])];
-        const title = typeof body.title === 'string' ? body.title.trim().slice(0, GROUP_TITLE_MAX) : null;
+        if (ids.length !== 1) {
+          return c.json(
+            { error: 'Group chats are retired — pass exactly one Bot id', code: 'groups_retired' as const },
+            400,
+          );
+        }
+        const botId = ids[0]!;
         const owner = await ownerContext(db, user.id);
         try {
-          let conversation: ConversationWithMembers;
-          if (ids.length === 1) {
-            conversation = await db.bots.ensureDirectConversation(user.id, ids[0]!);
-            const bot = await db.bots.getBot(user.id, ids[0]!);
-            if (bot) await writeGreeting(db, conversation.session_id, bot);
-          } else {
-            conversation = await db.bots.createGroupConversation({
-              user_id: user.id,
-              bot_ids: ids,
-              title: title || null,
-            });
-          }
+          const conversation = await db.bots.ensureDirectConversation(user.id, botId);
+          const bot = await db.bots.getBot(user.id, botId);
+          if (bot) await writeGreeting(db, conversation.session_id, bot);
           return c.json({ conversation: await conversationDetail(db, user.id, conversation, owner.locale) });
         } catch (error) {
           if (error instanceof BotsDomainError)
@@ -491,54 +489,6 @@ export function createBotsRoutes() {
           has_more: page.has_more,
           ...(memoryStates ? { memory_states: memoryStates } : {}),
         });
-      })
-
-      // ── PATCH /api/bots/conversations/:id ──
-      .patch('/conversations/:id', async (c) => {
-        const user = getAuthUser(c);
-        const db = getDb();
-        const sessionId = c.req.param('id');
-        const conversation = await db.bots.getConversation(user.id, sessionId);
-        if (!conversation) return c.json({ error: 'Conversation not found' }, 404);
-        const body = await readJson(c);
-        const updates: { title?: string | null; description?: string; lead_bot_id?: string; allow_bot_chat?: boolean } =
-          {};
-        if (body.title !== undefined) {
-          if (conversation.kind === 'direct')
-            return c.json({ error: 'A direct conversation is named after its Bot' }, 400);
-          if (body.title !== null && typeof body.title !== 'string')
-            return c.json({ error: 'title must be text' }, 400);
-          updates.title = typeof body.title === 'string' ? body.title.trim().slice(0, GROUP_TITLE_MAX) || null : null;
-        }
-        if (body.description !== undefined) {
-          if (typeof body.description !== 'string' || body.description.length > GROUP_RULES_MAX) {
-            return c.json({ error: `Group rules have at most ${GROUP_RULES_MAX} characters` }, 400);
-          }
-          updates.description = body.description.trim();
-        }
-        if (body.lead_bot_id !== undefined) {
-          if (conversation.kind === 'direct')
-            return c.json({ error: 'A direct conversation is always led by its Bot' }, 400);
-          if (typeof body.lead_bot_id !== 'string') return c.json({ error: 'lead_bot_id must be a Bot id' }, 400);
-          updates.lead_bot_id = body.lead_bot_id;
-        }
-        if (body.allow_bot_chat !== undefined) {
-          if (typeof body.allow_bot_chat !== 'boolean')
-            return c.json({ error: 'allow_bot_chat must be a boolean' }, 400);
-          updates.allow_bot_chat = body.allow_bot_chat;
-        }
-        try {
-          await db.bots.updateConversation(user.id, sessionId, updates);
-        } catch (error) {
-          if (error instanceof BotsDomainError)
-            return c.json({ error: error.message, code: error.code }, domainStatus(error));
-          throw error;
-        }
-        const fresh = await db.bots.getConversation(user.id, sessionId);
-        if (!fresh) return c.json({ error: 'Conversation not found' }, 404);
-        const owner = await ownerContext(db, user.id);
-        notifyConversation(user.id, sessionId);
-        return c.json({ conversation: await conversationDetail(db, user.id, fresh, owner.locale) });
       })
 
       // ── POST /api/bots/conversations/:id/members ──

@@ -1,7 +1,7 @@
 ## Bots（个人助理）— 领域规则与 HTTP 契约
 
-每个成员开箱就有的常驻 Bot：有名字、角色和自己的记忆；多个 Bot 可以在同一个对话里协作（点名、
-交接、共享笔记）；开了电脑后，一个成员的所有 Bot 共用一台云电脑（浏览器 + shell），成员随时可以
+每个成员开箱就有的常驻 Bot：有名字、角色和自己的记忆；对话就是某个 Bot 的私聊，需要时它把成员的
+其他 Bot 拉进来做客串，在同一个对话里协作（点名、交接、共享笔记）；开了电脑后，一个成员的所有 Bot 共用一台云电脑（浏览器 + shell），成员随时可以
 观看和接管；登录凭证来自只写不读的密码库。方案与决策（D1–D17）见
 [spec](../../../../docs/specs/20261005-personal-assistant-bots.md)。数据层规则（单写者 / `bot_inbox`、
 `MemoryScope`、`bot_computers` CAS）在 [packages/db/src/AGENTS.md](../../../../packages/db/src/AGENTS.md)。
@@ -28,7 +28,7 @@ bots/
   由 `POST /bootstrap` 保证存在（幂等，每次进入都可调；早于它的老成员下次进入补建，不占 20 个上限）——Bot 行本身也可能由
   聊天页先建（`ensureSproutyBot`），bootstrap 只补私聊与欢迎语。它在侧栏
   置顶、**不能归档**（`DELETE` 返回 400 `bot_protected`），可以改名改守则；它就是原来的「总管」——用 `team`
-  工具把成员的其他 Bot 拉进对话（私聊里是客串）、转交工作、提议新建。`POST /api/bots` 只接受模板库模板
+  工具把成员的其他 Bot 拉进对话（客串）、转交工作、提议新建。`POST /api/bots` 只接受模板库模板
   （`galleryTemplate`：研究员/操作员/写手/分析师）：Sprouty 只来自 bootstrap，「总管」模板已退役（旧的 chief Bot
   照常工作，`botTemplate('chief')` 仍能查到它的开场白与 starters）。
 - **欢迎语一两句**（`engine/greeting.ts`，不调模型）：`你好，我是 **{名字}**，你的{岗位}。{pitch}`（无岗位就省掉那半句），
@@ -110,8 +110,15 @@ bots/
   （Linux Chromium 不认 `--lang`）、`gh-term` / `gh-jobs` / `gh-window` / `gh-agent-kill`，以及预装的
   pip / Node / ffmpeg / pandoc / sqlite 等；`agent` 的 pip / npm / pipx 用户级安装落在 home 卷，系统目录仍只读；
   组织级额外软件包在构建时用 `BOTS_COMPUTER_EXTRA_PACKAGES`（镜像标签记录，预检里展示）。
-- **群聊的负责人**：归档 / 移除 Bot 时 `lead_bot_id` 交给按位置的下一个 active 成员，成员角色
-  （`lead` / `member`）同步；私聊的 owner / guest 角色从不变。
+- **群聊已退役（2026-10-09）**：一段对话就是一个 Bot 的私聊（`kind = 'direct'`，`lead_bot_id` = 主人，主人归档后为
+  null），其他 Bot 只以客串（`guest`）身份加入——Bot 用 `team.add` 自己拉人、成员手动邀请照旧；Bot 之间的交接
+  （`team.ask`）**永远允许**，没有开关（`allow_bot_chat` 列保留但不再读取，迁移 `0015_bots_groups_retired` 把它全置
+  true，API 视图恒报 `true`）。存量群聊（`kind = 'group'`）是只读历史：照常列出、可读，但发消息 / 邀请 / 移出 / 处理
+  卡片一律 `409 group_closed`；引擎**从不**在群里开或续一个回合——`deliverToConversation` / 清扫器对群只把排队项
+  （事件、后台汇报、唤醒的那行字、关闭前排队的成员消息）作为记录写入、不唤醒任何 Bot，`runBotsRun` 落到群里也只记录后
+  结束（两道闸都有测试）。迁移同时把群里所有仍待处理的卡片置为 `canceled`（`result = {"decision":"group_closed"}`），
+  不删任何行。测试里的旧群用 `__tests__/helpers/legacy-group.ts` 直接插库（API 已经建不出来）。私聊的 owner / guest
+  角色从不变；归档一个 Bot 把它从所有客串位（以及旧群的名单）里移出，不再改派负责人。
 - **DB 权威生命周期**：`bot_computers` 每次迁移都是 `version` CAS，单成员操作在用户锁里、容量判断在
   全局锁里；闲置停止 + LRU 淘汰会跳过有待处理登录 / 接管卡的电脑（`HUMAN_WAIT_HOLD_MS`）；健康 tick
   对账卡住的 starting / stopping 行（成员锁空闲时立即，否则 5 分钟兜底）。
@@ -150,7 +157,7 @@ bots/
 
 | 层 | 规则 |
 |---|---|
-| Prompt | system = S1 静态守则（按实际注册的工具拼段落）→ S2 Bot 身份与守则 → S3 成员自己的备注 → S4 滚动摘要（≤1500 字）；每回合重建、不落库的最后一条 user = T1（名册 / 群规 / 记忆索引 / 共享笔记索引 ≤1500 字，定界数据块）+ T2（本回合说明）；system 与历史前缀只追加，可缓存 |
+| Prompt | system = S1 静态守则（按实际注册的工具拼段落）→ S2 Bot 身份与守则 → S3 成员自己的备注 → S4 滚动摘要（≤1500 字）；每回合重建、不落库的最后一条 user = T1（名册：主人与客串 / 记忆索引 / 共享笔记索引 ≤1500 字，定界数据块）+ T2（本回合说明）；system 与历史前缀只追加，可缓存 |
 | 历史投影 | 摘要边界之后的行逐行 sanitize + 说话人标签，按预算 48k token 开窗 |
 | 滚动摘要 | 投影超过 24k token 时在**链边界**折叠，保留最近 ≥2 条链 / 8k token；结构化 JSON（目标、决定、待办、事实…），CAS 更新 |
 | 回合内 | `browser` / `computer` 观测超过 12k token 时旧观测压成存根；文件产物（截图、share_file）整条保留 |
@@ -191,14 +198,15 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 | GET | `/api/bots/:id/versions` | — | `{ bot_id, profile_id, current_version, versions }`（仅主人；super 可查） |
 | GET / POST | `/api/bots/:id/files` · `/api/bots/:id/files/ensure` | — | `{ folder, docs }`（无文件夹时 `folder: null`）· `{ folder }`（首次使用建文件夹） |
 | GET / DELETE | `/api/bots/:id/memories[/:memoryId]` | — | 该 Bot 的私有记忆 / `{ ok }`；改为共享走 `PATCH /api/auth/me/memories/:id { bot_id: null }` |
-| GET / POST | `/api/bots/conversations` | `{ bot_ids, title? }` | 列表 / `{ conversation }`（1 个 id = 该 Bot 私聊，2–6 = 新群聊） |
-| GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states? }` |
-| PATCH | `/api/bots/conversations/:id` | `{ title?, description?, lead_bot_id?, allow_bot_chat? }` | `{ conversation }` |
-| POST / DELETE | `/api/bots/conversations/:id/members[/:botId]` | `{ bot_id }` | `{ conversation }`（私聊里邀请 = guest） |
+| GET / POST | `/api/bots/conversations` | `{ bot_ids }`（恰好 1 个 id） | 列表 / `{ conversation }`（该 Bot 的私聊，没有就建）；0 个或多个 id → `400 groups_retired`（群聊已退役） |
+| GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states? }`（`allow_bot_chat` 已废弃、恒为 `true`；旧群 `kind:'group'` 照常可读） |
+| POST / DELETE | `/api/bots/conversations/:id/members[/:botId]` | `{ bot_id }` | `{ conversation }`（邀请 = guest；主人不能移出 400 `cannot_remove_owner`；旧群 `409 group_closed`） |
 | POST | `/api/bots/conversations/:id/read` · `/compact` | — | `{ ok }` · `{ digest }`（回合进行中 409） |
 | GET / POST / PATCH / DELETE | `/api/bots/conversations/:id/notes[/:noteId]` | `{ title, body?, status?, pinned? }` | 共享笔记 |
 | GET / POST | `/api/bots/conversations/:id/tasks` · `/api/bots/tasks/:runId/cancel` | — | 后台任务 |
-| GET / POST | `/api/bots/requests` · `/api/bots/requests/:id` | `BotRequestDecision` | `{ request }`；冲突 409 `already_decided` / `deciding`，其他 409 带具体 code（`BotRequestErrorCode`：`page_gone` / `origin_mismatch` / `no_fields` / `failed` / `invalid` / `limit` / `computer_restarted` / `bot_gone`）且卡片保持待处理 |
+| GET / POST | `/api/bots/requests` · `/api/bots/requests/:id` | `BotRequestDecision` | `{ request }`；冲突 409 `already_decided` / `deciding`；旧群的卡 409 `group_closed`（仍待处理的顺手撤成 `canceled`）；其他 409 带具体 code（`BotRequestErrorCode`：`page_gone` / `origin_mismatch` / `no_fields` / `failed` / `invalid` / `limit` / `computer_restarted` / `bot_gone`）且卡片保持待处理 |
+
+对话没有可编辑的设置：原 `PATCH /api/bots/conversations/:id`（群标题 / 群规 / 负责人 / Bot 互聊开关）已删除。
 
 名字校验：1–24 字，不含 `[ ] : ：` 与换行，非保留词、不等于成员昵称、在成员的 active Bot 中唯一 →
 `400 { code: 'bot_name_invalid' | 'bot_name_taken' | 'bot_limit' }`。
@@ -206,8 +214,9 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 **发消息**：`POST /api/chat` `{ session_id, messages:[{ role:'user', content, images? }], mentions? }`（文字或
 图片至少一样；附件走 Chat 的 ```attachments 围栏）。`200` NDJSON（与 Chat 同传输、同重连）：每个 Bot
 `bot-turn-start` → 常规事件 → `bot-turn-end`，卡片 `bot-request`，整条只有一个 `finish`。会话忙时
-`202 { queued:true }`（回合之间送达）。私聊主人已归档 `409 { code:'bot_archived' }`；群里没有 active
-Bot `409 { code:'no_active_members' }`。编辑 / 重新生成对 Bots 会话一律 409；停止走
+`202 { queued:true }`（回合之间送达）。旧群聊 `409 { code:'group_closed' }`（先于其他检查，忙时也不排队）；私聊主人已归档
+`409 { code:'bot_archived' }`（两者即 `BotConversationReadOnlyCode`；`no_active_members` 不再返回，只留在旧群的
+`unavailable` 事件里）。编辑 / 重新生成对 Bots 会话一律 409；停止走
 `POST /api/chat/runs/:sessionId/stop`；打断（这一步做完再停，排队的消息接着处理）走
 `POST /api/chat/runs/:sessionId/interrupt` → `{ ok, run_id }`（只限主人；非 Bots 会话 400
 `not_supported`；没有在跑的 run 404），流里发一次 `{ type:'run-interrupting' }`，之后照常是下一条链的

@@ -17,8 +17,6 @@ export interface TeamMember {
 }
 
 export interface TeamPort {
-  kind: 'direct' | 'group';
-  allowBotChat: boolean;
   /** Current members (live: reflects Bots added during this chain). */
   members(): TeamMember[];
   /** The member's other active Bots, not in this conversation. */
@@ -26,7 +24,7 @@ export interface TeamPort {
   checkAsk(toBotId: string): AskRejection | null;
   /** Persist the hand-off line, queue the target, end the asker's turn after this step. */
   acceptAsk(toBotId: string, message: string): Promise<void>;
-  /** Invite one of the member's existing Bots (guest in a DM, member in a group). */
+  /** Invite one of the member's existing Bots into this DM as a guest. */
   addMember(botId: string): Promise<{ ok: true } | { ok: false; error: string }>;
 }
 

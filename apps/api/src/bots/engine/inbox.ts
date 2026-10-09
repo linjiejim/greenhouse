@@ -17,7 +17,9 @@
  * Items are consumed only after they were applied (claim-then-apply, see
  * chain.ts). A conversation whose owner may not run Bots (suspended, mid-reset,
  * demoted, `bots` off) is never claimed: its items wait, untouched, until the
- * owner is active again.
+ * owner is active again. A retired group chat (read-only history) never starts
+ * a chain: everything queued for it — a task report, an event, a wake-up's
+ * line — is written as a record and nobody is woken.
  *
  * A 5-second sweeper retries conversations whose inbox still holds items (a
  * release-then-check race, a restart, a lock released by another slot),
@@ -92,8 +94,11 @@ export async function drainIdleConversation(sessionId: string, db: DatabaseProvi
 
   let handedOff = false;
   try {
+    // A retired group chat: record what is queued, never start a turn there.
+    const closed = (await db.bots.getConversation(userId, sessionId))?.kind === 'group';
+    const isTurn = (row: { kind: string }) => !closed && (row.kind === 'user_message' || row.kind === 'continue');
     const rows = await db.bots.listPendingInbox(sessionId);
-    const firstTrigger = rows.find((row) => row.kind === 'user_message' || row.kind === 'continue');
+    const firstTrigger = rows.find(isTurn);
     if (firstTrigger && toolRegistry) {
       handedOff = true;
       startServerRun(run, userId, sessionId, firstTrigger.id, db);
@@ -105,7 +110,7 @@ export async function drainIdleConversation(sessionId: string, db: DatabaseProvi
     let wrote = false;
     for (const row of rows) {
       // Without a registry (tests, early boot) Bot turns wait for the next sweep.
-      if (row.kind === 'user_message' || row.kind === 'continue') break;
+      if (isTurn(row)) break;
       const item = parseInboxRow(row);
       if (!item) {
         await db.bots.quarantineInbox(row.id);
@@ -124,7 +129,7 @@ export async function drainIdleConversation(sessionId: string, db: DatabaseProvi
     // writes above (their POST got 202): answer it now rather than next sweep.
     if (toolRegistry) {
       const remaining = await db.bots.listPendingInbox(sessionId);
-      const trigger = remaining.find((row) => row.kind === 'user_message' || row.kind === 'continue');
+      const trigger = remaining.find(isTurn);
       if (trigger) {
         handedOff = true;
         startServerRun(run, userId, sessionId, trigger.id, db);
