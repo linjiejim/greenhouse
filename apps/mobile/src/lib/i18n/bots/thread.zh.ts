@@ -21,7 +21,6 @@ export const botsThreadZh: typeof botsThreadEn = {
     turnFailed: '{name} 没能回复',
     summarized: '更早的内容已整理成摘要',
     view: '查看',
-    working: '正在工作…',
     runFailed: '回复中断：{reason}',
     refreshFailed: '无法刷新 · 重试',
     sendFailed: '发送失败',

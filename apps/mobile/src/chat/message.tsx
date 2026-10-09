@@ -92,7 +92,11 @@ function DisclosureRow({
       accessibilityHint={accessibilityHint}
       style={({ pressed }) => [styles.disclosure, detail ? styles.disclosureWide : null, pressed && { opacity: 0.5 }]}
     >
-      {busy ? <Spinner style={styles.disclosureSpinner} /> : <Icon name={icon} size={14} weight="medium" color={c.secondaryLabel} />}
+      {busy ? (
+        <Spinner style={styles.disclosureSpinner} />
+      ) : (
+        <Icon name={icon} size={14} weight="medium" color={c.secondaryLabel} />
+      )}
       <Text style={styles.disclosureText}>{label}</Text>
       <Icon name="chevR" size={11} weight="semibold" color={c.tertiaryLabel} />
       {detail ? (
@@ -166,7 +170,14 @@ function ToolsRow({ steps, live, onOpen }: { steps: ToolStep[]; live: boolean; o
   const done = steps.filter((s) => s.status !== 'running').length;
   // While the turn streams the row counts the calls as they run (its sheet follows them live).
   if (live && done < steps.length) {
-    return <DisclosureRow icon="wrench" busy label={t('chat.toolsRunning', { done, total: steps.length })} onPress={onOpen} />;
+    return (
+      <DisclosureRow
+        icon="wrench"
+        busy
+        label={t('chat.toolsRunning', { done, total: steps.length })}
+        onPress={onOpen}
+      />
+    );
   }
   const failed = steps.some((s) => s.status === 'error');
   return (
@@ -229,6 +240,8 @@ export const AiMessage = memo(function AiMessage({
   onReply,
   thinkingAvatar,
   allowRegenerate = true,
+  quiet = false,
+  header,
 }: {
   msg: ChatMessage;
   /** The newest reply — the only one that can be regenerated / retried. */
@@ -251,6 +264,13 @@ export const AiMessage = memo(function AiMessage({
   thinkingAvatar?: React.ReactNode | null;
   /** Offer 重新生成 in the menu (latest reply only; 重试 on an error is `onRetry`'s). */
   allowRegenerate?: boolean;
+  /**
+   * No thinking row: draw nothing — `header` included — until the reply has
+   * something to show (the screen's title carries "Thinking…"). A Bots thread.
+   */
+  quiet?: boolean;
+  /** Above the reply, only when it shows (a Bots speaker line). Keep it stable — the row is memoised. */
+  header?: React.ReactNode;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -273,8 +293,9 @@ export const AiMessage = memo(function AiMessage({
   // Until the first text, a live reply always shows that it is working: the thinking row
   // stays up while the rows it would otherwise hand over to are switched off.
   const thinking =
-    msg.status === 'thinking' ||
-    (live && !msg.text && !msg.error && !msg.stopped && !showReasoning && !showTrace && !cardsAbove.length);
+    !quiet &&
+    (msg.status === 'thinking' ||
+      (live && !msg.text && !msg.error && !msg.stopped && !showReasoning && !showTrace && !cardsAbove.length));
 
   // Keyed on the language (not `t`, which is new every render) so a streaming
   // reply doesn't rebuild its native menu on every tick.
@@ -342,10 +363,14 @@ export const AiMessage = memo(function AiMessage({
     ) : null,
   ];
   const tail = tailItems.some(Boolean) ? <View style={styles.aiTail}>{tailItems}</View> : null;
+  // quiet: nothing on screen yet (or ever — a turn that only raised a card) → no row, no header
+  const blank = !thinking && !showReasoning && !showTrace && !cardsAbove.length && !msg.text && !tail;
+  if (quiet && blank) return null;
+  const entering = msg.fresh ? FadeIn.duration(220) : undefined;
 
-  return (
+  const row = (
     // keyed on the text size: mounted text re-measures when Dynamic Type changes (src/ui/font-scale.ts)
-    <Animated.View key={fontKey} entering={msg.fresh ? FadeIn.duration(220) : undefined} style={styles.aiRow}>
+    <Animated.View key={fontKey} entering={entering} style={styles.aiRow}>
       {/* nothing to act on until text arrives */}
       {msg.text ? (
         <MessageMenu items={items} text={msg.text} onSelect={(id) => onAction(msg, id as MessageAction)}>
@@ -356,6 +381,14 @@ export const AiMessage = memo(function AiMessage({
       )}
       {tail}
     </Animated.View>
+  );
+  return header ? (
+    <>
+      <Animated.View entering={entering}>{header}</Animated.View>
+      {row}
+    </>
+  ) : (
+    row
   );
 });
 

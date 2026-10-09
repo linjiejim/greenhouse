@@ -10,9 +10,12 @@
  *    naming hint. Answers from its cards go back to that Bot (D22). A
  *    server placeholder for a turn with no text is left out while the tool
  *    steps are hidden (../filler.ts).
- *  - `SegmentRow` — a live turn: the thinking row draws the speaking Bot's
- *    plant (not Sprouty), a failed turn offers Retry ("@Name Please try that
- *    again.").
+ *  - `SegmentRow` — a live turn, quiet until it has something to show: no
+ *    thinking row and no speaker line while the Bot is still thinking (the
+ *    title says "Thinking…"), so a send isn't followed by a face that comes
+ *    and goes; with the first words the speaker line arrives, its plant
+ *    talking. A failed turn offers Retry ("@Name Please try that again.").
+ *    Both rows draw nothing at all for a turn with nothing on screen.
  *  - `PendingRow` — a send in flight with its Messages-style caption.
  *  - `RequestRow` — a "needs you" card (`RequestCard`); one the thread holds
  *    no state for (an old card past the detail window) reads as its line.
@@ -26,7 +29,6 @@ import type { BotMessage, BotRequestDecision, BotRequestView, BotView } from '..
 import type { BotStreamSegment } from '../../../shared/bots-wire';
 import { RequestCard } from '../../cards/request-card';
 import type { DecideOutcome, MobilePending, ThreadController } from '../../contract';
-import { BotAvatar } from '../../ui/bot-avatar';
 import { memoryReceiptsFromCalls } from '../../vendor/web-helpers';
 import { usePrefs } from '../../../store/prefs';
 import { fromBotMessage, fromPending } from '../adapters';
@@ -104,11 +106,16 @@ export const BotRow = memo(function BotRow({
   // A placeholder for a turn with no text ("Over to you — see the card above") points at what is
   // right above it; with the tool steps hidden it says nothing new (./../filler.ts).
   const showTools = usePrefs((s) => s.details.tools);
+  const speaker = useMemo(
+    () => (header ? <SpeakerLine bot={bot} loaded={loaded} onPress={onOpenProfile} /> : null),
+    [header, bot, loaded, onOpenProfile],
+  );
   if (!showTools && receipts.length === 0 && isFillerReply(message.content)) return null;
   return (
     <View>
-      {header ? <SpeakerLine bot={bot} loaded={loaded} onPress={onOpenProfile} /> : null}
       <AiMessage
+        quiet
+        header={speaker}
         msg={fromBotMessage(message)}
         isLatest={false}
         readOnly={readOnly}
@@ -119,7 +126,6 @@ export const BotRow = memo(function BotRow({
         onAction={handlers.onAction}
         onRetry={noop}
         onReply={onReply}
-        thinkingAvatar={null}
         allowRegenerate={false}
       />
       <MemoryReceipts
@@ -160,10 +166,22 @@ export const SegmentRow = memo(function SegmentRow({
   const botId = segment.botId;
   const onReply = useCallback((text: string) => onReplyAs(botId, text), [onReplyAs, botId]);
   const onRetry = useCallback(() => onRetryBot(botId), [onRetryBot, botId]);
-  // The thinking row draws this Bot's plant — unless the speaker line right above already does.
-  const thinkingAvatar = useMemo(
-    () => (header ? null : <BotAvatar bot={bot ?? null} size={34} state="thinking" />),
-    [header, bot],
+  const live = segment.status === 'streaming';
+  const failed = segment.status === 'error';
+  const typing = live && segment.text.length > 0;
+  const speaker = useMemo(
+    () =>
+      header ? (
+        <SpeakerLine
+          bot={bot}
+          loaded={loaded}
+          askedBy={askedBy}
+          state={failed ? 'error' : typing ? 'speaking' : live ? 'thinking' : undefined}
+          animate={live}
+          onPress={onOpenProfile}
+        />
+      ) : null,
+    [header, bot, loaded, askedBy, failed, typing, live, onOpenProfile],
   );
   const receipts = useMemo(
     () =>
@@ -174,26 +192,22 @@ export const SegmentRow = memo(function SegmentRow({
       ),
     [segment],
   );
-  // A turn that ended with nothing to show keeps only its speaker line (the web's live segment).
-  const empty = segment.status === 'completed' && !segment.text && segment.toolCalls.length === 0;
   return (
     <View>
-      {header ? <SpeakerLine bot={bot} loaded={loaded} askedBy={askedBy} onPress={onOpenProfile} /> : null}
-      {empty ? null : (
-        <AiMessage
-          msg={msg}
-          isLatest
-          readOnly={readOnly}
-          onOpenTools={handlers.onOpenTools}
-          onOpenReasoning={handlers.onOpenReasoning}
-          onOpenRefs={handlers.onOpenRefs}
-          onAction={handlers.onAction}
-          onRetry={onRetry}
-          onReply={onReply}
-          thinkingAvatar={thinkingAvatar}
-          allowRegenerate={false}
-        />
-      )}
+      <AiMessage
+        quiet
+        header={speaker}
+        msg={msg}
+        isLatest
+        readOnly={readOnly}
+        onOpenTools={handlers.onOpenTools}
+        onOpenReasoning={handlers.onOpenReasoning}
+        onOpenRefs={handlers.onOpenRefs}
+        onAction={handlers.onAction}
+        onRetry={onRetry}
+        onReply={onReply}
+        allowRegenerate={false}
+      />
       <MemoryReceipts
         receipts={receipts}
         botId={botId}
