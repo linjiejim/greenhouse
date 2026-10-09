@@ -24,6 +24,7 @@ import {
   applyModelOverride,
   resolveModelConfig,
   resolvesToDeepSeek,
+  runsDeepSeekThinking,
   type ModelConfig,
   type ProviderAttemptHook,
 } from './model.js';
@@ -187,8 +188,11 @@ export async function prepareAgentLoop(input: AgentLoopInput): Promise<PreparedA
 
   // Sampling params: request override wins, then the catalog/profile options.
   // The SDK names the output cap `maxOutputTokens` — an old `maxTokens` spread
-  // was silently dropped once.
-  const temperature = temperatureOverride ?? modelConfig.options?.temperature;
+  // was silently dropped once. No temperature where DeepSeek thinks: it is
+  // ignored there and the provider warns on every step (runsDeepSeekThinking).
+  const temperature = runsDeepSeekThinking(modelConfig)
+    ? undefined
+    : (temperatureOverride ?? modelConfig.options?.temperature);
   const maxOutputTokens = maxTokensOverride ?? modelConfig.options?.max_tokens;
 
   const settings: AgentLoopSettings = {

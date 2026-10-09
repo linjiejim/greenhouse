@@ -31,6 +31,7 @@ vi.mock('../model.js', () => ({
   applyModelOverride: (config: unknown) => config,
   resolveModelConfig: (config: unknown) => config,
   resolvesToDeepSeek: () => false,
+  runsDeepSeekThinking: () => false,
 }));
 
 import { createChatStreamAsync, type ChatEngineInput } from '../chat-engine.js';

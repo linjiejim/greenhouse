@@ -15,7 +15,9 @@
 #   LLM_MODEL_PRO=…                         (optional stronger model, same endpoint)
 #
 # `options` are the MODEL's sampling/reasoning behavior, not an agent's — every
-# consumer of a model gets them.
+# consumer of a model gets them. One exception: `temperature` is not sent while
+# DeepSeek thinks (V4 and deepseek-reasoner by default, or `thinking: true`) —
+# DeepSeek ignores it in that mode (agent-core runsDeepSeekThinking).
 #
 # `vision: true` means the model reads images natively: Chat inlines attached
 # images into the payload instead of routing them through analyze_image.

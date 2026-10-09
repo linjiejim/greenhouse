@@ -18,6 +18,7 @@ import {
   createModelFromConfig,
   resolveModelConfig,
   buildProviderOptions,
+  runsDeepSeekThinking,
   type ModelConfig,
 } from '@greenhouse/agent-core';
 import { logger } from '@greenhouse/utils/logger';
@@ -344,7 +345,8 @@ async function consolidatePartition(userId: string, botId: string | null): Promi
     model,
     instructions: CONSOLIDATION_SYSTEM_PROMPT,
     messages,
-    temperature: 0.1,
+    // DeepSeek ignores temperature while it thinks (and warns when sent).
+    ...(runsDeepSeekThinking(modelConfig) ? {} : { temperature: 0.1 }),
     maxOutputTokens: 1500,
     maxRetries: 1,
     providerOptions: buildProviderOptions(modelConfig),
