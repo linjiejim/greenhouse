@@ -9,6 +9,7 @@
  */
 
 import { getDb, type DatabaseProvider } from '@greenhouse/db';
+import { resolveHistoryBudget, windowMessagesByBudget } from '@greenhouse/agent-core';
 import type { UserRole } from '@greenhouse/types/api';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -16,9 +17,9 @@ import { buildSystemPrompt, selectTools, type ToolRegistry } from '../../agent.j
 import { resolveProfileAsync } from '../../profiles/profile.js';
 import { resolveEffectiveTools } from '../../agent-runtime/tool-resolution.js';
 import { buildLazyServerTools, LAZY_TOOL_IDS } from '../../agent-runtime/tool-resolution.js';
-import { runAgentInSession } from '../../agent-runtime/run-agent.js';
+import { runAgentInSession, type AgentGenerate, type HeadlessMessage } from '../../agent-runtime/run-agent.js';
 import { resolveMemoryContext } from '../../llm/memory.js';
-import { sanitizeUserMessageForPrompt } from '../../chat/user-message.js';
+import { sanitizeChatMessagesForPrompt, sanitizeUserMessageForPrompt } from '../../chat/user-message.js';
 import { flattenRichOutput } from '../../notifications/render.js';
 import { FEISHU_PROVIDER } from '../../routes/feishu-oauth.js';
 import { renderAskUserFromEvidence } from './ask-user.js';
@@ -43,6 +44,8 @@ export type FeishuReply =
 export interface DispatchDeps {
   db?: DatabaseProvider;
   toolRegistry: ToolRegistry;
+  /** Test seam — forwarded to runAgentInSession (defaults to the real loop). */
+  generate?: AgentGenerate;
 }
 
 function settingsUrl(): string {
@@ -57,6 +60,48 @@ function sessionUrl(sessionId: string): string | null {
 
 /** 回答上限——超过就截断并让用户去 Web 看全文（spec D10）。 */
 const MAX_REPLY_CHARS = 10_000;
+
+/**
+ * 这串对话之前的轮次——「回复即延续」要让模型真的看见上文（spec D1 承诺的多轮，
+ * 2026-10-09 之前 runner 只发当前一条，延续只延续了 session、没延续上下文）。
+ *
+ * 与 chat 同一个投影与预算：`sanitizeChatMessagesForPrompt` 只改模型视图不改转录，
+ * `resolveHistoryBudget` → `windowMessagesByBudget` 按 token 开窗、丢最旧的整条。
+ * 刚落库的当前这条不算历史（runner 自己会把 prompt 接在最后）。
+ */
+async function loadPriorMessages(
+  db: DatabaseProvider,
+  sessionId: string,
+  prompt: string,
+  modelId: string | undefined,
+): Promise<HeadlessMessage[]> {
+  const transcript = await db.sessions.buildChatMessages(sessionId);
+  const tail = transcript.at(-1);
+  const prior = tail && tail.role === 'user' && tail.content === prompt ? transcript.slice(0, -1) : transcript;
+  if (prior.length === 0) return [];
+
+  // buildChatMessages already keeps only user/assistant rows; the filter just
+  // tells the type system so.
+  const projected = sanitizeChatMessagesForPrompt(
+    prior.flatMap((m): HeadlessMessage[] =>
+      m.role === 'user' || m.role === 'assistant'
+        ? [{ role: m.role, content: m.content, ...(m.created_at ? { created_at: m.created_at } : {}) }]
+        : [],
+    ),
+  );
+  const budget = resolveHistoryBudget(modelId);
+  const window = windowMessagesByBudget<HeadlessMessage>([...projected, { role: 'user', content: prompt }], budget);
+  if (window.dropped > 0) {
+    logger.info('[FeishuBot] history window dropped oldest messages', {
+      sessionId,
+      dropped: window.dropped,
+      kept: window.messages.length - 1,
+      estimatedTokens: window.estimatedTokens,
+      budget,
+    });
+  }
+  return window.messages.slice(0, -1);
+}
 
 /**
  * 处理一条消息，返回该回什么。
@@ -144,17 +189,23 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
   const memoryBlock = await resolveMemoryContext(owner.id, owner.role as UserRole);
   const systemPrompt = buildSystemPrompt(profile, memoryBlock ? { userInfo: memoryBlock } : undefined);
 
-  // ── 5. 跑既有 runner ─────────────────────────────────────
+  // ── 5. 跑既有 runner（带上这串对话的历史）────────────────
+  // 只给会话的主人回放历史。群里任何绑定成员都能回复同一条链、落进同一个会话，
+  // 而主人可能在 Web 上接着聊过——那些轮次从没发到群里，不能经别人的提问带进群。
+  const priorMessages =
+    mapping.user_id === owner.id ? await loadPriorMessages(db, sessionId, prompt, profile.model.id) : [];
   const result = await runAgentInSession({
     db,
     sessionId,
     system: systemPrompt,
     prompt,
+    priorMessages,
     modelConfig: profile.model,
     tools,
     maxSteps: profile.max_steps ?? 12,
     ...(profile.tool_choice ? { toolChoice: profile.tool_choice } : {}),
     usageContext: { profileId: profile.id, userId: owner.id, caller: 'feishu-bot' },
+    ...(deps.generate ? { generate: deps.generate } : {}),
   });
 
   // ── 6. 呈现：富块围栏拍平成飞书能渲染的 markdown（spec D10）──

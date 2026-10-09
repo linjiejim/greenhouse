@@ -32,6 +32,17 @@ import {
   settleAndRecordBudgetedUsage,
 } from '../llm/usage-budget.js';
 
+/**
+ * A transcript turn as the headless runner sends it: text only (no surface that
+ * runs headless uploads images mid-conversation). `created_at` is carried for
+ * callers that keep it; the runner sends role and content only.
+ */
+export interface HeadlessMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  created_at?: string;
+}
+
 // ─── Generate seam ───────────────────────────────────────
 //
 // The seam takes the ModelConfig (not a built model) so the default impl owns
@@ -105,6 +116,14 @@ export interface RunAgentInSessionArgs {
   tools?: ToolRegistry;
   maxSteps: number;
   toolChoice?: 'auto' | 'none' | 'required';
+  /**
+   * Earlier turns of this conversation, oldest first, sent before `prompt`.
+   * Only callers whose session really IS an ongoing conversation pass this
+   * (the Feishu bot); scheduled tasks, spawn_session and workflow nodes are
+   * single-prompt by design. The caller owns windowing — use the same
+   * `resolveHistoryBudget` / `windowMessagesByBudget` budget as chat.
+   */
+  priorMessages?: HeadlessMessage[];
   /** Defaults to buildProviderOptions(modelConfig). */
   providerOptions?: unknown;
   /** When false, the assistant message is NOT persisted (caller handles it). Default true. */
@@ -184,12 +203,16 @@ export async function runAgentInSession(args: RunAgentInSessionArgs): Promise<Ru
   // Production models are metered at each concrete V3 attempt. An injected
   // generator does not cross that wrapper, so retain one conservative lease
   // around the explicit test/override seam.
+  const messages: AgentGenerateArgs['messages'] = [
+    ...(args.priorMessages ?? []).map(({ role, content }) => ({ role, content })),
+    { role: 'user', content: args.prompt },
+  ];
   let injectedBudget: Awaited<ReturnType<typeof reserveUserTokenBudget>> | null = null;
   let injectedEstimate = 0;
   if (args.generate) {
     injectedEstimate = estimateAgentLoopTokens({
       system: args.system,
-      messages: [{ role: 'user', content: args.prompt }],
+      messages,
       maxSteps: args.maxSteps,
       maxOutputTokens: args.modelConfig.options?.max_tokens,
     });
@@ -212,7 +235,7 @@ export async function runAgentInSession(args: RunAgentInSessionArgs): Promise<Ru
   const result: AgentGenerateResult = await generate({
     modelConfig: args.modelConfig,
     system: args.system,
-    messages: [{ role: 'user', content: args.prompt }],
+    messages,
     tools: executionTools,
     maxSteps: args.maxSteps,
     toolChoice: args.toolChoice,

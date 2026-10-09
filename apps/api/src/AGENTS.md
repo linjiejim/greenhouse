@@ -170,6 +170,7 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - **消息先认领再处理**（`feishu_message_receipts` 主键）：飞书会重投，而处理一条消息 = 跑一轮 agent = 花钱且会回消息。
 - **回答必须走 `replyCardMarkdown`（reply）而不是新发一条**：只有 reply 才让用户后续的「回复」保持在同一条链上、`root_id` 稳定；新发一条会开新链，用户每回复一次就换一个会话。
 - 执行复用 `runAgentInSession`（与定时任务、spawn 同一个 runner），`usageContext.caller='feishu-bot'` 归属发消息的用户、计入其月度配额。`channel='feishu'` 的会话**照常出现在会话列表里**——它是用户亲自参与的真实对话，与 workflow 那种引擎产物不同。
+- 回复即延续要带上文：`priorMessages` 用 chat 同一套投影与 token 预算。**只给会话主人回放**——群里别的绑定成员回复同一条链也落进这个会话，而主人可能在 Web 上接着聊过，那些轮次没发到群里，不能经别人的提问带进群。护栏 `tests/api/feishu-bot-history.db.test.ts`。
 - 长连接连不上只 `logger.warn`，**绝不拖垮主 API**（与 Mission 预检失败同款姿态）。
 
 ### Tasks（`user_prompts` + `/api/prompts` + `task_capture`）
