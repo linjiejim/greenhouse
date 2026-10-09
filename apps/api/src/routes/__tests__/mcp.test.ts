@@ -17,7 +17,7 @@ vi.mock('@greenhouse/db', async (importOriginal) => {
   return { ...actual, getDb: () => ({ apiAudit: { record: async () => {} } }) };
 });
 
-import { buildMcpServer, toMcpInputSchema } from '../mcp.js';
+import { buildMcpServer, toMcpAnnotations, toMcpInputSchema } from '../mcp.js';
 import type { ToolRegistry } from '../../agent.js';
 import type { ProxyToolManifestEntry } from '../../agent-runtime/tool-proxy.js';
 
@@ -80,8 +80,18 @@ describe('MCP server — tools/list', () => {
     const read = tools.find((t) => t.name === 'project_query')!;
     expect((read.inputSchema as { properties?: Record<string, unknown> }).properties?.confirm).toBeUndefined();
 
+    // Annotated the MCP way, so clients (Greenhouse's own connectors among them)
+    // run reads without asking and writes only after the user agrees.
+    expect(read.annotations?.readOnlyHint).toBe(true);
+    expect(write.annotations?.readOnlyHint).toBe(false);
+
     await client.close();
     await server.close();
+  });
+
+  it('never advertises image generation as read-only (it spends money and stores a file)', () => {
+    expect(toMcpAnnotations({ id: 'generate_image', mutating: false })).toEqual({ readOnlyHint: false });
+    expect(toMcpAnnotations({ id: 'knowledge_query', mutating: false })).toEqual({ readOnlyHint: true });
   });
 });
 
