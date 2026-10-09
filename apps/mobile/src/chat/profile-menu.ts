@@ -32,6 +32,16 @@ function fetchProfiles(): Promise<LocalizedProfile[]> {
   return inflight;
 }
 
+/** The agent catalog without a component (the widget snapshot): fresh from the server. */
+export function loadProfiles(): Promise<LocalizedProfile[]> {
+  return fetchProfiles();
+}
+
+/** The catalog as last fetched in this app run, or null. */
+export function cachedProfiles(): LocalizedProfile[] | null {
+  return cache;
+}
+
 /** The agent catalog (cached; refetched once per mount). */
 export function useProfiles(): LocalizedProfile[] | null {
   const [rows, setRows] = useState<LocalizedProfile[] | null>(cache);
