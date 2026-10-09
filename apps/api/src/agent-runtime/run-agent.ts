@@ -337,7 +337,7 @@ export function extractPipelineAndReferences(steps: any[]): {
     if (!step?.toolCalls) continue;
     for (const tc of step.toolCalls) {
       const toolName = (tc as any).toolName ?? 'unknown';
-      // AI SDK v6 names these `input`/`output` (v4 used `args`/`result`); the v4
+      // AI SDK v6+ names these `input`/`output` (v4 used `args`/`result`); the v4
       // names are kept as fallbacks so a version bump can't silently blank these.
       const toolArgs = (tc as any).input ?? (tc as any).args ?? {};
       const toolResult = step.toolResults?.find((tr: any) => tr.toolCallId === (tc as any).toolCallId);

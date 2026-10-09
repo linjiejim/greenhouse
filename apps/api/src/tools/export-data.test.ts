@@ -15,6 +15,7 @@ async function execute(tool: ReturnType<typeof createExportDataTool>, input: unk
   return (await tool.execute!(input as never, {
     toolCallId: 'export-data-test',
     messages: [],
+    context: {},
   })) as unknown as Record<string, unknown>;
 }
 

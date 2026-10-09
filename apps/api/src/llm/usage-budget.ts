@@ -159,7 +159,7 @@ function providerAttemptEstimate(options: Parameters<ProviderAttemptHook>[0]['op
 }
 
 /**
- * Hard admission at the concrete LanguageModelV3 attempt boundary.
+ * Hard admission at the concrete LanguageModelV4 attempt boundary.
  *
  * AI SDK retries, tool-loop steps and registry fallbacks all cross this seam,
  * so every actual provider I/O gets a fresh atomic user/org/provider reserve.

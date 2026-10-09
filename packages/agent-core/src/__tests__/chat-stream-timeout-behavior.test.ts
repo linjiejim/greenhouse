@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { streamText } from 'ai';
-import type { LanguageModelV3, LanguageModelV3StreamPart } from '@ai-sdk/provider';
+import type { LanguageModelV4, LanguageModelV4StreamPart } from '@ai-sdk/provider';
 
-function createIdleAfterPartialTextModel(): LanguageModelV3 {
+function createIdleAfterPartialTextModel(): LanguageModelV4 {
   return {
-    specificationVersion: 'v3',
+    specificationVersion: 'v4',
     provider: 'timeout-test',
     modelId: 'idle-after-partial-text',
     supportedUrls: {},
@@ -12,7 +12,7 @@ function createIdleAfterPartialTextModel(): LanguageModelV3 {
       throw new Error('not used');
     },
     async doStream(options) {
-      const stream = new ReadableStream<LanguageModelV3StreamPart>({
+      const stream = new ReadableStream<LanguageModelV4StreamPart>({
         start(controller) {
           controller.enqueue({ type: 'stream-start', warnings: [] });
           controller.enqueue({ type: 'text-start', id: 'text-1' });
@@ -42,7 +42,7 @@ describe('AI SDK idle-chunk timeout behavior', () => {
     });
     const parts: Array<{ type: string; text?: string }> = [];
 
-    for await (const part of result.fullStream) {
+    for await (const part of result.stream) {
       parts.push({
         type: part.type,
         ...(part.type === 'text-delta' ? { text: part.text } : {}),

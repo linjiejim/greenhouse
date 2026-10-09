@@ -14,27 +14,30 @@
  */
 
 import { streamText } from 'ai';
-import type { StreamTextResult, ToolSet } from 'ai';
 import type { DsmlRecoveryEvent } from './dsml-interceptor.js';
 import { resolvesToDeepSeek, type ProviderAttemptHook } from './model.js';
 import { prepareAgentLoop, type AgentLoopInput, type EngineProfile } from './agent-loop.js';
 import {
-  addUsage,
-  emptyUsageTotals,
   finalAnswerParts,
   FINAL_ANSWER_MAX_ATTEMPTS,
   requiresFinalAnswerGuarantee,
   type FinalAnswerStreamFactory,
-  type UsageTotals,
 } from './final-answer.js';
-import type { TimeContextOption } from './loop-shared.js';
+import {
+  addUsage,
+  emptyUsageTotals,
+  usageTotalsFrom,
+  type AgentStreamResult,
+  type TimeContextOption,
+  type UsageTotals,
+} from './loop-shared.js';
 import type { EngineMessage } from './time-context.js';
 import type { PipelineStep, Reference } from '@greenhouse/types/session';
 import { toErrorMessage } from '@greenhouse/utils/error';
 
 export { CHAT_STREAM_TIMEOUT } from './loop-shared.js';
 export { FINAL_ANSWER_MAX_ATTEMPTS, requiresFinalAnswerGuarantee };
-export type { EngineProfile };
+export type { AgentStreamResult, EngineProfile };
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -116,7 +119,7 @@ export function summarizeOutput(toolName: string, output: Record<string, unknown
  * The caller (route) is responsible for iterating the stream and persisting results.
  */
 export async function createChatStreamAsync(input: ChatEngineInput): Promise<{
-  streamResult: StreamTextResult<ToolSet, never>;
+  streamResult: AgentStreamResult;
   dsmlRecoveries: DsmlRecoveryEvent[];
   startTime: number;
   /** Registry id when the model came from the catalog — see PreparedAgentLoop.modelId. */
@@ -143,7 +146,7 @@ const finalAnswerUsageByPrimary = new WeakMap<object, UsageTotals>();
  * This is the streaming host's seam for the DeepSeek-only failure mode where
  * the agent loop exhausts its tool budget (or leaks a DSML call on the forced
  * `toolChoice:'none'` final step) and emits no text (see final-answer.ts).
- * Hosts iterate THIS instead of `streamResult.fullStream` — the only line they
+ * Hosts iterate THIS instead of `streamResult.stream` — the only line they
  * change.
  *
  * Mechanics: pass every part through untouched but hold back the terminal
@@ -152,7 +155,7 @@ const finalAnswerUsageByPrimary = new WeakMap<object, UsageTotals>();
  * need no special-casing) before finally emitting `finish`.
  */
 export async function* withFinalAnswerGuarantee(
-  streamResult: StreamTextResult<ToolSet, never>,
+  streamResult: AgentStreamResult,
   ctx: {
     profile: EngineProfile;
     systemPrompt: string;
@@ -167,7 +170,7 @@ export async function* withFinalAnswerGuarantee(
   // Only DeepSeek leaks DSML / loops to an empty answer; everything else streams
   // through untouched (and the workaround stays trivially removable).
   if (!resolvesToDeepSeek(ctx.profile.model)) {
-    yield* streamResult.fullStream as AsyncIterable<any>;
+    yield* streamResult.stream as AsyncIterable<any>;
     return;
   }
 
@@ -176,7 +179,7 @@ export async function* withFinalAnswerGuarantee(
   let sawAbort = false;
   let finishPart: any = null;
 
-  for await (const part of streamResult.fullStream as AsyncIterable<any>) {
+  for await (const part of streamResult.stream as AsyncIterable<any>) {
     if (part.type === 'text-delta' && part.text) sawText = true;
     else if (part.type === 'tool-result') toolRan = true;
     else if (part.type === 'abort') sawAbort = true;
@@ -192,7 +195,7 @@ export async function* withFinalAnswerGuarantee(
   if (!sawText && toolRan && !sawAbort) {
     const extraUsage = emptyUsageTotals();
     finalAnswerUsageByPrimary.set(streamResult, extraUsage);
-    const gatheredMessages = (await Promise.resolve(streamResult.response).catch(() => null))?.messages ?? [];
+    const gatheredMessages = (await Promise.resolve(streamResult.responseMessages).catch(() => null)) ?? [];
     yield* finalAnswerParts(
       {
         profile: ctx.profile,
@@ -351,32 +354,35 @@ export function processStreamPart(part: any, collectors: StreamCollectors): void
  * Call after streaming is complete (or interrupted) to get the final result for persistence.
  */
 export async function buildEngineResult(
-  streamResult: StreamTextResult<ToolSet, never>,
+  streamResult: AgentStreamResult,
   collectors: StreamCollectors,
   dsmlRecoveries: DsmlRecoveryEvent[],
   startTime: number,
 ): Promise<ChatEngineResult> {
   const [finalText, finalUsage, finalReasoningText, finishReason] = await Promise.all([
     Promise.resolve(streamResult.text).catch(() => ''),
-    Promise.resolve(streamResult.totalUsage).catch(() => null),
-    Promise.resolve(streamResult.reasoningText).catch(() => undefined),
+    // AI SDK 7: `usage` is the whole loop's total (v6's `totalUsage`).
+    Promise.resolve(streamResult.usage).catch(() => null),
+    Promise.resolve(streamResult.finalStep)
+      .then((step) => step.reasoningText)
+      .catch(() => undefined),
     Promise.resolve(streamResult.finishReason).catch(() => undefined),
   ]);
 
   const durationMs = Date.now() - startTime;
   const textToUse = finalText || collectors.fullText;
-  const usage = finalUsage as any;
+  const usage = usageTotalsFrom(finalUsage);
   const finalAnswerUsage = finalAnswerUsageByPrimary.get(streamResult) ?? emptyUsageTotals();
 
   return {
     text: textToUse,
-    reasoningText: collectors.reasoningText || (finalReasoningText as string) || undefined,
+    reasoningText: collectors.reasoningText || finalReasoningText || undefined,
     finishReason,
     usage: {
-      inputTokens: (usage?.inputTokens ?? 0) + finalAnswerUsage.inputTokens,
-      outputTokens: (usage?.outputTokens ?? 0) + finalAnswerUsage.outputTokens,
-      cachedInputTokens: (usage?.cachedInputTokens ?? 0) + finalAnswerUsage.cachedInputTokens,
-      reasoningTokens: (usage?.reasoningTokens ?? 0) + finalAnswerUsage.reasoningTokens,
+      inputTokens: usage.inputTokens + finalAnswerUsage.inputTokens,
+      outputTokens: usage.outputTokens + finalAnswerUsage.outputTokens,
+      cachedInputTokens: usage.cachedInputTokens + finalAnswerUsage.cachedInputTokens,
+      reasoningTokens: usage.reasoningTokens + finalAnswerUsage.reasoningTokens,
     },
     pipelineSteps: collectors.pipelineSteps,
     references: [...collectors.referencesMap.values()],

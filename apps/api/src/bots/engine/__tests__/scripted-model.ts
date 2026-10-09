@@ -2,7 +2,7 @@
  * A scripted model for Bots engine tests: each Bot (recognised by its name in
  * the system prompt) plays a queue of turns; each turn is a list of steps
  * (text and/or tool calls). Runs the REAL `streamText` loop through
- * MockLanguageModelV3, so tools execute and stop conditions fire.
+ * MockLanguageModelV4, so tools execute and stop conditions fire.
  *
  * The `streamText` wiring below REPRODUCES the shared loop assembly
  * (`prepareAgentLoop` in packages/agent-core/src/agent-loop.ts) — step cap from `maxStepsOverride`
@@ -12,8 +12,8 @@
  * agent-core.
  */
 
-import { simulateReadableStream, stepCountIs, streamText, type ToolSet } from 'ai';
-import { MockLanguageModelV3 } from 'ai/test';
+import { isStepCount, simulateReadableStream, streamText, type ToolSet } from 'ai';
+import { MockLanguageModelV4 } from 'ai/test';
 import type { ChatEngineInput } from '@greenhouse/agent-core';
 import type { BotsEngineDeps } from '../deps.js';
 
@@ -83,7 +83,7 @@ export function scriptedDeps(script: BotScript, captured: CapturedTurn[] = []): 
       captured.push({ bot, input });
       const steps = queues.get(bot)?.shift() ?? [{ text: `(${bot} has no script)` }];
       let index = 0;
-      const model = new MockLanguageModelV3({
+      const model = new MockLanguageModelV4({
         doStream: async () => {
           const step = steps[Math.min(index, steps.length - 1)]!;
           index += 1;
@@ -95,10 +95,10 @@ export function scriptedDeps(script: BotScript, captured: CapturedTurn[] = []): 
       const maxSteps = input.maxStepsOverride ?? 30;
       const streamResult = streamText({
         model,
-        system: input.systemPrompt,
+        instructions: input.systemPrompt,
         messages: input.messages as never,
         tools: input.tools as ToolSet,
-        stopWhen: [stepCountIs(maxSteps), ...(input.extraStopWhen ?? [])],
+        stopWhen: [isStepCount(maxSteps), ...(input.extraStopWhen ?? [])],
         maxRetries: 0,
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
         prepareStep: ({ stepNumber, messages }) => {

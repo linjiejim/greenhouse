@@ -1,25 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import type { StreamTextResult, ToolSet } from 'ai';
-import { buildEngineResult, createCollectors, processStreamPart, withFinalAnswerGuarantee } from './chat-engine.js';
+import {
+  buildEngineResult,
+  createCollectors,
+  processStreamPart,
+  withFinalAnswerGuarantee,
+  type AgentStreamResult,
+} from './chat-engine.js';
 
 function fakeStream(
   parts: readonly Record<string, unknown>[],
   usage: Record<string, number>,
   overrides: Record<string, unknown> = {},
-): StreamTextResult<ToolSet, never> {
+): AgentStreamResult {
   return {
-    fullStream: {
+    stream: {
       async *[Symbol.asyncIterator]() {
         for (const part of parts) yield part;
       },
     },
-    totalUsage: Promise.resolve(usage),
+    usage: Promise.resolve(usage),
     text: Promise.resolve(''),
-    reasoningText: Promise.resolve(undefined),
+    finalStep: Promise.resolve({ reasoningText: undefined }),
     finishReason: Promise.resolve('tool-calls'),
-    response: Promise.resolve({ messages: [] }),
+    responseMessages: Promise.resolve([]),
     ...overrides,
-  } as unknown as StreamTextResult<ToolSet, never>;
+  } as unknown as AgentStreamResult;
 }
 
 describe('DeepSeek final-answer usage accounting', () => {

@@ -12,15 +12,20 @@
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { getDb } from '@greenhouse/db';
-import { withFinalAnswerGuarantee, processStreamPart, buildEngineResult } from '@greenhouse/agent-core';
+import {
+  withFinalAnswerGuarantee,
+  processStreamPart,
+  buildEngineResult,
+  usageTotalsFrom,
+} from '@greenhouse/agent-core';
 import type {
+  AgentStreamResult,
   ChatEngineResult,
   StreamCollectors,
   DsmlRecoveryEvent,
   EngineMessage,
   ProviderAttemptHook,
 } from '@greenhouse/agent-core';
-import type { StreamTextResult, ToolSet } from 'ai';
 import type { ClientActionBridge } from '../tools/client-action-bridge.js';
 import type { AgentProfile } from '../profiles/profile.js';
 import { persistChatResult } from './persist.js';
@@ -89,6 +94,15 @@ export async function streamRunToResponse(run: ChatRun, stream: NdjsonStream, af
 
 // ─── Stream part → wire event ────────────────────────────
 
+function wireUsage(usage: unknown): { inputTokens: number; outputTokens: number; cachedInputTokens: number } {
+  const totals = usageTotalsFrom(usage);
+  return {
+    inputTokens: totals.inputTokens,
+    outputTokens: totals.outputTokens,
+    cachedInputTokens: totals.cachedInputTokens,
+  };
+}
+
 /**
  * Map one engine stream part to the NDJSON wire event the web consumes, or
  * null for parts that never reach the wire. Shared by the single-agent pump
@@ -121,10 +135,13 @@ export function streamPartToWireEvent(
       };
     case 'start-step':
       return { type: 'step-start' };
+    // The wire carries the contract's flat usage (packages/types FinishEvent),
+    // never the SDK object: AI SDK 7 moved cached tokens under
+    // inputTokenDetails, and passing it through would silently drop them.
     case 'finish-step':
-      return { type: 'step-finish', finishReason: part.finishReason, usage: part.usage };
+      return { type: 'step-finish', finishReason: part.finishReason, usage: wireUsage(part.usage) };
     case 'finish':
-      return { type: 'finish', finishReason: part.finishReason, usage: part.totalUsage };
+      return { type: 'finish', finishReason: part.finishReason, usage: wireUsage(part.totalUsage) };
     case 'error':
     case 'abort':
       return { type: 'error', error: interruptionText() };
@@ -137,7 +154,7 @@ export function streamPartToWireEvent(
 
 export interface ChatTurnArgs {
   run: ChatRun;
-  streamResult: StreamTextResult<ToolSet, never>;
+  streamResult: AgentStreamResult;
   collectors: StreamCollectors;
   dsmlRecoveries: DsmlRecoveryEvent[];
   startTime: number;
@@ -246,9 +263,9 @@ export async function pumpChatTurn(args: ChatTurnArgs): Promise<void> {
     run.stopReason === 'user' ? chatStopNotice(userLocale) : (admissionNotice ?? chatInterruptionNotice(userLocale));
 
   try {
-    // withFinalAnswerGuarantee == streamResult.fullStream, except it splices
+    // withFinalAnswerGuarantee == streamResult.stream, except it splices
     // in a final answer (and reorders `finish` after it) when a DeepSeek run
-    // ends with no text. Swap back to streamResult.fullStream to remove.
+    // ends with no text. Swap back to streamResult.stream to remove.
     for await (const part of withFinalAnswerGuarantee(streamResult, {
       profile,
       systemPrompt,
@@ -534,7 +551,7 @@ export function chatStopNotice(locale?: string): string {
  */
 export function usageBudgetNotice(err: unknown, locale?: string): string | null {
   // The AI SDK wraps provider-attempt failures (e.g. in RetryError) before they
-  // reach fullStream, so match on the cause chain rather than the top value.
+  // reach the stream, so match on the cause chain rather than the top value.
   let admission: UsageBudgetAdmissionError | null = null;
   let cursor: unknown = err;
   for (let depth = 0; cursor && depth < 4; depth++) {

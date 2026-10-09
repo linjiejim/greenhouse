@@ -102,7 +102,7 @@ export async function generateSessionTitle(
 
     const result = await generateText({
       model,
-      system: SYSTEM_PROMPT,
+      instructions: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3,
       maxOutputTokens: 60,

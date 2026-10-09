@@ -1,8 +1,9 @@
 /**
  * Runtime ToolCall evidence at the actual AI SDK tool execution boundary.
  *
- * AI SDK 6.0.176 does await `experimental_onToolCallStart` / `Finish`, but its
- * internal `notify()` deliberately catches and ignores callback failures. Those
+ * AI SDK awaits its tool-execution callbacks (v6 `experimental_onToolCallStart` /
+ * `Finish`, v7 `onToolExecutionStart` / `End`), but its internal `notify()`
+ * deliberately catches and ignores callback failures. Those
  * callbacks therefore cannot be an admission fence: a failed DB write would
  * still let `tool.execute()` run. We wrap the SDK `execute` function instead.
  * The SDK awaits that function, so the durable `running` row is a hard

@@ -22,7 +22,7 @@
  */
 
 import { streamText, wrapLanguageModel } from 'ai';
-import type { StreamTextResult, ToolSet, ModelMessage } from 'ai';
+import type { ModelMessage } from 'ai';
 import { createDsmlInterceptor } from './dsml-interceptor.js';
 import {
   createModelFromConfig,
@@ -32,7 +32,13 @@ import {
   type ModelConfig,
   type ProviderAttemptHook,
 } from './model.js';
-import { applyTimeContext, CHAT_STREAM_TIMEOUT, type EngineProfile, type TimeContextOption } from './loop-shared.js';
+import {
+  applyTimeContext,
+  CHAT_STREAM_TIMEOUT,
+  type AgentStreamResult,
+  type EngineProfile,
+  type TimeContextOption,
+} from './loop-shared.js';
 import type { EngineMessage } from './time-context.js';
 import { logger } from '@greenhouse/utils/logger';
 
@@ -48,31 +54,7 @@ export interface FinalAnswerInput {
   timeContext?: TimeContextOption;
 }
 
-export type FinalAnswerStreamFactory = (input: FinalAnswerInput) => Promise<StreamTextResult<ToolSet, never>>;
-
-export interface UsageTotals {
-  inputTokens: number;
-  outputTokens: number;
-  cachedInputTokens: number;
-  reasoningTokens: number;
-}
-
-export function emptyUsageTotals(): UsageTotals {
-  return { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, reasoningTokens: 0 };
-}
-
-export function addUsage(target: UsageTotals, usage: unknown): void {
-  if (!usage || typeof usage !== 'object') return;
-  const value = usage as Record<string, unknown>;
-  const add = (key: keyof UsageTotals) => {
-    const amount = value[key];
-    if (typeof amount === 'number' && Number.isFinite(amount) && amount > 0) target[key] += amount;
-  };
-  add('inputTokens');
-  add('outputTokens');
-  add('cachedInputTokens');
-  add('reasoningTokens');
-}
+export type FinalAnswerStreamFactory = (input: FinalAnswerInput) => Promise<AgentStreamResult>;
 
 /** Flatten the prior turn's tool-result messages into a plain-text evidence digest. */
 function digestToolResults(priorTurn: ModelMessage[]): string {
@@ -96,7 +78,7 @@ function digestToolResults(priorTurn: ModelMessage[]): string {
   return blocks.join('\n\n').slice(0, MAX_TOTAL);
 }
 
-async function createFinalAnswerStreamAsync(input: FinalAnswerInput): Promise<StreamTextResult<ToolSet, never>> {
+async function createFinalAnswerStreamAsync(input: FinalAnswerInput): Promise<AgentStreamResult> {
   const { profile, systemPrompt, baseMessages, gatheredMessages, providerAttemptHook } = input;
 
   const modelConfig = resolveModelConfig({
@@ -131,7 +113,7 @@ async function createFinalAnswerStreamAsync(input: FinalAnswerInput): Promise<St
 
   return streamText({
     model,
-    system: systemPrompt,
+    instructions: systemPrompt,
     messages,
     tools: {},
     toolChoice: 'none',
@@ -158,10 +140,10 @@ export async function* finalAnswerParts(
 ): AsyncGenerator<{ type: 'text-delta'; text: string }> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let produced = '';
-    let fallbackStream: StreamTextResult<ToolSet, never> | undefined;
+    let fallbackStream: AgentStreamResult | undefined;
     try {
       fallbackStream = await createStream(input);
-      for await (const part of fallbackStream.fullStream) {
+      for await (const part of fallbackStream.stream) {
         if (part.type === 'text-delta' && part.text) {
           produced += part.text;
           yield { type: 'text-delta', text: part.text };
@@ -171,7 +153,7 @@ export async function* finalAnswerParts(
       logger.warn('[agent-loop] final-answer attempt failed', { attempt, err: String(err) });
     } finally {
       if (fallbackStream) {
-        const usage = await Promise.resolve(fallbackStream.totalUsage).catch(() => null);
+        const usage = await Promise.resolve(fallbackStream.usage).catch(() => null);
         onUsage(usage);
       }
     }

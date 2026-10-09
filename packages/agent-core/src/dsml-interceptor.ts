@@ -35,7 +35,7 @@ import { logger } from '@greenhouse/utils/logger';
 
 /**
  * Minimal stream part type for the DSML interceptor.
- * We use `any` internally because LanguageModelV3StreamPart is a complex
+ * We use `any` internally because LanguageModelV4StreamPart is a complex
  * discriminated union not re-exported by the `ai` package. Runtime type
  * checks (part.type === '...') provide the actual safety.
  */
@@ -484,7 +484,7 @@ function couldBeDsmlStart(tail: string): boolean {
  */
 export function createDsmlInterceptor(onRecovered?: (event: DsmlRecoveryEvent) => void): LanguageModelMiddleware {
   return {
-    specificationVersion: 'v3',
+    specificationVersion: 'v4',
     wrapStream: async ({ doStream, params }) => {
       const result = await doStream();
       // The SDK runs the final answer step with toolChoice 'none' to force a

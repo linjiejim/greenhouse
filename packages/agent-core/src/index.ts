@@ -36,7 +36,15 @@ export {
   FINAL_ANSWER_MAX_ATTEMPTS,
   requiresFinalAnswerGuarantee,
 } from './chat-engine.js';
-export type { ChatEngineInput, ChatEngineResult, EngineProfile, StreamCollectors } from './chat-engine.js';
+export type {
+  AgentStreamResult,
+  ChatEngineInput,
+  ChatEngineResult,
+  EngineProfile,
+  StreamCollectors,
+} from './chat-engine.js';
+export { usageTotalsFrom } from './loop-shared.js';
+export type { UsageTotals } from './loop-shared.js';
 
 // Model layer
 export {

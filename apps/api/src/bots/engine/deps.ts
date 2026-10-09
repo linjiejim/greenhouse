@@ -3,7 +3,7 @@
  *
  * Everything that talks to a model goes through here, so engine tests can run
  * the real floor controller, tools, persistence and projection against a
- * scripted model (`ai/test` MockLanguageModelV3 through `streamText`), with no
+ * scripted model (`ai/test` MockLanguageModelV4 through `streamText`), with no
  * provider and no network.
  */
 
@@ -41,7 +41,7 @@ async function summarizeWithModel(input: SummarizeInput): Promise<string> {
   const model = await createModelFromConfig(input.model, { onProviderAttempt: hook });
   const result = await generateText({
     model,
-    system: input.system,
+    instructions: input.system,
     messages: [{ role: 'user', content: input.prompt }],
     temperature: 0.2,
     // A full digest (6 goals, 20 decisions, 30 facts, 15 + 15 items) is several

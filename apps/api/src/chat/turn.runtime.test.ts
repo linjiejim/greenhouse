@@ -11,8 +11,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@greenhouse/db', () => ({ getDb: () => ({}) }));
 
-vi.mock('@greenhouse/agent-core', () => ({
-  withFinalAnswerGuarantee: (streamResult: { fullStream: AsyncIterable<unknown> }) => streamResult.fullStream,
+vi.mock('@greenhouse/agent-core', async (importOriginal) => ({
+  // The real wire-usage projection: it is the contract under test, not a seam.
+  usageTotalsFrom: (await importOriginal<typeof import('@greenhouse/agent-core')>()).usageTotalsFrom,
+  withFinalAnswerGuarantee: (streamResult: { stream: AsyncIterable<unknown> }) => streamResult.stream,
   processStreamPart: (part: any, collectors: any) => {
     if (part.type === 'finish') collectors.receivedFinish = true;
     if (part.type === 'error') collectors.streamError = String(part.error ?? 'stream error');
@@ -70,12 +72,12 @@ function engineResult(overrides: Record<string, unknown> = {}) {
 }
 
 async function runPump(run: ChatRun, parts: unknown[]) {
-  async function* fullStream() {
+  async function* eventStream() {
     for (const part of parts) yield part;
   }
   await pumpChatTurn({
     run,
-    streamResult: { fullStream: fullStream(), steps: Promise.resolve([]) } as any,
+    streamResult: { stream: eventStream(), steps: Promise.resolve([]) } as any,
     collectors: collectors(),
     dsmlRecoveries: [],
     startTime: Date.now(),
@@ -161,7 +163,7 @@ describe('Chat turn Runtime settlement', () => {
     await runPump(run, [
       {
         type: 'error',
-        // The SDK wraps provider-attempt failures before they reach fullStream.
+        // The SDK wraps provider-attempt failures before they reach the stream.
         error: new Error('retry limit', {
           cause: new UsageBudgetAdmissionError(
             'Monthly token budget exceeded. Contact an administrator to increase the limit.',
