@@ -14,7 +14,7 @@
  * now — a host may differ in how it CONSUMES the loop, never in how it runs.
  */
 
-import { generateText, stepCountIs, wrapLanguageModel, NoSuchToolError } from 'ai';
+import { generateText, isStepCount, wrapLanguageModel, NoSuchToolError } from 'ai';
 import type { ModelMessage, StopCondition, ToolCallRepairFunction, ToolSet } from 'ai';
 import { createDsmlInterceptor, type DsmlRecoveryEvent } from './dsml-interceptor.js';
 import { repairJsonArguments } from './repair-tool-json.js';
@@ -27,16 +27,17 @@ import {
   type ModelConfig,
   type ProviderAttemptHook,
 } from './model.js';
-import { applyTimeContext, CHAT_STREAM_TIMEOUT, type EngineProfile, type TimeContextOption } from './loop-shared.js';
-import type { EngineMessage } from './time-context.js';
 import {
   addUsage,
+  applyTimeContext,
+  CHAT_STREAM_TIMEOUT,
   emptyUsageTotals,
-  finalAnswerParts,
-  requiresFinalAnswerGuarantee,
-  type FinalAnswerStreamFactory,
+  type EngineProfile,
+  type TimeContextOption,
   type UsageTotals,
-} from './final-answer.js';
+} from './loop-shared.js';
+import type { EngineMessage } from './time-context.js';
+import { finalAnswerParts, requiresFinalAnswerGuarantee, type FinalAnswerStreamFactory } from './final-answer.js';
 import { logger } from '@greenhouse/utils/logger';
 
 export { CHAT_STREAM_TIMEOUT };
@@ -102,14 +103,14 @@ type GenerateParams = Parameters<typeof generateText>[0];
 /** The settings both `streamText` and `generateText` receive, verbatim. */
 export interface AgentLoopSettings {
   model: GenerateParams['model'];
-  system: string;
+  instructions: string;
   messages: ModelMessage[];
   tools: ToolSet;
   toolChoice: GenerateParams['toolChoice'];
   stopWhen: GenerateParams['stopWhen'];
   timeout: GenerateParams['timeout'];
   prepareStep: GenerateParams['prepareStep'];
-  experimental_repairToolCall: ToolCallRepairFunction<ToolSet>;
+  repairToolCall: ToolCallRepairFunction<ToolSet>;
   providerOptions?: GenerateParams['providerOptions'];
   temperature?: number;
   maxOutputTokens?: number;
@@ -179,18 +180,18 @@ export async function prepareAgentLoop(input: AgentLoopInput): Promise<PreparedA
   const maxSteps = input.maxStepsOverride ?? profile.max_steps ?? 12;
 
   // Sampling params: request override wins, then the catalog/profile options.
-  // AI SDK v6 names the output cap `maxOutputTokens` — the old `maxTokens`
-  // spread was silently dropped.
+  // The SDK names the output cap `maxOutputTokens` — an old `maxTokens` spread
+  // was silently dropped once.
   const temperature = temperatureOverride ?? modelConfig.options?.temperature;
   const maxOutputTokens = maxTokensOverride ?? modelConfig.options?.max_tokens;
 
   const settings: AgentLoopSettings = {
     model,
-    system: systemPrompt,
+    instructions: systemPrompt,
     messages: applyTimeContext(input.messages, input.timeContext),
     tools: tools as ToolSet,
-    experimental_repairToolCall: createToolCallRepair(input.sessionId),
-    stopWhen: input.extraStopWhen?.length ? [stepCountIs(maxSteps), ...input.extraStopWhen] : stepCountIs(maxSteps),
+    repairToolCall: createToolCallRepair(input.sessionId),
+    stopWhen: input.extraStopWhen?.length ? [isStepCount(maxSteps), ...input.extraStopWhen] : isStepCount(maxSteps),
     timeout: CHAT_STREAM_TIMEOUT,
     toolChoice: (profile.tool_choice ?? 'auto') as GenerateParams['toolChoice'],
     // Force a final text answer on the last step so the run never ends
@@ -292,8 +293,8 @@ export async function runAgentLoop(
   const result = await generateText(prepared.settings);
 
   const usage = emptyUsageTotals();
-  // totalUsage spans every step of the loop; `usage` is only the final step.
-  addUsage(usage, result.totalUsage ?? result.usage);
+  // AI SDK 7: `usage` spans every step of the loop (v6 called this totalUsage).
+  addUsage(usage, result.usage);
 
   let text = result.text ?? '';
   let finalAnswerRecovered = false;
@@ -306,7 +307,7 @@ export async function runAgentLoop(
         profile: { ...input.profile, model: prepared.modelConfig },
         systemPrompt: input.systemPrompt,
         baseMessages: input.messages,
-        gatheredMessages: result.response.messages,
+        gatheredMessages: result.responseMessages,
         ...(input.providerAttemptHook ? { providerAttemptHook: input.providerAttemptHook } : {}),
         ...(input.timeContext !== undefined ? { timeContext: input.timeContext } : {}),
       },
@@ -328,7 +329,7 @@ export async function runAgentLoop(
     finishReason: result.finishReason,
     usage,
     steps: result.steps,
-    responseMessages: result.response.messages,
+    responseMessages: result.responseMessages,
     modelId: prepared.modelId,
     dsmlRecoveries: prepared.dsmlRecoveries,
     finalAnswerRecovered,

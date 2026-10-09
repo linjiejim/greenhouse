@@ -67,7 +67,7 @@ const defaultGenerate: OneShotGenerate = async ({
   const providerOptions = buildProviderOptions(modelConfig);
   const result = await generateText({
     model,
-    ...(system ? { system } : {}),
+    ...(system ? { instructions: system } : {}),
     messages: [{ role: 'user', content: prompt }],
     maxOutputTokens,
     maxRetries,

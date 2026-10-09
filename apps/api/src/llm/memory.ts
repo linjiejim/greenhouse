@@ -282,7 +282,7 @@ async function consolidatePartition(userId: string, botId: string | null): Promi
 
   const result = await generateText({
     model,
-    system: CONSOLIDATION_SYSTEM_PROMPT,
+    instructions: CONSOLIDATION_SYSTEM_PROMPT,
     messages,
     temperature: 0.1,
     maxOutputTokens: 1500,

@@ -42,10 +42,11 @@ const { createAnalyzeImageTool } = await import('../analyze-image.js');
 async function analyze(imageId: string, ctx: { sessionId?: string } = {}) {
   const tool = createAnalyzeImageTool({ db: {} as DatabaseProvider, userId: 'u1', ...ctx });
   // The AI SDK types `execute` as optional; it is always present on our tools.
-  return (await tool.execute!({ image_id: imageId } as never, { toolCallId: 't1', messages: [] })) as Record<
-    string,
-    unknown
-  >;
+  return (await tool.execute!({ image_id: imageId } as never, {
+    toolCallId: 't1',
+    messages: [],
+    context: {},
+  })) as Record<string, unknown>;
 }
 
 /** A resolved conversation file, shaped as `resolveConversationFiles` returns it. */

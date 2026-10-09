@@ -589,7 +589,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // Runtime evidence belongs at the actual AI SDK execute boundary.
           // The wrapper awaits a durable `running` ToolCall before invoking the
           // tool, and settles exact output/error before releasing it to the
-          // model; the later fullStream events remain UI/transcript data only.
+          // model; the later stream events remain UI/transcript data only.
           const executionToolRegistry = runtimeTrace
             ? instrumentRuntimeTools(tools, {
                 db: getDb(),

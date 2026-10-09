@@ -37,6 +37,7 @@ describe('chat stream lifecycle bounds', () => {
     expect(CHAT_STREAM_TIMEOUT).toEqual({
       totalMs: 15 * 60_000,
       stepMs: 4 * 60_000,
+      firstChunkMs: 2 * 60_000,
       chunkMs: 2 * 60_000,
     });
     expect(mocks.streamText).toHaveBeenCalledWith(

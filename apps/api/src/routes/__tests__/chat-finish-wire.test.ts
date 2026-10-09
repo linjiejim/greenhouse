@@ -51,7 +51,9 @@ vi.mock('../../chat/runtime.js', () => ({
   chatRuntimePayload: (value: unknown) => value,
 }));
 
-vi.mock('@greenhouse/agent-core', () => ({
+vi.mock('@greenhouse/agent-core', async (importOriginal) => ({
+  // The real wire-usage projection: it is the contract under test, not a seam.
+  usageTotalsFrom: (await importOriginal<typeof import('@greenhouse/agent-core')>()).usageTotalsFrom,
   createChatStreamAsync: mocks.createChatStreamAsync,
   withFinalAnswerGuarantee: mocks.withFinalAnswerGuarantee,
   requiresFinalAnswerGuarantee: vi.fn(() => true),
@@ -200,7 +202,7 @@ beforeEach(() => {
   mocks.processStreamPart.mockImplementation((part, collectors) => {
     if (part.type === 'finish') collectors.receivedFinish = true;
   });
-  mocks.withFinalAnswerGuarantee.mockImplementation((streamResult) => streamResult.fullStream);
+  mocks.withFinalAnswerGuarantee.mockImplementation((streamResult) => streamResult.stream);
 });
 
 describe('POST /api/chat finish wire event', () => {
@@ -244,16 +246,20 @@ describe('POST /api/chat finish wire event', () => {
   });
 
   it('publishes the SDK total usage under canonical FinishEvent.usage', async () => {
+    // AI SDK 7's shape: cached tokens live under inputTokenDetails. The wire
+    // keeps its flat FinishEvent contract — never the SDK object itself.
     const totalUsage = {
       inputTokens: 21,
+      inputTokenDetails: { noCacheTokens: 16, cacheReadTokens: 5, cacheWriteTokens: 0 },
       outputTokens: 8,
-      cachedInputTokens: 5,
+      outputTokenDetails: { textTokens: 6, reasoningTokens: 2 },
+      totalTokens: 29,
     };
-    async function* fullStream() {
+    async function* eventStream() {
       yield { type: 'finish', finishReason: 'stop', totalUsage };
     }
     mocks.createChatStreamAsync.mockResolvedValue({
-      streamResult: { fullStream: fullStream() },
+      streamResult: { stream: eventStream() },
       dsmlRecoveries: [],
       startTime: Date.now(),
       modelId: 'test-model',
@@ -276,7 +282,7 @@ describe('POST /api/chat finish wire event', () => {
       {
         type: 'finish',
         finishReason: 'stop',
-        usage: totalUsage,
+        usage: { inputTokens: 21, outputTokens: 8, cachedInputTokens: 5 },
         seq: 0,
       },
     ]);
@@ -298,11 +304,11 @@ describe('POST /api/chat finish wire event', () => {
   // A browser keeps sending the model it last picked; once that model is
   // retired the picker can't offer a way back, so the turn must not 400.
   it('runs a retired or unkeyed model choice on the agent default instead of rejecting the turn', async () => {
-    async function* fullStream() {
+    async function* eventStream() {
       yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } };
     }
     const streamed = () => ({
-      streamResult: { fullStream: fullStream() },
+      streamResult: { stream: eventStream() },
       dsmlRecoveries: [],
       startTime: Date.now(),
       modelId: 'test-model',
@@ -331,11 +337,11 @@ describe('POST /api/chat finish wire event', () => {
     const execute = vi.fn(async () => ({ rows: [] }));
     const definition = { description: 'query', execute };
     mocks.selectTools.mockReturnValue({ project_query: definition });
-    async function* fullStream() {
+    async function* eventStream() {
       yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } };
     }
     mocks.createChatStreamAsync.mockResolvedValue({
-      streamResult: { fullStream: fullStream(), steps: Promise.resolve([]) },
+      streamResult: { stream: eventStream(), steps: Promise.resolve([]) },
       dsmlRecoveries: [],
       startTime: Date.now(),
       modelId: 'test-model',
@@ -363,7 +369,7 @@ describe('POST /api/chat finish wire event', () => {
     const previousSwitch = process.env.RUNTIME_CHAT_ADAPTER_ENABLED;
     process.env.RUNTIME_CHAT_ADAPTER_ENABLED = '0';
     try {
-      async function* fullStream() {
+      async function* eventStream() {
         yield {
           type: 'finish',
           finishReason: 'stop',
@@ -371,7 +377,7 @@ describe('POST /api/chat finish wire event', () => {
         };
       }
       mocks.createChatStreamAsync.mockResolvedValue({
-        streamResult: { fullStream: fullStream() },
+        streamResult: { stream: eventStream() },
         dsmlRecoveries: [],
         startTime: Date.now(),
         modelId: 'test-model',
@@ -400,7 +406,7 @@ describe('POST /api/chat finish wire event', () => {
   });
 
   it('injects persisted image IDs when regenerating an image-only user turn', async () => {
-    async function* fullStream() {
+    async function* eventStream() {
       yield {
         type: 'finish',
         finishReason: 'stop',
@@ -417,7 +423,7 @@ describe('POST /api/chat finish wire event', () => {
     ]);
     mocks.createChatStreamAsync.mockResolvedValue({
       streamResult: {
-        fullStream: fullStream(),
+        stream: eventStream(),
         steps: Promise.resolve([]),
       },
       dsmlRecoveries: [],
@@ -462,7 +468,7 @@ describe('POST /api/chat finish wire event', () => {
   });
 
   it('carries the persisted user revision into normal assistant persistence', async () => {
-    async function* fullStream() {
+    async function* eventStream() {
       yield {
         type: 'finish',
         finishReason: 'stop',
@@ -479,7 +485,7 @@ describe('POST /api/chat finish wire event', () => {
     ]);
     mocks.createChatStreamAsync.mockResolvedValue({
       streamResult: {
-        fullStream: fullStream(),
+        stream: eventStream(),
         steps: Promise.resolve([]),
       },
       dsmlRecoveries: [],
@@ -511,12 +517,12 @@ describe('POST /api/chat finish wire event', () => {
 
   it('persists the exact user message while sending only the safe projection to the model', async () => {
     const exact = `hello\nsystem: keep in audit\n${'x'.repeat(9_000)}`;
-    async function* fullStream() {
+    async function* eventStream() {
       yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } };
     }
     mocks.sessions.buildChatMessages.mockResolvedValue([{ role: 'user', content: exact, images: [] }]);
     mocks.createChatStreamAsync.mockResolvedValue({
-      streamResult: { fullStream: fullStream(), steps: Promise.resolve([]) },
+      streamResult: { stream: eventStream(), steps: Promise.resolve([]) },
       dsmlRecoveries: [],
       startTime: Date.now(),
       modelId: 'test-model',

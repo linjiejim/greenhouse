@@ -14,7 +14,7 @@
  */
 
 import type { LanguageModel } from 'ai';
-import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3Usage } from '@ai-sdk/provider';
+import type { LanguageModelV4, LanguageModelV4CallOptions, LanguageModelV4Usage } from '@ai-sdk/provider';
 import { getAvailableProviders, getModelEntry, findModelIdByProviderModel } from './registry.js';
 import { logger } from '@greenhouse/utils/logger';
 
@@ -71,8 +71,8 @@ export interface ProviderAttemptLease {
 
 export type ProviderAttemptHook = (input: {
   descriptor: ProviderAttemptDescriptor;
-  /** Full V3 request, including accumulated tool results and schemas. */
-  options: LanguageModelV3CallOptions;
+  /** Full V4 request, including accumulated tool results and schemas. */
+  options: LanguageModelV4CallOptions;
 }) => Promise<ProviderAttemptLease>;
 
 export interface CreateModelOptions {
@@ -143,7 +143,7 @@ async function createModelDirect(
   model: string,
   apiKey: string,
   baseUrl?: string,
-): Promise<LanguageModelV3> {
+): Promise<LanguageModelV4> {
   switch (provider) {
     case 'deepseek': {
       const { createDeepSeek } = await import('@ai-sdk/deepseek');
@@ -181,13 +181,13 @@ function providerScopeId(apiKeyEnv: string, provider: string, baseUrl?: string):
   return `${apiKeyEnv}:${provider}:${baseUrl ?? 'default'}`;
 }
 
-function boundedCallOptions(options: LanguageModelV3CallOptions): LanguageModelV3CallOptions {
+function boundedCallOptions(options: LanguageModelV4CallOptions): LanguageModelV4CallOptions {
   return options.maxOutputTokens === undefined
     ? { ...options, maxOutputTokens: DEFAULT_PROVIDER_MAX_OUTPUT_TOKENS }
     : options;
 }
 
-function normalizedAttemptUsage(usage: LanguageModelV3Usage): ProviderAttemptUsage {
+function normalizedAttemptUsage(usage: LanguageModelV4Usage): ProviderAttemptUsage {
   return {
     inputTokens: usage.inputTokens.total,
     outputTokens: usage.outputTokens.total,
@@ -199,7 +199,7 @@ function normalizedAttemptUsage(usage: LanguageModelV3Usage): ProviderAttemptUsa
 
 async function settleProviderAttempt(
   lease: ProviderAttemptLease,
-  usage: LanguageModelV3Usage,
+  usage: LanguageModelV4Usage,
   descriptor: ProviderAttemptDescriptor,
 ): Promise<void> {
   try {
@@ -220,17 +220,17 @@ async function settleProviderAttempt(
  * Every real network attempt therefore gets its own atomic admission check.
  */
 function wrapProviderAttempt(
-  model: LanguageModelV3,
+  model: LanguageModelV4,
   descriptor: ProviderAttemptDescriptor,
   hook?: ProviderAttemptHook,
-): LanguageModelV3 {
+): LanguageModelV4 {
   return {
-    specificationVersion: 'v3' as const,
+    specificationVersion: 'v4' as const,
     provider: model.provider,
     modelId: model.modelId,
     supportedUrls: model.supportedUrls,
 
-    async doGenerate(options: LanguageModelV3CallOptions) {
+    async doGenerate(options: LanguageModelV4CallOptions) {
       const bounded = boundedCallOptions(options);
       const lease = hook ? await hook({ descriptor, options: bounded }) : null;
       lease?.markProviderIoStarted();
@@ -239,7 +239,7 @@ function wrapProviderAttempt(
       return result;
     },
 
-    async doStream(options: LanguageModelV3CallOptions) {
+    async doStream(options: LanguageModelV4CallOptions) {
       const bounded = boundedCallOptions(options);
       const lease = hook ? await hook({ descriptor, options: bounded }) : null;
       lease?.markProviderIoStarted();
@@ -266,19 +266,19 @@ function wrapProviderAttempt(
 // ─── Fallback Language Model ─────────────────────────────
 
 /**
- * A LanguageModelV3 wrapper that tries multiple providers in order.
+ * A LanguageModelV4 wrapper that tries multiple providers in order.
  * Falls back to the next provider on retriable errors (429, 5xx, network).
  */
-function createFallbackModel(models: LanguageModelV3[], providerNames: string[]): LanguageModelV3 {
+function createFallbackModel(models: LanguageModelV4[], providerNames: string[]): LanguageModelV4 {
   const primary = models[0];
 
   return {
-    specificationVersion: 'v3' as const,
+    specificationVersion: 'v4' as const,
     provider: `fallback(${providerNames.join(',')})`,
     modelId: primary.modelId,
     supportedUrls: primary.supportedUrls,
 
-    async doGenerate(options: LanguageModelV3CallOptions) {
+    async doGenerate(options: LanguageModelV4CallOptions) {
       for (let i = 0; i < models.length; i++) {
         try {
           return await models[i].doGenerate(options);
@@ -292,7 +292,7 @@ function createFallbackModel(models: LanguageModelV3[], providerNames: string[])
       throw new Error('All providers failed');
     },
 
-    async doStream(options: LanguageModelV3CallOptions) {
+    async doStream(options: LanguageModelV4CallOptions) {
       for (let i = 0; i < models.length; i++) {
         try {
           return await models[i].doStream(options);
@@ -330,7 +330,7 @@ export async function createModelFromConfig(
       );
     }
 
-    const models: LanguageModelV3[] = [];
+    const models: LanguageModelV4[] = [];
     const names: string[] = [];
 
     for (const entry of available) {

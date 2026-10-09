@@ -220,7 +220,7 @@ export async function executeProxyTool(
   }
 
   const prepared = prepareProxyToolCall(registry, toolId, allowedToolIds, actualInput);
-  return prepared.execute(prepared.input, { toolCallId: `agent-proxy-${actualToolId}`, messages: [] });
+  return prepared.execute(prepared.input, { toolCallId: `agent-proxy-${actualToolId}`, messages: [], context: {} });
 }
 
 function normalizeLegacyToolCall(toolId: string, input: unknown): { toolId: string; input: unknown } {

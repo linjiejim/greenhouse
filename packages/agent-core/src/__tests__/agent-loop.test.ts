@@ -1,13 +1,13 @@
 /**
  * The headless host of the shared loop assembly — runAgentLoop() drives the
- * REAL generateText loop (through MockLanguageModelV3) on the same settings
+ * REAL generateText loop (through MockLanguageModelV4) on the same settings
  * chat streams with. These pin the safeguards the headless path used to lack:
  * tool-call JSON repair, catalog sampling options, time context (with the
  * scheduler's opt-out) and the DeepSeek final-answer guarantee.
  */
 
 import { jsonSchema, tool, type ToolSet } from 'ai';
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV4 } from 'ai/test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
@@ -30,7 +30,7 @@ vi.mock('../model.js', () => ({
 
 import { prepareAgentLoop, runAgentLoop, type AgentLoopInput } from '../agent-loop.js';
 
-type GenerateResult = Awaited<ReturnType<MockLanguageModelV3['doGenerate']>>;
+type GenerateResult = Awaited<ReturnType<MockLanguageModelV4['doGenerate']>>;
 
 const USAGE = {
   inputTokens: { total: 100, noCache: 80, cacheRead: 20, cacheWrite: 0 },
@@ -43,9 +43,9 @@ function step(content: GenerateResult['content'], finish: 'stop' | 'tool-calls')
 
 /** A model that plays `steps` in order (the last one repeats). */
 function scripted(steps: GenerateResult[]) {
-  const calls: Array<Parameters<MockLanguageModelV3['doGenerate']>[0]> = [];
+  const calls: Array<Parameters<MockLanguageModelV4['doGenerate']>[0]> = [];
   let index = 0;
-  const model = new MockLanguageModelV3({
+  const model = new MockLanguageModelV4({
     doGenerate: async (options) => {
       calls.push(options);
       const next = steps[Math.min(index, steps.length - 1)]!;
@@ -165,19 +165,24 @@ describe('runAgentLoop — the headless host of the shared assembly', () => {
       finalAnswerStreamFactory: async (fallbackInput) => {
         factoryInputs.push(fallbackInput);
         return {
-          fullStream: (async function* () {
+          stream: (async function* () {
             yield { type: 'text-delta', text: 'Recovered answer' };
           })(),
-          totalUsage: Promise.resolve({ inputTokens: 7, outputTokens: 3, cachedInputTokens: 0, reasoningTokens: 0 }),
+          usage: Promise.resolve({
+            inputTokens: 7,
+            outputTokens: 3,
+            inputTokenDetails: { cacheReadTokens: 2 },
+            outputTokenDetails: { reasoningTokens: 1 },
+          }),
         } as never;
       },
     });
 
     expect(result.text).toBe('Recovered answer');
     expect(result.finalAnswerRecovered).toBe(true);
-    // Two primary steps (100 + 100 in, 10 + 10 out) plus the fallback pass.
-    expect(result.usage.inputTokens).toBe(207);
-    expect(result.usage.outputTokens).toBe(23);
+    // Two primary steps (100 + 100 in, 10 + 10 out, 20 + 20 cached) plus the
+    // fallback pass — read from AI SDK 7's nested token details.
+    expect(result.usage).toEqual({ inputTokens: 207, outputTokens: 23, cachedInputTokens: 42, reasoningTokens: 1 });
     // The fallback digests what the loop actually gathered.
     const gathered = (factoryInputs[0] as { gatheredMessages: Array<{ role: string }> }).gatheredMessages;
     expect(gathered.some((m) => m.role === 'tool')).toBe(true);

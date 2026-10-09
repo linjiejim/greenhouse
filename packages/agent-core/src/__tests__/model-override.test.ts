@@ -8,6 +8,7 @@
  */
 
 import { afterAll, beforeAll, describe, it, expect, vi } from 'vitest';
+import { streamText } from 'ai';
 import { applyModelOverride, buildProviderOptions, createModelFromConfig } from '../model.js';
 import {
   findModelIdByProviderModel,
@@ -153,44 +154,75 @@ describe('DeepSeek image input', () => {
   // The chat vision path hands the engine image parts; this is the wire
   // contract that makes them pixels at DeepSeek rather than a dropped part.
   // `deepseek-flash` (V4.1 Flash) reads image_url data URLs natively.
-  it('ships attached image bytes as an image_url data URL', async () => {
+  async function capture(run: () => Promise<void>): Promise<Array<Record<string, unknown>>> {
     const sent: Array<Record<string, unknown>> = [];
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async (_url: unknown, init: { body?: string }) => {
       sent.push(JSON.parse(String(init?.body)));
       return new Response('data: [DONE]\n\n', { status: 200, headers: { 'content-type': 'text/event-stream' } });
     }) as unknown as typeof fetch;
-
     try {
-      const model = (await createModelFromConfig({
-        provider: 'openai-compatible',
-        model: 'deepseek-flash',
-        baseUrl: 'https://api.deepseek.com',
-        apiKey: 'DEEPSEEK_API_KEY',
-      })) as unknown as { doStream: (o: unknown) => Promise<unknown> };
+      await run();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    return sent;
+  }
+
+  const deepseek = () =>
+    createModelFromConfig({
+      provider: 'openai-compatible',
+      model: 'deepseek-flash',
+      baseUrl: 'https://api.deepseek.com',
+      apiKey: 'DEEPSEEK_API_KEY',
+    });
+
+  const IMAGE_URL_CONTENT = [
+    { type: 'text', text: 'what is this?' },
+    { type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } },
+  ];
+
+  it('ships attached image bytes as an image_url data URL', async () => {
+    const sent = await capture(async () => {
+      const model = (await deepseek()) as unknown as { doStream: (o: unknown) => Promise<unknown> };
+      // Provider spec v4: file data is a tagged union, not raw bytes.
       await model.doStream({
         prompt: [
           {
             role: 'user',
             content: [
               { type: 'text', text: 'what is this?' },
-              { type: 'file', mediaType: 'image/png', data: new Uint8Array([1, 2, 3]) },
+              { type: 'file', mediaType: 'image/png', data: { type: 'data', data: new Uint8Array([1, 2, 3]) } },
             ],
           },
         ],
       });
-    } finally {
-      globalThis.fetch = realFetch;
-    }
+    });
 
     const messages = sent[0]!.messages as Array<{ role: string; content: unknown }>;
-    expect(messages[0]).toEqual({
-      role: 'user',
-      content: [
-        { type: 'text', text: 'what is this?' },
-        { type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } },
-      ],
+    expect(messages[0]).toEqual({ role: 'user', content: IMAGE_URL_CONTENT });
+  });
+
+  it('the image part the vision path builds reaches the wire as image_url through the SDK', async () => {
+    const sent = await capture(async () => {
+      const result = streamText({
+        model: await deepseek(),
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'what is this?' },
+              { type: 'image', image: new Uint8Array([1, 2, 3]), mediaType: 'image/png' },
+            ],
+          },
+        ],
+        maxRetries: 0,
+      });
+      await Promise.resolve(result.consumeStream()).catch(() => undefined);
     });
+
+    const messages = sent[0]!.messages as Array<{ role: string; content: unknown }>;
+    expect(messages[0]).toEqual({ role: 'user', content: IMAGE_URL_CONTENT });
   });
 });
 

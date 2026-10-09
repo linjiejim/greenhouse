@@ -64,7 +64,9 @@ vi.mock('../../chat/runtime.js', () => ({
   chatRuntimePayload: (value: unknown) => value,
 }));
 
-vi.mock('@greenhouse/agent-core', () => ({
+vi.mock('@greenhouse/agent-core', async (importOriginal) => ({
+  // The real wire-usage projection: it is the contract under test, not a seam.
+  usageTotalsFrom: (await importOriginal<typeof import('@greenhouse/agent-core')>()).usageTotalsFrom,
   createChatStreamAsync: mocks.createChatStreamAsync,
   withFinalAnswerGuarantee: mocks.withFinalAnswerGuarantee,
   requiresFinalAnswerGuarantee: vi.fn(() => true),
@@ -221,7 +223,7 @@ beforeEach(() => {
   mocks.processStreamPart.mockImplementation((part, collectors) => {
     if (part.type === 'finish') collectors.receivedFinish = true;
   });
-  mocks.withFinalAnswerGuarantee.mockImplementation((streamResult) => streamResult.fullStream);
+  mocks.withFinalAnswerGuarantee.mockImplementation((streamResult) => streamResult.stream);
 });
 
 import { buildChatRequestBody, newTurnScopeId } from '../../../../browser/src/lib/chat-request';
@@ -283,11 +285,11 @@ describe('POST /api/chat on the browser-extension channel', () => {
     mocks.selectTools.mockImplementation((_registry: unknown, ids: string[]) =>
       Object.fromEntries(ids.map((id) => [id, {}])),
     );
-    async function* fullStream() {
+    async function* eventStream() {
       yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } };
     }
     mocks.createChatStreamAsync.mockResolvedValue({
-      streamResult: { fullStream: fullStream() },
+      streamResult: { stream: eventStream() },
       dsmlRecoveries: [],
       startTime: Date.now(),
       modelId: 'test-model',

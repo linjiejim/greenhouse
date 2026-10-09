@@ -237,7 +237,10 @@ async function streamChat(sessionId: string, userMessage: string): Promise<strin
         }
 
         case 'finish': {
-          const u = event.totalUsage as Record<string, unknown> | undefined;
+          // The NDJSON finish event carries `usage` (FinishEvent in
+          // @greenhouse/types); reading the SDK's `totalUsage` name here meant
+          // the CLI never showed token counts.
+          const u = event.usage as Record<string, unknown> | undefined;
           if (u) {
             usage = {
               inputTokens: (u.inputTokens as number) ?? 0,

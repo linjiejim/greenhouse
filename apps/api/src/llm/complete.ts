@@ -11,7 +11,12 @@
  */
 
 import { generateText, Output } from 'ai';
-import { createModelFromConfig, buildProviderOptions, resolveModelConfig } from '@greenhouse/agent-core';
+import {
+  createModelFromConfig,
+  buildProviderOptions,
+  resolveModelConfig,
+  usageTotalsFrom,
+} from '@greenhouse/agent-core';
 import { resolveProfileAsync } from '../profiles/profile.js';
 import type { AgentProfile } from '../profiles/profile.js';
 import { extractJson } from '@greenhouse/utils/json';
@@ -114,13 +119,15 @@ export async function complete(
 
   await rateLimit();
 
+  // AI SDK 7 rejects system messages inside `messages`, so a caller's system
+  // turns join the instructions instead of being cast to a chat role.
+  const extraSystem = options.messages.filter((m) => m.role === 'system').map((m) => m.content);
   const result = await generateText({
     model,
-    system: systemPrompt,
-    messages: options.messages.map((m) => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-    })),
+    instructions: [systemPrompt, ...extraSystem].filter(Boolean).join('\n\n'),
+    messages: options.messages
+      .filter((m): m is CompletionMessage & { role: 'user' | 'assistant' } => m.role !== 'system')
+      .map((m) => ({ role: m.role, content: m.content })),
     temperature,
     maxOutputTokens: maxTokens,
     maxRetries: options.maxRetries ?? 3,
@@ -131,14 +138,15 @@ export async function complete(
 
   lastCallTime = Date.now();
 
+  const usage = result.usage ? usageTotalsFrom(result.usage) : undefined;
   return {
     text: result.text,
-    usage: result.usage
+    usage: usage
       ? {
-          inputTokens: result.usage.inputTokens ?? 0,
-          outputTokens: result.usage.outputTokens ?? 0,
-          cachedTokens: ((result.usage as Record<string, unknown>).cachedInputTokens as number) ?? 0,
-          reasoningTokens: ((result.usage as Record<string, unknown>).reasoningTokens as number) ?? 0,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          cachedTokens: usage.cachedInputTokens,
+          reasoningTokens: usage.reasoningTokens,
         }
       : undefined,
   };

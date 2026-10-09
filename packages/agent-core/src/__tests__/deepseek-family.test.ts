@@ -10,7 +10,7 @@
  * routes by model family / host, and buildProviderOptions agrees with it.
  */
 
-import type { LanguageModelV3 } from '@ai-sdk/provider';
+import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildProviderOptions, createModelFromConfig, isDeepSeekFamily } from '../model.js';
 import { DEFAULT_MODEL_REGISTRY, setModelRegistry, type ModelEntry } from '../registry.js';
@@ -81,16 +81,16 @@ describe('isDeepSeekFamily', () => {
 
 describe('createModelFromConfig', () => {
   it('builds a DeepSeek-backed openai-compatible entry with the DeepSeek client', async () => {
-    const model = (await createModelFromConfig(config('flash'))) as LanguageModelV3;
+    const model = (await createModelFromConfig(config('flash'))) as LanguageModelV4;
     expect(model.provider).toMatch(/^deepseek/);
     expect(model.modelId).toBe('deepseek-v4-flash');
   });
 
   it('keeps every other endpoint on the generic OpenAI client', async () => {
-    const generic = (await createModelFromConfig(config('generic'))) as LanguageModelV3;
+    const generic = (await createModelFromConfig(config('generic'))) as LanguageModelV4;
     expect(generic.provider).toMatch(/^openai/);
 
-    const gateway = (await createModelFromConfig(config('gateway'))) as LanguageModelV3;
+    const gateway = (await createModelFromConfig(config('gateway'))) as LanguageModelV4;
     expect(gateway.provider).toMatch(/^openai/);
   });
 });

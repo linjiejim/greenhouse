@@ -35,7 +35,10 @@ function session(id: string, userId: string, channel: string) {
 
 async function run(ctx: SessionQueryContext, input: Record<string, unknown>) {
   const tool = createSessionQueryTool(db, ctx);
-  return (await tool.execute!(input as never, { toolCallId: 't', messages: [] })) as Record<string, unknown>;
+  return (await tool.execute!(input as never, { toolCallId: 't', messages: [], context: {} })) as Record<
+    string,
+    unknown
+  >;
 }
 
 const team: SessionQueryContext = { userId: 'u-team', userRole: 'team' };

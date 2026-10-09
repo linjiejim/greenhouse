@@ -181,17 +181,19 @@ export async function memberMessageQueued(db: DatabaseProvider, sessionId: strin
  * consumer drops it.
  */
 function guardStopAfterStep<T extends object>(
-  streamResult: T & { fullStream: AsyncIterable<unknown> },
+  streamResult: T & { stream: AsyncIterable<unknown> },
   stopped: () => boolean,
 ): T {
   async function* guarded() {
-    for await (const part of streamResult.fullStream) yield part;
+    for await (const part of streamResult.stream) yield part;
     if (stopped()) yield { type: 'abort', [HANDOFF_STOP]: true };
   }
   const stream = guarded();
+  // AI SDK 7 renamed the full event stream `fullStream` → `stream`; the
+  // final-answer wrapper reads `stream`, so that is the property to guard.
   return new Proxy(streamResult, {
     get(target, prop) {
-      if (prop === 'fullStream') return stream;
+      if (prop === 'stream') return stream;
       return Reflect.get(target, prop, target) as unknown;
     },
   });
