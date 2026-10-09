@@ -57,6 +57,8 @@ export interface AgentGenerateArgs {
   /** See RunAgentInSessionArgs.timeContext. */
   timeContext?: TimeContextOption;
   sessionId?: string;
+  /** See RunAgentInSessionArgs.onStep. */
+  onStep?: (info: { stepNumber: number; toolNames: string[] }) => void;
 }
 
 export interface AgentGenerateResult {
@@ -92,6 +94,7 @@ const defaultGenerate: AgentGenerate = async (args) => {
     ...(args.providerAttemptHook ? { providerAttemptHook: args.providerAttemptHook } : {}),
     ...(args.timeContext !== undefined ? { timeContext: args.timeContext } : {}),
     ...(args.providerOptions !== undefined ? { providerOptionsOverride: args.providerOptions } : {}),
+    ...(args.onStep ? { onStepEnd: args.onStep } : {}),
   });
   return { text: result.text, usage: result.usage, steps: result.steps as any[] };
 };
@@ -119,6 +122,8 @@ export interface RunAgentInSessionArgs {
    * second clock in another zone would contradict it.
    */
   timeContext?: TimeContextOption;
+  /** Progress after each step (tools it ran) — for hosts that show it, like the Feishu card. */
+  onStep?: (info: { stepNumber: number; toolNames: string[] }) => void;
   modelConfig: ModelConfig;
   tools?: ToolRegistry;
   maxSteps: number;
@@ -240,6 +245,7 @@ export async function runAgentInSession(args: RunAgentInSessionArgs): Promise<Ru
     providerAttemptHook,
     sessionId: args.sessionId,
     ...(args.timeContext !== undefined ? { timeContext: args.timeContext } : {}),
+    ...(args.onStep ? { onStep: args.onStep } : {}),
   });
 
   const { pipeline, references } = extractPipelineAndReferences(result.steps ?? []);
