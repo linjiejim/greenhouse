@@ -7,23 +7,24 @@ import { brandFont as font } from '../../src/ui/brand-font';
  *
  *  - 它记得的近况: the rolling summary the Bots carry, verbatim (four lines,
  *    显示全部), with when it was last updated — only once there is one;
- *  - a group's settings: name (system prompt), rules (→ /bots/rules), lead
- *    (menu of its active members), "let Bots ask each other";
- *  - members: plant, name, role and badge; tap → the Bot's profile; a group
- *    member (not the lead, while more than two remain) or a DM's guest can be
- *    removed — swipe or touch and hold, confirmed; 邀请 Bot… → /bots/invite
- *    (off at six members);
+ *  - members: plant, name, role and badge; tap → the Bot's profile; a guest
+ *    can be removed — swipe or touch and hold, confirmed; 邀请 Bot… →
+ *    /bots/invite (off at six members). Bots also bring each other in by
+ *    themselves when they hand work over — there is no switch for it;
  *  - shared notes, read-only (open first, pinned first) — they are edited on
  *    the web.
  *
- * The sheet re-reads when it comes back into view (the rules sheet or a
- * profile was on top) and on the server's `bots:conversation` push.
+ * An old group chat (retired 2026-10-09) is a closed record: its members are
+ * listed, nothing can be invited or removed.
+ *
+ * The sheet re-reads when it comes back into view (a profile or the invite
+ * sheet was on top) and on the server's `bots:conversation` push.
  */
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Button, HStack, Image, Picker, ProgressView, Section, Spacer, Text, Toggle, VStack } from '@expo/ui/swift-ui';
+import { Button, HStack, Image, ProgressView, Section, Spacer, Text, VStack } from '@expo/ui/swift-ui';
 import {
   accessibilityElement,
   accessibilityHidden,
@@ -31,27 +32,22 @@ import {
   disabled,
   foregroundStyle,
   lineLimit,
-  pickerStyle,
-  tag,
 } from '@expo/ui/swift-ui/modifiers';
 import { useT } from '../../src/lib/i18n';
 import { relativeTime } from '../../src/lib/format';
 import type { BotConversationDetail, BotSharedNoteView } from '../../src/shared/bots';
 import {
-  GROUP_TITLE_MAX,
   canInviteMore,
-  leadChoices,
   memberLabel,
   memberRemovable,
   orderedNotes,
   sortedMembers,
-} from '../../src/bots/manage/group-model';
+} from '../../src/bots/manage/member-model';
 import { MemberRow } from '../../src/bots/manage/member-row';
 import { useConversationInfo } from '../../src/bots/manage/use-conversation-info';
 import { useBots } from '../../src/bots/store';
-import { promptText } from '../../src/ui/dialogs';
 import { EmptyState } from '../../src/ui/empty';
-import { FormNavRow, NativeForm } from '../../src/ui/native-form';
+import { NativeForm } from '../../src/ui/native-form';
 import { useTheme } from '../../src/theme';
 import { SheetClose } from '../../src/ui/sheet-chrome';
 import { BotsRouteGate } from '../../src/bots/route-gate';
@@ -136,25 +132,17 @@ function InfoSections({
   const c = detail.session_id;
   const group = detail.kind === 'group';
   const members = useMemo(() => sortedMembers(detail.members), [detail.members]);
-  const leads = useMemo(() => leadChoices(detail, byId), [detail, byId]);
-  const leadKnown = leads.some((bot) => bot.id === detail.lead_bot_id);
   const roomForMore = canInviteMore(detail);
 
   const digest = detail.digest?.text.trim() ?? '';
   const folds = digest.split('\n').length > FOLD_LINES || digest.length > FOLD_CHARS;
-  const rulesLine = detail.description.trim().split('\n')[0] ?? '';
   const notes = useMemo(() => orderedNotes(detail.notes), [detail.notes]);
 
-  const rename = async () => {
-    const title = await promptText({
-      title: t('bots.manage.groupName'),
-      defaultValue: detail.title ?? '',
-      placeholder: t('bots.manage.groupNamePlaceholder'),
-    });
-    if (title !== null) await info.rename(title.slice(0, GROUP_TITLE_MAX));
-  };
-
-  const membersFooter = !roomForMore ? t('bots.manage.max6') : group ? undefined : t('bots.manage.guestFooter');
+  const membersFooter = group
+    ? t('bots.manage.groupClosedFooter')
+    : !roomForMore
+      ? t('bots.manage.max6')
+      : t('bots.manage.guestFooter');
 
   return (
     <>
@@ -177,43 +165,6 @@ function InfoSections({
         </Section>
       ) : null}
 
-      {group ? (
-        <Section footer={<Text>{t('bots.manage.leadFooter')}</Text>}>
-          <FormNavRow label={t('bots.manage.groupName')} value={detail.title ?? ''} onPress={() => void rename()} />
-          <FormNavRow
-            label={t('bots.manage.rules')}
-            value={rulesLine || t('bots.manage.rulesNone')}
-            onPress={() => router.push({ pathname: '/bots/rules', params: { c } })}
-          />
-          <Picker
-            label={t('bots.manage.lead')}
-            selection={leadKnown ? (detail.lead_bot_id ?? '') : ''}
-            onSelectionChange={(id) => {
-              if (id) void info.setLead(String(id));
-            }}
-            modifiers={[pickerStyle('menu')]}
-          >
-            {/* No active lead (it was archived): say so, rather than showing the first member as if it led. */}
-            {leadKnown ? null : <Text modifiers={[tag(''), SECONDARY]}>{t('bots.manage.noLead')}</Text>}
-            {leads.map((bot) => (
-              <Text key={bot.id} modifiers={[tag(bot.id)]}>
-                {bot.name}
-              </Text>
-            ))}
-          </Picker>
-        </Section>
-      ) : null}
-
-      {group ? (
-        <Section footer={<Text>{t('bots.manage.allowBotChatFooter')}</Text>}>
-          <Toggle
-            label={t('bots.manage.allowBotChat')}
-            isOn={detail.allow_bot_chat}
-            onIsOnChange={(on) => void info.setAllowBotChat(on)}
-          />
-        </Section>
-      ) : null}
-
       <Section title={t('bots.manage.members')} footer={membersFooter ? <Text>{membersFooter}</Text> : undefined}>
         {members.map((member) => {
           const bot = byId[member.bot_id] ?? null;
@@ -228,12 +179,14 @@ function InfoSections({
             />
           );
         })}
-        <Button
-          label={t('bots.manage.inviteRow')}
-          systemImage="person.badge.plus"
-          onPress={() => router.push({ pathname: '/bots/invite', params: { c } })}
-          modifiers={[disabled(!roomForMore)]}
-        />
+        {group ? null : (
+          <Button
+            label={t('bots.manage.inviteRow')}
+            systemImage="person.badge.plus"
+            onPress={() => router.push({ pathname: '/bots/invite', params: { c } })}
+            modifiers={[disabled(!roomForMore)]}
+          />
+        )}
       </Section>
 
       {notes.length > 0 ? (

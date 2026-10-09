@@ -368,7 +368,8 @@ const REFUSAL_KEYS = {
   limit: 'bots.card.err.limit',
   computer_restarted: 'bots.card.err.computer_restarted',
   bot_gone: 'bots.card.err.bot_gone',
-} as const satisfies Record<Exclude<BotRequestErrorCode, 'already_decided' | 'deciding'>, TranslationKey>;
+  // `group_closed` is not a refusal on the phone: the card is cancelled with it (../requests.ts)
+} as const satisfies Record<Exclude<BotRequestErrorCode, 'already_decided' | 'deciding' | 'group_closed'>, TranslationKey>;
 
 function refusalKnown(code: string | null): code is keyof typeof REFUSAL_KEYS {
   return code !== null && Object.prototype.hasOwnProperty.call(REFUSAL_KEYS, code);

@@ -38,12 +38,11 @@ export const botsThreadEn = {
     profile: 'Bot Profile',
     info: 'Conversation Info',
     invite: 'Invite a Bot',
-    rename: 'Rename Group',
-    renameFailed: 'Couldn’t rename the group',
     titleHintDm: 'Shows the Bot’s profile',
     titleHintGroup: 'Shows the conversation info',
     readOnlyDm: '{name} is archived and won’t reply',
-    readOnlyGroup: 'No Bot here can reply',
+    /** An old group chat: group chats were retired. */
+    readOnlyClosed: 'Group chats were retired — this one stays as a record.',
     nameHint: 'Give {name} a name of your own?',
     nameHintRename: 'Rename',
     nameHintKeep: 'Keep {name}',
@@ -100,7 +99,8 @@ export const botsThreadEn = {
     stopping: 'Stopping after this step…',
     stoppingNow: 'Stopping…',
     archived: 'Archived',
-    noReplier: 'No Bot can reply',
+    /** An old group chat (group chats were retired). */
+    groupClosed: 'Retired group chat',
   },
   stop: {
     afterStep: 'Stop After This Step',
@@ -122,7 +122,6 @@ export const botsThreadEn = {
   composer: {
     placeholder: 'Message',
     placeholderDm: 'Message {name}',
-    placeholderGroup: 'Message or @ a Bot',
     mention: 'Mention',
     mentionA11y: 'Mention {name}',
     inviteOther: 'Invite Another Bot…',

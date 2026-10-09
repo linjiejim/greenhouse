@@ -174,9 +174,7 @@ export default function RootLayout() {
               <Stack.Screen name="bots/login" options={sheetScreen([1], { header: true })} />
               <Stack.Screen name="bots/profile" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="bots/bot-form" options={sheetScreen([1], { header: true })} />
-              <Stack.Screen name="bots/new-group" options={sheetScreen([1], { header: true })} />
               <Stack.Screen name="bots/info" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="bots/rules" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="bots/invite" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="bots/archived" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="bots/relay" options={sheetScreen([0.6, 1], { header: true })} />

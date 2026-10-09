@@ -155,7 +155,6 @@ export interface ThreadHeaderActions {
   info: () => void;
   invite: () => void;
   askInChat: () => void;
-  rename: () => void;
 }
 
 /**
@@ -220,9 +219,6 @@ export const ThreadHeader = memo(function ThreadHeader({
           </Stack.Toolbar.MenuAction>
           <Stack.Toolbar.MenuAction icon={toolbarIcon('userPlus')} hidden={!canInvite} onPress={actions.invite}>
             {t('bots.thread.invite')}
-          </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon={toolbarIcon('pen')} hidden={!group} onPress={actions.rename}>
-            {t('bots.thread.rename')}
           </Stack.Toolbar.MenuAction>
           <Stack.Toolbar.Menu inline hidden={group || !canAsk}>
             {/* "New Chat" over the Bot's name: one short line in any language, however long the name */}

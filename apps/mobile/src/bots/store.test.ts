@@ -185,32 +185,35 @@ describe('drawerRows', () => {
   it('pins Sprouty, keeps the server order, collapses after 5 and files read-only rows under Archived', () => {
     const out = drawerRows(s, { query: '', expanded: false });
     expect(out.pinned?.session_id).toBe('s_sprouty');
-    expect(out.recent.map((r) => r.session_id)).toEqual(['s_g', 's_a', 's_grp', 's_d', 's_e']);
-    expect(out.moreCount).toBe(1);
-    expect(out.archived.map((r) => r.session_id)).toEqual(['s_old']);
-    const expanded = drawerRows(s, { query: '', expanded: true });
-    expect(expanded.recent.map((r) => r.session_id)).toEqual(['s_g', 's_a', 's_grp', 's_d', 's_e', 's_f']);
+    expect(out.recent.map((r) => r.session_id)).toEqual(['s_g', 's_a', 's_d', 's_e', 's_f']);
+    expect(out.moreCount).toBe(0);
+    // an archived Bot's DM, and an old group chat — group chats were retired, kept as records
+    expect(out.archived.map((r) => r.session_id)).toEqual(['s_old', 's_grp']);
+    const more = drawerRows({ ...s, conversations: [...rows, dm('s_h', 'bot_c')] }, { query: '', expanded: false });
+    expect([more.recent.length, more.moreCount]).toEqual([5, 1]);
+    const expanded = drawerRows({ ...s, conversations: [...rows, dm('s_h', 'bot_c')] }, { query: '', expanded: true });
+    expect(expanded.recent.map((r) => r.session_id)).toEqual(['s_g', 's_a', 's_d', 's_e', 's_f', 's_h']);
     expect(expanded.moreCount).toBe(0);
-    expect(drawerRows(s, { query: '', expanded: false, recent: 2 }).moreCount).toBe(4);
+    expect(drawerRows(s, { query: '', expanded: false, recent: 2 }).moreCount).toBe(3);
   });
 
   it('searches titles, member names and previews — every part, never collapsed', () => {
-    expect(drawerRows(s, { query: ' writing ', expanded: false }).recent.map((r) => r.session_id)).toEqual(['s_grp']);
-    expect(drawerRows(s, { query: 'bot c', expanded: false }).recent.map((r) => r.session_id)).toEqual(['s_grp']);
+    expect(drawerRows(s, { query: ' writing ', expanded: false }).archived.map((r) => r.session_id)).toEqual(['s_grp']);
+    expect(drawerRows(s, { query: 'bot c', expanded: false }).archived.map((r) => r.session_id)).toEqual(['s_grp']);
     expect(drawerRows(s, { query: 'QUARTERLY', expanded: false }).recent.map((r) => r.session_id)).toEqual(['s_a']);
     const sprouty = drawerRows(s, { query: 'sprouty', expanded: false });
     expect([sprouty.pinned?.session_id, sprouty.recent.length]).toEqual(['s_sprouty', 0]);
     const fern = drawerRows(s, { query: 'fern', expanded: false });
     expect([fern.pinned, fern.recent.length, fern.archived.map((r) => r.session_id)]).toEqual([null, 0, ['s_old']]);
     const bot = drawerRows(s, { query: 'bot', expanded: false });
-    expect([bot.recent.length, bot.moreCount]).toEqual([6, 0]);
+    expect([bot.recent.length, bot.moreCount]).toEqual([5, 0]);
   });
 
-  it('counts every row as replyable until the Bot list arrives; no pin without Sprouty', () => {
+  it('counts every DM as replyable until the Bot list arrives (an old group never); no pin without Sprouty', () => {
     const early = drawerRows({ ...s, bots: [], byId: {}, botsLoaded: false }, { query: '', expanded: true });
     expect(early.pinned).toBeNull();
-    expect(early.archived).toEqual([]);
-    expect(early.recent).toHaveLength(rows.length);
+    expect(early.archived.map((r) => r.session_id)).toEqual(['s_grp']);
+    expect(early.recent).toHaveLength(rows.length - 1);
   });
 });
 

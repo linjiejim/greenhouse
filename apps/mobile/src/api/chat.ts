@@ -25,7 +25,7 @@
  * Bots conversations (`channel: 'bots'`) send through `openBotsChat` instead of
  * `streamChat`: a busy conversation answers `202 {queued:true}` (the message was
  * delivered and is read between Bot turns) rather than 409, and a refusal
- * carries a `code` (`bot_archived`, `no_active_members`) the thread turns into
+ * carries a `code` (`bot_archived`, `group_closed`) the thread turns into
  * its read-only state. They also have a soft stop (`interruptChatRun`), and
  * `listChatRuns` seeds which conversations are busy after a reconnect.
  *

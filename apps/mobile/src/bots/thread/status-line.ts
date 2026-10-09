@@ -9,16 +9,17 @@
  * tripwire in ../vendor/vendor.parity.test.ts goes red when it changes), with
  * what the phone adds on top (spec §2.5.3 a), highest first:
  *
- *   read-only (archived DM / no one left to reply)
+ *   read-only (an old group chat — groups are retired and kept as closed
+ *     records — or a DM whose Bot was archived)
  *   > the newest pending card (approval / sign-in / hand the computer back /
  *     human check / anything else: "your go-ahead")
  *   > a stop on its way ("Stopping after this step…" / "Stopping…")
  *   > the segment being typed out: a running tool call (browsing {host} /
  *     the computer / handing off / working), else replying (text on screen)
- *     or thinking — named in a group, and in a DM when a guest is speaking
+ *     or thinking — named when a guest is speaking
  *   > busy without a segment (between turns, another API slot): "Working…"
- *   > idle: no line at all — the title alone (the role and a group's size
- *     and lead live in the profile / conversation info, one tap away).
+ *   > idle: no line at all — the title alone (the role lives in the
+ *     profile, one tap away).
  *
  * "Busy" only ever comes from real signals (`snap.runActive` — D14); the web
  * header's computer-phase branch ("you're in control") has no phone
@@ -29,7 +30,7 @@ import type { TranslationKey } from '../../lib/i18n';
 import type { BotRequestView, BotView } from '../../shared/bots';
 import type { BotStreamSegment } from '../../shared/bots-wire';
 import type { PlantState } from '../../ui/plant-avatar/plant-ids';
-import type { ThreadSnapshot } from '../contract';
+import type { BotsReadOnly, ThreadSnapshot } from '../contract';
 import { speakingSegment } from '../vendor/transcript';
 import { hostFromInput, humanCheckTakeover, implicitTakeover } from '../vendor/web-helpers';
 
@@ -53,17 +54,14 @@ export interface StatusInput {
 export function threadReadOnly(
   snap: Pick<ThreadSnapshot, 'conversation' | 'readOnly'>,
   byId: Record<string, BotView>,
-): 'bot_archived' | 'no_active_members' | null {
+): BotsReadOnly | null {
+  // A group chat is a closed record (group chats were retired), whoever is in it.
+  if (snap.conversation?.kind === 'group') return 'group_closed';
   if (snap.readOnly) return snap.readOnly;
   const conversation = snap.conversation;
   if (!conversation) return null;
-  if (conversation.kind === 'direct') {
-    const owner = conversation.owner_bot_id ? byId[conversation.owner_bot_id] : undefined;
-    return owner && owner.status !== 'active' ? 'bot_archived' : null;
-  }
-  const known = conversation.members.map((member) => byId[member.bot_id]);
-  if (known.length === 0 || known.some((bot) => !bot)) return null;
-  return known.some((bot) => bot?.status === 'active') ? null : 'no_active_members';
+  const owner = conversation.owner_bot_id ? byId[conversation.owner_bot_id] : undefined;
+  return owner && owner.status !== 'active' ? 'bot_archived' : null;
 }
 
 /** The newest card still waiting for the member. */
@@ -98,7 +96,7 @@ function waitingKey(request: BotRequestView): TranslationKey {
 
 export function statusLine({ snap, byId, kind }: StatusInput): StatusLine | null {
   const readOnly = threadReadOnly(snap, byId);
-  if (readOnly) return { key: readOnly === 'bot_archived' ? 'bots.status.archived' : 'bots.status.noReplier' };
+  if (readOnly) return { key: readOnly === 'group_closed' ? 'bots.status.groupClosed' : 'bots.status.archived' };
 
   const pending = latestPending(snap.requests);
   if (pending) return { key: waitingKey(pending) };

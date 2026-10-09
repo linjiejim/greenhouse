@@ -6,13 +6,7 @@
  * realtime: src/api/ws.ts, store: ./store.ts, cards: cards/*).
  */
 
-import type {
-  BotConversationDetail,
-  BotMessage,
-  BotRequestDecision,
-  BotRequestErrorCode,
-  BotRequestView,
-} from '../shared/bots';
+import type { BotConversationDetail, BotConversationReadOnlyCode, BotMessage, BotRequestDecision, BotRequestErrorCode, BotRequestView } from '../shared/bots';
 import type { BotStreamSegment } from '../shared/bots-wire';
 import type { BotsState } from './store';
 import type { PendingWithBase } from './vendor/web-helpers';
@@ -25,6 +19,12 @@ import type { PendingWithBase } from './vendor/web-helpers';
  * vendor/vendor.parity.test.ts. src/api/ws.ts parses it and maps it to
  * `RealtimeEvent`; every other frame is dropped.
  */
+/**
+ * Why nobody here can reply (the server's 409 codes): the DM's Bot was archived, or it is an old
+ * group chat — group chats are retired (2026-10-09) and kept as closed records.
+ */
+export type BotsReadOnly = BotConversationReadOnlyCode;
+
 export type ServerWsWire =
   | { type: 'connected'; userId: string }
   | { type: 'ping' }
@@ -67,7 +67,7 @@ export interface SendInput {
 export type SendOutcome =
   | { ok: true; startedRun: boolean }
   /** Nobody here can reply (409): the thread turns read-only. */
-  | { ok: false; kind: 'read_only'; code: 'bot_archived' | 'no_active_members' }
+  | { ok: false; kind: 'read_only'; code: BotsReadOnly }
   /** Refused by the server: the bubble is removed, the draft restored, an alert shown. */
   | { ok: false; kind: 'rejected'; status: number; message: string }
   /** No answer: the bubble stays, marked "Not Delivered", with Try Again. */
@@ -116,7 +116,7 @@ export interface ThreadSnapshot {
   /** Merged from three sources, only ever forward (`mergeRequests`). */
   requests: ReadonlyMap<string, BotRequestView>;
   runError: string | null;
-  readOnly: 'bot_archived' | 'no_active_members' | null;
+  readOnly: BotsReadOnly | null;
 }
 
 export type ThreadEffect =

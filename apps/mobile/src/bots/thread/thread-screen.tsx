@@ -65,7 +65,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut, useSharedValue } from 'react-native-reanimated';
 import { KeyboardChatScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import * as Clipboard from 'expo-clipboard';
-import { updateConversation } from '../../api/bots';
 import { Composer, ReadOnlyBar } from '../../chat/composer';
 import { useComposerBridge } from '../../chat/composer-bridge';
 import { openTurn, publishTurns } from '../../chat/live-turn';
@@ -81,14 +80,14 @@ import { usePrefs } from '../../store/prefs';
 import { HIT, makeStyles, radius, space, typo, useTheme, weight } from '../../theme';
 import { NativeButton } from '../../ui/button';
 import { Icon, Touchable } from '../../ui/core';
-import { alertError, promptText } from '../../ui/dialogs';
+import { alertError } from '../../ui/dialogs';
 import { EmptyState, LoadingState } from '../../ui/empty';
 import { Glass, GlassIconButton } from '../../ui/glass';
 import { notifyWarning, selectionTick } from '../../ui/haptics';
 import { useHeaderInset } from '../../ui/header-inset';
 import type { MenuItem } from '../../ui/menu';
 import { toast } from '../../ui/toast';
-import type { MobilePending, SendInput, SendOutcome } from '../contract';
+import type { BotsReadOnly, MobilePending, SendInput, SendOutcome } from '../contract';
 import { forgetThread } from '../last-surface';
 import { openNewChat } from '../nav';
 import { attentionCount, useBots } from '../store';
@@ -299,10 +298,8 @@ export function BotThreadScreen({
         archived: (name) => `${name} ${t('bots.common.archivedSuffix')}`,
       })) ||
     titleParam;
-  const canInvite =
-    !!conversation && (group || readOnlyCode !== 'bot_archived') && conversation.members.length < MEMBER_LIMIT;
-  const canInviteRef = useRef(canInvite);
-  canInviteRef.current = canInvite;
+  // Guests join a live DM only (an old group chat is a closed record).
+  const canInvite = !!conversation && !group && !readOnlyCode && conversation.members.length < MEMBER_LIMIT;
 
   /* ---------- a thread that is gone is not reopened on the next cold start (D3; home remembers it) ---------- */
   const gone = snap.load === 'not_found' || snap.load === 'forbidden';
@@ -737,10 +734,10 @@ export function BotThreadScreen({
 
   /* ---------- sending ---------- */
   const readOnlyMessage = useCallback(
-    (code: 'bot_archived' | 'no_active_members') =>
+    (code: BotsReadOnly) =>
       code === 'bot_archived' && owner
         ? tNow('bots.thread.readOnlyDm', { name: owner.name })
-        : tNow('bots.thread.readOnlyGroup'),
+        : tNow('bots.thread.readOnlyClosed'),
     [owner],
   );
   const openInvite = useCallback(
@@ -769,13 +766,11 @@ export function BotThreadScreen({
       if (outcome.ok || outcome.kind === 'not_delivered') return outcome;
       if (expectAnchor.current?.kind === 'pending') expectAnchor.current = null;
       cancelTurn();
-      if (outcome.kind === 'read_only') {
-        if (outcome.code === 'no_active_members' && canInviteRef.current) openInvite();
-        else alertError(readOnlyMessage(outcome.code));
-      } else alertError(tNow('bots.thread.sendFailed'), outcome.message || undefined);
+      if (outcome.kind === 'read_only') alertError(readOnlyMessage(outcome.code));
+      else alertError(tNow('bots.thread.sendFailed'), outcome.message || undefined);
       return outcome;
     },
-    [ctl, followToEnd, holdForTurn, cancelTurn, openInvite, readOnlyMessage],
+    [ctl, followToEnd, holdForTurn, cancelTurn, readOnlyMessage],
   );
 
   const membersRef = useRef(members);
@@ -1008,24 +1003,8 @@ export function BotThreadScreen({
         const bot = latest.current.owner;
         if (bot) openNewChat(router, { profile: isSproutyBot(bot) ? 'sprouty' : `bot:${bot.id}` });
       },
-      rename: async () => {
-        const current = latest.current.conversation?.title?.trim() ?? '';
-        const next = await promptText({
-          title: tNow('bots.thread.rename'),
-          defaultValue: current || latest.current.displayTitle,
-          confirmLabel: tNow('common.save'),
-        });
-        if (!next || next === current) return;
-        const res = await updateConversation(sessionId, { title: next });
-        if (!res.ok) {
-          alertError(tNow('bots.thread.renameFailed'), res.message || undefined);
-          return;
-        }
-        void ctl.reload();
-        void useBots.getState().loadConversations();
-      },
     }),
-    [navigation, onOpenProfile, onViewSummary, openInvite, router, sessionId, ctl],
+    [navigation, onOpenProfile, onViewSummary, openInvite, router],
   );
 
   /* ---------- rows ---------- */
@@ -1168,7 +1147,7 @@ export function BotThreadScreen({
     if (card) scrollRef.current?.scrollTo({ y: Math.max(0, card.y - topPad), animated: true });
     else jumpToLatest();
   }, [cardBelow, scrollRef, topPad, jumpToLatest]);
-  const placeholder = composerPlaceholder(t, group, owner?.name ?? displayTitle, winWidth, typo.body.fontSize * fontScale);
+  const placeholder = composerPlaceholder(t, owner?.name ?? displayTitle, winWidth, typo.body.fontSize * fontScale);
 
   return (
     <View style={styles.root}>
@@ -1264,11 +1243,7 @@ export function BotThreadScreen({
               ]}
             >
               {readOnlyCode ? (
-                <ReadOnlyBar
-                  onHeight={onComposerHeight}
-                  message={readOnlyMessage(readOnlyCode)}
-                  action={group && canInvite ? { label: t('bots.thread.invite'), onPress: openInvite } : undefined}
-                />
+                <ReadOnlyBar onHeight={onComposerHeight} message={readOnlyMessage(readOnlyCode)} />
               ) : (
                 <Composer
                   ref={inputRef}
@@ -1336,9 +1311,10 @@ const useStyles = makeStyles((c) => ({
 
 /**
  * The composer's hint, kept to one line beside Stop and Send (a wrapped hint grows the floating
- * composer over the newest reply): "Message Sage" in a DM, the @ hint in a group, else plain "Message".
+ * composer over the newest reply): "Message Sage", else plain "Message". (Only a live DM has a
+ * composer: an old group chat is a closed record.)
  */
-function composerPlaceholder(t: ReturnType<typeof useT>, group: boolean, name: string, width: number, fontPt: number): string {
-  const hint = group ? t('bots.composer.placeholderGroup') : t('bots.composer.placeholderDm', { name });
+function composerPlaceholder(t: ReturnType<typeof useT>, name: string, width: number, fontPt: number): string {
+  const hint = t('bots.composer.placeholderDm', { name });
   return hintFits(hint, width, fontPt) ? hint : t('bots.composer.placeholder');
 }

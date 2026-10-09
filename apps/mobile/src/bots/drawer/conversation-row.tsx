@@ -92,7 +92,10 @@ export const ConversationRow = memo(function ConversationRow({
   const botsLoaded = useBots((s) => s.botsLoaded);
   const running = useBots((s) => s.running);
   // Before the Bot list is in, every row counts as replyable (a sleeping plant would be a guess).
-  const replyable = useBots((s) => !s.botsLoaded || conversationReplyable(row, new Set(s.bots.map((bot) => bot.id))));
+  const replyable = useBots(
+    (s) =>
+      row.kind === 'direct' && (!s.botsLoaded || conversationReplyable(row, new Set(s.bots.map((bot) => bot.id)))),
+  );
 
   const dir = useMemo(() => ({ byId, botsLoaded }), [byId, botsLoaded]);
   const title = rowTitle(row, dir, copy);
