@@ -94,6 +94,12 @@ export interface AgentLoopInput {
    * the resolved model config.
    */
   providerOptionsOverride?: unknown;
+  /**
+   * Headless only — called after each completed step with the tools it ran, so
+   * a host without a live stream (the Feishu bot) can still show progress.
+   * Streaming hosts read the stream instead.
+   */
+  onStepEnd?: (info: { stepNumber: number; toolNames: string[] }) => void;
 }
 
 // ─── Assembly ────────────────────────────────────────────
@@ -294,7 +300,24 @@ export async function runAgentLoop(
   // an "unsupported feature" warning on every step, so the headless call gets
   // only the bounds that apply to it.
   const { totalMs, stepMs } = CHAT_STREAM_TIMEOUT;
-  const result = await generateText({ ...prepared.settings, timeout: { totalMs, stepMs } });
+  let stepNumber = 0;
+  const result = await generateText({
+    ...prepared.settings,
+    timeout: { totalMs, stepMs },
+    ...(input.onStepEnd
+      ? {
+          onStepEnd: (step: { toolCalls?: Array<{ toolName: string }> }) => {
+            stepNumber += 1;
+            try {
+              input.onStepEnd!({ stepNumber, toolNames: (step.toolCalls ?? []).map((call) => call.toolName) });
+            } catch (err) {
+              // Progress is cosmetic; it must never break the turn.
+              logger.warn('[agent-loop] onStepEnd threw', { error: String(err) });
+            }
+          },
+        }
+      : {}),
+  });
 
   const usage = emptyUsageTotals();
   // AI SDK 7: `usage` spans every step of the loop (v6 called this totalUsage).

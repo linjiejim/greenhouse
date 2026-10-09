@@ -151,6 +151,23 @@ describe('runAgentLoop — the headless host of the shared assembly', () => {
     expect(JSON.stringify(warnings)).not.toMatch(/chunkMs/);
   });
 
+  it('reports each finished step with the tools it ran (progress for hosts without a stream)', async () => {
+    const seen: unknown[] = [];
+    const { model } = scripted([
+      step([{ type: 'tool-call', toolCallId: 'c1', toolName: 'lookup', input: '{"query":"a"}' }], 'tool-calls'),
+      step([{ type: 'text', text: 'done' }], 'stop'),
+    ]);
+    state.model = model;
+    const steps: unknown[] = [];
+
+    await runAgentLoop(input({ tools: lookupTool(seen), onStepEnd: (info) => steps.push(info) }));
+
+    expect(steps).toEqual([
+      { stepNumber: 1, toolNames: ['lookup'] },
+      { stepNumber: 2, toolNames: [] },
+    ]);
+  });
+
   it('forces a text-only last step', async () => {
     const seen: unknown[] = [];
     const { model, calls } = scripted([
