@@ -10,7 +10,7 @@
  * Stored avatar JSON is never rewritten: legacy Sprouty configs (`color`,
  * `accessories`, `leafStyle`, `faceStyle`, `eyeStyle`, `palette`) render through
  * `legacyToPlant` / `legacyToMood` below. The resolver and the writer rule
- * (`withPlant` / `withMood` / `plantAvatarConfig`) live here, not in the ui
+ * (`withPlant` / `withTint` / `withMood` / `plantAvatarConfig`) live here, not in the ui
  * package, so the API (template seeds, fork pinning), the web editors and the
  * renderer all share one copy.
  */
@@ -78,9 +78,22 @@ export type PlantStateAlias = keyof typeof STATE_ALIASES;
 /** Anything a call site may pass as a state. */
 export type PlantStateInput = PlantState | PlantStateAlias;
 
-/** Resting eyes (idle only). Legacy faceStyle / eyeStyle map onto these. */
+/**
+ * Resting eyes (idle only). Legacy faceStyle / eyeStyle map onto these. No longer offered by the
+ * editors or rendered for Bots (2026-10: a face follows what the Bot is doing, not a setting) —
+ * kept so stored configs stay readable and the builder's `mood` option keeps working.
+ */
 export const PLANT_MOODS = Object.freeze(['calm', 'soft', 'bright', 'drowsy'] as const);
 export type PlantMood = (typeof PLANT_MOODS)[number];
+
+/**
+ * Colours a Bot can wear (`tint`): the species' own (`plant`, the default — never stored) or the
+ * plant's body and disc turned to another hue at the same lightness (a blue sprout, a rose
+ * cactus), so two Bots of one species tell apart at list sizes. Hues live in the renderer
+ * (packages/ui plant-catalogue PLANT_TINT_HUES). Append only.
+ */
+export const PLANT_TINTS = Object.freeze(['plant', 'sky', 'violet', 'rose', 'coral', 'gold', 'teal'] as const);
+export type PlantTint = (typeof PLANT_TINTS)[number];
 
 /**
  * Bot template key → species: the built-in Sprouty is the sprout; the gallery templates are named
@@ -163,6 +176,10 @@ export function isPlantId(value: unknown): value is PlantId {
 
 export function isPlantMood(value: unknown): value is PlantMood {
   return typeof value === 'string' && (PLANT_MOODS as readonly string[]).includes(value);
+}
+
+export function isPlantTint(value: unknown): value is PlantTint {
+  return typeof value === 'string' && (PLANT_TINTS as readonly string[]).includes(value);
 }
 
 /**
@@ -305,19 +322,29 @@ export function legacyToMood(avatar: unknown): PlantMood {
   return 'calm';
 }
 
+/** Stored avatar → colour: a known `tint`, else the species' own. */
+export function avatarTint(avatar: unknown): PlantTint {
+  const a = asRecord(avatar);
+  return isPlantTint(a.tint) ? a.tint : 'plant';
+}
+
 export interface ResolvedPlantAvatar {
   plant: PlantId;
-  mood: PlantMood;
+  /** Colour (`plant` = the species' own). */
+  tint: PlantTint;
   /** Stable id → loop phase (undefined → the builder seeds from the plant). */
   seed: string | undefined;
 }
 
-/** Stored avatar + context → builder options. */
+/**
+ * Stored avatar + context → builder options. No mood: the face follows the Bot's state
+ * (`state`), never a stored setting.
+ */
 export function resolvePlantAvatar(
   avatar: unknown,
   { templateKey, stableId }: { templateKey?: string | null; stableId?: string } = {},
 ): ResolvedPlantAvatar {
-  return { plant: legacyToPlant(avatar, templateKey, stableId), mood: legacyToMood(avatar), seed: stableId };
+  return { plant: legacyToPlant(avatar, templateKey, stableId), tint: avatarTint(avatar), seed: stableId };
 }
 
 // ─── Writer rule (both editors, the API's template seeds, fork pinning) ────
@@ -336,6 +363,7 @@ interface WritableAvatar {
   mood?: string;
   color?: string;
   faceStyle?: string;
+  tint?: string;
 }
 
 /**
@@ -355,6 +383,12 @@ export function withPlant<T extends WritableAvatar>(avatar: T, plant: PlantId): 
 export function withMood<T extends WritableAvatar>(avatar: T, mood: PlantMood): T {
   const { mood: _superseded, ...rest } = avatar;
   return { ...rest, faceStyle: MOOD_FACE_STYLE[mood] } as T;
+}
+
+/** Choose a colour; `plant` (the species' own) drops the key. Every other key is kept. */
+export function withTint<T extends WritableAvatar>(avatar: T, tint: PlantTint): T {
+  const { tint: _previous, ...rest } = avatar;
+  return (tint === 'plant' ? rest : { ...rest, tint }) as T;
 }
 
 /** A fresh stored avatar: species + legacy colour (+ resting mood). Accessories are not written. */

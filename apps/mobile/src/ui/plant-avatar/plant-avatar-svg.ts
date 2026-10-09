@@ -4,7 +4,8 @@
 // motion classes and data-* hooks, the done bloom, PLANT_AVATAR_CSS and ensurePlantAvatarStyles.
 // What remains is the canonical code with `animate === false` folded in, so for the options
 // kept here the output is byte-identical to the core builder — plant-avatar.parity.test.ts
-// proves it over every preset × state × size × theme (+ moods, forced LODs and mono layers).
+// proves it over every preset × state × size × theme (+ moods, tints, layers, blink, mouths,
+// forced LODs and mono layers).
 // Do not edit here: change the core, then re-apply the change below and run the parity test.
 
 /**
@@ -31,13 +32,15 @@ import {
 import {
   PLANT_LOD_CODES,
   PLANT_PRESETS,
+  PLANT_TINT_HUES,
+  PLANT_TINT_TONES,
   PLANT_TONES,
   type PlantLod,
   type PlantPalette,
   type PlantPresetDef,
 } from './plant-catalogue';
 import { PLANT_FIT } from './plant-fit.generated';
-import { desaturate, f, f2, mix } from './plant-geometry';
+import { desaturate, f, f2, luminance, mix, toOklch, withHue } from './plant-geometry';
 
 const hasOwn = (o: object, k: unknown): boolean => typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k);
 
@@ -51,6 +54,9 @@ export const FIT_TARGET = Object.freeze({ glyph: 48, avatar: 47.5, portrait: 47 
 
 type EyeKind = 'calm' | 'soft' | 'bright' | 'drowsy' | 'look' | 'focus' | 'happy' | 'sad' | 'attentive' | 'closed';
 type MouthKind = 'smile' | 'grin' | 'side' | 'talk' | 'o' | 'wobble' | 'small';
+/** Mouth shapes (the `mouth` override — a native renderer closing a talking mouth between beats). */
+export type PlantMouth = MouthKind;
+const MOUTHS: readonly MouthKind[] = ['smile', 'grin', 'side', 'talk', 'o', 'wobble', 'small'];
 type BrowKind = 'focus' | 'worried' | 'arched';
 
 export interface PlantPose {
@@ -388,9 +394,30 @@ export interface PlantThemePalettes {
   dark: PlantPalette;
 }
 
-/** State-treated palettes for both themes (desat / dim are the only shifts; disc, ink, catch never change). */
-function statePalettes(P: PlantPresetDef, pose: PlantPose): PlantThemePalettes {
-  const tone = (pal: PlantPalette): PlantPalette => {
+/**
+ * A palette's body family turned to a tint's hue: each tone keeps its hue offset from the body and
+ * its luminance — nudged a hair away from the body's, so 8-bit rounding can only widen a contrast.
+ */
+function tinted(pal: PlantPalette, hue: number): PlantPalette {
+  const base = toOklch(pal.body)[2];
+  const body = luminance(pal.body);
+  const out = { ...pal } as Record<keyof PlantPalette, string>;
+  for (const t of PLANT_TINT_TONES) {
+    const lum = luminance(pal[t]);
+    const away = t === 'body' ? 0 : Math.sign(lum - body) * 0.004;
+    out[t] = withHue(pal[t], hue + toOklch(pal[t])[2] - base, Math.min(1, Math.max(0, lum + away)));
+  }
+  return out;
+}
+
+/**
+ * State-treated palettes for both themes (desat / dim are the only shifts; disc, ink, catch never
+ * change). A `tint` turns the body family to its hue first (PLANT_TINT_HUES).
+ */
+function statePalettes(P: PlantPresetDef, pose: PlantPose, tint?: unknown): PlantThemePalettes {
+  const hue = hasOwn(PLANT_TINT_HUES, tint) ? PLANT_TINT_HUES[tint as keyof typeof PLANT_TINT_HUES] : null;
+  const tone = (raw: PlantPalette): PlantPalette => {
+    const pal = hue == null ? raw : tinted(raw, hue);
     const out = {} as Record<keyof PlantPalette, string>;
     for (const t of PLANT_TONES) {
       let c = pal[t];
@@ -406,8 +433,12 @@ function statePalettes(P: PlantPresetDef, pose: PlantPose): PlantThemePalettes {
 }
 
 /** What the builder paints for a plant in a state (the RN wrapper reads the disc tone from it). */
-export function plantPalette(plant: PlantId | string, state: PlantStateInput = 'idle'): PlantThemePalettes {
-  return statePalettes(PLANT_PRESETS[isPlantId(plant) ? plant : DEFAULT_PLANT], poseFor(state));
+export function plantPalette(
+  plant: PlantId | string,
+  state: PlantStateInput = 'idle',
+  tint?: string,
+): PlantThemePalettes {
+  return statePalettes(PLANT_PRESETS[isPlantId(plant) ? plant : DEFAULT_PLANT], poseFor(state), tint);
 }
 
 // ─── build ──────────────────────────────────────────────────────────────────
@@ -426,8 +457,20 @@ export interface PlantAvatarSvgOptions {
   theme?: PlantAvatarTheme;
   /** Tinted backing disc (default true). */
   disc?: boolean;
-  /** Resting eyes (idle only). */
+  /** Resting eyes (idle only). Bots no longer pass it — their face follows state. */
   mood?: PlantMood;
+  /** Colour (PLANT_TINTS: the body family turned to a hue; `plant` / unknown = the species' own). */
+  tint?: string;
+  /**
+   * One layer of the avatar, for native renderers that move the face on its own (a glance, a
+   * head shake, a blink): `body` = everything but the face, `face` = only the face (eyes, brows,
+   * mouth) — same viewBox and transforms, so the two stack into the whole avatar.
+   */
+  layer?: 'body' | 'face';
+  /** Eyes shut (the closed frame of a blink: each eye flattened about its centre). */
+  blink?: boolean;
+  /** Mouth override (a talking mouth closing between beats); unknown → the state's mouth. */
+  mouth?: PlantMouth;
   /** Force a LOD (compact ≤ 24px sites: 'glyph'). */
   lod?: PlantLod;
   /** Knockout export layers (prefer buildPlantMonoLayers). */
@@ -443,10 +486,11 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
   const pose = poseFor(o.state || 'idle');
   const mono = o.mono === 'silhouette' || o.mono === 'eyes' ? o.mono : null;
   const theme: PlantAvatarTheme = o.theme === 'dark' ? 'dark' : 'light';
-  const disc = o.disc !== false && !mono;
+  const layer = o.layer === 'body' || o.layer === 'face' ? o.layer : null;
+  const disc = o.disc !== false && !mono && layer !== 'face';
 
   // ── paint: presentation attributes in the named theme (mono → currentColor)
-  const pals = statePalettes(P, pose);
+  const pals = statePalettes(P, pose, o.tint);
   const val = (t: keyof PlantPalette) => (theme === 'dark' ? pals.dark : pals.light)[t];
   const paint: Paint = mono
     ? {
@@ -483,7 +527,7 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
   const visible = P.layers.filter((l) => l.lods.includes(lodCode));
   const silhouette = (l: (typeof visible)[number]) => l.op == null && l.rim !== false;
   let body = '';
-  if (mono !== 'eyes') {
+  if (mono !== 'eyes' && layer !== 'face') {
     for (const layer of visible) {
       if (mono && !silhouette(layer)) continue;
       const w = layer.stroke ? (lod === 'glyph' ? layer.stroke * 1.15 : layer.stroke) : 0;
@@ -500,22 +544,27 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
   const fs = P.face.scale || 1;
   const gap = eyeHalfGap(key, lod);
   const kind = eyeKind(pose.eyes, o.mood, lod);
+  const shut = o.blink === true;
   const brow = lod === 'portrait' ? STATE_BROWS[pose.state] : undefined;
   let eyes = '';
-  if (mono !== 'silhouette') {
+  if (mono !== 'silhouette' && layer !== 'body') {
     let brows = '';
     for (const side of [-1, 1]) {
       const ex = P.face.x + side * gap;
       const ey = P.face.y;
       const turn = kind === 'look' && pose.look[0] * side > 0 ? 0.92 : 1; // far eye narrows: a cheap 3D turn
-      eyes += eyeSvg(kind, ex, ey, m, side, fs * turn, paint);
+      const inner = eyeSvg(kind, ex, ey, m, side, fs * turn, paint);
+      eyes += shut
+        ? `<g transform="translate(${f(ex)} ${f(ey)}) scale(1 0.1) translate(${f(-ex)} ${f(-ey)})">${inner}</g>`
+        : inner;
       if (brow) brows += browSvg(brow, ex, ey, m, side, fs, paint);
     }
     if (lod !== 'glyph') {
       const mm = MOUTH[lod];
       const my = P.face.y + mm.dy * fs;
-      const mk =
-        pose.state === 'idle' && (PLANT_MOODS as readonly unknown[]).includes(o.mood)
+      const mk = MOUTHS.includes(o.mouth as MouthKind)
+        ? (o.mouth as MouthKind)
+        : pose.state === 'idle' && (PLANT_MOODS as readonly unknown[]).includes(o.mood)
           ? MOOD_MOUTH[o.mood as PlantMood]
           : STATE_MOUTH[pose.state];
       eyes += brows + mouthSvg(mk, P.face.x, my, mm, fs, paint);
@@ -531,7 +580,7 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
     (lx || ly ? `translate(${f(lx)} ${f(ly)})` : '') +
     (er ? ` rotate(${f(er)} ${f(fx0)} ${f(fy0)})` : '') +
     (sq !== 1 ? ` translate(${f(fx0)} ${f(fy0)}) scale(${f2(sq)} 1) translate(${f(-fx0)} ${f(-fy0)})` : '');
-  const face = lookT ? `<g transform="${lookT.trim()}">${eyes}</g>` : eyes;
+  const face = layer === 'body' ? '' : lookT ? `<g transform="${lookT.trim()}">${eyes}</g>` : eyes;
 
   // ── pose (static attribute about the species pivot)
   const bladeFold = !P.parts && pose.fold > 0 ? 1 - 0.07 * pose.fold : 1;
@@ -550,7 +599,7 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
   const posed = poseT ? `<g transform="${poseT.trim()}">${plant}</g>` : plant;
 
   // ── state mark: portrait only, on the disc above the plant (never in knockout layers)
-  const mk = lod === 'portrait' && !mono ? marksSvg(pose.state, paint) : '';
+  const mk = lod === 'portrait' && !mono && layer !== 'face' ? marksSvg(pose.state, paint) : '';
   const marks = mk ? `<g>${mk}</g>` : '';
 
   return (

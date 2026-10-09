@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { COLOR_FAMILY, PLANT_IDS, PLANT_MOODS, TEMPLATE_PLANT, type PlantId } from './plant-avatar';
-import { legacyToMood, legacyToPlant, resolvePlantAvatar } from './plant-avatar';
+import { avatarTint, legacyToMood, legacyToPlant, resolvePlantAvatar, withTint } from './plant-avatar';
 
 describe('legacyToPlant — documented cases (sheet 14)', () => {
   const cases: [
@@ -208,17 +208,28 @@ describe('legacyToMood', () => {
 });
 
 describe('resolvePlantAvatar', () => {
-  it('bundles plant, mood and the stable id as the loop seed', () => {
+  it('bundles plant, tint and the stable id as the loop seed — never a stored mood', () => {
     expect(resolvePlantAvatar({ color: 'autumn', faceStyle: 'sleepy' }, { stableId: 'bot_1' })).toEqual({
       plant: 'maple',
-      mood: 'drowsy',
+      tint: 'plant',
       seed: 'bot_1',
     });
     expect(resolvePlantAvatar(undefined, { stableId: 'sprouty' })).toEqual({
       plant: 'sprout',
-      mood: 'calm',
+      tint: 'plant',
       seed: 'sprouty',
     });
+    expect(resolvePlantAvatar({ plant: 'ivy', tint: 'rose' }).tint).toBe('rose');
+    expect(resolvePlantAvatar({ plant: 'ivy', tint: 'neon' }).tint).toBe('plant'); // unknown → the species' own
     expect(resolvePlantAvatar({}, { templateKey: 'analyst' }).plant).toBe('clover');
+  });
+});
+
+describe('withTint', () => {
+  it('stores a colour and drops the key for the species disc, keeping every other key', () => {
+    const base = { plant: 'ivy', color: 'forest', faceStyle: 'happy' };
+    expect(withTint(base, 'sky')).toEqual({ ...base, tint: 'sky' });
+    expect(withTint({ ...base, tint: 'sky' }, 'plant')).toEqual(base);
+    expect(avatarTint(withTint(base, 'gold'))).toBe('gold');
   });
 });

@@ -64,6 +64,26 @@ export const PLANT_TONES = Object.freeze([
 export type PlantTone = (typeof PLANT_TONES)[number];
 export type PlantPalette = Readonly<Record<PlantTone, string>>;
 
+/**
+ * Colours a Bot can wear (`tint`, PLANT_TINTS in @greenhouse/types; `plant` = the species' own,
+ * not listed here): an OKLCH hue the plant's body family (body, shade, light, its disc, rim and
+ * mark) is turned to, each tone keeping its own luminance and chroma and its hue offset from the
+ * body — a blue sprout, a rose cactus. Stems, flowers (accents), eyes and mouth keep theirs.
+ * Luminance is what the contrast floors measure, so they hold (plant-avatar-palette.test.ts).
+ */
+export const PLANT_TINT_HUES = Object.freeze({
+  sky: 245,
+  violet: 300,
+  rose: 355,
+  coral: 40,
+  gold: 85,
+  teal: 190,
+} as const satisfies Record<string, number>);
+export type PlantTintHue = keyof typeof PLANT_TINT_HUES;
+
+/** The tones a tint recolours. */
+export const PLANT_TINT_TONES = Object.freeze(['disc', 'body', 'shade', 'light', 'rim', 'mark'] as const);
+
 /** Level of detail: adds detail, never changes the silhouette. */
 export type PlantLod = 'glyph' | 'avatar' | 'portrait';
 export const PLANT_LOD_CODES = Object.freeze({ glyph: 'g', avatar: 'a', portrait: 'p' } as const);

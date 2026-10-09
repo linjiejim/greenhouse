@@ -319,3 +319,64 @@ export function desaturate(hex: string, t: number): string {
   const y = 0.299 * r + 0.587 * g + 0.114 * b;
   return rgbToHex([r + (y - r) * t, g + (y - g) * t, b + (y - b) * t]);
 }
+
+// ─── OKLCH (the disc-and-body recolour of a `tint`) ──────────────────────────
+
+const toLinear = (v: number) => {
+  const c = v / 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+};
+const fromLinear = (v: number) => 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055);
+
+/** `#RRGGBB` → OKLCH [L 0–1, C, H degrees 0–360]. */
+export function toOklch(hex: string): [l: number, c: number, h: number] {
+  const [r, g, b] = hexToRgb(hex).map(toLinear) as Rgb;
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const L = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s;
+  const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+  const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+  return [L, Math.hypot(A, B), ((Math.atan2(B, A) * 180) / Math.PI + 360) % 360];
+}
+
+/** OKLCH → linear sRGB, unclamped (out of gamut when a channel leaves 0–1). */
+function oklchToLinear(L: number, C: number, H: number): Rgb {
+  const a = C * Math.cos((H * Math.PI) / 180);
+  const b = C * Math.sin((H * Math.PI) / 180);
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
+}
+
+/**
+ * The colour at OKLCH hue `h` with its own chroma and its own WCAG luminance (or `lum0`;
+ * lightness re-solved at the new hue, so every contrast it took part in holds) — chroma eased
+ * down until it fits sRGB (a vivid green turned blue keeps its lightness, not its punch).
+ */
+export function withHue(hex: string, h: number, lum0: number = luminance(hex)): string {
+  const target = lum0;
+  const C = toOklch(hex)[1];
+  const at = (L: number, c: number) => oklchToLinear(L, c, h);
+  const lum = (rgb: Rgb) => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+  const toHex = (rgb: Rgb) => rgbToHex(rgb.map((v) => fromLinear(Math.min(1, Math.max(0, v)))));
+  let c = C;
+  for (let i = 0; i < 30; i++) {
+    let lo = 0;
+    let hi = 1;
+    for (let j = 0; j < 28; j++) {
+      const mid = (lo + hi) / 2;
+      if (lum(at(mid, c)) < target) lo = mid;
+      else hi = mid;
+    }
+    const rgb = at((lo + hi) / 2, c);
+    if (rgb.every((v) => v >= -1e-4 && v <= 1 + 1e-4)) return toHex(rgb);
+    c *= 0.9;
+  }
+  return toHex(at(toOklch(hex)[0], 0));
+}

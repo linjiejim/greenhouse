@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { PLANT_IDS, PLANT_MOODS, PLANT_STATES, type PlantId, type PlantMood, type PlantState } from '@greenhouse/types';
-import { PLANT_PRESETS, PLANT_TONES, type PlantTone } from './plant-catalogue';
+import { PLANT_PRESETS, PLANT_TINT_HUES, PLANT_TINT_TONES, PLANT_TONES, type PlantTone } from './plant-catalogue';
 import { contrast, luminance, mix } from './plant-geometry';
 import { buildPlantAvatarSvg, plantPalette } from './plant-avatar-svg';
 
@@ -365,6 +365,52 @@ describe('plant palettes', () => {
       for (const surface of [...SURFACES.dark, p.disc])
         expect(contrast(p.body, surface), `${plant} vs ${surface}`).toBeGreaterThanOrEqual(3);
     }
+  });
+
+  it('every tint keeps the floors: body and shade off the disc, dark body off dark surfaces', () => {
+    const failures: string[] = [];
+    for (const tint of Object.keys(PLANT_TINT_HUES)) {
+      for (const plant of PLANT_IDS) {
+        const { light, dark } = plantPalette(plant, 'idle', tint);
+        for (const tone of ['body', 'shade'] as const) {
+          const c = contrast(light[tone], light.disc);
+          if (c < 1.8) failures.push(`light ${plant}.${tone} on ${tint}: ${c.toFixed(2)}`);
+        }
+        for (const surface of [...SURFACES.dark, dark.disc]) {
+          const c = contrast(dark.body, surface);
+          if (c < 3) failures.push(`dark ${plant}.body on ${tint} vs ${surface}: ${c.toFixed(2)}`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('eyes keep 4.5:1 on a tinted plant, in both themes and every LOD', () => {
+    const failures: string[] = [];
+    for (const tint of Object.keys(PLANT_TINT_HUES))
+      for (const plant of PLANT_IDS)
+        for (const theme of ['light', 'dark'] as const)
+          for (const size of [18, 32, 80]) {
+            const svg = buildPlantAvatarSvg({ plant, size, theme, tint, animate: false });
+            const pal = plantPalette(plant, 'idle', tint)[theme];
+            const face = PLANT_PRESETS[plant].face.tone ?? 'body';
+            const c = contrast(pal.ink, pal[face]);
+            if (c < 4.5) failures.push(`${plant}/${tint}/${theme}/${size}: ${c.toFixed(2)}`);
+            expect(svg).toContain(pal.disc);
+          }
+    expect(failures).toEqual([]);
+  });
+
+  it('a tint recolours the body family only, at the same lightness', () => {
+    const own = plantPalette('ivy', 'idle');
+    const sky = plantPalette('ivy', 'idle', 'sky');
+    for (const tone of PLANT_TONES) {
+      if ((PLANT_TINT_TONES as readonly string[]).includes(tone)) {
+        expect(sky.light[tone], tone).not.toBe(own.light[tone]);
+        expect(Math.abs(luminance(sky.light[tone]) - luminance(own.light[tone])), tone).toBeLessThan(0.05);
+      } else expect(sky.light[tone], tone).toBe(own.light[tone]);
+    }
+    expect(plantPalette('ivy', 'idle', 'neon')).toEqual(own); // unknown → the species' own
   });
 
   it('separates the five Bot templates by lightness (greyscale / deuteranopia stack)', () => {
