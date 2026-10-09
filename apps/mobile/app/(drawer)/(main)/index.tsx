@@ -768,7 +768,6 @@ function Conversation() {
               onRemoveImage={removeImage}
               maxImages={MAX_IMAGES}
               placeholder={sessionId ? t('chat.followUpPlaceholder') : t('home.heroPlaceholder')}
-              showProfile={isNew && !profileBot}
               autoFocus={params.compose === '1'}
               onHeight={onComposerHeight}
             />
