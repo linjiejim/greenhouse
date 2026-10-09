@@ -30,17 +30,19 @@ function bot(id: string, name: string): BotView {
 
 const FERN = bot('bot_fern', 'Fern');
 const IVY = bot('bot_ivy', 'Ivy');
+const SAGE = bot('bot_sage', 'Sage');
+const ALL = [FERN, IVY, SAGE];
 
-function group(lead: string | null): BotConversationDetail {
+function conversation(overrides: Partial<BotConversationDetail>): BotConversationDetail {
   return {
-    session_id: 'grp-1',
-    kind: 'group',
-    title: 'Launch',
-    owner_bot_id: null,
-    lead_bot_id: lead,
+    session_id: 'dm-ivy',
+    kind: 'direct',
+    title: null,
+    owner_bot_id: IVY.id,
+    lead_bot_id: IVY.id,
     members: [
-      { bot_id: FERN.id, role: 'member', position: 1 },
-      { bot_id: IVY.id, role: 'member', position: 2 },
+      { bot_id: IVY.id, role: 'owner', position: 0 },
+      { bot_id: FERN.id, role: 'guest', position: 1 },
     ],
     last_message: null,
     attention: 'idle',
@@ -52,17 +54,31 @@ function group(lead: string | null): BotConversationDetail {
     notes: [],
     requests: [],
     context: { estimated_tokens: 0, threshold: 1 },
+    ...overrides,
   };
 }
 
-function render(conversation: BotConversationDetail) {
+/** A retired group chat — history only. */
+const GROUP = conversation({
+  session_id: 'grp-1',
+  kind: 'group',
+  title: 'Launch',
+  owner_bot_id: null,
+  description: 'Reply in English.',
+  members: [
+    { bot_id: IVY.id, role: 'lead', position: 0 },
+    { bot_id: FERN.id, role: 'member', position: 1 },
+    { bot_id: SAGE.id, role: 'member', position: 2 },
+  ],
+});
+
+function render(value: BotConversationDetail) {
   return renderToStaticMarkup(
     <I18nProvider initialLocale="en">
       <InfoPanel
-        conversation={conversation}
+        conversation={value}
         onConversationChange={vi.fn()}
-        members={[FERN, IVY]}
-        lookup={(id) => [FERN, IVY].find((candidate) => candidate.id === id)}
+        lookup={(id) => ALL.find((candidate) => candidate.id === id)}
         busy={false}
         onOpenProfile={vi.fn()}
       />
@@ -70,29 +86,58 @@ function render(conversation: BotConversationDetail) {
   );
 }
 
-describe('InfoPanel lead picker', () => {
-  it('says there is no lead (instead of faking the first member) after the lead was archived', () => {
-    const html = render(group('bot_archived'));
-    expect(html).toMatch(/<option value="" disabled="" selected="">No lead yet — pick one<\/option>/);
-    // Every member is a real choice, so picking Fern fires a change.
-    expect(html).toContain('<option value="bot_fern">Fern</option>');
+/** One `<li>` per member, by name. */
+function memberRows(html: string): Record<string, string> {
+  const rows: Record<string, string> = {};
+  for (const [row] of html.matchAll(/<li[^>]*>.*?<\/li>/g)) {
+    const name = ALL.find((candidate) => row.includes(`>${candidate.name}<`))?.name;
+    if (name) rows[name] = row;
+  }
+  return rows;
+}
+
+/** Nothing about a conversation is configured any more: no switch, no group name / rules / lead. */
+function expectNothingToConfigure(html: string) {
+  expect(html).not.toContain('role="switch"');
+  expect(html).not.toContain('Let Bots ask each other');
+  expect(html).not.toMatch(/<(input|textarea|select)\b/);
+  expect(html).not.toContain('Group rules');
+  expect(html).not.toContain('Group name');
+  expect(html).not.toContain('No lead yet');
+  expect(html).not.toContain('Answers when nobody is @-mentioned');
+}
+
+describe('InfoPanel on a DM', () => {
+  it('lists the Bot and its guests, tagged, and offers to send away only a guest', () => {
+    const html = render(conversation({}));
+    const rows = memberRows(html);
+    expect(Object.keys(rows)).toEqual(['Ivy', 'Fern']);
+    expect(rows.Ivy).toContain('>Owner<');
+    expect(rows.Ivy).not.toContain('aria-label="Remove from conversation"');
+    expect(rows.Fern).toContain('>Guest<');
+    expect(rows.Fern).toContain('aria-label="Remove from conversation"');
   });
 
-  it('shows the actual lead without the placeholder', () => {
-    const html = render(group(IVY.id));
-    expect(html).not.toContain('No lead yet');
-    expect(html).toContain('<option value="bot_ivy" selected="">Ivy</option>');
+  it('has no Bot-to-Bot switch and no group sections — hand-offs are always allowed', () => {
+    expectNothingToConfigure(render(conversation({})));
+  });
+
+  it('reveals row actions on keyboard focus, not only on hover', () => {
+    const html = render(conversation({}));
+    expect(html).toContain('group-focus-within:opacity-100');
+    expect(html).toContain('focus-within:opacity-100');
   });
 });
 
-describe('InfoPanel row actions', () => {
-  it('reveal on keyboard focus, not only on hover', () => {
-    const conversation = group(IVY.id);
-    // Three members: a non-lead one can be removed, so its row has the action.
-    conversation.members.push({ bot_id: 'bot_sage', role: 'member', position: 3 });
-    const html = render(conversation);
-    expect(html).toContain('aria-label="Remove from conversation"');
-    expect(html).toContain('group-focus-within:opacity-100');
-    expect(html).toContain('focus-within:opacity-100');
+describe('InfoPanel on a retired group chat', () => {
+  it('lists who was in it, read-only: no group sections, no switch, nobody to remove', () => {
+    const html = render(GROUP);
+    const rows = memberRows(html);
+    expect(Object.keys(rows)).toEqual(['Ivy', 'Fern', 'Sage']);
+    expect(rows.Ivy).toContain('>Lead<'); // the record says who led it — nothing to pick
+    expect(rows.Fern).toContain('>Member<');
+    expectNothingToConfigure(html);
+    expect(html).not.toContain('Reply in English.');
+    expect(html).not.toContain('aria-label="Remove from conversation"');
   });
 });

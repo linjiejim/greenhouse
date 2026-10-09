@@ -32,10 +32,12 @@ export function useStatusLine({
   pendingRequests: BotRequestView[];
   /** A take-over the member already took reads "you're in control", not "waiting for you". */
   computerPhase?: ComputerPhase | null;
-  /** Nobody here can reply any more (archived). */
+  /** Nobody here can reply any more (the DM's Bot was archived). */
   readOnly?: boolean;
 }): { text: string; tone: 'idle' | 'active' | 'waiting' } {
   const t = useT();
+  // A group chat is a closed record (group chats were retired): nothing in it is live any more.
+  if (conversation.kind === 'group') return { text: t('bots.header.groupClosed'), tone: 'idle' };
   if (readOnly) return { text: t('bots.header.readOnly'), tone: 'idle' };
   const latestPending = pendingRequests[pendingRequests.length - 1];
   if (latestPending?.kind === 'takeover' && computerPhase?.kind === 'running' && computerPhase.controller === 'user') {
@@ -74,11 +76,6 @@ export function useStatusLine({
       text: speaking.text ? t('bots.header.replying', { name }) : t('bots.header.thinking', { name }),
       tone: 'active',
     };
-  }
-  if (conversation.kind === 'group') {
-    const lead = members.find((bot) => bot.id === conversation.lead_bot_id);
-    const count = t('bots.header.botCount', { count: members.length });
-    return { text: lead ? `${count} · ${t('bots.header.lead', { name: lead.name })}` : count, tone: 'idle' };
   }
   const owner = members.find((bot) => bot.id === conversation.owner_bot_id);
   return { text: owner?.role || t('bots.header.idle'), tone: 'idle' };
@@ -153,7 +150,7 @@ export function ConversationHeader({
   onInvite: () => void;
   onOpenComputer: () => void;
   onOpenInfo: () => void;
-  /** The DM's Bot face + name open its profile; a group's open the info panel (members, rules). */
+  /** The DM's Bot face + name open its profile; a retired group's open the info panel (its members). */
   onOpenProfile: (botId: string) => void;
 }) {
   const t = useT();

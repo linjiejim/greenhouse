@@ -1,14 +1,17 @@
 /**
  * Conversation info — everything about a conversation that is not the talk
- * itself: what the Bots remember of it (the rolling summary, verbatim), the
- * group's name/rules/lead, who is here, the shared notes, and — tucked under
- * "Advanced" — how close the next summary is. No percentage chip in the
- * header: context management is our job, not the member's.
+ * itself: what the Bots remember of it (the rolling summary, verbatim), who is
+ * here (the DM's Bot and the guests it — or the member — brought in; a guest
+ * can be sent away), the shared notes, and — tucked under "Advanced" — how
+ * close the next summary is. No percentage chip in the header: context
+ * management is our job, not the member's. Nothing to configure: Bots hand
+ * work to each other whenever it helps, and a retired group chat lists who was
+ * in it, read-only.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { BotConversationDetail, BotMemberRole, BotView } from '@greenhouse/types/bots';
-import { Button, ConfirmDialog, IconButton, Input, Select, Spinner, Tag, Textarea, Toggle, toast } from '../ui';
+import { Button, ConfirmDialog, IconButton, Spinner, Tag, toast } from '../ui';
 import { ChevronDown, ChevronRight, LogOut, RefreshCw } from '../../lib/icons';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { timeAgo, formatTokens } from '../../lib/utils';
@@ -29,14 +32,12 @@ const ROLE_KEY: Record<BotMemberRole, TranslationKey> = {
 export function InfoPanel({
   conversation,
   onConversationChange,
-  members,
   lookup,
   busy,
   onOpenProfile,
 }: {
   conversation: BotConversationDetail;
   onConversationChange: (next: BotConversationDetail) => void;
-  members: BotView[];
   lookup: BotLookup;
   /** A run is streaming (summarizing now would 409). */
   busy: boolean;
@@ -44,32 +45,9 @@ export function InfoPanel({
 }) {
   const t = useT();
   const sessionId = conversation.session_id;
-  const isGroup = conversation.kind === 'group';
-  const [title, setTitle] = useState(conversation.title ?? '');
-  const [rules, setRules] = useState(conversation.description);
-  const [saving, setSaving] = useState(false);
   const [compacting, setCompacting] = useState(false);
   const [removing, setRemoving] = useState<BotView | null>(null);
   const [advanced, setAdvanced] = useState(false);
-
-  useEffect(() => {
-    setTitle(conversation.title ?? '');
-    setRules(conversation.description);
-  }, [conversation.session_id, conversation.title, conversation.description]);
-
-  const patch = async (change: Parameters<typeof botsApi.updateConversation>[1]) => {
-    setSaving(true);
-    try {
-      const { conversation: next } = await botsApi.updateConversation(sessionId, change);
-      onConversationChange(next);
-      return true;
-    } catch (err) {
-      toast(err instanceof Error && err.message ? err.message : t('bots.info.saveFailed'), 'error');
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const compact = async () => {
     setCompacting(true);
@@ -100,7 +78,6 @@ export function InfoPanel({
     }
   };
 
-  const rulesDirty = rules !== conversation.description || (isGroup && title !== (conversation.title ?? ''));
   const { estimated_tokens: used, threshold } = conversation.context;
   const usage = threshold > 0 ? Math.min(1, used / threshold) : 0;
 
@@ -137,95 +114,12 @@ export function InfoPanel({
         )}
       </PanelSection>
 
-      {isGroup && (
-        <PanelSection title={t('bots.info.rules')} hint={t('bots.info.rulesHint')}>
-          <div className="space-y-2">
-            <Input
-              size="sm"
-              value={title}
-              maxLength={80}
-              aria-label={t('bots.info.groupName')}
-              placeholder={t('bots.info.groupName')}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-            <Textarea
-              value={rules}
-              maxLength={2000}
-              rows={4}
-              aria-label={t('bots.info.rules')}
-              placeholder={t('bots.info.rulesPlaceholder')}
-              onChange={(event) => setRules(event.target.value)}
-            />
-            {rulesDirty && (
-              <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  disabled={saving}
-                  onClick={() =>
-                    void patch({ title: title.trim(), description: rules }).then(
-                      (ok) => ok && toast(t('bots.info.saved'), 'success'),
-                    )
-                  }
-                >
-                  {t('bots.info.save')}
-                </Button>
-              </div>
-            )}
-          </div>
-        </PanelSection>
-      )}
-
       <PanelSection title={t('bots.info.members')}>
-        {isGroup && (
-          <div className="mb-3 space-y-1">
-            <label className="block text-[11px] font-medium text-fg-secondary" htmlFor={`lead-${sessionId}`}>
-              {t('bots.info.lead')}
-            </label>
-            <Select
-              id={`lead-${sessionId}`}
-              size="sm"
-              value={members.some((bot) => bot.id === conversation.lead_bot_id) ? (conversation.lead_bot_id ?? '') : ''}
-              disabled={saving}
-              onChange={(event) => {
-                if (event.target.value) void patch({ lead_bot_id: event.target.value });
-              }}
-            >
-              {/* No (active) lead — e.g. it was archived: say so instead of letting the
-                  browser show the first member as if it led, which would also make
-                  picking that member a no-op. */}
-              {!members.some((bot) => bot.id === conversation.lead_bot_id) && (
-                <option value="" disabled>
-                  {t('bots.info.noLead')}
-                </option>
-              )}
-              {members.map((bot) => (
-                <option key={bot.id} value={bot.id}>
-                  {bot.name}
-                </option>
-              ))}
-            </Select>
-            <p className="text-[10px] text-fg-faint">{t('bots.info.leadHint')}</p>
-          </div>
-        )}
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-medium text-fg-secondary">{t('bots.info.allowBotChat')}</p>
-            <p className="text-[10px] text-fg-faint">{t('bots.info.allowBotChatHint')}</p>
-          </div>
-          <Toggle
-            size="sm"
-            checked={conversation.allow_bot_chat}
-            disabled={saving}
-            label={t('bots.info.allowBotChat')}
-            onChange={(checked) => void patch({ allow_bot_chat: checked })}
-          />
-        </div>
         <ul className="space-y-0.5">
           {conversation.members.map((member) => {
             const bot = lookup(member.bot_id);
-            const removable = isGroup
-              ? conversation.members.length > 2 && member.bot_id !== conversation.lead_bot_id
-              : member.role === 'guest';
+            // Only a DM has guests, and only a guest can be sent away (the DM's own Bot cannot).
+            const removable = member.role === 'guest';
             return (
               <li
                 key={member.bot_id}

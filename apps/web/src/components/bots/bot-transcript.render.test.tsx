@@ -104,7 +104,30 @@ describe('BotTranscript', () => {
     expect(html).toContain('This is the beginning of your conversation with Ivy.');
   });
 
-  it('names a speaker only when the speaker changes, and draws the hand-off strip', () => {
+  it('names a guest in a DM when it speaks — the owner speaks under the conversation header', () => {
+    // Ivy brought Sage in (team.add) and handed over (team.ask): no group, no setting.
+    const html = render({
+      messages: [
+        msg({ role: 'user', content: 'compare the vendors' }),
+        msg({ bot_id: ivy.id }),
+        msg({
+          role: 'system',
+          content: 'Ivy added Sage',
+          bot_event: { kind: 'joined', bot_id: sage.id, by: 'bot', by_bot_id: ivy.id },
+        }),
+        msg({ role: 'system', content: 'find three vendors', bot_event: { kind: 'ask', from: ivy.id, to: sage.id } }),
+        msg({ bot_id: sage.id }),
+        msg({ bot_id: sage.id }),
+        msg({ bot_id: ivy.id }),
+      ],
+    });
+    expect(headers(html)).toEqual(['Sage']);
+    expect(html).toContain('Ivy added Sage');
+    expect(html).toContain('@Sage');
+    expect(html).toContain('find three vendors');
+  });
+
+  it("renders a retired group chat's history: a speaker line per speaker change and the hand-off strip", () => {
     const html = render({
       kind: 'group',
       title: 'Launch prep',
@@ -123,7 +146,13 @@ describe('BotTranscript', () => {
     expect(html).toContain('polish the intro');
   });
 
-  it("rings a group intro's overlapped chips in the canvas the transcript sits on", () => {
+  it('introduces a retired group chat by its roster and name only — no DM greeting line', () => {
+    const html = render({ kind: 'group', title: 'Launch prep', ownerBotId: null, members: all });
+    expect(html).toContain('Launch prep');
+    expect(html).not.toContain('This is the beginning of');
+  });
+
+  it("rings a retired group intro's overlapped chips in the canvas the transcript sits on", () => {
     // The transcript has no surface of its own; the stack's default ring (surface-raised) is a
     // visible lighter halo on dark's darker canvas.
     const html = render({ kind: 'group', title: 'Launch prep', ownerBotId: null, members: all });
@@ -137,19 +166,17 @@ describe('BotTranscript', () => {
 
   it('streams each Bot as its own segment and marks a queued send as delivered', () => {
     const segments: BotStreamSegment[] = [
-      { botId: sage.id, reason: 'user', status: 'completed', text: 'found it', reasoning: '', toolCalls: [] },
-      { botId: fern.id, reason: 'ask', askedBy: sage.id, status: 'streaming', text: '', reasoning: '', toolCalls: [] },
+      { botId: ivy.id, reason: 'user', status: 'completed', text: 'found it', reasoning: '', toolCalls: [] },
+      { botId: fern.id, reason: 'ask', askedBy: ivy.id, status: 'streaming', text: '', reasoning: '', toolCalls: [] },
     ];
     const html = render({
-      kind: 'group',
-      ownerBotId: null,
-      members: all,
       messages: [msg({ role: 'user', content: 'go' })],
       segments,
       busy: true,
       pending: [{ clientId: 'p1', content: 'also check prices', images: [], status: 'queued', afterSegment: 2 }],
     });
-    expect(headers(html)).toEqual(['Sage', 'Fern']);
+    // Ivy owns the DM (no header); Fern, handed the work, speaks under its name.
+    expect(headers(html)).toEqual(['Fern']);
     expect(html).toContain('found it');
     expect(html).toContain('Delivered — read after the current reply');
     expect(html.indexOf('found it')).toBeLessThan(html.indexOf('also check prices'));
@@ -226,10 +253,6 @@ describe('BotTranscript', () => {
 
   it("renders a background task report as the Bot's markdown, not a one-line event", () => {
     const html = render({
-      kind: 'group',
-      title: 'Launch prep',
-      ownerBotId: null,
-      members: all,
       messages: [
         msg({
           role: 'system',

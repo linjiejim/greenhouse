@@ -1,5 +1,5 @@
 /**
- * Bots — `#/bots`, `#/bots?c=<sessionId>` and `#/bots/directory` (./directory.tsx).
+ * Bots — `#/bots` and `#/bots?c=<sessionId>`.
  *
  * An immersive workspace like Chat (its own conversation header, no
  * ModulePage frame). The page decides where the member lands — first visit
@@ -69,7 +69,7 @@ function BotsLanding() {
   useEffect(() => {
     if (!botsLoaded || !conversationsLoaded || failure) return;
     // The most recent conversation someone can still answer in: an archived
-    // Bot's DM stays listed (read-only) but is no place to land.
+    // Bot's DM or a retired group chat stays listed (read-only) but is no place to land.
     const activeIds = new Set(bots.map((bot) => bot.id));
     const recent =
       conversations.find((conversation) => conversationReplyable(conversation, activeIds))?.session_id ??
@@ -288,7 +288,6 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
               controller.setConversation(next);
               void loadConversations().catch(() => {});
             }}
-            members={members}
             lookup={lookup}
             busy={controller.streaming}
             onOpenProfile={(botId) => openProfile(botId)}

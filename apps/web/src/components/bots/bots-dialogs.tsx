@@ -18,7 +18,7 @@ export function BotsDialogs({
   threadsEnabled,
   onInvited,
 }: {
-  /** Whether this member has Bots threads (the `bots` flag): groups and DMs exist only then. */
+  /** Whether this member has Bots threads (the `bots` flag): DMs exist only then. */
   threadsEnabled: boolean;
   onInvited?: () => void;
 }) {
@@ -36,7 +36,7 @@ export function BotsDialogs({
         openBotsConversation(bot.dm_session_id);
         return;
       }
-      const { conversation: dm } = await botsApi.createConversation({ bot_ids: [bot.id] });
+      const { conversation: dm } = await botsApi.createConversation(bot.id);
       openBotsConversation(dm.session_id);
     },
     [openProfile],
@@ -46,23 +46,16 @@ export function BotsDialogs({
     <>
       <BotProfileDrawer onOpenDm={(bot) => void openDm(bot).catch(() => {})} />
       <NewBotDialog
-        open={dialog?.kind === 'new-bot' || dialog?.kind === 'new-group'}
-        initialTab={dialog?.kind === 'new-group' ? 'group' : 'bot'}
-        groupEnabled={threadsEnabled}
+        open={dialog?.kind === 'new-bot'}
         inviteTo={dialog?.kind === 'new-bot' ? dialog.inviteTo : undefined}
         onClose={() => openDialog(null)}
         onCreated={({ dmSessionId, invitedTo, inviteFailed }) => {
           openDialog(null);
           if (threadsEnabled) void loadConversations().catch(() => {});
-          // Created from Invite: stay in the group either way (a failed join
-          // was explained by the dialog); otherwise meet the new Bot.
+          // Created from Invite: stay in the conversation either way (a failed
+          // join was explained by the dialog); otherwise meet the new Bot.
           if (invitedTo || inviteFailed) onInvited?.();
           else if (dmSessionId && threadsEnabled) openBotsConversation(dmSessionId);
-        }}
-        onGroupCreated={(created) => {
-          openDialog(null);
-          void loadConversations().catch(() => {});
-          openBotsConversation(created.session_id);
         }}
       />
     </>

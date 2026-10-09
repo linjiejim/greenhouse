@@ -2,9 +2,10 @@
  * @vitest-environment happy-dom
  *
  * The Bots sidebar is one conversation list: Sprouty's DM pinned first, a search over titles,
- * Bot names and the last message, and the "new Bot" / "new group" actions in its toolbar.
+ * Bot names and the last message, and one "new Bot" action in its toolbar. Retired group chats
+ * and archived Bots' DMs sit under "Archived".
  *
- * Sidebar conversation rows: a group row's overlapped avatar chips are separated
+ * Sidebar conversation rows: a retired group row's overlapped avatar chips are separated
  * by a ring painted in the row's own colour, so the ring has to follow the row
  * through every state — at rest, under the pointer, active — or it shows as a
  * halo around each chip. A DM nobody can answer any more shows its Bot asleep.
@@ -119,13 +120,13 @@ function mount(currentHash: string) {
 
 const row = (sessionId: string) =>
   host.querySelector<HTMLElement>(`[data-testid="bots-conversation-row"][data-session-id="${sessionId}"]`)!;
-/** The ring classes on each overlapped chip of a group row. */
+/** The ring classes on each overlapped chip of a (retired) group row. */
 const chipRings = (sessionId: string) =>
   [...row(sessionId).querySelectorAll('[data-testid="plant-avatar-stack"] > span')].map((chip) =>
     chip.className.split(/\s+/).filter((name) => name.includes('ring-') && name !== 'ring-2'),
   );
 
-describe('<BotsSidebarPanel/> group rows', () => {
+describe('<BotsSidebarPanel/> retired group rows', () => {
   it("paints chip rings the row's resting colour, and its hover fill under the pointer", () => {
     mount('#/bots?c=dm-bot_sage');
     expect(row(GROUP).className.split(/\s+/)).toContain('group');
@@ -160,11 +161,24 @@ describe('<BotsSidebarPanel/> list', () => {
 
   it("is one list: Sprouty's DM pinned first, then by activity, archived last — no avatar strip", () => {
     mount('#/bots');
-    expect(order()).toEqual(['dm-bot_sprouty', GROUP, 'dm-bot_sage', 'dm-bot_moss']);
+    expect(order()).toEqual(['dm-bot_sprouty', 'dm-bot_sage', GROUP, 'dm-bot_moss']);
     expect(row('dm-bot_sprouty').dataset.pinned).toBe('true');
     expect(row(GROUP).dataset.pinned).toBeUndefined();
     expect(host.textContent).not.toContain('Your Bots');
     expect(api.bootstrapBots).not.toHaveBeenCalled(); // Sprouty is here already
+  });
+
+  it('files a retired group chat under Archived, dimmed, even with every Bot in it active', () => {
+    mount('#/bots');
+    const label = [...host.querySelectorAll('nav span')].find((el) => el.textContent === 'Archived')!;
+    expect(label).toBeDefined();
+    // Everything after the label is a record: the group and the archived Bot's DM.
+    const after = [...host.querySelectorAll<HTMLElement>('[data-testid="bots-conversation-row"]')].filter(
+      (el) => label.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(after.map((el) => el.dataset.sessionId)).toEqual([GROUP, 'dm-bot_moss']);
+    expect(row(GROUP).className).toContain('opacity-70');
+    expect(row('dm-bot_sage').className).not.toContain('opacity-70');
   });
 
   it('searches titles, Bot names and the last message, and says when nothing matches', async () => {
@@ -178,7 +192,7 @@ describe('<BotsSidebarPanel/> list', () => {
     type('draft');
     expect(order()).toEqual([GROUP]); // last message
     type('SAGE');
-    expect(order()).toEqual([GROUP, 'dm-bot_sage']); // a member's name, case-insensitive
+    expect(order()).toEqual(['dm-bot_sage', GROUP]); // a member's name, case-insensitive
     type('sprout');
     expect(order()).toEqual(['dm-bot_sprouty']);
     type('nobody');
@@ -186,7 +200,7 @@ describe('<BotsSidebarPanel/> list', () => {
     expect(host.querySelector('[data-testid="bots-sidebar-empty"]')!.textContent).toBe('No conversations match');
   });
 
-  it('opens the create dialog (Bot or group tabs) from the toolbar — the only toolbar action', () => {
+  it('opens the new-Bot dialog from the toolbar — the only toolbar action, no "new group"', () => {
     mount('#/bots');
     act(() => host.querySelector<HTMLButtonElement>('button[aria-label="New"]')!.click());
     expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-bot' });

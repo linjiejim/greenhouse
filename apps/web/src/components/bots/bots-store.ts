@@ -17,11 +17,7 @@ import type { BotConversationSummary, BotView, ComputerRuntimeView } from '@gree
 import * as botsApi from '../../lib/api/bots';
 
 /** Which creation dialog the page should show (opened from the sidebar or the page). */
-export type BotsDialog =
-  | { kind: 'new-bot'; inviteTo?: string }
-  | { kind: 'new-group' }
-  | { kind: 'invite'; sessionId: string }
-  | null;
+export type BotsDialog = { kind: 'new-bot'; inviteTo?: string } | { kind: 'invite'; sessionId: string } | null;
 
 interface BotsState {
   /** Active Bots — pickers, the avatar strip, mentions, the invite list. */
@@ -295,15 +291,16 @@ export function useBotsLoadState(): 'loading' | 'ready' | 'error' {
 }
 
 /**
- * Whether anyone in a conversation can still reply. A DM whose Bot was
- * archived — or a group whose Bots all were — is read-only: the API refuses
- * the message (409), so the composer gives way to an explanation instead.
- * Only meaningful once the Bot list is loaded.
+ * Whether anyone in a conversation can still reply: only a DM whose Bot is
+ * still active. A DM whose Bot was archived is read-only, and so is every
+ * group — group chats were retired (a Bot brings another into its own DM when
+ * it needs one), and the old ones stay as records. The API refuses a message
+ * to either (409), so the composer gives way to an explanation instead. Only
+ * meaningful once the Bot list is loaded.
  */
 export function conversationReplyable(
-  conversation: Pick<BotConversationSummary, 'kind' | 'owner_bot_id' | 'members'>,
+  conversation: Pick<BotConversationSummary, 'kind' | 'owner_bot_id'>,
   activeIds: ReadonlySet<string>,
 ): boolean {
-  if (conversation.kind === 'direct') return !!conversation.owner_bot_id && activeIds.has(conversation.owner_bot_id);
-  return conversation.members.some((member) => activeIds.has(member.bot_id));
+  return conversation.kind === 'direct' && !!conversation.owner_bot_id && activeIds.has(conversation.owner_bot_id);
 }

@@ -18,11 +18,12 @@ import { test, expect } from './fixtures';
  * It archives the test user's Bots before and after — all but Sprouty, the built-in main Bot,
  * which cannot be archived.
  *
- * Streaming, cards and the 202 busy path stay STUBBED — deterministic, no
- * model: every `/api/bots*` call and `POST /api/chat` is answered by
- * page.route (the same NDJSON transport Chat uses, plus the multi-speaker
- * events bot-turn-start / bot-turn-end / bot-request). The fixtures are typed
- * against @greenhouse/types/bots (`satisfies`) so they follow the contract.
+ * Streaming, cards, a retired group chat and the 202 busy path stay STUBBED —
+ * deterministic, no model: every `/api/bots*` call and `POST /api/chat` is
+ * answered by page.route (the same NDJSON transport Chat uses, plus the
+ * multi-speaker events bot-turn-start / bot-turn-end / bot-request). The
+ * fixtures are typed against @greenhouse/types/bots (`satisfies`) so they
+ * follow the contract.
  */
 
 const NOW = '2026-10-05T08:00:00.000Z';
@@ -75,6 +76,10 @@ function message(seq: number, partial: Partial<BotMessage>): BotMessage {
   } satisfies BotMessage;
 }
 
+/**
+ * A DM (the first Bot owns it, the rest are guests) or — history only — a retired group chat
+ * (the first Bot led it).
+ */
 function summary(
   sessionId: string,
   kind: 'direct' | 'group',
@@ -89,7 +94,7 @@ function summary(
     lead_bot_id: members[0].id,
     members: members.map((member, position) => ({
       bot_id: member.id,
-      role: kind === 'direct' ? 'owner' : position === 0 ? 'lead' : 'member',
+      role: kind === 'direct' ? (position === 0 ? 'owner' : 'guest') : position === 0 ? 'lead' : 'member',
       position,
     })),
     last_message: null,
@@ -271,35 +276,56 @@ test.describe('bots — real API', () => {
 });
 
 test.describe('bots', () => {
-  test('a group reply streams per Bot with speaker headers and a visible hand-off', async ({ page }) => {
+  test('a DM reply brings in a guest Bot: it joins, speaks under its name, and the hand-off shows', async ({
+    page,
+  }) => {
     const state = freshState();
     state.bots = [IVY, SAGE, FERN];
-    const group = summary('grp-1', 'group', [SAGE, FERN]);
-    state.conversations = [group];
-    state.pages['grp-1'] = { detail: detail(group), messages: [] };
+    const dm = summary('dm-sage', 'direct', [SAGE]);
+    state.conversations = [dm];
+    state.pages['dm-sage'] = { detail: detail(dm), messages: [] };
     await stubBots(page, state);
 
     let posted: Json | null = null;
     await page.route('**/api/chat', async (route) => {
       posted = route.request().postDataJSON() as Json;
       const sent = ((posted.messages as Json[])[0].content as string) ?? '';
-      // What the engine persisted for this chain, served by the post-run reload.
-      state.pages['grp-1'].messages = [
-        message(1, { role: 'user', content: sent }),
-        message(2, { bot_id: SAGE.id, content: 'Sage found three vendors.' }),
-        message(3, {
-          role: 'system',
-          content: 'Tighten the summary',
-          bot_event: { kind: 'ask', from: SAGE.id, to: FERN.id },
-        }),
-        message(4, { bot_id: FERN.id, content: 'Fern tightened the summary.' }),
-      ];
+      // What the engine persisted for this chain, served by the post-run reload: Sage added Fern
+      // (team.add) and handed over (team.ask) on its own — no group, no setting.
+      const joined = summary('dm-sage', 'direct', [SAGE, FERN]);
+      state.conversations = [joined];
+      state.pages['dm-sage'] = {
+        detail: detail(joined),
+        messages: [
+          message(1, { role: 'user', content: sent }),
+          message(2, { bot_id: SAGE.id, content: 'Sage found three vendors.' }),
+          message(3, {
+            role: 'system',
+            content: 'Sage added Fern',
+            bot_event: { kind: 'joined', bot_id: FERN.id, by: 'bot', by_bot_id: SAGE.id },
+          }),
+          message(4, {
+            role: 'system',
+            content: 'Tighten the summary',
+            bot_event: { kind: 'ask', from: SAGE.id, to: FERN.id },
+          }),
+          message(5, { bot_id: FERN.id, content: 'Fern tightened the summary.' }),
+        ],
+      };
       await route.fulfill({
         status: 200,
         headers: { 'content-type': 'application/x-ndjson' },
         body: ndjson([
-          { type: 'bot-turn-start', bot_id: SAGE.id, reason: 'mention' },
+          { type: 'bot-turn-start', bot_id: SAGE.id, reason: 'user' },
           { type: 'text-delta', text: 'Sage found three vendors.' },
+          { type: 'tool-call-start', id: 'c0', toolName: 'team' },
+          { type: 'tool-call', id: 'c0', toolName: 'team', input: { action: 'add', bot_id: FERN.id } },
+          {
+            type: 'tool-result',
+            id: 'c0',
+            toolName: 'team',
+            output: { action: 'add', status: 'added', bot: { id: FERN.id, name: 'Fern', role: 'Writer' } },
+          },
           { type: 'tool-call-start', id: 'c1', toolName: 'team' },
           {
             type: 'tool-call',
@@ -316,38 +342,94 @@ test.describe('bots', () => {
           { type: 'bot-turn-end', bot_id: SAGE.id, status: 'completed', message_id: 'msg-2' },
           { type: 'bot-turn-start', bot_id: FERN.id, reason: 'ask', asked_by: SAGE.id },
           { type: 'text-delta', text: 'Fern tightened the summary.' },
-          { type: 'bot-turn-end', bot_id: FERN.id, status: 'completed', message_id: 'msg-4' },
+          { type: 'bot-turn-end', bot_id: FERN.id, status: 'completed', message_id: 'msg-5' },
           { type: 'finish', finishReason: 'stop' },
         ]),
       });
     });
 
-    await page.goto('/#/bots?c=grp-1');
-    await expect(page.getByTestId('bots-conversation-header')).toContainText('Launch prep');
-    await page.getByTestId('chat-input').fill('@Sage Compare the top 3 vendors');
+    await page.goto('/#/bots?c=dm-sage');
+    await expect(page.getByTestId('bots-conversation-header')).toContainText('Sage');
+    await page.getByTestId('chat-input').fill('Compare the top 3 vendors');
     await page.getByTestId('chat-input').press('Enter');
 
     await expect(page.getByText('Fern tightened the summary.')).toBeVisible();
     await expect(page.getByText('Sage found three vendors.')).toBeVisible();
     const transcript = page.getByTestId('bots-transcript');
+    await expect(transcript.getByText('Sage added Fern')).toBeVisible();
     await expect(transcript.getByRole('note')).toContainText('@Fern');
-    // One header per speaker change — never one per message.
-    await expect(transcript.getByTestId('bots-speaker')).toHaveText(['Sage', 'Fern']);
+    // The DM's own Bot speaks under the conversation header; the guest gets its name.
+    await expect(transcript.getByTestId('bots-speaker')).toHaveText(['Fern']);
     // The member's own message appears once (the pending copy gave way to the persisted one).
-    await expect(transcript.getByText('@Sage Compare the top 3 vendors')).toHaveCount(1);
-    // `@Sage` became a mention the server resolves.
-    expect(posted).toMatchObject({ session_id: 'grp-1', mentions: [SAGE.id] });
+    await expect(transcript.getByText('Compare the top 3 vendors')).toHaveCount(1);
+    expect(posted).toMatchObject({ session_id: 'dm-sage' });
     // Plant avatars: each Bot wears its template plant (stored avatars predate `plant`; the
-    // researcher template is the dandelion) in the speaker headers, the header roster and the
-    // sidebar group stack.
+    // researcher template is the dandelion, the writer the fern) — the owner in the intro, the
+    // header and its sidebar row, the guest in its speaker header.
     await expect(transcript.locator('svg.pa-dandelion').first()).toBeVisible();
     await expect(transcript.locator('svg.pa-fern').first()).toBeVisible();
     const header = page.getByTestId('bots-conversation-header');
     await expect(header.locator('svg.pa-dandelion')).toHaveCount(1);
-    await expect(header.locator('svg.pa-fern')).toHaveCount(1);
-    await expect(page.getByTestId('bots-sidebar').locator('[data-testid="plant-avatar-stack"] svg')).toHaveCount(2);
-    // The turn is over, so nothing moves: in a roster, motion means exactly "this Bot is talking".
+    await expect(page.getByTestId('bots-sidebar').locator('svg.pa-dandelion')).toHaveCount(1);
+    // The turn is over, so nothing moves: motion means exactly "this Bot is talking".
     await expect(page.locator('.pa-mo')).toHaveCount(0);
+    // The guest is listed in the conversation info, tagged and removable; there is no switch.
+    await page.getByTestId('bots-info-button').click();
+    const info = page.getByTestId('bots-info-panel');
+    await expect(info.getByRole('listitem').filter({ hasText: 'Fern' })).toContainText('Guest');
+    await expect(info.getByRole('button', { name: 'Remove from conversation' })).toHaveCount(1);
+    await expect(info.getByRole('switch')).toHaveCount(0);
+  });
+
+  test('a retired group chat stays readable under Archived and takes no message', async ({ page }) => {
+    const state = freshState();
+    state.bots = [SAGE, FERN];
+    const group = summary('grp-1', 'group', [SAGE, FERN]);
+    const dm = summary('dm-sage', 'direct', [SAGE]);
+    state.conversations = [group, dm];
+    state.pages['grp-1'] = {
+      detail: detail(group),
+      messages: [
+        message(1, { role: 'user', content: 'Compare the top 3 vendors' }),
+        message(2, { bot_id: SAGE.id, content: 'Sage found three vendors.' }),
+        message(3, {
+          role: 'system',
+          content: 'Tighten the summary',
+          bot_event: { kind: 'ask', from: SAGE.id, to: FERN.id },
+        }),
+        message(4, { bot_id: FERN.id, content: 'Fern tightened the summary.' }),
+      ],
+    };
+    state.pages['dm-sage'] = { detail: detail(dm), messages: [] };
+    await stubBots(page, state);
+    let chatPosts = 0;
+    await page.route('**/api/chat', (route) => {
+      chatPosts += 1;
+      return route.fulfill({ status: 409, contentType: 'application/json', body: '{"code":"group_closed"}' });
+    });
+
+    // The landing never picks it, however recent: it opens Sage's DM.
+    await page.goto('/#/bots');
+    await expect(page).toHaveURL(/#\/bots\?c=dm-sage$/);
+
+    await page.goto('/#/bots?c=grp-1');
+    const transcript = page.getByTestId('bots-transcript');
+    // History renders as it was: a speaker line per speaker, the hand-off strip.
+    await expect(transcript.getByTestId('bots-speaker')).toHaveText(['Sage', 'Fern']);
+    await expect(transcript.getByRole('note')).toContainText('@Fern');
+    // …and it is a record: no composer, no invite, the read-only bar says why.
+    await expect(page.getByTestId('bots-read-only')).toContainText('Group chats were retired');
+    await expect(page.getByTestId('chat-input')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Invite a Bot' })).toHaveCount(0);
+    await expect(page.getByTestId('bots-status-line')).toHaveText('Retired group chat — read-only');
+    // The sidebar files it under Archived, below the live DM.
+    const sidebar = page.getByTestId('bots-sidebar');
+    const rows = sidebar.getByTestId('bots-conversation-row');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toHaveAttribute('data-session-id', 'dm-sage');
+    await expect(rows.nth(1)).toHaveAttribute('data-session-id', 'grp-1');
+    await expect(sidebar).toContainText('Archived');
+    expect(chatPosts).toBe(0);
   });
 
   test('an approval card settles through POST /api/bots/requests/:id', async ({ page }) => {

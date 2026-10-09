@@ -349,7 +349,10 @@ export function PendingBubble({
   );
 }
 
-/** Thread start: who this is and what Bots are for — the positioning line lives here. */
+/**
+ * Thread start: who this is and what Bots are for — the positioning line lives here. A retired
+ * group chat shows only who was in it and its name (the read-only bar says what became of it).
+ */
 export function ConversationIntro({ kind, title, bots }: { kind: 'direct' | 'group'; title: string; bots: BotView[] }) {
   const t = useT();
   const owner = bots[0];
@@ -367,12 +370,11 @@ export function ConversationIntro({ kind, title, bots }: { kind: 'direct' | 'gro
         <p className="text-base font-semibold text-fg">{title}</p>
         {kind === 'direct' && owner?.role && <p className="text-xs text-fg-muted">{owner.role}</p>}
       </div>
-      <p className="max-w-md text-xs leading-5 text-fg-faint">
-        {kind === 'direct'
-          ? t('bots.transcript.dmStart', { name: owner?.name ?? title })
-          : t('bots.transcript.groupStart', { title })}{' '}
-        {t('bots.positioning')}
-      </p>
+      {kind === 'direct' && (
+        <p className="max-w-md text-xs leading-5 text-fg-faint">
+          {t('bots.transcript.dmStart', { name: owner?.name ?? title })} {t('bots.positioning')}
+        </p>
+      )}
     </div>
   );
 }

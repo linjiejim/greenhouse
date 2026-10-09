@@ -276,12 +276,13 @@ export async function listConversations(): Promise<{ conversations: BotConversat
   return res.json();
 }
 
-/** One id → that Bot's DM (created if needed); 2–6 → a new group. */
-export async function createConversation(input: {
-  bot_ids: string[];
-  title?: string;
-}): Promise<{ conversation: BotConversationDetail }> {
-  const args = { json: input };
+/**
+ * That Bot's DM, created if needed (with its greeting). The only conversation
+ * a member opens: group chats were retired (any other count is
+ * `400 groups_retired`) — Bots bring each other in as guests.
+ */
+export async function createConversation(botId: string): Promise<{ conversation: BotConversationDetail }> {
+  const args = { json: { bot_ids: [botId] } };
   const res = await rpc.api.bots.conversations.$post(args);
   if (!res.ok) throw await failure(res);
   return res.json();
@@ -311,16 +312,7 @@ function withMessageRole<T extends { role: string }>(message: T): Omit<T, 'role'
   return { ...message, role };
 }
 
-export async function updateConversation(
-  sessionId: string,
-  patch: { title?: string; description?: string; lead_bot_id?: string; allow_bot_chat?: boolean },
-): Promise<{ conversation: BotConversationDetail }> {
-  const args = { param: { id: enc(sessionId) }, json: patch };
-  const res = await rpc.api.bots.conversations[':id'].$patch(args);
-  if (!res.ok) throw await failure(res);
-  return res.json();
-}
-
+/** Invite a Bot into a DM as a guest (409 `group_closed` in a retired group chat). */
 export async function addConversationMember(
   sessionId: string,
   botId: string,
@@ -331,6 +323,7 @@ export async function addConversationMember(
   return res.json();
 }
 
+/** Send a guest away (409 `group_closed` in a retired group chat). */
 export async function removeConversationMember(
   sessionId: string,
   botId: string,
@@ -427,8 +420,9 @@ export function computerRequestsFor(requests: readonly BotRequestView[], session
  * — another tab, or it expired — or `deciding`, another decision in flight)
  * or a decision the server could not carry out while the request stays
  * pending (a secure sign-in's `page_gone` / `origin_mismatch` / `no_fields` /
- * `failed` / `invalid` / `computer_restarted`, a task `limit`, `bot_gone`) —
- * the `BotRequestErrorCode`s, read in `request-decision.ts`.
+ * `failed` / `invalid` / `computer_restarted`, a task `limit`, `bot_gone`), or
+ * `group_closed` for a card in a retired group chat — the
+ * `BotRequestErrorCode`s, read in `request-decision.ts`.
  */
 export async function decideRequest(
   requestId: string,

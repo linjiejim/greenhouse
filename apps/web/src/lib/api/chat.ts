@@ -148,7 +148,7 @@ export async function openBotsChat({
     } catch {
       /* not JSON — keep the raw body */
     }
-    // A Bots refusal carries a code (409 `bot_archived` / `no_active_members`:
+    // A Bots refusal carries a code (409 `bot_archived` / `group_closed`:
     // nobody here can reply) the page turns into its read-only state.
     throw new BotsApiError(reason || `Chat error ${res.status}`, res.status, code);
   }

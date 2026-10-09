@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isSproutyBot, type BotRequestView, type BotView } from '@greenhouse/types/bots';
 import { EmptyState, Skeleton, Button, toast } from '../ui';
-import { AlertTriangle, Archive, MessageCircle, Paperclip, Plus, UserPlus } from '../../lib/icons';
+import { AlertTriangle, Archive, MessageCircle, Paperclip, Plus } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { isBotsApiError } from '../../lib/api/bots';
 import { MAX_ATTACHMENTS } from '../conversation/attachments';
@@ -26,6 +26,7 @@ import type { BotConversationController } from './use-bot-conversation';
 import type { BotLookup } from './transcript-rows';
 import type { ComputerPhase, ComputerStatusState } from './computer-phase';
 
+/** The owner and up to five guests (the API's cap per conversation). */
 const MAX_MEMBERS = 6;
 
 /** Drafts outlive switching conversations (module scope, like Chat's). */
@@ -33,9 +34,11 @@ const drafts = new Map<string, string>();
 
 /**
  * 409 codes the API answers a message with when nobody in the conversation
- * can reply any more (its Bot was archived). Nothing was persisted.
+ * can reply any more — its Bot was archived (`bot_archived`), or it is a
+ * retired group chat (`group_closed`, kept as a record). Nothing was persisted.
+ * (`BotConversationReadOnlyCode` in @greenhouse/types/bots.)
  */
-const READ_ONLY_CODES = new Set(['bot_archived', 'no_active_members', 'conversation_read_only']);
+const READ_ONLY_CODES: ReadonlySet<string> = new Set(['bot_archived', 'group_closed']);
 
 export function isReadOnlySendError(err: unknown): boolean {
   return isBotsApiError(err) && err.status === 409 && err.code !== null && READ_ONLY_CODES.has(err.code);
@@ -53,7 +56,7 @@ export interface ConversationViewProps {
   /** Where the Bot list stands: rendering before it lands would name every Bot "Deleted Bot". */
   botsState: 'loading' | 'ready' | 'error';
   onRetryBots: () => void;
-  /** Nobody here can reply any more (the DM's Bot, or every Bot of a group, was archived). */
+  /** Nobody here can reply any more (the DM's Bot was archived). A group chat is always read-only. */
   readOnly: boolean;
   /** Something changed that makes the conversation read-only: re-read the Bots and the conversation. */
   onReadOnly: () => void;
@@ -69,17 +72,17 @@ export interface ConversationViewProps {
 }
 
 export function ConversationView(props: ConversationViewProps) {
-  const { sessionId, controller, lookup, botsState, onRetryBots, onReadOnly, onInvite } = props;
+  const { sessionId, controller, lookup, botsState, onRetryBots, onReadOnly } = props;
   const t = useT();
   const { conversation, managed, streaming } = controller;
   // The API just refused a message as read-only: swap the composer for the
   // notice now, not after the Bot list re-read lands (or if it fails). Cleared
-  // when the conversation changes or someone joins it (an invite answers
-  // `no_active_members`).
+  // when the conversation changes or its members do.
   const [refusedFor, setRefusedFor] = useState<string | null>(null);
   const memberKey = conversation?.members.map((member) => member.bot_id).join(',') ?? '';
   useEffect(() => setRefusedFor(null), [sessionId, memberKey]);
-  const readOnly = props.readOnly || refusedFor === sessionId;
+  // Group chats were retired: an old one is a record, whatever the host worked out.
+  const readOnly = props.readOnly || refusedFor === sessionId || conversation?.kind === 'group';
   const [draft, setDraftState] = useState(() => drafts.get(sessionId) ?? '');
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const { tasks, refresh: refreshTasks } = useBotTasks(sessionId);
@@ -104,24 +107,23 @@ export function ConversationView(props: ConversationViewProps) {
    * Every send path — the composer, Retry / Continue / Ask again, an ask_user
    * form, a confirm block — explains a failure the same way. A conversation
    * that just became read-only says so (and the column swaps the composer for
-   * the notice once the re-read lands); anything else reads as "Could not send".
+   * the notice at once); anything else reads as "Could not send".
    */
-  const canInviteMore = (conversation?.members.length ?? 0) < MAX_MEMBERS;
   const reportSendFailure = useCallback(
     (err: unknown) => {
       if (isReadOnlySendError(err)) {
-        // A group with no active Bot can be fixed right here — invite one; an
-        // archived Bot's DM is read-only for good (a new Bot is the way on).
-        const invite = isBotsApiError(err, 'no_active_members') && canInviteMore;
-        toast(t(invite ? 'bots.readOnly.inviteToReply' : 'bots.readOnly.sendRefused'), 'info');
+        // Read-only for good: an archived Bot's DM (a new Bot is the way on) or a retired group chat.
+        toast(
+          t(isBotsApiError(err, 'group_closed') ? 'bots.readOnly.groupClosedTitle' : 'bots.readOnly.sendRefused'),
+          'info',
+        );
         setRefusedFor(sessionId);
         onReadOnly();
-        if (invite) onInvite();
         return;
       }
       toast(t('bots.composer.sendFailed', { reason: err instanceof Error ? err.message : String(err) }), 'error');
     },
-    [canInviteMore, onInvite, onReadOnly, sessionId, t],
+    [onReadOnly, sessionId, t],
   );
 
   /** Rejects (after reporting) when nothing was delivered, so a form can re-arm and the composer keep its draft. */
@@ -288,14 +290,14 @@ function ConversationColumn({
   const t = useT();
   const status = useStatusLine({ conversation, members, speaking, pendingRequests, computerPhase, readOnly });
   const isDirect = conversation.kind === 'direct';
-  // A read-only DM takes no guests: its Bot is gone, so nobody would lead them.
-  const canInvite = conversation.members.length < MAX_MEMBERS && !(readOnly && isDirect);
+  // Guests join a live DM only: an archived Bot's DM has nobody to host them, and a group chat is a record.
+  const canInvite = !readOnly && conversation.members.length < MAX_MEMBERS;
   const segments = controller.managed?.botSegments ?? [];
   const liveRequests = controller.managed?.botRequests ?? [];
-  const placeholder =
-    isDirect && owner && !readOnly
-      ? t('bots.composer.placeholderDm', { name: owner.name })
-      : t('bots.composer.placeholderGroup');
+  const placeholder = owner
+    ? t('bots.composer.placeholderDm', { name: owner.name })
+    : t('bots.composer.placeholderShort');
+  // A retired group's intro shows the roster it had (the active ones).
   const introBots = isDirect ? (owner ? [owner] : []) : members;
 
   // ── Drop files anywhere on the conversation → the composer's attachments ──
@@ -405,13 +407,7 @@ function ConversationColumn({
         <SproutyNamingNudge bot={owner} onOpenProfile={onOpenProfile} />
       )}
       {readOnly ? (
-        <ReadOnlyNotice
-          kind={conversation.kind}
-          name={owner?.name ?? null}
-          canInvite={canInvite}
-          onNewBot={onNewBot}
-          onInvite={onInvite}
-        />
+        <ReadOnlyNotice kind={conversation.kind} name={owner?.name ?? null} onNewBot={onNewBot} />
       ) : (
         <BotsComposer
           // Remount per conversation: attachments belong to the draft they were added to.
@@ -438,22 +434,19 @@ function ConversationColumn({
 
 /**
  * In place of the composer when nobody here can reply: the history stays
- * readable, and the way forward is one click (a new Bot for a DM, inviting
- * one into an empty group). There is no "restore": an archived Bot's name may
- * already belong to a newer Bot.
+ * readable. An archived Bot's DM offers the way forward in one click (a new
+ * Bot) — there is no "restore": its name may already belong to a newer Bot. A
+ * retired group chat is a record: it says so, and its Bots carry on in their
+ * own DMs.
  */
 function ReadOnlyNotice({
   kind,
   name,
-  canInvite,
   onNewBot,
-  onInvite,
 }: {
   kind: 'direct' | 'group';
   name: string | null;
-  canInvite: boolean;
   onNewBot: () => void;
-  onInvite: () => void;
 }) {
   const t = useT();
   const direct = kind === 'direct';
@@ -471,24 +464,17 @@ function ReadOnlyNotice({
               ? name
                 ? t('bots.readOnly.dmTitle', { name })
                 : t('bots.readOnly.dmTitleUnknown')
-              : t('bots.readOnly.groupTitle')}
+              : t('bots.readOnly.groupClosedTitle')}
           </p>
           <p className="text-xs text-fg-muted">
-            {direct ? t('bots.readOnly.dmDescription') : t('bots.readOnly.groupDescription')}
+            {direct ? t('bots.readOnly.dmDescription') : t('bots.readOnly.groupClosedDescription')}
           </p>
         </div>
-        {direct ? (
+        {direct && (
           <Button size="sm" onClick={onNewBot} data-testid="bots-read-only-new-bot">
             <Plus size={14} className="mr-1" />
             {t('bots.sidebar.newBot')}
           </Button>
-        ) : (
-          canInvite && (
-            <Button size="sm" onClick={onInvite}>
-              <UserPlus size={14} className="mr-1" />
-              {t('bots.header.invite')}
-            </Button>
-          )
         )}
       </div>
     </div>
