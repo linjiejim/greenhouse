@@ -31,6 +31,9 @@ describe('plant-avatar vocabulary', () => {
       operator: 'opuntia',
       writer: 'fern',
       analyst: 'clover',
+      reporter: 'sunflower',
+      notetaker: 'lavender',
+      tracker: 'maple',
     });
     expect(PLANT_STATES).toContain('hello');
   });

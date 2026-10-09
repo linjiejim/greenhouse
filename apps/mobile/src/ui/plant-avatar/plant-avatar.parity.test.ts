@@ -194,7 +194,21 @@ const AVATARS: unknown[] = [
   { palette: { body: '#777777', leaf: '#888888' } },
   { color: 'neon', accessories: ['crown', 7] },
 ];
-const TEMPLATE_KEYS = [undefined, null, '', 'sprouty', 'chief', 'researcher', 'operator', 'writer', 'analyst', 'nope'];
+const TEMPLATE_KEYS = [
+  undefined,
+  null,
+  '',
+  'sprouty',
+  'chief',
+  'researcher',
+  'operator',
+  'writer',
+  'analyst',
+  'reporter',
+  'notetaker',
+  'tracker',
+  'nope',
+];
 const STABLE_IDS = [undefined, null, '', 'sprouty', 'bot_1', 'bot_7f3a', '小卷', 'a-very-long-stable-id-0123456789'];
 
 describe('vendored plant-avatar resolver', () => {

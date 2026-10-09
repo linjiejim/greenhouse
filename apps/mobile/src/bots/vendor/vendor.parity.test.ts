@@ -316,7 +316,18 @@ describe('behaviour', () => {
       canonicalBots.BOT_INSTRUCTIONS_MAX,
       canonicalBots.MAX_ACTIVE_BOTS,
     ]);
-    for (const key of ['sprouty', 'chief', 'researcher', 'operator', 'writer', 'analyst', 'nope', null]) {
+    const keys = [
+      'sprouty',
+      'chief',
+      'researcher',
+      'operator',
+      'writer',
+      'analyst',
+      'reporter',
+      'notetaker',
+      'tracker',
+    ];
+    for (const key of [...keys, 'nope', null]) {
       expect(mobileBots.botTemplate(key)).toEqual(canonicalBots.botTemplate(key));
       expect(mobileBots.galleryTemplate(key)).toEqual(canonicalBots.galleryTemplate(key));
       expect(mobileBots.isSproutyBot({ template_key: key })).toBe(canonicalBots.isSproutyBot({ template_key: key }));

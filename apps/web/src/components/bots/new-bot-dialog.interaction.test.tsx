@@ -133,10 +133,50 @@ describe('New Bot look', () => {
 
   it('pins each template to its plant, keeping the template look for old clients', () => {
     const plants = BOT_TEMPLATES.map((template) => templateBotDraft(template, 'en').avatar.plant);
-    expect(plants).toEqual(['dandelion', 'opuntia', 'fern', 'clover']); // Sprouty is built in, not a template card
+    // Sprouty is built in, not a template card
+    expect(plants).toEqual(['dandelion', 'opuntia', 'fern', 'clover', 'sunflower', 'lavender', 'maple']);
     const chief = templateBotDraft(BOT_TEMPLATES[0]!, 'zh');
     expect(chief.name).toBe(BOT_TEMPLATES[0]!.copy.zh.name);
     expect(chief.avatar.faceStyle).toBe(BOT_TEMPLATES[0]!.avatar.faceStyle);
+  });
+
+  it('lists every gallery template in order before Custom, marking those that need a computer', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () =>
+      root?.render(
+        createElement(I18nProvider, {
+          initialLocale: 'en',
+          children: createElement(NewBotDialog, { open: true, onClose: vi.fn(), onCreated: vi.fn() }),
+        }),
+      ),
+    );
+    await flush();
+    const cards = [
+      ...document.querySelectorAll<HTMLButtonElement>('[data-testid="bots-template-gallery"] [data-template]'),
+    ];
+    expect(cards.map((card) => card.dataset.template)).toEqual([
+      'researcher',
+      'operator',
+      'writer',
+      'analyst',
+      'reporter',
+      'notetaker',
+      'tracker',
+      'custom',
+    ]);
+    // No Bot computer in this store: only the computer-bound templates carry the hint.
+    const marked = cards.filter((card) => card.textContent?.includes('Needs computer')).map((c) => c.dataset.template);
+    expect(marked).toEqual(['researcher', 'operator', 'analyst']);
+    const tracker = cards.find((card) => card.dataset.template === 'tracker')!;
+    expect(tracker.textContent).toContain('Project tracker');
+    expect(tracker.textContent).toContain('Maple');
+
+    // A new template pre-fills the same form as the others.
+    await click(tracker);
+    const name = document.querySelector<HTMLInputElement>('[data-testid="bots-new-bot-form"] input');
+    expect(name?.value).toBe('Maple');
   });
 
   it('opens the blank form on the next free plant and creates the Bot wearing it', async () => {

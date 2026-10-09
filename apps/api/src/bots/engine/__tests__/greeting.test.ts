@@ -49,6 +49,18 @@ describe('buildGreeting', () => {
   it('a template that needs no computer keeps its pitch either way', () => {
     const text = buildGreeting({ name: 'Fern', role: 'Writer', template_key: 'writer' }, facts('en', false));
     expect(text).toContain('Drafts and polishes documents');
+    const free = BOT_TEMPLATES.filter((template) => !template.needsComputer);
+    expect(free.map((template) => template.key)).toEqual(['writer', 'reporter', 'notetaker', 'tracker']);
+    for (const template of free) {
+      for (const locale of ['en', 'zh'] as const) {
+        const { name, role, pitch } = template.copy[locale];
+        const bot = { name, role, template_key: template.key };
+        expect(buildGreeting(bot, facts(locale, false)), `${template.key}/${locale}`).toBe(
+          buildGreeting(bot, facts(locale, true)),
+        );
+        expect(buildGreeting(bot, facts(locale, false))).toContain(pitch);
+      }
+    }
   });
 
   it('keeps every template pitch short', () => {

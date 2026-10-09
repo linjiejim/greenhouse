@@ -1,9 +1,10 @@
 /**
  * /api/bots against real PostgreSQL: owner scoping (another member's rows and
  * a super's attempts are 404), idempotent bootstrap with a fixed greeting,
- * Bot name rules, conversations (one Bot's DM — group chats are retired and
- * the old ones are read-only), notes, exactly-once request decisions, and
- * plant avatars (template plants, plant kept and junk stripped on every write).
+ * Bot name rules, what each gallery template seeds, conversations (one Bot's
+ * DM — group chats are retired and the old ones are read-only), notes,
+ * exactly-once request decisions, and plant avatars (template plants, plant
+ * kept and junk stripped on every write).
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,7 +15,7 @@ import type { AppEnv } from '../../app-env.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 import { insertLegacyGroup } from './helpers/legacy-group.js';
 import { chatRunRegistry } from '../../chat/runs.js';
-import { botTemplate } from '@greenhouse/types/bots';
+import { BOT_TEMPLATES, botTemplate } from '@greenhouse/types/bots';
 import { createBotsRoutes } from '../routes.js';
 
 vi.mock('../../ws/connection-manager.js', () => ({ connectionManager: { sendToUser: vi.fn() } }));
@@ -132,6 +133,40 @@ describe('Bot names', () => {
     expect(one.json.bot.name).toBe('蒲蒲');
     expect(two.json.bot.name).toBe('蒲蒲 2');
     expect(await db.sessions.getMessageCount(two.json.dm_session_id)).toBe(1);
+  });
+});
+
+describe('gallery templates', () => {
+  it('seed every gallery Bot — the computer-free examples included — from its copy, plant and greeting', async () => {
+    expect(BOT_TEMPLATES.map((template) => template.key)).toEqual(
+      expect.arrayContaining(['reporter', 'notetaker', 'tracker']),
+    );
+    for (const template of BOT_TEMPLATES) {
+      const { status, json } = await call(jim, 'POST', '', { template_key: template.key });
+      expect(status, template.key).toBe(200);
+      const zh = template.copy.zh;
+      expect(json.bot, template.key).toMatchObject({
+        template_key: template.key,
+        name: zh.name,
+        role: zh.role,
+        description: zh.pitch,
+        instructions: zh.instructions,
+        avatar: template.avatar,
+      });
+      // No Bot computer here: a computer-bound template opens with what it can do without one.
+      const pitch = template.needsComputer ? zh.pitchNoComputer : zh.pitch;
+      const [greeting] = await db.sessions.getMessages(json.dm_session_id);
+      expect(greeting!.content, template.key).toBe(`你好，我是 **${zh.name}**，你的${zh.role}。${pitch}`);
+    }
+
+    const tracker = await call(ana, 'POST', '', { template_key: 'tracker' });
+    expect(tracker.json.bot).toMatchObject({
+      name: 'Maple',
+      role: 'Project tracker',
+      avatar: { plant: 'maple', color: 'autumn', faceStyle: 'default' },
+    });
+    const [hello] = await db.sessions.getMessages(tracker.json.dm_session_id);
+    expect(hello!.content).toBe(`Hi, I'm **Maple**, your project tracker. ${botTemplate('tracker')!.copy.en.pitch}`);
   });
 });
 

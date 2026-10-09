@@ -1,6 +1,7 @@
 /**
- * The create dialog: "New Bot" — a template gallery (researcher / operator /
- * writer / analyst / custom), then the same editable form for all of them.
+ * The create dialog: "New Bot" — a template gallery (`BOT_TEMPLATES`:
+ * researcher / operator / writer / analyst / weekly reporter / note taker /
+ * project tracker, then custom), then the same editable form for all of them.
  * A template only pre-fills — the member can rename, re-role and re-dress
  * before anything is created. Templates that need the computer say so when
  * the organization has none, instead of promising browsing that won't work.

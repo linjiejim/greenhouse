@@ -29,8 +29,9 @@ bots/
   聊天页先建（`ensureSproutyBot`），bootstrap 只补私聊与欢迎语。它在侧栏
   置顶、**不能归档**（`DELETE` 返回 400 `bot_protected`），可以改名改守则；它就是原来的「总管」——用 `team`
   工具把成员的其他 Bot 拉进对话（客串）、转交工作、提议新建。`POST /api/bots` 只接受模板库模板
-  （`galleryTemplate`：研究员/操作员/写手/分析师）：Sprouty 只来自 bootstrap，「总管」模板已退役（旧的 chief Bot
-  照常工作，`botTemplate('chief')` 仍能查到它的开场白与 starters）。
+  （`galleryTemplate`：研究员/操作员/写手/分析师/周报助手/会议记录员/项目跟进人；后三个是不需要电脑的示例，`needsComputer: false`）：
+  Sprouty 只来自 bootstrap，「总管」模板已退役（旧的 chief Bot 照常工作，`botTemplate('chief')` 仍能查到它的开场白与 starters）。
+  模板守则只写真实存在的能力，而且按能力写、不点工具名（成员可能没开某个应用；S1 只描述本回合真有的工具）。
 - **欢迎语一两句**（`engine/greeting.ts`，不调模型）：`你好，我是 **{名字}**，你的{岗位}。{pitch}`（无岗位就省掉那半句），
   不列能力清单、不写记忆行、不收尾提问——起手式由客户端显示在下面。它不能承诺部署没有的能力：`needsComputer`
   模板在电脑未就绪时用 `pitchNoComputer`。模板 pitch 保持短（中文 ≤30 字、英文 ≤90 字符，`greeting.test.ts` 守着）。
@@ -66,7 +67,8 @@ bots/
   渲染端不再读神态，表情跟状态走；编辑器改写颜色 `tint`，`PLANT_TINTS` 之外的值由渲染端退回原色）。`plant` 不校验
   是否在 `PLANT_IDS` 里，未知值由渲染端的 `legacyToPlant` 兜底。模板就是同名植物（`TEMPLATE_PLANT`：
   sprouty → sprout（内置主 Bot）、researcher → dandelion 蒲蒲、operator → opuntia（仙人掌）仙仙、writer → fern 卷卷、
-  analyst → clover 叶叶，退役的 chief → ivy；默认名在 `SPROUTY_BOT_TEMPLATE` / `BOT_TEMPLATES`）。已建的 Bot 存了自己的 `plant`，改这张表只影响新 Bot。`team` create 提议的
+  analyst → clover 叶叶、reporter → sunflower 葵葵、notetaker → lavender 薰薰、tracker → maple 枫枫，退役的 chief → ivy；
+  默认名在 `SPROUTY_BOT_TEMPLATE` / `BOT_TEMPLATES`；新建自定义 Bot 时 `freshPlant` 先用这些模板植物以外的品种）。已建的 Bot 存了自己的 `plant`，改这张表只影响新 Bot。`team` create 提议的
   Bot 取 `IMPLICIT_POOL[hashSeed(名字) % 14]`：同名总是同一株，也永远不会落到内置 Sprouty 专用的 sprout。
 - **单写者**：Bots 对话只有持有该会话 run 的引擎写。服务端在对话进行中产生的一切（交还、续跑、后台
   汇报、忙时插话）走 `deliverToConversation()` → 抢到 run 就直接写，否则进 `bot_inbox`。inbox 是

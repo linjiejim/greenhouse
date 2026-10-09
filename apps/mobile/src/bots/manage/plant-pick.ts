@@ -12,10 +12,11 @@
 import { DEFAULT_PLANT, PLANT_IDS, TEMPLATE_PLANT, legacyToPlant, type PlantId } from '../../ui/plant-avatar/plant-ids';
 
 /**
- * Fresh picks try the non-template species first: the five template plants (藤藤 ivy,
- * 蒲蒲 dandelion, 仙仙 cactus, 卷卷 fern, 叶叶 clover) stay free for the templates the member
- * may add. Every species but the reserved sprout is pickable — including those added after the
- * frozen IMPLICIT_POOL (a fresh pick is written, never re-resolved).
+ * Fresh picks try the non-template species first: the eight template plants (藤藤 ivy,
+ * 蒲蒲 dandelion, 仙仙 cactus, 卷卷 fern, 叶叶 clover, 葵葵 sunflower, 薰薰 lavender, 枫枫 maple)
+ * stay free for the templates the member may add. Every species but the reserved sprout is
+ * pickable — including those added after the frozen IMPLICIT_POOL (a fresh pick is written,
+ * never re-resolved).
  */
 const TEMPLATE_PLANTS = new Set<PlantId>(Object.values(TEMPLATE_PLANT));
 const PICKABLE = PLANT_IDS.filter((plant) => plant !== DEFAULT_PLANT);

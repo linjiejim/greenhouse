@@ -45,9 +45,33 @@ describe('freshPlant', () => {
     expect(freshPlant(templates)).toBe('sage');
     expect(freshPlant(['sage', 'basil'])).toBe('monstera');
     const nonTemplate = PLANT_IDS.filter((plant) => plant !== 'sprout' && !templates.includes(plant));
+    expect(nonTemplate).toEqual(['sage', 'basil', 'monstera', 'ginkgo', 'echeveria', 'lotus', 'eucalyptus']);
     expect(freshPlant(nonTemplate)).toBe('ivy');
     expect(freshPlant([...nonTemplate, 'ivy'])).toBe('fern');
+    expect(freshPlant(['sage', 'basil', 'monstera', 'ginkgo'])).toBe('echeveria'); // maple is 枫枫's
     expect(freshPlant(['sprout'])).not.toBe('sprout');
+  });
+
+  it('hands out every free species, then the template plants in catalogue order', () => {
+    const picks: PlantId[] = [];
+    for (let i = 0; i < PLANT_IDS.length - 1; i += 1) picks.push(freshPlant(picks));
+    expect(picks).toEqual([
+      'sage',
+      'basil',
+      'monstera',
+      'ginkgo',
+      'echeveria',
+      'lotus',
+      'eucalyptus',
+      'ivy',
+      'fern',
+      'clover',
+      'maple',
+      'opuntia',
+      'lavender',
+      'sunflower',
+      'dandelion',
+    ]);
   });
 
   it('cycles once every species is taken, never onto the sprout', () => {

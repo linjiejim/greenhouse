@@ -38,6 +38,8 @@ describe('freshPlant', () => {
     ['sprout'],
     ['ivy', 'sage', 'basil'],
     Object.values(TEMPLATE_PLANT),
+    // every free species taken: the next pick is the first template plant
+    PLANT_IDS.filter((plant) => !(Object.values(TEMPLATE_PLANT) as PlantId[]).includes(plant)),
     PLANT_IDS.filter((plant) => plant !== 'sunflower'),
     [...PLANT_IDS],
     [...PLANT_IDS, ...PLANT_IDS.slice(0, 5)],
@@ -67,6 +69,7 @@ describe('botPlant', () => {
     { id: 'b3', avatar: { color: 'teal' }, template_key: null },
     { id: 'b4', avatar: null, template_key: null },
     { id: 'b5', avatar: { plant: 'not-a-plant', color: 'amber' }, template_key: 'writer' },
+    { id: 'b6', avatar: {}, template_key: 'tracker' },
     { id: 'sprouty', avatar: {}, template_key: 'sprouty' },
   ];
   it.each(bots.map((bot) => [bot.id, bot] as const))('resolves %s like the web', (_id, bot) => {
