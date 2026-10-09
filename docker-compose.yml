@@ -13,7 +13,8 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # Override to pull from a mirror registry (e.g. the installer's --mirror).
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-greenhouse}
@@ -22,7 +23,7 @@ services:
     # Bound to loopback so the same file also serves local `pnpm dev`
     # (run just `docker compose up -d postgres`). Not internet-exposed.
     ports:
-      - '127.0.0.1:5432:5432'
+      - '${POSTGRES_BIND:-127.0.0.1:5432}:5432'
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:

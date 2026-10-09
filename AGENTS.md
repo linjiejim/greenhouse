@@ -159,7 +159,8 @@ what exists." These rules are as binding as the "add" rules:
 - **Landing page**: `docs/index.html` is the GitHub Pages site (precompiled Tailwind — run
   `scripts/build-landing.sh` after changing utility classes and commit `docs/tailwind.css`).
   Copy is bilingual: every `data-i18n` key needs a matching entry in the inline `ZH`
-  dictionary; the English source of truth is the markup itself.
+  dictionary; the English source of truth is the markup itself. `docs/install.sh` is served from
+  the same site (`https://greenhouse.linjiejim.com/install.sh`) — see Deploy.
 - **Dev mode**: `pnpm dev` runs the Vite dev server (web, `:3100`, HMR) + the API (`:3000`)
   in parallel. Vite proxies `/api` (incl. ws), `/public`, `/health` to the API, so the browser
   sees same-origin — open `:3100`. Ports are overridable via `WEB_PORT` / `API_PORT` (read from
@@ -176,21 +177,37 @@ what exists." These rules are as binding as the "add" rules:
   extra account differs only by its prefix (`<purpose>@greenhouse.local`), and every password is
   `greenhouse`. `run-dev up` creates the two fixed ones in its database when missing. They are
   throwaway local-dev fixtures only — never a production default: never seed them from
-  migrations, `docker-compose.yml`, the image or a release; production's first admin still comes
-  from `admin:create`.
+  migrations, `docker-compose.yml`, the image or a release; production's first admin comes from
+  `BOOTSTRAP_ADMIN_EMAIL` (a one-time activation link in the log) or `admin:create`.
 
-## Deploy (one-command Docker)
+## Deploy
 
-`docker-compose.yml` is the supported self-host path: Postgres + a one-shot `migrate` job + the
-API (which serves the SPA) as a single self-contained image (`Dockerfile`, Debian base — the
-`compute` tool's isolated-vm native addon needs glibc; `NODE_ENV=production` is baked in so the
-fail-closed auth guard is always active).
+Three supported paths, all running the one image (`linux/amd64` + `linux/arm64`, see Releasing):
+
+- **`docs/install.sh`** — the one-line installer, served by GitHub Pages at
+  `https://greenhouse.linjiejim.com/install.sh` (Pages is reachable where raw.githubusercontent is
+  not). It reads `docker-compose.ghcr.yml` and `.env.example` **out of the image it installs**
+  (`docker run --rm --entrypoint cat …`), so the two can never drift and nothing else is
+  downloaded; writes `.env` (secrets via `openssl rand -hex 32`, `BOOTSTRAP_ADMIN_EMAIL`,
+  `PUBLIC_BASE_URL`, `POSTGRES_BIND` moved off a busy 5432); `--domain` adds Caddy through a
+  generated `docker-compose.override.yml` (API bound to loopback, `TRUSTED_PROXY_HOPS=1`);
+  `--mirror` pulls greenhouse / postgres / caddy from one mirror registry. Re-running it upgrades.
+  Rules: keep it bash-3.2-compatible (macOS `/bin/bash`) and `shellcheck` clean; prompts read
+  `/dev/tty` (the script arrives on stdin); variables the compose files read must keep working
+  with older `.env` files.
+- **Railway** — the published image + Railway Postgres, configured entirely by env
+  (`MIGRATE_ON_START=1`, `BOOTSTRAP_ADMIN_EMAIL`, `TRUSTED_PROXY_HOPS=2`); the README lists the
+  variables, RELEASING.md how the template is maintained.
+- **`docker-compose.yml`** — Postgres + a one-shot `migrate` job + the API (which serves the SPA)
+  as a single self-contained image (`Dockerfile`, Debian base — the `compute` tool's isolated-vm
+  native addon needs glibc; `NODE_ENV=production` is baked in so the fail-closed auth guard is
+  always active).
 
 ```bash
 cp .env.example .env && ./scripts/gen-secrets.sh   # fills required secrets
-#   edit .env: set LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
+#   edit .env: set BOOTSTRAP_ADMIN_EMAIL and LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
 docker compose up -d --build
-docker compose exec api pnpm admin:create          # first super-admin
+docker compose logs api | grep 'Activate the first administrator'   # or: docker compose exec api pnpm admin:create
 #   app at http://localhost:3000
 ```
 
@@ -198,8 +215,18 @@ For local dev you can start only Postgres from the same file: `docker compose up
 (bound to `127.0.0.1:5432`, not internet-exposed).
 
 `docker-compose.ghcr.yml` is the same stack consuming the **published GHCR image**
-instead of building from source — the pull-based upgrade path for self-hosters. Keep the two
-compose files' service topology in sync.
+instead of building from source — the pull-based upgrade path for self-hosters, and the file the
+installer ships. Keep the two compose files' service topology in sync.
+
+**First administrator** (`apps/api/src/security/first-admin.ts`): while no super admin is
+*established* (`active` or `reset_required`), every boot ensures `BOOTSTRAP_ADMIN_EMAIL` exists as an
+invited super admin and logs a fresh one-time `#/activate` link (the member-invite link: single use,
+72 h, hash-only storage; each boot revokes the previous one). It never promotes or revives an
+account that is not a pending administrator, and is inert once someone owns the instance.
+`GET /api/bootstrap` reports `setup_pending` so the login screen can say where the link is.
+**`MIGRATE_ON_START=1`** applies the core chain in-process before `initDatabase`
+(`applyCoreMigrations`: drizzle's own migrator under a session advisory lock — interchangeable
+with `drizzle-kit migrate`).
 
 Missions additionally need the sandbox runner image (`bash scripts/build-agent-runtime.sh` →
 `greenhouse/agent-runtime`), Docker with gVisor (`runsc`), and the hardened bridge network
@@ -249,6 +276,11 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
   Keep it rebased (watch **migration numbers** — renumber to the next free slot on revive).
 - **Stable vs. edge is a hard promise.** Tag → `ghcr.io/<owner>/greenhouse:X.Y.Z` `:X.Y`
   `:latest` (stable). `main` → `:edge` / `:main-<sha>` only. `release.yml` enforces this.
+- **Multi-arch, optionally mirrored.** `release.yml` builds `linux/amd64` and `linux/arm64` on
+  native runners (`ubuntu-24.04-arm`, no QEMU), pushes by digest and stitches one manifest list per
+  tag set. With the repository variable `MIRROR_PREFIX` (+ secrets `MIRROR_USERNAME` /
+  `MIRROR_PASSWORD`), stable releases — and `postgres:16-alpine` / `caddy:2-alpine` — are also
+  copied to that registry for the installer's `--mirror`; unset, the step is skipped.
 - **Publishing workflows are repository-gated.** `release.yml` / `release-please.yml` /
   `mobile.yml` / `deploy.yml` / `uptime.yml` only run in `linjiejim/greenhouse`; a fork's CD goes
   in `.github/workflows/fork-*.yml`.
@@ -468,8 +500,8 @@ Always import these — don't reimplement:
   environment — the service refuses to start without it, and there is no `NODE_ENV` escape
   hatch. Stored secrets additionally need `PROVIDER_TOKEN_ENCRYPTION_KEY`.
 - **Public paths** (`PUBLIC_PATHS` in `auth/middleware.ts`): login, `/api/bootstrap`
-  (branding only), OAuth discovery/callbacks, `/api/upload/:id` image reads. Keep the list
-  minimal; a guard test pins it.
+  (branding + the `setup_pending` boolean), OAuth discovery/callbacks, `/api/upload/:id` image
+  reads. Keep the list minimal; a guard test pins it.
 
 ### Feature flags (per-user toggles)
 

@@ -21,15 +21,16 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # Override to pull from a mirror registry (e.g. the installer's --mirror).
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-greenhouse}
       POSTGRES_USER: ${POSTGRES_USER:-greenhouse}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-greenhouse}
-    # Loopback-only, not internet-exposed.
+    # Loopback-only, not internet-exposed (POSTGRES_BIND moves it off a busy 5432).
     ports:
-      - '127.0.0.1:5432:5432'
+      - '${POSTGRES_BIND:-127.0.0.1:5432}:5432'
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:

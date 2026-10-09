@@ -106,6 +106,53 @@ The whole app is one deployable unit (the API serves the built SPA), so the
 `docker/build-push-action`, tags via `docker/metadata-action`, and pushes to
 **GHCR** (public, free, GitHub-native auth). `docker compose up` consumes it.
 
+It is **multi-arch** (`linux/amd64` + `linux/arm64`): the `image-build` matrix builds each
+platform natively (`ubuntu-latest` / `ubuntu-24.04-arm` — no QEMU; the `compute` tool's
+`isolated-vm` addon ships linux-arm64 prebuilds and runs there), pushes by digest, and the
+`image` job merges the digests into one manifest list per tag set
+(`docker buildx imagetools create`). Check a release with
+`docker buildx imagetools inspect ghcr.io/linjiejim/greenhouse:X.Y.Z` — both platforms listed.
+
+#### Mirror registry (optional — networks where ghcr.io / Docker Hub are blocked)
+
+The installer's `--mirror <prefix>` pulls `<prefix>/greenhouse:<tag>`,
+`<prefix>/postgres:16-alpine` and `<prefix>/caddy:2-alpine`. To publish there:
+
+1. Create a registry namespace you control (e.g. Alibaba Cloud ACR personal edition:
+   `registry.cn-hangzhou.aliyuncs.com/<namespace>`) and make its repositories public.
+2. In the repo settings set the **variable** `MIRROR_PREFIX` to that prefix, and the
+   **secrets** `MIRROR_USERNAME` / `MIRROR_PASSWORD` to its push credentials.
+3. The next stable tag copies every release tag plus the two base images there
+   (`docker buildx imagetools create`, so both architectures). Edge builds are never mirrored.
+
+Without `MIRROR_PREFIX` the steps are skipped.
+
+### One-click deploys
+
+- **Installer** — `docs/install.sh`, published by GitHub Pages at
+  `https://greenhouse.linjiejim.com/install.sh` as soon as it lands on `main`. It installs
+  `:latest` (or `--version`), so a change it depends on in the image reaches users with the next
+  stable release. It reads the compose file and `.env.example` out of the image, so those ship
+  with the release too.
+- **Railway template** — created and published by a maintainer in Railway
+  (Workspace → Templates → New Template); Railway keeps it, not this repo (the composer does not
+  persist pre-deploy commands, and `railway.json` config-as-code is being retired — hence
+  `MIGRATE_ON_START`). Services and settings:
+  - **Postgres** — Railway's PostgreSQL database.
+  - **greenhouse** — Docker image `ghcr.io/linjiejim/greenhouse:latest`; volume at `/app/data`;
+    health-check path `/health`; public domain on port 3000. Variables:
+    `DATABASE_URL=${{Postgres.DATABASE_URL}}`,
+    `TOKEN_SIGNING_KEY=${{secret(64, "abcdef0123456789")}}`,
+    `PROVIDER_TOKEN_ENCRYPTION_KEY=${{secret(64, "abcdef0123456789")}}`,
+    `MIGRATE_ON_START=1`, `API_PORT=3000`,
+    `PUBLIC_BASE_URL=https://${{RAILWAY_PUBLIC_DOMAIN}}`, `APP_BASE_URL=https://${{RAILWAY_PUBLIC_DOMAIN}}`,
+    `TRUSTED_PROXY_HOPS=2`, `BOOTSTRAP_ADMIN_EMAIL` (required, no default — the deployer's
+    email), and optional `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`.
+  - After publishing, add the `Deploy on Railway` button
+    (`https://railway.com/button.svg` → the template's `railway.com/deploy/<code>` URL) to the
+    README's Railway section. Re-check `TRUSTED_PROXY_HOPS` if Railway changes its edge: the
+    client address must be the visitor's, not `100.64.x.x` or an edge address.
+
 ### Browser extension → versioned zip
 
 `pnpm --filter @greenhouse/browser package` runs `vite build`, stamps
@@ -222,9 +269,6 @@ One-time setup (secret-gated, not code — the workflow stays a no-op until done
 
 ## Follow-ups (need external accounts / credentials — not code-only)
 
-- **Multi-arch images** (`linux/arm64`): verify the `compute` tool's `isolated-vm`
-  native addon cross-compiles under buildx + QEMU, then add the platform in
-  `release.yml`. Currently **amd64 only**.
 - **Supply-chain hardening**: SBOM (`anchore/sbom-action` / buildx `--sbom`),
   provenance attestation (`--provenance`), `cosign` keyless signing (OIDC).
 - **Chrome Web Store auto-publish** (`chrome-webstore-upload-action`) — needs store

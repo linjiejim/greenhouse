@@ -48,13 +48,14 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - 内部 CLI/服务器自调用：必须传递真实且当前有效的 team/super access token；禁止合成 `internal` 用户或绕过数据库用户校验
 - 禁止从已删除的 `auth.ts` 导入——始终使用 `auth/index.ts`
 - **fail-closed 启动闸（`assertAuthEnv()`，main() 启动时调用）**：`TOKEN_SIGNING_KEY` 在所有环境（本地/dev/生产）一律必填、必须是 64 位 hex（32 bytes）且无 fallback，缺失或格式错误时服务拒绝启动。`authMiddleware` 永远要求实名内部账号的 Bearer token，不存在 dev/匿名 super 旁路；每次请求重新读取用户状态、当前角色与 `auth_version`，已删除、禁用、历史 `external` 或密码重置前签发的 token 立即失效。refresh token 同样记录签发版本并单次消费，密码重置在一个事务内递增版本并撤销 refresh。契约由 `tests/api/token.test.ts`、`auth/__tests__/internal-only.test.ts` 与 `routes/__tests__/auth-version.test.ts` 锁定。
-- **受邀设密/安全重置不是登录旁路**：只有 super 可签发 `invite/reset` 链接；公共面精确限定为 `POST /api/auth/password-link/{inspect,complete}`，没有 GET 消费、公共注册或忘记密码。fragment token 只按 hash 查库，inspect 不消费；complete 在 DB 锁内单次消费后才签发正常 Access/Refresh 会话。公共端点必须保留 4KB body limit、IP + token-hash 双限流、统一无效错误与 `no-store`。邮件重置签发即进入 `reset_required` 并主动停 Chat/WS、Scheduler、Workflow、Cloud Agent；安全状态已提交后，运行时清理失败只能记录日志，不能恢复旧凭证。
+- **首个管理员引导（`security/first-admin.ts`）不是第二条签发通道**：它复用同一种 `invite` 链接，只在没有「已建立」超管（`active` / `reset_required`）时、按运维设置的 `BOOTSTRAP_ADMIN_EMAIL` 在启动时签发，把链接写进日志（`warn`，不发邮件）；每次启动重新签发并作废上一条。邮箱属于任何非「待激活超管」的账号（team、被禁用的超管）时只报错、绝不提权或复活。有人激活后它完全惰性。`/api/bootstrap` 的 `setup_pending` 只报告「还没人认领」，不暴露任何凭证。
+- **受邀设密/安全重置不是登录旁路**：只有 super 可签发 `invite/reset` 链接（唯一例外是上面的首个管理员引导）；公共面精确限定为 `POST /api/auth/password-link/{inspect,complete}`，没有 GET 消费、公共注册或忘记密码。fragment token 只按 hash 查库，inspect 不消费；complete 在 DB 锁内单次消费后才签发正常 Access/Refresh 会话。公共端点必须保留 4KB body limit、IP + token-hash 双限流、统一无效错误与 `no-store`。邮件重置签发即进入 `reset_required` 并主动停 Chat/WS、Scheduler、Workflow、Cloud Agent；安全状态已提交后，运行时清理失败只能记录日志，不能恢复旧凭证。
 
 ### 安全 (`security/security.ts`)
 - 用户输入在传给 LLM 前**必须**经过 `sanitizeForPrompt()` 处理
 - 使用 `checkPromptInjection()` 检测和记录注入攻击
 - 限流使用共享的 `InMemoryRateLimiter` 类——不要单独实现
-- 限流/审计来源 IP 必须走 `security/request-ip.ts`：默认使用 socket peer；只有 loopback 或 `TRUSTED_PROXY_IPS` 明确登记的反代才可提供 `X-Forwarded-For/X-Real-IP`，禁止直接信任请求头。
+- 限流/审计来源 IP 必须走 `security/request-ip.ts`：默认使用 socket peer；只有 loopback 或 `TRUSTED_PROXY_IPS` 明确登记的反代才可提供 `X-Forwarded-For/X-Real-IP`，禁止直接信任请求头。代理地址不固定的平台用 `TRUSTED_PROXY_HOPS=N`（socket peer 算第 1 跳，再从右往左数 XFF；客户端是越过最后一个可信跳后的那个地址）：Railway = 2（路由 + 边缘），安装脚本的 Caddy = 1（API 只绑 loopback）。客户端能直连 API 时绝不能设——它可以自选 IP。
 - 文件上传：通过 `validateMagicBytes()` 校验 MIME 类型
 - Agent 工具下载公网图片必须走 `security/network.ts` 的 `fetchPublicImage()`：只准 public HTTPS，连接时 DNS 校验、每跳重定向复核、响应大小上限和图片魔数缺一不可；禁止对模型输入 URL 直接 `fetch()`。
 - Agent 工具抓取网页（搜索结果正文提取等）同理走 `fetchPublicPage()`：http(s)、无凭证、拒 localhost 与非公网字面量，连接时 DNS 校验（防 rebinding 到 127.0.0.1 / 内网 / 云元数据）、手动跟随重定向且每跳复核、解码后流式截断。曾经的 `LocalFallbackExtractor` 直接 `fetch(url, { redirect: 'follow' })`，一个跳到内网的搜索结果就能把 API 主机上的本地服务读进对话。

@@ -246,16 +246,65 @@ frontend changes hot-reload.
 > folder of Markdown), `tables`, `platform` (scaffold an application), and `chat` (needs a
 > running server). Run `pnpm cli --help` for the full guide.
 
-## One-command Docker deploy
+## Deploy
+
+Three ways, from least to most hands-on. All of them run the same image —
+`ghcr.io/linjiejim/greenhouse`, built for `linux/amd64` and `linux/arm64` — and the
+first-run steps below (`BOOTSTRAP_ADMIN_EMAIL`, `MIGRATE_ON_START`) need Greenhouse 1.4 or later.
+
+### One-line install (a Linux server, or a Mac with Docker)
+
+```bash
+curl -fsSL https://greenhouse.linjiejim.com/install.sh | bash
+```
+
+The installer asks for the first administrator's email, an optional domain (HTTPS with
+automatic certificates through Caddy — ports 80 and 443, DNS already pointing at the
+server) and an optional model key, starts Postgres + the app with Docker Compose in
+`~/greenhouse`, and prints the administrator's one-time activation link. Docker is the only
+requirement; on Linux it offers to install it. Re-run it to upgrade. Unattended:
+`… | bash -s -- --yes --email you@example.com --domain gh.example.com`; `--help` lists every
+option. Where ghcr.io or Docker Hub cannot be reached, `--mirror <registry/namespace>` pulls
+every image from a mirror registry (releases are copied there when the mirror is configured —
+see [RELEASING.md](./RELEASING.md)).
+
+### Railway
+
+[Railway](https://railway.com) runs the published image next to a managed Postgres, with no
+server to look after:
+
+1. New project → **Database → PostgreSQL**; then **Docker Image** →
+   `ghcr.io/linjiejim/greenhouse:latest`.
+2. Variables on the image service:
+
+   | Variable | Value |
+   |---|---|
+   | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
+   | `TOKEN_SIGNING_KEY`, `PROVIDER_TOKEN_ENCRYPTION_KEY` | two different `openssl rand -hex 32` values |
+   | `BOOTSTRAP_ADMIN_EMAIL` | your email |
+   | `MIGRATE_ON_START` | `1` |
+   | `API_PORT` | `3000` |
+   | `PUBLIC_BASE_URL`, `APP_BASE_URL` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` |
+   | `TRUSTED_PROXY_HOPS` | `2` (Railway's router + edge — so rate limits see each visitor) |
+
+3. Attach a volume at `/app/data` (uploads, Skill Center bundles), set the health-check
+   path to `/health`, and generate a domain for port 3000.
+4. Deploy, then open the activation link from the deploy logs
+   (`[setup] Activate the first administrator …`).
+
+Choose the model afterwards under **Administration → Runtime Config** (or set `LLM_BASE_URL`
+/ `LLM_API_KEY` / `LLM_MODEL` as variables).
+
+### Docker Compose by hand
 
 The bundled `docker-compose.yml` runs Postgres, a one-shot migration job, and the API
 (which serves the SPA) as a single self-contained image.
 
 ```bash
 cp .env.example .env && ./scripts/gen-secrets.sh   # fills required secrets
-#   edit .env: set LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
+#   edit .env: set BOOTSTRAP_ADMIN_EMAIL, and LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
 docker compose up -d --build
-docker compose exec api pnpm admin:create          # create the first super-admin
+docker compose logs api | grep 'Activate the first administrator'
 ```
 
 The app is then at http://localhost:3000.
@@ -267,6 +316,15 @@ pulls `ghcr.io/linjiejim/greenhouse` (no Node/pnpm toolchain needed):
 ```bash
 docker compose -f docker-compose.ghcr.yml up -d    # tracks :latest; pin via GREENHOUSE_IMAGE in .env
 ```
+
+### The first administrator
+
+Set `BOOTSTRAP_ADMIN_EMAIL` and start the app: while nobody has activated an administrator
+yet, every boot makes sure that account exists and logs a one-time activation link (the same
+link member invites use — single use, valid 72 hours; a restart prints a fresh one). Open it,
+choose a password, and you are signed in as the super admin. The variable does nothing once
+an administrator exists, and it never promotes an existing account. Until then the login page
+says where to look. With a shell in the container, `pnpm admin:create` works too.
 
 Missions need one more piece on the host: Docker with the gVisor runtime, a dedicated bridge
 network, and the sandbox image (`bash scripts/build-agent-runtime.sh`). They stay off until
@@ -363,7 +421,14 @@ Everything is environment-driven; see [.env.example](./.env.example) for the ful
 | `DATABASE_URL` | PostgreSQL connection string |
 | `TOKEN_SIGNING_KEY` | Signing key for auth tokens (`openssl rand -hex 32`) |
 | `PROVIDER_TOKEN_ENCRYPTION_KEY` | AES-256-GCM key for stored secrets — email passwords, integration tokens, workspace-setting secrets (`openssl rand -hex 32`) |
-| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | Any OpenAI-compatible endpoint; the `flash` catalog entry resolves to `LLM_MODEL` (add a stronger `pro` with `LLM_MODEL_PRO`) |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | Any OpenAI-compatible endpoint; the `flash` catalog entry resolves to `LLM_MODEL` (add a stronger `pro` with `LLM_MODEL_PRO`). The server starts without them — chat needs them, and they can be set later in Runtime Config |
+
+**First run and hosting**: `BOOTSTRAP_ADMIN_EMAIL` (the first administrator's activation link —
+see [The first administrator](#the-first-administrator)), `MIGRATE_ON_START=1` (apply database
+migrations at startup, for hosts without a separate migration step), and — behind a reverse
+proxy — `TRUSTED_PROXY_IPS` (proxies with fixed addresses) or `TRUSTED_PROXY_HOPS` (how many
+proxies stand in front, for platforms whose proxy addresses rotate, e.g. `2` on Railway), so rate
+limits and the audit log see each visitor's own address.
 
 **Model catalog** — `apps/api/src/config/models.yaml` is the single definition of every model
 a deployment can use: the built-in `flash` / `pro` entries follow `LLM_*`, and the native
