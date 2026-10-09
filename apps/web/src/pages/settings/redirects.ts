@@ -26,6 +26,7 @@ export const ADMIN_REDIRECTS: Record<string, string> = {
   eval: 'eval',
   'llm-gateway': 'llm-gateway',
   'mcp-keys': 'mcp-keys',
+  'mcp-servers': 'mcp-servers',
   'runtime-config': 'runtime-config',
   branding: 'branding',
   'bot-computers': 'bot-computers',

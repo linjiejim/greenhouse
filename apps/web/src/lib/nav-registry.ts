@@ -31,6 +31,7 @@ import {
   Monitor,
   Lock,
   Server,
+  Plug,
 } from './icons';
 import type { LucideIcon } from './icons';
 import type { FeatureKey } from '@greenhouse/types/features';
@@ -290,6 +291,15 @@ const ADMINISTRATION_MODULES: NavModule[] = [
     requireRole: ['super'],
   },
   {
+    id: 'admin.mcp-servers',
+    label: 'MCP Servers',
+    icon: Plug,
+    path: '#/administration/mcp-servers',
+    parent: 'administration',
+    description: 'External MCP servers members can call from chat',
+    requireRole: ['super'],
+  },
+  {
     id: 'admin.mcp-keys',
     label: 'MCP Access',
     icon: Key,
@@ -427,6 +437,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   'admin.eval': { label: 'navigation.evaluation', description: 'navigation.evaluationDesc' },
   'admin.llm-gateway': { label: 'navigation.aiGateway', description: 'navigation.aiGatewayDesc' },
   'admin.mcp-keys': { label: 'navigation.mcpAccess', description: 'navigation.mcpAccessDesc' },
+  'admin.mcp-servers': { label: 'navigation.mcpServers', description: 'navigation.mcpServersDesc' },
   'workspace.bots': { label: 'bots.title', description: 'bots.description' },
   'workspace.tasks': { label: 'navigation.myPrompts', description: 'navigation.tasksDesc' },
   'workspace.automations': { label: 'navigation.automation', description: 'navigation.automationDesc' },

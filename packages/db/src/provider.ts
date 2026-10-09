@@ -42,6 +42,7 @@ import { createUserMemoryService } from './services/user-memories.js';
 import { createToolFrictionService } from './services/tool-frictions.js';
 import { createDriveService } from './services/drive.js';
 import { createEmailService } from './services/email.js';
+import { createMcpServerService } from './services/mcp-servers.js';
 import { createSkillService } from './services/skills.js';
 import { createPlatformService } from './services/platform.js';
 import { createPlatformOAuthService } from './services/platform-oauth.js';
@@ -95,6 +96,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     toolFrictions: createToolFrictionService(db),
     drive: createDriveService(db),
     email: createEmailService(db),
+    mcpServers: createMcpServerService(db),
     skills: createSkillService(db),
     platform: createPlatformService(db),
     platformOAuth: createPlatformOAuthService(db),

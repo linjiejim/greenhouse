@@ -53,8 +53,17 @@ export const BOT_APPROVAL_TOOL_IDS: ReadonlySet<string> = new Set([
   'feature_request',
 ]);
 
-/** Never in a Bots turn: card-only drafts and recursive spawning (D14). */
-const EXCLUDED_TOOL_IDS: ReadonlySet<string> = new Set([...DISPATCH_TOOL_IDS, 'spawn_session', ...BOT_TOOL_IDS]);
+/**
+ * Never in a Bots turn: card-only drafts and recursive spawning (D14), and the
+ * external MCP gateway — its writes would need the approval card and its
+ * results the taint flag, neither of which it is wired to yet (spec 20261009 D5).
+ */
+const EXCLUDED_TOOL_IDS: ReadonlySet<string> = new Set([
+  ...DISPATCH_TOOL_IDS,
+  'spawn_session',
+  'mcp_call',
+  ...BOT_TOOL_IDS,
+]);
 
 export function needsBotApproval(toolId: string): boolean {
   return BOT_APPROVAL_TOOL_IDS.has(toolId) || getToolMeta(toolId)?.surface?.proxy === 'write';

@@ -21,6 +21,7 @@ export type { ToolCategory, ToolMeta } from './define.js';
 import { analyzeImageTool } from './analyze-image.js';
 import { askUserTool } from './ask-user.js';
 import { externalSearchTool } from './external-search/index.js';
+import { mcpCallTool } from './mcp-call.js';
 import { featureRequestTool } from './feature-request.js';
 import { generateImageTool } from './generate-image.js';
 import { projectQueryTool } from './project-query.js';
@@ -60,6 +61,7 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   analyzeImageTool,
   askUserTool,
   externalSearchTool,
+  mcpCallTool,
   featureRequestTool,
   generateImageTool,
   projectQueryTool,

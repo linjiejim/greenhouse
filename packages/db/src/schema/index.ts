@@ -23,6 +23,7 @@ export * from './session-group.js';
 export * from './knowledge-base.js';
 export * from './drive.js';
 export * from './email.js';
+export * from './mcp-server.js';
 export * from './user-feature.js';
 export * from './user-memory.js';
 export * from './tool-friction.js';
