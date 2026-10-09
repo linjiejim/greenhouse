@@ -452,7 +452,7 @@ export interface DrawerRows {
   recent: BotConversationSummary[];
   /** Replyable rows hidden behind "Show All" (0 when expanded or searching). */
   moreCount: number;
-  /** Conversations nobody can reply in any more (archived DM Bot, a group with no active Bot). */
+  /** Conversations nobody can reply in any more (an archived DM Bot, every old group chat). */
   archived: BotConversationSummary[];
 }
 
@@ -461,7 +461,8 @@ export interface DrawerRows {
  * in the server's order (spatial memory beats attention sorting), the first
  * `recent` of them unless expanded; read-only ones go to "Archived". A search
  * filters every part by title, member names and the last preview, and never
- * collapses. Before the Bot list arrives every row counts as replyable.
+ * collapses. Before the Bot list arrives every DM counts as replyable; an old
+ * group chat is a closed record (group chats were retired) whatever the list says.
  */
 export function drawerRows(
   s: Pick<BotsData, 'bots' | 'byId' | 'botsLoaded' | 'conversations'>,
@@ -472,7 +473,8 @@ export function drawerRows(
   const matches = (row: BotConversationSummary) => !query || searchText(s.byId, row).includes(query);
   const pinnedSid = sproutyDm(s);
   const activeIds = new Set(s.bots.map((bot) => bot.id));
-  const replyable = (row: BotConversationSummary) => !s.botsLoaded || conversationReplyable(row, activeIds);
+  const replyable = (row: BotConversationSummary) =>
+    row.kind === 'direct' && (!s.botsLoaded || conversationReplyable(row, activeIds));
 
   const pinnedRow = pinnedSid ? (s.conversations.find((row) => row.session_id === pinnedSid) ?? null) : null;
   const rest = s.conversations.filter((row) => row.session_id !== pinnedSid && matches(row));

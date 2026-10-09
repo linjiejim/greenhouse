@@ -3,15 +3,17 @@
  * §2.5.1, D1). The drawer is this app's conversation navigation, so talking
  * and switching to another Bot are the same right swipe:
  *
- *  - a header "Bots" with ＋ — a system menu: New Bot ▸ (the four templates,
- *    the ones that need a computer this deployment lacks under their own
- *    heading — a hint, not a block — then Custom…) and New Group (disabled,
- *    with the reason as the menu title, under two active Bots / at the cap);
+ *  - a header "Bots" with ＋ — a system menu of new Bots: the four templates
+ *    (the ones that need a computer this deployment lacks under their own
+ *    heading — a hint, not a block), then Custom… — all disabled at the cap,
+ *    the reason as the menu title. No groups: Bots bring each other into a
+ *    conversation themselves (retired 2026-10-09);
  *  - Sprouty's DM, always first and pinned; then the conversations someone can
  *    still reply in, in the server's order (newest activity first — never
  *    re-sorted by attention, so rows keep their place); five of them, then
  *    "Show All (N)" expands in place for the rest of this run;
- *  - "Archived (N)" → the read-only conversations (`/bots/archived`);
+ *  - "Archived (N)" → the read-only conversations (`/bots/archived`) — an
+ *    archived Bot's DM, and every old group chat;
  *  - a failed first load is one quiet "Couldn't load Bots · Retry" line — no
  *    alert. A 403 / an older server closes the whole section (`useBotsEnabled`),
  *    and with Bots off the drawer is exactly what it was before Bots.
@@ -162,18 +164,16 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
     [open, later, router, t],
   );
 
-  /* ---------- ＋ : New Bot ▸ / New Group ---------- */
+  /* ---------- ＋ : a new Bot — the templates, then custom (no groups: Bots bring each other in) ---------- */
   const others = bots.filter((bot) => !isSproutyBot(bot)).length;
   const atLimit = others >= MAX_ACTIVE_BOTS;
-  const tooFew = bots.length < 2;
-  const addTitle =
-    [atLimit && t('bots.nav.limitReached'), tooFew && t('bots.nav.groupNeedsTwo')].filter(Boolean).join(' · ') ||
-    undefined;
+  const addTitle = atLimit ? t('bots.nav.limitReached') : t('bots.nav.newBot');
   const addItems = useMemo<MenuItem[]>(() => {
     const noComputer = !!computer && computer.state !== 'ready';
     const item = (tpl: (typeof BOT_TEMPLATES)[number]): MenuItem => ({
       id: `template:${tpl.key}`,
       title: t('bots.nav.templateItem', { role: tpl.copy[lang].role, name: tpl.copy[lang].name }),
+      disabled: atLimit,
     });
     const ready = BOT_TEMPLATES.filter((tpl) => !(tpl.needsComputer && noComputer));
     const blocked = BOT_TEMPLATES.filter((tpl) => tpl.needsComputer && noComputer);
@@ -187,19 +187,15 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
         id: '__custom',
         title: '',
         inline: true,
-        children: [{ id: 'template:custom', title: t('bots.nav.custom'), icon: 'pen' }],
+        children: [{ id: 'template:custom', title: t('bots.nav.custom'), icon: 'pen', disabled: atLimit }],
       },
     ];
-    return [
-      { id: 'newBot', title: t('bots.nav.newBot'), icon: 'sparkle', disabled: atLimit, children: newBot },
-      { id: 'newGroup', title: t('bots.nav.newGroup'), icon: 'users', disabled: tooFew },
-    ];
-  }, [computer, lang, atLimit, tooFew, t]);
+    return newBot;
+  }, [computer, lang, atLimit, t]);
 
   const onAdd = useCallback(
     (id: string) => {
-      if (id === 'newGroup') later(() => router.push('/bots/new-group'));
-      else if (id.startsWith('template:')) {
+      if (id.startsWith('template:')) {
         const template = id.slice('template:'.length);
         later(() => router.push({ pathname: '/bots/bot-form', params: { template } }));
       }

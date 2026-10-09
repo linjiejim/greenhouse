@@ -129,17 +129,17 @@ function input(snap: Partial<StatusInput['snap']> = {}, kind: 'direct' | 'group'
 const requests = (...list: BotRequestView[]) => new Map(list.map((r) => [r.id, r]));
 
 describe('statusLine', () => {
-  it('idle: no line, in a DM and in a group', () => {
+  it('idle: no line in a DM; an old group chat always reads as retired', () => {
     expect(statusLine(input())).toBeNull();
     expect(statusLine(input({ conversation: null }))).toBeNull();
-    expect(statusLine(input({}, 'group'))).toBeNull();
+    expect(statusLine(input({}, 'group'))).toEqual({ key: 'bots.status.groupClosed' });
   });
 
   it('busy without a segment: Working…', () => {
     expect(statusLine(input({ runActive: true }))).toEqual({ key: 'bots.status.working' });
   });
 
-  it('a DM owner thinks / replies unnamed; a group (or a DM guest) is named', () => {
+  it('a DM owner thinks / replies unnamed; a guest is named', () => {
     expect(statusLine(input({ run: run([segment()]), runActive: true }))).toEqual({ key: 'bots.status.thinkingDm' });
     expect(statusLine(input({ run: run([segment({ text: 'Hi' })]), runActive: true }))).toEqual({
       key: 'bots.status.replyingDm',
@@ -149,9 +149,9 @@ describe('statusLine', () => {
       key: 'bots.status.replying',
       vars: { name: 'Fern' },
     });
-    expect(statusLine(input({ run: run([segment()]), runActive: true }, 'group'))).toEqual({
+    expect(statusLine(input({ run: run([segment({ botId: FERN.id })]), runActive: true }))).toEqual({
       key: 'bots.status.thinking',
-      vars: { name: 'Sage' },
+      vars: { name: 'Fern' },
     });
   });
 
@@ -173,11 +173,11 @@ describe('statusLine', () => {
   });
 
   it('the typing front speaks, not a later segment still waiting its turn', () => {
-    const first = segment({ text: 'Typing', status: 'completed' });
-    const second = segment({ botId: FERN.id, text: '' });
-    expect(statusLine(input({ run: run([first, second], { revealing: 0 }), runActive: true }, 'group'))).toEqual({
+    const first = segment({ botId: FERN.id, text: 'Typing', status: 'completed' });
+    const second = segment({ text: '' });
+    expect(statusLine(input({ run: run([first, second], { revealing: 0 }), runActive: true }))).toEqual({
       key: 'bots.status.replying',
-      vars: { name: 'Sage' },
+      vars: { name: 'Fern' },
     });
     expect(talkingSegment(run([first, second]))).toBe(second);
     expect(talkingSegment(null)).toBeNull();
@@ -222,9 +222,8 @@ describe('statusLine', () => {
   it('read-only beats everything', () => {
     const busy = { requests: requests(request('a')), run: run([segment()]), runActive: true };
     expect(statusLine(input({ ...busy, readOnly: 'bot_archived' }))).toEqual({ key: 'bots.status.archived' });
-    expect(statusLine(input({ ...busy, readOnly: 'no_active_members' }, 'group'))).toEqual({
-      key: 'bots.status.noReplier',
-    });
+    expect(statusLine(input({ ...busy, readOnly: 'group_closed' }))).toEqual({ key: 'bots.status.groupClosed' });
+    expect(statusLine(input(busy, 'group'))).toEqual({ key: 'bots.status.groupClosed' });
     // the directory says so too
     expect(statusLine(input({ ...busy, conversation: conversation({ owner_bot_id: OLD.id }) }))).toEqual({
       key: 'bots.status.archived',
@@ -233,32 +232,21 @@ describe('statusLine', () => {
 });
 
 describe('threadReadOnly', () => {
-  it('an archived DM owner; a group with nobody active', () => {
+  it('an archived DM owner; every old group chat, whoever is in it', () => {
     expect(threadReadOnly({ conversation: conversation({ owner_bot_id: OLD.id }), readOnly: null }, BY_ID)).toBe(
       'bot_archived',
     );
-    const deadGroup = conversation({ ...GROUP, members: [{ bot_id: OLD.id, role: 'lead', position: 0 }] });
-    expect(threadReadOnly({ conversation: deadGroup, readOnly: null }, BY_ID)).toBe('no_active_members');
-    expect(threadReadOnly({ conversation: GROUP, readOnly: null }, BY_ID)).toBeNull();
+    expect(threadReadOnly({ conversation: GROUP, readOnly: null }, BY_ID)).toBe('group_closed');
+    expect(threadReadOnly({ conversation: GROUP, readOnly: 'bot_archived' }, BY_ID)).toBe('group_closed');
   });
 
   it('an id the directory has not answered for is "not loaded", never archived', () => {
     expect(threadReadOnly({ conversation: conversation({ owner_bot_id: 'b_new' }), readOnly: null }, BY_ID)).toBeNull();
-    const partlyKnown = conversation({
-      ...GROUP,
-      members: [
-        { bot_id: OLD.id, role: 'lead', position: 0 },
-        { bot_id: 'b_new', role: 'member', position: 1 },
-      ],
-    });
-    expect(threadReadOnly({ conversation: partlyKnown, readOnly: null }, BY_ID)).toBeNull();
     expect(threadReadOnly({ conversation: null, readOnly: null }, {})).toBeNull();
   });
 
-  it('the server’s answer to a send wins', () => {
-    expect(threadReadOnly({ conversation: conversation(), readOnly: 'no_active_members' }, BY_ID)).toBe(
-      'no_active_members',
-    );
+  it('the server’s answer to a send wins in a DM', () => {
+    expect(threadReadOnly({ conversation: conversation(), readOnly: 'group_closed' }, BY_ID)).toBe('group_closed');
   });
 });
 

@@ -41,8 +41,11 @@ export function mergeRequests(src: {
 /**
  * 409 codes that mean "someone already settled this" — or is settling it
  * right now, on another device (a code-less 409 is the older form of the same).
+ * The phone also reads `group_closed` this way: a card left in an old group
+ * chat (group chats were retired) is cancelled by the server as it refuses, so
+ * a quiet re-read shows it settled (the web handles it in useRequestDecision).
  */
-const ALREADY_SETTLED: ReadonlySet<string> = new Set<BotRequestErrorCode>(['already_decided', 'deciding']);
+const ALREADY_SETTLED: ReadonlySet<string> = new Set<BotRequestErrorCode>(['already_decided', 'deciding', 'group_closed']);
 
 /**
  * How a failed `POST /api/bots/requests/:id` reads: `stale` — already settled

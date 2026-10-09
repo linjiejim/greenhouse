@@ -16,7 +16,7 @@ import { useT } from '../../lib/i18n';
 import type { BotView } from '../../shared/bots';
 import { useTheme } from '../../theme';
 import { BotAvatar } from '../ui/bot-avatar';
-import type { MemberLabel } from './group-model';
+import type { MemberLabel } from './member-model';
 
 const PRIMARY = foregroundStyle({ type: 'hierarchical', style: 'primary' });
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });

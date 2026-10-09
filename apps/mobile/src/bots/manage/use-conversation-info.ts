@@ -1,20 +1,22 @@
 /**
- * The behaviour behind a conversation's info sheet (app/bots/info.tsx), the
- * group-rules sheet and the invite sheet (spec docs/specs/20261008-mobile-bots.md
- * §2.5.7): the conversation's detail (`GET /api/bots/conversations/:id?limit=1`
- * — the detail rides on a one-message page) and every change made there, each
- * applied at once:
+ * The behaviour behind a conversation's info sheet (app/bots/info.tsx) and the
+ * invite sheet (spec docs/specs/20261008-mobile-bots.md §2.5.7): the
+ * conversation's detail (`GET /api/bots/conversations/:id?limit=1` — the detail
+ * rides on a one-message page) and the two changes made there, each applied at
+ * once:
  *
- *  - rename / rules / lead / "let Bots ask each other" → `PATCH`;
- *  - remove (confirmed first) → `DELETE …/members/:botId`;
- *  - invite → `POST …/members` (`already_member` counts as done).
+ *  - remove a guest (confirmed first) → `DELETE …/members/:botId`;
+ *  - invite a Bot as a guest → `POST …/members` (`already_member` counts as done).
+ *
+ * Nothing else is set here: Bots hand work to each other whenever it helps (no
+ * switch), and group chats — with their name, rules and lead — are retired.
  *
  * Writes are optimistic; the server's answer (the fresh detail) replaces the
  * guess, a refusal restores what was there and says so (`alertError`). Every
  * write also makes the server push `bots:conversation`, which the open thread
  * reloads on; this sheet listens for the same push (a change made on another
  * device, a Bot joining by itself) and re-reads. The pure rules are in
- * ./group-model.ts.
+ * ./member-model.ts.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -22,7 +24,6 @@ import {
   addConversationMember,
   getConversation,
   removeConversationMember,
-  updateConversation,
   type BotsWrite,
 } from '../../api/bots';
 import { useT } from '../../lib/i18n';
@@ -31,7 +32,7 @@ import type { BotConversationDetail } from '../../shared/bots';
 import { alertError, confirmAction } from '../../ui/dialogs';
 import { toast } from '../../ui/toast';
 import { useBots } from '../store';
-import { withLead, withoutMember } from './group-model';
+import { withoutMember } from './member-model';
 
 export type InfoLoad = 'loading' | 'ready' | 'not_found' | 'forbidden' | 'error';
 
@@ -94,54 +95,6 @@ export function useConversationInfo(c: string) {
     [],
   );
 
-  const rename = useCallback(
-    async (title: string) => {
-      const next = title.trim() || null;
-      if (next === (current.current?.title ?? null)) return;
-      await write(
-        (d) => ({ ...d, title: next }),
-        () => updateConversation(c, { title: next }),
-        t('bots.manage.saveFailed'),
-      );
-    },
-    [c, t, write],
-  );
-
-  const setRules = useCallback(
-    async (description: string): Promise<boolean> => {
-      const result = await write(
-        (d) => ({ ...d, description: description.trim() }),
-        () => updateConversation(c, { description }),
-        t('bots.manage.saveFailed'),
-      );
-      return !!result?.ok;
-    },
-    [c, t, write],
-  );
-
-  const setLead = useCallback(
-    async (botId: string) => {
-      if (botId === current.current?.lead_bot_id) return;
-      await write(
-        (d) => withLead(d, botId),
-        () => updateConversation(c, { lead_bot_id: botId }),
-        t('bots.manage.saveFailed'),
-      );
-    },
-    [c, t, write],
-  );
-
-  const setAllowBotChat = useCallback(
-    async (on: boolean) => {
-      await write(
-        (d) => ({ ...d, allow_bot_chat: on }),
-        () => updateConversation(c, { allow_bot_chat: on }),
-        t('bots.manage.saveFailed'),
-      );
-    },
-    [c, t, write],
-  );
-
   /** Asks first ("Remove {name} from this conversation?"), then removes. */
   const remove = useCallback(
     async (botId: string) => {
@@ -182,5 +135,5 @@ export function useConversationInfo(c: string) {
     [c, t],
   );
 
-  return { load, detail, reload, rename, setRules, setLead, setAllowBotChat, remove, invite };
+  return { load, detail, reload, remove, invite };
 }

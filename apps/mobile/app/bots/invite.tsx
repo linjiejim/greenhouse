@@ -13,7 +13,7 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useT } from '../../src/lib/i18n';
-import { canInviteMore, inviteCandidates } from '../../src/bots/manage/group-model';
+import { canInviteMore, inviteCandidates } from '../../src/bots/manage/member-model';
 import { useConversationInfo } from '../../src/bots/manage/use-conversation-info';
 import { BotsRouteGate } from '../../src/bots/route-gate';
 import { useBots } from '../../src/bots/store';
