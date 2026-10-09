@@ -103,6 +103,10 @@ export async function refreshServerTools(
 ): Promise<RefreshOutcome> {
   const resolved = await resolveConnectTarget(db, row, actorUserId);
   if (!resolved.ok) {
+    // Nothing to list with yet, but the server itself is new or changed: a per-member one
+    // belongs in the directory now (a call shows each member a Connect button), not only
+    // after the next restart.
+    await refreshMcpDirectory(db);
     return {
       row,
       ok: false,

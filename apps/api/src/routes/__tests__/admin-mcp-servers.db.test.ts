@@ -183,7 +183,8 @@ describe('/api/admin/mcp-servers', () => {
       // The admin's missing key is their state, not the server's.
       expect(created.json.server.last_error).toBeNull();
       expect(created.json.server).toMatchObject({ auth_mode: 'per_user', auth_query_param: 'key', auth_header: null });
-      expect(inDirectory(slug)).toBeUndefined();
+      // Offered at once, tools unknown until someone connects: a call shows the member a Connect button.
+      expect(inDirectory(slug)).toMatchObject({ auth_mode: 'per_user', tools: [] });
     } finally {
       await keyed.close();
     }
