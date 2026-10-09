@@ -38,7 +38,7 @@ export const botsManageZh: typeof botsManageEn = {
     role: '岗位',
     look: '形象',
     plant: '植物',
-    mood: '神态',
+    tint: '颜色',
     namePlaceholder: '名字',
     nameHint: '最多 {max} 个字，@ 它时用的就是这个名字',
     rolePlaceholder: '岗位，如：研究员',
@@ -129,6 +129,6 @@ export const botsManageZh: typeof botsManageEn = {
       sunflower: '向日葵',
       dandelion: '蒲公英',
     },
-    moodName: { calm: '平静', soft: '惬意', bright: '明快', drowsy: '困倦' },
+    tintName: { plant: '原色', sky: '天蓝', violet: '紫罗兰', rose: '玫瑰', coral: '珊瑚', gold: '金黄', teal: '青绿' },
   },
 };
