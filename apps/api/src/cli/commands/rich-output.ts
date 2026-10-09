@@ -14,7 +14,8 @@ import chalk from 'chalk';
 import { diagnoseRichOutput, type RichBlockFailure } from '@greenhouse/types/rich-output';
 import { openDb, parseFlags, flagStr, flagBool, splitSub, table, heading, dim } from './shared.js';
 
-const PAGE = 500;
+/** Wide pages: each one is a sequential scan of `messages` (see scanFencedAssistantMessages). */
+const PAGE = 2_000;
 
 interface Tally {
   total: number;
@@ -46,11 +47,14 @@ export function parseSince(value: string | undefined, now = new Date()): string 
   return parsed.toISOString();
 }
 
-/** model → fence → tally, from message texts. Exported for tests. */
+/**
+ * model → fence → tally, from message texts. Pass `byModel` to keep adding to
+ * an earlier page's tally. Exported for tests.
+ */
 export function tallyMessages(
   messages: Array<{ model: string | null; content: string }>,
+  byModel = new Map<string, Map<string, Tally>>(),
 ): Map<string, Map<string, Tally>> {
-  const byModel = new Map<string, Map<string, Tally>>();
   for (const message of messages) {
     const model = message.model ?? '(unknown)';
     for (const block of diagnoseRichOutput(message.content)) {
@@ -78,27 +82,29 @@ async function stats(args: string[]): Promise<number> {
   const model = flagStr(flags, 'model');
   const db = await openDb();
 
-  const messages: Array<{ model: string | null; content: string }> = [];
+  // Tally page by page: only the counts outlive a page, never the message texts.
+  const byModel = new Map<string, Map<string, Tally>>();
+  let scanned = 0;
   let after: { createdAt: string; id: string } | undefined;
   for (;;) {
     const page = await db.sessions.scanFencedAssistantMessages({ sinceIso, model, after, limit: PAGE });
-    messages.push(...page.map((row) => ({ model: row.model, content: row.content })));
+    tallyMessages(page, byModel);
+    scanned += page.length;
     if (page.length < PAGE) break;
     const last = page[page.length - 1]!;
     after = { createdAt: last.created_at, id: last.id };
   }
 
-  const byModel = tallyMessages(messages);
   if (flagBool(flags, 'json')) {
     const out = [...byModel].map(([modelId, fences]) => ({
       model: modelId,
       blocks: [...fences].map(([fence, tally]) => ({ fence, ...tally })),
     }));
-    console.log(JSON.stringify({ since: sinceIso, messages: messages.length, models: out }, null, 2));
+    console.log(JSON.stringify({ since: sinceIso, messages: scanned, models: out }, null, 2));
     return 0;
   }
 
-  console.log(heading(`Rich Output since ${sinceIso.slice(0, 10)} — ${messages.length} messages with fences`));
+  console.log(heading(`Rich Output since ${sinceIso.slice(0, 10)} — ${scanned} messages with fences`));
   if (byModel.size === 0) {
     console.log(dim('No registered blocks in this window.'));
     return 0;

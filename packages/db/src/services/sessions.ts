@@ -30,7 +30,6 @@ export interface ToolErrorSample {
   input?: string;
 }
 
-/** A tool call that succeeded and found nothing (see `scanEmptyResults`). */
 /** An assistant message that contains at least one fenced block (rich-output stats input). */
 export interface FencedMessageSample {
   id: string;
@@ -39,6 +38,7 @@ export interface FencedMessageSample {
   created_at: string;
 }
 
+/** A tool call that succeeded and found nothing (see `scanEmptyResults`). */
 export interface EmptyResultSample {
   session_id: string;
   created_at: string;
@@ -915,23 +915,14 @@ export function createSessionService(db: Db) {
     },
 
     /**
-     * Every failed tool call recorded in `messages.pipeline` since `sinceIso`.
-     *
-     * Feeds the friction miner: agents stumble far more often than anyone
-     * reports, and the pipeline column already holds the evidence. Read-only and
-     * capped — this is a signal source, not an audit ledger.
-     *
-     * Rows whose pipeline serialised a NUL character are skipped: PostgreSQL
-     * jsonb cannot represent NUL, so the `::jsonb` cast on ONE such row would
-     * abort the whole sweep — a day of frictions lost to a single mojibake
-     * attachment (seen live 2026-08-11 with a UTF-16 CSV read as UTF-8).
-     * The extract layer no longer emits NULs, but historical rows remain and
-     * this query must not trust every future writer.
-     */
-    /**
      * One page of assistant messages that contain a fenced block, oldest first —
      * the input of `pnpm cli rich-output stats`. Read-only; keyset-paginated on
      * (created_at, id) so a long window never needs an OFFSET scan.
+     *
+     * There is deliberately no index on `messages.created_at`: this is an
+     * occasional admin report, and `messages` is the hottest table to write.
+     * Each page is a sequential scan, so callers should page wide and tally as
+     * they go rather than hold every row.
      */
     async scanFencedAssistantMessages(opts: {
       sinceIso: string;
@@ -958,6 +949,20 @@ export function createSessionService(db: Db) {
         .limit(opts.limit ?? 500);
     },
 
+    /**
+     * Every failed tool call recorded in `messages.pipeline` since `sinceIso`.
+     *
+     * Feeds the friction miner: agents stumble far more often than anyone
+     * reports, and the pipeline column already holds the evidence. Read-only and
+     * capped — this is a signal source, not an audit ledger.
+     *
+     * Rows whose pipeline serialised a NUL character are skipped: PostgreSQL
+     * jsonb cannot represent NUL, so the `::jsonb` cast on ONE such row would
+     * abort the whole sweep — a day of frictions lost to a single mojibake
+     * attachment (seen live 2026-08-11 with a UTF-16 CSV read as UTF-8).
+     * The extract layer no longer emits NULs, but historical rows remain and
+     * this query must not trust every future writer.
+     */
     async scanToolErrors(sinceIso: string, limit = 2000): Promise<ToolErrorSample[]> {
       // The exact six characters JSON.stringify writes for a NUL — derived, not
       // typed, so no reader has to count backslashes.

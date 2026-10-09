@@ -7,7 +7,7 @@
  */
 
 import React, { useState } from 'react';
-import type { ConfirmData } from './index';
+import { resolveBlockAction, type ConfirmData } from './index';
 import { BlockActions } from '@greenhouse/ui/components/blocks/block-actions';
 import { RichBlockShell, richBlockBodyClass } from '@greenhouse/ui/components/blocks/rich-block-shell';
 
@@ -27,7 +27,7 @@ export function ConfirmBlock({
   resolvedValue?: string;
 }) {
   const [pressed, setPressed] = useState<string | null>(null);
-  const isResolved = pressed !== null || data.actions.some((action) => action.value === resolvedValue);
+  const isResolved = pressed !== null || resolveBlockAction(data.actions, resolvedValue) !== null;
 
   return (
     <RichBlockShell compact={compact} tone={isResolved ? 'muted' : 'accent'}>

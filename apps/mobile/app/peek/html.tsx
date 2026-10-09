@@ -12,6 +12,13 @@
  * composer — appended, never sent — and the viewer closes so the member sees
  * it. Nothing else crosses: no data, no tools, no app state.
  * The source arrives in memory through the handoff store (`?k=`, kind `html`).
+ *
+ * The WebView's native bridge answers every frame in the page, so a
+ * third-party iframe the page embeds could post too: the web host rejects
+ * those by `event.source`, which a WebView cannot report reliably (Android
+ * gives an origin at best). Instead the bridge script (top document only)
+ * stamps each message with a per-viewer random token that a cross-origin
+ * frame cannot read, and only messages carrying it count.
  */
 
 import React, { useMemo, useRef } from 'react';
@@ -33,6 +40,14 @@ import { toolbarIcon } from '../../src/ui/toolbar-icon';
 /** The document itself (and in-page anchors / frames) may load; nothing else navigates the page. */
 const INITIAL = /^(about:blank|about:srcdoc|data:)/;
 
+/** 128 random bits as hex: what a message must carry to count (see the header). */
+function bridgeToken(): string {
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 export default function HtmlViewer() {
   const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
@@ -42,12 +57,13 @@ export default function HtmlViewer() {
   const page = getHandoff<{ code: string; title?: string; bridge?: boolean }>(k);
   const source = useMemo(() => (page ? { html: page.code } : null), [page]);
   const handedBack = useRef(false);
+  const token = useMemo(bridgeToken, []);
 
   // The first sendPrompt wins: its text goes into the composer and the viewer
   // closes, so a page cannot queue a stream of messages behind the member's back.
   const onMessage = (event: WebViewMessageEvent) => {
     if (!page?.bridge || handedBack.current) return;
-    const message = readHtmlBridgeMessage(event.nativeEvent.data);
+    const message = readHtmlBridgeMessage(event.nativeEvent.data, token);
     if (!message) return;
     handedBack.current = true;
     fillComposer(message.text);
@@ -85,7 +101,12 @@ export default function HtmlViewer() {
           onShouldStartLoadWithRequest={onNavigate}
           javaScriptCanOpenWindowsAutomatically={false}
           {...(page?.bridge
-            ? { injectedJavaScriptBeforeContentLoaded: `${htmlBridgeSource('react-native')}true;`, onMessage }
+            ? {
+                injectedJavaScriptBeforeContentLoaded: `${htmlBridgeSource('react-native', token)}true;`,
+                // The token must never reach a subframe (this is the default; pinned on purpose).
+                injectedJavaScriptBeforeContentLoadedForMainFrameOnly: true,
+                onMessage,
+              }
             : {})}
           setSupportMultipleWindows={false}
           allowsInlineMediaPlayback

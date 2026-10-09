@@ -814,15 +814,17 @@ function toStepsData(payload: Record<string, unknown>): StepsData {
 
 /**
  * Which button of a block was pressed: the member's next message, when it is
- * exactly one of the block's values. One rule for every client, so a reload
- * (or another device) shows the same choice.
+ * one of the block's values (surrounding whitespace aside). One rule for every
+ * client — web, extension and mobile all call this — so a reload, or another
+ * device, shows the same choice.
  */
 export function resolveBlockAction(
   actions: readonly BlockAction[] | undefined,
-  followUp: string | undefined,
+  followUp: string | null | undefined,
 ): string | null {
-  if (!actions || followUp === undefined) return null;
-  return actions.some((action) => action.value === followUp) ? followUp : null;
+  if (!actions || followUp == null) return null;
+  const sent = followUp.trim();
+  return actions.find((action) => action.value === sent)?.value ?? null;
 }
 
 function toMissionArtifactsData(payload: unknown): MissionArtifactsData {
@@ -948,9 +950,19 @@ function statsMarkdown(data: StatsData): string {
   return [data.title ? `**${data.title}**` : '', lines.join('\n')].filter(Boolean).join('\n\n');
 }
 
+/** Link text that cannot close the link early: `[`, `]` and backslashes escaped. */
+function markdownLinkText(text: string): string {
+  return text.replace(/[\\[\]]/g, '\\$&');
+}
+
+/** A destination that cannot end the link early: `(`, `)`, `<`, `>` and spaces percent-encoded. */
+function markdownLinkUrl(url: string): string {
+  return url.replace(/[()<>\s]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`);
+}
+
 function cardsMarkdown(data: CardsData): string {
   const lines = data.items.map((item) => {
-    const head = item.url ? `[${item.title}](${item.url})` : `**${item.title}**`;
+    const head = item.url ? `[${markdownLinkText(item.title)}](${markdownLinkUrl(item.url)})` : `**${item.title}**`;
     const tail = [
       item.subtitle,
       ...(item.badges ?? []).map((badge) => badge.label),
@@ -1323,17 +1335,26 @@ export const HTML_BRIDGE = {
 /**
  * The page-side API as plain JavaScript. `parent` posts to the embedding window
  * (the web's sandboxed iframe); `react-native` posts through the WebView bridge.
+ *
+ * `token` is for hosts that cannot tell which frame a message came from. A
+ * WebView's native bridge answers every frame in the page, including a
+ * third-party iframe the page embeds, but the script carrying the token runs
+ * in the top document only, and a cross-origin frame cannot read it. The host
+ * then accepts only messages that carry it ({@link readHtmlBridgeMessage}).
+ * The web host checks `event.source` instead and needs none.
  */
-export function htmlBridgeSource(transport: 'parent' | 'react-native'): string {
+export function htmlBridgeSource(transport: 'parent' | 'react-native', token?: string): string {
   const post =
     transport === 'parent'
       ? "parent.postMessage(message, '*');"
       : 'if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(message));';
+  const stamp = token === undefined ? '' : `message.token = ${JSON.stringify(token)};`;
   return (
     '(function () {' +
     'window.greenhouse = Object.freeze({' +
     'sendPrompt: function (text) {' +
     `var message = { type: ${JSON.stringify(HTML_BRIDGE.messageType)}, text: String(text) };` +
+    stamp +
     post +
     '}' +
     '});' +
@@ -1357,9 +1378,10 @@ export function injectHtmlBridge(html: string): string {
 /**
  * A bridge message as the text to place, or null when it is not one. Accepts
  * the object a window receives and the string a WebView receives; trims, and
- * cuts at {@link HTML_BRIDGE.maxChars}.
+ * cuts at {@link HTML_BRIDGE.maxChars}. With `token`, a message must carry that
+ * exact token (see {@link htmlBridgeSource}).
  */
-export function readHtmlBridgeMessage(data: unknown): { text: string; truncated: boolean } | null {
+export function readHtmlBridgeMessage(data: unknown, token?: string): { text: string; truncated: boolean } | null {
   let value = data;
   if (typeof value === 'string') {
     try {
@@ -1369,6 +1391,7 @@ export function readHtmlBridgeMessage(data: unknown): { text: string; truncated:
     }
   }
   if (!isRecord(value) || value.type !== HTML_BRIDGE.messageType || typeof value.text !== 'string') return null;
+  if (token !== undefined && value.token !== token) return null;
   const text = value.text.trim();
   if (!text) return null;
   return text.length > HTML_BRIDGE.maxChars

@@ -1490,7 +1490,7 @@ export function ConversationPane({
     () =>
       onComposerDraft((incoming) => {
         // A preview page's text is for whoever may write here, nobody else.
-        if (incoming.fromPage && !isOwnerRef.current) return;
+        if (incoming.fromPage && !isOwnerRef.current) return false;
         setInput((current) => (incoming.append && current.trim() ? `${current}\n${incoming.text}` : incoming.text));
         setPendingImages((prev) => [
           ...prev,

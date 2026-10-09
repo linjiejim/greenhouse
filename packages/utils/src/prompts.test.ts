@@ -51,4 +51,15 @@ describe('composeRichOutput', () => {
     expect(guide).not.toMatch(/数据没齐就不要开 fence/);
     expect(composeRichOutput({ blocks: [] })).not.toContain('```');
   });
+
+  it('names only what the screen can draw in its opening line', () => {
+    const legacy = '渲染图表和数据表格';
+    expect(composeRichOutput({ blocks: ['chart', 'datatable'] })).toContain(legacy);
+    expect(composeRichOutput({ blocks: ['mermaid'] })).not.toContain(legacy);
+    expect(composeRichOutput({ blocks: ['mermaid'] })).toContain('下列特殊 code block');
+    expect(composeRichOutput({ blocks: ['chart'] })).not.toContain(legacy);
+    const none = composeRichOutput({ blocks: [] });
+    expect(none).toContain('## 富文本输出格式');
+    expect(none).not.toContain('code block');
+  });
 });

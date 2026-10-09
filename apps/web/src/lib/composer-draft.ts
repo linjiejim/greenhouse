@@ -27,14 +27,20 @@ export interface ComposerDraft {
   fromPage?: boolean;
 }
 
-export function requestComposerDraft(draft: ComposerDraft): void {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent(COMPOSER_DRAFT_EVENT, { detail: draft }));
+/** Whether a composer took the draft — so the sender only reports what really happened. */
+export function requestComposerDraft(draft: ComposerDraft): boolean {
+  if (typeof window === 'undefined') return false;
+  const event = new CustomEvent(COMPOSER_DRAFT_EVENT, { detail: draft, cancelable: true });
+  return !window.dispatchEvent(event);
 }
 
-export function onComposerDraft(listener: (draft: ComposerDraft) => void): () => void {
+/** `listener` returns false to decline the draft (a page's text for a viewer who cannot write). */
+export function onComposerDraft(listener: (draft: ComposerDraft) => boolean | void): () => void {
   if (typeof window === 'undefined') return () => {};
-  const handler = (event: Event) => listener((event as CustomEvent<ComposerDraft>).detail);
+  const handler = (event: Event) => {
+    // A cancelled event is the "taken" signal requestComposerDraft reads.
+    if (listener((event as CustomEvent<ComposerDraft>).detail) !== false) event.preventDefault();
+  };
   window.addEventListener(COMPOSER_DRAFT_EVENT, handler);
   return () => window.removeEventListener(COMPOSER_DRAFT_EVENT, handler);
 }

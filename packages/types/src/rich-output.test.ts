@@ -441,9 +441,22 @@ describe('business blocks', () => {
       { label: 'B', value: 'do b' },
     ];
     expect(resolveBlockAction(actions, 'do b')).toBe('do b');
+    // Whitespace around the stored message does not change the answer (mobile
+    // used to trim and the web did not, so the two disagreed after a reload).
+    expect(resolveBlockAction(actions, '  do b\n')).toBe('do b');
     expect(resolveBlockAction(actions, 'something else')).toBeNull();
     expect(resolveBlockAction(undefined, 'do a')).toBeNull();
     expect(resolveBlockAction(actions, undefined)).toBeNull();
+    expect(resolveBlockAction(actions, null)).toBeNull();
+  });
+
+  it('keeps card links intact in the plain-Markdown stand-in', () => {
+    const flat = flattenRichOutput(
+      fence('cards', {
+        items: [{ title: 'Mercury [planet] notes', url: 'https://en.wikipedia.org/wiki/Mercury_(planet)' }],
+      }),
+    );
+    expect(flat).toBe('- [Mercury \\[planet\\] notes](https://en.wikipedia.org/wiki/Mercury_%28planet%29)');
   });
 });
 
@@ -459,6 +472,27 @@ describe('html-preview bridge', () => {
 
   it('builds a React Native flavour that posts a string', () => {
     expect(htmlBridgeSource('react-native')).toContain('ReactNativeWebView.postMessage(JSON.stringify(message))');
+    expect(htmlBridgeSource('react-native')).not.toContain('token');
+  });
+
+  it('stamps a host token and accepts only messages that carry it', () => {
+    const source = htmlBridgeSource('react-native', 'abc123');
+    expect(source).toContain('message.token = "abc123";');
+    // What the page's sendPrompt('hi') posts, run for real.
+    let posted = '';
+    const window = { ReactNativeWebView: { postMessage: (data: string) => (posted = data) } } as {
+      ReactNativeWebView: { postMessage(data: string): void };
+      greenhouse?: { sendPrompt(text: string): void };
+    };
+    new Function('window', source)(window);
+    window.greenhouse!.sendPrompt('hi');
+    expect(readHtmlBridgeMessage(posted, 'abc123')).toEqual({ text: 'hi', truncated: false });
+    // A frame without the token (a third-party iframe posting to the native
+    // bridge directly) or with a guessed one is ignored.
+    expect(readHtmlBridgeMessage(JSON.stringify({ type: 'greenhouse:prompt', text: 'hi' }), 'abc123')).toBeNull();
+    expect(
+      readHtmlBridgeMessage(JSON.stringify({ type: 'greenhouse:prompt', text: 'hi', token: 'nope' }), 'abc123'),
+    ).toBeNull();
   });
 
   it('reads only well-formed messages, from either transport, and caps their length', () => {

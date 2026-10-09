@@ -9,7 +9,7 @@
  */
 import { useRef, useState } from 'react';
 import { Text, View } from 'react-native';
-import type { BlockAction } from '../../../shared/rich-output';
+import { resolveBlockAction, type BlockAction } from '../../../shared/rich-output';
 import { makeStyles, radius, space, typo, useTheme, weight } from '../../../theme';
 import { NativeButton } from '../../../ui/button';
 import { Icon } from '../../../ui/core';
@@ -20,7 +20,7 @@ export function useBlockChoice(actions: readonly BlockAction[]) {
   const { reply, followUp } = useRich();
   const [picked, setPicked] = useState<string | null>(null);
   const sending = useRef(false);
-  const persisted = actions.some((a) => a.value === followUp?.trim()) ? followUp!.trim() : null;
+  const persisted = resolveBlockAction(actions, followUp);
   const chosen = persisted ?? picked;
 
   const choose = async (value: string) => {
