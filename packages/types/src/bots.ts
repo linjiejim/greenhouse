@@ -328,6 +328,12 @@ export interface BotConversationSummary {
   last_message: { preview: string; bot_id: string | null; role: string; created_at: string } | null;
   attention: BotConversationAttention;
   pending_requests: number;
+  /**
+   * Bot replies (`assistant` rows) since the member last read the conversation, capped at
+   * 99. `attention: 'unread'` with 0 here = only system events arrived (a hand-off, a
+   * receipt). Absent from servers older than 2026-10 — clients fall back to a dot.
+   */
+  unread_count?: number;
   last_activity_at: string;
 }
 
