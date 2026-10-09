@@ -8,6 +8,9 @@
  *   task over the limit): the member reads why — in their language for the
  *   codes we know, else the server's member-facing message — and the card
  *   stays open so they can try again or open the computer.
+ * - A card in a retired group chat (`group_closed`): the group is a record and
+ *   its pending cards were withdrawn, so the member is told and the transcript
+ *   is re-read (the card then shows as canceled).
  */
 
 import { useCallback, useState } from 'react';
@@ -29,6 +32,9 @@ export interface RequestCardCallbacks {
  */
 const ALREADY_SETTLED: ReadonlySet<string> = new Set<BotRequestErrorCode>(['already_decided', 'deciding']);
 
+/** A decision on a card in a retired group chat — the group is closed and its pending cards withdrawn. */
+const GROUP_CLOSED = 'group_closed';
+
 /** Refusals that leave the request pending, by code — a sentence the member can act on. */
 const STILL_PENDING_KEYS: Partial<Record<BotRequestErrorCode, TranslationKey>> = {
   page_gone: 'bots.requests.loginPageGone',
@@ -39,7 +45,7 @@ const STILL_PENDING_KEYS: Partial<Record<BotRequestErrorCode, TranslationKey>> =
   limit: 'bots.requests.taskLimit',
   computer_restarted: 'bots.requests.loginComputerRestarted',
   bot_gone: 'bots.requests.botGone',
-} satisfies Record<Exclude<BotRequestErrorCode, 'already_decided' | 'deciding'>, TranslationKey>;
+} satisfies Record<Exclude<BotRequestErrorCode, 'already_decided' | 'deciding' | 'group_closed'>, TranslationKey>;
 
 export type DecisionOutcome =
   | { ok: true }
@@ -65,6 +71,11 @@ export function useRequestDecision(request: BotRequestView, { onSettled, onStale
         onSettled(settled);
         return { ok: true };
       } catch (err) {
+        if (botsApi.isBotsApiError(err, GROUP_CLOSED)) {
+          toast(t('bots.readOnly.groupClosedTitle'), 'info');
+          onStale();
+          return { ok: false, reason: 'stale', code: GROUP_CLOSED };
+        }
         const { reason, code } = classifyDecisionError(err);
         if (reason === 'stale') {
           toast(t('bots.requests.alreadySettled'), 'info');

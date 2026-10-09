@@ -40,7 +40,7 @@ describe('Bots navigation helpers', () => {
     ).toBe('');
   });
 
-  it('names a group by its title, else by its roster', () => {
+  it('names a retired group chat (history) by its title, else by its roster', () => {
     const members = [member('bot_ivy', 0), member('bot_sage', 1), member('bot_gone', 2)];
     expect(conversationTitle({ kind: 'group', title: ' Launch ', owner_bot_id: null, members }, bots, copy)).toBe(
       'Launch',
@@ -51,18 +51,17 @@ describe('Bots navigation helpers', () => {
     expect(conversationTitle({ kind: 'group', title: '', owner_bot_id: null, members: [] }, bots, copy)).toBe('Group');
   });
 
-  it('treats a DM with an archived Bot, or a group with no active Bot, as read-only', () => {
+  it('lets only a live DM take messages: an archived Bot’s DM and every group chat are read-only', () => {
     const active = new Set(['bot_ivy', 'bot_sage']);
-    expect(conversationReplyable({ kind: 'direct', owner_bot_id: 'bot_ivy', members: [] }, active)).toBe(true);
-    expect(conversationReplyable({ kind: 'direct', owner_bot_id: 'bot_old', members: [] }, active)).toBe(false);
-    expect(conversationReplyable({ kind: 'group', owner_bot_id: null, members: [member('bot_old', 0)] }, active)).toBe(
-      false,
-    );
-    expect(
-      conversationReplyable(
-        { kind: 'group', owner_bot_id: null, members: [member('bot_old', 0), member('bot_sage', 1)] },
-        active,
-      ),
-    ).toBe(true);
+    expect(conversationReplyable({ kind: 'direct', owner_bot_id: 'bot_ivy' }, active)).toBe(true);
+    expect(conversationReplyable({ kind: 'direct', owner_bot_id: 'bot_old' }, active)).toBe(false);
+    expect(conversationReplyable({ kind: 'direct', owner_bot_id: null }, active)).toBe(false);
+    // Group chats were retired: a group stays a record even when every Bot in it is still active.
+    const group = {
+      kind: 'group' as const,
+      owner_bot_id: null,
+      members: [member('bot_ivy', 0), member('bot_sage', 1)],
+    };
+    expect(conversationReplyable(group, active)).toBe(false);
   });
 });

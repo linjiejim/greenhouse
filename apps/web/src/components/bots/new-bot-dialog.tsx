@@ -1,22 +1,17 @@
 /**
  * The create dialog: "New Bot" — a template gallery (researcher / operator /
- * writer / analyst / custom), then the same editable form for all of them — and,
- * where Bots threads are enabled, a "New group" tab (new-group-dialog.tsx).
+ * writer / analyst / custom), then the same editable form for all of them.
  * A template only pre-fills — the member can rename, re-role and re-dress
  * before anything is created. Templates that need the computer say so when
  * the organization has none, instead of promising browsing that won't work.
+ * There is nothing else to create: Bots bring each other into a conversation
+ * themselves (group chats were retired).
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import { TEMPLATE_PLANT, withPlant, type PlantId } from '@greenhouse/types';
-import {
-  BOT_TEMPLATES,
-  type BotConversationDetail,
-  type BotTemplate,
-  type BotTemplateKey,
-  type BotView,
-} from '@greenhouse/types/bots';
-import { Button, Dialog, Tabs, Tag, toast } from '../ui';
+import { BOT_TEMPLATES, type BotTemplate, type BotTemplateKey, type BotView } from '@greenhouse/types/bots';
+import { Button, Dialog, Tag, toast } from '../ui';
 import { FormActions } from '../form';
 import { ArrowLeft, Monitor, Plus } from '../../lib/icons';
 import { useI18n } from '../../lib/i18n';
@@ -27,9 +22,6 @@ import { computerReady, useBotsStore } from './bots-store';
 import { BotAvatar } from './bot-avatar';
 import { BotFields, useBotNameMessage, type BotDraft } from './bot-form';
 import { botNameIssueFromCode, validateBotName } from './bot-name';
-import { NewGroupPanel } from './new-group-dialog';
-
-export type CreateTab = 'bot' | 'group';
 
 /** A blank Bot wears a plant none of the member's Bots has yet. */
 export function emptyBotDraft(taken: readonly PlantId[]): BotDraft {
@@ -63,19 +55,12 @@ export function templateBotDraft(template: BotTemplate, copyLocale: 'en' | 'zh')
 export function NewBotDialog({
   open,
   inviteTo,
-  initialTab = 'bot',
-  groupEnabled = false,
   onClose,
   onCreated,
-  onGroupCreated,
 }: {
   open: boolean;
-  /** Add the new Bot to this conversation (Invite → "Create a new Bot"). */
+  /** Add the new Bot to this conversation as a guest (Invite → "Create a new Bot"). */
   inviteTo?: string;
-  /** Which tab opens first; the toolbar's "New" opens on `bot`. */
-  initialTab?: CreateTab;
-  /** Show the "New group" tab (Bots threads are enabled and this is not the Invite flow). */
-  groupEnabled?: boolean;
   onClose: () => void;
   /**
    * The Bot exists. `invitedTo` is set when it also joined `inviteTo`;
@@ -83,7 +68,6 @@ export function NewBotDialog({
    * where they were — the toast already said why).
    */
   onCreated: (result: { bot: BotView; dmSessionId: string | null; invitedTo?: string; inviteFailed?: boolean }) => void;
-  onGroupCreated?: (conversation: BotConversationDetail) => void;
 }) {
   const { t, locale } = useI18n();
   const copyLocale = locale === 'zh' ? 'zh' : 'en';
@@ -95,8 +79,6 @@ export function NewBotDialog({
   const fetchProfiles = useProfileStore((state) => state.fetchProfiles);
   const nameMessage = useBotNameMessage();
   const [step, setStep] = useState<'gallery' | 'form'>('gallery');
-  const [tab, setTab] = useState<CreateTab>(initialTab);
-  const tabbed = groupEnabled && !inviteTo;
   const [templateKey, setTemplateKey] = useState<BotTemplateKey | null>(null);
   const takenPlants = useMemo(() => bots.map(botPlant), [bots]);
   const [draft, setDraft] = useState<BotDraft>(() => emptyBotDraft(takenPlants));
@@ -107,7 +89,6 @@ export function NewBotDialog({
 
   useEffect(() => {
     if (!open) return;
-    setTab(initialTab);
     setStep('gallery');
     setTemplateKey(null);
     setDraft(emptyBotDraft(takenPlants));
@@ -116,7 +97,7 @@ export function NewBotDialog({
     void fetchProfiles();
     // Reset on open only: a Bot list refresh must not re-dress the draft mid-edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchProfiles, initialTab, open]);
+  }, [fetchProfiles, open]);
 
   const issue = useMemo(
     () => validateBotName(draft.name, { otherNames: bots.map((bot) => bot.name), nickname }),
@@ -159,8 +140,8 @@ export function NewBotDialog({
     }
 
     // From here on the Bot exists. Joining the conversation is a separate
-    // step: if it fails (the group filled up meanwhile, the conversation is
-    // gone), say exactly that — never "create failed", which would invite a
+    // step: if it fails (the conversation filled up meanwhile, or is gone),
+    // say exactly that — never "create failed", which would invite a
     // second Create that can only hit "name taken".
     const { bot, dm_session_id } = created;
     upsertBot(bot);
@@ -189,32 +170,8 @@ export function NewBotDialog({
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title={tabbed ? t('bots.create.title') : t('bots.gallery.title')}
-      size="lg"
-      tabs={
-        tabbed ? (
-          <Tabs
-            tabs={[
-              { key: 'bot', label: t('bots.create.tabBot'), testId: 'bots-create-tab-bot' },
-              { key: 'group', label: t('bots.create.tabGroup'), testId: 'bots-create-tab-group' },
-            ]}
-            active={tab}
-            onChange={(key) => setTab(key as CreateTab)}
-            ariaLabel={t('bots.create.title')}
-          />
-        ) : undefined
-      }
-    >
-      {tabbed && tab === 'group' ? (
-        <NewGroupPanel
-          onClose={onClose}
-          onCreated={(conversation) => onGroupCreated?.(conversation)}
-          onNewBot={() => setTab('bot')}
-        />
-      ) : step === 'gallery' ? (
+    <Dialog open={open} onClose={onClose} title={t('bots.gallery.title')} size="lg">
+      {step === 'gallery' ? (
         <div data-testid="bots-template-gallery">
           <p className="mb-3 text-sm text-fg-muted">{t('bots.gallery.subtitle')}</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

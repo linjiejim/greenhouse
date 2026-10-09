@@ -2,8 +2,8 @@
  * @vitest-environment happy-dom
  *
  * A Bot's face and name are the way to its profile (who it is, what it
- * remembers): the DM header opens the owner's profile, a group header opens the
- * info panel, and a speaker header in the transcript opens that speaker.
+ * remembers): the DM header opens the owner's profile, a retired group chat's
+ * header opens the info panel, and a speaker header in the transcript opens that speaker.
  */
 
 import { act } from 'react';
@@ -113,7 +113,7 @@ describe('Bot identity entry points', () => {
     expect(onOpenInfo).not.toHaveBeenCalled();
   });
 
-  it('opens the info panel from a group header', () => {
+  it("opens the info panel from a retired group chat's header", () => {
     const { onOpenProfile, onOpenInfo } = renderHeader('group');
     act(() => button('Conversation info')[0]!.click());
     expect(onOpenInfo).toHaveBeenCalledTimes(1);

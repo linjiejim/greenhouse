@@ -44,7 +44,7 @@ export function BotsPanel() {
       return;
     }
     try {
-      const { conversation } = await botsApi.createConversation({ bot_ids: [bot.id] });
+      const { conversation } = await botsApi.createConversation(bot.id);
       void loadConversations().catch(() => {});
       openBotsConversation(conversation.session_id);
     } catch (err) {

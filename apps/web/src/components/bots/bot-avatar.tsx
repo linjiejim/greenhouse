@@ -1,5 +1,5 @@
 /**
- * Bot avatars — a Bot's plant, and the stacked roster used for groups.
+ * Bot avatars — a Bot's plant, and the stacked roster a retired group chat shows.
  *
  * Thin adapters over `<PlantAvatar/>` / `<PlantAvatarStack/>` that pass the
  * Bot's identity (stored avatar + template key + id), so a Bot resolves to the
@@ -65,7 +65,10 @@ export function BotAvatar({
   );
 }
 
-/** Overlapping roster for group rows and headers; the speaking Bot comes to the front and animates. */
+/**
+ * Overlapping roster (a retired group chat's row, header and intro); the speaking Bot comes to
+ * the front and animates.
+ */
 export function BotAvatarStack({
   bots,
   max = 3,

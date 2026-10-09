@@ -204,6 +204,21 @@ describe('Bots landing', () => {
     expect(api.bootstrapBots).not.toHaveBeenCalled();
   });
 
+  it('never lands in a retired group chat, however recent', async () => {
+    const group: BotConversationSummary = {
+      ...summary('grp-1', SAGE),
+      kind: 'group',
+      title: 'Launch prep',
+      owner_bot_id: null,
+      members: [{ bot_id: SAGE.id, role: 'lead', position: 0 }],
+    };
+    api.listConversations.mockResolvedValue({
+      conversations: [group, summary('dm-old', OLD), summary('dm-sage', SAGE)],
+    });
+    await renderPage('');
+    expect(window.location.hash).toBe('#/bots?c=dm-sage');
+  });
+
   it('gives a phone its menu button when Bots are not available (403)', async () => {
     api.listBots.mockRejectedValue(new BotsApiError('Forbidden', 403));
     await renderPage('');
@@ -230,7 +245,7 @@ describe('Bots workspace', () => {
     expect(document.body.textContent).not.toContain('Deleted Bot');
   });
 
-  it('names an archived Bot by its real name where it spoke in a group', async () => {
+  it('keeps a retired group chat readable — speakers by their real names — and closed to messages', async () => {
     const group: BotConversationDetail = {
       ...detail('grp-1', SAGE),
       kind: 'group',
@@ -266,6 +281,11 @@ describe('Bots workspace', () => {
     const speakers = [...document.querySelectorAll('[data-testid="bots-speaker"]')].map((el) => el.textContent);
     expect(speakers).toEqual(['Old', 'Sage']);
     expect(document.body.textContent).not.toContain('Deleted Bot');
+    // Sage is still active, yet the group takes no message: group chats were retired.
+    expect(document.querySelector('[data-testid="chat-input"]')).toBeNull();
+    expect(document.querySelector('[data-testid="bots-read-only"]')?.textContent).toContain(
+      'Group chats were retired — this one stays as a record.',
+    );
   });
 
   it('shares one computer status between the header and the pane', async () => {

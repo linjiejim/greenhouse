@@ -1,7 +1,7 @@
 /**
- * Invite an existing Bot into a conversation, or create a new one for it.
- * In a DM the invitee joins as a guest — it speaks when @-mentioned or asked,
- * and the DM stays the owner Bot's thread.
+ * Invite an existing Bot into a DM, or create a new one for it. The invitee
+ * joins as a guest — it speaks when @-mentioned or asked, and the DM stays the
+ * owner Bot's thread. (Bots add each other the same way, on their own.)
  */
 
 import { useState } from 'react';
@@ -13,6 +13,7 @@ import * as botsApi from '../../lib/api/bots';
 import { useBotsStore } from './bots-store';
 import { BotAvatar } from './bot-avatar';
 
+/** The owner and up to five guests (the API's cap per conversation). */
 const MAX_MEMBERS = 6;
 
 export function InviteDialog({
@@ -51,9 +52,7 @@ export function InviteDialog({
   return (
     <Dialog open={conversation !== null} onClose={onClose} title={t('bots.invite.title')} size="md">
       <div className="space-y-3" data-testid="bots-invite-dialog">
-        <p className="text-sm text-fg-muted">
-          {conversation?.kind === 'group' ? t('bots.invite.hintGroup') : t('bots.invite.hint')}
-        </p>
+        <p className="text-sm text-fg-muted">{t('bots.invite.hint')}</p>
         {full ? (
           <p className="text-sm text-fg-faint">{t('bots.invite.full')}</p>
         ) : candidates.length === 0 ? (

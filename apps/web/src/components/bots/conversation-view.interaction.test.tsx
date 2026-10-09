@@ -3,8 +3,8 @@
 /**
  * The conversation column's states: phones can always reach navigation (the
  * TopBar is hidden on #/bots), nothing renders "Deleted Bot" before the Bot
- * list lands, an archived Bot's DM is read-only with a way forward, and every
- * send path explains a failure.
+ * list lands, an archived Bot's DM is read-only with a way forward, a retired
+ * group chat is a read-only record, and every send path explains a failure.
  */
 
 import { act, createElement } from 'react';
@@ -14,7 +14,7 @@ import type { BotConversationDetail, BotView } from '@greenhouse/types/bots';
 import { I18nProvider } from '../../lib/i18n';
 import { BotsApiError } from '../../lib/api/bots';
 import { ToastContainer } from '../ui';
-import { ConversationView, type ConversationViewProps } from './conversation-view';
+import { ConversationView, isReadOnlySendError, type ConversationViewProps } from './conversation-view';
 import type { BotConversationController } from './use-bot-conversation';
 
 const api = vi.hoisted(() => ({ listConversationTasks: vi.fn(), listRequests: vi.fn(), listBots: vi.fn() }));
@@ -237,52 +237,69 @@ describe('an archived Bot’s DM', () => {
   });
 });
 
-describe('a group nobody can answer in', () => {
+describe('a retired group chat', () => {
+  const FERN: BotView = { ...SAGE, id: 'bot_fern', name: 'Fern', dm_session_id: 'dm-fern' };
   const GROUP: BotConversationDetail = {
     ...DM,
     session_id: 'grp-1',
     kind: 'group',
     title: 'Launch prep',
     owner_bot_id: null,
-    members: [{ bot_id: SAGE.id, role: 'lead', position: 0 }],
+    members: [
+      { bot_id: SAGE.id, role: 'lead', position: 0 },
+      { bot_id: FERN.id, role: 'member', position: 1 },
+    ],
   };
+  const lookup = (key: string | null | undefined) => [SAGE, FERN].find((bot) => bot.id === key);
+  const said = (seq: number, botId: string, content: string) => ({
+    id: `m${seq}`,
+    role: 'assistant' as const,
+    content,
+    bot_id: botId,
+    bot_event: null,
+    pipeline: [],
+    references: [],
+    reasoning: null,
+    model: null,
+    images: [],
+    created_at: '2026-10-05T00:00:00.000Z',
+    seq,
+  });
 
-  async function sendRefused(onInvite = vi.fn(), onReadOnly = vi.fn()) {
-    const send = vi.fn(async () => {
-      throw new BotsApiError('No Bot in this conversation can reply', 409, 'no_active_members');
-    });
+  it('is a read-only record — even when its Bots are all active and the host did not say so', async () => {
     await render(
       props({
         sessionId: 'grp-1',
-        controller: controller({ send, conversation: GROUP }),
+        controller: controller({
+          conversation: GROUP,
+          messages: [said(1, SAGE.id, 'Sage found three vendors.'), said(2, FERN.id, 'Fern tightened it.')],
+        }),
+        members: [SAGE, FERN],
         owner: undefined,
+        lookup,
         title: 'Launch prep',
-        onInvite,
-        onReadOnly,
+        readOnly: false,
       }),
     );
-    const input = document.querySelector<HTMLTextAreaElement>('[data-testid="chat-input"]')!;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'status?');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    await act(async () => {
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    });
-    await flush();
-    return { onInvite, onReadOnly };
-  }
-
-  it('prompts to invite a Bot when the API says no one here can reply', async () => {
-    const { onInvite, onReadOnly } = await sendRefused();
-    expect(onReadOnly).toHaveBeenCalledTimes(1);
-    expect(onInvite).toHaveBeenCalledTimes(1);
-    expect(document.body.textContent).toContain('No Bot here can reply — invite one to continue.');
+    // History renders as before: one speaker line per speaker.
+    const speakers = [...document.querySelectorAll('[data-testid="bots-speaker"]')].map((el) => el.textContent);
+    expect(speakers).toEqual(['Sage', 'Fern']);
+    // …but nothing addresses its Bots any more.
+    expect(document.querySelector('[data-testid="chat-input"]')).toBeNull();
     const notice = document.querySelector('[data-testid="bots-read-only"]');
-    expect(notice?.textContent).toContain('No Bot here can reply');
-    expect([...(notice?.querySelectorAll('button') ?? [])].some((b) => b.textContent?.includes('Invite a Bot'))).toBe(
-      true,
+    expect(notice?.textContent).toContain('Group chats were retired — this one stays as a record.');
+    expect(notice?.querySelectorAll('button')).toHaveLength(0);
+    expect(document.querySelector('button[aria-label="Invite a Bot"]')).toBeNull();
+    // No "2 Bots · Lead: Sage" status: the header says what it is.
+    expect(document.querySelector('[data-testid="bots-status-line"]')?.textContent).toBe(
+      'Retired group chat — read-only',
     );
+  });
+
+  it('reads a 409 group_closed like any read-only refusal', () => {
+    expect(isReadOnlySendError(new BotsApiError('Group chats are retired', 409, 'group_closed'))).toBe(true);
+    expect(isReadOnlySendError(new BotsApiError('This Bot was archived', 409, 'bot_archived'))).toBe(true);
+    expect(isReadOnlySendError(new BotsApiError('Busy', 409, 'deciding'))).toBe(false);
   });
 });
 

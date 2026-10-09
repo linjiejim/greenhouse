@@ -1,9 +1,11 @@
 /**
  * Bots contextual sidebar: ONE conversation list. Sprouty — every member's built-in main Bot —
- * is pinned first; everything else follows by activity. DMs show the Bot's face, groups a
- * stacked roster, and each row carries at most one signal, by priority: needs you > unread >
- * working. The toolbar searches the list (titles, Bot names, last message) and creates a Bot or
- * a group. There is no session list and no "new chat": a Bot's DM is permanent.
+ * is pinned first; everything else follows by activity. Every live conversation is a Bot's DM
+ * (other Bots join it as guests) and shows that Bot's face; each row carries at most one signal,
+ * by priority: needs you > unread > working. What nobody can answer in any more — an archived
+ * Bot's DM, a retired group chat (a stacked roster) — stays readable under "Archived". The
+ * toolbar searches the list (titles, Bot names, last message) and creates a Bot. There is no
+ * session list and no "new chat": a Bot's DM is permanent.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -57,7 +59,8 @@ export function BotsSidebarPanel({ onNavigate }: { onNavigate?: () => void }) {
   );
 
   // Sprouty's DM first; then the conversations someone can still answer in, by activity; those
-  // nobody can answer any more (their Bots were archived) stay readable under their own label.
+  // nobody can answer any more (an archived Bot's DM, a retired group chat) stay readable under
+  // their own label.
   const { pinned, live, archived } = useMemo(() => {
     const activeIds = new Set(bots.map((bot) => bot.id));
     const needle = query.trim().toLocaleLowerCase();
@@ -203,7 +206,7 @@ function ConversationRow({
       data-pinned={pinned ? 'true' : undefined}
     >
       {/* One leading slot for both kinds, sized to two overlapping 24px chips (24 + 24 − 6px) so titles
-          align: a group shows its first two Bots and no +N chip (the header carries the roster). */}
+          align: a retired group shows its first two Bots and no +N chip (the header carries the roster). */}
       <span className="flex w-[42px] flex-shrink-0 justify-center">
         {conversation.kind === 'direct' ? (
           // Static; a DM nobody can answer any more (its Bot was archived) sleeps.
