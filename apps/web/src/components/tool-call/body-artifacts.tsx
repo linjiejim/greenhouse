@@ -29,6 +29,8 @@ import { MissionDispatchCard, type MissionDispatchArtifact } from '../cloud-agen
 import { SchemaPlanCard, type TablesSchemaPlanArtifact } from '../tables/schema-plan-card';
 import { TaskCaptureCard, type TaskCaptureData } from '../chat/task-capture-card';
 import { FileAttachmentCard } from '../files/file-attachment-card';
+import { McpConnectCard } from '../connectors/mcp-connect-card';
+import { isMcpNeedsConnection } from '@greenhouse/types/mcp-servers';
 import { AuthImage, isAuthImageSrc } from '../files/auth-image';
 import { isSafeAttachmentPreview } from '../blocks/attachments-block';
 import { downloadAuthenticatedFile } from '../../lib/file-download';
@@ -53,7 +55,7 @@ export interface ArtifactCall {
 }
 
 export interface ArtifactCtx {
-  /** Callback when an ask_user form is submitted (sends the formatted message). */
+  /** Send a message as the member: an ask_user form's answers, or the Connect card's "Continue". */
   onAskUserSubmit?: (message: string) => void | Promise<void>;
   /** Whether the ask_user form was already submitted (a follow-up user message exists). */
   askUserSubmitted?: boolean;
@@ -136,6 +138,9 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
       // Same rule: a rejected draft (a variable with no placeholder) stays a
       // trace row, so the model's corrected retry reads as one conversation.
       return out?.type === 'task_capture';
+    case 'mcp_call':
+      // Only "connect first" becomes a card; every real result stays a trace row.
+      return isMcpNeedsConnection(out);
     default:
       return false;
   }
@@ -172,7 +177,14 @@ export function partitionCalls<T extends { name: string; output?: unknown }>(
 
 /** Confirm-gate cards the message text introduces — reading order is prose first,
  *  then the card with its action button. */
-const BELOW_PROSE_TOOLS = new Set(['workflow_plan', 'mission_dispatch', 'tables_schema_plan', 'task_capture']);
+const BELOW_PROSE_TOOLS = new Set([
+  'workflow_plan',
+  'mission_dispatch',
+  'tables_schema_plan',
+  'task_capture',
+  // "Connect X" — the prose explains why, the card offers the button.
+  'mcp_call',
+]);
 
 /** Split body artifacts by where they sit relative to the prose. */
 export function splitArtifactsByPlacement<T extends { name: string }>(calls: T[]): { above: T[]; below: T[] } {
@@ -310,6 +322,15 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
     case 'task_capture':
       return out?.type === 'task_capture' ? (
         <TaskCaptureCard data={out as unknown as TaskCaptureData} actionId={actionId} sessionId={writableSessionId} />
+      ) : null;
+
+    case 'mcp_call':
+      return isMcpNeedsConnection(out) ? (
+        <McpConnectCard
+          data={out}
+          canAct={ctx.canAct !== false}
+          {...(ctx.onAskUserSubmit ? { onContinue: ctx.onAskUserSubmit } : {})}
+        />
       ) : null;
 
     default: {

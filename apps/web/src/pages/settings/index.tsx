@@ -6,8 +6,8 @@
  *
  * Sections (see `settingsSections` in nav-registry):
  * - Preferences + Cloud (one flat block): Preferences, Groups, Agent Connections,
- *   Connections, Email Accounts, My Bots (the member's Bot identities), Passwords
- *   (Bots vault, `bots` flag)
+ *   Connections, Connectors (own MCP connections), Email Accounts, My Bots (the
+ *   member's Bot identities), Passwords (Bots vault, `bots` flag)
  * - Labs (feature-gated): Memory
  * - Desktop: installer download in a browser, native controls inside the shell
  *
@@ -28,6 +28,7 @@ import type { NavModule } from '../../lib/nav-registry';
 // Sub-panels
 import { PreferencesPanel } from './preferences';
 import { ProviderBindingsPanel } from './provider-bindings';
+import { ConnectorsPanel } from './connectors';
 import { EmailAccountsPanel } from './email-accounts';
 import { MemoryPanel } from './memory';
 import { BotsPanel } from './bots';
@@ -87,6 +88,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
       {effectiveModule === 'preferences' && <PreferencesPanel />}
       {effectiveModule === 'agent-connections' && <OAuthGrantsPanel />}
       {effectiveModule === 'provider-bindings' && <ProviderBindingsPanel />}
+      {effectiveModule === 'connectors' && <ConnectorsPanel />}
       {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
       {effectiveModule === 'passwords' && <PasswordsPanel />}
       {effectiveModule === 'groups' && <GroupsPanel />}

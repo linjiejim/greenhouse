@@ -137,6 +137,14 @@ const SETTINGS_TOP: NavModule[] = [
     description: 'Connect Feishu, WeCom and other third-party accounts',
   },
   {
+    id: 'settings.connectors',
+    label: 'Connectors',
+    icon: Plug,
+    path: '#/settings/connectors',
+    parent: 'settings',
+    description: 'Connect your own accounts so your agents and Bots can use external tools',
+  },
+  {
     id: 'settings.email-accounts',
     label: 'Email Accounts',
     icon: Mail,
@@ -296,7 +304,7 @@ const ADMINISTRATION_MODULES: NavModule[] = [
     icon: Plug,
     path: '#/administration/mcp-servers',
     parent: 'administration',
-    description: 'External MCP servers members can call from chat',
+    description: 'Connectors: external MCP servers members and their Bots can use',
     requireRole: ['super'],
   },
   {
@@ -416,6 +424,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
     label: 'navigation.providerBindings',
     description: 'navigation.providerBindingsDesc',
   },
+  'settings.connectors': { label: 'navigation.connectors', description: 'navigation.connectorsDesc' },
   'settings.email-accounts': {
     label: 'navigation.emailAccounts',
     description: 'navigation.emailAccountsDesc',

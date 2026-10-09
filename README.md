@@ -129,9 +129,10 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **MCP server + agent tool-proxy** — OAuth 2.1 (PKCE for people, client credentials for
   machines) with scopes per resource group; the same tools over the structured `/api/agent`
   proxy.
-- **MCP client** — connect remote MCP servers once (Administration → MCP Servers); granted
-  members call their tools from chat through one `mcp_call` gateway tool, with writes
-  confirmed per call.
+- **Connectors (MCP client)** — install remote MCP servers from the official catalog
+  (`connectors/`), the MCP Registry or by URL; members connect their own accounts (OAuth sign-in
+  or their own key) and use the tools from chat and from their Bots through one `mcp_call`
+  gateway tool — writes confirmed per call in chat, approved on a card in Bots.
 - **LLM relay + usage budgets** — an OpenAI-compatible relay for internal users, plus monthly
   token and image budgets per user, organization and provider.
 - **Platform kernel** — applications declare a manifest (modules, entities, fields, actions);
@@ -469,11 +470,37 @@ Every capability is reachable three ways from the same tool layer:
   Administration → MCP Access. Scopes combine an action (`mcp:read` / `mcp:write`) with
   resource groups (`mcp:knowledge`, `mcp:projects`, `mcp:tables`, …).
 
-Greenhouse is an MCP **client** too: a super registers remote MCP servers (Streamable HTTP or
-SSE, optional auth header stored encrypted) under Administration → MCP Servers, and members
-granted the **External MCP tools** (`mcp_call`) tool reach their tools from chat through that
-one gateway tool. Results are wrapped as untrusted external content, and any tool the server
-does not mark read-only needs the user's explicit confirmation per call.
+### Connectors (Greenhouse as an MCP client)
+
+Greenhouse is an MCP **client** too. A super installs remote MCP servers ("connectors") under
+Administration → MCP Servers — from the **official catalog** (`connectors/*.json`, vetted entries
+in the MCP Registry's own `server.json` format; see [connectors/README.md](connectors/README.md) to
+contribute one), by searching the **official MCP Registry**, or by URL (a *Detect* button tells
+whether the address wants no sign-in, a key, or OAuth). Members granted the **External MCP tools**
+(`mcp_call`) tool reach them from chat and from their Bots through that one gateway tool.
+
+Each connector authenticates one of four ways:
+
+| Sign-in | Whose credential | Example |
+|---|---|---|
+| None | nobody's — a public server | DeepWiki, Microsoft Learn, Context7 |
+| Shared credential | the admin's one key, for everyone | an internal server behind a token |
+| Each member's own key | the member pastes it (header or query parameter) | GitHub (PAT), Amap |
+| Each member signs in (OAuth) | the member's own account, MCP authorization spec | Linear, Notion, Sentry, Atlassian |
+
+Members connect under Settings → **Connectors**; a chat that needs a connector they have not
+connected shows a **Connect** card. OAuth follows the MCP authorization spec (protected-resource
+discovery, PKCE, resource indicators) and needs no setup at the provider when it supports dynamic
+client registration or client-id metadata documents — the instance registers itself, with the
+callback `PUBLIC_BASE_URL/api/connectors/oauth/callback` (for providers without either, such as
+GitHub, enter a client id you registered there). Keys and tokens are stored encrypted per member
+and never returned; a member's connection is theirs alone.
+
+Results are wrapped as untrusted external content. A tool the server does not mark read-only (and
+the catalog or an admin did not vouch for) needs the user's explicit confirmation per call in chat;
+in a Bots conversation it asks on an approval card, and a Bot's own connector list narrows what it
+may reach. Connectors are not offered to scheduled tasks, background tasks, Feishu or the browser
+extension, and are never re-exported through `/api/agent` or `/api/mcp`.
 
 For both proxy surfaces the effective tool set is `resolveEffectiveTools(user, profile)`
 intersected with the proxy allowlist — a tool only appears if it declares the relevant
