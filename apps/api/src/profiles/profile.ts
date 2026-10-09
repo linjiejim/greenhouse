@@ -14,6 +14,7 @@ import { GREENHOUSE_CONFIG, resolvePackPath } from '../config/greenhouse-config.
 import { readFileSync, readdirSync, existsSync, watch } from 'node:fs';
 import { logger } from '@greenhouse/utils/logger';
 import { composeRichOutput } from '@greenhouse/utils/prompts';
+import { DEFAULT_CLIENT_BLOCKS } from '@greenhouse/types/rich-output';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { BotRow, BotVersionRow, DatabaseProvider } from '@greenhouse/db';
@@ -528,21 +529,23 @@ export function clearProfileCache(): void {
 // The rich-output rendering rules live in @greenhouse/utils/prompts so every server
 // profile that opts in gets the same frontend-compatible formatting guide.
 
-/**
- * Enrich a profile's system prompt with the rich output formatting guide.
- * Applies to any profile with `access.rich_output: true`; these also get the
- * confirm-button block. Profiles without rich output are unchanged.
- */
+/** Per-turn inputs to {@link enrichSystemPrompt}. */
 export interface EnrichOptions {
   /** The member this turn runs for — named in the identity section ("You work for …"). */
   nickname?: string | null;
+  /**
+   * The Rich Output blocks the requesting screen can draw. Omitted for every
+   * headless path (automations, workflows, sub-sessions), whose output is read
+   * on the web: those get the default set.
+   */
+  richBlocks?: readonly string[];
 }
 
 /**
  * Enrich a profile's system prompt: the identity section first (the Bot's
  * name, role and instructions, or the preset's own name when no Bot backs it),
  * then the static rules, then the rich output formatting guide for profiles
- * with `access.rich_output: true` (these also get the confirm-button block).
+ * with `access.rich_output: true` — only the blocks the client can draw.
  * Hidden runtimes (`access.level: hidden`) carry their own complete prompt.
  */
 export function enrichSystemPrompt(profile: AgentProfile, options: EnrichOptions = {}): string {
@@ -553,7 +556,8 @@ export function enrichSystemPrompt(profile: AgentProfile, options: EnrichOptions
     parts.push(buildFallbackIdentitySection(profile.name));
   }
   parts.push(profile.system_prompt);
-  if (profile.access.rich_output) parts.push(composeRichOutput({ confirm: true }));
+  if (profile.access.rich_output)
+    parts.push(composeRichOutput({ blocks: options.richBlocks ?? DEFAULT_CLIENT_BLOCKS }));
   return parts.join('\n\n');
 }
 

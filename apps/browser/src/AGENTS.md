@@ -99,6 +99,21 @@ see `logos/README.md`. UI uses shared Haven tokens, Nunito fonts and `Greenhouse
   download through `src/lib/files.ts`, which attaches the station token and
   only fetches `/api/chat-files/`), stream accumulation via `handleStreamEvent`
   from `@greenhouse/types` (`src/sidepanel/use-chat.ts`).
+- **Rich Output: declare what the panel draws.** The kit validates blocks with
+  the shared registry (`@greenhouse/types/rich-output`, the same verdict as web
+  and mobile) and draws chart / datatable / stats / cards / steps / confirm
+  (the business blocks are the one shared implementation in `@greenhouse/ui`),
+  each in its own error
+  boundary; every request sends `rich_blocks: RICH_BLOCKS_DRAWN`
+  (`@greenhouse/ui/components/blocks`), so the model is never taught mermaid or
+  html-preview here (the contract test pins it). Those still arrive in sessions
+  continued from the web: they render as their Markdown stand-in (diagram
+  source / "open in Greenhouse"), and a block still streaming shows a
+  placeholder. Block buttons (confirm, stats, cards, steps) send their value as
+  the next message, and the choice is restored from that message. Cards and
+  in-app links (`#/projects/42`) open in
+  the active station's web app (`AppLinkOriginContext` in `sidepanel/app.tsx`);
+  the panel's own page is never navigated.
 - **i18n**: extension keys live in `src/i18n/{en,zh}.ts` (keep both in sync);
   they register through `registerCoreLocaleMessages` — same fallback chain as
   the web app.

@@ -124,6 +124,8 @@ export interface AgentContext {
   userInfo?: string;
   /** The member this turn runs for — named in the identity section. */
   nickname?: string | null;
+  /** Rich Output blocks the requesting screen can draw (undefined = the default set). */
+  richBlocks?: readonly string[];
 }
 
 /**
@@ -132,7 +134,9 @@ export interface AgentContext {
  * the static rules; context appends the server-assembled user info block.
  */
 export function buildSystemPrompt(profile: AgentProfile, context?: AgentContext): string {
-  const parts: string[] = [enrichSystemPrompt(profile, { nickname: context?.nickname })];
+  const parts: string[] = [
+    enrichSystemPrompt(profile, { nickname: context?.nickname, richBlocks: context?.richBlocks }),
+  ];
 
   if (context?.userInfo) {
     parts.push(`\n## User Context\n${context.userInfo}`);

@@ -45,6 +45,7 @@ export function Messages({ messages, streaming, onAskUserSubmit }: MessagesProps
             message={m}
             onAskUserSubmit={onAskUserSubmit}
             hasFollowUp={messages.slice(i + 1).some((n) => n.role === 'user')}
+            followUp={messages[i + 1]?.role === 'user' ? messages[i + 1]!.content : undefined}
           />
         ),
       )}
@@ -73,10 +74,13 @@ function AssistantMessage({
   message,
   onAskUserSubmit,
   hasFollowUp,
+  followUp,
 }: {
   message: ChatMessage;
   onAskUserSubmit: (m: string) => void;
   hasFollowUp: boolean;
+  /** The user message right after this one — restores which block button was chosen. */
+  followUp?: string;
 }) {
   const t = useT();
   const [showReasoning, setShowReasoning] = useState(false);
@@ -103,7 +107,15 @@ function AssistantMessage({
       {showReasoning && message.reasoning && <ReasoningPanel reasoning={message.reasoning} />}
       {trace.length > 0 && <ToolCallRenderer calls={trace} variant="compact" defaultCollapsed />}
       {artifacts.length > 0 && <BodyArtifacts calls={artifacts} ctx={artifactCtx} />}
-      {message.content && <RichMarkdown compact content={message.content} />}
+      {message.content && (
+        <RichMarkdown
+          compact
+          content={message.content}
+          // A block button sends its value as the next message, like on the web.
+          onBlockAction={onAskUserSubmit}
+          resolvedActionValue={followUp}
+        />
+      )}
       {artifacts.length > 0 && <MessageAttachments calls={artifacts} ctx={artifactCtx} />}
     </div>
   );

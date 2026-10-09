@@ -48,7 +48,8 @@ export function renderSidePaneBody(entry: SidePaneEntry): React.ReactNode | null
     case 'entity':
       return renderEntityPeekBody(entry.ref as EntityRef);
     case 'html':
-      return <HtmlPreview code={entry.code} title={entry.title} />;
+      // Only an inline preview may talk back; a Mission artifact (sourcePath) never does.
+      return <HtmlPreview code={entry.code} title={entry.title} bridge={!entry.sourcePath} />;
     case 'pdf':
       // Same authenticated-URL iframe the media dialog uses; a PDF is inert
       // markup to the browser's own viewer, not a script surface.

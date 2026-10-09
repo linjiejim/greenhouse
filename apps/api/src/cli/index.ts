@@ -54,6 +54,7 @@ ${chalk.bold('Manage')}
 
 ${chalk.bold('Diagnose')}
   doctor                    Check env + DB readiness for this deployment
+  rich-output stats         Rich Output blocks that fell back, by model × block (--since 30d, --model, --json)
 
 ${chalk.bold('Chat')} ${chalk.dim('(needs a running server: pnpm api)')}
   chat                      Interactive agent chat (requires GREENHOUSE_ACCESS_TOKEN)
@@ -106,6 +107,8 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
     case 'doctor':
     case 'check':
       return (await import('./commands/doctor.js')).run(rest);
+    case 'rich-output':
+      return (await import('./commands/rich-output.js')).run(rest);
     case 'platform':
       return (await import('./commands/platform.js')).run(rest);
     case 'knowledge':

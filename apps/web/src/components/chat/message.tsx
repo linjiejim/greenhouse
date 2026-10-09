@@ -13,6 +13,8 @@ import type { PipelineStep } from '@greenhouse/types/session';
 import { dedupe } from './annotations';
 import { Search, BookOpen, Pencil, Clock, Globe, ChevronDown, Cloud } from '../../lib/icons';
 import { marked } from 'marked';
+import { flattenRichOutput } from '@greenhouse/types/rich-output';
+import { useFlattenNotes } from '../../lib/rich-output';
 import { useTextSelection } from './use-text-selection';
 import { SelectionPopover } from './selection-popover';
 import { NoteInputDialog } from './note-input-dialog';
@@ -78,7 +80,7 @@ interface MessageProps {
   /** Callback for ask_user form submission (sends formatted message) */
   onAskUserSubmit?: (message: string) => void | Promise<void>;
   /** Callback for a confirm-block button click (sends the picked value as a follow-up message) */
-  onConfirmAction?: (value: string) => void | Promise<void>;
+  onBlockAction?: (value: string) => void | Promise<void>;
   /** Whether the message after this one is a user response (ask_user submitted) */
   hasFollowUpUserMessage?: boolean;
   /** Previous user message content — used as fullscreen dialog title */
@@ -132,7 +134,7 @@ function MessageBubbleImpl(props: MessageProps) {
     onRegenerate,
     onQuote,
     onAskUserSubmit,
-    onConfirmAction,
+    onBlockAction,
     hasFollowUpUserMessage,
     previousUserMessage,
     submittedUserMessage,
@@ -218,16 +220,18 @@ function MessageBubbleImpl(props: MessageProps) {
     return sources;
   }, [pipeline]);
 
-  // Rendered HTML for copy-as-HTML
+  // Rendered HTML for copy-as-HTML. Rich Output blocks become their plain
+  // Markdown stand-ins first (a chart → its table), not a JSON code block.
   const actionContent = missionOutcome ? `${content}\n\n${missionOutcome.content}` : content;
+  const flattenNotes = useFlattenNotes();
   const renderedHtml = useMemo(() => {
     try {
-      const result = marked.parse(actionContent);
+      const result = marked.parse(flattenRichOutput(actionContent, flattenNotes));
       return typeof result === 'string' ? result : '';
     } catch (_err) {
       return '';
     }
-  }, [actionContent]);
+  }, [actionContent, flattenNotes]);
   const [showReferences, setShowReferences] = useState(false);
 
   useEffect(() => {
@@ -395,8 +399,8 @@ function MessageBubbleImpl(props: MessageProps) {
             <RichMarkdown
               content={content}
               compact
-              onConfirmAction={onConfirmAction}
-              resolvedConfirmValue={confirmedActionValue}
+              onBlockAction={onBlockAction}
+              resolvedActionValue={confirmedActionValue}
               linkTarget="new-window"
             />
           </div>

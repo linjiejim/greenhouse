@@ -84,6 +84,12 @@ what exists." These rules are as binding as the "add" rules:
     pieces (`MessageBubble`, `StreamingMessageBubble`, `ChatInput`, `ToolCallRenderer`,
     `RichMarkdown`, `DockRow`), and stream consumption stays single: `SessionManager.runStream`
     with `bot-turn-start` / `bot-turn-end` / `bot-request` events from `packages/types/src/api.ts`.
+  - Registered: **the browser extension renders chat with `@greenhouse/ui`'s older `Markdown` / chart /
+    datatable / confirm copies, not the web's** — the web renderer is bound to web-only stores, i18n,
+    the Chat side pane and entity peeks. Both validate with the one shared block registry
+    (`@greenhouse/types/rich-output`) and the extension declares only what it draws (`rich_blocks`), so
+    the copies cannot disagree on what a block means. Convergence path: new blocks are written once in
+    `packages/ui` and used by both (spec `docs/specs/20261008-rich-output-foundation.md` D9).
   - Registered: **`playwright-core` is an API dependency** — the API drives each Bots computer's
     Chromium over CDP (`connectOverCDP`, through a `docker exec` pipe relay). It is the protocol
     client only; no browser binary ships with the API.
@@ -446,7 +452,7 @@ Always import these — don't reimplement:
 | `parseSemver` / `isValidSemver` / `compareSemver` / `bumpPatch` | `@greenhouse/utils/semver` | Strict `X.Y.Z` semver helpers (skill versions) — don't hand-write the regex |
 | `escapeHtml(value)` | `@greenhouse/utils/html` | Escape text into hand-built HTML (emails) |
 | `sendWeComMarkdown` / `sendFeishuMarkdown` | `@greenhouse/utils/wecom` / `feishu` | Group-bot webhook posts (both check the JSON body, not just the HTTP status) |
-| `composeRichOutput({confirm?})` | `@greenhouse/utils/prompts` | The single copy of the rich-output prompt guide shared by every profile |
+| `composeRichOutput({blocks})` | `@greenhouse/utils/prompts` | The single copy of the rich-output prompt guide, composed from the blocks the requesting screen declared (`rich_blocks`) |
 | `REPLY_STYLE_RULE` | `@greenhouse/utils/prompts` | The one wording of the reply-style rule (concise but proactive): Bots S1 embeds it, `sprouty.yaml` repeats it verbatim (test-guarded) |
 
 ## Auth & permissions

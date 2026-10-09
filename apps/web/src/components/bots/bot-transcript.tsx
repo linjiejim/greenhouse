@@ -198,7 +198,7 @@ export function BotTranscript(props: BotTranscriptProps) {
               model={item.message.model}
               createdAt={item.message.created_at}
               onAskUserSubmit={onSendText}
-              onConfirmAction={readOnly ? undefined : onSendText}
+              onBlockAction={readOnly ? undefined : onSendText}
               hasFollowUpUserMessage={next?.kind === 'user' || next?.kind === 'pending'}
               submittedUserMessage={next?.kind === 'user' ? next.message.content : undefined}
               confirmedActionValue={next?.kind === 'user' ? next.message.content : undefined}

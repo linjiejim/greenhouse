@@ -12,6 +12,9 @@ interface ComposerBridge {
   /** Annotation texts waiting to be attached to the composer. */
   pending: string[];
   take: () => string[];
+  /** Text waiting to be put INTO the composer (appended to what is typed) — an html-preview's sendPrompt. */
+  drafts: string[];
+  takeDrafts: () => string[];
 }
 
 export const useComposerBridge = create<ComposerBridge>((set, get) => ({
@@ -21,9 +24,24 @@ export const useComposerBridge = create<ComposerBridge>((set, get) => ({
     if (items.length) set({ pending: [] });
     return items;
   },
+  drafts: [],
+  takeDrafts: () => {
+    const items = get().drafts;
+    if (items.length) set({ drafts: [] });
+    return items;
+  },
 }));
 
 /** Queue an annotation for the conversation composer (callable from any route). */
 export function attachToComposer(text: string): void {
   useComposerBridge.setState((s) => ({ pending: [...s.pending, text] }));
+}
+
+/**
+ * Queue text for the composer itself (not an annotation): an html-preview page's
+ * `window.greenhouse.sendPrompt`. Appended to what is typed, never sent; a
+ * read-only conversation drops it.
+ */
+export function fillComposer(text: string): void {
+  useComposerBridge.setState((s) => ({ drafts: [...s.drafts, text] }));
 }

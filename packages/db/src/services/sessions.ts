@@ -31,6 +31,14 @@ export interface ToolErrorSample {
 }
 
 /** A tool call that succeeded and found nothing (see `scanEmptyResults`). */
+/** An assistant message that contains at least one fenced block (rich-output stats input). */
+export interface FencedMessageSample {
+  id: string;
+  model: string | null;
+  content: string;
+  created_at: string;
+}
+
 export interface EmptyResultSample {
   session_id: string;
   created_at: string;
@@ -920,6 +928,36 @@ export function createSessionService(db: Db) {
      * The extract layer no longer emits NULs, but historical rows remain and
      * this query must not trust every future writer.
      */
+    /**
+     * One page of assistant messages that contain a fenced block, oldest first —
+     * the input of `pnpm cli rich-output stats`. Read-only; keyset-paginated on
+     * (created_at, id) so a long window never needs an OFFSET scan.
+     */
+    async scanFencedAssistantMessages(opts: {
+      sinceIso: string;
+      model?: string;
+      after?: { createdAt: string; id: string };
+      limit?: number;
+    }): Promise<FencedMessageSample[]> {
+      const conditions = [
+        eq(messages.role, 'assistant'),
+        like(messages.content, '%```%'),
+        sql`${messages.created_at} > ${opts.sinceIso}::timestamptz`,
+      ];
+      if (opts.model) conditions.push(eq(messages.model, opts.model));
+      if (opts.after) {
+        conditions.push(
+          sql`(${messages.created_at}, ${messages.id}) > (${opts.after.createdAt}::timestamptz, ${opts.after.id}::text)`,
+        );
+      }
+      return db
+        .select({ id: messages.id, model: messages.model, content: messages.content, created_at: messages.created_at })
+        .from(messages)
+        .where(and(...conditions))
+        .orderBy(messages.created_at, messages.id)
+        .limit(opts.limit ?? 500);
+    },
+
     async scanToolErrors(sinceIso: string, limit = 2000): Promise<ToolErrorSample[]> {
       // The exact six characters JSON.stringify writes for a NUL — derived, not
       // typed, so no reader has to count backslashes.

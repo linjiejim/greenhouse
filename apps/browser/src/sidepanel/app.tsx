@@ -10,6 +10,7 @@ import React from 'react';
 import { Button, EmptyState, Spinner } from '@greenhouse/ui/components/ui';
 import { Unplug, LogIn } from '@greenhouse/ui/lib/icons';
 import { useI18n } from '@greenhouse/ui/lib/i18n';
+import { AppLinkOriginContext } from '@greenhouse/ui/components/markdown';
 import { useAuth } from '../lib/use-auth';
 import { ChatView } from './chat-view';
 
@@ -38,5 +39,10 @@ export function SidePanelApp() {
     );
   }
 
-  return <ChatView key={auth.stationId} />;
+  // In-app links in answers (`#/projects/42`) open in this station's web app.
+  return (
+    <AppLinkOriginContext.Provider value={station?.baseUrl ?? null}>
+      <ChatView key={auth.stationId} />
+    </AppLinkOriginContext.Provider>
+  );
 }

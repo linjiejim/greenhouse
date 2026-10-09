@@ -228,11 +228,12 @@ describe('Profile module loading and legacy compatibility', () => {
 describe('Rich output guide', () => {
   it('is one shared copy — every rich-output profile gets it, no YAML restates it', async () => {
     const { enrichSystemPrompt } = await import('../../apps/api/src/profiles/profile.js');
-    const { RICH_OUTPUT_GUIDE } = await import('@greenhouse/utils/prompts');
+    const { composeRichOutput } = await import('@greenhouse/utils/prompts');
+    const { DEFAULT_CLIENT_BLOCKS } = await import('@greenhouse/types/rich-output');
 
     for (const id of ['sprouty', 'eval-judge']) {
       const profile = loadProfile(id)!;
-      expect(enrichSystemPrompt(profile as any), id).toContain(RICH_OUTPUT_GUIDE);
+      expect(enrichSystemPrompt(profile as any), id).toContain(composeRichOutput({ blocks: DEFAULT_CLIENT_BLOCKS }));
       // A second copy in the YAML would drift from this one.
       expect(profile.system_prompt, id).not.toContain('```datatable');
     }
@@ -242,15 +243,27 @@ describe('Rich output guide', () => {
     expect(enrichSystemPrompt(desktop as any)).toBe(desktop.system_prompt);
   });
 
+  it('teaches only the blocks the requesting screen declared', async () => {
+    const { enrichSystemPrompt } = await import('../../apps/api/src/profiles/profile.js');
+    const sprouty = loadProfile('sprouty')!;
+
+    const extension = enrichSystemPrompt(sprouty as any, { richBlocks: ['chart', 'datatable', 'confirm'] });
+    expect(extension).toContain('```datatable');
+    expect(extension).not.toContain('```mermaid');
+    expect(extension).not.toContain('html-preview');
+    expect(enrichSystemPrompt(sprouty as any)).toContain('```mermaid');
+  });
+
   it('forbids opening a datatable before the rows are known', async () => {
     // dev session c0b6bf83 wrote title + 7 columns, changed its mind, then
     // answered with a markdown table — leaving a rowless block above the real
     // answer. The renderer degrades that to an empty table (it used to crash the
     // whole message); this rule is what stops it being authored at all.
-    const { RICH_OUTPUT_GUIDE } = await import('@greenhouse/utils/prompts');
-    expect(RICH_OUTPUT_GUIDE).toMatch(/数据没齐就不要开 fence/);
-    expect(RICH_OUTPUT_GUIDE).toMatch(/开了就必须一次写完/);
-    expect(RICH_OUTPUT_GUIDE).toMatch(/整块重写/);
+    const { composeRichOutput } = await import('@greenhouse/utils/prompts');
+    const guide = composeRichOutput({ blocks: ['datatable'] });
+    expect(guide).toMatch(/数据没齐就不要开 fence/);
+    expect(guide).toMatch(/开了就必须一次写完/);
+    expect(guide).toMatch(/整块重写/);
   });
 });
 

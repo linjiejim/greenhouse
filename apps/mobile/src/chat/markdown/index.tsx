@@ -38,6 +38,7 @@ import { parseBlocks, type Block } from './parse';
 import { fenceBlocks } from './registry';
 import { CodeBlock } from './blocks/code';
 import { BlockBoundary, PendingBlock } from './blocks/frame';
+import { isEmptyRichBlock } from './rich';
 import { ImageRow } from './blocks/images';
 import { Table } from './blocks/table';
 import { BulletList, Heading, OrderedList, Paragraph, Quote, Rule } from './blocks/text';
@@ -50,6 +51,8 @@ export type { TableData } from './parse';
  *  diagram's WebView) isn't re-rendered by every streaming tick after it. */
 const Fence = memo(function Fence({ lang, raw }: { lang: string; raw: string }) {
   const Custom = fenceBlocks[lang];
+  // A block with nothing in it is dropped (web parity), never shown as raw JSON.
+  if (isEmptyRichBlock(lang, raw)) return null;
   return (
     <BlockBoundary fallback={<CodeBlock lang={lang} code={raw} />}>
       <Custom raw={raw} />

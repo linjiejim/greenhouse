@@ -188,7 +188,7 @@ export interface FeishuSendResult {
  * literal text, so `## 数据口径` and every `| col | col |` row reached the
  * reader as raw syntax (observed on the first real automation digest). 2.0's
  * markdown component renders the full GitHub-flavored set — headings, tables,
- * inline code — which is exactly what `flattenRichOutput()` produces.
+ * inline code — which is exactly what `flattenForDelivery()` produces.
  *
  * Deliberately headerless: the card title would duplicate the `**✅ <task>**`
  * line that `buildTaskNotification()` already puts at the top, and that

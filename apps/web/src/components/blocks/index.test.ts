@@ -5,8 +5,10 @@ describe('parseSegments', () => {
   it('replaces an open streaming datatable fence with a pending segment', () => {
     const segments = parseSegments('Summary\n\n```datatable\n{"columns":[{"key":"name"');
 
-    expect(segments).toEqual([{ type: 'markdown', content: 'Summary\n\n' }, { type: 'datatable-pending' }]);
-    expect(JSON.stringify(segments)).not.toContain('"columns"');
+    expect(segments).toEqual([
+      { type: 'markdown', content: 'Summary\n\n' },
+      { type: 'pending', fence: 'datatable', raw: '```datatable\n{"columns":[{"key":"name"' },
+    ]);
   });
 
   it('replaces the pending segment with a datatable after the fence closes', () => {

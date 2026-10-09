@@ -3,8 +3,8 @@
  *
  * A scheduled task's summary is the assistant's final message, and that message
  * was written for the chat renderer: Markdown, plus the Rich Output fences
- * (```datatable, ```chart, ```mermaid, ```html-preview…) that `RICH_OUTPUT_GUIDE`
- * actively instructs every `rich_output` profile to emit. Every delivery channel
+ * (```datatable, ```chart, ```mermaid, ```html-preview…) that the rich-output
+ * guide (`composeRichOutput`) actively instructs every `rich_output` profile to emit. Every delivery channel
  * used to forward that string raw — the email builder even HTML-escaped the whole
  * thing into a `white-space:pre-wrap` div — so the reader got a wall of Markdown
  * syntax with a JSON blob sitting in the middle of it. The only renderer that
@@ -12,7 +12,7 @@
  *
  * Hence a delivery-side renderer, in two steps:
  *
- *   `flattenRichOutput()`      fences → ordinary Markdown (a datatable becomes a
+ *   `flattenForDelivery()`     fences → ordinary Markdown (a datatable becomes a
  *                              Markdown table; a diagram becomes a one-line note
  *                              pointing at the session). Every channel calls it,
  *                              and its output *is* the text/plain body — Markdown
@@ -31,7 +31,7 @@
  */
 
 import { Marked, Renderer, type Tokens } from 'marked';
-import { parseSegments, type ChartData, type DataTableData, type Segment } from '@greenhouse/types/rich-output';
+import { flattenRichOutput, type FlattenNotes } from '@greenhouse/types/rich-output';
 import { escapeHtml } from '@greenhouse/utils/html';
 import { getProductName } from '@greenhouse/utils/brand';
 
@@ -48,122 +48,32 @@ const HEADING_ATTACHMENTS = '附件';
 
 // ─── Markdown flattening ─────────────────────────────────
 
-/** Agent output with every Rich Output fence turned into ordinary Markdown. */
-export function flattenRichOutput(markdown: string): string {
-  if (!markdown.trim()) return '';
-  return parseSegments(markdown)
-    .map(flattenSegment)
-    .filter((part) => part.trim())
-    .join('\n\n')
-    .trim();
-}
-
-function flattenSegment(segment: Segment): string {
-  switch (segment.type) {
-    case 'markdown':
-      return segment.content.trim();
-    case 'datatable':
-      return markdownTable(segment.data);
-    case 'chart':
-      return chartAsTable(segment.data);
-    case 'confirm':
-      return [
-        segment.data.text.trim(),
-        `> ${NOTE_CONFIRM}${segment.data.actions.length ? `：${segment.data.actions.map((a) => a.label).join(' / ')}` : ''}`,
-      ]
-        .filter(Boolean)
-        .join('\n\n');
-    case 'mermaid':
-      return `> ${NOTE_DIAGRAM}`;
-    case 'html-preview':
-      return `> ${segment.title ? `${segment.title} ${NOTE_PREVIEW}` : NOTE_PREVIEW}`;
-    case 'mission-artifacts':
-      return fileList(
-        HEADING_ARTIFACTS,
-        segment.data.map((item) => ({ name: item.path, sizeBytes: item.size_bytes })),
-      );
-    case 'attachments':
-      return fileList(
-        HEADING_ATTACHMENTS,
-        segment.data.map((item) => ({ name: item.name, sizeBytes: item.size_bytes })),
-      );
-    case 'datatable-pending':
-      // An unterminated fence: the turn was cut off before any rows existed, so
-      // there is nothing to render and no reason to mention it.
-      return '';
-  }
-}
-
-function markdownTable(data: DataTableData): string {
-  if (!data.columns.length) return '';
-  const lines = [
-    `| ${data.columns.map((column) => tableCell(column.label || column.key)).join(' | ')} |`,
-    `| ${data.columns.map(() => '---').join(' | ')} |`,
-    ...data.rows.map(
-      (row) => `| ${data.columns.map((column) => tableCell(formatValue(row[column.key]))).join(' | ')} |`,
-    ),
-  ];
-  const table = lines.join('\n');
-  return data.title ? `**${data.title.trim()}**\n\n${table}` : table;
-}
+/** What a delivered message says where a block cannot be drawn. */
+const DELIVERY_NOTES: FlattenNotes = {
+  diagram: () => `> ${NOTE_DIAGRAM}`,
+  preview: (segment) => `> ${segment.title ? `${segment.title} ${NOTE_PREVIEW}` : NOTE_PREVIEW}`,
+  confirm: (data) =>
+    [
+      data.text.trim(),
+      `> ${NOTE_CONFIRM}${data.actions.length ? `：${data.actions.map((a) => a.label).join(' / ')}` : ''}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
+  artifactsHeading: HEADING_ARTIFACTS,
+  attachmentsHeading: HEADING_ATTACHMENTS,
+  boolean: (value) => (value ? '是' : '否'),
+  stepStatus: (status) =>
+    ({ done: '已完成', active: '进行中', pending: '待开始', blocked: '受阻', skipped: '已跳过' })[status],
+};
 
 /**
- * A chart cannot be drawn in an email, but the numbers behind it are the reason
- * the agent produced one — so it becomes the same table the chart was built from
- * rather than a "chart omitted" placeholder.
+ * Agent output with every Rich Output fence turned into ordinary Markdown, in
+ * the wording of a delivered message. The per-block conversion lives with the
+ * block registry (`flattenRichOutput` in @greenhouse/types/rich-output); this
+ * only supplies the notes.
  */
-function chartAsTable(data: ChartData): string {
-  return markdownTable({
-    title: data.title,
-    columns: [
-      { key: '', label: '' },
-      ...data.datasets.map((dataset, index) => ({ key: String(index), label: dataset.label })),
-    ],
-    rows: data.labels.map((label, row) => ({
-      '': label,
-      ...Object.fromEntries(data.datasets.map((dataset, index) => [String(index), dataset.data[row]])),
-    })),
-  });
-}
-
-/** Newlines and pipes would break out of the cell and take the whole table with them. */
-function tableCell(value: string): string {
-  return value.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
-}
-
-/**
- * Values are rendered as written. The browser's `DataTableBlock` formats currency
- * and percent columns, but mirroring that here would be a second copy of a
- * formatter that is free to change — and a notification is about the numbers, not
- * their presentation.
- */
-function formatValue(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'boolean') return value ? '是' : '否';
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-}
-
-function fileList(heading: string, items: { name: string; sizeBytes?: number }[]): string {
-  if (!items.length) return '';
-  const rows = items.map((item) => {
-    const size = item.sizeBytes === undefined ? '' : ` (${formatBytes(item.sizeBytes)})`;
-    return `- ${item.name}${size}`;
-  });
-  return [`**${heading}**`, '', ...rows].join('\n');
-}
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return '';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  // `Number()` rather than the `toFixed` string, so 2048 reads "2 KB", not "2.0 KB".
-  return `${unit === 0 || value >= 10 ? Math.round(value) : Number(value.toFixed(1))} ${units[unit]}`;
+export function flattenForDelivery(markdown: string): string {
+  return flattenRichOutput(markdown, DELIVERY_NOTES);
 }
 
 // ─── Markdown → email HTML ───────────────────────────────
@@ -257,7 +167,7 @@ const BODY_STYLES = `
 
 export interface NotificationEmail {
   heading: string;
-  /** Agent-authored Markdown — run it through `flattenRichOutput` first. */
+  /** Agent-authored Markdown — run it through `flattenForDelivery` first. */
   body: string;
   link?: { url: string; label: string } | null;
 }

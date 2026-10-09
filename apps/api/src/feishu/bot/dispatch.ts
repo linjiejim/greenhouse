@@ -19,7 +19,7 @@ import { buildLazyServerTools, LAZY_TOOL_IDS } from '../../agent-runtime/tool-re
 import { runAgentInSession } from '../../agent-runtime/run-agent.js';
 import { resolveMemoryContext } from '../../llm/memory.js';
 import { sanitizeUserMessageForPrompt } from '../../chat/user-message.js';
-import { flattenRichOutput } from '../../notifications/render.js';
+import { flattenForDelivery } from '../../notifications/render.js';
 import { FEISHU_PROVIDER } from '../../routes/feishu-oauth.js';
 import { renderAskUserFromEvidence } from './ask-user.js';
 import { feishuConversationKey, filterFeishuToolIds, groupVisibilityFooter } from './conversation-key.js';
@@ -163,7 +163,7 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
   });
 
   // ── 6. 呈现：富块围栏拍平成飞书能渲染的 markdown（spec D10）──
-  let content = flattenRichOutput(result.text ?? '').trim();
+  let content = flattenForDelivery(result.text ?? '').trim();
 
   // `ask_user` 的问题住 artifact、不进正文，所以必须从工具证据里取出来渲染，
   // 否则用户只看到一句引导语、却不知道被问了什么（spec D11）。

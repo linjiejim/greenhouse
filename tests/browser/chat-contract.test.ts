@@ -14,6 +14,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { CHAT_REQUEST_BODY_KEYS } from '@greenhouse/types/api';
+import { admitRichBlocks } from '@greenhouse/types/rich-output';
+import { enrichSystemPrompt, loadProfile } from '../../apps/api/src/profiles/profile';
 import { AMBIENT_CONTEXT_LIMITS } from '@greenhouse/types/agent-context';
 import { admitTurnEnvironment } from '../../apps/api/src/chat/turn-environment';
 import { knowledgeMutationSchema } from '../../apps/api/src/tools/knowledge-mutation';
@@ -27,6 +29,7 @@ import {
 import { buildPageAmbientContext, type PageContext } from '../../apps/browser/src/lib/page-context';
 
 const PAGE: PageContext = { tabId: 3, url: 'https://example.com/docs/pricing', title: 'Pricing', permitted: true };
+const SPROUTY = loadProfile('sprouty')!;
 
 /** One panel turn, built exactly as the side panel builds it. */
 function panelTurn(page?: { ctx?: Partial<PageContext>; fullPageText?: string }) {
@@ -77,6 +80,15 @@ describe('Greenhouse Bridge → POST /api/chat', () => {
     expect(sent.hint.length).toBeLessThanOrEqual(AMBIENT_CONTEXT_LIMITS.hint);
     expect(sent.hint.endsWith('"""')).toBe(true);
     expect(admitTurnEnvironment(body, 'session-1').ambientContext).toEqual(sent);
+  });
+
+  it.each(Object.entries(TURNS))('asks only for the Rich Output blocks the panel draws (%s)', (_name, body) => {
+    // The panel cannot draw mermaid or html-preview; if it stopped declaring,
+    // the server would teach it the default set and those would come back.
+    expect(admitRichBlocks(body.rich_blocks)).toEqual(['chart', 'datatable', 'stats', 'cards', 'steps', 'confirm']);
+    expect(enrichSystemPrompt(SPROUTY as never, { richBlocks: admitRichBlocks(body.rich_blocks) })).not.toContain(
+      '```mermaid',
+    );
   });
 });
 

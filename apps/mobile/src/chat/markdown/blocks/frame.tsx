@@ -27,6 +27,9 @@ export class BlockBoundary extends Component<{ fallback: ReactNode; children: Re
 const PENDING_LABEL: Record<string, TranslationKey> = {
   chart: 'chat.pendingChart',
   datatable: 'chat.pendingTable',
+  stats: 'chat.pendingStats',
+  cards: 'chat.pendingCards',
+  steps: 'chat.pendingSteps',
   mermaid: 'chat.pendingDiagram',
   'html-preview': 'chat.pendingPage',
 };

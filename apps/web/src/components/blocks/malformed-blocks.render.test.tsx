@@ -66,10 +66,14 @@ describe('parseSegments rejects unrenderable block payloads', () => {
     expect(parseSegments(raw)).toEqual(asCodeBlock(raw));
   });
 
-  it('keeps a chart with an unsupported type as a code block', () => {
-    const raw = fence('chart', { type: 'sankey', labels: ['a'], datasets: [{ label: 'x', data: [1] }] });
+  it('draws a chart with an unsupported type as bars (shared with mobile), but never junk points', () => {
+    const sankey = fence('chart', { type: 'sankey', labels: ['a'], datasets: [{ label: 'x', data: [1] }] });
+    const junk = fence('chart', { type: 'bar', labels: ['a'], datasets: [{ label: 'x', data: ['n/a'] }] });
 
-    expect(parseSegments(raw)).toEqual(asCodeBlock(raw));
+    expect(parseSegments(sankey)).toEqual([
+      { type: 'chart', data: { type: 'bar', labels: ['a'], datasets: [{ label: 'x', data: [1] }] } },
+    ]);
+    expect(parseSegments(junk)).toEqual(asCodeBlock(junk));
   });
 
   it('keeps a confirm without actions as a code block', () => {

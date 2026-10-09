@@ -73,19 +73,26 @@
 - `<ChartBlock>` — 聊天富块默认保留固定阅读高度；工作台/仪表盘等已有明确父容器高度的场景传 `fill`，让 canvas 随卡片缩放，禁止在外层再用固定 px 高度覆盖。
 - `<FileAttachmentCard>` — 文件附件统一展示；EditorJS attachment 与 Chat file artifact 共用，鉴权下载统一走 `lib/file-download.ts`
 - `<ConfirmBlock>` — 行内确认按钮组，用于 Agent 交互
-- `<HtmlPreviewBlock>` — ```html-preview fence 的消息流卡片（标题 + 「打开预览」+ 可折叠源码），真正渲染在右侧分栏的 `side-pane/html-preview.tsx`。**fence 名是 `html-preview` 不是 `html`**：后者是所有人展示 HTML 源码时写的，抢了它就会把「给我一段能复制的代码」变成不可复制的预览卡。**沙箱口径是承重的**：`<iframe srcdoc sandbox="allow-scripts">` 且**绝不加 `allow-same-origin`**——两者同时给等于完全没有 sandbox，文档就能读本页 localStorage 里的 token。不用 `blob:` URL、不给「新窗口打开」，理由与 `attachments-block.tsx` 拒绝预览 HTML 的注释完全一样（blob 继承本页 origin）。回归护栏 `side-pane/html-preview.render.test.tsx` 逐条断言这些属性
+- `<HtmlPreviewBlock>` — ```html-preview fence 的消息流卡片（标题 + 「打开预览」+ 可折叠源码），真正渲染在右侧分栏的 `side-pane/html-preview.tsx`。**fence 名是 `html-preview` 不是 `html`**：后者是所有人展示 HTML 源码时写的，抢了它就会把「给我一段能复制的代码」变成不可复制的预览卡。**沙箱口径是承重的**：`<iframe srcdoc sandbox="allow-scripts">` 且**绝不加 `allow-same-origin`**——两者同时给等于完全没有 sandbox，文档就能读本页 localStorage 里的 token。不用 `blob:` URL、不给「新窗口打开」，理由与 `attachments-block.tsx` 拒绝预览 HTML 的注释完全一样（blob 继承本页 origin）。回归护栏 `side-pane/html-preview.render.test.tsx` 逐条断言这些属性。**唯一的回传通道**（[spec](../../../docs/specs/20261008-html-preview-bridge.md)）：inline 预览（`bridge`，Mission 产物不开）的**预览副本**注入 `window.greenhouse.sendPrompt(text)`（`injectHtmlBridge`，下载件与打印件不注入），只认 `event.source === 本 iframe` 的消息，经 `requestComposerDraft({ append, fromPage })` 追加进输入框、**从不发送**，1 秒节流、2000 字截断；`ConversationPane` 对非主人忽略 `fromPage` 草稿。sandbox 令牌不变
 - `<MermaidBlock>` — ```mermaid fence 渲染成矢量图（流程/时序/状态/ER/甘特）。三条硬约束：**`mermaid` 只在首个图示出现时 `import('mermaid')`**（它是全仓最重的前端依赖，主 bundle 不为没用到的人付费，形状同 ChartBlock 的 chart.js）；**`securityLevel: 'strict'`**——图源是模型输出即不可信输入，strict 关掉 `click`/`href` 指令，图不会变成导航或脚本面；**解析失败回退成普通代码块**而不是空卡片——模型确实会写错语法，让用户看到它想画什么比看到一片空白强。主题色从 `--t-*` CSS 变量读进 `themeVariables`，字体读 `--font-sans`；普通矩形节点与时序参与者框用 `--radius-md`，保留菱形/胶囊等语义形状。颜色、字体、圆角写入 SVG，导出与预览一致；主题或品牌 token 变化时**重渲染**。数值对比仍走 `<ChartBlock>`，别用图示画柱状图
 - `<MissionArtifactsBlock>` — Mission 产物文件卡（```mission-artifacts fence，服务端写入的交付清单）；复用 `<FileAttachmentCard>`，下载走 canonical `/api/missions/.../download` 鉴权端点（旧 `/api/cloud-agent` 仅兼容）
 - `<AttachmentsBlock>` — 用户**输入**附件药丸（```attachments fence；```mission-attachments 是历史名，只读不再写）。刻意比产物卡轻：输入是「用户问了什么」的上下文，产物才是交付物，所以药丸渲染在用户气泡内、正文与时间戳之间。用户消息**不过 `parseSegments`**，只用 `splitAttachments()` 摘出这一种 fence。两种 handle：`id`=`chat_files` 行、`key`=mission 暂存 blob，各自走对应鉴权下载端点。图片/PDF 预览必须同时满足扩展名与响应 MIME allowlist（图片不含 SVG，PDF 仅 `application/pdf`）；文件名伪装成 png/pdf 但响应是 `text/html` 时拒绝预览。其它类型只下载。
+- **业务块 `stats` / `cards` / `steps` 与块按钮只写一份，在 `@greenhouse/ui/components/blocks/`**（`StatsBlock` / `CardsBlock` / `StepsBlock` / `BlockActions`，外壳 `RichBlockShell` 也在那里；[spec](../../../docs/specs/20261008-interactive-rich-blocks.md) D5）——web 与浏览器扩展共用，web 只经子路径 import（不走根 barrel），`app.css` 的 `@source` 扫描该目录。文案由宿主注入（`StepsBlock` 的 `copy`，web 用 `lib/rich-output.ts` 的 `useStepsCopy()`），卡片点开由宿主注入（`onOpenUrl` = `openCardUrl`：实体链接走侧栏 / peek，其它链接新标签）。`ConfirmBlock` 的按钮也是 `BlockActions`。
+- **块按钮**：`stats` / `cards` / `steps` 可带 `actions`（≤4），点击 = 把 `value` 作为下一条用户消息发出（`RichMarkdown` 的 `onBlockAction`，与 confirm 同一条通道），已选状态由下一条用户消息还原（`resolvedActionValue`，判定在共享的 `resolveBlockAction`）。按钮不直接执行任何操作。
+- `<RichBlockPending>`（`blocks/pending-block.tsx`）— 已登记富块还没写完时的占位（datatable 沿用表格骨架，其余是「正在生成…」标签 + 骨架），由共享解析器的 `pending` 段驱动。**只在 `<RichMarkdown streaming>` 时出现**（`StreamingMessageBubble` 传入）；落定的消息若停在未闭合的块里（不裁剪的落库路径如 `runAgentInSession`、或旧数据），`pending` 段的 `raw` 按普通 Markdown 渲染成代码块——否则占位会永远转圈。扩展的 `@greenhouse/ui` `RichMarkdown` 同一口径，移动端由 `live` 判定
 - 以上组件可独立使用，也可通过 `<RichMarkdown>` 自动解析 code fence 渲染
 
 ### Markdown 渲染
 - `<Markdown>` (`components/markdown.tsx`) — 基础 Markdown 渲染，支持 `compact` prop
   - 默认使用 `prose-base` 样式（宽松，适用于 wiki/文档）
   - `compact` 时使用 `prose-compact` 样式（紧凑，适用于聊天/Agent 消息）
-- `<RichMarkdown>` (`components/rich-markdown.tsx`) — `<Markdown>` 的组合增强层，自动解析 chart/datatable/confirm/mermaid/mission-artifacts code fence 为交互组件；普通 Markdown 仍由 `<Markdown>` 渲染。外层始终是 `.rich-markdown`，`className` 始终落在该外层；`compact` 必须同时控制 prose、富块外壳和块间距，禁止只压缩文本。
-- 流式内容一旦识别到未闭合的 `datatable` fence，必须立即隐藏原始 JSON 并渲染稳定表格占位；闭合且解析成功后原位替换成 `<DataTableBlock>`，禁止先泄露整段 code block 再跳变。
-- **富块的数据是模型写的，「能 JSON.parse」不等于「能渲染」**：`blocks/index.ts` 的 `parseBlockData()` 是唯一的把关处，逐块校验必备字段（datatable 要求 columns 是带 string `key` 的对象数组、`rows` 缺失/非数组一律归一成 `[]`；chart 要求 type 在白名单内且 datasets 都带 `data` 数组；confirm 要求 text 是字符串且 actions 非空），不合格的整块退回普通 code block。**不要把校验挪进组件**——组件里抛异常发生在 render 阶段，会连带卸载整条消息树：20260730 一个「模型写了 columns 就改主意、没写 rows」的回答让会话 c0b6bf83 直接打不开（`rows.length` 抛 TypeError）。`rich-markdown.tsx` 里每个富块还各自套一层 `<ErrorBoundary>`，兜住没预料到的形状（chart.js 构造抛错等），代价是那一块显示 `common.blockRenderFailed`、其余照常。渲染端只保证「不崩」——空表仍然会挂在真答案上方，所以**写作侧的规则同样是必需的**：「行数据没齐不开 fence、开了必须一次写完」写在共享的 `RICH_OUTPUT_GUIDE`（`packages/utils/src/prompts.ts`，见 `apps/api/src/profiles/agent-profiles.md` 的富文本输出一节）。两边都要有，别指望单靠一侧。
+- `<RichMarkdown>` (`components/rich-markdown.tsx`) — `<Markdown>` 的组合增强层，把共享注册表里的每种块（chart/datatable/confirm/mermaid/html-preview/mission-artifacts）渲染成交互组件；普通 Markdown 仍由 `<Markdown>` 渲染。渲染 switch 带 `never` 穷尽检查——注册表新增一种块而 web 没有渲染器时**编译失败**。外层始终是 `.rich-markdown`，`className` 始终落在该外层；`compact` 必须同时控制 prose、富块外壳和块间距，禁止只压缩文本。
+- **块注册表是唯一真源**（[spec](../../../docs/specs/20261008-rich-output-foundation.md)）：`@greenhouse/types/rich-output` 的 `RICH_BLOCKS` 一处登记，解析、流式 `pending` 占位、落库残块裁剪（`findIncompleteRichBlock`）、Markdown 替身（`flattenRichOutput` / `flattenSegment`，邮件/IM/复制为 HTML/PDF 导出共用）、`pnpm cli rich-output stats` 的诊断都由它派生。不要在任何地方另写一份 fence 名单或正则。
+- 流式内容一旦识别到**任何**已登记但未闭合的 fence（共享解析器给出 `{ type: 'pending', fence }`），必须立即隐藏原始 JSON / HTML 并渲染稳定占位；闭合且解析成功后原位替换，禁止先泄露整段 code block 再跳变。
+- **能力声明**：每轮 `POST /api/chat` 都带 `rich_blocks`（`lib/rich-output.ts` 的 `webRichBlocks()`，经 `ChatTurnEnvironment.richBlocks` / `openBotsChat`），服务端只教模型这些块。html-preview 只在侧栏宿主挂载（`hostMounted`）时声明——Assistant 浮层（离开 Chat 页时）与 Bots 页只能看源码，就不让模型写。
+- 复制为 HTML 与 PDF 导出先过 `flattenRichOutput(md, useFlattenNotes())` 再交给 `marked`：图表变表格、datatable 变 Markdown 表，不会把富块 JSON 原样贴出去。
+- GFM 任务列表：sanitizer 只放行 `type="checkbox"` 的 `<input>`，并改写成 `disabled` + `.task-list-checkbox`（其余属性全删、其它 input 一律删除）。
+- **富块的数据是模型写的，「能 JSON.parse」不等于「能渲染」**：注册表里每块的 `parse()`（`@greenhouse/types/rich-output`，`blocks/index.ts` 只是转出 barrel）是唯一的把关处，逐块校验必备字段（datatable 要求 columns 是带 string `key` 的对象数组、`rows` 缺失/非数组一律归一成 `[]`；chart 接受规范形状与两种宽松形状、未知 type 画成柱状图，但任何画不出来的点都整块拒收；confirm 要求 text 是字符串且 actions 非空），不合格的整块退回普通 code block。**不要把校验挪进组件**——组件里抛异常发生在 render 阶段，会连带卸载整条消息树：20260730 一个「模型写了 columns 就改主意、没写 rows」的回答让会话 c0b6bf83 直接打不开（`rows.length` 抛 TypeError）。`rich-markdown.tsx` 里每个富块还各自套一层 `<ErrorBoundary>`，兜住没预料到的形状（chart.js 构造抛错等），代价是那一块显示 `common.blockRenderFailed`、其余照常。渲染端只保证「不崩」——空表仍然会挂在真答案上方，所以**写作侧的规则同样是必需的**：「行数据没齐不开 fence、开了必须一次写完」写在共享提示词的写作纪律段（`packages/utils/src/prompts.ts` 的 `composeRichOutput`，见 `apps/api/src/profiles/agent-profiles.md` 的富文本输出一节）。两边都要有，别指望单靠一侧。
 - Chart/DataTable/Confirm 共用 `blocks/rich-block-shell.tsx` 的边框、表面、标题栏和 base/compact 密度；各块只保留画布、排序筛选、确认状态等自身行为，不得各写一套外壳或 `my-*` 外边距。
 - 聊天/Agent 场景用 `<RichMarkdown compact />`，wiki/详情页用 `<Markdown>`
 - **正文里的链接分三类，判据全在 `sanitizeMarkdownNode`**：① **实体引用**（`parseEntityUrl` 认得的记录深链，如 `#/projects/42`）→ 打 `entity-link` class + `data-entity-kind`/`data-entity-label`，点击被 `handleClick` 拦成 peek 浮层、**不导航**；② `user:<id>` mention → 既有 `kb-mention` 惰性 chip；③ 其余普通链接 → 按 `linkTarget` 决定原位导航还是新窗口。**`href` 是「这是哪条记录」的唯一真源**，data 属性只做标记和显示标签——别改成从属性里读 id，那是第二份事实。模型偶尔会漏掉 `#`（写成 `/projects/42`），renderer 会补回来；不补的话它会被当外链新开一个 hash router 不认识的地址。
@@ -127,14 +134,14 @@ components/
 ├── ui.tsx              # 原子级基础组件（全项目复用）
 ├── form/               # 可访问表单结构：字段、网格、分组、区段、操作、错误
 ├── settings/           # Settings 页面统一 Panel / Section
-├── blocks/             # 数据展示：DataTableBlock、ChartBlock、ConfirmBlock
+├── blocks/             # 富块渲染：DataTable/Chart/Confirm/Mermaid/HtmlPreview/MissionArtifacts/Pending
 ├── app/                # 应用外壳与模块页框：LoginScreen、AppSidebar、TopBar、ModulePageShell、ModulePage
 ├── project/            # 项目管理：TaskTree、BoardColumn、GanttView、TaskDrawer、CreateTaskDialog
 ├── agent-panel/        # Agent 助手面板
 ├── chat/               # 聊天：消息气泡、输入框、profile 选择器、流式消息、标注
 ├── agent-context.tsx   # 全局上下文 Provider
 ├── markdown.tsx        # 共享 Markdown 渲染器
-├── rich-markdown.tsx   # 增强版 Markdown（解析 chart/datatable/confirm code fence）
+├── rich-markdown.tsx   # 增强版 Markdown（按共享块注册表渲染所有富块）
 └── pdf-export.tsx      # PDF 导出工具
 
 stores/

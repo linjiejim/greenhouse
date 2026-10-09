@@ -24,6 +24,7 @@ import type {
   ReplayableStreamEvent,
 } from '@greenhouse/types/api';
 import { useUIStore } from '../../stores';
+import { webRichBlocks } from '../rich-output';
 
 type StreamEvent = StreamingEvent;
 
@@ -67,6 +68,9 @@ export async function* streamChat(
   if (environment?.clientActions?.actions.length) {
     body.client_action_scope_id = environment.clientActions.scopeId;
     body.client_actions = environment.clientActions.actions satisfies ClientActionDescriptor[];
+  }
+  if (environment?.richBlocks) {
+    body.rich_blocks = [...environment.richBlocks];
   }
 
   // Pass active workspace for per-user tool proxy
@@ -117,7 +121,8 @@ export async function openBotsChat({
 }): Promise<BotsChatOpenResult> {
   const messagePayload: ChatRequestMessage = { role: 'user', content: message };
   if (images && images.length > 0) messagePayload.images = images;
-  const body: ChatRequestBody = { session_id: sessionId, messages: [messagePayload] };
+  // The Bots page has no side pane, so it never asks for html-preview.
+  const body: ChatRequestBody = { session_id: sessionId, messages: [messagePayload], rich_blocks: webRichBlocks() };
   if (mentions && mentions.length > 0) body.mentions = mentions;
   const wsId = useUIStore.getState().activeWorkspace;
   if (wsId) body.workspace_id = wsId;

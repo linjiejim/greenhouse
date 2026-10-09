@@ -1,23 +1,17 @@
 /**
- * ConfirmBlock — renders interactive confirmation buttons from custom code fence.
+ * ConfirmBlock — a question with buttons, from the ```confirm fence.
  *
- * After clicking, buttons are disabled and show a "confirmed" state.
- * If no onConfirmAction callback is provided, buttons are rendered but non-interactive.
+ * The buttons are the shared BlockActions (the same ones stats / cards / steps
+ * carry): after a click they show the choice and the block mutes; without an
+ * `onAction` handler they render disabled.
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import type { ConfirmData } from './index';
-import { Button } from '../ui';
-import { Check } from '../../lib/icons';
-import { RichBlockShell, richBlockBodyClass } from './rich-block-shell';
+import { BlockActions } from '@greenhouse/ui/components/blocks/block-actions';
+import { RichBlockShell, richBlockBodyClass } from '@greenhouse/ui/components/blocks/rich-block-shell';
 
 // ─── Component ───────────────────────────────────────────
-
-const BUTTON_VARIANTS = {
-  primary: 'default',
-  secondary: 'outline',
-  destructive: 'destructive',
-} as const;
 
 export function ConfirmBlock({
   data,
@@ -32,22 +26,8 @@ export function ConfirmBlock({
   /** Persisted next user message, when it matches one of this block's values. */
   resolvedValue?: string;
 }) {
-  const persistedValue = data.actions.some((action) => action.value === resolvedValue) ? resolvedValue! : null;
-  const [localValue, setLocalValue] = useState<string | null>(null);
-  const selectedValue = persistedValue ?? localValue;
-  const submittingRef = useRef(false);
-
-  const handleClick = (value: string) => {
-    if (selectedValue || submittingRef.current) return;
-    submittingRef.current = true;
-    setLocalValue(value);
-    Promise.resolve(onAction?.(value)).catch(() => {
-      submittingRef.current = false;
-      setLocalValue(null);
-    });
-  };
-
-  const isResolved = selectedValue !== null;
+  const [pressed, setPressed] = useState<string | null>(null);
+  const isResolved = pressed !== null || data.actions.some((action) => action.value === resolvedValue);
 
   return (
     <RichBlockShell compact={compact} tone={isResolved ? 'muted' : 'accent'}>
@@ -59,43 +39,13 @@ export function ConfirmBlock({
         >
           {data.text}
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {data.actions.map((action) => {
-            const isSelected = selectedValue === action.value;
-            const variant = action.variant || 'secondary';
-
-            if (isResolved) {
-              return (
-                <Button
-                  key={action.value}
-                  disabled
-                  size="sm"
-                  variant="outline"
-                  className={`gap-1 disabled:opacity-100 ${
-                    isSelected
-                      ? 'border-primary-300 bg-primary-subtle-hover text-primary-fg-strong'
-                      : 'border-edge bg-surface-muted text-fg-faint'
-                  }`}
-                >
-                  {isSelected && <Check size={12} aria-hidden="true" />}
-                  {action.label}
-                </Button>
-              );
-            }
-
-            return (
-              <Button
-                key={action.value}
-                onClick={() => handleClick(action.value)}
-                disabled={!onAction}
-                size="sm"
-                variant={BUTTON_VARIANTS[variant]}
-              >
-                {action.label}
-              </Button>
-            );
-          })}
-        </div>
+        <BlockActions
+          actions={data.actions}
+          onAction={onAction}
+          resolvedValue={resolvedValue}
+          compact={compact}
+          onPressedChange={setPressed}
+        />
       </div>
     </RichBlockShell>
   );

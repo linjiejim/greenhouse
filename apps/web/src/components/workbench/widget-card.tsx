@@ -29,6 +29,7 @@ import { AlertTriangle, GripVertical, Lock, Pencil, RefreshCw, Trash2 } from '..
 import { useT } from '../../lib/i18n';
 import { resolveNavTarget } from '../../lib/workbench/nav-targets';
 import type { PlatformApplication } from '../../platform/catalog';
+import { formatKpi } from '@greenhouse/ui/lib/number-format';
 
 export interface WidgetState {
   loading?: boolean;
@@ -51,17 +52,6 @@ function rowsFrom(data: unknown, path: string | undefined): Record<string, unkno
   const value = path ? readPath(data, path) : data;
   if (!Array.isArray(value)) return [];
   return value.filter((row): row is Record<string, unknown> => typeof row === 'object' && row !== null);
-}
-
-function formatKpi(value: unknown): string | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return Math.abs(value) >= 1000 ? value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : String(value);
-  }
-  // Aggregates arrive as numeric strings from raw SQL often enough to be worth handling.
-  if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) {
-    return formatKpi(Number(value));
-  }
-  return null;
 }
 
 /** Column labels default to a humanized field name when the recipe omits one. */

@@ -48,8 +48,8 @@
 
 - `access` 只保留 `level: internal | hidden` 与 `rich_output`；会话要求由具体 runtime/route 决定，
   不在 Profile 里声明平行权限层。
-- **rich_output 的块格式说明只有一份**：`RICH_OUTPUT_GUIDE`（`packages/utils/src/prompts.ts`），由
-  `enrichSystemPrompt()` 追加。不要在任何 YAML 里另写一份。
+- **rich_output 的块格式说明只有一份**：`composeRichOutput({ blocks })`（`packages/utils/src/prompts.ts`），由
+  `enrichSystemPrompt(profile, { richBlocks })` 按请求界面声明的块追加。不要在任何 YAML 里另写一份。
 - **提示词不复述动态装配的工具规则**：`knowledge_mutation`、`tables_mutation` 等按用户权限装配的工具，
   其使用/确认/展示规则写在工具自身 `description` 里（随 function definition 下发）。internal profile 的
   prompt 只能点名 `is_global: true` 的工具或该 profile `tools:` 明确声明的工具，否则会对未分配用户留下虚假能力描述。

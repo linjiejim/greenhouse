@@ -12,6 +12,7 @@
 
 import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
 import type { ChatRequestBody, ClientActionDescriptor } from '@greenhouse/types/api';
+import { RICH_BLOCKS_DRAWN } from '@greenhouse/ui/components/blocks';
 import { BROWSER_ACTION_DESCRIPTORS } from './browser-actions';
 import { KNOWLEDGE_ACTION_DESCRIPTOR } from './knowledge-actions';
 
@@ -43,5 +44,7 @@ export function buildChatRequestBody(turn: {
     ...(turn.ambientContext ? { ambient_context: turn.ambientContext } : {}),
     client_action_scope_id: turn.scopeId,
     client_actions: [...PANEL_CLIENT_ACTIONS],
+    // Only what the panel can draw is taught to the model (no mermaid, no html-preview).
+    rich_blocks: [...RICH_BLOCKS_DRAWN],
   };
 }

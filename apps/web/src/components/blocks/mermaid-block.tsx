@@ -15,7 +15,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Copy, Download } from 'lucide-react';
-import { RichBlockShell, richBlockBodyClass } from './rich-block-shell';
+import { RichBlockShell, richBlockBodyClass } from '@greenhouse/ui/components/blocks/rich-block-shell';
 import { IconButton } from '../ui';
 import { useT } from '../../lib/i18n';
 

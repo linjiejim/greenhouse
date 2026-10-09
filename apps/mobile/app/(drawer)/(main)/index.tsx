@@ -340,6 +340,15 @@ function Conversation() {
     setAnnotations((a) => [...a, ...texts.map((text) => ({ id: nextId(), text }))]);
     focusInput();
   }, [pendingCount, focusInput, readOnly]);
+  // An html-preview page's sendPrompt: text INTO the composer, after what is typed — never sent.
+  const draftCount = useComposerBridge((s) => s.drafts.length);
+  useEffect(() => {
+    if (!draftCount) return;
+    const texts = useComposerBridge.getState().takeDrafts();
+    if (readOnly) return;
+    setInput((current) => [current.trim() ? current : '', ...texts].filter(Boolean).join('\n'));
+    focusInput();
+  }, [draftCount, focusInput, readOnly]);
 
   const addPicked = useCallback(async (assets: ImagePicker.ImagePickerAsset[]) => {
     for (const asset of assets) {
@@ -746,12 +755,7 @@ function Conversation() {
       ) : null}
       {convo.loadFailed ? (
         <View style={[styles.center, { top: headerHeight, bottom: composerH + composerBottom }]}>
-          <EmptyState
-            icon="alert"
-            title={t('chat.loadFailed')}
-            onRetry={() => void reload()}
-            style={styles.stretch}
-          />
+          <EmptyState icon="alert" title={t('chat.loadFailed')} onRetry={() => void reload()} style={styles.stretch} />
         </View>
       ) : null}
 
@@ -770,7 +774,9 @@ function Conversation() {
         ) : null}
         {/* Android: the input row sits on the page surface (Material, as in Messages) —
             iOS lets content flow under its glass */}
-        <View style={[{ paddingBottom: composerBottom }, Platform.OS === 'android' && { backgroundColor: c.background }]}>
+        <View
+          style={[{ paddingBottom: composerBottom }, Platform.OS === 'android' && { backgroundColor: c.background }]}
+        >
           {readOnly ? (
             <ReadOnlyBar onHeight={onComposerHeight} />
           ) : (

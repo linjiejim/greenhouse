@@ -2372,16 +2372,43 @@ Plus a confirm block:
     {"label": "Reject", "value": "no", "variant": "destructive"}
   ]
 }
+\`\`\`
+
+Stats, cards and steps (business blocks, shared with the browser extension):
+
+\`\`\`stats
+{"title": "October", "items": [
+  {"label": "New customers", "value": 128, "unit": "accts", "delta": "+12%", "trend": "up", "tone": "positive", "hint": "vs Sep"},
+  {"label": "Cost", "value": 42000, "unit": "USD", "delta": "+8%", "trend": "up", "tone": "negative"},
+  {"label": "Open tickets", "value": 17, "delta": "0", "trend": "flat"}
+], "actions": [{"label": "Break down by team", "value": "Break October cost down by team"}]}
+\`\`\`
+
+\`\`\`cards
+{"title": "Projects to watch", "items": [
+  {"title": "Site redesign", "url": "#/projects/42", "subtitle": "Owner Ann", "badges": [{"label": "3 days late", "tone": "danger"}], "fields": [{"label": "Due", "value": "10-15"}, {"label": "Progress", "value": "60%"}]},
+  {"title": "Pricing page", "url": "https://example.com", "subtitle": "Owner Ben", "badges": [{"label": "On track", "tone": "success"}]}
+]}
+\`\`\`
+
+\`\`\`steps
+{"title": "Launch plan", "items": [
+  {"title": "Requirements review", "status": "done", "time": "10-02", "detail": "Scope agreed"},
+  {"title": "Build", "status": "active", "detail": "Frontend 60%"},
+  {"title": "Vendor sign-off", "status": "blocked", "detail": "Waiting on legal"},
+  {"title": "Beta", "status": "skipped"},
+  {"title": "Acceptance", "status": "pending"}
+]}
 \`\`\``;
 
   return (
     <Section
       id="rich-markdown"
       title="Rich Markdown"
-      description="components/rich-markdown.tsx — Markdown composition layer with chart/datatable/confirm blocks that share the same base/compact density."
+      description="components/rich-markdown.tsx — Markdown composition layer: chart / datatable / confirm, plus the stats / cards / steps business blocks from @greenhouse/ui, all sharing one base/compact density."
     >
       <Card className="p-4">
-        <RichMarkdown content={sample} onConfirmAction={(v) => toast(`Action: ${v}`, 'info')} />
+        <RichMarkdown content={sample} onBlockAction={(v) => toast(`Action: ${v}`, 'info')} />
       </Card>
       <CodeSnippet
         code={`import { RichMarkdown } from '../components/rich-markdown';
@@ -2389,7 +2416,7 @@ Plus a confirm block:
 <RichMarkdown
   content={markdownWithBlocks}
   compact
-  onConfirmAction={(value) => handleAction(value)}
+  onBlockAction={(value) => handleAction(value)}
 />`}
       />
     </Section>

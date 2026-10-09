@@ -30,10 +30,12 @@ describe('MermaidBlock', () => {
     expect(html).toContain('Flow:');
   });
 
-  it('leaves an unclosed fence as a plain code block, not a diagram card', () => {
-    const html = renderToStaticMarkup(<RichMarkdown compact content={'```mermaid\nflowchart LR\n  A --> '} />);
+  it('holds an unclosed fence behind a placeholder instead of streaming its source', () => {
+    const html = renderToStaticMarkup(
+      <RichMarkdown compact streaming content={'```mermaid\nflowchart LR\n  A --> '} />,
+    );
 
-    expect(html).not.toContain('animate-skeleton');
-    expect(html).toContain('flowchart LR');
+    expect(html).toContain('animate-skeleton');
+    expect(html).not.toContain('flowchart LR');
   });
 });

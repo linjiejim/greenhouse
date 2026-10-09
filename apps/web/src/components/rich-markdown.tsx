@@ -1,9 +1,15 @@
 /**
  * RichMarkdown — enhanced markdown renderer with custom block support.
  *
- * Parses markdown content into segments, rendering:
+ * Parses markdown content into segments (the shared registry in
+ * @greenhouse/types/rich-output), rendering:
  * - Plain markdown via the existing <Markdown> component
- * - Custom blocks (chart, confirm, datatable) via specialized React components
+ * - Every registered block via its specialized React component (stats / cards /
+ *   steps come from @greenhouse/ui, shared with the browser extension) — the switch
+ *   below is exhaustive, so registering a block without a web renderer fails
+ *   to compile
+ * - A block still being streamed as a stable placeholder (`streaming` only — a
+ *   settled message that ends mid-block shows that fence as a code block)
  *
  * Drop-in replacement for <Markdown> in chat/agent contexts.
  * Wiki/source detail pages should continue using <Markdown> directly.
@@ -24,7 +30,12 @@ import type {
 } from './blocks/index';
 import { ChartBlock } from './blocks/chart-block';
 import { ConfirmBlock } from './blocks/confirm-block';
-import { DataTableBlock, DataTablePendingBlock } from './blocks/datatable-block';
+import { DataTableBlock } from './blocks/datatable-block';
+import { CardsBlock } from '@greenhouse/ui/components/blocks/cards-block';
+import { StatsBlock } from '@greenhouse/ui/components/blocks/stats-block';
+import { StepsBlock } from '@greenhouse/ui/components/blocks/steps-block';
+import { openCardUrl, useStepsCopy } from '../lib/rich-output';
+import { RichBlockPending } from './blocks/pending-block';
 import { HtmlPreviewBlock } from './blocks/html-preview-block';
 import { MermaidBlock } from './blocks/mermaid-block';
 import { MissionArtifactsBlock } from './blocks/mission-artifacts-block';
@@ -39,12 +50,21 @@ interface RichMarkdownProps {
   className?: string;
   /** Use compact (tight) variant for chat/agent messages. */
   compact?: boolean;
-  /** Callback for confirm block actions. If not provided, confirm buttons are rendered but disabled. */
-  onConfirmAction?: (value: string) => void | Promise<void>;
-  /** Persisted follow-up user message used to restore confirm selection after reload. */
-  resolvedConfirmValue?: string;
+  /**
+   * A block button was pressed (confirm, stats, cards, steps): send its value as
+   * the member's next message. Without it the buttons render disabled.
+   */
+  onBlockAction?: (value: string) => void | Promise<void>;
+  /** Persisted follow-up user message — restores which button was pressed after a reload. */
+  resolvedActionValue?: string;
   /** Where ordinary navigating links go; forwarded to <Markdown>. */
   linkTarget?: MarkdownLinkTarget;
+  /**
+   * The message is still streaming in. Only then does an unclosed block show its
+   * placeholder; in a settled message it renders as ordinary Markdown (a code
+   * block), since nothing will ever close it.
+   */
+  streaming?: boolean;
 }
 
 // ─── Component ───────────────────────────────────────────
@@ -53,9 +73,10 @@ export function RichMarkdown({
   content,
   className = '',
   compact,
-  onConfirmAction,
-  resolvedConfirmValue,
+  onBlockAction,
+  resolvedActionValue,
   linkTarget,
+  streaming = false,
 }: RichMarkdownProps) {
   const rawSegments = useMemo(() => parseSegments(content), [content]);
 
@@ -73,7 +94,10 @@ export function RichMarkdown({
       if (seg.type === 'markdown') {
         return seg.content === (prevSeg as MarkdownSegment).content ? prevSeg : seg;
       }
-      if (seg.type === 'datatable-pending') return prevSeg;
+      if (seg.type === 'pending') {
+        const prevPending = prevSeg as typeof seg;
+        return seg.fence === prevPending.fence && seg.raw === prevPending.raw ? prevSeg : seg;
+      }
       if (seg.type === 'mermaid' || seg.type === 'html-preview') {
         // These two carry `code`, not `data`. Falling through to the generic
         // compare below would read `undefined` on both sides and call every
@@ -98,9 +122,10 @@ export function RichMarkdown({
           key={i}
           segment={segment}
           compact={compact}
-          onConfirmAction={onConfirmAction}
-          resolvedConfirmValue={resolvedConfirmValue}
+          onBlockAction={onBlockAction}
+          resolvedActionValue={resolvedActionValue}
           linkTarget={linkTarget}
+          streaming={streaming}
         />
       ))}
     </div>
@@ -112,15 +137,17 @@ export function RichMarkdown({
 const MemoSegmentRenderer = React.memo(function SegmentRenderer({
   segment,
   compact,
-  onConfirmAction,
-  resolvedConfirmValue,
+  onBlockAction,
+  resolvedActionValue,
   linkTarget,
+  streaming,
 }: {
   segment: Segment;
   compact?: boolean;
-  onConfirmAction?: (value: string) => void | Promise<void>;
-  resolvedConfirmValue?: string;
+  onBlockAction?: (value: string) => void | Promise<void>;
+  resolvedActionValue?: string;
   linkTarget?: MarkdownLinkTarget;
+  streaming: boolean;
 }) {
   switch (segment.type) {
     case 'markdown':
@@ -139,8 +166,8 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
           <ConfirmBlock
             data={segment.data as ConfirmData}
             compact={compact}
-            onAction={onConfirmAction}
-            resolvedValue={resolvedConfirmValue}
+            onAction={onBlockAction}
+            resolvedValue={resolvedActionValue}
           />
         </BlockBoundary>
       );
@@ -152,8 +179,12 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
         </BlockBoundary>
       );
 
-    case 'datatable-pending':
-      return <DataTablePendingBlock compact={compact} />;
+    case 'pending':
+      return streaming ? (
+        <RichBlockPending fence={segment.fence} compact={compact} />
+      ) : (
+        <Markdown content={segment.raw} compact={compact} linkTarget={linkTarget} />
+      );
 
     case 'mermaid':
       return (
@@ -176,10 +207,58 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
         </BlockBoundary>
       );
 
-    default:
+    case 'stats':
+      return (
+        <BlockBoundary>
+          <StatsBlock
+            data={segment.data}
+            compact={compact}
+            onAction={onBlockAction}
+            resolvedValue={resolvedActionValue}
+          />
+        </BlockBoundary>
+      );
+
+    case 'cards':
+      return (
+        <BlockBoundary>
+          <CardsBlock
+            data={segment.data}
+            compact={compact}
+            onAction={onBlockAction}
+            resolvedValue={resolvedActionValue}
+            onOpenUrl={openCardUrl}
+          />
+        </BlockBoundary>
+      );
+
+    case 'steps':
+      return (
+        <BlockBoundary>
+          <StepsBlockWithCopy
+            data={segment.data}
+            compact={compact}
+            onAction={onBlockAction}
+            resolvedValue={resolvedActionValue}
+          />
+        </BlockBoundary>
+      );
+
+    case 'attachments':
+      // Turn INPUTS: drawn on the user's bubble (splitAttachments), never in a reply.
       return null;
+
+    default: {
+      const unhandled: never = segment;
+      return unhandled;
+    }
   }
 });
+
+/** The shared StepsBlock with this app's words for the five states. */
+function StepsBlockWithCopy(props: Omit<React.ComponentProps<typeof StepsBlock>, 'copy'>) {
+  return <StepsBlock {...props} copy={useStepsCopy()} />;
+}
 
 // ─── Per-block boundary ──────────────────────────────────
 

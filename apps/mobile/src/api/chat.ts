@@ -39,6 +39,7 @@ import { t } from '../lib/i18n';
 import { getApiBase } from '../store/stations';
 import { getAccessToken, getTokenStationId } from './token-storage';
 import { api, refreshTokens } from './client';
+import { MOBILE_RICH_BLOCKS } from '../chat/markdown/rich';
 
 /** A wire event; run streams stamp the replay cursor (`seq`) and `replayed`. */
 export type RunStreamEvent = StreamingEvent & { seq?: number; replayed?: boolean };
@@ -160,7 +161,8 @@ function parseLine(line: string): RunStreamEvent | null {
 
 /** Start a turn (POST /api/chat) and stream its events. */
 export async function* streamChat(args: StreamChatArgs): AsyncGenerator<RunStreamEvent> {
-  const body: Record<string, unknown> = { session_id: args.sessionId };
+  // Every turn says which Rich Output blocks the app draws; only those are taught.
+  const body: Record<string, unknown> = { session_id: args.sessionId, rich_blocks: [...MOBILE_RICH_BLOCKS] };
   if (args.message !== undefined) {
     body.messages = [
       {
@@ -246,6 +248,7 @@ export async function openBotsChat(args: {
   const body = {
     session_id: args.sessionId,
     messages: [message],
+    rich_blocks: [...MOBILE_RICH_BLOCKS],
     ...(args.mentions?.length ? { mentions: args.mentions } : {}),
   };
   let res: Awaited<ReturnType<typeof openAuthed>>;

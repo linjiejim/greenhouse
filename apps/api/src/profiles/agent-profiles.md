@@ -29,11 +29,22 @@ Profile `access` 只声明 `level: internal | hidden` 与 `rich_output`；不存
 
 ## 富文本输出（`rich_output`）
 
-`access.rich_output: true` 的 profile 由 `enrichSystemPrompt()`（`apps/api/src/profile.ts`）在
-system prompt 末尾追加 `composeRichOutput({ confirm: true })` —— chart / datatable / confirm
-三种 code fence 的写法与写作纪律。
+`access.rich_output: true` 的 profile 由 `enrichSystemPrompt()`（`apps/api/src/profiles/profile.ts`）在
+system prompt 末尾追加 `composeRichOutput({ blocks })` —— **只教发起本轮的界面画得出来的块**
+（[spec](../../../../docs/specs/20261008-rich-output-foundation.md)）：
 
-**只有一份副本，改一次即改全部**：`RICH_OUTPUT_GUIDE` 在 `packages/utils/src/prompts.ts`。
+- 客户端每轮在 `POST /api/chat` 带 `rich_blocks`（web Chat 页全部 8 块 + `html-preview-bridge`、浮层/Bots 页
+  没有侧栏所以去掉 html-preview 与 bridge——见 `webRichBlocks()`；浏览器扩展是 `RICH_BLOCKS_DRAWN` 的
+  chart/datatable/stats/cards/steps/confirm；移动端全部），`admitRichBlocks()` 与已知块名取交集。
+- 不带字段（老客户端）以及所有无人请求的路径（自动化、workflow、subagent、Bots 任务回报）用
+  `DEFAULT_CLIENT_BLOCKS`（今天的 5 块）。默认集的拼装结果与重构前**逐字一致**，由
+  `packages/utils/src/prompts.test.ts` 对 `__fixtures__/rich-output-guide.default.txt` 金样钉住。
+- 新块永远不进默认集：客户端声明了才教。Bots 引擎同理（`RunContext.richBlocks` → `buildStaticRules`）。
+- 能力名 `html-preview-bridge`（不是块）：web Chat 页与移动端声明，教模型在 html-preview 里用 `window.greenhouse?.sendPrompt(...)` 把文字交回输入框（[spec](../../../../docs/specs/20261008-html-preview-bridge.md)）。
+- 业务块 `stats` / `cards` / `steps`（[spec](../../../../docs/specs/20261008-interactive-rich-blocks.md)）各有一段说明，教了其中任一块时再追加「块按钮（actions）」一段：按钮 value 写成用户会说的一句话、只是可见的下一条消息，不直接执行操作。
+
+**只有一份副本，改一次即改全部**：每块一段说明（`RICH_BLOCK_GUIDES`）+ 常驻段 + 写作纪律，都在
+`packages/utils/src/prompts.ts`，按固定顺序拼装。
 `sprouty` 与 `eval-judge` 声明 `rich_output: true` 因此都拿到它；`desktop` 是 `false`，原样返回。
 Bot 从 sprouty 基座继承 `rich_output`（`profileFromBot`），因此也走同一份；身份段由 `enrichSystemPrompt` 放在最前。
 **不要在某个 YAML 里另写一份块格式说明**——两份副本必然漂移。

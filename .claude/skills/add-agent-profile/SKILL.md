@@ -89,8 +89,8 @@ system_prompt: |
 - **`model.id` 只是起点不是承诺**：模型是每轮的选择，落库进 `messages.model`；
   这个默认值服务的是 headless 路径（定时任务、eval、workflow 节点、子会话）
 - **没有 `extends`**——它只为"同一个 Agent、换个模型"而生，已随四预设一并删除
-- **`rich_output` 的块格式说明只有一份**：`RICH_OUTPUT_GUIDE`（`packages/utils/src/prompts.ts`），
-  由 `enrichSystemPrompt()` 追加，不要在 YAML 里另写
+- **`rich_output` 的块格式说明只有一份**：`composeRichOutput({ blocks })`（`packages/utils/src/prompts.ts`），
+  由 `enrichSystemPrompt()` 按本轮界面声明的 `rich_blocks` 追加（未声明 = `DEFAULT_CLIENT_BLOCKS`），不要在 YAML 里另写
 - **提示词不复述动态装配的工具规则**：按用户权限装配的工具（`knowledge_mutation`、`tables_mutation` 等）
   其使用 / 确认 / 展示规则写在工具自身 `description` 里。prompt 只能点名 `is_global: true` 的工具
   或本 profile `tools:` 明确声明的，否则会对未分配用户留下**虚假能力描述**
