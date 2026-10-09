@@ -2,7 +2,7 @@
  * Session routes — /api/sessions
  *
  * POST   /api/sessions                                — 创建新会话
- * GET    /api/sessions                                — 获取会话列表（支持status/limit/offset/include_eval/page_meta/scope筛选）
+ * GET    /api/sessions                                — 获取会话列表（支持status/limit/offset/include_eval/page_meta/scope/tag_id/channel/profile筛选）
  * GET    /api/sessions/:id                             — 获取会话详情（include_messages=0 可只取元数据）
  * GET    /api/sessions/:id/messages                    — 分页获取会话消息
  * POST   /api/sessions/:id/fork                        — 复制完整会话或复制到指定 Agent 回复
@@ -20,13 +20,19 @@
 import { Hono } from 'hono';
 import { getDb, SessionActiveRuntimeError } from '@greenhouse/db';
 import { SESSION_SCOPES, type SessionScope } from '@greenhouse/types/api';
-import { BOTS_SESSION_CHANNEL, BROWSER_SESSION_CHANNEL, defaultSessionListHiding } from '@greenhouse/types/session';
+import {
+  BOTS_SESSION_CHANNEL,
+  BROWSER_SESSION_CHANNEL,
+  defaultSessionListHiding,
+  matchesProfileRefs,
+} from '@greenhouse/types/session';
 import { getAuthUser } from '../auth/middleware.js';
 import { generateSessionTitle } from '../llm/title.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
 import { canAccessSession, canWriteSession } from '../sessions/access.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import { createOwnedSession, SessionCreationError } from '../sessions/creation.js';
+import { parseSessionProfileFilter, sessionProfileRefs } from '../sessions/profile-filter.js';
 import type { AppEnv } from '../app-env.js';
 import { deleteObjectAtKey } from '../storage/uploads.js';
 import { logger } from '@greenhouse/utils/logger';
@@ -92,7 +98,13 @@ const sessions = new Hono<AppEnv>()
       throw err;
     }
   })
-  /** GET /api/sessions — list sessions */
+  /**
+   * GET /api/sessions — list sessions.
+   *
+   * `profile=sprouty|bot:<id>` keeps one agent's conversations: every stored
+   * spelling of it (pinned `@<v>` versions, legacy ids that resolve to it — see
+   * sessions/profile-filter.ts); a malformed value is a 400.
+   */
   .get('/', async (c) => {
     const authUser = getAuthUser(c);
 
@@ -128,6 +140,17 @@ const sessions = new Hono<AppEnv>()
       return c.json({ error: 'Forbidden' }, 403);
     }
 
+    // `?profile=` (one agent's conversations, e.g. a Bot profile's history tab)
+    // narrows every query below in SQL — every stored spelling of that agent,
+    // pinned versions included — so pagination counts only matching rows.
+    const rawProfile = c.req.query('profile');
+    const profileFilter = rawProfile === undefined ? undefined : parseSessionProfileFilter(rawProfile);
+    if (profileFilter === null) {
+      return c.json({ error: 'profile must be "sprouty" or "bot:<id>"' }, 400);
+    }
+    const profileRefs = profileFilter ? await sessionProfileRefs(getDb(), authUser.id, profileFilter) : undefined;
+    const profileOpts = profileRefs ? { profileRefs } : {};
+
     // Workflow node/reviewer sessions are engine internals reachable only from a
     // run's Trace link, and Bots conversations live on their own surface
     // (/api/bots) — neither belongs in the generic session list.
@@ -140,6 +163,7 @@ const sessions = new Hono<AppEnv>()
       includeEval,
       channel,
       ...defaultSessionListHiding(channel),
+      ...profileOpts,
     };
 
     // The backfill below fetches rows one by one: same hide-by-default rule.
@@ -184,6 +208,7 @@ const sessions = new Hono<AppEnv>()
         status,
         includeEval,
         limit: SHARED_BACKFILL_LIMIT,
+        ...profileOpts,
       });
       const existingIds = new Set(list.map((s) => s.id));
       for (const s of sharedRows) {
@@ -213,9 +238,11 @@ const sessions = new Hono<AppEnv>()
           const accessible = authUser.role === 'super' || s.user_id === authUser.id || sharedIdSet.has(s.id);
           if (!accessible) continue;
           // Mirror the main query's status / eval-visibility filters — and its
-          // hiding: a Bots conversation filed into a group must not surface here.
+          // hiding: a Bots conversation filed into a group must not surface here,
+          // nor a pinned chat with another agent in a `?profile=` list.
           if (status ? s.status !== status : !includeEval && s.status === 'eval') continue;
           if (isHiddenByDefault(s)) continue;
+          if (profileRefs && !matchesProfileRefs(s.profile_id, profileRefs)) continue;
           list.push(s);
         }
         list.sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));

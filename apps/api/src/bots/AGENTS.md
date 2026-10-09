@@ -285,4 +285,6 @@ file input 就点它并接住弹出的文件选择框）、`wait {text?, timeout
 交给成员。
 
 **相关面**：`GET /api/auth/me/memories` 每行带 `bot_id` + `bot_name`（null = 用户级）；浏览器截图工具的
-结果是本会话的聊天文件（`/api/chat-files/<id>/content`，主人鉴权），不进公共上传区。
+结果是本会话的聊天文件（`/api/chat-files/<id>/content`，主人鉴权），不进公共上传区。与某个 Bot 的按会话聊天（聊天页的
+新上下文）走 `GET /api/sessions?scope=mine&profile=bot:<id>`（主 Bot 用 `sprouty`），固定版本与旧 id 一并算上，口径见
+[apps/api/src/AGENTS.md](../AGENTS.md)「会话列表的 profile 筛选」。

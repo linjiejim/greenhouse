@@ -75,6 +75,16 @@ export function defaultSessionListHiding(channel?: string | null): {
     : { excludeChannels: [...HIDDEN_SESSION_CHANNELS], excludeIdPrefixes: HIDDEN_SESSION_ID_PREFIXES };
 }
 
+/**
+ * Was a session run as one of these agent references — exactly, or as a pinned
+ * version of one (`<ref>@<v>`)? Never as a longer id: `bot:bot_1` does not match
+ * `bot:bot_12`. The in-memory twin of the session list's `profileRefs` SQL filter
+ * (packages/db `sessions.list`), for rows a route fetches one by one.
+ */
+export function matchesProfileRefs(profileId: string, refs: readonly string[]): boolean {
+  return refs.some((ref) => profileId === ref || profileId.startsWith(`${ref}@`));
+}
+
 export interface SessionRow {
   id: string;
   title: string | null;

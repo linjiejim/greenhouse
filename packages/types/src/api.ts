@@ -145,6 +145,16 @@ export const SESSION_SCOPES = ['mine', 'shared', 'team'] as const;
 export type SessionScope = (typeof SESSION_SCOPES)[number];
 
 /**
+ * `GET /api/sessions?profile=` — only the conversations run as one agent:
+ * `sprouty` (the member's main Bot) or `bot:<id>` (another of their Bots).
+ * Never a pinned `bot:<id>@<v>`: every version of the Bot matches. The server
+ * matches every stored spelling of that agent — pinned versions, the legacy ids
+ * that resolve to it — and answers anything else with a 400. Combines with every
+ * other list parameter (`scope`, `status`, `tag_id`, `limit` / `offset`, `page_meta`).
+ */
+export type SessionProfileFilter = 'sprouty' | `bot:${string}`;
+
+/**
  * Session as returned by the API — a subset of SessionRow,
  * excluding internal fields (user_id, app_id, channel).
  */

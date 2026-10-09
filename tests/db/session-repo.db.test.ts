@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { initDatabase, _resetProvider } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
-import type { MessageRow } from '@greenhouse/types/session';
+import { matchesProfileRefs, type MessageRow } from '@greenhouse/types/session';
 
 let db: DatabaseProvider;
 
@@ -554,6 +554,104 @@ describe('Session Repository', () => {
 
       expect(active.map((r) => r.id)).not.toContain(theirs.id);
       expect(archived.map((r) => r.id)).toContain(theirs.id);
+    });
+  });
+
+  // ─── Agent filter (GET /api/sessions?profile=) ─────────
+
+  describe('profileRefs filter', () => {
+    const SAGE = 'bot:bot_0123456789abcdef';
+
+    async function member(name: string) {
+      return db.users.create({
+        email: `${name}-${Date.now()}-${Math.random()}@profile.test`,
+        password_hash: 'h',
+        nickname: name,
+        role: 'team',
+      });
+    }
+
+    /** One session per profile id, oldest first, each a few ms apart so `updated_at` orders them. */
+    async function sessionsFor(userId: string, profileIds: string[]): Promise<Map<string, string>> {
+      const ids = new Map<string, string>();
+      for (const profileId of profileIds) {
+        await new Promise((resolve) => setTimeout(resolve, 3));
+        ids.set(profileId, (await db.sessions.create(profileId, profileId, userId)).id);
+      }
+      return ids;
+    }
+
+    it('matches a reference exactly or pinned, never a longer id, and reads `_` in a Bot id literally', async () => {
+      const alice = await member('alice');
+      await sessionsFor(alice.id, [
+        SAGE,
+        `${SAGE}@3`,
+        // A longer id that merely starts with the reference.
+        `${SAGE}0`,
+        `${SAGE}0@1`,
+        // `bot_` with the `_` as a LIKE wildcard would match this.
+        'bot:botX0123456789abcdef@2',
+        'bot:bot_fedcba9876543210',
+        'sprouty',
+      ]);
+
+      const rows = await db.sessions.list({ userId: alice.id, profileRefs: [SAGE], limit: 50 });
+      expect(rows.map((r) => r.profile_id)).toEqual([`${SAGE}@3`, SAGE]);
+
+      // The route's in-memory twin agrees with the SQL on every row.
+      const all = await db.sessions.list({ userId: alice.id, limit: 50 });
+      expect(all).toHaveLength(7);
+      expect(all.filter((r) => matchesProfileRefs(r.profile_id, [SAGE])).map((r) => r.id)).toEqual(
+        rows.map((r) => r.id),
+      );
+    });
+
+    it('takes every alias at once, combined with the owner, status and pagination', async () => {
+      const alice = await member('alice');
+      const bob = await member('bob');
+      const aliases = ['sprouty', 'team', 'default'];
+      const ids = await sessionsFor(alice.id, ['team', SAGE, 'sprouty', 'default', 'custom:7', 'sprouty']);
+      await sessionsFor(bob.id, ['sprouty', 'team']);
+      const archivedId = (await sessionsFor(alice.id, ['default'])).get('default')!;
+      await db.sessions.updateStatus(archivedId, 'archived');
+
+      const page1 = await db.sessions.list({ userId: alice.id, profileRefs: aliases, limit: 2, offset: 0 });
+      const page2 = await db.sessions.list({ userId: alice.id, profileRefs: aliases, limit: 2, offset: 2 });
+      const page3 = await db.sessions.list({ userId: alice.id, profileRefs: aliases, limit: 2, offset: 4 });
+      const listed = [...page1, ...page2, ...page3];
+
+      // Only alice's Sprouty conversations, newest first, each once — the page
+      // size counts matching rows only, so no page comes back short.
+      expect(page1).toHaveLength(2);
+      expect(page2).toHaveLength(2);
+      expect(page3).toHaveLength(1);
+      expect(listed.every((r) => r.user_id === alice.id && aliases.includes(r.profile_id))).toBe(true);
+      expect(new Set(listed.map((r) => r.id)).size).toBe(5);
+      expect(listed.map((r) => r.id)).not.toContain(ids.get(SAGE));
+      expect(listed.map((r) => r.id)).not.toContain(ids.get('custom:7'));
+      expect(listed[0]!.id).toBe(archivedId);
+
+      const active = await db.sessions.list({ userId: alice.id, profileRefs: aliases, status: 'active', limit: 50 });
+      expect(active.map((r) => r.id)).not.toContain(archivedId);
+      expect(active).toHaveLength(4);
+    });
+
+    it('matches nothing for an empty reference list', async () => {
+      const alice = await member('alice');
+      await sessionsFor(alice.id, ['sprouty', SAGE]);
+      expect(await db.sessions.list({ userId: alice.id, profileRefs: [], limit: 50 })).toEqual([]);
+    });
+
+    it('applies to the shared-with-me query as well', async () => {
+      const alice = await member('alice');
+      const bob = await member('bob');
+      const ids = await sessionsFor(bob.id, [SAGE, `${SAGE}@1`, 'sprouty']);
+      await db.sessionShares.createMany(
+        [...ids.values()].map((id) => ({ session_id: id, shared_with: alice.id, shared_by: bob.id })),
+      );
+
+      const shared = await db.sessions.listSharedWith(alice.id, { profileRefs: [SAGE], limit: 50 });
+      expect(shared.map((r) => r.profile_id)).toEqual([`${SAGE}@1`, SAGE]);
     });
   });
 });

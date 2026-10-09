@@ -187,6 +187,16 @@ export function normalizeProfileId(profileId?: string | null): string | undefine
   return profileId;
 }
 
+/**
+ * Every stored id that `normalizeProfileId` resolves to this one: the id itself
+ * plus the retired ids folded into it. A list filter needs them all — a
+ * conversation recorded as `team` is still a Sprouty conversation.
+ */
+export function profileIdAliases(profileId: string): string[] {
+  const retired = [...LEGACY_TEAM_PROFILE_IDS, ...LEGACY_DESKTOP_PROFILE_IDS];
+  return [profileId, ...retired.filter((id) => normalizeProfileId(id) === profileId)];
+}
+
 /** A retired `custom:<id>[@v]` reference — stored rows keep them; they resolve through `bots.legacy_custom_id`. */
 export interface CustomProfileReference {
   profileId: number;

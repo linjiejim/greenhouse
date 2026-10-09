@@ -39,6 +39,16 @@
 - **分享列表查询只有一份**：`db.sessions.listSharedWith()`。`scope=shared` 用它，无 scope 的回填也用它（原先是拿到 id 列表后逐个 `getById` 的 N+1）。它是 EXISTS 半连接不是 join —— 同一会话可能同时有直接分享和 `__team__` 分享，join 会把它返回两次。
 - **pin/分组回填只在 `mine` 与无 scope 下做**：归档整理是显式动作，优先级高于 scope；`shared`/`team` 是平铺列表，回填进去只会让人困惑。
 
+### 会话列表的 profile 筛选（`GET /api/sessions?profile=`，2026-10-10）
+
+Bot 资料页「对话」tab 的后端：只列与**一个** Agent 的按会话聊天（聊天页的新上下文，不是 Bots 永续线程）。
+
+- **取值只有两种**：`sprouty`（主 Bot）或 `bot:<id>`（不带 `@<v>`——每个版本都算）；其余一律 400（含 `team` 等旧 id、`custom:<n>`、空串）。词表是 `@greenhouse/types/api` 的 `SessionProfileFilter`。
+- **一个身份在 `profile_id` 里有好几种写法，筛选要全找到**（`sessions/profile-filter.ts` `sessionProfileRefs`）：固定版本 `bot:<id>@<v>`（自动化 / 无人值守）；`normalizeProfileId` 折进 `sprouty` 的旧 id（`profileIdAliases`：`team` / `default` / `sprouty-quick` …）；迁移来的自定义 Agent 的存量 `custom:<n>[@v]`（经 `legacy_custom_id`）；以及**调用者自己的 Sprouty Bot 的 id**——Web 从 Sprouty 资料页开新对话存的是 `bot:<它的 id>`，所以 `profile=sprouty` 与 `profile=bot:<我的 Sprouty id>` 结果相同。别人的 Sprouty id 只匹配它的 `bot:` 写法（`sprouty` 对每个成员解析成他**自己的** Sprouty）。
+- **前缀安全**：每个引用只按「等于」或「以 `<ref>@` 开头」匹配，`bot:bot_1` 不会匹配 `bot:bot_12`；LIKE 模式要过 `escapeLike`（Bot id 里有 `_`）。
+- **下推到 SQL**（`SessionListOpts.profileRefs`，`list` / `listSharedWith` 共用的 `sessionListConditions`），分页只数匹配行；别改成分页后再在内存里滤——页会变短、`has_more` 失真。与 `scope` / `status` / `tag_id` / `channel` / `page_meta` 正交，默认隐藏（Bots 线程、`bottask-` 子会话）照旧。
+- **回填同样守筛选**：无 scope 的分享回填带同一份 `profileRefs`；置顶/分组回填逐行取，用内存版 `matchesProfileRefs`（`@greenhouse/types/session`）跳过不匹配的。两份实现由 `routes/__tests__/session-list-profile.db.test.ts` 与 `tests/db/session-repo.db.test.ts` 对照。
+
 ### 个人资产的 scope 筛选
 
 Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset scope spec](../../../docs/specs/20260812-personal-asset-scope-tabs.md)。共通约束：`Team` 只给 super，三档互斥，外部资产带 `owner_nickname`；管理员跨用户查看不是“共享”。Tasks 的 `GET /api/prompts?scope=` 在服务端筛选，`team` 对普通成员 403；不传 scope 仍保持 Chat 选择器所需的“自己的 + global”。Automation 当前没有分享模型，Web 的 Shared 是明确空态；不要把 super 的全量 `/api/tasks` 响应归类为 Shared。

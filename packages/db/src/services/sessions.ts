@@ -78,6 +78,14 @@ export interface SessionListOpts {
   excludeChannels?: string[];
   /** Session id prefixes to hide (Bot background-task children, see HIDDEN_SESSION_ID_PREFIXES). */
   excludeIdPrefixes?: readonly string[];
+  /**
+   * Keep only sessions run as one of these agent references: each matches
+   * `profile_id` exactly or as a pinned version of it (`<ref>@<v>`), never as a
+   * longer id (`bot:bot_1` does not match `bot:bot_12`). The caller spells out
+   * every stored alias of the agent; an empty list matches nothing. In-memory
+   * twin: `matchesProfileRefs` (@greenhouse/types/session).
+   */
+  profileRefs?: readonly string[];
   taskId?: number; // filter by scheduled task (via metadata)
 }
 
@@ -219,6 +227,21 @@ function excludeIdPrefixConditions(prefixes: readonly string[] | undefined) {
 }
 
 /**
+ * `profile_id` is one of the references, or a pinned version of one. The
+ * version suffix is matched after a literal `@` and the reference is
+ * LIKE-escaped (Bot ids contain `_`), so a reference never matches a longer id.
+ */
+function profileRefsCondition(refs: readonly string[]) {
+  if (refs.length === 0) return sql`false`;
+  return (
+    or(
+      inArray(sessions.profile_id, [...refs]),
+      ...refs.map((ref) => like(sessions.profile_id, `${escapeLike(ref)}@%`)),
+    ) ?? sql`false`
+  );
+}
+
+/**
  * Status / channel / owner predicates shared by every session list query.
  *
  * `list` and `listSharedWith` must agree on what a status filter means, so the
@@ -233,6 +256,7 @@ function sessionListConditions(opts: SessionListOpts) {
     channel,
     excludeChannels,
     excludeIdPrefixes,
+    profileRefs,
     taskId,
   } = opts;
   const conditions = [];
@@ -243,6 +267,7 @@ function sessionListConditions(opts: SessionListOpts) {
   if (channel) conditions.push(eq(sessions.channel, channel));
   if (excludeChannels?.length) conditions.push(notInArray(sessions.channel, excludeChannels));
   conditions.push(...excludeIdPrefixConditions(excludeIdPrefixes));
+  if (profileRefs) conditions.push(profileRefsCondition(profileRefs));
   if (taskId) conditions.push(sql`${sessions.metadata}::jsonb @> ${JSON.stringify({ task_id: taskId })}::jsonb`);
   if (status && status !== 'all') {
     conditions.push(eq(sessions.status, status));
