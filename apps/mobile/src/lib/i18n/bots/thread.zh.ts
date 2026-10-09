@@ -9,6 +9,8 @@ export const botsThreadZh: typeof botsThreadEn = {
     handoff: '{from} 请 {to}：{brief}',
     handoffBare: '{from} 请 {to} 接手',
     handoffA11y: '{from} 把工作交给 {to}：{brief}',
+    handoffTitle: '交接',
+    handoffHint: '查看完整交接内容',
     newMessages: '新消息',
     needsYouJump: '需要你',
     latest: '回到最新',

@@ -11,6 +11,9 @@ export const botsThreadEn = {
     handoff: '{from} asked {to}: {brief}',
     handoffBare: '{from} asked {to} to take over',
     handoffA11y: '{from} handed the work to {to}: {brief}',
+    /** The hand-off sheet's title (app/bots/relay.tsx). */
+    handoffTitle: 'Hand-off',
+    handoffHint: 'Shows the whole brief',
     newMessages: 'New Messages',
     needsYouJump: 'Needs You',
     latest: 'Latest',
