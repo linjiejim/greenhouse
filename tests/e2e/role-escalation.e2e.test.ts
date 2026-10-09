@@ -98,6 +98,19 @@ describe('E2E: Admin Endpoint Protection', () => {
     expect(res.status).toBe(403);
   });
 
+  it('member cannot list or register external MCP servers', async () => {
+    // A registered server's tools reach every granted member's chat, and its
+    // URL is fetched from the API host — registering one is super-only.
+    const list = await fetch(`${BASE_URL}/api/admin/mcp-servers`, { headers: authHeaders(memberToken) });
+    expect(list.status).toBe(403);
+    const create = await fetch(`${BASE_URL}/api/admin/mcp-servers`, {
+      method: 'POST',
+      headers: authHeaders(memberToken),
+      body: JSON.stringify({ slug: 'probe', name: 'Probe', url: 'http://127.0.0.1:1/mcp' }),
+    });
+    expect(create.status).toBe(403);
+  });
+
   it('member cannot create users via admin API', async () => {
     const res = await fetch(`${BASE_URL}/api/admin/users`, {
       method: 'POST',
