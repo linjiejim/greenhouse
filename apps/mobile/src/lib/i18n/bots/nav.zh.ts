@@ -37,7 +37,7 @@ export const botsNavZh: typeof botsNavEn = {
     archivedEmptyHint: 'Bot 归档后，它的对话会留在这里，只读。',
     archivedFooter: '这里没有谁会再回复，记录仍可查看。',
     loadFailedTitle: '对话加载失败',
-    // the agent capsule (src/chat/profile-menu.tsx)
+    // "Name · Bot" in agent lists (src/chat/profile-menu.ts profileLabel)
     botSuffix: 'Bot',
   },
 };
