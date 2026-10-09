@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getToolIcon, Plug } from '../../lib/icons';
 import { summarizeToolInput, summarizeToolOutput, toolDisplayName } from './tool-call-card';
 
 describe('tool call summaries', () => {
@@ -13,6 +14,15 @@ describe('tool call summaries', () => {
       '"greenhouse trends" max=8',
     );
     expect(toolDisplayName('external_search')).toBe('Web search');
+  });
+
+  it('names the external MCP tool a call reached', () => {
+    expect(toolDisplayName('mcp_call')).toBe('External tools');
+    expect(
+      summarizeToolInput('mcp_call', { action: 'call', server: 'orders', tool: 'lookup_order', arguments: { id: 1 } }),
+    ).toBe('Call · orders/lookup_order');
+    expect(summarizeToolInput('mcp_call', { action: 'list' })).toBe('List');
+    expect(getToolIcon('mcp_call')).toBe(Plug);
   });
 
   it('only surfaces a useful count or error from generic output', () => {

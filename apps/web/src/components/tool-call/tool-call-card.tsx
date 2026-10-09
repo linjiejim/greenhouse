@@ -32,6 +32,12 @@ export function summarizeToolInput(name: string, input: unknown): string {
         const parts = [obj.size, refs ? `${refs} ref${refs > 1 ? 's' : ''}` : null].filter(Boolean);
         return `${parts.join(' · ')}${parts.length ? ' — ' : ''}"${String(obj.prompt || '').slice(0, 60)}…"`;
       }
+      case 'mcp_call': {
+        // Which external tool it reached, not the gateway's envelope.
+        const target = [obj.server, obj.tool].filter((part) => typeof part === 'string' && part).join('/');
+        const action = typeof obj.action === 'string' ? humanizeIdentifier(obj.action) : '';
+        return [action, target].filter(Boolean).join(' · ');
+      }
       default: {
         const action = typeof obj.action === 'string' ? humanizeIdentifier(obj.action) : '';
         const focus = [obj.query, obj.title, obj.keyword, obj.session_id, obj.project_id].find(
@@ -96,6 +102,7 @@ export function toolDisplayName(name: string): string {
     project_query: 'Projects',
     knowledge_query: 'Knowledge',
     tables_query: 'Tables',
+    mcp_call: 'External tools',
   };
   return aliases[name] ?? humanizeIdentifier(name);
 }
