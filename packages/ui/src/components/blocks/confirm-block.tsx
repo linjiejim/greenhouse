@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import type { ConfirmData } from './index';
+import { resolveBlockAction, type ConfirmData } from './index';
 import { BlockActions } from './block-actions';
 import { RichBlockShell, richBlockBodyClass } from './rich-block-shell';
 
@@ -25,7 +25,7 @@ export function ConfirmBlock({
   resolvedValue?: string;
   compact?: boolean;
 }) {
-  const resolved = data.actions.some((action) => action.value === resolvedValue);
+  const resolved = resolveBlockAction(data.actions, resolvedValue) !== null;
   return (
     <RichBlockShell compact={compact} tone={resolved ? 'muted' : 'accent'}>
       <div className={richBlockBodyClass(compact)}>

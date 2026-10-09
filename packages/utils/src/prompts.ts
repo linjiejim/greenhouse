@@ -26,10 +26,26 @@ export const REPLY_STYLE_RULE =
 // default set reproduces the pre-capability guide byte for byte
 // (__fixtures__/rich-output-guide.default.txt).
 
-const RICH_INTRO = `
-## 富文本输出格式
+const RICH_INTRO_HEADING = `
+## 富文本输出格式`;
+
+/**
+ * The opening line names only what this screen can actually draw: a screen
+ * that declared `['mermaid']` (or nothing) must not be told charts and tables
+ * work. With both chart and datatable taught it is the pre-capability wording,
+ * which the golden fixture pins.
+ */
+function richIntro(taught: ReadonlySet<string>): string {
+  if (taught.has('chart') && taught.has('datatable')) {
+    return `${RICH_INTRO_HEADING}
 
 前端支持在 Markdown 中嵌入特殊 code block 来渲染图表和数据表格。当内容适合可视化或交互呈现时，优先使用这些格式而非纯文本。`;
+  }
+  if (!Object.keys(RICH_BLOCK_GUIDES).some((block) => taught.has(block))) return RICH_INTRO_HEADING;
+  return `${RICH_INTRO_HEADING}
+
+前端支持在 Markdown 中嵌入下列特殊 code block 来渲染富内容。当内容适合可视化或交互呈现时，优先使用这些格式而非纯文本。`;
+}
 
 /** The how-to for each model-authored block, keyed by fence name. */
 export const RICH_BLOCK_GUIDES: Readonly<Record<string, string>> = {
@@ -181,7 +197,7 @@ const GUIDE_ORDER = ['chart', 'datatable', 'stats', 'cards', 'steps', 'mermaid',
  */
 export function composeRichOutput(opts: { blocks: readonly string[] }): string {
   const taught = new Set(opts.blocks);
-  const sections = [RICH_INTRO];
+  const sections = [richIntro(taught)];
   for (const block of GUIDE_ORDER) {
     if (taught.has(block)) sections.push(RICH_BLOCK_GUIDES[block]!);
     if (block === 'steps' && [...taught].some((name) => ACTION_BLOCKS.has(name))) sections.push(RICH_BLOCK_ACTIONS);

@@ -10,7 +10,7 @@
  */
 
 import React, { useRef, useState } from 'react';
-import type { BlockAction } from './index';
+import { resolveBlockAction, type BlockAction } from './index';
 import { Check } from '../../lib/icons';
 
 const BASE =
@@ -42,7 +42,7 @@ export function BlockActions({
   className = '',
   onPressedChange,
 }: BlockActionsProps) {
-  const persisted = resolvedValue && actions.some((action) => action.value === resolvedValue) ? resolvedValue : null;
+  const persisted = resolveBlockAction(actions, resolvedValue);
   const [localValue, setLocalValue] = useState<string | null>(null);
   const selected = persisted ?? localValue;
   const submittingRef = useRef(false);

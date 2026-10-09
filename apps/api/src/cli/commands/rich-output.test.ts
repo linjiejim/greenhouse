@@ -22,6 +22,15 @@ describe('rich-output stats', () => {
     expect(byModel.get('flash')?.has('python')).toBe(false);
   });
 
+  it('keeps adding to one tally across pages', () => {
+    const chart = '```chart\n{"labels":["a"],"values":[1]}\n```';
+    const byModel = tallyMessages([{ model: 'flash', content: chart }]);
+    const same = tallyMessages([{ model: 'flash', content: chart + '\n\n```chart\n{broken\n```' }], byModel);
+
+    expect(same).toBe(byModel);
+    expect(byModel.get('flash')?.get('chart')).toMatchObject({ total: 3, ok: 2, invalid: 1 });
+  });
+
   it('reads relative and absolute windows', () => {
     const now = new Date('2026-10-08T00:00:00Z');
     expect(parseSince('30d', now)).toBe('2026-09-08T00:00:00.000Z');

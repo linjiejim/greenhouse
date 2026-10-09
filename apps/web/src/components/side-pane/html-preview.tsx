@@ -91,6 +91,11 @@ const PRINT_BRIDGE = `<script>
 })();
 </script>`;
 
+/** True unless the browser can tell us the member has not just interacted. */
+export function hasTransientActivation(nav: Navigator = navigator): boolean {
+  return nav.userActivation ? nav.userActivation.isActive : true;
+}
+
 /** Filesystem-safe stem shared by both exports. */
 function fileStem(title?: string): string {
   return (title || 'preview').replace(/[^\w.-]+/g, '_');
@@ -113,12 +118,18 @@ export function HtmlPreview({
   useEffect(() => {
     if (!bridge) return;
     const fill = latestWithin<{ text: string; truncated: boolean }>(HTML_BRIDGE.throttleMs, ({ text, truncated }) => {
-      requestComposerDraft({ text, images: [], append: true, fromPage: true });
+      // Only say "added" when a composer took it (a viewer who cannot write declines).
+      if (!requestComposerDraft({ text, images: [], append: true, fromPage: true })) return;
       toast(truncated ? t('richBlocks.pageTextTruncated') : t('richBlocks.pageFilledComposer'), 'info');
     });
     const onMessage = (event: MessageEvent) => {
       // Only this preview's own frame — never another window pretending to be it.
       if (!frameRef.current || event.source !== frameRef.current.contentWindow) return;
+      // Only right after the member clicked or typed in the page: activation in
+      // a frame reaches this window too. Without a gesture a page could fill the
+      // composer on load or on a timer, into whatever the member is typing.
+      // Browsers without the API (Safari < 16.4) keep the old behaviour.
+      if (!hasTransientActivation()) return;
       const message = readHtmlBridgeMessage(event.data);
       if (message) fill.push(message);
     };

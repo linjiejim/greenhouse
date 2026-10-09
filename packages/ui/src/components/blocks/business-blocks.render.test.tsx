@@ -50,6 +50,17 @@ describe('StatsBlock', () => {
     expect(html).toContain('aria-pressed="true"');
     expect(html).toMatch(live);
   });
+
+  it('restores the choice whatever whitespace the stored message kept (same rule as mobile)', () => {
+    const html = renderToStaticMarkup(
+      createElement(StatsBlock, {
+        data: { items: [{ label: 'a', value: 1 }], actions: ACTIONS },
+        onAction: () => {},
+        resolvedValue: '  Export it as CSV\n',
+      }),
+    );
+    expect(html).toContain('aria-pressed="true"');
+  });
 });
 
 describe('CardsBlock', () => {
