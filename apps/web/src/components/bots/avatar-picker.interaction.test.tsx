@@ -1,9 +1,9 @@
 /**
  * @vitest-environment happy-dom
  *
- * The Bot look editor: fifteen static species chips + four moods. A pick writes
- * `plant` (+ its nearest legacy colour) or the mood as `faceStyle`, and never
- * drops the rest of the stored avatar.
+ * The Bot look editor: sixteen static species chips + seven colours (no
+ * expression — a face follows state). A pick writes `plant` (+ its nearest
+ * legacy colour) or `tint`, and never drops the rest of the stored avatar.
  */
 
 import { act, createElement } from 'react';
@@ -42,7 +42,7 @@ function mount(value: AvatarConfig, extra: { templateKey?: string | null; stable
 }
 
 const chip = (plant: string) => host.querySelector<HTMLButtonElement>(`button[data-plant="${plant}"]`)!;
-const moodChip = (mood: string) => host.querySelector<HTMLButtonElement>(`button[data-mood="${mood}"]`)!;
+const tintChip = (tint: string) => host.querySelector<HTMLButtonElement>(`button[data-tint="${tint}"]`)!;
 
 describe('<AvatarPicker/>', () => {
   it('offers all sixteen species as static, named chips', () => {
@@ -81,7 +81,7 @@ describe('<AvatarPicker/>', () => {
     mount({ color: 'ocean', accessories: ['magnifier'] }, { templateKey: 'analyst', stableId: 'bot_1' });
     expect(chip('clover').getAttribute('aria-pressed')).toBe('true');
     expect(chip('echeveria').getAttribute('aria-pressed')).toBe('false');
-    expect(host.querySelector('[data-testid="bots-avatar-caption"]')!.textContent).toBe('Clover · Calm');
+    expect(host.querySelector('[data-testid="bots-avatar-caption"]')!.textContent).toBe('Clover · Natural');
   });
 
   it('writes plant + nearest legacy colour and keeps every other key', () => {
@@ -95,10 +95,28 @@ describe('<AvatarPicker/>', () => {
     });
   });
 
-  it('writes the mood as faceStyle and drops a mood key that would override it', () => {
-    const onChange = mount({ plant: 'fern', mood: 'drowsy' });
-    expect(moodChip('drowsy').getAttribute('aria-pressed')).toBe('true');
-    act(() => moodChip('soft').click());
-    expect(onChange).toHaveBeenCalledWith({ plant: 'fern', faceStyle: 'happy' });
+  it('offers the chosen plant in every colour, and writes the tint over any stored mood', () => {
+    const onChange = mount({ plant: 'fern', mood: 'drowsy', faceStyle: 'sleepy' });
+    const chips = [...host.querySelectorAll<HTMLButtonElement>('[data-testid="plant-picker-tint"] button')];
+    expect(chips.map((button) => button.dataset.tint)).toEqual([
+      'plant',
+      'sky',
+      'violet',
+      'rose',
+      'coral',
+      'gold',
+      'teal',
+    ]);
+    expect(tintChip('plant').getAttribute('aria-pressed')).toBe('true');
+    expect(host.querySelector('[data-testid="plant-picker-mood"]')).toBeNull(); // no expression to pick
+    act(() => tintChip('rose').click());
+    expect(onChange).toHaveBeenCalledWith({ plant: 'fern', mood: 'drowsy', faceStyle: 'sleepy', tint: 'rose' });
+  });
+
+  it("drops the key when going back to the plant's own colour", () => {
+    const onChange = mount({ plant: 'fern', tint: 'sky' });
+    expect(tintChip('sky').getAttribute('aria-pressed')).toBe('true');
+    act(() => tintChip('plant').click());
+    expect(onChange).toHaveBeenCalledWith({ plant: 'fern' });
   });
 });

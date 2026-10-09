@@ -1,14 +1,15 @@
 /**
- * PlantPicker — the species grid + resting mood shared by both avatar editors
+ * PlantPicker — the species grid + colour shared by both avatar editors
  * (Bot AvatarPicker, Agent Appearance; plant-avatar spec §10.7).
  *
- * Fifteen species chips at 32px, static (a picker is a list: nothing moves), each
- * named by its localised plant name; then the four resting moods. Callers own
- * the preview and write the choice back with `withPlant` / `withMood`
- * (lib/plant-avatar), which keep every other stored avatar key.
+ * Sixteen species chips at 32px, static (a picker is a list: nothing moves), each
+ * named by its localised plant name; then the colours — the chosen plant in each
+ * (its own, then six hues). No expression: a face follows what the Bot is doing.
+ * Callers own the preview and write the choice back with `withPlant` / `withTint`,
+ * which keep every other stored avatar key.
  */
 
-import { PLANT_IDS, PLANT_MOODS, type PlantId, type PlantMood } from '@greenhouse/types';
+import { PLANT_IDS, PLANT_TINTS, type PlantId, type PlantTint } from '@greenhouse/types';
 import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
 import { useT } from '../lib/i18n';
 
@@ -25,14 +26,14 @@ const SPECIES_SELECTED = 'bg-primary-subtle ring-2 ring-primary-500';
 
 export function PlantPicker({
   plant,
-  mood,
+  tint,
   onPlantChange,
-  onMoodChange,
+  onTintChange,
 }: {
   plant: PlantId;
-  mood: PlantMood;
+  tint: PlantTint;
   onPlantChange: (plant: PlantId) => void;
-  onMoodChange: (mood: PlantMood) => void;
+  onTintChange: (tint: PlantTint) => void;
 }) {
   const t = useT();
   return (
@@ -69,29 +70,30 @@ export function PlantPicker({
       </div>
 
       <div>
-        <span className={GROUP_LABEL}>{t('plantAvatar.moodLabel')}</span>
+        <span className={GROUP_LABEL}>{t('plantAvatar.tintLabel')}</span>
         <div
           className="flex flex-wrap gap-1"
           role="group"
-          aria-label={t('plantAvatar.moodLabel')}
-          data-testid="plant-picker-mood"
+          aria-label={t('plantAvatar.tintLabel')}
+          data-testid="plant-picker-tint"
         >
-          {PLANT_MOODS.map((id) => {
-            const selected = id === mood;
+          {PLANT_TINTS.map((id) => {
+            const selected = id === tint;
+            const name = t(`plantAvatar.tint.${id}`);
             return (
               <button
                 key={id}
                 type="button"
                 aria-pressed={selected}
-                data-mood={id}
-                onClick={() => onMoodChange(id)}
-                className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
-                  selected
-                    ? 'border-primary-edge bg-primary-subtle font-medium text-primary-fg-strong'
-                    : 'border-edge text-fg-muted hover:bg-surface-muted hover:text-fg-secondary'
+                aria-label={name}
+                title={name}
+                data-tint={id}
+                onClick={() => onTintChange(id)}
+                className={`rounded-full p-0.5 transition-colors ${
+                  selected ? SPECIES_SELECTED : 'hover:bg-surface-muted hover:ring-1 hover:ring-primary-edge'
                 }`}
               >
-                {t(`plantAvatar.mood.${id}`)}
+                <PlantAvatar plant={plant} avatar={{ tint: id }} stableId={plant} size="sm" animate={false} />
               </button>
             );
           })}

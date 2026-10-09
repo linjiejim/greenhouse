@@ -53,7 +53,7 @@ import { ArtifactCard, ArtifactCardActions } from '../components/chat/artifact-c
 import { MermaidBlock } from '../components/blocks/mermaid-block';
 import { InlineEditCell } from '../components/tables';
 import type { ChartData, DataTableData } from '../components/blocks/index';
-import { PLANT_IDS, PLANT_MOODS, PLANT_STATES, type PlantId, type PlantState } from '@greenhouse/types';
+import { PLANT_IDS, PLANT_STATES, PLANT_TINTS, type PlantId, type PlantState } from '@greenhouse/types';
 import { PlantAvatar, PlantAvatarStack } from '@greenhouse/ui/components/plant-avatar';
 import { PlantPicker } from '../components/plant-picker';
 import { useT } from '../lib/i18n';
@@ -2192,10 +2192,10 @@ function PlantAvatarSection() {
               ))}
             </DemoRow>
             <DemoRow>
-              {PLANT_MOODS.map((mood) => (
-                <div key={mood} className="flex flex-col items-center gap-1">
-                  <PlantAvatar plant={plant} avatar={{ mood }} stableId={plant} size="md" animate={false} />
-                  <CodeLabel>{mood}</CodeLabel>
+              {PLANT_TINTS.map((tint) => (
+                <div key={tint} className="flex flex-col items-center gap-1">
+                  <PlantAvatar plant={plant} avatar={{ tint }} stableId={plant} size="md" animate={false} />
+                  <CodeLabel>{tint}</CodeLabel>
                 </div>
               ))}
             </DemoRow>
@@ -2204,7 +2204,7 @@ function PlantAvatarSection() {
       </SubSection>
       <SubSection title="Picker (both editors)">
         <div className="max-w-md">
-          <PlantPicker plant={plant} mood="calm" onPlantChange={setPlant} onMoodChange={() => undefined} />
+          <PlantPicker plant={plant} tint="plant" onPlantChange={setPlant} onTintChange={() => undefined} />
         </div>
       </SubSection>
       <SubSection title="Stacks — −6px at 24px, compact glyph LOD, sized +N; the speaking Bot moves first">
