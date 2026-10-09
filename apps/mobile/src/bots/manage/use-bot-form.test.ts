@@ -115,9 +115,8 @@ describe('pre-fill', () => {
 
   it('custom (or an unknown / non-gallery template) is blank with a plant nobody wears', () => {
     for (const template of [undefined, 'custom', 'sprouty', 'chief', 'nope']) {
-      const init = ready(resolveBotForm({ template, inviteTo: 'g1' }, data()));
+      const init = ready(resolveBotForm({ template }, data()));
       expect(init.templateKey).toBeNull();
-      expect(init.inviteTo).toBe('g1');
       expect(init.values).toMatchObject({ name: '', role: '', description: '', instructions: '' });
       const plant = legacyToPlant(init.values.avatar);
       expect([sprouty, sage].map(botPlant)).not.toContain(plant);

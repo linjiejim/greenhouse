@@ -1,15 +1,13 @@
 /**
- * The behaviour behind a conversation's info sheet (app/bots/info.tsx) and the
- * invite sheet (spec docs/specs/20261008-mobile-bots.md §2.5.7): the
- * conversation's detail (`GET /api/bots/conversations/:id?limit=1` — the detail
- * rides on a one-message page) and the two changes made there, each applied at
- * once:
+ * A Bot's DM as its profile shows it (./profile-tabs.tsx — what it remembers
+ * lately, the shared notes, the Bots that joined): the conversation's detail
+ * (`GET /api/bots/conversations/:id?limit=1` — the detail rides on a
+ * one-message page) and the one change made there: remove a guest (confirmed
+ * first) → `DELETE …/members/:botId`.
  *
- *  - remove a guest (confirmed first) → `DELETE …/members/:botId`;
- *  - invite a Bot as a guest → `POST …/members` (`already_member` counts as done).
- *
- * Nothing else is set here: Bots hand work to each other whenever it helps (no
- * switch), and group chats — with their name, rules and lead — are retired.
+ * Nothing else is set here: Bots bring each other in whenever it helps (no
+ * switch, and no manual invite since 2026-10), and group chats — with their
+ * name, rules and lead — are retired.
  *
  * Writes are optimistic; the server's answer (the fresh detail) replaces the
  * guess, a refusal restores what was there and says so (`alertError`). Every
@@ -20,12 +18,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  addConversationMember,
-  getConversation,
-  removeConversationMember,
-  type BotsWrite,
-} from '../../api/bots';
+import { getConversation, removeConversationMember, type BotsWrite } from '../../api/bots';
 import { useT } from '../../lib/i18n';
 import { realtime } from '../../realtime';
 import type { BotConversationDetail } from '../../shared/bots';
@@ -64,6 +57,7 @@ export function useConversationInfo(c: string) {
   useEffect(() => {
     setDetail(null);
     setLoad('loading');
+    if (!c) return undefined;
     void reload();
     return realtime.on((event) => {
       if (event.type === 'resync' || (event.type === 'bots:conversation' && event.sessionId === c)) void reload();
@@ -115,25 +109,5 @@ export function useConversationInfo(c: string) {
     [c, t, write],
   );
 
-  /** Adds a Bot (a guest in a DM); true when it is in the conversation now. */
-  const invite = useCallback(
-    async (botId: string): Promise<boolean> => {
-      const name = useBots.getState().byId[botId]?.name ?? '';
-      const result = await addConversationMember(c, botId);
-      if (!result.ok && result.code !== 'already_member') {
-        alertError(
-          result.code === 'member_limit' ? t('bots.manage.max6') : t('bots.manage.inviteFailed', { name }),
-          result.code === 'member_limit' ? undefined : result.message || undefined,
-        );
-        return false;
-      }
-      if (result.ok) setDetail(result.value);
-      void useBots.getState().loadConversations();
-      toast(t('bots.manage.invited', { name }), 'userPlus');
-      return true;
-    },
-    [c, t],
-  );
-
-  return { load, detail, reload, remove, invite };
+  return { load, detail, reload, remove };
 }

@@ -1,29 +1,19 @@
 /**
- * Membership rules behind the conversation-info and invite sheets
- * (./member-model.ts — the pure half of ./use-conversation-info.ts; spec
- * docs/specs/20261008-mobile-bots.md §2.5.7): who can be removed, who can be
- * invited, and the shared notes' order. A conversation is a Bot's DM with
+ * Membership and notes rules behind a Bot's profile (./member-model.ts — the
+ * pure half of ./use-conversation-info.ts and ./profile-tabs.tsx): who can be
+ * removed, and the shared notes' order. A conversation is a Bot's DM with
  * guests; an old group is a closed record.
  */
 
 import { describe, expect, it } from 'vitest';
-import type { BotConversationDetail, BotMemberView, BotSharedNoteView, BotView } from '../../shared/bots';
-import {
-  canInviteMore,
-  inviteCandidates,
-  memberLabel,
-  memberRemovable,
-  orderedNotes,
-  sortedMembers,
-  withoutMember,
-} from './member-model';
+import type { BotConversationDetail, BotMemberView, BotSharedNoteView } from '../../shared/bots';
+import { memberRemovable, orderedNotes, sortedMembers, withoutMember } from './member-model';
 
 const member = (bot_id: string, role: BotMemberView['role'], position: number): BotMemberView => ({
   bot_id,
   role,
   position,
 });
-const bot = (id: string, status: BotView['status'] = 'active') => ({ id, status }) as BotView;
 
 function detail(over: Partial<BotConversationDetail>): BotConversationDetail {
   return {
@@ -67,24 +57,7 @@ describe('memberRemovable', () => {
   });
 });
 
-describe('inviting', () => {
-  it('offers active Bots not already here, up to six members, never into a closed group', () => {
-    const dm = detail({});
-    expect(inviteCandidates([bot('a'), bot('d'), bot('e', 'archived')], dm).map((b) => b.id)).toEqual(['d']);
-    expect(canInviteMore(dm)).toBe(true);
-    const full = detail({ members: ['1', '2', '3', '4', '5', '6'].map((id, i) => member(id, 'guest', i)) });
-    expect(canInviteMore(full)).toBe(false);
-    expect(canInviteMore(closedGroup())).toBe(false);
-  });
-});
-
 describe('members', () => {
-  it('labels archived Bots as archived, everyone else by role', () => {
-    expect(memberLabel(member('a', 'owner', 0), bot('a'))).toBe('owner');
-    expect(memberLabel(member('a', 'owner', 0), bot('a', 'archived'))).toBe('archived');
-    expect(memberLabel(member('a', 'guest', 0), undefined)).toBe('guest');
-  });
-
   it('sorts by seat and drops a removed guest', () => {
     const dm = detail({ members: [member('g', 'guest', 1), member('a', 'owner', 0)] });
     expect(sortedMembers(dm.members).map((m) => m.bot_id)).toEqual(['a', 'g']);

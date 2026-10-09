@@ -1,5 +1,5 @@
 /**
- * `/bots/bot-form?botId=&template=&request=&inviteTo=` — create a Bot (from a
+ * `/bots/bot-form?botId=&template=&request=` — create a Bot (from a
  * gallery template or custom), edit one, or edit a Bot another Bot proposed
  * (a `bot_create` card's 先改一下) before accepting it (spec
  * docs/specs/20261008-mobile-bots.md §2.5.7). A SwiftUI Form sheet; Android:
@@ -65,9 +65,9 @@ type Chrome = React.ComponentProps<typeof FormChrome>;
  * proposal, or a Bot made for a conversation, belongs to the conversations.
  */
 export default function BotFormRoute() {
-  const { request, inviteTo } = useLocalSearchParams<{ request?: string; inviteTo?: string }>();
+  const { request } = useLocalSearchParams<{ request?: string }>();
   return (
-    <BotsRouteGate kind={request || inviteTo ? 'threads' : 'identity'} latched>
+    <BotsRouteGate kind={request ? 'threads' : 'identity'} latched>
       <BotFormSheet />
     </BotsRouteGate>
   );
@@ -75,12 +75,11 @@ export default function BotFormRoute() {
 
 function BotFormSheet() {
   const t = useT();
-  const params = useLocalSearchParams<{ botId?: string; template?: string; request?: string; inviteTo?: string }>();
+  const params = useLocalSearchParams<{ botId?: string; template?: string; request?: string }>();
   const source = useBotFormSource({
     botId: params.botId || undefined,
     template: params.template || undefined,
     requestId: params.request || undefined,
-    inviteTo: params.inviteTo || undefined,
   });
   // ✕ / ✓ for the ready form (handed up by BotFormSections: nav chrome can't sit among the Form's
   // SwiftUI children).

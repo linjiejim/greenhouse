@@ -56,8 +56,6 @@ export interface BotFormInit {
   bot: BotView | null;
   /** The `bot_create` card being edited. */
   request: BotRequestView | null;
-  /** Join this conversation once created (Invite → "New Bot…"). */
-  inviteTo: string | null;
 }
 
 /** The route's params, as `/bots/bot-form` receives them. */
@@ -66,7 +64,6 @@ export interface BotFormParams {
   /** A gallery key, or `custom` (= no template). */
   template?: string;
   requestId?: string;
-  inviteTo?: string;
 }
 
 export type BotFormSource =
@@ -135,7 +132,7 @@ export function resolveBotForm(
   },
 ): BotFormSource {
   if (!data.botsLoaded) return { status: 'loading' };
-  const base = { bot: null, request: null, inviteTo: null };
+  const base = { bot: null, request: null };
   if (params.requestId) {
     const request = data.requests.get(params.requestId);
     if (!request) return data.pendingChecked ? { status: 'missing' } : { status: 'loading' };
@@ -168,7 +165,6 @@ export function resolveBotForm(
       mode: 'create',
       values: template ? templateValues(template, data.lang) : customValues(data.bots.map(botPlant)),
       templateKey: template?.key ?? null,
-      inviteTo: params.inviteTo || null,
     },
   };
 }

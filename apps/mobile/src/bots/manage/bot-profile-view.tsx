@@ -1,62 +1,64 @@
 /**
- * A Bot's profile — the body of the `/bots/profile` sheet and of the
- * Settings → My Bots → Bot page (`presentation`), spec
- * docs/specs/20261008-mobile-bots.md §2.5.7. Content-first, so a plain RN
- * `ScrollView` with the list kit (Contacts-card layout), not a Form:
+ * A Bot's profile — the body of the `/bots/profile` sheet (the thread's title
+ * opens it) and of the Settings → My Bots → Bot page (`presentation`).
+ * Everything about one Bot in one place (2026-10: it absorbed the thread's
+ * "Conversation Info"; "Invite a Bot" is gone — Bots bring each other in):
  *
+ *  - bar: ✎ 新对话 (a fresh chat with this Bot, `profile=bot:<id>` / `sprouty`,
+ *    never its ongoing thread) beside 编辑 (`/bots/bot-form?botId=`);
  *  - hero: the plant (it breathes while the screen is focused; an archived Bot
- *    sleeps), name, role (no version / date — bookkeeping, not identity);
- *  - actions: 发消息 (its DM — opened, or made with `POST /api/bots/conversations`;
- *    hidden when we came from that DM or Bots threads are off) and 新对话 (a
- *    fresh chat with this Bot, `profile=bot:<id>` / `sprouty`, never its
- *    ongoing thread); an archived Bot only offers 查看对话 (its read-only DM);
- *  - purpose, instructions (four lines + 显示全部);
- *  - what it alone remembers (`GET /api/bots/:id/memories`, active / dormant):
- *    touch and hold → 忘掉这条 (also a VoiceOver action), removed at once (a
- *    404 means already gone);
- *  - archive: never Sprouty (a footnote says why); otherwise confirmed, then
- *    `DELETE /api/bots/:id` — its conversation stays, read-only.
+ *    sleeps), name, role; 发消息 (its DM — opened, or made with
+ *    `POST /api/bots/conversations`; hidden when we came from that DM or Bots
+ *    threads are off); an archived Bot only offers 查看对话;
+ *  - a segmented control over five tabs (./profile-tabs.tsx): 概览 (instructions
+ *    first) · 记忆 · 笔记 · 定时 · 对话 — `tab` picks the first one shown (the
+ *    thread's "summarized · View" opens 记忆).
  *
- * The navigation bar's 编辑 opens `/bots/bot-form?botId=` over it. Navigating
- * to a thread / new chat always `dismissTo`s home (closing this sheet, or the
- * whole Settings modal).
+ * Navigating to a thread / new chat always `dismissTo`s home (closing this
+ * sheet, or the whole Settings modal).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { Stack, useIsFocused, useRouter } from 'expo-router';
-import { archiveBot, createConversation, deleteBotMemory, listBotMemories } from '../../api/bots';
-import { useT } from '../../lib/i18n';
+import { archiveBot, createConversation } from '../../api/bots';
+import { useT, type TranslationKey } from '../../lib/i18n';
 import { isSproutyBot, type BotView } from '../../shared/bots';
-import type { BotMemoryView } from '../../shared/bots-wire';
-import { makeStyles, space, squircle, typo, useTheme, weight } from '../../theme';
+import { makeStyles, space, typo, useTheme } from '../../theme';
 import { NativeButton } from '../../ui/button';
-import { Icon, Spinner } from '../../ui/core';
 import { alertError, confirmAction } from '../../ui/dialogs';
 import { EmptyState, LoadingState } from '../../ui/empty';
-import { ListCard, ListRow, ListSection, ListSectionFooter, ListSectionHeader } from '../../ui/list';
-import { NativeMenu, type MenuItem } from '../../ui/menu';
+import { Segmented } from '../../ui/segmented';
 import { toast } from '../../ui/toast';
+import { toolbarIcon } from '../../ui/toolbar-icon';
 import { useBotsEnabled } from '../availability';
 import { openNewChat, openThread } from '../nav';
 import { useBots } from '../store';
 import { BotAvatar } from '../ui/bot-avatar';
+import {
+  ChatsTab,
+  MemoryTab,
+  NotesTab,
+  OverviewTab,
+  PROFILE_TABS,
+  ScheduleTab,
+  type ProfileTab,
+} from './profile-tabs';
 import { useBotDirectory } from './use-bot-directory';
-
-/** Instructions longer than this read as "more than six lines" and fold. */
-const FOLD_LINES = 4;
-const FOLD_CHARS = 160;
 
 export function BotProfileView({
   botId,
   from,
   presentation,
+  tab,
 }: {
   botId: string;
   /** The conversation the profile was opened from (its DM hides 发消息). */
   from?: string;
   /** `sheet` — /bots/profile; `page` — /settings/bot (the name is the bar title). */
   presentation: 'sheet' | 'page';
+  /** The tab shown first (default 概览). */
+  tab?: ProfileTab;
 }) {
   const t = useT();
   const bot = useBots((s) => s.byId[botId]);
@@ -93,10 +95,20 @@ export function BotProfileView({
       </>
     );
   }
-  return <Profile bot={bot} from={from} presentation={presentation} />;
+  return <Profile bot={bot} from={from} presentation={presentation} tab={tab} />;
 }
 
-function Profile({ bot, from, presentation }: { bot: BotView; from?: string; presentation: 'sheet' | 'page' }) {
+function Profile({
+  bot,
+  from,
+  presentation,
+  tab: initialTab,
+}: {
+  bot: BotView;
+  from?: string;
+  presentation: 'sheet' | 'page';
+  tab?: ProfileTab;
+}) {
   const t = useT();
   const router = useRouter();
   const focused = useIsFocused();
@@ -106,7 +118,7 @@ function Profile({ bot, from, presentation }: { bot: BotView; from?: string; pre
   const archived = bot.status === 'archived';
   const main = isSproutyBot(bot);
   const [opening, setOpening] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [tab, setTab] = useState<ProfileTab>(initialTab ?? 'overview');
 
   const dm = bot.dm_session_id;
   const showMessage = botsOn && !archived && (!dm || dm !== from);
@@ -154,13 +166,26 @@ function Profile({ bot, from, presentation }: { bot: BotView; from?: string; pre
     router.back();
   }, [bot.id, bot.name, router, t]);
 
-  const instructions = bot.instructions.trim();
-  const folds = instructions.split('\n').length > FOLD_LINES || instructions.length > FOLD_CHARS;
+  const tabs = useMemo(
+    () =>
+      PROFILE_TABS.map((value) => ({
+        value,
+        label: t(TAB_LABEL[value]),
+      })),
+    [t],
+  );
 
   return (
     <>
       <Stack.Screen options={{ title: presentation === 'page' ? bot.name : '' }} />
+      {/* New Chat beside Edit: a fresh conversation with it, never its ongoing thread */}
       <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          hidden={archived}
+          icon={toolbarIcon('compose')}
+          accessibilityLabel={t('bots.manage.newChat')}
+          onPress={newChat}
+        />
         <Stack.Toolbar.Button
           hidden={archived}
           onPress={() => router.push({ pathname: '/bots/bot-form', params: { botId: bot.id } })}
@@ -177,221 +202,59 @@ function Profile({ bot, from, presentation }: { bot: BotView; from?: string; pre
           {bot.role ? <Text style={styles.role}>{bot.role}</Text> : null}
         </View>
 
-        <View style={styles.actions}>
-          {archived ? (
-            dm && botsOn ? (
+        {archived ? (
+          dm && botsOn ? (
+            <View style={styles.actions}>
               <NativeButton
                 label={t('bots.manage.viewChat')}
                 icon="msg"
                 onPress={() => openThread(router, { c: dm, title: bot.name }, 'dismissTo')}
               />
-            ) : null
-          ) : (
-            <>
-              {showMessage ? (
-                <NativeButton
-                  label={t('bots.manage.message')}
-                  icon="msg"
-                  variant="prominent"
-                  loading={opening}
-                  onPress={() => void message()}
-                />
-              ) : null}
-              <NativeButton label={t('bots.manage.newChat')} icon="compose" onPress={newChat} />
-            </>
-          )}
-        </View>
-
-        {bot.description.trim() ? <TextSection title={t('bots.manage.purpose')} text={bot.description.trim()} /> : null}
-        {instructions ? (
-          <TextSection
-            title={t('bots.manage.instructions')}
-            text={instructions}
-            lines={folds && !expanded ? FOLD_LINES : undefined}
-            toggle={
-              folds
-                ? {
-                    label: expanded ? t('bots.manage.showLess') : t('bots.manage.showAll'),
-                    onPress: () => setExpanded((v) => !v),
-                  }
-                : undefined
-            }
-          />
-        ) : null}
-
-        <Memories bot={bot} />
-
-        {main ? (
-          <ListSectionFooter text={t('bots.manage.mainBot', { name: bot.name })} style={styles.closing} />
-        ) : !archived ? (
-          <View style={styles.archive}>
-            <NativeButton label={t('bots.manage.archive')} icon="archive" destructive onPress={() => void archive()} />
+            </View>
+          ) : null
+        ) : showMessage ? (
+          <View style={styles.actions}>
+            <NativeButton
+              label={t('bots.manage.message')}
+              icon="msg"
+              variant="prominent"
+              loading={opening}
+              onPress={() => void message()}
+            />
           </View>
         ) : null}
+
+        <Segmented value={tab} options={tabs} onChange={setTab} style={styles.tabs} />
+
+        {tab === 'overview' ? (
+          <OverviewTab bot={bot} main={main} onArchive={() => void archive()} />
+        ) : tab === 'memory' ? (
+          <MemoryTab bot={bot} />
+        ) : tab === 'notes' ? (
+          <NotesTab bot={bot} />
+        ) : tab === 'schedule' ? (
+          <ScheduleTab bot={bot} main={main} />
+        ) : (
+          <ChatsTab bot={bot} main={main} />
+        )}
       </ScrollView>
     </>
   );
 }
 
-/** A titled text card (purpose, instructions) — optionally folded with a 显示全部 / 收起 link. */
-function TextSection({
-  title,
-  text,
-  lines,
-  toggle,
-}: {
-  title: string;
-  text: string;
-  lines?: number;
-  toggle?: { label: string; onPress: () => void };
-}) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  return (
-    <View style={styles.section}>
-      <ListSectionHeader title={title} />
-      <ListCard style={styles.card}>
-        <Text style={styles.body} numberOfLines={lines} selectable={lines === undefined}>
-          {text}
-        </Text>
-        {toggle ? (
-          <Pressable onPress={toggle.onPress} accessibilityRole="button" hitSlop={space.sm} style={styles.toggle}>
-            <Text style={styles.toggleText}>{toggle.label}</Text>
-          </Pressable>
-        ) : null}
-      </ListCard>
-    </View>
-  );
-}
-
-/** What this Bot alone remembers about the member — every item can be forgotten. */
-function Memories({ bot }: { bot: BotView }) {
-  const t = useT();
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  const [memories, setMemories] = useState<BotMemoryView[] | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  const load = useCallback(async () => {
-    setFailed(false);
-    const result = await listBotMemories(bot.id);
-    if (!result.ok) {
-      setFailed(true);
-      return;
-    }
-    setMemories(result.value.filter((row) => row.status === 'active' || row.status === 'dormant'));
-  }, [bot.id]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const forget = useCallback(
-    async (memory: BotMemoryView) => {
-      setMemories((rows) => rows?.filter((row) => row.id !== memory.id) ?? null);
-      const result = await deleteBotMemory(bot.id, memory.id);
-      // 404: already gone — what the member asked for.
-      if (result.ok || result.status === 404) {
-        toast(t('bots.manage.forgotten'), 'check');
-        return;
-      }
-      alertError(t('bots.manage.forgetFailed'), result.message || undefined);
-      void load();
-    },
-    [bot.id, load, t],
-  );
-
-  const items = useMemo<MenuItem[]>(
-    () => [{ id: 'forget', title: t('bots.manage.forget'), icon: 'trash', destructive: true }],
-    [t],
-  );
-
-  const header = t('bots.manage.memories');
-  if (memories === null) {
-    return (
-      <View style={styles.section}>
-        <ListSectionHeader title={header} />
-        {failed ? (
-          <ListCard>
-            <ListRow title={t('bots.manage.memoriesFailed')} onPress={() => void load()} last />
-          </ListCard>
-        ) : (
-          <ListCard style={styles.pending}>
-            <Spinner />
-          </ListCard>
-        )}
-      </View>
-    );
-  }
-  return (
-    <ListSection header={header} footer={t('bots.manage.memoriesFooter', { name: bot.name })}>
-      {memories.length === 0 ? (
-        <ListRow title={t('bots.manage.noMemories')} />
-      ) : (
-        memories.map((memory) => (
-          <MemoryRow key={memory.id} memory={memory} items={items} onForget={() => void forget(memory)} />
-        ))
-      )}
-    </ListSection>
-  );
-}
-
-function MemoryRow({
-  memory,
-  items,
-  onForget,
-  last,
-}: {
-  memory: BotMemoryView;
-  items: MenuItem[];
-  onForget: () => void;
-  /** Injected by ListSection. */
-  last?: boolean;
-}) {
-  const t = useT();
-  const { colors: c } = useTheme();
-  return (
-    <NativeMenu trigger="longPress" items={items} onSelect={(id) => id === 'forget' && onForget()}>
-      <ListRow
-        title={memory.title}
-        subtitle={memory.content}
-        subtitleLines={4}
-        titleLines={2}
-        accessory={memory.pinned ? <Icon name="pin" size={13} color={c.tertiaryLabel} /> : 'none'}
-        // the pin glyph is decorative: say it; and Forget is in the actions rotor
-        accessibilityLabel={[memory.title, memory.content, memory.pinned ? t('bots.nav.pinnedA11y') : null]
-          .filter(Boolean)
-          .join(', ')}
-        accessibilityActions={[{ name: 'forget', label: t('bots.manage.forget') }]}
-        onAccessibilityAction={(e) => {
-          if (e.nativeEvent.actionName === 'forget') onForget();
-        }}
-        last={last}
-      />
-    </NativeMenu>
-  );
-}
+const TAB_LABEL = {
+  overview: 'bots.profile.tabOverview',
+  memory: 'bots.profile.tabMemory',
+  notes: 'bots.profile.tabNotes',
+  schedule: 'bots.profile.tabSchedule',
+  chats: 'bots.profile.tabChats',
+} as const satisfies Record<ProfileTab, TranslationKey>;
 
 const useStyles = makeStyles((c) => ({
   content: { paddingBottom: space.xxxl },
   hero: { alignItems: 'center', paddingTop: space.lg, paddingHorizontal: space.margin, gap: space.xs },
   name: { ...typo.title2, color: c.label, textAlign: 'center', marginTop: space.sm },
   role: { ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center' },
-  actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: space.md,
-    paddingHorizontal: space.margin,
-    paddingTop: space.lg,
-    paddingBottom: space.xxl,
-  },
-  section: { marginBottom: space.xxl },
-  card: { padding: space.margin, gap: space.sm, ...squircle },
-  body: { ...typo.body, color: c.label },
-  toggle: { alignSelf: 'flex-start' },
-  toggleText: { ...typo.subheadline, fontWeight: weight.semibold, color: c.accentText },
-  pending: { alignItems: 'center', paddingVertical: space.lg },
-  archive: { alignItems: 'center', paddingTop: space.sm },
-  closing: { textAlign: 'center' },
+  actions: { alignItems: 'center', paddingHorizontal: space.margin, paddingTop: space.lg },
+  tabs: { marginHorizontal: space.margin, marginTop: space.xl, marginBottom: space.lg },
 }));

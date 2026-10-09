@@ -28,6 +28,7 @@ import type {
   BotConversationDetail,
   BotConversationSummary,
   BotMessage,
+  BotSharedNoteView,
   BotRequestDecision,
   BotRequestStatus,
   BotRequestView,
@@ -174,7 +175,7 @@ export function listConversations(): Promise<BotsRead<BotConversationSummary[]>>
   return read('/api/bots/conversations', (body) => (body as { conversations: BotConversationSummary[] }).conversations);
 }
 
-/** One id → that Bot's DM (created if needed); 2–6 → a new group. */
+/** One Bot's DM — created if needed (one id only: groups are retired, 400 `groups_retired`). */
 export function createConversation(input: {
   bot_ids: string[];
   title?: string;
@@ -207,19 +208,6 @@ function withMessageRole(message: BotMessage): BotMessage {
   return role === 'user' || role === 'system' || role === 'assistant' ? message : { ...message, role: 'assistant' };
 }
 
-/** DMs cannot change `title` / `lead_bot_id` (400). */
-export function updateConversation(
-  sessionId: string,
-  patch: { title?: string | null; description?: string; lead_bot_id?: string; allow_bot_chat?: boolean },
-): Promise<BotsWrite<BotConversationDetail>> {
-  return call(`/api/bots/conversations/${enc(sessionId)}`, jsonInit('PATCH', patch), conversationOf);
-}
-
-/** Invite a Bot (a guest in a DM). 409 `already_member`, 400 `member_limit`. */
-export function addConversationMember(sessionId: string, botId: string): Promise<BotsWrite<BotConversationDetail>> {
-  return call(`/api/bots/conversations/${enc(sessionId)}/members`, jsonInit('POST', { bot_id: botId }), conversationOf);
-}
-
 /** A DM's owner cannot be removed (400 `cannot_remove_owner`). */
 export function removeConversationMember(sessionId: string, botId: string): Promise<BotsWrite<BotConversationDetail>> {
   return call(`/api/bots/conversations/${enc(sessionId)}/members/${enc(botId)}`, jsonInit('DELETE'), conversationOf);
@@ -233,6 +221,42 @@ export async function markConversationRead(sessionId: string): Promise<boolean> 
 
 function conversationOf(body: unknown): BotConversationDetail {
   return (body as { conversation: BotConversationDetail }).conversation;
+}
+
+// ─── Shared notes (a conversation's) ─────────────────────
+
+/** Add a note (title ≤ 80, body ≤ 2000) — the member's own (no author Bot). */
+export function addNote(sessionId: string, note: { title: string; body?: string }): Promise<BotsWrite<BotSharedNoteView>> {
+  return call(`/api/bots/conversations/${enc(sessionId)}/notes`, jsonInit('POST', note), noteOf);
+}
+
+export function updateNote(
+  sessionId: string,
+  noteId: number,
+  patch: { title?: string; body?: string; status?: 'open' | 'done'; pinned?: boolean },
+): Promise<BotsWrite<BotSharedNoteView>> {
+  return call(`/api/bots/conversations/${enc(sessionId)}/notes/${noteId}`, jsonInit('PATCH', patch), noteOf);
+}
+
+/** 404 = already gone. */
+export function deleteNote(sessionId: string, noteId: number): Promise<BotsWrite<void>> {
+  return call(`/api/bots/conversations/${enc(sessionId)}/notes/${noteId}`, jsonInit('DELETE'), nothing);
+}
+
+function noteOf(body: unknown): BotSharedNoteView {
+  return (body as { note: BotSharedNoteView }).note;
+}
+
+// ─── A Bot's private reference folder ────────────────────
+
+export interface BotFilesView {
+  folder: { id: number; name: string; url: string } | null;
+  /** Its documents (≤ 100), `url` an in-app entity link (`#/knowledge/doc/<id>-<slug>`). */
+  docs: Array<{ id: number; doc_id: string; title: string; url: string; updated_at: string }>;
+}
+
+export function listBotFiles(botId: string): Promise<BotsRead<BotFilesView>> {
+  return read(`/api/bots/${enc(botId)}/files`, whole<BotFilesView>);
 }
 
 // ─── Background tasks ────────────────────────────────────

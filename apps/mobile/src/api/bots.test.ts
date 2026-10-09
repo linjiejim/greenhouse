@@ -246,15 +246,16 @@ describe('Bots writes', () => {
     });
   });
 
-  it('void writes, membership and read receipts', async () => {
+  it('void writes, notes and read receipts', async () => {
     apiMock.mockResolvedValueOnce(json(200, { ok: true }));
     expect(await bots.archiveBot('bot_1')).toEqual({ ok: true, value: undefined });
     expect(apiMock).toHaveBeenLastCalledWith('/api/bots/bot_1', { method: 'DELETE' });
-    apiMock.mockResolvedValueOnce(json(200, { conversation: { session_id: 's1', members: [] } }));
-    expect(await bots.addConversationMember('s1', 'bot_2')).toEqual({
-      ok: true,
-      value: { session_id: 's1', members: [] },
-    });
+    apiMock.mockResolvedValueOnce(json(201, { note: { id: 7, title: 'Ship it' } }));
+    expect(await bots.addNote('s 1', { title: 'Ship it' })).toEqual({ ok: true, value: { id: 7, title: 'Ship it' } });
+    expect(apiMock.mock.calls.at(-1)?.[0]).toBe('/api/bots/conversations/s%201/notes');
+    apiMock.mockResolvedValueOnce(json(200, { note: { id: 7, status: 'done' } }));
+    expect(await bots.updateNote('s1', 7, { status: 'done' })).toEqual({ ok: true, value: { id: 7, status: 'done' } });
+    expect(apiMock.mock.calls.at(-1)?.[1]).toMatchObject({ method: 'PATCH', body: JSON.stringify({ status: 'done' }) });
     apiMock.mockResolvedValueOnce(json(200, { ok: true }));
     expect(await bots.markConversationRead('s1')).toBe(true);
     apiMock.mockRejectedValueOnce(new TypeError('offline'));

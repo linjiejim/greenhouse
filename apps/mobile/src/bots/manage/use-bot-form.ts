@@ -12,7 +12,7 @@
  *    check (the server's rules, vendored), plant / colour picks written through
  *    `withPlant` / `withTint` (no expression to pick — a face follows state),
  *    dirty / ✓, and `save`:
- *      create → `POST /api/bots` (+ join `inviteTo`), then the new DM to open;
+ *      create → `POST /api/bots`, then the new DM to open;
  *      edit → `PATCH /api/bots/:id` with only what changed, toast 已保存;
  *      proposal → `useBots.decide(approve + bot)`, so the card in the thread
  *      flips with it (a card settled elsewhere just closes the sheet).
@@ -28,9 +28,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { addConversationMember, createBot, updateBot } from '../../api/bots';
+import { createBot, updateBot } from '../../api/bots';
 import { useT } from '../../lib/i18n';
-import type { BotConversationDetail, BotView } from '../../shared/bots';
+import type { BotView } from '../../shared/bots';
 import { useAuth } from '../../store/auth';
 import { usePrefs } from '../../store/prefs';
 import { alertError } from '../../ui/dialogs';
@@ -48,7 +48,6 @@ import { botsEnabledNow } from '../availability';
 import { mergeRequests } from '../requests';
 import { useBots } from '../store';
 import { validateBotName, type BotNameIssue } from '../vendor/bot-name';
-import { botsById, conversationTitle } from '../vendor/web-helpers';
 import { useBotDirectory } from './use-bot-directory';
 import {
   botFormCanSave,
@@ -208,7 +207,7 @@ export function useBotForm(
         refused(result.code, result.message, 'bots.manage.createFailed');
         return { ok: false };
       }
-      return await afterCreate(result.value.bot, result.value.dm_session_id, init.inviteTo, t);
+      return await afterCreate(result.value.bot, result.value.dm_session_id, t);
     },
     [init, refused, t],
   );
@@ -272,37 +271,19 @@ export function useBotForm(
 
 /**
  * A Bot exists now. Learn it (so the thread it opens has its name and face),
- * then: join the conversation it was made for, or open its new DM. Joining is
- * a separate step — if it fails, say exactly that (never "create failed",
- * which would invite a second Create that can only hit "name taken").
+ * then open its new DM.
  */
 async function afterCreate(
   bot: BotView,
   dmSessionId: string | null,
-  inviteTo: string | null,
   t: ReturnType<typeof useT>,
 ): Promise<BotFormSaveResult> {
   const store = useBots.getState();
   await store.loadBots();
   void store.loadConversations();
-  if (inviteTo) {
-    const joined = await addConversationMember(inviteTo, bot.id);
-    if (joined.ok) return { ok: true, openThread: { c: inviteTo, title: threadTitle(joined.value, t) } };
-    if (joined.code === 'already_member') return { ok: true, openThread: { c: inviteTo, title: '' } };
-    alertError(t('bots.manage.createdNotInvited', { name: bot.name }), joined.message || undefined);
-    return { ok: true };
-  }
   // No DM while the Bots threads are off: the identity is still usable from Chat.
   if (dmSessionId && botsEnabledNow()) return { ok: true, openThread: { c: dmSessionId, title: bot.name } };
   toast(t('bots.manage.createdToast'), 'check');
   return { ok: true };
 }
 
-/** The thread's placeholder title while it loads (a DM is named after its Bot, a group after its title or roster). */
-function threadTitle(conversation: BotConversationDetail, t: ReturnType<typeof useT>): string {
-  return conversationTitle(conversation, botsById([...useBots.getState().archived, ...useBots.getState().bots]), {
-    unknownBot: '',
-    group: '',
-    archived: (name) => `${name} ${t('bots.common.archivedSuffix')}`,
-  });
-}

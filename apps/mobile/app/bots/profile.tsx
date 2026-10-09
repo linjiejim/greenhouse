@@ -1,15 +1,16 @@
 /**
- * `/bots/profile?botId=&from=` — a Bot's profile as a sheet: who it is, what
- * it is for, how it works, what it alone remembers (each memory can be
- * forgotten), and archive (spec docs/specs/20261008-mobile-bots.md §2.5.7).
- * `from` is the conversation it was opened from — its DM hides 发消息. The
- * body is the shared `BotProfileView` (also the Settings → My Bots page);
- * the bar: ✕ here, 编辑 from the view.
+ * `/bots/profile?botId=&from=&tab=` — a Bot's profile as a sheet: who it is,
+ * then its tabs — overview (instructions first), memory, notes, schedules,
+ * separate chats (src/bots/manage/bot-profile-view.tsx). `from` is the
+ * conversation it was opened from — its DM hides 发消息; `tab` the one shown
+ * first. The body is the shared `BotProfileView` (also the Settings → My Bots
+ * page); the bar: ✕ here, ✎ 新对话 and 编辑 from the view.
  */
 
 import React from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { BotProfileView } from '../../src/bots/manage/bot-profile-view';
+import { PROFILE_TABS } from '../../src/bots/manage/profile-tabs';
 import { BotsRouteGate } from '../../src/bots/route-gate';
 import { SheetClose } from '../../src/ui/sheet-chrome';
 
@@ -23,11 +24,16 @@ export default function BotProfileRoute() {
 }
 
 function BotProfileSheet() {
-  const { botId, from } = useLocalSearchParams<{ botId?: string; from?: string }>();
+  const { botId, from, tab } = useLocalSearchParams<{ botId?: string; from?: string; tab?: string }>();
   return (
     <>
       <SheetClose />
-      <BotProfileView botId={botId ?? ''} from={from || undefined} presentation="sheet" />
+      <BotProfileView
+        botId={botId ?? ''}
+        from={from || undefined}
+        presentation="sheet"
+        tab={PROFILE_TABS.find((value) => value === tab)}
+      />
     </>
   );
 }
