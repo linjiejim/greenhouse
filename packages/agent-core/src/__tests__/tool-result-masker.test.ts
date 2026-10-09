@@ -187,4 +187,11 @@ describe('resolveInTurnToolBudget', () => {
     expect(resolveInTurnToolBudget(1_000_000)).toBe(32_000);
     expect(resolveInTurnToolBudget(64_000)).toBe(16_000);
   });
+
+  it('lends the history budget a short conversation left unused — never less than the base', () => {
+    expect(resolveInTurnToolBudget(128_000, 60_000)).toBe(92_000);
+    expect(resolveInTurnToolBudget(128_000, 0)).toBe(32_000);
+    // A history window whose estimate overshot its budget lends nothing.
+    expect(resolveInTurnToolBudget(128_000, -500)).toBe(32_000);
+  });
 });

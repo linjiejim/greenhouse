@@ -50,6 +50,8 @@ import {
   createToolResultMasker,
   chatMaskStub,
   getModelEntry,
+  applyModelOverride,
+  hasCheapPromptCache,
   resolveInTurnToolBudget,
   windowMessagesByBudget,
   resolveHistoryBudget,
@@ -711,8 +713,16 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // ── In-turn tool-output budget ──
           // A long research turn resends every earlier tool result on every
           // step; past the budget the oldest are masked (stub + "call again"),
-          // keeping the newest half. Short turns never reach it.
-          const inTurnBudget = resolveInTurnToolBudget(getModelEntry(effectiveModelId ?? '')?.contextWindow);
+          // keeping the newest half. Masking invalidates the prompt cache from
+          // the first stub on; where cache hits are nearly free that costs more
+          // than resending, so there the budget also takes the history budget
+          // this conversation left unused and masking only steps in to keep a
+          // long conversation inside the window.
+          const turnModel = requestedModel ? applyModelOverride(profile.model, requestedModel) : profile.model;
+          const inTurnBudget = resolveInTurnToolBudget(
+            getModelEntry(effectiveModelId ?? '')?.contextWindow,
+            hasCheapPromptCache(turnModel) ? historyBudget - historyWindow.estimatedTokens : 0,
+          );
           const maskToolResults = createToolResultMasker({
             budgetTokens: inTurnBudget,
             retainTokens: Math.floor(inTurnBudget / 2),

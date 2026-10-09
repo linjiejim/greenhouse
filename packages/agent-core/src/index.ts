@@ -52,6 +52,7 @@ export {
   buildProviderOptions,
   applyModelOverride,
   resolveModelConfig,
+  hasCheapPromptCache,
   DEFAULT_PROVIDER_MAX_OUTPUT_TOKENS,
 } from './model.js';
 export type {

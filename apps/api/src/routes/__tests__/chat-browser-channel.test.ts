@@ -73,6 +73,8 @@ vi.mock('@greenhouse/agent-core', async (importOriginal) => {
     createToolResultMasker: actual.createToolResultMasker,
     chatMaskStub: actual.chatMaskStub,
     resolveInTurnToolBudget: actual.resolveInTurnToolBudget,
+    applyModelOverride: actual.applyModelOverride,
+    hasCheapPromptCache: actual.hasCheapPromptCache,
     createChatStreamAsync: mocks.createChatStreamAsync,
     withFinalAnswerGuarantee: mocks.withFinalAnswerGuarantee,
     requiresFinalAnswerGuarantee: vi.fn(() => true),

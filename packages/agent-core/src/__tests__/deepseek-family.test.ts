@@ -12,7 +12,7 @@
 
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildProviderOptions, createModelFromConfig, isDeepSeekFamily } from '../model.js';
+import { buildProviderOptions, createModelFromConfig, hasCheapPromptCache, isDeepSeekFamily } from '../model.js';
 import { DEFAULT_MODEL_REGISTRY, setModelRegistry, type ModelEntry } from '../registry.js';
 
 const KEY_ENV = 'TEST_DEEPSEEK_FAMILY_KEY';
@@ -120,5 +120,22 @@ describe('buildProviderOptions', () => {
         options: { thinking: false },
       }),
     ).toEqual({ deepseek: { thinking: { type: 'disabled' } } });
+  });
+});
+
+describe('hasCheapPromptCache', () => {
+  // Decides whether chat lends unused history budget to in-turn tool output
+  // (resolveInTurnToolBudget): only where a cache hit is a small fraction of
+  // a miss. Pricing follows the endpoint, so DeepSeek weights behind a
+  // third-party gateway do not count.
+  it("is true where DeepSeek's own API answers", () => {
+    expect(hasCheapPromptCache(config('flash'))).toBe(true);
+    expect(hasCheapPromptCache({ provider: 'deepseek', model: 'deepseek-v4-pro' })).toBe(true);
+  });
+
+  it('is false for other endpoints, a gateway serving DeepSeek weights, and unknown ids', () => {
+    expect(hasCheapPromptCache(config('generic'))).toBe(false);
+    expect(hasCheapPromptCache(config('gateway'))).toBe(false);
+    expect(hasCheapPromptCache({ id: 'missing', provider: '', model: '' })).toBe(false);
   });
 });
