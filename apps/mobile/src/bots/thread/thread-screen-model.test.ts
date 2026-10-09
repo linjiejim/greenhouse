@@ -15,6 +15,8 @@ import {
   pruneRowGeometry,
   showsFreshPage,
   type ExpectAnchor,
+  hintFits,
+  textEm,
 } from './thread-screen-model';
 
 describe('pruneRowGeometry', () => {
@@ -147,5 +149,35 @@ describe('☰ badge', () => {
     const phrases = { badge: (n: string) => `${n} need your attention`, separator: ', ' };
     expect(drawerButtonLabel('Open sidebar', '3', phrases)).toBe('Open sidebar, 3 need your attention');
     expect(drawerButtonLabel('Open sidebar', '', phrases)).toBe('Open sidebar');
+  });
+});
+
+describe('the composer hint', () => {
+  it('counts CJK and emoji as full width, the rest as narrow', () => {
+    expect(textEm('Sage')).toBeCloseTo(2.24, 2);
+    expect(textEm('仙人掌')).toBe(3);
+    expect(textEm('🌱')).toBe(1);
+  });
+
+  it('keeps "Message {name}" only when it fits beside Stop and Send', () => {
+    // 402pt-wide phone, 17pt text (Dynamic Type default)
+    expect(hintFits('Message Sprouty', 402, 17)).toBe(true);
+    expect(hintFits('给 Sprouty 发消息', 402, 17)).toBe(true);
+    // wrapped on the simulator while a run showed Stop (2026-10-08)
+    expect(hintFits('Message 仙人掌·每周简报主笔', 402, 17)).toBe(false);
+    expect(hintFits('给 仙人掌·每周简报主笔 发消息', 402, 17)).toBe(false);
+    expect(hintFits('Message Research Assistant', 402, 17)).toBe(false);
+    // larger text or a narrower phone leaves less room
+    expect(hintFits('Message Sprouty', 402, 17 * 1.6)).toBe(false);
+    expect(hintFits('给 Sprouty 发消息', 375, 17)).toBe(true);
+  });
+
+  it('holds the group hints to one line too', () => {
+    expect(hintFits('Message — @ to mention', 402, 17)).toBe(false); // wrapped beside Stop (2026-10-08)
+    expect(hintFits('Message or @ a Bot', 402, 17)).toBe(true);
+    expect(hintFits('发消息，用 @ 点名', 402, 17)).toBe(true);
+    // a 375pt phone has less room: the English group hint falls back to plain "Message"
+    expect(hintFits('Message or @ a Bot', 375, 17)).toBe(false);
+    expect(hintFits('发消息，用 @ 点名', 375, 17)).toBe(true);
   });
 });

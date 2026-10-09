@@ -123,3 +123,40 @@ export function drawerButtonLabel(
 ): string {
   return badge ? [open, phrases.badge(badge)].join(phrases.separator) : open;
 }
+
+/** Rough one-line width of `text` in em: CJK, kana, hangul, full-width forms and emoji ≈ 1em, anything else ≈ 0.56em. */
+export function textEm(text: string): number {
+  let em = 0;
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    const wide =
+      code > 0xffff ||
+      (code >= 0x1100 && code <= 0x115f) ||
+      (code >= 0x2e80 && code <= 0xa4cf) ||
+      (code >= 0xac00 && code <= 0xd7a3) ||
+      (code >= 0xf900 && code <= 0xfaff) ||
+      (code >= 0xfe30 && code <= 0xfe4f) ||
+      (code >= 0xff00 && code <= 0xff60) ||
+      (code >= 0xffe0 && code <= 0xffe6);
+    em += wide ? 1 : 0.56;
+  }
+  return em;
+}
+
+/**
+ * The composer's text width in its narrowest state — Stop showing beside Send —
+ * measured on a 402pt-wide phone: the field is the window minus 128pt (+, Send,
+ * margins), minus 52pt (Stop), minus 32pt of padding.
+ */
+export function composerTextWidth(windowWidth: number): number {
+  return windowWidth - 212;
+}
+
+/**
+ * Whether a composer hint ("Message {name}", the group's @ hint) stays on one line (else the plain hint).
+ * Judged at the narrowest state, so the hint never changes when a run starts;
+ * `fontPt` is the field's size after Dynamic Type.
+ */
+export function hintFits(text: string, windowWidth: number, fontPt: number): boolean {
+  return textEm(text) * fontPt <= composerTextWidth(windowWidth);
+}
