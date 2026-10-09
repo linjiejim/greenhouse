@@ -8,9 +8,10 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { DatabaseProvider } from '@greenhouse/db';
 import type { ToolRegistry } from '../../../agent.js';
-import { DISPATCH_TOOL_IDS } from '../../../agent-runtime/tool-resolution.js';
+import { buildLazyServerTools, DISPATCH_TOOL_IDS } from '../../../agent-runtime/tool-resolution.js';
 import { FEISHU_DENIED_TOOL_IDS } from '../../../feishu/bot/conversation-key.js';
 import { testTurn } from '../../__tests__/helpers/turn.js';
 import { BOT_TOOL_IDS } from '../../tools/meta.js';
@@ -30,7 +31,7 @@ import {
   withBotApproval,
 } from '../tools-assembly.js';
 import { nextFreeName, validateBotName } from '../naming.js';
-import { toolAction } from '../copy.js';
+import { approvalFieldValue, toolAction } from '../copy.js';
 import { clearAllDrafts, consumeDraftToken, createDraftToken } from '../../../email/security.js';
 
 afterEach(() => {
@@ -117,7 +118,9 @@ describe('interactive tool face', () => {
     const wrapped = withBotApproval('knowledge_mutation', { description: 'd', execute }, ctx) as {
       execute: (input: unknown, options: unknown) => Promise<unknown>;
     };
-    await expect(wrapped.execute({ action: 'create', title: 'Q3 plan', confirm: true }, {})).resolves.toEqual({
+    await expect(
+      wrapped.execute({ action: 'knowledge.create_doc', title: 'Q3 plan', confirm: true }, {}),
+    ).resolves.toEqual({
       ok: true,
     });
     expect(ctx.requestApproval).toHaveBeenCalledWith(
@@ -125,12 +128,88 @@ describe('interactive tool face', () => {
         action: 'tool_call',
         summary: 'edit the knowledge base',
         details: [
-          { label: 'Action', value: 'create' },
+          { label: 'Action', value: 'Create document' },
           { label: 'Title', value: 'Q3 plan' },
         ],
       }),
     );
     expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('words the values the card shows, while the writer runs with the raw ones', async () => {
+    const execute = vi.fn(async (_input: unknown, _options: unknown) => ({ ok: true }));
+    const ctx = ctxWith('approve', 'zh');
+    const wrapped = withBotApproval('automation_mutation', { execute }, ctx) as {
+      execute: (input: unknown, options: unknown) => Promise<unknown>;
+    };
+    const input = { action: 'update', id: 3, enabled: false, notify_email: true, schedule: '0 9 * * 1-5' };
+    await wrapped.execute(input, {});
+    expect(ctx.requestApproval.mock.calls[0]![0]).toMatchObject({
+      details: [
+        { label: '操作', value: '更新' },
+        { label: 'ID', value: '3' },
+        { label: '启用', value: '否' },
+        { label: '邮件通知', value: '是' },
+        { label: '执行计划', value: '0 9 * * 1-5' },
+      ],
+    });
+    expect(execute).toHaveBeenCalledWith(input, {});
+    expect(execute.mock.calls[0]![0]).toEqual({
+      action: 'update',
+      id: 3,
+      enabled: false,
+      notify_email: true,
+      schedule: '0 9 * * 1-5',
+    });
+  });
+
+  it('words known enum values per argument key in the member’s locale, everything else verbatim', () => {
+    const values = (input: Record<string, unknown>, locale: 'en' | 'zh') =>
+      describeToolInput(input, locale).map((l) => l.value);
+
+    const knowledge = { action: 'knowledge.patch_doc', scope: 'bot', share_role: 'editor', doc_id: 'done' };
+    expect(values(knowledge, 'zh')).toEqual(['局部修改文档', '本 Bot 私有', '可编辑', 'done']);
+    expect(values(knowledge, 'en')).toEqual(['Edit part of a document', 'Private to this Bot', 'Can edit', 'done']);
+
+    const task = { action: 'task.update', status: 'in_progress', priority: 'urgent', visibility: 'private' };
+    expect(values(task, 'zh')).toEqual(['更新任务', '进行中', '紧急', '私有']);
+    expect(values(task, 'en')).toEqual(['Update task', 'In progress', 'Urgent', 'Private']);
+
+    const request = { action: 'update', id: 12, new_status: 'accepted', new_priority: 'high' };
+    expect(values(request, 'zh')).toEqual(['更新', '12', '已采纳', '高']);
+    expect(values(request, 'en')).toEqual(['Update', '12', 'Accepted', 'High']);
+
+    const card = { action: 'add_widget', display: 'chart', chart_type: 'doughnut', title: 'urgent' };
+    expect(values(card, 'zh')).toEqual(['添加卡片', '图表', '环形图', 'urgent']);
+
+    // Unknown values, prototype names and free text pass through untouched.
+    const odd = { action: 'knowledge.move_doc', status: 'constructor', display: 'toString', constructor: 'create' };
+    expect(values(odd, 'zh')).toEqual(['knowledge.move_doc', 'constructor', 'toString', 'create']);
+  });
+
+  it('has words for every enum value a built-in writer accepts, in both locales', () => {
+    const tools = buildLazyServerTools({} as DatabaseProvider, [...BOT_APPROVAL_TOOL_IDS], {
+      userId: 'u1',
+      userRole: 'team',
+    });
+    const missing: string[] = [];
+    for (const id of BOT_APPROVAL_TOOL_IDS) {
+      const schema = (tools[id] as { inputSchema?: z.ZodType } | undefined)?.inputSchema;
+      expect(schema, id).toBeDefined();
+      const json = z.toJSONSchema(schema!, { unrepresentable: 'any' }) as {
+        properties?: Record<string, { enum?: unknown[] }>;
+      };
+      for (const [key, property] of Object.entries(json.properties ?? {})) {
+        for (const value of property.enum ?? []) {
+          if (typeof value !== 'string') continue;
+          for (const locale of ['zh', 'en'] as const) {
+            if (approvalFieldValue(locale, key, value) === value) missing.push(`${id} ${key}=${value} (${locale})`);
+          }
+        }
+      }
+    }
+    // A new enum value on a built-in writer needs its words in copy.ts FIELD_VALUES.
+    expect(missing).toEqual([]);
   });
 
   it('never runs a declined or expired writer, even with confirm:true from the model', async () => {
@@ -189,7 +268,7 @@ describe('interactive tool face', () => {
     );
     const byLabel = Object.fromEntries(details.map((d) => [d.label, d.value]));
     expect(byLabel).toMatchObject({
-      Action: 'send',
+      Action: 'Send',
       From: 'jim@example.com',
       To: 'Ana <ana@example.com>',
       Cc: 'cc@example.com',
@@ -208,7 +287,7 @@ describe('interactive tool face', () => {
     expect(consumeDraftToken(token, 'u1')?.subject).toBe('Q3 numbers');
   });
 
-  it('labels the rows in the member’s locale, keeps the values verbatim and hides only plumbing', async () => {
+  it('labels the rows in the member’s locale, words the action, keeps ids and text verbatim, hides only plumbing', async () => {
     const input = {
       action: 'knowledge.update_doc',
       doc_id: 'kb_42',
@@ -219,7 +298,8 @@ describe('interactive tool face', () => {
     };
     const zh = describeToolInput(input, 'zh');
     expect(zh.map((l) => l.label)).toEqual(['操作', '文档 ID', '内容', 'Some new field']);
-    expect(zh[0]!.value).toBe('knowledge.update_doc');
+    expect(zh[0]!.value).toBe('更新文档');
+    expect(describeToolInput(input, 'en')[0]!.value).toBe('Update document');
     expect(zh[1]!.value).toBe('kb_42');
     // The truncation marker is protocol: the clients parse it and translate it themselves.
     expect(zh[2]!.value).toMatch(/…\(\+100 more characters\)$/);
@@ -241,6 +321,7 @@ describe('interactive tool face', () => {
       'zh',
     );
     expect(card.map((l) => l.label)).toEqual(['操作', '发件人', '收件人', '主题', '说明']);
+    expect(card[0]!.value).toBe('发送');
     expect(card.at(-1)!.value).toMatch(/按上面显示的已存草稿原样发送/);
     const missing = await approvalDetails(
       'email_mutation',

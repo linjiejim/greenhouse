@@ -88,7 +88,10 @@ bots/
     英文 `name`（「Knowledge Mutation」）只给没有短语的写工具（扩展工具）兜底（`使用「name」`）；新增内置写工具要同时补短语。
     同一短语存进 `payload.summary`，转录行 / 通知只点一次名（`Sprouty 请你批准：修改知识库` / `Sprouty asks to edit the
     knowledge base`；没有 summary 的旧卡照旧用标题）。参数行的标签按 locale 译（`approvalFieldLabel`，没收录的键人性化
-    显示），值保持调用原样；只藏 `APPROVAL_HIDDEN_FIELDS`（`confirm` / `user_confirmed` / `revision` / `draft_token`），
+    显示）；值里内置写工具的枚举值与布尔值也译成成员的话（`approvalFieldValue`：按参数键查 `FIELD_VALUES`，
+    `knowledge.create_doc` → 新建文档、`false` → 否），**只改显示，工具照原值执行**；其余值（ID、自由文本、扩展工具自己的
+    枚举）原样显示。译名按参数键不按工具，所以措辞要对任何用这个键的工具都成立；内置写工具新增枚举值要同时补译名
+    （`tool-faces.test.ts` 按各工具 schema 逐值守着）。只藏 `APPROVAL_HIDDEN_FIELDS`（`confirm` / `user_confirmed` / `revision` / `draft_token`），
     目标 ID 照常显示。截断标记 `…(+N more characters)` 与 `…` / `+K more fields` 是客户端解析的协议，保持英文。
   - **外部连接器（`mcp_call`，spec 20261009-mcp-connectors D8/D9）**：不走上面的整工具包装——同一个工具里有只读也有写，
     读写只有它自己知道，所以 `createBotMcpCallTool` 把审批做成工具内回调：非只读远程工具每次 `call` 弹卡（标题

@@ -37,7 +37,7 @@ import { createConversationTool } from '../tools/conversation.js';
 import { createBotTasksTool } from '../tools/bot-tasks.js';
 import type { BotTurnContext } from './context.js';
 import type { ConversationPort, TeamPort } from './ports.js';
-import { approvalFieldLabel, copy, toolActionPhrase, type BotsLocale } from './copy.js';
+import { approvalFieldLabel, approvalFieldValue, copy, toolActionPhrase, type BotsLocale } from './copy.js';
 
 /**
  * Greenhouse writers that always need the member's approval in a Bots turn,
@@ -93,11 +93,13 @@ export const APPROVAL_HIDDEN_FIELDS: ReadonlySet<string> = new Set([
 /**
  * Detail lines for an approval card: the exact arguments THIS call will run
  * with (never the model's own wording of intent), labelled in the member's
- * locale. Nothing is dropped silently beyond `APPROVAL_HIDDEN_FIELDS` — the
- * member must be able to see what they allow: a long value ends with an
- * explicit "+N more characters" marker, and fields beyond the card's total
- * budget are counted on a final line. Both markers stay English: the clients
- * parse them and say them in the member's language.
+ * locale — known enum values and booleans in their words too (`create` → 新建,
+ * `false` → 否; display only, the call keeps the raw value). Nothing is dropped
+ * silently beyond `APPROVAL_HIDDEN_FIELDS` — the member must be able to see
+ * what they allow: a long value ends with an explicit "+N more characters"
+ * marker, and fields beyond the card's total budget are counted on a final
+ * line. Both markers stay English: the clients parse them and say them in the
+ * member's language.
  */
 export function describeToolInput(input: unknown, locale: BotsLocale = 'en'): Array<{ label: string; value: string }> {
   if (!input || typeof input !== 'object') return [];
@@ -107,11 +109,9 @@ export function describeToolInput(input: unknown, locale: BotsLocale = 'en'): Ar
   for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
     if (APPROVAL_HIDDEN_FIELDS.has(key) || value === undefined || value === null) continue;
     const text =
-      typeof value === 'string'
-        ? value
-        : typeof value === 'number' || typeof value === 'boolean'
-          ? String(value)
-          : JSON.stringify(value);
+      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+        ? approvalFieldValue(locale, key, value)
+        : JSON.stringify(value);
     if (!text) continue;
     const room = Math.min(APPROVAL_VALUE_MAX_CHARS, APPROVAL_TOTAL_MAX_CHARS - used);
     if (room <= 0) {
@@ -165,7 +165,7 @@ export async function approvalDetails(
   if (toolId === 'email_mutation' && fields.action === 'send') {
     const label = (key: string) => approvalFieldLabel(locale, key);
     const token = typeof fields.draft_token === 'string' ? fields.draft_token : '';
-    const lines = [{ label: label('action'), value: 'send' }];
+    const lines = [{ label: label('action'), value: approvalFieldValue(locale, 'action', 'send') }];
     const draft = token ? peekDraftToken(token, owner.userId) : null;
     if (!draft) {
       lines.push({ label: label('note'), value: copy.emailCard.noDraft(locale) });

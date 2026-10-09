@@ -113,8 +113,8 @@ export function toolActionPhrase(l: BotsLocale, tool: { id: string; name: string
 
 /**
  * Labels for the argument rows of a tool-call approval card: the call's own
- * keys in the member's words. The values stay exactly what the call will run
- * with. A key missing here is shown humanized (`content_json` → "Content json").
+ * keys in the member's words (their values: `approvalFieldValue`). A key
+ * missing here is shown humanized (`content_json` → "Content json").
  */
 const FIELD_LABELS: Record<string, Record<BotsLocale, string>> = {
   action: { zh: '操作', en: 'Action' },
@@ -208,6 +208,138 @@ export function approvalFieldLabel(l: BotsLocale, key: string): string {
   if (Object.hasOwn(FIELD_LABELS, key)) return FIELD_LABELS[key][l];
   const words = key.replace(/[_-]+/g, ' ').trim();
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : key;
+}
+
+type ValueWords = Record<string, Record<BotsLocale, string>>;
+
+/** Project / task statuses (`project_mutation`) and feature-request statuses (`feature_request`). */
+const STATUS_VALUES: ValueWords = {
+  planning: { zh: '计划中', en: 'Planning' },
+  active: { zh: '活跃', en: 'Active' },
+  on_hold: { zh: '暂停', en: 'On hold' },
+  completed: { zh: '已完成', en: 'Completed' },
+  archived: { zh: '已归档', en: 'Archived' },
+  todo: { zh: '待办', en: 'To do' },
+  in_progress: { zh: '进行中', en: 'In progress' },
+  in_review: { zh: '评审中', en: 'In review' },
+  done: { zh: '已完成', en: 'Done' },
+  cancelled: { zh: '已取消', en: 'Cancelled' },
+  pending: { zh: '待处理', en: 'Pending' },
+  accepted: { zh: '已采纳', en: 'Accepted' },
+  rejected: { zh: '已拒绝', en: 'Rejected' },
+};
+
+const PRIORITY_VALUES: ValueWords = {
+  low: { zh: '低', en: 'Low' },
+  normal: { zh: '普通', en: 'Normal' },
+  high: { zh: '高', en: 'High' },
+  urgent: { zh: '紧急', en: 'Urgent' },
+};
+
+/**
+ * Words for the enum VALUES of the built-in writers' arguments, per argument key
+ * — from their schemas (`tools/*-mutation.ts`, `workbench.ts`, `feature-request.ts`;
+ * `tool-faces.test.ts` checks every value is here). Display only: the call runs
+ * with the raw value. A value missing here is shown as-is (ids, free text, an
+ * extension tool's own enums). One table per key serves every tool, so a word
+ * must stay true for any tool that uses the key.
+ */
+const FIELD_VALUES: Record<string, ValueWords> = {
+  action: {
+    // Knowledge
+    'knowledge.create_doc': { zh: '新建文档', en: 'Create document' },
+    'knowledge.update_doc': { zh: '更新文档', en: 'Update document' },
+    'knowledge.patch_doc': { zh: '局部修改文档', en: 'Edit part of a document' },
+    'knowledge.append_doc': { zh: '在文档末尾追加', en: 'Append to document' },
+    'knowledge.update_section': { zh: '替换文档章节', en: 'Replace a document section' },
+    'knowledge.archive_doc': { zh: '归档文档', en: 'Archive document' },
+    'knowledge.restore_version': { zh: '恢复到历史版本', en: 'Restore an earlier version' },
+    'knowledge.share_doc': { zh: '共享文档', en: 'Share document' },
+    'knowledge.unshare_doc': { zh: '取消共享文档', en: 'Stop sharing document' },
+    // Tables
+    'records.create': { zh: '新建记录', en: 'Create record' },
+    'records.update': { zh: '更新记录', en: 'Update record' },
+    'records.upsert': { zh: '新建或更新记录', en: 'Create or update record' },
+    'records.batch_upsert': { zh: '批量新建或更新记录', en: 'Create or update records in bulk' },
+    'records.delete': { zh: '删除记录', en: 'Delete record' },
+    // Projects
+    'project.create': { zh: '新建项目', en: 'Create project' },
+    'project.update': { zh: '更新项目', en: 'Update project' },
+    'task.create': { zh: '新建任务', en: 'Create task' },
+    'task.update': { zh: '更新任务', en: 'Update task' },
+    'comment.add': { zh: '添加评论', en: 'Add comment' },
+    // Home workbench
+    apply_template: { zh: '套用模板', en: 'Apply template' },
+    add_widget: { zh: '添加卡片', en: 'Add card' },
+    update_widget: { zh: '更新卡片', en: 'Update card' },
+    remove_widget: { zh: '移除卡片', en: 'Remove card' },
+    add_tab: { zh: '添加标签页', en: 'Add tab' },
+    rename_tab: { zh: '重命名标签页', en: 'Rename tab' },
+    remove_tab: { zh: '移除标签页', en: 'Remove tab' },
+    // Skill Center
+    'skills.publish': { zh: '发布技能', en: 'Publish skill' },
+    'skills.update_meta': { zh: '更新技能信息', en: 'Update skill details' },
+    'skills.archive': { zh: '归档技能', en: 'Archive skill' },
+    'skills.unarchive': { zh: '取消归档技能', en: 'Unarchive skill' },
+    'skills.delete': { zh: '删除技能', en: 'Delete skill' },
+    // Automations, email, feature requests (the card title already names the tool)
+    create: { zh: '新建', en: 'Create' },
+    update: { zh: '更新', en: 'Update' },
+    delete: { zh: '删除', en: 'Delete' },
+    run_now: { zh: '立即运行', en: 'Run now' },
+    draft: { zh: '起草', en: 'Draft' },
+    send: { zh: '发送', en: 'Send' },
+    submit: { zh: '提交', en: 'Submit' },
+    list: { zh: '查看列表', en: 'List' },
+  },
+  // Keyed by argument, not by tool, so an extension writer's `scope` reads them
+  // too: say whose it is, not where it lives.
+  scope: {
+    team: { zh: '团队', en: 'Team' },
+    personal: { zh: '个人', en: 'Personal' },
+    bot: { zh: '本 Bot 私有', en: 'Private to this Bot' },
+  },
+  share_role: {
+    reader: { zh: '只读', en: 'Read-only' },
+    editor: { zh: '可编辑', en: 'Can edit' },
+  },
+  status: STATUS_VALUES,
+  new_status: STATUS_VALUES,
+  priority: PRIORITY_VALUES,
+  new_priority: PRIORITY_VALUES,
+  visibility: {
+    public: { zh: '公开', en: 'Public' },
+    private: { zh: '私有', en: 'Private' },
+  },
+  display: {
+    kpi: { zh: 'KPI', en: 'KPI' },
+    chart: { zh: '图表', en: 'Chart' },
+    table: { zh: '表格', en: 'Table' },
+    list: { zh: '列表', en: 'List' },
+  },
+  chart_type: {
+    bar: { zh: '柱状图', en: 'Bar chart' },
+    line: { zh: '折线图', en: 'Line chart' },
+    pie: { zh: '饼图', en: 'Pie chart' },
+    doughnut: { zh: '环形图', en: 'Doughnut chart' },
+  },
+};
+
+const BOOLEAN_VALUES: Record<'true' | 'false', Record<BotsLocale, string>> = {
+  true: { zh: '是', en: 'Yes' },
+  false: { zh: '否', en: 'No' },
+};
+
+/**
+ * An approval card's shown value for one scalar argument: a known enum value
+ * of that key (`FIELD_VALUES`) or a boolean in the member's words, anything
+ * else verbatim. Never feeds back into the call.
+ */
+export function approvalFieldValue(l: BotsLocale, key: string, value: string | number | boolean): string {
+  if (typeof value === 'boolean') return BOOLEAN_VALUES[value ? 'true' : 'false'][l];
+  if (typeof value === 'number') return String(value);
+  const words = Object.hasOwn(FIELD_VALUES, key) ? FIELD_VALUES[key] : undefined;
+  return words && Object.hasOwn(words, value) ? words[value][l] : value;
 }
 
 export const copy = {
