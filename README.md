@@ -129,6 +129,9 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **MCP server + agent tool-proxy** — OAuth 2.1 (PKCE for people, client credentials for
   machines) with scopes per resource group; the same tools over the structured `/api/agent`
   proxy.
+- **MCP client** — connect remote MCP servers once (Administration → MCP Servers); granted
+  members call their tools from chat through one `mcp_call` gateway tool, with writes
+  confirmed per call.
 - **LLM relay + usage budgets** — an OpenAI-compatible relay for internal users, plus monthly
   token and image budgets per user, organization and provider.
 - **Platform kernel** — applications declare a manifest (modules, entities, fields, actions);
@@ -400,6 +403,12 @@ Every capability is reachable three ways from the same tool layer:
   (client credentials) that a super binds to a least-privilege internal user under
   Administration → MCP Access. Scopes combine an action (`mcp:read` / `mcp:write`) with
   resource groups (`mcp:knowledge`, `mcp:projects`, `mcp:tables`, …).
+
+Greenhouse is an MCP **client** too: a super registers remote MCP servers (Streamable HTTP or
+SSE, optional auth header stored encrypted) under Administration → MCP Servers, and members
+granted the **External MCP tools** (`mcp_call`) tool reach their tools from chat through that
+one gateway tool. Results are wrapped as untrusted external content, and any tool the server
+does not mark read-only needs the user's explicit confirmation per call.
 
 For both proxy surfaces the effective tool set is `resolveEffectiveTools(user, profile)`
 intersected with the proxy allowlist — a tool only appears if it declares the relevant

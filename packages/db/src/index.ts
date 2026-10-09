@@ -78,6 +78,7 @@ export * from './services/user-memories.js';
 export * from './services/tool-frictions.js';
 export * from './services/drive.js';
 export * from './services/email.js';
+export * from './services/mcp-servers.js';
 export * from './services/skills.js';
 export * from './services/platform.js';
 export * from './services/platform-oauth.js';

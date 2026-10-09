@@ -144,6 +144,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `drive_folders` | PK `id`；索引 `bot_id` | `kb/crm/tables` 三 scope 文件夹树；自引用 parent；KB 用 visibility/owner，CRM 用 company，Tables 用 Base；`sort_order` 同 `knowledge_base`（同级手工顺序，0 排最后）；`bot_id`（0012）= 某 Bot 的私有参考资料夹根（CHECK：必须是 `kb` + `private` + 有 owner），读侧按身份排除其他 Bot 的子树 |
 | `drive_files` | PK `id`；UK `cos_key` | 文件元数据；folder、对象存储 key、content type、size、pending/active/deleted 状态与 scope 权属；scope-owner check 防止跨域混挂 |
 | `email_accounts` | PK `id`；UK `(user_id, email_address)`；IDX `user_id` | per-user IMAP/SMTP 邮箱绑定；连接配置为明文列（便于运维排查），**仅 `password_encrypted` 是 AES-256-GCM 密文**；`preset` 只作 UI 提示不参与分支；`use_proxy` 决定是否走 `MAIL_EGRESS_PROXY`。共享的 greenhouse@ 邮箱**不在此表**，只从 env 读（运维所有物，无 owner） |
+| `mcp_servers` | PK `id`；UK `slug`；IDX `enabled` | super 登记的**外部** MCP 服务器（Greenhouse 当客户端，`mcp_call` 工具）；连接配置明文，**仅 `auth_value_encrypted`（鉴权头的值）是 AES-256-GCM 密文**；`tools` 是最近一次刷新时服务器宣告的工具缓存（jsonb），`allowed_tools` null = 全部；`last_error` 记最近一次刷新失败，成功即清空 |
 | `email_send_log` | PK `id`；IDX `(user_id, created_at)`、`(account_scope, created_at)` | 发信审计 + 日限计数源；`account_scope` 区分 personal/shared，`origin` 区分 chat/automation/account-security，成功与失败都记。**无 FK 指向 `email_accounts`**：审计必须比它描述的绑定活得久（跨域松散关联） |
 | `agent_skills` | PK `id`；UK `name`；IDX `scan_status` | 团队技能目录；名称、描述、tags、latest version、状态、owner 与下载次数。另含技能级安全扫描列：`scan_status`(`pending`/`clean`/`suspicious`/`blocked`)、`scan_findings`(JSON-as-text 命中明细)、`scan_version`(被扫版本，NULL=从未扫过)、`scanned_at`，以及 super 判定留痕 `scan_reviewed_by`/`scan_reviewed_at`/`scan_note`（松散 ref users） |
 | `agent_skill_versions` | PK `id`；UK `(skill_id, version)` | 技能不可变 semver 版本；changelog、文件数、大小、内容 hash 与 storage key |
@@ -289,6 +290,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `knowledge_base_shares.doc_id` | `knowledge_base.id` | CASCADE |
 | `drive_folders.parent_id` | `drive_folders.id` | CASCADE |
 | `email_accounts.user_id` | `users.id` | CASCADE |
+| `mcp_servers.created_by` | `users.id` | SET NULL |
 | `drive_files.folder_id` | `drive_folders.id` | CASCADE |
 | `agent_skill_versions.skill_id` | `agent_skills.id` | CASCADE |
 | `project_members.project_id` | `projects.id` | CASCADE |
@@ -476,6 +478,7 @@ erDiagram
     notifications ||--o{ notification_delivery_attempts : "FK CASCADE"
     users ||--o{ scheduled_tasks : "FK CASCADE"
     users ||--o{ email_accounts : "FK CASCADE"
+    users ||--o{ mcp_servers : "FK SET NULL (created_by)"
 ```
 
 ### 内容、项目与评测

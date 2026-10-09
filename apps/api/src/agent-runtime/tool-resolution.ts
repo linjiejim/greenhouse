@@ -55,6 +55,7 @@ import { createWorkflowPlanTool } from '../tools/workflow-plan.js';
 import { createMissionDispatchTool } from '../tools/mission-dispatch.js';
 import { createTaskCaptureTool } from '../tools/task-capture.js';
 import { createReadAttachmentTool } from '../tools/read-attachment.js';
+import { createMcpCallTool } from '../tools/mcp-call.js';
 import type { AgentProfile } from '../profiles/profile.js';
 
 /**
@@ -377,6 +378,14 @@ export function buildLazyServerTools(
   }
   if (effectiveTools.includes('log_friction')) {
     tools.log_friction = createLogFrictionTool(db, { sessionId });
+  }
+
+  // External MCP tools — built only while an admin-connected server has
+  // something callable (no server, no capability to declare). Owner-scoped
+  // like email: the credential is the server's, the grant is the member's.
+  if (effectiveTools.includes('mcp_call')) {
+    const mcp = createMcpCallTool(db, { userId, ...(sessionId ? { sessionId } : {}) });
+    if (mcp) tools.mcp_call = mcp;
   }
 
   // Home workbench — owner-scoped inside the tools. Cards may only bind tools

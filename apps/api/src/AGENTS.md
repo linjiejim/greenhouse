@@ -477,6 +477,16 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - 管理 UI：Settings › Administration › MCP Access（`apps/web/src/pages/administration/mcp-keys.tsx`，super-only）：建/轮换/禁用/删 key、复制客户端配置（折叠的 "How to connect"）、per-key Activity（读 `/:id/audit` 看最近调用）。
 - 纯逻辑（`toMcpInputSchema` 的 schema 归一化 + confirm 注入、协议往返）已单测：`routes/__tests__/mcp.test.ts`（用 SDK `InMemoryTransport`+`Client`，不连 DB）。
 
+### MCP 客户端（`mcp_call`，2026-10-09）
+- **方向相反**：上面是 Greenhouse 当 MCP **服务端**；这里是 Greenhouse 当 MCP **客户端**——super 在 Administration → MCP Servers 登记远程 MCP 服务器（`mcp_servers` 表，`routes/admin-mcp-servers.ts`），被授予 `mcp_call` 的成员在聊天里调用它们的工具。spec D5：`docs/specs/20261009-agent-runtime-hardening.md`。
+- **一个网关工具，不摊平**：`tools/mcp-call.ts` 只有 `list` / `describe` / `call` 三个动作；已连接服务器与工具名进 description（≤1500 字符），参数 schema 按需 `describe`。好处：工具 id 恒定，所以 feature point「恰好属于一个点」、surface 钉住测试、无人值守 / 浏览器会话的 fail-closed 过滤全部原样生效；60 个远程工具不会变成 60 份 schema 压在每一步上；也不撞 provider 的函数名长度限制。被否：每个远程工具注册成独立 Greenhouse 工具。
+- **只在有可调用的东西时才构造**：`mcp-client/directory.ts` 把启用的服务器（套上 allow-list 后的工具）放进内存快照，boot 加载、每次管理写入重载；快照为空 → `buildLazyServerTools` 不构造工具（能力声明必须真实）。单进程假设同 workspace-config。
+- **连接**：`mcp-client/client.ts` 用官方 `@modelcontextprotocol/sdk` 的 Client，**每次操作一条短连接**（connect → list/call → close）、不做连接池；只支持远程 Streamable HTTP / 旧 SSE，**不支持 stdio**（那等于让管理员配置变成 API 进程里的任意代码执行）。允许内网地址：内部 MCP 服务器正是主要场景，而只有 super 能登记 URL。超时：connect 10s / list 15s / call 60s。
+- **凭证**：只有鉴权请求头的**值**是密文（`auth_value_encrypted`，`PROVIDER_TOKEN_ENCRYPTION_KEY`），管理接口只回 `has_auth_value`；更新时省略 = 保留、`''` = 清除。
+- **安全**：远程结果一律经 `external-search/sanitizer.ts` 的 `sanitizeContent` 包成 `<external_source url="mcp://<id>/<tool>" trust="untrusted">`，注入命中即整段替换（与网页搜索同一份实现）；服务器**没声明 `readOnlyHint: true`** 的工具，`call` 不带 `confirm:true` 直接拒绝且远端不执行，description 要求先向用户讲清楚再确认；管理员可用 allow-list 收窄。
+- **面**：只给 `/api/chat`。无 `surface`（绝不经 `/api/agent`、`/api/mcp` 转出去——那等于把别人的工具挂在我们的 consent 页下）；无人值守（非 replay-safe）、浏览器扩展会话（非 proxy read）自动拿不到；**飞书**进 `FEISHU_DENIED_TOOL_IDS`（飞书面只读）、**Bots** 进其 `EXCLUDED_TOOL_IDS`（写需要审批卡、结果需要 taint，尚未接）。
+- 测试：`mcp-client/__tests__/client.test.ts` 与 `tools/__tests__/mcp-call.test.ts` 跑**真 MCP 服务器**（`__tests__/fixture-server.ts`，SDK 自带 server + Streamable HTTP，本地验收也可直接 `node --import tsx` 起它）；`routes/__tests__/admin-mcp-servers.db.test.ts` 覆盖 super-only、凭证不回显、allow-list / 启用开关进快照、连不上也能存但不提供工具。
+
 ### 生图 (`generate_image` 工具)
 - `tools/generate-image.ts` 的 `generate_image`（surface `proxy:'read' + mcp:'image'`，`is_global`）是唯一生图入口。**它在 MCP 上独占一个资源组**：挂 read tier（不需要 confirm）但每次调用花真金白银，和其它只读工具捆在一起，用户就没法在给出读权限的同时拒绝付费调用。：gpt-image-2 → `storage/uploads.ts` 落 COS/本地，产物经公开的 `GET /api/upload/:id` 取用。chat 同步内联渲染（`presentation:'artifact'`）；/api/agent 与 /api/mcp 经代理暴露为只读工具，生图技能即调它生图（不再 curl REST）。
 - 生图预算按真实 `usd_micros` 计，不再拿图像 token 冒充文本预算：provider I/O 前一次性原子预留 user + organization + `media` provider 三个 UTC 月账户，成功按该尺寸 low 档实际美元成本结算；结果未知由 TTL 以预估美元结算。provider 返回的 input/output token 仍写 `llm_usage`，并以同一 budget key 关联统计事实。默认硬限额与运营覆盖可通过 `USAGE_BUDGET_*_IMAGE_USD_MICROS` 调整。

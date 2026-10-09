@@ -178,6 +178,7 @@
 
 - **`email_accounts` 只有密码是密文，连接配置是明文列**。被删的 0.18.0 版本把整个凭证对象 JSON 序列化后整体加密，结果是任何一次「这个账号连的是哪台服务器」的排查都要先解密，而 host/port 本来就不是秘密。加/改列时保持这条边界：**只有真正的凭证进 `password_encrypted`**（AES-256-GCM，`PROVIDER_TOKEN_ENCRYPTION_KEY`，与 `user_provider_tokens.provider_credential` 同一把钥匙）。
 - **共享的 greenhouse@ 邮箱不在这张表里，将来也别加进来**。它是运维所有物：生命周期与任何用户无关，凭证是系统的（与厂商 LLM key 同类，env 是既有惯例）。塞进 per-user 表只有两条路——伪造一个 owner，或让 `user_id` 可空；后者正是 `knowledge_base.user_id` 唯一索引事故的形状。
+- **`mcp_servers` 沿用同一条边界**：只有鉴权请求头的**值**进 `auth_value_encrypted`（同一把钥匙），URL / 传输方式 / 头名都是明文列；`tools` 是服务器宣告的工具**缓存**（jsonb），失败的刷新只写 `last_error`、不清空上一次成功的工具表——一台抖动的服务器继续按最后已知的工具工作。`created_by` 是 SET NULL：登记人离职不该带走全队在用的集成。
 - **`email_send_log` 刻意不设 FK**（既不指 `email_accounts` 也不指 `users`/`scheduled_tasks`）：它同时是审计与日限计数源，必须比它描述的绑定、任务甚至账号活得久。这与「审计/日志的生命周期独立于被引用实体」的既有 FK 策略一致。
 - **日限只数 `status='sent'`**。失败的发送没消耗服务商配额，把它计入会让一个配错的账号顺带锁死用户当天还能用的其它邮箱。
 - `preset` 是 UI 提示，**不参与任何代码分支**——真正决定行为的是 host/port/`use_proxy` 那几列。新增服务商预设改 `@greenhouse/types/email` 的表即可，不需要动 schema。

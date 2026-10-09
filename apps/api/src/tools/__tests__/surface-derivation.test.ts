@@ -178,8 +178,17 @@ describe('surface-derived exposure sets', () => {
         'workbench_mutation',
         'email_query',
         'email_mutation',
+        'mcp_call',
       ].sort(),
     );
+  });
+
+  it('the external MCP gateway is chat-only — never relayed through our own proxy or MCP server', () => {
+    // Re-exporting another server's tools over /api/mcp would hand them to every
+    // OAuth client under OUR consent screen (spec 20261009 D5).
+    expect(READONLY_PROXY_ALLOWLIST.has('mcp_call')).toBe(false);
+    expect(MUTATING_PROXY_ALLOWLIST.has('mcp_call')).toBe(false);
+    expect(MCP_EXPOSED_TOOL_IDS.has('mcp_call')).toBe(false);
   });
 
   it('the workbench pair is chat-only — never proxied or MCP-exposed', () => {

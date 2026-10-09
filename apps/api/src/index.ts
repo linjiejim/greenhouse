@@ -85,6 +85,8 @@ import uploadRoutes from './routes/upload.js';
 import adminRoutes from './routes/admin.js';
 import costValueRoutes from './routes/cost-value.js';
 import adminGatewayRoutes from './routes/admin-llm-gateway.js';
+import adminMcpServerRoutes from './routes/admin-mcp-servers.js';
+import { refreshMcpDirectory } from './mcp-client/directory.js';
 import { wecomOAuthRoutes } from './routes/wecom-oauth.js';
 import { feishuOAuthRoutes } from './routes/feishu-oauth.js';
 import { initFeishuBot, stopFeishuBot } from './feishu/bot/client.js';
@@ -302,6 +304,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin', adminRoutes)
       .route('/api/admin/settings', adminSettingsRoutes)
       .route('/api/admin/llm-gateway', adminGatewayRoutes)
+      .route('/api/admin/mcp-servers', adminMcpServerRoutes)
       .route('/api/admin/feature-requests', featureRequestRoutes)
       .route('/api/admin/frictions', frictionRoutes)
       .route('/api/admin/bot-computers', createAdminBotComputerRoutes())
@@ -491,6 +494,10 @@ async function main() {
   // Knowledge docs written before segmented FTS tokens existed are invisible to
   // search until tokenized. One-off backfill, fire-and-forget like the sweeps.
   void backfillKnowledgeTokens(dbProvider);
+
+  // External MCP servers the `mcp_call` tool can reach — loaded once here and
+  // reloaded by every admin write (mcp-client/directory.ts).
+  await refreshMcpDirectory(dbProvider);
 
   const toolRegistry = createToolRegistry(dbProvider);
   await runExtensionBootHooks(dbProvider);

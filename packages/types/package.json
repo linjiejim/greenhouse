@@ -28,6 +28,10 @@
       "import": "./src/mcp.ts",
       "types": "./src/mcp.ts"
     },
+    "./mcp-servers": {
+      "import": "./src/mcp-servers.ts",
+      "types": "./src/mcp-servers.ts"
+    },
     "./automation-tools": {
       "import": "./src/automation-tools.ts",
       "types": "./src/automation-tools.ts"

@@ -57,6 +57,8 @@ describe('filterFeishuToolIds', () => {
       'call_llm',
       'computer',
       'conversation',
+      // 外部 MCP 工具可能写别的系统，飞书面只读（spec 20261009 D5）
+      'mcp_call',
       'mission_dispatch',
       'request_takeover',
       'self',
