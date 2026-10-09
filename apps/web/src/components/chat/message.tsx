@@ -5,6 +5,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Dialog } from '../ui';
 import { RichMarkdown } from '../rich-markdown';
+import { sanitizeExportHtml } from '../markdown';
 import { MessageActions } from './message-actions';
 import { ToolCallRenderer } from '../tool-call/index';
 import { BodyArtifacts, partitionCalls, splitArtifactsByPlacement } from '../tool-call/body-artifacts';
@@ -227,7 +228,8 @@ function MessageBubbleImpl(props: MessageProps) {
   const renderedHtml = useMemo(() => {
     try {
       const result = marked.parse(flattenRichOutput(actionContent, flattenNotes));
-      return typeof result === 'string' ? result : '';
+      // Copied as text/html: same allowlist as the screen, never raw model HTML.
+      return typeof result === 'string' ? sanitizeExportHtml(result) : '';
     } catch (_err) {
       return '';
     }
