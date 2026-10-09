@@ -7,9 +7,8 @@ describe('parseSegments', () => {
 
     expect(segments).toEqual([
       { type: 'markdown', content: 'Summary\n\n' },
-      { type: 'pending', fence: 'datatable' },
+      { type: 'pending', fence: 'datatable', raw: '```datatable\n{"columns":[{"key":"name"' },
     ]);
-    expect(JSON.stringify(segments)).not.toContain('"columns"');
   });
 
   it('replaces the pending segment with a datatable after the fence closes', () => {

@@ -79,7 +79,7 @@
 - `<AttachmentsBlock>` — 用户**输入**附件药丸（```attachments fence；```mission-attachments 是历史名，只读不再写）。刻意比产物卡轻：输入是「用户问了什么」的上下文，产物才是交付物，所以药丸渲染在用户气泡内、正文与时间戳之间。用户消息**不过 `parseSegments`**，只用 `splitAttachments()` 摘出这一种 fence。两种 handle：`id`=`chat_files` 行、`key`=mission 暂存 blob，各自走对应鉴权下载端点。图片/PDF 预览必须同时满足扩展名与响应 MIME allowlist（图片不含 SVG，PDF 仅 `application/pdf`）；文件名伪装成 png/pdf 但响应是 `text/html` 时拒绝预览。其它类型只下载。
 - **业务块 `stats` / `cards` / `steps` 与块按钮只写一份，在 `@greenhouse/ui/components/blocks/`**（`StatsBlock` / `CardsBlock` / `StepsBlock` / `BlockActions`，外壳 `RichBlockShell` 也在那里；[spec](../../../docs/specs/20261008-interactive-rich-blocks.md) D5）——web 与浏览器扩展共用，web 只经子路径 import（不走根 barrel），`app.css` 的 `@source` 扫描该目录。文案由宿主注入（`StepsBlock` 的 `copy`，web 用 `lib/rich-output.ts` 的 `useStepsCopy()`），卡片点开由宿主注入（`onOpenUrl` = `openCardUrl`：实体链接走侧栏 / peek，其它链接新标签）。`ConfirmBlock` 的按钮也是 `BlockActions`。
 - **块按钮**：`stats` / `cards` / `steps` 可带 `actions`（≤4），点击 = 把 `value` 作为下一条用户消息发出（`RichMarkdown` 的 `onBlockAction`，与 confirm 同一条通道），已选状态由下一条用户消息还原（`resolvedActionValue`，判定在共享的 `resolveBlockAction`）。按钮不直接执行任何操作。
-- `<RichBlockPending>`（`blocks/pending-block.tsx`）— 已登记富块还没写完时的占位（datatable 沿用表格骨架，其余是「正在生成…」标签 + 骨架），由共享解析器的 `pending` 段驱动
+- `<RichBlockPending>`（`blocks/pending-block.tsx`）— 已登记富块还没写完时的占位（datatable 沿用表格骨架，其余是「正在生成…」标签 + 骨架），由共享解析器的 `pending` 段驱动。**只在 `<RichMarkdown streaming>` 时出现**（`StreamingMessageBubble` 传入）；落定的消息若停在未闭合的块里（不裁剪的落库路径如 `runAgentInSession`、或旧数据），`pending` 段的 `raw` 按普通 Markdown 渲染成代码块——否则占位会永远转圈。扩展的 `@greenhouse/ui` `RichMarkdown` 同一口径，移动端由 `live` 判定
 - 以上组件可独立使用，也可通过 `<RichMarkdown>` 自动解析 code fence 渲染
 
 ### Markdown 渲染

@@ -79,11 +79,12 @@ describe('Rich Output parser', () => {
   it('hides an unfinished streaming datatable payload behind a pending segment', () => {
     const segments = parseSegments('Summary\n\n```datatable\n{"columns":[{"key":"name"');
 
+    // `raw` is for a settled message that ends mid-block (rendered as a code
+    // block); while streaming, renderers show only the placeholder.
     expect(segments).toEqual([
       { type: 'markdown', content: 'Summary\n\n' },
-      { type: 'pending', fence: 'datatable' },
+      { type: 'pending', fence: 'datatable', raw: '```datatable\n{"columns":[{"key":"name"' },
     ]);
-    expect(JSON.stringify(segments)).not.toContain('"columns"');
   });
 
   it('rejects blocks that exceed renderer-safe collection limits', () => {
@@ -122,7 +123,7 @@ describe('Rich Output parser', () => {
 
     expect(parseSegments(partial)).toEqual([
       { type: 'markdown', content: 'Here:\n\n' },
-      { type: 'pending', fence: 'mermaid' },
+      { type: 'pending', fence: 'mermaid', raw: '```mermaid\nflowchart LR\n  A --> ' },
     ]);
   });
 
@@ -202,7 +203,7 @@ describe('Rich Output registry', () => {
     const open = `Intro\n\n\`\`\`${fence}\n${body.slice(0, 5)}`;
     expect(parseSegments(open)).toEqual([
       { type: 'markdown', content: 'Intro\n\n' },
-      { type: 'pending', fence },
+      { type: 'pending', fence, raw: open.slice('Intro\n\n'.length) },
     ]);
     expect(findIncompleteRichBlock(open)).toBe('Intro\n\n'.length);
     expect(findIncompleteRichBlock(closed)).toBeNull();

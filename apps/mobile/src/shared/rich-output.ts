@@ -280,13 +280,18 @@ export interface StepsSegment {
 }
 
 /**
- * A registered fence that has opened but not closed yet — the model is still
- * writing it. Renderers reserve stable space instead of exposing half a JSON
- * payload or half an HTML document.
+ * A registered fence that has opened but not closed yet. While the turn is
+ * streaming the model is still writing it, so renderers reserve stable space
+ * instead of exposing half a JSON payload or half an HTML document. A settled
+ * message can end in one too (an answer cut off on a path that does not trim,
+ * or a row saved before trimming covered every block): no placeholder there,
+ * it would spin forever — render `raw` as ordinary Markdown instead.
  */
 export interface PendingSegment {
   type: 'pending';
   fence: RichFence;
+  /** The unclosed fence and everything after it, verbatim. */
+  raw: string;
 }
 
 export interface MissionArtifactsSegment {
@@ -1124,7 +1129,7 @@ const OPEN_FENCE = new RegExp('```(' + FENCE_NAMES + ')[^\\S\\r\\n]*\\r?\\n', 'g
 type ScanToken =
   | { kind: 'text'; content: string }
   | { kind: 'block'; name: string; def: RichBlockDef; payload: string }
-  | { kind: 'open'; def: RichBlockDef };
+  | { kind: 'open'; def: RichBlockDef; raw: string };
 
 /** Split Markdown into text, complete registered fences and (at most one) trailing open fence. */
 function scan(markdown: string): ScanToken[] {
@@ -1147,7 +1152,7 @@ function scan(markdown: string): ScanToken[] {
     const open = new RegExp(OPEN_FENCE.source).exec(trailing);
     if (open) {
       tokens.push({ kind: 'text', content: trailing.slice(0, open.index) });
-      tokens.push({ kind: 'open', def: BLOCK_BY_NAME.get(open[1] ?? '')! });
+      tokens.push({ kind: 'open', def: BLOCK_BY_NAME.get(open[1] ?? '')!, raw: trailing.slice(open.index) });
     } else {
       tokens.push({ kind: 'text', content: trailing });
     }
@@ -1172,7 +1177,7 @@ export function parseSegments(markdown: string): Segment[] {
     if (token.kind === 'text') {
       appendMarkdownSegment(segments, token.content);
     } else if (token.kind === 'open') {
-      segments.push({ type: 'pending', fence: token.def.fence });
+      segments.push({ type: 'pending', fence: token.def.fence, raw: token.raw });
     } else {
       try {
         segments.push(token.def.parse(token.payload.trim()));

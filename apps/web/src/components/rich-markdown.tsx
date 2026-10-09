@@ -8,7 +8,8 @@
  *   steps come from @greenhouse/ui, shared with the browser extension) — the switch
  *   below is exhaustive, so registering a block without a web renderer fails
  *   to compile
- * - A block still being streamed as a stable placeholder
+ * - A block still being streamed as a stable placeholder (`streaming` only — a
+ *   settled message that ends mid-block shows that fence as a code block)
  *
  * Drop-in replacement for <Markdown> in chat/agent contexts.
  * Wiki/source detail pages should continue using <Markdown> directly.
@@ -58,6 +59,12 @@ interface RichMarkdownProps {
   resolvedActionValue?: string;
   /** Where ordinary navigating links go; forwarded to <Markdown>. */
   linkTarget?: MarkdownLinkTarget;
+  /**
+   * The message is still streaming in. Only then does an unclosed block show its
+   * placeholder; in a settled message it renders as ordinary Markdown (a code
+   * block), since nothing will ever close it.
+   */
+  streaming?: boolean;
 }
 
 // ─── Component ───────────────────────────────────────────
@@ -69,6 +76,7 @@ export function RichMarkdown({
   onBlockAction,
   resolvedActionValue,
   linkTarget,
+  streaming = false,
 }: RichMarkdownProps) {
   const rawSegments = useMemo(() => parseSegments(content), [content]);
 
@@ -86,7 +94,10 @@ export function RichMarkdown({
       if (seg.type === 'markdown') {
         return seg.content === (prevSeg as MarkdownSegment).content ? prevSeg : seg;
       }
-      if (seg.type === 'pending') return seg.fence === (prevSeg as typeof seg).fence ? prevSeg : seg;
+      if (seg.type === 'pending') {
+        const prevPending = prevSeg as typeof seg;
+        return seg.fence === prevPending.fence && seg.raw === prevPending.raw ? prevSeg : seg;
+      }
       if (seg.type === 'mermaid' || seg.type === 'html-preview') {
         // These two carry `code`, not `data`. Falling through to the generic
         // compare below would read `undefined` on both sides and call every
@@ -114,6 +125,7 @@ export function RichMarkdown({
           onBlockAction={onBlockAction}
           resolvedActionValue={resolvedActionValue}
           linkTarget={linkTarget}
+          streaming={streaming}
         />
       ))}
     </div>
@@ -128,12 +140,14 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
   onBlockAction,
   resolvedActionValue,
   linkTarget,
+  streaming,
 }: {
   segment: Segment;
   compact?: boolean;
   onBlockAction?: (value: string) => void | Promise<void>;
   resolvedActionValue?: string;
   linkTarget?: MarkdownLinkTarget;
+  streaming: boolean;
 }) {
   switch (segment.type) {
     case 'markdown':
@@ -166,7 +180,11 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
       );
 
     case 'pending':
-      return <RichBlockPending fence={segment.fence} compact={compact} />;
+      return streaming ? (
+        <RichBlockPending fence={segment.fence} compact={compact} />
+      ) : (
+        <Markdown content={segment.raw} compact={compact} linkTarget={linkTarget} />
+      );
 
     case 'mermaid':
       return (

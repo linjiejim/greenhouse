@@ -31,7 +31,9 @@ describe('MermaidBlock', () => {
   });
 
   it('holds an unclosed fence behind a placeholder instead of streaming its source', () => {
-    const html = renderToStaticMarkup(<RichMarkdown compact content={'```mermaid\nflowchart LR\n  A --> '} />);
+    const html = renderToStaticMarkup(
+      <RichMarkdown compact streaming content={'```mermaid\nflowchart LR\n  A --> '} />,
+    );
 
     expect(html).toContain('animate-skeleton');
     expect(html).not.toContain('flowchart LR');

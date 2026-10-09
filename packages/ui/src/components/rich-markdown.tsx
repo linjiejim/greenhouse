@@ -7,7 +7,8 @@
  * - Plain markdown via the existing <Markdown> component
  * - The blocks this kit draws (chart, datatable, stats, cards, steps, confirm)
  *   via their components, each inside its own error boundary
- * - A block still being streamed as a stable placeholder
+ * - A block still being streamed as a stable placeholder (`streaming` only — a
+ *   settled message that ends mid-block shows that fence as a code block)
  * - Every other registered block (mermaid, html-preview, mission files) as its
  *   plain-Markdown stand-in: those messages can be opened here even though the
  *   extension never asks the model for them (it declares only what it draws —
@@ -43,6 +44,12 @@ interface RichMarkdownProps {
   onBlockAction?: (value: string) => void | Promise<void>;
   /** The member's next message — restores which button was pressed after a reload. */
   resolvedActionValue?: string;
+  /**
+   * The message is still streaming in. Only then does an unclosed block show its
+   * placeholder; in a settled message it renders as ordinary Markdown (a code
+   * block), since nothing will ever close it.
+   */
+  streaming?: boolean;
 }
 
 // ─── Component ───────────────────────────────────────────
@@ -53,6 +60,7 @@ export function RichMarkdown({
   compact,
   onBlockAction,
   resolvedActionValue,
+  streaming = false,
 }: RichMarkdownProps) {
   const rawSegments = useMemo(() => parseSegments(content), [content]);
 
@@ -87,6 +95,7 @@ export function RichMarkdown({
           compact={compact}
           onBlockAction={onBlockAction}
           resolvedActionValue={resolvedActionValue}
+          streaming={streaming}
         />
       ))}
     </div>
@@ -100,11 +109,13 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
   compact,
   onBlockAction,
   resolvedActionValue,
+  streaming,
 }: {
   segment: Segment;
   compact?: boolean;
   onBlockAction?: (value: string) => void | Promise<void>;
   resolvedActionValue?: string;
+  streaming: boolean;
 }) {
   const notes = useFallbackNotes();
   const stepsCopy = useStepsCopy();
@@ -115,7 +126,7 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
       return <Markdown content={segment.content} compact={compact} />;
 
     case 'pending':
-      return <PendingBlock />;
+      return streaming ? <PendingBlock /> : <Markdown content={segment.raw} compact={compact} />;
 
     case 'chart':
       return (

@@ -125,7 +125,7 @@ export function StreamingMessageBubble({ text, reasoning, toolCalls, isStreaming
         {/* Content — flush, no bubble (matches completed message) */}
         {text && (
           <div className="relative">
-            <RichMarkdown content={displayText} compact linkTarget="new-window" />
+            <RichMarkdown content={displayText} compact linkTarget="new-window" streaming={isStreaming || catchingUp} />
             {(isStreaming || catchingUp) && (
               <span className="inline-block animate-pulse-dot text-primary-500 ml-0.5">▊</span>
             )}
