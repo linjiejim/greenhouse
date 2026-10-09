@@ -338,6 +338,7 @@ function EditBotDialog({
     avatar: bot.avatar,
     model_id: bot.model_id,
     tools: bot.tools,
+    connectors: bot.connectors ?? null,
     max_steps: bot.max_steps,
   });
   const [saving, setSaving] = useState(false);
@@ -364,6 +365,7 @@ function EditBotDialog({
         avatar: draft.avatar,
         model_id: draft.model_id,
         tools: draft.tools,
+        connectors: draft.connectors ?? null,
         max_steps: draft.max_steps,
       });
       upsertBot(saved);

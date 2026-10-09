@@ -15,6 +15,7 @@ import type { ChatModel } from '../../lib/api/profiles';
 import { useProfileStore } from '../../stores';
 import { AvatarPicker } from './avatar-picker';
 import { BotToolsField } from './bot-tools-field';
+import { BotConnectorsField } from './bot-connectors-field';
 import type { BotNameIssue } from './bot-name';
 
 export interface BotDraft {
@@ -26,6 +27,8 @@ export interface BotDraft {
   model_id: string | null;
   /** null = inherit the owner's whole allowed set. */
   tools: string[] | null;
+  /** Connector slugs; null = every connector the owner can use. Absent = not edited here. */
+  connectors?: string[] | null;
   max_steps: number | null;
 }
 
@@ -140,6 +143,13 @@ export function BotFields({
         <FormGroup label={t('bots.form.tools')}>
           <BotToolsField value={value.tools} onChange={(tools) => set('tools', tools)} />
         </FormGroup>
+      )}
+      {!compact && value.connectors !== undefined && (
+        <BotConnectorsField
+          value={value.connectors}
+          toolsAllowMcp={value.tools === null || value.tools.includes('mcp_call')}
+          onChange={(connectors) => set('connectors', connectors)}
+        />
       )}
       {!compact && (
         <FormField label={t('bots.form.maxSteps')} help={t('bots.form.maxStepsHint')}>

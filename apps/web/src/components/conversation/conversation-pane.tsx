@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { isMcpNeedsConnection } from '@greenhouse/types/mcp-servers';
 
 import { MessageBubble, StreamingMessageBubble } from '../chat/message';
 import { ChatInput } from '../chat/chat-input';
@@ -1833,7 +1834,13 @@ export function ConversationPane({
                     isStreaming={effectiveIsStreaming}
                     onAskUserSubmit={
                       msg.role === 'assistant' &&
-                      msg.pipeline?.some((s) => s.tool === 'ask_user' || (s.output as any)?.type === 'ask_user')
+                      msg.pipeline?.some(
+                        (s) =>
+                          s.tool === 'ask_user' ||
+                          (s.output as any)?.type === 'ask_user' ||
+                          // The Connect card's "Continue" sends the follow-up for the member.
+                          (s.tool === 'mcp_call' && isMcpNeedsConnection(s.output)),
+                      )
                         ? isOwner
                           ? handleSend
                           : undefined
