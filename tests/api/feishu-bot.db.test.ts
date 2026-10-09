@@ -39,6 +39,17 @@ describe('feishu bot persistence', () => {
       expect(await db.feishuBot.claimMessage(id)).toBe(false);
     });
 
+    it('换了 message_id 的同一条消息（逻辑键相同）也只认领一次', async () => {
+      // 飞书会带着新的 message_id 重投同一条消息；只认 message_id 拦不住。
+      const stamp = Date.now();
+      const logical = `logical-${stamp}-${Math.random()}`;
+      expect(await db.feishuBot.claimMessage(`om_first_${stamp}`, logical)).toBe(true);
+      expect(await db.feishuBot.claimMessage(`om_resent_${stamp}`, logical)).toBe(false);
+      // 没有逻辑键的老路径照旧只看 message_id。
+      expect(await db.feishuBot.claimMessage(`om_plain_${stamp}`, null)).toBe(true);
+      expect(await db.feishuBot.claimMessage(`om_plain2_${stamp}`, null)).toBe(true);
+    });
+
     it('不同消息互不影响', async () => {
       const stamp = Date.now();
       expect(await db.feishuBot.claimMessage(`om_a_${stamp}`)).toBe(true);

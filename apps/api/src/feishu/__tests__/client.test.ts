@@ -5,6 +5,8 @@ import {
   buildMarkdownCard,
   getFeishuConfig,
   isFeishuConfigured,
+  patchCardMarkdown,
+  replyCardMarkdown,
   resolveUserByCode,
   sendCardMarkdown,
 } from '../client.js';
@@ -148,6 +150,51 @@ describe('sendCardMarkdown', () => {
     );
 
     expect(await sendCardMarkdown('ou-1', 'a')).toEqual({ ok: false, error: '230002 user not visible to app' });
+  });
+});
+
+describe('the updatable answer card', () => {
+  it('reply hands back the new message id, and an updatable card is a shared one', async () => {
+    configure(VALID);
+    const bodies: Array<{ url: string; method?: string; body: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes('tenant_access_token')) {
+          return new Response(JSON.stringify({ code: 0, tenant_access_token: 'tok', expire: 7200 }));
+        }
+        bodies.push({ url, method: init?.method, body: String(init?.body) });
+        return new Response(JSON.stringify({ code: 0, data: { message_id: 'om_bot_1' } }));
+      }),
+    );
+
+    expect(await replyCardMarkdown('om_user', '⏳', { updatable: true })).toEqual({ ok: true, messageId: 'om_bot_1' });
+    expect(JSON.parse(JSON.parse(bodies[0]!.body).content)).toMatchObject({ config: { update_multi: true } });
+  });
+
+  it('patch replaces the card in place and keeps it shared (Feishu requires both)', async () => {
+    configure(VALID);
+    const bodies: Array<{ url: string; method?: string; body: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes('tenant_access_token')) {
+          return new Response(JSON.stringify({ code: 0, tenant_access_token: 'tok', expire: 7200 }));
+        }
+        bodies.push({ url, method: init?.method, body: String(init?.body) });
+        return new Response(JSON.stringify({ code: 0 }));
+      }),
+    );
+
+    expect(await patchCardMarkdown('om_bot_1', '**答案**')).toEqual({ ok: true });
+    expect(bodies[0]!.method).toBe('PATCH');
+    expect(bodies[0]!.url).toMatch(/\/im\/v1\/messages\/om_bot_1$/);
+    const card = JSON.parse(JSON.parse(bodies[0]!.body).content);
+    expect(card).toEqual({
+      schema: '2.0',
+      config: { update_multi: true },
+      body: { elements: [{ tag: 'markdown', content: '**答案**' }] },
+    });
   });
 });
 

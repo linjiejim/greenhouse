@@ -178,6 +178,8 @@ export async function resolveUserByCode(
 export interface FeishuSendResult {
   ok: boolean;
   error?: string;
+  /** The message Feishu created (reply/send), when it said. */
+  messageId?: string;
 }
 
 /**
@@ -195,8 +197,14 @@ export interface FeishuSendResult {
  * function is shared with the WeCom and in-app channels — bending it to give
  * Feishu a separate title field would make the three channels drift.
  */
-export function buildMarkdownCard(content: string): Record<string, unknown> {
-  return { schema: '2.0', body: { elements: [{ tag: 'markdown', content }] } };
+export function buildMarkdownCard(content: string, opts: { updatable?: boolean } = {}): Record<string, unknown> {
+  return {
+    schema: '2.0',
+    // A card can only be PATCHed later if it was sent — and is re-sent — as a
+    // shared card (`update_multi`); see patchCardMarkdown.
+    ...(opts.updatable ? { config: { update_multi: true } } : {}),
+    body: { elements: [{ tag: 'markdown', content }] },
+  };
 }
 
 /**
@@ -234,14 +242,46 @@ export async function sendCardMarkdown(openId: string, content: string): Promise
  * `root_id` 仍指向整条链最初那条消息——会话映射靠它保持稳定（bot spec D1）。
  * 新发一条会开一条新链，用户每回复一次就换一个会话。
  */
-export async function replyCardMarkdown(messageId: string, content: string): Promise<FeishuSendResult> {
+export async function replyCardMarkdown(
+  messageId: string,
+  content: string,
+  opts: { updatable?: boolean } = {},
+): Promise<FeishuSendResult> {
   const config = getFeishuConfig();
   if (!config) return { ok: false, error: 'Feishu app is not configured (FEISHU_APP_ID/APP_SECRET)' };
 
-  const body = await callWithToken<FeishuResponse>(config, `im/v1/messages/${encodeURIComponent(messageId)}/reply`, {
-    method: 'POST',
+  const body = await callWithToken<FeishuResponse & { data?: { message_id?: string } }>(
+    config,
+    `im/v1/messages/${encodeURIComponent(messageId)}/reply`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg_type: 'interactive', content: JSON.stringify(buildMarkdownCard(content, opts)) }),
+    },
+  );
+
+  if (!body) return { ok: false, error: 'Feishu request failed' };
+  if (body.code) return { ok: false, error: `${body.code} ${body.msg ?? ''}`.trim() };
+  return { ok: true, ...(body.data?.message_id ? { messageId: body.data.message_id } : {}) };
+}
+
+/**
+ * Replace the content of a card this app sent (`PATCH /im/v1/messages/:id`).
+ *
+ * Feishu's rules, all of which this relies on: the card must have been sent as
+ * a shared card (`update_multi: true`, see buildMarkdownCard) and stay one; at
+ * most 5 updates per second per message; only within 14 days; ≤ 30 KB of card
+ * JSON. The bot answers within minutes and the progress card is throttled far
+ * below the rate limit.
+ */
+export async function patchCardMarkdown(messageId: string, content: string): Promise<FeishuSendResult> {
+  const config = getFeishuConfig();
+  if (!config) return { ok: false, error: 'Feishu app is not configured (FEISHU_APP_ID/APP_SECRET)' };
+
+  const body = await callWithToken<FeishuResponse>(config, `im/v1/messages/${encodeURIComponent(messageId)}`, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ msg_type: 'interactive', content: JSON.stringify(buildMarkdownCard(content)) }),
+    body: JSON.stringify({ content: JSON.stringify(buildMarkdownCard(content, { updatable: true })) }),
   });
 
   if (!body) return { ok: false, error: 'Feishu request failed' };
