@@ -290,7 +290,11 @@ export async function runAgentLoop(
   options: RunAgentLoopOptions = {},
 ): Promise<AgentLoopRunResult> {
   const prepared = await prepareAgentLoop(input);
-  const result = await generateText(prepared.settings);
+  // firstChunkMs / chunkMs bound a STREAM; generateText ignores them and logs
+  // an "unsupported feature" warning on every step, so the headless call gets
+  // only the bounds that apply to it.
+  const { totalMs, stepMs } = CHAT_STREAM_TIMEOUT;
+  const result = await generateText({ ...prepared.settings, timeout: { totalMs, stepMs } });
 
   const usage = emptyUsageTotals();
   // AI SDK 7: `usage` spans every step of the loop (v6 called this totalUsage).
