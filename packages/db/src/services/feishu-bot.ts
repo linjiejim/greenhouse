@@ -59,11 +59,13 @@ export function createFeishuBotService(db: Db) {
      * 飞书会重投事件，而处理一条消息 = 跑一轮 agent = 花钱且会回消息。所以这
      * 是「先写回执再干活」：写冲突就是「别人已经在干了」。
      */
-    async claimMessage(messageId: string): Promise<boolean> {
+    async claimMessage(messageId: string, logicalKey?: string | null): Promise<boolean> {
+      // No conflict target: a clash on EITHER unique key (message_id or the
+      // logical key of a re-sent copy) means somebody already has it.
       const inserted = await db
         .insert(feishuMessageReceipts)
-        .values({ message_id: messageId, received_at: nowIso() })
-        .onConflictDoNothing({ target: feishuMessageReceipts.message_id })
+        .values({ message_id: messageId, logical_key: logicalKey ?? null, received_at: nowIso() })
+        .onConflictDoNothing()
         .returning({ message_id: feishuMessageReceipts.message_id });
       return inserted.length > 0;
     },

@@ -6,7 +6,7 @@
  * 方案见 docs/specs/20260825-feishu-bot-conversation.md。
  */
 
-import { pgTable, serial, text, timestamp, index, unique } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, timestamp, index, unique, uniqueIndex } from 'drizzle-orm/pg-core';
 import { users } from './user.js';
 import { sessions } from './session.js';
 
@@ -53,14 +53,22 @@ export type FeishuConversationRow = typeof feishuConversations.$inferSelect;
  *
  * 飞书事件可能重投；没有这张表，一次网络抖动就会让同一个问题跑两轮 agent、
  * 扣两次额度、回两条消息（spec D9）。**先写回执再处理**，写冲突即丢弃。
+ *
+ * `logical_key`（2026-10-09）：同一条消息可能带着**新的** message_id 被重投
+ * （OpenClaw 记录过这种情况），只认 message_id 拦不住。逻辑键 = 会话 + 发送者
+ * + create_time + 正文的哈希，两个唯一键任一冲突都算重投。老行为 null。
  */
 export const feishuMessageReceipts = pgTable(
   'feishu_message_receipts',
   {
     message_id: text('message_id').primaryKey(),
+    logical_key: text('logical_key'),
     received_at: timestamp('received_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
-  (table) => [index('idx_feishu_receipts_received').on(table.received_at)],
+  (table) => [
+    index('idx_feishu_receipts_received').on(table.received_at),
+    uniqueIndex('uq_feishu_receipts_logical').on(table.logical_key),
+  ],
 );
 
 export type FeishuMessageReceiptRow = typeof feishuMessageReceipts.$inferSelect;

@@ -46,6 +46,8 @@ export interface DispatchDeps {
   toolRegistry: ToolRegistry;
   /** Test seam — forwarded to runAgentInSession (defaults to the real loop). */
   generate?: AgentGenerate;
+  /** Step progress for the placeholder card (client.ts). */
+  onStep?: (info: { stepNumber: number; toolNames: string[] }) => void;
 }
 
 function settingsUrl(): string {
@@ -208,6 +210,7 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
     ...(profile.tool_choice ? { toolChoice: profile.tool_choice } : {}),
     usageContext: { profileId: profile.id, userId: owner.id, caller: 'feishu-bot' },
     ...(deps.generate ? { generate: deps.generate } : {}),
+    ...(deps.onStep ? { onStep: deps.onStep } : {}),
   });
 
   // ── 6. 呈现：富块围栏拍平成飞书能渲染的 markdown（spec D10）──
