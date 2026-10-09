@@ -4,16 +4,22 @@
  *
  *  - top: a search field (filters the loaded history by title — see
  *    use-sessions; there is no server-side title search) + a new-chat button,
- *  - the conversation history, grouped by recency (置顶 / 今天 / 昨天 / 7 天内 /
- *    30 天内 / 更早) with sticky section headers and infinite scroll; the active
- *    conversation is highlighted; long-press a row for its native context menu
- *    (标签 / 删除); a tag filter lives in a native menu on the header,
- *  - footer, pinned to the bottom: navigation rows to 知识库 / 项目, then the
- *    account row (avatar · name · station) → Settings.
+ *  - the member's own conversations (`scope=mine` — never anyone else's: a
+ *    super used to get every member's history mixed in, read-only rows without
+ *    a menu). Only the live part shows by default — 置顶 and 今天; everything
+ *    older folds into one 「更早的对话」 row that expands in place (昨天 / 7 天内
+ *    / 30 天内 / 更早, sticky section headers, infinite scroll). A search or a
+ *    tag filter shows everything. Conversations others shared with the member
+ *    sit in a folded 「共享给我」 group at the end. The active conversation is
+ *    highlighted; long-press any row for its native context menu — 置顶 / 取消置顶
+ *    for every row, plus 标签 / 重命名 / 删除 on the member's own; a tag filter
+ *    lives in a native menu on the header,
+ *  - pinned to the bottom: one row of app entries, icon over a caption
+ *    (知识库 / 项目 / 设置; more than four collapse into 「更多」).
  *
  * History states: LoadingState while the first page loads, then EmptyState
  * (ContentUnavailableView) for 暂无对话 / 无匹配结果 / 加载失败 (with 重试).
- * A failed delete is a system alert; a successful one a short HUD.
+ * A failed action is a system alert; a successful delete a short HUD.
  *
  * Rows are pinned to the panel width up front (`NativeMenu width`), so the
  * long-press menu doesn't measure-then-remount every row.
@@ -21,24 +27,23 @@
  * Opening a conversation *replaces* the conversation surface (the drawer is
  * the navigation — no back stack; the (main) stack cross-fades) and slides the
  * drawer shut. The history refreshes in place every time the drawer opens, so
- * conversations started / renamed / deleted on the surface show up.
+ * conversations started / renamed / deleted on the surface show up. What is on
+ * screen comes from the home screen (src/bots/home/surface.ts), not the route.
  *
  * With Bots on (iOS, an internal account, `features.bots`), the Bots section
  * (src/bots/drawer/bots-section.tsx) comes first, above the history, and the
- * search filters it too; otherwise it renders nothing and the drawer is exactly
- * as before. Every route to home goes through src/bots/nav.ts (all seven
- * params — a Bots thread is the same route with `?c=`).
+ * search filters it too; otherwise it renders nothing. Every route to home goes
+ * through src/bots/nav.ts (all seven params — a Bots thread is `?c=`).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useGlobalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useDrawerStatus, type DrawerContentComponentProps } from 'expo-router/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth } from '../store/auth';
+import { useHomeSurface } from '../bots/home/surface';
 import { useTags } from '../store/tags';
-import { useActiveStation } from '../stations/use-active-station';
-import { deleteSession } from '../api/sessions';
+import { deleteSession, setSessionPinned, updateSessionTitle } from '../api/sessions';
 import { BotsSection } from '../bots/drawer/bots-section';
 import { openChat, openNewChat } from '../bots/nav';
 import type { Session } from '../shared/greenhouse-types';
@@ -47,8 +52,7 @@ import { useT, type TranslationKey } from '../lib/i18n';
 import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon, type IconName, Touchable } from '../ui/core';
 import { useFontScaleKey } from '../ui/font-scale';
-import { InitialAvatar } from '../ui/avatar';
-import { alertError, confirmAction } from '../ui/dialogs';
+import { alertError, confirmAction, promptText } from '../ui/dialogs';
 import { DRAWER_W } from '../ui/drawer';
 import { EmptyState, LoadingState } from '../ui/empty';
 import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
@@ -58,6 +62,8 @@ import { useSessions } from './use-sessions';
 /** History rows sit inset in the panel; their menus get this width up front. */
 const ROW_INSET = space.sm;
 const ROW_W = DRAWER_W - ROW_INSET * 2;
+/** The bottom bar shows this many entries; past it the last slot is 「更多」. */
+const BAR_SLOTS = 4;
 
 type Bucket = 'pinned' | 'today' | 'yesterday' | 'week' | 'month' | 'older';
 const BUCKET_LABEL: Record<Bucket, TranslationKey> = {
@@ -68,6 +74,9 @@ const BUCKET_LABEL: Record<Bucket, TranslationKey> = {
   month: 'drawer.month',
   older: 'drawer.older',
 };
+/** Always shown; the rest fold into 「更早的对话」. */
+const LIVE: readonly Bucket[] = ['pinned', 'today'];
+const EARLIER: readonly Bucket[] = ['yesterday', 'week', 'month', 'older'];
 
 function bucketOf(s: Session, now: Date): Bucket {
   if (s.pinned) return 'pinned';
@@ -82,58 +91,110 @@ function bucketOf(s: Session, now: Date): Bucket {
   return 'older';
 }
 
+/** A list row: a conversation, or the row that folds / unfolds a group. */
+type Row =
+  | { kind: 'session'; session: Session; shared: boolean }
+  | { kind: 'fold'; fold: 'earlier' | 'shared'; open: boolean; count: number; more: boolean };
+
+interface Section {
+  key: string;
+  /** '' = no header (a fold row's own section). */
+  title: string;
+  data: Row[];
+}
+
+/** The apps reachable from the drawer's bottom bar (no registry: three entries today). */
+type AppPath = '/knowledge' | '/projects' | '/settings';
+const APPS: ReadonlyArray<{ path: AppPath; icon: IconName; label: TranslationKey }> = [
+  { path: '/knowledge', icon: 'books', label: 'drawer.knowledge' },
+  { path: '/projects', icon: 'folder', label: 'drawer.projects' },
+  { path: '/settings', icon: 'gear', label: 'drawer.settings' },
+];
+
 export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const user = useAuth((s) => s.user);
-  const station = useActiveStation();
   // Text containers are keyed on the text size so they re-measure when Dynamic Type changes (src/ui/font-scale.ts).
   const fontKey = useFontScaleKey();
-  // `c` = a Bots thread is on screen (no history row is current then); `profile` = a
-  // new chat with one Bot ("Ask Dandy in a New Chat") — not the plain new chat either.
-  const {
-    id: activeId,
-    c: activeThread,
-    profile: activeProfile,
-  } = useGlobalSearchParams<{ id?: string; c?: string; profile?: string }>();
+  // What the home screen shows — not the route's params, which lag a restored thread (src/bots/home/surface.ts).
+  // `c` = a Bots thread is on screen (no history row is current then); `profile` = a new chat with one
+  // Bot — not the plain new chat either.
+  const activeId = useHomeSurface((s) => s.id);
+  const activeThread = useHomeSurface((s) => s.c);
+  const activeProfile = useHomeSurface((s) => s.profile);
 
   const tags = useTags((s) => s.tags);
   const loadTags = useTags((s) => s.load);
   const filterId = useTags((s) => s.filterId);
   const setFilter = useTags((s) => s.setFilter);
   const [search, setSearch] = useState('');
-  const { items, loading, done, error, loadMore, refresh, removeItem } = useSessions(
-    true,
-    30,
-    filterId,
-    search.trim(),
-  );
+  const query = search.trim();
+  const mine = useSessions(true, 30, filterId, query);
+  const shared = useSessions(true, 30, null, query, 'shared');
+  const [earlierOpen, setEarlierOpen] = useState(false);
+  const [sharedOpen, setSharedOpen] = useState(false);
+  // A search or a tag filter is looking for something: show every group.
+  const showAll = !!query || filterId != null;
 
   useEffect(() => {
     void loadTags();
   }, [loadTags]);
 
-  // Pick up conversations created / renamed / deleted since the last look.
+  // Pick up conversations created / renamed / deleted / shared since the last look.
   const status = useDrawerStatus();
+  const { refresh: refreshMine } = mine;
+  const { refresh: refreshShared } = shared;
   useEffect(() => {
-    if (status === 'open') void refresh();
-  }, [status, refresh]);
+    if (status !== 'open') return;
+    void refreshMine();
+    void refreshShared();
+  }, [status, refreshMine, refreshShared]);
 
-  const sections = useMemo(() => {
+  const sections = useMemo<Section[]>(() => {
     const now = new Date();
-    const order: Bucket[] = ['pinned', 'today', 'yesterday', 'week', 'month', 'older'];
-    const map = new Map<Bucket, Session[]>();
-    for (const s of items) {
-      const b = bucketOf(s, now);
-      const arr = map.get(b);
-      if (arr) arr.push(s);
-      else map.set(b, [s]);
+    const byBucket = new Map<Bucket, Row[]>();
+    for (const session of mine.items) {
+      const bucket = bucketOf(session, now);
+      const row: Row = { kind: 'session', session, shared: false };
+      const list = byBucket.get(bucket);
+      if (list) list.push(row);
+      else byBucket.set(bucket, [row]);
     }
-    return order.filter((b) => map.has(b)).map((b) => ({ key: b, title: t(BUCKET_LABEL[b]), data: map.get(b)! }));
-  }, [items, t]);
+    const group = (b: Bucket): Section => ({ key: b, title: t(BUCKET_LABEL[b]), data: byBucket.get(b)! });
+    const out: Section[] = LIVE.filter((b) => byBucket.has(b)).map(group);
+    const earlier = EARLIER.filter((b) => byBucket.has(b));
+    const earlierCount = earlier.reduce((n, b) => n + byBucket.get(b)!.length, 0);
+    if (showAll) out.push(...earlier.map(group));
+    else if (earlierCount > 0) {
+      out.push({
+        key: 'fold:earlier',
+        title: '',
+        data: [{ kind: 'fold', fold: 'earlier', open: earlierOpen, count: earlierCount, more: !mine.done }],
+      });
+      if (earlierOpen) out.push(...earlier.map(group));
+    }
+    // Shared with the member: the rows already in "mine" (pinned ones) are not repeated.
+    const own = new Set(mine.items.map((s) => s.id));
+    const sharedRows = shared.items.filter((s) => !own.has(s.id));
+    if (sharedRows.length) {
+      const open = sharedOpen || !!query;
+      out.push({
+        key: 'fold:shared',
+        title: '',
+        data: [{ kind: 'fold', fold: 'shared', open, count: sharedRows.length, more: !shared.done }],
+      });
+      if (open)
+        out.push({
+          key: 'shared',
+          title: '',
+          data: sharedRows.map((session) => ({ kind: 'session' as const, session, shared: true })),
+        });
+    }
+    return out;
+  }, [mine.items, mine.done, shared.items, shared.done, showAll, earlierOpen, sharedOpen, query, t]);
 
   const close = useCallback(() => navigation.closeDrawer(), [navigation]);
 
@@ -146,8 +207,8 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
     [close, router, activeId],
   );
 
-  // Already on a plain new chat → just close; anything else (a chat, a thread, a one-Bot
-  // new chat) → a plain one (`openNewChat` clears every home param, `profile` included).
+  // Already on a plain new chat → just close; anything else (a chat, a thread — a restored one
+  // too —, a one-Bot new chat) → a plain one (`openNewChat` clears every home param).
   const newChat = useCallback(() => {
     close();
     if (activeId || activeThread || activeProfile) openNewChat(router);
@@ -155,18 +216,49 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
 
   // Close first, then push — the panel settles under the incoming page.
   const go = useCallback(
-    (path: '/knowledge' | '/projects' | '/settings') => {
+    (path: AppPath) => {
       close();
       setTimeout(() => router.push(path), 160);
     },
     [close, router],
   );
 
+  const { patchItem: patchMine, removeItem: removeMine } = mine;
+  const { patchItem: patchShared } = shared;
   const onRowMenu = useCallback(
     (s: Session, id: string) => {
-      if (id === 'tags') {
+      if (id === 'pin' || id === 'unpin') {
+        const pinned = id === 'pin';
+        void (async () => {
+          patchMine(s.id, { pinned });
+          patchShared(s.id, { pinned });
+          if (!(await setSessionPinned(s.id, pinned))) {
+            patchMine(s.id, { pinned: !pinned });
+            patchShared(s.id, { pinned: !pinned });
+            alertError(t(pinned ? 'drawer.pinFailed' : 'drawer.unpinFailed'));
+            return;
+          }
+          // A shared row pinned by the member now belongs to "mine" (the server lists it with them).
+          void refreshMine();
+        })();
+      } else if (id === 'tags') {
         close();
         setTimeout(() => router.push({ pathname: '/sheets/session-tags', params: { sessionId: s.id } }), 160);
+      } else if (id === 'rename') {
+        void (async () => {
+          const current = s.title ?? '';
+          const next = await promptText({
+            title: t('chat.renameTitle'),
+            defaultValue: current,
+            confirmLabel: t('common.save'),
+          });
+          if (!next || next === current) return;
+          patchMine(s.id, { title: next });
+          if (!(await updateSessionTitle(s.id, next))) {
+            patchMine(s.id, { title: current });
+            alertError(t('chat.renameFailed'));
+          }
+        })();
       } else if (id === 'delete') {
         void (async () => {
           const ok = await confirmAction({
@@ -180,24 +272,31 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
             alertError(t('chat.deleteFailed'));
             return;
           }
-          removeItem(s.id);
+          removeMine(s.id);
           toast(t('chat.deleted'), 'trash');
           if (s.id === activeId) openNewChat(router);
         })();
       }
     },
-    [close, router, t, removeItem, activeId],
+    [close, router, t, patchMine, patchShared, removeMine, refreshMine, activeId],
   );
 
-  // Shared conversations (not the owner's) get no menu: tags and delete are owner-only.
-  const rowItems = useMemo<MenuItem[]>(
-    () =>
-      menuSections([
-        [{ id: 'tags', title: t('chat.actionTags'), icon: 'tag' }],
-        [{ id: 'delete', title: t('common.delete'), icon: 'trash', destructive: true }],
-      ]),
-    [t],
-  );
+  // Every row can be pinned (any conversation the member can see); tags, rename and delete are the owner's.
+  const menus = useMemo(() => {
+    const pin: MenuItem = { id: 'pin', title: t('drawer.pin'), icon: 'pin' };
+    const unpin: MenuItem = { id: 'unpin', title: t('drawer.unpin'), icon: 'pinOff' };
+    const owner: MenuItem[] = [
+      { id: 'tags', title: t('chat.actionTags'), icon: 'tag' },
+      { id: 'rename', title: t('chat.actionRename'), icon: 'pen' },
+    ];
+    const remove: MenuItem[] = [{ id: 'delete', title: t('common.delete'), icon: 'trash', destructive: true }];
+    return {
+      own: menuSections([[pin], owner, remove]),
+      ownPinned: menuSections([[unpin], owner, remove]),
+      other: menuSections([[pin]]),
+      otherPinned: menuSections([[unpin]]),
+    };
+  }, [t]);
 
   const filterItems = useMemo<MenuItem[]>(
     () =>
@@ -214,7 +313,80 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
   );
 
   const activeTag = filterId != null ? tags.find((x) => x.id === filterId) : undefined;
-  const nickname = user?.nickname ?? t('home.fallbackName');
+  const loadMoreRows = () => {
+    if ((showAll || earlierOpen) && !mine.done) void mine.loadMore();
+    if ((sharedOpen || !!query) && !shared.done) void shared.loadMore();
+  };
+
+  const renderRow = ({ item }: { item: Row }) => {
+    if (item.kind === 'fold') {
+      const label = item.fold === 'earlier' ? t('drawer.earlier') : t('drawer.sharedWithMe');
+      const count = `${item.count}${item.more ? '+' : ''}`;
+      return (
+        <Pressable
+          key={fontKey}
+          onPress={() => (item.fold === 'earlier' ? setEarlierOpen((o) => !o) : setSharedOpen((o) => !o))}
+          accessibilityRole="button"
+          accessibilityLabel={`${label}, ${count}`}
+          accessibilityState={{ expanded: item.open }}
+          style={({ pressed }) => [styles.rowSlot, styles.fold, pressed && { backgroundColor: c.fill }]}
+        >
+          <Text numberOfLines={1} style={styles.foldText}>
+            {label}
+          </Text>
+          <Text style={styles.foldCount}>{count}</Text>
+          <Icon name={item.open ? 'chevD' : 'chevR'} size={12} weight="semibold" color={c.tertiaryLabel} />
+        </Pressable>
+      );
+    }
+    const s = item.session;
+    const owner = s.is_owner !== false && !item.shared;
+    const row = (
+      <Pressable
+        key={fontKey}
+        onPress={() => openConversation(s)}
+        accessibilityRole="button"
+        accessibilityLabel={s.title || t('chat.newConversation')}
+        accessibilityState={{ selected: s.id === activeId }}
+        style={({ pressed }) => [
+          styles.row,
+          s.id === activeId && { backgroundColor: c.tertiaryFill },
+          pressed && { backgroundColor: c.fill },
+        ]}
+      >
+        <Text numberOfLines={1} style={[styles.rowText, s.id === activeId && styles.rowTextActive]}>
+          {s.title || t('chat.newConversation')}
+        </Text>
+        {!owner ? <Icon name="users" size={13} color={c.tertiaryLabel} /> : null}
+      </Pressable>
+    );
+    const items = owner
+      ? s.pinned
+        ? menus.ownPinned
+        : menus.own
+      : s.pinned
+        ? menus.otherPinned
+        : menus.other;
+    return (
+      <NativeMenu
+        trigger="longPress"
+        items={items}
+        onSelect={(id) => onRowMenu(s, id)}
+        width={ROW_W}
+        style={styles.rowSlot}
+      >
+        {row}
+      </NativeMenu>
+    );
+  };
+
+  const apps = APPS.length > BAR_SLOTS ? APPS.slice(0, BAR_SLOTS - 1) : APPS;
+  const overflow = APPS.length > BAR_SLOTS ? APPS.slice(BAR_SLOTS - 1) : [];
+  const overflowItems = useMemo<MenuItem[]>(
+    () => overflow.map((app) => ({ id: app.path, title: t(app.label), icon: app.icon })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- APPS is a module constant
+    [t],
+  );
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + space.sm }]}>
@@ -246,15 +418,13 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
         </Touchable>
       </View>
 
-      <SectionList
+      <SectionList<Row, Section>
         sections={sections}
-        keyExtractor={(s) => s.id}
+        keyExtractor={(row) => (row.kind === 'session' ? `${row.shared ? 's' : 'm'}:${row.session.id}` : row.fold)}
         stickySectionHeadersEnabled
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        onEndReached={() => {
-          if (!done) void loadMore();
-        }}
+        onEndReached={loadMoreRows}
         onEndReachedThreshold={0.4}
         extraData={fontKey}
         ListHeaderComponent={
@@ -283,51 +453,20 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
             </View>
           </>
         }
-        renderSectionHeader={({ section }) => (
-          <View key={fontKey} style={styles.sectionHead}>
-            <Text style={styles.sectionText}>{section.title}</Text>
-          </View>
-        )}
-        renderItem={({ item }) => {
-          const row = (
-            <Pressable
-              key={fontKey}
-              onPress={() => openConversation(item)}
-              accessibilityRole="button"
-              accessibilityLabel={item.title || t('chat.newConversation')}
-              accessibilityState={{ selected: item.id === activeId }}
-              style={({ pressed }) => [
-                styles.row,
-                item.id === activeId && { backgroundColor: c.tertiaryFill },
-                pressed && { backgroundColor: c.fill },
-              ]}
-            >
-              <Text numberOfLines={1} style={[styles.rowText, item.id === activeId && styles.rowTextActive]}>
-                {item.title || t('chat.newConversation')}
-              </Text>
-              {item.shared ? <Icon name="users" size={13} color={c.tertiaryLabel} /> : null}
-            </Pressable>
-          );
-          return item.is_owner === false ? (
-            <View style={styles.rowSlot}>{row}</View>
-          ) : (
-            <NativeMenu
-              trigger="longPress"
-              items={rowItems}
-              onSelect={(id) => onRowMenu(item, id)}
-              width={ROW_W}
-              style={styles.rowSlot}
-            >
-              {row}
-            </NativeMenu>
-          );
-        }}
+        renderSectionHeader={({ section }) =>
+          section.title ? (
+            <View key={fontKey} style={styles.sectionHead}>
+              <Text style={styles.sectionText}>{section.title}</Text>
+            </View>
+          ) : null
+        }
+        renderItem={renderRow}
         ListEmptyComponent={
-          loading ? (
+          mine.loading ? (
             <LoadingState style={styles.emptyLoading} />
-          ) : error ? (
-            <EmptyState icon="alert" title={t('drawer.loadFailed')} onRetry={() => void refresh()} />
-          ) : search.trim() ? (
+          ) : mine.error ? (
+            <EmptyState icon="alert" title={t('drawer.loadFailed')} onRetry={() => void refreshMine()} />
+          ) : query ? (
             <EmptyState icon="search" title={t('drawer.noResults')} message={t('drawer.noResultsHint')} />
           ) : (
             <EmptyState icon="msgs" title={t('drawer.empty')} />
@@ -337,51 +476,47 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
         style={{ flex: 1 }}
       />
 
-      {/* pinned to the bottom: 知识库 / 项目, then account → settings */}
-      <View key={fontKey} style={styles.footer}>
-        <NavRow icon="books" label={t('drawer.knowledge')} onPress={() => go('/knowledge')} />
-        <NavRow icon="folder" label={t('drawer.projects')} onPress={() => go('/projects')} />
+      {/* pinned to the bottom: one row of apps, icon over a caption */}
+      <View key={fontKey} style={[styles.bar, { paddingBottom: Math.max(insets.bottom, space.sm) }]}>
+        {apps.map((app) => (
+          <BarItem key={app.path} icon={app.icon} label={t(app.label)} onPress={() => go(app.path)} />
+        ))}
+        {overflow.length ? (
+          <NativeMenu items={overflowItems} onSelect={(id) => go(id as AppPath)} style={styles.barSlot}>
+            <BarItem icon="more" label={t('drawer.more')} />
+          </NativeMenu>
+        ) : null}
       </View>
-      <Pressable
-        onPress={() => go('/settings')}
-        style={({ pressed }) => [
-          styles.account,
-          { paddingBottom: insets.bottom + space.sm },
-          pressed && { opacity: 0.6 },
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={t('drawer.settings')}
-      >
-        <InitialAvatar name={nickname} size={34} />
-        <View key={fontKey} style={{ flex: 1, minWidth: 0 }}>
-          <Text numberOfLines={1} style={styles.accountName}>
-            {nickname}
-          </Text>
-          {station ? (
-            <Text numberOfLines={1} style={styles.accountSub}>
-              {station.name}
-            </Text>
-          ) : null}
-        </View>
-        <Icon name="gear" size={20} color={c.secondaryLabel} />
-      </Pressable>
     </View>
   );
 }
 
-function NavRow({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+/** One entry of the bottom bar: an icon over a small caption, a full-height touch target. */
+function BarItem({ icon, label, onPress }: { icon: IconName; label: string; onPress?: () => void }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
-  return (
+  const content = (
+    <>
+      <Icon name={icon} size={22} color={c.label} />
+      <Text numberOfLines={1} style={styles.barLabel}>
+        {label}
+      </Text>
+    </>
+  );
+  // without onPress it is a menu's trigger: the menu owns the touch
+  return onPress ? (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.navRow, pressed && { backgroundColor: c.fill }]}
+      style={({ pressed }) => [styles.barSlot, styles.barItem, pressed && { opacity: 0.5 }]}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Icon name={icon} size={20} color={c.label} />
-      <Text style={styles.navText}>{label}</Text>
+      {content}
     </Pressable>
+  ) : (
+    <View style={styles.barItem} accessible accessibilityRole="button" accessibilityLabel={label}>
+      {content}
+    </View>
   );
 }
 
@@ -408,22 +543,6 @@ const useStyles = makeStyles((c) => ({
   searchInput: { flex: 1, ...typo.body, color: c.label, paddingVertical: 0 },
   topBtn: { width: HIT, height: HIT, alignItems: 'center', justifyContent: 'center' },
   navBlock: { paddingHorizontal: space.sm },
-  footer: {
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.separator,
-  },
-  navRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    minHeight: HIT,
-    paddingHorizontal: space.sm + 2,
-    borderRadius: radius.md,
-    ...squircle,
-  },
-  navText: { ...typo.body, color: c.label },
   historyHead: { flexDirection: 'row', alignItems: 'center', marginTop: space.xs, paddingLeft: space.sm + 2 },
   historyTitle: { ...typo.footnote, fontWeight: weight.semibold, color: c.secondaryLabel, flex: 1 },
   filterBtn: { width: 36, height: 32, alignItems: 'center', justifyContent: 'center' },
@@ -446,14 +565,36 @@ const useStyles = makeStyles((c) => ({
   },
   rowText: { flex: 1, ...typo.body, color: c.label },
   rowTextActive: { fontWeight: weight.semibold },
-  emptyLoading: { flexGrow: 0, paddingTop: space.xxl },
-  account: {
+  fold: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.md,
-    paddingHorizontal: space.lg,
-    paddingTop: space.sm,
+    gap: space.xs + 2,
+    minHeight: 40,
+    marginTop: space.sm,
+    paddingHorizontal: space.sm + 2,
+    borderRadius: radius.md,
+    ...squircle,
   },
-  accountName: { ...typo.headline, color: c.label },
-  accountSub: { ...typo.footnote, color: c.secondaryLabel },
+  foldText: { flex: 1, ...typo.subheadline, fontWeight: weight.medium, color: c.secondaryLabel },
+  foldCount: { ...typo.footnote, color: c.tertiaryLabel, fontVariant: ['tabular-nums'] },
+  emptyLoading: { flexGrow: 0, paddingTop: space.xxl },
+  bar: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingTop: space.xs,
+    paddingHorizontal: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: c.separator,
+  },
+  barSlot: { flex: 1 },
+  barItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    minHeight: HIT + 6,
+    paddingVertical: space.xs,
+    borderRadius: radius.md,
+    ...squircle,
+  },
+  barLabel: { ...typo.caption2, color: c.secondaryLabel },
 }));

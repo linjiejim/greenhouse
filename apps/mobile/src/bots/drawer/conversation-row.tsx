@@ -3,8 +3,9 @@
  * docs/specs/20261008-mobile-bots.md §2.5.1), the web sidebar's row in native
  * pieces: the Bot's plant (a group: its first two, overlapped), the title, a
  * one-line preview of the last message, the time — and at most one signal:
- * "needs you" (an orange badge with the card count) over unread (an accent dot
- * and a bold title). A Bot replying right now rewrites the preview to
+ * "needs you" (an orange badge with the card count) over unread (a bold title
+ * and the count of new Bot replies in an accent badge — `unread_count`; a dot
+ * when only system lines are new, or from a server without the count). A Bot replying right now rewrites the preview to
  * "Replying…" instead of adding a badge; the server's `working` is never shown
  * (D14 — only `running` is the client's truth). Sprouty's DM carries a pin.
  *
@@ -37,14 +38,26 @@ import { BotAvatar } from '../ui/bot-avatar';
 import { conversationReplyable } from '../vendor/web-helpers';
 import { rowPose, rowPreview, rowTime, rowTitle, type RowCopy } from './row-text';
 
-/** Leading column: a DM's 32-pt plant, or a group's first two 22-pt plants overlapped — titles stay aligned. */
-const LEAD_W = 44;
+/**
+ * A DM's plant is as tall as the two text lines beside it (name 22 + preview 18 + 1 ≈ 41 pt), and
+ * grows with Dynamic Type like they do (to 1.3×); an old group shows its first two plants overlapped.
+ */
+/** The server counts unread replies up to this (`unread_count`); at it the badge reads "99+". */
+const UNREAD_CAP = 99;
+const DM_AVATAR = 40;
+const GROUP_AVATAR = 26;
+/** Avatars follow the text size up to this factor. */
+const AVATAR_SCALE_MAX = 1.3;
+/** The leading column: the avatar plus a little air — titles stay aligned. */
+function leadWidth(fontScale: number): number {
+  return Math.round((DM_AVATAR + space.sm) * Math.min(Math.max(fontScale, 1), AVATAR_SCALE_MAX));
+}
 /** Where a row's text starts (padding + leading column + gap): separators between rows begin here. */
-export const ROW_TEXT_INSET = space.sm + LEAD_W + space.sm + 2;
+export function rowTextInset(fontScale: number): number {
+  return space.sm + leadWidth(fontScale) + space.sm + 2;
+}
 /** From the accessibility sizes (AX1 = 1.79×) the time leaves the name's line. */
 const TIME_HIDDEN_SCALE = 1.75;
-const DM_AVATAR = 32;
-const GROUP_AVATAR = 22;
 
 /** The localized copy ./row-text.ts needs — stable until the language changes. */
 export function useRowCopy(): RowCopy {
@@ -63,7 +76,7 @@ export function useRowCopy(): RowCopy {
 }
 
 /** Long-press menu actions; the caller routes them (the drawer closes first). */
-export type RowMenuAction = 'open' | 'profile' | 'info' | 'markRead';
+export type RowMenuAction = 'open' | 'profile' | 'markRead';
 
 export const ConversationRow = memo(function ConversationRow({
   row,
@@ -78,7 +91,7 @@ export const ConversationRow = memo(function ConversationRow({
   onPress(): void;
   /** The row's width (the drawer's `DRAWER_W − 2 × inset`), for the menu trigger. */
   width: number;
-  /** Long-press menu: DM → open / Bot profile / mark read; group → open / info / mark read. */
+  /** Long-press menu: open, the Bot's profile (a DM), mark read. */
   onMenu?: (action: RowMenuAction) => void;
 }) {
   const { colors: c } = useTheme();
@@ -105,6 +118,7 @@ export const ConversationRow = memo(function ConversationRow({
   const pose = rowPose(signal, replyable);
   const pinned = row.kind === 'direct' && isSproutyBot(owner);
   const unread = signal.badge === 'unread';
+  const unreadCount = unread ? (row.unread_count ?? 0) : 0;
   // Short (09:41 · 昨天 · 周二 · 10/1) — it shares the line with the name; at the
   // accessibility sizes it gives the name the whole line (VoiceOver still hears it).
   const fullTime = rowTime(parseMs(row.last_activity_at), Date.now(), locale, t('time.yesterday'));
@@ -119,7 +133,7 @@ export const ConversationRow = memo(function ConversationRow({
   const a11yLabel = [
     title,
     pinned && t('bots.nav.pinnedA11y'),
-    needsYou ?? (unread && t('bots.nav.unread')),
+    needsYou ?? (unread && (unreadCount > 0 ? t('bots.nav.unreadN', { n: unreadCount }) : t('bots.nav.unread'))),
     signal.working ? preview : t('bots.nav.lastMessage', { text: preview }),
     fullTime,
   ]
@@ -131,9 +145,7 @@ export const ConversationRow = memo(function ConversationRow({
       menuSections([
         [
           { id: 'open', title: t('bots.nav.open'), icon: 'msg' },
-          row.kind === 'direct'
-            ? { id: 'profile', title: t('bots.nav.profile'), icon: 'person' }
-            : { id: 'info', title: t('bots.nav.info'), icon: 'users' },
+          ...(row.kind === 'direct' ? [{ id: 'profile', title: t('bots.nav.profile'), icon: 'person' as const }] : []),
         ],
         unread ? [{ id: 'markRead', title: t('bots.nav.markRead'), icon: 'checkCircle' }] : [],
       ]),
@@ -141,6 +153,8 @@ export const ConversationRow = memo(function ConversationRow({
   );
 
   const members = useMemo(() => [...row.members].sort((a, b) => a.position - b.position).slice(0, 2), [row.members]);
+  const avatarScale = Math.min(Math.max(fontScale, 1), AVATAR_SCALE_MAX);
+  const avatarSize = Math.round(DM_AVATAR * avatarScale);
 
   const body = (
     <Pressable
@@ -154,11 +168,15 @@ export const ConversationRow = memo(function ConversationRow({
         pressed && { backgroundColor: c.fill },
       ]}
     >
-      <View style={styles.lead}>
+      <View style={[styles.lead, { width: leadWidth(fontScale) }]}>
         {row.kind === 'direct' ? (
-          <BotAvatar bot={owner} size={DM_AVATAR} state={pose.state} animate={pose.animate} />
+          <BotAvatar bot={owner} size={avatarSize} state={pose.state} animate={pose.animate} />
         ) : (
-          <AvatarStack bots={members.map((m) => byId[m.bot_id] ?? null)} size={GROUP_AVATAR} max={2} />
+          <AvatarStack
+            bots={members.map((m) => byId[m.bot_id] ?? null)}
+            size={Math.round(GROUP_AVATAR * avatarScale)}
+            max={2}
+          />
         )}
       </View>
       {/* keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts) */}
@@ -180,6 +198,8 @@ export const ConversationRow = memo(function ConversationRow({
           </Text>
           {needsYou ? (
             <Badge label={needsYou} tone="orange" />
+          ) : unreadCount > 0 ? (
+            <Badge label={unreadCount >= UNREAD_CAP ? `${UNREAD_CAP}+` : String(unreadCount)} tone="accent" />
           ) : unread ? (
             <View style={[styles.dot, { backgroundColor: c.accent }]} />
           ) : null}
@@ -208,7 +228,7 @@ const useStyles = makeStyles((c) => ({
     borderRadius: radius.md,
     ...squircle,
   },
-  lead: { width: LEAD_W, alignItems: 'center', justifyContent: 'center' },
+  lead: { alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1, minWidth: 0, gap: 1 },
   line: { flexDirection: 'row', alignItems: 'center', gap: space.xs + 2 },
   title: { flexShrink: 1, ...typo.body, color: c.label },

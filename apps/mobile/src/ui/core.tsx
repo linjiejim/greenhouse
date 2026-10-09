@@ -128,6 +128,8 @@ const ICONS = {
   checkboxOff: ['circle', 'check_box_outline_blank'],
   // ── Bots (pinned row, stop, "needs you" cards, sign-in, mentions) ──
   pin: ['pin.fill', 'push_pin'],
+  pinOff: ['pin.slash', 'keep_off'],
+  plug: ['powerplug', 'power'],
   stopCircle: ['stop.circle', 'stop_circle'],
   hand: ['hand.raised', 'front_hand'],
   shieldCheck: ['checkmark.shield', 'verified_user'],

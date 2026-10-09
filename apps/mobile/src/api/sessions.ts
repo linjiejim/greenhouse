@@ -1,7 +1,7 @@
 /**
- * Sessions + profiles API — list (paged, tag filter), detail (messages +
- * tags + ownership), create (bound to an agent profile), rename, delete, and
- * the agent-profile catalog.
+ * Sessions + profiles API — list (paged, scoped, tag / agent filters), detail
+ * (messages + tags + ownership), create (bound to an agent profile), rename,
+ * pin, delete, and the agent-profile catalog.
  */
 
 import type { Session, Message, SessionUsage, Profile } from '../shared/greenhouse-types';
@@ -17,9 +17,19 @@ export interface SessionPage {
   nextOffset: number;
 }
 
+/** Whose conversations a page lists: the member's own, or the ones others shared with them. */
+export type SessionScope = 'mine' | 'shared';
+
 /**
  * One page of active sessions, or `null` when the request failed (so a list
  * can tell "no conversations" from "couldn't load").
+ *
+ * Always scoped (default `mine`, like the web sidebar): without a scope the
+ * server returns its legacy combined list — a super gets every member's
+ * conversations, a team member up to 200 shared ones mixed in — which put
+ * other people's read-only rows (no long-press menu) among the member's own.
+ * `profile` keeps one agent's conversations (`sprouty` / `bot:<id>` — every
+ * pinned version and legacy spelling of it).
  *
  * The server applies `tag_id` *after* paging, so a filtered page can be short
  * (even empty) while more exist — always continue from `nextOffset` while
@@ -30,12 +40,18 @@ export async function fetchSessionsPage(opts?: {
   limit?: number;
   offset?: number;
   tagId?: number | null;
+  scope?: SessionScope;
+  profile?: string;
 }): Promise<SessionPage | null> {
   const limit = opts?.limit ?? 200;
   const offset = opts?.offset ?? 0;
   const tag = opts?.tagId != null ? `&tag_id=${opts.tagId}` : '';
+  const profile = opts?.profile ? `&profile=${encodeURIComponent(opts.profile)}` : '';
+  const scope = opts?.scope ?? 'mine';
   try {
-    const res = await api(`/api/sessions?status=active&page_meta=1&limit=${limit}&offset=${offset}${tag}`);
+    const res = await api(
+      `/api/sessions?status=active&scope=${scope}&page_meta=1&limit=${limit}&offset=${offset}${tag}${profile}`,
+    );
     if (!res.ok) return null;
     const data = (await res.json()) as {
       sessions?: Session[];
@@ -78,9 +94,9 @@ export async function createSession(profileId = 'default', title?: string): Prom
     });
   try {
     let res = await attempt(profileId);
-    // The profile preference is device-global while stations are not — a
-    // profile picked on another station may not exist here. Don't let the
-    // stale pick block new conversations; retry once with the default.
+    // A Bot's profile may be gone (archived), a station may not know
+    // Sprouty — don't let it block a new conversation: retry once with the
+    // server's default.
     if (!res.ok && profileId !== 'default' && [400, 403, 404].includes(res.status)) {
       res = await attempt('default');
     }
@@ -99,6 +115,16 @@ export async function updateSessionTitle(id: string, title: string): Promise<boo
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
     });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Pin / unpin a conversation for the member (their own "Pinned" group — any session they can see). */
+export async function setSessionPinned(id: string, pinned: boolean): Promise<boolean> {
+  try {
+    const res = await api(`/api/sessions/${id}/pin`, { method: pinned ? 'POST' : 'DELETE' });
     return res.ok;
   } catch {
     return false;

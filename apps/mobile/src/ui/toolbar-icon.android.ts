@@ -101,6 +101,8 @@ const SOURCES: Record<IconName, ImageSourcePropType> = {
   checkboxOn: require('../../assets/icons/android/check_box.xml'),
   checkboxOff: require('../../assets/icons/android/check_box_outline_blank.xml'),
   pin: require('../../assets/icons/android/push_pin.xml'),
+  pinOff: require('../../assets/icons/android/keep_off.xml'),
+  plug: require('../../assets/icons/android/power.xml'),
   stopCircle: require('../../assets/icons/android/stop_circle.xml'),
   hand: require('../../assets/icons/android/front_hand.xml'),
   shieldCheck: require('../../assets/icons/android/verified_user.xml'),

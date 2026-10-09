@@ -1,7 +1,8 @@
 /**
  * `useSessions` — paginated conversation-history loader for the drawer.
  *
- * Server contract (`GET /api/sessions?page_meta=1`, src/api/sessions.ts): pages
+ * Server contract (`GET /api/sessions?scope=…&page_meta=1`, src/api/sessions.ts — the
+ * member's own conversations by default, `shared` for the ones shared with them): pages
  * continue from `next_offset` while `has_more`; the tag filter is applied per
  * page *after* paging, so a filtered page can be short or empty while more
  * exist; there is no server-side title search (the web filters loaded rows
@@ -21,7 +22,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchSessionsPage } from '../api/sessions';
+import { fetchSessionsPage, type SessionScope } from '../api/sessions';
 import type { Session } from '../shared/greenhouse-types';
 
 /** Keep paging on our own until at least this many rows are visible. */
@@ -29,7 +30,13 @@ const MIN_VISIBLE = 15;
 /** …but a search stops auto-paging after scanning this many conversations. */
 const SEARCH_SCAN_CAP = 600;
 
-export function useSessions(enabled: boolean, pageSize = 30, tagId: number | null = null, search = '') {
+export function useSessions(
+  enabled: boolean,
+  pageSize = 30,
+  tagId: number | null = null,
+  search = '',
+  scope: SessionScope = 'mine',
+) {
   const [all, setAll] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -45,7 +52,7 @@ export function useSessions(enabled: boolean, pageSize = 30, tagId: number | nul
     setLoading(true);
     setError(false);
     const forTag = tagRef.current;
-    const page = await fetchSessionsPage({ limit: pageSize, offset: nextOffset.current, tagId: forTag });
+    const page = await fetchSessionsPage({ limit: pageSize, offset: nextOffset.current, tagId: forTag, scope });
     // The tag filter changed while this page was in flight — discard it (the
     // reset already started the new filter's first page).
     if (tagRef.current !== forTag) return;
@@ -64,7 +71,7 @@ export function useSessions(enabled: boolean, pageSize = 30, tagId: number | nul
       doneRef.current = true;
       setDone(true);
     }
-  }, [pageSize]);
+  }, [pageSize, scope]);
 
   // Kick off the first page once the surface becomes visible.
   useEffect(() => {
@@ -97,7 +104,7 @@ export function useSessions(enabled: boolean, pageSize = 30, tagId: number | nul
     const forTag = tagRef.current;
     const empty = nextOffset.current === 0;
     if (empty) setLoading(true);
-    const page = await fetchSessionsPage({ limit: pageSize, offset: 0, tagId: forTag });
+    const page = await fetchSessionsPage({ limit: pageSize, offset: 0, tagId: forTag, scope });
     if (tagRef.current !== forTag) return;
     busy.current = false;
     if (empty) setLoading(false);
@@ -111,7 +118,7 @@ export function useSessions(enabled: boolean, pageSize = 30, tagId: number | nul
     nextOffset.current = page.nextOffset;
     doneRef.current = !page.hasMore;
     setDone(doneRef.current);
-  }, [pageSize]);
+  }, [pageSize, scope]);
 
   const query = search.trim().toLowerCase();
   const items = useMemo(
@@ -127,6 +134,11 @@ export function useSessions(enabled: boolean, pageSize = 30, tagId: number | nul
   }, [enabled, loading, done, error, all.length, items.length, query, loadMore]);
 
   const removeItem = useCallback((id: string) => setAll((it) => it.filter((x) => x.id !== id)), []);
+  /** Optimistic edit of one loaded row (pin, rename); the next refresh brings the server's truth. */
+  const patchItem = useCallback(
+    (id: string, patch: Partial<Session>) => setAll((it) => it.map((x) => (x.id === id ? { ...x, ...patch } : x))),
+    [],
+  );
 
-  return { items, loading, done, error, loadMore, refresh, removeItem };
+  return { items, loading, done, error, loadMore, refresh, removeItem, patchItem };
 }

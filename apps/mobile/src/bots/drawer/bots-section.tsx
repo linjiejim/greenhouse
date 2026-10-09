@@ -3,11 +3,10 @@
  * §2.5.1, D1). The drawer is this app's conversation navigation, so talking
  * and switching to another Bot are the same right swipe:
  *
- *  - a header "Bots" with ＋ — a system menu of new Bots: the four templates
- *    (the ones that need a computer this deployment lacks under their own
- *    heading — a hint, not a block), then Custom… — all disabled at the cap,
- *    the reason as the menu title. No groups: Bots bring each other into a
- *    conversation themselves (retired 2026-10-09);
+ *  - a header "Bots" — nothing to add from here: Bots are created by asking
+ *    Sprouty in its thread, or in Settings → My Bots (examples, by hand) — the
+ *    drawer's ＋ menu was retired 2026-10. No groups either: Bots bring each
+ *    other into a conversation themselves (retired 2026-10-09);
  *  - Sprouty's DM, always first and pinned; then the conversations someone can
  *    still reply in, in the server's order (newest activity first — never
  *    re-sorted by attention, so rows keep their place); five of them, then
@@ -25,30 +24,23 @@
  */
 
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
-import { useGlobalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useHomeSurface } from '../home/surface';
 import { useDrawerStatus } from 'expo-router/drawer';
 import { markConversationRead } from '../../api/bots';
-import {
-  BOT_TEMPLATES,
-  isSproutyBot,
-  MAX_ACTIVE_BOTS,
-  type BotConversationSummary,
-  type BotView,
-} from '../../shared/bots';
+import { type BotConversationSummary, type BotView } from '../../shared/bots';
 import { useT } from '../../lib/i18n';
-import { usePrefs } from '../../store/prefs';
-import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
+import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
 import { Icon } from '../../ui/core';
 import { useFontScaleKey } from '../../ui/font-scale';
 import { alertError } from '../../ui/dialogs';
 import { DRAWER_W } from '../../ui/drawer';
-import { NativeMenu, type MenuItem } from '../../ui/menu';
 import { useBotsEnabled } from '../availability';
 import { openThread } from '../nav';
 import { drawerRows, sproutyBot, sproutyDm, useBots } from '../store';
-import { ConversationRow, ROW_TEXT_INSET, useRowCopy, type RowMenuAction } from './conversation-row';
+import { ConversationRow, rowTextInset, useRowCopy, type RowMenuAction } from './conversation-row';
 import { rowTitle } from './row-text';
 
 /** Rows sit inset in the panel like the history's; their menus get this width up front. */
@@ -78,7 +70,8 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
   const t = useT();
   const router = useRouter();
   const copy = useRowCopy();
-  const { c: currentSid } = useGlobalSearchParams<{ c?: string }>();
+  // the thread on screen — a restored one included (../home/surface.ts)
+  const currentSid = useHomeSurface((st) => st.c);
 
   const bots = useBots((s) => s.bots);
   const byId = useBots((s) => s.byId);
@@ -86,8 +79,6 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
   const conversations = useBots((s) => s.conversations);
   const conversationsLoaded = useBots((s) => s.conversationsLoaded);
   const failed = useBots((s) => s.error === 'failed');
-  const computer = useBots((s) => s.computer);
-  const lang = usePrefs((s) => s.lang);
   const [expanded, setExpanded] = useState(expandedThisRun);
 
   // Every open: refresh in place; the first look also makes sure Sprouty has its DM.
@@ -150,8 +141,6 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
       else if (action === 'profile' && row.owner_bot_id) {
         const botId = row.owner_bot_id;
         later(() => router.push({ pathname: '/bots/profile', params: { botId, from: sid } }));
-      } else if (action === 'info') {
-        later(() => router.push({ pathname: '/bots/info', params: { c: sid } }));
       } else if (action === 'markRead') {
         useBots.getState().noteRead(sid);
         void markConversationRead(sid).then((ok) => {
@@ -162,45 +151,6 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
       }
     },
     [open, later, router, t],
-  );
-
-  /* ---------- ＋ : a new Bot — the templates, then custom (no groups: Bots bring each other in) ---------- */
-  const others = bots.filter((bot) => !isSproutyBot(bot)).length;
-  const atLimit = others >= MAX_ACTIVE_BOTS;
-  const addTitle = atLimit ? t('bots.nav.limitReached') : t('bots.nav.newBot');
-  const addItems = useMemo<MenuItem[]>(() => {
-    const noComputer = !!computer && computer.state !== 'ready';
-    const item = (tpl: (typeof BOT_TEMPLATES)[number]): MenuItem => ({
-      id: `template:${tpl.key}`,
-      title: t('bots.nav.templateItem', { role: tpl.copy[lang].role, name: tpl.copy[lang].name }),
-      disabled: atLimit,
-    });
-    const ready = BOT_TEMPLATES.filter((tpl) => !(tpl.needsComputer && noComputer));
-    const blocked = BOT_TEMPLATES.filter((tpl) => tpl.needsComputer && noComputer);
-    const newBot: MenuItem[] = [
-      ...(ready.length ? [{ id: '__ready', title: '', inline: true, children: ready.map(item) }] : []),
-      // a hint only: these still work for everything but browsing
-      ...(blocked.length
-        ? [{ id: '__computer', title: t('bots.nav.needsComputer'), inline: true, children: blocked.map(item) }]
-        : []),
-      {
-        id: '__custom',
-        title: '',
-        inline: true,
-        children: [{ id: 'template:custom', title: t('bots.nav.custom'), icon: 'pen', disabled: atLimit }],
-      },
-    ];
-    return newBot;
-  }, [computer, lang, atLimit, t]);
-
-  const onAdd = useCallback(
-    (id: string) => {
-      if (id.startsWith('template:')) {
-        const template = id.slice('template:'.length);
-        later(() => router.push({ pathname: '/bots/bot-form', params: { template } }));
-      }
-    },
-    [later, router],
   );
 
   const expand = useCallback(() => {
@@ -231,11 +181,6 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
         <Text accessibilityRole="header" style={styles.headTitle}>
           {t('bots.nav.section')}
         </Text>
-        <NativeMenu title={addTitle} items={addItems} onSelect={onAdd}>
-          <View style={styles.addBtn} accessible accessibilityRole="button" accessibilityLabel={t('bots.nav.addA11y')}>
-            <Icon name="plus" size={17} color={c.secondaryLabel} weight="medium" />
-          </View>
-        </NativeMenu>
       </View>
 
       {pinned ? (
@@ -324,9 +269,15 @@ const DrawerRow = memo(function DrawerRow({
 
 function Separator() {
   const { colors: c } = useTheme();
+  const { fontScale } = useWindowDimensions();
   return (
     <View
-      style={{ height: StyleSheet.hairlineWidth, marginLeft: ROW_TEXT_INSET, marginRight: space.sm, backgroundColor: c.separator }}
+      style={{
+        height: StyleSheet.hairlineWidth,
+        marginLeft: rowTextInset(fontScale),
+        marginRight: space.sm,
+        backgroundColor: c.separator,
+      }}
     />
   );
 }
@@ -352,12 +303,11 @@ const useStyles = makeStyles((c) => ({
   head: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 32,
     paddingLeft: ROW_INSET * 2 + 2,
     paddingRight: ROW_INSET,
   },
   headTitle: { ...typo.footnote, fontWeight: weight.semibold, color: c.secondaryLabel, flex: 1 },
-  // a full 44-pt target without making the header row taller
-  addBtn: { width: HIT, height: HIT, marginVertical: -6, alignItems: 'center', justifyContent: 'center' },
   textRow: {
     flexDirection: 'row',
     alignItems: 'center',
