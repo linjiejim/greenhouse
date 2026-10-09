@@ -9,7 +9,6 @@ import type { BotConversationSummary, BotRequestView, BotView } from '../shared/
 import type { BotsOverview } from '../shared/bots-wire';
 import {
   attentionCount,
-  capsuleItem,
   createBotsSlice,
   drawerRows,
   initialBotsData,
@@ -244,47 +243,6 @@ describe('rowSignal / attentionCount', () => {
     });
     expect(attentionCount(s, null)).toBe(3);
     expect(attentionCount(s, 's4')).toBe(2);
-  });
-});
-
-describe('capsuleItem', () => {
-  const now = Date.parse('2026-10-08T10:00:00.000Z');
-  const inMin = (min: number) => new Date(now + min * 60_000).toISOString();
-
-  it('shows another conversation’s card expiring soonest, with how many are waiting', () => {
-    const s = data({
-      pendingRequests: [
-        request('r_later', 's2', { expires_at: inMin(30) }),
-        request('r_none_old', 's3', { created_at: '2026-10-07T00:00:00.000Z' }),
-        request('r_soon', 's4', { expires_at: inMin(1) }),
-        request('r_here', 's1', { expires_at: inMin(0.5) }),
-        request('r_gone', 's5', { expires_at: inMin(-1) }),
-        request('r_none_new', 's6'),
-      ],
-    });
-    const item = capsuleItem(s, 's1', now);
-    expect(item?.kind === 'needs_you' && [item.request.id, item.count]).toEqual(['r_soon', 4]);
-    const noExpiry = capsuleItem({ ...s, pendingRequests: s.pendingRequests.filter((r) => !r.expires_at) }, null, now);
-    expect(noExpiry?.kind === 'needs_you' && noExpiry.request.id).toBe('r_none_old');
-  });
-
-  it('skips cards this device already settled', () => {
-    const pending = request('r1', 's2', { expires_at: inMin(5) });
-    const s = data({ pendingRequests: [pending], requestOverrides: { r1: { ...pending, status: 'resolved' } } });
-    expect(capsuleItem(s, null, now)).toBeNull();
-  });
-
-  it('falls back to the newest report from elsewhere', () => {
-    const s = data({
-      arrivals: {
-        s1: { botId: 'a', title: 'Old', status: 'succeeded', at: 1 },
-        s2: { botId: 'b', title: 'New', status: 'failed', at: 3 },
-        s3: { botId: 'c', title: 'Here', status: null, at: 9 },
-      },
-    });
-    const item = capsuleItem(s, 's3', now);
-    expect(item?.kind === 'arrival' && [item.sessionId, item.arrival.title]).toEqual(['s2', 'New']);
-    expect(capsuleItem(data(), null, now)).toBeNull();
   });
 });
 
@@ -553,13 +511,11 @@ describe('decide', () => {
 });
 
 describe('small writes', () => {
-  it('noteRead, arrivals, running, visible thread, pending total, a 403 seen elsewhere', () => {
+  it('noteRead, running, visible thread, pending total, a 403 seen elsewhere', () => {
     const store = makeStore();
     store.set({ conversations: [dm('s1', 'a', { attention: 'unread' }), dm('s2', 'b', { attention: 'unread' })] });
-    store.get().noteArrival('s1', { botId: 'a', title: 'Notes', status: 'succeeded', at: 1 });
     store.get().noteRead('s1');
     expect(store.get().conversations.map((r) => r.attention)).toEqual(['idle', 'unread']);
-    expect(store.get().arrivals).toEqual({});
     store.get().setRunning('s1', 'r1');
     store.get().setRunning('s2', 'r2');
     store.get().setRunning('s1', null);

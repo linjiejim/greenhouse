@@ -1,6 +1,6 @@
 /**
- * What a Bots conversation row says — in the drawer, the archived sheet and the
- * home bridge — kept pure so the root vitest pins it (./row-text.test.ts).
+ * What a Bots conversation row says — in the drawer and the archived sheet —
+ * kept pure so the root vitest pins it (./row-text.test.ts).
  * Mirrors the web sidebar's row (apps/web/src/components/bots/bots-sidebar-panel.tsx
  * `ConversationRow`): the vendored `conversationTitle`, and a one-line preview
  * that says who spoke ("You: …", "Fern: …" in a group, the DM's own Bot bare).

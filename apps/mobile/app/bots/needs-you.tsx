@@ -1,8 +1,8 @@
 /**
  * `/bots/needs-you` — every card waiting on the member, across conversations,
  * decided right here (spec docs/specs/20261008-mobile-bots.md §2.5.6, D12):
- * opened from the "needs you" capsule over another conversation, the home
- * bridge row, or `greenhouse://bots/needs-you`. Sheet `[0.6, 1]`.
+ * opened by the deep link `greenhouse://bots/needs-you` (the target for push
+ * notifications to come). Sheet `[0.6, 1]`.
  *
  * Reads `GET /api/bots/requests?status=pending` through the store on open (the
  * WS `bots:attention` reloads it while the sheet is up — no socket needed for

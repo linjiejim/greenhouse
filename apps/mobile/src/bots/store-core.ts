@@ -4,8 +4,8 @@
  * `createBotsSlice(set, get, deps)` — ./store.ts binds them to zustand and the
  * real API) and the pure selectors every surface reads.
  *
- * One store because the drawer, the thread, the capsule and the needs-you
- * sheet render the same facts at once (the web's bots-store.ts, same reason).
+ * One store because the drawer, the thread and the needs-you sheet render the
+ * same facts at once (the web's bots-store.ts, same reason).
  * The server stays the source of truth — this is a cache that loads and WS
  * events refresh, never a place a decision is made. Two rules from the web
  * (spec §2.7.4):
@@ -20,24 +20,15 @@ import type {
   BotRequestDecision,
   BotRequestErrorCode,
   BotRequestView,
-  BotTaskView,
   BotView,
   ComputerRuntimeView,
 } from '../shared/bots';
 import { isSproutyBot } from '../shared/bots';
 import type { DecideOutcome } from './contract';
-import { classifyDecision, mergeRequests } from './requests';
+import { classifyDecision } from './requests';
 import { botsById, conversationBotIds, conversationReplyable, mergeArchived } from './vendor/web-helpers';
 
 // ─── State ───────────────────────────────────────────────
-
-/** A background task's report that landed in a conversation the member is not looking at. */
-export interface Arrival {
-  botId: string;
-  title: string;
-  status: BotTaskView['status'] | null;
-  at: number;
-}
 
 export interface BotsData {
   /** Bumped by `reset()`: answers to requests made before it are dropped. */
@@ -60,8 +51,6 @@ export interface BotsData {
   pendingTotal: number;
   /** sessionId → runId of every run generating now: the only client truth for "busy" (D14). */
   running: Record<string, string>;
-  /** Reports that landed elsewhere, by conversation (the capsule / bridge row); cleared on open / read. */
-  arrivals: Record<string, Arrival>;
   /** Decisions made on this device, by request id — only ever forward (see `mergeRequests`). */
   requestOverrides: Record<string, BotRequestView>;
   /** The thread on screen (focused + foreground), maintained by the thread engine. */
@@ -96,11 +85,9 @@ export interface BotsState extends BotsData {
    * close the surfaces for this app session, like a 403 the store saw itself.
    */
   noteForbidden(): void;
-  /** Optimistic: `unread` → `idle`, and the arrival is cleared. */
+  /** Optimistic: `unread` → `idle`. */
   noteRead(sessionId: string): void;
   setVisibleThread(sessionId: string | null): void;
-  noteArrival(sessionId: string, a: Arrival): void;
-  clearArrival(sessionId: string): void;
   /** `POST /api/bots/requests/:id`, classified; `ok` is remembered in `requestOverrides`. */
   decide(request: BotRequestView, body: BotRequestDecision): Promise<DecideOutcome>;
   reset(): void;
@@ -120,7 +107,6 @@ export function initialBotsData(generation = 0): BotsData {
     pendingRequests: [],
     pendingTotal: 0,
     running: {},
-    arrivals: {},
     requestOverrides: {},
     visibleThread: null,
     error: null,
@@ -397,20 +383,11 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
         conversations: state.conversations.map((row) =>
           row.session_id === sessionId && row.attention === 'unread' ? { ...row, attention: 'idle' } : row,
         ),
-        arrivals: withoutKey(state.arrivals, sessionId),
       }));
     },
 
     setVisibleThread(sessionId) {
       if (get().visibleThread !== sessionId) set({ visibleThread: sessionId });
-    },
-
-    noteArrival(sessionId, a) {
-      set((state) => ({ arrivals: { ...state.arrivals, [sessionId]: a } }));
-    },
-
-    clearArrival(sessionId) {
-      set((state) => (sessionId in state.arrivals ? { arrivals: withoutKey(state.arrivals, sessionId) } : {}));
     },
 
     async decide(request, body) {
@@ -451,12 +428,6 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
       set(initialBotsData(get().generation + 1));
     },
   };
-}
-
-function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
-  if (!(key in record)) return record;
-  const { [key]: _gone, ...rest } = record;
-  return rest;
 }
 
 // ─── Selectors (pure) ────────────────────────────────────
@@ -543,48 +514,4 @@ export function attentionCount(s: Pick<BotsData, 'conversations'>, excludeSid: s
   return s.conversations.filter(
     (row) => row.session_id !== excludeSid && (row.pending_requests > 0 || row.attention === 'unread'),
   ).length;
-}
-
-export type CapsuleItem =
-  | { kind: 'needs_you'; request: BotRequestView; count: number }
-  | { kind: 'arrival'; sessionId: string; arrival: Arrival };
-
-/**
- * What the "needs you" capsule shows over a conversation: another
- * conversation's pending card first — the one expiring soonest (no expiry
- * last, then oldest), with how many are waiting — else the newest report that
- * landed elsewhere. Cards this device already decided, and ones past their
- * `expires_at`, never show.
- */
-export function capsuleItem(
-  s: Pick<BotsData, 'pendingRequests' | 'requestOverrides' | 'arrivals'>,
-  excludeSid: string | null,
-  now: number,
-): CapsuleItem | null {
-  const merged = mergeRequests({ rest: s.pendingRequests, live: [], overrides: s.requestOverrides });
-  const waiting = [...merged.values()].filter(
-    (request) => request.status === 'pending' && request.session_id !== excludeSid && expiresAt(request) > now,
-  );
-  if (waiting.length > 0) {
-    const first = waiting.reduce((best, request) => {
-      const [mine, theirs] = [expiresAt(request), expiresAt(best)];
-      if (mine !== theirs) return mine < theirs ? request : best;
-      return Date.parse(request.created_at) < Date.parse(best.created_at) ? request : best;
-    });
-    return { kind: 'needs_you', request: first, count: waiting.length };
-  }
-  let newest: CapsuleItem | null = null;
-  for (const [sessionId, arrival] of Object.entries(s.arrivals)) {
-    if (sessionId === excludeSid) continue;
-    if (!newest || (newest.kind === 'arrival' && arrival.at > newest.arrival.at)) {
-      newest = { kind: 'arrival', sessionId, arrival };
-    }
-  }
-  return newest;
-}
-
-/** A card's expiry in ms; no (or an unreadable) `expires_at` never expires. */
-function expiresAt(request: BotRequestView): number {
-  const at = request.expires_at ? Date.parse(request.expires_at) : NaN;
-  return Number.isFinite(at) ? at : Infinity;
 }

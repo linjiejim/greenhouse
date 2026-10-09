@@ -1,7 +1,7 @@
 /**
  * Who sees Bots, and where (spec §2.2 gate table). Two gates, because the
  * server has two (06 C6):
- * - the conversation surfaces (drawer section, threads, capsule, ☰ badge, WS)
+ * - the conversation surfaces (drawer section, threads, ☰ badge, WS)
  *   need the `bots` feature on top of an internal account;
  * - Bot identity management (Settings → My Bots) needs an internal account only.
  * Both stay closed on Android in v1 (§2.9), after the server said no for this

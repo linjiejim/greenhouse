@@ -156,7 +156,7 @@ export interface ThreadDeps {
   clock: { now(): number; setTimeout(fn: () => void, ms: number): unknown; clearTimeout(handle: unknown): void };
 }
 
-// ─── Card & capsule props ────────────────────────────────
+// ─── Card props ──────────────────────────────────────────
 
 export interface RequestCardProps {
   request: BotRequestView;
@@ -167,9 +167,4 @@ export interface RequestCardProps {
   onDecide(body: BotRequestDecision): Promise<DecideOutcome>;
   /** Sends `@Name Please try that again.` with `mentions`; not passed in the needs-you sheet. */
   onAskAgain?: (botId: string) => void;
-}
-
-export interface AttentionCapsuleProps {
-  /** The conversation on screen (its own cards render in place), null on a plain chat. */
-  excludeSid: string | null;
 }

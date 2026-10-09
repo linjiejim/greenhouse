@@ -1,8 +1,8 @@
 /**
  * Bots client state (zustand): the member's Bots, their conversations, the
- * "needs you" cards, which conversations are busy, and the reports that landed
- * elsewhere. The logic and the selectors live in ./store-core.ts (pure, tested
- * in the root vitest); this module binds them to zustand and the real API.
+ * "needs you" cards and which conversations are busy. The logic and the
+ * selectors live in ./store-core.ts (pure, tested in the root vitest); this
+ * module binds them to zustand and the real API.
  *
  * Everything here belongs to one member on one station: the store resets
  * itself whenever the signed-in user or the active station changes
@@ -18,14 +18,11 @@ import { createBotsSlice, type BotsState } from './store-core';
 
 export {
   attentionCount,
-  capsuleItem,
   drawerRows,
   rowSignal,
   sproutyBot,
   sproutyDm,
-  type Arrival,
   type BotsState,
-  type CapsuleItem,
   type DrawerRows,
 } from './store-core';
 
