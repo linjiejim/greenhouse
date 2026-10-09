@@ -33,8 +33,9 @@ Profile `access` 只声明 `level: internal | hidden` 与 `rich_output`；不存
 system prompt 末尾追加 `composeRichOutput({ blocks })` —— **只教发起本轮的界面画得出来的块**
 （[spec](../../../../docs/specs/20261008-rich-output-foundation.md)）：
 
-- 客户端每轮在 `POST /api/chat` 带 `rich_blocks`（web Chat 页 5 块、浮层/Bots 页去掉 html-preview、
-  浏览器扩展只有 chart/datatable/confirm、移动端全部），`admitRichBlocks()` 与已知块名取交集。
+- 客户端每轮在 `POST /api/chat` 带 `rich_blocks`（web Chat 页全部 8 块 + `html-preview-bridge`、浮层/Bots 页
+  没有侧栏所以去掉 html-preview 与 bridge——见 `webRichBlocks()`；浏览器扩展是 `RICH_BLOCKS_DRAWN` 的
+  chart/datatable/stats/cards/steps/confirm；移动端全部），`admitRichBlocks()` 与已知块名取交集。
 - 不带字段（老客户端）以及所有无人请求的路径（自动化、workflow、subagent、Bots 任务回报）用
   `DEFAULT_CLIENT_BLOCKS`（今天的 5 块）。默认集的拼装结果与重构前**逐字一致**，由
   `packages/utils/src/prompts.test.ts` 对 `__fixtures__/rich-output-guide.default.txt` 金样钉住。
