@@ -76,7 +76,7 @@ expose to Claude, Cursor, or any MCP client.
   <img src="docs/assets/screens/chat-knowledge-answer-dark.webp" alt="Dark theme" width="66%" />
   <img src="docs/assets/screens/mobile-chat.webp" alt="Mobile layout" width="19%" />
 </p>
-<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts, stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms and reply buttons), your Bots (on iOS: Sprouty and your other Bots at the top of the drawer, one ongoing thread per Bot — other Bots join it when a hand-off helps — with live per-Bot replies, @-mentions, "needs you" cards you can decide in place, background tasks that report back; replies show just the answer, with reasoning, tool calls and sources one ⋯ → Show toggle away; a home-screen widget lines up your Bots with unread and "needs you" badges — one tap into a Bot's thread, or a new chat with your default agent), knowledge and projects with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
+<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts (Swift Charts on iOS), stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms and reply buttons — and a "connect your account" card when a connector needs your sign-in or key), your Bots (on iOS: Sprouty and your other Bots at the top of the drawer, one ongoing thread per Bot — other Bots join it when a hand-off helps — with live per-Bot replies, @-mentions, "needs you" cards that open into a sheet to decide, background tasks that report back; a Bot's profile gathers its instructions, memory, shared notes, schedules and separate chats in tabs; new Bots are made by asking Sprouty, from an example or by hand in Settings → My Bots; replies show just the answer, with reasoning, tool calls and sources one ⋯ → Show toggle away; a home-screen widget lines up your Bots with unread and "needs you" badges — one tap into a Bot's thread, or a new chat with Sprouty), Settings → Connectors for your own keys and sign-ins, knowledge and projects with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
 
 Every image above is produced by `node scripts/capture-screens.mjs` against a seeded dev stack — the
 same script doubles as an end-to-end smoke tour (see [Development](#development)).
@@ -490,8 +490,8 @@ Each connector authenticates one of four ways:
 | Each member's own key | the member pastes it (header or query parameter) | GitHub (PAT), Amap |
 | Each member signs in (OAuth) | the member's own account, MCP authorization spec | Linear, Notion, Sentry, Atlassian |
 
-Members connect under Settings → **Connectors**; a chat that needs a connector they have not
-connected shows a **Connect** card. OAuth follows the MCP authorization spec (protected-resource
+Members connect under Settings → **Connectors** (on the web and in the mobile app); a chat that
+needs a connector they have not connected shows a **Connect** card. OAuth follows the MCP authorization spec (protected-resource
 discovery, PKCE, resource indicators) and needs no setup at the provider when it supports dynamic
 client registration or client-id metadata documents — the instance registers itself, with the
 callback `PUBLIC_BASE_URL/api/connectors/oauth/callback` (for providers without either, such as
