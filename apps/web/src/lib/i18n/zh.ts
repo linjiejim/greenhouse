@@ -2870,7 +2870,7 @@ const zh: Messages = {
   // 植物头像（每个 Bot / Agent 都是一株植物）：名称、静息神态、无障碍标签用的状态
   plantAvatar: {
     plantLabel: '植物',
-    moodLabel: '神态',
+    tintLabel: '颜色',
     name: {
       sprout: '新芽',
       ivy: '常春藤',
@@ -2889,7 +2889,7 @@ const zh: Messages = {
       sunflower: '向日葵',
       dandelion: '蒲公英',
     },
-    mood: { calm: '平静', soft: '惬意', bright: '明快', drowsy: '困倦' },
+    tint: { plant: '原色', sky: '天蓝', violet: '紫罗兰', rose: '玫瑰', coral: '珊瑚', gold: '金黄', teal: '青绿' },
     state: {
       idle: '待机',
       thinking: '思考中',

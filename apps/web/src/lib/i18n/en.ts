@@ -2929,7 +2929,7 @@ export default {
   // Plant avatars (every Bot / Agent is a plant): names, resting moods, states for accessible labels
   plantAvatar: {
     plantLabel: 'Plant',
-    moodLabel: 'Mood',
+    tintLabel: 'Color',
     name: {
       sprout: 'Sprout',
       ivy: 'Ivy',
@@ -2948,7 +2948,7 @@ export default {
       sunflower: 'Sunflower',
       dandelion: 'Dandelion',
     },
-    mood: { calm: 'Calm', soft: 'Content', bright: 'Bright', drowsy: 'Drowsy' },
+    tint: { plant: 'Natural', sky: 'Sky', violet: 'Violet', rose: 'Rose', coral: 'Coral', gold: 'Gold', teal: 'Teal' },
     state: {
       idle: 'Idle',
       thinking: 'Thinking',
