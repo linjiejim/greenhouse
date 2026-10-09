@@ -39,7 +39,7 @@ export interface StatusLine {
 }
 
 export interface StatusInput {
-  snap: Pick<ThreadSnapshot, 'conversation' | 'readOnly' | 'requests' | 'stopPhase' | 'run' | 'runActive'>;
+  snap: Pick<ThreadSnapshot, 'conversation' | 'readOnly' | 'requests' | 'stopPhase' | 'run' | 'runActive' | 'runError'>;
   /** The full directory (active and archived Bots). */
   byId: Record<string, BotView>;
   kind: 'direct' | 'group';
@@ -132,15 +132,25 @@ export function statusLine({ snap, byId, kind }: StatusInput): StatusLine | null
 }
 
 /**
- * The title avatar's pose, by the same priority: archived → asleep, a card
- * waiting → waiting, a Bot typing → speaking, a Bot (or the run) at work
- * without words yet → thinking (the only pose that moves), else idle.
+ * The title avatar's pose (its face and motion), by the same priority:
+ * archived → asleep, a card waiting → waiting, a Bot typing → speaking, a Bot
+ * (or the run) at work without words yet → thinking, a run that failed →
+ * error (until the next one), else idle. The screen adds a brief `done` smile
+ * when a reply finishes (`cheerPose`).
  */
 export function titlePose({ snap, byId }: StatusInput): PlantState {
   if (threadReadOnly(snap, byId)) return 'sleep';
   if (latestPending(snap.requests)) return 'waiting';
   const segment = talkingSegment(snap.run);
   if (segment) return segment.text.length > 0 ? 'speaking' : 'thinking';
-  // Busy with nothing to show (another API slot, between turns): a still pose, not a fake "typing".
-  return snap.runActive ? 'speaking' : 'idle';
+  if (snap.runActive) return 'thinking';
+  return snap.runError ? 'error' : 'idle';
+}
+
+/** How long the title smiles after a reply. */
+export const CHEER_MS = 2400;
+
+/** The `done` smile replaces only the idle pose: anything with something to say keeps its own. */
+export function cheerPose(pose: PlantState, cheering: boolean): PlantState {
+  return cheering && pose === 'idle' ? 'done' : pose;
 }

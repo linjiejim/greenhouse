@@ -1,8 +1,9 @@
 /**
  * Who speaks next — shown only when the speaker changes (the vendored
  * transcript decides; a DM's own Bot never gets one, its title already says
- * who it is): the Bot's plant (static — in a transcript only the Bot talking
- * right now may move) and its name. Nothing more on screen: the role is one
+ * who it is): the Bot's plant and its name. The plant shows how the turn is
+ * going (`state`: speaking while it types, error when it failed) and only the
+ * Bot talking right now moves (`animate`); history is still. Nothing more on screen: the role is one
  * tap away (the profile), and who handed the turn over is the hand-off strip
  * right above — VoiceOver still hears both. A header for VoiceOver (the rotor
  * jumps between speakers); tapping opens the Bot's profile.
@@ -17,12 +18,15 @@ import { useT } from '../../../lib/i18n';
 import type { BotView } from '../../../shared/bots';
 import { makeStyles, radius, space, typo, useTheme, weight } from '../../../theme';
 import { useFontScaleKey } from '../../../ui/font-scale';
+import type { PlantStateInput } from '../../../ui/plant-avatar/plant-ids';
 import { BotAvatar } from '../../ui/bot-avatar';
 
 export const SpeakerLine = memo(function SpeakerLine({
   bot,
   loaded,
   askedBy,
+  state,
+  animate = false,
   onPress,
 }: {
   bot: BotView | undefined;
@@ -30,6 +34,10 @@ export const SpeakerLine = memo(function SpeakerLine({
   loaded: boolean;
   /** The Bot that handed the turn over (reason `ask`). */
   askedBy?: string | null;
+  /** The plant's pose (default idle). */
+  state?: PlantStateInput;
+  /** The Bot talking right now. */
+  animate?: boolean;
   onPress?: (botId: string) => void;
 }) {
   const { colors: c } = useTheme();
@@ -52,7 +60,7 @@ export const SpeakerLine = memo(function SpeakerLine({
       accessibilityHint={bot && onPress ? t('bots.thread.titleHintDm') : undefined}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
-      <BotAvatar bot={bot ?? null} size={22} animate={false} />
+      <BotAvatar bot={bot ?? null} size={22} state={state} animate={animate} />
       {name ? <Text style={styles.name}>{name}</Text> : <View style={styles.skeleton} />}
     </Pressable>
   );

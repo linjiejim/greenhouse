@@ -7,7 +7,15 @@ import { describe, expect, it } from 'vitest';
 import type { BotConversationDetail, BotRequestView, BotView } from '../../shared/bots';
 import type { BotStreamSegment } from '../../shared/bots-wire';
 import type { ThreadRun } from '../contract';
-import { latestPending, statusLine, talkingSegment, threadReadOnly, titlePose, type StatusInput } from './status-line';
+import {
+  cheerPose,
+  latestPending,
+  statusLine,
+  talkingSegment,
+  threadReadOnly,
+  titlePose,
+  type StatusInput,
+} from './status-line';
 
 function bot(id: string, partial: Partial<BotView> = {}): BotView {
   return {
@@ -110,6 +118,7 @@ function input(snap: Partial<StatusInput['snap']> = {}, kind: 'direct' | 'group'
       stopPhase: null,
       run: null,
       runActive: false,
+      runError: null,
       ...snap,
     },
     byId: BY_ID,
@@ -254,12 +263,23 @@ describe('threadReadOnly', () => {
 });
 
 describe('titlePose', () => {
-  it('follows the same ladder: asleep > waiting > speaking / thinking > busy > idle', () => {
+  it('follows the same ladder: asleep > waiting > speaking / thinking > busy > failed > idle', () => {
     expect(titlePose(input({ readOnly: 'bot_archived', requests: requests(request('a')) }))).toBe('sleep');
     expect(titlePose(input({ requests: requests(request('a')), run: run([segment({ text: 'x' })]) }))).toBe('waiting');
     expect(titlePose(input({ run: run([segment({ text: 'x' })]), runActive: true }))).toBe('speaking');
     expect(titlePose(input({ run: run([segment()]), runActive: true }))).toBe('thinking');
-    expect(titlePose(input({ runActive: true }))).toBe('speaking');
+    // busy with nothing to show: at work, never a fake "typing"
+    expect(titlePose(input({ runActive: true }))).toBe('thinking');
+    expect(titlePose(input({ runError: 'model timed out' }))).toBe('error');
+    expect(titlePose(input({ runError: 'model timed out', runActive: true }))).toBe('thinking');
     expect(titlePose(input())).toBe('idle');
+  });
+
+  it('smiles after a reply only where it would otherwise idle', () => {
+    expect(cheerPose('idle', true)).toBe('done');
+    expect(cheerPose('idle', false)).toBe('idle');
+    for (const pose of ['waiting', 'error', 'sleep', 'thinking', 'speaking'] as const) {
+      expect(cheerPose(pose, true), pose).toBe(pose);
+    }
   });
 });

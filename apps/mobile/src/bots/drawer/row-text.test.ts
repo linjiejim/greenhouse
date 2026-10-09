@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { BotConversationSummary, BotView } from '../../shared/bots';
-import { rowPreview, rowTime, rowTitle, type RowCopy, type RowDirectory } from './row-text';
+import { rowPose, rowPreview, rowTime, rowTitle, type RowCopy, type RowDirectory } from './row-text';
 
 const COPY: RowCopy = {
   deletedBot: 'Deleted Bot',
@@ -145,5 +145,16 @@ describe('rowTime', () => {
     expect(rowTime(at(1), now, 'en-US', 'Yesterday')).toBe('10/1');
     expect(rowTime(new Date(2025, 11, 31, 8).getTime(), now, 'en-US', 'Yesterday')).toBe('12/31/2025');
     expect(rowTime(Number.NaN, now, 'en-US', 'Yesterday')).toBe('');
+  });
+});
+
+describe('rowPose', () => {
+  const quiet = { badge: null, working: false } as const;
+  it('changes face by what the row says, and only a replying Bot moves', () => {
+    expect(rowPose(quiet, true)).toEqual({ state: 'idle', animate: false });
+    expect(rowPose({ badge: 'unread', working: false }, true)).toEqual({ state: 'idle', animate: false });
+    expect(rowPose({ badge: 'needs_you', working: true }, true)).toEqual({ state: 'waiting', animate: false });
+    expect(rowPose({ badge: null, working: true }, true)).toEqual({ state: 'speaking', animate: true });
+    expect(rowPose({ badge: 'needs_you', working: true }, false)).toEqual({ state: 'sleep', animate: false });
   });
 });

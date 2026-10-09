@@ -210,7 +210,7 @@ function GroupHeader({
         {faces.length > 1 ? (
           <AvatarStack bots={faces} size={22} ring={null} />
         ) : (
-          <BotAvatar bot={faces[0] ?? null} size={26} animate={false} />
+          <BotAvatar bot={faces[0] ?? null} size={26} state="waiting" animate={false} />
         )}
       </View>
       <Text style={styles.headerTitle} numberOfLines={1}>

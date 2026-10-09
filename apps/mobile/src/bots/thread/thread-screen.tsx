@@ -120,7 +120,7 @@ import {
 } from './rows/turns';
 import { TimeSeparator } from './rows/time-separator';
 import { TopLoader } from './rows/top-loader';
-import { statusLine, threadReadOnly, talkingSegment, titlePose } from './status-line';
+import { CHEER_MS, cheerPose, statusLine, threadReadOnly, talkingSegment, titlePose } from './status-line';
 import { StopHint, useComposerStop } from './stop-control';
 import { TaskDock } from './task-dock';
 import { dropThreadHeader, publishThreadHeader, ThreadHeader, type ThreadHeaderActions } from './thread-header';
@@ -367,7 +367,27 @@ export function BotThreadScreen({
   /* ---------- the title view ---------- */
   const status = statusLine({ snap, byId, kind });
   const statusText = status ? t(status.key, status.vars) : '';
-  const pose = titlePose({ snap, byId, kind });
+  // A brief smile when a reply finishes: the run ends without an error and nobody stopped it.
+  const [cheering, setCheering] = useState(false);
+  const runSeen = useRef({ active: snap.runActive, stopped: false });
+  useEffect(() => {
+    const seen = runSeen.current;
+    if (snap.runActive) {
+      seen.stopped ||= snap.stopPhase !== null;
+      seen.active = true;
+      setCheering(false);
+      return;
+    }
+    if (seen.active && !seen.stopped && !snap.runError) setCheering(true);
+    else if (snap.runError) setCheering(false);
+    runSeen.current = { active: false, stopped: false };
+  }, [snap.runActive, snap.stopPhase, snap.runError]);
+  useEffect(() => {
+    if (!cheering) return;
+    const timer = setTimeout(() => setCheering(false), CHEER_MS);
+    return () => clearTimeout(timer);
+  }, [cheering]);
+  const pose = cheerPose(titlePose({ snap, byId, kind }), cheering);
   const speakingId = talkingSegment(snap.run)?.botId ?? null;
   const headerBots = useMemo<Array<AvatarSource | null>>(() => {
     if (!group) return [owner ?? null];

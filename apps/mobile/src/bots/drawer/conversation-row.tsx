@@ -8,9 +8,14 @@
  * "Replying…" instead of adding a badge; the server's `working` is never shown
  * (D14 — only `running` is the client's truth). Sprouty's DM carries a pin.
  *
- * Static by design: list avatars never animate (the web's are static too, and
- * a breathing row keeps XCUITest from ever going idle), and the row is one
- * VoiceOver element — "Dandy, needs you, last message: …, 3 min ago".
+ * A DM's plant shows the same signal on its face (./row-text.ts `rowPose`:
+ * leaning in for "needs you", talking while it replies, asleep when archived).
+ * Only a replying Bot moves — a list that is always in motion is noise (and
+ * keeps XCUITest from ever going idle). The row is one VoiceOver element —
+ * "Dandy, needs you, last message: …, 3 min ago".
+ *
+ * Rows are separated by a hairline from the text column on (the section draws
+ * it, ./bots-section.tsx); the preview is a size under the title.
  *
  * `width` pins the long-press menu's trigger up front (no measure-then-remount
  * pass, AGENTS «菜单»); without `onMenu` the row has no menu at all.
@@ -30,7 +35,7 @@ import { rowSignal, useBots } from '../store';
 import { AvatarStack } from '../ui/avatar-stack';
 import { BotAvatar } from '../ui/bot-avatar';
 import { conversationReplyable } from '../vendor/web-helpers';
-import { rowPreview, rowTime, rowTitle, type RowCopy } from './row-text';
+import { rowPose, rowPreview, rowTime, rowTitle, type RowCopy } from './row-text';
 
 /** Leading column: a DM's 32-pt plant, or a group's first two 22-pt plants overlapped — titles stay aligned. */
 const LEAD_W = 44;
@@ -94,6 +99,7 @@ export const ConversationRow = memo(function ConversationRow({
   const owner = row.owner_bot_id ? (byId[row.owner_bot_id] ?? null) : null;
   const pinned = row.kind === 'direct' && isSproutyBot(owner);
   const unread = signal.badge === 'unread';
+  const pose = rowPose(signal, replyable);
   // Short (09:41 · 昨天 · 周二 · 10/1) — it shares the line with the name; at the
   // accessibility sizes it gives the name the whole line (VoiceOver still hears it).
   const fullTime = rowTime(parseMs(row.last_activity_at), Date.now(), locale, t('time.yesterday'));
@@ -145,7 +151,7 @@ export const ConversationRow = memo(function ConversationRow({
     >
       <View style={styles.lead}>
         {row.kind === 'direct' ? (
-          <BotAvatar bot={owner} size={DM_AVATAR} state={replyable ? 'idle' : 'sleep'} animate={false} />
+          <BotAvatar bot={owner} size={DM_AVATAR} state={pose.state} animate={pose.animate} />
         ) : (
           <AvatarStack bots={members.map((m) => byId[m.bot_id] ?? null)} size={GROUP_AVATAR} max={2} />
         )}
