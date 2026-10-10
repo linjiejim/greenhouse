@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetProvider, initDatabase, TablesValidationError, type DatabaseProvider } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
+import { fullTableAccess } from '@greenhouse/types/table-access';
 import { createInternalTestUser } from '../helpers/internal-user.js';
 
 let db: DatabaseProvider;
@@ -27,6 +28,13 @@ beforeEach(async () => {
 afterEach(async () => {
   await db.close();
   _resetProvider();
+});
+
+const full = (userId: string | null = ownerId) => fullTableAccess(userId);
+const meta = (actorId: string, actorKind: 'user' | 'form' = 'user') => ({
+  actorId,
+  actorKind,
+  enqueueAutomations: true,
 });
 
 async function fixture() {
@@ -195,16 +203,22 @@ describe('Tables domain service', () => {
       },
       created_by: ownerId,
     });
-    const taskA = await db.tables.createRecord({
-      table_id: tasks.table.id,
-      values: { [tasks.fields[0]!.id]: 'Task A', [effort.id]: 3 },
-      user_id: ownerId,
-    });
-    const taskB = await db.tables.createRecord({
-      table_id: tasks.table.id,
-      values: { [tasks.fields[0]!.id]: 'Task B', [effort.id]: 5 },
-      user_id: ownerId,
-    });
+    const taskA = await db.tables.createRecord(
+      {
+        table_id: tasks.table.id,
+        values: { [tasks.fields[0]!.id]: 'Task A', [effort.id]: 3 },
+      },
+      full(ownerId),
+      meta(ownerId),
+    );
+    const taskB = await db.tables.createRecord(
+      {
+        table_id: tasks.table.id,
+        values: { [tasks.fields[0]!.id]: 'Task B', [effort.id]: 5 },
+      },
+      full(ownerId),
+      meta(ownerId),
+    );
     expect(taskA.computed_values[String(doubled.id)]).toBe(9);
 
     const linkedTasks = await db.tables.createField({
@@ -227,14 +241,17 @@ describe('Tables domain service', () => {
       },
       created_by: ownerId,
     });
-    const project = await db.tables.createRecord({
-      table_id: projects.table.id,
-      values: {
-        [projects.fields[0]!.id]: 'Launch',
-        [linkedTasks.id]: [taskA.id, taskB.id],
+    const project = await db.tables.createRecord(
+      {
+        table_id: projects.table.id,
+        values: {
+          [projects.fields[0]!.id]: 'Launch',
+          [linkedTasks.id]: [taskA.id, taskB.id],
+        },
       },
-      user_id: ownerId,
-    });
+      full(ownerId),
+      meta(ownerId),
+    );
     expect(project.computed_values[String(totalEffort.id)]).toBe(8);
     expect(await db.tables.listRecordLinks(linkedTasks.id, project.id)).toEqual([
       expect.objectContaining({ field_id: linkedTasks.id, target_record_id: taskA.id, position: 0 }),
@@ -242,16 +259,19 @@ describe('Tables domain service', () => {
     ]);
     expect(await db.tables.listFieldDependencies(totalEffort.id)).toHaveLength(2);
 
-    await db.tables.updateRecord({
-      table_id: tasks.table.id,
-      record_id: taskA.id,
-      revision: taskA.revision,
-      values: { [effort.id]: 7 },
-      user_id: ownerId,
-    });
-    expect((await db.tables.getRecord(projects.table.id, project.id))?.computed_values[String(totalEffort.id)]).toBe(
-      12,
+    await db.tables.updateRecord(
+      {
+        table_id: tasks.table.id,
+        record_id: taskA.id,
+        revision: taskA.revision,
+        values: { [effort.id]: 7 },
+      },
+      full(ownerId),
+      meta(ownerId),
     );
+    expect(
+      (await db.tables.getRecord(projects.table.id, project.id, full()))?.computed_values[String(totalEffort.id)],
+    ).toBe(12);
     expect(await db.tables.listRecomputeJobs(project.id)).toEqual([
       expect.objectContaining({ field_id: totalEffort.id, status: 'succeeded' }),
     ]);
@@ -282,62 +302,88 @@ describe('Tables domain service', () => {
     const status = await createStatusField(schema.table.id);
     const score = await createScoreField(schema.table.id);
     const assignee = await createAssigneeField(schema.table.id);
-    const first = await db.tables.createRecord({
-      table_id: schema.table.id,
-      values: {
-        [primary.id]: 'Prepare launch',
-        [status.id]: 'todo',
-        [score.id]: 8,
-        [assignee.id]: teammateId,
+    const first = await db.tables.createRecord(
+      {
+        table_id: schema.table.id,
+        values: {
+          [primary.id]: 'Prepare launch',
+          [status.id]: 'todo',
+          [score.id]: 8,
+          [assignee.id]: teammateId,
+        },
       },
-      user_id: ownerId,
-    });
-    await db.tables.createRecord({
-      table_id: schema.table.id,
-      values: {
-        [primary.id]: 'Publish notes',
-        [status.id]: 'done',
-        [score.id]: 3,
-        [assignee.id]: ownerId,
+      full(ownerId),
+      meta(ownerId),
+    );
+    await db.tables.createRecord(
+      {
+        table_id: schema.table.id,
+        values: {
+          [primary.id]: 'Publish notes',
+          [status.id]: 'done',
+          [score.id]: 3,
+          [assignee.id]: ownerId,
+        },
       },
-      user_id: ownerId,
-    });
+      full(ownerId),
+      meta(ownerId),
+    );
 
-    const filtered = await db.tables.queryRecords(schema.table.id, {
-      where: { combinator: 'and', clauses: [{ fieldId: score.id, operator: 'gt', value: 5 }] },
-      sort: [{ fieldId: score.id, direction: 'desc' }],
-      limit: 1,
-    });
+    const filtered = await db.tables.queryRecords(
+      schema.table.id,
+      {
+        where: { combinator: 'and', clauses: [{ fieldId: score.id, operator: 'gt', value: 5 }] },
+        sort: [{ fieldId: score.id, direction: 'desc' }],
+        limit: 1,
+      },
+      full(),
+    );
     expect(filtered.records.map((record) => record.id)).toEqual([first.id]);
     expect(filtered.total).toBe(1);
 
-    const firstPage = await db.tables.queryRecords(schema.table.id, {
-      sort: [{ fieldId: score.id, direction: 'desc' }],
-      limit: 1,
-    });
+    const firstPage = await db.tables.queryRecords(
+      schema.table.id,
+      {
+        sort: [{ fieldId: score.id, direction: 'desc' }],
+        limit: 1,
+      },
+      full(),
+    );
     expect(firstPage.nextCursor).toEqual(expect.any(String));
-    const secondPage = await db.tables.queryRecords(schema.table.id, {
-      sort: [{ fieldId: score.id, direction: 'desc' }],
-      limit: 1,
-      cursor: firstPage.nextCursor!,
-    });
+    const secondPage = await db.tables.queryRecords(
+      schema.table.id,
+      {
+        sort: [{ fieldId: score.id, direction: 'desc' }],
+        limit: 1,
+        cursor: firstPage.nextCursor!,
+      },
+      full(),
+    );
     expect(secondPage.records).toHaveLength(1);
     expect(secondPage.records[0]!.id).not.toBe(firstPage.records[0]!.id);
 
-    const grouped = await db.tables.aggregateRecords(schema.table.id, {
-      operation: 'count',
-      groupByFieldId: status.id,
-    });
+    const grouped = await db.tables.aggregateRecords(
+      schema.table.id,
+      {
+        operation: 'count',
+        groupByFieldId: status.id,
+      },
+      full(),
+    );
     expect(grouped).toEqual(
       expect.arrayContaining([
         { group: 'todo', value: 1 },
         { group: 'done', value: 1 },
       ]),
     );
-    const sum = await db.tables.aggregateRecords(schema.table.id, {
-      operation: 'sum',
-      valueFieldId: score.id,
-    });
+    const sum = await db.tables.aggregateRecords(
+      schema.table.id,
+      {
+        operation: 'sum',
+        valueFieldId: score.id,
+      },
+      full(),
+    );
     expect(sum).toEqual([{ group: null, value: 11 }]);
   });
 
@@ -345,37 +391,49 @@ describe('Tables domain service', () => {
     const { schema, primary } = await fixture();
     const status = await createStatusField(schema.table.id);
     const assignee = await createAssigneeField(schema.table.id);
-    const record = await db.tables.createRecord({
-      table_id: schema.table.id,
-      values: { [primary.id]: 'Original', [status.id]: 'todo', [assignee.id]: teammateId },
-      user_id: ownerId,
-    });
-    const updated = await db.tables.updateRecord({
-      table_id: schema.table.id,
-      record_id: record.id,
-      revision: record.revision,
-      values: { [primary.id]: 'Updated' },
-      user_id: teammateId,
-    });
+    const record = await db.tables.createRecord(
+      {
+        table_id: schema.table.id,
+        values: { [primary.id]: 'Original', [status.id]: 'todo', [assignee.id]: teammateId },
+      },
+      full(ownerId),
+      meta(ownerId),
+    );
+    const updated = await db.tables.updateRecord(
+      {
+        table_id: schema.table.id,
+        record_id: record.id,
+        revision: record.revision,
+        values: { [primary.id]: 'Updated' },
+      },
+      full(teammateId),
+      meta(teammateId),
+    );
     expect(updated).toMatchObject({ ok: true, record: { revision: 2 } });
 
-    const conflict = await db.tables.updateRecord({
-      table_id: schema.table.id,
-      record_id: record.id,
-      revision: record.revision,
-      values: { [primary.id]: 'Stale overwrite' },
-      user_id: ownerId,
-    });
+    const conflict = await db.tables.updateRecord(
+      {
+        table_id: schema.table.id,
+        record_id: record.id,
+        revision: record.revision,
+        values: { [primary.id]: 'Stale overwrite' },
+      },
+      full(ownerId),
+      meta(ownerId),
+    );
     expect(conflict).toEqual({ ok: false, reason: 'conflict', current: 2 });
 
-    const validation = await db.tables.validateBatchRecords({
-      table_id: schema.table.id,
-      items: [
-        { record_id: record.id, revision: 2, values: { [primary.id]: 'Valid batch update' } },
-        { record_id: record.id, revision: 1, values: { [primary.id]: 'Stale batch update' } },
-        { values: { [primary.id]: 'Bad batch option', [status.id]: 'missing' } },
-      ],
-    });
+    const validation = await db.tables.validateBatchRecords(
+      {
+        table_id: schema.table.id,
+        items: [
+          { record_id: record.id, revision: 2, values: { [primary.id]: 'Valid batch update' } },
+          { record_id: record.id, revision: 1, values: { [primary.id]: 'Stale batch update' } },
+          { values: { [primary.id]: 'Bad batch option', [status.id]: 'missing' } },
+        ],
+      },
+      full(),
+    );
     expect(validation).toEqual([
       { index: 0, ok: true },
       { index: 1, ok: false, reason: 'conflict', current: 2 },
@@ -383,23 +441,33 @@ describe('Tables domain service', () => {
     ]);
 
     await expect(
-      db.tables.createRecord({
-        table_id: schema.table.id,
-        values: { [primary.id]: 'Bad option', [status.id]: 'missing' },
-        user_id: ownerId,
-      }),
+      db.tables.createRecord(
+        {
+          table_id: schema.table.id,
+          values: { [primary.id]: 'Bad option', [status.id]: 'missing' },
+        },
+        full(ownerId),
+        meta(ownerId),
+      ),
     ).rejects.toThrow(/expects a configured option id/);
     await expect(
-      db.tables.createRecord({
-        table_id: schema.table.id,
-        values: { [primary.id]: 'Bad user', [assignee.id]: 'disabled-or-unknown' },
-        user_id: ownerId,
-      }),
+      db.tables.createRecord(
+        {
+          table_id: schema.table.id,
+          values: { [primary.id]: 'Bad user', [assignee.id]: 'disabled-or-unknown' },
+        },
+        full(ownerId),
+        meta(ownerId),
+      ),
     ).rejects.toThrow(/active internal user/);
     await expect(
-      db.tables.queryRecords(schema.table.id, {
-        where: { combinator: 'and', clauses: null as never },
-      }),
+      db.tables.queryRecords(
+        schema.table.id,
+        {
+          where: { combinator: 'and', clauses: null as never },
+        },
+        full(),
+      ),
     ).rejects.toBeInstanceOf(TablesValidationError);
   });
 
@@ -470,11 +538,17 @@ describe('Tables domain service', () => {
     const submitted = await db.tables.submitForm(
       form.id,
       { [primary.id]: 'Form-created work', [status.id]: 'todo' },
-      teammateId,
+      full(teammateId),
+      meta(teammateId, 'form'),
     );
     expect(submitted.created_by).toBe(teammateId);
     await expect(
-      db.tables.submitForm(form.id, { [primary.id]: 'Unexpected', 999999: 'blocked' }, teammateId),
+      db.tables.submitForm(
+        form.id,
+        { [primary.id]: 'Unexpected', 999999: 'blocked' },
+        full(teammateId),
+        meta(teammateId, 'form'),
+      ),
     ).rejects.toThrow(/not published/);
 
     const automation = await db.tables.createAutomationRule({
@@ -496,11 +570,14 @@ describe('Tables domain service', () => {
       execution_user_id: ownerId,
       user_id: ownerId,
     });
-    const created = await db.tables.createRecord({
-      table_id: schema.table.id,
-      values: { [primary.id]: 'Automated item', [status.id]: 'todo' },
-      user_id: ownerId,
-    });
+    const created = await db.tables.createRecord(
+      {
+        table_id: schema.table.id,
+        values: { [primary.id]: 'Automated item', [status.id]: 'todo' },
+      },
+      full(ownerId),
+      meta(ownerId),
+    );
     expect(await db.tables.listAutomationRuns(automation.id)).toEqual([
       expect.objectContaining({ rule_id: automation.id, status: 'succeeded', actions_completed: 1 }),
     ]);
@@ -533,11 +610,14 @@ describe('Tables domain service', () => {
       uploaded_by: ownerId,
     });
     await db.drive.completeFile(pending.id, { size: 100 });
-    const record = await db.tables.createRecord({
-      table_id: schema.table.id,
-      values: { [primary.id]: 'Launch package', [attachments.id]: [pending.id] },
-      user_id: ownerId,
-    });
+    const record = await db.tables.createRecord(
+      {
+        table_id: schema.table.id,
+        values: { [primary.id]: 'Launch package', [attachments.id]: [pending.id] },
+      },
+      full(ownerId),
+      meta(ownerId),
+    );
     expect(await db.tables.listRecordAttachments(record.id, attachments.id)).toEqual([
       expect.objectContaining({
         record_id: record.id,
@@ -561,22 +641,28 @@ describe('Tables domain service', () => {
     });
     await db.drive.completeFile(foreign.id, { size: 100 });
     await expect(
-      db.tables.createRecord({
-        table_id: schema.table.id,
-        values: { [primary.id]: 'Blocked package', [attachments.id]: [foreign.id] },
-        user_id: ownerId,
-      }),
+      db.tables.createRecord(
+        {
+          table_id: schema.table.id,
+          values: { [primary.id]: 'Blocked package', [attachments.id]: [foreign.id] },
+        },
+        full(ownerId),
+        meta(ownerId),
+      ),
     ).rejects.toThrow(/unavailable Base file/);
 
     await expect(
-      db.tables.createRecord({
-        table_id: schema.table.id,
-        values: {
-          [primary.id]: 'Legacy string handle',
-          [attachments.id]: ['1750000000000-deadbeef.pdf'],
+      db.tables.createRecord(
+        {
+          table_id: schema.table.id,
+          values: {
+            [primary.id]: 'Legacy string handle',
+            [attachments.id]: ['1750000000000-deadbeef.pdf'],
+          },
         },
-        user_id: ownerId,
-      }),
+        full(ownerId),
+        meta(ownerId),
+      ),
     ).rejects.toThrow(/expects Drive file ids/);
 
     await expect(

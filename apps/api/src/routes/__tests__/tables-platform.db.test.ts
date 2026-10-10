@@ -15,6 +15,7 @@ import { createTablesMutationTool } from '../../tools/tables-mutation.js';
 import { createTablesQueryTool } from '../../tools/tables-query.js';
 import { createExportDataTool } from '../../tools/export-data.js';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
+import { fullTableAccess } from '@greenhouse/types/table-access';
 import { deleteObjectAtKey, getObjectAtKey } from '../../storage/uploads.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 
@@ -163,7 +164,9 @@ describe('Tables Platform application', () => {
       body: JSON.stringify({ values: { [created.schema.fields[0]!.id]: 'Denied' } }),
     });
     expect(response.status).toBe(403);
-    expect(await db.tables.queryRecords(created.schema.table.id)).toMatchObject({ total: 0 });
+    expect(await db.tables.queryRecords(created.schema.table.id, {}, fullTableAccess(null))).toMatchObject({
+      total: 0,
+    });
 
     const audits = await db.platform.listAuditEvents('default');
     expect(audits).toEqual(
@@ -503,7 +506,7 @@ describe('Tables Platform application', () => {
     expect(await db.tables.listArchivedTables(created.base.id)).toEqual([
       expect.objectContaining({ id: tableId, archived_at: expect.any(String) }),
     ]);
-    expect(await db.tables.queryRecords(tableId)).toMatchObject({ total: 1 });
+    expect(await db.tables.queryRecords(tableId, {}, fullTableAccess(null))).toMatchObject({ total: 1 });
 
     const restored = await db.tables.restoreTable(tableId);
     expect(restored).toMatchObject({ id: tableId, archived_at: null });
@@ -535,7 +538,7 @@ describe('Tables Platform application', () => {
       { method: 'DELETE', headers: { 'x-test-user': editor.id } },
     );
     expect(deleted.status).toBe(200);
-    expect(await db.tables.queryRecords(tableId)).toMatchObject({ total: 0 });
+    expect(await db.tables.queryRecords(tableId, {}, fullTableAccess(null))).toMatchObject({ total: 0 });
 
     const bin = await app.request(`/api/tables/tables/${tableId}/records/deleted`, {
       headers: { 'x-test-user': editor.id },
@@ -548,7 +551,7 @@ describe('Tables Platform application', () => {
       headers: { 'x-test-user': editor.id },
     });
     expect(restored.status).toBe(200);
-    expect(await db.tables.queryRecords(tableId)).toMatchObject({ total: 1 });
+    expect(await db.tables.queryRecords(tableId, {}, fullTableAccess(null))).toMatchObject({ total: 1 });
     // Restoring bumps the revision, so a stale client cannot silently overwrite.
     expect((await restored.json()).record.revision).toBeGreaterThan(record.revision);
   });

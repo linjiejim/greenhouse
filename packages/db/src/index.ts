@@ -82,7 +82,7 @@ export * from './services/mcp-servers.js';
 export * from './services/skills.js';
 export * from './services/platform.js';
 export * from './services/platform-oauth.js';
-export * from './services/tables.js';
+export * from './services/tables/index.js';
 export * from './services/workflows.js';
 export * from './services/chat-files.js';
 export * from './services/agent-runs.js';

@@ -46,7 +46,7 @@ import { createMcpServerService } from './services/mcp-servers.js';
 import { createSkillService } from './services/skills.js';
 import { createPlatformService } from './services/platform.js';
 import { createPlatformOAuthService } from './services/platform-oauth.js';
-import { createTablesService } from './services/tables.js';
+import { createTablesService } from './services/tables/index.js';
 import { createWorkflowService } from './services/workflows.js';
 import { createChatFileService } from './services/chat-files.js';
 import { createAgentRunService } from './services/agent-runs.js';

@@ -114,7 +114,8 @@ async function accessFor(c: Context<AppEnv>, node: DriveAccessNode, operation: '
     ]);
     if (base && !base.archived_at) {
       if (user.role === 'super' || base.owner_id === user.id) tablesRole = 'owner';
-      else if (member) tablesRole = member.role;
+      // A custom role never reaches Drive (spec D15); slice A adds per-file checks.
+      else if (member) tablesRole = member.role === 'custom' ? null : member.role;
       else if (base.visibility === 'team') tablesRole = 'viewer';
       else tablesRole = null;
     }

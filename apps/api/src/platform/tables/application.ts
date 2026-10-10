@@ -17,7 +17,13 @@ import {
   type PlatformActionHandler,
   type PlatformActionResult,
 } from '@greenhouse/platform-kernel';
-import { TablesValidationError, type DatabaseProvider, type TableBaseRow } from '@greenhouse/db';
+import {
+  isTablesForbiddenError,
+  TablesValidationError,
+  type DatabaseProvider,
+  type TableBaseRow,
+} from '@greenhouse/db';
+import { fullTableAccess, type TableFullScope } from '@greenhouse/types/table-access';
 import type {
   TableAggregateInput,
   TableAutomationConfig,
@@ -32,6 +38,7 @@ import type {
   TableFormConfig,
   TableQuery,
   TableRecordValues,
+  TableRecordWriteMeta,
   TableViewConfig,
   TableViewScope,
 } from '@greenhouse/types/tables';
@@ -127,7 +134,8 @@ async function baseRole(
   }
   if (user.role === 'super' || base.owner_id === userId) return 'owner';
   const explicit = members.find((member) => member.user_id === userId);
-  if (explicit) return explicit.role;
+  // Custom roles resolve to no access until slice A compiles their rules.
+  if (explicit) return explicit.role === 'custom' ? undefined : explicit.role;
   return base.visibility === 'team' ? 'viewer' : undefined;
 }
 
@@ -180,11 +188,26 @@ async function baseForWidget(db: DatabaseProvider, widgetId: number): Promise<Ta
   return widget ? baseForDashboard(db, widget.dashboard_id) : undefined;
 }
 
+/** Built-in roles read and write the whole table; `$me` resolves to the acting member. */
+function fullScope(actor: ActorContext): TableFullScope {
+  return fullTableAccess(effectiveUserId(actor));
+}
+
+function writeMeta(actor: ActorContext, extra: Partial<TableRecordWriteMeta> = {}): TableRecordWriteMeta {
+  return {
+    actorId: effectiveUserId(actor),
+    actorKind: actor.actorType === 'human' ? 'user' : actor.actorType === 'agent' ? 'agent' : 'system',
+    enqueueAutomations: true,
+    ...extra,
+  };
+}
+
 function wrap(handler: Handler): Handler {
   return async (request, context) => {
     try {
       return await handler(request, context);
     } catch (error) {
+      if (isTablesForbiddenError(error)) return fail('FORBIDDEN', error.message);
       if (error instanceof TablesValidationError) return fail('INVALID_INPUT', error.message);
       // Drizzle puts the pg code on err.cause, so the old top-level-only check
       // never matched and every duplicate name surfaced as a 500 instead.
@@ -724,7 +747,12 @@ const submitForm: Handler = async (request, context) => {
   if (!form || !base || !(await requireTableData(request, context, form.table_id, 'editor', 'write'))) {
     return fail('NOT_FOUND', 'Form not found');
   }
-  const record = await context.db.tables.submitForm(formId, values, effectiveUserId(request.actor));
+  const record = await context.db.tables.submitForm(
+    formId,
+    values,
+    fullScope(request.actor),
+    writeMeta(request.actor, { actorKind: 'form', source: { formId } }),
+  );
   return ok({ record });
 };
 
@@ -752,7 +780,7 @@ const getRecord: Handler = async (request, context) => {
   if (!tableId || !recordId) return fail('INVALID_INPUT', 'tableId and recordId are required');
   const access = await requireTableData(request, context, tableId, 'viewer', 'read');
   if (!access) return fail('NOT_FOUND', 'Record not found');
-  const record = await context.db.tables.getRecord(tableId, recordId);
+  const record = await context.db.tables.getRecord(tableId, recordId, fullScope(request.actor));
   return record
     ? ok({ record: access.valuesRead === 'masked' ? { ...record, values: {} } : record })
     : fail('NOT_FOUND', 'Record not found');
@@ -765,7 +793,13 @@ const queryRecords: Handler = async (request, context) => {
   if (!(await requireTableData(request, context, tableId, 'viewer', 'full-read'))) {
     return fail('NOT_FOUND', 'Table not found');
   }
-  return ok(await context.db.tables.queryRecords(tableId, objectValue<TableQuery>(payload, 'query') ?? {}));
+  return ok(
+    await context.db.tables.queryRecords(
+      tableId,
+      objectValue<TableQuery>(payload, 'query') ?? {},
+      fullScope(request.actor),
+    ),
+  );
 };
 
 const aggregateRecords: Handler = async (request, context) => {
@@ -776,7 +810,7 @@ const aggregateRecords: Handler = async (request, context) => {
   if (!(await requireTableData(request, context, tableId, 'viewer', 'full-read'))) {
     return fail('NOT_FOUND', 'Table not found');
   }
-  return ok({ rows: await context.db.tables.aggregateRecords(tableId, input) });
+  return ok({ rows: await context.db.tables.aggregateRecords(tableId, input, fullScope(request.actor)) });
 };
 
 const createRecord: Handler = async (request, context) => {
@@ -787,11 +821,11 @@ const createRecord: Handler = async (request, context) => {
   if (!(await requireTableData(request, context, tableId, 'editor', 'write'))) {
     return fail('NOT_FOUND', 'Table not found');
   }
-  const record = await context.db.tables.createRecord({
-    table_id: tableId,
-    values,
-    user_id: effectiveUserId(request.actor),
-  });
+  const record = await context.db.tables.createRecord(
+    { table_id: tableId, values },
+    fullScope(request.actor),
+    writeMeta(request.actor),
+  );
   return ok({ record });
 };
 
@@ -807,13 +841,11 @@ const updateRecord: Handler = async (request, context) => {
   if (!(await requireTableData(request, context, tableId, 'editor', 'write'))) {
     return fail('NOT_FOUND', 'Record not found');
   }
-  const result = await context.db.tables.updateRecord({
-    table_id: tableId,
-    record_id: recordId,
-    revision,
-    values,
-    user_id: effectiveUserId(request.actor),
-  });
+  const result = await context.db.tables.updateRecord(
+    { table_id: tableId, record_id: recordId, revision, values },
+    fullScope(request.actor),
+    writeMeta(request.actor),
+  );
   if (result.ok) return ok({ record: result.record });
   return result.reason === 'conflict'
     ? fail('CONFLICT', 'Record revision conflict', { currentRevision: result.current })
@@ -827,11 +859,14 @@ const batchUpsertRecords: Handler = async (request, context) => {
   if (!(await requireTableData(request, context, tableId, 'editor', 'write'))) {
     return fail('NOT_FOUND', 'Table not found');
   }
-  const results = await context.db.tables.batchUpsertRecords({
-    table_id: tableId,
-    items: payload.items as Array<{ record_id?: number; revision?: number; values: TableRecordValues }>,
-    user_id: effectiveUserId(request.actor),
-  });
+  const results = await context.db.tables.batchUpsertRecords(
+    {
+      table_id: tableId,
+      items: payload.items as Array<{ record_id?: number; revision?: number; values: TableRecordValues }>,
+    },
+    fullScope(request.actor),
+    writeMeta(request.actor),
+  );
   return ok({ results });
 };
 
@@ -842,10 +877,13 @@ const validateBatchRecords: Handler = async (request, context) => {
   if (!(await requireTableData(request, context, tableId, 'editor', 'write'))) {
     return fail('NOT_FOUND', 'Table not found');
   }
-  const results = await context.db.tables.validateBatchRecords({
-    table_id: tableId,
-    items: payload.items as Array<{ record_id?: number; revision?: number; values: TableRecordValues }>,
-  });
+  const results = await context.db.tables.validateBatchRecords(
+    {
+      table_id: tableId,
+      items: payload.items as Array<{ record_id?: number; revision?: number; values: TableRecordValues }>,
+    },
+    fullScope(request.actor),
+  );
   return ok({ results });
 };
 
@@ -860,12 +898,11 @@ const deleteRecord: Handler = async (request, context) => {
   if (!(await requireTableData(request, context, tableId, 'editor', 'full-read'))) {
     return fail('NOT_FOUND', 'Record not found');
   }
-  const result = await context.db.tables.deleteRecord({
-    table_id: tableId,
-    record_id: recordId,
-    revision,
-    user_id: effectiveUserId(request.actor),
-  });
+  const result = await context.db.tables.deleteRecord(
+    { table_id: tableId, record_id: recordId, revision },
+    fullScope(request.actor),
+    writeMeta(request.actor),
+  );
   if (result.ok) return ok({ record: result.record });
   return result.reason === 'conflict'
     ? fail('CONFLICT', 'Record revision conflict', { currentRevision: result.current })
@@ -879,7 +916,11 @@ const listDeletedRecords: Handler = async (request, context) => {
   if (!(await requireTableData(request, context, tableId, 'editor', 'full-read'))) {
     return fail('NOT_FOUND', 'Table not found');
   }
-  const records = await context.db.tables.listDeletedRecords(tableId, positiveInt(payload, 'limit') ?? 100);
+  const records = await context.db.tables.listDeletedRecords(
+    tableId,
+    fullScope(request.actor),
+    positiveInt(payload, 'limit') ?? 100,
+  );
   return ok({ records });
 };
 
@@ -891,11 +932,11 @@ const restoreRecord: Handler = async (request, context) => {
   if (!(await requireTableData(request, context, tableId, 'editor', 'full-read'))) {
     return fail('NOT_FOUND', 'Record not found');
   }
-  const result = await context.db.tables.restoreRecord({
-    table_id: tableId,
-    record_id: recordId,
-    user_id: effectiveUserId(request.actor),
-  });
+  const result = await context.db.tables.restoreRecord(
+    { table_id: tableId, record_id: recordId },
+    fullScope(request.actor),
+    writeMeta(request.actor),
+  );
   return result.ok ? ok({ record: result.record }) : fail('NOT_FOUND', 'Record not found');
 };
 
@@ -1148,19 +1189,24 @@ const queryDashboardWidget: Handler = async (request, context) => {
     return fail('NOT_FOUND', 'Widget table not found');
   }
   if (widget.type === 'records') {
-    const records = await context.db.tables.queryRecords(widget.table_id, {
-      ...(config.query ?? {}),
-      limit: Math.min(Math.max(config.limit ?? 20, 1), 100),
-    });
+    const records = await context.db.tables.queryRecords(
+      widget.table_id,
+      { ...(config.query ?? {}), limit: Math.min(Math.max(config.limit ?? 20, 1), 100) },
+      fullScope(request.actor),
+    );
     return ok({ widget, records });
   }
-  const rows = await context.db.tables.aggregateRecords(widget.table_id, {
-    operation: config.operation ?? 'count',
-    valueFieldId: config.valueFieldId,
-    groupByFieldId: widget.type === 'kpi' ? undefined : config.groupByFieldId,
-    query: config.query,
-    limit: config.limit,
-  });
+  const rows = await context.db.tables.aggregateRecords(
+    widget.table_id,
+    {
+      operation: config.operation ?? 'count',
+      valueFieldId: config.valueFieldId,
+      groupByFieldId: widget.type === 'kpi' ? undefined : config.groupByFieldId,
+      query: config.query,
+      limit: config.limit,
+    },
+    fullScope(request.actor),
+  );
   return ok({ widget, rows });
 };
 
