@@ -15,7 +15,7 @@
    * POST /api/xxx     — 创建XXX
    */
   ```
-- 路由文件放在 `routes/` 目录下，每个资源一个文件
+- 路由文件放在 `routes/` 目录下，每个资源一个文件；一个资源大到要按域拆时用目录（`routes/tables/<domain>.ts`，在 `index.ts` 用 `.route('/', …)` 组合成一条链，头注释仍列全部端点）
 - **路由必须链式定义**（2026-06 起，hc 契约的前提）：`const x = new Hono<AppEnv>().get(...).post(...)`，禁止 `x.get(...)` 语句式注册——语句式不积累类型，端点会从 `AppType` 契约里消失。`AppEnv` 来自 `src/app-env.ts`
 - 工厂路由（`createXxxRoute()`）**禁止写显式 `: Hono` 返回类型注解**——会把链式 schema 抹平，hc 推导失效
 - **响应对象里不许有 `any`**：handler 返回值若含 `any` 字段，整条路由的推导响应会塌成 `never`（hc 端点直接不可用）。raw SQL 结果先标注形状再 `c.json()`
@@ -402,11 +402,23 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 方案与决策见 [spec](../../../docs/specs/20260803-tables-lifecycle-and-grid-interaction.md)。
 
 - **删除一律软删，恢复分层**：Base / 表 / 记录都只写 `archived_at`（记录是 `deleted_at`），**恢复入口刻意不对称**——记录有表内回收站（`GET /tables/:id/records/deleted` + `POST .../restore`，editor 自助），Base 与表只能由管理员 `pnpm cli tables list-archived | restore-base | restore-table`。误删一行是高频低风险，误删一张表影响所有成员，多一道人工摩擦是特性（D2）。**Dashboard 是唯一的例外：硬删**——纯 widget 配置、无业务数据，为它建一套归档货架是为对称付钱（D4）。
-- **record 字段策略是真实边界**：所有 record query/aggregate/widget/read/write/batch/form submit 都必须在 `requireTableData` 检查 `record.values` 的 read/write policy；masked 单条读取只回空 values，查询与聚合必须 full-read，防止用筛选/聚合反推。个人 view 的 get/update 在 DB service 接收 userId，不能因为调用者是 Base builder 就读改别人的 personal view。attachment 值只接受同 Base 的数字 Drive file id；发布表单禁止 attachment 字段，避免把完整内部文件柜暴露成表单上传器。
+- **record 字段策略是真实边界**：所有 record query/aggregate/widget/read/write/batch/form submit 都必须在 `requireTableData` 检查 `record.values` 的 read/write policy；masked 单条读取只回空 values **与空 computed_values**（`data.project`，2026-10-11 修掉 computed_values 泄露；写入响应同样按读策略裁剪），查询、聚合与删除必须 full-read，防止用筛选/聚合反推。个人 view 的 get/update 在 DB service 接收 userId，不能因为调用者是 Base builder 就读改别人的 personal view。attachment 值只接受同 Base 的数字 Drive file id；发布表单禁止 attachment 字段，避免把完整内部文件柜暴露成表单上传器。
 - **删表 / 删 Base 要 `owner`，与「建表/改表只要 builder」刻意不对称**（D3）。归档一张表**不动**任何记录、字段或 relation 链接：指向已归档表的新链接由既有校验拒绝，存量链接保留、rollup 停止刷新。
 - **模型永远不能删表或删 Base**：`tables_schema_plan` 没有、也不要加 `table.archive`/`base.archive` op（D5）。工具描述里写的是"这件事只能用户在侧栏手动做"，改动时别把那句路径提示弄丢——否则模型只会说做不到，不会告诉用户怎么做。
 - **`archived_at` 过滤已经在查询层**（`listTables`/`getSchema`/`listBasesForUser`），新增读路径别忘了它；`getRecordById` 刻意不过滤 `deleted_at`（回收站与审计要看得见已删行）。
 - 新增的四个 action（`archiveTable`/`deleteDashboard`/`listDeletedRecords`/`restoreRecord`）已 bump manifest 到 `1.2.0`——**改 action 表必须 bump**，否则 API 启动即 fatal。
+
+### Tables 平台应用的结构、访问与路由（2026-10-11，manifest 1.3.0）
+
+方案见 [Tables 地基 spec](../../../docs/specs/20261011-tables-foundation.md)（§0 契约、§1 访问、「动作表」）。
+
+- **按域拆分，一处组合**：`platform/tables/handlers/<domain>.ts`（bases / roles / schema / views / forms / records / automations / dashboards / imports / activity，与 spec 的切片归属一一对应），`application.ts` 只组合 `TABLES_HANDLERS: Record<TablesActionId, Handler>` 与 `wrap()`。`TablesActionId` 是 manifest 动作 id 的字面量联合（`manifests/tables.ts` 把 definition 与 compile 分开就是为了它）——**声明了动作却没有处理器 = typecheck 失败**。尚未落地的动作挂 `handlers/shared.ts` 的 `notImplemented`（`INVALID_INPUT` / `not_implemented` / `{notImplemented:true}`），由所属切片替换，绝不静默成功。
+- **`access.ts` 是唯一的访问解析**：`resolveBaseAccess(ctx, user, base)`（Tables 域：调 `@greenhouse/types/table-access` 的 `decideTableBaseAccess` 决策表，custom 由 `loadCustomRole` 加载——切片 A 之前一律 none，D13）、`requireBase(ctx, actor, baseId, entity, required, {allowCustom?})`（custom 只在 `required==='viewer' && allowCustom` 时通过，其余处理器对 custom fail closed）、`requireTableData(request, ctx, tableId, op)`（`read|create|update|delete` → `{base, access, role, scope, readScope, project}`）、`canRecipientRead(ctx, userId, record)`（通知 / @提及的收件人判定，阶段 1 的 app 分支在 `recipientReadViaApp`）、`baseForX` 资源→Base 查找。内核是外层上限（动作 capability、实体 scope、`record.values` 字段策略），Tables 角色在其下。**别在别处从成员行推角色，也别再写本地 `ROLE_RANK`**——角色顺序只有 `TABLE_BASE_ROLE_RANK`；Drive 的 `accessFor` 同样调 `resolveBaseAccess`。
+- **记录处理器三件套**：`requireTableData` 拿 `scope` 传给每个 db.tables 记录方法（db 侧必填，见 db AGENTS）、写入带 `writeMeta(actor)`（人 = `user`、委托 agent = `agent`、表单 = `form`，其余 `system`）、返回的每条记录过 `data.project(row)`。提交后调 `publishRecordsChanged(ctx, base, tableId, ids)`（`realtime.ts`）：WS `tables:records_changed`，只带 id、只发给 `resolveBaseAccess` 不为 none 的在线用户，自身吞错不影响写入。
+- **错误映射在 `wrap()`**：`field_not_editable` / `create_forbidden` / `delete_forbidden` → 403（`details.reason` 带 code）；其余 `TablesValidationError` → 400 且**不带 code**——不可读字段与不存在的字段消息相同，响应也不能区分；范围外的 id 由 db 当作不存在，处理器答 404。
+- **审计资源一张表两个方向**：`audit.ts` 的 `TABLES_ACTION_RESOURCES`（`Record<TablesActionId, kind|null>`）既决定 `tablesResource()` 往审计事件里写哪个 id，也决定 `listBaseAudit` 怎么经 `db.tables.baseIdsForResources` 把事件放回 Base。新动作不登记就编译失败，不会再从 Base 审计里静默消失。
+- **路由**：`routes/tables/<domain>.ts` 子路由在 `routes/tables/index.ts` 用 `.route('/', …)` 组合成一条链（AppType 照样带全部端点；端点清单在 index 的头注释），`/records/deleted` 必须注册在 `/records/:recordId` 之前。**只提交的表单走独立前缀 `/api/forms`**（`routes/forms.ts`，只挂 `requireInternal()`，**不受** `requireFeature('tables')` 限制，D5），同样经 dispatch（`openForm` / `submitForm`，能力 `tables.data.submitForm`），只回成功文案不回记录。
+- **改 manifest（动作表）只在集成分支**：bump `version` + 更新 `platform/__tests__/manifest-hash.test.ts` 金样；`tables.data.notifications` 与 `notification` 实体已在 1.3.0 删除（旧 `/notifications` 路由随之删除；`table_notifications` 表与 service 方法留到切片 Au 迁移完成）。通知 kind 新增 `tables_automation` / `tables_mention`（TS 枚举，无迁移）。
 
 ### Platform Kernel v2
 - `platform/` 是内部应用的统一运行时：应用以确定性 Manifest v2 声明 module/entity/field/action/navigation，运行时代码只放在 registration/adapter，不写入 Manifest。`bootstrap.ts` 负责发布 release、建立受保护的 `super/team` baseline roles，并只同步 active 内部用户绑定；历史 `external` 用户不再建立 Platform role。
