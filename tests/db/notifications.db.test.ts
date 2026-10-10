@@ -134,4 +134,92 @@ describe('platform notification service', () => {
     expect(delivered.status).toBe('delivered');
     expect(await db.notifications.getForUser(notification.id, owner.id)).toEqual(notification);
   });
+
+  it("marks a conversation's reply alerts read by dedupe prefix — literally, for that member only", async () => {
+    const make = (user: UserRow, dedupe: string) =>
+      db.notifications.create({
+        user_id: user.id,
+        kind: 'bots_reply',
+        title: 'Sprouty',
+        body: 'Open it.',
+        dedupe_key: dedupe,
+      });
+    const session = unique('bots_s1');
+    const mine = await make(owner, `bots-reply:${session}:m1`);
+    const mineToo = await make(owner, `bots-reply:${session}:m2`);
+    // `_` would match any character in a raw LIKE pattern: this sibling session must stay unread
+    const lookalike = await make(owner, `bots-reply:${session.replace('_', 'x')}:m1`);
+    const theirs = await make(other, `bots-reply:${session}:m1`);
+
+    expect(await db.notifications.getByDedupeKey(owner.id, `bots-reply:${session}:m2`)).toEqual(mineToo);
+    expect(await db.notifications.getByDedupeKey(other.id, `bots-reply:${session}:m2`)).toBeUndefined();
+
+    expect(await db.notifications.markReadByDedupePrefix(owner.id, `bots-reply:${session}:`)).toBe(2);
+    expect((await db.notifications.getForUser(mine.id, owner.id))?.read_at).not.toBeNull();
+    expect((await db.notifications.getForUser(mineToo.id, owner.id))?.read_at).not.toBeNull();
+    expect((await db.notifications.getForUser(lookalike.id, owner.id))?.read_at).toBeNull();
+    expect((await db.notifications.getForUser(theirs.id, other.id))?.read_at).toBeNull();
+    // already read: nothing changes
+    expect(await db.notifications.markReadByDedupePrefix(owner.id, `bots-reply:${session}:`)).toBe(0);
+  });
+
+  it('settles a leased attempt for good (suppressed / failed) and never hands it out again', async () => {
+    const notification = await db.notifications.create({
+      user_id: owner.id,
+      kind: 'system',
+      title: 'Sprouty asks to edit the knowledge base',
+      body: 'Open Bots to review it.',
+      dedupe_key: unique('push-settle'),
+    });
+    await db.notifications.createDelivery({
+      notification_id: notification.id,
+      channel: 'mobile_push',
+      recipient: 'pdv_a',
+    });
+    await db.notifications.createDelivery({
+      notification_id: notification.id,
+      channel: 'mobile_push',
+      recipient: 'pdv_b',
+    });
+    const claimed = await db.notifications.claimDeliveries({
+      worker_id: 'push-worker',
+      lease_ms: 60_000,
+      channels: ['mobile_push'],
+    });
+    const mine = claimed.filter((row) => row.notification_id === notification.id);
+    expect(mine).toHaveLength(2);
+
+    const suppressed = await db.notifications.settleDelivery({
+      id: mine[0]!.id,
+      expected_version: mine[0]!.version,
+      worker_id: 'push-worker',
+      status: 'suppressed',
+      reason: 'request_settled',
+    });
+    expect(suppressed).toMatchObject({ status: 'suppressed', last_error: 'request_settled', lease_owner: null });
+    const failed = await db.notifications.settleDelivery({
+      id: mine[1]!.id,
+      expected_version: mine[1]!.version,
+      worker_id: 'push-worker',
+      status: 'failed',
+      reason: 'DeviceNotRegistered',
+    });
+    expect(failed.status).toBe('failed');
+    // a stale lease cannot settle twice
+    await expect(
+      db.notifications.settleDelivery({
+        id: mine[0]!.id,
+        expected_version: mine[0]!.version,
+        worker_id: 'push-worker',
+        status: 'suppressed',
+        reason: 'again',
+      }),
+    ).rejects.toMatchObject({ code: 'notification_lease_lost' });
+    const again = await db.notifications.claimDeliveries({
+      worker_id: 'push-worker',
+      lease_ms: 60_000,
+      channels: ['mobile_push'],
+    });
+    expect(again.filter((row) => row.notification_id === notification.id)).toEqual([]);
+  });
 });

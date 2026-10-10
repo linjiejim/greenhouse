@@ -2,7 +2,7 @@
 
 > 事实源：`packages/db/src/schema/*.ts`。本文只描述当前 schema，不保留已删除表的历史定义。
 >
-> 当前共 **137 张表**。字段类型、默认值、索引的最终解释以 Drizzle schema 与最新 migration snapshot 为准。
+> 当前共 **139 张表**。字段类型、默认值、索引的最终解释以 Drizzle schema 与最新 migration snapshot 为准。
 
 ## 设计约定
 
@@ -120,8 +120,9 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `notifications` | PK `id`；UK `(user_id, dedupe_key)`；user/read/created 与 provenance 索引 | 用户站内收件箱；保存 kind、完整正文/payload、Run/Interrupt/Event/Agent 逻辑来源与 read_at。除已读状态外为永久事实，无生产删除 Service |
-| `notification_delivery_attempts` | PK `id`；UK `(notification_id, channel, recipient)`；claim 索引 | 可选外部渠道的 durable lease/attempt/retry/dead-letter；FK 到 notification CASCADE 只服务显式根事实删除语义，常规生产没有删除入口 |
+| `notifications` | PK `id`；UK `(user_id, dedupe_key)`；user/read/created 与 provenance 索引 | 用户站内收件箱；保存 kind、完整正文/payload、Run/Interrupt/Event/Agent 逻辑来源与 read_at。除已读状态外为永久事实，无生产删除 Service。会推到手机的事实在 `payload.push` 里带路由信封（类别、要打开的对话、卡片 id、Bot id——不含内容）；`kind='bots_reply'` = 离开后 60 秒仍没人看过的 Bot 回复（`bots-reply:<会话>:<消息>`，正文不含回复内容） |
+| `notification_delivery_attempts` | PK `id`；UK `(notification_id, channel, recipient)`；claim 索引 | 可选外部渠道的 durable lease/attempt/retry/dead-letter；FK 到 notification CASCADE 只服务显式根事实删除语义，常规生产没有删除入口。`mobile_push` 行的 `recipient` 是 `push_devices.id`；终态除 `delivered` / `dead_letter` 外还有 `suppressed`（发送前复核发现不该再推：卡已处理、回复已读、设备停用、开关关了）与 `failed`（渠道说收件人永久没了：`DeviceNotRegistered`），两者都不重试 |
+| `push_devices` | PK `id`；UK `token`；部分索引 `user_id WHERE disabled_at IS NULL` | 手机推送设备（迁移 0021，spec 20261010-mobile-push）：Expo push token（**不存任何 Apple 密钥**）、`platform`（ios）、Expo `project_id`（按它分组发送）、设备自报的工作站 id `client_ref`（推送 `data.s` 原样带回）、JSON `prefs`（needs_you / done / replies / preview）、注册时的 `users.auth_version`（改密码 / 停用后停推）、`last_seen_at`（回前台刷新，90 天未刷新不再投）、`disabled_at` / `disabled_reason`（`unregistered` 成员注销 · `device_not_registered` Expo 判定卸载 · `device_limit` 每账号超过 10 台）。按 token upsert：同一台手机换账号 = 这一行归新账号且偏好重置；注销只停用不删行，再注册就恢复 |
 
 ### 统一 Usage Budget
 
@@ -235,6 +236,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `account_password_links.user_id` | `users.id` | CASCADE |
 | `user_features.user_id` | `users.id` | CASCADE |
 | `user_provider_tokens.user_id` | `users.id` | CASCADE |
+| `push_devices.user_id` | `users.id` | CASCADE |
 | `bot_versions.bot_id` | `bots.id` | CASCADE |
 | `drive_folders.bot_id` | `bots.id` | CASCADE |
 | `user_memories.user_id` | `users.id` | CASCADE |
@@ -389,6 +391,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `runtime_tool_calls.platform_audit_event_id` | `platform_audit_events.id` | 权限/action 审计逻辑 backlink；两套永久事实各自保留 |
 | `notifications.user_id` / provenance ids | `users.id` / Runtime Run、Interrupt、Event、Agent | 永久逻辑引用；账号或来源退役不删除站内通知 |
 | `notification_delivery_attempts.notification_id` | `notifications.id` | FK CASCADE；送达状态独立于业务结果，只随显式通知根删除 |
+| `notification_delivery_attempts.recipient`（`channel='mobile_push'`） | `push_devices.id` | 逻辑引用；设备停用 / 消失时投递在发送前被记为 `suppressed` |
 | `runtime_events.actor_user_id` | `users.id` | Event actor 审计；账号删除后 Event 仍保留 |
 | `runtime_interrupts.assignee_user_id` / `.decided_by_user_id` | `users.id` | 决策负责人和决定人；完整决议独立保留 |
 | `bots.legacy_custom_id` | 已删除的 `custom_profiles.id` | 存量 `custom:<id>[@v]` 引用的解析键 |
@@ -480,6 +483,8 @@ erDiagram
     runtime_interrupts ||--o{ notifications : "逻辑 interrupt_id"
     runtime_events ||--o{ notifications : "逻辑 event_id"
     notifications ||--o{ notification_delivery_attempts : "FK CASCADE"
+    users ||--o{ push_devices : "FK CASCADE"
+    push_devices ||--o{ notification_delivery_attempts : "逻辑 recipient (mobile_push)"
     users ||--o{ scheduled_tasks : "FK CASCADE"
     users ||--o{ email_accounts : "FK CASCADE"
     users ||--o{ mcp_servers : "FK SET NULL (created_by)"

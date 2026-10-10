@@ -84,6 +84,10 @@
       "import": "./src/notification.ts",
       "types": "./src/notification.ts"
     },
+    "./push": {
+      "import": "./src/push.ts",
+      "types": "./src/push.ts"
+    },
     "./entity-links": {
       "import": "./src/entity-links.ts",
       "types": "./src/entity-links.ts"
