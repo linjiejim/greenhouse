@@ -260,6 +260,7 @@ if [ "$UPGRADE" = 0 ]; then
   chmod 600 .env
   env_set TOKEN_SIGNING_KEY "$(rand_hex)"
   env_set PROVIDER_TOKEN_ENCRYPTION_KEY "$(rand_hex)"
+  env_set VAULT_ENCRYPTION_KEY "$(rand_hex)"
   env_set BOOTSTRAP_ADMIN_EMAIL "$ADMIN_EMAIL"
   env_set PUBLIC_BASE_URL "$APP_URL"
   env_set APP_BASE_URL "$APP_URL"

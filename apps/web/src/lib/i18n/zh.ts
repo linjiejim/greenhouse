@@ -803,7 +803,8 @@ const zh: Messages = {
     emptyDesc: '保存一次网站登录信息，Bot 就能替你登录——而且永远看不到密码。',
     unavailableTitle: '密码库暂不可用',
     unavailableDesc: '管理员需要先配置加密密钥，才能保存登录信息。',
-    unavailableSuperDesc: '请在服务器环境变量中设置 PROVIDER_TOKEN_ENCRYPTION_KEY 并重启 API——所有登录信息都用它加密。',
+    unavailableSuperDesc:
+      '请在服务器环境变量中设置 VAULT_ENCRYPTION_KEY（64 位十六进制；或 PROVIDER_TOKEN_ENCRYPTION_KEY）并重启 API——所有登录信息都用它加密。',
     col_login: '登录信息',
     col_sites: '网站',
     col_policy: '审批',
@@ -885,6 +886,10 @@ const zh: Messages = {
     runtime_ready: '就绪',
     runtime_unavailable: '不可用',
     runtime_disabled: '未开启',
+    runtimeDescOff: '电脑是成员的 Bots 操作的浏览器和终端——成员可以旁观、随时接手；自动创建、休眠和排队。',
+    disabledHint:
+      '填入沙箱服务的 key（E2B，国内用 PPIO）即可给成员开电脑——托管、无需安装；也可以用本服务器的 Docker（见 README）。',
+    disabledHintLink: '运行时配置 → Bot 电脑',
     runtime_checking: '检查中…',
     runtimeDescHosted: '成员的电脑在沙箱服务上自动创建、启动、休眠和排队——每台电脑一个独立的微虚拟机。',
     hardened: '加固模式 · gVisor',

@@ -1,0 +1,47 @@
+name: Live E2B
+
+# The hosted-computer suite against a real E2B-protocol provider
+# (apps/api/src/bots/computer/__tests__/e2b-host.live.test.ts): real sandboxes in
+# namespace `livetest`, all removed afterwards; this commit's computer template is
+# built first when the provider does not have it yet (a few minutes). Manual only —
+# it spends provider credit. Needs the repository secret E2B_API_KEY (an E2B or a
+# PPIO key); `domain` picks the provider. One run at a time: two builds of the same
+# template cancel each other.
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'E2B-protocol domain — empty = E2B; PPIO: cn-beijing-1.sandbox.ppio.com'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-e2b
+  cancel-in-progress: false
+
+jobs:
+  live:
+    if: github.repository == 'linjiejim/greenhouse'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # Without a key the suite skips itself and the run would look green.
+      - name: Check the provider key
+        env:
+          KEY: ${{ secrets.E2B_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::Add the repository secret E2B_API_KEY (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+      - name: Hosted computer suite
+        env:
+          BOTS_E2B_LIVE: '1'
+          BOTS_COMPUTER_E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+          BOTS_COMPUTER_E2B_DOMAIN: ${{ inputs.domain }}
+        run: pnpm exec vitest run --project unit apps/api/src/bots/computer/__tests__/e2b-host.live.test.ts

@@ -229,8 +229,10 @@ bots/
   `BOTS_BROWSER_TESTS=skip`。
 - 托管宿主：`e2b-bridge.test.ts` 在本机真跑 gh-bridge（协议、二进制、上限、超时、隧道）；`e2b-host.test.ts` 用假服务商
   测生命周期（恢复 / 新建 / 搬 home / 重试 / 失败后 recover 与退避 / 孤儿规则 / 续期）；真服务商的端到端是 `e2b-host.live.test.ts`
-  （`BOTS_E2B_LIVE=1 BOTS_COMPUTER_E2B_API_KEY=… [BOTS_COMPUTER_E2B_DOMAIN=…]`，PPIO 也用它验）。本地整站：
-  `BOTS_COMPUTER_ENABLED=1 BOTS_COMPUTER_DRIVER=e2b BOTS_COMPUTER_E2B_API_KEY=… node scripts/run-dev.mjs up`。
+  （`BOTS_E2B_LIVE=1 BOTS_COMPUTER_E2B_API_KEY=… [BOTS_COMPUTER_E2B_DOMAIN=…]`，PPIO 也用它验）；本机到服务商链路慢时
+  用 GitHub Actions 的 **Live E2B**（`.github/workflows/live-e2b.yml`，手动触发，仓库 secret `E2B_API_KEY`，可填 domain）。
+  本地整站：`BOTS_COMPUTER_E2B_API_KEY=… node scripts/run-dev.mjs up`（有 key 即默认开启且驱动为 e2b；也可在
+  Runtime Config → Bot computers 填 key，保存即生效、无需重启）。
 - 真容器套件（`computer.live.db-commit.test.ts`、`browser.live.db-commit.test.ts`）只在 `BOTS_LIVE=1` 且
   本机有镜像时跑；镜像本身用 `scripts/bot-computer-smoke.sh` 验（双 uid 隔离、零端口、CDP 中继，以及
   契约 2 的任务栏 / 窗口恢复 / WebGL / 语言 / gh-term / gh-jobs / gh-agent-kill / 用户级安装持久化）。
@@ -319,8 +321,16 @@ Retry-After；也可能是另一个 API 槽位正持有这台电脑的浏览器�
 关闭、1011 电脑停止。WS 推送：`bots:computer`、`bots:conversation`、`bots:attention`。
 
 **密码库**（`vault/routes.ts`）：`GET/POST /api/bots/vault`、`PATCH/DELETE /api/bots/vault/:id`、
-`GET /api/bots/vault/log`。条目只返回元数据；未配置 `PROVIDER_TOKEN_ENCRYPTION_KEY` → `503 vault_unavailable`；
+`GET /api/bots/vault/log`。条目只返回元数据；没有可用密钥 → `503 vault_unavailable`；
 其余错误见 `VaultErrorCode`。
+
+**密码库密钥**（`vault/crypto.ts`）：写入用 `VAULT_ENCRYPTION_KEY`，未设置才退回 `PROVIDER_TOKEN_ENCRYPTION_KEY`；
+设置了但格式不对（非 64 位 hex）= 密码库不可用，**绝不**悄悄退回 provider 密钥。密文格式
+`gv1.<key id>.<base64>`（key id = 密钥域分离哈希的前 8 位 hex），读取按 key id 在 VAULT / VAULT_PREVIOUS /
+PROVIDER 三把里找；无前缀的旧密文一律按 PROVIDER 解。轮换：旧值移到 `VAULT_ENCRYPTION_KEY_PREVIOUS` → 设新值
+→ 重启 → `pnpm cli vault rekey`（`vault/rekey.ts`：只改不是当前密钥写的字段；按「仍是读到的密文」条件更新，
+绝不覆盖期间的编辑；不动 `updated_at`；读不了的条目报告后原样保留）→ 删 PREVIOUS。新密文格式/新密钥来源
+都要同步 rekey 和 `crypto.test.ts`。
 
 **管理端**（super）：`GET /api/admin/bot-computers`（运行时、每台电脑、旋钮、检查清单 `checks[]`：
 docker / runtime / image / network / egress / host_disk …，每项带修复命令）、

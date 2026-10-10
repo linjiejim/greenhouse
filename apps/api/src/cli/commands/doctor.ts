@@ -10,6 +10,7 @@
 import chalk from 'chalk';
 import { initDatabase, getDb } from '@greenhouse/db';
 import { isValidTokenSigningKey } from '../../auth/token.js';
+import { isVaultAvailable } from '../../bots/vault/crypto.js';
 import { DATABASE_URL, dbName, redactDbUrl, heading, dim } from './shared.js';
 
 interface Check {
@@ -80,6 +81,21 @@ export async function run(_args: string[]): Promise<number> {
       ? `${signKey.length} chars${isValidTokenSigningKey(signKey) ? ' (32-byte hex)' : ' (invalid)'}`
       : 'missing',
     fix: 'Set TOKEN_SIGNING_KEY to `openssl rand -hex 32` output — exactly 64 hexadecimal characters',
+  });
+
+  const ownVaultKey = !!process.env.VAULT_ENCRYPTION_KEY?.trim();
+  checks.push({
+    label: 'Password vault key usable',
+    ok: isVaultAvailable(),
+    warn: true, // only the Bots' saved sign-ins need it
+    detail: !isVaultAvailable()
+      ? ownVaultKey
+        ? 'VAULT_ENCRYPTION_KEY is not 64 hex characters'
+        : 'missing'
+      : ownVaultKey
+        ? 'its own key (VAULT_ENCRYPTION_KEY)'
+        : 'shares PROVIDER_TOKEN_ENCRYPTION_KEY',
+    fix: 'Set VAULT_ENCRYPTION_KEY to `openssl rand -hex 32` output (or PROVIDER_TOKEN_ENCRYPTION_KEY) — see .env.example',
   });
 
   const llmKey = process.env.LLM_API_KEY || process.env.SILICONFLOW_API_KEY || '';

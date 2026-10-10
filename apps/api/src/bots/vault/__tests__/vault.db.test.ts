@@ -6,16 +6,27 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
-import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
+import {
+  _resetProvider,
+  initDatabase,
+  newVaultItemId,
+  type DatabaseProvider,
+  type UserRow,
+  type VaultItemInsert,
+} from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type { VaultItemView } from '@greenhouse/types/bots';
+import { encrypt } from '@greenhouse/utils/crypto';
 import type { AppEnv } from '../../../app-env.js';
 import { createBotsVaultRoutes } from '../routes.js';
 import { recordVaultAccess, revealVaultSecrets, saveSecureLogin, vaultMatchesForOrigin } from '../service.js';
+import { encryptVaultField, isCurrentVaultCiphertext, vaultAad } from '../crypto.js';
+import { rekeyVault } from '../rekey.js';
 import { createInternalTestUser } from '../../../../../../tests/helpers/internal-user.js';
 
 const KEY = 'f6'.repeat(32);
 const originalKey = process.env.PROVIDER_TOKEN_ENCRYPTION_KEY;
+const originalVaultKeys = [process.env.VAULT_ENCRYPTION_KEY, process.env.VAULT_ENCRYPTION_KEY_PREVIOUS];
 const originalBase = process.env.PUBLIC_BASE_URL;
 
 let db: DatabaseProvider;
@@ -32,10 +43,17 @@ afterAll(() => {
   else process.env.PROVIDER_TOKEN_ENCRYPTION_KEY = originalKey;
   if (originalBase === undefined) delete process.env.PUBLIC_BASE_URL;
   else process.env.PUBLIC_BASE_URL = originalBase;
+  const [vaultKey, previousKey] = originalVaultKeys;
+  if (vaultKey === undefined) delete process.env.VAULT_ENCRYPTION_KEY;
+  else process.env.VAULT_ENCRYPTION_KEY = vaultKey;
+  if (previousKey === undefined) delete process.env.VAULT_ENCRYPTION_KEY_PREVIOUS;
+  else process.env.VAULT_ENCRYPTION_KEY_PREVIOUS = previousKey;
 });
 
 beforeEach(async () => {
   process.env.PROVIDER_TOKEN_ENCRYPTION_KEY = KEY;
+  delete process.env.VAULT_ENCRYPTION_KEY;
+  delete process.env.VAULT_ENCRYPTION_KEY_PREVIOUS;
   _resetProvider();
   db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -224,5 +242,87 @@ describe('service helpers', () => {
     });
     expect(otherUser!.id).not.toBe(first!.id);
     expect(await saveSecureLogin(db, alice.id, 'https://example.com', { otp: '123456' })).toBeNull();
+  });
+});
+
+describe('rotating the key (pnpm cli vault rekey)', () => {
+  const NEW_KEY = '0d'.repeat(32);
+  const COLUMNS = ['username_enc', 'password_enc', 'totp_enc'] as const;
+  const entry = (id: string, password_enc: string): VaultItemInsert => ({
+    id,
+    user_id: bob.id,
+    label: id,
+    origins: ['https://legacy.example'],
+    username_enc: null,
+    username_hint: '',
+    password_enc,
+    totp_enc: null,
+    policy: 'ask',
+  });
+
+  it('puts every entry under the new key — ones from before the version prefix too — and they still fill', async () => {
+    // Alice's entry was written while the vault used the provider key; Bob's predates the version prefix.
+    const github = (await call(alice, 'POST', '', GITHUB)).json.item as VaultItemView;
+    const legacyId = newVaultItemId();
+    const legacy = encrypt('old secret', Buffer.from(KEY, 'hex'), vaultAad(bob.id, legacyId, 'password'));
+    await db.vault.create(entry(legacyId, legacy));
+    // And one written with a key this deployment no longer has.
+    const lostId = newVaultItemId();
+    process.env.VAULT_ENCRYPTION_KEY = 'ee'.repeat(32);
+    const lost = encryptVaultField(bob.id, lostId, 'password', 'gone');
+    delete process.env.VAULT_ENCRYPTION_KEY;
+    await db.vault.create(entry(lostId, lost));
+
+    const before = (await db.vault.get(alice.id, github.id))!;
+    const secrets = revealVaultSecrets(alice.id, before, ['username', 'password', 'totp']);
+    process.env.VAULT_ENCRYPTION_KEY = NEW_KEY;
+
+    const dry = await rekeyVault(db, { dryRun: true });
+    expect(dry.rekeyed).toBeGreaterThanOrEqual(2);
+    expect(await db.vault.get(alice.id, github.id)).toEqual(before);
+
+    const result = await rekeyVault(db);
+    expect(result.changed).toBe(0);
+    expect(result.unreadable).toContainEqual({ id: lostId, user_id: bob.id });
+    const after = (await db.vault.get(alice.id, github.id))!;
+    expect(COLUMNS.every((column) => isCurrentVaultCiphertext(after[column]!))).toBe(true);
+    expect(after.updated_at).toBe(before.updated_at); // not an edit
+    const moved = (await db.vault.get(bob.id, legacyId))!;
+    expect(isCurrentVaultCiphertext(moved.password_enc!)).toBe(true);
+    expect((await db.vault.get(bob.id, lostId))!.password_enc).toBe(lost);
+
+    // Under the vault's own key now: the provider key is no longer needed to read them.
+    delete process.env.PROVIDER_TOKEN_ENCRYPTION_KEY;
+    expect(revealVaultSecrets(alice.id, after, ['username', 'password', 'totp'])).toEqual(secrets);
+    expect(revealVaultSecrets(bob.id, moved, ['password'])).toEqual({ password: 'old secret' });
+    expect(await rekeyVault(db)).toMatchObject({ rekeyed: 0, changed: 0 });
+  });
+
+  it('never undoes an edit its member makes while it runs', async () => {
+    const github = (await call(alice, 'POST', '', GITHUB)).json.item as VaultItemView;
+    process.env.VAULT_ENCRYPTION_KEY = NEW_KEY;
+    // The password changes between the rekey reading the entries and writing them back.
+    const racing = {
+      vault: {
+        ...db.vault,
+        listAll: async () => {
+          const rows = await db.vault.listAll();
+          await call(alice, 'PATCH', `/${github.id}`, { password: 'edited meanwhile' });
+          return rows;
+        },
+      },
+    };
+    expect(await rekeyVault(racing)).toMatchObject({ changed: 1 });
+    const row = (await db.vault.get(alice.id, github.id))!;
+    expect(revealVaultSecrets(alice.id, row, ['password'])).toEqual({ password: 'edited meanwhile' });
+    expect(isCurrentVaultCiphertext(row.username_enc!)).toBe(false); // left for the next run
+
+    expect(await rekeyVault(db)).toMatchObject({ changed: 0 });
+    const done = (await db.vault.get(alice.id, github.id))!;
+    expect(COLUMNS.every((column) => isCurrentVaultCiphertext(done[column]!))).toBe(true);
+    expect(revealVaultSecrets(alice.id, done, ['username', 'password'])).toEqual({
+      username: GITHUB.username,
+      password: 'edited meanwhile',
+    });
   });
 });

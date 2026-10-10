@@ -57,6 +57,14 @@ export function RuntimeConfigPanel() {
       .catch((err) => setError(err?.message || 'Failed to load'));
   }, []);
 
+  // `…/runtime-config?group=bots` opens at that section (Bot computers links there).
+  const loaded = views !== null;
+  useEffect(() => {
+    if (!loaded) return;
+    const group = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('group');
+    if (group) document.getElementById(`runtime-config-${group}`)?.scrollIntoView({ block: 'start' });
+  }, [loaded]);
+
   const extensions = useExtensionsStore((s) => s.extensions);
 
   // Core runtime groups first, then one section per extension group (any group
@@ -126,7 +134,11 @@ export function RuntimeConfigPanel() {
         <p className="text-xs text-fg-muted leading-relaxed">{t('runtimeConfig.intro')}</p>
 
         {[...grouped.keys()].map((group) => (
-          <section key={group} className="bg-surface-raised border border-edge rounded-xl p-4">
+          <section
+            key={group}
+            id={`runtime-config-${group}`}
+            className="bg-surface-raised border border-edge rounded-xl p-4 scroll-mt-4"
+          >
             <h3 className="text-sm font-semibold text-fg mb-3">{groupLabel(group)}</h3>
             <div className="space-y-3">
               {(grouped.get(group) ?? []).map((v) => {

@@ -104,8 +104,15 @@ function flag(value: string | undefined): boolean {
   return value === '1' || value === 'true';
 }
 
+/**
+ * On when BOTS_COMPUTER_ENABLED says so — or, when it says nothing, as soon as a sandbox
+ * provider key is set (env, or Administration → Runtime Config → Bot computers): entering the key is
+ * how an administrator turns hosted computers on. An explicit BOTS_COMPUTER_ENABLED=0 wins.
+ */
 export function isBotsComputerEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return flag(env.BOTS_COMPUTER_ENABLED);
+  const explicit = env.BOTS_COMPUTER_ENABLED?.trim();
+  if (explicit) return flag(explicit);
+  return Boolean(env.BOTS_COMPUTER_E2B_API_KEY?.trim());
 }
 
 /**
@@ -194,7 +201,9 @@ function loadE2bConfig(env: NodeJS.ProcessEnv, memoryBytes: number, cpus: string
 
 /** Load and validate BOTS_COMPUTER_*. Throws ComputerConfigError for unsafe or malformed values. */
 export function loadBotsComputerConfig(env: NodeJS.ProcessEnv = process.env): BotsComputerConfig {
-  const driverRaw = env.BOTS_COMPUTER_DRIVER?.trim().toLowerCase() || 'docker';
+  // Unset: hosted when a provider key is set (see isBotsComputerEnabled), this server's Docker otherwise.
+  const driverRaw =
+    env.BOTS_COMPUTER_DRIVER?.trim().toLowerCase() || (env.BOTS_COMPUTER_E2B_API_KEY?.trim() ? 'e2b' : 'docker');
   if (driverRaw !== 'docker' && driverRaw !== 'e2b') {
     throw new ComputerConfigError('config_invalid', 'BOTS_COMPUTER_DRIVER must be docker or e2b');
   }

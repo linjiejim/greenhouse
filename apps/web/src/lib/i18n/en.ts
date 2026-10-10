@@ -809,7 +809,7 @@ export default {
     unavailableTitle: 'Passwords are unavailable',
     unavailableDesc: 'Your administrator needs to configure the encryption key before logins can be saved.',
     unavailableSuperDesc:
-      'Set PROVIDER_TOKEN_ENCRYPTION_KEY in the server environment and restart the API — it encrypts every saved login.',
+      'Set VAULT_ENCRYPTION_KEY (64 hex characters; or PROVIDER_TOKEN_ENCRYPTION_KEY) in the server environment and restart the API — it encrypts every saved login.',
     col_login: 'Login',
     col_sites: 'Sites',
     col_policy: 'Approval',
@@ -894,6 +894,11 @@ export default {
     runtime_ready: 'Ready',
     runtime_unavailable: 'Unavailable',
     runtime_disabled: 'Turned off',
+    runtimeDescOff:
+      "A computer is a browser and a shell a member's Bots drive — the member can watch and take over. Created, put to sleep and queued automatically.",
+    disabledHint:
+      "Give members a computer by entering a sandbox provider key (E2B, or PPIO in mainland China) — hosted, nothing to install — or run them on this server's Docker (see the README).",
+    disabledHintLink: 'Runtime Config → Bot computers',
     runtime_checking: 'Checking…',
     runtimeDescHosted:
       "Members' computers are created, started, put to sleep and queued automatically at the sandbox provider — one microVM each.",

@@ -52,7 +52,8 @@ Please include:
 - **Agent surface** — `/api/mcp`, `/api/agent`: profile/tool
   scoping, API-key isolation, cross-user/session data isolation.
 - **Secret handling** — encryption of stored upstream LLM keys and email
-  credentials (`PROVIDER_TOKEN_ENCRYPTION_KEY`, AES-256-GCM).
+  credentials (`PROVIDER_TOKEN_ENCRYPTION_KEY`, AES-256-GCM), and of the Bots'
+  password vault (`VAULT_ENCRYPTION_KEY`, its own key, each field bound to its row).
 - **Tool execution** — the sandboxed `compute` tool, file/upload handling, SSRF
   in outbound fetch (search, email), prompt-injection of the agent.
 - **Injection** — path traversal, SQL/FTS injection, XSS in rendered content.

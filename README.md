@@ -444,6 +444,7 @@ Everything is environment-driven; see [.env.example](./.env.example) for the ful
 | `DATABASE_URL` | PostgreSQL connection string |
 | `TOKEN_SIGNING_KEY` | Signing key for auth tokens (`openssl rand -hex 32`) |
 | `PROVIDER_TOKEN_ENCRYPTION_KEY` | AES-256-GCM key for stored secrets — email passwords, integration tokens, workspace-setting secrets (`openssl rand -hex 32`) |
+| `VAULT_ENCRYPTION_KEY` | Optional: the Bots' password vault's own key (falls back to `PROVIDER_TOKEN_ENCRYPTION_KEY`). Rotate it with `VAULT_ENCRYPTION_KEY_PREVIOUS` + `pnpm cli vault rekey` — see `.env.example` |
 | `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | Any OpenAI-compatible endpoint; the `flash` catalog entry resolves to `LLM_MODEL` (add a stronger `pro` with `LLM_MODEL_PRO`). The server starts without them — chat needs them, and they can be set later in Runtime Config |
 
 **First run and hosting**: `BOOTSTRAP_ADMIN_EMAIL` (the first administrator's activation link —

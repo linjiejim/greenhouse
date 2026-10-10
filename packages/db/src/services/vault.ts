@@ -43,6 +43,12 @@ export interface VaultItemPatch {
 
 export type VaultAccessInput = Omit<typeof vaultAccessLog.$inferInsert, 'id' | 'created_at'>;
 
+/** The columns holding a secret's ciphertext. */
+export type VaultCipherColumn = 'username_enc' | 'password_enc' | 'totp_enc';
+
+/** One column's ciphertext as read, and the same secret under another key. */
+export type VaultCipherSwap = Partial<Record<VaultCipherColumn, { from: string; to: string }>>;
+
 /** A fresh, unguessable item id (needed before encryption, since it is part of the AAD). */
 export function newVaultItemId(): string {
   return `vlt_${randomBytes(10).toString('hex')}`;
@@ -63,6 +69,11 @@ export function createVaultService(db: Db) {
         })
         .returning();
       return row!;
+    },
+
+    /** Every member's entries — only for re-encrypting them all under a new key (`pnpm cli vault rekey`). */
+    async listAll(): Promise<VaultItemRow[]> {
+      return await db.select().from(vaultItems).orderBy(vaultItems.id);
     },
 
     async list(userId: string): Promise<VaultItemRow[]> {
@@ -93,6 +104,27 @@ export function createVaultService(db: Db) {
         .where(and(eq(vaultItems.id, id), eq(vaultItems.user_id, userId)))
         .returning();
       return row;
+    },
+
+    /**
+     * Put the same secrets back under another key (`pnpm cli vault rekey`) — only while the
+     * row still holds what was read, so an edit made meanwhile is never undone. Not an
+     * edit itself: `updated_at` stays. False when the row changed (or is gone).
+     */
+    async replaceCiphertext(userId: string, id: string, swap: VaultCipherSwap): Promise<boolean> {
+      const set: Partial<typeof vaultItems.$inferInsert> = {};
+      const unchanged = [eq(vaultItems.id, id), eq(vaultItems.user_id, userId)];
+      for (const column of Object.keys(swap) as VaultCipherColumn[]) {
+        set[column] = swap[column]!.to;
+        unchanged.push(eq(vaultItems[column], swap[column]!.from));
+      }
+      if (Object.keys(set).length === 0) return false;
+      const rows = await db
+        .update(vaultItems)
+        .set(set)
+        .where(and(...unchanged))
+        .returning({ id: vaultItems.id });
+      return rows.length > 0;
     },
 
     async touch(userId: string, id: string): Promise<void> {
