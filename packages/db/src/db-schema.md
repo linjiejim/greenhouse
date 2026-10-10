@@ -166,24 +166,31 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `table_bases` | PK `id` | 多维表格 Base；`private/team` 可见性、owner、软归档与审计时间 |
-| `table_base_members` | PK `id`；UK `(base_id, user_id)` | Base 成员；`owner/builder/editor/viewer` 业务 ACL |
+| `table_bases` | PK `id` | 多维表格 Base；`private/team` 可见性、owner、软归档与审计时间；`team_role`（`viewer/editor/custom`，默认 viewer）+ `team_custom_role_id` = team 可见时全员的角色（custom 角色丢失 → 无访问，绝不回落 viewer） |
+| `table_base_members` | PK `id`；UK `(base_id, user_id)` | Base 成员；`owner/builder/editor/viewer/custom` 业务 ACL；`custom_role_id` 指向本 Base 的自定义角色 |
+| `table_base_roles` | PK `id`；UK `(base_id, name)`；UK `(base_id, id)` | Base 自定义角色：每表行 / 列规则 `rules JSONB`（`TableAccessRules`）、position、revision；后一 UK 供复合「同 Base」校验 |
+| `table_base_group_members` | PK `id`；UK `(base_id, group_id)` | 群组授权；`editor/viewer/custom`（群组不能授 builder），`custom_role_id` 同上 |
 | `table_tables` | PK `id`；UK `(base_id, name)` | Base 内的用户 Table 元数据；固定物理表，不做 runtime DDL；`schema_revision` 标识当前结构版本；`archived_at` = 软删（列表与 schema 查询已过滤，记录/字段/链接一律保留，恢复走 `pnpm cli tables restore-table`） |
 | `table_schema_versions` | PK `id`；UK `(table_id, version)` | Table 结构的不可变 JSONB 快照；字段创建/修改/归档时同事务递增，记录变更类型与操作者 |
 | `table_fields` | PK `id`；UK `(table_id, name)`；每 Table 一条 active primary 部分 UK | 稳定字段 ID、常用字段类型、required/primary、JSON 文本 config 与位置；支持 Relation/Formula/Rollup |
 | `table_field_dependencies` | 复合 PK `(field_id, depends_on_field_id)` | Formula/Rollup 字段依赖边，支持反向影响分析和级联重算 |
 | `table_views` | PK `id` | shared/personal Grid 视图；筛选、排序、显示字段和宽度存 config JSON 文本；revision 乐观并发 |
-| `table_forms` | PK `id`；UK `(table_id, name)` | 内部认证表单；draft/published、字段白名单、文案 config 与 revision |
-| `table_records` | PK `id` | 动态记录；用户值在 `values JSONB`，Formula/Rollup 在 `computed_values JSONB`；用户 revision 与计算 revision 分离；`deleted_at` = 软删，表内回收站可自助恢复（恢复同样 bump revision） |
+| `table_forms` | PK `id`；UK `(table_id, name)` | 内部认证表单；draft/published、字段白名单、文案 config 与 revision；`audience JSONB`（`base/team/principals`，默认 base） |
+| `table_form_submissions` | PK `id`；部分 UK `(form_id, user_id) WHERE single_submit` | 每次提交一行，与记录同事务插入；`allowMultiple=false` 的表单写 `single_submit=true`，并发双击只成功一次 |
+| `table_records` | PK `id` | 动态记录；用户值在 `values JSONB`，计算字段（Formula/Rollup/Lookup）在 `computed_values JSONB`（写事务内计算）；用户 revision 与计算 revision 分离；`deleted_at` = 软删，表内回收站可自助恢复（恢复同样 bump revision） |
+| `table_record_events` | PK `id`；IDX `(record_id, created_at DESC, id DESC)` | 记录历史：created/updated/deleted/restored，字段级 `changes [{fieldId,before,after}]`（值截断）、`actor_kind`（user/agent/automation/form/import/app/system）与 `meta`（formId/importId/ruleId/appId/executorId）；只由 `onRecordWritten` 在写事务内追加，重算 / 汇总级联不写 |
+| `table_record_comments` | PK `id`；IDX `(record_id, created_at, id)` | 记录评论（Markdown，`mentions JSONB` 用户 id），软删 `deleted_at` |
 | `table_record_links` | PK `id`；UK `(field_id, source_record_id, target_record_id)` | Relation canonical 边；保持顺序并支持 target 反查 |
 | `table_record_attachments` | PK `id`；UK `(record_id, field_id, drive_file_id)` | Record/Field 到 Tables-scope Drive 文件的规范化附件边 |
 | `table_recompute_jobs` | PK `id`；UK `idempotency_key` | Rollup 持久重算状态；queued/running/succeeded/failed、attempt/error 与时间戳 |
-| `table_automation_rules` | PK `id`；UK `(base_id, name)` | Record 事件规则；条件、确定性动作、执行用户与 revision |
-| `table_automation_outbox` | PK `id`；UK `idempotency_key` | 自动化待处理/执行去重事件；pending/processing/succeeded/failed |
-| `table_automation_runs` | PK `id` | 每次规则执行状态、完成动作数、错误与耗时审计 |
-| `table_notifications` | PK `id` | 自动化产生的站内通知；按用户读取并记录 read_at |
-| `table_dashboards` | PK `id`；UK `(base_id, name)` | Base 自定义仪表盘；revision 乐观并发 |
+| `table_automation_rules` | PK `id`；UK `(base_id, name)` | Record 事件规则；条件、确定性动作（带稳定 id）、执行用户与 revision；`next_fire_at`（schedule）/ `swept_until`（date_reached 游标） |
+| `table_automation_secrets` | 复合 PK `(rule_id, action_id)` | Webhook 签名密钥密文；与规则行分离，任何读路径只返回 `hasSecret` |
+| `table_automation_outbox` | PK `id`；UK `idempotency_key` | 自动化事件队列；`pending/claimed/succeeded/failed/dead_letter`（`processing` 为旧同步执行器的遗留状态）、租约 / 重试 / 版本 CAS 列、`cursor`（下一个动作 id）、`rule_revision` + `actions` 快照；`record_id` 可空（无记录的触发）；**worker 只领取 `rule_revision IS NOT NULL` 的行** |
+| `table_automation_runs` | PK `id` | 每次规则执行状态（含 `canceled`）、完成动作数、逐步 `steps JSONB`、`trigger_kind`、`record_id`（逻辑）、错误与耗时审计 |
+| `table_notifications` | PK `id` | 旧版自动化站内通知（**仅保留到下个版本**：扩展—收缩，0024 迁入 `notifications` 后停用，回滚的旧镜像仍读写它） |
+| `table_dashboards` | PK `id`；UK `(base_id, name)` | Base 自定义仪表盘；`config JSONB`（`{version, filters: TableFilterControl[]}`）；revision 乐观并发 |
 | `table_dashboard_widgets` | PK `id` | KPI/Chart/records/text 组件；配置与布局是 JSON 文本，单组件最多绑定一张 Table；revision 乐观并发 |
+| `table_imports` | PK `id`（text） | CSV / Excel 导入暂存：表头与解析后的行（≤10,000×100，JSONB）、`status`（previewed/committing/committed/failed）、`committed_rows` 续传游标、租约、结果；1 小时过期，由 upkeep 清理 |
 
 ### 评测与工单智能化
 
@@ -326,6 +333,17 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `platform_oauth_authorization_codes.client_id` | `platform_oauth_clients.id` | CASCADE |
 | `platform_oauth_tokens.grant_id` | `platform_oauth_grants.id` | CASCADE |
 | `table_base_members.base_id` | `table_bases.id` | CASCADE |
+| `table_base_members.custom_role_id` | `table_base_roles.id` | SET NULL（悬空 = 无访问） |
+| `table_bases.team_custom_role_id` | `table_base_roles.id` | SET NULL（悬空 = 无访问） |
+| `table_base_roles.base_id` | `table_bases.id` | CASCADE |
+| `table_base_group_members.base_id` | `table_bases.id` | CASCADE |
+| `table_base_group_members.group_id` | `user_groups.id` | CASCADE |
+| `table_base_group_members.custom_role_id` | `table_base_roles.id` | SET NULL（悬空 = 无访问） |
+| `table_form_submissions.form_id` | `table_forms.id` | CASCADE |
+| `table_form_submissions.record_id` | `table_records.id` | SET NULL |
+| `table_record_events.record_id` / `table_record_comments.record_id` | `table_records.id` | CASCADE |
+| `table_automation_secrets.rule_id` | `table_automation_rules.id` | CASCADE |
+| `table_imports.table_id` | `table_tables.id` | CASCADE |
 | `table_tables.base_id` | `table_bases.id` | CASCADE |
 | `table_schema_versions.table_id` | `table_tables.id` | CASCADE |
 | `table_fields.table_id` | `table_tables.id` | CASCADE |
@@ -413,6 +431,9 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_views.owner_id` | `users.id` | personal Grid 视图所有者 |
 | Tables 各表的 `created_by/updated_by/added_by/execution_user_id/user_id` | `users.id` | Base 协作、自动化执行与通知主体，跨域松散关联；运行前校验 active internal user |
 | `table_records.values` 中 user/multi_user 值 | `users.id` | 动态用户字段；写入时校验 active internal user |
+| `table_record_events.table_id` / `table_record_comments.table_id` | `table_tables.id` | 冗余的表 id（随记录级联删除，读侧按表过滤用） |
+| `table_record_events.actor_id` / `table_record_comments.author_id` / `table_form_submissions.user_id` / `table_imports.user_id` | `users.id` | 历史、评论、提交与导入的主体；审计独立于账号生命周期 |
+| `table_automation_runs.record_id` | `table_records.id` | 运行历史比记录活得久，故无 FK |
 | `eval_datasets.source_session_id` / `eval_results.session_id` | `sessions.id` | 题目来源与评测会话 |
 | `chat_eval_results.message_id` / `session_id` | `messages.id` / `sessions.id` | 在线质量评测目标 |
 | `api_audit_log.app_id` / `user_id` | `api_clients.app_id` / `users.id` | 审计独立于主体生命周期，允许保留已删除客户端/用户的历史 |
@@ -509,6 +530,18 @@ erDiagram
     projects ||--o{ project_activities : "FK CASCADE"
     tasks ||--o{ project_activities : "FK SET NULL"
     table_bases ||--o{ table_base_members : "FK CASCADE"
+    table_bases ||--o{ table_base_roles : "FK CASCADE"
+    table_bases ||--o{ table_base_group_members : "FK CASCADE"
+    user_groups ||--o{ table_base_group_members : "FK CASCADE"
+    table_base_roles ||--o{ table_base_members : "FK SET NULL custom_role_id"
+    table_base_roles ||--o{ table_base_group_members : "FK SET NULL custom_role_id"
+    table_base_roles ||--o{ table_bases : "FK SET NULL team_custom_role_id"
+    table_forms ||--o{ table_form_submissions : "FK CASCADE"
+    table_records ||--o{ table_form_submissions : "FK SET NULL"
+    table_records ||--o{ table_record_events : "FK CASCADE"
+    table_records ||--o{ table_record_comments : "FK CASCADE"
+    table_automation_rules ||--o{ table_automation_secrets : "FK CASCADE"
+    table_tables ||--o{ table_imports : "FK CASCADE"
     table_bases ||--o{ table_tables : "FK CASCADE"
     table_tables ||--o{ table_schema_versions : "FK CASCADE"
     table_tables ||--o{ table_fields : "FK CASCADE"
