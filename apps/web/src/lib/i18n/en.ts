@@ -894,6 +894,11 @@ export default {
     runtime_ready: 'Ready',
     runtime_unavailable: 'Unavailable',
     runtime_disabled: 'Turned off',
+    runtimeDescOff:
+      "A computer is a browser and a shell a member's Bots drive — the member can watch and take over. Created, put to sleep and queued automatically.",
+    disabledHint:
+      "Give members a computer by entering a sandbox provider key (E2B, or PPIO in mainland China) — hosted, nothing to install — or run them on this server's Docker (see the README).",
+    disabledHintLink: 'Runtime Config → Bot computers',
     runtime_checking: 'Checking…',
     runtimeDescHosted:
       "Members' computers are created, started, put to sleep and queued automatically at the sandbox provider — one microVM each.",

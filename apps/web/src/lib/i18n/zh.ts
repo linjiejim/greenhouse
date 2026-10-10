@@ -886,6 +886,10 @@ const zh: Messages = {
     runtime_ready: '就绪',
     runtime_unavailable: '不可用',
     runtime_disabled: '未开启',
+    runtimeDescOff: '电脑是成员的 Bots 操作的浏览器和终端——成员可以旁观、随时接手；自动创建、休眠和排队。',
+    disabledHint:
+      '填入沙箱服务的 key（E2B，国内用 PPIO）即可给成员开电脑——托管、无需安装；也可以用本服务器的 Docker（见 README）。',
+    disabledHintLink: '运行时配置 → Bot 电脑',
     runtime_checking: '检查中…',
     runtimeDescHosted: '成员的电脑在沙箱服务上自动创建、启动、休眠和排队——每台电脑一个独立的微虚拟机。',
     hardened: '加固模式 · gVisor',

@@ -106,7 +106,7 @@ function flag(value: string | undefined): boolean {
 
 /**
  * On when BOTS_COMPUTER_ENABLED says so — or, when it says nothing, as soon as a sandbox
- * provider key is set (env, or Administration → Runtime Config → Bots): entering the key is
+ * provider key is set (env, or Administration → Runtime Config → Bot computers): entering the key is
  * how an administrator turns hosted computers on. An explicit BOTS_COMPUTER_ENABLED=0 wins.
  */
 export function isBotsComputerEnabled(env: NodeJS.ProcessEnv = process.env): boolean {

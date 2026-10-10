@@ -766,6 +766,8 @@ onWorkspaceConfigRefreshed(async () => {
 
 export async function initBotComputers(): Promise<void> {
   startedWith = providerSettings();
+  // A restart (new provider settings) starts from nothing: a disabled runtime reports no driver of before.
+  state.config = null;
   if (!isBotsComputerEnabled()) {
     setView({ state: 'disabled', reason: null, hardened: false });
     return;

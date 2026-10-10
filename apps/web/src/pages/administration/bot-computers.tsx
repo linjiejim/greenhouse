@@ -378,7 +378,13 @@ function RuntimeSection({ view, onChanged }: { view: AdminBotComputersView; onCh
   return (
     <SettingsSection
       title={t('botsAdmin.runtimeTitle')}
-      description={t(runtime.driver === 'e2b' ? 'botsAdmin.runtimeDescHosted' : 'botsAdmin.runtimeDesc')}
+      description={t(
+        runtime.state === 'disabled'
+          ? 'botsAdmin.runtimeDescOff'
+          : runtime.driver === 'e2b'
+            ? 'botsAdmin.runtimeDescHosted'
+            : 'botsAdmin.runtimeDesc',
+      )}
       icon={Server}
       action={
         <Button
@@ -415,6 +421,14 @@ function RuntimeSection({ view, onChanged }: { view: AdminBotComputersView; onCh
         {runtime.state === 'ready' && !runtime.hardened && (
           <p className="rounded-lg border border-warning bg-warning-subtle px-3 py-2 text-xs leading-5 text-fg-secondary">
             {t('botsAdmin.devModeDesc')}
+          </p>
+        )}
+        {runtime.state === 'disabled' && (
+          <p className="text-xs leading-5 text-fg-secondary" data-testid="bot-computers-turn-on">
+            {t('botsAdmin.disabledHint')}{' '}
+            <a className="text-primary-fg hover:underline" href="#/administration/runtime-config?group=bots">
+              {t('botsAdmin.disabledHintLink')}
+            </a>
           </p>
         )}
         <div>
