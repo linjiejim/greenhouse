@@ -44,6 +44,7 @@ import type {
 import { onRecordWritten } from './activity.js';
 import type { TablesCompute } from './compute.js';
 import {
+  assertScopeForTable,
   compileRecordQuery,
   encodeCursor,
   loadCompileContext,
@@ -328,9 +329,7 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
 
   const assertScopedTable = (scope: TableAccessScope, tableId: number): void => {
     assertScope(scope);
-    if (scope.kind === 'scoped' && scope.tableId !== tableId) {
-      throw new TablesValidationError('Access scope does not cover this table');
-    }
+    assertScopeForTable(scope, tableId);
   };
 
   const createRecordWithContext = async (

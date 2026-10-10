@@ -43,26 +43,19 @@ export {
   type TableRecordWrittenEvent,
   type TableRevisionResult,
   type TablesErrorCode,
-  type TablesExecutor,
 } from './shared.js';
+// The compiler and the write hook stay inside the package: callers outside
+// packages/db never build SQL. Only pure validation and the evaluation types
+// are public.
 export {
-  compileClause,
-  compileFilterGroup,
-  compileRecordQuery,
-  compileRowScope,
-  loadCompileContext,
   resolveTableEvaluation,
-  scopeRowPredicate,
   validateFilterGroupShape,
   validateQueryShape,
-  type TableCompileContext,
   type TableQueryEvaluation,
   type TableRecordQueryParts,
 } from './query.js';
-export { appendRecordEvent, diffRecordValues, onRecordWritten } from './activity.js';
 export {
   assignAutomationActionIds,
-  enqueueAutomationEvents,
   type CreateTableAutomationInput,
   type TableAutomationConfigInput,
   type UpdateTableAutomationInput,
