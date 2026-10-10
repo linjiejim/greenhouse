@@ -202,11 +202,24 @@
 - `drive.listFolders` 的 `orderBy` 已改成 `(sort_order, name)`，它同时服务 kb/tables 两个 scope；后者永远是 0，拿到的仍是字母序。
 - 写入只有 `reorderFolders(ids)` / `reorderDocs(ids)`：一条 `UPDATE … FROM (VALUES …)` 把整组同级写成 1..n，**单语句即原子**，不要退回逐条 update 循环（那会让并发排序写出交错的顺序）。service 不做鉴权也不校验「是否真是同级」——两者都在路由层（见 api AGENTS「知识库侧栏树的排序与整库导出」）。
 
+### Tables 地基：作用域、写入元信息、唯一编译器（2026-10-11，迁移 0023）
+
+方案见 [Tables 地基 spec](../../../docs/specs/20261011-tables-foundation.md)。服务按域拆在 `services/tables/<domain>.ts`（`index.ts` 组合；模块表见其文件头），**不要再把逻辑塞回一个大文件**，也不要在模块外复制 `query.ts` 的谓词逻辑。
+
+- **作用域与写入元信息是必填参数**：`getRecord / queryRecords / recordQueryParts / aggregateRecords / listDeletedRecords / validateBatchRecords` 带 `scope: TableAccessScope`，`createRecord / updateRecord / deleteRecord / restoreRecord / batchUpsertRecords / submitForm` 还带 `meta: TableRecordWriteMeta`（`created_by / updated_by` 取 `meta.actorId`）。内置角色、自动化、导入、重算传 `fullTableAccess(userId | null)`。照 Bots 记忆 scope 的先例：可选就等于「忘了传 = 全量」。守卫测试 `services/tables/__tests__/scope-guard.test.ts` 在类型层（`pnpm typecheck` 会编译它）钉住，**新增记录方法要加进那张表**。
+- **scoped 作用域由 service 执行，不靠调用方**：读范围、改 / 删 / 恢复要在 `rows ∧ editRows` 内、只认可编辑字段的键（`TablesValidationError` code `field_not_editable`，与 `create_forbidden` / `delete_forbidden` 一起由 API 映射成 403——`isTablesForbiddenError`）、`required` 只对可编辑字段生效（D3）、范围外的 id 与不存在相同（not found）。返回的仍是整行，给 scoped 读者之前用 `projectTableRecord(row, scope)` 裁剪 `values` 与 `computed_values`。关联目标 / 附件的写入规则（D14 / D15）由切片 A 加在 `records.ts`。
+- **唯一的 SQL 编译器是 `services/tables/query.ts`**：视图、查询、仪表盘筛选、自动化条件、自定义角色的行范围（阶段 1 的应用角色）都走它。系统字段（`created_by/created_at/updated_at/updated_by`）可用于筛选 / 排序 / 分组；`$me` 只在人员子句里展开（取 `scope.userId`，null = 什么都不匹配）、日期令牌只在日期子句里展开（按 `TableQueryEvaluation.timeZone`，日期型值作用于 datetime 时表示「当地那一整天」），别处一律是字面文本。**行范围 fail closed**：缺失 / 已归档 / 类型不对的字段、空的 where、畸形的范围都编译成 FALSE，绝不「丢掉这个条件」。scoped 读者引用的每个字段（where、filters、sort、groupBy、聚合的值 / 分组 / 系列）必须可读，否则 `field_not_readable`（消息与「不存在」相同，不做存在性神谕）；搜索只覆盖可读的文本字段。查询指纹（游标）包含 filters、groupBy 与 scope。
+- **写入在一个事务里**：行、关联 / 附件边、计算值（`computeRecordValues(tx, …)`）、`onRecordWritten(tx, {kind, tableId, recordId, revision, before, after, meta})` 一起提交或回滚。`onRecordWritten` 是**唯一的写后钩子**：追加 `table_record_events`（字段级、值截断；什么都没变的 update 不追加）并调用 `enqueueAutomationEvents`（切片 Au 实现，F 期为空）。重算与汇总级联（`recomputeRecord` / `refreshDependentRollups`）是维护写，**不产生事件、不触发自动化**；`refreshDependentRollups` 仍在提交后跑。
+- **自动化动作 id 稳定**：`normalizeAutomationConfig` 保留传入的 id，只给缺 id 的动作分配 `a<n>`（**1 起的位置序号**，撞号就往后找空位），已有 id 永不重生成——投递去重键、续跑游标、Webhook 密钥都以它为键（0024 的回填用同一约定）。旧形状（对象形 `values`、`notify {userIds}`）在写入时归一化。过渡期旧的同步执行器（`runLegacyAutomations`）在提交后照跑；它写的 outbox 行不设 `rule_revision`，**异步 worker 只领取 `rule_revision IS NOT NULL` 的行**。条件求值已走 SQL 编译器（JS 求值器已删）。
+- **计算型字段只认 `COMPUTED_FIELD_TYPES`**（`@greenhouse/types/tables`）：不可写、不进表单、只读渲染的判断都引用它，别再写 `type === 'formula' || type === 'rollup'`。`lookup` 已在类型里，建字段在切片 Fx 之前返回 `not_supported`。
+- **`table_notifications` 保留到下个版本**（扩展—收缩）：0024 把旧行迁入 `notifications`，本版之后不再写；回滚到旧镜像时它还要读写这张表，所以**本版不删表**，下个版本的迁移再 drop。
+- 自定义角色引用（成员 / 群组 / 团队默认）都是 `SET NULL`，悬空的 custom 一律解析为「无访问」，绝不回落 viewer；引用必须同 Base（`uq_table_base_roles_base_id` 供复合校验，处理器负责检查）。
+
 ### Tables 的软删与恢复
 
 - `table_bases.archived_at` / `table_tables.archived_at` / `table_records.deleted_at` 是三层软删；`listBasesForUser`/`listTables`/`getSchema`/`queryRecords` 都已过滤，新增读路径别漏。
-- 配套方法：`archiveTable`/`restoreTable`/`listArchivedTables`、`restoreBase`/`listArchivedBases`、`listDeletedRecords`/`restoreRecord`。`restoreRecord` 与 `deleteRecord` 一样 bump `revision`（拿着旧 revision 的客户端不能静默覆盖），并 `refreshDependentRollups`。
-- `getRecordById` **刻意不过滤 `deleted_at`**（回收站与审计要看得见已删行），`getRecord` 过滤——两个都要用对。
+- 配套方法：`archiveTable`/`restoreTable`/`listArchivedTables`、`restoreBase`/`listArchivedBases`、`listDeletedRecords`/`restoreRecord`。`restoreRecord` 与 `deleteRecord` 一样 bump `revision`（拿着旧 revision 的客户端不能静默覆盖），各自在一个事务里写历史事件，提交后 `refreshDependentRollups`；scoped 调用方删除与恢复都要 `canDelete`。
+- `getRecordById` **刻意不过滤 `deleted_at`、也不带 scope**（只给审计 / 归属查找用，结果永远不直接返回给客户端），`getRecord` 过滤并按 scope 收窄——两个都要用对。
 - `deleteDashboard` 是**真删**（widgets 级联），Tables 里唯一的硬删。权限口径与用户面语义见 [spec](../../../docs/specs/20260803-tables-lifecycle-and-grid-interaction.md)。
 
 ### 技能中心的安全扫描列
