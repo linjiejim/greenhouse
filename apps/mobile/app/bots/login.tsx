@@ -72,6 +72,7 @@ import { alertError } from '../../src/ui/dialogs';
 import { EmptyState } from '../../src/ui/empty';
 import { NativeForm } from '../../src/ui/native-form';
 import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
+import { softAskAfterDecision } from '../../src/push/soft-ask';
 import { BotsRouteGate } from '../../src/bots/route-gate';
 
 type Chrome = React.ComponentProps<typeof FormChrome>;
@@ -100,7 +101,11 @@ function BotLoginSheet() {
     held.current = request;
     if (!request) rerender();
   }, []);
-  const done = useCallback(() => router.back(), [router]);
+  // a decision went through: the sheet goes — and the first one may bring the push soft ask
+  const done = useCallback(() => {
+    router.back();
+    void softAskAfterDecision();
+  }, [router]);
 
   // ✕ / ✓ for the card's form (handed up by LoginSections: nav chrome can't sit among the Form's
   // SwiftUI children).
