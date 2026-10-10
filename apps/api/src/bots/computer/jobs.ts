@@ -109,7 +109,7 @@ async function ghJobs(
   container: string,
   args: string[],
   opts: { timeoutMs?: number; maxStdoutBytes?: number; signal?: AbortSignal } = {},
-): Promise<{ code: number; stdout: string; stderr: string }> {
+): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean }> {
   const result = await deps.host().exec({
     container,
     user: 'agent',
@@ -121,7 +121,12 @@ async function ghJobs(
     maxStderrBytes: 16 * 1024,
     ...(opts.signal ? { signal: opts.signal } : {}),
   });
-  return { code: result.code ?? -1, stdout: result.stdout.toString('utf8'), stderr: result.stderr.trim() };
+  return {
+    code: result.code ?? -1,
+    stdout: result.stdout.toString('utf8'),
+    stderr: result.stderr.trim(),
+    timedOut: result.timedOut,
+  };
 }
 
 function failed(what: string, result: { code: number; stderr: string }): never {
@@ -204,21 +209,22 @@ export async function stopJob(
 }
 
 /**
- * Running jobs on a container (the idle tick's keep-awake check). Never
- * throws: an unreadable answer counts as none, so a broken image cannot keep
- * computers awake forever.
+ * Running jobs on a container (the idle tick's keep-awake check). An answer
+ * that cannot be read (gh-jobs failed, garbage on stdout) counts as none, so a
+ * broken image cannot keep computers awake. A computer that could not be
+ * ASKED (the exec itself failed — unreachable, timed out) throws: that is no
+ * answer at all, and the controller gives it a bounded reprieve rather than
+ * stopping it on top of work in progress (controller.ts jobsKeepAwake).
  */
 export async function runningJobCount(container: string, deps: Pick<JobsDeps, 'host'> = defaultDeps): Promise<number> {
-  try {
-    const result = await ghJobs({ host: deps.host }, container, ['running'], {
-      timeoutMs: 10_000,
-      maxStdoutBytes: 64,
-    });
-    const count = Number.parseInt(result.stdout.trim(), 10);
-    return result.code === 0 && Number.isFinite(count) && count > 0 ? count : 0;
-  } catch {
-    return 0;
-  }
+  const result = await ghJobs({ host: deps.host }, container, ['running'], {
+    timeoutMs: 10_000,
+    maxStdoutBytes: 64,
+  });
+  // A computer too busy or too far away to answer a trivial question in 10 s did not answer.
+  if (result.timedOut) throw new ComputerDockerError('failed', 'Asking for the running jobs timed out');
+  const count = Number.parseInt(result.stdout.trim(), 10);
+  return result.code === 0 && Number.isFinite(count) && count > 0 ? count : 0;
 }
 
 export type { JobsDeps };

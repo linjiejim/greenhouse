@@ -15,6 +15,8 @@ Environment=HOME=/home/browser DISPLAY=:0 XAUTHORITY=/home/browser/.Xauthority L
 # The listening socket comes from gh-bridge-browser.socket (fd 3); the bridge never binds a port itself.
 Environment=GH_BRIDGE_REQUIRE_SOCKET=1 GH_BRIDGE_SECRET_FILE=/etc/gh-bridge/browser.secret GH_BRIDGE_TUNNELS=1
 ExecStart=/usr/bin/node /opt/gh-bridge/gh-bridge.mjs
+# An OOM kill anywhere under this unit must not take the tunnels down (default `stop`).
+OOMPolicy=continue
 # Only the bridge itself: what it started (a screenshot, a helper) is never killed with it.
 KillMode=process
 Restart=always

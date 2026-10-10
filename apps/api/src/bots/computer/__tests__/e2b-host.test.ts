@@ -20,19 +20,23 @@ import {
   bridgeSecret,
   computerEnvFile,
   createE2bHost,
+  MOVE_RETRY_AFTER_MS,
   ORPHAN_GRACE_MS,
   providerError,
+  RECOVER_SCRIPT,
   RETIRED_KEEP_MS,
   settingsHash,
   type E2bApi,
   type SandboxHandle,
 } from '../e2b-host.js';
-import type { ComputerProcess, ComputerStartSpec, ExecOutcome } from '../host.js';
+import { ComputerStartError, type ComputerProcess, type ComputerStartSpec, type ExecOutcome } from '../host.js';
 
 const NS = 'testns';
 const TEMPLATE = 'gh-computer-c2-aaaaaaaaaaaa';
 const KEY = 'ab'.repeat(32);
 const T0 = Date.parse('2026-10-10T08:00:00.000Z');
+/** The settings an older computer was booted with (read back while a failed move backs off). */
+const KEPT_ENV = 'TZ=Europe/Berlin\nGH_COMPUTER_LANG=de-DE\n';
 
 class FakeApi implements E2bApi {
   sandboxes = new Map<string, SandboxInfo>();
@@ -69,9 +73,17 @@ class FakeApi implements E2bApi {
       trafficToken: `traffic-${id}`,
       runRoot: async (command, envs) => {
         this.roots.push({ id, command, envs });
-        this.log.push(`root ${id} ${command.split('/').pop()}`);
+        const label =
+          command === RECOVER_SCRIPT
+            ? 'recover'
+            : command.startsWith('base64 ')
+              ? 'read settings'
+              : command.split('/').pop();
+        this.log.push(`root ${id} ${label}`);
         const code = this.rootExit?.(id, command) ?? 0;
-        return { code, stderr: code ? 'boom' : '' };
+        // The env file a sandbox was booted with, as `base64 -w0` prints it.
+        const stdout = command.startsWith('base64 ') ? Buffer.from(KEPT_ENV).toString('base64') : '';
+        return { code, stdout, stderr: code ? 'boom' : '' };
       },
     };
   }
@@ -142,6 +154,72 @@ function fakeProcess(exitCode: number, opts: { output?: Buffer; waitForInput?: b
   return proc as unknown as ComputerProcess;
 }
 
+/**
+ * A home copy (tar -c) behaving like a BridgeProcess: it keeps sending until killed, and — like a
+ * ChildProcess — emits 'close' only once its stdout has been read to the end.
+ */
+function strictSource(bytes: number): ComputerProcess {
+  const proc = new EventEmitter() as EventEmitter & {
+    stdin: PassThrough;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    exitCode: number | null;
+    signalCode: null;
+    kill(): boolean;
+  };
+  proc.stdin = new PassThrough();
+  proc.stdout = new PassThrough();
+  proc.stderr = new PassThrough();
+  proc.exitCode = null;
+  proc.signalCode = null;
+  let ended = false;
+  proc.kill = () => {
+    if (ended) return false;
+    ended = true;
+    proc.stdout.end();
+    proc.stderr.end();
+    proc.stderr.resume();
+    proc.emit('exit', null, null);
+    let open = 2;
+    const done = () => {
+      if (--open === 0) proc.emit('close', null, null);
+    };
+    for (const stream of [proc.stdout, proc.stderr]) {
+      if (stream.readableEnded) done();
+      else stream.once('end', done);
+    }
+    return true;
+  };
+  setImmediate(() => proc.stdout.write(Buffer.alloc(bytes)));
+  return proc as unknown as ComputerProcess;
+}
+
+/** A tar -x whose connection drops at once: it ends without an exit code and never reads its input. */
+function droppedSink(): ComputerProcess {
+  const proc = new EventEmitter() as EventEmitter & {
+    stdin: PassThrough;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    exitCode: number | null;
+    signalCode: null;
+    kill(): boolean;
+  };
+  proc.stdin = new PassThrough();
+  proc.stdout = new PassThrough();
+  proc.stderr = new PassThrough();
+  proc.exitCode = null;
+  proc.signalCode = null;
+  proc.kill = () => false;
+  setImmediate(() => {
+    proc.stdin.destroy(); // like BridgeProcess.finish(): writes into it go nowhere
+    proc.stdout.end();
+    proc.stderr.end();
+    proc.emit('exit', null, null);
+    setImmediate(() => proc.emit('close', null, null));
+  });
+  return proc as unknown as ComputerProcess;
+}
+
 const ok = (partial: Partial<ExecOutcome> = {}): ExecOutcome => ({
   code: 0,
   signal: null,
@@ -153,17 +231,23 @@ const ok = (partial: Partial<ExecOutcome> = {}): ExecOutcome => ({
   ...partial,
 });
 
-function setup(opts: { tarRead?: number; tarWrite?: number } = {}) {
+/**
+ * tarWrite: one exit code for every `tar -x`, or one per call (the last repeats).
+ * sinkDrops: every `tar -x` loses its connection at once while the copy is still sending.
+ */
+function setup(opts: { tarRead?: number; tarWrite?: number | number[]; sinkDrops?: boolean } = {}) {
   const api = new FakeApi();
   let now = T0;
   const streams: Array<{ origin: string; argv: string[] }> = [];
+  const writes = Array.isArray(opts.tarWrite) ? [...opts.tarWrite] : [opts.tarWrite ?? 0];
   const bridge = {
     exec: vi.fn(async () => ok()),
     stream: vi.fn((target: unknown, argv: string[]) => {
       streams.push({ origin: (target as { origin: string }).origin, argv });
+      if (opts.sinkDrops) return argv.includes('-cpf') ? strictSource(4 * 1024 * 1024) : droppedSink();
       return argv.includes('-cpf')
         ? fakeProcess(opts.tarRead ?? 0, { output: Buffer.from('home') })
-        : fakeProcess(opts.tarWrite ?? 0, { waitForInput: true });
+        : fakeProcess(writes.length > 1 ? writes.shift()! : writes[0]!, { waitForInput: true });
     }),
     tunnel: vi.fn(),
   };
@@ -293,18 +377,85 @@ describe('e2b host: starts', () => {
     expect(api.sandboxes.has(old)).toBe(true);
   });
 
-  it('a failed move removes the new sandbox and puts the old one back to sleep', async () => {
-    const { api, host } = setup({ tarWrite: 2 });
+  it('a dropped connection restarts that home, not the whole move', async () => {
+    const { api, host, streams } = setup({ tarWrite: [2, 0] });
     const old = api.seed(meta('gh-computer-c2-older'));
-    await expect(host.start(row({ container_name: old }), spec())).rejects.toMatchObject({ code: 'failed' });
-    expect([...api.sandboxes.keys()]).toEqual([old]);
-    expect(api.sandboxes.get(old)?.state).toBe('paused');
+    const started = await host.start(row({ container_name: old }), spec());
+    expect(started).toMatchObject({ imageId: TEMPLATE });
+    expect(started.ref).not.toBe(old);
+    // The agent home twice (the first copy failed), the browser home once.
+    expect(streams.filter((s) => s.argv.includes('-xpf')).map((s) => s.argv[2])).toEqual([
+      '/home/agent',
+      '/home/agent',
+      '/home/browser',
+    ]);
     // tar exit 1 (a file changed while it was read) still counts as a complete copy.
     const tolerant = setup({ tarRead: 1 });
     const older = tolerant.api.seed(meta('gh-computer-c2-older'));
     await expect(tolerant.host.start(row({ container_name: older }), spec())).resolves.toMatchObject({
       imageId: TEMPLATE,
     });
+  });
+
+  it('a copy whose receiving end dropped first is drained and stopped — the start never hangs on it', async () => {
+    const { api, host, streams } = setup({ sinkDrops: true });
+    const old = api.seed(meta('gh-computer-c2-older'));
+    // Before the fix the source's 'close' never came (nobody read it once the pipe let go): this hung.
+    await expect(host.start(row({ container_name: old }), spec())).resolves.toMatchObject({ ref: old });
+    expect(streams.filter((s) => s.argv.includes('-cpf'))).toHaveLength(3);
+    expect(api.log).toContain(`root ${old} recover`);
+  });
+
+  it('a move that keeps failing gives the member the old computer back, and waits before trying again', async () => {
+    const { api, host, streams, advance } = setup({ tarWrite: 2 });
+    const old = api.seed(meta('gh-computer-c2-older'));
+    const started = await host.start(row({ container_name: old }), spec());
+    // The old one, its desktop started again after every agent process was ended (RECOVER_SCRIPT).
+    expect(started).toMatchObject({ ref: old, imageId: 'gh-computer-c2-older' });
+    expect(api.log).toContain(`root ${old} recover`);
+    expect([...api.sandboxes.keys()]).toEqual([old]); // the new copy is gone
+    expect(streams.filter((s) => s.argv.includes('-xpf'))).toHaveLength(3); // MOVE_ATTEMPTS tries of the first home
+    // Asleep again and woken within the back-off: no new sandbox, no move — the old one, with its own settings.
+    await api.pause(old);
+    api.log.length = 0;
+    const again = await host.start(row({ container_name: old }), spec());
+    expect(again).toMatchObject({ ref: old, imageId: 'gh-computer-c2-older' });
+    expect(api.log).toEqual([`connect ${old}`, `root ${old} read settings`, `root ${old} gh-e2b-boot --resume`]);
+    // Its own settings, through the --resume every template knows (never the member's new ones).
+    const woken = api.roots.filter((r) => r.command.endsWith('--resume')).pop()!;
+    expect(Buffer.from(woken.envs.GH_COMPUTER_ENV_B64!, 'base64').toString()).toBe(KEPT_ENV);
+    // After it, the next start tries the move again.
+    await api.pause(old);
+    advance(MOVE_RETRY_AFTER_MS);
+    api.log.length = 0;
+    await host.start(row({ container_name: old }), spec());
+    expect(api.log[0]).toMatch(new RegExp(`^create \\S+ ${TEMPLATE} replaces ${old}$`));
+  });
+
+  it('a reset whose move fails says so (move_failed): no fresh system, the old one sleeps with its desktop back', async () => {
+    const { api, host } = setup({ tarWrite: 2 });
+    const old = api.seed(meta(TEMPLATE));
+    const failure = await host
+      .start(row({ container_name: old, state_reason: 'reset' }), spec(TEMPLATE, true))
+      .catch((e) => e);
+    expect(failure).toBeInstanceOf(ComputerStartError);
+    expect(failure).toMatchObject({ reason: 'move_failed' });
+    expect(api.log).toContain(`root ${old} recover`);
+    expect([...api.sandboxes.keys()]).toEqual([old]);
+    expect(api.sandboxes.get(old)?.state).toBe('paused');
+    // The next (ordinary) start simply wakes it.
+    api.log.length = 0;
+    await expect(host.start(row({ container_name: old }), spec())).resolves.toMatchObject({ ref: old });
+    expect(api.log).toEqual([`connect ${old}`, `root ${old} gh-e2b-boot --resume`]);
+  });
+
+  it('when the old one cannot be recovered either, the start fails as move_failed and it stays asleep', async () => {
+    const { api, host } = setup({ tarWrite: 2 });
+    api.rootExit = (_id, command) => (command === RECOVER_SCRIPT ? 5 : 0);
+    const old = api.seed(meta('gh-computer-c2-older'));
+    await expect(host.start(row({ container_name: old }), spec())).rejects.toMatchObject({ reason: 'move_failed' });
+    expect([...api.sandboxes.keys()]).toEqual([old]);
+    expect(api.sandboxes.get(old)?.state).toBe('paused');
   });
 
   it('a failed boot of a new sandbox removes it', async () => {
@@ -388,7 +539,7 @@ describe('e2b host: stops, wipes, listings', () => {
     const id = api.seed(meta(TEMPLATE), 'paused');
     const [instance] = await host.list(NS);
     expect(instance).toMatchObject({ ref: id, userId: 'u1', running: false });
-    expect(await host.verdict(id, instance)).toEqual({ state: 'absent', reason: 'idle' });
+    expect(await host.verdict(id, instance)).toEqual({ state: 'absent', reason: 'provider_timeout' });
     expect(await host.verdict('sandbox9999', undefined)).toEqual({ state: 'error', reason: 'exited' });
     expect(await host.inspect(id)).toEqual({ running: false });
     expect(await host.inspect('gh-computer-testns-u1')).toBeNull();

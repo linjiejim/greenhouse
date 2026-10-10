@@ -131,11 +131,23 @@ bots/
   `169.254.169.254` 是 Firecracker MMDS（只有沙箱 id 之类），所以托管宿主不跑出口探针。
   - **桥端口归 PID 1**：两个端口是 systemd socket unit（模板构建时就绑定、进快照），桥只从 fd 3 接 socket、自己绑端口直接
     退出——端口从不空出来，agent 抢不到端口去收 browser 的密钥（审查发现的抢端口攻击）。桥崩了 / 重启也一样。
-  - **一个沙箱的桌面只启动一次，而且在任何 agent 进程出现之前**：`/tmp` 不像 docker 那样每次是新的 tmpfs，X 的套接字名
-    （含抽象命名空间）可能被 Bot 留下的进程抢先占住。所以设置从不原地改（`gh-e2b-boot` 遇到不同设置 exit 3）、恢复时
-    发现桌面不在也不原地重启（exit 4），都走「新沙箱 + 搬 home」；`gh-e2b-rundir` 对被抢占的运行目录拒绝启动而不是修复。
+  - **桌面只在没有任何 agent 进程时启动**：`/tmp` 不像 docker 那样每次是新的 tmpfs，X 的套接字名（含抽象命名空间）可能
+    被 Bot 留下的进程抢先占住。所以设置从不原地改（`gh-e2b-boot` 遇到不同设置 exit 3）、恢复时发现桌面不在也不原地重启
+    （exit 4），都走「新沙箱 + 搬 home」；`gh-e2b-rundir` 对被抢占的运行目录拒绝启动而不是修复。唯一例外是**搬家失败后的
+    退路** `RECOVER_SCRIPT`：先结束 agent uid 的全部进程并确认为零，再在旧沙箱里重启桌面——与首次启动同样的保证。它由 API
+    以 root 内联执行，**不能做成 gh-e2b-boot 的新模式**：旧沙箱跑的是旧模板，里面的脚本不认识新模式（实测踩过）。
+  - **搬 home 会失败**（数据经 API 中转、不可续传，API 离服务商远时尤其慢）：每个 home 在总时限内最多试 `MOVE_ATTEMPTS`
+    次；还是失败就删新沙箱、恢复旧沙箱——换代 / 改设置时成员**继续用旧电脑**（`imageId` = 旧模板），`MOVE_RETRY_AFTER_MS`
+    内的启动直接唤醒它（先读回它自己的设置，再用所有模板都认的 `--resume`），之后再试搬家；「重置」则如实失败为 `ComputerStartError('move_failed')`
+    （只影响这个成员，绝不能用 ComputerRuntimeError——那会关掉整个运行时）。
+  - **内存隔离**：agent 桥及其全部子进程（Bot 的 shell、成员终端、后台任务）在 `gh-agent.slice`，只设 `MemoryMax` 50%
+    （百分比随模板内存走），吃爆内存只在 slice 里杀。**不设 MemoryHigh**：沙箱没有 swap，软上限回收不了匿名内存，只会让
+    失控任务爬好几分钟才被杀（实测 142 s）。三个 unit 都是 `OOMPolicy=continue`（systemd 默认 `stop` 会在子进程被 OOM
+    杀时重启整个桥——渲染进程被杀时会重启整个桌面）。加固脚本逐项核对这些设置。
+  - **服务商自己暂停**（套餐时限、API 不在时的超时）→ 状态原因 `provider_timeout`，不是 `idle`：后台任务被冻住、唤醒后接着跑。
+    闲置回收问「有没有后台任务」时**问不到不等于没有**：`runningJobCount` 执行失败 / 超时会抛错，控制器给 `JOB_QUERY_GRACE` 轮宽限。
   - 模板的加固（`gh-e2b-harden`）做完要**逐项核对**（无 setuid / 文件 capability、账号已锁、sshd 已屏蔽、`/usr/local` 不可写、
-    端口已归 PID 1）才写构建在等的标记，任何一项不过构建就失败。签名密钥换了：桥第一次拒绝时 API 以 root 重写密钥再试一次。
+    端口已归 PID 1、agent slice 有内存上限、三个 unit 的 OOMPolicy）才写构建在等的标记，任何一项不过构建就失败。签名密钥换了：桥第一次拒绝时 API 以 root 重写密钥再试一次。
 - **镜像契约 2**：API 只认 `IMAGE_CONTRACT` 同版本的镜像（`greenhouse.bots.computer.contract`），升级 API 必须
   重建镜像。契约 2 = 桌面（tint2 任务栏 + `gh-window` 看门狗：所有浏览器窗口都被最小化 3 s 后自动恢复）、
   软件 WebGL（`--enable-unsafe-swiftshader`，边界仍是 gVisor）、浏览器语言用 `LANGUAGE` + `--accept-lang`
@@ -205,7 +217,7 @@ bots/
   job 已安装；`CI` 下缺浏览器直接失败。fork 的 CI 若跑 `pnpm test` 要加同一步，或设
   `BOTS_BROWSER_TESTS=skip`。
 - 托管宿主：`e2b-bridge.test.ts` 在本机真跑 gh-bridge（协议、二进制、上限、超时、隧道）；`e2b-host.test.ts` 用假服务商
-  测生命周期（恢复 / 新建 / 搬 home / 失败回滚 / 孤儿规则 / 续期）；真服务商的端到端是 `e2b-host.live.test.ts`
+  测生命周期（恢复 / 新建 / 搬 home / 重试 / 失败后 recover 与退避 / 孤儿规则 / 续期）；真服务商的端到端是 `e2b-host.live.test.ts`
   （`BOTS_E2B_LIVE=1 BOTS_COMPUTER_E2B_API_KEY=… [BOTS_COMPUTER_E2B_DOMAIN=…]`，PPIO 也用它验）。本地整站：
   `BOTS_COMPUTER_ENABLED=1 BOTS_COMPUTER_DRIVER=e2b BOTS_COMPUTER_E2B_API_KEY=… node scripts/run-dev.mjs up`。
 - 真容器套件（`computer.live.db-commit.test.ts`、`browser.live.db-commit.test.ts`）只在 `BOTS_LIVE=1` 且

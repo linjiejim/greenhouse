@@ -15,6 +15,11 @@ Environment=HOME=/home/agent LANG=C.UTF-8 LC_ALL=C.UTF-8
 # The listening socket comes from gh-bridge-agent.socket (fd 3); the bridge never binds a port itself.
 Environment=GH_BRIDGE_REQUIRE_SOCKET=1 GH_BRIDGE_SECRET_FILE=/etc/gh-bridge/agent.secret
 ExecStart=/usr/bin/node /opt/gh-bridge/gh-bridge.mjs
+# Everything the Bots run is capped together, away from the desktop (gh-agent.slice).
+Slice=gh-agent.slice
+# A job the kernel kills for its memory is that job's problem: it must not take the
+# member's terminal and the Bots' other work down with it (the default is `stop`).
+OOMPolicy=continue
 # Only the bridge itself: background jobs and the member's tmux outlive a bridge restart.
 KillMode=process
 Restart=always

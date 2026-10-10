@@ -12,8 +12,10 @@
  * agent and tokens, a bridge port nobody else can take — not even while the
  * bridge restarts), the shell wrapper, binary
  * output, stdin uploads and streamed downloads, the terminal, the VNC and
- * DevTools tunnels with Playwright, pause → resume (processes survive), and a
- * reset moving the home (files and a browser login) into a new sandbox.
+ * DevTools tunnels with Playwright, pause → resume (processes survive), a
+ * reset moving the home (files and a browser login) into a new sandbox, a
+ * runaway job killed inside the Bots' memory slice (nothing else restarts), and
+ * the recovery of an old sandbox whose home failed to move (RECOVER_SCRIPT).
  */
 
 import { createHash, randomBytes } from 'node:crypto';
@@ -24,7 +26,7 @@ import type { BotComputerRow } from '@greenhouse/db';
 
 import type { BotsComputerConfig } from '../config.js';
 import { openCdpBridge } from '../cdp-bridge.js';
-import { createE2bApi, createE2bHost } from '../e2b-host.js';
+import { createE2bApi, createE2bHost, RECOVER_SCRIPT } from '../e2b-host.js';
 import { buildComputerTemplate, computerTemplateName, templateStatus } from '../e2b-template.js';
 import type { ComputerHost, ComputerStartSpec } from '../host.js';
 import { IMAGE_CONTRACT } from '../runtime.js';
@@ -76,6 +78,18 @@ describe.skipIf(!LIVE)('e2b host (live provider)', () => {
       trafficAccessToken?: string;
     };
     return { GH_T_ENVD: sandbox.envdAccessToken ?? '', GH_T_TRAFFIC: sandbox.trafficAccessToken ?? '' };
+  }
+  /** A root command through the provider's own agent (what the host does for boot steps). */
+  async function root(command: string, envs: Record<string, string> = {}): Promise<{ code: number; out: string }> {
+    const sandbox = await Sandbox.connect(ref, conn);
+    const result = await sandbox.commands
+      .run(command, { user: 'root', envs, timeoutMs: 120_000 })
+      .catch((err: { exitCode?: number; stdout?: string; stderr?: string }) => ({
+        exitCode: err.exitCode ?? -1,
+        stdout: err.stdout ?? '',
+        stderr: err.stderr ?? '',
+      }));
+    return { code: result.exitCode, out: `${result.stdout}${result.stderr}`.trim() };
   }
   const exec = (user: 'agent' | 'browser', argv: string[], extra: Record<string, unknown> = {}) =>
     host.exec({ container: ref, user, argv, timeoutMs: 60_000, cwd: `/home/${user}`, ...extra });
@@ -280,4 +294,50 @@ describe.skipIf(!LIVE)('e2b host (live provider)', () => {
     const all = await host.list(NAMESPACE);
     expect(await host.removeOrphan(all.find((instance) => instance.ref === old)!, all)).toBe(false);
   }, 300_000);
+
+  it('kills a runaway job inside the Bots’ memory slice: the desktop, the bridges and other work carry on', async () => {
+    const show = async (unit: string, prop: string) => (await root(`systemctl show ${unit} -p ${prop} --value`)).out;
+    expect(await show('gh-agent.slice', 'MemoryMax')).toMatch(/^\d+$/);
+    expect(await show('gh-bridge-agent.service', 'Slice')).toBe('gh-agent.slice');
+    const restartsBefore = await show('gh-bridge-agent.service', 'NRestarts');
+    const browserBefore = (await root('pgrep -o -u browser -x chromium')).out;
+    await exec('agent', ['sh', '-c', 'nohup sleep 3000 >/dev/null 2>&1 & echo $! > ~/work/bystander.pid']);
+    const bystander = (await exec('agent', ['cat', '/home/agent/work/bystander.pid'])).stdout.toString().trim();
+
+    // Twice the slice's ceiling, written so the pages are really used.
+    const hog = await exec(
+      'agent',
+      ['python3', '-c', 'b = []\nfor _ in range(40):\n    b.append(b"x" * (50 << 20))\nprint("survived")'],
+      { timeoutMs: 120_000 },
+    );
+    expect(hog.stdout.toString()).not.toContain('survived');
+    expect(hog.code).not.toBe(0); // killed by the kernel (137), never a clean exit
+
+    // The kill stayed inside the slice: nothing restarted, nobody else was chosen.
+    expect(await show('gh-bridge-agent.service', 'NRestarts')).toBe(restartsBefore);
+    expect((await root('systemctl is-active gh-desktop.service gh-bridge-browser.service')).out).toBe('active\nactive');
+    expect((await root('pgrep -o -u browser -x chromium')).out).toBe(browserBefore);
+    expect((await exec('agent', ['sh', '-c', `kill -0 ${bystander} && echo alive`])).stdout.toString()).toContain(
+      'alive',
+    );
+    await waitReady();
+  }, 240_000);
+
+  it('recovers an old computer whose home failed to move: no agent process left, then its desktop again', async () => {
+    await exec('agent', ['sh', '-c', 'nohup sleep 3000 >/dev/null 2>&1 & echo $! > ~/work/leftover.pid']);
+    const leftover = (await exec('agent', ['cat', '/home/agent/work/leftover.pid'])).stdout.toString().trim();
+    // What a move does to the old sandbox before copying.
+    expect((await root('systemctl stop gh-desktop.service')).code).toBe(0);
+    // The exact script the host runs on an old sandbox after a failed move.
+    const recovered = await root(RECOVER_SCRIPT);
+    expect(recovered).toMatchObject({ code: 0 });
+    // The Bot's process from before is gone; the desktop and both bridges are back.
+    expect((await root(`kill -0 ${leftover} 2>/dev/null && echo alive || echo gone`)).out).toBe('gone');
+    expect((await root('systemctl is-active gh-desktop.service')).out).toBe('active');
+    expect(await waitReady()).toMatch(/^Chrome\//);
+    expect((await exec('agent', ['id', '-un'])).stdout.toString()).toBe('agent\n');
+    // And the ordinary wake-up path accepts it again.
+    await host.stop(ref);
+    expect((await host.start(row(ref), spec())).ref).toBe(ref);
+  }, 240_000);
 });

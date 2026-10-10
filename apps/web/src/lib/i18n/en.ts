@@ -651,6 +651,10 @@ export default {
     reason_interrupted: 'It was interrupted while the server restarted. Starting it again fixes this.',
     reason_idle: 'It went to sleep after a while without use.',
     reason_lru: 'It went to sleep to make room for a colleague — it wakes up when a Bot needs it.',
+    reason_providerTimeout:
+      "The sandbox plan's time limit put it to sleep. Anything running in the background was paused and carries on when it wakes.",
+    reason_moveFailed:
+      "Moving it to an updated computer didn't finish. Nothing was lost — its files are still on the old one. Try again in a few minutes.",
     reason_imageOutdated: 'The computer image on the host is out of date and needs rebuilding.',
     reason_networkInvalid: "The computer network on the host isn't set up correctly.",
     reason_configInvalid: "The computer settings in the server's environment are invalid.",

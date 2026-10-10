@@ -1,0 +1,16 @@
+# Everything uid `agent` runs — the Bots' shell, the member's terminal, background
+# jobs — lives here, under a ceiling well below the computer's memory. A runaway job
+# then hits this cgroup's limit, and the kernel's victim is inside the slice: the
+# desktop, the browser and the member's sign-ins are never collateral. Without it a
+# single job can exhaust the whole computer, and the global OOM killer picks by size
+# — which on a 2 GiB computer is usually a Chromium renderer.
+#
+# A percentage, not megabytes: the computer's size is a template build option
+# (BOTS_COMPUTER_MEMORY), and systemd resolves it against the installed memory.
+[Slice]
+MemoryAccounting=yes
+# A hard ceiling only. Reaching it, the kernel first reclaims the slice's page cache and
+# kills only when that is not enough. No MemoryHigh: a sandbox has no swap, so throttling
+# above a soft limit cannot free anonymous memory — it only makes a runaway job crawl for
+# minutes (measured: 142 s) before it is killed anyway, slowing the Bots' other work too.
+MemoryMax=50%

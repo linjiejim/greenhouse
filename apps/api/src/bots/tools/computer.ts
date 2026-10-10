@@ -318,7 +318,7 @@ class ComputerActions {
       name: this.redact(job.name),
       status: 'running',
       started_at: job.started_at,
-      note: `Running in the background in ~/work. It keeps going after your turn (also if the member takes over the computer); its output goes to its log. Check it with process_log {id: "${job.id}"} and tell the member it is running rather than waiting for it.`,
+      note: `Running in the background in ~/work. It keeps going after your turn (also if the member takes over the computer); its output goes to its log. Check it with process_log {id: "${job.id}"} and tell the member it is running rather than waiting for it. Nothing tells you when it ends: never promise to report back on your own — offer to check when the member asks.`,
     };
   }
 
@@ -537,16 +537,30 @@ const backgroundSchema = z.object({
   lines: fields.lines,
 });
 
-export function createComputerTool(turn: ComputerTurn, deps: ComputerDeps = defaultComputerDeps): Tool {
+/**
+ * What sleep does to running work differs by host, and a Bot that gets it wrong
+ * either promises what it cannot keep or restarts work that is still running.
+ */
+const SLEEP_FACTS: Record<'docker' | 'e2b', string> = {
+  docker: 'When the computer goes to sleep, running processes end — background ones too; files stay.',
+  e2b: 'When the computer goes to sleep, everything is frozen, running processes included, and carries on when it wakes; only a reset or an upgrade ends them (files stay).',
+};
+
+export function createComputerTool(
+  turn: ComputerTurn,
+  deps: ComputerDeps = defaultComputerDeps,
+  host: 'docker' | 'e2b' = 'docker',
+): Tool {
+  const description = `${meta.description}\n${SLEEP_FACTS[host]}`;
   if (turn.background) {
     return tool({
-      description: `${meta.description}\nIn this background task only status, read_file, processes and process_log work (read-only).`,
+      description: `${description}\nIn this background task only status, read_file, processes and process_log work (read-only).`,
       inputSchema: backgroundSchema,
       execute: (input) => new ComputerActions(turn, deps).run(input),
     });
   }
   return tool({
-    description: meta.description,
+    description,
     inputSchema: foregroundSchema,
     execute: (input) => new ComputerActions(turn, deps).run(input),
   });

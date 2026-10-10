@@ -123,17 +123,25 @@ describe('gh-jobs client', () => {
     await expect(jobLog('u1', '../x', {}, deps)).rejects.toMatchObject({ code: 'not_found' });
   });
 
-  it('counts running jobs and never throws for the idle tick', async () => {
+  it('counts running jobs: an unreadable answer is none, a computer that could not be asked throws', async () => {
     expect(await runningJobCount('c', fakeDeps(() => ({ stdout: '2\n' })).deps)).toBe(2);
+    // A broken image must not keep computers awake: garbage and a failing gh-jobs count as none.
     expect(await runningJobCount('c', fakeDeps(() => ({ stdout: 'garbage' })).deps)).toBe(0);
     expect(await runningJobCount('c', fakeDeps(() => ({ code: 127, stderr: 'gh-jobs: not found' })).deps)).toBe(0);
-    const throwing: Pick<JobsDeps, 'host'> = {
+    // No answer at all is not "no jobs" — the idle tick decides what that means (controller.ts).
+    const unreachable: Pick<JobsDeps, 'host'> = {
       host: () => ({
         exec: async () => {
           throw new Error('daemon gone');
         },
       }),
     };
-    expect(await runningJobCount('c', throwing)).toBe(0);
+    await expect(runningJobCount('c', unreachable)).rejects.toThrow('daemon gone');
+    const slow: Pick<JobsDeps, 'host'> = {
+      host: () => ({
+        exec: async () => ({ code: null, stdout: Buffer.alloc(0), stderr: '', timedOut: true }) as never,
+      }),
+    };
+    await expect(runningJobCount('c', slow)).rejects.toThrow(/timed out/);
   });
 });

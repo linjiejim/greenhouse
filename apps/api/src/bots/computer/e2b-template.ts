@@ -108,6 +108,7 @@ export function computerTemplate(opts: ComputerTemplateOptions): TemplateClass {
       .copy('e2b/gh-e2b-boot', '/usr/local/sbin/gh-e2b-boot', { mode: 0o755 })
       .copy('e2b/gh-e2b-rundir', '/usr/local/sbin/gh-e2b-rundir', { mode: 0o755 })
       .copy('e2b/systemd/gh-desktop.service', '/etc/systemd/system/gh-desktop.service', { mode: 0o644 })
+      .copy('e2b/systemd/gh-agent.slice', '/etc/systemd/system/gh-agent.slice', { mode: 0o644 })
       .copy('e2b/systemd/gh-bridge-browser.socket', '/etc/systemd/system/gh-bridge-browser.socket', { mode: 0o644 })
       .copy('e2b/systemd/gh-bridge-browser.service', '/etc/systemd/system/gh-bridge-browser.service', { mode: 0o644 })
       .copy('e2b/systemd/gh-bridge-agent.socket', '/etc/systemd/system/gh-bridge-agent.socket', { mode: 0o644 })

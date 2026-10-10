@@ -52,14 +52,15 @@ import {
 
 import { CLEARED_PROXY_ENV, ComputerDockerError, ComputerRuntimeError } from './docker.js';
 import { bridgeExec, bridgeStream, bridgeTunnel, BridgeConnectionError, type BridgeTarget } from './e2b-bridge.js';
-import type {
-  ComputerHost,
-  ComputerProcess,
-  ComputerStartSpec,
-  ComputerUser,
-  ExecOutcome,
-  HostInstance,
-  StartedComputer,
+import {
+  ComputerStartError,
+  type ComputerHost,
+  type ComputerProcess,
+  type ComputerStartSpec,
+  type ComputerUser,
+  type ExecOutcome,
+  type HostInstance,
+  type StartedComputer,
 } from './host.js';
 
 /** gh-bridge ports (apps/bot-computer/e2b/systemd/). */
@@ -82,6 +83,33 @@ const BRIDGE_WAIT_MS = 30_000;
  * a home at the 5 GiB soft limit moves well within it next to the provider.
  */
 const MOVE_TIMEOUT_MS = 10 * 60_000;
+/** Tries per home within MOVE_TIMEOUT_MS (a dropped connection restarts that home). */
+const MOVE_ATTEMPTS = 3;
+/**
+ * A move into a newer template that failed is not tried again on every start: the member
+ * keeps the recovered old computer this long, then the next start tries again. Per API
+ * process (a restart simply tries again sooner).
+ */
+export const MOVE_RETRY_AFTER_MS = 6 * 60 * 60_000;
+/**
+ * Gives an OLD sandbox whose home failed to move out its desktop back (the move stopped it).
+ * Run by the API as root, NOT as a mode of the sandbox's gh-e2b-boot: the old sandbox runs the
+ * OLD template, whose script may predate any of this — and a move into a newer template is
+ * exactly that case. Only commands every template has. Every process of uid agent is ended and
+ * proven gone before the desktop starts again, the same guarantee as a first start (see
+ * gh-e2b-boot's header); gh-e2b-rundir (the desktop's ExecStartPre) still refuses a squatted
+ * runtime directory.
+ */
+export const RECOVER_SCRIPT = [
+  'set -eu',
+  // The agent bridge first, so it starts nothing new. Its socket stays with PID 1; a connection
+  // now would start it again — the loop ends that one too.
+  'systemctl stop gh-bridge-agent.service',
+  'for _ in $(seq 1 20); do pkill -KILL -u agent 2>/dev/null || true; pgrep -u agent >/dev/null || break; sleep 0.25; done',
+  'if pgrep -u agent >/dev/null; then echo "processes of uid agent are still running" >&2; exit 5; fi',
+  'systemctl start gh-desktop.service',
+  'systemctl start gh-bridge-browser.socket gh-bridge-agent.socket gh-bridge-browser.service gh-bridge-agent.service',
+].join('\n');
 /** After a refused bridge upgrade (a rotated signing key), rewrite the secrets at most this often. */
 const REKEY_EVERY_MS = 5 * 60_000;
 
@@ -104,7 +132,11 @@ export interface SandboxHandle {
   /** The edge's token for this sandbox's ports (null when public traffic is allowed). */
   trafficToken: string | null;
   /** A root command through the provider's agent (short, text output). */
-  runRoot(command: string, envs: Record<string, string>, timeoutMs: number): Promise<{ code: number; stderr: string }>;
+  runRoot(
+    command: string,
+    envs: Record<string, string>,
+    timeoutMs: number,
+  ): Promise<{ code: number; stdout: string; stderr: string }>;
 }
 
 /** The provider calls the host makes (the e2b SDK; tests fake it). */
@@ -222,9 +254,9 @@ export function createE2bApi(conn: { apiKey: string; domain?: string }): E2bApi 
     async runRoot(command, envs, timeoutMs) {
       try {
         const result = await sandbox.commands.run(command, { user: 'root', cwd: '/', envs, timeoutMs });
-        return { code: result.exitCode, stderr: result.stderr };
+        return { code: result.exitCode, stdout: result.stdout, stderr: result.stderr };
       } catch (err) {
-        if (err instanceof CommandExitError) return { code: err.exitCode, stderr: err.stderr };
+        if (err instanceof CommandExitError) return { code: err.exitCode, stdout: err.stdout, stderr: err.stderr };
         throw err;
       }
     },
@@ -292,7 +324,17 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
   const handles = new Map<string, Promise<SandboxHandle>>();
   const renewedAt = new Map<string, number>();
   const rekeyedAt = new Map<string, number>();
+  /** Members whose move into a newer template failed: keep waking `from` until `at` (MOVE_RETRY_AFTER_MS). */
+  const moveRetry = new Map<string, { from: string; at: number }>();
   let lifecycleUnreported = false;
+
+  function movingBackOff(userId: string, sandboxId: string): boolean {
+    const entry = moveRetry.get(userId);
+    if (!entry) return false;
+    if (entry.from === sandboxId && now() < entry.at) return true;
+    moveRetry.delete(userId);
+    return false;
+  }
 
   const ours = (info: SandboxInfo | null): info is SandboxInfo => info?.metadata?.[META.namespace] === namespace;
 
@@ -364,7 +406,7 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
     command: string,
     envs: Record<string, string>,
     timeoutMs: number,
-  ): Promise<{ code: number; stderr: string }> {
+  ): Promise<{ code: number; stdout: string; stderr: string }> {
     try {
       return await sandbox.runRoot(command, envs, timeoutMs);
     } catch (err) {
@@ -396,12 +438,14 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
     sandbox: SandboxHandle,
     spec: ComputerStartSpec,
     mode: 'first' | 'bridges-only' | 'resume',
+    /** The env file to boot with, base64 — default: the member's current settings. */
+    envFile: string = Buffer.from(computerEnvFile(spec)).toString('base64'),
   ): Promise<'ok' | 'fresh'> {
     const flag = mode === 'first' ? '' : ` --${mode}`;
     const result = await runRootCommand(
       sandbox,
       `/usr/local/sbin/gh-e2b-boot${flag}`,
-      { ...secretEnv(sandbox), GH_COMPUTER_ENV_B64: Buffer.from(computerEnvFile(spec)).toString('base64') },
+      { ...secretEnv(sandbox), GH_COMPUTER_ENV_B64: envFile },
       BOOT_TIMEOUT_MS,
     );
     if (mode === 'resume' && (result.code === 3 || result.code === 4)) return 'fresh';
@@ -468,45 +512,112 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
     }
   }
 
-  /** Each uid streams its own home from the old sandbox into the new one (tar over the two bridges). */
+  /**
+   * Each uid streams its own home from the old sandbox into the new one (tar over the two
+   * bridges). One home is tried up to MOVE_ATTEMPTS times within the move's overall deadline:
+   * a dropped connection restarts that home from the top (tar -x overwrites what landed).
+   */
   async function moveHome(from: SandboxHandle, to: SandboxHandle): Promise<void> {
+    const deadline = now() + MOVE_TIMEOUT_MS;
     // The old browser first: Chromium writes its profile out as it closes.
     await runRoot(from, 'systemctl stop gh-desktop.service', {}, 60_000);
     for (const [user, home] of [
       ['agent', '/home/agent'],
       ['browser', '/home/browser'],
     ] as const) {
-      // A file this uid cannot read (the other uid's 0600 file in Downloads) is skipped, not fatal; the
-      // new home's own folders (Downloads is setgid, shared with the browser) keep their owner and mode.
-      const source = bridge.stream(
-        targetOf(from, user),
-        ['tar', '-C', home, '--ignore-failed-read', '-cpf', '-', '.'],
-        {
-          cwd: '/',
-        },
-      );
-      const sink = bridge.stream(targetOf(to, user), ['tar', '-C', home, '--no-overwrite-dir', '-xpf', '-'], {
-        cwd: '/',
-      });
-      source.stdout!.pipe(sink.stdin!);
-      // Like a child's, a stream's 'close' waits for its stdout to be read: tar -x prints nothing, drain it anyway.
-      sink.stdout!.resume();
-      const timer = setTimeout(() => {
-        source.kill('SIGKILL');
-        sink.kill('SIGKILL');
-      }, MOVE_TIMEOUT_MS);
-      try {
-        const [read, write] = await Promise.all([finished(source), finished(sink)]);
-        // GNU tar: 1 = a file changed while it was read (a job still writing) — the copy is still complete.
-        if ((read.code !== 0 && read.code !== 1) || write.code !== 0) {
-          throw new ComputerDockerError(
-            'failed',
-            `Moving ${home} failed (read ${read.code}, write ${write.code}): ${(read.stderr || write.stderr).slice(-300)}`,
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await moveOneHome(from, to, user, home, deadline);
+          break;
+        } catch (err) {
+          if (attempt >= MOVE_ATTEMPTS || now() >= deadline) throw err;
+          logger.warn(
+            `[bots-computer] moving ${home} failed (attempt ${attempt}), trying again: ${toErrorMessage(err)}`,
           );
         }
-      } finally {
-        clearTimeout(timer);
       }
+    }
+  }
+
+  async function moveOneHome(
+    from: SandboxHandle,
+    to: SandboxHandle,
+    user: ComputerUser,
+    home: string,
+    deadline: number,
+  ): Promise<void> {
+    // A file this uid cannot read (the other uid's 0600 file in Downloads) is skipped, not fatal; the
+    // new home's own folders (Downloads is setgid, shared with the browser) keep their owner and mode.
+    const source = bridge.stream(targetOf(from, user), ['tar', '-C', home, '--ignore-failed-read', '-cpf', '-', '.'], {
+      cwd: '/',
+    });
+    const sink = bridge.stream(targetOf(to, user), ['tar', '-C', home, '--no-overwrite-dir', '-xpf', '-'], {
+      cwd: '/',
+    });
+    source.stdout!.pipe(sink.stdin!);
+    // Like a child's, a stream's 'close' waits for its stdout to be read: tar -x prints nothing, drain it anyway.
+    sink.stdout!.resume();
+    // The same rule bites the source when the sink goes first: the pipe lets go, nobody reads the source
+    // any more and its 'close' never comes — the start would hang for ever, holding the member's lock.
+    const drainSource = () => {
+      source.stdout!.unpipe(sink.stdin!);
+      source.stdout!.resume();
+    };
+    sink.once('exit', (code: number | null) => {
+      drainSource();
+      // A sink that failed (its connection dropped) has no use for the rest: stop the source as well. One
+      // that succeeded read the whole archive (tar may exit at its end marker) — the source ends on its own.
+      if (code !== 0) source.kill('SIGKILL');
+    });
+    const timer = setTimeout(
+      () => {
+        drainSource();
+        source.kill('SIGKILL');
+        sink.kill('SIGKILL');
+      },
+      Math.max(0, deadline - now()),
+    );
+    try {
+      const [read, write] = await Promise.all([finished(source), finished(sink)]);
+      // GNU tar: 1 = a file changed while it was read (a job still writing) — the copy is still complete.
+      if ((read.code !== 0 && read.code !== 1) || write.code !== 0) {
+        throw new ComputerDockerError(
+          'failed',
+          `Moving ${home} failed (read ${read.code}, write ${write.code}): ${(read.stderr || write.stderr).slice(-300)}`,
+        );
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** The env file a sandbox was booted with, base64 (null when it cannot be read: move instead). */
+  async function keptSettings(sandbox: SandboxHandle): Promise<string | null> {
+    const result = await runRootCommand(sandbox, 'base64 -w0 /etc/gh-computer/env', {}, BOOT_TIMEOUT_MS);
+    const value = result.stdout.trim();
+    return result.code === 0 && /^[A-Za-z0-9+/]+=*$/.test(value) ? value : null;
+  }
+
+  /**
+   * After a failed move: give the OLD sandbox its desktop back (RECOVER_SCRIPT ends every agent
+   * process first — the start-once guarantee), so the member is not locked out of a computer
+   * whose home is intact. False when that did not work; the caller then leaves it paused as before.
+   */
+  async function recoverOld(old: SandboxHandle): Promise<boolean> {
+    try {
+      const sandbox = await resume(old.id);
+      const result = await runRootCommand(sandbox, RECOVER_SCRIPT, {}, BOOT_TIMEOUT_MS);
+      if (result.code !== 0) {
+        logger.warn(
+          `[bots-computer] could not recover ${old.id}: exit ${result.code}: ${result.stderr.trim().slice(-300)}`,
+        );
+        return false;
+      }
+      await waitForBridges(sandbox);
+      return true;
+    } catch (err) {
+      logger.warn(`[bots-computer] could not recover ${old.id}: ${toErrorMessage(err)}`);
+      return false;
     }
   }
 
@@ -611,19 +722,20 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
         throw new ComputerDockerError('failed', `Sandbox ${current.sandboxId} does not belong to this member`);
       }
 
-      // The same template and settings: wake it.
-      if (
-        current &&
-        current.metadata[META.template] === template &&
-        current.metadata[META.settings] === settings &&
-        !spec.fresh
-      ) {
+      // The same template and settings: wake it. So too an older one while a move into the
+      // current template backs off after failing (MOVE_RETRY_AFTER_MS) — with the settings it has.
+      const backingOff = current ? movingBackOff(row.user_id, current.sandboxId) : false;
+      const matches = current?.metadata[META.template] === template && current?.metadata[META.settings] === settings;
+      if (current && !spec.fresh && (matches || backingOff)) {
         const sandbox = await resume(current.sandboxId);
         await assertPausesOnTimeout(sandbox.id);
-        if ((await boot(sandbox, spec, 'resume')) === 'ok') {
+        // Backing off, it keeps the settings it has: read them back, and wake it with the plain
+        // `--resume` every template knows (an older template's gh-e2b-boot is what runs here).
+        const envFile = matches ? undefined : await keptSettings(sandbox);
+        if (envFile !== null && (await boot(sandbox, spec, 'resume', envFile)) === 'ok') {
           return {
             ref: sandbox.id,
-            imageId: template,
+            imageId: current.metadata[META.template] ?? template,
             abandon: async () => {
               forget(sandbox.id);
               await api.pause(sandbox.id);
@@ -639,13 +751,15 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
 
       // A new sandbox — the first one, or one replacing an older template, other settings, a reset.
       const fresh = await create(row, template, settings, current?.sandboxId ?? null);
+      /** Set once the old sandbox was woken for the move: from then on its desktop may be down. */
+      let movedFrom: SandboxHandle | null = null;
       try {
         await assertPausesOnTimeout(fresh.id);
         if (current) {
           await boot(fresh, spec, 'bridges-only');
-          const old = await resume(current.sandboxId);
+          movedFrom = await resume(current.sandboxId);
           const startedAt = now();
-          await moveHome(old, fresh);
+          await moveHome(movedFrom, fresh);
           logger.info('[bots-computer] moved a home to a new computer', {
             user_id: row.user_id,
             from: current.sandboxId,
@@ -659,9 +773,44 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
         await boot(fresh, spec, 'first');
       } catch (err) {
         await killQuietly(fresh.id, 'start failed');
-        if (current) await pauseQuietly(current.sandboxId, 'start failed');
-        throw err;
+        if (!current) throw err;
+        if (!movedFrom) {
+          await pauseQuietly(current.sandboxId, 'start failed');
+          throw err;
+        }
+        // The move stopped the old desktop. Left like that, this computer could only ever start
+        // by moving again — every start, however bad the link. Give the old one its desktop back.
+        const recovered = await recoverOld(movedFrom);
+        logger.warn('[bots-computer] moving a home failed', {
+          user_id: row.user_id,
+          from: current.sandboxId,
+          recovered,
+          reset: spec.fresh,
+          error: toErrorMessage(err),
+        });
+        if (recovered && !spec.fresh) {
+          // An upgrade or new settings: the member carries on with the old computer; the move waits.
+          moveRetry.set(row.user_id, { from: current.sandboxId, at: now() + MOVE_RETRY_AFTER_MS });
+          return {
+            ref: current.sandboxId,
+            imageId: current.metadata[META.template] ?? template,
+            abandon: async () => {
+              forget(current.sandboxId);
+              await api.pause(current.sandboxId);
+            },
+          };
+        }
+        // A reset asked for a fresh system: say it did not happen (the next start wakes the old one).
+        await pauseQuietly(current.sandboxId, 'start failed');
+        throw new ComputerStartError(
+          'move_failed',
+          `Moving the home to a new computer failed: ${toErrorMessage(err)}`,
+          {
+            cause: err,
+          },
+        );
       }
+      moveRetry.delete(row.user_id);
       return {
         ref: fresh.id,
         imageId: template,
@@ -731,8 +880,10 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
 
     async verdict(ref, instance) {
       const found = instance ?? (await info(ref).then((i) => (i ? { running: i.state === 'running' } : undefined)));
-      // Paused without the controller (the dead-man timeout, or the plan's session limit): asleep, not broken.
-      if (found && !found.running) return { state: 'absent', reason: 'idle' };
+      // Paused without the controller — the plan's session limit, or the dead-man timeout
+      // while the API was away: asleep, not broken, and NOT idle (work may have been running;
+      // it is frozen and carries on at the next start). The member is told which it was.
+      if (found && !found.running) return { state: 'absent', reason: 'provider_timeout' };
       return { state: 'error', reason: 'exited' };
     },
 
