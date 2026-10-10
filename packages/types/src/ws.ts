@@ -98,7 +98,11 @@ export type ServerWsEvent =
       controller: 'bot' | 'user';
     }
   // Bots: the count of pending "needs you" requests changed.
-  | { type: 'bots:attention'; pending: number };
+  | { type: 'bots:attention'; pending: number }
+  // Tables: records changed after a commit (member, form, automation or import
+  // writes). Ids only — sent to online users who can open the Base; open views,
+  // dashboards and record drawers refetch through the governed routes.
+  | { type: 'tables:records_changed'; baseId: number; tableId: number; recordIds: number[] };
 
 // ─── Client → Server Events ─────────────────────────────
 

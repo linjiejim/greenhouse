@@ -9,7 +9,7 @@
  * Dependency-free apart from `./tables` (vendored verbatim into the mobile app).
  */
 
-import type { TableBaseRole, TableFilterGroup } from './tables.js';
+import type { TableBaseRole, TableBaseVisibility, TableFilterGroup } from './tables.js';
 
 // ─── Roles ────────────────────────────────────────────────
 
@@ -33,6 +33,69 @@ export type TableTeamRole = 'viewer' | 'editor' | 'custom';
 
 /** The effective level of one person on one Base. `none` surfaces as 404. */
 export type TableBaseAccessLevel = TableBaseRole | 'custom' | 'none';
+
+// ─── Effective role (the one decision table) ──────────────
+
+/** Where an effective level came from. */
+export type TableBaseAccessVia = 'super' | 'owner' | 'member' | 'group' | 'team' | 'none';
+
+/** What deciding one person's level on one Base needs. Callers load it; nobody re-derives the order. */
+export interface TableBaseAccessFacts {
+  user: { id: string; role: string; status: string } | null | undefined;
+  base: {
+    owner_id: string;
+    visibility: TableBaseVisibility;
+    team_role: TableTeamRole;
+    team_custom_role_id: number | null;
+    archived_at: string | null;
+  };
+  /** The person's own member row on this Base. */
+  member: { role: TableBaseMemberRole; custom_role_id: number | null } | null | undefined;
+}
+
+export interface TableBaseAccessDecision {
+  level: TableBaseAccessLevel;
+  via: TableBaseAccessVia;
+  /** level = custom: the role the caller must load (same Base). A role that fails to load means `none`. */
+  customRoleId?: number;
+}
+
+const NO_BASE_ACCESS: TableBaseAccessDecision = Object.freeze({ level: 'none', via: 'none' });
+
+/**
+ * The effective-role order (spec §1, D2 / D13). Pure, so the API's
+ * `platform/tables/access.ts` and the db automation executor check decide the
+ * same way from the same facts:
+ *
+ * 1. inactive / non-internal user, or an archived Base → none;
+ * 2. super, or the Base owner → owner;
+ * 3. the person's own member row, even when it is lower than a group or team grant;
+ * 4. group grants — slice A (editor > custom > viewer, never builder);
+ * 5. a team-visible Base → its `team_role`;
+ * 6. otherwise none.
+ *
+ * `custom` without a role id is a dangling reference and resolves to none, never viewer.
+ */
+export function decideTableBaseAccess(facts: TableBaseAccessFacts): TableBaseAccessDecision {
+  const { user, base, member } = facts;
+  if (!user || user.status !== 'active' || (user.role !== 'team' && user.role !== 'super')) return NO_BASE_ACCESS;
+  if (base.archived_at) return NO_BASE_ACCESS;
+  if (user.role === 'super') return { level: 'owner', via: 'super' };
+  if (base.owner_id === user.id) return { level: 'owner', via: 'owner' };
+  if (member) {
+    if (member.role !== 'custom') return { level: member.role, via: 'member' };
+    return member.custom_role_id
+      ? { level: 'custom', via: 'member', customRoleId: member.custom_role_id }
+      : NO_BASE_ACCESS;
+  }
+  if (base.visibility === 'team') {
+    if (base.team_role !== 'custom') return { level: base.team_role, via: 'team' };
+    return base.team_custom_role_id
+      ? { level: 'custom', via: 'team', customRoleId: base.team_custom_role_id }
+      : NO_BASE_ACCESS;
+  }
+  return NO_BASE_ACCESS;
+}
 
 // ─── Rules ────────────────────────────────────────────────
 

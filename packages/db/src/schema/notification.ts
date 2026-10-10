@@ -27,6 +27,10 @@ export const notifications = pgTable(
         'system',
         // A Bot's reply the member had not seen anywhere 60 s later (bots/engine/reply-alerts.ts).
         'bots_reply',
+        // A Tables automation `notify` action, rendered per recipient (platform/tables).
+        'tables_automation',
+        // Someone @-mentioned the recipient in a record comment they can read.
+        'tables_mention',
       ],
     }).notNull(),
     title: text('title').notNull(),

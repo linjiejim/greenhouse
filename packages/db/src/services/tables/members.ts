@@ -8,6 +8,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 import { resolveCapability } from '@greenhouse/platform-kernel';
 import type { TableBaseRole } from '@greenhouse/types/tables';
+import { decideTableBaseAccess, tableRoleAtLeast } from '@greenhouse/types/table-access';
 import type { Db } from '../../client.js';
 import { tableBaseMembers, tableBases, users } from '../../schema/index.js';
 import type { TableBaseMemberRow } from '../../schema/tables.js';
@@ -17,8 +18,12 @@ export function createTablesMembers(db: Db) {
   const platform = createPlatformService(db);
 
   /**
-   * Can this user edit records of the Base (the automation executor check)?
-   * Built-in roles only: a custom role never qualifies here.
+   * Can this user edit records of the Base? The legacy automation executor's
+   * check, which runs inside the record write path where the API cannot supply
+   * a resolution. It decides with the same table as the API's
+   * `platform/tables/access.ts` (`decideTableBaseAccess`); only the facts are
+   * loaded here. A custom role never qualifies. Slice Au moves execution into
+   * the API worker, which calls `resolveBaseAccess` directly, and deletes this.
    */
   const canUserEditBase = async (baseId: number, userId: string): Promise<boolean> => {
     const [user, base, member, authorization] = await Promise.all([
@@ -31,18 +36,10 @@ export function createTablesMembers(db: Db) {
         .limit(1),
       platform.getAuthorizationSnapshot(userId, 'default'),
     ]);
-    if (
-      !user[0] ||
-      user[0].status !== 'active' ||
-      (user[0].role !== 'team' && user[0].role !== 'super') ||
-      !base[0] ||
-      base[0].archived_at
-    ) {
-      return false;
-    }
-    if (!resolveCapability({ capability: 'tables.data.update', ...authorization }).allowed) return false;
-    if (user[0].role === 'super' || base[0].owner_id === user[0].id) return true;
-    return member[0]?.role === 'owner' || member[0]?.role === 'builder' || member[0]?.role === 'editor';
+    if (!base[0]) return false;
+    const { level } = decideTableBaseAccess({ user: user[0], base: base[0], member: member[0] });
+    if (level === 'none' || level === 'custom' || !tableRoleAtLeast(level, 'editor')) return false;
+    return resolveCapability({ capability: 'tables.data.update', ...authorization }).allowed;
   };
 
   return {

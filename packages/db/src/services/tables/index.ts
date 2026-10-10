@@ -18,6 +18,7 @@
  *   forms.ts        forms and submissions
  *   automations.ts  rules, runs, enqueue entry point, legacy executor
  *   dashboards.ts   dashboards and widgets
+ *   resources.ts    resource → owning Base (the Base audit feed's reverse lookup)
  */
 
 import type { Db } from '../../client.js';
@@ -29,6 +30,7 @@ import { createTablesDashboards } from './dashboards.js';
 import { createTablesForms } from './forms.js';
 import { createTablesMembers } from './members.js';
 import { createTablesRecords } from './records.js';
+import { createTablesResources } from './resources.js';
 import { createTablesSchema } from './schema.js';
 import { createTablesViews } from './views.js';
 
@@ -69,6 +71,7 @@ export type {
   UpdateTableFieldInput,
 } from './schema.js';
 export type { CreateTableViewInput, UpdateTableViewInput } from './views.js';
+export { TABLES_RESOURCE_KINDS, type TablesResourceKind } from './resources.js';
 export type { CreateTableFormInput, UpdateTableFormInput } from './forms.js';
 export type {
   BatchUpsertTableRecordItem,
@@ -117,6 +120,7 @@ export function createTablesService(db: Db) {
     ...createTablesForms(db, { records: records.internal }),
     ...automations.service,
     ...createTablesDashboards(db),
+    ...createTablesResources(db),
   };
 }
 
