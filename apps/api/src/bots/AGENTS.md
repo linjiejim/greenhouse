@@ -138,9 +138,10 @@ bots/
     次；还是失败就删新沙箱、`--recover` 旧沙箱——换代 / 改设置时成员**继续用旧电脑**（`imageId` = 旧模板），`MOVE_RETRY_AFTER_MS`
     内的启动直接唤醒它（`--resume-kept`，保留它自己的设置），之后再试搬家；「重置」则如实失败为 `ComputerStartError('move_failed')`
     （只影响这个成员，绝不能用 ComputerRuntimeError——那会关掉整个运行时）。
-  - **内存隔离**：agent 桥及其全部子进程（Bot 的 shell、成员终端、后台任务）在 `gh-agent.slice`（`MemoryHigh` 40% /
-    `MemoryMax` 50%，按百分比随模板内存走），吃爆内存只在 slice 里杀；三个 unit 都是 `OOMPolicy=continue`（systemd 默认
-    `stop` 会在子进程被 OOM 杀时重启整个桥——渲染进程被杀时会重启整个桌面）。加固脚本逐项核对这些设置。
+  - **内存隔离**：agent 桥及其全部子进程（Bot 的 shell、成员终端、后台任务）在 `gh-agent.slice`，只设 `MemoryMax` 50%
+    （百分比随模板内存走），吃爆内存只在 slice 里杀。**不设 MemoryHigh**：沙箱没有 swap，软上限回收不了匿名内存，只会让
+    失控任务爬好几分钟才被杀（实测 142 s）。三个 unit 都是 `OOMPolicy=continue`（systemd 默认 `stop` 会在子进程被 OOM
+    杀时重启整个桥——渲染进程被杀时会重启整个桌面）。加固脚本逐项核对这些设置。
   - **服务商自己暂停**（套餐时限、API 不在时的超时）→ 状态原因 `provider_timeout`，不是 `idle`：后台任务被冻住、唤醒后接着跑。
     闲置回收问「有没有后台任务」时**问不到不等于没有**：`runningJobCount` 执行失败 / 超时会抛错，控制器给 `JOB_QUERY_GRACE` 轮宽限。
   - 模板的加固（`gh-e2b-harden`）做完要**逐项核对**（无 setuid / 文件 capability、账号已锁、sshd 已屏蔽、`/usr/local` 不可写、
