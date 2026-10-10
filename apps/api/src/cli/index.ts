@@ -51,6 +51,7 @@ ${chalk.bold('Manage')}
   tables list-archived      Deleted (archived) Bases and tables (--base <id>, --json)
   tables restore-base <id>  Bring an archived Base back into everyone's list
   tables restore-table <id> Bring an archived table back into its Base
+  vault rekey               Re-encrypt every password vault entry under the current key (--dry-run)
 
 ${chalk.bold('Diagnose')}
   doctor                    Check env + DB readiness for this deployment
@@ -116,6 +117,8 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
       return (await import('./commands/knowledge.js')).run(rest);
     case 'tables':
       return (await import('./commands/tables.js')).run(rest);
+    case 'vault':
+      return (await import('./commands/vault.js')).run(rest);
     case 'seed':
       return (await import('./commands/seed.js')).run(rest);
     // ── HTTP-driven scripts (child-process delegation) ──

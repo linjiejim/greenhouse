@@ -809,7 +809,7 @@ export default {
     unavailableTitle: 'Passwords are unavailable',
     unavailableDesc: 'Your administrator needs to configure the encryption key before logins can be saved.',
     unavailableSuperDesc:
-      'Set PROVIDER_TOKEN_ENCRYPTION_KEY in the server environment and restart the API — it encrypts every saved login.',
+      'Set VAULT_ENCRYPTION_KEY (64 hex characters; or PROVIDER_TOKEN_ENCRYPTION_KEY) in the server environment and restart the API — it encrypts every saved login.',
     col_login: 'Login',
     col_sites: 'Sites',
     col_policy: 'Approval',

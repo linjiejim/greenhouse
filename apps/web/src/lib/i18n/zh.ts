@@ -803,7 +803,8 @@ const zh: Messages = {
     emptyDesc: '保存一次网站登录信息，Bot 就能替你登录——而且永远看不到密码。',
     unavailableTitle: '密码库暂不可用',
     unavailableDesc: '管理员需要先配置加密密钥，才能保存登录信息。',
-    unavailableSuperDesc: '请在服务器环境变量中设置 PROVIDER_TOKEN_ENCRYPTION_KEY 并重启 API——所有登录信息都用它加密。',
+    unavailableSuperDesc:
+      '请在服务器环境变量中设置 VAULT_ENCRYPTION_KEY（64 位十六进制；或 PROVIDER_TOKEN_ENCRYPTION_KEY）并重启 API——所有登录信息都用它加密。',
     col_login: '登录信息',
     col_sites: '网站',
     col_policy: '审批',

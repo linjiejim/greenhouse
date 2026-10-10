@@ -319,8 +319,16 @@ Retry-After；也可能是另一个 API 槽位正持有这台电脑的浏览器�
 关闭、1011 电脑停止。WS 推送：`bots:computer`、`bots:conversation`、`bots:attention`。
 
 **密码库**（`vault/routes.ts`）：`GET/POST /api/bots/vault`、`PATCH/DELETE /api/bots/vault/:id`、
-`GET /api/bots/vault/log`。条目只返回元数据；未配置 `PROVIDER_TOKEN_ENCRYPTION_KEY` → `503 vault_unavailable`；
+`GET /api/bots/vault/log`。条目只返回元数据；没有可用密钥 → `503 vault_unavailable`；
 其余错误见 `VaultErrorCode`。
+
+**密码库密钥**（`vault/crypto.ts`）：写入用 `VAULT_ENCRYPTION_KEY`，未设置才退回 `PROVIDER_TOKEN_ENCRYPTION_KEY`；
+设置了但格式不对（非 64 位 hex）= 密码库不可用，**绝不**悄悄退回 provider 密钥。密文格式
+`gv1.<key id>.<base64>`（key id = 密钥域分离哈希的前 8 位 hex），读取按 key id 在 VAULT / VAULT_PREVIOUS /
+PROVIDER 三把里找；无前缀的旧密文一律按 PROVIDER 解。轮换：旧值移到 `VAULT_ENCRYPTION_KEY_PREVIOUS` → 设新值
+→ 重启 → `pnpm cli vault rekey`（`vault/rekey.ts`：只改不是当前密钥写的字段；按「仍是读到的密文」条件更新，
+绝不覆盖期间的编辑；不动 `updated_at`；读不了的条目报告后原样保留）→ 删 PREVIOUS。新密文格式/新密钥来源
+都要同步 rekey 和 `crypto.test.ts`。
 
 **管理端**（super）：`GET /api/admin/bot-computers`（运行时、每台电脑、旋钮、检查清单 `checks[]`：
 docker / runtime / image / network / egress / host_disk …，每项带修复命令）、

@@ -11,7 +11,7 @@
  * another member's entry is indistinguishable from a missing one (404).
  * Secrets are write-only — no response ever carries one, and request bodies
  * are never logged. Errors: 503 `vault_unavailable` when the deployment has
- * no PROVIDER_TOKEN_ENCRYPTION_KEY; 400 `origin_invalid` / `origin_forbidden`
+ * no usable vault key (crypto.ts); 400 `origin_invalid` / `origin_forbidden`
  * / `label_invalid` / `totp_invalid` / `invalid` for bad input.
  *
  * Design: docs/specs/20261005-personal-assistant-bots.md §8; HTTP contract in ../AGENTS.md.

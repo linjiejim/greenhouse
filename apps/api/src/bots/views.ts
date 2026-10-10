@@ -31,7 +31,7 @@ import type {
 import type { AvatarConfig } from '@greenhouse/types/profile-manifest';
 import type { MessageRow, PipelineStep, Reference } from '@greenhouse/types/session';
 import { safeJsonParse } from '@greenhouse/utils/json';
-import { parseHexKey } from '@greenhouse/utils/crypto';
+import { isVaultAvailable } from './vault/crypto.js';
 import { parseBotEvent } from './engine/transcript.js';
 
 export function toBotView(row: BotRow, dmSessionId: string | null): BotView {
@@ -230,16 +230,7 @@ export function toMessageView(row: MessageRow): BotMessageView {
   };
 }
 
-/**
- * Whether the password vault can encrypt on this deployment — the same key the
- * vault module requires (`PROVIDER_TOKEN_ENCRYPTION_KEY`, 32 bytes hex).
- */
+/** Whether the password vault can encrypt on this deployment — exactly the vault module's own check. */
 export function vaultAvailable(): boolean {
-  const raw = process.env.PROVIDER_TOKEN_ENCRYPTION_KEY;
-  if (!raw) return false;
-  try {
-    return parseHexKey(raw, 'PROVIDER_TOKEN_ENCRYPTION_KEY').length === 32;
-  } catch {
-    return false;
-  }
+  return isVaultAvailable();
 }
