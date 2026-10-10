@@ -58,6 +58,7 @@ import { ToastHost } from '../src/ui/toast';
 import { useT } from '../src/lib/i18n';
 import { RealtimeBridge } from '../src/realtime/realtime-bridge';
 import { detailScreen, modalScreen, pageScreen, sheetScreen, stackDefaults } from '../src/ui/nav';
+import { sheetEdgeLayout } from '../src/ui/sheet-edge';
 import nunitoRegular from '../assets/fonts/Nunito-Regular.ttf';
 import nunitoMedium from '../assets/fonts/Nunito-Medium.ttf';
 import nunitoSemiBold from '../assets/fonts/Nunito-SemiBold.ttf';
@@ -125,7 +126,7 @@ export default function RootLayout() {
           {!ready ? (
             <View style={{ flex: 1, backgroundColor: c.background }} />
           ) : (
-            <Stack screenOptions={{ ...stackDefaults(c, hex), headerShown: false }}>
+            <Stack screenOptions={{ ...stackDefaults(c, hex), headerShown: false }} screenLayout={sheetEdgeLayout}>
               {/* title = the back-button label (a11y) for pages pushed over the conversation */}
               {/* home is the stack's root: never popped by the back gesture (the drawer owns horizontal swipes) */}
               <Stack.Screen name="(drawer)" options={{ title: t('drawer.chats'), gestureEnabled: false }} />
@@ -170,8 +171,9 @@ export default function RootLayout() {
               <Stack.Screen name="bots/login" options={sheetScreen([1], { header: true })} />
               <Stack.Screen name="bots/profile" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="bots/bot-form" options={sheetScreen([1], { header: true })} />
-              {/* Settings → My Bots: how a Bot is made (ask Sprouty first), one example Bot */}
-              <Stack.Screen name="bots/new-bot" options={sheetScreen([0.6, 1], { header: true })} />
+              {/* Settings → My Bots: how a Bot is made (ask Sprouty first) — full height, so all four
+                  ways show without a drag; one example Bot */}
+              <Stack.Screen name="bots/new-bot" options={sheetScreen([1], { header: true })} />
               <Stack.Screen name="bots/example" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="bots/archived" options={sheetScreen([0.6, 1], { header: true })} />
               <Stack.Screen name="bots/relay" options={sheetScreen([0.6, 1], { header: true })} />

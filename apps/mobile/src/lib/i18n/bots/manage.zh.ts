@@ -73,7 +73,7 @@ export const botsManageZh: typeof botsManageEn = {
     tabExamples: '示例',
     examplesFooter: '现成的起点——创建后名字、角色和工作说明都能再改。',
     askSprouty: '让 {name} 帮你建',
-    askSproutyHint: '说说想让它做什么，{name} 会起草一个 Bot 给你确认。',
+    askSproutyHint: '说说想让它做什么，{name} 起草好交给你确认。',
     describeOwn: '自己描述…',
     ideaMessage: '帮我建一个 Bot：{idea}',
     /** Ideas to start from (ask Sprouty). */
