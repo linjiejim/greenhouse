@@ -346,7 +346,9 @@ Bots work in any deployment. Their computers run in one of two places:
   it left off. After a greenhouse upgrade changes the template, each computer moves its home
   into a new sandbox at its next start; if that move fails, the member keeps the old computer and
   the move is tried again a few hours later. Keep the API close to the provider's region: homes
-  move through it.
+  move through it. Inside, the member's Bots and browser cannot reach the provider's metadata
+  service, its agent, private networks or the computer's own bridges — checked from both accounts at
+  every start (a computer that fails the check is not used).
 - **This server's Docker** — the API must run **on the Docker host itself** (bare metal / PM2,
   not the compose image — computers are reached through `docker exec` and publish no ports),
   plus gVisor, a hardened bridge
