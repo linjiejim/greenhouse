@@ -30,7 +30,7 @@ vi.mock('../access.js', () => ({
   rememberFilledSecret: vi.fn(),
   restoreBrowserWindow: mocks.restoreWindow,
 }));
-vi.mock('../runtime.js', () => ({ requireComputerRuntime: () => ({ docker: { exec: mocks.exec } }) }));
+vi.mock('../runtime.js', () => ({ requireComputerRuntime: () => ({ host: { exec: mocks.exec } }) }));
 vi.mock('../../engine/index.js', () => ({ deliverToConversation: mocks.deliver }));
 
 import {

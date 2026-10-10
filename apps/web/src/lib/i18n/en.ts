@@ -654,6 +654,13 @@ export default {
     reason_imageOutdated: 'The computer image on the host is out of date and needs rebuilding.',
     reason_networkInvalid: "The computer network on the host isn't set up correctly.",
     reason_configInvalid: "The computer settings in the server's environment are invalid.",
+    reason_providerUnreachable: "The server can't reach the sandbox provider right now.",
+    reason_providerAuth: 'The sandbox provider rejected the API key. An administrator needs to check it.',
+    reason_providerUnsupported:
+      "The sandbox provider would delete a computer that times out instead of pausing it, so computers stay off to keep members' files safe.",
+    reason_templateBuilding: 'The computer image is being prepared at the sandbox provider. This takes a few minutes.',
+    reason_templateFailed:
+      'Preparing the computer image at the sandbox provider failed. An administrator needs to look at it.',
     err_userInControl: "You're already in control of the computer.",
     err_unavailable: 'Computers are not available right now.',
     err_notRunning: "The computer isn't running.",
@@ -884,7 +891,10 @@ export default {
     runtime_unavailable: 'Unavailable',
     runtime_disabled: 'Turned off',
     runtime_checking: 'Checking…',
+    runtimeDescHosted:
+      "Members' computers are created, started, put to sleep and queued automatically at the sandbox provider — one microVM each.",
     hardened: 'Hardened · gVisor',
+    hostedBadge: 'Hosted · microVM',
     devMode: 'Development mode',
     devModeDesc:
       'Computers run without gVisor isolation on an ordinary network. Fine for local testing — not for real users.',
@@ -905,6 +915,8 @@ export default {
     check_egress: 'Egress lockdown',
     check_capacity: 'Host capacity',
     check_host_disk: 'Host disk space',
+    check_provider: 'Sandbox provider',
+    check_template: 'Computer template',
     noChecks: 'No checks reported.',
     copyCommand: 'Copy command',
     commandCopied: 'Command copied',
@@ -915,6 +927,10 @@ export default {
     maxRunning: 'Computers running at once',
     maxRunningHelp:
       'When all slots are taken, the least recently used idle computer is stopped; otherwise members wait in line. 1–50, capped by host memory.',
+    idleMinutesHelpHosted:
+      'A computer is put to sleep after this long without use — its memory, files and sign-ins are kept, and an asleep computer costs nothing. 5–240.',
+    maxRunningHelpHosted:
+      "When all slots are taken, the least recently used idle computer is put to sleep; otherwise members wait in line. 1–50, and within your provider plan's limit on sandboxes running at once (E2B Hobby: 20).",
     err_idleRange: 'Enter a whole number from 5 to 240.',
     err_maxRange: 'Enter a whole number from 1 to 50.',
     saveSettings: 'Save',

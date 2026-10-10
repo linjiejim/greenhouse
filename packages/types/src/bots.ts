@@ -488,8 +488,10 @@ export interface ComputerRuntimeView {
   state: ComputerRuntimeState;
   /** Machine-readable reason when not ready (docker_cli_missing, image_missing, runtime_missing…). */
   reason: string | null;
-  /** Hardened (gVisor + verified network) vs development mode. */
+  /** Hardened (gVisor + verified network, or a hosted microVM) vs development mode. */
   hardened: boolean;
+  /** Where computers run: this server's Docker host, or a hosted sandbox provider (E2B / PPIO). */
+  driver?: 'docker' | 'e2b';
 }
 
 export type ComputerState = 'absent' | 'starting' | 'running' | 'stopping' | 'error';

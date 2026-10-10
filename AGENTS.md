@@ -77,7 +77,9 @@ what exists." These rules are as binding as the "add" rules:
     desktop per member (named home volume, idle stop + LRU, watch / take-over lease) whose agent
     loop runs inside the API. They share the docker conventions, the hardening flags and the
     egress check (`scripts/cloud-agent-net.sh`); don't add a third container manager — extend one
-    of these two.
+    of these two. The computer controller runs on a host seam (`bots/computer/host.ts`): Docker
+    (`docker-host.ts`) or a hosted E2B-protocol sandbox (`e2b-host.ts`, `BOTS_COMPUTER_DRIVER=e2b`);
+    a new place to run computers is a third host, never a second controller.
   - Registered: **the Bots page (`apps/web/src/pages/bots/`) does not reuse `ConversationPane`**
     — that pane is a single-agent controller (messages have no author, the stream has no
     speaker, drafts / task dock / side panel are bound to one agent). The Bots page reuses the
@@ -91,8 +93,13 @@ what exists." These rules are as binding as the "add" rules:
     the copies cannot disagree on what a block means. Convergence path: new blocks are written once in
     `packages/ui` and used by both (spec `docs/specs/20261008-rich-output-foundation.md` D9).
   - Registered: **`playwright-core` is an API dependency** — the API drives each Bots computer's
-    Chromium over CDP (`connectOverCDP`, through a `docker exec` pipe relay). It is the protocol
-    client only; no browser binary ships with the API.
+    Chromium over CDP (`connectOverCDP`, through a `docker exec` pipe relay or the hosted
+    sandbox's bridge). It is the protocol client only; no browser binary ships with the API.
+  - Registered: **`e2b` (the E2B SDK) is an API dependency** — the hosted computer driver uses it to
+    build the template and to create / pause / resume / kill sandboxes, and for the root boot
+    command only. Everything a member's data passes through (shell output, files, screens, the
+    terminal, DevTools) goes through our own bridge (`apps/bot-computer/e2b/gh-bridge.mjs` ⇄
+    `e2b-bridge.ts`): the SDK's command API decodes output as text and keeps all of it in memory.
 - **No speculative abstraction.** Don't write interface layers / multi-backend abstractions /
   "for future use" columns with no second consumer.
 - **Declared capabilities must be real.** LLM tool descriptions, UI options, and docs must not
@@ -233,8 +240,10 @@ Missions additionally need the sandbox runner image (`bash scripts/build-agent-r
 (`scripts/cloud-agent-net.sh`); they stay disabled until `MISSION_ENABLED=1` and every
 preflight passes.
 
-Bots work without any of this (chat, memory, collaboration, background research). Their
-computers additionally need the computer image (`bash scripts/build-bot-computer.sh` →
+Bots work without any of this (chat, memory, collaboration, background research). With
+`BOTS_COMPUTER_DRIVER=e2b` + `BOTS_COMPUTER_E2B_API_KEY` their computers are hosted sandboxes and
+need nothing on the host (any deployment, Railway included; the API builds the template at the
+provider). With the default Docker driver, computers additionally need the computer image (`bash scripts/build-bot-computer.sh` →
 `greenhouse/bot-computer`), gVisor `runsc`, a hardened bridge (`BOTS_COMPUTER_NETWORK`, IPv6 off +
 ICC off, egress rules from `scripts/cloud-agent-net.sh --profile bots`) and **the API running on
 the Docker host** (computers are reached through `docker exec`; no port is published, so the

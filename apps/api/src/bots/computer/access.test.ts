@@ -29,7 +29,7 @@ vi.mock('./cdp-bridge.js', () => ({
 vi.mock('./runtime.js', () => ({
   requireComputerRuntime: () => ({
     controller: { ensureRunning, markBroken: vi.fn() },
-    docker: { exec, execStream: vi.fn() },
+    host: { exec, execStream: vi.fn() },
     config: { proxy: null },
   }),
 }));

@@ -2,10 +2,11 @@
  * Computer lifecycle — DB-authoritative, safe with two blue/green API slots on
  * one daemon (spec §6.3, review R12).
  *
- * - The container is stateless, the volume holds the member's files and
- *   logins. A computer is never `docker start`ed again: every start is a fresh
- *   `docker run` with the CURRENT argv, so image, knob and hardening changes
- *   reach everyone on their next start.
+ * - What a computer physically is belongs to the host (host.ts): a fresh
+ *   container on a named home volume (docker-host.ts — every start a new
+ *   `docker run` with the CURRENT argv) or a sandbox at an E2B-protocol
+ *   provider that pauses and resumes (e2b-host.ts). The row's
+ *   `container_name` is the host's handle for it; a start may change it.
  * - Every transition is a compare-and-set on `bot_computers.version`; starts
  *   and stops of one member run under that member's advisory lock, the
  *   capacity decision under one global lock (always taken in that order, and
@@ -28,11 +29,11 @@
  *   for `idleMinutes` — unless background jobs still run on one, which keeps
  *   it up to BOTS_COMPUTER_JOB_MAX_HOURS after its last activity; health
  *   (30 s) settles starts/stops whose process died
- *   and reconciles running rows against ONE `docker ps`; disk (hourly, every
+ *   and reconciles running rows against ONE host listing; disk (hourly, every
  *   2 min for a home over the soft limit) measures the homes; reconcile (boot
  *   and every time the host comes back) clears orphans inside this namespace.
- * - Host disk (spec D16: named volumes have no hard quota, so the Docker
- *   disk itself is guarded): free space is read with `df` from inside a
+ * - Host disk (docker only — spec D16: named volumes have no hard quota, so
+ *   the Docker disk itself is guarded): free space is read with `df` from inside a
  *   running computer — its home volume lives on that disk — right after each
  *   start, with every disk measurement, and from the health loop while a
  *   reading is old or low. Below HOST_DISK_MIN_FREE_RATIO no new computer
@@ -41,7 +42,7 @@
  *   nothing ran is not refused forever: the next start measures again.
  * - Sweeps only act on a member's row while holding that member's lock, and
  *   never wait for it: a held lock means someone is at work on it.
- * - Errors are classified (docker.ts): a broken container marks only its row;
+ * - Errors are classified (docker.ts): a broken computer marks only its row;
  *   a broken host reports through `onRuntimeError` and closes the runtime.
  */
 
@@ -52,15 +53,10 @@ import { safeJsonParse } from '@greenhouse/utils/json';
 import type { BotComputerRow, BotComputerService } from '@greenhouse/db';
 
 import { computerLang, parseTimezone, type BotsComputerConfig } from './config.js';
-import {
-  buildComputerRunArgs,
-  ComputerDockerError,
-  ComputerRuntimeError,
-  type ContainerSummary,
-  type DockerClient,
-} from './docker.js';
+import { ComputerDockerError, ComputerRuntimeError } from './docker.js';
 import { ComputerUnavailableError } from './errors.js';
-import { computerIdentity, computerLabels, LABEL_USER, namespaceFilter } from './namespace.js';
+import type { ComputerHost, HostInstance, StartedComputer, StopVerdict } from './host.js';
+import { computerIdentity } from './namespace.js';
 
 /** safeJsonParse with the caller's expected shape (still validated field by field). */
 function parseJson<T>(text: string): T | null {
@@ -106,9 +102,9 @@ export interface ControllerEnvironment {
    * start as defence in depth behind the egress precheck; empty = no probe.
    */
   egressProbe?: string[];
-  /** The image id the prechecks saw (shown on the admin page). */
+  /** The image (docker) / template (e2b) the prechecks found ready; recorded as `image_id`. */
   imageId: string | null;
-  /** The latest free-space reading of the Docker disk (null = not measured yet). */
+  /** The latest free-space reading of the Docker disk (null = not measured yet; docker only). */
   hostDisk?: HostDiskReading | null;
 }
 
@@ -193,7 +189,7 @@ export type StopReason = 'idle' | 'lru' | 'reset' | 'suspend' | 'admin' | 'user'
 
 export interface ComputerControllerDeps {
   store: ComputerStore;
-  docker: DockerClient;
+  host: ComputerHost;
   environment(): Promise<ControllerEnvironment>;
   /** true = active internal user with `bots` on, false = exists but may not use it, null = gone. */
   userIsActive(userId: string): Promise<boolean | null>;
@@ -205,7 +201,7 @@ export interface ComputerControllerDeps {
   clock?: Clock;
   /** A row changed state or reason (pushed to the owner over WS). */
   onState?(row: BotComputerRow): void;
-  /** The container went away (drop cached DevTools connections, viewers die with their tunnels). */
+  /** The computer went away (drop cached DevTools connections, viewers die with their tunnels). */
   onStopped?(userId: string, reason: string): void;
   /** The host itself failed; the runtime goes unavailable and re-checks. */
   onRuntimeError?(err: ComputerRuntimeError): void;
@@ -213,7 +209,7 @@ export interface ComputerControllerDeps {
   onHostDisk?(reading: HostDiskReading): void;
   /** The member's account locale (the browser language follows it); null = unknown. */
   memberLocale?(userId: string): Promise<string | null>;
-  /** Background jobs running on a container (gh-jobs); never throws, 0 when unreadable. */
+  /** Background jobs running on a computer (gh-jobs, by `container_name`); never throws, 0 when unreadable. */
   runningJobs?(container: string): Promise<number>;
 }
 
@@ -226,14 +222,17 @@ export interface EnsureRunningOptions {
 
 /** How long a caller waits for a free slot before `busy`. */
 export const QUEUE_WAIT_MS = 45_000;
-/** How long a fresh container may take until DevTools answers. */
+/** How long a started computer may take until DevTools answers. */
 export const READY_TIMEOUT_MS = 45_000;
 /** Transitional rows younger than this belong to someone at work; never second-guess them. */
 export const STALE_TRANSITION_MS = 60_000;
 /**
- * The longest a live start can keep a row in `starting` (volume create 30 s,
- * rm 60 s, run 90 s, ready 45 s, egress probe 30 s, each bounded by its docker
- * deadline). Past it the starter is certainly gone, even without a try-lock.
+ * The longest a docker start can keep a row in `starting` (volume create 30 s,
+ * rm 60 s, run 90 s, ready 45 s, egress probe 30 s, each bounded by its own
+ * deadline): past it the starter is certainly gone, even without a try-lock.
+ * An e2b start that moves a home can take longer (its move is bounded at 10
+ * minutes); stores with a try-lock (the real one) never rely on this deadline —
+ * they see the starter's lock.
  */
 export const START_DEADLINE_MS = 5 * 60_000;
 /** A home over the soft limit is re-measured this often while running, so a cleanup unblocks quickly. */
@@ -241,14 +240,11 @@ export const OVER_QUOTA_REMEASURE_MS = 2 * 60_000;
 /** A computer is evictable once its Bots and viewers have been quiet this long. */
 export const EVICT_MIN_IDLE_MS = 2 * 60_000;
 const VIEWER_FRESH_MS = 60_000;
-/** Orphan volumes (no row) are kept this long after creation, in case a row is still being written. */
-export const VOLUME_GRACE_MS = 24 * 60 * 60_000;
 /** Soft per-member disk limit (spec D16): beyond it, no automatic starts until cleaned up. */
 export const DISK_SOFT_LIMIT_BYTES = 5 * 1024 ** 3;
 const TOUCH_THROTTLE_MS = 15_000;
-const STOP_TIMEOUT_SEC = 5;
 
-/** Asks Chromium for its version through the relay, from inside the container as `browser`. */
+/** Asks Chromium for its version through the relay, from inside the computer as `browser`. */
 const READY_PROBE = [
   'import socket, sys',
   's = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)',
@@ -324,7 +320,7 @@ type SlotDecision =
   | { kind: 'lost' };
 
 export function createComputerController(deps: ComputerControllerDeps) {
-  const { store, docker } = deps;
+  const { store, host } = deps;
   const clock = deps.clock ?? systemClock;
   const ensureMutex = new KeyedMutex();
   const startSlots = new Semaphore(START_CONCURRENCY);
@@ -389,23 +385,43 @@ export function createComputerController(deps: ComputerControllerDeps) {
     }
   }
 
-  async function removeQuietly(container: string): Promise<void> {
+  /** host.discard without throwing: a broken or interrupted computer goes, the member's files stay. */
+  async function discardQuietly(ref: string): Promise<void> {
     try {
-      await docker.remove(container);
+      await host.discard(ref);
     } catch (err) {
       reportRuntime(err);
-      logger.warn(`[bots-computer] could not remove ${container}: ${toErrorMessage(err)}`);
+      logger.warn(`[bots-computer] could not remove ${ref}: ${toErrorMessage(err)}`);
     }
   }
 
-  async function stopAndRemove(container: string): Promise<void> {
+  /** host.stop without throwing (the row moves on either way; reconcile clears what is left). */
+  async function stopQuietly(ref: string): Promise<void> {
     try {
-      await docker.stop(container, STOP_TIMEOUT_SEC);
+      await host.stop(ref);
     } catch (err) {
       reportRuntime(err);
-      logger.warn(`[bots-computer] docker stop ${container} failed: ${toErrorMessage(err)}`);
+      logger.warn(`[bots-computer] could not stop ${ref}: ${toErrorMessage(err)}`);
     }
-    await removeQuietly(container);
+  }
+
+  async function abandonQuietly(started: StartedComputer): Promise<void> {
+    try {
+      await started.abandon();
+    } catch (err) {
+      reportRuntime(err);
+      logger.warn(`[bots-computer] could not undo the start of ${started.ref}: ${toErrorMessage(err)}`);
+    }
+  }
+
+  /** Why a computer whose row says `running` is not; a host that cannot tell says `exited`. */
+  async function verdictFor(ref: string, instance: HostInstance | undefined): Promise<StopVerdict> {
+    try {
+      return await host.verdict(ref, instance);
+    } catch (err) {
+      reportRuntime(err);
+      return { state: 'error', reason: 'exited' };
+    }
   }
 
   async function waitReady(container: string): Promise<string> {
@@ -413,7 +429,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
     let lastError = 'no answer';
     while (clock.now() < deadline) {
       try {
-        const result = await docker.exec({
+        const result = await host.exec({
           container,
           user: 'browser',
           argv: ['python3', '-c', READY_PROBE],
@@ -441,7 +457,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
    */
   async function verifyEgress(container: string, targets: string[]): Promise<void> {
     if (targets.length === 0) return;
-    const result = await docker.exec({
+    const result = await host.exec({
       container,
       user: 'agent',
       argv: ['sh', '-c', EGRESS_PROBE_SCRIPT, 'gh-egress', ...targets],
@@ -502,7 +518,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
   }
 
   async function finishStop(row: BotComputerRow, reason: StopReason, startedAt: number): Promise<void> {
-    await stopAndRemove(row.container_name);
+    await stopQuietly(row.container_name);
     const absent = await store.transition(row.user_id, row.version, ['stopping'], {
       state: 'absent',
       state_reason: reason,
@@ -518,70 +534,67 @@ export function createComputerController(deps: ComputerControllerDeps) {
     emitState(absent);
   }
 
-  async function startContainer(row: BotComputerRow, env: ControllerEnvironment): Promise<BotComputerRow> {
+  async function startContainer(
+    row: BotComputerRow,
+    env: ControllerEnvironment,
+    opts: { fresh: boolean },
+  ): Promise<BotComputerRow> {
     const startedAt = clock.now();
     const { config } = env;
+    let started: StartedComputer | null = null;
     try {
-      await docker.volumeCreate(row.volume_name, computerLabels(config.namespace, row.user_id));
-      // A container left behind by an earlier failure would hold the name.
-      await docker.remove(row.container_name);
-      await docker.run(
-        buildComputerRunArgs({
-          name: row.container_name,
-          namespace: config.namespace,
-          userId: row.user_id,
-          image: config.image,
-          volume: row.volume_name,
-          network: config.network,
-          runtime: config.runtime,
-          memory: config.memory,
-          cpus: config.cpus,
-          proxy: config.proxy,
-          urlBlocklist: env.urlBlocklist,
-          // Validated when stored; re-checked here because it becomes the container's TZ.
-          timezone: parseTimezone(row.timezone) ?? config.timezone,
-          lang: await langFor(row.user_id, config),
-        }),
-      );
-      const product = await waitReady(row.container_name);
-      await verifyEgress(row.container_name, env.egressProbe ?? []);
+      started = await host.start(row, {
+        config,
+        image: env.imageId,
+        urlBlocklist: env.urlBlocklist,
+        // Validated when stored; re-checked here because it becomes the computer's TZ.
+        timezone: parseTimezone(row.timezone) ?? config.timezone,
+        lang: await langFor(row.user_id, config),
+        fresh: opts.fresh,
+      });
+      const product = await waitReady(started.ref);
+      await verifyEgress(started.ref, env.egressProbe ?? []);
       const running = await store.transition(row.user_id, row.version, ['starting'], {
         state: 'running',
         state_reason: null,
         last_started_at: nowIso(),
-        image_id: env.imageId,
+        image_id: started.imageId,
+        container_name: started.ref,
       });
       if (!running) {
         // Purged or reset while starting: the newer decision wins.
-        await removeQuietly(row.container_name);
+        await abandonQuietly(started);
         throw new ComputerUnavailableError('stopped', 'The computer was stopped while it was starting');
       }
       lastTouch.delete(row.user_id);
       await touchThrottled(row.user_id);
       logger.info('[bots-computer] start', {
         user_id: row.user_id,
-        container: row.container_name,
+        container: running.container_name,
         duration_ms: clock.now() - startedAt,
         browser: product,
-        runtime: config.runtime,
+        host: host.kind,
+        ...(host.kind === 'docker' ? { runtime: config.runtime } : {}),
       });
       emitState(running);
       // Started on a stale over-quota reading (or to clean up): measure now, so
       // the next automatic start is decided on what is really on disk.
       if (running.disk_bytes !== null && running.disk_bytes > DISK_SOFT_LIMIT_BYTES) void measureDisk(running);
       // Every start re-reads the Docker disk (cheap): it decides the next start.
-      void measureHostDisk(running);
+      if (host.sharedDisk) void measureHostDisk(running);
       return running;
     } catch (err) {
       if (err instanceof ComputerUnavailableError) throw err;
-      await removeQuietly(row.container_name);
+      // A start that got nowhere may still have left something behind under the row's name.
+      if (started) await abandonQuietly(started);
+      else await discardQuietly(row.container_name);
       const reason = err instanceof ComputerRuntimeError ? err.reason : 'start_failed';
       emitState(
         await store.transition(row.user_id, row.version, ['starting'], { state: 'error', state_reason: reason }),
       );
       logger.warn('[bots-computer] start failed', {
         user_id: row.user_id,
-        container: row.container_name,
+        container: started?.ref ?? row.container_name,
         reason,
         error: toErrorMessage(err),
         duration_ms: clock.now() - startedAt,
@@ -602,8 +615,8 @@ export function createComputerController(deps: ComputerControllerDeps) {
    */
   async function settleDead(row: BotComputerRow): Promise<BotComputerRow | undefined> {
     const stopping = row.state === 'stopping';
-    if (stopping) await stopAndRemove(row.container_name);
-    else await removeQuietly(row.container_name);
+    if (stopping) await stopQuietly(row.container_name);
+    else await discardQuietly(row.container_name);
     const settled = await store.transition(row.user_id, row.version, [row.state], {
       state: 'absent',
       state_reason: stopping ? row.state_reason : 'start_interrupted',
@@ -678,12 +691,15 @@ export function createComputerController(deps: ComputerControllerDeps) {
       );
     }
 
+    // A reset's stop left this reason on the row; the claim below clears it, so it is read now: the
+    // member asked for everything but their files to start over (e2b: a new sandbox around the home).
+    const fresh = row.state_reason === 'reset';
     for (let round = 0; round < 3; round++) {
       const current: BotComputerRow = row;
       const decision = await capacityGate.run(() => store.withCapacityLock(() => claimSlot(current, env)));
       if (decision.kind === 'claimed') {
         emitState(decision.row);
-        return { kind: 'running', row: await startContainer(decision.row, env) };
+        return { kind: 'running', row: await startContainer(decision.row, env, { fresh }) };
       }
       if (decision.kind === 'lost') return { kind: 'wait' };
       if (decision.kind === 'queued') return { kind: 'queued' };
@@ -735,8 +751,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
   }
 
   /**
-   * Stop and remove the member's container; the caller holds the member's
-   * lock. A young `stopping` row belongs to a stop at work (an LRU eviction
+   * Stop the member's computer; the caller holds the member's lock. A young `stopping` row belongs to a stop at work (an LRU eviction
    * runs under the requester's lock, not this member's) — unless `force`,
    * where finishing it here is safe: stop and remove are idempotent and the
    * row only moves by compare-and-set.
@@ -755,16 +770,16 @@ export function createComputerController(deps: ComputerControllerDeps) {
     await finishStop(stopping, reason, startedAt);
   }
 
-  /** Stop and remove the member's container (volume kept). Safe to call in any state. */
+  /** Stop the member's computer (their files kept). Safe to call in any state. */
   async function stop(userId: string, reason: StopReason): Promise<void> {
     await store.withUserLock(userId, () => stopLocked(userId, reason));
   }
 
   /**
-   * Remove the computer; `wipe` also deletes the home volume (files, logins)
-   * and the row. One critical section under the member's lock: a start that
-   * was waiting either ran before (its container is removed here) or runs
-   * after the row is gone (and gets a fresh row and a fresh, empty volume).
+   * Remove the computer; `wipe` also deletes the home (files, logins) and the
+   * row. One critical section under the member's lock: a start that was
+   * waiting either ran before (its computer is removed here) or runs after the
+   * row is gone (and gets a fresh row and a fresh, empty home).
    */
   async function purge(userId: string, opts: { wipe: boolean; reason?: StopReason }): Promise<void> {
     const reason = opts.reason ?? 'purge';
@@ -773,29 +788,27 @@ export function createComputerController(deps: ComputerControllerDeps) {
       if (!opts.wipe) return;
       const row = await store.get(userId);
       if (!row) return;
-      // Whatever stop is still in flight elsewhere, the volume can only go once its container has.
-      await docker.remove(row.container_name);
-      await docker.volumeRemove(row.volume_name);
+      await host.wipe(row);
       await store.delete(userId);
-      logger.info('[bots-computer] wiped', { user_id: userId, volume: row.volume_name });
+      logger.info('[bots-computer] wiped', { user_id: userId, container: row.container_name, host: host.kind });
     });
     lastTouch.delete(userId);
   }
 
-  /** Rebuild from scratch: stop, optionally wipe the home, start again (current image and argv). */
+  /** Rebuild from scratch: stop, optionally wipe the home, start again (current image and settings). */
   async function reset(userId: string, opts: { wipe: boolean }): Promise<BotComputerRow> {
     if (opts.wipe) await purge(userId, { wipe: true, reason: 'reset' });
     else await stop(userId, 'reset');
     return await ensureRunning(userId, { allowOverQuota: true });
   }
 
-  /** A docker exec found the container gone or stopped: mark the row so the next use rebuilds it. */
+  /** An exec found the computer gone or stopped: mark the row so the next use rebuilds it. */
   async function markBroken(userId: string, reason: string): Promise<void> {
     const row = await store.get(userId);
     if (!row || row.state !== 'running') return;
     const broken = await store.transition(userId, row.version, ['running'], { state: 'error', state_reason: reason });
     if (!broken) return;
-    await removeQuietly(row.container_name);
+    await discardQuietly(row.container_name);
     lastTouch.delete(userId);
     logger.warn('[bots-computer] exited', { user_id: userId, container: row.container_name, reason });
     deps.onStopped?.(userId, reason);
@@ -852,18 +865,6 @@ export function createComputerController(deps: ComputerControllerDeps) {
     }
   }
 
-  async function exitReason(container: ContainerSummary | undefined): Promise<string> {
-    if (!container) return 'exited';
-    try {
-      const state = await docker.inspectState(container.name);
-      // gVisor kills the whole sandbox on OOM, which can surface as a plain 137.
-      if (state?.oomKilled || state?.exitCode === 137) return 'oom';
-    } catch (err) {
-      reportRuntime(err);
-    }
-    return 'exited';
-  }
-
   /**
    * Settle a transitional row whose worker died (a slot stopped mid-start or
    * mid-stop during a deploy): otherwise it holds a capacity slot forever.
@@ -897,30 +898,38 @@ export function createComputerController(deps: ComputerControllerDeps) {
   async function healthTick(): Promise<void> {
     const env = await deps.environment();
     await settleTransitional();
-    // Rows first, then ps: a row that is `running` now had a running container
-    // before the snapshot, so a missing one really died.
+    // Rows first, then the listing: a row that is `running` now had a running
+    // computer before the snapshot, so a missing one really died.
     const rows = await store.listByStates(['running']);
     if (rows.length === 0) return;
-    let containers: ContainerSummary[];
+    let instances: HostInstance[];
     try {
-      containers = await docker.ps(namespaceFilter(env.config.namespace));
+      instances = await host.list(env.config.namespace);
     } catch (err) {
       reportRuntime(err);
       throw err;
     }
-    const byName = new Map(containers.map((c) => [c.name, c]));
+    const byRef = new Map(instances.map((i) => [i.ref, i]));
     // Keep the Docker disk reading fresh while computers run (one df, from
     // the first running computer; more often while it is low).
-    const reading = env.hostDisk ?? null;
-    const remeasureAfter =
-      reading && reading.freeRatio < HOST_DISK_MIN_FREE_RATIO ? HOST_DISK_LOW_REMEASURE_MS : HOST_DISK_REMEASURE_MS;
-    if (!reading || clock.now() - reading.measuredAt >= remeasureAfter) {
-      const probe = rows.find((row) => byName.get(row.container_name)?.state === 'running');
-      if (probe) void measureHostDisk(probe);
+    if (host.sharedDisk) {
+      const reading = env.hostDisk ?? null;
+      const remeasureAfter =
+        reading && reading.freeRatio < HOST_DISK_MIN_FREE_RATIO ? HOST_DISK_LOW_REMEASURE_MS : HOST_DISK_REMEASURE_MS;
+      if (!reading || clock.now() - reading.measuredAt >= remeasureAfter) {
+        const probe = rows.find((row) => byRef.get(row.container_name)?.running);
+        if (probe) void measureHostDisk(probe);
+      }
     }
     for (const row of rows) {
-      const container = byName.get(row.container_name);
-      if (container?.state === 'running') {
+      const instance = byRef.get(row.container_name);
+      if (instance?.running) {
+        if (host.keepAlive) {
+          void host.keepAlive(row, env.idleMinutes).catch((err: unknown) => {
+            reportRuntime(err);
+            logger.warn(`[bots-computer] keep-alive failed for ${row.user_id}: ${toErrorMessage(err)}`);
+          });
+        }
         // Over the soft limit: re-measure often, so a cleanup unblocks automatic starts.
         if (
           row.disk_bytes !== null &&
@@ -931,17 +940,25 @@ export function createComputerController(deps: ComputerControllerDeps) {
         }
         continue;
       }
-      const reason = await exitReason(container);
-      const broken = await store.transition(row.user_id, row.version, ['running'], {
-        state: 'error',
-        state_reason: reason,
+      const verdict = await verdictFor(row.container_name, instance);
+      const settled = await store.transition(row.user_id, row.version, ['running'], {
+        state: verdict.state,
+        state_reason: verdict.reason,
       });
-      if (!broken) continue;
-      if (container) await removeQuietly(container.name);
+      if (!settled) continue;
+      if (instance) await discardQuietly(instance.ref);
       lastTouch.delete(row.user_id);
-      logger.warn(`[bots-computer] ${reason}`, { user_id: row.user_id, container: row.container_name });
-      deps.onStopped?.(row.user_id, reason);
-      emitState(broken);
+      if (verdict.state === 'error') {
+        logger.warn(`[bots-computer] ${verdict.reason}`, { user_id: row.user_id, container: row.container_name });
+      } else {
+        logger.info('[bots-computer] went to sleep on its own', {
+          user_id: row.user_id,
+          container: row.container_name,
+          reason: verdict.reason,
+        });
+      }
+      deps.onStopped?.(row.user_id, verdict.reason);
+      emitState(settled);
     }
   }
 
@@ -958,27 +975,24 @@ export function createComputerController(deps: ComputerControllerDeps) {
     const namespace = env.config.namespace;
     const rows = await store.list();
     const byUser = new Map(rows.map((r) => [r.user_id, r]));
-    const containers = await docker.ps(namespaceFilter(namespace));
-    const byName = new Map(containers.map((c) => [c.name, c]));
+    const instances = await host.list(namespace);
+    const byRef = new Map(instances.map((i) => [i.ref, i]));
     let removedContainers = 0;
-    let removedVolumes = 0;
     let settledRows = 0;
 
-    // Containers no row points at (deleted member, crashed start under an old name).
-    for (const container of containers) {
-      const userId = container.labels[LABEL_USER] ?? '';
+    // Computers no row points at (deleted member, crashed start under an old name).
+    for (const instance of instances) {
+      const userId = instance.userId;
       const snapshot = byUser.get(userId);
-      if (snapshot && snapshot.container_name === container.name) continue;
+      if (snapshot && snapshot.container_name === instance.ref) continue;
       if (!userId) {
-        await removeQuietly(container.name);
-        removedContainers++;
+        if (await removeOrphanQuietly(instance, instances)) removedContainers++;
         continue;
       }
       const result = await withFreeUserLock(userId, async () => {
         const row = await store.get(userId);
-        if (row && row.container_name === container.name) return false; // started meanwhile: it is theirs
-        await removeQuietly(container.name);
-        return true;
+        if (row && row.container_name === instance.ref) return false; // started meanwhile: it is theirs
+        return await removeOrphanQuietly(instance, instances);
       });
       if (result.acquired && result.value) removedContainers++;
     }
@@ -996,8 +1010,8 @@ export function createComputerController(deps: ComputerControllerDeps) {
         continue;
       }
       // Consistent in the snapshot: nothing to look at more closely.
-      const seen = byName.get(snapshot.container_name);
-      if (snapshot.state === 'running' && seen?.state === 'running') continue;
+      const seen = byRef.get(snapshot.container_name);
+      if (snapshot.state === 'running' && seen?.running) continue;
       if (snapshot.state === 'error' && !seen) continue;
       // Without a try-lock, a row touched in the last minute may have its lock
       // held by a start at work; leave it to the next pass rather than wait.
@@ -1005,39 +1019,38 @@ export function createComputerController(deps: ComputerControllerDeps) {
       const result = await withFreeUserLock(snapshot.user_id, async () => {
         const row = await store.get(snapshot.user_id);
         if (!row || row.version !== snapshot.version) return false;
-        const state = await docker.inspectState(row.container_name);
+        const state = await host.inspect(row.container_name);
         if (row.state === 'running' && state?.running) return false;
         if (row.state === 'error' && !state) return false;
+        const verdict: StopVerdict =
+          row.state === 'running'
+            ? await verdictFor(
+                row.container_name,
+                state ? { ref: row.container_name, userId: row.user_id, running: false } : undefined,
+              )
+            : { state: 'error', reason: row.state_reason ?? 'interrupted' };
         const settled = await store.transition(row.user_id, row.version, [row.state], {
-          state: row.state === 'error' ? 'error' : 'absent',
-          state_reason: row.state === 'running' ? 'exited' : (row.state_reason ?? 'interrupted'),
+          state: row.state === 'error' ? 'error' : verdict.state === 'error' ? 'absent' : verdict.state,
+          state_reason: verdict.reason,
         });
         if (!settled) return false;
-        if (state) await removeQuietly(row.container_name);
+        if (state) await discardQuietly(row.container_name);
         lastTouch.delete(row.user_id);
-        if (row.state === 'running') deps.onStopped?.(row.user_id, 'exited');
+        if (row.state === 'running') deps.onStopped?.(row.user_id, verdict.reason);
         emitState(settled);
         return true;
       });
       if (result.acquired && result.value) settledRows++;
     }
-    // Volumes no row points at, after a grace period. A member who still exists
-    // keeps their row (and so their files) even while suspended; deleting the
-    // member cascades the row away, and the volume follows here.
-    for (const volume of await docker.volumeList(namespaceFilter(namespace))) {
-      const row = byUser.get(volume.labels[LABEL_USER] ?? '');
-      if (row && row.volume_name === volume.name) continue;
-      const createdAt = await docker.volumeCreatedAt(volume.name);
-      if (!createdAt || ageMs(createdAt) < VOLUME_GRACE_MS) continue;
-      // A row created since the snapshot (a member's first start) owns it now.
-      const current = await store.get(volume.labels[LABEL_USER] ?? '');
-      if (current && current.volume_name === volume.name) continue;
-      try {
-        await docker.volumeRemove(volume.name);
-        removedVolumes++;
-      } catch (err) {
-        logger.warn(`[bots-computer] could not remove orphan volume ${volume.name}: ${toErrorMessage(err)}`);
-      }
+    // Storage no row points at, after a grace period (docker: home volumes). A
+    // member who still exists keeps their row (and so their files) even while
+    // suspended; deleting the member cascades the row away, and the files follow.
+    let removedVolumes = 0;
+    try {
+      removedVolumes = await host.sweepStorage(namespace, (userId) => store.get(userId));
+    } catch (err) {
+      reportRuntime(err);
+      logger.warn(`[bots-computer] could not sweep orphan storage: ${toErrorMessage(err)}`);
     }
     if (removedContainers || removedVolumes || settledRows) {
       logger.info('[bots-computer] reconcile', {
@@ -1049,6 +1062,16 @@ export function createComputerController(deps: ComputerControllerDeps) {
     }
   }
 
+  async function removeOrphanQuietly(instance: HostInstance, all: HostInstance[]): Promise<boolean> {
+    try {
+      return await host.removeOrphan(instance, all);
+    } catch (err) {
+      reportRuntime(err);
+      logger.warn(`[bots-computer] could not remove orphan ${instance.ref}: ${toErrorMessage(err)}`);
+      return false;
+    }
+  }
+
   /** In-flight measurements (a `du` can take minutes; never run two for one member). */
   const measuring = new Set<string>();
   let measuringHost = false;
@@ -1057,12 +1080,13 @@ export function createComputerController(deps: ComputerControllerDeps) {
    * Read the Docker disk's free space from inside a running computer: its
    * home is a named volume on that disk, so `df` on the home sees the disk's
    * own size and free space (as uid agent — it reads nothing but statfs).
+   * Docker only: an e2b computer's disk is its own.
    */
   async function measureHostDisk(row: BotComputerRow): Promise<void> {
-    if (measuringHost) return;
+    if (measuringHost || !host.sharedDisk) return;
     measuringHost = true;
     try {
-      const result = await docker.exec({
+      const result = await host.exec({
         container: row.container_name,
         user: 'agent',
         argv: ['df', '-P', '-k', '/home/agent'],
@@ -1106,7 +1130,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
         ['agent', '/home/agent'],
         ['browser', '/home/browser'],
       ] as const) {
-        const result = await docker.exec({
+        const result = await host.exec({
           container: row.container_name,
           user,
           argv: ['du', '-sxb', path],
@@ -1122,7 +1146,9 @@ export function createComputerController(deps: ComputerControllerDeps) {
       }
     } catch (err) {
       reportRuntime(err);
-      logger.warn(`[bots-computer] disk measurement failed for ${row.user_id}: ${toErrorMessage(err)}`);
+      // Stopped since the loop listed it: the next running start measures again.
+      const gone = err instanceof ComputerDockerError && (err.code === 'not_running' || err.code === 'not_found');
+      if (!gone) logger.warn(`[bots-computer] disk measurement failed for ${row.user_id}: ${toErrorMessage(err)}`);
     } finally {
       measuring.delete(row.user_id);
     }

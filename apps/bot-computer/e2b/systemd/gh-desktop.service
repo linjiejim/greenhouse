@@ -1,0 +1,23 @@
+# The hosted computer's display and browser (uid browser): what a docker computer runs
+# as its entrypoint (gh-computer), started by gh-e2b-boot with the member's settings.
+[Unit]
+Description=Greenhouse computer: display and browser
+After=network.target
+
+[Service]
+Type=simple
+User=browser
+Group=browser
+WorkingDirectory=/home/browser
+EnvironmentFile=/etc/gh-computer/env
+Environment=HOME=/home/browser DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
+# /tmp outlives the desktop here (no fresh tmpfs as in docker): the runtime directories are
+# checked as root and a squatted one fails the start rather than being blessed.
+ExecStartPre=+/usr/local/sbin/gh-e2b-rundir
+ExecStart=/usr/local/bin/gh-computer
+# SIGTERM to gh-computer alone: it closes the browser first (the profile is flushed), then the display.
+KillMode=mixed
+TimeoutStopSec=10
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes

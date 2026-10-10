@@ -22,14 +22,14 @@
  */
 
 import { posix } from 'node:path';
-import type { ChildProcess } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import type { ComputerFileEntry, ComputerFileList } from '@greenhouse/types/bots';
 
 import { sanitizeUploadName } from '../../storage/filename.js';
 import { AGENT_HOME, isUnderAgentHome, resolveAgentPath } from '../tools/agent-paths.js';
 import { containerFailed, touchComputer } from './access.js';
-import { ComputerDockerError, type DockerClient } from './docker.js';
+import { ComputerDockerError } from './docker.js';
+import type { ComputerExec, ComputerProcess } from './host.js';
 import { requireComputerRuntime } from './runtime.js';
 
 export const LIST_MAX_ENTRIES = 500;
@@ -219,7 +219,7 @@ function scriptFailure(code: number | null, stderr: string, what: string): Error
 // ─── Dependencies (test seam) ─────────────────────────────
 
 export interface FilesDeps {
-  docker(): DockerClient;
+  host(): Pick<ComputerExec, 'exec' | 'execStream'>;
   /** Start the member's computer when needed (over the soft disk limit too); its container. */
   container(userId: string): Promise<string>;
   touch(userId: string): Promise<void>;
@@ -228,7 +228,7 @@ export interface FilesDeps {
 }
 
 const defaultDeps: FilesDeps = {
-  docker: () => requireComputerRuntime().docker,
+  host: () => requireComputerRuntime().host,
   container: async (userId) =>
     (await requireComputerRuntime().controller.ensureRunning(userId, { allowOverQuota: true })).container_name,
   touch: touchComputer,
@@ -251,7 +251,7 @@ export async function listComputerFiles(
   const path = resolveMemberPath(rawPath);
   const container = await deps.container(userId);
   try {
-    const result = await deps.docker().exec({
+    const result = await deps.host().exec({
       container,
       user: 'agent',
       cwd: AGENT_HOME,
@@ -282,7 +282,7 @@ export interface ComputerDownload {
 type Header = { header: string; rest: Buffer } | { code: number | null; stderr: string };
 
 /** The script's first line (the size), or its exit when it fails first. Leaves stdout paused. */
-function readHeader(child: ChildProcess): Promise<Header> {
+function readHeader(child: ComputerProcess): Promise<Header> {
   return new Promise((resolve) => {
     let head = Buffer.alloc(0);
     let stderr = '';
@@ -317,7 +317,12 @@ function readHeader(child: ChildProcess): Promise<Header> {
  * Cancelling it (the client went away) kills the transfer; a file that ends
  * early errors the stream rather than handing out a truncated copy.
  */
-function bodyStream(child: ChildProcess, first: Buffer, size: number, onEnd: () => void): ReadableStream<Uint8Array> {
+function bodyStream(
+  child: ComputerProcess,
+  first: Buffer,
+  size: number,
+  onEnd: () => void,
+): ReadableStream<Uint8Array> {
   const stdout = child.stdout!;
   let sent = 0;
   let done = false;
@@ -368,10 +373,10 @@ export async function openComputerDownload(
   const path = resolveMemberPath(rawPath, '');
   if (path === AGENT_HOME) throw new ComputerFileError('invalid', 'Not a regular file');
   const container = await deps.container(userId);
-  let child: ChildProcess;
+  let child: ComputerProcess;
   try {
     child = deps
-      .docker()
+      .host()
       .execStream(container, 'agent', ['sh', '-c', DOWNLOAD_SCRIPT, 'gh-download', path, String(DOWNLOAD_MAX_BYTES)], {
         cwd: AGENT_HOME,
         env: AGENT_ENV,
@@ -427,7 +432,7 @@ export async function uploadComputerFile(
   const touching = setInterval(() => void deps.touch(userId), TOUCH_EVERY_MS);
   touching.unref?.();
   try {
-    const result = await deps.docker().exec({
+    const result = await deps.host().exec({
       container,
       user: 'agent',
       cwd: AGENT_HOME,

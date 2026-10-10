@@ -1,0 +1,22 @@
+# gh-bridge as uid agent: the Bots' shell, the member's terminal, file transfers and
+# background jobs. See /opt/gh-bridge/gh-bridge.mjs.
+[Unit]
+Requires=gh-bridge-agent.socket
+Description=Greenhouse computer bridge (agent)
+After=network.target gh-bridge-agent.socket
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+WorkingDirectory=/home/agent
+EnvironmentFile=/etc/gh-computer/env
+Environment=HOME=/home/agent LANG=C.UTF-8 LC_ALL=C.UTF-8
+# The listening socket comes from gh-bridge-agent.socket (fd 3); the bridge never binds a port itself.
+Environment=GH_BRIDGE_REQUIRE_SOCKET=1 GH_BRIDGE_SECRET_FILE=/etc/gh-bridge/agent.secret
+ExecStart=/usr/bin/node /opt/gh-bridge/gh-bridge.mjs
+# Only the bridge itself: background jobs and the member's tmux outlive a bridge restart.
+KillMode=process
+Restart=always
+RestartSec=1
+NoNewPrivileges=yes

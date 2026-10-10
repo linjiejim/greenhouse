@@ -1,6 +1,7 @@
 /**
- * Commands inside a computer: `docker exec -u <user> -w <cwd> <c> timeout -k 5
- * <s> setsid bash -lc <cmd>`, with output caps and a real kill on abort.
+ * Commands inside a computer: `<exec as user, in cwd> timeout -k 5 <s> setsid
+ * bash -lc <cmd>` (docker exec, or the e2b bridge), with output caps and a real
+ * kill on abort.
  *
  * Why every piece is there (review R2):
  * - The deadline lives INSIDE the container (`timeout`), so it holds even if
@@ -21,7 +22,8 @@ import { randomBytes } from 'node:crypto';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 
-import { CLEARED_PROXY_ENV, type DockerClient, type DockerSpawnResult } from './docker.js';
+import { CLEARED_PROXY_ENV } from './docker.js';
+import type { ComputerExec, ExecOutcome } from './host.js';
 
 /** Largest single file a Bot command may write: 2 GiB (bash `ulimit -f` counts KiB). */
 const MAX_FILE_KIB = 2 * 1024 * 1024;
@@ -115,7 +117,7 @@ export function splitSidLine(stdout: string): { sid: string | null; rest: string
 }
 
 export async function killExecSession(
-  docker: DockerClient,
+  docker: Pick<ComputerExec, 'exec'>,
   container: string,
   user: 'agent' | 'browser',
   execId: string,
@@ -137,7 +139,7 @@ export async function killExecSession(
 
 /** Run a shell command in `container`; see the file header. */
 export async function runShell(
-  docker: DockerClient,
+  docker: Pick<ComputerExec, 'exec'>,
   container: string,
   command: string,
   options: ShellOptions,
@@ -145,7 +147,7 @@ export async function runShell(
   const execId = randomBytes(12).toString('hex');
   const startedAt = Date.now();
   const maxOutput = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT;
-  let result: DockerSpawnResult;
+  let result: ExecOutcome;
   try {
     result = await docker.exec({
       container,

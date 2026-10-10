@@ -121,6 +121,12 @@ const REASON_KEYS: Record<string, TranslationKey> = {
   runtime_missing: 'botsComputer.reason_runtimeMissing',
   network_invalid: 'botsComputer.reason_networkInvalid',
   config_invalid: 'botsComputer.reason_configInvalid',
+  provider_unreachable: 'botsComputer.reason_providerUnreachable',
+  provider_auth: 'botsComputer.reason_providerAuth',
+  provider_unsupported: 'botsComputer.reason_providerUnsupported',
+  template_missing: 'botsComputer.reason_templateBuilding',
+  template_building: 'botsComputer.reason_templateBuilding',
+  template_failed: 'botsComputer.reason_templateFailed',
 };
 
 export function reasonKey(reason: string | null | undefined): TranslationKey | null {

@@ -293,7 +293,9 @@ server to look after:
    (`[setup] Activate the first administrator …`).
 
 Choose the model afterwards under **Administration → Runtime Config** (or set `LLM_BASE_URL`
-/ `LLM_API_KEY` / `LLM_MODEL` as variables).
+/ `LLM_API_KEY` / `LLM_MODEL` as variables). For Bots computers, add `BOTS_COMPUTER_ENABLED=1`,
+`BOTS_COMPUTER_DRIVER=e2b` and `BOTS_COMPUTER_E2B_API_KEY` (an [E2B](https://e2b.dev) key) — see
+Bots below.
 
 ### Docker Compose by hand
 
@@ -330,15 +332,27 @@ Missions need one more piece on the host: Docker with the gVisor runtime, a dedi
 network, and the sandbox image (`bash scripts/build-agent-runtime.sh`). They stay off until
 `MISSION_ENABLED=1` and every preflight passes — see `.env.example`.
 
-Bots work in any deployment. Their computers need the API to run **on the Docker host itself**
-(bare metal / PM2, not the compose image — computers are reached through `docker exec` and
-publish no ports), plus gVisor, a hardened bridge
-(`sudo BOTS_COMPUTER_NETWORK=bots bash scripts/cloud-agent-net.sh --profile bots`) and the computer image
-(`bash scripts/build-bot-computer.sh`; add organisation-wide Debian packages with
-`BOTS_COMPUTER_EXTRA_PACKAGES="…"`). Set `BOTS_COMPUTER_ENABLED=1`; **Administration → Bot
-computers** lists every precheck with the command that fixes it, and the live knobs (idle
-minutes, how many computers run at once) are in Runtime Config. The API only accepts an image of
-its own contract version, so rebuild the image whenever you upgrade.
+Bots work in any deployment. Their computers run in one of two places:
+
+- **Hosted sandboxes (no server work)** — `BOTS_COMPUTER_ENABLED=1`, `BOTS_COMPUTER_DRIVER=e2b`
+  and a provider key in `BOTS_COMPUTER_E2B_API_KEY`: each member's computer is a sandbox
+  (one microVM) at an E2B-protocol provider — [E2B](https://e2b.dev) abroad, PPIO in mainland
+  China (`BOTS_COMPUTER_E2B_DOMAIN=cn-beijing-1.sandbox.ppio.com`; not yet verified end to end).
+  Works from Railway, the installer or compose. On first boot the API builds the computer
+  template at the provider (a few minutes); a computer then starts in seconds, sleeps
+  (pauses — memory, files and logins kept, no cost while asleep) when idle and resumes where
+  it left off. After a greenhouse upgrade changes the template, each computer moves its home
+  into a new sandbox at its next start.
+- **This server's Docker** — the API must run **on the Docker host itself** (bare metal / PM2,
+  not the compose image — computers are reached through `docker exec` and publish no ports),
+  plus gVisor, a hardened bridge
+  (`sudo BOTS_COMPUTER_NETWORK=bots bash scripts/cloud-agent-net.sh --profile bots`) and the
+  computer image (`bash scripts/build-bot-computer.sh`; add organisation-wide Debian packages
+  with `BOTS_COMPUTER_EXTRA_PACKAGES="…"`). The API only accepts an image of its own contract
+  version, so rebuild the image whenever you upgrade.
+
+Either way **Administration → Bot computers** lists every precheck with what fixes it, and the
+live knobs (idle minutes, how many computers run at once) are in Runtime Config.
 
 ## Releases & stability
 

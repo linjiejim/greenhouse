@@ -8,10 +8,10 @@
 
 import { EventEmitter } from 'node:events';
 import { PassThrough, Readable } from 'node:stream';
-import type { ChildProcess } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ComputerDockerError, type DockerClient, type DockerSpawnResult, type ExecSpec } from '../docker.js';
+import { ComputerDockerError, type DockerSpawnResult, type ExecSpec } from '../docker.js';
+import type { ComputerExec, ComputerProcess } from '../host.js';
 import {
   ComputerFileError,
   DOWNLOAD_SCRIPT,
@@ -78,17 +78,17 @@ function deps(exec: (spec: ExecSpec) => Partial<DockerSpawnResult>, stream?: () 
   });
   const touch = vi.fn(async () => {});
   const container = vi.fn(async () => 'gh-computer-x');
-  const docker = {
+  const host = {
     exec: vi.fn(async (spec: ExecSpec) => {
       calls.push(spec);
       return result(exec(spec));
     }),
     execStream: vi.fn((_c: string, _u: string, argv: string[], opts: unknown) => {
       streams.push({ argv, opts });
-      return stream!() as unknown as ChildProcess;
+      return stream!() as unknown as ComputerProcess;
     }),
-  } as unknown as DockerClient;
-  const value: FilesDeps = { docker: () => docker, container, touch, failed };
+  } as unknown as Pick<ComputerExec, 'exec' | 'execStream'>;
+  const value: FilesDeps = { host: () => host, container, touch, failed };
   return { deps: value, calls, streams, failed, touch, container };
 }
 

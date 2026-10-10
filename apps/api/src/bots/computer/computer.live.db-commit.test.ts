@@ -71,7 +71,7 @@ describe.skipIf(!LIVE)('bot computer (live Docker)', () => {
 
   it('passes the prechecks', () => {
     const view = runtime.getComputerRuntime();
-    expect(view).toEqual({ state: 'ready', reason: null, hardened: false });
+    expect(view).toEqual({ state: 'ready', reason: null, hardened: false, driver: 'docker' });
     expect(runtime.botsComputerHealthView().state).toBe('ready');
   });
 

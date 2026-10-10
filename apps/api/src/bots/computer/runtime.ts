@@ -3,6 +3,14 @@
  * and the loops that keep them tidy. Public functions are re-exported by
  * ./index.ts (keep the names and signatures).
  *
+ * Two drivers (BOTS_COMPUTER_DRIVER, host.ts): docker — the prechecks below,
+ * the egress rules and the Docker disk guard — or e2b, a hosted sandbox
+ * provider: its prechecks reach the provider with the key and make sure the
+ * current template exists, building it there when it does not (a few
+ * minutes; the runtime is `unavailable` / `template_building` meanwhile and
+ * turns ready as soon as the build is done). Orphan sandboxes are reconciled
+ * hourly as well as at boot.
+ *
  * States: `disabled` (BOTS_COMPUTER_ENABLED off) → `checking` → `ready`, or
  * `unavailable{reason}` when a precheck fails (docker_cli_missing,
  * docker_unreachable, runtime_missing, image_missing, image_outdated,
@@ -62,8 +70,18 @@ import {
   type ControllerEnvironment,
   type HostDiskReading,
 } from './controller.js';
+import { createDockerHost } from './docker-host.js';
 import { ComputerRuntimeError, createDockerClient, type DockerClient, type ImageInfo } from './docker.js';
+import { createE2bApi, createE2bHost, providerError } from './e2b-host.js';
+import {
+  buildComputerTemplate,
+  computerTemplateName,
+  templateStatus,
+  type ComputerTemplateOptions,
+  type TemplateStatus,
+} from './e2b-template.js';
 import { ComputerUnavailableError } from './errors.js';
+import type { ComputerHost } from './host.js';
 import {
   LABEL_COMPUTER,
   LABEL_IMAGE_CHROMIUM,
@@ -91,9 +109,24 @@ const LEASE_TICK_MS = 30_000;
 const DISK_TICK_MS = 60 * 60_000;
 const FIRST_DISK_TICK_MS = 2 * 60_000;
 const EGRESS_TICK_MS = 10 * 60_000;
+/** Hosted computers: orphans (a dead start's sandbox, a replaced one past its keep) are cleared hourly. */
+const RECONCILE_TICK_MS = 60 * 60_000;
+/** A failed template build is retried after this long (or at the next restart). */
+const TEMPLATE_RETRY_MS = 30 * 60_000;
 
 export interface RuntimeCheck {
-  id: 'config' | 'docker' | 'runtime' | 'image' | 'image_fresh' | 'network' | 'egress' | 'capacity' | 'host_disk';
+  id:
+    | 'config'
+    | 'docker'
+    | 'runtime'
+    | 'image'
+    | 'image_fresh'
+    | 'network'
+    | 'egress'
+    | 'capacity'
+    | 'host_disk'
+    | 'provider'
+    | 'template';
   ok: boolean;
   detail: string;
   fix?: string;
@@ -106,6 +139,8 @@ export interface PrecheckResult {
   memTotal: number | null;
   image: ImageInfo | null;
   gateways: string[];
+  /** e2b: the template new computers start from (null for docker). */
+  template?: string | null;
 }
 
 interface RuntimeState {
@@ -120,6 +155,8 @@ interface RuntimeState {
   maxRunning: number | null;
   /** The latest free-space reading of the Docker disk (null = not measured since boot). */
   hostDisk: HostDiskReading | null;
+  /** e2b: the ready template new computers start from. */
+  template: string | null;
 }
 
 const initialState = (): RuntimeState => ({
@@ -132,11 +169,14 @@ const initialState = (): RuntimeState => ({
   running: 0,
   maxRunning: null,
   hostDisk: null,
+  template: null,
 });
 
 let state: RuntimeState = initialState();
 let docker: DockerClient = createDockerClient();
+let host: ComputerHost = createDockerHost(docker);
 let egressCheck: EgressCheck = checkComputerEgress;
+let hostedDeps: HostedPrecheckDeps | null = null;
 let controller: ComputerController | null = null;
 let recheckTimer: NodeJS.Timeout | null = null;
 const loopTimers: NodeJS.Timeout[] = [];
@@ -364,6 +404,129 @@ export async function runComputerPrechecks(
   return { ok: true, reason: null, checks, memTotal, image, gateways: network.gateways };
 }
 
+// ─── Hosted prechecks (BOTS_COMPUTER_DRIVER=e2b) ──────────
+
+/** The provider calls the hosted prechecks make (tests fake them). */
+export interface HostedPrecheckDeps {
+  status(name: string): Promise<TemplateStatus>;
+  /** Build the template on the provider; resolves once it is ready. */
+  build(onLog: (line: string) => void): Promise<void>;
+}
+
+/** The template build this process runs (at most one), and how the last one ended. */
+interface TemplateBuild {
+  name: string;
+  startedAt: number;
+  running: boolean;
+  failedAt: number | null;
+  error: string | null;
+  lines: string[];
+}
+let templateBuild: TemplateBuild | null = null;
+
+export function templateOptions(config: BotsComputerConfig): ComputerTemplateOptions {
+  return { contract: IMAGE_CONTRACT, cpuCount: config.e2b!.cpuCount, memoryMB: config.e2b!.memoryMB };
+}
+
+/** Start building `name` in the background (once per process; a failure waits TEMPLATE_RETRY_MS). */
+function startTemplateBuild(name: string, deps: HostedPrecheckDeps, now: number): TemplateBuild {
+  const build: TemplateBuild = { name, startedAt: now, running: true, failedAt: null, error: null, lines: [] };
+  templateBuild = build;
+  logger.info('[bots-computer] building the computer template on the sandbox provider', { template: name });
+  void deps
+    .build((line) => {
+      build.lines.push(line.slice(0, 300));
+      if (build.lines.length > 40) build.lines.shift();
+      if (/error|fail/i.test(line)) logger.warn(`[bots-computer] template build: ${line.slice(0, 300)}`);
+    })
+    .then(
+      () => {
+        build.running = false;
+        logger.info('[bots-computer] computer template ready', {
+          template: name,
+          duration_ms: Date.now() - build.startedAt,
+        });
+        // Ready now, not at the next recheck.
+        if (state.view.state !== 'ready') void check();
+      },
+      (err: unknown) => {
+        build.running = false;
+        build.failedAt = Date.now();
+        build.error = toErrorMessage(err).slice(0, 1000);
+        logger.warn(`[bots-computer] computer template build failed: ${build.error}`, { template: name });
+      },
+    );
+  return build;
+}
+
+/**
+ * The provider answers to the key, and the current template is ready there —
+ * built here first when it is not. Pure over `deps` (unit-tested).
+ */
+export async function runHostedPrechecks(
+  config: BotsComputerConfig,
+  deps: HostedPrecheckDeps,
+  now = Date.now(),
+): Promise<PrecheckResult> {
+  const checks: RuntimeCheck[] = [];
+  const fail = (reason: string, check: RuntimeCheck): PrecheckResult => {
+    checks.push(check);
+    return { ok: false, reason, checks, memTotal: null, image: null, gateways: [], template: null };
+  };
+  const provider = config.e2b?.domain ?? 'e2b.app';
+  const name = await computerTemplateName(templateOptions(config));
+
+  let status: TemplateStatus;
+  try {
+    status = await deps.status(name);
+  } catch (err) {
+    const mapped = providerError(err, 'Reaching the sandbox provider');
+    const reason = mapped instanceof ComputerRuntimeError ? mapped.reason : 'provider_unreachable';
+    return fail(reason, {
+      id: 'provider',
+      ok: false,
+      detail: toErrorMessage(mapped),
+      fix:
+        reason === 'provider_auth'
+          ? 'Check BOTS_COMPUTER_E2B_API_KEY (and BOTS_COMPUTER_E2B_DOMAIN for PPIO) and restart the API.'
+          : `Make sure this server can reach api.${provider} over HTTPS.`,
+    });
+  }
+  checks.push({
+    id: 'provider',
+    ok: true,
+    detail: `${provider} · ${config.e2b?.cpuCount} vCPU / ${config.e2b?.memoryMB} MiB per computer`,
+  });
+
+  if (status.state === 'ready') {
+    checks.push({ id: 'template', ok: true, detail: `${name} · build ${status.buildId?.slice(0, 8) ?? '?'}` });
+    return { ok: true, reason: null, checks, memTotal: null, image: null, gateways: [], template: name };
+  }
+  const build = templateBuild?.name === name ? templateBuild : null;
+  if (build?.running || status.state === 'building') {
+    const minutes = build ? Math.max(0, Math.round((now - build.startedAt) / 60_000)) : null;
+    return fail('template_building', {
+      id: 'template',
+      ok: false,
+      detail: `Building ${name} on the provider${minutes !== null ? ` (${minutes} min so far)` : ''}; computers start once it is ready (usually 2–5 minutes).`,
+    });
+  }
+  if (build?.failedAt && now - build.failedAt < TEMPLATE_RETRY_MS) {
+    return fail('template_failed', {
+      id: 'template',
+      ok: false,
+      detail: `Building ${name} failed: ${build.error ?? 'unknown error'}\n${build.lines.slice(-8).join('\n')}`,
+      fix: 'The build is retried 30 minutes after it failed, or when the API restarts. The log lines above come from the provider.',
+    });
+  }
+  startTemplateBuild(name, deps, now);
+  return fail('template_building', {
+    id: 'template',
+    ok: false,
+    detail: `Building ${name} on the provider now; computers start once it is ready (usually 2–5 minutes).`,
+  });
+}
+
 // ─── State ────────────────────────────────────────────────
 
 function setView(view: ComputerRuntimeView): void {
@@ -380,7 +543,7 @@ function setView(view: ComputerRuntimeView): void {
 }
 
 export function getComputerRuntime(): ComputerRuntimeView {
-  return { ...state.view };
+  return { ...state.view, driver: state.config?.driver ?? 'docker' };
 }
 
 async function environment(): Promise<ControllerEnvironment> {
@@ -389,6 +552,18 @@ async function environment(): Promise<ControllerEnvironment> {
   const knobs = await resolveComputerKnobs();
   const maxRunning = clampMaxRunning(knobs.maxRunningSetting, state.memTotal, config.memoryBytes);
   state.maxRunning = maxRunning;
+  if (config.driver === 'e2b') {
+    return {
+      config,
+      maxRunning,
+      idleMinutes: knobs.idleMinutes,
+      urlBlocklist: greenhouseUrlBlocklist(process.env),
+      imageId: state.template,
+      // The provider keeps sandboxes off private networks; its in-VM metadata service answers by design.
+      egressProbe: [],
+      hostDisk: null,
+    };
+  }
   return {
     config,
     maxRunning,
@@ -439,7 +614,7 @@ function onRuntimeError(err: ComputerRuntimeError): void {
 /** Rules can vanish after the precheck (a firewall reload, a reboot without persistence). */
 async function reverifyEgress(): Promise<void> {
   const config = state.config;
-  if (!config?.hardened) return;
+  if (!config?.hardened || config.driver !== 'docker') return;
   const result = await egressCheck(config);
   if (result.ok) return;
   state.checks = state.checks.map((c) =>
@@ -473,7 +648,10 @@ async function check(): Promise<void> {
     if (!config) return;
     setView({ state: 'checking', reason: null, hardened: config.hardened });
     try {
-      const result = await runComputerPrechecks(docker, config, { egressCheck });
+      const result =
+        config.driver === 'e2b' && hostedDeps
+          ? await runHostedPrechecks(config, hostedDeps)
+          : await runComputerPrechecks(docker, config, { egressCheck });
       state.checks = result.checks;
       if (!result.ok) {
         setView({ state: 'unavailable', reason: result.reason, hardened: config.hardened });
@@ -483,6 +661,7 @@ async function check(): Promise<void> {
       state.memTotal = result.memTotal;
       state.image = result.image;
       state.gateways = result.gateways;
+      state.template = result.template ?? null;
       // Before anyone can use a computer again: clear what an outage left
       // behind (a deleted member's container and volume, a suspended
       // member's computer, starts and stops whose process died).
@@ -497,14 +676,26 @@ async function check(): Promise<void> {
       state.checks.push({
         id: 'capacity',
         ok: true,
-        detail: `${env.maxRunning} at once at ${config.memory} each${
-          result.memTotal ? ` (host memory ${(result.memTotal / 1024 ** 3).toFixed(1)} GiB)` : ''
-        }, idle after ${env.idleMinutes} min`,
+        detail:
+          config.driver === 'e2b'
+            ? `${env.maxRunning} at once, idle after ${env.idleMinutes} min (asleep computers cost nothing at the provider)`
+            : `${env.maxRunning} at once at ${config.memory} each${
+                result.memTotal ? ` (host memory ${(result.memTotal / 1024 ** 3).toFixed(1)} GiB)` : ''
+              }, idle after ${env.idleMinutes} min`,
       });
       setView({ state: 'ready', reason: null, hardened: config.hardened });
+      // Ready before the scheduled re-check (a template build that just finished): it has nothing left to do.
+      if (recheckTimer) {
+        clearTimeout(recheckTimer);
+        recheckTimer = null;
+      }
     } catch (err) {
       logger.warn(`[bots-computer] precheck crashed: ${toErrorMessage(err)}`);
-      setView({ state: 'unavailable', reason: 'docker_unreachable', hardened: config.hardened });
+      setView({
+        state: 'unavailable',
+        reason: config.driver === 'e2b' ? 'provider_unreachable' : 'docker_unreachable',
+        hardened: config.hardened,
+      });
       scheduleRecheck();
     }
   })();
@@ -554,15 +745,37 @@ export async function initBotComputers(): Promise<void> {
     logger.warn(`[bots-computer] configuration rejected: ${toErrorMessage(err)}`);
     return;
   }
+  if (state.config.driver === 'e2b') {
+    const e2b = state.config.e2b!;
+    const conn = { apiKey: e2b.apiKey, ...(e2b.domain ? { domain: e2b.domain } : {}) };
+    const signingKey = process.env.TOKEN_SIGNING_KEY?.trim() ?? '';
+    try {
+      host = createE2bHost({ api: createE2bApi(conn), namespace: state.config.namespace, secretKey: signingKey });
+    } catch (err) {
+      // Never reached past the auth guard at boot; kept closed should that order ever change.
+      state.checks = [
+        { id: 'config', ok: false, detail: toErrorMessage(err), fix: 'Set TOKEN_SIGNING_KEY and restart the API.' },
+      ];
+      setView({ state: 'unavailable', reason: 'config_invalid', hardened: true });
+      return;
+    }
+    const options = templateOptions(state.config);
+    hostedDeps = {
+      status: (name) => templateStatus(conn, name),
+      build: async (onLog) => {
+        await buildComputerTemplate(conn, options, onLog);
+      },
+    };
+  }
   controller = createComputerController({
     store: getDb().botComputers,
-    docker,
+    host,
     environment,
     userIsActive,
     awaitingHuman,
     memberLocale: async (userId) => (await getDb().users.getById(userId))?.locale ?? null,
     // Loaded lazily: jobs.ts sits above the runtime (it reaches containers through it).
-    runningJobs: async (container) => (await import('./jobs.js')).runningJobCount(container, { docker: () => docker }),
+    runningJobs: async (container) => (await import('./jobs.js')).runningJobCount(container, { host: () => host }),
     onState: notifyOwner,
     onStopped: (userId, reason) => computerLifecycleHooks.stopped(userId, reason),
     onRuntimeError,
@@ -578,13 +791,18 @@ export async function initBotComputers(): Promise<void> {
   });
   every(LEASE_TICK_MS, 'lease', () => computerLifecycleHooks.leaseTick());
   every(DISK_TICK_MS, 'disk', () => controller!.diskTick(), FIRST_DISK_TICK_MS);
-  if (state.config.hardened) every(EGRESS_TICK_MS, 'egress', () => reverifyEgress());
+  if (state.config.driver === 'docker' && state.config.hardened) {
+    every(EGRESS_TICK_MS, 'egress', () => reverifyEgress());
+  }
+  if (state.config.driver === 'e2b') every(RECONCILE_TICK_MS, 'reconcile', () => controller!.reconcile());
   logger.info('[bots-computer] runtime initialised', {
     state: state.view.state,
     reason: state.view.reason,
     namespace: state.config.namespace,
-    runtime: state.config.runtime,
-    network: state.config.network,
+    driver: state.config.driver,
+    ...(state.config.driver === 'docker'
+      ? { runtime: state.config.runtime, network: state.config.network }
+      : { provider: state.config.e2b?.domain ?? 'e2b.app' }),
   });
 }
 
@@ -595,10 +813,10 @@ export async function shutdownBotComputers(): Promise<void> {
   await computerLifecycleHooks.shutdown();
 }
 
-/** The controller and docker client, or a ComputerUnavailableError the caller can show. */
+/** The controller and the host computers run on, or a ComputerUnavailableError the caller can show. */
 export function requireComputerRuntime(): {
   controller: ComputerController;
-  docker: DockerClient;
+  host: ComputerHost;
   config: BotsComputerConfig;
 } {
   if (!state.config || state.view.state === 'disabled') {
@@ -610,7 +828,7 @@ export function requireComputerRuntime(): {
       `Computers are unavailable on this server right now (${state.view.reason ?? state.view.state})`,
     );
   }
-  return { controller, docker, config: state.config };
+  return { controller, host, config: state.config };
 }
 
 /**
@@ -657,8 +875,8 @@ export async function stopUserComputer(userId: string, reason: string): Promise<
   await controller.stop(userId, stopReason);
 }
 
-/** Host failures under which a docker call can only fail or hang: cleanup waits for reconcile. */
-const DOCKER_DOWN = new Set(['docker_unreachable', 'docker_cli_missing']);
+/** Host failures under which a host call can only fail or hang: cleanup waits for reconcile. */
+const DOCKER_DOWN = new Set(['docker_unreachable', 'docker_cli_missing', 'provider_unreachable', 'provider_auth']);
 
 /**
  * Suspend / delete / feature off (`suspend`, `admin`): stop the computer,
@@ -772,7 +990,7 @@ export async function adminComputersView(): Promise<{
   const running = rows.filter((row) => row.state === 'running').map((row) => row.container_name);
   let memory = new Map<string, number>();
   if (state.view.state === 'ready' && running.length > 0) {
-    memory = await docker.memoryUsage(running).catch(() => new Map<string, number>());
+    memory = await host.memoryUsage(running).catch(() => new Map<string, number>());
   }
   const computers: ComputerAdminRow[] = rows
     .map((row, index) => ({
@@ -794,7 +1012,7 @@ export async function adminComputersView(): Promise<{
     runtime: getComputerRuntime(),
     computers,
     settings: { idle_minutes: knobs.idleMinutes, max_running: effective },
-    checks: [...state.checks.map((c) => ({ ...c })), ...(state.config ? [hostDiskCheck()] : [])],
+    checks: [...state.checks.map((c) => ({ ...c })), ...(state.config?.driver === 'docker' ? [hostDiskCheck()] : [])],
   };
 }
 
@@ -813,7 +1031,12 @@ export function _setComputerRuntimeForTests(overrides: {
     state = initialState();
     controller = null;
     egressCheck = checkComputerEgress;
+    hostedDeps = null;
+    templateBuild = null;
   }
-  if (overrides.docker) docker = overrides.docker;
+  if (overrides.docker) {
+    docker = overrides.docker;
+    host = createDockerHost(docker);
+  }
   if (overrides.egressCheck) egressCheck = overrides.egressCheck;
 }

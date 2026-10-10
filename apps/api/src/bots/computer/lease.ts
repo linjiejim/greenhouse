@@ -162,8 +162,8 @@ export async function takeoverComputer(userId: string): Promise<void> {
   // (another uid) stays.
   let killed: number | null = null;
   try {
-    const { docker } = requireComputerRuntime();
-    const result = await docker.exec({
+    const { host } = requireComputerRuntime();
+    const result = await host.exec({
       container: row.container_name,
       user: 'agent',
       argv: AGENT_KILL_ARGV,

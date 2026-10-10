@@ -32,7 +32,6 @@
 
 import { Hono } from 'hono';
 import { upgradeWebSocket } from '@hono/node-server';
-import type { ChildProcess } from 'node:child_process';
 import type { WSContext } from 'hono/ws';
 import type { WebSocket as WsSocket } from 'ws';
 import { getDb } from '@greenhouse/db';
@@ -40,6 +39,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
 
+import type { ComputerProcess } from './host.js';
 import { ComputerUnavailableError } from './errors.js';
 import { computerLifecycleHooks } from './hooks.js';
 import { requireComputerRuntime } from './runtime.js';
@@ -160,7 +160,7 @@ export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'
   const userId = claims.uid;
 
   let raw: WsSocket | null = null;
-  let child: ChildProcess | null = null;
+  let child: ComputerProcess | null = null;
   let closed = false;
   /** Any frame or pong since the last ping proves the browser is still there. */
   let alive = true;
@@ -208,7 +208,7 @@ export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'
     if (closed) clearInterval(timer);
     else timers.push(timer);
   }
-  function adoptChild(tunnel: ChildProcess): boolean {
+  function adoptChild(tunnel: ComputerProcess): boolean {
     if (closed) {
       tunnel.kill('SIGKILL');
       return false;
@@ -226,7 +226,7 @@ export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'
     }
   }
 
-  function pumpTunnel(tunnel: ChildProcess, socket: WsSocket): void {
+  function pumpTunnel(tunnel: ComputerProcess, socket: WsSocket): void {
     let stderr = '';
     tunnel.stdout!.on('data', (chunk: Buffer) => {
       if (socket.readyState !== socket.OPEN) return;
@@ -270,7 +270,7 @@ export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'
       register(terminal);
       const db = getDb();
       try {
-        const { controller, docker, config } = requireComputerRuntime();
+        const { controller, host, config } = requireComputerRuntime();
         // Opening a terminal may start the computer, even over the soft disk
         // limit — a shell is how a member cleans up.
         const row = await controller.ensureRunning(userId, { allowOverQuota: true });
@@ -282,7 +282,7 @@ export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'
         await db.botComputers.heartbeatViewer(userId);
         // Nothing below awaits; a socket gone during the awaits above stops here.
         if (closed) return;
-        const tunnel = docker.execStream(row.container_name, 'agent', TERMINAL_ARGV, {
+        const tunnel = host.execStream(row.container_name, 'agent', TERMINAL_ARGV, {
           cwd: TERMINAL_CWD,
           // The proxy a Bot's shell gets: the member's terminal reaches the same internet.
           env: agentEnv(config.proxy),

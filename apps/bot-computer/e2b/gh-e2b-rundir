@@ -1,0 +1,35 @@
+#!/bin/bash
+# gh-e2b-rundir — gh-desktop's ExecStartPre (root). In docker the desktop starts on a fresh
+# tmpfs; in a hosted sandbox /tmp outlives it, so the paths the desktop is about to use
+# could have been planted. The runtime directories must be plain directories with the
+# right owner and mode: created when missing (by root — nothing can be swapped under a
+# root-owned entry in sticky /tmp), never repaired when wrong (a squatted path fails the
+# start). A lock or socket of display :0 that is not the browser's own is removed (root
+# can; the browser could not, /tmp being sticky).
+set -euo pipefail
+
+ensure_dir() {
+  local path="$1" owner="$2" mode="$3" actual
+  if [ ! -e "$path" ] && [ ! -L "$path" ]; then
+    mkdir -m "$mode" "$path"
+    chown "$owner:$owner" "$path"
+    chmod "$mode" "$path"
+  fi
+  if [ -L "$path" ] || [ ! -d "$path" ]; then
+    echo "gh-e2b-rundir: $path is not a plain directory; refusing to start the desktop" >&2
+    exit 1
+  fi
+  actual=$(stat -c '%U %a' "$path")
+  if [ "$actual" != "$owner ${mode#0}" ]; then
+    echo "gh-e2b-rundir: $path is '$actual', expected '$owner ${mode#0}'; refusing to start the desktop" >&2
+    exit 1
+  fi
+}
+
+ensure_dir /tmp/.X11-unix root 1777
+ensure_dir /tmp/browser browser 0700
+for stale in /tmp/.X11-unix/X0 /tmp/.X0-lock; do
+  if [ -e "$stale" ] || [ -L "$stale" ]; then
+    [ "$(stat -c %U "$stale")" = browser ] || rm -f -- "$stale"
+  fi
+done

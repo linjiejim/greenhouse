@@ -46,11 +46,15 @@ import {
   initBotComputers,
   requireComputerRuntime,
   runComputerPrechecks,
+  runHostedPrechecks,
   purgeUserComputer,
   shutdownBotComputers,
+  type HostedPrecheckDeps,
 } from './runtime.js';
 
 const config: BotsComputerConfig = {
+  driver: 'docker',
+  e2b: null,
   image: 'greenhouse/bot-computer:latest',
   runtime: 'runsc',
   hardened: true,
@@ -258,6 +262,105 @@ describe('computer prechecks', () => {
   });
 });
 
+describe('hosted prechecks (BOTS_COMPUTER_DRIVER=e2b)', () => {
+  const hosted: BotsComputerConfig = {
+    ...config,
+    driver: 'e2b',
+    e2b: { apiKey: 'e2b_test', domain: null, cpuCount: 2, memoryMB: 2048 },
+    runtime: 'e2b',
+    network: '',
+  };
+  function deps(overrides: Partial<HostedPrecheckDeps> = {}): HostedPrecheckDeps & { builds: number } {
+    const value = {
+      builds: 0,
+      status: async () => ({ state: 'ready' as const, buildId: 'b1234567890' }),
+      build: async () => {
+        value.builds++;
+      },
+      ...overrides,
+    };
+    return value;
+  }
+
+  beforeEach(() => _setComputerRuntimeForTests({ reset: true }));
+
+  it('is ready once the provider has a built template for these sources; it names the template', async () => {
+    const result = await runHostedPrechecks(hosted, deps());
+    expect(result.ok).toBe(true);
+    expect(result.template).toMatch(/^gh-computer-c2-[0-9a-f]{12}$/);
+    expect(result.checks.map((c) => [c.id, c.ok])).toEqual([
+      ['provider', true],
+      ['template', true],
+    ]);
+    // A different size is a different template.
+    const bigger = await runHostedPrechecks({ ...hosted, e2b: { ...hosted.e2b!, memoryMB: 4096 } }, deps());
+    expect(bigger.template).not.toBe(result.template);
+  });
+
+  it('builds a missing template once, and waits while the provider builds it', async () => {
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => (finish = resolve));
+    const d = deps({
+      status: async () => ({ state: 'missing', buildId: null }),
+      build: async () => {
+        d.builds++;
+        await pending;
+      },
+    });
+    const first = await runHostedPrechecks(hosted, d);
+    expect(first).toMatchObject({ ok: false, reason: 'template_building' });
+    const again = await runHostedPrechecks(hosted, d);
+    expect(again.reason).toBe('template_building');
+    expect(again.checks.at(-1)?.detail).toMatch(/min so far/);
+    expect(d.builds).toBe(1);
+    finish();
+    // Another process building it: just wait.
+    const elsewhere = await runHostedPrechecks(
+      hosted,
+      deps({ status: async () => ({ state: 'building', buildId: null }) }),
+    );
+    expect(elsewhere.reason).toBe('template_building');
+  });
+
+  it('reports a failed build with the provider’s log, and retries it after a while', async () => {
+    const d = deps({
+      status: async () => ({ state: 'error', buildId: null }),
+      build: async (onLog) => {
+        d.builds++;
+        onLog('step 5/16 RUN apt-get install … E: Unable to locate package');
+        throw new Error('build failed');
+      },
+    });
+    const now = Date.now();
+    await runHostedPrechecks(hosted, d, now);
+    await new Promise((resolve) => setImmediate(resolve));
+    const failed = await runHostedPrechecks(hosted, d, now + 60_000);
+    expect(failed).toMatchObject({ ok: false, reason: 'template_failed' });
+    expect(failed.checks.at(-1)?.detail).toMatch(/Unable to locate package/);
+    expect(d.builds).toBe(1);
+    await runHostedPrechecks(hosted, d, now + 31 * 60_000);
+    expect(d.builds).toBe(2);
+  });
+
+  it('a refused key or an unreachable provider closes the runtime with a fix', async () => {
+    const auth = await runHostedPrechecks(
+      hosted,
+      deps({ status: async () => Promise.reject(Object.assign(new Error('Unauthorized'), { statusCode: 401 })) }),
+    );
+    expect(auth).toMatchObject({ ok: false, reason: 'provider_auth' });
+    expect(auth.checks[0]).toMatchObject({
+      id: 'provider',
+      ok: false,
+      fix: expect.stringContaining('BOTS_COMPUTER_E2B_API_KEY'),
+    });
+    const down = await runHostedPrechecks(
+      hosted,
+      deps({ status: async () => Promise.reject(new TypeError('fetch failed')) }),
+    );
+    expect(down).toMatchObject({ ok: false, reason: 'provider_unreachable' });
+  });
+});
+
 describe('computer runtime state', () => {
   const saved = { ...process.env };
 
@@ -390,7 +493,12 @@ describe('computer runtime state', () => {
     process.env.BOTS_COMPUTER_RUNTIME = 'runc';
     delete process.env.BOTS_COMPUTER_ALLOW_UNHARDENED;
     await initBotComputers();
-    expect(getComputerRuntime()).toEqual({ state: 'unavailable', reason: 'runtime_not_hardened', hardened: true });
+    expect(getComputerRuntime()).toEqual({
+      state: 'unavailable',
+      reason: 'runtime_not_hardened',
+      hardened: true,
+      driver: 'docker',
+    });
     expect(botsComputerHealthView()).toEqual({ state: 'unavailable', reason: 'runtime_not_hardened' });
   });
 
@@ -409,7 +517,7 @@ describe('computer runtime state', () => {
 
     image = goodImage; // the operator ran scripts/build-bot-computer.sh
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(getComputerRuntime()).toEqual({ state: 'ready', reason: null, hardened: false });
+    expect(getComputerRuntime()).toEqual({ state: 'ready', reason: null, hardened: false, driver: 'docker' });
     expect(requireComputerRuntime().config.namespace).toBe('heal');
     // /health: capacity, no paths or user ids.
     expect(botsComputerHealthView()).toEqual({ state: 'ready', running: 0, max_running: 2 });
@@ -429,15 +537,25 @@ describe('computer runtime state', () => {
       egressCheck: async () => (rules ? { ok: true, detail: 'verified' } : { ok: false, detail: 'no anchor' }),
     });
     await initBotComputers();
-    expect(getComputerRuntime()).toEqual({ state: 'unavailable', reason: 'network_invalid', hardened: true });
+    expect(getComputerRuntime()).toEqual({
+      state: 'unavailable',
+      reason: 'network_invalid',
+      hardened: true,
+      driver: 'docker',
+    });
 
     rules = true; // the admin ran the --profile bots command
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(getComputerRuntime()).toEqual({ state: 'ready', reason: null, hardened: true });
+    expect(getComputerRuntime()).toEqual({ state: 'ready', reason: null, hardened: true, driver: 'docker' });
 
     rules = false; // a firewall reload flushed them: the 10-minute re-verification closes the host
     await vi.advanceTimersByTimeAsync(10 * 60_000);
-    expect(getComputerRuntime()).toEqual({ state: 'unavailable', reason: 'network_invalid', hardened: true });
+    expect(getComputerRuntime()).toEqual({
+      state: 'unavailable',
+      reason: 'network_invalid',
+      hardened: true,
+      driver: 'docker',
+    });
     expect((await adminComputersView()).checks.find((c) => c.id === 'egress')).toMatchObject({ ok: false });
   });
 });

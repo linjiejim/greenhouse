@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { DockerClient, ExecSpec } from '../docker.js';
+import type { ExecSpec } from '../docker.js';
+import type { ComputerExec } from '../host.js';
 import { ComputerDockerError } from '../docker.js';
 import { ComputerUnavailableError } from '../errors.js';
 import {
@@ -26,7 +27,7 @@ function fakeDeps(reply: (spec: ExecSpec) => { code?: number; stdout?: string; s
     };
   });
   const deps: JobsDeps = {
-    docker: () => ({ exec }) as unknown as DockerClient,
+    host: () => ({ exec }) as unknown as Pick<ComputerExec, 'exec'>,
     runningContainer: async () => (running ? 'gh-computer-x' : null),
   };
   return { deps, calls };
@@ -126,13 +127,12 @@ describe('gh-jobs client', () => {
     expect(await runningJobCount('c', fakeDeps(() => ({ stdout: '2\n' })).deps)).toBe(2);
     expect(await runningJobCount('c', fakeDeps(() => ({ stdout: 'garbage' })).deps)).toBe(0);
     expect(await runningJobCount('c', fakeDeps(() => ({ code: 127, stderr: 'gh-jobs: not found' })).deps)).toBe(0);
-    const throwing: Pick<JobsDeps, 'docker'> = {
-      docker: () =>
-        ({
-          exec: async () => {
-            throw new Error('daemon gone');
-          },
-        }) as unknown as DockerClient,
+    const throwing: Pick<JobsDeps, 'host'> = {
+      host: () => ({
+        exec: async () => {
+          throw new Error('daemon gone');
+        },
+      }),
     };
     expect(await runningJobCount('c', throwing)).toBe(0);
   });

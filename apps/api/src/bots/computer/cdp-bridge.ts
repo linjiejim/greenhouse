@@ -6,7 +6,8 @@
  * `docker exec -u browser` reaches. This bridge sits between them, in process:
  *
  *   Playwright ─ws://127.0.0.1:<port>/<128-bit secret>/devtools/browser─▶ bridge
- *     ─stdin/stdout─▶ docker exec -i -u browser <c> socat STDIO UNIX-CONNECT:/tmp/browser/cdp.sock
+ *     ─stdin/stdout─▶ the host's DevTools tunnel (docker exec -i -u browser <c> socat … /tmp/browser/cdp.sock,
+ *                   or the e2b bridge's /cdp)
  *
  * The listener binds loopback only, on a random port, and the API host may run
  * other stacks (letpot-dev runs several PM2 apps): so the upgrade must present
@@ -17,11 +18,12 @@
  */
 
 import { createServer, type IncomingMessage, type Server } from 'node:http';
-import type { ChildProcess } from 'node:child_process';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Duplex } from 'node:stream';
 import * as wsModule from 'ws';
 import { logger } from '@greenhouse/utils/logger';
+
+import type { ComputerProcess } from './host.js';
 
 // ws is CJS; the namespace import works under both tsx and the compiled build (see index.ts).
 const WebSocketServerCtor = (wsModule.WebSocketServer ??
@@ -39,7 +41,7 @@ export interface CdpBridge {
 
 export interface CdpBridgeOptions {
   /** Start the tunnel into the computer (only called for an authenticated upgrade). */
-  spawnTunnel(): ChildProcess;
+  spawnTunnel(): ComputerProcess;
   /** The connection ended (either side); the bridge is already closing. */
   onClose?(): void;
   /** Override the random secret (tests). */
@@ -55,7 +57,7 @@ function samePath(actual: string | undefined, expected: string): boolean {
 export async function openCdpBridge(options: CdpBridgeOptions): Promise<CdpBridge> {
   const secret = options.secret ?? randomBytes(16).toString('hex');
   const path = `/${secret}/devtools/browser`;
-  let active: { ws: WsSocket; child: ChildProcess } | null = null;
+  let active: { ws: WsSocket; child: ComputerProcess } | null = null;
   let used = false;
   let closed = false;
 
@@ -88,7 +90,7 @@ export async function openCdpBridge(options: CdpBridgeOptions): Promise<CdpBridg
   });
 
   function attach(ws: WsSocket): void {
-    let child: ChildProcess;
+    let child: ComputerProcess;
     try {
       child = options.spawnTunnel();
     } catch (err) {
