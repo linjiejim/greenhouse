@@ -110,6 +110,9 @@ export function isPublicPath(path: string): boolean {
     return true;
   // WebSocket endpoint handles its own auth via query param token
   if (path.startsWith('/api/ws')) return true;
+  // Bots computer port previews: the page and its own requests carry no Bearer header; the route
+  // checks the ticket in the path itself (bots/computer/preview.ts). Its own prefix, never /api/bots/.
+  if (path.startsWith('/api/bots-preview/')) return true;
   return false;
 }
 

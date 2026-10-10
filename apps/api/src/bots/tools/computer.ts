@@ -56,6 +56,7 @@ import { ComputerDockerError } from '../computer/docker.js';
 import { JOB_ID, JOB_LOG_DEFAULT_LINES, JOB_LOG_MAX_LINES, JOB_NAME_MAX } from '../computer/jobs.js';
 import { computerStatusFor } from '../computer/runtime.js';
 import { capSnapshot, capTail } from '../computer/snapshot.js';
+import { createPreviewTicket, previewPortAllowed } from '../computer/preview.js';
 import { AGENT_HOME, AGENT_WORKDIR, contentTypeFor, isUnderAgentHome, resolveAgentPath } from './agent-paths.js';
 import { BOT_TOOL_METAS } from './meta.js';
 
@@ -87,6 +88,7 @@ const COMPUTER_ACTIONS = [
   'write_file',
   'share_file',
   'import_attachment',
+  'preview',
   'status',
 ] as const;
 const BACKGROUND_COMPUTER_ACTIONS = ['status', 'read_file', 'processes', 'process_log'] as const;
@@ -135,6 +137,13 @@ const fields = {
       'read_file/write_file/share_file: relative to ~/work, or absolute. import_attachment: where to put it inside ~/work (default ~/work/inbox/<name>).',
     ),
   content: z.string().optional().describe('write_file: the whole file content (≤1 MiB).'),
+  port: z
+    .number()
+    .int()
+    .min(1024)
+    .max(65535)
+    .optional()
+    .describe('preview: the port the web service listens on inside the computer.'),
   file_id: z
     .string()
     .max(64)
@@ -152,6 +161,8 @@ type ComputerInput = {
   path?: string;
   content?: string;
   file_id?: string;
+  /** preview: the service's port in the computer. */
+  port?: number;
 };
 
 /** Text if the bytes are UTF-8 without NULs; null for binary. */
@@ -236,6 +247,8 @@ class ComputerActions {
           return await this.shareFile(input.path, action.signal);
         case 'import_attachment':
           return await this.importAttachment(input.file_id, input.path, action.signal);
+        case 'preview':
+          return await this.preview(input.port);
       }
     } catch (err) {
       const fail = toFailure(err, this.redact);
@@ -342,6 +355,21 @@ class ComputerActions {
       note: watched
         ? `${running} When it ends you are woken up in this conversation to report the outcome — say so, and do not poll it.`
         : `${running} Nothing will tell you when it ends: never promise to report back on your own — offer to check when the member asks.`,
+    };
+  }
+
+  /** A link that opens a web service running in the computer in the member's own browser (preview.ts). */
+  private async preview(port: number | undefined): Promise<Record<string, unknown> | ToolFailure> {
+    if (port === undefined || !previewPortAllowed(port)) {
+      return failure('invalid', 'preview needs the port the service listens on (1024–65535; not 7681, 7682 or 49983).');
+    }
+    const user = await this.turn.db.users.getById(this.turn.userId);
+    if (!user) return failure('failed', 'The member is gone.');
+    const ticket = createPreviewTicket({ id: user.id, authVersion: user.auth_version }, port);
+    return {
+      url: ticket.path,
+      expires_at: ticket.expires_at,
+      note: 'Give the member this link as it is (a path on Greenhouse; it works for 2 hours, then ask for a new one). The page runs sandboxed — no cookies, no local storage, no WebSockets — and only relative links stay inside the preview: serve the app with relative paths (no leading "/"). Nothing listening on the port shows the member a "nothing answered" page.',
     };
   }
 

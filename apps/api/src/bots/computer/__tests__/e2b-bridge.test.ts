@@ -24,6 +24,7 @@ const WS_PACKAGE = fileURLToPath(new URL('../../../../node_modules/ws', import.m
 
 let dir = '';
 let bridge: ChildProcess | null = null;
+let echoPort = 0;
 let target: BridgeTarget;
 const echoServers: NetServer[] = [];
 const secret = randomBytes(24).toString('hex');
@@ -59,6 +60,11 @@ beforeAll(async () => {
     await new Promise<void>((resolve) => server.listen(join(sockets, name), resolve));
     echoServers.push(server);
   }
+  // A service on the "computer" for port previews (/port?n=): an echo over TCP.
+  const echo = createNetServer((socket) => socket.pipe(socket));
+  await new Promise<void>((resolve) => echo.listen(0, '127.0.0.1', resolve));
+  echoPort = (echo.address() as { port: number }).port;
+  echoServers.push(echo);
   const port = await freePort();
   bridge = spawn(process.execPath, [join(app, 'gh-bridge.mjs')], {
     env: {
@@ -67,6 +73,7 @@ beforeAll(async () => {
       GH_BRIDGE_PORT: String(port),
       GH_BRIDGE_SECRET_FILE: join(dir, 'secret'),
       GH_BRIDGE_TUNNELS: '1',
+      GH_BRIDGE_PORTS: '1',
       GH_BRIDGE_SOCKET_DIR: sockets,
       GH_BRIDGE_READY_FILE: join(dir, 'ready'),
       GH_TEST_INHERITED: 'from-the-unit',
@@ -170,6 +177,21 @@ describe('gh-bridge', () => {
     const [code] = await new Promise<[number | null]>((resolve) => child.once('close', (c) => resolve([c])));
     expect(code).toBe(0);
     expect(Buffer.concat(chunks).toString()).toBe('got one\ngot two\nbye\n');
+  });
+
+  it('connects a port preview to a local port, never to the bridges or the provider agent', async () => {
+    const tunnel = bridgeTunnel(target, `/port?n=${echoPort}`);
+    const received: Buffer[] = [];
+    tunnel.stdout.on('data', (chunk: Buffer) => received.push(chunk));
+    tunnel.stdin.write(Buffer.from('GET / HTTP/1.1\r\n'));
+    await waitFor(() => Buffer.concat(received).toString() === 'GET / HTTP/1.1\r\n');
+    tunnel.kill();
+    await new Promise((resolve) => tunnel.once('exit', resolve));
+    for (const port of [7681, 7682, 49983, 22, 0]) {
+      const refused = bridgeTunnel(target, `/port?n=${port}`);
+      const error = await new Promise<Error>((resolve) => refused.on('error', resolve));
+      expect(error).toMatchObject({ status: 403 });
+    }
   });
 
   it('tunnels raw bytes to the browser sockets', async () => {

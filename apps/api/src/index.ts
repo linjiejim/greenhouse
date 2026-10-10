@@ -63,6 +63,9 @@ import {
   shutdownBotComputers,
 } from './bots/computer/index.js';
 import { createComputerTerminalRoutes } from './bots/computer/terminal.js';
+import { createComputerPreviewRoutes, PREVIEW_PREFIX, type PreviewDeps } from './bots/computer/preview.js';
+import { touchComputer } from './bots/computer/access.js';
+import { requireComputerRuntime } from './bots/computer/runtime.js';
 import { createBotsRoutes, initBotsEngine, shutdownBotsEngine } from './bots/engine/index.js';
 import { startBotsOrphanSweep, stopBotsOrphanSweep } from './bots/purge.js';
 import clientActionRoutes from './routes/client-actions.js';
@@ -153,6 +156,12 @@ import wsRoutes from './ws/index.js';
 import { connectionManager } from './ws/connection-manager.js';
 import { chatRunRegistry } from './chat/runs.js';
 import { startUsageBudgetSweeper } from './llm/usage-budget-sweeper.js';
+
+/** What a port preview needs from the computer runtime (resolved per request: the runtime may not be ready yet). */
+const computerPreviewDeps: PreviewDeps = {
+  host: () => requireComputerRuntime().host,
+  touch: (userId) => touchComputer(userId),
+};
 
 const app = new Hono<AppEnv>();
 const trustedExecutionSwitches = resolveTrustedExecutionSwitches();
@@ -370,6 +379,9 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // The member's terminal on that computer (uid agent, gh-term) — same
       // scheme: its own one-time ticket purpose, checked by the route itself.
       .route('/api/ws/computer-terminal', createComputerTerminalRoutes())
+      // Port previews of a service running in the member's computer: a ticket in
+      // the path (isPublicPath exempts the prefix), sandboxed responses.
+      .route(PREVIEW_PREFIX, createComputerPreviewRoutes(computerPreviewDeps))
       // WebSocket endpoint — internal users only (auth via query token)
       .route('/api/ws', wsRoutes)
       // Browser client-action results — internal user-bound and part of the typed contract

@@ -356,6 +356,10 @@ Bots work in any deployment. Their computers run in one of two places:
   with `BOTS_COMPUTER_EXTRA_PACKAGES="…"`). The API only accepts an image of its own contract
   version, so rebuild the image whenever you upgrade.
 
+On either kind, a Bot can hand you a **preview link** to a web app it runs on its computer (2 hours;
+the page is sandboxed — no cookies or local storage — and only relative links stay inside it), and a
+Bot that starts a long background process is woken to report when it ends.
+
 Either way **Administration → Bot computers** lists every precheck with what fixes it, and the
 live knobs (idle minutes, how many computers run at once) are in Runtime Config.
 

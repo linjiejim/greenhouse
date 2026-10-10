@@ -282,7 +282,10 @@ export function bridgeStream(
   return new BridgeProcess(target, { kind: 'exec', argv, cwd: opts.cwd, env: opts.env });
 }
 
-export function bridgeTunnel(target: BridgeTarget | Promise<BridgeTarget>, path: '/vnc' | '/cdp'): BridgeProcess {
+export function bridgeTunnel(
+  target: BridgeTarget | Promise<BridgeTarget>,
+  path: '/vnc' | '/cdp' | `/port?n=${number}`,
+): BridgeProcess {
   return new BridgeProcess(target, { kind: 'tunnel', path });
 }
 

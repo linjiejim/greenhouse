@@ -14,8 +14,9 @@
  * output, stdin uploads and streamed downloads, the terminal, the VNC and
  * DevTools tunnels with Playwright, pause → resume (processes survive), a
  * reset moving the home (files and a browser login) into a new sandbox, a
- * runaway job killed inside the Bots' memory slice (nothing else restarts), and
- * the recovery of an old sandbox whose home failed to move (RECOVER_SCRIPT).
+ * runaway job killed inside the Bots' memory slice (nothing else restarts), the
+ * recovery of an old sandbox whose home failed to move (RECOVER_SCRIPT), and a
+ * port preview through the agent bridge (never to a bridge's own port).
  */
 
 import { createHash, randomBytes } from 'node:crypto';
@@ -340,4 +341,29 @@ describe.skipIf(!LIVE)('e2b host (live provider)', () => {
     await host.stop(ref);
     expect((await host.start(row(ref), spec())).ref).toBe(ref);
   }, 240_000);
+
+  it('opens a port preview to a service the agent runs, and never to a bridge', async () => {
+    await exec('agent', [
+      'sh',
+      '-c',
+      'mkdir -p ~/work/site && echo "<h1>hi from the computer</h1>" > ~/work/site/index.html && cd ~/work/site && (nohup python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &)',
+    ]);
+    const get = (port: number) =>
+      new Promise<string>((resolve, reject) => {
+        const proc = host.openPort(ref, port);
+        const parts: Buffer[] = [];
+        proc.stdout!.on('data', (chunk: Buffer) => parts.push(chunk));
+        proc.once('error', reject);
+        proc.once('close', () => resolve(Buffer.concat(parts).toString('utf8')));
+        proc.stdin!.end('GET /index.html HTTP/1.0\r\nHost: localhost\r\n\r\n');
+      });
+    let page = '';
+    for (let i = 0; i < 20 && !page.includes('hi from the computer'); i++) {
+      page = await get(8765).catch(() => '');
+      if (!page.includes('hi from the computer')) await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    expect(page).toMatch(/^HTTP\/1\.0 200/);
+    expect(page).toContain('<h1>hi from the computer</h1>');
+    await expect(get(7681)).rejects.toMatchObject({ status: 403 });
+  }, 120_000);
 });
