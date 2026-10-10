@@ -51,7 +51,7 @@ import {
   type ComputerTurn,
   type ToolFailure,
 } from '../computer/browser-session.js';
-import { ComputerUnavailableError } from '../computer/access.js';
+import { BOT_START_WAIT_MS, ComputerUnavailableError } from '../computer/access.js';
 import { ComputerDockerError } from '../computer/docker.js';
 import { JOB_ID, JOB_LOG_DEFAULT_LINES, JOB_LOG_MAX_LINES, JOB_NAME_MAX } from '../computer/jobs.js';
 import { computerStatusFor } from '../computer/runtime.js';
@@ -228,7 +228,7 @@ class ComputerActions {
       if (input.action === 'stop_process') return await this.stopProcess(input.id);
       // Start it (or wait in the queue) first, then check again: the member
       // may have taken over during that wait.
-      await deps.ensureReady(turn.userId, { signal: action.signal });
+      await deps.ensureReady(turn.userId, { signal: action.signal, maxWaitMs: BOT_START_WAIT_MS });
       if (await memberHasIt()) return await memberInControl(turn, { reason: 'interrupted' });
       throwIfAborted(action.signal);
       void deps.touch(turn.userId).catch(() => undefined);

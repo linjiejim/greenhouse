@@ -68,7 +68,16 @@ export interface EnsureOptions {
   signal?: AbortSignal;
   /** Called while waiting for a free slot (1-based queue position). */
   onQueued?: (position: number) => void;
+  /**
+   * Stop waiting after this long — the start goes on. A Bot's tool call must answer before the
+   * model stream's idle timeout ends its turn (agent-core CHAT_STREAM_TIMEOUT.chunkMs, 2 min),
+   * and a start that moves a home into an upgraded computer can take longer than that.
+   */
+  maxWaitMs?: number;
 }
+
+/** How long a Bot's tool waits for the computer before saying it is still starting (EnsureOptions.maxWaitMs). */
+export const BOT_START_WAIT_MS = 90_000;
 
 /** Largest file `writeComputerFile` accepts. */
 const MAX_WRITE_BYTES = 64 * 1024 * 1024;
@@ -77,7 +86,28 @@ const MAX_WRITE_BYTES = 64 * 1024 * 1024;
 
 async function ensureRunningRow(userId: string, opts: EnsureOptions & { allowOverQuota?: boolean } = {}) {
   const { controller } = requireComputerRuntime();
-  return await controller.ensureRunning(userId, opts);
+  const running = controller.ensureRunning(userId, opts);
+  if (!opts.maxWaitMs) return await running;
+  // It goes on without us: the next tool call (or the member's panel) finds it running.
+  running.catch(() => undefined);
+  let timer: NodeJS.Timeout | undefined;
+  const gaveUp = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new ComputerUnavailableError(
+            'busy',
+            'The computer is still starting — after an upgrade it first moves its files into the updated computer, which can take a few minutes. Tell the member, end your turn, and try again in a minute or two.',
+          ),
+        ),
+      opts.maxWaitMs,
+    );
+  });
+  try {
+    return await Promise.race([running, gaveUp]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function ensureComputerReady(userId: string, opts: EnsureOptions = {}): Promise<void> {

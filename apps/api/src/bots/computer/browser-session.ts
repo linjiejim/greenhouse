@@ -639,7 +639,10 @@ export class BrowserSession {
     create: boolean,
     signal: AbortSignal = this.turn.signal,
   ): Promise<{ registry: LeaseRegistry; lease: TabLease | null }> {
-    const browser = rememberConnection(this.turn.userId, await this.deps.getBrowser(this.turn.userId, { signal }));
+    const browser = rememberConnection(
+      this.turn.userId,
+      await this.deps.getBrowser(this.turn.userId, { signal, maxWaitMs: access.BOT_START_WAIT_MS }),
+    );
     const registry = leaseRegistryFor(browser);
     const lease = await registry.acquire(leaseSpecFor(this.turn), { create });
     return { registry, lease };
