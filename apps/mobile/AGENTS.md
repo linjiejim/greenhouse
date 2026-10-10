@@ -116,7 +116,7 @@ Expo SDK 57 / React Native 0.86 / React 19.2 的**原生 App：iOS 走系统组�
 ## Haven 品牌资源与启动
 
 - 图标与 `src/ui/brand.generated.ts` 由根目录 `scripts/build-brand-assets.py` 从共享 SVG 生成，不能手改几何；规范见 [logos/README.md](../../logos/README.md)。
-- 开屏（[src/ui/splash.tsx](./src/ui/splash.tsx)）：根布局在 auth 与字体就绪后就挂路由，`<Splash/>` 盖在上面，`GreenhouseMark` 完整搭一遍（`MARK_BUILD_MS` 1.8 s）+ 停 150 ms 再 200 ms 淡出——**一定播完**（2026-10：登录快时会被截断在半途）；系统减少动态效果时标志静态、就绪即走。原生 launch screen 是空白的系统背景色（CNG 生成、跟随深浅色），JS 开屏从空白开始搭，衔接无跳变——不要给原生 launch screen 加静态标志（会先出现、消失、再被搭一遍）。
+- 开屏（[src/ui/splash.tsx](./src/ui/splash.tsx)）：**auth 验证完成就挂路由**，真实首页在 `<Splash/>` 下面加载，和字体 / 标志动画重叠；不要另建预加载器、重复恢复会话或重复请求。挂路由只看 auth，退场另等字体、标志完整搭建（`MARK_BUILD_MS` 1.8 s）和**当前聚焦首屏**的首次结果（成功、空、失败都算；`src/startup`；背景首页不能放行深链）。内容还没到时，额外最多等 1.5 s，然后交给页面的 loading / 重试 UI；内容先到就不等满。最后停 150 ms 再 200 ms 淡出——**标志一定播完**（2026-10：登录快时会被截断在半途）；系统减少动态效果时标志静态、不强等 1.8 s。Splash 真正消失前线程不算可见，不发已读。其他深链页沿用自己的加载态。**不要让 content-ready 阻止页面挂载**，否则请求永远无法开始；账号 / 工作站 / bootstrap 切换必须丢弃旧首屏就绪状态。WS 初连赶上首个线程 GET 时，先呈现首个结果再补一次同步；不能吞掉补同步，也不能把旧 engine 的缓存标成新账号的 generation。原生 launch screen 是空白的系统背景色（CNG 生成、跟随深浅色），JS 开屏从空白开始搭，衔接无跳变——不要给原生 launch screen 加静态标志（会先出现、消失、再被搭一遍）。
 - Mermaid 的普通矩形节点/时序参与者框使用 `radius.md`；WebView 从生成的 `brand-web-font.generated.ts` 内置 Nunito WOFF2，并等待字体就绪后布局。与原生文字共享字体源，不依赖额外字体网络请求。
 - 修改 app icon 或 expo-font 插件后需重新构建 native binary；OTA 无法更新系统图标/字体注册。
 

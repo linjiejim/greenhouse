@@ -216,6 +216,8 @@ export class ThreadEngine implements ThreadController {
   readonly sessionId: string;
   private readonly deps: ThreadDeps;
   private readonly cache: ThreadCache;
+  /** The account/station this engine opened under; reset must never relabel its cache. */
+  private readonly generation: number;
 
   private started = false;
   private disposed = false;
@@ -269,6 +271,9 @@ export class ThreadEngine implements ThreadController {
   // Reloads
   private ticket = 0;
   private latestReload: Promise<ReloadResult> | null = null;
+  /** The opening page can paint before the socket's catch-up read, even on a slow connection. */
+  private openingPage = false;
+  private catchUpAfterOpen = false;
 
   // Timers & subscriptions
   private revealTimer: unknown = null;
@@ -306,6 +311,7 @@ export class ThreadEngine implements ThreadController {
     this.deps = deps;
     this.cache = options.cache ?? threadCache;
     const state = deps.store.getState();
+    this.generation = state.generation;
     this.seenRunning = state.running[sessionId] ?? null;
     this.seenOverrides = state.requestOverrides;
     this.poller = createFallbackPoller({
@@ -344,6 +350,10 @@ export class ThreadEngine implements ThreadController {
   /** Open the thread (idempotent; `subscribe` calls it). */
   start(): void {
     if (this.started || this.disposed) return;
+    if (this.deps.store.getState().generation !== this.generation) {
+      this.dispose();
+      return;
+    }
     this.started = true;
     this.unsubscribes.push(this.deps.realtime.on((e) => this.onRealtime(e)));
     this.unsubscribes.push(this.deps.store.subscribe(() => this.onStore()));
@@ -554,7 +564,7 @@ export class ThreadEngine implements ThreadController {
     this.poller.dispose();
     for (const unsubscribe of this.unsubscribes.splice(0)) unsubscribe();
     const store = this.deps.store.getState();
-    if (store.visibleThread === this.sessionId) store.setVisibleThread(null);
+    if (store.generation === this.generation && store.visibleThread === this.sessionId) store.setVisibleThread(null);
     this.saveCache();
     this.resolveRevealWaiters();
   }
@@ -562,8 +572,7 @@ export class ThreadEngine implements ThreadController {
   // ─── Opening & reloading ────────────────────────────────
 
   private async open(): Promise<void> {
-    const store = this.deps.store.getState();
-    const cached = this.cache.get(this.sessionId, store.generation);
+    const cached = this.cache.get(this.sessionId, this.generation);
     if (cached) {
       this.conversation = cached.conversation;
       this.members = memberKey(cached.conversation);
@@ -575,7 +584,21 @@ export class ThreadEngine implements ThreadController {
     }
     const markBefore = this.mark();
     const probing = this.deps.api.getChatRun(this.sessionId);
-    const loaded = await this.reloadLatest();
+    this.openingPage = true;
+    let loaded: ReloadResult;
+    try {
+      loaded = await this.reloadLatest();
+    } finally {
+      this.openingPage = false;
+      // A socket invalidation can mean changes landed after the
+      // opening GET started. Defer attach too: starting its replay reloads the
+      // transcript, which would otherwise supersede this first usable page.
+      if (this.catchUpAfterOpen && !this.disposed) {
+        this.catchUpAfterOpen = false;
+        void this.ensureAttached();
+        void this.reload();
+      }
+    }
     const probe = await probing;
     if (this.disposed) return;
     if (loaded !== 'ok' && this.load !== 'ready') return;
@@ -680,8 +703,9 @@ export class ThreadEngine implements ThreadController {
   }
 
   private saveCache(): void {
-    if (!this.conversation || this.load !== 'ready') return;
-    this.cache.put(this.sessionId, this.deps.store.getState().generation, {
+    if (!this.conversation || this.load !== 'ready' || this.deps.store.getState().generation !== this.generation)
+      return;
+    this.cache.put(this.sessionId, this.generation, {
       conversation: this.conversation,
       messages: this.messages,
       hasMore: this.hasMore,
@@ -1093,7 +1117,10 @@ export class ThreadEngine implements ThreadController {
   private ownedElsewhere(reader: Reader, runId: string): boolean {
     if (this.sendsInFlight > 0 && this.latchRunId === runId) return true;
     return this.waiting.some(
-      (other) => other !== reader && !other.detached && (other.runId === runId || (other.kind === 'post' && other.runId === null)),
+      (other) =>
+        other !== reader &&
+        !other.detached &&
+        (other.runId === runId || (other.kind === 'post' && other.runId === null)),
     );
   }
 
@@ -1473,25 +1500,36 @@ export class ThreadEngine implements ThreadController {
             return;
           }
           if (this.readsRun(e.runId)) return;
+          if (this.openingPage) {
+            this.catchUpAfterOpen = true;
+            return;
+          }
           this.attachForPush(e.runId);
           return;
         }
         if (this.latchRunId === e.runId) this.latchRunId = null;
         // Ended with nobody here reading it: what it wrote is in the transcript now.
-        if (!this.busyReading()) void this.reload();
+        if (!this.busyReading()) {
+          if (this.openingPage) this.catchUpAfterOpen = true;
+          else void this.reload();
+        }
         return;
       case 'bots:conversation':
         if (e.sessionId !== this.sessionId) return;
         this.clearTimer(this.conversationTimer);
         this.conversationTimer = this.deps.clock.setTimeout(() => {
           this.conversationTimer = null;
-          void this.reload();
+          if (this.openingPage) this.catchUpAfterOpen = true;
+          else void this.reload();
         }, CONVERSATION_RELOAD_MS);
         return;
       case 'resync':
         // (Re)connected: pushes may have been missed.
-        void this.ensureAttached();
-        void this.reload();
+        if (this.openingPage) this.catchUpAfterOpen = true;
+        else {
+          void this.ensureAttached();
+          void this.reload();
+        }
         return;
       default:
         return;
@@ -1499,7 +1537,14 @@ export class ThreadEngine implements ThreadController {
   }
 
   private onStore(): void {
+    if (this.disposed) return;
     const state = this.deps.store.getState();
+    // Resets are synchronous; React unmount cleanup can happen later. Stop now,
+    // before an old request can publish into the newly signed-in account/station.
+    if (state.generation !== this.generation) {
+      this.dispose();
+      return;
+    }
     const running = state.running[this.sessionId] ?? null;
     if (running === this.seenRunning && state.requestOverrides === this.seenOverrides) return;
     // A card of this thread settled in a sheet (needs-you, sign-in, the Bot form decide through the store).

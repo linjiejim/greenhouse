@@ -1,0 +1,16 @@
+{
+  // ROOT vitest renders the real root layout with native boundaries mocked and
+  // no isolated Expo install. Stop Vite from resolving expo/tsconfig.base here.
+  // The narrow include keeps other routes on the app's config in editors;
+  // the app's own tsc still uses apps/mobile/tsconfig.json for every route.
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["_layout.tsx"]
+}

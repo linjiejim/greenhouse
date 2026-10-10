@@ -28,8 +28,9 @@
  * no signed-in screen survives under the login page); signed in on /login →
  * home.
  *
- * Launch: the routes mount once auth and fonts are in; <Splash/> covers them
- * until its mark has built itself in full, then fades away (src/ui/splash.tsx).
+ * Launch: routes mount once auth is in, loading the actual first screen under
+ * <Splash/> while fonts and the mark finish. Reveal waits for that screen's
+ * first content (bounded; errors count), not another copy of its requests.
  *
  * <RealtimeBridge/> runs the app's one WebSocket (src/realtime) — it decides
  * itself when to connect (signed in, Bots available, foreground).
@@ -37,7 +38,7 @@
  */
 
 import 'react-native-gesture-handler';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -47,6 +48,9 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuth } from '../src/store/auth';
 import { usePrefs } from '../src/store/prefs';
+import { useStations } from '../src/store/stations';
+import { StartupContent, waitsForHome } from '../src/startup/content';
+import { StartupContext } from '../src/startup/context';
 import { setOnUnauthorized } from '../src/api/client';
 import { useWidgetSnapshot } from '../src/widget/snapshot';
 import { useAccountLanguage } from '../src/settings/account-language';
@@ -95,12 +99,22 @@ export default function RootLayout() {
     setOnUnauthorized(() => logout());
   }, [bootstrap, hydratePrefs, logout]);
 
-  const ready = !loading && (fontsLoaded || !!fontError);
+  // Do not gate mounting on fonts or page data: mounting is what starts the
+  // first request, and the same screen keeps its result when the cover leaves.
+  const routesReady = !loading;
+  const ready = routesReady && (fontsLoaded || !!fontError);
   const [splashGone, setSplashGone] = useState(false);
+  const stationId = useStations((s) => s.activeId);
+  const userId = user?.id;
+  // A bootstrap / identity transition cannot inherit another account's readiness.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- these are the lifetime keys of the launch scope
+  const content = useMemo(() => new StartupContent(), [loading, stationId, userId]);
+  const contentReady = useSyncExternalStore(content.subscribe, content.getSnapshot, content.getSnapshot);
+  const startup = useMemo(() => ({ content, covered: !splashGone }), [content, splashGone]);
 
   // Redirect based on auth state once bootstrap resolves.
   useEffect(() => {
-    if (!ready) return;
+    if (!routesReady) return;
     const inAuthGroup = segments[0] === 'login';
     if (!user && !SIGNED_OUT_ROUTES.has(segments.join('/'))) {
       // drop pages / sheets stacked over home first, or they'd stay mounted
@@ -110,7 +124,7 @@ export default function RootLayout() {
     } else if (user && inAuthGroup) {
       router.replace('/');
     }
-  }, [ready, user, segments, router]);
+  }, [routesReady, user, segments, router]);
 
   // Home-screen widget snapshot (src/widget/snapshot.ts): published after sign-in, as the
   // Bots store changes in the foreground and on every background transition; cleared on
@@ -127,70 +141,78 @@ export default function RootLayout() {
           <StatusBar style="auto" />
           <RealtimeBridge />
           <WidgetArtHost />
-          {!ready ? (
-            <View style={{ flex: 1, backgroundColor: c.background }} />
-          ) : (
-            <Stack screenOptions={{ ...stackDefaults(c, hex), headerShown: false }} screenLayout={sheetEdgeLayout}>
-              {/* title = the back-button label (a11y) for pages pushed over the conversation */}
-              {/* home is the stack's root: never popped by the back gesture (the drawer owns horizontal swipes) */}
-              <Stack.Screen name="(drawer)" options={{ title: t('drawer.chats'), gestureEnabled: false }} />
-              <Stack.Screen name="login" options={{ animation: 'fade', gestureEnabled: false }} />
-              <Stack.Screen name="chat/[id]" options={{ animation: 'none' }} />
+          <StartupContext.Provider value={startup}>
+            {!routesReady ? (
+              <View style={{ flex: 1, backgroundColor: c.background }} />
+            ) : (
+              <Stack screenOptions={{ ...stackDefaults(c, hex), headerShown: false }} screenLayout={sheetEdgeLayout}>
+                {/* title = the back-button label (a11y) for pages pushed over the conversation */}
+                {/* home is the stack's root: never popped by the back gesture (the drawer owns horizontal swipes) */}
+                <Stack.Screen name="(drawer)" options={{ title: t('drawer.chats'), gestureEnabled: false }} />
+                <Stack.Screen name="login" options={{ animation: 'fade', gestureEnabled: false }} />
+                <Stack.Screen name="chat/[id]" options={{ animation: 'none' }} />
 
-              {/* ── knowledge ── */}
-              <Stack.Screen name="knowledge/index" options={pageScreen(c)} />
-              <Stack.Screen name="knowledge/[slug]" options={detailScreen(c)} />
-              {/* editor: page sheet with its own nav bar; FormChrome blocks swipe-to-dismiss only while there are unsaved edits */}
-              <Stack.Screen name="knowledge/edit" options={{ ...detailScreen(c), presentation: 'modal' }} />
-              <Stack.Screen name="knowledge/versions" options={sheetScreen([0.6, 1], { header: true })} />
+                {/* ── knowledge ── */}
+                <Stack.Screen name="knowledge/index" options={pageScreen(c)} />
+                <Stack.Screen name="knowledge/[slug]" options={detailScreen(c)} />
+                {/* editor: page sheet with its own nav bar; FormChrome blocks swipe-to-dismiss only while there are unsaved edits */}
+                <Stack.Screen name="knowledge/edit" options={{ ...detailScreen(c), presentation: 'modal' }} />
+                <Stack.Screen name="knowledge/versions" options={sheetScreen([0.6, 1], { header: true })} />
 
-              {/* ── projects ── */}
-              <Stack.Screen name="projects/index" options={pageScreen(c)} />
-              <Stack.Screen name="projects/[id]" options={detailScreen(c)} />
-              <Stack.Screen name="projects/task/[taskId]" options={detailScreen(c, { grouped: true })} />
-              <Stack.Screen name="projects/task-form" options={sheetScreen([1], { header: true })} />
-              <Stack.Screen name="projects/project-form" options={sheetScreen([1], { header: true })} />
-              <Stack.Screen name="projects/members" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="projects/activity" options={sheetScreen([0.6, 1], { header: true })} />
+                {/* ── projects ── */}
+                <Stack.Screen name="projects/index" options={pageScreen(c)} />
+                <Stack.Screen name="projects/[id]" options={detailScreen(c)} />
+                <Stack.Screen name="projects/task/[taskId]" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="projects/task-form" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="projects/project-form" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="projects/members" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="projects/activity" options={sheetScreen([0.6, 1], { header: true })} />
 
-              {/* ── detail previews (web "peek" drawers → bottom sheets) ── */}
-              <Stack.Screen name="peek/doc/[slug]" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="peek/project/[id]" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="peek/source" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="peek/tools" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="peek/reasoning" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="peek/refs" options={sheetScreen([0.6, 1], { header: true })} />
+                {/* ── detail previews (web "peek" drawers → bottom sheets) ── */}
+                <Stack.Screen name="peek/doc/[slug]" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="peek/project/[id]" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="peek/source" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="peek/tools" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="peek/reasoning" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="peek/refs" options={sheetScreen([0.6, 1], { header: true })} />
 
-              {/* ── pickers / short forms ── */}
-              <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="sheets/session-tags" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="sheets/tag-editor" options={sheetScreen([0.6], { header: true })} />
+                {/* ── pickers / short forms ── */}
+                <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="sheets/session-tags" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="sheets/tag-editor" options={sheetScreen([0.6], { header: true })} />
 
-              {/* ── Bots (spec docs/specs/20261008-mobile-bots.md §2.3) ── */}
-              {/* deep-link forwarder: renders nothing, re-points home at the thread */}
-              <Stack.Screen name="bots/index" options={{ animation: 'none' }} />
-              <Stack.Screen name="bots/needs-you" options={sheetScreen([0.6, 1], { header: true })} />
-              {/* a card's decision: read in full (opaque, full height), then the pinned buttons */}
-              <Stack.Screen name="bots/request" options={sheetScreen([1], { header: true })} />
-              <Stack.Screen name="bots/login" options={sheetScreen([1], { header: true })} />
-              <Stack.Screen name="bots/profile" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="bots/bot-form" options={sheetScreen([1], { header: true })} />
-              {/* Settings → My Bots: how a Bot is made (ask Sprouty first) — full height, so all four
+                {/* ── Bots (spec docs/specs/20261008-mobile-bots.md §2.3) ── */}
+                {/* deep-link forwarder: renders nothing, re-points home at the thread */}
+                <Stack.Screen name="bots/index" options={{ animation: 'none' }} />
+                <Stack.Screen name="bots/needs-you" options={sheetScreen([0.6, 1], { header: true })} />
+                {/* a card's decision: read in full (opaque, full height), then the pinned buttons */}
+                <Stack.Screen name="bots/request" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="bots/login" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="bots/profile" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="bots/bot-form" options={sheetScreen([1], { header: true })} />
+                {/* Settings → My Bots: how a Bot is made (ask Sprouty first) — full height, so all four
                   ways show without a drag; one example Bot */}
-              <Stack.Screen name="bots/new-bot" options={sheetScreen([1], { header: true })} />
-              <Stack.Screen name="bots/example" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="bots/archived" options={sheetScreen([0.6, 1], { header: true })} />
-              <Stack.Screen name="bots/relay" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="bots/new-bot" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="bots/example" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="bots/archived" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="bots/relay" options={sheetScreen([0.6, 1], { header: true })} />
 
-              {/* ── modals with their own stack ── */}
-              <Stack.Screen name="settings" options={modalScreen()} />
-              <Stack.Screen name="table" options={{ ...detailScreen(c), presentation: 'modal' }} />
-              <Stack.Screen name="peek/diagram" options={{ ...detailScreen(c), presentation: 'modal' }} />
-              <Stack.Screen name="peek/html" options={{ ...detailScreen(c), presentation: 'modal' }} />
-            </Stack>
-          )}
+                {/* ── modals with their own stack ── */}
+                <Stack.Screen name="settings" options={modalScreen()} />
+                <Stack.Screen name="table" options={{ ...detailScreen(c), presentation: 'modal' }} />
+                <Stack.Screen name="peek/diagram" options={{ ...detailScreen(c), presentation: 'modal' }} />
+                <Stack.Screen name="peek/html" options={{ ...detailScreen(c), presentation: 'modal' }} />
+              </Stack>
+            )}
+          </StartupContext.Provider>
           {/* over the app until its mark is built and the app is ready, then it fades away */}
-          {splashGone ? null : <Splash ready={ready} onGone={() => setSplashGone(true)} />}
+          {splashGone ? null : (
+            <Splash
+              ready={ready}
+              contentReady={!user || !waitsForHome(segments) || contentReady}
+              onGone={() => setSplashGone(true)}
+            />
+          )}
           <ToastHost />
           <MenuHost />
           <DialogHost />
