@@ -15,7 +15,7 @@
  * DevTools tunnels with Playwright, pause → resume (processes survive), a
  * reset moving the home (files and a browser login) into a new sandbox, a
  * runaway job killed inside the Bots' memory slice (nothing else restarts), and
- * the recovery of an old sandbox whose home failed to move (gh-e2b-boot --recover).
+ * the recovery of an old sandbox whose home failed to move (RECOVER_SCRIPT).
  */
 
 import { createHash, randomBytes } from 'node:crypto';
@@ -26,7 +26,7 @@ import type { BotComputerRow } from '@greenhouse/db';
 
 import type { BotsComputerConfig } from '../config.js';
 import { openCdpBridge } from '../cdp-bridge.js';
-import { bridgeSecret, createE2bApi, createE2bHost } from '../e2b-host.js';
+import { createE2bApi, createE2bHost, RECOVER_SCRIPT } from '../e2b-host.js';
 import { buildComputerTemplate, computerTemplateName, templateStatus } from '../e2b-template.js';
 import type { ComputerHost, ComputerStartSpec } from '../host.js';
 import { IMAGE_CONTRACT } from '../runtime.js';
@@ -55,8 +55,7 @@ describe.skipIf(!LIVE)('e2b host (live provider)', () => {
     ...(process.env.BOTS_COMPUTER_E2B_DOMAIN ? { domain: process.env.BOTS_COMPUTER_E2B_DOMAIN } : {}),
   };
   const api = createE2bApi(conn);
-  const secretKey = randomBytes(32).toString('hex');
-  const host: ComputerHost = createE2bHost({ api, namespace: NAMESPACE, secretKey });
+  const host: ComputerHost = createE2bHost({ api, namespace: NAMESPACE, secretKey: randomBytes(32).toString('hex') });
   const options = { contract: IMAGE_CONTRACT, cpuCount: 2, memoryMB: 2048 };
   const userId = `live-${randomBytes(4).toString('hex')}`;
   let template = '';
@@ -329,10 +328,8 @@ describe.skipIf(!LIVE)('e2b host (live provider)', () => {
     const leftover = (await exec('agent', ['cat', '/home/agent/work/leftover.pid'])).stdout.toString().trim();
     // What a move does to the old sandbox before copying.
     expect((await root('systemctl stop gh-desktop.service')).code).toBe(0);
-    const recovered = await root('/usr/local/sbin/gh-e2b-boot --recover', {
-      GH_BRIDGE_SECRET_BROWSER: bridgeSecret(secretKey, ref, 'browser'),
-      GH_BRIDGE_SECRET_AGENT: bridgeSecret(secretKey, ref, 'agent'),
-    });
+    // The exact script the host runs on an old sandbox after a failed move.
+    const recovered = await root(RECOVER_SCRIPT);
     expect(recovered).toMatchObject({ code: 0 });
     // The Bot's process from before is gone; the desktop and both bridges are back.
     expect((await root(`kill -0 ${leftover} 2>/dev/null && echo alive || echo gone`)).out).toBe('gone');

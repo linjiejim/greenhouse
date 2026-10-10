@@ -133,10 +133,11 @@ bots/
   - **桌面只在没有任何 agent 进程时启动**：`/tmp` 不像 docker 那样每次是新的 tmpfs，X 的套接字名（含抽象命名空间）可能
     被 Bot 留下的进程抢先占住。所以设置从不原地改（`gh-e2b-boot` 遇到不同设置 exit 3）、恢复时发现桌面不在也不原地重启
     （exit 4），都走「新沙箱 + 搬 home」；`gh-e2b-rundir` 对被抢占的运行目录拒绝启动而不是修复。唯一例外是**搬家失败后的
-    退路** `gh-e2b-boot --recover`：先结束 agent uid 的全部进程并确认为零，再在旧沙箱里重启桌面——与首次启动同样的保证。
+    退路** `RECOVER_SCRIPT`：先结束 agent uid 的全部进程并确认为零，再在旧沙箱里重启桌面——与首次启动同样的保证。它由 API
+    以 root 内联执行，**不能做成 gh-e2b-boot 的新模式**：旧沙箱跑的是旧模板，里面的脚本不认识新模式（实测踩过）。
   - **搬 home 会失败**（数据经 API 中转、不可续传，API 离服务商远时尤其慢）：每个 home 在总时限内最多试 `MOVE_ATTEMPTS`
-    次；还是失败就删新沙箱、`--recover` 旧沙箱——换代 / 改设置时成员**继续用旧电脑**（`imageId` = 旧模板），`MOVE_RETRY_AFTER_MS`
-    内的启动直接唤醒它（`--resume-kept`，保留它自己的设置），之后再试搬家；「重置」则如实失败为 `ComputerStartError('move_failed')`
+    次；还是失败就删新沙箱、恢复旧沙箱——换代 / 改设置时成员**继续用旧电脑**（`imageId` = 旧模板），`MOVE_RETRY_AFTER_MS`
+    内的启动直接唤醒它（先读回它自己的设置，再用所有模板都认的 `--resume`），之后再试搬家；「重置」则如实失败为 `ComputerStartError('move_failed')`
     （只影响这个成员，绝不能用 ComputerRuntimeError——那会关掉整个运行时）。
   - **内存隔离**：agent 桥及其全部子进程（Bot 的 shell、成员终端、后台任务）在 `gh-agent.slice`，只设 `MemoryMax` 50%
     （百分比随模板内存走），吃爆内存只在 slice 里杀。**不设 MemoryHigh**：沙箱没有 swap，软上限回收不了匿名内存，只会让

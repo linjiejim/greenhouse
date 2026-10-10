@@ -23,6 +23,7 @@ import {
   MOVE_RETRY_AFTER_MS,
   ORPHAN_GRACE_MS,
   providerError,
+  RECOVER_SCRIPT,
   RETIRED_KEEP_MS,
   settingsHash,
   type E2bApi,
@@ -34,6 +35,8 @@ const NS = 'testns';
 const TEMPLATE = 'gh-computer-c2-aaaaaaaaaaaa';
 const KEY = 'ab'.repeat(32);
 const T0 = Date.parse('2026-10-10T08:00:00.000Z');
+/** The settings an older computer was booted with (read back while a failed move backs off). */
+const KEPT_ENV = 'TZ=Europe/Berlin\nGH_COMPUTER_LANG=de-DE\n';
 
 class FakeApi implements E2bApi {
   sandboxes = new Map<string, SandboxInfo>();
@@ -70,9 +73,17 @@ class FakeApi implements E2bApi {
       trafficToken: `traffic-${id}`,
       runRoot: async (command, envs) => {
         this.roots.push({ id, command, envs });
-        this.log.push(`root ${id} ${command.split('/').pop()}`);
+        const label =
+          command === RECOVER_SCRIPT
+            ? 'recover'
+            : command.startsWith('base64 ')
+              ? 'read settings'
+              : command.split('/').pop();
+        this.log.push(`root ${id} ${label}`);
         const code = this.rootExit?.(id, command) ?? 0;
-        return { code, stderr: code ? 'boom' : '' };
+        // The env file a sandbox was booted with, as `base64 -w0` prints it.
+        const stdout = command.startsWith('base64 ') ? Buffer.from(KEPT_ENV).toString('base64') : '';
+        return { code, stdout, stderr: code ? 'boom' : '' };
       },
     };
   }
@@ -392,16 +403,16 @@ describe('e2b host: starts', () => {
     // Before the fix the source's 'close' never came (nobody read it once the pipe let go): this hung.
     await expect(host.start(row({ container_name: old }), spec())).resolves.toMatchObject({ ref: old });
     expect(streams.filter((s) => s.argv.includes('-cpf'))).toHaveLength(3);
-    expect(api.log).toContain(`root ${old} gh-e2b-boot --recover`);
+    expect(api.log).toContain(`root ${old} recover`);
   });
 
   it('a move that keeps failing gives the member the old computer back, and waits before trying again', async () => {
     const { api, host, streams, advance } = setup({ tarWrite: 2 });
     const old = api.seed(meta('gh-computer-c2-older'));
     const started = await host.start(row({ container_name: old }), spec());
-    // The old one, its desktop started again after every agent process was ended (gh-e2b-boot --recover).
+    // The old one, its desktop started again after every agent process was ended (RECOVER_SCRIPT).
     expect(started).toMatchObject({ ref: old, imageId: 'gh-computer-c2-older' });
-    expect(api.log).toContain(`root ${old} gh-e2b-boot --recover`);
+    expect(api.log).toContain(`root ${old} recover`);
     expect([...api.sandboxes.keys()]).toEqual([old]); // the new copy is gone
     expect(streams.filter((s) => s.argv.includes('-xpf'))).toHaveLength(3); // MOVE_ATTEMPTS tries of the first home
     // Asleep again and woken within the back-off: no new sandbox, no move — the old one, with its own settings.
@@ -409,7 +420,10 @@ describe('e2b host: starts', () => {
     api.log.length = 0;
     const again = await host.start(row({ container_name: old }), spec());
     expect(again).toMatchObject({ ref: old, imageId: 'gh-computer-c2-older' });
-    expect(api.log).toEqual([`connect ${old}`, `root ${old} gh-e2b-boot --resume-kept`]);
+    expect(api.log).toEqual([`connect ${old}`, `root ${old} read settings`, `root ${old} gh-e2b-boot --resume`]);
+    // Its own settings, through the --resume every template knows (never the member's new ones).
+    const woken = api.roots.filter((r) => r.command.endsWith('--resume')).pop()!;
+    expect(Buffer.from(woken.envs.GH_COMPUTER_ENV_B64!, 'base64').toString()).toBe(KEPT_ENV);
     // After it, the next start tries the move again.
     await api.pause(old);
     advance(MOVE_RETRY_AFTER_MS);
@@ -426,7 +440,7 @@ describe('e2b host: starts', () => {
       .catch((e) => e);
     expect(failure).toBeInstanceOf(ComputerStartError);
     expect(failure).toMatchObject({ reason: 'move_failed' });
-    expect(api.log).toContain(`root ${old} gh-e2b-boot --recover`);
+    expect(api.log).toContain(`root ${old} recover`);
     expect([...api.sandboxes.keys()]).toEqual([old]);
     expect(api.sandboxes.get(old)?.state).toBe('paused');
     // The next (ordinary) start simply wakes it.
@@ -437,7 +451,7 @@ describe('e2b host: starts', () => {
 
   it('when the old one cannot be recovered either, the start fails as move_failed and it stays asleep', async () => {
     const { api, host } = setup({ tarWrite: 2 });
-    api.rootExit = (_id, command) => (command.endsWith('--recover') ? 5 : 0);
+    api.rootExit = (_id, command) => (command === RECOVER_SCRIPT ? 5 : 0);
     const old = api.seed(meta('gh-computer-c2-older'));
     await expect(host.start(row({ container_name: old }), spec())).rejects.toMatchObject({ reason: 'move_failed' });
     expect([...api.sandboxes.keys()]).toEqual([old]);

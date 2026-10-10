@@ -91,6 +91,25 @@ const MOVE_ATTEMPTS = 3;
  * process (a restart simply tries again sooner).
  */
 export const MOVE_RETRY_AFTER_MS = 6 * 60 * 60_000;
+/**
+ * Gives an OLD sandbox whose home failed to move out its desktop back (the move stopped it).
+ * Run by the API as root, NOT as a mode of the sandbox's gh-e2b-boot: the old sandbox runs the
+ * OLD template, whose script may predate any of this — and a move into a newer template is
+ * exactly that case. Only commands every template has. Every process of uid agent is ended and
+ * proven gone before the desktop starts again, the same guarantee as a first start (see
+ * gh-e2b-boot's header); gh-e2b-rundir (the desktop's ExecStartPre) still refuses a squatted
+ * runtime directory.
+ */
+export const RECOVER_SCRIPT = [
+  'set -eu',
+  // The agent bridge first, so it starts nothing new. Its socket stays with PID 1; a connection
+  // now would start it again — the loop ends that one too.
+  'systemctl stop gh-bridge-agent.service',
+  'for _ in $(seq 1 20); do pkill -KILL -u agent 2>/dev/null || true; pgrep -u agent >/dev/null || break; sleep 0.25; done',
+  'if pgrep -u agent >/dev/null; then echo "processes of uid agent are still running" >&2; exit 5; fi',
+  'systemctl start gh-desktop.service',
+  'systemctl start gh-bridge-browser.socket gh-bridge-agent.socket gh-bridge-browser.service gh-bridge-agent.service',
+].join('\n');
 /** After a refused bridge upgrade (a rotated signing key), rewrite the secrets at most this often. */
 const REKEY_EVERY_MS = 5 * 60_000;
 
@@ -113,7 +132,11 @@ export interface SandboxHandle {
   /** The edge's token for this sandbox's ports (null when public traffic is allowed). */
   trafficToken: string | null;
   /** A root command through the provider's agent (short, text output). */
-  runRoot(command: string, envs: Record<string, string>, timeoutMs: number): Promise<{ code: number; stderr: string }>;
+  runRoot(
+    command: string,
+    envs: Record<string, string>,
+    timeoutMs: number,
+  ): Promise<{ code: number; stdout: string; stderr: string }>;
 }
 
 /** The provider calls the host makes (the e2b SDK; tests fake it). */
@@ -231,9 +254,9 @@ export function createE2bApi(conn: { apiKey: string; domain?: string }): E2bApi 
     async runRoot(command, envs, timeoutMs) {
       try {
         const result = await sandbox.commands.run(command, { user: 'root', cwd: '/', envs, timeoutMs });
-        return { code: result.exitCode, stderr: result.stderr };
+        return { code: result.exitCode, stdout: result.stdout, stderr: result.stderr };
       } catch (err) {
-        if (err instanceof CommandExitError) return { code: err.exitCode, stderr: err.stderr };
+        if (err instanceof CommandExitError) return { code: err.exitCode, stdout: err.stdout, stderr: err.stderr };
         throw err;
       }
     },
@@ -383,7 +406,7 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
     command: string,
     envs: Record<string, string>,
     timeoutMs: number,
-  ): Promise<{ code: number; stderr: string }> {
+  ): Promise<{ code: number; stdout: string; stderr: string }> {
     try {
       return await sandbox.runRoot(command, envs, timeoutMs);
     } catch (err) {
@@ -414,16 +437,18 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
   async function boot(
     sandbox: SandboxHandle,
     spec: ComputerStartSpec,
-    mode: 'first' | 'bridges-only' | 'resume' | 'resume-kept',
+    mode: 'first' | 'bridges-only' | 'resume',
+    /** The env file to boot with, base64 — default: the member's current settings. */
+    envFile: string = Buffer.from(computerEnvFile(spec)).toString('base64'),
   ): Promise<'ok' | 'fresh'> {
     const flag = mode === 'first' ? '' : ` --${mode}`;
     const result = await runRootCommand(
       sandbox,
       `/usr/local/sbin/gh-e2b-boot${flag}`,
-      { ...secretEnv(sandbox), GH_COMPUTER_ENV_B64: Buffer.from(computerEnvFile(spec)).toString('base64') },
+      { ...secretEnv(sandbox), GH_COMPUTER_ENV_B64: envFile },
       BOOT_TIMEOUT_MS,
     );
-    if ((mode === 'resume' || mode === 'resume-kept') && (result.code === 3 || result.code === 4)) return 'fresh';
+    if (mode === 'resume' && (result.code === 3 || result.code === 4)) return 'fresh';
     if (result.code !== 0) {
       throw new ComputerDockerError('failed', `gh-e2b-boot exited ${result.code}: ${result.stderr.trim().slice(-400)}`);
     }
@@ -566,24 +591,25 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
     }
   }
 
+  /** The env file a sandbox was booted with, base64 (null when it cannot be read: move instead). */
+  async function keptSettings(sandbox: SandboxHandle): Promise<string | null> {
+    const result = await runRootCommand(sandbox, 'base64 -w0 /etc/gh-computer/env', {}, BOOT_TIMEOUT_MS);
+    const value = result.stdout.trim();
+    return result.code === 0 && /^[A-Za-z0-9+/]+=*$/.test(value) ? value : null;
+  }
+
   /**
-   * After a failed move: give the OLD sandbox its desktop back (gh-e2b-boot --recover ends
-   * every agent process first — the start-once guarantee), so the member is not locked out
-   * of a computer whose home is intact. False when that did not work; the caller then leaves
-   * it paused as before.
+   * After a failed move: give the OLD sandbox its desktop back (RECOVER_SCRIPT ends every agent
+   * process first — the start-once guarantee), so the member is not locked out of a computer
+   * whose home is intact. False when that did not work; the caller then leaves it paused as before.
    */
   async function recoverOld(old: SandboxHandle): Promise<boolean> {
     try {
       const sandbox = await resume(old.id);
-      const result = await runRootCommand(
-        sandbox,
-        '/usr/local/sbin/gh-e2b-boot --recover',
-        secretEnv(sandbox),
-        BOOT_TIMEOUT_MS,
-      );
+      const result = await runRootCommand(sandbox, RECOVER_SCRIPT, {}, BOOT_TIMEOUT_MS);
       if (result.code !== 0) {
         logger.warn(
-          `[bots-computer] could not recover ${old.id}: gh-e2b-boot exited ${result.code}: ${result.stderr.trim().slice(-300)}`,
+          `[bots-computer] could not recover ${old.id}: exit ${result.code}: ${result.stderr.trim().slice(-300)}`,
         );
         return false;
       }
@@ -703,7 +729,10 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
       if (current && !spec.fresh && (matches || backingOff)) {
         const sandbox = await resume(current.sandboxId);
         await assertPausesOnTimeout(sandbox.id);
-        if ((await boot(sandbox, spec, matches ? 'resume' : 'resume-kept')) === 'ok') {
+        // Backing off, it keeps the settings it has: read them back, and wake it with the plain
+        // `--resume` every template knows (an older template's gh-e2b-boot is what runs here).
+        const envFile = matches ? undefined : await keptSettings(sandbox);
+        if (envFile !== null && (await boot(sandbox, spec, 'resume', envFile)) === 'ok') {
           return {
             ref: sandbox.id,
             imageId: current.metadata[META.template] ?? template,
