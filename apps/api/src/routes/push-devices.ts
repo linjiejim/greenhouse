@@ -3,7 +3,7 @@
  *
  * GET    /api/auth/me/push-devices           — 我的已注册手机 + 本部署是否开了推送（App 据此决定显示推送设置；旧服务器 404 = 不支持）
  * PUT    /api/auth/me/push-devices           — 按 token 注册 / 刷新本机（登录、启动、回前台、token 变化时调）；部署关了推送 → { device: null, enabled: false }，什么都不存
- * PATCH  /api/auth/me/push-devices/:id       — 改本机的开关（需要你 / 办完了 / 回复 / 显示内容预览）
+ * PATCH  /api/auth/me/push-devices/:id       — 改本机的开关（需要你 / 办完了 / 回复 / 显示内容预览 / 后台任务的 Live Activity）
  * DELETE /api/auth/me/push-devices/:id       — 注销本机（退出登录、移除工作站、关掉推送）；只停用、不删行，再注册就恢复
  * POST   /api/auth/me/push-devices/:id/test  — 立刻发一条测试推送（每台 10 秒一次），自托管者用它自检 exp.host 是否通
  *
@@ -13,12 +13,13 @@
 
 import { Hono, type Context } from 'hono';
 import { getDb, pushDevicePrefs, type PushDeviceRow } from '@greenhouse/db';
-import type {
-  PushDeviceListResponse,
-  PushDeviceRegisterResponse,
-  PushDeviceView,
-  PushPrefs,
-  PushTestErrorCode,
+import {
+  PUSH_PREF_KEYS,
+  type PushDeviceListResponse,
+  type PushDeviceRegisterResponse,
+  type PushDeviceView,
+  type PushPrefs,
+  type PushTestErrorCode,
 } from '@greenhouse/types/push';
 import { logger } from '@greenhouse/utils/logger';
 
@@ -34,7 +35,6 @@ const TOKEN_PATTERN = /^Expo(?:nent)?PushToken\[[A-Za-z0-9_-]{1,200}\]$/;
 const PROJECT_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The device's own id for this station (echoed in every push as `data.s`). */
 const CLIENT_REF_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
-const PREF_KEYS: ReadonlyArray<keyof PushPrefs> = ['needs_you', 'done', 'replies', 'preview'];
 
 const TEST_WINDOW_MS = 10_000;
 const testLimiter = new InMemoryRateLimiter();
@@ -64,7 +64,7 @@ function parsePrefs(raw: unknown): { ok: true; value: Partial<PushPrefs> } | { o
   if (raw === undefined) return { ok: true, value: {} };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, error: 'prefs must be an object' };
   const value: Partial<PushPrefs> = {};
-  for (const key of PREF_KEYS) {
+  for (const key of PUSH_PREF_KEYS) {
     const v = (raw as Record<string, unknown>)[key];
     if (v === undefined) continue;
     if (typeof v !== 'boolean') return { ok: false, error: `prefs.${key} must be true or false` };

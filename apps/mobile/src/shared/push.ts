@@ -9,7 +9,8 @@
  * Mobile push — the wire contract between the server (`apps/api/src/notifications/push/`,
  * `/api/auth/me/push-devices`) and the phone (`apps/mobile/src/push/`). The app vendors
  * this file verbatim (`apps/mobile/src/shared/push.ts`, parity-tested), so it stays
- * dependency-free. Spec: docs/specs/20261010-mobile-push.md.
+ * dependency-free. Specs: docs/specs/20261010-mobile-push.md, and for `live_activity` /
+ * `run` / `st` docs/specs/20261010-mobile-live-activity.md.
  */
 
 /** What a member can switch per device. `preview` = the banner says what it is about. */
@@ -22,18 +23,31 @@ export interface PushPrefs {
   replies: boolean;
   /** Show the subject / the first words in the banner (off: only who + what kind of thing). */
   preview: boolean;
+  /**
+   * This phone shows a Bot's background tasks as Live Activities (lock screen / Dynamic
+   * Island). A task's "done" push then also wakes the app (`content-available`) so the
+   * phone can end the activity in the background — a silent push when `done` is off.
+   */
+  live_activity: boolean;
 }
 
-export const DEFAULT_PUSH_PREFS: PushPrefs = { needs_you: true, done: true, replies: true, preview: false };
+export const DEFAULT_PUSH_PREFS: PushPrefs = {
+  needs_you: true,
+  done: true,
+  replies: true,
+  preview: false,
+  live_activity: false,
+};
 
-const PREF_KEYS = ['needs_you', 'done', 'replies', 'preview'] as const;
+/** Every switch, in the order a settings page lists them. */
+export const PUSH_PREF_KEYS = ['needs_you', 'done', 'replies', 'preview', 'live_activity'] as const;
 
 /** Any value → complete prefs: booleans from `value` over `base`; anything else is ignored. */
 export function normalizePushPrefs(value: unknown, base: PushPrefs = DEFAULT_PUSH_PREFS): PushPrefs {
   const next: PushPrefs = { ...base };
   if (!value || typeof value !== 'object' || Array.isArray(value)) return next;
   const source = value as Record<string, unknown>;
-  for (const key of PREF_KEYS) {
+  for (const key of PUSH_PREF_KEYS) {
     if (typeof source[key] === 'boolean') next[key] = source[key];
   }
   return next;
@@ -43,6 +57,11 @@ export type PushPlatform = 'ios';
 
 /** The three kinds of push (spec §2.1). */
 export type PushCategory = 'needs_you' | 'done' | 'replies';
+
+/** How a Bot's background task ended, as its "done" push says (`PushData.st`). */
+export type PushTaskOutcome = 'succeeded' | 'failed' | 'interrupted';
+
+const TASK_OUTCOMES: ReadonlySet<string> = new Set<PushTaskOutcome>(['succeeded', 'failed', 'interrupted']);
 
 /** One of the member's registered phones. The token itself never leaves the server. */
 export interface PushDeviceView {
@@ -104,6 +123,10 @@ export interface PushData {
   nid: string;
   /** Where a tap goes: `/bots?c=<sid>[&request=<rid>]` or `/chat/<sid>`. */
   url?: string;
+  /** done, a Bot's background task: its Runtime run — the phone ends that task's Live Activity. */
+  run?: string;
+  /** done, a Bot's background task: how it ended. */
+  st?: PushTaskOutcome;
 }
 
 /** Ids the server writes into `data` (session / request / notification / station / user ids). */
@@ -123,6 +146,8 @@ export function parsePushData(value: unknown): PushData | null {
   if (data.sid !== undefined && !isId(data.sid)) return null;
   if (data.rid !== undefined && !isId(data.rid)) return null;
   if (data.url !== undefined && (typeof data.url !== 'string' || data.url.length > 512)) return null;
+  if (data.run !== undefined && !isId(data.run)) return null;
+  if (data.st !== undefined && (typeof data.st !== 'string' || !TASK_OUTCOMES.has(data.st))) return null;
   return {
     v: 1,
     s: isId(data.s) ? data.s : null,
@@ -132,5 +157,7 @@ export function parsePushData(value: unknown): PushData | null {
     ...(isId(data.sid) ? { sid: data.sid } : {}),
     ...(isId(data.rid) ? { rid: data.rid } : {}),
     ...(typeof data.url === 'string' ? { url: data.url } : {}),
+    ...(isId(data.run) ? { run: data.run } : {}),
+    ...(typeof data.st === 'string' && TASK_OUTCOMES.has(data.st) ? { st: data.st as PushTaskOutcome } : {}),
   };
 }

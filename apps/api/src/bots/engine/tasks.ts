@@ -166,6 +166,36 @@ function taskSummary(run: RuntimeRunRow): string | null {
   return run.error_message ? run.error_message.slice(0, 280) : null;
 }
 
+/** The conversation a task reports into (`parent_session_id` of its Run input). */
+function taskConversationId(run: RuntimeRunRow): string | null {
+  const input = safeJsonParse(run.input, {}) as { parent_session_id?: unknown };
+  return typeof input.parent_session_id === 'string' ? input.parent_session_id : null;
+}
+
+/** Runs → task views (a run whose child session lost its metadata is left out). */
+async function taskViews(db: DatabaseProvider, runs: readonly RuntimeRunRow[]): Promise<BotTaskView[]> {
+  const views: BotTaskView[] = [];
+  for (const run of runs) {
+    const child = await db.sessions.getById(run.source_id);
+    const meta = botTaskMetadata(child?.metadata);
+    if (!meta) continue;
+    const conversationId = taskConversationId(run);
+    views.push({
+      run_id: run.id,
+      bot_id: meta.bot_id,
+      title: meta.task_title,
+      status: taskStatus(run.status),
+      child_session_id: child?.id ?? null,
+      ...(conversationId ? { conversation_id: conversationId } : {}),
+      summary: taskSummary(run),
+      created_at: run.created_at,
+      started_at: run.started_at ?? null,
+      ended_at: run.settled_at ?? null,
+    });
+  }
+  return views;
+}
+
 /** The background tasks of one conversation, newest first (the task dock). */
 export async function listConversationTasks(
   db: DatabaseProvider,
@@ -174,29 +204,34 @@ export async function listConversationTasks(
   limit = 20,
 ): Promise<BotTaskView[]> {
   const { items } = await db.runtime.listRuns({ owner_user_id: userId, kinds: ['subagent'], limit: 100 });
+  const runs = items.filter((run) => isBotTaskRun(run) && taskConversationId(run) === conversationId);
+  return taskViews(db, runs.slice(0, limit));
+}
+
+/** How long a finished task stays in `listMemberTasks` — long enough for a phone to end its Live Activity. */
+export const RECENT_TASK_WINDOW_MS = 30 * 60_000;
+
+/**
+ * The member's background tasks across every conversation, newest first: those still
+ * queued / running / waiting, plus those that ended in the last `RECENT_TASK_WINDOW_MS`.
+ * The phone reconciles its Live Activities against it (spec
+ * docs/specs/20261010-mobile-live-activity.md §3.4): it starts one for a task begun
+ * elsewhere and ends the ones whose task finished while it was away.
+ */
+export async function listMemberTasks(
+  db: DatabaseProvider,
+  userId: string,
+  now: number = Date.now(),
+  limit = 20,
+): Promise<BotTaskView[]> {
+  const { items } = await db.runtime.listRuns({ owner_user_id: userId, kinds: ['subagent'], limit: 100 });
+  const since = now - RECENT_TASK_WINDOW_MS;
   const runs = items.filter((run) => {
     if (!isBotTaskRun(run)) return false;
-    const input = safeJsonParse(run.input, {}) as { parent_session_id?: unknown };
-    return input.parent_session_id === conversationId;
+    if (ACTIVE_STATUSES.includes(run.status)) return true;
+    return run.settled_at !== null && Date.parse(run.settled_at) >= since;
   });
-  const views: BotTaskView[] = [];
-  for (const run of runs.slice(0, limit)) {
-    const child = await db.sessions.getById(run.source_id);
-    const meta = botTaskMetadata(child?.metadata);
-    if (!meta) continue;
-    views.push({
-      run_id: run.id,
-      bot_id: meta.bot_id,
-      title: meta.task_title,
-      status: taskStatus(run.status),
-      child_session_id: child?.id ?? null,
-      summary: taskSummary(run),
-      created_at: run.created_at,
-      started_at: run.started_at ?? null,
-      ended_at: run.settled_at ?? null,
-    });
-  }
-  return views;
+  return taskViews(db, runs.slice(0, limit));
 }
 
 /** Cancel through the Runtime command fence (same semantics as Execution Center). */

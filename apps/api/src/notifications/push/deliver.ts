@@ -8,7 +8,10 @@
  *    decided or expired, the reply was read (or a card is waiting in that
  *    conversation) → `suppressed`;
  * 3. render in the account's language and send everything to Expo in one pass
- *    (grouped by project, ≤100 per request);
+ *    (grouped by project, ≤100 per request). A Bot task's "done" push also names the
+ *    run and how it ended (`run` / `st`) and, for a device that shows tasks as Live
+ *    Activities, wakes the app (`contentAvailable`) — as a silent push when the device
+ *    has "done" pushes off (spec docs/specs/20261010-mobile-live-activity.md §3.4);
  * 4. settle each ticket: accepted → delivered; `DeviceNotRegistered` → the device is
  *    disabled and the attempt `failed`; `MessageRateExceeded`, 429, 5xx, network →
  *    the worker's backoff; a refused request or `MessageTooBig` → dead letter
@@ -24,7 +27,7 @@ import type {
 } from '@greenhouse/db';
 import { isDeliverable, pushDevicePrefs } from '@greenhouse/db';
 import type { BotRequestPayload } from '@greenhouse/types/bots';
-import type { PushData } from '@greenhouse/types/push';
+import type { PushData, PushTaskOutcome } from '@greenhouse/types/push';
 import { getProductName } from '@greenhouse/utils/brand';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
@@ -34,7 +37,7 @@ import { userHasFeature } from '../../auth/features.js';
 import { requestSubject } from '../../bots/engine/approvals.js';
 import { botsLocale } from '../../bots/engine/copy.js';
 import { sendExpoPush, type ExpoMessage, type ExpoOutcome, type FetchLike } from './expo.js';
-import { parsePushEnvelope, pushPolicy, pushUrl, type PushEnvelope } from './policy.js';
+import { isBotTaskEnd, parsePushEnvelope, pushPolicy, pushUrl, type PushEnvelope } from './policy.js';
 import { renderPush, renderTestPush } from './render.js';
 
 /** How long a test push may wait for the phone. */
@@ -114,6 +117,13 @@ async function previewContent(
   return { subject: text('task_title'), excerpt: null };
 }
 
+/** A Bot task's run and how it ended, from its terminal fact (runtime-projector.ts: `run_id`, `payload.status`). */
+function botTaskEnd(notification: NotificationRow): { run: string; st: PushTaskOutcome } | null {
+  const status = (safeJsonParse(notification.payload, {}) as { status?: unknown }).status;
+  if (!notification.run_id || (status !== 'succeeded' && status !== 'failed' && status !== 'interrupted')) return null;
+  return { run: notification.run_id, st: status };
+}
+
 async function prepare(db: DatabaseProvider, attempt: NotificationDeliveryAttemptRow, now: number): Promise<Prepared> {
   const notification = await db.notifications.get(attempt.notification_id);
   if (!notification) return skip('notification_gone');
@@ -137,6 +147,35 @@ async function prepare(db: DatabaseProvider, attempt: NotificationDeliveryAttemp
   const stale = await staleReason(db, user.id, envelope, now);
   if (stale) return skip(stale);
 
+  const task = isBotTaskEnd(envelope) ? botTaskEnd(notification) : null;
+  const data: PushData = {
+    v: 1,
+    s: device.client_ref,
+    u: user.id,
+    k: envelope.k,
+    sid: envelope.sid,
+    ...(envelope.rid ? { rid: envelope.rid } : {}),
+    nid: notification.id,
+    url: pushUrl(envelope),
+    ...(task ? { run: task.run, st: task.st } : {}),
+  };
+  if (decision.silent) {
+    // Only there to end a Live Activity: nothing to end without the run.
+    if (!task) return skip('no_task_run');
+    return {
+      kind: 'send',
+      deviceId: device.id,
+      projectId: device.project_id,
+      message: {
+        to: device.token,
+        data: data as unknown as Record<string, unknown>,
+        contentAvailable: true,
+        priority: 'normal',
+        expiration: Math.floor(decision.expiresAt / 1000),
+      },
+    };
+  }
+
   const [bot, content, badge] = await Promise.all([
     envelope.bot_id ? db.bots.getBot(user.id, envelope.bot_id) : Promise.resolve(undefined),
     prefs.preview ? previewContent(db, notification, envelope) : Promise.resolve({ subject: null, excerpt: null }),
@@ -151,16 +190,6 @@ async function prepare(db: DatabaseProvider, attempt: NotificationDeliveryAttemp
     subject: content.subject,
     excerpt: content.excerpt,
   });
-  const data: PushData = {
-    v: 1,
-    s: device.client_ref,
-    u: user.id,
-    k: envelope.k,
-    sid: envelope.sid,
-    ...(envelope.rid ? { rid: envelope.rid } : {}),
-    nid: notification.id,
-    url: pushUrl(envelope),
-  };
   return {
     kind: 'send',
     deviceId: device.id,
@@ -170,6 +199,8 @@ async function prepare(db: DatabaseProvider, attempt: NotificationDeliveryAttemp
       title,
       body,
       data: data as unknown as Record<string, unknown>,
+      // the phone ends the task's Live Activity as this arrives, even with the app in the background
+      ...(task && prefs.live_activity ? { contentAvailable: true } : {}),
       sound: 'default',
       badge,
       priority: 'high',

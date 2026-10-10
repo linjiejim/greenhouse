@@ -117,6 +117,15 @@ describe('push device registration', () => {
     expect((await call(owner, 'PATCH', `/${id}`, {})).status).toBe(400);
     const patched = await call(owner, 'PATCH', `/${id}`, { prefs: { replies: false, preview: true } });
     expect(patched.json.device.prefs).toEqual({ ...DEFAULT_PUSH_PREFS, replies: false, preview: true });
+    // the phone's Live Activity switch rides the same prefs (its "done" pushes then wake the app)
+    const live = await call(owner, 'PATCH', `/${id}`, { prefs: { live_activity: true } });
+    expect(live.json.device.prefs).toEqual({
+      ...DEFAULT_PUSH_PREFS,
+      replies: false,
+      preview: true,
+      live_activity: true,
+    });
+    expect((await call(owner, 'PATCH', `/${id}`, { prefs: { live_activity: 'on' } })).status).toBe(400);
 
     expect((await call(other, 'DELETE', `/${id}`)).status).toBe(404);
     expect((await call(owner, 'DELETE', `/${id}`)).json).toEqual({ ok: true });
