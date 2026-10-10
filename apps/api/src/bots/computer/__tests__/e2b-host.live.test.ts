@@ -16,8 +16,10 @@
  * reset moving the home (files and a browser login) into a new sandbox, a
  * runaway job killed inside the Bots' memory slice (nothing else restarts), the
  * recovery of an old sandbox whose home failed to move (RECOVER_SCRIPT), a
- * port preview through the agent bridge (never to a bridge's own port), and an
- * encrypted backup of both homes rebuilding a lost computer (caches left out).
+ * port preview through the agent bridge (never to a bridge's own port), an
+ * encrypted backup of both homes rebuilding a lost computer (caches left out), and
+ * the members' egress table (e2b-egress.ts): the metadata service, private networks,
+ * the provider's agent and the bridges refused from both member uids, root untouched.
  */
 
 import { createHash, randomBytes } from 'node:crypto';
@@ -34,6 +36,7 @@ import { decryptBackupStream, encryptBackupStream } from '../backup-format.js';
 import { createLocalBackupStore } from '../backup-store.js';
 import { openCdpBridge } from '../cdp-bridge.js';
 import { exportSucceeded, HOME_USERS } from '../home-archive.js';
+import { HOSTED_EGRESS_PROBE } from '../e2b-egress.js';
 import { createE2bApi, createE2bHost, RECOVER_SCRIPT } from '../e2b-host.js';
 import { buildComputerTemplate, computerTemplateName, templateStatus } from '../e2b-template.js';
 import type { ComputerHost, ComputerStartSpec } from '../host.js';
@@ -147,8 +150,9 @@ describe.skipIf(!LIVE)('e2b host (live provider)', () => {
           'touch /usr/local/bin/gh-computer 2>/dev/null && echo LEAK_usrlocal',
           'pgrep -x sshd >/dev/null && echo LEAK_sshd',
           'find / -xdev -perm /6000 -type f 2>/dev/null | head -3 | sed "s/^/LEAK_setuid /"',
-          `code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H "x-gh-bridge-secret: $(cat /etc/gh-bridge/agent.secret)" http://127.0.0.1:7681/vnc); [ "$code" = 403 ] || echo LEAK_bridge_$code`,
-          `code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:49983/process.Process/List); case "$code" in 401|403) ;; *) echo LEAK_envd_$code;; esac`,
+          // Refused before they answer (the egress table; each would refuse the agent anyway): 000 = no connection.
+          `code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H "x-gh-bridge-secret: $(cat /etc/gh-bridge/agent.secret)" http://127.0.0.1:7681/vnc); [ "$code" = 000 ] || echo LEAK_bridge_$code`,
+          `code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:49983/process.Process/List); [ "$code" = 000 ] || echo LEAK_envd_$code`,
           'systemctl stop gh-bridge-browser.service gh-bridge-browser.socket >/dev/null 2>&1 && echo LEAK_systemctl',
           // The provider's own tokens: in no env, argv or readable file of the agent.
           'for t in "$GH_T_ENVD" "$GH_T_TRAFFIC"; do [ -n "$t" ] || continue; ' +
@@ -160,6 +164,41 @@ describe.skipIf(!LIVE)('e2b host (live provider)', () => {
       { env: await providerTokens() },
     );
     expect(result.stdout.toString().trim().split('\n')).toEqual(['checked']);
+  }, 120_000);
+
+  it('keeps both member accounts off the metadata service, private networks, the provider’s agent and the bridges', async () => {
+    const targets = [...HOSTED_EGRESS_PROBE, 'https://example.com/'];
+    for (const user of ['agent', 'browser'] as const) {
+      const result = await exec(
+        user,
+        [
+          'sh',
+          '-c',
+          `for u in ${targets.join(' ')}; do curl -sS -m 5 --noproxy '*' -o /dev/null "$u" 2>/dev/null; echo "$? $u"; done`,
+        ],
+        { timeoutMs: 60_000 },
+      );
+      const codes = Object.fromEntries(
+        result.stdout
+          .toString()
+          .trim()
+          .split('\n')
+          .map((line) => [line.split(' ')[1], Number(line.split(' ')[0])]),
+      );
+      // Refused at once (7), not left to time out — and the internet stays open.
+      for (const url of HOSTED_EGRESS_PROBE) expect(codes[url], `${user} → ${url}`).toBe(7);
+      expect(codes['https://example.com/'], `${user} → the internet`).toBe(0);
+    }
+    // Root — the provider's agent, the boot steps — is untouched; rpcbind no longer listens.
+    const asRoot = await root(
+      [
+        "curl -s -m 5 -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:49983/health",
+        "curl -s -m 5 -o /dev/null -w '%{http_code}\\n' http://169.254.169.254/",
+        "ss -ltnu | grep -c ':111 ' || true",
+        'nft list chain inet gh_egress member | grep -c reject',
+      ].join('; '),
+    );
+    expect(asRoot.out.split('\n')).toEqual(['204', '401', '0', '5']);
   }, 120_000);
 
   it('holds the bridge ports in PID 1: the agent cannot take one, not even while the bridge restarts', async () => {

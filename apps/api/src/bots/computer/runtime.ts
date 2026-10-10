@@ -74,6 +74,7 @@ import {
 import { createDockerHost } from './docker-host.js';
 import { ComputerRuntimeError, createDockerClient, type DockerClient, type ImageInfo } from './docker.js';
 import { createE2bApi, createE2bHost, providerError } from './e2b-host.js';
+import { HOSTED_EGRESS_PROBE, HOSTED_EGRESS_PROBE_USERS } from './e2b-egress.js';
 import {
   buildComputerTemplate,
   computerTemplateName,
@@ -512,6 +513,12 @@ export async function runHostedPrechecks(
 
   if (status.state === 'ready') {
     checks.push({ id: 'template', ok: true, detail: `${name} · build ${status.buildId?.slice(0, 8) ?? '?'}` });
+    checks.push({
+      id: 'egress',
+      ok: true,
+      detail:
+        "Members' processes cannot reach the provider's metadata service, private networks, the provider's agent or the bridges: the rules are applied at every start and proven from both accounts before a computer is used.",
+    });
     return { ok: true, reason: null, checks, memTotal: null, image: null, gateways: [], template: name };
   }
   const build = templateBuild?.name === name ? templateBuild : null;
@@ -571,8 +578,9 @@ async function environment(): Promise<ControllerEnvironment> {
       idleMinutes: knobs.idleMinutes,
       urlBlocklist: greenhouseUrlBlocklist(process.env),
       imageId: state.template,
-      // The provider keeps sandboxes off private networks; its in-VM metadata service answers by design.
-      egressProbe: [],
+      // The member uids' table, applied at every boot (e2b-egress.ts): proven from both before use.
+      egressProbe: HOSTED_EGRESS_PROBE,
+      egressProbeUsers: HOSTED_EGRESS_PROBE_USERS,
       hostDisk: null,
     };
   }
