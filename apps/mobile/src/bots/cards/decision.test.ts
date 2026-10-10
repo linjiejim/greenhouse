@@ -114,7 +114,7 @@ describe('cardKind', () => {
   });
 });
 
-describe('cardButtons (the honest mapping, D11)', () => {
+describe('cardButtons (computer cards open the computer page, 20261011 §2.4)', () => {
   it('maps every kind × payload variant', () => {
     expect(ids(approval(false))).toEqual(['deny', 'approve*']);
     expect(ids(approval(true))).toEqual(['deny', 'always?', 'approve*']);
@@ -123,12 +123,11 @@ describe('cardButtons (the honest mapping, D11)', () => {
     expect(ids(instructions())).toEqual(['deny', 'approve*']);
     expect(ids(login('login'))).toEqual(['deny', 'signIn*']);
     expect(ids(login('otp'))).toEqual(['deny', 'signIn*']);
-    expect(ids(handback('interrupted'))).toEqual(['approve*']);
-    expect(ids(handback('waiting'))).toEqual(['approve*']);
-    // A human check cannot be passed from the phone: only skip.
-    expect(ids(captcha())).toEqual(['deny']);
-    // approve = "done, hand back" on the server: skip, or confirm it was done on the web.
-    expect(ids(other())).toEqual(['deny', 'finished?']);
+    expect(ids(handback('interrupted'))).toEqual(['computer', 'approve*']);
+    expect(ids(handback('waiting'))).toEqual(['computer', 'approve*']);
+    // Verified / handled on the computer page (its Done hands back for the card) — never "done" from here.
+    expect(ids(captcha())).toEqual(['deny', 'computer*']);
+    expect(ids(other())).toEqual(['deny', 'computer*']);
     expect(ids(req('mystery' as BotRequestView['kind'], {}))).toEqual([]);
   });
 
@@ -141,9 +140,9 @@ describe('cardButtons (the honest mapping, D11)', () => {
     }
   });
 
-  it('posts the decision each button names; edit / sign in open a sheet instead', () => {
+  it('posts the decision each button names; edit / sign in / computer open a screen instead', () => {
     expect(decisionFor('approve')).toEqual({ decision: 'approve' });
-    expect(decisionFor('finished')).toEqual({ decision: 'approve' });
+    expect(decisionFor('computer')).toBeNull();
     expect(decisionFor('always')).toEqual({ decision: 'always' });
     expect(decisionFor('deny')).toEqual({ decision: 'deny' });
     expect(decisionFor('edit')).toBeNull();
@@ -165,7 +164,9 @@ describe('cardButtons (the honest mapping, D11)', () => {
     expect(buttonLabel(handback(), 'approve')).toEqual({ key: 'bots.card.handBack' });
     expect(buttonLabel(captcha(), 'deny').key).toBe('bots.card.skip');
     expect(buttonLabel(other(), 'deny').key).toBe('bots.card.skip');
-    expect(buttonLabel(other(), 'finished').key).toBe('bots.card.finished');
+    expect(buttonLabel(captcha(), 'computer').key).toBe('bots.card.verify');
+    expect(buttonLabel(other(), 'computer').key).toBe('bots.card.takeOver');
+    expect(buttonLabel(handback(), 'computer').key).toBe('bots.card.openComputer');
     expect(buttonLabel(approval(true), 'always').key).toBe('bots.card.allowAlways');
   });
 });

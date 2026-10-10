@@ -6,7 +6,15 @@
  * realtime: src/api/ws.ts, store: ./store.ts, cards: cards/*).
  */
 
-import type { BotConversationDetail, BotConversationReadOnlyCode, BotMessage, BotRequestDecision, BotRequestErrorCode, BotRequestView } from '../shared/bots';
+import type {
+  BotConversationDetail,
+  BotConversationReadOnlyCode,
+  BotMessage,
+  BotRequestDecision,
+  BotRequestErrorCode,
+  BotRequestView,
+  ComputerState,
+} from '../shared/bots';
 import type { BotStreamSegment } from '../shared/bots-wire';
 import type { BotsState } from './store';
 import type { PendingWithBase } from './vendor/web-helpers';
@@ -30,12 +38,15 @@ export type ServerWsWire =
   | { type: 'ping' }
   | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error' }
   | { type: 'bots:conversation'; sessionId: string }
-  | { type: 'bots:attention'; pending: number };
+  | { type: 'bots:attention'; pending: number }
+  | { type: 'bots:computer'; state: ComputerState; controller: 'bot' | 'user' };
 
 export type RealtimeEvent =
   | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error' }
   | { type: 'bots:conversation'; sessionId: string }
   | { type: 'bots:attention'; pending: number }
+  /** The member's computer changed state or hands (the computer page re-reads its status). */
+  | { type: 'bots:computer'; state: ComputerState; controller: 'bot' | 'user' }
   /** Synthesised: the socket (re)connected or the app came back to the foreground — re-read everything. */
   | { type: 'resync' };
 
