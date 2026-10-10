@@ -63,20 +63,30 @@ export function logout(): void {
 }
 
 /**
- * Tell the server the account's language (`PUT /api/auth/me/preferences`), as
- * the web does when the member picks one — fire and forget: it only shapes
- * text the server writes from now on. Never sent unasked (the app's default
- * language is not a choice the member made).
+ * Tell the server the account's language (`PUT /api/auth/me/preferences`) — it
+ * shapes text the server writes from now on. The member's pick by default (as
+ * the web's language switch); `inferred`: the app's own language, which the
+ * server only takes for an account whose member never picked one (see
+ * src/settings/account-language.ts). Resolves to the account's language after
+ * the call, or null when it failed.
  */
-export async function saveAccountLocale(locale: 'zh' | 'en'): Promise<boolean> {
+export async function saveAccountLocale(
+  locale: 'zh' | 'en',
+  opts: { inferred?: boolean } = {},
+): Promise<{ locale: string; chosen: boolean } | null> {
   try {
     const res = await api('/api/auth/me/preferences', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ locale }),
+      body: JSON.stringify(opts.inferred ? { locale, inferred: true } : { locale }),
     });
-    return res.ok;
+    if (!res.ok) return null;
+    const data = (await res.json().catch(() => ({}))) as { locale?: unknown; locale_chosen?: unknown };
+    return {
+      locale: typeof data.locale === 'string' ? data.locale : locale,
+      chosen: data.locale_chosen === true || !opts.inferred,
+    };
   } catch {
-    return false;
+    return null;
   }
 }

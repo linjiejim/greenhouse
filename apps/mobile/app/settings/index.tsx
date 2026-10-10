@@ -43,7 +43,7 @@ import {
   pickerStyle,
   tag,
 } from '@expo/ui/swift-ui/modifiers';
-import { saveAccountLocale } from '../../src/api/auth';
+import { chooseLanguage } from '../../src/settings/account-language';
 import type { LangPref, ThemePref } from '../../src/store/prefs';
 import { useBotIdentityEnabled } from '../../src/bots/availability';
 import { sproutyBot, useBots } from '../../src/bots/store';
@@ -62,7 +62,7 @@ export default function Settings() {
   const router = useRouter();
   const { user, nickname, station, prefs, tagCount, tagsLoaded, version, update, signOut, connectors } =
     useSettings();
-  const { theme, setTheme, lang, setLang } = prefs;
+  const { theme, setTheme, lang } = prefs;
   const myBots = useMyBots();
 
   return (
@@ -131,11 +131,8 @@ export default function Settings() {
           <Picker
             label={t('settings.language')}
             selection={lang}
-            onSelectionChange={(v) => {
-              setLang(v as LangPref);
-              // the server writes in the account's language (Bot greetings, event lines) — keep it in step, like the web
-              void saveAccountLocale(v as LangPref);
-            }}
+            // the account takes it too: the server writes in it (Bot greetings, event lines), like the web's switch
+            onSelectionChange={(v) => chooseLanguage(v as LangPref)}
             modifiers={[pickerStyle('menu')]}
           >
             <Text modifiers={[tag('zh')]}>{t('settings.langZh')}</Text>

@@ -49,6 +49,7 @@ import { useAuth } from '../src/store/auth';
 import { usePrefs } from '../src/store/prefs';
 import { setOnUnauthorized } from '../src/api/client';
 import { useWidgetSnapshot } from '../src/widget/snapshot';
+import { useAccountLanguage } from '../src/settings/account-language';
 import { WidgetArtHost } from '../src/widget/art-host';
 import { useApplyAppearance, useTheme } from '../src/theme';
 import { Splash } from '../src/ui/splash';
@@ -115,6 +116,9 @@ export default function RootLayout() {
   // Bots store changes in the foreground and on every background transition; cleared on
   // sign-out and station switch so the widget degrades to launcher-only.
   useWidgetSnapshot();
+
+  // The account's language follows the app's until the member picks one (src/settings/account-language.ts).
+  useAccountLanguage();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

@@ -16,7 +16,7 @@ import React from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { Box, ListItem } from '@expo/ui/jetpack-compose';
 import { background, clip, fillMaxWidth, Shapes, size } from '@expo/ui/jetpack-compose/modifiers';
-import { saveAccountLocale } from '../../src/api/auth';
+import { chooseLanguage } from '../../src/settings/account-language';
 import type { LangPref, ThemePref } from '../../src/store/prefs';
 import { compactNumber } from '../../src/lib/format';
 import { useT } from '../../src/lib/i18n';
@@ -38,7 +38,7 @@ export default function Settings() {
   const router = useRouter();
   const { user, nickname, station, prefs, tagCount, tagsLoaded, version, update, signOut, connectors } =
     useSettings();
-  const { theme, setTheme, lang, setLang } = prefs;
+  const { theme, setTheme, lang } = prefs;
 
   return (
     <>
@@ -92,10 +92,7 @@ export default function Settings() {
           <FormSelectRow<LangPref>
             label={t('settings.language')}
             value={lang}
-            onChange={(v) => {
-              setLang(v);
-              void saveAccountLocale(v);
-            }}
+            onChange={chooseLanguage}
             options={[
               { value: 'zh', label: t('settings.langZh') },
               { value: 'en', label: t('settings.langEn') },
