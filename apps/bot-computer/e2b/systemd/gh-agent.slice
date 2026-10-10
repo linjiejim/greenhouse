@@ -1,0 +1,14 @@
+# Everything uid `agent` runs — the Bots' shell, the member's terminal, background
+# jobs — lives here, under a ceiling well below the computer's memory. A runaway job
+# then hits this cgroup's limit, and the kernel's victim is inside the slice: the
+# desktop, the browser and the member's sign-ins are never collateral. Without it a
+# single job can exhaust the whole computer, and the global OOM killer picks by size
+# — which on a 2 GiB computer is usually a Chromium renderer.
+#
+# Percentages, not megabytes: the computer's size is a template build option
+# (BOTS_COMPUTER_MEMORY), and systemd resolves these against the installed memory.
+[Slice]
+MemoryAccounting=yes
+# Reclaim hard before killing: a job that is merely large is slowed, not lost.
+MemoryHigh=40%
+MemoryMax=50%

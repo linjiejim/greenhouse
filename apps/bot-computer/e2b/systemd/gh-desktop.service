@@ -15,6 +15,10 @@ Environment=HOME=/home/browser DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
 # checked as root and a squatted one fails the start rather than being blessed.
 ExecStartPre=+/usr/local/sbin/gh-e2b-rundir
 ExecStart=/usr/local/bin/gh-computer
+# Chromium survives losing a renderer to the OOM killer (that tab crashes, the browser does
+# not), so systemd must not stop the desktop under the member — and restarting it is exactly
+# what the display's start-once rule forbids (gh-e2b-boot). The default here is `stop`.
+OOMPolicy=continue
 # SIGTERM to gh-computer alone: it closes the browser first (the profile is flushed), then the display.
 KillMode=mixed
 TimeoutStopSec=10

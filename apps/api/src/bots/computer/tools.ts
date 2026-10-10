@@ -72,17 +72,19 @@ export function buildComputerTools(
   ctx: BotTurnContext,
   deps: ComputerDeps = defaultComputerDeps,
 ): Record<string, Tool> {
-  if (getComputerRuntime().state !== 'ready') return {};
+  const runtime = getComputerRuntime();
+  if (runtime.state !== 'ready') return {};
   const turn = computerTurnFrom(ctx, deps);
+  const host = runtime.driver ?? 'docker';
   if (ctx.background) {
     // The clean context dies with the run when it is stopped; a normal finish
     // is covered by the engine calling releaseTurnLeases (and an idle sweep).
     ctx.signal.addEventListener('abort', () => void releaseTurnLeases(ctx.userId, ctx.turnId, deps), { once: true });
-    return { browser: createBrowserTool(turn, deps), computer: createComputerTool(turn, deps) };
+    return { browser: createBrowserTool(turn, deps), computer: createComputerTool(turn, deps, host) };
   }
   const tools: Record<string, Tool> = {
     browser: createBrowserTool(turn, deps),
-    computer: createComputerTool(turn, deps),
+    computer: createComputerTool(turn, deps, host),
     request_takeover: createTakeoverTool(ctx, deps),
   };
   if (isVaultAvailable()) tools.vault = createVaultTool(ctx, deps);

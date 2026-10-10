@@ -345,7 +345,9 @@ Bots work in any deployment. Their computers run in one of two places:
   template at the provider (a few minutes); a computer then starts in seconds, sleeps
   (pauses — memory, files and logins kept, no cost while asleep) when idle and resumes where
   it left off. After a greenhouse upgrade changes the template, each computer moves its home
-  into a new sandbox at its next start.
+  into a new sandbox at its next start; if that move fails, the member keeps the old computer and
+  the move is tried again a few hours later. Keep the API close to the provider's region: homes
+  move through it.
 - **This server's Docker** — the API must run **on the Docker host itself** (bare metal / PM2,
   not the compose image — computers are reached through `docker exec` and publish no ports),
   plus gVisor, a hardened bridge

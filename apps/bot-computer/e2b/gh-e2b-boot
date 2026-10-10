@@ -7,16 +7,22 @@
 #   --bridges-only   the same without the desktop (a home moves in first; then no flag)
 #   --resume         a woken sandbox: the secrets again, the bridges up; the desktop must
 #                    still be running — exit 4 when it is not
+#   --resume-kept    the same, keeping the settings it was started with (no env check): the
+#                    API wakes an old computer this way while a failed move backs off
 #   --secrets-only   rewrite the bridge secrets (the deployment's signing key changed)
+#   --recover        an OLD sandbox whose home failed to move out: its desktop was stopped
+#                    for the move. End every process of uid agent, prove none is left, then
+#                    start the desktop and the bridges again — the member keeps working here
+#                    and the move is tried again later. Its own settings stay (no env check).
 #
-# A sandbox's desktop starts exactly once, before any agent process exists in it: the
-# display's names (the X socket in /tmp, its abstract twin) could otherwise be taken by a
-# process the Bot left running. So settings never change in place (exit 3 when they
-# differ) and a desktop that is down is never started again here (exit 4) — the API moves
-# the home into a new sandbox instead.
+# A sandbox's desktop starts only when no agent process exists in it: the display's names
+# (the X socket in /tmp, its abstract twin) could otherwise be taken by a process the Bot
+# left running. So settings never change in place (exit 3 when they differ) and a desktop
+# that is down is not started on a resume (exit 4) — the API moves the home into a new
+# sandbox instead, and only --recover (after emptying the agent uid) starts one again.
 #
 # env: GH_BRIDGE_SECRET_BROWSER, GH_BRIDGE_SECRET_AGENT, GH_COMPUTER_ENV_B64 (the env
-# file, base64; not needed for --secrets-only)
+# file, base64; not needed for --secrets-only, --recover and --resume-kept)
 set -euo pipefail
 
 mode="${1:-}"
@@ -36,21 +42,45 @@ write_secret browser "$GH_BRIDGE_SECRET_BROWSER"
 write_secret agent "$GH_BRIDGE_SECRET_AGENT"
 [ "$mode" = --secrets-only ] && exit 0
 
-: "${GH_COMPUTER_ENV_B64:?}"
-next=$(printf '%s' "$GH_COMPUTER_ENV_B64" | base64 -d)
-if [ ! -f /etc/gh-computer/env ]; then
-  printf '%s\n' "$next" >/etc/gh-computer/env.next
-  chmod 0644 /etc/gh-computer/env.next
-  mv -f /etc/gh-computer/env.next /etc/gh-computer/env
-elif [ "$(cat /etc/gh-computer/env)" != "$next" ]; then
-  echo "gh-e2b-boot: this computer was started with other settings" >&2
-  exit 3
+if [ "$mode" = --recover ]; then
+  # The agent bridge first, so it starts nothing new; its socket stays with PID 1 (a
+  # connection now would start it again — the loop below ends that one too).
+  systemctl stop gh-bridge-agent.service
+  for _ in $(seq 1 20); do
+    pkill -KILL -u agent 2>/dev/null || true
+    pgrep -u agent >/dev/null || break
+    sleep 0.25
+  done
+  if pgrep -u agent >/dev/null; then
+    echo "gh-e2b-boot: processes of uid agent are still running" >&2
+    exit 5
+  fi
+  # gh-e2b-rundir (ExecStartPre) refuses a squatted runtime directory, as on a first start.
+  systemctl start gh-desktop.service
+  systemctl start gh-bridge-browser.socket gh-bridge-agent.socket gh-bridge-browser.service gh-bridge-agent.service
+  exit 0
+fi
+
+if [ "$mode" != --resume-kept ]; then
+  : "${GH_COMPUTER_ENV_B64:?}"
+  next=$(printf '%s' "$GH_COMPUTER_ENV_B64" | base64 -d)
+  if [ ! -f /etc/gh-computer/env ]; then
+    printf '%s\n' "$next" >/etc/gh-computer/env.next
+    chmod 0644 /etc/gh-computer/env.next
+    mv -f /etc/gh-computer/env.next /etc/gh-computer/env
+  elif [ "$(cat /etc/gh-computer/env)" != "$next" ]; then
+    echo "gh-e2b-boot: this computer was started with other settings" >&2
+    exit 3
+  fi
+elif [ ! -f /etc/gh-computer/env ]; then
+  echo "gh-e2b-boot: this computer was never started" >&2
+  exit 4
 fi
 
 systemctl start gh-bridge-browser.socket gh-bridge-agent.socket gh-bridge-browser.service gh-bridge-agent.service
 case "$mode" in
   --bridges-only) exit 0 ;;
-  --resume)
+  --resume | --resume-kept)
     if ! systemctl is-active --quiet gh-desktop.service; then
       echo "gh-e2b-boot: the desktop is not running" >&2
       exit 4

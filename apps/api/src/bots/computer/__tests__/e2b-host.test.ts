@@ -20,6 +20,7 @@ import {
   bridgeSecret,
   computerEnvFile,
   createE2bHost,
+  MOVE_RETRY_AFTER_MS,
   ORPHAN_GRACE_MS,
   providerError,
   RETIRED_KEEP_MS,
@@ -27,7 +28,7 @@ import {
   type E2bApi,
   type SandboxHandle,
 } from '../e2b-host.js';
-import type { ComputerProcess, ComputerStartSpec, ExecOutcome } from '../host.js';
+import { ComputerStartError, type ComputerProcess, type ComputerStartSpec, type ExecOutcome } from '../host.js';
 
 const NS = 'testns';
 const TEMPLATE = 'gh-computer-c2-aaaaaaaaaaaa';
@@ -153,17 +154,19 @@ const ok = (partial: Partial<ExecOutcome> = {}): ExecOutcome => ({
   ...partial,
 });
 
-function setup(opts: { tarRead?: number; tarWrite?: number } = {}) {
+/** tarWrite: one exit code for every `tar -x`, or one per call (the last repeats). */
+function setup(opts: { tarRead?: number; tarWrite?: number | number[] } = {}) {
   const api = new FakeApi();
   let now = T0;
   const streams: Array<{ origin: string; argv: string[] }> = [];
+  const writes = Array.isArray(opts.tarWrite) ? [...opts.tarWrite] : [opts.tarWrite ?? 0];
   const bridge = {
     exec: vi.fn(async () => ok()),
     stream: vi.fn((target: unknown, argv: string[]) => {
       streams.push({ origin: (target as { origin: string }).origin, argv });
       return argv.includes('-cpf')
         ? fakeProcess(opts.tarRead ?? 0, { output: Buffer.from('home') })
-        : fakeProcess(opts.tarWrite ?? 0, { waitForInput: true });
+        : fakeProcess(writes.length > 1 ? writes.shift()! : writes[0]!, { waitForInput: true });
     }),
     tunnel: vi.fn(),
   };
@@ -293,18 +296,73 @@ describe('e2b host: starts', () => {
     expect(api.sandboxes.has(old)).toBe(true);
   });
 
-  it('a failed move removes the new sandbox and puts the old one back to sleep', async () => {
-    const { api, host } = setup({ tarWrite: 2 });
+  it('a dropped connection restarts that home, not the whole move', async () => {
+    const { api, host, streams } = setup({ tarWrite: [2, 0] });
     const old = api.seed(meta('gh-computer-c2-older'));
-    await expect(host.start(row({ container_name: old }), spec())).rejects.toMatchObject({ code: 'failed' });
-    expect([...api.sandboxes.keys()]).toEqual([old]);
-    expect(api.sandboxes.get(old)?.state).toBe('paused');
+    const started = await host.start(row({ container_name: old }), spec());
+    expect(started).toMatchObject({ imageId: TEMPLATE });
+    expect(started.ref).not.toBe(old);
+    // The agent home twice (the first copy failed), the browser home once.
+    expect(streams.filter((s) => s.argv.includes('-xpf')).map((s) => s.argv[2])).toEqual([
+      '/home/agent',
+      '/home/agent',
+      '/home/browser',
+    ]);
     // tar exit 1 (a file changed while it was read) still counts as a complete copy.
     const tolerant = setup({ tarRead: 1 });
     const older = tolerant.api.seed(meta('gh-computer-c2-older'));
     await expect(tolerant.host.start(row({ container_name: older }), spec())).resolves.toMatchObject({
       imageId: TEMPLATE,
     });
+  });
+
+  it('a move that keeps failing gives the member the old computer back, and waits before trying again', async () => {
+    const { api, host, streams, advance } = setup({ tarWrite: 2 });
+    const old = api.seed(meta('gh-computer-c2-older'));
+    const started = await host.start(row({ container_name: old }), spec());
+    // The old one, its desktop started again after every agent process was ended (gh-e2b-boot --recover).
+    expect(started).toMatchObject({ ref: old, imageId: 'gh-computer-c2-older' });
+    expect(api.log).toContain(`root ${old} gh-e2b-boot --recover`);
+    expect([...api.sandboxes.keys()]).toEqual([old]); // the new copy is gone
+    expect(streams.filter((s) => s.argv.includes('-xpf'))).toHaveLength(3); // MOVE_ATTEMPTS tries of the first home
+    // Asleep again and woken within the back-off: no new sandbox, no move — the old one, with its own settings.
+    await api.pause(old);
+    api.log.length = 0;
+    const again = await host.start(row({ container_name: old }), spec());
+    expect(again).toMatchObject({ ref: old, imageId: 'gh-computer-c2-older' });
+    expect(api.log).toEqual([`connect ${old}`, `root ${old} gh-e2b-boot --resume-kept`]);
+    // After it, the next start tries the move again.
+    await api.pause(old);
+    advance(MOVE_RETRY_AFTER_MS);
+    api.log.length = 0;
+    await host.start(row({ container_name: old }), spec());
+    expect(api.log[0]).toMatch(new RegExp(`^create \\S+ ${TEMPLATE} replaces ${old}$`));
+  });
+
+  it('a reset whose move fails says so (move_failed): no fresh system, the old one sleeps with its desktop back', async () => {
+    const { api, host } = setup({ tarWrite: 2 });
+    const old = api.seed(meta(TEMPLATE));
+    const failure = await host
+      .start(row({ container_name: old, state_reason: 'reset' }), spec(TEMPLATE, true))
+      .catch((e) => e);
+    expect(failure).toBeInstanceOf(ComputerStartError);
+    expect(failure).toMatchObject({ reason: 'move_failed' });
+    expect(api.log).toContain(`root ${old} gh-e2b-boot --recover`);
+    expect([...api.sandboxes.keys()]).toEqual([old]);
+    expect(api.sandboxes.get(old)?.state).toBe('paused');
+    // The next (ordinary) start simply wakes it.
+    api.log.length = 0;
+    await expect(host.start(row({ container_name: old }), spec())).resolves.toMatchObject({ ref: old });
+    expect(api.log).toEqual([`connect ${old}`, `root ${old} gh-e2b-boot --resume`]);
+  });
+
+  it('when the old one cannot be recovered either, the start fails as move_failed and it stays asleep', async () => {
+    const { api, host } = setup({ tarWrite: 2 });
+    api.rootExit = (_id, command) => (command.endsWith('--recover') ? 5 : 0);
+    const old = api.seed(meta('gh-computer-c2-older'));
+    await expect(host.start(row({ container_name: old }), spec())).rejects.toMatchObject({ reason: 'move_failed' });
+    expect([...api.sandboxes.keys()]).toEqual([old]);
+    expect(api.sandboxes.get(old)?.state).toBe('paused');
   });
 
   it('a failed boot of a new sandbox removes it', async () => {
@@ -388,7 +446,7 @@ describe('e2b host: stops, wipes, listings', () => {
     const id = api.seed(meta(TEMPLATE), 'paused');
     const [instance] = await host.list(NS);
     expect(instance).toMatchObject({ ref: id, userId: 'u1', running: false });
-    expect(await host.verdict(id, instance)).toEqual({ state: 'absent', reason: 'idle' });
+    expect(await host.verdict(id, instance)).toEqual({ state: 'absent', reason: 'provider_timeout' });
     expect(await host.verdict('sandbox9999', undefined)).toEqual({ state: 'error', reason: 'exited' });
     expect(await host.inspect(id)).toEqual({ running: false });
     expect(await host.inspect('gh-computer-testns-u1')).toBeNull();

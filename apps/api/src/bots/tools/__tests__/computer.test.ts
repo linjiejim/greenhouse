@@ -420,6 +420,30 @@ describe('import_attachment', () => {
   });
 });
 
+describe('what the Bot is told about its computer', () => {
+  it('says what sleep does to running work on this host, and that localhost stays inside', async () => {
+    const { createComputerTool } = await import('../computer.js');
+    const { turn, deps } = setup();
+    const docker = createComputerTool(turn, deps, 'docker').description!;
+    const hosted = createComputerTool(turn, deps, 'e2b').description!;
+    expect(docker).toMatch(/running processes end/);
+    expect(hosted).toMatch(/everything is frozen, running processes included, and carries on when it wakes/);
+    expect(hosted).not.toMatch(/running processes end —/);
+    for (const description of [docker, hosted]) {
+      expect(description).toMatch(/Your whole home persists \(not only ~\/work\)/);
+      expect(description).toMatch(/never give that address to the member/);
+    }
+    // The default (an existing caller, the docker host) keeps the docker wording.
+    expect(createComputerTool(turn, deps).description).toBe(docker);
+  });
+
+  it('never lets the Bot promise to report a background process on its own', async () => {
+    const { deps, turn } = setup();
+    const result = await runComputerAction(turn, { action: 'run_background', command: 'make' }, deps);
+    expect(result).toMatchObject({ note: expect.stringMatching(/Nothing tells you when it ends/) });
+  });
+});
+
 describe('background turns', () => {
   it('only allow status, read_file, processes and process_log', async () => {
     const { deps, turn } = setup({}, { background: true });

@@ -654,6 +654,8 @@ const zh: Messages = {
     reason_interrupted: '服务器重启时被中断了，重新启动即可恢复。',
     reason_idle: '闲置一段时间后自动休眠了。',
     reason_lru: '为了给同事腾出名额而休眠了——有 Bot 需要时会自动唤醒。',
+    reason_providerTimeout: '沙箱服务套餐的连续运行时限让它休眠了。后台正在跑的任务已暂停，唤醒后会接着跑。',
+    reason_moveFailed: '把它搬到更新后的电脑这一步没完成。什么都没丢——文件都还在原来那台上。过几分钟再试一次。',
     reason_imageOutdated: '主机上的电脑镜像已过期，需要重新构建。',
     reason_networkInvalid: '主机上的电脑网络配置不正确。',
     reason_configInvalid: '服务器环境变量中的电脑配置无效。',

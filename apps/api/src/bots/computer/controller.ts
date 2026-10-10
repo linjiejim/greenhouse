@@ -55,7 +55,13 @@ import type { BotComputerRow, BotComputerService } from '@greenhouse/db';
 import { computerLang, parseTimezone, type BotsComputerConfig } from './config.js';
 import { ComputerDockerError, ComputerRuntimeError } from './docker.js';
 import { ComputerUnavailableError } from './errors.js';
-import type { ComputerHost, HostInstance, StartedComputer, StopVerdict } from './host.js';
+import {
+  ComputerStartError,
+  type ComputerHost,
+  type HostInstance,
+  type StartedComputer,
+  type StopVerdict,
+} from './host.js';
 import { computerIdentity } from './namespace.js';
 
 /** safeJsonParse with the caller's expected shape (still validated field by field). */
@@ -243,6 +249,8 @@ const VIEWER_FRESH_MS = 60_000;
 /** Soft per-member disk limit (spec D16): beyond it, no automatic starts until cleaned up. */
 export const DISK_SOFT_LIMIT_BYTES = 5 * 1024 ** 3;
 const TOUCH_THROTTLE_MS = 15_000;
+/** Idle rounds a computer that cannot answer "any jobs running?" is given before it is stopped anyway. */
+const JOB_QUERY_GRACE = 3;
 
 /** Asks Chromium for its version through the relay, from inside the computer as `browser`. */
 const READY_PROBE = [
@@ -327,6 +335,8 @@ export function createComputerController(deps: ComputerControllerDeps) {
   /** One capacity decision at a time per process: one connection waits on the global lock, not N. */
   const capacityGate = new Semaphore(1);
   const lastTouch = new Map<string, number>();
+  /** Consecutive idle rounds whose job query failed, per member (jobsKeepAwake). */
+  const jobQueryFailures = new Map<string, number>();
   /** Members waiting for a slot in this process, in arrival order. */
   const waiters: string[] = [];
 
@@ -588,7 +598,8 @@ export function createComputerController(deps: ComputerControllerDeps) {
       // A start that got nowhere may still have left something behind under the row's name.
       if (started) await abandonQuietly(started);
       else await discardQuietly(row.container_name);
-      const reason = err instanceof ComputerRuntimeError ? err.reason : 'start_failed';
+      const reason =
+        err instanceof ComputerRuntimeError || err instanceof ComputerStartError ? err.reason : 'start_failed';
       emitState(
         await store.transition(row.user_id, row.version, ['starting'], { state: 'error', state_reason: reason }),
       );
@@ -821,14 +832,31 @@ export function createComputerController(deps: ComputerControllerDeps) {
    * hold one of the organisation's few slots for ever). One exec, asked only
    * of a computer that is idle by every other measure, and outside the
    * member's lock (an exec is slow; the lock re-checks idleness anyway).
+   *
+   * An unanswered question is not an answer: a computer whose job list cannot
+   * be read keeps running for the next few rounds rather than being stopped on
+   * top of work in progress. It is only a reprieve — a computer that never
+   * answers is stopped after `JOB_QUERY_GRACE` tries (and one that is really
+   * gone is settled by the health loop, which asks the provider, not the
+   * computer).
    */
   async function jobsKeepAwake(row: BotComputerRow, env: ControllerEnvironment): Promise<boolean> {
     const maxMs = env.config.jobMaxHours * 3_600_000;
-    if (!deps.runningJobs || maxMs <= 0 || clock.now() - Date.parse(row.last_active_at) >= maxMs) return false;
-    try {
-      return (await deps.runningJobs(row.container_name)) > 0;
-    } catch {
+    if (!deps.runningJobs || maxMs <= 0 || clock.now() - Date.parse(row.last_active_at) >= maxMs) {
+      jobQueryFailures.delete(row.user_id);
       return false;
+    }
+    try {
+      const running = (await deps.runningJobs(row.container_name)) > 0;
+      jobQueryFailures.delete(row.user_id);
+      return running;
+    } catch (err) {
+      const failures = (jobQueryFailures.get(row.user_id) ?? 0) + 1;
+      jobQueryFailures.set(row.user_id, failures);
+      logger.warn(
+        `[bots-computer] could not read the background jobs of ${row.user_id} (${failures}/${JOB_QUERY_GRACE}): ${toErrorMessage(err)}`,
+      );
+      return failures < JOB_QUERY_GRACE;
     }
   }
 

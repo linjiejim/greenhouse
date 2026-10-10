@@ -30,7 +30,7 @@ import {
   type ExecSpec,
 } from './docker.js';
 import { createDockerHost } from './docker-host.js';
-import type { ComputerStartSpec } from './host.js';
+import { ComputerStartError, type ComputerStartSpec } from './host.js';
 import { ComputerUnavailableError } from './errors.js';
 import { computerContainerName, computerVolumeName, LABEL_NAMESPACE, LABEL_USER } from './namespace.js';
 
@@ -296,8 +296,10 @@ function setup(
     egressProbe?: string[];
     /** Account locale per member (unknown = null). */
     locale?: (userId: string) => string | null;
-    /** Running background jobs per container (the gh-jobs count). */
+    /** Running background jobs per container (the gh-jobs count); throwing = the computer did not answer. */
     runningJobs?: (container: string) => number;
+    /** An error the host's start throws instead of starting (null = start normally). */
+    startError?: () => Error | null;
     operatorLang?: string | null;
     jobMaxHours?: number;
   } = {},
@@ -346,6 +348,8 @@ function setup(
       ...dockerHost,
       start: (row, spec) => {
         starts.push(spec);
+        const failure = opts.startError?.();
+        if (failure) return Promise.reject(failure);
         return dockerHost.start(row, spec);
       },
     },
@@ -539,6 +543,32 @@ describe('computer lifecycle', () => {
     expect(asked).toEqual([]); // past the limit the container is not even asked
   });
 
+  it('does not stop a computer whose job list cannot be read — for a few rounds, not for ever', async () => {
+    let answer: number | Error = new Error('the bridge did not answer');
+    const { controller, store, clock } = setup({
+      idleMinutes: 15,
+      runningJobs: () => {
+        if (answer instanceof Error) throw answer;
+        return answer;
+      },
+    });
+    await controller.ensureRunning('u1');
+    clock.ms += 20 * MIN;
+    await controller.idleTick();
+    await controller.idleTick();
+    expect((await store.get('u1'))?.state).toBe('running'); // no answer is not "no jobs"
+    // An answer resets the count: two more unanswered rounds are again a reprieve.
+    answer = 1;
+    await controller.idleTick();
+    answer = new Error('timed out');
+    await controller.idleTick();
+    await controller.idleTick();
+    expect((await store.get('u1'))?.state).toBe('running');
+    // The third unanswered round in a row: a computer that never answers is not kept for ever.
+    await controller.idleTick();
+    expect(await store.get('u1')).toMatchObject({ state: 'absent', state_reason: 'idle' });
+  });
+
   it('never keeps a computer awake for jobs when BOTS_COMPUTER_JOB_MAX_HOURS is 0, and only asks idle ones', async () => {
     const asked: string[] = [];
     const off = setup({ idleMinutes: 15, jobMaxHours: 0, runningJobs: (c) => (asked.push(c), 3) });
@@ -644,6 +674,17 @@ describe('computer lifecycle', () => {
     // Self-heal: the next use starts fresh.
     docker.runFailure = null;
     expect((await controller.ensureRunning('u2')).state).toBe('running');
+    expect((await controller.ensureRunning('u1')).state).toBe('running');
+  });
+
+  it('a failed home move is that member’s own failure, shown as move_failed — never a runtime error', async () => {
+    let failure: Error | null = new ComputerStartError('move_failed', 'Moving the home to a new computer failed');
+    const { controller, store, events } = setup({ startError: () => failure });
+    const error = await controller.ensureRunning('u1').catch((e) => e);
+    expect(error).toMatchObject({ name: 'ComputerUnavailableError', code: 'start_failed' });
+    expect(await store.get('u1')).toMatchObject({ state: 'error', state_reason: 'move_failed' });
+    expect(events.runtimeErrors).toEqual([]);
+    failure = null;
     expect((await controller.ensureRunning('u1')).state).toBe('running');
   });
 

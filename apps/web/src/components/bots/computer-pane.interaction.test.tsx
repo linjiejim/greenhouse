@@ -9,7 +9,9 @@ import { ToastContainer } from '../ui';
 import { useAuthStore } from '../../stores/auth-store';
 import { BotsApiError } from '../../lib/api/bots';
 import { ComputerPane, type ComputerPaneHandle, type ComputerPaneProps } from './computer-pane';
-import { computerPhase, useComputerStatus, type ComputerStatusState } from './computer-phase';
+import { computerPhase, reasonKey, useComputerStatus, type ComputerStatusState } from './computer-phase';
+import en from '../../lib/i18n/en';
+import zh from '../../lib/i18n/zh';
 import { backoffDelay } from './computer-screen';
 import { formatElapsed } from './computer-controls';
 
@@ -263,6 +265,19 @@ describe('computerPhase', () => {
       'checking',
     );
     expect(computerPhase(status({ state_reason: 'lru' }))).toEqual({ kind: 'asleep', reason: 'lru' });
+    // Paused by the provider's time limit: asleep, and said so in the member's words (both languages).
+    expect(computerPhase(status({ state_reason: 'provider_timeout' }))).toEqual({
+      kind: 'asleep',
+      reason: 'provider_timeout',
+    });
+    for (const [reason, key] of [
+      ['provider_timeout', 'reason_providerTimeout'],
+      ['move_failed', 'reason_moveFailed'],
+    ] as const) {
+      expect(reasonKey(reason)).toBe(`botsComputer.${key}`);
+      expect(en.botsComputer[key]).toBeTruthy();
+      expect(zh.botsComputer[key]).toBeTruthy();
+    }
     expect(computerPhase(status(), { starting: true }).kind).toBe('starting');
     expect(computerPhase(status({ state: 'error', state_reason: 'oom' }))).toEqual({ kind: 'error', reason: 'oom' });
     expect(computerPhase(status({ queue_position: 2 }))).toEqual({ kind: 'queued', position: 2 });

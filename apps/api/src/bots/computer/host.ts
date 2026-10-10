@@ -136,6 +136,22 @@ export interface HostInstance {
   running: boolean;
 }
 
+/**
+ * A start that failed for this member's computer alone, with the reason the member is
+ * shown (`state_reason`). Unlike ComputerRuntimeError it never takes the runtime down.
+ */
+export class ComputerStartError extends Error {
+  constructor(
+    /** move_failed: the home could not be moved into a new sandbox; it is intact in the old one. */
+    readonly reason: 'move_failed',
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = 'ComputerStartError';
+  }
+}
+
 /** Why a computer whose row says `running` is not. */
 export interface StopVerdict {
   /** `error` = it died (shown as a fault); `absent` = it went to sleep on its own. */

@@ -108,6 +108,19 @@ done
   fail "/usr/local or /opt/gh-bridge is writable by group or others"
 systemctl is-active --quiet gh-bridge-browser.socket gh-bridge-agent.socket ||
   fail "the bridge ports are not held by PID 1"
+# The cap that keeps a Bot's job away from the desktop's memory. systemd resolves the
+# slice's percentages against the installed memory, so a number here means both that
+# the unit parsed and that the memory controller is available in this sandbox.
+agent_max=$(systemctl show gh-agent.slice -p MemoryMax --value 2>/dev/null)
+case "$agent_max" in
+  '' | infinity | 0) fail "gh-agent.slice has no memory ceiling (got '${agent_max:-nothing}')" ;;
+esac
+[ "$(systemctl show gh-bridge-agent.service -p Slice --value)" = gh-agent.slice ] ||
+  fail "the agent bridge is not in gh-agent.slice"
+for unit in gh-bridge-agent.service gh-bridge-browser.service gh-desktop.service; do
+  [ "$(systemctl show "$unit" -p OOMPolicy --value)" = continue ] ||
+    fail "$unit would be stopped by systemd on an OOM kill"
+done
 [ "$(stat -c '%U %a' /tmp/browser)" = "browser 700" ] || fail "/tmp/browser is not browser's 0700"
 
 touch /var/lib/gh-computer/hardened
