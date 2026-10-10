@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { estimateTokens } from '@greenhouse/agent-core';
-import { capSnapshot, maskSnapshot, takeSnapshot, SNAPSHOT_TOKEN_CAP } from '../snapshot.js';
+import { capSnapshot, maskSnapshot, takeSnapshot, windowSnapshot, SNAPSHOT_TOKEN_CAP } from '../snapshot.js';
 import { chromiumAvailable, launchTestChromium, type TestChromium } from '../../__tests__/helpers/chromium.js';
 import { startFixtureSite, type FixtureSite } from '../../__tests__/helpers/fixture-server.js';
 
@@ -73,7 +73,13 @@ describe('capSnapshot', () => {
     expect(estimateTokens(text)).toBeLessThanOrEqual(SNAPSHOT_TOKEN_CAP);
     expect(text).toContain('[ref=e0]');
     expect(text).toContain('[ref=e1999]');
-    expect(text).toMatch(/lines of the page omitted/);
+    // The marker says exactly which lines it stands for, and how to read them.
+    const marker = text.match(
+      /… \[lines (\d+)–(\d+) of 2000 not shown \(\d+ lines\) — snapshot \{from_line: (\d+)\} shows them\] …/,
+    );
+    expect(marker).not.toBeNull();
+    expect(marker![1]).toBe(marker![3]);
+    expect(text.split('\n')[Number(marker![1]) - 1]).toBe(marker![0]); // right after the head
   });
 
   it('keeps 30 consecutive snapshots of a long page bounded (≈3k tokens each)', () => {
@@ -88,6 +94,40 @@ describe('capSnapshot', () => {
     const { text } = capSnapshot(`- text: ${'x'.repeat(50_000)}`);
     expect(text.length).toBeLessThan(2_100);
     expect(text).toContain('[line truncated]');
+  });
+});
+
+describe('windowSnapshot', () => {
+  const page = Array.from({ length: 1500 }, (_, i) => `- link "结果 ${i + 1}" [ref=e${i + 1}]`).join('\n');
+
+  it('shows the page from a line on, with what is above and below, under the cap', () => {
+    const window = windowSnapshot(page, 400);
+    expect(estimateTokens(window.text)).toBeLessThanOrEqual(SNAPSHOT_TOKEN_CAP);
+    const lines = window.text.split('\n');
+    expect(lines[0]).toBe('… [lines 1–399 of 1500 above — a snapshot without from_line shows the top] …');
+    expect(lines[1]).toBe('- link "结果 400" [ref=e400]');
+    expect(window.lines.first).toBe(400);
+    expect(lines.at(-1)).toBe(
+      `… [lines ${window.lines.last + 1}–1500 of 1500 below — snapshot {from_line: ${window.lines.last + 1}} shows them] …`,
+    );
+  });
+
+  it('pages through a whole long page by following its markers, missing nothing', () => {
+    const seen: string[] = [];
+    let from: number | null = capSnapshot(page).text.match(/from_line: (\d+)/) ? 1 : null;
+    while (from !== null) {
+      const window = windowSnapshot(page, from);
+      seen.push(...window.text.split('\n').filter((line) => !line.startsWith('…')));
+      const next = window.text.match(/below — snapshot \{from_line: (\d+)\}/);
+      from = next ? Number(next[1]) : null;
+    }
+    expect(seen).toEqual(page.split('\n'));
+  });
+
+  it('a from_line past the end shows the last line', () => {
+    const window = windowSnapshot(page, 99_999);
+    expect(window.lines).toEqual({ first: 1500, last: 1500, total: 1500 });
+    expect(window.text).toContain('[ref=e1500]');
   });
 });
 
@@ -137,12 +177,20 @@ describe.skipIf(!chromiumAvailable())('takeSnapshot on a real page', { timeout: 
     await page.close();
   });
 
-  it('caps a long page', async () => {
+  it('caps a long page, and its marker leads to the part it left out', async () => {
     const page = await chromium.browser.contexts()[0]!.newPage();
     await page.goto(`${site.origin}/long`);
     const { snapshot, truncated } = await takeSnapshot(page, (t) => t);
     expect(truncated).toBe(true);
     expect(estimateTokens(snapshot)).toBeLessThanOrEqual(SNAPSHOT_TOKEN_CAP);
+    const from = Number(snapshot.match(/snapshot \{from_line: (\d+)\}/)![1]);
+    const middle = await takeSnapshot(page, (t) => t, { fromLine: from });
+    expect(middle.lines?.first).toBe(from);
+    expect(estimateTokens(middle.snapshot)).toBeLessThanOrEqual(SNAPSHOT_TOKEN_CAP);
+    // What the capped snapshot left out is in the window, refs included.
+    const firstHidden = middle.snapshot.split('\n')[1]!;
+    expect(snapshot).not.toContain(firstHidden);
+    expect(firstHidden).toMatch(/\[ref=e\d+\]/);
     await page.close();
   });
 });
