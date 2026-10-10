@@ -27,3 +27,25 @@ describe('Content-Security-Policy', () => {
     expect(policy).not.toMatch(/script-src[^;]*myqcloud/);
   });
 });
+
+describe('a route with policies of its own', () => {
+  it('keeps the route’s CSP and adds the global one beside it (both are enforced), and its referrer policy', async () => {
+    const app = new Hono().use('*', securityHeadersMiddleware).get('/preview', (c) => {
+      c.header('Content-Security-Policy', 'sandbox allow-scripts');
+      c.header('Referrer-Policy', 'no-referrer');
+      return c.text('a page that must never run as Greenhouse');
+    });
+    const response = await app.request('/preview');
+    const policies = response.headers.get('Content-Security-Policy') ?? '';
+    expect(policies.startsWith('sandbox allow-scripts')).toBe(true);
+    expect(policies).toContain("default-src 'self'");
+    expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
+  });
+
+  it('a route without its own policies gets exactly the global ones', async () => {
+    const app = new Hono().use('*', securityHeadersMiddleware).get('/', (c) => c.text('ok'));
+    const response = await app.request('/');
+    expect(response.headers.get('Content-Security-Policy')).not.toContain('sandbox');
+    expect(response.headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
+  });
+});

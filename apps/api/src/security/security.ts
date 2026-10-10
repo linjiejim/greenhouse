@@ -241,7 +241,11 @@ export async function securityHeadersMiddleware(c: Context, next: Next) {
   c.header('X-Content-Type-Options', 'nosniff');
   c.header('X-Frame-Options', 'DENY');
   c.header('X-XSS-Protection', '1; mode=block');
-  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // A route's own policies are stricter on purpose (the Bots computer preview: a CSP sandbox and
+  // no-referrer for a page that must never run as Greenhouse). Never replace them: the global
+  // CSP is ADDED as a second policy — browsers enforce every policy — and a route's
+  // Referrer-Policy stays.
+  if (!c.res.headers.has('Referrer-Policy')) c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   c.header(
     'Content-Security-Policy',
     [
@@ -257,6 +261,7 @@ export async function securityHeadersMiddleware(c: Context, next: Next) {
       // URL, and fetch()-based downloads follow that redirect from the page.
       "connect-src 'self' https://unpkg.com https://*.myqcloud.com",
     ].join('; '),
+    { append: c.res.headers.has('Content-Security-Policy') },
   );
 
   // Only add HSTS if we detect we're behind HTTPS
