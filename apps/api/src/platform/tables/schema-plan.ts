@@ -21,17 +21,12 @@ import {
   type SchemaPlanOperationResult,
   type TableBaseRole,
 } from '@greenhouse/types/tables';
-import type { tablesResource, TablesActionId } from './application.js';
+import { TABLE_BASE_ROLE_RANK } from '@greenhouse/types/table-access';
+import type { TablesActionId } from '../manifests/tables.js';
+import type { tablesResource } from './audit.js';
 
 /** Enough for a whole Base in one card; far past it the user cannot review what they are confirming. */
 export const MAX_SCHEMA_PLAN_OPERATIONS = 50;
-
-export const SCHEMA_PLAN_ROLE_RANK: Record<TableBaseRole, number> = {
-  viewer: 0,
-  editor: 1,
-  builder: 2,
-  owner: 3,
-};
 
 // ─── Wire schema (shared by the chat tool and the apply route) ───
 
@@ -152,7 +147,7 @@ export interface SchemaPlanShape {
 }
 
 function raise(role: TableBaseRole, current: TableBaseRole | undefined): TableBaseRole {
-  return current && SCHEMA_PLAN_ROLE_RANK[current] > SCHEMA_PLAN_ROLE_RANK[role] ? current : role;
+  return current && TABLE_BASE_ROLE_RANK[current] > TABLE_BASE_ROLE_RANK[role] ? current : role;
 }
 
 /**

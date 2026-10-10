@@ -5,7 +5,8 @@
 import type { AuthMethod, PlatformActionResult } from '@greenhouse/platform-kernel';
 import { delegatedAgentActor } from '../actor.js';
 import { getPlatformRuntime } from '../runtime.js';
-import { tablesResource, type TablesActionId } from './application.js';
+import type { TablesActionId } from '../manifests/tables.js';
+import { tablesResource, type TablesResourceIds } from './audit.js';
 
 export interface TablesAgentContext {
   userId: string;
@@ -17,7 +18,7 @@ export function dispatchTablesAgentAction(
   context: TablesAgentContext,
   actionId: TablesActionId,
   payload: unknown,
-  ids: Parameters<typeof tablesResource>[1] = {},
+  ids: TablesResourceIds = {},
 ): Promise<PlatformActionResult> {
   return getPlatformRuntime().dispatch({
     actor: delegatedAgentActor({

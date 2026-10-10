@@ -33,7 +33,7 @@ function manifestHash(manifest: unknown): string {
 const GOLDEN: ReadonlyArray<{ manifest: { id: string; version: string }; hash: string }> = [
   { manifest: knowledgeManifest, hash: '3c5ebe45220a613baf5fb68d525d1da04b9ce3fb5ff72ce96d2923dcdf83e0f1' },
   { manifest: projectsManifest, hash: 'b71d5106c4215dd5a0d1b5b0242da1ce3eb34994d145fc1b91ae54f00413afb0' },
-  { manifest: tablesManifest, hash: '925a0d48688857a92ee24d58c84251c624cdbb94129aac1e53290cf8886be2cd' },
+  { manifest: tablesManifest, hash: 'f97fe711580b7400239b2c7bf0e4a896710857290efb9eb90c21608fce4e0d45' },
 ];
 
 describe('platform manifest hashes', () => {

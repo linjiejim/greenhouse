@@ -24,13 +24,13 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { SchemaPlanOperation, TableBaseRole, TablesSchemaPlanArtifact } from '@greenhouse/types/tables';
+import { TABLE_BASE_ROLE_RANK } from '@greenhouse/types/table-access';
 import { defineTool, type ToolMeta } from './define.js';
 import { dispatchTablesAgentAction } from '../platform/tables/agent-adapter.js';
 import {
   analyzeSchemaPlan,
   schemaPlanOperationSchema,
   MAX_SCHEMA_PLAN_OPERATIONS,
-  SCHEMA_PLAN_ROLE_RANK,
   type SchemaPlanShape,
 } from '../platform/tables/schema-plan.js';
 
@@ -66,7 +66,7 @@ function readSchemaResult(data: unknown): ProbedTable | undefined {
 function readBaseRole(data: unknown): TableBaseRole | undefined {
   if (!data || typeof data !== 'object') return undefined;
   const role = (data as { role?: unknown }).role;
-  return typeof role === 'string' && role in SCHEMA_PLAN_ROLE_RANK ? (role as TableBaseRole) : undefined;
+  return typeof role === 'string' && Object.hasOwn(TABLE_BASE_ROLE_RANK, role) ? (role as TableBaseRole) : undefined;
 }
 
 export interface TablesSchemaPlanContext {
@@ -93,7 +93,7 @@ async function probePermissions(userId: string, shape: SchemaPlanShape): Promise
     if (!probed) return `table ${tableId} returned an unreadable schema`;
     tables.set(tableId, probed);
     const current = shape.baseRequirements.get(probed.baseId);
-    const merged = current && SCHEMA_PLAN_ROLE_RANK[current] > SCHEMA_PLAN_ROLE_RANK[required] ? current : required;
+    const merged = current && TABLE_BASE_ROLE_RANK[current] > TABLE_BASE_ROLE_RANK[required] ? current : required;
     shape.baseRequirements.set(probed.baseId, merged);
   }
 
@@ -102,7 +102,7 @@ async function probePermissions(userId: string, shape: SchemaPlanShape): Promise
     if (!result.ok) return `Base ${baseId} was not found, or you cannot see it`;
     const role = readBaseRole(result.data);
     if (!role) return `Base ${baseId} returned an unreadable role`;
-    if (SCHEMA_PLAN_ROLE_RANK[role] < SCHEMA_PLAN_ROLE_RANK[required]) {
+    if (TABLE_BASE_ROLE_RANK[role] < TABLE_BASE_ROLE_RANK[required]) {
       return required === 'owner'
         ? `only the creator of Base ${baseId} can change its settings — your role there is "${role}"`
         : `changing the structure of Base ${baseId} needs the builder role — yours is "${role}"`;

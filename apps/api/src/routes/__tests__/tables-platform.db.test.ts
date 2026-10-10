@@ -455,13 +455,13 @@ describe('Tables Platform application', () => {
     expect((await runs.json()).runs).toEqual([
       expect.objectContaining({ rule_id: rule.id, status: 'succeeded', actions_completed: 1 }),
     ]);
-    const notifications = await app.request('/api/tables/notifications', {
-      headers: { 'x-test-user': editor.id },
-    });
-    expect(notifications.status).toBe(200);
-    expect((await notifications.json()).notifications).toEqual([
+    // The legacy inbox is still written until slice Au moves `notify` onto the
+    // platform notification center; its HTTP routes are gone (manifest 1.3.0).
+    expect(await db.tables.listNotifications(editor.id, 10)).toEqual([
       expect.objectContaining({ user_id: editor.id, title: 'New item', read_at: null }),
     ]);
+    const retired = await app.request('/api/tables/notifications', { headers: { 'x-test-user': editor.id } });
+    expect(retired.status).toBe(404);
   });
 
   it('archives a table only for the Base creator and leaves its records recoverable', async () => {

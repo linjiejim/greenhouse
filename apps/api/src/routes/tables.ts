@@ -58,7 +58,6 @@ import {
   type TableFormRow,
   type TableAutomationRuleRow,
   type TableAutomationRunRow,
-  type TableNotificationRow,
   type TableRecordQueryResult,
   type TableRecordRow,
   type TableSchemaResult,
@@ -72,10 +71,12 @@ import type {
   TableBaseRole,
   TableBatchValidationResult,
 } from '@greenhouse/types/tables';
+import type { TableBaseAccessView } from '@greenhouse/types/table-access';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
 import { humanActor } from '../platform/actor.js';
-import { tablesResource, type TablesActionId } from '../platform/tables/application.js';
+import type { TablesActionId } from '../platform/manifests/tables.js';
+import { tablesResource, type TablesResourceIds } from '../platform/tables/audit.js';
 import { analyzeSchemaPlan, applySchemaPlan, schemaPlanApplySchema } from '../platform/tables/schema-plan.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
 import { artifactReceiptResult, claimArtifactAction } from '../chat/artifact-actions.js';
@@ -115,12 +116,7 @@ async function jsonBody(c: Context): Promise<Record<string, unknown>> {
   return body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
 }
 
-async function dispatch(
-  c: Context,
-  actionId: TablesActionId,
-  payload: unknown,
-  ids: Parameters<typeof tablesResource>[1] = {},
-) {
+async function dispatch(c: Context, actionId: TablesActionId, payload: unknown, ids: TablesResourceIds = {}) {
   return getPlatformRuntime().dispatch({
     actor: humanActor(getAuthUser(c), c),
     appId: 'tables',
@@ -170,6 +166,7 @@ const tablesRoutes = new Hono<AppEnv>()
       result.data as {
         base: TableBaseRow;
         role: TableBaseRole;
+        access: TableBaseAccessView;
         tables: TableDefinitionRow[];
         dashboards: TableDashboardRow[];
         members: TableBaseMemberRow[];
@@ -482,18 +479,6 @@ const tablesRoutes = new Hono<AppEnv>()
     const result = await dispatch(c, 'listAutomationRuns', { automationId, limit }, { automationId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { runs: TableAutomationRunRow[] });
-  })
-  .get('/notifications', async (c) => {
-    const limit = Number(c.req.query('limit')) || undefined;
-    const result = await dispatch(c, 'listNotifications', { limit });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { notifications: TableNotificationRow[] });
-  })
-  .post('/notifications/:notificationId/read', async (c) => {
-    const notificationId = numberParam(c, 'notificationId');
-    const result = await dispatch(c, 'markNotificationRead', { notificationId }, { notificationId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { notification: TableNotificationRow });
   })
   .get('/bases/:baseId/dashboards', async (c) => {
     const baseId = numberParam(c, 'baseId');

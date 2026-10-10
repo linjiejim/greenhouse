@@ -53,6 +53,7 @@ import {
 import type { AppEnv } from '../app-env.js';
 import { humanActor } from '../platform/actor.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
+import { resolveBaseAccess } from '../platform/tables/access.js';
 
 // ─── Helpers ─────────────────────────────────────────────
 
@@ -108,16 +109,12 @@ async function accessFor(c: Context<AppEnv>, node: DriveAccessNode, operation: '
     );
     if (!decision.allowed) return null;
     const db = getDb();
-    const [base, member] = await Promise.all([
-      db.tables.getBase(node.base_id),
-      db.tables.getBaseMember(node.base_id, user.id),
-    ]);
-    if (base && !base.archived_at) {
-      if (user.role === 'super' || base.owner_id === user.id) tablesRole = 'owner';
-      // A custom role never reaches Drive (spec D15); slice A adds per-file checks.
-      else if (member) tablesRole = member.role === 'custom' ? null : member.role;
-      else if (base.visibility === 'team') tablesRole = 'viewer';
-      else tablesRole = null;
+    const [base, account] = await Promise.all([db.tables.getBase(node.base_id), db.users.getById(user.id)]);
+    if (base) {
+      // The one Base resolver (platform/tables/access.ts). A custom role never
+      // reaches Drive listings (spec D15); slice A adds per-file reads for it.
+      const access = await resolveBaseAccess({ db }, account, base);
+      tablesRole = access.level === 'none' || access.level === 'custom' ? null : access.level;
     }
   }
   return resolveDriveAccessAsync(node, { userId: user.id, userRole: user.role, db: getDb(), operation, tablesRole });
