@@ -18,13 +18,19 @@
  * Design: docs/specs/20261005-personal-assistant-bots.md §6.
  */
 
-import { and, asc, eq, inArray, lt, or, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, inArray, lt, or, isNull, sql } from 'drizzle-orm';
 import { PgTransaction } from 'drizzle-orm/pg-core';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db, DbClient } from '../client.js';
-import { botComputers, botProcessWatches } from '../schema/index.js';
-import type { BotComputerRow, BotComputerState, BotProcessWatchRow, BotProcessWatchStatus } from '../schema/bots.js';
+import { botComputerBackups, botComputers, botProcessWatches, users } from '../schema/index.js';
+import type {
+  BotComputerBackupRow,
+  BotComputerRow,
+  BotComputerState,
+  BotProcessWatchRow,
+  BotProcessWatchStatus,
+} from '../schema/bots.js';
 
 /** Advisory-lock key space for computers (hashtext of a stable label + user id). */
 const USER_LOCK_LABEL = 'greenhouse-bot-computer:';
@@ -49,6 +55,12 @@ export interface ProcessWatchInput {
   job_id: string;
   name: string;
 }
+
+/** A backup as it starts (the runtime has sealed its key already). */
+export type ComputerBackupInput = Pick<
+  typeof botComputerBackups.$inferInsert,
+  'id' | 'user_id' | 'reason' | 'store' | 'key_enc' | 'driver' | 'source_ref'
+>;
 
 export function createBotComputerService(db: Db) {
   const service = {
@@ -285,6 +297,116 @@ export function createBotComputerService(db: Db) {
         .update(botProcessWatches)
         .set({ status: 'gone', updated_at: nowIso() })
         .where(and(eq(botProcessWatches.user_id, userId), eq(botProcessWatches.status, 'watching')));
+    },
+
+    // ─── Backups ──────────────────────────────────────
+
+    /** Start a backup; null when the member already has one running (another API process took it). */
+    async startBackup(input: ComputerBackupInput): Promise<BotComputerBackupRow | null> {
+      const [row] = await db
+        .insert(botComputerBackups)
+        .values({ ...input, status: 'running', created_at: nowIso() })
+        // The partial unique index: one running backup per member.
+        .onConflictDoNothing()
+        .returning();
+      return row ?? null;
+    },
+
+    /** A running backup is complete — only if it is still running. */
+    async completeBackup(id: string, bytes: number): Promise<BotComputerBackupRow | undefined> {
+      const [row] = await db
+        .update(botComputerBackups)
+        .set({ status: 'complete', bytes, completed_at: nowIso() })
+        .where(and(eq(botComputerBackups.id, id), eq(botComputerBackups.status, 'running')))
+        .returning();
+      return row;
+    },
+
+    /**
+     * A backup failed: one still running, or a complete one found unreadable (it is never
+     * restored again). Returns the row only when it changed.
+     */
+    async failBackup(id: string, error: string): Promise<BotComputerBackupRow | undefined> {
+      const [row] = await db
+        .update(botComputerBackups)
+        .set({ status: 'failed', error: error.slice(0, 500), completed_at: nowIso() })
+        .where(and(eq(botComputerBackups.id, id), inArray(botComputerBackups.status, ['running', 'complete'])))
+        .returning();
+      return row;
+    },
+
+    async getBackup(id: string): Promise<BotComputerBackupRow | undefined> {
+      const [row] = await db.select().from(botComputerBackups).where(eq(botComputerBackups.id, id));
+      return row;
+    },
+
+    /** A member's backups, newest first (every status). */
+    async listBackups(userId: string): Promise<BotComputerBackupRow[]> {
+      return db
+        .select()
+        .from(botComputerBackups)
+        .where(eq(botComputerBackups.user_id, userId))
+        .orderBy(desc(botComputerBackups.created_at), desc(botComputerBackups.id));
+    },
+
+    /** The newest complete backup of a member — what a new computer is restored from. */
+    async latestCompleteBackup(userId: string): Promise<BotComputerBackupRow | undefined> {
+      const [row] = await db
+        .select()
+        .from(botComputerBackups)
+        .where(and(eq(botComputerBackups.user_id, userId), eq(botComputerBackups.status, 'complete')))
+        .orderBy(desc(botComputerBackups.completed_at), desc(botComputerBackups.id))
+        .limit(1);
+      return row;
+    },
+
+    /** Every member's backups (the admin page; a handful per member). */
+    async listAllBackups(): Promise<BotComputerBackupRow[]> {
+      return db.select().from(botComputerBackups).orderBy(desc(botComputerBackups.created_at));
+    },
+
+    /** Backups still `running` that started before `cutoffIso`: their process died. */
+    async listStaleBackups(cutoffIso: string): Promise<BotComputerBackupRow[]> {
+      return db
+        .select()
+        .from(botComputerBackups)
+        .where(and(eq(botComputerBackups.status, 'running'), lt(botComputerBackups.created_at, cutoffIso)));
+    },
+
+    /** Backups whose member no longer exists (deleted while the computer runtime was down). */
+    async listOrphanBackups(): Promise<BotComputerBackupRow[]> {
+      return db
+        .select(getTableColumns(botComputerBackups))
+        .from(botComputerBackups)
+        .leftJoin(users, eq(users.id, botComputerBackups.user_id))
+        .where(isNull(users.id));
+    },
+
+    async markBackupRestored(id: string): Promise<void> {
+      await db.update(botComputerBackups).set({ restored_at: nowIso() }).where(eq(botComputerBackups.id, id));
+    },
+
+    /** The row only — its objects are deleted first (backups.ts). */
+    async deleteBackup(id: string): Promise<void> {
+      await db.delete(botComputerBackups).where(eq(botComputerBackups.id, id));
+    },
+
+    /** Every sealed backup key (`pnpm cli vault rekey` puts them under the current vault key). */
+    async listBackupKeys(): Promise<Array<{ id: string; user_id: string; key_enc: string }>> {
+      return db
+        .select({ id: botComputerBackups.id, user_id: botComputerBackups.user_id, key_enc: botComputerBackups.key_enc })
+        .from(botComputerBackups)
+        .orderBy(botComputerBackups.id);
+    },
+
+    /** Swap a sealed key for the same key under another vault key — only while it is still what was read. */
+    async replaceBackupKey(id: string, from: string, to: string): Promise<boolean> {
+      const rows = await db
+        .update(botComputerBackups)
+        .set({ key_enc: to })
+        .where(and(eq(botComputerBackups.id, id), eq(botComputerBackups.key_enc, from)))
+        .returning({ id: botComputerBackups.id });
+      return rows.length > 0;
     },
 
     // ─── Locks ────────────────────────────────────────

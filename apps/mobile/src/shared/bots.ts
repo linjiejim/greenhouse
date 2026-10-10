@@ -609,6 +609,11 @@ export interface ComputerStatusView {
   timezone: string | null;
   /** The browser language the computer starts with (BCP 47, e.g. zh-CN). */
   lang: string;
+  /**
+   * The previous computer was gone and this one began from a backup taken at this time
+   * (ISO): files changed after it are not here. Null otherwise (and on later starts).
+   */
+  restored_from: string | null;
 }
 
 // ─── Computer files & processes (the member's view of ~/) ─
@@ -663,6 +668,20 @@ export interface ComputerAdminRow {
   last_started_at: string | null;
   disk_bytes: number | null;
   memory_bytes: number | null;
+  /** Encrypted home backups, when the deployment keeps them (null = none yet, or off). */
+  backup: ComputerBackupView | null;
+}
+
+export interface ComputerBackupView {
+  /** The newest backup: running (under way), complete or failed. */
+  status: 'running' | 'complete' | 'failed';
+  /** When it started (running) or ended (ISO). */
+  at: string | null;
+  /** Why it failed (operator-facing). */
+  error: string | null;
+  /** The newest complete backup — what a new computer would be restored from. */
+  last_complete_at: string | null;
+  last_complete_bytes: number | null;
 }
 
 // ─── Vault ───────────────────────────────────────────────

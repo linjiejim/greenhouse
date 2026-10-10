@@ -130,6 +130,7 @@ function computer(overrides: Partial<ComputerStatusView>): ComputerStatusView {
     // Already on the browser's clock: only the timezone tests below make the page store it.
     timezone: browserTimeZone(),
     lang: 'zh-CN',
+    restored_from: null,
     ...overrides,
   };
 }

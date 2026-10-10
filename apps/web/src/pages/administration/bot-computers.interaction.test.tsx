@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   fetchAdminBotComputers: vi.fn(),
   adminStopComputer: vi.fn(),
   adminResetComputer: vi.fn(),
+  adminBackupComputer: vi.fn(),
   saveBotComputerSettings: vi.fn(),
   startComputer: vi.fn(),
 }));
@@ -24,6 +25,7 @@ vi.mock('../../lib/api/bots', async (importOriginal) => ({
 const VIEW: AdminBotComputersView = {
   runtime: { state: 'ready', reason: null, hardened: false },
   settings: { idle_minutes: 15, max_running: 2 },
+  backups_enabled: false,
   checks: [
     { id: 'docker', ok: true, detail: 'Docker 28.3 reachable' },
     {
@@ -44,6 +46,7 @@ const VIEW: AdminBotComputersView = {
       last_started_at: new Date().toISOString(),
       disk_bytes: 734_003_200,
       memory_bytes: 512 * 1024 * 1024,
+      backup: null,
     },
     {
       user_id: 'u-leo',
@@ -55,6 +58,7 @@ const VIEW: AdminBotComputersView = {
       last_started_at: null,
       disk_bytes: null,
       memory_bytes: null,
+      backup: null,
     },
   ],
 };
@@ -200,6 +204,46 @@ describe('BotComputersPanel', () => {
     await click(document.querySelector('[data-testid="confirm-dialog-confirm"]'));
 
     expect(api.adminStopComputer).toHaveBeenCalledWith('u-mia');
+  });
+
+  it('shows each member’s backups and backs one up on request — only where backups are on', async () => {
+    await renderPanel();
+    expect(document.body.textContent).not.toContain('Backup');
+    expect(rowOf('Mia').querySelector('button[title="Back up now"]')).toBeNull();
+    if (root) await act(async () => root?.unmount());
+    root = null;
+    document.body.innerHTML = '';
+
+    const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+    api.fetchAdminBotComputers.mockResolvedValue({
+      ...VIEW,
+      backups_enabled: true,
+      computers: [
+        {
+          ...VIEW.computers[0]!,
+          backup: {
+            status: 'failed',
+            at: hourAgo,
+            error: 'Packing /home/agent failed (exit 2)',
+            last_complete_at: hourAgo,
+            last_complete_bytes: 412 * 1024 * 1024,
+          },
+        },
+        {
+          ...VIEW.computers[1]!,
+          backup: { status: 'running', at: hourAgo, error: null, last_complete_at: null, last_complete_bytes: null },
+        },
+      ],
+    });
+    api.adminBackupComputer.mockResolvedValue(undefined);
+    await renderPanel();
+    expect(rowOf('Mia').textContent).toContain('Failed');
+    expect(rowOf('Mia').textContent).toContain('412 MB');
+    expect(rowOf('Leo').textContent).toContain('Backing up…');
+    // A backup already under way is not started twice.
+    expect(rowOf('Leo').querySelector('button[title="Back up now"]')).toBeNull();
+    await click(rowOf('Mia').querySelector('button[title="Back up now"]'));
+    expect(api.adminBackupComputer).toHaveBeenCalledWith('u-mia');
   });
 
   it('resets, deleting files and sign-ins only when explicitly ticked', async () => {

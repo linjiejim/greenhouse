@@ -116,6 +116,7 @@ const REASON_KEYS: Record<string, TranslationKey> = {
   lru: 'botsComputer.reason_lru',
   provider_timeout: 'botsComputer.reason_providerTimeout',
   move_failed: 'botsComputer.reason_moveFailed',
+  restore_failed: 'botsComputer.reason_restoreFailed',
   docker_cli_missing: 'botsComputer.reason_dockerCliMissing',
   docker_unreachable: 'botsComputer.reason_dockerUnreachable',
   image_missing: 'botsComputer.reason_imageMissing',

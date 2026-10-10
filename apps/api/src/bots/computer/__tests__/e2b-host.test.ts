@@ -8,7 +8,7 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 import { AuthenticationError, type SandboxInfo } from 'e2b';
 import { describe, expect, it, vi } from 'vitest';
 import type { BotComputerRow } from '@greenhouse/db';
@@ -29,7 +29,14 @@ import {
   type E2bApi,
   type SandboxHandle,
 } from '../e2b-host.js';
-import { ComputerStartError, type ComputerProcess, type ComputerStartSpec, type ExecOutcome } from '../host.js';
+import { homeExportArgv, homeImportArgv } from '../home-archive.js';
+import {
+  ComputerStartError,
+  type ComputerProcess,
+  type ComputerStartSpec,
+  type ExecOutcome,
+  type HomeRestore,
+} from '../host.js';
 
 const NS = 'testns';
 const TEMPLATE = 'gh-computer-c2-aaaaaaaaaaaa';
@@ -244,8 +251,10 @@ function setup(opts: { tarRead?: number; tarWrite?: number | number[]; sinkDrops
     exec: vi.fn(async () => ok()),
     stream: vi.fn((target: unknown, argv: string[]) => {
       streams.push({ origin: (target as { origin: string }).origin, argv });
-      if (opts.sinkDrops) return argv.includes('-cpf') ? strictSource(4 * 1024 * 1024) : droppedSink();
-      return argv.includes('-cpf')
+      // A home going out: a move's copy (-cpf) or a backup's (-cf).
+      const reads = argv.includes('-cpf') || argv.includes('-cf');
+      if (opts.sinkDrops) return reads ? strictSource(4 * 1024 * 1024) : droppedSink();
+      return reads
         ? fakeProcess(opts.tarRead ?? 0, { output: Buffer.from('home') })
         : fakeProcess(writes.length > 1 ? writes.shift()! : writes[0]!, { waitForInput: true });
     }),
@@ -511,6 +520,87 @@ describe('e2b host: starts', () => {
     const started = await host.start(row({ container_name: foreign }), spec());
     expect(started.ref).not.toBe(foreign);
     expect(api.sandboxes.get(foreign)?.state).toBe('paused');
+  });
+});
+
+describe('e2b host: backups', () => {
+  /** A backup whose homes read as `<user>-home`, or fail to read. */
+  function backup(opts: { fails?: boolean } = {}): HomeRestore & { opened: string[] } {
+    const opened: string[] = [];
+    return {
+      backupId: 'bkp_1',
+      takenAt: '2026-10-09T08:00:00.000Z',
+      opened,
+      open: async (user) => {
+        opened.push(user);
+        if (!opts.fails) return Readable.from([Buffer.from(`${user}-home`)]);
+        const broken = new PassThrough();
+        setImmediate(() => broken.destroy(new Error('a record failed authentication')));
+        return broken;
+      },
+    };
+  }
+
+  it('fills a new sandbox from the newest backup when the member’s sandbox is gone, before anything runs in it', async () => {
+    const { api, host, streams } = setup();
+    const source = backup();
+    const restore = vi.fn(async () => source);
+    const started = await host.start(row({ container_name: 'sandbox0999' }), { ...spec(), restore });
+    expect(restore).toHaveBeenCalledOnce();
+    expect(started.restoredFrom).toBe('bkp_1');
+    expect(api.log).toEqual([
+      `create ${started.ref} ${TEMPLATE}`,
+      `root ${started.ref} gh-e2b-boot --bridges-only`,
+      `root ${started.ref} gh-e2b-boot`,
+    ]);
+    // Each home as its own uid, through its own bridge, between the two boots.
+    expect(streams).toEqual([
+      { origin: `wss://7682-${started.ref}.sandbox.test`, argv: homeImportArgv('agent') },
+      { origin: `wss://7681-${started.ref}.sandbox.test`, argv: homeImportArgv('browser') },
+    ]);
+    expect(source.opened).toEqual(['agent', 'browser']);
+  });
+
+  it('never restores over a home that still exists: a woken or moved computer keeps its own', async () => {
+    const { api, host } = setup();
+    const restore = vi.fn(async () => backup());
+    const current = api.seed(meta(TEMPLATE));
+    expect((await host.start(row({ container_name: current }), { ...spec(), restore })).restoredFrom).toBeUndefined();
+    const older = api.seed(meta('gh-computer-c2-older'), 'paused');
+    expect((await host.start(row({ container_name: older }), { ...spec(), restore })).restoredFrom).toBeUndefined();
+    expect(restore).not.toHaveBeenCalled();
+    // No backup to restore: the new home simply starts empty.
+    const empty = await host.start(row({ container_name: 'sandbox0999' }), { ...spec(), restore: async () => null });
+    expect(empty.restoredFrom).toBeUndefined();
+  });
+
+  it('a backup that cannot be restored fails the start as restore_failed and removes the half-filled sandbox', async () => {
+    const { api, host } = setup();
+    const failure = await host
+      .start(row({ container_name: 'sandbox0999' }), { ...spec(), restore: async () => backup({ fails: true }) })
+      .catch((err: unknown) => err);
+    expect(failure).toBeInstanceOf(ComputerStartError);
+    expect((failure as ComputerStartError).reason).toBe('restore_failed');
+    expect((failure as Error).message).toMatch(/2026-10-09T08:00:00.000Z.*authentication/);
+    expect([...api.sandboxes.keys()]).toEqual([]);
+    expect(api.log.at(-1)).toMatch(/^kill /);
+  });
+
+  it('streams a home out of a running sandbox as its own uid, caches left out', async () => {
+    const { api, host, bridge } = setup();
+    const id = api.seed(meta(TEMPLATE), 'running');
+    const out = host.exportHome(id, 'browser');
+    const chunks: Buffer[] = [];
+    for await (const chunk of out.stdout!) chunks.push(chunk as Buffer);
+    expect(Buffer.concat(chunks).toString()).toBe('home');
+    // The target resolves once the sandbox is found (a stream starts before that).
+    const [target, argv] = bridge.stream.mock.calls[0] as unknown as [Promise<{ origin: string }>, string[]];
+    expect((await target).origin).toBe(`wss://7681-${id}.sandbox.test`);
+    expect(argv).toEqual(homeExportArgv('browser'));
+    expect(homeExportArgv('browser')).toEqual(
+      expect.arrayContaining(['--exclude=./chromium/*/Cache', '--exclude=./chromium/Singleton*']),
+    );
+    expect(homeExportArgv('agent')).toContain('--exclude=./.cache');
   });
 });
 

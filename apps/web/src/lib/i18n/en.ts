@@ -655,6 +655,11 @@ export default {
       "The sandbox plan's time limit put it to sleep. Anything running in the background was paused and carries on when it wakes.",
     reason_moveFailed:
       "Moving it to an updated computer didn't finish. Nothing was lost — its files are still on the old one. Try again in a few minutes.",
+    reason_restoreFailed:
+      "Your previous computer was gone, and putting your files back from their backup didn't work. Nothing was lost — the backup is kept. Try again in a few minutes, or ask your administrator.",
+    restoredFrom:
+      'Your previous computer was gone, so this one was rebuilt from its backup of {when}. Changes made after that backup are not here.',
+    restoredDismiss: 'Dismiss',
     reason_imageOutdated: 'The computer image on the host is out of date and needs rebuilding.',
     reason_networkInvalid: "The computer network on the host isn't set up correctly.",
     reason_configInvalid: "The computer settings in the server's environment are invalid.",
@@ -894,6 +899,12 @@ export default {
     runtime_ready: 'Ready',
     runtime_unavailable: 'Unavailable',
     runtime_disabled: 'Turned off',
+    col_backup: 'Backup',
+    backup_running: 'Backing up…',
+    backup_failed: 'Failed',
+    backupLastGood: 'Last complete backup: {when}',
+    backupNow: 'Back up now',
+    backupStarted: "Backing up {name}'s computer — a sleeping one is started first.",
     runtimeDescOff:
       "A computer is a browser and a shell a member's Bots drive — the member can watch and take over. Created, put to sleep and queued automatically.",
     disabledHint:
@@ -923,6 +934,7 @@ export default {
     check_network: 'Network',
     check_egress: 'Egress lockdown',
     check_capacity: 'Host capacity',
+    check_backups: 'Backups',
     check_host_disk: 'Host disk space',
     check_provider: 'Sandbox provider',
     check_template: 'Computer template',

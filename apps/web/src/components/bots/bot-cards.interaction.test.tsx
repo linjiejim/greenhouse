@@ -585,6 +585,7 @@ describe('the human-check card', () => {
       disk_bytes: null,
       timezone: null,
       lang: 'en-US',
+      restored_from: null,
       ...overrides,
     };
   }

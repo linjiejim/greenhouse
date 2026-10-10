@@ -296,9 +296,8 @@ server to look after:
    (`[setup] Activate the first administrator …`).
 
 Choose the model afterwards under **Administration → Runtime Config** (or set `LLM_BASE_URL`
-/ `LLM_API_KEY` / `LLM_MODEL` as variables). For Bots computers, add `BOTS_COMPUTER_ENABLED=1`,
-`BOTS_COMPUTER_DRIVER=e2b` and `BOTS_COMPUTER_E2B_API_KEY` (an [E2B](https://e2b.dev) key) — see
-Bots below.
+/ `LLM_API_KEY` / `LLM_MODEL` as variables). For Bots computers, enter an [E2B](https://e2b.dev) key
+in the same place (Bot computers), or set `BOTS_COMPUTER_E2B_API_KEY` — see Bots below.
 
 ### Docker Compose by hand
 
@@ -337,8 +336,8 @@ network, and the sandbox image (`bash scripts/build-agent-runtime.sh`). They sta
 
 Bots work in any deployment. Their computers run in one of two places:
 
-- **Hosted sandboxes (no server work)** — `BOTS_COMPUTER_ENABLED=1`, `BOTS_COMPUTER_DRIVER=e2b`
-  and a provider key in `BOTS_COMPUTER_E2B_API_KEY`: each member's computer is a sandbox
+- **Hosted sandboxes (no server work)** — a provider key, entered under Administration → Runtime
+  Config → Bot computers (or `BOTS_COMPUTER_E2B_API_KEY`): each member's computer is a sandbox
   (one microVM) at an E2B-protocol provider — [E2B](https://e2b.dev) abroad, PPIO in mainland
   China (`BOTS_COMPUTER_E2B_DOMAIN=cn-beijing-1.sandbox.ppio.com`; not yet verified end to end).
   Works from Railway, the installer or compose. On first boot the API builds the computer
@@ -359,6 +358,13 @@ Bots work in any deployment. Their computers run in one of two places:
 On either kind, a Bot can hand you a **preview link** to a web app it runs on its computer (2 hours;
 the page is sandboxed — no cookies or local storage — and only relative links stay inside it), and a
 Bot that starts a long background process is woken to report when it ends.
+
+**Backups** — set `BOTS_COMPUTER_BACKUP_DIR` (e.g. `data/bot-backups`) or `BOTS_COMPUTER_BACKUP_S3_*`
+(any S3-compatible bucket) and every home is also kept, encrypted, in your own storage: as a computer
+goes to sleep (at most daily; two kept per member) or when you click **Back up now**. When a member's
+computer is gone — deleted at the provider, or you switched provider or driver — their next start
+rebuilds it from the newest backup, and they are told what date it is from. Each backup is encrypted
+in the API with its own key, sealed with `VAULT_ENCRYPTION_KEY`; the storage never sees a file.
 
 Either way **Administration → Bot computers** lists every precheck with what fixes it, and the
 live knobs (idle minutes, how many computers run at once) are in Runtime Config.

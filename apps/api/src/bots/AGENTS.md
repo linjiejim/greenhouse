@@ -148,6 +148,23 @@ bots/
     闲置回收问「有没有后台任务」时**问不到不等于没有**：`runningJobCount` 执行失败 / 超时会抛错，控制器给 `JOB_QUERY_GRACE` 轮宽限。
   - 模板的加固（`gh-e2b-harden`）做完要**逐项核对**（无 setuid / 文件 capability、账号已锁、sshd 已屏蔽、`/usr/local` 不可写、
     端口已归 PID 1、agent slice 有内存上限、三个 unit 的 OOMPolicy）才写构建在等的标记，任何一项不过构建就失败。签名密钥换了：桥第一次拒绝时 API 以 root 重写密钥再试一次。
+- **家目录备份**（可选，`BOTS_COMPUTER_BACKUP_*`；`backups.ts` / `backup-format.ts` / `backup-store.ts` / `home-archive.ts`）：
+  每个成员的两个 home 加密存进部署自己的存储（本地目录或 S3 兼容桶），服务商 / Docker 宿主从此不是唯一副本。
+  - **何时备**：闲置电脑休眠前、到期才备（至多每 `BOTS_COMPUTER_BACKUP_HOURS` 一次）——闲置循环等它，最多等到闲置时刻后
+    `BACKUP_DEFER_MS`；以及管理员「立即备份」（休眠的先唤醒，之后照常闲置休眠）。失败后 `BACKUP_RETRY_MS` 内不重试。
+  - **怎么备**：两个 uid 各自 `host.exportHome`（gzip 的 tar，**排除缓存与 Chromium 的 Singleton 锁**），API 内用每份备份
+    自己的随机 AES-256 密钥分块加密（STREAM 构造：每块验证后才放出、最后一块的标记在 nonce 里、label 绑定备份 id 与 home），
+    再写进存储；密钥用保险库密钥封存（`gv1`，AAD `computer-backup:<uid>:<id>`），`pnpm cli vault rekey` 一并轮换。
+    **存储从不见明文与密钥**。导出流不论成败都会正常结束，**只认 tar 的退出码**（0 / 1 才算完整）。
+  - **何时恢复**：只在主机得**从零建 home** 时——e2b 记录的沙箱不在了（被删 / 换了服务商），docker 没有 home 卷（换过驱动）——
+    且成员以前有过电脑（`last_started_at`）。各自以 uid 解包（docker：一次性 helper 容器，无网络、只读根），在任何东西运行之前；
+    **绝不覆盖还在的 home**（docker 的 `volumeExists` 严格：Docker 出错就抛，绝不当成「没有」）。对象缺失 / 验证失败的备份标 failed、
+    以后不再用（下次退到更早一份或空 home）；**密钥打不开（保险库密钥没配）就让启动失败**（`restore_failed`），不悄悄给空 home。
+    成员这一轮运行开头的提示来自 `restored_at ≥ last_started_at`。
+  - 一人同时只跑一份（部分唯一索引 + 本进程 `inFlight`）；保留最新 `BOTS_COMPUTER_BACKUP_KEEP` 份完整的；清空 home（wipe /
+    删除成员）连备份一起删；清扫循环把进程死掉的 running 标 failed、删掉成员已不在的备份（表与 users 只是逻辑关联）。
+    写存储前就挂上 error 监听（`holdEarlyError`）：流在建目录 / 开分片上传的空档出错，否则是一个未处理的 error 事件——进程崩溃。
+  - **换服务商 / 换驱动就靠它**：先「立即备份」（或等每人下次休眠），再换 key / 域名 / 驱动，每人下次启动从最新备份重建。
 - **镜像契约 2**：API 只认 `IMAGE_CONTRACT` 同版本的镜像（`greenhouse.bots.computer.contract`），升级 API 必须
   重建镜像。契约 2 = 桌面（tint2 任务栏 + `gh-window` 看门狗：所有浏览器窗口都被最小化 3 s 后自动恢复）、
   软件 WebGL（`--enable-unsafe-swiftshader`，边界仍是 gVisor）、浏览器语言用 `LANGUAGE` + `--accept-lang`
@@ -249,6 +266,9 @@ bots/
   用 GitHub Actions 的 **Live E2B**（`.github/workflows/live-e2b.yml`，手动触发，仓库 secret `E2B_API_KEY`，可填 domain）。
   本地整站：`BOTS_COMPUTER_E2B_API_KEY=… node scripts/run-dev.mjs up`（有 key 即默认开启且驱动为 e2b；也可在
   Runtime Config → Bot computers 填 key，保存即生效、无需重启）。
+- 备份：`backup-format.test.ts`（每种篡改 / 截断 / 换块 / 换 label 都失败，且只放出验证过的块）、`backup-store.test.ts`
+  （本地目录原子写、S3 分片 / 重试 / 中止、配置）、`backups.db.test.ts`（真库：备份与恢复、休眠等待、一人一份、保留、
+  不可读备份不再用、wipe、清扫、密钥轮换）；控制器与两个宿主的单测覆盖「只在从零建 home 时恢复」。
 - 真容器套件（`computer.live.db-commit.test.ts`、`browser.live.db-commit.test.ts`）只在 `BOTS_LIVE=1` 且
   本机有镜像时跑；镜像本身用 `scripts/bot-computer-smoke.sh` 验（双 uid 隔离、零端口、CDP 中继，以及
   契约 2 的任务栏 / 窗口恢复 / WebGL / 语言 / gh-term / gh-jobs / gh-agent-kill / 用户级安装持久化）。
@@ -350,7 +370,7 @@ PROVIDER 三把里找；无前缀的旧密文一律按 PROVIDER 解。轮换：�
 
 **管理端**（super）：`GET /api/admin/bot-computers`（运行时、每台电脑、旋钮、检查清单 `checks[]`：
 docker / runtime / image / network / egress / host_disk …，每项带修复命令）、
-`POST /api/admin/bot-computers/:userId/stop|reset`。旋钮是工作区设置 `bots.computer_idle_minutes` /
+`POST /api/admin/bot-computers/:userId/stop|reset|backup`。旋钮是工作区设置 `bots.computer_idle_minutes` /
 `bots.computer_max_running`。
 
 **电脑工具 `import_attachment {file_id, path?}`**：只在前台回合；把本对话的聊天附件拷进

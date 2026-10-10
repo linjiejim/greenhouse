@@ -117,6 +117,22 @@ export interface ComputerStartSpec {
    * the home into a new sandbox instead of resuming the old one.
    */
   fresh: boolean;
+  /**
+   * The member had a computer before (backups.ts): called only when the host has to
+   * make a home from nothing — e2b: the recorded sandbox is gone (deleted, another
+   * provider); docker: no home volume (another driver before) — to fill it from the
+   * newest backup before anything runs in it. Null = no backup to restore.
+   */
+  restore?: () => Promise<HomeRestore | null>;
+}
+
+/** A backup to put into a new home (backups.ts). */
+export interface HomeRestore {
+  backupId: string;
+  /** ISO time the backup was taken. */
+  takenAt: string;
+  /** One uid's home, a verified gzip'd tar stream (home-archive.ts). */
+  open(user: ComputerUser): Promise<Readable>;
 }
 
 /** A computer a start brought up (its browser may still be coming up). */
@@ -125,6 +141,8 @@ export interface StartedComputer {
   ref: string;
   /** Recorded as `image_id` (docker: the image id; e2b: the template). */
   imageId: string | null;
+  /** The backup this start put into a new home (ComputerStartSpec.restore), if it did. */
+  restoredFrom?: string;
   /**
    * Undo the start: it lost to a newer decision (purge, reset) or never
    * became usable. Keeps the member's data — a sandbox created by this start
@@ -148,8 +166,11 @@ export interface HostInstance {
  */
 export class ComputerStartError extends Error {
   constructor(
-    /** move_failed: the home could not be moved into a new sandbox; it is intact in the old one. */
-    readonly reason: 'move_failed',
+    /**
+     * move_failed: the home could not be moved into a new sandbox; it is intact in the old one.
+     * restore_failed: a backup could not be put into the new home; the next start tries again.
+     */
+    readonly reason: 'move_failed' | 'restore_failed',
     message: string,
     options?: ErrorOptions,
   ) {
@@ -205,4 +226,9 @@ export interface ComputerHost extends ComputerExec {
   keepAlive?(row: BotComputerRow, idleMinutes: number): Promise<void>;
   /** Memory in use per ref (the admin page); missing = unknown. */
   memoryUsage(refs: string[]): Promise<Map<string, number>>;
+  /**
+   * One uid's home out of a running computer, as a gzip'd tar on stdout (a backup:
+   * home-archive.ts, caches left out). The caller reads it and checks the exit code.
+   */
+  exportHome(ref: string, user: ComputerUser): ComputerProcess;
 }

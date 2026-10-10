@@ -94,6 +94,8 @@ import { onWorkspaceConfigRefreshed } from '../../settings/workspace-config.js';
 import { checkProcessWatches, WATCH_CHECK_MS } from './process-watches.js';
 import { computerLifecycleHooks } from './hooks.js';
 import { HUMAN_WAIT_HOLD_MS } from './limits.js';
+import { loadBackupSettings } from './backup-store.js';
+import { createComputerBackups, type BackupSummary, type ComputerBackups } from './backups.js';
 
 /**
  * The image contract this API speaks (apps/bot-computer/Dockerfile LABEL).
@@ -116,6 +118,8 @@ const EGRESS_TICK_MS = 10 * 60_000;
 const RECONCILE_TICK_MS = 60 * 60_000;
 /** A failed template build is retried after this long (or at the next restart). */
 const TEMPLATE_RETRY_MS = 30 * 60_000;
+/** Backups whose process died, and those of deleted members, are cleared this often. */
+const BACKUP_SWEEP_MS = 30 * 60_000;
 
 export interface RuntimeCheck {
   id:
@@ -127,6 +131,7 @@ export interface RuntimeCheck {
     | 'network'
     | 'egress'
     | 'capacity'
+    | 'backups'
     | 'host_disk'
     | 'provider'
     | 'template';
@@ -181,6 +186,10 @@ let host: ComputerHost = createDockerHost(docker);
 let egressCheck: EgressCheck = checkComputerEgress;
 let hostedDeps: HostedPrecheckDeps | null = null;
 let controller: ComputerController | null = null;
+/** Encrypted home backups (backups.ts) — null when the deployment keeps none. */
+let backups: ComputerBackups | null = null;
+/** The admin page's word on backups (the `backups` check). */
+let backupCheck: RuntimeCheck | null = null;
 let recheckTimer: NodeJS.Timeout | null = null;
 const loopTimers: NodeJS.Timeout[] = [];
 let checking: Promise<void> | null = null;
@@ -686,6 +695,7 @@ async function check(): Promise<void> {
                 result.memTotal ? ` (host memory ${(result.memTotal / 1024 ** 3).toFixed(1)} GiB)` : ''
               }, idle after ${env.idleMinutes} min`,
       });
+      if (backupCheck) state.checks.push({ ...backupCheck });
       setView({ state: 'ready', reason: null, hardened: config.hardened });
       // Ready before the scheduled re-check (a template build that just finished): it has nothing left to do.
       if (recheckTimer) {
@@ -768,6 +778,8 @@ export async function initBotComputers(): Promise<void> {
   startedWith = providerSettings();
   // A restart (new provider settings) starts from nothing: a disabled runtime reports no driver of before.
   state.config = null;
+  backups = null;
+  backupCheck = null;
   if (!isBotsComputerEnabled()) {
     setView({ state: 'disabled', reason: null, hardened: false });
     return;
@@ -805,9 +817,34 @@ export async function initBotComputers(): Promise<void> {
       },
     };
   }
+  const backupSettings = loadBackupSettings();
+  if (backupSettings.store) {
+    backups = createComputerBackups({
+      db: getDb().botComputers,
+      store: backupSettings.store,
+      host: () => host,
+      hours: backupSettings.hours,
+      keep: backupSettings.keep,
+    });
+  }
+  backupCheck = backupSettings.problem
+    ? {
+        id: 'backups',
+        ok: false,
+        detail: `Backups are off: ${backupSettings.problem}`,
+        fix: 'Fix BOTS_COMPUTER_BACKUP_* (see .env.example) and restart the API.',
+      }
+    : {
+        id: 'backups',
+        ok: true,
+        detail: backupSettings.store
+          ? `Encrypted backups of every home in ${backupSettings.store.kind === 's3' ? 'bucket' : 'folder'} ${backupSettings.store.where}: as a computer goes to sleep, at most every ${backupSettings.hours} h; ${backupSettings.keep} kept per member; restored when a computer is gone.`
+          : 'Off — the provider (or this Docker host) holds the only copy of each home. Set BOTS_COMPUTER_BACKUP_DIR or BOTS_COMPUTER_BACKUP_S3_* to keep encrypted copies (see .env.example).',
+      };
   controller = createComputerController({
     store: getDb().botComputers,
     host,
+    ...(backups ? { backups } : {}),
     environment,
     userIsActive,
     awaitingHuman,
@@ -833,6 +870,7 @@ export async function initBotComputers(): Promise<void> {
     every(EGRESS_TICK_MS, 'egress', () => reverifyEgress());
   }
   if (state.config.driver === 'e2b') every(RECONCILE_TICK_MS, 'reconcile', () => controller!.reconcile());
+  if (backups) every(BACKUP_SWEEP_MS, 'backups', () => backups!.sweep());
   // jobs.ts and the engine it wakes sit above the runtime: loaded lazily, as for runningJobs.
   every(WATCH_CHECK_MS, 'process watches', async () => {
     const [{ listJobsIfRunning }, engine] = await Promise.all([import('./jobs.js'), import('../engine/index.js')]);
@@ -900,6 +938,10 @@ function iso(value: string | null | undefined): string | null {
 export async function computerStatusFor(userId: string): Promise<ComputerStatusView> {
   const db = getDb();
   const [row, user] = await Promise.all([db.botComputers.get(userId), db.users.getById(userId)]);
+  const restoredFrom =
+    backups && row?.state === 'running'
+      ? await backups.restoredInto(userId, row.last_started_at).catch(() => null)
+      : null;
   return {
     runtime: getComputerRuntime(),
     state: row?.state ?? 'absent',
@@ -911,7 +953,19 @@ export async function computerStatusFor(userId: string): Promise<ComputerStatusV
     disk_bytes: row?.disk_bytes ?? null,
     timezone: row?.timezone ?? null,
     lang: computerLang(state.config?.lang ?? null, user?.locale),
+    restored_from: iso(restoredFrom),
   };
+}
+
+/**
+ * An administrator's "Back up now": start the member's computer if it sleeps (it goes back
+ * to sleep on its own once idle, its backup fresh), then back it up in the background.
+ */
+export async function backupComputerNow(userId: string): Promise<void> {
+  const { controller: ready } = requireComputerRuntime();
+  if (!backups) throw new ComputerUnavailableError('disabled', 'Backups are off on this deployment');
+  const row = await ready.ensureRunning(userId, { allowOverQuota: true });
+  void backups.start(row, 'admin');
 }
 
 /** Stop a member's computer (volume kept). No-op when there is none or computers are off. */
@@ -1023,12 +1077,24 @@ function hostDiskCheck(): RuntimeCheck {
   };
 }
 
+function backupView(summary: BackupSummary | undefined): ComputerAdminRow['backup'] {
+  if (!summary) return null;
+  return {
+    status: summary.status,
+    at: iso(summary.at),
+    error: summary.error,
+    last_complete_at: iso(summary.last_complete_at),
+    last_complete_bytes: summary.last_complete_bytes,
+  };
+}
+
 /** GET /api/admin/bot-computers. */
 export async function adminComputersView(): Promise<{
   runtime: ComputerRuntimeView;
   computers: ComputerAdminRow[];
   settings: { idle_minutes: number; max_running: number };
   checks: RuntimeCheck[];
+  backups_enabled: boolean;
 }> {
   const db = getDb();
   const knobs = await resolveComputerKnobs();
@@ -1039,6 +1105,7 @@ export async function adminComputersView(): Promise<{
   if (state.view.state === 'ready' && running.length > 0) {
     memory = await host.memoryUsage(running).catch(() => new Map<string, number>());
   }
+  const backupSummaries = backups ? await backups.summaries().catch(() => new Map()) : new Map();
   const computers: ComputerAdminRow[] = rows
     .map((row, index) => ({
       user_id: row.user_id,
@@ -1050,6 +1117,7 @@ export async function adminComputersView(): Promise<{
       last_started_at: iso(row.last_started_at),
       disk_bytes: row.disk_bytes,
       memory_bytes: memory.get(row.container_name) ?? null,
+      backup: backupView(backupSummaries.get(row.user_id)),
     }))
     .sort((a, b) => Date.parse(b.last_active_at ?? '') - Date.parse(a.last_active_at ?? ''));
   const effective = state.config
@@ -1060,6 +1128,7 @@ export async function adminComputersView(): Promise<{
     computers,
     settings: { idle_minutes: knobs.idleMinutes, max_running: effective },
     checks: [...state.checks.map((c) => ({ ...c })), ...(state.config?.driver === 'docker' ? [hostDiskCheck()] : [])],
+    backups_enabled: backups !== null,
   };
 }
 

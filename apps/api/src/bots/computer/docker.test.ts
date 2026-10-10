@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   buildComputerRunArgs,
+  buildHomeHelperArgs,
   classifyDockerFailure,
   ComputerDockerError,
   ComputerRuntimeError,
@@ -390,6 +391,56 @@ describe('docker client', () => {
 
     const down: DockerSpawner = async () => result({ code: 1, stderr: 'Cannot connect to the Docker daemon' });
     await expect(createDockerClient(down).remove('c1')).rejects.toBeInstanceOf(ComputerRuntimeError);
+  });
+
+  it('says whether a home volume exists, and never takes a docker failure for "no"', async () => {
+    const present: DockerSpawner = async () => result({ code: 0, stdout: Buffer.from('v1\n') });
+    const absent: DockerSpawner = async () => result({ code: 1, stderr: 'Error: no such volume: v1' });
+    const down: DockerSpawner = async () => result({ code: 1, stderr: 'Cannot connect to the Docker daemon' });
+    await expect(createDockerClient(present).volumeExists('v1')).resolves.toBe(true);
+    await expect(createDockerClient(absent).volumeExists('v1')).resolves.toBe(false);
+    // "No" would restore an old backup over a live home.
+    await expect(createDockerClient(down).volumeExists('v1')).rejects.toBeInstanceOf(ComputerRuntimeError);
+  });
+});
+
+describe('home restore helper argv', () => {
+  it('runs the image’s own tar as the home’s uid, with no network, a read-only root and nothing kept', () => {
+    expect(
+      buildHomeHelperArgs(
+        { image: 'greenhouse/bot-computer:latest', volume: 'gh-computer-ns-u1-home', runtime: 'runsc', user: 'agent' },
+        ['tar', '-C', '/home/agent', '--no-overwrite-dir', '-xzpf', '-'],
+      ),
+    ).toEqual([
+      'run',
+      '--rm',
+      '-i',
+      '--network',
+      'none',
+      '--runtime',
+      'runsc',
+      '--read-only',
+      '--cap-drop',
+      'ALL',
+      '--security-opt',
+      'no-new-privileges',
+      '--pids-limit',
+      '64',
+      '--memory',
+      '512m',
+      '--user',
+      'agent',
+      '--entrypoint',
+      'tar',
+      '-v',
+      'gh-computer-ns-u1-home:/home',
+      'greenhouse/bot-computer:latest',
+      '-C',
+      '/home/agent',
+      '--no-overwrite-dir',
+      '-xzpf',
+      '-',
+    ]);
   });
 });
 

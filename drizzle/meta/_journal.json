@@ -155,6 +155,13 @@
       "when": 1791627948816,
       "tag": "0021_push_devices",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791642611679,
+      "tag": "0022_bot_computer_backups",
+      "breakpoints": true
     }
   ]
 }
