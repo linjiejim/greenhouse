@@ -1173,6 +1173,18 @@ describe('backups', () => {
     expect((await store.get('u1'))?.state).toBe('running');
   });
 
+  it('a member coming from a hosted computer gets their files back in a docker computer of its own name', async () => {
+    const { backups, calls } = fakeBackups({ source: () => source() });
+    const { controller, docker, store } = setup({ backups });
+    // The row as the e2b driver left it: a sandbox id, started before; this host has no home volume for it.
+    store.seed('u1', { container_name: 'i8tn0r4mbbv0x2gqk6pjo', last_started_at: '2026-10-09T08:00:00.000Z' });
+    const row = await controller.ensureRunning('u1');
+    expect(row.container_name).toBe(computerContainerName(NS, 'u1'));
+    expect(docker.containers.has(computerContainerName(NS, 'u1'))).toBe(true);
+    expect(docker.restoredInto.get(`${computerVolumeName(NS, 'u1')}:agent`)?.toString()).toBe('agent-home');
+    expect(calls.restored).toEqual(['bkp_1']);
+  });
+
   it('a backup that cannot be restored fails the start (restore_failed) and leaves no half-filled home', async () => {
     const { backups, calls } = fakeBackups({ source: () => source({ fails: true }) });
     const { controller, docker, store } = setup({ backups });

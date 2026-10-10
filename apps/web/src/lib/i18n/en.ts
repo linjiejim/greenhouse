@@ -934,6 +934,7 @@ export default {
     check_network: 'Network',
     check_egress: 'Egress lockdown',
     check_capacity: 'Host capacity',
+    check_backups: 'Backups',
     check_host_disk: 'Host disk space',
     check_provider: 'Sandbox provider',
     check_template: 'Computer template',

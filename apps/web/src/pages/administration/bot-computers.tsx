@@ -523,6 +523,7 @@ const CHECK_KEYS: Record<string, TranslationKey> = {
   network: 'botsAdmin.check_network',
   egress: 'botsAdmin.check_egress',
   capacity: 'botsAdmin.check_capacity',
+  backups: 'botsAdmin.check_backups',
   host_disk: 'botsAdmin.check_host_disk',
   provider: 'botsAdmin.check_provider',
   template: 'botsAdmin.check_template',

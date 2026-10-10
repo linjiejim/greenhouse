@@ -24,7 +24,7 @@ import {
   type HomeRestore,
   type HostInstance,
 } from './host.js';
-import { computerLabels, LABEL_USER, namespaceFilter } from './namespace.js';
+import { computerContainerName, computerLabels, LABEL_USER, namespaceFilter } from './namespace.js';
 
 /** `docker stop -t` — gh-computer closes the browser first, so its profile reaches the volume. */
 const STOP_TIMEOUT_SEC = 5;
@@ -66,6 +66,10 @@ export function createDockerHost(docker: DockerClient, opts: { now?: () => numbe
 
     async start(row, spec) {
       const { config } = spec;
+      // A row a hosted computer used last holds its sandbox id: the container gets this host's own name.
+      const name = row.container_name.startsWith('gh-computer-')
+        ? row.container_name
+        : computerContainerName(config.namespace, row.user_id);
       // No home volume although the member had a computer (another driver before): make it from the newest backup.
       const restoreFrom = spec.restore && !(await docker.volumeExists(row.volume_name)) ? await spec.restore() : null;
       await docker.volumeCreate(row.volume_name, computerLabels(config.namespace, row.user_id));
@@ -90,10 +94,10 @@ export function createDockerHost(docker: DockerClient, opts: { now?: () => numbe
         });
       }
       // A container left behind by an earlier failure would hold the name.
-      await docker.remove(row.container_name);
+      await docker.remove(name);
       await docker.run(
         buildComputerRunArgs({
-          name: row.container_name,
+          name,
           namespace: config.namespace,
           userId: row.user_id,
           image: config.image,
@@ -109,10 +113,10 @@ export function createDockerHost(docker: DockerClient, opts: { now?: () => numbe
         }),
       );
       return {
-        ref: row.container_name,
+        ref: name,
         imageId: spec.image,
         ...(restoreFrom ? { restoredFrom: restoreFrom.backupId } : {}),
-        abandon: () => docker.remove(row.container_name),
+        abandon: () => docker.remove(name),
       };
     },
 

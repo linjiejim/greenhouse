@@ -922,6 +922,7 @@ const zh: Messages = {
     check_network: '网络',
     check_egress: '出网隔离',
     check_capacity: '主机容量',
+    check_backups: '备份',
     check_host_disk: '宿主磁盘空间',
     check_provider: '沙箱服务',
     check_template: '电脑模板',
