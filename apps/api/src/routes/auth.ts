@@ -8,7 +8,7 @@
  * GET  /api/auth/me             — 获取当前登录用户信息
  * GET  /api/auth/me/usage       — 获取当前用户用量统计
  * GET  /api/auth/me/preferences — 获取当前用户偏好notes
- * PUT  /api/auth/me/preferences — 更新当前用户偏好notes
+ * PUT  /api/auth/me/preferences — 更新当前用户偏好notes / locale（`inferred`：客户端语言，只给没选过语言的账号）
  */
 
 import { createHash } from 'node:crypto';
@@ -24,6 +24,7 @@ import {
   type UserMemoryCategory,
   type UserMemoryStatus,
   type UserRow,
+  type UserUpdateInput,
 } from '@greenhouse/db';
 import { sql } from 'drizzle-orm';
 import { validateMemoryText } from '../llm/memory-limits.js';
@@ -31,6 +32,9 @@ import type { AppEnv } from '../app-env.js';
 import { InMemoryRateLimiter } from '../security/security.js';
 import { maskEmail, recordAccountSecurityAudit, resumeUserRuntime } from '../security/account.js';
 import { logger } from '@greenhouse/utils/logger';
+import { nowIso } from '@greenhouse/utils/date';
+import { botsLocale } from '../bots/engine/copy.js';
+import { relocalizeSprouty } from '../bots/sprouty.js';
 import { toErrorMessage } from '@greenhouse/utils/error';
 
 const PASSWORD_LINK_BODY_LIMIT = 4096;
@@ -86,6 +90,7 @@ export async function issueUserSession(user: UserRow) {
       role: user.role,
       monthly_token_limit: user.monthly_token_limit,
       locale: user.locale ?? 'en',
+      locale_chosen: user.locale_chosen_at != null,
       features,
     },
   };
@@ -233,6 +238,7 @@ const auth = new Hono<AppEnv>()
         role: user.role,
         monthly_token_limit: user.monthly_token_limit,
         locale: user.locale ?? 'en',
+        locale_chosen: user.locale_chosen_at != null,
         features,
       },
     });
@@ -260,6 +266,7 @@ const auth = new Hono<AppEnv>()
         monthly_token_limit: user.monthly_token_limit,
         notes: user.notes ?? null,
         locale: user.locale ?? 'en',
+        locale_chosen: user.locale_chosen_at != null,
         features,
       },
     });
@@ -317,11 +324,17 @@ const auth = new Hono<AppEnv>()
 
     return c.json({ notes: user.notes ?? null, locale: user.locale ?? 'en' });
   })
-  /** PUT /api/auth/me/preferences — update current user's preference notes + locale */
+  /**
+   * PUT /api/auth/me/preferences — update current user's preference notes + locale.
+   * `locale` is the member's pick; with `inferred: true` it is a client's own language
+   * instead (the mobile app's, while the member never picked one), applied only to an
+   * account whose locale was never picked. Either way Sprouty's untouched built-in
+   * words follow the new locale.
+   */
   .put('/me/preferences', async (c) => {
     const authUser = getAuthUser(c);
 
-    const body = (await c.req.json().catch(() => ({}))) as { notes?: string; locale?: string };
+    const body = (await c.req.json().catch(() => ({}))) as { notes?: string; locale?: string; inferred?: boolean };
 
     // Validate notes length (max 2000 chars — the member's standing notes are
     // the USER.md of every Bot and chat, spec 20261007 phase 4)
@@ -337,20 +350,45 @@ const auth = new Hono<AppEnv>()
       return c.json({ error: `Invalid locale. Must be one of: ${validLocales.join(', ')}` }, 400);
     }
 
-    const updates: Record<string, unknown> = {};
+    // a client's own language for an account whose member never picked one, or the member's pick
+    const adopted = body.inferred === true ? locale : undefined;
+    const updates: UserUpdateInput = {};
     if (notes !== undefined) updates.notes = notes || null;
-    if (locale !== undefined) updates.locale = locale;
+    if (locale !== undefined && adopted === undefined) {
+      updates.locale = locale;
+      updates.locale_chosen_at = nowIso();
+    }
 
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(updates).length === 0 && adopted === undefined) {
       return c.json({ error: 'No valid fields to update' }, 400);
     }
 
-    const updated = await getDb().users.update(authUser.id, updates as { notes?: string | null; locale?: string });
+    const db = getDb();
+    const before = await db.users.getById(authUser.id);
+    if (!before) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+    let updated: UserRow | undefined = before;
+    if (Object.keys(updates).length > 0) updated = await db.users.update(authUser.id, updates);
+    if (updated && adopted !== undefined) updated = await db.users.adoptLocale(authUser.id, adopted);
     if (!updated) {
       return c.json({ error: 'User not found' }, 404);
     }
 
-    return c.json({ notes: updated.notes ?? null, locale: updated.locale ?? 'en' });
+    if (updated.locale !== before.locale) {
+      await relocalizeSprouty(db, authUser.id, botsLocale(updated.locale)).catch((error: unknown) =>
+        logger.warn('[auth] Sprouty kept its words after a locale change', {
+          userId: authUser.id,
+          error: toErrorMessage(error),
+        }),
+      );
+    }
+
+    return c.json({
+      notes: updated.notes ?? null,
+      locale: updated.locale ?? 'en',
+      locale_chosen: updated.locale_chosen_at != null,
+    });
   })
   // ─── User Memories (self-service) ─────────────────
   // All three writes share one gate and one validator with the `memory` tool:

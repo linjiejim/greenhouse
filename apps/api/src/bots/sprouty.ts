@@ -10,7 +10,7 @@
 
 import { BotsDomainError, botNameKey, type BotRow, type DatabaseProvider } from '@greenhouse/db';
 import { SPROUTY_BOT_TEMPLATE, isSproutyBot } from '@greenhouse/types/bots';
-import { botsLocale } from './engine/copy.js';
+import { botsLocale, type BotsLocale } from './engine/copy.js';
 import { nextFreeName } from './engine/naming.js';
 
 /** The member's Sprouty Bot, created from the template when missing. Idempotent and race-safe. */
@@ -44,4 +44,25 @@ export async function ensureSproutyBot(db: DatabaseProvider, userId: string): Pr
     if (!raced) throw error;
     return raced;
   }
+}
+
+/**
+ * The member's language changed: Sprouty's built-in role and instructions follow it, as a
+ * new version — only while they are still the template's words in some language (a member
+ * who rewrote them keeps theirs). True when Sprouty changed.
+ */
+export async function relocalizeSprouty(db: DatabaseProvider, userId: string, locale: BotsLocale): Promise<boolean> {
+  const bot = (await db.bots.listBots(userId)).find((row) => isSproutyBot(row));
+  if (!bot) return false;
+  const untouched = Object.values(SPROUTY_BOT_TEMPLATE.copy).some(
+    (copy) => copy.role === bot.role && copy.instructions === bot.instructions,
+  );
+  const target = SPROUTY_BOT_TEMPLATE.copy[locale];
+  if (!untouched || (bot.role === target.role && bot.instructions === target.instructions)) return false;
+  const updated = await db.bots.updateBot(userId, bot.id, {
+    role: target.role,
+    instructions: target.instructions,
+    change_log: `Language: ${locale}`,
+  });
+  return !!updated;
 }

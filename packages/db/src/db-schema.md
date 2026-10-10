@@ -23,7 +23,7 @@
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `users` | PK `id`；UK `email` | 内部账号；`role=team/super` 为有效角色，`status=invited/active/reset_required/disabled`；只有 active 可认证，`auth_version` 在密码设置/重置时原子递增以撤销既有凭证；新账号月度 token 限额默认 100M，另含兼容消息限额、locale、备注与登录时间 |
+| `users` | PK `id`；UK `email` | 内部账号；`role=team/super` 为有效角色，`status=invited/active/reset_required/disabled`；只有 active 可认证，`auth_version` 在密码设置/重置时原子递增以撤销既有凭证；新账号月度 token 限额默认 100M，另含兼容消息限额、locale、备注与登录时间；`locale_chosen_at` = 成员亲自选语言的时间（null = 仍是默认 `en`，客户端可用 `PUT /api/auth/me/preferences` `inferred` 补上自己的语言，见迁移 0019） |
 | `user_tools` | 复合 PK `(user_id, tool_id)` | 每用户工具授权；`user_id` FK 到 users |
 | `refresh_tokens` | PK `id`；索引 `token_hash`、`user_id` | 刷新令牌只存 hash、有效期与签发时 `auth_version`；单次消费且必须匹配用户当前版本，用户删除时级联 |
 | `account_password_links` | PK `id`；UK `token_hash`；部分 UK `user_id WHERE consumed_at/revoked_at IS NULL` | super 签发的邀请/重置设密凭证；只存 32-byte 随机 token 的 SHA-256 hash、签发代数、过期/消费/撤销时间与邮件投递结果。邀请 72h、重置 30m；目标用户删除时级联 |

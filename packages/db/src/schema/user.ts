@@ -28,6 +28,10 @@ export const users = pgTable('users', {
   monthly_token_limit: integer('monthly_token_limit').notNull().default(100000000),
   notes: text('notes'),
   locale: text('locale').notNull().default('en'),
+  // When the member picked `locale` themselves (web or app settings). Null = never picked:
+  // `locale` is the default and a client may adopt its own language for it (PUT
+  // /api/auth/me/preferences `inferred`), so text the server writes matches the app.
+  locale_chosen_at: timestamp('locale_chosen_at', { withTimezone: true, mode: 'string' }),
   created_by: text('created_by'),
   created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),

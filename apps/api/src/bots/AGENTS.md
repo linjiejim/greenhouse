@@ -28,7 +28,8 @@ bots/
 - **每个成员都有 Sprouty**：内置主 Bot（`template_key = 'sprouty'`，sprout 植物，中英文都叫 Sprouty，岗位「主助手」），
   由 `POST /bootstrap` 保证存在（幂等，每次进入都可调；早于它的老成员下次进入补建，不占 20 个上限）——Bot 行本身也可能由
   聊天页先建（`ensureSproutyBot`），bootstrap 只补私聊与欢迎语。它在侧栏
-  置顶、**不能归档**（`DELETE` 返回 400 `bot_protected`），可以改名改守则；它就是原来的「总管」——用 `team`
+  置顶、**不能归档**（`DELETE` 返回 400 `bot_protected`），可以改名改守则（岗位与守则按建行时的账号语言写；
+  账号语言变了且成员没改过它们，`relocalizeSprouty` 把两者换成新语言、记一个版本——见 `PUT /api/auth/me/preferences`）；它就是原来的「总管」——用 `team`
   工具把成员的其他 Bot 拉进对话（客串）、转交工作、提议新建。`POST /api/bots` 只接受模板库模板
   （`galleryTemplate`：研究员/操作员/写手/分析师/周报助手/会议记录员/项目跟进人；后三个是不需要电脑的示例，`needsComputer: false`）：
   Sprouty 只来自 bootstrap，「总管」模板已退役（旧的 chief Bot 照常工作，`botTemplate('chief')` 仍能查到它的开场白与 starters）。

@@ -539,6 +539,12 @@ export interface AuthenticatedUser {
   monthly_token_limit?: number;
   notes?: string | null;
   locale?: string;
+  /**
+   * The member picked `locale` themselves. False = it is the default, and a client may offer
+   * its own language for it (`PUT /api/auth/me/preferences` with `inferred`). Absent from
+   * servers that predate the distinction.
+   */
+  locale_chosen?: boolean;
   /** Feature flags enabled for this user (e.g. { memory: true }). */
   features?: Record<string, boolean>;
 }

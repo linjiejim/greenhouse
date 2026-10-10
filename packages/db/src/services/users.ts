@@ -3,7 +3,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -29,6 +29,8 @@ export interface UserUpdateInput {
   monthly_token_limit?: number;
   notes?: string | null;
   locale?: string;
+  /** Set with `locale` when the member picks it themselves (see `adoptLocale` for the other way). */
+  locale_chosen_at?: string | null;
 }
 
 function userUpdateSet(updates: UserUpdateInput): Record<string, unknown> {
@@ -40,6 +42,7 @@ function userUpdateSet(updates: UserUpdateInput): Record<string, unknown> {
   if (updates.monthly_token_limit !== undefined) set.monthly_token_limit = updates.monthly_token_limit;
   if (updates.notes !== undefined) set.notes = updates.notes;
   if (updates.locale !== undefined) set.locale = updates.locale;
+  if (updates.locale_chosen_at !== undefined) set.locale_chosen_at = updates.locale_chosen_at;
   return set;
 }
 
@@ -111,6 +114,19 @@ export function createUserService(db: Db) {
           );
         return updated;
       });
+    },
+
+    /**
+     * A client's language for an account whose member never picked one: applied only
+     * while `locale_chosen_at` is null, and it stays null — a later pick, here or on
+     * any other client, still wins. Returns the row either way.
+     */
+    async adoptLocale(id: string, locale: string): Promise<UserRow | undefined> {
+      await db
+        .update(users)
+        .set({ locale, updated_at: nowIso() })
+        .where(and(eq(users.id, id), isNull(users.locale_chosen_at), ne(users.locale, locale)));
+      return service.getById(id);
     },
 
     async updateLastLogin(id: string): Promise<void> {
