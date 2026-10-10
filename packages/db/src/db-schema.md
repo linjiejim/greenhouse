@@ -70,6 +70,7 @@
 | `bot_requests` | PK `id`(`brq_<hex>`)；索引 `(user_id, status)`、`(session_id, status)` | 所有「需要你」：`kind=takeover/login/approval/bot_create/task_start/instructions_update`（最后一种是 Bot 用 `self` 工具提议改自己的守则），`status` 只经 `settleRequest` 从 pending 单次 CAS 结算；`payload` 为服务端派生的展示/执行数据（**从不含秘密**），`expires_at` 到期由清扫置 expired |
 | `bot_inbox` | PK `id`；部分索引 `(session_id, id) WHERE consumed_at IS NULL` | 单写者规则的持久队列：会话忙时外部产生的事件 / 续跑 / 后台汇报 / 插话消息落这里，由持有 ChatRun 的引擎在 Bot 回合之间排空（`consumeInbox` CAS） |
 | `bot_computers` | PK/FK `user_id` | 每成员一台电脑的 DB 权威生命周期：namespace / 容器名 / 卷名、`state=absent/starting/running/stopping/error` + `state_reason`、`version`（所有迁移 CAS）、接管租约 `lease_controller=bot/user` + 单调 `lease_epoch`、`viewer_heartbeat_at`（持有观看连接的槽位刷新）、`last_active_at`（闲置判定）、`image_id`、`disk_bytes`、`timezone`（成员自己的 IANA 时区，空 = 部署默认，下次启动生效；0009） |
+| `bot_computer_backups` | PK `id`（`bkp_<hex>`）；索引 `(user_id, created_at)`；部分唯一 `(user_id) WHERE status = 'running'` | 成员电脑家目录的加密备份（部署自己的存储：本地目录或 S3 桶）：`status=running/complete/failed`、`reason=idle/admin`、`store=local/s3`、`key_enc`（这份备份自己的 AES 密钥，用保险库密钥封存 `gv1`）、`format`、来源 `driver` + `source_ref`、`bytes`、`error`、`restored_at`；一人同时只能有一份在跑（多 API 进程只有一个在备）。`user_id` 是逻辑关联：对象要先删，所以删成员走电脑运行时的 purge，成员已不在的行由清扫连对象一起删（0021） |
 | `bot_process_watches` | PK `id`；唯一 `(user_id, job_id)`；部分索引 `(user_id) WHERE status = 'watching'` | Bot 在电脑上起的后台进程（gh-jobs）结束时要被叫醒：`run_background` 时登记，电脑的轮询发现进程结束后 `watching → notified`（条件更新，多个 API 进程只有一个投递 `continue`），电脑被清空 / 过期则 `gone`（0020） |
 | `vault_items` | PK `id`(`vlt_<hex>`)；索引 `user_id` | 密码库条目：`origins`（JSON，精确 `https://host[:port]` 或显式 `*.host`）、`username_enc` / `password_enc` / `totp_enc`（AES-256-GCM，AAD=`vault:<user_id>:<item_id>:<field>`，任何读路径都不返回）、`username_hint`（打码展示）、`policy=ask/auto`、`always_origins`（「此站点总是允许」） |
 | `vault_access_log` | PK `id`；索引 `(user_id, created_at)` | 每次代填的元数据审计：条目标签快照、bot/session、真实 origin、`action=fill_login/fill_totp/secure_login`、`outcome`、`approval`；不记录任何值 |
@@ -360,6 +361,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `sessions.parent_session_id` | `sessions.id` | 派生会话谱系；父会话删除不级联 |
 | `messages.bot_id` | `bots.id` | Bots 对话中撰写该轮的 Bot；messages 是最大的表，刻意无 FK（成员能做的只有归档；Bot 行只随用户删除级联硬删，而那时成员的 Bots 会话连同 `bottask-` 子会话由 `apps/api/src/bots/purge.ts` 一并删除——会话「比用户活得久」的通用规则对 `channel='bots'` 不适用，删不掉的（仍有运行中的 run）由每小时的孤儿清扫补删）。`role='assistant'` 且 `bot_id` 指向不存在的行时投影为「已删除的 Bot」 |
 | `vault_access_log.bot_id` / `vault_access_log.session_id` | `bots.id` / `sessions.id` | 审计必须比 Bot 与对话活得久 |
+| `bot_computer_backups.user_id` | `users.id` | 存储里的对象必须先于行删除：删成员时电脑运行时的 purge（wipe）删备份，漏掉的（宿主当时不在）由清扫循环补删 |
 | `chat_files.created_by` | `users.id` | 生成会话文件的内部用户；元数据随 session 级联，主体关系保持松散 |
 | `chat_artifact_receipts.user_id` | `users.id` | 动作回执的执行人；会话删除级联回执，主体关系保持松散 |
 | `session_shares.shared_with` / `session_share_reads.user_id` | `users.id` 或 `__team__` | 指定用户或全团队目标 |

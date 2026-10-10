@@ -133,6 +133,46 @@ export function buildComputerRunArgs(spec: ComputerRunSpec): string[] {
   return args;
 }
 
+/**
+ * A one-off container that puts a backup into a new home volume before the computer's
+ * own container ever runs (docker-host.ts): the image's own tar, as the home's uid, no
+ * network, read-only root, nothing kept. The fresh volume's first mount copies the
+ * image's /home in, so both homes exist with their owners before tar writes.
+ */
+export function buildHomeHelperArgs(
+  spec: { image: string; volume: string; runtime: string; user: 'agent' | 'browser' },
+  argv: string[],
+): string[] {
+  const [entrypoint, ...rest] = argv;
+  if (!entrypoint) throw new Error('buildHomeHelperArgs needs a command');
+  return [
+    'run',
+    '--rm',
+    '-i',
+    '--network',
+    'none',
+    '--runtime',
+    spec.runtime,
+    '--read-only',
+    '--cap-drop',
+    'ALL',
+    '--security-opt',
+    'no-new-privileges',
+    '--pids-limit',
+    '64',
+    '--memory',
+    '512m',
+    '--user',
+    spec.user,
+    '--entrypoint',
+    entrypoint,
+    '-v',
+    `${spec.volume}:/home`,
+    spec.image,
+    ...rest,
+  ];
+}
+
 // ─── Errors ───────────────────────────────────────────────
 
 export type ComputerRuntimeReason =
@@ -452,7 +492,11 @@ export interface DockerClient {
   volumeList(labelFilter: string): Promise<VolumeSummary[]>;
   /** Creation time of a volume (ISO), null when unknown or gone. */
   volumeCreatedAt(name: string): Promise<string | null>;
+  /** Whether a volume exists — strict: a docker failure throws, it is never taken for "no". */
+  volumeExists(name: string): Promise<boolean>;
   run(args: string[]): Promise<string>;
+  /** A streaming one-off `docker run -i --rm …` (args from buildHomeHelperArgs); the caller waits for it. */
+  runStream(args: string[]): ChildProcess;
   /** `docker stop -t <s>`; idempotent for a missing/stopped container. */
   stop(name: string, timeoutSec: number): Promise<void>;
   /** `docker rm -f`; idempotent. */
@@ -648,10 +692,19 @@ export function createDockerClient(
       return typeof value === 'string' && value ? value : null;
     },
 
+    async volumeExists(name) {
+      const result = await run(['volume', 'inspect', '--format', '{{.Name}}', name], { timeoutMs: 15_000 });
+      if (result.code === 0) return true;
+      if (/no such volume/i.test(result.stderr)) return false;
+      throw classifyDockerFailure(result.stderr, 'docker volume inspect');
+    },
+
     async run(args) {
       const result = ensureOk(await run(args, { timeoutMs: 90_000 }), 'docker run');
       return result.stdout.toString('utf8').trim();
     },
+
+    runStream: (args) => stream(args),
 
     async stop(name, timeoutSec) {
       const result = await run(['stop', '-t', String(timeoutSec), name], { timeoutMs: (timeoutSec + 30) * 1000 });

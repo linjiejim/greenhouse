@@ -35,6 +35,7 @@ import {
 } from '../../components/ui';
 import {
   AlertTriangle,
+  Archive,
   CheckCircle2,
   Copy,
   Gauge,
@@ -48,6 +49,7 @@ import {
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { timeAgo } from '../../lib/utils';
 import {
+  adminBackupComputer,
   adminResetComputer,
   adminStopComputer,
   fetchAdminBotComputers,
@@ -93,10 +95,38 @@ const STATE_COPY: Record<ComputerState, { key: TranslationKey; tone: 'success' |
   error: { key: 'botsComputer.state_error', tone: 'danger' },
 };
 
+/** The Backup column: the newest backup's state, and the copy a new computer would start from. */
+function BackupCell({ backup }: { backup: ComputerAdminRow['backup'] }) {
+  const t = useT();
+  if (!backup) return <span className="text-xs text-fg-muted">—</span>;
+  const lastGood = backup.last_complete_at
+    ? `${timeAgo(backup.last_complete_at)} · ${formatBytes(backup.last_complete_bytes)}`
+    : null;
+  if (backup.status === 'running') {
+    return (
+      <Tag tone="info" title={lastGood ? t('botsAdmin.backupLastGood', { when: lastGood }) : undefined}>
+        {t('botsAdmin.backup_running')}
+      </Tag>
+    );
+  }
+  if (backup.status === 'failed') {
+    return (
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        <Tag tone="danger" title={backup.error ?? undefined}>
+          {t('botsAdmin.backup_failed')}
+        </Tag>
+        {lastGood && <span className="text-xs text-fg-muted">{lastGood}</span>}
+      </span>
+    );
+  }
+  return <span className="whitespace-nowrap text-xs text-fg-muted">{lastGood ?? '—'}</span>;
+}
+
 export function BotComputersPanel() {
   const t = useT();
   const [view, setView] = useState<AdminBotComputersView | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [backupsOn, setBackupsOn] = useState(false);
   const reloadRef = useRef<(() => void) | null>(null);
   const [stopTarget, setStopTarget] = useState<ComputerRow | null>(null);
   const [resetTarget, setResetTarget] = useState<ComputerRow | null>(null);
@@ -118,6 +148,7 @@ export function BotComputersPanel() {
         try {
           const next = await fetchAdminBotComputers();
           setView(next);
+          setBackupsOn(next.backups_enabled);
           setLoadError(false);
           const skip = params.skip ?? 0;
           return {
@@ -147,6 +178,19 @@ export function BotComputersPanel() {
       setStopTarget(null);
     }
   };
+
+  const backUp = useCallback(
+    async (row: ComputerRow) => {
+      try {
+        await adminBackupComputer(row.user_id);
+        toast(t('botsAdmin.backupStarted', { name: row.nickname }), 'success');
+        reload();
+      } catch (err) {
+        toast(err instanceof Error ? err.message : t('botsAdmin.actionFailed'), 'error');
+      }
+    },
+    [t, reload],
+  );
 
   const reset = async (wipeData: boolean) => {
     if (!resetTarget) return;
@@ -233,8 +277,26 @@ export function BotComputersPanel() {
             responsiveHide: 'sm',
             render: (row) => <span className="font-mono text-xs text-fg-muted">{formatBytes(row.memory_bytes)}</span>,
           },
+          ...(backupsOn
+            ? [
+                {
+                  key: 'backup',
+                  label: t('botsAdmin.col_backup'),
+                  type: 'custom' as const,
+                  responsiveHide: 'md' as const,
+                  render: (row: ComputerRow) => <BackupCell backup={row.backup} />,
+                },
+              ]
+            : []),
         ],
         tableActions: [
+          {
+            key: 'backup',
+            label: t('botsAdmin.backupNow'),
+            icon: Archive,
+            visible: (row) => backupsOn && row.backup?.status !== 'running',
+            onClick: (row) => void backUp(row),
+          },
           {
             key: 'stop',
             label: t('botsAdmin.stop'),
@@ -273,7 +335,7 @@ export function BotComputersPanel() {
           ),
         },
       }),
-    [t, dataSource],
+    [t, dataSource, backupsOn, backUp],
   );
 
   const running = view?.computers.filter((c) => c.state === 'running' || c.state === 'starting').length ?? 0;

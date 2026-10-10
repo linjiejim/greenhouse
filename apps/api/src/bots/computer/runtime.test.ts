@@ -99,6 +99,10 @@ function fakeClient(overrides: Partial<DockerClient> = {}): DockerClient {
     volumeRemove: async () => {},
     volumeList: async () => [],
     volumeCreatedAt: async () => null,
+    volumeExists: async () => false,
+    runStream: () => {
+      throw new Error('not used');
+    },
     run: async () => 'id',
     stop: async () => {},
     remove: async () => {},

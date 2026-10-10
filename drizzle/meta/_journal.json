@@ -148,6 +148,13 @@
       "when": 1791621715755,
       "tag": "0020_bot_process_watches",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791630806673,
+      "tag": "0021_bot_computer_backups",
+      "breakpoints": true
     }
   ]
 }

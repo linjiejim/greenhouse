@@ -15,18 +15,25 @@
  * DevTools tunnels with Playwright, pause → resume (processes survive), a
  * reset moving the home (files and a browser login) into a new sandbox, a
  * runaway job killed inside the Bots' memory slice (nothing else restarts), the
- * recovery of an old sandbox whose home failed to move (RECOVER_SCRIPT), and a
- * port preview through the agent bridge (never to a bridge's own port).
+ * recovery of an old sandbox whose home failed to move (RECOVER_SCRIPT), a
+ * port preview through the agent bridge (never to a bridge's own port), and an
+ * encrypted backup of both homes rebuilding a lost computer (caches left out).
  */
 
 import { createHash, randomBytes } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium } from 'playwright-core';
 import { Sandbox } from 'e2b';
 import type { BotComputerRow } from '@greenhouse/db';
 
 import type { BotsComputerConfig } from '../config.js';
+import { decryptBackupStream, encryptBackupStream } from '../backup-format.js';
+import { createLocalBackupStore } from '../backup-store.js';
 import { openCdpBridge } from '../cdp-bridge.js';
+import { exportSucceeded, HOME_USERS } from '../home-archive.js';
 import { createE2bApi, createE2bHost, RECOVER_SCRIPT } from '../e2b-host.js';
 import { buildComputerTemplate, computerTemplateName, templateStatus } from '../e2b-template.js';
 import type { ComputerHost, ComputerStartSpec } from '../host.js';
@@ -366,4 +373,63 @@ describe.skipIf(!LIVE)('e2b host (live provider)', () => {
     expect(page).toContain('<h1>hi from the computer</h1>');
     await expect(get(7681)).rejects.toMatchObject({ status: 403 });
   }, 120_000);
+
+  it('backs both homes up encrypted and rebuilds a lost computer from them, caches left out', async () => {
+    const marker = randomBytes(8).toString('hex');
+    await exec('agent', [
+      'sh',
+      '-c',
+      `mkdir -p ~/.cache/pip ~/work && echo ${marker} > ~/work/backup-marker.txt && head -c 1048576 /dev/urandom > ~/.cache/pip/big.bin`,
+    ]);
+    await exec('browser', [
+      'sh',
+      '-c',
+      `echo ${marker} > ~/backup-marker.txt && mkdir -p ~/chromium/Default/Cache && echo cached > ~/chromium/Default/Cache/x`,
+    ]);
+    const dir = mkdtempSync(join(tmpdir(), 'gh-live-backups-'));
+    try {
+      const store = createLocalBackupStore(dir);
+      const key = randomBytes(32);
+      const backupId = `bkp_live${randomBytes(4).toString('hex')}`;
+      for (const user of HOME_USERS) {
+        const proc = host.exportHome(ref, user);
+        const exited = new Promise<number | null>((resolve) => proc.once('close', (code) => resolve(code)));
+        const sealed = proc.stdout!.pipe(encryptBackupStream(key, `${backupId}:${user}`));
+        await store.write(`${userId}/${backupId}/${user}`, sealed);
+        expect(exportSucceeded(await exited)).toBe(true);
+      }
+      // The computer is lost (deleted at the provider): its next start rebuilds it from the backup.
+      const lost = ref;
+      await api.kill(lost);
+      const rebuilt = await host.start(row(lost), {
+        ...spec(),
+        restore: async () => ({
+          backupId,
+          takenAt: new Date().toISOString(),
+          open: async (user) =>
+            (await store.read(`${userId}/${backupId}/${user}`)).pipe(decryptBackupStream(key, `${backupId}:${user}`)),
+        }),
+      });
+      ref = rebuilt.ref;
+      expect(ref).not.toBe(lost);
+      expect(rebuilt.restoredFrom).toBe(backupId);
+      await waitReady();
+      const read = async (user: 'agent' | 'browser', argv: string[]) =>
+        (await exec(user, argv)).stdout.toString().trim();
+      expect(await read('agent', ['cat', '/home/agent/work/backup-marker.txt'])).toBe(marker);
+      expect(await read('browser', ['cat', '/home/browser/backup-marker.txt'])).toBe(marker);
+      expect(await read('agent', ['stat', '-c', '%U', '/home/agent/work/backup-marker.txt'])).toBe('agent');
+      expect((await exec('agent', ['test', '-e', '/home/agent/.cache/pip/big.bin'])).code).not.toBe(0);
+      expect((await exec('browser', ['test', '-e', '/home/browser/chromium/Default/Cache/x'])).code).not.toBe(0);
+      // The browser's login came back too.
+      const bridge = await openCdpBridge({ spawnTunnel: () => host.openTunnel(ref, 'cdp') });
+      const browser = await chromium.connectOverCDP(bridge.url, { noDefaults: true, timeout: 30_000 });
+      const cookies = await browser.contexts()[0]!.cookies('https://example.com');
+      await browser.close().catch(() => {});
+      await bridge.close();
+      expect(cookies.find((cookie) => cookie.name === 'gh_live')?.value).toBe('kept');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 300_000);
 });

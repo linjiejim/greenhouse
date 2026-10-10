@@ -29,6 +29,7 @@
  * /api/admin/bot-computers（requireSuper）
  * GET  /api/admin/bot-computers                 — 运行时、预检清单（含修复命令）、每台电脑、旋钮
  * POST /api/admin/bot-computers/:userId/stop    — 停止某成员的电脑
+ * POST /api/admin/bot-computers/:userId/backup  — 立即备份（休眠中的先唤醒，备份在后台进行；未开备份 → 503 disabled）
  * POST /api/admin/bot-computers/:userId/reset   — 重置 {wipe_data?}（不代为重启，成员下次使用时自动启动；
  *                                                 清空数据时宿主不可用返回 503 unavailable，绝不假装已清空）
  *
@@ -77,6 +78,7 @@ import { handbackComputer, LeaseRequiredError, takeoverComputer, typeIntoFocused
 import { computerContainerName, computerIdentity } from './namespace.js';
 import {
   adminComputersView,
+  backupComputerNow,
   computerNamespace,
   computerStatusFor,
   purgeUserComputer,
@@ -410,5 +412,13 @@ export function createAdminBotComputerRoutes() {
         return computerError(c, err);
       }
       return c.json({ ok: true as const });
+    })
+    .post('/:userId/backup', async (c) => {
+      try {
+        await backupComputerNow(c.req.param('userId'));
+      } catch (err) {
+        return computerError(c, err);
+      }
+      return c.json({ ok: true as const }, 202);
     });
 }

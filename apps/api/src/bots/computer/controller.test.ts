@@ -4,6 +4,9 @@
  * guarantees are in tests/db/bot-computer-capacity.db-commit.test.ts.
  */
 
+import type { ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { PassThrough, Readable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import type { BotComputerRow, BotComputerState } from '@greenhouse/db';
 
@@ -16,6 +19,7 @@ import {
   START_DEADLINE_MS,
   type Clock,
   type ComputerStore,
+  type ControllerBackups,
   type ControllerEnvironment,
   type HostDiskReading,
   type TryLockResult,
@@ -30,7 +34,7 @@ import {
   type ExecSpec,
 } from './docker.js';
 import { createDockerHost } from './docker-host.js';
-import { ComputerStartError, type ComputerStartSpec } from './host.js';
+import { ComputerStartError, type ComputerStartSpec, type HomeRestore } from './host.js';
 import { ComputerUnavailableError } from './errors.js';
 import { computerContainerName, computerVolumeName, LABEL_NAMESPACE, LABEL_USER } from './namespace.js';
 
@@ -200,6 +204,31 @@ class FakeDocker {
   egress: Record<string, number> = {};
   onStop: ((name: string) => void) | null = null;
   log: string[] = [];
+  /** What each restore helper container was fed: `<volume>:<user>` → bytes. */
+  restoredInto = new Map<string, Buffer>();
+  /** A helper container's exit code (a restore that fails). */
+  helperExit = 0;
+
+  /** A one-off `docker run -i --rm` restore helper: reads its stdin, then exits. */
+  helper(args: string[]): ChildProcess {
+    const volume = args[args.indexOf('-v') + 1]!.split(':')[0]!;
+    const user = args[args.indexOf('--user') + 1]!;
+    this.log.push(`helper ${volume} ${user}`);
+    const proc = new EventEmitter() as ChildProcess;
+    const stdin = new PassThrough();
+    const chunks: Buffer[] = [];
+    stdin.on('data', (chunk: Buffer) => chunks.push(chunk));
+    stdin.on('end', () => {
+      this.restoredInto.set(`${volume}:${user}`, Buffer.concat(chunks));
+      setImmediate(() => proc.emit('close', this.helperExit, null));
+    });
+    const kill = () => {
+      setImmediate(() => proc.emit('close', null, 'SIGKILL'));
+      return true;
+    };
+    Object.assign(proc, { stdin, stdout: new PassThrough(), stderr: new PassThrough(), kill });
+    return proc;
+  }
 
   constructor(private clock: FakeClock) {}
 
@@ -231,6 +260,8 @@ class FakeDocker {
           .map(([name, v]) => ({ name, labels: v.labels }));
       },
       volumeCreatedAt: async (name) => this.volumes.get(name)?.createdAt ?? null,
+      volumeExists: async (name) => this.volumes.has(name),
+      runStream: (args) => this.helper(args),
       run: async (args) => {
         if (this.runFailure) throw this.runFailure;
         const name = args[args.indexOf('--name') + 1]!;
@@ -302,6 +333,7 @@ function setup(
     startError?: () => Error | null;
     operatorLang?: string | null;
     jobMaxHours?: number;
+    backups?: ControllerBackups;
   } = {},
 ) {
   const clock = new FakeClock();
@@ -358,6 +390,7 @@ function setup(
     awaitingHuman: async (userId) => opts.awaitingHuman?.(userId) ?? false,
     memberLocale: async (userId) => opts.locale?.(userId) ?? null,
     ...(opts.runningJobs ? { runningJobs: async (container: string) => opts.runningJobs!(container) } : {}),
+    ...(opts.backups ? { backups: opts.backups } : {}),
     clock,
     onState: (row) => events.states.push([row.user_id, row.state, row.state_reason]),
     onStopped: (userId, reason) => events.stopped.push([userId, reason]),
@@ -1053,5 +1086,114 @@ describe('computer lifecycle', () => {
     expect(events.runtimeErrors.map((e) => e.reason)).toEqual(['network_invalid']);
     expect(await store.get('u2')).toMatchObject({ state: 'error', state_reason: 'network_invalid' });
     expect(docker.containers.has(computerContainerName(NS, 'u2'))).toBe(false);
+  });
+});
+
+describe('backups', () => {
+  /** What the idle loop is told, and the backup a start can restore. */
+  function fakeBackups(opts: { verdict?: () => 'go' | 'wait'; source?: () => HomeRestore | null } = {}) {
+    const calls = {
+      beforeSleep: [] as string[],
+      restoreSource: [] as string[],
+      restored: [] as string[],
+      deleteAll: [] as string[],
+    };
+    const backups: ControllerBackups = {
+      beforeSleep: async (row) => {
+        calls.beforeSleep.push(row.user_id);
+        return opts.verdict?.() ?? 'go';
+      },
+      restoreSource: async (userId) => {
+        calls.restoreSource.push(userId);
+        return opts.source?.() ?? null;
+      },
+      restored: async (backupId) => {
+        calls.restored.push(backupId);
+      },
+      deleteAll: async (userId) => {
+        calls.deleteAll.push(userId);
+      },
+    };
+    return { backups, calls };
+  }
+
+  function source(opts: { fails?: boolean } = {}): HomeRestore {
+    return {
+      backupId: 'bkp_1',
+      takenAt: '2026-10-09T08:00:00.000Z',
+      open: async (user) => {
+        if (!opts.fails) return Readable.from([Buffer.from(`${user}-home`)]);
+        const broken = new PassThrough();
+        setImmediate(() => broken.destroy(new Error('a record failed authentication')));
+        return broken;
+      },
+    };
+  }
+
+  it('an idle computer stays awake while its backup runs, and sleeps once backups let it', async () => {
+    let verdict: 'go' | 'wait' = 'wait';
+    const { backups, calls } = fakeBackups({ verdict: () => verdict });
+    const { controller, clock, store } = setup({ backups });
+    await controller.ensureRunning('u1');
+    clock.ms += 16 * MIN;
+    await controller.idleTick();
+    expect(calls.beforeSleep).toEqual(['u1']);
+    expect((await store.get('u1'))?.state).toBe('running');
+    verdict = 'go';
+    await controller.idleTick();
+    expect(await store.get('u1')).toMatchObject({ state: 'absent', state_reason: 'idle' });
+  });
+
+  it('a member whose home volume is gone gets it back from the newest backup before the computer runs', async () => {
+    const { backups, calls } = fakeBackups({ source: () => source() });
+    const { controller, docker, store } = setup({ backups });
+    // A first computer starts empty: there is nothing of the member's to restore.
+    await controller.ensureRunning('u1');
+    expect(calls.restoreSource).toEqual([]);
+    await controller.stop('u1', 'user');
+    const volume = computerVolumeName(NS, 'u1');
+    docker.volumes.delete(volume); // another driver before, or the volume was lost
+    docker.log.length = 0;
+    await controller.ensureRunning('u1');
+    expect(calls.restoreSource).toEqual(['u1']);
+    // Filled as each uid by a helper container, before the computer's own container runs.
+    expect(docker.log).toEqual([
+      `volume create ${volume}`,
+      `helper ${volume} agent`,
+      `helper ${volume} browser`,
+      `run ${computerContainerName(NS, 'u1')}`,
+    ]);
+    expect(docker.restoredInto.get(`${volume}:agent`)?.toString()).toBe('agent-home');
+    expect(docker.restoredInto.get(`${volume}:browser`)?.toString()).toBe('browser-home');
+    expect(calls.restored).toEqual(['bkp_1']);
+    // The volume is there now: later starts keep it.
+    await controller.stop('u1', 'user');
+    await controller.ensureRunning('u1');
+    expect(calls.restoreSource).toEqual(['u1']);
+    expect((await store.get('u1'))?.state).toBe('running');
+  });
+
+  it('a backup that cannot be restored fails the start (restore_failed) and leaves no half-filled home', async () => {
+    const { backups, calls } = fakeBackups({ source: () => source({ fails: true }) });
+    const { controller, docker, store } = setup({ backups });
+    await controller.ensureRunning('u1');
+    await controller.stop('u1', 'user');
+    const volume = computerVolumeName(NS, 'u1');
+    docker.volumes.delete(volume);
+    await expect(controller.ensureRunning('u1')).rejects.toMatchObject({ code: 'start_failed' });
+    expect(await store.get('u1')).toMatchObject({ state: 'error', state_reason: 'restore_failed' });
+    // The next start finds no home and tries the restore again.
+    expect(docker.volumes.has(volume)).toBe(false);
+    expect(calls.restored).toEqual([]);
+  });
+
+  it('a wipe deletes the member’s backups with the home', async () => {
+    const { backups, calls } = fakeBackups();
+    const { controller } = setup({ backups });
+    await controller.ensureRunning('u1');
+    await controller.purge('u1', { wipe: false });
+    expect(calls.deleteAll).toEqual([]);
+    await controller.purge('u1', { wipe: true });
+    expect(calls.deleteAll).toEqual(['u1']);
   });
 });

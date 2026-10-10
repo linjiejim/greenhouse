@@ -51,7 +51,7 @@ ${chalk.bold('Manage')}
   tables list-archived      Deleted (archived) Bases and tables (--base <id>, --json)
   tables restore-base <id>  Bring an archived Base back into everyone's list
   tables restore-table <id> Bring an archived table back into its Base
-  vault rekey               Re-encrypt every password vault entry under the current key (--dry-run)
+  vault rekey               Re-encrypt the password vault and computer backup keys under the current key (--dry-run)
 
 ${chalk.bold('Diagnose')}
   doctor                    Check env + DB readiness for this deployment
