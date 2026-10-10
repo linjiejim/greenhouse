@@ -295,6 +295,12 @@
 - `notifications` 是永久站内事实，按 `(user_id,dedupe_key)` 幂等；只允许用户修改 `read_at`，生产 Service 不提供删除。完整 payload 与 Runtime/Agent provenance 均保留，不做裁剪或 TTL。
 - `notification_delivery_attempts` 只表示 企微/飞书/email 等 transport；SKIP LOCKED claim、lease、retry/dead-letter 都不得回写业务 Run、Interrupt 或 Agent lifecycle。创建站内通知成功后，即使外部送达失败，业务结果仍保持原终态。
 - 用户和 Run/Interrupt/Event/Agent provenance 是逻辑引用，保证账号停用或领域事实退役后仍能审计；delivery → notification 是域内 FK CASCADE。
+- **手机推送（`mobile_push`，迁移 0021，[spec](../../../docs/specs/20261010-mobile-push.md)）**：收件人是 `push_devices` 的一行（`recipient` = 设备 id，逻辑引用）。
+  - 生产者只经 API 的 `publishNotification()` 写事实；会推到手机的事实在 `payload.push` 带路由信封（不含内容），worker 只认存下来的信封。
+  - 投递行在**发送前复核**，不该再推就 `settleDelivery({status:'suppressed'})`；渠道判定收件人永久没了记 `failed`；两者都不重试。不要把「复核没过」写成 `dead_letter`——死信只留给 bug / 坏掉的部署，会打 error 日志。
+  - `push_devices` 按 token upsert，`register` 在 token 级 advisory lock 里做：同账号刷新同一行并保留偏好；换账号 = 这一行改归新账号、偏好重置；每账号最多 `MAX_ACTIVE_PUSH_DEVICES` 台在用，多出来的按 `last_seen_at` 停用最久没见的（`device_limit`）。**任何路径都不物理删设备**：注销 / `DeviceNotRegistered` 只停用，再注册就恢复。
+  - 「能不能投」只有一份判定：`isDeliverable()`（未停用 + 属于这个账号 + `auth_version` 等于账号当前代数 + 90 天内见过），`listDeliverable()` 是它的 SQL 版，两者同改。改密码 / 停用递增 `users.auth_version`，所以之前注册的设备立即停推，直到成员在手机上重新登录。
+  - `bots.attentionCount()`（推送角标）与客户端抽屉 ☰ 角标同一条规则（`conversationAttention`）；`bots.listMissedReplies()` 的「回合已结束」靠 `last_activity_at` 在写完之后才被盖章——改引擎的盖章时机要同改这条查询。
 
 ### 新增表流程
 

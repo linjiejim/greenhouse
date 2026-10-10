@@ -359,7 +359,7 @@ greenhouse/
 │   │       ├── bots/         # Bots: engine (floor, prompt, digest, inbox), computer (lifecycle, viewer,
 │   │       │                 #   lease, CDP browser), vault, tools, routes — see its AGENTS.md
 │   │       ├── trusted-execution/ # deployment kill switches for the runtime layers
-│   │       ├── notifications/# notification center + durable delivery
+│   │       ├── notifications/# notification center + durable delivery (WeCom / Feishu / email; mobile push via Expo)
 │   │       ├── email/        # IMAP/SMTP client, shared mailbox, security
 │   │       ├── wecom/ feishu/# optional IM integrations (binding, push, sign-in, bot)
 │   │       ├── skills/       # Skill Center — bundle validation, store, publish/download, scanner

@@ -53,6 +53,7 @@ import { createAgentRunService } from './services/agent-runs.js';
 import { createChatArtifactReceiptService } from './services/chat-artifact-receipts.js';
 import { createRuntimeService } from './services/runtime.js';
 import { createNotificationService } from './services/notifications.js';
+import { createPushDeviceService } from './services/push-devices.js';
 import { createWorkspaceSettingService } from './services/workspace-settings.js';
 import { createBotsService } from './services/bots.js';
 import { createBotComputerService } from './services/bot-computers.js';
@@ -107,6 +108,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     chatArtifactReceipts: createChatArtifactReceiptService(db),
     runtime: createRuntimeService(db),
     notifications: createNotificationService(db),
+    pushDevices: createPushDeviceService(db),
     workspaceSettings: createWorkspaceSettingService(db),
     bots: createBotsService(db),
     botComputers: createBotComputerService(db),
@@ -167,6 +169,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
         'workspace_settings',
         'notification_delivery_attempts',
         'notifications',
+        'push_devices',
         'runtime_outbox',
         'runtime_events',
         'runtime_interrupts',

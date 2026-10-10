@@ -9,7 +9,8 @@ export type PlatformNotificationKind =
   | 'agent_review_due'
   | 'agent_suspended'
   | 'budget_attention'
-  | 'system';
+  | 'system'
+  | 'bots_reply';
 
 export interface PlatformNotification {
   id: string;

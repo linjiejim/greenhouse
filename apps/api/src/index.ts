@@ -106,6 +106,7 @@ import { knowledgeRegistration } from './platform/knowledge/registration.js';
 import { tablesRegistration } from './platform/tables/application.js';
 import { initializePlatformRuntime } from './platform/runtime.js';
 import llmKeyRoutes from './routes/llm-keys.js';
+import pushDeviceRoutes from './routes/push-devices.js';
 import { createLlmRelayRoutes } from './routes/llm-relay.js';
 import promptRoutes from './routes/prompts.js';
 import knowledgeRoutes from './routes/knowledge.js';
@@ -141,7 +142,8 @@ import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './runtime/subagent-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
-import { startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
+import { AUTOMATION_DELIVERY_CHANNELS, startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
+import { mobilePushEnabled } from './notifications/push/config.js';
 import { createRuntimeDomainProjector } from './runtime/domain-projector.js';
 import {
   requireTrustedExecutionSurface,
@@ -372,6 +374,11 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Team Gateway Key self-service — all internal users
       .use('/api/auth/llm-keys/*', requireInternal())
       .route('/api/auth/llm-keys', llmKeyRoutes)
+      // Mobile push devices — the member's own phones. The bare collection path is
+      // not matched by `/*`, so it is guarded explicitly.
+      .use('/api/auth/me/push-devices', requireInternal())
+      .use('/api/auth/me/push-devices/*', requireInternal())
+      .route('/api/auth/me/push-devices', pushDeviceRoutes)
       // Bots computer live viewer (RFB over WebSocket). Under /api/ws because a
       // browser WebSocket cannot send a Bearer header: isPublicPath exempts the
       // prefix and the route authenticates a one-time, purpose-bound token itself.
@@ -618,9 +625,16 @@ async function main() {
   // External Automation channels are transport facts, not part of the
   // terminal Runtime transaction. Drain their permanent per-channel queue on
   // every boot and keep retrying independently until delivered/dead-lettered.
-  notificationDeliveryWorker = trustedExecutionPlan.notificationProjector
-    ? await startNotificationDeliveryWorker({ db: dbProvider })
-    : null;
+  // Mobile pushes ride the same queue under their own switch (MOBILE_PUSH_ENABLED):
+  // off, the worker never claims one and nothing is sent to exp.host.
+  const deliveryChannels = [
+    ...(trustedExecutionPlan.notificationProjector ? AUTOMATION_DELIVERY_CHANNELS : []),
+    ...(mobilePushEnabled() ? (['mobile_push'] as const) : []),
+  ];
+  notificationDeliveryWorker =
+    deliveryChannels.length > 0
+      ? await startNotificationDeliveryWorker({ db: dbProvider, channels: deliveryChannels })
+      : null;
 
   // Eval calls the authenticated local HTTP surface, so no Runtime driver may
   // claim work until the socket above is actually listening. The boot pass is

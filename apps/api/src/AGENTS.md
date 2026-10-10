@@ -236,6 +236,28 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - ⚠️ **`marked` 的渲染器覆写必须写成普通对象**：`Marked.use()` 用 `Object.keys` 收方法，只看得见自有属性，`Renderer` 子类的原型方法**全部静默失效**（实现时踩到，三条覆写一条都没生效）。
 - payload 里的 `summary` 仍存**原文**：payload 是事实，渲染是表现，存渲染结果等于把改样式变成数据迁移。
 
+### 手机推送（`notifications/push/` + `/api/auth/me/push-devices`，2026-10-10）
+
+方案与决策（D1–D9）见 [spec](../../../docs/specs/20261010-mobile-push.md)；Bots 一侧的三类推送规则在 [bots/AGENTS.md](./bots/AGENTS.md)。
+
+- **传输 = Expo Push Service**（`push/expo.ts`：一个 `fetch`，按 Expo `project_id` 分组、每次 ≤100 条，不引 `expo-server-sdk`）。
+  部署只存设备的 Expo token，**不持有 Apple 密钥**；Expo 项目的 enhanced push security 必须保持关闭（开了以后不带 Jim 的
+  access token 的请求一律 `UNAUTHORIZED`，自托管站就发不出去——worker 把它记成死信并在 error 日志里点名）。
+- **一个出口**：所有通知事实经 `notifications/publish.ts` `publishNotification()`（事实幂等 + WS + 每台可投设备一条
+  `mobile_push` 行）。重放时措辞变了（账号中途换语言）沿用已写的事实，不抛 idempotency 冲突——Runtime 投影器重试时不能卡死在这。
+  推送行只按**存下来的** `payload.push` 信封建，worker 也只认它。
+- **`pushPolicy()` 是纯函数**（`push/policy.ts`）：这台设备这一类开没开、卡片类的过期时间（= 卡片自己的 `expires_at`，其余 24 h）、
+  time-sensitive（批准 / 登录 / 接管）、`threadId`（按对话分组）、回复的 `collapseId`（同一对话只留最新一条）。发布时问一次，
+  发送前再问一次。
+- **worker 的 `mobile_push` 分支**（`push/deliver.ts`，由 `delivery-worker.ts` 认领）：先复核设备（`isDeliverable`）与事件，
+  不该推就 `suppressed`；按账号语言渲染（`push/render.ts`，默认只有「谁 + 什么事」，设备开了预览才带主题与前 80 字）；
+  ticket：`DeviceNotRegistered` → 停用设备 + `failed`；429 / 5xx / 网络 / `MessageRateExceeded` → 现有退避；`MessageTooBig`、
+  整包被拒 → 死信 + error 日志。`data` 只放路由字段（`PushData`，`@greenhouse/types/push`，≤1 KB，无内容）。
+- **部署开关 `MOBILE_PUSH_ENABLED`**（默认开，非法值视为关，`/health` 的 `mobile_push`）：关掉后 PUT 不存设备（`enabled:false`）、
+  不建投递行、worker 不认领 `mobile_push`——一个请求都不发到 `exp.host`。
+- **设备路由**挂在 `/api/auth/me/push-devices`（`requireInternal()`，裸路径单独挂守卫）：token 只进不出；测试推送每台 10 s 一次
+  （`InMemoryRateLimiter`），直接走 Expo、不进队列，把 Expo 的结论原样回给 App。
+
 ### 技能中心 (`skills/` + `/api/skills`)
 - 团队 Agent 技能库（OSS greenhouse 移植，B7）：发布/发现/下载/同步 SKILL.md 技能文件夹，不可变 semver + 强制 changelog + sha256 完整性校验。
 - **单一实现**在 `skills/center.ts`（publish/download/check-updates/manage 编排，返回 `{ok,code,error}` 判别联合而非 throw）；HTTP 路由 `routes/skills.ts`（挂载 `requireInternal()`）与 agent 工具 `tools/skills/{skill-query,skill-mutation}.ts` 都只是薄壳。权限：读=全体内部用户，写=owner 或 super，硬删=仅 super（校验在 center.ts，不在路由层）。

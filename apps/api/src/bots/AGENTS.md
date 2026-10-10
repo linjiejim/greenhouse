@@ -208,6 +208,22 @@ bots/
   `takeover` 卡（`payload.implicit`，同会话同 Bot 去重，60 分钟过期，不发应用内通知——成员就在电脑前），
   交还即唤醒那个 Bot。卡上的页面标题是页面内容，只给成员看，绝不进转录行或通知。
 
+### 通知与手机推送（2026-10-10，[spec](../../../../docs/specs/20261010-mobile-push.md)）
+
+- **一个出口**：Bots 写通知事实一律经 `notifications/publish.ts` `publishNotification()`（事实 + `notification:new` WS + 每台可投
+  设备一条 `mobile_push` 投递行），不要再直接 `db.notifications.createWithStatus`。会推到手机的事实带 `push` 信封（类别、要打开
+  的对话、卡片 id、Bot id——**不含内容**），预览要的内容由 worker 发送时从卡片 / 消息行里读。
+- **三类**：① 需要你——非隐式的卡（`approvals.ts` `notifyRequest`），过期时间对齐卡片自己的 `expires_at`，批准 / 登录 / 接管是
+  time-sensitive，守则提议（`instructions_update`）静音只进收件箱；② 办完了——后台任务（`runtime-projector.ts`：payload 补
+  `bots_session_id` = 发起任务的对话，标题按账号语言）与定时任务（`scheduler/notify.ts`）；③ 离开后的回复——`engine/reply-alerts.ts`。
+- **回复提醒**挂在 30 秒卡片过期扫描上（`startRequestExpiryLoop`）：私聊里最后一行是**已结束回合**写的 Bot 回复（回合在写完
+  之后才盖 `last_activity_at`，比它新的回复属于还在跑的链）、60 秒到 30 分钟之前、`last_read_at` 早于它、没有待处理卡（一个
+  对话只亮一个信号）→ 一条 `bots_reply` 事实，dedupe 键 `bots-reply:<会话>:<消息>`（`botsReplyDedupeKey`）；任务汇报
+  （`bot-task-report:` 消息）不算，它的「办完了」已经推过。事实正文不含回复内容（事实永久、对话可删）。
+  `POST /conversations/:id/read` 同时把这段对话的回复提醒标已读（并推 `notification:summary`）。
+- **发送前复核**（`notifications/push/deliver.ts`）：卡已处理 / 过期、回复已读或对话里有待处理卡、成员关了 `bots` 开关、
+  这一类在这台设备上关了 → `suppressed`，不发。所以「已读」的判定必须只在成员真看着时发生（web 可见、手机线程可见）。
+
 ### 上下文管理（数字以代码为准）
 
 | 层 | 规则 |
@@ -262,7 +278,7 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 | GET / POST | `/api/bots/conversations` | `{ bot_ids }`（恰好 1 个 id） | 列表 / `{ conversation }`（该 Bot 的私聊，没有就建）；0 个或多个 id → `400 groups_retired`（群聊已退役）。每行带 `attention`（需要你 > 未读 > 在忙）、`pending_requests` 与 `unread_count`（`last_read_at` 之后 Bot 的回复条数，`assistant` 行，封顶 99；只来了系统事件时 `attention:'unread'` 而计数为 0） |
 | GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states? }`（`allow_bot_chat` 已废弃、恒为 `true`；旧群 `kind:'group'` 照常可读） |
 | POST / DELETE | `/api/bots/conversations/:id/members[/:botId]` | `{ bot_id }` | `{ conversation }`（邀请 = guest；主人不能移出 400 `cannot_remove_owner`；旧群 `409 group_closed`） |
-| POST | `/api/bots/conversations/:id/read` · `/compact` | — | `{ ok }` · `{ digest }`（回合进行中 409） |
+| POST | `/api/bots/conversations/:id/read` · `/compact` | — | `{ ok }`（同时把这段对话的「回复了你」提醒标为已读）· `{ digest }`（回合进行中 409） |
 | GET / POST / PATCH / DELETE | `/api/bots/conversations/:id/notes[/:noteId]` | `{ title, body?, status?, pinned? }` | 共享笔记 |
 | GET / POST | `/api/bots/conversations/:id/tasks` · `/api/bots/tasks/:runId/cancel` | — | 后台任务 |
 | GET / POST | `/api/bots/requests` · `/api/bots/requests/:id` | `BotRequestDecision` | `{ request }`；冲突 409 `already_decided` / `deciding`；旧群的卡 409 `group_closed`（仍待处理的顺手撤成 `canceled`）；其他 409 带具体 code（`BotRequestErrorCode`：`page_gone` / `origin_mismatch` / `no_fields` / `failed` / `invalid` / `limit` / `computer_restarted` / `bot_gone`）且卡片保持待处理 |

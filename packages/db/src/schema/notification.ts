@@ -25,6 +25,8 @@ export const notifications = pgTable(
         'agent_suspended',
         'budget_attention',
         'system',
+        // A Bot's reply the member had not seen anywhere 60 s later (bots/engine/reply-alerts.ts).
+        'bots_reply',
       ],
     }).notNull(),
     title: text('title').notNull(),
@@ -58,7 +60,13 @@ export const notificationDeliveryAttempts = pgTable(
       .references(() => notifications.id, { onDelete: 'cascade' }),
     channel: text('channel', { enum: ['desktop', 'wecom', 'feishu', 'email', 'mobile_push'] }).notNull(),
     recipient: text('recipient').notNull(),
-    status: text('status', { enum: ['pending', 'claimed', 'delivered', 'failed', 'dead_letter'] })
+    /**
+     * `suppressed` = re-checked just before sending and no longer worth it (a mobile
+     * push whose card was decided, whose reply was read, whose device or category
+     * was switched off); `failed` = the transport says the recipient is gone for
+     * good (a phone that uninstalled the app). Neither is retried.
+     */
+    status: text('status', { enum: ['pending', 'claimed', 'delivered', 'failed', 'dead_letter', 'suppressed'] })
       .notNull()
       .default('pending'),
     attempts: integer('attempts').notNull().default(0),

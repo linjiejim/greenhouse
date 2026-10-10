@@ -185,7 +185,7 @@ describe('Runtime notification projector', () => {
     expect(ws.sendToUser).not.toHaveBeenCalled();
   });
 
-  it('names a Bots background task by its Bot and title instead of "Subagent"', async () => {
+  it('names a Bots background task by its Bot and title instead of "Subagent", and opens its conversation', async () => {
     const createWithStatus = vi.fn().mockResolvedValue({
       created: true,
       notification: { id: 'ntf-bot', user_id: 'owner-1', kind: 'runtime_completed', run_id: 'rtm_task_1' },
@@ -196,10 +196,23 @@ describe('Runtime notification projector', () => {
       kind: 'subagent',
       source_kind: 'spawned_session',
       source_id: 'bottask-abc',
-      input: JSON.stringify({ title: 'Sage · Check links' }),
+      input: JSON.stringify({ title: 'Sage · Check links', parent_session_id: 'bots-dm-1' }),
     } as RuntimeRunRow;
+    const metadata = JSON.stringify({
+      spawned_by: 'bot_task',
+      bot_id: 'bot_0123456789abcdef',
+      task_title: 'Check links',
+      parent_session_id: 'bots-dm-1',
+    });
     const db = {
       runtime: { getRun: vi.fn().mockResolvedValue(run) },
+      sessions: { getById: vi.fn().mockResolvedValue({ id: 'bottask-abc', metadata }) },
+      users: {
+        getById: vi
+          .fn()
+          .mockResolvedValue({ id: 'owner-1', locale: 'en', status: 'active', role: 'team', auth_version: 0 }),
+      },
+      pushDevices: { listDeliverable: vi.fn().mockResolvedValue([]) },
       notifications: { createWithStatus, countUnread: vi.fn().mockResolvedValue(1) },
     } as unknown as DatabaseProvider;
     await createRuntimeNotificationProjector(db)({
@@ -214,8 +227,63 @@ describe('Runtime notification projector', () => {
     });
     expect(createWithStatus).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Background task finished: Sage · Check links',
+        title: 'Background task finished: Check links',
         body: 'The Bot reported back in its conversation.',
+        payload: expect.objectContaining({
+          bots_session_id: 'bots-dm-1',
+          bot_id: 'bot_0123456789abcdef',
+          task_title: 'Check links',
+          href: '#/bots?c=bots-dm-1',
+          push: { k: 'done', sid: 'bots-dm-1', open: 'bots', bot_id: 'bot_0123456789abcdef', ok: true },
+        }),
+      }),
+    );
+  });
+
+  it("writes a background task's fact in the owner's language", async () => {
+    const createWithStatus = vi.fn().mockResolvedValue({
+      created: true,
+      notification: { id: 'ntf-bot-zh', user_id: 'owner-1', kind: 'runtime_failed', run_id: 'rtm_task_2' },
+    });
+    const run = {
+      ...succeededRun(),
+      id: 'rtm_task_2',
+      kind: 'subagent',
+      status: 'failed',
+      source_kind: 'spawned_session',
+      source_id: 'bottask-def',
+      input: JSON.stringify({ title: '小研 · 竞品调研', parent_session_id: 'bots-dm-2' }),
+    } as RuntimeRunRow;
+    const db = {
+      runtime: { getRun: vi.fn().mockResolvedValue(run) },
+      // no metadata (an old child): the run's own title stands in
+      sessions: { getById: vi.fn().mockResolvedValue(undefined) },
+      users: {
+        getById: vi
+          .fn()
+          .mockResolvedValue({ id: 'owner-1', locale: 'zh', status: 'active', role: 'team', auth_version: 0 }),
+      },
+      pushDevices: { listDeliverable: vi.fn().mockResolvedValue([]) },
+      notifications: { createWithStatus, countUnread: vi.fn().mockResolvedValue(1) },
+    } as unknown as DatabaseProvider;
+    await createRuntimeNotificationProjector(db)({
+      event_id: 'rte-bot-zh',
+      run_id: 'rtm_task_2',
+      step_id: null,
+      seq: 5,
+      type: 'run.status_changed',
+      payload: { result: { status: 'failed', version: 3 } },
+      actor_user_id: 'owner-1',
+      created_at: '2026-10-05T00:01:00.000Z',
+    });
+    expect(createWithStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'runtime_failed',
+        title: '后台任务没能完成：小研 · 竞品调研',
+        body: 'Bot 已在对话里说明了情况。',
+        payload: expect.objectContaining({
+          push: { k: 'done', sid: 'bots-dm-2', open: 'bots', bot_id: null, ok: false },
+        }),
       }),
     );
   });

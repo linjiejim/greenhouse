@@ -33,6 +33,7 @@
  *
  * <RealtimeBridge/> runs the app's one WebSocket (src/realtime) — it decides
  * itself when to connect (signed in, Bots available, foreground).
+ * `usePushBridge` runs the push side (src/push): registration, taps, banners, badge.
  * <WidgetArtHost/> draws the home-screen widget's avatars off screen (src/widget).
  */
 
@@ -50,6 +51,7 @@ import { usePrefs } from '../src/store/prefs';
 import { setOnUnauthorized } from '../src/api/client';
 import { useWidgetSnapshot } from '../src/widget/snapshot';
 import { useAccountLanguage } from '../src/settings/account-language';
+import { usePushBridge } from '../src/push/use-push';
 import { WidgetArtHost } from '../src/widget/art-host';
 import { useApplyAppearance, useTheme } from '../src/theme';
 import { Splash } from '../src/ui/splash';
@@ -119,6 +121,11 @@ export default function RootLayout() {
 
   // The account's language follows the app's until the member picks one (src/settings/account-language.ts).
   useAccountLanguage();
+
+  // Pushes (src/push): this phone's registration per signed-in station, opening a tapped
+  // notification once the routes are up (switching station first when it came from
+  // another), clearing banners and keeping the app icon badge on the ☰ count.
+  usePushBridge(ready);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
