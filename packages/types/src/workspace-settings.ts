@@ -222,6 +222,27 @@ const WORKSPACE_SETTINGS_LITERAL = [
   },
   // ── Bots computers (live knobs; the Docker host itself is .env infrastructure) ──
   {
+    key: 'bots.computer_e2b_api_key',
+    group: 'bots',
+    label: 'Sandbox provider API key',
+    description:
+      "Hosted computers: an E2B (or PPIO) API key. Setting it turns members' computers on as hosted sandboxes, unless BOTS_COMPUTER_ENABLED or BOTS_COMPUTER_DRIVER in the server's environment say otherwise. Takes effect at once.",
+    type: 'string',
+    secret: true,
+    env: 'BOTS_COMPUTER_E2B_API_KEY',
+    maxLength: 200,
+  },
+  {
+    key: 'bots.computer_e2b_domain',
+    group: 'bots',
+    label: 'Sandbox provider domain',
+    description: 'Empty for E2B. PPIO (mainland China): cn-beijing-1.sandbox.ppio.com.',
+    type: 'string',
+    env: 'BOTS_COMPUTER_E2B_DOMAIN',
+    maxLength: 200,
+    placeholder: 'e2b.app',
+  },
+  {
     key: 'bots.computer_idle_minutes',
     group: 'bots',
     label: 'Computer idle timeout (minutes)',

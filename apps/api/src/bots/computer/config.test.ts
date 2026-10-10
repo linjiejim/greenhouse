@@ -8,6 +8,7 @@ import {
   ComputerConfigError,
   computerLang,
   greenhouseUrlBlocklist,
+  isBotsComputerEnabled,
   loadBotsComputerConfig,
   namespaceFromDatabaseUrl,
   parseIdleMinutes,
@@ -32,6 +33,26 @@ function reasonOf(fn: () => unknown): string | null {
     return err instanceof ComputerConfigError ? err.reason : 'other';
   }
 }
+
+describe('turning computers on with a provider key (Runtime Config)', () => {
+  it('a key alone turns hosted computers on; an explicit BOTS_COMPUTER_ENABLED wins either way', () => {
+    expect(isBotsComputerEnabled({})).toBe(false);
+    expect(isBotsComputerEnabled({ BOTS_COMPUTER_E2B_API_KEY: 'e2b_x' })).toBe(true);
+    expect(isBotsComputerEnabled({ BOTS_COMPUTER_E2B_API_KEY: '   ' })).toBe(false);
+    expect(isBotsComputerEnabled({ BOTS_COMPUTER_E2B_API_KEY: 'e2b_x', BOTS_COMPUTER_ENABLED: '0' })).toBe(false);
+    expect(isBotsComputerEnabled({ BOTS_COMPUTER_ENABLED: '1' })).toBe(true);
+  });
+
+  it('with no driver set, a key means hosted and no key means this server’s Docker', () => {
+    const hosted = loadBotsComputerConfig({ NODE_ENV: 'production', DATABASE_URL: DB, BOTS_COMPUTER_E2B_API_KEY: 'k' });
+    expect(hosted.driver).toBe('e2b');
+    expect(loadBotsComputerConfig(dev).driver).toBe('docker');
+    // An explicit docker driver keeps Docker even with a key around.
+    expect(
+      loadBotsComputerConfig({ ...dev, BOTS_COMPUTER_DRIVER: 'docker', BOTS_COMPUTER_E2B_API_KEY: 'k' }).driver,
+    ).toBe('docker');
+  });
+});
 
 describe('bots computer config', () => {
   it('BOTS_COMPUTER_DRIVER=e2b: a provider key instead of Docker; the size as whole vCPUs and even MiB', () => {

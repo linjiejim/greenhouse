@@ -40,6 +40,7 @@
  */
 
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { getDb, type BotComputerRow, type BotRequestRow } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
@@ -89,6 +90,7 @@ import {
   LABEL_IMAGE_EXTRA_PACKAGES,
   LABEL_NAMESPACE,
 } from './namespace.js';
+import { onWorkspaceConfigRefreshed } from '../../settings/workspace-config.js';
 import { checkProcessWatches, WATCH_CHECK_MS } from './process-watches.js';
 import { computerLifecycleHooks } from './hooks.js';
 import { HUMAN_WAIT_HOLD_MS } from './limits.js';
@@ -730,7 +732,40 @@ function every(ms: number, name: string, fn: () => Promise<void>, firstDelayMs =
   loopTimers.push(first);
 }
 
+/**
+ * The settings the runtime was started with that only a restart applies: on/off, the
+ * driver and the sandbox provider (key, domain). Runtime Config can change the provider's
+ * (bots.computer_e2b_*), so an admin write that changes them restarts the runtime.
+ */
+function providerSettings(env: NodeJS.ProcessEnv = process.env): string {
+  const key = env.BOTS_COMPUTER_E2B_API_KEY?.trim() ?? '';
+  return JSON.stringify([
+    env.BOTS_COMPUTER_ENABLED?.trim() ?? '',
+    env.BOTS_COMPUTER_DRIVER?.trim() ?? '',
+    key ? createHash('sha256').update(key).digest('hex') : '',
+    env.BOTS_COMPUTER_E2B_DOMAIN?.trim() ?? '',
+  ]);
+}
+let startedWith: string | null = null;
+let restarting: Promise<void> | null = null;
+
+onWorkspaceConfigRefreshed(async () => {
+  if (startedWith === null || providerSettings() === startedWith) return;
+  if (restarting) return await restarting;
+  logger.info('[bots-computer] the sandbox provider settings changed; restarting the computer runtime');
+  restarting = (async () => {
+    await shutdownBotComputers();
+    await initBotComputers();
+  })();
+  try {
+    await restarting;
+  } finally {
+    restarting = null;
+  }
+});
+
 export async function initBotComputers(): Promise<void> {
+  startedWith = providerSettings();
   if (!isBotsComputerEnabled()) {
     setView({ state: 'disabled', reason: null, hardened: false });
     return;

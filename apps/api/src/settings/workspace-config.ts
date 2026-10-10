@@ -139,12 +139,32 @@ export async function applyWorkspaceEnvOverlay(): Promise<void> {
 }
 
 /** Invalidate + re-resolve + re-overlay — call after every settings write. */
+type RefreshListener = () => void | Promise<void>;
+const refreshListeners = new Set<RefreshListener>();
+
+/**
+ * Called after every admin write, once the env overlay holds the new values — for a
+ * subsystem that read its settings once at startup (the Bots computer runtime restarts
+ * when its sandbox provider settings changed). Returns the unsubscribe.
+ */
+export function onWorkspaceConfigRefreshed(listener: RefreshListener): () => void {
+  refreshListeners.add(listener);
+  return () => refreshListeners.delete(listener);
+}
+
 export async function refreshWorkspaceConfig(): Promise<void> {
   invalidateWorkspaceConfigCache();
   await applyWorkspaceEnvOverlay();
   // The model catalog resolves `model_env` / `base_url_env` at parse time, so a
   // changed LLM_* value only takes effect once the catalog is re-read.
   reloadModelCatalog();
+  for (const listener of [...refreshListeners]) {
+    try {
+      await listener();
+    } catch (err) {
+      logger.warn(`[workspace-config] a settings listener failed: ${toErrorMessage(err)}`);
+    }
+  }
 }
 
 // ─── Validation (write path) ─────────────────────────────
