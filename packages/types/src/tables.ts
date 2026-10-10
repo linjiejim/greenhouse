@@ -269,7 +269,13 @@ export interface TableCardSpec {
     sort?: 'value_desc' | 'value_asc' | 'group_asc' | 'group_desc';
     limit?: number;
   };
-  chart?: { type: 'bar' | 'line' | 'area' | 'pie'; stacked?: boolean; horizontal?: boolean; donut?: boolean; showValues?: boolean };
+  chart?: {
+    type: 'bar' | 'line' | 'area' | 'pie';
+    stacked?: boolean;
+    horizontal?: boolean;
+    donut?: boolean;
+    showValues?: boolean;
+  };
   /** records: columns. */
   fieldIds?: number[];
   systemFields?: TableSystemField[];

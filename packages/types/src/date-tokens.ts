@@ -83,11 +83,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Expand date tokens recursively through a bounded JSON tree. */
-export function expandDateTokens(
-  input: Record<string, unknown>,
-  now: Date,
-  timeZone = 'UTC',
-): Record<string, unknown> {
+export function expandDateTokens(input: Record<string, unknown>, now: Date, timeZone = 'UTC'): Record<string, unknown> {
   const expand = (value: unknown, depth: number): unknown => {
     if (typeof value === 'string') return expandDateToken(value, now, timeZone) ?? value;
     // Inputs are already bounded by their schemas; the depth guard is defence
