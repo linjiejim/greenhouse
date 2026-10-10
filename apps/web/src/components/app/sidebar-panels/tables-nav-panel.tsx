@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import type { TableBaseRole } from '@greenhouse/types/tables';
+import { tableRoleAtLeast } from '@greenhouse/types/table-access';
 import { getTableBase, listTableBases, type TableBaseWithRole, type TableBaseWorkspace } from '../../../lib/api/tables';
 import { LayoutDashboard, MoreHorizontal, Pencil, Plus, Table2, Trash2 } from '../../../lib/icons';
 import { BaseDialog } from '../../tables/base-dialog';
@@ -13,8 +13,6 @@ import { useT, type TranslationKey } from '../../../lib/i18n';
 interface TablesNavPanelProps {
   subPath: string;
 }
-
-const ROLE_RANK: Record<TableBaseRole, number> = { viewer: 0, editor: 1, builder: 2, owner: 3 };
 
 export function TablesNavPanel({ subPath }: TablesNavPanelProps) {
   const t = useT();
@@ -71,7 +69,7 @@ export function TablesNavPanel({ subPath }: TablesNavPanelProps) {
     void loadWorkspace();
   }, [loadWorkspace, subPath]);
 
-  const canBuild = workspace ? ROLE_RANK[workspace.role] >= ROLE_RANK.builder : false;
+  const canBuild = workspace ? tableRoleAtLeast(workspace.role, 'builder') : false;
   const isOwner = workspace?.role === 'owner';
 
   const baseMenu = useCallback(

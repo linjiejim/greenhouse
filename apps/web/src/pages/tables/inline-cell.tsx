@@ -1,64 +1,41 @@
 import React from 'react';
-import type { TableFieldConfig } from '@greenhouse/types/tables';
 import { InlineEditCell } from '../../components/tables';
-import type { TableField } from '../../lib/api/tables';
-import { safeParse } from '../../lib/utils';
-import { parsePastedCell, type TablePasteUser } from './grid-utils';
+import { InlineFieldEditor, isInlineEditable } from '../../components/tables/field-editor';
+import type { TableField, TableUserOption } from '../../lib/api/tables';
 
 interface InlineCellProps {
   field: TableField;
   value: unknown;
-  users: TablePasteUser[];
+  users: TableUserOption[];
   canEdit: boolean;
   children: React.ReactNode;
   onCommit: (value: unknown) => Promise<void>;
   onPaste: (event: React.ClipboardEvent<HTMLDivElement>) => void;
 }
 
-function draftValue(field: TableField, value: unknown): string {
-  if (field.type === 'datetime' && typeof value === 'string') return value.slice(0, 16);
-  if (Array.isArray(value)) return value.join(', ');
-  return value === null || value === undefined ? '' : String(value);
+function sameValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
+/** A grid cell: the shared inline-edit shell around the one Tables `FieldEditor`. */
 export function InlineCell({ field, value, users, canEdit, children, onCommit, onPaste }: InlineCellProps) {
-  const config = safeParse<TableFieldConfig>(field.config, {});
-  const selectOptions =
-    field.type === 'single_select'
-      ? (config.options ?? []).map((option) => ({ value: option.id, label: option.label }))
-      : field.type === 'user'
-        ? users.map((user) => ({ value: user.id, label: user.nickname }))
-        : null;
-
   return (
-    <InlineEditCell
+    <InlineEditCell<unknown>
       label={field.name}
       value={value}
-      canEdit={canEdit}
-      inputType={
-        field.type === 'boolean'
-          ? 'boolean'
-          : selectOptions
-            ? 'select'
-            : field.type === 'number'
-              ? 'number'
-              : field.type === 'date'
-                ? 'date'
-                : field.type === 'datetime'
-                  ? 'datetime-local'
-                  : field.type === 'email'
-                    ? 'email'
-                    : field.type === 'url'
-                      ? 'url'
-                      : field.type === 'phone'
-                        ? 'tel'
-                        : 'text'
-      }
-      options={selectOptions ?? undefined}
-      formatDraft={(nextValue) => draftValue(field, nextValue)}
-      parseDraft={(nextDraft) => parsePastedCell(field, nextDraft, users)}
+      canEdit={canEdit && isInlineEditable(field)}
       onCommit={onCommit}
       onPaste={onPaste}
+      renderEditor={({ commit, cancel, saving }) => (
+        <InlineFieldEditor
+          field={field}
+          stored={value}
+          users={users}
+          saving={saving}
+          onCommit={(next) => (sameValue(next, value) ? cancel() : commit(next))}
+          onCancel={cancel}
+        />
+      )}
     >
       {children}
     </InlineEditCell>

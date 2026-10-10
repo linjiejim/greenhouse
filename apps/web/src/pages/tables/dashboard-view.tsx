@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { tableRoleAtLeast } from '@greenhouse/types/table-access';
 import {
   TABLE_AGGREGATIONS,
-  TABLE_DASHBOARD_WIDGET_TYPES,
   type TableAggregation,
   type TableBaseRole,
   type TableDashboardWidgetConfig,
@@ -17,6 +17,7 @@ import {
   updateTableDashboardWidget,
   type TableDashboard,
   type TableDashboardWidget,
+  type TableDashboardWidgetResult,
   type TableDefinition,
   type TableField,
   type TableRecordPage,
@@ -45,14 +46,8 @@ interface TablesDashboardViewProps {
   role: TableBaseRole;
 }
 
-type WidgetResult = {
-  widget: TableDashboardWidget;
-  text?: string;
-  rows?: Array<{ group: string | number | boolean | null; value: number }>;
-  records?: TableRecordPage;
-};
+type WidgetResult = TableDashboardWidgetResult;
 
-const ROLE_RANK: Record<TableBaseRole, number> = { viewer: 0, editor: 1, builder: 2, owner: 3 };
 /**
  * Twelve columns, matching the Home workbench. The stored layouts were written
  * against a 12-column mental model (`w:6` = half width), so they land sensibly
@@ -64,9 +59,16 @@ const WIDGET_LABEL_KEYS: Record<TableDashboardWidgetType, TranslationKey> = {
   bar: 'tables.dashboard.widgetType.bar',
   line: 'tables.dashboard.widgetType.line',
   pie: 'tables.dashboard.widgetType.pie',
+  area: 'tables.dashboard.widgetType.area',
+  pivot: 'tables.dashboard.widgetType.pivot',
   records: 'tables.dashboard.widgetType.records',
   text: 'tables.dashboard.widgetType.text',
 };
+/**
+ * Widget types this editor can build and draw today. `area` and `pivot` are in
+ * the contract (unified card spec) but arrive with slice D's card renderers.
+ */
+const CREATABLE_WIDGET_TYPES: TableDashboardWidgetType[] = ['kpi', 'bar', 'line', 'pie', 'records', 'text'];
 const AGGREGATION_LABEL_KEYS: Record<TableAggregation, TranslationKey> = {
   count: 'tables.aggregationType.count',
   sum: 'tables.aggregationType.sum',
@@ -192,7 +194,7 @@ function WidgetCard({
 
 export function TablesDashboardView({ dashboardId, tables, role }: TablesDashboardViewProps) {
   const t = useT();
-  const canBuild = ROLE_RANK[role] >= ROLE_RANK.builder;
+  const canBuild = tableRoleAtLeast(role, 'builder');
   const [dashboard, setDashboard] = useState<TableDashboard | null>(null);
   const [results, setResults] = useState<WidgetResult[]>([]);
   const [fieldsByTable, setFieldsByTable] = useState<Record<number, TableField[]>>({});
@@ -453,7 +455,7 @@ export function TablesDashboardView({ dashboardId, tables, role }: TablesDashboa
               disabled={editingWidget !== null}
               onChange={(event) => setType(event.target.value as TableDashboardWidgetType)}
             >
-              {TABLE_DASHBOARD_WIDGET_TYPES.map((entry) => (
+              {CREATABLE_WIDGET_TYPES.map((entry) => (
                 <option key={entry} value={entry}>
                   {t(WIDGET_LABEL_KEYS[entry])}
                 </option>

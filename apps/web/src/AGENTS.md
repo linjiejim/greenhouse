@@ -137,6 +137,7 @@ components/
 ├── blocks/             # 富块渲染：DataTable/Chart/Confirm/Mermaid/HtmlPreview/MissionArtifacts/Pending
 ├── app/                # 应用外壳与模块页框：LoginScreen、AppSidebar、TopBar、ModulePageShell、ModulePage
 ├── project/            # 项目管理：TaskTree、BoardColumn、GanttView、TaskDrawer、CreateTaskDialog
+├── tables/             # Tables：FieldValue / FieldEditor / FilterEditor、内联编辑单元格、附件选择、Base/资源对话框
 ├── agent-panel/        # Agent 助手面板
 ├── chat/               # 聊天：消息气泡、输入框、profile 选择器、流式消息、标注
 ├── agent-context.tsx   # 全局上下文 Provider
@@ -257,6 +258,23 @@ stores/
 - **人机验证卡**（`human-check-card.tsx`，`takeover` 且 payload `kind === 'captcha'`、非 implicit，`humanCheckTakeover()` 判定）：卡内嵌 `ComputerScreen`（只读）→「在这里验证」= `POST /takeover`，嵌入屏幕随页面的同一份 `useComputerStatus`（`computer` prop 一路传到卡片）变为可操作；成员完成后点卡上的「完成，交还」结清卡片、唤醒 Bot（服务端不判断验证是否通过）。Bot 从不解/绕人机验证。
 - **停止分两步 + 立即处理**：第一次按 Stop = 软停止（`POST /api/chat/runs/:id/interrupt`，这一步做完再停，按钮变「正在停止…」），同一 run 里再按 = 硬停止（`/stop`）。软停止状态在 `SessionManager`：`run-interrupting` 事件（多标签同步）或 POST 成功时置位，**下一个 `bot-turn-start` 或 run 结束时清除**；`interruptSession` 返回 `interrupting | no_run | refused`——`no_run`（404，已经结束）不报错，`refused` 时 Stop 退回硬停止、「立即处理」才提示失败。排队消息被 `interjection` 轮次接手后显示为已发送（`pickUpQueued`，逐个增量匹配，结清后不重复匹配），不再给「立即处理」。
 - 时区：Bots 页拿到电脑状态后，若 `status.timezone` 与浏览器 IANA 时区不同，每次页面加载 `PUT /api/bots/computer/settings {timezone}` **一次**（`useComputerTimezoneSync`，失败静默，下次启动电脑生效）。
+
+### Tables（`#/tables`，`pages/tables/` + `components/tables/` + `lib/api/tables/`）
+
+2026-10-11 阶段 0 地基拆分（[spec](../../../docs/specs/20261011-tables-foundation.md)「实施切片」的文件归属表）：每个切片只改自己的文件，共享文件只由 F / 集成分支改。
+
+- **页面分层**：`index.tsx`（Base 列表 + 路由）→ `base-workspace.tsx`（Base 头、移动端资源条、选中的表 / 仪表盘）→ `view-container.tsx`（一张表：schema、查询（视图 / 搜索 / 筛选 / 排序）、分页、所有对话框、记录抽屉、工具栏 `view-toolbar.tsx`）→ `views/<type>.tsx`（视图主体：只画记录、把手势交给回调，契约在 `views/types.ts`）。视图类型 → 主体的唯一映射是 `views/index.ts` 的 `TABLE_VIEW_BODIES`（`Record<TableViewType, …>`，还没有主体的类型退回表格，Agent 存下的新类型视图不会白屏）。列顺序跟随视图的 `fieldIds`（`view-fields.ts`），不是 schema 顺序。字段设置 / 保存视图 / 筛选对话框各自一个文件（`field-settings-dialog.tsx` / `save-view-dialog.tsx` / `filter-dialog.tsx`）。
+- **路由参数**：`TablesPage` 收 `params`；`#/tables/<base>/table/<table>?record=<id>`（实体链接、通知、下钻共用的地址）直接打开该记录的抽屉（不论是否在当前页），关闭时 `location.replace` 去掉 `record`，同一链接下次还能再打开。**表单页 `#/forms/:id`**（`form-route.tsx`）挂在 Tables 应用门控**之外**——表单的受众不一定用 Tables，权限由 API 判；旧 `#/tables/form/:id` 在 `parseRoute` 里重定向过去。
+- **一个渲染器、一个编辑器、一个筛选编辑器**（spec D11，都在 `components/tables/`，别再写第二份）：
+  - `FieldValue`：所有只读展示（网格、抽屉、回收站、记录对话框里的计算字段）。布尔走 `common.yes/no`；公式按结果类型格式化；lookup 的数组值渲染成只读 chip。`recordFieldValue(record, fieldId)` 是「计算值优先、否则存储值」的唯一取法。
+  - `FieldEditor`：每种字段类型一个控件，记录对话框、内联单元格（`density="inline"`，经 `InlineEditCell` 的 `renderEditor` 插进去）、表单页共用。它编辑的是 draft：`field-draft.ts` 的 `toFieldDraft` / `fromFieldDraft` / `recordDrafts` / `valuesFromDrafts` 是唯一转换——数字、日期时间、关联 id 以文本保存，半截输入（`1.`、`12, `）不会在光标下被解析掉；日期时间按本地时区显示与回写。计算字段返回 `null`（不可写），附件不进内联编辑（走记录对话框）。
+  - `FilterEditor`（纯模型 `filter-model.ts`）：`TableFilterGroup` 的唯一编辑器。目标 = 字段 + 系统字段（`created_by` / `created_at` / `updated_at` / `updated_by`），`$me`、`$today`、`$today-7d`、`$week_start`… 是普通选项（服务端展开）；操作符集合与服务端编译器一致；应用前用 `completedFilterGroup()` 拦下没填值的条件。仪表盘筛选、自动化条件、角色行范围、应用绑定都复用它。
+  - 「可写 / 能进表单 / 只读渲染」的判断只引用 `COMPUTED_FIELD_TYPES`（`isComputedField` / `isComputedFieldType`）；字段类型与系统字段的文案表在 `field-types.ts`（`FIELD_TYPE_LABEL_KEYS` / `SYSTEM_FIELD_LABEL_KEYS`），字段对话框可新建的类型是 `CREATABLE_FIELD_TYPES`（`lookup` 等 slice Fx 带上配置界面再放开）。
+- **记录抽屉**（`record-drawer/`）：吸顶头（标题、编辑、关闭、头部动作）+ 页签主体（只有主体滚动）。扩展点是**插槽文件**而不是改抽屉：`activity-slot.tsx` 的 `RECORD_ACTIVITY_TAB`（动态页签，slice C）、`actions-slot.tsx` 的 `RecordActionsSlot`（自动化按钮，slice Au），契约 `slots.ts`；只有一个页签时不画页签条。
+- **Base 角色比较**只用 `@greenhouse/types/table-access` 的 `tableRoleAtLeast` / `TABLE_BASE_ROLE_RANK`，组件里不要再写 rank 表。
+- **API 客户端**按域拆在 `lib/api/tables/<domain>.ts`（bases / members / schema / views / records / forms / automations / dashboards / plan，以及给后续切片预留的空模块 access / activity / imports），调用方只 import `lib/api/tables`（barrel）。新增客户端函数写进自己域的文件，不改 barrel。
+- **文案按切片拆**在 `lib/i18n/tables/<slice>.{en,zh}.ts`（access / views / forms / automations / dashboards / imports / activity / formula / plan），由 `lib/i18n/tables/en.ts|zh.ts` 一次并入 `tables.*`（plan 并入 `tablesSchemaPlan`）。每个模块独占自己的命名空间（`tables.forms.*`、`tables.automations.*`…），`lib/i18n/tables/slices.test.ts` 钉住不重名、不被核心键遮住；跨切片共享的键（字段类型、筛选操作符与令牌、记录元信息）留在 `en.ts` / `zh.ts` 的 `tables` 下。zh 模块用 `lib/i18n/types.ts` 的 `DeepRecord` 对齐英文。
+- Tables 没有自己的通知收件箱：自动化通知与 @ 提及走平台通知中心（`tables_automation` / `tables_mention`），原「数据表通知」对话框已删。
 
 ### 页面上下文注入
 - `components/conversation/conversation-pane.tsx` 是 full Chat 与右上角 Assistant overlay 的唯一会话 UI/控制器；新增 split-pane host 必须复用它，不得复制发送、上传、流恢复或消息 reconcile。

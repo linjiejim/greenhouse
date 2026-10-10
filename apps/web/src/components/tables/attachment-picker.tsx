@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Checkbox, Dialog, EmptyState, Spinner } from '../../components/ui';
+import { Button, Checkbox, Dialog, EmptyState, Spinner } from '../ui';
 import { ChevronRight, FileText, Folder, Paperclip, Upload, X } from '../../lib/icons';
 import {
   driveBreadcrumb,

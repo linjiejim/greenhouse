@@ -46,6 +46,7 @@ type Route =
   | 'design'
   | 'knowledge'
   | 'tables'
+  | 'forms'
   | 'skillhub'
   | 'tasks'
   | 'executions';
@@ -279,7 +280,8 @@ export function TopBar({
     settings: t('app.settings'),
     administration: t('app.administration'),
     knowledge: t('app.knowledge'),
-    tables: 'Tables',
+    tables: t('tables.home.title'),
+    forms: t('tables.forms.internalForm'),
     skillhub: t('app.skillhub'),
     tasks: t('navigation.myPrompts'),
     executions: t('taskCenter.title'),

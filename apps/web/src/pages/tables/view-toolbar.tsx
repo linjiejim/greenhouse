@@ -3,7 +3,7 @@ import { ClipboardList, Columns3, Filter, Plus, Save, Trash2 } from '../../lib/i
 import type { TableView } from '../../lib/api/tables';
 import { useT } from '../../lib/i18n';
 
-interface TablesGridToolbarProps {
+interface TablesViewToolbarProps {
   views: TableView[];
   selectedViewId: string;
   search: string;
@@ -21,7 +21,7 @@ interface TablesGridToolbarProps {
   onAddRecord: () => void;
 }
 
-export function TablesGridToolbar({
+export function TablesViewToolbar({
   views,
   selectedViewId,
   search,
@@ -37,7 +37,7 @@ export function TablesGridToolbar({
   onOpenForms,
   onAddField,
   onAddRecord,
-}: TablesGridToolbarProps) {
+}: TablesViewToolbarProps) {
   const t = useT();
   const filterLabel =
     filterCount > 0 ? t('tables.filterRecordsCount', { count: filterCount }) : t('tables.filterRecords');

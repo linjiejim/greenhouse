@@ -13,7 +13,7 @@ import { listDeletedTableRecords, restoreTableRecord, type TableField, type Tabl
 import { Button, Drawer, EmptyState, Spinner } from '../../components/ui';
 import { Trash2, X } from '../../lib/icons';
 import { formatDate } from '../../lib/utils';
-import { renderTableFieldValue } from './field-value';
+import { FieldValue, recordFieldValue } from '../../components/tables/field-value';
 import { useT } from '../../lib/i18n';
 
 interface RecycleBinDrawerProps {
@@ -106,7 +106,11 @@ export function RecycleBinDrawer({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-fg">
                       {primaryField ? (
-                        renderTableFieldValue(primaryField, record.values[String(primaryField.id)], usersById)
+                        <FieldValue
+                          field={primaryField}
+                          value={recordFieldValue(record, primaryField.id)}
+                          usersById={usersById}
+                        />
                       ) : (
                         <span className="text-fg-faint">{t('tables.recordNumber', { id: record.id })}</span>
                       )}

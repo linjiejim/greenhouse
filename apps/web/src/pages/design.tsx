@@ -51,7 +51,9 @@ import { ChartBlock } from '../components/blocks/chart-block';
 import { ConfirmBlock } from '../components/blocks/confirm-block';
 import { ArtifactCard, ArtifactCardActions } from '../components/chat/artifact-card';
 import { MermaidBlock } from '../components/blocks/mermaid-block';
-import { InlineEditCell } from '../components/tables';
+import { FieldEditor, FieldValue, FilterEditor, InlineEditCell, type FieldDraft } from '../components/tables';
+import type { TableField } from '../lib/api/tables';
+import type { TableFilterGroup } from '@greenhouse/types/tables';
 import type { ChartData, DataTableData } from '../components/blocks/index';
 import { PLANT_IDS, PLANT_STATES, PLANT_TINTS, type PlantId, type PlantState } from '@greenhouse/types';
 import { PlantAvatar, PlantAvatarStack } from '@greenhouse/ui/components/plant-avatar';
@@ -324,6 +326,7 @@ export function DesignPage() {
         <EmptyStatesSection />
         <StarRatingSection />
         <InlineEditCellSection />
+        <TablesFieldKitSection />
         <DataTableSection />
         <PaginationSection />
         <ChartSection />
@@ -1414,7 +1417,7 @@ function InlineEditCellSection() {
     <Section
       id="inline-edit-cell"
       title="Inline Edit Cell"
-      description="components/tables/inline-edit-cell.tsx — shared double-click and keyboard editing for data grids."
+      description="components/tables/inline-edit-cell.tsx — shared pencil and keyboard editing for data grids."
     >
       <div className="max-w-5xl overflow-x-auto rounded-lg border border-edge">
         <table className="w-full min-w-[860px]">
@@ -1505,9 +1508,103 @@ function InlineEditCellSection() {
         </table>
       </div>
       <p className="text-xs text-fg-muted">
-        Double-click text/select/tags/date values, or focus them and press Enter/F2. Boolean switches save on one click;
-        clearing a nullable number saves null.
+        Hover a cell and click its pencil, or focus it and press Enter/F2. Boolean switches save on one click; clearing
+        a nullable number saves null.
       </p>
+    </Section>
+  );
+}
+
+const DEMO_USERS = [
+  { id: 'u1', nickname: 'Ada', email: 'ada@example.com' },
+  { id: 'u2', nickname: 'Lin', email: 'lin@example.com' },
+];
+
+function demoField(id: number, name: string, type: TableField['type'], config: object = {}): TableField {
+  return {
+    id,
+    table_id: 1,
+    name,
+    type,
+    required: false,
+    is_primary: id === 1,
+    config: JSON.stringify(config),
+    position: id,
+    created_by: 'u1',
+    created_at: '2026-10-11T00:00:00.000Z',
+    updated_at: '2026-10-11T00:00:00.000Z',
+    archived_at: null,
+  };
+}
+
+const DEMO_FIELDS: TableField[] = [
+  demoField(1, 'Title', 'text'),
+  demoField(2, 'Stage', 'single_select', {
+    options: [
+      { id: 'lead', label: 'Lead' },
+      { id: 'won', label: 'Won' },
+    ],
+  }),
+  demoField(3, 'Owner', 'user'),
+  demoField(4, 'Due', 'date'),
+  demoField(5, 'Signed', 'boolean'),
+  demoField(6, 'Linked names', 'lookup', { lookup: { relationFieldId: 7, targetFieldId: 8 } }),
+];
+
+function TablesFieldKitSection() {
+  const [drafts, setDrafts] = useState<Record<number, FieldDraft>>({ 1: 'Renewal', 2: 'lead', 3: 'u1', 5: true });
+  const [filter, setFilter] = useState<TableFilterGroup>({
+    combinator: 'and',
+    clauses: [
+      { systemField: 'created_by', operator: 'eq', value: '$me' },
+      { fieldId: 4, operator: 'gte', value: '$today-7d' },
+    ],
+  });
+  const usersById = new Map(DEMO_USERS.map((user) => [user.id, user]));
+  const sample: Record<number, unknown> = {
+    1: 'Renewal',
+    2: 'won',
+    3: 'u2',
+    4: '2026-10-11',
+    5: true,
+    6: ['Acme', 'Globex'],
+  };
+  return (
+    <Section
+      id="tables-field-kit"
+      title="Tables field kit"
+      description="components/tables — FieldValue (the one renderer), FieldEditor (one control per field type: dialogs, inline cells, forms) and FilterEditor (conditions with system fields and $me / $today tokens)."
+    >
+      <SubSection title="FieldValue">
+        <div className="grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-3">
+          {DEMO_FIELDS.map((field) => (
+            <div key={field.id} className="rounded-md border border-edge px-3 py-2 text-sm">
+              <p className="mb-1 text-[11px] text-fg-faint">{field.name}</p>
+              <FieldValue field={field} value={sample[field.id]} usersById={usersById} />
+            </div>
+          ))}
+        </div>
+      </SubSection>
+      <SubSection title="FieldEditor (form density)">
+        <div className="grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
+          {DEMO_FIELDS.slice(0, 5).map((field) => (
+            <div key={field.id}>
+              <p className="mb-1 text-xs text-fg-muted">{field.name}</p>
+              <FieldEditor
+                field={field}
+                value={drafts[field.id] ?? ''}
+                onChange={(next) => setDrafts((current) => ({ ...current, [field.id]: next }))}
+                users={DEMO_USERS}
+              />
+            </div>
+          ))}
+        </div>
+      </SubSection>
+      <SubSection title="FilterEditor">
+        <div className="max-w-3xl rounded-lg border border-edge p-4">
+          <FilterEditor value={filter} onChange={setFilter} fields={DEMO_FIELDS} users={DEMO_USERS} />
+        </div>
+      </SubSection>
     </Section>
   );
 }

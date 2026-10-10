@@ -9,6 +9,7 @@ import {
   type TableField,
   type TableForm,
 } from '../../lib/api/tables';
+import { isComputedField } from '../../components/tables/field-types';
 import { useT } from '../../lib/i18n';
 
 export function TablesFormsDialog({
@@ -32,9 +33,7 @@ export function TablesFormsDialog({
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const editableFields = fields.filter(
-    (field) => field.type !== 'formula' && field.type !== 'rollup' && field.type !== 'attachment',
-  );
+  const editableFields = fields.filter((field) => !isComputedField(field) && field.type !== 'attachment');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,7 +98,7 @@ export function TablesFormsDialog({
     }
   };
 
-  const formUrl = (formId: number) => `${window.location.origin}${window.location.pathname}#/tables/form/${formId}`;
+  const formUrl = (formId: number) => `${window.location.origin}${window.location.pathname}#/forms/${formId}`;
 
   return (
     <Dialog open={open} onClose={onClose} title={t('tables.forms.title')} size="lg">
@@ -205,7 +204,7 @@ export function TablesFormsDialog({
                   <Copy size={13} />
                 </Button>
                 <a
-                  href={`#/tables/form/${form.id}`}
+                  href={`#/forms/${form.id}`}
                   target="_blank"
                   rel="noreferrer"
                   className="rounded-md p-2 text-fg-muted hover:bg-surface-muted hover:text-fg"
