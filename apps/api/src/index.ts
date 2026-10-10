@@ -121,7 +121,8 @@ import driveRoutes from './routes/drive.js';
 import chatFileRoutes from './routes/chat-files.js';
 import artifactActionRoutes from './routes/artifact-actions.js';
 import skillRoutes from './routes/skills.js';
-import tablesRoutes from './routes/tables.js';
+import tablesRoutes from './routes/tables/index.js';
+import formRoutes from './routes/forms.js';
 import { createWorkbenchRoutes } from './routes/workbench.js';
 import { getSkillStore } from './skills/store.js';
 import { seedSkillhub } from './skills/boot-seed.js';
@@ -334,6 +335,11 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/tables/*', requireInternal())
       .use('/api/tables/*', requireFeature('tables'))
       .route('/api/tables', tablesRoutes)
+      // Submit-only forms — internal users, deliberately NOT behind the `tables` flag
+      // (the flag means "uses the Tables module"; a form's audience does not need it).
+      // Audience and capability checks run in the openForm / submitForm handlers.
+      .use('/api/forms/*', requireInternal())
+      .route('/api/forms', formRoutes)
       // Email accounts — every internal user (mailbox binding is per-user and
       // self-service; the shared mailbox stays super-only inside the service).
       .use('/api/email/*', requireInternal())

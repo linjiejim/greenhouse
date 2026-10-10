@@ -15,7 +15,7 @@ import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } fro
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type { SchemaPlanApplyResult } from '@greenhouse/types/tables';
 import type { AppEnv } from '../../app-env.js';
-import tablesRoutes from '../tables.js';
+import tablesRoutes from '../tables/index.js';
 import { tablesRegistration } from '../../platform/tables/application.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
 import { createTablesSchemaPlanTool } from '../../tools/tables-schema-plan.js';

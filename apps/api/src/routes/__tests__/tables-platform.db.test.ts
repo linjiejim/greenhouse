@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import type { AppEnv } from '../../app-env.js';
-import tablesRoutes from '../tables.js';
+import tablesRoutes from '../tables/index.js';
 import { tablesRegistration } from '../../platform/tables/application.js';
 import { tablesManifest } from '../../platform/manifests/tables.js';
 import type { FieldPolicy } from '@greenhouse/platform-kernel';
