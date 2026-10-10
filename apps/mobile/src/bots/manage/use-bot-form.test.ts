@@ -20,6 +20,7 @@ import {
   needsComputerWarning,
   proposalDecision,
   resolveBotForm,
+  sameConnectors,
   updatePatch,
   type BotFormValues,
 } from './bot-form-model';
@@ -34,6 +35,7 @@ function bot(over: Partial<BotView> & Pick<BotView, 'id'>): BotView {
     avatar: { plant: 'sage' },
     model_id: null,
     tools: null,
+    connectors: null,
     max_steps: null,
     template_key: null,
     status: 'active',
@@ -136,6 +138,7 @@ describe('pre-fill', () => {
       description: '',
       instructions: '写得简洁。',
       avatar: { plant: 'fern' },
+      connectors: null,
     });
     expect(botFormTitle(init, 'zh')).toEqual({ key: 'bots.manage.formProposal' });
   });
@@ -193,6 +196,7 @@ describe('create and accept bodies', () => {
     description: ' Drafts ',
     instructions: ' Be brief. ',
     avatar: { plant: 'fern' },
+    connectors: null,
   };
 
   it('a gallery template sends its key; custom and non-gallery keys send none', () => {
@@ -285,5 +289,39 @@ describe('computer warning', () => {
     expect(needsComputerWarning({ mode: 'create', templateKey: 'writer' }, runtime('unavailable'))).toBe(false);
     expect(needsComputerWarning({ mode: 'edit', templateKey: 'researcher' }, runtime('unavailable'))).toBe(false);
     expect(needsComputerWarning({ mode: 'create', templateKey: 'researcher' }, null)).toBe(false);
+  });
+});
+
+describe('connectors (create / edit; web parity)', () => {
+  const narrowed = bot({ id: 'b-maps', connectors: ['amap', 'deepwiki'] });
+
+  it('every pre-fill starts on "every connector" except an edit, which shows the Bot as stored', () => {
+    expect(ready(resolveBotForm({ template: 'writer' }, data())).values.connectors).toBeNull();
+    expect(ready(resolveBotForm({}, data())).values.connectors).toBeNull();
+    expect(botValues(narrowed).connectors).toEqual(['amap', 'deepwiki']);
+  });
+
+  it('the same pick in any order is no change', () => {
+    expect(sameConnectors(null, null)).toBe(true);
+    expect(sameConnectors(['a', 'b'], ['b', 'a'])).toBe(true);
+    expect(sameConnectors(null, [])).toBe(false);
+    expect(sameConnectors(['a'], ['a', 'b'])).toBe(false);
+    const initial = botValues(narrowed);
+    expect(botFormDirty(initial, { ...initial, connectors: ['deepwiki', 'amap'] })).toBe(false);
+    expect(botFormDirty(initial, { ...initial, connectors: ['amap'] })).toBe(true);
+  });
+
+  it('an edit sends the pick only when it changed — narrowing, widening back to every one, or emptying', () => {
+    expect(updatePatch(narrowed, { ...botValues(narrowed), connectors: ['deepwiki', 'amap'] })).toEqual({});
+    expect(updatePatch(narrowed, { ...botValues(narrowed), connectors: null })).toEqual({ connectors: null });
+    expect(updatePatch(narrowed, { ...botValues(narrowed), connectors: [] })).toEqual({ connectors: [] });
+    expect(updatePatch(sage, { ...botValues(sage), connectors: ['amap'] })).toEqual({ connectors: ['amap'] });
+  });
+
+  it('a new Bot sends a pick only when there is one; accepting a proposal never does', () => {
+    const base: BotFormValues = { ...botValues(sage), connectors: null };
+    expect(createInput({ templateKey: null }, base)).not.toHaveProperty('connectors');
+    expect(createInput({ templateKey: null }, { ...base, connectors: ['amap'] })).toMatchObject({ connectors: ['amap'] });
+    expect(proposalDecision({ ...base, connectors: ['amap'] }).bot).not.toHaveProperty('connectors');
   });
 });

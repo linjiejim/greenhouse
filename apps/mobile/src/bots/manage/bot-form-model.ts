@@ -12,7 +12,9 @@
  *  - proposal: a `bot_create` card's payload, edited before accepting
  *    (`approve` + `bot`). A proposal has no "purpose" field to send.
  *
- * Model / tools / step cap are web-only (spec §1.3): never shown, never sent.
+ * Connectors (create / edit): every connector the owner can use (null, the
+ * default) or a picked subset — sent only when it differs. Model / tools /
+ * step cap are web-only (spec §1.3): never shown, never sent.
  */
 
 import type { TranslationKey } from '../../lib/i18n';
@@ -42,6 +44,8 @@ export interface BotFormValues {
   description: string;
   instructions: string;
   avatar: AvatarConfig;
+  /** Connector slugs the Bot may reach; null = every connector its owner can use (create / edit only). */
+  connectors: string[] | null;
 }
 
 export type BotFormMode = 'create' | 'edit' | 'proposal';
@@ -83,12 +87,20 @@ export function templateValues(template: BotTemplate, lang: 'en' | 'zh'): BotFor
     description: copy.pitch,
     instructions: copy.instructions,
     avatar: withPlant(template.avatar, TEMPLATE_PLANT[template.key]),
+    connectors: null,
   };
 }
 
 /** A blank Bot wears a plant none of the member's Bots has yet. */
 export function customValues(taken: readonly PlantId[]): BotFormValues {
-  return { name: '', role: '', description: '', instructions: '', avatar: withPlant({}, freshPlant(taken)) };
+  return {
+    name: '',
+    role: '',
+    description: '',
+    instructions: '',
+    avatar: withPlant({}, freshPlant(taken)),
+    connectors: null,
+  };
 }
 
 export function botValues(bot: BotView): BotFormValues {
@@ -98,6 +110,7 @@ export function botValues(bot: BotView): BotFormValues {
     description: bot.description,
     instructions: bot.instructions,
     avatar: bot.avatar ?? {},
+    connectors: bot.connectors ?? null,
   };
 }
 
@@ -110,6 +123,7 @@ export function proposalValues(payload: Partial<BotCreatePayload>): BotFormValue
     description: '',
     instructions: text(payload.instructions),
     avatar: payload.avatar && typeof payload.avatar === 'object' ? payload.avatar : {},
+    connectors: null,
   };
 }
 
@@ -185,8 +199,15 @@ export function botFormDirty(initial: BotFormValues, values: BotFormValues): boo
     initial.role !== values.role ||
     initial.description !== values.description ||
     initial.instructions !== values.instructions ||
-    !avatarEqual(initial.avatar, values.avatar)
+    !avatarEqual(initial.avatar, values.avatar) ||
+    !sameConnectors(initial.connectors, values.connectors)
   );
+}
+
+/** The same connector choice: both "every connector", or the same slugs in any order. */
+export function sameConnectors(a: readonly string[] | null, b: readonly string[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.length === b.length && a.every((slug) => b.includes(slug));
 }
 
 /** Fields over the server's limits (the native fields cap them too; this covers a long pre-fill). */
@@ -254,6 +275,7 @@ export function createInput(init: Pick<BotFormInit, 'templateKey'>, values: BotF
     description: values.description.trim(),
     instructions: values.instructions.trim(),
     avatar: values.avatar,
+    ...(values.connectors ? { connectors: values.connectors } : {}),
   };
 }
 
@@ -269,6 +291,7 @@ export function updatePatch(bot: BotView, values: BotFormValues): Omit<BotWriteI
   if (description !== bot.description.trim()) patch.description = description;
   if (instructions !== bot.instructions.trim()) patch.instructions = instructions;
   if (!avatarEqual(bot.avatar, values.avatar)) patch.avatar = values.avatar;
+  if (!sameConnectors(bot.connectors ?? null, values.connectors)) patch.connectors = values.connectors;
   return patch;
 }
 

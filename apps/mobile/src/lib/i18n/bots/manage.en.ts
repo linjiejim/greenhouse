@@ -46,6 +46,10 @@ export const botsManageEn = {
     instructionsPlaceholder: 'How it should work — read before every reply',
     versionFooter: 'Each save adds a version',
     computerWarn: 'This template needs a computer your deployment doesn’t have yet — browsing won’t work.',
+    connectors: 'Connectors',
+    connectorsAll: 'Every connector I can use',
+    connectorsHint: 'Which outside tools it may use — only ever fewer than yours; it still uses your own sign-ins and keys.',
+    connectorsNeedTool: 'Its tools don’t include “External MCP tools”, so it can’t use these — turn that on on the web.',
     limit: 'Up to 20 Bots (Sprouty doesn’t count)',
     /** BotNameIssue → a sentence (the server's codes map onto the same issues). */
     nameErr: {

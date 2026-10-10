@@ -11,7 +11,7 @@
  *  - `useBotForm(init)` — the values (initial frozen at mount), the live name
  *    check (the server's rules, vendored), plant / colour picks written through
  *    `withPlant` / `withTint` (no expression to pick — a face follows state),
- *    dirty / ✓, and `save`:
+ *    the connector picks, dirty / ✓, and `save`:
  *      create → `POST /api/bots`, then the new DM to open;
  *      edit → `PATCH /api/bots/:id` with only what changed, toast 已保存;
  *      proposal → `useBots.decide(approve + bot)`, so the card in the thread
@@ -148,6 +148,16 @@ export function useBotForm(
     [],
   );
   const setTint = useCallback((tint: PlantTint) => setValues((v) => ({ ...v, avatar: withTint(v.avatar, tint) })), []);
+  /** One connector on or off in a picked list (null — every connector — is `set('connectors', …)`). */
+  const toggleConnector = useCallback(
+    (slug: string, on: boolean) =>
+      setValues((v) => {
+        const current = v.connectors ?? [];
+        const connectors = on ? [...current.filter((s) => s !== slug), slug] : current.filter((s) => s !== slug);
+        return { ...v, connectors };
+      }),
+    [],
+  );
 
   /** Resolves a legacy avatar exactly as the Bot shows everywhere else. */
   const stableId = init.bot?.id ?? '';
@@ -258,6 +268,7 @@ export function useBotForm(
     tint,
     setPlant,
     setTint,
+    toggleConnector,
     stableId,
     nameIssue,
     dirty,

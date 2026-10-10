@@ -10,7 +10,9 @@
  * `withTint`; no expression to pick: a face follows what the Bot does), name (the
  * server's rules checked as you type; a refusal, else a length hint, goes
  * under the field), role, purpose (not for a proposal: the card has none),
- * instructions. No model / tools / step cap on mobile. Chrome is the shared
+ * instructions, and — when the member has connectors — which of them the Bot
+ * may use (every one, the default, or a picked few; not for a proposal). No
+ * model / tools / step cap on mobile. Chrome is the shared
  * `FormChrome` (✕ confirms discarding edits, swipe-down is blocked while
  * dirty, ✓ saves).
  *
@@ -34,6 +36,7 @@ import {
   Spacer,
   Text,
   TextField,
+  Toggle,
   VStack,
   useNativeState,
 } from '@expo/ui/swift-ui';
@@ -44,6 +47,9 @@ import {
   pickerStyle,
   tag,
 } from '@expo/ui/swift-ui/modifiers';
+import type { Connector } from '../../src/api/connectors';
+import { CONNECTOR_STATUS_LABEL } from '../../src/connectors/labels';
+import { useConnectors } from '../../src/connectors/use-connectors';
 import { useT } from '../../src/lib/i18n';
 import { BOT_DESCRIPTION_MAX, BOT_INSTRUCTIONS_MAX, BOT_NAME_MAX, BOT_ROLE_MAX } from '../../src/shared/bots';
 import { nameIssueKey } from '../../src/bots/manage/bot-form-model';
@@ -316,7 +322,71 @@ function BotFormSections({
           modifiers={[lineLimit({ min: 4, max: 12 })]}
         />
       </Section>
+
+      {init.mode === 'proposal' ? null : (
+        <ConnectorPicks
+          picked={values.connectors}
+          toolsAllowMcp={!init.bot?.tools || init.bot.tools.includes('mcp_call')}
+          onAll={(all) => form.set('connectors', all)}
+          onToggle={form.toggleConnector}
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * Which connectors the Bot may reach (web parity: the Bot form's connector field): every one the
+ * member can use (null, the default) or a picked few. Absent while the member has none to pick.
+ */
+function ConnectorPicks({
+  picked,
+  toolsAllowMcp,
+  onAll,
+  onToggle,
+}: {
+  picked: string[] | null;
+  /** The Bot's tool list lets it call `mcp_call` (its tools are edited on the web). */
+  toolsAllowMcp: boolean;
+  /** "Every connector" on (null) or off (the list as it stands, all picked). */
+  onAll: (connectors: string[] | null) => void;
+  onToggle: (slug: string, on: boolean) => void;
+}) {
+  const t = useT();
+  const { hex } = useTheme();
+  const { load } = useConnectors();
+  const list: Connector[] = typeof load === 'object' && load.enabled ? load.connectors : [];
+  if (list.length === 0) return null;
+  return (
+    <Section
+      title={t('bots.manage.connectors')}
+      footer={
+        <VStack alignment="leading" spacing={6}>
+          <Text>{t('bots.manage.connectorsHint')}</Text>
+          {toolsAllowMcp ? null : (
+            <Text modifiers={[foregroundStyle(hex.orange)]}>{t('bots.manage.connectorsNeedTool')}</Text>
+          )}
+        </VStack>
+      }
+    >
+      <Toggle
+        label={t('bots.manage.connectorsAll')}
+        isOn={picked === null}
+        onIsOnChange={(on) => onAll(on ? null : list.map((connector) => connector.slug))}
+      />
+      {picked === null
+        ? null
+        : list.map((connector) => (
+            <Toggle
+              key={connector.slug}
+              isOn={picked.includes(connector.slug)}
+              onIsOnChange={(on) => onToggle(connector.slug, on)}
+            >
+              <Text>{connector.name}</Text>
+              <Text>{t(CONNECTOR_STATUS_LABEL[connector.status])}</Text>
+            </Toggle>
+          ))}
+    </Section>
   );
 }
 

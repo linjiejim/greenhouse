@@ -34,6 +34,7 @@ import {
   type BotFilesView,
 } from '../../api/bots';
 import { deleteAutomation, listAutomations, runAutomation, setAutomationEnabled, type Automation } from '../../api/automations';
+import { useConnectors } from '../../connectors/use-connectors';
 import { fetchSessionsPage, type Session } from '../../api/sessions';
 import { Markdown } from '../../chat/markdown';
 import { parseMs, relativeTime } from '../../lib/format';
@@ -112,13 +113,8 @@ export function OverviewTab({ bot, main, onArchive }: { bot: BotView; main: bool
       <ListSection header={t('bots.profile.details')}>
         <ListRow title={t('bots.profile.model')} value={bot.model_id || t('bots.profile.defaultModel')} />
         <ListRow title={t('bots.profile.files')} value={files.value ? String(files.value.docs.length) : undefined} />
-        {/* only when narrowed on the web (null = every connector the member can use) */}
-        {bot.connectors ? (
-          <ListRow
-            title={t('bots.profile.connectors')}
-            value={bot.connectors.length ? bot.connectors.join(', ') : t('bots.profile.noConnectors')}
-          />
-        ) : null}
+        {/* only when narrowed (null = every connector the member can use) */}
+        {bot.connectors ? <ConnectorsRow slugs={bot.connectors} /> : null}
       </ListSection>
       {files.value && files.value.docs.length ? <FileList files={files.value} /> : null}
       {dm ? <Guests sessionId={dm} ownerId={bot.id} /> : null}
@@ -131,6 +127,17 @@ export function OverviewTab({ bot, main, onArchive }: { bot: BotView; main: bool
       ) : null}
     </>
   );
+}
+
+/** A narrowed Bot's connectors by name — the slug while the list loads, or for one since removed. */
+function ConnectorsRow({ slugs }: { slugs: string[] }) {
+  const t = useT();
+  const { load } = useConnectors();
+  const names = typeof load === 'object' ? new Map(load.connectors.map((c) => [c.slug, c.name])) : null;
+  const value = slugs.length
+    ? slugs.map((slug) => names?.get(slug) ?? slug).join(t('bots.profile.daySep'))
+    : t('bots.profile.noConnectors');
+  return <ListRow title={t('bots.profile.connectors')} value={value} />;
 }
 
 /** The first documents of its private folder — each opens its preview. */

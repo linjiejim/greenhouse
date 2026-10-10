@@ -45,6 +45,10 @@ export const botsManageZh: typeof botsManageEn = {
     instructionsPlaceholder: '它该怎么做事——每次回复前都会读',
     versionFooter: '每次保存都会追加一个版本',
     computerWarn: '这个模板要用电脑，你的部署还没有，浏览类工作做不了。',
+    connectors: '连接器',
+    connectorsAll: '我能用的全部连接器',
+    connectorsHint: '它能用哪些外部工具——只能在你能用的范围里收窄；用的仍是你自己的登录和 key。',
+    connectorsNeedTool: '它的工具里没开「External MCP tools」，选了也用不上——到网页端打开。',
     limit: '最多 20 个 Bot（Sprouty 不计）',
     nameErr: {
       taken: '已有同名 Bot',
