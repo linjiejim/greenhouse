@@ -532,8 +532,21 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
     source.stdout!.pipe(sink.stdin!);
     // Like a child's, a stream's 'close' waits for its stdout to be read: tar -x prints nothing, drain it anyway.
     sink.stdout!.resume();
+    // The same rule bites the source when the sink goes first: the pipe lets go, nobody reads the source
+    // any more and its 'close' never comes — the start would hang for ever, holding the member's lock.
+    const drainSource = () => {
+      source.stdout!.unpipe(sink.stdin!);
+      source.stdout!.resume();
+    };
+    sink.once('exit', (code: number | null) => {
+      drainSource();
+      // A sink that failed (its connection dropped) has no use for the rest: stop the source as well. One
+      // that succeeded read the whole archive (tar may exit at its end marker) — the source ends on its own.
+      if (code !== 0) source.kill('SIGKILL');
+    });
     const timer = setTimeout(
       () => {
+        drainSource();
         source.kill('SIGKILL');
         sink.kill('SIGKILL');
       },

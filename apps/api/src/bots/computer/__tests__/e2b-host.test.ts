@@ -143,6 +143,72 @@ function fakeProcess(exitCode: number, opts: { output?: Buffer; waitForInput?: b
   return proc as unknown as ComputerProcess;
 }
 
+/**
+ * A home copy (tar -c) behaving like a BridgeProcess: it keeps sending until killed, and — like a
+ * ChildProcess — emits 'close' only once its stdout has been read to the end.
+ */
+function strictSource(bytes: number): ComputerProcess {
+  const proc = new EventEmitter() as EventEmitter & {
+    stdin: PassThrough;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    exitCode: number | null;
+    signalCode: null;
+    kill(): boolean;
+  };
+  proc.stdin = new PassThrough();
+  proc.stdout = new PassThrough();
+  proc.stderr = new PassThrough();
+  proc.exitCode = null;
+  proc.signalCode = null;
+  let ended = false;
+  proc.kill = () => {
+    if (ended) return false;
+    ended = true;
+    proc.stdout.end();
+    proc.stderr.end();
+    proc.stderr.resume();
+    proc.emit('exit', null, null);
+    let open = 2;
+    const done = () => {
+      if (--open === 0) proc.emit('close', null, null);
+    };
+    for (const stream of [proc.stdout, proc.stderr]) {
+      if (stream.readableEnded) done();
+      else stream.once('end', done);
+    }
+    return true;
+  };
+  setImmediate(() => proc.stdout.write(Buffer.alloc(bytes)));
+  return proc as unknown as ComputerProcess;
+}
+
+/** A tar -x whose connection drops at once: it ends without an exit code and never reads its input. */
+function droppedSink(): ComputerProcess {
+  const proc = new EventEmitter() as EventEmitter & {
+    stdin: PassThrough;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    exitCode: number | null;
+    signalCode: null;
+    kill(): boolean;
+  };
+  proc.stdin = new PassThrough();
+  proc.stdout = new PassThrough();
+  proc.stderr = new PassThrough();
+  proc.exitCode = null;
+  proc.signalCode = null;
+  proc.kill = () => false;
+  setImmediate(() => {
+    proc.stdin.destroy(); // like BridgeProcess.finish(): writes into it go nowhere
+    proc.stdout.end();
+    proc.stderr.end();
+    proc.emit('exit', null, null);
+    setImmediate(() => proc.emit('close', null, null));
+  });
+  return proc as unknown as ComputerProcess;
+}
+
 const ok = (partial: Partial<ExecOutcome> = {}): ExecOutcome => ({
   code: 0,
   signal: null,
@@ -154,8 +220,11 @@ const ok = (partial: Partial<ExecOutcome> = {}): ExecOutcome => ({
   ...partial,
 });
 
-/** tarWrite: one exit code for every `tar -x`, or one per call (the last repeats). */
-function setup(opts: { tarRead?: number; tarWrite?: number | number[] } = {}) {
+/**
+ * tarWrite: one exit code for every `tar -x`, or one per call (the last repeats).
+ * sinkDrops: every `tar -x` loses its connection at once while the copy is still sending.
+ */
+function setup(opts: { tarRead?: number; tarWrite?: number | number[]; sinkDrops?: boolean } = {}) {
   const api = new FakeApi();
   let now = T0;
   const streams: Array<{ origin: string; argv: string[] }> = [];
@@ -164,6 +233,7 @@ function setup(opts: { tarRead?: number; tarWrite?: number | number[] } = {}) {
     exec: vi.fn(async () => ok()),
     stream: vi.fn((target: unknown, argv: string[]) => {
       streams.push({ origin: (target as { origin: string }).origin, argv });
+      if (opts.sinkDrops) return argv.includes('-cpf') ? strictSource(4 * 1024 * 1024) : droppedSink();
       return argv.includes('-cpf')
         ? fakeProcess(opts.tarRead ?? 0, { output: Buffer.from('home') })
         : fakeProcess(writes.length > 1 ? writes.shift()! : writes[0]!, { waitForInput: true });
@@ -314,6 +384,15 @@ describe('e2b host: starts', () => {
     await expect(tolerant.host.start(row({ container_name: older }), spec())).resolves.toMatchObject({
       imageId: TEMPLATE,
     });
+  });
+
+  it('a copy whose receiving end dropped first is drained and stopped — the start never hangs on it', async () => {
+    const { api, host, streams } = setup({ sinkDrops: true });
+    const old = api.seed(meta('gh-computer-c2-older'));
+    // Before the fix the source's 'close' never came (nobody read it once the pipe let go): this hung.
+    await expect(host.start(row({ container_name: old }), spec())).resolves.toMatchObject({ ref: old });
+    expect(streams.filter((s) => s.argv.includes('-cpf'))).toHaveLength(3);
+    expect(api.log).toContain(`root ${old} gh-e2b-boot --recover`);
   });
 
   it('a move that keeps failing gives the member the old computer back, and waits before trying again', async () => {
