@@ -27,6 +27,7 @@ import { CARD_ICON, cardKind, cardTitle, statusBadge, type CardButton } from '..
 import { RequestBody } from '../../src/bots/cards/request-card';
 import { useRequestLookup } from '../../src/bots/cards/use-login-form';
 import { softAskAfterDecision } from '../../src/push/soft-ask';
+import { noteTaskStarted } from '../../src/live-activity/controller';
 import { BotsRouteGate } from '../../src/bots/route-gate';
 import { useBots } from '../../src/bots/store';
 import type { BotRequestDecision, BotRequestView } from '../../src/shared/bots';
@@ -90,8 +91,12 @@ function RequestDetail({ request, sessionId }: { request: BotRequestView; sessio
         if (outcome && outcome.kind !== 'refused') router.back();
         // the member just decided a card in the app: the moment for the push soft ask (spec §2.3)
         if (outcome?.kind === 'ok') void softAskAfterDecision();
+        // a task the member just started can go on the lock screen (src/live-activity)
+        if (outcome?.kind === 'ok' && outcome.request.kind === 'task_start' && outcome.request.status === 'resolved') {
+          noteTaskStarted(sessionId);
+        }
       }),
-    [press, router],
+    [press, router, sessionId],
   );
   const pending = request.status === 'pending';
   const badge = statusBadge(request);
