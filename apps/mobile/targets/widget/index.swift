@@ -5,6 +5,8 @@
  *   · systemLarge          the same Bots as rows (last message, time) · [新对话] [知识库]
  *   · accessoryRectangular what is waiting on the member, or "start a new chat" (lock screen)
  *   · accessoryCircular    Sprouty silhouette → new chat (lock screen)
+ * …and, in the same bundle, a Bot's background task as a Live Activity (lock screen +
+ * Dynamic Island): BotTaskLiveActivity.swift.
  *
  * Data comes from the App Group snapshot written by modules/widget-bridge —
  * `Snapshot` below decodes the JSON whose SCHEMA TRUTH lives in
@@ -84,7 +86,8 @@ private func loadSnapshot() -> Snapshot? {
   return snap
 }
 
-private let artDirectory: URL? = FileManager.default
+/** The App Group folder of rendered faces — the Live Activity (BotTaskLiveActivity.swift) reads it too. */
+let artDirectory: URL? = FileManager.default
   .containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
   .appendingPathComponent(artFolder, isDirectory: true)
 
@@ -184,7 +187,7 @@ private let knowledgeURL = URL(string: "greenhouse://knowledge")!
 private let botsURL = URL(string: "greenhouse://bots")!
 private let newBotURL = URL(string: "greenhouse://settings/bots")!
 
-private func query(_ value: String) -> String {
+func query(_ value: String) -> String {
   value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? value
 }
 
@@ -773,5 +776,6 @@ struct GreenhouseLauncher: Widget {
 struct GreenhouseWidgets: WidgetBundle {
   var body: some Widget {
     GreenhouseLauncher()
+    BotTaskLiveActivity()
   }
 }

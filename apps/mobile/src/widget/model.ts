@@ -100,6 +100,8 @@ export interface WidgetSnapshot {
 export interface ArtJob {
   key: string;
   svg: string;
+  /** Size in points (× the screen scale = the PNG's pixels); default `ART_POINTS`. A Live Activity's faces are smaller. */
+  points?: number;
 }
 
 // ─── Rules ───────────────────────────────────────────────

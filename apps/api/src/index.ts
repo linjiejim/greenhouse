@@ -410,6 +410,8 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/bots/conversations/*', requireFeature('bots'))
       .use('/api/bots/requests', requireFeature('bots'))
       .use('/api/bots/requests/*', requireFeature('bots'))
+      // The bare collection path (GET /api/bots/tasks) is not matched by `/*`: guarded explicitly.
+      .use('/api/bots/tasks', requireFeature('bots'))
       .use('/api/bots/tasks/*', requireFeature('bots'))
       .use('/api/bots/computer', requireFeature('bots'))
       .use('/api/bots/computer/*', requireFeature('bots'))

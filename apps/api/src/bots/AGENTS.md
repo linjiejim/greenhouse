@@ -249,6 +249,11 @@ bots/
   `POST /conversations/:id/read` 同时把这段对话的回复提醒标已读（并推 `notification:summary`）。
 - **发送前复核**（`notifications/push/deliver.ts`）：卡已处理 / 过期、回复已读或对话里有待处理卡、成员关了 `bots` 开关、
   这一类在这台设备上关了 → `suppressed`，不发。所以「已读」的判定必须只在成员真看着时发生（web 可见、手机线程可见）。
+- **后台任务的 Live Activity**（2026-10-10，[spec](../../../../docs/specs/20261010-mobile-live-activity.md)）：手机按
+  `GET /api/bots/tasks?state=active`（`engine/tasks.ts` `listMemberTasks`：所有对话里还在跑的 + 最近 30 分钟内结束的，每条带
+  `conversation_id`）对账。后台任务的「办完了」推送 `data` 带 `run` / `st`（取自事实的 `run_id` 与 `payload.status`——
+  投影器测试钉着这两个字段）；设备开了 `prefs.live_activity` 就加 `contentAvailable`，关了「办完了」则改发静默推送，手机原生
+  直接收起 Live Activity。**取消不建事实，也就不推**——在网页上取消的任务，手机上要等过期态或回前台对账才收起。
 
 ### 上下文管理（数字以代码为准）
 
@@ -310,6 +315,7 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 | POST | `/api/bots/conversations/:id/read` · `/compact` | — | `{ ok }`（同时把这段对话的「回复了你」提醒标为已读）· `{ digest }`（回合进行中 409） |
 | GET / POST / PATCH / DELETE | `/api/bots/conversations/:id/notes[/:noteId]` | `{ title, body?, status?, pinned? }` | 共享笔记 |
 | GET / POST | `/api/bots/conversations/:id/tasks` · `/api/bots/tasks/:runId/cancel` | — | 后台任务 |
+| GET | `/api/bots/tasks?state=active` | — | 我所有对话的后台任务：在跑的 + 最近 30 分钟内结束的（手机 Live Activity 对账；裸路径在 `src/index.ts` 单独挂 `requireFeature('bots')`） |
 | GET / POST | `/api/bots/requests` · `/api/bots/requests/:id` | `BotRequestDecision` | `{ request }`；冲突 409 `already_decided` / `deciding`；旧群的卡 409 `group_closed`（仍待处理的顺手撤成 `canceled`）；其他 409 带具体 code（`BotRequestErrorCode`：`page_gone` / `origin_mismatch` / `no_fields` / `failed` / `invalid` / `limit` / `computer_restarted` / `bot_gone`）且卡片保持待处理 |
 
 对话没有可编辑的设置：原 `PATCH /api/bots/conversations/:id`（群标题 / 群规 / 负责人 / Bot 互聊开关）已删除。

@@ -229,7 +229,10 @@ describe('Runtime notification projector', () => {
       expect.objectContaining({
         title: 'Background task finished: Check links',
         body: 'The Bot reported back in its conversation.',
+        // the run and its status name the Live Activity the phone ends (push/deliver.ts `botTaskEnd`)
+        run_id: 'rtm_task_1',
         payload: expect.objectContaining({
+          status: 'succeeded',
           bots_session_id: 'bots-dm-1',
           bot_id: 'bot_0123456789abcdef',
           task_title: 'Check links',

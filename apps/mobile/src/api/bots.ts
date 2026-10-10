@@ -265,6 +265,14 @@ export function listConversationTasks(sessionId: string): Promise<BotsRead<BotTa
   return read(`/api/bots/conversations/${enc(sessionId)}/tasks`, (body) => (body as { tasks: BotTaskView[] }).tasks);
 }
 
+/**
+ * The member's tasks across every conversation: still going, plus those that ended in the last
+ * half hour (the phone's Live Activities reconcile against it). 404 on servers older than it.
+ */
+export function listMemberTasks(): Promise<BotsRead<BotTaskView[]>> {
+  return read('/api/bots/tasks?state=active', (body) => (body as { tasks: BotTaskView[] }).tasks);
+}
+
 /** 404 unknown, 409 already finished. */
 export function cancelBotTask(runId: string): Promise<BotsWrite<void>> {
   return call(`/api/bots/tasks/${enc(runId)}/cancel`, jsonInit('POST'), nothing);
