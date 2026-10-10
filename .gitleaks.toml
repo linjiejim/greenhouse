@@ -24,6 +24,11 @@ regexes = [
   # Draft-token charset in apps/api/src/email/security.ts — a Crockford-style
   # base32 alphabet used to GENERATE single-use tokens, not a key itself.
   '''ABCDEFGHJKLMNPQRSTUVWXYZ23456789''',
+  # The sample Sec-WebSocket-Key from RFC 6455 §1.3 (base64 of "the sample nonce").
+  # apps/api/src/bots/computer/__tests__/e2b-host.live.test.ts hand-rolls an upgrade
+  # request with it to prove a bridge refuses the other uid's secret. It is a public
+  # protocol example, not a credential.
+  '''dGhlIHNhbXBsZSBub25jZQ==''',
 ]
 
 # Matched against the file path. These paths hold deliberately-committed demo /

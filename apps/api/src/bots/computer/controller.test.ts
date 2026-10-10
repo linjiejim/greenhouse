@@ -29,6 +29,8 @@ import {
   type DockerSpawnResult,
   type ExecSpec,
 } from './docker.js';
+import { createDockerHost } from './docker-host.js';
+import type { ComputerStartSpec } from './host.js';
 import { ComputerUnavailableError } from './errors.js';
 import { computerContainerName, computerVolumeName, LABEL_NAMESPACE, LABEL_USER } from './namespace.js';
 
@@ -304,6 +306,8 @@ function setup(
   const store = new FakeStore(clock, { tryLock: opts.tryLock });
   const docker = new FakeDocker(clock);
   const config = {
+    driver: 'docker',
+    e2b: null,
     image: 'greenhouse/bot-computer:latest',
     runtime: 'runsc',
     hardened: true,
@@ -333,9 +337,18 @@ function setup(
     runtimeErrors: [] as ComputerRuntimeError[],
     hostDisk: [] as HostDiskReading[],
   };
+  // Every start the host is asked for, with what the controller handed it.
+  const starts: ComputerStartSpec[] = [];
+  const dockerHost = createDockerHost(docker.client(), { now: () => clock.now() });
   const controller = createComputerController({
     store,
-    docker: docker.client(),
+    host: {
+      ...dockerHost,
+      start: (row, spec) => {
+        starts.push(spec);
+        return dockerHost.start(row, spec);
+      },
+    },
     environment: async () => env,
     userIsActive: async (userId) => (opts.active ? opts.active(userId) : true),
     awaitingHuman: async (userId) => opts.awaitingHuman?.(userId) ?? false,
@@ -351,7 +364,7 @@ function setup(
       env.hostDisk = reading;
     },
   });
-  return { clock, store, docker, controller, env, events };
+  return { clock, store, docker, controller, env, events, starts };
 }
 
 const MIN = 60_000;
@@ -378,6 +391,20 @@ describe('computer lifecycle', () => {
     // Running already: no second docker run.
     await controller.ensureRunning('u1');
     expect(docker.log.filter((l) => l.startsWith('run'))).toHaveLength(1);
+  });
+
+  it('tells the host a reset is one (everything but the files starts over), and nothing else is', async () => {
+    const { controller, store, starts } = setup();
+    await controller.ensureRunning('u1');
+    await controller.stop('u1', 'idle');
+    await controller.ensureRunning('u1');
+    await controller.reset('u1', { wipe: false });
+    expect(starts.map((spec) => spec.fresh)).toEqual([false, false, true]);
+    // The intent is spent: the start after it is an ordinary one.
+    await controller.stop('u1', 'user');
+    await controller.ensureRunning('u1');
+    expect(starts.at(-1)?.fresh).toBe(false);
+    expect((await store.get('u1'))?.state).toBe('running');
   });
 
   it('evicts the least recently used idle computer when full', async () => {

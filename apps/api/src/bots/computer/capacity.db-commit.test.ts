@@ -15,6 +15,7 @@ import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 
 import type { BotsComputerConfig } from './config.js';
 import { createComputerController, type Clock, type ControllerEnvironment } from './controller.js';
+import { createDockerHost } from './docker-host.js';
 import type { ContainerSummary, DockerClient, DockerSpawnResult } from './docker.js';
 import { ComputerUnavailableError } from './errors.js';
 
@@ -22,6 +23,8 @@ let db: DatabaseProvider;
 const userIds: string[] = [];
 
 const config: BotsComputerConfig = {
+  driver: 'docker',
+  e2b: null,
   image: 'greenhouse/bot-computer:latest',
   runtime: 'runc',
   hardened: false,
@@ -93,7 +96,7 @@ function controllerFor(docker: DockerClient, maxRunning: number) {
   const env: ControllerEnvironment = { config, maxRunning, idleMinutes: 15, urlBlocklist: [], imageId: null };
   return createComputerController({
     store: db.botComputers,
-    docker,
+    host: createDockerHost(docker),
     environment: async () => env,
     userIsActive: async () => true,
     clock: fastClock(),

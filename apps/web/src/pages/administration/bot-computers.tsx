@@ -293,7 +293,12 @@ export function BotComputersPanel() {
         {view ? (
           <>
             <RuntimeSection view={view} onChanged={reload} />
-            <CapacitySection settings={view.settings} running={running} onSaved={reload} />
+            <CapacitySection
+              settings={view.settings}
+              running={running}
+              hosted={view.runtime.driver === 'e2b'}
+              onSaved={reload}
+            />
           </>
         ) : loadError ? (
           <EmptyState
@@ -373,7 +378,7 @@ function RuntimeSection({ view, onChanged }: { view: AdminBotComputersView; onCh
   return (
     <SettingsSection
       title={t('botsAdmin.runtimeTitle')}
-      description={t('botsAdmin.runtimeDesc')}
+      description={t(runtime.driver === 'e2b' ? 'botsAdmin.runtimeDescHosted' : 'botsAdmin.runtimeDesc')}
       icon={Server}
       action={
         <Button
@@ -394,7 +399,11 @@ function RuntimeSection({ view, onChanged }: { view: AdminBotComputersView; onCh
           <span className="text-sm font-medium text-fg">{t(copy.key)}</span>
           {runtime.state === 'ready' && (
             <Tag tone={runtime.hardened ? 'success' : 'warning'}>
-              {runtime.hardened ? t('botsAdmin.hardened') : t('botsAdmin.devMode')}
+              {runtime.driver === 'e2b'
+                ? t('botsAdmin.hostedBadge')
+                : runtime.hardened
+                  ? t('botsAdmin.hardened')
+                  : t('botsAdmin.devMode')}
             </Tag>
           )}
           {runtime.reason && (
@@ -439,6 +448,8 @@ const CHECK_KEYS: Record<string, TranslationKey> = {
   egress: 'botsAdmin.check_egress',
   capacity: 'botsAdmin.check_capacity',
   host_disk: 'botsAdmin.check_host_disk',
+  provider: 'botsAdmin.check_provider',
+  template: 'botsAdmin.check_template',
 };
 
 function CheckRow({ check }: { check: BotComputerCheck }) {
@@ -489,10 +500,13 @@ function CheckRow({ check }: { check: BotComputerCheck }) {
 function CapacitySection({
   settings,
   running,
+  hosted,
   onSaved,
 }: {
   settings: AdminBotComputersView['settings'];
   running: number;
+  /** Hosted sandboxes sleep (pause) instead of being removed, and the provider plan caps concurrency. */
+  hosted: boolean;
   onSaved: () => void;
 }) {
   const t = useT();
@@ -539,7 +553,7 @@ function CapacitySection({
       <FormGrid>
         <FormField
           label={t('botsAdmin.idleMinutes')}
-          help={t('botsAdmin.idleMinutesHelp')}
+          help={t(hosted ? 'botsAdmin.idleMinutesHelpHosted' : 'botsAdmin.idleMinutesHelp')}
           error={idleValue == null ? t('botsAdmin.err_idleRange') : undefined}
         >
           <Input
@@ -551,7 +565,7 @@ function CapacitySection({
         </FormField>
         <FormField
           label={t('botsAdmin.maxRunning')}
-          help={t('botsAdmin.maxRunningHelp')}
+          help={t(hosted ? 'botsAdmin.maxRunningHelpHosted' : 'botsAdmin.maxRunningHelp')}
           error={maxValue == null ? t('botsAdmin.err_maxRange') : undefined}
         >
           <Input

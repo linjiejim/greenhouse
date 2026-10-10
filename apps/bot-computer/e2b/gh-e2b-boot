@@ -1,0 +1,60 @@
+#!/bin/bash
+# gh-e2b-boot — run by the API (root, through the provider's agent) on every start of a
+# hosted computer.
+#
+#   (no flag)        a new sandbox: the bridge secrets, the member's settings, the bridges,
+#                    then the desktop
+#   --bridges-only   the same without the desktop (a home moves in first; then no flag)
+#   --resume         a woken sandbox: the secrets again, the bridges up; the desktop must
+#                    still be running — exit 4 when it is not
+#   --secrets-only   rewrite the bridge secrets (the deployment's signing key changed)
+#
+# A sandbox's desktop starts exactly once, before any agent process exists in it: the
+# display's names (the X socket in /tmp, its abstract twin) could otherwise be taken by a
+# process the Bot left running. So settings never change in place (exit 3 when they
+# differ) and a desktop that is down is never started again here (exit 4) — the API moves
+# the home into a new sandbox instead.
+#
+# env: GH_BRIDGE_SECRET_BROWSER, GH_BRIDGE_SECRET_AGENT, GH_COMPUTER_ENV_B64 (the env
+# file, base64; not needed for --secrets-only)
+set -euo pipefail
+
+mode="${1:-}"
+: "${GH_BRIDGE_SECRET_BROWSER:?}" "${GH_BRIDGE_SECRET_AGENT:?}"
+umask 077
+install -d -m 0755 /etc/gh-bridge /etc/gh-computer
+
+write_secret() {
+  local owner="$1" value="$2" tmp
+  tmp=$(mktemp /etc/gh-bridge/.secret.XXXXXX)
+  printf '%s' "$value" >"$tmp"
+  chown "$owner:$owner" "$tmp"
+  chmod 0400 "$tmp"
+  mv -f "$tmp" "/etc/gh-bridge/$owner.secret"
+}
+write_secret browser "$GH_BRIDGE_SECRET_BROWSER"
+write_secret agent "$GH_BRIDGE_SECRET_AGENT"
+[ "$mode" = --secrets-only ] && exit 0
+
+: "${GH_COMPUTER_ENV_B64:?}"
+next=$(printf '%s' "$GH_COMPUTER_ENV_B64" | base64 -d)
+if [ ! -f /etc/gh-computer/env ]; then
+  printf '%s\n' "$next" >/etc/gh-computer/env.next
+  chmod 0644 /etc/gh-computer/env.next
+  mv -f /etc/gh-computer/env.next /etc/gh-computer/env
+elif [ "$(cat /etc/gh-computer/env)" != "$next" ]; then
+  echo "gh-e2b-boot: this computer was started with other settings" >&2
+  exit 3
+fi
+
+systemctl start gh-bridge-browser.socket gh-bridge-agent.socket gh-bridge-browser.service gh-bridge-agent.service
+case "$mode" in
+  --bridges-only) exit 0 ;;
+  --resume)
+    if ! systemctl is-active --quiet gh-desktop.service; then
+      echo "gh-e2b-boot: the desktop is not running" >&2
+      exit 4
+    fi
+    ;;
+  *) systemctl start gh-desktop.service ;;
+esac

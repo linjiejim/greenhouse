@@ -72,7 +72,6 @@ export interface EnsureOptions {
 
 /** Largest file `writeComputerFile` accepts. */
 const MAX_WRITE_BYTES = 64 * 1024 * 1024;
-const CDP_TUNNEL_ARGV = ['socat', 'STDIO', 'UNIX-CONNECT:/tmp/browser/cdp.sock'];
 
 // ─── Ensure ───────────────────────────────────────────────
 
@@ -85,7 +84,7 @@ export async function ensureComputerReady(userId: string, opts: EnsureOptions = 
   await ensureRunningRow(userId, opts);
 }
 
-/** Map a docker failure on a running container to the member's row and a tool-friendly error. */
+/** Map an exec failure on a running computer (gone, stopped) to the member's row and a tool-friendly error. */
 export async function containerFailed(userId: string, err: unknown): Promise<never> {
   if (err instanceof ComputerDockerError && (err.code === 'not_found' || err.code === 'not_running')) {
     try {
@@ -128,9 +127,9 @@ function dropBrowser(userId: string): void {
 }
 
 async function connectBrowser(userId: string, container: string, startedAt: string | null): Promise<BrowserEntry> {
-  const { docker } = requireComputerRuntime();
+  const { host } = requireComputerRuntime();
   const bridge = await openCdpBridge({
-    spawnTunnel: () => docker.execStream(container, 'browser', CDP_TUNNEL_ARGV),
+    spawnTunnel: () => host.openTunnel(container, 'cdp'),
   });
   try {
     // noDefaults: no download redirection to the API host, no focus/media
@@ -309,10 +308,10 @@ export function abortComputerActions(userId: string, reason: ComputerAbortReason
 
 export async function execInComputer(userId: string, command: string, opts: ExecOptions): Promise<ExecResult> {
   const row = await ensureRunningRow(userId, { signal: opts.signal });
-  const { docker, config } = requireComputerRuntime();
+  const { host, config } = requireComputerRuntime();
   const action = trackAction(userId, opts.signal);
   try {
-    return await runShell(docker, row.container_name, command, {
+    return await runShell(host, row.container_name, command, {
       user: opts.user ?? 'agent',
       timeoutSec: opts.timeoutSec,
       signal: action.signal,
@@ -368,10 +367,10 @@ export async function readComputerFile(
 ): Promise<Buffer> {
   checkPath(path);
   const row = await ensureRunningRow(userId, { signal: opts.signal });
-  const { docker } = requireComputerRuntime();
+  const { host } = requireComputerRuntime();
   const action = trackAction(userId, opts.signal);
   try {
-    const result = await docker.exec({
+    const result = await host.exec({
       container: row.container_name,
       user: 'agent',
       cwd: '/home/agent',
@@ -405,10 +404,10 @@ export async function writeComputerFile(
     throw new ComputerDockerError('too_large', `Files up to ${MAX_WRITE_BYTES / 1024 / 1024} MiB can be written`);
   }
   const row = await ensureRunningRow(userId, { signal: opts.signal });
-  const { docker } = requireComputerRuntime();
+  const { host } = requireComputerRuntime();
   const action = trackAction(userId, opts.signal);
   try {
-    const result = await docker.exec({
+    const result = await host.exec({
       container: row.container_name,
       user: 'agent',
       cwd: '/home/agent',
@@ -438,11 +437,11 @@ const DESKTOP_ENV = { DISPLAY: ':0', XAUTHORITY: '/home/browser/.Xauthority', HO
  * a thumbnail must not keep a computer alive (or wake it).
  */
 export async function captureDesktop(userId: string): Promise<Buffer> {
-  const { docker } = requireComputerRuntime();
+  const { host } = requireComputerRuntime();
   const row = await getDb().botComputers.get(userId);
   if (row?.state !== 'running') throw new ComputerUnavailableError('stopped', 'The computer is not running');
   try {
-    const result = await docker.exec({
+    const result = await host.exec({
       container: row.container_name,
       user: 'browser',
       env: DESKTOP_ENV,
@@ -467,11 +466,11 @@ export async function captureDesktop(userId: string): Promise<Buffer> {
  * desktop. Never starts the computer (`stopped` when it is not running).
  */
 export async function restoreBrowserWindow(userId: string): Promise<void> {
-  const { docker } = requireComputerRuntime();
+  const { host } = requireComputerRuntime();
   const row = await getDb().botComputers.get(userId);
   if (row?.state !== 'running') throw new ComputerUnavailableError('stopped', 'The computer is not running');
   try {
-    const result = await docker.exec({
+    const result = await host.exec({
       container: row.container_name,
       user: 'browser',
       env: DESKTOP_ENV,

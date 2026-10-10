@@ -34,6 +34,38 @@ function reasonOf(fn: () => unknown): string | null {
 }
 
 describe('bots computer config', () => {
+  it('BOTS_COMPUTER_DRIVER=e2b: a provider key instead of Docker; the size as whole vCPUs and even MiB', () => {
+    const hosted = { NODE_ENV: 'production', DATABASE_URL: DB, BOTS_COMPUTER_DRIVER: 'e2b' };
+    expect(reasonOf(() => loadBotsComputerConfig(hosted))).toBe('config_invalid');
+    const config = loadBotsComputerConfig({
+      ...hosted,
+      BOTS_COMPUTER_E2B_API_KEY: 'e2b_test',
+      BOTS_COMPUTER_MEMORY: '1.5g',
+      BOTS_COMPUTER_CPUS: '1.5',
+    });
+    // No Docker network, no unhardened mode: a microVM per computer is the boundary.
+    expect(config).toMatchObject({ driver: 'e2b', hardened: true, runtime: 'e2b', network: '', networkManaged: false });
+    expect(config.e2b).toEqual({ apiKey: 'e2b_test', domain: null, cpuCount: 2, memoryMB: 1536 });
+    expect(
+      loadBotsComputerConfig({
+        ...hosted,
+        BOTS_COMPUTER_E2B_API_KEY: 'k',
+        BOTS_COMPUTER_E2B_DOMAIN: 'CN-Beijing-1.sandbox.ppio.com',
+        BOTS_COMPUTER_MEMORY: '2049m',
+      }).e2b,
+    ).toMatchObject({ domain: 'cn-beijing-1.sandbox.ppio.com', memoryMB: 2050 });
+    expect(
+      reasonOf(() =>
+        loadBotsComputerConfig({ ...hosted, BOTS_COMPUTER_E2B_API_KEY: 'k', BOTS_COMPUTER_E2B_DOMAIN: 'https://x/y' }),
+      ),
+    ).toBe('config_invalid');
+    expect(reasonOf(() => loadBotsComputerConfig({ ...hosted, BOTS_COMPUTER_DRIVER: 'kvm' }))).toBe('config_invalid');
+    // The docker driver is the default and carries no provider.
+    expect(
+      loadBotsComputerConfig({ NODE_ENV: 'production', DATABASE_URL: DB, BOTS_COMPUTER_NETWORK: 'gh-bots' }),
+    ).toMatchObject({ driver: 'docker', e2b: null });
+  });
+
   it('defaults to hardened gVisor and requires a dedicated network', () => {
     expect(reasonOf(() => loadBotsComputerConfig({ NODE_ENV: 'production', DATABASE_URL: DB }))).toBe(
       'network_invalid',

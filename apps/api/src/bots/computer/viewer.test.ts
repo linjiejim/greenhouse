@@ -9,11 +9,11 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { heartbeatViewer, execStream, unsubscribe, onLeaseChange } = vi.hoisted(() => {
+const { heartbeatViewer, openTunnel, unsubscribe, onLeaseChange } = vi.hoisted(() => {
   const unsubscribe = vi.fn();
   return {
     heartbeatViewer: vi.fn<(userId: string) => Promise<void>>(async () => {}),
-    execStream: vi.fn(),
+    openTunnel: vi.fn(),
     unsubscribe,
     onLeaseChange: vi.fn(() => unsubscribe),
   };
@@ -32,7 +32,7 @@ vi.mock('./runtime.js', () => ({
     controller: {
       ensureRunning: async () => ({ container_name: 'c1', lease_controller: 'bot', lease_epoch: 3 }),
     },
-    docker: { execStream },
+    host: { openTunnel },
   }),
 }));
 
@@ -72,7 +72,7 @@ const flush = async () => {
 beforeEach(() => {
   vi.useFakeTimers();
   heartbeatViewer.mockReset().mockImplementation(async () => {});
-  execStream.mockReset();
+  openTunnel.mockReset();
   onLeaseChange.mockClear();
   unsubscribe.mockClear();
 });
@@ -95,7 +95,7 @@ describe('computer viewer socket', () => {
     release();
     await opening;
 
-    expect(execStream).not.toHaveBeenCalled();
+    expect(openTunnel).not.toHaveBeenCalled();
     expect(onLeaseChange).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(heartbeatViewer).toHaveBeenCalledTimes(1); // no leaked 20 s heartbeat
@@ -104,11 +104,11 @@ describe('computer viewer socket', () => {
 
   it('drops a viewer that misses a pong (terminate, no more heartbeats), and keeps one that answers', async () => {
     const tunnel = fakeTunnel();
-    execStream.mockReturnValue(tunnel);
+    openTunnel.mockReturnValue(tunnel);
     const silent = new FakeSocket();
     const session = viewerSession(claims);
     await session.onOpen(new Event('open'), context(silent));
-    expect(execStream).toHaveBeenCalledWith('c1', 'browser', expect.any(Array));
+    expect(openTunnel).toHaveBeenCalledWith('c1', 'vnc');
     expect(onLeaseChange).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(20_000);
@@ -123,7 +123,7 @@ describe('computer viewer socket', () => {
     expect(heartbeatViewer.mock.calls.length).toBe(heartbeats);
 
     // A browser answering every ping (its network stack does, even in a throttled tab) stays.
-    execStream.mockReturnValue(fakeTunnel());
+    openTunnel.mockReturnValue(fakeTunnel());
     const answering = new FakeSocket();
     answering.ping.mockImplementation(() => answering.emit('pong'));
     await viewerSession(claims).onOpen(new Event('open'), context(answering));

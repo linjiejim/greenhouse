@@ -1,0 +1,12 @@
+# The browser bridge's port, held by PID 1 from the template's snapshot on: it is never
+# free — not even while the bridge restarts — so the agent uid can never listen there
+# and collect the secret the API sends with every upgrade.
+[Unit]
+Description=Greenhouse computer bridge port (browser)
+
+[Socket]
+ListenStream=127.0.0.1:7681
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

@@ -26,7 +26,7 @@ vi.mock('../lease-events.js', () => ({ onLeaseChange: vi.fn(() => () => {}) }));
 vi.mock('../runtime.js', () => ({
   requireComputerRuntime: () => ({
     controller: { ensureRunning },
-    docker: { execStream },
+    host: { execStream },
     config: { proxy: 'http://proxy.internal:3128' },
   }),
 }));

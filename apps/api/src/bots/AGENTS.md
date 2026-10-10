@@ -12,7 +12,8 @@ bots/
 │               #   prompt / projection（历史投影）/ digest（滚动摘要）/ context-trim（回合内观测裁剪）、
 │               #   inbox（单写者队列）、run-slot（跨进程互斥）、requests / approvals（「需要你」卡片）、
 │               #   tasks / background（后台任务）、tools-assembly（工具面）、taint（污染判定兜底）
-├── computer/   # 电脑：config / runtime（预检 + 生命周期循环）/ controller（DB 权威状态机）/ docker、
+├── computer/   # 电脑：config / runtime（预检 + 生命周期循环）/ controller（DB 权威状态机）/ host（宿主接缝：
+│               #   docker-host + docker；e2b-host + e2b-bridge + e2b-template）、
 │               #   access（exec 隧道、文件、浏览器连接、打码集合）/ browser-session / tab-leases / snapshot、
 │               #   lease（接管租约）/ viewer + rfb-filter（观看 WS）/ view-token / routes（含管理端）
 ├── vault/      # 密码库：crypto（AAD）/ origin / service / fill（代填）/ totp / turn-observations / routes
@@ -111,10 +112,29 @@ bots/
   不给 mail 与其他会话；初始上下文只有成员确认卡上的完整 brief，不自动注入历史、摘要、笔记索引、
   记忆或个人/Bot 指令。需要本会话私有上下文时显式调用 `conversation notes/recall`；它们与文件、
   内部资源一样，在读取前就锁住后续全部浏览器动作（包括滚动/查看/等待，已加载页面的事件也能外发数据）。汇报经单写者回到对话。
-- **电脑零端口**：容器不发布端口、不访问 API；一切走 `docker exec`（VNC / CDP 是容器内 0600 的
+- **电脑零端口**（docker 宿主）：容器不发布端口、不访问 API；一切走 `docker exec`（VNC / CDP 是容器内 0600 的
   Unix socket，`agent` uid 读不到 `browser` uid 的东西）。硬化模式必须：gVisor `runsc`、IPv6 off +
   ICC off 网桥、`scripts/cloud-agent-net.sh --profile bots` 的出口规则（预检 + 每 10 分钟复验 +
   启动后探测宿主 API 端口与元数据地址必须不通）；任何一项不过只关电脑，Bots 照常聊天。
+- **托管宿主（`BOTS_COMPUTER_DRIVER=e2b`）= 端口 + 两道门**（2026-10-09 用户拍板，[spec](../../../../docs/specs/20261010-hosted-computer-sandbox.md)）：
+  每台电脑一个 E2B 协议沙箱（E2B / PPIO，一个微虚拟机），`bot_computers.container_name` 存沙箱 id。沙箱里两个
+  gh-bridge（systemd，browser 一个 :7681 管 VNC/CDP/browser 侧命令，agent 一个 :7682 管 shell/终端/文件），只听
+  127.0.0.1，由服务商的边缘按 `allowPublicTraffic:false` 的流量 token 放行，桥再验本 uid 的密钥（HMAC(TOKEN_SIGNING_KEY,
+  沙箱 id + uid)，存 `/etc/gh-bridge/<uid>.secret` 0400）——agent 能连 loopback，拿不到 browser 的密钥。SDK 的命令接口
+  只给 root 用（`gh-e2b-boot`：密钥、成员设置、起 unit），**成员的数据从不走它**（它把输出当文本解码、全量攒在内存）。
+  模板 = `apps/bot-computer/Dockerfile` + `apps/bot-computer/e2b/`（桥、unit、`gh-e2b-harden` 启动命令：锁账号、去所有
+  setuid、停 sshd、收回 `/usr/local`），名字按内容哈希（`gh-computer-c<契约>-<hash>`），运行时预检缺了就在服务商侧构建。
+  停 = 暂停（内存进程都在，恢复约 1 s）；模板换代、成员设置变了或成员「重置」= 新沙箱 + 两个 uid 各自 tar 搬 home，
+  旧沙箱暂停留 3 天兜底；服务商侧超时（闲置 + 10 分钟，≤1 h，健康循环续期）是 API 挂了时的自动暂停——每次启动都核对
+  服务商确实是「超时暂停」（报 kill 就拒绝：`provider_unsupported`，宁可不开也不丢 home）。出口靠服务商（私网 / 网关不通），
+  `169.254.169.254` 是 Firecracker MMDS（只有沙箱 id 之类），所以托管宿主不跑出口探针。
+  - **桥端口归 PID 1**：两个端口是 systemd socket unit（模板构建时就绑定、进快照），桥只从 fd 3 接 socket、自己绑端口直接
+    退出——端口从不空出来，agent 抢不到端口去收 browser 的密钥（审查发现的抢端口攻击）。桥崩了 / 重启也一样。
+  - **一个沙箱的桌面只启动一次，而且在任何 agent 进程出现之前**：`/tmp` 不像 docker 那样每次是新的 tmpfs，X 的套接字名
+    （含抽象命名空间）可能被 Bot 留下的进程抢先占住。所以设置从不原地改（`gh-e2b-boot` 遇到不同设置 exit 3）、恢复时
+    发现桌面不在也不原地重启（exit 4），都走「新沙箱 + 搬 home」；`gh-e2b-rundir` 对被抢占的运行目录拒绝启动而不是修复。
+  - 模板的加固（`gh-e2b-harden`）做完要**逐项核对**（无 setuid / 文件 capability、账号已锁、sshd 已屏蔽、`/usr/local` 不可写、
+    端口已归 PID 1）才写构建在等的标记，任何一项不过构建就失败。签名密钥换了：桥第一次拒绝时 API 以 root 重写密钥再试一次。
 - **镜像契约 2**：API 只认 `IMAGE_CONTRACT` 同版本的镜像（`greenhouse.bots.computer.contract`），升级 API 必须
   重建镜像。契约 2 = 桌面（tint2 任务栏 + `gh-window` 看门狗：所有浏览器窗口都被最小化 3 s 后自动恢复）、
   软件 WebGL（`--enable-unsafe-swiftshader`，边界仍是 gVisor）、浏览器语言用 `LANGUAGE` + `--accept-lang`
@@ -183,6 +203,10 @@ bots/
   需要 Playwright headless shell（`pnpm exec playwright install --only-shell chromium`）。CI 的 test
   job 已安装；`CI` 下缺浏览器直接失败。fork 的 CI 若跑 `pnpm test` 要加同一步，或设
   `BOTS_BROWSER_TESTS=skip`。
+- 托管宿主：`e2b-bridge.test.ts` 在本机真跑 gh-bridge（协议、二进制、上限、超时、隧道）；`e2b-host.test.ts` 用假服务商
+  测生命周期（恢复 / 新建 / 搬 home / 失败回滚 / 孤儿规则 / 续期）；真服务商的端到端是 `e2b-host.live.test.ts`
+  （`BOTS_E2B_LIVE=1 BOTS_COMPUTER_E2B_API_KEY=… [BOTS_COMPUTER_E2B_DOMAIN=…]`，PPIO 也用它验）。本地整站：
+  `BOTS_COMPUTER_ENABLED=1 BOTS_COMPUTER_DRIVER=e2b BOTS_COMPUTER_E2B_API_KEY=… node scripts/run-dev.mjs up`。
 - 真容器套件（`computer.live.db-commit.test.ts`、`browser.live.db-commit.test.ts`）只在 `BOTS_LIVE=1` 且
   本机有镜像时跑；镜像本身用 `scripts/bot-computer-smoke.sh` 验（双 uid 隔离、零端口、CDP 中继，以及
   契约 2 的任务栏 / 窗口恢复 / WebGL / 语言 / gh-term / gh-jobs / gh-agent-kill / 用户级安装持久化）。

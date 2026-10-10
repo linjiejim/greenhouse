@@ -1,0 +1,114 @@
+#!/bin/bash
+# gh-e2b-harden — the hosted template's start command (root). It runs once, while the
+# provider builds the template, and its effect is part of the memory and disk snapshot
+# every computer starts from. It closes what the provider's provisioning opened, which a
+# docker computer never has (there: --read-only, every capability dropped,
+# no-new-privileges):
+#   - its default account `user` (passwordless sudo) and root get no password at all;
+#   - no setuid / setgid program and no file capability is left (sudo, su, fusermount3,
+#     ping …): nothing turns the agent uid into anyone else;
+#   - sshd (enabled by the provisioning) is stopped and masked;
+#   - /usr/local, which the provisioning makes world-writable, and /opt/gh-bridge are
+#     root's again (the agent must not replace a helper the API runs as browser);
+#   - the bridges' ports are taken by PID 1 (socket units) before any other process
+#     could, and the desktop's runtime directories exist, owned as they must be.
+# Then it CHECKS all of that and only writes the marker the build waits for when every
+# check passes — a provider change that defeats a step fails the build instead of
+# shipping a template where the agent uid can become root.
+# Nothing of the computer itself starts here: the API boots it per member after a
+# create (gh-e2b-boot), with that member's settings.
+set -u
+
+fail() {
+  echo "gh-e2b-harden: $*" >&2
+  exit 1
+}
+
+passwd -l root >/dev/null 2>&1 || true
+if id user >/dev/null 2>&1; then
+  passwd -l user >/dev/null 2>&1 || true
+  gpasswd -d user sudo >/dev/null 2>&1 || true
+fi
+rm -f /etc/sudoers.d/* 2>/dev/null || true
+
+# setuid / setgid bits and file capabilities, on the root filesystem.
+python3 - <<'PY' || fail "could not strip setuid bits and file capabilities"
+import os, stat
+SKIP = ("/proc", "/sys", "/dev", "/run", "/tmp")
+root_dev = os.stat("/").st_dev
+for top, dirs, files in os.walk("/"):
+    dirs[:] = [d for d in dirs if not os.path.join(top, d).startswith(SKIP)
+               and os.lstat(os.path.join(top, d)).st_dev == root_dev]
+    for name in files:
+        path = os.path.join(top, name)
+        try:
+            st = os.lstat(path)
+        except OSError:
+            continue
+        if not stat.S_ISREG(st.st_mode):
+            continue
+        if st.st_mode & (stat.S_ISUID | stat.S_ISGID):
+            os.chmod(path, st.st_mode & ~(stat.S_ISUID | stat.S_ISGID) & 0o7777)
+        try:
+            os.removexattr(path, "security.capability", follow_symlinks=False)
+        except OSError:
+            pass
+PY
+
+systemctl disable --now ssh.service ssh.socket sshd.service >/dev/null 2>&1 || true
+systemctl mask ssh.service ssh.socket >/dev/null 2>&1 || true
+pkill -x sshd 2>/dev/null || true
+
+chown -R root:root /usr/local /opt/gh-bridge
+chmod -R go-w /usr/local /opt/gh-bridge
+
+systemctl daemon-reload
+systemctl start gh-bridge-browser.socket gh-bridge-agent.socket
+install -d -m 0755 /etc/gh-bridge /etc/gh-computer /var/lib/gh-computer
+mkdir -p /tmp/.X11-unix && chown root:root /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
+mkdir -p /tmp/browser && chown browser:browser /tmp/browser && chmod 0700 /tmp/browser
+
+# ── Checks: the marker is written only when every one holds ──
+python3 - <<'PY' || fail "a setuid / setgid file or a file capability is left"
+import os, stat, sys
+SKIP = ("/proc", "/sys", "/dev", "/run", "/tmp")
+root_dev = os.stat("/").st_dev
+left = []
+for top, dirs, files in os.walk("/"):
+    dirs[:] = [d for d in dirs if not os.path.join(top, d).startswith(SKIP)
+               and os.lstat(os.path.join(top, d)).st_dev == root_dev]
+    for name in files:
+        path = os.path.join(top, name)
+        try:
+            st = os.lstat(path)
+        except OSError:
+            continue
+        if stat.S_ISREG(st.st_mode) and st.st_mode & (stat.S_ISUID | stat.S_ISGID):
+            left.append(path)
+        try:
+            os.getxattr(path, "security.capability", follow_symlinks=False)
+            left.append(path)
+        except OSError:
+            pass
+if left:
+    print("\n".join(left[:10]), file=sys.stderr)
+    sys.exit(1)
+PY
+for account in root user; do
+  id "$account" >/dev/null 2>&1 || continue
+  [ "$(passwd -S "$account" | awk '{print $2}')" = L ] || fail "$account still has a usable password"
+done
+[ -z "$(ls -A /etc/sudoers.d 2>/dev/null)" ] || fail "/etc/sudoers.d is not empty"
+! pgrep -x sshd >/dev/null || fail "sshd still runs"
+for unit in ssh.service ssh.socket; do
+  state=$(systemctl is-enabled "$unit" 2>/dev/null || true)
+  case "$state" in masked | not-found | "") ;; *) fail "$unit is $state" ;; esac
+done
+[ -z "$(find /usr/local /opt/gh-bridge ! -type l -perm /022 -print -quit)" ] ||
+  fail "/usr/local or /opt/gh-bridge is writable by group or others"
+systemctl is-active --quiet gh-bridge-browser.socket gh-bridge-agent.socket ||
+  fail "the bridge ports are not held by PID 1"
+[ "$(stat -c '%U %a' /tmp/browser)" = "browser 700" ] || fail "/tmp/browser is not browser's 0700"
+
+touch /var/lib/gh-computer/hardened
+exec sleep infinity

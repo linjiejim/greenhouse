@@ -23,7 +23,10 @@ import { Readable } from 'node:stream';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
 
+import type { ExecOutcome, ExecSpec } from './host.js';
 import { computerLabels } from './namespace.js';
+
+export type { ExecSpec } from './host.js';
 
 /** safeJsonParse with the caller's expected shape (still validated field by field). */
 function parseJson<T>(text: string): T | null {
@@ -138,9 +141,16 @@ export type ComputerRuntimeReason =
   | 'runtime_missing'
   | 'image_missing'
   | 'image_outdated'
-  | 'network_invalid';
+  | 'network_invalid'
+  // The hosted driver (e2b-host.ts): the provider itself, or the template every computer starts from.
+  | 'provider_unreachable'
+  | 'provider_auth'
+  | 'provider_unsupported'
+  | 'template_missing'
+  | 'template_building'
+  | 'template_failed';
 
-/** The Docker host cannot run computers at all (see the file header). */
+/** The host cannot run computers at all (see the file header): Docker, or the sandbox provider. */
 export class ComputerRuntimeError extends Error {
   constructor(
     readonly reason: ComputerRuntimeReason,
@@ -214,17 +224,8 @@ export interface DockerSpawnOptions {
   signal?: AbortSignal;
 }
 
-export interface DockerSpawnResult {
-  code: number | null;
-  signal: NodeJS.Signals | null;
-  stdout: Buffer;
-  stderr: string;
-  stdoutTruncated: boolean;
-  /** The CLI was killed at `timeoutMs`. */
-  timedOut: boolean;
-  /** The CLI was killed because `signal` aborted. */
-  aborted: boolean;
-}
+/** A finished `docker` CLI call (`timedOut` / `aborted`: the CLI was killed). The exec surface's result type. */
+export type DockerSpawnResult = ExecOutcome;
 
 export type DockerSpawner = (args: string[], options?: DockerSpawnOptions) => Promise<DockerSpawnResult>;
 
@@ -435,20 +436,6 @@ export interface NetworkInfo {
 export interface VolumeSummary {
   name: string;
   labels: Record<string, string>;
-}
-
-export interface ExecSpec {
-  container: string;
-  user: 'agent' | 'browser';
-  argv: string[];
-  cwd?: string;
-  env?: Record<string, string>;
-  /** Attached as stdin (`docker exec -i`), bytes or a stream; omitted = no stdin. */
-  input?: Buffer | Readable;
-  timeoutMs: number;
-  maxStdoutBytes?: number;
-  maxStderrBytes?: number;
-  signal?: AbortSignal;
 }
 
 export interface DockerClient {

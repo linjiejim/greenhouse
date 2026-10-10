@@ -1,0 +1,11 @@
+# The agent bridge's port, held by PID 1 from the template's snapshot on (see
+# gh-bridge-browser.socket).
+[Unit]
+Description=Greenhouse computer bridge port (agent)
+
+[Socket]
+ListenStream=127.0.0.1:7682
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

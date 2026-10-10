@@ -24,7 +24,7 @@ vi.mock('../runtime.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../runtime.js')>()),
   requireComputerRuntime: () => ({
     controller: { ensureRunning: async () => ({ container_name: 'c-implicit', last_started_at: 't1' }) },
-    docker: { exec: mocks.exec },
+    host: { exec: mocks.exec },
     config: { proxy: null },
   }),
 }));

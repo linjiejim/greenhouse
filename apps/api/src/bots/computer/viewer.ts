@@ -21,7 +21,6 @@
 
 import { Hono } from 'hono';
 import { upgradeWebSocket } from '@hono/node-server';
-import type { ChildProcess } from 'node:child_process';
 import type { WSContext } from 'hono/ws';
 import type { WebSocket as WsSocket } from 'ws';
 import { getDb } from '@greenhouse/db';
@@ -29,6 +28,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 
 import { userHasFeature } from '../../auth/features.js';
+import type { ComputerProcess } from './host.js';
 import { ComputerUnavailableError } from './errors.js';
 import { computerLifecycleHooks } from './hooks.js';
 import { onLeaseChange } from './lease-events.js';
@@ -45,7 +45,6 @@ const HIGH_WATER_BYTES = 4 * 1024 * 1024;
 const LOW_WATER_BYTES = 1024 * 1024;
 /** Client bytes buffered while the computer starts (the RFB handshake is server-first, so little). */
 const MAX_PENDING_BYTES = 64 * 1024;
-const VNC_TUNNEL_ARGV = ['socat', 'STDIO', 'UNIX-CONNECT:/tmp/browser/vnc.sock'];
 
 /** Close codes the web client acts on (re-fetch a ticket vs. show why). */
 export const VIEWER_CLOSE = {
@@ -126,7 +125,7 @@ export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>)
   const userId = claims.uid;
 
   let raw: WsSocket | null = null;
-  let child: ChildProcess | null = null;
+  let child: ComputerProcess | null = null;
   let closed = false;
   /** Any frame or pong since the last ping proves the browser is still there. */
   let alive = true;
@@ -183,7 +182,7 @@ export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>)
     if (closed) clearInterval(timer);
     else timers.push(timer);
   }
-  function adoptChild(tunnel: ChildProcess): boolean {
+  function adoptChild(tunnel: ComputerProcess): boolean {
     if (closed) {
       tunnel.kill('SIGKILL');
       return false;
@@ -201,7 +200,7 @@ export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>)
     if (row && row.lease_epoch !== lastEpoch) applyLease(row.lease_controller, row.lease_epoch);
   }
 
-  function pumpTunnel(tunnel: ChildProcess, socket: WsSocket): void {
+  function pumpTunnel(tunnel: ComputerProcess, socket: WsSocket): void {
     tunnel.stdout!.on('data', (chunk: Buffer) => {
       if (socket.readyState !== socket.OPEN) return;
       socket.send(chunk, { binary: true });
@@ -230,7 +229,7 @@ export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>)
       register(viewer);
       const db = getDb();
       try {
-        const { controller, docker } = requireComputerRuntime();
+        const { controller, host } = requireComputerRuntime();
         // Opening your own computer may start it, even over the soft disk
         // limit — that is how a member gets in to clean up.
         const row = await controller.ensureRunning(userId, { allowOverQuota: true });
@@ -248,7 +247,7 @@ export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>)
             if (changedUser === userId) applyLease(lease.controller, lease.epoch);
           }),
         );
-        const tunnel = docker.execStream(row.container_name, 'browser', VNC_TUNNEL_ARGV);
+        const tunnel = host.openTunnel(row.container_name, 'vnc');
         if (!adoptChild(tunnel)) return;
         pumpTunnel(tunnel, socket);
         writeToServer(pending.splice(0));

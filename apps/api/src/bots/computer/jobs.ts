@@ -20,7 +20,8 @@ import { getDb } from '@greenhouse/db';
 import type { ComputerProcessLog, ComputerProcessStatus, ComputerProcessView } from '@greenhouse/types/bots';
 import { safeJsonParse } from '@greenhouse/utils/json';
 
-import { ComputerDockerError, type DockerClient } from './docker.js';
+import { ComputerDockerError } from './docker.js';
+import type { ComputerExec } from './host.js';
 import { ComputerUnavailableError } from './errors.js';
 import { requireComputerRuntime } from './runtime.js';
 import { agentEnv } from './shell.js';
@@ -81,7 +82,7 @@ export function parseJobList(stdout: string): ComputerProcessView[] {
 }
 
 interface JobsDeps {
-  docker: () => DockerClient;
+  host: () => Pick<ComputerExec, 'exec'>;
   /** BOTS_COMPUTER_PROXY: a job reaches the same internet as a Bot's shell call. */
   proxy?: () => string | null;
   /** The member's running container, or null when the computer is not running. */
@@ -89,7 +90,7 @@ interface JobsDeps {
 }
 
 const defaultDeps: JobsDeps = {
-  docker: () => requireComputerRuntime().docker,
+  host: () => requireComputerRuntime().host,
   proxy: () => requireComputerRuntime().config.proxy,
   runningContainer: async (userId) => {
     const row = await getDb().botComputers.get(userId);
@@ -104,12 +105,12 @@ async function requireContainer(userId: string, deps: JobsDeps): Promise<string>
 }
 
 async function ghJobs(
-  deps: Pick<JobsDeps, 'docker' | 'proxy'>,
+  deps: Pick<JobsDeps, 'host' | 'proxy'>,
   container: string,
   args: string[],
   opts: { timeoutMs?: number; maxStdoutBytes?: number; signal?: AbortSignal } = {},
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-  const result = await deps.docker().exec({
+  const result = await deps.host().exec({
     container,
     user: 'agent',
     cwd: '/home/agent',
@@ -207,12 +208,9 @@ export async function stopJob(
  * throws: an unreadable answer counts as none, so a broken image cannot keep
  * computers awake forever.
  */
-export async function runningJobCount(
-  container: string,
-  deps: Pick<JobsDeps, 'docker'> = defaultDeps,
-): Promise<number> {
+export async function runningJobCount(container: string, deps: Pick<JobsDeps, 'host'> = defaultDeps): Promise<number> {
   try {
-    const result = await ghJobs({ docker: deps.docker }, container, ['running'], {
+    const result = await ghJobs({ host: deps.host }, container, ['running'], {
       timeoutMs: 10_000,
       maxStdoutBytes: 64,
     });

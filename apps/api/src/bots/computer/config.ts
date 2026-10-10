@@ -1,16 +1,24 @@
 /**
- * Bot computer configuration — the Docker host is `.env` infrastructure
- * (BOTS_COMPUTER_*), the two live knobs are workspace settings
+ * Bot computer configuration — where computers run is `.env` infrastructure
+ * (BOTS_COMPUTER_*: the Docker host, or a hosted sandbox provider with
+ * BOTS_COMPUTER_DRIVER=e2b), the two live knobs are workspace settings
  * (`bots.computer_idle_minutes`, `bots.computer_max_running`), and two things
  * are the member's own: the browser language follows their account locale
  * (BOTS_COMPUTER_LANG overrides it for everyone) and the timezone is the one
  * their browser reported (`bot_computers.timezone`, else BOTS_COMPUTER_TZ).
  *
- * Hardened is the default: gVisor (`runsc`) and a dedicated bridge with IPv6
+ * Docker: hardened is the default — gVisor (`runsc`) and a dedicated bridge with IPv6
  * and inter-container traffic off. The only way out is the local escape hatch
  * BOTS_COMPUTER_ALLOW_UNHARDENED=1, accepted only with NODE_ENV development or
  * test (mirrors cloud-agent/config.ts) — the same image then runs under runc on
  * a per-namespace bridge the API creates itself.
+ *
+ * E2B (BOTS_COMPUTER_DRIVER=e2b): each computer is a sandbox at an
+ * E2B-protocol provider — E2B (default domain) or PPIO in China
+ * (BOTS_COMPUTER_E2B_DOMAIN=cn-beijing-1.sandbox.ppio.com) — with the key in
+ * BOTS_COMPUTER_E2B_API_KEY. A microVM per computer is the boundary, so there
+ * is no unhardened mode and no Docker network; BOTS_COMPUTER_MEMORY /
+ * BOTS_COMPUTER_CPUS size the template (whole vCPUs, an even MiB count).
  *
  * Design: docs/specs/20261005-personal-assistant-bots.md §6.1, §6.3 (+ review R3, R12).
  */
@@ -44,7 +52,22 @@ export class ComputerConfigError extends Error {
   }
 }
 
+export type ComputerDriver = 'docker' | 'e2b';
+
+/** The hosted provider (BOTS_COMPUTER_DRIVER=e2b). */
+export interface E2bConfig {
+  apiKey: string;
+  /** null = the SDK's default (e2b.app). */
+  domain: string | null;
+  /** The template's size (the provider fixes it per template, not per sandbox). */
+  cpuCount: number;
+  memoryMB: number;
+}
+
 export interface BotsComputerConfig {
+  driver: ComputerDriver;
+  /** Set exactly when `driver` is e2b. */
+  e2b: E2bConfig | null;
   image: string;
   /** `docker run --runtime` — always passed explicitly (runsc unless unhardened). */
   runtime: string;
@@ -147,8 +170,36 @@ function hostTimezone(): string {
   }
 }
 
+/** BOTS_COMPUTER_E2B_* (the sizes come from BOTS_COMPUTER_MEMORY / _CPUS). */
+function loadE2bConfig(env: NodeJS.ProcessEnv, memoryBytes: number, cpus: string): E2bConfig {
+  const apiKey = env.BOTS_COMPUTER_E2B_API_KEY?.trim() ?? '';
+  if (!apiKey) {
+    throw new ComputerConfigError(
+      'config_invalid',
+      'BOTS_COMPUTER_DRIVER=e2b needs BOTS_COMPUTER_E2B_API_KEY (the sandbox provider key)',
+    );
+  }
+  const domain = env.BOTS_COMPUTER_E2B_DOMAIN?.trim().toLowerCase() || null;
+  if (domain && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(domain)) {
+    throw new ComputerConfigError(
+      'config_invalid',
+      'BOTS_COMPUTER_E2B_DOMAIN must be a domain such as cn-beijing-1.sandbox.ppio.com',
+    );
+  }
+  // Providers take whole vCPUs (1–8) and an even number of MiB.
+  const cpuCount = Math.min(8, Math.max(1, Math.ceil(Number(cpus))));
+  const mib = Math.ceil(memoryBytes / 1024 ** 2);
+  return { apiKey, domain, cpuCount, memoryMB: mib % 2 === 0 ? mib : mib + 1 };
+}
+
 /** Load and validate BOTS_COMPUTER_*. Throws ComputerConfigError for unsafe or malformed values. */
 export function loadBotsComputerConfig(env: NodeJS.ProcessEnv = process.env): BotsComputerConfig {
+  const driverRaw = env.BOTS_COMPUTER_DRIVER?.trim().toLowerCase() || 'docker';
+  if (driverRaw !== 'docker' && driverRaw !== 'e2b') {
+    throw new ComputerConfigError('config_invalid', 'BOTS_COMPUTER_DRIVER must be docker or e2b');
+  }
+  const driver: ComputerDriver = driverRaw;
+  if (driver === 'e2b') return loadHostedConfig(env);
   const allowUnhardened = flag(env.BOTS_COMPUTER_ALLOW_UNHARDENED);
   if (allowUnhardened && env.NODE_ENV !== 'development' && env.NODE_ENV !== 'test') {
     throw new ComputerConfigError(
@@ -168,10 +219,7 @@ export function loadBotsComputerConfig(env: NodeJS.ProcessEnv = process.env): Bo
     throw new ComputerConfigError('config_invalid', 'BOTS_COMPUTER_RUNTIME is not a valid runtime name');
   }
 
-  const namespace = env.BOTS_COMPUTER_NAMESPACE?.trim() || namespaceFromDatabaseUrl(env.DATABASE_URL);
-  if (!/^[a-z0-9]{1,16}$/.test(namespace)) {
-    throw new ComputerConfigError('config_invalid', 'BOTS_COMPUTER_NAMESPACE must be 1–16 lowercase letters or digits');
-  }
+  const namespace = loadNamespace(env);
 
   const missionNetwork = env.SANDBOX_RUNNER_NETWORK ?? env.CLOUD_AGENT_NETWORK ?? 'cloud-agent';
   const configuredNetwork = env.BOTS_COMPUTER_NETWORK?.trim() || null;
@@ -204,6 +252,51 @@ export function loadBotsComputerConfig(env: NodeJS.ProcessEnv = process.env): Bo
     networkManaged = true;
   }
 
+  return {
+    driver,
+    e2b: null,
+    image: env.BOTS_COMPUTER_IMAGE?.trim() || DEFAULT_COMPUTER_IMAGE,
+    runtime,
+    hardened,
+    network,
+    networkManaged,
+    proxy: parseProxy(env.BOTS_COMPUTER_PROXY),
+    namespace,
+    missionNetwork,
+    ...loadCommon(env),
+  };
+}
+
+/** BOTS_COMPUTER_DRIVER=e2b: no Docker runtime or network; the provider's microVM is the boundary. */
+function loadHostedConfig(env: NodeJS.ProcessEnv): BotsComputerConfig {
+  const common = loadCommon(env);
+  return {
+    driver: 'e2b',
+    e2b: loadE2bConfig(env, common.memoryBytes, common.cpus),
+    image: '',
+    runtime: 'e2b',
+    hardened: true,
+    network: '',
+    networkManaged: false,
+    proxy: parseProxy(env.BOTS_COMPUTER_PROXY),
+    namespace: loadNamespace(env),
+    missionNetwork: env.SANDBOX_RUNNER_NETWORK ?? env.CLOUD_AGENT_NETWORK ?? 'cloud-agent',
+    ...common,
+  };
+}
+
+function loadNamespace(env: NodeJS.ProcessEnv): string {
+  const namespace = env.BOTS_COMPUTER_NAMESPACE?.trim() || namespaceFromDatabaseUrl(env.DATABASE_URL);
+  if (!/^[a-z0-9]{1,16}$/.test(namespace)) {
+    throw new ComputerConfigError('config_invalid', 'BOTS_COMPUTER_NAMESPACE must be 1–16 lowercase letters or digits');
+  }
+  return namespace;
+}
+
+/** What both drivers read the same way: size, language, timezone, job hours. */
+function loadCommon(
+  env: NodeJS.ProcessEnv,
+): Pick<BotsComputerConfig, 'memory' | 'memoryBytes' | 'cpus' | 'timezone' | 'lang' | 'jobMaxHours'> {
   const memory = env.BOTS_COMPUTER_MEMORY?.trim() || '2g';
   const memoryBytes = parseMemoryBytes(memory);
   if (memoryBytes === null || memoryBytes < 512 * 1024 ** 2) {
@@ -232,23 +325,7 @@ export function loadBotsComputerConfig(env: NodeJS.ProcessEnv = process.env): Bo
       `BOTS_COMPUTER_JOB_MAX_HOURS must be a whole number of hours from ${JOB_MAX_HOURS_RANGE.min} to ${JOB_MAX_HOURS_RANGE.max}`,
     );
   }
-
-  return {
-    image: env.BOTS_COMPUTER_IMAGE?.trim() || DEFAULT_COMPUTER_IMAGE,
-    runtime,
-    hardened,
-    network,
-    networkManaged,
-    memory,
-    memoryBytes,
-    cpus,
-    proxy: parseProxy(env.BOTS_COMPUTER_PROXY),
-    namespace,
-    timezone,
-    lang,
-    jobMaxHours,
-    missionNetwork,
-  };
+  return { memory, memoryBytes, cpus, timezone, lang, jobMaxHours };
 }
 
 // ─── Per member: browser language and timezone ───────────
