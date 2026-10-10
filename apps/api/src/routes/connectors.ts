@@ -4,7 +4,7 @@
  *
  * GET    /api/connectors                              — the connectors I can use + my status on each
  * POST   /api/connectors/:id/authorize                — oauth: start my sign-in, answer the provider's URL
- * PUT    /api/connectors/:id/key                      — per_user: verify and store my own key
+ * PUT    /api/connectors/:id/key                      — per_user: verify and store my own key (refused: 400 `code: key_rejected` + `detail`)
  * POST   /api/connectors/:id/test                     — list the tools with my connection
  * DELETE /api/connectors/:id                          — disconnect (an OAuth sign-in is also revoked, best effort)
  * GET    /api/connectors/oauth/callback               — PUBLIC: the provider sends my browser back here
@@ -306,8 +306,12 @@ const connectorRoutes = new Hono<AppEnv>()
     try {
       tools = await discoverMcpTools(target);
     } catch (err) {
-      const reason = (await explainFailedConnect(target)) ?? describeMcpError(err);
-      return c.json({ error: `${row.name} did not accept this key: ${redactSecrets(reason, [key])}` }, 400);
+      const reason = redactSecrets((await explainFailedConnect(target)) ?? describeMcpError(err), [key]);
+      // `detail`: the provider's own answer, for a "details" view — apps word the refusal themselves
+      return c.json(
+        { error: `${row.name} did not accept this key: ${reason}`, code: 'key_rejected', detail: reason },
+        400,
+      );
     }
     const db = getDb();
     await db.mcpServers.saveConnection(user.id, row.id, {

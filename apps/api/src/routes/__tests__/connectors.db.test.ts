@@ -115,6 +115,9 @@ describe("/api/connectors — a member's own key", () => {
     const wrong = await call(alice, 'PUT', `/${server.id}/key`, { key: 'not-her-key' });
     expect(wrong.status).toBe(400);
     expect(wrong.raw).not.toContain('not-her-key');
+    // apps word the refusal themselves; the provider's own answer travels apart, for a "details" view
+    expect(wrong.json).toMatchObject({ code: 'key_rejected', detail: expect.any(String) });
+    expect(wrong.json.error).toContain(wrong.json.detail);
 
     const saved = await call(alice, 'PUT', `/${server.id}/key`, { key: 'alice-key' });
     expect(saved.status).toBe(200);

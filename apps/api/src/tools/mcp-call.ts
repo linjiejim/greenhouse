@@ -59,7 +59,7 @@ A tool not marked [read-only] may change things in another system: calling it sh
 
 const PERSONAL_NOTE = `
 
-Servers marked [own account] use each user's own account. If a call answers needs_connection, the user has not connected that server yet: tell them to press the Connect button under your reply, and call again once they say it is connected.`;
+Servers marked [own account] use each user's own account. If a call answers needs_connection, the user has not connected that server yet: the chat shows them a card under your reply to connect it. Say so in one short line, in the user's language, without naming buttons or settings pages (the card has them), and call again once they say it is connected.`;
 
 const baseSchema = {
   action: z
@@ -103,7 +103,7 @@ export function renderMcpCatalog(servers: readonly McpDirectoryServer[]): string
     const tools =
       server.tools.length > 0
         ? server.tools.map(toolLabel).join(', ')
-        : 'not known until the user connects their account — call it (any tool name) to show them a Connect button';
+        : 'not known until the user connects their account — call it (any tool name) to show them the card to connect it';
     const line =
       `- "${server.slug}" — ${server.name}${personal}${server.description ? `: ${server.description.slice(0, 160)}` : ''}\n` +
       `  tools: ${tools}`;
@@ -153,7 +153,7 @@ function needsConnection(row: McpServerRow, reason: 'not_connected' | 'expired',
     server_id: row.id,
     auth: row.auth_mode === 'oauth' ? 'oauth' : 'per_user',
     reason,
-    error: `${why} The user sees a Connect button under your reply. Tell them, and call again once they say it is connected — do not retry before that.`,
+    error: `${why} A card under your reply lets them connect it: tell them so in one short line, without naming its buttons or any settings page, and call again once they say it is connected — do not retry before that.`,
   };
 }
 

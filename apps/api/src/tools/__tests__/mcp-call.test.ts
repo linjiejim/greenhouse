@@ -330,7 +330,7 @@ describe("mcp_call — a member's own key (per_user)", () => {
 });
 
 describe('mcp_call — a member-account server nobody has connected yet', () => {
-  it('is listed with unknown tools, and any call to it answers with a Connect button', async () => {
+  it('is listed with unknown tools, and any call to it answers with the card to connect it', async () => {
     const fresh = serverRow({
       id: 9,
       slug: 'tracker',
@@ -347,6 +347,9 @@ describe('mcp_call — a member-account server nobody has connected yet', () => 
     expect(tool.description).toContain('not known until the user connects their account');
     const out = await run(tool, { action: 'call', server: 'tracker', tool: 'list_issues' });
     expect(out).toMatchObject({ needs_connection: true, server: 'tracker', auth: 'oauth', reason: 'not_connected' });
+    // the card under the reply names its own buttons in the app's language: the model must not repeat them
+    expect((out as { error: string }).error).toContain('card under your reply');
+    expect((out as { error: string }).error).not.toMatch(/Connect button|Settings/);
   });
 });
 

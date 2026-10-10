@@ -53,7 +53,7 @@ export function sealMemberCredential(serverId: number, userId: string, key: stri
 }
 
 function notConnected(row: McpServerRow, reason: 'not_connected' | 'expired'): ResolvedTarget {
-  const how = row.auth_mode === 'oauth' ? 'sign in to it' : 'add their own key for it (Settings → Connectors)';
+  const how = row.auth_mode === 'oauth' ? 'sign in to it' : 'add their own key for it';
   return {
     ok: false,
     reason,
