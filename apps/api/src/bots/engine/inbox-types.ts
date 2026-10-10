@@ -11,6 +11,13 @@
 
 import type { BotEvent } from '@greenhouse/types/bots';
 
+/**
+ * The message id of a background task's report is `bot-task-report:<runId>` — one
+ * report per task. The reply-alert sweep skips these: the task's own "done" push
+ * already told the member.
+ */
+export const TASK_REPORT_MESSAGE_PREFIX = 'bot-task-report:';
+
 export type InboxItem =
   /** A system line in the transcript (role `system`, `bot_event` set). */
   | { kind: 'event'; text: string; event: BotEvent; botId?: string | null }

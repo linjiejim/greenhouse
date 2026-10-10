@@ -26,9 +26,12 @@
 
 import { logger } from '@greenhouse/utils/logger';
 import type { DatabaseProvider, ScheduledTaskRow } from '@greenhouse/db';
+import { isSproutyBot } from '@greenhouse/types/bots';
+import { botsLocale, type BotsLocale } from '../bots/engine/copy.js';
+import { publishNotification } from '../notifications/publish.js';
 import { flattenForDelivery, renderNotificationEmail } from '../notifications/render.js';
+import { DEFAULT_PROFILE_ID, normalizeProfileId, parseBotProfileReference } from '../profiles/profile.js';
 import { notifyWebhookKind } from './task-limits.js';
-import { connectionManager } from '../ws/connection-manager.js';
 
 /** Keep the card readable in a group chat; the session link carries the rest. */
 const MAX_SUMMARY_CHARS = 600;
@@ -287,6 +290,30 @@ export function buildTaskEmail(
   };
 }
 
+/** The inbox title of a run, in the owner's language (the body is the agent's own answer). */
+export function taskResultTitle(locale: BotsLocale, taskName: string, failed: boolean): string {
+  if (locale === 'zh') return failed ? `「${taskName}」需要查看` : `「${taskName}」已完成`;
+  return failed ? `${taskName} needs review` : `${taskName} completed`;
+}
+
+/**
+ * The Bot a task runs as — its name titles the push. `bot:<id>[@v]` names it; the
+ * built-in identity (`sprouty` and the ids folded into it) is the owner's own
+ * Sprouty. Anything else (or a lookup that fails) leaves the workspace's name.
+ */
+async function automationBotId(db: DatabaseProvider, task: Pick<ScheduledTaskRow, 'user_id' | 'profile_id'>) {
+  try {
+    const reference = parseBotProfileReference(task.profile_id);
+    if (reference) return (await db.bots.getBot(task.user_id, reference.botId))?.id ?? null;
+    if (normalizeProfileId(task.profile_id) === DEFAULT_PROFILE_ID) {
+      return (await db.bots.listBots(task.user_id)).find((bot) => isSproutyBot(bot))?.id ?? null;
+    }
+  } catch (error) {
+    logger.warn('[Scheduler] Could not resolve the Bot of an automation', { error: String(error) });
+  }
+  return null;
+}
+
 /** Persist the notification fact and every enabled optional delivery. */
 export async function notifyTaskResult(
   db: DatabaseProvider,
@@ -307,17 +334,20 @@ export async function notifyTaskResult(
     ...(writes.length ? { writes } : {}),
   };
   const failed = outcome.status === 'failed';
-  const result = await db.notifications.createWithStatus({
+  const [owner, botId] = await Promise.all([db.users.getById(task.user_id), automationBotId(db, task)]);
+  const result = await publishNotification(db, {
     user_id: task.user_id,
     kind: failed ? 'runtime_failed' : 'runtime_completed',
-    title: failed ? `${task.name} needs review` : `${task.name} completed`,
+    title: taskResultTitle(botsLocale(owner?.locale), task.name, failed),
     body: `${deliveryBody(outcome.summary)}${formatWriteReceipt(writes)}`,
-    payload,
+    payload: payload as unknown as Record<string, unknown>,
     run_id: provenance.runId ?? null,
     event_id: provenance.eventId ?? null,
     dedupe_key: provenance.runId
       ? `automation-result:${provenance.runId}:${outcome.status}`
       : `automation-result:${task.id}:${outcome.sessionId}:${outcome.status}`,
+    // The phone opens the result session (spec 20261010-mobile-push §2.1 "done").
+    push: { k: 'done', sid: outcome.sessionId, open: 'chat', bot_id: botId, ok: !failed },
   });
   const queued = { wecom: false, email: false, wecomDm: false, feishuDm: false };
 
@@ -360,29 +390,6 @@ export async function notifyTaskResult(
       recipient: automationDeliveryRecipient.feishuUser(task.user_id),
     });
     queued.feishuDm = true;
-  }
-
-  if (result.created) {
-    try {
-      const unread = await db.notifications.countUnread(task.user_id);
-      connectionManager.sendToUser(task.user_id, {
-        type: 'notification:new',
-        notificationId: result.notification.id,
-        kind: result.notification.kind,
-        title: result.notification.title,
-        unread,
-        runId: null,
-        interruptId: null,
-      });
-    } catch (error) {
-      // The permanent row is authoritative. A transient WS failure must not
-      // replay an already-created external delivery.
-      logger.warn('[Scheduler] Could not push automation notification summary', {
-        taskId: task.id,
-        notificationId: result.notification.id,
-        error: String(error),
-      });
-    }
   }
 
   return queued;

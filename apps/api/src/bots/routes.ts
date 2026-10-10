@@ -9,7 +9,7 @@
  * GET    /api/bots/conversations/:id                  — 对话详情 + 消息分页（before_seq / limit）+ 本页记忆回执的当前状态
  * POST   /api/bots/conversations/:id/members          — 邀请 Bot 进私聊做客串（旧群聊只读：409 group_closed）
  * DELETE /api/bots/conversations/:id/members/:botId   — 移出客串 Bot（旧群聊只读：409 group_closed）
- * POST   /api/bots/conversations/:id/read             — 标记已读
+ * POST   /api/bots/conversations/:id/read             — 标记已读（同时把这段对话的「回复了你」提醒标为已读）
  * POST   /api/bots/conversations/:id/compact          — 立即整理摘要（有回合在跑时 409）
  * GET    /api/bots/conversations/:id/notes            — 共享笔记列表
  * POST   /api/bots/conversations/:id/notes            — 新建共享笔记
@@ -36,7 +36,13 @@
  */
 
 import { Hono } from 'hono';
-import { BotsDomainError, getDb, type ConversationWithMembers, type DatabaseProvider } from '@greenhouse/db';
+import {
+  BOTS_REPLY_DEDUPE_PREFIX,
+  BotsDomainError,
+  getDb,
+  type ConversationWithMembers,
+  type DatabaseProvider,
+} from '@greenhouse/db';
 import { avatarConfigSchema, type AvatarConfig } from '@greenhouse/types/profile-manifest';
 import {
   BOT_DESCRIPTION_MAX,
@@ -584,13 +590,23 @@ export function createBotsRoutes() {
         return c.json({ conversation: await conversationDetail(db, user.id, fresh, owner.locale) });
       })
 
-      // ── POST /api/bots/conversations/:id/read ──
+      // ── POST /api/bots/conversations/:id/read — also marks its missed-reply alerts read ──
       .post('/conversations/:id/read', async (c) => {
         const user = getAuthUser(c);
         const db = getDb();
         const conversation = await db.bots.getConversation(user.id, c.req.param('id'));
         if (!conversation) return c.json({ error: 'Conversation not found' }, 404);
         await db.bots.markRead(user.id, conversation.session_id);
+        const cleared = await db.notifications.markReadByDedupePrefix(
+          user.id,
+          `${BOTS_REPLY_DEDUPE_PREFIX}${conversation.session_id}:`,
+        );
+        if (cleared > 0) {
+          connectionManager.sendToUser(user.id, {
+            type: 'notification:summary',
+            unread: await db.notifications.countUnread(user.id),
+          });
+        }
         return c.json({ ok: true as const });
       })
 

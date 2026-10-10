@@ -76,7 +76,7 @@ expose to Claude, Cursor, or any MCP client.
   <img src="docs/assets/screens/chat-knowledge-answer-dark.webp" alt="Dark theme" width="66%" />
   <img src="docs/assets/screens/mobile-chat.webp" alt="Mobile layout" width="19%" />
 </p>
-<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts (Swift Charts on iOS), stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms and reply buttons — and a "connect your account" card when a connector needs your sign-in or key), your Bots (on iOS: Sprouty and your other Bots at the top of the drawer, one ongoing thread per Bot — other Bots join it when a hand-off helps — with live per-Bot replies, @-mentions, "needs you" cards that open into a sheet to decide, background tasks that report back; a Bot's profile gathers its instructions, memory, shared notes, schedules and separate chats in tabs; new Bots are made by asking Sprouty, from an example or by hand in Settings → My Bots; replies show just the answer, with reasoning, tool calls and sources one ⋯ → Show toggle away; a home-screen widget lines up your Bots with unread and "needs you" badges — one tap into a Bot's thread, or a new chat with Sprouty), Settings → Connectors for your own keys and sign-ins, knowledge and projects with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
+<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts (Swift Charts on iOS), stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms and reply buttons — and a "connect your account" card when a connector needs your sign-in or key), your Bots (on iOS: Sprouty and your other Bots at the top of the drawer, one ongoing thread per Bot — other Bots join it when a hand-off helps — with live per-Bot replies, @-mentions, "needs you" cards that open into a sheet to decide, background tasks that report back; a Bot's profile gathers its instructions, memory, shared notes, schedules and separate chats in tabs; new Bots are made by asking Sprouty, from an example or by hand in Settings → My Bots; replies show just the answer, with reasoning, tool calls and sources one ⋯ → Show toggle away; a home-screen widget lines up your Bots with unread and "needs you" badges — one tap into a Bot's thread, or a new chat with Sprouty; notifications when a Bot needs you, a task finishes or a reply comes in after you left — content-free unless you turn previews on, one tap into the card or the conversation, on every station you are signed in to), Settings → Connectors for your own keys and sign-ins, knowledge and projects with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
 
 Every image above is produced by `node scripts/capture-screens.mjs` against a seeded dev stack — the
 same script doubles as an end-to-end smoke tour (see [Development](#development)).
@@ -466,6 +466,16 @@ the LLM endpoint; `IMAGE_BASE_URL` + `IMAGE_API_KEY` move generation alone to an
 provider), external web search, email mailboxes, WeCom / Feishu, missions, Bots computers
 (`BOTS_COMPUTER_*`), usage budgets, and object storage. Uploads default to local disk (`data/uploads`), Skill Center
 bundles to `data/skills` — set `SKILLS_S3_*` to keep bundles in S3-compatible storage.
+
+**Mobile push**: the iOS app's notifications (a Bot needs you, a background or scheduled task
+finished, a Bot replied after you left) are sent through the Expo Push Service at `exp.host`.
+The server stores only each phone's Expo push token (no Apple key — the official app's
+credentials live with Expo), and by default a notification says only who and what kind of thing
+("Sprouty · Needs your approval"); members can turn on previews per phone in the app's Settings →
+Notifications. It is on by default and inert until a member allows notifications on a phone; set
+`MOBILE_PUSH_ENABLED=false` to keep every request off `exp.host` (the app then hides its push
+settings). The server must be able to reach `https://exp.host` (honouring `HTTPS_PROXY`); the
+Settings page's "Send a test" checks that from the phone.
 
 **Admin-configurable at runtime**: the LLM / media / search credentials and the product name
 can also be set in **Administration → Runtime Config** (and branding in **Branding Studio**) —
