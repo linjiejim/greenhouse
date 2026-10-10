@@ -9,6 +9,9 @@
  *    Bot of `?profile=`), re-points the route with `router.setParams({ id })`
  *    (no remount) and the hero fades into the turn.
  *  - Existing: history loads, new turns stream (src/chat/use-conversation.ts).
+ *    One that loads with no messages at all (a first send that never got
+ *    through) greets like a new one — the hero of its own agent — instead of
+ *    a blank page; the next send goes into it.
  *
  * Chrome is native: inline title (live-updated by the server's title event),
  * Liquid Glass toolbar — ☰ opens the drawer (as does a right swipe from
@@ -224,7 +227,6 @@ function Conversation() {
   const badge = attention > 99 ? '99+' : attention > 0 ? String(attention) : '';
   // A new chat with one Bot ("Ask Dandy in a New Chat"): this chat only, never the saved default.
   const profile = identityOn && params.profile ? params.profile : undefined;
-  const profileBot = useProfileBot(profile);
   // the member's own Sprouty in the hero (its plant and colour), once the Bots list is in
   const sprouty = useBots((st) => (botsOn ? sproutyBot(st) : null));
 
@@ -245,7 +247,12 @@ function Conversation() {
   // An existing conversation that's still loading has no title yet — show none
   // rather than flash "新对话".
   const title = convo.title || params.title || (sessionId && convo.loading ? '' : t('chat.newConversation'));
-  const isNew = !sessionId && messages.length === 0;
+  // Nothing said yet: a new conversation, or one that loaded empty (never while it loads — no hero flash).
+  const isNew =
+    messages.length === 0 && (!sessionId || (!convo.loading && !convo.loadFailed && !readOnly && !streaming));
+  // the hero's Bot: the one `?profile=` starts a chat with, or the loaded session's own (Sprouty: the greeting)
+  const sessionBot = sessionId && convo.profileId !== 'sprouty' ? convo.profileId : null;
+  const profileBot = useProfileBot(profile ?? sessionBot ?? undefined);
 
   /* ---------- composer state ---------- */
   const inputRef = useRef<TextInput>(null);
@@ -773,7 +780,7 @@ function Conversation() {
               images={images}
               onRemoveImage={removeImage}
               maxImages={MAX_IMAGES}
-              placeholder={sessionId ? t('chat.followUpPlaceholder') : t('home.heroPlaceholder')}
+              placeholder={isNew ? t('home.heroPlaceholder') : t('chat.followUpPlaceholder')}
               autoFocus={params.compose === '1'}
               onHeight={onComposerHeight}
             />

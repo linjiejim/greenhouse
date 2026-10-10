@@ -105,6 +105,7 @@ export function useConversation({
   const [title, setTitle] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState<boolean | null>(null);
   const [channel, setChannel] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(!!initialId);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -459,6 +460,7 @@ export function useConversation({
         return;
       }
       setChannel(data.session?.channel ?? null);
+      setProfileId(data.session?.profile_id ?? null);
       // Not ours to render (a Bots conversation): stop before showing or attaching anything.
       if (data.session && leaveRef.current?.(data.session)) return;
       setTitle(data.session?.title ?? null);
@@ -499,6 +501,7 @@ export function useConversation({
     setTitle(null);
     setIsOwner(null);
     setChannel(null);
+    setProfileId(null);
     setLoadFailed(false);
     if (initialId) void load(initialId);
     else setLoading(false);
@@ -668,6 +671,8 @@ export function useConversation({
       isOwner,
       /** The loaded session's channel (`web`, `bots`…); null for a new one or until loaded. */
       channel,
+      /** The loaded session's agent (`sprouty`, `bot:<id>`…); null for a new one or until loaded. */
+      profileId,
       streaming,
       loading,
       loadFailed,
@@ -676,6 +681,6 @@ export function useConversation({
       stop,
       rerun,
     }),
-    [sessionId, messages, title, isOwner, channel, streaming, loading, loadFailed, reload, send, stop, rerun],
+    [sessionId, messages, title, isOwner, channel, profileId, streaming, loading, loadFailed, reload, send, stop, rerun],
   );
 }
