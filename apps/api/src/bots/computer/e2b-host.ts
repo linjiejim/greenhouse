@@ -52,6 +52,7 @@ import {
 
 import { CLEARED_PROXY_ENV, ComputerDockerError, ComputerRuntimeError } from './docker.js';
 import { bridgeExec, bridgeStream, bridgeTunnel, BridgeConnectionError, type BridgeTarget } from './e2b-bridge.js';
+import { EGRESS_APPLY_SCRIPT, egressApplyEnv, PROVIDER_DENY_OUT } from './e2b-egress.js';
 import { HOME_USERS, homeExportArgv, homeImportArgv, homeOf, pipeIntoImport } from './home-archive.js';
 import {
   ComputerStartError,
@@ -272,8 +273,9 @@ export function createE2bApi(conn: { apiKey: string; domain?: string }): E2bApi 
           ...opts,
           metadata,
           timeoutMs: SANDBOX_TIMEOUT_MS,
-          // Every port needs the edge's token (the bridges add their own secret on top).
-          network: { allowPublicTraffic: false },
+          // Every port needs the edge's token (the bridges add their own secret on top); private
+          // ranges are refused outside the VM, whatever runs in it (e2b-egress.ts).
+          network: { allowPublicTraffic: false, denyOut: PROVIDER_DENY_OUT },
           // Paused by the dead-man timeout, resumed only by the controller.
           lifecycle: { onTimeout: 'pause', autoResume: false },
         }),
@@ -438,6 +440,20 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
    * bridges. `resume` answers `fresh` when this sandbox cannot carry on as it
    * is: its desktop is down, or it was booted with other settings.
    */
+  /**
+   * The member uids' egress table (e2b-egress.ts), as root, before anything of the member runs —
+   * on every boot (it is idempotent): a computer of any template gets the API's current rules.
+   */
+  async function applyEgress(sandbox: SandboxHandle): Promise<void> {
+    const result = await runRootCommand(sandbox, EGRESS_APPLY_SCRIPT, egressApplyEnv(), BOOT_TIMEOUT_MS);
+    if (result.code !== 0) {
+      throw new ComputerDockerError(
+        'failed',
+        `Applying the computer's egress rules failed (exit ${result.code}): ${result.stderr.trim().slice(-300)}`,
+      );
+    }
+  }
+
   async function boot(
     sandbox: SandboxHandle,
     spec: ComputerStartSpec,
@@ -445,6 +461,7 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
     /** The env file to boot with, base64 — default: the member's current settings. */
     envFile: string = Buffer.from(computerEnvFile(spec)).toString('base64'),
   ): Promise<'ok' | 'fresh'> {
+    await applyEgress(sandbox);
     const flag = mode === 'first' ? '' : ` --${mode}`;
     const result = await runRootCommand(
       sandbox,
@@ -620,6 +637,8 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
   async function recoverOld(old: SandboxHandle): Promise<boolean> {
     try {
       const sandbox = await resume(old.id);
+      // The member gets this one back: with the current rules, before its desktop starts again.
+      await applyEgress(sandbox);
       const result = await runRootCommand(sandbox, RECOVER_SCRIPT, {}, BOOT_TIMEOUT_MS);
       if (result.code !== 0) {
         logger.warn(

@@ -660,6 +660,7 @@ const zh: Messages = {
       '原来那台电脑已经不在了，从备份恢复文件这一步没成功。什么都没丢——备份还在。过几分钟再试，或联系管理员。',
     restoredFrom: '原来那台电脑已经不在了，这台是用 {when} 的备份重建的。这次备份之后的改动不在这里。',
     restoredDismiss: '知道了',
+    reason_egressOpen: '没能确认它的网络防护已生效，所以没有打开它。什么都没丢。过几分钟再试；一直这样就联系管理员。',
     reason_imageOutdated: '主机上的电脑镜像已过期，需要重新构建。',
     reason_networkInvalid: '主机上的电脑网络配置不正确。',
     reason_configInvalid: '服务器环境变量中的电脑配置无效。',

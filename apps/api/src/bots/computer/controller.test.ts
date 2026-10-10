@@ -202,6 +202,10 @@ class FakeDocker {
   dfCalls = 0;
   /** curl exit code per probed URL (default 7 = refused, i.e. blocked). */
   egress: Record<string, number> = {};
+  /** Per-uid overrides of `egress` (a hole only one account has). */
+  egressByUser: Record<string, Record<string, number>> = {};
+  /** The uids the egress probe ran as, in order. */
+  probedAs: string[] = [];
   onStop: ((name: string) => void) | null = null;
   log: string[] = [];
   /** What each restore helper container was fed: `<volume>:<user>` → bytes. */
@@ -306,7 +310,9 @@ class FakeDocker {
         if (spec.argv[3] === 'gh-egress') {
           const urls = spec.argv.slice(4);
           this.log.push(`egress probe ${urls.join(' ')}`);
-          return ok({ stdout: Buffer.from(urls.map((u) => `${this.egress[u] ?? 7} ${u}\n`).join('')) });
+          this.probedAs.push(spec.user);
+          const code = (u: string) => this.egressByUser[spec.user]?.[u] ?? this.egress[u] ?? 7;
+          return ok({ stdout: Buffer.from(urls.map((u) => `${code(u)} ${u}\n`).join('')) });
         }
         return ok();
       },
@@ -325,6 +331,9 @@ function setup(
     awaitingHuman?: (userId: string) => boolean;
     tryLock?: boolean;
     egressProbe?: string[];
+    egressProbeUsers?: Array<'agent' | 'browser'>;
+    /** The host's kind as the controller sees it (the fake is docker underneath). */
+    hostKind?: 'docker' | 'e2b';
     /** Account locale per member (unknown = null). */
     locale?: (userId: string) => string | null;
     /** Running background jobs per container (the gh-jobs count); throwing = the computer did not answer. */
@@ -364,6 +373,7 @@ function setup(
     urlBlocklist: ['green.example.com'],
     imageId: 'sha256:img',
     egressProbe: opts.egressProbe,
+    ...(opts.egressProbeUsers ? { egressProbeUsers: opts.egressProbeUsers } : {}),
   };
   const events = {
     states: [] as Array<[string, string, string | null]>,
@@ -378,6 +388,7 @@ function setup(
     store,
     host: {
       ...dockerHost,
+      kind: opts.hostKind ?? dockerHost.kind,
       start: (row, spec) => {
         starts.push(spec);
         const failure = opts.startError?.();
@@ -1086,6 +1097,30 @@ describe('computer lifecycle', () => {
     expect(events.runtimeErrors.map((e) => e.reason)).toEqual(['network_invalid']);
     expect(await store.get('u2')).toMatchObject({ state: 'error', state_reason: 'network_invalid' });
     expect(docker.containers.has(computerContainerName(NS, 'u2'))).toBe(false);
+  });
+
+  it('probes a hosted computer from both accounts; a hole fails only that computer, never the runtime', async () => {
+    const probe = ['http://169.254.169.254/', 'http://127.0.0.1:49983/health'];
+    const { controller, store, docker, events } = setup({
+      egressProbe: probe,
+      egressProbeUsers: ['agent', 'browser'],
+      hostKind: 'e2b',
+    });
+    expect((await controller.ensureRunning('u1')).state).toBe('running');
+    expect(docker.probedAs).toEqual(['agent', 'browser']);
+
+    // The browser's account could reach the provider's agent: that computer is never used.
+    docker.egressByUser.browser = { 'http://127.0.0.1:49983/health': 0 };
+    const error = await controller.ensureRunning('u2').catch((e) => e);
+    expect(error).toMatchObject({ name: 'ComputerUnavailableError', code: 'start_failed' });
+    expect(String(error.message)).toMatch(/127\.0\.0\.1:49983\/health as browser/);
+    expect(events.runtimeErrors).toEqual([]);
+    expect(await store.get('u2')).toMatchObject({ state: 'error', state_reason: 'egress_open' });
+    expect(docker.containers.has(computerContainerName(NS, 'u2'))).toBe(false);
+    // Everyone else carries on, and the next try succeeds once the rules hold again.
+    expect((await store.get('u1'))?.state).toBe('running');
+    docker.egressByUser.browser = {};
+    expect((await controller.ensureRunning('u2')).state).toBe('running');
   });
 });
 

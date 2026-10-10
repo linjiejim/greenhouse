@@ -16,6 +16,7 @@ import type { BotComputerRow } from '@greenhouse/db';
 import type { BotsComputerConfig } from '../config.js';
 import { ComputerDockerError, ComputerRuntimeError } from '../docker.js';
 import { BridgeConnectionError } from '../e2b-bridge.js';
+import { EGRESS_APPLY_SCRIPT, EGRESS_RULESET } from '../e2b-egress.js';
 import {
   bridgeSecret,
   computerEnvFile,
@@ -83,9 +84,11 @@ class FakeApi implements E2bApi {
         const label =
           command === RECOVER_SCRIPT
             ? 'recover'
-            : command.startsWith('base64 ')
-              ? 'read settings'
-              : command.split('/').pop();
+            : command === EGRESS_APPLY_SCRIPT
+              ? 'egress'
+              : command.startsWith('base64 ')
+                ? 'read settings'
+                : command.split('/').pop();
         this.log.push(`root ${id} ${label}`);
         const code = this.rootExit?.(id, command) ?? 0;
         // The env file a sandbox was booted with, as `base64 -w0` prints it.
@@ -332,7 +335,7 @@ describe('e2b host: starts', () => {
     const id = api.seed(meta(TEMPLATE));
     const started = await host.start(row({ container_name: id }), spec());
     expect(started.ref).toBe(id);
-    expect(api.log).toEqual([`connect ${id}`, `root ${id} gh-e2b-boot --resume`]);
+    expect(api.log).toEqual([`connect ${id}`, `root ${id} egress`, `root ${id} gh-e2b-boot --resume`]);
     await started.abandon();
     expect(api.sandboxes.get(id)?.state).toBe('paused'); // never killed: it holds the member's files
   });
@@ -354,10 +357,12 @@ describe('e2b host: starts', () => {
     expect(api.sandboxes.get(started.ref)?.metadata.gh_replaces).toBe(old);
     expect(api.log).toEqual([
       `create ${started.ref} ${TEMPLATE} replaces ${old}`,
+      `root ${started.ref} egress`,
       `root ${started.ref} gh-e2b-boot --bridges-only`,
       `connect ${old}`,
       `root ${old} systemctl stop gh-desktop.service`,
       `pause ${old}`,
+      `root ${started.ref} egress`,
       `root ${started.ref} gh-e2b-boot`,
     ]);
     // Each uid copies its own home: from the old sandbox's bridge to the new one's.
@@ -429,7 +434,12 @@ describe('e2b host: starts', () => {
     api.log.length = 0;
     const again = await host.start(row({ container_name: old }), spec());
     expect(again).toMatchObject({ ref: old, imageId: 'gh-computer-c2-older' });
-    expect(api.log).toEqual([`connect ${old}`, `root ${old} read settings`, `root ${old} gh-e2b-boot --resume`]);
+    expect(api.log).toEqual([
+      `connect ${old}`,
+      `root ${old} read settings`,
+      `root ${old} egress`,
+      `root ${old} gh-e2b-boot --resume`,
+    ]);
     // Its own settings, through the --resume every template knows (never the member's new ones).
     const woken = api.roots.filter((r) => r.command.endsWith('--resume')).pop()!;
     expect(Buffer.from(woken.envs.GH_COMPUTER_ENV_B64!, 'base64').toString()).toBe(KEPT_ENV);
@@ -449,13 +459,14 @@ describe('e2b host: starts', () => {
       .catch((e) => e);
     expect(failure).toBeInstanceOf(ComputerStartError);
     expect(failure).toMatchObject({ reason: 'move_failed' });
-    expect(api.log).toContain(`root ${old} recover`);
+    // Given back with the current egress rules, before its desktop starts again.
+    expect(api.log.indexOf(`root ${old} egress`)).toBeLessThan(api.log.indexOf(`root ${old} recover`));
     expect([...api.sandboxes.keys()]).toEqual([old]);
     expect(api.sandboxes.get(old)?.state).toBe('paused');
     // The next (ordinary) start simply wakes it.
     api.log.length = 0;
     await expect(host.start(row({ container_name: old }), spec())).resolves.toMatchObject({ ref: old });
-    expect(api.log).toEqual([`connect ${old}`, `root ${old} gh-e2b-boot --resume`]);
+    expect(api.log).toEqual([`connect ${old}`, `root ${old} egress`, `root ${old} gh-e2b-boot --resume`]);
   });
 
   it('when the old one cannot be recovered either, the start fails as move_failed and it stays asleep', async () => {
@@ -469,9 +480,23 @@ describe('e2b host: starts', () => {
 
   it('a failed boot of a new sandbox removes it', async () => {
     const { api, host } = setup();
-    api.rootExit = () => 1;
+    api.rootExit = (_id, command) => (command.startsWith('/usr/local/sbin/gh-e2b-boot') ? 1 : 0);
     await expect(host.start(row(), spec())).rejects.toThrow(/gh-e2b-boot exited 1/);
     expect(api.sandboxes.size).toBe(0);
+  });
+
+  it('applies the egress rules as root before anything of the member runs, and boots nothing without them', async () => {
+    const { api, host } = setup();
+    const started = await host.start(row(), spec());
+    const steps = api.roots.filter((r) => r.id === started.ref).map((r) => r.command);
+    expect(steps[0]).toBe(EGRESS_APPLY_SCRIPT);
+    expect(Buffer.from(api.roots[0]!.envs.GH_EGRESS_NFT!, 'base64').toString()).toBe(EGRESS_RULESET);
+    // A sandbox whose rules cannot be loaded is never booted, and is removed.
+    const refused = setup();
+    refused.api.rootExit = (_id, command) => (command === EGRESS_APPLY_SCRIPT ? 1 : 0);
+    await expect(refused.host.start(row(), spec())).rejects.toThrow(/egress rules failed \(exit 1\)/);
+    expect(refused.api.roots.some((r) => r.command.startsWith('/usr/local/sbin/gh-e2b-boot'))).toBe(false);
+    expect(refused.api.sandboxes.size).toBe(0);
   });
 
   it('never changes a sandbox’s settings in place: other settings move the home to a new one', async () => {
@@ -491,8 +516,9 @@ describe('e2b host: starts', () => {
     api.rootExit = (sandboxId, command) => (sandboxId === id && command.endsWith('--resume') ? 4 : 0);
     const started = await host.start(row({ container_name: id }), spec());
     expect(started.ref).not.toBe(id);
-    expect(api.log.slice(0, 3)).toEqual([
+    expect(api.log.slice(0, 4)).toEqual([
       `connect ${id}`,
+      `root ${id} egress`,
       `root ${id} gh-e2b-boot --resume`,
       `create ${started.ref} ${TEMPLATE} replaces ${id}`,
     ]);
@@ -550,7 +576,9 @@ describe('e2b host: backups', () => {
     expect(started.restoredFrom).toBe('bkp_1');
     expect(api.log).toEqual([
       `create ${started.ref} ${TEMPLATE}`,
+      `root ${started.ref} egress`,
       `root ${started.ref} gh-e2b-boot --bridges-only`,
+      `root ${started.ref} egress`,
       `root ${started.ref} gh-e2b-boot`,
     ]);
     // Each home as its own uid, through its own bridge, between the two boots.

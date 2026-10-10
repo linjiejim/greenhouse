@@ -660,6 +660,8 @@ export default {
     restoredFrom:
       'Your previous computer was gone, so this one was rebuilt from its backup of {when}. Changes made after that backup are not here.',
     restoredDismiss: 'Dismiss',
+    reason_egressOpen:
+      'Its network safeguards could not be confirmed, so it was not opened. Nothing was lost. Try again in a few minutes; if it keeps happening, ask your administrator.',
     reason_imageOutdated: 'The computer image on the host is out of date and needs rebuilding.',
     reason_networkInvalid: "The computer network on the host isn't set up correctly.",
     reason_configInvalid: "The computer settings in the server's environment are invalid.",

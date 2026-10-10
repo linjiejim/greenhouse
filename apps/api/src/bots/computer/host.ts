@@ -169,8 +169,9 @@ export class ComputerStartError extends Error {
     /**
      * move_failed: the home could not be moved into a new sandbox; it is intact in the old one.
      * restore_failed: a backup could not be put into the new home; the next start tries again.
+     * egress_open: the computer's egress rules were not in force (e2b-egress.ts); it is not used.
      */
-    readonly reason: 'move_failed' | 'restore_failed',
+    readonly reason: 'move_failed' | 'restore_failed' | 'egress_open',
     message: string,
     options?: ErrorOptions,
   ) {

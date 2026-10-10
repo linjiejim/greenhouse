@@ -58,6 +58,7 @@ import { ComputerUnavailableError } from './errors.js';
 import {
   ComputerStartError,
   type ComputerHost,
+  type ComputerUser,
   type HomeRestore,
   type HostInstance,
   type StartedComputer,
@@ -104,11 +105,14 @@ export interface ControllerEnvironment {
   /** Chromium URLBlocklist patterns passed to new containers. */
   urlBlocklist: string[];
   /**
-   * Hardened hosts: URLs a fresh computer must NOT be able to connect to (the
-   * host's API port on the bridge gateway, cloud metadata). Checked after every
-   * start as defence in depth behind the egress precheck; empty = no probe.
+   * URLs a started computer must NOT be able to connect to — docker (hardened): the host's
+   * API port on the bridge gateway and cloud metadata, behind the egress precheck; e2b: the
+   * metadata service, the provider's agent, the bridges, a private network (e2b-egress.ts).
+   * Checked after every start; empty = no probe.
    */
   egressProbe?: string[];
+  /** Which uids probe (default: the agent's). */
+  egressProbeUsers?: readonly ComputerUser[];
   /** The image (docker) / template (e2b) the prechecks found ready; recorded as `image_id`. */
   imageId: string | null;
   /** The latest free-space reading of the Docker disk (null = not measured yet; docker only). */
@@ -480,28 +484,44 @@ export function createComputerController(deps: ComputerControllerDeps) {
    * connection that succeeds is a host failure (the rules are gone or
    * shadowed): the start fails and the runtime closes until it re-checks.
    */
-  async function verifyEgress(container: string, targets: string[]): Promise<void> {
+  /**
+   * Every target must be refused, from every probing uid. Docker's rules live on the host's
+   * network (a hole is everyone's: the runtime closes); a hosted computer's live in its own VM
+   * (a hole is that computer's: only its start fails).
+   */
+  async function verifyEgress(container: string, targets: string[], users: readonly ComputerUser[]): Promise<void> {
     if (targets.length === 0) return;
-    const result = await host.exec({
-      container,
-      user: 'agent',
-      argv: ['sh', '-c', EGRESS_PROBE_SCRIPT, 'gh-egress', ...targets],
-      timeoutMs: 30_000,
-      maxStdoutBytes: 16 * 1024,
-    });
-    const codes = new Map<string, number>();
-    for (const line of result.stdout.toString('utf8').split('\n')) {
-      const match = /^(\d+) (\S+)$/.exec(line.trim());
-      if (match) codes.set(match[2]!, Number(match[1]));
+    const open: string[] = [];
+    for (const user of users) {
+      const result = await host.exec({
+        container,
+        user,
+        argv: ['sh', '-c', EGRESS_PROBE_SCRIPT, 'gh-egress', ...targets],
+        timeoutMs: 30_000,
+        maxStdoutBytes: 16 * 1024,
+      });
+      const codes = new Map<string, number>();
+      for (const line of result.stdout.toString('utf8').split('\n')) {
+        const match = /^(\d+) (\S+)$/.exec(line.trim());
+        if (match) codes.set(match[2]!, Number(match[1]));
+      }
+      for (const url of targets) {
+        if (!EGRESS_BLOCKED_CODES.has(codes.get(url) ?? -1)) {
+          open.push(`${url} as ${user} (curl ${codes.get(url) ?? 'gave no answer'})`);
+        }
+      }
     }
-    const open = targets.filter((url) => !EGRESS_BLOCKED_CODES.has(codes.get(url) ?? -1));
-    if (open.length > 0) {
-      const detail = open.map((url) => `${url} (curl ${codes.get(url) ?? 'gave no answer'})`).join(', ');
-      throw new ComputerRuntimeError(
-        'network_invalid',
-        `A new computer could reach ${detail}; the egress rules for the computers' network are not in force`,
+    if (open.length === 0) return;
+    if (host.kind === 'e2b') {
+      throw new ComputerStartError(
+        'egress_open',
+        `This computer could reach ${open.join(', ')}: its egress rules are not in force`,
       );
     }
+    throw new ComputerRuntimeError(
+      'network_invalid',
+      `A new computer could reach ${open.join(', ')}; the egress rules for the computers' network are not in force`,
+    );
   }
 
   async function pickEvictable(active: BotComputerRow[]): Promise<BotComputerRow | undefined> {
@@ -580,7 +600,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
         ...(deps.backups && row.last_started_at ? { restore: () => deps.backups!.restoreSource(row.user_id) } : {}),
       });
       const product = await waitReady(started.ref);
-      await verifyEgress(started.ref, env.egressProbe ?? []);
+      await verifyEgress(started.ref, env.egressProbe ?? [], env.egressProbeUsers ?? ['agent']);
       const running = await store.transition(row.user_id, row.version, ['starting'], {
         state: 'running',
         state_reason: null,
