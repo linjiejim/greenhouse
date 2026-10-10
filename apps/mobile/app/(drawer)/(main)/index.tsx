@@ -111,6 +111,7 @@ import { useRowCopy } from '../../../src/bots/drawer/conversation-row';
 import { rowTitle } from '../../../src/bots/drawer/row-text';
 import { useBotsWarm, useProfileBot } from '../../../src/bots/home/home-bridge';
 import { initialSurface } from '../../../src/bots/home/initial-surface';
+import { launchedByPush } from '../../../src/push/handler';
 import { useHomeSurface } from '../../../src/bots/home/surface';
 import { forgetThread, lastThread, rememberThread, type LastThread } from '../../../src/bots/last-surface';
 import { homeNavCount, homeParams, onHomeNav, openNewChat, openThread, type HomeParams } from '../../../src/bots/nav';
@@ -840,6 +841,8 @@ export default function Home() {
         restored: restoreSettled,
         // a cold-start deep link stacked over home decides where home points
         covered: !focused,
+        // …and so does a notification tap that launched the app (src/push/handler.ts)
+        launchedByPush: launchedByPush(),
       });
   const kind = surface?.kind;
   const target = surface?.kind === 'thread' ? surface : null;

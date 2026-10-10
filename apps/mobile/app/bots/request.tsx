@@ -13,7 +13,8 @@
  * `requestOverrides` and the card in the thread underneath flips with it (results
  * travel through the store, never callbacks). The sheet closes once a decision
  * went through or turned out to be settled elsewhere; a refusal keeps it open
- * with the reason in an alert. Pure RN + `NativeButton` (both platforms).
+ * with the reason in an alert. A decision that went through may be followed by
+ * the push soft ask (src/push/soft-ask.ts). Pure RN + `NativeButton` (both platforms).
  */
 
 import React, { useCallback, useState } from 'react';
@@ -25,6 +26,7 @@ import { Countdown } from '../../src/bots/cards/countdown';
 import { CARD_ICON, cardKind, cardTitle, statusBadge, type CardButton } from '../../src/bots/cards/decision';
 import { RequestBody } from '../../src/bots/cards/request-card';
 import { useRequestLookup } from '../../src/bots/cards/use-login-form';
+import { softAskAfterDecision } from '../../src/push/soft-ask';
 import { BotsRouteGate } from '../../src/bots/route-gate';
 import { useBots } from '../../src/bots/store';
 import type { BotRequestDecision, BotRequestView } from '../../src/shared/bots';
@@ -86,6 +88,8 @@ function RequestDetail({ request, sessionId }: { request: BotRequestView; sessio
     (button: CardButton) =>
       void press(button).then((outcome) => {
         if (outcome && outcome.kind !== 'refused') router.back();
+        // the member just decided a card in the app: the moment for the push soft ask (spec §2.3)
+        if (outcome?.kind === 'ok') void softAskAfterDecision();
       }),
     [press, router],
   );

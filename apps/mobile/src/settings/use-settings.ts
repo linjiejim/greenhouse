@@ -3,7 +3,8 @@
  * views (app/settings/index.tsx — SwiftUI, index.android.tsx — Material):
  * account, preferences (theme / language), the station, tag count, how many
  * connectors the account can use (null: none / not for this account), usage
- * limits, version + which JS bundle is running, and sign-out. There is no
+ * limits, version + which JS bundle is running, and sign-out (which first
+ * unregisters this phone's pushes on the station). There is no
  * default agent to pick any more (2026-10): a new chat starts with Sprouty,
  * a chat with one Bot from that Bot's profile.
  */
@@ -21,6 +22,7 @@ import type { UserRole } from '../shared/greenhouse-types';
 import { listConnectors } from '../api/connectors';
 import { useT, type TranslationKey } from '../lib/i18n';
 import { confirmAction } from '../ui/dialogs';
+import { unregisterActive } from '../push/register';
 
 export const ROLE_LABEL: Record<UserRole, TranslationKey> = {
   super: 'settings.roleSuper',
@@ -73,8 +75,10 @@ export function useSettings() {
       destructive: true,
     });
     if (!ok) return;
+    // stop this station's pushes to this phone while the session still works (best effort)
+    const unregistered = unregisterActive();
     navigation.getParent()?.goBack();
-    setTimeout(logout, AFTER_DISMISS_MS);
+    setTimeout(() => void unregistered.finally(logout), AFTER_DISMISS_MS);
   };
 
   return {

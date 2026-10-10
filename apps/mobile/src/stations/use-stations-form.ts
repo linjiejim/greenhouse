@@ -5,7 +5,8 @@
  *
  *  - `select` — tap a station: the active one just closes (`onDone`); any
  *    other becomes active,
- *  - `remove` — confirmed with a destructive alert,
+ *  - `remove` — confirmed with a destructive alert; the station first stops
+ *    pushing to this phone (src/push/register.ts, best effort),
  *  - `add` — validates the address (`normalizeBaseUrl`), probes it (is there a
  *    Greenhouse API? `probeStation`), then saves it as the active station
  *    (with no name typed, the server's own product name beats the bare host);
@@ -25,6 +26,7 @@ import { normalizeBaseUrl, probeStation, useStations, type StationRecord } from 
 import { AFTER_DISMISS_MS, useAuth } from '../store/auth';
 import { useT } from '../lib/i18n';
 import { alertError, confirmAction } from '../ui/dialogs';
+import { unregisterActive, unregisterStation } from '../push/register';
 
 export function useStationsForm({ onDone, onLeave }: { onDone: () => void; onLeave: () => void }) {
   const t = useT();
@@ -62,9 +64,14 @@ export function useStationsForm({ onDone, onLeave }: { onDone: () => void; onLea
         destructive: true,
       });
       if (!ok) return;
-      // Removing the active station changes where the app points — leave first.
-      if (station.id === activeId) leaveThen(() => useStations.getState().remove(station.id));
-      else void useStations.getState().remove(station.id);
+      // Removing the active station changes where the app points — leave first. Either
+      // way the station stops pushing to this phone first (best effort, its own session).
+      if (station.id === activeId) {
+        const unregistered = unregisterActive();
+        leaveThen(() => unregistered.then(() => useStations.getState().remove(station.id)));
+      } else {
+        void unregisterStation(station).finally(() => useStations.getState().remove(station.id));
+      }
     },
     [activeId, leaveThen, t],
   );
