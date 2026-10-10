@@ -20,7 +20,7 @@
  * hand-back must wake that Bot — which the computer tools then promise it.
  * `humanCheckFor` raises the one the browser asks for when a site wants human
  * verification: a `captcha` take-over card, so the member passes the check
- * (the human-check watcher hands back by itself once the page is clean).
+ * and hands the computer back themselves (never automatically).
  */
 
 import { tool, type Tool } from 'ai';

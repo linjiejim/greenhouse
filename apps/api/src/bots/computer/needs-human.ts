@@ -9,7 +9,7 @@
  * invisible reCAPTCHA v3 badge must not cry wolf on every page) plus the title.
  * A widget whose response token is already filled in counts as solved: a
  * reCAPTCHA v2 box stays on the page with its tick after the member passed it,
- * and the human-check watcher (human-check.ts) must see that page as clean.
+ * and the Bot resuming after their hand-back must see that page as clean.
  *
  * A human check (CAPTCHA, a challenge page that does not clear, a Cloudflare
  * block) is the member's to pass: the browser hands it over at once

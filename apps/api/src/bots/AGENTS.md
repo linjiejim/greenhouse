@@ -42,6 +42,12 @@ bots/
   显而易见且安全的下一步直接做、否则最多给一个具体的下一步提议），与聊天页 `sprouty.yaml` 的 `## Communication`
   同一份措辞；模板守则只补岗位相关的话，不重复它。紧跟其后的「Cards speak for themselves」：Bot 发起卡片（审批 / 新建 Bot /
   后台任务 / 登录 / 守则修改）后不复述卡片内容，最多一句「你决定后会怎样」——成员看得到卡片。
+- **电脑产物只给成员要的**（2026-10-11，[spec](../../../../docs/specs/20261011-mobile-computer.md)）：`browser screenshot`
+  只在成员要看页面时拍——模型拿不到像素（结果只有一句回执、`snapshot` 为空），截图不能拿来「检查」自己的操作；
+  `computer share_file` 只交成员要的成品，不发进度 / 日志 / 中间文件。工具描述（`tools/meta.ts`）与 S1 规则
+  （`engine/prompt.ts`）各说一遍；后台任务保留截图（「每天早上截一张看板给我」是正当用法），同样只在被要求时拍。
+  成员随时能在电脑面板（web）/ 电脑页（手机）看实时画面、翻文件。两种结果都是 `type:'file'`；客户端把图片画成**一张图**
+  （下载在预览里，加载失败才退回文件卡），不再在图下多画一张同名下载卡。
 - **Bot 就是 Agent 身份**（2026-10-07 收敛，[spec](../../../../docs/specs/20261007-agent-bot-convergence.md)；
   推翻 20261005 的 D2）：原「自定义 Agent」表已删，`bots` 吸收了它的 `description` / `tools`（null = 继承主人全部
   有效工具，列表 = 只能收窄的过滤器）/ `max_steps` / 不可变版本（`bot_versions`，每次创建或编辑追加一版，供

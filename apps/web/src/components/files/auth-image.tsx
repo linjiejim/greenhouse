@@ -16,7 +16,7 @@
  * HTML island (it marks these images with `data-auth-src` instead of `src`).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Image as ImageIcon } from '../../lib/icons';
 import { fetchAuthenticatedBlob } from '../../lib/file-download';
 import { isSafeAttachmentPreview } from '../blocks/attachments-block';
@@ -100,14 +100,18 @@ export function AuthImage({
   alt,
   className = '',
   onOpen,
+  fallback,
 }: {
   src: string;
   alt: string;
   className?: string;
   /** Clicked once loaded — gets the blob: URL (e.g. to open the lightbox). */
   onOpen?: (url: string) => void;
+  /** Shown instead of the quiet placeholder when the picture cannot be loaded. */
+  fallback?: ReactNode;
 }) {
   const { url, failed } = useAuthImage(src);
+  if (failed && fallback) return <>{fallback}</>;
   if (!url) {
     return (
       <span
