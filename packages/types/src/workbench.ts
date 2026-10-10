@@ -842,55 +842,6 @@ export function readPath(source: unknown, path: string | undefined): unknown {
 
 // ─── Relative date tokens ────────────────────────────────
 
-/**
- * Saved queries need relative windows: a card literally storing `2026-08-04`
- * is wrong tomorrow. These tokens are expanded at evaluation time, server-side.
- *
- * Deliberately a fixed vocabulary rather than an expression language — the
- * point is that a stored config stays inert data.
- *
- *   $today            $yesterday
- *   $today-<N>d       1..365 days back from today
- *   $month_start      first day of the current month
- */
-const DATE_TOKEN_PATTERN = /^\$(today|yesterday|month_start|today-([0-9]{1,3})d)$/;
-
-function toIsoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-/** Expand one token, or return null when the string is not a date token. */
-export function expandDateToken(value: string, today: Date): string | null {
-  const match = DATE_TOKEN_PATTERN.exec(value.trim());
-  if (!match) return null;
-  const base = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-  if (match[1] === 'today') return toIsoDay(base);
-  if (match[1] === 'yesterday') {
-    base.setUTCDate(base.getUTCDate() - 1);
-    return toIsoDay(base);
-  }
-  if (match[1] === 'month_start') {
-    base.setUTCDate(1);
-    return toIsoDay(base);
-  }
-  const days = Number(match[2]);
-  if (!Number.isFinite(days) || days < 1 || days > 365) return null;
-  base.setUTCDate(base.getUTCDate() - days);
-  return toIsoDay(base);
-}
-
-/** Expand date tokens recursively through the bounded JSON input tree. */
-export function expandDateTokens(input: Record<string, unknown>, today: Date): Record<string, unknown> {
-  const expand = (value: unknown, depth: number): unknown => {
-    if (typeof value === 'string') return expandDateToken(value, today) ?? value;
-    // Tool inputs are already bounded by their zod schemas. The depth guard is
-    // an additional defence for a malformed legacy JSON blob.
-    if (depth >= 12) return value;
-    if (Array.isArray(value)) return value.map((item) => expand(item, depth + 1));
-    if (isRecord(value)) {
-      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, expand(item, depth + 1)]));
-    }
-    return value;
-  };
-  return expand(input, 0) as Record<string, unknown>;
-}
+// Relative date tokens ($today, $today-7d, $month_start, …) live in `./date-tokens`,
+// shared with Tables; re-exported here for existing callers.
+export { expandDateToken, expandDateTokens } from './date-tokens.js';

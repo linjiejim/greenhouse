@@ -115,6 +115,22 @@
     "./bots": {
       "import": "./src/bots.ts",
       "types": "./src/bots.ts"
+    },
+    "./table-access": {
+      "import": "./src/table-access.ts",
+      "types": "./src/table-access.ts"
+    },
+    "./table-cards": {
+      "import": "./src/table-cards.ts",
+      "types": "./src/table-cards.ts"
+    },
+    "./table-formula": {
+      "import": "./src/table-formula.ts",
+      "types": "./src/table-formula.ts"
+    },
+    "./date-tokens": {
+      "import": "./src/date-tokens.ts",
+      "types": "./src/date-tokens.ts"
     }
   },
   "scripts": {
