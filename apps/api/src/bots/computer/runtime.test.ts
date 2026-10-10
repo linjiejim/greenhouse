@@ -30,7 +30,10 @@ vi.mock('@greenhouse/db', () => ({
 vi.mock('../engine/index.js', () => ({ cancelBotTasksForUser }));
 vi.mock('../../auth/features.js', () => ({ userHasFeature: async () => true }));
 vi.mock('../../ws/connection-manager.js', () => ({ connectionManager: { sendToUser: vi.fn() } }));
-vi.mock('../../settings/workspace-config.js', () => ({ getWorkspaceValue: async () => undefined }));
+vi.mock('../../settings/workspace-config.js', () => ({
+  getWorkspaceValue: async () => undefined,
+  onWorkspaceConfigRefreshed: () => () => undefined,
+}));
 
 import type { BotsComputerConfig } from './config.js';
 import { ComputerRuntimeError, type DockerClient, type ImageInfo, type NetworkInfo } from './docker.js';

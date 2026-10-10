@@ -735,7 +735,7 @@ function every(ms: number, name: string, fn: () => Promise<void>, firstDelayMs =
 /**
  * The settings the runtime was started with that only a restart applies: on/off, the
  * driver and the sandbox provider (key, domain). Runtime Config can change the provider's
- * (bots.computer_e2b_*), so an admin write that changes them restarts the runtime.
+ * (bots.computer_sandbox_*), so an admin write that changes them restarts the runtime.
  */
 function providerSettings(env: NodeJS.ProcessEnv = process.env): string {
   const key = env.BOTS_COMPUTER_E2B_API_KEY?.trim() ?? '';

@@ -222,7 +222,7 @@ const WORKSPACE_SETTINGS_LITERAL = [
   },
   // ── Bots computers (live knobs; the Docker host itself is .env infrastructure) ──
   {
-    key: 'bots.computer_e2b_api_key',
+    key: 'bots.computer_sandbox_api_key',
     group: 'bots',
     label: 'Sandbox provider API key',
     description:
@@ -233,7 +233,7 @@ const WORKSPACE_SETTINGS_LITERAL = [
     maxLength: 200,
   },
   {
-    key: 'bots.computer_e2b_domain',
+    key: 'bots.computer_sandbox_domain',
     group: 'bots',
     label: 'Sandbox provider domain',
     description: 'Empty for E2B. PPIO (mainland China): cn-beijing-1.sandbox.ppio.com.',
