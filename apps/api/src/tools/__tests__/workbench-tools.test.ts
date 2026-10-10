@@ -10,8 +10,9 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import type { ZodTypeAny } from 'zod';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { parseWorkbenchConfig, type WorkbenchConfig } from '@greenhouse/types/workbench';
+import { PINNABLE_ENTITY_KINDS, parseWorkbenchConfig, type WorkbenchConfig } from '@greenhouse/types/workbench';
 import { createWorkbenchQueryTool, createWorkbenchMutationTool, type WorkbenchToolContext } from '../workbench.js';
 import type { SourceOutcome } from '../../workbench/evaluate.js';
 
@@ -128,6 +129,17 @@ describe('workbench_mutation', () => {
 
     expect(result.ok).toBe(true);
     expect(result.preview).toEqual({ exists: true, allowed: false, title: 'Restricted app' });
+  });
+
+  it('offers exactly the record kinds a shortcut can be pinned to', () => {
+    const schema = (createWorkbenchMutationTool(db, context()) as unknown as { inputSchema: ZodTypeAny }).inputSchema;
+    const shortcut = (entityKind: string) =>
+      schema.safeParse({ action: 'add_widget', title: 'Pin', nav: { entity_kind: entityKind, entity_id: 1 } }).success;
+
+    for (const kind of PINNABLE_ENTITY_KINDS) expect(shortcut(kind)).toBe(true);
+    // Kinds without a read resolver (the retired CRM kinds among them) are not advertised.
+    expect(shortcut('crm_company')).toBe(false);
+    expect(shortcut('crm_deal')).toBe(false);
   });
 
   it('applies a recipe by id, including its mapping and size', async () => {

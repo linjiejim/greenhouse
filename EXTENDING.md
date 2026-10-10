@@ -296,13 +296,21 @@ belongs to Greenhouse itself.
 The low-code CRUD framework turns one declarative schema into a list + filters + add/edit
 form + detail + delete.
 
-- **Server:** `createTableCrudService(getDb(), myTable, opts)` (from `@greenhouse/db`) →
-  `createCrudRoutes(service, { filterable, sortable, guards, hooks, parseCreate, parseUpdate })`
-  (from `@greenhouse/crud/server`) → mount in `index.ts` (or in an extension's `routes`).
-  Filter/sort keys are whitelisted fail-loud (unknown key → 400).
-- **Client:** `defineCrud<Row>({ dataSource: createRestDataSource('/api/…', authFetch), columns,
-  filters, formFields, access, … })` then render `<CrudPage schema={…} />`. Reference
-  implementations: `apps/web/src/pages/administration/users.tsx`, `skills.tsx`, `mcp-keys.tsx`.
+- **Data source (the usual path):** the resource already has an API and a typed client, so the
+  page writes a small client-side `CrudDataSource` adapter over it (`list` / `get?` / `create` /
+  `update` / `remove`) — zero server changes. Every CRUD page in core works this way.
+- **Server (a brand-new resource):** implement `CrudService<Row>` (`@greenhouse/crud/server` —
+  over Drizzle, an in-memory array or a proxy) → `createCrudRoutes(service, { filterable,
+  sortable, guards, hooks, parseCreate, parseUpdate })` → mount in `index.ts` (or in an
+  extension's `routes`); the client then uses `createRestDataSource('/api/…', authFetch)`.
+  Filter/sort keys are whitelisted fail-loud (unknown key → 400). No production route uses the
+  factory yet; its contract is pinned by `packages/crud/src/__tests__/routes.test.ts`.
+- **Client:** `defineCrud<Row>({ dataSource, columns, filters, formFields, access, … })` then
+  render `<CrudPage schema={…} />`. `access` defaults every permission to false, so declare
+  `canEdit` / `canDelete` for anything writable. Reference implementations:
+  `apps/web/src/pages/tasks.tsx` (adapter + custom fields), `apps/web/src/pages/settings/groups.tsx`
+  (toolbar / rowExpand slots), `apps/web/src/pages/automations.tsx` (toggle column + table actions).
 - **Escape hatches, narrow → wide:** column/field `type: 'custom'` (render fn) → `slots` +
   `tableActions` / `pageActions` → use `CrudPage` / `CrudForm` / `CrudDetail` standalone in a
-  bespoke page (`installCrudUi` wires the host's UI kit once, in `app.tsx`).
+  bespoke page. Import the framework through the host's binding module
+  (`apps/web/src/pages/settings/crud.ts`), which runs `installCrudUi` before the first render.
