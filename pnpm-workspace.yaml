@@ -26,8 +26,6 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-ai@0.83.0'
   - '@earendil-works/pi-coding-agent@0.83.0'
   - '@earendil-works/pi-tui@0.83.0'
-  - '@e2b/dockerfile-utils@0.1.0'
-  - e2b@2.55.0
 
 # @earendil-works/pi-ai (agent-runner) pins @aws-sdk/client-bedrock-runtime@3.1048.0,
 # whose transitive exact pins point at @aws-sdk/@smithy versions that are no longer

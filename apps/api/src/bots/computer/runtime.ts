@@ -679,7 +679,7 @@ async function check(): Promise<void> {
         ok: true,
         detail:
           config.driver === 'e2b'
-            ? `${env.maxRunning} at once, idle after ${env.idleMinutes} min (asleep computers cost nothing at the provider)`
+            ? `${env.maxRunning} at once, idle after ${env.idleMinutes} min (asleep computers cost nothing at the provider). A plan may cap continuous running (E2B Hobby: 1 h): a computer that reaches it pauses, its work frozen, and carries on at its next use.`
             : `${env.maxRunning} at once at ${config.memory} each${
                 result.memTotal ? ` (host memory ${(result.memTotal / 1024 ** 3).toFixed(1)} GiB)` : ''
               }, idle after ${env.idleMinutes} min`,
