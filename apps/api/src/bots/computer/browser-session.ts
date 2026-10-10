@@ -467,6 +467,8 @@ export interface BrowserInput {
   path?: string;
   /** wait: seconds, at most WAIT_MAX_S. */
   timeout_s?: number;
+  /** snapshot: show the page from this line on (1-based), as an earlier snapshot's marker says. */
+  from_line?: number;
 }
 
 /** A file `upload` may put into a page — the same cap as share_file / import_attachment. */
@@ -518,6 +520,8 @@ export interface Observation {
   title: string;
   snapshot: string;
   truncated?: boolean;
+  /** snapshot {from_line}: the lines shown, of how many. */
+  lines?: { first: number; last: number; total: number };
   hint?: string;
   /** The page asks for human verification: handed to the member (foreground) — the hint says what to do. */
   blocked?: 'human_check';
@@ -635,7 +639,10 @@ export class BrowserSession {
     create: boolean,
     signal: AbortSignal = this.turn.signal,
   ): Promise<{ registry: LeaseRegistry; lease: TabLease | null }> {
-    const browser = rememberConnection(this.turn.userId, await this.deps.getBrowser(this.turn.userId, { signal }));
+    const browser = rememberConnection(
+      this.turn.userId,
+      await this.deps.getBrowser(this.turn.userId, { signal, maxWaitMs: access.BOT_START_WAIT_MS }),
+    );
     const registry = leaseRegistryFor(browser);
     const lease = await registry.acquire(leaseSpecFor(this.turn), { create });
     return { registry, lease };
@@ -1063,6 +1070,7 @@ export class BrowserSession {
         withTabs: input.action === 'tabs',
         navigation: navigations.last,
         signal,
+        ...(input.action === 'snapshot' && input.from_line !== undefined ? { fromLine: input.from_line } : {}),
       });
     } finally {
       navigations.stop();
@@ -1164,6 +1172,8 @@ export class BrowserSession {
       /** The action's last main-frame navigation response. */
       navigation: () => NavigationResponse | null;
       signal: AbortSignal;
+      /** snapshot {from_line}: the window from this line instead of head and tail. */
+      fromLine?: number;
     },
   ): Promise<Observation | ToolFailure> {
     let blocked = await guardLocation(page);
@@ -1178,7 +1188,7 @@ export class BrowserSession {
     }
     await registry.retag(lease, page);
     lease.touch(page);
-    const snap = await takeSnapshot(page, this.redact);
+    const snap = await takeSnapshot(page, this.redact, opts.fromLine !== undefined ? { fromLine: opts.fromLine } : {});
     const url = page.url();
     const title = await page.title().catch(() => '');
     const observation: Observation = {
@@ -1187,6 +1197,7 @@ export class BrowserSession {
       snapshot: snap.snapshot,
     };
     if (snap.truncated) observation.truncated = true;
+    if (snap.lines) observation.lines = snap.lines;
     const origins = [originOfUrl(url)];
     if (opts.withTabs || lease.tabs.length > 1) {
       observation.tabs = await tabViews(lease, this.redact);

@@ -38,6 +38,7 @@ export function createDockerHost(docker: DockerClient, opts: { now?: () => numbe
     exec: (spec) => docker.exec(spec),
     execStream: (container, user, argv, streamOpts) => docker.execStream(container, user, argv, streamOpts),
     openTunnel: (container, target) => docker.execStream(container, 'browser', TUNNEL_ARGV[target]),
+    openPort: (container, port) => docker.execStream(container, 'agent', ['socat', 'STDIO', `TCP:127.0.0.1:${port}`]),
 
     async start(row, spec) {
       const { config } = spec;

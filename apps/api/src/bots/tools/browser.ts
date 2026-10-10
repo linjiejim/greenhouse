@@ -44,6 +44,14 @@ const fields = {
     .max(WAIT_MAX_S)
     .optional()
     .describe(`wait: seconds (default 10 with text, else 3; at most ${WAIT_MAX_S}).`),
+  from_line: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .describe(
+      'snapshot: show the page from this line on — a long page is cut, and its marker says which line to ask for.',
+    ),
 };
 
 const foregroundSchema = z.object({ action: z.enum(BROWSER_ACTIONS), ...fields });
@@ -56,6 +64,7 @@ const backgroundSchema = z.object({
   direction: fields.direction,
   tab: fields.tab,
   timeout_s: fields.timeout_s,
+  from_line: fields.from_line,
 });
 
 export function createBrowserTool(turn: ComputerTurn, deps: ComputerDeps = defaultComputerDeps): Tool {

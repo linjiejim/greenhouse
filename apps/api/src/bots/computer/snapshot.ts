@@ -184,15 +184,23 @@ export function maskSnapshot(snapshot: string, scan: SensitiveScan): { text: str
   return { text, masked };
 }
 
+/** Which lines a marker stands for (1-based, inclusive) out of how many. */
+export interface OmittedRange {
+  first: number;
+  last: number;
+  total: number;
+}
+
 /**
  * Cap text at `maxTokens` (estimateTokens): the head (where the page's main
  * content and forms usually are) and the tail (footers, pagination), with a
- * visible marker in between so the Bot knows to scroll or narrow down.
+ * visible marker in between that says which lines it stands for, so the Bot
+ * can read them (`snapshot {from_line}`, windowSnapshot).
  */
 export function capSnapshot(
   text: string,
   maxTokens = SNAPSHOT_TOKEN_CAP,
-  marker: (omittedLines: number) => string = pageOmission,
+  marker: (omittedLines: number, range: OmittedRange) => string = pageOmission,
 ): { text: string; truncated: boolean } {
   const lines = text
     .split('\n')
@@ -219,7 +227,41 @@ export function capSnapshot(
     used += cost;
   }
   const omitted = lines.length - head.length - tail.length;
-  return { text: [...head, marker(omitted), ...tail].join('\n'), truncated: true };
+  const range = { first: head.length + 1, last: head.length + omitted, total: lines.length };
+  return { text: [...head, marker(omitted, range), ...tail].join('\n'), truncated: true };
+}
+
+/**
+ * A page from line `fromLine` (1-based) on, as much as fits in `maxTokens`, with
+ * a marker for what is above and below — how a Bot reads the middle of a long
+ * page that capSnapshot leaves out. A `fromLine` past the end shows the last lines.
+ */
+export function windowSnapshot(
+  text: string,
+  fromLine: number,
+  maxTokens = SNAPSHOT_TOKEN_CAP,
+): { text: string; truncated: boolean; lines: OmittedRange } {
+  const lines = text
+    .split('\n')
+    .map((line) => (line.length > LINE_CHAR_CAP ? `${line.slice(0, LINE_CHAR_CAP)}… [line truncated]` : line));
+  const total = lines.length;
+  const start = Math.min(Math.max(1, Math.floor(fromLine)), total);
+  const shown: string[] = [];
+  // Room for the two markers.
+  let used = 60;
+  for (let i = start - 1; i < total; i++) {
+    const cost = estimateTokens(lines[i]!) + 1;
+    if (shown.length > 0 && used + cost > maxTokens) break;
+    shown.push(lines[i]!);
+    used += cost;
+  }
+  const last = start + shown.length - 1;
+  const out: string[] = [];
+  if (start > 1) out.push(`… [lines 1–${start - 1} of ${total} above — a snapshot without from_line shows the top] …`);
+  out.push(...shown);
+  if (last < total)
+    out.push(`… [lines ${last + 1}–${total} of ${total} below — snapshot {from_line: ${last + 1}} shows them] …`);
+  return { text: out.join('\n'), truncated: start > 1 || last < total, lines: { first: start, last, total } };
 }
 
 /**
@@ -247,25 +289,38 @@ export function capTail(
   return { text: [marker(lines.length - tail.length), ...tail].join('\n'), truncated: true };
 }
 
-function pageOmission(omitted: number): string {
-  return `… [${omitted} lines of the page omitted to save context — scroll, or click into the part you need, then snapshot again] …`;
+function pageOmission(omitted: number, range: OmittedRange): string {
+  // Not "scroll and snapshot again": the snapshot is of the whole page, wherever it is scrolled.
+  return `… [lines ${range.first}–${range.last} of ${range.total} not shown (${omitted} lines) — snapshot {from_line: ${range.first}} shows them] …`;
 }
 
 export interface PageSnapshot {
   snapshot: string;
   truncated: boolean;
   masked: number;
+  /** The lines shown, when a window was asked for (`fromLine`). */
+  lines?: OmittedRange;
 }
 
 /**
  * Take a safe snapshot of a page: scan → AI snapshot → scan → mask → redact →
- * cap. `redact` applies the computer's remembered-secret redaction.
+ * cap (head and tail), or the window from `fromLine` on. Masking and redaction
+ * always run on the whole page first. `redact` applies the computer's
+ * remembered-secret redaction.
  */
-export async function takeSnapshot(page: Page, redact: (text: string) => string): Promise<PageSnapshot> {
+export async function takeSnapshot(
+  page: Page,
+  redact: (text: string) => string,
+  opts: { fromLine?: number } = {},
+): Promise<PageSnapshot> {
   const before = await collectSensitiveValues(page);
   const raw = await page.ariaSnapshot({ mode: 'ai', timeout: 10_000 });
   const after = await collectSensitiveValues(page);
   const { text, masked } = maskSnapshot(raw, mergeScans(before, after));
+  if (opts.fromLine !== undefined) {
+    const window = windowSnapshot(redact(text), opts.fromLine);
+    return { snapshot: window.text, truncated: window.truncated, masked, lines: window.lines };
+  }
   const capped = capSnapshot(redact(text));
   return { snapshot: capped.text, truncated: capped.truncated, masked };
 }

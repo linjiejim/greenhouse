@@ -152,7 +152,7 @@ bots/
   重建镜像。契约 2 = 桌面（tint2 任务栏 + `gh-window` 看门狗：所有浏览器窗口都被最小化 3 s 后自动恢复）、
   软件 WebGL（`--enable-unsafe-swiftshader`，边界仍是 gVisor）、浏览器语言用 `LANGUAGE` + `--accept-lang`
   （Linux Chromium 不认 `--lang`）、`gh-term` / `gh-jobs` / `gh-window` / `gh-agent-kill`，以及预装的
-  pip / Node / ffmpeg / pandoc / sqlite 等；`agent` 的 pip / npm / pipx 用户级安装落在 home 卷，系统目录仍只读；
+  pip / Node / ffmpeg / pandoc / poppler（pdftotext、pdfinfo）/ sqlite 等；`agent` 的 pip / npm / pipx 用户级安装落在 home 卷，系统目录仍只读；
   组织级额外软件包在构建时用 `BOTS_COMPUTER_EXTRA_PACKAGES`（镜像标签记录，预检里展示）。
 - **群聊已退役（2026-10-09）**：一段对话就是一个 Bot 的私聊（`kind = 'direct'`，`lead_bot_id` = 主人，主人归档后为
   null），其他 Bot 只以客串（`guest`）身份加入——Bot 用 `team.add` 自己拉人、成员手动邀请照旧；Bot 之间的交接
@@ -190,6 +190,17 @@ bots/
   `~/.local/state/gh-jobs/<id>/`）。运行中的作业让电脑不因闲置休眠（自 `last_active_at` 起最多
   `BOTS_COMPUTER_JOB_MAX_HOURS`，默认 8 小时）；接管时的杀进程（`gh-agent-kill`）放过作业和成员的终端 /
   tmux 会话；容器回收后作业显示 `lost`。
+- **端口预览**（两种驱动，`preview.ts`）：Bot 的 `computer preview {port}` 给成员一条 `/api/bots-preview/<票据>/<端口>/`
+  链接，API 经 `host.openPort` 反代到电脑里 `127.0.0.1:<端口>`（docker：`socat` 以 agent 身份；托管：agent 桥的 `/port?n=`，
+  `GH_BRIDGE_PORTS=1`）。票据签名、绑定成员 + 凭证代际 + 端口、2 小时，每次请求都重查成员；`isPublicPath` 只豁免这个独立前缀。
+  **页面绝不能以 Greenhouse 身份运行**：每个响应加 `Content-Security-Policy: sandbox …`（不给 allow-same-origin → 不透明源）、
+  去掉 Set-Cookie、`Referrer-Policy: no-referrer`；成员的 Authorization / Cookie 永不转发；只开 1024–65535 且排除 7681 / 7682 /
+  49983（API 与桥各查一遍）；电脑休眠时给说明页、不唤醒。路径前缀的代价：只有相对路径的链接留在预览里，没有 cookie / 本地存储 /
+  WebSocket——Bot 被告知用相对路径；完整兼容要独立的预览域名（后续）。
+- **后台进程结束叫醒 Bot**（两种驱动）：`run_background` 时登记 `bot_process_watches`（会话 + Bot + job id），运行时每分钟
+  问一次**正在运行**的、有登记的电脑（一次 `gh-jobs list`；`listJobsIfRunning` 区分「没运行」和「没有任务」），进程不再
+  running（exited / lost / 不在列表里）就条件更新认领（多个 API 进程只投递一次）并投 `continue` 叫醒那个 Bot 报告结果。
+  电脑休眠时不叫醒它来问；登记 7 天无果作废。登记失败时工具的 note 让 Bot 别承诺回报（`process-watches.ts`）。
 - **打断 ≠ 停止**：`POST /api/chat/runs/:sessionId/interrupt` 让当前回合**这一步做完**再结束（在途工具
   照常完成并落库，比如已经在生成的图），丢掉链里排好的回合；有排队的成员消息就开新链回答它，否则
   结束 run 并写停止提示。`/stop` 仍是立即硬停（在途工具结果丢弃）。

@@ -43,6 +43,10 @@ const REQUIRE_SOCKET = process.env.GH_BRIDGE_REQUIRE_SOCKET === '1';
 const SYSTEMD_SOCKET = process.env.LISTEN_FDS === '1' && process.env.LISTEN_PID === String(process.pid);
 const SECRET_FILE = process.env.GH_BRIDGE_SECRET_FILE ?? '';
 const TUNNELS = process.env.GH_BRIDGE_TUNNELS === '1';
+/** `/port?n=` — a TCP connection to 127.0.0.1:n, for a port preview (the agent bridge: as uid agent). */
+const PORTS = process.env.GH_BRIDGE_PORTS === '1';
+/** Never a preview: the two bridges and the provider's own agent (envd). The API checks the same. */
+const PORT_DENY = new Set([7681, 7682, 49983]);
 const READY_FILE = process.env.GH_BRIDGE_READY_FILE ?? '';
 /** Where gh-computer puts the browser's sockets (overridable for tests). */
 const SOCKET_DIR = process.env.GH_BRIDGE_SOCKET_DIR || '/tmp/browser';
@@ -112,8 +116,13 @@ function keepAlive(ws) {
   ws.on('close', () => clearInterval(timer));
 }
 
-function tunnel(ws, path) {
-  const unix = connect(SOCKETS[path]);
+function previewPort(url) {
+  const n = Number(url.searchParams.get('n'));
+  return Number.isInteger(n) && n >= 1024 && n <= 65535 && !PORT_DENY.has(n) ? n : null;
+}
+
+/** Raw bytes both ways between the WebSocket and a local socket (a unix one, or TCP for a port). */
+function tunnel(ws, unix) {
   const close = () => {
     try {
       ws.close();
@@ -278,13 +287,15 @@ const server = createServer((_req, res) => {
 });
 
 server.on('upgrade', (req, socket, head) => {
-  let path;
+  let url;
   try {
-    path = new URL(req.url ?? '/', 'http://bridge').pathname;
+    url = new URL(req.url ?? '/', 'http://bridge');
   } catch {
-    path = '';
+    url = new URL('http://bridge/');
   }
-  const allowed = path === '/exec' || (TUNNELS && path in SOCKETS);
+  const path = url.pathname;
+  const port = PORTS && path === '/port' ? previewPort(url) : null;
+  const allowed = path === '/exec' || (TUNNELS && path in SOCKETS) || port !== null;
   if (!allowed || !secretOk(req.headers['x-gh-bridge-secret'])) {
     socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
     return;
@@ -292,7 +303,8 @@ server.on('upgrade', (req, socket, head) => {
   wss.handleUpgrade(req, socket, head, (ws) => {
     keepAlive(ws);
     if (path === '/exec') exec(ws);
-    else tunnel(ws, path);
+    else if (port !== null) tunnel(ws, connect({ host: '127.0.0.1', port }));
+    else tunnel(ws, connect(SOCKETS[path]));
   });
 });
 
@@ -304,7 +316,7 @@ server.on('error', (err) => {
 const onListening = () => {
   if (READY_FILE) writeFileSync(READY_FILE, '');
   const where = SYSTEMD_SOCKET ? 'the socket from systemd' : `127.0.0.1:${PORT}`;
-  console.error(`gh-bridge: serving ${where}${TUNNELS ? ' (tunnels on)' : ''}`);
+  console.error(`gh-bridge: serving ${where}${TUNNELS ? ' (tunnels on)' : ''}${PORTS ? ' (ports on)' : ''}`);
 };
 if (SYSTEMD_SOCKET) server.listen({ fd: 3 }, onListening);
 else server.listen(PORT, '127.0.0.1', onListening);

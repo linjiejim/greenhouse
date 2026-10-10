@@ -707,6 +707,14 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
       );
     },
 
+    openPort(container, port): ComputerProcess {
+      // The agent bridge (GH_BRIDGE_PORTS), which checks the port again.
+      return bridge.tunnel(
+        handleFor(container).then((sandbox) => targetOf(sandbox, 'agent')),
+        `/port?n=${port}`,
+      );
+    },
+
     async start(row, spec): Promise<StartedComputer> {
       const template = spec.image;
       if (!template) throw new ComputerRuntimeError('template_missing', 'The computer template is not ready yet');

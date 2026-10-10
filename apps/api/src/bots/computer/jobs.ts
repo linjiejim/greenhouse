@@ -165,8 +165,16 @@ export async function startJob(
 
 /** The member's jobs, newest first; empty when the computer is not running (never starts it). */
 export async function listJobs(userId: string, deps: JobsDeps = defaultDeps): Promise<ComputerProcessView[]> {
+  return (await listJobsIfRunning(userId, deps)) ?? [];
+}
+
+/** Like listJobs, but null when the computer is not running — "no jobs" and "could not look" differ. */
+export async function listJobsIfRunning(
+  userId: string,
+  deps: JobsDeps = defaultDeps,
+): Promise<ComputerProcessView[] | null> {
   const container = await deps.runningContainer(userId);
-  if (!container) return [];
+  if (!container) return null;
   const result = await ghJobs(deps, container, ['list']);
   if (result.code !== 0) failed('Listing jobs', result);
   return parseJobList(result.stdout);

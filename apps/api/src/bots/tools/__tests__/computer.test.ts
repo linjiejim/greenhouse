@@ -1,7 +1,11 @@
+import { randomBytes } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DatabaseProvider } from '@greenhouse/db';
 import type { ComputerDeps, ComputerTurn } from '../../computer/browser-session.js';
 import { ComputerUnavailableError } from '../../computer/access.js';
+
+// Preview tickets are signed with the deployment's token key.
+process.env.TOKEN_SIGNING_KEY ??= randomBytes(32).toString('hex');
 
 const storage = vi.hoisted(() => ({
   putObjectAtKey: vi.fn(async () => undefined),
@@ -69,8 +73,10 @@ function setup(overrides: Partial<ComputerDeps> = {}, turnOverrides: Partial<Com
         : [],
     ),
   };
+  const botComputers = { watchProcess: vi.fn(async () => undefined) };
+  const users = { getById: vi.fn(async (id: string) => (id === 'u1' ? { id: 'u1', auth_version: 3 } : undefined)) };
   const turn: ComputerTurn = {
-    db: { chatFiles } as unknown as DatabaseProvider,
+    db: { chatFiles, botComputers, users } as unknown as DatabaseProvider,
     userId: 'u1',
     botId: 'bot_1',
     sessionId: 'sess_1',
@@ -82,7 +88,7 @@ function setup(overrides: Partial<ComputerDeps> = {}, turnOverrides: Partial<Com
     vaultMatches: null,
     ...turnOverrides,
   };
-  return { deps, turn, lease, chatFiles };
+  return { deps, turn, lease, chatFiles, botComputers };
 }
 
 beforeEach(() => {
@@ -430,17 +436,59 @@ describe('what the Bot is told about its computer', () => {
     expect(hosted).toMatch(/everything is frozen, running processes included, and carries on when it wakes/);
     expect(hosted).not.toMatch(/running processes end —/);
     for (const description of [docker, hosted]) {
-      expect(description).toMatch(/Your whole home persists \(not only ~\/work\)/);
-      expect(description).toMatch(/never give that address to the member/);
+      expect(description).toMatch(/Your whole home persists, not only ~\/work/);
+      expect(description).toMatch(/never give the member its localhost address/);
+      expect(description).toMatch(/preview \{port\}/);
     }
     // The default (an existing caller, the docker host) keeps the docker wording.
     expect(createComputerTool(turn, deps).description).toBe(docker);
   });
 
-  it('never lets the Bot promise to report a background process on its own', async () => {
-    const { deps, turn } = setup();
+  it('watches a background process for the Bot that started it, and says it will be woken', async () => {
+    const { deps, turn, botComputers } = setup();
+    const result = await runComputerAction(turn, { action: 'run_background', command: 'make', name: 'build' }, deps);
+    expect(botComputers.watchProcess).toHaveBeenCalledWith({
+      user_id: 'u1',
+      session_id: 'sess_1',
+      bot_id: 'bot_1',
+      job_id: 'j0000beef',
+      name: 'build',
+    });
+    expect(result).toMatchObject({ note: expect.stringMatching(/When it ends you are woken up in this conversation/) });
+  });
+
+  it('a watch that could not be recorded makes the Bot not promise anything', async () => {
+    const { deps, turn, botComputers } = setup();
+    botComputers.watchProcess.mockRejectedValueOnce(new Error('db down'));
     const result = await runComputerAction(turn, { action: 'run_background', command: 'make' }, deps);
-    expect(result).toMatchObject({ note: expect.stringMatching(/Nothing tells you when it ends/) });
+    expect(result).toMatchObject({
+      id: 'j0000beef',
+      note: expect.stringMatching(/Nothing will tell you when it ends/),
+    });
+  });
+});
+
+describe('port previews', () => {
+  it('gives the member a ticketed link for a port, bound to them and that port', async () => {
+    const { verifyPreviewTicket } = await import('../../computer/preview.js');
+    const { deps, turn } = setup();
+    const result = (await runComputerAction(turn, { action: 'preview', port: 8000 }, deps)) as {
+      url: string;
+      note: string;
+    };
+    const [, , token, port] = result.url.split('/').slice(1);
+    expect(result.url).toMatch(/^\/api\/bots-preview\/[^/]+\/8000\/$/);
+    expect(port).toBe('8000');
+    expect(verifyPreviewTicket(token!, 8000)).toMatchObject({ uid: 'u1', av: 3, p: 8000 });
+    expect(result.note).toMatch(/relative paths/);
+  });
+
+  it('refuses a port a preview may not open', async () => {
+    const { deps, turn } = setup();
+    for (const port of [80, 7681, 49983]) {
+      expect(await runComputerAction(turn, { action: 'preview', port }, deps)).toMatchObject({ code: 'invalid' });
+    }
+    expect(await runComputerAction(turn, { action: 'preview' }, deps)).toMatchObject({ code: 'invalid' });
   });
 });
 

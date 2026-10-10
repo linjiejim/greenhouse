@@ -41,6 +41,7 @@ vi.mock('./tab-leases.js', () => ({ leaseRegistryFor: () => ({ expireForeign }) 
 import {
   abortComputerActions,
   ComputerActionsAbortedError,
+  ensureComputerReady,
   getBrowser,
   onComputerActionsAborted,
   readComputerFile,
@@ -179,5 +180,25 @@ describe('file paths', () => {
     }
     expect(exec).not.toHaveBeenCalled();
     expect(ensureRunning).not.toHaveBeenCalled();
+  });
+});
+
+describe('a Bot waiting for its computer', () => {
+  it('stops waiting at maxWaitMs with a "still starting" answer — the start itself goes on', async () => {
+    let finish: (row: unknown) => void = () => undefined;
+    ensureRunning.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const error = await ensureComputerReady('u1', { maxWaitMs: 20 }).catch((e) => e);
+    expect(error).toBeInstanceOf(ComputerUnavailableError);
+    expect(error).toMatchObject({ code: 'busy', message: expect.stringContaining('still starting') });
+    expect(ensureRunning).toHaveBeenCalledTimes(1);
+    finish({ container_name: 'c1', last_started_at: 't1' }); // finishing later is harmless
+    await flush();
+  });
+
+  it('without maxWaitMs (the member’s own start, a take-over) it waits for the start', async () => {
+    ensureRunning.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve({ container_name: 'c1', last_started_at: 't1' }), 40)),
+    );
+    await expect(ensureComputerReady('u1')).resolves.toBeUndefined();
   });
 });

@@ -23,8 +23,8 @@ import { PgTransaction } from 'drizzle-orm/pg-core';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db, DbClient } from '../client.js';
-import { botComputers } from '../schema/index.js';
-import type { BotComputerRow, BotComputerState } from '../schema/bots.js';
+import { botComputers, botProcessWatches } from '../schema/index.js';
+import type { BotComputerRow, BotComputerState, BotProcessWatchRow, BotProcessWatchStatus } from '../schema/bots.js';
 
 /** Advisory-lock key space for computers (hashtext of a stable label + user id). */
 const USER_LOCK_LABEL = 'greenhouse-bot-computer:';
@@ -39,6 +39,15 @@ export interface ComputerIdentity {
   namespace: string;
   container_name: string;
   volume_name: string;
+}
+
+/** A process a Bot asked to hear about (run_background in a conversation). */
+export interface ProcessWatchInput {
+  user_id: string;
+  session_id: string;
+  bot_id: string;
+  job_id: string;
+  name: string;
 }
 
 export function createBotComputerService(db: Db) {
@@ -214,6 +223,68 @@ export function createBotComputerService(db: Db) {
 
     async delete(userId: string): Promise<void> {
       await db.delete(botComputers).where(eq(botComputers.user_id, userId));
+    },
+
+    // ─── Process watches ──────────────────────────────
+
+    /** A Bot wants to hear when this background process ends (once per job). */
+    async watchProcess(input: ProcessWatchInput): Promise<void> {
+      const now = nowIso();
+      await db
+        .insert(botProcessWatches)
+        .values({ ...input, status: 'watching', created_at: now, updated_at: now })
+        .onConflictDoNothing({ target: [botProcessWatches.user_id, botProcessWatches.job_id] });
+    },
+
+    /** Members with at least one process still watched. */
+    async listWatchingUsers(): Promise<string[]> {
+      const rows = await db
+        .selectDistinct({ user_id: botProcessWatches.user_id })
+        .from(botProcessWatches)
+        .where(eq(botProcessWatches.status, 'watching'));
+      return rows.map((row) => row.user_id);
+    },
+
+    async listWatches(userId: string): Promise<BotProcessWatchRow[]> {
+      return db
+        .select()
+        .from(botProcessWatches)
+        .where(and(eq(botProcessWatches.user_id, userId), eq(botProcessWatches.status, 'watching')))
+        .orderBy(asc(botProcessWatches.id));
+    },
+
+    /**
+     * Settle a watch — only if it is still `watching`: the row comes back to exactly one
+     * caller, so of several API processes only one wakes the Bot.
+     */
+    async settleWatch(
+      id: number,
+      status: Exclude<BotProcessWatchStatus, 'watching'>,
+    ): Promise<BotProcessWatchRow | undefined> {
+      const [row] = await db
+        .update(botProcessWatches)
+        .set({ status, updated_at: nowIso() })
+        .where(and(eq(botProcessWatches.id, id), eq(botProcessWatches.status, 'watching')))
+        .returning();
+      return row;
+    },
+
+    /** Give up on watches older than `cutoffIso` (a process that never ends must not be asked about for ever). */
+    async expireWatches(cutoffIso: string): Promise<number> {
+      const rows = await db
+        .update(botProcessWatches)
+        .set({ status: 'gone', updated_at: nowIso() })
+        .where(and(eq(botProcessWatches.status, 'watching'), lt(botProcessWatches.created_at, cutoffIso)))
+        .returning({ id: botProcessWatches.id });
+      return rows.length;
+    },
+
+    /** The member's computer and its home are gone: nothing it ran can end any more. */
+    async dropWatches(userId: string): Promise<void> {
+      await db
+        .update(botProcessWatches)
+        .set({ status: 'gone', updated_at: nowIso() })
+        .where(and(eq(botProcessWatches.user_id, userId), eq(botProcessWatches.status, 'watching')));
     },
 
     // ─── Locks ────────────────────────────────────────

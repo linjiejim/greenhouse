@@ -90,6 +90,12 @@ export interface ComputerExec {
    * only). Ends like a process: 'exit' when either side closes.
    */
   openTunnel(container: string, target: ComputerTunnel): ComputerProcess;
+  /**
+   * A raw TCP connection to 127.0.0.1:`port` inside the computer, as uid `agent` (what its
+   * shell can reach anyway) — a port preview (preview.ts). Callers check the port first
+   * (previewPortAllowed). Ends like a process.
+   */
+  openPort(container: string, port: number): ComputerProcess;
 }
 
 // ─── Lifecycle (controller and runtime only) ──────────────

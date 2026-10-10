@@ -71,9 +71,9 @@ describe('static rules (S1)', () => {
     expect(buildStaticRules(toolFaceFlags(['browser'], false), 'en')).not.toMatch(/import_attachment/);
   });
 
-  it('sends a long command to a background process, not to a shell call or a background task', () => {
+  it('sends a long command to a background process, and says the Bot is woken when it ends', () => {
     expect(buildStaticRules(toolFaceFlags(['computer'], false), 'en')).toContain(
-      '- A long command (an install, a build, a big download) runs as a background process: computer run_background, then process_log to check on it.',
+      '- A long command (an install, a build, a big download) runs as a background process: computer run_background. You are woken up in this conversation when it ends — tell the member it is running and end your turn rather than polling it; process_log reads its output.',
     );
     expect(buildStaticRules(toolFaceFlags(['browser'], false), 'en')).not.toMatch(/run_background/);
   });

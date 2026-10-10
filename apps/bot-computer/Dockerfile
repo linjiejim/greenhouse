@@ -66,7 +66,7 @@ RUN set -eux; \
       socat tini procps ca-certificates xauth tmux \
       git curl wget jq ripgrep unzip zip file less nano vim-tiny sqlite3 \
       python3 python3-pip python3-venv pipx nodejs npm build-essential \
-      ffmpeg pandoc; \
+      ffmpeg pandoc poppler-utils; \
     rm -rf /var/lib/apt/lists/*
 
 # Chromium's own menus, dialogs and error pages in the member's language
