@@ -47,18 +47,29 @@ export function isNeedsConnection(value: unknown): value is NeedsConnection {
   return v.needs_connection === true && typeof v.server_name === 'string' && typeof v.server_id === 'number';
 }
 
-/** A write's outcome: ok, or the server's sentence (a refused key says why). */
-export type ConnectorResult<T> = { ok: true; value: T } | { ok: false; message: string };
+/**
+ * A write's outcome: ok, or the server's sentence — plus, where the server
+ * tells them apart, what went wrong (`code`: `key_rejected`; a test's
+ * `expired` / `error`) and the provider's raw answer (`detail`), so the app
+ * can word the refusal itself and keep the raw text behind 详情.
+ */
+export type ConnectorFailure = { ok: false; message: string; code?: string; detail?: string };
+export type ConnectorResult<T> = { ok: true; value: T } | ConnectorFailure;
 
-async function errorOf(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => ({}))) as { error?: unknown };
-  return typeof body.error === 'string' ? body.error : `HTTP ${res.status}`;
+async function failureOf(res: Response): Promise<ConnectorFailure> {
+  const body = (await res.json().catch(() => ({}))) as { error?: unknown; code?: unknown; detail?: unknown };
+  return {
+    ok: false,
+    message: typeof body.error === 'string' ? body.error : `HTTP ${res.status}`,
+    ...(typeof body.code === 'string' ? { code: body.code } : null),
+    ...(typeof body.detail === 'string' ? { detail: body.detail } : null),
+  };
 }
 
 async function call<T>(path: string, init: RequestInit | undefined, read: (body: unknown) => T): Promise<ConnectorResult<T>> {
   try {
     const res = await api(path, init);
-    if (!res.ok) return { ok: false, message: await errorOf(res) };
+    if (!res.ok) return await failureOf(res);
     return { ok: true, value: read(await res.json().catch(() => ({}))) };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
@@ -85,17 +96,17 @@ export function saveConnectorKey(id: number, key: string): Promise<ConnectorResu
   );
 }
 
-/** List the tools with my connection: how many, or why not. */
+/** List the tools with my connection: how many, or why not (`code` = the server's status). */
 export async function testConnector(id: number): Promise<ConnectorResult<number>> {
   const result = await call(
     `/api/connectors/${id}/test`,
     { method: 'POST' },
-    (body) => body as { ok: boolean; tool_count?: number; error: string | null },
+    (body) => body as { ok: boolean; tool_count?: number; status?: string; error: string | null },
   );
   if (!result.ok) return result;
-  return result.value.ok
-    ? { ok: true, value: result.value.tool_count ?? 0 }
-    : { ok: false, message: result.value.error ?? '' };
+  const { ok, tool_count, status, error } = result.value;
+  if (ok) return { ok: true, value: tool_count ?? 0 };
+  return { ok: false, message: error ?? '', ...(status ? { code: status } : null), ...(error ? { detail: error } : null) };
 }
 
 export function disconnectConnector(id: number): Promise<ConnectorResult<void>> {

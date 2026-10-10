@@ -5,7 +5,8 @@
  *  - `confirmAction()` — a yes/no question; `destructive` styles the confirm
  *    button red (deleting, discarding, signing out).
  *  - `promptText()`    — a single text field (rename, create a tag).
- *  - `alertError()`    — the ONE way to report a failed action (see below).
+ *  - `alertError()`    — the ONE way to report a failed action (see below);
+ *    a raw technical reason goes in its `detail` (behind 详情), never the message.
  *
  * Feedback policy (one rule, app-wide):
  *  - an action the user asked for failed (save / delete / create / restore /
@@ -27,7 +28,7 @@ import { Alert } from 'react-native';
 import { translate } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
 
-function tr(key: 'common.cancel' | 'common.ok'): string {
+function tr(key: 'common.cancel' | 'common.ok' | 'common.details'): string {
   return translate(usePrefs.getState().lang, key);
 }
 
@@ -52,9 +53,20 @@ export function confirmAction(opts: {
   });
 }
 
-/** Report a failed action: system alert, title + optional detail, single OK. */
-export function alertError(title: string, message?: string): void {
-  Alert.alert(title, message || undefined, [{ text: tr('common.ok') }]);
+/**
+ * Report a failed action: system alert, title + optional message, single OK.
+ * `detail` — the technical reason (a provider's raw answer): kept out of the
+ * message, one tap away behind 详情.
+ */
+export function alertError(title: string, message?: string, detail?: string): void {
+  const ok = { text: tr('common.ok') };
+  Alert.alert(
+    title,
+    message || undefined,
+    detail
+      ? [{ text: tr('common.details'), onPress: () => Alert.alert(tr('common.details'), detail, [ok]) }, ok]
+      : [ok],
+  );
 }
 
 export function promptText(opts: {

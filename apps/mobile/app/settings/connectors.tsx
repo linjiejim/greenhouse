@@ -14,10 +14,11 @@
 import React, { useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Stack } from 'expo-router';
-import type { Connector, ConnectorStatus } from '../../src/api/connectors';
+import type { Connector } from '../../src/api/connectors';
+import { CONNECTOR_AUTH_LABEL, CONNECTOR_STATUS_LABEL } from '../../src/connectors/labels';
 import { connect, disconnect, test, useConnectors } from '../../src/connectors/use-connectors';
 import { openLink } from '../../src/lib/links';
-import { useT, type TFunction, type TranslationKey } from '../../src/lib/i18n';
+import { useT, type TFunction } from '../../src/lib/i18n';
 import { space, useTheme } from '../../src/theme';
 import { Spinner } from '../../src/ui/core';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
@@ -26,20 +27,6 @@ import { NativeMenu, menuSections, type MenuItem } from '../../src/ui/menu';
 
 /** Empty / failed states sit in the middle of the page. */
 const CENTERED = { flexGrow: 1, justifyContent: 'center' } as const;
-
-const STATUS_LABEL: Record<ConnectorStatus, TranslationKey> = {
-  connected: 'connectors.statusConnected',
-  not_connected: 'connectors.statusNotConnected',
-  expired: 'connectors.statusExpired',
-  not_needed: 'connectors.statusReady',
-};
-
-const AUTH_LABEL: Record<Connector['auth_mode'], TranslationKey> = {
-  oauth: 'connectors.authOauth',
-  per_user: 'connectors.authPerUser',
-  shared: 'connectors.authShared',
-  none: 'connectors.authNone',
-};
 
 export default function SettingsConnectors() {
   const t = useT();
@@ -90,9 +77,9 @@ function ConnectorRow({
   const t = useT();
   const { colors: c, hex } = useTheme();
   const items = useMemo(() => menuFor(connector, t), [connector, t]);
-  const status = t(STATUS_LABEL[connector.status]);
+  const status = t(CONNECTOR_STATUS_LABEL[connector.status]);
   const facts = [
-    t(AUTH_LABEL[connector.auth_mode]),
+    t(CONNECTOR_AUTH_LABEL[connector.auth_mode]),
     connector.tool_count ? t('connectors.toolsN', { n: connector.tool_count }) : null,
   ]
     .filter(Boolean)

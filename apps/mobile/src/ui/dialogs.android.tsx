@@ -17,7 +17,7 @@ import { translate } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
 import { M3Host, useM3 } from './m3';
 
-function tr(key: 'common.cancel' | 'common.ok'): string {
+function tr(key: 'common.cancel' | 'common.ok' | 'common.details'): string {
   return translate(usePrefs.getState().lang, key);
 }
 
@@ -29,7 +29,7 @@ type Request = { id: number; title: string; message?: string } & (
       destructive?: boolean;
       resolve: (ok: boolean) => void;
     }
-  | { kind: 'alert' }
+  | { kind: 'alert'; detail?: string }
   | {
       kind: 'prompt';
       defaultValue?: string;
@@ -65,9 +65,9 @@ export function confirmAction(opts: {
   return new Promise((resolve) => push({ kind: 'confirm', ...opts, resolve }));
 }
 
-/** Report a failed action: title + optional detail, single OK. */
-export function alertError(title: string, message?: string): void {
-  push({ kind: 'alert', title, message: message || undefined });
+/** Report a failed action: title + optional message, single OK; `detail` (a raw technical reason) behind 详情. */
+export function alertError(title: string, message?: string, detail?: string): void {
+  push({ kind: 'alert', title, message: message || undefined, detail: detail || undefined });
 }
 
 export function promptText(opts: {
@@ -107,6 +107,11 @@ function Dialog({ request: r }: { request: Request }) {
     close(r.id);
     if (r.kind === 'confirm') r.resolve(true);
     else if (r.kind === 'prompt') r.resolve((field.get() ?? '').trim() || null);
+  };
+
+  const showDetail = () => {
+    close(r.id);
+    if (r.kind === 'alert' && r.detail) push({ kind: 'alert', title: tr('common.details'), message: r.detail });
   };
 
   const confirmLabel = r.kind === 'alert' ? tr('common.ok') : (r.confirmLabel ?? tr('common.ok'));
@@ -155,6 +160,14 @@ function Dialog({ request: r }: { request: Request }) {
           <TextButton onClick={cancel}>
             <Text color={m.primary} style={{ typography: 'labelLarge' }}>
               {cancelLabel}
+            </Text>
+          </TextButton>
+        </AlertDialog.DismissButton>
+      ) : r.detail ? (
+        <AlertDialog.DismissButton>
+          <TextButton onClick={showDetail}>
+            <Text color={m.primary} style={{ typography: 'labelLarge' }}>
+              {tr('common.details')}
             </Text>
           </TextButton>
         </AlertDialog.DismissButton>

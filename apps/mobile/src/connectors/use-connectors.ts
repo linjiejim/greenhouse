@@ -9,7 +9,8 @@
  *    sheet (the server's page says "connected — close this window"; the
  *    browser can't tell the app, so the list is read again once it closes);
  *    per_user: a secure prompt for the key (the admin's hint as its message),
- *    kept only if the server's trial call works — a refusal says why.
+ *    kept only if the server's trial call works — a refusal is worded here,
+ *    the provider's raw answer behind 详情 (the same for a failed 测试).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -64,7 +65,10 @@ export async function connect(connector: Pick<Connector, 'id' | 'name' | 'auth_m
     if (!key) return;
     const saved = await saveConnectorKey(connector.id, key);
     if (saved.ok) toast(t('connectors.connectedToast', { name: connector.name }), 'check');
-    else alertError(t('connectors.keyFailed'), saved.message);
+    else if (saved.code === 'key_rejected') {
+      // the provider's own answer (often raw JSON) waits behind 详情
+      alertError(t('connectors.keyFailed'), t('connectors.keyRejected', { name: connector.name }), saved.detail);
+    } else alertError(t('connectors.keyFailed'), saved.message);
     return;
   }
   const started = await startConnectorSignIn(connector.id);
@@ -80,11 +84,17 @@ export async function connect(connector: Pick<Connector, 'id' | 'name' | 'auth_m
   // (Android's custom tab answers at once: the AppState listener re-reads on the way back)
 }
 
-/** Try the connection: "N tools" or why not. */
+/** Try the connection: "N tools" or why not (in a sentence; the server's reason behind 详情). */
 export async function test(connector: Pick<Connector, 'id' | 'name'>): Promise<void> {
   const result = await testConnector(connector.id);
-  if (result.ok) toast(t('connectors.testOk', { n: result.value }), 'check');
-  else alertError(t('connectors.testFailed', { name: connector.name }), result.message || undefined);
+  if (result.ok) {
+    toast(t('connectors.testOk', { n: result.value }), 'check');
+    return;
+  }
+  const title = t('connectors.testFailed', { name: connector.name });
+  if (result.code === 'expired') alertError(title, t('connectors.testExpired', { name: connector.name }), result.detail);
+  else if (result.code === 'error') alertError(title, t('connectors.testUnreachable', { name: connector.name }), result.detail);
+  else alertError(title, result.message || undefined);
 }
 
 /** Disconnect (confirmed): the key or sign-in is forgotten — an OAuth grant is revoked too. */
