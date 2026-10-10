@@ -22,6 +22,7 @@ import { realtime } from '../realtime';
 import type { ThreadController, ThreadDeps, ThreadSnapshot } from './contract';
 import { useBots } from './store';
 import { ThreadEngine } from './thread/engine';
+import { useStartupCovered } from '../startup/context';
 
 const liveDeps: ThreadDeps = {
   api: {
@@ -61,6 +62,7 @@ export function useBotThread(sessionId: string): { snap: ThreadSnapshot; ctl: Th
   const snap = useSyncExternalStore(active.subscribe, active.getSnapshot);
 
   const focused = useIsFocused();
+  const covered = useStartupCovered();
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => setAppActive(state === 'active'));
@@ -72,8 +74,8 @@ export function useBotThread(sessionId: string): { snap: ThreadSnapshot; ctl: Th
   }, [active, appActive]);
 
   useEffect(() => {
-    active.setVisible(focused && appActive);
-  }, [active, focused, appActive]);
+    active.setVisible(focused && appActive && !covered);
+  }, [active, focused, appActive, covered]);
 
   return { snap, ctl: active };
 }

@@ -96,6 +96,7 @@ import { openNewChat } from '../nav';
 import { attentionCount, useBots } from '../store';
 import { BotAvatar, type AvatarSource } from '../ui/bot-avatar';
 import { useBotThread } from '../use-bot-thread';
+import { useStartupContent } from '../../startup/context';
 import { mentionToken, parseMentions } from '../vendor/mentions';
 import { buildTranscript, type TranscriptItem } from '../vendor/transcript';
 import { conversationTitle } from '../vendor/web-helpers';
@@ -237,6 +238,7 @@ export function BotThreadScreen({
   const focused = useIsFocused();
 
   const { snap, ctl } = useBotThread(sessionId);
+  useStartupContent(snap.load !== 'loading');
   const snapRef = useRef(snap);
   snapRef.current = snap;
   const byId = useBots((s) => s.byId);

@@ -1,0 +1,16 @@
+{
+  // The startup component tests compile the real splash and mark in ROOT vitest,
+  // without an Expo install. Vite reads the nearest config regardless of include;
+  // the narrow include leaves other UI files on the app's config in editors.
+  // The app's own tsc still uses apps/mobile/tsconfig.json for these sources.
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["splash.tsx", "logo.tsx", "brand.generated.ts"]
+}
