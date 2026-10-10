@@ -89,6 +89,7 @@ import {
   LABEL_IMAGE_EXTRA_PACKAGES,
   LABEL_NAMESPACE,
 } from './namespace.js';
+import { checkProcessWatches, WATCH_CHECK_MS } from './process-watches.js';
 import { computerLifecycleHooks } from './hooks.js';
 import { HUMAN_WAIT_HOLD_MS } from './limits.js';
 
@@ -795,6 +796,15 @@ export async function initBotComputers(): Promise<void> {
     every(EGRESS_TICK_MS, 'egress', () => reverifyEgress());
   }
   if (state.config.driver === 'e2b') every(RECONCILE_TICK_MS, 'reconcile', () => controller!.reconcile());
+  // jobs.ts and the engine it wakes sit above the runtime: loaded lazily, as for runningJobs.
+  every(WATCH_CHECK_MS, 'process watches', async () => {
+    const [{ listJobsIfRunning }, engine] = await Promise.all([import('./jobs.js'), import('../engine/index.js')]);
+    await checkProcessWatches({
+      store: getDb().botComputers,
+      listJobs: (userId) => listJobsIfRunning(userId),
+      deliver: (sessionId, item) => engine.deliverToConversation(sessionId, item),
+    });
+  });
   logger.info('[bots-computer] runtime initialised', {
     state: state.view.state,
     reason: state.view.reason,

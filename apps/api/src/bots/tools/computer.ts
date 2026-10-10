@@ -313,12 +313,35 @@ class ComputerActions {
       throwIfAborted(signal); // a take-over killed the start: say so, not "exit -1"
       throw err;
     }
+    const label = this.redact(job.name);
+    // Wake this Bot in this conversation when it ends (process-watches.ts). Best effort: a watch
+    // that could not be recorded only means the Bot must not promise to report back.
+    let watched = false;
+    try {
+      await this.turn.db.botComputers.watchProcess({
+        user_id: this.turn.userId,
+        session_id: this.turn.sessionId,
+        bot_id: this.turn.botId,
+        job_id: job.id,
+        name: label,
+      });
+      watched = true;
+    } catch (err) {
+      logger.warn('[bots/computer] could not watch a background process', {
+        userId: this.turn.userId,
+        job: job.id,
+        error: toErrorMessage(err),
+      });
+    }
+    const running = `Running in the background in ~/work. It keeps going after your turn (also if the member takes over the computer); its output goes to its log (process_log {id: "${job.id}"}). Tell the member it is running rather than waiting for it.`;
     return {
       id: job.id,
-      name: this.redact(job.name),
+      name: label,
       status: 'running',
       started_at: job.started_at,
-      note: `Running in the background in ~/work. It keeps going after your turn (also if the member takes over the computer); its output goes to its log. Check it with process_log {id: "${job.id}"} and tell the member it is running rather than waiting for it. Nothing tells you when it ends: never promise to report back on your own — offer to check when the member asks.`,
+      note: watched
+        ? `${running} When it ends you are woken up in this conversation to report the outcome — say so, and do not poll it.`
+        : `${running} Nothing will tell you when it ends: never promise to report back on your own — offer to check when the member asks.`,
     };
   }
 

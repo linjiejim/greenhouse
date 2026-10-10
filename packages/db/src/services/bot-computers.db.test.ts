@@ -67,3 +67,51 @@ describe('computer timezone', () => {
     expect((await db.botComputers.get(user.id))?.timezone).toBeNull();
   });
 });
+
+describe('process watches', () => {
+  async function conversation() {
+    const bot = await db.bots.createBot({
+      user_id: user.id,
+      name: `Watcher ${Math.random().toString(36).slice(2, 7)}`,
+    });
+    const dm = await db.bots.ensureDirectConversation(user.id, bot.id);
+    return { botId: bot.id, sessionId: dm.session_id };
+  }
+
+  it('watches a process once per job, lists it, and hands it to exactly one claimer', async () => {
+    const { botId, sessionId } = await conversation();
+    const input = { user_id: user.id, session_id: sessionId, bot_id: botId, job_id: 'j0000beef', name: 'tests' };
+    await db.botComputers.watchProcess(input);
+    await db.botComputers.watchProcess({ ...input, name: 'again' }); // the same job: ignored
+    const [watch, ...rest] = await db.botComputers.listWatches(user.id);
+    expect(rest).toEqual([]);
+    expect(watch).toMatchObject({ job_id: 'j0000beef', name: 'tests', status: 'watching' });
+    expect(await db.botComputers.listWatchingUsers()).toContain(user.id);
+
+    // A conditional update: the first claim gets the row, a second one nothing.
+    expect(await db.botComputers.settleWatch(watch!.id, 'notified')).toMatchObject({ status: 'notified' });
+    expect(await db.botComputers.settleWatch(watch!.id, 'notified')).toBeUndefined();
+    expect(await db.botComputers.listWatches(user.id)).toEqual([]);
+    expect(await db.botComputers.listWatchingUsers()).not.toContain(user.id);
+  });
+
+  it('gives up on old watches and drops a member’s watches, touching nothing else', async () => {
+    const { botId, sessionId } = await conversation();
+    const base = { user_id: user.id, session_id: sessionId, bot_id: botId, name: 'job' };
+    await db.botComputers.watchProcess({ ...base, job_id: 'j000000a1' });
+    await db.botComputers.watchProcess({ ...base, job_id: 'j000000a2' });
+    const [first] = await db.botComputers.listWatches(user.id);
+    await db.botComputers.settleWatch(first!.id, 'notified');
+
+    // Nothing is older than an hour ago; everything is older than an hour from now.
+    expect(await db.botComputers.expireWatches(new Date(Date.now() - 3600_000).toISOString())).toBe(0);
+    expect(await db.botComputers.expireWatches(new Date(Date.now() + 3600_000).toISOString())).toBeGreaterThanOrEqual(
+      1,
+    );
+    expect(await db.botComputers.listWatches(user.id)).toEqual([]);
+
+    await db.botComputers.watchProcess({ ...base, job_id: 'j000000a3' });
+    await db.botComputers.dropWatches(user.id);
+    expect(await db.botComputers.listWatches(user.id)).toEqual([]);
+  });
+});

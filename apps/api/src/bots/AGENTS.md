@@ -152,7 +152,7 @@ bots/
   重建镜像。契约 2 = 桌面（tint2 任务栏 + `gh-window` 看门狗：所有浏览器窗口都被最小化 3 s 后自动恢复）、
   软件 WebGL（`--enable-unsafe-swiftshader`，边界仍是 gVisor）、浏览器语言用 `LANGUAGE` + `--accept-lang`
   （Linux Chromium 不认 `--lang`）、`gh-term` / `gh-jobs` / `gh-window` / `gh-agent-kill`，以及预装的
-  pip / Node / ffmpeg / pandoc / sqlite 等；`agent` 的 pip / npm / pipx 用户级安装落在 home 卷，系统目录仍只读；
+  pip / Node / ffmpeg / pandoc / poppler（pdftotext、pdfinfo）/ sqlite 等；`agent` 的 pip / npm / pipx 用户级安装落在 home 卷，系统目录仍只读；
   组织级额外软件包在构建时用 `BOTS_COMPUTER_EXTRA_PACKAGES`（镜像标签记录，预检里展示）。
 - **群聊已退役（2026-10-09）**：一段对话就是一个 Bot 的私聊（`kind = 'direct'`，`lead_bot_id` = 主人，主人归档后为
   null），其他 Bot 只以客串（`guest`）身份加入——Bot 用 `team.add` 自己拉人、成员手动邀请照旧；Bot 之间的交接
@@ -190,6 +190,10 @@ bots/
   `~/.local/state/gh-jobs/<id>/`）。运行中的作业让电脑不因闲置休眠（自 `last_active_at` 起最多
   `BOTS_COMPUTER_JOB_MAX_HOURS`，默认 8 小时）；接管时的杀进程（`gh-agent-kill`）放过作业和成员的终端 /
   tmux 会话；容器回收后作业显示 `lost`。
+- **后台进程结束叫醒 Bot**（两种驱动）：`run_background` 时登记 `bot_process_watches`（会话 + Bot + job id），运行时每分钟
+  问一次**正在运行**的、有登记的电脑（一次 `gh-jobs list`；`listJobsIfRunning` 区分「没运行」和「没有任务」），进程不再
+  running（exited / lost / 不在列表里）就条件更新认领（多个 API 进程只投递一次）并投 `continue` 叫醒那个 Bot 报告结果。
+  电脑休眠时不叫醒它来问；登记 7 天无果作废。登记失败时工具的 note 让 Bot 别承诺回报（`process-watches.ts`）。
 - **打断 ≠ 停止**：`POST /api/chat/runs/:sessionId/interrupt` 让当前回合**这一步做完**再结束（在途工具
   照常完成并落库，比如已经在生成的图），丢掉链里排好的回合；有排队的成员消息就开新链回答它，否则
   结束 run 并写停止提示。`/stop` 仍是立即硬停（在途工具结果丢弃）。

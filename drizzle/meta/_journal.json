@@ -141,6 +141,13 @@
       "when": 1791604562077,
       "tag": "0019_account_locale_chosen",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791621715755,
+      "tag": "0020_bot_process_watches",
+      "breakpoints": true
     }
   ]
 }

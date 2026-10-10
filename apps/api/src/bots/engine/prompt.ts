@@ -120,7 +120,7 @@ export function buildStaticRules(
     lines.push(
       `- A file the member attaches shows up in an \`attachments\` block. To work on it with the shell, copy it onto the computer first: computer import_attachment with its \`id\` as file_id.`,
       // Not a background task (bot_tasks, read-only): a command that outlives a shell call.
-      `- A long command (an install, a build, a big download) runs as a background process: computer run_background, then process_log to check on it.`,
+      `- A long command (an install, a build, a big download) runs as a background process: computer run_background. You are woken up in this conversation when it ends — tell the member it is running and end your turn rather than polling it; process_log reads its output.`,
     );
   }
   if (flags.vault) {

@@ -336,6 +336,46 @@ export const botComputers = pgTable('bot_computers', {
   updated_at: ts('updated_at').notNull(),
 });
 
+// ─── bot_process_watches ──────────────────────────────────
+
+/**
+ * A background process (gh-jobs) a Bot started on the member's computer and wants to hear
+ * about when it ends: the computer's poller (apps/api …/computer/process-watches.ts) wakes
+ * that Bot in that conversation once. Claimed with a conditional update (`watching` → …),
+ * so of several API processes exactly one delivers the wake-up.
+ */
+export const botProcessWatches = pgTable(
+  'bot_process_watches',
+  {
+    id: serial('id').primaryKey(),
+    user_id: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    session_id: text('session_id')
+      .notNull()
+      .references(() => botConversations.session_id, { onDelete: 'cascade' }),
+    bot_id: text('bot_id')
+      .notNull()
+      .references(() => bots.id, { onDelete: 'cascade' }),
+    /** The gh-jobs id (`j` + 8 hex). */
+    job_id: text('job_id').notNull(),
+    /** Its label in the process list, for the wake-up note. */
+    name: text('name').notNull(),
+    /** watching → notified (the Bot was woken) or gone (the computer was wiped, the watch expired). */
+    status: text('status', { enum: ['watching', 'notified', 'gone'] })
+      .notNull()
+      .default('watching'),
+    created_at: ts('created_at').notNull(),
+    updated_at: ts('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_bot_process_watches_job').on(table.user_id, table.job_id),
+    index('idx_bot_process_watches_watching')
+      .on(table.user_id)
+      .where(sql`${table.status} = 'watching'`),
+  ],
+);
+
 // ─── vault_items ──────────────────────────────────────────
 
 export const vaultItems = pgTable(
@@ -404,5 +444,7 @@ export type BotInboxRow = typeof botInbox.$inferSelect;
 export type BotInboxKind = BotInboxRow['kind'];
 export type BotComputerRow = typeof botComputers.$inferSelect;
 export type BotComputerState = BotComputerRow['state'];
+export type BotProcessWatchRow = typeof botProcessWatches.$inferSelect;
+export type BotProcessWatchStatus = BotProcessWatchRow['status'];
 export type VaultItemRow = typeof vaultItems.$inferSelect;
 export type VaultAccessLogRow = typeof vaultAccessLog.$inferSelect;

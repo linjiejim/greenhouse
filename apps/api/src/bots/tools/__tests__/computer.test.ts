@@ -69,8 +69,9 @@ function setup(overrides: Partial<ComputerDeps> = {}, turnOverrides: Partial<Com
         : [],
     ),
   };
+  const botComputers = { watchProcess: vi.fn(async () => undefined) };
   const turn: ComputerTurn = {
-    db: { chatFiles } as unknown as DatabaseProvider,
+    db: { chatFiles, botComputers } as unknown as DatabaseProvider,
     userId: 'u1',
     botId: 'bot_1',
     sessionId: 'sess_1',
@@ -82,7 +83,7 @@ function setup(overrides: Partial<ComputerDeps> = {}, turnOverrides: Partial<Com
     vaultMatches: null,
     ...turnOverrides,
   };
-  return { deps, turn, lease, chatFiles };
+  return { deps, turn, lease, chatFiles, botComputers };
 }
 
 beforeEach(() => {
@@ -437,10 +438,27 @@ describe('what the Bot is told about its computer', () => {
     expect(createComputerTool(turn, deps).description).toBe(docker);
   });
 
-  it('never lets the Bot promise to report a background process on its own', async () => {
-    const { deps, turn } = setup();
+  it('watches a background process for the Bot that started it, and says it will be woken', async () => {
+    const { deps, turn, botComputers } = setup();
+    const result = await runComputerAction(turn, { action: 'run_background', command: 'make', name: 'build' }, deps);
+    expect(botComputers.watchProcess).toHaveBeenCalledWith({
+      user_id: 'u1',
+      session_id: 'sess_1',
+      bot_id: 'bot_1',
+      job_id: 'j0000beef',
+      name: 'build',
+    });
+    expect(result).toMatchObject({ note: expect.stringMatching(/When it ends you are woken up in this conversation/) });
+  });
+
+  it('a watch that could not be recorded makes the Bot not promise anything', async () => {
+    const { deps, turn, botComputers } = setup();
+    botComputers.watchProcess.mockRejectedValueOnce(new Error('db down'));
     const result = await runComputerAction(turn, { action: 'run_background', command: 'make' }, deps);
-    expect(result).toMatchObject({ note: expect.stringMatching(/Nothing tells you when it ends/) });
+    expect(result).toMatchObject({
+      id: 'j0000beef',
+      note: expect.stringMatching(/Nothing will tell you when it ends/),
+    });
   });
 });
 
