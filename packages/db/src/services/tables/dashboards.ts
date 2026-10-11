@@ -14,7 +14,7 @@
  *   the compiler accepts. Readability per viewer is the evaluator's job.
  */
 
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { TABLE_DASHBOARD_WIDGET_TYPES } from '@greenhouse/types/tables';
@@ -35,9 +35,10 @@ import {
 } from '@greenhouse/types/table-cards';
 import { fullTableAccess } from '@greenhouse/types/table-access';
 import type { Db } from '../../client.js';
-import { tableDashboardWidgets, tableDashboards, tableFields, tableTables } from '../../schema/index.js';
+import { tableDashboardWidgets, tableDashboards } from '../../schema/index.js';
 import type { TableDashboardRow, TableDashboardWidgetRow, TableFieldRow } from '../../schema/tables.js';
-import { compileRecordQuery, loadCompileContext, queryValueField } from './query.js';
+import { compileRecordQuery, queryValueField } from './query.js';
+import { dbSchemaSource, sourceCompileContext, type TablesSchemaSource } from './schema-source.js';
 import { TablesValidationError, trimmed, type TableRevisionResult } from './shared.js';
 
 export interface CreateTableDashboardInput {
@@ -125,25 +126,109 @@ const CONTROL_FIELD_TYPES: Readonly<Record<TableFilterControl['kind'], ReadonlyS
   search: SEARCH_TYPES,
 };
 
+/** An active table of this Base, per the source. */
+async function tableInBase(source: TablesSchemaSource, tableId: number, baseId: number): Promise<boolean> {
+  const table = await source.table(tableId);
+  return Boolean(table && table.base_id === baseId && !table.archived);
+}
+
+/** Schema checks for one card: table in the Base, live fields of usable types, a query the compiler accepts. */
+async function validateCard(source: TablesSchemaSource, card: TableCardSpec, baseId: number): Promise<void> {
+  if (card.kind === 'text') return;
+  const tableId = card.source?.tableId;
+  if (!tableId || !(await tableInBase(source, tableId, baseId))) {
+    throw new TablesValidationError('Widget table must belong to this Base');
+  }
+  // Compile the card's own query as an unrestricted reader: unknown fields,
+  // operators and values fail here instead of on every viewer's dashboard.
+  const ctx = await sourceCompileContext(source, tableId, fullTableAccess(null));
+  compileRecordQuery({ ...(card.source?.query ?? {}), limit: 1 }, fullTableAccess(null), ctx);
+  const field = (fieldId: number | undefined, label: string): TableFieldRow => {
+    const found = fieldId === undefined ? undefined : ctx.byId.get(fieldId);
+    if (!found) throw new TablesValidationError(`${label} field ${fieldId ?? ''} is unavailable`.trim());
+    return found;
+  };
+  const aggregate = card.aggregate;
+  if (aggregate) {
+    if (aggregate.operation !== 'count' && queryValueField(field(aggregate.valueFieldId, 'Value')).type !== 'number') {
+      throw new TablesValidationError(`${aggregate.operation} requires a numeric value field`);
+    }
+    if (aggregate.groupBy?.fieldId !== undefined) {
+      const groupField = field(aggregate.groupBy.fieldId, 'Group');
+      if (aggregate.groupBy.dateBucket && !DATE_TYPES.has(queryValueField(groupField).type)) {
+        throw new TablesValidationError('A date bucket requires a date or datetime field');
+      }
+    }
+    if (aggregate.series?.fieldId !== undefined) field(aggregate.series.fieldId, 'Series');
+  }
+  for (const fieldId of card.fieldIds ?? []) field(fieldId, 'Column');
+}
+
+/**
+ * The card a widget write stores, its type and table: normalized, consistent,
+ * and checked against the schema the source describes (tables of `baseId`).
+ */
+export async function checkWidgetCard(
+  source: TablesSchemaSource,
+  baseId: number,
+  type: TableDashboardWidgetType,
+  config: TableDashboardWidgetConfig | undefined,
+  tableId: number | null | undefined,
+): Promise<{ type: TableDashboardWidgetType; tableId: number | null; card: TableCardSpec }> {
+  if (!TABLE_DASHBOARD_WIDGET_TYPES.includes(type)) {
+    throw new TablesValidationError(`Unsupported dashboard widget type "${type}"`);
+  }
+  if (config !== undefined && (!config || typeof config !== 'object' || Array.isArray(config))) {
+    throw new TablesValidationError('Widget config must be an object');
+  }
+  const raw = config?.card ?? legacyWidgetToCard(type, config ?? {}, tableId);
+  // A table given beside a sourceless card is the card's source.
+  const withSource =
+    raw.kind !== 'text' && !raw.source && tableId ? { ...raw, source: { tableId } } : (raw as TableCardSpec);
+  const normalized = normalizeTableCardSpec(withSource);
+  if (!normalized.ok) throw new TablesValidationError(normalized.error);
+  const card = normalized.card;
+  const sourceTable = card.source?.tableId ?? null;
+  if (card.kind !== 'text' && tableId && sourceTable !== tableId) {
+    throw new TablesValidationError('Widget table does not match its card source');
+  }
+  await validateCard(source, card, baseId);
+  return { type: widgetTypeForCard(card), tableId: sourceTable, card };
+}
+
+/** Shape + schema checks for a dashboard's filter controls (targets on tables of `baseId`). */
+export async function checkDashboardConfig(
+  source: TablesSchemaSource,
+  baseId: number,
+  config: unknown,
+): Promise<Required<TableDashboardConfig>> {
+  const normalized = normalizeDashboardConfig(config);
+  if (!normalized.ok) throw new TablesValidationError(normalized.error);
+  const controls = normalized.config.filters;
+  const tableIds = [...new Set(controls.flatMap((control) => control.targets.map((target) => target.tableId)))];
+  const fields = new Map<number, TableFieldRow>();
+  for (const tableId of tableIds) {
+    if (!(await tableInBase(source, tableId, baseId))) {
+      throw new TablesValidationError('Filter targets must be tables of this Base');
+    }
+    for (const field of await source.fields(tableId)) fields.set(field.id, field);
+  }
+  for (const control of controls) {
+    for (const target of control.targets) {
+      if (target.fieldId === undefined) continue;
+      const field = fields.get(target.fieldId);
+      if (!field || field.table_id !== target.tableId) {
+        throw new TablesValidationError(`Filter "${control.label}" targets an unavailable field`);
+      }
+      if (!CONTROL_FIELD_TYPES[control.kind].has(queryValueField(field).type)) {
+        throw new TablesValidationError(`Filter "${control.label}" cannot filter field "${field.name}"`);
+      }
+    }
+  }
+  return normalized.config;
+}
+
 export function createTablesDashboards(db: Db) {
-  async function tableInBase(tableId: number, baseId: number): Promise<boolean> {
-    const rows = await db
-      .select({ id: tableTables.id })
-      .from(tableTables)
-      .where(and(eq(tableTables.id, tableId), eq(tableTables.base_id, baseId), isNull(tableTables.archived_at)))
-      .limit(1);
-    return rows.length > 0;
-  }
-
-  async function activeFields(tableIds: number[]): Promise<Map<number, TableFieldRow>> {
-    if (tableIds.length === 0) return new Map();
-    const rows = await db
-      .select()
-      .from(tableFields)
-      .where(and(inArray(tableFields.table_id, tableIds), isNull(tableFields.archived_at)));
-    return new Map(rows.map((field) => [field.id, field]));
-  }
-
   async function dashboardBaseId(dashboardId: number): Promise<number> {
     const rows = await db
       .select({ base_id: tableDashboards.base_id })
@@ -154,95 +239,19 @@ export function createTablesDashboards(db: Db) {
     return rows[0].base_id;
   }
 
-  /** Schema checks for one card: table in the Base, live fields of usable types, a query the compiler accepts. */
-  async function validateCard(card: TableCardSpec, baseId: number): Promise<void> {
-    if (card.kind === 'text') return;
-    const tableId = card.source?.tableId;
-    if (!tableId || !(await tableInBase(tableId, baseId))) {
-      throw new TablesValidationError('Widget table must belong to this Base');
-    }
-    // Compile the card's own query as an unrestricted reader: unknown fields,
-    // operators and values fail here instead of on every viewer's dashboard.
-    const ctx = await loadCompileContext(db, tableId, fullTableAccess(null));
-    compileRecordQuery({ ...(card.source?.query ?? {}), limit: 1 }, fullTableAccess(null), ctx);
-    const field = (fieldId: number | undefined, label: string): TableFieldRow => {
-      const found = fieldId === undefined ? undefined : ctx.byId.get(fieldId);
-      if (!found) throw new TablesValidationError(`${label} field ${fieldId ?? ''} is unavailable`.trim());
-      return found;
-    };
-    const aggregate = card.aggregate;
-    if (aggregate) {
-      if (
-        aggregate.operation !== 'count' &&
-        queryValueField(field(aggregate.valueFieldId, 'Value')).type !== 'number'
-      ) {
-        throw new TablesValidationError(`${aggregate.operation} requires a numeric value field`);
-      }
-      if (aggregate.groupBy?.fieldId !== undefined) {
-        const groupField = field(aggregate.groupBy.fieldId, 'Group');
-        if (aggregate.groupBy.dateBucket && !DATE_TYPES.has(queryValueField(groupField).type)) {
-          throw new TablesValidationError('A date bucket requires a date or datetime field');
-        }
-      }
-      if (aggregate.series?.fieldId !== undefined) field(aggregate.series.fieldId, 'Series');
-    }
-    for (const fieldId of card.fieldIds ?? []) field(fieldId, 'Column');
-  }
-
-  /** The card a write stores, its type and table: normalized, consistent, schema-checked. */
+  /** The stored form of a widget write. */
   async function prepareWidget(
     type: TableDashboardWidgetType,
     config: TableDashboardWidgetConfig | undefined,
     tableId: number | null | undefined,
     baseId: number,
   ): Promise<{ type: TableDashboardWidgetType; tableId: number | null; config: string }> {
-    if (!TABLE_DASHBOARD_WIDGET_TYPES.includes(type)) {
-      throw new TablesValidationError(`Unsupported dashboard widget type "${type}"`);
-    }
-    if (config !== undefined && (!config || typeof config !== 'object' || Array.isArray(config))) {
-      throw new TablesValidationError('Widget config must be an object');
-    }
-    const raw = config?.card ?? legacyWidgetToCard(type, config ?? {}, tableId);
-    // A table given beside a sourceless card is the card's source.
-    const withSource =
-      raw.kind !== 'text' && !raw.source && tableId ? { ...raw, source: { tableId } } : (raw as TableCardSpec);
-    const normalized = normalizeTableCardSpec(withSource);
-    if (!normalized.ok) throw new TablesValidationError(normalized.error);
-    const card = normalized.card;
-    const sourceTable = card.source?.tableId ?? null;
-    if (card.kind !== 'text' && tableId && sourceTable !== tableId) {
-      throw new TablesValidationError('Widget table does not match its card source');
-    }
-    await validateCard(card, baseId);
-    return { type: widgetTypeForCard(card), tableId: sourceTable, config: JSON.stringify({ version: 2, card }) };
+    const checked = await checkWidgetCard(dbSchemaSource(db), baseId, type, config, tableId);
+    return { type: checked.type, tableId: checked.tableId, config: JSON.stringify({ version: 2, card: checked.card }) };
   }
 
-  /** Shape + schema checks for a dashboard's filter controls. */
-  async function prepareDashboardConfig(config: unknown, baseId: number): Promise<Required<TableDashboardConfig>> {
-    const normalized = normalizeDashboardConfig(config);
-    if (!normalized.ok) throw new TablesValidationError(normalized.error);
-    const controls = normalized.config.filters;
-    const tableIds = [...new Set(controls.flatMap((control) => control.targets.map((target) => target.tableId)))];
-    for (const tableId of tableIds) {
-      if (!(await tableInBase(tableId, baseId))) {
-        throw new TablesValidationError('Filter targets must be tables of this Base');
-      }
-    }
-    const fields = await activeFields(tableIds);
-    for (const control of controls) {
-      for (const target of control.targets) {
-        if (target.fieldId === undefined) continue;
-        const field = fields.get(target.fieldId);
-        if (!field || field.table_id !== target.tableId) {
-          throw new TablesValidationError(`Filter "${control.label}" targets an unavailable field`);
-        }
-        if (!CONTROL_FIELD_TYPES[control.kind].has(queryValueField(field).type)) {
-          throw new TablesValidationError(`Filter "${control.label}" cannot filter field "${field.name}"`);
-        }
-      }
-    }
-    return normalized.config;
-  }
+  const prepareDashboardConfig = (config: unknown, baseId: number) =>
+    checkDashboardConfig(dbSchemaSource(db), baseId, config);
 
   const service = {
     async createDashboard(input: CreateTableDashboardInput): Promise<TableDashboardRow> {

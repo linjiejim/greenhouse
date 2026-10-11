@@ -1,12 +1,12 @@
 /**
  * Forms: configuration, audiences and submission (spec 20261011-tables-foundation §3).
  *
- * - **Config** (`normalizeFormConfig`): shown fields (`fieldIds`, never computed;
+ * - **Config** (`checkFormConfig`): shown fields (`fieldIds`, never computed;
  *   no relation unless the audience is the Base), hidden locked `defaults`
  *   (`[{fieldId, value}]`, values may be `$me` / `$today` / `$now`; the legacy
  *   `{<fieldId>: value}` object is read as the array), `allowMultiple` (default
  *   true). A field is either shown or prefilled, never both.
- * - **Audience** (`normalizeFormAudience`): `{type:'base'}` (Base members with
+ * - **Audience** (`normalizeFormAudience` shape, `checkFormAudience` people / groups): `{type:'base'}` (Base members with
  *   create rights), `{type:'team'}` (every active internal user) or
  *   `{type:'principals', userIds, groupIds}`. Whether the granter may name a
  *   group is the caller's check (the db does not know who is granting).
@@ -42,12 +42,11 @@ import {
   tableForms,
   tableRecordAttachments,
   tableTables,
-  userGroups,
-  users,
 } from '../../schema/index.js';
 import type { TableFieldRow, TableFormRow, TableRecordRow } from '../../schema/tables.js';
 import { resolveTableEvaluation, type TableQueryEvaluation } from './query.js';
 import type { TablesRecordInternals } from './records.js';
+import { dbSchemaSource, type TablesSchemaSource } from './schema-source.js';
 import {
   isComputedField,
   isPlainObject,
@@ -161,6 +160,119 @@ export function normalizeFormAudience(raw: unknown): TableFormAudience {
   return audience;
 }
 
+/**
+ * The audience, where every newly named person must be an active internal
+ * user and every newly named group must exist. Entries already on the form
+ * (`current`) stay as they are — someone deactivated since, or a deleted
+ * group, admits nobody and must not block editing the rest of the form.
+ */
+export async function checkFormAudience(
+  source: TablesSchemaSource,
+  raw: unknown,
+  current?: TableFormAudience,
+): Promise<TableFormAudience> {
+  const audience = normalizeFormAudience(raw);
+  if (audience.type !== 'principals') return audience;
+  const kept: { userIds: readonly string[]; groupIds: readonly number[] } =
+    current?.type === 'principals' ? current : { userIds: [], groupIds: [] };
+  const addedUsers = audience.userIds.filter((id) => !kept.userIds.includes(id));
+  const addedGroups = audience.groupIds.filter((id) => !kept.groupIds.includes(id));
+  if (addedUsers.length > 0) {
+    const active = await source.activeUserIds();
+    if (addedUsers.some((id) => !active.has(id))) {
+      throw new TablesValidationError('Form audience lists someone who is not an active internal user');
+    }
+  }
+  if (addedGroups.length > 0) {
+    const found = await source.existingGroupIds(addedGroups);
+    if (addedGroups.some((id) => !found.has(id))) {
+      throw new TablesValidationError('Form audience lists a group that does not exist');
+    }
+  }
+  return audience;
+}
+
+async function normalizeDefaults(
+  source: TablesSchemaSource,
+  raw: TableFormConfig,
+  fieldsById: Map<number, TableFieldRow>,
+  shown: ReadonlySet<number>,
+): Promise<TableFieldValueEntry[]> {
+  const entries = formDefaultEntries(raw);
+  if (raw.defaults !== undefined && !Array.isArray(raw.defaults) && !isPlainObject(raw.defaults)) {
+    throw new TablesValidationError('Form defaults must be a list of {fieldId, value}');
+  }
+  if (entries.length > MAX_FIELDS) throw new TablesValidationError(`A form prefills up to ${MAX_FIELDS} fields`);
+  const seen = new Set<number>();
+  const needsUsers = entries.some((entry) => {
+    const field = fieldsById.get(entry.fieldId);
+    return (field?.type === 'user' || field?.type === 'multi_user') && entry.value !== '$me';
+  });
+  const activeUserIds = needsUsers ? await source.activeUserIds() : new Set<string>();
+  return entries.map((entry) => {
+    const field = fieldsById.get(entry.fieldId);
+    if (!field) throw new TablesValidationError('Form defaults must name active fields on the target table');
+    if (seen.has(field.id)) throw new TablesValidationError(`Field "${field.name}" is prefilled twice`);
+    seen.add(field.id);
+    if (shown.has(field.id)) {
+      throw new TablesValidationError(`Field "${field.name}" is both shown and prefilled; choose one`);
+    }
+    if (isComputedField(field) || field.type === 'attachment') {
+      throw new TablesValidationError(`Field "${field.name}" cannot be prefilled`);
+    }
+    if (isDefaultToken(field, entry.value)) return { fieldId: field.id, value: entry.value };
+    if (entry.value === null || entry.value === undefined || entry.value === '') {
+      throw new TablesValidationError(`Field "${field.name}" needs a prefilled value`);
+    }
+    return { fieldId: field.id, value: validateTableFieldValue(field, entry.value, activeUserIds) };
+  });
+}
+
+/** A form config for `tableId` and `audience`, checked against the schema the source describes. */
+export async function checkFormConfig(
+  source: TablesSchemaSource,
+  tableId: number,
+  input: TableFormConfig,
+  audience: TableFormAudience,
+): Promise<TableFormConfig> {
+  if (!input || typeof input !== 'object' || !Array.isArray(input.fieldIds)) {
+    throw new TablesValidationError('Form config requires fieldIds');
+  }
+  const fieldIds = [...new Set(input.fieldIds)];
+  if (fieldIds.length < 1 || fieldIds.length > MAX_FIELDS || !fieldIds.every(isPositiveInteger)) {
+    throw new TablesValidationError(`Form requires 1-${MAX_FIELDS} valid field ids`);
+  }
+  const fieldsById = new Map((await source.fields(tableId)).map((field) => [field.id, field]));
+  const shown = fieldIds.map((id) => fieldsById.get(id));
+  if (shown.some((field) => !field || isComputedField(field))) {
+    throw new TablesValidationError('Form fields must be active, writable fields on the target table');
+  }
+  if (audience.type !== 'base') {
+    const relation = shown.find((field) => field?.type === 'relation');
+    if (relation) {
+      throw new TablesValidationError(
+        `Field "${relation.name}" links other records; only forms for Base members can show relation fields`,
+      );
+    }
+  }
+  const defaults = await normalizeDefaults(source, input, fieldsById, new Set(fieldIds));
+  if (input.allowMultiple !== undefined && typeof input.allowMultiple !== 'boolean') {
+    throw new TablesValidationError('allowMultiple must be a boolean');
+  }
+  const text = (value: string | undefined, fallback: string, max: number) =>
+    typeof value !== 'string' ? fallback : value.trim().slice(0, max);
+  return {
+    version: 1,
+    title: text(input.title, '', 120),
+    description: text(input.description, '', 2_000),
+    fieldIds,
+    submitLabel: text(input.submitLabel, 'Submit', 60),
+    successMessage: text(input.successMessage, 'Submitted successfully.', 500),
+    defaults,
+    allowMultiple: input.allowMultiple !== false,
+  };
+}
+
 export function createTablesForms(db: Db, deps: { records: TablesRecordInternals }) {
   const activeFieldsOf = async (tableId: number, fieldIds: number[]): Promise<TableFieldRow[]> =>
     fieldIds.length === 0
@@ -171,127 +283,6 @@ export function createTablesForms(db: Db, deps: { records: TablesRecordInternals
           .where(
             and(eq(tableFields.table_id, tableId), inArray(tableFields.id, fieldIds), isNull(tableFields.archived_at)),
           );
-
-  const activeInternalUserIds = async (ids?: readonly string[]): Promise<Set<string>> => {
-    if (ids && ids.length === 0) return new Set();
-    const rows = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(
-        and(
-          eq(users.status, 'active'),
-          inArray(users.role, ['team', 'super']),
-          ids ? inArray(users.id, [...ids]) : undefined,
-        ),
-      );
-    return new Set(rows.map((row) => row.id));
-  };
-
-  /**
-   * The audience, where every newly named person must be an active internal
-   * user and every newly named group must exist. Entries already on the form
-   * (`current`) stay as they are — someone deactivated since, or a deleted
-   * group, admits nobody and must not block editing the rest of the form.
-   */
-  const validateAudience = async (raw: unknown, current?: TableFormAudience): Promise<TableFormAudience> => {
-    const audience = normalizeFormAudience(raw);
-    if (audience.type !== 'principals') return audience;
-    const kept: { userIds: readonly string[]; groupIds: readonly number[] } =
-      current?.type === 'principals' ? current : { userIds: [], groupIds: [] };
-    const addedUsers = audience.userIds.filter((id) => !kept.userIds.includes(id));
-    const addedGroups = audience.groupIds.filter((id) => !kept.groupIds.includes(id));
-    const active = await activeInternalUserIds(addedUsers);
-    if (addedUsers.some((id) => !active.has(id))) {
-      throw new TablesValidationError('Form audience lists someone who is not an active internal user');
-    }
-    if (addedGroups.length > 0) {
-      const found = await db.select({ id: userGroups.id }).from(userGroups).where(inArray(userGroups.id, addedGroups));
-      if (found.length !== addedGroups.length) {
-        throw new TablesValidationError('Form audience lists a group that does not exist');
-      }
-    }
-    return audience;
-  };
-
-  const normalizeDefaults = async (
-    raw: TableFormConfig,
-    fieldsById: Map<number, TableFieldRow>,
-    shown: ReadonlySet<number>,
-  ): Promise<TableFieldValueEntry[]> => {
-    const entries = formDefaultEntries(raw);
-    if (raw.defaults !== undefined && !Array.isArray(raw.defaults) && !isPlainObject(raw.defaults)) {
-      throw new TablesValidationError('Form defaults must be a list of {fieldId, value}');
-    }
-    if (entries.length > MAX_FIELDS) throw new TablesValidationError(`A form prefills up to ${MAX_FIELDS} fields`);
-    const seen = new Set<number>();
-    const needsUsers = entries.some((entry) => {
-      const field = fieldsById.get(entry.fieldId);
-      return (field?.type === 'user' || field?.type === 'multi_user') && entry.value !== '$me';
-    });
-    const activeUserIds = needsUsers ? await activeInternalUserIds() : new Set<string>();
-    return entries.map((entry) => {
-      const field = fieldsById.get(entry.fieldId);
-      if (!field) throw new TablesValidationError('Form defaults must name active fields on the target table');
-      if (seen.has(field.id)) throw new TablesValidationError(`Field "${field.name}" is prefilled twice`);
-      seen.add(field.id);
-      if (shown.has(field.id)) {
-        throw new TablesValidationError(`Field "${field.name}" is both shown and prefilled; choose one`);
-      }
-      if (isComputedField(field) || field.type === 'attachment') {
-        throw new TablesValidationError(`Field "${field.name}" cannot be prefilled`);
-      }
-      if (isDefaultToken(field, entry.value)) return { fieldId: field.id, value: entry.value };
-      if (entry.value === null || entry.value === undefined || entry.value === '') {
-        throw new TablesValidationError(`Field "${field.name}" needs a prefilled value`);
-      }
-      return { fieldId: field.id, value: validateTableFieldValue(field, entry.value, activeUserIds) };
-    });
-  };
-
-  const normalizeFormConfig = async (
-    tableId: number,
-    input: TableFormConfig,
-    audience: TableFormAudience,
-  ): Promise<TableFormConfig> => {
-    if (!input || typeof input !== 'object' || !Array.isArray(input.fieldIds)) {
-      throw new TablesValidationError('Form config requires fieldIds');
-    }
-    const fieldIds = [...new Set(input.fieldIds)];
-    if (fieldIds.length < 1 || fieldIds.length > MAX_FIELDS || !fieldIds.every(isPositiveInteger)) {
-      throw new TablesValidationError(`Form requires 1-${MAX_FIELDS} valid field ids`);
-    }
-    const defaultIds = formDefaultEntries(input).map((entry) => entry.fieldId);
-    const fields = await activeFieldsOf(tableId, [...new Set([...fieldIds, ...defaultIds])]);
-    const fieldsById = new Map(fields.map((field) => [field.id, field]));
-    const shown = fieldIds.map((id) => fieldsById.get(id));
-    if (shown.some((field) => !field || isComputedField(field))) {
-      throw new TablesValidationError('Form fields must be active, writable fields on the target table');
-    }
-    if (audience.type !== 'base') {
-      const relation = shown.find((field) => field?.type === 'relation');
-      if (relation) {
-        throw new TablesValidationError(
-          `Field "${relation.name}" links other records; only forms for Base members can show relation fields`,
-        );
-      }
-    }
-    const defaults = await normalizeDefaults(input, fieldsById, new Set(fieldIds));
-    if (input.allowMultiple !== undefined && typeof input.allowMultiple !== 'boolean') {
-      throw new TablesValidationError('allowMultiple must be a boolean');
-    }
-    const text = (value: string | undefined, fallback: string, max: number) =>
-      typeof value !== 'string' ? fallback : value.trim().slice(0, max);
-    return {
-      version: 1,
-      title: text(input.title, '', 120),
-      description: text(input.description, '', 2_000),
-      fieldIds,
-      submitLabel: text(input.submitLabel, 'Submit', 60),
-      successMessage: text(input.successMessage, 'Submitted successfully.', 500),
-      defaults,
-      allowMultiple: input.allowMultiple !== false,
-    };
-  };
 
   /** Resolve a stored default for one submission (`$me` / `$today` / `$now`, else the stored value). */
   const resolveDefault = (
@@ -396,8 +387,9 @@ export function createTablesForms(db: Db, deps: { records: TablesRecordInternals
 
     async createForm(input: CreateTableFormInput): Promise<TableFormRow> {
       const now = nowIso();
-      const audience = await validateAudience(input.audience);
-      const config = await normalizeFormConfig(input.table_id, input.config, audience);
+      const source = dbSchemaSource(db);
+      const audience = await checkFormAudience(source, input.audience);
+      const config = await checkFormConfig(source, input.table_id, input.config, audience);
       const [row] = await db
         .insert(tableForms)
         .values({
@@ -430,11 +422,18 @@ export function createTablesForms(db: Db, deps: { records: TablesRecordInternals
       if (patch.name !== undefined) values.name = trimmed(patch.name, 'Form name', 120);
       if (patch.status !== undefined) values.status = patch.status;
       const audience =
-        patch.audience !== undefined ? await validateAudience(patch.audience, current.audience) : current.audience;
+        patch.audience !== undefined
+          ? await checkFormAudience(dbSchemaSource(db), patch.audience, current.audience)
+          : current.audience;
       if (patch.audience !== undefined) values.audience = audience;
       // A new audience re-checks the stored config (a relation field cannot go public).
       if (patch.config !== undefined || patch.audience !== undefined) {
-        values.config = await normalizeFormConfig(current.table_id, patch.config ?? current.config, audience);
+        values.config = await checkFormConfig(
+          dbSchemaSource(db),
+          current.table_id,
+          patch.config ?? current.config,
+          audience,
+        );
       }
       const rows = await db
         .update(tableForms)

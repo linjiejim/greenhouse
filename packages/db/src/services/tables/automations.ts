@@ -11,7 +11,7 @@
  * (queue methods in `./automation-queue.ts`).
  *
  * Invariants:
- * - Action ids are stable: `normalizeAutomationConfig` keeps every id it is
+ * - Action ids are stable: `checkAutomationConfig` keeps every id it is
  *   given and assigns `a<n>` (1-based position, bumped past collisions) only to
  *   actions without one — the delivery dedupe key, the resume cursor and webhook
  *   secrets are keyed by it. Migration 0024 backfilled stored rules the same way.
@@ -52,11 +52,8 @@ import {
   tableAutomationRules,
   tableAutomationRuns,
   tableAutomationSecrets,
-  tableFields,
   tableRecords,
   tableTables,
-  userGroups,
-  users,
 } from '../../schema/index.js';
 import type {
   TableAutomationOutboxRow,
@@ -72,7 +69,7 @@ import {
   validateFilterGroupShape,
   type TableCompileContext,
 } from './query.js';
-import type { TablesRecordInternals } from './records.js';
+import { dbSchemaSource, sourceCompileContext, type TablesSchemaSource } from './schema-source.js';
 import {
   isComputedField,
   isPlainObject,
@@ -271,6 +268,7 @@ export function normalizeStoredAutomationConfig(raw: unknown): TableAutomationCo
 
 /** The validation of one rule against the live schema (fields, users, groups). */
 interface RuleContext {
+  source: TablesSchemaSource;
   baseId: number;
   tableId: number;
   trigger: TableAutomationTrigger;
@@ -279,311 +277,307 @@ interface RuleContext {
   hasActor: boolean;
 }
 
-export function createTablesAutomations(db: Db, deps: { records: TablesRecordInternals }) {
-  const activeTableFields = (tableId: number): Promise<TableFieldRow[]> =>
-    db
-      .select()
-      .from(tableFields)
-      .where(and(eq(tableFields.table_id, tableId), isNull(tableFields.archived_at)));
+function fieldOf(context: RuleContext, fieldId: number, label: string): TableFieldRow {
+  const field = context.fields.get(fieldId);
+  if (!field) throw new TablesValidationError(`${label} references an unavailable field`);
+  return field;
+}
 
-  const fieldOf = (context: RuleContext, fieldId: number, label: string): TableFieldRow => {
-    const field = context.fields.get(fieldId);
+function assertTemplate(context: RuleContext, text: string, label: string): void {
+  const ids = automationTemplateFieldIds(text);
+  if (ids.length === 0) return;
+  if (!context.hasRecord)
+    throw new TablesValidationError(`${label} uses record fields, but this trigger has no record`);
+  for (const id of ids) fieldOf(context, id, label);
+}
+
+/** Writes: active, non-computed fields; tokens and templates only where they fit; literals validated now. */
+async function writableValues(
+  context: RuleContext,
+  targetTableId: number,
+  entries: TableFieldValueEntry[],
+  label: string,
+): Promise<void> {
+  const [fields, activeUserIds] = await Promise.all([
+    context.source.fields(targetTableId),
+    context.source.activeUserIds(),
+  ]);
+  const byId = new Map(fields.map((field) => [field.id, field]));
+  for (const entry of entries) {
+    const field = byId.get(entry.fieldId);
     if (!field) throw new TablesValidationError(`${label} references an unavailable field`);
-    return field;
-  };
-
-  const assertTemplate = (context: RuleContext, text: string, label: string): void => {
-    const ids = automationTemplateFieldIds(text);
-    if (ids.length === 0) return;
-    if (!context.hasRecord)
-      throw new TablesValidationError(`${label} uses record fields, but this trigger has no record`);
-    for (const id of ids) fieldOf(context, id, label);
-  };
-
-  /** Writes: active, non-computed fields; tokens and templates only where they fit; literals validated now. */
-  const writableValues = async (
-    context: RuleContext,
-    targetTableId: number,
-    entries: TableFieldValueEntry[],
-    label: string,
-  ): Promise<void> => {
-    const validation = await deps.records.loadValidationContext(targetTableId);
-    for (const entry of entries) {
-      const field = validation.byId.get(String(entry.fieldId));
-      if (!field) throw new TablesValidationError(`${label} references an unavailable field`);
-      if (isComputedField(field))
-        throw new TablesValidationError(`${label} cannot write computed field "${field.name}"`);
-      const value = entry.value;
-      if (typeof value === 'string' && (TABLE_AUTOMATION_VALUE_TOKENS as readonly string[]).includes(value)) {
-        if (!TOKEN_FIELD_TYPES[value]!.includes(field.type)) {
-          throw new TablesValidationError(`${label}: ${value} does not fit field "${field.name}"`);
-        }
-        if (value === '$actor' && !context.hasActor) {
-          throw new TablesValidationError(`${label}: $actor needs a trigger with a member behind it`);
-        }
-        continue;
+    if (isComputedField(field)) throw new TablesValidationError(`${label} cannot write computed field "${field.name}"`);
+    const value = entry.value;
+    if (typeof value === 'string' && (TABLE_AUTOMATION_VALUE_TOKENS as readonly string[]).includes(value)) {
+      if (!TOKEN_FIELD_TYPES[value]!.includes(field.type)) {
+        throw new TablesValidationError(`${label}: ${value} does not fit field "${field.name}"`);
       }
-      if (typeof value === 'string' && automationTemplateFieldIds(value).length > 0) {
-        if (!TEMPLATE_FIELD_TYPES.includes(field.type)) {
-          throw new TablesValidationError(`${label}: field "${field.name}" cannot take a {{field}} template`);
-        }
-        assertTemplate(context, value, label);
-        continue;
+      if (value === '$actor' && !context.hasActor) {
+        throw new TablesValidationError(`${label}: $actor needs a trigger with a member behind it`);
       }
-      if (field.type === 'relation') continue; // targets are checked when the write runs
-      validateTableFieldValue(field, value, validation.activeUserIds);
+      continue;
     }
+    if (typeof value === 'string' && automationTemplateFieldIds(value).length > 0) {
+      if (!TEMPLATE_FIELD_TYPES.includes(field.type)) {
+        throw new TablesValidationError(`${label}: field "${field.name}" cannot take a {{field}} template`);
+      }
+      assertTemplate(context, value, label);
+      continue;
+    }
+    if (field.type === 'relation') continue; // targets are checked when the write runs
+    validateTableFieldValue(field, value, activeUserIds);
+  }
+}
+
+async function normalizeRecipients(
+  context: RuleContext,
+  raw: unknown,
+  legacyUserIds: unknown,
+): Promise<TableAutomationRecipients> {
+  const source = isPlainObject(raw) ? raw : {};
+  const userIds = uniqueList(source.userIds ?? legacyUserIds, 'notify userIds', 50, isNonEmptyString);
+  const groupIds = uniqueList(source.groupIds, 'notify groupIds', 20, isPositiveInteger);
+  const userFieldIds = uniqueList(source.userFieldIds, 'notify userFieldIds', 10, isPositiveInteger);
+  const creator = source.creator === true;
+  const actor = source.actor === true;
+  if (userIds.length + groupIds.length + userFieldIds.length === 0 && !creator && !actor) {
+    throw new TablesValidationError('notify action requires at least one recipient');
+  }
+  if ((userFieldIds.length > 0 || creator) && !context.hasRecord) {
+    throw new TablesValidationError('notify recipients from the record need a trigger with a record');
+  }
+  if (actor && !context.hasActor) {
+    throw new TablesValidationError('notify actor needs a trigger with a member behind it');
+  }
+  if (userIds.length > 0) {
+    const active = await context.source.activeUserIds();
+    if (userIds.some((id) => !active.has(id))) {
+      throw new TablesValidationError('notify recipients must be active internal users');
+    }
+  }
+  if (groupIds.length > 0) {
+    const found = await context.source.existingGroupIds(groupIds);
+    if (groupIds.some((id) => !found.has(id))) throw new TablesValidationError('notify groups must exist');
+  }
+  for (const fieldId of userFieldIds) {
+    const field = fieldOf(context, fieldId, 'notify userFieldIds');
+    if (field.type !== 'user' && field.type !== 'multi_user') {
+      throw new TablesValidationError('notify userFieldIds must be person fields on this table');
+    }
+  }
+  const recipients: TableAutomationRecipients = {
+    ...(userIds.length > 0 ? { userIds } : {}),
+    ...(groupIds.length > 0 ? { groupIds } : {}),
+    ...(userFieldIds.length > 0 ? { userFieldIds } : {}),
+    ...(creator ? { creator } : {}),
+    ...(actor ? { actor } : {}),
+  };
+  return recipients;
+}
+
+function normalizeSchedule(raw: unknown): TableAutomationSchedule {
+  if (!isPlainObject(raw)) throw new TablesValidationError('A schedule rule requires a schedule');
+  const cron = typeof raw.cron === 'string' ? raw.cron.trim() : '';
+  if (!cron || cron.length > 100) throw new TablesValidationError('Schedule requires a cron expression');
+  const timezone = typeof raw.timezone === 'string' ? raw.timezone : '';
+  if (!timezone || !isValidTimeZone(timezone)) throw new TablesValidationError('Schedule requires a valid time zone');
+  if (raw.scope !== 'once' && raw.scope !== 'records') {
+    throw new TablesValidationError('Schedule scope must be "once" or "records"');
+  }
+  return { cron, timezone, scope: raw.scope };
+}
+
+function normalizeDateTrigger(context: RuleContext, raw: unknown): TableAutomationDateTrigger {
+  if (!isPlainObject(raw) || !isPositiveInteger(raw.fieldId)) {
+    throw new TablesValidationError('A date rule requires a date field');
+  }
+  const field = fieldOf(context, raw.fieldId, 'Date trigger');
+  if (!DATE_FIELD_TYPES.includes(field.type)) throw new TablesValidationError('Date trigger needs a date field');
+  const offsetDays = raw.offsetDays ?? 0;
+  if (
+    typeof offsetDays !== 'number' ||
+    !Number.isInteger(offsetDays) ||
+    Math.abs(offsetDays) > TABLE_AUTOMATION_LIMITS.dateOffsetDays
+  ) {
+    throw new TablesValidationError(
+      `Date trigger offset must be whole days within ±${TABLE_AUTOMATION_LIMITS.dateOffsetDays}`,
+    );
+  }
+  const time = raw.time ?? '09:00';
+  if (typeof time !== 'string' || !TIME_PATTERN.test(time))
+    throw new TablesValidationError('Date trigger time is HH:MM');
+  const timezone = typeof raw.timezone === 'string' ? raw.timezone : '';
+  if (!timezone || !isValidTimeZone(timezone))
+    throw new TablesValidationError('Date trigger requires a valid time zone');
+  return { fieldId: field.id, offsetDays, time, timezone };
+}
+
+/**
+ * Validate and normalize a rule config for its trigger. Accepts the legacy
+ * shapes (object `values`, `notify {userIds}`) and returns the current one.
+ * Keys that do not belong to the trigger are dropped; webhook secrets are
+ * split off (`secrets`: action id → plaintext, or null = clear).
+ */
+export async function checkAutomationConfig(
+  source: TablesSchemaSource,
+  baseId: number,
+  tableId: number,
+  trigger: TableAutomationTrigger,
+  input: TableAutomationConfigInput,
+): Promise<{ config: TableAutomationConfig; secrets: Map<string, string | null> }> {
+  if (!(TABLE_AUTOMATION_TRIGGERS as readonly string[]).includes(trigger)) {
+    throw new TablesValidationError('Unsupported automation trigger');
+  }
+  if (!isPlainObject(input) || !Array.isArray(input.actions)) {
+    throw new TablesValidationError('Automation config requires actions');
+  }
+  if (input.actions.length < 1 || input.actions.length > TABLE_AUTOMATION_LIMITS.actions) {
+    throw new TablesValidationError(`Automation supports 1-${TABLE_AUTOMATION_LIMITS.actions} actions`);
+  }
+  const schedule = trigger === 'schedule' ? normalizeSchedule(input.schedule) : undefined;
+  const context: RuleContext = {
+    baseId,
+    tableId,
+    trigger,
+    source,
+    fields: new Map((await source.fields(tableId)).map((field) => [field.id, field])),
+    hasRecord: automationTriggerHasRecord(trigger, schedule),
+    hasActor: automationTriggerHasActor(trigger),
   };
 
-  const normalizeRecipients = async (context: RuleContext, raw: unknown, legacyUserIds: unknown) => {
-    const source = isPlainObject(raw) ? raw : {};
-    const userIds = uniqueList(source.userIds ?? legacyUserIds, 'notify userIds', 50, isNonEmptyString);
-    const groupIds = uniqueList(source.groupIds, 'notify groupIds', 20, isPositiveInteger);
-    const userFieldIds = uniqueList(source.userFieldIds, 'notify userFieldIds', 10, isPositiveInteger);
-    const creator = source.creator === true;
-    const actor = source.actor === true;
-    if (userIds.length + groupIds.length + userFieldIds.length === 0 && !creator && !actor) {
-      throw new TablesValidationError('notify action requires at least one recipient');
+  let condition: TableFilterGroup | undefined;
+  if (input.condition !== undefined && input.condition !== null) {
+    validateFilterGroupShape(input.condition, 'Automation condition');
+    if (input.condition.clauses.length > MAX_QUERY_CLAUSES) {
+      throw new TablesValidationError(`Automation condition supports at most ${MAX_QUERY_CLAUSES} clauses`);
     }
-    if ((userFieldIds.length > 0 || creator) && !context.hasRecord) {
-      throw new TablesValidationError('notify recipients from the record need a trigger with a record');
+    if (input.condition.clauses.some((clause) => clause.fieldId !== undefined && !context.fields.has(clause.fieldId))) {
+      throw new TablesValidationError('Automation condition references an unavailable field');
     }
-    if (actor && !context.hasActor) {
-      throw new TablesValidationError('notify actor needs a trigger with a member behind it');
-    }
-    if (userIds.length > 0) {
-      const found = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(and(inArray(users.id, userIds), eq(users.status, 'active'), inArray(users.role, ['team', 'super'])));
-      if (found.length !== userIds.length) {
-        throw new TablesValidationError('notify recipients must be active internal users');
-      }
-    }
-    if (groupIds.length > 0) {
-      const found = await db.select({ id: userGroups.id }).from(userGroups).where(inArray(userGroups.id, groupIds));
-      if (found.length !== groupIds.length) throw new TablesValidationError('notify groups must exist');
-    }
-    for (const fieldId of userFieldIds) {
-      const field = fieldOf(context, fieldId, 'notify userFieldIds');
-      if (field.type !== 'user' && field.type !== 'multi_user') {
-        throw new TablesValidationError('notify userFieldIds must be person fields on this table');
-      }
-    }
-    const recipients: TableAutomationRecipients = {
-      ...(userIds.length > 0 ? { userIds } : {}),
-      ...(groupIds.length > 0 ? { groupIds } : {}),
-      ...(userFieldIds.length > 0 ? { userFieldIds } : {}),
-      ...(creator ? { creator } : {}),
-      ...(actor ? { actor } : {}),
-    };
-    return recipients;
-  };
+    // Compile once now so a malformed value is refused at save, not silently never matching.
+    compileFilterGroup(input.condition, await sourceCompileContext(source, tableId, fullTableAccess(null)));
+    if (input.condition.clauses.length > 0) condition = input.condition;
+  }
+  if (trigger === 'record_matched' && !condition) {
+    throw new TablesValidationError('A "record matches" rule needs a condition');
+  }
+  if (trigger === 'schedule' && schedule?.scope === 'once' && condition) {
+    throw new TablesValidationError('A condition needs a schedule that runs per record');
+  }
 
-  const normalizeSchedule = (raw: unknown): TableAutomationSchedule => {
-    if (!isPlainObject(raw)) throw new TablesValidationError('A schedule rule requires a schedule');
-    const cron = typeof raw.cron === 'string' ? raw.cron.trim() : '';
-    if (!cron || cron.length > 100) throw new TablesValidationError('Schedule requires a cron expression');
-    const timezone = typeof raw.timezone === 'string' ? raw.timezone : '';
-    if (!timezone || !isValidTimeZone(timezone)) throw new TablesValidationError('Schedule requires a valid time zone');
-    if (raw.scope !== 'once' && raw.scope !== 'records') {
-      throw new TablesValidationError('Schedule scope must be "once" or "records"');
-    }
-    return { cron, timezone, scope: raw.scope };
-  };
+  const watchFieldIds =
+    trigger === 'record_updated' ? uniqueList(input.watchFieldIds, 'watchFieldIds', 20, isPositiveInteger) : [];
+  for (const fieldId of watchFieldIds) fieldOf(context, fieldId, 'watchFieldIds');
+  const dateTrigger = trigger === 'date_reached' ? normalizeDateTrigger(context, input.dateTrigger) : undefined;
+  const buttonLabel =
+    trigger === 'button'
+      ? trimmed(input.buttonLabel as string, 'Button label', TABLE_AUTOMATION_LIMITS.buttonLabel)
+      : undefined;
 
-  const normalizeDateTrigger = (context: RuleContext, raw: unknown): TableAutomationDateTrigger => {
-    if (!isPlainObject(raw) || !isPositiveInteger(raw.fieldId)) {
-      throw new TablesValidationError('A date rule requires a date field');
-    }
-    const field = fieldOf(context, raw.fieldId, 'Date trigger');
-    if (!DATE_FIELD_TYPES.includes(field.type)) throw new TablesValidationError('Date trigger needs a date field');
-    const offsetDays = raw.offsetDays ?? 0;
-    if (
-      typeof offsetDays !== 'number' ||
-      !Number.isInteger(offsetDays) ||
-      Math.abs(offsetDays) > TABLE_AUTOMATION_LIMITS.dateOffsetDays
-    ) {
-      throw new TablesValidationError(
-        `Date trigger offset must be whole days within ±${TABLE_AUTOMATION_LIMITS.dateOffsetDays}`,
+  const rawActions = input.actions as unknown[];
+  if (!rawActions.every(isPlainObject)) throw new TablesValidationError('Each automation action must be an object');
+  const ids = assignAutomationActionIds(rawActions as Array<{ id?: unknown }>);
+  const actions: TableAutomationAction[] = [];
+  const secrets = new Map<string, string | null>();
+  for (const [index, raw] of (rawActions as Array<Record<string, unknown>>).entries()) {
+    const id = ids[index]!;
+    if (raw.type === 'update_record') {
+      if (!context.hasRecord) throw new TablesValidationError('update_record needs a trigger with a record');
+      const values = normalizeValueEntries(raw.values, 'update_record');
+      await writableValues(context, tableId, values, 'update_record');
+      actions.push({ id, type: 'update_record', values });
+    } else if (raw.type === 'create_record') {
+      const targetTableId = raw.tableId;
+      const targetTable = isPositiveInteger(targetTableId) ? await source.table(targetTableId) : undefined;
+      if (!targetTable || targetTable.base_id !== baseId || targetTable.archived) {
+        throw new TablesValidationError('create_record target must be an active table in the same Base');
+      }
+      const values = normalizeValueEntries(raw.values, 'create_record');
+      await writableValues(context, targetTable.id, values, 'create_record');
+      actions.push({ id, type: 'create_record', tableId: targetTable.id, values });
+    } else if (raw.type === 'notify') {
+      const recipients = await normalizeRecipients(context, raw.recipients, raw.userIds);
+      const channels = uniqueList(raw.channels, 'notify channels', 3, (value): value is TableNotifyChannel =>
+        NOTIFY_CHANNELS.includes(value as TableNotifyChannel),
       );
-    }
-    const time = raw.time ?? '09:00';
-    if (typeof time !== 'string' || !TIME_PATTERN.test(time))
-      throw new TablesValidationError('Date trigger time is HH:MM');
-    const timezone = typeof raw.timezone === 'string' ? raw.timezone : '';
-    if (!timezone || !isValidTimeZone(timezone))
-      throw new TablesValidationError('Date trigger requires a valid time zone');
-    return { fieldId: field.id, offsetDays, time, timezone };
-  };
-
-  /**
-   * Validate and normalize a rule config for its trigger. Accepts the legacy
-   * shapes (object `values`, `notify {userIds}`) and returns the current one.
-   * Keys that do not belong to the trigger are dropped; webhook secrets are
-   * split off (`secrets`: action id → plaintext, or null = clear).
-   */
-  const normalizeAutomationConfig = async (
-    baseId: number,
-    tableId: number,
-    trigger: TableAutomationTrigger,
-    input: TableAutomationConfigInput,
-  ): Promise<{ config: TableAutomationConfig; secrets: Map<string, string | null> }> => {
-    if (!(TABLE_AUTOMATION_TRIGGERS as readonly string[]).includes(trigger)) {
-      throw new TablesValidationError('Unsupported automation trigger');
-    }
-    if (!isPlainObject(input) || !Array.isArray(input.actions)) {
-      throw new TablesValidationError('Automation config requires actions');
-    }
-    if (input.actions.length < 1 || input.actions.length > TABLE_AUTOMATION_LIMITS.actions) {
-      throw new TablesValidationError(`Automation supports 1-${TABLE_AUTOMATION_LIMITS.actions} actions`);
-    }
-    const schedule = trigger === 'schedule' ? normalizeSchedule(input.schedule) : undefined;
-    const context: RuleContext = {
-      baseId,
-      tableId,
-      trigger,
-      fields: new Map((await activeTableFields(tableId)).map((field) => [field.id, field])),
-      hasRecord: automationTriggerHasRecord(trigger, schedule),
-      hasActor: automationTriggerHasActor(trigger),
-    };
-
-    let condition: TableFilterGroup | undefined;
-    if (input.condition !== undefined && input.condition !== null) {
-      validateFilterGroupShape(input.condition, 'Automation condition');
-      if (input.condition.clauses.length > MAX_QUERY_CLAUSES) {
-        throw new TablesValidationError(`Automation condition supports at most ${MAX_QUERY_CLAUSES} clauses`);
+      if (raw.urgent !== undefined && typeof raw.urgent !== 'boolean') {
+        throw new TablesValidationError('notify urgent must be a boolean');
+      }
+      const title = trimmed(raw.title as string, 'Notification title', TABLE_AUTOMATION_LIMITS.notifyTitle);
+      const message = trimmed(raw.message as string, 'Notification message', TABLE_AUTOMATION_LIMITS.notifyMessage);
+      assertTemplate(context, title, 'Notification title');
+      assertTemplate(context, message, 'Notification message');
+      actions.push({
+        id,
+        type: 'notify',
+        recipients,
+        title,
+        message,
+        ...(channels.length > 0 ? { channels } : {}),
+        ...(raw.urgent === true ? { urgent: true } : {}),
+      });
+    } else if (raw.type === 'webhook') {
+      const url = typeof raw.url === 'string' ? raw.url.trim() : '';
+      let parsed: URL | null;
+      try {
+        parsed = new URL(url);
+      } catch {
+        parsed = null;
       }
       if (
-        input.condition.clauses.some((clause) => clause.fieldId !== undefined && !context.fields.has(clause.fieldId))
+        !parsed ||
+        url.length > TABLE_AUTOMATION_LIMITS.webhookUrl ||
+        (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') ||
+        parsed.username ||
+        parsed.password
       ) {
-        throw new TablesValidationError('Automation condition references an unavailable field');
+        throw new TablesValidationError('Webhook needs an http(s) URL without credentials');
       }
-      // Compile once now so a malformed value is refused at save, not silently never matching.
-      compileFilterGroup(input.condition, await loadCompileContext(db, tableId, fullTableAccess(null)));
-      if (input.condition.clauses.length > 0) condition = input.condition;
-    }
-    if (trigger === 'record_matched' && !condition) {
-      throw new TablesValidationError('A "record matches" rule needs a condition');
-    }
-    if (trigger === 'schedule' && schedule?.scope === 'once' && condition) {
-      throw new TablesValidationError('A condition needs a schedule that runs per record');
-    }
-
-    const watchFieldIds =
-      trigger === 'record_updated' ? uniqueList(input.watchFieldIds, 'watchFieldIds', 20, isPositiveInteger) : [];
-    for (const fieldId of watchFieldIds) fieldOf(context, fieldId, 'watchFieldIds');
-    const dateTrigger = trigger === 'date_reached' ? normalizeDateTrigger(context, input.dateTrigger) : undefined;
-    const buttonLabel =
-      trigger === 'button'
-        ? trimmed(input.buttonLabel as string, 'Button label', TABLE_AUTOMATION_LIMITS.buttonLabel)
-        : undefined;
-
-    const rawActions = input.actions as unknown[];
-    if (!rawActions.every(isPlainObject)) throw new TablesValidationError('Each automation action must be an object');
-    const ids = assignAutomationActionIds(rawActions as Array<{ id?: unknown }>);
-    const actions: TableAutomationAction[] = [];
-    const secrets = new Map<string, string | null>();
-    for (const [index, raw] of (rawActions as Array<Record<string, unknown>>).entries()) {
-      const id = ids[index]!;
-      if (raw.type === 'update_record') {
-        if (!context.hasRecord) throw new TablesValidationError('update_record needs a trigger with a record');
-        const values = normalizeValueEntries(raw.values, 'update_record');
-        await writableValues(context, tableId, values, 'update_record');
-        actions.push({ id, type: 'update_record', values });
-      } else if (raw.type === 'create_record') {
-        const targetTableId = raw.tableId;
-        const [targetTable] = isPositiveInteger(targetTableId)
-          ? await db.select().from(tableTables).where(eq(tableTables.id, targetTableId)).limit(1)
-          : [];
-        if (!targetTable || targetTable.base_id !== baseId || targetTable.archived_at) {
-          throw new TablesValidationError('create_record target must be an active table in the same Base');
-        }
-        const values = normalizeValueEntries(raw.values, 'create_record');
-        await writableValues(context, targetTable.id, values, 'create_record');
-        actions.push({ id, type: 'create_record', tableId: targetTable.id, values });
-      } else if (raw.type === 'notify') {
-        const recipients = await normalizeRecipients(context, raw.recipients, raw.userIds);
-        const channels = uniqueList(raw.channels, 'notify channels', 3, (value): value is TableNotifyChannel =>
-          NOTIFY_CHANNELS.includes(value as TableNotifyChannel),
-        );
-        if (raw.urgent !== undefined && typeof raw.urgent !== 'boolean') {
-          throw new TablesValidationError('notify urgent must be a boolean');
-        }
-        const title = trimmed(raw.title as string, 'Notification title', TABLE_AUTOMATION_LIMITS.notifyTitle);
-        const message = trimmed(raw.message as string, 'Notification message', TABLE_AUTOMATION_LIMITS.notifyMessage);
-        assertTemplate(context, title, 'Notification title');
-        assertTemplate(context, message, 'Notification message');
-        actions.push({
-          id,
-          type: 'notify',
-          recipients,
-          title,
-          message,
-          ...(channels.length > 0 ? { channels } : {}),
-          ...(raw.urgent === true ? { urgent: true } : {}),
-        });
-      } else if (raw.type === 'webhook') {
-        const url = typeof raw.url === 'string' ? raw.url.trim() : '';
-        let parsed: URL | null;
-        try {
-          parsed = new URL(url);
-        } catch {
-          parsed = null;
-        }
-        if (
-          !parsed ||
-          url.length > TABLE_AUTOMATION_LIMITS.webhookUrl ||
-          (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') ||
-          parsed.username ||
-          parsed.password
+      const fieldIds = uniqueList(raw.fieldIds, 'webhook fieldIds', 100, isPositiveInteger);
+      for (const fieldId of fieldIds) fieldOf(context, fieldId, 'webhook fieldIds');
+      if (raw.secret !== undefined) {
+        if (raw.secret === null) secrets.set(id, null);
+        else if (
+          typeof raw.secret === 'string' &&
+          raw.secret.length >= TABLE_AUTOMATION_LIMITS.webhookSecretMin &&
+          raw.secret.length <= TABLE_AUTOMATION_LIMITS.webhookSecretMax
         ) {
-          throw new TablesValidationError('Webhook needs an http(s) URL without credentials');
+          secrets.set(id, raw.secret);
+        } else {
+          throw new TablesValidationError(
+            `Webhook secret must be ${TABLE_AUTOMATION_LIMITS.webhookSecretMin}-${TABLE_AUTOMATION_LIMITS.webhookSecretMax} characters`,
+          );
         }
-        const fieldIds = uniqueList(raw.fieldIds, 'webhook fieldIds', 100, isPositiveInteger);
-        for (const fieldId of fieldIds) fieldOf(context, fieldId, 'webhook fieldIds');
-        if (raw.secret !== undefined) {
-          if (raw.secret === null) secrets.set(id, null);
-          else if (
-            typeof raw.secret === 'string' &&
-            raw.secret.length >= TABLE_AUTOMATION_LIMITS.webhookSecretMin &&
-            raw.secret.length <= TABLE_AUTOMATION_LIMITS.webhookSecretMax
-          ) {
-            secrets.set(id, raw.secret);
-          } else {
-            throw new TablesValidationError(
-              `Webhook secret must be ${TABLE_AUTOMATION_LIMITS.webhookSecretMin}-${TABLE_AUTOMATION_LIMITS.webhookSecretMax} characters`,
-            );
-          }
-        }
-        actions.push({ id, type: 'webhook', url: parsed.toString(), ...(fieldIds.length > 0 ? { fieldIds } : {}) });
-      } else if (raw.type === 'delay') {
-        const minutes = raw.minutes;
-        if (
-          typeof minutes !== 'number' ||
-          !Number.isInteger(minutes) ||
-          minutes < 1 ||
-          minutes > TABLE_AUTOMATION_LIMITS.delayMinutes
-        ) {
-          throw new TablesValidationError(`Delay must be 1-${TABLE_AUTOMATION_LIMITS.delayMinutes} whole minutes`);
-        }
-        actions.push({ id, type: 'delay', minutes });
-      } else {
-        throw new TablesValidationError('Unsupported automation action');
       }
+      actions.push({ id, type: 'webhook', url: parsed.toString(), ...(fieldIds.length > 0 ? { fieldIds } : {}) });
+    } else if (raw.type === 'delay') {
+      const minutes = raw.minutes;
+      if (
+        typeof minutes !== 'number' ||
+        !Number.isInteger(minutes) ||
+        minutes < 1 ||
+        minutes > TABLE_AUTOMATION_LIMITS.delayMinutes
+      ) {
+        throw new TablesValidationError(`Delay must be 1-${TABLE_AUTOMATION_LIMITS.delayMinutes} whole minutes`);
+      }
+      actions.push({ id, type: 'delay', minutes });
+    } else {
+      throw new TablesValidationError('Unsupported automation action');
     }
-    const config: TableAutomationConfig = {
-      version: 1,
-      ...(condition ? { condition } : {}),
-      ...(watchFieldIds.length > 0 ? { watchFieldIds } : {}),
-      ...(schedule ? { schedule } : {}),
-      ...(dateTrigger ? { dateTrigger } : {}),
-      ...(buttonLabel ? { buttonLabel } : {}),
-      actions,
-    };
-    return { config, secrets };
+  }
+  const config: TableAutomationConfig = {
+    version: 1,
+    ...(condition ? { condition } : {}),
+    ...(watchFieldIds.length > 0 ? { watchFieldIds } : {}),
+    ...(schedule ? { schedule } : {}),
+    ...(dateTrigger ? { dateTrigger } : {}),
+    ...(buttonLabel ? { buttonLabel } : {}),
+    actions,
   };
+  return { config, secrets };
+}
 
+export function createTablesAutomations(db: Db) {
   /** next_fire_at / swept_until for a rule whose trigger config was just set (or that was just enabled). */
   const timing = (
     trigger: TableAutomationTrigger,
@@ -691,7 +685,8 @@ export function createTablesAutomations(db: Db, deps: { records: TablesRecordInt
       if (!table || table.base_id !== input.base_id || table.archived_at) {
         throw new TablesValidationError('Automation table must belong to this Base');
       }
-      const { config, secrets } = await normalizeAutomationConfig(
+      const { config, secrets } = await checkAutomationConfig(
+        dbSchemaSource(db),
         input.base_id,
         input.table_id,
         input.trigger,
@@ -747,7 +742,8 @@ export function createTablesAutomations(db: Db, deps: { records: TablesRecordInt
       let secrets = new Map<string, string | null>();
       let config = normalizeStoredAutomationConfig(current.config);
       if (patch.config !== undefined || triggerChanged) {
-        const normalized = await normalizeAutomationConfig(
+        const normalized = await checkAutomationConfig(
+          dbSchemaSource(db),
           current.base_id,
           current.table_id,
           trigger,

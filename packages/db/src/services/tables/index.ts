@@ -25,6 +25,7 @@
  *   imports.ts      CSV / Excel import lifecycle (stage, claim, chunked commit, sweep)
  *   import-values.ts  cell text → field value, column inference (pure)
  *   resources.ts    resource → owning Base (the Base audit feed's reverse lookup)
+ *   schema-source.ts  what config validators read about the schema (live, or a plan's virtual draft)
  */
 
 import type { Db } from '../../client.js';
@@ -69,6 +70,7 @@ export {
 export {
   assignAutomationActionIds,
   automationSecretAad,
+  checkAutomationConfig,
   normalizeStoredAutomationConfig,
   ruleTimeZone,
   type AutomationScheduling,
@@ -87,7 +89,11 @@ export type {
   UpdateTableBaseInput,
   UpdateTableFieldInput,
 } from './schema.js';
-export type { CreateTableViewInput, UpdateTableViewInput } from './views.js';
+export { checkViewConfig, type CreateTableViewInput, type UpdateTableViewInput } from './views.js';
+// Config validators that read the schema through a source: write paths pass the
+// live schema, the plan tool's draft check a virtual one (spec §9).
+export { dbSchemaSource, type TablesSchemaSource, type TablesSourceTable } from './schema-source.js';
+export { checkFieldConfig } from './schema.js';
 export { TABLES_RESOURCE_KINDS, type TablesResourceKind } from './resources.js';
 export type {
   CreateTableBaseRoleInput,
@@ -98,6 +104,8 @@ export type {
   UpdateTableBaseRoleInput,
 } from './roles.js';
 export {
+  checkFormAudience,
+  checkFormConfig,
   formDefaultEntries,
   formUploadKeySegment,
   formWritableFieldIds,
@@ -157,12 +165,14 @@ export {
   type ImportUserDirectory,
   type ImportValueContext,
 } from './import-values.js';
-export type {
-  CreateTableDashboardInput,
-  CreateTableDashboardWidgetInput,
-  TableDashboardResult,
-  UpdateTableDashboardInput,
-  UpdateTableDashboardWidgetInput,
+export {
+  checkDashboardConfig,
+  checkWidgetCard,
+  type CreateTableDashboardInput,
+  type CreateTableDashboardWidgetInput,
+  type TableDashboardResult,
+  type UpdateTableDashboardInput,
+  type UpdateTableDashboardWidgetInput,
 } from './dashboards.js';
 
 export function createTablesService(db: Db) {
@@ -170,7 +180,7 @@ export function createTablesService(db: Db) {
   const members = createTablesMembers(db);
   const views = createTablesViews(db);
   const records = createTablesRecords(db, { compute });
-  const automations = createTablesAutomations(db, { records: records.internal });
+  const automations = createTablesAutomations(db);
 
   return {
     ...createTablesSchema(db, { compute, listViews: views.listViews }),

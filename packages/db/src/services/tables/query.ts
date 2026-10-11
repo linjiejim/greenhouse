@@ -155,6 +155,18 @@ export async function loadCompileContext(
       .orderBy(asc(tableFields.position), asc(tableFields.id)),
     activeInternalUserIds(db),
   ]);
+  return buildCompileContext(tableId, fields, activeUserIds, scope, evaluation);
+}
+
+/** A compile context from fields already in hand (the schema source builds draft contexts with it). */
+export function buildCompileContext(
+  tableId: number,
+  fields: readonly TableFieldRow[],
+  activeUserIds: ReadonlySet<string>,
+  scope: TableAccessScope,
+  evaluation?: TableQueryEvaluation,
+): TableCompileContext {
+  assertScopeForTable(scope, tableId);
   return {
     tableId,
     fields,

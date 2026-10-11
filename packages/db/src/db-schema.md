@@ -44,7 +44,7 @@
 | `sessions` | PK `id` | 会话；`profile_id` 默认 `team`，记录 user/app/channel、父会话谱系、评分、反馈与 JSON metadata |
 | `messages` | PK `id`；UK `(session_id, seq)`；索引 `session_id` | 会话消息；含 role/content、引用、pipeline、reasoning、图片、置信度、token 与耗时；`seq` 为会话内唯一顺序；普通回复以 tail revision CAS 追加，编辑与截断为原子事务；重新生成在成功后以同一 `seq` 原子替换末尾 assistant，失败保留旧回复。`model` 记产出该轮的 registry 模型 id（`flash`/`pro`/…，模型改为每轮可选后新增）——user 轮、服务端写的终态消息与历史消息均为 null。Bots 对话（`channel='bots'`）额外用 `bot_id` 记撰写该轮的 Bot、用 `bot_event`（JSON）记结构化系统事件（交接、加入、接管完成、后台汇报…），`content` 仍是可读文本 |
 | `chat_files` | PK `id`；UK `storage_key`；索引 session/creator | Chat 会话的私有文件 handle（两个方向）；字节在对象存储，记录 session、文件名/MIME/size、服务端 storage key 与创建人。`source`：`agent`=工具产物（如 `export_data`，存量行的默认值）/ `user`=用户上传的附件。**图片不进这张表**——`<img src>` 带不了 Bearer，图片走 `/api/upload` 的扁平 id + 公开读 |
-| `chat_artifact_receipts` | PK `id`；索引 session/user | 聊天动作卡的持久回执；稳定 action id 原子 claim，绑定 session/user/kind/request hash，保存 processing/succeeded/failed 与原始结果。用于 Schema Plan 与 Task Capture 的刷新恢复和 exactly-once 执行，不替代业务表 |
+| `chat_artifact_receipts` | PK `id`；索引 session/user | 聊天动作卡的持久回执；稳定 action id 原子 claim，绑定 session/user/kind/request hash，保存 processing/succeeded/failed 与原始结果。用于 Schema Plan 与 Task Capture 的刷新恢复和 exactly-once 执行，不替代业务表；Schema Plan 的结果含 ref→id 映射与逐项结果，`claimRetry` 只把同一请求哈希的 succeeded 回执 CAS 回 processing，供「重试未完成的操作」续做 |
 | `session_shares` | PK `id`；UK `(session_id, shared_with)`；FK `session_id` CASCADE | 会话共享；目标为 user id 或 `__team__`；已读状态独立存于 `session_share_reads` |
 | `session_share_reads` | PK `id`；UK `(session_id, user_id)`；FK `session_id` CASCADE | 团队共享的逐用户已读状态 |
 | `session_tags` | PK `id`；UK `(user_id, name)` | 用户私有会话标签 |

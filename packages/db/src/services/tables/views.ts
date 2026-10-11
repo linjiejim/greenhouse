@@ -43,6 +43,7 @@ import type { Db } from '../../client.js';
 import { tableViews } from '../../schema/index.js';
 import type { TableFieldRow, TableViewRow } from '../../schema/tables.js';
 import { compileRecordQuery, loadCompileContext, type TableCompileContext } from './query.js';
+import { sourceCompileContext, type TablesSchemaSource } from './schema-source.js';
 import {
   assertScope,
   isPlainObject,
@@ -394,6 +395,21 @@ export function normalizeViewConfig(type: TableViewType, raw: unknown, schema: T
   if (gallery && Object.keys(gallery).length > 0) config.gallery = gallery;
 
   return config;
+}
+
+/**
+ * `normalizeViewConfig` against a schema source (the plan tool's draft check
+ * passes a virtual one): the config a view of `type` on `tableId` would store
+ * for an author with `scope`.
+ */
+export async function checkViewConfig(
+  source: TablesSchemaSource,
+  tableId: number,
+  type: TableViewType,
+  raw: unknown,
+  scope: TableAccessScope,
+): Promise<TableViewConfig> {
+  return normalizeViewConfig(type, raw ?? {}, await sourceCompileContext(source, tableId, scope));
 }
 
 function viewTypeOf(value: unknown): TableViewType {

@@ -32,6 +32,7 @@ import type {
   TableViewRow,
 } from '../../schema/tables.js';
 import type { TablesCompute } from './compute.js';
+import { dbSchemaSource, type TablesSchemaSource } from './schema-source.js';
 import {
   buildSchemaSnapshot,
   escapeLike,
@@ -89,6 +90,70 @@ export interface TableSchemaResult {
   table: TableDefinitionRow;
   fields: TableFieldRow[];
   views: TableViewRow[];
+}
+
+/**
+ * A field config, shape-checked (`validateTableFieldConfig`) and checked
+ * against the schema the source describes: a relation targets an active table
+ * of the same Base; a formula references active stored fields of its own table
+ * (never itself) with valid arity / kinds; a lookup / rollup goes through a
+ * relation field of this table to an active field of its target table. Returns
+ * the normalized config. `fieldId` is the field being updated, if any.
+ */
+export async function checkFieldConfig(
+  source: TablesSchemaSource,
+  tableId: number,
+  type: TableFieldType,
+  config: TableFieldConfig,
+  fieldId?: number,
+): Promise<TableFieldConfig> {
+  const normalized = validateTableFieldConfig(type, config);
+  if (type === 'relation') {
+    const [own, target] = await Promise.all([source.table(tableId), source.table(normalized.relation!.targetTableId)]);
+    if (!own || !target || own.base_id !== target.base_id || target.archived) {
+      throw new TablesValidationError('Relation target must be an active table in the same Base');
+    }
+    return normalized;
+  }
+  if (type === 'formula') {
+    // The editor's own checks: every reference is an active stored field of
+    // this table (never itself), arity / argument kinds / units hold.
+    const fields = await source.fields(tableId);
+    const checked = checkTableFormula(
+      normalized.formula!.expression,
+      fields.filter((field) => field.id !== fieldId),
+    );
+    if (!checked.ok) throw new TablesValidationError(checked.error.message);
+    return normalized;
+  }
+  if (type === 'lookup' || type === 'rollup') {
+    const link = (type === 'lookup' ? normalized.lookup : normalized.rollup)!;
+    const label = type === 'lookup' ? 'Lookup' : 'Rollup';
+    const relationField = (await source.fields(tableId)).find((field) => field.id === link.relationFieldId);
+    if (!relationField || relationField.type !== 'relation') {
+      throw new TablesValidationError(`${label} relationFieldId must reference a relation field on this table`);
+    }
+    const relation = parseTableFieldConfig(relationField).relation;
+    const targetField = relation
+      ? (await source.fields(relation.targetTableId)).find((field) => field.id === link.targetFieldId)
+      : undefined;
+    if (!targetField) throw new TablesValidationError(`${label} target field is unavailable`);
+    if (type === 'lookup' && !(LOOKUP_TARGET_TYPES as readonly string[]).includes(targetField.type)) {
+      throw new TablesValidationError(
+        `Lookup fields can show ${LOOKUP_TARGET_TYPES.join(', ')} fields, not ${targetField.type}`,
+      );
+    }
+    if (type === 'rollup') {
+      const numericTarget =
+        targetField.type === 'number' ||
+        (targetField.type === 'formula' && parseTableFieldConfig(targetField).formula?.resultType === 'number');
+      const aggregation = normalized.rollup!.aggregation;
+      if (['sum', 'avg', 'min', 'max'].includes(aggregation) && !numericTarget) {
+        throw new TablesValidationError(`${aggregation} rollups require a numeric target field`);
+      }
+    }
+  }
+  return normalized;
 }
 
 export function createTablesSchema(
@@ -160,110 +225,6 @@ export function createTablesSchema(
               }))
             : [];
     if (dependencies.length > 0) await tx.insert(tableFieldDependencies).values(dependencies);
-  };
-
-  const validateModelConfig = async (
-    tableId: number,
-    type: TableFieldType,
-    config: TableFieldConfig,
-    fieldId?: number,
-  ): Promise<void> => {
-    if (type === 'relation') {
-      const [source, target] = await Promise.all([
-        db.select().from(tableTables).where(eq(tableTables.id, tableId)).limit(1),
-        db.select().from(tableTables).where(eq(tableTables.id, config.relation!.targetTableId)).limit(1),
-      ]);
-      if (!source[0] || !target[0] || source[0].base_id !== target[0].base_id || target[0].archived_at) {
-        throw new TablesValidationError('Relation target must be an active table in the same Base');
-      }
-      return;
-    }
-    if (type === 'formula') {
-      // The editor's own checks: every reference is an active stored field of
-      // this table (never itself), arity / argument kinds / units hold.
-      const fields = await db
-        .select()
-        .from(tableFields)
-        .where(and(eq(tableFields.table_id, tableId), isNull(tableFields.archived_at)));
-      const checked = checkTableFormula(
-        config.formula!.expression,
-        fields.filter((field) => field.id !== fieldId),
-      );
-      if (!checked.ok) throw new TablesValidationError(checked.error.message);
-      return;
-    }
-    if (type === 'lookup') {
-      const lookup = config.lookup!;
-      const [relationField] = await db
-        .select()
-        .from(tableFields)
-        .where(
-          and(
-            eq(tableFields.id, lookup.relationFieldId),
-            eq(tableFields.table_id, tableId),
-            isNull(tableFields.archived_at),
-          ),
-        )
-        .limit(1);
-      if (!relationField || relationField.type !== 'relation') {
-        throw new TablesValidationError('Lookup relationFieldId must reference a relation field on this table');
-      }
-      const relation = parseTableFieldConfig(relationField).relation;
-      const [targetField] = await db
-        .select()
-        .from(tableFields)
-        .where(
-          and(
-            eq(tableFields.id, lookup.targetFieldId),
-            eq(tableFields.table_id, relation!.targetTableId),
-            isNull(tableFields.archived_at),
-          ),
-        )
-        .limit(1);
-      if (!targetField) throw new TablesValidationError('Lookup target field is unavailable');
-      if (!(LOOKUP_TARGET_TYPES as readonly string[]).includes(targetField.type)) {
-        throw new TablesValidationError(
-          `Lookup fields can show ${LOOKUP_TARGET_TYPES.join(', ')} fields, not ${targetField.type}`,
-        );
-      }
-      return;
-    }
-    if (type === 'rollup') {
-      const rollup = config.rollup!;
-      const [relationField] = await db
-        .select()
-        .from(tableFields)
-        .where(
-          and(
-            eq(tableFields.id, rollup.relationFieldId),
-            eq(tableFields.table_id, tableId),
-            isNull(tableFields.archived_at),
-          ),
-        )
-        .limit(1);
-      if (!relationField || relationField.type !== 'relation') {
-        throw new TablesValidationError('Rollup relationFieldId must reference a relation field on this table');
-      }
-      const relation = parseTableFieldConfig(relationField).relation;
-      const [targetField] = await db
-        .select()
-        .from(tableFields)
-        .where(
-          and(
-            eq(tableFields.id, rollup.targetFieldId),
-            eq(tableFields.table_id, relation!.targetTableId),
-            isNull(tableFields.archived_at),
-          ),
-        )
-        .limit(1);
-      if (!targetField) throw new TablesValidationError('Rollup target field is unavailable');
-      const numericTarget =
-        targetField.type === 'number' ||
-        (targetField.type === 'formula' && parseTableFieldConfig(targetField).formula?.resultType === 'number');
-      if (['sum', 'avg', 'min', 'max'].includes(rollup.aggregation) && !numericTarget) {
-        throw new TablesValidationError(`${rollup.aggregation} rollups require a numeric target field`);
-      }
-    }
   };
 
   const service = {
@@ -529,8 +490,7 @@ export function createTablesSchema(
 
     async createField(input: CreateTableFieldInput): Promise<TableFieldRow> {
       validateFieldType(input.type);
-      const config = validateTableFieldConfig(input.type, input.config ?? {});
-      await validateModelConfig(input.table_id, input.type, config);
+      const config = await checkFieldConfig(dbSchemaSource(db), input.table_id, input.type, input.config ?? {});
       const now = nowIso();
       const row = await db.transaction(async (tx) => {
         const current = await tx
@@ -568,10 +528,9 @@ export function createTablesSchema(
       const existing = await service.getField(id);
       if (!existing || existing.archived_at) return undefined;
       const normalizedConfig =
-        patch.config === undefined ? undefined : validateTableFieldConfig(existing.type, patch.config);
-      if (normalizedConfig) {
-        await validateModelConfig(existing.table_id, existing.type, normalizedConfig, existing.id);
-      }
+        patch.config === undefined
+          ? undefined
+          : await checkFieldConfig(dbSchemaSource(db), existing.table_id, existing.type, patch.config, existing.id);
       const row = await db.transaction(async (tx) => {
         const [field] = await tx.select().from(tableFields).where(eq(tableFields.id, id)).limit(1);
         if (!field || field.archived_at) return undefined;

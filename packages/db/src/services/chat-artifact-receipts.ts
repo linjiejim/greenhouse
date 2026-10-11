@@ -59,6 +59,29 @@ export function createChatArtifactReceiptService(db: Db) {
       return row;
     },
 
+    /**
+     * Re-arm a finished receipt for a retry of its unfinished parts: succeeded →
+     * processing, only for its owner and only with the same request hash. One
+     * caller wins; everyone else gets undefined (already retrying, never
+     * finished, or a different payload). The caller keeps the prior `result` it
+     * read and writes the merged one back with `succeed`.
+     */
+    async claimRetry(id: string, userId: string, requestHash: string): Promise<ChatArtifactReceiptRow | undefined> {
+      const [row] = await db
+        .update(chatArtifactReceipts)
+        .set({ status: 'processing', updated_at: nowIso() })
+        .where(
+          and(
+            eq(chatArtifactReceipts.id, id),
+            eq(chatArtifactReceipts.user_id, userId),
+            eq(chatArtifactReceipts.status, 'succeeded'),
+            eq(chatArtifactReceipts.request_hash, requestHash),
+          ),
+        )
+        .returning();
+      return row;
+    },
+
     async succeed(id: string, userId: string, result: unknown): Promise<ChatArtifactReceiptRow | undefined> {
       const [row] = await db
         .update(chatArtifactReceipts)
