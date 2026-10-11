@@ -1,0 +1,20 @@
+/** Chinese counterpart of ./en.ts — spread once into `../zh.ts`. */
+
+import { appsAgentZh } from './agent.zh';
+import { appsBuilderZh } from './builder.zh';
+import { appsCenterZh } from './center.zh';
+import { appsRuntimeZh } from './runtime.zh';
+
+export const APPS_SLICE_MODULES_ZH = {
+  agent: appsAgentZh,
+  builder: appsBuilderZh,
+  center: appsCenterZh,
+  runtime: appsRuntimeZh,
+};
+
+export const APPS_SLICES_ZH = {
+  ...appsAgentZh,
+  ...appsBuilderZh,
+  ...appsCenterZh,
+  ...appsRuntimeZh,
+};

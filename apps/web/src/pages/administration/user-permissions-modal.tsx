@@ -5,8 +5,10 @@
  * follow the server registry's `group` (apps/api/src/platform/feature-points.ts):
  *  - Basic access — default-on features (Tables / Missions / AI Memory) with
  *    per-user off switches, plus the read-only always-on global tools.
- *  - App access — application points (Knowledge / Projects / Tables) with
- *    finer capability + record/field controls where app-backed.
+ *  - Module access — platform module points (Knowledge / Projects / Tables),
+ *    with finer capability + record/field controls where module-backed. Copy calls
+ *    them "modules"; "apps" are the ones members build on Tables (the internal
+ *    group id stays `apps`).
  *  - Advanced access — opt-in flags (Knowledge Sync) and the individually
  *    granted "Advanced tools" bucket.
  *  - Usage limits — monthly token cap.

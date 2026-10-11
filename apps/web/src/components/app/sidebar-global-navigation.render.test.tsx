@@ -12,11 +12,12 @@ const navigation: PrimaryNavigation = {
     { key: 'bots', label: 'Bots', icon: MessageCircle, href: '#/bots', badge: 2 },
     { key: 'knowledge', label: 'Knowledge', icon: MessageCircle, href: '#/knowledge' },
     { key: 'projects', label: 'Projects', icon: MessageCircle, href: '#/projects' },
-    { key: 'crm', label: 'CRM', icon: MessageCircle, href: '#/crm' },
+    { key: 'tables', label: 'Tables', icon: MessageCircle, href: '#/tables' },
+    { key: 'apps', label: 'Apps', icon: MessageCircle, href: '#/apps' },
   ],
   overflow: [
     { key: 'skillhub', label: 'SkillHub', icon: MessageCircle, href: '#/skillhub' },
-    { key: 'tables', label: 'Tables', icon: MessageCircle, href: '#/tables' },
+    { key: 'crm', label: 'CRM', icon: MessageCircle, href: '#/crm' },
   ],
 };
 
@@ -42,11 +43,18 @@ describe('SidebarGlobalNavigation', () => {
     expect(html.indexOf('Chat')).toBeLessThan(html.indexOf('Bots'));
     expect(html.indexOf('Bots')).toBeLessThan(html.indexOf('Knowledge'));
     expect(html.indexOf('Knowledge')).toBeLessThan(html.indexOf('Projects'));
-    expect(html.indexOf('Projects')).toBeLessThan(html.indexOf('CRM'));
-    expect(html.indexOf('CRM')).toBeLessThan(html.indexOf('More'));
+    expect(html.indexOf('Projects')).toBeLessThan(html.indexOf('Tables'));
+    expect(html.indexOf('Tables')).toBeLessThan(html.indexOf('>Apps<'));
+    expect(html.indexOf('>Apps<')).toBeLessThan(html.indexOf('More'));
     expect(html).toContain('md:min-h-8');
     expect(html).toMatch(/href="#\/chat"[^>]*aria-current="page"[^>]*class="[^"]*sidebar-active-item/);
     expect(html).toMatch(/href="#\/chat"[^>]*class="[^"]*font-semibold/);
+  });
+
+  it('marks Apps active on the app center and on any app page', () => {
+    const html = render('apps');
+    expect(html).toMatch(/href="#\/apps"[^>]*aria-current="page"[^>]*class="[^"]*sidebar-active-item/);
+    expect(html).not.toMatch(/href="#\/tables"[^>]*aria-current="page"/);
   });
 
   it('marks Bots active on its own route and shows the pending "needs you" badge', () => {
@@ -70,7 +78,7 @@ describe('SidebarGlobalNavigation', () => {
     expect(html.indexOf('More')).toBeLessThan(html.indexOf('Automation'));
     expect(html.indexOf('Tasks')).toBeLessThan(html.indexOf('Automation'));
     expect(html).toContain('SkillHub');
-    expect(html).toContain('Tables');
+    expect(html).toContain('CRM');
     expect(html).toContain('href="#/automations"');
     expect(html).toContain('href="#/tasks"');
     expect(html).toMatch(/aria-haspopup="menu"[^>]*aria-expanded="true"[^>]*aria-current="page"/);

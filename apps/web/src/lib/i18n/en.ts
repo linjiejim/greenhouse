@@ -1,6 +1,7 @@
 /**
  * English locale — default language
  */
+import { APPS_SLICES_EN } from './apps/en';
 import { TABLES_PLAN_EN, TABLES_SLICES_EN } from './tables/en';
 
 export default {
@@ -1486,11 +1487,11 @@ export default {
     title: 'Permissions — {name}',
     sections: 'Permission sections',
     basicTab: 'Basic access',
-    appsTab: 'App access',
+    appsTab: 'Module access',
     advancedTab: 'Advanced access',
     limitsTab: 'Usage limits',
     basicDescription: 'On by default for every team member. Switch one off to restrict this user.',
-    appsDescription: 'Application access — each card carries its own action and record controls.',
+    appsDescription: 'Module access — each card carries its own action and record controls.',
     advancedDescription: 'Opt-in capabilities and individually granted tools.',
     override: 'Override',
     overrideMode: '{name} override mode',
@@ -1548,41 +1549,6 @@ export default {
       confidential: 'Confidential',
       restricted: 'Restricted',
     },
-  },
-
-  workbench: {
-    updateFailed: 'Unable to update workbench',
-    permissionsLoadFailed: 'Unable to load effective permissions',
-    catalogUnavailable: 'Application catalog unavailable',
-    retry: 'Retry',
-    title: 'Your applications',
-    subtitle: 'One account, one permission model, and the same resources in Web and MCP.',
-    available: '{count} available',
-    hidden: '{count} hidden',
-    noVisibleApps: 'No applications are visible',
-    noVisibleAppsHint: 'Unhide an application below or ask an administrator for access.',
-    pinned: 'Pinned',
-    internalApp: 'Internal platform application',
-    pin: 'Pin',
-    unpin: 'Unpin',
-    pinApp: 'Pin {name}',
-    unpinApp: 'Unpin {name}',
-    actionsVersion: '{count} actions · v{version}',
-    open: 'Open',
-    agentOnly: 'Agent / MCP only',
-    customize: 'Customize workbench',
-    cardDensity: 'Card density',
-    comfortable: 'Comfortable',
-    compact: 'Compact',
-    logoLanding: 'Logo landing',
-    workbench: 'Workbench',
-    moveUp: 'Move {name} up',
-    moveDown: 'Move {name} down',
-    showApp: 'Show {name}',
-    hideApp: 'Hide {name}',
-    effectiveAccess: 'My effective access',
-    allowed: 'allowed',
-    denied: 'denied',
   },
 
   assetScopes: {
@@ -1669,11 +1635,11 @@ export default {
     validateFailed: 'Unable to validate this authorization request',
     authorizationFailed: 'Unable to complete authorization',
     allowClient: 'Allow {name} to use your Greenhouse account?',
-    permissionHint: 'Access is always limited by your current application, module, operation and record permissions.',
+    permissionHint: 'Access is always limited by your current module, area, operation and record permissions.',
     writeTitle: 'Use permitted write actions',
     writeDetail: 'The agent may request changes, but destructive tools still require explicit confirmation.',
     readTitle: 'Read permitted resources',
-    readDetail: 'The agent can discover and read only applications and records your account can access.',
+    readDetail: 'The agent can discover and read only modules and records your account can access.',
     capabilitiesTitle: 'Which data it may reach',
     capabilitiesHint:
       'Untick anything this client should not see. You can revoke the whole connection later in Settings.',
@@ -2036,7 +2002,7 @@ export default {
     tablesView: 'View',
     tablesNoView: 'All records',
     tablesViewHint: 'A view brings its saved filters and sorting along with it.',
-    navApps: 'Applications',
+    navApps: 'Modules',
     navRecords: 'Records',
     navSearchPlaceholder: 'Search projects, documents…',
     textPlaceholder: 'Markdown note — links, reminders, a checklist…',
@@ -3464,6 +3430,28 @@ export default {
   },
 
   tablesSchemaPlan: TABLES_PLAN_EN,
+
+  // User-built apps (Phase 1, spec 20261011-tables-apps). Not the platform modules
+  // (Knowledge / Projects / Tables), which user-visible copy calls "modules".
+  apps: {
+    // Per-slice modules (lib/i18n/apps/*): a Phase 1 slice edits only its own file.
+    // Spread first, so a core key of the same name would win (and fail the slice test).
+    ...APPS_SLICES_EN,
+    title: 'Apps',
+    description: 'Apps built on your Tables and shared with the people who use them',
+    status: {
+      draft: 'Draft',
+      published: 'Published',
+      archived: 'Archived',
+    },
+    sidebar: {
+      section: 'Apps',
+      pinned: 'Pinned',
+      featured: 'Featured',
+      allApps: 'All apps',
+    },
+  },
+
   // Missions (long-running sandboxed work)
   cloudAgent: {
     newTask: 'New mission',

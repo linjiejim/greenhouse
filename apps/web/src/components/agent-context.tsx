@@ -16,6 +16,7 @@ import { findExtensionPage } from '../extensions';
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import type { AssistantLaunchRequest, PageContext } from '@greenhouse/types/agent-context';
 import { pageContextKey } from '../lib/page-context-key';
+import { parseAppRoute } from '../lib/app-routes';
 import { parseExecutionSubPath } from '../lib/execution-route';
 import { isSearchShortcut } from './search/shortcut';
 import { useGlobalSearchStore } from '../stores/global-search-store';
@@ -91,6 +92,14 @@ export function resolveUrlContext(hash: string): PageContext | null {
         tableId: segments[2] === 'table' && Number.isInteger(itemId) && itemId > 0 ? itemId : undefined,
         dashboardId: segments[2] === 'dashboard' && Number.isInteger(itemId) && itemId > 0 ? itemId : undefined,
       };
+    }
+
+    case 'apps': {
+      // The app center carries no page context; an app page or the builder does.
+      const app = parseAppRoute(subPath);
+      if (app.kind === 'builder') return { type: 'app-page', appId: app.appId, mode: 'build' };
+      if (app.kind === 'runtime') return { type: 'app-page', appId: app.appId, mode: 'use', pageId: app.pageId };
+      return null;
     }
 
     case 'executions': {

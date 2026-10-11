@@ -6,6 +6,7 @@
  */
 import type en from './en';
 import type { DeepRecord } from './types';
+import { APPS_SLICES_ZH } from './apps/zh';
 import { TABLES_PLAN_ZH, TABLES_SLICES_ZH } from './tables/zh';
 
 type Messages = DeepRecord<typeof en>;
@@ -1450,11 +1451,11 @@ const zh: Messages = {
     title: '权限 — {name}',
     sections: '权限分区',
     basicTab: '基础权限',
-    appsTab: '应用权限',
+    appsTab: '模块权限',
     advancedTab: '高级权限',
     limitsTab: '用量限制',
     basicDescription: '默认对所有团队成员开放；关闭某项即可限制该用户。',
-    appsDescription: '应用级权限——每个应用卡片内可细调操作与记录权限。',
+    appsDescription: '模块级权限——每个模块卡片内可细调操作与记录权限。',
     advancedDescription: '按需开通的能力与逐个授予的工具。',
     override: '覆盖策略',
     overrideMode: '{name} 覆盖模式',
@@ -1512,41 +1513,6 @@ const zh: Messages = {
       confidential: '机密',
       restricted: '受限',
     },
-  },
-
-  workbench: {
-    updateFailed: '无法更新工作台',
-    permissionsLoadFailed: '无法加载实际权限',
-    catalogUnavailable: '应用目录暂不可用',
-    retry: '重试',
-    title: '你的应用',
-    subtitle: '一个账号、一套权限模型，Web 与 MCP 共享同一批资源。',
-    available: '可用 {count} 个',
-    hidden: '已隐藏 {count} 个',
-    noVisibleApps: '没有可见的应用',
-    noVisibleAppsHint: '请在下方取消隐藏，或联系管理员申请权限。',
-    pinned: '已置顶',
-    internalApp: '内部平台应用',
-    pin: '置顶',
-    unpin: '取消置顶',
-    pinApp: '置顶{name}',
-    unpinApp: '取消置顶{name}',
-    actionsVersion: '{count} 个操作 · v{version}',
-    open: '打开',
-    agentOnly: '仅 Agent / MCP',
-    customize: '自定义工作台',
-    cardDensity: '卡片密度',
-    comfortable: '舒适',
-    compact: '紧凑',
-    logoLanding: 'Logo 默认页',
-    workbench: '工作台',
-    moveUp: '上移{name}',
-    moveDown: '下移{name}',
-    showApp: '显示{name}',
-    hideApp: '隐藏{name}',
-    effectiveAccess: '我的实际权限',
-    allowed: '允许',
-    denied: '拒绝',
   },
 
   assetScopes: {
@@ -1625,11 +1591,11 @@ const zh: Messages = {
     validateFailed: '无法验证此授权请求',
     authorizationFailed: '无法完成授权',
     allowClient: '允许 {name} 使用你的 Greenhouse 账号吗？',
-    permissionHint: '访问范围始终受你当前的应用、模块、操作和记录权限限制。',
+    permissionHint: '访问范围始终受你当前的模块、功能区、操作和记录权限限制。',
     writeTitle: '使用已允许的写操作',
     writeDetail: 'Agent 可以请求修改，但破坏性工具仍需明确确认。',
     readTitle: '读取已允许的资源',
-    readDetail: 'Agent 只能发现并读取你的账号有权访问的应用和记录。',
+    readDetail: 'Agent 只能发现并读取你的账号有权访问的模块和记录。',
     capabilitiesTitle: '可以访问哪些数据',
     capabilitiesHint: '取消勾选这个客户端不该看到的部分。之后也可以在设置里整体撤销此连接。',
     selectedCount: '已选 {count} / {total}',
@@ -1979,7 +1945,7 @@ const zh: Messages = {
     tablesView: '视图',
     tablesNoView: '全部记录',
     tablesViewHint: '选择视图会一并带上它保存的筛选与排序。',
-    navApps: '应用',
+    navApps: '模块',
     navRecords: '记录',
     navSearchPlaceholder: '搜索项目、文档…',
     textPlaceholder: 'Markdown 便签——链接、提醒、清单…',
@@ -3392,6 +3358,28 @@ const zh: Messages = {
   },
 
   tablesSchemaPlan: TABLES_PLAN_ZH,
+
+  // 用户搭建的应用（阶段 1，spec 20261011-tables-apps）。平台模块（知识库 / 项目 / 表格）
+  // 在用户可见文案里叫「模块」。
+  apps: {
+    // Per-slice modules (lib/i18n/apps/*): a Phase 1 slice edits only its own file.
+    // Spread first, so a core key of the same name would win (and fail the slice test).
+    ...APPS_SLICES_ZH,
+    title: '应用',
+    description: '基于表格搭建、分发给使用者的应用',
+    status: {
+      draft: '草稿',
+      published: '已发布',
+      archived: '已归档',
+    },
+    sidebar: {
+      section: '应用',
+      pinned: '置顶',
+      featured: '推荐',
+      allApps: '全部应用',
+    },
+  },
+
   // Mission（长时沙箱执行）
   cloudAgent: {
     newTask: '新建 Mission',

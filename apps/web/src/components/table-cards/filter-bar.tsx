@@ -22,16 +22,10 @@ import { useT } from '../../lib/i18n';
 import { RotateCcw } from '../../lib/icons';
 import { Button, DateRangeInput, SearchInput, Select } from '../ui';
 import { fieldConfig } from '../tables/field-types';
+import { viewerTimeZone, type TableCardFilterValues } from './data-provider';
 
-export type DashboardFilterValues = Record<string, TableFilterValue | null>;
-
-function viewerTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
+/** The bar's values — the same map a card evaluation carries (`TableCardQuery.filterValues`). */
+export type DashboardFilterValues = TableCardFilterValues;
 
 /** The value a control currently has: the viewer's choice, else its default. */
 export function effectiveFilterValue(

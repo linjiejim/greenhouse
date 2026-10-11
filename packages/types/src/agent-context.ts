@@ -15,6 +15,7 @@ export type PageContext =
   | ProjectListContext
   | ProjectDetailContext
   | TablesContext
+  | AppPageContext
   | ExecutionCenterContext
   | ExtensionPageContext;
 
@@ -65,6 +66,28 @@ export interface TablesContext {
   tableDescription?: string;
   dashboardId?: number;
   dashboardName?: string;
+}
+
+/**
+ * One user-built app (`#/apps/<id>[/<pageId>]`, or its builder at
+ * `#/apps/<id>/edit`) — spec 20261011-tables-apps §6. The route gives the ids;
+ * the page fills in the names once the app loads.
+ */
+export interface AppPageContext {
+  type: 'app-page';
+  appId: number;
+  /** `use` = the published app a viewer works in; `build` = its draft in the builder. */
+  mode: 'use' | 'build';
+  /** From the route; absent means the app's home page (the runtime fills it in once loaded). */
+  pageId?: string;
+  appName?: string;
+  pageTitle?: string;
+  /** The viewer's app role, by its display name. */
+  roleName?: string;
+  /** The published version on screen (`use` mode). */
+  version?: number;
+  /** Page filters the viewer has set, as shown (`Status: Pending`). */
+  filters?: Array<{ label: string; value: string }>;
 }
 
 /** Durable cross-domain execution list or one Runtime run detail. */

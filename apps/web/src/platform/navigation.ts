@@ -1,6 +1,6 @@
 /** Shared desktop/mobile primary navigation composition. */
 
-import { Bot, MessageCircle, Package, type LucideIcon } from '../lib/icons';
+import { Bot, LayoutGrid, MessageCircle, Package, type LucideIcon } from '../lib/icons';
 import {
   PRIMARY_NAV_APPLICATION_IDS,
   platformApplicationHref,
@@ -37,6 +37,13 @@ interface BuildPrimaryNavigationArgs {
    * you" requests — the one place a waiting Bot is visible from every page.
    */
   bots?: { label: string; badge?: number } | null;
+  /**
+   * Apps — the ones members build on Tables (spec 20261011-tables-apps), when
+   * the member has the `apps` feature. A host destination, not a catalog
+   * application: apps are a module of the Tables manifest, and the people an
+   * app is shared with need not have Tables at all. Sits right after Tables.
+   */
+  apps?: { label: string } | null;
 }
 
 export function buildPrimaryNavigation({
@@ -44,6 +51,7 @@ export function buildPrimaryNavigation({
   chatLabel,
   skillhubLabel,
   bots,
+  apps,
 }: BuildPrimaryNavigationArgs): PrimaryNavigation {
   const applicationItems = applications.flatMap((application) => {
     const href = platformApplicationHref(application);
@@ -65,9 +73,15 @@ export function buildPrimaryNavigation({
     return item ? [item] : [];
   });
   const overflowApplicationItems = applicationItems.filter((item) => !primaryApplicationIds.has(item.key));
+  if (apps) {
+    // Right after Tables, or at the end of the primary apps for a member without Tables.
+    const tablesIndex = primaryApplicationItems.findIndex((item) => item.key === 'tables');
+    const at = tablesIndex >= 0 ? tablesIndex + 1 : primaryApplicationItems.length;
+    primaryApplicationItems.splice(at, 0, { key: 'apps', label: apps.label, icon: LayoutGrid, href: '#/apps' });
+  }
 
-  // Visible sidebar order: Chat, Bots, then the authorized primary apps
-  // (Knowledge, Projects, CRM). SkillHub and secondary destinations collapse
+  // Visible sidebar order: Chat, Bots, then the authorized primary modules
+  // (Knowledge, Projects, Tables) and Apps. SkillHub and secondary destinations collapse
   // into "More". Chat leads because it is also the home page — a new
   // conversation opens onto the user's workbench; Bots sit right after it as
   // the other place you talk.

@@ -12,6 +12,8 @@ export function pageContextKey(context: PageContext | null): string {
       return `${context.type}:${context.projectId}`;
     case 'tables':
       return `${context.type}:${context.baseId || ''}:${context.tableId || ''}:${context.dashboardId || ''}`;
+    case 'app-page':
+      return `${context.type}:${context.appId}:${context.mode}:${context.pageId || ''}`;
     case 'execution-center':
       return `${context.type}:${context.runKind || ''}:${context.runId || ''}`;
     default:

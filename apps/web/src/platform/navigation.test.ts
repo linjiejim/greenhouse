@@ -71,6 +71,38 @@ describe('Primary navigation', () => {
     expect(primary.find((item) => item.key === 'bots')?.badge).toBe(3);
   });
 
+  it('puts Apps right after Tables only when the member has the feature', () => {
+    const applications = [application('tables'), application('knowledge'), application('projects')];
+    const without = buildPrimaryNavigation({ applications, ...baseLabels });
+    expect(without.primary.map((item) => item.key)).toEqual(['chat', 'knowledge', 'projects', 'tables']);
+
+    const withApps = buildPrimaryNavigation({
+      applications,
+      ...baseLabels,
+      bots: { label: 'Bots' },
+      apps: { label: 'Apps' },
+    });
+    expect(withApps.primary.map((item) => item.key)).toEqual([
+      'chat',
+      'bots',
+      'knowledge',
+      'projects',
+      'tables',
+      'apps',
+    ]);
+    expect(withApps.primary.at(-1)).toMatchObject({ label: 'Apps', href: '#/apps' });
+    expect(withApps.overflow.map((item) => item.key)).toEqual(['skillhub']);
+  });
+
+  it('keeps Apps for a member without Tables — people an app is shared with need not use Tables', () => {
+    const { primary } = buildPrimaryNavigation({
+      applications: [application('knowledge'), application('projects')],
+      ...baseLabels,
+      apps: { label: 'Apps' },
+    });
+    expect(primary.map((item) => item.key)).toEqual(['chat', 'knowledge', 'projects', 'apps']);
+  });
+
   it('keeps durable executions out of More because they have one fixed utility entry', () => {
     const navigation = buildPrimaryNavigation({ applications: [], ...baseLabels });
     expect(navigation.overflow.map((item) => item.key)).toEqual(['skillhub']);

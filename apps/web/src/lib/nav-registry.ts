@@ -27,6 +27,7 @@ import {
   Zap,
   Bot,
   Table2,
+  LayoutGrid,
   FolderKanban,
   Monitor,
   Lock,
@@ -374,6 +375,18 @@ const STANDALONE_MODULES: NavModule[] = [
     pinnable: false,
   },
   {
+    // User-built apps (spec 20261011-tables-apps). Gated by the `apps` flag, not
+    // the `tables` one: the people an app is shared with need not use Tables.
+    id: 'workspace.apps',
+    label: 'Apps',
+    icon: LayoutGrid,
+    path: '#/apps',
+    parent: 'standalone',
+    description: 'Apps built on your Tables and shared with the people who use them',
+    pinnable: false,
+    requireFeature: 'apps',
+  },
+  {
     id: 'workspace.projects',
     label: 'Projects',
     icon: FolderKanban,
@@ -451,6 +464,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   'workspace.tasks': { label: 'navigation.myPrompts', description: 'navigation.tasksDesc' },
   'workspace.automations': { label: 'navigation.automation', description: 'navigation.automationDesc' },
   'workspace.tables': { label: 'navigation.tables', description: 'navigation.tablesDesc' },
+  'workspace.apps': { label: 'apps.title', description: 'apps.description' },
   'workspace.projects': { label: 'projects.title', description: 'navigation.projectsDesc' },
   'workspace.executions': { label: 'taskCenter.title', description: 'taskCenter.description' },
   'workspace.skillhub': { label: 'skillHub.title', description: 'navigation.skillHubDesc' },

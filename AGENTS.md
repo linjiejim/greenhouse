@@ -578,7 +578,8 @@ dialog (`apps/web/src/pages/administration/user-permissions-modal.tsx`) renders 
 - Projects, Knowledge and Tables are registered applications. New applications start from
   `pnpm cli platform create-app <id> --title "..."`; an app without a web UI may stay
   Agent/MCP-only. The web catalog and the fixed shell navigation
-  (`Chat → Knowledge → Projects → Tables → More`) derive from the user's authorized catalog;
+  (`Chat → Bots → Knowledge → Projects → Tables → Apps → More`; Bots and Apps are host entries behind their
+  feature flags, the modules between them come from the catalog) derive from the user's authorized catalog;
   durable execution tracking lives in the execution center (`#/executions`).
 
 ### Workspace settings (DB-backed, admin-editable deployment config)

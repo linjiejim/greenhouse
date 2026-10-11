@@ -2,9 +2,21 @@
  * Table cards — the one renderer set for `TableCardSpec` results (program P1):
  * Tables dashboards now, app pages in Phase 1. Evaluation is server-side
  * (`platform/tables/cards.ts`); these only draw results and report clicks.
+ * A host supplies results through a `TableCardDataProvider` and puts each card
+ * in a `TableCardFrame`.
  */
 
 export { TableCardView, type TableCardViewProps } from './table-card';
+export { TableCardFrame, type TableCardFrameProps } from './card-frame';
+export {
+  useTableCardResults,
+  viewerTimeZone,
+  type TableCardDataProvider,
+  type TableCardEvaluation,
+  type TableCardFilterValues,
+  type TableCardQuery,
+  type TableCardState,
+} from './data-provider';
 export { KpiCard } from './kpi-card';
 export { ChartCard } from './chart-card';
 export { PivotCard, buildPivotModel } from './pivot-card';

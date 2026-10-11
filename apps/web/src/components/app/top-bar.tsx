@@ -46,6 +46,7 @@ type Route =
   | 'design'
   | 'knowledge'
   | 'tables'
+  | 'apps'
   | 'forms'
   | 'skillhub'
   | 'tasks'
@@ -272,7 +273,6 @@ export function TopBar({
 
   // Fallback page titles
   const pageTitles: Record<string, string> = {
-    workbench: 'Workbench',
     chat: chatUtilityTitle || sessionTitle || t('chat.newConversation'),
     bots: t('bots.title'),
     automations: t('navigation.automation'),
@@ -281,6 +281,7 @@ export function TopBar({
     administration: t('app.administration'),
     knowledge: t('app.knowledge'),
     tables: t('tables.home.title'),
+    apps: t('apps.title'),
     forms: t('tables.forms.internalForm'),
     skillhub: t('app.skillhub'),
     tasks: t('navigation.myPrompts'),
