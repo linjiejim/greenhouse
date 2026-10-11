@@ -8,14 +8,19 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import type { TableFieldType, TableFormAudience, TableFormConfig } from '@greenhouse/types/tables';
-import { Button, Checkbox, IconButton, Input, Select, Textarea, Toggle } from '../../components/ui';
+import type { TableFormAudience, TableFormConfig } from '@greenhouse/types/tables';
+import { Button, Checkbox, Input, Select, Textarea, Toggle } from '../../components/ui';
 import { FormActions, FormError, FormField, FormSection } from '../../components/form';
-import { FieldEditor } from '../../components/tables/field-editor';
-import { fromFieldDraft, toFieldDraft, type FieldDraft } from '../../components/tables/field-draft';
 import { isComputedField } from '../../components/tables/field-types';
+import {
+  FieldValuesEditor,
+  fieldValueEntries,
+  fieldValueRows,
+  prefillableField,
+  type FieldValueRow,
+  type FieldValuesEditorCopy,
+} from '../../components/tables/field-values-editor';
 import { PrincipalPicker, type PrincipalSelection } from '../../components/tables/principal-picker';
-import { Plus, Trash2 } from '../../lib/icons';
 import {
   createTableForm,
   listTableUsers,
@@ -24,52 +29,9 @@ import {
   type TableForm,
   type TableUserOption,
 } from '../../lib/api/tables';
-import { useT, type TranslationKey } from '../../lib/i18n';
+import { useT } from '../../lib/i18n';
 
 type AudienceKind = TableFormAudience['type'];
-type DefaultToken = '$me' | '$today' | '$now';
-
-/** The server-resolved token each field type may default to (spec §3). */
-const TOKEN_FOR: Partial<Record<TableFieldType, DefaultToken>> = {
-  user: '$me',
-  multi_user: '$me',
-  date: '$today',
-  datetime: '$now',
-};
-
-const TOKEN_LABEL: Record<DefaultToken, TranslationKey> = {
-  $me: 'tables.forms.defaults.me',
-  $today: 'tables.forms.defaults.today',
-  $now: 'tables.forms.defaults.now',
-};
-
-interface DefaultDraft {
-  fieldId: number;
-  /** `token` = the field type's `TOKEN_FOR`; `fixed` = `draft`. */
-  mode: 'token' | 'fixed';
-  draft: FieldDraft;
-}
-
-function readDefaults(config: TableFormConfig | undefined, byId: Map<number, TableField>): DefaultDraft[] {
-  const raw: unknown = config?.defaults;
-  const entries = Array.isArray(raw)
-    ? (raw as Array<{ fieldId: number; value: unknown }>)
-    : raw && typeof raw === 'object'
-      ? Object.entries(raw).map(([fieldId, value]) => ({ fieldId: Number(fieldId), value }))
-      : [];
-  return entries.flatMap((entry): DefaultDraft[] => {
-    const field = byId.get(entry.fieldId);
-    if (!field) return [];
-    const token = TOKEN_FOR[field.type];
-    return token && entry.value === token
-      ? [{ fieldId: field.id, mode: 'token', draft: '' }]
-      : [{ fieldId: field.id, mode: 'fixed', draft: toFieldDraft(field, entry.value) }];
-  });
-}
-
-function prefillable(field: TableField): boolean {
-  return !isComputedField(field) && field.type !== 'attachment';
-}
 
 export function TablesFormEditor({
   tableId,
@@ -97,7 +59,7 @@ export function TablesFormEditor({
       ? { userIds: form.audience.userIds, groupIds: form.audience.groupIds }
       : { userIds: [], groupIds: [] },
   );
-  const [defaults, setDefaults] = useState<DefaultDraft[]>(() => readDefaults(form?.config, byId));
+  const [defaults, setDefaults] = useState<FieldValueRow[]>(() => fieldValueRows(form?.config?.defaults, byId));
   // Archived fields drop out: the server refuses to save a form that shows one.
   const [fieldIds, setFieldIds] = useState<number[]>(() =>
     form
@@ -120,12 +82,22 @@ export function TablesFormEditor({
   }, []);
 
   const outsideBase = audience !== 'base';
-  const prefilledIds = new Set(defaults.map((entry) => entry.fieldId));
-  const candidates = (current?: number) =>
-    fields.filter(
-      (field) =>
-        prefillable(field) && !fieldIds.includes(field.id) && (field.id === current || !prefilledIds.has(field.id)),
-    );
+  // Prefill only what the form does not show (a shown field is the respondent's to fill).
+  const prefillFields = fields.filter((field) => prefillableField(field) && !fieldIds.includes(field.id));
+  const defaultsCopy: FieldValuesEditorCopy = {
+    field: t('tables.forms.defaults.field'),
+    value: t('tables.forms.defaults.value'),
+    fixed: t('tables.forms.defaults.fixed'),
+    tokens: {
+      $me: t('tables.forms.defaults.me'),
+      $today: t('tables.forms.defaults.today'),
+      $now: t('tables.forms.defaults.now'),
+    },
+    add: t('tables.forms.defaults.add'),
+    remove: t('tables.forms.defaults.remove'),
+    none: t('tables.forms.defaults.none'),
+    noFields: t('tables.forms.defaults.noFields'),
+  };
 
   const changeAudience = (next: AudienceKind) => {
     setAudience(next);
@@ -138,38 +110,13 @@ export function TablesFormEditor({
     if (checked) setDefaults((current) => current.filter((entry) => entry.fieldId !== fieldId));
   };
 
-  const updateDefault = (index: number, patch: Partial<DefaultDraft>) =>
-    setDefaults((current) => current.map((entry, at) => (at === index ? { ...entry, ...patch } : entry)));
-
-  const addDefault = () => {
-    const field = candidates()[0];
-    if (!field) return;
-    setDefaults((current) => [
-      ...current,
-      { fieldId: field.id, mode: TOKEN_FOR[field.type] ? 'token' : 'fixed', draft: toFieldDraft(field, null) },
-    ]);
-  };
-
-  const defaultValues = (): TableFormConfig['defaults'] | null => {
-    const values: NonNullable<TableFormConfig['defaults']> = [];
-    for (const entry of defaults) {
-      const field = byId.get(entry.fieldId);
-      if (!field) continue;
-      const token = TOKEN_FOR[field.type];
-      const value = entry.mode === 'token' && token ? token : fromFieldDraft(field, entry.draft);
-      if (value === null || value === '' || (Array.isArray(value) && value.length === 0)) return null;
-      values.push({ fieldId: field.id, value });
-    }
-    return values;
-  };
-
   const save = async () => {
     setError('');
     if (fieldIds.length === 0) return setError(t('tables.forms.fieldsRequired'));
     if (audience === 'principals' && principals.userIds.length + principals.groupIds.length === 0) {
       return setError(t('tables.forms.audience.pickRequired'));
     }
-    const prefilled = defaultValues();
+    const prefilled = fieldValueEntries(defaults, byId);
     if (!prefilled) return setError(t('tables.forms.defaults.valueRequired'));
     const config: TableFormConfig = {
       version: 1,
@@ -263,81 +210,14 @@ export function TablesFormEditor({
       </FormSection>
 
       <FormSection title={t('tables.forms.defaults.title')} description={t('tables.forms.defaults.description')}>
-        <div className="space-y-2">
-          {defaults.length === 0 && <p className="text-xs text-fg-faint">{t('tables.forms.defaults.none')}</p>}
-          {defaults.map((entry, index) => {
-            const field = byId.get(entry.fieldId);
-            if (!field) return null;
-            const token = TOKEN_FOR[field.type];
-            return (
-              <div
-                key={`${entry.fieldId}-${index}`}
-                className="flex flex-col gap-2 rounded-md border border-edge p-2 sm:flex-row sm:items-start"
-              >
-                <div className="sm:w-48 sm:shrink-0">
-                  <Select
-                    aria-label={t('tables.forms.defaults.field')}
-                    value={String(entry.fieldId)}
-                    onChange={(event) => {
-                      const next = byId.get(Number(event.target.value));
-                      if (!next) return;
-                      updateDefault(index, {
-                        fieldId: next.id,
-                        mode: TOKEN_FOR[next.type] ? 'token' : 'fixed',
-                        draft: toFieldDraft(next, null),
-                      });
-                    }}
-                  >
-                    {candidates(entry.fieldId).map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                {token && (
-                  <div className="sm:w-48 sm:shrink-0">
-                    <Select
-                      aria-label={t('tables.forms.defaults.value')}
-                      value={entry.mode}
-                      onChange={(event) => updateDefault(index, { mode: event.target.value as DefaultDraft['mode'] })}
-                    >
-                      <option value="token">{t(TOKEN_LABEL[token])}</option>
-                      <option value="fixed">{t('tables.forms.defaults.fixed')}</option>
-                    </Select>
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  {(entry.mode === 'fixed' || !token) && (
-                    <FieldEditor
-                      field={field}
-                      value={entry.draft}
-                      onChange={(draft) => updateDefault(index, { draft })}
-                      users={users}
-                      emptyLabel={t('tables.forms.choose')}
-                    />
-                  )}
-                </div>
-                <IconButton
-                  variant="destructive"
-                  size="compact"
-                  label={t('tables.forms.defaults.remove')}
-                  onClick={() => setDefaults((current) => current.filter((_, at) => at !== index))}
-                >
-                  <Trash2 size={13} />
-                </IconButton>
-              </div>
-            );
-          })}
-          {candidates().length > 0 ? (
-            <Button type="button" variant="outline" size="sm" onClick={addDefault}>
-              <Plus size={13} className="mr-1.5" />
-              {t('tables.forms.defaults.add')}
-            </Button>
-          ) : (
-            defaults.length === 0 && <p className="text-xs text-fg-faint">{t('tables.forms.defaults.noFields')}</p>
-          )}
-        </div>
+        <FieldValuesEditor
+          rows={defaults}
+          onChange={setDefaults}
+          fields={prefillFields}
+          users={users}
+          copy={defaultsCopy}
+          emptyLabel={t('tables.forms.choose')}
+        />
       </FormSection>
 
       <FormSection>

@@ -39,6 +39,11 @@ export interface RoleEditorProps {
   fieldsByTable: ReadonlyMap<number, TableField[]>;
   users: TableUserOption[];
   disabled?: boolean;
+  /**
+   * The "dashboards" switch (`rules.dashboards`). Off for an app role (the
+   * app builder reuses this editor): an app's pages are its dashboards.
+   */
+  showDashboards?: boolean;
 }
 
 type ScopeKind = 'all' | 'related' | 'where';
@@ -165,7 +170,15 @@ function RowScopeEditor({
   );
 }
 
-export function RoleEditor({ rules, onChange, facts, fieldsByTable, users, disabled = false }: RoleEditorProps) {
+export function RoleEditor({
+  rules,
+  onChange,
+  facts,
+  fieldsByTable,
+  users,
+  disabled = false,
+  showDashboards = true,
+}: RoleEditorProps) {
   const t = useT();
   const effective = useMemo(() => computeFieldAccess(rules, facts), [facts, rules]);
 
@@ -176,18 +189,20 @@ export function RoleEditor({ rules, onChange, facts, fieldsByTable, users, disab
 
   return (
     <div className="space-y-4" data-testid="role-editor">
-      <div className="flex items-start justify-between gap-3 rounded-lg border border-edge px-3 py-2">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-fg">{t('tables.access.dashboards')}</p>
-          <p className="text-xs text-fg-muted">{t('tables.access.dashboardsHint')}</p>
+      {showDashboards && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-edge px-3 py-2">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-fg">{t('tables.access.dashboards')}</p>
+            <p className="text-xs text-fg-muted">{t('tables.access.dashboardsHint')}</p>
+          </div>
+          <Toggle
+            checked={rules.dashboards === 'all'}
+            disabled={disabled}
+            label={t('tables.access.dashboards')}
+            onChange={(checked) => onChange({ ...rules, dashboards: checked ? 'all' : 'none' })}
+          />
         </div>
-        <Toggle
-          checked={rules.dashboards === 'all'}
-          disabled={disabled}
-          label={t('tables.access.dashboards')}
-          onChange={(checked) => onChange({ ...rules, dashboards: checked ? 'all' : 'none' })}
-        />
-      </div>
+      )}
 
       {facts.tables.map((table) => {
         const rule = ruleForTable(rules, table.id);

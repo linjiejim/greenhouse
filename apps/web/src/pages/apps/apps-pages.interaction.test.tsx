@@ -1,9 +1,9 @@
 /** @vitest-environment happy-dom */
 
 /**
- * The Phase 1 app router (`AppsPage`): the builder route and addresses that
- * are not an app. The app center and the runtime have their own tests next to
- * them (`center/`, `runtime/`).
+ * The Phase 1 app router (`AppsPage`): addresses that are not an app. The app
+ * center, the runtime and the builder have their own tests next to them
+ * (`center/`, `runtime/`, `builder/`).
  */
 
 import { act } from 'react';
@@ -24,26 +24,6 @@ vi.mock('../../lib/api/apps', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api/apps')>()),
   ...api,
 }));
-
-function summary(id: number, patch: Partial<AppSummary> = {}): AppSummary {
-  return {
-    id,
-    baseId: 1,
-    name: `App ${id}`,
-    description: null,
-    icon: 'cart',
-    accent: 'amber',
-    ownerId: 'u1',
-    status: 'published',
-    publishedVersion: 2,
-    featured: false,
-    updatedAt: '2026-10-11T00:00:00.000Z',
-    canManage: false,
-    canPublish: false,
-    pinned: false,
-    ...patch,
-  };
-}
 
 const load = vi.fn(async () => {});
 const setPinned = vi.fn(async () => {});
@@ -94,15 +74,7 @@ afterEach(() => {
   useAppsStore.setState(original);
 });
 
-describe('builder placeholder and bad addresses', () => {
-  it('names the app being built and says editing is not available', async () => {
-    seed({ managed: [summary(7, { name: 'Leave', canManage: true })] });
-    await mount('7/edit');
-    expect(container.querySelector('h1')?.textContent).toBe('Edit Leave');
-    expect(container.textContent).toContain('The builder is not available yet');
-    expect(enrichPageContext).toHaveBeenLastCalledWith({ appName: 'Leave' });
-  });
-
+describe('bad addresses', () => {
   it('rejects an address that is not an app', async () => {
     seed({});
     await mount('abc');
