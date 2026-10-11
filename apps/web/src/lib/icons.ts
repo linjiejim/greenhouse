@@ -212,8 +212,15 @@ import {
   FileSpreadsheet,
   SquareFunction,
   Sigma,
+  // App catalog (Phase 1): the glyphs behind APP_ICONS, plus the app center's template entry
+  CircleCheck,
+  ShoppingCart,
+  Briefcase,
+  Ticket,
+  LayoutTemplate,
   type LucideIcon,
 } from 'lucide-react';
+import type { AppIconName } from '@greenhouse/types/apps';
 
 // Re-export for direct usage
 export {
@@ -421,8 +428,46 @@ export {
   FileSpreadsheet,
   SquareFunction,
   Sigma,
+  CircleCheck,
+  ShoppingCart,
+  Briefcase,
+  Ticket,
+  LayoutTemplate,
 };
 export type { LucideIcon };
+
+// ─── App catalog icons ──────────────────────────────────
+
+/**
+ * One Lucide glyph per `APP_ICONS` name (`@greenhouse/types/apps`): the fixed
+ * list an app or an app page may pick, so every client can draw it. Typed as a
+ * full record — a name added to the list without a glyph is a compile error.
+ */
+export const APP_ICON_COMPONENTS: Record<AppIconName, LucideIcon> = {
+  app: AppWindow,
+  inbox: Inbox,
+  check: CircleCheck,
+  clipboard: ClipboardList,
+  cart: ShoppingCart,
+  users: Users,
+  briefcase: Briefcase,
+  calendar: CalendarDays,
+  chart: BarChart3,
+  table: Table2,
+  kanban: Kanban,
+  ticket: Ticket,
+  wrench: Wrench,
+  book: BookOpen,
+  star: Star,
+  flag: Flag,
+  home: House,
+  settings: Settings,
+};
+
+/** The glyph for an app / page icon name; an unknown or missing name (an older spec, a newer server) draws the generic app. */
+export function appIcon(name: string | null | undefined): LucideIcon {
+  return name && Object.hasOwn(APP_ICON_COMPONENTS, name) ? APP_ICON_COMPONENTS[name as AppIconName] : AppWindow;
+}
 
 // ─── Content Category Icons ──────────────────────────────
 
@@ -447,6 +492,7 @@ export const CONTEXT_ICONS: Record<string, LucideIcon> = {
   chat: MessageCircle,
   eval: FlaskConical,
   dashboard: LayoutDashboard,
+  'app-page': AppWindow,
 };
 
 /** Get the Lucide icon for a page context type. */

@@ -66,6 +66,18 @@
   --color-primary-edge: var(--t-primary-edge);
   --color-primary-fg: var(--t-primary-fg);
   --color-primary-fg-strong: var(--t-primary-fg-strong);
+
+  /* App accents (member-built apps): tile fill + glyph. `brand` and `slate` use primary / neutral. */
+  --color-accent-blue: var(--t-accent-blue);
+  --color-accent-blue-subtle: var(--t-accent-blue-subtle);
+  --color-accent-teal: var(--t-accent-teal);
+  --color-accent-teal-subtle: var(--t-accent-teal-subtle);
+  --color-accent-amber: var(--t-accent-amber);
+  --color-accent-amber-subtle: var(--t-accent-amber-subtle);
+  --color-accent-rose: var(--t-accent-rose);
+  --color-accent-rose-subtle: var(--t-accent-rose-subtle);
+  --color-accent-violet: var(--t-accent-violet);
+  --color-accent-violet-subtle: var(--t-accent-violet-subtle);
 }
 
 @theme {
@@ -192,6 +204,25 @@
   --t-chart-6: #eda100;
   --t-chart-7: #0f93b0;
   --t-chart-8: #a0612e;
+
+  /*
+   * App accents — the identity colour a member picks for an app they build
+   * (`APP_ACCENTS` in @greenhouse/types/apps). Deliberately not the status
+   * tokens: a rose app must not read as an error or an amber one as a warning.
+   * `-subtle` is the tile fill, the bare token its glyph / label (≥ 4.5:1 on the
+   * fill, guardrail: lib/theme-contrast.test.ts). `brand` maps to primary and
+   * `slate` to the neutral surface, so they have no tokens of their own.
+   */
+  --t-accent-blue: #1d5aa6;
+  --t-accent-blue-subtle: #e8f0fb;
+  --t-accent-teal: #0b6577;
+  --t-accent-teal-subtle: #e3f4f6;
+  --t-accent-amber: #835400;
+  --t-accent-amber-subtle: #fbf1db;
+  --t-accent-rose: #a2355e;
+  --t-accent-rose-subtle: #fcebf1;
+  --t-accent-violet: #4a3aa7;
+  --t-accent-violet-subtle: #efedfb;
 }
 
 /* ─── Dark ─── */
@@ -271,4 +302,16 @@
   --t-chart-6: #c98500;
   --t-chart-7: #2aa3c2;
   --t-chart-8: #b87a45;
+
+  /* App accents: translucent fills over the dark surfaces, light glyphs. */
+  --t-accent-blue: #9cc3f3;
+  --t-accent-blue-subtle: rgba(57, 135, 229, 0.18);
+  --t-accent-teal: #8fd3e3;
+  --t-accent-teal-subtle: rgba(42, 163, 194, 0.18);
+  --t-accent-amber: #ebc77f;
+  --t-accent-amber-subtle: rgba(201, 133, 0, 0.2);
+  --t-accent-rose: #f1a7c2;
+  --t-accent-rose-subtle: rgba(213, 81, 129, 0.18);
+  --t-accent-violet: #c3bcf5;
+  --t-accent-violet-subtle: rgba(144, 133, 233, 0.2);
 }

@@ -47,6 +47,8 @@ function rgba(block: Map<string, string>, token: string): [number, number, numbe
     const n = parseInt(hex[1], 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 1];
   }
+  const literal = raw.match(/^rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)$/);
+  if (literal) return [Number(literal[1]), Number(literal[2]), Number(literal[3]), Number(literal[4])];
   const ref = raw.match(/^rgb\(var\((--[\w-]+)\)(?:\s*\/\s*([\d.]+))?\)$/);
   if (!ref) throw new Error(`unsupported token form for ${token}: ${raw}`);
   // The brand ramp lives in the light block only; both themes reference it.
@@ -233,6 +235,47 @@ describe('plant picker selection ring', () => {
     const fill = flatten(rgba(block, '--t-primary-subtle'), dialog);
     expect(ratio(ring, raised)).toBeGreaterThanOrEqual(3);
     expect(ratio(ring, fill)).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('app accents', () => {
+  // A member-built app's tile: the accent fill with its glyph / initial on it, on any
+  // surface an app list or the sidebar puts it on. `brand` and `slate` reuse primary and
+  // neutral tokens (components/apps/app-accent.ts), so they are checked through those.
+  const PAIRS: Array<[glyph: string, fill: string]> = [
+    ['--t-accent-blue', '--t-accent-blue-subtle'],
+    ['--t-accent-teal', '--t-accent-teal-subtle'],
+    ['--t-accent-amber', '--t-accent-amber-subtle'],
+    ['--t-accent-rose', '--t-accent-rose-subtle'],
+    ['--t-accent-violet', '--t-accent-violet-subtle'],
+    ['--t-primary-fg-strong', '--t-primary-subtle'],
+    ['--t-fg-secondary', '--t-surface-muted'],
+  ];
+  const SURFACES = ['--t-surface-canvas', '--t-surface-card', '--t-surface-chrome', '--t-surface-raised'] as const;
+
+  it.each([
+    ['light', light],
+    ['dark', dark],
+  ])('%s: every glyph stays readable on its tile, whatever surface the tile sits on', (name, block) => {
+    for (const surface of SURFACES) {
+      const backdrop = flatten(rgba(block, surface), rgba(block, '--t-surface-canvas'));
+      for (const [glyph, fill] of PAIRS) {
+        const tile = flatten(rgba(block, fill), [...backdrop, 1] as [number, number, number, number]);
+        const ink = flatten(rgba(block, glyph), [...tile, 1] as [number, number, number, number]);
+        expect(ratio(ink, tile), `${glyph} on ${fill} over ${surface} in ${name}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('defines every accent in both themes', () => {
+    for (const accent of ['blue', 'teal', 'amber', 'rose', 'violet']) {
+      for (const block of [light, dark]) {
+        expect(block.has(`--t-accent-${accent}`)).toBe(true);
+        expect(block.has(`--t-accent-${accent}-subtle`)).toBe(true);
+      }
+      expect(CSS).toContain(`--color-accent-${accent}: var(--t-accent-${accent});`);
+      expect(CSS).toContain(`--color-accent-${accent}-subtle: var(--t-accent-${accent}-subtle);`);
+    }
   });
 });
 
