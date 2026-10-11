@@ -147,7 +147,8 @@ function ViewOptions() {
                 selection={sortValue}
                 onSelectionChange={(value) => {
                   const text = String(value ?? '');
-                  if (!text) return update({ sort: null });
+                  // "as the view sorts": back to the view's own sort
+                  if (!text) return update({ sort: config.query?.sort?.[0] ?? null });
                   const direction = draft.sort?.direction ?? 'asc';
                   update({
                     sort: text.startsWith('s:')
