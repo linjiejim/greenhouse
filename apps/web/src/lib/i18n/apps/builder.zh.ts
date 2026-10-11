@@ -372,6 +372,12 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       lastUsed: '最近使用',
       neverUsed: '尚未使用',
       runs: '近 30 天：{count}',
+      usageActions: {
+        submitted: '提交',
+        created: '新建',
+        moved: '移动',
+        edited: '编辑',
+      },
       transfer: '负责人',
       transferHint: '把应用交给这个 Base 的另一位所有者或搭建者。',
       transferTo: '新的负责人',

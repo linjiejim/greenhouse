@@ -317,6 +317,7 @@ stores/
   - **自动保存**：`use-app-draft.ts`（防抖 700ms、单飞、CAS `draftRevision`；没在保存期间被改过就采用服务端规范化后的副本）。400 `spec_invalid` = 没存、显示问题；409 = 停止自动保存、横幅要求重新加载；发布 / 预览 / 恢复前都先 `flush()`。服务端问题按 `pageId` / `cardId` / `actionId` / `roleKey` 归位（`spec-errors.ts`，索引会随编辑漂移、id 不会），同时汇总在「问题」对话框里。
   - **复用而不是重写**：画布 = 共享 `WidgetGrid` + `TableCardFrame`（只画示意，不读数据——数据看「预览」）；KPI / 图表 / 透视卡的设置 = 仪表盘组件编辑器抽出的 `pages/tables/dashboard/card-settings-fields.tsx`（`CardSettingsFields` + `widgetDraftCard`）；页面筛选器 = `dashboard/filter-controls-editor.tsx`（`FilterControlsEditor`）；条件 = `FilterEditor`；字段值 / 预填 = `components/tables/field-values-editor.tsx`（`FieldValuesEditor`，表单编辑器与构建器共用，文案由宿主给，侧栏里用 `stacked`）；角色规则 = 阶段 0 的 `RoleEditor`（`showDashboards={false}`），依赖边只用服务端事实（owner / super 才能取 `listTableBaseRoles().facts`，builder 看到「由服务端判定」的说明，前端不推导）；分发 = `PrincipalPicker`。
   - **权限**：发布与改分发只有 Base owner / super（D2）——其他管理者的「发布」禁用并说明，分发页签只读并说明；服务端照样拒绝（403）。发布对话框（`publish-dialog.tsx`）按 `spec-diff.ts` 显示与上线版本的结构差异、逐角色「前 → 后」的权限变化、谁会拿到（群组标出谁管理成员；新版本去掉的角色 → 对应受众失去访问）。
+  - **用量**（设置页签，`GET /usage` → `AppUsageView`，`readAppUsage` 防御读取）：动作按名字显示——内置写入 `$submit` / `$create` / `$move` / `$edit` 显示为「提交 / 新建 / 移动 / 编辑」，声明的动作用草稿里的 `label`（`spec-model.ts` 的 `actionLabelsById`），草稿里已没有的 id 原样显示。
   - 「预览」跳 `#/apps/<id>?draft=1&previewRole=<key>`（`lib/app-routes.ts` 的 `appPreviewHref(appId, {previewRole, draft: true})`，运行时按管理者身份读草稿）。Base 页头的「应用」（`pages/tables/base-apps-section.tsx`）列出本 Base 的应用并新建（`create-app-dialog.tsx`，起始规格的页面 / 角色名用搭建者的语言）。
 
 ### 页面上下文注入

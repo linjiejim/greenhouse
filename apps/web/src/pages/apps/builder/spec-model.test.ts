@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { APP_CARD_KINDS, APP_ID_PATTERN, type AppCard, type AppSpec } from '@greenhouse/types/apps';
 import {
+  actionLabelsById,
   addCard,
   addPage,
   addRole,
@@ -182,6 +183,25 @@ describe('pages', () => {
       buttonLabel: 'Go apply',
     });
     expect(pageDeletionBlockers({ ...spec, pages: [spec.pages[0]!] }, 'apply')).toContainEqual({ kind: 'lastPage' });
+  });
+});
+
+describe('action labels', () => {
+  it('names each declared action id by its label, across cards and their details', () => {
+    const spec = specFixture();
+    const queue = spec.pages[1]!.cards[0] as Extract<AppCard, { kind: 'records' }>;
+    queue.detail = {
+      fieldIds: [1],
+      actions: [{ id: 'reject', label: 'Reject', do: { type: 'delete' } }],
+    };
+    const mine = spec.pages[0]!.cards[0] as Extract<AppCard, { kind: 'records' }>;
+    mine.actions = [{ id: 'approve', label: 'OK', do: { type: 'delete' } }];
+    expect(actionLabelsById(spec)).toEqual(
+      new Map([
+        ['approve', 'OK / Approve'],
+        ['reject', 'Reject'],
+      ]),
+    );
   });
 });
 

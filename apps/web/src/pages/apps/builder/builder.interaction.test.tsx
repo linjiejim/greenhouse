@@ -637,6 +637,37 @@ describe('publishing and versions', () => {
   });
 });
 
+describe('settings', () => {
+  it('shows usage with what people ran, by name: built-in writes and declared actions', async () => {
+    appsApi.getAppUsage.mockResolvedValue({
+      users7d: 3,
+      users30d: 5,
+      actions30d: { $submit: 9, approve: 4, $move: 2, $edit: 1, $create: 1, retired: 1 },
+      lastUsedAt: '2026-10-10T09:00:00.000Z',
+    });
+    await mount();
+    await click(q('[data-testid="app-tab-settings"]'));
+    const usage = q('[data-testid="app-usage"]')!;
+    expect(appsApi.getAppUsage).toHaveBeenCalledWith(APP_ID);
+    expect(usage.textContent).toContain('People, last 7 days3');
+    expect(usage.textContent).toContain('People, last 30 days5');
+    const name = (id: string) => q(`[data-testid="app-usage-action-${id}"] span`)?.textContent;
+    expect(name('$submit')).toBe('Submitted');
+    expect(name('$create')).toBe('Created');
+    expect(name('$move')).toBe('Moved');
+    expect(name('$edit')).toBe('Edited');
+    expect(name('approve')).toBe('Approve');
+    // An action the draft no longer has keeps its id.
+    expect(name('retired')).toBe('retired');
+    // Most used first.
+    expect(
+      [...usage.querySelectorAll('[data-testid^="app-usage-action-"]')].map((entry) =>
+        entry.getAttribute('data-testid'),
+      )[0],
+    ).toBe('app-usage-action-$submit');
+  });
+});
+
 describe('preview', () => {
   it('opens the runtime on the draft as the chosen role, after saving', async () => {
     window.location.hash = `#/apps/${APP_ID}/edit`;

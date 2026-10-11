@@ -6,10 +6,12 @@
  * another responsible person, recommending it (a super), archiving it.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  APP_BUILTIN_ACTIONS,
   APP_LIMITS,
   type AppAccent,
+  type AppBuiltinActionId,
   type AppIconName,
   type AppSpec,
   type AppSummary,
@@ -20,12 +22,13 @@ import { FormField, FormGrid } from '../../../components/form';
 import { archiveApp, featureApp, getAppUsage, transferApp, updateAppIdentity } from '../../../lib/api/apps-builder';
 import type { TableUserOption } from '../../../lib/api/tables';
 import { APP_CENTER_HREF } from '../../../lib/app-routes';
-import { useT } from '../../../lib/i18n';
+import { useT, type TranslationKey } from '../../../lib/i18n';
 import { formatDate } from '../../../lib/utils';
 import { useAppsStore } from '../../../stores/apps-store';
 import { useAuthStore } from '../../../stores';
 import { AppAccentPicker, AppIconPicker } from './identity-fields';
 import { PanelSection } from './properties/common';
+import { actionLabelsById } from './spec-model';
 
 function IdentitySection({ app, onSaved }: { app: AppSummary; onSaved: (app: AppSummary) => void }) {
   const t = useT();
@@ -99,9 +102,25 @@ function IdentitySection({ app, onSaved }: { app: AppSummary; onSaved: (app: App
   );
 }
 
-function UsageSection({ appId }: { appId: number }) {
+/** The built-in writes (`APP_BUILTIN_ACTIONS`) as usage names them. */
+const BUILTIN_USAGE_LABELS = {
+  [APP_BUILTIN_ACTIONS.submit]: 'apps.builder.settings.usageActions.submitted',
+  [APP_BUILTIN_ACTIONS.create]: 'apps.builder.settings.usageActions.created',
+  [APP_BUILTIN_ACTIONS.move]: 'apps.builder.settings.usageActions.moved',
+  [APP_BUILTIN_ACTIONS.edit]: 'apps.builder.settings.usageActions.edited',
+} as const satisfies Record<AppBuiltinActionId, TranslationKey>;
+
+function isBuiltinAction(id: string): id is AppBuiltinActionId {
+  return Object.hasOwn(BUILTIN_USAGE_LABELS, id);
+}
+
+function UsageSection({ appId, spec }: { appId: number; spec: AppSpec }) {
   const t = useT();
   const [usage, setUsage] = useState<AppUsageView | null>(null);
+  const labels = useMemo(() => actionLabelsById(spec), [spec]);
+  // Built-in writes by what they did, declared actions by their label; an action the draft no
+  // longer has (it ran in a published version) keeps its id.
+  const actionName = (id: string) => (isBuiltinAction(id) ? t(BUILTIN_USAGE_LABELS[id]) : (labels.get(id) ?? id));
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -139,9 +158,12 @@ function UsageSection({ appId }: { appId: number }) {
           {actions.length > 0 && (
             <ul className="divide-y divide-edge rounded-lg border border-edge text-xs">
               {actions.map(([id, runs]) => (
-                <li key={id} className="flex justify-between gap-2 px-3 py-1.5">
-                  <span className="truncate font-mono text-fg-secondary" title={id}>
-                    {id}
+                <li key={id} className="flex justify-between gap-2 px-3 py-1.5" data-testid={`app-usage-action-${id}`}>
+                  <span
+                    className={`truncate text-fg-secondary ${isBuiltinAction(id) || labels.has(id) ? '' : 'font-mono'}`}
+                    title={id}
+                  >
+                    {actionName(id)}
                   </span>
                   <span className="text-fg-muted">{t('apps.builder.settings.runs', { count: runs })}</span>
                 </li>
@@ -224,7 +246,7 @@ export function SettingsTab({
         />
       </PanelSection>
 
-      <UsageSection appId={app.id} />
+      <UsageSection appId={app.id} spec={spec} />
 
       {canTransfer && (
         <PanelSection title={t('apps.builder.settings.transfer')} hint={t('apps.builder.settings.transferHint')}>

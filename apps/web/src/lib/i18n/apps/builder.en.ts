@@ -377,6 +377,12 @@ export const appsBuilderEn = {
       lastUsed: 'Last used',
       neverUsed: 'Not used yet',
       runs: 'Last 30 days: {count}',
+      usageActions: {
+        submitted: 'Submitted',
+        created: 'Created',
+        moved: 'Moved',
+        edited: 'Edited',
+      },
       transfer: 'Responsible person',
       transferHint: 'Hand the app to another owner or builder of the Base.',
       transferTo: 'New owner',

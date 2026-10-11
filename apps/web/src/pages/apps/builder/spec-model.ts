@@ -109,6 +109,25 @@ export function slugId(
   }
 }
 
+/**
+ * Declared action id → its label, across every card of the spec (row and
+ * detail actions) — how usage names what people ran. An id used with
+ * different labels on several cards lists them all.
+ */
+export function actionLabelsById(spec: AppSpec): Map<string, string> {
+  const labels = new Map<string, string[]>();
+  for (const page of spec.pages) {
+    for (const card of page.cards) {
+      if (!isRecordsLike(card)) continue;
+      for (const action of [...(card.actions ?? []), ...(card.detail?.actions ?? [])]) {
+        const known = labels.get(action.id) ?? [];
+        if (action.label && !known.includes(action.label)) labels.set(action.id, [...known, action.label]);
+      }
+    }
+  }
+  return new Map([...labels].map(([id, names]) => [id, names.join(' / ')]));
+}
+
 /** Every action id on a card (row actions and detail actions share one namespace). */
 export function cardActionIds(card: AppCard): string[] {
   if (!isRecordsLike(card)) return [];

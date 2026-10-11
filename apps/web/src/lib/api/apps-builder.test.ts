@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AppSpec } from '@greenhouse/types/apps';
+import type { AppSpec, AppUsageView } from '@greenhouse/types/apps';
 import {
   isOwnerOnly,
   isRevisionConflict,
@@ -96,5 +96,13 @@ describe('apps builder client', () => {
       actions30d: { approve: 4, $submit: 0 },
       lastUsedAt: null,
     });
+    // The gateway's AppUsageView (slice G) reads back as it is.
+    const served: AppUsageView = {
+      users7d: 2,
+      users30d: 7,
+      actions30d: { $submit: 5, $move: 1, approve: 3 },
+      lastUsedAt: '2026-10-10T09:00:00.000Z',
+    };
+    expect(readAppUsage({ ...served })).toEqual(served);
   });
 });
