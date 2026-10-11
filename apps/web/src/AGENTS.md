@@ -158,7 +158,7 @@ stores/
 - `safeParse(json, fallback)`、`relativeTime()`、`timeAgo()`、`formatDate()`、`formatDay()`、`formatTokens()`
 - 日期粒度：带时刻的时间戳用 `formatDate()`；**日历粒度字段**（项目起止日、任务到期日、表格里的创建日）用 `formatDay()`——`formatDate()` 会拖出一串 "12:00 AM" 噪音并占掉表格列宽
 - `roleBadgeStyles`——角色徽章样式，禁止在组件中重复定义
-- `CHART_PALETTE` / `BADGE_PALETTE`——数据可视化配色，禁止在组件中硬编码色板；图表默认使用克制的品牌 品牌绿阶，不恢复彩虹式特殊色板
+- `BADGE_PALETTE`——数据表徽章配色。**图表配色只有 `--t-chart-1..8`**（`packages/ui/src/styles/tokens.css`，亮 / 暗两套，`lib/theme.ts` 同步写入）：8 个类别色按固定顺序分配、绝不循环或生成，槽 1 是品牌绿，所以单系列图表仍是品牌色；顺序本身是色盲安全机制（相邻槽在 protan/deutan 下仍可区分），由 `lib/theme-contrast.test.ts` 钉住。`<ChartBlock>` 经 `components/blocks/chart-config.ts` 在渲染时读取这些 token，调用方只传槽位（`display.colorSlots`，例如选项的固定位置），禁止在组件里写色值
 - **禁止在组件文件中重复实现**
 
 ### 服务端下发文案的本地化 (`lib/i18n`)

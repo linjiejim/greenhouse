@@ -174,6 +174,24 @@
 
   /* Focus indicator — see the `:root …:focus-visible` rule near the bottom. */
   --t-focus-ring: rgb(var(--primary-600));
+
+  /*
+   * Categorical data colours (charts: series, stacks, pie slices), assigned in
+   * this fixed order and never cycled. Slot 1 is the brand green, so a
+   * single-series chart stays on brand. The order is the colour-blind safety
+   * mechanism: adjacent slots stay apart under protan/deutan simulation
+   * (OKLab ΔE ≥ 13 both modes) and for normal vision (≥ 19). Light slots 5 and 6
+   * sit below 3:1 on white, so charts always pair colour with a legend,
+   * tooltips and a records/table view (guardrail: lib/theme-contrast.test.ts).
+   */
+  --t-chart-1: #2b8a5e;
+  --t-chart-2: #2a78d6;
+  --t-chart-3: #eb6834;
+  --t-chart-4: #4a3aa7;
+  --t-chart-5: #e87ba4;
+  --t-chart-6: #eda100;
+  --t-chart-7: #0f93b0;
+  --t-chart-8: #a0612e;
 }
 
 /* ─── Dark ─── */
@@ -243,4 +261,14 @@
   --t-primary-wash: rgb(var(--primary-500) / 0.12);
 
   --t-focus-ring: rgb(var(--primary-400));
+
+  /* Same eight hues, stepped for the dark surfaces (all ≥ 3:1 on the card). */
+  --t-chart-1: #3a9e6f;
+  --t-chart-2: #3987e5;
+  --t-chart-3: #d95926;
+  --t-chart-4: #9085e9;
+  --t-chart-5: #d55181;
+  --t-chart-6: #c98500;
+  --t-chart-7: #2aa3c2;
+  --t-chart-8: #b87a45;
 }
