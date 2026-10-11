@@ -139,6 +139,52 @@ export function calendarWindowFilters(
   return [startsBeforeEnd, reachesWindow];
 }
 
+/** Clauses one filter group may hold (the compiler's `MAX_QUERY_CLAUSES`). */
+const MAX_GROUP_CLAUSES = 20;
+
+/** A group that means the same ANDed into another `and` group: an `and` group, or a single clause. */
+function andable(group: TableFilterGroup): boolean {
+  return group.combinator === 'and' || group.clauses.length <= 1;
+}
+
+/**
+ * A saved view's filter as the container holds it. Views keep their filter in
+ * `query.where` (what the filter dialog edits) and may carry extra
+ * `query.filters` groups (an Agent plan writes them) that the record query
+ * ANDs on. Every extra group a flat `where` can say is folded into it, so the
+ * filter dialog shows and edits it; the rest (an `or` group next to another
+ * condition) stay extra groups and still apply.
+ */
+export function foldSavedFilters(
+  where: TableFilterGroup | undefined,
+  filters: readonly TableFilterGroup[] | undefined,
+): { where: TableFilterGroup | undefined; filters: TableFilterGroup[] | undefined } {
+  let folded = where && where.clauses.length > 0 ? where : undefined;
+  const rest: TableFilterGroup[] = [];
+  for (const group of filters ?? []) {
+    if (group.clauses.length === 0) continue;
+    if (!folded) {
+      folded = group;
+      continue;
+    }
+    if (andable(folded) && andable(group) && folded.clauses.length + group.clauses.length <= MAX_GROUP_CLAUSES) {
+      folded = { combinator: 'and', clauses: [...folded.clauses, ...group.clauses] };
+    } else {
+      rest.push(group);
+    }
+  }
+  return { where: folded, filters: rest.length > 0 ? rest : undefined };
+}
+
+/** The extra filter groups of a record query: the saved view's, then what the view type adds. */
+export function combinedFilters(
+  saved: readonly TableFilterGroup[] | undefined,
+  shape: readonly TableFilterGroup[] | undefined,
+): TableFilterGroup[] | undefined {
+  const all = [...(saved ?? []), ...(shape ?? [])];
+  return all.length > 0 ? all : undefined;
+}
+
 /** The grid's grouping, when it still points at a field of the table. */
 export function activeGroupBy(config: TableViewConfig, fields: readonly TableField[]): TableGroupBy | undefined {
   const groupBy = config.groupBy;

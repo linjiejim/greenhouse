@@ -51,7 +51,7 @@ import { CreateViewDialog, type CreateViewInput } from './views/create-view-dial
 import { FieldsPanel } from './views/fields-panel';
 import { ViewSettingsDialog } from './views/view-settings-dialog';
 import { ViewSwitcher } from './views/view-switcher';
-import { monthOf, viewQueryShape, weekStartFor } from './views/view-query';
+import { combinedFilters, foldSavedFilters, monthOf, viewQueryShape, weekStartFor } from './views/view-query';
 import { orderedViewFields } from './view-fields';
 import { DEFAULT_RECORD_SORT, useRecordQuery } from './use-record-query';
 import { tableCapabilities } from './capabilities';
@@ -98,7 +98,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
   });
 
   const query = useRecordQuery(table.id, setError, shape);
-  const { records, search, sort, where, setQuery } = query;
+  const { records, search, sort, where, filters: savedFilters, setQuery } = query;
   const [detailRecord, setDetailRecord] = useState<TableRecord | null>(null);
   const [recordDialog, setRecordDialog] = useState<TableRecord | 'new' | null>(null);
   /** A new record's starting values (a kanban lane, a calendar day). */
@@ -202,12 +202,13 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
   const selectView = (viewId: string, views = schema?.views) => {
     setSelectedViewId(viewId);
     const view = views?.find((entry) => String(entry.id) === viewId);
-    if (!view) return setQuery({ search: '', sort: DEFAULT_RECORD_SORT, where: undefined });
+    if (!view) return setQuery({ search: '', sort: DEFAULT_RECORD_SORT, where: undefined, filters: undefined });
     const config = safeParse<TableViewConfig>(view.config, {});
     setQuery({
       search: config.query?.search ?? '',
       sort: config.query?.sort ?? DEFAULT_RECORD_SORT,
-      where: config.query?.where,
+      // An Agent plan may save the filter as `query.filters`; it applies like `where`.
+      ...foldSavedFilters(config.query?.where, config.query?.filters),
     });
   };
 
@@ -326,7 +327,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
       config: {
         fieldIds: visibleFields.map((field) => field.id),
         ...config,
-        ...(keepQuery ? { query: { where, search: search || undefined, sort } } : {}),
+        ...(keepQuery ? { query: { where, filters: savedFilters, search: search || undefined, sort } } : {}),
       },
     });
     setViewPanel(null);
@@ -360,7 +361,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
           />
         }
         search={search}
-        filterCount={where?.clauses.length ?? 0}
+        filterCount={[where, ...(savedFilters ?? [])].reduce((count, group) => count + (group?.clauses.length ?? 0), 0)}
         canEdit={canEdit}
         canBuild={canBuild}
         canCreate={capabilities.canCreate}
@@ -395,7 +396,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
             schemaFields={schema.fields}
             records={records}
             total={query.total}
-            query={{ where, search: search || undefined, filters: shape.filters }}
+            query={{ where, search: search || undefined, filters: combinedFilters(savedFilters, shape.filters) }}
             loading={query.loading}
             users={users}
             usersById={usersById}

@@ -9,10 +9,12 @@ import { fixtureField, fixtureRecord } from './view-test-fixtures';
 import {
   addDays,
   calendarWindowFilters,
+  combinedFilters,
   countsByGroup,
   dayOfValue,
   daysBetween,
   dayStart,
+  foldSavedFilters,
   kanbanLanes,
   localDay,
   monthGridDays,
@@ -103,6 +105,45 @@ describe('viewQueryShape', () => {
       operator: 'lt',
       value: dayStart('2026-11-08').toISOString(),
     });
+  });
+});
+
+describe('saved view filters', () => {
+  const isLead = {
+    combinator: 'and' as const,
+    clauses: [{ fieldId: stage.id, operator: 'eq' as const, value: 'lead' }],
+  };
+  const mine = { combinator: 'and' as const, clauses: [{ fieldId: owner.id, operator: 'eq' as const, value: '$me' }] };
+  const dueOrEnds = {
+    combinator: 'or' as const,
+    clauses: [
+      { fieldId: due.id, operator: 'is_empty' as const },
+      { fieldId: ends.id, operator: 'is_empty' as const },
+    ],
+  };
+
+  it('folds a plan’s query.filters into the where the filter dialog edits', () => {
+    // A view an Agent plan saved with only `filters` ("Open deals").
+    expect(foldSavedFilters(undefined, [isLead])).toEqual({ where: isLead, filters: undefined });
+    expect(foldSavedFilters(mine, [isLead])).toEqual({
+      where: { combinator: 'and', clauses: [...mine.clauses, ...isLead.clauses] },
+      filters: undefined,
+    });
+  });
+
+  it('keeps a group a flat where cannot say as an extra group, so it still applies', () => {
+    expect(foldSavedFilters(mine, [dueOrEnds])).toEqual({ where: mine, filters: [dueOrEnds] });
+    expect(foldSavedFilters(dueOrEnds, [isLead])).toEqual({ where: dueOrEnds, filters: [isLead] });
+    expect(foldSavedFilters(undefined, [{ combinator: 'and', clauses: [] }])).toEqual({
+      where: undefined,
+      filters: undefined,
+    });
+  });
+
+  it('sends the saved groups along with what the view type adds', () => {
+    const window = calendarWindowFilters(due, undefined, '2026-09-27', '2026-11-07');
+    expect(combinedFilters([dueOrEnds], window)).toEqual([dueOrEnds, ...window]);
+    expect(combinedFilters(undefined, undefined)).toBeUndefined();
   });
 });
 

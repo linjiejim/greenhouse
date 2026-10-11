@@ -190,6 +190,24 @@ describe('TablesViewContainer', () => {
     expect(headerNames()).toEqual(['Amount', 'Name']);
   });
 
+  it('applies a saved view’s query.filters (an Agent plan writes them) to the record query', async () => {
+    const open = { combinator: 'and' as const, clauses: [{ fieldId: 2, operator: 'gt' as const, value: 5 }] };
+    api.getTableSchema.mockResolvedValue({
+      ...schema,
+      views: [{ ...schema.views[0]!, name: 'Open deals', config: JSON.stringify({ query: { filters: [open] } }) }],
+    });
+    await mount();
+    const select = container.querySelector('select') as HTMLSelectElement;
+    await act(async () => {
+      select.value = '9';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    // Folded into the where the filter dialog edits, so the toolbar counts it too.
+    expect(api.queryTableRecords).toHaveBeenLastCalledWith(7, expect.objectContaining({ where: open }));
+    expect(container.querySelector('button[aria-label="Filter records · 1"]')).not.toBeNull();
+  });
+
   it('edits a cell through the shared field editor and writes one value', async () => {
     await mount();
     const pencil = container.querySelector('button[aria-label="Edit Amount"]') as HTMLButtonElement;
