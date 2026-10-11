@@ -166,6 +166,28 @@ export function createTablesAutomationQueue(db: Db) {
       });
     },
 
+    /** Before a row's work starts: a full lease from now, only while it is still ours. */
+    renewAutomationOutbox(ref: LeaseRef & { leaseMs: number }) {
+      const at = iso(ref.at);
+      return leased(ref, {
+        lease_expires_at: new Date(Date.parse(at) + Math.max(ref.leaseMs, 1_000)).toISOString(),
+      });
+    },
+
+    /**
+     * Hand back a claimed row nothing has run on in this claim: pending again,
+     * the claim's attempt undone (`attempts` is the row as claimed — the
+     * version CAS guarantees it is still current).
+     */
+    releaseAutomationOutbox(ref: LeaseRef & { attempts: number }) {
+      return leased(ref, {
+        status: 'pending',
+        attempts: Math.max(ref.attempts - 1, 0),
+        lease_owner: null,
+        lease_expires_at: null,
+      });
+    },
+
     /** After an action succeeded: move the cursor, renew the lease, reset the attempt count. */
     checkpointAutomationOutbox(ref: LeaseRef & { cursor: string | null; leaseMs: number }) {
       const at = iso(ref.at);

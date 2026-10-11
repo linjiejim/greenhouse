@@ -40,6 +40,7 @@ import {
   type TableFieldTypeOf,
 } from '@greenhouse/types/table-cards';
 import type {
+  TableAggregateRow,
   TableCardSpec,
   TableFieldType,
   TableFilterControl,
@@ -79,6 +80,19 @@ function valueType(field: TableFieldRow): TableFieldType {
 function isTimeGroup(spec: TableCardSpec): boolean {
   const groupBy = spec.aggregate?.groupBy;
   return Boolean(groupBy?.dateBucket || groupBy?.systemField === 'created_at' || groupBy?.systemField === 'updated_at');
+}
+
+/**
+ * Rows fetched latest-first back in reading order: oldest → newest, the
+ * no-date bucket last, each group's series in the order they came.
+ */
+function chronological(rows: readonly TableAggregateRow[]): TableAggregateRow[] {
+  const keyOf = (row: TableAggregateRow): string | null => (row.group === null ? null : String(row.group));
+  const latestFirst = [...new Set(rows.map(keyOf))];
+  const order: Array<string | null> = latestFirst.filter((key) => key !== null).reverse();
+  if (latestFirst.includes(null)) order.push(null);
+  const rank = new Map(order.map((key, index) => [key, index]));
+  return [...rows].sort((left, right) => rank.get(keyOf(left))! - rank.get(keyOf(right))!);
 }
 
 /**
@@ -167,6 +181,10 @@ export async function evaluateTableCard(
   }
 
   const kind = spec.kind === 'pivot' ? 'pivot' : 'chart';
+  // Time reads left to right and, when the buckets outnumber the limit, keeps
+  // the latest ones: fetch newest first, then put them back in order.
+  // Categories read biggest first.
+  const latestTime = aggregate.sort === undefined && isTimeGroup(spec);
   const rows = await db.tables.aggregateRecords(
     tableId,
     {
@@ -174,13 +192,12 @@ export async function evaluateTableCard(
       valueFieldId: aggregate.valueFieldId,
       groupBy: aggregate.groupBy,
       series: aggregate.series,
-      // Time reads left to right; categories read biggest first.
-      sort: aggregate.sort ?? (isTimeGroup(spec) ? 'group_asc' : 'value_desc'),
+      sort: aggregate.sort ?? (latestTime ? 'group_desc' : 'value_desc'),
       limit: aggregate.limit,
       query,
       timezone: timeZone,
     },
     scope,
   );
-  return { kind, rows };
+  return { kind, rows: latestTime ? chronological(rows) : rows };
 }

@@ -27,7 +27,13 @@ export const formRoutes = new Hono<AppEnv>()
     const formId = numberParam(c, 'formId');
     const result = await dispatch(c, 'getForm', { formId }, { formId });
     if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { form: TableFormRow; fields: TableFieldRow[] });
+    // A custom role gets no `audience` and a form cut to its access (handlers/forms.ts).
+    return c.json(
+      result.data as {
+        form: Omit<TableFormRow, 'audience'> & Partial<Pick<TableFormRow, 'audience'>>;
+        fields: TableFieldRow[];
+      },
+    );
   })
   .patch('/forms/:formId', async (c) => {
     const formId = numberParam(c, 'formId');

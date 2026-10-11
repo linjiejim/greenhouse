@@ -15,6 +15,7 @@ import {
   ok,
   payloadOf,
   positiveInt,
+  stringValue,
   writeMeta,
   type Handler,
   type TablesHandlers,
@@ -37,16 +38,23 @@ const getRecord: Handler = async (request, context) => {
   return record ? ok({ record: data.project(record) }) : fail('NOT_FOUND', 'Record not found');
 };
 
+/**
+ * `timezone` is the viewer's IANA zone: date tokens (`$today`, …) and day
+ * comparisons resolve in it — the same zone the view's group counts
+ * (`aggregateRecords` input) and dashboards use. Missing / unknown → UTC.
+ */
 const queryRecords: Handler = async (request, context) => {
   const payload = payloadOf(request);
   const tableId = positiveInt(payload, 'tableId');
   if (!tableId) return fail('INVALID_INPUT', 'tableId is required');
   const data = await requireTableData(request, context, tableId, 'read');
   if (!data) return fail('NOT_FOUND', 'Table not found');
+  const timeZone = stringValue(payload, 'timezone');
   const result = await context.db.tables.queryRecords(
     tableId,
     objectValue<TableQuery>(payload, 'query') ?? {},
     data.scope,
+    timeZone && timeZone.length <= 64 ? { timeZone } : undefined,
   );
   return ok({ ...result, records: result.records.map((record) => data.project(record)) });
 };

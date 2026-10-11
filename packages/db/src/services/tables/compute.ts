@@ -102,7 +102,12 @@ export function createTablesCompute(db: Db) {
     const inputs = new Map(
       fields.map((field) => [field.id, { type: field.type, config: parseTableFieldConfig(field) }]),
     );
-    const formulaRead = (fieldId: number): unknown => resolveFormulaInput(inputs.get(fieldId), values[String(fieldId)]);
+    // Only active fields feed a formula: an archived (or unknown) source reads
+    // as empty, so its stored values stop surfacing through the formula.
+    const formulaRead = (fieldId: number): unknown => {
+      const input = inputs.get(fieldId);
+      return input ? resolveFormulaInput(input, values[String(fieldId)]) : null;
+    };
 
     // Rollups and lookups read the linked records: load them (and their target
     // fields) once per target table instead of once per field.
@@ -162,22 +167,23 @@ export function createTablesCompute(db: Db) {
       const sameTable = targetField?.table_id === link.targetTableId ? targetField : undefined;
       const targetInput = sameTable ? { type: sameTable.type, config: parseTableFieldConfig(sameTable) } : undefined;
       const key = String(link.targetFieldId);
-      const linked = link.recordIds
-        .map((id) => targetRecords.get(id))
-        .filter((row): row is TableRecordRow => row !== undefined && row.table_id === link.targetTableId)
-        .map((row) =>
-          resolveFormulaInput(targetInput, key in row.computed_values ? row.computed_values[key] : row.values[key]),
-        );
+      // A rollup / lookup whose target field is gone (archived / moved) reads
+      // nothing: the archived column's stored values never feed it.
+      const linked = sameTable
+        ? link.recordIds
+            .map((id) => targetRecords.get(id))
+            .filter((row): row is TableRecordRow => row !== undefined && row.table_id === link.targetTableId)
+            .map((row) =>
+              resolveFormulaInput(targetInput, key in row.computed_values ? row.computed_values[key] : row.values[key]),
+            )
+        : [];
       if (field.type === 'rollup' && config.rollup) {
         computed[String(field.id)] = rollupValue(config.rollup.aggregation, linked);
       } else if (field.type === 'lookup') {
-        // A lookup whose target field is gone (archived / moved) shows nothing.
-        computed[String(field.id)] = sameTable
-          ? linked
-              .flatMap((value) => (Array.isArray(value) ? value : [value]))
-              .filter((value) => !isBlank(value))
-              .slice(0, MAX_LOOKUP_VALUES)
-          : [];
+        computed[String(field.id)] = linked
+          .flatMap((value) => (Array.isArray(value) ? value : [value]))
+          .filter((value) => !isBlank(value))
+          .slice(0, MAX_LOOKUP_VALUES);
       }
     }
     return computed;
@@ -343,25 +349,28 @@ export function createTablesCompute(db: Db) {
 
   /**
    * After a field's definition changed (computed config, select options,
-   * archive): recompute its own table when its values or a same-table formula
-   * reading it changed, then every linking record in tables whose rollups /
-   * lookups target it (or a formula that reads it).
+   * archive): recompute its own table when its values or a same-table computed
+   * field reading it (a formula, or a rollup / lookup through it as the
+   * relation) changed, then every linking record in tables whose rollups /
+   * lookups target it (or a same-table field that reads it).
    */
   const refreshAfterFieldChange = async (
     field: Pick<TableFieldRow, 'id' | 'table_id'>,
     options: { computed: boolean },
   ): Promise<void> => {
-    const formulaReaders = await db
+    const readers = await db
       .select({ field_id: tableFieldDependencies.field_id })
       .from(tableFieldDependencies)
+      .innerJoin(tableFields, eq(tableFields.id, tableFieldDependencies.field_id))
       .where(
         and(
           eq(tableFieldDependencies.depends_on_field_id, field.id),
-          eq(tableFieldDependencies.dependency_type, 'formula'),
+          eq(tableFields.table_id, field.table_id),
+          isNull(tableFields.archived_at),
         ),
       );
-    if (options.computed || formulaReaders.length > 0) await recomputeTable(field.table_id);
-    const changed = new Set([field.id, ...formulaReaders.map((row) => row.field_id)]);
+    if (options.computed || readers.length > 0) await recomputeTable(field.table_id);
+    const changed = new Set([field.id, ...readers.map((row) => row.field_id)]);
     const dependents = (await dependentFields(field.table_id)).filter((dependent) =>
       changed.has(dependent.targetFieldId),
     );

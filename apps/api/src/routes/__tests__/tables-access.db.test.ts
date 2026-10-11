@@ -718,10 +718,70 @@ describe('acceptance 2 — the 销售 custom role', { timeout: 30_000 }, () => {
 
     const dashboard = (
       await json<{ dashboard: { id: number } }>(
-        await send(owner, `/api/tables/bases/${w.baseId}/dashboards`, 'POST', { name: 'Pipeline' }),
+        await send(owner, `/api/tables/bases/${w.baseId}/dashboards`, 'POST', {
+          name: 'Pipeline',
+          config: {
+            version: 1,
+            filters: [
+              {
+                id: 'note',
+                label: 'Internal note',
+                kind: 'search',
+                targets: [{ tableId: w.customers, fieldId: w.fields.note.id }],
+                defaultValue: { kind: 'search', text: 'VIP' },
+              },
+              {
+                id: 'name',
+                label: 'Name',
+                kind: 'search',
+                targets: [
+                  { tableId: w.customers, fieldId: w.fields.customerName.id },
+                  { tableId: w.customers, fieldId: w.fields.note.id },
+                ],
+              },
+            ],
+          },
+        }),
         201,
       )
     ).dashboard;
+    // Every path that hands out the dashboard row cuts its filters the same way:
+    // no control, target or default value on a hidden field (spec §1).
+    type DashboardRow = {
+      id: number;
+      config: { filters?: Array<{ id: string; targets: Array<{ fieldId?: number }> }> };
+    };
+    const listed = await json<{ dashboards: DashboardRow[] }>(
+      await send(sales, `/api/tables/bases/${w.baseId}/dashboards`),
+    );
+    const inWorkspace = await json<{ dashboards: DashboardRow[] }>(await send(sales, `/api/tables/bases/${w.baseId}`));
+    const single = await json<{ dashboard: DashboardRow }>(await send(sales, `/api/tables/dashboards/${dashboard.id}`));
+    const viaTool = await executeTool(createTablesQueryTool({ userId: sales.id }), {
+      action: 'dashboards.list',
+      base_id: w.baseId,
+    });
+    expect(viaTool.error).toBeUndefined();
+    for (const row of [
+      listed.dashboards.find((entry) => entry.id === dashboard.id)!,
+      inWorkspace.dashboards.find((entry) => entry.id === dashboard.id)!,
+      single.dashboard,
+    ]) {
+      expect(row.config.filters).toEqual([
+        {
+          id: 'name',
+          label: 'Name',
+          kind: 'search',
+          targets: [{ tableId: w.customers, fieldId: w.fields.customerName.id }],
+        },
+      ]);
+    }
+    expect(JSON.stringify(viaTool)).not.toContain('VIP');
+    expect(JSON.stringify(viaTool)).not.toContain('Internal note');
+    expect(JSON.stringify(viaTool)).toContain('Name');
+    const ownerList = await json<{ dashboards: DashboardRow[] }>(
+      await send(owner, `/api/tables/bases/${w.baseId}/dashboards`),
+    );
+    expect(ownerList.dashboards.find((entry) => entry.id === dashboard.id)!.config.filters).toHaveLength(2);
     const widget = async (type: string, tableId: number, config: unknown) =>
       (
         await json<{ widget: { id: number } }>(
@@ -773,6 +833,68 @@ describe('acceptance 2 — the 销售 custom role', { timeout: 30_000 }, () => {
     expect((await send(sales, `/api/tables/bases/${w.baseId}/dashboards`)).status).toBe(404);
     expect((await send(sales, `/api/tables/dashboards/${dashboard.id}`)).status).toBe(404);
     expect((await send(sales, `/api/tables/dashboard-widgets/${count}/query`, 'POST')).status).toBe(404);
+  });
+  it('reads a form cut to its access: editable shown fields, readable prefills, no audience', async () => {
+    const w = await crm();
+    const channel = await createField(w.orders, 'Channel', 'text');
+    const referrer = await createField(w.orders, 'Referrer', 'text');
+    const source = await createField(w.orders, 'Source', 'text');
+    const roles = await json<{ roles: Array<{ id: number; revision: number }> }>(
+      await send(owner, `/api/tables/bases/${w.baseId}/roles`),
+    );
+    const rules: TableAccessRules = {
+      ...w.rules,
+      tables: w.rules.tables.map((rule) =>
+        rule.tableId === w.orders
+          ? {
+              ...rule,
+              fields: [
+                { fieldId: channel.id, access: 'hidden' },
+                { fieldId: referrer.id, access: 'hidden' },
+              ],
+            }
+          : rule,
+      ),
+    };
+    await json(
+      await send(owner, `/api/tables/roles/${w.role.id}`, 'PATCH', {
+        revision: roles.roles.find((role) => role.id === w.role.id)!.revision,
+        rules,
+      }),
+    );
+    const form = (
+      await json<{ form: { id: number } }>(
+        await send(owner, `/api/tables/tables/${w.orders}/forms`, 'POST', {
+          name: 'Referral intake',
+          config: {
+            fieldIds: [w.fields.orderNo.id, channel.id],
+            defaults: [
+              { fieldId: referrer.id, value: '内部推荐' },
+              { fieldId: source.id, value: 'web' },
+            ],
+          },
+          audience: { type: 'principals', userIds: [other.id], groupIds: [] },
+        }),
+        201,
+      )
+    ).form;
+
+    const seen = await json<{ form: Record<string, unknown> & { config: Record<string, unknown> }; fields: Field[] }>(
+      await send(sales, `/api/tables/forms/${form.id}`),
+    );
+    expect(seen.fields.map((field) => field.id)).toEqual([w.fields.orderNo.id]);
+    expect(seen.form.config.fieldIds).toEqual([w.fields.orderNo.id]);
+    expect(seen.form.config.defaults).toEqual([{ fieldId: source.id, value: 'web' }]);
+    expect(seen.form).not.toHaveProperty('audience');
+    expect(JSON.stringify(seen)).not.toContain('内部推荐');
+    expect(JSON.stringify(seen)).not.toContain(other.id);
+
+    const full = await json<{ form: { config: { fieldIds: number[]; defaults: unknown[] }; audience: unknown } }>(
+      await send(owner, `/api/tables/forms/${form.id}`),
+    );
+    expect(full.form.config.fieldIds).toEqual([w.fields.orderNo.id, channel.id]);
+    expect(full.form.config.defaults).toHaveLength(2);
+    expect(full.form.audience).toEqual({ type: 'principals', userIds: [other.id], groupIds: [] });
   });
 });
 

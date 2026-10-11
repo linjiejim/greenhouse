@@ -329,6 +329,104 @@ describe('Tables forms (slice Fm)', () => {
     expect(widened.status).toBe(400);
   });
 
+  it('links picked records on a Base-audience form, inside each member’s own reach', async () => {
+    const app = createHttpApp([owner, outsider, another]);
+    const { baseId, tableId, primaryId } = await createBase(app);
+    const projects = await send(app, owner, `/api/tables/bases/${baseId}/tables`, 'POST', { name: 'Projects' });
+    expect(projects.status).toBe(201);
+    const target = (await projects.json()) as { table: { id: number }; fields: Array<{ id: number }> };
+    const projectName = target.fields[0]!.id;
+    const project = async (name: string) => {
+      const response = await send(app, owner, `/api/tables/tables/${target.table.id}/records`, 'POST', {
+        values: { [projectName]: name },
+      });
+      expect(response.status).toBe(201);
+      return ((await response.json()) as { record: { id: number } }).record.id;
+    };
+    const [open, closed] = [await project('Open'), await project('Closed')];
+    const relationId = await addField(app, tableId, 'Project', 'relation', {
+      relation: { targetTableId: target.table.id },
+    });
+    const id = await formId(app, tableId, { fieldIds: [primaryId, relationId] });
+    const submit = (user: UserRow, label: string, projectId: number) =>
+      send(app, user, `/api/forms/${id}/submit`, 'POST', { values: { [primaryId]: label, [relationId]: projectId } });
+
+    // A built-in editor and the builder read every project, so they link any of them.
+    await addMember(app, baseId, another, 'editor');
+    expect((await submit(another, 'Editor pick', closed)).status).toBe(201);
+    expect((await submit(owner, 'Builder pick', open)).status).toBe(201);
+
+    // A custom role links only inside its own read rows on the target table (D14).
+    const role = await send(app, owner, `/api/tables/bases/${baseId}/roles`, 'POST', {
+      name: 'Requester',
+      rules: {
+        version: 1,
+        dashboards: 'none',
+        tables: [
+          { tableId, access: 'edit', fields: [], fieldDefault: 'visible' },
+          {
+            tableId: target.table.id,
+            access: 'read',
+            rows: {
+              type: 'where',
+              where: { combinator: 'and', clauses: [{ fieldId: projectName, operator: 'eq', value: 'Open' }] },
+            },
+            fields: [],
+            fieldDefault: 'visible',
+          },
+        ],
+      },
+    });
+    expect(role.status).toBe(201);
+    const roleId = ((await role.json()) as { role: { id: number } }).role.id;
+    const granted = await send(app, owner, `/api/tables/bases/${baseId}/members/${outsider.id}`, 'PUT', {
+      role: 'custom',
+      customRoleId: roleId,
+    });
+    expect(granted.status).toBe(200);
+    expect((await submit(outsider, 'Custom pick', open)).status).toBe(201);
+    const outside = await submit(outsider, 'Out of reach', closed);
+    expect(outside.status).toBe(400);
+    expect(((await outside.json()) as { error: string }).error).toMatch(/unavailable record/);
+
+    const linked = (await records(app, tableId)).map((record) => [
+      record.values[String(primaryId)],
+      record.values[String(relationId)],
+    ]);
+    expect(linked).toEqual(
+      expect.arrayContaining([
+        ['Editor pick', closed],
+        ['Builder pick', open],
+        ['Custom pick', open],
+      ]),
+    );
+    expect(linked).toHaveLength(3);
+  });
+
+  it('writes a prefilled link on a form for people outside the Base', async () => {
+    const app = createHttpApp([owner, outsider]);
+    const { baseId, tableId, primaryId } = await createBase(app);
+    const projects = await send(app, owner, `/api/tables/bases/${baseId}/tables`, 'POST', { name: 'Projects' });
+    const target = (await projects.json()) as { table: { id: number }; fields: Array<{ id: number }> };
+    const created = await send(app, owner, `/api/tables/tables/${target.table.id}/records`, 'POST', {
+      values: { [target.fields[0]!.id]: 'Intake' },
+    });
+    const projectId = ((await created.json()) as { record: { id: number } }).record.id;
+    const relationId = await addField(app, tableId, 'Project', 'relation', {
+      relation: { targetTableId: target.table.id },
+    });
+    const id = await formId(
+      app,
+      tableId,
+      { fieldIds: [primaryId], defaults: [{ fieldId: relationId, value: projectId }] },
+      { type: 'team' },
+    );
+    const submitted = await send(app, outsider, `/api/forms/${id}/submit`, 'POST', { values: { [primaryId]: 'Ask' } });
+    expect(submitted.status, await submitted.clone().text()).toBe(201);
+    const [record] = await records(app, tableId);
+    expect(record!.values[String(relationId)]).toEqual(projectId);
+  });
+
   it('resolves and locks prefilled values on the server', async () => {
     const app = createHttpApp([owner, outsider]);
     const { tableId, primaryId } = await createBase(app);

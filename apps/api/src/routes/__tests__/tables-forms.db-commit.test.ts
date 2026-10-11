@@ -109,7 +109,7 @@ describe('Tables forms — concurrent single submission', () => {
     userIds.push(other.id);
     const form = (await db.tables.getForm(formId))!;
     const write = (label: string) =>
-      db.tables.submitForm(formId, { [primaryId]: label }, formSubmitScope(form, other.id), {
+      db.tables.submitForm(formId, { [primaryId]: label }, formSubmitScope(form, other.id, undefined), {
         actorId: other.id,
         actorKind: 'form',
         source: { formId },

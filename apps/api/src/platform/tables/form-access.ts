@@ -16,6 +16,11 @@
  * shown fields plus the prefilled ones are editable, nothing is readable, create
  * only. For a Base audience the shown fields are additionally capped by the
  * member's own editable fields, so a form never widens a member's rights.
+ * Links (relation targets, D14): a custom-role member links inside its own read
+ * rows; a built-in member or a builder may link any row (they read them all); a
+ * prefilled link is the builder's value (it wins over the client's), so its
+ * target is open for everyone. Relation fields are shown only to a Base
+ * audience, so nobody else picks a link.
  * Everything that fails — missing, archived, outside the audience — is the same
  * `not_found`; only an audience member learns a form is still a draft.
  */
@@ -24,11 +29,17 @@ import { effectiveUserId, type ActorContext } from '@greenhouse/platform-kernel'
 import {
   formDefaultEntries,
   normalizeFormAudience,
+  parseTableFieldConfig,
   type DatabaseProvider,
   type TableBaseRow,
   type TableFormRow,
 } from '@greenhouse/db';
-import type { TableAccessScope, TableDataScope } from '@greenhouse/types/table-access';
+import {
+  fullTableAccess,
+  type TableAccessScope,
+  type TableDataScope,
+  type TableRelationTargetScope,
+} from '@greenhouse/types/table-access';
 import type { TableFormAudience } from '@greenhouse/types/tables';
 import { baseForTable, requireBase, requireTableData } from './access.js';
 
@@ -40,13 +51,32 @@ export type FormSubmitterGate =
 
 const NOT_FOUND = { ok: false, reason: 'not_found' } as const;
 
-/** The scope a submission writes with (see the module comment). */
-export function formSubmitScope(form: TableFormRow, userId: string, member?: TableAccessScope): TableDataScope {
+/**
+ * The scope a submission writes with (see the module comment). `member` is the
+ * submitter's Base scope (full for a built-in member or a builder), undefined
+ * for someone admitted by a team / principals audience; `relationTargetOf` maps
+ * the table's relation fields to their target tables.
+ */
+export function formSubmitScope(
+  form: TableFormRow,
+  userId: string,
+  member: TableAccessScope | undefined,
+  relationTargetOf: ReadonlyMap<number, number> = new Map(),
+): TableDataScope {
   const shown =
     member?.kind === 'scoped'
       ? form.config.fieldIds.filter((fieldId) => member.editableFieldIds.includes(fieldId))
       : form.config.fieldIds;
   const prefilled = formDefaultEntries(form.config).map((entry) => entry.fieldId);
+  const relationTargets: TableRelationTargetScope[] =
+    member?.kind === 'scoped' ? [...(member.relationTargets ?? [])] : [];
+  const openLinks = member?.kind === 'full' ? [...shown, ...prefilled] : prefilled;
+  for (const fieldId of openLinks) {
+    const tableId = relationTargetOf.get(fieldId);
+    if (tableId !== undefined && !relationTargets.some((entry) => entry.tableId === tableId)) {
+      relationTargets.push({ tableId, rows: [] });
+    }
+  }
   return {
     kind: 'scoped',
     userId,
@@ -57,7 +87,18 @@ export function formSubmitScope(form: TableFormRow, userId: string, member?: Tab
     editableFieldIds: [...new Set([...shown, ...prefilled])],
     canCreate: true,
     canDelete: false,
+    relationTargets,
   };
+}
+
+/** Relation field id → target table id, for the table's active relation fields. */
+async function relationTargetsOf(ctx: FormContext, tableId: number): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  for (const field of await ctx.db.tables.listFields(tableId)) {
+    const target = field.type === 'relation' ? parseTableFieldConfig(field).relation?.targetTableId : undefined;
+    if (target) out.set(field.id, target);
+  }
+  return out;
 }
 
 /** Audience membership for one person; `member` is their Base scope when the audience is the Base. */
@@ -92,11 +133,12 @@ export async function resolveFormSubmitter(
   let { admitted, member } = await audienceAdmits(ctx, actor, form, userId);
   if (!admitted && (await requireBase(ctx, actor, base.id, 'form', 'builder'))) {
     admitted = true;
-    member = undefined;
+    member = fullTableAccess(userId);
   }
   if (!admitted) return NOT_FOUND;
   if (form.status !== 'published') return { ok: false, reason: 'not_published' };
-  return { ok: true, form, base, userId, scope: formSubmitScope(form, userId, member) };
+  const scope = formSubmitScope(form, userId, member, await relationTargetsOf(ctx, form.table_id));
+  return { ok: true, form, base, userId, scope };
 }
 
 /**

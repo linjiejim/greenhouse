@@ -85,6 +85,8 @@ function filterControlsOf(dashboard: Pick<TableDashboardRow, 'config'>) {
   return result.ok ? result.config.filters : [];
 }
 
+type Readable = Map<number, ReadonlySet<number> | null>;
+
 /**
  * Field ids a custom-role reader may reference, per table: undefined = the
  * table is not readable at all. Built-in roles never get here.
@@ -93,14 +95,39 @@ async function customReadableFields(
   request: HandlerRequest,
   context: Parameters<Handler>[1],
   tableIds: readonly number[],
-): Promise<Map<number, ReadonlySet<number> | null>> {
-  const out = new Map<number, ReadonlySet<number> | null>();
+): Promise<Readable> {
+  const out: Readable = new Map();
   for (const tableId of new Set(tableIds)) {
     const data = await requireTableData(request, context, tableId, 'read');
     if (!data) continue;
     out.set(tableId, data.scope.kind === 'scoped' ? new Set(data.scope.readableFieldIds) : null);
   }
   return out;
+}
+
+/** The stored filter controls of a dashboard, cut to the targets a custom-role reader can read. */
+function readerConfig(dashboard: Pick<TableDashboardRow, 'config'>, readable: Readable): TableDashboardConfig {
+  return { version: 1, filters: trimFilterControlsForReader(filterControlsOf(dashboard), (id) => readable.get(id)) };
+}
+
+/**
+ * Dashboard rows as a custom-role reader receives them wherever they are
+ * listed (`listDashboards`, `getBase`): filter targets on fields it cannot read
+ * are removed, a control left empty disappears — the same cut `getDashboard` makes.
+ */
+export async function dashboardsForReader(
+  request: HandlerRequest,
+  context: Parameters<Handler>[1],
+  dashboards: readonly TableDashboardRow[],
+): Promise<TableDashboardRow[]> {
+  const readable = await customReadableFields(
+    request,
+    context,
+    dashboards.flatMap((dashboard) =>
+      filterControlsOf(dashboard).flatMap((control) => control.targets.map((target) => target.tableId)),
+    ),
+  );
+  return dashboards.map((dashboard) => ({ ...dashboard, config: readerConfig(dashboard, readable) }));
 }
 
 type ViewerWidget = TableDashboardWidgetRow & { access?: 'no_access' };
@@ -137,10 +164,11 @@ function drilldownPoint(payload: Record<string, unknown>): TableCardPoint | unde
 const listDashboards: Handler = async (request, context) => {
   const baseId = positiveInt(payloadOf(request), 'baseId');
   if (!baseId) return fail('INVALID_INPUT', 'baseId is required');
-  if (!(await requireDashboardRead(request, context, baseId, 'dashboard'))) {
-    return fail('NOT_FOUND', 'Base not found');
-  }
-  return ok({ dashboards: await context.db.tables.listDashboards(baseId) });
+  const grant = await requireDashboardRead(request, context, baseId, 'dashboard');
+  if (!grant) return fail('NOT_FOUND', 'Base not found');
+  const dashboards = await context.db.tables.listDashboards(baseId);
+  if (grant.access.level !== 'custom') return ok({ dashboards });
+  return ok({ dashboards: await dashboardsForReader(request, context, dashboards) });
 };
 
 const getDashboard: Handler = async (request, context) => {
@@ -159,12 +187,8 @@ const getDashboard: Handler = async (request, context) => {
     ...cards.flatMap((card) => (card.source ? [card.source.tableId] : [])),
     ...controls.flatMap((control) => control.targets.map((target) => target.tableId)),
   ]);
-  const config: TableDashboardConfig = {
-    version: 1,
-    filters: trimFilterControlsForReader(controls, (tableId) => readable.get(tableId)),
-  };
   return ok({
-    dashboard: { ...result.dashboard, config },
+    dashboard: { ...result.dashboard, config: readerConfig(result.dashboard, readable) },
     widgets: result.widgets.map((widget, index) => {
       const card = cards[index]!;
       return widgetForReader(

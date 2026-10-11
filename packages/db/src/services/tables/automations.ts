@@ -13,8 +13,10 @@
  * Invariants:
  * - Action ids are stable: `checkAutomationConfig` keeps every id it is
  *   given and assigns `a<n>` (1-based position, bumped past collisions) only to
- *   actions without one — the delivery dedupe key, the resume cursor and webhook
- *   secrets are keyed by it. Migration 0024 backfilled stored rules the same way.
+ *   actions without one — never an id the stored rule already uses, so a new
+ *   action cannot inherit a deleted one's id — the delivery dedupe key, the
+ *   resume cursor and webhook secrets are keyed by it. Migration 0024
+ *   backfilled stored rules the same way.
  * - The executor (`execution_user_id`) is never input: it is whoever saved the
  *   rule's behaviour (create, or any change to trigger / config). The API
  *   requires that person to be builder+ at save and again before every run (D17).
@@ -146,8 +148,16 @@ export function automationSecretAad(ruleId: number, actionId: string): string {
   return `tables-automation:${ruleId}:${actionId}`;
 }
 
-/** Keep given ids, assign `a<n>` (1-based) to the rest, never two the same. */
-export function assignAutomationActionIds(actions: ReadonlyArray<{ id?: unknown }>): string[] {
+/**
+ * Keep given ids, assign `a<n>` (1-based) to the rest, never two the same.
+ * `reserved` ids (the stored rule's) are never handed to a new action: an id a
+ * deleted action held would otherwise carry its webhook secret, delivery
+ * dedupe key and resume cursor over to an unrelated action.
+ */
+export function assignAutomationActionIds(
+  actions: ReadonlyArray<{ id?: unknown }>,
+  reserved: Iterable<string> = [],
+): string[] {
   const used = new Set<string>();
   for (const action of actions) {
     if (action.id === undefined) continue;
@@ -157,12 +167,13 @@ export function assignAutomationActionIds(actions: ReadonlyArray<{ id?: unknown 
     if (used.has(action.id)) throw new TablesValidationError(`Duplicate automation action id "${action.id}"`);
     used.add(action.id);
   }
+  const taken = new Set([...used, ...reserved]);
   return actions.map((action, index) => {
     if (typeof action.id === 'string') return action.id;
     let next = index + 1;
-    while (used.has(`a${next}`)) next += 1;
+    while (taken.has(`a${next}`)) next += 1;
     const id = `a${next}`;
-    used.add(id);
+    taken.add(id);
     return id;
   });
 }
@@ -424,6 +435,7 @@ export async function checkAutomationConfig(
   tableId: number,
   trigger: TableAutomationTrigger,
   input: TableAutomationConfigInput,
+  options: { reservedActionIds?: Iterable<string> } = {},
 ): Promise<{ config: TableAutomationConfig; secrets: Map<string, string | null> }> {
   if (!(TABLE_AUTOMATION_TRIGGERS as readonly string[]).includes(trigger)) {
     throw new TablesValidationError('Unsupported automation trigger');
@@ -476,7 +488,7 @@ export async function checkAutomationConfig(
 
   const rawActions = input.actions as unknown[];
   if (!rawActions.every(isPlainObject)) throw new TablesValidationError('Each automation action must be an object');
-  const ids = assignAutomationActionIds(rawActions as Array<{ id?: unknown }>);
+  const ids = assignAutomationActionIds(rawActions as Array<{ id?: unknown }>, options.reservedActionIds);
   const actions: TableAutomationAction[] = [];
   const secrets = new Map<string, string | null>();
   for (const [index, raw] of (rawActions as Array<Record<string, unknown>>).entries()) {
@@ -741,6 +753,7 @@ export function createTablesAutomations(db: Db) {
       if (patch.status !== undefined) values.status = patch.status;
       let secrets = new Map<string, string | null>();
       let config = normalizeStoredAutomationConfig(current.config);
+      const stored = config;
       if (patch.config !== undefined || triggerChanged) {
         const normalized = await checkAutomationConfig(
           dbSchemaSource(db),
@@ -748,6 +761,7 @@ export function createTablesAutomations(db: Db) {
           current.table_id,
           trigger,
           patch.config ?? (config as TableAutomationConfigInput),
+          { reservedActionIds: stored.actions.map((action) => action.id) },
         );
         secrets = normalized.secrets;
         if (triggerChanged || !sameJson(normalized.config, config)) {
@@ -759,7 +773,7 @@ export function createTablesAutomations(db: Db) {
         values.trigger = trigger;
         // Secrets of actions that no longer exist go with them.
         const kept = new Set(config.actions.filter((action) => action.type === 'webhook').map((action) => action.id));
-        for (const action of normalizeStoredAutomationConfig(current.config).actions) {
+        for (const action of stored.actions) {
           if (action.type === 'webhook' && !kept.has(action.id) && !secrets.has(action.id))
             secrets.set(action.id, null);
         }

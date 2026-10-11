@@ -150,6 +150,51 @@ describe('evaluateTableCard', () => {
     });
   });
 
+  it('keeps the latest time buckets when they outnumber the limit, still read oldest → newest', async () => {
+    const w = await deals();
+    await db.tables.createRecord(
+      { table_id: w.tableId, values: { [w.name.id]: 'Undated', [w.stage.id]: 'open' } },
+      fullTableAccess(owner.id),
+      meta(owner.id),
+    );
+    const monthly = (limit: number, extra: Partial<NonNullable<TableCardSpec['aggregate']>> = {}): TableCardSpec => ({
+      kind: 'chart',
+      source: { tableId: w.tableId },
+      aggregate: { operation: 'count', groupBy: { fieldId: w.signed.id, dateBucket: 'month' }, limit, ...extra },
+    });
+    const evaluate = (card: TableCardSpec) =>
+      evaluateTableCard(db, card, { timezone: 'UTC' }, fullTableAccess(owner.id));
+
+    expect(await evaluate(monthly(1))).toEqual({ kind: 'chart', rows: [{ group: '2026-04-01', value: 1 }] });
+    // Room for every bucket: chronological, the no-date bucket last.
+    expect(await evaluate(monthly(5))).toEqual({
+      kind: 'chart',
+      rows: [
+        { group: '2026-03-01', value: 3 },
+        { group: '2026-04-01', value: 1 },
+        { group: null, value: 1 },
+      ],
+    });
+    // Stacked: the latest bucket's series, in series order.
+    expect(await evaluate(monthly(1, { series: { fieldId: w.stage.id } }))).toEqual({
+      kind: 'chart',
+      rows: [{ group: '2026-04-01', series: 'won', value: 1 }],
+    });
+    expect(await evaluate(monthly(2, { series: { fieldId: w.stage.id } }))).toEqual({
+      kind: 'chart',
+      rows: [
+        { group: '2026-03-01', series: 'open', value: 1 },
+        { group: '2026-03-01', series: 'won', value: 2 },
+        { group: '2026-04-01', series: 'won', value: 1 },
+      ],
+    });
+    // An explicit sort is the author's choice and is kept as asked.
+    expect(await evaluate(monthly(1, { sort: 'group_asc' }))).toEqual({
+      kind: 'chart',
+      rows: [{ group: '2026-03-01', value: 3 }],
+    });
+  });
+
   it('pivots a sum by stage × rep, and answers KPIs and text', async () => {
     const w = await deals();
     const pivot = await evaluateTableCard(

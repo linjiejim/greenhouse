@@ -7,6 +7,14 @@
  * every write, and a boot pass. A row carries the rule revision it was queued
  * under and a snapshot of the actions; `cursor` is the next action id.
  *
+ * A pass claims a batch and runs its rows one after another, all on the lease
+ * of the claim. A row whose lease has run down past half by its turn is handed
+ * back unstarted (`releaseAutomationOutbox`, no attempt spent) for the next
+ * pass; one that starts first renews its lease to a full term, and every
+ * finished action renews it again (`checkpointAutomationOutbox`), so no action
+ * starts on a lease that may expire under it — and no other worker can claim
+ * the row while it runs.
+ *
  * Per claim:
  *  1. the rule must still be at that revision — otherwise the run is canceled
  *     `rule_changed` (an edit while a delay was pending cancels it);
@@ -119,6 +127,8 @@ export function createTablesAutomationRunner(options: TablesAutomationWorkerOpti
   const processRow = async (claimed: TableAutomationOutboxRow): Promise<void> => {
     let row = claimed;
     const ref = () => ({ id: row.id, expectedVersion: row.version, workerId, at: now() });
+    // A full lease before anything runs; a lease already lost throws (`recover` logs it).
+    row = await db.tables.renewAutomationOutbox({ ...ref(), leaseMs });
     const rule = await db.tables.getAutomationRule(row.rule_id);
     if (!rule) {
       row = await db.tables.settleAutomationOutbox({ ...ref(), status: 'failed', error: 'rule_deleted' });
@@ -527,6 +537,26 @@ export function createTablesAutomationRunner(options: TablesAutomationWorkerOpti
     }
   };
 
+  const leaseLeft = (row: TableAutomationOutboxRow): number =>
+    row.lease_expires_at ? Date.parse(row.lease_expires_at) - now().getTime() : 0;
+
+  /** Unstarted rows of this pass go back to pending; one whose lease already lapsed is reclaimed as usual. */
+  const release = async (rows: readonly TableAutomationOutboxRow[]): Promise<void> => {
+    for (const row of rows) {
+      try {
+        await db.tables.releaseAutomationOutbox({
+          id: row.id,
+          expectedVersion: row.version,
+          workerId,
+          at: now(),
+          attempts: row.attempts,
+        });
+      } catch (error) {
+        if (!(error instanceof TablesAutomationLeaseLostError)) throw error;
+      }
+    }
+  };
+
   let running = false;
   return {
     /** One pass: claim a batch and run each row to its next stop. */
@@ -540,9 +570,14 @@ export function createTablesAutomationRunner(options: TablesAutomationWorkerOpti
           limit: Math.min(Math.max(options.batchSize ?? DEFAULT_BATCH_SIZE, 1), 100),
           at: now(),
         });
-        // Sequential: rule order within a batch stays the enqueue order, and one
-        // slow webhook (≤ 10 s) cannot outlive the 120 s lease of the rows behind it.
-        for (const row of rows) {
+        // Sequential: rule order within a batch stays the enqueue order. The rows
+        // behind a slow one wait on the claim's lease; once it is half spent they
+        // go back unstarted rather than start on a lease that may lapse mid-action.
+        for (const [index, row] of rows.entries()) {
+          if (leaseLeft(row) < leaseMs / 2) {
+            await release(rows.slice(index));
+            break;
+          }
           try {
             await processRow(row);
           } catch (error) {

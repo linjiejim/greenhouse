@@ -2,7 +2,7 @@
  * Tables Platform/HTTP/Agent parity and IDOR integration tests (real PostgreSQL).
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { Hono } from 'hono';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import type { AppEnv } from '../../app-env.js';
@@ -521,6 +521,52 @@ describe('Tables Platform application', () => {
     const restored = await db.tables.restoreTable(tableId);
     expect(restored).toMatchObject({ id: tableId, archived_at: null });
     expect(await db.tables.listTables(created.base.id)).toEqual([expect.objectContaining({ id: tableId })]);
+  });
+
+  it('resolves record-query date tokens in the viewer’s zone, agreeing with the group counts', async () => {
+    // 20:00 UTC on 11 October is already 04:00 on 12 October in Shanghai.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-11T20:00:00.000Z'));
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const app = createHttpApp([owner]);
+    const created = await createBase(app);
+    const tableId = created.schema.table.id;
+    const primaryId = created.schema.fields[0]!.id;
+    const post = (path: string, body: unknown) =>
+      app.request(`/api/tables/tables/${tableId}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
+        body: JSON.stringify(body),
+      });
+    const field = await post('/fields', { name: 'Due', type: 'date' });
+    expect(field.status).toBe(201);
+    const dueId = ((await field.json()) as { field: { id: number } }).field.id;
+    for (const [name, due] of [
+      ['Utc today', '2026-10-11'],
+      ['Shanghai today', '2026-10-12'],
+    ]) {
+      expect((await post('/records', { values: { [primaryId]: name, [dueId]: due } })).status).toBe(201);
+    }
+    const where = { combinator: 'and', clauses: [{ fieldId: dueId, operator: 'eq', value: '$today' }] };
+    const names = async (body: Record<string, unknown>) => {
+      const response = await post('/records/query', body);
+      expect(response.status).toBe(200);
+      return ((await response.json()) as { records: Array<{ values: Record<string, unknown> }> }).records.map(
+        (record) => record.values[String(primaryId)],
+      );
+    };
+
+    expect(await names({ where, timezone: 'Asia/Shanghai' })).toEqual(['Shanghai today']);
+    expect(await names({ where })).toEqual(['Utc today']);
+    // The view's count over the same predicate, in the same zone, says the same.
+    const counted = await post('/records/aggregate', {
+      operation: 'count',
+      query: { where },
+      timezone: 'Asia/Shanghai',
+    });
+    expect(((await counted.json()) as { rows: Array<{ value: number }> }).rows).toEqual([{ group: null, value: 1 }]);
   });
 
   it('lists and restores soft-deleted records for editors', async () => {

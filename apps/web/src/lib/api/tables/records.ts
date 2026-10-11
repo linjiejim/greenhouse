@@ -40,8 +40,13 @@ export type TableBatchValidation = {
   current?: number;
 };
 
-export async function queryTableRecords(tableId: number, query: TableQuery): Promise<TableRecordPage> {
-  const args = { param: { tableId: String(tableId) }, json: query };
+/** `timezone`: the viewer's IANA zone — date tokens and day comparisons resolve there (else UTC). */
+export async function queryTableRecords(
+  tableId: number,
+  query: TableQuery,
+  timezone?: string,
+): Promise<TableRecordPage> {
+  const args = { param: { tableId: String(tableId) }, json: { ...query, ...(timezone ? { timezone } : {}) } };
   const response = await rpc.api.tables.tables[':tableId'].records.query.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to query records');
   return response.json();

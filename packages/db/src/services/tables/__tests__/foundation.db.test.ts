@@ -897,4 +897,44 @@ describe('onRecordWritten', () => {
       }),
     ).rejects.toThrow(/computed/);
   });
+
+  it('never gives a new action the id — or the webhook secret — of one just deleted', async () => {
+    const t = await formulaTable();
+    const sealer = { seal: (plaintext: string, aad: string) => `sealed(${aad}):${plaintext}` };
+    const rule = await db.tables.createAutomationRule({
+      base_id: t.base.id,
+      table_id: t.tableId,
+      name: 'Hooked',
+      trigger: 'record_updated',
+      config: {
+        actions: [
+          { type: 'update_record', values: [{ fieldId: t.effort.id, value: 1 }] },
+          { type: 'webhook', url: 'https://old.example.com/in', secret: 'o'.repeat(24) },
+        ],
+      },
+      user_id: owner.id,
+      sealer,
+    });
+    expect(rule.config.actions.map((action) => action.id)).toEqual(['a1', 'a2']);
+    expect(await db.tables.getAutomationSecret(rule.id, 'a2')).toBeDefined();
+
+    // The editor deletes the old webhook and adds a new one in its place (no id).
+    const updated = await db.tables.updateAutomationRule(rule.id, {
+      revision: rule.revision,
+      config: {
+        actions: [
+          { id: 'a1', type: 'update_record', values: [{ fieldId: t.effort.id, value: 1 }] },
+          { type: 'webhook', url: 'https://new.example.com/in' },
+        ],
+      },
+      user_id: owner.id,
+      sealer,
+    });
+    expect(updated.ok).toBe(true);
+    const actions = updated.ok ? updated.value.config.actions : [];
+    expect(actions.map((action) => action.id)).toEqual(['a1', 'a3']);
+    expect(actions[1]).toMatchObject({ type: 'webhook', url: 'https://new.example.com/in', hasSecret: false });
+    expect(await db.tables.getAutomationSecret(rule.id, 'a2')).toBeUndefined();
+    expect(await db.tables.getAutomationSecret(rule.id, 'a3')).toBeUndefined();
+  });
 });

@@ -562,15 +562,15 @@ export function createTablesSchema(
           .set({ archived_at: now, updated_at: now })
           .where(eq(tableFields.id, id))
           .returning();
-        await tx
-          .delete(tableFieldDependencies)
-          .where(
-            or(eq(tableFieldDependencies.field_id, field.id), eq(tableFieldDependencies.depends_on_field_id, field.id)),
-          );
+        // Only the archived field's own edges go. The edges of the formulas /
+        // rollups / lookups reading it stay: the access compiler resolves the
+        // archived source as unknown and hides them (fail-closed), and the
+        // refresh below still finds the same-table formulas to recompute.
+        await tx.delete(tableFieldDependencies).where(eq(tableFieldDependencies.field_id, field.id));
         await writeSchemaVersion(tx, field.table_id, 'field_archived', userId);
         return rows[0];
       });
-      // Lookups showing the archived field empty out.
+      // Formulas, rollups and lookups reading the archived field stop seeing its values.
       if (row) await deps.compute.refreshAfterFieldChange(row, { computed: isComputedField(row) });
       return row;
     },
