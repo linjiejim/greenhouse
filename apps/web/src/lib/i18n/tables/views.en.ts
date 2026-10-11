@@ -63,6 +63,8 @@ export const tablesViewsEn = {
     limitNotice: 'Showing the first {limit} of {total} records. Add a filter to see the rest.',
     moveFailed: 'Unable to move the record',
     recordChanged: 'This record was changed by someone else. The latest version is shown — try again.',
+    deleteRecordFailed: 'Unable to delete this record',
+    archiveFieldFailed: 'Unable to archive this field',
     kanbanNeedsLanesTitle: 'Choose how to split the board',
     kanbanNeedsLanesDescription: 'Pick a single select or person field for the lanes.',
     hideLane: 'Hide lane',

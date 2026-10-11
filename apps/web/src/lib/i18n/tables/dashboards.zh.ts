@@ -26,6 +26,7 @@ export const tablesDashboardsZh: DeepRecord<typeof tablesDashboardsEn> = {
     saveWidget: '保存组件',
     deleteTitle: '删除 {name}？',
     deleteDescription: '这只会移除组件，不会修改源记录。',
+    deleteFailed: '无法删除这个组件',
     editWidgetLabel: '编辑 {name}',
     deleteWidgetLabel: '删除 {name}',
     allRecords: '全部记录',

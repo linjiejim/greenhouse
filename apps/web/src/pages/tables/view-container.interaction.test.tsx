@@ -21,6 +21,7 @@ import {
 } from '../../lib/api/tables';
 import type { ServerWsEvent } from '@greenhouse/types/ws';
 import { wsClient } from '../../lib/ws';
+import { ToastContainer } from '../../components/ui';
 import { TablesViewContainer } from './view-container';
 
 const api = vi.hoisted(() => ({
@@ -30,6 +31,7 @@ const api = vi.hoisted(() => ({
   updateTableRecordWithReplay: vi.fn(),
   updateTableView: vi.fn(),
   aggregateTableRecords: vi.fn(),
+  deleteTableRecord: vi.fn(),
 }));
 vi.mock('../../lib/api/tables', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api/tables')>()),
@@ -130,6 +132,7 @@ async function mount(focusRecordId?: number) {
           users={[{ id: 'u1', nickname: 'Jim', email: 'jim@example.com' }]}
           focusRecordId={focusRecordId}
         />
+        <ToastContainer />
       </I18nProvider>,
     );
   });
@@ -296,6 +299,29 @@ describe('TablesViewContainer', () => {
     });
     await flush();
     expect(container.textContent).toContain('This record was changed by someone else');
+    expect(api.queryTableRecords.mock.calls.length).toBeGreaterThan(calls);
+  });
+
+  it('closes the delete confirm and says why when the server refuses', async () => {
+    api.deleteTableRecord.mockRejectedValue(new TablesRequestError('Record not found', 404));
+    await mount();
+    await act(async () => (container.querySelector('button[aria-label="Delete record"]') as HTMLButtonElement).click());
+    const confirm = document.querySelector('[data-testid="confirm-dialog-confirm"]') as HTMLButtonElement;
+    await act(async () => confirm.click());
+    await flush();
+    expect(api.deleteTableRecord).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[data-testid="confirm-dialog"]')).toBeNull();
+    expect(document.body.textContent).toContain('Record not found');
+
+    // A stale revision reloads the records and says so.
+    api.deleteTableRecord.mockRejectedValue(new TablesRequestError('Revision conflict', 409, { currentRevision: 2 }));
+    const calls = api.queryTableRecords.mock.calls.length;
+    await act(async () => (container.querySelector('button[aria-label="Delete record"]') as HTMLButtonElement).click());
+    await act(async () =>
+      (document.querySelector('[data-testid="confirm-dialog-confirm"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+    expect(document.body.textContent).toContain('This record was changed by someone else');
     expect(api.queryTableRecords.mock.calls.length).toBeGreaterThan(calls);
   });
 

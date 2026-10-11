@@ -906,6 +906,8 @@ interface ConfirmDialogProps {
   description?: string;
   confirmLabel?: string;
   confirmVariant?: 'default' | 'destructive';
+  /** The confirmed action is running: Confirm is disabled so it cannot be sent twice. */
+  busy?: boolean;
 }
 
 export function ConfirmDialog({
@@ -916,6 +918,7 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   confirmVariant = 'default',
+  busy = false,
 }: ConfirmDialogProps) {
   const t = useT();
   return (
@@ -937,6 +940,7 @@ export function ConfirmDialog({
             variant={confirmVariant === 'destructive' ? 'destructive' : 'default'}
             size="sm"
             onClick={onConfirm}
+            disabled={busy}
             data-testid="confirm-dialog-confirm"
           >
             {confirmLabel ?? t('common.confirm')}

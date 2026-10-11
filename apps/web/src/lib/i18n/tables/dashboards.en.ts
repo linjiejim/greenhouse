@@ -23,6 +23,7 @@ export const tablesDashboardsEn = {
     saveWidget: 'Save widget',
     deleteTitle: 'Delete {name}?',
     deleteDescription: 'This removes the widget but does not modify source records.',
+    deleteFailed: 'Unable to delete this widget',
     editWidgetLabel: 'Edit {name}',
     deleteWidgetLabel: 'Delete {name}',
     allRecords: 'All records',

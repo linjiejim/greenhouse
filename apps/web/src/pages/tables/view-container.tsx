@@ -33,7 +33,7 @@ import {
   type TableSchema,
   type TableUserOption,
 } from '../../lib/api/tables';
-import { ConfirmDialog, Pagination, Spinner } from '../../components/ui';
+import { ConfirmDialog, Pagination, Spinner, toast } from '../../components/ui';
 import { useTablesRecordsChanged } from '../../hooks/use-tables-records-changed';
 import { safeParse } from '../../lib/utils';
 import { useAuthStore } from '../../stores';
@@ -107,6 +107,8 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
   const [deleteRecord, setDeleteRecord] = useState<TableRecord | null>(null);
   const [fieldDialog, setFieldDialog] = useState<TableField | 'new' | null>(null);
   const [archiveField, setArchiveField] = useState<TableField | null>(null);
+  /** A confirmed delete / archive is in flight. */
+  const [confirming, setConfirming] = useState(false);
   const [viewPanel, setViewPanel] = useState<ViewPanel>(null);
   /** A view-only change made on the unsaved default view, carried into Save view. */
   const [pendingConfig, setPendingConfig] = useState<Partial<TableViewConfig> | null>(null);
@@ -198,6 +200,50 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
       setSavingRecord(false);
     }
   };
+
+  /**
+   * Run a confirmed delete / archive. The confirm closes either way; a failure
+   * (a row-level scope the client does not mirror, a stale revision) is said
+   * in a toast, and a conflict reloads the latest records.
+   */
+  const runConfirmed = async (action: () => Promise<void>, close: () => void, fallback: string) => {
+    if (confirming) return;
+    setConfirming(true);
+    try {
+      await action();
+      close();
+    } catch (actionError) {
+      close();
+      if (isTablesConflict(actionError)) {
+        void query.reload();
+        toast(t('tables.views.recordChanged'), 'error');
+      } else {
+        toast(actionError instanceof Error && actionError.message ? actionError.message : fallback, 'error');
+      }
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const confirmDeleteRecord = (record: TableRecord) =>
+    runConfirmed(
+      async () => {
+        await deleteTableRecord(table.id, record.id, record.revision);
+        void query.reload();
+      },
+      () => setDeleteRecord(null),
+      t('tables.views.deleteRecordFailed'),
+    );
+
+  const confirmArchiveField = (field: TableField) =>
+    runConfirmed(
+      async () => {
+        await archiveTableField(field.id);
+        void loadSchema();
+      },
+      () => setArchiveField(null),
+      t('tables.views.archiveFieldFailed'),
+    );
 
   const selectView = (viewId: string, views = schema?.views) => {
     setSelectedViewId(viewId);
@@ -552,12 +598,9 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
         open={deleteRecord !== null}
         onClose={() => setDeleteRecord(null)}
         onConfirm={() => {
-          if (!deleteRecord) return;
-          void deleteTableRecord(table.id, deleteRecord.id, deleteRecord.revision).then(async () => {
-            setDeleteRecord(null);
-            await query.reload();
-          });
+          if (deleteRecord) void confirmDeleteRecord(deleteRecord);
         }}
+        busy={confirming}
         title={t('tables.deleteRecordTitle')}
         description={t('tables.deleteRecordDescription')}
         confirmLabel={t('common.delete')}
@@ -567,12 +610,9 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
         open={archiveField !== null}
         onClose={() => setArchiveField(null)}
         onConfirm={() => {
-          if (!archiveField) return;
-          void archiveTableField(archiveField.id).then(async () => {
-            setArchiveField(null);
-            await loadSchema();
-          });
+          if (archiveField) void confirmArchiveField(archiveField);
         }}
+        busy={confirming}
         title={t('tables.archiveFieldTitle', { name: archiveField?.name ?? t('tables.field') })}
         description={t('tables.archiveFieldDescription')}
         confirmLabel={t('common.archive')}

@@ -19,6 +19,7 @@ import type {
   TableField,
   TableRecord,
 } from '../../lib/api/tables';
+import { ToastContainer } from '../../components/ui';
 import { TablesDashboardView } from './dashboard-view';
 
 const api = vi.hoisted(() => ({
@@ -198,11 +199,12 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-async function mount() {
+async function mount(role: 'viewer' | 'builder' = 'viewer') {
   await act(async () => {
     root.render(
       <I18nProvider initialLocale="en">
-        <TablesDashboardView dashboardId={11} tables={[table]} role="viewer" />
+        <TablesDashboardView dashboardId={11} tables={[table]} role={role} />
+        <ToastContainer />
       </I18nProvider>,
     );
   });
@@ -282,6 +284,19 @@ describe('TablesDashboardView', () => {
     expect(document.body.textContent).toContain('By stage: Won · Jim');
     await clickButton('Open Acme');
     expect(window.location.hash).toBe('#/tables/3/table/7?record=42');
+  });
+
+  it('closes the delete confirm and says why when the delete fails', async () => {
+    api.deleteTableDashboardWidget.mockRejectedValue(new Error('Dashboard widget revision conflict'));
+    await mount('builder');
+    await clickButton('Delete Deals');
+    await act(async () =>
+      (document.querySelector('[data-testid="confirm-dialog-confirm"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+    expect(api.deleteTableDashboardWidget).toHaveBeenCalledWith(21);
+    expect(document.querySelector('[data-testid="confirm-dialog"]')).toBeNull();
+    expect(document.body.textContent).toContain('Dashboard widget revision conflict');
   });
 
   it('refreshes widgets when records of their table change', async () => {
