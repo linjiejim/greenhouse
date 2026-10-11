@@ -398,7 +398,7 @@ export function createTablesAutomationRunner(options: TablesAutomationWorkerOpti
         table: { id: table.id, name: table.name },
         record: record ? { id: record.id, fields: webhookFields(fields, record, action.fieldIds) } : null,
         trigger: row.trigger_kind,
-        occurredAt: row.scheduled_for ?? row.created_at,
+        occurredAt: new Date(row.scheduled_for ?? row.created_at).toISOString(),
         deliveryId: `${row.id}:${action.id}`,
       });
       const headers: Record<string, string> = {
