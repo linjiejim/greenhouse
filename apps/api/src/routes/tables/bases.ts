@@ -11,7 +11,7 @@ import type {
   TableDefinitionRow,
   TableSchemaResult,
 } from '@greenhouse/db';
-import type { TableBaseAccessView } from '@greenhouse/types/table-access';
+import type { TableBaseAccessView, TableBaseGroupMemberView, TableBaseRoleView } from '@greenhouse/types/table-access';
 import type { TableBaseRole } from '@greenhouse/types/tables';
 import type { AppEnv } from '../../app-env.js';
 import { actionError, dispatch, jsonBody, numberParam } from './shared.js';
@@ -59,7 +59,7 @@ export const baseRoutes = new Hono<AppEnv>()
         access: TableBaseAccessView;
         tables: TableDefinitionRow[];
         dashboards: TableDashboardRow[];
-        members: TableBaseMemberRow[];
+        members: Array<{ id: string; name: string }>;
       },
     );
   })
@@ -79,7 +79,14 @@ export const baseRoutes = new Hono<AppEnv>()
     const baseId = numberParam(c, 'baseId');
     const result = await dispatch(c, 'listMembers', { baseId }, { baseId });
     if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { members: TableBaseMemberRow[] });
+    return c.json(
+      result.data as {
+        members: Array<TableBaseMemberRow & { name: string }>;
+        groups: TableBaseGroupMemberView[];
+        /** Owner / super only. */
+        roles?: TableBaseRoleView[];
+      },
+    );
   })
   .get('/bases/:baseId/audit', async (c) => {
     const baseId = numberParam(c, 'baseId');

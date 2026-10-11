@@ -1,11 +1,14 @@
 /**
  * Tables, fields and schema versions. Structure changes need builder; taking a
- * table away from everyone needs owner (lifecycle spec D3).
+ * table away from everyone needs owner (lifecycle spec D3). A custom role reads
+ * only the tables it has a rule for and, in them, only its readable fields;
+ * schema history (every field that ever existed) is builder-only.
  */
 
 import { effectiveUserId } from '@greenhouse/platform-kernel';
 import { TABLE_FIELD_TYPES, type TableFieldConfig, type TableFieldType } from '@greenhouse/types/tables';
-import { baseForField, baseForTable, requireBase } from '../access.js';
+import { baseForField, baseForTable, customAccessLens, requireBase } from '../access.js';
+import { trimSchema, visibleTables } from '../access-trim.js';
 import {
   fail,
   nullableString,
@@ -22,28 +25,31 @@ import {
 const listTables: Handler = async (request, context) => {
   const baseId = positiveInt(payloadOf(request), 'baseId');
   if (!baseId) return fail('INVALID_INPUT', 'baseId is required');
-  if (!(await requireBase(context, request.actor, baseId, 'table', 'viewer'))) {
-    return fail('NOT_FOUND', 'Base not found');
-  }
-  return ok({ tables: await context.db.tables.listTables(baseId) });
+  const grant = await requireBase(context, request.actor, baseId, 'table', 'viewer', { allowCustom: true });
+  if (!grant) return fail('NOT_FOUND', 'Base not found');
+  const tables = await context.db.tables.listTables(baseId);
+  const lens = await customAccessLens(context, grant.access, effectiveUserId(request.actor));
+  return ok({ tables: lens ? visibleTables(lens, tables) : tables });
 };
 
 const getSchema: Handler = async (request, context) => {
   const tableId = positiveInt(payloadOf(request), 'tableId');
   if (!tableId) return fail('INVALID_INPUT', 'tableId is required');
   const base = await baseForTable(context.db, tableId);
-  if (!base || !(await requireBase(context, request.actor, base.id, 'table', 'viewer'))) {
-    return fail('NOT_FOUND', 'Table not found');
-  }
-  const schema = await context.db.tables.getSchema(tableId, effectiveUserId(request.actor));
-  return schema ? ok(schema) : fail('NOT_FOUND', 'Table not found');
+  const grant = base && (await requireBase(context, request.actor, base.id, 'table', 'viewer', { allowCustom: true }));
+  if (!grant) return fail('NOT_FOUND', 'Table not found');
+  const userId = effectiveUserId(request.actor);
+  const schema = await context.db.tables.getSchema(tableId, userId);
+  const lens = await customAccessLens(context, grant.access, userId);
+  const visible = schema && lens ? trimSchema(lens, schema) : schema;
+  return visible ? ok(visible) : fail('NOT_FOUND', 'Table not found');
 };
 
 const listSchemaVersions: Handler = async (request, context) => {
   const tableId = positiveInt(payloadOf(request), 'tableId');
   if (!tableId) return fail('INVALID_INPUT', 'tableId is required');
   const base = await baseForTable(context.db, tableId);
-  if (!base || !(await requireBase(context, request.actor, base.id, 'table', 'viewer'))) {
+  if (!base || !(await requireBase(context, request.actor, base.id, 'table', 'builder'))) {
     return fail('NOT_FOUND', 'Table not found');
   }
   return ok({ versions: await context.db.tables.listSchemaVersions(tableId) });
@@ -55,7 +61,7 @@ const getSchemaVersion: Handler = async (request, context) => {
   const version = positiveInt(payload, 'version');
   if (!tableId || !version) return fail('INVALID_INPUT', 'tableId and version are required');
   const base = await baseForTable(context.db, tableId);
-  if (!base || !(await requireBase(context, request.actor, base.id, 'table', 'viewer'))) {
+  if (!base || !(await requireBase(context, request.actor, base.id, 'table', 'builder'))) {
     return fail('NOT_FOUND', 'Table not found');
   }
   const snapshot = await context.db.tables.getSchemaVersion(tableId, version);

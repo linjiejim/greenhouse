@@ -14,8 +14,17 @@
  * POST   /bases/:baseId/archive                      — 归档 Base
  * GET    /bases/:baseId/members                      — 成员列表
  * GET    /bases/:baseId/audit                        — Base 操作审计（仅 owner）
- * PUT    /bases/:baseId/members/:userId              — 添加/更新成员
+ * PUT    /bases/:baseId/members/:userId              — 添加/更新成员（builder/editor/viewer/custom + customRoleId）
  * DELETE /bases/:baseId/members/:userId              — 移除成员
+ *
+ * 访问控制（./access.ts，均仅 owner / super）
+ * GET    /bases/:baseId/roles                        — 自定义角色 + 引用计数 + 规则编辑器所需的结构事实
+ * POST   /bases/:baseId/roles                        — 创建自定义角色
+ * PATCH  /roles/:roleId                              — revision 更新角色
+ * DELETE /roles/:roleId                              — 删除角色（仍被引用 → 409 role_in_use）
+ * PUT    /bases/:baseId/groups/:groupId              — 授予群组 editor/viewer/custom（授权人须看得见该群组）
+ * DELETE /bases/:baseId/groups/:groupId              — 移除群组授权
+ * POST   /bases/:baseId/transfer                     — 转移所有者 {userId, previousOwnerRole}
  *
  * 表、字段与结构（./schema.ts）
  * GET    /bases/:baseId/tables                       — Table 列表
@@ -76,6 +85,7 @@
 
 import { Hono } from 'hono';
 import type { AppEnv } from '../../app-env.js';
+import { accessRoutes } from './access.js';
 import { automationRoutes } from './automations.js';
 import { baseRoutes } from './bases.js';
 import { dashboardRoutes } from './dashboards.js';
@@ -86,6 +96,7 @@ import { viewRoutes } from './views.js';
 
 const tablesRoutes = new Hono<AppEnv>()
   .route('/', baseRoutes)
+  .route('/', accessRoutes)
   .route('/', schemaRoutes)
   .route('/', viewRoutes)
   .route('/', formRoutes)

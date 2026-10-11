@@ -14,8 +14,11 @@
  * realtime fan-out and notification recipients (`canRecipientRead`). Never
  * re-derive a role from member rows anywhere else.
  *
- * Slice A fills the two marked hooks (`loadCustomRole`, `customTableScope`) and
- * the group branch; until then a custom grant resolves to `none` (spec D13).
+ * Custom roles: the role is loaded from the same Base only (a dangling or
+ * foreign reference resolves to `none`, never viewer — D13) and compiled per
+ * table with `compileTableAccessScope` from `@greenhouse/types/table-access`,
+ * the one compiler Phase 1 app roles reuse. `customAccessLens` exposes the
+ * compiled view to handlers that trim structure (`./access-trim.ts`).
  */
 
 import {
@@ -33,17 +36,26 @@ import {
   type TableBaseMemberRow,
   type TableBaseRow,
   type TableRecordRow,
+  type TableUserGroupGrantRow,
   type UserRow,
 } from '@greenhouse/db';
 import {
+  accessTableView,
+  compileTableAccessScope,
+  computeFieldAccess,
   decideTableBaseAccess,
   fullTableAccess,
+  normalizeAccessRules,
+  ruleForTable,
   tableRoleAtLeast,
+  type TableAccessRule,
   type TableAccessRules,
+  type TableAccessSchemaFacts,
   type TableAccessScope,
   type TableBaseAccessDecision,
   type TableBaseAccessView,
   type TableDataScope,
+  type TableEffectiveFieldAccess,
 } from '@greenhouse/types/table-access';
 import type { TableBaseRole } from '@greenhouse/types/tables';
 import { humanActor } from '../actor.js';
@@ -54,9 +66,9 @@ type AccessContext = Pick<PlatformHandlerContext, 'db'>;
 type AccessUser = Pick<UserRow, 'id' | 'role' | 'status'>;
 type RecordRef = Pick<TableRecordRow, 'id' | 'table_id'>;
 
-/** A Base level plus, for `custom`, the loaded role. */
+/** A Base level plus, for `custom`, the loaded role (always of this Base). */
 export interface ResolvedBaseAccess extends TableBaseAccessDecision {
-  customRole?: { id: number; name: string; rules: TableAccessRules };
+  customRole?: { id: number; baseId: number; name: string; rules: TableAccessRules };
 }
 
 const NO_ACCESS: ResolvedBaseAccess = Object.freeze({ level: 'none', via: 'none' });
@@ -98,18 +110,27 @@ export async function baseForWidget(db: DatabaseProvider, widgetId: number): Pro
   return widget ? baseForDashboard(db, widget.dashboard_id) : undefined;
 }
 
+export async function baseForRole(db: DatabaseProvider, roleId: number): Promise<TableBaseRow | undefined> {
+  const role = await db.tables.getBaseRole(roleId);
+  return role ? db.tables.getBase(role.base_id) : undefined;
+}
+
 // ─── The effective Base level ─────────────────────────────
 
 /**
- * Slice A: load the custom role `roleId`, refusing one that belongs to another
- * Base. Undefined = dangling or not yet supported → no access, never viewer (D13).
+ * Load the custom role `roleId` for `base`. Undefined — and so no access, never
+ * viewer (D13) — when it is gone, belongs to another Base, or its stored rules
+ * no longer pass the shape check.
  */
 async function loadCustomRole(
-  _ctx: AccessContext,
-  _base: TableBaseRow,
-  _roleId: number,
+  ctx: AccessContext,
+  base: TableBaseRow,
+  roleId: number,
 ): Promise<ResolvedBaseAccess['customRole']> {
-  return undefined;
+  const role = await ctx.db.tables.getBaseRole(roleId);
+  if (!role || role.base_id !== base.id) return undefined;
+  const rules = normalizeAccessRules(role.rules);
+  return rules.ok ? { id: role.id, baseId: base.id, name: role.name, rules: rules.rules } : undefined;
 }
 
 async function completeDecision(
@@ -131,48 +152,120 @@ export async function resolveBaseAccess(
   base: TableBaseRow,
 ): Promise<ResolvedBaseAccess> {
   if (!user) return NO_ACCESS;
-  // Super and the owner never depend on a member row.
-  const member =
-    user.role === 'super' || base.owner_id === user.id
-      ? undefined
-      : await ctx.db.tables.getBaseMember(base.id, user.id);
-  return completeDecision(ctx, base, decideTableBaseAccess({ user, base, member }));
+  // Super and the owner never depend on a member row or a group.
+  if (user.role === 'super' || base.owner_id === user.id) {
+    return completeDecision(ctx, base, decideTableBaseAccess({ user, base, member: undefined }));
+  }
+  const member = await ctx.db.tables.getBaseMember(base.id, user.id);
+  // The own member row wins outright; groups are only read when there is none.
+  const groups = member ? [] : await ctx.db.tables.listGroupGrantsForUser(base.id, user.id);
+  return completeDecision(ctx, base, decideTableBaseAccess({ user, base, member, groups }));
 }
 
-/** `resolveBaseAccess` for many people on one Base, with one member-row query. */
+/** `resolveBaseAccess` for many people on one Base, with one member-row and one group query. */
 export async function resolveBaseAccessForUsers(
   ctx: AccessContext,
   users: readonly AccessUser[],
   base: TableBaseRow,
 ): Promise<Map<string, ResolvedBaseAccess>> {
-  const members = new Map<string, TableBaseMemberRow>(
-    (await ctx.db.tables.listBaseMembers(base.id)).map((member) => [member.user_id, member]),
-  );
+  const [memberRows, groupRows] = await Promise.all([
+    ctx.db.tables.listBaseMembers(base.id),
+    ctx.db.tables.listGroupGrantsForBase(base.id),
+  ]);
+  const members = new Map<string, TableBaseMemberRow>(memberRows.map((member) => [member.user_id, member]));
+  const groupsByUser = new Map<string, TableUserGroupGrantRow[]>();
+  for (const grant of groupRows) groupsByUser.set(grant.user_id, [...(groupsByUser.get(grant.user_id) ?? []), grant]);
   const out = new Map<string, ResolvedBaseAccess>();
   for (const user of users) {
     out.set(
       user.id,
-      await completeDecision(ctx, base, decideTableBaseAccess({ user, base, member: members.get(user.id) })),
+      await completeDecision(
+        ctx,
+        base,
+        decideTableBaseAccess({ user, base, member: members.get(user.id), groups: groupsByUser.get(user.id) }),
+      ),
     );
   }
   return out;
 }
 
-/** The built-in role a level shows as (`getBase.role`). A custom role reads as viewer; its rules travel in `access`. */
+/** The built-in role a level shows as (`getBase.role`). A custom role reads as viewer; its compiled view travels in `access`. */
 export function displayRole(access: ResolvedBaseAccess): TableBaseRole | undefined {
   if (access.level === 'none') return undefined;
   return access.level === 'custom' ? 'viewer' : access.level;
 }
 
-/** The wire form of an access (`getBase.access`): rules only for custom, so the client can hide what the server refuses. */
-export function accessView(access: ResolvedBaseAccess): TableBaseAccessView {
-  return access.customRole
-    ? {
-        level: access.level,
-        customRole: { id: access.customRole.id, name: access.customRole.name },
-        rules: access.customRole.rules,
+// ─── Custom roles, compiled ───────────────────────────────
+
+/**
+ * A custom role's view of its Base, compiled once: which tables it has a rule
+ * for, every field's effective access (dependency closure included) and the
+ * per-table scope. Handlers that trim structure use it; record handlers get
+ * the same scopes through `requireTableData`.
+ */
+export interface CustomAccessLens {
+  rules: TableAccessRules;
+  facts: TableAccessSchemaFacts;
+  fieldAccess: ReadonlyMap<number, TableEffectiveFieldAccess>;
+  ruleFor(tableId: number): TableAccessRule | undefined;
+  /** The compiled scope for `tableId`; undefined = the table is invisible to the role. */
+  scopeFor(tableId: number): TableDataScope | undefined;
+  /** Field ids the role reads on `tableId` (empty for an invisible table). */
+  readable(tableId: number): ReadonlySet<number>;
+}
+
+const lensCache = new WeakMap<object, Promise<CustomAccessLens>>();
+
+/** The lens of a custom access (undefined for every other level). Facts load once per resolution. */
+export function customAccessLens(
+  ctx: AccessContext,
+  access: ResolvedBaseAccess,
+  userId: string,
+): Promise<CustomAccessLens> | undefined {
+  const role = access.level === 'custom' ? access.customRole : undefined;
+  if (!role) return undefined;
+  const cached = lensCache.get(role);
+  if (cached) return cached;
+  const built = ctx.db.tables.loadAccessFacts(role.baseId).then((facts): CustomAccessLens => {
+    const fieldAccess = computeFieldAccess(role.rules, facts);
+    const scopes = new Map<number, TableDataScope | undefined>();
+    const scopeFor = (tableId: number) => {
+      if (!scopes.has(tableId)) {
+        scopes.set(tableId, compileTableAccessScope(role.rules, tableId, facts, userId, fieldAccess));
       }
-    : { level: access.level };
+      return scopes.get(tableId);
+    };
+    return {
+      rules: role.rules,
+      facts,
+      fieldAccess,
+      ruleFor: (tableId) => ruleForTable(role.rules, tableId),
+      scopeFor,
+      readable: (tableId) => new Set(scopeFor(tableId)?.readableFieldIds ?? []),
+    };
+  });
+  lensCache.set(role, built);
+  return built;
+}
+
+/**
+ * The wire form of an access (`getBase.access`). A custom role gets its
+ * compiled per-table view (readable / editable fields, create / delete) — not
+ * its raw rules, whose row predicates and hidden field ids are not theirs to see.
+ */
+export async function baseAccessView(
+  ctx: AccessContext,
+  access: ResolvedBaseAccess,
+  userId: string,
+): Promise<TableBaseAccessView> {
+  const lens = await customAccessLens(ctx, access, userId);
+  if (!lens || !access.customRole) return { level: access.level };
+  const tables = lens.facts.tables.flatMap((table) => {
+    const rule = lens.ruleFor(table.id);
+    const scope = lens.scopeFor(table.id);
+    return rule && scope ? [accessTableView(rule, scope)] : [];
+  });
+  return { level: access.level, customRole: { id: access.customRole.id, name: access.customRole.name }, tables };
 }
 
 // ─── Kernel ceiling ───────────────────────────────────────
@@ -308,18 +401,27 @@ function valuelessScope(userId: string, tableId: number): TableDataScope {
 }
 
 /**
- * Slice A: compile a custom role's rule for `tableId` into the scope `op`
- * needs — undefined when the role has no rule for the table or the rule does
- * not allow `op` (read rule only, `create` / `delete` off). Unreachable until
- * A, because `loadCustomRole` resolves every custom grant to `none`.
+ * A custom role's scope on `tableId` for `op`: undefined when the role has no
+ * rule for the table, or the rule does not allow `op` (a read rule never
+ * writes; create / delete need the rule's switches). Undefined answers 404,
+ * exactly like a built-in viewer asking to write.
  */
-function customTableScope(
-  _access: ResolvedBaseAccess,
-  _tableId: number,
-  _op: TableDataOp,
-  _userId: string,
-): TableDataScope | undefined {
-  return undefined;
+async function customTableScope(
+  ctx: AccessContext,
+  access: ResolvedBaseAccess,
+  tableId: number,
+  op: TableDataOp,
+  userId: string,
+): Promise<TableDataScope | undefined> {
+  const lens = await customAccessLens(ctx, access, userId);
+  const rule = lens?.ruleFor(tableId);
+  const scope = lens?.scopeFor(tableId);
+  if (!rule || !scope) return undefined;
+  if (op === 'read') return scope;
+  if (rule.access !== 'edit') return undefined;
+  if (op === 'create' && !scope.canCreate) return undefined;
+  if (op === 'delete' && !scope.canDelete) return undefined;
+  return scope;
 }
 
 async function tableDataAccess(
@@ -347,7 +449,7 @@ async function tableDataAccess(
   const userId = effectiveUserId(actor);
   let scope: TableAccessScope;
   if (gate.access.level === 'custom') {
-    const compiled = customTableScope(gate.access, tableId, op, userId);
+    const compiled = await customTableScope(ctx, gate.access, tableId, op, userId);
     if (!compiled) return undefined;
     scope = compiled;
   } else {
@@ -378,6 +480,56 @@ export function requireTableData(
   options: { allowMaskedValues?: boolean } = {},
 ): Promise<TableDataAccess | undefined> {
   return tableDataAccess(ctx, request.actor, tableId, op, options);
+}
+
+// ─── Drive (scope = 'tables') ─────────────────────────────
+
+/**
+ * Does `scope` read `fieldId`? For per-field projections outside a record row:
+ * activity changes, notification templates, file attachments. Pass `readScope`.
+ */
+export function scopeReads(scope: TableAccessScope, fieldId: number): boolean {
+  return scope.kind === 'full' || scope.readableFieldIds.includes(fieldId);
+}
+
+/**
+ * May `actor` download this Base file as a restricted reader? Only when it is
+ * attached, in an attachment field they can read, to a live record inside
+ * their row scope (D15) — the same `requireTableData` gate the record itself
+ * passes, kernel `record.values` ceiling included.
+ */
+export async function canReadTablesFile(
+  ctx: AccessContext,
+  actor: ActorContext,
+  file: { id: number; base_id: number | null },
+): Promise<boolean> {
+  if (!file.base_id) return false;
+  for (const attachment of await ctx.db.tables.listFileAttachments(file.id)) {
+    if (attachment.deleted) continue;
+    const data = await tableDataAccess(ctx, actor, attachment.table_id, 'read', {});
+    if (!data || data.base.id !== file.base_id || !scopeReads(data.readScope, attachment.field_id)) continue;
+    if (await ctx.db.tables.getRecord(attachment.table_id, attachment.record_id, data.scope)) return true;
+  }
+  return false;
+}
+
+/**
+ * May this access put files into the Base's cabinet? Built-in editors and up;
+ * a custom role only when it can create or edit some attachment field.
+ */
+export async function canUploadTablesFiles(
+  ctx: AccessContext,
+  access: ResolvedBaseAccess,
+  userId: string,
+): Promise<boolean> {
+  if (access.level === 'none') return false;
+  if (access.level !== 'custom') return tableRoleAtLeast(access.level, 'editor');
+  const lens = await customAccessLens(ctx, access, userId);
+  if (!lens) return false;
+  return lens.facts.fields.some(
+    (field) =>
+      field.type === 'attachment' && (lens.scopeFor(field.tableId)?.editableFieldIds.includes(field.id) ?? false),
+  );
 }
 
 // ─── Recipients ───────────────────────────────────────────
@@ -416,7 +568,8 @@ async function recipientReadViaApp(
 /**
  * Can `userId` read `record`, and through what? Null = skip this recipient
  * (automation notify, @mentions). The scope says which fields a template may
- * render for them; everything else renders as "—".
+ * render for them — for a custom role, its compiled readable fields — and
+ * everything else renders as "—".
  */
 export async function canRecipientRead(
   ctx: AccessContext,

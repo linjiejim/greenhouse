@@ -12,7 +12,15 @@ import {
 } from '@greenhouse/types/tables';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import type { DatabaseProvider, TableBaseRow } from '@greenhouse/db';
-import { baseForDashboard, baseForWidget, requireBase, requireTableData } from '../access.js';
+import {
+  baseForDashboard,
+  baseForWidget,
+  customAccessLens,
+  requireBase,
+  requireTableData,
+  type CustomAccessLens,
+} from '../access.js';
+import { trimDashboard, trimWidget, widgetAccessible } from '../access-trim.js';
 import {
   fail,
   nullableString,
@@ -32,12 +40,28 @@ async function tableInBase(db: DatabaseProvider, tableId: number, base: TableBas
   return Boolean(table && table.base_id === base.id);
 }
 
+/**
+ * Read access to a Base's dashboards: built-in viewers and up, or a custom role
+ * whose rules say `dashboards: 'all'` (its lens comes back for trimming).
+ * Undefined = 404, the same as a missing dashboard (slice A).
+ */
+async function dashboardReader(
+  request: Parameters<Handler>[0],
+  context: Parameters<Handler>[1],
+  baseId: number,
+  entityId: 'dashboard' | 'dashboardWidget',
+): Promise<{ lens: CustomAccessLens | undefined } | undefined> {
+  const grant = await requireBase(context, request.actor, baseId, entityId, 'viewer', { allowCustom: true });
+  if (!grant) return undefined;
+  const lens = await customAccessLens(context, grant.access, effectiveUserId(request.actor));
+  if (lens && lens.rules.dashboards !== 'all') return undefined;
+  return { lens };
+}
+
 const listDashboards: Handler = async (request, context) => {
   const baseId = positiveInt(payloadOf(request), 'baseId');
   if (!baseId) return fail('INVALID_INPUT', 'baseId is required');
-  if (!(await requireBase(context, request.actor, baseId, 'dashboard', 'viewer'))) {
-    return fail('NOT_FOUND', 'Base not found');
-  }
+  if (!(await dashboardReader(request, context, baseId, 'dashboard'))) return fail('NOT_FOUND', 'Base not found');
   return ok({ dashboards: await context.db.tables.listDashboards(baseId) });
 };
 
@@ -45,11 +69,11 @@ const getDashboard: Handler = async (request, context) => {
   const dashboardId = positiveInt(payloadOf(request), 'dashboardId');
   if (!dashboardId) return fail('INVALID_INPUT', 'dashboardId is required');
   const base = await baseForDashboard(context.db, dashboardId);
-  if (!base || !(await requireBase(context, request.actor, base.id, 'dashboard', 'viewer'))) {
-    return fail('NOT_FOUND', 'Dashboard not found');
-  }
+  const reader = base && (await dashboardReader(request, context, base.id, 'dashboard'));
+  if (!reader) return fail('NOT_FOUND', 'Dashboard not found');
   const dashboard = await context.db.tables.getDashboard(dashboardId);
-  return dashboard ? ok(dashboard) : fail('NOT_FOUND', 'Dashboard not found');
+  if (!dashboard) return fail('NOT_FOUND', 'Dashboard not found');
+  return ok(reader.lens ? trimDashboard(reader.lens, dashboard) : dashboard);
 };
 
 const createDashboard: Handler = async (request, context) => {
@@ -178,11 +202,14 @@ const queryDashboardWidget: Handler = async (request, context) => {
   const widgetId = positiveInt(payloadOf(request), 'widgetId');
   if (!widgetId) return fail('INVALID_INPUT', 'widgetId is required');
   const base = await baseForWidget(context.db, widgetId);
-  if (!base || !(await requireBase(context, request.actor, base.id, 'dashboardWidget', 'viewer'))) {
-    return fail('NOT_FOUND', 'Widget not found');
-  }
+  const reader = base && (await dashboardReader(request, context, base.id, 'dashboardWidget'));
+  if (!reader) return fail('NOT_FOUND', 'Widget not found');
   const widget = await context.db.tables.getDashboardWidget(widgetId);
   if (!widget) return fail('NOT_FOUND', 'Widget not found');
+  // A custom role never evaluates a widget that depends on what it cannot read.
+  if (reader.lens && !widgetAccessible(reader.lens, widget)) {
+    return ok({ widget: trimWidget(reader.lens, widget), noAccess: true });
+  }
   const config = safeJsonParse(widget.config, {}) as TableDashboardWidgetConfig;
   if (widget.type === 'text') return ok({ widget, text: config.text ?? '' });
   if (!widget.table_id) return fail('INVALID_INPUT', 'Widget has no table');
