@@ -4,6 +4,7 @@ import { tablesAccessZh } from './access.zh';
 import { tablesActivityZh } from './activity.zh';
 import { tablesAutomationsZh } from './automations.zh';
 import { tablesDashboardsZh } from './dashboards.zh';
+import { tablesFieldsZh } from './fields.zh';
 import { tablesFormsZh } from './forms.zh';
 import { tablesFormulaZh } from './formula.zh';
 import { tablesImportsZh } from './imports.zh';
@@ -15,6 +16,7 @@ export const TABLES_SLICES_ZH = {
   ...tablesActivityZh,
   ...tablesAutomationsZh,
   ...tablesDashboardsZh,
+  ...tablesFieldsZh,
   ...tablesFormsZh,
   ...tablesFormulaZh,
   ...tablesImportsZh,

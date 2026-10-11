@@ -574,6 +574,8 @@ export function Card({ children, className = '', ...props }: React.HTMLAttribute
 
 interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {
   size?: 'xs' | 'sm' | 'md' | 'lg';
+  /** React 19 passes `ref` as a prop; it lands on the `<input>` (as `Textarea` does). */
+  ref?: React.Ref<HTMLInputElement>;
 }
 
 export function Input({ size = 'md', className = '', ...props }: InputProps) {

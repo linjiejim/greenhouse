@@ -3341,7 +3341,6 @@ export default {
     field: 'field',
     type: 'Type',
     required: 'Required',
-    optionsPerLine: 'Options · one per line',
     relatedTable: 'Related table',
     chooseTable: 'Choose a table',
     allowMultipleRelations: 'Allow multiple linked records',
