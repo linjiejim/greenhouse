@@ -36,7 +36,7 @@ import {
   type TableImportMapping,
 } from '@greenhouse/types/tables';
 import type { PlatformHandlerContext } from '../runtime.js';
-import { requireTableData } from './access.js';
+import { requireTableData, scopeReads } from './access.js';
 
 const SAMPLE_ROWS = 5;
 const INFERENCE_ROWS = 500;
@@ -111,8 +111,9 @@ export function previewColumns(input: {
 /**
  * Check a requested mapping against the table and the caller's rights and turn
  * it into plan columns. Creating fields and adding options need `canBuild`;
- * every target must be importable for the caller's scope. `fields` includes
- * archived ones: a new field may not reuse their names either.
+ * every target must be importable for the caller's scope, and only a field the
+ * caller can read is named in a refusal. `fields` includes archived ones: a new
+ * field may not reuse their names either.
  */
 export function planColumns(input: {
   mapping: unknown;
@@ -142,7 +143,11 @@ export function planColumns(input: {
     columns.add(column);
     if ('fieldId' in entry && entry.fieldId !== undefined) {
       const field = byId.get(entry.fieldId);
-      if (!field || field.archived_at) throw new ImportMappingError(`Field ${entry.fieldId} is unavailable`);
+      // A field the caller cannot read answers exactly like one that does not
+      // exist: no name, no status — mapping ids one by one is not an oracle.
+      if (!field || field.archived_at || !scopeReads(input.scope, field.id)) {
+        throw new ImportMappingError(`Field ${entry.fieldId} is unavailable`);
+      }
       if (isComputedFieldType(field.type) || field.type === 'attachment') {
         throw new ImportMappingError(`"${field.name}" cannot be imported into`);
       }

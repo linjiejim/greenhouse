@@ -139,6 +139,22 @@ describe('planColumns', () => {
     });
     expect(plan([{ column: 0, fieldId: 1 }], { scope: scoped, canBuild: false })).toEqual([{ column: 0, fieldId: 1 }]);
   });
+
+  it('answers a scoped writer about a field it cannot read exactly as about one that does not exist', () => {
+    const asScoped = (fieldId: number) =>
+      refusal(() => plan([{ column: 0, fieldId }], { scope: scoped, canBuild: false }));
+    const missing = asScoped(99);
+    expect(missing).toEqual({ message: 'Field 99 is unavailable', forbidden: false });
+    // Hidden stored, hidden computed and archived: same shape, only the id differs — never the name.
+    for (const fieldId of [3, 4, 5]) {
+      expect(asScoped(fieldId)).toEqual({ message: `Field ${fieldId} is unavailable`, forbidden: false });
+    }
+    const hiddenStored = { ...scoped, readableFieldIds: [1] };
+    expect(refusal(() => plan([{ column: 0, fieldId: 2 }], { scope: hiddenStored, canBuild: false }))).toEqual({
+      message: 'Field 2 is unavailable',
+      forbidden: false,
+    });
+  });
 });
 
 describe('previewColumns', () => {
