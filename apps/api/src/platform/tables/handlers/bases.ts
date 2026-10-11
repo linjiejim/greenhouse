@@ -27,6 +27,7 @@ import {
   type Handler,
   type TablesHandlers,
 } from './shared.js';
+import { dashboardsForReader } from './dashboards.js';
 import { roleView } from './roles.js';
 
 const USER_ROLES: readonly TableBaseMemberRole[] = ['builder', 'editor', 'viewer', 'custom'];
@@ -83,7 +84,8 @@ const listBases: Handler = async (request, context) => {
 
 /**
  * The workspace. A custom role sees only the tables it has a rule for, no
- * dashboards when its rules say `none`, and its compiled per-table access;
+ * dashboards when its rules say `none` (else their filter controls trimmed to
+ * what it reads), and its compiled per-table access;
  * everyone gets members as `{id, name}` only (grants are the owner's business —
  * `listMembers`).
  */
@@ -106,7 +108,11 @@ const getBase: Handler = async (request, context) => {
     role: grant.role,
     access,
     tables: lens ? visibleTables(lens, tables) : tables,
-    dashboards: lens && lens.rules.dashboards !== 'all' ? [] : dashboards,
+    dashboards: !lens
+      ? dashboards
+      : lens.rules.dashboards === 'all'
+        ? await dashboardsForReader(request, context, dashboards)
+        : [],
     members: memberRows.map((member) => ({ id: member.user_id, name: names.get(member.user_id) ?? member.user_id })),
   });
 };

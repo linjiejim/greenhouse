@@ -718,10 +718,70 @@ describe('acceptance 2 — the 销售 custom role', { timeout: 30_000 }, () => {
 
     const dashboard = (
       await json<{ dashboard: { id: number } }>(
-        await send(owner, `/api/tables/bases/${w.baseId}/dashboards`, 'POST', { name: 'Pipeline' }),
+        await send(owner, `/api/tables/bases/${w.baseId}/dashboards`, 'POST', {
+          name: 'Pipeline',
+          config: {
+            version: 1,
+            filters: [
+              {
+                id: 'note',
+                label: 'Internal note',
+                kind: 'search',
+                targets: [{ tableId: w.customers, fieldId: w.fields.note.id }],
+                defaultValue: { kind: 'search', text: 'VIP' },
+              },
+              {
+                id: 'name',
+                label: 'Name',
+                kind: 'search',
+                targets: [
+                  { tableId: w.customers, fieldId: w.fields.customerName.id },
+                  { tableId: w.customers, fieldId: w.fields.note.id },
+                ],
+              },
+            ],
+          },
+        }),
         201,
       )
     ).dashboard;
+    // Every path that hands out the dashboard row cuts its filters the same way:
+    // no control, target or default value on a hidden field (spec §1).
+    type DashboardRow = {
+      id: number;
+      config: { filters?: Array<{ id: string; targets: Array<{ fieldId?: number }> }> };
+    };
+    const listed = await json<{ dashboards: DashboardRow[] }>(
+      await send(sales, `/api/tables/bases/${w.baseId}/dashboards`),
+    );
+    const inWorkspace = await json<{ dashboards: DashboardRow[] }>(await send(sales, `/api/tables/bases/${w.baseId}`));
+    const single = await json<{ dashboard: DashboardRow }>(await send(sales, `/api/tables/dashboards/${dashboard.id}`));
+    const viaTool = await executeTool(createTablesQueryTool({ userId: sales.id }), {
+      action: 'dashboards.list',
+      base_id: w.baseId,
+    });
+    expect(viaTool.error).toBeUndefined();
+    for (const row of [
+      listed.dashboards.find((entry) => entry.id === dashboard.id)!,
+      inWorkspace.dashboards.find((entry) => entry.id === dashboard.id)!,
+      single.dashboard,
+    ]) {
+      expect(row.config.filters).toEqual([
+        {
+          id: 'name',
+          label: 'Name',
+          kind: 'search',
+          targets: [{ tableId: w.customers, fieldId: w.fields.customerName.id }],
+        },
+      ]);
+    }
+    expect(JSON.stringify(viaTool)).not.toContain('VIP');
+    expect(JSON.stringify(viaTool)).not.toContain('Internal note');
+    expect(JSON.stringify(viaTool)).toContain('Name');
+    const ownerList = await json<{ dashboards: DashboardRow[] }>(
+      await send(owner, `/api/tables/bases/${w.baseId}/dashboards`),
+    );
+    expect(ownerList.dashboards.find((entry) => entry.id === dashboard.id)!.config.filters).toHaveLength(2);
     const widget = async (type: string, tableId: number, config: unknown) =>
       (
         await json<{ widget: { id: number } }>(
