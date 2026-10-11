@@ -133,7 +133,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
 
   // People, forms, imports and the automation worker all write records; the
   // server says which table changed and the page refetches (coalesced).
-  useTablesRecordsChanged({ tableId: table.id }, () => void query.reload());
+  useTablesRecordsChanged({ tableId: table.id }, () => query.reload());
 
   // `#/tables/<base>/table/<table>?record=<id>` (entity links, notifications,
   // drill-down) opens that record, whether or not it is on the current page.

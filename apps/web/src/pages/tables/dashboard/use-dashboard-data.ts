@@ -6,7 +6,8 @@
  *
  * Each widget loads and fails on its own — one broken widget never blanks the
  * dashboard — and a refresh keeps the previous result on screen until the new
- * one arrives.
+ * one arrives. Only a widget's latest request lands: a slow answer for an
+ * earlier filter value never replaces the one for the current value.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -69,15 +70,23 @@ export function useDashboardData(dashboardId: number, filterValues: DashboardFil
     return pending;
   }, []);
 
+  /** Per widget, the latest request: an older one (an earlier filter value) must not land over it. */
+  const latestRequest = useRef(new Map<number, number>());
+
   const queryWidget = useCallback(
     async (widget: TableDashboardWidget) => {
+      const requestId = (latestRequest.current.get(widget.id) ?? 0) + 1;
+      latestRequest.current.set(widget.id, requestId);
+      const isLatest = () => latestRequest.current.get(widget.id) === requestId;
       try {
         const response = await queryTableDashboardWidget(widget.id, { filterValues: filtersRef.current, timezone });
+        if (!isLatest()) return;
         setStates((previous) => ({
           ...previous,
           [widget.id]: { card: response.card, result: response.result, error: null },
         }));
       } catch (queryError) {
+        if (!isLatest()) return;
         setStates((previous) => ({
           ...previous,
           [widget.id]: {
@@ -141,7 +150,8 @@ export function useDashboardData(dashboardId: number, filterValues: DashboardFil
     { baseId: dashboard?.base_id },
     (events) => {
       const tables = new Set(events.map((event) => event.tableId));
-      void queryWidgets(widgetsRef.current.filter((widget) => widget.table_id && tables.has(widget.table_id)));
+      // Returned, so a burst (an import's chunks) waits for this refresh instead of stacking more.
+      return queryWidgets(widgetsRef.current.filter((widget) => widget.table_id && tables.has(widget.table_id)));
     },
     { enabled: dashboard !== null },
   );

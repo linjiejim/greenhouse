@@ -240,6 +240,35 @@ describe('TablesDashboardView', () => {
     });
   });
 
+  it('keeps the answer for the current filter when an older request lands last', async () => {
+    await mount();
+    // The first filter change is slow, the second fast: the slow answer must not win.
+    let releaseSlow: () => void = () => undefined;
+    api.queryTableDashboardWidget.mockImplementation(async (widgetId: number, input: { filterValues: object }) => {
+      if (widgetId !== 21) return { widget: {}, card: pivotCard, result: { kind: 'pivot', rows: [] } };
+      const forMe = JSON.stringify(input.filterValues).includes('$me');
+      if (forMe) {
+        await new Promise<void>((resolve) => (releaseSlow = resolve));
+        return { widget: {}, card: kpiCard, result: { kind: 'kpi', value: 7 } };
+      }
+      return { widget: {}, card: kpiCard, result: { kind: 'kpi', value: 30 } };
+    });
+    const select = container.querySelector('select[aria-label="Rep"]') as HTMLSelectElement;
+    await act(async () => {
+      select.value = '$me';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(async () => {
+      select.value = '';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    expect(container.querySelector('[data-testid="table-card-kpi"]')?.textContent).toBe('30');
+    await act(async () => releaseSlow());
+    await flush();
+    expect(container.querySelector('[data-testid="table-card-kpi"]')?.textContent).toBe('30');
+  });
+
   it('drills from a pivot cell into a drawer of records and opens one', async () => {
     await mount();
     await clickButton('Show records for Won · Jim');

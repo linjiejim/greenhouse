@@ -268,7 +268,7 @@ describe('TablesViewContainer', () => {
         handler(changed);
       }
     });
-    // Coalesced (400 ms): one refetch for the matching event, none for the other table.
+    // Coalesced (1 s): one refetch for the matching event, none for the other table.
     await vi.waitFor(
       async () => {
         await flush();

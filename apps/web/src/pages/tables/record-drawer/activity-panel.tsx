@@ -38,7 +38,7 @@ export function RecordActivityPanel({ table, record, fields, users, usersById }:
   const fieldsById = useMemo(() => new Map(fields.map((field) => [field.id, field])), [fields]);
 
   // Someone else (a person, a form, an automation) changed this record.
-  useTablesRecordsChanged({ tableId: table.id, recordIds: [record.id] }, () => void refresh());
+  useTablesRecordsChanged({ tableId: table.id, recordIds: [record.id] }, () => refresh());
   // The viewer's own edit through the record dialog bumps the revision the drawer holds.
   const seenRevision = useRef(record.revision);
   useEffect(() => {
