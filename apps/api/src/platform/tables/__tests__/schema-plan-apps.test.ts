@@ -229,6 +229,71 @@ describe('applySchemaPlan — apps', () => {
     });
   });
 
+  it('publishes on retry the draft an earlier run wrote, never today’s someone-else draft', async () => {
+    const operations: SchemaPlanOperation[] = [
+      { op: 'app.update', appId: 5, spec: spec(10, 100) },
+      { op: 'app.publish', appId: 5, notes: 'v2' },
+    ];
+    // First run: the update reads today's revision (3) and saves 4; the publish is refused (a spec problem).
+    let publishOk = false;
+    const { calls, dispatch } = recorder((call) => {
+      switch (call.actionId) {
+        case 'getAppDraft':
+          return ok(appView(5, 3));
+        case 'saveAppDraft':
+          return ok(appView(5, 4));
+        case 'publishApp':
+          return publishOk
+            ? ok({ app: { id: 5, baseId: 1 }, version: { version: 2 } })
+            : { ok: false, code: 'INVALID_INPUT', message: 'spec_invalid' };
+        default:
+          return notFound;
+      }
+    });
+    const run1 = await applySchemaPlan(operations, dispatch);
+    expect(run1.results).toEqual([
+      { index: 0, op: 'app.update', status: 'applied', id: 5, draftRevision: 4 },
+      { index: 1, op: 'app.publish', status: 'failed', message: 'spec_invalid' },
+    ]);
+
+    // The retry skips the applied update and publishes revision 4 — the one it wrote, not whatever is there now.
+    publishOk = true;
+    const seen = calls.length;
+    const run2 = await applySchemaPlan(operations, dispatch, run1);
+    expect(run2.results.map((entry) => entry.status)).toEqual(['applied', 'applied']);
+    expect(calls.slice(seen)).toEqual([
+      { actionId: 'publishApp', payload: { appId: 5, notes: 'v2', draftRevision: 4 } },
+    ]);
+  });
+
+  it('saves over its own draft on retry when only the rename of an app.update failed', async () => {
+    let renameOk = false;
+    const { calls, dispatch } = recorder((call) => {
+      if (call.actionId === 'saveAppDraft') return ok(appView(5, Number(call.payload.draftRevision) + 1));
+      if (call.actionId === 'updateApp' && renameOk) return ok({ app: { id: 5, baseId: 1 } });
+      return { ok: false, code: 'INVALID_INPUT', message: 'name taken' };
+    });
+    const operations: SchemaPlanOperation[] = [
+      { op: 'app.update', appId: 5, draftRevision: 3, name: 'Board', spec: spec(10, 100) },
+    ];
+    const run1 = await applySchemaPlan(operations, dispatch);
+    expect(run1.results[0]).toEqual({
+      index: 0,
+      op: 'app.update',
+      status: 'failed',
+      id: 5,
+      draftRevision: 4,
+      message: 'name taken',
+    });
+    renameOk = true;
+    const run2 = await applySchemaPlan(operations, dispatch, run1);
+    expect(run2.results[0]).toMatchObject({ status: 'applied', draftRevision: 5 });
+    // The retry builds on revision 4 (its own write), not the stale 3 the model read.
+    expect(calls.filter((call) => call.actionId === 'saveAppDraft').map((call) => call.payload.draftRevision)).toEqual([
+      3, 4,
+    ]);
+  });
+
   it('keeps a created table applied when only its primary-field rename fails (a retry must not create it twice)', async () => {
     const { dispatch } = recorder((call) =>
       call.actionId === 'createTable'
