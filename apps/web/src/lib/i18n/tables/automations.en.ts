@@ -36,6 +36,7 @@ export const tablesAutomationsEn = {
     loadingFields: 'Loading fields…',
     sectionWhen: 'When',
     sectionCondition: 'Only if',
+    triggerLabel: 'Trigger',
     sectionThen: 'Then',
     trigger: {
       record_created: 'A record is created',

@@ -2,12 +2,14 @@
  * Record drawer · header actions slot (slice Au): the record's automation
  * buttons. Only members who can update the record get any (`listRecordButtons`
  * answers an empty list otherwise, and leaks no rule configuration); a press
- * queues one run (a fresh request id per press, so a double click is one run)
- * and the change arrives through `tables:records_changed` like any other write.
+ * queues one run (a fresh request id per press, so a double click is one run);
+ * the worker's write arrives as `tables:records_changed`, and while a press is
+ * outstanding the slot re-reads the record when it does.
  */
 
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import type { TableRecordButton } from '@greenhouse/types/tables';
+import { useTablesRecordsChanged } from '../../../hooks/use-tables-records-changed';
 import { Button, toast } from '../../../components/ui';
 import { isTablesConflict, listTableRecordButtons, triggerTableAutomation } from '../../../lib/api/tables';
 import { MousePointerClick } from '../../../lib/icons';
@@ -24,7 +26,18 @@ function AutomationButtons({ table, record, canEdit, onRecordChanged }: RecordDr
   const t = useT();
   const [buttons, setButtons] = useState<TableRecordButton[]>([]);
   const [pressing, setPressing] = useState<number | null>(null);
+  const [awaiting, setAwaiting] = useState(false);
   const pressed = useRef(new Map<number, string>());
+
+  // A pressed button's run writes later, from the worker: re-read when it lands.
+  useTablesRecordsChanged(
+    { tableId: table.id, recordIds: [record.id] },
+    () => {
+      setAwaiting(false);
+      onRecordChanged();
+    },
+    { enabled: awaiting },
+  );
 
   useEffect(() => {
     if (!canEdit) {
@@ -48,11 +61,13 @@ function AutomationButtons({ table, record, canEdit, onRecordChanged }: RecordDr
     const requestId = pressed.current.get(button.ruleId) ?? newRequestId();
     pressed.current.set(button.ruleId, requestId);
     setPressing(button.ruleId);
+    // Listen before pressing: the worker may write before the response is read.
+    setAwaiting(true);
     try {
       await triggerTableAutomation(button.ruleId, record.id, requestId);
       toast(t('tables.automations.buttons.started', { label: button.label }), 'success');
-      onRecordChanged();
     } catch (error) {
+      setAwaiting(false);
       toast(
         isTablesConflict(error)
           ? t('tables.automations.buttons.stale')

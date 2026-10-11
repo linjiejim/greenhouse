@@ -238,7 +238,7 @@ export function RuleEditor({
 
       <FormSection title={t('tables.automations.sectionWhen')}>
         <div className="space-y-3">
-          <FormField label={t('tables.automations.sectionWhen')} className="max-w-md">
+          <FormField label={t('tables.automations.triggerLabel')} className="max-w-md">
             <Select
               value={draft.trigger}
               data-testid="automation-trigger"

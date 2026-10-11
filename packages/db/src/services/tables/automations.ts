@@ -65,7 +65,13 @@ import type {
   TableFieldRow,
 } from '../../schema/tables.js';
 import { diffRecordValues } from './activity.js';
-import { compileFilterGroup, isValidTimeZone, loadCompileContext, validateFilterGroupShape } from './query.js';
+import {
+  compileFilterGroup,
+  isValidTimeZone,
+  loadCompileContext,
+  validateFilterGroupShape,
+  type TableCompileContext,
+} from './query.js';
 import type { TablesRecordInternals } from './records.js';
 import {
   isComputedField,
@@ -891,19 +897,23 @@ export async function compileRuleCondition(
   rule: Pick<TableAutomationRuleRow, 'table_id' | 'config'>,
   actorId: string | null,
   now?: Date,
+  /** Reuse one loaded context across the rules of a write (same table, same writer). */
+  contexts?: Map<string, Promise<TableCompileContext>>,
 ): Promise<SQL | undefined | null> {
   const condition = rule.config.condition;
   if (!condition || condition.clauses.length === 0) return undefined;
+  const timeZone = ruleTimeZone(rule.config);
+  const load = () => loadCompileContext(executor, rule.table_id, fullTableAccess(actorId), { now, timeZone });
+  let context: Promise<TableCompileContext>;
+  if (contexts) {
+    const key = `${rule.table_id}:${timeZone}`;
+    if (!contexts.has(key)) contexts.set(key, load());
+    context = contexts.get(key)!;
+  } else {
+    context = load();
+  }
   try {
-    return (
-      compileFilterGroup(
-        condition,
-        await loadCompileContext(executor, rule.table_id, fullTableAccess(actorId), {
-          now,
-          timeZone: ruleTimeZone(rule.config),
-        }),
-      ) ?? undefined
-    );
+    return compileFilterGroup(condition, await context) ?? undefined;
   } catch (error) {
     // A condition on a field that has since been archived never matches.
     if (error instanceof TablesValidationError) return null;
@@ -1046,6 +1056,7 @@ export async function enqueueAutomationEvents(tx: TablesExecutor, event: TableRe
     event.kind === 'updated'
       ? new Set(diffRecordValues(event.before, event.after).map((change) => change.fieldId))
       : null;
+  const contexts = new Map<string, Promise<TableCompileContext>>();
 
   for (const rule of rules) {
     if (rule.trigger === 'record_updated') {
@@ -1053,7 +1064,7 @@ export async function enqueueAutomationEvents(tx: TablesExecutor, event: TableRe
       const relevant = watched.length > 0 ? watched.some((fieldId) => changed?.has(fieldId)) : (changed?.size ?? 0) > 0;
       if (!relevant) continue;
     }
-    const condition = await compileRuleCondition(tx, rule, event.meta.actorId);
+    const condition = await compileRuleCondition(tx, rule, event.meta.actorId, undefined, contexts);
     if (condition === null) continue;
     if (condition && !(await holdsForRow(tx, condition, event.tableId, event.recordId))) continue;
     if (rule.trigger === 'record_matched') {

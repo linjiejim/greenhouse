@@ -37,6 +37,7 @@ export const tablesAutomationsZh: DeepRecord<typeof tablesAutomationsEn> = {
     loadingFields: '正在加载字段…',
     sectionWhen: '当',
     sectionCondition: '仅当',
+    triggerLabel: '触发方式',
     sectionThen: '就',
     trigger: {
       record_created: '新建记录时',
