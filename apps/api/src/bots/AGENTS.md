@@ -355,7 +355,6 @@ Bot 等着用电脑，交还即唤醒它；`payload.kind:'captcha'` = 人机验�
 | POST | `/api/bots/computer/takeover` | — | `ComputerStatusView` |
 | POST | `/api/bots/computer/handback` | `{ note?, request_id?, session_id? }` | 结算点名的接管 / 登录卡（须属于 `session_id`），否则该会话里唯一的待处理接管 / 登录卡，否则只释放租约——从不跨会话猜 |
 | POST | `/api/bots/computer/type` | `{ text }` | `{ ok }`（成员持有租约；写入焦点，支持中文） |
-| GET | `/api/bots/computer/screenshot` | — | `image/png`；不唤醒电脑，停着时 `409 stopped` |
 | PUT | `/api/bots/computer/settings` | `{ timezone: string \| null }`（IANA；null = 部署默认） | `ComputerStatusView`（下次启动生效；`lang` 来自成员 locale，`BOTS_COMPUTER_LANG` 覆盖） |
 | POST | `/api/bots/computer/restore-window` | — | `{ ok }`（`gh-window restore`；停着时 `409 stopped`；每次交还后也会自动跑） |
 | POST | `/api/bots/computer/terminal-token` | — | `{ token, expires_at }`（60 s、一次性，用途与观看票据互不通用） |

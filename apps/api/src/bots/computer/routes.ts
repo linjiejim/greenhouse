@@ -15,7 +15,6 @@
  *                                            发起的 Bot；都没有 = 只释放
  * POST /api/bots/computer/restore-window   — 找回浏览器窗口（最小化或关掉后；没有就新开一个）；未运行时 409 stopped
  * POST /api/bots/computer/type             — 输入文字 {text}（仅接管中；写入焦点输入框，中文可用，不落日志）
- * GET  /api/bots/computer/screenshot       — 整个桌面的 PNG（不会唤醒电脑，也不算活动；未运行时 409 stopped）
  * GET  /api/bots/computer/files?path=      — 列目录（默认 ~/work；≤500 条，目录在前再按名称；truncated = 还有更多）
  * GET  /api/bots/computer/files/download?path= — 下载文件（流式；仅普通文件，≤1 GiB）
  * POST /api/bots/computer/files/upload?dir=&name= — 上传（原始请求体，≤100 MiB；dir 默认 ~/work；重名存成 `名 (1).扩展名`）
@@ -61,7 +60,7 @@ import type { AppEnv } from '../../app-env.js';
 import { getAuthUser } from '../../auth/middleware.js';
 import { safeDriveContentType } from '../../drive/upload-policy.js';
 import { contentDisposition } from '../../http/content-disposition.js';
-import { captureDesktop, redactFilledSecrets, restoreBrowserWindow } from './access.js';
+import { redactFilledSecrets, restoreBrowserWindow } from './access.js';
 import { parseTimezone, TIMEZONE_MAX_CHARS } from './config.js';
 import { ComputerDockerError, ComputerRuntimeError } from './docker.js';
 import { ComputerUnavailableError } from './errors.js';
@@ -295,16 +294,6 @@ export function createBotsComputerRoutes() {
         return computerError(c, err);
       }
       return c.json({ ok: true as const });
-    })
-    .get('/screenshot', async (c) => {
-      const user = getAuthUser(c);
-      let png: Buffer;
-      try {
-        png = await captureDesktop(user.id);
-      } catch (err) {
-        return computerError(c, err);
-      }
-      return c.body(new Uint8Array(png), 200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' });
     })
     .get('/files', queryOf(filesQuery), async (c) => {
       const user = getAuthUser(c);
