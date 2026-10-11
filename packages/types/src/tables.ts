@@ -1131,6 +1131,12 @@ export interface TablesSchemaPlanArtifact {
   operations: SchemaPlanOperation[];
   /** Server-derived; empty when the plan changes nobody's access. */
   accessChanges?: SchemaPlanAccessChange[];
+  /**
+   * Server-derived: operation index → the current name of the existing object
+   * it changes (a field to archive, a widget to delete, the person a grant is
+   * for), so the confirm gate never shows only `#17` or a user id.
+   */
+  targetNames?: Record<number, string>;
 }
 
 export type SchemaPlanResultStatus = 'applied' | 'failed' | 'skipped';

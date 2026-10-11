@@ -69,7 +69,14 @@ export interface SchemaPlanReader {
   grantableGroups(): Promise<Array<{ id: number; name: string }>>;
 }
 
-export type SchemaPlanDraft = { ok: true; accessChanges: SchemaPlanAccessChange[] } | { ok: false; problems: string[] };
+export type SchemaPlanDraft =
+  | {
+      ok: true;
+      accessChanges: SchemaPlanAccessChange[];
+      /** Operation index → the current name of the existing object it changes (see the artifact's `targetNames`). */
+      targetNames: Record<number, string>;
+    }
+  | { ok: false; problems: string[] };
 
 /** Placeholder ids for plan-declared objects; far above any real serial id, and positive (validators require it). */
 const PLACEHOLDER_START = 2_000_000_000;
@@ -124,7 +131,7 @@ interface DraftDashboard {
   baseId: number;
   name: string;
   revision: number;
-  widgets: Map<number, { type: TableDashboardWidgetType; revision: number }>;
+  widgets: Map<number, { type: TableDashboardWidgetType; revision: number; title: string }>;
 }
 
 interface DraftForm {
@@ -190,6 +197,11 @@ export async function draftSchemaPlan(
 
   const problems: string[] = [];
   const accessChanges: SchemaPlanAccessChange[] = [];
+  const targetNames: Record<number, string> = {};
+  /** The card names what an operation changes, archives or deletes — never just `#17` or a user id. */
+  const named = (index: number, name: string) => {
+    if (name) targetNames[index] = name;
+  };
   let nextPlaceholder = PLACEHOLDER_START;
   const labels = new Map<number, string>();
   const refs = new Map<string, { kind: SchemaPlanObjectKind; id: number }>();
@@ -389,7 +401,11 @@ export async function draftSchemaPlan(
           widgets: new Map(
             list(data, 'widgets').map((widget) => [
               Number(widget.id),
-              { type: widget.type as TableDashboardWidgetType, revision: Number(widget.revision) },
+              {
+                type: widget.type as TableDashboardWidgetType,
+                revision: Number(widget.revision),
+                title: typeof widget.title === 'string' ? widget.title : '',
+              },
             ]),
           ),
         };
@@ -597,6 +613,7 @@ export async function draftSchemaPlan(
 
       case 'base.update': {
         const base = await requireBase(operation.baseId ?? refId(operation.baseRef!), 'owner', 'change its settings');
+        named(index, base.name);
         let teamCustomRoleId = base.teamCustomRoleId;
         if (operation.teamRole === 'custom') {
           teamCustomRoleId = (await requireRole(base, operation.teamCustomRoleId ?? refId(operation.roleRef!))).id;
@@ -625,6 +642,7 @@ export async function draftSchemaPlan(
 
       case 'table.update': {
         const { table, base } = await requireTable(operation.tableId, 'builder');
+        named(index, table.name);
         if (operation.name !== undefined && operation.name !== table.name) {
           unique(base.tables.values(), operation.name, 'table');
           table.name = operation.name;
@@ -666,6 +684,7 @@ export async function draftSchemaPlan(
       case 'field.update': {
         const { table } = await requireTable(operation.tableId, 'builder');
         const target = field(table, operation.fieldId);
+        named(index, target.name);
         if (operation.name !== undefined && operation.name !== target.name) {
           unique(
             table.fields.map((candidate) => candidate.name),
@@ -686,6 +705,7 @@ export async function draftSchemaPlan(
       case 'field.archive': {
         const { table } = await requireTable(operation.tableId, 'builder');
         const target = field(table, operation.fieldId);
+        named(index, target.name);
         if (target.is_primary) problem('the primary field cannot be archived');
         table.fields = table.fields.filter((candidate) => candidate.id !== target.id);
         return;
@@ -756,6 +776,7 @@ export async function draftSchemaPlan(
       case 'form.update': {
         const form = (await loadForm(operation.formId)) ?? problem(`form ${operation.formId} was not found`);
         await requireTable(form.tableId, 'builder');
+        named(index, form.name);
         fresh('form', form.id, form.revision, operation.revision);
         const audience =
           operation.audience === undefined
@@ -812,6 +833,7 @@ export async function draftSchemaPlan(
           ((await loadAutomations(base.id)) ?? []).find(
             (candidate) => candidate.id === operation.automationId && candidate.tableId === table.id,
           ) ?? problem(`automation ${operation.automationId} is not a rule of table ${table.id}`);
+        named(index, rule.name);
         fresh('automation', rule.id, rule.revision, operation.revision);
         const trigger = operation.trigger ?? rule.trigger;
         if (operation.config !== undefined || operation.trigger !== undefined) {
@@ -844,6 +866,7 @@ export async function draftSchemaPlan(
         const dashboard =
           (await loadDashboard(operation.dashboardId)) ?? problem(`dashboard ${operation.dashboardId} was not found`);
         await requireBase(dashboard.baseId, 'builder', 'change it');
+        named(index, dashboard.name);
         fresh('dashboard', dashboard.id, dashboard.revision, operation.revision);
         if (operation.config !== undefined) {
           await check(() => checkDashboardConfig(source, dashboard.baseId, resolve(operation.config)));
@@ -864,7 +887,7 @@ export async function draftSchemaPlan(
           checkWidgetCard(source, dashboard.baseId, type, { version: 2, card: card as never }, tableOfCard(card)),
         );
         const id = alloc(operation.ref ? `widget "${operation.ref}"` : `widget "${operation.title}"`);
-        dashboard.widgets.set(id, { type, revision: 1 });
+        dashboard.widgets.set(id, { type, revision: 1, title: operation.title });
         if (operation.ref) refs.set(operation.ref, { kind: 'widget', id });
         return;
       }
@@ -876,6 +899,7 @@ export async function draftSchemaPlan(
         const widget =
           dashboard.widgets.get(operation.widgetId) ??
           problem(`widget ${operation.widgetId} is not on dashboard ${dashboard.id}`);
+        named(index, widget.title);
         fresh('widget', operation.widgetId, widget.revision, operation.revision);
         if (operation.card !== undefined) {
           const card = resolve(operation.card);
@@ -897,9 +921,11 @@ export async function draftSchemaPlan(
         const dashboard =
           (await loadDashboard(operation.dashboardId)) ?? problem(`dashboard ${operation.dashboardId} was not found`);
         await requireBase(dashboard.baseId, 'builder', 'change it');
-        if (!dashboard.widgets.delete(operation.widgetId)) {
+        const widget =
+          dashboard.widgets.get(operation.widgetId) ??
           problem(`widget ${operation.widgetId} is not on dashboard ${dashboard.id}`);
-        }
+        named(index, widget.title);
+        dashboard.widgets.delete(operation.widgetId);
         return;
       }
 
@@ -928,6 +954,7 @@ export async function draftSchemaPlan(
       case 'role.update': {
         const base = await requireBase(operation.baseId, 'owner', 'change who has access');
         const role = await requireRole(base, operation.roleId);
+        named(index, role.name);
         fresh('role', role.id, role.revision, operation.revision);
         if (operation.rules !== undefined) {
           const rules = await checkRules(base, resolve(operation.rules));
@@ -959,6 +986,7 @@ export async function draftSchemaPlan(
           const person =
             (await users()).find((user) => user.id === userId) ??
             problem(`user ${userId} is not an active internal user — look them up with tables_query directory.search`);
+          named(index, person.name);
           if (userId === base.ownerId) problem(`${person.name} owns this Base; the owner's access cannot change here`);
           const held = grants.users.get(userId);
           if (!held && operation.role === 'none') problem(`${person.name} has no grant on this Base`);
@@ -985,6 +1013,7 @@ export async function draftSchemaPlan(
         }
         if (!held && operation.role === 'none') problem(`group ${groupId} has no grant on this Base`);
         const name = visible?.name ?? held?.name ?? `#${groupId}`;
+        named(index, name);
         const before = held ? await levelOf(base.id, held.role, held.customRoleId) : { kind: 'none' as const };
         if (operation.role === 'none') grants.groups.delete(groupId);
         else grants.groups.set(groupId, { name, role: operation.role, customRoleId });
@@ -1029,7 +1058,7 @@ export async function draftSchemaPlan(
     if (problems.length > reported) for (const ref of declares) broken.add(ref);
   }
 
-  return problems.length > 0 ? { ok: false, problems } : { ok: true, accessChanges };
+  return problems.length > 0 ? { ok: false, problems } : { ok: true, accessChanges, targetNames };
 }
 
 /** The table a card reads, when it names one. */

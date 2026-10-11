@@ -106,7 +106,7 @@ function reader(world: World = {}): SchemaPlanReader {
           return input.dashboardId === 30
             ? ok({
                 dashboard: { id: 30, base_id: 1, name: 'Overview', revision: 2 },
-                widgets: [{ id: 31, type: 'kpi', revision: 1 }],
+                widgets: [{ id: 31, type: 'kpi', title: 'Deals won', revision: 1 }],
               })
             : notFound;
         default:
@@ -325,7 +325,24 @@ describe('draftSchemaPlan', () => {
           after: { kind: 'custom', roleName: 'Auditor' },
         },
       ],
+      targetNames: { 0: 'Alice' },
     });
+  });
+
+  it('names the existing object each change, archive, delete and grant targets (the card shows no bare ids)', async () => {
+    const draft = await draftSchemaPlan(
+      [
+        { op: 'field.archive', tableId: 10, fieldId: 103 },
+        { op: 'widget.delete', dashboardId: 30, widgetId: 31 },
+        { op: 'member.set', baseId: 1, principal: 'user', userId: EXAMPLE_USER_ID, role: 'viewer' },
+        { op: 'member.set', baseId: 1, principal: 'group', groupId: EXAMPLE_GROUP_ID, role: 'editor' },
+        { op: 'field.update', tableId: 10, fieldId: 101, name: 'Headline' },
+      ],
+      reader(),
+    );
+    expect(draft.ok).toBe(true);
+    if (!draft.ok) return;
+    expect(draft.targetNames).toEqual({ 0: 'Due', 1: 'Deals won', 2: 'Alice', 3: 'Sales', 4: 'Title' });
   });
 
   it('lets an update keep a rule’s webhook verbatim, but not change it', async () => {

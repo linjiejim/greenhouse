@@ -54,6 +54,7 @@ function render(
   locale: 'en' | 'zh',
   operations: SchemaPlanOperation[] = OPERATIONS,
   accessChanges?: SchemaPlanAccessChange[],
+  targetNames?: Record<number, string>,
 ) {
   return renderToStaticMarkup(
     createElement(I18nProvider, {
@@ -64,6 +65,7 @@ function render(
           summary: 'Add a follow-up Base',
           operations,
           ...(accessChanges ? { accessChanges } : {}),
+          ...(targetNames ? { targetNames } : {}),
         },
       }),
     }),
@@ -83,7 +85,9 @@ describe('SchemaPlanCard', () => {
     expect(html).toContain('Customer follow-up');
     expect(html).toContain('Add field');
     expect(html).toContain('Company');
-    expect(html).toContain('single_select');
+    // Types in words, never the stored code.
+    expect(html).toContain('Single select');
+    expect(html).not.toContain('single_select');
     expect(html).toContain('Archive field');
     expect(html).toContain('Nothing has been created yet');
     expect(html).toContain('Confirm');
@@ -117,8 +121,10 @@ describe('SchemaPlanCard', () => {
     ]) {
       expect(html).toContain(label);
     }
-    expect(html).toContain('kanban');
-    expect(html).toContain('record_updated');
+    expect(html).toContain('Kanban');
+    expect(html).toContain('A record is updated');
+    expect(html).toContain('KPI');
+    expect(html).not.toContain('record_updated');
 
     // The access section is server-derived, before → after, and sits above every operation and the Confirm button.
     const section = html.indexOf('Permission and outbound changes');
@@ -133,6 +139,22 @@ describe('SchemaPlanCard', () => {
     expect(html).toContain('Group Sales on CRM');
     expect(html).toContain('viewer');
     expect(html).toContain('custom role Sales rep');
+  });
+
+  it('names what a destructive or access operation targets, not just its id', () => {
+    const operations: SchemaPlanOperation[] = [
+      { op: 'field.archive', tableId: 4, fieldId: 9 },
+      { op: 'widget.delete', dashboardId: 3, widgetId: 17 },
+      { op: 'member.set', baseId: 1, principal: 'user', userId: '4f2c-user', role: 'editor' },
+    ];
+    const named = render('en', operations, undefined, { 0: 'Notes', 1: 'Won this month', 2: 'Mia' });
+    expect(named).toContain('Notes');
+    expect(named).toContain('Won this month');
+    expect(named).toContain('Mia');
+    expect(named).not.toContain('#17');
+    expect(named).not.toContain('4f2c-user');
+    // A plan drafted before the server named targets still renders the ids.
+    expect(render('en', operations)).toContain('#17');
   });
 
   it('shows no permission section when the plan changes nobody’s access', () => {
