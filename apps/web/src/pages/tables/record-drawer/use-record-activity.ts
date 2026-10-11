@@ -6,19 +6,32 @@
  * Requests that finish after a newer one started are dropped.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   listTableRecordActivity,
   type TableRecordActivityItem,
+  type TableRecordActivityPage,
   type TableRecordActivityViewer,
   type TableRecordCommentView,
 } from '../../../lib/api/tables';
 
 export type RecordActivityStatus = 'loading' | 'ready' | 'error';
 
+/** One page of a record's activity, newest first (`cursor` = older). Memoize it: a new loader reloads. */
+export type RecordActivityLoader = (cursor?: string) => Promise<TableRecordActivityPage>;
+
 const itemKey = (item: Pick<TableRecordActivityItem, 'kind' | 'id'>) => `${item.kind}:${item.id}`;
 
-export function useRecordActivity(tableId: number, recordId: number) {
+/** `loader`: where the pages come from — the Tables route by default, an app's gateway for app viewers. */
+export function useRecordActivity(tableId: number, recordId: number, loader?: RecordActivityLoader) {
+  const tablesLoader = useMemo<RecordActivityLoader>(
+    () => (cursor) =>
+      cursor === undefined
+        ? listTableRecordActivity(tableId, recordId)
+        : listTableRecordActivity(tableId, recordId, cursor),
+    [tableId, recordId],
+  );
+  const load = loader ?? tablesLoader;
   const [items, setItems] = useState<TableRecordActivityItem[]>([]);
   const [viewer, setViewer] = useState<TableRecordActivityViewer | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -29,7 +42,7 @@ export function useRecordActivity(tableId: number, recordId: number) {
   const refresh = useCallback(async () => {
     const run = ++generation.current;
     try {
-      const page = await listTableRecordActivity(tableId, recordId);
+      const page = await load();
       if (run !== generation.current) return;
       setItems(page.items);
       setViewer(page.viewer ?? null);
@@ -39,14 +52,14 @@ export function useRecordActivity(tableId: number, recordId: number) {
       // A failed background refresh keeps what is on screen; only a first load shows the error.
       if (run === generation.current) setStatus((current) => (current === 'ready' ? current : 'error'));
     }
-  }, [tableId, recordId]);
+  }, [load]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return;
     const run = generation.current;
     setLoadingMore(true);
     try {
-      const page = await listTableRecordActivity(tableId, recordId, nextCursor);
+      const page = await load(nextCursor);
       if (run !== generation.current) return;
       setItems((current) => {
         const seen = new Set(current.map(itemKey));
@@ -56,7 +69,7 @@ export function useRecordActivity(tableId: number, recordId: number) {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, nextCursor, recordId, tableId]);
+  }, [load, loadingMore, nextCursor]);
 
   useEffect(() => {
     setStatus('loading');

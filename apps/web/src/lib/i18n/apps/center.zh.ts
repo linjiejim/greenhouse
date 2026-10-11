@@ -1,6 +1,6 @@
 /**
- * Apps · the app center (`#/apps`): shelves, entry points, empty states.
- * Owned by slice C (center); spread into `apps` by ./zh.ts (keys resolve as `apps.center.*`).
+ * Apps · the app center (`#/apps`): shelves, entry points, empty states, the create dialogs.
+ * Owned by slice R; spread into `apps` by ./zh.ts (keys resolve as `apps.center.*`).
  */
 
 import type { DeepRecord } from '../types';
@@ -10,9 +10,7 @@ export const appsCenterZh: DeepRecord<typeof appsCenterEn> = {
   center: {
     loadFailed: '无法加载你的应用',
     newApp: '新建应用',
-    askBot: '让 Bot 搭一个',
     fromTemplate: '从模板新建',
-    entryUnavailable: '暂不可用——搭建应用将随应用构建器一起开放。',
     shelf: {
       managed: '我管理的',
       managedHint: '你拥有或参与搭建的 Base 上的应用，包含草稿',
@@ -23,6 +21,7 @@ export const appsCenterZh: DeepRecord<typeof appsCenterEn> = {
     },
     emptyTitle: '还没有应用',
     emptyDescription: '应用把一个 Base 变成为某件事准备的页面——申请表单、审批看板、报表——并分发给使用它的人。',
+    emptyViewerDescription: '分发给你、你所在群组或全员的应用会出现在这里。',
     version: 'v{version}',
     notPublished: '尚未发布',
     open: '打开 {name}',
@@ -31,5 +30,70 @@ export const appsCenterZh: DeepRecord<typeof appsCenterEn> = {
     pin: '把 {name} 置顶到侧栏',
     unpin: '取消置顶 {name}',
     pinFailed: '无法更新置顶的应用',
+    newDialog: {
+      title: '新建应用',
+      base: 'Base',
+      basePlaceholder: '选择一个你参与搭建的 Base',
+      newBase: '新建一个 Base…',
+      baseName: '新 Base 的名称',
+      basesFailed: '无法加载你的 Base——仍可新建一个。',
+      noBases: '你还没有参与搭建任何 Base，应用会带一个新的 Base。',
+      name: '应用名称',
+      description: '描述',
+      icon: '图标',
+      accent: '颜色',
+      publishNote: '应用从草稿开始。只有 Base 的所有者能发布它并决定谁可以使用。',
+      create: '创建并打开构建器',
+      creating: '正在创建…',
+      failed: '无法创建应用',
+    },
+    askBot: {
+      entry: '让 Bot 搭一个',
+      title: '让 Bot 搭一个应用',
+      hint: 'Chat 会带着你的需求打开。Bot 把表和页面写成方案，你确认后才会真正搭建。',
+      base: '在哪个 Base 上',
+      newBase: '新的 Base（由 Bot 提议）',
+      goal: '这个应用要做什么？',
+      goalPlaceholder: '例如：采购申请，由财务审批，并按月出报表',
+      open: '打开 Chat',
+      prompt: '在我的 Base「{base}」（Base #{id}）上搭一个应用，用于：{goal}',
+      promptNewBase: '新建一个 Base 并搭一个应用，用于：{goal}',
+    },
+    templates: {
+      title: '从模板新建',
+      note: '模板会新建一个归你所有的 Base（含模板的表）和其上的一个草稿应用——可以调整后再发布。',
+      use: '使用这个模板',
+      installing: '正在创建…',
+      failed: '无法安装模板',
+    },
+    icon: {
+      app: '应用',
+      inbox: '收件箱',
+      check: '对勾',
+      clipboard: '剪贴板',
+      cart: '购物车',
+      users: '人员',
+      briefcase: '公文包',
+      calendar: '日历',
+      chart: '图表',
+      table: '表格',
+      kanban: '看板',
+      ticket: '工单',
+      wrench: '扳手',
+      book: '书',
+      star: '星标',
+      flag: '旗帜',
+      home: '主页',
+      settings: '设置',
+    },
+    accent: {
+      brand: '绿色',
+      blue: '蓝色',
+      teal: '青色',
+      amber: '琥珀色',
+      rose: '玫红',
+      violet: '紫色',
+      slate: '石板灰',
+    },
   },
 };

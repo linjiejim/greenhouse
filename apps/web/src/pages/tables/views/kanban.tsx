@@ -53,6 +53,7 @@ export function KanbanViewBody({
   onCommitValue,
   onUpdateViewConfig,
   onConfigureView,
+  host,
 }: TableViewBodyProps) {
   const t = useT();
   /** Each card is named by its title element (screen readers hear the record, not "Record #12"). */
@@ -60,7 +61,14 @@ export function KanbanViewBody({
   const kanban = config.kanban;
   const laneField = laneFieldOf(schemaFields, kanban?.groupFieldId);
   const coverField = fieldById(schemaFields, kanban?.coverFieldId);
-  const counts = useGroupCounts(table.id, laneField ? { fieldId: laneField.id } : undefined, laneField, query, records);
+  const counts = useGroupCounts(
+    table.id,
+    laneField ? { fieldId: laneField.id } : undefined,
+    laneField,
+    query,
+    records,
+    host?.aggregate,
+  );
   /** Cards moved by a drag whose write is still in flight: record id → lane key. */
   const [moves, setMoves] = useState<ReadonlyMap<number, string>>(new Map());
 
@@ -199,7 +207,12 @@ export function KanbanViewBody({
                     } ${moves.has(record.id) ? 'animate-pulse' : ''}`}
                   >
                     {coverField && (
-                      <RecordCover value={recordFieldValue(record, coverField.id)} alt="" className="h-32" />
+                      <RecordCover
+                        value={recordFieldValue(record, coverField.id)}
+                        alt=""
+                        className="h-32"
+                        contentUrl={host?.fileUrl && ((fileId) => host.fileUrl!(fileId, record, coverField.id))}
+                      />
                     )}
                     <div className="space-y-2 p-3">
                       <p id={`${cardIdPrefix}-${record.id}`} className="truncate text-sm font-medium text-fg">
@@ -211,6 +224,7 @@ export function KanbanViewBody({
                         systemFields={systemFields}
                         usersById={usersById}
                       />
+                      {host?.cardFooter?.(record)}
                     </div>
                   </Card>
                 ))}

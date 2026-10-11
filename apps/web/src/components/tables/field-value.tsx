@@ -3,7 +3,7 @@
  * drawer, the recycle bin and any other surface showing a record's field.
  */
 
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import type { TableFieldConfig } from '@greenhouse/types/tables';
 import { TagList } from '../ui';
 import type { TableField, TableRecord } from '../../lib/api/tables';
@@ -12,6 +12,33 @@ import { formatDate, formatDay } from '../../lib/utils';
 import { fieldConfig } from './field-types';
 
 export type TableUsersById = ReadonlyMap<string, { nickname: string }>;
+
+/**
+ * Labels a host already holds for values that are only ids — relation targets
+ * and attachments. An app's gateway resolves them (its viewers cannot call
+ * `/api/tables`), so app cards wrap what they draw in `FieldValueRefsProvider`;
+ * Tables provides none and shows the ids, as before.
+ */
+export interface FieldValueRefs {
+  /** `<targetTableId>:<recordId>` → the target's label; `null` = outside the reader's scope. */
+  records?: Readonly<Record<string, string | null>>;
+  /** File id → its name. */
+  files?: Readonly<Record<string, { name: string }>>;
+  /** Shown for a relation target the reader may not see. */
+  restrictedLabel: string;
+}
+
+const FieldValueRefsContext = createContext<FieldValueRefs | null>(null);
+export const FieldValueRefsProvider = FieldValueRefsContext.Provider;
+
+function relationLabels(value: unknown, targetTableId: number | undefined, refs: FieldValueRefs): string[] | null {
+  if (!refs.records || targetTableId === undefined) return null;
+  const ids = (Array.isArray(value) ? value : [value]).map(Number).filter((id) => Number.isInteger(id) && id > 0);
+  return ids.map((id) => {
+    const label = refs.records![`${targetTableId}:${id}`];
+    return label === null ? refs.restrictedLabel : label?.trim() || `#${id}`;
+  });
+}
 
 /** A record's value for one field: the computed value when the field is computed, else the stored one. */
 export function recordFieldValue(record: Pick<TableRecord, 'values' | 'computed_values'>, fieldId: number): unknown {
@@ -53,6 +80,7 @@ interface FieldValueProps {
 
 export function FieldValue({ field, value, usersById }: FieldValueProps): ReactNode {
   const { t, locale } = useI18n();
+  const refs = useContext(FieldValueRefsContext);
   if (isEmpty(value)) return <span className="text-fg-faint">—</span>;
   const yes = t('common.yes');
   const no = t('common.no');
@@ -76,7 +104,13 @@ export function FieldValue({ field, value, usersById }: FieldValueProps): ReactN
   if (type === 'multi_user' && Array.isArray(value)) {
     return <TagList items={value.map((entry) => usersById.get(String(entry))?.nickname ?? String(entry))} />;
   }
-  if (type === 'attachment' && Array.isArray(value)) return <TagList items={value.map(String)} max={2} />;
+  if (type === 'attachment' && Array.isArray(value)) {
+    return <TagList items={value.map((id) => refs?.files?.[String(id)]?.name ?? String(id))} max={2} />;
+  }
+  if (type === 'relation' && refs) {
+    const labels = relationLabels(value, config.relation?.targetTableId, refs);
+    if (labels) return <TagList items={labels} max={3} />;
+  }
   if (type === 'url' && typeof value === 'string') {
     return (
       <a href={value} target="_blank" rel="noreferrer" className="text-primary-fg hover:underline">

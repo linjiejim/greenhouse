@@ -18,13 +18,16 @@ import { authFetch } from '../../../lib/auth';
 const MAX_PROBED_FILES = 4;
 const CACHE_LIMIT = 80;
 
-/** file id → its bytes when it is an image, null when it is not (or failed). */
-const probes = new Map<number, Promise<Blob | null>>();
+/** content URL → its bytes when it is an image, null when it is not (or failed). */
+const probes = new Map<string, Promise<Blob | null>>();
 
-function probeImage(fileId: number): Promise<Blob | null> {
-  const cached = probes.get(fileId);
+/** The Tables route for a file's bytes; a host whose viewers read files elsewhere passes its own (an app). */
+const driveContentUrl = (fileId: number) => `/api/drive/files/${fileId}/content`;
+
+function probeImage(url: string): Promise<Blob | null> {
+  const cached = probes.get(url);
   if (cached) return cached;
-  const probe = authFetch(`/api/drive/files/${fileId}/content`)
+  const probe = authFetch(url)
     .then(async (response) => {
       const type = response.headers.get('content-type') ?? '';
       if (!response.ok || !isSafeAttachmentPreview('image', type)) {
@@ -34,7 +37,7 @@ function probeImage(fileId: number): Promise<Blob | null> {
       return response.blob();
     })
     .catch(() => null);
-  probes.set(fileId, probe);
+  probes.set(url, probe);
   if (probes.size > CACHE_LIMIT) {
     const oldest = probes.keys().next().value;
     if (oldest !== undefined) probes.delete(oldest);
@@ -53,8 +56,15 @@ export function attachmentIds(value: unknown): number[] {
 }
 
 /** blob: URL of the first image among `fileIds`; `done` once every candidate was looked at. */
-function useFirstImage(fileIds: readonly number[]): { url: string | null; done: boolean } {
-  const key = fileIds.slice(0, MAX_PROBED_FILES).join(',');
+function useFirstImage(
+  fileIds: readonly number[],
+  contentUrl: (fileId: number) => string,
+): { url: string | null; done: boolean } {
+  // Keyed by the URLs, not the ids: the same file read through another route is another answer.
+  const key = fileIds
+    .slice(0, MAX_PROBED_FILES)
+    .map((id) => contentUrl(id))
+    .join('\n');
   const [state, setState] = useState<{ key: string; url: string | null; done: boolean }>({
     key: '',
     url: null,
@@ -66,8 +76,8 @@ function useFirstImage(fileIds: readonly number[]): { url: string | null; done: 
     let alive = true;
     let objectUrl: string | null = null;
     void (async () => {
-      for (const id of key.split(',').map(Number)) {
-        const blob = await probeImage(id);
+      for (const url of key.split('\n')) {
+        const blob = await probeImage(url);
         if (!alive) return;
         if (blob) {
           objectUrl = URL.createObjectURL(blob);
@@ -95,10 +105,19 @@ interface RecordCoverProps {
   /** Keep the slot (a placeholder) when there is no image — galleries line up; kanban cards collapse. */
   placeholder?: boolean;
   className?: string;
+  /** Where a file's bytes are read (`TableViewHost.fileUrl` bound to the record and field). Default: Drive. */
+  contentUrl?: (fileId: number) => string;
 }
 
-export function RecordCover({ value, alt, fit = 'cover', placeholder = false, className = '' }: RecordCoverProps) {
-  const { url, done } = useFirstImage(attachmentIds(value));
+export function RecordCover({
+  value,
+  alt,
+  fit = 'cover',
+  placeholder = false,
+  className = '',
+  contentUrl = driveContentUrl,
+}: RecordCoverProps) {
+  const { url, done } = useFirstImage(attachmentIds(value), contentUrl);
   if (url) {
     return (
       <img

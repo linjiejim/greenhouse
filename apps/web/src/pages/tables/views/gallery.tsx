@@ -22,6 +22,7 @@ export function GalleryViewBody({
   loading,
   usersById,
   onOpenRecord,
+  host,
 }: TableViewBodyProps) {
   const t = useT();
   /** Each card is named by its title element (screen readers hear the record, not "Record #12"). */
@@ -63,6 +64,7 @@ export function GalleryViewBody({
               fit={config.gallery?.fit}
               placeholder
               className="aspect-[4/3]"
+              contentUrl={host?.fileUrl && ((fileId) => host.fileUrl!(fileId, record, coverField.id))}
             />
           )}
           <div className="space-y-2 p-3">
@@ -70,6 +72,7 @@ export function GalleryViewBody({
               <RecordTitle record={record} primary={primary} usersById={usersById} />
             </p>
             <RecordCardFields record={record} fields={shownFields} systemFields={systemFields} usersById={usersById} />
+            {host?.cardFooter?.(record)}
           </div>
         </Card>
       ))}

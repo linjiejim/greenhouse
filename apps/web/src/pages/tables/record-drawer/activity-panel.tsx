@@ -17,22 +17,45 @@ import {
   createTableRecordComment,
   deleteTableRecordComment,
   updateTableRecordComment,
+  type TableRecordActivityViewer,
   type TableRecordCommentView,
 } from '../../../lib/api/tables';
 import { useTablesRecordsChanged } from '../../../hooks/use-tables-records-changed';
 import { CommentItem, EventItem } from './activity-items';
 import { CommentComposer } from './comment-composer';
 import type { RecordDrawerSlotProps } from './slots';
-import { useRecordActivity } from './use-record-activity';
+import { useRecordActivity, type RecordActivityLoader } from './use-record-activity';
 
 function errorText(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-export function RecordActivityPanel({ table, record, fields, users, usersById }: RecordDrawerSlotProps) {
+/**
+ * Where a record's activity lives for a host other than Tables — an app's
+ * gateway (Phase 1 slice R), whose viewers cannot call `/api/tables`. Memoize
+ * it: a new source reloads the feed.
+ */
+export interface RecordActivitySource {
+  load: RecordActivityLoader;
+  create: (markdown: string) => Promise<TableRecordCommentView>;
+  update: (commentId: number, markdown: string) => Promise<TableRecordCommentView>;
+  remove: (commentId: number) => Promise<void>;
+  /** What the viewer may do when a page does not say (`viewer` on the page wins). */
+  viewer?: TableRecordActivityViewer;
+}
+
+export function RecordActivityPanel({
+  table,
+  record,
+  fields,
+  users,
+  usersById,
+  source,
+}: RecordDrawerSlotProps & { source?: RecordActivitySource }) {
   const t = useT();
-  const activity = useRecordActivity(table.id, record.id);
-  const { refresh, added, replaced, removed, viewer } = activity;
+  const activity = useRecordActivity(table.id, record.id, source?.load);
+  const { refresh, added, replaced, removed } = activity;
+  const viewer = activity.viewer ?? source?.viewer ?? null;
   const [editingId, setEditingId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<TableRecordCommentView | null>(null);
   const fieldsById = useMemo(() => new Map(fields.map((field) => [field.id, field])), [fields]);
@@ -50,20 +73,20 @@ export function RecordActivityPanel({ table, record, fields, users, usersById }:
   const post = useCallback(
     async (markdown: string) => {
       try {
-        added(await createTableRecordComment(table.id, record.id, markdown));
+        added(await (source ? source.create(markdown) : createTableRecordComment(table.id, record.id, markdown)));
         return true;
       } catch (error) {
         toast(errorText(error, t('tables.activity.postFailed')), 'error');
         return false;
       }
     },
-    [added, record.id, t, table.id],
+    [added, record.id, source, t, table.id],
   );
 
   const save = useCallback(
     async (commentId: number, markdown: string) => {
       try {
-        replaced(await updateTableRecordComment(commentId, markdown));
+        replaced(await (source ? source.update(commentId, markdown) : updateTableRecordComment(commentId, markdown)));
         setEditingId(null);
         return true;
       } catch (error) {
@@ -71,21 +94,21 @@ export function RecordActivityPanel({ table, record, fields, users, usersById }:
         return false;
       }
     },
-    [replaced, t],
+    [replaced, source, t],
   );
 
   const remove = useCallback(
     async (comment: TableRecordCommentView) => {
       setConfirmDelete(null);
       try {
-        await deleteTableRecordComment(comment.id);
+        await (source ? source.remove(comment.id) : deleteTableRecordComment(comment.id));
         removed(comment.id);
         toast(t('tables.activity.commentDeleted'), 'success');
       } catch (error) {
         toast(errorText(error, t('tables.activity.deleteFailed')), 'error');
       }
     },
-    [removed, t],
+    [removed, source, t],
   );
 
   return (

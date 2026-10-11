@@ -10,23 +10,23 @@ import { parseAppRoute } from '../../lib/app-routes';
 import { useT } from '../../lib/i18n';
 import { LayoutGrid } from '../../lib/icons';
 import { AppBuilderPage } from './app-builder';
-import { AppCenterPage } from './app-center';
-import { AppRuntimePage } from './app-runtime';
+import { AppCenterPage } from './center/app-center';
+import { AppRuntimePage } from './runtime/app-runtime';
 
 interface AppsPageProps {
   subPath?: string;
-  /** The route's query; `record=<id>` will open that record in the runtime (slice R). */
+  /** The route's query: the runtime reads `record=<id>` (open that record) and `previewRole=<key>`. */
   params?: URLSearchParams;
 }
 
-export function AppsPage({ subPath = '' }: AppsPageProps) {
+export function AppsPage({ subPath = '', params }: AppsPageProps) {
   const t = useT();
   const route = parseAppRoute(subPath);
   switch (route.kind) {
     case 'center':
       return <AppCenterPage />;
     case 'runtime':
-      return <AppRuntimePage key={route.appId} appId={route.appId} pageId={route.pageId} />;
+      return <AppRuntimePage key={route.appId} appId={route.appId} pageId={route.pageId} params={params} />;
     case 'builder':
       return <AppBuilderPage key={route.appId} appId={route.appId} />;
     case 'invalid':
