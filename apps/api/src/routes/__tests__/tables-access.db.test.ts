@@ -629,6 +629,13 @@ describe('acceptance 2 — the 销售 custom role', { timeout: 30_000 }, () => {
     expect((await send(sales, `/api/drive/files/${own}/content`)).status).toBe(200);
     // Attached now: the uploader may no longer delete it; the owner (builder+) may.
     expect((await send(sales, `/api/drive/files/${own}`, 'DELETE')).status).toBe(403);
+    // A finished upload's bytes are never replaced — not even by its uploader.
+    const overwrite = await app.request(`/api/drive/files/${own}/content`, {
+      method: 'PUT',
+      headers: { 'x-test-user': sales.id },
+      body: 'other bytes',
+    });
+    expect(overwrite.status).toBe(403);
     // The owner still reads every file of the Base.
     expect((await send(owner, `/api/drive/files/${w.ownerFile}/content`)).status).toBe(200);
 

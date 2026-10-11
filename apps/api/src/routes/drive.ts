@@ -145,8 +145,10 @@ async function accessFor(c: Context<AppEnv>, node: DriveAccessNode, operation: '
 
 /**
  * One Tables file, per operation (spec §1 Drive matrix, D15):
- * - `upload`: built-in editor+, or a custom role that can create / edit some
- *   attachment field (finishing an upload: only its uploader);
+ * - `upload` (finishing one — complete / PUT content): built-in editor+, or a
+ *   custom role that can create / edit some attachment field and uploaded this
+ *   file; only while it is still pending, so bytes already attached somewhere
+ *   are never replaced;
  * - `read`: built-in viewer+ (the cabinet), or — for a custom role — the file
  *   sits in a readable attachment field of a record in its row scope
  *   (`canReadTablesFile`), or it is the caller's own upload not attached yet;
@@ -154,10 +156,11 @@ async function accessFor(c: Context<AppEnv>, node: DriveAccessNode, operation: '
  */
 async function tablesFileAllowed(
   c: Context<AppEnv>,
-  file: { id: number; base_id: number | null; uploaded_by: string | null },
+  file: Pick<DriveFileRow, 'id' | 'base_id' | 'uploaded_by' | 'status'>,
   operation: 'upload' | 'read' | 'delete',
 ): Promise<boolean> {
   if (!file.base_id) return false;
+  if (operation === 'upload' && file.status !== 'pending') return false;
   const user = getAuthUser(c);
   const access = await tablesStanding(c, file.base_id, operation === 'read' ? 'read' : 'write');
   if (!access) return false;
