@@ -51,7 +51,14 @@ import { CreateViewDialog, type CreateViewInput } from './views/create-view-dial
 import { FieldsPanel } from './views/fields-panel';
 import { ViewSettingsDialog } from './views/view-settings-dialog';
 import { ViewSwitcher } from './views/view-switcher';
-import { combinedFilters, foldSavedFilters, monthOf, viewQueryShape, weekStartFor } from './views/view-query';
+import {
+  combinedFilters,
+  foldSavedFilters,
+  monthOf,
+  viewerTimeZone,
+  viewQueryShape,
+  weekStartFor,
+} from './views/view-query';
 import { orderedViewFields } from './view-fields';
 import { DEFAULT_RECORD_SORT, useRecordQuery } from './use-record-query';
 import { tableCapabilities } from './capabilities';
@@ -294,6 +301,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
         records,
         fields: visibleFields,
         users,
+        timeZone: viewerTimeZone(),
       });
       if (items.length === 0 || items.length > 100) throw new Error(t('tables.pasteRowLimit'));
       const validation = await validateTableRecordBatch(table.id, items);

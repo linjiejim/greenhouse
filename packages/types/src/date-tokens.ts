@@ -45,6 +45,28 @@ function localDay(instant: Date, timeZone: string): Date {
   return new Date(Date.UTC(year, month, day));
 }
 
+/**
+ * Milliseconds `timeZone` is ahead of UTC at `instant` (the zone must be valid).
+ * The one copy: the Tables query compiler turns local days into instants with
+ * it, and cell text (`table-cell-text.ts`) reads wall-clock times through it.
+ */
+export function zoneOffsetMs(instant: number, timeZone: string): number {
+  if (timeZone === 'UTC') return 0;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(instant));
+  const pick = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  const asUtc = Date.UTC(pick('year'), pick('month') - 1, pick('day'), pick('hour'), pick('minute'), pick('second'));
+  return asUtc - Math.floor(instant / 1000) * 1000;
+}
+
 function toIsoDay(date: Date): string {
   return date.toISOString().slice(0, 10);
 }

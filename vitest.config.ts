@@ -35,6 +35,7 @@ export default defineConfig({
       '@greenhouse/types/table-access': resolve(__dirname, 'packages/types/src/table-access.ts'),
       '@greenhouse/types/table-cards': resolve(__dirname, 'packages/types/src/table-cards.ts'),
       '@greenhouse/types/table-formula': resolve(__dirname, 'packages/types/src/table-formula.ts'),
+      '@greenhouse/types/table-cell-text': resolve(__dirname, 'packages/types/src/table-cell-text.ts'),
       '@greenhouse/types/date-tokens': resolve(__dirname, 'packages/types/src/date-tokens.ts'),
       '@greenhouse/types/apps': resolve(__dirname, 'packages/types/src/apps.ts'),
       '@greenhouse/types/tables': resolve(__dirname, 'packages/types/src/tables.ts'),

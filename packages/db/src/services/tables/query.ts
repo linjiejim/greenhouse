@@ -19,7 +19,7 @@
 
 import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
-import { expandDateToken, isDateToken, ME_TOKEN } from '@greenhouse/types/date-tokens';
+import { expandDateToken, isDateToken, ME_TOKEN, zoneOffsetMs } from '@greenhouse/types/date-tokens';
 import { TABLE_FILTER_OPERATORS, TABLE_SYSTEM_FIELDS } from '@greenhouse/types/tables';
 import type {
   TableFieldType,
@@ -75,24 +75,6 @@ export function isValidTimeZone(zone: string): boolean {
 export function resolveTableEvaluation(input?: TableQueryEvaluation): ResolvedTableEvaluation {
   const zone = typeof input?.timeZone === 'string' && isValidTimeZone(input.timeZone) ? input.timeZone : 'UTC';
   return { now: input?.now instanceof Date ? input.now : new Date(), timeZone: zone };
-}
-
-/** Milliseconds `timeZone` is ahead of UTC at `instant`. */
-export function zoneOffsetMs(instant: number, timeZone: string): number {
-  if (timeZone === 'UTC') return 0;
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).formatToParts(new Date(instant));
-  const pick = (type: string) => Number(parts.find((part) => part.type === type)?.value);
-  const asUtc = Date.UTC(pick('year'), pick('month') - 1, pick('day'), pick('hour'), pick('minute'), pick('second'));
-  return asUtc - Math.floor(instant / 1000) * 1000;
 }
 
 /** The instant the calendar day `day` (YYYY-MM-DD) starts in `timeZone`. */

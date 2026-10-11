@@ -10,10 +10,8 @@
  */
 
 import {
-  buildImportUserDirectory,
   coerceImportValue,
   inferImportColumnType,
-  inferImportDateOrder,
   matchImportHeader,
   missingSelectLabels,
   parseTableFieldConfig,
@@ -28,6 +26,7 @@ import {
 } from '@greenhouse/db';
 import type { PlatformActionRequest } from '@greenhouse/platform-kernel';
 import type { TableAccessScope } from '@greenhouse/types/table-access';
+import { buildTableCellUserDirectory, inferCellDateOrder, splitCellList } from '@greenhouse/types/table-cell-text';
 import {
   isComputedFieldType,
   TABLE_IMPORT_CREATABLE_FIELD_TYPES,
@@ -216,7 +215,7 @@ function relationLabelsWanted(field: ImportField, rows: readonly string[][], col
     const text = (row[column] ?? '').trim();
     if (!text) continue;
     labels.add(text);
-    if (multiple) for (const part of text.split(/\s*[,;，；、\n]\s*/)) if (part.trim()) labels.add(part.trim());
+    if (multiple) for (const part of splitCellList(text)) labels.add(part);
   }
   return [...labels];
 }
@@ -236,7 +235,7 @@ export async function loadColumnContexts(input: {
   const { db } = input.context;
   const needsUsers = input.columns.some(({ field }) => field.type === 'user' || field.type === 'multi_user');
   const users = needsUsers
-    ? buildImportUserDirectory(
+    ? buildTableCellUserDirectory(
         (await db.users.list())
           .filter((user) => user.status === 'active' && (user.role === 'team' || user.role === 'super'))
           .map((user) => ({ id: user.id, email: user.email, nickname: user.nickname })),
@@ -248,7 +247,7 @@ export async function loadColumnContexts(input: {
       timeZone: input.timeZone,
       users,
       ...(field.type === 'date' || field.type === 'datetime'
-        ? { dateOrder: inferImportDateOrder(columnValues(input.rows, column)) }
+        ? { dateOrder: inferCellDateOrder(columnValues(input.rows, column)) }
         : {}),
     };
     const targetTableId = field.type === 'relation' ? field.config.relation?.targetTableId : undefined;

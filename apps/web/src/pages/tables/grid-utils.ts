@@ -1,4 +1,12 @@
-import { isComputedFieldType, type TableFieldConfig, type TableRecordValues } from '@greenhouse/types/tables';
+import {
+  buildTableCellUserDirectory,
+  coerceTableCellText,
+  inferCellDateOrder,
+  splitCellList,
+  type TableCellDateOrder,
+  type TableCellTextContext,
+} from '@greenhouse/types/table-cell-text';
+import type { TableFieldConfig, TableRecordValues } from '@greenhouse/types/tables';
 import type { TableBatchRecordItem, TableField, TableRecord, TableUserOption } from '../../lib/api/tables';
 import { safeParse } from '../../lib/utils';
 
@@ -9,68 +17,25 @@ export function parseClipboardMatrix(text: string): string[][] {
   return rows.map((row) => row.split('\t'));
 }
 
-function splitList(raw: string): string[] {
-  return raw
-    .split(/[,;\n]/)
-    .map((value) => value.trim())
-    .filter(Boolean);
-}
-
-function findUser(raw: string, users: TableUserOption[]): string {
-  const needle = raw.trim().toLocaleLowerCase();
-  const user = users.find(
-    (candidate) =>
-      candidate.id.toLocaleLowerCase() === needle ||
-      candidate.email.toLocaleLowerCase() === needle ||
-      candidate.nickname.toLocaleLowerCase() === needle,
-  );
-  if (!user) throw new Error(`Unknown user "${raw}"`);
-  return user.id;
-}
-
-function findOption(raw: string, config: TableFieldConfig): string {
-  const needle = raw.trim().toLocaleLowerCase();
-  const option = (config.options ?? []).find(
-    (candidate) => candidate.id.toLocaleLowerCase() === needle || candidate.label.toLocaleLowerCase() === needle,
-  );
-  if (!option) throw new Error(`Unknown option "${raw}"`);
-  return option.id;
-}
-
-export function parsePastedCell(field: TableField, raw: string, users: TableUserOption[]): unknown {
-  const value = raw.trim();
-  if (!value) return null;
+/**
+ * One pasted cell → the value to write; throws the reason it cannot be read.
+ * Everything but linked records reads the way an import does (one coercer,
+ * `@greenhouse/types/table-cell-text`); a link cell takes record ids (`12`,
+ * `#12`, `12, 13`), the only text the grid can tell apart without a lookup.
+ * An empty cell clears the field.
+ */
+export function parsePastedCell(field: TableField, raw: string, ctx: TableCellTextContext): unknown {
+  if (!raw.trim()) return null;
   const config = safeParse<TableFieldConfig>(field.config, {});
-
-  if (field.type === 'number') {
-    const number = Number(value.replace(/,/g, ''));
-    if (!Number.isFinite(number)) throw new Error(`"${raw}" is not a number`);
-    return number;
-  }
-  if (field.type === 'boolean') {
-    if (/^(true|yes|y|1|是|对)$/i.test(value)) return true;
-    if (/^(false|no|n|0|否|错)$/i.test(value)) return false;
-    throw new Error(`"${raw}" is not a checkbox value`);
-  }
-  if (field.type === 'datetime') {
-    const date = new Date(value);
-    if (Number.isNaN(date.valueOf())) throw new Error(`"${raw}" is not a date and time`);
-    return date.toISOString();
-  }
-  if (field.type === 'single_select') return findOption(value, config);
-  if (field.type === 'multi_select') return splitList(value).map((entry) => findOption(entry, config));
-  if (field.type === 'user') return findUser(value, users);
-  if (field.type === 'multi_user') return splitList(value).map((entry) => findUser(entry, users));
-  if (field.type === 'attachment') return splitList(value);
   if (field.type === 'relation') {
-    const ids = splitList(value).map((entry) => Number(entry.replace(/^#/, '')));
-    if (ids.some((id) => !Number.isInteger(id) || id <= 0)) throw new Error(`"${raw}" is not a record id`);
+    const ids = splitCellList(raw).map((entry) => Number(entry.replace(/^#/, '')));
+    if (ids.some((id) => !Number.isInteger(id) || id <= 0))
+      throw new Error(`${field.name}: "${raw.trim()}" is not a record id`);
     return config.relation?.multiple ? ids : ids[0];
   }
-  if (isComputedFieldType(field.type)) {
-    throw new Error(`"${field.name}" is computed and cannot be pasted`);
-  }
-  return value;
+  const result = coerceTableCellText({ name: field.name, type: field.type, config }, raw, ctx);
+  if (!result.ok) throw new Error(result.error);
+  return result.value ?? null;
 }
 
 export function buildPasteBatch(input: {
@@ -80,13 +45,30 @@ export function buildPasteBatch(input: {
   records: TableRecord[];
   fields: TableField[];
   users: TableUserOption[];
+  /** IANA zone for datetimes pasted without an offset (the viewer's). */
+  timeZone: string;
 }): TableBatchRecordItem[] {
+  const users = buildTableCellUserDirectory(input.users);
+  // `03/04/2024` is read day-first only when the pasted column has a `25/12/2024`.
+  const dateOrders = new Map<number, TableCellDateOrder>();
+  const dateOrder = (columnOffset: number) => {
+    let order = dateOrders.get(columnOffset);
+    if (!order) {
+      order = inferCellDateOrder(input.matrix.map((row) => row[columnOffset] ?? ''));
+      dateOrders.set(columnOffset, order);
+    }
+    return order;
+  };
   return input.matrix.map((row, rowOffset) => {
     const values: TableRecordValues = {};
     row.forEach((raw, columnOffset) => {
       const field = input.fields[input.startColumn + columnOffset];
       if (!field) return;
-      values[String(field.id)] = parsePastedCell(field, raw, input.users);
+      values[String(field.id)] = parsePastedCell(field, raw, {
+        timeZone: input.timeZone,
+        users,
+        dateOrder: dateOrder(columnOffset),
+      });
     });
     const record = input.records[input.startRow + rowOffset];
     return record

@@ -23,7 +23,7 @@
  *   automation-queue.ts  outbox leases / checkpoints, run rows, sweep queries (the API runs rules)
  *   dashboards.ts   dashboards and widgets
  *   imports.ts      CSV / Excel import lifecycle (stage, claim, chunked commit, sweep)
- *   import-values.ts  cell text → field value, column inference (pure)
+ *   import-values.ts  import cells → values (links by primary text; the rest is @greenhouse/types/table-cell-text), column inference (pure)
  *   resources.ts    resource → owning Base (the Base audit feed's reverse lookup)
  *   schema-source.ts  what config validators read about the schema (live, or a plan's virtual draft)
  */
@@ -151,18 +151,12 @@ export {
   type TableImportPlanColumn,
 } from './imports.js';
 export {
-  buildImportUserDirectory,
   coerceImportValue,
   inferImportColumnType,
-  inferImportDateOrder,
   matchImportHeader,
   missingSelectLabels,
   withImportedOptions,
-  type ImportCellResult,
-  type ImportDateOrder,
-  type ImportDirectoryUser,
   type ImportField,
-  type ImportUserDirectory,
   type ImportValueContext,
 } from './import-values.js';
 export {

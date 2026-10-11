@@ -128,6 +128,10 @@
       "import": "./src/table-formula.ts",
       "types": "./src/table-formula.ts"
     },
+    "./table-cell-text": {
+      "import": "./src/table-cell-text.ts",
+      "types": "./src/table-cell-text.ts"
+    },
     "./date-tokens": {
       "import": "./src/date-tokens.ts",
       "types": "./src/date-tokens.ts"
