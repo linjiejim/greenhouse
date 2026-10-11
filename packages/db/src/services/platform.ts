@@ -834,6 +834,8 @@ export function createPlatformService(db: Db) {
           module_id: event.resource.moduleId ?? null,
           entity_id: event.resource.entityId ?? null,
           record_id: event.resource.recordId ?? null,
+          scope_type: event.resource.scopeType && event.resource.scopeId ? event.resource.scopeType : null,
+          scope_id: event.resource.scopeType && event.resource.scopeId ? event.resource.scopeId : null,
           action_id: event.actionId,
           capability: event.capability,
           result: event.result,
@@ -851,6 +853,37 @@ export function createPlatformService(db: Db) {
         .where(eq(platformAuditEvents.org_id, orgId))
         .orderBy(desc(platformAuditEvents.created_at))
         .limit(Math.min(Math.max(limit, 1), 500));
+    },
+
+    /**
+     * The newest events an app filed under one container (`resource.scopeType`
+     * / `scopeId`), optionally only these actions — one read on
+     * `idx_platform_audit_scope_created`, so a busy container's reads cannot
+     * push its writes out of a "newest N" window.
+     */
+    async listAuditEventsByScope(input: {
+      orgId: string;
+      appId: string;
+      scopeType: string;
+      scopeId: string;
+      actionIds?: readonly string[];
+      limit?: number;
+    }): Promise<PlatformAuditEventRow[]> {
+      if (input.actionIds && input.actionIds.length === 0) return [];
+      return db
+        .select()
+        .from(platformAuditEvents)
+        .where(
+          and(
+            eq(platformAuditEvents.org_id, input.orgId),
+            eq(platformAuditEvents.app_id, input.appId),
+            eq(platformAuditEvents.scope_type, input.scopeType),
+            eq(platformAuditEvents.scope_id, input.scopeId),
+            input.actionIds ? inArray(platformAuditEvents.action_id, [...input.actionIds]) : undefined,
+          ),
+        )
+        .orderBy(desc(platformAuditEvents.created_at))
+        .limit(Math.min(Math.max(input.limit ?? 100, 1), 500));
     },
 
     async listAuditEventsForApp(orgId: string, appId: string, limit = 100): Promise<PlatformAuditEventRow[]> {

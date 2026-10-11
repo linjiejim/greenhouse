@@ -1,6 +1,7 @@
 /**
- * Which Base owns a Tables resource — the reverse lookup the Base audit feed
- * needs to place an audited action (`resource.recordId`) back in its Base.
+ * Which Base owns a Tables resource — resolved for every audited Tables action
+ * before its handler runs and stamped on the audit event as its scope
+ * (`scope_type = 'base'`), so the Base audit feed is one indexed read.
  *
  * Ownership only: archived Bases / tables and deleted records still resolve
  * (the audit outlives them). Never returns anything to a client.
@@ -9,6 +10,7 @@
 import { eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../client.js';
 import {
+  tableApps,
   tableAutomationRules,
   tableBaseRoles,
   tableDashboards,
@@ -34,6 +36,7 @@ export const TABLES_RESOURCE_KINDS = [
   'widget',
   'role',
   'comment',
+  'app',
 ] as const;
 export type TablesResourceKind = (typeof TABLES_RESOURCE_KINDS)[number];
 
@@ -127,6 +130,13 @@ export function createTablesResources(db: Db) {
             .select({ id: tableBaseRoles.id, baseId: tableBaseRoles.base_id })
             .from(tableBaseRoles)
             .where(inArray(tableBaseRoles.id, unique));
+          return new Map(rows.map((row) => [row.id, row.baseId]));
+        }
+        case 'app': {
+          const rows = await db
+            .select({ id: tableApps.id, baseId: tableApps.base_id })
+            .from(tableApps)
+            .where(inArray(tableApps.id, unique));
           return new Map(rows.map((row) => [row.id, row.baseId]));
         }
       }

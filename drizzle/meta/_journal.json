@@ -176,6 +176,13 @@
       "when": 1791685913968,
       "tag": "0024_tables_automation_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791706311072,
+      "tag": "0025_tables_apps",
+      "breakpoints": true
     }
   ]
 }

@@ -191,6 +191,10 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_dashboards` | PK `id`；UK `(base_id, name)` | Base 自定义仪表盘；`config JSONB`（`{version, filters: TableFilterControl[]}`）；revision 乐观并发 |
 | `table_dashboard_widgets` | PK `id` | 仪表盘组件；`config` 是 JSON 文本 `{version: 2, card: TableCardSpec}`（统一卡片规格，与阶段 1 应用卡片共用；旧的扁平配置读写时经 `legacyWidgetToCard` 映射），`type`（kpi/bar/line/pie/area/pivot/records/text）与 `table_id` 始终跟随 card；布局是 JSON 文本；revision 乐观并发 |
 | `table_imports` | PK `id`（text） | CSV / Excel 导入暂存：表头与解析后的行（≤10,000×100，JSONB，无 NUL）、`status`（previewed/committing/committed/failed）、`committed_rows` 续传游标（按块 CAS）、`lease_expires_at` 租约、`result`（运行中的结果 + 认领时存下的计划 `plan` / 失败原因 `error`）；最后一次活动后 1 小时过期，由 upkeep 清理，完成后清空 `rows` |
+| `table_apps` | PK `id`；IDX `base_id` / `owner_id`；部分 IDX `id WHERE featured` | 应用（阶段 1）：属于一个 Base；`name`（≤60）/ `description` / `icon` / `accent`（固定名单）/ `owner_id`（负责人，逻辑）；`status`（draft/published/archived）；草稿 `draft_spec`（`AppSpec` 的 JSON 文本）+ `draft_revision`（CAS）；`published_version`（当前生效版本号，首次发布前为空）；`audiences_revision`（受众整体替换的 CAS）；`featured`（super 推荐）；`archived_at` |
+| `table_app_versions` | PK `id`；UK `(app_id, version)` | 不可变的发布版本：`spec` 存**原样文本**（jsonb 会重排键，哈希会对不上，D7），`spec_hash` = sha256(spec)，读时校验；`draft_revision`（发布自哪个草稿修订）、`notes`、`published_by/at`；`custom_review`（阶段 2 自定义组件的审核记录，目前恒为空）。回滚 = 把旧版本复制回草稿再发布，版本号只增 |
+| `table_app_audiences` | PK `id`；部分 UK `(app_id, user_id) WHERE user` / `(app_id, group_id) WHERE group` / `(app_id) WHERE team`；部分 IDX `user_id WHERE user` / `group_id WHERE group` | 应用受众：人 / 群组 / 全员 → 规格里的一个角色 key（`role_key`）；CHECK 约束保证 `principal_type` 与 `user_id`/`group_id` 成对；「分发给我的」查询走两个部分索引（全员行走 team 的部分 UK）；群组只认 `group_members` 行 |
+| `table_app_pins` | 复合 PK `(user_id, app_id)`；IDX `app_id` | 每人置顶的应用与顺序（服务端存，D9），随应用级联删除 |
 
 ### 评测与工单智能化
 
@@ -222,7 +226,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `platform_user_entity_policy_overrides` | PK `id`；UK `(org_id, user_id, app_id, entity_id)` | 用户实体策略 allow/deny 覆盖 |
 | `platform_user_workbench_preferences` | 复合 PK `(org_id, user_id)` | 版本化工作台偏好 JSON；不承载授权 |
 | `platform_app_releases` | PK `id`；UK `(app_id, version)`；每 app 至多一条 active（部分 UK） | Manifest release、hash、状态、git commit 与激活时间 |
-| `platform_audit_events` | PK `id` | 平台 action 审计；多态 actor、请求链路、app/module/entity/record/action/capability、结果与脱敏摘要 |
+| `platform_audit_events` | PK `id`；IDX `(app_id, scope_type, scope_id, created_at)` | 平台 action 审计；多态 actor、请求链路、app/module/entity/record/action/capability、结果与脱敏摘要；可空 `scope_type` / `scope_id` = 资源所在的容器（Tables：`base` + Base id，应用动作的 `record_id` 是应用 id），Base 审计按它一次索引读取（0025 回填了存量写事件） |
 
 ### Platform OAuth 2.1
 
@@ -344,6 +348,9 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_record_events.record_id` / `table_record_comments.record_id` | `table_records.id` | CASCADE |
 | `table_automation_secrets.rule_id` | `table_automation_rules.id` | CASCADE |
 | `table_imports.table_id` | `table_tables.id` | CASCADE |
+| `table_apps.base_id` | `table_bases.id` | CASCADE |
+| `table_app_versions.app_id` / `table_app_audiences.app_id` / `table_app_pins.app_id` | `table_apps.id` | CASCADE |
+| `table_app_audiences.group_id` | `user_groups.id` | CASCADE |
 | `table_tables.base_id` | `table_bases.id` | CASCADE |
 | `table_schema_versions.table_id` | `table_tables.id` | CASCADE |
 | `table_fields.table_id` | `table_tables.id` | CASCADE |
@@ -434,6 +441,9 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_record_events.table_id` / `table_record_comments.table_id` | `table_tables.id` | 冗余的表 id（随记录级联删除，读侧按表过滤用） |
 | `table_record_events.actor_id` / `table_record_comments.author_id` / `table_form_submissions.user_id` / `table_imports.user_id` | `users.id` | 历史、评论、提交与导入的主体；审计独立于账号生命周期 |
 | `table_automation_runs.record_id` | `table_records.id` | 运行历史比记录活得久，故无 FK |
+| `table_apps.owner_id` / `created_by`、`table_app_versions.published_by`、`table_app_audiences.user_id` / `created_by`、`table_app_pins.user_id` | `users.id` | 应用负责人、发布人、受众与置顶的主体（跨域松散关联） |
+| `table_app_audiences.role_key` | `table_app_versions.spec` 里的 `roles[].key` | 受众指向规格里的角色；新版本删了该角色 → 这条受众不再授予任何东西 |
+| `platform_audit_events.scope_id`（`scope_type='base'`） | `table_bases.id` | Tables 动作所在的 Base；审计独立于 Base 生命周期 |
 | `eval_datasets.source_session_id` / `eval_results.session_id` | `sessions.id` | 题目来源与评测会话 |
 | `chat_eval_results.message_id` / `session_id` | `messages.id` / `sessions.id` | 在线质量评测目标 |
 | `api_audit_log.app_id` / `user_id` | `api_clients.app_id` / `users.id` | 审计独立于主体生命周期，允许保留已删除客户端/用户的历史 |
@@ -561,6 +571,11 @@ erDiagram
     table_bases ||--o{ table_dashboards : "FK CASCADE"
     table_dashboards ||--o{ table_dashboard_widgets : "FK CASCADE"
     table_tables ||--o{ table_dashboard_widgets : "FK CASCADE"
+    table_bases ||--o{ table_apps : "FK CASCADE"
+    table_apps ||--o{ table_app_versions : "FK CASCADE"
+    table_apps ||--o{ table_app_audiences : "FK CASCADE"
+    user_groups ||--o{ table_app_audiences : "FK CASCADE"
+    table_apps ||--o{ table_app_pins : "FK CASCADE"
     eval_runs ||--o{ eval_results : "FK CASCADE"
     eval_datasets ||--o{ eval_results : "FK NO ACTION"
     messages ||--o| chat_eval_results : "逻辑 message_id"
@@ -586,6 +601,7 @@ erDiagram
     users ||--o{ platform_user_workbench_preferences : "FK CASCADE"
     users ||--o{ platform_app_releases : "逻辑 created_by"
     platform_organizations ||--o{ platform_audit_events : "逻辑 org_id"
+    table_bases ||--o{ platform_audit_events : "逻辑 scope_id (scope_type=base)"
     users ||--o{ platform_oauth_grants : "FK CASCADE"
     platform_oauth_clients ||--o{ platform_oauth_grants : "FK CASCADE"
     platform_oauth_grants ||--o{ platform_oauth_authorization_codes : "FK CASCADE"

@@ -225,6 +225,13 @@ export const platformAuditEvents = pgTable(
     module_id: text('module_id'),
     entity_id: text('entity_id'),
     record_id: text('record_id'),
+    /**
+     * The container an app files the event under, when its resource has one
+     * (Tables: `base` + the Base id), so a per-container feed is one indexed
+     * read instead of a scan of the whole org's newest events.
+     */
+    scope_type: text('scope_type'),
+    scope_id: text('scope_id'),
     action_id: text('action_id').notNull(),
     capability: text('capability').notNull(),
     result: text('result', { enum: ['success', 'denied', 'error'] }).notNull(),
@@ -236,6 +243,7 @@ export const platformAuditEvents = pgTable(
     index('idx_platform_audit_actor_created').on(table.actor_id, table.created_at),
     index('idx_platform_audit_resource_created').on(table.app_id, table.entity_id, table.record_id, table.created_at),
     index('idx_platform_audit_request').on(table.request_id),
+    index('idx_platform_audit_scope_created').on(table.app_id, table.scope_type, table.scope_id, table.created_at),
   ],
 );
 

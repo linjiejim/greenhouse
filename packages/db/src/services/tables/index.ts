@@ -24,12 +24,14 @@
  *   dashboards.ts   dashboards and widgets
  *   imports.ts      CSV / Excel import lifecycle (stage, claim, chunked commit, sweep)
  *   import-values.ts  import cells → values (links by primary text; the rest is @greenhouse/types/table-cell-text), column inference (pure)
- *   resources.ts    resource → owning Base (the Base audit feed's reverse lookup)
+ *   resources.ts    resource → owning Base (stamped on each audited action as its scope)
+ *   apps.ts         apps on a Base: drafts (CAS), hashed immutable versions, audiences, pins, "my / shared / featured"
  *   schema-source.ts  what config validators read about the schema (live, or a plan's virtual draft)
  */
 
 import type { Db } from '../../client.js';
 import { createTablesActivity } from './activity.js';
+import { createTablesApps } from './apps.js';
 import { createTablesAggregates } from './aggregate.js';
 import { createTablesAutomationQueue } from './automation-queue.js';
 import { createTablesAutomations } from './automations.js';
@@ -44,6 +46,7 @@ import { createTablesResources } from './resources.js';
 import { createTablesRoles } from './roles.js';
 import { createTablesSchema } from './schema.js';
 import { createTablesViews } from './views.js';
+import { dbSchemaSource, type TablesSchemaSource } from './schema-source.js';
 
 export {
   isTablesForbiddenError,
@@ -169,6 +172,19 @@ export {
   type UpdateTableDashboardWidgetInput,
 } from './dashboards.js';
 
+export {
+  appSpecHash,
+  verifiedAppVersionSpec,
+  type CreateTableAppInput,
+  type PublishTableAppResult,
+  type ReplaceTableAppAudiencesResult,
+  type RestoreTableAppVersionResult,
+  type TableAppAudienceInput,
+  type TableAppSummaryRow,
+  type TableAppVersionSummaryRow,
+  type UpdateTableAppInput,
+} from './apps.js';
+
 export function createTablesService(db: Db) {
   const compute = createTablesCompute(db);
   const members = createTablesMembers(db);
@@ -191,6 +207,9 @@ export function createTablesService(db: Db) {
     ...createTablesDashboards(db),
     ...createTablesImports(db, { records: records.internal }),
     ...createTablesResources(db),
+    ...createTablesApps(db),
+    /** The live schema as the config validators read it (the API's app spec validator passes it on). */
+    liveSchemaSource: (): TablesSchemaSource => dbSchemaSource(db),
   };
 }
 

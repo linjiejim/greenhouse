@@ -39,6 +39,13 @@ export interface ResourceRef {
   moduleId?: string;
   entityId?: string;
   recordId?: ResourceId;
+  /**
+   * The container the resource belongs to, when the app has one (Tables: the
+   * Base — `scopeType: 'base'`). Audited as-is, so a per-container feed is an
+   * indexed read. Both or neither.
+   */
+  scopeType?: string;
+  scopeId?: ResourceId;
 }
 
 export interface PlatformActionRequest<TPayload = unknown> {

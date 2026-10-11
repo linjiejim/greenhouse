@@ -32,6 +32,7 @@ export * from './skill.js';
 export * from './platform.js';
 export * from './platform-oauth.js';
 export * from './tables.js';
+export * from './table-apps.js';
 export * from './workflow.js';
 export * from './agent-run.js';
 export * from './runtime.js';

@@ -105,6 +105,7 @@ export interface TablesResourceIds {
   widgetId?: number;
   roleId?: number;
   commentId?: number;
+  appId?: number;
 }
 
 const ID_KEY: Readonly<Record<TablesResourceKind, keyof TablesResourceIds>> = {
@@ -119,6 +120,7 @@ const ID_KEY: Readonly<Record<TablesResourceKind, keyof TablesResourceIds>> = {
   widget: 'widgetId',
   role: 'roleId',
   comment: 'commentId',
+  app: 'appId',
 };
 
 /** The audit resource of one dispatch. */
