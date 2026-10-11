@@ -44,6 +44,14 @@ test.describe('tables access', () => {
       },
     });
     const roleName = `${runId}-sales`;
+    // CI starts from an empty DB, so the grantee is created here rather than
+    // picked from whoever happens to exist.
+    const mateName = `Grantee${runId.replace(/[^a-z0-9]/gi, '').slice(-6)}`;
+    const mate = await api.post('/api/admin/users', {
+      data: { email: `${runId}-grantee@test.local`, password: 'E2eAccessGrantee-1', nickname: mateName },
+    });
+    expect(mate.ok()).toBeTruthy();
+    const mateId = ((await mate.json()) as { user: { id: string } }).user.id;
 
     try {
       await page.goto(`/#/tables/${base.id}/table/${tableId}`);
@@ -79,8 +87,8 @@ test.describe('tables access', () => {
       // Members: grant the role to a person through the shared picker.
       await dialog.getByTestId('share-tab-members').click();
       const picker = dialog.getByTestId('principal-picker');
-      const firstPerson = picker.locator('section').last().getByRole('checkbox').first();
-      await firstPerson.check();
+      await picker.getByRole('textbox', { name: 'Search people' }).fill(mateName);
+      await picker.getByRole('checkbox', { name: new RegExp(mateName) }).check();
       await dialog.getByLabel('Role', { exact: true }).selectOption({ label: `Custom: ${roleName}` });
       await dialog.getByRole('button', { name: 'Add', exact: true }).click();
       await expect(dialog.getByLabel(/^Role of /).first()).toHaveValue(`custom:${role!.id}`);
@@ -91,6 +99,7 @@ test.describe('tables access', () => {
       expect(grants.members).toContainEqual(expect.objectContaining({ role: 'custom', custom_role_id: role!.id }));
     } finally {
       await api.post(`/api/tables/bases/${base.id}/archive`);
+      await api.delete(`/api/admin/users/${mateId}`);
     }
   });
 });
