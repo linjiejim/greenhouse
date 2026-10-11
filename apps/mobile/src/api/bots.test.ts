@@ -355,3 +355,81 @@ describe('openBotsRewind', () => {
     });
   });
 });
+
+// ─── One computer per Agent (spec 20261011-agent-first-class P3a) ─
+
+describe('an Agent’s computer', () => {
+  it('the main Agent’s computer needs no `?bot=`; any other Agent’s carries it on every call', () => {
+    expect(bots.computerPath('/api/bots/computer', null)).toBe('/api/bots/computer');
+    expect(bots.computerPath('/api/bots/computer')).toBe('/api/bots/computer');
+    expect(bots.computerPath('/api/bots/computer', 'bot a')).toBe('/api/bots/computer?bot=bot%20a');
+    expect(bots.computerPath('/api/bots/computer/files?path=%7E', 'bot_a')).toBe(
+      '/api/bots/computer/files?path=%7E&bot=bot_a',
+    );
+    expect(bots.computerFilePath('/home/agent/a b.txt', 'bot_a')).toBe(
+      '/api/bots/computer/files/download?path=%2Fhome%2Fagent%2Fa%20b.txt&bot=bot_a',
+    );
+  });
+
+  it('status, start, ticket, lease, typing, files and processes all name the computer', async () => {
+    apiMock.mockImplementation(async () => json(200, { ok: true, processes: [], token: 't', expires_at: 'x' }));
+    await bots.computerStatus('bot_a');
+    await bots.startComputer('bot_a');
+    await bots.computerViewToken('bot_a');
+    await bots.takeoverComputer('bot_a');
+    await bots.handbackComputer({ bot: 'bot_a', sessionId: 's1' });
+    await bots.typeIntoComputer('hi', 'bot_a');
+    await bots.listComputerFiles(undefined, 'bot_a');
+    await bots.listComputerProcesses('bot_a');
+    await bots.computerProcessLog('j1', 50, 'bot_a');
+    await bots.stopComputerProcess('j1', 'bot_a');
+    expect(apiMock.mock.calls.map(([path]) => path)).toEqual([
+      '/api/bots/computer?bot=bot_a',
+      '/api/bots/computer/start?bot=bot_a',
+      '/api/bots/computer/view-token?bot=bot_a',
+      '/api/bots/computer/takeover?bot=bot_a',
+      '/api/bots/computer/handback?bot=bot_a',
+      '/api/bots/computer/type?bot=bot_a',
+      '/api/bots/computer/files?bot=bot_a',
+      '/api/bots/computer/processes?bot=bot_a',
+      '/api/bots/computer/processes/j1/log?lines=50&bot=bot_a',
+      '/api/bots/computer/processes/j1/stop?bot=bot_a',
+    ]);
+    // the hand-back body is unchanged by which computer it is
+    expect(JSON.parse(apiMock.mock.calls[4][1]!.body as string)).toEqual({ session_id: 's1' });
+    apiMock.mockReset();
+    apiMock.mockResolvedValue(json(200, {}));
+    await bots.computerStatus();
+    await bots.computerViewToken(null);
+    expect(apiMock.mock.calls.map(([path]) => path)).toEqual(['/api/bots/computer', '/api/bots/computer/view-token']);
+  });
+
+  it('an Agent that is not the member’s answers 404 agent_not_found', async () => {
+    apiMock.mockResolvedValueOnce(json(404, { error: 'Agent not found', code: 'agent_not_found' }));
+    expect(await bots.computerStatus('bot_x')).toEqual({ ok: false, status: 404, code: 'agent_not_found' });
+  });
+});
+
+describe('an Agent’s usage and activity', () => {
+  it('reads 30 days of usage', async () => {
+    const view = { days: [], totals: { calls: 0, input_tokens: 0, output_tokens: 0 } };
+    apiMock.mockResolvedValueOnce(json(200, view));
+    expect(await bots.botUsage('bot a')).toEqual({ ok: true, value: view });
+    expect(apiMock.mock.calls[0][0]).toBe('/api/bots/bot%20a/usage?days=30');
+  });
+
+  it('reads the activity with `at` rewritten for Hermes (it is not an *_at key)', async () => {
+    apiMock.mockResolvedValueOnce(
+      json(200, {
+        activity: [
+          { at: '2026-10-12 05:05:34.202+00', kind: 'task', title: 'Report', outcome: 'succeeded', detail: null, session_id: 's1' },
+        ],
+      }),
+    );
+    const result = await bots.botActivity('bot_a', 20);
+    expect(apiMock.mock.calls[0][0]).toBe('/api/bots/bot_a/activity?limit=20');
+    expect(result.ok && result.value[0].at).toBe('2026-10-12T05:05:34.202+00:00');
+    apiMock.mockResolvedValueOnce(json(404, { error: 'Agent not found' }));
+    expect(await bots.botActivity('bot_x')).toEqual({ ok: false, status: 404, code: null });
+  });
+});

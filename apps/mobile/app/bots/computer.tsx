@@ -1,21 +1,28 @@
 /**
- * `/bots/computer?c=&request=&control=` — the member's computer on the phone
- * (spec docs/specs/20261011-mobile-computer.md): one computer per member,
- * shared by all their Bots, so it opens from a thread's bar and from the
- * cards that need a hand on it — never from one Bot's profile.
+ * `/bots/computer?bot=&c=&request=&control=` — an Agent's computer on the phone
+ * (spec docs/specs/20261011-mobile-computer.md). Each Agent has its own
+ * computer (spec 20261011-agent-first-class P3a: sign-ins and files are never
+ * shared between Agents); it opens from a thread's bar (the conversation's
+ * Agent's computer) and from the cards that need a hand on it (the card's
+ * Agent's computer).
  *
- *   ✕  Computer                       status line under the bar
+ *   ✕  Sprouty's Computer             status line under the bar
  *   [ Screen | Files | Processes ]
  *   (card banner: "… then tap Done"  [Skip] [Done])
  *   live screen (./src/bots/computer)  ← pinch / two fingers zoom and move
  *   control bar: watching → Take Over · in control → keys, Type, Hand Back
  *
+ * - `bot`: whose computer — an Agent's id; empty = the main Agent's (Sprouty's,
+ *   the computer every member had before 2026-10-12). Every call and the screen
+ *   ticket carry it (./src/bots/computer/target.ts says which computer a
+ *   conversation or a card means).
  * - `c`: the conversation it was opened from — a plain hand-back settles the
- *   one card waiting there (the server never guesses across conversations).
+ *   one card of this computer waiting there (the server never guesses across
+ *   conversations).
  * - `request`: the card it was opened for; `control=1`: take over on arrival
  *   (the card's "Verify" / "Take Over").
  * - Closing while in control asks first (hand back / keep control), as the web
- *   pane does: the Bots cannot use the computer meanwhile.
+ *   pane does: its Agent cannot use the computer meanwhile.
  * - Full-screen modal, no swipe to dismiss: fingers on the screen are the
  *   computer's.
  */
@@ -32,6 +39,7 @@ import { computerErrorKey } from '../../src/bots/computer/errors';
 import { FilesTab } from '../../src/bots/computer/files-tab';
 import { cardToAnswer, needsKey } from '../../src/bots/computer/model';
 import { ProcessesTab } from '../../src/bots/computer/processes-tab';
+import { cardComputer, computerAgent, type ComputerBot } from '../../src/bots/computer/target';
 import { useComputerScreen } from '../../src/bots/computer/use-computer-screen';
 import { useComputerStatus } from '../../src/bots/computer/use-computer-status';
 import { BotsRouteGate } from '../../src/bots/route-gate';
@@ -68,9 +76,12 @@ function ComputerPage() {
   const insets = useSafeAreaInsets();
   // the bar is glass over the page, as everywhere: start below it
   const headerInset = useHeaderInset();
-  const params = useLocalSearchParams<{ c?: string; request?: string; control?: string }>();
+  const params = useLocalSearchParams<{ bot?: string; c?: string; request?: string; control?: string }>();
+  const bot: ComputerBot = params.bot || null;
   const sessionId = params.c || undefined;
-  const computer = useComputerStatus(true);
+  const agent = useBots((s) => computerAgent(s, bot));
+  const name = agent?.name ?? t('bots.computer.anAgent');
+  const computer = useComputerStatus(true, bot);
   const { phase } = computer;
   const inControl = phase?.kind === 'running' && phase.controller === 'user';
   const [tab, setTab] = useState<Tab>('screen');
@@ -78,14 +89,20 @@ function ComputerPage() {
   const [hintAt, setHintAt] = useState(0);
 
   const pending = useBots((s) => s.pendingRequests);
+  const byId = useBots((s) => s.byId);
   const loadPending = useBots((s) => s.loadPending);
   const decide = useBots((s) => s.decide);
   useEffect(() => {
     void loadPending();
   }, [loadPending]);
-  const card = cardToAnswer(pending, { requestId: params.request, sessionId });
+  const card = cardToAnswer(pending, {
+    requestId: params.request,
+    sessionId,
+    onComputer: (r) => cardComputer(r, (id) => byId[id]) === bot,
+  });
 
   const screen = useComputerScreen({
+    bot,
     enabled: tab === 'screen' && phase?.kind === 'running',
     viewOnly: !inControl,
     onTapWhileWatching: () => setHintAt(Date.now()),
@@ -103,7 +120,7 @@ function ComputerPage() {
 
   const takeOver = useCallback(async () => {
     setBusy('takeover');
-    const result = await takeoverComputer();
+    const result = await takeoverComputer(bot);
     setBusy(null);
     if (result.ok) {
       computer.apply(result.value);
@@ -111,7 +128,7 @@ function ComputerPage() {
       // how fingers work in control (they pan and zoom while watching)
       toast(t('bots.computer.gestureHint'), 'hand');
     } else if (result.code !== 'user_in_control') fail(t('bots.computer.takeOverFailed'), result.code);
-  }, [computer, fail, t]);
+  }, [bot, computer, fail, t]);
 
   // The card's "Verify" / "Take Over": take the computer once, on arrival.
   const tookOnArrival = useRef(false);
@@ -130,6 +147,7 @@ function ComputerPage() {
         note,
         requestId: card?.id,
         sessionId: card?.session_id ?? sessionId,
+        bot,
       });
       setBusy(null);
       if (!result.ok) {
@@ -142,16 +160,16 @@ function ComputerPage() {
       void loadPending();
       return true;
     },
-    [card, sessionId, computer, fail, loadPending, t],
+    [card, sessionId, bot, computer, fail, loadPending, t],
   );
 
   const askHandBack = useCallback(() => {
-    Alert.alert(t('bots.computer.handBackTitle'), t('bots.computer.handBackDesc'), [
+    Alert.alert(t('bots.computer.handBackTitle'), t('bots.computer.handBackDesc', { name }), [
       { text: t('common.cancel'), style: 'cancel' },
       {
         text: t('bots.computer.handBackWithNote'),
         onPress: () =>
-          void promptText({ title: t('bots.computer.noteTitle'), placeholder: t('bots.computer.notePlaceholder') }).then(
+          void promptText({ title: t('bots.computer.noteTitle', { name }), placeholder: t('bots.computer.notePlaceholder') }).then(
             (note) => {
               if (note) void handBack(note);
             },
@@ -159,17 +177,17 @@ function ComputerPage() {
       },
       { text: t('bots.computer.handBack'), style: 'default', onPress: () => void handBack() },
     ]);
-  }, [handBack, t]);
+  }, [handBack, name, t]);
 
   const type = useCallback(async () => {
     const text = await promptText({ title: t('bots.computer.typeTitle'), message: t('bots.computer.typeHelp'), confirmLabel: t('bots.computer.typeSend') });
     if (!text) return;
     setBusy('type');
-    const result = await typeIntoComputer(text);
+    const result = await typeIntoComputer(text, bot);
     setBusy(null);
     if (result.ok) toast(t('bots.computer.typeSent'), 'check');
     else fail(t('bots.computer.typeFailed'), result.code);
-  }, [fail, t]);
+  }, [bot, fail, t]);
 
   const skip = useCallback(
     async (request: BotRequestView) => {
@@ -185,7 +203,7 @@ function ComputerPage() {
       router.back();
       return;
     }
-    Alert.alert(t('bots.computer.closeInControlTitle'), t('bots.computer.closeInControlDesc'), [
+    Alert.alert(t('bots.computer.closeInControlTitle'), t('bots.computer.closeInControlDesc', { name }), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('bots.computer.keepControl'), onPress: () => router.back() },
       {
@@ -196,7 +214,7 @@ function ComputerPage() {
           }),
       },
     ]);
-  }, [handBack, inControl, router, t]);
+  }, [handBack, inControl, name, router, t]);
 
   const start = useCallback(async () => {
     setBusy('start');
@@ -214,7 +232,7 @@ function ComputerPage() {
 
   return (
     <View style={[styles.root, { paddingTop: headerInset }]}>
-      <Stack.Screen options={{ title: t('bots.computer.title') }} />
+      <Stack.Screen options={{ title: agent ? t('bots.computer.titleOf', { name: agent.name }) : t('bots.computer.title') }} />
       <SheetClose onPress={close} />
       <View style={styles.head}>
         <StatusLine phase={phase} loading={!phase && !computer.loadError} t={t} />
@@ -235,17 +253,21 @@ function ComputerPage() {
       ) : null}
       <View style={styles.body}>
         {computer.loadError ? (
-          <EmptyState icon="alertCircle" title={t('bots.computer.loadFailed')} onRetry={() => void computer.refresh()} style={styles.fill} />
+          computer.loadErrorCode === 'agent_not_found' ? (
+            <EmptyState icon="person" title={t('bots.computer.errAgentGone')} style={styles.fill} />
+          ) : (
+            <EmptyState icon="alertCircle" title={t('bots.computer.loadFailed')} onRetry={() => void computer.refresh()} style={styles.fill} />
+          )
         ) : !phase ? (
           <LoadingState style={styles.fill} />
         ) : tab === 'files' ? (
-          <FilesTab />
+          <FilesTab bot={bot} />
         ) : tab === 'processes' ? (
-          <ProcessesTab />
+          <ProcessesTab bot={bot} />
         ) : running ? (
           <ComputerScreenView screen={screen} hintAt={hintAt} onTakeOver={() => void takeOver()} />
         ) : (
-          <NotRunning phase={phase} starting={busy === 'start' || computer.starting} onStart={() => void start()} t={t} />
+          <NotRunning phase={phase} name={name} starting={busy === 'start' || computer.starting} onStart={() => void start()} t={t} />
         )}
       </View>
       {tab === 'screen' && running ? (
@@ -325,11 +347,14 @@ function NeedsBanner({
 
 function NotRunning({
   phase,
+  name,
   starting,
   onStart,
   t,
 }: {
   phase: ComputerPhase;
+  /** Its Agent: whose own computer this is. */
+  name: string;
   starting: boolean;
   onStart: () => void;
   t: TFunction;
@@ -364,7 +389,7 @@ function NotRunning({
     <EmptyState
       icon={phase.kind === 'error' ? 'alertCircle' : 'sleep'}
       title={t(phaseLabelKey(phase))}
-      message={reason ? t(reason) : t('bots.computer.asleepDesc')}
+      message={reason ? t(reason) : t('bots.computer.asleepDesc', { name })}
       action={<NativeButton label={t('bots.computer.start')} variant="prominent" loading={starting} onPress={onStart} />}
       style={styles.fill}
     />

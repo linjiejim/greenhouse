@@ -139,7 +139,7 @@ const ICONS = {
   sleep: ['moon.zzz', 'bedtime'],
   at: ['at', 'alternate_email'],
   alertCircle: ['exclamationmark.circle', 'error'],
-  // ── the member's computer (screen, keys, zoom) ──
+  // ── an Agent's computer (screen, keys, zoom) ──
   computer: ['desktopcomputer', 'computer'],
   keyboard: ['keyboard', 'keyboard'],
   chevL: ['chevron.left', 'chevron_left'],

@@ -15,6 +15,8 @@ const ERROR_KEYS: Record<string, TranslationKey> = {
   lease_required: 'bots.computer.errNotInControl',
   not_found: 'bots.computer.errNotFound',
   too_large: 'bots.computer.errTooLarge',
+  // `?bot=` names no Agent of this member's (archived Agents still count; a deleted one does not)
+  agent_not_found: 'bots.computer.errAgentGone',
 };
 
 export function computerErrorKey(code: string | null | undefined): TranslationKey | null {

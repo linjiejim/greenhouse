@@ -1,5 +1,5 @@
 /**
- * The computer's background processes (`gh-jobs`: a Bot's run_background, a
+ * One Agent's computer's background processes (`gh-jobs`: its run_background, a
  * terminal's job): the list, newest state first; one opens its log tail
  * (redacted by the server, re-read every 3 s while it runs) with Stop.
  */
@@ -17,10 +17,12 @@ import { EmptyState, LoadingState } from '../../ui/empty';
 import { Badge, ListRow, ListSection } from '../../ui/list';
 import { toast } from '../../ui/toast';
 import { computerErrorKey } from './errors';
+import type { ComputerBot } from './target';
 
 const LOG_POLL_MS = 3000;
 
-export function ProcessesTab() {
+/** `bot`: whose computer (null = the main Agent's). */
+export function ProcessesTab({ bot }: { bot: ComputerBot }) {
   const t = useT();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -30,12 +32,12 @@ export function ProcessesTab() {
   const [open, setOpen] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const result = await listComputerProcesses();
+    const result = await listComputerProcesses(bot);
     if (result.ok) {
       setList(result.value);
       setFailed(false);
     } else setFailed(true);
-  }, []);
+  }, [bot]);
 
   useEffect(() => {
     void load();
@@ -43,7 +45,7 @@ export function ProcessesTab() {
 
   const selected = open ? list?.find((p) => p.id === open) : undefined;
   if (selected) {
-    return <ProcessLog process={selected} onBack={() => setOpen(null)} onChanged={() => void load()} />;
+    return <ProcessLog bot={bot} process={selected} onBack={() => setOpen(null)} onChanged={() => void load()} />;
   }
   if (!list) {
     return failed ? (
@@ -100,10 +102,12 @@ function StatusBadge({ process }: { process: ComputerProcessView }) {
 }
 
 function ProcessLog({
+  bot,
   process,
   onBack,
   onChanged,
 }: {
+  bot: ComputerBot;
   process: ComputerProcessView;
   onBack: () => void;
   onChanged: () => void;
@@ -117,12 +121,12 @@ function ProcessLog({
   const running = process.status === 'running';
 
   const read = useCallback(async () => {
-    const result = await computerProcessLog(process.id);
+    const result = await computerProcessLog(process.id, undefined, bot);
     if (result.ok) {
       setLog(result.value);
       setFailed(false);
     } else setFailed(true);
-  }, [process.id]);
+  }, [process.id, bot]);
 
   useEffect(() => {
     void read();
@@ -141,7 +145,7 @@ function ProcessLog({
     });
     if (!ok) return;
     setStopping(true);
-    const result = await stopComputerProcess(process.id);
+    const result = await stopComputerProcess(process.id, bot);
     setStopping(false);
     if (result.ok) toast(t('bots.computer.procStopped'), 'check');
     else alertError(t('bots.computer.procStopFailed', { name }), t(computerErrorKey(result.code) ?? 'common.retry'));

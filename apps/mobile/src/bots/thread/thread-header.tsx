@@ -14,9 +14,11 @@
  *    about it: overview, memory, notes, schedules, separate chats); an old
  *    group is a closed record and opens nothing. One VoiceOver button:
  *    "Sprouty, Browsing github.com".
- *  - Right: 🖥 the member's computer (when computers run here — it is the
- *    member's, shared by all their Bots, so it sits on the bar rather than in
- *    one Bot's profile; spec docs/specs/20261011-mobile-computer.md), then one
+ *  - Right: 🖥 the conversation's Agent's own computer (when computers run
+ *    here; one per Agent since 2026-10-12, spec 20261011-agent-first-class
+ *    P3a — a guest Agent uses its own, reached from its cards), tinted with
+ *    its state (running · in your hands · failed) and saying it to VoiceOver
+ *    ("Sprouty's computer, Running"); spec docs/specs/20261011-mobile-computer.md. Then one
  *    system menu, kept short (2026-10: Bot Profile, Conversation Info and
  *    Invite a Bot left it — the title opens the profile, Bots bring each other
  *    in): New Chat (subtitle: the Bot's name) and Show › (the reply details,
@@ -181,6 +183,8 @@ export const ThreadHeader = memo(function ThreadHeader({
   ownerName,
   canAsk,
   hasComputer,
+  computerTone,
+  computerLabel,
   taskChat,
   actions,
 }: {
@@ -193,13 +197,18 @@ export const ThreadHeader = memo(function ThreadHeader({
   ownerName: string | null;
   /** A DM whose Bot can still answer a new chat. */
   canAsk: boolean;
-  /** Computers run on this server: the 🖥 button opens the member's. */
+  /** Computers run on this server: the 🖥 button opens the conversation's Agent's. */
   hasComputer: boolean;
+  /** Its state at a glance (src/bots/computer/target.ts `computerButtonTone`); null = the plain icon. */
+  computerTone: 'accent' | 'green' | 'red' | null;
+  /** Whose computer and its state, for VoiceOver. */
+  computerLabel: string;
   /** A task chat (not a thread): Tags / Rename / Delete join the menu. */
   taskChat: boolean;
   actions: ThreadHeaderActions;
 }) {
   const t = useT();
+  const { hex } = useTheme();
   const details = usePrefs((s) => s.details);
   const setDetail = usePrefs((s) => s.setDetail);
   // UIKit draws the badge but never reads it: the count goes into the label, as on the chat's bar.
@@ -227,7 +236,8 @@ export const ThreadHeader = memo(function ThreadHeader({
         {hasComputer ? (
           <Stack.Toolbar.Button
             icon={toolbarIcon('computer')}
-            accessibilityLabel={t('bots.computer.open')}
+            tintColor={computerTone ? hex[computerTone] : undefined}
+            accessibilityLabel={computerLabel}
             onPress={actions.openComputer}
           />
         ) : null}

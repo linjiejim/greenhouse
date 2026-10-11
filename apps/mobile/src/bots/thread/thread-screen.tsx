@@ -107,6 +107,9 @@ import type { BotsReadOnly, MobilePending, RewindInput, RewindOutcome, SendInput
 import { forgetGoneThread } from '../last-surface';
 import { openNewChat, openThread } from '../nav';
 import { attentionCount, useBots } from '../store';
+import { computerAgent, computerButtonTone, conversationComputer } from '../computer/target';
+import { useComputerStatus } from '../computer/use-computer-status';
+import { phaseLabelKey } from '../vendor/computer-phase';
 import {
   editedContent,
   rewindRefusalKey,
@@ -1115,13 +1118,19 @@ export function BotThreadScreen({
   const dismissRunError = useCallback(() => ctl.dismissRunError(), [ctl]);
   const reload = useCallback(() => void ctl.reload(), [ctl]);
 
+  /* ---------- this conversation's computer: its Agent's own (one per Agent, spec 20261011-agent-first-class P3a) ---------- */
+  const computerBot = conversationComputer(conversation, (id) => byId[id]);
+
   /* ---------- header actions (stable; read the latest state via a ref) ---------- */
-  const latest = useRef({ owner, displayTitle, conversation });
-  latest.current = { owner, displayTitle, conversation };
+  const latest = useRef({ owner, displayTitle, conversation, computerBot });
+  latest.current = { owner, displayTitle, conversation, computerBot };
   const headerActions = useMemo<ThreadHeaderActions>(
     () => ({
       openDrawer: () => navigation.dispatch(DrawerActions.openDrawer()),
-      openComputer: () => router.push({ pathname: '/bots/computer', params: { c: sessionId } }),
+      openComputer: () => {
+        const bot = latest.current.computerBot;
+        router.push({ pathname: '/bots/computer', params: { c: sessionId, ...(bot ? { bot } : {}) } });
+      },
       askInChat: () => {
         const bot = latest.current.owner;
         if (bot) openNewChat(router, { profile: isSproutyBot(bot) ? 'sprouty' : `bot:${bot.id}` });
@@ -1162,8 +1171,17 @@ export function BotThreadScreen({
     [navigation, router, sessionId, ctl],
   );
   const onOpenChat = useCallback((chat: { c: string; title: string }) => openThread(router, chat), [router]);
-  // The member's computer is theirs, not one Bot's: offered on every thread once computers run here.
+  // The conversation's Agent's computer, offered on every thread once computers run here; the 🖥 is
+  // tinted with its state (only primitives reach the memoised header: no stream-tick re-renders).
   const hasComputer = useBots((s) => s.computer?.state === 'ready');
+  const computerName = useBots((s) => computerAgent(s, computerBot)?.name ?? null);
+  const computerState = useComputerStatus(hasComputer && focused && !!conversation, computerBot);
+  const computerTone = computerButtonTone(computerState.phase);
+  const computerLabel = computerName
+    ? computerState.phase
+      ? t('bots.computer.openOfState', { name: computerName, state: t(phaseLabelKey(computerState.phase)) })
+      : t('bots.computer.openOf', { name: computerName })
+    : t('bots.computer.open');
 
   /* ---------- rows ---------- */
   const runActive = snap.runActive;
@@ -1325,6 +1343,8 @@ export function BotThreadScreen({
         ownerName={owner?.name ?? null}
         canAsk={!group && !!owner && owner.status === 'active'}
         hasComputer={hasComputer}
+        computerTone={computerTone}
+        computerLabel={computerLabel}
         taskChat={task}
         actions={headerActions}
       />

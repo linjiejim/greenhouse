@@ -217,6 +217,13 @@ export interface ProjectTask {
   assignee_id: string | null;
   /** Enriched by the API from the user table. */
   assignee_nickname?: string | null;
+  /**
+   * Handed to an Agent (spec 20261011-agent-first-class P3e, D32; packages/db schema/project.ts):
+   * the Agent (`bots.id`, the member's who handed it) working on it in a task chat
+   * (`agent_session_id`). The assignee stays responsible. Absent from servers before 2026-10-12.
+   */
+  agent_id?: string | null;
+  agent_session_id?: string | null;
   start_date: string | null;
   due_date: string | null;
   completed_at: string | null;

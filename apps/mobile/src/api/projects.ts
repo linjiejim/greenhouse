@@ -206,6 +206,30 @@ export async function deleteTask(taskId: number): Promise<boolean> {
   }
 }
 
+/**
+ * Hand a task to one of the member's Agents (spec 20261011-agent-first-class P3e): the server opens a
+ * task chat with that Agent whose first message is the task, records it on the task (`agent_id`,
+ * `agent_session_id` — the assignee stays) and the Agent starts. `status` 0 = no answer; 403 =
+ * Agents are off for this account; 404 = no such Agent (or task).
+ */
+export async function handTaskToAgent(
+  taskId: number,
+  botId: string,
+): Promise<{ ok: true; task: ProjectTask; sessionId: string } | { ok: false; status: number }> {
+  try {
+    const res = await api(`/api/projects/tasks/${taskId}/agent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bot_id: botId }),
+    });
+    const data = await jsonOrNull<{ task: ProjectTask; session_id: string }>(res);
+    if (!data?.session_id) return { ok: false, status: res.ok ? 0 : res.status };
+    return { ok: true, task: data.task, sessionId: data.session_id };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
 // ─── Comments ────────────────────────────────────────────
 
 export async function listComments(taskId: number): Promise<TaskComment[] | null> {

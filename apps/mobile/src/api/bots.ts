@@ -25,6 +25,7 @@
  */
 
 import type {
+  BotActivityItem,
   BotConversationDetail,
   BotConversationSummary,
   BotMessage,
@@ -33,6 +34,7 @@ import type {
   BotRequestStatus,
   BotRequestView,
   BotTaskView,
+  BotUsageView,
   BotView,
   ComputerFileList,
   ComputerProcessLog,
@@ -338,26 +340,40 @@ export function decideRequest(requestId: string, body: BotRequestDecision): Prom
   );
 }
 
-// ─── The member's computer (spec docs/specs/20261011-mobile-computer.md) ─
+// ─── An Agent's computer (spec docs/specs/20261011-mobile-computer.md) ─
 //
-// One computer per member, shared by all their Bots (apps/api/src/bots/computer).
+// One computer per Agent (spec 20261011-agent-first-class P3a): every call takes
+// the Agent whose computer it is — `bot`, null / absent = the member's main Agent
+// (Sprouty), whose computer is the one every member had before 2026-10-12. The
+// server reads `?bot=<id>` (an unknown or foreign id: 404 `agent_not_found`); an
+// older server ignores it and answers for the one computer it knows.
 // The screen itself is a WebSocket the viewer page opens with a one-time ticket
 // (`computerViewToken`); everything else is plain REST. Only `takeover`,
 // `handback` and `typeIntoComputer` touch the lease.
 
+/** `path` for the computer of `bot` (null = the main Agent's: no parameter). */
+export function computerPath(path: string, bot?: string | null): string {
+  if (!bot) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}bot=${enc(bot)}`;
+}
+
 /** Its state, who controls it (`bot` / `user`), the start queue, the runtime behind it. */
-export function computerStatus(): Promise<BotsRead<ComputerStatusView>> {
-  return read('/api/bots/computer', whole<ComputerStatusView>);
+export function computerStatus(bot?: string | null): Promise<BotsRead<ComputerStatusView>> {
+  return read(computerPath('/api/bots/computer', bot), whole<ComputerStatusView>);
 }
 
 /** Wake it. Resolves once it runs — or with `queue_position` set when the org's slots are full. */
-export function startComputer(): Promise<BotsWrite<ComputerStatusView>> {
-  return call('/api/bots/computer/start', jsonInit('POST'), whole<ComputerStatusView>);
+export function startComputer(bot?: string | null): Promise<BotsWrite<ComputerStatusView>> {
+  return call(computerPath('/api/bots/computer/start', bot), jsonInit('POST'), whole<ComputerStatusView>);
 }
 
-/** A one-time, 60-second ticket for the live screen. Fetch it right before connecting. */
-export function computerViewToken(): Promise<BotsWrite<{ token: string; expires_at: string }>> {
-  return call('/api/bots/computer/view-token', jsonInit('POST'), whole<{ token: string; expires_at: string }>);
+/** A one-time, 60-second ticket for the live screen of that computer. Fetch it right before connecting. */
+export function computerViewToken(bot?: string | null): Promise<BotsWrite<{ token: string; expires_at: string }>> {
+  return call(
+    computerPath('/api/bots/computer/view-token', bot),
+    jsonInit('POST'),
+    whole<{ token: string; expires_at: string }>,
+  );
 }
 
 /** `ws(s)://<station>/api/ws/computer?token=…` — the ticket is the credential (no bearer token in it). */
@@ -366,22 +382,23 @@ export function computerViewerUrl(apiBase: string, token: string): string {
   return `${base}/api/ws/computer?token=${enc(token)}`;
 }
 
-/** Take the lease: the server stops the Bots' computer actions (waking it if asleep) and forwards this member's input. */
-export function takeoverComputer(): Promise<BotsWrite<ComputerStatusView>> {
-  return call('/api/bots/computer/takeover', jsonInit('POST'), whole<ComputerStatusView>);
+/** Take the lease: the server stops the Agent's computer actions (waking it if asleep) and forwards this member's input. */
+export function takeoverComputer(bot?: string | null): Promise<BotsWrite<ComputerStatusView>> {
+  return call(computerPath('/api/bots/computer/takeover', bot), jsonInit('POST'), whole<ComputerStatusView>);
 }
 
 /**
  * Give the lease back. The server settles the card it answers — `requestId`, or
- * else the single take-over / sign-in card waiting in `sessionId` — and wakes the
- * Bot that asked, with the note as context. Neither → the lease is just released.
+ * else the single take-over / sign-in card of this computer waiting in
+ * `sessionId` — and wakes the Agent that asked, with the note as context.
+ * Neither → the lease is just released.
  */
 export function handbackComputer(
-  input: { note?: string; requestId?: string; sessionId?: string } = {},
+  input: { note?: string; requestId?: string; sessionId?: string; bot?: string | null } = {},
 ): Promise<BotsWrite<ComputerStatusView>> {
   const note = input.note?.trim();
   return call(
-    '/api/bots/computer/handback',
+    computerPath('/api/bots/computer/handback', input.bot),
     jsonInit('POST', {
       ...(note ? { note } : {}),
       ...(input.requestId ? { request_id: input.requestId } : {}),
@@ -396,30 +413,53 @@ export function handbackComputer(
  * IME output and pasted text that raw VNC key events cannot carry). Only while
  * this member holds the lease — else 409 `lease_required`.
  */
-export function typeIntoComputer(text: string): Promise<BotsWrite<void>> {
-  return call('/api/bots/computer/type', jsonInit('POST', { text }), nothing);
+export function typeIntoComputer(text: string, bot?: string | null): Promise<BotsWrite<void>> {
+  return call(computerPath('/api/bots/computer/type', bot), jsonInit('POST', { text }), nothing);
 }
 
 /** A folder of the computer (default `~/work`; `~` = /home/agent). Directories first, ≤500 entries. Starts it if needed. */
-export function listComputerFiles(path?: string): Promise<BotsRead<ComputerFileList>> {
-  return read(`/api/bots/computer/files${path ? `?path=${enc(path)}` : ''}`, whole<ComputerFileList>);
+export function listComputerFiles(path?: string, bot?: string | null): Promise<BotsRead<ComputerFileList>> {
+  return read(
+    computerPath(`/api/bots/computer/files${path ? `?path=${enc(path)}` : ''}`, bot),
+    whole<ComputerFileList>,
+  );
 }
 
 /** The download route of one file, for `downloadAndShare` (src/lib/share-file.ts). */
-export function computerFilePath(path: string): string {
-  return `/api/bots/computer/files/download?path=${enc(path)}`;
+export function computerFilePath(path: string, bot?: string | null): string {
+  return computerPath(`/api/bots/computer/files/download?path=${enc(path)}`, bot);
 }
 
-/** Long jobs started with `gh-jobs` (a Bot's run_background, or a terminal). Empty while it is off — never starts it. */
-export function listComputerProcesses(): Promise<BotsRead<ComputerProcessView[]>> {
-  return read('/api/bots/computer/processes', (body) => (body as { processes: ComputerProcessView[] }).processes);
+/** Long jobs started with `gh-jobs` (an Agent's run_background, or a terminal). Empty while it is off — never starts it. */
+export function listComputerProcesses(bot?: string | null): Promise<BotsRead<ComputerProcessView[]>> {
+  return read(
+    computerPath('/api/bots/computer/processes', bot),
+    (body) => (body as { processes: ComputerProcessView[] }).processes,
+  );
 }
 
 /** The tail of a job's log (redacted by the server). */
-export function computerProcessLog(id: string, lines = 200): Promise<BotsRead<ComputerProcessLog>> {
-  return read(`/api/bots/computer/processes/${enc(id)}/log?lines=${lines}`, whole<ComputerProcessLog>);
+export function computerProcessLog(id: string, lines = 200, bot?: string | null): Promise<BotsRead<ComputerProcessLog>> {
+  return read(computerPath(`/api/bots/computer/processes/${enc(id)}/log?lines=${lines}`, bot), whole<ComputerProcessLog>);
 }
 
-export function stopComputerProcess(id: string): Promise<BotsWrite<void>> {
-  return call(`/api/bots/computer/processes/${enc(id)}/stop`, jsonInit('POST'), nothing);
+export function stopComputerProcess(id: string, bot?: string | null): Promise<BotsWrite<void>> {
+  return call(computerPath(`/api/bots/computer/processes/${enc(id)}/stop`, bot), jsonInit('POST'), nothing);
+}
+
+// ─── An Agent's usage and activity (spec 20261011-agent-first-class P3d; owner only) ─
+
+/** Its model use per day over the last `days` (≤ 90) and the totals. */
+export function botUsage(botId: string, days = 30): Promise<BotsRead<BotUsageView>> {
+  return read(`/api/bots/${enc(botId)}/usage?days=${days}`, whole<BotUsageView>);
+}
+
+/**
+ * What it did, newest first (≤ `limit`, server cap 200): platform actions, password uses,
+ * background tasks — never message content. `at` is not an `*_at` key: rewritten here.
+ */
+export function botActivity(botId: string, limit = 50): Promise<BotsRead<BotActivityItem[]>> {
+  return read(`/api/bots/${enc(botId)}/activity?limit=${limit}`, (body) =>
+    (body as { activity: BotActivityItem[] }).activity.map((item) => ({ ...item, at: isoTimestamp(item.at) })),
+  );
 }

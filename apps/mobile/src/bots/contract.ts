@@ -41,7 +41,8 @@ export type ServerWsWire =
   | { type: 'bots:attention'; pending: number }
   /**
    * `computer_id` / `bot_id` name which computer (one per Agent since 2026-10-12, spec
-   * 20261011-agent-first-class P3); older servers send neither. Not read here yet.
+   * 20261011-agent-first-class P3; `bot_id` null = the main Agent's); older servers send
+   * neither — the frame is then about the main computer (src/bots/computer/target.ts).
    */
   | {
       type: 'bots:computer';
@@ -55,8 +56,17 @@ export type RealtimeEvent =
   | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error' }
   | { type: 'bots:conversation'; sessionId: string }
   | { type: 'bots:attention'; pending: number }
-  /** The member's computer changed state or hands (the computer page re-reads its status). */
-  | { type: 'bots:computer'; state: ComputerState; controller: 'bot' | 'user' }
+  /**
+   * One of the member's computers changed state or hands (the computer page and the thread's 🖥
+   * re-read theirs — only when it is this one: `frameIsFor` in src/bots/computer/target.ts).
+   */
+  | {
+      type: 'bots:computer';
+      state: ComputerState;
+      controller: 'bot' | 'user';
+      computer_id?: string;
+      bot_id?: string | null;
+    }
   /** Synthesised: the socket (re)connected or the app came back to the foreground — re-read everything. */
   | { type: 'resync' };
 

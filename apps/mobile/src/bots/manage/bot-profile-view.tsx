@@ -10,9 +10,9 @@
  *    sleeps), name, role; 发消息 (its DM — opened, or made with
  *    `POST /api/bots/conversations`; hidden when we came from that DM or Bots
  *    threads are off); an archived Bot only offers 查看对话;
- *  - a segmented control over five tabs (./profile-tabs.tsx): 概览 (instructions
- *    first) · 记忆 · 笔记 · 定时 · 对话 — `tab` picks the first one shown (the
- *    thread's "summarized · View" opens 记忆).
+ *  - a segmented control over six tabs (./profile-tabs.tsx): 概览 (instructions
+ *    first) · 记忆 · 笔记 · 定时 · 对话 · 记录 (usage + what it did) — `tab` picks
+ *    the first one shown (the thread's "summarized · View" opens 记忆).
  *
  * Navigating to a thread / new chat always `dismissTo`s home (closing this
  * sheet, or the whole Settings modal).
@@ -36,6 +36,7 @@ import { openNewChat, openThread } from '../nav';
 import { useBots } from '../store';
 import { BotAvatar } from '../ui/bot-avatar';
 import {
+  ActivityTab,
   ChatsTab,
   MemoryTab,
   NotesTab,
@@ -234,8 +235,10 @@ function Profile({
           <NotesTab bot={bot} />
         ) : tab === 'schedule' ? (
           <ScheduleTab bot={bot} main={main} />
-        ) : (
+        ) : tab === 'chats' ? (
           <ChatsTab bot={bot} main={main} />
+        ) : (
+          <ActivityTab bot={bot} />
         )}
       </ScrollView>
     </>
@@ -248,6 +251,7 @@ const TAB_LABEL = {
   notes: 'bots.profile.tabNotes',
   schedule: 'bots.profile.tabSchedule',
   chats: 'bots.profile.tabChats',
+  activity: 'bots.profile.tabActivity',
 } as const satisfies Record<ProfileTab, TranslationKey>;
 
 const useStyles = makeStyles((c) => ({

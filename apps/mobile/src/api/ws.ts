@@ -97,9 +97,15 @@ export function parseFrame(data: unknown): ServerWsWire | null {
         ? { type: 'bots:attention', pending: f.pending }
         : null;
     case 'bots:computer':
-      return COMPUTER_STATES.has(f.state as string) && (f.controller === 'bot' || f.controller === 'user')
-        ? { type: 'bots:computer', state: f.state as ComputerState, controller: f.controller }
-        : null;
+      if (!COMPUTER_STATES.has(f.state as string) || (f.controller !== 'bot' && f.controller !== 'user')) return null;
+      // Which computer (one per Agent since 2026-10-12): kept when well-formed; older servers send neither.
+      return {
+        type: 'bots:computer',
+        state: f.state as ComputerState,
+        controller: f.controller,
+        ...(text('computer_id') ? { computer_id: f.computer_id as string } : {}),
+        ...(f.bot_id === null || text('bot_id') ? { bot_id: f.bot_id as string | null } : {}),
+      };
     default:
       return null;
   }

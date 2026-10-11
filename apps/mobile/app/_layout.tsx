@@ -11,7 +11,7 @@
  *  - `bots/*`              Bots sheets (needs-you, cards, sign-in, management);
  *                          `bots/index` only forwards a deep link to home
  *  - `table`, `peek/diagram`, `peek/html`  full-screen viewers (modal pages);
- *                          `bots/computer` the member's computer (full-screen modal)
+ *                          `bots/computer` an Agent's computer (full-screen modal)
  *  - `login`               full screen, shown when signed out
  *
  * Presentation (push / sheet / modal) is decided here, because it must be
@@ -210,7 +210,7 @@ export default function RootLayout() {
                 <Stack.Screen name="bots/example" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="bots/archived" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="bots/relay" options={sheetScreen([0.6, 1], { header: true })} />
-                {/* the member's computer: full screen, no swipe-down (fingers on the screen are the computer's) */}
+                {/* an Agent's computer: full screen, no swipe-down (fingers on the screen are the computer's) */}
                 <Stack.Screen
                   name="bots/computer"
                   options={{ ...detailScreen(c), presentation: 'fullScreenModal', gestureEnabled: false }}

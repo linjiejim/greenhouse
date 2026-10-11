@@ -1,13 +1,24 @@
-/** The member's computer page (`bots.computer`) — English, the key source. Wording follows the web's botsComputer. */
+/**
+ * An Agent's computer page (`bots.computer`) — English, the key source. Wording follows the web's
+ * botsComputer. Each Agent has its own computer (spec 20261011-agent-first-class P3a): the copy says
+ * whose, never "your Bots'".
+ */
 
 export const botsComputerEn = {
   computer: {
     title: 'Computer',
+    /** The page title: whose computer it is. */
+    titleOf: '{name}’s Computer',
     open: 'Computer',
+    /** The thread bar's 🖥 for VoiceOver (with its state when known). */
+    openOf: '{name}’s computer',
+    openOfState: '{name}’s computer, {state}',
+    /** When the Agent's name is not known yet. */
+    anAgent: 'the Agent',
     tabScreen: 'Screen',
     tabFiles: 'Files',
     tabProcesses: 'Processes',
-    stateLoading: 'Checking your computer…',
+    stateLoading: 'Checking the computer…',
     stateUnavailable: 'Not available',
     stateChecking: 'Checking…',
     stateAsleep: 'Asleep',
@@ -17,20 +28,21 @@ export const botsComputerEn = {
     stateInControl: 'You’re in control',
     stateStopping: 'Going to sleep…',
     stateError: 'Something went wrong',
-    asleepDesc: 'It wakes up by itself when a Bot needs it. Files and sign-ins are kept while it sleeps.',
+    asleepDesc:
+      'This is {name}’s own computer — no other Agent uses it. It wakes up by itself when {name} needs it; files and sign-ins are kept while it sleeps.',
     startingDesc: 'The first start takes about 30 seconds.',
-    queuedDesc: 'All of your organisation’s computers are busy. Yours starts as soon as one frees up — you are #{position} in line.',
-    unavailableDesc: 'Your organisation hasn’t set up computers for Bots, or they aren’t working right now.',
+    queuedDesc: 'All of your organisation’s computers are busy. This one starts as soon as one frees up — it is #{position} in line.',
+    unavailableDesc: 'Your organisation hasn’t set up computers for Agents, or they aren’t working right now.',
     start: 'Start Now',
     startFailed: 'Couldn’t start the computer.',
-    loadFailed: 'Couldn’t load your computer’s status.',
+    loadFailed: 'Couldn’t load the computer’s status.',
     reasonOom: 'It ran out of memory and stopped. Starting it again usually fixes this.',
     reasonExited: 'It stopped unexpectedly. Starting it again usually fixes this.',
     reasonInterrupted: 'It was interrupted while the server restarted. Starting it again fixes this.',
     reasonStartFailed: 'It couldn’t be started.',
     reasonDiskFull: 'Its disk is full. Delete files on it, or reset it on the web.',
     reasonIdle: 'It went to sleep after a while without use.',
-    reasonLru: 'It went to sleep to make room for a colleague — it wakes up when a Bot needs it.',
+    reasonLru: 'It went to sleep to make room for a colleague — it wakes up when its Agent needs it.',
     connecting: 'Connecting to the screen…',
     reconnecting: 'Connection lost — reconnecting…',
     connectFailed: 'Couldn’t connect to the screen.',
@@ -41,18 +53,18 @@ export const botsComputerEn = {
     takeOver: 'Take Over',
     takeOverFailed: 'Couldn’t take over the computer.',
     takeOverBusyTitle: 'Take over the computer?',
-    takeOverBusy: 'A Bot is working on it. Taking over pauses that work — it picks up where it left off when you hand back.',
+    takeOverBusy: 'Its Agent is working on it. Taking over pauses that work — it picks up where it left off when you hand back.',
     inControlFor: 'In control · {time}',
     handBack: 'Hand Back',
     handBackWithNote: 'Hand Back with a Note…',
     handBackTitle: 'Hand the computer back?',
-    handBackDesc: 'Your Bots can use it again.',
-    noteTitle: 'Note for the Bot',
+    handBackDesc: 'It goes back to {name}.',
+    noteTitle: 'Note for {name}',
     notePlaceholder: 'e.g. Signed in — carry on',
     handBackFailed: 'Couldn’t hand the computer back.',
     handedBack: 'Handed back',
     closeInControlTitle: 'Hand back before closing?',
-    closeInControlDesc: 'Your Bots can’t use the computer while you’re in control.',
+    closeInControlDesc: '{name} can’t use the computer while you’re in control.',
     closeHandBack: 'Hand Back and Close',
     keepControl: 'Close, Keep Control',
     type: 'Type',
@@ -84,6 +96,7 @@ export const botsComputerEn = {
     errNotInControl: 'You’re not in control of the computer any more.',
     errOverQuota: 'The computer’s disk is full.',
     errNotFound: 'That file, folder or process no longer exists.',
+    errAgentGone: 'This Agent is no longer here, so its computer can’t be opened.',
     errTooLarge: 'That file is too large to download (limit 1 GB).',
     filesHome: 'Home',
     filesEmpty: 'This folder is empty',
@@ -93,7 +106,7 @@ export const botsComputerEn = {
     filesUp: 'Up',
     filesHint: 'Tap a file to save or share it.',
     procEmptyTitle: 'No background processes yet',
-    procEmptyDesc: 'Long jobs your Bots start (installs, builds, downloads) show up here.',
+    procEmptyDesc: 'Long jobs this Agent starts on its computer (installs, builds, downloads) show up here.',
     procRunning: 'Running',
     procExitCode: 'Exit code {code}',
     procEnded: 'Ended',
