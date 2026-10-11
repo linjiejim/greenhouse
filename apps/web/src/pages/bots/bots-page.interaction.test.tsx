@@ -325,10 +325,121 @@ describe('Bots workspace', () => {
 
     await click(document.querySelector('[data-testid="confirm-dialog-confirm"]'));
     expect(api.handbackComputer).toHaveBeenCalledTimes(1);
-    // The conversation beside the computer: its single waiting card (if any) is answered.
-    expect(api.handbackComputer).toHaveBeenCalledWith({ note: '', requestId: undefined, sessionId: 'dm-sage' });
+    // The conversation beside the computer: its single waiting card (if any) is answered — on Sage's own computer.
+    expect(api.handbackComputer).toHaveBeenCalledWith(
+      { note: '', requestId: undefined, sessionId: 'dm-sage' },
+      'bot_sage',
+    );
     expect(document.querySelector('[data-testid="bots-computer-host"]')).toBeNull();
     expect(document.querySelector('[data-testid="bots-info-pane"]')).not.toBeNull();
+  });
+});
+
+describe('each Agent its own computer', () => {
+  const sprouty = { ...bot('bot_sprouty', 'Sprouty', 'active', 'dm-sprouty'), template_key: 'sprouty' };
+  const FERN = bot('bot_fern', 'Fern', 'active', 'dm-fern');
+
+  beforeEach(() => {
+    api.listBots.mockResolvedValue({
+      bots: [sprouty, SAGE, FERN],
+      archived_bots: [OLD],
+      computer: { state: 'ready', reason: null, hardened: false },
+      vault_available: false,
+      pending_requests: 0,
+    });
+  });
+
+  it('opens the conversation’s own Agent’s computer, and says only it uses it', async () => {
+    api.getConversation.mockResolvedValue({ conversation: detail('dm-sage', SAGE), messages: [], has_more: false });
+    api.fetchComputerStatus.mockResolvedValue(computer({ computer_id: 'u1.bot_sage', bot_id: 'bot_sage' }));
+    await renderPage('c=dm-sage');
+    expect(api.fetchComputerStatus).toHaveBeenCalledWith('bot_sage');
+    expect(api.fetchComputerStatus).not.toHaveBeenCalledWith(null);
+
+    await click(document.querySelector('[data-testid="bots-computer-button"]'));
+    expect(document.querySelector('[data-testid="computer-title"]')?.textContent).toBe("Sage's computer");
+    expect(document.querySelector('[data-testid="computer-own-note"]')?.textContent).toBe(
+      "This is Sage's own computer — only it uses it, with its own files and sign-ins.",
+    );
+    expect(api.createComputerViewToken).toHaveBeenCalledWith('bot_sage');
+  });
+
+  it('opens the main computer — no Agent named — in the main thread', async () => {
+    api.getConversation.mockResolvedValue({
+      conversation: detail('dm-sprouty', sprouty),
+      messages: [],
+      has_more: false,
+    });
+    api.fetchComputerStatus.mockResolvedValue(computer({ computer_id: 'u1', bot_id: null }));
+    await renderPage('c=dm-sprouty');
+    expect(api.fetchComputerStatus).toHaveBeenCalledWith(null);
+    expect(api.fetchComputerStatus).not.toHaveBeenCalledWith('bot_sprouty');
+
+    await click(document.querySelector('[data-testid="bots-computer-button"]'));
+    expect(document.querySelector('[data-testid="computer-title"]')?.textContent).toBe("Sprouty's computer");
+  });
+
+  it('opens a card’s own Agent’s computer from its “Open computer”', async () => {
+    const card = {
+      id: 'brq_fern',
+      session_id: 'dm-sage',
+      bot_id: FERN.id,
+      kind: 'login' as const,
+      status: 'pending' as const,
+      payload: {
+        reason: 'Sign in to GitHub',
+        kind: 'login' as const,
+        origin: 'https://github.com',
+        url: 'https://github.com/login',
+        vault_matches: [],
+      },
+      result: null,
+      expires_at: null,
+      created_at: '2026-10-05T00:00:00.000Z',
+    };
+    api.getConversation.mockResolvedValue({
+      conversation: {
+        ...detail('dm-sage', SAGE),
+        members: [
+          { bot_id: SAGE.id, role: 'owner', position: 0 },
+          { bot_id: FERN.id, role: 'guest', position: 1 },
+        ],
+        requests: [card],
+      },
+      messages: [
+        {
+          id: 'row-1',
+          role: 'system',
+          content: 'Fern needs you',
+          bot_id: FERN.id,
+          bot_event: { kind: 'request', request_id: card.id, request_kind: 'login', bot_id: FERN.id },
+          pipeline: [],
+          references: [],
+          reasoning: null,
+          model: null,
+          images: [],
+          created_at: '2026-10-05T00:00:00.000Z',
+          seq: 1,
+        },
+      ],
+      has_more: false,
+    });
+    api.fetchComputerStatus.mockImplementation(async (who: string | null) =>
+      computer({ computer_id: `u1.${who}`, bot_id: who }),
+    );
+    await renderPage('c=dm-sage');
+    expect(api.fetchComputerStatus).toHaveBeenLastCalledWith('bot_sage');
+
+    const open = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Open the computer instead');
+    await click(open);
+    expect(api.fetchComputerStatus).toHaveBeenLastCalledWith('bot_fern');
+    expect(document.querySelector('[data-testid="computer-title"]')?.textContent).toBe("Fern's computer");
+
+    // Closed and opened again from the header: the conversation's Agent's computer.
+    await click(document.querySelector('[data-testid="bots-computer-button"]'));
+    expect(document.querySelector('[data-testid="computer-pane"]')).toBeNull();
+    await click(document.querySelector('[data-testid="bots-computer-button"]'));
+    expect(document.querySelector('[data-testid="computer-title"]')?.textContent).toBe("Sage's computer");
   });
 });
 
@@ -369,7 +480,8 @@ describe('the computer keeps the member’s clock', () => {
     api.fetchComputerStatus.mockResolvedValue(computer({ timezone: null }));
     await renderPage('c=dm-sage');
     expect(api.updateComputerSettings).toHaveBeenCalledTimes(1);
-    expect(api.updateComputerSettings).toHaveBeenCalledWith({ timezone: zone });
+    // The setting is the member's (all their computers); it goes through the page's computer.
+    expect(api.updateComputerSettings).toHaveBeenCalledWith({ timezone: zone }, 'bot_sage');
 
     // Back on the page (another conversation, a remount): not asked again this page load.
     await act(async () => root?.unmount());

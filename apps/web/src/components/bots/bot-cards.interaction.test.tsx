@@ -54,6 +54,7 @@ const api = vi.hoisted(() => ({
   archiveUserMemory: vi.fn(),
   listBots: vi.fn(),
   takeoverComputer: vi.fn(),
+  fetchComputerStatus: vi.fn(),
   createComputerViewToken: vi.fn(),
   computerViewerUrl: (token: string) => `ws://greenhouse.test/api/ws/computer?token=${token}`,
 }));
@@ -604,15 +605,20 @@ describe('the human-check card', () => {
       ...partial,
     });
 
-  /** What the Bots page does: one computer status the card reads and updates. */
+  /**
+   * What the Bots page does: one computer status the card reads and updates — by default the
+   * card's own Agent's (Sage's) computer; `pageBot` names another one the page follows.
+   */
   function Host({
     req,
     initial,
     onOpenComputer,
+    pageBot = SAGE.id,
   }: {
     req: BotRequestView;
     initial: ComputerStatusView;
-    onOpenComputer?: () => void;
+    onOpenComputer?: (botId: string | null) => void;
+    pageBot?: string | null;
   }) {
     const [status, setStatus] = useState(initial);
     return createElement(BotTranscript, {
@@ -621,7 +627,7 @@ describe('the human-check card', () => {
         requests: new Map([[req.id, req]]),
         onOpenComputer: onOpenComputer ?? vi.fn(),
       }),
-      computer: { phase: computerPhase(status), apply: setStatus, refresh: vi.fn(async () => {}) },
+      computer: { bot: pageBot, phase: computerPhase(status), apply: setStatus, refresh: vi.fn(async () => {}) },
     });
   }
 
@@ -649,6 +655,9 @@ describe('the human-check card', () => {
     });
     await flush();
     expect(api.takeoverComputer).toHaveBeenCalledTimes(1);
+    // The check is on the computer of the Agent that raised the card.
+    expect(api.takeoverComputer).toHaveBeenCalledWith(SAGE.id);
+    expect(api.createComputerViewToken).toHaveBeenCalledWith(SAGE.id);
     expect(screen()?.getAttribute('data-view-only')).toBe('false');
     expect(fakes.FakeRfb.instances.at(-1)?.viewOnly).toBe(false);
     // In control: no second "Verify here"; "I'm done" hands back for this card.
@@ -684,6 +693,8 @@ describe('the human-check card', () => {
         ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(onOpenComputer).toHaveBeenCalledTimes(1);
+    // …the computer of the Agent that raised the card.
+    expect(onOpenComputer).toHaveBeenCalledWith(SAGE.id);
 
     await act(async () => {
       card()
@@ -709,6 +720,17 @@ describe('the human-check card', () => {
     await flush();
     // The take-over woke it: the screen is there, and it is the member's.
     expect(screen()?.getAttribute('data-view-only')).toBe('false');
+  });
+
+  it("follows its own Agent's computer when the page shows another one", async () => {
+    api.fetchComputerStatus.mockResolvedValue(computerStatus({ state: 'absent', bot_id: SAGE.id }));
+    // The page follows the main Agent's computer (null); the card was raised by Sage.
+    await mount(createElement(Host, { req: captcha(), initial: computerStatus(), pageBot: null }));
+    await flush();
+    expect(api.fetchComputerStatus).toHaveBeenCalledWith(SAGE.id);
+    // Sage's computer is asleep — not the page's running one.
+    expect(card().textContent).toContain('The computer is asleep — Verify here wakes it up.');
+    expect(screen()).toBeNull();
   });
 
   it('collapses once settled — no screen, no actions', async () => {

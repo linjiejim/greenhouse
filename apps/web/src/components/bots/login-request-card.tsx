@@ -66,7 +66,8 @@ export function LoginRequestCard({
   request: BotRequestView;
   lookup: BotLookup;
   vaultAvailable: boolean;
-  onOpenComputer: () => void;
+  /** Open the computer pane on this card's Agent's computer. */
+  onOpenComputer: (botId: string | null) => void;
   onAskAgain: (botId: string) => void;
 }) {
   const t = useT();
@@ -203,7 +204,7 @@ export function LoginRequestCard({
             >
               {t('bots.requests.notNow')}
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={onOpenComputer}>
+            <Button type="button" size="sm" variant="outline" onClick={() => onOpenComputer(request.bot_id)}>
               {t('bots.requests.openComputer')}
             </Button>
             <Button type="submit" size="sm" disabled={!canSubmit || busy}>

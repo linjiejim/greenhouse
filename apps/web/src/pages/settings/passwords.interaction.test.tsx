@@ -190,6 +190,8 @@ describe('PasswordsPanel', () => {
       origins: ['https://github.com'],
       policy: 'auto',
       password: 'hunter2',
+      // Every Agent may use it unless the member narrows it.
+      bot_ids: null,
     });
   });
 
@@ -232,7 +234,47 @@ describe('PasswordsPanel', () => {
       origins: ['https://github.com'],
       policy: 'ask',
       password: '',
+      bot_ids: null,
     });
+  });
+
+  it('lets only some Agents use a login, shows who in the list, and needs at least one', async () => {
+    const SPROUTY = { id: 'bot_sprouty', name: 'Sprouty', status: 'active', template_key: 'sprouty' };
+    const SAGE = { id: 'bot_sage', name: 'Sage', status: 'active', template_key: null };
+    const OLD = { id: 'bot_old', name: 'Old', status: 'archived', template_key: null };
+    api.listBots.mockResolvedValue({
+      bots: [SPROUTY, SAGE],
+      archived_bots: [OLD],
+      computer: { state: 'disabled', reason: null, hardened: false },
+      vault_available: true,
+      pending_requests: 0,
+    });
+    api.fetchVault.mockResolvedValue({
+      items: [GITHUB, { ...GITHUB, id: 'vlt_2', label: 'Bank', bot_ids: ['bot_sage', 'bot_old'] }],
+      available: true,
+    });
+    api.updateVaultItem.mockResolvedValue({ ...GITHUB, bot_ids: ['bot_sprouty'] });
+    await renderPanel();
+
+    const rowOf = (label: string) =>
+      [...document.querySelectorAll('tr')].find((tr) => tr.textContent?.includes(label))!;
+    expect(rowOf('GitHub (work)').textContent).toContain('All Agents');
+    expect(rowOf('Bank').querySelector('[data-testid="vault-row-agents"]')?.textContent).toContain('Sage');
+    expect(rowOf('Bank').querySelector('[data-testid="vault-row-agents"]')?.textContent).toContain('Old (archived)');
+
+    await click(rowOf('GitHub (work)').querySelector('[data-testid="vault-edit"]'));
+    expect(document.querySelector('[data-testid="vault-agents-all"]')?.getAttribute('aria-pressed')).toBe('true');
+    await click(document.querySelector('[data-testid="vault-agents-only"]'));
+    // Archived Agents are offered only where a login still names them.
+    expect(document.querySelector('[data-testid="vault-agent-bot_old"]')).toBeNull();
+    await click(document.querySelector('[data-testid="vault-submit"]'));
+    expect(document.body.textContent).toContain('Pick at least one Agent.');
+    expect(api.updateVaultItem).not.toHaveBeenCalled();
+
+    const sprouty = document.querySelector('[data-testid="vault-agent-bot_sprouty"]')!.closest('label')!;
+    await click(sprouty.querySelector('input'));
+    await click(document.querySelector('[data-testid="vault-submit"]'));
+    expect(api.updateVaultItem).toHaveBeenCalledWith('vlt_1', expect.objectContaining({ bot_ids: ['bot_sprouty'] }));
   });
 
   it('says so when the server cannot store secrets', async () => {

@@ -34,6 +34,7 @@ import {
   isBotsApiError,
   listComputerFiles,
   uploadComputerFile,
+  type ComputerBot,
 } from '../../lib/api/bots';
 import { formatFileSize } from '../../lib/file-download';
 import { formatDate } from '../../lib/utils';
@@ -109,13 +110,15 @@ function isAbort(err: unknown): boolean {
 }
 
 export interface ComputerFilesProps {
+  /** Whose computer: an Agent's id, null (default) = the main Agent's. */
+  bot?: ComputerBot;
   /** The Files tab is the one showing (it re-reads the folder when shown again). */
   active: boolean;
   /** A call found the computer stopped: let the owner refresh its status. */
   onStale?: () => void;
 }
 
-export function ComputerFiles({ active, onStale }: ComputerFilesProps) {
+export function ComputerFiles({ bot = null, active, onStale }: ComputerFilesProps) {
   const t = useT();
   const [requested, setRequested] = useState('~/work');
   const [listing, setListing] = useState<ComputerFileList | null>(null);
@@ -146,7 +149,7 @@ export function ComputerFiles({ active, onStale }: ComputerFilesProps) {
       const ticket = ++loadTicket.current;
       setLoading(true);
       try {
-        const next = await listComputerFiles(path);
+        const next = await listComputerFiles(path, bot);
         if (ticket !== loadTicket.current) return;
         setListing(next);
         setLoadFailed(null);
@@ -158,7 +161,7 @@ export function ComputerFiles({ active, onStale }: ComputerFilesProps) {
         if (ticket === loadTicket.current) setLoading(false);
       }
     },
-    [t],
+    [t, bot],
   );
 
   // A new folder, and every return to the tab: the Bots may have changed things meanwhile.
@@ -200,6 +203,7 @@ export function ComputerFiles({ active, onStale }: ComputerFilesProps) {
         updateUpload(row.id, { state: 'uploading' });
         try {
           await uploadComputerFile(dir, file, {
+            bot,
             signal: abort.current.signal,
             onProgress: (loaded) => updateUpload(row.id, { loaded }),
           });
@@ -226,7 +230,7 @@ export function ComputerFiles({ active, onStale }: ComputerFilesProps) {
     const path = `${currentDir.replace(/\/+$/, '')}/${entry.name}`;
     setDownloading(entry.name);
     try {
-      await downloadComputerFile(path, entry.name);
+      await downloadComputerFile(path, entry.name, bot);
     } catch (err) {
       if (isBotsApiError(err, 'stopped')) onStaleRef.current?.();
       toast(fileErrorText(t, err, entry.name, 'botsComputer.files_downloadFailed'), 'error');

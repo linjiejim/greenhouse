@@ -1,5 +1,6 @@
 /**
- * Project Detail Page — /projects/:id
+ * Project Detail Page — /projects/:id (`?task=<id>` opens that task's drawer — the link an
+ * Agent's task chat starts from)
  *
  * 项目详情页，包含 List / Board / Gantt 三种视图，以及任务创建/编辑/评论。
  * 子组件拆分到 components/project/ 目录下。
@@ -25,7 +26,7 @@ import {
   Lock,
   FolderKanban,
 } from '../lib/icons';
-import { useT } from '../lib/i18n';
+import { useT, type TranslationKey } from '../lib/i18n';
 import { useAuthStore } from '../stores';
 import { useInEntityPeek } from '../components/entity-peek';
 import {
@@ -50,7 +51,13 @@ import {
 
 // ─── Project Detail Page ─────────────────────────────────
 
-export function ProjectDetailPage({ projectId }: { projectId: number }) {
+/** Project activity whose words come from the action, not the detail (the detail is a name). */
+const ACTIVITY_COPY: Partial<Record<string, TranslationKey>> = {
+  task_handed_to_agent: 'task.agent.activityHanded',
+  task_agent_cleared: 'task.agent.activityCleared',
+};
+
+export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: number; initialTaskId?: number | null }) {
   const inPeek = useInEntityPeek();
   const t = useT();
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -170,6 +177,17 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
   const handleTaskUpdate = () => {
     loadProject();
   };
+
+  // `#/projects/<id>?task=<taskId>`: open that task once it has loaded (once per id, so closing
+  // the drawer stays closed through later reloads).
+  const openedFromLink = React.useRef<number | null>(null);
+  useEffect(() => {
+    if (!initialTaskId || openedFromLink.current === initialTaskId) return;
+    const linked = allFlatTasks.find((tk) => tk.id === initialTaskId);
+    if (!linked) return;
+    openedFromLink.current = initialTaskId;
+    setSelectedTask(linked);
+  }, [initialTaskId, allFlatTasks]);
 
   // Keep an open task drawer in sync with freshly-loaded data (e.g. after an
   // inline edit saves). Runs after the reload lands, so it reads the fresh
@@ -600,7 +618,11 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
                 <div key={a.id} className="flex gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-primary-400 mt-1.5 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-fg-secondary">{a.detail || a.action}</p>
+                    <p className="text-xs text-fg-secondary">
+                      {ACTIVITY_COPY[a.action]
+                        ? t(ACTIVITY_COPY[a.action]!, { name: a.detail ?? '' })
+                        : a.detail || a.action}
+                    </p>
                     <div className="flex items-center gap-2 mt-0.5 text-[10px] text-fg-faint">
                       <span>{a.user_nickname}</span>
                       <span>{timeAgo(a.created_at)}</span>

@@ -425,11 +425,14 @@ describe('ComputerPane live screen', () => {
     api.fetchComputerStatus.mockResolvedValue(RUNNING);
     await click(document.querySelector('[data-testid="computer-hand-back"]')!);
 
-    expect(api.handbackComputer).toHaveBeenCalledWith({
-      note: 'Signed in, code went to my phone',
-      requestId: undefined,
-      sessionId: undefined,
-    });
+    expect(api.handbackComputer).toHaveBeenCalledWith(
+      {
+        note: 'Signed in, code went to my phone',
+        requestId: undefined,
+        sessionId: undefined,
+      },
+      null,
+    );
     expect(onFocusChange).toHaveBeenCalledWith(false);
     expect(latestRfb().viewOnly).toBe(true);
     expect(document.querySelector('[data-testid="computer-take-over"]')).not.toBeNull();
@@ -458,7 +461,7 @@ describe('ComputerPane live screen', () => {
     expect(api.typeIntoComputer).not.toHaveBeenCalled();
 
     await click(panel.querySelector('[data-testid="computer-type-send"]')!);
-    expect(api.typeIntoComputer).toHaveBeenCalledWith('你好 world');
+    expect(api.typeIntoComputer).toHaveBeenCalledWith('你好 world', null);
     expect(input.value).toBe('');
     expect(panel.textContent).toContain('Typed');
   });
@@ -545,7 +548,8 @@ describe('ComputerPane needs-you shortcut', () => {
       pending_requests: 1,
     });
     api.takeoverComputer.mockResolvedValue(IN_CONTROL);
-    await renderPane({ sessionId: 'sess-1' });
+    // Sage's own computer: the card Sage raised belongs here.
+    await renderPane({ sessionId: 'sess-1', bot: 'bot_sage' });
 
     const banner = document.querySelector('[data-testid="computer-needs-you"]')!;
     expect(banner.textContent).toContain('Sage needs you');
@@ -555,13 +559,44 @@ describe('ComputerPane needs-you shortcut', () => {
     api.fetchComputerStatus.mockResolvedValue(IN_CONTROL);
     await click(banner.querySelector('button')!);
     expect(api.takeoverComputer).toHaveBeenCalledTimes(1);
+    expect(api.takeoverComputer).toHaveBeenCalledWith('bot_sage');
     expect(document.querySelector('[data-testid="confirm-dialog"]')).toBeNull();
     expect(document.querySelector('[data-testid="computer-needs-you"]')).toBeNull();
 
     // Handing back settles exactly the request that was answered.
     api.handbackComputer.mockResolvedValue(RUNNING);
     await click(document.querySelector('[data-testid="computer-hand-back"]')!);
-    expect(api.handbackComputer).toHaveBeenCalledWith({ note: '', requestId: 'brq_1', sessionId: 'sess-1' });
+    expect(api.handbackComputer).toHaveBeenCalledWith(
+      { note: '', requestId: 'brq_1', sessionId: 'sess-1' },
+      'bot_sage',
+    );
+  });
+
+  it("leaves another Agent's card to that Agent's computer", async () => {
+    api.fetchComputerStatus.mockResolvedValue(RUNNING);
+    api.listRequests.mockResolvedValue({ requests: [request] });
+    api.listBots.mockResolvedValue({
+      bots: [
+        { id: 'bot_sage', name: 'Sage', status: 'active', template_key: null },
+        { id: 'bot_sprouty', name: 'Sprouty', status: 'active', template_key: 'sprouty' },
+      ],
+      archived_bots: [],
+      computer: RUNNING.runtime,
+      vault_available: true,
+      pending_requests: 1,
+    });
+    // The main computer (Sprouty's): Sage's card is about Sage's own computer.
+    await renderPane({ sessionId: 'sess-1' });
+    expect(api.fetchComputerStatus).toHaveBeenCalledWith(null);
+    expect(document.querySelector('[data-testid="computer-needs-you"]')).toBeNull();
+
+    // A card Sprouty raised is the main computer's.
+    if (root) await act(async () => root?.unmount());
+    root = null;
+    document.body.innerHTML = '';
+    api.listRequests.mockResolvedValue({ requests: [{ ...request, bot_id: 'bot_sprouty' }] });
+    await renderPane({ sessionId: 'sess-1' });
+    expect(document.querySelector('[data-testid="computer-needs-you"]')?.textContent).toContain('Sprouty needs you');
   });
 
   it('names the conversation on a voluntary hand-back, so its single waiting card is answered', async () => {
@@ -573,7 +608,7 @@ describe('ComputerPane needs-you shortcut', () => {
     await renderPane({ sessionId: 'sess-1' });
 
     await click(document.querySelector('[data-testid="computer-hand-back"]')!);
-    expect(api.handbackComputer).toHaveBeenCalledWith({ note: '', requestId: undefined, sessionId: 'sess-1' });
+    expect(api.handbackComputer).toHaveBeenCalledWith({ note: '', requestId: undefined, sessionId: 'sess-1' }, null);
   });
 
   it('explains a card the computer raised itself and lets the Bot continue from the banner', async () => {
@@ -594,14 +629,17 @@ describe('ComputerPane needs-you shortcut', () => {
       pending_requests: 1,
     });
     api.handbackComputer.mockResolvedValue(RUNNING);
-    await renderPane({ sessionId: 'sess-1' });
+    await renderPane({ sessionId: 'sess-1', bot: 'bot_sage' });
 
     const banner = document.querySelector('[data-testid="computer-needs-you"]')!;
     expect(banner.textContent).toContain('You took over while Sage was working');
     expect(banner.textContent).not.toContain('interrupted');
     await click(buttonByText('Hand back — let Sage continue'));
     expect(api.takeoverComputer).not.toHaveBeenCalled();
-    expect(api.handbackComputer).toHaveBeenCalledWith({ note: '', requestId: 'brq_9', sessionId: 'sess-1' });
+    expect(api.handbackComputer).toHaveBeenCalledWith(
+      { note: '', requestId: 'brq_9', sessionId: 'sess-1' },
+      'bot_sage',
+    );
   });
 
   it('asks to hand back before closing while in control', async () => {
@@ -615,7 +653,7 @@ describe('ComputerPane needs-you shortcut', () => {
     expect(document.body.textContent).toContain('Hand back before closing?');
 
     await click(document.querySelector('[data-testid="confirm-dialog-confirm"]')!);
-    expect(api.handbackComputer).toHaveBeenCalledWith({ note: '', requestId: undefined, sessionId: undefined });
+    expect(api.handbackComputer).toHaveBeenCalledWith({ note: '', requestId: undefined, sessionId: undefined }, null);
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -700,7 +738,7 @@ describe('ComputerPane close guard (host-driven)', () => {
     expect(document.body.textContent).toContain('Hand back before closing?');
 
     await click(document.querySelector('[data-testid="confirm-dialog-confirm"]')!);
-    expect(api.handbackComputer).toHaveBeenCalledWith({ note: '', requestId: undefined, sessionId: undefined });
+    expect(api.handbackComputer).toHaveBeenCalledWith({ note: '', requestId: undefined, sessionId: undefined }, null);
     expect(closed).toHaveBeenCalledTimes(1);
   });
 
@@ -787,7 +825,7 @@ describe('ComputerPane tabs', () => {
 
     await click(tab('files')!);
     expect(tab('files')?.getAttribute('aria-selected')).toBe('true');
-    expect(api.listComputerFiles).toHaveBeenCalledWith('~/work');
+    expect(api.listComputerFiles).toHaveBeenCalledWith('~/work', null);
     expect(panel('computer-files')?.hasAttribute('hidden')).toBe(false);
     // The screen keeps its connection (and a held lease its viewer) while another tab shows.
     expect(panel('computer-screen')?.hasAttribute('hidden')).toBe(true);
@@ -835,7 +873,7 @@ describe('ComputerPane tabs', () => {
       ],
     });
     api.takeoverComputer.mockResolvedValue(IN_CONTROL);
-    await renderPane({ sessionId: 'sess-1' });
+    await renderPane({ sessionId: 'sess-1', bot: 'bot_sage' });
     await click(tab('files')!);
     expect(tab('files')?.getAttribute('aria-selected')).toBe('true');
 

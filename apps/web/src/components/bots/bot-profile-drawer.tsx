@@ -4,11 +4,15 @@
  * per the Drawer/Dialog convention. Private memories are listed in full and
  * each can be forgotten: nothing a Bot keeps about the member is out of the
  * member's sight. Every save appends an immutable version (spec 20261007 §2.1).
+ *
+ * Three tabs: Profile (the above), Usage and Activity (what the Agent spent and
+ * did for the member — bot-profile-activity.tsx, spec 20261011-agent-first-class
+ * P3d). The tab resets to Profile for every Agent opened.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isSproutyBot, type BotVersionView, type BotView } from '@greenhouse/types/bots';
-import { Button, ConfirmDialog, Dialog, Drawer, IconButton, Spinner, toast } from '../ui';
+import { Button, ConfirmDialog, Dialog, Drawer, IconButton, Spinner, Tabs, toast } from '../ui';
 import { FormActions } from '../form';
 import { Archive, FolderOpen, MessageCircle, MessageSquare, Pencil, Trash2, X } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
@@ -22,6 +26,9 @@ import { BotFields, useBotNameMessage, type BotDraft } from './bot-form';
 import { botNameIssueFromCode, validateBotName } from './bot-name';
 import { PanelSection } from './bots-side-panel';
 import { openChatWith } from './navigation';
+import { BotActivityPanel, BotUsagePanel } from './bot-profile-activity';
+
+type ProfileTab = 'profile' | 'usage' | 'activity';
 
 export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => void }) {
   const t = useT();
@@ -42,10 +49,14 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
   );
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [tab, setTab] = useState<ProfileTab>('profile');
 
   useEffect(() => {
     if (botId && profileEdit) setEditing(true);
   }, [botId, profileEdit]);
+
+  // Every Agent opens on its profile.
+  useEffect(() => setTab('profile'), [botId]);
 
   useEffect(() => {
     void fetchProfiles();
@@ -101,9 +112,12 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
     }
   };
 
-  // A save appends a version: refresh the history the drawer shows.
+  // A save appends a version: refresh the history the drawer shows. An empty history (the read
+  // failed) is left alone — re-reading it on every render would never stop.
   useEffect(() => {
-    if (bot?.id && versions && versions[0]?.version !== bot.current_version) void loadVersions(bot.id);
+    if (bot?.id && versions && versions.length > 0 && versions[0]!.version !== bot.current_version) {
+      void loadVersions(bot.id);
+    }
   }, [bot?.id, bot?.current_version, loadVersions, versions]);
 
   const close = () => openProfile(null);
@@ -172,7 +186,38 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
                 <X size={16} />
               </IconButton>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="flex-shrink-0 border-b border-edge px-4 py-2">
+              <Tabs
+                ariaLabel={t('bots.profile.tabsLabel')}
+                active={tab}
+                onChange={(key) => setTab(key === 'usage' || key === 'activity' ? key : 'profile')}
+                tabs={[
+                  { key: 'profile', label: t('bots.profile.tabProfile'), testId: 'bots-profile-tab-profile' },
+                  { key: 'usage', label: t('bots.profile.tabUsage'), testId: 'bots-profile-tab-usage' },
+                  { key: 'activity', label: t('bots.profile.tabActivity'), testId: 'bots-profile-tab-activity' },
+                ]}
+              />
+            </div>
+            {tab === 'usage' && (
+              <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel" aria-label={t('bots.profile.tabUsage')}>
+                <BotUsagePanel botId={bot.id} name={bot.name} />
+              </div>
+            )}
+            {tab === 'activity' && (
+              <div
+                className="min-h-0 flex-1 overflow-y-auto"
+                role="tabpanel"
+                aria-label={t('bots.profile.tabActivity')}
+              >
+                <BotActivityPanel botId={bot.id} name={bot.name} onOpenConversation={close} />
+              </div>
+            )}
+            <div
+              className="min-h-0 flex-1 overflow-y-auto"
+              role="tabpanel"
+              aria-label={t('bots.profile.tabProfile')}
+              hidden={tab !== 'profile'}
+            >
               {bot.description && (
                 <PanelSection title={t('bots.profile.description')}>
                   <p className="text-xs leading-5 text-fg-secondary">{bot.description}</p>

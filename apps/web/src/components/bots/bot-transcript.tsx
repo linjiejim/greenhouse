@@ -64,7 +64,8 @@ export interface BotTranscriptProps {
   vaultAvailable: boolean;
   onRequestSettled: (request: BotRequestView) => void;
   onStale: () => void;
-  onOpenComputer: () => void;
+  /** A card opens the computer of the Agent that raised it (`botId`; each Agent has its own). */
+  onOpenComputer: (botId: string | null) => void;
   onViewSummary: () => void;
   /** Address one Bot with a fixed line ("try again", "please continue"). */
   onAddress: (botId: string | null, text: 'retry' | 'continue') => void;

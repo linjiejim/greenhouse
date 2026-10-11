@@ -74,10 +74,18 @@ export interface ConversationViewProps {
   onReadOnly: () => void;
   vaultAvailable: boolean;
   computerPhase: ComputerPhase | null;
-  /** The page's one computer status — a human-check card embeds the screen and takes over through it. */
+  /**
+   * The page's one computer status (the conversation's Agent's computer) — a human-check card raised
+   * on it embeds the screen and takes over through it.
+   */
   computer?: ComputerStatusState;
   activePane: 'info' | 'computer' | null;
   onPane: (pane: 'info' | 'computer' | null) => void;
+  /**
+   * A card's "Open computer": the computer of the Agent that raised it (each Agent has its own).
+   * Without it a card opens the page's computer pane.
+   */
+  onOpenAgentComputer?: (botId: string | null) => void;
   onInvite: () => void;
   onNewBot: () => void;
   onOpenProfile: (botId: string) => void;
@@ -394,6 +402,7 @@ function ConversationColumn({
   computer,
   activePane,
   onPane,
+  onOpenAgentComputer,
   onInvite,
   onNewBot,
   onOpenProfile,
@@ -534,7 +543,7 @@ function ConversationColumn({
         vaultAvailable={vaultAvailable}
         onRequestSettled={controller.applyRequest}
         onStale={() => void controller.reload()}
-        onOpenComputer={() => onPane('computer')}
+        onOpenComputer={(botId) => (onOpenAgentComputer ? onOpenAgentComputer(botId) : onPane('computer'))}
         onViewSummary={() => onPane('info')}
         onAddress={address}
         onSendText={sendFromCard}

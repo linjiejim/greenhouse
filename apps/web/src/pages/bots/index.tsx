@@ -6,7 +6,8 @@
  * creates their first Bot and opens its DM; later visits reopen the most
  * recently active conversation someone can still answer in — and hosts what
  * sits beside the conversation: the info pane, the computer pane (focus
- * layout on take over), Chat's side pane (html previews, record links — one
+ * layout on take over; the conversation's Agent's own computer, or the one a
+ * card was raised on — each Agent has its own), Chat's side pane (html previews, record links — one
  * right-hand column at a time) and the create / invite / profile dialogs. The
  * conversation list lives in the contextual sidebar (mobile: the navigation
  * drawer — every screen here carries the phone's menu button, because the
@@ -19,10 +20,11 @@ import { Button, EmptyState, Spinner } from '../../components/ui';
 import { AlertTriangle, Bot } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import * as botsApi from '../../lib/api/bots';
+import type { ComputerBot } from '../../lib/api/bots';
 import { ComputerPane, type ComputerPaneHandle } from '../../components/bots/computer-pane';
 import { ChatSidePane, useSidePaneHost } from '../../components/side-pane/chat-side-pane';
 import { useSidePaneStore } from '../../stores/side-pane-store';
-import { useComputerStatus, useComputerTimezoneSync } from '../../components/bots/computer-phase';
+import { computerBotFor, useComputerStatus, useComputerTimezoneSync } from '../../components/bots/computer-phase';
 import {
   BotsBareHeader,
   BotsDialogs,
@@ -134,16 +136,37 @@ type Pane = 'info' | 'computer' | null;
 function BotsWorkspace({ sessionId }: { sessionId: string }) {
   const t = useT();
   const controller = useBotConversation(sessionId);
-  // The one computer status of this page: the header's dot, the pane and the
-  // human-check cards read the same copy (no second poller, and an action's
-  // result shows everywhere at once).
-  const computer = useComputerStatus(true);
-  // The computer keeps the member's clock (stored once per page load when it differs).
-  useComputerTimezoneSync(computer);
   const split = useSplitCapable();
   const bots = useBotsStore((state) => state.bots);
   const directory = useBotDirectory();
   const botsState = useBotsLoadState();
+  const conversation = controller.conversation;
+  const botOf = useCallback((id: string) => directory.get(id), [directory]);
+  // Each Agent has its own computer (spec 20261011-agent-first-class P3a). The page's is the
+  // conversation's Agent's (Sprouty's = the main one; a DM with an archived owner's too) — not known
+  // until the conversation and, for its owner, the Agent list are in.
+  const ownerId = conversation?.owner_bot_id ?? null;
+  const ownerComputer: ComputerBot | undefined = !conversation
+    ? undefined
+    : ownerId && !directory.has(ownerId) && botsState === 'loading'
+      ? undefined
+      : computerBotFor(ownerId, botOf);
+  // A card's "Open computer" shows the computer of the Agent that raised it, until the pane closes.
+  const [cardComputer, setCardComputer] = useState<{ sessionId: string; bot: ComputerBot } | null>(null);
+  const computerBot = cardComputer?.sessionId === sessionId ? cardComputer.bot : ownerComputer;
+  // The one computer status of this page: the header's dot, the pane and the
+  // human-check cards raised on it read the same copy (no second poller, and an
+  // action's result shows everywhere at once).
+  const computer = useComputerStatus(computerBot !== undefined, computerBot ?? null);
+  // The computer keeps the member's clock (stored once per page load when it differs; it applies to
+  // all of the member's computers).
+  useComputerTimezoneSync(computer);
+  const computerAgent =
+    computerBot === undefined
+      ? undefined
+      : computerBot === null
+        ? bots.find((bot) => isSproutyBot(bot))
+        : directory.get(computerBot);
   const vaultAvailable = useBotsStore((state) => state.vaultAvailable);
   const dialog = useBotsStore((state) => state.dialog);
   const openDialog = useBotsStore((state) => state.openDialog);
@@ -166,7 +189,6 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
   // name here. Once per id: an id the list still lacks after a re-read
   // (neither active nor archived — gone for good) must not re-fetch on every
   // conversation reload.
-  const conversation = controller.conversation;
   const refetchedFor = useRef(new Set<string>());
   useEffect(() => {
     if (!conversation || botsState !== 'ready') return;
@@ -213,11 +235,19 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
       })
     : '';
   const speaking = controller.streaming ? speakingSegment(controller.managed?.botSegments) : null;
-  const speakingName = speaking ? (directory.get(speaking.botId)?.name ?? null) : null;
+  // Named in the take-over confirmation only when it is working on this very computer.
+  const speakingName =
+    speaking && computerBotFor(speaking.botId, botOf) === computerBot
+      ? (directory.get(speaking.botId)?.name ?? null)
+      : null;
 
   const applyPane = useCallback((next: Pane) => {
     setPane(next);
-    if (next !== 'computer') setFocus(false);
+    if (next !== 'computer') {
+      setFocus(false);
+      // Closed: the next opening shows the conversation's Agent's computer again.
+      setCardComputer(null);
+    }
     // One right-hand column at a time: info or the computer replaces the side pane…
     if (next !== null) useSidePaneStore.getState().close();
   }, []);
@@ -248,6 +278,26 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
     if (sidePaneOpen && paneRef.current !== null) changePaneRef.current(null);
   }, [sidePaneOpen]);
 
+  /**
+   * A card's "Open computer": the computer of the Agent that raised it. Showing another computer
+   * than the open pane's goes through `requestClose` (a member holding this one hands it back first).
+   */
+  const computerBotRef = useRef(computerBot);
+  computerBotRef.current = computerBot;
+  const openAgentComputer = useCallback(
+    (botId: string | null) => {
+      const target = computerBotFor(botId, botOf);
+      const show = () => {
+        setCardComputer({ sessionId, bot: target });
+        applyPane('computer');
+      };
+      const open = computerPaneRef.current;
+      if (paneRef.current === 'computer' && target !== computerBotRef.current && open) open.requestClose(show);
+      else show();
+    },
+    [applyPane, botOf, sessionId],
+  );
+
   const onReadOnly = useCallback(() => {
     void loadBots().catch(() => {});
     void controller.reload();
@@ -255,6 +305,8 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
 
   const computerPane = (
     <ComputerPane
+      // Another Agent's computer is another screen, terminal and file list: start the pane over.
+      key={computerBot ?? 'main'}
       ref={computerPaneRef}
       open={pane === 'computer'}
       onClose={() => applyPane(null)}
@@ -263,6 +315,7 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
       onFocusChange={setFocus}
       busyBotName={speakingName}
       computer={computer}
+      agentName={computerAgent?.name ?? null}
     />
   );
 
@@ -293,6 +346,7 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
           computer={computer}
           activePane={pane}
           onPane={changePane}
+          onOpenAgentComputer={openAgentComputer}
           onInvite={() => openDialog({ kind: 'invite', sessionId })}
           onNewBot={() => openDialog({ kind: 'new-bot' })}
           onOpenProfile={(botId) => openProfile(botId)}

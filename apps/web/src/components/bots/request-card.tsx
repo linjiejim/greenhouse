@@ -44,7 +44,8 @@ export interface RequestCardProps extends RequestCardCallbacks {
   fallback: BotMessage | null;
   lookup: BotLookup;
   vaultAvailable: boolean;
-  onOpenComputer: () => void;
+  /** Open the computer pane on the card's Agent's computer (`request.bot_id`: each Agent has its own). */
+  onOpenComputer: (botId: string | null) => void;
   onAskAgain: (botId: string) => void;
   /** The page's computer status, for the human-check card's embedded screen. */
   computer?: RequestCardComputer;
@@ -165,7 +166,7 @@ function PlainTakeoverCard({ request, lookup, onSettled, onStale, onOpenComputer
         footer={
           pending ? (
             <ArtifactCardActions hint={t('bots.requests.implicitHint', { name })}>
-              <Button size="sm" variant="outline" onClick={onOpenComputer}>
+              <Button size="sm" variant="outline" onClick={() => onOpenComputer(request.bot_id)}>
                 {t('bots.requests.openComputerShort')}
               </Button>
               {handBack}
@@ -190,7 +191,7 @@ function PlainTakeoverCard({ request, lookup, onSettled, onStale, onOpenComputer
       footer={
         pending ? (
           <ArtifactCardActions hint={t('bots.requests.handBackHint', { name })}>
-            <Button size="sm" variant="outline" onClick={onOpenComputer}>
+            <Button size="sm" variant="outline" onClick={() => onOpenComputer(request.bot_id)}>
               {t('bots.requests.takeOver')}
             </Button>
             {handBack}

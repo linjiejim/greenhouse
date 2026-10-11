@@ -846,7 +846,14 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                 {route === 'administration' && <AdministrationPage subPath={subPath} />}
                 {route === 'projects' &&
                   hasApplication('projects') &&
-                  (subPath ? <ProjectDetailPage projectId={parseInt(subPath)} /> : <ProjectsPage />)}
+                  (subPath ? (
+                    <ProjectDetailPage
+                      projectId={parseInt(subPath)}
+                      initialTaskId={Number(params.get('task')) || null}
+                    />
+                  ) : (
+                    <ProjectsPage />
+                  ))}
                 {route === 'design' && <DesignPage />}
                 {route === 'knowledge' && hasApplication('knowledge') && (
                   <KnowledgePage subPath={subPath} basePath="#/knowledge" />
