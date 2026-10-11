@@ -341,7 +341,7 @@ describe('audiences and what people see', () => {
 });
 
 describe('opening, archiving and handing over', () => {
-  it('gives managers the full view or a role preview, the audience waits for slice G, others get 404', async () => {
+  it('gives managers the full view or a role preview, the audience its role, others 404', async () => {
     const { baseId, tableId, primaryId } = await base();
     const { app } = await createApp(owner, baseId, specFor(tableId, primaryId));
 
@@ -365,8 +365,10 @@ describe('opening, archiving and handing over', () => {
     expect(preview.tables[0]!.fields[0]).toMatchObject({ id: primaryId, editable: false });
     expect((await send(owner, `/api/apps/${app.id}?previewRole=ghost`)).status).toBe(400);
 
-    const viewer = await json<{ details: { notImplemented: boolean } }>(await send(member, `/api/apps/${app.id}`), 400);
-    expect(viewer.details.notImplemented).toBe(true);
+    // The audience opens the live version as its role (slice G); everyone else gets 404.
+    const viewer = await json<AppRuntimeView>(await send(member, `/api/apps/${app.id}`));
+    expect(viewer.role).toEqual({ key: 'applicant', name: 'Applicant' });
+    expect(viewer.app).toMatchObject({ canManage: false, canPublish: false });
     expect((await send(outsider, `/api/apps/${app.id}`)).status).toBe(404);
   });
 

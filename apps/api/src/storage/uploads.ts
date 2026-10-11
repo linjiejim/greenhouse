@@ -265,13 +265,20 @@ export function driveKeyFor(opts: {
    * `formUploadKeySegment` matches when it binds or expires form uploads.
    */
   formId?: number;
+  /**
+   * A tables-scope file staged through this app (`POST /api/apps/:id/uploads`):
+   * filed under `tables/<baseId>/apps/<appId>/`, the segment the db's
+   * `appUploadKeySegment` matches when it claims or expires app uploads.
+   */
+  appId?: number;
   filename: string;
 }): string {
   const ext = extname(opts.filename).toLowerCase();
   const uid = randomUUID();
   if (opts.scope === 'tables') {
-    const form = opts.formId === undefined ? '' : `forms/${opts.formId}/`;
-    return `${DRIVE_PREFIX}tables/${opts.baseId ?? 'none'}/${form}${uid}${ext}`;
+    const staged =
+      opts.formId !== undefined ? `forms/${opts.formId}/` : opts.appId !== undefined ? `apps/${opts.appId}/` : '';
+    return `${DRIVE_PREFIX}tables/${opts.baseId ?? 'none'}/${staged}${uid}${ext}`;
   }
   // An extension scope is namespaced by its own owner key, sanitized — the key is
   // extension data and must never be able to escape the prefix.

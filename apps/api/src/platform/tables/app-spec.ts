@@ -334,7 +334,8 @@ function messageOf(error: unknown): string {
   return error instanceof TablesValidationError ? error.message : toErrorMessage(error);
 }
 
-const PAGE_REF = /^\$page\.([a-z0-9][a-z0-9_-]{0,39})$/;
+/** A `$page.<filterId>` clause value (the gateway resolves it against the page's filter values). */
+export const PAGE_REF = /^\$page\.([a-z0-9][a-z0-9_-]{0,39})$/;
 
 /** The `$page.<filterId>` ids a query's clauses reference. */
 function pageRefs(query: AppDataSource['query'] | undefined): string[] {

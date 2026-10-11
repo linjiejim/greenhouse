@@ -64,17 +64,29 @@ describe('Tables registration (manifest 1.4.0)', () => {
     }
   });
 
-  it('answers not_implemented on the gateway actions until slice G', async () => {
-    for (const id of ['queryAppCard', 'getAppRecord', 'runAppAction', 'getAppFile', 'getAppUsage']) {
-      expect(await tablesRegistration.handlers[id]!(request(id, { appId: 1 }), { db: {} as DatabaseProvider })).toEqual(
-        {
-          ok: false,
-          code: 'INVALID_INPUT',
-          message: 'not_implemented',
-          details: { notImplemented: true },
-        },
-      );
+  it('has real gateway handlers (slice G): no placeholder answers, an app id is required first', async () => {
+    const gateway = [
+      'queryAppCard',
+      'getAppRecord',
+      'runAppAction',
+      'listAppActivity',
+      'createAppComment',
+      'updateAppComment',
+      'deleteAppComment',
+      'listAppFieldOptions',
+      'uploadAppFile',
+      'getAppFile',
+    ];
+    for (const id of gateway) {
+      expect(await tablesRegistration.handlers[id]!(request(id, {}), { db: {} as DatabaseProvider })).toEqual({
+        ok: false,
+        code: 'INVALID_INPUT',
+        message: 'appId is required',
+      });
     }
+    expect(
+      await tablesRegistration.handlers.getAppUsage!(request('getAppUsage', {}), { db: {} as DatabaseProvider }),
+    ).toMatchObject({ ok: false, code: 'NOT_FOUND' });
   });
 
   it('has exactly one handler and one audit resource per action', () => {

@@ -3,12 +3,18 @@
  * table away from everyone needs owner (lifecycle spec D3). A custom role reads
  * only the tables it has a rule for and, in them, only its readable fields;
  * schema history (every field that ever existed) is builder-only.
+ *
+ * Apps D6: archiving a table or field, or dropping select options, that a
+ * draft or published app uses answers 409 `used_by_apps` with the places
+ * (`../app-references.ts`) until resent with `confirm: true`.
  */
 
 import { effectiveUserId } from '@greenhouse/platform-kernel';
+import { parseTableFieldConfig } from '@greenhouse/db';
 import { TABLE_FIELD_TYPES, type TableFieldConfig, type TableFieldType } from '@greenhouse/types/tables';
 import { baseForField, baseForTable, customAccessLens, requireBase } from '../access.js';
 import { trimSchema, visibleTables } from '../access-trim.js';
+import { usedByApps } from '../app-references.js';
 import {
   fail,
   nullableString,
@@ -21,6 +27,20 @@ import {
   type Handler,
   type TablesHandlers,
 } from './shared.js';
+
+/** Option ids a select field's new config drops (none for other types or a config without options). */
+async function removedOptionIds(
+  context: Parameters<Handler>[1],
+  fieldId: number,
+  config: TableFieldConfig,
+): Promise<string[]> {
+  const field = await context.db.tables.getField(fieldId);
+  if (!field || (field.type !== 'single_select' && field.type !== 'multi_select') || !Array.isArray(config.options)) {
+    return [];
+  }
+  const kept = new Set(config.options.map((option) => option.id));
+  return (parseTableFieldConfig(field).options ?? []).map((option) => option.id).filter((id) => !kept.has(id));
+}
 
 const listTables: Handler = async (request, context) => {
   const baseId = positiveInt(payloadOf(request), 'baseId');
@@ -108,12 +128,15 @@ const updateTable: Handler = async (request, context) => {
  * symmetric acts (spec D3). Records, links and fields survive the archive.
  */
 const archiveTable: Handler = async (request, context) => {
-  const tableId = positiveInt(payloadOf(request), 'tableId');
+  const payload = payloadOf(request);
+  const tableId = positiveInt(payload, 'tableId');
   if (!tableId) return fail('INVALID_INPUT', 'tableId is required');
   const base = await baseForTable(context.db, tableId);
   if (!base || !(await requireBase(context, request.actor, base.id, 'table', 'owner'))) {
     return fail('NOT_FOUND', 'Table not found');
   }
+  const used = await usedByApps(context.db, base.id, { tableIds: [tableId] }, payload.confirm);
+  if (used) return used;
   const table = await context.db.tables.archiveTable(tableId);
   return table ? ok({ table }) : fail('NOT_FOUND', 'Table not found');
 };
@@ -149,6 +172,12 @@ const updateField: Handler = async (request, context) => {
   if (!base || !(await requireBase(context, request.actor, base.id, 'field', 'builder'))) {
     return fail('NOT_FOUND', 'Field not found');
   }
+  const config = objectValue<TableFieldConfig>(payload, 'config');
+  const removed = config ? await removedOptionIds(context, fieldId, config) : [];
+  if (removed.length > 0) {
+    const used = await usedByApps(context.db, base.id, { options: { fieldId, optionIds: removed } }, payload.confirm);
+    if (used) return used;
+  }
   const field = await context.db.tables.updateField(fieldId, {
     updated_by: effectiveUserId(request.actor),
     name: stringValue(payload, 'name'),
@@ -160,12 +189,15 @@ const updateField: Handler = async (request, context) => {
 };
 
 const archiveField: Handler = async (request, context) => {
-  const fieldId = positiveInt(payloadOf(request), 'fieldId');
+  const payload = payloadOf(request);
+  const fieldId = positiveInt(payload, 'fieldId');
   if (!fieldId) return fail('INVALID_INPUT', 'fieldId is required');
   const base = await baseForField(context.db, fieldId);
   if (!base || !(await requireBase(context, request.actor, base.id, 'field', 'builder'))) {
     return fail('NOT_FOUND', 'Field not found');
   }
+  const used = await usedByApps(context.db, base.id, { fieldIds: [fieldId] }, payload.confirm);
+  if (used) return used;
   const field = await context.db.tables.archiveField(fieldId, effectiveUserId(request.actor));
   return field ? ok({ field }) : fail('CONFLICT', 'Primary or unavailable fields cannot be archived');
 };

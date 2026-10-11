@@ -61,6 +61,7 @@ import type { TableBaseRole } from '@greenhouse/types/tables';
 import { humanActor } from '../actor.js';
 import { tablesManifest } from '../manifests/tables.js';
 import { getPlatformRuntime, type PlatformHandlerContext } from '../runtime.js';
+import { appReachForRecord } from './app-audience.js';
 
 type AccessContext = Pick<PlatformHandlerContext, 'db'>;
 type AccessUser = Pick<UserRow, 'id' | 'role' | 'status'>;
@@ -549,15 +550,69 @@ async function recipientReadViaBase(
 }
 
 /**
- * Phase 1 extension point: a recipient who reaches the record only through an
- * app audience returns `{ via: 'app', appId, roleKey, scope }`. Phase 0 has no apps.
+ * A recipient who reaches the record through an app audience (Phase 1): the
+ * kernel ceiling an app viewer reads under (`appDataCeiling`, plus
+ * `tables.apps.use`), then a live app on the record's Base where their role
+ * covers the table and some card on a page they see holds the row
+ * (`appReachForRecord`). The scope renders the role's readable fields ∩ what
+ * that card shows; a masked `record.values` policy renders none.
  */
 async function recipientReadViaApp(
-  _ctx: AccessContext,
-  _userId: string,
-  _record: RecordRef,
+  ctx: AccessContext,
+  userId: string,
+  record: RecordRef,
 ): Promise<RecipientReadAccess | null> {
-  return null;
+  const actor = humanActor({ id: userId });
+  if (!(await getPlatformRuntime().authorize(actor, 'tables.apps.use')).allowed) return null;
+  const table = await ctx.db.tables.getTable(record.table_id);
+  const base = table ? await ctx.db.tables.getBase(table.base_id) : undefined;
+  if (!base) return null;
+  const ceiling = await appDataCeiling(ctx, actor, base, 'read');
+  if (!ceiling || ceiling.read === 'none') return null;
+  const reach = await appReachForRecord(ctx, userId, record);
+  if (!reach) return null;
+  return {
+    via: 'app',
+    appId: reach.appId,
+    roleKey: reach.roleKey,
+    scope: ceiling.read === 'full' ? reach.scope : valuelessScope(userId, record.table_id),
+  };
+}
+
+// ─── App viewers (Phase 1) ────────────────────────────────
+
+/** What the kernel lets an app viewer do with record data: the `record.values` read level and write. */
+export interface AppDataCeiling {
+  read: 'full' | 'masked' | 'none';
+  write: boolean;
+}
+
+/**
+ * The kernel ceiling on an app viewer's record data (apps spec §3 "外层上限"):
+ * the matching Tables data capability (`tables.data.read` for reads,
+ * `.create / .update / .delete` for writes, `.comment` for comments), the
+ * `record` entity scope over the Base — an app audience counts as
+ * collaborating, like a member — and the `record.values` field policy.
+ * Undefined = no access at all. The app's own rules decide everything below it.
+ */
+export async function appDataCeiling(
+  ctx: AccessContext,
+  actor: ActorContext,
+  base: TableBaseRow,
+  op: TableDataOp | 'comment',
+): Promise<AppDataCeiling | undefined> {
+  if (!(await getPlatformRuntime().authorize(actor, `tables.data.${op}`)).allowed) return undefined;
+  const policy = await entityPolicy(ctx, actor, 'record');
+  if (!canAccessRecord(actor, { ownerId: base.owner_id, collaboratorIds: [effectiveUserId(actor)] }, policy)) {
+    return undefined;
+  }
+  const values = fieldPolicyFor(policy, 'values');
+  return { read: values.read, write: values.write };
+}
+
+/** A scope that sees rows but no values — what a masked `record.values` reader gets. */
+export function valuelessReadScope(userId: string, tableId: number): TableDataScope {
+  return valuelessScope(userId, tableId);
 }
 
 /**

@@ -40,7 +40,8 @@ export const schemaRoutes = new Hono<AppEnv>()
   })
   .post('/tables/:tableId/archive', async (c) => {
     const tableId = numberParam(c, 'tableId');
-    const result = await dispatch(c, 'archiveTable', { tableId }, { tableId });
+    const confirm = (await jsonBody(c)).confirm === true;
+    const result = await dispatch(c, 'archiveTable', { tableId, confirm }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { table: TableDefinitionRow });
   })
@@ -77,7 +78,8 @@ export const schemaRoutes = new Hono<AppEnv>()
   })
   .post('/fields/:fieldId/archive', async (c) => {
     const fieldId = numberParam(c, 'fieldId');
-    const result = await dispatch(c, 'archiveField', { fieldId }, { fieldId });
+    const confirm = (await jsonBody(c)).confirm === true;
+    const result = await dispatch(c, 'archiveField', { fieldId, confirm }, { fieldId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { field: TableFieldRow });
   })

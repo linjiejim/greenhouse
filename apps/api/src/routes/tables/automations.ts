@@ -34,7 +34,10 @@ export const automationRoutes = new Hono<AppEnv>()
   })
   .delete('/automations/:automationId', async (c) => {
     const automationId = numberParam(c, 'automationId');
-    const result = await dispatch(c, 'deleteAutomation', { automationId }, { automationId });
+    // A DELETE body is optional for clients: `?confirm=1` works too.
+    const confirm =
+      c.req.query('confirm') === '1' || c.req.query('confirm') === 'true' || (await jsonBody(c)).confirm === true;
+    const result = await dispatch(c, 'deleteAutomation', { automationId, confirm }, { automationId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { deleted: true });
   })

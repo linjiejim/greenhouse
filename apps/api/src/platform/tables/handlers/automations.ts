@@ -22,6 +22,7 @@ import { TABLE_AUTOMATION_TRIGGERS, type TableAutomationTrigger } from '@greenho
 import { encryptToken, isEncryptionConfigured } from '../../../auth/crypto.js';
 import { assertSafeWebhookUrl } from '../../../security/network.js';
 import { baseForAutomation, baseForTable, requireBase, requireTableData, type TableDataAccess } from '../access.js';
+import { usedByApps } from '../app-references.js';
 import { tablesScheduling, validateTablesSchedule } from '../automation-schedule.js';
 import {
   fail,
@@ -208,13 +209,17 @@ const updateAutomation: Handler = async (request, context) => {
     : fail('NOT_FOUND', 'Automation not found');
 };
 
+/** Apps whose actions run the rule refuse it with 409 `used_by_apps` until resent with `confirm: true` (apps D6). */
 const deleteAutomation: Handler = async (request, context) => {
-  const automationId = positiveInt(payloadOf(request), 'automationId');
+  const payload = payloadOf(request);
+  const automationId = positiveInt(payload, 'automationId');
   if (!automationId) return fail('INVALID_INPUT', 'automationId is required');
   const base = await baseForAutomation(context.db, automationId);
   if (!base || !(await requireBase(context, request.actor, base.id, 'automation', 'builder'))) {
     return fail('NOT_FOUND', 'Automation not found');
   }
+  const used = await usedByApps(context.db, base.id, { ruleIds: [automationId] }, payload.confirm);
+  if (used) return used;
   if (!(await context.db.tables.deleteAutomationRule(automationId))) return fail('NOT_FOUND', 'Automation not found');
   return ok({ deleted: true });
 };

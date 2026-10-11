@@ -30,13 +30,13 @@
  * GET    /bases/:baseId/tables                       — Table 列表
  * POST   /bases/:baseId/tables                       — 创建 Table
  * PATCH  /tables/:tableId                            — 更新 Table
- * POST   /tables/:tableId/archive                    — 归档 Table（仅 owner，可由 CLI 恢复）
+ * POST   /tables/:tableId/archive                    — 归档 Table（仅 owner，可由 CLI 恢复；被应用引用 → 409 used_by_apps，{confirm:true} 继续）
  * GET    /tables/:tableId/schema                     — 字段与视图 schema
  * GET    /tables/:tableId/schema/versions            — Schema 版本列表
  * GET    /tables/:tableId/schema/versions/:version   — Schema 快照
  * POST   /tables/:tableId/fields                     — 创建字段
- * PATCH  /fields/:fieldId                            — 更新字段
- * POST   /fields/:fieldId/archive                    — 归档字段
+ * PATCH  /fields/:fieldId                            — 更新字段（删掉被应用引用的选项 → 409 used_by_apps，confirm: true 继续）
+ * POST   /fields/:fieldId/archive                    — 归档字段（被应用引用 → 409 used_by_apps，{confirm:true} 继续）
  * POST   /schema-plan/apply                          — 应用一份已确认的搭建计划（retry: true = 只重试未完成项）
  *
  * 视图（./views.ts）
@@ -78,7 +78,7 @@
  * GET    /bases/:baseId/automations                  — 自动化规则列表（builder，Webhook 只带 hasSecret）
  * POST   /bases/:baseId/automations                  — 创建规则（执行者 = 保存者）
  * PATCH  /automations/:automationId                  — revision 更新规则（改触发 / 条件 / 动作时执行者改为保存者）
- * DELETE /automations/:automationId                  — 删除规则（builder，连带运行记录）
+ * DELETE /automations/:automationId                  — 删除规则（builder，连带运行记录；被应用动作引用 → 409 used_by_apps，?confirm=1 继续）
  * GET    /automations/:automationId/runs             — 运行记录（逐步日志）
  * POST   /automations/:automationId/trigger          — 按下记录上的按钮（{recordId, requestId}，排队异步执行）
  * GET    /tables/:tableId/records/:recordId/buttons  — 该记录上当前用户能按的按钮

@@ -16,8 +16,8 @@
  * without refusing (a draft may be mid-edit); publish refuses while any remain.
  *
  * The gateway actions (card queries, records, actions, activity, comments,
- * options, files, usage) and the viewer side of `getApp` belong to slice G and
- * answer `not_implemented` until it lands.
+ * options, files, usage) and the viewer side of `getApp` live in
+ * `./app-gateway.ts`.
  */
 
 import { effectiveUserId, type ActorContext } from '@greenhouse/platform-kernel';
@@ -34,10 +34,10 @@ import {
   type AppVersionSummary,
 } from '@greenhouse/types/apps';
 import { tableRoleAtLeast } from '@greenhouse/types/table-access';
-import type { TablesActionId } from '../../manifests/tables.js';
 import { requireBase, resolveBaseAccess, type BaseAccessGrant } from '../access.js';
 import { loadAppSpecSchema, parseStoredAppSpec, revalidateSpec, validateAppSpec } from '../app-spec.js';
 import { appRuntimeView, appSummary } from '../app-view.js';
+import { appGatewayHandlers, roleAppView, viewerSummary } from './app-gateway.js';
 import {
   fail,
   nullableString,
@@ -263,23 +263,21 @@ const listApps: Handler = async (request, context) => {
 };
 
 /**
- * A manager opens an app: the published version (or, with `draft: true` or
- * before the first publish, the draft) in full — or trimmed to `previewRole`
- * — with field metadata and today's D6 issues. The viewer side (role from the
- * audience, D3) is slice G's.
+ * Open an app. A manager gets the published version (or, with `draft: true`
+ * or before the first publish, the draft) in full, with field metadata and
+ * today's D6 issues — or, with `previewRole`, exactly what that role receives.
+ * Anyone else opens the live version as their one role (D3) — the role-trimmed
+ * spec without what the role cannot read (`../app-viewer.ts`); no role → 404.
  */
 const getApp: Handler = async (request, context) => {
   const payload = payloadOf(request);
   const appId = positiveInt(payload, 'appId');
   const access = await appWithAccess(context, request.actor, appId, 'builder');
-  if (!access) {
-    const app = appId ? await context.db.tables.getApp(appId) : undefined;
-    const shared =
-      app?.status === 'published' &&
-      (await context.db.tables.listAudienceMatches(app.id, effectiveUserId(request.actor))).length > 0;
-    return shared
-      ? fail('INVALID_INPUT', 'not_implemented', { notImplemented: true })
-      : fail('NOT_FOUND', 'App not found');
+  const previewRole = stringValue(payload, 'previewRole');
+  if (!access || previewRole) {
+    return roleAppView(request, context, payload, appId, (session) =>
+      access ? summaryFor(context, request.actor, access) : viewerSummary(context, session),
+    );
   }
   const { app } = access;
   const useDraft = payload.draft === true || !app.published_version;
@@ -289,7 +287,6 @@ const getApp: Handler = async (request, context) => {
   const spec = text ? parseStoredAppSpec(text) : undefined;
   if (!spec) return fail('INVALID_INPUT', 'The stored spec is not a valid app spec');
   const schema = await loadAppSpecSchema(context.db, app.base_id);
-  const previewRole = stringValue(payload, 'previewRole');
   const view = await appRuntimeView({
     app: await summaryFor(context, request.actor, access),
     version: useDraft ? 0 : app.published_version!,
@@ -297,9 +294,8 @@ const getApp: Handler = async (request, context) => {
     spec,
     schema,
     issues: await revalidateSpec(spec, schema),
-    roleKey: previewRole,
   });
-  return view ? ok(view) : fail('INVALID_INPUT', `Unknown role "${previewRole}"`);
+  return view ? ok(view) : fail('INVALID_INPUT', 'The stored spec is not a valid app spec');
 };
 
 const createApp: Handler = async (request, context) => {
@@ -631,24 +627,6 @@ async function forbiddenIfManager(
     : fail('NOT_FOUND', 'App not found');
 }
 
-// ─── Gateway (slice G) ────────────────────────────────────
-
-const notImplemented: Handler = async () => fail('INVALID_INPUT', 'not_implemented', { notImplemented: true });
-
-const GATEWAY_ACTIONS = [
-  'queryAppCard',
-  'getAppRecord',
-  'runAppAction',
-  'listAppActivity',
-  'createAppComment',
-  'updateAppComment',
-  'deleteAppComment',
-  'listAppFieldOptions',
-  'uploadAppFile',
-  'getAppFile',
-  'getAppUsage',
-] as const satisfies readonly TablesActionId[];
-
 export const appHandlers = {
   listApps,
   getApp,
@@ -666,8 +644,6 @@ export const appHandlers = {
   featureApp,
   listAppPins,
   setAppPins,
-  ...(Object.fromEntries(GATEWAY_ACTIONS.map((id) => [id, notImplemented])) as Record<
-    (typeof GATEWAY_ACTIONS)[number],
-    Handler
-  >),
+  // The gateway: card queries, records, actions, activity, comments, options, files, usage.
+  ...appGatewayHandlers,
 } satisfies TablesHandlers;

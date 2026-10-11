@@ -4,8 +4,9 @@
  * Ids only (`tables:records_changed`) — clients refetch through the governed
  * routes, so the event can never carry more than its recipient may read. Sent to
  * online users whose effective level on the Base is not `none`
- * (`resolveBaseAccessForUsers`, the same resolver every handler uses); Phase 1
- * widens the audience to app members.
+ * (`resolveBaseAccessForUsers`, the same resolver every handler uses), and to
+ * online members of a live app's audience whose role there has a rule for the
+ * table (`appAudienceForTable`, Phase 1) — they refetch through the app gateway.
  *
  * Never fails the write it reports: errors are logged and swallowed.
  */
@@ -17,6 +18,7 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { connectionManager } from '../../ws/connection-manager.js';
 import type { PlatformHandlerContext } from '../runtime.js';
 import { resolveBaseAccessForUsers } from './access.js';
+import { appAudienceForTable } from './app-audience.js';
 
 export async function publishRecordsChanged(
   ctx: Pick<PlatformHandlerContext, 'db'>,
@@ -34,8 +36,13 @@ export async function publishRecordsChanged(
     );
     const access = await resolveBaseAccessForUsers(ctx, users, base);
     const event: ServerWsEvent = { type: 'tables:records_changed', baseId: base.id, tableId, recordIds: ids };
+    const outside: string[] = [];
     for (const [userId, level] of access) {
       if (level.level !== 'none') connectionManager.sendToUser(userId, event);
+      else outside.push(userId);
+    }
+    for (const userId of await appAudienceForTable(ctx, base, tableId, outside)) {
+      connectionManager.sendToUser(userId, event);
     }
   } catch (error) {
     logger.warn('[Tables] records_changed fan-out failed', { baseId: base.id, tableId, error: toErrorMessage(error) });

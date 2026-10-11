@@ -66,16 +66,20 @@ export function startMemoryConsolidationJob(): void {
 
 /**
  * Files a form's audience staged through `POST /api/forms/:id/uploads` but never
- * submitted (spec 20261011-tables-foundation §3): expire them and delete the
- * objects once they are older than 24 h.
+ * submitted (spec 20261011-tables-foundation §3), and files an app's audience
+ * staged through `POST /api/apps/:id/uploads` but never attached (apps spec §3):
+ * expire them and delete the objects once they are older than 24 h.
  */
 export function startTablesFormUploadSweepJob(): void {
   tablesFormUploadJob = new Cron('23 * * * *', { timezone: DEFAULT_TIMEZONE }, async () => {
     try {
       const { sweepStaleFormUploads } = await import('../platform/tables/form-uploads.js');
+      const { sweepStaleAppUploads } = await import('../platform/tables/app-uploads.js');
       const { getDb } = await import('@greenhouse/db');
       const expired = await sweepStaleFormUploads(getDb());
       if (expired > 0) logger.info('[TablesFormUploads] Expired unsubmitted form uploads', { expired });
+      const expiredApp = await sweepStaleAppUploads(getDb());
+      if (expiredApp > 0) logger.info('[TablesFormUploads] Expired unattached app uploads', { expired: expiredApp });
     } catch (err) {
       logger.error('[TablesFormUploads] Sweep failed:', err);
     }
