@@ -16,12 +16,12 @@ import { z } from 'zod';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { BotsDomainError } from '@greenhouse/db';
 import type { MessageRow } from '@greenhouse/types/session';
-import { connectionManager } from '../../ws/connection-manager.js';
 import { sanitizeForPrompt } from '../../security/security.js';
 import type { BotTurnContext } from '../engine/context.js';
 import type { ConversationPort } from '../engine/ports.js';
 import { recallMessages } from '../engine/transcript.js';
 import { BOT_TOOL_METAS } from './meta.js';
+import { pushToConversation } from '../engine/fanout.js';
 
 const DESCRIPTION = BOT_TOOL_METAS.find((meta) => meta.id === 'conversation')?.description ?? 'conversation';
 const READ_ONLY_DESCRIPTION = `This conversation's shared memory (read-only here).
@@ -54,7 +54,9 @@ type ReadInput = z.infer<typeof readSchema>;
 
 function speakerOf(port: ConversationPort) {
   return (row: MessageRow): string => {
-    if (row.role === 'user') return port.nickname;
+    if (row.role === 'user') {
+      return (row.author_user_id ? port.personName?.(row.author_user_id) : null) ?? port.nickname;
+    }
     if (row.role === 'system') return 'event';
     return port.botName(row.bot_id ?? null) ?? 'Agent';
   };
@@ -100,7 +102,7 @@ async function recall(ctx: BotTurnContext, port: ConversationPort, query: string
 }
 
 function changed(ctx: BotTurnContext): void {
-  connectionManager.sendToUser(ctx.userId, { type: 'bots:conversation', sessionId: ctx.sessionId });
+  void pushToConversation(ctx.sessionId, ctx.userId, { type: 'bots:conversation', sessionId: ctx.sessionId });
 }
 
 export function createConversationTool(ctx: BotTurnContext, port: ConversationPort) {

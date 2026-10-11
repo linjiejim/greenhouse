@@ -758,6 +758,42 @@ export function createBotsService(db: Db) {
       });
     },
 
+    /** A room by its session id, whoever asks (housekeeping only — routes use getConversation). */
+    async getRoom(sessionId: string): Promise<BotConversationRow | undefined> {
+      const [row] = await db
+        .select()
+        .from(botConversations)
+        .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.kind, 'room')));
+      return row;
+    },
+
+    /**
+     * Its owner is gone (an account deleted): the earliest remaining person owns the room now.
+     * Returns false when nobody is left (the caller deletes it).
+     */
+    async reassignRoomOwner(sessionId: string): Promise<boolean> {
+      return db.transaction(async (tx) => {
+        const [heir] = await tx
+          .select()
+          .from(conversationParticipants)
+          .where(eq(conversationParticipants.session_id, sessionId))
+          .orderBy(asc(conversationParticipants.joined_at), asc(conversationParticipants.id))
+          .limit(1);
+        if (!heir) return false;
+        const now = nowIso();
+        await tx
+          .update(conversationParticipants)
+          .set({ role: 'owner' })
+          .where(eq(conversationParticipants.id, heir.id));
+        await tx.update(sessions).set({ user_id: heir.user_id, updated_at: now }).where(eq(sessions.id, sessionId));
+        await tx
+          .update(botConversations)
+          .set({ user_id: heir.user_id, updated_at: now })
+          .where(eq(botConversations.session_id, sessionId));
+        return true;
+      });
+    },
+
     /** The private room of exactly these two people (no title, no Agents), when there is one. */
     async findPrivateRoom(userA: string, userB: string): Promise<BotConversationRow | undefined> {
       const rows = await db.execute<{ session_id: string }>(sql`
@@ -1041,9 +1077,7 @@ export function createBotsService(db: Db) {
     },
 
     /** Latest message per conversation (preview + unread computation). */
-    async latestMessages(
-      sessionIds: string[],
-    ): Promise<
+    async latestMessages(sessionIds: string[]): Promise<
       Map<
         string,
         {

@@ -181,6 +181,8 @@ export async function conversationReplyState(
   ]);
   if (!conversation) return 'ok'; // the run reports a missing conversation itself
   if (conversation.kind === 'group') return 'group_closed';
+  // A room takes messages from its people; who may be answered is the mentions' business (P5).
+  if (conversation.kind === 'room') return 'ok';
   const ownerBotId = conversation.owner_bot_id;
   // Someone else's public Agent (P4): answerable while it is still offered to this member.
   if (ownerBotId && !bots.some((bot) => bot.id === ownerBotId)) {

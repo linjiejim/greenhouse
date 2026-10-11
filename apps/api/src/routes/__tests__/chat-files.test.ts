@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppEnv } from '../../app-env.js';
 
 const mocks = vi.hoisted(() => ({
@@ -60,16 +60,29 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('GET /api/chat-files/:id/content', () => {
   it.each([
     ['owner', { 'x-user': 'owner' }],
     ['super', { 'x-user': 'admin', 'x-role': 'super' }],
-  ])('serves an authenticated attachment to the %s', async (_label, headers) => {
+  ])('serves an authenticated attachment to the %s', async (label, headers) => {
+    // Super reads members' chats only where the deployment allows it (spec 20261011-agent-first-class D46).
+    if (label === 'super') vi.stubEnv('SUPER_READS_CHATS', 'true');
     const response = await createApp().request('/api/chat-files/file-1/content', { headers });
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('content-disposition')).toContain('crm-customers.xlsx');
     expect(await response.text()).toBe('xlsx');
+  });
+
+  it('keeps a super out of a member’s attachment by default', async () => {
+    const response = await createApp().request('/api/chat-files/file-1/content', {
+      headers: { 'x-user': 'admin', 'x-role': 'super' },
+    });
+    expect(response.status).toBe(404);
   });
 
   it('allows a read-only session share recipient', async () => {

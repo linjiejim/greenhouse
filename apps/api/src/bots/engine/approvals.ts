@@ -28,6 +28,7 @@ import { toRequestView } from '../views.js';
 import type { ApprovalDecision } from './context.js';
 import { copy, type BotsLocale } from './copy.js';
 import { sweepReplyAlerts } from './reply-alerts.js';
+import { pushToConversation } from './fanout.js';
 
 /**
  * The longest an in-turn approval may wait. The spec allows 150 s, but the
@@ -251,7 +252,7 @@ export async function expireDueRequests(db: DatabaseProvider = getDb()): Promise
   for (const row of expired) {
     resolveApprovalWaiter(row.id, 'expired');
     users.add(row.user_id);
-    connectionManager.sendToUser(row.user_id, { type: 'bots:conversation', sessionId: row.session_id });
+    void pushToConversation(row.session_id, row.user_id, { type: 'bots:conversation', sessionId: row.session_id });
   }
   for (const userId of users) await pushAttention(db, userId);
   return expired;

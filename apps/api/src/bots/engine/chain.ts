@@ -66,14 +66,16 @@ import { CHAIN_LIMITS, FloorController, type FloorItem } from './floor.js';
 import { botsOwnerEligible, unlockBotsRun } from './run-slot.js';
 import {
   memberMessageQueued,
+  roomMember,
   runBotTurn,
   type ChainState,
   type LimitReason,
   type PublicBotRun,
   type RunContext,
 } from './turn.js';
-import { publicationOf, publicBotFor } from '../public.js';
+import { conversationBotNames, publicationOf, publicBotFor } from '../public.js';
 import { TranscriptChangedError, TranscriptWriter } from './writer.js';
+import { pushToConversation } from './fanout.js';
 
 type WakeUp = { botId: string; note: string };
 
@@ -130,7 +132,7 @@ export function inboxMessageId(inboxId: number, suffix = ''): string {
 }
 
 function isTrigger(row: Pick<BotInboxRow, 'kind'>): boolean {
-  return row.kind === 'user_message' || row.kind === 'continue';
+  return row.kind === 'user_message' || row.kind === 'continue' || row.kind === 'mention';
 }
 
 /**
@@ -177,8 +179,10 @@ export async function writeInboxItem(
       content: item.content,
       ...(item.images ? { images: item.images } : {}),
       ...(messageId ? { messageId } : {}),
+      ...(item.author_user_id ? { authorUserId: item.author_user_id } : {}),
     });
   }
+  // `mention` writes nothing: its message is already in the transcript.
 }
 
 /** A row that can never be applied: take it out of the queue and say so in the log. */
@@ -311,12 +315,34 @@ async function drainInbox(
   const rows = await rc.db.bots.listPendingInbox(rc.sessionId);
   let wrote = false;
   for (const row of rows) {
-    if (isTrigger(row) && mode === 'writes') break;
-    if (row.kind === 'user_message' && mode === 'stop') break;
     const item = parseInboxRow(row);
     if (!item) {
       await quarantineMalformed(rc.db, rc.sessionId, row);
       continue;
+    }
+    // In a room this run is one person's (P5): someone else's message is written now (it is not a
+    // turn of this run), and its @-mentions wait for a run of their own after this one.
+    const foreign =
+      rc.people !== null &&
+      (item.kind === 'user_message' || item.kind === 'mention') &&
+      (item.author_user_id ?? rc.user.id) !== rc.user.id;
+    if (foreign && item.kind === 'mention') break;
+    if (!foreign) {
+      if (isTrigger(row) && mode === 'writes') break;
+      if ((row.kind === 'user_message' || row.kind === 'mention') && mode === 'stop') break;
+    }
+    if (item.kind === 'mention') {
+      // Their own run reached their mention: answer it (the message was written earlier).
+      if (!(await rc.db.bots.consumeInbox(row.id))) continue;
+      if (mode === 'record') continue;
+      return {
+        interjection: {
+          kind: 'message',
+          reason: rc.turnCounter === 0 ? 'user' : 'interjection',
+          mentions: item.mentions,
+        },
+        wrote,
+      };
     }
     const outcome = await applyInboxRow(rc.db, rc.writer, row, item);
     // A failed item blocks the ones after it, so order is preserved; the next drain retries.
@@ -324,6 +350,16 @@ async function drainInbox(
     if (outcome === 'taken' || outcome === 'quarantined') continue;
     wrote = true;
     if (mode === 'record') continue;
+    if (item.kind === 'user_message' && foreign) {
+      if (item.mentions.length > 0) {
+        await rc.db.bots.enqueueInbox(rc.sessionId, 'mention', {
+          kind: 'mention',
+          author_user_id: item.author_user_id!,
+          mentions: item.mentions,
+        });
+      }
+      continue;
+    }
     if (item.kind === 'user_message') {
       // Before any turn ran (a server-initiated run opened for this message) it is
       // an ordinary message, not an interjection into Bots at work.
@@ -364,6 +400,8 @@ function ownersFor(
       reason: trigger.reason === 'interjection' ? 'interjection' : 'mention',
     }));
   }
+  // A room has no default speaker: an Agent answers only when addressed (P5, D44).
+  if (rc.people !== null) return [];
   // A DM is its owner's: when the owner is archived nobody answers there (its
   // guests only speak when addressed).
   const ownerId = rc.conversation.owner_bot_id;
@@ -398,7 +436,7 @@ async function writeLimit(rc: RunContext, chain: ChainState, reason: LimitReason
 async function takeInterrupt(rc: RunContext, dropped: WakeUp[]): Promise<ChainTrigger> {
   rc.run.clearInterrupt();
   const carry = [...dropped];
-  if (await memberMessageQueued(rc.db, rc.sessionId)) {
+  if (await memberMessageQueued(rc.db, rc.sessionId, roomMember(rc))) {
     const drained = await drainInbox(rc, (botId, note) => carry.push({ botId, note }), 'run');
     if (drained.interjection) {
       return { ...drained.interjection, carry: [...(drained.interjection.carry ?? []), ...carry] };
@@ -430,7 +468,8 @@ async function runChain(rc: RunContext, trigger: ChainTrigger): Promise<ChainTri
   const owners = ownersFor(rc, trigger);
   floor.start(owners);
   if (trigger.kind === 'message') {
-    if (owners.length === 0) await writeUnavailable(rc);
+    // In a room a message nobody (allowed) was asked to answer is just a message.
+    if (owners.length === 0 && rc.people === null) await writeUnavailable(rc);
     // Carried wake-ups run after the addressees. A Bot that answers the message
     // anyway sees its hand-back line in the history, so it gets no second turn.
     const addressed = new Set(owners.map((owner) => owner.botId));
@@ -527,7 +566,12 @@ async function finishRun(
   if (run.sessionId) await unlockBotsRun(db, run.sessionId);
   chatRunRegistry.finish(run, status);
   if (run.sessionId) {
-    connectionManager.sendToUser(userId, { type: 'chat:run', sessionId: run.sessionId, runId: run.runId, status });
+    void pushToConversation(
+      run.sessionId,
+      userId,
+      { type: 'chat:run', sessionId: run.sessionId, runId: run.runId, status },
+      db,
+    );
   }
 }
 
@@ -537,7 +581,8 @@ async function loadRunContext(args: BotsRunArgs, db: DatabaseProvider): Promise<
     db.users.getById(args.userId),
     db.bots.getConversation(args.userId, args.sessionId),
   ]);
-  if (!session || session.user_id !== args.userId || session.channel !== 'bots') {
+  // A room (P5) runs for whichever of its people asked; every other kind for its one member.
+  if (!session || session.channel !== 'bots' || (session.user_id !== args.userId && conversation?.kind !== 'room')) {
     throw new Error('Bots conversation not found for its owner');
   }
   // Same rule as every entry point (run-slot.ts): active, internal, `bots` on.
@@ -545,7 +590,9 @@ async function loadRunContext(args: BotsRunArgs, db: DatabaseProvider): Promise<
   if (!user || (user.role !== 'team' && user.role !== 'super') || !(await botsOwnerEligible(db, user))) {
     throw new Error('The conversation owner may not run Bots');
   }
-  if (!conversation || conversation.user_id !== args.userId) throw new Error('Bots conversation not found');
+  if (!conversation || (conversation.kind !== 'room' && conversation.user_id !== args.userId)) {
+    throw new Error('Bots conversation not found');
+  }
   const locale = botsLocale(user.locale);
   const allBots = await db.bots.listBots(user.id, { includeArchived: true });
   const bots = new Map(allBots.map((bot) => [bot.id, bot]));
@@ -568,7 +615,25 @@ async function loadRunContext(args: BotsRunArgs, db: DatabaseProvider): Promise<
       stored = '';
     }
   }
-  const botNames = new Map(allBots.map((bot) => [bot.id, bot.name]));
+  // A room: everyone's names for the speaker tags, and the names of the Agents other people brought.
+  let people: Map<string, string> | null = null;
+  const otherBotNames = new Map<string, string>();
+  if (conversation.kind === 'room') {
+    people = new Map(
+      ((await db.bots.listParticipants([args.sessionId])).get(args.sessionId) ?? []).map((p) => [
+        p.user_id,
+        p.nickname,
+      ]),
+    );
+    for (const [id, name] of await conversationBotNames(
+      db,
+      user.id,
+      conversation.members.map((m) => m.bot_id),
+    )) {
+      if (!bots.has(id)) otherBotNames.set(id, name);
+    }
+  }
+  const botNames = new Map([...otherBotNames, ...allBots.map((bot) => [bot.id, bot.name] as const)]);
   const digest = digestView(stored, uptoSeq, conversation.digest_updated_at, locale, botNames);
 
   // The base preset (static rules, rich output, model fallback, usage
@@ -591,6 +656,8 @@ async function loadRunContext(args: BotsRunArgs, db: DatabaseProvider): Promise<
     members: new Set(conversation.members.map((m) => m.bot_id)),
     bots,
     publicBots,
+    people,
+    otherBotNames,
     writer: new TranscriptWriter(db, args.sessionId, latest ?? null),
     digest: { rendered: digest?.text ?? null, uptoSeq },
     effectiveTools,
@@ -654,7 +721,7 @@ async function drainAfterStop(rc: RunContext): Promise<void> {
 export async function runBotsRun(args: BotsRunArgs): Promise<BotsRunOutcome> {
   const db = args.db ?? getDb();
   const { run, userId, sessionId } = args;
-  connectionManager.sendToUser(userId, { type: 'chat:run', sessionId, runId: run.runId, status: 'running' });
+  void pushToConversation(sessionId, userId, { type: 'chat:run', sessionId, runId: run.runId, status: 'running' }, db);
   let rc: RunContext | null = null;
   let status: 'completed' | 'error' = 'completed';
   try {
@@ -705,7 +772,7 @@ export async function runBotsRun(args: BotsRunArgs): Promise<BotsRunOutcome> {
   await finishRun(db, run, rc, userId, status);
   if (!rc) return { status, loaded: false };
   await db.bots.touchActivity(sessionId).catch(() => undefined);
-  connectionManager.sendToUser(userId, { type: 'bots:conversation', sessionId });
+  await pushToConversation(sessionId, userId, { type: 'bots:conversation', sessionId }, db);
   scheduleDigest(sessionId, userId);
   // Work left queued (a member message after Stop or after the run's turn cap,
   // a wake-up that arrived after the last drain): answer it now instead of at

@@ -279,6 +279,11 @@ export interface InteractiveToolsInput {
   team: TeamPort;
   conversation: ConversationPort;
   runtimeRunId: string | null;
+  /**
+   * A room (several people, P5): no `team` (no hand-offs or invitations — people bring their own
+   * Agents) and no `bot_tasks` (a background report would land in front of everyone).
+   */
+  room?: boolean;
 }
 
 export interface InteractiveTools {
@@ -341,12 +346,12 @@ export function assembleInteractiveTools(input: InteractiveToolsInput): Interact
     }
   }
 
-  registry.team = createTeamTool(ctx, input.team);
+  if (!input.room) registry.team = createTeamTool(ctx, input.team);
   registry.conversation = createConversationTool(ctx, input.conversation);
   registry.self = createSelfTool(ctx);
   // Offered only where background tasks can actually run (same check as the
   // greeting): otherwise S1 would promise them and every Start would fail.
-  if (runtimeDriverEnabled('subagent')) registry.bot_tasks = createBotTasksTool(ctx);
+  if (runtimeDriverEnabled('subagent') && !input.room) registry.bot_tasks = createBotTasksTool(ctx);
   Object.assign(registry, buildComputerTools(ctx));
 
   // Fixed order: the tool list is part of the cached prompt prefix.

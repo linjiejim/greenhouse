@@ -62,7 +62,7 @@ import {
 import type { EngineMessage } from '@greenhouse/agent-core';
 import { inlineImagesForVision } from '../chat/vision.js';
 import { generateSessionTitle } from '../llm/title.js';
-import { canWriteSession } from '../sessions/access.js';
+import { canPostToSession, canWriteSession } from '../sessions/access.js';
 import { formatAmbientContextPrompt } from '../chat/ambient-context.js';
 import { admitTurnEnvironment } from '../chat/turn-environment.js';
 import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
@@ -233,7 +233,8 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             // Continuing a chat mutates the session and reads its full history.
             // Sharing grants read-only inbox access, so only the owner or super may
             // reach addMessage/buildChatMessages/title updates below.
-            if (!canWriteSession(authUser, session)) {
+            // The owner — or, in a room (several people, P5), any of its people.
+            if (!(await canPostToSession(authUser, session))) {
               return c.json({ error: 'Session not found' }, 404);
             }
 
@@ -291,6 +292,20 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                   { error: 'This Agent was archived — its conversation is read-only', code: replyState },
                   409,
                 );
+              }
+              // A room (P5): nobody answers by default and a run is its asker's. Every message is
+              // queued with its author; only the @-mentions this author may make are kept, and the
+              // drain answers them in a run of theirs (participants follow it via chat:run).
+              const botsConversation = await botsDb.bots.getConversation(userId, sessionId);
+              if (botsConversation?.kind === 'room') {
+                const { addressableMentions } = await import('../bots/room-access.js');
+                await botsEngine.deliverToConversation(sessionId, {
+                  kind: 'user_message',
+                  ...botsMessage,
+                  mentions: await addressableMentions(botsDb, userId, botsConversation, rawMentions),
+                  author_user_id: userId,
+                });
+                return c.json({ queued: true as const }, 202);
               }
               // A task chat remembers the composer's model (spec 20261011-agent-first-class D22);
               // an unknown or retired id is ignored, as on the chat path.
@@ -868,7 +883,8 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         if (!authUser) return c.json({ error: 'Authentication required' }, 401);
         const sessionId = c.req.param('sessionId');
         const session = await getDb().sessions.getById(sessionId);
-        if (!session || !canWriteSession(authUser, session)) {
+        // A room's people all follow its live run (whoever asked).
+        if (!session || !(await canPostToSession(authUser, session))) {
           return c.json({ error: 'Session not found' }, 404);
         }
         const run = chatRunRegistry.get(sessionId);
@@ -892,7 +908,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         if (!authUser) return c.json({ error: 'Authentication required' }, 401);
         const sessionId = c.req.param('sessionId');
         const session = await getDb().sessions.getById(sessionId);
-        if (!session || !canWriteSession(authUser, session)) {
+        if (!session || !(await canPostToSession(authUser, session))) {
           return c.json({ error: 'Session not found' }, 404);
         }
         const run = chatRunRegistry.get(sessionId);
@@ -947,8 +963,9 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         if (!authUser) return c.json({ error: 'Authentication required' }, 401);
         const sessionId = c.req.param('sessionId');
         const session = await getDb().sessions.getById(sessionId);
-        // Owner only, super included: nobody interrupts someone else's Bots.
-        if (!session || session.user_id !== authUser.id) {
+        // Owner only, super included: nobody interrupts someone else's Bots. In a room the run is
+        // its asker's: they (and only they — checked below) may soft-stop it.
+        if (!session || !(await canPostToSession(authUser, session))) {
           return c.json({ error: 'Session not found' }, 404);
         }
         if (session.channel !== BOTS_SESSION_CHANNEL) {

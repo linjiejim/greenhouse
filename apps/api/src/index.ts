@@ -63,6 +63,7 @@ import {
   shutdownBotComputers,
 } from './bots/computer/index.js';
 import { createAdminAgentsRoutes, createAgentsDirectoryRoutes } from './bots/public-routes.js';
+import { createRoomsRoutes } from './bots/rooms.js';
 import { createComputerTerminalRoutes } from './bots/computer/terminal.js';
 import { createComputerPreviewRoutes, PREVIEW_PREFIX, type PreviewDeps } from './bots/computer/preview.js';
 import { touchComputer } from './bots/computer/access.js';
@@ -428,6 +429,12 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/agents', requireFeature('bots'))
       .use('/api/agents/*', requireFeature('bots'))
       .route('/api/agents', createAgentsDirectoryRoutes())
+      // Rooms: several people and the Agents they bring (spec 20261011-agent-first-class P5).
+      .use('/api/rooms', requireInternal())
+      .use('/api/rooms/*', requireInternal())
+      .use('/api/rooms', requireFeature('bots'))
+      .use('/api/rooms/*', requireFeature('bots'))
+      .route('/api/rooms', createRoomsRoutes())
       // Home workbench card evaluation — every internal user. Cards are
       // evaluated as the requesting user through the read-only tool allowlist,
       // so this widens nothing the user could not already query; a user with no

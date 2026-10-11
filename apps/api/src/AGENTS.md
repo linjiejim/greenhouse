@@ -32,8 +32,8 @@
 
 侧边栏「我的 / 分享给我 / Team」三档的后端。方案与决策（D1–D8）见 [spec](../../../docs/specs/20260806-session-list-scope-filter.md)。
 
-- **不传 `scope` = 历史行为，一个字节都没变**（super 看全部、team 看自己 + 分享回填）。历史弹框仍这么用，所以别把默认改成 `mine` —— 那会让 View All 名不副实且波及面不可控。
-- `scope=team` **对非 super 直接 403**，不是静默返回空数组：空列表会把调用方的 bug 藏起来。
+- **不传 `scope` = 历史行为**（team 看自己 + 分享回填；super 看全部——**仅当部署开了 `SUPER_READS_CHATS`**，2026-10-12 起默认关，super 也只看自己的，spec 20261011-agent-first-class D46）。历史弹框仍这么用，所以别把默认改成 `mine` —— 那会让 View All 名不副实且波及面不可控。
+- `scope=team` **对非 super、以及没开 `SUPER_READS_CHATS` 的 super 直接 403**，不是静默返回空数组：空列表会把调用方的 bug 藏起来。super 能否读别人的会话只有一个判断：`sessions/access.ts` 的 `superSeesAllChats`（`canAccessSession` / `canWriteSession` / 会话列表 / `session_query` / `/api/auth/me` 的 `reads_team_chats` 都用它）；Agent 对话（`channel='bots'`）无论如何只属于成员本人（room：它的参与者，`canPostToSession`）。
 - **`excludeUserId` 必须用 `IS DISTINCT FROM`**（`sessions.user_id` 可空：历史与引擎会话没有 owner）。写成 `<>` 的话三值逻辑会静默吞掉所有无主会话，「除我以外的全部」就变成「除我以外**有主**的全部」，且没有任何报错。
 - **`owner_nickname` 按「owner ≠ 请求者」统一附带，不按 scope 特判**（`withOwnerNicknames`）：一条规则同时覆盖 Team tab、分享 tab、super 的无 scope 列表、team 用户的分享回填行。按 scope 特判的话历史弹框里 super 看别人的会话就没名字，得再开第二条通道。
 - **分享列表查询只有一份**：`db.sessions.listSharedWith()`。`scope=shared` 用它，无 scope 的回填也用它（原先是拿到 id 列表后逐个 `getById` 的 N+1）。它是 EXISTS 半连接不是 join —— 同一会话可能同时有直接分享和 `__team__` 分享，join 会把它返回两次。

@@ -29,7 +29,6 @@ import type {
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
-import { connectionManager } from '../../ws/connection-manager.js';
 import { handleLoginDecision, handleTakeoverDecision, SecureLoginError } from '../computer/index.js';
 import { pushAttention, requestSubject, resolveApprovalWaiter } from './approvals.js';
 import { botsLocale, copy, type BotsLocale } from './copy.js';
@@ -37,6 +36,7 @@ import { writeGreeting } from './greeting.js';
 import { deliverToConversation } from './inbox.js';
 import { validateBotInstructions, validateBotName, validateBotRole } from './naming.js';
 import { admitBotTask, BotTaskError, cancelBotTask } from './tasks.js';
+import { pushToConversation } from './fanout.js';
 
 export class RequestDecisionError extends Error {
   constructor(
@@ -392,7 +392,7 @@ export async function decideBotRequest(
       subject: requestSubject(row.kind, safeJsonParse(row.payload, {}) as never).slice(0, 80),
     });
     await pushAttention(db, userId);
-    connectionManager.sendToUser(userId, { type: 'bots:conversation', sessionId: row.session_id });
+    void pushToConversation(row.session_id, userId, { type: 'bots:conversation', sessionId: row.session_id });
     return settled;
   } finally {
     inFlight.delete(row.id);

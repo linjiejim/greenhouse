@@ -88,8 +88,11 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 ## Features
 
 - **Conversations** — one list for every place you talk: your **main thread** with your main
-  Agent (the app opens on it), your other Agents' threads, the background tasks they run, and
-  your **chats** — independent sessions with a fresh context for anything separate. Chats stream
+  Agent (the app opens on it), your other Agents' threads, **conversations with other people**
+  (a private chat with one colleague, or a room with several — each brings their own Agents, and
+  an Agent answers only the person allowed to @-mention it, with that person's permissions), the
+  background tasks your Agents run, and your **chats** — separate conversations with a fresh
+  context for anything separate. Chats stream
   with tool-call traces, attachments of any file type (the agent reads text / CSV / JSON / xlsx /
   docx / PDF), per-turn model switching from a config catalog, a side pane for artifacts and
   records, session forking, background runs, sharing / grouping / tagging, and a global ⌘P search.
@@ -111,15 +114,21 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   to it straight away, or let it bring in, brief and create other Agents (researcher, operator,
   writer, analyst, weekly reporter, note taker, project tracker or your own). An Agent has a
   name, a role and its own memory; several Agents can share one thread (@-mention them, let them
-  hand work to each other) and long threads are summarised instead of truncated. With a computer
-  enabled, each member's Agents share one cloud desktop (a browser with a taskbar, a shell, files
-  and long-running jobs) the member can watch live, take over, or use directly through its
-  terminal and file tabs; logins come from a write-only password vault that Agents fill in without
-  ever seeing the values, and a site's "verify you are human" check is handed to the member with
-  one click in the chat. Background tasks start from the brief you approve and show in the
+  hand work to each other) and long threads are summarised instead of truncated. With computers
+  enabled, each Agent has its own cloud desktop (a browser with a taskbar, a shell, files and
+  long-running jobs) the member can watch live, take over, or use directly through its terminal
+  and file tabs; logins come from a write-only password vault (entries can be limited to some
+  Agents) that Agents fill in without ever seeing the values, and a site's "verify you are human"
+  check is handed to the member with one click in the chat. Usage, audit records and project tasks
+  name the Agent that acted. A member can **publish** an Agent to colleagues (everyone, people or
+  groups): they talk to its published version in their own conversation, on a narrow face (only
+  the knowledge folders and computer its owner granted, its own memory per person, never the
+  owner's private data), with its own monthly token budget; the owner sees usage and ratings but
+  not the conversations, and an admin can pause it. Background tasks start from the brief you approve and show in the
   conversations list while they run; reading private notes or history then disables all further
-  browser actions. Their transcripts and execution traces stay owner-only, including against other
-  admins. A new message can interrupt an Agent after its current step. The organisation configures
+  browser actions. Their transcripts and execution traces stay owner-only (a room: its
+  participants only), including against admins — and since 2026-10 admins no longer read members'
+  ordinary chats either, unless the deployment sets `SUPER_READS_CHATS=true`. A new message can interrupt an Agent after its current step. The organisation configures
   one Docker host; computers start on demand, stop when idle (unless a job is still running) and
   queue when the host is full.
 - **Workflows** — a multi-agent task-graph engine (database state machine, human gates,

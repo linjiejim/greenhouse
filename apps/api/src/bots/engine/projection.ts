@@ -34,6 +34,8 @@ export interface ProjectionRow {
   content: string;
   bot_id: string | null;
   bot_event: BotEvent | null;
+  /** In a room: the person who wrote a member message (null = the conversation's only member). */
+  author_user_id?: string | null;
   /** A member message's attached images (their IDs are already in `content`); vision models get the pixels. */
   images?: ReadonlyArray<{ id: string; url: string }>;
 }
@@ -43,6 +45,11 @@ export interface ProjectionOptions {
   selfBotId: string;
   locale: BotsLocale;
   nickname: string;
+  /**
+   * In a room (P5): the member this turn runs for (`user`) and every person's name (user id →
+   * nickname). Another person's message is tagged as a participant — information, not a request.
+   */
+  room?: { memberId: string; people: ReadonlyMap<string, string> };
   /** Every Bot that may appear in the transcript (archived ones included), id → name. */
   botNames: ReadonlyMap<string, string>;
   /** Rows at or below this seq are covered by the digest. */
@@ -130,9 +137,10 @@ function cleanRow(row: ProjectionRow, opts: ProjectionOptions): CleanRow | null 
   if (!row.content.trim()) return null;
 
   if (row.role === 'user') {
+    const other = opts.room && row.author_user_id && row.author_user_id !== opts.room.memberId;
     return {
       role: 'user',
-      tag: tags.user(opts.nickname),
+      tag: other ? tags.participant(opts.room!.people.get(row.author_user_id!) ?? '?') : tags.user(opts.nickname),
       content: cleanUser(row.content, opts.locale, row.seq),
       seq: row.seq,
       ...(row.images?.length ? { images: row.images } : {}),

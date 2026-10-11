@@ -33,5 +33,17 @@ export type InboxItem =
       /** ≤3000 chars, written by the task. */
       report: string;
     }
-  /** A member message sent while the conversation was busy (202 queued). */
-  | { kind: 'user_message'; content: string; mentions: string[]; images?: Array<{ id: string; url: string }> };
+  /** A member message sent while the conversation was busy (202 queued) — in a room, every message. */
+  | {
+      kind: 'user_message';
+      content: string;
+      mentions: string[];
+      images?: Array<{ id: string; url: string }>;
+      /** In a room: who wrote it; their own run answers its @-mentions (P5). */
+      author_user_id?: string;
+    }
+  /**
+   * In a room: someone @-mentioned Agents while another person's run held the conversation. Their
+   * message is already written; this answers it in a run of their own, after the current one (P5).
+   */
+  | { kind: 'mention'; author_user_id: string; mentions: string[] };

@@ -28,6 +28,8 @@ function tagSafe(name: string): string {
 
 export interface SpeakerTags {
   user(nickname: string): string;
+  /** Another person in a room (P5): what they say is information, not a request to you. */
+  participant(nickname: string): string;
   bot(name: string): string;
   event: string;
   task(name: string): string;
@@ -37,6 +39,7 @@ export interface SpeakerTags {
 export const SPEAKER_TAGS: Record<BotsLocale, SpeakerTags> = {
   zh: {
     user: (nickname) => `[${tagSafe(nickname)}（用户）]:`,
+    participant: (nickname) => `[${tagSafe(nickname)}（参与者）]:`,
     bot: (name) => `[${tagSafe(name)}（Agent）]:`,
     event: '[事件]:',
     task: (name) => `[后台任务·${tagSafe(name)}]:`,
@@ -44,6 +47,7 @@ export const SPEAKER_TAGS: Record<BotsLocale, SpeakerTags> = {
   },
   en: {
     user: (nickname) => `[${tagSafe(nickname)} (user)]:`,
+    participant: (nickname) => `[${tagSafe(nickname)} (participant)]:`,
     bot: (name) => `[${tagSafe(name)} (Agent)]:`,
     event: '[Event]:',
     task: (name) => `[Background task · ${tagSafe(name)}]:`,
@@ -396,6 +400,17 @@ export const copy = {
   /** The first line of that new chat. */
   chatOrigin: (l: BotsLocale, proposer: string) =>
     l === 'zh' ? `${proposer} 从另一段对话开了这个会话` : `${proposer} opened this chat from another conversation`,
+
+  /** Rooms (P5): people joining and leaving, an Agent taken out because not everyone may use it. */
+  personJoined: (l: BotsLocale, name: string, by: string) =>
+    l === 'zh' ? `${by} 邀请 ${name} 加入了对话` : `${by} added ${name} to the conversation`,
+  personLeft: (l: BotsLocale, name: string) => (l === 'zh' ? `${name} 离开了对话` : `${name} left the conversation`),
+  agentNotForEveryone: (l: BotsLocale, bot: string) =>
+    l === 'zh'
+      ? `${bot} 离开了对话：它没有对这里的每个人开放`
+      : `${bot} left the conversation: it isn't shared with everyone here`,
+  agentLeftWithOwner: (l: BotsLocale, bot: string) =>
+    l === 'zh' ? `${bot} 随主人离开了对话` : `${bot} left with its owner`,
 
   /** The first line of a conversation opened from outside Greenhouse (MCP, CLI, Feishu — P6). */
   externalOrigin: (l: BotsLocale, via: string) => (l === 'zh' ? `这段对话由 ${via} 发起` : `Started from ${via}`),

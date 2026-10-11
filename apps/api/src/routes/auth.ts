@@ -36,6 +36,7 @@ import { nowIso } from '@greenhouse/utils/date';
 import { botsLocale } from '../bots/engine/copy.js';
 import { relocalizeSprouty } from '../bots/sprouty.js';
 import { toErrorMessage } from '@greenhouse/utils/error';
+import { superSeesAllChats } from '../sessions/access.js';
 
 const PASSWORD_LINK_BODY_LIMIT = 4096;
 const PASSWORD_LINK_WINDOW_MS = 5 * 60_000;
@@ -240,6 +241,8 @@ const auth = new Hono<AppEnv>()
         locale: user.locale ?? 'en',
         locale_chosen: user.locale_chosen_at != null,
         features,
+        // May this account list and open other members' chats (super, where SUPER_READS_CHATS allows)?
+        reads_team_chats: superSeesAllChats(user),
       },
     });
   })

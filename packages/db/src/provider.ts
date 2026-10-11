@@ -163,6 +163,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
         'bot_requests',
         'bot_shared_notes',
         'bot_conversation_members',
+        'conversation_participants',
         'bot_conversations',
         'bot_versions',
         'bots',

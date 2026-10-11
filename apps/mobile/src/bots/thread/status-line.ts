@@ -49,7 +49,7 @@ export interface StatusInput {
   /** The full directory (active and archived Bots). */
   byId: Record<string, BotView>;
   /** A task chat reads like a DM: its Agent speaks under the title, guests are named. */
-  kind: 'direct' | 'task' | 'group';
+  kind: 'direct' | 'task' | 'group' | 'room';
   /** Other members' public Agents in the member's DMs (P4): one no longer offered turns its DM read-only. */
   shared?: SharedBots;
 }

@@ -187,6 +187,7 @@ function messageValues(input: MessageInput, seq: number, now = nowIso(), id: str
     model: input.model ?? null,
     bot_id: input.bot_id ?? null,
     bot_event: input.bot_event ?? null,
+    author_user_id: input.author_user_id ?? null,
     images: JSON.stringify(input.images ?? []),
     confidence: input.confidence ?? null,
     grounded: input.grounded != null ? (input.grounded ? 1 : 0) : null,

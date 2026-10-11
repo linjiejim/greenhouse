@@ -29,7 +29,7 @@ import {
 import { getAuthUser } from '../auth/middleware.js';
 import { generateSessionTitle } from '../llm/title.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
-import { canAccessSession, canWriteSession } from '../sessions/access.js';
+import { canAccessSession, canWriteSession, superSeesAllChats } from '../sessions/access.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import { createOwnedSession, SessionCreationError } from '../sessions/creation.js';
 import { parseSessionProfileFilter, sessionProfileRefs } from '../sessions/profile-filter.js';
@@ -139,7 +139,7 @@ const sessions = new Hono<AppEnv>()
     }
     // Fail closed rather than quietly returning an empty page — an empty list
     // would hide the caller's bug instead of naming it.
-    if (scope === 'team' && authUser.role !== 'super') {
+    if (scope === 'team' && !superSeesAllChats(authUser)) {
       return c.json({ error: 'Forbidden' }, 403);
     }
 
@@ -201,8 +201,9 @@ const sessions = new Hono<AppEnv>()
       baseList = await getDb().sessions.list({ ...listOpts, excludeUserId: authUser.id });
     } else {
       // 'mine' pins the query to the caller for every role. Without a scope the
-      // historical rule stands: super sees everyone's sessions.
-      const ownerId = scope === 'mine' || authUser.role !== 'super' ? authUser.id : undefined;
+      // historical rule stands where the deployment lets super read chats
+      // (SUPER_READS_CHATS): super sees everyone's sessions.
+      const ownerId = scope === 'mine' || !superSeesAllChats(authUser) ? authUser.id : undefined;
       baseList = await getDb().sessions.list({ ...listOpts, userId: ownerId });
     }
     const hasMore = includePageMeta && baseList.length > limit;
@@ -217,7 +218,7 @@ const sessions = new Hono<AppEnv>()
     // Unscoped + non-super: fold in sessions shared with this user. `scope=mine`
     // deliberately skips this — shared conversations live in their own tab — and
     // so does a channel-filtered list ("my conversations on <channel>").
-    if (scope === undefined && !channel && authUser.role !== 'super' && sharedSessionIds.length > 0) {
+    if (scope === undefined && !channel && !superSeesAllChats(authUser) && sharedSessionIds.length > 0) {
       const sharedRows = await getDb().sessions.listSharedWith(authUser.id, {
         viewerUserId: authUser.id,
         status,
@@ -250,7 +251,7 @@ const sessions = new Hono<AppEnv>()
         const fetched = await Promise.all(missingIds.map((id) => getDb().sessions.getById(id)));
         for (const s of fetched) {
           if (!s) continue;
-          const accessible = authUser.role === 'super' || s.user_id === authUser.id || sharedIdSet.has(s.id);
+          const accessible = superSeesAllChats(authUser) || s.user_id === authUser.id || sharedIdSet.has(s.id);
           if (!accessible) continue;
           // Mirror the main query's status / eval-visibility filters — and its
           // hiding: a Bots conversation filed into a group must not surface here,
@@ -547,6 +548,14 @@ const sessions = new Hono<AppEnv>()
     // Write permission check
     if (!canWriteSession(authUser, session)) {
       return c.json({ error: 'Forbidden' }, 403);
+    }
+    // A room is several people's: its owner leaves it (DELETE /api/rooms/:id/participants/:me)
+    // rather than deleting it under everyone else (spec 20261011-agent-first-class P5).
+    if (
+      session.channel === BOTS_SESSION_CHANNEL &&
+      (await getDb().bots.getConversation(authUser.id, id))?.kind === 'room'
+    ) {
+      return c.json({ error: 'Leave the conversation instead — others are still in it', code: 'room' }, 409);
     }
 
     if (chatRunRegistry.getActive(id)) {

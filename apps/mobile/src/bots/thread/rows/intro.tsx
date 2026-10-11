@@ -26,7 +26,7 @@ export const Intro = memo(function Intro({
   members,
   sharedBy,
 }: {
-  kind: 'direct' | 'task' | 'group';
+  kind: 'direct' | 'task' | 'group' | 'room';
   title: string;
   /** A DM's (a task chat's) Bot (undefined while the directory loads). */
   owner: BotView | undefined;

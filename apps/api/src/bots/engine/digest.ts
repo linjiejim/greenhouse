@@ -289,6 +289,8 @@ function transcriptForDigest(
   locale: BotsLocale,
   nickname: string,
   botNames: ReadonlyMap<string, string>,
+  /** A room: each person's name by user id (P5) — a summary says who said what. */
+  people?: ReadonlyMap<string, string>,
 ): string {
   const tags = SPEAKER_TAGS[locale];
   return rows
@@ -296,7 +298,7 @@ function transcriptForDigest(
     .map((row) => {
       const tag =
         row.role === 'user'
-          ? tags.user(nickname)
+          ? tags.user(people && row.author_user_id ? (people.get(row.author_user_id) ?? '?') : nickname)
           : row.bot_event?.kind === 'task_report'
             ? tags.task(botNames.get(row.bot_event.bot_id) ?? '?')
             : row.role === 'system'
@@ -364,6 +366,12 @@ export async function compactConversation(
       user.id,
       (conversation.members ?? []).map((member) => member.bot_id),
     );
+    const people =
+      conversation.kind === 'room'
+        ? new Map(
+            ((await db.bots.listParticipants([sessionId])).get(sessionId) ?? []).map((p) => [p.user_id, p.nickname]),
+          )
+        : undefined;
     const current = () =>
       digestView(conversation.digest, conversation.digest_upto_seq, conversation.digest_updated_at, locale, botNames);
 
@@ -390,7 +398,7 @@ export async function compactConversation(
         `</previous_summary>`,
         ``,
         `<new_messages>`,
-        transcriptForDigest(cut.summarize, locale, user.nickname, botNames),
+        transcriptForDigest(cut.summarize, locale, user.nickname, botNames, people),
         `</new_messages>`,
       ].join('\n');
       const answer = await botsEngineDeps().summarize({

@@ -49,6 +49,7 @@ export function toProjectionRow(row: MessageRow): ProjectionRow {
     content: withImageHint(row),
     bot_id: row.bot_id ?? null,
     bot_event: parseBotEvent(row.bot_event),
+    ...(row.author_user_id ? { author_user_id: row.author_user_id } : {}),
     ...(row.role === 'user' ? withImages(row) : {}),
   };
 }

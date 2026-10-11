@@ -109,6 +109,13 @@ export interface RunContext {
    * `bots` and what their public face needs. Empty for a member's own Bots.
    */
   publicBots: Map<string, PublicBotRun>;
+  /**
+   * A room (P5): every person's name (user id → nickname), for the speaker tags. This run is the
+   * requester's (`user`): only their messages are requests; others' are information.
+   */
+  people: Map<string, string> | null;
+  /** Names of Agents here that are not the member's (another person's, in a room) — for the speaker tags. */
+  otherBotNames: Map<string, string>;
   writer: TranscriptWriter;
   /** Digest snapshot for the whole run (spec: one snapshot per chain; never changes mid-run). */
   digest: { rendered: string | null; uptoSeq: number };
@@ -182,12 +189,30 @@ const HANDOFF_STOP = Symbol('bots-handoff-stop');
  * answers it right after an interrupt). Unreadable counts as none: the worst
  * case is a stop notice above a message that is then answered anyway.
  */
-export async function memberMessageQueued(db: DatabaseProvider, sessionId: string): Promise<boolean> {
+/**
+ * A member message waits in the inbox. In a room only the run's own member counts (`authorId`):
+ * someone else's message never cuts this member's Agent short — their own run answers it.
+ */
+export async function memberMessageQueued(
+  db: DatabaseProvider,
+  sessionId: string,
+  authorId?: string,
+): Promise<boolean> {
   try {
-    return (await db.bots.listPendingInbox(sessionId)).some((row) => row.kind === 'user_message');
+    return (await db.bots.listPendingInbox(sessionId)).some((row) => {
+      if (row.kind !== 'user_message' && row.kind !== 'mention') return false;
+      if (!authorId) return row.kind === 'user_message';
+      const author = (safeJsonParse(row.payload, {}) as { author_user_id?: unknown }).author_user_id;
+      return author === undefined || author === authorId;
+    });
   } catch {
     return false;
   }
+}
+
+/** The member a room run is for, or undefined outside rooms (see memberMessageQueued). */
+export function roomMember(rc: Pick<RunContext, 'people' | 'user'>): string | undefined {
+  return rc.people ? rc.user.id : undefined;
 }
 
 /**
@@ -378,7 +403,8 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
   let recallMaxSeq = rc.digest.uptoSeq;
   const conversationPort: ConversationPort = {
     nickname: user.nickname,
-    botName: (id) => (id ? (rc.bots.get(id)?.name ?? null) : null),
+    botName: (id) => (id ? (rc.bots.get(id)?.name ?? rc.otherBotNames.get(id) ?? null) : null),
+    ...(rc.people ? { personName: (id: string) => rc.people?.get(id) ?? null } : {}),
     recallMaxSeq: () => recallMaxSeq,
   };
 
@@ -433,6 +459,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
           team,
           conversation: conversationPort,
           runtimeRunId: null,
+          room: rc.people !== null,
         });
     const modelOverride = resolveTurnModel(bot, rc.conversation.kind === 'task' ? rc.conversation.model_id : null);
     const effectiveModel = modelOverride ?? rc.profile.model.id;
@@ -440,7 +467,8 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       buildStaticRules(toolFaceFlags(Object.keys(tools), approvalGated), locale, rc.richBlocks, rc.conversation.kind),
       // A public Agent knows whom it serves, and nothing personal about either side (D35, D6).
       publicRun ? buildPublicIdentity(bot, publicRun.ownerNickname, user.nickname) : buildIdentity(bot, user.nickname),
-      publicRun ? null : buildMemberNotes(user.nickname, user.notes),
+      // A room is read by everyone in it: the member's private notes stay out (P5).
+      publicRun || rc.people ? null : buildMemberNotes(user.nickname, user.notes),
       buildDigestSection(rc.digest.rendered),
     ]);
 
@@ -449,7 +477,8 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       selfBotId: bot.id,
       locale,
       nickname: user.nickname,
-      botNames: new Map([...rc.bots.values()].map((b) => [b.id, b.name])),
+      botNames: new Map([...rc.otherBotNames, ...[...rc.bots.values()].map((b) => [b.id, b.name] as const)]),
+      ...(rc.people ? { room: { memberId: user.id, people: rc.people } } : {}),
       uptoSeq: rc.digest.uptoSeq,
       budgetTokens: Math.min(resolveHistoryBudget(effectiveModel), PROJECTION_MAX_TOKENS),
     });
@@ -680,7 +709,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
     let notice: string | undefined;
     // Soft-stopped with nobody waiting: the run ends with this turn, which says
     // so like a Stop does. A queued member message is answered next instead.
-    const stopNotice = interrupted && completed && !(await memberMessageQueued(db, sessionId));
+    const stopNotice = interrupted && completed && !(await memberMessageQueued(db, sessionId, roomMember(rc)));
     if (completed) {
       status = 'completed';
       if (stopNotice) notice = chatStopNotice(locale);

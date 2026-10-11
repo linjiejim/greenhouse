@@ -177,9 +177,11 @@ export const botConversations = pgTable(
     /**
      * `direct` = a Bot's one DM (the main thread is Sprouty's); `task` = a separate chat with its own
      * context, owned by one Bot, as many as the member opens (spec 20261011-agent-first-class D20);
-     * `group` = a retired group chat (read-only history).
+     * `group` = a retired group chat (read-only history); `room` = several people (and the Agents
+     * they bring) in one conversation — `user_id` is its creator, the people are in
+     * `conversation_participants`, nobody answers unaddressed messages (D42–D46).
      */
-    kind: text('kind', { enum: ['direct', 'task', 'group'] }).notNull(),
+    kind: text('kind', { enum: ['direct', 'task', 'group', 'room'] }).notNull(),
     /** The Bot that answers here: a DM's Bot (one DM per Bot) or a task chat's Bot. */
     owner_bot_id: text('owner_bot_id').references(() => bots.id, { onDelete: 'cascade' }),
     /** Who answers an unaddressed message: a DM's owner (null once it is archived); a retired group's old coordinator. */
@@ -243,6 +245,38 @@ export const botConversationMembers = pgTable(
     index('idx_bot_conversation_members_bot').on(table.bot_id),
   ],
 );
+
+// ─── conversation_participants ─────────────────────────────
+
+/**
+ * The people in a room (`bot_conversations.kind = 'room'`, spec 20261011-agent-first-class D42):
+ * each reads and writes it, has their own read marker, and brings their own Agents (which stay in
+ * `bot_conversation_members`, `user_id` = who added them). The creator is a participant too
+ * (`owner`). Other conversation kinds have no rows here: their one member is `user_id`.
+ */
+export const conversationParticipants = pgTable(
+  'conversation_participants',
+  {
+    id: serial('id').primaryKey(),
+    session_id: text('session_id')
+      .notNull()
+      .references(() => botConversations.session_id, { onDelete: 'cascade' }),
+    user_id: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['owner', 'member'] }).notNull(),
+    /** Who added them (`users.id`); the creator adds themselves. */
+    added_by: text('added_by').notNull(),
+    last_read_at: ts('last_read_at'),
+    joined_at: ts('joined_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_conversation_participants').on(table.session_id, table.user_id),
+    index('idx_conversation_participants_user').on(table.user_id),
+  ],
+);
+
+export type ConversationParticipantRow = typeof conversationParticipants.$inferSelect;
 
 // ─── bot_shared_notes ─────────────────────────────────────
 
@@ -310,7 +344,7 @@ export const botInbox = pgTable(
     session_id: text('session_id')
       .notNull()
       .references(() => botConversations.session_id, { onDelete: 'cascade' }),
-    kind: text('kind', { enum: ['event', 'continue', 'task_report', 'user_message'] }).notNull(),
+    kind: text('kind', { enum: ['event', 'continue', 'task_report', 'user_message', 'mention'] }).notNull(),
     payload: text('payload').notNull().default('{}'),
     created_at: ts('created_at').notNull(),
     consumed_at: ts('consumed_at'),
