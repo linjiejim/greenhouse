@@ -348,7 +348,7 @@ describe('evaluateTableCard', () => {
     expect(
       Object.keys(first?.values ?? {})
         .map(Number)
-        .sort(),
+        .sort((a, b) => a - b),
     ).toEqual([w.name.id, w.rep.id, w.signed.id].sort((a, b) => a - b));
   });
 });
