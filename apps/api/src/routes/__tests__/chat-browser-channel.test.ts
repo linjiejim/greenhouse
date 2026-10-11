@@ -115,6 +115,7 @@ vi.mock('../../agent-runtime/tool-resolution.js', () => ({
   LAZY_TOOL_IDS: new Set(),
   resolveEffectiveTools: vi.fn(async () => ({ effectiveTools: EFFECTIVE_TOOLS })),
   buildLazyServerTools: vi.fn(() => ({})),
+  profileToolIdentity: () => ({ botId: null, mcpConnectors: null }),
   filterBrowserSessionToolIds,
 }));
 
