@@ -6,6 +6,7 @@ import { FieldEditor, fieldEditorOwnsLabel } from '../../components/tables/field
 import { recordDrafts, valuesFromDrafts, type FieldDraft } from '../../components/tables/field-draft';
 import { isComputedField } from '../../components/tables/field-types';
 import { FieldValue, recordFieldValue } from '../../components/tables/field-value';
+import { usePendingUploads } from '../../components/tables/use-pending-uploads';
 import type { TableField, TableRecord, TableUserOption } from '../../lib/api/tables';
 import { useT } from '../../lib/i18n';
 
@@ -36,6 +37,7 @@ export function RecordDialog({
   const t = useT();
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>({});
   const [error, setError] = useState('');
+  const { uploading, busyChange } = usePendingUploads();
   const usersById = React.useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
 
   useEffect(() => {
@@ -45,6 +47,8 @@ export function RecordDialog({
   }, [fields, open, record, initialValues]);
 
   const submit = async () => {
+    // A file still uploading is not in the drafts yet: the record would be saved without it.
+    if (uploading) return;
     setError('');
     try {
       await onSave(valuesFromDrafts(fields, drafts, record ? 'update' : 'create'));
@@ -84,6 +88,7 @@ export function RecordDialog({
               onChange={(next) => setDrafts((current) => ({ ...current, [String(field.id)]: next }))}
               users={users}
               baseId={baseId}
+              onBusyChange={busyChange(field.id)}
             />
           );
           if (fieldEditorOwnsLabel(field)) return <div key={field.id}>{editor}</div>;
@@ -99,8 +104,8 @@ export function RecordDialog({
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={() => void submit()} disabled={saving}>
-            {saving ? t('common.saving') : t('tables.saveRecord')}
+          <Button onClick={() => void submit()} disabled={saving || uploading}>
+            {saving ? t('common.saving') : uploading ? t('tables.forms.upload.uploading') : t('tables.saveRecord')}
           </Button>
         </div>
       </div>

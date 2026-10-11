@@ -21,6 +21,8 @@ export interface AttachmentUploaderProps {
   upload: AttachmentUpload;
   label: string;
   disabled?: boolean;
+  /** Uploads started / all finished: the host holds its submit meanwhile, or the record lands without the file. */
+  onBusyChange?: (busy: boolean) => void;
   id?: string;
   'aria-describedby'?: string;
 }
@@ -31,6 +33,7 @@ export function AttachmentUploader({
   upload,
   label,
   disabled = false,
+  onBusyChange,
   id,
   'aria-describedby': describedBy,
 }: AttachmentUploaderProps) {
@@ -44,6 +47,7 @@ export function AttachmentUploader({
   const add = async (list: FileList | null) => {
     if (!list?.length) return;
     setUploading(true);
+    onBusyChange?.(true);
     setError('');
     let next = ids;
     try {
@@ -57,6 +61,7 @@ export function AttachmentUploader({
       setError(uploadError instanceof Error ? uploadError.message : t('tables.forms.upload.failed'));
     } finally {
       setUploading(false);
+      onBusyChange?.(false);
       if (input.current) input.current.value = '';
     }
   };

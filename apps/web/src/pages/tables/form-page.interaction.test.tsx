@@ -130,6 +130,31 @@ describe('TablesFormPage', () => {
     expect(container.textContent).not.toContain('Submit another response');
   });
 
+  it('holds Submit while an attachment is still uploading', async () => {
+    let finishUpload: (value: { id: number; name: string; size: number }) => void = () => undefined;
+    api.uploadTableFormFile.mockImplementation(() => new Promise((resolve) => (finishUpload = resolve)));
+    await mount();
+    await type(container.querySelector('input:not([type="file"])') as HTMLInputElement, 'Taxi');
+    const picker = container.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(picker, 'files', { value: [new File(['x'], 'big.pdf')], configurable: true });
+    await act(async () => {
+      picker.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+
+    const submit = container.querySelector('[data-testid="form-submit"]') as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    await act(async () => submit.click());
+    expect(api.submitTableForm).not.toHaveBeenCalled();
+
+    await act(async () => finishUpload({ id: 32, name: 'big.pdf', size: 20_000_000 }));
+    await flush();
+    expect(submit.disabled).toBe(false);
+    await act(async () => button('Send claim').click());
+    await flush();
+    expect(api.submitTableForm).toHaveBeenCalledWith(4, { '1': 'Taxi', '3': [32] });
+  });
+
   it('shows the already-submitted state instead of the fields', async () => {
     api.openTableForm.mockResolvedValue({ ...view, alreadySubmitted: true });
     await mount();

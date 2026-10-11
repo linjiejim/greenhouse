@@ -15,6 +15,7 @@ import { Button, EmptyState, Spinner } from '../../components/ui';
 import { FormError, FormField } from '../../components/form';
 import { FieldEditor, fieldEditorOwnsLabel } from '../../components/tables/field-editor';
 import { valuesFromDrafts, type FieldDraft } from '../../components/tables/field-draft';
+import { usePendingUploads } from '../../components/tables/use-pending-uploads';
 import { CheckCircle2, ClipboardList } from '../../lib/icons';
 import {
   TablesRequestError,
@@ -54,6 +55,7 @@ export function TablesFormPage({ formId }: { formId: number }) {
   const [saving, setSaving] = useState(false);
   const [submitted, setSubmitted] = useState<{ message: string | null } | null>(null);
   const [error, setError] = useState('');
+  const { uploading, busyChange } = usePendingUploads();
 
   useEffect(() => {
     let cancelled = false;
@@ -86,7 +88,8 @@ export function TablesFormPage({ formId }: { formId: number }) {
   );
 
   const submit = async () => {
-    if (!view) return;
+    // A file still uploading is not in the drafts yet: the response would land without it.
+    if (!view || uploading) return;
     setSaving(true);
     setError('');
     try {
@@ -175,6 +178,7 @@ export function TablesFormPage({ formId }: { formId: number }) {
                 onChange={(next) => setDrafts((current) => ({ ...current, [String(field.id)]: next }))}
                 users={users}
                 uploadAttachment={(file) => uploadTableFormFile(formId, file)}
+                onBusyChange={busyChange(field.id)}
                 emptyLabel={t('tables.forms.choose')}
                 disabled={saving}
               />
@@ -188,8 +192,12 @@ export function TablesFormPage({ formId }: { formId: number }) {
           })}
           <FormError>{error}</FormError>
           <div className="flex justify-end border-t border-edge pt-5">
-            <Button disabled={saving} onClick={() => void submit()} data-testid="form-submit">
-              {saving ? t('tables.forms.submitting') : (form.submitLabel ?? t('tables.forms.submit'))}
+            <Button disabled={saving || uploading} onClick={() => void submit()} data-testid="form-submit">
+              {saving
+                ? t('tables.forms.submitting')
+                : uploading
+                  ? t('tables.forms.upload.uploading')
+                  : (form.submitLabel ?? t('tables.forms.submit'))}
             </Button>
           </div>
         </div>
