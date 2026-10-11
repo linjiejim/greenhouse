@@ -6,6 +6,7 @@ import {
   buildTranscript,
   handoffsFromCalls,
   pickUpQueued,
+  rewindTargets,
   speakingSegment,
   type PendingSend,
   type TranscriptItem,
@@ -412,5 +413,48 @@ describe('pickUpQueued', () => {
   it('leaves the list alone with no new turns', () => {
     const pending = [send('a', 'queued', 1)];
     expect(pickUpQueued(pending, [])).toEqual(pending);
+  });
+});
+
+describe('rewindTargets', () => {
+  const transcript = (messages: BotMessage[], extra: Partial<Parameters<typeof buildTranscript>[0]> = {}) =>
+    buildTranscript({ conversationKind: 'task', ownerBotId: 'bot_owner', messages, ...extra });
+
+  it('offers the last member message and the last reply after it', () => {
+    const items = transcript([
+      msg({ id: 'u1', role: 'user', content: 'first' }),
+      msg({ id: 'a1', bot_id: 'bot_owner' }),
+      msg({ id: 'u2', role: 'user', content: 'second' }),
+      msg({ id: 'a2', bot_id: 'bot_owner' }),
+      msg({ id: 'a3', bot_id: 'bot_guest' }),
+    ]);
+    expect(rewindTargets(items)).toEqual({ lastUserId: 'u2', lastReplyId: 'a3' });
+  });
+
+  it('offers an unanswered last message for editing, with no reply to answer again', () => {
+    const items = transcript([
+      msg({ id: 'u1', role: 'user', content: 'first' }),
+      msg({ id: 'a1', bot_id: 'bot_owner' }),
+      msg({ id: 'u2', role: 'user', content: 'second' }),
+    ]);
+    expect(rewindTargets(items)).toEqual({ lastUserId: 'u2', lastReplyId: null });
+  });
+
+  it('offers nothing before the member has said anything (the greeting is not an answer)', () => {
+    const items = transcript([msg({ id: 'g', role: 'system', bot_event: { kind: 'greeting', bot_id: 'bot_owner' } })]);
+    expect(rewindTargets(items)).toEqual({ lastUserId: null, lastReplyId: null });
+  });
+
+  it('offers nothing while a send or a reply is still in flight', () => {
+    const messages = [msg({ id: 'u1', role: 'user', content: 'first' }), msg({ id: 'a1', bot_id: 'bot_owner' })];
+    const pending: PendingSend = { clientId: 'c1', content: 'more', images: [], status: 'sending', afterSegment: 0 };
+    expect(rewindTargets(transcript(messages, { pending: [pending] }))).toEqual({
+      lastUserId: null,
+      lastReplyId: null,
+    });
+    expect(rewindTargets(transcript(messages, { segments: [segment({ botId: 'bot_owner' })] }))).toEqual({
+      lastUserId: null,
+      lastReplyId: null,
+    });
   });
 });

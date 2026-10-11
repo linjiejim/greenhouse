@@ -21,6 +21,7 @@ interface StubProps {
   searchPlaceholder?: string;
   extraActions?: Array<{ label: string; onClick: () => void }>;
   onQueryChange?: (query: string) => void;
+  agentChats?: { currentId: string | null; onOpen: (sessionId: string) => void };
 }
 
 vi.mock('./chat-history-panel', () => ({
@@ -31,7 +32,12 @@ vi.mock('./chat-history-panel', () => ({
         'data-testid': 'chats',
         'data-title': props.chatsTitle ?? '',
         'data-placeholder': props.searchPlaceholder ?? '',
+        'data-agent-chats': props.agentChats ? `current:${props.agentChats.currentId ?? ''}` : '',
       },
+      createElement('button', {
+        'data-testid': 'open-agent-chat',
+        onClick: () => props.agentChats?.onOpen('task-1'),
+      }),
       createElement('input', {
         'data-testid': 'search',
         onChange: (event: { target: { value: string } }) => props.onQueryChange?.(event.target.value),
@@ -108,6 +114,20 @@ describe('<ConversationsSidebarPanel/>', () => {
     expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-bot' });
   });
 
+  it('lists separate Agent chats among the chats, highlighted and opened at their own address', async () => {
+    const settleHash = () => act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    window.location.hash = '#/bots?c=task-1';
+    await settleHash();
+    mount({ bots: true });
+    expect(get('chats')!.dataset.agentChats).toBe('current:task-1');
+    window.location.hash = '#/chat';
+    await settleHash();
+    act(() => get('open-agent-chat')!.click());
+    await settleHash();
+    expect(window.location.hash).toBe('#/bots?c=task-1');
+    expect(get('chats')!.dataset.agentChats).toBe('current:task-1');
+  });
+
   it('hosts the "new Agent" dialog only where the threads page does not (the chats route)', () => {
     mount({ bots: true }, false);
     expect(get('bots-dialogs')).toBeNull();
@@ -120,6 +140,7 @@ describe('<ConversationsSidebarPanel/>', () => {
     const chats = get('chats')!;
     expect(chats.dataset.title).toBe('');
     expect(chats.dataset.placeholder).toBe('');
+    expect(chats.dataset.agentChats).toBe('');
     expect(get('threads')).toBeNull();
     expect(get('background')).toBeNull();
     expect(host.querySelector('button[aria-label="New Agent"]')).toBeNull();

@@ -20,6 +20,7 @@ import { useAuthStore, useProfileStore } from '../../stores';
 import { ToastContainer } from '../../components/ui';
 import { useBotsStore } from '../../components/bots/bots-store';
 import { browserTimeZone, resetComputerTimezoneSyncForTest } from '../../components/bots/computer-phase';
+import { useSidePaneStore } from '../../stores/side-pane-store';
 import { BotsPage } from './index';
 
 const api = vi.hoisted(() => ({
@@ -328,6 +329,34 @@ describe('Bots workspace', () => {
     expect(api.handbackComputer).toHaveBeenCalledWith({ note: '', requestId: undefined, sessionId: 'dm-sage' });
     expect(document.querySelector('[data-testid="bots-computer-host"]')).toBeNull();
     expect(document.querySelector('[data-testid="bots-info-pane"]')).not.toBeNull();
+  });
+});
+
+describe('Chat’s side pane on the Agents page', () => {
+  it('is hosted here — html previews open beside the conversation — one right-hand column at a time', async () => {
+    api.getConversation.mockResolvedValue({ conversation: detail('dm-sage', SAGE), messages: [], has_more: false });
+    api.fetchComputerStatus.mockResolvedValue(computer({ state: 'absent' }));
+    await renderPage('c=dm-sage');
+    // The page declares the pane, so turns here ask for html-preview blocks.
+    expect(useSidePaneStore.getState().hostMounted).toBe(true);
+
+    await click(document.querySelector('[data-testid="bots-info-button"]'));
+    expect(document.querySelector('[data-testid="bots-info-pane"]')).not.toBeNull();
+
+    // A preview opens: the info pane makes room.
+    await act(async () => useSidePaneStore.getState().open({ kind: 'html', code: '<p>hi</p>', title: 'Preview' }));
+    await flush();
+    expect(useSidePaneStore.getState().isOpen).toBe(true);
+    expect(document.querySelector('[data-testid="bots-info-pane"]')).toBeNull();
+
+    // …and info coming back closes the preview.
+    await click(document.querySelector('[data-testid="bots-info-button"]'));
+    expect(document.querySelector('[data-testid="bots-info-pane"]')).not.toBeNull();
+    expect(useSidePaneStore.getState().isOpen).toBe(false);
+
+    await act(async () => root?.unmount());
+    root = null;
+    expect(useSidePaneStore.getState().hostMounted).toBe(false);
   });
 });
 

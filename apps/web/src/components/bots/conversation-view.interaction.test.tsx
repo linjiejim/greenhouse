@@ -14,10 +14,17 @@ import type { BotConversationDetail, BotView } from '@greenhouse/types/bots';
 import { I18nProvider } from '../../lib/i18n';
 import { BotsApiError } from '../../lib/api/bots';
 import { ToastContainer } from '../ui';
+import { useProfileStore } from '../../stores';
 import { ConversationView, isReadOnlySendError, type ConversationViewProps } from './conversation-view';
+import { queueFirstSend, takeFirstSend } from './first-send';
 import type { BotConversationController } from './use-bot-conversation';
 
-const api = vi.hoisted(() => ({ listConversationTasks: vi.fn(), listRequests: vi.fn(), listBots: vi.fn() }));
+const api = vi.hoisted(() => ({
+  listConversationTasks: vi.fn(),
+  listRequests: vi.fn(),
+  listBots: vi.fn(),
+  updateTaskChat: vi.fn(),
+}));
 vi.mock('../../lib/api/bots', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api/bots')>()),
   ...api,
@@ -86,6 +93,7 @@ function controller(overrides: Partial<BotConversationController> = {}): BotConv
     memoryStates: {},
     reload: vi.fn(async () => {}),
     send: vi.fn(async () => {}),
+    rewind: vi.fn(async () => {}),
     stop: vi.fn(),
     stopPhase: null,
     interrupting: false,
@@ -351,5 +359,237 @@ describe('the status line', () => {
     expect(document.querySelector('[data-testid="bots-status-line"]')?.textContent).toBe(
       'Waiting for you to hand the computer back',
     );
+  });
+});
+
+describe('a separate chat (kind "task")', () => {
+  const TASK: BotConversationDetail = { ...DM, session_id: 'task-1', kind: 'task', title: null, model_id: 'flash' };
+  const MODELS = [
+    { id: 'flash', name: 'Flash' },
+    { id: 'pro', name: 'Pro' },
+  ];
+  const row = (seq: number, role: 'user' | 'assistant', content: string) => ({
+    id: `m${seq}`,
+    role,
+    content,
+    bot_id: role === 'assistant' ? SAGE.id : null,
+    bot_event: null,
+    pipeline: [],
+    references: [],
+    reasoning: null,
+    model: null,
+    images: [],
+    created_at: '2026-10-05T00:00:00.000Z',
+    seq,
+  });
+  const taskProps = (overrides: Partial<BotConversationController> = {}, extra: Partial<ConversationViewProps> = {}) =>
+    props({
+      sessionId: 'task-1',
+      title: 'New chat',
+      controller: controller({ conversation: TASK, ...overrides }),
+      ...extra,
+    });
+  const click = async (element: Element | null | undefined) => {
+    await act(async () => element?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await flush();
+  };
+  const button = (label: string) =>
+    [...document.querySelectorAll('button')].find(
+      (candidate) => candidate.getAttribute('aria-label') === label || candidate.textContent?.trim() === label,
+    );
+  const type = async (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+    const proto = element instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(element, value);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+
+  beforeEach(() => {
+    useProfileStore.setState({ models: MODELS, initialized: true });
+    api.updateTaskChat.mockReset().mockImplementation(async (_id: string, changes: Record<string, unknown>) => ({
+      conversation: { ...TASK, ...changes },
+    }));
+  });
+  afterEach(async () => {
+    // Still mounted here (the file's own afterEach unmounts after this one).
+    await act(async () => useProfileStore.setState({ models: [], initialized: false }));
+    takeFirstSend('task-1');
+  });
+
+  it('is headed by its own title and its Agent, and says it is separate', async () => {
+    await render(taskProps());
+    const header = document.querySelector('[data-testid="bots-conversation-header"]');
+    expect(header?.textContent).toContain('New chat');
+    expect(document.querySelector('[data-testid="bots-status-line"]')?.textContent).toBe('Chat with Sage');
+    expect(document.querySelector('[data-testid="bots-intro"]')?.textContent).toContain(
+      'A separate chat with Sage, with its own context',
+    );
+    // A DM has neither: its Agent's own model, a name that is the Agent's.
+    expect(document.body.textContent).toContain('flash');
+  });
+
+  it('picks its model in the composer, remembers it on the chat and sends it with each message', async () => {
+    const send = vi.fn(async () => {});
+    const setConversation = vi.fn();
+    await render(taskProps({ send, setConversation }));
+
+    await click(document.querySelector('button[aria-haspopup="listbox"]'));
+    await click(
+      [...document.querySelectorAll('[role="option"]')].find((option) => option.textContent?.includes('pro')),
+    );
+    expect(api.updateTaskChat).toHaveBeenCalledWith('task-1', { model_id: 'pro' });
+    expect(setConversation).toHaveBeenCalledWith(expect.objectContaining({ model_id: 'pro' }));
+
+    const input = document.querySelector<HTMLTextAreaElement>('[data-testid="chat-input"]')!;
+    await type(input, 'Compare the vendors');
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    });
+    await flush();
+    expect(send).toHaveBeenCalledWith('Compare the vendors', { images: [], mentions: [], model: 'pro' });
+  });
+
+  it('renames itself from the header', async () => {
+    const setConversation = vi.fn();
+    await render(taskProps({ setConversation }));
+    await click(button('Rename chat'));
+    const field = document.querySelector<HTMLInputElement>('[data-testid="bots-title-input"]')!;
+    expect(field.value).toBe('New chat');
+    await type(field, 'Vendor shortlist');
+    await act(async () => {
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    });
+    await flush();
+    expect(api.updateTaskChat).toHaveBeenCalledWith('task-1', { title: 'Vendor shortlist' });
+    expect(setConversation).toHaveBeenCalledWith(expect.objectContaining({ title: 'Vendor shortlist' }));
+  });
+
+  it('sends the message the new-chat page handed over — once — and gives it back as a draft if refused', async () => {
+    const send = vi.fn(async () => {
+      throw new Error('Forbidden');
+    });
+    queueFirstSend('task-1', {
+      content: 'Plan the launch',
+      images: [{ id: 'img', url: '/img' }],
+      draft: 'Plan the launch',
+    });
+    await render(taskProps({ send }));
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith('Plan the launch', {
+      images: [{ id: 'img', url: '/img' }],
+      mentions: [],
+      model: 'flash',
+    });
+    expect(document.body.textContent).toContain('Could not send: Forbidden');
+    expect(document.querySelector<HTMLTextAreaElement>('[data-testid="chat-input"]')?.value).toBe('Plan the launch');
+  });
+
+  it('edits the last message and answers it again — not an earlier one, not while a reply runs', async () => {
+    const rewind = vi.fn(async () => {});
+    const messages = [
+      row(1, 'user', 'first'),
+      row(2, 'assistant', 'one'),
+      row(3, 'user', 'second'),
+      row(4, 'assistant', 'two'),
+    ];
+    await render(taskProps({ rewind, messages }));
+
+    // One "Edit" (the last member message) and one "answer again" (the last reply).
+    const edits = [...document.querySelectorAll('button')].filter((candidate) => candidate.textContent === 'Edit');
+    expect(edits).toHaveLength(1);
+    expect(document.querySelectorAll('button[aria-label="Regenerate response"]')).toHaveLength(1);
+
+    await click(edits[0]);
+    const editor = document.querySelector<HTMLTextAreaElement>('[data-testid="bots-transcript"] textarea')!;
+    await type(editor, 'second, but shorter');
+    await click(button('Save & Resend'));
+    expect(rewind).toHaveBeenCalledWith('m3', 'second, but shorter');
+
+    await click(document.querySelector('button[aria-label="Regenerate response"]'));
+    await click(button('Regenerate'));
+    expect(rewind).toHaveBeenLastCalledWith('m3');
+  });
+
+  it('offers neither while a reply is running', async () => {
+    const messages = [row(1, 'user', 'first'), row(2, 'assistant', 'one')];
+    await render(taskProps({ messages, streaming: true }));
+    expect([...document.querySelectorAll('button')].some((candidate) => candidate.textContent === 'Edit')).toBe(false);
+    expect(document.querySelector('button[aria-label="Regenerate response"]')).toBeNull();
+  });
+
+  it('explains a refused "answer again" and re-reads the chat', async () => {
+    const reload = vi.fn(async () => {});
+    const rewind = vi.fn(async () => {
+      throw new BotsApiError('A reply is still running here', 409, 'busy');
+    });
+    const messages = [row(1, 'user', 'first'), row(2, 'assistant', 'one')];
+    await render(taskProps({ rewind, reload, messages }));
+    await click(document.querySelector('button[aria-label="Regenerate response"]'));
+    await click(button('Regenerate'));
+    expect(document.body.textContent).toContain('A reply is still running — wait for it to finish.');
+    expect(reload).toHaveBeenCalled();
+  });
+
+  it('answers a form in a reply as the next message — but not while a reply is still running', async () => {
+    const send = vi.fn(async () => {});
+    const form = {
+      ...row(2, 'assistant', 'Which region?'),
+      pipeline: [
+        {
+          step: 1,
+          tool: 'ask_user',
+          input: {},
+          output: {
+            type: 'ask_user',
+            status: 'pending',
+            title: 'Pick a region',
+            questions: [
+              {
+                id: 'region',
+                label: 'Region',
+                type: 'single_choice',
+                required: true,
+                options: [
+                  { value: 'eu', label: 'EU' },
+                  { value: 'us', label: 'US' },
+                ],
+              },
+            ],
+          },
+          duration_ms: 1,
+        },
+      ],
+    } as unknown as ReturnType<typeof row>;
+    const messages = [row(1, 'user', 'Plan the launch'), form];
+    const answer = async () => {
+      await click(document.querySelector('input[type="radio"][value="eu"]'));
+      await click([...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Submit')));
+    };
+
+    await render(taskProps({ send, messages, streaming: true }));
+    await answer();
+    expect(send).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('Wait for the current reply to finish');
+    if (root) await act(async () => root?.unmount());
+    document.body.innerHTML = '';
+
+    await render(taskProps({ send, messages }));
+    await answer();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(expect.stringContaining('Region**: EU'), {
+      images: [],
+      mentions: [],
+      model: 'flash',
+    });
+  });
+
+  it('keeps a DM on its Agent: no model picker, no edit, no rename', async () => {
+    const messages = [row(1, 'user', 'first'), row(2, 'assistant', 'one')];
+    await render(props({ controller: controller({ messages }) }));
+    expect(document.querySelector('button[aria-haspopup="listbox"]')).toBeNull();
+    expect(document.querySelector('button[aria-label="Regenerate response"]')).toBeNull();
+    expect(button('Rename chat')).toBeUndefined();
   });
 });

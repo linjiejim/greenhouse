@@ -51,6 +51,7 @@ export function BotsThreadsSection({ query, onNavigate }: { query: string; onNav
       conversationTitle(conversation, lookup, {
         unknownBot: t('bots.deletedBot'),
         group: t('bots.sidebar.group'),
+        chat: t('bots.newChat'),
         archived: (name: string) => t('bots.archivedName', { name }),
       }),
     [lookup, t],
@@ -74,6 +75,9 @@ export function BotsThreadsSection({ query, onNavigate }: { query: string; onNav
     const open: BotConversationSummary[] = [];
     const closed: BotConversationSummary[] = [];
     for (const conversation of conversations) {
+      // Separate chats are listed with the chats (`GET /api/sessions?include=agent_chats`), never
+      // as a thread — the threads list does not return them, and one that slips in stays out.
+      if (conversation.kind === 'task') continue;
       if (sprouty && conversation.kind === 'direct' && conversation.owner_bot_id === sprouty.id) {
         if (matches(conversation)) pinnedRow = conversation;
         continue;
@@ -197,7 +201,7 @@ function ConversationRow({
       {/* One leading slot for both kinds, sized to two overlapping 24px chips (24 + 24 − 6px) so titles
           align: a retired group shows its first two Bots and no +N chip (the header carries the roster). */}
       <span className="flex w-[42px] flex-shrink-0 justify-center">
-        {conversation.kind === 'direct' ? (
+        {conversation.kind !== 'group' ? (
           // Static; a DM nobody can answer any more (its Bot was archived) sleeps.
           <BotAvatar bot={owner} size="sm" state={readOnly ? 'sleep' : 'idle'} animate={false} />
         ) : (

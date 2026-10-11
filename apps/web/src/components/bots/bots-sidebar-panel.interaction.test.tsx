@@ -195,6 +195,17 @@ describe('<BotsThreadsSection/> list', () => {
     expect(row('dm-bot_sage').className).not.toContain('opacity-70');
   });
 
+  it('never lists a separate chat as a thread — it belongs with the chats', () => {
+    useBotsStore.setState({
+      conversations: [
+        ...useBotsStore.getState().conversations,
+        { ...conversation('task-1', 'direct', [sage.id]), kind: 'task', title: 'Vendor shortlist' },
+      ],
+    });
+    mount('#/bots?c=task-1');
+    expect(order()).toEqual(['dm-bot_sprouty', 'dm-bot_sage', GROUP, 'dm-bot_moss']);
+  });
+
   it("filters by the sidebar's search: titles, Agent names and the last message", () => {
     mount('#/bots', 'draft');
     expect(order()).toEqual([GROUP]); // last message

@@ -21,7 +21,16 @@
  * a failure the same way); the composer only gives the draft back.
  */
 
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { BotView } from '@greenhouse/types/bots';
 import { ChatInput, type PendingImage } from '../chat/chat-input';
 import { useTriggerPopup } from '../chat/use-trigger-popup';
@@ -36,6 +45,7 @@ import { Square } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import * as api from '../../lib/api';
 import { uploadChatFile, type ChatFileRef } from '../../lib/api/chat-files';
+import { onComposerDraft } from '../../lib/composer-draft';
 import { BotMentionPopover } from './bot-mention-popover';
 import { mentionToken, parseMentions } from './mentions';
 import type { StopPhase } from './use-bot-conversation';
@@ -72,6 +82,8 @@ export interface BotsComposerProps {
   onInvite: () => void;
   canInvite: boolean;
   aboveSlot?: ReactNode;
+  /** Beside Send (a separate chat's model picker). */
+  toolbarSlot?: ReactNode;
   inputRef: React.MutableRefObject<HTMLTextAreaElement | null>;
 }
 
@@ -89,6 +101,7 @@ export const BotsComposer = forwardRef<BotsComposerHandle, BotsComposerProps>(fu
     onInvite,
     canInvite,
     aboveSlot,
+    toolbarSlot,
     inputRef,
   },
   ref,
@@ -161,6 +174,32 @@ export const BotsComposer = forwardRef<BotsComposerHandle, BotsComposerProps>(fu
   );
 
   useImperativeHandle(ref, () => ({ addFiles: selectFiles }), [selectFiles]);
+
+  // A turn staged from the side pane — an html-preview page's `sendPrompt`, the image annotator —
+  // lands here as a draft (appended to what is typed), never sent on its own.
+  const inputValue = useRef(input);
+  inputValue.current = input;
+  useEffect(
+    () =>
+      onComposerDraft((incoming) => {
+        const current = inputValue.current;
+        setInput(incoming.append && current.trim() ? `${current}\n${incoming.text}` : incoming.text);
+        if (incoming.images.length > 0) {
+          setImages((existing) => [
+            ...existing,
+            ...incoming.images.map((image) => ({
+              // Already in storage: the send path only reads `uploaded`.
+              file: new File([], `${image.id}.png`, { type: 'image/png' }),
+              preview: image.url,
+              uploading: false as const,
+              uploaded: image,
+            })),
+          ]);
+        }
+        setTimeout(() => inputRef.current?.focus(), 0);
+      }),
+    [inputRef, setInput],
+  );
 
   const removeImage = useCallback((index: number) => {
     setImages((current) => {
@@ -283,7 +322,14 @@ export const BotsComposer = forwardRef<BotsComposerHandle, BotsComposerProps>(fu
             )}
           </>
         }
-        rightSlot={busy ? <StopControl phase={stopPhase} onStop={onStop} /> : null}
+        rightSlot={
+          toolbarSlot || busy ? (
+            <>
+              {toolbarSlot}
+              {busy && <StopControl phase={stopPhase} onStop={onStop} />}
+            </>
+          ) : null
+        }
       />
     </div>
   );

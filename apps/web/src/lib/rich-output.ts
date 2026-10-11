@@ -24,8 +24,9 @@ import { useT, type TranslationKey } from './i18n';
  * The blocks the screen sending this turn can draw. Every model-authored block
  * has a web renderer (rich-markdown.tsx fails to compile otherwise); the one
  * exception is html-preview, which only opens where the Chat side pane is
- * mounted — the Assistant overlay elsewhere and the Bots page can only show its
- * source (HtmlPreviewBlock checks the same flag), so they do not ask for it.
+ * mounted (the Chat page and the Agents page host it) — the Assistant overlay
+ * elsewhere can only show its source (HtmlPreviewBlock checks the same flag),
+ * so it does not ask for it.
  */
 export function webRichBlocks(): RichCapability[] {
   const paneMounted = useSidePaneStore.getState().hostMounted;

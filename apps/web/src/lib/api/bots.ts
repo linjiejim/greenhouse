@@ -290,6 +290,35 @@ export async function createConversation(botId: string): Promise<{ conversation:
   return res.json();
 }
 
+/**
+ * A new separate chat (spec 20261011-agent-first-class D20): its own context, answered by `botId`
+ * (default: the member's Sprouty), on the chosen model (default: that Agent's). Listed with the
+ * chats (`GET /api/sessions?include=agent_chats`), opened at `#/bots?c=`.
+ */
+export async function createTaskChat(
+  opts: { botId?: string; modelId?: string | null; title?: string | null } = {},
+): Promise<{ conversation: BotConversationDetail }> {
+  const json: Record<string, unknown> = { kind: 'task' };
+  if (opts.botId) json.bot_id = opts.botId;
+  if (opts.modelId) json.model_id = opts.modelId;
+  if (opts.title) json.title = opts.title;
+  const args = { json };
+  const res = await rpc.api.bots.conversations.$post(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** A separate chat's model and title (409 `not_task_chat` anywhere else — a DM uses its Agent's model). */
+export async function updateTaskChat(
+  sessionId: string,
+  changes: { model_id?: string | null; title?: string | null },
+): Promise<{ conversation: BotConversationDetail }> {
+  const args = { param: { id: enc(sessionId) }, json: changes };
+  const res = await rpc.api.bots.conversations[':id'].$patch(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
 export async function getConversation(
   sessionId: string,
   opts: { beforeSeq?: number; limit?: number } = {},

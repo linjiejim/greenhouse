@@ -10,18 +10,21 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isSproutyBot, type BotRequestView, type BotView } from '@greenhouse/types/bots';
+import { isSproutyBot, type BotConversationSummary, type BotRequestView, type BotView } from '@greenhouse/types/bots';
 import { EmptyState, Skeleton, Button, toast } from '../ui';
 import { AlertTriangle, Archive, MessageCircle, Paperclip, Plus } from '../../lib/icons';
-import { useT } from '../../lib/i18n';
-import { isBotsApiError } from '../../lib/api/bots';
+import { useT, type TranslationKey } from '../../lib/i18n';
+import { copyForCode, isBotsApiError, updateTaskChat } from '../../lib/api/bots';
+import { useProfileStore, useUIStore } from '../../stores';
 import { MAX_ATTACHMENTS } from '../conversation/attachments';
+import { ModelSelector } from '../chat/model-selector';
 import { BotsBareHeader, BotsMobileNavButton, ConversationHeader, useStatusLine } from './conversation-header';
 import { BotTranscript } from './bot-transcript';
 import { useBotsStore } from './bots-store';
 import { BotsComposer, type BotsComposerHandle } from './bots-composer';
 import { BotTaskDock, useBotTasks } from './bot-task-dock';
 import { speakingSegment } from './transcript';
+import { takeFirstSend } from './first-send';
 import type { BotConversationController } from './use-bot-conversation';
 import type { BotLookup } from './transcript-rows';
 import type { ComputerPhase, ComputerStatusState } from './computer-phase';
@@ -43,6 +46,15 @@ const READ_ONLY_CODES: ReadonlySet<string> = new Set(['bot_archived', 'group_clo
 export function isReadOnlySendError(err: unknown): boolean {
   return isBotsApiError(err) && err.status === 409 && err.code !== null && READ_ONLY_CODES.has(err.code);
 }
+
+/** Why "edit" / "answer again" was refused (POST …/rewind), in the member's words. */
+const REWIND_COPY: Partial<Record<string, TranslationKey>> = {
+  busy: 'bots.rewind.busy',
+  not_last: 'bots.rewind.notLast',
+  not_found: 'bots.rewind.notFound',
+  requests_pending: 'bots.rewind.requestsPending',
+  not_task_chat: 'bots.rewind.notTaskChat',
+};
 
 export interface ConversationViewProps {
   sessionId: string;
@@ -87,6 +99,25 @@ export function ConversationView(props: ConversationViewProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const { tasks, refresh: refreshTasks } = useBotTasks(sessionId);
 
+  // A separate chat runs on the model chosen for it (spec 20261011-agent-first-class D22); a DM
+  // always answers on its Agent's own. The picker shows the choice made here at once, before the
+  // PATCH lands.
+  const isTaskChat = conversation?.kind === 'task';
+  const models = useProfileStore((state) => state.models);
+  const fetchProfiles = useProfileStore((state) => state.fetchProfiles);
+  useEffect(() => {
+    if (isTaskChat) void fetchProfiles();
+  }, [fetchProfiles, isTaskChat]);
+  const [modelPick, setModelPick] = useState<{ sessionId: string; modelId: string } | null>(null);
+  const chatModel = isTaskChat
+    ? ((modelPick?.sessionId === sessionId ? modelPick.modelId : null) ??
+      conversation?.model_id ??
+      props.owner?.model_id ??
+      null)
+    : null;
+  // Only a model the catalog still offers is sent; otherwise the chat falls back to the Agent's.
+  const sendModel = chatModel && models.some((model) => model.id === chatModel) ? chatModel : undefined;
+
   useEffect(() => setDraftState(drafts.get(sessionId) ?? ''), [sessionId]);
   const setDraft = useCallback(
     (value: string) => {
@@ -130,13 +161,92 @@ export function ConversationView(props: ConversationViewProps) {
   const send = useCallback(
     async (text: string, images: Array<{ id: string; url: string }>, mentions: string[]) => {
       try {
-        await controller.send(text, { images, mentions });
+        await controller.send(text, { images, mentions, ...(sendModel ? { model: sendModel } : {}) });
       } catch (err) {
         reportSendFailure(err);
         throw err;
       }
     },
-    [controller, reportSendFailure],
+    [controller, reportSendFailure, sendModel],
+  );
+
+  /**
+   * An answer from a card in a reply (an ask_user form, a confirm block) — like Chat, not while a
+   * reply is still under way: the form keeps the answers and can be sent once it is done.
+   */
+  const sendFromCard = useCallback(
+    (text: string) => {
+      if (streaming) {
+        toast(t('bots.composer.waitForReply'), 'info');
+        return Promise.reject(new Error('busy'));
+      }
+      return send(text, [], []);
+    },
+    [send, streaming, t],
+  );
+
+  // The first message of a chat started on the new-chat page goes out from here, through the same
+  // send path as the composer (its pending bubble, its failure notice); a failure gives it back as a draft.
+  const loadedSession = controller.state === 'ready' ? (conversation?.session_id ?? null) : null;
+  useEffect(() => {
+    if (loadedSession !== sessionId) return;
+    const first = takeFirstSend(sessionId);
+    if (!first) return;
+    send(first.content, first.images, []).catch(() => setDraft(first.draft));
+  }, [loadedSession, send, sessionId, setDraft]);
+
+  const changeModel = useCallback(
+    (modelId: string) => {
+      setModelPick({ sessionId, modelId });
+      updateTaskChat(sessionId, { model_id: modelId })
+        .then(({ conversation: next }) => controller.setConversation(next))
+        .catch(() => {
+          setModelPick(null);
+          toast(t('bots.composer.modelFailed'), 'error');
+        });
+    },
+    [controller, sessionId, t],
+  );
+
+  const rename = useCallback(
+    async (title: string) => {
+      try {
+        const { conversation: next } = await updateTaskChat(sessionId, { title });
+        controller.setConversation(next);
+        // The chats list names it too.
+        useUIStore.getState().bumpSessionListVersion();
+      } catch (err) {
+        toast(t('bots.header.renameFailed'), 'error');
+        throw err;
+      }
+    },
+    [controller, sessionId, t],
+  );
+
+  /** "Edit" / "answer again" refused: a read-only chat says so like a send; anything else in a line. */
+  const reportRewindFailure = useCallback(
+    (err: unknown) => {
+      if (isReadOnlySendError(err)) {
+        reportSendFailure(err);
+        return;
+      }
+      const key = isBotsApiError(err) ? copyForCode(REWIND_COPY, err.code) : undefined;
+      toast(
+        key ? t(key) : t('bots.rewind.failed', { reason: err instanceof Error ? err.message : String(err) }),
+        'error',
+      );
+      // The transcript may have moved on (another tab, a message that is no longer last).
+      void controller.reload();
+    },
+    [controller, reportSendFailure, t],
+  );
+  const editLast = useCallback(
+    (messageId: string, content: string) => void controller.rewind(messageId, content).catch(reportRewindFailure),
+    [controller, reportRewindFailure],
+  );
+  const regenerateLast = useCallback(
+    (messageId: string) => void controller.rewind(messageId).catch(reportRewindFailure),
+    [controller, reportRewindFailure],
   );
 
   /** One click on "Retry" / "Continue" / "Ask again" is an honest new member message. */
@@ -243,8 +353,31 @@ export function ConversationView(props: ConversationViewProps) {
       prefill={prefill}
       tasks={tasks}
       refreshTasks={refreshTasks}
+      sendFromCard={sendFromCard}
+      taskChat={
+        isTaskChat
+          ? {
+              models,
+              model: chatModel,
+              onModel: changeModel,
+              onRename: rename,
+              onEditLast: editLast,
+              onRegenerateLast: regenerateLast,
+            }
+          : null
+      }
     />
   );
+}
+
+/** What a separate chat adds to the column: its model, its title, edit / answer again. */
+interface TaskChatControls {
+  models: ReturnType<typeof useProfileStore.getState>['models'];
+  model: string | null;
+  onModel: (modelId: string) => void;
+  onRename: (title: string) => Promise<void>;
+  onEditLast: (messageId: string, content: string) => void;
+  onRegenerateLast: (messageId: string) => void;
 }
 
 function ConversationColumn({
@@ -274,6 +407,8 @@ function ConversationColumn({
   prefill,
   tasks,
   refreshTasks,
+  sendFromCard,
+  taskChat,
 }: ConversationViewProps & {
   conversation: NonNullable<BotConversationController['conversation']>;
   speaking: ReturnType<typeof speakingSegment>;
@@ -286,10 +421,13 @@ function ConversationColumn({
   prefill: (text: string) => void;
   tasks: ReturnType<typeof useBotTasks>['tasks'];
   refreshTasks: () => Promise<void>;
+  sendFromCard: (text: string) => Promise<void>;
+  taskChat: TaskChatControls | null;
 }) {
   const t = useT();
   const status = useStatusLine({ conversation, members, speaking, pendingRequests, computerPhase, readOnly });
-  const isDirect = conversation.kind === 'direct';
+  // A DM and a separate chat belong to one Agent; only a retired group had a roster.
+  const single = conversation.kind !== 'group';
   // Guests join a live DM only: an archived Bot's DM has nobody to host them, and a group chat is a record.
   const canInvite = !readOnly && conversation.members.length < MAX_MEMBERS;
   const segments = controller.managed?.botSegments ?? [];
@@ -298,7 +436,7 @@ function ConversationColumn({
     ? t('bots.composer.placeholderDm', { name: owner.name })
     : t('bots.composer.placeholderShort');
   // A retired group's intro shows the roster it had (the active ones).
-  const introBots = isDirect ? (owner ? [owner] : []) : members;
+  const introBots = single ? (owner ? [owner] : []) : members;
 
   // ── Drop files anywhere on the conversation → the composer's attachments ──
   const composerRef = useRef<BotsComposerHandle>(null);
@@ -366,6 +504,7 @@ function ConversationColumn({
         onOpenComputer={() => onPane(activePane === 'computer' ? null : 'computer')}
         onOpenInfo={() => onPane(activePane === 'info' ? null : 'info')}
         onOpenProfile={onOpenProfile}
+        onRename={taskChat && !readOnly ? taskChat.onRename : undefined}
       />
       <BotTranscript
         sessionId={sessionId}
@@ -398,10 +537,12 @@ function ConversationColumn({
         onOpenComputer={() => onPane('computer')}
         onViewSummary={() => onPane('info')}
         onAddress={address}
-        onSendText={(text) => send(text, [], [])}
+        onSendText={sendFromCard}
         onStarter={prefill}
         onOpenProfile={onOpenProfile}
         readOnly={readOnly}
+        onEditLast={taskChat?.onEditLast}
+        onRegenerateLast={taskChat?.onRegenerateLast}
       />
       {!readOnly && owner && isSproutyBot(owner) && owner.name === 'Sprouty' && owner.current_version === 1 && (
         <SproutyNamingNudge bot={owner} onOpenProfile={onOpenProfile} />
@@ -426,6 +567,11 @@ function ConversationColumn({
           canInvite={canInvite}
           inputRef={inputRef}
           aboveSlot={<BotTaskDock tasks={tasks} lookup={lookup} onChanged={() => void refreshTasks()} />}
+          toolbarSlot={
+            taskChat ? (
+              <ModelSelector models={taskChat.models} selectedModelId={taskChat.model} onSelect={taskChat.onModel} />
+            ) : null
+          }
         />
       )}
     </div>
@@ -444,12 +590,13 @@ function ReadOnlyNotice({
   name,
   onNewBot,
 }: {
-  kind: 'direct' | 'group';
+  kind: BotConversationSummary['kind'];
   name: string | null;
   onNewBot: () => void;
 }) {
   const t = useT();
-  const direct = kind === 'direct';
+  // A DM or a separate chat whose Agent was archived: the way on is a new Agent.
+  const direct = kind !== 'group';
   return (
     <div
       className="flex-shrink-0 border-t border-edge bg-surface-raised px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 md:px-6"

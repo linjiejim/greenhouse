@@ -70,8 +70,15 @@ export type StopPhase = 'soft' | 'hard' | null;
 
 export function useBotConversation(sessionId: string) {
   const sessionManager = useSessionManager();
-  const { registerViewport, unregisterViewport, clearSession, sendBotsMessage, stopSession, interruptSession } =
-    sessionManager;
+  const {
+    registerViewport,
+    unregisterViewport,
+    clearSession,
+    sendBotsMessage,
+    rewindBotsMessage,
+    stopSession,
+    interruptSession,
+  } = sessionManager;
   const managed: ManagedSession | undefined = sessionManager.activeSessions.get(sessionId);
   const streaming = managed?.status === 'streaming' || managed?.status === 'stopping';
 
@@ -244,7 +251,10 @@ export function useBotConversation(sessionId: string) {
   }, [loadingEarlier, sessionId, t]);
 
   const send = useCallback(
-    async (content: string, options: { images?: Array<{ id: string; url: string }>; mentions?: string[] } = {}) => {
+    async (
+      content: string,
+      options: { images?: Array<{ id: string; url: string }>; mentions?: string[]; model?: string } = {},
+    ) => {
       const clientId = `send-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
       const segmentsNow = streaming ? (managed?.botSegments.length ?? 0) : 0;
       setRunError(null);
@@ -275,6 +285,35 @@ export function useBotConversation(sessionId: string) {
       }
     },
     [managed?.botSegments.length, sendBotsMessage, sessionId, streaming],
+  );
+
+  /**
+   * A separate chat: edit its last member message (`content`) or answer it again. What the run
+   * replaces leaves the screen at once (the server truncates the same way); a refusal puts it back
+   * and rejects with the API's error, for the caller to explain.
+   */
+  const rewind = useCallback(
+    async (messageId: string, content?: string) => {
+      const before = messagesRef.current;
+      const target = before.find((message) => message.id === messageId);
+      if (!target) return;
+      const kept = before
+        .filter((message) => message.seq <= target.seq)
+        .map((message) => (message.id === messageId && content !== undefined ? { ...message, content } : message));
+      messagesRef.current = kept;
+      setMessages(kept);
+      setRunError(null);
+      try {
+        await rewindBotsMessage(sessionId, { messageId, ...(content !== undefined ? { content } : {}) });
+      } catch (err) {
+        if (sessionRef.current === sessionId) {
+          messagesRef.current = before;
+          setMessages(before);
+        }
+        throw err;
+      }
+    },
+    [rewindBotsMessage, sessionId],
   );
 
   // ── A queued message the run picked up (an interjection turn answers it) ──
@@ -377,6 +416,7 @@ export function useBotConversation(sessionId: string) {
     memoryStates,
     reload,
     send,
+    rewind,
     stop,
     stopPhase,
     /** The run stops (or reads a waiting message) once the current step is done. */

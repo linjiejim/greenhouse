@@ -26,6 +26,7 @@ import { toSearchSummary } from '../../lib/search-summary';
 import { useGlobalSearchStore } from '../../stores/global-search-store';
 import { openEntityPeek } from '../../stores/entity-peek-store';
 import { entityPeekMeta } from '../entity-peek/registry';
+import { sessionHitHash } from './session-hit';
 
 const DEBOUNCE_MS = 200;
 
@@ -130,7 +131,7 @@ export function GlobalSearchDialog() {
     (hit: SearchHit, fullPage: boolean) => {
       close();
       if ('sessionId' in hit) {
-        window.location.hash = `#/chat?session=${encodeURIComponent(hit.sessionId)}`;
+        window.location.hash = sessionHitHash(hit);
       } else if (fullPage) window.location.hash = entityUrl(hit.ref);
       else openEntityPeek({ ref: hit.ref, label: hit.title });
     },

@@ -21,6 +21,7 @@ const sessionManager = vi.hoisted(() => ({
   unregisterViewport: () => {},
   clearSession: () => {},
   sendBotsMessage: vi.fn(async () => ({ queued: false })),
+  rewindBotsMessage: vi.fn(async (_sessionId: string, _options: { messageId: string; content?: string }) => {}),
   stopSession: vi.fn(),
   interruptSession: vi.fn(async (): Promise<'interrupting' | 'no_run' | 'refused'> => 'interrupting'),
 }));
@@ -96,6 +97,7 @@ beforeEach(() => {
   api.markConversationRead.mockResolvedValue(undefined);
   sessionManager.activeSessions.clear();
   sessionManager.sendBotsMessage.mockReset().mockResolvedValue({ queued: false });
+  sessionManager.rewindBotsMessage.mockReset().mockResolvedValue(undefined);
   sessionManager.stopSession.mockReset();
   sessionManager.interruptSession.mockReset().mockResolvedValue('interrupting');
   latest = null;
@@ -364,5 +366,45 @@ describe('useBotConversation — stopping a run', () => {
     expect(latest?.pending[0]?.nudged).toBe(false);
     expect(document.body.textContent).toContain("Couldn't jump the queue");
     expect(sessionManager.stopSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('useBotConversation — edit / answer again (a separate chat)', () => {
+  const reply = (id: string, seq: number): BotMessage => ({ ...message(id, seq), role: 'assistant', bot_id: 'bot_a' });
+
+  async function open() {
+    api.getConversation.mockResolvedValue(
+      page('T', [message('u1', 1), reply('a1', 2), message('u2', 3), reply('a2', 4), reply('a3', 5)], false),
+    );
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => root?.render(tree('T')));
+    await flush();
+  }
+
+  it('takes what the run replaces off the screen at once, with the edit in place', async () => {
+    await open();
+    await act(async () => {
+      await latest?.rewind('u2', 'u2, shorter');
+    });
+    expect(sessionManager.rewindBotsMessage).toHaveBeenCalledWith('T', { messageId: 'u2', content: 'u2, shorter' });
+    expect(latest?.messages.map((m) => [m.id, m.content])).toEqual([
+      ['u1', 'u1'],
+      ['a1', 'a1'],
+      ['u2', 'u2, shorter'],
+    ]);
+  });
+
+  it('answers again without an edit, and puts everything back when refused', async () => {
+    await open();
+    sessionManager.rewindBotsMessage.mockRejectedValue(new Error('busy'));
+    let error: unknown = null;
+    await act(async () => {
+      error = await latest?.rewind('u2').catch((err: unknown) => err);
+    });
+    expect(sessionManager.rewindBotsMessage).toHaveBeenCalledWith('T', { messageId: 'u2' });
+    expect(error).toBeInstanceOf(Error);
+    expect(latest?.messages.map((m) => m.id)).toEqual(['u1', 'a1', 'u2', 'a2', 'a3']);
   });
 });

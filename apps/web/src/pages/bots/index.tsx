@@ -6,7 +6,8 @@
  * creates their first Bot and opens its DM; later visits reopen the most
  * recently active conversation someone can still answer in — and hosts what
  * sits beside the conversation: the info pane, the computer pane (focus
- * layout on take over) and the create / invite / profile dialogs. The
+ * layout on take over), Chat's side pane (html previews, record links — one
+ * right-hand column at a time) and the create / invite / profile dialogs. The
  * conversation list lives in the contextual sidebar (mobile: the navigation
  * drawer — every screen here carries the phone's menu button, because the
  * TopBar is hidden on this route).
@@ -19,6 +20,8 @@ import { AlertTriangle, Bot } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import * as botsApi from '../../lib/api/bots';
 import { ComputerPane, type ComputerPaneHandle } from '../../components/bots/computer-pane';
+import { ChatSidePane, useSidePaneHost } from '../../components/side-pane/chat-side-pane';
+import { useSidePaneStore } from '../../stores/side-pane-store';
 import { useComputerStatus, useComputerTimezoneSync } from '../../components/bots/computer-phase';
 import {
   BotsBareHeader,
@@ -150,6 +153,10 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
   const [pane, setPane] = useState<Pane>(null);
   const [focus, setFocus] = useState(false);
   const computerPaneRef = useRef<ComputerPaneHandle>(null);
+  // Chat's side pane lives here too — an html-preview block opens beside the conversation, a
+  // record link opens in it — and a preview belongs to the conversation that opened it.
+  useSidePaneHost(sessionId);
+  const sidePaneOpen = useSidePaneStore((state) => state.isOpen);
 
   useEffect(() => {
     void loadBots().catch(() => {});
@@ -201,6 +208,7 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
         // Not loaded yet ≠ deleted; the view shows a skeleton meanwhile anyway.
         unknownBot: botsState === 'ready' ? t('bots.deletedBot') : '',
         group: t('bots.sidebar.group'),
+        chat: t('bots.newChat'),
         archived: (name) => t('bots.archivedName', { name }),
       })
     : '';
@@ -210,6 +218,8 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
   const applyPane = useCallback((next: Pane) => {
     setPane(next);
     if (next !== 'computer') setFocus(false);
+    // One right-hand column at a time: info or the computer replaces the side pane…
+    if (next !== null) useSidePaneStore.getState().close();
   }, []);
 
   /**
@@ -227,6 +237,16 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
     },
     [applyPane, pane],
   );
+
+  // …and the side pane opening (a preview, a record link) closes info or the computer — through
+  // `changePane`, so a member holding the computer is asked to hand it back first.
+  const changePaneRef = useRef(changePane);
+  changePaneRef.current = changePane;
+  const paneRef = useRef(pane);
+  paneRef.current = pane;
+  useEffect(() => {
+    if (sidePaneOpen && paneRef.current !== null) changePaneRef.current(null);
+  }, [sidePaneOpen]);
 
   const onReadOnly = useCallback(() => {
     void loadBots().catch(() => {});
@@ -278,6 +298,8 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
           onOpenProfile={(botId) => openProfile(botId)}
         />
       </div>
+
+      <ChatSidePane />
 
       {pane === 'info' && conversation && (
         <BotsSidePanel title={t('bots.info.title')} onClose={() => changePane(null)} testId="bots-info-pane">

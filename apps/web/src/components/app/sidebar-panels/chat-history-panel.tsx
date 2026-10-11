@@ -35,7 +35,9 @@ import {
 import { relativeTime } from '../../../lib/utils';
 import { SessionTypeIcon } from '../../chat/session-type-icon';
 import { useSessionManager } from '../../../lib/session-manager';
+import { wsClient } from '../../../lib/ws';
 import { useUIStore, useAuthStore, useWsStore } from '../../../stores';
+import { useBotsStore } from '../../bots/bots-store';
 import * as api from '../../../lib/api';
 import { runWithConcurrency } from '@greenhouse/utils/concurrency';
 import { FullHistoryModal } from '../../history-modal';
@@ -65,7 +67,25 @@ interface ChatHistoryPanelProps {
   /** The search box's text, for sections the caller renders (it filters them too). */
   onQueryChange?: (query: string) => void;
   searchPlaceholder?: string;
+  /**
+   * Agents on: the member's separate Agent chats are chats too (spec 20261011-agent-first-class
+   * D21) — listed here from the same sessions list (`include=agent_chats`, rows with
+   * `channel: 'bots'`), organised the same way, but opened in their own view.
+   */
+  agentChats?: {
+    /** The Agent chat open right now (`#/bots?c=`), highlighted like the open chat. */
+    currentId: string | null;
+    onOpen: (sessionId: string) => void;
+  };
 }
+
+/** A separate Agent chat in the chats list: it opens at `#/bots?c=`, not in the chat engine. */
+export function isAgentChat(session: Pick<api.Session, 'channel'>): boolean {
+  return session.channel === 'bots';
+}
+
+/** Collapse a burst of `bots:conversation` pushes (one per Agent turn) into one list reload. */
+const AGENT_CHAT_REFRESH_MS = 400;
 
 // ── Date grouping helpers ────────────────────────────────
 
@@ -208,7 +228,9 @@ function SessionContextMenu({
       action: () => onMoveToGroup(session, x, y),
     },
     { key: 'tags', icon: Tag, label: 'Tags', action: () => onTags(session) },
-    {
+    // An Agent chat is titled by its own run (and renamed like any chat); the chat engine's
+    // title generator is not for it.
+    !isAgentChat(session) && {
       key: 'regenerate-title',
       icon: RefreshCw,
       label: 'Regenerate Title',
@@ -276,6 +298,7 @@ export function ChatHistoryPanel({
   extraActions,
   onQueryChange,
   searchPlaceholder,
+  agentChats,
 }: ChatHistoryPanelProps) {
   const t = useT();
   const [sessions, setSessions] = useState<api.Session[]>([]);
@@ -476,10 +499,11 @@ export function ChatHistoryPanel({
     setContextMenu({ sessionId: session.id, x: rect.left, y: rect.bottom + 4 });
   }, []);
 
+  const includeAgentChats = !!agentChats;
   const loadSessions = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.listSessions('active', false, 500, effectiveScope);
+      const data = await api.listSessions('active', false, 500, effectiveScope, { includeAgentChats });
       // Keep the full set (server caps at 500): pinned/grouped sessions must
       // survive even when older than the 50 most-recent. Date buckets cap
       // their own render below.
@@ -492,7 +516,7 @@ export function ChatHistoryPanel({
       console.error('Failed to load sessions:', err);
     }
     setLoading(false);
-  }, [effectiveScope]);
+  }, [effectiveScope, includeAgentChats]);
 
   // Load user tags.
   const loadTags = useCallback(async () => {
@@ -652,6 +676,32 @@ export function ChatHistoryPanel({
       loadSessions();
     }
   }, [sessionListVersion, loadSessions]);
+
+  // Agent chats change server-side (created by an Agent's card, titled after their first reply,
+  // renamed in their header, in another tab): `bots:conversation` says which one. A listed chat
+  // or one this tab has never seen (a new chat) reloads the list; an Agent thread's push does not.
+  const listedIdsRef = useRef<Set<string>>(new Set());
+  listedIdsRef.current = new Set(sessions.map((session) => session.id));
+  useEffect(() => {
+    if (!includeAgentChats) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = wsClient.onEvent((event) => {
+      if (event.type !== 'bots:conversation') return;
+      const isThread = useBotsStore
+        .getState()
+        .conversations.some((conversation) => conversation.session_id === event.sessionId);
+      if (isThread && !listedIdsRef.current.has(event.sessionId)) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void loadSessions();
+      }, AGENT_CHAT_REFRESH_MS);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [includeAgentChats, loadSessions]);
 
   // Detect AI-generated title from streaming sessions and apply typewriter effect
   useEffect(() => {
@@ -886,7 +936,8 @@ export function ChatHistoryPanel({
 
   // ── Row + section renderers (shared by Pinned, folders, and date buckets) ──
   const renderRow = (session: api.Session, sectionKey: string, dragGroupId?: number, orderedIds?: string[]) => {
-    const isActive = session.id === currentSessionId;
+    const agentChat = isAgentChat(session);
+    const isActive = agentChat ? session.id === agentChats?.currentId : session.id === currentSessionId;
     // Local streaming state OR the server-reported run set — the latter is what
     // keeps the dot alive across a page refresh (runs continue in the cloud).
     const isSessionStreaming =
@@ -938,6 +989,8 @@ export function ChatHistoryPanel({
       } else if (e.metaKey || e.ctrlKey) {
         // Cmd/Ctrl-click from normal mode: enter select mode + tick this row.
         enterSelectModeWith(session.id, rowKey);
+      } else if (agentChat && agentChats) {
+        agentChats.onOpen(session.id);
       } else {
         onSelectSession(session.id);
       }
@@ -961,6 +1014,9 @@ export function ChatHistoryPanel({
         onClick={handleRowClick}
         onContextMenu={(e) => handleContextMenu(e, session)}
         aria-current={isActive ? 'page' : undefined}
+        data-testid="chat-history-row"
+        data-session-id={session.id}
+        data-agent-chat={agentChat ? 'true' : undefined}
         className={`group/item w-full text-left px-3 py-2 flex items-center gap-2 transition-colors cursor-pointer ${
           isDragging ? 'opacity-50 ' : ''
         }${

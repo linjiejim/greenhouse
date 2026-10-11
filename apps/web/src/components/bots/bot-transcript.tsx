@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { BotRequestView, BotView } from '@greenhouse/types/bots';
+import type { BotConversationSummary, BotRequestView, BotView } from '@greenhouse/types/bots';
 import { botTemplate } from '@greenhouse/types/bots';
 import { MessageBubble } from '../chat/message';
 import { Button, Spinner } from '../ui';
@@ -17,7 +17,7 @@ import type { BotMessage } from '../../lib/api/bots';
 import { MemoryReceipts, memoryReceiptsFromCalls } from './memory-receipts';
 import { RequestCard, type RequestCardComputer } from './request-card';
 import { LiveSegment } from './live-segment';
-import { buildTranscript, type PendingSend, type TranscriptItem } from './transcript';
+import { buildTranscript, rewindTargets, type PendingSend, type TranscriptItem } from './transcript';
 import {
   ConversationIntro,
   EventRow,
@@ -33,7 +33,7 @@ const STICK_THRESHOLD = 96;
 
 export interface BotTranscriptProps {
   sessionId: string;
-  kind: 'direct' | 'group';
+  kind: BotConversationSummary['kind'];
   title: string;
   ownerBotId: string | null;
   members: BotView[];
@@ -77,6 +77,13 @@ export interface BotTranscriptProps {
   onStarter: (text: string) => void;
   /** A speaker header opens that Bot's profile. */
   onOpenProfile?: (botId: string) => void;
+  /**
+   * A separate chat (spec 20261011-agent-first-class D23): edit the last member message and
+   * answer it again. Offered only on that message, and not while a send or a reply is in flight.
+   */
+  onEditLast?: (messageId: string, content: string) => void;
+  /** …or answer it again (`lastUserId`: the member message it answers): offered on the last reply after it. */
+  onRegenerateLast?: (lastUserId: string) => void;
 }
 
 export function BotTranscript(props: BotTranscriptProps) {
@@ -114,6 +121,8 @@ export function BotTranscript(props: BotTranscriptProps) {
     onSendText,
     onStarter,
     onOpenProfile,
+    onEditLast,
+    onRegenerateLast,
   } = props;
 
   const items = useMemo(
@@ -165,10 +174,23 @@ export function BotTranscript(props: BotTranscriptProps) {
   }, [lastItem, locale, lookup, readOnly]);
   // A read-only conversation offers nothing that would address a Bot.
   const actionsLocked = busy || readOnly;
+  // Edit / answer again: the last member message and the reply after it, when nothing is in flight.
+  const rewind = useMemo(
+    () =>
+      actionsLocked || (!onEditLast && !onRegenerateLast)
+        ? { lastUserId: null, lastReplyId: null }
+        : rewindTargets(items),
+    [actionsLocked, items, onEditLast, onRegenerateLast],
+  );
+  const lastUserId = rewind.lastUserId;
+  const regenerateLast = useCallback(() => {
+    if (lastUserId) onRegenerateLast?.(lastUserId);
+  }, [lastUserId, onRegenerateLast]);
 
   const renderItem = (item: TranscriptItem, index: number) => {
     switch (item.kind) {
-      case 'user':
+      case 'user': {
+        const editable = !!onEditLast && item.message.id === rewind.lastUserId;
         return (
           <MessageBubble
             role="user"
@@ -177,8 +199,11 @@ export function BotTranscript(props: BotTranscriptProps) {
             sessionId={sessionId}
             images={item.message.images}
             createdAt={item.message.created_at}
+            isLastUser={editable}
+            onEdit={editable ? onEditLast : undefined}
           />
         );
+      }
       case 'bot': {
         const bot = lookup(item.botId);
         const name = bot?.name ?? t('bots.deletedBot');
@@ -197,8 +222,17 @@ export function BotTranscript(props: BotTranscriptProps) {
               images={item.message.images}
               model={item.message.model}
               createdAt={item.message.created_at}
+              // Cards in a reply act for the member, the conversation's only owner — never in a
+              // read-only record, and (like Chat) a confirm waits for the reply under way. A form's
+              // answers go through `onSendText`, which says why when they cannot go out yet.
+              canActOnArtifacts={!readOnly}
               onAskUserSubmit={onSendText}
-              onBlockAction={readOnly ? undefined : onSendText}
+              onBlockAction={actionsLocked ? undefined : onSendText}
+              onRegenerate={
+                onRegenerateLast && rewind.lastUserId && item.message.id === rewind.lastReplyId
+                  ? regenerateLast
+                  : undefined
+              }
               hasFollowUpUserMessage={next?.kind === 'user' || next?.kind === 'pending'}
               submittedUserMessage={next?.kind === 'user' ? next.message.content : undefined}
               confirmedActionValue={next?.kind === 'user' ? next.message.content : undefined}

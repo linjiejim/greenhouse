@@ -5,7 +5,8 @@
  *   Main thread  the member's DM with their main Agent (Sprouty), pinned
  *   Agents       the other Agents' threads, by activity (archived ones folded under "Archived")
  *   Background   the background tasks those Agents run, live first (a row opens its thread)
- *   Chats        the member's independent chats, with their scope tabs, folders, tags and dates
+ *   Chats        the member's independent chats, with their scope tabs, folders, tags and dates —
+ *                separate Agent chats among them (they open at `#/bots?c=`, spec §5a D21)
  *
  * Shown on both conversation routes — an Agent thread (`#/bots?c=`) and a chat (`#/chat`) — so
  * moving between them never swaps the list. Without Agent threads (the `bots` feature off) it is
@@ -21,6 +22,7 @@ import { BotsDialogs } from '../../bots/bots-dialogs';
 import { BotsThreadsSection } from '../../bots/bots-sidebar-panel';
 import { BackgroundTasksSection } from '../../bots/background-tasks-section';
 import { useBotsStore } from '../../bots/bots-store';
+import { openBotsConversation, useCurrentBotsConversation } from '../../bots/navigation';
 import { ChatHistoryPanel } from './chat-history-panel';
 
 export function ConversationsSidebarPanel({
@@ -41,6 +43,7 @@ export function ConversationsSidebarPanel({
   const threads = canUseFeature(currentUser, 'bots');
   const openDialog = useBotsStore((state) => state.openDialog);
   const [query, setQuery] = useState('');
+  const currentAgentChat = useCurrentBotsConversation();
 
   return (
     <>
@@ -64,6 +67,13 @@ export function ConversationsSidebarPanel({
                 </>
               ),
               chatsTitle: t('bots.sidebar.chats'),
+              agentChats: {
+                currentId: currentAgentChat,
+                onOpen: (sessionId: string) => {
+                  openBotsConversation(sessionId);
+                  onNavigate?.();
+                },
+              },
             }
           : {})}
       />

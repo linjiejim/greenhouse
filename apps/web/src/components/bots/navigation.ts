@@ -49,20 +49,24 @@ export interface ConversationTitleCopy {
   unknownBot: string;
   /** A group with no title and no known member. */
   group: string;
+  /** A separate (task) chat with no title yet — titled after its first reply. */
+  chat: string;
   /** "Sage (archived)": the Bot no longer replies; its conversation stays readable. */
   archived: (name: string) => string;
 }
 
 /**
  * A conversation's display name: the Bot's name for a DM (marked when that
- * Bot is archived), the title or the roster for a group. `bots` is the full
- * directory — active and archived Bots.
+ * Bot is archived), its own title for a separate chat ("New chat" until one is
+ * generated — the header names the answering Agent beside it), the title or
+ * the roster for a group. `bots` is the full directory — active and archived Bots.
  */
 export function conversationTitle(
   conversation: Pick<BotConversationSummary, 'kind' | 'title' | 'owner_bot_id' | 'members'>,
   bots: ReadonlyMap<string, BotView>,
   copy: ConversationTitleCopy,
 ): string {
+  if (conversation.kind === 'task') return conversation.title?.trim() || copy.chat;
   if (conversation.kind === 'direct') {
     const owner = bots.get(conversation.owner_bot_id ?? '');
     if (!owner) return copy.unknownBot;

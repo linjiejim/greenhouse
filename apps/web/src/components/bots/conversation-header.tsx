@@ -7,8 +7,9 @@
  * phones this row also carries the navigation drawer button.
  */
 
+import { useState } from 'react';
 import type { BotConversationDetail, BotRequestView, BotView } from '@greenhouse/types/bots';
-import { IconButton, StatusDot } from '../ui';
+import { IconButton, Input, StatusDot } from '../ui';
 import { Info, Menu, Monitor, UserPlus } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { useUIStore } from '../../stores';
@@ -78,6 +79,9 @@ export function useStatusLine({
     };
   }
   const owner = members.find((bot) => bot.id === conversation.owner_bot_id);
+  // A separate chat's header carries its own title, so the line says who answers there.
+  if (conversation.kind === 'task' && owner)
+    return { text: t('bots.header.taskWith', { name: owner.name }), tone: 'idle' };
   return { text: owner?.role || t('bots.header.idle'), tone: 'idle' };
 }
 
@@ -135,6 +139,7 @@ export function ConversationHeader({
   onOpenComputer,
   onOpenInfo,
   onOpenProfile,
+  onRename,
 }: {
   title: string;
   conversation: BotConversationDetail;
@@ -152,11 +157,21 @@ export function ConversationHeader({
   onOpenInfo: () => void;
   /** The DM's Bot face + name open its profile; a retired group's open the info panel (its members). */
   onOpenProfile: (botId: string) => void;
+  /** A separate chat's title is its own: the title edits it in place (rejects when it was not saved). */
+  onRename?: (title: string) => Promise<void>;
 }) {
   const t = useT();
-  const isDm = conversation.kind === 'direct';
-  const openIdentity = () => (isDm && owner ? onOpenProfile(owner.id) : onOpenInfo());
-  const identityLabel = isDm && owner ? t('bots.profile.open', { name: owner.name }) : t('bots.header.info');
+  // A DM and a separate chat both belong to one Agent: its face opens its profile.
+  const single = conversation.kind !== 'group';
+  const openIdentity = () => (single && owner ? onOpenProfile(owner.id) : onOpenInfo());
+  const identityLabel = single && owner ? t('bots.profile.open', { name: owner.name }) : t('bots.header.info');
+  const [editing, setEditing] = useState<string | null>(null);
+  const commitRename = () => {
+    if (editing === null) return;
+    const next = editing.trim();
+    setEditing(null);
+    if (next && next !== title && onRename) void onRename(next).catch(() => {});
+  };
   const computerLabel = computerPhase
     ? `${t('bots.header.computer')} · ${t(phaseLabelKey(computerPhase))}`
     : t('bots.header.computer');
@@ -173,23 +188,47 @@ export function ConversationHeader({
           aria-label={identityLabel}
           className="flex-shrink-0 rounded-full transition-opacity hover:opacity-80"
         >
-          {isDm && owner ? (
+          {single && owner ? (
             <BotAvatar bot={owner} size="sm" speaking={speakingId === owner.id} />
           ) : (
             <BotAvatarStack bots={members} max={4} size="xs" speakingId={speakingId} />
           )}
         </button>
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold text-fg" title={title}>
-            <button
-              type="button"
-              onClick={openIdentity}
-              aria-label={identityLabel}
-              className="max-w-full truncate rounded text-left hover:underline"
-            >
-              {title}
-            </button>
-          </h2>
+        <div className="min-w-0 flex-1">
+          {editing !== null ? (
+            <Input
+              size="xs"
+              autoFocus
+              value={editing}
+              maxLength={200}
+              aria-label={t('bots.header.rename')}
+              data-testid="bots-title-input"
+              onChange={(event) => setEditing(event.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  commitRename();
+                } else if (event.key === 'Escape') {
+                  event.preventDefault();
+                  setEditing(null);
+                }
+              }}
+              className="max-w-sm font-semibold"
+            />
+          ) : (
+            <h2 className="truncate text-sm font-semibold text-fg" title={title}>
+              <button
+                type="button"
+                onClick={onRename ? () => setEditing(title) : openIdentity}
+                aria-label={onRename ? t('bots.header.rename') : identityLabel}
+                data-testid="bots-title"
+                className="max-w-full truncate rounded text-left hover:underline"
+              >
+                {title}
+              </button>
+            </h2>
+          )}
           <p
             className={`flex items-center gap-1.5 truncate text-[11px] ${
               status.tone === 'waiting'

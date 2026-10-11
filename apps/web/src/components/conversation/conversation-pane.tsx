@@ -69,6 +69,8 @@ import { onComposerDraft } from '../../lib/composer-draft';
 import { webRichBlocks } from '../../lib/rich-output';
 import { MissionProgressMessages } from './mission-progress-messages';
 import { groupMissionOutcomes } from './mission-outcome-grouping';
+import { AgentChatStartError, startAgentChat } from './start-agent-chat';
+import { openBotsConversation } from '../bots/navigation';
 
 export type { ConversationSurface } from './surface-policy';
 
@@ -306,6 +308,9 @@ export function ConversationPane({
   // spinner and the turn goes out as soon as the uploads settle.
   const [imageUploadWaiting, setImageUploadWaiting] = useState(false);
   const imageWaitGuardRef = useRef(false);
+  // A new Agent chat is being created for this send (Enter pressed again must not make a second one).
+  const [startingAgentChat, setStartingAgentChat] = useState(false);
+  const startingAgentChatRef = useRef(false);
   // Mission file attachments (any type, chips above the composer; uploaded on send)
   // One pending list for both paths — the ref kind differs (mission stages a
   // blob by key, an ordinary chat writes a chat_files row by id) but the chips
@@ -465,6 +470,8 @@ export function ConversationPane({
   // should see an explicit unavailable row instead of selecting a skill and
   // learning about the closed runtime only after POST returns 503.
   const canLaunchMissions = canUseFeature(currentUser, 'cloud-agent');
+  // A new conversation here becomes a separate Agent chat (see handleSend).
+  const startsAgentChats = policy.startsAgentChats && canUseFeature(currentUser, 'bots');
   useEffect(() => {
     if (!canLaunchMissions) {
       setSlashSkills([]);
@@ -661,6 +668,12 @@ export function ConversationPane({
         .getSession(sessionId)
         .then((data) => {
           if (sessionLoadRequestRef.current !== requestId) return;
+          // An Agent conversation (a separate Agent chat) has its own view: an old
+          // `#/chat?session=` link to one goes there instead of the chat engine's.
+          if (data.session.channel === 'bots' && policy.publishGlobalChatUi) {
+            openBotsConversation(data.session.id, { replace: true });
+            return;
+          }
           setSessionTitle(data.session.title || '');
           const pid = normalizeSelectedProfileId(data.session.profile_id);
           setSessionProfileId(pid);
@@ -697,7 +710,7 @@ export function ConversationPane({
       setShareInfo(null);
       setShareBannerDismissed(false);
     }
-  }, [sessionId]);
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps -- `policy` is a constant per surface
 
   // When a managed session receives a generated title via stream event, update immediately
   useEffect(() => {
@@ -1214,6 +1227,61 @@ export function ConversationPane({
         return;
       }
 
+      // With Agents on, a new chat is a separate Agent chat on the Agents engine (spec
+      // 20261011-agent-first-class §5a): created here with the picked Agent and model, its
+      // message handed to the chat it opens (`#/bots?c=`), which sends it. Chats that already
+      // exist stay on this engine (D27), and so does the workbench's edit mode — its live
+      // preview is this page.
+      if (!sessionId && startsAgentChats && !workbenchConversationMode && !isMissionConversation) {
+        if (attachmentsUploading || startingAgentChatRef.current) return;
+        startingAgentChatRef.current = true;
+        setStartingAgentChat(true);
+        setError(null);
+        const attachmentsToUpload = pendingAttachments;
+        try {
+          await startAgentChat({
+            message: msg,
+            draft: isComposerSend ? input : rawMsg,
+            images: pendingImagesRef.current.filter((img) => img.uploaded).map((img) => img.uploaded!),
+            botId: displayProfiles.find((profile) => profile.id === selectedProfileId)?.bot_id,
+            // The picker is offered for the default Agent only; any other answers on its own model.
+            modelId: selectedProfileId === DEFAULT_AGENT_ID ? offeredModelId : null,
+            ...(attachmentsToUpload.length > 0
+              ? {
+                  uploadAttachments: async (newSessionId: string) => {
+                    const refs = await uploadPendingAttachments(attachmentsToUpload, setPendingAttachments, (file) =>
+                      uploadChatFile(newSessionId, file),
+                    );
+                    return refs ? refs.map((ref) => ref as ChatFileRef) : null;
+                  },
+                }
+              : {}),
+          });
+        } catch (err) {
+          if (err instanceof AgentChatStartError && err.stage === 'attachments') {
+            toast(t('cloudAgent.attachmentUploadFailed'), 'error');
+          } else {
+            setError(t('chat.agentChatFailed'));
+          }
+          return;
+        } finally {
+          startingAgentChatRef.current = false;
+          setStartingAgentChat(false);
+        }
+        // The new chat took the message: this page starts over empty.
+        setInput('');
+        setSelectedPrompt(null);
+        setSelectedSkill(null);
+        setTaskValues({});
+        setAnnotations([]);
+        sessionDrafts.delete(draftKey);
+        setPendingImages([]);
+        setPendingAttachments([]);
+        setMentionedProfileId(null);
+        bumpSessionListVersion();
+        return;
+      }
+
       if (isComposerSend) {
         setInput('');
         setSelectedPrompt(null);
@@ -1376,6 +1444,8 @@ export function ConversationPane({
       sendMessage,
       t,
       workbenchConversationMode,
+      startsAgentChats,
+      displayProfiles,
     ],
   );
 
@@ -1958,7 +2028,7 @@ export function ConversationPane({
             onImageSelect={handleImageSelect}
             onRemoveImage={removeImage}
             maxImages={MAX_IMAGES}
-            sendWaiting={imageUploadWaiting}
+            sendWaiting={imageUploadWaiting || startingAgentChat}
             autoFocus={typeof window !== 'undefined' && window.innerWidth >= 768}
             sendDisabled={
               effectiveIsStopping ||
