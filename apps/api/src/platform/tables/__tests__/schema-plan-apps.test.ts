@@ -437,8 +437,8 @@ describe('draftSchemaPlan — apps', () => {
     if (!drafted.ok) return;
     expect(accessChangeWords(drafted.accessChanges[0]!, 'zh')).toEqual({
       subject: '应用 Desk 的受众',
-      before: '团队所有人 → Worker',
-      after: 'Olive → Worker；群组 Finance（由 Ann 管理） → Worker',
+      before: '团队所有人为「Worker」',
+      after: 'Olive为「Worker」；群组 Finance（由 Ann 管理）为「Worker」',
     });
     expect(accessChangeWords(drafted.accessChanges[1]!, 'en')).toMatchObject({
       subject: 'Publish the app Desk',

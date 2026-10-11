@@ -32,7 +32,8 @@ export const appsAgentEn = {
       audienceTeam: 'everyone in the team',
       audienceGroup: 'group {name}',
       audienceGroupManaged: 'group {name} (managed by {manager})',
-      audienceEntry: '{who} → {role}',
+      /** Never an arrow: the section reads "before → after". */
+      audienceEntry: '{who} as {role}',
       publishFirst: 'not published',
       publishLive: 'v{version} live',
       publishAfter: 'v{version} live for {audience}',

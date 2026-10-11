@@ -49,16 +49,19 @@ export function TablesPlanCard({
             ? { label: t('apps.agent.planRequest.failed'), tone: 'danger' as const }
             : settledStatus;
   const counted = result && typeof result.applied === 'number';
-  const meta = [
-    payload.summary,
+  // The outcome first once there is one: a long summary would cut it off the one-line meta.
+  const meta = (
     counted
-      ? t('apps.agent.planRequest.tally', {
-          applied: result.applied ?? 0,
-          failed: result.failed ?? 0,
-          skipped: result.skipped ?? 0,
-        })
-      : t('apps.agent.planRequest.linesCount', { count: lines.length }),
-  ]
+      ? [
+          t('apps.agent.planRequest.tally', {
+            applied: result.applied ?? 0,
+            failed: result.failed ?? 0,
+            skipped: result.skipped ?? 0,
+          }),
+          payload.summary,
+        ]
+      : [payload.summary, t('apps.agent.planRequest.linesCount', { count: lines.length })]
+  )
     .filter(Boolean)
     .join(' · ');
   const appId = result?.app_ids?.[0];

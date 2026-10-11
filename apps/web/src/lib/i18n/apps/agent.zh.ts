@@ -34,7 +34,7 @@ export const appsAgentZh: DeepRecord<typeof appsAgentEn> = {
       audienceTeam: '团队所有人',
       audienceGroup: '群组 {name}',
       audienceGroupManaged: '群组 {name}（由 {manager} 管理）',
-      audienceEntry: '{who} → {role}',
+      audienceEntry: '{who}为「{role}」',
       publishFirst: '未发布',
       publishLive: 'v{version} 在用',
       publishAfter: 'v{version} 上线，{audience}',

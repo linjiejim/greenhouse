@@ -165,7 +165,7 @@ function rulesWords(summary: SchemaPlanRuleSummary | null, l: PlanWordsLocale): 
   return [...listed, ...(summary.dashboards ? [l === 'zh' ? '仪表盘' : 'dashboards'] : [])].join('; ');
 }
 
-/** One app audience entry: "Finance (group, managed by Ann) → Approver". */
+/** One app audience entry: "group Finance (managed by Ann) as Approver" — never an arrow, which means before → after. */
 export function appAudienceEntryWords(entry: SchemaPlanAppAudienceView, l: PlanWordsLocale): string {
   const who =
     entry.principal === 'team'
@@ -177,7 +177,7 @@ export function appAudienceEntryWords(entry: SchemaPlanAppAudienceView, l: PlanW
           ? `群组 ${entry.name}${entry.managedBy ? `（由 ${entry.managedBy} 管理）` : ''}`
           : `group ${entry.name}${entry.managedBy ? ` (managed by ${entry.managedBy})` : ''}`
         : entry.name;
-  return `${who} → ${entry.role}`;
+  return l === 'zh' ? `${who}为「${entry.role}」` : `${who} as ${entry.role}`;
 }
 
 function appAudienceWords(entries: readonly SchemaPlanAppAudienceView[] | null, l: PlanWordsLocale): string {

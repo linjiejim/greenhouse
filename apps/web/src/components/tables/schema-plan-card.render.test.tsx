@@ -216,14 +216,14 @@ describe('SchemaPlanCard', () => {
     expect(html).toContain('Publish app');
     expect(html).toContain('Who uses the app Purchase requests');
     expect(html).toContain('shared with nobody');
-    expect(html).toContain('everyone in the team → Applicant; group Finance (managed by Ann) → Approver');
+    expect(html).toContain('everyone in the team as Applicant; group Finance (managed by Ann) as Approver');
     expect(html).toContain('Publish the app Purchase requests');
-    expect(html).toContain('v1 live for everyone in the team → Applicant');
+    expect(html).toContain('v1 live for everyone in the team as Applicant');
     expect(html.indexOf('Who uses the app')).toBeLessThan(html.indexOf('Create app'));
 
     const zh = render('zh', operations, changes);
     expect(zh).toContain('新建应用');
-    expect(zh).toContain('群组 Finance（由 Ann 管理） → Approver');
+    expect(zh).toContain('群组 Finance（由 Ann 管理）为「Approver」');
     expect(zh).not.toContain('apps.agent.');
   });
 
