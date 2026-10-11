@@ -29,6 +29,7 @@ import { sweepReplyAlerts } from '../../../bots/engine/reply-alerts.js';
 import { startNotificationDeliveryWorker } from '../../delivery-worker.js';
 import { publishNotification } from '../../publish.js';
 import type { ExpoMessage, FetchLike } from '../expo.js';
+import { tablesPushEnvelope } from '../policy.js';
 
 vi.mock('../../../ws/connection-manager.js', () => ({ connectionManager: { sendToUser: vi.fn() } }));
 
@@ -339,5 +340,93 @@ describe("a Bot task's end reaches the phone that shows it as a Live Activity", 
       },
     ]);
     expect((await attemptsFor(member.id))[0]).toMatchObject({ status: 'delivered' });
+  });
+});
+
+describe('a Tables notification reaches the phone (Tables → Apps Phase 1)', () => {
+  it('a mention: titled by its author, content-free, routed to the record', async () => {
+    const phone = await registerPhone();
+    const author = await createInternalTestUser(db, { email: `${unique('push-author')}@test.local` });
+    await db.users.update(author.id, { nickname: '林小' });
+    await publishNotification(db, {
+      user_id: member.id,
+      kind: 'tables_mention',
+      title: '林小 在「采购」#42 中提到了你',
+      body: '@你 金额 80 万请确认',
+      payload: { href: '#/tables/7/table/8?record=42', baseId: 7, tableId: 8, recordId: 42 },
+      dedupe_key: unique('tables-mention'),
+      push: tablesPushEnvelope({ source: 'mention', baseId: 7, tableId: 8, recordId: 42, actorId: author.id }),
+    });
+
+    const expo = fakeExpo();
+    await runWorker(expo.fetchImpl);
+
+    expect(expo.sent).toHaveLength(1);
+    const message = expo.sent[0]!;
+    expect(message).toMatchObject({
+      to: phone.token,
+      title: '林小',
+      body: '在一条记录的评论里提到了你',
+      interruptionLevel: 'active',
+      threadId: 'record:8:42',
+    });
+    expect(JSON.stringify(message)).not.toContain('80 万');
+    expect(parsePushData(message.data)).toMatchObject({
+      k: 'replies',
+      open: 'record',
+      base: 7,
+      table: 8,
+      record: 42,
+      url: '/tables/record/42?tableId=8&baseId=7',
+    });
+    expect(parsePushData(message.data)?.sid).toBeUndefined();
+  });
+
+  it('an urgent automation read through an app: "needs you", opening the app record', async () => {
+    await registerPhone({ preview: true });
+    await publishNotification(db, {
+      user_id: member.id,
+      kind: 'tables_automation',
+      title: '采购单待审批',
+      body: '金额 —',
+      payload: { href: '#/apps/9?record=42', baseId: 7, tableId: 8, recordId: 42 },
+      dedupe_key: unique('tables-automation'),
+      push: tablesPushEnvelope({ source: 'automation', urgent: true, baseId: 7, tableId: 8, recordId: 42, appId: 9 }),
+    });
+
+    const expo = fakeExpo();
+    await runWorker(expo.fetchImpl);
+
+    expect(expo.sent).toHaveLength(1);
+    expect(expo.sent[0]).toMatchObject({ body: '采购单待审批：金额 —', interruptionLevel: 'time-sensitive' });
+    expect(parsePushData(expo.sent[0]!.data)).toMatchObject({
+      k: 'needs_you',
+      open: 'app',
+      app: 9,
+      table: 8,
+      record: 42,
+      url: '/apps/9?record=42&table=8',
+    });
+  });
+
+  it('is suppressed for an account without Tables', async () => {
+    await registerPhone();
+    await db.userFeatures.upsert({ user_id: member.id, feature: 'tables', enabled: false });
+    await publishNotification(db, {
+      user_id: member.id,
+      kind: 'tables_automation',
+      title: '采购单已批准',
+      body: '采购单已批准',
+      payload: { href: '#/tables/7/table/8?record=42' },
+      dedupe_key: unique('tables-automation'),
+      push: tablesPushEnvelope({ source: 'automation', baseId: 7, tableId: 8, recordId: 42 }),
+    });
+
+    const expo = fakeExpo();
+    await runWorker(expo.fetchImpl);
+
+    expect(expo.sent).toHaveLength(0);
+    const [attempt] = await attemptsFor(member.id);
+    expect(attempt).toMatchObject({ status: 'suppressed' });
   });
 });
