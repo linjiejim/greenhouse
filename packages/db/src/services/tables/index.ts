@@ -72,7 +72,16 @@ export type {
 } from './schema.js';
 export type { CreateTableViewInput, UpdateTableViewInput } from './views.js';
 export { TABLES_RESOURCE_KINDS, type TablesResourceKind } from './resources.js';
-export type { CreateTableFormInput, UpdateTableFormInput } from './forms.js';
+export {
+  formDefaultEntries,
+  formUploadKeySegment,
+  formWritableFieldIds,
+  normalizeFormAudience,
+  type CreateTableFormInput,
+  type ExpiredFormUpload,
+  type SubmitTableFormOptions,
+  type UpdateTableFormInput,
+} from './forms.js';
 export type {
   BatchUpsertTableRecordItem,
   CreateTableRecordInput,

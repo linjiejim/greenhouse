@@ -388,7 +388,11 @@ export interface TableFormConfig {
   fieldIds: number[];
   submitLabel?: string;
   successMessage?: string;
-  /** Hidden prefilled values; may use `$me` / `$today` / `$now`, resolved and locked server-side. */
+  /**
+   * Hidden prefilled values; may use `$me` / `$today` / `$now`
+   * (`TABLE_FORM_DEFAULT_TOKENS`), resolved and locked server-side. A field is
+   * either shown (`fieldIds`) or prefilled, never both.
+   */
   defaults?: TableFieldValueEntry[];
   /** Default true. False = one submission per user (enforced by a unique index). */
   allowMultiple?: boolean;
@@ -408,10 +412,36 @@ export interface TableFormSubmitView {
     type: TableFieldType;
     required: boolean;
     options?: TableSelectOption[];
+    /** Relation fields (Base audiences only): accepts several record ids. */
+    multiple?: boolean;
   }>;
   /** Internal user directory, present when the form has user fields. */
-  userOptions?: Array<{ id: string; name: string }>;
+  userOptions?: Array<{ id: string; name: string; email?: string }>;
   alreadySubmitted: boolean;
+  /** False = one submission per person; the page offers no "submit another". */
+  allowMultiple: boolean;
+}
+
+/**
+ * Tokens a form default may hold, resolved on the server at submit time:
+ * `$me` → the submitter (user / multi-user fields), `$today` → the submit day in
+ * the submitter's time zone (date fields), `$now` → the submit instant
+ * (datetime fields). Anything else is a static value.
+ */
+export const TABLE_FORM_DEFAULT_TOKENS = ['$me', '$today', '$now'] as const;
+export type TableFormDefaultToken = (typeof TABLE_FORM_DEFAULT_TOKENS)[number];
+
+/** `POST /api/forms/:id/uploads` — a file staged for this form, bound when the same person submits. */
+export interface TableFormUploadView {
+  id: number;
+  name: string;
+  size: number;
+}
+
+/** `POST /api/forms/:id/submit` — the record is never echoed back. */
+export interface TableFormSubmitResult {
+  submitted: true;
+  successMessage: string | null;
 }
 
 export const TABLE_AUTOMATION_TRIGGERS = [
