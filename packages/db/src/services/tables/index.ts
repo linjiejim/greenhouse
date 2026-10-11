@@ -26,12 +26,15 @@
  *   import-values.ts  import cells → values (links by primary text; the rest is @greenhouse/types/table-cell-text), column inference (pure)
  *   resources.ts    resource → owning Base (stamped on each audited action as its scope)
  *   apps.ts         apps on a Base: drafts (CAS), hashed immutable versions, audiences, pins, "my / shared / featured"
+ *   app-gateway.ts  what the app gateway reads / writes beyond records: row matching for preconditions,
+ *                   records and files by id, staged app uploads, the action ledger, usage counts
  *   schema-source.ts  what config validators read about the schema (live, or a plan's virtual draft)
  */
 
 import type { Db } from '../../client.js';
 import { createTablesActivity } from './activity.js';
 import { createTablesApps } from './apps.js';
+import { createTablesAppGateway } from './app-gateway.js';
 import { createTablesAggregates } from './aggregate.js';
 import { createTablesAutomationQueue } from './automation-queue.js';
 import { createTablesAutomations } from './automations.js';
@@ -184,6 +187,12 @@ export {
   type TableAppVersionSummaryRow,
   type UpdateTableAppInput,
 } from './apps.js';
+export {
+  appUploadKeySegment,
+  type AppDriveFileMeta,
+  type AppUsageCounts,
+  type ClaimAppActionRequestResult,
+} from './app-gateway.js';
 
 export function createTablesService(db: Db) {
   const compute = createTablesCompute(db);
@@ -208,6 +217,7 @@ export function createTablesService(db: Db) {
     ...createTablesImports(db, { records: records.internal }),
     ...createTablesResources(db),
     ...createTablesApps(db),
+    ...createTablesAppGateway(db),
     /** The live schema as the config validators read it (the API's app spec validator passes it on). */
     liveSchemaSource: (): TablesSchemaSource => dbSchemaSource(db),
   };

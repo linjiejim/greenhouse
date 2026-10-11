@@ -2,7 +2,8 @@
  * Drizzle schema — Apps (应用) built on a Tables Base (Tables → Apps Phase 1,
  * docs/specs/20261011-tables-apps.md §1).
  *
- * Tables: table_apps, table_app_versions, table_app_audiences, table_app_pins
+ * Tables: table_apps, table_app_versions, table_app_audiences, table_app_pins,
+ *         table_app_action_requests
  *
  * An app belongs to one Base. Its draft spec is edited in place
  * (`draft_revision` CAS); publishing appends an immutable version whose spec is
@@ -151,7 +152,43 @@ export const tableAppPins = pgTable(
   (table) => [primaryKey({ columns: [table.user_id, table.app_id] }), index('idx_table_app_pins_app').on(table.app_id)],
 );
 
+/**
+ * The app gateway's action ledger: one row per app write a person asked for,
+ * keyed by their `requestId`. A repeated request replays the first result
+ * instead of writing twice (`status = 'done'` keeps it); a request that was
+ * refused leaves no row, so a retry runs again. The rows also count usage —
+ * runs per action id in the managers' summary.
+ */
+export const tableAppActionRequests = pgTable(
+  'table_app_action_requests',
+  {
+    id: serial('id').primaryKey(),
+    app_id: integer('app_id')
+      .notNull()
+      .references(() => tableApps.id, { onDelete: 'cascade' }),
+    /** Who asked (logical → users). */
+    user_id: text('user_id').notNull(),
+    /** The client's idempotency key. */
+    request_id: text('request_id').notNull(),
+    /** A spec action id, or `$submit` / `$create` / `$move` / `$edit`. */
+    action_id: text('action_id').notNull(),
+    page_id: text('page_id').notNull(),
+    card_id: text('card_id').notNull(),
+    record_id: integer('record_id'),
+    status: text('status', { enum: ['running', 'done'] }).notNull(),
+    /** The `AppActionResult` answered the first time (replayed as is). */
+    result: jsonb('result').$type<Record<string, unknown>>(),
+    created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_table_app_action_requests_request').on(table.app_id, table.user_id, table.request_id),
+    index('idx_table_app_action_requests_app_created').on(table.app_id, table.created_at),
+  ],
+);
+
 export type TableAppRow = typeof tableApps.$inferSelect;
 export type TableAppVersionRow = typeof tableAppVersions.$inferSelect;
 export type TableAppAudienceRow = typeof tableAppAudiences.$inferSelect;
 export type TableAppPinRow = typeof tableAppPins.$inferSelect;
+export type TableAppActionRequestRow = typeof tableAppActionRequests.$inferSelect;
