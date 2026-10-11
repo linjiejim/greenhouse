@@ -185,7 +185,8 @@ export function FormulaEditor({
     textarea.setSelectionRange(error.start, Math.max(error.end, error.start));
   };
 
-  const error = !result.ok && value.trim() ? result.error : null;
+  // Mid-reference (the list is open) the text is unfinished by definition: hold the error until then.
+  const error = !result.ok && value.trim() && !suggestions ? result.error : null;
   const resultTypeKey = result.ok ? RESULT_TYPE_KEYS[result.type] : undefined;
 
   return (
