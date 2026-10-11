@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BotView } from '@greenhouse/types/bots';
+import { isSproutyBot, type BotView } from '@greenhouse/types/bots';
 import { Button, EmptyState, Spinner } from '../../components/ui';
 import { AlertTriangle, Bot } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
@@ -44,12 +44,15 @@ export function BotsPage({ params }: { params: URLSearchParams }) {
   return sessionId ? <BotsWorkspace sessionId={sessionId} /> : <BotsLanding />;
 }
 
-/** No conversation in the URL: pick one (or create the first Bot) and replace the address. */
+/**
+ * No conversation in the URL: open the main thread — the member's DM with Sprouty, their main
+ * Agent (spec 20261011-agent-first-class §3.1) — creating it on the first visit, and replace the
+ * address. This is where the app's bare address and the conversations entry land.
+ */
 function BotsLanding() {
   const t = useT();
   const bots = useBotsStore((state) => state.bots);
   const botsLoaded = useBotsStore((state) => state.botsLoaded);
-  const conversations = useBotsStore((state) => state.conversations);
   const conversationsLoaded = useBotsStore((state) => state.conversationsLoaded);
   const loadBots = useBotsStore((state) => state.loadBots);
   const loadConversations = useBotsStore((state) => state.loadConversations);
@@ -68,18 +71,14 @@ function BotsLanding() {
 
   useEffect(() => {
     if (!botsLoaded || !conversationsLoaded || failure) return;
-    // The most recent conversation someone can still answer in: an archived
-    // Bot's DM or a retired group chat stays listed (read-only) but is no place to land.
-    const activeIds = new Set(bots.map((bot) => bot.id));
-    const recent =
-      conversations.find((conversation) => conversationReplyable(conversation, activeIds))?.session_id ??
-      bots.find((bot) => bot.dm_session_id)?.dm_session_id;
-    if (recent) {
-      openBotsConversation(recent, { replace: true });
+    const main = bots.find((bot) => isSproutyBot(bot))?.dm_session_id;
+    if (main) {
+      openBotsConversation(main, { replace: true });
       return;
     }
-    // First visit (or every other Bot archived): the API makes sure Sprouty exists, with its DM
-    // and a fixed greeting (no model call), idempotently — then we land in that DM.
+    // First visit (or a Sprouty row a chat created without its thread): the API makes sure
+    // Sprouty exists, with its DM and a fixed greeting (no model call), idempotently — then we
+    // land in that DM.
     ensureSprouty()
       .then(({ dm_session_id }) => openBotsConversation(dm_session_id, { replace: true }))
       .catch((err: unknown) =>
@@ -88,7 +87,7 @@ function BotsLanding() {
           message: err instanceof Error ? err.message : t('bots.setupFailed'),
         }),
       );
-  }, [bots, botsLoaded, conversations, conversationsLoaded, failure, loadBots, loadConversations, t]);
+  }, [bots, botsLoaded, conversationsLoaded, failure, t]);
 
   if (failure) {
     const forbidden = failure.status === 403;

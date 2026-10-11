@@ -345,7 +345,7 @@ describe('secure sign-in: what is sent', () => {
     await mountLogin(request({ status: 'expired' }));
     const card = document.querySelector('[data-testid="bots-request-card"]')!;
     expect(card.textContent).toContain('Expired');
-    expect(card.textContent).toContain('This sign-in request expired — ask the Bot again');
+    expect(card.textContent).toContain('This sign-in request expired — ask the Agent again');
     expect(card.querySelectorAll('input')).toHaveLength(0);
     expect(card.querySelectorAll('button:not([aria-expanded])').length).toBe(0);
   });
@@ -549,7 +549,7 @@ describe('memory receipts', () => {
     );
     const receipts = [...document.querySelectorAll('[data-testid="bots-memory-receipts"] > span')];
     expect(receipts).toHaveLength(2);
-    expect(receipts[0].textContent).toContain('Remembered for all your Bots');
+    expect(receipts[0].textContent).toContain('Remembered for all your Agents');
     expect(receipts[0].textContent).toContain('Undo');
     expect(receipts[1].textContent).toContain('Forgotten');
     expect(receipts[1].textContent).not.toContain('Undo');

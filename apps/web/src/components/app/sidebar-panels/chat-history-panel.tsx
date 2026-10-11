@@ -1,12 +1,19 @@
 /**
- * Chat History Panel — sidebar contextual panel for Chat tab.
+ * Chat History Panel — the member's chats (independent sessions) in the sidebar.
  * Shows recent sessions grouped by date (Today / Yesterday / This Week / Earlier)
  * with search/filter capabilities and auto-refresh on new session creation.
+ *
+ * In the conversations sidebar (`ConversationsSidebarPanel`, spec
+ * 20261011-agent-first-class §3.1) it is the "Chats" section of one list: the
+ * caller's `leading` content (main thread, Agents, Background) scrolls above the
+ * chats in the same scroll area, the one search box also feeds the caller
+ * (`onQueryChange`), and the scope tabs / tag filter move under the "Chats"
+ * label so they visibly belong to the chats only.
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Spinner, ConfirmDialog, StatusDot, Checkbox, FilterPills, toast } from '../../ui';
-import { SidebarToolbar } from '../sidebar-toolbar';
+import { SidebarToolbar, type SidebarToolbarAction } from '../sidebar-toolbar';
 import {
   History,
   MoreHorizontal,
@@ -37,6 +44,7 @@ import { TagFilter, TagSelector, BatchTagSelector, TagManagerDialog, SessionTags
 import { GroupManagerDialog, GroupSelector } from '../../session-groups';
 import { BatchActionBar } from './batch-action-bar';
 import { pruneMissing, rangeSelect, toggleOne, type SelectableRow } from './selection';
+import { SidebarSectionLabel } from '../sidebar-section-label';
 import type { SessionTag, SessionGroup, SessionScope } from '@greenhouse/types/api';
 import { DEFAULT_ASSET_SCOPE } from '../../../lib/asset-scopes';
 
@@ -48,6 +56,15 @@ interface ChatHistoryPanelProps {
   currentSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
   collapsed?: boolean;
+  /** Conversations sidebar: sections rendered above the chats, inside the same scroll area. */
+  leading?: React.ReactNode;
+  /** Conversations sidebar: label above the chats (and their scope tabs / tag filter). */
+  chatsTitle?: string;
+  /** Actions placed before the chats' own toolbar actions. */
+  extraActions?: SidebarToolbarAction[];
+  /** The search box's text, for sections the caller renders (it filters them too). */
+  onQueryChange?: (query: string) => void;
+  searchPlaceholder?: string;
 }
 
 // ── Date grouping helpers ────────────────────────────────
@@ -250,7 +267,16 @@ function SessionContextMenu({
   );
 }
 
-export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed }: ChatHistoryPanelProps) {
+export function ChatHistoryPanel({
+  currentSessionId,
+  onSelectSession,
+  collapsed,
+  leading,
+  chatsTitle,
+  extraActions,
+  onQueryChange,
+  searchPlaceholder,
+}: ChatHistoryPanelProps) {
   const t = useT();
   const [sessions, setSessions] = useState<api.Session[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1093,6 +1119,41 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     );
   };
 
+  const unified = leading !== undefined;
+  const scopeControls = (
+    <>
+      {/* Scope tabs — mine (default) / shared with me / team (super only).
+          `segment`, not pills: this is a switch where one option is always on,
+          and the round pills below it are the tag filter. Same shape for two
+          different behaviours reads as one long filter row. */}
+      <div className="px-3 pb-1.5 flex-shrink-0">
+        <FilterPills
+          variant="segment"
+          items={[
+            { key: 'mine', label: t('history.scopeMine') },
+            {
+              key: 'shared',
+              label: t('history.scopeShared'),
+              count: unreadShareCount > 0 ? unreadShareCount : undefined,
+            },
+            ...(isSuper ? [{ key: 'team', label: t('history.scopeTeam') }] : []),
+          ]}
+          activeKey={effectiveScope}
+          onChange={(k) => changeScope((k as SessionScope) ?? 'mine')}
+          selectLabel={t('history.scopeFilterLabel')}
+          fill
+        />
+      </div>
+
+      {/* Tag filter */}
+      {allTags.length > 0 && (
+        <div className="px-3 pb-2 flex-shrink-0">
+          <TagFilter tags={allTags} activeTagId={activeTagFilter} onSelect={setActiveTagFilter} collapseInSidebar />
+        </div>
+      )}
+    </>
+  );
+
   return (
     <>
       <div className="flex flex-col flex-1 min-h-0">
@@ -1100,9 +1161,13 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
         <div className="px-3 py-1.5 flex-shrink-0 space-y-1.5">
           <SidebarToolbar
             value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder={t('common.search')}
+            onChange={(value) => {
+              setSearchQuery(value);
+              onQueryChange?.(value);
+            }}
+            placeholder={searchPlaceholder ?? t('common.search')}
             actions={[
+              ...(extraActions ?? []),
               {
                 label: t('sessionGroups.select'),
                 icon: CheckSquare,
@@ -1119,35 +1184,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
           />
         </div>
 
-        {/* Scope tabs — mine (default) / shared with me / team (super only).
-            `segment`, not pills: this is a switch where one option is always on,
-            and the round pills below it are the tag filter. Same shape for two
-            different behaviours reads as one long filter row. */}
-        <div className="px-3 pb-1.5 flex-shrink-0">
-          <FilterPills
-            variant="segment"
-            items={[
-              { key: 'mine', label: t('history.scopeMine') },
-              {
-                key: 'shared',
-                label: t('history.scopeShared'),
-                count: unreadShareCount > 0 ? unreadShareCount : undefined,
-              },
-              ...(isSuper ? [{ key: 'team', label: t('history.scopeTeam') }] : []),
-            ]}
-            activeKey={effectiveScope}
-            onChange={(k) => changeScope((k as SessionScope) ?? 'mine')}
-            selectLabel={t('history.scopeFilterLabel')}
-            fill
-          />
-        </div>
-
-        {/* Tag filter */}
-        {allTags.length > 0 && (
-          <div className="px-3 pb-2 flex-shrink-0">
-            <TagFilter tags={allTags} activeTagId={activeTagFilter} onSelect={setActiveTagFilter} collapseInSidebar />
-          </div>
-        )}
+        {!unified && scopeControls}
 
         {/* Session list — grouped by date. In select mode, a click on the empty
             padding (target === the scroll container itself) exits. */}
@@ -1157,6 +1194,14 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
             if (selectMode && e.target === e.currentTarget) exitSelectMode();
           }}
         >
+          {unified && (
+            <>
+              {leading}
+              {chatsTitle && <SidebarSectionLabel>{chatsTitle}</SidebarSectionLabel>}
+              {scopeControls}
+            </>
+          )}
+
           {loading && sessions.length === 0 && (
             <div className="flex justify-center py-6">
               <Spinner className="h-4 w-4 text-fg-faint" />

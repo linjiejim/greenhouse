@@ -72,7 +72,7 @@ describe('Settings → Memory source', () => {
       memory(1, 'Prefers Python', { bot_id: null, bot_name: null }),
       memory(2, 'Sage tracks the vendor list', { bot_id: 'bot_sage', bot_name: 'Sage' }),
     ]);
-    expect(sources()).toEqual(['All Bots', 'Only Sage']);
+    expect(sources()).toEqual(['All Agents', 'Only Sage']);
   });
 
   it('filters by source', async () => {

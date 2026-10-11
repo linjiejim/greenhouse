@@ -300,7 +300,7 @@ describe('ComputerPane states', () => {
     await renderPane();
 
     expect(document.body.textContent).toContain("Your organisation hasn't enabled computers");
-    expect(document.body.textContent).toContain('Bots can still chat');
+    expect(document.body.textContent).toContain('Agents can still chat');
     expect(document.querySelector('[data-testid="computer-open-admin"]')).toBeNull();
     // Raw precheck reasons are operator detail, not member copy.
     expect(document.body.textContent).not.toContain('docker');
@@ -420,7 +420,7 @@ describe('ComputerPane live screen', () => {
     api.handbackComputer.mockResolvedValue(RUNNING);
     await renderPane({ onFocusChange });
 
-    const note = document.querySelector<HTMLInputElement>('input[aria-label="Note for the Bot (optional)"]')!;
+    const note = document.querySelector<HTMLInputElement>('input[aria-label="Note for the Agent (optional)"]')!;
     await typeInto(note, 'Signed in, code went to my phone');
     api.fetchComputerStatus.mockResolvedValue(RUNNING);
     await click(document.querySelector('[data-testid="computer-hand-back"]')!);

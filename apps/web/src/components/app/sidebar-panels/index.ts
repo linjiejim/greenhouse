@@ -1,4 +1,5 @@
 export { ChatHistoryPanel } from './chat-history-panel';
+export { ConversationsSidebarPanel } from './conversations-panel';
 export { SettingsNavPanel } from './settings-nav-panel';
 export { AdministrationNavPanel } from './administration-nav-panel';
 export { ProjectsListPanel } from './projects-list-panel';

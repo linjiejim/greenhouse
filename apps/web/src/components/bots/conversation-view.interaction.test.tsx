@@ -172,14 +172,14 @@ describe('ConversationView before the Bot list lands', () => {
   it('shows a skeleton — never "Deleted Bot" — until the Bot list arrives', async () => {
     await render(props({ botsState: 'loading', owner: undefined, members: [], title: '' }));
     expect(document.querySelector('[data-testid="bots-conversation-loading"]')).not.toBeNull();
-    expect(document.body.textContent).not.toContain('Deleted Bot');
+    expect(document.body.textContent).not.toContain('Deleted Agent');
     expect(document.querySelector('[data-testid="chat-input"]')).toBeNull();
   });
 
   it('shows a failed Bot list with a retry instead of guessing names', async () => {
     const onRetryBots = vi.fn();
     await render(props({ botsState: 'error', onRetryBots }));
-    expect(document.body.textContent).toContain('Could not load your Bots');
+    expect(document.body.textContent).toContain('Could not load your Agents');
     const retry = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Try again');
     await act(async () => retry?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
     expect(onRetryBots).toHaveBeenCalledTimes(1);
@@ -199,7 +199,7 @@ describe('an archived Bot’s DM', () => {
       'Sage (archived)',
     );
     // No guests in a DM nobody leads any more.
-    expect(document.querySelector('button[aria-label="Invite a Bot"]')).toBeNull();
+    expect(document.querySelector('button[aria-label="Invite an Agent"]')).toBeNull();
 
     await act(async () =>
       document
@@ -290,7 +290,7 @@ describe('a retired group chat', () => {
     const notice = document.querySelector('[data-testid="bots-read-only"]');
     expect(notice?.textContent).toContain('Group chats were retired — this one stays as a record.');
     expect(notice?.querySelectorAll('button')).toHaveLength(0);
-    expect(document.querySelector('button[aria-label="Invite a Bot"]')).toBeNull();
+    expect(document.querySelector('button[aria-label="Invite an Agent"]')).toBeNull();
     // No "2 Bots · Lead: Sage" status: the header says what it is.
     expect(document.querySelector('[data-testid="bots-status-line"]')?.textContent).toBe(
       'Retired group chat — read-only',

@@ -284,7 +284,7 @@ describe('BotComputersPanel', () => {
   it('offers a retry when the view cannot be loaded', async () => {
     api.fetchAdminBotComputers.mockRejectedValueOnce(new Error('boom'));
     await renderPanel();
-    expect(document.body.textContent).toContain("Couldn't load Bot computers.");
+    expect(document.body.textContent).toContain("Couldn't load Agent computers.");
 
     const retry = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Retry');
     await click(retry);

@@ -17,7 +17,7 @@ export {
 export { BotsBareHeader, BotsMobileNavButton } from './conversation-header';
 export { useBotsSync } from './use-bots-sync';
 export { useBotConversation, type BotConversationController } from './use-bot-conversation';
-export { BotsSidebarPanel } from './bots-sidebar-panel';
+export { BotsThreadsSection } from './bots-sidebar-panel';
 export { ConversationView } from './conversation-view';
 export { BotsSidePanel, PanelSection, useSplitCapable } from './bots-side-panel';
 export { InfoPanel } from './info-panel';

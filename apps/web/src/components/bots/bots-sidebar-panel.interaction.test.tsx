@@ -1,9 +1,10 @@
 /**
  * @vitest-environment happy-dom
  *
- * The Bots sidebar is one conversation list: Sprouty's DM pinned first, a search over titles,
- * Bot names and the last message, and one "new Bot" action in its toolbar. Retired group chats
- * and archived Bots' DMs sit under "Archived".
+ * The Agent threads of the conversations sidebar: Sprouty's DM — the main thread — under
+ * "Main thread", the other Agents' DMs by activity under "Agents", retired group chats and
+ * archived Agents' DMs under "Archived"; the sidebar's one search box filters titles, Agent
+ * names and the last message (spec 20261011-agent-first-class §3.1).
  *
  * Sidebar conversation rows: a retired group row's overlapped avatar chips are separated
  * by a ring painted in the row's own colour, so the ring has to follow the row
@@ -17,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BotConversationSummary, BotView } from '@greenhouse/types/bots';
 import { I18nProvider } from '../../lib/i18n';
 import { useBotsStore } from './bots-store';
-import { BotsSidebarPanel } from './bots-sidebar-panel';
+import { BotsThreadsSection } from './bots-sidebar-panel';
 
 const api = vi.hoisted(() => ({ bootstrapBots: vi.fn() }));
 vi.mock('../../lib/api/bots', async (importOriginal) => ({
@@ -112,10 +113,12 @@ afterEach(() => {
   window.location.hash = '';
 });
 
-function mount(currentHash: string) {
+function mount(currentHash: string, query = '') {
   window.location.hash = currentHash;
   act(() =>
-    root.render(createElement(I18nProvider, { initialLocale: 'en', children: createElement(BotsSidebarPanel) })),
+    root.render(
+      createElement(I18nProvider, { initialLocale: 'en', children: createElement(BotsThreadsSection, { query }) }),
+    ),
   );
 }
 
@@ -127,7 +130,7 @@ const chipRings = (sessionId: string) =>
     chip.className.split(/\s+/).filter((name) => name.includes('ring-') && name !== 'ring-2'),
   );
 
-describe('<BotsSidebarPanel/> retired group rows', () => {
+describe('<BotsThreadsSection/> retired group rows', () => {
   it("paints chip rings the row's resting colour, and its hover fill under the pointer", () => {
     mount('#/bots?c=dm-bot_sage');
     expect(row(GROUP).className.split(/\s+/)).toContain('group');
@@ -146,8 +149,8 @@ describe('<BotsSidebarPanel/> retired group rows', () => {
   });
 });
 
-describe('<BotsSidebarPanel/> DM rows', () => {
-  it("shows an archived Bot's DM asleep and a live one at rest, both still", () => {
+describe('<BotsThreadsSection/> DM rows', () => {
+  it("shows an archived Agent's DM asleep and a live one at rest, both still", () => {
     mount('#/bots');
     const svg = (sessionId: string) => row(sessionId).querySelector('svg')!.getAttribute('class') ?? '';
     expect(svg('dm-bot_moss')).toContain('pa-s-sleep');
@@ -156,20 +159,30 @@ describe('<BotsSidebarPanel/> DM rows', () => {
   });
 });
 
-describe('<BotsSidebarPanel/> list', () => {
+describe('<BotsThreadsSection/> list', () => {
   const order = () =>
     [...host.querySelectorAll<HTMLElement>('[data-testid="bots-conversation-row"]')].map((el) => el.dataset.sessionId);
 
-  it("is one list: Sprouty's DM pinned first, then by activity, archived last — no avatar strip", () => {
+  it("is one list: the main thread (Sprouty's DM) first, then by activity, archived last", () => {
     mount('#/bots');
     expect(order()).toEqual(['dm-bot_sprouty', 'dm-bot_sage', GROUP, 'dm-bot_moss']);
     expect(row('dm-bot_sprouty').dataset.pinned).toBe('true');
     expect(row(GROUP).dataset.pinned).toBeUndefined();
-    expect(host.textContent).not.toContain('Your Bots');
     expect(api.bootstrapBots).not.toHaveBeenCalled(); // Sprouty is here already
   });
 
-  it('files a retired group chat under Archived, dimmed, even with every Bot in it active', () => {
+  it('labels the groups: Main thread above Sprouty, Agents above the other live threads', () => {
+    mount('#/bots');
+    const labels = [...host.querySelectorAll<HTMLElement>('[data-testid^="sidebar-section-"]')];
+    expect(labels.map((el) => el.textContent)).toEqual(['Main thread', 'Agents']);
+    const [main, agents] = labels;
+    const follows = (label: HTMLElement, sessionId: string) =>
+      !!(label.compareDocumentPosition(row(sessionId)) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(main, 'dm-bot_sprouty') && !follows(agents, 'dm-bot_sprouty')).toBe(true);
+    expect(follows(agents, 'dm-bot_sage')).toBe(true);
+  });
+
+  it('files a retired group chat under Archived, dimmed, even with every Agent in it active', () => {
     mount('#/bots');
     const label = [...host.querySelectorAll('nav span')].find((el) => el.textContent === 'Archived')!;
     expect(label).toBeDefined();
@@ -182,31 +195,17 @@ describe('<BotsSidebarPanel/> list', () => {
     expect(row('dm-bot_sage').className).not.toContain('opacity-70');
   });
 
-  it('searches titles, Bot names and the last message, and says when nothing matches', async () => {
-    mount('#/bots');
-    const input = host.querySelector<HTMLInputElement>('input[placeholder="Search conversations…"]')!;
-    const type = (value: string) =>
-      act(() => {
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      });
-    type('draft');
+  it("filters by the sidebar's search: titles, Agent names and the last message", () => {
+    mount('#/bots', 'draft');
     expect(order()).toEqual([GROUP]); // last message
-    type('SAGE');
+    mount('#/bots', 'SAGE');
     expect(order()).toEqual(['dm-bot_sage', GROUP]); // a member's name, case-insensitive
-    type('sprout');
+    mount('#/bots', 'sprout');
     expect(order()).toEqual(['dm-bot_sprouty']);
-    type('nobody');
+    mount('#/bots', 'nobody');
+    // Nothing matches: the threads step aside (no empty labels) and the chats below speak for the list.
     expect(order()).toEqual([]);
-    expect(host.querySelector('[data-testid="bots-sidebar-empty"]')!.textContent).toBe('No conversations match');
-  });
-
-  it('opens the new-Bot dialog from the toolbar — the only toolbar action, no "new group"', () => {
-    mount('#/bots');
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="New"]')!.click());
-    expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-bot' });
-    expect(host.querySelector('button[aria-label="New group"]')).toBeNull();
-    expect(host.querySelector('button[aria-label="Bots directory"]')).toBeNull();
+    expect(host.querySelectorAll('[data-testid^="sidebar-section-"]')).toHaveLength(0);
   });
 
   it('makes sure a member whose Bots predate Sprouty gets it', async () => {

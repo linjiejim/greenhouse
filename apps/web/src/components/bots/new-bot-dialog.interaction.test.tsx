@@ -119,7 +119,7 @@ describe('NewBotDialog from Invite', () => {
       "Ivy was created but couldn't join this conversation: At most 6 Bots per conversation",
     );
     // Not "create failed" (a retry could only hit "name taken"), and the dialog is gone.
-    expect(document.body.textContent).not.toContain('Could not save the Bot');
+    expect(document.body.textContent).not.toContain('Could not save the Agent');
     expect(document.querySelector('[data-testid="bots-new-bot-form"]')).toBeNull();
     expect(useBotsStore.getState().bots.map((bot) => bot.id)).toEqual([IVY.id]);
   });

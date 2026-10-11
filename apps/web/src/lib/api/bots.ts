@@ -393,6 +393,13 @@ export async function listConversationTasks(sessionId: string): Promise<{ tasks:
   return res.json();
 }
 
+/** Every conversation's background tasks, live first — the conversations sidebar's "Background" group. */
+export async function listMemberTasks(): Promise<{ tasks: Array<BotTaskView & { session_id: string }> }> {
+  const res = await rpc.api.bots.tasks.$get();
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
 export async function cancelBotTask(runId: string): Promise<void> {
   const res = await rpc.api.bots.tasks[':runId'].cancel.$post({ param: { runId: enc(runId) } });
   if (!res.ok) throw await failure(res);

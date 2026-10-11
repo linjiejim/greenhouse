@@ -26,7 +26,7 @@ import { SidebarGlobalNavigation } from './sidebar-global-navigation';
 import { WsStatusIndicator } from './top-bar';
 import type { PrimaryNavigation } from '../../platform/navigation';
 import {
-  ChatHistoryPanel,
+  ConversationsSidebarPanel,
   SettingsNavPanel,
   AdministrationNavPanel,
   ProjectsListPanel,
@@ -37,7 +37,6 @@ import {
   TablesNavPanel,
 } from './sidebar-panels';
 import { ExtensionSidebarPanel } from '../../extensions/host';
-import { BotsSidebarPanel } from '../bots/bots-sidebar-panel';
 
 type Route =
   | 'home'
@@ -373,10 +372,14 @@ export function AppSidebar({
 
               {/* Contextual Panel */}
               <div className="flex-1 min-h-0 overflow-hidden flex flex-col mt-1">
-                {route === 'chat' && (
-                  <ChatHistoryPanel currentSessionId={currentSessionId} onSelectSession={onSelectSession} />
+                {/* One conversations list on both conversation routes: Agent threads + chats. */}
+                {(route === 'chat' || route === 'bots') && (
+                  <ConversationsSidebarPanel
+                    currentSessionId={route === 'chat' ? currentSessionId : null}
+                    onSelectSession={onSelectSession}
+                    hostDialogs={route === 'chat'}
+                  />
                 )}
-                {route === 'bots' && <BotsSidebarPanel />}
                 {route === 'projects' && <ProjectsListPanel />}
                 {/* Knowledge gets the FULL sub-path: its tree highlights the open
                     document, which lives in the later segments. */}

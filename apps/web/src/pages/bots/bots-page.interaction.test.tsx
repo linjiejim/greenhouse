@@ -200,31 +200,35 @@ afterEach(async () => {
 });
 
 describe('Bots landing', () => {
-  it('lands on the latest conversation someone can still answer in — not an archived Bot’s DM', async () => {
+  it('lands on the main thread — the main Agent’s DM — even when another thread is more recent', async () => {
+    const sprouty = { ...bot('bot_sprouty', 'Sprouty', 'active', 'dm-sprouty'), template_key: 'sprouty' };
+    api.listBots.mockResolvedValue({
+      bots: [sprouty, SAGE],
+      archived_bots: [OLD],
+      computer: { state: 'ready', reason: null, hardened: false },
+      vault_available: false,
+      pending_requests: 0,
+    });
+    api.listConversations.mockResolvedValue({
+      conversations: [summary('dm-sage', SAGE), summary('dm-old', OLD), summary('dm-sprouty', sprouty)],
+    });
     await renderPage('');
-    expect(window.location.hash).toBe('#/bots?c=dm-sage');
+    expect(window.location.hash).toBe('#/bots?c=dm-sprouty');
     expect(api.bootstrapBots).not.toHaveBeenCalled();
   });
 
-  it('never lands in a retired group chat, however recent', async () => {
-    const group: BotConversationSummary = {
-      ...summary('grp-1', SAGE),
-      kind: 'group',
-      title: 'Launch prep',
-      owner_bot_id: null,
-      members: [{ bot_id: SAGE.id, role: 'lead', position: 0 }],
-    };
-    api.listConversations.mockResolvedValue({
-      conversations: [group, summary('dm-old', OLD), summary('dm-sage', SAGE)],
-    });
+  it('creates the main Agent (and its thread) for a member whose Agents predate it, then lands there', async () => {
+    const sprouty = { ...bot('bot_sprouty', 'Sprouty', 'active', 'dm-sprouty'), template_key: 'sprouty' };
+    api.bootstrapBots.mockResolvedValue({ bot: sprouty, dm_session_id: 'dm-sprouty', created: true });
     await renderPage('');
-    expect(window.location.hash).toBe('#/bots?c=dm-sage');
+    expect(api.bootstrapBots).toHaveBeenCalled();
+    expect(window.location.hash).toBe('#/bots?c=dm-sprouty');
   });
 
   it('gives a phone its menu button when Bots are not available (403)', async () => {
     api.listBots.mockRejectedValue(new BotsApiError('Forbidden', 403));
     await renderPage('');
-    expect(document.body.textContent).toContain('Bots are not available');
+    expect(document.body.textContent).toContain('Agents are not available');
     expect(document.querySelector('button[aria-label="Navigation"]')).not.toBeNull();
   });
 
@@ -244,7 +248,7 @@ describe('Bots workspace', () => {
     expect(document.querySelector('[data-testid="bots-conversation-header"]')?.textContent).toContain('Old (archived)');
     expect(document.querySelector('[data-testid="bots-read-only"]')).not.toBeNull();
     expect(document.querySelector('[data-testid="chat-input"]')).toBeNull();
-    expect(document.body.textContent).not.toContain('Deleted Bot');
+    expect(document.body.textContent).not.toContain('Deleted Agent');
   });
 
   it('keeps a retired group chat readable — speakers by their real names — and closed to messages', async () => {
@@ -282,7 +286,7 @@ describe('Bots workspace', () => {
 
     const speakers = [...document.querySelectorAll('[data-testid="bots-speaker"]')].map((el) => el.textContent);
     expect(speakers).toEqual(['Old', 'Sage']);
-    expect(document.body.textContent).not.toContain('Deleted Bot');
+    expect(document.body.textContent).not.toContain('Deleted Agent');
     // Sage is still active, yet the group takes no message: group chats were retired.
     expect(document.querySelector('[data-testid="chat-input"]')).toBeNull();
     expect(document.querySelector('[data-testid="bots-read-only"]')?.textContent).toContain(

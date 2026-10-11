@@ -1,47 +1,45 @@
 /**
- * Bots contextual sidebar: ONE conversation list. Sprouty — every member's built-in main Bot —
- * is pinned first; everything else follows by activity. Every live conversation is a Bot's DM
- * (other Bots join it as guests) and shows that Bot's face; each row carries at most one signal,
- * by priority: needs you > unread > working. What nobody can answer in any more — an archived
- * Bot's DM, a retired group chat (a stacked roster) — stays readable under "Archived". The
- * toolbar searches the list (titles, Bot names, last message) and creates a Bot. There is no
- * session list and no "new chat": a Bot's DM is permanent.
+ * The Agent threads of the conversations sidebar (spec 20261011-agent-first-class §3.1): the
+ * member's main thread — their DM with Sprouty, the built-in main Agent — under "Main thread",
+ * then every other Agent's DM by activity under "Agents". Each row shows that Agent's face and
+ * carries at most one signal, by priority: needs you > unread > working. What nobody can answer
+ * in any more — an archived Agent's DM, a retired group chat (a stacked roster) — stays readable
+ * under "Archived". The search box and "new Agent" live in the sidebar's one toolbar
+ * (`ConversationsSidebarPanel`); the member's chats follow in the same list.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { isSproutyBot, type BotConversationSummary, type BotView } from '@greenhouse/types/bots';
 import { Button, Skeleton, StatusDot, Tag } from '../ui';
-import { Pin, Plus } from '../../lib/icons';
+import { Pin } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { relativeTime } from '../../lib/utils';
-import { SidebarToolbar } from '../app/sidebar-toolbar';
+import { SidebarSectionLabel } from '../app/sidebar-section-label';
 import { conversationReplyable, ensureSprouty, useBotDirectory, useBotsLoadState, useBotsStore } from './bots-store';
 import { BotAvatar, BotAvatarStack } from './bot-avatar';
 import { conversationTitle, openBotsConversation, useCurrentBotsConversation } from './navigation';
 
-export function BotsSidebarPanel({ onNavigate }: { onNavigate?: () => void }) {
+export function BotsThreadsSection({ query, onNavigate }: { query: string; onNavigate?: () => void }) {
   const t = useT();
   const bots = useBotsStore((state) => state.bots);
   const conversations = useBotsStore((state) => state.conversations);
   const botsState = useBotsLoadState();
-  // Rows name their Bots: until the Bot list is in, every row would read
-  // "Deleted Bot" for a moment — show skeletons instead (or the failure).
+  // Rows name their Agents: until the Agent list is in, every row would read
+  // "Deleted Agent" for a moment — show skeletons instead (or the failure).
   const loaded = useBotsStore((state) => state.conversationsLoaded) && botsState === 'ready';
   const loadBots = useBotsStore((state) => state.loadBots);
   const loadConversations = useBotsStore((state) => state.loadConversations);
-  const openDialog = useBotsStore((state) => state.openDialog);
   const current = useCurrentBotsConversation();
   const lookup = useBotDirectory();
-  const [query, setQuery] = useState('');
 
   useEffect(() => {
     void loadBots().catch(() => {});
     void loadConversations().catch(() => {});
   }, [loadBots, loadConversations]);
 
-  // Every member has Sprouty with a DM pinned here. A member whose Bots predate it,
-  // or whose Sprouty row was created by Chat (the identity without a thread), gets
-  // the Bot and its DM on the next visit — the bootstrap is idempotent.
+  // Every member has Sprouty with a DM — their main thread. A member whose Agents predate it,
+  // or whose Sprouty row was created by a chat (the identity without a thread), gets the Agent
+  // and its DM on the next visit — the bootstrap is idempotent.
   const sprouty = bots.find((bot) => isSproutyBot(bot));
   const sproutyDm = sprouty?.dm_session_id ?? null;
   useEffect(() => {
@@ -58,9 +56,9 @@ export function BotsSidebarPanel({ onNavigate }: { onNavigate?: () => void }) {
     [lookup, t],
   );
 
-  // Sprouty's DM first; then the conversations someone can still answer in, by activity; those
-  // nobody can answer any more (an archived Bot's DM, a retired group chat) stay readable under
-  // their own label.
+  // The main thread first; then the conversations someone can still answer in, by activity;
+  // those nobody can answer any more (an archived Agent's DM, a retired group chat) stay
+  // readable under their own label.
   const { pinned, live, archived } = useMemo(() => {
     const activeIds = new Set(bots.map((bot) => bot.id));
     const needle = query.trim().toLocaleLowerCase();
@@ -104,56 +102,47 @@ export function BotsSidebarPanel({ onNavigate }: { onNavigate?: () => void }) {
     />
   );
 
-  const searching = query.trim() !== '';
-  const nothing = !pinned && live.length === 0 && archived.length === 0;
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="bots-sidebar">
-      <div className="flex-shrink-0 px-3 py-1.5">
-        <SidebarToolbar
-          value={query}
-          onChange={setQuery}
-          placeholder={t('bots.sidebar.search')}
-          actions={[{ label: t('bots.sidebar.create'), icon: Plus, onClick: () => openDialog({ kind: 'new-bot' }) }]}
-        />
-      </div>
-      <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-3" aria-label={t('bots.sidebar.conversations')}>
-        {botsState === 'error' ? (
-          <div className="space-y-2 px-2 py-3" role="alert" data-testid="bots-sidebar-error">
-            <p className="text-xs text-danger">{t('bots.loadFailed')}</p>
-            <Button size="sm" variant="outline" onClick={() => void loadBots().catch(() => {})}>
-              {t('bots.retry')}
-            </Button>
-          </div>
-        ) : !loaded ? (
-          <div className="space-y-2 px-1 py-1" aria-label={t('bots.sidebar.loading')}>
-            {[0, 1, 2].map((index) => (
-              <div key={index} className="flex items-center gap-2">
-                <Skeleton className="h-7 w-7 rounded-full" />
-                <Skeleton className="h-3 flex-1" />
-              </div>
-            ))}
-          </div>
-        ) : nothing ? (
-          <p className="px-2 py-3 text-xs text-fg-faint" data-testid="bots-sidebar-empty">
-            {searching ? t('bots.sidebar.noMatches') : t('bots.sidebar.empty')}
-          </p>
-        ) : (
-          <>
-            {pinned && renderRow(pinned, false, true)}
-            {live.map((conversation) => renderRow(conversation, false))}
-            {archived.length > 0 && (
-              <>
-                <span className="block px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
-                  {t('bots.sidebar.archived')}
-                </span>
-                {archived.map((conversation) => renderRow(conversation, true))}
-              </>
-            )}
-          </>
-        )}
-      </nav>
-    </div>
+    <nav className="px-1 pb-1" aria-label={t('bots.sidebar.conversations')} data-testid="bots-sidebar">
+      {botsState === 'error' ? (
+        <div className="space-y-2 px-2 py-3" role="alert" data-testid="bots-sidebar-error">
+          <p className="text-xs text-danger">{t('bots.loadFailed')}</p>
+          <Button size="sm" variant="outline" onClick={() => void loadBots().catch(() => {})}>
+            {t('bots.retry')}
+          </Button>
+        </div>
+      ) : !loaded ? (
+        <div className="space-y-2 px-2 py-2" aria-label={t('bots.sidebar.loading')}>
+          {[0, 1].map((index) => (
+            <div key={index} className="flex items-center gap-2">
+              <Skeleton className="h-7 w-7 rounded-full" />
+              <Skeleton className="h-3 flex-1" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          {pinned && (
+            <>
+              <SidebarSectionLabel testId="sidebar-section-main">{t('bots.sidebar.main')}</SidebarSectionLabel>
+              {renderRow(pinned, false, true)}
+            </>
+          )}
+          {live.length > 0 && (
+            <>
+              <SidebarSectionLabel testId="sidebar-section-agents">{t('bots.sidebar.agents')}</SidebarSectionLabel>
+              {live.map((conversation) => renderRow(conversation, false))}
+            </>
+          )}
+          {archived.length > 0 && (
+            <>
+              <SidebarSectionLabel>{t('bots.sidebar.archived')}</SidebarSectionLabel>
+              {archived.map((conversation) => renderRow(conversation, true))}
+            </>
+          )}
+        </>
+      )}
+    </nav>
   );
 }
 

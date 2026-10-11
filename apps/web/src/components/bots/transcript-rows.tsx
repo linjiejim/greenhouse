@@ -7,7 +7,7 @@
  * only a row that needs a decision (retry, continue) carries a button.
  */
 
-import type { BotEvent, BotRequestKind, BotView } from '@greenhouse/types/bots';
+import { isSproutyBot, type BotEvent, type BotRequestKind, type BotView } from '@greenhouse/types/bots';
 import type { ReactNode } from 'react';
 import {
   AlertTriangle,
@@ -350,8 +350,10 @@ export function PendingBubble({
 }
 
 /**
- * Thread start: who this is and what Bots are for — the positioning line lives here. A retired
- * group chat shows only who was in it and its name (the read-only bar says what became of it).
+ * Thread start: who this is and what Agents are for — the positioning line lives here; the
+ * main Agent's DM says it is the member's main thread, the default place to start (spec
+ * 20261011-agent-first-class §3.1). A retired group chat shows only who was in it and its
+ * name (the read-only bar says what became of it).
  */
 export function ConversationIntro({ kind, title, bots }: { kind: 'direct' | 'group'; title: string; bots: BotView[] }) {
   const t = useT();
@@ -372,7 +374,9 @@ export function ConversationIntro({ kind, title, bots }: { kind: 'direct' | 'gro
       </div>
       {kind === 'direct' && (
         <p className="max-w-md text-xs leading-5 text-fg-faint">
-          {t('bots.transcript.dmStart', { name: owner?.name ?? title })} {t('bots.positioning')}
+          {owner && isSproutyBot(owner)
+            ? t('bots.mainPositioning', { name: owner.name })
+            : `${t('bots.transcript.dmStart', { name: owner?.name ?? title })} ${t('bots.positioning')}`}
         </p>
       )}
     </div>

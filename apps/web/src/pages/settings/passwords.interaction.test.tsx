@@ -149,7 +149,7 @@ describe('PasswordsPanel', () => {
     await renderPanel();
 
     const text = document.body.textContent ?? '';
-    expect(text).toContain('Bots never see these values');
+    expect(text).toContain('Agents never see these values');
     expect(text).toContain('GitHub (work)');
     expect(text).toContain('m•••@example.com');
     expect(text).toContain('Ask every time');
@@ -279,7 +279,7 @@ describe('PasswordsPanel', () => {
     expect(text).toContain('Filled sign-in');
     expect(text).toContain('Always allowed');
     expect(text).toContain('Wrong site');
-    expect(text).toContain('Deleted Bot');
+    expect(text).toContain('Deleted Agent');
     // An archived Bot keeps its name in the log.
     expect(text).toContain('Fern (archived)');
   });

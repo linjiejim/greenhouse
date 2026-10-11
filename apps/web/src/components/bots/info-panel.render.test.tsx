@@ -100,7 +100,7 @@ function memberRows(html: string): Record<string, string> {
 /** Nothing about a conversation is configured any more: no switch, no group name / rules / lead. */
 function expectNothingToConfigure(html: string) {
   expect(html).not.toContain('role="switch"');
-  expect(html).not.toContain('Let Bots ask each other');
+  expect(html).not.toContain('Let Agents ask each other');
   expect(html).not.toMatch(/<(input|textarea|select)\b/);
   expect(html).not.toContain('Group rules');
   expect(html).not.toContain('Group name');

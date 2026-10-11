@@ -338,7 +338,7 @@ const STANDALONE_MODULES: NavModule[] = [
     // Immersive workspace like Chat (no ModulePage header); registered so the
     // breadcrumb, pins and feature gating resolve the page identity here.
     id: 'workspace.bots',
-    label: 'Bots',
+    label: 'Agents',
     icon: Bot,
     path: '#/bots',
     parent: 'standalone',
