@@ -78,7 +78,7 @@ export function resolveTableEvaluation(input?: TableQueryEvaluation): ResolvedTa
 }
 
 /** Milliseconds `timeZone` is ahead of UTC at `instant`. */
-function zoneOffsetMs(instant: number, timeZone: string): number {
+export function zoneOffsetMs(instant: number, timeZone: string): number {
   if (timeZone === 'UTC') return 0;
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
