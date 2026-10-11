@@ -5,12 +5,14 @@
  * state below, and nothing is written before the user presses Import.
  *
  * The import itself is a loop of short commit calls (`commitTableImportAll`);
- * the dialog cannot be closed while it runs.
+ * the dialog cannot be closed while it runs. A commit that fails part-way
+ * returns to the check step, and pressing Import again resumes it (the server
+ * keeps the plan of the first call).
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { TableImportProgress, TableImportValidation } from '@greenhouse/types/tables';
-import { Button, Dialog, Spinner } from '../../../components/ui';
+import { Button, Dialog } from '../../../components/ui';
 import { FormActions, FormError } from '../../../components/form';
 import {
   commitTableImportAll,
@@ -21,7 +23,7 @@ import {
   type TableImportPreview,
   type TableImportRequest,
 } from '../../../lib/api/tables';
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Upload } from '../../../lib/icons';
+import { FileSpreadsheet } from '../../../lib/icons';
 import { useT } from '../../../lib/i18n';
 import { ImportMappingStep } from './mapping-step';
 import {
@@ -31,11 +33,13 @@ import {
   type ColumnDestination,
   type MappingProblem,
 } from './mapping-model';
+import { ImportCheckSummary, ImportProgressView, ImportResultView } from './result-steps';
+import { ImportUploadStep } from './upload-step';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const ACCEPT = '.csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 type Step = 'upload' | 'mapping' | 'check' | 'importing' | 'done';
+const STEP_ORDER: readonly Step[] = ['upload', 'mapping', 'check', 'importing'];
 
 interface TablesImportWizardProps {
   open: boolean;
@@ -56,32 +60,10 @@ function browserTimeZone(): string {
   }
 }
 
-function FailureList({ failures }: { failures: Array<{ row: number; errors: string[] }> }) {
-  const t = useT();
-  if (failures.length === 0) return null;
-  return (
-    <ul
-      className="max-h-72 divide-y divide-edge overflow-y-auto rounded-lg border border-edge"
-      data-testid="tables-import-failures"
-    >
-      {failures.map((failure) => (
-        <li key={failure.row} className="flex gap-3 px-3 py-2 text-xs">
-          <span className="w-20 flex-shrink-0 font-medium text-fg-secondary">
-            {t('tables.imports.rowLabel', { row: failure.row })}
-          </span>
-          <span className="min-w-0 text-fg-muted">{failure.errors.join(' · ')}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 export function TablesImportWizard({ open, table, fields, canBuild, onClose, onImported }: TablesImportWizardProps) {
   const t = useT();
   const timeZone = useMemo(browserTimeZone, []);
-  const inputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<Step>('upload');
-  const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<TableImportPreview | null>(null);
@@ -130,6 +112,8 @@ export function TablesImportWizard({ open, table, fields, canBuild, onClose, onI
       const next = await uploadTableImport(table.id, file);
       setPreview(next);
       setDestinations(initialDestinations(next.columns, canBuild));
+      setHasHeader(true);
+      setCreateOptions(false);
       setStep('mapping');
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : t('tables.imports.uploadFailed'));
@@ -157,8 +141,7 @@ export function TablesImportWizard({ open, table, fields, canBuild, onClose, onI
     setStep('importing');
     setError('');
     try {
-      const final = await commitTableImportAll(table.id, preview.importId, request(), setProgress);
-      setProgress(final);
+      setProgress(await commitTableImportAll(table.id, preview.importId, request(), setProgress));
       setStep('done');
       onImported();
     } catch (commitError) {
@@ -167,17 +150,14 @@ export function TablesImportWizard({ open, table, fields, canBuild, onClose, onI
     }
   };
 
-  const steps: Array<{ key: Step; label: string }> = [
-    { key: 'upload', label: t('tables.imports.steps.upload') },
-    { key: 'mapping', label: t('tables.imports.steps.mapping') },
-    { key: 'check', label: t('tables.imports.steps.check') },
-    { key: 'importing', label: t('tables.imports.steps.import') },
-  ];
-  const stepIndex = Math.min(
-    steps.findIndex((entry) => entry.key === step),
-    3,
-  );
-  const currentStep = steps[step === 'done' ? 3 : stepIndex]!;
+  const stepLabels: Record<Step, string> = {
+    upload: t('tables.imports.steps.upload'),
+    mapping: t('tables.imports.steps.mapping'),
+    check: t('tables.imports.steps.check'),
+    importing: t('tables.imports.steps.import'),
+    done: t('tables.imports.steps.import'),
+  };
+  const position = step === 'done' ? STEP_ORDER.length : STEP_ORDER.indexOf(step) + 1;
 
   return (
     <Dialog
@@ -190,58 +170,10 @@ export function TablesImportWizard({ open, table, fields, canBuild, onClose, onI
     >
       <div className="space-y-4" data-testid="tables-import-dialog">
         <div className="text-xs text-fg-faint">
-          {t('tables.imports.stepLabel', {
-            index: (step === 'done' ? 3 : stepIndex) + 1,
-            count: steps.length,
-            name: currentStep.label,
-          })}
+          {t('tables.imports.stepLabel', { index: position, count: STEP_ORDER.length, name: stepLabels[step] })}
         </div>
 
-        {step === 'upload' && (
-          <div
-            role="button"
-            tabIndex={0}
-            data-testid="tables-import-dropzone"
-            onClick={() => inputRef.current?.click()}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') inputRef.current?.click();
-            }}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDragging(false);
-              void readFile(event.dataTransfer.files[0]);
-            }}
-            className={`cursor-pointer rounded-lg border border-dashed px-4 py-12 text-center transition-colors ${
-              dragging ? 'border-primary-500 bg-primary-subtle' : 'border-edge-strong hover:bg-surface-muted'
-            }`}
-          >
-            {busy ? (
-              <Spinner className="mx-auto h-5 w-5 text-fg-faint" />
-            ) : (
-              <Upload size={20} className="mx-auto text-fg-faint" />
-            )}
-            <div className="mt-2 text-sm text-fg-secondary">
-              {busy ? t('tables.imports.reading') : t('tables.imports.dropHint')}
-            </div>
-            <div className="mt-0.5 text-xs text-fg-faint">{t('tables.imports.limits')}</div>
-            <input
-              ref={inputRef}
-              type="file"
-              accept={ACCEPT}
-              className="hidden"
-              data-testid="tables-import-file"
-              onChange={(event) => {
-                void readFile(event.target.files?.[0]);
-                event.target.value = '';
-              }}
-            />
-          </div>
-        )}
+        {step === 'upload' && <ImportUploadStep busy={busy} onFile={(file) => void readFile(file)} />}
 
         {preview && step !== 'upload' && (
           <div className="flex items-center gap-2 text-sm text-fg-secondary">
@@ -270,95 +202,14 @@ export function TablesImportWizard({ open, table, fields, canBuild, onClose, onI
             onCreateOptionsChange={setCreateOptions}
           />
         )}
-
-        {step === 'check' && validation && (
-          <div className="space-y-3" data-testid="tables-import-check">
-            {validation.missingRequired.length > 0 ? (
-              <div className="flex items-start gap-2 rounded-md border border-warning bg-warning-subtle px-3 py-2 text-sm text-warning">
-                <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-                <span>{t('tables.imports.missingRequired', { names: validation.missingRequired.join(', ') })}</span>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-                <span className="font-medium text-fg">
-                  {t('tables.imports.readyRows', { count: validation.validRows })}
-                </span>
-                {validation.failedCount > 0 ? (
-                  <span className="text-warning">
-                    {t('tables.imports.failingRows', { count: validation.failedCount })}
-                  </span>
-                ) : (
-                  <span className="text-success">{t('tables.imports.allReady')}</span>
-                )}
-              </div>
-            )}
-            {validation.failedCount > validation.failed.length && (
-              <p className="text-xs text-fg-faint">
-                {t('tables.imports.firstFailures', { shown: validation.failed.length, count: validation.failedCount })}
-              </p>
-            )}
-            <FailureList failures={validation.failed} />
-          </div>
-        )}
-
+        {step === 'check' && validation && <ImportCheckSummary validation={validation} />}
         {step === 'importing' && (
-          <div className="space-y-2 py-6" data-testid="tables-import-progress">
-            <div className="text-sm text-fg-secondary">
-              {t('tables.imports.importing', {
-                done: progress?.processedRows ?? 0,
-                total: progress?.totalRows ?? validation?.totalRows ?? 0,
-              })}
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-surface-muted">
-              <div
-                className="h-full rounded-full bg-primary-500 transition-[width]"
-                style={{
-                  width: `${progress && progress.totalRows > 0 ? Math.round((progress.processedRows / progress.totalRows) * 100) : 0}%`,
-                }}
-              />
-            </div>
-            <p className="text-xs text-fg-faint">{t('tables.imports.importingHint')}</p>
-          </div>
+          <ImportProgressView
+            processed={progress?.processedRows ?? 0}
+            total={progress?.totalRows ?? validation?.totalRows ?? 0}
+          />
         )}
-
-        {step === 'done' && progress && (
-          <div className="space-y-3" data-testid="tables-import-result">
-            {progress.status === 'failed' ? (
-              <div className="flex items-start gap-2 rounded-md border border-danger bg-danger-subtle px-3 py-2 text-sm text-danger">
-                <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-                <span>{t('tables.imports.importFailed', { error: progress.error ?? '' })}</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-sm font-medium text-fg">
-                <CheckCircle2 size={16} className="text-success" />
-                {t('tables.imports.doneTitle')}
-              </div>
-            )}
-            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-fg-secondary">
-              <span>{t('tables.imports.created', { count: progress.result.created })}</span>
-              {(progress.result.failedCount ?? progress.result.failed.length) > 0 && (
-                <span className="text-warning">
-                  {t('tables.imports.failed', { count: progress.result.failedCount ?? progress.result.failed.length })}
-                </span>
-              )}
-              {progress.result.createdFieldIds.length > 0 && (
-                <span>{t('tables.imports.newFields', { count: progress.result.createdFieldIds.length })}</span>
-              )}
-            </div>
-            {progress.result.failed.length === 0 && progress.status !== 'failed' && (
-              <p className="text-xs text-fg-faint">{t('tables.imports.noFailures')}</p>
-            )}
-            {(progress.result.failedCount ?? 0) > progress.result.failed.length && (
-              <p className="text-xs text-fg-faint">
-                {t('tables.imports.firstFailures', {
-                  shown: progress.result.failed.length,
-                  count: progress.result.failedCount ?? 0,
-                })}
-              </p>
-            )}
-            <FailureList failures={progress.result.failed} />
-          </div>
-        )}
+        {step === 'done' && progress && <ImportResultView progress={progress} />}
 
         {step === 'mapping' && problems.length > 0 && <FormError>{problemText(problems[0]!)}</FormError>}
         {error && <FormError>{error}</FormError>}

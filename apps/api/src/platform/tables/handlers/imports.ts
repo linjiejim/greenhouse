@@ -22,26 +22,19 @@
 
 import { effectiveUserId } from '@greenhouse/platform-kernel';
 import {
-  TABLE_IMPORT_CHUNK_ROWS,
   TABLE_IMPORT_MAX_FAILURES,
   TABLE_IMPORT_MAX_LIVE_PER_USER,
   tableImportDataRows,
-  tableImportError,
-  tableImportPlan,
-  tableImportResult,
   withImportedOptions,
   type ImportField,
-  type TableFieldRow,
-  type TableImportClaim,
   type TableImportPlan,
   type TableImportRow,
 } from '@greenhouse/db';
-import type { TableImportPreview, TableImportProgress, TableImportValidation } from '@greenhouse/types/tables';
+import type { TableImportPreview, TableImportValidation } from '@greenhouse/types/tables';
 import { tableRoleAtLeast } from '@greenhouse/types/table-access';
 import { getPlatformRuntime } from '../../runtime.js';
-import type { TablesActionId } from '../../manifests/tables.js';
 import { requireTableData, type TableDataAccess } from '../access.js';
-import { tablesResource, type TablesResourceIds } from '../audit.js';
+import { importProgressView, runImportCommit } from '../import-commit.js';
 import { ImportFileError, parseImportFile } from '../import-file.js';
 import {
   columnSelectLabels,
@@ -55,21 +48,16 @@ import {
   planFromRequest,
   previewColumns,
 } from '../import-plan.js';
-import { publishRecordsChanged } from '../realtime.js';
 import {
   fail,
   ok,
   payloadOf,
   positiveInt,
   stringValue,
-  writeMeta,
   type Handler,
   type HandlerRequest,
   type TablesHandlers,
 } from './shared.js';
-
-/** How long one commit call keeps writing before it hands back progress. */
-const COMMIT_BUDGET_MS = 5_000;
 
 type Context = Parameters<Handler>[1];
 
@@ -78,16 +66,6 @@ async function canBuildStructure(request: HandlerRequest, data: TableDataAccess)
   const level = data.access.level;
   if (level === 'none' || level === 'custom' || !tableRoleAtLeast(level, 'builder')) return false;
   return (await getPlatformRuntime().authorize(request.actor, 'tables.structure.update')).allowed;
-}
-
-function dispatchAs(request: HandlerRequest, actionId: TablesActionId, payload: unknown, ids: TablesResourceIds) {
-  return getPlatformRuntime().dispatch({
-    actor: request.actor,
-    appId: 'tables',
-    actionId,
-    payload,
-    resource: tablesResource(actionId, ids),
-  });
 }
 
 function isExpired(row: Pick<TableImportRow, 'expires_at'>): boolean {
@@ -102,20 +80,6 @@ function mappingFailure(error: unknown) {
   return error.forbidden
     ? fail('FORBIDDEN', error.message, { reason: 'import_forbidden' })
     : fail('INVALID_INPUT', error.message);
-}
-
-function progressView(row: TableImportRow, plan = tableImportPlan(row)): TableImportProgress {
-  const finished = row.status === 'committed' || row.status === 'failed';
-  const totalRows = finished ? row.committed_rows : tableImportDataRows(row, plan?.hasHeader ?? true).length;
-  const error = tableImportError(row);
-  return {
-    importId: row.id,
-    status: row.status === 'previewed' ? 'committing' : row.status,
-    totalRows,
-    processedRows: row.committed_rows,
-    result: tableImportResult(row),
-    ...(error ? { error } : {}),
-  };
 }
 
 /** Load the caller's own import on this table, or answer 404. */
@@ -286,120 +250,6 @@ const previewImport: Handler = async (request, context) => {
 
 // ─── commitImport ─────────────────────────────────────────
 
-/** Create the plan's new fields (once — a resume finds them by name) and add missing options. */
-async function prepareStructure(
-  request: HandlerRequest,
-  context: Context,
-  claim: Extract<TableImportClaim, { ok: true }>,
-  rows: string[][],
-): Promise<string | undefined> {
-  const { db } = context;
-  const tableId = claim.import.table_id;
-  const plan = claim.plan;
-  const createdFieldIds = [...tableImportResult(claim.import).createdFieldIds];
-  for (const column of plan.columns) {
-    if (!column.create || column.fieldId) continue;
-    const create = column.create;
-    const existing = (await db.tables.listFields(tableId)).find((field) => field.name === create.name);
-    let fieldId = existing && existing.type === create.type ? existing.id : undefined;
-    if (!fieldId) {
-      const result = await dispatchAs(
-        request,
-        'createField',
-        { tableId, name: create.name, type: create.type, config: createdFieldConfig(create, rows, column.column) },
-        { tableId },
-      );
-      if (!result.ok) return `Could not create the field "${create.name}": ${result.message}`;
-      fieldId = (result.data as { field: TableFieldRow }).field.id;
-    }
-    column.fieldId = fieldId;
-    if (!createdFieldIds.includes(fieldId)) createdFieldIds.push(fieldId);
-    await db.tables.saveImportPlan(claim.import.id, plan, createdFieldIds);
-  }
-
-  if (!plan.createOptions) return undefined;
-  const fields = new Map((await db.tables.listFields(tableId)).map((field) => [field.id, field]));
-  for (const column of plan.columns) {
-    const row = column.create ? undefined : fields.get(column.fieldId ?? 0);
-    if (!row || (row.type !== 'single_select' && row.type !== 'multi_select')) continue;
-    const field = importField(row);
-    // Recomputed on every call, so a resumed commit adds nothing twice.
-    const labels = columnSelectLabels(field, rows, column.column);
-    if (labels.length === 0) continue;
-    const options = withImportedOptions(field.config.options ?? [], labels);
-    if (options.length === (field.config.options ?? []).length) continue;
-    const result = await dispatchAs(
-      request,
-      'updateField',
-      { fieldId: row.id, config: { ...field.config, options } },
-      { fieldId: row.id },
-    );
-    if (!result.ok) return `Could not add options to "${row.name}": ${result.message}`;
-  }
-  return undefined;
-}
-
-async function runCommit(
-  request: HandlerRequest,
-  context: Context,
-  data: TableDataAccess,
-  claim: Extract<TableImportClaim, { ok: true }>,
-): Promise<TableImportProgress> {
-  const { db } = context;
-  const importId = claim.import.id;
-  const tableId = claim.import.table_id;
-  const plan = claim.plan;
-  const rows = tableImportDataRows(claim.import, plan.hasHeader);
-
-  const structureError = await prepareStructure(request, context, claim, rows);
-  if (structureError) {
-    const failed = await db.tables.failImport(importId, structureError);
-    return progressView(failed ?? claim.import, plan);
-  }
-  const fields = new Map((await db.tables.listFields(tableId)).map((field) => [field.id, field]));
-  const columns: Array<{ column: number; field: ImportField }> = [];
-  for (const column of plan.columns) {
-    const field = fields.get(column.fieldId ?? 0);
-    if (!field) {
-      const failed = await db.tables.failImport(importId, 'A mapped field was removed while the import ran');
-      return progressView(failed ?? claim.import, plan);
-    }
-    columns.push({ column: column.column, field: importField(field) });
-  }
-  const contexts = await loadColumnContexts({ request, context, columns, rows, timeZone: plan.timeZone });
-  const meta = writeMeta(request.actor, { actorKind: 'import', source: { importId }, enqueueAutomations: false });
-
-  const deadline = Date.now() + COMMIT_BUDGET_MS;
-  let committed = claim.import.committed_rows;
-  let result = tableImportResult(claim.import);
-  while (committed < rows.length && Date.now() < deadline) {
-    const from = committed;
-    const items = rows
-      .slice(from, from + TABLE_IMPORT_CHUNK_ROWS)
-      .map((row, offset) => importRowItem(row, from + offset, contexts, plan.hasHeader));
-    const chunk = await db.tables.commitImportChunk({ importId, tableId, fromRow: from, items }, data.scope, meta);
-    if (!chunk.ok) {
-      // Another commit moved it on; report where it stands and leave its lease alone.
-      const current = await db.tables.getImport(importId);
-      return progressView(current ?? claim.import, plan);
-    }
-    committed = chunk.committedRows;
-    result = chunk.result;
-    await publishRecordsChanged(
-      context,
-      data.base,
-      tableId,
-      chunk.created.map((record) => record.id),
-    );
-  }
-  if (committed >= rows.length) {
-    const done = await db.tables.completeImport(importId);
-    if (done) return progressView(done, plan);
-  }
-  await db.tables.releaseImportLease(importId);
-  return { importId, status: 'committing', totalRows: rows.length, processedRows: committed, result };
-}
-
 const commitImport: Handler = async (request, context) => {
   const payload = payloadOf(request);
   const tableId = positiveInt(payload, 'tableId');
@@ -409,7 +259,7 @@ const commitImport: Handler = async (request, context) => {
   if (!data) return fail('NOT_FOUND', 'Table not found');
   const staged = await ownImport(request, context, tableId, importId);
   if (!staged) return fail('NOT_FOUND', 'Import not found');
-  if (staged.status === 'committed' || staged.status === 'failed') return ok(progressView(staged));
+  if (staged.status === 'committed' || staged.status === 'failed') return ok(importProgressView(staged));
 
   // Only a fresh import is planned from the request; a started one keeps its stored plan.
   let plan: TableImportPlan | undefined;
@@ -447,10 +297,10 @@ const commitImport: Handler = async (request, context) => {
     if (claim.reason === 'busy') {
       return fail('CONFLICT', 'This import is already running', { reason: 'import_in_progress' });
     }
-    return ok(progressView(claim.import!));
+    return ok(importProgressView(claim.import!));
   }
   try {
-    return ok(await runCommit(request, context, data, claim));
+    return ok(await runImportCommit(request, context, data, claim));
   } catch (error) {
     // Free the lease so a retry resumes now instead of after it expires.
     await context.db.tables.releaseImportLease(importId);
