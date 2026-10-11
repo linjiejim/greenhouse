@@ -506,7 +506,8 @@ function FormProperties({ card, context }: { card: Extract<AppCard, { kind: 'for
           fields={writable}
           value={card.fieldIds}
           // A form shows at least one field (the server refuses an empty one).
-          onChange={(fieldIds) => fieldIds.length > 0 && onChange({ ...card, fieldIds })}
+          minimum={1}
+          onChange={(fieldIds) => onChange({ ...card, fieldIds })}
           testId="app-form-fields"
         />
       </PanelSection>

@@ -83,7 +83,6 @@ export function PageList({
             {problems > 0 && <Tag tone="danger">{problems}</Tag>}
           </button>
           <IconButton
-            size="compact"
             label={t('apps.builder.pages.actionsFor', { title: page.title })}
             onClick={(event) =>
               openMenu(event, [

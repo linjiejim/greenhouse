@@ -201,7 +201,6 @@ export function PagesTab({
               </h3>
               {card && (
                 <IconButton
-                  size="compact"
                   label={t('apps.builder.props.close')}
                   onClick={() => onSelect({ pageId: page.id, cardId: null })}
                 >

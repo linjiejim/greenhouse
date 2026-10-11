@@ -266,7 +266,6 @@ export function AudiencesTab({
                       ))}
                     </Select>
                     <IconButton
-                      size="compact"
                       variant="destructive"
                       label={t('apps.builder.audiences.remove', { name })}
                       onClick={() => {

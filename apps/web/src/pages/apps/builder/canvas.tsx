@@ -158,7 +158,6 @@ export function PageCanvas({
           actions={
             <span className="flex items-center" onClick={(event) => event.stopPropagation()}>
               <IconButton
-                size="compact"
                 label={t('apps.builder.canvas.cardActions', { title: titleOf(card) })}
                 onClick={(event) =>
                   openMenu(event, [

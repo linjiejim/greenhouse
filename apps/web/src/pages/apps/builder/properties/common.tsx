@@ -159,6 +159,7 @@ export function FieldListPicker({
   onChange,
   systemFields,
   onSystemFieldsChange,
+  minimum = 0,
   testId,
 }: {
   label: string;
@@ -169,6 +170,8 @@ export function FieldListPicker({
   /** Record info columns (created by, …) when the card can show them. */
   systemFields?: readonly TableSystemField[];
   onSystemFieldsChange?: (next: TableSystemField[]) => void;
+  /** Fields that must stay chosen (a form shows at least one). */
+  minimum?: number;
   testId?: string;
 }) {
   const t = useT();
@@ -195,7 +198,6 @@ export function FieldListPicker({
                 {field.name}
               </span>
               <IconButton
-                size="compact"
                 label={t('apps.builder.props.moveFieldUp', { name: field.name })}
                 disabled={index === 0}
                 onClick={() => move(index, -1)}
@@ -203,7 +205,6 @@ export function FieldListPicker({
                 <ArrowUp size={12} />
               </IconButton>
               <IconButton
-                size="compact"
                 label={t('apps.builder.props.moveFieldDown', { name: field.name })}
                 disabled={index === chosen.length - 1}
                 onClick={() => move(index, 1)}
@@ -211,9 +212,9 @@ export function FieldListPicker({
                 <ArrowDown size={12} />
               </IconButton>
               <IconButton
-                size="compact"
                 variant="destructive"
                 label={t('apps.builder.props.removeField', { name: field.name })}
+                disabled={chosen.length <= minimum}
                 onClick={() => onChange(chosen.filter((entry) => entry !== id))}
               >
                 <X size={12} />

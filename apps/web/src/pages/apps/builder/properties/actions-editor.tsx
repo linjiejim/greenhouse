@@ -139,7 +139,6 @@ function ActionEditor({
         </div>
         <div className="mt-6 flex flex-shrink-0">
           <IconButton
-            size="compact"
             label={t('apps.builder.actions.moveUp', { label: action.label })}
             disabled={first}
             onClick={() => onMove(-1)}
@@ -147,7 +146,6 @@ function ActionEditor({
             <ArrowUp size={12} />
           </IconButton>
           <IconButton
-            size="compact"
             label={t('apps.builder.actions.moveDown', { label: action.label })}
             disabled={last}
             onClick={() => onMove(1)}
@@ -155,7 +153,6 @@ function ActionEditor({
             <ArrowDown size={12} />
           </IconButton>
           <IconButton
-            size="compact"
             variant="destructive"
             label={t('apps.builder.actions.remove', { label: action.label })}
             onClick={onRemove}

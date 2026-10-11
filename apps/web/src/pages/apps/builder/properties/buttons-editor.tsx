@@ -113,7 +113,6 @@ export function ButtonsEditor({
                 </div>
                 <div className="mt-6 flex flex-shrink-0">
                   <IconButton
-                    size="compact"
                     label={t('apps.builder.buttons.moveUp', { label: button.label })}
                     disabled={index === 0}
                     onClick={() => move(index, -1)}
@@ -121,7 +120,6 @@ export function ButtonsEditor({
                     <ArrowUp size={12} />
                   </IconButton>
                   <IconButton
-                    size="compact"
                     label={t('apps.builder.buttons.moveDown', { label: button.label })}
                     disabled={index === buttons.length - 1}
                     onClick={() => move(index, 1)}
@@ -129,7 +127,6 @@ export function ButtonsEditor({
                     <ArrowDown size={12} />
                   </IconButton>
                   <IconButton
-                    size="compact"
                     variant="destructive"
                     label={t('apps.builder.buttons.remove', { label: button.label })}
                     disabled={buttons.length <= 1}

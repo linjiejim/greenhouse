@@ -136,7 +136,6 @@ export function PageRefsEditor({
               ))}
             </Select>
             <IconButton
-              size="compact"
               variant="destructive"
               label={t('apps.builder.props.pageRefRemove')}
               onClick={() => onChange(clauses.filter((_, at) => at !== index))}
