@@ -38,13 +38,13 @@ type Context = Parameters<Handler>[1];
 const RECORD_NOT_FOUND = 'Record not found';
 const COMMENT_NOT_FOUND = 'Comment not found';
 
-/** The kernel ceiling for comments: the `comment` entity scope on this Base and the comment capability. */
-async function mayComment(request: HandlerRequest, context: Context, data: TableDataAccess): Promise<boolean> {
-  const [grant, capability] = await Promise.all([
-    requireBase(context, request.actor, data.base.id, 'comment', 'viewer', { allowCustom: true }),
-    getPlatformRuntime().authorize(request.actor, 'tables.data.comment'),
-  ]);
-  return Boolean(grant) && capability.allowed;
+/**
+ * The kernel ceiling on comments: the `comment` entity scope on this Base.
+ * Without it the caller neither sees nor writes comments. (The comment
+ * actions' own capability is checked by dispatch before any handler runs.)
+ */
+async function commentsAllowed(request: HandlerRequest, context: Context, data: TableDataAccess): Promise<boolean> {
+  return Boolean(await requireBase(context, request.actor, data.base.id, 'comment', 'viewer', { allowCustom: true }));
 }
 
 /** Base builder+ may remove anyone's comment; a custom role never moderates. */
@@ -77,11 +77,16 @@ const listRecordActivity: Handler = async (request, context) => {
   if (!tableId || !recordId) return fail('INVALID_INPUT', 'tableId and recordId are required');
   const data = await requireTableData(request, context, tableId, 'read', { allowMaskedValues: true });
   if (!data) return fail('NOT_FOUND', RECORD_NOT_FOUND);
-  const canComment = await mayComment(request, context, data);
+  const [visible, capability] = await Promise.all([
+    commentsAllowed(request, context, data),
+    // Reading needs only `tables.data.read`; posting also needs the comment capability.
+    getPlatformRuntime().authorize(request.actor, 'tables.data.comment'),
+  ]);
+  const canComment = visible && capability.allowed;
   const page = await context.db.tables.listRecordActivity(tableId, recordId, data.scope, data.readScope, {
     cursor: stringValue(payload, 'cursor') || null,
     limit: positiveInt(payload, 'limit'),
-    includeComments: canComment,
+    includeComments: visible,
   });
   if (!page) return fail('NOT_FOUND', RECORD_NOT_FOUND);
   const viewer: TableRecordActivityViewer = {
@@ -100,7 +105,7 @@ const createComment: Handler = async (request, context) => {
   const data = await requireTableData(request, context, tableId, 'read', { allowMaskedValues: true });
   if (!data) return fail('NOT_FOUND', RECORD_NOT_FOUND);
   if (!(await context.db.tables.getRecord(tableId, recordId, data.scope))) return fail('NOT_FOUND', RECORD_NOT_FOUND);
-  if (!(await mayComment(request, context, data))) return fail('FORBIDDEN', 'Comments are not available here');
+  if (!(await commentsAllowed(request, context, data))) return fail('FORBIDDEN', 'Comments are not available here');
 
   const authorId = effectiveUserId(request.actor);
   const body = bodyOf(payload);
@@ -128,7 +133,7 @@ const updateComment: Handler = async (request, context) => {
   if (!reached) return fail('NOT_FOUND', COMMENT_NOT_FOUND);
   const { comment, data } = reached;
   const actorId = effectiveUserId(request.actor);
-  if (!(await mayComment(request, context, data))) return fail('FORBIDDEN', 'Comments are not available here');
+  if (!(await commentsAllowed(request, context, data))) return fail('FORBIDDEN', 'Comments are not available here');
   if (comment.author_id !== actorId) return fail('FORBIDDEN', 'Only the author can edit a comment');
 
   const body = bodyOf(payload);
@@ -158,7 +163,7 @@ const deleteComment: Handler = async (request, context) => {
   const reached = await reachableComment(request, context, commentId);
   if (!reached) return fail('NOT_FOUND', COMMENT_NOT_FOUND);
   const { comment, data } = reached;
-  if (!(await mayComment(request, context, data))) return fail('FORBIDDEN', 'Comments are not available here');
+  if (!(await commentsAllowed(request, context, data))) return fail('FORBIDDEN', 'Comments are not available here');
   if (comment.author_id !== effectiveUserId(request.actor) && !moderates(data)) {
     return fail('FORBIDDEN', 'Only the author or a Base builder can delete a comment');
   }

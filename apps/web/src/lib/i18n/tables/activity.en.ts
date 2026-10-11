@@ -17,7 +17,6 @@ export const tablesActivityEn = {
     updated: '{actor} changed this record',
     deleted: '{actor} deleted this record',
     restored: '{actor} restored this record',
-    noVisibleChanges: 'No fields you can see were set.',
     viaForm: 'via form #{id}',
     viaImport: 'via an import',
     viaRule: 'by rule #{id}',

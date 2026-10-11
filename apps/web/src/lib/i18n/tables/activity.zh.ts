@@ -20,7 +20,6 @@ export const tablesActivityZh: DeepRecord<typeof tablesActivityEn> = {
     updated: '{actor} 修改了这条记录',
     deleted: '{actor} 删除了这条记录',
     restored: '{actor} 恢复了这条记录',
-    noVisibleChanges: '没有你可见的字段被填写。',
     viaForm: '通过表单 #{id}',
     viaImport: '通过导入',
     viaRule: '由规则 #{id}',

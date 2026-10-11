@@ -249,6 +249,21 @@ describe('Tables record activity and comments — API', () => {
     expect((await send(w.app, editor, commentsPath(w), 'POST', { body: 'hi' })).status).toBe(403);
   });
 
+  it('still shows comments to a reader without the comment capability, but offers no composer', async () => {
+    const w = await workspace();
+    await postComment(w, owner, 'visible to every reader');
+    await db.platform.setUserCapabilityOverride({
+      org_id: 'default',
+      user_id: viewer.id,
+      capability: 'tables.data.comment',
+      effect: 'deny',
+      granted_by: owner.id,
+    });
+    const page = await activity(w, viewer);
+    expect(page.viewer).toMatchObject({ canComment: false, canModerate: false });
+    expect(page.items.find((item) => item.kind === 'comment')).toMatchObject({ body: 'visible to every reader' });
+  });
+
   it('notifies mentioned readers only, once per comment and person, with a link to the record', async () => {
     const w = await workspace();
     const body = [
