@@ -49,7 +49,18 @@ export function toProjectionRow(row: MessageRow): ProjectionRow {
     content: withImageHint(row),
     bot_id: row.bot_id ?? null,
     bot_event: parseBotEvent(row.bot_event),
+    ...(row.role === 'user' ? withImages(row) : {}),
   };
+}
+
+function withImages(row: MessageRow): { images?: Array<{ id: string; url: string }> } {
+  const images = safeJsonParse(row.images, []) as Array<{ id?: unknown; url?: unknown }>;
+  const valid = Array.isArray(images)
+    ? images
+        .filter((image) => typeof image?.id === 'string' && typeof image?.url === 'string')
+        .map((image) => ({ id: image.id as string, url: image.url as string }))
+    : [];
+  return valid.length ? { images: valid } : {};
 }
 
 export interface TailRead {

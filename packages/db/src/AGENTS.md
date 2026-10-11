@@ -174,6 +174,7 @@
   `addMember` / `removeMember` 抛 `BotsDomainError('group_closed')`；迁移把群里仍待处理的 `bot_requests` 置 `canceled`
   （`result = {"decision":"group_closed"}`）、`allow_bot_chat` 全置 true（列保留，无人读取）。
 - `bot_requests` 只经 `settleRequest` 从 pending 单次 CAS 结算（双击、两个槽位竞争都只有一个赢家）；`payload` 只放服务端派生的展示/执行数据，**永不放秘密**（安全登录卡的输入值只经过一次请求体，不落库）。
+- **任务会话（`bot_conversations.kind = 'task'`，迁移 `0023_agent_task_chats`，2026-10-12）**：同一张表多一种 kind，`model_id`（会话选的模型，可空）新列；`uq_bot_conversations_owner_bot` 改为 `WHERE kind = 'direct'` 的部分唯一索引（每个 Bot 仍只有一个私聊，任务会话不限）。`createTaskConversation` / `updateTaskConversation`（标题同写 `sessions.title`）；`listConversations` 默认只列 `direct` / `group`，`{ kinds: ['task'] }` 才列任务会话；`sessions.list` / `listSharedWith` 的 `includeAgentChats` 让隐藏的 `bots` channel 里**只有**任务会话回到会话列表（`hiddenChannelsCondition`，私聊与旧群照旧隐藏），`searchByTitle(..., { agentChatsOnly })` 给全局搜索；`listMissedReplies` 覆盖 `direct` 与 `task`。
 - **Bot 私有参考资料夹**（`drive_folders.bot_id`，2026-10-07）：每 Bot 至多一个根文件夹，CHECK 约束要求它是 `scope='kb'` + `visibility='private'` + 有 owner 的个人文件夹；随 Bot 级联删除。读侧只新增**排除**：`KnowledgeListOpts` / `KnowledgeSearchOpts` 的 `excludeFolderIds`（`AND (folder_id IS NULL OR folder_id NOT IN …)`，四个 SQL 变体与 `kbTree` 同步），空数组 = 不排除。排除集由 `apps/api/src/bots/folder.ts` 按身份算，HTTP 路由（主人自己）不传。
 
 ### 邮箱绑定与发信审计

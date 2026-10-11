@@ -34,6 +34,8 @@ export interface ProjectionRow {
   content: string;
   bot_id: string | null;
   bot_event: BotEvent | null;
+  /** A member message's attached images (their IDs are already in `content`); vision models get the pixels. */
+  images?: ReadonlyArray<{ id: string; url: string }>;
 }
 
 export interface ProjectionOptions {
@@ -52,6 +54,8 @@ export interface ProjectionOptions {
 export interface ProjectedMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** Images of the member messages merged into this one (turn.ts inlines them for vision models). */
+  images?: Array<{ id: string; url: string }>;
 }
 
 export interface ProjectionResult {
@@ -115,6 +119,7 @@ interface CleanRow {
   tag: string | null;
   content: string;
   seq: number;
+  images?: ReadonlyArray<{ id: string; url: string }>;
 }
 
 function cleanRow(row: ProjectionRow, opts: ProjectionOptions): CleanRow | null {
@@ -130,6 +135,7 @@ function cleanRow(row: ProjectionRow, opts: ProjectionOptions): CleanRow | null 
       tag: tags.user(opts.nickname),
       content: cleanUser(row.content, opts.locale, row.seq),
       seq: row.seq,
+      ...(row.images?.length ? { images: row.images } : {}),
     };
   }
   const body = visibleTruncate(row.content, opts.locale, row.seq, cleanOther);
@@ -175,8 +181,9 @@ export function projectHistory(rows: readonly ProjectionRow[], opts: ProjectionO
     const last = messages[messages.length - 1];
     if (last && last.role === row.role) {
       last.content = `${last.content}\n\n${content}`;
+      if (row.images?.length) last.images = [...(last.images ?? []), ...row.images];
     } else {
-      messages.push({ role: row.role, content });
+      messages.push({ role: row.role, content, ...(row.images?.length ? { images: [...row.images] } : {}) });
     }
   }
   return {

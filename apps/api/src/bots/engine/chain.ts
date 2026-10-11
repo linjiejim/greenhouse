@@ -546,6 +546,26 @@ async function loadRunContext(args: BotsRunArgs, db: DatabaseProvider): Promise<
   };
 }
 
+/**
+ * Name a task chat from its first member message (spec 20261011-agent-first-class §5a): the same
+ * title model as Chat, recorded on the conversation and its session (the chats list) unless the
+ * member named it meanwhile. Best effort — a failure leaves it untitled for the next run.
+ */
+async function titleTaskChat(db: DatabaseProvider, userId: string, sessionId: string): Promise<void> {
+  try {
+    const rows = await db.sessions.getMessages(sessionId, { limit: 20 });
+    const first = rows.find((row) => row.role === 'user' && row.content.trim());
+    if (!first) return;
+    const title = await botsEngineDeps().generateTitle(first.content, { userId, sessionId });
+    const current = await db.bots.getConversation(userId, sessionId);
+    if (!current || current.kind !== 'task' || current.title) return;
+    await db.bots.updateTaskConversation(userId, sessionId, { title });
+    connectionManager.sendToUser(userId, { type: 'bots:conversation', sessionId });
+  } catch (error) {
+    logger.warn('[bots] task chat title failed', { sessionId, error: toErrorMessage(error) });
+  }
+}
+
 /** The divider line after a compaction goes through the single writer too. */
 function scheduleDigest(sessionId: string, userId: string): void {
   scheduleDigestCheck(sessionId, async (uptoSeq, locale) => {
@@ -582,6 +602,8 @@ export async function runBotsRun(args: BotsRunArgs): Promise<BotsRunOutcome> {
   let status: 'completed' | 'error' = 'completed';
   try {
     rc = await loadRunContext(args, db);
+    // A task chat without a title is named from its first member message, alongside the reply.
+    if (rc.conversation.kind === 'task' && !rc.conversation.title) void titleTaskChat(db, userId, sessionId);
     // A retired group chat is read-only history: record what is queued, run nobody.
     let trigger: ChainTrigger | null = args.trigger;
     if (rc.conversation.kind === 'group') {

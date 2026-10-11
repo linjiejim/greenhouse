@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe('interactive tool face', () => {
-  it('drops dispatch tools, spawn_session and the special Bot ids from the member face', () => {
+  it('keeps the card-only drafts, drops spawn_session and the special Bot ids from the member face', () => {
     const ids = interactiveMemberToolIds([
       'knowledge_query',
       'knowledge_mutation',
@@ -48,7 +48,8 @@ describe('interactive tool face', () => {
       ...DISPATCH_TOOL_IDS,
       ...BOT_TOOL_IDS,
     ]);
-    expect(ids).toEqual(['knowledge_query', 'knowledge_mutation', 'memory']);
+    // Drafts only run when the member presses their card (spec 20261011-agent-first-class D24).
+    expect(ids).toEqual(['knowledge_query', 'knowledge_mutation', 'memory', ...DISPATCH_TOOL_IDS]);
   });
 
   it('gates every Greenhouse writer behind an approval', () => {

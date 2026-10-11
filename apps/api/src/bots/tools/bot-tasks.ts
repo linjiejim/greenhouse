@@ -29,6 +29,17 @@ const tasksSchema = z.object({
       `start: a self-contained brief (≤${BOT_TASK_BRIEF_MAX} chars) — the task starts with only this approved brief; reading conversation notes/history later disables all further browser actions: say what to find, where to look, and what the report should contain.`,
     ),
   run_id: z.string().max(80).optional().describe('cancel: the task run id from list.'),
+  mode: z
+    .enum(['background', 'chat'])
+    .optional()
+    .describe(
+      'start: background (default) = a read-only task that reports back here; chat = open a separate chat with its own context that the member can keep talking in (for work that needs back-and-forth or changes things).',
+    ),
+  agent_id: z
+    .string()
+    .max(80)
+    .optional()
+    .describe('start, mode chat: which of the member’s Agents answers in the new chat (default: you).'),
 });
 type TasksInput = z.infer<typeof tasksSchema>;
 
@@ -44,13 +55,20 @@ export function createBotTasksTool(ctx: BotTurnContext) {
             const brief = input.brief?.trim();
             if (!title || !brief)
               return { action: 'start', status: 'refused', reason: 'title and brief are required.' };
-            const payload: BotTaskStartPayload = { title, brief };
+            const chat = input.mode === 'chat';
+            const payload: BotTaskStartPayload = {
+              title,
+              brief,
+              ...(chat ? { mode: 'chat' as const, ...(input.agent_id ? { agent_id: input.agent_id } : {}) } : {}),
+            };
             const request = await ctx.createRequest('task_start', payload);
             return {
               action: 'start',
               status: 'proposed',
               request_id: request.id,
-              note: 'The member sees a task card and starts it with one click. Tell them in one line what the task will do; it reports back here when done. You can keep helping meanwhile.',
+              note: chat
+                ? 'The member sees a card and opens the new chat with one click; the brief becomes its first message and the work continues there, not here. Tell them in one line what the chat is for.'
+                : 'The member sees a task card and starts it with one click. Tell them in one line what the task will do; it reports back here when done. You can keep helping meanwhile.',
             };
           }
           case 'list': {

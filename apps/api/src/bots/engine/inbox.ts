@@ -50,6 +50,11 @@ let sweeping = false;
 const backoff = new Map<string, { failures: number; retryAt: number }>();
 
 /** Boot wiring: the static tool registry server-initiated chains need. */
+/** The registry the engine was started with (routes that start a run outside `POST /api/chat`). */
+export function engineToolRegistry(): ToolRegistry | null {
+  return toolRegistry;
+}
+
 export function setInboxToolRegistry(registry: ToolRegistry | null): void {
   toolRegistry = registry;
 }

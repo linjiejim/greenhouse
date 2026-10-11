@@ -383,6 +383,14 @@ export const copy = {
   taskStarted: (l: BotsLocale, bot: string, title: string) =>
     l === 'zh' ? `${bot} 开始后台任务「${title}」` : `${bot} started “${title}” in the background`,
 
+  /** A `task_start` card in `chat` mode, approved: the line where it was proposed. */
+  chatOpened: (l: BotsLocale, bot: string, title: string) =>
+    l === 'zh' ? `${bot} 在新会话里开始「${title}」` : `${bot} started “${title}” in a new chat`,
+
+  /** The first line of that new chat. */
+  chatOrigin: (l: BotsLocale, proposer: string) =>
+    l === 'zh' ? `${proposer} 从另一段对话开了这个会话` : `${proposer} opened this chat from another conversation`,
+
   taskUnavailable: (l: BotsLocale, title: string) =>
     l === 'zh'
       ? `这个部署已关闭后台任务，「${title}」没有开始。`
@@ -468,8 +476,7 @@ export const copy = {
 
   declined: (l: BotsLocale, kind: BotRequestKind, subject: string) => {
     if (kind === 'bot_create') return l === 'zh' ? `你没有新建「${subject}」` : `You declined to create “${subject}”`;
-    if (kind === 'task_start')
-      return l === 'zh' ? `你没有开始后台任务「${subject}」` : `You declined the background task “${subject}”`;
+    if (kind === 'task_start') return l === 'zh' ? `你没有开始「${subject}」` : `You declined “${subject}”`;
     if (kind === 'instructions_update')
       return l === 'zh' ? `你没有采纳守则修改：${subject}` : `You declined the instructions change: ${subject}`;
     return l === 'zh' ? `你拒绝了：${subject}` : `You declined: ${subject}`;

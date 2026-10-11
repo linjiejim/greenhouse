@@ -285,6 +285,14 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                   409,
                 );
               }
+              // A task chat remembers the composer's model (spec 20261011-agent-first-class D22);
+              // an unknown or retired id is ignored, as on the chat path.
+              if (typeof body.model === 'string' && body.model && isChatModelAllowed(body.model)) {
+                const conversation = await botsDb.bots.getConversation(userId, sessionId);
+                if (conversation?.kind === 'task' && conversation.model_id !== body.model) {
+                  await botsDb.bots.updateTaskConversation(userId, sessionId, { modelId: body.model });
+                }
+              }
               const botsRun = await botsEngine.claimBotsRun(botsDb, sessionId, userId);
               if (!botsRun) {
                 // Busy (here or on another API slot): the running chain reads it

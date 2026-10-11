@@ -5,7 +5,11 @@
  * POST   /api/bots/bootstrap                          — 确保内置主 Bot Sprouty 存在（+ 私聊 + 固定欢迎语）；幂等，每次进入都可调
  * POST   /api/bots                                    — 新建 Bot（模板库模板或自定义；不能建 Sprouty），同时建私聊并写欢迎语
  * GET    /api/bots/conversations                      — 对话列表（按活跃排序，含徽标状态）
- * POST   /api/bots/conversations                      — 恰好 1 个 Bot → 它的私聊（群聊已退役：其他数量 400 groups_retired）
+ * GET    /api/bots/conversations?kind=task            — 任务会话（独立会话）列表；不带 kind 只列私聊与旧群
+ * POST   /api/bots/conversations                      — 恰好 1 个 Bot → 它的私聊（群聊已退役：其他数量 400 groups_retired）；
+ *                                                        {kind:'task', bot_id?, title?, model_id?} → 新任务会话（缺省 Sprouty）
+ * PATCH  /api/bots/conversations/:id                  — 任务会话的模型 / 标题（{model_id?, title?}；私聊 409 not_task_chat）
+ * POST   /api/bots/conversations/:id/rewind           — 任务会话：编辑最后一条成员消息后重跑 / 重新回答（NDJSON 流；有回合 409 busy）
  * GET    /api/bots/conversations/:id                  — 对话详情 + 消息分页（before_seq / limit）+ 本页记忆回执的当前状态
  * POST   /api/bots/conversations/:id/members          — 邀请 Bot 进私聊做客串（旧群聊只读：409 group_closed）
  * DELETE /api/bots/conversations/:id/members/:botId   — 移出客串 Bot（旧群聊只读：409 group_closed）
@@ -38,6 +42,7 @@
  */
 
 import { Hono } from 'hono';
+import { stream as honoStream } from 'hono/streaming';
 import {
   BOTS_REPLY_DEDUPE_PREFIX,
   BotsDomainError,
@@ -71,6 +76,8 @@ import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
 import type { AuthUser } from '../auth/token.js';
 import { chatRunRegistry } from '../chat/runs.js';
+import { streamRunToResponse } from '../chat/turn.js';
+import { admitRichBlocks } from '@greenhouse/types/rich-output';
 import { isChatModelAllowed } from '../config/models.js';
 import { connectionManager } from '../ws/connection-manager.js';
 import { getComputerRuntime } from './computer/index.js';
@@ -78,7 +85,7 @@ import { pushAttention, resolveApprovalWaiter } from './engine/approvals.js';
 import { botsLocale, copy, type BotsLocale } from './engine/copy.js';
 import { compactConversation, digestView, DIGEST_TRIGGER_TOKENS, effectiveDigestUpto } from './engine/digest.js';
 import { writeGreeting } from './engine/greeting.js';
-import { deliverToConversation } from './engine/inbox.js';
+import { deliverToConversation, engineToolRegistry } from './engine/inbox.js';
 import { nextFreeName, validateBotInstructions, validateBotName, validateBotRole } from './engine/naming.js';
 import { decideBotRequest, RequestDecisionError } from './engine/requests.js';
 import {
@@ -455,12 +462,16 @@ export function createBotsRoutes() {
         }
       })
 
-      // ── GET /api/bots/conversations ──
+      // ── GET /api/bots/conversations — threads (DMs + retired groups), or ?kind=task chats ──
       .get('/conversations', async (c) => {
         const user = getAuthUser(c);
         const db = getDb();
+        const kind = c.req.query('kind');
+        if (kind !== undefined && kind !== 'task') return c.json({ error: 'kind must be "task"' }, 400);
         const [conversations, pending] = await Promise.all([
-          db.bots.listConversations(user.id),
+          kind === 'task'
+            ? db.bots.listConversations(user.id, 100, { kinds: ['task'] })
+            : db.bots.listConversations(user.id),
           db.bots.listRequests(user.id, { status: 'pending' }),
         ]);
         const sessionIds = conversations.map((conversation) => conversation.session_id);
@@ -484,11 +495,34 @@ export function createBotsRoutes() {
         });
       })
 
-      // ── POST /api/bots/conversations — the one Bot's DM (group chats are retired) ──
+      // ── POST /api/bots/conversations — the one Bot's DM (group chats are retired), or a new task chat ──
       .post('/conversations', async (c) => {
         const user = getAuthUser(c);
         const db = getDb();
         const body = await readJson(c);
+        if (body.kind === 'task') {
+          const title = body.title === undefined || body.title === null ? null : body.title;
+          if (title !== null && typeof title !== 'string') return c.json({ error: 'title must be text' }, 400);
+          const model = parseModelId(body.model_id);
+          if (!model.ok) return c.json({ error: 'model_id is not an available model' }, 400);
+          if (body.bot_id !== undefined && typeof body.bot_id !== 'string') {
+            return c.json({ error: 'bot_id must be a Bot id' }, 400);
+          }
+          const botId = typeof body.bot_id === 'string' ? body.bot_id : (await ensureSproutyBot(db, user.id)).id;
+          const owner = await ownerContext(db, user.id);
+          try {
+            const conversation = await db.bots.createTaskConversation(user.id, botId, {
+              title,
+              modelId: model.value ?? null,
+            });
+            notifyConversation(user.id, conversation.session_id);
+            return c.json({ conversation: await conversationDetail(db, user.id, conversation, owner.locale) }, 201);
+          } catch (error) {
+            if (error instanceof BotsDomainError)
+              return c.json({ error: error.message, code: error.code }, domainStatus(error));
+            throw error;
+          }
+        }
         const botIds = Array.isArray(body.bot_ids) ? body.bot_ids : null;
         if (!botIds || botIds.some((id) => typeof id !== 'string')) {
           return c.json({ error: 'bot_ids must be a list of Bot ids' }, 400);
@@ -541,6 +575,93 @@ export function createBotsRoutes() {
           has_more: page.has_more,
           ...(memoryStates ? { memory_states: memoryStates } : {}),
         });
+      })
+
+      // ── PATCH /api/bots/conversations/:id — a task chat's model / title ──
+      .patch('/conversations/:id', async (c) => {
+        const user = getAuthUser(c);
+        const db = getDb();
+        const body = await readJson(c);
+        const model = parseModelId(body.model_id);
+        if (!model.ok) return c.json({ error: 'model_id is not an available model' }, 400);
+        if (body.title !== undefined && body.title !== null && typeof body.title !== 'string') {
+          return c.json({ error: 'title must be text' }, 400);
+        }
+        const existing = await db.bots.getConversation(user.id, c.req.param('id'));
+        if (!existing) return c.json({ error: 'Conversation not found' }, 404);
+        if (existing.kind !== 'task') {
+          return c.json({ error: 'Only a separate chat has its own model and title', code: 'not_task_chat' }, 409);
+        }
+        const updated = await db.bots.updateTaskConversation(user.id, existing.session_id, {
+          ...(model.value !== undefined ? { modelId: model.value } : {}),
+          ...(body.title !== undefined ? { title: body.title as string | null } : {}),
+        });
+        if (!updated) return c.json({ error: 'Conversation not found' }, 404);
+        notifyConversation(user.id, updated.session_id);
+        const owner = await ownerContext(db, user.id);
+        return c.json({ conversation: await conversationDetail(db, user.id, updated, owner.locale) });
+      })
+
+      // ── POST /api/bots/conversations/:id/rewind — edit the last message / answer it again ──
+      .post('/conversations/:id/rewind', async (c) => {
+        const user = getAuthUser(c);
+        const db = getDb();
+        const body = await readJson(c);
+        if (typeof body.message_id !== 'string' || !body.message_id) {
+          return c.json({ error: 'message_id is required' }, 400);
+        }
+        if (body.content !== undefined && (typeof body.content !== 'string' || !body.content.trim())) {
+          return c.json({ error: 'content must be non-empty text' }, 400);
+        }
+        const conversation = await db.bots.getConversation(user.id, c.req.param('id'));
+        const session = conversation ? await db.sessions.getById(conversation.session_id) : undefined;
+        if (!conversation || !session) return c.json({ error: 'Conversation not found' }, 404);
+        if (conversation.kind !== 'task') {
+          return c.json({ error: 'Only a separate chat can be edited or answered again', code: 'not_task_chat' }, 409);
+        }
+        const engine = await import('./engine/index.js');
+        if ((await engine.conversationReplyState(db, user.id, session.id)) !== 'ok') {
+          return c.json(
+            { error: 'This Agent was archived — its conversation is read-only', code: 'bot_archived' },
+            409,
+          );
+        }
+        const registry = engineToolRegistry();
+        if (!registry) return c.json({ error: 'Agents are starting up — try again' }, 503);
+        const run = await engine.claimBotsRun(db, session.id, user.id);
+        if (!run) return c.json({ error: 'A reply is still running here', code: 'busy' }, 409);
+        try {
+          // Cards left from the answer being replaced would decide nothing any more. A sign-in or a
+          // takeover holds the computer, so those are finished on their card first.
+          const pending = await db.bots.listRequests(user.id, { sessionId: session.id, status: 'pending' });
+          if (pending.some((request) => request.kind === 'login' || request.kind === 'takeover')) {
+            await engine.releaseBotsRun(db, run);
+            return c.json({ error: 'Finish the computer card first', code: 'requests_pending' }, 409);
+          }
+          for (const request of pending) await db.bots.settleRequest(user.id, request.id, 'canceled');
+          if (pending.length > 0) await pushAttention(db, user.id);
+          await engine.startBotsRewind({
+            authUser: user,
+            session,
+            toolRegistry: registry,
+            run,
+            messageId: body.message_id,
+            ...(typeof body.content === 'string' ? { content: body.content } : {}),
+            db,
+            richBlocks: admitRichBlocks(body.rich_blocks),
+          });
+        } catch (error) {
+          await engine.releaseBotsRun(db, run);
+          if (error instanceof engine.RewindError) {
+            return c.json({ error: error.message, code: error.code }, error.code === 'not_found' ? 404 : 409);
+          }
+          throw error;
+        }
+        c.header('Content-Type', 'application/x-ndjson');
+        c.header('Cache-Control', 'no-cache');
+        c.header('X-Accel-Buffering', 'no');
+        c.header('X-Session-Id', session.id);
+        return honoStream(c, (stream) => streamRunToResponse(run, stream, -1));
       })
 
       // ── POST /api/bots/conversations/:id/members ──

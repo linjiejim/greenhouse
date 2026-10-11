@@ -9,7 +9,7 @@ import { safeJsonParse } from '@greenhouse/utils/json';
 
 import type { Db } from '../client.js';
 import { sessionVisibleTo } from '../bots-privacy.js';
-import { sessions, messages, runtimeRuns } from '../schema/index.js';
+import { sessions, messages, runtimeRuns, botConversations } from '../schema/index.js';
 import type {
   SessionRow,
   MessageRow,
@@ -78,6 +78,12 @@ export interface SessionListOpts {
   excludeChannels?: string[];
   /** Session id prefixes to hide (Bot background-task children, see HIDDEN_SESSION_ID_PREFIXES). */
   excludeIdPrefixes?: readonly string[];
+  /**
+   * Keep Agent task chats (`bot_conversations.kind = 'task'`) even though their channel `bots`
+   * is hidden — the chats list of a client that opens them (spec 20261011-agent-first-class D21).
+   * DMs and retired groups stay hidden.
+   */
+  includeAgentChats?: boolean;
   /**
    * Keep only sessions run as one of these agent references: each matches
    * `profile_id` exactly or as a pinned version of it (`<ref>@<v>`), never as a
@@ -241,6 +247,16 @@ function profileRefsCondition(refs: readonly string[]) {
   );
 }
 
+/** Hidden channels, except an Agent task chat when the caller lists them (`includeAgentChats`). */
+export function hiddenChannelsCondition(excludeChannels: string[], includeAgentChats = false) {
+  const hidden = notInArray(sessions.channel, excludeChannels);
+  if (!includeAgentChats || !excludeChannels.includes('bots')) return hidden;
+  return or(
+    hidden,
+    sql`(${sessions.channel} = 'bots' AND EXISTS (SELECT 1 FROM ${botConversations} bc WHERE bc.session_id = ${sessions.id} AND bc.kind = 'task'))`,
+  )!;
+}
+
 /**
  * Status / channel / owner predicates shared by every session list query.
  *
@@ -265,7 +281,7 @@ function sessionListConditions(opts: SessionListOpts) {
   if (userId) conditions.push(eq(sessions.user_id, userId));
   if (excludeUserId) conditions.push(sql`${sessions.user_id} IS DISTINCT FROM ${excludeUserId}`);
   if (channel) conditions.push(eq(sessions.channel, channel));
-  if (excludeChannels?.length) conditions.push(notInArray(sessions.channel, excludeChannels));
+  if (excludeChannels?.length) conditions.push(hiddenChannelsCondition(excludeChannels, opts.includeAgentChats));
   conditions.push(...excludeIdPrefixConditions(excludeIdPrefixes));
   if (profileRefs) conditions.push(profileRefsCondition(profileRefs));
   if (taskId) conditions.push(sql`${sessions.metadata}::jsonb @> ${JSON.stringify({ task_id: taskId })}::jsonb`);
@@ -1071,17 +1087,36 @@ export function createSessionService(db: Db) {
         }));
     },
 
-    async searchByTitle(userId: string, query: string, limit = 10, channel?: string): Promise<SessionRow[]> {
+    async searchByTitle(
+      userId: string,
+      query: string,
+      limit = 10,
+      channel?: string,
+      opts: { includeAgentChats?: boolean; agentChatsOnly?: boolean } = {},
+    ): Promise<SessionRow[]> {
       const pattern = `%${escapeLike(query)}%`;
       const conditions = [
         eq(sessions.user_id, userId),
         ne(sessions.status, 'eval'),
         sql`${sessions.title} ILIKE ${pattern}`,
       ];
+      if (opts.agentChatsOnly) {
+        conditions.push(
+          sql`${sessions.channel} = 'bots' AND EXISTS (SELECT 1 FROM ${botConversations} bc WHERE bc.session_id = ${sessions.id} AND bc.kind = 'task')`,
+          ne(sessions.status, 'deleted'),
+        );
+        return (await db
+          .select()
+          .from(sessions)
+          .where(and(...conditions))
+          .orderBy(desc(sessions.updated_at))
+          .limit(limit)) as SessionRow[];
+      }
       // Same hide-by-default rule as the session lists (defaultSessionListHiding).
       const hiding = defaultSessionListHiding(channel);
       if (channel) conditions.push(eq(sessions.channel, channel));
-      if (hiding.excludeChannels?.length) conditions.push(notInArray(sessions.channel, hiding.excludeChannels));
+      if (hiding.excludeChannels?.length)
+        conditions.push(hiddenChannelsCondition(hiding.excludeChannels, opts.includeAgentChats));
       conditions.push(...excludeIdPrefixConditions(hiding.excludeIdPrefixes));
       return (await db
         .select()

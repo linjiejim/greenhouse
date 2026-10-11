@@ -97,11 +97,11 @@ Actions: notes — list the shared notes (decisions, open items, facts every Age
     ...base,
     id: 'bot_tasks',
     name: 'Background tasks',
-    brief: 'Propose read-only background work that reports back',
+    brief: 'Propose read-only background work that reports back, or a separate chat for a piece of work',
     icon: 'ListTodo',
     sort_order: 96,
-    description: `Background work that keeps going while the member chats.
-Actions: start {title, brief} — propose a background task; the member presses Start on a card. It runs read-only (browse, read, summarise — no form submits, no shell) and reports back here when done, so write a self-contained brief. list — this conversation's tasks; cancel {run_id}.`,
+    description: `Work that goes on outside this conversation; the member always starts it on a card.
+Actions: start {title, brief, mode?, agent_id?} — mode background (default): a read-only task (browse, read, summarise — no form submits, no shell) that reports back here when done, so write a self-contained brief. mode chat: a separate chat with its own context, answered by you or another of the member's Agents (agent_id); the brief becomes its first message and the member continues there — use it for work that needs back-and-forth, changes things, or would crowd this thread. list — this conversation's background tasks; cancel {run_id}.`,
   },
   {
     ...base,

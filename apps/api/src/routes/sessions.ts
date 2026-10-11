@@ -127,6 +127,8 @@ const sessions = new Hono<AppEnv>()
     // exact requested limit until Web has migrated to the page_meta contract.
     const limit = includePageMeta ? Math.min(requestedLimit, 200) : requestedLimit;
     const includeEval = c.req.query('include_eval') === '1';
+    // `include=agent_chats`: Agent task chats join the chats list (spec 20261011-agent-first-class D21).
+    const includeAgentChats = (c.req.query('include') ?? '').split(',').includes('agent_chats');
     const tagId = c.req.query('tag_id') ? parseInt(c.req.query('tag_id')!, 10) : undefined;
     const channel = c.req.query('channel');
 
@@ -163,13 +165,25 @@ const sessions = new Hono<AppEnv>()
       includeEval,
       channel,
       ...defaultSessionListHiding(channel),
+      ...(includeAgentChats ? { includeAgentChats } : {}),
       ...profileOpts,
     };
+
+    // The caller's task chats (owner-only), when the list includes them: the backfill check and
+    // the row's `agent_chat` (which Agent answers there).
+    const taskChats = includeAgentChats
+      ? new Map(
+          (await getDb().bots.listConversations(authUser.id, 500, { kinds: ['task'] })).map((conversation) => [
+            conversation.session_id,
+            conversation,
+          ]),
+        )
+      : null;
 
     // The backfill below fetches rows one by one: same hide-by-default rule.
     const hiding = defaultSessionListHiding(channel);
     const isHiddenByDefault = (s: { id: string; channel: string }) =>
-      (hiding.excludeChannels ?? []).some((hidden) => hidden === s.channel) ||
+      ((hiding.excludeChannels ?? []).some((hidden) => hidden === s.channel) && !taskChats?.has(s.id)) ||
       (hiding.excludeIdPrefixes ?? []).some((prefix) => s.id.startsWith(prefix));
 
     // `?channel=bots` lists only the caller's own Bots conversations, whatever the
@@ -260,8 +274,10 @@ const sessions = new Hono<AppEnv>()
     ]);
     const enriched = list.map((s) => {
       const m = membershipMap.get(s.id);
+      const taskChat = taskChats?.get(s.id);
       return {
         ...s,
+        ...(taskChat ? { agent_chat: { bot_id: taskChat.owner_bot_id } } : {}),
         is_owner: s.user_id === authUser.id,
         shared: sharedIdSet.has(s.id) && s.user_id !== authUser.id,
         tags: (tagsMap.get(s.id) || []).map((t) => ({ id: t.id, name: t.name, color: t.color })),
@@ -455,6 +471,10 @@ const sessions = new Hono<AppEnv>()
     }
     const session = await getDb().sessions.update(id, body);
     if (!session) return c.json({ error: 'Session not found' }, 404);
+    // A task chat's title lives on its conversation too (the thread header reads it there).
+    if (body.title !== undefined && existing.channel === BOTS_SESSION_CHANNEL && existing.user_id) {
+      await getDb().bots.updateTaskConversation(existing.user_id, id, { title: body.title });
+    }
     return c.json(session);
   })
   /** GET /api/sessions/:id/messages/:msgId/eval — get cached eval result for a message */

@@ -197,6 +197,23 @@ bots/
   结束（两道闸都有测试）。迁移同时把群里所有仍待处理的卡片置为 `canceled`（`result = {"decision":"group_closed"}`），
   不删任何行。测试里的旧群用 `__tests__/helpers/legacy-group.ts` 直接插库（API 已经建不出来）。私聊的 owner / guest
   角色从不变；归档一个 Bot 把它从所有客串位（以及旧群的名单）里移出，不再改派负责人。
+- **任务会话（独立会话，`kind = 'task'`，2026-10-12，[spec](../../../../docs/specs/20261011-agent-first-class.md) §5a / D20–D27）**：
+  「新会话」跑在本引擎上——同一张 `bot_conversations`、`sessions.channel = 'bots'`，所以单写者、互斥、卡片、收件箱、笔记、摘要、
+  隐私全部照旧；一个负责 Bot（`owner_bot_id`，缺省 Sprouty），可客串；每个 Bot 的私聊仍只有一个（迁移 `0023` 把
+  `uq_bot_conversations_owner_bot` 改成只管 `kind='direct'` 的部分唯一索引；`ensureDirectConversation` 也按 `kind='direct'` 查）。
+  与私聊的差别只有这些：S1 第一段说「这是一段独立会话」（`buildStaticRules` 的 `conversationKind`）；模型 = 会话
+  `model_id`（`POST /api/chat` 的 `model` 或 `PATCH` 记下，`resolveTurnModel`）> Bot 的 > 预设；第一次跑时用标题模型命名
+  （`deps.generateTitle`，成员改过名就不动）；只有它能**回退**（`POST …/rewind`，`startBotsRewind`：目标必须是最后一条成员消息，
+  `editUserMessageAndTruncate` 截断，切到摘要边界就重置摘要，`triggerKey = <消息 id>~<run id>`，留下的待处理卡撤成 `canceled`，
+  登录 / 接管卡挡着则 409）；不进线程列表（`listConversations` 默认只列 `direct` / `group`），走会话列表
+  （`/api/sessions?include=agent_chats`，`hiddenChannelsCondition`）与全局搜索（`channel:'bots'` 的命中）。「回复了你」提醒覆盖它。
+- **起草类工具在可交互回合放开**（D24）：`workflow_plan` / `mission_dispatch` / `tables_schema_plan` / `task_capture` 只起草，
+  执行靠成员按卡片上的按钮、走模型够不着的接口，等价于审批卡；`spawn_session` 仍排除。后台任务照旧没有它们。
+- **开新会话 = `task_start` 卡的 `chat` 模式**（D25，`bot_tasks start {mode:'chat', agent_id?}`）：批准后
+  `requests.ts` `decideChatStart` 建任务会话（负责 Bot = `agent_id` 或提议者），先写 `chat_origin` 事件、再把批准的说明作为
+  **成员消息**投进去（成员在卡上同意过，所以它算成员的话）并立即开跑，原对话写一行 `chat_opened`（带新会话 id）。
+- **视觉模型直读图片**：成员消息的图片随投影带上（`ProjectionRow.images`，合并时累加），`modelSupportsVision` 时
+  `inlineImagesForVision`（与 Chat 同一预算）把它们换成图片 part，其余模型照旧只见 ID 提示。
 - **DB 权威生命周期**：`bot_computers` 每次迁移都是 `version` CAS，单成员操作在用户锁里、容量判断在
   全局锁里；闲置停止 + LRU 淘汰会跳过有待处理登录 / 接管卡的电脑（`HUMAN_WAIT_HOLD_MS`）；健康 tick
   对账卡住的 starting / stopping 行（成员锁空闲时立即，否则 5 分钟兜底）。
@@ -317,7 +334,7 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 | GET | `/api/bots/:id/versions` | — | `{ bot_id, profile_id, current_version, versions }`（仅主人；super 可查） |
 | GET / POST | `/api/bots/:id/files` · `/api/bots/:id/files/ensure` | — | `{ folder, docs }`（无文件夹时 `folder: null`）· `{ folder }`（首次使用建文件夹） |
 | GET / DELETE | `/api/bots/:id/memories[/:memoryId]` | — | 该 Bot 的私有记忆 / `{ ok }`；改为共享走 `PATCH /api/auth/me/memories/:id { bot_id: null }` |
-| GET / POST | `/api/bots/conversations` | `{ bot_ids }`（恰好 1 个 id） | 列表 / `{ conversation }`（该 Bot 的私聊，没有就建）；0 个或多个 id → `400 groups_retired`（群聊已退役）。每行带 `attention`（需要你 > 未读 > 在忙）、`pending_requests` 与 `unread_count`（`last_read_at` 之后 Bot 的回复条数，`assistant` 行，封顶 99；只来了系统事件时 `attention:'unread'` 而计数为 0） |
+| GET / POST | `/api/bots/conversations` | `?kind=task` · `{ bot_ids }`（恰好 1 个 id）或 `{ kind:'task', bot_id?, title?, model_id? }` | 列表（默认私聊 + 旧群；`?kind=task` 任务会话）/ `{ conversation }`（该 Bot 的私聊，没有就建；`kind:'task'` → 201 新任务会话，缺省 Sprouty）；0 个或多个 id → `400 groups_retired`（群聊已退役）。每行带 `attention`（需要你 > 未读 > 在忙）、`pending_requests` 与 `unread_count`（`last_read_at` 之后 Bot 的回复条数，`assistant` 行，封顶 99；只来了系统事件时 `attention:'unread'` 而计数为 0） |
 | GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states? }`（`allow_bot_chat` 已废弃、恒为 `true`；旧群 `kind:'group'` 照常可读） |
 | POST / DELETE | `/api/bots/conversations/:id/members[/:botId]` | `{ bot_id }` | `{ conversation }`（邀请 = guest；主人不能移出 400 `cannot_remove_owner`；旧群 `409 group_closed`） |
 | POST | `/api/bots/conversations/:id/read` · `/compact` | — | `{ ok }`（同时把这段对话的「回复了你」提醒标为已读）· `{ digest }`（回合进行中 409） |
@@ -327,7 +344,10 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 | GET | `/api/bots/tasks?limit=` | — | 我所有对话的后台任务历史（`listMemberTaskHistory`：进行中在前、再按新到旧，默认 20、最多 50，每条带 `conversation_id`）——对话侧栏的「后台」组；其他 `state` 值 400 |
 | GET / POST | `/api/bots/requests` · `/api/bots/requests/:id` | `BotRequestDecision` | `{ request }`；冲突 409 `already_decided` / `deciding`；旧群的卡 409 `group_closed`（仍待处理的顺手撤成 `canceled`）；其他 409 带具体 code（`BotRequestErrorCode`：`page_gone` / `origin_mismatch` / `no_fields` / `failed` / `invalid` / `limit` / `computer_restarted` / `bot_gone`）且卡片保持待处理 |
 
-对话没有可编辑的设置：原 `PATCH /api/bots/conversations/:id`（群标题 / 群规 / 负责人 / Bot 互聊开关）已删除。
+| PATCH | `/api/bots/conversations/:id` | `{ model_id?, title? }` | `{ conversation }`——只给任务会话（私聊 / 旧群 409 `not_task_chat`；模型不在白名单 400）；标题同步到会话表 |
+| POST | `/api/bots/conversations/:id/rewind` | `{ message_id, content?, rich_blocks? }` | NDJSON 运行流（同 `POST /api/chat`）；只给任务会话（409 `not_task_chat`），`message_id` 须是最后一条成员消息（409 `not_last` / 404 `not_found`），有回合在跑 409 `busy`，有登录 / 接管卡 409 `requests_pending`，Bot 已归档 409 `bot_archived` |
+
+私聊与旧群没有可编辑的设置（原群标题 / 群规 / 负责人 / Bot 互聊开关的 PATCH 已删除）；任务会话只有模型与标题。
 
 名字校验：1–24 字，不含 `[ ] : ：` 与换行，非保留词、不等于成员昵称、在成员的 active Bot 中唯一 →
 `400 { code: 'bot_name_invalid' | 'bot_name_taken' | 'bot_limit' }`。

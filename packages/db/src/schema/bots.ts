@@ -160,9 +160,13 @@ export const botConversations = pgTable(
     user_id: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    /** `group` = a retired group chat (read-only history); every new conversation is `direct`. */
-    kind: text('kind', { enum: ['direct', 'group'] }).notNull(),
-    /** Direct conversations only: the Bot whose DM this is (one DM per Bot). */
+    /**
+     * `direct` = a Bot's one DM (the main thread is Sprouty's); `task` = a separate chat with its own
+     * context, owned by one Bot, as many as the member opens (spec 20261011-agent-first-class D20);
+     * `group` = a retired group chat (read-only history).
+     */
+    kind: text('kind', { enum: ['direct', 'task', 'group'] }).notNull(),
+    /** The Bot that answers here: a DM's Bot (one DM per Bot) or a task chat's Bot. */
     owner_bot_id: text('owner_bot_id').references(() => bots.id, { onDelete: 'cascade' }),
     /** Who answers an unaddressed message: a DM's owner (null once it is archived); a retired group's old coordinator. */
     lead_bot_id: text('lead_bot_id').references(() => bots.id, { onDelete: 'set null' }),
@@ -175,6 +179,8 @@ export const botConversations = pgTable(
      * allowed and nothing reads this column. Kept so old rows / clients stay valid.
      */
     allow_bot_chat: boolean('allow_bot_chat').notNull().default(true),
+    /** A task chat's chosen model (the composer's picker); null = the owner Bot's model. DMs never set it. */
+    model_id: text('model_id'),
     /** Structured rolling summary (JSON text) covering messages up to digest_upto_seq. */
     digest: text('digest').notNull().default(''),
     digest_upto_seq: integer('digest_upto_seq').notNull().default(0),
@@ -188,7 +194,10 @@ export const botConversations = pgTable(
   },
   (table) => [
     index('idx_bot_conversations_user').on(table.user_id, table.last_activity_at),
-    uniqueIndex('uq_bot_conversations_owner_bot').on(table.owner_bot_id),
+    // One DM per Bot; task chats are unlimited.
+    uniqueIndex('uq_bot_conversations_owner_bot')
+      .on(table.owner_bot_id)
+      .where(sql`${table.kind} = 'direct'`),
   ],
 );
 

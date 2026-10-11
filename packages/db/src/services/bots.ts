@@ -457,7 +457,13 @@ export function createBotsService(db: Db) {
         const [existing] = await tx
           .select()
           .from(botConversations)
-          .where(and(eq(botConversations.owner_bot_id, botId), eq(botConversations.user_id, userId)))
+          .where(
+            and(
+              eq(botConversations.owner_bot_id, botId),
+              eq(botConversations.user_id, userId),
+              eq(botConversations.kind, 'direct'),
+            ),
+          )
           .limit(1);
         if (existing) return { ...existing, members: await membersOf(tx, existing.session_id) };
 
@@ -500,6 +506,93 @@ export function createBotsService(db: Db) {
       });
     },
 
+    /**
+     * A new task chat (spec 20261011-agent-first-class D20): a separate conversation with its own
+     * context, answered by `botId`, as many as the member opens. The session is channel `bots`,
+     * titled `title` (the first reply names it when omitted).
+     */
+    async createTaskConversation(
+      userId: string,
+      botId: string,
+      opts: { title?: string | null; modelId?: string | null } = {},
+    ): Promise<ConversationWithMembers> {
+      return db.transaction(async (tx) => {
+        await assertOwnedBots(tx, userId, [botId]);
+        const now = nowIso();
+        const sessionId = randomBytes(16).toString('hex');
+        const title = opts.title?.trim() ? opts.title.trim().slice(0, 200) : null;
+        await tx.insert(sessions).values({
+          id: sessionId,
+          title: title ?? '',
+          status: 'active',
+          profile_id: 'sprouty',
+          user_id: userId,
+          channel: 'bots',
+          metadata: '{}',
+          created_at: now,
+          updated_at: now,
+        });
+        const [conversation] = await tx
+          .insert(botConversations)
+          .values({
+            session_id: sessionId,
+            user_id: userId,
+            kind: 'task',
+            owner_bot_id: botId,
+            lead_bot_id: botId,
+            title,
+            model_id: opts.modelId ?? null,
+            last_activity_at: now,
+            created_at: now,
+            updated_at: now,
+          })
+          .returning();
+        await tx.insert(botConversationMembers).values({
+          session_id: sessionId,
+          user_id: userId,
+          bot_id: botId,
+          role: 'owner',
+          position: 0,
+          added_by: 'user',
+          joined_at: now,
+        });
+        return { ...conversation!, members: await membersOf(tx, sessionId) };
+      });
+    },
+
+    /** A task chat's model and title (the title is the session's too, so the chats list follows). */
+    async updateTaskConversation(
+      userId: string,
+      sessionId: string,
+      patch: { modelId?: string | null; title?: string | null },
+    ): Promise<ConversationWithMembers | undefined> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(botConversations)
+          .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.user_id, userId)))
+          .for('update');
+        if (!row || row.kind !== 'task') return undefined;
+        const now = nowIso();
+        const set: Partial<typeof botConversations.$inferInsert> = { updated_at: now };
+        if (patch.modelId !== undefined) set.model_id = patch.modelId;
+        if (patch.title !== undefined) {
+          const title = patch.title?.trim() ? patch.title.trim().slice(0, 200) : null;
+          set.title = title;
+          await tx
+            .update(sessions)
+            .set({ title: title ?? '', updated_at: now })
+            .where(eq(sessions.id, sessionId));
+        }
+        const [updated] = await tx
+          .update(botConversations)
+          .set(set)
+          .where(eq(botConversations.session_id, sessionId))
+          .returning();
+        return { ...updated!, members: await membersOf(tx, sessionId) };
+      });
+    },
+
     async getConversation(userId: string, sessionId: string): Promise<ConversationWithMembers | undefined> {
       const [row] = await db
         .select()
@@ -509,12 +602,20 @@ export function createBotsService(db: Db) {
       return { ...row, members: await membersOf(db, sessionId) };
     },
 
-    /** Conversations by recent activity, with members — the Bots sidebar list. */
-    async listConversations(userId: string, limit = 100): Promise<ConversationWithMembers[]> {
+    /**
+     * Conversations by recent activity, with members. Default: the threads list (DMs and retired
+     * groups); task chats are listed only when asked for — they live in the chats list.
+     */
+    async listConversations(
+      userId: string,
+      limit = 100,
+      opts: { kinds?: ReadonlyArray<BotConversationRow['kind']> } = {},
+    ): Promise<ConversationWithMembers[]> {
+      const kinds = opts.kinds ?? (['direct', 'group'] as const);
       const rows = await db
         .select()
         .from(botConversations)
-        .where(eq(botConversations.user_id, userId))
+        .where(and(eq(botConversations.user_id, userId), inArray(botConversations.kind, [...kinds])))
         .orderBy(desc(botConversations.last_activity_at))
         .limit(limit);
       if (rows.length === 0) return [];
@@ -742,7 +843,7 @@ export function createBotsService(db: Db) {
           ORDER BY mm.seq DESC
           LIMIT 1
         ) m ON true
-        WHERE c.kind = 'direct'
+        WHERE c.kind IN ('direct', 'task')
           AND c.last_activity_at >= ${windowStart}
           AND c.last_activity_at <= ${quietBefore}
           AND u.status = 'active'

@@ -22,6 +22,14 @@ import {
 const ALL = ['team', 'conversation', 'bot_tasks', 'memory', 'browser', 'computer', 'request_takeover', 'vault'];
 
 describe('static rules (S1)', () => {
+  it('a separate chat says so instead of “there are no separate sessions”', () => {
+    const thread = buildStaticRules(toolFaceFlags(['team'], false), 'en');
+    const chat = buildStaticRules(toolFaceFlags(['team'], false), 'en', undefined, 'task');
+    expect(thread).toMatch(/There are no separate sessions/);
+    expect(chat).not.toMatch(/There are no separate sessions/);
+    expect(chat).toMatch(/This is a separate chat/);
+  });
+
   it('is byte-identical for the same tool combination, whatever the order or the Bot', () => {
     const a = buildStaticRules(toolFaceFlags(['team', 'memory', 'browser'], true), 'zh');
     const b = buildStaticRules(toolFaceFlags(['browser', 'team', 'memory', 'knowledge_query'], true), 'zh');

@@ -61,6 +61,19 @@ describe('projectHistory', () => {
     ]);
   });
 
+  it('carries member images through the merge, so a vision model can see them', () => {
+    const shot = { id: 'img_1', url: '/api/uploads/img_1' };
+    const chart = { id: 'img_2', url: '/api/uploads/img_2' };
+    const { messages } = project([
+      row({ role: 'user', content: 'What is wrong here?', images: [shot] }),
+      row({ role: 'system', content: 'Sage joined' }),
+      row({ role: 'user', content: 'And here', images: [chart] }),
+      row({ role: 'assistant', content: 'Looking', bot_id: 'bot_self' }),
+    ]);
+    expect(messages[0]).toMatchObject({ role: 'user', images: [shot, chart] });
+    expect(messages[1]).toEqual({ role: 'assistant', content: 'Looking' });
+  });
+
   it('uses English tags for an English member', () => {
     seq = 0;
     const result = project(

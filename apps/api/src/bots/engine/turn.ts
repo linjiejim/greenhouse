@@ -22,6 +22,7 @@ import type { StopCondition, ToolSet } from 'ai';
 import {
   buildEngineResult,
   createCollectors,
+  modelSupportsVision,
   processStreamPart,
   resolveHistoryBudget,
   withFinalAnswerGuarantee,
@@ -35,6 +36,7 @@ import { safeJsonParse } from '@greenhouse/utils/json';
 import type { ToolRegistry } from '../../agent.js';
 import type { ChatRun } from '../../chat/runs.js';
 import { persistChatResult } from '../../chat/persist.js';
+import { inlineImagesForVision } from '../../chat/vision.js';
 import { chatInterruptionNotice, chatStopNotice, streamPartToWireEvent, usageBudgetNotice } from '../../chat/turn.js';
 import {
   chatRuntimePayload,
@@ -210,7 +212,9 @@ function rosterOf(rc: RunContext): RosterEntry[] {
     .filter((entry): entry is RosterEntry => entry !== null);
 }
 
-function resolveTurnModel(bot: BotRow): string | undefined {
+/** A task chat's chosen model, else the Bot's own, else the preset's (undefined); a retired id falls through. */
+export function resolveTurnModel(bot: BotRow, chatModelId?: string | null): string | undefined {
+  if (chatModelId && isChatModelAllowed(chatModelId)) return chatModelId;
   return bot.model_id && isChatModelAllowed(bot.model_id) ? bot.model_id : undefined;
 }
 
@@ -388,10 +392,10 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       conversation: conversationPort,
       runtimeRunId: null,
     });
-    const modelOverride = resolveTurnModel(bot);
+    const modelOverride = resolveTurnModel(bot, rc.conversation.kind === 'task' ? rc.conversation.model_id : null);
     const effectiveModel = modelOverride ?? rc.profile.model.id;
     const systemPrompt = assembleSystemPrompt([
-      buildStaticRules(toolFaceFlags(Object.keys(tools), approvalGated), locale, rc.richBlocks),
+      buildStaticRules(toolFaceFlags(Object.keys(tools), approvalGated), locale, rc.richBlocks, rc.conversation.kind),
       buildIdentity(bot, user.nickname),
       buildMemberNotes(user.nickname, user.notes),
       buildDigestSection(rc.digest.rendered),
@@ -439,10 +443,20 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
         askedOutcomes: outcomes,
       }),
     });
-    const engineMessages: EngineMessage[] = projection.messages.map((m) => ({ role: m.role, content: m.content }));
+    // Attached images: pixels for vision models (Chat's budget, chat/vision.ts), IDs for the rest.
+    const engineMessages: EngineMessage[] =
+      modelSupportsVision(effectiveModel) && projection.messages.some((m) => m.images?.length)
+        ? (
+            await inlineImagesForVision(
+              projection.messages.map((m) => ({ role: m.role, content: m.content, images: m.images ?? null })),
+            )
+          ).messages.map((m) => ({ role: m.role, content: m.content }) as EngineMessage)
+        : projection.messages.map((m) => ({ role: m.role, content: m.content }));
     const last = engineMessages[engineMessages.length - 1];
     if (last && last.role === 'user' && typeof last.content === 'string') {
       last.content = `${last.content}\n\n${tailText}`;
+    } else if (last && last.role === 'user' && Array.isArray(last.content)) {
+      last.content = [...last.content, { type: 'text', text: `\n\n${tailText}` }];
     } else {
       engineMessages.push({ role: 'user', content: tailText });
     }

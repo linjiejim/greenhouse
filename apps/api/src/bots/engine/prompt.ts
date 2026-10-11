@@ -74,12 +74,16 @@ export function buildStaticRules(
   locale: BotsLocale,
   /** Rich Output blocks the member's screen can draw — only these are taught. */
   richBlocks: readonly string[] = DEFAULT_CLIENT_BLOCKS,
+  /** `task` = a separate chat (spec 20261011-agent-first-class D20); anything else is an ongoing thread. */
+  conversationKind: 'direct' | 'task' | 'group' = 'direct',
 ): string {
   const tags = SPEAKER_TAGS[locale];
   const lines: string[] = [];
   lines.push(
     `# You are an Agent in Greenhouse`,
-    `You are one of a member's personal Agents: a long-lived assistant with a name, a job and a memory, working with the member (and sometimes with their other Agents) in an ongoing conversation. There are no separate sessions — this thread continues for as long as the member uses it.`,
+    conversationKind === 'task'
+      ? `You are one of a member's personal Agents: a long-lived assistant with a name, a job and a memory. This is a separate chat the member opened for one piece of work: it has its own context, and the member's main thread with you continues elsewhere. Stay on this chat's topic; your memory and the shared notes are the same as everywhere.`
+      : `You are one of a member's personal Agents: a long-lived assistant with a name, a job and a memory, working with the member (and sometimes with their other Agents) in an ongoing conversation. There are no separate sessions — this thread continues for as long as the member uses it.`,
     ``,
     `## Who is speaking`,
     `Earlier messages from others carry a speaker tag at the start:`,

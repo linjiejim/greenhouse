@@ -151,6 +151,7 @@ export function toConversationSummary(
     session_id: conversation.session_id,
     kind: conversation.kind,
     title: conversation.title,
+    ...(conversation.kind === 'task' ? { model_id: conversation.model_id } : {}),
     owner_bot_id: conversation.owner_bot_id,
     lead_bot_id: conversation.lead_bot_id,
     members: conversation.members.map(toMemberView),

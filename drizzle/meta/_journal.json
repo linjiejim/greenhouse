@@ -162,6 +162,13 @@
       "when": 1791642611679,
       "tag": "0022_bot_computer_backups",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791735649938,
+      "tag": "0023_agent_task_chats",
+      "breakpoints": true
     }
   ]
 }
