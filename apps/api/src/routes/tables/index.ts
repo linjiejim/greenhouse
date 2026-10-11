@@ -49,7 +49,7 @@
  * 表单（./forms.ts；面向受众的只提交入口是 /api/forms，见 routes/forms.ts）
  * GET    /tables/:tableId/forms                      — 表单列表（builder）
  * POST   /tables/:tableId/forms                      — 创建表单
- * GET    /forms/:formId                              — 读取表单 + 字段
+ * GET    /forms/:formId                              — 读取表单 + 字段（自定义角色：只含可编辑字段、可读字段的预填，无受众）
  * PATCH  /forms/:formId                              — revision 更新表单
  *
  * 记录（./records.ts；/records/deleted 必须注册在 /records/:recordId 之前）

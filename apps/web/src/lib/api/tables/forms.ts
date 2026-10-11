@@ -44,7 +44,10 @@ export async function listTableForms(tableId: number): Promise<TableForm[]> {
   return (await response.json()).forms;
 }
 
-export async function getTableForm(formId: number): Promise<{ form: TableForm; fields: TableField[] }> {
+/** A custom-role reader gets no `audience` and only the fields it can edit / read. */
+export async function getTableForm(
+  formId: number,
+): Promise<{ form: Omit<TableForm, 'audience'> & { audience?: TableFormAudience }; fields: TableField[] }> {
   const response = await rpc.api.tables.forms[':formId'].$get({ param: { formId: String(formId) } });
   if (!response.ok) throw await responseError(response, 'Unable to load form');
   return response.json();

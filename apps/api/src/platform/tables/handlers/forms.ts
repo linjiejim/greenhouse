@@ -37,6 +37,29 @@ const listForms: Handler = async (request, context) => {
   return ok({ forms: await context.db.tables.listForms(tableId) });
 };
 
+/**
+ * The form row as a custom role receives it: shown fields cut to what it can
+ * edit, prefilled values kept only on fields it can read, and no audience (who
+ * may submit is the builders' business).
+ */
+function formForCustomRole(
+  form: TableFormRow,
+  writable: ReadonlySet<number>,
+  readable: ReadonlySet<number>,
+): Omit<TableFormRow, 'audience'> {
+  const { audience: _audience, ...rest } = form;
+  const { defaults, ...config } = form.config;
+  const kept = (defaults ?? []).filter((entry) => readable.has(entry.fieldId));
+  return {
+    ...rest,
+    config: {
+      ...config,
+      fieldIds: form.config.fieldIds.filter((id) => writable.has(id)),
+      ...(kept.length > 0 ? { defaults: kept } : {}),
+    },
+  };
+}
+
 const getForm: Handler = async (request, context) => {
   const formId = positiveInt(payloadOf(request), 'formId');
   if (!formId) return fail('INVALID_INPUT', 'formId is required');
@@ -44,23 +67,23 @@ const getForm: Handler = async (request, context) => {
   const base = await baseForForm(context.db, formId);
   if (!form || !base) return fail('NOT_FOUND', 'Form not found');
   // Built-in editors and up; a custom role only when it may create on the
-  // form's table, and then it gets only the form fields it can edit (slice A).
+  // form's table, and then it gets the form cut to its access (slice A).
   const grant = await requireBase(context, request.actor, base.id, 'form', 'viewer', { allowCustom: true });
   if (!grant) return fail('NOT_FOUND', 'Form not found');
-  let writable: Set<number> | null = null;
+  let custom: { writable: ReadonlySet<number>; readable: ReadonlySet<number> } | null = null;
   if (grant.access.level === 'custom') {
     const data = await requireTableData(request, context, form.table_id, 'create');
     if (!data || data.scope.kind !== 'scoped') return fail('NOT_FOUND', 'Form not found');
-    writable = new Set(data.scope.editableFieldIds);
+    custom = { writable: new Set(data.scope.editableFieldIds), readable: new Set(data.scope.readableFieldIds) };
   } else if (!(await requireBase(context, request.actor, base.id, 'form', 'editor'))) {
     return fail('NOT_FOUND', 'Form not found');
   }
   const schema = await context.db.tables.getSchema(form.table_id, effectiveUserId(request.actor));
   if (!schema) return fail('NOT_FOUND', 'Form table not found');
   return ok({
-    form,
+    form: custom ? formForCustomRole(form, custom.writable, custom.readable) : form,
     fields: schema.fields.filter(
-      (field) => form.config.fieldIds.includes(field.id) && (!writable || writable.has(field.id)),
+      (field) => form.config.fieldIds.includes(field.id) && (!custom || custom.writable.has(field.id)),
     ),
   });
 };

@@ -834,6 +834,68 @@ describe('acceptance 2 — the 销售 custom role', { timeout: 30_000 }, () => {
     expect((await send(sales, `/api/tables/dashboards/${dashboard.id}`)).status).toBe(404);
     expect((await send(sales, `/api/tables/dashboard-widgets/${count}/query`, 'POST')).status).toBe(404);
   });
+  it('reads a form cut to its access: editable shown fields, readable prefills, no audience', async () => {
+    const w = await crm();
+    const channel = await createField(w.orders, 'Channel', 'text');
+    const referrer = await createField(w.orders, 'Referrer', 'text');
+    const source = await createField(w.orders, 'Source', 'text');
+    const roles = await json<{ roles: Array<{ id: number; revision: number }> }>(
+      await send(owner, `/api/tables/bases/${w.baseId}/roles`),
+    );
+    const rules: TableAccessRules = {
+      ...w.rules,
+      tables: w.rules.tables.map((rule) =>
+        rule.tableId === w.orders
+          ? {
+              ...rule,
+              fields: [
+                { fieldId: channel.id, access: 'hidden' },
+                { fieldId: referrer.id, access: 'hidden' },
+              ],
+            }
+          : rule,
+      ),
+    };
+    await json(
+      await send(owner, `/api/tables/roles/${w.role.id}`, 'PATCH', {
+        revision: roles.roles.find((role) => role.id === w.role.id)!.revision,
+        rules,
+      }),
+    );
+    const form = (
+      await json<{ form: { id: number } }>(
+        await send(owner, `/api/tables/tables/${w.orders}/forms`, 'POST', {
+          name: 'Referral intake',
+          config: {
+            fieldIds: [w.fields.orderNo.id, channel.id],
+            defaults: [
+              { fieldId: referrer.id, value: '内部推荐' },
+              { fieldId: source.id, value: 'web' },
+            ],
+          },
+          audience: { type: 'principals', userIds: [other.id], groupIds: [] },
+        }),
+        201,
+      )
+    ).form;
+
+    const seen = await json<{ form: Record<string, unknown> & { config: Record<string, unknown> }; fields: Field[] }>(
+      await send(sales, `/api/tables/forms/${form.id}`),
+    );
+    expect(seen.fields.map((field) => field.id)).toEqual([w.fields.orderNo.id]);
+    expect(seen.form.config.fieldIds).toEqual([w.fields.orderNo.id]);
+    expect(seen.form.config.defaults).toEqual([{ fieldId: source.id, value: 'web' }]);
+    expect(seen.form).not.toHaveProperty('audience');
+    expect(JSON.stringify(seen)).not.toContain('内部推荐');
+    expect(JSON.stringify(seen)).not.toContain(other.id);
+
+    const full = await json<{ form: { config: { fieldIds: number[]; defaults: unknown[] }; audience: unknown } }>(
+      await send(owner, `/api/tables/forms/${form.id}`),
+    );
+    expect(full.form.config.fieldIds).toEqual([w.fields.orderNo.id, channel.id]);
+    expect(full.form.config.defaults).toHaveLength(2);
+    expect(full.form.audience).toEqual({ type: 'principals', userIds: [other.id], groupIds: [] });
+  });
 });
 
 describe('acceptance 3 — references fail closed', { timeout: 30_000 }, () => {
