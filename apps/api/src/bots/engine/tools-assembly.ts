@@ -31,6 +31,7 @@ import { buildComputerTools } from '../computer/index.js';
 import { createMcpCallTool } from '../../tools/mcp-call.js';
 import { botProfileId, parseBotConnectors } from '../../profiles/profile.js';
 import { BOT_TOOL_IDS } from '../tools/meta.js';
+import { AGENT_ACCESS_TOOL_IDS } from '../external/meta.js';
 import { createTeamTool } from '../tools/team.js';
 import { createSelfTool } from '../tools/self.js';
 import { createConversationTool } from '../tools/conversation.js';
@@ -68,8 +69,11 @@ export const BOT_APPROVAL_TOOL_IDS: ReadonlySet<string> = new Set([
  * (taint.ts) and each call to a remote tool that is not read-only asks the
  * member on an approval card (`createBotMcpCallTool`) — spec
  * 20261009-mcp-connectors D8.
+ *
+ * The Agent access tools (agents_list / agent_message / …) are for callers outside Greenhouse;
+ * inside, a Bot works with the member's other Agents through `team`.
  */
-const EXCLUDED_TOOL_IDS: ReadonlySet<string> = new Set(['spawn_session', ...BOT_TOOL_IDS]);
+const EXCLUDED_TOOL_IDS: ReadonlySet<string> = new Set(['spawn_session', ...BOT_TOOL_IDS, ...AGENT_ACCESS_TOOL_IDS]);
 
 export function needsBotApproval(toolId: string): boolean {
   return BOT_APPROVAL_TOOL_IDS.has(toolId) || getToolMeta(toolId)?.surface?.proxy === 'write';

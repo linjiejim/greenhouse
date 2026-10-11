@@ -244,6 +244,17 @@ bots/
   下线 / 暂停 / 移出受众 → 发消息 409 `agent_unavailable`，`GET /api/bots` 的 `shared_bots` 带 `available:false`。
   负责人看用量（全部使用者）、操作记录、反馈（`bot_feedback`：评分 + 使用者写的一句话），不看原文；管理员 `/api/admin/agents` 只能暂停 / 恢复。
   第一版授权只有知识库文件夹（只读）+ 电脑开关；项目 / 表格的记录级授权留作后续（D36）。
+- **对外找 Agent（P6，2026-10-12，[spec](../../../../docs/specs/20261011-agent-first-class.md) §5e / D48–D55）**：MCP 客户端、
+  命令行、飞书都走 `external/agents.ts` 一个服务——能找到的 = 自己的 Agent（含主 Agent）+ `publicBotFor` 放行的公开 Agent；
+  不带 `conversation_id` 时自己的 Agent **新开任务会话**、公开 Agent 用成员和它的私聊，第一行是 `external_origin {via}`
+  事件（`copy.externalOrigin`，只在新开时写一次）；占到运行槽就 `startBotsChain`（`richBlocks: []`——对面画不出富块）并最多等
+  `waitMs`，占不到就进 inbox 排队；结果 = 最近一条成员消息之后的回复 + 待成员处理的卡（`needs_you`）+ 引擎写的说明行。
+  **卡片永远只在应用里**：外部调用方不能替成员点确认（D52）。工具 `agents_list` / `agent_message`（写，`confirm`）/
+  `agent_conversation_get` 的元数据在 `external/meta.ts`（`context: 'external'`，MCP 组 `agents`、随 `bots` 功能点），只在
+  `LazyServerToolContext.externalCaller` 存在时构建（`/api/mcp` 用 OAuth 客户端名、`/api/agent` 的命令行登录用 `Greenhouse CLI`；
+  Mission 任务令牌没有）；聊天、Agent 自己的回合、后台任务、飞书都把它们排除在外。飞书：`/agents` 列表，消息以 `@名字` 开头 →
+  `feishu/bot/agent-route.ts` 交给同一个服务，并 `pointConversation` 把这串话题改指向那段会话，之后不带 @ 也继续；群里别人在
+  这串话题里发的消息进不去（私密）；不带 @ 的新话题照旧走主 Agent 的单 Agent 执行器。
 - **DB 权威生命周期**：`bot_computers` 每次迁移都是 `version` CAS，单成员操作在用户锁里、容量判断在
   全局锁里；闲置停止 + LRU 淘汰会跳过有待处理登录 / 接管卡的电脑（`HUMAN_WAIT_HOLD_MS`）；健康 tick
   对账卡住的 starting / stopping 行（成员锁空闲时立即，否则 5 分钟兜底）。

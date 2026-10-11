@@ -397,6 +397,9 @@ export const copy = {
   chatOrigin: (l: BotsLocale, proposer: string) =>
     l === 'zh' ? `${proposer} 从另一段对话开了这个会话` : `${proposer} opened this chat from another conversation`,
 
+  /** The first line of a conversation opened from outside Greenhouse (MCP, CLI, Feishu — P6). */
+  externalOrigin: (l: BotsLocale, via: string) => (l === 'zh' ? `这段对话由 ${via} 发起` : `Started from ${via}`),
+
   taskUnavailable: (l: BotsLocale, title: string) =>
     l === 'zh'
       ? `这个部署已关闭后台任务，「${title}」没有开始。`

@@ -66,6 +66,10 @@ export const FEISHU_DENIED_TOOL_IDS: readonly string[] = [
   // The Feishu face is read-only (spec D5 of the bot spec), and an external MCP
   // tool may write to another system with nothing here but a confirm flag.
   'mcp_call',
+  // For callers outside Greenhouse (MCP / CLI); a Feishu thread picks an Agent with `@name`.
+  'agents_list',
+  'agent_message',
+  'agent_conversation_get',
 ];
 
 const DENIED = new Set(FEISHU_DENIED_TOOL_IDS);

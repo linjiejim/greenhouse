@@ -914,7 +914,9 @@ export type BotEvent =
   /** A `task_start` card in `chat` mode was approved: the new separate chat (written where it was proposed). */
   | { kind: 'chat_opened'; session_id: string; bot_id: string; title: string }
   /** The first line of a separate chat an Agent opened: where it came from. */
-  | { kind: 'chat_origin'; from_session_id: string; bot_id: string };
+  | { kind: 'chat_origin'; from_session_id: string; bot_id: string }
+  /** The first line of a conversation opened from outside Greenhouse: an MCP client, the CLI, Feishu (P6). */
+  | { kind: 'external_origin'; via: string };
 
 // ─── Messages ────────────────────────────────────────────
 

@@ -25,6 +25,7 @@ import { flattenForDelivery } from '../../notifications/render.js';
 import { FEISHU_PROVIDER } from '../../routes/feishu-oauth.js';
 import { renderAskUserFromEvidence } from './ask-user.js';
 import { feishuConversationKey, filterFeishuToolIds, groupVisibilityFooter } from './conversation-key.js';
+import { answerThroughAgent, renderAgentList, routeFeishuMessage } from './agent-route.js';
 import type { FeishuThreadRefs } from './conversation-key.js';
 
 /** 一条飞书消息里我们关心的全部内容。 */
@@ -137,6 +138,39 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
   // ── 2. 会话映射（spec D1）────────────────────────────────
   const key = feishuConversationKey(message);
   let mapping = await db.feishuBot.findConversation(key);
+
+  // ── 2a. 指名 Agent：`/agents`、`@名字`，或这串话题已经交给了某个 Agent
+  //        （spec 20261011-agent-first-class D54，agent-route.ts）──
+  const route = await routeFeishuMessage(db, owner, mapping, message.text);
+  if (route.kind === 'list') return { kind: 'markdown', content: await renderAgentList(db, owner.id) };
+  if (route.kind === 'private') {
+    return {
+      kind: 'guidance',
+      content: '**这串话题是别人和他的 Agent 的私密对话**\n\n请新开一个话题 @我，或在开头写 `@名字` 找你自己的 Agent。',
+    };
+  }
+  if (route.kind === 'address' || route.kind === 'continue') {
+    const text = route.kind === 'address' ? route.text : message.text;
+    let content = await answerThroughAgent({
+      db,
+      owner,
+      route,
+      text: sanitizeUserMessageForPrompt(text),
+      point: async (sessionId) => {
+        await db.feishuBot.pointConversation({
+          feishu_key: key,
+          session_id: sessionId,
+          user_id: owner.id,
+          chat_id: message.chat_id,
+          chat_type: message.chat_type,
+        });
+      },
+    });
+    if (message.chat_type === 'group') content += groupVisibilityFooter(owner.nickname || owner.email);
+    if (mapping && route.kind === 'continue') await db.feishuBot.touchConversation(key);
+    return { kind: 'markdown', content };
+  }
+
   if (!mapping) {
     const session = await db.sessions.create(
       message.text.slice(0, 40) || '飞书对话',

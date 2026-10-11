@@ -94,7 +94,8 @@ export function isPublicPath(path: string): boolean {
   // central Bearer middleware. The cloud-agent path is a compatibility alias.
   if (path.startsWith('/api/missions/internal/')) return true;
   if (path.startsWith('/api/cloud-agent/internal/')) return true;
-  // MCP server uses its own API-key auth (key bound to an internal user) + audit/rate limit.
+  // MCP server uses its own OAuth bearer auth (agent-runtime/mcp-auth.ts: a grant bound to an
+  // internal user) + audit/rate limit.
   if (path.startsWith('/api/mcp')) return true;
   // OAuth 2.1 protocol endpoints use client credentials / PKCE rather than the
   // app's login bearer. The consent API under /api/oauth stays authenticated.

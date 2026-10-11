@@ -520,6 +520,13 @@ Every capability is reachable three ways from the same tool layer:
   (client credentials) that a super binds to a least-privilege internal user under
   Administration → MCP Access. Scopes combine an action (`mcp:read` / `mcp:write`) with
   resource groups (`mcp:knowledge`, `mcp:projects`, `mcp:tables`, …).
+- **Your Agents from outside** — the `mcp:agents` group gives an MCP client (or a machine client,
+  or the CLI) three tools: `agents_list`, `agent_message` (a write: needs `mcp:write` and
+  `confirm: true`) and `agent_conversation_get`. A message opens a new chat with that Agent in
+  the member's Greenhouse list (marked with where it came from), waits up to ~55 s for the
+  reply and otherwise hands back the conversation id to read later. Approvals and sign-ins the
+  Agent asks for stay in the app. In Feishu, start a message with `@AgentName` to hand the
+  thread to that Agent; `/agents` lists who you can reach.
 
 ### Connectors (Greenhouse as an MCP client)
 

@@ -1671,6 +1671,11 @@ export default {
     chat: { label: 'Chat history', description: 'Search your own past conversations and read their messages.' },
     automation: { label: 'Automations', description: 'Read your scheduled automations and whether they ran.' },
     image: { label: 'Image generation', description: 'Generate images. Each call costs money.' },
+    agents: {
+      label: 'Your Agents',
+      description:
+        'List your Agents, message one and read its replies. Each message opens a chat in your list; approvals stay in Greenhouse.',
+    },
   },
 
   oauthConsent: {

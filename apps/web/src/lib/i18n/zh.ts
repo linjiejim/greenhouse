@@ -1628,6 +1628,11 @@ const zh: Messages = {
     chat: { label: '会话历史', description: '搜索你自己的历史对话并读取其中的消息。' },
     automation: { label: '定时任务', description: '读取你的定时任务及其执行情况。' },
     image: { label: '图片生成', description: '生成图片。每次调用都会产生费用。' },
+    agents: {
+      label: '你的 Agent',
+      description:
+        '列出你的 Agent、给其中一个发消息并读取回复。每条消息会在你的列表里开一个会话，需要确认的事仍在 Greenhouse 里处理。',
+    },
   },
 
   oauthConsent: {

@@ -46,6 +46,23 @@ export function createFeishuBotService(db: Db) {
       return rows[0]!;
     },
 
+    /**
+     * 让这串对话改由另一段 session 接着（飞书里 `@某个 Agent`，spec 20261011-agent-first-class
+     * D54）：没有映射就建，有就改指向；以后这串话题的消息都进新的 session。
+     */
+    async pointConversation(input: FeishuConversationInput): Promise<FeishuConversationRow> {
+      const now = nowIso();
+      const [row] = await db
+        .insert(feishuConversations)
+        .values({ ...input, created_at: now, last_message_at: now })
+        .onConflictDoUpdate({
+          target: feishuConversations.feishu_key,
+          set: { session_id: input.session_id, user_id: input.user_id, last_message_at: now },
+        })
+        .returning();
+      return row!;
+    },
+
     async touchConversation(feishuKey: string): Promise<void> {
       await db
         .update(feishuConversations)

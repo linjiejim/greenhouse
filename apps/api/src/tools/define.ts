@@ -110,10 +110,12 @@ export interface ToolMeta {
   presentation?: 'trace' | 'artifact';
   /**
    * `bots` — exists only inside Bots conversations (built by the Bots engine).
+   * `external` — exists only on the external surfaces, /api/mcp and the CLI proxy
+   * (the Agent access tools, built with the caller in hand).
    * Such tools are left out of GET /api/tools and the Agent editor's pick list:
    * no other execution surface can construct them.
    */
-  context?: 'bots';
+  context?: 'bots' | 'external';
 }
 
 /**
