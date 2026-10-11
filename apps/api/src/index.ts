@@ -74,6 +74,7 @@ import { createAgentRoutes } from './routes/agent-tools.js';
 import { createMcpRoutes } from './routes/mcp.js';
 import oauthRoutes from './routes/oauth.js';
 import healthRoutes from './routes/health.js';
+import { createReleaseNotesRoutes } from './routes/release-notes.js';
 import bootstrapRoutes from './routes/bootstrap.js';
 import extensionsRoutes from './routes/extensions.js';
 import {
@@ -211,6 +212,8 @@ app.use('*', async (c, next) => {
 // `./` root silently breaks when the API is launched from anywhere other than
 // the repo root (e.g. `cd apps/api && pnpm dev`), turning every /public asset
 // (the logo included) into a 404. REPO_ROOT mirrors PUBLIC_DIR used below.
+// Release notes first: a deployment without them answers 204, not a 404 every page load logs.
+app.route('/', createReleaseNotesRoutes(PUBLIC_DIR));
 app.use('/public/*', serveStatic({ root: REPO_ROOT }));
 // Vite emits the hashed bundle under public/assets with `base: './'`, so the
 // SPA (served at `/`) requests them at `/assets/*`. Rewrite to the on-disk

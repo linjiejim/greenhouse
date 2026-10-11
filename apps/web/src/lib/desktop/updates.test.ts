@@ -37,6 +37,21 @@ describe('desktop release notes', () => {
     expect(parseReleaseNotesHistory({ releases: [newer] })).toEqual([]);
   });
 
+  it('takes a 204 (a deployment without release notes) as no notes, without parsing a body', async () => {
+    useDesktopUpdateStore.setState({ currentReleaseNotes: null, releaseNotesHistory: [] });
+    const json = vi.fn(async () => {
+      throw new SyntaxError('Unexpected end of JSON input');
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 204, json })),
+    );
+    await loadReleaseNotes();
+    expect(json).not.toHaveBeenCalled();
+    expect(useDesktopUpdateStore.getState().currentReleaseNotes).toBeNull();
+    expect(useDesktopUpdateStore.getState().releaseNotesHistory).toEqual([]);
+  });
+
   it('loads current and historical notes from API-owned public assets for web and desktop', async () => {
     const older = { ...validNotes, appVersion: '0.32.0', webBundleVersion: '2' };
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => ({

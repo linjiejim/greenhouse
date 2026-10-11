@@ -130,7 +130,7 @@ missing platform; `--allow-missing` is the explicit single-platform emergency ha
 20 s after launch, then every 4 h, both lines — the web bundle first (frequent, seconds),
 then the shell (rare, minutes). Downloads are silent; a finished one shows as one line above
 the user block in the sidebar ("restart to update"). Settings and the user menu both offer a
-manual check; the user menu also opens the release notes.
+manual check; the user menu also opens the release notes. The web app asks for `/public/release-notes.json` and `-history.json` on every load (browser and shell); only release-pipeline bundles carry them, so the API answers 204 when they are absent (`apps/api/src/routes/release-notes.ts`) — never a 404 the browser logs on each load.
 
 Shell updates run on the same cadence: `desktop_prepare_shell_update` checks and downloads,
 **but does not install** — the payload stays in memory (`PREPARED_SHELL_UPDATE`, ~8 MB) until
