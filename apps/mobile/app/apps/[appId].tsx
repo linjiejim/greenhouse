@@ -5,7 +5,9 @@
  * between the pages my role may see — with the page's filter chips and its
  * cards in reading order (src/apps/cards/registry.tsx; a kind this build does
  * not draw says "open on the web"). Cards write through the app's executor
- * (src/apps/actions.ts); every write refetches the page's cards.
+ * (src/apps/actions.ts); every write refetches the page's cards. A link button
+ * opens this app's own screens for in-app links (src/apps/links.ts). A
+ * manager's view is named "Full access" here, not by the server's word.
  *
  * Params: `appId`, `page?`, `record?` + `table?` (a push / inbox row: the
  * record opens over the page, through the first card on that page — else any
@@ -19,13 +21,19 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getAppRecord } from '../../src/api/apps';
 import type { AppCard, AppRecordRow } from '../../src/shared/apps';
 import { useT } from '../../src/lib/i18n';
-import { openLink } from '../../src/lib/links';
 import { useAuth } from '../../src/store/auth';
 import { useAppActions } from '../../src/apps/actions';
 import { AppCardView } from '../../src/apps/cards/registry';
 import type { AppPageUi } from '../../src/apps/cards/types';
+import { openAppLink } from '../../src/apps/links';
 import { appIcon } from '../../src/apps/meta';
-import { cardsInOrder, pageFor, recordCardCandidates, type AppWriteMode } from '../../src/apps/model';
+import {
+  cardsInOrder,
+  MANAGER_ROLE,
+  pageFor,
+  recordCardCandidates,
+  type AppWriteMode,
+} from '../../src/apps/model';
 import { useApps } from '../../src/apps/store';
 import { FilterBar, type FilterValues } from '../../src/tables/cards/filter-bar';
 import type { FieldLike } from '../../src/tables/model/fields';
@@ -100,7 +108,7 @@ function AppPageScreen() {
           },
         }),
       openPage: (next: string) => setPageId(next),
-      openUrl: (url: string) => void openLink(url, hex.accent),
+      openUrl: (url: string) => openAppLink(router, url, { appId, openPage: setPageId }, hex.accent),
       actions,
     }),
     [router, appId, page?.id, hex.accent, actions],
@@ -163,7 +171,10 @@ function AppPageScreen() {
   const roleLine =
     view.draft || view.version === 0
       ? t('apps.previewDraft')
-      : t('apps.roleLine', { role: view.role.name, version: t('apps.version', { n: view.version }) });
+      : t('apps.roleLine', {
+          role: view.role.key === MANAGER_ROLE ? t('apps.managerRole') : view.role.name,
+          version: t('apps.version', { n: view.version }),
+        });
   const issues = view.issues.filter((issue) => !page || issue.pageId === page.id);
 
   return (

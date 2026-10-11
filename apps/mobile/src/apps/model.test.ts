@@ -1,7 +1,7 @@
 /**
  * Reading an app's (role-trimmed) spec on the phone (./model.ts): pages and
  * cards, opening a record, what each write asks for and may send, who may
- * move a lane, and which actions ask first.
+ * move a lane, which actions ask first, and where an in-app link leads.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -12,6 +12,7 @@ import {
   actionInputs,
   canMove,
   cardsInOrder,
+  inAppLink,
   isMobileCard,
   MANAGER_ROLE,
   pageFor,
@@ -192,5 +193,34 @@ describe('writes', () => {
     expect(refusalOf({ reason: 'precondition' }, 409)).toBe('precondition');
     expect(refusalOf(undefined, 404)).toBe('not_found');
     expect(refusalOf({ reason: 'weird' }, 500)).toBeNull();
+  });
+});
+
+describe('in-app links', () => {
+  it('reads the web routes that have a screen on the phone', () => {
+    expect(inAppLink('#/apps')).toEqual({ kind: 'app_center' });
+    expect(inAppLink('#/apps/7')).toEqual({ kind: 'app', appId: 7 });
+    expect(inAppLink(' #/apps/7/review%20queue?record=12 ')).toEqual({
+      kind: 'app',
+      appId: 7,
+      pageId: 'review queue',
+      recordId: 12,
+    });
+    expect(inAppLink('#/tables')).toEqual({ kind: 'tables' });
+    expect(inAppLink('#/tables/1')).toEqual({ kind: 'base', baseId: 1 });
+    expect(inAppLink('#/tables/1/table/2')).toEqual({ kind: 'table', baseId: 1, tableId: 2 });
+    expect(inAppLink('#/tables/1/table/2?record=5')).toEqual({ kind: 'table', baseId: 1, tableId: 2, recordId: 5 });
+    expect(inAppLink('#/tables/1/dashboard/4')).toEqual({ kind: 'dashboard', baseId: 1, dashboardId: 4 });
+    expect(inAppLink('#/forms/3')).toEqual({ kind: 'form', formId: 3 });
+  });
+
+  it('leaves everything else to the web', () => {
+    expect(inAppLink('#/apps/7/edit')).toBeNull(); // the builder
+    expect(inAppLink('#/apps/x')).toBeNull();
+    expect(inAppLink('#/tables/1/view/2')).toBeNull();
+    expect(inAppLink('#/projects/3')).toBeNull();
+    expect(inAppLink('#/knowledge')).toBeNull();
+    expect(inAppLink('https://example.com/#/apps/7')).toBeNull();
+    expect(inAppLink('#/apps/%E0%A4%A')).toBeNull();
   });
 });

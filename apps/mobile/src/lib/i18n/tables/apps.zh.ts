@@ -29,6 +29,7 @@ export const appsZh: typeof appsEn = {
   previewDraft: '草稿预览',
   issues: '这个版本里有卡片不可用：{list}',
   roleLine: '{role} · {version}',
+  managerRole: '完整访问',
   cardUnavailable: '这张卡片不可用',
   cardNoAccess: '你看不到这张卡片',
   cardFailed: '卡片加载失败',

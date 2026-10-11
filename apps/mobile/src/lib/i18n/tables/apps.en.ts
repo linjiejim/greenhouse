@@ -30,6 +30,7 @@ export const appsEn = {
   previewDraft: 'Draft preview',
   issues: 'Some cards in this version are unavailable: {list}',
   roleLine: '{role} · {version}',
+  managerRole: 'Full access',
   // cards
   cardUnavailable: 'This card is unavailable',
   cardNoAccess: 'You can’t see this card',

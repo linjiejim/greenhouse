@@ -11,7 +11,8 @@
  *  - what a card writes and with which fields (form submit, create, a button's
  *    new record, an action's inputs) — only fields my role may write;
  *  - which actions ask first (a delete always does), and who may move a lane;
- *  - why the gateway refused an action (`details.reason`).
+ *  - why the gateway refused an action (`details.reason`);
+ *  - where an in-app `#/…` link (an `open_url` button) leads on the phone.
  */
 
 import {
@@ -240,5 +241,79 @@ export function refusalOf(details: Record<string, unknown> | undefined, status: 
   if (typeof reason === 'string' && (REFUSALS as readonly string[]).includes(reason)) return reason as AppActionRefusal;
   if (status === 404) return 'not_found';
   if (status === 403) return 'not_allowed';
+  return null;
+}
+
+/** Where an in-app link (the web's `#/…` routes) leads; the phone has a screen for each kind. */
+export type InAppLink =
+  | { kind: 'app_center' }
+  | { kind: 'app'; appId: number; pageId?: string; recordId?: number }
+  | { kind: 'tables' }
+  | { kind: 'base'; baseId: number }
+  | { kind: 'table'; baseId: number; tableId: number; recordId?: number }
+  | { kind: 'dashboard'; baseId: number; dashboardId: number }
+  | { kind: 'form'; formId: number };
+
+/** A positive integer segment, or null (rejects `01`, `1.5`, `-1`). */
+function idOf(raw: string | undefined | null): number | null {
+  if (!raw || !/^[1-9][0-9]*$/.test(raw)) return null;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/** `name` from a `a=1&b=2` query, or null. */
+function queryValue(query: string, name: string): string | null {
+  for (const pair of query.split('&')) {
+    const [key, value] = pair.split('=');
+    if (key && decodeURIComponent(key) === name) return decodeURIComponent(value ?? '');
+  }
+  return null;
+}
+
+/**
+ * Read an in-app link — an `open_url` button may point into the product
+ * (`#/apps/7`, `#/tables/1/table/2?record=5`, `#/forms/3`), the web's routes
+ * (apps/web/src/lib/app-routes.ts, pages/tables/index.tsx). Null for anything
+ * else (another web page, the app builder): the caller opens it on the web.
+ */
+export function inAppLink(url: string): InAppLink | null {
+  const trimmed = url.trim();
+  if (!trimmed.startsWith('#/')) return null;
+  const at = trimmed.indexOf('?');
+  const path = at < 0 ? trimmed.slice(2) : trimmed.slice(2, at);
+  const query = at < 0 ? '' : trimmed.slice(at + 1);
+  let segments: string[];
+  try {
+    segments = path
+      .split('/')
+      .filter((segment) => segment !== '')
+      .map((segment) => decodeURIComponent(segment));
+  } catch {
+    return null;
+  }
+  const recordId = idOf(queryValue(query, 'record')) ?? undefined;
+  const [area, first, second, third] = segments;
+  if (area === 'apps') {
+    if (segments.length === 1) return { kind: 'app_center' };
+    const appId = idOf(first);
+    // `#/apps/<id>/edit` is the builder: web only.
+    if (appId === null || segments.length > 3 || second === 'edit') return null;
+    return { kind: 'app', appId, ...(second ? { pageId: second } : {}), ...(recordId ? { recordId } : {}) };
+  }
+  if (area === 'tables') {
+    if (segments.length === 1) return { kind: 'tables' };
+    const baseId = idOf(first);
+    if (baseId === null) return null;
+    if (segments.length === 2) return { kind: 'base', baseId };
+    const id = idOf(third);
+    if (segments.length !== 4 || id === null) return null;
+    if (second === 'table') return { kind: 'table', baseId, tableId: id, ...(recordId ? { recordId } : {}) };
+    if (second === 'dashboard') return { kind: 'dashboard', baseId, dashboardId: id };
+    return null;
+  }
+  if (area === 'forms' && segments.length === 2) {
+    const formId = idOf(first);
+    return formId === null ? null : { kind: 'form', formId };
+  }
   return null;
 }
