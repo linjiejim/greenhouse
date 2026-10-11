@@ -103,6 +103,11 @@ interface MessageProps {
    * A render function so a stable callback keeps the memoized bubble from re-rendering per token.
    */
   renderFooterActions?: (messageId: string) => React.ReactNode;
+  /**
+   * Which side a `user` bubble sits on: `end` (default) = the reader's own; `start` = another
+   * person's message in a conversation with several people (Agents' rooms).
+   */
+  side?: 'start' | 'end';
 }
 
 // ─── Message Bubble (completed message) ──────────────────
@@ -150,6 +155,7 @@ function MessageBubbleImpl(props: MessageProps) {
     canActOnArtifacts = true,
     missionOutcome,
     renderFooterActions,
+    side = 'end',
   } = props;
 
   const [showReasoning, setShowReasoning] = useState(false);
@@ -257,11 +263,11 @@ function MessageBubbleImpl(props: MessageProps) {
     const hasImages = images && images.length > 0;
     return (
       <>
-        <div className="flex justify-end animate-fade-in">
+        <div className={`flex animate-fade-in ${side === 'start' ? 'justify-start' : 'justify-end'}`}>
           <div
-            className={`group relative max-w-[80%] rounded-2xl rounded-br-md border border-edge bg-surface-muted px-4 py-3 shadow-sm shadow-primary-900/5 ${
-              isEditing ? 'w-[min(28rem,80vw)]' : ''
-            }`}
+            className={`group relative max-w-[80%] rounded-2xl border border-edge px-4 py-3 shadow-sm shadow-primary-900/5 ${
+              side === 'start' ? 'rounded-bl-md bg-surface-raised' : 'rounded-br-md bg-surface-muted'
+            } ${isEditing ? 'w-[min(28rem,80vw)]' : ''}`}
           >
             {/* Image thumbnails stay inside the app instead of navigating a
                 mobile WebView to a raw image with no visible way back. */}

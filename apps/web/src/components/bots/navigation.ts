@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import type { BotConversationSummary, BotView } from '@greenhouse/types/bots';
+import { roomTitle } from './room';
 
 export function botsConversationHash(sessionId: string): string {
   return `#/bots?c=${encodeURIComponent(sessionId)}`;
@@ -53,20 +54,28 @@ export interface ConversationTitleCopy {
   chat: string;
   /** "Sage (archived)": the Bot no longer replies; its conversation stays readable. */
   archived: (name: string) => string;
+  /**
+   * A room (P5) is named after the other people in it: who the reader is, and what to call one
+   * everyone else left. Without it a room reads as its title or all its people.
+   */
+  room?: { me: string | null; untitled: string };
 }
 
 /**
  * A conversation's display name: the Bot's name for a DM (marked when that
  * Bot is archived), its own title for a separate chat ("New chat" until one is
  * generated — the header names the answering Agent beside it), the title or
- * the roster for a group. `bots` is the full directory — active and archived Bots.
+ * the other people's names for a room, the title or the roster for a group.
+ * `bots` is the full directory — active and archived Bots.
  */
 export function conversationTitle(
-  conversation: Pick<BotConversationSummary, 'kind' | 'title' | 'owner_bot_id' | 'members'>,
+  conversation: Pick<BotConversationSummary, 'kind' | 'title' | 'owner_bot_id' | 'members' | 'participants'>,
   bots: ReadonlyMap<string, BotView>,
   copy: ConversationTitleCopy,
 ): string {
   if (conversation.kind === 'task') return conversation.title?.trim() || copy.chat;
+  if (conversation.kind === 'room')
+    return roomTitle(conversation, copy.room?.me ?? null, copy.room?.untitled ?? copy.group);
   if (conversation.kind === 'direct') {
     const owner = bots.get(conversation.owner_bot_id ?? '');
     if (!owner) return copy.unknownBot;

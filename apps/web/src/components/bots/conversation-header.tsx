@@ -1,7 +1,10 @@
 /**
  * Bots conversation header: who is here (only the speaking Bot animates),
  * what they are doing right now in one line, and the three doors — invite,
- * the computer (with a live state dot) and conversation info.
+ * the computer (with a live state dot) and conversation info. A room (P5)
+ * shows its people instead of a plant, says how many people and Agents are in
+ * it, and has a manage menu (rename, add people, Agents, leave) in place of
+ * invite and the computer.
  *
  * The Bots page has no TopBar (an immersive workspace like Chat), so on
  * phones this row also carries the navigation drawer button.
@@ -10,13 +13,22 @@
 import { useState } from 'react';
 import type { BotConversationDetail, BotRequestView, BotView } from '@greenhouse/types/bots';
 import { IconButton, Input, StatusDot } from '../ui';
-import { Info, Menu, Monitor, UserPlus } from '../../lib/icons';
+import { Info, Menu, Monitor, MoreHorizontal, Pencil, UserPlus } from '../../lib/icons';
+import { ContextMenu, type ContextMenuItem } from '../app/context-menu';
 import { useT } from '../../lib/i18n';
 import { useUIStore } from '../../stores';
 import type { BotStreamSegment } from '../../lib/session-manager';
 import { BotAvatar, BotAvatarStack } from './bot-avatar';
 import { ComputerStatusDot, phaseLabelKey, type ComputerPhase } from './computer-phase';
 import { implicitTakeover } from './request-decision';
+import { PeopleAvatarStack, PersonAvatar } from './person-avatar';
+
+/** What the status line says about a room at rest (P5). */
+export interface RoomStatus {
+  privateChat: boolean;
+  people: number;
+  agents: number;
+}
 
 /** What the conversation is doing, as the member would say it. */
 export function useStatusLine({
@@ -27,6 +39,7 @@ export function useStatusLine({
   computerPhase = null,
   readOnly = false,
   publishedBy,
+  room,
 }: {
   conversation: BotConversationDetail;
   members: BotView[];
@@ -38,6 +51,8 @@ export function useStatusLine({
   readOnly?: boolean;
   /** The DM's Agent is someone else's public one, published by this member (P4). */
   publishedBy?: string;
+  /** A room (P5): who is in it, said when nothing is happening. */
+  room?: RoomStatus;
 }): { text: string; tone: 'idle' | 'active' | 'waiting' } {
   const t = useT();
   // A group chat is a closed record (group chats were retired): nothing in it is live any more.
@@ -81,6 +96,14 @@ export function useStatusLine({
       text: speaking.text ? t('bots.header.replying', { name }) : t('bots.header.thinking', { name }),
       tone: 'active',
     };
+  }
+  if (room) {
+    if (room.privateChat) return { text: t('bots.room.privateChat'), tone: 'idle' };
+    const people = room.people === 1 ? t('bots.room.statusAlone') : t('bots.room.statusPeople', { count: room.people });
+    if (room.agents === 0) return { text: people, tone: 'idle' };
+    const agents =
+      room.agents === 1 ? t('bots.room.statusOneAgent') : t('bots.room.statusAgents', { count: room.agents });
+    return { text: `${people} · ${agents}`, tone: 'idle' };
   }
   const owner = members.find((bot) => bot.id === conversation.owner_bot_id);
   // A separate chat's header carries its own title, so the line says who answers there.
@@ -153,6 +176,7 @@ export function ConversationHeader({
   onOpenInfo,
   onOpenProfile,
   onRename,
+  room,
 }: {
   title: string;
   conversation: BotConversationDetail;
@@ -174,13 +198,25 @@ export function ConversationHeader({
   onOpenProfile: (botId: string) => void;
   /** A separate chat's title is its own: the title edits it in place (rejects when it was not saved). */
   onRename?: (title: string) => Promise<void>;
+  /**
+   * A room (P5): the other people (their initials stand where a plant would), and the manage
+   * menu's entries after "Rename" (which the header adds itself when `onRename` is given).
+   */
+  room?: { others: string[]; privateChat: boolean; menu: ContextMenuItem[] };
 }) {
   const t = useT();
   // A DM and a separate chat both belong to one Agent: its face opens its profile.
-  const single = conversation.kind !== 'group';
+  const single = conversation.kind !== 'group' && !room;
   const openIdentity = () => (single && owner ? onOpenProfile(owner.id) : onOpenInfo());
   const identityLabel = single && owner ? t('bots.profile.open', { name: owner.name }) : t('bots.header.info');
   const [editing, setEditing] = useState<string | null>(null);
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+  const menuItems: ContextMenuItem[] = room
+    ? [
+        ...(onRename ? [{ label: t('bots.room.rename'), icon: Pencil, onClick: () => setEditing(title) }] : []),
+        ...room.menu,
+      ]
+    : [];
   const commitRename = () => {
     if (editing === null) return;
     const next = editing.trim();
@@ -203,7 +239,13 @@ export function ConversationHeader({
           aria-label={identityLabel}
           className="flex-shrink-0 rounded-full transition-opacity hover:opacity-80"
         >
-          {single && owner ? (
+          {room ? (
+            room.others.length <= 1 ? (
+              <PersonAvatar name={room.others[0] ?? title} size="sm" />
+            ) : (
+              <PeopleAvatarStack names={room.others} max={3} size="xs" />
+            )
+          ) : single && owner ? (
             <BotAvatar bot={owner} size="sm" speaking={speakingId === owner.id} />
           ) : (
             <BotAvatarStack bots={members} max={4} size="xs" speakingId={speakingId} />
@@ -268,6 +310,20 @@ export function ConversationHeader({
             <UserPlus size={16} />
           </IconButton>
         )}
+        {menuItems.length > 0 && (
+          <IconButton
+            label={t('bots.room.manage')}
+            aria-haspopup="menu"
+            aria-expanded={menuAt !== null}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setMenuAt({ x: rect.right - 176, y: rect.bottom + 4 });
+            }}
+            data-testid="room-manage"
+          >
+            <MoreHorizontal size={16} />
+          </IconButton>
+        )}
         {showComputer && (
           <IconButton
             label={computerLabel}
@@ -297,6 +353,7 @@ export function ConversationHeader({
           <Info size={16} />
         </IconButton>
       </div>
+      {menuAt && <ContextMenu items={menuItems} position={menuAt} onClose={() => setMenuAt(null)} />}
     </header>
   );
 }

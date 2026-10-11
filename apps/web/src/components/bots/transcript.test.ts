@@ -458,3 +458,51 @@ describe('rewindTargets', () => {
     });
   });
 });
+
+describe('buildTranscript in a room (P5)', () => {
+  const people = (items: TranscriptItem[]) =>
+    items.map((item) => {
+      if (item.kind === 'person') return `person:${item.userId}${item.header ? '+h' : ''}`;
+      if (item.kind === 'bot') return `bot:${item.botId}${item.header ? '+h' : ''}`;
+      return item.kind;
+    });
+
+  it("puts other people's messages on their side, named when the speaker changes; the member's stay theirs", () => {
+    const items = buildTranscript({
+      conversationKind: 'room',
+      ownerBotId: null,
+      me: 'u1',
+      messages: [
+        msg({ role: 'user', author_user_id: 'u2', content: 'morning' }),
+        msg({ role: 'user', author_user_id: 'u2', content: 'shall we?' }),
+        msg({ role: 'user', author_user_id: 'u1', content: '@Sage summarize' }),
+        msg({ bot_id: 'bot_sage' }),
+        msg({ bot_id: 'bot_sage' }),
+        msg({ role: 'user', author_user_id: 'u3', content: 'thanks' }),
+        msg({ role: 'user', author_user_id: 'u2', content: 'yes' }),
+      ],
+    });
+    expect(people(items)).toEqual([
+      'person:u2+h',
+      'person:u2',
+      'user',
+      // A room has no owner Agent: every Agent is named.
+      'bot:bot_sage+h',
+      'bot:bot_sage',
+      'person:u3+h',
+      'person:u2+h',
+    ]);
+  });
+
+  it('reads a row without an author (written before rooms) as the member’s, and outside a room ignores authors', () => {
+    const rows = [msg({ role: 'user', author_user_id: null }), msg({ role: 'user', author_user_id: 'u2' })];
+    expect(people(buildTranscript({ conversationKind: 'room', ownerBotId: null, me: 'u1', messages: rows }))).toEqual([
+      'user',
+      'person:u2+h',
+    ]);
+    expect(people(buildTranscript({ conversationKind: 'direct', ownerBotId: 'b', me: 'u1', messages: rows }))).toEqual([
+      'user',
+      'user',
+    ]);
+  });
+});

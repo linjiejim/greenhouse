@@ -43,6 +43,7 @@ import { splitAttachments } from '../blocks';
 import { RichMarkdown } from '../rich-markdown';
 import { AttachmentsBlock } from '../blocks/attachments-block';
 import { BotAvatar, BotAvatarStack } from './bot-avatar';
+import { PeopleAvatarStack, PersonAvatar } from './person-avatar';
 import { useBotDirectory, useBotsStore } from './bots-store';
 import { conversationTitle, openBotsConversation } from './navigation';
 import type { Handoff, PendingSend } from './transcript';
@@ -119,6 +120,18 @@ export function SpeakerHeader({
   );
 }
 
+/** Another person in a room (P5): their initial and name, above their message when the speaker changes. */
+export function PersonHeader({ name }: { name: string }) {
+  return (
+    <div className="mb-1 flex items-center gap-2" data-testid="room-person-header">
+      <PersonAvatar name={name} size="xs" />
+      <span className="truncate text-xs font-semibold text-fg-secondary" data-testid="room-person-name">
+        {name}
+      </span>
+    </div>
+  );
+}
+
 /** `team.ask`: one Bot hands work to another, visible so the member can follow the relay. */
 export function HandoffStrip({ handoff, lookup }: { handoff: Handoff; lookup: BotLookup }) {
   const t = useT();
@@ -159,6 +172,9 @@ const EVENT_ICON: Partial<Record<BotEvent['kind'], LucideIcon>> = {
   stopped: Square,
   chat_opened: MessageSquare,
   chat_origin: CornerDownRight,
+  // Rooms (P5): people come and go.
+  person_joined: UserPlus,
+  person_left: LogOut,
 };
 
 /**
@@ -183,6 +199,8 @@ export function EventRow({
   onContinue,
   onViewSummary,
   busy,
+  canRetry,
+  canContinue = true,
 }: {
   message: BotMessage;
   event: BotEvent | null;
@@ -192,6 +210,10 @@ export function EventRow({
   onViewSummary: () => void;
   /** A run is in progress — retrying now would only queue behind it. */
   busy: boolean;
+  /** Whether the member may ask this Agent again (a room: only Agents they may @). Default: any known one. */
+  canRetry?: (botId: string) => boolean;
+  /** "Continue" addresses whoever answers by default — a room has nobody, so it is not offered there. */
+  canContinue?: boolean;
 }) {
   const t = useT();
   if (event?.kind === 'chat_opened') return <ChatOpenedRow message={message} event={event} />;
@@ -239,13 +261,13 @@ export function EventRow({
       >
         <Icon size={12} className="flex-shrink-0" aria-hidden="true" />
         <span className="min-w-0">{text}</span>
-        {event?.kind === 'turn_error' && failedBot && (
+        {event?.kind === 'turn_error' && failedBot && (!canRetry || canRetry(event.bot_id)) && (
           <InlineAction disabled={busy} onClick={() => onRetry(event.bot_id)}>
             <RotateCcw size={11} aria-hidden="true" />
             {t('bots.transcript.retry')}
           </InlineAction>
         )}
-        {event?.kind === 'limit' && (
+        {event?.kind === 'limit' && canContinue && (
           <InlineAction disabled={busy} onClick={onContinue}>
             {t('bots.transcript.continue')}
           </InlineAction>
@@ -438,21 +460,39 @@ export function PendingBubble({
  * Thread start: who this is and what Agents are for — the positioning line lives here; the
  * main Agent's DM says it is the member's main thread, the default place to start, and a
  * separate chat says it is one, with its own context (spec 20261011-agent-first-class §3.1 /
- * §5a). A retired group chat shows only who was in it and its name (the read-only bar says what
- * became of it).
+ * §5a). A room (P5) shows its people and says how Agents behave there. A retired group chat shows
+ * only who was in it and its name (the read-only bar says what became of it).
  */
 export function ConversationIntro({
   kind,
   title,
   bots,
+  room,
 }: {
   kind: BotConversationSummary['kind'];
   title: string;
   bots: BotView[];
+  /** A room: the other people, and whether it is the pair's private chat. */
+  room?: { others: string[]; privateChat: boolean };
 }) {
   const t = useT();
   const owner = bots[0];
   const single = kind !== 'group';
+  if (room) {
+    return (
+      <div className="flex flex-col items-center gap-2 px-4 pb-4 pt-6 text-center" data-testid="bots-intro">
+        {room.others.length <= 1 ? (
+          <PersonAvatar name={room.others[0] ?? title} size="md" />
+        ) : (
+          <PeopleAvatarStack names={room.others} max={4} size="sm" ringClassName="ring-surface-canvas" />
+        )}
+        <p className="text-base font-semibold text-fg">{title}</p>
+        <p className="max-w-md text-xs leading-5 text-fg-faint">
+          {room.privateChat ? t('bots.room.introPrivate', { name: room.others[0] ?? title }) : t('bots.room.introRoom')}
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col items-center gap-2 px-4 pb-4 pt-6 text-center" data-testid="bots-intro">
       {single && owner ? (

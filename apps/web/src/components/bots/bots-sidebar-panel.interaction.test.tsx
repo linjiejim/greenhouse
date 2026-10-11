@@ -17,6 +17,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BotConversationSummary, BotView, SharedBotView } from '@greenhouse/types/bots';
 import { I18nProvider } from '../../lib/i18n';
+import { useAuthStore } from '../../stores';
 import { useBotsStore } from './bots-store';
 import { BotsThreadsSection } from './bots-sidebar-panel';
 
@@ -171,11 +172,11 @@ describe('<BotsThreadsSection/> list', () => {
     expect(api.bootstrapBots).not.toHaveBeenCalled(); // Sprouty is here already
   });
 
-  it('labels the groups: Main thread above Sprouty, Agents above the other live threads', () => {
+  it('labels the groups: Main thread above Sprouty, People (always: it starts one), Agents above the other live threads', () => {
     mount('#/bots');
     const labels = [...host.querySelectorAll<HTMLElement>('[data-testid^="sidebar-section-"]')];
-    expect(labels.map((el) => el.textContent)).toEqual(['Main thread', 'Agents']);
-    const [main, agents] = labels;
+    expect(labels.map((el) => el.textContent)).toEqual(['Main thread', 'People', 'Agents']);
+    const [main, , agents] = labels;
     const follows = (label: HTMLElement, sessionId: string) =>
       !!(label.compareDocumentPosition(row(sessionId)) & Node.DOCUMENT_POSITION_FOLLOWING);
     expect(follows(main, 'dm-bot_sprouty') && !follows(agents, 'dm-bot_sprouty')).toBe(true);
@@ -282,5 +283,112 @@ describe("<BotsThreadsSection/> other members' public Agents (P4)", () => {
     expect(order()).toEqual(['dm-bot_sprouty', 'dm-bot_sage', 'dm-bot_oracle', GROUP, 'dm-bot_moss']);
     expect(row('dm-bot_oracle').className).toContain('opacity-70');
     expect(row('dm-bot_oracle').querySelector('svg')!.getAttribute('class')).toContain('pa-s-sleep');
+  });
+});
+
+describe('<BotsThreadsSection/> conversations with people (P5)', () => {
+  const ME = 'u1';
+  const privateChat = conversation('room-ana', 'direct', [], {
+    kind: 'room',
+    title: null,
+    owner_bot_id: null,
+    lead_bot_id: null,
+    members: [],
+    participants: [
+      { user_id: ME, nickname: 'Mia', role: 'owner', joined_at: '' },
+      { user_id: 'u2', nickname: 'Ana', role: 'member', joined_at: '' },
+    ],
+    last_message: { role: 'user', bot_id: null, author_user_id: 'u2', preview: 'lunch?', created_at: '' },
+    attention: 'unread',
+    last_activity_at: '2026-10-07T00:00:00.000Z',
+  });
+  const launch = conversation('room-launch', 'direct', [], {
+    kind: 'room',
+    title: 'Launch plan',
+    owner_bot_id: null,
+    lead_bot_id: null,
+    members: [
+      { bot_id: sage.id, role: 'member', position: 0, owner_user_id: ME, addressable: true },
+      { bot_id: 'bot_ben', role: 'member', position: 1, owner_user_id: 'u3', addressable: false },
+    ],
+    participants: [
+      { user_id: ME, nickname: 'Mia', role: 'owner', joined_at: '' },
+      { user_id: 'u2', nickname: 'Ana', role: 'member', joined_at: '' },
+      { user_id: 'u3', nickname: 'Ben', role: 'member', joined_at: '' },
+    ],
+    last_message: { role: 'assistant', bot_id: 'bot_ben', author_user_id: null, preview: 'Shipped', created_at: '' },
+    last_activity_at: '2026-10-06T12:00:00.000Z',
+  });
+  const order = () =>
+    [...host.querySelectorAll<HTMLElement>('[data-testid="bots-conversation-row"]')].map((el) => el.dataset.sessionId);
+
+  beforeEach(() => {
+    useAuthStore.setState({ currentUser: { id: ME, role: 'team', nickname: 'Mia' } });
+    useBotsStore.setState({
+      conversations: [privateChat, launch, ...useBotsStore.getState().conversations],
+    });
+  });
+  afterEach(() => useAuthStore.setState({ currentUser: null }));
+
+  it('lists them under People, after the main thread and before the Agents, by activity', () => {
+    mount('#/bots');
+    expect(order()).toEqual(['dm-bot_sprouty', 'room-ana', 'room-launch', 'dm-bot_sage', GROUP, 'dm-bot_moss']);
+    const people = host.querySelector<HTMLElement>('[data-testid="sidebar-section-people"]')!;
+    const agents = host.querySelector<HTMLElement>('[data-testid="sidebar-section-agents"]')!;
+    for (const id of ['room-ana', 'room-launch']) {
+      expect(people.compareDocumentPosition(row(id)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(agents.compareDocumentPosition(row(id)) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    }
+  });
+
+  it('names a private chat after the other person, with their initial, and says who spoke last', () => {
+    mount('#/bots');
+    const ana = row('room-ana');
+    expect(ana.dataset.kind).toBe('room');
+    expect(ana.textContent).toContain('Ana');
+    expect(ana.textContent).toContain('Ana: lunch?');
+    expect(ana.querySelector('[data-testid="person-avatar"]')?.textContent).toBe('A');
+    // Someone else's message is news: unread.
+    expect(ana.querySelector('span[title="Ana"]')?.className).toContain('font-semibold');
+  });
+
+  it("names a titled room by its title, and another person's Agent by its owner", () => {
+    mount('#/bots');
+    const room = row('room-launch');
+    expect(room.textContent).toContain('Launch plan');
+    expect(room.textContent).toContain("Ben's Agent: Shipped");
+    // The other two people, overlapped — not a plant.
+    expect(room.querySelectorAll('[data-testid="person-avatar"]')).toHaveLength(2);
+    expect(room.querySelector('[data-testid="plant-avatar-stack"]')).toBeNull();
+  });
+
+  it('says "You" for the member\'s own last message', () => {
+    useBotsStore.setState({
+      conversations: [
+        { ...privateChat, last_message: { ...privateChat.last_message!, author_user_id: ME, preview: 'on my way' } },
+      ],
+    });
+    mount('#/bots');
+    expect(row('room-ana').textContent).toContain('You: on my way');
+  });
+
+  it("searches people's names too", () => {
+    mount('#/bots', 'ben');
+    expect(order()).toEqual(['room-launch']);
+  });
+
+  it('ends the group with "New conversation with people…", which opens its dialog', () => {
+    mount('#/bots');
+    const entry = host.querySelector<HTMLButtonElement>('[data-testid="sidebar-new-room"]')!;
+    expect(entry.textContent).toContain('New conversation with people');
+    act(() => entry.click());
+    expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-room' });
+  });
+
+  it('keeps the entry when the member has no conversation with people yet', () => {
+    useBotsStore.setState({ conversations: useBotsStore.getState().conversations.filter((c) => c.kind !== 'room') });
+    mount('#/bots');
+    expect(host.querySelector('[data-testid="sidebar-section-people"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="sidebar-new-room"]')).not.toBeNull();
   });
 });

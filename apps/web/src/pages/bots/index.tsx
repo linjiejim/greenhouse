@@ -8,7 +8,8 @@
  * sits beside the conversation: the info pane, the computer pane (focus
  * layout on take over; the conversation's Agent's own computer, or the one a
  * card was raised on — each Agent has its own), Chat's side pane (html previews, record links — one
- * right-hand column at a time) and the create / invite / profile dialogs. The
+ * right-hand column at a time) and the create / invite / profile dialogs — and, for a conversation
+ * with other people (a room, P5), its manage dialogs (add people, Agents, leave). The
  * conversation list lives in the contextual sidebar (mobile: the navigation
  * drawer — every screen here carries the phone's menu button, because the
  * TopBar is hidden on this route).
@@ -45,6 +46,8 @@ import {
   useSharedBots,
   useSplitCapable,
 } from '../../components/bots';
+import { useRoomView } from '../../components/bots/use-room';
+import { useRoomManage } from '../../components/bots/room-manage';
 
 export function BotsPage({ params }: { params: URLSearchParams }) {
   const sessionId = params.get('c');
@@ -143,6 +146,14 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
   const directory = useBotDirectory();
   const botsState = useBotsLoadState();
   const conversation = controller.conversation;
+  // A room (P5): its people, a card for each Agent in it (another person's own Agent is never in
+  // the member's directory), and which of them the member may @.
+  const room = useRoomView(conversation, directory);
+  const roomFaces = room?.faces;
+  const faces = useMemo(
+    () => (roomFaces && roomFaces.size > 0 ? new Map([...directory, ...roomFaces]) : directory),
+    [directory, roomFaces],
+  );
   const botOf = useCallback((id: string) => directory.get(id), [directory]);
   // Someone else's public Agent answering here (spec 20261011-agent-first-class P4): its DM is the
   // member's own, but the Agent — its settings, its grants — is its owner's.
@@ -152,11 +163,13 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
   // conversation's Agent's (Sprouty's = the main one; a DM with an archived owner's too) — not known
   // until the conversation and, for its owner, the Agent list are in.
   const ownerId = conversation?.owner_bot_id ?? null;
-  const ownerComputer: ComputerBot | undefined = !conversation
-    ? undefined
-    : ownerId && !directory.has(ownerId) && botsState === 'loading'
+  // A room has no Agent of its own, so no computer of its own: only a card opens one (its Agent's).
+  const ownerComputer: ComputerBot | undefined =
+    !conversation || conversation.kind === 'room'
       ? undefined
-      : computerBotFor(ownerId, botOf);
+      : ownerId && !directory.has(ownerId) && botsState === 'loading'
+        ? undefined
+        : computerBotFor(ownerId, botOf);
   // A card's "Open computer" shows the computer of the Agent that raised it, until the pane closes.
   const [cardComputer, setCardComputer] = useState<{ sessionId: string; bot: ComputerBot } | null>(null);
   const computerBot = cardComputer?.sessionId === sessionId ? cardComputer.bot : ownerComputer;
@@ -201,7 +214,10 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
   const refetchedFor = useRef(new Set<string>());
   useEffect(() => {
     if (!conversation || botsState !== 'ready') return;
-    const unknown = conversation.members
+    // In a room only the Agents the member may @ can be theirs to know; the rest are other people's.
+    const unknown = (
+      conversation.kind === 'room' ? conversation.members.filter((member) => member.addressable) : conversation.members
+    )
       .map((member) => member.bot_id)
       .filter((id) => !directory.has(id) && !refetchedFor.current.has(id));
     if (unknown.length === 0) return;
@@ -213,14 +229,17 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
   const activeIds = useReplyableBotIds();
   const members = useMemo(
     () =>
-      (conversation?.members ?? [])
-        .slice()
-        .sort((a, b) => a.position - b.position)
-        .flatMap((member) => {
-          const bot = activeIds.has(member.bot_id) ? directory.get(member.bot_id) : undefined;
-          return bot ? [bot] : [];
-        }),
-    [activeIds, conversation?.members, directory],
+      // A room's Agents are all here to be named (the `@` list is `room.addressable`).
+      room
+        ? room.agents.map((agent) => agent.bot)
+        : (conversation?.members ?? [])
+            .slice()
+            .sort((a, b) => a.position - b.position)
+            .flatMap((member) => {
+              const bot = activeIds.has(member.bot_id) ? directory.get(member.bot_id) : undefined;
+              return bot ? [bot] : [];
+            }),
+    [activeIds, conversation?.members, directory, room],
   );
   const owner = conversation?.owner_bot_id ? directory.get(conversation.owner_bot_id) : undefined;
   const readOnly = botsState === 'ready' && !!conversation && !conversationReplyable(conversation, activeIds);
@@ -228,12 +247,12 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
   const lookup = useCallback(
     (idOrName: string | null | undefined): BotView | undefined => {
       if (!idOrName) return undefined;
-      const byKey = directory.get(idOrName);
+      const byKey = faces.get(idOrName);
       if (byKey) return byKey;
       const folded = idOrName.replace(/^@/, '').toLocaleLowerCase();
       return members.find((bot) => bot.name.toLocaleLowerCase() === folded);
     },
-    [directory, members],
+    [faces, members],
   );
   const title = conversation
     ? conversationTitle(conversation, directory, {
@@ -242,6 +261,7 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
         group: t('bots.sidebar.group'),
         chat: t('bots.newChat'),
         archived: (name) => t('bots.archivedName', { name }),
+        room: { me: room?.me ?? null, untitled: t('bots.room.untitled') },
       })
     : '';
   const speaking = controller.streaming ? speakingSegment(controller.managed?.botSegments) : null;
@@ -313,6 +333,24 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
     void controller.reload();
   }, [controller, loadBots]);
 
+  // A room's manage menu, rename and dialogs.
+  const { setConversation, reload } = controller;
+  const manage = useRoomManage({
+    conversation: conversation?.kind === 'room' ? conversation : null,
+    room,
+    title,
+    onChanged: setConversation,
+    onStale: () => void reload(),
+  });
+  /**
+   * A speaker or an Agent row opens that Agent's profile — when the member has it: another person's
+   * Agent in a room has no profile for them, so the info pane (who brought whom) opens instead.
+   */
+  const openAgentProfile = useCallback(
+    (botId: string) => (directory.has(botId) ? openProfile(botId) : changePane('info')),
+    [changePane, directory, openProfile],
+  );
+
   const computerPane = (
     <ComputerPane
       // Another Agent's computer is another screen, terminal and file list: start the pane over.
@@ -361,7 +399,11 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
           showComputer={!computerOff}
           onInvite={() => openDialog({ kind: 'invite', sessionId })}
           onNewBot={() => openDialog({ kind: 'new-bot' })}
-          onOpenProfile={(botId) => openProfile(botId)}
+          onOpenProfile={openAgentProfile}
+          room={room}
+          roomMenu={manage.menu}
+          onRenameRoom={manage.rename}
+          onBringAgent={room ? manage.openAgents : undefined}
         />
       </div>
 
@@ -377,7 +419,12 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
             }}
             lookup={lookup}
             busy={controller.streaming}
-            onOpenProfile={(botId) => openProfile(botId)}
+            onOpenProfile={openAgentProfile}
+            room={room}
+            onStale={() => {
+              void controller.reload();
+              void loadConversations().catch(() => {});
+            }}
           />
         </BotsSidePanel>
       )}
@@ -404,6 +451,7 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
         ))}
 
       <BotsDialogs threadsEnabled onInvited={() => void controller.reload()} />
+      {manage.dialogs}
       <InviteDialog
         conversation={dialog?.kind === 'invite' ? conversation : null}
         onClose={() => openDialog(null)}

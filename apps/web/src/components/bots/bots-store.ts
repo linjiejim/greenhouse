@@ -18,12 +18,14 @@ import * as botsApi from '../../lib/api/bots';
 
 /**
  * Which dialog the page should show (opened from the sidebar or the page): create an Agent,
- * invite one into a conversation, or browse the Agents other members published (P4).
+ * invite one into a conversation, browse the Agents other members published (P4), or start a
+ * conversation with other people (P5).
  */
 export type BotsDialog =
   | { kind: 'new-bot'; inviteTo?: string }
   | { kind: 'invite'; sessionId: string }
   | { kind: 'directory' }
+  | { kind: 'new-room' }
   | null;
 
 interface BotsState {
@@ -279,9 +281,17 @@ export function botsById(bots: readonly BotView[]): Map<string, BotView> {
   return new Map(bots.map((bot) => [bot.id, bot]));
 }
 
-/** Every Bot a conversation row names: its DM owner and its members. */
-export function conversationBotIds(conversation: Pick<BotConversationSummary, 'owner_bot_id' | 'members'>): string[] {
-  const ids = conversation.members.map((member) => member.bot_id);
+/**
+ * Every Bot a conversation row names that the member's Bot list should know: its DM owner and its
+ * members. In a room (P5) only the Agents the member may address — another person's own Agent is
+ * never in the member's list, so asking for it again would only re-read the list for nothing.
+ */
+export function conversationBotIds(
+  conversation: Pick<BotConversationSummary, 'owner_bot_id' | 'members'> & { kind?: BotConversationSummary['kind'] },
+): string[] {
+  const members =
+    conversation.kind === 'room' ? conversation.members.filter((m) => m.addressable) : conversation.members;
+  const ids = members.map((member) => member.bot_id);
   if (conversation.owner_bot_id) ids.push(conversation.owner_bot_id);
   return ids;
 }
@@ -373,10 +383,12 @@ export function useBotsLoadState(): 'loading' | 'ready' | 'error' {
  * another into its own conversation when it needs one), and the old ones stay
  * as records. The API refuses a message to either (409), so the composer gives
  * way to an explanation instead. Only meaningful once the Bot list is loaded.
+ * A room (P5) is people talking: it stays open for as long as the member is in it.
  */
 export function conversationReplyable(
   conversation: Pick<BotConversationSummary, 'kind' | 'owner_bot_id'>,
   activeIds: ReadonlySet<string>,
 ): boolean {
+  if (conversation.kind === 'room') return true;
   return conversation.kind !== 'group' && !!conversation.owner_bot_id && activeIds.has(conversation.owner_bot_id);
 }

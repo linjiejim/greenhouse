@@ -190,3 +190,20 @@ describe('ChatHistoryPanel with Agent chats', () => {
     expect(ws.listeners).toHaveLength(0);
   });
 });
+
+describe('ChatHistoryPanel scope tabs — the Team tab (D46)', () => {
+  const scopeLabels = () =>
+    [...document.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')].map((button) => button.textContent);
+
+  it.each([
+    ['a super the deployment lets read team chats', { role: 'super', reads_team_chats: true }, true],
+    ['a super where it does not (the default)', { role: 'super', reads_team_chats: false }, false],
+    ['a super on a server that does not say', { role: 'super' }, false],
+    ['a member', { role: 'team', reads_team_chats: false }, false],
+  ])('%s → Team tab %s', async (_label, user, shown) => {
+    useAuthStore.setState({ currentUser: { id: 'u1', nickname: 'Mia', ...user } as never });
+    await mount();
+    expect(scopeLabels()).toContain('Mine');
+    expect(scopeLabels().includes('Team')).toBe(shown);
+  });
+});

@@ -7,6 +7,7 @@ import type { BotConversationDetail } from '@greenhouse/types/bots';
 import type { BotMessage, ConversationPage } from '../../lib/api/bots';
 import { I18nProvider } from '../../lib/i18n';
 import { ToastContainer } from '../ui';
+import { useAuthStore } from '../../stores';
 import { ReplyFeedback, resetReplyRatings } from './reply-feedback';
 import { useBotConversation, type BotConversationController } from './use-bot-conversation';
 
@@ -16,6 +17,11 @@ vi.mock('../../lib/api/bots', async (importOriginal) => ({
   ...api,
 }));
 vi.mock('../../lib/ws', () => ({ wsClient: { onEvent: () => () => {}, onStatusChange: () => () => {} } }));
+const runs = vi.hoisted(() => ({ getChatRun: vi.fn() }));
+vi.mock('../../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/api')>()),
+  ...runs,
+}));
 const sessionManager = vi.hoisted(() => ({
   activeSessions: new Map<string, Record<string, unknown>>(),
   registerViewport: () => {},
@@ -25,6 +31,7 @@ const sessionManager = vi.hoisted(() => ({
   rewindBotsMessage: vi.fn(async (_sessionId: string, _options: { messageId: string; content?: string }) => {}),
   stopSession: vi.fn(),
   interruptSession: vi.fn(async (): Promise<'interrupting' | 'no_run' | 'refused'> => 'interrupting'),
+  attachSession: vi.fn(),
 }));
 vi.mock('../../lib/session-manager', () => ({ useSessionManager: () => sessionManager }));
 
@@ -101,6 +108,8 @@ beforeEach(() => {
   sessionManager.rewindBotsMessage.mockReset().mockResolvedValue(undefined);
   sessionManager.stopSession.mockReset();
   sessionManager.interruptSession.mockReset().mockResolvedValue('interrupting');
+  sessionManager.attachSession.mockReset();
+  runs.getChatRun.mockReset().mockResolvedValue({ active: false });
   latest = null;
 });
 
@@ -462,5 +471,120 @@ describe('useBotConversation — edit / answer again (a separate chat)', () => {
     expect(sessionManager.rewindBotsMessage).toHaveBeenCalledWith('T', { messageId: 'u2' });
     expect(error).toBeInstanceOf(Error);
     expect(latest?.messages.map((m) => m.id)).toEqual(['u1', 'a1', 'u2', 'a2', 'a3']);
+  });
+});
+
+describe('useBotConversation — a room (P5)', () => {
+  const ROOM_ID = 'room-1';
+  function roomPage(messages: BotMessage[]): ConversationPage {
+    const base = page(ROOM_ID, messages, false);
+    return {
+      ...base,
+      conversation: {
+        ...base.conversation,
+        kind: 'room',
+        owner_bot_id: null,
+        lead_bot_id: null,
+        members: [
+          { bot_id: 'bot_mine', role: 'member', position: 0, owner_user_id: 'u1', addressable: true },
+          { bot_id: 'bot_ben', role: 'member', position: 1, owner_user_id: 'u3', addressable: false },
+          { bot_id: 'bot_public', role: 'member', position: 2, owner_user_id: 'u4', addressable: true },
+        ],
+        participants: [
+          { user_id: 'u1', nickname: 'Mia', role: 'owner', joined_at: '' },
+          { user_id: 'u3', nickname: 'Ben', role: 'member', joined_at: '' },
+        ],
+      },
+    };
+  }
+  const authored = (id: string, seq: number, author: string, content: string): BotMessage => ({
+    ...message(id, seq),
+    content,
+    author_user_id: author,
+  });
+
+  async function open(messages: BotMessage[] = []) {
+    api.getConversation.mockResolvedValue(roomPage(messages));
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => root?.render(tree(ROOM_ID)));
+    await flush();
+  }
+
+  beforeEach(() => useAuthStore.setState({ currentUser: { id: 'u1', role: 'team', nickname: 'Mia' } }));
+  afterEach(() => useAuthStore.setState({ currentUser: null }));
+
+  it('shows an accepted message (202) as said — never "read after the current reply"', async () => {
+    await open();
+    sessionManager.sendBotsMessage.mockResolvedValue({ queued: true });
+    await act(async () => {
+      await latest?.send('hello all', { mentions: [] });
+    });
+    expect(latest?.pending.map((send) => send.status)).toEqual(['sent']);
+  });
+
+  it("settles a send only with the member's own message, not someone else's identical one", async () => {
+    await open();
+    sessionManager.sendBotsMessage.mockResolvedValue({ queued: true });
+    await act(async () => {
+      await latest?.send('ok', { mentions: [] });
+    });
+    api.getConversation.mockResolvedValue(roomPage([authored('m1', 1, 'u3', 'ok')]));
+    await act(async () => {
+      await latest?.reload();
+    });
+    expect(latest?.pending).toHaveLength(1);
+    api.getConversation.mockResolvedValue(roomPage([authored('m1', 1, 'u3', 'ok'), authored('m2', 2, 'u1', 'ok')]));
+    await act(async () => {
+      await latest?.reload();
+    });
+    expect(latest?.pending).toHaveLength(0);
+  });
+
+  it("probes for a run on open and follows one already going (someone else's is not in the runs seed)", async () => {
+    runs.getChatRun.mockResolvedValue({ active: true });
+    await open();
+    expect(runs.getChatRun).toHaveBeenCalledWith(ROOM_ID);
+    expect(sessionManager.attachSession).toHaveBeenCalledWith(ROOM_ID);
+  });
+
+  it('does not probe outside a room', async () => {
+    api.getConversation.mockResolvedValue(page('dm', [], false));
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => root?.render(tree('dm')));
+    await flush();
+    expect(runs.getChatRun).not.toHaveBeenCalled();
+  });
+
+  it("lets the member stop a run their own Agent answers, or one they @-mentioned — never another person's", async () => {
+    const streaming = (botId: string) =>
+      sessionManager.activeSessions.set(ROOM_ID, {
+        sessionId: ROOM_ID,
+        status: 'streaming',
+        botSegments: [{ botId, reason: 'user', status: 'streaming', text: '', reasoning: '', toolCalls: [] }],
+        botRequests: [],
+        startedAt: 1,
+      });
+    streaming('bot_ben');
+    await open();
+    expect(latest?.streaming).toBe(true);
+    expect(latest?.canStop).toBe(false);
+
+    streaming('bot_mine');
+    await act(async () => root?.render(tree(ROOM_ID)));
+    expect(latest?.canStop).toBe(true);
+
+    // A public Agent: theirs to stop only when they asked it.
+    streaming('bot_public');
+    await act(async () => root?.render(tree(ROOM_ID)));
+    expect(latest?.canStop).toBe(false);
+    sessionManager.sendBotsMessage.mockResolvedValue({ queued: true });
+    await act(async () => {
+      await latest?.send('@Oracle numbers?', { mentions: ['bot_public'] });
+    });
+    expect(latest?.canStop).toBe(true);
   });
 });

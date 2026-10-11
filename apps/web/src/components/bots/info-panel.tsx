@@ -6,7 +6,9 @@
  * close the next summary is. No percentage chip in the header: context
  * management is our job, not the member's. Nothing to configure: Bots hand
  * work to each other whenever it helps, and a retired group chat lists who was
- * in it, read-only.
+ * in it, read-only. A room (P5) lists its people first (its owner may remove
+ * someone) and each Agent with whose it is (the member may take out their own,
+ * or any as the room's owner).
  */
 
 import { useState } from 'react';
@@ -19,8 +21,11 @@ import { RichMarkdown } from '../rich-markdown';
 import * as botsApi from '../../lib/api/bots';
 import { BotAvatar } from './bot-avatar';
 import { PanelSection } from './bots-side-panel';
+import { PersonAvatar } from './person-avatar';
+import { roomErrorMessage } from './room-dialogs';
 import { SharedNotes } from './shared-notes';
 import type { BotLookup } from './transcript-rows';
+import type { RoomView } from './use-room';
 
 const ROLE_KEY: Record<BotMemberRole, TranslationKey> = {
   owner: 'bots.roleOwner',
@@ -35,6 +40,8 @@ export function InfoPanel({
   lookup,
   busy,
   onOpenProfile,
+  room,
+  onStale,
 }: {
   conversation: BotConversationDetail;
   onConversationChange: (next: BotConversationDetail) => void;
@@ -42,11 +49,16 @@ export function InfoPanel({
   /** A run is streaming (summarizing now would 409). */
   busy: boolean;
   onOpenProfile: (botId: string) => void;
+  /** A room (P5): its people and Agents as the member sees them. */
+  room?: RoomView | null;
+  /** Something changed that only a re-read shows (someone or an Agent taken out of a room). */
+  onStale?: () => void;
 }) {
   const t = useT();
   const sessionId = conversation.session_id;
   const [compacting, setCompacting] = useState(false);
   const [removing, setRemoving] = useState<BotView | null>(null);
+  const [removingPerson, setRemovingPerson] = useState<{ id: string; name: string } | null>(null);
   const [advanced, setAdvanced] = useState(false);
 
   const compact = async () => {
@@ -69,12 +81,35 @@ export function InfoPanel({
     const bot = removing;
     setRemoving(null);
     if (!bot) return;
+    if (room) {
+      try {
+        await botsApi.removeRoomAgent(sessionId, bot.id);
+        onStale?.();
+        toast(t('bots.info.removed', { name: bot.name }), 'success');
+      } catch (err) {
+        toast(roomErrorMessage(err, t, 'bots.room.errors.removeFailed'), 'error');
+      }
+      return;
+    }
     try {
       const { conversation: next } = await botsApi.removeConversationMember(sessionId, bot.id);
       onConversationChange(next);
       toast(t('bots.info.removed', { name: bot.name }), 'success');
     } catch (err) {
       toast(err instanceof Error && err.message ? err.message : t('bots.info.saveFailed'), 'error');
+    }
+  };
+
+  const confirmRemovePerson = async () => {
+    const person = removingPerson;
+    setRemovingPerson(null);
+    if (!person) return;
+    try {
+      await botsApi.removeRoomPerson(sessionId, person.id);
+      onStale?.();
+      toast(t('bots.room.personRemoved', { name: person.name }), 'success');
+    } catch (err) {
+      toast(roomErrorMessage(err, t, 'bots.room.errors.removePersonFailed'), 'error');
     }
   };
 
@@ -114,53 +149,132 @@ export function InfoPanel({
         )}
       </PanelSection>
 
-      <PanelSection title={t('bots.info.members')}>
-        <ul className="space-y-0.5">
-          {conversation.members.map((member) => {
-            const bot = lookup(member.bot_id);
-            // Only a DM has guests, and only a guest can be sent away (the DM's own Bot cannot).
-            const removable = member.role === 'guest';
-            return (
-              <li
-                key={member.bot_id}
-                className="group flex items-center gap-2 rounded-md px-1 py-1 hover:bg-surface-muted"
-              >
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                  onClick={() => onOpenProfile(member.bot_id)}
-                  title={t('bots.info.viewProfile')}
+      {room && (
+        <PanelSection title={t('bots.room.people')}>
+          <ul className="space-y-0.5" data-testid="room-info-people">
+            {room.participants.map((person) => {
+              const isMe = person.user_id === room.me;
+              return (
+                <li
+                  key={person.user_id}
+                  className="group flex items-center gap-2 rounded-md px-1 py-1 hover:bg-surface-muted"
+                  data-testid="room-info-person"
                 >
-                  <BotAvatar bot={bot} size="xs" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium text-fg">
-                      {bot?.name ?? t('bots.deletedBot')}
-                    </span>
-                    {bot?.role && <span className="block truncate text-[10px] text-fg-faint">{bot.role}</span>}
+                  <PersonAvatar name={person.nickname} size="xs" />
+                  <span className="min-w-0 flex-1 truncate text-xs font-medium text-fg">
+                    {isMe ? t('bots.room.youName', { name: person.nickname }) : person.nickname}
                   </span>
-                </button>
-                {bot?.status === 'archived' ? (
-                  // Still a member on paper, but it no longer replies.
-                  <Tag tone="neutral">{t('bots.sidebar.archived')}</Tag>
-                ) : (
-                  <Tag tone={member.role === 'guest' ? 'neutral' : 'primary'}>{t(ROLE_KEY[member.role])}</Tag>
-                )}
-                {removable && bot && (
-                  <IconButton
-                    size="compact"
-                    variant="destructive"
-                    label={t('bots.info.remove')}
-                    onClick={() => setRemoving(bot)}
-                    wrapperClassName="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 touch-visible"
+                  {person.role === 'owner' && <Tag tone="primary">{t('bots.roleOwner')}</Tag>}
+                  {room.isOwner && !isMe && (
+                    <IconButton
+                      size="compact"
+                      variant="destructive"
+                      label={t('bots.room.removePerson', { name: person.nickname })}
+                      onClick={() => setRemovingPerson({ id: person.user_id, name: person.nickname })}
+                      wrapperClassName="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 touch-visible"
+                    >
+                      <LogOut size={13} />
+                    </IconButton>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </PanelSection>
+      )}
+
+      {room ? (
+        <PanelSection title={t('bots.room.agentsHere')}>
+          {room.agents.length === 0 ? (
+            <p className="text-xs text-fg-faint">{t('bots.room.noAgentsHere')}</p>
+          ) : (
+            <ul className="space-y-0.5" data-testid="room-info-agents">
+              {room.agents.map((agent) => (
+                <li
+                  key={agent.bot.id}
+                  className="group flex items-center gap-2 rounded-md px-1 py-1 hover:bg-surface-muted"
+                >
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    onClick={() => onOpenProfile(agent.bot.id)}
+                    title={t('bots.info.viewProfile')}
                   >
-                    <LogOut size={13} />
-                  </IconButton>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </PanelSection>
+                    <BotAvatar bot={agent.bot} size="xs" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-medium text-fg">{agent.bot.name}</span>
+                      <span className="block truncate text-[10px] text-fg-faint">
+                        {agent.mine
+                          ? t('bots.room.yours')
+                          : t('bots.room.ownedBy', { name: room.personName(agent.member.owner_user_id) })}
+                      </span>
+                    </span>
+                  </button>
+                  {agent.removable && (
+                    <IconButton
+                      size="compact"
+                      variant="destructive"
+                      label={t('bots.info.remove')}
+                      onClick={() => setRemoving(agent.bot)}
+                      wrapperClassName="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 touch-visible"
+                    >
+                      <LogOut size={13} />
+                    </IconButton>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </PanelSection>
+      ) : (
+        <PanelSection title={t('bots.info.members')}>
+          <ul className="space-y-0.5">
+            {conversation.members.map((member) => {
+              const bot = lookup(member.bot_id);
+              // Only a DM has guests, and only a guest can be sent away (the DM's own Bot cannot).
+              const removable = member.role === 'guest';
+              return (
+                <li
+                  key={member.bot_id}
+                  className="group flex items-center gap-2 rounded-md px-1 py-1 hover:bg-surface-muted"
+                >
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    onClick={() => onOpenProfile(member.bot_id)}
+                    title={t('bots.info.viewProfile')}
+                  >
+                    <BotAvatar bot={bot} size="xs" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-medium text-fg">
+                        {bot?.name ?? t('bots.deletedBot')}
+                      </span>
+                      {bot?.role && <span className="block truncate text-[10px] text-fg-faint">{bot.role}</span>}
+                    </span>
+                  </button>
+                  {bot?.status === 'archived' ? (
+                    // Still a member on paper, but it no longer replies.
+                    <Tag tone="neutral">{t('bots.sidebar.archived')}</Tag>
+                  ) : (
+                    <Tag tone={member.role === 'guest' ? 'neutral' : 'primary'}>{t(ROLE_KEY[member.role])}</Tag>
+                  )}
+                  {removable && bot && (
+                    <IconButton
+                      size="compact"
+                      variant="destructive"
+                      label={t('bots.info.remove')}
+                      onClick={() => setRemoving(bot)}
+                      wrapperClassName="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 touch-visible"
+                    >
+                      <LogOut size={13} />
+                    </IconButton>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </PanelSection>
+      )}
 
       <PanelSection title={t('bots.info.notes')} hint={t('bots.info.notesHint')}>
         <SharedNotes sessionId={sessionId} initial={conversation.notes} lookup={lookup} />
@@ -202,6 +316,15 @@ export function InfoPanel({
         onConfirm={() => void confirmRemove()}
         title={t('bots.info.removeConfirm', { name: removing?.name ?? '' })}
         confirmLabel={t('bots.info.remove')}
+        confirmVariant="destructive"
+      />
+      <ConfirmDialog
+        open={removingPerson !== null}
+        onClose={() => setRemovingPerson(null)}
+        onConfirm={() => void confirmRemovePerson()}
+        title={t('bots.room.removePersonConfirm', { name: removingPerson?.name ?? '' })}
+        description={t('bots.room.removePersonDescription')}
+        confirmLabel={t('bots.room.removePersonShort')}
         confirmVariant="destructive"
       />
     </div>

@@ -7,6 +7,7 @@
  *                            every call takes the Agent (`bot`, see `ComputerBot`)
  * - `/api/bots/vault/*`      the password vault
  * - `/api/agents*`           other members' public Agents (the directory, my DM with one)
+ * - `/api/rooms*`            conversations with other people and the Agents they bring (P5)
  * - `/api/admin/bot-computers/*`  everyone's computers (super)
  * - `/api/admin/agents/*`    every public Agent, pause / resume (super)
  *
@@ -473,6 +474,89 @@ export async function compactConversation(sessionId: string): Promise<{ digest: 
   const res = await rpc.api.bots.conversations[':id'].compact.$post({ param: { id: enc(sessionId) } });
   if (!res.ok) throw await failure(res);
   return res.json();
+}
+
+// ─── Rooms (spec 20261011-agent-first-class P5) ─────────
+//
+// Several people, and the Agents they bring, in one conversation (`kind: 'room'`). Rooms come back
+// in `listConversations()` with the threads; the transcript, notes and read marker are the
+// conversation routes above; a message is `POST /api/chat` (always `202 queued` in a room).
+
+/** Someone who can be in a conversation with the member: active, internal, Agents on — never the member. */
+export interface RoomPerson {
+  id: string;
+  nickname: string;
+  email: string;
+}
+
+export async function listRoomPeople(): Promise<RoomPerson[]> {
+  const res = await rpc.api.rooms.people.$get();
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).people;
+}
+
+/**
+ * A new conversation with these people (and, optionally, a title and some of the member's own
+ * Agents). One other person, no title and no Agents is the two people's private chat: the existing
+ * one comes back (`created: false`). 400 someone who cannot be in a conversation, 404 someone
+ * else's private Agent, 409 a public Agent not offered to everyone picked.
+ */
+export async function createRoom(input: {
+  userIds: string[];
+  title?: string | null;
+  botIds?: string[];
+}): Promise<{ conversation: BotConversationDetail; created: boolean }> {
+  const json: { user_ids: string[]; title?: string; bot_ids?: string[] } = { user_ids: input.userIds };
+  if (input.title?.trim()) json.title = input.title.trim();
+  if (input.botIds && input.botIds.length > 0) json.bot_ids = input.botIds;
+  const args = { json };
+  const res = await rpc.api.rooms.$post(args);
+  if (!res.ok) throw await failure(res);
+  const { conversation } = await res.json();
+  if (!conversation) throw new BotsApiError('Conversation not found', 404);
+  return { conversation, created: res.status === 201 };
+}
+
+/** Anyone in the room may name it; an empty title goes back to the people's names. */
+export async function renameRoom(sessionId: string, title: string | null): Promise<BotConversationDetail> {
+  const args = { param: { id: enc(sessionId) }, json: { title: title?.trim() || null } };
+  const res = await rpc.api.rooms[':id'].$patch(args);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).conversation;
+}
+
+/** Anyone in the room may add a person (a public Agent the newcomer may not use leaves, with a line). */
+export async function addRoomPerson(sessionId: string, userId: string): Promise<BotConversationDetail> {
+  const args = { param: { id: enc(sessionId) }, json: { user_id: userId } };
+  const res = await rpc.api.rooms[':id'].participants.$post(args);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).conversation;
+}
+
+/**
+ * Leave (`userId` = the member) or, as the room's owner, remove someone. Their Agents leave with
+ * them; the last one out deletes the room (`deleted`). 409 `busy` while that person's Agent answers.
+ */
+export async function removeRoomPerson(sessionId: string, userId: string): Promise<{ deleted: boolean }> {
+  const args = { param: { id: enc(sessionId), userId: enc(userId) } };
+  const res = await rpc.api.rooms[':id'].participants[':userId'].$delete(args);
+  if (!res.ok) throw await failure(res);
+  return { deleted: (await res.json()).deleted };
+}
+
+/** Bring one of the member's Agents, or a public Agent offered to everyone in the room (409 otherwise). */
+export async function addRoomAgent(sessionId: string, botId: string): Promise<BotConversationDetail> {
+  const args = { param: { id: enc(sessionId) }, json: { bot_id: botId } };
+  const res = await rpc.api.rooms[':id'].agents.$post(args);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).conversation;
+}
+
+/** Take an Agent out: who brought it, its owner, or the room's owner (403 for anyone else). */
+export async function removeRoomAgent(sessionId: string, botId: string): Promise<void> {
+  const args = { param: { id: enc(sessionId), botId: enc(botId) } };
+  const res = await rpc.api.rooms[':id'].agents[':botId'].$delete(args);
+  if (!res.ok) throw await failure(res);
 }
 
 // ─── Shared notes ────────────────────────────────────────

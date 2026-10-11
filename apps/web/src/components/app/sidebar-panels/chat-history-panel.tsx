@@ -49,6 +49,7 @@ import { pruneMissing, rangeSelect, toggleOne, type SelectableRow } from './sele
 import { SidebarSectionLabel } from '../sidebar-section-label';
 import type { SessionTag, SessionGroup, SessionScope } from '@greenhouse/types/api';
 import { DEFAULT_ASSET_SCOPE } from '../../../lib/asset-scopes';
+import { readsTeamChats } from '../../../lib/features';
 
 // Long-press duration (touch) to enter multi-select mode.
 const LONG_PRESS_MS = 450;
@@ -366,10 +367,11 @@ export function ChatHistoryPanel({
   const currentUser = useAuthStore((s) => s.currentUser);
   // Same unread number the inbox shows — one server-pushed count, not a second tally.
   const unreadShareCount = useWsStore((s) => s.shareCount);
-  const isSuper = currentUser?.role === 'super';
+  // Other members' chats are readable only where the deployment allows it (D46) — not by role.
+  const teamScope = readsTeamChats(currentUser);
 
-  // A stored 'team' from a demoted account would 403 on every load.
-  const effectiveScope: SessionScope = scope === 'team' && !isSuper ? 'mine' : scope;
+  // A stored 'team' from an account that may no longer read the team's chats would 403 on every load.
+  const effectiveScope: SessionScope = scope === 'team' && !teamScope ? 'mine' : scope;
 
   const changeScope = useCallback((next: SessionScope) => {
     setScope(next);
@@ -1178,7 +1180,7 @@ export function ChatHistoryPanel({
   const unified = leading !== undefined;
   const scopeControls = (
     <>
-      {/* Scope tabs — mine (default) / shared with me / team (super only).
+      {/* Scope tabs — mine (default) / shared with me / team (accounts that may read it: reads_team_chats).
           `segment`, not pills: this is a switch where one option is always on,
           and the round pills below it are the tag filter. Same shape for two
           different behaviours reads as one long filter row. */}
@@ -1192,7 +1194,7 @@ export function ChatHistoryPanel({
               label: t('history.scopeShared'),
               count: unreadShareCount > 0 ? unreadShareCount : undefined,
             },
-            ...(isSuper ? [{ key: 'team', label: t('history.scopeTeam') }] : []),
+            ...(teamScope ? [{ key: 'team', label: t('history.scopeTeam') }] : []),
           ]}
           activeKey={effectiveScope}
           onChange={(k) => changeScope((k as SessionScope) ?? 'mine')}

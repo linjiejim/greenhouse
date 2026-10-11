@@ -7,6 +7,11 @@
  * Not ConversationPane (spec D17): that controller is single-agent — its
  * messages have no author, its stream has no speaker, and its drafts, dock
  * and side pane are bound to one Agent. The renderers underneath are shared.
+ *
+ * A room (P5, `room`): the header shows the people and a manage menu, the `@`
+ * list holds only the Agents the member may address (the placeholder says
+ * they answer only when @-mentioned), other people's messages sit on the
+ * left, and Stop is offered only for a run the member asked for.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -25,8 +30,10 @@ import { copyForCode, isBotsApiError, updateTaskChat } from '../../lib/api/bots'
 import { useProfileStore, useUIStore } from '../../stores';
 import { MAX_ATTACHMENTS } from '../conversation/attachments';
 import { ModelSelector } from '../chat/model-selector';
+import type { ContextMenuItem } from '../app/context-menu';
 import { BotsBareHeader, BotsMobileNavButton, ConversationHeader, useStatusLine } from './conversation-header';
-import { BotTranscript } from './bot-transcript';
+import { BotTranscript, type TranscriptRoom } from './bot-transcript';
+import type { RoomView } from './use-room';
 import { useBotsStore } from './bots-store';
 import { BotsComposer, type BotsComposerHandle } from './bots-composer';
 import { BotTaskDock, useBotTasks } from './bot-task-dock';
@@ -120,6 +127,14 @@ export interface ConversationViewProps {
   onInvite: () => void;
   onNewBot: () => void;
   onOpenProfile: (botId: string) => void;
+  /** A room (P5): its people and Agents as the member sees them. */
+  room?: RoomView | null;
+  /** A room's manage menu, after "Rename" (rename, add people, Agents, leave). */
+  roomMenu?: ContextMenuItem[];
+  /** Rename a room (rejects when it was not saved). */
+  onRenameRoom?: (title: string) => Promise<void>;
+  /** The `@` list's last row in a room: bring an Agent. */
+  onBringAgent?: () => void;
 }
 
 export function ConversationView(props: ConversationViewProps) {
@@ -450,6 +465,10 @@ function ConversationColumn({
   refreshTasks,
   sendFromCard,
   taskChat,
+  room: roomProp,
+  roomMenu,
+  onRenameRoom,
+  onBringAgent,
 }: ConversationViewProps & {
   conversation: NonNullable<BotConversationController['conversation']>;
   speaking: ReturnType<typeof speakingSegment>;
@@ -466,6 +485,7 @@ function ConversationColumn({
   taskChat: TaskChatControls | null;
 }) {
   const t = useT();
+  const room = conversation.kind === 'room' ? (roomProp ?? null) : null;
   const status = useStatusLine({
     conversation,
     members,
@@ -474,17 +494,49 @@ function ConversationColumn({
     computerPhase,
     readOnly,
     publishedBy: shared?.owner.nickname,
+    room: room
+      ? { privateChat: room.privateChat, people: room.participants.length, agents: room.agents.length }
+      : undefined,
   });
   // A DM and a separate chat belong to one Agent; only a retired group had a roster.
   const single = conversation.kind !== 'group';
   // Guests join a live DM only: an archived Bot's DM has nobody to host them, a group chat is a
-  // record, and someone else's public Agent talks with this member alone (P4).
-  const canInvite = !readOnly && !shared && conversation.members.length < MAX_MEMBERS;
+  // record, and someone else's public Agent talks with this member alone (P4). A room has its own
+  // way in (its manage menu).
+  const canInvite = !room && !readOnly && !shared && conversation.members.length < MAX_MEMBERS;
   const segments = controller.managed?.botSegments ?? [];
   const liveRequests = controller.managed?.botRequests ?? [];
-  const placeholder = owner
-    ? t('bots.composer.placeholderDm', { name: owner.name })
-    : t('bots.composer.placeholderShort');
+  const placeholder = room
+    ? room.addressable.length > 0
+      ? t('bots.room.placeholderAgents', { name: title })
+      : t('bots.room.placeholder', { name: title })
+    : owner
+      ? t('bots.composer.placeholderDm', { name: owner.name })
+      : t('bots.composer.placeholderShort');
+
+  // A room's transcript: whose message is whose, and an answer from a card goes to the Agent that
+  // asked, by name (nobody answers an unaddressed message in a room).
+  const streaming = controller.streaming;
+  const transcriptRoom = useMemo<TranscriptRoom | undefined>(() => {
+    if (!room) return undefined;
+    const addressable = new Set(room.addressable.map((bot) => bot.id));
+    return {
+      me: room.me,
+      personName: room.personName,
+      others: room.others.map((person) => person.nickname),
+      privateChat: room.privateChat,
+      canAddress: (botId) => !!botId && addressable.has(botId),
+      sendTo: (botId, text) => {
+        const bot = room.faces.get(botId);
+        if (!bot) return Promise.reject(new Error('unknown Agent'));
+        if (streaming) {
+          toast(t('bots.composer.waitForReply'), 'info');
+          return Promise.reject(new Error('busy'));
+        }
+        return send(`@${bot.name} ${text}`, [], [bot.id]);
+      },
+    };
+  }, [room, send, streaming, t]);
   // A retired group's intro shows the roster it had (the active ones).
   const introBots = single ? (owner ? [owner] : []) : members;
 
@@ -552,10 +604,22 @@ function ConversationColumn({
         canInvite={canInvite}
         onInvite={onInvite}
         onOpenComputer={() => onPane(activePane === 'computer' ? null : 'computer')}
-        showComputer={showComputer}
+        // A room has no Agent of its own, so no computer of its own: a card opens its Agent's.
+        showComputer={showComputer && !room}
         onOpenInfo={() => onPane(activePane === 'info' ? null : 'info')}
         onOpenProfile={onOpenProfile}
-        onRename={taskChat && !readOnly ? taskChat.onRename : undefined}
+        onRename={
+          room ? (room.privateChat ? undefined : onRenameRoom) : taskChat && !readOnly ? taskChat.onRename : undefined
+        }
+        room={
+          room
+            ? {
+                others: room.others.map((person) => person.nickname),
+                privateChat: room.privateChat,
+                menu: roomMenu ?? [],
+              }
+            : undefined
+        }
       />
       <BotTranscript
         sessionId={sessionId}
@@ -575,7 +639,8 @@ function ConversationColumn({
         memoryStates={controller.memoryStates}
         busy={controller.streaming}
         interrupting={controller.interrupting}
-        onHandleNow={(clientId) => void controller.handleNow(clientId)}
+        // In a room the run may be someone else's: nobody jumps its queue.
+        onHandleNow={room ? undefined : (clientId) => void controller.handleNow(clientId)}
         computer={computer}
         computerNotice={
           computerPhase?.kind === 'starting' ? 'starting' : computerPhase?.kind === 'queued' ? 'queued' : null
@@ -595,6 +660,7 @@ function ConversationColumn({
         onEditLast={taskChat?.onEditLast}
         onRegenerateLast={taskChat?.onRegenerateLast}
         replyFeedback={!!shared}
+        room={transcriptRoom}
       />
       {!readOnly && owner && isSproutyBot(owner) && owner.name === 'Sprouty' && owner.current_version === 1 && (
         <SproutyNamingNudge bot={owner} onOpenProfile={onOpenProfile} />
@@ -613,16 +679,18 @@ function ConversationColumn({
           key={sessionId}
           ref={composerRef}
           sessionId={sessionId}
-          members={members}
+          // A room's `@` list: only the Agents the member may address — no one else answers them.
+          members={room ? room.addressable : members}
           placeholder={placeholder}
-          busy={controller.streaming}
+          // Stop is for a run the member may stop (in a room, one they asked for).
+          busy={controller.canStop}
           stopPhase={controller.stopPhase}
           input={draft}
           setInput={setDraft}
           onSend={send}
           onStop={controller.stop}
-          onInvite={onInvite}
-          canInvite={canInvite}
+          onInvite={room ? (onBringAgent ?? onInvite) : onInvite}
+          canInvite={room ? !!onBringAgent : canInvite}
           inputRef={inputRef}
           aboveSlot={<BotTaskDock tasks={tasks} lookup={lookup} onChanged={() => void refreshTasks()} />}
           toolbarSlot={

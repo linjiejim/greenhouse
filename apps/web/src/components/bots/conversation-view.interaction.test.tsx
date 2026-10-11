@@ -20,6 +20,7 @@ import { queueFirstSend, takeFirstSend } from './first-send';
 import { resetReplyRatings, seedReplyRatings } from './reply-feedback';
 import { sharedBotAsView, useBotsStore } from './bots-store';
 import type { BotConversationController } from './use-bot-conversation';
+import type { RoomView } from './use-room';
 
 const api = vi.hoisted(() => ({
   listConversationTasks: vi.fn(),
@@ -103,6 +104,8 @@ function controller(overrides: Partial<BotConversationController> = {}): BotConv
     interrupting: false,
     handleNow: vi.fn(async () => {}),
     ...overrides,
+    // Outside a room a run on screen is always the member's to stop.
+    canStop: overrides.canStop ?? overrides.streaming ?? false,
   };
 }
 
@@ -774,5 +777,202 @@ describe("a DM with someone else's public Agent (P4)", () => {
     await render(sharedProps({ controller: controller({ conversation: DM_ORACLE, messages: [reply, capped] }) }));
     const row = document.querySelector('[data-event-kind="unavailable"]');
     expect(row?.textContent).toContain("You've used today's allowance with Oracle.");
+  });
+});
+
+describe('a conversation with other people (a room, P5)', () => {
+  const BEN_AGENT: BotView = { ...SAGE, id: 'bot_ben', name: "Ben's Agent", role: '', user_id: 'u3' };
+  const ROOM: BotConversationDetail = {
+    ...DM,
+    session_id: 'room-1',
+    kind: 'room',
+    title: 'Launch',
+    owner_bot_id: null,
+    lead_bot_id: null,
+    members: [
+      { bot_id: SAGE.id, role: 'member', position: 0, owner_user_id: 'u1', addressable: true },
+      { bot_id: BEN_AGENT.id, role: 'member', position: 1, owner_user_id: 'u3', addressable: false },
+    ],
+    participants: [
+      { user_id: 'u1', nickname: 'Mia', role: 'owner', joined_at: '' },
+      { user_id: 'u2', nickname: 'Ana', role: 'member', joined_at: '' },
+      { user_id: 'u3', nickname: 'Ben', role: 'member', joined_at: '' },
+    ],
+  };
+  const room = (extra: Partial<RoomView> = {}): RoomView => ({
+    me: 'u1',
+    ownerId: 'u1',
+    isOwner: true,
+    participants: ROOM.participants!,
+    others: ROOM.participants!.slice(1),
+    privateChat: false,
+    agents: [
+      { member: ROOM.members[0], bot: SAGE, mine: true, addressable: true, removable: true },
+      { member: ROOM.members[1], bot: BEN_AGENT, mine: false, addressable: false, removable: true },
+    ],
+    addressable: [SAGE],
+    faces: new Map([
+      [SAGE.id, SAGE],
+      [BEN_AGENT.id, BEN_AGENT],
+    ]),
+    personName: (id) => ROOM.participants!.find((p) => p.user_id === id)?.nickname ?? 'Someone who left',
+    ...extra,
+  });
+  const roomMenu = [
+    { label: 'Add people', onClick: vi.fn() },
+    { label: 'Bring or remove Agents', onClick: vi.fn() },
+    { label: 'Leave conversation', onClick: vi.fn(), danger: true },
+  ];
+  const roomProps = (overrides: Partial<ConversationViewProps> = {}) =>
+    props({
+      sessionId: ROOM.session_id,
+      controller: controller({ conversation: ROOM }),
+      members: [SAGE, BEN_AGENT],
+      owner: undefined,
+      lookup: (key) => (key === SAGE.id ? SAGE : key === BEN_AGENT.id ? BEN_AGENT : undefined),
+      title: 'Launch',
+      room: room(),
+      roomMenu,
+      onRenameRoom: vi.fn(async () => {}),
+      onBringAgent: vi.fn(),
+      ...overrides,
+    });
+  const header = () => document.querySelector<HTMLElement>('[data-testid="bots-conversation-header"]')!;
+  const status = () => document.querySelector('[data-testid="bots-status-line"]')?.textContent;
+  const menuLabels = () => [...document.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent);
+
+  it('heads it with its people and how many are here, and manages it from a menu — no invite, no computer', async () => {
+    await render(roomProps());
+    expect(header().querySelectorAll('[data-testid="person-avatar"]')).toHaveLength(2);
+    expect(status()).toBe('3 people · 2 Agents');
+    expect(document.querySelector('[data-testid="bots-computer-button"]')).toBeNull();
+    expect(header().querySelector('button[aria-label="Invite an Agent"]')).toBeNull();
+
+    await act(async () => document.querySelector<HTMLElement>('[data-testid="room-manage"]')!.click());
+    expect(menuLabels()).toEqual(['Rename', 'Add people', 'Bring or remove Agents', 'Leave conversation']);
+    await act(async () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')][0].click());
+    expect(document.querySelector<HTMLInputElement>('[data-testid="bots-title-input"]')?.value).toBe('Launch');
+  });
+
+  it('says so when the member is the only one left', async () => {
+    const alone = ROOM.participants!.slice(0, 1);
+    await render(
+      roomProps({
+        controller: controller({ conversation: { ...ROOM, members: ROOM.members.slice(0, 1), participants: alone } }),
+        room: room({ participants: alone, others: [], agents: room().agents.slice(0, 1) }),
+      }),
+    );
+    expect(status()).toBe('Only you · 1 Agent');
+  });
+
+  it('calls a private chat that, names the other person, and offers no rename', async () => {
+    const ana = ROOM.participants!.slice(0, 2);
+    await render(
+      roomProps({
+        controller: controller({ conversation: { ...ROOM, title: null, members: [], participants: ana } }),
+        members: [],
+        title: 'Ana',
+        room: room({ privateChat: true, participants: ana, others: ana.slice(1), agents: [], addressable: [] }),
+      }),
+    );
+    expect(status()).toBe('Private chat');
+    expect(header().querySelectorAll('[data-testid="person-avatar"]')).toHaveLength(1);
+    expect(document.querySelector('[data-testid="bots-intro"]')?.textContent).toContain(
+      'the beginning of your private chat with Ana',
+    );
+    expect(document.querySelector<HTMLTextAreaElement>('[data-testid="chat-input"]')?.placeholder).toBe('Message Ana…');
+    await act(async () => document.querySelector<HTMLElement>('[data-testid="room-manage"]')!.click());
+    expect(menuLabels()).not.toContain('Rename');
+  });
+
+  it('offers only the Agents the member may address in the @ list, and says they answer only then', async () => {
+    await render(roomProps());
+    const input = document.querySelector<HTMLTextAreaElement>('[data-testid="chat-input"]')!;
+    expect(input.placeholder).toBe('Message Launch — Agents answer only when you @ them');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, '@');
+      input.setSelectionRange(1, 1);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await flush();
+    const options = [...document.querySelectorAll('[role="option"]')].map((option) => option.textContent);
+    expect(options.some((text) => text?.includes('Sage'))).toBe(true);
+    expect(options.some((text) => text?.includes("Ben's Agent"))).toBe(false);
+  });
+
+  it("offers Stop only for a run the member may stop — never someone else's", async () => {
+    await render(roomProps({ controller: controller({ conversation: ROOM, streaming: true, canStop: false }) }));
+    expect(document.querySelector('[data-testid="bots-stop"]')).toBeNull();
+    if (root) await act(async () => root?.unmount());
+    document.body.innerHTML = '';
+    await render(roomProps({ controller: controller({ conversation: ROOM, streaming: true, canStop: true }) }));
+    expect(document.querySelector('[data-testid="bots-stop"]')).not.toBeNull();
+  });
+
+  it("puts other people's messages on the left under their names, and the member's own on the right", async () => {
+    const at = '2026-10-12T00:00:00.000Z';
+    const row = (id: string, author: string, content: string, seq: number) => ({
+      id,
+      role: 'user' as const,
+      content,
+      bot_id: null,
+      bot_event: null,
+      author_user_id: author,
+      pipeline: [],
+      references: [],
+      reasoning: null,
+      model: null,
+      images: [],
+      created_at: at,
+      seq,
+    });
+    await render(
+      roomProps({
+        controller: controller({
+          conversation: ROOM,
+          messages: [row('m1', 'u2', 'morning all', 1), row('m2', 'u2', 'agenda?', 2), row('m3', 'u1', 'here', 3)],
+        }),
+      }),
+    );
+    const names = [...document.querySelectorAll('[data-testid="room-person-name"]')].map((el) => el.textContent);
+    expect(names).toEqual(['Ana']); // once, while she keeps talking
+    const bubbles = [...document.querySelectorAll('[data-transcript-kind]')].map((el) =>
+      el.getAttribute('data-transcript-kind'),
+    );
+    expect(bubbles).toEqual(['person', 'person', 'user']);
+    const sides = [...document.querySelectorAll('[data-transcript-kind] .animate-fade-in')].map((el) =>
+      el.className.includes('justify-start') ? 'left' : 'right',
+    );
+    expect(sides).toEqual(['left', 'left', 'right']);
+  });
+
+  it('offers Retry only on an Agent the member may ask again', async () => {
+    const failed = (id: string, botId: string, seq: number) => ({
+      id,
+      role: 'system' as const,
+      content: '',
+      bot_id: botId,
+      bot_event: { kind: 'turn_error' as const, bot_id: botId, error: 'x' },
+      author_user_id: null,
+      pipeline: [],
+      references: [],
+      reasoning: null,
+      model: null,
+      images: [],
+      created_at: '2026-10-12T00:00:00.000Z',
+      seq,
+    });
+    await render(
+      roomProps({
+        controller: controller({
+          conversation: ROOM,
+          messages: [failed('e1', BEN_AGENT.id, 1), failed('e2', SAGE.id, 2)],
+        }),
+      }),
+    );
+    const rows = [...document.querySelectorAll<HTMLElement>('[data-testid="bots-event"]')];
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).not.toContain('Retry');
+    expect(rows[1].textContent).toContain('Retry');
   });
 });
