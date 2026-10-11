@@ -96,6 +96,32 @@ describe('CalendarViewBody', () => {
     expect(mounted.container.querySelector('button[aria-label^="New record on"]')).toBeNull();
   });
 
+  it('follows a custom role’s field rights: no drag without the start and end, no "+" without the start', async () => {
+    const launch = fixtureRecord(5, { '1': 'Launch', '2': '2026-10-14', '3': '2026-10-16' });
+    const rights = (writable: number[]) => ({
+      canEdit: true,
+      canCreate: true,
+      canBuild: false,
+      canChangeView: false,
+      canEditField: (fieldId: number) => writable.includes(fieldId),
+    });
+    const props = bodyProps({
+      config: { calendar: { startFieldId: due.id, endFieldId: ends.id } },
+      schemaFields: [primary, due, ends],
+      records: [launch],
+      permissions: rights([primary.id, due.id]),
+    });
+    mounted = await mountBody(CalendarViewBody, props);
+    // The end is read-only: moving would change the duration or be refused.
+    await dragTo(day('2026-10-14').querySelector('[data-testid="calendar-record-5"]')!, day('2026-10-20'));
+    expect(props.onCommitValues).not.toHaveBeenCalled();
+    expect(mounted.container.querySelector('button[aria-label^="New record on"]')).not.toBeNull();
+
+    const noStart = bodyProps({ ...props, permissions: rights([primary.id, ends.id]) });
+    await mounted.rerender(noStart);
+    expect(mounted.container.querySelector('button[aria-label^="New record on"]')).toBeNull();
+  });
+
   it('creates a record on a day and pages by month', async () => {
     const props = bodyProps({
       config: { calendar: { startFieldId: due.id } },

@@ -102,8 +102,14 @@ export function CalendarViewBody({
     return byDay;
   }, [days, endField, moves, records, startField]);
 
-  const canDrag = Boolean(startField) && permissions.canEdit && !isComputedField(startField!);
-  const canCreate = Boolean(startField) && permissions.canCreate && !isComputedField(startField!);
+  // A custom role may edit some fields only. A drag writes the start (and a stored end, to keep the
+  // duration); the day's "+" prefills the start, which the record dialog drops when it is not writable.
+  const writable = (field: TableField | undefined) =>
+    Boolean(field) && !isComputedField(field!) && (permissions.canEditField?.(field!.id) ?? true);
+  const startWritable = writable(startField);
+  const endWritable = !endField || isComputedField(endField) || writable(endField);
+  const canDrag = startWritable && endWritable && permissions.canEdit;
+  const canCreate = startWritable && permissions.canCreate;
 
   const moveTo = async (record: TableRecord, day: string) => {
     if (!startField) return;

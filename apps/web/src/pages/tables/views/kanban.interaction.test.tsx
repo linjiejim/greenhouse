@@ -127,6 +127,25 @@ describe('KanbanViewBody', () => {
     expect(props.onOpenRecord).toHaveBeenCalledWith(acme);
   });
 
+  it('neither drags nor creates in lanes when a custom role may not write the lane field', async () => {
+    const props = bodyProps({
+      config: { kanban: { groupFieldId: stage.id } },
+      schemaFields,
+      records: [acme],
+      permissions: {
+        canEdit: true,
+        canCreate: true,
+        canBuild: false,
+        canChangeView: false,
+        canEditField: (fieldId) => fieldId !== stage.id,
+      },
+    });
+    mounted = await mountBody(KanbanViewBody, props);
+    await dragTo(card(5), lane('won'));
+    expect(props.onCommitValue).not.toHaveBeenCalled();
+    expect(mounted.container.textContent).not.toContain('New record');
+  });
+
   it('creates a record prefilled with the lane, hides lanes, and caps the board with a notice', async () => {
     const props = bodyProps({
       config: { kanban: { groupFieldId: stage.id, hiddenGroups: ['won'] } },

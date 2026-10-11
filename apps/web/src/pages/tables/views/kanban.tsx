@@ -67,8 +67,12 @@ export function KanbanViewBody({
     [laneField, records, counts, usersById],
   );
   const hidden = new Set(kanban?.hiddenGroups ?? []);
-  const canDrag = Boolean(laneField) && permissions.canEdit && !isComputedField(laneField!);
-  const canCreateInLane = Boolean(laneField) && permissions.canCreate && !isComputedField(laneField!);
+  // A drag writes the lane field and a lane's "+" prefills it: both need that field writable
+  // (a custom role may edit some fields only; the record dialog leaves the rest out).
+  const laneWritable =
+    Boolean(laneField) && !isComputedField(laneField!) && (permissions.canEditField?.(laneField!.id) ?? true);
+  const canDrag = laneWritable && permissions.canEdit;
+  const canCreateInLane = laneWritable && permissions.canCreate;
 
   const laneOf = (record: TableRecord) => moves.get(record.id) ?? recordLaneKey(record, laneField!, lanes);
 
