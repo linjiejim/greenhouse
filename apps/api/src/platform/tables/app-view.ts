@@ -127,7 +127,8 @@ export function trimSpecForRole(spec: AppSpec, roleKey: string): AppSpec | undef
  * Field metadata for the tables a spec's cards use: the fields the spec
  * references, live, and — for a role — readable by it, with `editable` from
  * the same compiled scope every write is checked against. Managers see every
- * referenced field; computed ones are never editable.
+ * referenced field; computed ones are never editable. `required` is the
+ * field's own flag (a create checks it for the fields the writer may edit).
  */
 export async function appTablesView(
   spec: AppSpec,
@@ -159,6 +160,7 @@ export async function appTablesView(
           isPrimary: row.is_primary,
           config: parseTableFieldConfig(row),
           editable: editable ? editable.has(row.id) : !isComputedFieldType(row.type),
+          required: row.required,
         })),
     });
   }

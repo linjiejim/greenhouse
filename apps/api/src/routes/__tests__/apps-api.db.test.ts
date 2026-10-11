@@ -4,9 +4,11 @@
  * the Base owner / super publishes and changes audiences, only a super
  * features), draft / audience CAS, the publish → restore → republish cycle
  * (D5), spec problems (saved with errors, refused at publish), the lists
- * (managed / shared with me / featured, group reach via `group_members`),
- * pins, the manager's runtime view, and the Base audit feed (app actions filed
- * under the Base; reads never push writes out).
+ * (managed / shared with me / featured, group reach via `group_members`; a
+ * shelf only lists what the person can open as a role, D3 / D4), pins, the
+ * manager's runtime view (field `required`; the phone's `?cards=` ignored),
+ * and the Base audit feed (app actions filed under the Base; reads never push
+ * writes out).
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -338,6 +340,55 @@ describe('audiences and what people see', () => {
       shared.app.id,
     ]);
   });
+
+  it('shelves an app for someone only while a role resolves for them (D3 / D4), as opening it does', async () => {
+    const { baseId, tableId, primaryId } = await base();
+    const { app } = await createApp(owner, baseId, specFor(tableId, primaryId));
+    await json(await publish(app.id, 1));
+    await json(
+      await send(owner, `/api/apps/${app.id}/audiences`, 'PUT', {
+        entries: [
+          { principal: { type: 'user', userId: member.id }, roleKey: 'approver' },
+          { principal: { type: 'team' }, roleKey: 'applicant' },
+        ],
+        audiencesRevision: 1,
+      }),
+    );
+    await json(await send(admin, `/api/apps/${app.id}/feature`, 'POST', { featured: true }));
+    const ids = (apps: AppSummary[]) => apps.map((entry) => entry.id);
+    const listOf = async (user: UserRow) => json<AppListView>(await send(user, '/api/apps'));
+    const before = await listOf(member);
+    expect(ids(before.shared)).toContain(app.id);
+    expect(ids(before.featured)).toContain(app.id);
+    await json(await send(member, '/api/apps/pins', 'PUT', { appIds: [app.id] }));
+
+    // v2 drops "approver": the member's own entry names a gone role and decides (no fall-through to the team).
+    const v2 = specFor(tableId, primaryId);
+    v2.roles = v2.roles.filter((role) => role.key !== 'approver');
+    const saved = await json<AppDraftView>(
+      await send(owner, `/api/apps/${app.id}/draft`, 'PUT', { spec: v2, draftRevision: 1 }),
+    );
+    expect(saved.errors).toEqual([]);
+    await json(await publish(app.id, saved.draftRevision));
+
+    expect((await send(member, `/api/apps/${app.id}`)).status).toBe(404);
+    const after = await listOf(member);
+    expect(ids(after.shared)).not.toContain(app.id);
+    expect(ids(after.featured)).not.toContain(app.id);
+    expect((await json<{ apps: AppSummary[] }>(await send(member, '/api/apps/pins'))).apps).toEqual([]);
+    expect((await send(member, '/api/apps/pins', 'PUT', { appIds: [app.id] })).status).toBe(404);
+
+    // The team entry still names a live role; managers keep the app whatever the audience says.
+    const outsiderList = await listOf(outsider);
+    expect(ids(outsiderList.shared)).toContain(app.id);
+    expect(ids(outsiderList.featured)).toContain(app.id);
+    const ownerList = await listOf(owner);
+    expect(ids(ownerList.managed)).toContain(app.id);
+    expect(ids(ownerList.featured)).toContain(app.id);
+    // A super is no managed-list candidate on a Base they are not in, yet manages it: still on their shelf.
+    const adminList = await listOf(admin);
+    expect(adminList.shared.find((entry) => entry.id === app.id)).toMatchObject({ canManage: true });
+  });
 });
 
 describe('opening, archiving and handing over', () => {
@@ -348,7 +399,11 @@ describe('opening, archiving and handing over', () => {
     const draft = await json<AppRuntimeView>(await send(builder, `/api/apps/${app.id}`));
     expect(draft).toMatchObject({ version: 0, draft: true, role: { key: '__manager__' }, issues: [] });
     expect(draft.tables).toEqual([
-      expect.objectContaining({ id: tableId, fields: [expect.objectContaining({ id: primaryId, editable: true })] }),
+      expect.objectContaining({
+        id: tableId,
+        // The primary field is required: a form or create dialog can say so before the write refuses.
+        fields: [expect.objectContaining({ id: primaryId, editable: true, required: true })],
+      }),
     ]);
 
     await json(await publish(app.id, 1));
@@ -362,14 +417,37 @@ describe('opening, archiving and handing over', () => {
     expect(preview.role).toEqual({ key: 'applicant', name: 'Applicant' });
     expect(preview.spec.pages.map((page) => page.id)).toEqual(['mine']);
     expect(preview.spec.roles.map((role) => role.key)).toEqual(['applicant']);
-    expect(preview.tables[0]!.fields[0]).toMatchObject({ id: primaryId, editable: false });
+    expect(preview.tables[0]!.fields[0]).toMatchObject({ id: primaryId, editable: false, required: true });
     expect((await send(owner, `/api/apps/${app.id}?previewRole=ghost`)).status).toBe(400);
 
     // The audience opens the live version as its role (slice G); everyone else gets 404.
     const viewer = await json<AppRuntimeView>(await send(member, `/api/apps/${app.id}`));
     expect(viewer.role).toEqual({ key: 'applicant', name: 'Applicant' });
     expect(viewer.app).toMatchObject({ canManage: false, canPublish: false });
+    expect(viewer.tables[0]!.fields[0]).toMatchObject({ id: primaryId, required: true });
     expect((await send(outsider, `/api/apps/${app.id}`)).status).toBe(404);
+  });
+
+  it('accepts the phone’s ?cards= list on GET /api/apps/:id and ignores it', async () => {
+    const { baseId, tableId, primaryId } = await base();
+    const { app } = await createApp(owner, baseId, specFor(tableId, primaryId));
+    await json(await publish(app.id, 1));
+    await json(
+      await send(owner, `/api/apps/${app.id}/audiences`, 'PUT', {
+        entries: [{ principal: { type: 'user', userId: member.id }, roleKey: 'applicant' }],
+        audiencesRevision: 1,
+      }),
+    );
+    // iOS sends the card kinds it renders (MOBILE_APP_CARDS); the server answers the same view.
+    const cards = 'records,kanban,calendar,gallery,form,kpi,chart,pivot,text,buttons';
+    const plain = await json<AppRuntimeView>(await send(member, `/api/apps/${app.id}`));
+    expect(await json<AppRuntimeView>(await send(member, `/api/apps/${app.id}?cards=${cards}`))).toEqual(plain);
+    expect(await json<AppRuntimeView>(await send(member, `/api/apps/${app.id}?cards=`))).toEqual(plain);
+    const managerPlain = await json<AppRuntimeView>(await send(owner, `/api/apps/${app.id}?draft=1`));
+    expect(await json<AppRuntimeView>(await send(owner, `/api/apps/${app.id}?draft=1&cards=${cards}`))).toEqual(
+      managerPlain,
+    );
+    expect((await send(outsider, `/api/apps/${app.id}?cards=${cards}`)).status).toBe(404);
   });
 
   it('archives a published app only as the owner, and hands an app only to a Base manager', async () => {

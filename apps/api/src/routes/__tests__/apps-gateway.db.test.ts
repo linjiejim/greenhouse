@@ -19,12 +19,17 @@
  * - acceptance 9: usage from the app-scoped audit and the action ledger, and
  *   the Base audit lists the app's writes, not its reads;
  * - field options (people; linked records only inside the role's read scope),
- *   uploads only where the card writes the field, page filters and `$page`,
- *   kanban moves, D3 role resolution, managers' preview, the realtime audience.
+ *   uploads only where the card writes the field, page filters and `$page`
+ *   (a `null` value = cleared), kanban moves, D3 role resolution, managers'
+ *   preview, the realtime audience, the action ledger's 30-day prune;
+ * - the query budget of one card query (per-request reuse, counted at the
+ *   postgres-js prepared query).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
+import { sql } from 'drizzle-orm';
+import { PostgresJsPreparedQuery } from 'drizzle-orm/postgres-js/session';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type {
@@ -43,6 +48,7 @@ import tablesRoutes from '../tables/index.js';
 import appRoutes from '../apps.js';
 import { tablesRegistration } from '../../platform/tables/application.js';
 import { canRecipientRead } from '../../platform/tables/access.js';
+import { sweepAppActionLedger } from '../../platform/tables/app-actions.js';
 import { appAudienceForTable, pickViewerRole } from '../../platform/tables/app-audience.js';
 import { createTablesAutomationRunner } from '../../platform/tables/automation-worker.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
@@ -475,6 +481,10 @@ describe('a non-member applicant (acceptance 2)', () => {
     expect(text).not.toContain(`"fieldId":${p.f.note}`);
     const requests = view.tables.find((table) => table.id === p.tableId)!;
     expect(requests.fields.map((field) => field.id)).not.toContain(p.f.note);
+    // Each field says whether it is required (the primary "Name" is; Amount is not) — the form marks it.
+    const metaOf = (id: number) => requests.fields.find((field) => field.id === id);
+    expect(metaOf(p.f.title)).toMatchObject({ required: true, editable: true });
+    expect(metaOf(p.f.amount)).toMatchObject({ required: false });
     const drawer = view.spec.pages[0]!.cards.find((card) => card.id === 'my-requests');
     expect(drawer?.kind === 'records' && drawer.detail?.fieldIds).not.toContain(p.f.note);
     // The form keeps the fields the role writes; the status default stays visible (the role reads status).
@@ -1058,6 +1068,41 @@ describe('attachments, options and page filters', () => {
     const chart = await json<AppCardQueryResult>(await cardQuery(p, approver, 'stats', 'per-dept'));
     expect(chart.kind).toBe('chart');
   });
+
+  it('reads a null page-filter value as cleared: no constraint, and the default no longer applies', async () => {
+    const p = await procurement();
+    // v2: the Department filter starts on "ops".
+    const spec = structuredClone(p.spec);
+    const review = spec.pages.find((page) => page.id === 'review')!;
+    review.filters = [{ ...review.filters![0]!, defaultValue: { kind: 'select', values: ['ops'] } }];
+    const draft = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    const saved = await json<AppDraftView>(
+      await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec, draftRevision: draft.draftRevision }),
+    );
+    expect(saved.errors).toEqual([]);
+    await json(await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: saved.draftRevision }));
+    await submit(p, applicant, [
+      { fieldId: p.f.title, value: 'Ops item' },
+      { fieldId: p.f.dept, value: 'ops' },
+    ]);
+    await submit(p, colleague, [
+      { fieldId: p.f.title, value: 'Eng item' },
+      { fieldId: p.f.dept, value: 'eng' },
+    ]);
+    const titles = (result: Extract<AppCardQueryResult, { kind: 'records' }>) =>
+      result.records.map((row) => row.values[String(p.f.title)]).sort();
+
+    // Untouched (absent): the default applies — to the page filter and to the `$page.dept` clause.
+    expect(titles(await records(p, approver, 'review', 'queue'))).toEqual(['Ops item']);
+    expect(titles(await records(p, approver, 'review', 'by-dept'))).toEqual(['Ops item']);
+    // Cleared (null, the dashboards' convention the web and iOS runtimes send): no constraint at all.
+    const cleared = { filterValues: { dept: null } };
+    expect(titles(await records(p, approver, 'review', 'queue', cleared))).toEqual(['Eng item', 'Ops item']);
+    expect(titles(await records(p, approver, 'review', 'by-dept', cleared))).toEqual(['Eng item', 'Ops item']);
+    // A chosen value still narrows.
+    const eng = { filterValues: { dept: { kind: 'select', values: ['eng'] } } };
+    expect(titles(await records(p, approver, 'review', 'by-dept', eng))).toEqual(['Eng item']);
+  });
 });
 
 // ─── Managers ─────────────────────────────────────────────
@@ -1251,6 +1296,99 @@ describe('audit and usage (acceptance 9)', () => {
       entity_id: 'app',
       record_id: String(p.appId),
     });
+  });
+
+  it('prunes action-ledger rows past the 30-day usage window; recent runs still count and replay', async () => {
+    const p = await procurement();
+    const old = await submit(p, applicant, [{ fieldId: p.f.title, value: 'Old' }]);
+    const recentRequest = requestId();
+    const sendRecent = () =>
+      send(applicant, `/api/apps/${p.appId}/actions`, 'POST', {
+        pageId: 'mine',
+        cardId: 'new-request',
+        actionId: '$submit',
+        requestId: recentRequest,
+        values: [{ fieldId: p.f.title, value: 'Recent' }],
+      });
+    const recent = await json<AppActionResult>(await sendRecent());
+    await db.executeRaw(
+      sql`UPDATE table_app_action_requests SET created_at = now() - interval '31 days'
+          WHERE app_id = ${p.appId} AND record_id = ${old.recordId}`,
+    );
+    const ledger = async () =>
+      (
+        (await db.executeRaw(
+          sql`SELECT record_id FROM table_app_action_requests WHERE app_id = ${p.appId} ORDER BY id`,
+        )) as Array<{ record_id: number }>
+      ).map((row) => row.record_id);
+    expect(await ledger()).toEqual([old.recordId, recent.recordId]);
+
+    expect(await sweepAppActionLedger(db)).toBeGreaterThanOrEqual(1);
+    expect(await ledger()).toEqual([recent.recordId]);
+    // Nothing usage reads was lost, and the recent request still replays instead of writing again.
+    const usage = await json<AppUsageView>(await send(owner, `/api/apps/${p.appId}/usage`));
+    expect(usage.actions30d).toEqual({ $submit: 1 });
+    expect(await json<AppActionResult>(await sendRecent())).toMatchObject({
+      recordId: recent.recordId,
+      replayed: true,
+    });
+    // A second pass finds nothing more of this app's.
+    await sweepAppActionLedger(db);
+    expect(await ledger()).toEqual([recent.recordId]);
+  });
+});
+
+// ─── Query budget ─────────────────────────────────────────
+
+/** Statements `run` sends to PostgreSQL (every drizzle query goes through the postgres-js prepared query). */
+async function countQueries(run: () => Promise<unknown>): Promise<number> {
+  const proto = PostgresJsPreparedQuery.prototype;
+  const execute = vi.spyOn(proto, 'execute');
+  const all = vi.spyOn(proto, 'all');
+  try {
+    await run();
+    return execute.mock.calls.length + all.mock.calls.length;
+  } finally {
+    execute.mockRestore();
+    all.mockRestore();
+  }
+}
+
+describe('one card query, one set of reads', () => {
+  // Measured 2026-10-11 on this fixture (before → after the per-request reuse):
+  // records card with two actions 60 → 34, records card 39 → 31, kpi 38 → 29, a manager's records card 56 → 31.
+  // What is left: the kernel's own checks (dispatch, Base gate, data ceiling), the
+  // app / version / audience rows, one schema load, and one compile context per db call.
+  it('reads the schema, the facts, the ceilings and the action matches once per request', async () => {
+    const p = await procurement();
+    for (const [title, dept] of [
+      ['A', 'ops'],
+      ['B', 'eng'],
+      ['C', 'ops'],
+    ] as const) {
+      await submit(p, applicant, [
+        { fieldId: p.f.title, value: title },
+        { fieldId: p.f.dept, value: dept },
+        { fieldId: p.f.amount, value: 1 },
+      ]);
+    }
+    let queue: Extract<AppCardQueryResult, { kind: 'records' }> | undefined;
+    const queueQueries = await countQueries(async () => {
+      queue = await records(p, approver, 'review', 'queue');
+    });
+    // Same answer as ever: three pending rows, both actions offered on each.
+    expect(queue!.total).toBe(3);
+    expect(queue!.records.every((row) => row.actionIds.join() === 'approve,reject')).toBe(true);
+    expect(queueQueries).toBeLessThanOrEqual(34);
+
+    expect(await countQueries(() => records(p, applicant, 'mine', 'my-requests'))).toBeLessThanOrEqual(31);
+    let kpi: AppCardQueryResult | undefined;
+    const kpiQueries = await countQueries(async () => {
+      kpi = await json<AppCardQueryResult>(await cardQuery(p, approver, 'stats', 'total'));
+    });
+    expect(kpi).toEqual({ kind: 'kpi', value: 3 });
+    expect(kpiQueries).toBeLessThanOrEqual(29);
+    expect(await countQueries(() => records(p, owner, 'review', 'queue'))).toBeLessThanOrEqual(31);
   });
 });
 

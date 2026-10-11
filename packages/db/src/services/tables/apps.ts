@@ -349,6 +349,21 @@ export function createTablesApps(db: Db) {
       return app?.published_version ? service.getAppVersion(appId, app.published_version) : undefined;
     },
 
+    /** The live versions of many apps in one query (hash verified); apps never published have none. */
+    async listPublishedAppVersions(appIds: readonly number[]): Promise<TableAppVersionRow[]> {
+      if (appIds.length === 0) return [];
+      const rows = await db
+        .select(getTableColumns(tableAppVersions))
+        .from(tableAppVersions)
+        .innerJoin(
+          tableApps,
+          and(eq(tableApps.id, tableAppVersions.app_id), eq(tableApps.published_version, tableAppVersions.version)),
+        )
+        .where(inArray(tableAppVersions.app_id, [...new Set(appIds)]));
+      for (const row of rows) verifiedAppVersionSpec(row);
+      return rows;
+    },
+
     /** Copy a version's spec into the draft (draft CAS). Publishing it makes a new, higher version (D5). */
     async restoreAppVersion(
       appId: number,
@@ -446,12 +461,18 @@ export function createTablesApps(db: Db) {
      * team, D3).
      */
     async listAudienceMatches(appId: number, userId: string): Promise<TableAppAudienceRow[]> {
+      return service.listAudienceMatchesForApps([appId], userId);
+    },
+
+    /** `listAudienceMatches` for many apps in one query (a shelf resolves every app's role at once). */
+    async listAudienceMatchesForApps(appIds: readonly number[], userId: string): Promise<TableAppAudienceRow[]> {
+      if (appIds.length === 0) return [];
       return db
         .select()
         .from(tableAppAudiences)
         .where(
           and(
-            eq(tableAppAudiences.app_id, appId),
+            inArray(tableAppAudiences.app_id, [...new Set(appIds)]),
             or(
               and(eq(tableAppAudiences.principal_type, 'user'), eq(tableAppAudiences.user_id, userId)),
               and(

@@ -188,6 +188,7 @@ export {
   type UpdateTableAppInput,
 } from './apps.js';
 export {
+  APP_USAGE_WINDOW_DAYS,
   appUploadKeySegment,
   type AppDriveFileMeta,
   type AppUsageCounts,

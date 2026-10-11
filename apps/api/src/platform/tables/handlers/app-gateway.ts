@@ -52,7 +52,7 @@ import type {
   TableRecordActivityPage,
   TableSystemField,
 } from '@greenhouse/types/tables';
-import { appDataCeiling, requireBase } from '../access.js';
+import { requireBase } from '../access.js';
 import { cardWriteTargets, runSessionAction } from '../app-actions.js';
 import { cardReadScope } from '../app-audience.js';
 import { appRecordRefs, appRecordRow, availableActionIds, usableActions } from '../app-records.js';
@@ -204,7 +204,7 @@ const queryAppCard: Handler = async (request, context) => {
   const { timeZone } = resolveTableEvaluation({ timeZone: timezone });
   const now = new Date();
   const filterValues = objectValue<Record<string, unknown>>(payload, 'filterValues');
-  const fields = (await context.db.tables.listFields(tableId)).filter((field) => !field.archived_at);
+  const fields = await session.fields(tableId);
   const byId = new Map(fields.map((field) => [field.id, field]));
   const fieldType: TableFieldTypeOf = ({ fieldId }) => byId.get(fieldId)?.type as TableFieldType | undefined;
 
@@ -242,7 +242,7 @@ const queryAppCard: Handler = async (request, context) => {
     const result = await evaluateTableCard(
       context.db,
       trimmed,
-      { controls, filterValues, timezone, now },
+      { controls, filterValues, timezone, now, fields },
       access.scope,
     );
     return ok(result as AppCardQueryResult);
@@ -301,7 +301,7 @@ const queryAppCard: Handler = async (request, context) => {
   const result = await evaluateTableCard(
     context.db,
     spec,
-    { controls, filterValues, timezone, now, cursor: stringValue(payload, 'cursor') },
+    { controls, filterValues, timezone, now, fields, cursor: stringValue(payload, 'cursor') },
     evalScope,
   );
   if (result.kind !== 'records') return ok(result as AppCardQueryResult);
@@ -386,9 +386,7 @@ const getAppRecord: Handler = async (request, context) => {
       if (inEditRows.has(record.id)) editableFieldIds = wanted.filter((id) => editable.has(id) && fields.includes(id));
     }
   }
-  const comment = commentsOn(session, card)
-    ? await appDataCeiling(context, session.actor, session.base, 'comment')
-    : undefined;
+  const comment = commentsOn(session, card) ? await session.ceiling('comment') : undefined;
   const actions = usableActions(session, located.page.id, cardActions(card), located.brokenActions);
   const actionIds =
     (await availableActionIds(context, session, card, scope, actions, [record.id])).get(record.id) ?? [];
@@ -423,7 +421,7 @@ const listAppActivity: Handler = async (request, context) => {
   const { card, scope, fields } = read.reached;
   const tableId = card.source.tableId;
   const visible = commentsOn(session, card);
-  const comment = visible ? await appDataCeiling(context, session.actor, session.base, 'comment') : undefined;
+  const comment = visible ? await session.ceiling('comment') : undefined;
   // History changes: the role's readable fields ∩ what the drawer shows (none for a masked reader).
   const readScope: TableDataScope = { ...scope, readableFieldIds: fields };
   const page = await context.db.tables.listRecordActivity(tableId, read.reached.record.id, scope, readScope, {
@@ -454,7 +452,7 @@ async function commentGate(
   if (!commentsOn(session, read.reached.card)) {
     return { ok: false, result: NOT_ALLOWED('Comments are not available here') };
   }
-  if (!(await appDataCeiling(context, session.actor, session.base, 'comment'))) {
+  if (!(await session.ceiling('comment'))) {
     return { ok: false, result: NOT_ALLOWED('Comments are not available here') };
   }
   return read;

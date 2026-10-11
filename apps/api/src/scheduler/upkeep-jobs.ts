@@ -8,7 +8,8 @@
  *
  * - 04:00 CST daily  — mine tool errors out of message pipelines into frictions
  * - 05:00 CST Sunday — memory consolidation: demote stale, merge duplicates
- * - hourly           — expire Tables form uploads nobody submitted (24 h TTL)
+ * - hourly           — expire Tables form / app uploads nobody submitted (24 h TTL),
+ *                      prune app action-ledger rows past the 30-day usage window
  * - every 15 minutes — delete Tables imports past their expiry (staged rows run to megabytes)
  * - every minute     — Tables automations sweep: enqueue due schedule / date
  *                      rules (off with `TABLES_AUTOMATION_WORKER`)
@@ -68,7 +69,9 @@ export function startMemoryConsolidationJob(): void {
  * Files a form's audience staged through `POST /api/forms/:id/uploads` but never
  * submitted (spec 20261011-tables-foundation §3), and files an app's audience
  * staged through `POST /api/apps/:id/uploads` but never attached (apps spec §3):
- * expire them and delete the objects once they are older than 24 h.
+ * expire them and delete the objects once they are older than 24 h. The same
+ * pass prunes the app action ledger (`table_app_action_requests`) past the
+ * usage window — usage reads 30 days, older rows only grow the table.
  */
 export function startTablesFormUploadSweepJob(): void {
   tablesFormUploadJob = new Cron('23 * * * *', { timezone: DEFAULT_TIMEZONE }, async () => {
@@ -82,6 +85,14 @@ export function startTablesFormUploadSweepJob(): void {
       if (expiredApp > 0) logger.info('[TablesFormUploads] Expired unattached app uploads', { expired: expiredApp });
     } catch (err) {
       logger.error('[TablesFormUploads] Sweep failed:', err);
+    }
+    try {
+      const { sweepAppActionLedger } = await import('../platform/tables/app-actions.js');
+      const { getDb } = await import('@greenhouse/db');
+      const pruned = await sweepAppActionLedger(getDb());
+      if (pruned > 0) logger.info('[TablesApps] Pruned app action ledger rows past the usage window', { pruned });
+    } catch (err) {
+      logger.error('[TablesApps] Action ledger prune failed:', err);
     }
   });
   logger.info(`[TablesFormUploads] Scheduled hourly sweep → next: ${tablesFormUploadJob.nextRun()?.toISOString()}`);

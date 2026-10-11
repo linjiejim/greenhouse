@@ -19,10 +19,14 @@
  * - **D6**: `pageIssues` re-runs the spec's schema checks for one page; a card
  *   with an issue is unavailable, an action with one cannot run, a page filter
  *   with one is dropped.
+ * - **One read per request**: the Base row, the access facts (the spec schema
+ *   is built on them), each table's fields and the kernel ceilings are read
+ *   once per session and shared by every step — never kept across requests
+ *   (a revocation applies to the next one).
  */
 
 import { effectiveUserId, type ActorContext } from '@greenhouse/platform-kernel';
-import type { TableAppRow, TableBaseRow } from '@greenhouse/db';
+import type { TableAppRow, TableBaseRow, TableFieldRow } from '@greenhouse/db';
 import {
   findRole,
   pagesForRole,
@@ -35,7 +39,7 @@ import {
 import type { TableAccessSchemaFacts, TableDataScope } from '@greenhouse/types/table-access';
 import { trimFilterControlsForReader } from '@greenhouse/types/table-cards';
 import { isComputedFieldType, type TableFilterControl } from '@greenhouse/types/tables';
-import { appDataCeiling, requireBase, type AppDataCeiling, type TableDataOp } from './access.js';
+import { appDataCeilings, requireLoadedBase, type AppDataCeiling, type TableDataOp } from './access.js';
 import { compileAppRole, liveAppOf, viewerRoleIn, type CompiledAppRole } from './app-audience.js';
 import { loadAppSpecSchema, parseStoredAppSpec, revalidateSpec, type AppSpecSchema } from './app-spec.js';
 import { fail, type Handler, type HandlerRequest } from './handlers/shared.js';
@@ -61,7 +65,12 @@ export interface AppSession {
   /** Pages the caller may open, in spec order. */
   pages: AppPage[];
   facts(): Promise<TableAccessSchemaFacts>;
+  /** The spec schema — built on the same `facts()` load, its field reads shared for the request. */
   schema(): Promise<AppSpecSchema>;
+  /** One table's active fields in display order (read once per request, shared with the checks). */
+  fields(tableId: number): Promise<TableFieldRow[]>;
+  /** The kernel ceiling for one op (`appDataCeiling`), resolved once per request. */
+  ceiling(op: TableDataOp | 'comment'): Promise<AppDataCeiling | undefined>;
   /** D6 issues of one page against today's schema (cached per request). */
   pageIssues(pageId: string): Promise<AppIssue[]>;
 }
@@ -93,7 +102,7 @@ export async function openAppSession(
   if (!base || base.archived_at) return { ok: false, result: NOT_FOUND() };
   const actor = request.actor;
   const userId = effectiveUserId(actor);
-  const grant = await requireBase(context, actor, base.id, 'app', 'builder');
+  const grant = await requireLoadedBase(context, actor, base, 'app', 'builder');
 
   let spec: AppSpec | undefined;
   let version = 0;
@@ -115,7 +124,7 @@ export async function openAppSession(
       if (!role) return { ok: false, result: fail('INVALID_INPUT', `Unknown role "${preview}"`) };
     }
   } else {
-    const live = await liveAppOf(context.db, app);
+    const live = await liveAppOf(context.db, app, base);
     if (!live) return { ok: false, result: NOT_FOUND() };
     role = await viewerRoleIn(context.db, live, userId);
     if (!role) return { ok: false, result: NOT_FOUND() };
@@ -124,7 +133,7 @@ export async function openAppSession(
   }
 
   const facts = memo(() => context.db.tables.loadAccessFacts(base.id));
-  const schema = memo(() => loadAppSpecSchema(context.db, base.id));
+  const schema = memo(() => loadAppSpecSchema(context.db, base.id, facts()));
   const issues = new Map<string, Promise<AppIssue[]>>();
   const resolvedSpec = spec;
   const session: AppSession = {
@@ -141,6 +150,8 @@ export async function openAppSession(
     pages: role ? pagesForRole(resolvedSpec, role) : resolvedSpec.pages,
     facts,
     schema,
+    fields: (tableId) => schema().then((loaded) => loaded.source.fields(tableId)),
+    ceiling: appDataCeilings(context, actor, base),
     pageIssues: (pageId) => {
       let found = issues.get(pageId);
       if (!found) {
@@ -249,7 +260,7 @@ export async function sessionTableAccess(
   tableId: number,
   op: TableDataOp | 'comment',
 ): Promise<TableAccessOutcome> {
-  const ceiling = await appDataCeiling(context, session.actor, session.base, op);
+  const ceiling = await session.ceiling(op);
   if (!ceiling) return { ok: false, reason: 'not_allowed' };
   const facts = await session.facts();
   if (!facts.tables.some((table) => table.id === tableId)) return { ok: false, reason: 'no_access' };

@@ -20,7 +20,7 @@
  *   from the ledger.
  */
 
-import { and, eq, gte, inArray, isNull, lt, notExists, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lt, notExists, sql, type SQL } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 import type { TableAccessScope } from '@greenhouse/types/table-access';
 import type { TableFilterGroup } from '@greenhouse/types/tables';
@@ -41,6 +41,14 @@ import { assertScope, isPositiveInteger } from './shared.js';
 export function appUploadKeySegment(baseId: number, appId: number): string {
   return `tables/${baseId}/apps/${appId}/`;
 }
+
+/**
+ * The usage window (`AppUsageView.actions30d`) — also how long the action
+ * ledger keeps a request: an older row counts for nothing, so upkeep deletes
+ * it (a `requestId` repeated after that runs again).
+ */
+export const APP_USAGE_WINDOW_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** A running claim older than this is taken over (its process died between claim and result). */
 const STALE_CLAIM_MS = 2 * 60 * 1000;
@@ -91,17 +99,39 @@ export function createTablesAppGateway(db: Db) {
       scope: TableAccessScope,
       options: { purpose?: 'read' | 'edit'; condition?: TableFilterGroup; evaluation?: TableQueryEvaluation } = {},
     ): Promise<Set<number>> {
+      const { condition, ...rest } = options;
+      const [matched] = await service.matchRecordIdsEach(tableId, recordIds, scope, [condition], rest);
+      return matched ?? new Set();
+    },
+
+    /**
+     * `matchRecordIds` for several conditions over the same page (a card's
+     * actions): one compile context and one query, each condition a boolean
+     * column (NULL = no match, as in a WHERE). `result[i]` answers
+     * `conditions[i]`; an absent or empty condition is the scope alone.
+     */
+    async matchRecordIdsEach(
+      tableId: number,
+      recordIds: readonly number[],
+      scope: TableAccessScope,
+      conditions: ReadonlyArray<TableFilterGroup | undefined>,
+      options: { purpose?: 'read' | 'edit'; evaluation?: TableQueryEvaluation } = {},
+    ): Promise<Array<Set<number>>> {
       assertScope(scope);
       const ids = positiveIds(recordIds);
-      if (ids.length === 0) return new Set();
+      if (ids.length === 0 || conditions.length === 0) return conditions.map(() => new Set<number>());
       const ctx = await loadCompileContext(db, tableId, scope, options.evaluation);
       const predicate = scopeRowPredicate(scope, ctx, options.purpose ?? 'read');
-      const condition =
-        options.condition && Array.isArray(options.condition.clauses) && options.condition.clauses.length > 0
-          ? compileRowScope({ type: 'where', where: options.condition }, ctx)
-          : undefined;
+      const columns: Record<string, SQL<boolean>> = {};
+      conditions.forEach((condition, index) => {
+        const compiled =
+          condition && Array.isArray(condition.clauses) && condition.clauses.length > 0
+            ? compileRowScope({ type: 'where', where: condition }, ctx)
+            : sql`true`;
+        columns[`c${index}`] = sql<boolean>`coalesce((${compiled}), false)`;
+      });
       const rows = await db
-        .select({ id: tableRecords.id })
+        .select({ id: tableRecords.id, ...columns })
         .from(tableRecords)
         .where(
           and(
@@ -109,10 +139,12 @@ export function createTablesAppGateway(db: Db) {
             inArray(tableRecords.id, ids),
             isNull(tableRecords.deleted_at),
             predicate,
-            condition,
           ),
         );
-      return new Set(rows.map((row) => row.id));
+      return conditions.map((_, index) => {
+        const key = `c${index}`;
+        return new Set(rows.filter((row) => (row as Record<string, unknown>)[key] === true).map((row) => row.id));
+      });
     },
 
     /** Live records by id that `scope` reads (full rows — project them for the reader). */
@@ -372,6 +404,24 @@ export function createTablesAppGateway(db: Db) {
         .where(and(eq(tableAppActionRequests.id, id), eq(tableAppActionRequests.status, 'running')));
     },
 
+    /**
+     * Upkeep: delete up to `limit` ledger rows created before `before` (any
+     * status — a running claim that old is long dead). Returns how many went;
+     * callers repeat until it returns less than `limit`.
+     */
+    async pruneAppActionRequests(before: string, limit = 1000): Promise<number> {
+      const stale = db
+        .select({ id: tableAppActionRequests.id })
+        .from(tableAppActionRequests)
+        .where(lt(tableAppActionRequests.created_at, before))
+        .limit(limit);
+      const removed = await db
+        .delete(tableAppActionRequests)
+        .where(inArray(tableAppActionRequests.id, stale))
+        .returning({ id: tableAppActionRequests.id });
+      return removed.length;
+    },
+
     // ─── Usage ────────────────────────────────────────────
 
     /**
@@ -385,8 +435,8 @@ export function createTablesAppGateway(db: Db) {
       input: { orgId: string; appKey: string; useActionIds: readonly string[]; now?: Date },
     ): Promise<AppUsageCounts> {
       const now = input.now ?? new Date();
-      const since7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const since30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const since7 = new Date(now.getTime() - 7 * DAY_MS).toISOString();
+      const since30 = new Date(now.getTime() - APP_USAGE_WINDOW_DAYS * DAY_MS).toISOString();
       if (input.useActionIds.length === 0) return { users7d: 0, users30d: 0, lastUsedAt: null, actions30d: {} };
       const person = sql`coalesce(${platformAuditEvents.on_behalf_of_user_id}, ${platformAuditEvents.actor_id})`;
       const used = and(
