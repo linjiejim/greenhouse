@@ -8,6 +8,10 @@
  *                DM as a guest, writes the "created"/"joined" lines and its
  *                greeting, then wakes the proposing Bot to hand the work over;
  * - task_start → admits the background task (≤3 running per member);
+ * - instructions_update → a new version of the Bot;
+ * - tables_plan → applies the proposed Tables plan AS THE MEMBER, through the
+ *   same path a confirmed chat plan takes (claim, apply, write the outcome
+ *   back, hand it to the Bot);
  * - login / takeover → the computer layer (secure fill / hand-back).
  * Settling is exactly once (`db.bots.settleRequest` is a CAS on `pending`);
  * a second click gets 409 `already_decided` (`deciding` while the first is
@@ -24,12 +28,23 @@ import type {
   BotCreatePayload,
   BotInstructionsUpdatePayload,
   BotRequestDecision,
+  BotTablesPlanPayload,
+  BotTablesPlanResult,
   BotTaskStartPayload,
 } from '@greenhouse/types/bots';
+import type { SchemaPlanApplyResult } from '@greenhouse/types/tables';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { connectionManager } from '../../ws/connection-manager.js';
+import { userHasFeature } from '../../auth/features.js';
+import { dispatchTablesMemberAction } from '../../platform/tables/agent-adapter.js';
+import {
+  analyzeSchemaPlan,
+  applySchemaPlan,
+  planTouchesApps,
+  schemaPlanApplySchema,
+} from '../../platform/tables/schema-plan.js';
 import { handleLoginDecision, handleTakeoverDecision, SecureLoginError } from '../computer/index.js';
 import { pushAttention, requestSubject, resolveApprovalWaiter } from './approvals.js';
 import { botsLocale, copy } from './copy.js';
@@ -265,6 +280,125 @@ async function decideTaskStart(db: DatabaseProvider, row: BotRequestRow, decisio
   return settled;
 }
 
+/** What an apply did, for the card (per line) and the Bot (counts, failures, what now exists). */
+function tablesPlanOutcome(applied: SchemaPlanApplyResult): BotTablesPlanResult {
+  const count = (status: 'applied' | 'failed' | 'skipped') =>
+    applied.results.filter((entry) => entry.status === status).length;
+  const [done, failed, skipped] = [count('applied'), count('failed'), count('skipped')];
+  return {
+    decision: 'approve',
+    state: failed + skipped === 0 ? 'applied' : done === 0 ? 'failed' : 'partial',
+    lines: applied.results.map((entry) => ({
+      status: entry.status,
+      ...(entry.message ? { message: entry.message } : {}),
+    })),
+    applied: done,
+    failed,
+    skipped,
+    ...(applied.baseId === undefined ? {} : { base_id: applied.baseId }),
+    app_ids: applied.results.flatMap((entry) =>
+      entry.op === 'app.create' && entry.status === 'applied' && entry.id !== undefined ? [entry.id] : [],
+    ),
+  };
+}
+
+/**
+ * A Bot's proposed Tables change (`tables_schema_plan` in a Bots turn). Approve
+ * runs it AS THE MEMBER, exactly as the chat card's apply route does: every
+ * operation is its own runtime action, so a plan can never do more than the
+ * member could by hand (the owner's steps fail for a builder, a lost grant
+ * fails its step). Claim first — settling `resolved` with state `applying` is
+ * the CAS that makes a double click apply once — then apply, then write the
+ * outcome back into the request and wake the Bot with it.
+ */
+async function decideTablesPlan(db: DatabaseProvider, row: BotRequestRow, decision: BotRequestDecision) {
+  const user = await db.users.getById(row.user_id);
+  const locale = botsLocale(user?.locale);
+  const payload = safeJsonParse(row.payload, {}) as Partial<BotTablesPlanPayload>;
+  const summary = payload.summary ?? '';
+  const event = {
+    kind: 'request' as const,
+    request_id: row.id,
+    request_kind: 'tables_plan' as const,
+    bot_id: row.bot_id,
+  };
+  if (decision.decision === 'deny') {
+    const settled = await settle(db, row, 'denied', { decision: 'deny' } satisfies BotTablesPlanResult);
+    await deliverToConversation(row.session_id, {
+      kind: 'event',
+      text: copy.declined(locale, 'tables_plan', summary),
+      event,
+    });
+    return settled;
+  }
+
+  // The stored plan is data: shape and order are re-checked; every step is re-authorized on apply.
+  const parsed = schemaPlanApplySchema.safeParse({ operations: payload.operations });
+  if (!parsed.success || 'error' in analyzeSchemaPlan(parsed.data.operations)) {
+    throw new RequestDecisionError(400, 'This plan can no longer be applied — ask the Bot for a new one');
+  }
+  const operations = parsed.data.operations;
+  const allowed =
+    !!user &&
+    (await userHasFeature(user.id, user.role, 'tables')) &&
+    (!planTouchesApps(operations) || (await userHasFeature(user.id, user.role, 'apps')));
+  if (!allowed) {
+    // Like a background task the deployment turned off: the card could never succeed — close it, say why.
+    if (await db.bots.settleRequest(row.user_id, row.id, 'canceled', { decision: 'unavailable' })) {
+      await deliverToConversation(row.session_id, {
+        kind: 'event',
+        text: copy.tablesPlanUnavailable(locale, summary),
+        event,
+      });
+    }
+    throw new RequestDecisionError(503, 'Tables or Apps are turned off for you', 'unavailable');
+  }
+
+  const claimed = await settle(db, row, 'resolved', {
+    decision: 'approve',
+    state: 'applying',
+  } satisfies BotTablesPlanResult);
+  let outcome: BotTablesPlanResult;
+  let created = '';
+  try {
+    const applied = await applySchemaPlan(operations, (actionId, input, ids) =>
+      dispatchTablesMemberAction(row.user_id, actionId, input, ids),
+    );
+    outcome = tablesPlanOutcome(applied);
+    created = Object.entries(applied.refs ?? {})
+      .map(([ref, entry]) => `${entry.kind} "${ref}" = ${entry.id}`)
+      .join(', ');
+  } catch (error) {
+    logger.warn('[bots] tables plan apply crashed', { requestId: row.id, error: toErrorMessage(error) });
+    outcome = { decision: 'approve', state: 'failed', error: toErrorMessage(error) };
+  }
+  const settled = (await db.bots.updateRequestResult(row.user_id, row.id, { ...outcome })) ?? claimed;
+
+  const counts = { applied: outcome.applied ?? 0, failed: outcome.failed ?? 0, skipped: outcome.skipped ?? 0 };
+  const eventText =
+    outcome.error !== undefined
+      ? copy.tablesPlanFailed(locale, summary)
+      : copy.tablesPlanApplied(locale, summary, counts);
+  const problems = (outcome.lines ?? []).flatMap((line, index) =>
+    line.status === 'applied'
+      ? []
+      : [`${index + 1} (${payload.lines?.[index]?.op ?? '?'}): ${line.message ?? line.status}`],
+  );
+  const bot = row.bot_id ? await db.bots.getBot(row.user_id, row.bot_id) : undefined;
+  if (bot && bot.status === 'active') {
+    await deliverToConversation(row.session_id, {
+      kind: 'continue',
+      botId: bot.id,
+      note: copy.continueAfterTablesPlan(locale, { summary, ...counts, error: outcome.error, created, problems }),
+      eventText,
+      event,
+    });
+  } else {
+    await deliverToConversation(row.session_id, { kind: 'event', text: eventText, event });
+  }
+  return settled;
+}
+
 async function decideComputer(db: DatabaseProvider, row: BotRequestRow, decision: BotRequestDecision) {
   // The computer layer fills the secure sign-in / hands the screen back and
   // wakes the Bot. Whether or not it settles the row itself, it ends settled.
@@ -335,6 +469,9 @@ export async function decideBotRequest(
         break;
       case 'instructions_update':
         settled = await decideInstructionsUpdate(db, row, decision);
+        break;
+      case 'tables_plan':
+        settled = await decideTablesPlan(db, row, decision);
         break;
       case 'login':
       case 'takeover':

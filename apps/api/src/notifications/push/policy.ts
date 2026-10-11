@@ -29,6 +29,7 @@ const REQUEST_KINDS: ReadonlySet<string> = new Set([
   'bot_create',
   'task_start',
   'instructions_update',
+  'tables_plan',
 ]);
 
 /** What a push needs to route and decide, stored as `payload.push` on the fact. */

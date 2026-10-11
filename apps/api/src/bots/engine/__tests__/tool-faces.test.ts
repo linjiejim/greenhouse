@@ -389,6 +389,39 @@ describe('bot_tasks only where background tasks can run', () => {
   }
 });
 
+describe('tables_schema_plan in a Bots turn', () => {
+  const team = {} as TeamPort;
+  const conversation = {} as ConversationPort;
+  const assemble = (effectiveTools: string[]) =>
+    assembleInteractiveTools({
+      db: {} as DatabaseProvider,
+      ctx: testTurn(),
+      toolRegistry: {},
+      effectiveTools,
+      team,
+      conversation,
+      runtimeRunId: null,
+    });
+
+  it('gets the Bots face — a card the member applies — only when the member holds the tool', () => {
+    const without = assemble([]);
+    expect(Object.keys(without.tools)).not.toContain('tables_schema_plan');
+    expect(buildStaticRules(toolFaceFlags(Object.keys(without.tools), without.approvalGated), 'en')).not.toContain(
+      'tables_schema_plan',
+    );
+
+    const held = assemble(['tables_schema_plan']);
+    expect(Object.keys(held.tools)).toContain('tables_schema_plan');
+    // Not the chat card's tool: its description says the member applies it later.
+    expect((held.tools.tables_schema_plan as { description?: string }).description).toMatch(
+      /card the member applies when they choose/,
+    );
+    expect(buildStaticRules(toolFaceFlags(Object.keys(held.tools), held.approvalGated), 'en')).toContain(
+      'are proposed with tables_schema_plan',
+    );
+  });
+});
+
 describe('external connectors (mcp_call) in a Bots turn', () => {
   const team = {} as TeamPort;
   const conversation = {} as ConversationPort;

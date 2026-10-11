@@ -453,6 +453,75 @@ describe('the "new Bot" card', () => {
   });
 });
 
+describe('the Tables plan card', () => {
+  const planPayload = {
+    summary: 'Purchase requests app',
+    lines: [
+      { op: 'base.create', label: 'Create Base', target: 'Purchasing' },
+      { op: 'app.publish', label: 'Publish app', target: 'Purchasing' },
+    ],
+    access: [{ subject: 'Publish the app Purchasing', before: 'not published', after: 'v1 live for everyone' }],
+    operations: [],
+  };
+
+  async function mountPlan(req: BotRequestView) {
+    await mount(
+      createElement(BotTranscript, props({ messages: [requestRow(req, 1)], requests: new Map([[req.id, req]]) })),
+    );
+    return document.querySelector('[data-testid="bots-request-card"][data-request-kind="tables_plan"]')!;
+  }
+
+  it('shows who gains access first, every line, and applies on the member’s click', async () => {
+    const req = request({ kind: 'tables_plan', payload: planPayload });
+    const card = await mountPlan(req);
+    const text = card.textContent ?? '';
+    expect(text).toContain('Sage proposes a Tables change');
+    expect(text.indexOf('Publish the app Purchasing')).toBeLessThan(text.indexOf('Create Base'));
+    expect(text).toContain('v1 live for everyone');
+    expect(text).toContain('Nothing changes until you apply it');
+
+    api.decideRequest.mockResolvedValue({
+      request: {
+        ...req,
+        status: 'resolved',
+        result: { decision: 'approve', state: 'applied', applied: 2, failed: 0, skipped: 0 },
+      },
+    });
+    const apply = card.querySelector<HTMLButtonElement>('[data-testid="bots-tables-plan-apply"]')!;
+    await act(async () => apply.click());
+    await flush();
+    expect(api.decideRequest).toHaveBeenCalledWith(req.id, { decision: 'approve' });
+  });
+
+  it('marks each line with how it came out and links to what was built', async () => {
+    const card = await mountPlan(
+      request({
+        kind: 'tables_plan',
+        status: 'resolved',
+        payload: planPayload,
+        result: {
+          decision: 'approve',
+          state: 'partial',
+          applied: 1,
+          failed: 1,
+          skipped: 0,
+          base_id: 12,
+          app_ids: [7],
+          lines: [{ status: 'applied' }, { status: 'failed', message: 'Only the Base owner can publish an app' }],
+        },
+      }),
+    );
+    // A settled card is a receipt until opened.
+    expect(card.textContent).toContain('Partly applied');
+    expect(card.textContent).toContain('1 applied · 1 failed · 0 skipped');
+    const toggle = card.querySelector<HTMLButtonElement>('button[aria-expanded]');
+    if (toggle) await act(async () => toggle.click());
+    expect(card.textContent).toContain('Only the Base owner can publish an app');
+    expect(card.textContent).toContain('Open app');
+    expect(card.textContent).toContain('Open Base');
+  });
+});
+
 describe('a later line about a card', () => {
   it('renders "Sign-in skipped" as a system line under the one card', async () => {
     const req = request({ status: 'denied' });

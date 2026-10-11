@@ -20,7 +20,9 @@
  * - `detailRows` ← request-card-parts.tsx `DetailList` (the server's
  *   truncation markers, apps/api/src/bots/engine/tools-assembly.ts);
  * - `decisionErrorKey` ← request-decision.ts `STILL_PENDING_KEYS`;
- * - `LOGIN_PAGE_MOVED` ← login-request-card.tsx `PAGE_MOVED`.
+ * - `LOGIN_PAGE_MOVED` ← login-request-card.tsx `PAGE_MOVED`;
+ * - the `tables_plan` status / receipt ← tables-plan-card.tsx (the web words a
+ *   plan card's settled state from `result.state` itself, not `settledLabelKey`).
  */
 
 import type {
@@ -31,6 +33,8 @@ import type {
   BotRequestDecision,
   BotRequestErrorCode,
   BotRequestView,
+  BotTablesPlanPayload,
+  BotTablesPlanResult,
   BotTakeoverPayload,
   BotTaskStartPayload,
 } from '../../shared/bots';
@@ -57,6 +61,8 @@ export type CardKind =
   | 'task_start'
   | 'bot_create'
   | 'instructions_update'
+  /** A proposed Tables change (structure, access, apps) the member applies. */
+  | 'tables_plan'
   | 'login'
   /** Raised by the computer itself: the member took over mid-action, or holds it while a Bot waits. */
   | 'handback'
@@ -72,6 +78,7 @@ export function cardKind(r: Pick<BotRequestView, 'kind' | 'payload'>): CardKind 
     case 'task_start':
     case 'bot_create':
     case 'instructions_update':
+    case 'tables_plan':
     case 'login':
       return r.kind;
     case 'takeover':
@@ -88,6 +95,7 @@ export const CARD_ICON: Record<CardKind, IconName> = {
   task_start: 'hourglass',
   bot_create: 'sparkle',
   instructions_update: 'file',
+  tables_plan: 'table',
   login: 'lock',
   handback: 'hand',
   captcha: 'shieldAlert',
@@ -116,6 +124,7 @@ export function cardSubject(r: Pick<BotRequestView, 'kind' | 'payload'>): string
   if (kind === 'approval') return text((r.payload as BotApprovalPayload).title) || null;
   if (kind === 'task_start') return text((r.payload as BotTaskStartPayload).title) || null;
   if (kind === 'bot_create') return text((r.payload as BotCreatePayload).name) || null;
+  if (kind === 'tables_plan') return text((r.payload as BotTablesPlanPayload).summary) || null;
   if (kind === 'login') {
     const payload = r.payload as BotLoginPayload;
     return hostOf(payload.origin) ?? hostOf(payload.url);
@@ -141,6 +150,8 @@ export function cardTitle(r: Pick<BotRequestView, 'kind' | 'payload'>, name: str
       return { key: 'bots.card.createTitle', vars: { name } };
     case 'instructions_update':
       return { key: 'bots.card.instructionsTitle', vars: { name } };
+    case 'tables_plan':
+      return { key: 'bots.card.tablesTitle', vars: { name } };
     case 'login': {
       const payload = r.payload as BotLoginPayload;
       if (payload.kind === 'otp') return { key: 'bots.card.otpTitle', vars: { name } };
@@ -200,6 +211,18 @@ export function cardGist(r: Pick<BotRequestView, 'kind' | 'payload'>): {
         detail: { key: 'bots.card.diffSummary', vars: { added: String(counts.added), removed: String(counts.removed) } },
       };
     }
+    case 'tables_plan': {
+      const payload = r.payload as BotTablesPlanPayload;
+      const count = String(Array.isArray(payload.lines) ? payload.lines.length : 0);
+      const access = Array.isArray(payload.access) ? payload.access.length : 0;
+      return {
+        what: cardSubject(r),
+        detail:
+          access > 0
+            ? { key: 'bots.card.tablesGistAccess', vars: { count, access: String(access) } }
+            : { key: 'bots.card.tablesGist', vars: { count } },
+      };
+    }
     case 'login':
       return { what: cardSubject(r), detail: firstLine(text((r.payload as BotLoginPayload).reason)) };
     case 'handback':
@@ -245,6 +268,7 @@ export function cardButtons(r: BotRequestView): CardButton[] {
       ];
     case 'task_start':
     case 'instructions_update':
+    case 'tables_plan':
       return [
         { id: 'deny', prominent: false },
         { id: 'approve', prominent: true },
@@ -294,6 +318,7 @@ export function buttonLabel(r: Pick<BotRequestView, 'kind' | 'payload'>, id: Car
         task_start: 'bots.card.cancel',
         bot_create: 'bots.card.notNow',
         instructions_update: 'bots.card.decline',
+        tables_plan: 'bots.card.notNow',
         login: 'bots.card.loginNotNow',
         captcha: 'bots.card.skip',
         takeover: 'bots.card.skip',
@@ -306,6 +331,7 @@ export function buttonLabel(r: Pick<BotRequestView, 'kind' | 'payload'>, id: Car
         task_start: 'bots.card.start',
         bot_create: 'bots.card.create',
         instructions_update: 'bots.card.accept',
+        tables_plan: 'bots.card.apply',
       };
       return { key: approve[kind] ?? 'bots.card.allowOnce' };
     }
@@ -344,6 +370,13 @@ export function statusBadge(r: Pick<BotRequestView, 'kind' | 'status' | 'result'
   tone: BadgeTone;
 } {
   if (r.status === 'pending') return { key: 'bots.card.waiting', tone: 'orange' };
+  if (r.kind === 'tables_plan' && r.status === 'resolved') {
+    const state = (r.result as BotTablesPlanResult | null)?.state;
+    if (state === 'applying') return { key: 'bots.card.tablesApplying', tone: 'neutral' };
+    if (state === 'partial') return { key: 'bots.card.tablesPartial', tone: 'orange' };
+    if (state === 'failed') return { key: 'bots.card.tablesFailed', tone: 'red' };
+    return { key: 'bots.card.tablesApplied', tone: 'green' };
+  }
   if (r.status === 'denied') return { key: 'bots.card.declined', tone: 'red' };
   if (r.status === 'expired') return { key: 'bots.card.expired', tone: 'neutral' };
   if (r.status === 'canceled') return { key: 'bots.card.canceled', tone: 'neutral' };
@@ -396,6 +429,16 @@ export function settledReceipt(
     }
     case 'instructions_update':
       return { key: 'bots.card.receipt.instructions' };
+    case 'tables_plan': {
+      const state = (r.result as BotTablesPlanResult | null)?.state;
+      return state === 'failed'
+        ? titled('bots.card.tablesFailed', 'bots.card.receipt.tablesFailed')
+        : state === 'partial'
+          ? titled('bots.card.tablesPartial', 'bots.card.receipt.tablesPartial')
+          : state === 'applying'
+            ? titled('bots.card.tablesApplying', 'bots.card.receipt.tablesApplying')
+            : titled('bots.card.tablesApplied', 'bots.card.receipt.tablesApplied');
+    }
     case 'login':
       return subject
         ? { key: 'bots.card.receipt.signedInHost', vars: { host: subject } }
@@ -410,7 +453,13 @@ export function settledReceipt(
 }
 
 /** Kinds whose expired card offers "Ask Again" (the web's ExpiredFooter users). */
-const ASK_AGAIN: ReadonlySet<CardKind> = new Set(['approval', 'task_start', 'bot_create', 'instructions_update']);
+const ASK_AGAIN: ReadonlySet<CardKind> = new Set([
+  'approval',
+  'task_start',
+  'bot_create',
+  'instructions_update',
+  'tables_plan',
+]);
 
 /** An expired card the member may re-ask for — a message to the Bot that asked (needs its id). */
 export function askAgainOffered(r: Pick<BotRequestView, 'kind' | 'payload' | 'status' | 'bot_id'>): boolean {
@@ -503,6 +552,30 @@ export function countdownNextChange(
   // the window opening, else the next whole second.
   const threshold = show ? (seconds - 1) * 1000 : COUNTDOWN_WINDOW_MS;
   return Math.max(1, Math.ceil(Math.max(end - now, 0) - threshold));
+}
+
+// ─── Tables plans ────────────────────────────────────────
+
+/**
+ * A plan card's lines with how each came out (`null` while it has not run):
+ * the server-worded `{op, label, target}` of the payload beside the result's
+ * per-line outcome, read defensively (both are server JSON).
+ */
+export function tablesPlanLines(
+  payload: Partial<Pick<BotTablesPlanPayload, 'lines'>>,
+  result: BotTablesPlanResult | null,
+): Array<{ op: string; label: string; target: string; status: 'applied' | 'failed' | 'skipped' | null; message: string | null }> {
+  const outcomes = Array.isArray(result?.lines) ? result.lines : [];
+  return (Array.isArray(payload.lines) ? payload.lines : []).map((line, index) => {
+    const outcome = outcomes[index];
+    return {
+      op: text(line?.op),
+      label: text(line?.label),
+      target: text(line?.target),
+      status: outcome?.status === 'applied' || outcome?.status === 'failed' || outcome?.status === 'skipped' ? outcome.status : null,
+      message: text(outcome?.message) || null,
+    };
+  });
 }
 
 // ─── Details and diffs ───────────────────────────────────

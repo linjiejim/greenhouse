@@ -14,6 +14,7 @@ import {
   Archive,
   ArrowRight,
   CheckCircle2,
+  Columns3,
   Info,
   Lock,
   LogOut,
@@ -159,6 +160,7 @@ const REQUEST_ICON: Record<BotRequestKind, LucideIcon> = {
   bot_create: Sparkles,
   task_start: Play,
   instructions_update: Pencil,
+  tables_plan: Columns3,
 };
 
 /** A system line: who joined, what finished, what stopped — with the one action that helps. */
