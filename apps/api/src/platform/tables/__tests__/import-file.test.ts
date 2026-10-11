@@ -88,7 +88,8 @@ describe('parseImportFile — xlsx', () => {
     });
   });
 
-  it('refuses files that are not workbooks, too wide or too long', async () => {
+  // Builds a 10,002-row workbook: slow on a loaded machine.
+  it('refuses files that are not workbooks, too wide or too long', { timeout: 60_000 }, async () => {
     await expect(parseImportFile({ name: 'x.xlsx', bytes: new TextEncoder().encode('not a zip') })).rejects.toThrow(
       ImportFileError,
     );

@@ -65,6 +65,27 @@ function upload(app: App, user: UserRow, tableId: number, name: string, bytes: U
 
 const csv = (text: string) => new TextEncoder().encode(text);
 
+/** The few Chinese characters the GBK fixture uses, as a Chinese Excel would save them. */
+const GBK_CODES: Record<string, [number, number]> = {
+  华: [0xbb, 0xaa],
+  北: [0xb1, 0xb1],
+  南: [0xc4, 0xcf],
+  客: [0xbf, 0xcd],
+  户: [0xbb, 0xa7],
+  地: [0xb5, 0xd8],
+  区: [0xc7, 0xf8],
+};
+
+function gbk(text: string): Uint8Array {
+  const bytes: number[] = [];
+  for (const char of text) {
+    const code = char.charCodeAt(0);
+    if (code < 0x80) bytes.push(code);
+    else bytes.push(...GBK_CODES[char]!);
+  }
+  return Uint8Array.from(bytes);
+}
+
 async function workspace(app: App) {
   const response = await send(app, owner, '/api/tables/bases', 'POST', { name: 'Import Base' });
   expect(response.status).toBe(201);
@@ -137,24 +158,24 @@ describe('Tables import — HTTP', { timeout: 60_000 }, () => {
   });
 
   it(
-    'previews, validates and imports into existing and new fields, reporting failed rows',
+    'imports a 2,000-row GBK CSV into existing and new fields, reporting failed rows',
     { timeout: 300_000 },
     async () => {
       const app = createHttpApp([owner]);
       const w = await workspace(app);
-      const lines = ['Name,Amount,Status,Region,Signed'];
+      const lines = ['Name,Amount,Status,地区,Signed'];
       for (let index = 1; index <= 2_000; index += 1) {
         const amount = index === 7 ? 'lots' : `${(index * 1_000).toLocaleString('en-US')}`;
         const status = index % 2 ? 'Open' : 'won';
-        lines.push(`Deal ${index},"${amount}",${status},${index % 3 ? 'North' : 'South'},2024-03-${(index % 28) + 1}`);
+        lines.push(`客户 ${index},"${amount}",${status},${index % 3 ? '华北' : '华南'},2024-03-${(index % 28) + 1}`);
       }
-      const staged = await preview(app, owner, w.tableId, 'deals.csv', csv(lines.join('\r\n')));
+      const staged = await preview(app, owner, w.tableId, 'deals.csv', gbk(lines.join('\r\n')));
       expect(staged).toMatchObject({ fileName: 'deals.csv', rowCount: 2_000 });
       expect(staged.columns.map((column) => column.suggestion)).toEqual([
         { fieldId: w.primaryId },
         { fieldId: w.amount },
         { fieldId: w.status },
-        { create: { name: 'Region', type: 'single_select' } },
+        { create: { name: '地区', type: 'single_select' } },
         { create: { name: 'Signed', type: 'date' } },
       ]);
 
@@ -188,24 +209,26 @@ describe('Tables import — HTTP', { timeout: 60_000 }, () => {
       const schema = (await (await send(app, owner, `/api/tables/tables/${w.tableId}/schema`)).json()) as {
         fields: Array<{ id: number; name: string; type: string; config: string }>;
       };
-      const region = schema.fields.find((field) => field.name === 'Region')!;
+      const region = schema.fields.find((field) => field.name === '地区')!;
       expect(region.type).toBe('single_select');
       expect(JSON.parse(region.config).options.map((option: { label: string }) => option.label)).toEqual([
-        'North',
-        'South',
+        '华北',
+        '华南',
       ]);
       const query = (await (
         await send(app, owner, `/api/tables/tables/${w.tableId}/records/query`, 'POST', {
-          where: { combinator: 'and', clauses: [{ fieldId: w.primaryId, operator: 'eq', value: 'Deal 2' }] },
+          where: { combinator: 'and', clauses: [{ fieldId: w.primaryId, operator: 'eq', value: '客户 2' }] },
         })
       ).json()) as { records: Array<{ values: Record<string, unknown> }> };
       const signed = schema.fields.find((field) => field.name === 'Signed')!;
+      const southId = JSON.parse(region.config).options[1].id as string;
       expect(query.records[0]!.values).toMatchObject({
         [w.amount]: 2_000,
         [w.status]: 'won',
         [region.id]: expect.any(String),
         [signed.id]: '2024-03-03',
       });
+      expect(query.records[0]!.values[region.id]).not.toBe(southId);
 
       // Committing again only reports the finished import.
       const again = await commitAll(app, owner, w.tableId, staged.importId, { mapping, hasHeader: true });
