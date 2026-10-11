@@ -136,7 +136,12 @@ export function PageList({
       ) : (
         <div className="flex items-center gap-2">
           <ul className="flex min-w-0 flex-1 gap-1 overflow-x-auto scrollbar-hide">{rows}</ul>
-          <IconButton label={t('apps.builder.pages.add')} onClick={onAdd} className="flex-shrink-0 border border-edge">
+          <IconButton
+            label={t('apps.builder.pages.add')}
+            onClick={onAdd}
+            className="flex-shrink-0 border border-edge"
+            data-testid="app-add-page"
+          >
             <Plus size={14} />
           </IconButton>
         </div>
