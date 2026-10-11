@@ -21,6 +21,10 @@ const page: AppPageContext = {
   appName: 'Procurement',
   pageTitle: 'Approvals',
   roleName: 'Approver',
+  pages: [
+    { id: 'approvals', title: 'Approvals' },
+    { id: 'stats', title: 'Stats' },
+  ],
   version: 3,
   filters: [{ label: 'Status', value: 'Pending' }],
 };
@@ -56,8 +60,12 @@ describe('app-page context provider', () => {
     expect(hint).toContain('Published version: 3');
     expect(hint).toContain('Page: Approvals (id approvals)');
     expect(hint).toContain("Viewer's app role: Approver");
+    expect(hint).toContain('Pages this role can open: Approvals (id approvals), Stats (id stats)');
     expect(hint).toContain('Page filters set: Status = Pending');
-    expect(provider.contextHint({ ...page, mode: 'build' })).toContain('the builder of a member-built app');
+    const builder = provider.contextHint({ ...page, mode: 'build' });
+    expect(builder).toContain('the builder of a member-built app');
+    expect(builder).toContain('Pages of the draft: Approvals (id approvals)');
+    expect(builder).toContain('tables_schema_plan app.update');
   });
 
   it('clips member-written names and stays inside the ambient hint limit', () => {
