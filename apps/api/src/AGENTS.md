@@ -248,7 +248,9 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
   推送行只按**存下来的** `payload.push` 信封建，worker 也只认它。
 - **`pushPolicy()` 是纯函数**（`push/policy.ts`）：这台设备这一类开没开、卡片类的过期时间（= 卡片自己的 `expires_at`，其余 24 h）、
   time-sensitive（批准 / 登录 / 接管）、`threadId`（按对话分组）、回复的 `collapseId`（同一对话只留最新一条）。发布时问一次，
-  发送前再问一次。
+  发送前再问一次。唯一的「静默」：Bot 后台任务结束、设备关了「办完了」但开着 `live_activity` → `silent: true`，worker 发一条只有
+  `data` + `contentAvailable` 的推送（`priority: normal`），只为让手机收起 Live Activity
+  （[spec](../../../docs/specs/20261010-mobile-live-activity.md)）。开着「办完了」的这类设备则在普通推送上加 `contentAvailable`。
 - **worker 的 `mobile_push` 分支**（`push/deliver.ts`，由 `delivery-worker.ts` 认领）：先复核设备（`isDeliverable`）与事件，
   不该推就 `suppressed`；按账号语言渲染（`push/render.ts`，默认只有「谁 + 什么事」，设备开了预览才带主题与前 80 字）；
   ticket：`DeviceNotRegistered` → 停用设备 + `failed`；429 / 5xx / 网络 / `MessageRateExceeded` → 现有退避；`MessageTooBig`、

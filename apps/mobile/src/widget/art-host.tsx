@@ -8,7 +8,8 @@
  * <WidgetArtHost/> is mounted once in app/_layout.tsx (iOS only); it renders
  * nothing visible and only holds views while a batch is being drawn.
  * `renderWidgetArt()` resolves with the keys that were written — a face that
- * fails or times out is left out, and the widget draws its fallback.
+ * fails or times out is left out, and the widget draws its fallback. A job may ask
+ * for another size (`points`): the Live Activity's faces (src/live-activity).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
@@ -90,6 +91,7 @@ export function WidgetArtHost(): React.ReactElement | null {
 }
 
 function Face({ job, done }: { job: ArtJob; done: (ok: boolean) => void }) {
+  const points = job.points ?? ART_POINTS;
   const svg = useRef<Svg>(null);
   const ast = useMemo(() => {
     try {
@@ -113,15 +115,15 @@ function Face({ job, done }: { job: ArtJob; done: (ok: boolean) => void }) {
         return;
       }
       view.toDataURL((base64?: string) => done(Boolean(base64) && writeWidgetArt(job.key, base64 as string)), {
-        width: ART_POINTS,
-        height: ART_POINTS,
+        width: points,
+        height: points,
       });
     });
   };
   if (!ast) return null;
   return (
-    <View style={styles.face} onLayout={onLayout} collapsable={false}>
-      <Svg ref={svg} {...ast.props} width={ART_POINTS} height={ART_POINTS}>
+    <View style={[styles.face, { width: points, height: points }]} onLayout={onLayout} collapsable={false}>
+      <Svg ref={svg} {...ast.props} width={points} height={points}>
         {ast.children}
       </Svg>
     </View>

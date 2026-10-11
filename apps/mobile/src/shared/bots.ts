@@ -828,6 +828,8 @@ export interface BotTaskView {
   status: 'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'canceled' | 'interrupted';
   /** The task's own (hidden) session. */
   child_session_id: string | null;
+  /** The conversation the task reports into. Absent from servers older than 2026-10. */
+  conversation_id?: string;
   summary: string | null;
   created_at: string;
   started_at: string | null;

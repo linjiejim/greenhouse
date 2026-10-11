@@ -5,7 +5,9 @@
  * exp.host and settles each ticket. Also: a card decided before the worker runs is
  * suppressed, `DeviceNotRegistered` disables the device, a missed reply becomes an
  * alert (once) whose preview follows the device switch, and with
- * `MOBILE_PUSH_ENABLED=false` nothing is queued at all.
+ * `MOBILE_PUSH_ENABLED=false` nothing is queued at all. A Bot task's end names its run
+ * and outcome and wakes a phone that shows the task as a Live Activity — silently when
+ * that phone has "done" pushes off (docs/specs/20261010-mobile-live-activity.md §3.4).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,6 +27,7 @@ import { createInternalTestUser } from '../../../../../../tests/helpers/internal
 import { createBotRequest } from '../../../bots/engine/approvals.js';
 import { sweepReplyAlerts } from '../../../bots/engine/reply-alerts.js';
 import { startNotificationDeliveryWorker } from '../../delivery-worker.js';
+import { publishNotification } from '../../publish.js';
 import type { ExpoMessage, FetchLike } from '../expo.js';
 
 vi.mock('../../../ws/connection-manager.js', () => ({ connectionManager: { sendToUser: vi.fn() } }));
@@ -278,5 +281,63 @@ describe('a missed reply reaches the phone once', () => {
     await runWorker(expo.fetchImpl);
     expect(expo.sent).toEqual([]);
     expect((await attemptsFor(member.id))[0]).toMatchObject({ status: 'suppressed', last_error: 'reply_read' });
+  });
+});
+
+describe("a Bot task's end reaches the phone that shows it as a Live Activity", () => {
+  /** The fact the Runtime projector writes when a Bot task ends (runtime-projector.ts). */
+  async function taskEnded(runId: string, status: 'succeeded' | 'failed' | 'interrupted') {
+    await publishNotification(db, {
+      user_id: member.id,
+      kind: status === 'succeeded' ? 'runtime_completed' : 'runtime_failed',
+      title: '后台任务完成了：检查链接',
+      body: 'Bot 已在对话里汇报。',
+      payload: { runtime_kind: 'subagent', source_id: 'bottask-test', status, bots_session_id: sid, bot_id: bot.id },
+      run_id: runId,
+      dedupe_key: `runtime-terminal:${runId}:${status}:1`,
+      push: { k: 'done', sid, open: 'bots', bot_id: bot.id, ok: status === 'succeeded' },
+    });
+  }
+
+  it('names the run and how it ended, and wakes the app only where Live Activities are on', async () => {
+    const plain = await registerPhone();
+    const live = await registerPhone({ live_activity: true });
+    await taskEnded('rtm_task_la_1', 'succeeded');
+
+    const expo = fakeExpo();
+    await runWorker(expo.fetchImpl);
+
+    expect(expo.sent).toHaveLength(2);
+    const toLive = expo.sent.find((message) => message.to === live.token)!;
+    const toPlain = expo.sent.find((message) => message.to === plain.token)!;
+    expect(toLive).toMatchObject({ title: 'Sage', body: '后台任务完成了', contentAvailable: true });
+    expect(toPlain).toMatchObject({ title: 'Sage', body: '后台任务完成了' });
+    expect(toPlain).not.toHaveProperty('contentAvailable');
+    for (const message of [toLive, toPlain]) {
+      expect(parsePushData(message.data)).toMatchObject({ k: 'done', sid, run: 'rtm_task_la_1', st: 'succeeded' });
+    }
+  });
+
+  it('is a silent push for a phone with "done" pushes off that shows tasks as Live Activities', async () => {
+    const live = await registerPhone({ done: false, live_activity: true });
+    await registerPhone({ done: false });
+    await taskEnded('rtm_task_la_2', 'failed');
+
+    // the phone without Live Activities gets no row at all
+    expect((await attemptsFor(member.id)).map((attempt) => attempt.recipient)).toEqual([live.id]);
+
+    const expo = fakeExpo();
+    await runWorker(expo.fetchImpl);
+
+    expect(expo.sent).toEqual([
+      {
+        to: live.token,
+        data: expect.objectContaining({ k: 'done', run: 'rtm_task_la_2', st: 'failed' }),
+        contentAvailable: true,
+        priority: 'normal',
+        expiration: expect.any(Number),
+      },
+    ]);
+    expect((await attemptsFor(member.id))[0]).toMatchObject({ status: 'delivered' });
   });
 });

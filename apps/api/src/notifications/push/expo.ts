@@ -25,9 +25,12 @@ const REQUEST_TIMEOUT_MS = 15_000;
 /** The message fields this app sends (Expo's "message request format"). */
 export interface ExpoMessage {
   to: string;
-  title: string;
-  body: string;
+  /** Absent with `body` (and `sound` / `badge`): a background push that only wakes the app. */
+  title?: string;
+  body?: string;
   data: Record<string, unknown>;
+  /** iOS `content-available`: the app is woken in the background (a Live Activity ends on it). */
+  contentAvailable?: boolean;
   sound?: 'default' | null;
   badge?: number;
   /** Unix seconds. */

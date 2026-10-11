@@ -35,6 +35,7 @@
  * <RealtimeBridge/> runs the app's one WebSocket (src/realtime) — it decides
  * itself when to connect (signed in, Bots available, foreground).
  * `usePushBridge` runs the push side (src/push): registration, taps, banners, badge.
+ * `useLiveActivities` keeps a Bot's background tasks on the lock screen (src/live-activity).
  * <WidgetArtHost/> draws the home-screen widget's avatars off screen (src/widget).
  */
 
@@ -53,6 +54,7 @@ import { setOnUnauthorized } from '../src/api/client';
 import { useWidgetSnapshot } from '../src/widget/snapshot';
 import { useAccountLanguage } from '../src/settings/account-language';
 import { usePushBridge } from '../src/push/use-push';
+import { useLiveActivities } from '../src/live-activity/use-live-activities';
 import { WidgetArtHost } from '../src/widget/art-host';
 import { useApplyAppearance, useTheme } from '../src/theme';
 import { Splash } from '../src/ui/splash';
@@ -127,6 +129,10 @@ export default function RootLayout() {
   // notification once the routes are up (switching station first when it came from
   // another), clearing banners and keeping the app icon badge on the ☰ count.
   usePushBridge(ready);
+
+  // A Bot's background tasks as Live Activities (lock screen / Dynamic Island), when the member
+  // switched them on in Settings → 通知 (src/live-activity).
+  useLiveActivities();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
