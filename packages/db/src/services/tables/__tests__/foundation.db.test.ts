@@ -271,6 +271,19 @@ describe('Tables SQL compiler', () => {
     );
     expect(grouped.records.map((record) => record.id)).toEqual([w.b.id, w.a.id, w.c.id]);
 
+    // A cleared text cell ('') groups with the unset ones: one "no value" run, last ascending.
+    const cleared = await db.tables.createRecord(
+      { table_id: w.tableId, values: { [w.primary.id]: 'Delta', [w.secret.id]: '' } },
+      full(owner.id),
+      meta(owner.id),
+    );
+    const bySecret = async (direction: 'asc' | 'desc') =>
+      (
+        await db.tables.queryRecords(w.tableId, { groupBy: { fieldId: w.secret.id, direction } }, full(owner.id))
+      ).records.map((record) => record.id);
+    expect(await bySecret('asc')).toEqual([w.a.id, w.b.id, w.c.id, cleared.id]);
+    expect(await bySecret('desc')).toEqual([w.b.id, w.c.id, cleared.id, w.a.id]);
+
     const page = await db.tables.queryRecords(
       w.tableId,
       {

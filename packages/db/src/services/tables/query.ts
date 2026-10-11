@@ -672,20 +672,23 @@ export function scopeRowPredicate(
   return and(...scopes.map((rowScope) => compileRowScope(rowScope, ctx)))!;
 }
 
-/** Ordering expression for a sort / group key. */
+/**
+ * Ordering expression for a sort / group key. `emptyAsNull` (grouping) ranks a
+ * cleared text value ('') with the unset ones, so "no value" is one run.
+ */
 export function orderExpression(
   ref: { fieldId?: number; systemField?: TableSystemField },
   ctx: TableCompileContext,
   label = 'Sort',
+  options: { emptyAsNull?: boolean } = {},
 ): SQL {
   if (ref.systemField !== undefined) return systemColumn(ref.systemField);
   const field = ctx.byId.get(ref.fieldId ?? 0);
   if (!field) throw new TablesValidationError(`${label} field ${ref.fieldId} is unavailable`);
   referencedField(ctx, field.id);
   const key = String(field.id);
-  return queryValueField(field).type === 'number'
-    ? sql`NULLIF(${recordFieldText(key)}, '')::numeric`
-    : recordFieldText(key);
+  if (queryValueField(field).type === 'number') return sql`NULLIF(${recordFieldText(key)}, '')::numeric`;
+  return options.emptyAsNull ? sql`NULLIF(${recordFieldText(key)}, '')` : recordFieldText(key);
 }
 
 // ─── Cursor & fingerprint ─────────────────────────────────
@@ -814,7 +817,10 @@ export function compileRecordQuery(
 
   const order: SQL[] = [];
   if (query.groupBy) {
-    const expression = orderExpression(query.groupBy, ctx, 'Group');
+    // A cleared text cell holds '' and an unset one nothing: both are the one
+    // "no value" group (as the aggregate and the grid count them), so they sort
+    // together — after every value ascending, before them descending.
+    const expression = orderExpression(query.groupBy, ctx, 'Group', { emptyAsNull: true });
     order.push(query.groupBy.direction === 'desc' ? desc(expression) : asc(expression));
   }
   for (const sort of query.sort ?? []) {
