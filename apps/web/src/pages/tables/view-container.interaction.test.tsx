@@ -303,7 +303,7 @@ describe('TablesViewContainer', () => {
   });
 
   it('closes the delete confirm and says why when the server refuses', async () => {
-    api.deleteTableRecord.mockRejectedValue(new TablesRequestError('Record not found', 404));
+    api.deleteTableRecord.mockRejectedValue(new TablesRequestError('Record not found', 404, undefined));
     await mount();
     await act(async () => (container.querySelector('button[aria-label="Delete record"]') as HTMLButtonElement).click());
     const confirm = document.querySelector('[data-testid="confirm-dialog-confirm"]') as HTMLButtonElement;
