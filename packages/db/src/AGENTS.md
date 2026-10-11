@@ -215,6 +215,7 @@
 - **`table_notifications` 保留到下个版本**（扩展—收缩）：0024 把旧行迁入 `notifications`，本版之后不再写；回滚到旧镜像时它还要读写这张表，所以**本版不删表**，下个版本的迁移再 drop。
 - 自定义角色引用（成员 / 群组 / 团队默认）都是 `SET NULL`，悬空的 custom 一律解析为「无访问」，绝不回落 viewer；引用必须同 Base（`uq_table_base_roles_base_id` 供复合校验，处理器负责检查）。
 - **生效角色只有一张决策表**：`decideTableBaseAccess`（`@greenhouse/types/table-access`，纯函数：super / owner → 本人成员行 → 群组 → 团队默认）。db 层只存 / 读授权行，不自己排序角色；API 的 `platform/tables/access.ts` 加载事实后调用它。唯一的 db 侧调用是过渡期同步执行器的 `canUserEditBase`（执行在写路径里，API 没法逐条规则传入解析结果）——它只加载事实、用同一张表判定，切片 Au 把执行移进 API worker 后删除。
+- **仪表盘组件存统一卡片规格**（`services/tables/dashboards.ts`，切片 D）：组件 `config` = `{version: 2, card: TableCardSpec}`，`type` 与 `table_id` 由 card 推出（`widgetTypeForCard` / `card.source.tableId`），旧扁平配置写入时经 `legacyWidgetToCard` 映射、读到旧行同样映射（不做数据迁移）。保存时按 schema 校验：表属于该 Base、引用字段在用、非 count 的值字段是数字、日期分桶只给日期字段、卡片自身的查询能被编译器接受（以无限制读者身份编译一遍）。仪表盘 `config.filters` 同样按 schema 校验目标字段类型（日期范围 → 日期 / 日期时间，选项 → 单 / 多选，人员 → 人员 / 多人员，搜索 → 文本类）。**求值不在 db 层**：只有 API 的 `platform/tables/cards.ts` 把卡片变成数字或行。
 - **资源 → Base 的反查只有 `baseIdsForResources(kind, ids)`**（`services/tables/resources.ts`，每种资源一条查询）：Base 审计按它把 `resource.recordId` 放回所属 Base；新增一种可审计的资源就在这里加一个 `kind`（同时进 API `platform/tables/audit.ts` 的映射）。
 
 ### Tables 的软删与恢复
