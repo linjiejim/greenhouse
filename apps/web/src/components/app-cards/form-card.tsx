@@ -63,6 +63,7 @@ export function AppFormCard({ card, host }: AppCardRendererProps<'form'>) {
         await host.submitForm(card, values);
         setDone(true);
       }}
+      stickyActions
       testId={`app-form-${card.id}`}
     />
   );

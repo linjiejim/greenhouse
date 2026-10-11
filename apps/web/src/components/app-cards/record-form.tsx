@@ -39,6 +39,8 @@ export interface AppRecordFormProps {
   describeError: (error: unknown) => string;
   /** Shown above the fields (an action's confirmation text). */
   intro?: ReactNode;
+  /** Keep the submit row in view at the bottom of a scrolling container (a form card on a fixed-height grid cell). */
+  stickyActions?: boolean;
   testId?: string;
 }
 
@@ -113,6 +115,7 @@ export function AppRecordForm({
   onCancel,
   describeError,
   intro,
+  stickyActions = false,
   testId,
 }: AppRecordFormProps) {
   const t = useT();
@@ -210,7 +213,11 @@ export function AppRecordForm({
         );
       })}
       <FormError>{error}</FormError>
-      <div className="flex flex-wrap justify-end gap-2 border-t border-edge pt-4">
+      <div
+        className={`flex flex-wrap justify-end gap-2 border-t border-edge pt-4${
+          stickyActions ? ' sticky bottom-0 z-10 bg-surface-card pb-1' : ''
+        }`}
+      >
         {onCancel && (
           <Button variant="outline" onClick={onCancel} disabled={saving}>
             {t('common.cancel')}

@@ -200,6 +200,8 @@ describe('form card', () => {
   it('asks for required fields first, then submits the values and thanks the person', async () => {
     const host = mockHost();
     await mount(CARDS.apply, host);
+    // The submit row stays in view at the bottom of the card's scrolling body, however long the form.
+    expect(byTestId('app-form-apply-submit')?.parentElement?.className).toContain('sticky');
 
     await click(byTestId('app-form-apply-submit'));
     expect(host.submitForm).not.toHaveBeenCalled();
