@@ -19,7 +19,8 @@ import { useT } from '../../../lib/i18n';
 import { ArrowDown, ArrowUp, MoreHorizontal, Plus, Trash2 } from '../../../lib/icons';
 import { CARD_KIND_ICONS } from './card-catalog';
 import { cardErrors } from './spec-errors';
-import { cardTableId, fieldsOf, isRecordsLike, tableName, type BuilderSchema } from './spec-model';
+import { SYSTEM_FIELD_LABEL_KEYS } from '../../../components/tables/field-types';
+import { cardTableId, fieldsOf, isEmbedded, isRecordsLike, tableName, type BuilderSchema } from './spec-model';
 
 /** Cards in reading order (the order a narrow screen shows them). */
 export function readingOrder(cards: readonly AppCard[]): AppCard[] {
@@ -50,6 +51,20 @@ function CardSummary({ card, schema }: { card: AppCard; schema: BuilderSchema })
   if (tableId !== undefined) {
     lines.push(
       table ? t('apps.builder.canvas.table', { name: table }) : t('apps.builder.canvas.missingTable', { id: tableId }),
+    );
+  }
+  if (isEmbedded(card) && card.card.aggregate) {
+    const { operation, groupBy } = card.card.aggregate;
+    const what = t(`tables.aggregationType.${operation}`);
+    const by = groupBy?.systemField
+      ? t(SYSTEM_FIELD_LABEL_KEYS[groupBy.systemField])
+      : groupBy?.fieldId !== undefined
+        ? named([groupBy.fieldId])
+        : undefined;
+    lines.push(
+      by
+        ? t('apps.builder.canvas.aggregateBy', { operation: what, group: by })
+        : t('apps.builder.canvas.aggregate', { operation: what }),
     );
   }
   if (isRecordsLike(card) || card.kind === 'form') {

@@ -99,6 +99,8 @@ export const appsBuilderEn = {
       noFields: 'No fields chosen',
       actions: 'Buttons: {names}',
       creates: 'Adds records',
+      aggregate: 'Shows: {operation}',
+      aggregateBy: 'Shows: {operation} by {group}',
       emptyText: 'Empty text — write it in the card’s settings.',
       buttons: 'Buttons: {labels}',
       problems: 'Problems: {count}',

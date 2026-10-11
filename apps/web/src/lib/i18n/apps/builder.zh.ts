@@ -101,6 +101,8 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       noFields: '未选择字段',
       actions: '按钮：{names}',
       creates: '可新建记录',
+      aggregate: '显示：{operation}',
+      aggregateBy: '显示：按 {group} {operation}',
       emptyText: '空文本——在卡片设置里填写。',
       buttons: '按钮：{labels}',
       problems: '问题：{count}',
