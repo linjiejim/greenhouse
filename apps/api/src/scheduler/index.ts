@@ -25,6 +25,7 @@ import {
   startMemoryConsolidationJob,
   stopUpkeepJobs,
   startExtensionJobs,
+  startTablesAutomationSweep,
 } from './upkeep-jobs.js';
 import type { ToolRegistry } from '../agent.js';
 import type { ScheduledTaskRow } from '@greenhouse/db';
@@ -81,6 +82,7 @@ export class TaskScheduler {
     // System-level jobs
     startFrictionMiningJob();
     startMemoryConsolidationJob();
+    startTablesAutomationSweep();
     startExtensionJobs();
   }
 

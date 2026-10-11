@@ -183,11 +183,11 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_record_links` | PK `id`；UK `(field_id, source_record_id, target_record_id)` | Relation canonical 边；保持顺序并支持 target 反查 |
 | `table_record_attachments` | PK `id`；UK `(record_id, field_id, drive_file_id)` | Record/Field 到 Tables-scope Drive 文件的规范化附件边 |
 | `table_recompute_jobs` | PK `id`；UK `idempotency_key` | Rollup 持久重算状态；queued/running/succeeded/failed、attempt/error 与时间戳 |
-| `table_automation_rules` | PK `id`；UK `(base_id, name)` | Record 事件规则；条件、确定性动作（带稳定 id）、执行用户与 revision；`next_fire_at`（schedule）/ `swept_until`（date_reached 游标） |
+| `table_automation_rules` | PK `id`；UK `(base_id, name)` | 自动化规则：触发器（记录新建 / 更新 / 满足条件 / 定时 / 日期到达 / 按钮）、条件、确定性动作（带稳定 id，0024 回填 `a<序号>`）、执行用户（= 最后保存行为的人，服务端设定）与 revision；`next_fire_at`（schedule）/ `swept_until`（date_reached 游标，创建 / 启用 / 改触发配置时置为 now） |
 | `table_automation_secrets` | 复合 PK `(rule_id, action_id)` | Webhook 签名密钥密文；与规则行分离，任何读路径只返回 `hasSecret` |
-| `table_automation_outbox` | PK `id`；UK `idempotency_key` | 自动化事件队列；`pending/claimed/succeeded/failed/dead_letter`（`processing` 为旧同步执行器的遗留状态）、租约 / 重试 / 版本 CAS 列、`cursor`（下一个动作 id）、`rule_revision` + `actions` 快照；`record_id` 可空（无记录的触发）；**worker 只领取 `rule_revision IS NOT NULL` 的行** |
+| `table_automation_outbox` | PK `id`；UK `idempotency_key` | 自动化运行队列（记录写事务内、分钟扫描、按钮入队，API worker 执行）；`pending/claimed/succeeded/failed/dead_letter`（`processing` 为旧同步执行器的遗留状态，0024 置为 failed）、租约 / 重试 / 版本 CAS 列、`cursor`（下一个动作 id，delay 与重试都从这里续）、`rule_revision` + `actions` 快照（规则改了 revision 就取消）；`record_id` 可空（定时 `once`）；**worker 只领取 `rule_revision IS NOT NULL` 的行** |
 | `table_automation_runs` | PK `id` | 每次规则执行状态（含 `canceled`）、完成动作数、逐步 `steps JSONB`、`trigger_kind`、`record_id`（逻辑）、错误与耗时审计 |
-| `table_notifications` | PK `id` | 旧版自动化站内通知（**仅保留到下个版本**：扩展—收缩，0024 迁入 `notifications` 后停用，回滚的旧镜像仍读写它） |
+| `table_notifications` | PK `id` | 旧版自动化站内通知（**仅保留到下个版本**：扩展—收缩，0024 已迁入 `notifications`（kind `tables_automation`）并停用，代码不再读写；回滚的旧镜像仍读写它） |
 | `table_dashboards` | PK `id`；UK `(base_id, name)` | Base 自定义仪表盘；`config JSONB`（`{version, filters: TableFilterControl[]}`）；revision 乐观并发 |
 | `table_dashboard_widgets` | PK `id` | KPI/Chart/records/text 组件；配置与布局是 JSON 文本，单组件最多绑定一张 Table；revision 乐观并发 |
 | `table_imports` | PK `id`（text） | CSV / Excel 导入暂存：表头与解析后的行（≤10,000×100，JSONB）、`status`（previewed/committing/committed/failed）、`committed_rows` 续传游标、租约、结果；1 小时过期，由 upkeep 清理 |

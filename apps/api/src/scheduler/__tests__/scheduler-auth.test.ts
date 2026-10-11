@@ -46,6 +46,7 @@ vi.mock('../upkeep-jobs.js', () => ({
   startMemoryConsolidationJob: mocks.startMemoryConsolidationJob,
   stopUpkeepJobs: mocks.stopUpkeepJobs,
   startExtensionJobs: vi.fn(),
+  startTablesAutomationSweep: vi.fn(),
 }));
 
 import { TaskScheduler } from '../index.js';

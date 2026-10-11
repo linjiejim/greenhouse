@@ -1,7 +1,7 @@
 /**
  * Health check route — /health
  *
- * GET /health — health check: database status + runtime/mission/bots-computer readiness + mobile push switch (no model or profile details)
+ * GET /health — health check: database status + runtime/mission/bots-computer readiness + mobile push and Tables automation switches (no model or profile details)
  */
 
 import { Hono } from 'hono';
@@ -11,6 +11,7 @@ import { getMissionRuntimeStatus, type MissionRuntimeStatus } from '../cloud-age
 import { resolveTrustedExecutionSwitches, trustedExecutionHealthView } from '../trusted-execution/kill-switches.js';
 import { botsComputerHealthView } from '../bots/computer/runtime.js';
 import { mobilePushHealthView } from '../notifications/push/config.js';
+import { tablesAutomationHealthView } from '../platform/tables/automation-config.js';
 
 /** Public health posture: never expose host paths, images or preflight errors. */
 export function missionHealthView(status: MissionRuntimeStatus) {
@@ -44,6 +45,8 @@ const health = new Hono<AppEnv>().get('/', async (c) => {
       bots: botsComputerHealthView(),
       // MOBILE_PUSH_ENABLED: whether this deployment hands pushes to the Expo Push Service.
       mobile_push: mobilePushHealthView(),
+      // TABLES_AUTOMATION_WORKER: whether the automation worker and its minute sweep run.
+      tables_automation_worker: tablesAutomationHealthView(),
     },
     dbHealth.ok ? 200 : 503,
   );

@@ -209,4 +209,77 @@ describe('notification delivery worker', () => {
       retry_at: '2026-08-12T08:00:05.000Z',
     });
   });
+
+  it('delivers the generic message payload to its owner only, with an absolute link when the deployment has one', async () => {
+    const previous = process.env.PUBLIC_BASE_URL;
+    process.env.PUBLIC_BASE_URL = 'https://gh.example.test/';
+    try {
+      const message = {
+        ...notification(),
+        kind: 'tables_automation',
+        title: 'Contract needs approval',
+        payload: JSON.stringify({
+          schema: 1,
+          type: 'message',
+          title: 'Contract needs approval',
+          markdown: 'Amount —',
+          href: '#/tables/1/table/2?record=3',
+        }),
+      };
+      const db = deliveryDb({ get: vi.fn().mockResolvedValue(message) });
+      await expect(deliverNotificationAttempt(db, attempt('wecom:user:owner-1', 'wecom'))).resolves.toEqual({
+        ok: true,
+      });
+      expect(mocks.sendWeComDm).toHaveBeenCalledWith(
+        'wecom-owner',
+        '**Contract needs approval**\n\nAmount —\n\n[Open](https://gh.example.test/#/tables/1/table/2?record=3)',
+      );
+      await deliverNotificationAttempt(db, attempt('email:user:owner-1', 'email'));
+      expect(mocks.sendEmail).toHaveBeenCalledWith(
+        db,
+        { address: 'owner@example.test', name: 'Owner' },
+        expect.objectContaining({ subject: 'Contract needs approval' }),
+        { userId: 'owner-1', origin: 'automation' },
+      );
+      // Never to someone else, never to a group webhook.
+      await expect(deliverNotificationAttempt(db, attempt('wecom:user:intruder', 'wecom'))).resolves.toMatchObject({
+        ok: false,
+      });
+      await expect(
+        deliverNotificationAttempt(db, attempt('wecom:webhook:https://qyapi.weixin.qq.com/x', 'wecom')),
+      ).resolves.toMatchObject({ ok: false });
+    } finally {
+      if (previous === undefined) delete process.env.PUBLIC_BASE_URL;
+      else process.env.PUBLIC_BASE_URL = previous;
+    }
+  });
+
+  it('settles a recipient without a binding as suppressed instead of retrying it to dead letter', async () => {
+    const row = attempt('wecom:user:owner-1', 'wecom');
+    const settleDelivery = vi.fn().mockResolvedValue({ ...row, status: 'suppressed', version: 3 });
+    const failDelivery = vi.fn();
+    const db = deliveryDb({ claimDeliveries: vi.fn().mockResolvedValue([row]), settleDelivery, failDelivery });
+    (db.providerTokens.get as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    const worker = await startNotificationDeliveryWorker({
+      db,
+      workerId: 'worker-1',
+      skipBootPass: true,
+      intervalMs: 60_000,
+      now: () => new Date(NOW),
+    });
+
+    await worker.runOnce();
+    worker.stop();
+
+    expect(mocks.sendWeComDm).not.toHaveBeenCalled();
+    expect(failDelivery).not.toHaveBeenCalled();
+    expect(settleDelivery).toHaveBeenCalledWith({
+      id: row.id,
+      expected_version: row.version,
+      worker_id: 'worker-1',
+      status: 'suppressed',
+      reason: 'Notification owner has not connected WeCom',
+      at: new Date(NOW),
+    });
+  });
 });

@@ -10,7 +10,8 @@
  * indistinguishable from missing ones.
  *
  * A write is one transaction: the row, its link / attachment edges, its
- * computed values, and `onRecordWritten` (history + automation enqueue).
+ * computed values, and `onRecordWritten` (history + automation enqueue — the
+ * async worker in the API runs the rules; nothing executes inside a write).
  */
 
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
@@ -124,16 +125,6 @@ export interface RecordWriteHooks {
 
 export interface TablesRecordsDeps {
   compute: TablesCompute;
-  /**
-   * After commit, for writes with `meta.enqueueAutomations`: the legacy
-   * synchronous automation executor. Slice Au moves rule matching into
-   * `enqueueAutomationEvents` (inside the transaction) and drops this.
-   */
-  afterCommit: (
-    trigger: 'record_created' | 'record_updated',
-    record: TableRecordRow,
-    meta: TableRecordWriteMeta,
-  ) => Promise<void>;
 }
 
 function assertEditableKeys(scope: TableAccessScope, values: TableRecordValues): void {
@@ -430,6 +421,7 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
         before: recordSnapshot(current),
         after: recordSnapshot(updated!),
         meta,
+        previous: { updatedAt: current.updated_at, updatedBy: current.updated_by },
       });
       return { ok: true, record: updated! };
     });
@@ -437,23 +429,14 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
     return outcome;
   };
 
-  /** Create with a fresh validation context, then (after commit) the legacy automation pass. */
+  /** Create with a fresh validation context. */
   const createRecord = async (
     input: CreateTableRecordInput,
     scope: TableAccessScope,
     meta: TableRecordWriteMeta,
     hooks: RecordWriteHooks = {},
-  ): Promise<TableRecordRow> => {
-    const record = await createRecordWithContext(
-      input,
-      await loadValidationContext(input.table_id),
-      scope,
-      meta,
-      hooks,
-    );
-    if (meta.enqueueAutomations) await deps.afterCommit('record_created', record, meta);
-    return record;
-  };
+  ): Promise<TableRecordRow> =>
+    createRecordWithContext(input, await loadValidationContext(input.table_id), scope, meta, hooks);
 
   const service = {
     async activeInternalUserIds(): Promise<Set<string>> {
@@ -529,9 +512,7 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
       scope: TableAccessScope,
       meta: TableRecordWriteMeta,
     ): Promise<TableRecordWriteResult> {
-      const result = await updateRecordWithContext(input, await loadValidationContext(input.table_id), scope, meta);
-      if (result.ok && meta.enqueueAutomations) await deps.afterCommit('record_updated', result.record, meta);
-      return result;
+      return updateRecordWithContext(input, await loadValidationContext(input.table_id), scope, meta);
     },
 
     async deleteRecord(
@@ -771,7 +752,6 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
               scope,
               meta,
             );
-            if (meta.enqueueAutomations) await deps.afterCommit('record_created', record, meta);
             results.push({ index, ok: true, record });
             continue;
           }
@@ -785,7 +765,6 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
             scope,
             meta,
           );
-          if (result.ok && meta.enqueueAutomations) await deps.afterCommit('record_updated', result.record, meta);
           results.push(result.ok ? { index, ok: true, record: result.record } : { index, ...result });
         } catch (error) {
           results.push({
@@ -802,7 +781,7 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
 
   return {
     service,
-    /** Write internals shared with forms and the automation executor. */
+    /** Write internals shared with forms and automation rule validation. */
     internal: { loadValidationContext, createRecord, createRecordWithContext, updateRecordWithContext },
   };
 }

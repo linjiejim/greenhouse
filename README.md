@@ -92,7 +92,10 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   history, fine-grained sharing via groups, and segmented full-text search (CJK-aware).
 - **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
 - **Tables** — multidimensional bases: typed fields, views, forms, record links, dashboards,
-  rule automations, and conversational schema planning (the agent drafts a base, you confirm).
+  rule automations (on create / change / matching a condition, on a schedule, on a date, or a
+  button on the record → update or create records, notify people in the inbox, IM or email,
+  call a webhook, wait), and conversational schema planning (the agent drafts a base, you
+  confirm).
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent.
 - **Execution center** — one surface for every durable run: automations (cron), missions,
@@ -485,6 +488,13 @@ Notifications. It is on by default and inert until a member allows notifications
 `MOBILE_PUSH_ENABLED=false` to keep every request off `exp.host` (the app then hides its push
 settings). The server must be able to reach `https://exp.host` (honouring `HTTPS_PROXY`); the
 Settings page's "Send a test" checks that from the phone.
+
+**Tables automations** run asynchronously on a worker inside the API (a minute sweep queues
+scheduled and date rules); every run and its steps show in the rule's run log. A rule runs as
+the builder who last saved what it does, and stops if that person loses builder access. Webhook
+actions can only be added in the Tables editor, only reach public addresses, and can sign their
+body (`X-Greenhouse-Signature: sha256=<HMAC of the body>`) with a secret you set there.
+`TABLES_AUTOMATION_WORKER=false` pauses the worker and the sweep (queued runs wait).
 
 **Admin-configurable at runtime**: the LLM / media / search credentials and the product name
 can also be set in **Administration → Runtime Config** (and branding in **Branding Studio**) —

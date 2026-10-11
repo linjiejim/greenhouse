@@ -789,7 +789,7 @@ describe('onRecordWritten', () => {
     expect(submissions).toEqual([{ record_id: first.id, single_submit: true }]);
   });
 
-  it('keeps the legacy executor running on the new action shape, recording automation writes as such', async () => {
+  it('enqueues a matching rule inside the write — revision, action snapshot, cursor — and runs nothing there', async () => {
     const t = await formulaTable();
     const flag = await db.tables.createField({
       table_id: t.tableId,
@@ -810,42 +810,42 @@ describe('onRecordWritten', () => {
           { type: 'notify', recipients: { creator: true, userIds: [mate.id] }, title: 'New', message: 'Created' },
         ],
       },
-      execution_user_id: owner.id,
       user_id: owner.id,
     });
     expect(rule.config.actions.map((action) => action.id)).toEqual(['a1', 'a2']);
+    expect(rule.execution_user_id).toBe(owner.id);
 
     const record = await db.tables.createRecord(
       { table_id: t.tableId, values: { [t.primary.id]: 'Auto' } },
       full(owner.id),
       meta(owner.id),
     );
-    const [run] = await db.tables.listAutomationRuns(rule.id);
-    expect(run).toMatchObject({ status: 'succeeded', actions_completed: 2, trigger_kind: 'record_created' });
-    expect(run!.steps.map((step) => [step.actionId, step.status])).toEqual([
-      ['a1', 'succeeded'],
-      ['a2', 'succeeded'],
-    ]);
-    const events = (await db.tables.listRecordEvents(record.id)).reverse();
-    expect(events.map((event) => [event.type, event.actor_kind])).toEqual([
-      ['created', 'user'],
-      ['updated', 'automation'],
-    ]);
-    expect(events[1]!.meta).toEqual({ ruleId: rule.id, executorId: owner.id });
-    expect((await db.tables.listNotifications(owner.id)).map((row) => row.record_id)).toContain(record.id);
-    expect((await db.tables.listNotifications(mate.id)).map((row) => row.record_id)).toContain(record.id);
+    const [queued, ...rest] = await db.tables.listAutomationOutbox(rule.id);
+    expect(rest).toEqual([]);
+    expect(queued).toMatchObject({
+      record_id: record.id,
+      trigger_kind: 'record_created',
+      status: 'pending',
+      rule_revision: rule.revision,
+      cursor: 'a1',
+      idempotency_key: `rule:${rule.id}:record_created:${record.id}:1`,
+      payload: { tableId: t.tableId, revision: 1, actorId: owner.id, actorKind: 'user' },
+    });
+    expect(queued!.actions?.map((action) => action.id)).toEqual(['a1', 'a2']);
+    // The worker (apps/api) runs it later: nothing happened inside the write.
+    expect(await db.tables.listAutomationRuns(rule.id)).toEqual([]);
+    expect((await db.tables.getRecord(t.tableId, record.id, full(owner.id)))?.values[String(flag.id)]).toBeUndefined();
 
-    // Imports and automations' own writes do not trigger rules.
-    const quiet = await db.tables.createRecord(
+    // Imports and automations' own writes do not enqueue (D6).
+    await db.tables.createRecord(
       { table_id: t.tableId, values: { [t.primary.id]: 'Quiet' } },
       full(owner.id),
       meta(owner.id, { actorKind: 'import', enqueueAutomations: false }),
     );
-    expect((await db.tables.listAutomationRuns(rule.id)).length).toBe(1);
-    expect((await db.tables.getRecord(t.tableId, quiet.id, full(owner.id)))?.values[String(flag.id)]).toBeUndefined();
+    expect(await db.tables.listAutomationOutbox(rule.id)).toHaveLength(1);
   });
 
-  it('normalizes legacy automation configs to stable action ids and refuses actions not built yet', async () => {
+  it('normalizes legacy automation configs to stable action ids and keeps webhook secrets off the db path', async () => {
     const t = await formulaTable();
     const legacy = await db.tables.createAutomationRule({
       base_id: t.base.id,
@@ -858,7 +858,6 @@ describe('onRecordWritten', () => {
           { type: 'notify', userIds: [mate.id], title: 'Hi', message: 'There' },
         ],
       } as never,
-      execution_user_id: owner.id,
       user_id: owner.id,
     });
     expect(legacy.config.actions).toEqual([
@@ -876,17 +875,17 @@ describe('onRecordWritten', () => {
       user_id: owner.id,
     });
     expect(updated.ok && updated.value.config.actions.map((action) => action.id)).toEqual(['a2', 'a3']);
+    // A secret is sealed by the API's editor route; the db alone refuses one.
     await expect(
       db.tables.createAutomationRule({
         base_id: t.base.id,
         table_id: t.tableId,
         name: 'Hook',
         trigger: 'record_created',
-        config: { actions: [{ type: 'webhook', url: 'https://example.com/hook' }] },
-        execution_user_id: owner.id,
+        config: { actions: [{ type: 'webhook', url: 'https://example.com/hook', secret: 's'.repeat(24) }] },
         user_id: owner.id,
       }),
-    ).rejects.toMatchObject({ code: 'not_supported' });
+    ).rejects.toThrow(/Tables editor/);
     await expect(
       db.tables.createAutomationRule({
         base_id: t.base.id,
@@ -894,7 +893,6 @@ describe('onRecordWritten', () => {
         name: 'Computed',
         trigger: 'record_created',
         config: { actions: [{ type: 'update_record', values: [{ fieldId: t.doubled.id, value: 1 }] }] },
-        execution_user_id: owner.id,
         user_id: owner.id,
       }),
     ).rejects.toThrow(/computed/);

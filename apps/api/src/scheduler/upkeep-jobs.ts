@@ -8,15 +8,19 @@
  *
  * - 04:00 CST daily  — mine tool errors out of message pipelines into frictions
  * - 05:00 CST Sunday — memory consolidation: demote stale, merge duplicates
+ * - every minute     — Tables automations sweep: enqueue due schedule / date
+ *                      rules (off with `TABLES_AUTOMATION_WORKER`)
  */
 
 import { Cron } from 'croner';
 import { logger } from '@greenhouse/utils/logger';
 import { extensionJobs } from '../extensions/boot.js';
+import { tablesAutomationWorkerEnabled } from '../platform/tables/automation-config.js';
 import { DEFAULT_TIMEZONE } from './task-limits.js';
 
 let frictionJob: Cron | null = null;
 let consolidationJob: Cron | null = null;
+let tablesAutomationSweepJob: Cron | null = null;
 let extensionJobHandles: Cron[] = [];
 
 export function startFrictionMiningJob(): void {
@@ -56,6 +60,28 @@ export function startMemoryConsolidationJob(): void {
   );
 }
 
+/**
+ * Tables automations: schedule and date-reached rules are enqueued by this
+ * sweep (`platform/tables/automation-sweep.ts`) and run by the automation
+ * worker. Overlapping passes are skipped (`protect`); enqueues are idempotent.
+ */
+export function startTablesAutomationSweep(): void {
+  if (!tablesAutomationWorkerEnabled()) {
+    logger.info('[TablesAutomationSweep] Off (TABLES_AUTOMATION_WORKER)');
+    return;
+  }
+  tablesAutomationSweepJob = new Cron('* * * * *', { protect: true }, async () => {
+    try {
+      const { sweepTablesAutomations } = await import('../platform/tables/automation-sweep.js');
+      const { getDb } = await import('@greenhouse/db');
+      const result = await sweepTablesAutomations(getDb());
+      if (result.enqueued > 0) logger.info('[TablesAutomationSweep] Enqueued', { ...result });
+    } catch (err) {
+      logger.error('[TablesAutomationSweep] Failed:', err);
+    }
+  });
+}
+
 /** Periodic jobs declared by active extensions (see extensions/define.ts → `jobs`). */
 export function startExtensionJobs(): void {
   for (const job of extensionJobs()) {
@@ -76,6 +102,8 @@ export function stopUpkeepJobs(): void {
   frictionJob = null;
   consolidationJob?.stop();
   consolidationJob = null;
+  tablesAutomationSweepJob?.stop();
+  tablesAutomationSweepJob = null;
   for (const handle of extensionJobHandles) handle.stop();
   extensionJobHandles = [];
 }

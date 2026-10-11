@@ -1,8 +1,9 @@
 /**
- * Safe downloaders for public resources fetched on behalf of Agent tools: HTTPS
- * images (`fetchPublicImage`) and web pages (`fetchPublicPage`). Both resolve DNS
- * at connect time through `publicOnlyLookup` and re-validate every redirect, so a
- * URL (or a redirect from one) can never reach the API host's own network.
+ * Safe egress to the public internet: HTTPS images (`fetchPublicImage`) and web
+ * pages (`fetchPublicPage`) fetched for Agent tools, and Tables automation
+ * webhooks (`postPublicWebhook`). All resolve DNS at connect time through
+ * `publicOnlyLookup` and re-validate every redirect, so a URL (or a redirect
+ * from one) can never reach the API host's own network.
  */
 
 import { lookup as dnsLookup } from 'node:dns';
@@ -335,4 +336,139 @@ export async function fetchPublicPage(
   }
 
   throw new Error('Page redirect handling failed');
+}
+
+// ─── Outbound webhooks (Tables automations) ───────────────
+
+const MAX_WEBHOOK_REDIRECTS = 3;
+const DEFAULT_WEBHOOK_TIMEOUT_MS = 10_000;
+/** Response bytes kept for the run log; the rest is never read. */
+const MAX_WEBHOOK_RESPONSE_BYTES = 4 * 1024;
+
+// Same connect-time DNS guard; responses are discarded, so a small wire ceiling.
+const publicWebhookAgent = new Agent({
+  connect: { lookup: publicOnlyLookup },
+  maxResponseSize: 1024 * 1024,
+});
+
+/**
+ * Parse and reject webhook targets: http(s) only, no embedded credentials, no
+ * localhost names or non-public literal addresses. Hostnames are checked again
+ * when the socket opens (`publicOnlyLookup`).
+ */
+export function assertSafeWebhookUrl(input: string): URL {
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    throw new Error('Webhook URL is invalid');
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('Webhooks must use HTTP or HTTPS');
+  if (url.username || url.password) throw new Error('Webhook URL must not contain credentials');
+  assertPublicHost(url, 'Webhook');
+  return url;
+}
+
+export interface PublicWebhookResult {
+  /** 2xx. */
+  ok: boolean;
+  /** The final HTTP status; null when no response arrived. */
+  status: number | null;
+  /** Worth another attempt later: 5xx, 429, timeout, a dropped connection. Never for a refused target. */
+  retryable: boolean;
+  error?: string;
+  /** The first bytes of the response body (for the run log). */
+  responseSnippet?: string;
+}
+
+function blockedByPolicy(error: unknown): boolean {
+  for (let cause: unknown = error; cause instanceof Error; cause = cause.cause) {
+    if (/non-public address|not public/.test(cause.message)) return true;
+  }
+  return false;
+}
+
+/**
+ * POST a JSON body to a member-configured URL on the public internet.
+ *
+ * The target is untrusted (a builder typed it, and the body can carry record
+ * text from anyone who can write the table): every hop is re-validated, DNS is
+ * constrained at connect time (no rebinding to loopback, RFC 1918 or cloud
+ * metadata), only 307 / 308 redirects are followed (they keep the method and
+ * body — a 301 / 302 / 303 would silently turn the POST into a GET), the whole
+ * exchange is bounded by `timeoutMs`, and at most a few KB of the response are
+ * read. Never throws: the caller turns the result into a run step.
+ */
+export async function postPublicWebhook(
+  input: string,
+  body: string,
+  options: { headers?: Record<string, string>; timeoutMs?: number } = {},
+): Promise<PublicWebhookResult> {
+  let current: URL;
+  try {
+    current = assertSafeWebhookUrl(input);
+  } catch (error) {
+    return { ok: false, status: null, retryable: false, error: (error as Error).message };
+  }
+  const signal = AbortSignal.timeout(options.timeoutMs ?? DEFAULT_WEBHOOK_TIMEOUT_MS);
+  try {
+    for (let redirectCount = 0; redirectCount <= MAX_WEBHOOK_REDIRECTS; redirectCount++) {
+      const response = await undiciFetch(current.toString(), {
+        method: 'POST',
+        dispatcher: publicWebhookAgent,
+        redirect: 'manual',
+        signal,
+        body,
+        headers: { 'content-type': 'application/json', 'accept-encoding': 'identity', ...options.headers },
+      });
+      if (response.status === 307 || response.status === 308) {
+        const location = response.headers.get('location');
+        await response.body?.cancel();
+        if (!location) {
+          return { ok: false, status: response.status, retryable: false, error: 'Redirect has no Location header' };
+        }
+        if (redirectCount === MAX_WEBHOOK_REDIRECTS) {
+          return { ok: false, status: response.status, retryable: false, error: 'Webhook exceeded redirect limit' };
+        }
+        try {
+          current = assertSafeWebhookUrl(new URL(location, current).toString());
+        } catch (error) {
+          return { ok: false, status: response.status, retryable: false, error: (error as Error).message };
+        }
+        continue;
+      }
+      const { text } = await readTextCapped(response, MAX_WEBHOOK_RESPONSE_BYTES);
+      const snippet = text.trim().slice(0, 500) || undefined;
+      if (response.status >= 200 && response.status < 300) {
+        return { ok: true, status: response.status, retryable: false, responseSnippet: snippet };
+      }
+      if (response.status >= 300 && response.status < 400) {
+        return {
+          ok: false,
+          status: response.status,
+          retryable: false,
+          error: `Webhook answered ${response.status}; only 307/308 redirects keep a POST`,
+        };
+      }
+      return {
+        ok: false,
+        status: response.status,
+        retryable: response.status >= 500 || response.status === 429,
+        error: `Webhook answered HTTP ${response.status}`,
+        responseSnippet: snippet,
+      };
+    }
+  } catch (error) {
+    if (blockedByPolicy(error)) {
+      return { ok: false, status: null, retryable: false, error: 'Webhook host is not public' };
+    }
+    const timedOut = signal.aborted;
+    return {
+      ok: false,
+      status: null,
+      retryable: true,
+      error: timedOut ? 'Webhook timed out' : `Webhook request failed: ${(error as Error).message}`,
+    };
+  }
+  return { ok: false, status: null, retryable: false, error: 'Webhook redirect handling failed' };
 }
