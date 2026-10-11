@@ -303,9 +303,15 @@ describe('rooms: Agents and people coming and going', () => {
       expect.arrayContaining([expect.stringContaining('shared with everyone here')]),
     );
     // And it cannot come back while Ben is here.
-    expect((await call(ana, 'POST', `/api/rooms/${id}/agents`, { bot_id: helpdesk.id })).status).toBe(409);
+    expect(await call(ana, 'POST', `/api/rooms/${id}/agents`, { bot_id: helpdesk.id })).toMatchObject({
+      status: 409,
+      json: { code: 'agent_not_shared' },
+    });
     // Someone else's private Agent can never be brought in.
-    expect((await call(ana, 'POST', `/api/rooms/${id}/agents`, { bot_id: ivy.id })).status).toBe(404);
+    expect(await call(ana, 'POST', `/api/rooms/${id}/agents`, { bot_id: ivy.id })).toMatchObject({
+      status: 404,
+      json: { code: 'agent_not_found' },
+    });
   });
 
   it('leaving takes your Agents along; ownership passes on; the last one out deletes it', async () => {

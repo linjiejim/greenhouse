@@ -82,7 +82,9 @@ async function detailOf(db: DatabaseProvider, userId: string, sessionId: string)
 
 async function detailResponse(c: Context<AppEnv>, db: DatabaseProvider, userId: string, sessionId: string) {
   const conversation = await detailOf(db, userId, sessionId);
-  return conversation ? c.json({ conversation }) : c.json({ error: 'Conversation not found' }, 404);
+  return conversation
+    ? c.json({ conversation })
+    : c.json({ error: 'Conversation not found', code: 'conversation_not_found' as const }, 404);
 }
 
 /** A line in the room, through the single writer; then everyone in it hears. */
@@ -103,11 +105,17 @@ async function admitAgent(
   adderId: string,
   botId: string,
   peopleIds: readonly string[],
-): Promise<{ bot: BotRow } | { error: string; status: 400 | 404 | 409 }> {
+): Promise<{ bot: BotRow } | { error: string; code: 'agent_not_found' | 'agent_not_shared'; status: 404 | 409 }> {
   const bot = await db.bots.getBotById(botId);
-  if (!bot || !(await mayAddress(db, adderId, bot))) return { error: 'Agent not found', status: 404 };
+  if (!bot || !(await mayAddress(db, adderId, bot))) {
+    return { error: 'Agent not found', code: 'agent_not_found', status: 404 };
+  }
   if (bot.user_id !== adderId && !(await offeredToEveryone(db, bot, peopleIds))) {
-    return { error: 'That Agent is not shared with everyone in this conversation', status: 409 };
+    return {
+      error: 'That Agent is not shared with everyone in this conversation',
+      code: 'agent_not_shared',
+      status: 409,
+    };
   }
   return { bot };
 }
@@ -178,16 +186,24 @@ export function createRoomsRoutes() {
         const body = await readJson(c);
         const userIds = stringList(body.user_ids);
         const botIds = stringList(body.bot_ids);
-        if (!userIds || !botIds) return c.json({ error: 'user_ids and bot_ids must be lists of ids' }, 400);
+        if (!userIds || !botIds)
+          return c.json({ error: 'user_ids and bot_ids must be lists of ids', code: 'invalid' as const }, 400);
         const others = userIds.filter((id) => id !== user.id);
-        if (others.length === 0) return c.json({ error: 'Add at least one other person' }, 400);
+        if (others.length === 0)
+          return c.json({ error: 'Add at least one other person', code: 'no_people' as const }, 400);
         if (body.title !== undefined && body.title !== null && typeof body.title !== 'string') {
-          return c.json({ error: 'title must be text' }, 400);
+          return c.json({ error: 'title must be text', code: 'invalid' as const }, 400);
         }
         const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim() : null;
         for (const id of others) {
           if (!(await eligiblePerson(db, id))) {
-            return c.json({ error: 'Only active members with Agents can be in a conversation' }, 400);
+            return c.json(
+              {
+                error: 'Only active members with Agents can be in a conversation',
+                code: 'person_not_eligible' as const,
+              },
+              400,
+            );
           }
         }
         // Two people, no title, no Agents: a private chat between them — one per pair.
@@ -199,7 +215,7 @@ export function createRoomsRoutes() {
         const admitted: BotRow[] = [];
         for (const botId of botIds) {
           const verdict = await admitAgent(db, user.id, botId, people);
-          if ('error' in verdict) return c.json({ error: verdict.error }, verdict.status);
+          if ('error' in verdict) return c.json({ error: verdict.error, code: verdict.code }, verdict.status);
           admitted.push(verdict.bot);
         }
         try {
@@ -220,9 +236,10 @@ export function createRoomsRoutes() {
         const user = getAuthUser(c);
         const db = getDb();
         const room = await roomFor(db, user.id, c.req.param('id'));
-        if (!room) return c.json({ error: 'Conversation not found' }, 404);
+        if (!room) return c.json({ error: 'Conversation not found', code: 'conversation_not_found' as const }, 404);
         const body = await readJson(c);
-        if (body.title !== null && typeof body.title !== 'string') return c.json({ error: 'title must be text' }, 400);
+        if (body.title !== null && typeof body.title !== 'string')
+          return c.json({ error: 'title must be text', code: 'invalid' as const }, 400);
         await db.bots.setRoomTitle(room.session_id, body.title as string | null);
         await pushToConversation(
           room.session_id,
@@ -238,11 +255,15 @@ export function createRoomsRoutes() {
         const user = getAuthUser(c);
         const db = getDb();
         const room = await roomFor(db, user.id, c.req.param('id'));
-        if (!room) return c.json({ error: 'Conversation not found' }, 404);
+        if (!room) return c.json({ error: 'Conversation not found', code: 'conversation_not_found' as const }, 404);
         const body = await readJson(c);
         const userId = typeof body.user_id === 'string' ? body.user_id : '';
         const person = userId ? await eligiblePerson(db, userId) : null;
-        if (!person) return c.json({ error: 'Only active members with Agents can be in a conversation' }, 400);
+        if (!person)
+          return c.json(
+            { error: 'Only active members with Agents can be in a conversation', code: 'person_not_eligible' as const },
+            400,
+          );
         try {
           const outcome = await db.bots.addParticipant(room.session_id, person.id, user.id);
           if (outcome === 'added') {
@@ -275,10 +296,13 @@ export function createRoomsRoutes() {
         const user = getAuthUser(c);
         const db = getDb();
         const room = await roomFor(db, user.id, c.req.param('id'));
-        if (!room) return c.json({ error: 'Conversation not found' }, 404);
+        if (!room) return c.json({ error: 'Conversation not found', code: 'conversation_not_found' as const }, 404);
         const target = c.req.param('userId');
         if (target !== user.id && room.user_id !== user.id) {
-          return c.json({ error: 'Only the conversation’s owner can remove someone else' }, 403);
+          return c.json(
+            { error: 'Only the conversation’s owner can remove someone else', code: 'not_allowed' as const },
+            403,
+          );
         }
         if (chatRunRegistry.getActive(room.session_id)?.userId === target) {
           return c.json({ error: 'Their Agent is answering right now — try again in a moment', code: 'busy' }, 409);
@@ -289,7 +313,8 @@ export function createRoomsRoutes() {
         for (const member of room.members)
           names.set(member.bot_id, (await db.bots.getBotById(member.bot_id))?.name ?? '');
         const result = await db.bots.removeParticipant(room.session_id, target);
-        if (!result.removed) return c.json({ error: 'Not in this conversation' }, 404);
+        if (!result.removed)
+          return c.json({ error: 'Not in this conversation', code: 'not_participant' as const }, 404);
         if (!result.deleted) {
           // The one who stays keeps the room's owner key valid; the lines go through its writer.
           const memberId = (await db.sessions.getById(room.session_id))?.user_id ?? user.id;
@@ -316,14 +341,14 @@ export function createRoomsRoutes() {
         const user = getAuthUser(c);
         const db = getDb();
         const room = await roomFor(db, user.id, c.req.param('id'));
-        if (!room) return c.json({ error: 'Conversation not found' }, 404);
+        if (!room) return c.json({ error: 'Conversation not found', code: 'conversation_not_found' as const }, 404);
         const body = await readJson(c);
         const botId = typeof body.bot_id === 'string' ? body.bot_id : '';
         const people = ((await db.bots.listParticipants([room.session_id])).get(room.session_id) ?? []).map(
           (p) => p.user_id,
         );
         const verdict = await admitAgent(db, user.id, botId, people);
-        if ('error' in verdict) return c.json({ error: verdict.error }, verdict.status);
+        if ('error' in verdict) return c.json({ error: verdict.error, code: verdict.code }, verdict.status);
         try {
           await db.bots.addRoomAgent(room.session_id, verdict.bot.id, user.id);
         } catch (error) {
@@ -346,12 +371,18 @@ export function createRoomsRoutes() {
         const user = getAuthUser(c);
         const db = getDb();
         const room = await roomFor(db, user.id, c.req.param('id'));
-        if (!room) return c.json({ error: 'Conversation not found' }, 404);
+        if (!room) return c.json({ error: 'Conversation not found', code: 'conversation_not_found' as const }, 404);
         const member = room.members.find((m) => m.bot_id === c.req.param('botId'));
-        if (!member) return c.json({ error: 'Agent not found' }, 404);
+        if (!member) return c.json({ error: 'Agent not found', code: 'agent_not_found' as const }, 404);
         const bot = await db.bots.getBotById(member.bot_id);
         if (member.user_id !== user.id && bot?.user_id !== user.id && room.user_id !== user.id) {
-          return c.json({ error: 'Only who brought it, its owner or the conversation’s owner can remove it' }, 403);
+          return c.json(
+            {
+              error: 'Only who brought it, its owner or the conversation’s owner can remove it',
+              code: 'not_allowed' as const,
+            },
+            403,
+          );
         }
         await db.bots.removeRoomAgent(room.session_id, member.bot_id);
         const locale = botsLocale((await db.users.getById(user.id))?.locale);

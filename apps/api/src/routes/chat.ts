@@ -898,6 +898,8 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             status: run.status,
             started_at: run.startedAt,
             next_seq: run.nextSeq,
+            // Whose run it is: in a room (P5) only the asker may stop it.
+            user_id: run.userId,
           },
         });
       })
