@@ -31,6 +31,7 @@ import {
   type SchemaPlanRef,
   type SchemaPlanRefMap,
 } from '@greenhouse/types/tables';
+import { APP_ACCENTS, APP_ICONS, APP_ID_PATTERN } from '@greenhouse/types/apps';
 import type { TablesActionId } from '../manifests/tables.js';
 import type { TablesResourceIds } from './audit.js';
 import { collectRefTokens, resolveRefTokens, UnresolvedRefError } from './schema-plan-refs.js';
@@ -111,6 +112,28 @@ const description = z.string().max(2000);
 const revision = idSchema.describe('The revision you read; a stale one fails instead of overwriting.');
 const READ_GRAMMAR = 'See tables_query builder.reference for the grammar.';
 
+const appIconSchema = z
+  .string()
+  .refine((value) => (APP_ICONS as readonly string[]).includes(value), `one of ${APP_ICONS.join(', ')}`)
+  .describe(`One of ${APP_ICONS.join(', ')}.`);
+const appAccentSchema = z
+  .string()
+  .refine((value) => (APP_ACCENTS as readonly string[]).includes(value), `one of ${APP_ACCENTS.join(', ')}`)
+  .describe(`One of ${APP_ACCENTS.join(', ')}.`);
+const appAudienceEntrySchema = z.object({
+  principal: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('user'), userId: z.string().min(1).max(128) }),
+    z.object({ type: z.literal('group'), groupId: idSchema }),
+    z.object({ type: z.literal('team') }),
+  ]),
+  roleKey: z.string().regex(APP_ID_PATTERN, 'a role key of the app').describe("One of the app spec's role keys."),
+});
+const appTarget = {
+  appId: idSchema.optional().describe('An existing app (tables_query apps.list).'),
+  appRef: refSchema.optional().describe('An app created earlier in this plan.'),
+};
+const APP_GRAMMAR = 'Read tables_query builder.reference topic=app first.';
+
 export const schemaPlanOperationSchema = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('base.create'),
@@ -125,6 +148,10 @@ export const schemaPlanOperationSchema = z.discriminatedUnion('op', [
       .optional()
       .describe('Plan-local name for the table created alongside the Base. Give one to put fields in it.'),
     defaultTableName: z.string().min(1).max(200).optional().describe('Name for that table. Defaults to "Table 1".'),
+    primaryFieldRef: refSchema
+      .optional()
+      .describe('Plan-local name for that table\'s primary "Name" field — forms and app cards usually need it.'),
+    primaryFieldName: z.string().min(1).max(200).optional().describe('Renames that primary field.'),
   }),
   z.object({
     op: z.literal('base.update'),
@@ -144,6 +171,8 @@ export const schemaPlanOperationSchema = z.discriminatedUnion('op', [
     baseId: idSchema.optional(),
     name: z.string().min(1).max(200),
     description: description.optional(),
+    primaryFieldRef: refSchema.optional().describe('Plan-local name for the primary "Name" field.'),
+    primaryFieldName: z.string().min(1).max(200).optional().describe('Renames the primary field.'),
   }),
   z.object({
     op: z.literal('table.update'),
@@ -301,6 +330,36 @@ export const schemaPlanOperationSchema = z.discriminatedUnion('op', [
     roleRef: refSchema.optional(),
     customRoleId: idSchema.optional(),
   }),
+  z.object({
+    op: z.literal('app.create'),
+    ref: refSchema.optional(),
+    baseRef: refSchema.optional(),
+    baseId: idSchema.optional(),
+    name: z.string().min(1).max(60),
+    description: z.string().max(500).optional(),
+    icon: appIconSchema.optional(),
+    accent: appAccentSchema.optional(),
+    spec: configSchema.describe(`AppSpec — pages, cards, roles, actions. ${APP_GRAMMAR}`),
+  }),
+  z.object({
+    op: z.literal('app.update'),
+    ...appTarget,
+    draftRevision: idSchema.optional().describe('The draftRevision apps.get returned.'),
+    name: z.string().min(1).max(60).optional(),
+    spec: configSchema.optional().describe('Replaces the whole draft.'),
+  }),
+  z.object({
+    op: z.literal('app.audience'),
+    ...appTarget,
+    entries: z.array(appAudienceEntrySchema).max(200).describe('Replaces who the app is shared with.'),
+    audiencesRevision: idSchema.optional(),
+  }),
+  z.object({
+    op: z.literal('app.publish'),
+    ...appTarget,
+    notes: z.string().min(1).max(500).describe('What this version changes, for the version history.'),
+    draftRevision: idSchema.optional(),
+  }),
 ]);
 
 /** The zod schema and the shared TS type describe the same thing — checked here, at compile time. */
@@ -313,6 +372,11 @@ export const schemaPlanApplySchema = z.object({
   /** Re-run only the operations of an applied plan that did not apply, reusing its ref map. */
   retry: z.boolean().optional(),
 });
+
+/** Whether a plan has app operations (they need the `apps` feature on top of Tables). */
+export function planTouchesApps(operations: readonly SchemaPlanOperation[]): boolean {
+  return operations.some((operation) => operation.op.startsWith('app.'));
+}
 
 // ─── Shape analysis (pure) ───────────────────────────────
 
@@ -338,15 +402,21 @@ export function declaredRefs(
       return [
         { ref: operation.ref, kind: 'base' },
         ...(operation.defaultTableRef ? [{ ref: operation.defaultTableRef, kind: 'table' as const }] : []),
+        ...(operation.primaryFieldRef ? [{ ref: operation.primaryFieldRef, kind: 'field' as const }] : []),
       ];
     case 'table.create':
+      return [
+        ...(operation.ref ? [{ ref: operation.ref, kind: 'table' as const }] : []),
+        ...(operation.primaryFieldRef ? [{ ref: operation.primaryFieldRef, kind: 'field' as const }] : []),
+      ];
     case 'field.create':
     case 'view.create':
     case 'form.create':
     case 'automation.create':
     case 'dashboard.create':
     case 'widget.create':
-    case 'role.create': {
+    case 'role.create':
+    case 'app.create': {
       const kind = operation.op.slice(0, operation.op.indexOf('.')) as SchemaPlanObjectKind;
       return operation.ref ? [{ ref: operation.ref, kind }] : [];
     }
@@ -375,6 +445,9 @@ function tokenScope(operation: SchemaPlanOperation): unknown[] {
     case 'role.create':
     case 'role.update':
       return [operation.rules];
+    case 'app.create':
+    case 'app.update':
+      return [operation.spec];
     default:
       return [];
   }
@@ -479,6 +552,8 @@ function automationProblem(at: number, operation: SchemaPlanOperation): string |
 export function analyzeSchemaPlan(operations: SchemaPlanOperation[]): { error: string } | SchemaPlanShape {
   const declared = new Map<SchemaPlanRef, { kind: SchemaPlanObjectKind; index: number; base?: string }>();
   const needs: SchemaPlanRefNeed[][] = [];
+  /** Existing apps whose draft an earlier `app.update` of this plan writes (a later publish publishes that). */
+  const draftsWritten = new Set<number>();
 
   /** Where a base-scoped object lives: `ref:<baseRef>` or `id:<baseId>`. */
   const baseKey = (baseRef: string | undefined, baseId: number | undefined) =>
@@ -560,6 +635,28 @@ export function analyzeSchemaPlan(operations: SchemaPlanOperation[]): { error: s
         }
         break;
       }
+      case 'app.create':
+        problem =
+          exactlyOne(at, operation.baseRef, operation.baseId, 'baseRef or baseId') ?? need('base', operation.baseRef);
+        break;
+      case 'app.update':
+      case 'app.audience':
+      case 'app.publish':
+        problem = exactlyOne(at, operation.appId, operation.appRef, 'appId or appRef') ?? need('app', operation.appRef);
+        if (problem) break;
+        if (operation.op === 'app.update' && operation.name === undefined && operation.spec === undefined) {
+          problem = `operation ${at}: app.update changes the name, the spec or both`;
+        } else if (
+          operation.op === 'app.publish' &&
+          operation.appId !== undefined &&
+          operation.draftRevision === undefined &&
+          !draftsWritten.has(operation.appId)
+        ) {
+          problem = `operation ${at}: publishing an existing app needs the draftRevision you read with tables_query apps.get (or an app.update of its draft earlier in this plan)`;
+        } else if (operation.op === 'app.update' && operation.appId !== undefined && operation.spec !== undefined) {
+          draftsWritten.add(operation.appId);
+        }
+        break;
       default:
         break;
     }
@@ -604,6 +701,24 @@ function nestedId(data: unknown, key: string): number | undefined {
   return typeof id === 'number' ? id : undefined;
 }
 
+/** Reads `data.app.baseId` (every app action answers with the app's summary) without trusting the shape. */
+function appBaseId(data: unknown): number | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const app = (data as { app?: unknown }).app;
+  const baseId = app && typeof app === 'object' ? (app as { baseId?: unknown }).baseId : undefined;
+  return typeof baseId === 'number' ? baseId : undefined;
+}
+
+/** A refusal in words: the handler's message, plus the first spec problem when it lists them (`spec_invalid`). */
+function failureMessage(result: Extract<PlatformActionResult, { ok: false }>): string {
+  const errors = (result.details as { errors?: unknown } | undefined)?.errors;
+  const first = Array.isArray(errors) ? (errors[0] as { path?: unknown; message?: unknown } | undefined) : undefined;
+  if (!first || typeof first.message !== 'string') return result.message;
+  const where = typeof first.path === 'string' && first.path ? `${first.path}: ` : '';
+  const more = (errors as unknown[]).length > 1 ? ` (+${(errors as unknown[]).length - 1} more)` : '';
+  return `${result.message} — ${where}${first.message}${more}`;
+}
+
 /** Thrown inside one operation: report it skipped (a ref it needs never got an id). */
 class SkipOperation extends Error {}
 
@@ -615,6 +730,8 @@ interface Outcome {
   created?: Array<{ ref: SchemaPlanRef; kind: SchemaPlanObjectKind; id: number }>;
   /** The Base it touched, when known without another read. */
   baseId?: number;
+  /** Something the member should know about an operation that DID apply. */
+  note?: string;
 }
 
 /**
@@ -634,6 +751,8 @@ export async function applySchemaPlan(
   const results: SchemaPlanOperationResult[] = [];
   const touchedBases = new Set<number>(prior?.baseId === undefined ? [] : [prior.baseId]);
   const tableBases = new Map<number, number>();
+  /** Draft revisions this run wrote, per app: what a later `app.update` / `app.publish` of it builds on. */
+  const appRevisions = new Map<number, number>();
 
   const idOf = (kind: SchemaPlanObjectKind, ref: SchemaPlanRef): number => {
     const reason = unresolved.get(ref);
@@ -663,6 +782,48 @@ export async function applySchemaPlan(
   };
   const done = (result: PlatformActionResult, outcome: Omit<Outcome, 'ok'> = {}): Outcome =>
     result.ok ? { ok: true, ...outcome } : { ok: false, message: result.message };
+  const appOf = (operation: { appId?: number; appRef?: SchemaPlanRef }): number =>
+    operation.appId ?? idOf('app', operation.appRef!);
+  /** The draft revision an app is at now (a manager's read), when the plan has not written it itself. */
+  const currentDraftRevision = async (appId: number): Promise<number | undefined> => {
+    const result = await dispatch('getAppDraft', { appId }, { appId });
+    const revision = result.ok ? (result.data as { draftRevision?: unknown } | undefined)?.draftRevision : undefined;
+    return typeof revision === 'number' ? revision : undefined;
+  };
+  const currentAudiencesRevision = async (appId: number): Promise<number | undefined> => {
+    const result = await dispatch('listAppAudiences', { appId }, { appId });
+    const revision = result.ok
+      ? (result.data as { audiencesRevision?: unknown } | undefined)?.audiencesRevision
+      : undefined;
+    return typeof revision === 'number' ? revision : undefined;
+  };
+  /**
+   * A new table's primary "Name" field: its ref (so forms and app cards can name
+   * it) and an optional new name. The table exists whatever the rename does, so
+   * a failed rename is a note on an applied operation, never a failure that a
+   * retry would answer by creating the table again.
+   */
+  const settlePrimaryField = async (
+    schema: unknown,
+    operation: { primaryFieldRef?: SchemaPlanRef; primaryFieldName?: string },
+    created: NonNullable<Outcome['created']>,
+  ): Promise<{ note?: string }> => {
+    const fields = (schema as { fields?: Array<{ id?: unknown; is_primary?: unknown }> } | undefined)?.fields;
+    const primaryId = fields?.find((field) => field.is_primary === true)?.id;
+    if (typeof primaryId !== 'number') return {};
+    if (operation.primaryFieldRef) created.push({ ref: operation.primaryFieldRef, kind: 'field', id: primaryId });
+    if (operation.primaryFieldName === undefined) return {};
+    const renamed = await dispatch(
+      'updateField',
+      { fieldId: primaryId, name: operation.primaryFieldName },
+      { fieldId: primaryId },
+    );
+    return renamed.ok ? {} : { note: `created, but the primary field was not renamed: ${renamed.message}` };
+  };
+  const noteRevision = (appId: number, data: unknown) => {
+    const revision = (data as { draftRevision?: unknown } | undefined)?.draftRevision;
+    if (typeof revision === 'number') appRevisions.set(appId, revision);
+  };
 
   const run = async (operation: SchemaPlanOperation): Promise<Outcome> => {
     switch (operation.op) {
@@ -680,14 +841,16 @@ export async function applySchemaPlan(
         if (!result.ok) return { ok: false, message: result.message };
         const baseId = nestedId(result.data, 'base');
         // createBase always makes one table; expose it so later fields can target it.
-        const defaultTableId = nestedId((result.data as { schema?: unknown } | undefined)?.schema, 'table');
+        const schema = (result.data as { schema?: unknown } | undefined)?.schema;
+        const defaultTableId = nestedId(schema, 'table');
         const created: NonNullable<Outcome['created']> = [];
         if (baseId !== undefined) created.push({ ref: operation.ref, kind: 'base', id: baseId });
         if (operation.defaultTableRef && defaultTableId !== undefined) {
           created.push({ ref: operation.defaultTableRef, kind: 'table', id: defaultTableId });
           if (baseId !== undefined) tableBases.set(defaultTableId, baseId);
         }
-        return { ok: true, id: baseId, created, baseId };
+        const primary = await settlePrimaryField(schema, operation, created);
+        return { ok: true, id: baseId, created, baseId, ...primary };
       }
 
       case 'base.update': {
@@ -721,12 +884,10 @@ export async function applySchemaPlan(
         if (!result.ok) return { ok: false, message: result.message };
         const tableId = nestedId(result.data, 'table');
         if (tableId !== undefined) tableBases.set(tableId, baseId);
-        return {
-          ok: true,
-          id: tableId,
-          baseId,
-          created: operation.ref && tableId !== undefined ? [{ ref: operation.ref, kind: 'table', id: tableId }] : [],
-        };
+        const created: NonNullable<Outcome['created']> =
+          operation.ref && tableId !== undefined ? [{ ref: operation.ref, kind: 'table', id: tableId }] : [];
+        const primary = await settlePrimaryField(result.data, operation, created);
+        return { ok: true, id: tableId, baseId, created, ...primary };
       }
 
       case 'table.update': {
@@ -1026,6 +1187,83 @@ export async function applySchemaPlan(
         const result = await dispatch('manageMembers', { baseId, ...principal, ...grant }, { baseId });
         return done(result, { baseId });
       }
+
+      case 'app.create': {
+        const baseId = operation.baseId ?? idOf('base', operation.baseRef!);
+        const result = await dispatch(
+          'createApp',
+          {
+            baseId,
+            name: operation.name,
+            description: operation.description,
+            icon: operation.icon,
+            accent: operation.accent,
+            spec: resolve(operation.spec),
+          },
+          { baseId },
+        );
+        if (!result.ok) return { ok: false, message: failureMessage(result) };
+        const appId = nestedId(result.data, 'app');
+        if (appId !== undefined) noteRevision(appId, result.data);
+        return {
+          ok: true,
+          id: appId,
+          baseId,
+          created: operation.ref && appId !== undefined ? [{ ref: operation.ref, kind: 'app', id: appId }] : [],
+        };
+      }
+
+      case 'app.update': {
+        const appId = appOf(operation);
+        let baseId: number | undefined;
+        if (operation.spec !== undefined) {
+          // A draft this plan already wrote builds on its own revision; else the one the model read; else today's.
+          const draftRevision =
+            appRevisions.get(appId) ?? operation.draftRevision ?? (await currentDraftRevision(appId));
+          if (draftRevision === undefined) return { ok: false, message: `app ${appId} was not found` };
+          const saved = await dispatch(
+            'saveAppDraft',
+            { appId, spec: resolve(operation.spec), draftRevision },
+            { appId },
+          );
+          if (!saved.ok) return { ok: false, message: failureMessage(saved) };
+          noteRevision(appId, saved.data);
+          baseId = appBaseId(saved.data);
+        }
+        if (operation.name !== undefined) {
+          const renamed = await dispatch('updateApp', { appId, name: operation.name }, { appId });
+          if (!renamed.ok) return { ok: false, message: failureMessage(renamed) };
+          baseId ??= appBaseId(renamed.data);
+        }
+        return { ok: true, id: appId, baseId };
+      }
+
+      case 'app.audience': {
+        const appId = appOf(operation);
+        const audiencesRevision = operation.audiencesRevision ?? (await currentAudiencesRevision(appId));
+        if (audiencesRevision === undefined) return { ok: false, message: `app ${appId} was not found` };
+        const result = await dispatch(
+          'setAppAudiences',
+          { appId, entries: operation.entries, audiencesRevision },
+          { appId },
+        );
+        return result.ok ? { ok: true, id: appId } : { ok: false, message: failureMessage(result) };
+      }
+
+      case 'app.publish': {
+        const appId = appOf(operation);
+        // An app this plan created (or whose draft it wrote) publishes what the plan put there.
+        const draftRevision =
+          appRevisions.get(appId) ??
+          operation.draftRevision ??
+          (operation.appRef !== undefined ? await currentDraftRevision(appId) : undefined);
+        if (draftRevision === undefined) {
+          return { ok: false, message: 'publishing an existing app needs the draftRevision you read' };
+        }
+        const result = await dispatch('publishApp', { appId, notes: operation.notes, draftRevision }, { appId });
+        if (!result.ok) return { ok: false, message: failureMessage(result) };
+        return { ok: true, id: appId, baseId: appBaseId(result.data) };
+      }
     }
   };
 
@@ -1056,7 +1294,13 @@ export async function applySchemaPlan(
       op: operation.op,
       status: outcome.ok ? 'applied' : skipped ? 'skipped' : 'failed',
       ...(outcome.id === undefined ? {} : { id: outcome.id }),
-      ...(outcome.ok || outcome.message === undefined ? {} : { message: outcome.message }),
+      ...(outcome.ok
+        ? outcome.note === undefined
+          ? {}
+          : { message: outcome.note }
+        : outcome.message === undefined
+          ? {}
+          : { message: outcome.message }),
     });
   }
 

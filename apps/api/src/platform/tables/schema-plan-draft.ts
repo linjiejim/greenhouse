@@ -55,6 +55,9 @@ import {
 import { normalizeTableCardSpec, widgetTypeForCard } from '@greenhouse/types/table-cards';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
+import type { AppAudienceEntryView, AppAudiencesView, AppDraftView, AppSpec } from '@greenhouse/types/apps';
+import type { SchemaPlanAppAudienceEntry, SchemaPlanAppAudienceView } from '@greenhouse/types/tables';
+import { validateAppSpec, type AppSpecSchema } from './app-spec.js';
 import { validateTablesSchedule } from './automation-schedule.js';
 import { analyzeSchemaPlan, keepStoredWebhooks, WEBHOOK_REFUSAL, type SchemaPlanDispatch } from './schema-plan.js';
 import { resolveRefTokens } from './schema-plan-refs.js';
@@ -66,7 +69,9 @@ export interface SchemaPlanReader {
   /** The drafter's id: the owner of any Base the plan creates. */
   userId: string;
   /** Groups the drafter may grant or name — creator, member, or every group for a super (D12). */
-  grantableGroups(): Promise<Array<{ id: number; name: string }>>;
+  grantableGroups(): Promise<Array<{ id: number; name: string; managedBy?: { id: string; name: string } }>>;
+  /** Whether the drafter may use Apps (the `apps` feature); absent = yes. App operations need it. */
+  appsEnabled?(): Promise<boolean>;
 }
 
 export type SchemaPlanDraft =
@@ -153,6 +158,38 @@ interface DraftAutomation {
   revision: number;
 }
 
+interface DraftApp {
+  id: number;
+  baseId: number;
+  name: string;
+  /** The draft as the plan leaves it (the stored one, or what an app op of this plan wrote). */
+  spec: AppSpec;
+  /** Problems of the stored draft against today's schema (a publish of it would be refused). */
+  storedErrors: string[];
+  /** Roles of the published version, which audience entries may also name. */
+  liveRoles: Array<{ key: string; name: string }>;
+  draftRevision: number;
+  /** Whether this plan wrote the draft (then its own revision is what a publish publishes). */
+  written: boolean;
+  audiencesRevision: number;
+  audience: SchemaPlanAppAudienceEntry[];
+  /** How the card words each current entry (names resolved; `role` holds the role KEY until shown). */
+  audienceViews: SchemaPlanAppAudienceView[];
+  publishedVersion: number;
+}
+
+/** At most this many spec problems per operation go back to the model (the rest are counted). */
+const MAX_SPEC_PROBLEMS = 12;
+
+/** What makes two audience entries the same principal (one role each, D3). */
+function principalKey(principal: SchemaPlanAppAudienceEntry['principal']): string {
+  return principal.type === 'user'
+    ? `user ${principal.userId}`
+    : principal.type === 'group'
+      ? `group ${principal.groupId}`
+      : 'the team';
+}
+
 /** A problem already reported: the operation stops, nothing else about it is said. */
 class Reported extends Error {}
 
@@ -230,8 +267,10 @@ export async function draftSchemaPlan(
   const formCache = memo<number, DraftForm | undefined>();
   const formNameCache = memo<number, Set<string>>();
   const dashboardCache = memo<number, DraftDashboard | undefined>();
+  const appCache = memo<number, DraftApp | undefined>();
+  let appsAllowed: Promise<boolean> | undefined;
   let userList: Promise<Array<{ id: string; name: string }>> | undefined;
-  let groupList: Promise<Array<{ id: number; name: string }>> | undefined;
+  let groupList: Promise<Awaited<ReturnType<SchemaPlanReader['grantableGroups']>>> | undefined;
 
   const loadBase = (id: number) => {
     let found = baseCache.get(id);
@@ -415,6 +454,43 @@ export async function draftSchemaPlan(
     return found;
   };
 
+  /** An existing app as its manager reads it: the draft (with today's problems) and who it is shared with. */
+  const loadApp = (appId: number) => {
+    let found = appCache.get(appId);
+    if (!found) {
+      found = Promise.all([
+        read('getAppDraft', { appId }, { appId }),
+        read('listAppAudiences', { appId }, { appId }),
+      ]).then(([draftData, audienceData]): DraftApp | undefined => {
+        const draft = draftData as AppDraftView | undefined;
+        const audiences = audienceData as AppAudiencesView | undefined;
+        if (!draft?.app || typeof draft.app.baseId !== 'number') return undefined;
+        const entries: AppAudienceEntryView[] = audiences?.entries ?? [];
+        return {
+          id: appId,
+          baseId: draft.app.baseId,
+          name: draft.app.name,
+          spec: draft.spec,
+          storedErrors: (draft.errors ?? []).map((error) => `${error.path ? `${error.path}: ` : ''}${error.message}`),
+          liveRoles: draft.app.publishedVersion ? (audiences?.roles ?? []) : [],
+          draftRevision: draft.draftRevision,
+          written: false,
+          audiencesRevision: audiences?.audiencesRevision ?? 1,
+          audience: entries.map((entry) => ({ principal: entry.principal, roleKey: entry.roleKey })),
+          audienceViews: entries.map((entry) => ({
+            principal: entry.principal.type,
+            name: entry.principal.type === 'team' ? '' : entry.name,
+            role: entry.roleKey,
+            ...(entry.managedBy ? { managedBy: entry.managedBy.name } : {}),
+          })),
+          publishedVersion: draft.app.publishedVersion ?? 0,
+        };
+      });
+      appCache.set(appId, found);
+    }
+    return found;
+  };
+
   const users = () =>
     (userList ??= read('listAssignableUsers', {}, {}).then((data) =>
       list(data, 'users').map((user) => ({ id: String(user.id), name: String(user.nickname ?? user.id) })),
@@ -440,13 +516,22 @@ export async function draftSchemaPlan(
   };
 
   // ── Placeholders ──
-  const placeholderTable = (baseId: number, name: string, ref: string | undefined): DraftTable => {
+  const placeholderTable = (
+    baseId: number,
+    name: string,
+    ref: string | undefined,
+    primaryField: { ref?: string; name?: string } = {},
+  ): DraftTable => {
     const id = alloc(ref ? `$table:${ref}` : `table "${name}"`);
     const now = new Date(0).toISOString();
     const primary: TableFieldRow = {
-      id: alloc(`the "Name" field of ${ref ? `$table:${ref}` : `table "${name}"`}`),
+      id: alloc(
+        primaryField.ref
+          ? `$field:${primaryField.ref}`
+          : `the "${primaryField.name ?? 'Name'}" field of ${ref ? `$table:${ref}` : `table "${name}"`}`,
+      ),
       table_id: id,
-      name: 'Name',
+      name: primaryField.name ?? 'Name',
       type: 'text',
       required: true,
       is_primary: true,
@@ -461,6 +546,7 @@ export async function draftSchemaPlan(
     tableCache.set(id, Promise.resolve(table));
     formNameCache.set(id, Promise.resolve(new Set()));
     if (ref) refs.set(ref, { kind: 'table', id });
+    if (primaryField.ref) refs.set(primaryField.ref, { kind: 'field', id: primary.id });
     return table;
   };
 
@@ -576,6 +662,70 @@ export async function draftSchemaPlan(
   const requireRole = async (base: DraftBase, roleId: number): Promise<DraftRole> =>
     (await baseRoles(base)).find((role) => role.id === roleId) ?? problem(`role ${roleId} is not a role of this Base`);
 
+  // ── Apps ──
+  const requireApps = async () => {
+    appsAllowed ??= reader.appsEnabled ? reader.appsEnabled() : Promise.resolve(true);
+    if (!(await appsAllowed)) problem('Apps are turned off for you — ask an administrator to enable them');
+  };
+  /** The app validator's view of one Base: its tables and fields as the plan leaves them, and its button rules. */
+  const appSchemaFor = async (base: DraftBase): Promise<AppSpecSchema> => {
+    const tables = (await Promise.all([...base.tables.keys()].map((id) => loadTable(id)))).filter(
+      (table): table is DraftTable => table !== undefined,
+    );
+    const rules = (await loadAutomations(base.id)) ?? [];
+    return {
+      baseId: base.id,
+      facts: {
+        tables: tables.map((table) => ({ id: table.id, name: table.name })),
+        fields: tables.flatMap((table) =>
+          table.fields.map((row) => ({
+            id: row.id,
+            tableId: table.id,
+            type: row.type,
+            name: row.name,
+            isPrimary: row.is_primary,
+            relationTargetTableId:
+              row.type === 'relation'
+                ? ((safeJsonParse(row.config, {}) as TableFieldConfig).relation?.targetTableId ?? null)
+                : null,
+          })),
+        ),
+        // Edges only matter for what a role may READ; what this check asks is what it may WRITE.
+        dependencies: [],
+      },
+      source,
+      buttonRules: rules
+        .filter((rule) => rule.trigger === 'button')
+        .map((rule) => ({ id: rule.id, tableId: rule.tableId })),
+    };
+  };
+  /** A spec with its tokens on placeholders, through the app validator against the Base as the plan leaves it. */
+  const checkAppSpec = async (base: DraftBase, raw: unknown): Promise<AppSpec> => {
+    const checked = await validateAppSpec(resolve(raw), await appSchemaFor(base));
+    if (checked.ok) return checked.spec;
+    const shown = checked.errors
+      .slice(0, MAX_SPEC_PROBLEMS)
+      .map((error) => `spec${error.path ? `.${error.path}` : ''}: ${error.message}`);
+    const more = checked.errors.length - shown.length;
+    return problem(
+      [...shown, ...(more > 0 ? [`…and ${more} more spec problem${more === 1 ? '' : 's'}`] : [])].join('; '),
+    );
+  };
+  const requireApp = async (appId: number, role: 'builder' | 'owner', what: string): Promise<DraftApp> => {
+    const app =
+      (await loadApp(appId)) ??
+      problem(`app ${appId} was not found, or you do not manage it — find it with tables_query apps.list`);
+    await requireBase(app.baseId, role, what);
+    return app;
+  };
+  /** A role key in words: the draft's role name, else the published version's. */
+  const appRoleName = (app: DraftApp, key: string): string =>
+    app.spec.roles.find((role) => role.key === key)?.name ??
+    app.liveRoles.find((role) => role.key === key)?.name ??
+    key;
+  const audienceWords = (app: DraftApp): SchemaPlanAppAudienceView[] =>
+    app.audienceViews.map((view) => ({ ...view, role: appRoleName(app, view.role) }));
+
   const run = async (operation: SchemaPlanOperation, index: number): Promise<void> => {
     switch (operation.op) {
       case 'base.create': {
@@ -597,7 +747,10 @@ export async function draftSchemaPlan(
         roleCache.set(id, Promise.resolve([]));
         automationCache.set(id, Promise.resolve([]));
         refs.set(operation.ref, { kind: 'base', id });
-        const table = placeholderTable(id, operation.defaultTableName ?? 'Table 1', operation.defaultTableRef);
+        const table = placeholderTable(id, operation.defaultTableName ?? 'Table 1', operation.defaultTableRef, {
+          ref: operation.primaryFieldRef,
+          name: operation.primaryFieldName,
+        });
         base.tables.set(table.id, table.name);
         if (base.visibility === 'team') {
           accessChanges.push({
@@ -635,7 +788,10 @@ export async function draftSchemaPlan(
       case 'table.create': {
         const base = await requireBase(operation.baseId ?? refId(operation.baseRef!), 'builder', 'change it');
         unique(base.tables.values(), operation.name, 'table');
-        const table = placeholderTable(base.id, operation.name, operation.ref);
+        const table = placeholderTable(base.id, operation.name, operation.ref, {
+          ref: operation.primaryFieldRef,
+          name: operation.primaryFieldName,
+        });
         base.tables.set(table.id, table.name);
         return;
       }
@@ -1018,6 +1174,133 @@ export async function draftSchemaPlan(
         if (operation.role === 'none') grants.groups.delete(groupId);
         else grants.groups.set(groupId, { name, role: operation.role, customRoleId });
         accessChanges.push({ index, kind: 'grant', base: base.name, principal: 'group', name, before, after });
+        return;
+      }
+
+      case 'app.create': {
+        await requireApps();
+        const base = await requireBase(operation.baseId ?? refId(operation.baseRef!), 'builder', 'build an app in it');
+        const spec = await checkAppSpec(base, operation.spec);
+        const id = alloc(operation.ref ? `$app:${operation.ref}` : `app "${operation.name}"`);
+        appCache.set(
+          id,
+          Promise.resolve({
+            id,
+            baseId: base.id,
+            name: operation.name,
+            spec,
+            storedErrors: [],
+            liveRoles: [],
+            draftRevision: 1,
+            written: true,
+            audiencesRevision: 1,
+            audience: [],
+            audienceViews: [],
+            publishedVersion: 0,
+          }),
+        );
+        if (operation.ref) refs.set(operation.ref, { kind: 'app', id });
+        return;
+      }
+
+      case 'app.update': {
+        await requireApps();
+        const app = await requireApp(operation.appId ?? refId(operation.appRef!), 'builder', 'change its apps');
+        named(index, app.name);
+        if (!app.written && operation.draftRevision !== undefined) {
+          fresh('the draft of app', app.id, app.draftRevision, operation.draftRevision);
+        }
+        if (operation.spec !== undefined) {
+          const base = (await loadBase(app.baseId)) ?? problem(`Base ${app.baseId} was not found`);
+          app.spec = await checkAppSpec(base, operation.spec);
+          app.storedErrors = [];
+          app.written = true;
+        }
+        if (operation.name !== undefined) app.name = operation.name;
+        return;
+      }
+
+      case 'app.audience': {
+        await requireApps();
+        const app = await requireApp(
+          operation.appId ?? refId(operation.appRef!),
+          'owner',
+          'change who an app is shared with',
+        );
+        named(index, app.name);
+        if (operation.audiencesRevision !== undefined) {
+          fresh('the audience of app', app.id, app.audiencesRevision, operation.audiencesRevision);
+        }
+        const keys = new Set([...app.spec.roles.map((role) => role.key), ...app.liveRoles.map((role) => role.key)]);
+        const current = new Map(
+          app.audience.map((entry, position) => [principalKey(entry.principal), app.audienceViews[position]]),
+        );
+        const seen = new Set<string>();
+        const views: SchemaPlanAppAudienceView[] = [];
+        for (const entry of operation.entries) {
+          if (!keys.has(entry.roleKey)) {
+            problem(`"${entry.roleKey}" is not a role of the app — its roles: ${[...keys].join(', ') || 'none'}`);
+          }
+          const key = principalKey(entry.principal);
+          if (seen.has(key)) problem(`${key} is listed twice — one role per person, group or the team`);
+          seen.add(key);
+          const principal = entry.principal;
+          if (principal.type === 'team') {
+            views.push({ principal: 'team', name: '', role: entry.roleKey });
+          } else if (principal.type === 'user') {
+            const person =
+              (await users()).find((user) => user.id === principal.userId) ??
+              problem(
+                `user ${principal.userId} is not an active internal user — look them up with tables_query directory.search`,
+              );
+            views.push({ principal: 'user', name: person.name, role: entry.roleKey });
+          } else {
+            const group = (await groups()).find((candidate) => candidate.id === principal.groupId);
+            const held = current.get(key);
+            // Sharing with a group delegates "who gets in" to whoever manages it: only groups you can see (D12).
+            if (!group && !held) {
+              problem(`group ${principal.groupId} was not found — look it up with tables_query directory.search`);
+            }
+            const managedBy = group?.managedBy?.name ?? held?.managedBy;
+            views.push({
+              principal: 'group',
+              name: group?.name ?? held?.name ?? `#${principal.groupId}`,
+              role: entry.roleKey,
+              ...(managedBy ? { managedBy } : {}),
+            });
+          }
+        }
+        const before = app.audienceViews.length > 0 ? audienceWords(app) : null;
+        app.audience = operation.entries.map((entry) => ({ principal: entry.principal, roleKey: entry.roleKey }));
+        app.audienceViews = views;
+        app.audiencesRevision += 1;
+        accessChanges.push({ index, kind: 'app_audience', app: app.name, before, after: audienceWords(app) });
+        return;
+      }
+
+      case 'app.publish': {
+        await requireApps();
+        const app = await requireApp(operation.appId ?? refId(operation.appRef!), 'owner', 'publish an app');
+        named(index, app.name);
+        if (!app.written && operation.draftRevision !== undefined) {
+          fresh('the draft of app', app.id, app.draftRevision, operation.draftRevision);
+        }
+        if (app.storedErrors.length > 0) {
+          problem(
+            `its draft has problems publishing refuses — fix them with app.update first: ${app.storedErrors
+              .slice(0, MAX_SPEC_PROBLEMS)
+              .join('; ')}`,
+          );
+        }
+        app.publishedVersion += 1;
+        app.liveRoles = app.spec.roles.map((role) => ({ key: role.key, name: role.name }));
+        accessChanges.push({
+          index,
+          kind: 'app_publish',
+          app: app.name,
+          version: app.publishedVersion,
+          audience: audienceWords(app),
+        });
         return;
       }
     }

@@ -30,18 +30,19 @@ import { z } from 'zod';
 import { getDb } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { TablesSchemaPlanArtifact } from '@greenhouse/types/tables';
+import { userHasFeature } from '../auth/features.js';
 import { defineTool, type ToolMeta } from './define.js';
 import { dispatchTablesAgentAction } from '../platform/tables/agent-adapter.js';
 import { grantableGroups } from '../platform/tables/directory.js';
 import { schemaPlanOperationSchema, MAX_SCHEMA_PLAN_OPERATIONS } from '../platform/tables/schema-plan.js';
 import { draftSchemaPlan, type SchemaPlanReader } from '../platform/tables/schema-plan-draft.js';
 
-const schemaPlanSchema = z.object({
+export const schemaPlanSchema = z.object({
   summary: z.string().min(1).max(500).describe("One line describing the change, in the user's language."),
   operations: z.array(schemaPlanOperationSchema).min(1).max(MAX_SCHEMA_PLAN_OPERATIONS).describe('Applied in order.'),
 });
 
-type SchemaPlanInput = z.infer<typeof schemaPlanSchema>;
+export type SchemaPlanInput = z.infer<typeof schemaPlanSchema>;
 
 export interface TablesSchemaPlanContext {
   userId: string;
@@ -53,6 +54,40 @@ function schemaPlanReader(userId: string): SchemaPlanReader {
     userId,
     dispatch: (actionId, payload, ids) => dispatchTablesAgentAction({ userId }, actionId, payload, ids),
     grantableGroups: () => grantableGroups(getDb(), userId),
+    appsEnabled: async () => {
+      const user = await getDb().users.getById(userId);
+      return !!user && user.status === 'active' && (await userHasFeature(userId, user.role, 'apps'));
+    },
+  };
+}
+
+/**
+ * Draft a plan as `userId`: the artifact a card shows, or every problem for the
+ * model to fix. Shared by the chat tool (a card the user confirms) and the Bots
+ * face (`bots/tools/tables-plan.ts`, a request the member approves).
+ */
+export async function draftTablesSchemaPlan(
+  userId: string,
+  input: SchemaPlanInput,
+): Promise<{ ok: true; artifact: TablesSchemaPlanArtifact } | { ok: false; error: string; problems: string[] }> {
+  const draft = await draftSchemaPlan(input.operations, schemaPlanReader(userId));
+  if (!draft.ok) {
+    const count = draft.problems.length;
+    return {
+      ok: false,
+      error: `The plan was not drafted — fix ${count === 1 ? 'this problem' : `these ${count} problems`} and call tables_schema_plan again:\n${draft.problems.map((problem) => `- ${problem}`).join('\n')}`,
+      problems: draft.problems,
+    };
+  }
+  return {
+    ok: true,
+    artifact: {
+      type: 'tables_schema_plan',
+      summary: input.summary.trim(),
+      operations: input.operations,
+      ...(draft.accessChanges.length > 0 ? { accessChanges: draft.accessChanges } : {}),
+      ...(Object.keys(draft.targetNames).length > 0 ? { targetNames: draft.targetNames } : {}),
+    },
   };
 }
 
@@ -61,8 +96,8 @@ function schemaPlanReader(userId: string): SchemaPlanReader {
 const meta: ToolMeta = {
   id: 'tables_schema_plan',
   name: 'Tables Schema Plan',
-  brief: 'Draft Tables structure, views, forms, automations, dashboards and access for the user to confirm',
-  description: `Draft a change to internal Tables — Bases, tables, fields, views (grid/kanban/calendar/gallery), submit-only forms, automations, dashboards and widgets, custom roles, who has access — as a card the user confirms.
+  brief: 'Draft Tables structure, views, forms, automations, dashboards, access and apps for the user to confirm',
+  description: `Draft a change to internal Tables — Bases, tables, fields, views (grid/kanban/calendar/gallery), submit-only forms, automations, dashboards and widgets, custom roles, who has access, apps on a Base — as a card the user confirms.
 
 NOTHING changes until they press Confirm. Never say an object exists, or cite its id, in the turn you drafted it.
 
@@ -74,9 +109,9 @@ An invalid plan comes back with every problem listed — fix them all and draft 
 
 Creating a Base also creates one table: name it with defaultTableName + defaultTableRef and put your fields in it. Every new table already has a required primary text field "Name" and a Grid view — don't add your own title field. ALWAYS describe a new Base/table (what it holds, field conventions).
 
-A formula config takes an AST, not a string (builder.reference topic=plan).
+A formula config takes an AST, not a string (builder.reference topic=plan). Apps: read builder.reference topic=app first; publishing or sharing one is the Base owner's.
 
-CANNOT do — never promise it: change a field's TYPE (add a new field instead), delete a table or Base (the user does that in the sidebar: right-click → Delete, creator only, archived so an admin can restore it), add or change a webhook (a person does that in the automation editor). Records are tables_mutation's job. Structure needs the builder role; roles, members and Base settings the owner's.`,
+CANNOT do — never promise it: change a field's TYPE (add a new field instead), delete a table or Base (the user does that in the sidebar: right-click → Delete, creator only, archived so an admin can restore it), add or change a webhook (a person does that in the automation editor), multi-level or parallel approvals in an app. Records are tables_mutation's job. Structure needs the builder role; roles, members and Base settings the owner's.`,
   category: 'team',
   is_global: false,
   icon: 'Columns3',
@@ -90,27 +125,16 @@ export function createTablesSchemaPlanTool(ctx: TablesSchemaPlanContext) {
     inputSchema: schemaPlanSchema,
     execute: async (input: SchemaPlanInput) => {
       try {
-        const draft = await draftSchemaPlan(input.operations, schemaPlanReader(ctx.userId));
-        if (!draft.ok) {
-          const count = draft.problems.length;
-          return {
-            error: `The plan was not drafted — fix ${count === 1 ? 'this problem' : `these ${count} problems`} and call tables_schema_plan again:\n${draft.problems.map((problem) => `- ${problem}`).join('\n')}`,
-            problems: draft.problems,
-          };
-        }
-        const artifact: TablesSchemaPlanArtifact = {
-          type: 'tables_schema_plan',
-          summary: input.summary.trim(),
-          operations: input.operations,
-          ...(draft.accessChanges.length > 0 ? { accessChanges: draft.accessChanges } : {}),
-          ...(Object.keys(draft.targetNames).length > 0 ? { targetNames: draft.targetNames } : {}),
-        };
-        return artifact;
+        const drafted = await draftTablesSchemaPlan(ctx.userId, input);
+        return drafted.ok ? drafted.artifact : { error: drafted.error, problems: drafted.problems };
       } catch (err) {
         return { error: toErrorMessage(err) };
       }
     },
   });
 }
+
+/** The chat description, for faces that add their own closing (the Bots face). */
+export const TABLES_SCHEMA_PLAN_DESCRIPTION = meta.description;
 
 export const tablesSchemaPlanTool = defineTool({ meta, kind: 'lazy' });
