@@ -93,7 +93,10 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
 - **Tables** — multidimensional bases: typed fields, views (grid with grouping, kanban, calendar,
   gallery — drag cards between lanes or days), record links, dashboards, CSV / Excel import, and
-  conversational schema planning (the agent drafts a base, you confirm). Share a base with people,
+  conversational building: in chat the agent drafts a whole setup — tables and fields, views,
+  forms, automations, dashboards, roles and who has access — as one card you confirm. The draft is
+  checked by the same validators as the editor before you see it, permission changes are listed
+  on their own above Confirm, and a partly applied plan can retry just what failed. Share a base with people,
   groups or the whole team; custom roles decide, table by table, which rows and fields someone
   sees and may change — enforced on every path, including the agent. Forms are submit-only and
   can go to Base members, everyone in the workspace or chosen people and groups: they open at

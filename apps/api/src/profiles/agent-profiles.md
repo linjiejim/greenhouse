@@ -257,9 +257,9 @@ stateless Agent/MCP 不开放该文件工具。
 - hidden；HTTP `/api/profiles` 与 Web profile picker 不返回它，只由 `/api/agent` 与 `/api/mcp` 通过固定 id 在服务端解析。运维用 `pnpm cli profiles list` 会显示 hidden profile，便于诊断。
 - 不能通过 `/api/chat` 或 `/api/sessions` 创建云端会话使用。
 - 受信任的 Agent/MCP 集成访问云端数据时使用结构化 cloud tools。
-- Read-only cloud tools：`project_query`、`session_query`、`knowledge_query`、`tables_query`。`tables_query` 先发现 Base/Table/Field ID，再使用受限 AST 查询或聚合记录；不接受 SQL、JS 或公式字符串。
+- Read-only cloud tools：`project_query`、`session_query`、`knowledge_query`、`tables_query`。`tables_query` 先发现 Base/Table/Field ID，再使用受限 AST 查询或聚合记录；不接受 SQL、JS 或公式字符串。为起草计划还能读表单、自动化（Webhook 只露源站、从不含密钥）与运行记录、角色（仅所有者）、记录动态、可授权的人与群组（`directory.search`）和搭建语法示例（`builder.reference`）。
 - Mutating cloud tools：`project_mutation`、`knowledge_mutation`、`tables_mutation`。`tables_mutation` V1 只允许 create/update/upsert/batch-upsert/delete record，按字段 ID 写值，更新与删除必须带当前 revision；不能修改 schema、成员、视图或仪表盘。`knowledge_mutation` 的 `action`：`knowledge.create_doc` / `knowledge.update_doc` / `knowledge.archive_doc` / `knowledge.restore_version`（按版本号回滚，回滚也记录为新版本）/ `knowledge.share_doc` / `knowledge.unshare_doc`（对个人文档授权给指定用户或 `group:<id>` 小组，`share_role`=reader|editor）。create 与内容更新类 action 可带 `folder` 路径（如 `指南/场景示例`，`/`=根）把文档归入 KB 目录树——按文档 owner 的树解析（team 文档只进 team 目录），目录不存在时报错并列出同级可选目录，不自动建目录；`knowledge_query` 的 get 会回带 `folder` 路径。被授予 editor 的人可改/回滚；归档与共享仅 owner。这些工具只通过 mutating proxy allowlist 暴露，每次调用必须带 `confirm:true` 并写入 agent audit。个人 scope 严格限定为当前用户本人文档。
-- **Schema 变更不在 proxy/MCP 面**：`tables_schema_plan`（新建/修改 Base、Table、Field）只对**聊天会话**装配，无 `surface` 声明。它是 draft-only 的——工具本身不写任何行，用户在计划卡上确认后由 `POST /api/tables/schema-plan/apply` 逐项执行。proxy 与 MCP 没有可以按确认的人，只有调用方自传的 `confirm:true`，因此该工具不在那两个面暴露；机器要维护 schema 需另行评估。详见 [spec](../../../../docs/specs/20260803-tables-conversational-schema-editing.md)。
+- **Schema 变更不在 proxy/MCP 面**：`tables_schema_plan`（新建/修改 Base、Table、Field、视图、表单、自动化、仪表盘与组件、自定义角色与成员授权）只对**聊天会话**装配，无 `surface` 声明。它是 draft-only 的——工具本身不写任何行，用户在计划卡上确认后由 `POST /api/tables/schema-plan/apply` 逐项执行。proxy 与 MCP 没有可以按确认的人，只有调用方自传的 `confirm:true`，因此该工具不在那两个面暴露；机器要维护 schema 需另行评估。详见 [spec](../../../../docs/specs/20260803-tables-conversational-schema-editing.md)。
 
 ## Removed / Legacy IDs
 

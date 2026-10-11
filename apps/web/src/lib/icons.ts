@@ -502,7 +502,7 @@ export const TOOL_BRIEFS: Record<string, string> = {
   compute: 'Execute code for precise data analysis & calculations',
   tables_query: 'Inspect schemas, query records, and aggregate internal Tables',
   tables_mutation: 'Create, update, upsert, and delete Tables records',
-  tables_schema_plan: 'Draft Base, table and field changes for you to confirm',
+  tables_schema_plan: 'Draft Tables structure, views, forms, automations, dashboards and access for you to confirm',
 };
 
 /** Get brief description for a tool. */

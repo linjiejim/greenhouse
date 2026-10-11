@@ -38,7 +38,7 @@
  * POST   /tables/:tableId/fields                     — 创建字段
  * PATCH  /fields/:fieldId                            — 更新字段
  * POST   /fields/:fieldId/archive                    — 归档字段
- * POST   /schema-plan/apply                          — 应用一份已确认的结构变更计划
+ * POST   /schema-plan/apply                          — 应用一份已确认的搭建计划（retry: true = 只重试未完成项）
  *
  * 视图（./views.ts）
  * GET    /tables/:tableId/views                      — 视图列表

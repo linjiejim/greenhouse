@@ -1,11 +1,20 @@
 /**
  * Tables Query — bounded read access for chat, Agent Proxy, and MCP.
+ *
+ * Besides data it reads what `tables_schema_plan` needs to draft against:
+ * forms, automations (webhook targets reduced to their host, never secrets),
+ * runs, roles (Base owner only — the handler decides), record activity, the
+ * people and groups the caller may share with, and `builder.reference` — the
+ * config grammar as compact examples, so it costs no description budget.
  */
 
 import { tool } from 'ai';
 import { z } from 'zod';
+import { getDb } from '@greenhouse/db';
 import { defineTool, type ToolMeta } from './define.js';
 import { dispatchTablesAgentAction } from '../platform/tables/agent-adapter.js';
+import { BUILDER_REFERENCE_TOPICS, builderReference } from '../platform/tables/builder-reference.js';
+import { grantableGroups } from '../platform/tables/directory.js';
 
 const filterClauseSchema = z.object({
   fieldId: z.number().int().positive().describe('Stable numeric field ID from schema.get.'),
@@ -51,13 +60,26 @@ const tablesQuerySchema = z.object({
       'records.aggregate',
       'dashboards.list',
       'dashboard.get',
+      'forms.list',
+      'automations.list',
+      'automations.runs',
+      'roles.list',
+      'records.activity',
+      'directory.search',
+      'builder.reference',
     ])
     .describe('Read action to execute.'),
   base_id: z.number().int().positive().optional().describe('Base ID for base/tables/dashboards actions.'),
   table_id: z.number().int().positive().optional().describe('Table ID for schema and record actions.'),
-  record_id: z.number().int().positive().optional().describe('Record ID for records.get.'),
+  record_id: z.number().int().positive().optional().describe('Record ID for records.get / records.activity.'),
   dashboard_id: z.number().int().positive().optional().describe('Dashboard ID for dashboard.get.'),
-  search: z.string().max(200).optional().describe('Base name search for bases.list.'),
+  automation_id: z.number().int().positive().optional().describe('Automation ID for automations.runs.'),
+  search: z.string().max(200).optional().describe('Name search for bases.list and directory.search.'),
+  topic: z
+    .enum(BUILDER_REFERENCE_TOPICS)
+    .optional()
+    .describe('builder.reference: config grammar and examples for tables_schema_plan.'),
+  cursor: z.string().max(500).optional().describe('records.activity: the nextCursor of the previous page.'),
   query: tableQuerySchema.optional().describe('Bounded record query for records.query/aggregate.'),
   operation: z.enum(['count', 'sum', 'avg', 'min', 'max']).optional().describe('Aggregate operation.'),
   value_field_id: z.number().int().positive().optional().describe('Numeric field for sum/avg/min/max.'),
@@ -71,6 +93,8 @@ export interface TablesQueryContext {
   userId: string;
 }
 
+const DIRECTORY_LIMIT = 20;
+
 const meta: ToolMeta = {
   id: 'tables_query',
   name: 'Tables Query',
@@ -79,7 +103,9 @@ const meta: ToolMeta = {
 
 Use bases.list to discover Base IDs, tables.list/schema.get to discover stable table/field IDs, then records.get/records.query/records.aggregate for data. Queries accept only the bounded JSON filter/sort AST; raw SQL, JavaScript, formula strings, and schema mutations are not supported. Results always respect the bound user's Platform permissions and Base membership.
 
-A Base's or table's "description" is the team's usage note — what the data is, which field is the key, what values mean. Read it before you query or write; when it is empty, ask rather than infer meaning from field names.`,
+A Base's or table's "description" is the team's usage note — what the data is, which field is the key, what values mean. Read it before you query or write; when it is empty, ask rather than infer meaning from field names.
+
+Before drafting tables_schema_plan: builder.reference {topic} shows each config's JSON, directory.search finds the people and groups you may share with.`,
   category: 'team',
   is_global: false,
   surface: { proxy: 'read', mcp: 'tables', workbench: true, unattendedReplaySafe: true },
@@ -87,103 +113,149 @@ A Base's or table's "description" is the team's usage note — what the data is,
   sort_order: 28,
 };
 
+/** `https://host/…` — the path and query of a webhook URL can carry a token. */
+function webhookOrigin(url: string): string {
+  try {
+    return `${new URL(url).origin}/…`;
+  } catch {
+    return '…';
+  }
+}
+
+/** A webhook target reduced to its origin: a URL can carry a token, and secrets never leave the server. */
+function redactWebhooks(data: unknown): unknown {
+  const automations = (data as { automations?: unknown } | undefined)?.automations;
+  if (!Array.isArray(automations)) return data;
+  return {
+    automations: automations.map((rule: { config?: { actions?: unknown } }) => {
+      const actions = rule.config?.actions;
+      if (!Array.isArray(actions)) return rule;
+      return {
+        ...rule,
+        config: {
+          ...rule.config,
+          actions: actions.map((action: { type?: unknown; url?: unknown }) => {
+            if (action.type !== 'webhook' || typeof action.url !== 'string') return action;
+            return { ...action, url: webhookOrigin(action.url) };
+          }),
+        },
+      };
+    }),
+  };
+}
+
+/** `listRoles` minus the rule-editor facts (fields come from schema.get). */
+function rolesOnly(data: unknown): unknown {
+  const { roles, references } = (data ?? {}) as { roles?: unknown; references?: unknown };
+  return { roles, references };
+}
+
+/** Active internal people and the groups the caller may grant, matching `search` (name / email). */
+async function searchDirectory(userId: string, search: string | undefined) {
+  const needle = (search ?? '').trim().toLowerCase();
+  const matches = (...texts: Array<string | undefined>) =>
+    !needle || texts.some((text) => text?.toLowerCase().includes(needle));
+  const listed = await dispatchTablesAgentAction({ userId }, 'listAssignableUsers', {});
+  if (!listed.ok) return { error: listed.message };
+  const users = ((listed.data as { users?: Array<{ id: string; nickname: string; email: string }> }).users ?? [])
+    .filter((user) => matches(user.nickname, user.email))
+    .slice(0, DIRECTORY_LIMIT)
+    .map((user) => ({ id: user.id, name: user.nickname, email: user.email }));
+  const db = getDb();
+  const groups = await Promise.all(
+    (await grantableGroups(db, userId))
+      .filter((group) => matches(group.name))
+      .slice(0, DIRECTORY_LIMIT)
+      .map(async (group) => ({ ...group, memberCount: (await db.groups.listMembers(group.id)).length })),
+  );
+  return { users, groups };
+}
+
 export function createTablesQueryTool(ctx: TablesQueryContext) {
   return tool({
     description: meta.description,
     inputSchema: tablesQuerySchema,
     execute: async (input: TablesQueryInput) => {
       const context = { userId: ctx.userId };
-      if (input.action === 'bases.list') {
-        const result = await dispatchTablesAgentAction(context, 'listBases', { search: input.search });
-        return result.ok ? result.data : { error: result.message };
-      }
-      if (input.action === 'base.get') {
-        if (!input.base_id) return { error: 'base_id is required' };
-        const result = await dispatchTablesAgentAction(
-          context,
-          'getBase',
-          { baseId: input.base_id },
-          { baseId: input.base_id },
-        );
-        return result.ok ? result.data : { error: result.message };
-      }
-      if (input.action === 'tables.list') {
-        if (!input.base_id) return { error: 'base_id is required' };
-        const result = await dispatchTablesAgentAction(
-          context,
-          'listTables',
-          { baseId: input.base_id },
-          { baseId: input.base_id },
-        );
-        return result.ok ? result.data : { error: result.message };
-      }
-      if (input.action === 'schema.get') {
-        if (!input.table_id) return { error: 'table_id is required' };
-        const result = await dispatchTablesAgentAction(
-          context,
-          'getSchema',
-          { tableId: input.table_id },
-          { tableId: input.table_id },
-        );
-        return result.ok ? result.data : { error: result.message };
-      }
-      if (input.action === 'records.get') {
-        if (!input.table_id || !input.record_id) return { error: 'table_id and record_id are required' };
-        const result = await dispatchTablesAgentAction(
-          context,
-          'getRecord',
-          { tableId: input.table_id, recordId: input.record_id },
-          { tableId: input.table_id, recordId: input.record_id },
-        );
-        return result.ok ? result.data : { error: result.message };
-      }
-      if (input.action === 'records.query') {
-        if (!input.table_id) return { error: 'table_id is required' };
-        const result = await dispatchTablesAgentAction(
-          context,
-          'queryRecords',
-          { tableId: input.table_id, query: input.query ?? {} },
-          { tableId: input.table_id },
-        );
-        return result.ok ? result.data : { error: result.message };
-      }
-      if (input.action === 'records.aggregate') {
-        if (!input.table_id) return { error: 'table_id is required' };
-        const result = await dispatchTablesAgentAction(
-          context,
-          'aggregateRecords',
-          {
-            tableId: input.table_id,
-            input: {
-              operation: input.operation ?? 'count',
-              valueFieldId: input.value_field_id,
-              groupByFieldId: input.group_by_field_id,
-              query: input.query,
-              limit: input.aggregate_limit,
+      const run = async (
+        action: Parameters<typeof dispatchTablesAgentAction>[1],
+        payload: unknown,
+        ids: Parameters<typeof dispatchTablesAgentAction>[3],
+        shape: (data: unknown) => unknown = (data) => data,
+      ) => {
+        const result = await dispatchTablesAgentAction(context, action, payload, ids);
+        return result.ok ? shape(result.data) : { error: result.message };
+      };
+      const baseId = input.base_id;
+      const tableId = input.table_id;
+      switch (input.action) {
+        case 'bases.list':
+          return run('listBases', { search: input.search }, {});
+        case 'base.get':
+          if (!baseId) return { error: 'base_id is required' };
+          return run('getBase', { baseId }, { baseId });
+        case 'tables.list':
+          if (!baseId) return { error: 'base_id is required' };
+          return run('listTables', { baseId }, { baseId });
+        case 'schema.get':
+          if (!tableId) return { error: 'table_id is required' };
+          return run('getSchema', { tableId }, { tableId });
+        case 'records.get':
+          if (!tableId || !input.record_id) return { error: 'table_id and record_id are required' };
+          return run('getRecord', { tableId, recordId: input.record_id }, { tableId, recordId: input.record_id });
+        case 'records.query':
+          if (!tableId) return { error: 'table_id is required' };
+          return run('queryRecords', { tableId, query: input.query ?? {} }, { tableId });
+        case 'records.aggregate':
+          if (!tableId) return { error: 'table_id is required' };
+          return run(
+            'aggregateRecords',
+            {
+              tableId,
+              input: {
+                operation: input.operation ?? 'count',
+                valueFieldId: input.value_field_id,
+                groupByFieldId: input.group_by_field_id,
+                query: input.query,
+                limit: input.aggregate_limit,
+              },
             },
-          },
-          { tableId: input.table_id },
-        );
-        return result.ok ? result.data : { error: result.message };
+            { tableId },
+          );
+        case 'records.activity':
+          if (!tableId || !input.record_id) return { error: 'table_id and record_id are required' };
+          return run(
+            'listRecordActivity',
+            { tableId, recordId: input.record_id, cursor: input.cursor },
+            { tableId, recordId: input.record_id },
+          );
+        case 'dashboards.list':
+          if (!baseId) return { error: 'base_id is required' };
+          return run('listDashboards', { baseId }, { baseId });
+        case 'dashboard.get':
+          if (!input.dashboard_id) return { error: 'dashboard_id is required' };
+          return run('getDashboard', { dashboardId: input.dashboard_id }, { dashboardId: input.dashboard_id });
+        case 'forms.list':
+          if (!tableId) return { error: 'table_id is required' };
+          return run('listForms', { tableId }, { tableId });
+        case 'automations.list':
+          if (!baseId) return { error: 'base_id is required' };
+          return run('listAutomations', { baseId }, { baseId }, redactWebhooks);
+        case 'automations.runs':
+          if (!input.automation_id) return { error: 'automation_id is required' };
+          return run(
+            'listAutomationRuns',
+            { automationId: input.automation_id },
+            { automationId: input.automation_id },
+          );
+        case 'roles.list':
+          if (!baseId) return { error: 'base_id is required' };
+          return run('listRoles', { baseId }, { baseId }, rolesOnly);
+        case 'directory.search':
+          return searchDirectory(ctx.userId, input.search);
+        case 'builder.reference':
+          return builderReference(input.topic ?? 'plan');
       }
-      if (input.action === 'dashboards.list') {
-        if (!input.base_id) return { error: 'base_id is required' };
-        const result = await dispatchTablesAgentAction(
-          context,
-          'listDashboards',
-          { baseId: input.base_id },
-          { baseId: input.base_id },
-        );
-        return result.ok ? result.data : { error: result.message };
-      }
-      if (!input.dashboard_id) return { error: 'dashboard_id is required' };
-      const result = await dispatchTablesAgentAction(
-        context,
-        'getDashboard',
-        { dashboardId: input.dashboard_id },
-        { dashboardId: input.dashboard_id },
-      );
-      return result.ok ? result.data : { error: result.message };
     },
   });
 }

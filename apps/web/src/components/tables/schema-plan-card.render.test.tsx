@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { SchemaPlanOperation } from '@greenhouse/types/tables';
+import type { SchemaPlanAccessChange, SchemaPlanOperation } from '@greenhouse/types/tables';
 import { I18nProvider } from '../../lib/i18n';
 import { SchemaPlanCard } from './schema-plan-card';
 import { isArtifactCall } from '../tool-call/body-artifacts';
@@ -13,12 +13,58 @@ const OPERATIONS: SchemaPlanOperation[] = [
   { op: 'field.archive', tableId: 4, fieldId: 9 },
 ];
 
-function render(locale: 'en' | 'zh') {
+const BUILD_OPERATIONS: SchemaPlanOperation[] = [
+  { op: 'field.create', ref: 'stage', tableId: 4, name: 'Stage', type: 'single_select' },
+  {
+    op: 'view.create',
+    tableId: 4,
+    name: 'Pipeline',
+    type: 'kanban',
+    config: { kanban: { groupFieldId: '$field:stage' } },
+  },
+  { op: 'form.create', tableId: 4, name: 'New lead', status: 'published', audience: { type: 'team' }, config: {} },
+  { op: 'automation.create', tableId: 4, name: 'Deal won', trigger: 'record_updated', config: {} },
+  { op: 'dashboard.create', ref: 'd', baseId: 1, name: 'Overview' },
+  { op: 'widget.create', dashboardRef: 'd', title: 'Won this month', card: { kind: 'kpi' } },
+  { op: 'role.create', ref: 'r', baseId: 1, name: 'Sales rep', rules: {} },
+  { op: 'member.set', baseId: 1, principal: 'group', groupId: 7, role: 'custom', roleRef: 'r' },
+];
+
+const ACCESS_CHANGES: SchemaPlanAccessChange[] = [
+  { index: 2, kind: 'form', form: 'New lead', before: null, after: { kind: 'team' }, published: true },
+  {
+    index: 6,
+    kind: 'role',
+    role: 'Sales rep',
+    before: null,
+    after: { dashboards: true, tables: [{ table: 'Deals', access: 'edit', limitedRows: true, hiddenFields: 1 }] },
+  },
+  {
+    index: 7,
+    kind: 'grant',
+    base: 'CRM',
+    principal: 'group',
+    name: 'Sales',
+    before: { kind: 'role', role: 'viewer' },
+    after: { kind: 'custom', roleName: 'Sales rep' },
+  },
+];
+
+function render(
+  locale: 'en' | 'zh',
+  operations: SchemaPlanOperation[] = OPERATIONS,
+  accessChanges?: SchemaPlanAccessChange[],
+) {
   return renderToStaticMarkup(
     createElement(I18nProvider, {
       initialLocale: locale,
       children: createElement(SchemaPlanCard, {
-        artifact: { type: 'tables_schema_plan', summary: 'Add a follow-up Base', operations: OPERATIONS },
+        artifact: {
+          type: 'tables_schema_plan',
+          summary: 'Add a follow-up Base',
+          operations,
+          ...(accessChanges ? { accessChanges } : {}),
+        },
       }),
     }),
   );
@@ -51,6 +97,54 @@ describe('SchemaPlanCard', () => {
     expect(html).toContain('新建 Base');
     expect(html).toContain('尚未创建任何内容');
     // A missing key would render the raw dotted path instead of prose.
+    expect(html).not.toContain('tablesSchemaPlan.');
+  });
+
+  it('groups operations by kind and puts permission changes first, before Confirm', () => {
+    const html = render('en', BUILD_OPERATIONS, ACCESS_CHANGES);
+
+    for (const heading of ['Fields', 'Views', 'Forms', 'Automations', 'Dashboards', 'Roles and members']) {
+      expect(html).toContain(heading);
+    }
+    for (const label of [
+      'Create view',
+      'Create form',
+      'Create automation',
+      'Create dashboard',
+      'Add widget',
+      'Create role',
+      'Set member access',
+    ]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain('kanban');
+    expect(html).toContain('record_updated');
+
+    // The access section is server-derived, before → after, and sits above every operation and the Confirm button.
+    const section = html.indexOf('Permission and outbound changes');
+    expect(section).toBeGreaterThan(-1);
+    expect(section).toBeLessThan(html.indexOf('Add field'));
+    expect(section).toBeLessThan(html.indexOf('>Confirm<'));
+    expect(html).toContain('Form New lead');
+    expect(html).toContain('new form');
+    expect(html).toContain('everyone in the team · open for submissions');
+    expect(html).toContain('Role Sales rep');
+    expect(html).toContain('Deals: edit, limited rows, 1 hidden field; dashboards');
+    expect(html).toContain('Group Sales on CRM');
+    expect(html).toContain('viewer');
+    expect(html).toContain('custom role Sales rep');
+  });
+
+  it('shows no permission section when the plan changes nobody’s access', () => {
+    expect(render('en')).not.toContain('Permission and outbound changes');
+  });
+
+  it('words permission changes in Chinese too', () => {
+    const html = render('zh', BUILD_OPERATIONS, ACCESS_CHANGES);
+    expect(html).toContain('权限与外发变更');
+    expect(html).toContain('群组 Sales（CRM）');
+    expect(html).toContain('自定义角色 Sales rep');
+    expect(html).toContain('角色与成员');
     expect(html).not.toContain('tablesSchemaPlan.');
   });
 

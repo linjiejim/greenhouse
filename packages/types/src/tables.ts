@@ -848,8 +848,41 @@ export interface TableImportValidation {
 /**
  * A plan-local identifier for an object this same plan creates, so a plan can
  * say "add these fields to the table I'm about to create". Never a database id.
+ * Letters, digits, `_` and `-` (≤ 64); one namespace per plan.
  */
 export type SchemaPlanRef = string;
+
+/**
+ * Kinds of plan-created object a config may point at with a `"$<kind>:<ref>"`
+ * token — anywhere in an op's config JSON, as a value OR an object key (D18):
+ * `{"kanban": {"groupFieldId": "$field:status"}}`, `{"widths": {"$field:status": 160}}`.
+ * In text, `{{field:$field:<ref>}}` (automation templates) is rewritten too.
+ */
+export const SCHEMA_PLAN_REF_KINDS = ['field', 'table', 'view', 'form', 'automation', 'dashboard', 'role'] as const;
+export type SchemaPlanRefKind = (typeof SCHEMA_PLAN_REF_KINDS)[number];
+
+/** Everything a plan can create (a Base and a widget can be named by ref, but not by `$` token). */
+export type SchemaPlanObjectKind = SchemaPlanRefKind | 'base' | 'widget';
+
+/** An op's config: plain JSON that may hold `$<kind>:<ref>` tokens; the real handler validates it. */
+export type SchemaPlanConfig = Record<string, unknown>;
+
+/** A field config in a plan: ids may be `$field:` / `$table:` tokens. Formulas take the AST. */
+export interface SchemaPlanFieldConfig {
+  options?: Array<{ id: string; label: string; color?: string }>;
+  relation?: { targetTableId: number | string; multiple?: boolean };
+  formula?: { resultType: TableFormulaResultType; expression: unknown };
+  rollup?: { relationFieldId: number | string; targetFieldId: number | string; aggregation: TableRollupAggregation };
+  lookup?: { relationFieldId: number | string; targetFieldId: number | string };
+}
+
+export type SchemaPlanFormAudience =
+  | { type: 'base' }
+  | { type: 'team' }
+  | { type: 'principals'; userIds?: string[]; groupIds?: number[] };
+
+/** `none` removes the grant. Groups never get `builder` (D12). `custom` names a role of the same Base. */
+export type SchemaPlanMemberRole = 'builder' | 'editor' | 'viewer' | 'custom' | 'none';
 
 export type SchemaPlanOperation =
   | {
@@ -868,10 +901,17 @@ export type SchemaPlanOperation =
     }
   | {
       op: 'base.update';
-      baseId: number;
+      /** Exactly one of baseId / baseRef. */
+      baseId?: number;
+      baseRef?: SchemaPlanRef;
       name?: string;
       description?: string | null;
       visibility?: TableBaseVisibility;
+      /** What every internal user gets when the Base is visible to the team. */
+      teamRole?: 'viewer' | 'editor' | 'custom';
+      /** teamRole=custom: exactly one of roleRef / teamCustomRoleId. */
+      roleRef?: SchemaPlanRef;
+      teamCustomRoleId?: number;
     }
   | {
       op: 'table.create';
@@ -885,13 +925,14 @@ export type SchemaPlanOperation =
   | { op: 'table.update'; tableId: number; name?: string; description?: string | null }
   | {
       op: 'field.create';
+      ref?: SchemaPlanRef;
       /** Exactly one of tableRef / tableId. */
       tableRef?: SchemaPlanRef;
       tableId?: number;
       name: string;
       type: TableFieldType;
       required?: boolean;
-      config?: TableFieldConfig;
+      config?: SchemaPlanFieldConfig;
     }
   | {
       op: 'field.update';
@@ -900,11 +941,187 @@ export type SchemaPlanOperation =
       fieldId: number;
       name?: string;
       required?: boolean;
-      config?: TableFieldConfig;
+      config?: SchemaPlanFieldConfig;
     }
-  | { op: 'field.archive'; tableId: number; fieldId: number };
+  | { op: 'field.archive'; tableId: number; fieldId: number }
+  | {
+      op: 'view.create';
+      ref?: SchemaPlanRef;
+      tableRef?: SchemaPlanRef;
+      tableId?: number;
+      name: string;
+      type?: TableViewType;
+      /** Default shared (builder); personal = only its author sees it. */
+      scope?: TableViewScope;
+      config?: SchemaPlanConfig;
+    }
+  | {
+      op: 'view.update';
+      tableId: number;
+      viewId: number;
+      revision: number;
+      name?: string;
+      type?: TableViewType;
+      config?: SchemaPlanConfig;
+    }
+  | {
+      op: 'form.create';
+      ref?: SchemaPlanRef;
+      tableRef?: SchemaPlanRef;
+      tableId?: number;
+      name: string;
+      status?: 'draft' | 'published';
+      audience?: SchemaPlanFormAudience;
+      config: SchemaPlanConfig;
+    }
+  | {
+      op: 'form.update';
+      formId: number;
+      revision: number;
+      name?: string;
+      status?: 'draft' | 'published';
+      audience?: SchemaPlanFormAudience;
+      config?: SchemaPlanConfig;
+    }
+  | {
+      op: 'automation.create';
+      ref?: SchemaPlanRef;
+      tableRef?: SchemaPlanRef;
+      tableId?: number;
+      name: string;
+      trigger: TableAutomationTrigger;
+      status?: 'disabled' | 'enabled';
+      /** No webhook actions (UI only, D16); the executor is whoever confirms (D17). */
+      config: SchemaPlanConfig;
+    }
+  | {
+      op: 'automation.update';
+      tableId: number;
+      automationId: number;
+      revision: number;
+      name?: string;
+      trigger?: TableAutomationTrigger;
+      status?: 'disabled' | 'enabled';
+      config?: SchemaPlanConfig;
+    }
+  | {
+      op: 'dashboard.create';
+      ref?: SchemaPlanRef;
+      baseRef?: SchemaPlanRef;
+      baseId?: number;
+      name: string;
+      description?: string;
+      config?: SchemaPlanConfig;
+    }
+  | {
+      op: 'dashboard.update';
+      dashboardId: number;
+      revision: number;
+      name?: string;
+      description?: string | null;
+      config?: SchemaPlanConfig;
+    }
+  | {
+      op: 'widget.create';
+      ref?: SchemaPlanRef;
+      dashboardRef?: SchemaPlanRef;
+      dashboardId?: number;
+      title: string;
+      /** A `TableCardSpec`. */
+      card: SchemaPlanConfig;
+      layout?: { x: number; y: number; w: number; h: number };
+    }
+  | {
+      op: 'widget.update';
+      dashboardId: number;
+      widgetId: number;
+      revision: number;
+      title?: string;
+      card?: SchemaPlanConfig;
+      layout?: { x: number; y: number; w: number; h: number };
+    }
+  | { op: 'widget.delete'; dashboardId: number; widgetId: number }
+  | {
+      op: 'role.create';
+      ref?: SchemaPlanRef;
+      baseRef?: SchemaPlanRef;
+      baseId?: number;
+      name: string;
+      description?: string;
+      /** `TableAccessRules`. */
+      rules: SchemaPlanConfig;
+    }
+  | {
+      op: 'role.update';
+      baseId: number;
+      roleId: number;
+      revision: number;
+      name?: string;
+      description?: string | null;
+      rules?: SchemaPlanConfig;
+    }
+  | {
+      op: 'member.set';
+      baseRef?: SchemaPlanRef;
+      baseId?: number;
+      principal: 'user' | 'group';
+      /** principal=user. */
+      userId?: string;
+      /** principal=group. */
+      groupId?: number;
+      role: SchemaPlanMemberRole;
+      /** role=custom: exactly one of roleRef / customRoleId. */
+      roleRef?: SchemaPlanRef;
+      customRoleId?: number;
+    };
 
 export type SchemaPlanOperationKind = SchemaPlanOperation['op'];
+
+/** One side of an access change, as the card words it. */
+export type SchemaPlanAccessLevel =
+  | { kind: 'none' }
+  | { kind: 'role'; role: 'owner' | 'builder' | 'editor' | 'viewer' }
+  | { kind: 'custom'; roleName: string };
+
+export type SchemaPlanAudienceView = { kind: 'base' } | { kind: 'team' } | { kind: 'principals'; names: string[] };
+
+/** What one custom role can do, table by table (counts only — never row predicates). */
+export interface SchemaPlanRuleSummary {
+  tables: Array<{ table: string; access: 'read' | 'edit'; limitedRows: boolean; hiddenFields: number }>;
+  dashboards: boolean;
+}
+
+/**
+ * A permission change the plan makes, derived by the server at draft time
+ * from the current grants — shown in its own section before Confirm.
+ */
+export type SchemaPlanAccessChange =
+  | {
+      index: number;
+      kind: 'grant';
+      base: string;
+      principal: 'user' | 'group';
+      name: string;
+      before: SchemaPlanAccessLevel;
+      after: SchemaPlanAccessLevel;
+    }
+  | {
+      index: number;
+      kind: 'team';
+      base: string;
+      /** `none` = the Base is not visible to the team. */
+      before: SchemaPlanAccessLevel;
+      after: SchemaPlanAccessLevel;
+    }
+  | { index: number; kind: 'role'; role: string; before: SchemaPlanRuleSummary | null; after: SchemaPlanRuleSummary }
+  | {
+      index: number;
+      kind: 'form';
+      form: string;
+      before: SchemaPlanAudienceView | null;
+      after: SchemaPlanAudienceView;
+      published: boolean;
+    };
 
 /** Tool output rendered by the web plan card. Contains no ids of its own — the plan was never persisted. */
 export interface TablesSchemaPlanArtifact {
@@ -912,6 +1129,8 @@ export interface TablesSchemaPlanArtifact {
   /** One line in the user's language, shown under the card title. */
   summary: string;
   operations: SchemaPlanOperation[];
+  /** Server-derived; empty when the plan changes nobody's access. */
+  accessChanges?: SchemaPlanAccessChange[];
 }
 
 export type SchemaPlanResultStatus = 'applied' | 'failed' | 'skipped';
@@ -927,8 +1146,16 @@ export interface SchemaPlanOperationResult {
   message?: string;
 }
 
+/** The ref → id map an apply built: what a retry reuses instead of creating again. */
+export type SchemaPlanRefMap = Record<SchemaPlanRef, { kind: SchemaPlanObjectKind; id: number }>;
+
+/** The apply route's answer, and the receipt it stores. */
 export interface SchemaPlanApplyResult {
   results: SchemaPlanOperationResult[];
   /** The Base the plan touched, when it is unambiguous — lets the card link to it. */
   baseId?: number;
+  /** Refs resolved so far (absent on receipts written before retries existed). */
+  refs?: SchemaPlanRefMap;
+  /** How many times the plan ran: 1, plus one per "retry unfinished operations". */
+  attempts?: number;
 }

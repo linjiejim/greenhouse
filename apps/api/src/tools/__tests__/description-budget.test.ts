@@ -217,8 +217,21 @@ import { TOOL_DEFINITIONS } from '../registry.js';
  *     themselves — the team disciplines the schema cannot state.
  * That residue is the +920; measured total is 35_939, so the ~161 left over are
  * headroom, not pre-approval.
+ *
+ * 36_100 → 34_500 on 2026-10-11 (Tables foundation, slice P). The catalog had
+ * drifted down to 33_809 under an unchanged ceiling (tools retired since 08-17
+ * without the ceiling following them), and the plan tool's growth is paid out of
+ * that gap rather than a raise: `tables_schema_plan` 1_463 → 1_790 now drafts
+ * views, forms, automations, dashboards, roles and grants, and +327 is what the
+ * model cannot get from a schema — where every existing id and revision comes
+ * from, the `$field:<ref>` reference rule, that problems come back all at once,
+ * and that webhooks are a person's job. Everything else it needs (each config's
+ * JSON grammar, the formula AST) moved behind `tables_query builder.reference`
+ * and costs nothing until asked for; `tables_query` 645 → 799 is the one line
+ * that points there and at `directory.search`. Measured total is 34_290; the
+ * ceiling follows it down with the usual ~200 of headroom.
  */
-const TOTAL_DESCRIPTION_BUDGET = 36_100;
+const TOTAL_DESCRIPTION_BUDGET = 34_500;
 
 /**
  * Per-tool ceiling. Current worst offender sits just under it (workflow_plan

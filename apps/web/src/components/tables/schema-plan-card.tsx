@@ -2,32 +2,45 @@
  * SchemaPlanCard — the body artifact behind the `tables_schema_plan` tool.
  *
  * The card IS the confirm gate: the tool wrote nothing, so until the user
- * presses Confirm no Base, table or field exists. Confirm posts the plan to
- * /api/tables/schema-plan/apply with the user's own session, and the server
- * re-authorizes every operation — so a tampered plan can never do more than
- * its sender could already do by hand.
+ * presses Confirm no Base, table, view, form, automation, dashboard, role or
+ * grant exists. Confirm posts the plan to /api/tables/schema-plan/apply with
+ * the user's own session, and the server re-authorizes every operation — so a
+ * tampered plan can never do more than its sender could already do by hand.
+ *
+ * Permission changes (grants, the team role, custom role rules, form
+ * audiences) are derived by the server when the plan is drafted and shown in
+ * their own highlighted section above the operations, so they are read before
+ * Confirm rather than found among fifty lines.
  *
  * Schema operations are inherently non-idempotent, so the card derives a stable
  * message-position action id. The server atomically claims it before applying
- * anything and persists the exact result; refresh restores that receipt instead
- * of re-arming the Confirm button.
+ * anything and persists the exact result (with the ref → id map); refresh
+ * restores that receipt instead of re-arming Confirm, and "retry unfinished
+ * operations" re-runs only what did not apply.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import type { SchemaPlanOperation, SchemaPlanOperationResult, SchemaPlanApplyResult } from '@greenhouse/types/tables';
-import { Columns3, Check, X, Minus } from '../../lib/icons';
+import type {
+  SchemaPlanAccessChange,
+  SchemaPlanAccessLevel,
+  SchemaPlanApplyResult,
+  SchemaPlanAudienceView,
+  SchemaPlanOperation,
+  SchemaPlanOperationResult,
+  SchemaPlanRuleSummary,
+  TablesSchemaPlanArtifact,
+} from '@greenhouse/types/tables';
+import { Columns3, Check, X, Minus, ShieldAlert } from '../../lib/icons';
 import { Button, toast } from '../ui';
 import { useT } from '../../lib/i18n';
 import { applyTableSchemaPlan } from '../../lib/api/tables';
 import { useArtifactReceipt } from '../../hooks/use-artifact-receipt';
 import { ArtifactCard, ArtifactCardActions } from '../chat/artifact-card';
 
-/** Mirror of the server artifact payload (apps/api/src/tools/tables-schema-plan.ts). */
-export interface TablesSchemaPlanArtifact {
-  type: 'tables_schema_plan';
-  summary: string;
-  operations: SchemaPlanOperation[];
-}
+export type { TablesSchemaPlanArtifact };
+
+type T = ReturnType<typeof useT>;
+type OperationKind = SchemaPlanOperation['op'];
 
 const OP_LABEL_KEYS = {
   'base.create': 'tablesSchemaPlan.opBaseCreate',
@@ -37,7 +50,67 @@ const OP_LABEL_KEYS = {
   'field.create': 'tablesSchemaPlan.opFieldCreate',
   'field.update': 'tablesSchemaPlan.opFieldUpdate',
   'field.archive': 'tablesSchemaPlan.opFieldArchive',
-} as const satisfies Record<SchemaPlanOperation['op'], string>;
+  'view.create': 'tablesSchemaPlan.opViewCreate',
+  'view.update': 'tablesSchemaPlan.opViewUpdate',
+  'form.create': 'tablesSchemaPlan.opFormCreate',
+  'form.update': 'tablesSchemaPlan.opFormUpdate',
+  'automation.create': 'tablesSchemaPlan.opAutomationCreate',
+  'automation.update': 'tablesSchemaPlan.opAutomationUpdate',
+  'dashboard.create': 'tablesSchemaPlan.opDashboardCreate',
+  'dashboard.update': 'tablesSchemaPlan.opDashboardUpdate',
+  'widget.create': 'tablesSchemaPlan.opWidgetCreate',
+  'widget.update': 'tablesSchemaPlan.opWidgetUpdate',
+  'widget.delete': 'tablesSchemaPlan.opWidgetDelete',
+  'role.create': 'tablesSchemaPlan.opRoleCreate',
+  'role.update': 'tablesSchemaPlan.opRoleUpdate',
+  'member.set': 'tablesSchemaPlan.opMemberSet',
+} as const satisfies Record<OperationKind, string>;
+
+type OperationGroup = 'structure' | 'fields' | 'views' | 'forms' | 'automations' | 'dashboards' | 'access';
+
+const GROUP_ORDER: readonly OperationGroup[] = [
+  'structure',
+  'fields',
+  'views',
+  'forms',
+  'automations',
+  'dashboards',
+  'access',
+];
+
+const GROUP_LABEL_KEYS = {
+  structure: 'tablesSchemaPlan.groupStructure',
+  fields: 'tablesSchemaPlan.groupFields',
+  views: 'tablesSchemaPlan.groupViews',
+  forms: 'tablesSchemaPlan.groupForms',
+  automations: 'tablesSchemaPlan.groupAutomations',
+  dashboards: 'tablesSchemaPlan.groupDashboards',
+  access: 'tablesSchemaPlan.groupAccess',
+} as const satisfies Record<OperationGroup, string>;
+
+const OP_GROUP = {
+  'base.create': 'structure',
+  'base.update': 'structure',
+  'table.create': 'structure',
+  'table.update': 'structure',
+  'field.create': 'fields',
+  'field.update': 'fields',
+  'field.archive': 'fields',
+  'view.create': 'views',
+  'view.update': 'views',
+  'form.create': 'forms',
+  'form.update': 'forms',
+  'automation.create': 'automations',
+  'automation.update': 'automations',
+  'dashboard.create': 'dashboards',
+  'dashboard.update': 'dashboards',
+  'widget.create': 'dashboards',
+  'widget.update': 'dashboards',
+  'widget.delete': 'dashboards',
+  'role.create': 'access',
+  'role.update': 'access',
+  'member.set': 'access',
+} as const satisfies Record<OperationKind, OperationGroup>;
 
 /** What the operation is about, in the user's words rather than ids where possible. */
 function operationTarget(operation: SchemaPlanOperation): string {
@@ -45,20 +118,161 @@ function operationTarget(operation: SchemaPlanOperation): string {
     case 'base.create':
     case 'table.create':
     case 'field.create':
+    case 'view.create':
+    case 'form.create':
+    case 'automation.create':
+    case 'dashboard.create':
+    case 'role.create':
       return operation.name;
+    case 'widget.create':
+      return operation.title;
     case 'base.update':
-      return operation.name ?? `#${operation.baseId}`;
+      return operation.name ?? `#${operation.baseId ?? operation.baseRef}`;
     case 'table.update':
       return operation.name ?? `#${operation.tableId}`;
     case 'field.update':
       return operation.name ?? `#${operation.fieldId}`;
     case 'field.archive':
       return `#${operation.fieldId}`;
+    case 'view.update':
+      return operation.name ?? `#${operation.viewId}`;
+    case 'form.update':
+      return operation.name ?? `#${operation.formId}`;
+    case 'automation.update':
+      return operation.name ?? `#${operation.automationId}`;
+    case 'dashboard.update':
+      return operation.name ?? `#${operation.dashboardId}`;
+    case 'widget.update':
+      return operation.title ?? `#${operation.widgetId}`;
+    case 'widget.delete':
+      return `#${operation.widgetId}`;
+    case 'role.update':
+      return operation.name ?? `#${operation.roleId}`;
+    case 'member.set':
+      return operation.principal === 'group' ? `#${operation.groupId}` : (operation.userId ?? '');
   }
 }
 
-function isFieldOperation(operation: SchemaPlanOperation): boolean {
-  return operation.op.startsWith('field.');
+/** The one technical detail worth a glance (a type, a trigger), shown faint after the target. */
+function operationDetail(operation: SchemaPlanOperation, t: T): string | undefined {
+  switch (operation.op) {
+    case 'field.create':
+      return `${operation.type}${operation.required ? ` · ${t('tablesSchemaPlan.required')}` : ''}`;
+    case 'view.create':
+      return operation.type ?? 'grid';
+    case 'automation.create':
+      return operation.trigger;
+    case 'widget.create':
+      return typeof operation.card.kind === 'string' ? operation.card.kind : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function levelLabel(level: SchemaPlanAccessLevel, t: T): string {
+  if (level.kind === 'none') return t('tablesSchemaPlan.levelNone');
+  if (level.kind === 'custom') return t('tablesSchemaPlan.levelCustom', { name: level.roleName });
+  const keys = {
+    owner: 'tablesSchemaPlan.levelOwner',
+    builder: 'tablesSchemaPlan.levelBuilder',
+    editor: 'tablesSchemaPlan.levelEditor',
+    viewer: 'tablesSchemaPlan.levelViewer',
+  } as const;
+  return t(keys[level.role]);
+}
+
+function audienceLabel(audience: SchemaPlanAudienceView | null, t: T): string {
+  if (!audience) return t('tablesSchemaPlan.audienceNew');
+  if (audience.kind === 'base') return t('tablesSchemaPlan.audienceBase');
+  if (audience.kind === 'team') return t('tablesSchemaPlan.audienceTeam');
+  return t('tablesSchemaPlan.audiencePrincipals', { names: audience.names.join(', ') });
+}
+
+function rulesLabel(summary: SchemaPlanRuleSummary | null, t: T): string {
+  if (!summary) return t('tablesSchemaPlan.ruleNew');
+  const tables = summary.tables.map((rule) =>
+    t('tablesSchemaPlan.ruleTable', {
+      table: rule.table,
+      access: [
+        t(rule.access === 'edit' ? 'tablesSchemaPlan.ruleEdit' : 'tablesSchemaPlan.ruleRead'),
+        ...(rule.limitedRows ? [t('tablesSchemaPlan.ruleLimitedRows')] : []),
+        ...(rule.hiddenFields === 1
+          ? [t('tablesSchemaPlan.ruleHiddenField')]
+          : rule.hiddenFields > 1
+            ? [t('tablesSchemaPlan.ruleHiddenFields', { count: rule.hiddenFields })]
+            : []),
+      ].join(', '),
+    }),
+  );
+  const parts = tables.length > 0 ? tables : [t('tablesSchemaPlan.ruleNoTables')];
+  return [...parts, ...(summary.dashboards ? [t('tablesSchemaPlan.ruleDashboards')] : [])].join('; ');
+}
+
+/** Subject, before and after of one access change, in the user's language. */
+function describeChange(change: SchemaPlanAccessChange, t: T): { subject: string; before: string; after: string } {
+  switch (change.kind) {
+    case 'grant':
+      return {
+        subject: t(
+          change.principal === 'group' ? 'tablesSchemaPlan.accessGrantGroup' : 'tablesSchemaPlan.accessGrantUser',
+          { name: change.name, base: change.base },
+        ),
+        before: levelLabel(change.before, t),
+        after: levelLabel(change.after, t),
+      };
+    case 'team':
+      return {
+        subject: t('tablesSchemaPlan.accessTeam', { base: change.base }),
+        before: levelLabel(change.before, t),
+        after: levelLabel(change.after, t),
+      };
+    case 'role':
+      return {
+        subject: t('tablesSchemaPlan.accessRole', { role: change.role }),
+        before: rulesLabel(change.before, t),
+        after: rulesLabel(change.after, t),
+      };
+    case 'form':
+      return {
+        subject: t('tablesSchemaPlan.accessForm', { form: change.form }),
+        before: audienceLabel(change.before, t),
+        after: `${audienceLabel(change.after, t)} · ${t(
+          change.published ? 'tablesSchemaPlan.formPublished' : 'tablesSchemaPlan.formDraft',
+        )}`,
+      };
+  }
+}
+
+function AccessChanges({ changes }: { changes: SchemaPlanAccessChange[] }) {
+  const t = useT();
+  return (
+    <div
+      className="rounded-md border border-warning/40 bg-warning-subtle px-2.5 py-2"
+      data-testid="schema-plan-access-changes"
+    >
+      <p className="flex items-center gap-1.5 text-[11px] font-semibold text-warning">
+        <ShieldAlert size={12} className="flex-shrink-0" />
+        {t('tablesSchemaPlan.accessTitle')}
+      </p>
+      <p className="mt-0.5 text-[10px] text-fg-muted">{t('tablesSchemaPlan.accessHint')}</p>
+      <ul className="mt-1.5 space-y-1">
+        {changes.map((change, position) => {
+          const { subject, before, after } = describeChange(change, t);
+          return (
+            <li key={`${change.index}-${position}`} className="text-xs leading-snug">
+              <span className="font-medium text-fg">{subject}</span>
+              <span className="text-fg-muted">
+                {': '}
+                {before}
+                {' → '}
+              </span>
+              <span className="font-medium text-fg">{after}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 }
 
 function StatusIcon({ status }: { status: SchemaPlanOperationResult['status'] }) {
@@ -100,27 +314,44 @@ export function SchemaPlanCard({
     return counts;
   }, [outcome]);
 
-  const handleConfirm = useCallback(async () => {
-    if (applying || !actionId || !sessionId) return;
-    setApplying(true);
-    try {
-      const result = await applyTableSchemaPlan(artifact.operations, { actionId, sessionId });
-      setOutcome(result);
-      const failed = result.results.filter((entry) => entry.status !== 'applied').length;
-      if (failed === 0) toast(t('tablesSchemaPlan.appliedToast'), 'success');
-      else toast(t('tablesSchemaPlan.partialToast', { count: failed }), 'error');
-      if (failed === 0) setOpen(false);
-      await refreshReceipt();
-    } catch (err) {
-      toast(err instanceof Error ? err.message : t('tablesSchemaPlan.applyFailed'), 'error');
-    } finally {
-      setApplying(false);
-    }
-  }, [actionId, applying, artifact.operations, refreshReceipt, sessionId, t]);
+  const groups = useMemo(
+    () =>
+      GROUP_ORDER.map((group) => ({
+        group,
+        entries: artifact.operations
+          .map((operation, index) => ({ operation, index }))
+          .filter(({ operation }) => OP_GROUP[operation.op] === group),
+      })).filter(({ entries }) => entries.length > 0),
+    [artifact.operations],
+  );
+
+  const run = useCallback(
+    async (retry: boolean) => {
+      if (applying || !actionId || !sessionId) return;
+      setApplying(true);
+      try {
+        const result = await applyTableSchemaPlan(artifact.operations, { actionId, sessionId }, { retry });
+        setOutcome(result);
+        const unfinished = result.results.filter((entry) => entry.status !== 'applied').length;
+        if (unfinished === 0) toast(t('tablesSchemaPlan.appliedToast'), 'success');
+        else toast(t('tablesSchemaPlan.partialToast', { count: unfinished }), 'error');
+        if (unfinished === 0) setOpen(false);
+        await refreshReceipt();
+      } catch (err) {
+        toast(err instanceof Error ? err.message : t('tablesSchemaPlan.applyFailed'), 'error');
+      } finally {
+        setApplying(false);
+      }
+    },
+    [actionId, applying, artifact.operations, refreshReceipt, sessionId, t],
+  );
 
   const allApplied = !!outcome && outcome.results.every((entry) => entry.status === 'applied');
+  // Receipts written before retries existed carry no ref map; they cannot be retried safely.
+  const retryable = !!outcome && !allApplied && !!outcome.refs;
   const processing = applying || receipt?.status === 'processing';
   const collapsed = !open || dismissed;
+  const accessChanges = artifact.accessChanges ?? [];
   const status = receiptLoading
     ? { label: t('common.loading'), tone: 'neutral' as const, busy: true }
     : processing
@@ -155,7 +386,9 @@ export function SchemaPlanCard({
             receipt?.status === 'failed'
               ? receipt.error
               : outcome
-                ? t('tablesSchemaPlan.appliedHint')
+                ? allApplied
+                  ? t('tablesSchemaPlan.appliedHint')
+                  : t('tablesSchemaPlan.partialHint')
                 : dismissed
                   ? t('tablesSchemaPlan.dismissedHint')
                   : t('tablesSchemaPlan.hint')
@@ -164,6 +397,16 @@ export function SchemaPlanCard({
           {outcome?.baseId !== undefined && (
             <Button size="sm" variant="outline" onClick={() => (window.location.hash = `#/tables/${outcome.baseId}`)}>
               {t('tablesSchemaPlan.openBase')} →
+            </Button>
+          )}
+          {retryable && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void run(true)}
+              disabled={processing || !actionId || !sessionId}
+            >
+              {processing ? t('tablesSchemaPlan.retrying') : t('tablesSchemaPlan.retry')}
             </Button>
           )}
           {!outcome && !dismissed && receipt?.status !== 'failed' && (
@@ -181,7 +424,7 @@ export function SchemaPlanCard({
           {!outcome && !dismissed && receipt?.status !== 'failed' && (
             <Button
               size="sm"
-              onClick={() => void handleConfirm()}
+              onClick={() => void run(false)}
               disabled={processing || receiptLoading || !actionId || !sessionId}
             >
               {processing ? t('tablesSchemaPlan.applying') : t('tablesSchemaPlan.confirm')}
@@ -191,34 +434,42 @@ export function SchemaPlanCard({
       }
     >
       <div className="space-y-2.5">
-        <ul className="space-y-1">
-          {artifact.operations.map((operation, index) => {
-            const result = resultsByIndex.get(index);
-            return (
-              <li key={index} className={`flex items-start gap-2 text-xs ${isFieldOperation(operation) ? 'pl-4' : ''}`}>
-                {result ? (
-                  <span className="mt-0.5">
-                    <StatusIcon status={result.status} />
-                  </span>
-                ) : (
-                  <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-fg-faint" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <span className="text-fg-muted">{t(OP_LABEL_KEYS[operation.op])}</span>{' '}
-                  <span className="font-medium text-fg">{operationTarget(operation)}</span>
-                  {operation.op === 'field.create' && (
-                    <span className="text-fg-faint">
-                      {' · '}
-                      {operation.type}
-                      {operation.required ? ` · ${t('tablesSchemaPlan.required')}` : ''}
-                    </span>
-                  )}
-                  {result?.message && <p className="text-[10px] text-danger">{result.message}</p>}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        {accessChanges.length > 0 && <AccessChanges changes={accessChanges} />}
+        {groups.map(({ group, entries }) => (
+          <div key={group} className="space-y-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-fg-faint">
+              {t(GROUP_LABEL_KEYS[group])}
+            </p>
+            <ul className="space-y-1">
+              {entries.map(({ operation, index }) => {
+                const result = resultsByIndex.get(index);
+                const detail = operationDetail(operation, t);
+                return (
+                  <li key={index} className="flex items-start gap-2 text-xs">
+                    {result ? (
+                      <span className="mt-0.5">
+                        <StatusIcon status={result.status} />
+                      </span>
+                    ) : (
+                      <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-fg-faint" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <span className="text-fg-muted">{t(OP_LABEL_KEYS[operation.op])}</span>{' '}
+                      <span className="font-medium text-fg">{operationTarget(operation)}</span>
+                      {detail && (
+                        <span className="text-fg-faint">
+                          {' · '}
+                          {detail}
+                        </span>
+                      )}
+                      {result?.message && <p className="text-[10px] text-danger">{result.message}</p>}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </div>
     </ArtifactCard>
   );

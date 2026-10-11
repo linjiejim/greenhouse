@@ -11,11 +11,11 @@ import {
   type TableSchemaResult,
   type TableSchemaVersionRow,
 } from '@greenhouse/db';
-import type { SchemaPlanApplyResult, SchemaPlanOperation } from '@greenhouse/types/tables';
+import type { SchemaPlanApplyResult } from '@greenhouse/types/tables';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { AppEnv } from '../../app-env.js';
 import { getAuthUser } from '../../auth/middleware.js';
-import { artifactReceiptResult, claimArtifactAction } from '../../chat/artifact-actions.js';
+import { artifactReceiptResult, artifactRequestHash, claimArtifactAction } from '../../chat/artifact-actions.js';
 import { analyzeSchemaPlan, applySchemaPlan, schemaPlanApplySchema } from '../../platform/tables/schema-plan.js';
 import { actionError, dispatch, jsonBody, numberParam } from './shared.js';
 
@@ -87,6 +87,11 @@ export const schemaRoutes = new Hono<AppEnv>()
    * bearer token — no model-facing surface can call it. Each operation is
    * re-authorized by its own runtime action, so a tampered plan can never
    * exceed what its sender could already do through the UI.
+   *
+   * `retry: true` re-runs only the operations of an applied plan that did not
+   * apply (same action id, same operations), reusing the stored ref → id map:
+   * nothing that applied is created twice. The receipt is re-armed with a CAS,
+   * so two retries cannot run at once.
    */
   .post('/schema-plan/apply', async (c) => {
     const raw = await jsonBody(c);
@@ -97,34 +102,61 @@ export const schemaRoutes = new Hono<AppEnv>()
     const actionId = typeof raw.action_id === 'string' ? raw.action_id : '';
     const sessionId = typeof raw.session_id === 'string' ? raw.session_id : '';
     if (!actionId || !sessionId) return c.json({ error: 'action_id and session_id are required' }, 400);
-    const operations = parsed.data.operations as SchemaPlanOperation[];
+    const { operations, retry } = parsed.data;
     const shape = analyzeSchemaPlan(operations);
     if ('error' in shape) return c.json({ error: shape.error }, 400);
+    const user = getAuthUser(c);
+    // A retry needs an applied plan; never claim a fresh id for one (that would strand the real apply).
+    if (retry && !(await getDb().chatArtifactReceipts.getForUser(actionId, user.id))) {
+      return c.json({ error: 'This plan has not been applied yet' }, 409);
+    }
     const claim = await claimArtifactAction({
       actionId,
       sessionId,
-      user: getAuthUser(c),
+      user,
       kind: 'tables_schema_plan',
       payload: operations,
     });
     if (!claim.ok) return c.json({ error: claim.error }, claim.status);
-    if (!claim.claimed) {
-      const prior = artifactReceiptResult<SchemaPlanApplyResult>(claim.receipt);
-      if (prior) return c.json(prior);
+
+    let prior: SchemaPlanApplyResult | undefined;
+    if (retry && !claim.claimed) {
+      if (claim.receipt.status === 'processing') {
+        return c.json({ error: 'This schema plan is already being applied; refresh to check it' }, 409);
+      }
+      const stored = artifactReceiptResult<SchemaPlanApplyResult>(claim.receipt);
+      if (!stored?.refs) {
+        return c.json({ error: 'This plan cannot be retried; ask for a new draft' }, 409);
+      }
+      if (stored.results.every((entry) => entry.status === 'applied')) return c.json(stored);
+      const rearmed = await getDb().chatArtifactReceipts.claimRetry(actionId, user.id, artifactRequestHash(operations));
+      if (!rearmed) return c.json({ error: 'This schema plan is already being applied; refresh to check it' }, 409);
+      prior = stored;
+    } else if (!claim.claimed) {
+      const stored = artifactReceiptResult<SchemaPlanApplyResult>(claim.receipt);
+      if (stored) return c.json(stored);
       return c.json(
         { error: claim.receipt.error ?? 'This schema plan is already being applied; refresh to check its receipt' },
         409,
       );
     }
+
     try {
-      const applied = await applySchemaPlan(operations, (planActionId, payload, ids) =>
-        dispatch(c, planActionId, payload, ids),
+      const applied = await applySchemaPlan(
+        operations,
+        (planActionId, payload, ids) => dispatch(c, planActionId, payload, ids),
+        prior,
       );
-      await getDb().chatArtifactReceipts.succeed(actionId, getAuthUser(c).id, applied);
+      await getDb().chatArtifactReceipts.succeed(actionId, user.id, applied);
       return c.json(applied);
     } catch (error) {
       const message = toErrorMessage(error);
-      await getDb().chatArtifactReceipts.fail(actionId, getAuthUser(c).id, message);
+      if (prior) {
+        // The stored result stays the truth about what applied; only this attempt failed.
+        await getDb().chatArtifactReceipts.succeed(actionId, user.id, prior);
+      } else {
+        await getDb().chatArtifactReceipts.fail(actionId, user.id, message);
+      }
       return c.json({ error: message }, 500);
     }
   });

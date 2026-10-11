@@ -1,0 +1,133 @@
+{
+  "note": "Phase 0 acceptance 11 (spec 20261011-tables-foundation): one plan builds a field, a kanban view grouped by it, a team form with a default, an automation that updates the new field, a dashboard with two widgets, a custom role and a group grant. The test replaces groupId with a real group.",
+  "summary": "IT ticket desk: status board, intake form, closing stamp, overview and support access",
+  "operations": [
+    {
+      "op": "base.create",
+      "ref": "desk",
+      "name": "IT tickets",
+      "description": "One row per ticket raised by staff. Status drives the board; Closed on is stamped automatically.",
+      "defaultTableRef": "tickets",
+      "defaultTableName": "Tickets"
+    },
+    {
+      "op": "field.create",
+      "ref": "status",
+      "tableRef": "tickets",
+      "name": "Status",
+      "type": "single_select",
+      "config": {
+        "options": [
+          { "id": "new", "label": "New" },
+          { "id": "doing", "label": "In progress" },
+          { "id": "done", "label": "Done" }
+        ]
+      }
+    },
+    { "op": "field.create", "ref": "details", "tableRef": "tickets", "name": "Details", "type": "long_text" },
+    { "op": "field.create", "ref": "closed", "tableRef": "tickets", "name": "Closed on", "type": "date" },
+    {
+      "op": "view.create",
+      "ref": "board",
+      "tableRef": "tickets",
+      "name": "Board",
+      "type": "kanban",
+      "config": {
+        "kanban": { "groupFieldId": "$field:status" },
+        "fieldIds": ["$field:details"],
+        "widths": { "$field:details": 280 }
+      }
+    },
+    {
+      "op": "form.create",
+      "ref": "intake",
+      "tableRef": "tickets",
+      "name": "Raise a ticket",
+      "status": "published",
+      "audience": { "type": "team" },
+      "config": {
+        "title": "Raise a ticket",
+        "fieldIds": ["$field:details"],
+        "defaults": [{ "fieldId": "$field:status", "value": "new" }],
+        "allowMultiple": true
+      }
+    },
+    {
+      "op": "automation.create",
+      "ref": "stamp",
+      "tableRef": "tickets",
+      "name": "Stamp the closing date",
+      "trigger": "record_updated",
+      "status": "enabled",
+      "config": {
+        "watchFieldIds": ["$field:status"],
+        "condition": {
+          "combinator": "and",
+          "clauses": [{ "fieldId": "$field:status", "operator": "eq", "value": "done" }]
+        },
+        "actions": [{ "type": "update_record", "values": [{ "fieldId": "$field:closed", "value": "$today" }] }]
+      }
+    },
+    { "op": "dashboard.create", "ref": "overview", "baseRef": "desk", "name": "Overview" },
+    {
+      "op": "widget.create",
+      "dashboardRef": "overview",
+      "title": "Open tickets",
+      "card": {
+        "kind": "kpi",
+        "source": {
+          "tableId": "$table:tickets",
+          "query": {
+            "where": {
+              "combinator": "and",
+              "clauses": [{ "fieldId": "$field:status", "operator": "neq", "value": "done" }]
+            }
+          }
+        },
+        "aggregate": { "operation": "count" }
+      },
+      "layout": { "x": 0, "y": 0, "w": 4, "h": 3 }
+    },
+    {
+      "op": "widget.create",
+      "dashboardRef": "overview",
+      "title": "Tickets by status",
+      "card": {
+        "kind": "chart",
+        "source": { "tableId": "$table:tickets" },
+        "aggregate": { "operation": "count", "groupBy": { "fieldId": "$field:status" } },
+        "chart": { "type": "bar" }
+      },
+      "layout": { "x": 4, "y": 0, "w": 8, "h": 4 }
+    },
+    {
+      "op": "role.create",
+      "ref": "agent",
+      "baseRef": "desk",
+      "name": "Support agent",
+      "description": "Works every ticket; cannot delete.",
+      "rules": {
+        "version": 1,
+        "dashboards": "all",
+        "tables": [
+          {
+            "tableId": "$table:tickets",
+            "access": "edit",
+            "fields": [],
+            "fieldDefault": "visible",
+            "create": true,
+            "delete": false
+          }
+        ]
+      }
+    },
+    {
+      "op": "member.set",
+      "baseRef": "desk",
+      "principal": "group",
+      "groupId": 1,
+      "role": "custom",
+      "roleRef": "agent"
+    }
+  ]
+}
