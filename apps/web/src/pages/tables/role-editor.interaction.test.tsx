@@ -259,7 +259,7 @@ describe('custom role in the view container', () => {
       canCreate: false,
       canDelete: false,
       canBuild: false,
-      canSaveView: false,
+      canSaveView: true,
     });
     expect(caps.canEditField(1)).toBe(true);
     expect(caps.canEditField(3)).toBe(false);

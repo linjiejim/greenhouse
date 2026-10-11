@@ -55,7 +55,8 @@ export function tableCapabilities(access: TableBaseAccessView, table: { id: numb
     canCreate: view.canCreate,
     canDelete: view.canDelete,
     canBuild: false,
-    canSaveView: false,
+    // Personal views on a table the role can read (the server's deleteView / createView rule).
+    canSaveView: true,
     canEditField: (fieldId) => editable.has(fieldId),
     readableFieldIds: new Set(view.readableFieldIds),
   };

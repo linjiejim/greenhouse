@@ -42,7 +42,8 @@
  * 视图（./views.ts）
  * GET    /tables/:tableId/views                      — 视图列表
  * POST   /tables/:tableId/views                      — 创建视图
- * PATCH  /views/:viewId                              — 更新视图
+ * PATCH  /views/:viewId                              — 更新视图（可改类型）
+ * DELETE /views/:viewId                              — 删除视图（硬删：本人个人视图 editor+ / 共享视图 builder）
  *
  * 表单（./forms.ts；面向受众的只提交入口是 /api/forms，见 routes/forms.ts）
  * GET    /tables/:tableId/forms                      — 表单列表（builder）
@@ -53,6 +54,7 @@
  *
  * 记录（./records.ts；/records/deleted 必须注册在 /records/:recordId 之前）
  * POST   /tables/:tableId/records/query              — 查询记录
+ * POST   /tables/:tableId/records/aggregate          — 聚合（视图的分组 / 看板列计数）
  * POST   /tables/:tableId/records                    — 创建记录
  * GET    /tables/:tableId/records/deleted            — 回收站（已软删记录）
  * POST   /tables/:tableId/records/:recordId/restore  — 从回收站恢复记录

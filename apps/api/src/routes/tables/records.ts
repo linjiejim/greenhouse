@@ -7,7 +7,7 @@
 
 import { Hono } from 'hono';
 import type { TableRecordQueryResult, TableRecordRow } from '@greenhouse/db';
-import type { TableBatchValidationResult } from '@greenhouse/types/tables';
+import type { TableAggregateRow, TableBatchValidationResult } from '@greenhouse/types/tables';
 import type { AppEnv } from '../../app-env.js';
 import { actionError, dispatch, jsonBody, numberParam } from './shared.js';
 
@@ -17,6 +17,12 @@ export const recordRoutes = new Hono<AppEnv>()
     const result = await dispatch(c, 'queryRecords', { tableId, query: await jsonBody(c) }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as TableRecordQueryResult);
+  })
+  .post('/tables/:tableId/records/aggregate', async (c) => {
+    const tableId = numberParam(c, 'tableId');
+    const result = await dispatch(c, 'aggregateRecords', { tableId, input: await jsonBody(c) }, { tableId });
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as { rows: TableAggregateRow[] });
   })
   .post('/tables/:tableId/records', async (c) => {
     const tableId = numberParam(c, 'tableId');

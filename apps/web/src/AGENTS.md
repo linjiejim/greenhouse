@@ -263,7 +263,9 @@ stores/
 
 2026-10-11 阶段 0 地基拆分（[spec](../../../docs/specs/20261011-tables-foundation.md)「实施切片」的文件归属表）：每个切片只改自己的文件，共享文件只由 F / 集成分支改。
 
-- **页面分层**：`index.tsx`（Base 列表 + 路由）→ `base-workspace.tsx`（Base 头、移动端资源条、选中的表 / 仪表盘）→ `view-container.tsx`（一张表：schema、查询（视图 / 搜索 / 筛选 / 排序）、分页、所有对话框、记录抽屉、工具栏 `view-toolbar.tsx`）→ `views/<type>.tsx`（视图主体：只画记录、把手势交给回调，契约在 `views/types.ts`）。视图类型 → 主体的唯一映射是 `views/index.ts` 的 `TABLE_VIEW_BODIES`（`Record<TableViewType, …>`，还没有主体的类型退回表格，Agent 存下的新类型视图不会白屏）。列顺序跟随视图的 `fieldIds`（`view-fields.ts`），不是 schema 顺序。字段设置 / 保存视图 / 筛选对话框各自一个文件（`field-settings-dialog.tsx` / `save-view-dialog.tsx` / `filter-dialog.tsx`）。
+- **页面分层**：`index.tsx`（Base 列表 + 路由）→ `base-workspace.tsx`（Base 头、移动端资源条、选中的表 / 仪表盘）→ `view-container.tsx`（一张表：schema、查询（视图 / 搜索 / 筛选 / 排序）、分页、所有对话框、记录抽屉、工具栏 `view-toolbar.tsx`）→ `views/<type>.tsx`（视图主体：只画记录、把手势交给回调，契约在 `views/types.ts`）。视图类型 → 主体的唯一映射是 `views/index.ts` 的 `TABLE_VIEW_BODIES`（`Record<TableViewType, …>`，还没有主体的类型退回表格，Agent 存下的新类型视图不会白屏）。列顺序跟随视图的 `fieldIds`（`view-fields.ts`），不是 schema 顺序。字段设置 / 筛选对话框各自一个文件（`field-settings-dialog.tsx` / `filter-dialog.tsx`）。
+- **视图（切片 V）**：四种类型 grid / kanban / calendar / gallery 的主体在 `views/<type>.tsx`；视图类型给记录查询加的部分（表格分组 `groupBy`、日历当月窗口的 `filters`、看板 / 日历一次最多 500 条且不分页）只在 `views/view-query.ts` 的 `viewQueryShape` 算，`use-record-query.ts` 收它当 `shape`。分组表头与看板列的计数读聚合（`views/use-group-counts.ts` → `POST /records/aggregate`，与查询同一 where / search / filters），**不要数当前页**。工具栏开头的视图簇是 `views/view-switcher.tsx`（切换 / 新建 / 字段面板 / 视图设置），新建视图（也是默认视图的「保存」，`pendingConfig` 带上未保存的冻结列等）= `views/create-view-dialog.tsx`，改名 / 改类型 / 改类型设置 / 删除 = `views/view-settings-dialog.tsx`，两者共用 `views/view-type-config.tsx`；字段面板 `views/fields-panel.tsx` 一次写回 `fieldIds` + `systemFields`（系统列在表格里排在字段之后，卡片上排在字段之后）。服务端 `normalizeViewConfig` 是配置的权威，前端候选字段只是镜像。
+- **记录写与实时**：容器订阅 `useTablesRecordsChanged({tableId})` 重取；单条记录写（内联编辑、看板拖动、日历拖动）一律 `commitValues` → `updateTableRecordWithReplay`，冲突时重取并抛出「已被他人修改」（内联单元格显示在行内，看板 / 日历 toast 并把卡片退回原处）。主体只调回调、不自己写；看板 / 日历的拖动按 `permissions.canEdit`，日历「+」与看板列底的新建按 `permissions.canCreate`（新建对话框经 `onCreateRecord(values)` 预填，`RecordDialog` 的 `initialValues`）。
 - **路由参数**：`TablesPage` 收 `params`；`#/tables/<base>/table/<table>?record=<id>`（实体链接、通知、下钻共用的地址）直接打开该记录的抽屉（不论是否在当前页），关闭时 `location.replace` 去掉 `record`，同一链接下次还能再打开。**表单页 `#/forms/:id`**（`form-route.tsx`）挂在 Tables 应用门控**之外**——表单的受众不一定用 Tables，权限由 API 判；旧 `#/tables/form/:id` 在 `parseRoute` 里重定向过去。
 - **一个渲染器、一个编辑器、一个筛选编辑器**（spec D11，都在 `components/tables/`，别再写第二份）：
   - `FieldValue`：所有只读展示（网格、抽屉、回收站、记录对话框里的计算字段）。布尔走 `common.yes/no`；公式按结果类型格式化；lookup 的数组值渲染成只读 chip。`recordFieldValue(record, fieldId)` 是「计算值优先、否则存储值」的唯一取法。
@@ -578,12 +580,13 @@ stores/
 
 ### 拖拽交互：用指针事件，不要 HTML5 DnD
 
-**传感器只有一份**：`hooks/use-drag-gesture.ts`（鼠标 5px 距离 / 触摸 400ms 长按 + 8px 容差 / 边缘自动滚动 / `data-no-drag` 豁免 / Escape 取消 / 拖完吞掉那一次 click）。上面长出两个语义层，**新增拖拽先从这两个里挑，不要再写第三套**：
+**传感器只有一份**：`hooks/use-drag-gesture.ts`（鼠标 5px 距离 / 触摸 400ms 长按 + 8px 容差 / 边缘自动滚动 / `data-no-drag` 豁免 / Escape 取消 / 拖完吞掉那一次 click）。上面长出三个语义层，**新增拖拽先从这三个里挑，不要再写第四套**：
 
 | 用它 | 什么时候 |
 |------|----------|
 | `hooks/use-list-reorder.ts` | 扁平列表/网格重排。语义刻意最简：**被拖项占据指针下那一项的位置**，拖动中实时预览新顺序，松手才提交（顺序没变不发请求）。已接：侧栏 Pinned 网格、会话标签管理、会话分组管理 |
 | `sidebar-panels/use-tree-drag.ts` | 只有知识库树。树多一层语义——一行既可以是「邻居」也可以是「容器」（上下 32% 插入线 / 中间移入），扁平列表没有这回事 |
+| `hooks/use-drop-zone-drag.ts` | 拖到一个「落区」：Tables 看板的列、日历的某一天。登记理由：被拖项不在兄弟间占位置（不是重排），也没有「旁边 / 里面」之分（不是树）——落区代表一个**值**（这一列的选项、这一天），调用方把它写进记录。落区是带 `data-drop-zone` 的任意元素，指针下没有落区就不落 |
 
 没有插入线、没有 before/after 的原因：那需要一根轴，而 Pinned 是会换行的网格，「上面/下面」无意义。
 

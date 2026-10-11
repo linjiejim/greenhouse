@@ -91,10 +91,11 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   storage, folders plus a file cabinet, backlinks, comments and @-mentions, templates, version
   history, fine-grained sharing via groups, and segmented full-text search (CJK-aware).
 - **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
-- **Tables** — multidimensional bases: typed fields, views, forms, record links, dashboards,
-  rule automations, and conversational schema planning (the agent drafts a base, you confirm).
-  Share a base with people, groups or the whole team; custom roles decide, table by table, which
-  rows and fields someone sees and may change — enforced on every path, including the agent.
+- **Tables** — multidimensional bases: typed fields, views (grid with grouping, kanban, calendar,
+  gallery — drag cards between lanes or days), forms, record links, dashboards, rule automations,
+  and conversational schema planning (the agent drafts a base, you confirm). Share a base with
+  people, groups or the whole team; custom roles decide, table by table, which rows and fields
+  someone sees and may change — enforced on every path, including the agent.
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent.
 - **Execution center** — one surface for every durable run: automations (cron), missions,

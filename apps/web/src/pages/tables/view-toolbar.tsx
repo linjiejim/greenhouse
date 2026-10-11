@@ -1,11 +1,11 @@
-import { IconButton, SearchInput, Select } from '../../components/ui';
-import { ClipboardList, Columns3, Filter, Plus, Save, Trash2 } from '../../lib/icons';
-import type { TableView } from '../../lib/api/tables';
+import type { ReactNode } from 'react';
+import { IconButton, SearchInput } from '../../components/ui';
+import { ClipboardList, Columns3, Filter, Plus, Trash2 } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 
 interface TablesViewToolbarProps {
-  views: TableView[];
-  selectedViewId: string;
+  /** The view switcher and its actions (`./views/view-switcher.tsx`). */
+  viewControls: ReactNode;
   search: string;
   filterCount: number;
   canEdit: boolean;
@@ -14,13 +14,9 @@ interface TablesViewToolbarProps {
   canCreate?: boolean;
   /** The recycle bin needs delete rights. Defaults to `canEdit`. */
   canDelete?: boolean;
-  /** Save a view (personal views need a built-in editor). Defaults to `canEdit`. */
-  canSaveView?: boolean;
   pasting: boolean;
-  onSelectView: (viewId: string) => void;
   onSearch: (value: string) => void;
   onOpenFilters: () => void;
-  onSaveView: () => void;
   onOpenRecycleBin: () => void;
   onOpenForms: () => void;
   onAddField: () => void;
@@ -28,20 +24,16 @@ interface TablesViewToolbarProps {
 }
 
 export function TablesViewToolbar({
-  views,
-  selectedViewId,
+  viewControls,
   search,
   filterCount,
   canEdit,
   canBuild,
   canCreate = canEdit,
   canDelete = canEdit,
-  canSaveView = canEdit,
   pasting,
-  onSelectView,
   onSearch,
   onOpenFilters,
-  onSaveView,
   onOpenRecycleBin,
   onOpenForms,
   onAddField,
@@ -53,15 +45,7 @@ export function TablesViewToolbar({
 
   return (
     <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-edge px-3 py-2">
-      <Select size="sm" inline value={selectedViewId} onChange={(event) => onSelectView(event.target.value)}>
-        <option value="">{t('tables.defaultView')}</option>
-        {views.map((view) => (
-          <option key={view.id} value={view.id}>
-            {view.name}
-            {view.scope === 'personal' ? t('tables.mineSuffix') : ''}
-          </option>
-        ))}
-      </Select>
+      {viewControls}
       <SearchInput
         value={search}
         onChange={onSearch}
@@ -76,15 +60,6 @@ export function TablesViewToolbar({
           className={`sm:h-8 sm:w-8 ${filterCount > 0 ? 'bg-primary-subtle text-primary-fg-strong' : ''}`}
         >
           <Filter size={14} />
-        </IconButton>
-        <IconButton
-          label={t('tables.saveView')}
-          tooltip="top"
-          onClick={onSaveView}
-          disabled={!canSaveView}
-          className="sm:h-8 sm:w-8"
-        >
-          <Save size={14} />
         </IconButton>
         {canDelete && (
           <IconButton label={t('tables.recycleBin')} tooltip="top" onClick={onOpenRecycleBin} className="sm:h-8 sm:w-8">

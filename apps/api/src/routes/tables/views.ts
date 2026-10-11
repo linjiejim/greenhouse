@@ -25,4 +25,10 @@ export const viewRoutes = new Hono<AppEnv>()
     const result = await dispatch(c, 'updateView', { ...(await jsonBody(c)), viewId }, { viewId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { view: TableViewRow });
+  })
+  .delete('/views/:viewId', async (c) => {
+    const viewId = numberParam(c, 'viewId');
+    const result = await dispatch(c, 'deleteView', { viewId }, { viewId });
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as { view: TableViewRow });
   });

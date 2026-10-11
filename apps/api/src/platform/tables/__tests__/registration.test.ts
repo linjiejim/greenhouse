@@ -63,8 +63,7 @@ describe('Tables registration (manifest 1.3.0)', () => {
   });
 
   it.each([
-    // Slice A's actions (roles, owner transfer) have landed: tables-access.db.test.ts.
-    'deleteView',
+    // Landed and covered by their own suites: roles / owner transfer (tables-access), deleteView (tables-views).
     'openForm',
     'deleteAutomation',
     'triggerAutomation',

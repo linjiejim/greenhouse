@@ -3,12 +3,16 @@
  * paging, and the loaded page. Changing any query input restarts paging (the
  * server's cursors are bound to the query fingerprint).
  *
+ * The view's type adds a `shape` (`./views/view-query.ts`): the grid's
+ * grouping, a calendar's visible window, or a fixed limit with no paging
+ * (kanban, calendar). A new shape restarts paging too.
+ *
  * The container is keyed by table, so a different table always starts from the
  * default query rather than inheriting a sort on the previous table's fields.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { TableFilterGroup, TableQuery } from '@greenhouse/types/tables';
+import type { TableFilterGroup, TableGroupBy, TableQuery } from '@greenhouse/types/tables';
 import { queryTableRecords, type TableRecord } from '../../lib/api/tables';
 import { usePersistedPageSize } from '../../hooks/use-persisted-page-size';
 import { useT } from '../../lib/i18n';
@@ -21,7 +25,21 @@ export interface RecordQueryInput {
   where: TableFilterGroup | undefined;
 }
 
-export function useRecordQuery(tableId: number, onError: (message: string) => void) {
+/** The query parts a view type adds on top of search / sort / filter. */
+export interface RecordQueryShape {
+  groupBy?: TableGroupBy;
+  filters?: TableFilterGroup[];
+  /** Load one page of at most this many records and turn paging off. */
+  limit?: number;
+}
+
+const NO_SHAPE: RecordQueryShape = {};
+
+export function useRecordQuery(
+  tableId: number,
+  onError: (message: string) => void,
+  shape: RecordQueryShape = NO_SHAPE,
+) {
   const t = useT();
   const [records, setRecords] = useState<TableRecord[]>([]);
   const [total, setTotal] = useState(0);
@@ -34,16 +52,39 @@ export function useRecordQuery(tableId: number, onError: (message: string) => vo
   const [pageSize, setStoredPageSize] = usePersistedPageSize(`tables.${tableId}`, 20);
   const [loading, setLoading] = useState(true);
   const cursorByPage = useRef(new Map<number, string | undefined>([[0, undefined]]));
+  // The shape arrives as a fresh object every render; its JSON is the identity.
+  const shapeKey = JSON.stringify(shape);
+  const appliedShape = useRef(shapeKey);
+  /** Only the latest request may land: a slow page must not overwrite a newer one. */
+  const latestRequest = useRef(0);
 
   const reload = useCallback(async () => {
+    const current = JSON.parse(shapeKey) as RecordQueryShape;
+    if (appliedShape.current !== shapeKey) {
+      appliedShape.current = shapeKey;
+      cursorByPage.current = new Map([[0, undefined]]);
+      if (page !== 0) {
+        setPage(0);
+        return;
+      }
+    }
+    const requestId = ++latestRequest.current;
+    const lastPage = current.limit ? 0 : page;
     setLoading(true);
     onError('');
     try {
-      const request = { where: query.where, search: query.search || undefined, sort: query.sort, limit: pageSize };
+      const request: TableQuery = {
+        where: query.where,
+        search: query.search || undefined,
+        sort: query.sort,
+        limit: current.limit ?? pageSize,
+        ...(current.groupBy ? { groupBy: current.groupBy } : {}),
+        ...(current.filters?.length ? { filters: current.filters } : {}),
+      };
       let cursor = cursorByPage.current.get(0);
       let result = await queryTableRecords(tableId, { ...request, cursor });
       cursorByPage.current.set(1, result.nextCursor ?? undefined);
-      for (let currentPage = 1; currentPage <= page; currentPage += 1) {
+      for (let currentPage = 1; currentPage <= lastPage; currentPage += 1) {
         cursor = cursorByPage.current.get(currentPage);
         if (!cursor) {
           result = { ...result, records: [] };
@@ -52,14 +93,16 @@ export function useRecordQuery(tableId: number, onError: (message: string) => vo
         result = await queryTableRecords(tableId, { ...request, cursor });
         cursorByPage.current.set(currentPage + 1, result.nextCursor ?? undefined);
       }
+      if (requestId !== latestRequest.current) return;
       setRecords(result.records);
       setTotal(result.total);
     } catch (loadError) {
+      if (requestId !== latestRequest.current) return;
       onError(loadError instanceof Error ? loadError.message : t('tables.loadRecordsFailed'));
     } finally {
-      setLoading(false);
+      if (requestId === latestRequest.current) setLoading(false);
     }
-  }, [onError, page, pageSize, query, tableId, t]);
+  }, [onError, page, pageSize, query, shapeKey, tableId, t]);
 
   useEffect(() => {
     void reload();
@@ -92,6 +135,8 @@ export function useRecordQuery(tableId: number, onError: (message: string) => vo
     setPage,
     pageSize,
     setPageSize,
+    /** False when the shape loads one fixed page (kanban, calendar). */
+    paged: !shape.limit,
     reload,
   };
 }
