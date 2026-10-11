@@ -28,38 +28,42 @@ export function PreviewBar({
   const t = useT();
   return (
     <div
-      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-info bg-info-subtle px-3 py-2 text-xs text-info"
+      className="flex flex-col gap-2 rounded-md border border-info bg-info-subtle px-3 py-2 text-xs text-info sm:flex-row sm:items-center"
       role="status"
       data-testid="app-preview-bar"
     >
-      <Eye size={14} aria-hidden="true" className="flex-shrink-0" />
-      <span className="min-w-0 flex-1">
-        {previewRole
-          ? t('apps.runtime.preview.previewing', { role: previewName ?? previewRole })
-          : t('apps.runtime.preview.fullAccess')}
-      </span>
-      {roles.length > 0 && (
-        <Select
-          size="sm"
-          inline
-          aria-label={t('apps.runtime.preview.switchLabel')}
-          value={previewRole ?? ''}
-          onChange={(event) => onChange(event.target.value || undefined)}
-          data-testid="app-preview-role"
-        >
-          <option value="">{t('apps.runtime.managerView')}</option>
-          {roles.map((role) => (
-            <option key={role.key} value={role.key}>
-              {t('apps.runtime.preview.asRole', { role: role.name })}
-            </option>
-          ))}
-        </Select>
-      )}
-      {previewRole && (
-        <Button variant="ghost" size="sm" className="min-h-11 md:min-h-0" onClick={() => onChange(undefined)}>
-          {t('apps.runtime.preview.exit')}
-        </Button>
-      )}
+      <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center">
+        <Eye size={14} aria-hidden="true" className="mt-px flex-shrink-0 sm:mt-0" />
+        <span className="min-w-0">
+          {previewRole
+            ? t('apps.runtime.preview.previewing', { role: previewName ?? previewRole })
+            : t('apps.runtime.preview.fullAccess')}
+        </span>
+      </div>
+      <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+        {roles.length > 0 && (
+          <Select
+            size="sm"
+            inline
+            aria-label={t('apps.runtime.preview.switchLabel')}
+            value={previewRole ?? ''}
+            onChange={(event) => onChange(event.target.value || undefined)}
+            data-testid="app-preview-role"
+          >
+            <option value="">{t('apps.runtime.managerView')}</option>
+            {roles.map((role) => (
+              <option key={role.key} value={role.key}>
+                {t('apps.runtime.preview.asRole', { role: role.name })}
+              </option>
+            ))}
+          </Select>
+        )}
+        {previewRole && (
+          <Button variant="ghost" size="sm" className="min-h-11 md:min-h-0" onClick={() => onChange(undefined)}>
+            {t('apps.runtime.preview.exit')}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
