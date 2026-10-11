@@ -195,7 +195,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_app_versions` | PK `id`；UK `(app_id, version)` | 不可变的发布版本：`spec` 存**原样文本**（jsonb 会重排键，哈希会对不上，D7），`spec_hash` = sha256(spec)，读时校验；`draft_revision`（发布自哪个草稿修订）、`notes`、`published_by/at`；`custom_review`（阶段 2 自定义组件的审核记录，目前恒为空）。回滚 = 把旧版本复制回草稿再发布，版本号只增 |
 | `table_app_audiences` | PK `id`；部分 UK `(app_id, user_id) WHERE user` / `(app_id, group_id) WHERE group` / `(app_id) WHERE team`；部分 IDX `user_id WHERE user` / `group_id WHERE group` | 应用受众：人 / 群组 / 全员 → 规格里的一个角色 key（`role_key`）；CHECK 约束保证 `principal_type` 与 `user_id`/`group_id` 成对；「分发给我的」查询走两个部分索引（全员行走 team 的部分 UK）；群组只认 `group_members` 行 |
 | `table_app_pins` | 复合 PK `(user_id, app_id)`；IDX `app_id` | 每人置顶的应用与顺序（服务端存，D9），随应用级联删除 |
-| `table_app_action_requests` | PK `id`；UK `(app_id, user_id, request_id)`；IDX `(app_id, created_at)` | 应用网关的动作账本（0026）：每个人每次经应用的写（`action_id` = 规格动作 id 或 `$submit / $create / $move / $edit`）按客户端 `request_id` 认领；`status` running → done，`result` 存首次回给客户端的 `AppActionResult`，重复请求原样重放；被拒 / 出错的请求删掉认领（可重试），卡住超过 2 分钟的 running 可被接管。管理者用量摘要按它数 30 天内每个动作 id 的成功次数 |
+| `table_app_action_requests` | PK `id`；UK `(app_id, user_id, request_id)`；IDX `(app_id, created_at)` | 应用网关的动作账本（0026）：每个人每次经应用的写（`action_id` = 规格动作 id 或 `$submit / $create / $move / $edit`）按客户端 `request_id` 认领；`status` running → done，`result` 存首次回给客户端的 `AppActionResult`，重复请求原样重放；被拒 / 出错的请求删掉认领（可重试），卡住超过 2 分钟的 running 可被接管。管理者用量摘要按它数 30 天内每个动作 id 的成功次数；**只留 30 天**（`APP_USAGE_WINDOW_DAYS`）：每小时的上传清理顺带 `pruneAppActionRequests` 删掉更早的行（之后同一 `request_id` 会重新执行） |
 
 ### 评测与工单智能化
 

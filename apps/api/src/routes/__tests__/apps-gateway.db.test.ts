@@ -25,6 +25,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
+import { sql } from 'drizzle-orm';
 import { PostgresJsPreparedQuery } from 'drizzle-orm/postgres-js/session';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
@@ -44,6 +45,7 @@ import tablesRoutes from '../tables/index.js';
 import appRoutes from '../apps.js';
 import { tablesRegistration } from '../../platform/tables/application.js';
 import { canRecipientRead } from '../../platform/tables/access.js';
+import { sweepAppActionLedger } from '../../platform/tables/app-actions.js';
 import { appAudienceForTable, pickViewerRole } from '../../platform/tables/app-audience.js';
 import { createTablesAutomationRunner } from '../../platform/tables/automation-worker.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
@@ -1256,6 +1258,45 @@ describe('audit and usage (acceptance 9)', () => {
       entity_id: 'app',
       record_id: String(p.appId),
     });
+  });
+
+  it('prunes action-ledger rows past the 30-day usage window; recent runs still count and replay', async () => {
+    const p = await procurement();
+    const old = await submit(p, applicant, [{ fieldId: p.f.title, value: 'Old' }]);
+    const recentRequest = requestId();
+    const sendRecent = () =>
+      send(applicant, `/api/apps/${p.appId}/actions`, 'POST', {
+        pageId: 'mine',
+        cardId: 'new-request',
+        actionId: '$submit',
+        requestId: recentRequest,
+        values: [{ fieldId: p.f.title, value: 'Recent' }],
+      });
+    const recent = await json<AppActionResult>(await sendRecent());
+    await db.executeRaw(
+      sql`UPDATE table_app_action_requests SET created_at = now() - interval '31 days'
+          WHERE app_id = ${p.appId} AND record_id = ${old.recordId}`,
+    );
+    const ledger = async () =>
+      (
+        (await db.executeRaw(
+          sql`SELECT record_id FROM table_app_action_requests WHERE app_id = ${p.appId} ORDER BY id`,
+        )) as Array<{ record_id: number }>
+      ).map((row) => row.record_id);
+    expect(await ledger()).toEqual([old.recordId, recent.recordId]);
+
+    expect(await sweepAppActionLedger(db)).toBeGreaterThanOrEqual(1);
+    expect(await ledger()).toEqual([recent.recordId]);
+    // Nothing usage reads was lost, and the recent request still replays instead of writing again.
+    const usage = await json<AppUsageView>(await send(owner, `/api/apps/${p.appId}/usage`));
+    expect(usage.actions30d).toEqual({ $submit: 1 });
+    expect(await json<AppActionResult>(await sendRecent())).toMatchObject({
+      recordId: recent.recordId,
+      replayed: true,
+    });
+    // A second pass finds nothing more of this app's.
+    await sweepAppActionLedger(db);
+    expect(await ledger()).toEqual([recent.recordId]);
   });
 });
 

@@ -42,6 +42,14 @@ export function appUploadKeySegment(baseId: number, appId: number): string {
   return `tables/${baseId}/apps/${appId}/`;
 }
 
+/**
+ * The usage window (`AppUsageView.actions30d`) — also how long the action
+ * ledger keeps a request: an older row counts for nothing, so upkeep deletes
+ * it (a `requestId` repeated after that runs again).
+ */
+export const APP_USAGE_WINDOW_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /** A running claim older than this is taken over (its process died between claim and result). */
 const STALE_CLAIM_MS = 2 * 60 * 1000;
 const MAX_IDS = 500;
@@ -396,6 +404,24 @@ export function createTablesAppGateway(db: Db) {
         .where(and(eq(tableAppActionRequests.id, id), eq(tableAppActionRequests.status, 'running')));
     },
 
+    /**
+     * Upkeep: delete up to `limit` ledger rows created before `before` (any
+     * status — a running claim that old is long dead). Returns how many went;
+     * callers repeat until it returns less than `limit`.
+     */
+    async pruneAppActionRequests(before: string, limit = 1000): Promise<number> {
+      const stale = db
+        .select({ id: tableAppActionRequests.id })
+        .from(tableAppActionRequests)
+        .where(lt(tableAppActionRequests.created_at, before))
+        .limit(limit);
+      const removed = await db
+        .delete(tableAppActionRequests)
+        .where(inArray(tableAppActionRequests.id, stale))
+        .returning({ id: tableAppActionRequests.id });
+      return removed.length;
+    },
+
     // ─── Usage ────────────────────────────────────────────
 
     /**
@@ -409,8 +435,8 @@ export function createTablesAppGateway(db: Db) {
       input: { orgId: string; appKey: string; useActionIds: readonly string[]; now?: Date },
     ): Promise<AppUsageCounts> {
       const now = input.now ?? new Date();
-      const since7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const since30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const since7 = new Date(now.getTime() - 7 * DAY_MS).toISOString();
+      const since30 = new Date(now.getTime() - APP_USAGE_WINDOW_DAYS * DAY_MS).toISOString();
       if (input.useActionIds.length === 0) return { users7d: 0, users30d: 0, lastUsedAt: null, actions30d: {} };
       const person = sql`coalesce(${platformAuditEvents.on_behalf_of_user_id}, ${platformAuditEvents.actor_id})`;
       const used = and(

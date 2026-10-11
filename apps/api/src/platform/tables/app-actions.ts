@@ -26,7 +26,13 @@
  * `requestId` replays the first result (`replayed: true`) instead of writing again.
  */
 
-import { isTablesForbiddenError, TablesValidationError, type TableRecordRow } from '@greenhouse/db';
+import {
+  APP_USAGE_WINDOW_DAYS,
+  isTablesForbiddenError,
+  TablesValidationError,
+  type DatabaseProvider,
+  type TableRecordRow,
+} from '@greenhouse/db';
 import { expandDateToken } from '@greenhouse/types/date-tokens';
 import {
   APP_BUILTIN_ACTIONS,
@@ -673,4 +679,22 @@ export async function runSessionAction(
 /** Card kinds an action may target — the handler answers 400 for the rest before opening a ledger row. */
 export function cardTakesActions(card: AppCard): boolean {
   return card.kind === 'form' || card.kind === 'buttons' || isRecordsCard(card);
+}
+
+const LEDGER_PRUNE_BATCH = 1000;
+
+/**
+ * Upkeep (hourly, with the app-upload sweep): drop action-ledger rows older
+ * than the usage window (`APP_USAGE_WINDOW_DAYS`) — usage never reads them,
+ * and the ledger would otherwise grow with every app write forever.
+ */
+export async function sweepAppActionLedger(db: DatabaseProvider, now = new Date()): Promise<number> {
+  const before = new Date(now.getTime() - APP_USAGE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  let removed = 0;
+  for (let batch = 0; batch < 50; batch += 1) {
+    const count = await db.tables.pruneAppActionRequests(before, LEDGER_PRUNE_BATCH);
+    removed += count;
+    if (count < LEDGER_PRUNE_BATCH) break;
+  }
+  return removed;
 }
