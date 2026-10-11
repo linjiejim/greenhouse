@@ -42,10 +42,11 @@
  * thread (src/bots/thread/thread-screen.tsx, remounted per thread), anything
  * else this conversation screen. Every route here carries all seven home
  * params (src/bots/nav.ts). On a cold start a bare home reopens the Bots
- * thread the member left the app in (src/bots/home/initial-surface.ts), once
- * per process. With Bots on, the conversation screen also gets: a `?profile=`
- * new chat with one Bot (its face and name in the hero, a "Back to …" button;
- * the profile is never saved); the ☰ badge (other conversations that need the
+ * thread the member left the app in, else the main thread — Sprouty's DM
+ * (src/bots/home/initial-surface.ts), once per process. With Bots on, the
+ * conversation screen also gets: a `?profile=` new chat with one Bot (its
+ * face and name in the hero, a "Back to …" button; the profile is never
+ * saved); the ☰ badge (other conversations that need the
  * member or have something unread); a Bots session reached by id is forwarded
  * to its thread. With Bots off (or on Android) none of this renders and the
  * screen is exactly what it was.
@@ -113,9 +114,16 @@ import { useBotsWarm, useProfileBot } from '../../../src/bots/home/home-bridge';
 import { initialSurface } from '../../../src/bots/home/initial-surface';
 import { launchedByPush } from '../../../src/push/handler';
 import { useHomeSurface } from '../../../src/bots/home/surface';
-import { forgetThread, lastThread, rememberThread, type LastThread } from '../../../src/bots/last-surface';
+import {
+  forgetThread,
+  lastThread,
+  mainThread,
+  rememberMainThread,
+  rememberThread,
+  type LastThread,
+} from '../../../src/bots/last-surface';
 import { homeNavCount, homeParams, onHomeNav, openNewChat, openThread, type HomeParams } from '../../../src/bots/nav';
-import { attentionCount, sproutyBot, useBots } from '../../../src/bots/store';
+import { attentionCount, sproutyBot, sproutyDm, useBots } from '../../../src/bots/store';
 import { BotThreadScreen } from '../../../src/bots/thread/thread-screen';
 import { usePrefs } from '../../../src/store/prefs';
 
@@ -794,20 +802,27 @@ function Conversation() {
 
 /* ------------------------------ home: a Bots thread or the conversation ------------------------------ */
 
-/** A cold start reopens the last Bots thread at most once per process (D3); warm starts stay where they are. */
+/** A cold start picks its thread (remembered, else the main thread) at most once per process (D3); warm starts stay where they are. */
 let restoreSettled = false;
-/** How long a cold start waits for persisted prefs before settling on a new chat. */
+/**
+ * How long a cold start waits for persisted prefs — and, with neither a last nor a remembered main
+ * thread in them (a first launch), for the Bots store's main thread — before settling on what it
+ * knows: a new chat when nothing answered (on a real cold start the splash covers it).
+ */
 const RESTORE_WAIT_MS = 400;
 
 /**
  * The home route (D2): `?c=` renders the Bots thread — keyed by session, so
  * another thread is a fresh screen and its engine — anything else the
  * conversation screen, which stays exactly as it was. The first time a bare
- * home mounts in a process, the thread the member left the app in comes back
- * (src/bots/home/initial-surface.ts): rendered at once, and the route is
- * pointed at it with `setParams` (same screen, no animation). Which thread is
- * open is remembered per station + account for the next cold start; any chat
- * or new chat forgets it.
+ * home mounts in a process, the thread the member left the app in comes back,
+ * and with none remembered the main thread opens (主线: Sprouty's DM, spec
+ * 20261011 §3.1; src/bots/home/initial-surface.ts): rendered at once, and the
+ * route is pointed at it with `setParams` (same screen, no animation). Which
+ * thread is open is remembered per station + account for the next cold start;
+ * any chat or new chat forgets it. The main thread is remembered per station +
+ * account too (src/bots/last-surface.ts), whenever the Bots store learns it —
+ * so a cold start opens it from prefs, without waiting for the network.
  */
 export default function Home() {
   const raw = useLocalSearchParams<{ [K in keyof HomeParams]?: string }>();
@@ -825,6 +840,10 @@ export default function Home() {
   const hydrated = usePrefs((s) => s.hydrated);
   const [settled, setSettled] = useState(restoreSettled);
   const [gaveUp, setGaveUp] = useState(false);
+  // The main thread — Sprouty's DM: the Bots store's answer once it has one (the wait below fills the
+  // store), else the one remembered for this station + account (no network needed).
+  const storeMainC = useBots((s) => sproutyDm(s));
+  const storeMainTitle = useBots((s) => sproutyBot(s)?.name ?? '');
   // The restored thread, shown until the route's own `c` catches up with `setParams`.
   const [restored, setRestored] = useState<LastThread | null>(null);
   // Navigations to home since the restore (see the stand-in's effect below).
@@ -835,8 +854,10 @@ export default function Home() {
     ? null
     : initialSurface({
         params,
-        hydrated: hydrated || gaveUp,
+        hydrated,
+        gaveUp,
         last: hydrated ? lastThread() : null,
+        main: storeMainC ? { c: storeMainC, title: storeMainTitle } : mainThread(),
         botsEnabled: botsEnabledNow(),
         restored: restoreSettled,
         // a cold-start deep link stacked over home decides where home points
@@ -852,6 +873,9 @@ export default function Home() {
   useEffect(() => {
     if (settled || !kind) return;
     if (kind === 'wait') {
+      // Meanwhile learn the main thread the way the drawer and `greenhouse://bots` do: the store
+      // loads the Agent list (Sprouty carries its DM) and bootstraps the DM once if it has none.
+      void useBots.getState().ensureSprouty();
       const timer = setTimeout(() => setGaveUp(true), RESTORE_WAIT_MS);
       return () => clearTimeout(timer);
     }
@@ -891,6 +915,11 @@ export default function Home() {
     if (thread) rememberThread({ c, title: knownTitle || title });
     else forgetThread();
   }, [settled, hydrated, thread, c, knownTitle, title]);
+
+  // …and the main thread, whenever the store learns it or its name (prefs skip a write that changes nothing).
+  useEffect(() => {
+    if (hydrated && storeMainC) rememberMainThread({ c: storeMainC, title: storeMainTitle });
+  }, [hydrated, storeMainC, storeMainTitle]);
 
   // What is on screen — the drawer reads this, not the route (src/bots/home/surface.ts).
   const publishSurface = useHomeSurface((s) => s.publish);

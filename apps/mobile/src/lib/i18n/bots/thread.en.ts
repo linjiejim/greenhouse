@@ -1,4 +1,4 @@
-/** Bots thread copy (`bots.thread / status / stop / pending / composer`) — English, the key source. */
+/** Agent (code: bots) thread copy (`bots.thread / status / stop / pending / composer`) — English, the key source. */
 
 export const botsThreadEn = {
   thread: {
@@ -31,11 +31,11 @@ export const botsThreadEn = {
     sendFailed: 'Couldn’t send',
     handleNowFailed: 'Couldn’t handle it now',
     notFound: 'Conversation not found',
-    unavailable: 'Bots aren’t available',
+    unavailable: 'Agents aren’t available',
     backToNewChat: 'Back to New Chat',
-    /** ⋯ menu: the title; its subtitle is the Bot's name. */
+    /** ⋯ menu: the title; its subtitle is the Agent's name. */
     askInChat: 'New Chat',
-    titleHintDm: 'Shows the Bot’s profile',
+    titleHintDm: 'Shows the Agent’s profile',
     readOnlyDm: '{name} is archived and won’t reply',
     /** An old group chat: group chats were retired. */
     readOnlyClosed: 'Group chats were retired — this one stays as a record.',
@@ -69,7 +69,7 @@ export const botsThreadEn = {
     taskReport: 'Background task · {title}',
     reportDone: 'Done',
     reportFailed: 'Failed',
-    rememberedAll: 'Remembered (all Bots)',
+    rememberedAll: 'Remembered (all Agents)',
     rememberedBot: 'Remembered (only {name})',
     memoryUndone: 'Forgotten',
     undoMemory: 'Undo',
@@ -80,7 +80,7 @@ export const botsThreadEn = {
   status: {
     thinking: '{name} is thinking…',
     replying: '{name} is replying…',
-    /** A DM: the title already names the Bot. */
+    /** A DM: the title already names the Agent. */
     thinkingDm: 'Thinking…',
     replyingDm: 'Replying…',
     browsing: 'Browsing {host}',

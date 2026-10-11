@@ -14,7 +14,7 @@ import { AppState } from 'react-native';
 import { listConversationTasks } from '../../api/bots';
 import { realtime } from '../../realtime';
 import type { BotTaskView } from '../../shared/bots';
-import { ACTIVE } from '../vendor/web-helpers';
+import { ACTIVE_TASK_STATUSES } from '../vendor/web-helpers';
 
 /** The thread's no-socket reload beat (spec §2.7.3). */
 const POLL_MS = 24_000;
@@ -58,7 +58,7 @@ export function useBotTasks(
     };
   }, [enabled, refresh, sessionId]);
 
-  const active = useMemo(() => tasks.filter((task) => ACTIVE.has(task.status)), [tasks]);
+  const active = useMemo(() => tasks.filter((task) => ACTIVE_TASK_STATUSES.has(task.status)), [tasks]);
   const anyActive = active.length > 0;
   useEffect(() => {
     if (!enabled || !anyActive) return;

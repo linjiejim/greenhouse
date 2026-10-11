@@ -1,10 +1,14 @@
 /**
  * HomeDrawerContent — the left drawer behind the conversation surface
- * (ChatGPT / Claude-style sidebar, built from native pieces):
+ * (ChatGPT / Claude-style sidebar, built from native pieces). One list in three
+ * sections (spec docs/specs/20261011-agent-first-class.md §3.1): 主线 / Main
+ * thread and Agent / Agents (src/bots/drawer/bots-section.tsx, with Agents on),
+ * then 会话 / Chats — the chat history:
  *
- *  - top: a search field (filters the loaded history by title — see
- *    use-sessions; there is no server-side title search) + a new-chat button,
- *  - the member's own conversations (`scope=mine` — never anyone else's: a
+ *  - top: a search field (filters every section; the history by its loaded
+ *    titles — see use-sessions; there is no server-side title search) + the
+ *    新会话 / New chat button,
+ *  - 会话: the member's own conversations (`scope=mine` — never anyone else's: a
  *    super used to get every member's history mixed in, read-only rows without
  *    a menu). Only the live part shows by default — 置顶 and 今天; everything
  *    older folds into one 「更早的对话」 row that expands in place (昨天 / 7 天内
@@ -30,10 +34,11 @@
  * conversations started / renamed / deleted on the surface show up. What is on
  * screen comes from the home screen (src/bots/home/surface.ts), not the route.
  *
- * With Bots on (iOS, an internal account, `features.bots`), the Bots section
- * (src/bots/drawer/bots-section.tsx) comes first, above the history, and the
- * search filters it too; otherwise it renders nothing. Every route to home goes
- * through src/bots/nav.ts (all seven params — a Bots thread is `?c=`).
+ * With Agents on (iOS, an internal account, `features.bots`), the 主线 and
+ * Agent sections (src/bots/drawer/bots-section.tsx) come first, above the
+ * history, and the search filters them too; otherwise they render nothing and
+ * the drawer is the history alone. Every route to home goes through
+ * src/bots/nav.ts (all seven params — an Agent thread is `?c=`).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -432,7 +437,10 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
             <BotsSection query={search} onClose={close} />
             <View key={fontKey} style={styles.navBlock}>
               <View style={styles.historyHead}>
-                <Text style={styles.historyTitle}>{activeTag ? activeTag.name : t('drawer.history')}</Text>
+                {/* 会话 — or, filtered, the tag's name */}
+                <Text accessibilityRole="header" style={styles.historyTitle}>
+                  {activeTag ? activeTag.name : t('drawer.sessions')}
+                </Text>
                 {tags.length ? (
                   <NativeMenu
                     title={t('drawer.filterByTag')}

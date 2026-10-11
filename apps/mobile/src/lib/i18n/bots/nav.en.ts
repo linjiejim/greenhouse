@@ -1,19 +1,21 @@
-/** Bots entry & navigation copy (`bots.nav`) — English, the key source. */
+/** Agents (code: bots) entry & navigation copy (`bots.nav`) — English, the key source. */
 
 export const botsNavEn = {
   nav: {
-    section: 'Bots',
+    /** The drawer's sections (主线 · Agent · 会话 — the third is `drawer.sessions`). */
+    mainThread: 'Main thread',
+    agents: 'Agents',
     showAll: 'Show All ({n})',
     archived: 'Archived ({n})',
-    loadFailed: 'Couldn’t load Bots · Retry',
+    loadFailed: 'Couldn’t load Agents · Retry',
     pinnedA11y: 'Pinned',
     open: 'Open',
     markRead: 'Mark as Read',
     profileHint: 'Starts fresh — stays out of your ongoing conversation',
     backTo: 'Back to {name}',
-    unavailable: 'Bots aren’t available',
+    unavailable: 'Agents aren’t available',
     archivedTitle: 'Archived',
-    profile: 'Bot Profile',
+    profile: 'Agent Profile',
     untitledGroup: 'Group',
     archivedName: '{name} (archived)',
     botSaid: '{name}: {text}',
@@ -25,7 +27,7 @@ export const botsNavEn = {
     menuBadgeA11y: '{n} need your attention',
     // the archived sheet
     archivedEmpty: 'No Archived Conversations',
-    archivedEmptyHint: 'When a Bot is archived, its conversations stay here, read-only.',
+    archivedEmptyHint: 'When an Agent is archived, its conversations stay here, read-only.',
     archivedFooter: 'Nobody here replies any more — the history stays readable.',
     loadFailedTitle: 'Couldn’t Load Conversations',
   },

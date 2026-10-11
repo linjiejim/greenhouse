@@ -216,7 +216,7 @@ describe('declaration-verbatim copies', () => {
       ['login-request-card.tsx', ['loginValues']],
       ['instructions-update-card.tsx', ['DiffLine', 'lineDiff']],
       ['conversation-header.tsx', ['hostFromInput']],
-      ['bot-task-dock.tsx', ['ACTIVE', 'TASK_POSE', 'elapsed']],
+      ['bot-task-dock.tsx', ['ACTIVE_TASK_STATUSES', 'TASK_POSE', 'elapsed']],
       ['memory-receipts.tsx', ['MemoryReceipt', 'asRecord', 'memoryReceiptsFromCalls']],
     ];
     for (const [file, names] of table) expectDeclarationsVendored(`${WEB_BOTS}/${file}`, helpers, names);

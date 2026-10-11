@@ -91,7 +91,7 @@ import { notifyWarning, selectionTick } from '../../ui/haptics';
 import { useHeaderInset } from '../../ui/header-inset';
 import { toast } from '../../ui/toast';
 import type { BotsReadOnly, MobilePending, SendInput, SendOutcome } from '../contract';
-import { forgetThread } from '../last-surface';
+import { forgetGoneThread } from '../last-surface';
 import { openNewChat } from '../nav';
 import { attentionCount, useBots } from '../store';
 import { BotAvatar, type AvatarSource } from '../ui/bot-avatar';
@@ -287,10 +287,11 @@ export function BotThreadScreen({
     titleParam;
 
   /* ---------- a thread that is gone is not reopened on the next cold start (D3; home remembers it) ---------- */
+  // …neither as the last thread nor as the remembered main thread (../last-surface.ts).
   const gone = snap.load === 'not_found' || snap.load === 'forbidden';
   useEffect(() => {
-    if (gone) forgetThread();
-  }, [gone]);
+    if (gone) forgetGoneThread(sessionId);
+  }, [gone, sessionId]);
 
   /* ---------- transcript rows ---------- */
   const ready = snap.load === 'ready';

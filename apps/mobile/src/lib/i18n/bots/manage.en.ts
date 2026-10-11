@@ -1,11 +1,11 @@
-/** Bot & conversation management copy (`bots.manage`) — English, the key source. */
+/** Agent (code: bot) & conversation management copy (`bots.manage`) — English, the key source. */
 
 export const botsManageEn = {
   manage: {
     message: 'Message',
     newChat: 'New Chat',
     edit: 'Edit',
-    archive: 'Archive Bot…',
+    archive: 'Archive Agent…',
     archiveTitle: 'Archive {name}?',
     archiveConfirm: '{name} will stop replying; the conversation stays read-only.',
     archiveAction: 'Archive',
@@ -25,14 +25,14 @@ export const botsManageEn = {
     noMemories: 'No private memories yet',
     viewChat: 'View Conversation',
     openFailed: 'Couldn’t open the conversation',
-    botMissing: 'Bot not found',
+    botMissing: 'Agent not found',
     botMissingHint: 'It may have been removed on another device.',
     loadFailed: 'Couldn’t load',
-    formNew: 'New Bot',
+    formNew: 'New Agent',
     formTemplate: 'New · {role}',
     /** The name is the first field below — a title with it truncates. */
-    formEdit: 'Edit Bot',
-    formProposal: 'Confirm New Bot',
+    formEdit: 'Edit Agent',
+    formProposal: 'Confirm New Agent',
     needsComputerShort: 'Needs the computer',
     name: 'Name',
     role: 'Role',
@@ -50,12 +50,12 @@ export const botsManageEn = {
     connectorsAll: 'Every connector I can use',
     connectorsHint: 'Which outside tools it may use — only ever fewer than yours; it still uses your own sign-ins and keys.',
     connectorsNeedTool: 'Its tools don’t include “External MCP tools”, so it can’t use these — turn that on on the web.',
-    limit: 'Up to 20 Bots (Sprouty doesn’t count)',
+    limit: 'Up to 20 Agents (Sprouty doesn’t count)',
     /** BotNameIssue → a sentence (the server's codes map onto the same issues). */
     nameErr: {
-      taken: 'You already have a Bot with this name',
+      taken: 'You already have an Agent with this name',
       reserved: 'This name is reserved',
-      is_you: 'A Bot can’t share your name',
+      is_you: 'An Agent can’t share your name',
       chars: 'Names can’t contain [ ] : ：',
       too_long: 'At most 24 characters',
     },
@@ -65,23 +65,23 @@ export const botsManageEn = {
     saved: 'Saved',
     saveFailed: 'Couldn’t save',
     createdToast: 'Created',
-    createFailed: 'Couldn’t create the Bot',
+    createFailed: 'Couldn’t create the Agent',
     remove: 'Remove',
     removeConfirm: 'Remove {name} from this conversation?',
     removed: 'Removed {name}',
     removeFailed: 'Couldn’t remove {name}',
     mainSection: 'Main Assistant',
-    othersSection: 'Other Bots',
+    othersSection: 'Other Agents',
     archivedSection: 'Archived',
     mainFooter: 'New Chat uses {name} by default.',
-    // Settings → My Bots: 我的 | 示例, and how a Bot is made (app/bots/new-bot.tsx, app/bots/example.tsx)
+    // Settings → My Agents: 我的 | 示例, and how an Agent is made (app/bots/new-bot.tsx, app/bots/example.tsx)
     tabMine: 'Mine',
     tabExamples: 'Examples',
     examplesFooter: 'Ready-made starting points — the name, role and instructions can all be changed once it’s yours.',
     askSprouty: 'Ask {name} to Make One',
-    askSproutyHint: 'Say what it should do — {name} drafts the Bot and you approve it.',
+    askSproutyHint: 'Say what it should do — {name} drafts the Agent and you approve it.',
     describeOwn: 'Describe Your Own…',
-    ideaMessage: 'Create a Bot for me: {idea}',
+    ideaMessage: 'Create an Agent for me: {idea}',
     /** Ideas to start from (ask Sprouty). */
     ideas: {
       news: 'Turn industry news into a brief every Monday',
@@ -92,7 +92,7 @@ export const botsManageEn = {
     },
     otherWays: 'Other Ways',
     fromExample: 'Start from an Example',
-    fromExampleHint: '{n} ready-made Bots',
+    fromExampleHint: '{n} ready-made Agents',
     manual: 'Fill It In Yourself',
     manualHint: 'Name, role and instructions',
     useExample: 'Create from This',
@@ -119,7 +119,7 @@ export const botsManageEn = {
     /** Resting moods, as the web's `plantAvatar.mood.*`. */
     tintName: { plant: 'Natural', sky: 'Sky', violet: 'Violet', rose: 'Rose', coral: 'Coral', gold: 'Gold', teal: 'Teal' },
   },
-  /** A Bot's profile tabs (src/bots/manage/profile-tabs.tsx). */
+  /** An Agent's profile tabs (src/bots/manage/profile-tabs.tsx). */
   profile: {
     tabOverview: 'Overview',
     tabMemory: 'Memory',
@@ -133,14 +133,14 @@ export const botsManageEn = {
     connectors: 'Connectors',
     noConnectors: 'None',
     guests: 'Also in this conversation',
-    guestsFooter: 'Bots bring each other in when they need help. Touch and hold to remove one.',
+    guestsFooter: 'Agents bring each other in when they need help. Touch and hold to remove one.',
     memoryHint: '{name} uses these to pick up where you left off.',
     lately: 'Lately',
     updated: 'Updated {time}',
     noteFailed: 'Couldn’t update the note',
     newNote: 'New Note',
     deleteNote: 'Delete this note?',
-    noThread: 'No conversation with this Bot yet.',
+    noThread: 'No conversation with this Agent yet.',
     loadFailed: 'Couldn’t load · Tap to retry',
     openNotes: 'To do',
     notesFooter: 'Shared by you and {name}. Tap the circle to tick one off; touch and hold to delete.',

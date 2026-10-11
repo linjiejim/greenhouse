@@ -225,7 +225,7 @@ export function hostFromInput(input: string): string | null {
 
 // ─── apps/web/src/components/bots/bot-task-dock.tsx ──────
 
-export const ACTIVE: ReadonlySet<BotTaskView['status']> = new Set(['queued', 'running', 'waiting']);
+export const ACTIVE_TASK_STATUSES: ReadonlySet<BotTaskView['status']> = new Set(['queued', 'running', 'waiting']);
 
 /**
  * The owning Bot's pose for a task row. Always static: the dock is a list, and in
