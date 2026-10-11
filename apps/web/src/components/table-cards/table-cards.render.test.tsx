@@ -7,7 +7,8 @@
  * say so, the filter bar emits typed values.
  */
 
-import { act } from 'react';
+import { act, useState } from 'react';
+import { dateRangeBounds } from '@greenhouse/types/table-cards';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TableCardSpec } from '@greenhouse/types/tables';
@@ -16,7 +17,7 @@ import type { TableField, TableRecord } from '../../lib/api/tables';
 import { dimensionLabel, type CardLabelContext } from './card-labels';
 import { buildChartModel } from './chart-model';
 import { buildPivotModel } from './pivot-card';
-import { FilterBar } from './filter-bar';
+import { FilterBar, type DashboardFilterValues } from './filter-bar';
 import { TableCardView } from './table-card';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -291,6 +292,40 @@ describe('FilterBar', () => {
     expect(onChange).toHaveBeenLastCalledWith({ stage: { kind: 'select', values: ['won'] } });
     await act(async () => change(select('Rep'), '$me'));
     expect(onChange).toHaveBeenLastCalledWith({ rep: { kind: 'user', userIds: ['$me'] } });
+  });
+
+  it('opens Custom from an active preset, starting at the preset’s days', async () => {
+    const onChange = vi.fn();
+    const control = {
+      id: 'period',
+      label: 'Period',
+      kind: 'date_range' as const,
+      targets: [{ tableId: 7, systemField: 'created_at' as const }],
+      defaultValue: { kind: 'date_range' as const, preset: 'this_month' as const },
+    };
+    function Stateful() {
+      const [values, setValues] = useState<DashboardFilterValues>({});
+      return (
+        <FilterBar
+          controls={[control]}
+          values={values}
+          onChange={(next) => {
+            onChange(next);
+            setValues(next);
+          }}
+          fieldsByTable={new Map()}
+          users={[]}
+        />
+      );
+    }
+    await render(<Stateful />);
+    const select = container.querySelector('select[aria-label="Period"]') as HTMLSelectElement;
+    expect(select.value).toBe('this_month');
+    await act(async () => change(select, 'custom'));
+    const bounds = dateRangeBounds(control.defaultValue, Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(onChange).toHaveBeenLastCalledWith({ period: { kind: 'date_range', ...bounds } });
+    expect(select.value).toBe('custom');
+    expect(container.querySelectorAll('input[type="date"]')).toHaveLength(2);
   });
 
   it('shows a control default and lets the viewer reset to defaults', async () => {
