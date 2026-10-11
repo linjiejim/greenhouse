@@ -33,6 +33,7 @@ import type { TablesSchemaPlanArtifact } from '@greenhouse/types/tables';
 import { userHasFeature } from '../auth/features.js';
 import { defineTool, type ToolMeta } from './define.js';
 import { dispatchTablesAgentAction } from '../platform/tables/agent-adapter.js';
+import { appReferencesTo } from '../platform/tables/app-references.js';
 import { grantableGroups } from '../platform/tables/directory.js';
 import { schemaPlanOperationSchema, MAX_SCHEMA_PLAN_OPERATIONS } from '../platform/tables/schema-plan.js';
 import { draftSchemaPlan, type SchemaPlanReader } from '../platform/tables/schema-plan-draft.js';
@@ -58,6 +59,8 @@ function schemaPlanReader(userId: string): SchemaPlanReader {
       const user = await getDb().users.getById(userId);
       return !!user && user.status === 'active' && (await userHasFeature(userId, user.role, 'apps'));
     },
+    // Only asked for Bases the drafter builds on (field.archive / field.update need builder first).
+    appReferences: (baseId, target) => appReferencesTo(getDb(), baseId, target),
   };
 }
 

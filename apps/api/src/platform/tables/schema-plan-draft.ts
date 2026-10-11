@@ -55,8 +55,15 @@ import {
 import { normalizeTableCardSpec, widgetTypeForCard } from '@greenhouse/types/table-cards';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
-import type { AppAudienceEntryView, AppAudiencesView, AppDraftView, AppSpec } from '@greenhouse/types/apps';
+import type {
+  AppAudienceEntryView,
+  AppAudiencesView,
+  AppDraftView,
+  AppReferencesConflict,
+  AppSpec,
+} from '@greenhouse/types/apps';
 import type { SchemaPlanAppAudienceEntry, SchemaPlanAppAudienceView } from '@greenhouse/types/tables';
+import type { AppReferenceTarget } from './app-references.js';
 import { validateAppSpec, type AppSpecSchema } from './app-spec.js';
 import { validateTablesSchedule } from './automation-schedule.js';
 import { analyzeSchemaPlan, keepStoredWebhooks, WEBHOOK_REFUSAL, type SchemaPlanDispatch } from './schema-plan.js';
@@ -72,6 +79,12 @@ export interface SchemaPlanReader {
   grantableGroups(): Promise<Array<{ id: number; name: string; managedBy?: { id: string; name: string } }>>;
   /** Whether the drafter may use Apps (the `apps` feature); absent = yes. App operations need it. */
   appsEnabled?(): Promise<boolean>;
+  /**
+   * Where the live apps of a Base use what an operation takes away — an
+   * archived field, removed select options (`app-references.ts`, D6). Absent =
+   * not checked at draft (apply still answers 409 `used_by_apps`).
+   */
+  appReferences?(baseId: number, target: AppReferenceTarget): Promise<AppReferencesConflict['references']>;
 }
 
 export type SchemaPlanDraft =
@@ -590,6 +603,30 @@ export async function draftSchemaPlan(
     const base = await requireBase(table.baseId, role, 'change it');
     return { table, base };
   };
+  /**
+   * D6 at draft time: an operation that takes away what a live app uses (a
+   * field, select options) would answer 409 `used_by_apps` on apply — a plan
+   * never sends the person's `confirm` — so the model hears it now, with the
+   * places. Apps an earlier operation of this plan rewrote are left to apply's
+   * own check (their stored draft is not what the plan leaves).
+   */
+  const guardAppReferences = async (base: DraftBase, target: AppReferenceTarget, what: string) => {
+    if (base.placeholder || !reader.appReferences) return;
+    const places = new Map<string, string[]>();
+    for (const reference of await reader.appReferences(base.id, target)) {
+      if ((await appCache.get(reference.appId))?.written) continue;
+      const name = `"${reference.name}" (#${reference.appId})`;
+      places.set(name, [...(places.get(name) ?? []), reference.where]);
+    }
+    if (places.size === 0) return;
+    const listed = [...places].map(([name, wheres]) => {
+      const shown = wheres.slice(0, 3).join('; ');
+      return `app ${name} at ${shown}${wheres.length > 3 ? `; +${wheres.length - 3} more` : ''}`;
+    });
+    problem(
+      `${what} would break ${listed.join(', ')} — leave it out of the plan, or change the app first (in Tables a person can still do it and confirm the break)`,
+    );
+  };
   const field = (table: DraftTable, fieldId: number): TableFieldRow =>
     table.fields.find((candidate) => candidate.id === fieldId) ??
     problem(`field ${fieldId} is not an active field of table ${table.id} — re-read the schema`);
@@ -838,7 +875,7 @@ export async function draftSchemaPlan(
       }
 
       case 'field.update': {
-        const { table } = await requireTable(operation.tableId, 'builder');
+        const { table, base } = await requireTable(operation.tableId, 'builder');
         const target = field(table, operation.fieldId);
         named(index, target.name);
         if (operation.name !== undefined && operation.name !== target.name) {
@@ -849,6 +886,22 @@ export async function draftSchemaPlan(
           );
         }
         if (operation.config !== undefined) {
+          // The options it drops, as `updateField` counts them (by id, against the stored config).
+          const sent = object(resolve(operation.config)).options;
+          if ((target.type === 'single_select' || target.type === 'multi_select') && Array.isArray(sent)) {
+            const kept = new Set(sent.map((option) => object(option).id));
+            const stored = object(safeJsonParse(target.config, {})).options;
+            const removed = (Array.isArray(stored) ? stored : [])
+              .map((option) => object(option).id)
+              .filter((id): id is string => typeof id === 'string' && !kept.has(id));
+            if (removed.length > 0) {
+              await guardAppReferences(
+                base,
+                { options: { fieldId: target.id, optionIds: removed } },
+                `removing option${removed.length === 1 ? '' : 's'} ${removed.map((id) => `"${id}"`).join(', ')} of field "${target.name}"`,
+              );
+            }
+          }
           const config = await check(() =>
             checkFieldConfig(source, table.id, target.type, resolve(operation.config) as TableFieldConfig, target.id),
           );
@@ -859,10 +912,11 @@ export async function draftSchemaPlan(
       }
 
       case 'field.archive': {
-        const { table } = await requireTable(operation.tableId, 'builder');
+        const { table, base } = await requireTable(operation.tableId, 'builder');
         const target = field(table, operation.fieldId);
         named(index, target.name);
         if (target.is_primary) problem('the primary field cannot be archived');
+        await guardAppReferences(base, { fieldIds: [target.id] }, `archiving field "${target.name}"`);
         table.fields = table.fields.filter((candidate) => candidate.id !== target.id);
         return;
       }

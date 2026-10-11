@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlatformActionResult } from '@greenhouse/platform-kernel';
 import type { SchemaPlanOperation } from '@greenhouse/types/tables';
+import type { AppReferenceTarget } from '../app-references.js';
 import { draftSchemaPlan, type SchemaPlanReader } from '../schema-plan-draft.js';
 import {
   allReferenceOperations,
@@ -47,6 +48,9 @@ interface World {
   members?: Array<{ user_id: string; role: string; custom_role_id: number | null }>;
   automations?: Array<Record<string, unknown>>;
   groups?: Array<{ id: number; name: string }>;
+  /** Live apps' uses of fields / options (D6), answered for Base 1; asks are recorded. */
+  appReferences?: (target: AppReferenceTarget) => Array<{ appId: number; name: string; where: string }>;
+  asked?: AppReferenceTarget[];
 }
 
 /** One existing Base (id 1) with one table (id 10): Name, Title (text), Status (single select), Due (date). */
@@ -62,6 +66,14 @@ function reader(world: World = {}): SchemaPlanReader {
   return {
     userId: ME,
     grantableGroups: async () => world.groups ?? [{ id: EXAMPLE_GROUP_ID, name: 'Sales' }],
+    ...(world.appReferences
+      ? {
+          appReferences: async (baseId: number, target: AppReferenceTarget) => {
+            world.asked?.push(target);
+            return baseId === 1 ? world.appReferences!(target) : [];
+          },
+        }
+      : {}),
     dispatch: async (actionId, payload) => {
       const input = payload as Record<string, number>;
       switch (actionId) {
@@ -343,6 +355,46 @@ describe('draftSchemaPlan', () => {
     expect(draft.ok).toBe(true);
     if (!draft.ok) return;
     expect(draft.targetNames).toEqual({ 0: 'Due', 1: 'Deals won', 2: 'Alice', 3: 'Sales', 4: 'Title' });
+  });
+
+  it('refuses at draft to archive a field or drop options a live app uses, naming the places (D6)', async () => {
+    const asked: AppReferenceTarget[] = [];
+    const world: World = {
+      asked,
+      appReferences: (target) =>
+        target.fieldIds?.includes(103) || target.options?.optionIds.includes('done')
+          ? [
+              { appId: 7, name: 'Desk', where: 'v2 › “Board” › “Due soon”' },
+              { appId: 7, name: 'Desk', where: 'draft › “Board” › “Due soon”' },
+            ]
+          : [],
+    };
+    const archive = await problemsOf([{ op: 'field.archive', tableId: 10, fieldId: 103 }], world);
+    expect(archive).toHaveLength(1);
+    expect(archive[0]).toContain('archiving field "Due" would break app "Desk" (#7)');
+    expect(archive[0]).toContain('v2 › “Board” › “Due soon”; draft › “Board” › “Due soon”');
+
+    const statusConfig = (ids: string[]) => ({ options: ids.map((id) => ({ id, label: id })) });
+    const dropDone = await problemsOf(
+      [{ op: 'field.update', tableId: 10, fieldId: 102, config: statusConfig(['open']) }],
+      world,
+    );
+    expect(dropDone[0]).toContain('removing option "done" of field "Status" would break app "Desk"');
+    expect(asked).toContainEqual({ options: { fieldId: 102, optionIds: ['done'] } });
+
+    // Nothing an app uses: no problem; keeping every option (or a rename) never asks.
+    expect(await problemsOf([{ op: 'field.archive', tableId: 10, fieldId: 101 }], world)).toEqual([]);
+    asked.length = 0;
+    expect(
+      await problemsOf(
+        [
+          { op: 'field.update', tableId: 10, fieldId: 102, config: statusConfig(['open', 'done', 'later']) },
+          { op: 'field.update', tableId: 10, fieldId: 101, name: 'Headline' },
+        ],
+        world,
+      ),
+    ).toEqual([]);
+    expect(asked).toEqual([]);
   });
 
   it('lets an update keep a rule’s webhook verbatim, but not change it', async () => {
