@@ -472,6 +472,18 @@ greenhouse/
 
 ## Domain rules
 
+**Conversations and Agents — product vocabulary** ([spec](docs/specs/20261011-agent-first-class.md); the
+spec directory is local-only): what people read says **Agent** for the one agent identity — code names
+stay `bot` (table `bots`, `/api/bots`, `bot:<id>[@v]` handles, the `#/bots` route, `template_key`),
+so never rename identifiers to match the copy. A member's **main thread** is their DM with Sprouty, the
+main Agent; it is the app's default entry (a bare address and the one conversations nav entry land on
+`#/bots`, whose landing opens it). Independent sessions (`#/chat`, `ConversationPane`) are **chats**
+(zh 会话) in the UI — not "tasks": Task already means the `#/tasks` prompts, project tasks and the
+Execution Center. Both conversation routes share ONE sidebar list (`ConversationsSidebarPanel`: main
+thread, Agents, Background, chats); don't bring back a separate Bots nav entry or sidebar. The Bots
+engine and the chat engine still both exist (converging them is phase P2 of the spec — until then the
+registered reason below stands).
+
 Detailed rules live next to the code:
 
 | Domain | File | Scope |
