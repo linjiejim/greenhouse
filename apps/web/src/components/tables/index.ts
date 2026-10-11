@@ -13,8 +13,8 @@ export {
   fieldConfig,
   isComputedField,
 } from './field-types';
-export { FieldValue, recordFieldValue } from './field-value';
-export type { TableUsersById } from './field-value';
+export { FieldValue, FieldValueRefsProvider, recordFieldValue } from './field-value';
+export type { FieldValueRefs, TableUsersById } from './field-value';
 export { FilterEditor } from './filter-editor';
 export type { FilterEditorProps } from './filter-editor';
 export { completedFilterGroup, filterOperatorsFor, filterValueKind, isClauseComplete } from './filter-model';

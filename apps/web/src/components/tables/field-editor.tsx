@@ -36,6 +36,12 @@ export interface FieldEditorProps {
   uploadAttachment?: AttachmentUpload;
   /** Attachment fields: an upload started / finished. Hosts disable their submit while one is in flight. */
   onBusyChange?: (busy: boolean) => void;
+  /**
+   * Relation fields: pick from these records instead of typing ids — for
+   * writers who cannot browse the target table (an app's viewers; the gateway
+   * lists only records in their read scope).
+   */
+  relationOptions?: ReadonlyArray<{ value: number; label: string }>;
   density?: 'form' | 'inline';
   /** Shown as the empty choice of single-value pickers. Default `—`. */
   emptyLabel?: string;
@@ -78,6 +84,7 @@ export function FieldEditor({
   baseId,
   uploadAttachment,
   onBusyChange,
+  relationOptions,
   density = 'form',
   emptyLabel = '—',
   disabled = false,
@@ -136,7 +143,10 @@ export function FieldEditor({
     const options =
       field.type === 'single_select'
         ? (config.options ?? []).map((option) => ({ value: option.id, label: option.label }))
-        : users.map((user) => ({ value: user.id, label: inline ? user.nickname : `${user.nickname} · ${user.email}` }));
+        : users.map((user) => ({
+            value: user.id,
+            label: inline || !user.email ? user.nickname : `${user.nickname} · ${user.email}`,
+          }));
     return (
       <Select
         {...a11y}
@@ -254,6 +264,53 @@ export function FieldEditor({
   }
 
   const multipleRelation = field.type === 'relation' && config.relation?.multiple === true;
+  if (field.type === 'relation' && relationOptions && !inline) {
+    // The draft stays the id text `fromFieldDraft` parses ("12" / "12, 13").
+    const picked = (typeof value === 'string' ? value : '')
+      .split(/[,;\s]+/)
+      .map((entry) => entry.trim().replace(/^#/, ''))
+      .filter(Boolean);
+    if (!multipleRelation) {
+      return (
+        <Select
+          {...a11y}
+          size={size}
+          disabled={disabled}
+          value={picked[0] ?? ''}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">{emptyLabel}</option>
+          {relationOptions.map((option) => (
+            <option key={option.value} value={String(option.value)}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      );
+    }
+    const toggle = (id: string, checked: boolean) =>
+      onChange((checked ? [...new Set([...picked, id])] : picked.filter((entry) => entry !== id)).join(', '));
+    return (
+      <div
+        id={id}
+        role="group"
+        aria-label={field.name}
+        aria-describedby={describedBy}
+        className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto rounded-md border border-edge px-3 py-2 sm:grid-cols-2"
+      >
+        {relationOptions.map((option) => (
+          <Checkbox
+            key={option.value}
+            label={option.label}
+            checked={picked.includes(String(option.value))}
+            disabled={disabled}
+            onChange={(event) => toggle(String(option.value), event.target.checked)}
+          />
+        ))}
+        {relationOptions.length === 0 && <span className="text-xs text-fg-faint">{emptyLabel}</span>}
+      </div>
+    );
+  }
   return (
     <Input
       {...a11y}

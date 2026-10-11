@@ -7,7 +7,10 @@
  * grid's group headers and the kanban lane counts), over the same query.
  */
 
+import type { ReactNode } from 'react';
 import type {
+  TableAggregateInput,
+  TableAggregateRow,
   TableFilterGroup,
   TableRecordValues,
   TableSort,
@@ -43,6 +46,23 @@ export interface TableViewQuery {
   where?: TableFilterGroup;
   filters?: TableFilterGroup[];
   search?: string;
+}
+
+/**
+ * What a body reads or draws on behalf of a host other than the Tables view
+ * container — an app card (Phase 1 slice R) whose viewers cannot call
+ * `/api/tables` or browse the Base's files. Omitted = the Tables defaults.
+ */
+export interface TableViewHost {
+  /**
+   * Group / lane counts over the whole query. `null`: the host has no
+   * aggregate — counts come from the loaded records.
+   */
+  aggregate?: ((tableId: number, input: TableAggregateInput) => Promise<TableAggregateRow[]>) | null;
+  /** Where a cover image's bytes are read. Default: the Drive content route. */
+  fileUrl?: (fileId: number, record: TableRecord, fieldId: number) => string;
+  /** Controls under a kanban / gallery card's fields (an app's card-face actions). */
+  cardFooter?: (record: TableRecord) => ReactNode;
 }
 
 /** A sortable column: a user field or a system column. */
@@ -86,4 +106,6 @@ export interface TableViewBodyProps {
   onUpdateViewConfig: (patch: Partial<TableViewConfig>) => Promise<void>;
   /** Open the view's settings (a kanban without lanes, a calendar without a date field). */
   onConfigureView: () => void;
+  /** A host other than the Tables container (an app card); see `TableViewHost`. */
+  host?: TableViewHost;
 }

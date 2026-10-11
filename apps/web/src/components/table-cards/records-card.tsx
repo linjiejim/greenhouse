@@ -5,6 +5,7 @@
  * opens its record.
  */
 
+import type { ReactNode } from 'react';
 import type { TableSystemField } from '@greenhouse/types/tables';
 import type { TableField, TableRecord } from '../../lib/api/tables';
 import { useT } from '../../lib/i18n';
@@ -41,6 +42,7 @@ export function RecordsTable({
   systemFields = [],
   usersById,
   onOpenRecord,
+  rowActions,
 }: {
   records: readonly TableRecord[];
   fields: readonly TableField[];
@@ -48,6 +50,8 @@ export function RecordsTable({
   systemFields?: readonly TableSystemField[];
   usersById: TableUsersById;
   onOpenRecord?: (record: TableRecord) => void;
+  /** A trailing column of controls per row (an app's card-face actions); its clicks never open the record. */
+  rowActions?: { label: string; render: (record: TableRecord) => ReactNode };
 }) {
   const t = useT();
   const columns = recordColumns(fields, fieldIds);
@@ -73,6 +77,11 @@ export function RecordsTable({
               {t(SYSTEM_FIELD_LABEL_KEYS[field])}
             </th>
           ))}
+          {rowActions && (
+            <th className={CELL}>
+              <span className="sr-only">{rowActions.label}</span>
+            </th>
+          )}
         </tr>
       </thead>
       <tbody>
@@ -111,6 +120,11 @@ export function RecordsTable({
                 {systemValue(record, field, usersById)}
               </td>
             ))}
+            {rowActions && (
+              <td className={`${CELL} text-right`} onClick={(event) => event.stopPropagation()}>
+                {rowActions.render(record)}
+              </td>
+            )}
           </tr>
         ))}
       </tbody>

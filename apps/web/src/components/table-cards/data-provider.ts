@@ -31,29 +31,36 @@ export interface TableCardQuery {
   cursor?: string;
 }
 
+/**
+ * What a card evaluation answers on a host's wire: a dashboard's
+ * `TableCardResult`; an app page's `AppCardQueryResult` (records pages with
+ * labels and card-face actions, `unavailable` cards) — `Result` below.
+ */
+export type TableCardWireResult = TableCardResult<TableRecordPage>;
+
 /** One evaluated card: the card as this viewer may see it (null = withheld) and its result. */
-export interface TableCardEvaluation {
+export interface TableCardEvaluation<Result = TableCardWireResult> {
   card: TableCardSpec | null;
-  result: TableCardResult<TableRecordPage>;
+  result: Result;
 }
 
 /**
  * A host's way to evaluate its cards and describe their tables. Keys are the
  * host's own (a widget id, an app card id).
  */
-export interface TableCardDataProvider<Key extends string | number = string | number> {
+export interface TableCardDataProvider<Key extends string | number = string | number, Result = TableCardWireResult> {
   /** Evaluate one card for the viewer. */
-  query(key: Key, input: TableCardQuery): Promise<TableCardEvaluation>;
+  query(key: Key, input: TableCardQuery): Promise<TableCardEvaluation<Result>>;
   /** A table's fields as the viewer may read them — labels, records columns, filter targets. */
   loadFields(tableId: number): Promise<TableField[]>;
 }
 
 /** A card's state on the client. */
-export interface TableCardState {
+export interface TableCardState<Result = TableCardWireResult> {
   /** The card as this viewer may see it (null = withheld). */
   card: TableCardSpec | null;
   /** Undefined until the first answer. */
-  result?: TableCardResult<TableRecordPage>;
+  result?: Result;
   error?: string | null;
 }
 
@@ -70,11 +77,11 @@ export function viewerTimeZone(): string {
  * Per-card results for one host. `query(key)` evaluates one card with the
  * current filter values; `queryMany(keys)` several at once.
  */
-export function useTableCardResults<Key extends string | number>(
-  provider: TableCardDataProvider<Key>,
+export function useTableCardResults<Key extends string | number, Result = TableCardWireResult>(
+  provider: TableCardDataProvider<Key, Result>,
   filterValues: TableCardFilterValues,
 ) {
-  const [states, setStates] = useState<Partial<Record<Key, TableCardState>>>({});
+  const [states, setStates] = useState<Partial<Record<Key, TableCardState<Result>>>>({});
   const timezone = useMemo(viewerTimeZone, []);
   const filtersRef = useRef(filterValues);
   filtersRef.current = filterValues;

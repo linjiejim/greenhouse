@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react';
 import type { TableGroupBy } from '@greenhouse/types/tables';
 import { aggregateTableRecords, type TableField } from '../../../lib/api/tables';
-import type { TableViewQuery } from './types';
+import type { TableViewHost, TableViewQuery } from './types';
 import { countsByGroup, groupCountInput, viewerTimeZone } from './view-query';
 
 export function useGroupCounts(
@@ -20,17 +20,19 @@ export function useGroupCounts(
   field: TableField | undefined,
   query: TableViewQuery,
   version: unknown,
+  /** A host's aggregate (`TableViewHost.aggregate`); `null` = none, count nothing here. */
+  aggregate: TableViewHost['aggregate'] = aggregateTableRecords,
 ): ReadonlyMap<string, number> | null {
   const [counts, setCounts] = useState<ReadonlyMap<string, number> | null>(null);
-  const inputKey = groupBy ? JSON.stringify(groupCountInput(groupBy, field, query, viewerTimeZone())) : '';
+  const inputKey = groupBy && aggregate ? JSON.stringify(groupCountInput(groupBy, field, query, viewerTimeZone())) : '';
 
   useEffect(() => {
-    if (!inputKey) {
+    if (!inputKey || !aggregate) {
       setCounts(null);
       return;
     }
     let alive = true;
-    aggregateTableRecords(tableId, JSON.parse(inputKey))
+    aggregate(tableId, JSON.parse(inputKey))
       .then((rows) => {
         if (alive) setCounts(countsByGroup(rows));
       })
@@ -41,7 +43,7 @@ export function useGroupCounts(
     return () => {
       alive = false;
     };
-  }, [tableId, inputKey, version]);
+  }, [tableId, inputKey, version, aggregate]);
 
   return counts;
 }

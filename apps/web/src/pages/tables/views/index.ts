@@ -24,4 +24,4 @@ export function viewBodyFor(type: TableViewType | undefined): ComponentType<Tabl
 }
 
 export { TABLE_VIEW_TYPE_ICONS, TABLE_VIEW_TYPE_LABEL_KEYS } from './view-type-meta';
-export type { TableSortTarget, TableViewBodyProps, TableViewPermissions, TableViewQuery } from './types';
+export type { TableSortTarget, TableViewBodyProps, TableViewHost, TableViewPermissions, TableViewQuery } from './types';
