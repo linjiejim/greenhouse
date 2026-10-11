@@ -165,6 +165,7 @@ export async function availableActionIds(
     if (!opOk.has(op)) opOk.set(op, await sessionTableAccess(context, session, tableId, op));
     return opOk.get(op)!;
   };
+  const runnable: AppRecordAction[] = [];
   for (const action of actions) {
     const op = action.do.type === 'delete' ? 'delete' : 'update';
     const granted = await access(op);
@@ -178,11 +179,19 @@ export async function availableActionIds(
     } else if (!granted.editable) {
       continue;
     }
-    const matched = await context.db.tables.matchRecordIds(tableId, recordIds, editScope, {
-      purpose: 'edit',
-      condition: action.when,
-    });
-    for (const id of matched) out.get(id)?.push(action.id);
+    runnable.push(action);
   }
+  if (runnable.length === 0) return out;
+  // Every action's `when` over the page in one query.
+  const matches = await context.db.tables.matchRecordIdsEach(
+    tableId,
+    recordIds,
+    editScope,
+    runnable.map((action) => action.when),
+    { purpose: 'edit' },
+  );
+  runnable.forEach((action, index) => {
+    for (const id of matches[index] ?? []) out.get(id)?.push(action.id);
+  });
   return out;
 }

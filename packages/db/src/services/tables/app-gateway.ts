@@ -20,7 +20,7 @@
  *   from the ledger.
  */
 
-import { and, eq, gte, inArray, isNull, lt, notExists, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lt, notExists, sql, type SQL } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 import type { TableAccessScope } from '@greenhouse/types/table-access';
 import type { TableFilterGroup } from '@greenhouse/types/tables';
@@ -91,17 +91,39 @@ export function createTablesAppGateway(db: Db) {
       scope: TableAccessScope,
       options: { purpose?: 'read' | 'edit'; condition?: TableFilterGroup; evaluation?: TableQueryEvaluation } = {},
     ): Promise<Set<number>> {
+      const { condition, ...rest } = options;
+      const [matched] = await service.matchRecordIdsEach(tableId, recordIds, scope, [condition], rest);
+      return matched ?? new Set();
+    },
+
+    /**
+     * `matchRecordIds` for several conditions over the same page (a card's
+     * actions): one compile context and one query, each condition a boolean
+     * column (NULL = no match, as in a WHERE). `result[i]` answers
+     * `conditions[i]`; an absent or empty condition is the scope alone.
+     */
+    async matchRecordIdsEach(
+      tableId: number,
+      recordIds: readonly number[],
+      scope: TableAccessScope,
+      conditions: ReadonlyArray<TableFilterGroup | undefined>,
+      options: { purpose?: 'read' | 'edit'; evaluation?: TableQueryEvaluation } = {},
+    ): Promise<Array<Set<number>>> {
       assertScope(scope);
       const ids = positiveIds(recordIds);
-      if (ids.length === 0) return new Set();
+      if (ids.length === 0 || conditions.length === 0) return conditions.map(() => new Set<number>());
       const ctx = await loadCompileContext(db, tableId, scope, options.evaluation);
       const predicate = scopeRowPredicate(scope, ctx, options.purpose ?? 'read');
-      const condition =
-        options.condition && Array.isArray(options.condition.clauses) && options.condition.clauses.length > 0
-          ? compileRowScope({ type: 'where', where: options.condition }, ctx)
-          : undefined;
+      const columns: Record<string, SQL<boolean>> = {};
+      conditions.forEach((condition, index) => {
+        const compiled =
+          condition && Array.isArray(condition.clauses) && condition.clauses.length > 0
+            ? compileRowScope({ type: 'where', where: condition }, ctx)
+            : sql`true`;
+        columns[`c${index}`] = sql<boolean>`coalesce((${compiled}), false)`;
+      });
       const rows = await db
-        .select({ id: tableRecords.id })
+        .select({ id: tableRecords.id, ...columns })
         .from(tableRecords)
         .where(
           and(
@@ -109,10 +131,12 @@ export function createTablesAppGateway(db: Db) {
             inArray(tableRecords.id, ids),
             isNull(tableRecords.deleted_at),
             predicate,
-            condition,
           ),
         );
-      return new Set(rows.map((row) => row.id));
+      return conditions.map((_, index) => {
+        const key = `c${index}`;
+        return new Set(rows.filter((row) => (row as Record<string, unknown>)[key] === true).map((row) => row.id));
+      });
     },
 
     /** Live records by id that `scope` reads (full rows — project them for the reader). */

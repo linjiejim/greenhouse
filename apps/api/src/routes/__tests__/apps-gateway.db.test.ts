@@ -25,6 +25,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
+import { PostgresJsPreparedQuery } from 'drizzle-orm/postgres-js/session';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type {
@@ -1255,6 +1256,60 @@ describe('audit and usage (acceptance 9)', () => {
       entity_id: 'app',
       record_id: String(p.appId),
     });
+  });
+});
+
+// ─── Query budget ─────────────────────────────────────────
+
+/** Statements `run` sends to PostgreSQL (every drizzle query goes through the postgres-js prepared query). */
+async function countQueries(run: () => Promise<unknown>): Promise<number> {
+  const proto = PostgresJsPreparedQuery.prototype;
+  const execute = vi.spyOn(proto, 'execute');
+  const all = vi.spyOn(proto, 'all');
+  try {
+    await run();
+    return execute.mock.calls.length + all.mock.calls.length;
+  } finally {
+    execute.mockRestore();
+    all.mockRestore();
+  }
+}
+
+describe('one card query, one set of reads', () => {
+  // Measured 2026-10-11 on this fixture (before → after the per-request reuse):
+  // records card with two actions 60 → 34, records card 39 → 31, kpi 38 → 29, a manager's records card 56 → 31.
+  // What is left: the kernel's own checks (dispatch, Base gate, data ceiling), the
+  // app / version / audience rows, one schema load, and one compile context per db call.
+  it('reads the schema, the facts, the ceilings and the action matches once per request', async () => {
+    const p = await procurement();
+    for (const [title, dept] of [
+      ['A', 'ops'],
+      ['B', 'eng'],
+      ['C', 'ops'],
+    ] as const) {
+      await submit(p, applicant, [
+        { fieldId: p.f.title, value: title },
+        { fieldId: p.f.dept, value: dept },
+        { fieldId: p.f.amount, value: 1 },
+      ]);
+    }
+    let queue: Extract<AppCardQueryResult, { kind: 'records' }> | undefined;
+    const queueQueries = await countQueries(async () => {
+      queue = await records(p, approver, 'review', 'queue');
+    });
+    // Same answer as ever: three pending rows, both actions offered on each.
+    expect(queue!.total).toBe(3);
+    expect(queue!.records.every((row) => row.actionIds.join() === 'approve,reject')).toBe(true);
+    expect(queueQueries).toBeLessThanOrEqual(34);
+
+    expect(await countQueries(() => records(p, applicant, 'mine', 'my-requests'))).toBeLessThanOrEqual(31);
+    let kpi: AppCardQueryResult | undefined;
+    const kpiQueries = await countQueries(async () => {
+      kpi = await json<AppCardQueryResult>(await cardQuery(p, approver, 'stats', 'total'));
+    });
+    expect(kpi).toEqual({ kind: 'kpi', value: 3 });
+    expect(kpiQueries).toBeLessThanOrEqual(29);
+    expect(await countQueries(() => records(p, owner, 'review', 'queue'))).toBeLessThanOrEqual(31);
   });
 });
 

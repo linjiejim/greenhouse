@@ -89,12 +89,54 @@ export interface AppSpecSchema {
   buttonRules: ReadonlyArray<{ id: number; tableId: number }>;
 }
 
-export async function loadAppSpecSchema(db: DatabaseProvider, baseId: number): Promise<AppSpecSchema> {
-  const [facts, rules] = await Promise.all([db.tables.loadAccessFacts(baseId), db.tables.listAutomationRules(baseId)]);
+/**
+ * A schema source that reads each table, field list and group lookup once.
+ * The validators ask for the same table's fields once per card, query and
+ * condition; a schema object lives for one request (nothing writes the schema
+ * while it is checked), so its reads can be shared.
+ */
+function readOnceSource(source: TablesSchemaSource): TablesSchemaSource {
+  const tables = new Map<number, ReturnType<TablesSchemaSource['table']>>();
+  const fields = new Map<number, ReturnType<TablesSchemaSource['fields']>>();
+  const groups = new Map<string, ReturnType<TablesSchemaSource['existingGroupIds']>>();
+  const once = <K, V>(cache: Map<K, Promise<V>>, key: K, load: () => Promise<V>): Promise<V> => {
+    let found = cache.get(key);
+    if (!found) {
+      // A real promise: the live source hands back drizzle query builders, which run again on every await.
+      found = Promise.resolve(load());
+      cache.set(key, found);
+      // A failed read is not remembered: the next caller reads again.
+      void found.catch(() => cache.delete(key));
+    }
+    return found;
+  };
+  return {
+    table: (tableId) => once(tables, tableId, () => source.table(tableId)),
+    fields: (tableId) => once(fields, tableId, () => source.fields(tableId)),
+    activeUserIds: () => source.activeUserIds(),
+    existingGroupIds: (ids) =>
+      once(groups, [...ids].sort((a, b) => a - b).join(','), () => source.existingGroupIds(ids)),
+  };
+}
+
+/**
+ * The live schema of one Base for the validator. `facts` = the Base's access
+ * facts when the caller has loaded them already (the gateway session shares
+ * one load between its scopes and its checks).
+ */
+export async function loadAppSpecSchema(
+  db: DatabaseProvider,
+  baseId: number,
+  facts?: Promise<TableAccessSchemaFacts>,
+): Promise<AppSpecSchema> {
+  const [loadedFacts, rules] = await Promise.all([
+    facts ?? db.tables.loadAccessFacts(baseId),
+    db.tables.listAutomationRules(baseId),
+  ]);
   return {
     baseId,
-    facts,
-    source: db.tables.liveSchemaSource(),
+    facts: loadedFacts,
+    source: readOnceSource(db.tables.liveSchemaSource()),
     buttonRules: rules
       .filter((rule) => rule.trigger === 'button')
       .map((rule) => ({ id: rule.id, tableId: rule.table_id })),

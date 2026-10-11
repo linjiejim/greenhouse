@@ -91,6 +91,15 @@ export class PlatformRuntime {
   }
 
   /**
+   * `authorize` for several capabilities of one request: the user and the
+   * permission snapshot load once. Callers hold the decider for that request
+   * only, never across requests (revocation is immediate).
+   */
+  capabilities(actor: ActorContext): Promise<(capability: string) => CapabilityDecision> {
+    return this.#decider(actor);
+  }
+
+  /**
    * The actor's capability decisions for this one call: the user and the
    * permission snapshot are loaded once, then every capability resolves
    * against them. Never kept beyond the call (revocation is immediate).

@@ -60,6 +60,8 @@ export interface TableCardEvaluationOptions {
   drilldown?: TableCardPoint;
   /** Next page of a records card or a drill-down. */
   cursor?: string;
+  /** The card table's active fields when the caller already read them in this request (else read here). */
+  fields?: readonly TableFieldRow[];
 }
 
 export type TableCardEvaluation = TableCardResult<TableRecordQueryResult>;
@@ -137,7 +139,9 @@ export async function evaluateTableCard(
   const tableId = spec.source?.tableId;
   if (!tableId) throw new TablesValidationError('This card has no source table');
 
-  const fields = (await db.tables.listFields(tableId)).filter((field) => !field.archived_at);
+  const fields = (options.fields ?? (await db.tables.listFields(tableId))).filter(
+    (field) => !field.archived_at && field.table_id === tableId,
+  );
   const byId = new Map(fields.map((field) => [field.id, field]));
   const readable =
     scope.kind === 'scoped'

@@ -337,6 +337,18 @@ export async function requireBase(
 ): Promise<BaseAccessGrant | undefined> {
   const base = await ctx.db.tables.getBase(baseId);
   if (!base) return undefined;
+  return requireLoadedBase(ctx, actor, base, entityId, required, options);
+}
+
+/** `requireBase` for a Base row the caller has already read (the same gate, one read fewer). */
+export async function requireLoadedBase(
+  ctx: AccessContext,
+  actor: ActorContext,
+  base: TableBaseRow,
+  entityId: string,
+  required: TableBaseRole,
+  options: { allowCustom?: boolean } = {},
+): Promise<BaseAccessGrant | undefined> {
   const gate = await gateBase(ctx, actor, base, entityId);
   if (!gate || !meetsRequirement(gate.access, required, options.allowCustom === true)) return undefined;
   return { base: gate.base, access: gate.access, role: gate.role };
@@ -601,13 +613,42 @@ export async function appDataCeiling(
   base: TableBaseRow,
   op: TableDataOp | 'comment',
 ): Promise<AppDataCeiling | undefined> {
-  if (!(await getPlatformRuntime().authorize(actor, `tables.data.${op}`)).allowed) return undefined;
-  const policy = await entityPolicy(ctx, actor, 'record');
-  if (!canAccessRecord(actor, { ownerId: base.owner_id, collaboratorIds: [effectiveUserId(actor)] }, policy)) {
-    return undefined;
-  }
-  const values = fieldPolicyFor(policy, 'values');
-  return { read: values.read, write: values.write };
+  return appDataCeilings(ctx, actor, base)(op);
+}
+
+/**
+ * `appDataCeiling` for every op one request asks about: the actor's capability
+ * snapshot and the `record` entity policy load once, each op resolves against
+ * them (and is answered once). Hold the resolver for one request only — the
+ * gateway session does — so a revocation applies to the next request.
+ */
+export function appDataCeilings(
+  ctx: AccessContext,
+  actor: ActorContext,
+  base: TableBaseRow,
+): (op: TableDataOp | 'comment') => Promise<AppDataCeiling | undefined> {
+  let decide: ReturnType<ReturnType<typeof getPlatformRuntime>['capabilities']> | undefined;
+  let policy: Promise<EntityPolicy> | undefined;
+  const answers = new Map<TableDataOp | 'comment', Promise<AppDataCeiling | undefined>>();
+  const resolve = async (op: TableDataOp | 'comment'): Promise<AppDataCeiling | undefined> => {
+    decide ??= getPlatformRuntime().capabilities(actor);
+    if (!(await decide)(`tables.data.${op}`).allowed) return undefined;
+    policy ??= entityPolicy(ctx, actor, 'record');
+    const loaded = await policy;
+    if (!canAccessRecord(actor, { ownerId: base.owner_id, collaboratorIds: [effectiveUserId(actor)] }, loaded)) {
+      return undefined;
+    }
+    const values = fieldPolicyFor(loaded, 'values');
+    return { read: values.read, write: values.write };
+  };
+  return (op) => {
+    let found = answers.get(op);
+    if (!found) {
+      found = resolve(op);
+      answers.set(op, found);
+    }
+    return found;
+  };
 }
 
 /** A scope that sees rows but no values — what a masked `record.values` reader gets. */

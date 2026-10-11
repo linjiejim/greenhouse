@@ -47,11 +47,18 @@ export interface LiveApp {
 
 const EMPTY_RULES: TableAccessRules = { version: 1, tables: [], dashboards: 'none' };
 
-/** The live app behind `app`: published, not archived, on a live Base, its version's spec verified. */
-export async function liveAppOf(db: DatabaseProvider, app: TableAppRow): Promise<LiveApp | undefined> {
+/**
+ * The live app behind `app`: published, not archived, on a live Base, its
+ * version's spec verified. Pass the Base row when it is already in hand.
+ */
+export async function liveAppOf(
+  db: DatabaseProvider,
+  app: TableAppRow,
+  loadedBase?: TableBaseRow,
+): Promise<LiveApp | undefined> {
   if (app.status !== 'published' || !app.published_version || app.archived_at) return undefined;
   const [base, version] = await Promise.all([
-    db.tables.getBase(app.base_id),
+    loadedBase?.id === app.base_id ? loadedBase : db.tables.getBase(app.base_id),
     db.tables.getAppVersion(app.id, app.published_version),
   ]);
   if (!base || base.archived_at || !version) return undefined;
@@ -68,7 +75,7 @@ export async function liveAppsOnBase(db: DatabaseProvider, base: TableBaseRow): 
   const live: LiveApp[] = [];
   for (const summary of summaries) {
     const app = await db.tables.getApp(summary.id);
-    const found = app ? await liveAppOf(db, app) : undefined;
+    const found = app ? await liveAppOf(db, app, base) : undefined;
     if (found) live.push(found);
   }
   return live;
