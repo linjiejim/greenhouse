@@ -4,8 +4,8 @@
  * The three Phase 1 app routes as F1 ships them: the app center (real shelves
  * from the store, pins, creation entry points disabled with their reason), the
  * runtime shell (the app as the gateway returns it, pages as tabs, an honest
- * empty body, the Assistant told which app / page / role) and the builder
- * placeholder.
+ * empty body, the Assistant told which app / page / role); the builder is
+ * tested in ./builder/.
  */
 
 import { act } from 'react';
@@ -212,15 +212,8 @@ describe('app runtime shell', () => {
   });
 });
 
-describe('builder placeholder and bad addresses', () => {
-  it('names the app being built and says editing is not available', async () => {
-    seed({ managed: [summary(7, { name: 'Leave', canManage: true })] });
-    await mount('7/edit');
-    expect(container.querySelector('h1')?.textContent).toBe('Edit Leave');
-    expect(container.textContent).toContain('The builder is not available yet');
-    expect(enrichPageContext).toHaveBeenLastCalledWith({ appName: 'Leave' });
-  });
-
+// The builder (`7/edit`) has its own tests in ./builder/.
+describe('bad addresses', () => {
   it('rejects an address that is not an app', async () => {
     seed({});
     await mount('abc');

@@ -16,6 +16,7 @@ import { TablesDashboardView } from './dashboard-view';
 import { TablesAuditDialog } from './audit-dialog';
 import { TablesAutomationDialog } from './automation-dialog';
 import { ShareDialog } from './share-dialog';
+import { BaseAppsSection } from './base-apps-section';
 
 export function BaseWorkspace({
   baseId,
@@ -122,6 +123,7 @@ export function BaseWorkspace({
             {workspace.access.customRole?.name ?? t(`tables.home.role.${workspace.role}`)}
           </p>
         </div>
+        <BaseAppsSection baseId={baseId} baseName={workspace.base.name} canBuild={canBuild} />
         {canBuild && (
           <Button variant="outline" size="sm" onClick={() => setAutomations(true)}>
             <Zap size={13} className="mr-1.5" />
