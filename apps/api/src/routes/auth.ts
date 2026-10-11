@@ -93,6 +93,7 @@ export async function issueUserSession(user: UserRow) {
       locale: user.locale ?? 'en',
       locale_chosen: user.locale_chosen_at != null,
       features,
+      reads_team_chats: superSeesAllChats(user),
     },
   };
 }
@@ -271,6 +272,7 @@ const auth = new Hono<AppEnv>()
         locale: user.locale ?? 'en',
         locale_chosen: user.locale_chosen_at != null,
         features,
+        reads_team_chats: superSeesAllChats(user),
       },
     });
   })
