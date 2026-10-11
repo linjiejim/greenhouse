@@ -19,8 +19,11 @@
  * - acceptance 9: usage from the app-scoped audit and the action ledger, and
  *   the Base audit lists the app's writes, not its reads;
  * - field options (people; linked records only inside the role's read scope),
- *   uploads only where the card writes the field, page filters and `$page`,
- *   kanban moves, D3 role resolution, managers' preview, the realtime audience.
+ *   uploads only where the card writes the field, page filters and `$page`
+ *   (a `null` value = cleared), kanban moves, D3 role resolution, managers'
+ *   preview, the realtime audience, the action ledger's 30-day prune;
+ * - the query budget of one card query (per-request reuse, counted at the
+ *   postgres-js prepared query).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1064,6 +1067,41 @@ describe('attachments, options and page filters', () => {
     expect(total).toEqual({ kind: 'kpi', value: 15 });
     const chart = await json<AppCardQueryResult>(await cardQuery(p, approver, 'stats', 'per-dept'));
     expect(chart.kind).toBe('chart');
+  });
+
+  it('reads a null page-filter value as cleared: no constraint, and the default no longer applies', async () => {
+    const p = await procurement();
+    // v2: the Department filter starts on "ops".
+    const spec = structuredClone(p.spec);
+    const review = spec.pages.find((page) => page.id === 'review')!;
+    review.filters = [{ ...review.filters![0]!, defaultValue: { kind: 'select', values: ['ops'] } }];
+    const draft = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    const saved = await json<AppDraftView>(
+      await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec, draftRevision: draft.draftRevision }),
+    );
+    expect(saved.errors).toEqual([]);
+    await json(await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: saved.draftRevision }));
+    await submit(p, applicant, [
+      { fieldId: p.f.title, value: 'Ops item' },
+      { fieldId: p.f.dept, value: 'ops' },
+    ]);
+    await submit(p, colleague, [
+      { fieldId: p.f.title, value: 'Eng item' },
+      { fieldId: p.f.dept, value: 'eng' },
+    ]);
+    const titles = (result: Extract<AppCardQueryResult, { kind: 'records' }>) =>
+      result.records.map((row) => row.values[String(p.f.title)]).sort();
+
+    // Untouched (absent): the default applies — to the page filter and to the `$page.dept` clause.
+    expect(titles(await records(p, approver, 'review', 'queue'))).toEqual(['Ops item']);
+    expect(titles(await records(p, approver, 'review', 'by-dept'))).toEqual(['Ops item']);
+    // Cleared (null, the dashboards' convention the web and iOS runtimes send): no constraint at all.
+    const cleared = { filterValues: { dept: null } };
+    expect(titles(await records(p, approver, 'review', 'queue', cleared))).toEqual(['Eng item', 'Ops item']);
+    expect(titles(await records(p, approver, 'review', 'by-dept', cleared))).toEqual(['Eng item', 'Ops item']);
+    // A chosen value still narrows.
+    const eng = { filterValues: { dept: { kind: 'select', values: ['eng'] } } };
+    expect(titles(await records(p, approver, 'review', 'by-dept', eng))).toEqual(['Eng item']);
   });
 });
 
