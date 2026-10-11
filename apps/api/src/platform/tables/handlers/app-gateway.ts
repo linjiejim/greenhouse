@@ -285,9 +285,12 @@ const queryAppCard: Handler = async (request, context) => {
     // Records that overlap the window: they start before it ends, and they end
     // (or, with no end, start) after it begins — so a multi-day record that
     // started before the visible weeks still shows. `to` is inclusive; compare
-    // with the next day so a datetime later on that day is kept.
+    // with the next day so a datetime later on that day is kept. An end field
+    // the role cannot read is never compared (the compiler would refuse it):
+    // that role sees records by their start day only.
     const start = recordsCard.startFieldId;
-    const end = recordsCard.endFieldId;
+    const end =
+      recordsCard.endFieldId !== undefined && readable.has(recordsCard.endFieldId) ? recordsCard.endFieldId : undefined;
     if (typeof range.to === 'string' && DAY.test(range.to)) {
       extra.push({ combinator: 'and', clauses: [{ fieldId: start, operator: 'lt', value: nextDay(range.to) }] });
     }

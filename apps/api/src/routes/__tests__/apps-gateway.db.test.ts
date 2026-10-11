@@ -1162,6 +1162,12 @@ describe('calendar cards', () => {
           pages: 'all',
           tables: [{ tableId, access: 'read', fields: [], fieldDefault: 'visible' }],
         },
+        {
+          key: 'starts',
+          name: 'Starts only',
+          pages: 'all',
+          tables: [{ tableId, access: 'read', fields: [{ fieldId: end, access: 'hidden' }], fieldDefault: 'visible' }],
+        },
       ],
     };
     const draft = await json<AppDraftView>(
@@ -1169,13 +1175,14 @@ describe('calendar cards', () => {
       201,
     );
     expect(draft.errors).toEqual([]);
-    const query = async (range: { from: string; to: string }) => {
+    const query = async (range: { from: string; to: string }, previewRole?: string) => {
       const result = await json<AppCardQueryResult>(
         await send(owner, `/api/apps/${draft.app.id}/cards/query`, 'POST', {
           pageId: 'cal',
           cardId: 'days',
           draft: true,
           range,
+          ...(previewRole ? { previewRole } : {}),
         }),
       );
       if (result.kind !== 'records') throw new Error(`expected records, got ${result.kind}`);
@@ -1184,6 +1191,8 @@ describe('calendar cards', () => {
 
     expect(await query({ from: '2026-09-28', to: '2026-11-01' })).toEqual(['inside', 'last day', 'spans in']);
     expect(await query({ from: '2026-10-04', to: '2026-10-31' })).toEqual(['inside']);
+    // A role that cannot read the end field still gets its calendar — matched by the start day alone.
+    expect(await query({ from: '2026-09-28', to: '2026-11-01' }, 'starts')).toEqual(['inside', 'last day']);
   });
 });
 
