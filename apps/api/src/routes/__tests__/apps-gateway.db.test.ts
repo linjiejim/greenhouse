@@ -1105,6 +1105,57 @@ describe('attachments, options and page filters', () => {
     expect(chart.kind).toBe('chart');
   });
 
+  it('compares a $page value by the clause’s operator: “is not” excludes what was picked', async () => {
+    const p = await procurement();
+    const request = async (user: UserRow, title: string, requestedFor: UserRow) =>
+      submit(p, user, [
+        { fieldId: p.f.title, value: title },
+        { fieldId: p.f.requestedFor, value: requestedFor.id },
+      ]);
+    await request(applicant, 'Own, for the applicant', applicant);
+    await request(colleague, 'Colleague’s, for the applicant', applicant);
+    await request(colleague, 'Colleague’s, for themselves', colleague);
+    // v2: a "Requested for" filter on the review page; "By department" lists requests for that person that
+    // someone else filed — its clause compares the creator with the picked person by "is not".
+    const draft = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    const spec = structuredClone(draft.spec);
+    const review = spec.pages.find((page) => page.id === 'review')!;
+    review.filters = [
+      ...review.filters!,
+      { id: 'who', label: 'Requested for', kind: 'user', targets: [{ tableId: p.tableId, fieldId: p.f.requestedFor }] },
+    ];
+    const byDept = review.cards.find((card) => card.id === 'by-dept')!;
+    if (byDept.kind !== 'records') throw new Error('by-dept');
+    byDept.source.query = {
+      where: { combinator: 'and', clauses: [{ systemField: 'created_by', operator: 'neq', value: '$page.who' }] },
+    };
+    const saved = await json<AppDraftView>(
+      await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec, draftRevision: draft.draftRevision }),
+    );
+    expect(saved.errors).toEqual([]);
+    await json(await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: saved.draftRevision }));
+
+    const titles = async (extra: Record<string, unknown> = {}) =>
+      (await records(p, owner, 'review', 'by-dept', extra)).records.map((row) => row.values[String(p.f.title)]).sort();
+    const forApplicant = { filterValues: { who: { kind: 'user', userIds: [applicant.id] } } };
+    // Requested for the applicant (the filter) and not filed by them (the clause) — not "filed by them".
+    expect(await titles(forApplicant)).toEqual(['Colleague’s, for the applicant']);
+    expect(await titles()).toHaveLength(3);
+
+    // An operator a user filter gives no meaning is a problem when saved, and publishing refuses it.
+    const latest = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    byDept.source.query = {
+      where: { combinator: 'and', clauses: [{ systemField: 'created_by', operator: 'gt', value: '$page.who' }] },
+    };
+    const refused = await json<AppDraftView>(
+      await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec, draftRevision: latest.draftRevision }),
+    );
+    expect(refused.errors.map((error) => error.message)).toContainEqual(expect.stringContaining('not gt'));
+    expect(
+      (await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: refused.draftRevision })).status,
+    ).toBe(400);
+  });
+
   it('reads a null page-filter value as cleared: no constraint, and the default no longer applies', async () => {
     const p = await procurement();
     // v2: the Department filter starts on "ops".

@@ -1,6 +1,7 @@
 /**
  * The pure parts of the app gateway (slice G): how a card query becomes part
- * of a scope (`$page` values, row scopes), where a spec uses a structure
+ * of a scope (`$page` values compared by the clause's operator, row scopes),
+ * where a spec uses a structure
  * object (D6 — and that it covers `appSpecDependencies`), and what a role's
  * copy of the spec withholds.
  */
@@ -9,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { appSpecDependencies, type AppSpec } from '@greenhouse/types/apps';
 import type { TableFilterGroup } from '@greenhouse/types/tables';
 import { specPlaces, specReferences } from '../app-references.js';
-import { cardDisplayFieldIds, queryFieldIds, queryRowScopes, resolvePageRefs } from '../app-scope.js';
+import { cardDisplayFieldIds, pageRefGroups, queryFieldIds, queryRowScopes, resolvePageRefs } from '../app-scope.js';
 import { viewerSpec } from '../app-viewer.js';
 
 const layout = { x: 0, y: 0, w: 6, h: 4 };
@@ -205,6 +206,78 @@ describe('card queries as scope', () => {
     });
     // A two-sided range cannot sit inside an OR group: that group is no constraint.
     expect(resolvePageRefs(query, ({ filterId }) => (filterId === 'g' ? [pair] : [])).filters).toBeUndefined();
+  });
+
+  it('compares a $page value the way the clause’s operator says', () => {
+    const select: TableFilterGroup = { combinator: 'or', clauses: [{ fieldId: 9, operator: 'in', value: ['a', 'b'] }] };
+    const multi: TableFilterGroup = {
+      combinator: 'or',
+      clauses: [
+        { fieldId: 8, operator: 'contains', value: 'a' },
+        { fieldId: 8, operator: 'contains', value: 'b' },
+      ],
+    };
+    const range: TableFilterGroup = {
+      combinator: 'and',
+      clauses: [
+        { fieldId: 7, operator: 'gte', value: '2026-01-01' },
+        { fieldId: 7, operator: 'lte', value: '2026-01-31' },
+      ],
+    };
+    const text: TableFilterGroup = { combinator: 'or', clauses: [{ fieldId: 6, operator: 'contains', value: 'desk' }] };
+
+    // Match: the filter's own predicate.
+    for (const operator of ['eq', 'in', 'contains'] as const) {
+      expect(pageRefGroups(operator, 'select', [select])).toEqual([select]);
+    }
+    expect(pageRefGroups('eq', 'date_range', [range])).toEqual([range]);
+    // Exclude: none of the picked options, outside the range.
+    expect(pageRefGroups('neq', 'select', [select])).toEqual([
+      {
+        combinator: 'and',
+        clauses: [
+          { fieldId: 9, operator: 'neq', value: 'a' },
+          { fieldId: 9, operator: 'neq', value: 'b' },
+        ],
+      },
+    ]);
+    expect(pageRefGroups('not_contains', 'select', [multi])).toEqual([
+      {
+        combinator: 'and',
+        clauses: [
+          { fieldId: 8, operator: 'not_contains', value: 'a' },
+          { fieldId: 8, operator: 'not_contains', value: 'b' },
+        ],
+      },
+    ]);
+    expect(pageRefGroups('neq', 'date_range', [range])).toEqual([
+      {
+        combinator: 'or',
+        clauses: [
+          { fieldId: 7, operator: 'lt', value: '2026-01-01' },
+          { fieldId: 7, operator: 'gt', value: '2026-01-31' },
+        ],
+      },
+    ]);
+    // One side of a range.
+    const side = (operator: 'gte' | 'lte' | 'gt' | 'lt') => pageRefGroups(operator, 'date_range', [range]);
+    expect(side('gte')).toEqual([{ combinator: 'and', clauses: [range.clauses[0]] }]);
+    expect(side('lte')).toEqual([{ combinator: 'and', clauses: [range.clauses[1]] }]);
+    expect(side('gt')).toEqual([{ combinator: 'and', clauses: [{ fieldId: 7, operator: 'gt', value: '2026-01-31' }] }]);
+    expect(side('lt')).toEqual([{ combinator: 'and', clauses: [{ fieldId: 7, operator: 'lt', value: '2026-01-01' }] }]);
+    // An open-ended range has no end to compare with: no constraint.
+    const from: TableFilterGroup = { combinator: 'and', clauses: [range.clauses[0]!] };
+    expect(pageRefGroups('gt', 'date_range', [from])).toEqual([]);
+    // Search: the typed text under the clause's own operator.
+    expect(pageRefGroups('eq', 'search', [text])).toEqual([
+      { combinator: 'or', clauses: [{ fieldId: 6, operator: 'eq', value: 'desk' }] },
+    ]);
+    expect(pageRefGroups('not_contains', 'search', [text])).toEqual([
+      { combinator: 'or', clauses: [{ fieldId: 6, operator: 'not_contains', value: 'desk' }] },
+    ]);
+    // A single negated option still inlines into an OR group; a negated pair cannot, so that group is no constraint.
+    const one = pageRefGroups('neq', 'select', [{ ...select, clauses: [{ ...select.clauses[0]!, value: ['a'] }] }]);
+    expect(one).toEqual([{ combinator: 'and', clauses: [{ fieldId: 9, operator: 'neq', value: 'a' }] }]);
   });
 
   it('shows the lane, date and cover fields of a card with its columns', () => {

@@ -67,6 +67,7 @@ import {
   isAggregateCard,
   isRecordsCard,
   pageClauses,
+  pageRefGroups,
   queryFieldIds,
   resolvePageRefs,
   type PageClause,
@@ -216,7 +217,8 @@ const queryAppCard: Handler = async (request, context) => {
   const byId = new Map(fields.map((field) => [field.id, field]));
   const fieldType: TableFieldTypeOf = ({ fieldId }) => byId.get(fieldId)?.type as TableFieldType | undefined;
 
-  // `$page.<id>` clauses: the page filter's value on the clause's field (Phase 0 filter-control helpers).
+  // `$page.<id>` clauses: the page filter's value on the clause's field (Phase 0 filter-control helpers),
+  // compared the way the clause's operator says (`pageRefGroups`).
   const resolvePage = ({ filterId, clause }: PageClause): TableFilterGroup[] => {
     const control = controlById(controls, filterId);
     if (!control) return [];
@@ -235,8 +237,12 @@ const queryAppCard: Handler = async (request, context) => {
       const selected = (value as { values?: unknown }).values;
       value = { kind: 'select', values: Array.isArray(selected) ? selected.filter((id) => offered.has(id)) : [] };
     }
-    return filterValueToGroups({ ...control, targets: [target] }, value, timeZone, { now, fieldType }).map(
-      (entry) => entry.group,
+    const groups = filterValueToGroups({ ...control, targets: [target] }, value, timeZone, { now, fieldType });
+    // The clause's operator says how to compare: match, exclude, or one side of a date range.
+    return pageRefGroups(
+      clause.operator,
+      control.kind,
+      groups.map((entry) => entry.group),
     );
   };
   const query = resolvePageRefs(source.query, resolvePage);
