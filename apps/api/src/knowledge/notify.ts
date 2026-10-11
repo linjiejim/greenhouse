@@ -18,6 +18,7 @@
  * an unbound recipient simply does not get one.
  */
 
+import { extractMentionIds } from '@greenhouse/utils/mentions';
 import { sendWeComMarkdown } from '@greenhouse/utils/wecom';
 import { logger } from '@greenhouse/utils/logger';
 import type { DatabaseProvider, KnowledgeDocRow } from '@greenhouse/db';
@@ -25,16 +26,6 @@ import { isWeComConfigured, sendAppMarkdown } from '../wecom/client.js';
 import { WECOM_PROVIDER } from '../routes/wecom-oauth.js';
 import { isFeishuConfigured, sendCardMarkdown } from '../feishu/client.js';
 import { FEISHU_PROVIDER } from '../routes/feishu-oauth.js';
-
-/** Extract mentioned user ids from `[@nickname](user:<id>)` markdown links. */
-export function extractMentionIds(content: string): string[] {
-  const ids = new Set<string>();
-  for (const m of content.matchAll(/\(user:([^)]+)\)/g)) {
-    const id = m[1]?.trim();
-    if (id) ids.add(id);
-  }
-  return [...ids];
-}
 
 /** Canonical absolute (or hash-relative) deeplink for a KB doc. */
 export function kbDocDeeplink(id: number, slug: string): string {
