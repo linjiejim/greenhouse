@@ -4,7 +4,7 @@
  * with server-side pins (D9), and the ways to make an app:
  * - **New app** — on a Base the member builds, or a new Base (needs Tables);
  * - **Ask a Bot** — Chat opens with a request naming the Base (needs Tables);
- * - **From a template** — only when the server lists built-in templates.
+ * - **From a template** — a new Base + draft app (needs Tables), when the server lists templates.
  */
 
 import { useEffect, useState } from 'react';
@@ -36,7 +36,7 @@ function EntryPoints({
   onOpen: (dialog: Exclude<OpenDialog, null>) => void;
 }) {
   const t = useT();
-  if (!canBuild && templates.length === 0) return null;
+  if (!canBuild) return null;
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center" data-testid="app-center-entries">
       {canBuild && (
@@ -56,7 +56,7 @@ function EntryPoints({
           {t('apps.center.askBot.entry')}
         </Button>
       )}
-      {templates.length > 0 && (
+      {canBuild && templates.length > 0 && (
         <Button
           variant="outline"
           size="sm"
@@ -88,16 +88,18 @@ export function AppCenterPage() {
   useEffect(() => {
     void load(true);
   }, [load]);
-  // No templates on this server (or the route refuses): the entry stays hidden.
+  // Installing builds a Tables Base: only Tables members are offered templates. A failed list
+  // keeps the entry hidden rather than showing a dead one.
   useEffect(() => {
+    if (!canBuild) return;
     let alive = true;
     listAppTemplates()
-      .then((list) => alive && setTemplates(list ?? []))
+      .then((list) => alive && setTemplates(list))
       .catch(() => alive && setTemplates([]));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [canBuild]);
 
   const pinned = new Set(pinnedIds);
   const shelves = SHELVES.map((key) => ({ key, apps: catalog?.[key] ?? [] })).filter((shelf) => shelf.apps.length > 0);

@@ -19,7 +19,7 @@ import { AppCenterPage } from './app-center';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const api = vi.hoisted(() => ({
-  listAppTemplates: vi.fn<() => Promise<AppTemplateSummary[] | null>>(),
+  listAppTemplates: vi.fn<() => Promise<AppTemplateSummary[]>>(),
   createApp: vi.fn<(input: unknown) => Promise<AppDraftView>>(),
   installAppTemplate: vi.fn<(key: string) => Promise<AppTemplateInstallResult>>(),
 }));
@@ -134,7 +134,7 @@ async function change(element: HTMLInputElement | HTMLSelectElement | HTMLTextAr
 beforeEach(() => {
   load.mockClear();
   setPinned.mockClear();
-  api.listAppTemplates.mockReset().mockResolvedValue(null);
+  api.listAppTemplates.mockReset().mockResolvedValue([]);
   api.createApp.mockReset();
   api.installAppTemplate.mockReset();
   tables.listTableBases.mockReset().mockResolvedValue([]);
@@ -205,9 +205,14 @@ describe('making an app', () => {
 
   it('offers nothing to build to a member without Tables (an app’s audience)', async () => {
     signIn({ apps: true });
+    api.listAppTemplates.mockResolvedValue([
+      { key: 'it-tickets', name: 'IT tickets', description: 'Report and resolve', icon: 'ticket', accent: 'blue' },
+    ]);
     seed({});
     await mount();
     expect(container.querySelector('[data-testid="app-center-entries"]')).toBeNull();
+    // Installing a template builds a Tables Base: not even the list is asked for.
+    expect(api.listAppTemplates).not.toHaveBeenCalled();
     expect(container.textContent).toContain('Apps shared with you');
   });
 
@@ -286,6 +291,45 @@ describe('making an app', () => {
     await act(async () => button('Use this template')!.click());
     expect(api.installAppTemplate).toHaveBeenCalledWith('procurement');
     expect(window.location.hash).toBe('#/apps/21/edit');
+  });
+
+  it('installs once: buttons disabled and the dialog held open while it runs, and a failure is shown', async () => {
+    api.listAppTemplates.mockResolvedValue([
+      { key: 'procurement', name: 'Purchase requests', description: 'd', icon: 'cart', accent: 'amber' },
+      { key: 'it-tickets', name: 'IT tickets', description: 'd', icon: 'ticket', accent: 'blue' },
+    ]);
+    let fail: (error: Error) => void = () => undefined;
+    api.installAppTemplate.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    seed({});
+    await mount();
+    await act(async () => button('From a template')!.click());
+    const install = (key: string) =>
+      document.querySelector(`[data-testid="template-${key}-install"]`) as HTMLButtonElement;
+    await act(async () => install('procurement').click());
+    expect(install('procurement').disabled).toBe(true);
+    expect(install('it-tickets').disabled).toBe(true);
+    expect(install('procurement').textContent).toBe('Setting it up…');
+    // A second click, or another template, does not start another install.
+    await act(async () => install('procurement').click());
+    await act(async () => install('it-tickets').click());
+    // Escape cannot close the dialog mid-install (closing would drop the guard).
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(document.querySelector('[data-testid="template-dialog"]')).not.toBeNull();
+    expect(api.installAppTemplate).toHaveBeenCalledTimes(1);
+
+    await act(async () => fail(new Error('Tables is turned off for you')));
+    expect(document.querySelector('[data-testid="template-dialog"]')?.textContent).toContain(
+      'Tables is turned off for you',
+    );
+    expect(install('it-tickets').disabled).toBe(false);
+    expect(window.location.hash).toBe('#/apps');
   });
 
   it('opens Chat with a request naming the chosen Base, without sending it', async () => {

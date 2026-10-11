@@ -2,7 +2,10 @@
  * "From a template": the built-in templates the server offers
  * (`GET /api/apps/templates`); installing one creates a new Base the caller
  * owns with the template's tables and a draft app on it, then opens the
- * builder. The center only shows this entry when the server lists templates.
+ * builder. Install is not idempotent (every call builds another Base), so
+ * while one runs every button is disabled and the dialog cannot be closed —
+ * closing would unmount the guard and let a second install start. The center
+ * only shows this entry to Tables members when the server lists templates.
  */
 
 import { useState } from 'react';
@@ -50,7 +53,14 @@ export function TemplateDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={t('apps.center.templates.title')} size="lg">
+    <Dialog
+      open={open}
+      onClose={() => {
+        if (!installing) onClose();
+      }}
+      title={t('apps.center.templates.title')}
+      size="lg"
+    >
       <div className="space-y-4" data-testid="template-dialog">
         <p className="text-xs text-fg-muted">{t('apps.center.templates.note')}</p>
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -74,6 +84,7 @@ export function TemplateDialog({
                 className="min-h-11 self-end md:min-h-0"
                 disabled={installing !== null}
                 onClick={() => void install(template)}
+                data-testid={`template-${template.key}-install`}
               >
                 {installing === template.key ? t('apps.center.templates.installing') : t('apps.center.templates.use')}
               </Button>

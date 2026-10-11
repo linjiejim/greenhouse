@@ -7,12 +7,11 @@
  * audiences calls live in `./apps-builder.ts`.
  *
  * Typed `rpc` over `AppType`: response types are inferred from the routes,
- * which answer the wire contract of `@greenhouse/types/apps`. Two exceptions
- * stay on raw `authFetch`: the multipart upload (FormData, like every upload)
- * and the templates routes, which are not in this tree's `AppType` yet.
- * Failures throw the Tables client's `TablesRequestError` (status + details,
- * `details.reason` for action refusals): apps live in the Tables domain
- * (spec D1), so callers keep one error type.
+ * which answer the wire contract of `@greenhouse/types/apps`. The one
+ * exception is the multipart upload (FormData, like every upload) on raw
+ * `authFetch`. Failures throw the Tables client's `TablesRequestError`
+ * (status + details, `details.reason` for action refusals): apps live in the
+ * Tables domain (spec D1), so callers keep one error type.
  *
  * A manager's preview travels as one `AppPreviewScope` (`previewRole?`,
  * `draft?`) — spread into every gateway input, the query of `getApp`, the
@@ -122,27 +121,22 @@ export async function createApp(input: CreateAppInput): Promise<AppDraftView> {
   return response.json();
 }
 
-/**
- * The built-in templates (`GET /api/apps/templates` → `{templates}`), or
- * `null` when this server has none to offer (the route is missing or refuses)
- * — the center then hides "from a template" instead of showing a dead entry.
- * Raw `authFetch`: the templates routes are not in this tree's `AppType`.
- */
-export async function listAppTemplates(): Promise<AppTemplateSummary[] | null> {
-  const response = await authFetch('/api/apps/templates');
-  if (!response.ok) {
-    if (response.status >= 400 && response.status < 500) return null;
-    throw await responseError(response, 'Unable to load templates');
-  }
-  const body = (await response.json()) as { templates?: unknown };
-  return Array.isArray(body.templates) ? (body.templates as AppTemplateSummary[]) : null;
+/** The built-in templates (`GET /api/apps/templates` → `{templates}`), in the caller's language. */
+export async function listAppTemplates(): Promise<AppTemplateSummary[]> {
+  const response = await rpc.api.apps.templates.$get();
+  if (!response.ok) throw await responseError(response, 'Unable to load templates');
+  return (await response.json()).templates;
 }
 
-/** Install a template: a new Base owned by the caller plus a draft app on it (`AppTemplateInstallResult`). */
+/**
+ * Install a template: a new Base owned by the caller plus a draft app on it
+ * (`AppTemplateInstallResult`). Not idempotent — every call builds another
+ * Base, so callers send it once per intent.
+ */
 export async function installAppTemplate(key: string): Promise<AppTemplateInstallResult> {
-  const response = await authFetch(`/api/apps/templates/${encodeURIComponent(key)}/install`, { method: 'POST' });
+  const response = await rpc.api.apps.templates[':key'].install.$post({ param: { key } });
   if (!response.ok) throw await responseError(response, 'Unable to install the template');
-  return (await response.json()) as AppTemplateInstallResult;
+  return response.json();
 }
 
 // ─── Runtime ──────────────────────────────────────────────

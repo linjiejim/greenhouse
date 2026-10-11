@@ -5,6 +5,7 @@ import {
   appFilePath,
   getApp,
   getAppPins,
+  installAppTemplate,
   listApps,
   listAppTemplates,
   normalizeAppCatalog,
@@ -213,13 +214,22 @@ describe('apps gateway client', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('hides templates when the server has no templates route, and reads the list when it has one', async () => {
-    globalThis.fetch = vi.fn(async () => Response.json({ error: 'App not found' }, { status: 404 })) as typeof fetch;
-    expect(await listAppTemplates()).toBeNull();
-    globalThis.fetch = vi.fn(async () =>
-      Response.json({ templates: [{ key: 'it', name: 'IT', description: 'd', icon: 'ticket', accent: 'blue' }] }),
-    ) as typeof fetch;
-    expect((await listAppTemplates())?.map((template) => template.key)).toEqual(['it']);
+  it('reads the templates and installs one through the typed routes', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
+      String(input).endsWith('/install')
+        ? Response.json({ app: summary(21), baseId: 40 }, { status: 201 })
+        : Response.json({ templates: [{ key: 'it', name: 'IT', description: 'd', icon: 'ticket', accent: 'blue' }] }),
+    );
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    expect((await listAppTemplates()).map((template) => template.key)).toEqual(['it']);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/apps/templates');
+    expect(await installAppTemplate('it-tickets')).toEqual({ app: summary(21), baseId: 40 });
+    const [url, init] = fetchMock.mock.calls[1]!;
+    expect(String(url)).toBe('/api/apps/templates/it-tickets/install');
+    expect(init?.method).toBe('POST');
+
+    globalThis.fetch = vi.fn(async () => Response.json({ error: 'Tables is off' }, { status: 403 })) as typeof fetch;
+    await expect(installAppTemplate('it')).rejects.toMatchObject({ status: 403, message: 'Tables is off' });
   });
 
   it('asks for the draft and the previewed role in the query', async () => {
