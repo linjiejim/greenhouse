@@ -261,7 +261,15 @@ describe('pages and cards', () => {
   it('adds a card from the catalog and autosaves it with the draft revision', async () => {
     await mount();
     expect(q('[data-testid="app-page-apply"]')?.textContent).toContain('Apply');
-    expect(enrichPageContext).toHaveBeenLastCalledWith({ appName: 'Purchases' });
+    // The Assistant sees the builder of this app and the draft's pages.
+    expect(enrichPageContext).toHaveBeenLastCalledWith({
+      mode: 'build',
+      appName: 'Purchases',
+      pages: [
+        { id: 'apply', title: 'Apply' },
+        { id: 'approve', title: 'Approve' },
+      ],
+    });
 
     await click(q('[data-testid="app-add-card"]'));
     // Every kind is offered; the board is available (Requests has a choice field).

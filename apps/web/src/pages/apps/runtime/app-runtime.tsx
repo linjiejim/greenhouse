@@ -130,6 +130,11 @@ export function AppRuntimePage({
   const managerView = view?.role.key === MANAGER_ROLE;
   const roleName = view ? (managerView ? t('apps.runtime.managerView') : view.role.name) : undefined;
 
+  // The pages this viewer can open (the role's trim, or every page for a manager), for the Assistant.
+  const pageList = useMemo(
+    () => view?.spec.pages.map((entry) => ({ id: entry.id, title: entry.title })) ?? [],
+    [view?.spec.pages],
+  );
   useEffect(() => {
     const name = view?.app.name ?? summary?.name;
     if (!name) return;
@@ -141,12 +146,13 @@ export function AppRuntimePage({
             ...(view.draft ? {} : { version: view.version }),
             roleName,
             ...(page ? { pageId: page.id, pageTitle: page.title } : {}),
+            ...(pageList.length > 0 ? { pages: pageList } : {}),
             ...(filters.length > 0 ? { filters } : {}),
           }
         : {}),
     });
     return () => enrichPageContext(null);
-  }, [enrichPageContext, filters, page, roleName, summary?.name, view]);
+  }, [enrichPageContext, filters, page, pageList, roleName, summary?.name, view]);
 
   const hrefFor = useCallback((target: string) => appPreviewHref(appId, preview, target), [appId, preview]);
   const openPage = useCallback((target: string) => (window.location.hash = hrefFor(target)), [hrefFor]);

@@ -185,12 +185,17 @@ describe('the app shell', () => {
     // Only managers see the preview bar and the builder link.
     expect(byTestId('app-preview-bar')).toBeNull();
     expect(document.querySelector('a[href="#/apps/5/edit"]')).toBeNull();
+    // The Assistant gets the app, the page on screen and every page this role can open.
     expect(enrichPageContext).toHaveBeenLastCalledWith({
       appName: 'Purchase requests',
       version: 2,
       roleName: 'Applicant',
       pageId: 'apply',
       pageTitle: 'Apply',
+      pages: [
+        { id: 'apply', title: 'Apply' },
+        { id: 'stats', title: 'Statistics' },
+      ],
     });
   });
 

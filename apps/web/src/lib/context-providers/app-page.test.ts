@@ -80,4 +80,25 @@ describe('app-page context provider', () => {
     expect(hint).not.toContain('\n');
     expect(hint.match(/f\d+ =/g)?.length).toBe(6);
   });
+
+  it('states what the runtime and the builder fill in, and nothing they leave out', () => {
+    // The builder: mode, name and the draft's pages — no version, no role.
+    const builder = provider.contextHint({
+      type: 'app-page',
+      appId: 12,
+      mode: 'build',
+      appName: 'Procurement',
+      pages: [
+        { id: 'apply', title: 'Apply' },
+        { id: 'approve', title: 'Approve' },
+      ],
+    });
+    expect(builder).toContain('Pages of the draft: Apply (id apply), Approve (id approve)');
+    expect(builder).not.toContain('Published version');
+    expect(builder).not.toContain("Viewer's app role");
+    // A manager previewing the draft: the role's pages, no published version to name.
+    const draft = provider.contextHint({ ...page, version: undefined, roleName: 'Full access' });
+    expect(draft).toContain('Pages this role can open: Approvals (id approvals), Stats (id stats)');
+    expect(draft).not.toContain('Published version');
+  });
 });

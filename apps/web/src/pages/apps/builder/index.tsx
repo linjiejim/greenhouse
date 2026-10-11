@@ -131,12 +131,15 @@ export function AppBuilderPage({ appId }: { appId: number }) {
     return { pageId: page.id, cardId };
   }, [selection, spec]);
 
+  // The Assistant sees the builder of this app and the draft's pages (by id and title).
   const name = app?.name;
+  const pagesKey = JSON.stringify(spec?.pages.map((page) => ({ id: page.id, title: page.title })) ?? []);
   useEffect(() => {
     if (!name) return;
-    enrichPageContext({ appName: name });
+    const pages = JSON.parse(pagesKey) as Array<{ id: string; title: string }>;
+    enrichPageContext({ mode: 'build', appName: name, ...(pages.length > 0 ? { pages } : {}) });
     return () => enrichPageContext(null);
-  }, [enrichPageContext, name]);
+  }, [enrichPageContext, name, pagesKey]);
 
   if (draft.load.kind === 'loading') {
     return (
