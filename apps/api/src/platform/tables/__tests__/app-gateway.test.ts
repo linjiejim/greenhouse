@@ -457,4 +457,29 @@ describe('a role’s copy of the spec', () => {
     expect(trimmed.pages[0]!.filters?.map((control) => control.id)).toEqual(['dept']);
     expect(queryFieldIds(list.source.query).every((id) => readable.has(id))).toBe(true);
   });
+
+  it('drops the create entry points of a table the role cannot create in', () => {
+    const all = new Set([101, 102, 103, 104, 105, 106, 108, 110]);
+    const trimmed = viewerSpec(
+      spec(),
+      () => all,
+      () => all,
+      (tableId) => tableId !== T,
+    );
+    const [list, , , , buttons] = trimmed.pages[0]!.cards;
+    if (list?.kind !== 'records' || buttons?.kind !== 'buttons') throw new Error('cards');
+    expect(list.create).toBeUndefined();
+    // The create_record button targets another table the role may create in: kept.
+    expect(buttons.buttons.map((button) => button.id)).toEqual(['add']);
+    const none = viewerSpec(
+      spec(),
+      () => all,
+      () => all,
+      () => false,
+    );
+    const noneButtons = none.pages[0]!.cards[4];
+    expect(noneButtons?.kind === 'buttons' && noneButtons.buttons.filter((b) => b.type === 'create_record')).toEqual(
+      [],
+    );
+  });
 });

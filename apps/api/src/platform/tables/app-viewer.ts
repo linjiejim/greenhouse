@@ -36,12 +36,13 @@ import type {
 import { trimCardForReader, trimFilterControlsForReader } from '@greenhouse/types/table-cards';
 import type { TableFieldValueEntry, TableFilterGroup } from '@greenhouse/types/tables';
 import { pageClauses, queryFieldIds } from './app-scope.js';
-import { sessionEditable, sessionReadable, type AppSession } from './app-session.js';
+import { sessionCanCreate, sessionEditable, sessionReadable, type AppSession } from './app-session.js';
 import { revalidateSpec } from './app-spec.js';
 import { appRuntimeView } from './app-view.js';
 
 type ReadableFor = (tableId: number) => ReadonlySet<number> | null | undefined;
 type EditableFor = (tableId: number) => ReadonlySet<number> | null | undefined;
+type CanCreateFor = (tableId: number) => boolean;
 
 function readsAll(readable: ReadonlySet<number> | null | undefined, ids: readonly number[]): boolean {
   if (readable === null) return true;
@@ -78,6 +79,7 @@ function trimRecordsCard(
   card: Extract<AppCard, { kind: 'records' | 'kanban' | 'calendar' | 'gallery' }>,
   readable: ReadonlySet<number> | null | undefined,
   editable: ReadonlySet<number> | null | undefined,
+  canCreate: boolean,
 ): AppCard {
   const out = { ...card, fieldIds: keep(card.fieldIds, readable) } as typeof card;
   const query = out.source.query;
@@ -96,6 +98,8 @@ function trimRecordsCard(
     if (detail.actions) detail.actions = detail.actions.map((action) => trimAction(action, readable));
     out.detail = detail;
   }
+  // A role whose rule cannot create never sees the "New" entry point (the write would be refused).
+  if (out.kind === 'records' && out.create && !canCreate) delete out.create;
   if (out.kind === 'records' && out.create) {
     const create = { ...out.create, fieldIds: keep(out.create.fieldIds, editable) };
     const defaults = trimDefaults(create.defaults, readable);
@@ -119,13 +123,23 @@ function trimButton(button: AppButton, readableFor: ReadableFor, editableFor: Ed
   return out;
 }
 
-function trimCard(card: AppCard, readableFor: ReadableFor, editableFor: EditableFor): AppCard {
+function trimCard(
+  card: AppCard,
+  readableFor: ReadableFor,
+  editableFor: EditableFor,
+  canCreateFor: CanCreateFor,
+): AppCard {
   switch (card.kind) {
     case 'records':
     case 'kanban':
     case 'calendar':
     case 'gallery':
-      return trimRecordsCard(card, readableFor(card.source.tableId), editableFor(card.source.tableId));
+      return trimRecordsCard(
+        card,
+        readableFor(card.source.tableId),
+        editableFor(card.source.tableId),
+        canCreateFor(card.source.tableId),
+      );
     case 'form': {
       const out = { ...card, fieldIds: keep(card.fieldIds, editableFor(card.tableId)) };
       const defaults = trimDefaults(out.defaults, readableFor(card.tableId));
@@ -141,14 +155,24 @@ function trimCard(card: AppCard, readableFor: ReadableFor, editableFor: Editable
       return { ...card, card: trimmed ?? { kind: card.card.kind } };
     }
     case 'buttons':
-      return { ...card, buttons: card.buttons.map((button) => trimButton(button, readableFor, editableFor)) };
+      return {
+        ...card,
+        buttons: card.buttons
+          .filter((button) => button.type !== 'create_record' || canCreateFor(button.tableId))
+          .map((button) => trimButton(button, readableFor, editableFor)),
+      };
     case 'text':
       return card;
   }
 }
 
 /** The role-trimmed spec with everything the role cannot read removed (see the module comment). */
-export function viewerSpec(spec: AppSpec, readableFor: ReadableFor, editableFor: EditableFor): AppSpec {
+export function viewerSpec(
+  spec: AppSpec,
+  readableFor: ReadableFor,
+  editableFor: EditableFor,
+  canCreateFor: CanCreateFor = () => true,
+): AppSpec {
   return {
     ...spec,
     roles: spec.roles.map((role) => ({ ...role, tables: [] })),
@@ -156,7 +180,7 @@ export function viewerSpec(spec: AppSpec, readableFor: ReadableFor, editableFor:
       (page): AppPage => ({
         ...page,
         ...(page.filters ? { filters: trimFilterControlsForReader(page.filters, readableFor) } : {}),
-        cards: page.cards.map((card) => trimCard(card, readableFor, editableFor)),
+        cards: page.cards.map((card) => trimCard(card, readableFor, editableFor, canCreateFor)),
       }),
     ),
   };
@@ -190,10 +214,14 @@ export async function roleRuntimeView(session: AppSession, summary: AppSummary):
     roleKey: session.role.key,
   });
   if (!view) return undefined;
-  const [readableFor, editableFor] = await Promise.all([sessionReadable(session), sessionEditable(session)]);
+  const [readableFor, editableFor, canCreateFor] = await Promise.all([
+    sessionReadable(session),
+    sessionEditable(session),
+    sessionCanCreate(session),
+  ]);
   return {
     ...view,
-    spec: viewerSpec(view.spec, readableFor, editableFor),
+    spec: viewerSpec(view.spec, readableFor, editableFor, canCreateFor),
     issues: session.manager ? view.issues : view.issues.map(genericIssue),
   };
 }

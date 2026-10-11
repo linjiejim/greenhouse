@@ -25,6 +25,11 @@ export function AppFormCard({ card, host }: AppCardRendererProps<'form'>) {
   /** Bumped per response so the next one starts blank. */
   const [round, setRound] = useState(0);
 
+  // The server says whether this role may create here; a form it cannot submit is not offered.
+  if (table?.canCreate === false) {
+    return <p className="text-sm text-fg-muted">{t('apps.runtime.form.noCreate')}</p>;
+  }
+
   if (done) {
     return (
       <div

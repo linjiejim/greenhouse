@@ -39,6 +39,7 @@ export const appsZh: typeof appsEn = {
   openOnWeb: '在网页端打开',
   more: '显示全部（{n}）',
   fillForm: '填写',
+  formNoCreate: '你的角色可以查看这个应用，但不能在这里新增记录。',
   newItem: '新建',
   noRecords: '暂无内容',
   filterAll: '全部',

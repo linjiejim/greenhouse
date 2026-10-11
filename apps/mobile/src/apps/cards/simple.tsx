@@ -28,6 +28,14 @@ export function FormCard(props: AppCardProps) {
   const t = useT();
   const card = props.card as Extract<AppCard, { kind: 'form' }>;
   if (!forRole(card.roles, props.view.role.key)) return null;
+  // The server says whether this role may create here; a form it cannot submit is not offered.
+  if (props.view.tables.find((table) => table.id === card.tableId)?.canCreate === false) {
+    return (
+      <CardFrame title={card.title}>
+        <CardNote icon="lock" text={t('apps.formNoCreate')} />
+      </CardFrame>
+    );
+  }
   return (
     <CardFrame title={card.title}>
       <NativeButton

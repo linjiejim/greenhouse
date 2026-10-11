@@ -41,6 +41,7 @@ export const appsEn = {
   openOnWeb: 'Open on the Web',
   more: 'Show All ({n})',
   fillForm: 'Fill In',
+  formNoCreate: 'Your role can view this app but not add records here.',
   newItem: 'New',
   noRecords: 'Nothing here',
   // filters

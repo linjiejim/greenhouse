@@ -447,6 +447,8 @@ export interface AppRuntimeView {
   tables: Array<{
     id: number;
     name: string;
+    /** The role may create records here (its rule's `create`); absent on old servers = unknown, the write still checks. */
+    canCreate?: boolean;
     fields: Array<{
       id: number;
       name: string;

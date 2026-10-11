@@ -73,6 +73,7 @@ export const appsRuntimeEn = {
       required: 'Required',
       fillRequired: 'Fill in the required fields.',
       noFields: 'There is nothing here for you to fill in.',
+      noCreate: 'Your role can view this app but not add records here.',
     },
     record: {
       title: 'Record #{id}',

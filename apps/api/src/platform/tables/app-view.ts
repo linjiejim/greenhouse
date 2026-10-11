@@ -151,6 +151,7 @@ export async function appTablesView(
     out.push({
       id: tableId,
       name: names.get(tableId)!,
+      canCreate: scope ? scope.canCreate : true,
       fields: rows
         .filter((row) => (row.is_primary || referenced.has(row.id)) && (!readable || readable.has(row.id)))
         .map((row) => ({

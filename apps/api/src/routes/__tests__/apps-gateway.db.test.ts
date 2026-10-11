@@ -503,6 +503,9 @@ describe('a non-member applicant (acceptance 2)', () => {
     const approverView = await json<AppRuntimeView>(await send(approver, `/api/apps/${p.appId}`));
     expect(approverView.role.key).toBe('approver');
     expect(approverView.spec.pages.map((page) => page.id)).toEqual(['review', 'stats']);
+    // Whether each role may create requests comes from its rule (applicant: yes; approver: no).
+    expect(requests.canCreate).toBe(true);
+    expect(approverView.tables.find((table) => table.id === p.tableId)?.canCreate).toBe(false);
   });
 
   it('submits through the form, sees only its own rows and fields, and nothing through /api/tables', async () => {

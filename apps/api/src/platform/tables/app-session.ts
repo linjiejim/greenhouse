@@ -318,6 +318,15 @@ export async function sessionEditable(
   };
 }
 
+/** Whether the role in play may create records in each table (a manager: every live table). */
+export async function sessionCanCreate(session: AppSession): Promise<(tableId: number) => boolean> {
+  const compiled = await compiledRole(session);
+  const facts = await session.facts();
+  const live = new Set(facts.tables.map((table) => table.id));
+  if (!compiled) return (tableId) => live.has(tableId);
+  return (tableId) => Boolean(compiled.scopeFor(tableId, session.userId)?.canCreate);
+}
+
 /**
  * A page's filter controls as the role in play may use them: broken ones
  * (D6) dropped, targets on fields it cannot read removed (a control left

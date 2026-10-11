@@ -71,6 +71,7 @@ export const appsRuntimeZh: DeepRecord<typeof appsRuntimeEn> = {
       required: '必填',
       fillRequired: '请填写必填项。',
       noFields: '这里没有需要你填写的内容。',
+      noCreate: '你的角色可以查看这个应用，但不能在这里新增记录。',
     },
     record: {
       title: '记录 #{id}',
