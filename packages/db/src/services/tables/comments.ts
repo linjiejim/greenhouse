@@ -117,6 +117,12 @@ export function compareActivityPositions(left: TableActivityPosition, right: Tab
   return right.id - left.id;
 }
 
+/** Views carry ISO-8601 instants (PostgreSQL's text form is not parsed by every browser). */
+function isoTimestamp(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+}
+
 export function tableCommentView(row: TableRecordCommentRow): TableRecordCommentView {
   return {
     kind: 'comment',
@@ -125,8 +131,8 @@ export function tableCommentView(row: TableRecordCommentRow): TableRecordComment
     authorId: row.author_id,
     body: row.body,
     mentions: row.mentions,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: isoTimestamp(row.created_at),
+    updatedAt: isoTimestamp(row.updated_at),
     edited: row.updated_at !== row.created_at,
   };
 }
@@ -147,7 +153,7 @@ export function tableEventView(row: TableRecordEventRow, readable: ReadonlySet<n
     type: row.type,
     changes,
     meta: row.meta,
-    createdAt: row.created_at,
+    createdAt: isoTimestamp(row.created_at),
   };
 }
 
