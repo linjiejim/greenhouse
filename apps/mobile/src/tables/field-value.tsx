@@ -10,6 +10,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import type { TableRecordValues } from '../shared/tables';
 import { makeStyles, space, typo, useTheme } from '../theme';
+import { useFontScaleKey } from '../ui/font-scale';
 import { Badge } from '../ui/list';
 import { tagHex } from '../lib/tag-colors';
 import {
@@ -81,13 +82,15 @@ export function RecordLines({
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  // keyed on the text size: re-measures when Dynamic Type changes (src/ui/font-scale.ts)
+  const fontKey = useFontScaleKey();
   const lines = fields
     .map((field) => ({ field, text: valueText(field, recordValue(record, field.id), labels) }))
     .filter((line) => line.text)
     .slice(0, max);
   if (!lines.length) return null;
   return (
-    <View style={styles.lines}>
+    <View key={fontKey} style={styles.lines}>
       {lines.map(({ field, text }) => (
         <Text key={field.id} numberOfLines={1} style={styles.line}>
           <Text style={styles.lineName}>{field.name} </Text>

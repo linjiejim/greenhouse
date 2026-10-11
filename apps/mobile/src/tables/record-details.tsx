@@ -17,6 +17,7 @@ import { downloadAndShare } from '../lib/share-file';
 import { useT } from '../lib/i18n';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon } from '../ui/core';
+import { useFontScaleKey } from '../ui/font-scale';
 import { alertError } from '../ui/dialogs';
 import { FieldValueView } from './field-value';
 import {
@@ -104,6 +105,7 @@ export function FieldsCard({
   const t = useT();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const fontKey = useFontScaleKey();
   if (!fields.length) return null;
   return (
     <View style={styles.section}>
@@ -114,7 +116,7 @@ export function FieldsCard({
         {fields.map((field, index) => {
           const value = recordValue(record, field.id);
           return (
-            <View key={field.id} style={[styles.row, index < fields.length - 1 && styles.rowSep]}>
+            <View key={`${field.id}:${fontKey}`} style={[styles.row, index < fields.length - 1 && styles.rowSep]}>
               <Text style={styles.name}>{field.name}</Text>
               {field.type === 'attachment' && attachmentIds(value).length ? (
                 <View style={styles.files}>

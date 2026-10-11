@@ -12,6 +12,7 @@ import type { TableViewConfig } from '../../shared/tables';
 import { useT } from '../../lib/i18n';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
 import { EmptyState, LoadingState } from '../../ui/empty';
+import { useFontScaleKey } from '../../ui/font-scale';
 import { AuthImage } from '../auth-image';
 import { RecordLines } from '../field-value';
 import { attachmentIds, recordTitle, recordValue } from '../model/fields';
@@ -34,6 +35,7 @@ export function GalleryView({
   const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
   const { width } = useWindowDimensions();
+  const fontKey = useFontScaleKey();
   const cardW = Math.floor((width - space.margin * 2 - GAP) / 2);
   const cover = config?.coverFieldId ? ctx.fields.find((field) => field.id === config.coverFieldId) : undefined;
   const rest = useMemo(() => ctx.shown.filter((field) => field.id !== ctx.primary?.id), [ctx.shown, ctx.primary]);
@@ -53,7 +55,7 @@ export function GalleryView({
           fit={config?.fit === 'contain' ? 'contain' : 'cover'}
           style={[styles.cover, { height: Math.round(cardW * 0.75) }]}
         />
-        <View style={styles.body}>
+        <View key={fontKey} style={styles.body}>
           <Text numberOfLines={2} style={styles.title}>
             {title}
           </Text>

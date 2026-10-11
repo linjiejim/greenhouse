@@ -17,6 +17,7 @@ import type { TableViewConfig } from '../../shared/tables';
 import { useT } from '../../lib/i18n';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
 import { EmptyState, LoadingState } from '../../ui/empty';
+import { useFontScaleKey } from '../../ui/font-scale';
 import { Lanes, useLaneCardStyle, type LaneSpec } from '../../ui/lanes';
 import { NativeMenu, menuSections, type MenuItem } from '../../ui/menu';
 import { tablesFilePath } from '../../api/tables';
@@ -145,6 +146,7 @@ function KanbanCard({
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const cardStyle = useLaneCardStyle();
+  const fontKey = useFontScaleKey();
   const title = recordTitle(record, ctx.fields, ctx.labels);
   return (
     <NativeMenu trigger="longPress" items={items} onSelect={onSelect}>
@@ -155,7 +157,7 @@ function KanbanCard({
         style={({ pressed }) => [cardStyle, pressed && { opacity: 0.7 }]}
       >
         {coverPath ? <AuthImage path={coverPath} style={styles.cover} /> : null}
-        <Text numberOfLines={3} style={styles.title}>
+        <Text key={fontKey} numberOfLines={3} style={styles.title}>
           {title}
         </Text>
         <RecordLines record={record} fields={rest} labels={ctx.labels} max={2} />

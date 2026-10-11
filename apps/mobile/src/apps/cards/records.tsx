@@ -35,6 +35,7 @@ import { groupRecords, laneValue, onDay } from '../../tables/model/views';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
 import { NativeButton } from '../../ui/button';
 import { LoadingState } from '../../ui/empty';
+import { useFontScaleKey } from '../../ui/font-scale';
 import { Lanes, useLaneCardStyle } from '../../ui/lanes';
 import { ListRow } from '../../ui/list';
 import { useLocaleEnv } from '../../ui/native-form';
@@ -166,6 +167,7 @@ export function KanbanCard(props: AppCardProps) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const laneCard = useLaneCardStyle();
+  const fontKey = useFontScaleKey();
   const card = props.card as Extract<AppCard, { kind: 'kanban' }>;
   const { data, labels, byId, rest } = useRows({ ...props, card });
   const group = byId.get(card.groupFieldId);
@@ -231,7 +233,7 @@ export function KanbanCard(props: AppCardProps) {
                         style={styles.cover}
                       />
                     ) : null}
-                    <Text numberOfLines={3} style={styles.title}>
+                    <Text key={fontKey} numberOfLines={3} style={styles.title}>
                       {recordTitle(record, [...byId.values()], labels)}
                     </Text>
                     <RecordLines
@@ -333,6 +335,7 @@ export function GalleryCard(props: AppCardProps) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const { width } = useWindowDimensions();
+  const fontKey = useFontScaleKey();
   const card = props.card as Extract<AppCard, { kind: 'gallery' }>;
   const { data, labels, fields, byId, rest } = useRows({ ...props, card });
   const cover = card.coverFieldId ? byId.get(card.coverFieldId) : undefined;
@@ -374,7 +377,7 @@ export function GalleryCard(props: AppCardProps) {
                       }
                       style={{ height: Math.round(tileW * 0.75) }}
                     />
-                    <View style={styles.tileBody}>
+                    <View key={fontKey} style={styles.tileBody}>
                       <Text numberOfLines={2} style={styles.title}>
                         {title}
                       </Text>
