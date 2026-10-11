@@ -14,11 +14,14 @@
  *    about it: overview, memory, notes, schedules, separate chats); an old
  *    group is a closed record and opens nothing. One VoiceOver button:
  *    "Sprouty, Browsing github.com".
- *  - Right: one system menu, kept short (2026-10: Bot Profile, Conversation
- *    Info and Invite a Bot left it — the title opens the profile, Bots bring
- *    each other in): New Chat (subtitle: the Bot's name) and Show › (the reply
- *    details, global — src/chat/reply-details-menu.tsx). No ✎ (a thread is not
- *    a session), no share (the server refuses to share Bots conversations), no
+ *  - Right: 🖥 the member's computer (when computers run here — it is the
+ *    member's, shared by all their Bots, so it sits on the bar rather than in
+ *    one Bot's profile; spec docs/specs/20261011-mobile-computer.md), then one
+ *    system menu, kept short (2026-10: Bot Profile, Conversation Info and
+ *    Invite a Bot left it — the title opens the profile, Bots bring each other
+ *    in): New Chat (subtitle: the Bot's name) and Show › (the reply details,
+ *    global — src/chat/reply-details-menu.tsx). No ✎ (a thread is not a
+ *    session), no share (the server refuses to share Bots conversations), no
  *    delete.
  *
  * The title view reads a tiny store the screen publishes to
@@ -50,8 +53,8 @@ import { drawerButtonLabel, menuBadge } from './thread-screen-model';
 
 /** Navigation-bar text never grows past this Dynamic Type multiple (the system's large content viewer covers it). */
 const MAX_FONT_SCALE = 1.3;
-/** Room the bar's own buttons take (☰ and ⋯ glass buttons + margins). */
-const BAR_BUTTONS_W = 152;
+/** Room the bar's own buttons take (☰, 🖥 and ⋯ glass buttons + margins). */
+const BAR_BUTTONS_W = 196;
 
 export interface ThreadHeaderState {
   title: string;
@@ -156,6 +159,7 @@ export function ThreadTitle({ sessionId, fallbackTitle }: { sessionId: string; f
 
 export interface ThreadHeaderActions {
   openDrawer: () => void;
+  openComputer: () => void;
   askInChat: () => void;
 }
 
@@ -170,6 +174,7 @@ export const ThreadHeader = memo(function ThreadHeader({
   badge,
   ownerName,
   canAsk,
+  hasComputer,
   actions,
 }: {
   sessionId: string;
@@ -181,6 +186,8 @@ export const ThreadHeader = memo(function ThreadHeader({
   ownerName: string | null;
   /** A DM whose Bot can still answer a new chat. */
   canAsk: boolean;
+  /** Computers run on this server: the 🖥 button opens the member's. */
+  hasComputer: boolean;
   actions: ThreadHeaderActions;
 }) {
   const t = useT();
@@ -208,6 +215,13 @@ export const ThreadHeader = memo(function ThreadHeader({
         </Stack.Toolbar.Button>
       </Stack.Toolbar>
       <Stack.Toolbar placement="right">
+        {hasComputer ? (
+          <Stack.Toolbar.Button
+            icon={toolbarIcon('computer')}
+            accessibilityLabel={t('bots.computer.open')}
+            onPress={actions.openComputer}
+          />
+        ) : null}
         <Stack.Toolbar.Menu icon={toolbarIcon('more')} accessibilityLabel={t('common.more')}>
           <Stack.Toolbar.Menu inline hidden={!canAsk}>
             {/* "New Chat" over the Bot's name: one short line in any language, however long the name */}

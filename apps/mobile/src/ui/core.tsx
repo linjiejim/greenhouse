@@ -139,6 +139,12 @@ const ICONS = {
   sleep: ['moon.zzz', 'bedtime'],
   at: ['at', 'alternate_email'],
   alertCircle: ['exclamationmark.circle', 'error'],
+  // ── the member's computer (screen, keys, zoom) ──
+  computer: ['desktopcomputer', 'computer'],
+  keyboard: ['keyboard', 'keyboard'],
+  chevL: ['chevron.left', 'chevron_left'],
+  zoomIn: ['plus.magnifyingglass', 'zoom_in'],
+  zoomOut: ['minus.magnifyingglass', 'zoom_out'],
 } as const satisfies Record<string, readonly [SFSymbol, AndroidSymbolName]>;
 
 export type IconName = keyof typeof ICONS;

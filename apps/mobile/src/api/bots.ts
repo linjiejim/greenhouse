@@ -34,6 +34,10 @@ import type {
   BotRequestView,
   BotTaskView,
   BotView,
+  ComputerFileList,
+  ComputerProcessLog,
+  ComputerProcessView,
+  ComputerStatusView,
 } from '../shared/bots';
 import type { BotMemoryView, BotsOverview, BotWriteInput, ConversationPage } from '../shared/bots-wire';
 import { api } from './client';
@@ -300,4 +304,90 @@ export function decideRequest(requestId: string, body: BotRequestDecision): Prom
     jsonInit('POST', body),
     (res) => (res as { request: BotRequestView }).request,
   );
+}
+
+// ─── The member's computer (spec docs/specs/20261011-mobile-computer.md) ─
+//
+// One computer per member, shared by all their Bots (apps/api/src/bots/computer).
+// The screen itself is a WebSocket the viewer page opens with a one-time ticket
+// (`computerViewToken`); everything else is plain REST. Only `takeover`,
+// `handback` and `typeIntoComputer` touch the lease.
+
+/** Its state, who controls it (`bot` / `user`), the start queue, the runtime behind it. */
+export function computerStatus(): Promise<BotsRead<ComputerStatusView>> {
+  return read('/api/bots/computer', whole<ComputerStatusView>);
+}
+
+/** Wake it. Resolves once it runs — or with `queue_position` set when the org's slots are full. */
+export function startComputer(): Promise<BotsWrite<ComputerStatusView>> {
+  return call('/api/bots/computer/start', jsonInit('POST'), whole<ComputerStatusView>);
+}
+
+/** A one-time, 60-second ticket for the live screen. Fetch it right before connecting. */
+export function computerViewToken(): Promise<BotsWrite<{ token: string; expires_at: string }>> {
+  return call('/api/bots/computer/view-token', jsonInit('POST'), whole<{ token: string; expires_at: string }>);
+}
+
+/** `ws(s)://<station>/api/ws/computer?token=…` — the ticket is the credential (no bearer token in it). */
+export function computerViewerUrl(apiBase: string, token: string): string {
+  const base = apiBase.replace(/\/+$/, '').replace(/^http(s?):\/\//i, (_m, s: string) => `ws${s.toLowerCase()}://`);
+  return `${base}/api/ws/computer?token=${enc(token)}`;
+}
+
+/** Take the lease: the server stops the Bots' computer actions (waking it if asleep) and forwards this member's input. */
+export function takeoverComputer(): Promise<BotsWrite<ComputerStatusView>> {
+  return call('/api/bots/computer/takeover', jsonInit('POST'), whole<ComputerStatusView>);
+}
+
+/**
+ * Give the lease back. The server settles the card it answers — `requestId`, or
+ * else the single take-over / sign-in card waiting in `sessionId` — and wakes the
+ * Bot that asked, with the note as context. Neither → the lease is just released.
+ */
+export function handbackComputer(
+  input: { note?: string; requestId?: string; sessionId?: string } = {},
+): Promise<BotsWrite<ComputerStatusView>> {
+  const note = input.note?.trim();
+  return call(
+    '/api/bots/computer/handback',
+    jsonInit('POST', {
+      ...(note ? { note } : {}),
+      ...(input.requestId ? { request_id: input.requestId } : {}),
+      ...(input.sessionId ? { session_id: input.sessionId } : {}),
+    }),
+    whole<ComputerStatusView>,
+  );
+}
+
+/**
+ * Insert text into the focused field of the computer's browser (CDP insertText:
+ * IME output and pasted text that raw VNC key events cannot carry). Only while
+ * this member holds the lease — else 409 `lease_required`.
+ */
+export function typeIntoComputer(text: string): Promise<BotsWrite<void>> {
+  return call('/api/bots/computer/type', jsonInit('POST', { text }), nothing);
+}
+
+/** A folder of the computer (default `~/work`; `~` = /home/agent). Directories first, ≤500 entries. Starts it if needed. */
+export function listComputerFiles(path?: string): Promise<BotsRead<ComputerFileList>> {
+  return read(`/api/bots/computer/files${path ? `?path=${enc(path)}` : ''}`, whole<ComputerFileList>);
+}
+
+/** The download route of one file, for `downloadAndShare` (src/lib/share-file.ts). */
+export function computerFilePath(path: string): string {
+  return `/api/bots/computer/files/download?path=${enc(path)}`;
+}
+
+/** Long jobs started with `gh-jobs` (a Bot's run_background, or a terminal). Empty while it is off — never starts it. */
+export function listComputerProcesses(): Promise<BotsRead<ComputerProcessView[]>> {
+  return read('/api/bots/computer/processes', (body) => (body as { processes: ComputerProcessView[] }).processes);
+}
+
+/** The tail of a job's log (redacted by the server). */
+export function computerProcessLog(id: string, lines = 200): Promise<BotsRead<ComputerProcessLog>> {
+  return read(`/api/bots/computer/processes/${enc(id)}/log?lines=${lines}`, whole<ComputerProcessLog>);
+}
+
+export function stopComputerProcess(id: string): Promise<BotsWrite<void>> {
+  return call(`/api/bots/computer/processes/${enc(id)}/stop`, jsonInit('POST'), nothing);
 }

@@ -1,15 +1,15 @@
 /**
- * The three take-over cards' bodies. The phone cannot show the computer, so
- * each says plainly what can be done from here (D11):
+ * The three take-over cards' bodies (buttons: ./decision.ts `cardButtons`;
+ * the computer page: app/bots/computer.tsx):
  * - `handback` — the computer raised it itself (the member took over while a
- *   Bot was mid-action, or holds it while one waits): the page and site, and
- *   "Hand Back" is the only action. The page title is page content: on this
- *   card only, never in a transcript line or a notification.
+ *   Bot was mid-action, or holds it while one waits): the page and site;
+ *   "Hand Back", or open the computer. The page title is page content: on
+ *   this card only, never in a transcript line or a notification.
  * - `captcha` — a site asked for human verification, which only a person at
- *   the computer screen can pass: skip it here (the Bot tries another way) or
- *   do it on the web.
- * - `takeover` — a Bot asked for a hand on the computer: skip, or confirm it
- *   was done on the web (the server reads approve as "done, hand back").
+ *   the computer screen can pass: "Verify" opens the computer page in control,
+ *   whose Done hands back for this card — or skip (the Bot tries another way).
+ * - `takeover` — a Bot asked for a hand on the computer: "Take Over", the same
+ *   way, or skip.
  */
 
 import React from 'react';

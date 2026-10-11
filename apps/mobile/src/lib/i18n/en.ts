@@ -8,6 +8,7 @@ import { botsThreadEn } from './bots/thread.en';
 import { botsCardsEn } from './bots/cards.en';
 import { botsNavEn } from './bots/nav.en';
 import { botsManageEn } from './bots/manage.en';
+import { botsComputerEn } from './bots/computer.en';
 
 export const en = {
   common: {
@@ -641,6 +642,7 @@ export const en = {
     ...botsCardsEn,
     ...botsNavEn,
     ...botsManageEn,
+    ...botsComputerEn,
   },
 };
 

@@ -4,6 +4,7 @@ import { botsThreadZh } from './bots/thread.zh';
 import { botsCardsZh } from './bots/cards.zh';
 import { botsNavZh } from './bots/nav.zh';
 import { botsManageZh } from './bots/manage.zh';
+import { botsComputerZh } from './bots/computer.zh';
 
 export const zh: Catalog = {
   common: {
@@ -631,5 +632,6 @@ export const zh: Catalog = {
     ...botsCardsZh,
     ...botsNavZh,
     ...botsManageZh,
+    ...botsComputerZh,
   },
 };
