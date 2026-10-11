@@ -16,7 +16,7 @@ import { ListRow, ListSectionHeader, type RowPosition } from '../../ui/list';
 import { NativeButton } from '../../ui/button';
 import { recordSummary } from '../field-value';
 import { recordTitle } from '../model/fields';
-import { groupRecords } from '../model/views';
+import { groupableField, groupRecords } from '../model/views';
 import type { RecordsData, ViewContext } from './types';
 
 function position(index: number, count: number): RowPosition {
@@ -40,7 +40,10 @@ export function ListView({
 }) {
   const t = useT();
   const { hex } = useTheme();
-  const groupField = groupFieldId ? ctx.fields.find((field) => field.id === groupFieldId) : undefined;
+  // sections only for selects / people (what the lanes read); other groupings keep the server's order, ungrouped
+  const groupField = groupFieldId
+    ? ctx.fields.find((field) => field.id === groupFieldId && groupableField(field))
+    : undefined;
   const rest = useMemo(() => ctx.shown.filter((field) => field.id !== ctx.primary?.id), [ctx.shown, ctx.primary]);
   const records = data.records;
 
