@@ -8,7 +8,8 @@
  *
  *   shared.ts       errors, limits, field / value validation, pure helpers
  *   query.ts        THE SQL compiler (clauses, tokens, row scopes, queries)
- *   compute.ts      formula / rollup computation and recompute
+ *   compute.ts      formula / rollup / lookup computation, recompute, dependent refresh
+ *   formula-eval.ts the formula evaluator (pure; the text syntax is @greenhouse/types/table-formula)
  *   schema.ts       Bases, tables, fields, schema versions
  *   members.ts      Base membership rows
  *   views.ts        saved views

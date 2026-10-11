@@ -283,6 +283,8 @@ export function allowedOperators(type: TableFieldType): ReadonlySet<TableFilterO
   if (type === 'multi_select' || type === 'multi_user' || type === 'attachment') {
     return new Set([...common, 'contains', 'not_contains']);
   }
+  // A lookup is a list of the linked records' values: "some value contains", or empty.
+  if (type === 'lookup') return new Set(['contains', 'is_empty', 'is_not_empty']);
   return new Set(common);
 }
 
@@ -332,8 +334,15 @@ function equalityExpression(key: string, value: unknown): SQL {
   return sql`${recordFieldJson(key)} = ${JSON.stringify(value)}::jsonb`;
 }
 
+/** Missing, JSON null, "" or an empty list. */
 function emptyExpression(key: string): SQL {
-  return sql`(${recordFieldJson(key)} IS NULL OR ${recordFieldJson(key)} = 'null'::jsonb OR ${recordFieldText(key)} = '')`;
+  return sql`(${recordFieldJson(key)} IS NULL OR ${recordFieldJson(key)} = 'null'::jsonb OR ${recordFieldText(key)} = '' OR ${recordFieldJson(key)} = '[]'::jsonb)`;
+}
+
+/** Some element of a list value (a lookup) contains `text`, case-insensitively. */
+function listElementContains(key: string, text: string): SQL {
+  const list = recordFieldJson(key);
+  return sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(${list}) = 'array' THEN ${list} ELSE '[]'::jsonb END) AS lookup_value(value) WHERE lookup_value.value ILIKE ${`%${escapeLike(text)}%`} ESCAPE '\\')`;
 }
 
 function comparison(left: SQL, operator: 'gt' | 'gte' | 'lt' | 'lte', right: SQL): SQL {
@@ -496,6 +505,12 @@ function fieldClause(clause: TableFilterClause, field: TableFieldRow, ctx: Table
   if (operator === 'is_empty') return emptyExpression(key);
   if (operator === 'is_not_empty') return sql`NOT ${emptyExpression(key)}`;
   if (type === 'datetime') return datetimeClause(clause, jsonDatetimeTarget(key), ctx, field.name);
+  if (type === 'lookup') {
+    if (typeof clause.value !== 'string' || !clause.value.trim() || clause.value.length > 200) {
+      throw new TablesValidationError(`Field "${field.name}" contains expects text up to 200 characters`);
+    }
+    return listElementContains(key, clause.value.trim());
+  }
 
   const isUser = type === 'user' || type === 'multi_user';
   const resolve = (value: unknown): unknown =>
@@ -766,14 +781,21 @@ export function compileRecordQuery(
     const searchable = ctx.fields.filter((field) => {
       if (ctx.readable && !ctx.readable.has(field.id)) return false;
       const valueType = queryValueField(field).type;
-      return valueType === 'text' || valueType === 'long_text';
+      return valueType === 'text' || valueType === 'long_text' || valueType === 'lookup';
     });
     if (searchable.length === 0) {
       conditions.push(FALSE);
     } else {
-      const pattern = `%${escapeLike(query.search.trim())}%`;
+      const text = query.search.trim();
+      const pattern = `%${escapeLike(text)}%`;
       conditions.push(
-        or(...searchable.map((field) => sql`${recordFieldText(String(field.id))} ILIKE ${pattern} ESCAPE '\\'`))!,
+        or(
+          ...searchable.map((field) =>
+            field.type === 'lookup'
+              ? listElementContains(String(field.id), text)
+              : sql`${recordFieldText(String(field.id))} ILIKE ${pattern} ESCAPE '\\'`,
+          ),
+        )!,
       );
     }
   }

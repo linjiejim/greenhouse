@@ -24,6 +24,12 @@ import type {
   TableSchemaSnapshot,
 } from '@greenhouse/types/tables';
 import type { TableAccessScope } from '@greenhouse/types/table-access';
+import {
+  TABLE_FORMULA_FUNCTION_CATALOG,
+  TABLE_FORMULA_MAX_ARGS,
+  TABLE_FORMULA_MAX_DEPTH,
+  TABLE_FORMULA_MAX_NODES,
+} from '@greenhouse/types/table-formula';
 import type { Db } from '../../client.js';
 import type { TableFieldRow, TableRecordRow } from '../../schema/tables.js';
 
@@ -155,13 +161,20 @@ export function buildSchemaSnapshot(tableId: number, fields: TableFieldRow[]): T
   };
 }
 
+/**
+ * Shape check of a stored formula AST (no field lookups — `checkTableFormula`
+ * in schema.ts adds those): known node types and operators, catalog functions
+ * with their arity, and the size limits the editor enforces too.
+ */
 function normalizeFormulaExpression(
   expression: TableFormulaExpression,
   depth = 0,
   nodes = { count: 0 },
 ): TableFormulaExpression {
   nodes.count += 1;
-  if (depth > 12 || nodes.count > 100) throw new TablesValidationError('Formula is too complex');
+  if (depth > TABLE_FORMULA_MAX_DEPTH || nodes.count > TABLE_FORMULA_MAX_NODES) {
+    throw new TablesValidationError('Formula is too complex');
+  }
   if (!expression || typeof expression !== 'object' || Array.isArray(expression)) {
     throw new TablesValidationError('Formula expression is invalid');
   }
@@ -195,8 +208,18 @@ function normalizeFormulaExpression(
     if (!TABLE_FORMULA_FUNCTIONS.includes(expression.name)) {
       throw new TablesValidationError(`Unsupported formula function "${expression.name}"`);
     }
-    if (!Array.isArray(expression.args) || expression.args.length > 10) {
-      throw new TablesValidationError('Formula function supports at most 10 arguments');
+    if (!Array.isArray(expression.args) || expression.args.length > TABLE_FORMULA_MAX_ARGS) {
+      throw new TablesValidationError(`Formula function supports at most ${TABLE_FORMULA_MAX_ARGS} arguments`);
+    }
+    const spec = TABLE_FORMULA_FUNCTION_CATALOG[expression.name];
+    if (expression.args.length < spec.minArgs || expression.args.length > (spec.maxArgs ?? TABLE_FORMULA_MAX_ARGS)) {
+      const range =
+        spec.maxArgs === spec.minArgs
+          ? `${spec.minArgs}`
+          : spec.maxArgs === null
+            ? `at least ${spec.minArgs}`
+            : `${spec.minArgs}-${spec.maxArgs}`;
+      throw new TablesValidationError(`${expression.name.toUpperCase()} takes ${range} argument(s)`);
     }
     return {
       type: 'function',
@@ -221,9 +244,11 @@ export function formulaFieldIds(expression: TableFormulaExpression, result = new
 export function validateTableFieldConfig(type: TableFieldType, config: TableFieldConfig): TableFieldConfig {
   validateFieldType(type);
   if (type === 'lookup') {
-    // Phase 0 slice Fx implements lookup computation; until then the type is
-    // accepted by the contract but refused at creation.
-    throw new TablesValidationError('Lookup fields are not supported yet', 'not_supported');
+    const lookup = config.lookup;
+    if (!lookup || !isPositiveInteger(lookup.relationFieldId) || !isPositiveInteger(lookup.targetFieldId)) {
+      throw new TablesValidationError('Lookup fields require relationFieldId and targetFieldId');
+    }
+    return { version: 1, lookup: { relationFieldId: lookup.relationFieldId, targetFieldId: lookup.targetFieldId } };
   }
   if (type === 'relation') {
     if (!isPositiveInteger(config.relation?.targetTableId)) {

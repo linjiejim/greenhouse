@@ -172,8 +172,8 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_base_group_members` | PK `id`；UK `(base_id, group_id)` | 群组授权；`editor/viewer/custom`（群组不能授 builder），`custom_role_id` 同上 |
 | `table_tables` | PK `id`；UK `(base_id, name)` | Base 内的用户 Table 元数据；固定物理表，不做 runtime DDL；`schema_revision` 标识当前结构版本；`archived_at` = 软删（列表与 schema 查询已过滤，记录/字段/链接一律保留，恢复走 `pnpm cli tables restore-table`） |
 | `table_schema_versions` | PK `id`；UK `(table_id, version)` | Table 结构的不可变 JSONB 快照；字段创建/修改/归档时同事务递增，记录变更类型与操作者 |
-| `table_fields` | PK `id`；UK `(table_id, name)`；每 Table 一条 active primary 部分 UK | 稳定字段 ID、常用字段类型、required/primary、JSON 文本 config 与位置；支持 Relation/Formula/Rollup |
-| `table_field_dependencies` | 复合 PK `(field_id, depends_on_field_id)` | Formula/Rollup 字段依赖边，支持反向影响分析和级联重算 |
+| `table_fields` | PK `id`；UK `(table_id, name)`；每 Table 一条 active primary 部分 UK | 稳定字段 ID、常用字段类型、required/primary、JSON 文本 config 与位置；支持 Relation/Formula/Rollup/Lookup |
+| `table_field_dependencies` | 复合 PK `(field_id, depends_on_field_id)` | Formula/Rollup/Lookup 字段依赖边（`dependency_type`），支持反向影响分析、计算字段可见性闭包和级联重算 |
 | `table_views` | PK `id` | shared/personal Grid 视图；筛选、排序、显示字段和宽度存 config JSON 文本；revision 乐观并发 |
 | `table_forms` | PK `id`；UK `(table_id, name)` | 内部认证表单；draft/published、字段白名单、文案 config 与 revision；`audience JSONB`（`base/team/principals`，默认 base） |
 | `table_form_submissions` | PK `id`；部分 UK `(form_id, user_id) WHERE single_submit` | 每次提交一行，与记录同事务插入；`allowMultiple=false` 的表单写 `single_submit=true`，并发双击只成功一次 |

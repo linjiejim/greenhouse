@@ -498,17 +498,17 @@ describe('Scoped record writes', () => {
     ]);
   });
 
-  it('refuses lookup fields until they are implemented', async () => {
+  it('refuses a lookup that does not read through a relation of its table (computation: tables-fx.db.test.ts)', async () => {
     const w = await workspace();
     await expect(
       db.tables.createField({
         table_id: w.tableId,
         name: 'Lookup',
         type: 'lookup',
-        config: { lookup: { relationFieldId: 1, targetFieldId: 1 } },
+        config: { lookup: { relationFieldId: w.primary.id, targetFieldId: w.primary.id } },
         created_by: owner.id,
       }),
-    ).rejects.toMatchObject({ code: 'not_supported' });
+    ).rejects.toMatchObject({ code: 'invalid' });
   });
 });
 
