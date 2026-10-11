@@ -37,6 +37,18 @@ describe('FieldValue', () => {
     expect(render(<FieldValue field={field(1, 'boolean')} value={false} usersById={usersById} />, 'zh')).toBe('否');
   });
 
+  it('groups numbers in the UI language and keeps every stored decimal', () => {
+    const amount = field(2, 'number');
+    expect(render(<FieldValue field={amount} value={760000} usersById={usersById} />)).toBe('760,000');
+    expect(render(<FieldValue field={amount} value={1234.5678} usersById={usersById} />, 'zh')).toBe('1,234.5678');
+    expect(render(<FieldValue field={amount} value={-0.125} usersById={usersById} />)).toBe('-0.125');
+    expect(render(<FieldValue field={amount} value={1e21} usersById={usersById} />)).toBe('1e+21');
+    const total = field(3, 'formula', { formula: { resultType: 'number', expression: {} } });
+    expect(render(<FieldValue field={total} value={2500000} usersById={usersById} />)).toBe('2,500,000');
+    const sum = field(4, 'rollup', { rollup: { relationFieldId: 9, targetFieldId: 2, aggregation: 'sum' } });
+    expect(render(<FieldValue field={sum} value={12000} usersById={usersById} />)).toBe('12,000');
+  });
+
   it('renders a lookup array as read-only chips and an empty one as a dash', () => {
     const lookup = field(2, 'lookup', { lookup: { relationFieldId: 3, targetFieldId: 4 } });
     const html = render(<FieldValue field={lookup} value={['Acme', 'Globex']} usersById={usersById} />);
