@@ -55,6 +55,8 @@ export const appsZh: typeof appsEn = {
   },
   actionDone: '已完成',
   actionQueued: '已开始',
+  deleted: '记录已删除',
+  confirmDelete: '删除这条记录？',
   created: '已创建',
   submitted: '已提交',
   refusal: {

@@ -1,23 +1,36 @@
 /**
- * Reading an app's (role-trimmed) spec on the phone (./model.ts).
+ * Reading an app's (role-trimmed) spec on the phone (./model.ts): pages and
+ * cards, opening a record, what each write asks for and may send, who may
+ * move a lane, and which actions ask first.
  */
 
 import { describe, expect, it } from 'vitest';
 
-import type { AppCard, AppSpec } from '../shared/apps';
+import type { AppCard, AppRuntimeView, AppSpec } from '../shared/apps';
 import {
+  actionConfirmation,
   actionInputs,
   canMove,
   cardsInOrder,
   isMobileCard,
+  MANAGER_ROLE,
   pageFor,
   recordActions,
   recordCardCandidates,
   refusalOf,
+  writableFieldIds,
   writeTarget,
 } from './model';
 
 const layout = (y: number, x = 0) => ({ x, y, w: 6, h: 4 });
+const field = (id: number, editable: boolean) => ({
+  id,
+  name: `F${id}`,
+  type: 'text',
+  isPrimary: id === 1,
+  config: {},
+  editable,
+});
 const approve = {
   id: 'approve',
   label: 'Approve',
@@ -141,10 +154,38 @@ describe('writes', () => {
     expect(writeTarget(stats, 'submit')).toBeNull();
   });
 
-  it('moves lanes only for the roles the card allows', () => {
-    expect(canMove(board, 'approver')).toBe(true);
-    expect(canMove(board, 'requester')).toBe(false);
-    expect(canMove(mine, 'approver')).toBe(false);
+  it('moves lanes only for the roles the card allows, and only when the role may write the lane field', () => {
+    const as = (key: string, laneEditable = true): Pick<AppRuntimeView, 'role' | 'tables'> => ({
+      role: { key, name: key },
+      tables: [{ id: 1, name: 'Requests', fields: [field(1, true), field(3, laneEditable)] }],
+    });
+    expect(canMove(board, as('approver'))).toBe(true);
+    expect(canMove(board, as('requester'))).toBe(false);
+    expect(canMove(board, as(MANAGER_ROLE))).toBe(true);
+    expect(canMove(mine, as('approver'))).toBe(false);
+    // `$move` writes the lane field: a role that only reads it gets no "Move to" (the gateway would refuse).
+    expect(canMove(board, as('approver', false))).toBe(false);
+    expect(canMove({ ...board, move: {} } as AppCard, as('requester', false))).toBe(false);
+  });
+
+  it('offers a write only the fields the role may write', () => {
+    const view = { tables: [{ id: 1, name: 'Requests', fields: [field(1, true), field(2, false), field(4, true)] }] };
+    expect(writableFieldIds(view, 1, [4, 2, 1, 8])).toEqual([4, 1]);
+    expect(writableFieldIds(view, 9, [1])).toEqual([]);
+  });
+
+  it('asks before an action the builder asked for, and always before a delete', () => {
+    expect(actionConfirmation(approve)).toBeNull();
+    expect(actionConfirmation({ ...approve, confirm: 'Approve the purchase?' })).toEqual({
+      message: 'Approve the purchase?',
+      destructive: false,
+    });
+    const remove = { id: 'remove', label: 'Delete', do: { type: 'delete' as const } };
+    expect(actionConfirmation(remove)).toEqual({ message: null, destructive: true });
+    expect(actionConfirmation({ ...remove, confirm: 'Gone for good?' })).toEqual({
+      message: 'Gone for good?',
+      destructive: true,
+    });
   });
 
   it('reads why the gateway refused', () => {

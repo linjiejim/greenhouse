@@ -10,7 +10,8 @@
  *    run with them in the same write, at the record's revision;
  *  - `edit`   — the record's editable fields (`$edit`), only what changed.
  *
- * Fields come from the runtime view (my role's readable fields of that table);
+ * Fields come from the runtime view: the write's fields my role may write
+ * (`editable`; the gateway refuses the rest), or the record's editable ones;
  * people and related rows open the choice sheet fed by the gateway's
  * `/options`; attachment fields take photos (camera / library), uploaded as
  * they are picked (`/uploads`) and bound by the write. ✓ sends, ✕ asks before
@@ -28,7 +29,7 @@ import { getAppRecord, newRequestId, runAction, uploadAppFile } from '../../src/
 import { findCard, type AppButton, type AppRecordRow } from '../../src/shared/apps';
 import { useT } from '../../src/lib/i18n';
 import { reportDone, reportRefusal } from '../../src/apps/actions';
-import { tableFields, writeTarget, type AppWriteMode } from '../../src/apps/model';
+import { tableFields, writableFieldIds, writeTarget, type AppWriteMode } from '../../src/apps/model';
 import { useApps } from '../../src/apps/store';
 import { FieldForm, invalidNumbers, type AttachmentDraft } from '../../src/tables/field-control';
 import { useValueLabels } from '../../src/tables/labels';
@@ -108,7 +109,7 @@ function AppForm() {
   const fields = useMemo<FieldLike[]>(() => {
     if (!view || !target) return [];
     const byId = new Map((tableFields(view, target.tableId) as FieldLike[]).map((field) => [field.id, field]));
-    const ids = mode === 'edit' ? (editing?.editable ?? []) : target.fieldIds;
+    const ids = mode === 'edit' ? (editing?.editable ?? []) : writableFieldIds(view, target.tableId, target.fieldIds);
     const required = new Set(target.required);
     return ids
       .map((id) => byId.get(id))

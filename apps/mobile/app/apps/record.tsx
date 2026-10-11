@@ -6,6 +6,8 @@
  * reason…), Edit when the card lets my role edit fields of it (`$edit`), and
  * its activity and comments when the card shows them and my role may comment.
  * Attachments download through the gateway's file route (readable for me only).
+ * A delete action run here leaves the page; a record that is gone (deleted
+ * elsewhere, out of my rows) shows as missing — never the stale copy.
  *
  * Params: `appId`, `pageId`, `cardId`, `recordId`.
  */
@@ -69,7 +71,11 @@ function AppRecord() {
     if (result.ok) {
       setData(result.value);
       setState('ok');
-    } else setState(result.definitive ? 'gone' : (prev) => (prev === 'ok' ? 'ok' : 'failed'));
+    } else if (result.definitive) {
+      // gone, or no longer mine to read: drop what is on screen (its actions would only be refused)
+      setData(null);
+      setState('gone');
+    } else setState((prev) => (prev === 'ok' ? 'ok' : 'failed'));
   }, [appId, pageId, cardId, recordId]);
   useEffect(() => {
     void load();
@@ -183,7 +189,9 @@ function AppRecord() {
               live
               choose={async (id) => {
                 const action = unique.find((entry) => entry.id === id);
-                if (action) await actions.run({ pageId, card, action, record });
+                if (!action) return;
+                const done = await actions.run({ pageId, card, action, record });
+                if (done?.outcome === 'deleted' && router.canGoBack()) router.back();
               }}
             />
           </View>

@@ -6,7 +6,8 @@
  *    the first five, then "Show All (N)"; a card that may create shows "+";
  *  - kanban: the shared `Lanes` (one per option of the group field, + "no
  *    value"), cards with their actions on the face; a long-press moves the
- *    record to another lane when the card lets my role (`move`, `$move`);
+ *    record to another lane when the card lets my role (`move`, `$move`) and
+ *    my role may write the lane field;
  *  - calendar: the system date picker over the day's records (rows loaded so
  *    far, filtered by day on the phone — the gateway takes no date window);
  *  - gallery: two-up cover images through the gateway's file route.
@@ -172,7 +173,7 @@ export function KanbanCard(props: AppCardProps) {
   const { data, labels, byId, rest } = useRows({ ...props, card });
   const group = byId.get(card.groupFieldId);
   const cover = card.coverFieldId ? byId.get(card.coverFieldId) : undefined;
-  const movable = canMove(card, props.view.role.key);
+  const movable = canMove(card, props.view);
   const note = stateNote(data, t);
   const lanes = useMemo(
     () =>

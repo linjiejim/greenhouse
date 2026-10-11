@@ -9,7 +9,8 @@
  *    records-like card with a detail view, on the named page first, reading the
  *    record's table first;
  *  - what a card writes and with which fields (form submit, create, a button's
- *    new record, an action's inputs);
+ *    new record, an action's inputs) — only fields my role may write;
+ *  - which actions ask first (a delete always does), and who may move a lane;
  *  - why the gateway refused an action (`details.reason`).
  */
 
@@ -85,9 +86,31 @@ export function cardTableId(card: AppCard): number | null {
   return null;
 }
 
+/** The role a manager (Base owner / builder) sees the app as: full access, named on the phone, not by the server. */
+export const MANAGER_ROLE = '__manager__';
+
 /** The fields of a table as the runtime view describes them (role-readable ones only). */
-export function tableFields(view: AppRuntimeView, tableId: number | null) {
+export function tableFields(view: Pick<AppRuntimeView, 'tables'>, tableId: number | null) {
   return (tableId ? view.tables.find((table) => table.id === tableId)?.fields : undefined) ?? [];
+}
+
+/**
+ * The inputs of a write my role makes (a form, a create, a button's new record,
+ * an action's inputs): the listed fields, in order, that the runtime view says
+ * I may write. The gateway refuses any other key — a field I may only read is
+ * never offered (the spec's defaults are the server's, never shown).
+ */
+export function writableFieldIds(
+  view: Pick<AppRuntimeView, 'tables'>,
+  tableId: number,
+  ids: readonly number[],
+): number[] {
+  const editable = new Set(
+    tableFields(view, tableId)
+      .filter((field) => field.editable)
+      .map((field) => field.id),
+  );
+  return ids.filter((id) => editable.has(id));
 }
 
 /** The declared actions a card shows on a record now (`record.actionIds`: allowed for my role, `when` holds). */
@@ -97,6 +120,16 @@ export function recordActions(
 ): AppRecordAction[] {
   const allowed = new Set(actionIds);
   return (actions ?? []).filter((action) => allowed.has(action.id));
+}
+
+/**
+ * Whether a declared action asks before it runs, and how: the builder's words
+ * when it wrote some; a delete always asks (in our words, red), as on the web.
+ */
+export function actionConfirmation(action: AppRecordAction): { message: string | null; destructive: boolean } | null {
+  const destructive = action.do.type === 'delete';
+  if (!action.confirm && !destructive) return null;
+  return { message: action.confirm ?? null, destructive };
 }
 
 /** An action that collects fields first (a reason to reject, an amount to approve). */
@@ -178,15 +211,19 @@ export function writeTarget(
   return null;
 }
 
-/** Whether my role may drag a kanban card's record to another lane (`move.roles`; off unless set). */
-export function canMove(card: AppCard, roleKey: string): boolean {
-  if (card.kind !== 'kanban' || !card.move) return false;
-  return !card.move.roles || card.move.roles.includes(roleKey) || roleKey === '__manager__';
+/**
+ * Whether my role may move a kanban card's record to another lane: the card
+ * lets my role (`move`, `move.roles`; off unless set) and I may write its lane
+ * field — `$move` writes that field, and the gateway refuses it otherwise.
+ */
+export function canMove(card: AppCard, view: Pick<AppRuntimeView, 'role' | 'tables'>): boolean {
+  if (card.kind !== 'kanban' || !card.move || !forRole(card.move.roles, view.role.key)) return false;
+  return tableFields(view, card.source.tableId).some((field) => field.id === card.groupFieldId && field.editable);
 }
 
 /** Whether my role sees a role-limited thing (`roles` absent = everyone on the page). */
 export function forRole(roles: readonly string[] | undefined, roleKey: string): boolean {
-  return !roles || roles.includes(roleKey) || roleKey === '__manager__';
+  return !roles || roles.includes(roleKey) || roleKey === MANAGER_ROLE;
 }
 
 const REFUSALS: readonly AppActionRefusal[] = [

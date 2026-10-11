@@ -59,6 +59,8 @@ export const appsEn = {
   // actions
   actionDone: 'Done',
   actionQueued: 'Started',
+  deleted: 'Record deleted',
+  confirmDelete: 'Delete this record?',
   created: 'Created',
   submitted: 'Submitted',
   refusal: {

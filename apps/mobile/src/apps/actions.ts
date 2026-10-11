@@ -5,11 +5,16 @@
  * delete) and the built-ins (`$move` a kanban lane, `$create` / `$submit` /
  * `$edit` from the write form). A declared action:
  *
- *  1. asks first when the builder wrote a confirmation (a delete reads red);
+ *  1. asks first when the builder wrote a confirmation, and always before a
+ *     delete (the builder's words, else ours; red) — as on the web;
  *  2. collects its input fields in the write form (`/apps/form`, mode
  *     `action`) when it has some — the form runs it with them;
  *  3. else runs at the record's revision; the result is a short HUD ("Done",
- *     "Started" for an automation), the app's cards refetch.
+ *     "Started" for an automation, "Record deleted"), the app's cards refetch;
+ *     `run` resolves to it, so a record screen can leave a deleted record.
+ *
+ * Every write carries the viewer's time zone (src/api/apps.ts `runAction`):
+ * `$today` / `$now` in the spec's values and defaults are the viewer's day.
  *
  * A refusal says why in the member's words (`details.reason`: the condition no
  * longer holds, someone changed the record, required input, not for my role,
@@ -24,7 +29,7 @@ import type { AppActionResult, AppCard, AppRecordAction, AppRecordRow } from '..
 import { t } from '../lib/i18n';
 import { alertError, confirmAction } from '../ui/dialogs';
 import { toast } from '../ui/toast';
-import { actionInputs, refusalOf } from './model';
+import { actionConfirmation, actionInputs, refusalOf } from './model';
 import { useApps } from './store';
 
 /** Say why a write was refused (or that it failed), as a system alert. */
@@ -40,6 +45,7 @@ export function reportRefusal(result: Extract<Write<unknown>, { ok: false }>, la
 export function reportDone(result: AppActionResult): void {
   if (result.outcome === 'queued') toast(t('apps.actionQueued'), 'sparkle');
   else if (result.outcome === 'created') toast(t('apps.created'), 'checkCircle');
+  else if (result.outcome === 'deleted') toast(t('apps.deleted'), 'checkCircle');
   else toast(t('apps.actionDone'), 'checkCircle');
 }
 
@@ -47,17 +53,27 @@ export function useAppActions(appId: number, previewRole?: string) {
   const router = useRouter();
   const written = useApps((s) => s.written);
 
-  /** Run a declared action on a record (confirm → inputs → write). */
+  /**
+   * Run a declared action on a record (confirm → inputs → write). Resolves to
+   * what the gateway did, or null when nothing ran here (declined, refused, or
+   * handed to the write form).
+   */
   const run = useCallback(
-    async (input: { pageId: string; card: AppCard; action: AppRecordAction; record: AppRecordRow }) => {
+    async (input: {
+      pageId: string;
+      card: AppCard;
+      action: AppRecordAction;
+      record: AppRecordRow;
+    }): Promise<AppActionResult | null> => {
       const { pageId, card, action, record } = input;
-      if (action.confirm) {
+      const ask = actionConfirmation(action);
+      if (ask) {
         const yes = await confirmAction({
-          title: action.confirm,
+          title: ask.message ?? t('apps.confirmDelete'),
           confirmLabel: action.label,
-          destructive: action.do.type === 'delete',
+          destructive: ask.destructive,
         });
-        if (!yes) return;
+        if (!yes) return null;
       }
       if (actionInputs(action)) {
         router.push({
@@ -72,7 +88,7 @@ export function useAppActions(appId: number, previewRole?: string) {
             revision: String(record.revision),
           },
         });
-        return;
+        return null;
       }
       const result = await runAction(appId, {
         pageId,
@@ -86,10 +102,11 @@ export function useAppActions(appId: number, previewRole?: string) {
       if (!result.ok) {
         reportRefusal(result, action.label);
         written(appId); // the record may have moved on: show what is true now
-        return;
+        return null;
       }
       reportDone(result.value);
       written(appId);
+      return result.value;
     },
     [appId, previewRole, router, written],
   );
