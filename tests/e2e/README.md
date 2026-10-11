@@ -81,6 +81,7 @@ DATABASE_URL=postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test \
 | `agent-proxy.e2e.test.ts` | 内部 Agent 工具代理认证、清单与写工具确认门 |
 | `eval-system.e2e.test.ts` | 评测题库 CRUD、运行列表、权限控制 |
 | `oauth-machine-clients.e2e.test.ts` | OAuth 机器客户端：创建/轮换/禁用、client_credentials 换 token、scope 收窄与审计 |
+| `tables-access.e2e.test.ts` | Tables 自定义角色（行 / 列权限、隐藏字段的筛选排序分组被拒、越权 id 404、文件柜对其关闭）、群组授权不能给 builder、被引用的角色删除 409 |
 
 ## 注意事项
 
