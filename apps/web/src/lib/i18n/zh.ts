@@ -1578,6 +1578,7 @@ const zh: Messages = {
     knowledge: { label: '知识库', description: '检索和阅读团队与个人文档。' },
     projects: { label: '项目', description: '读取项目及其任务。' },
     tables: { label: '表格', description: '读取团队表格中的记录。' },
+    apps: { label: '应用', description: '按你在各应用中的角色，使用分发给你的应用。' },
     skills: { label: '技能中心', description: '浏览并下载团队共享的 Agent 技能。' },
     chat: { label: '会话历史', description: '搜索你自己的历史对话并读取其中的消息。' },
     automation: { label: '定时任务', description: '读取你的定时任务及其执行情况。' },
@@ -3316,6 +3317,7 @@ const zh: Messages = {
       formula: '公式',
       rollup: '汇总',
       lookup: '查找引用',
+      ai: 'AI 生成',
     },
     filter: {
       eq: '等于',

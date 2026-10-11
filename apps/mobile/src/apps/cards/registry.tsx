@@ -18,6 +18,16 @@ import type { AppCardProps } from './types';
 
 type CardRenderer = (props: AppCardProps) => React.ReactElement | null;
 
+/** A kind this build does not draw: "open this card on the web". */
+function WebOnlyCard(props: AppCardProps) {
+  const t = useT();
+  return (
+    <CardFrame title={(props.card as { title?: string }).title}>
+      <CardNote icon="open" text={t('apps.cardWebOnly')} hint={t('apps.cardWebOnlyHint')} />
+    </CardFrame>
+  );
+}
+
 export const APP_CARD_RENDERERS = {
   records: RecordsCard,
   kanban: KanbanCard,
@@ -29,18 +39,14 @@ export const APP_CARD_RENDERERS = {
   pivot: AggregateCard,
   text: TextCard,
   buttons: ButtonsCard,
+  // Phase 2: slice M draws these (and adds them to MOBILE_APP_CARDS); until then, the web.
+  custom: WebOnlyCard,
+  external: WebOnlyCard,
 } satisfies Record<AppCardKind, CardRenderer>;
 
 export function AppCardView(props: AppCardProps) {
-  const t = useT();
   const kind: string = props.card.kind;
-  if (!isMobileCard(kind)) {
-    return (
-      <CardFrame title={(props.card as { title?: string }).title}>
-        <CardNote icon="open" text={t('apps.cardWebOnly')} hint={t('apps.cardWebOnlyHint')} />
-      </CardFrame>
-    );
-  }
+  if (!isMobileCard(kind)) return <WebOnlyCard {...props} />;
   const Renderer: CardRenderer = APP_CARD_RENDERERS[kind];
   return (
     <CardBoundary framed title={(props.card as { title?: string }).title}>

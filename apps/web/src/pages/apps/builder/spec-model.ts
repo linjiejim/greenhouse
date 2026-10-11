@@ -14,6 +14,7 @@
 
 import {
   APP_BUILDER_SEGMENT,
+  APP_CARD_KINDS,
   APP_ID_PATTERN,
   APP_LIMITS,
   type AppButton,
@@ -167,7 +168,18 @@ export const CARD_SIZES: Readonly<Record<AppCardKind, { w: number; h: number }>>
   pivot: { w: 6, h: 5 },
   text: { w: 12, h: 2 },
   buttons: { w: 6, h: 2 },
+  custom: { w: 12, h: 6 },
+  external: { w: 6, h: 5 },
 };
+
+/**
+ * The kinds the catalog offers. Phase 2's `custom` (slice S) and `external`
+ * (slice SRC) join when their editors do — until then a builder cannot add a
+ * card nothing can configure.
+ */
+export const CATALOG_CARD_KINDS: readonly AppCardKind[] = APP_CARD_KINDS.filter(
+  (kind) => kind !== 'custom' && kind !== 'external',
+);
 
 /** Below everything already on the page, full left. */
 export function nextCardLayout(cards: readonly AppCard[], kind: AppCardKind): AppCardLayout {
@@ -328,6 +340,10 @@ export function defaultCard(kind: AppCardKind, context: CardDefaultsContext): Ap
         kind,
         card: { kind: 'pivot', source, aggregate: { operation: 'count', groupBy: defaultGroupBy(fields) } },
       };
+    // Phase 2: their editors (slices S and SRC) start them; the catalog does not offer them yet.
+    case 'custom':
+    case 'external':
+      return null;
   }
 }
 

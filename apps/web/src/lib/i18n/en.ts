@@ -1622,6 +1622,7 @@ export default {
     },
     projects: { label: 'Projects', description: 'Read projects and their tasks.' },
     tables: { label: 'Tables', description: 'Read records in the team’s tables.' },
+    apps: { label: 'Apps', description: 'Use the apps shared with you, as your role in each app allows.' },
     skills: { label: 'Skill Center', description: 'Browse and download shared agent skills.' },
     chat: { label: 'Chat history', description: 'Search your own past conversations and read their messages.' },
     automation: { label: 'Automations', description: 'Read your scheduled automations and whether they ran.' },
@@ -3388,6 +3389,7 @@ export default {
       formula: 'Formula',
       rollup: 'Rollup',
       lookup: 'Lookup',
+      ai: 'AI',
     },
     filter: {
       eq: 'is',

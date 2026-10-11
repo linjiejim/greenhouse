@@ -4,23 +4,25 @@
  * date field for a calendar; nothing to fill in for a form).
  */
 
-import { APP_CARD_KINDS, type AppCardKind } from '@greenhouse/types/apps';
+import type { AppCardKind } from '@greenhouse/types/apps';
 import { Dialog } from '../../../components/ui';
 import { useT, type TranslationKey } from '../../../lib/i18n';
 import {
   BarChart3,
   CalendarDays,
   ClipboardList,
+  Code2,
   Columns3,
   GalleryHorizontal,
   Gauge,
   Kanban,
   MousePointerClick,
+  Plug,
   Table2,
   Type,
   type LucideIcon,
 } from '../../../lib/icons';
-import { catalogBlocker, type BuilderSchema, type CatalogBlocker } from './spec-model';
+import { CATALOG_CARD_KINDS, catalogBlocker, type BuilderSchema, type CatalogBlocker } from './spec-model';
 
 export const CARD_KIND_ICONS: Readonly<Record<AppCardKind, LucideIcon>> = {
   records: Table2,
@@ -33,6 +35,8 @@ export const CARD_KIND_ICONS: Readonly<Record<AppCardKind, LucideIcon>> = {
   pivot: Columns3,
   text: Type,
   buttons: MousePointerClick,
+  custom: Code2,
+  external: Plug,
 };
 
 const BLOCKER_KEYS: Record<CatalogBlocker, TranslationKey> = {
@@ -58,7 +62,7 @@ export function CardCatalog({
     <Dialog open={open} onClose={onClose} title={t('apps.builder.catalog.title')} size="lg">
       <p className="mb-3 text-xs text-fg-muted">{t('apps.builder.catalog.intro')}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="app-card-catalog">
-        {APP_CARD_KINDS.map((kind) => {
+        {CATALOG_CARD_KINDS.map((kind) => {
           const Icon = CARD_KIND_ICONS[kind];
           const blocker = catalogBlocker(kind, schema);
           return (

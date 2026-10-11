@@ -124,6 +124,14 @@ export const appsBuilderEn = {
         pivot: { name: 'Pivot', description: 'A summary table over one or two dimensions.' },
         text: { name: 'Text', description: 'Headings, notes and links in Markdown.' },
         buttons: { name: 'Buttons', description: 'Buttons that open a page, a link or a new-record form.' },
+        custom: {
+          name: 'Custom component',
+          description: 'Your own HTML and script in a sandbox, reading this Base through declared bindings.',
+        },
+        external: {
+          name: 'External data',
+          description: 'A number, chart or table from a tool or a connector, read with each viewer’s own access.',
+        },
       },
       blocked: {
         noTables: 'Add a table to the Base first.',

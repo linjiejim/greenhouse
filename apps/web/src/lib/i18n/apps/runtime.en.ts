@@ -61,6 +61,8 @@ export const appsRuntimeEn = {
       restricted: 'No access',
       badLink: 'This link cannot be opened',
       noButtons: 'No buttons for your role',
+      pendingTitle: 'Not shown here yet',
+      pendingDescription: 'This kind of card cannot be shown in this version of the app.',
     },
     form: {
       submit: 'Submit',

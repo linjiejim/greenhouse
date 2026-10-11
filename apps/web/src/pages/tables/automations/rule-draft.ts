@@ -262,6 +262,10 @@ export function ruleToDraft(
           };
         case 'delay':
           return { key: draftKey(), id: action.id, type: action.type, minutes: String(action.minutes) };
+        // Phase 2 slice AGT adds the agent step's editor; the server refuses the step until then,
+        // so a stored rule cannot carry one yet.
+        case 'agent':
+          throw new Error('Agent steps cannot be edited in this version');
       }
     }),
   };

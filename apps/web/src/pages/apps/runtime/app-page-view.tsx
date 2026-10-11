@@ -71,6 +71,8 @@ const MIN_SIZE: Record<AppCard['kind'], { w: number; h: number; mobileH: number 
   pivot: { w: 4, h: 4, mobileH: 6 },
   text: { w: 2, h: 1, mobileH: 2 },
   buttons: { w: 2, h: 1, mobileH: 2 },
+  custom: { w: 3, h: 3, mobileH: 6 },
+  external: { w: 2, h: 2, mobileH: 4 },
 };
 
 export function gridItems(cards: readonly AppCard[]): WidgetGridItem[] {

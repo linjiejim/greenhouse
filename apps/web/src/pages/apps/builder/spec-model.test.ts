@@ -6,13 +6,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { APP_CARD_KINDS, APP_ID_PATTERN, type AppCard, type AppSpec } from '@greenhouse/types/apps';
+import { APP_ID_PATTERN, type AppCard, type AppSpec } from '@greenhouse/types/apps';
 import {
   actionLabelsById,
   addCard,
   addPage,
   addRole,
   appliesTo,
+  CATALOG_CARD_KINDS,
   catalogBlocker,
   defaultCard,
   deletePage,
@@ -56,7 +57,7 @@ describe('slugId', () => {
 
 describe('starting cards', () => {
   it('gives every card kind a card bound to a table that can host it', () => {
-    for (const kind of APP_CARD_KINDS) {
+    for (const kind of CATALOG_CARD_KINDS) {
       const card = defaultCard(kind, context(kind));
       expect(card, kind).not.toBeNull();
       expect(card!.kind).toBe(kind);

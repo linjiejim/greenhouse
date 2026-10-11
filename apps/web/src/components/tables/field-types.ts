@@ -33,6 +33,7 @@ export const FIELD_TYPE_LABEL_KEYS: Record<TableFieldType, TranslationKey> = {
   formula: 'tables.fieldType.formula',
   rollup: 'tables.fieldType.rollup',
   lookup: 'tables.fieldType.lookup',
+  ai: 'tables.fieldType.ai',
 };
 
 /** The columns every record carries, labelled like the record drawer's metadata block. */
@@ -43,10 +44,13 @@ export const SYSTEM_FIELD_LABEL_KEYS: Record<TableSystemField, TranslationKey> =
   updated_by: 'tables.updatedBy',
 };
 
-/** Types the field dialog offers: every type has a configuration there. */
-export const CREATABLE_FIELD_TYPES: readonly TableFieldType[] = TABLE_FIELD_TYPES;
+/**
+ * Types the field dialog offers: every type that has a configuration there.
+ * `ai` joins when its editor does (Phase 2 slice AI; the server refuses it until then).
+ */
+export const CREATABLE_FIELD_TYPES: readonly TableFieldType[] = TABLE_FIELD_TYPES.filter((type) => type !== 'ai');
 
-/** Derived, never written: formula / rollup / lookup (one list, `COMPUTED_FIELD_TYPES`). */
+/** Derived, never written: formula / rollup / lookup / ai (one list, `COMPUTED_FIELD_TYPES`). */
 export function isComputedField(field: Pick<TableField, 'type'>): boolean {
   return isComputedFieldType(field.type);
 }

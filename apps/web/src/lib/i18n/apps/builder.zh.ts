@@ -123,6 +123,8 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
         pivot: { name: '透视表', description: '按一个或两个维度汇总的表格。' },
         text: { name: '文本', description: 'Markdown 标题、说明和链接。' },
         buttons: { name: '按钮', description: '打开页面、链接或新建记录表单的按钮。' },
+        custom: { name: '自定义组件', description: '在沙箱里运行你自己的 HTML 与脚本，通过声明的绑定读取本 Base。' },
+        external: { name: '外部数据', description: '来自工具或连接器的数字、图表或表格，按每位查看者自己的权限读取。' },
       },
       blocked: {
         noTables: '请先在 Base 中添加数据表。',

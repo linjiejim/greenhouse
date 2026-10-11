@@ -59,6 +59,8 @@ export const appsRuntimeZh: DeepRecord<typeof appsRuntimeEn> = {
       restricted: '无权限',
       badLink: '无法打开这个链接',
       noButtons: '你的角色没有可用的按钮',
+      pendingTitle: '暂时无法在此显示',
+      pendingDescription: '当前版本还不能显示这种卡片。',
     },
     form: {
       submit: '提交',

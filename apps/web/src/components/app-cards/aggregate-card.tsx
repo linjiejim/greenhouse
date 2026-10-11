@@ -16,8 +16,13 @@ export function AppAggregateCard({ card, host, state }: AppCardRendererProps<'kp
   const usersById = useMemo(() => usersByIdOf(host.users), [host.users]);
   const labels = useCardLabels(fields, usersById);
   const result = state?.result;
-  // Records pages and `unavailable` are not aggregate answers (the frame draws `unavailable`).
-  const answer = result && result.kind !== 'records' && result.kind !== 'unavailable' ? result : undefined;
+  // Only aggregate answers (the frame draws `unavailable`; records pages and the external-data
+  // answers belong to other cards).
+  const answer =
+    result &&
+    (result.kind === 'kpi' || result.kind === 'chart' || result.kind === 'pivot' || result.kind === 'no_access')
+      ? result
+      : undefined;
   return (
     <TableCardView
       title={cardTitle(card, host.view)}
