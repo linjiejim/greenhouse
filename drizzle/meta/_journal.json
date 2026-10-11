@@ -183,6 +183,13 @@
       "when": 1791740219180,
       "tag": "0025_agent_attribution",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791742214022,
+      "tag": "0026_public_agents",
+      "breakpoints": true
     }
   ]
 }

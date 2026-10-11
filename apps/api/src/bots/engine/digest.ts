@@ -33,6 +33,7 @@ import type { BotDigestView } from '@greenhouse/types/bots';
 import { chatRunRegistry } from '../../chat/runs.js';
 import { sanitizeForPrompt } from '../../security/security.js';
 import { botsEngineDeps } from './deps.js';
+import { conversationBotNames } from '../public.js';
 import { copy, SPEAKER_TAGS, botsLocale, type BotsLocale } from './copy.js';
 import type { ProjectionRow } from './projection.js';
 import { estimateRows, readFromBoundary, readTail, type TailRead } from './transcript.js';
@@ -358,8 +359,11 @@ export async function compactConversation(
     // A suspended owner's conversation is not worth a model call.
     if (!conversation || !user || user.status !== 'active') return { status: 'nothing', digest: null };
     const locale = botsLocale(user.locale);
-    const allBots = await db.bots.listBots(user.id, { includeArchived: true });
-    const botNames = new Map(allBots.map((bot) => [bot.id, bot.name]));
+    const botNames = await conversationBotNames(
+      db,
+      user.id,
+      (conversation.members ?? []).map((member) => member.bot_id),
+    );
     const current = () =>
       digestView(conversation.digest, conversation.digest_upto_seq, conversation.digest_updated_at, locale, botNames);
 

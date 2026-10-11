@@ -54,6 +54,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { validator } from 'hono/validator';
 import { z } from 'zod';
 import { getDb } from '@greenhouse/db';
+import { publicationOf, publicBotFor } from '../public.js';
 import type { ComputerStatusView } from '@greenhouse/types/bots';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -234,8 +235,12 @@ async function computerOf(c: Context<AppEnv>): Promise<ComputerRef | null> {
   const user = getAuthUser(c);
   const botId = c.req.query('bot');
   if (!botId) return computerRef(user.id, null);
-  const bot = await getDb().bots.getBot(user.id, botId);
-  return bot ? computerRefForBot(user.id, bot) : null;
+  const db = getDb();
+  const bot = await db.bots.getBot(user.id, botId);
+  if (bot) return computerRefForBot(user.id, bot);
+  // Someone else's public Agent whose owner granted it a computer: this member's own copy (P4, D7).
+  const shared = await publicBotFor(db, user.id, botId);
+  return shared && publicationOf(shared).grants.computer ? computerRef(user.id, shared.id) : null;
 }
 
 /** /api/bots/computer — the member's own computer. */

@@ -383,6 +383,12 @@ export const copy = {
   taskStarted: (l: BotsLocale, bot: string, title: string) =>
     l === 'zh' ? `${bot} 开始后台任务「${title}」` : `${bot} started “${title}” in the background`,
 
+  /** A public Agent's per-member daily cap is reached (P4). */
+  publicDailyCap: (l: BotsLocale, bot: string) =>
+    l === 'zh'
+      ? `${bot} 今天给你的额度用完了，明天再来，或者问问它的负责人。`
+      : `You've used today's allowance with ${bot}. Try again tomorrow, or ask its owner.`,
+
   /** A `task_start` card in `chat` mode, approved: the line where it was proposed. */
   chatOpened: (l: BotsLocale, bot: string, title: string) =>
     l === 'zh' ? `${bot} 在新会话里开始「${title}」` : `${bot} started “${title}” in a new chat`,

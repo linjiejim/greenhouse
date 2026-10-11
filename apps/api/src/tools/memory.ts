@@ -75,6 +75,11 @@ export interface MemoryToolContext {
      * `forget` refuse user-level rows.
      */
     userScopeAllowed: () => boolean;
+    /**
+     * The (member, Bot) partition alone: user-level memories are neither read nor written — a
+     * public Agent talking to someone other than its owner (spec 20261011-agent-first-class D6).
+     */
+    partitionOnly?: boolean;
   };
 }
 
@@ -129,8 +134,11 @@ const SHARED_MEMORY_LOCKED =
   "This memory is shared with all of the member's Agents and chats, and it can't be changed in a turn that read outside content or wasn't started by the member. Ask the member to confirm in their next message.";
 
 export function createMemoryTool(db: DatabaseProvider, ctx: MemoryToolContext) {
-  // Read scope: user-level only, or user-level + this Bot's private notes.
-  const readScope = { botId: ctx.bot?.botId ?? null };
+  // Read scope: user-level only, or user-level + this Bot's private notes, or (public Agent) the
+  // Bot's partition with this member alone.
+  const readScope = ctx.bot?.partitionOnly
+    ? { botId: ctx.bot.botId, exact: true as const }
+    : { botId: ctx.bot?.botId ?? null };
   return tool({
     description: meta.description,
     inputSchema: ctx.bot ? botScopeSchema : memorySchema,

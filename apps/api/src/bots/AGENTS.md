@@ -53,8 +53,9 @@ bots/
 - **Bot 就是 Agent 身份**（2026-10-07 收敛，[spec](../../../../docs/specs/20261007-agent-bot-convergence.md)；
   推翻 20261005 的 D2）：原「自定义 Agent」表已删，`bots` 吸收了它的 `description` / `tools`（null = 继承主人全部
   有效工具，列表 = 只能收窄的过滤器）/ `max_steps` / 不可变版本（`bot_versions`，每次创建或编辑追加一版，供
-  `bot:<id>@<v>` 固定引用、守则提议卡与抽屉「历史」读）。**Bot 是私有的**（2026-10-08 决定）：没有分享、评审、
-  发布或克隆，旧自定义 Agent 的治理列已随迁移 0014 删除；他人（super 除外）拿任何版本都是 403。
+  `bot:<id>@<v>` 固定引用、守则提议卡与抽屉「历史」读）。**Bot 默认是私有的**（2026-10-08 决定）：没有评审或克隆，
+  旧自定义 Agent 的治理列已随迁移 0014 删除；他人（super 除外）拿任何版本都是 403——**唯一的例外是 2026-10-12 起的公开
+  Agent**（见下「公开 Agent」）：别的成员只在自己的私聊里、经引擎的公开面用它的发布版本，拿不到它的定义。
   同一个 Bot 有两种对话模式：**Bots 页的永续线程**（本引擎：摘要 / recall / 多 Bot / 电脑 / 审批卡）与**聊天页的新上下文**
   （chat 引擎，窗口化历史；`sessions.profile_id = 'bot:<id>'` 跟随主人的最新定义，无人值守固定 `bot:<id>@<v>`）。
   聊天页的默认身份 `sprouty` 按成员解析成**他自己的 Sprouty Bot**（`bots/sprouty.ts`，首次使用即建行），所以改名
@@ -229,6 +230,20 @@ bots/
   `sessionId`，审计行写 `agent_id` / `session_id`；用量（`llm_usage.bot_id`）同样记到这个 Agent。外部客户端（MCP / OAuth）照旧是它自己。
 - **密码库条目可限定 Agent（P3c）**：`vault_items.bot_ids`（null = 所有 Agent）；`vault list`、代填、登录卡上的匹配只看得到允许
   说话 Agent 的条目（`vaultItemAllowsBot`），成员自己的设置页看全部。
+- **公开 Agent（P4，2026-10-12，[spec](../../../../docs/specs/20261011-agent-first-class.md) §5c / D33–D41）**：负责人把一个
+  非主 Agent 发布给受众（`bots.visibility = 'public'` + `published_version` + `publication` JSON：受众 / 授权 / 额度；`public.ts`
+  `validatePublicationWrite`、`publicBotFor` 判可用：已发布、未暂停、活跃、受众含此人、不是负责人自己）。使用者经 `/api/agents`
+  看到它、`POST /api/agents/:id/conversation` 得到**自己的**私聊（`ensureDirectConversation(..., { public: true })`，私聊唯一键
+  =（成员, Agent），迁移 `0026`；欢迎语按私聊一条、不说「你的…」）。负责人读不到这些对话。
+  引擎：`loadRunContext` / `refreshRoster` 把对话里别人的公开 Agent 以**发布版本**放进 `rc.bots`，`rc.publicBots` 记负责人与设置；
+  它的回合 `ctx.publicUse` 置位，走 `engine/public-face.ts` 的**公开面**（授权文件夹的只读知识库——以负责人身份、限定在授权子树
+  `grantedFolderIds` 与它自己的参考文件夹；按（使用者, Agent）分区的记忆 `partitionOnly`；对话笔记；`ask_user`；负责人勾选时
+  使用者自己的一份电脑、没有密码库），S2 用 `buildPublicIdentity`（谁发布、在帮谁），不放任何人的个人备注，记忆索引 `onlyBot`；
+  额度 `agentBudget` → `reserveAgentTokenBudget`（Agent 账户 + 组织 + 供应商，不扣使用者），每人每日上限超了写一行 `unavailable`
+  `daily_cap` 不调模型；审计行为者 `bot:<id>`、代表负责人、`requested_by_user_id` = 使用者。不能邀请客串（409 `public_agent`）；
+  下线 / 暂停 / 移出受众 → 发消息 409 `agent_unavailable`，`GET /api/bots` 的 `shared_bots` 带 `available:false`。
+  负责人看用量（全部使用者）、操作记录、反馈（`bot_feedback`：评分 + 使用者写的一句话），不看原文；管理员 `/api/admin/agents` 只能暂停 / 恢复。
+  第一版授权只有知识库文件夹（只读）+ 电脑开关；项目 / 表格的记录级授权留作后续（D36）。
 - **DB 权威生命周期**：`bot_computers` 每次迁移都是 `version` CAS，单成员操作在用户锁里、容量判断在
   全局锁里；闲置停止 + LRU 淘汰会跳过有待处理登录 / 接管卡的电脑（`HUMAN_WAIT_HOLD_MS`）；健康 tick
   对账卡住的 starting / stopping 行（成员锁空闲时立即，否则 5 分钟兜底）。
@@ -348,6 +363,11 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 | PATCH / DELETE | `/api/bots/:id` | 同上字段（每次 PATCH 追加一版） | `{ bot }` / `{ ok }`（删除 = 归档；Sprouty → 400 `bot_protected`） |
 | GET | `/api/bots/:id/versions` | — | `{ bot_id, profile_id, current_version, versions }`（仅主人；super 可查） |
 | GET / POST | `/api/bots/:id/files` · `/api/bots/:id/files/ensure` | — | `{ folder, docs }`（无文件夹时 `folder: null`）· `{ folder }`（首次使用建文件夹） |
+| GET / PUT | `/api/bots/:id/publication` | `BotPublicationWrite`（`visibility`、`audience`、`grants`、`budget`、`publish:true` 发布当前版本） | `BotPublicationView`；Sprouty 400 `bot_protected`；未发布就设公开 / 受众或文件夹不合法 400 `invalid` |
+| GET | `/api/bots/:id/feedback` | — | `{ feedback: BotFeedbackView[] }`（评分 + 使用者的一句话 + 版本，不含对话） |
+| POST | `/api/bots/conversations/:id/messages/:messageId/feedback` | `{ rating: 1 \| -1, comment? }` | `{ ok, rating }`（每人每条回复一份，再评覆盖） |
+| GET / POST | `/api/agents` · `/api/agents/:id/conversation` | — | `{ agents: SharedBotView[] }`（我能用的别人的公开 Agent）· 201 `{ conversation_id }`（我和它的私聊；不可用 404） |
+| GET / POST | `/api/admin/agents` · `/api/admin/agents/:id/pause` · `/resume`（super） | — | 全部公开 Agent（负责人、受众、是否可用 / 暂停、使用者数）· `{ ok, paused }` |
 | GET | `/api/bots/:id/usage?days=` · `/api/bots/:id/activity?limit=` | — | `BotUsageView`（按天：次数 / token / 对话数，默认 30 天、最多 90）· `{ activity: BotActivityItem[] }`（平台动作 / 密码库使用 / 后台任务，新到旧，无消息内容）；只有主人 |
 | GET / DELETE | `/api/bots/:id/memories[/:memoryId]` | — | 该 Bot 的私有记忆 / `{ ok }`；改为共享走 `PATCH /api/auth/me/memories/:id { bot_id: null }` |
 | GET / POST | `/api/bots/conversations` | `?kind=task` · `{ bot_ids }`（恰好 1 个 id）或 `{ kind:'task', bot_id?, title?, model_id? }` | 列表（默认私聊 + 旧群；`?kind=task` 任务会话）/ `{ conversation }`（该 Bot 的私聊，没有就建；`kind:'task'` → 201 新任务会话，缺省 Sprouty）；0 个或多个 id → `400 groups_retired`（群聊已退役）。每行带 `attention`（需要你 > 未读 > 在忙）、`pending_requests` 与 `unread_count`（`last_read_at` 之后 Bot 的回复条数，`assistant` 行，封顶 99；只来了系统事件时 `attention:'unread'` 而计数为 0） |

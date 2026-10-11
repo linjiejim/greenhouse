@@ -20,6 +20,7 @@ import { isUniqueViolation } from '@greenhouse/utils/error';
 import type { Db, DbClient } from '../client.js';
 import {
   bots,
+  botFeedback,
   botVersions,
   botConversations,
   botConversationMembers,
@@ -32,6 +33,7 @@ import {
   users,
 } from '../schema/index.js';
 import type {
+  BotFeedbackRow,
   BotRow,
   BotVersionRow,
   BotConversationRow,
@@ -279,6 +281,17 @@ export function createBotsService(db: Db) {
     return rows;
   }
 
+  /** Active Bots by id, whoever owns them (a public Bot in a member's DM). */
+  async function activeBots(tx: Db, botIds: string[]): Promise<BotRow[]> {
+    const rows = await tx
+      .select()
+      .from(bots)
+      .where(and(eq(bots.status, 'active'), inArray(bots.id, botIds)));
+    if (rows.length !== new Set(botIds).size)
+      throw new BotsDomainError('bot_not_found', 'One or more Bots do not exist');
+    return rows;
+  }
+
   async function membersOf(tx: Db, sessionId: string): Promise<BotConversationMemberRow[]> {
     return await tx
       .select()
@@ -309,6 +322,82 @@ export function createBotsService(db: Db) {
     async getBotById(botId: string): Promise<BotRow | undefined> {
       const [row] = await db.select().from(bots).where(eq(bots.id, botId)).limit(1);
       return row;
+    },
+
+    // ─── Public Agents (spec 20261011-agent-first-class P4) ───
+
+    /** Every active public Bot (the directory filters by audience in app code — a handful per org). */
+    async listPublicBots(): Promise<BotRow[]> {
+      return db
+        .select()
+        .from(bots)
+        .where(and(eq(bots.visibility, 'public'), eq(bots.status, 'active')))
+        .orderBy(asc(bots.name_key));
+    },
+
+    /** An owner's publication settings (never Sprouty — the caller refuses it first). */
+    async setPublication(
+      userId: string,
+      botId: string,
+      patch: { visibility?: 'private' | 'public'; published_version?: number | null; publication?: string },
+    ): Promise<BotRow | undefined> {
+      const [row] = await db
+        .update(bots)
+        .set({ ...patch, updated_at: nowIso() })
+        .where(and(eq(bots.id, botId), eq(bots.user_id, userId), eq(bots.status, 'active')))
+        .returning();
+      return row;
+    },
+
+    /** An administrator pauses / resumes a public Bot (D40). */
+    async setPublicPaused(botId: string, paused: boolean): Promise<BotRow | undefined> {
+      const [row] = await db
+        .update(bots)
+        .set({ public_paused: paused, updated_at: nowIso() })
+        .where(eq(bots.id, botId))
+        .returning();
+      return row;
+    },
+
+    /** Members (other than its owner) with a conversation with this Bot. */
+    async countBotUsers(botId: string): Promise<number> {
+      const [row] = await db
+        .select({ n: sql<number>`count(distinct ${botConversations.user_id})::int` })
+        .from(botConversations)
+        .innerJoin(bots, eq(bots.id, botConversations.owner_bot_id))
+        .where(and(eq(botConversations.owner_bot_id, botId), sql`${botConversations.user_id} <> ${bots.user_id}`));
+      return row?.n ?? 0;
+    },
+
+    /** A member's rating of one reply (one per member and message; a second one replaces it). */
+    async upsertFeedback(input: {
+      bot_id: string;
+      user_id: string;
+      session_id: string;
+      message_id: string;
+      rating: 1 | -1;
+      comment: string;
+      version: number | null;
+    }): Promise<BotFeedbackRow> {
+      const now = nowIso();
+      const [row] = await db
+        .insert(botFeedback)
+        .values({ ...input, created_at: now, updated_at: now })
+        .onConflictDoUpdate({
+          target: [botFeedback.user_id, botFeedback.message_id],
+          set: { rating: input.rating, comment: input.comment, updated_at: now },
+        })
+        .returning();
+      return row!;
+    },
+
+    async listFeedback(botId: string, limit = 100): Promise<BotFeedbackRow[]> {
+      return db
+        .select()
+        .from(botFeedback)
+        .where(eq(botFeedback.bot_id, botId))
+        .orderBy(desc(botFeedback.created_at))
+        .limit(Math.min(Math.max(limit, 1), 500));
     },
 
     /** The Bot a retired `custom:<id>` reference now means. */
@@ -451,9 +540,17 @@ export function createBotsService(db: Db) {
      * The Bot's direct conversation, created on first use. One per Bot
      * (uq_bot_conversations_owner_bot); the session is channel `bots`.
      */
-    async ensureDirectConversation(userId: string, botId: string): Promise<ConversationWithMembers> {
+    async ensureDirectConversation(
+      userId: string,
+      botId: string,
+      /**
+       * `public: true` = someone else's public Bot the caller has already cleared for this member
+       * (its audience, its publication); the DM belongs to the member (spec 20261011-agent-first-class D34).
+       */
+      opts: { public?: boolean } = {},
+    ): Promise<ConversationWithMembers> {
       return db.transaction(async (tx) => {
-        const [bot] = await assertOwnedBots(tx, userId, [botId]);
+        const [bot] = opts.public ? await activeBots(tx, [botId]) : await assertOwnedBots(tx, userId, [botId]);
         const [existing] = await tx
           .select()
           .from(botConversations)

@@ -227,6 +227,8 @@ export const platformAuditEvents = pgTable(
     agent_id: text('agent_id'),
     /** The conversation it acted in (`sessions.id`), when there was one. */
     session_id: text('session_id'),
+    /** The member who asked, when that is not whom the Agent acts for (a public Agent's user, P4). */
+    requested_by_user_id: text('requested_by_user_id'),
     request_id: text('request_id').notNull(),
     app_id: text('app_id').notNull(),
     module_id: text('module_id'),

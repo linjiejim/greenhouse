@@ -107,11 +107,12 @@ function renderIndexLines(rows: UserMemoryRow[], budget: number, now: number): {
  */
 export async function buildMemoryIndexBlock(
   userId: string,
-  opts: { botId?: string | null } = {},
+  /** `onlyBot`: the (member, Bot) partition alone — a public Agent never sees user-level memories (P4, D6). */
+  opts: { botId?: string | null; onlyBot?: boolean } = {},
 ): Promise<string | null> {
   const db = getDb();
   const botId = opts.botId ?? null;
-  const userRows = await db.userMemories.listForIndex(userId, { botId: null });
+  const userRows = opts.onlyBot && botId ? [] : await db.userMemories.listForIndex(userId, { botId: null });
   const botRows = botId ? await db.userMemories.listForIndex(userId, { botId, exact: true }) : [];
   if (userRows.length === 0 && botRows.length === 0) return null;
 
@@ -151,7 +152,7 @@ export async function buildMemoryIndexBlock(
 export async function resolveMemoryContext(
   userId: string,
   role?: UserRole,
-  opts: { botId?: string | null } = {},
+  opts: { botId?: string | null; onlyBot?: boolean } = {},
 ): Promise<string | null> {
   try {
     const db = getDb();

@@ -41,7 +41,14 @@
  *   released, `chat:run` is pushed, and the digest check is scheduled.
  */
 
-import { getDb, INBOX_MAX_ATTEMPTS, type BotInboxRow, type DatabaseProvider } from '@greenhouse/db';
+import {
+  getDb,
+  INBOX_MAX_ATTEMPTS,
+  type BotInboxRow,
+  type BotRow,
+  type ConversationWithMembers,
+  type DatabaseProvider,
+} from '@greenhouse/db';
 import type { BotEvent } from '@greenhouse/types/bots';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -57,7 +64,15 @@ import { botsEngineDeps } from './deps.js';
 import { digestView, effectiveDigestUpto, scheduleDigestCheck } from './digest.js';
 import { CHAIN_LIMITS, FloorController, type FloorItem } from './floor.js';
 import { botsOwnerEligible, unlockBotsRun } from './run-slot.js';
-import { memberMessageQueued, runBotTurn, type ChainState, type LimitReason, type RunContext } from './turn.js';
+import {
+  memberMessageQueued,
+  runBotTurn,
+  type ChainState,
+  type LimitReason,
+  type PublicBotRun,
+  type RunContext,
+} from './turn.js';
+import { publicationOf, publicBotFor } from '../public.js';
 import { TranscriptChangedError, TranscriptWriter } from './writer.js';
 
 type WakeUp = { botId: string; note: string };
@@ -236,8 +251,37 @@ async function refreshRoster(rc: RunContext): Promise<void> {
   rc.conversation = conversation;
   rc.bots.clear();
   for (const bot of allBots) rc.bots.set(bot.id, bot);
+  await addPublicBots(rc.db, rc.user.id, conversation, rc.bots, rc.publicBots);
   rc.members.clear();
   for (const member of conversation.members) rc.members.add(member.bot_id);
+}
+
+/**
+ * Someone else's public Agents in the conversation (P4): each joins `bots` with its published
+ * version applied, and `publicBots` with what its public face needs — or, when it is no longer
+ * offered to this member, stays out (the conversation reads as unavailable).
+ */
+async function addPublicBots(
+  db: DatabaseProvider,
+  userId: string,
+  conversation: ConversationWithMembers,
+  bots: Map<string, BotRow>,
+  publicBots: Map<string, PublicBotRun>,
+): Promise<void> {
+  publicBots.clear();
+  for (const member of conversation.members) {
+    if (bots.has(member.bot_id)) continue;
+    const bot = await publicBotFor(db, userId, member.bot_id);
+    if (!bot) continue;
+    const owner = await db.users.getById(bot.user_id);
+    bots.set(bot.id, bot);
+    publicBots.set(bot.id, {
+      ownerId: bot.user_id,
+      ownerNickname: owner?.nickname || owner?.email || '',
+      settings: publicationOf(bot),
+      version: bot.published_version ?? bot.current_version,
+    });
+  }
 }
 
 /**
@@ -437,8 +481,14 @@ async function runChain(rc: RunContext, trigger: ChainTrigger): Promise<ChainTri
       if (chain.limit) continue;
     }
     // The speaking Agent acts: platform audit and usage name it (platform/agent-scope.ts).
-    const result = await runInAgentScope({ botId: item.botId, sessionId: rc.sessionId }, () =>
-      runBotTurn(rc, chain, item),
+    // A public Agent (P4) acts for its owner at this member's request.
+    const result = await runInAgentScope(
+      {
+        botId: item.botId,
+        sessionId: rc.sessionId,
+        ...(rc.publicBots.has(item.botId) ? { requestedByUserId: rc.user.id } : {}),
+      },
+      () => runBotTurn(rc, chain, item),
     );
     if (result.transcriptChanged) throw new TranscriptChangedError(rc.sessionId);
     chain.outcomes.set(item.botId, result.status);
@@ -499,6 +549,8 @@ async function loadRunContext(args: BotsRunArgs, db: DatabaseProvider): Promise<
   const locale = botsLocale(user.locale);
   const allBots = await db.bots.listBots(user.id, { includeArchived: true });
   const bots = new Map(allBots.map((bot) => [bot.id, bot]));
+  const publicBots = new Map<string, PublicBotRun>();
+  await addPublicBots(db, user.id, conversation, bots, publicBots);
 
   // Digest snapshot for the whole run, with the boundary self-check: the
   // boundary row must still exist and be inside the transcript.
@@ -538,6 +590,7 @@ async function loadRunContext(args: BotsRunArgs, db: DatabaseProvider): Promise<
     conversation,
     members: new Set(conversation.members.map((m) => m.bot_id)),
     bots,
+    publicBots,
     writer: new TranscriptWriter(db, args.sessionId, latest ?? null),
     digest: { rendered: digest?.text ?? null, uptoSeq },
     effectiveTools,

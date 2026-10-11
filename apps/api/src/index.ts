@@ -62,6 +62,7 @@ import {
   initBotComputers,
   shutdownBotComputers,
 } from './bots/computer/index.js';
+import { createAdminAgentsRoutes, createAgentsDirectoryRoutes } from './bots/public-routes.js';
 import { createComputerTerminalRoutes } from './bots/computer/terminal.js';
 import { createComputerPreviewRoutes, PREVIEW_PREFIX, type PreviewDeps } from './bots/computer/preview.js';
 import { touchComputer } from './bots/computer/access.js';
@@ -326,6 +327,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin/feature-requests', featureRequestRoutes)
       .route('/api/admin/frictions', frictionRoutes)
       .route('/api/admin/bot-computers', createAdminBotComputerRoutes())
+      .route('/api/admin/agents', createAdminAgentsRoutes())
       // Project management — all internal users
       .use('/api/platform/*', requireInternal())
       .route('/api/platform', platformRoutes)
@@ -420,6 +422,12 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/bots/computer', createBotsComputerRoutes())
       .route('/api/bots/vault', createBotsVaultRoutes())
       .route('/api/bots', createBotsRoutes())
+      // Other members' public Agents (spec 20261011-agent-first-class P4): the directory and a DM.
+      .use('/api/agents', requireInternal())
+      .use('/api/agents/*', requireInternal())
+      .use('/api/agents', requireFeature('bots'))
+      .use('/api/agents/*', requireFeature('bots'))
+      .route('/api/agents', createAgentsDirectoryRoutes())
       // Home workbench card evaluation — every internal user. Cards are
       // evaluated as the requesting user through the read-only tool allowlist,
       // so this widens nothing the user could not already query; a user with no

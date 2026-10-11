@@ -41,9 +41,87 @@ export interface BotView {
   current_version: number;
   /** The owner's user id. */
   user_id: string;
+  /**
+   * `public` = published to an audience (spec 20261011-agent-first-class P4); absent on older
+   * servers = private.
+   */
+  visibility?: 'private' | 'public';
+  /** The version its audience talks to; null = not published. */
+  published_version?: number | null;
   last_active_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Someone else's public Agent as its users see it (`GET /api/bots` `shared_bots`, `GET /api/agents`):
+ * no instructions, tools or settings — only who it is and whose it is.
+ */
+export interface SharedBotView {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  avatar: AvatarConfig;
+  template_key: string | null;
+  owner: { id: string; nickname: string };
+  /** The user's DM with it, when it exists. */
+  dm_session_id: string | null;
+  /** false once its owner unpublished it or an administrator paused it (the DM stays readable). */
+  available: boolean;
+}
+
+// ─── Public Agents (spec 20261011-agent-first-class P4) ─────────────────
+
+/** Default monthly token cap of a public Agent's own budget (D37). */
+export const PUBLIC_AGENT_DEFAULT_MONTHLY_TOKENS = 2_000_000;
+
+/** Who may use a public Agent. */
+export interface BotAudience {
+  /** Every internal member. */
+  everyone: boolean;
+  user_ids: string[];
+  /** `user_groups.id`. */
+  group_ids: number[];
+}
+
+/** A public Agent's settings (`bots.publication`). */
+export interface BotPublicationSettings {
+  audience: BotAudience;
+  /** Resource-level grants, each within the owner's own access (D36: v1 = knowledge folders + computer). */
+  grants: { kb_folder_ids: number[]; computer: boolean };
+  /** Its own budget (D37): monthly tokens (null = the default) and an optional per-user daily cap. */
+  budget: { monthly_tokens: number | null; daily_tokens_per_user: number | null };
+}
+
+/** GET /api/bots/:id/publication */
+export interface BotPublicationView extends BotPublicationSettings {
+  visibility: 'private' | 'public';
+  published_version: number | null;
+  current_version: number;
+  /** An administrator paused it. */
+  paused: boolean;
+  /** Members who have a conversation with it. */
+  users: number;
+}
+
+/** PUT /api/bots/:id/publication — every field optional; `publish: true` publishes the current version. */
+export interface BotPublicationWrite {
+  visibility?: 'private' | 'public';
+  audience?: BotAudience;
+  grants?: { kb_folder_ids?: number[]; computer?: boolean };
+  budget?: { monthly_tokens?: number | null; daily_tokens_per_user?: number | null };
+  publish?: boolean;
+}
+
+/** One rating of a reply (GET /api/bots/:id/feedback) — never the conversation. */
+export interface BotFeedbackView {
+  id: number;
+  rating: 1 | -1;
+  comment: string;
+  version: number | null;
+  user: { id: string; nickname: string };
+  created_at: string;
 }
 
 /** One immutable manifest of a Bot (`GET /api/bots/:id/versions`). */
@@ -830,7 +908,7 @@ export type BotEvent =
    * Nobody could answer: the addressed Bot was archived or removed. Written instead of
    * ending silently. `no_active_members` only appears on rows from retired group chats.
    */
-  | { kind: 'unavailable'; bot_id: string | null; reason: 'archived' | 'no_active_members' }
+  | { kind: 'unavailable'; bot_id: string | null; reason: 'archived' | 'no_active_members' | 'daily_cap' }
   /** The member pressed Stop while a wake-up (hand-back, joined Bot…) was queued: it was not resumed. */
   | { kind: 'stopped'; bot_id: string }
   /** A `task_start` card in `chat` mode was approved: the new separate chat (written where it was proposed). */
@@ -918,7 +996,12 @@ export type VaultErrorCode =
  * readable either way: the DM's Bot was archived (`bot_archived`), or it is a retired group
  * chat (`group_closed`, which the member routes — invite / remove a Bot — answer too).
  */
-export type BotConversationReadOnlyCode = 'bot_archived' | 'group_closed';
+/**
+ * Why nobody can answer: `bot_archived` = the owner archived its Agent; `group_closed` = a retired
+ * group; `agent_unavailable` = someone else's public Agent that was unpublished, paused, or no longer
+ * offered to this member (P4).
+ */
+export type BotConversationReadOnlyCode = 'bot_archived' | 'group_closed' | 'agent_unavailable';
 
 /**
  * `POST /api/bots/conversations` takes exactly one Bot id (that Bot's DM); any other count is

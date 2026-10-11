@@ -101,7 +101,8 @@ export async function requestTakeover(
 
   let requestId: string;
   if (secureCard) {
-    const matches = isVaultAvailable() ? await vaultMatchesForOrigin(ctx.db, ctx.userId, origin, ctx.bot.id) : [];
+    const matches =
+      isVaultAvailable() && !ctx.publicUse ? await vaultMatchesForOrigin(ctx.db, ctx.userId, origin, ctx.bot.id) : [];
     const payload: BotLoginPayload = {
       reason,
       kind: input.kind as 'login' | 'otp',

@@ -15,6 +15,8 @@ export interface AgentScope {
   botId: string;
   /** The conversation it acts in (`sessions.id`), when there is one. */
   sessionId: string | null;
+  /** The member it acts for when that is not its owner (a public Agent's user, P4): audited as `requested_by`. */
+  requestedByUserId?: string;
 }
 
 const storage = new AsyncLocalStorage<AgentScope>();

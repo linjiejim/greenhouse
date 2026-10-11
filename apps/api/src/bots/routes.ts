@@ -35,7 +35,7 @@
  *
  * 身份类路径（列表、新建、修改、版本、记忆、文件）只要 requireInternal()；
  * 永续对话、请求、后台任务、bootstrap（建私聊）、电脑与密码库还要 requireFeature('bots')
- * （src/index.ts）——`bots` 开关只管永续线程与电脑，不管身份（spec 20261007 D5）。Bot 是私有的：
+ * （src/index.ts）——`bots` 开关只管永续线程与电脑，不管身份（spec 20261007 D5）。Bot 默认是私有的（公开 Agent 见 public.ts）：
  * 全部按当前用户 owner 作用域，他人的行与不存在的行一律 404，没有共享、评审或克隆。
  * 群聊已退役（2026-10-09）：对话就是某个 Bot 的私聊，其他 Bot 以客串身份加入（成员手动邀请或 Bot 的
  * team.add），交接永远允许；旧群聊保留为只读历史（发消息 / 邀请 / 移出 / 处理卡片一律 409 group_closed）。
@@ -49,6 +49,7 @@ import {
   BOTS_REPLY_DEDUPE_PREFIX,
   BotsDomainError,
   getDb,
+  type BotRow,
   type ConversationWithMembers,
   type DatabaseProvider,
 } from '@greenhouse/db';
@@ -59,6 +60,10 @@ import {
   isSproutyBot,
   type BotActivityItem,
   type BotConversationDetail,
+  type BotFeedbackView,
+  type BotPublicationView,
+  type BotPublicationWrite,
+  type SharedBotView,
   type BotUsageView,
   type BotRequestStatus,
   type BotTemplateKey,
@@ -70,6 +75,13 @@ import { botProfileId } from '../profiles/profile.js';
 import { PLATFORM_ORG_ID } from '../platform/runtime.js';
 import { getAllToolIds } from '../tools/registry.js';
 import { ensureSproutyBot } from './sprouty.js';
+import {
+  conversationBotNames,
+  publicationOf,
+  publicBotFor,
+  PublicationError,
+  validatePublicationWrite,
+} from './public.js';
 import { ensureBotFolder, renameBotFolder } from './folder.js';
 import { kbFolderSubtreeIds } from '../knowledge/folders.js';
 import { entityUrl } from '@greenhouse/types/entity-links';
@@ -105,6 +117,7 @@ import { NOTE_BODY_MAX, NOTE_TITLE_MAX } from './tools/conversation.js';
 import {
   toBotVersionView,
   toBotView,
+  toSharedBotView,
   toConversationSummary,
   toMessageView,
   toNoteView,
@@ -266,10 +279,14 @@ async function conversationDetail(
     db.bots.unreadCounts([sessionId]),
     db.bots.listRequests(userId, { sessionId }),
     db.bots.listNotes(sessionId),
-    db.bots.listBots(userId, { includeArchived: true }),
+    conversationBotNames(
+      db,
+      userId,
+      conversation.members.map((member) => member.bot_id),
+    ),
     readTail(db, sessionId, effectiveDigestUpto(conversation)),
   ]);
-  const botNames = new Map(allBots.map((bot) => [bot.id, bot.name]));
+  const botNames = allBots;
   const pending = requests.filter((request) => request.status === 'pending').length;
   const summary = toConversationSummary(conversation, {
     lastMessage: latest.get(sessionId) ?? null,
@@ -350,6 +367,18 @@ function domainStatus(error: BotsDomainError): 400 | 404 | 409 {
   }
 }
 
+/** An owner's view of its Agent's publication. */
+async function publicationView(db: DatabaseProvider, bot: BotRow): Promise<BotPublicationView> {
+  return {
+    ...publicationOf(bot),
+    visibility: bot.visibility,
+    published_version: bot.published_version,
+    current_version: bot.current_version,
+    paused: bot.public_paused,
+    users: await db.bots.countBotUsers(bot.id),
+  };
+}
+
 function notifyConversation(userId: string, sessionId: string): void {
   connectionManager.sendToUser(userId, { type: 'bots:conversation', sessionId });
 }
@@ -366,9 +395,29 @@ export function createBotsRoutes() {
           dmIndex(db, user.id),
           db.bots.countPendingRequests(user.id),
         ]);
+        // Other members' public Agents this member talks to (P4): names and avatars for the threads.
+        const own = new Set(all.map((bot) => bot.id));
+        const sharedBots: SharedBotView[] = [];
+        for (const conversation of await db.bots.listConversations(user.id)) {
+          const botId = conversation.owner_bot_id;
+          if (!botId || own.has(botId) || conversation.kind !== 'direct') continue;
+          const usable = await publicBotFor(db, user.id, botId);
+          const row = usable ?? (await db.bots.getBotById(botId));
+          if (!row) continue;
+          const ownerUser = await db.users.getById(row.user_id);
+          sharedBots.push(
+            toSharedBotView(
+              row,
+              { id: row.user_id, nickname: ownerUser?.nickname || ownerUser?.email || '' },
+              conversation.session_id,
+              usable !== null,
+            ),
+          );
+        }
         // Archived Bots ride along separately: their DMs stay readable and old
         // messages, audit rows and receipts still need a name for them.
         return c.json({
+          shared_bots: sharedBots,
           bots: all.filter((bot) => bot.status === 'active').map((bot) => toBotView(bot, dms.get(bot.id) ?? null)),
           archived_bots: all
             .filter((bot) => bot.status === 'archived')
@@ -582,6 +631,41 @@ export function createBotsRoutes() {
         });
       })
 
+      // ── POST /api/bots/conversations/:id/messages/:messageId/feedback — rate a reply (P4, D38) ──
+      .post('/conversations/:id/messages/:messageId/feedback', async (c) => {
+        const user = getAuthUser(c);
+        const db = getDb();
+        const body = await readJson(c);
+        const rating = body.rating === 1 || body.rating === -1 ? (body.rating as 1 | -1) : null;
+        if (rating === null) return c.json({ error: 'rating must be 1 or -1' }, 400);
+        if (body.comment !== undefined && (typeof body.comment !== 'string' || body.comment.length > 1000)) {
+          return c.json({ error: 'comment must be text of at most 1000 characters' }, 400);
+        }
+        const conversation = await db.bots.getConversation(user.id, c.req.param('id'));
+        if (!conversation) return c.json({ error: 'Conversation not found' }, 404);
+        const message = await db.sessions.getMessageById(c.req.param('messageId'));
+        if (
+          !message ||
+          message.session_id !== conversation.session_id ||
+          message.role !== 'assistant' ||
+          !message.bot_id
+        ) {
+          return c.json({ error: 'Reply not found' }, 404);
+        }
+        const bot = (await db.bots.getBot(user.id, message.bot_id)) ?? (await db.bots.getBotById(message.bot_id));
+        if (!bot) return c.json({ error: 'Reply not found' }, 404);
+        const row = await db.bots.upsertFeedback({
+          bot_id: bot.id,
+          user_id: user.id,
+          session_id: conversation.session_id,
+          message_id: message.id,
+          rating,
+          comment: typeof body.comment === 'string' ? body.comment.trim() : '',
+          version: bot.user_id === user.id ? null : bot.published_version,
+        });
+        return c.json({ ok: true as const, rating: row.rating });
+      })
+
       // ── PATCH /api/bots/conversations/:id — a task chat's model / title ──
       .patch('/conversations/:id', async (c) => {
         const user = getAuthUser(c);
@@ -677,6 +761,14 @@ export function createBotsRoutes() {
         const body = await readJson(c);
         if (typeof body.bot_id !== 'string') return c.json({ error: 'bot_id is required' }, 400);
         const owner = await ownerContext(db, user.id);
+        // Someone else's public Agent talks with this member alone (P4: multi-party is P5).
+        const target = await db.bots.getConversation(user.id, sessionId);
+        if (target?.owner_bot_id && !(await db.bots.getBot(user.id, target.owner_bot_id))) {
+          return c.json(
+            { error: "Agents can't be invited into a conversation with someone else's Agent", code: 'public_agent' },
+            409,
+          );
+        }
         try {
           await db.bots.addMember(user.id, sessionId, body.bot_id, 'user');
         } catch (error) {
@@ -1088,6 +1180,60 @@ export function createBotsRoutes() {
         return c.json({ folder: { id: folder.id, name: folder.name, url: `#/knowledge/folder/${folder.id}` } });
       })
 
+      // ── GET/PUT /api/bots/:id/publication — a public Agent's settings (spec 20261011-agent-first-class P4) ──
+      .get('/:id/publication', async (c) => {
+        const user = getAuthUser(c);
+        const db = getDb();
+        const bot = await db.bots.getBot(user.id, c.req.param('id'));
+        if (!bot) return c.json({ error: 'Agent not found' }, 404);
+        return c.json(await publicationView(db, bot));
+      })
+      .put('/:id/publication', async (c) => {
+        const user = getAuthUser(c);
+        const db = getDb();
+        const bot = await db.bots.getBot(user.id, c.req.param('id'));
+        if (!bot || bot.status !== 'active') return c.json({ error: 'Agent not found' }, 404);
+        const body = (await readJson(c)) as BotPublicationWrite;
+        try {
+          const next = await validatePublicationWrite(db, bot, body);
+          const updated = await db.bots.setPublication(user.id, bot.id, {
+            visibility: next.visibility,
+            published_version: next.publishedVersion,
+            publication: JSON.stringify(next.settings),
+          });
+          if (!updated) return c.json({ error: 'Agent not found' }, 404);
+          return c.json(await publicationView(db, updated));
+        } catch (error) {
+          if (error instanceof PublicationError) {
+            return c.json({ error: error.message, code: error.code }, error.code === 'not_found' ? 404 : 400);
+          }
+          throw error;
+        }
+      })
+
+      // ── GET /api/bots/:id/feedback — what its users said about its replies (never the conversations) ──
+      .get('/:id/feedback', async (c) => {
+        const user = getAuthUser(c);
+        const db = getDb();
+        const bot = await db.bots.getBot(user.id, c.req.param('id'));
+        if (!bot) return c.json({ error: 'Agent not found' }, 404);
+        const rows = await db.bots.listFeedback(bot.id, 200);
+        const nicknames = new Map<string, string>();
+        for (const id of new Set(rows.map((row) => row.user_id))) {
+          const member = await db.users.getById(id);
+          nicknames.set(id, member?.nickname || member?.email || '');
+        }
+        const feedback: BotFeedbackView[] = rows.map((row) => ({
+          id: row.id,
+          rating: row.rating === 1 ? 1 : -1,
+          comment: row.comment,
+          version: row.version,
+          user: { id: row.user_id, nickname: nicknames.get(row.user_id) ?? '' },
+          created_at: row.created_at,
+        }));
+        return c.json({ feedback });
+      })
+
       // ── GET /api/bots/:id/usage — model use per day (spec 20261011-agent-first-class P3d) ──
       .get('/:id/usage', async (c) => {
         const user = getAuthUser(c);
@@ -1097,7 +1243,8 @@ export function createBotsRoutes() {
         const raw = Number(c.req.query('days') ?? 30);
         const days = Number.isInteger(raw) && raw > 0 ? Math.min(raw, 90) : 30;
         const since = new Date(Date.now() - days * 86_400_000).toISOString();
-        const rows = await db.usage.getBotDailyUsage(user.id, bot.id, since);
+        // Its owner sees everyone's use of it (a public Agent's users included, D38).
+        const rows = await db.usage.getBotDailyUsage(null, bot.id, since);
         const view: BotUsageView = {
           days: rows,
           totals: rows.reduce(

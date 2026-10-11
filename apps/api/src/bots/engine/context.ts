@@ -18,8 +18,17 @@ export type ApprovalDecision = 'approve' | 'always' | 'deny' | 'expired';
 
 export interface BotTurnContext {
   db: DatabaseProvider;
-  /** The member who owns the conversation, the Bot and the computer. Always the session owner. */
+  /**
+   * The member whose conversation this is (the session owner) — and the computer's member. For their
+   * own Bots also the Bot's owner; for someone else's public Bot see `publicUse`.
+   */
   userId: string;
+  /**
+   * Set when the Bot is someone else's public Agent (spec 20261011-agent-first-class P4): it runs on
+   * its narrow public face, acts for `ownerId`'s grants, and never touches the member's personal
+   * data (no vault, no user-level memory, no member notes).
+   */
+  publicUse?: { ownerId: string };
   userRole: 'super' | 'team';
   /** Owner's UI locale — copy for system events and cards ('en' | 'zh'). */
   locale: 'en' | 'zh';

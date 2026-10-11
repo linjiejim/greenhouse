@@ -27,6 +27,7 @@ import type {
   BotSharedNoteView,
   BotVersionView,
   BotView,
+  SharedBotView,
 } from '@greenhouse/types/bots';
 import type { AvatarConfig } from '@greenhouse/types/profile-manifest';
 import type { MessageRow, PipelineStep, Reference } from '@greenhouse/types/session';
@@ -51,6 +52,8 @@ export function toBotView(row: BotRow, dmSessionId: string | null): BotView {
     dm_session_id: dmSessionId,
     current_version: row.current_version,
     user_id: row.user_id,
+    visibility: row.visibility,
+    published_version: row.published_version,
     last_active_at: row.last_active_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -234,4 +237,24 @@ export function toMessageView(row: MessageRow): BotMessageView {
 /** Whether the password vault can encrypt on this deployment — exactly the vault module's own check. */
 export function vaultAvailable(): boolean {
   return isVaultAvailable();
+}
+
+/** Someone else's public Agent as a member sees it (no instructions, tools or settings). */
+export function toSharedBotView(
+  row: BotRow,
+  owner: { id: string; nickname: string },
+  dmSessionId: string | null,
+  available: boolean,
+): SharedBotView {
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    description: row.description,
+    avatar: safeJsonParse(row.avatar, {}) as AvatarConfig,
+    template_key: row.template_key,
+    owner,
+    dm_session_id: dmSessionId,
+    available,
+  };
 }

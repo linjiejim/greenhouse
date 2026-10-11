@@ -219,7 +219,8 @@ export function createUsageService(db: Db) {
      * conversations — the Agent page (spec 20261011-agent-first-class P3d).
      */
     async getBotDailyUsage(
-      userId: string,
+      /** null = every member's use (its owner reads it; a public Agent serves many). */
+      userId: string | null,
       botId: string,
       since: string,
     ): Promise<Array<{ day: string; calls: number; input_tokens: number; output_tokens: number; sessions: number }>> {
@@ -232,10 +233,25 @@ export function createUsageService(db: Db) {
           sessions: sql<number>`count(distinct ${llmUsage.session_id})::int`,
         })
         .from(llmUsage)
-        .where(and(eq(llmUsage.user_id, userId), eq(llmUsage.bot_id, botId), gte(llmUsage.created_at, since)))
+        .where(
+          and(
+            ...(userId ? [eq(llmUsage.user_id, userId)] : []),
+            eq(llmUsage.bot_id, botId),
+            gte(llmUsage.created_at, since),
+          ),
+        )
         .groupBy(sql`1`)
         .orderBy(sql`1`);
       return rows;
+    },
+
+    /** Tokens one member used with one Agent since `since` (a public Agent's per-user daily cap, D37). */
+    async getBotUserTokensSince(botId: string, userId: string, since: string): Promise<number> {
+      const [row] = await db
+        .select({ n: sql<number>`coalesce(sum(${llmUsage.input_tokens} + ${llmUsage.output_tokens}), 0)::int` })
+        .from(llmUsage)
+        .where(and(eq(llmUsage.bot_id, botId), eq(llmUsage.user_id, userId), gte(llmUsage.created_at, since)));
+      return row?.n ?? 0;
     },
 
     /** Aggregate stats grouped by profile. */

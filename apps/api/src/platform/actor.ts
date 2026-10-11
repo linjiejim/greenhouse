@@ -45,5 +45,6 @@ export function delegatedAgentActor(input: {
     clientId: input.clientId,
     ...(scope ? { agentId: scope.botId } : {}),
     ...(scope?.sessionId ? { sessionId: scope.sessionId } : {}),
+    ...(scope?.requestedByUserId ? { requestedByUserId: scope.requestedByUserId } : {}),
   };
 }

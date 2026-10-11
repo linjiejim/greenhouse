@@ -29,7 +29,7 @@ import {
   type EngineMessage,
 } from '@greenhouse/agent-core';
 import { BotsDomainError, type BotRow, type ConversationWithMembers, type DatabaseProvider } from '@greenhouse/db';
-import type { BotEvent, BotRequestKind, BotTurnReason } from '@greenhouse/types/bots';
+import type { BotEvent, BotPublicationSettings, BotRequestKind, BotTurnReason } from '@greenhouse/types/bots';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
@@ -67,6 +67,7 @@ import {
   assembleSystemPrompt,
   buildDigestSection,
   buildIdentity,
+  buildPublicIdentity,
   buildInstruction,
   buildMemberNotes,
   buildStaticRules,
@@ -78,6 +79,8 @@ import {
 } from './prompt.js';
 import { observeToolResult } from './taint.js';
 import { assembleInteractiveTools } from './tools-assembly.js';
+import { assemblePublicAgentTools } from './public-face.js';
+import { grantedFolderIds, monthlyTokensOf } from '../public.js';
 import { readTail } from './transcript.js';
 import { TranscriptChangedError, type TranscriptWriter } from './writer.js';
 
@@ -101,6 +104,11 @@ export interface RunContext {
   members: Set<string>;
   /** Every Bot of the member, archived ones included (names in old messages); updated in place. */
   bots: Map<string, BotRow>;
+  /**
+   * Someone else's public Agents in this conversation (P4), with their published version applied in
+   * `bots` and what their public face needs. Empty for a member's own Bots.
+   */
+  publicBots: Map<string, PublicBotRun>;
   writer: TranscriptWriter;
   /** Digest snapshot for the whole run (spec: one snapshot per chain; never changes mid-run). */
   digest: { rendered: string | null; uptoSeq: number };
@@ -113,6 +121,14 @@ export interface RunContext {
   turnCounter: number;
   usage: { input: number; output: number; cached: number; reasoning: number };
   startedAt: number;
+}
+
+/** A public Agent in a member's conversation (spec 20261011-agent-first-class P4). */
+export interface PublicBotRun {
+  ownerId: string;
+  ownerNickname: string;
+  settings: BotPublicationSettings;
+  version: number;
 }
 
 /** Per-chain budgets. */
@@ -267,9 +283,12 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
     });
   };
 
+  // Someone else's public Agent (P4): its narrow public face, its owner's grants, its own budget.
+  const publicRun = rc.publicBots.get(bot.id) ?? null;
   const ctx: BotTurnContext = {
     db,
     userId: user.id,
+    ...(publicRun ? { publicUse: { ownerId: publicRun.ownerId } } : {}),
     userRole: user.role,
     locale,
     sessionId,
@@ -382,22 +401,46 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
   const traceState: { status: ChatRuntimeTerminalStatus } = { status: 'interrupted' };
 
   try {
+    // A public Agent's per-member daily cap (D37): over it, say so instead of answering.
+    if (publicRun?.settings.budget.daily_tokens_per_user) {
+      const since = new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString();
+      const used = await db.usage.getBotUserTokensSince(bot.id, user.id, since);
+      if (used >= publicRun.settings.budget.daily_tokens_per_user) {
+        await rc.writer.appendEvent({
+          text: copy.publicDailyCap(locale, bot.name),
+          event: { kind: 'unavailable', bot_id: bot.id, reason: 'daily_cap' },
+          botId: bot.id,
+        });
+        return { status: 'skipped' };
+      }
+    }
+
     // ── Tools, prompt, history ──
-    const { tools, approvalGated } = assembleInteractiveTools({
-      db,
-      ctx,
-      toolRegistry: rc.toolRegistry,
-      effectiveTools: botEffectiveTools(rc.effectiveTools, bot),
-      team,
-      conversation: conversationPort,
-      runtimeRunId: null,
-    });
+    const { tools, approvalGated } = publicRun
+      ? assemblePublicAgentTools({
+          db,
+          ctx,
+          toolRegistry: rc.toolRegistry,
+          conversation: conversationPort,
+          settings: publicRun.settings,
+          folderIds: await grantedFolderIds(db, bot, publicRun.settings),
+        })
+      : assembleInteractiveTools({
+          db,
+          ctx,
+          toolRegistry: rc.toolRegistry,
+          effectiveTools: botEffectiveTools(rc.effectiveTools, bot),
+          team,
+          conversation: conversationPort,
+          runtimeRunId: null,
+        });
     const modelOverride = resolveTurnModel(bot, rc.conversation.kind === 'task' ? rc.conversation.model_id : null);
     const effectiveModel = modelOverride ?? rc.profile.model.id;
     const systemPrompt = assembleSystemPrompt([
       buildStaticRules(toolFaceFlags(Object.keys(tools), approvalGated), locale, rc.richBlocks, rc.conversation.kind),
-      buildIdentity(bot, user.nickname),
-      buildMemberNotes(user.nickname, user.notes),
+      // A public Agent knows whom it serves, and nothing personal about either side (D35, D6).
+      publicRun ? buildPublicIdentity(bot, publicRun.ownerNickname, user.nickname) : buildIdentity(bot, user.nickname),
+      publicRun ? null : buildMemberNotes(user.nickname, user.notes),
       buildDigestSection(rc.digest.rendered),
     ]);
 
@@ -414,7 +457,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       projection.firstSeq !== null ? projection.firstSeq - 1 : Math.max(rc.digest.uptoSeq, rc.writer.tailSeq);
 
     const [memoryBlock, openNotes] = await Promise.all([
-      resolveMemoryContext(user.id, user.role, { botId: bot.id }),
+      resolveMemoryContext(user.id, user.role, { botId: bot.id, onlyBot: publicRun !== null }),
       db.bots.listNotes(sessionId, { status: 'open' }),
     ]);
     const outcomes = (item.askedBots ?? []).map((id) => ({
@@ -511,6 +554,8 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       runId: trace?.runId ?? run.runId,
       budgetPool: 'standard',
       metadata: { max_steps: maxSteps, bot_id: bot.id, reason: item.reason },
+      botId: bot.id,
+      ...(publicRun ? { agentBudget: { botId: bot.id, monthlyTokens: monthlyTokensOf(publicRun.settings) } } : {}),
     });
     const stopWhenHandedOff: StopCondition<ToolSet> = () => stopAfter !== null;
     // Soft stop: read after each step's tool calls completed, so the step in

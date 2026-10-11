@@ -96,12 +96,26 @@ export const bots = pgTable(
     current_version: integer('current_version').notNull().default(1),
     /** The `custom_profiles.id` this Bot was migrated from; stored `custom:<id>[@v]` references resolve through it. */
     legacy_custom_id: integer('legacy_custom_id'),
+    // ── Publication (spec 20261011-agent-first-class P4) ──
+    /** `public` = published to an audience (never Sprouty); `private` = its owner's only. */
+    visibility: text('visibility', { enum: ['private', 'public'] })
+      .notNull()
+      .default('private'),
+    /** The immutable version (bot_versions) its audience talks to; null = not published yet. */
+    published_version: integer('published_version'),
+    /** An administrator paused it: nobody but its owner can use it until resumed. */
+    public_paused: boolean('public_paused').notNull().default(false),
+    /** JSON `BotPublication` settings: audience, grants, budget (packages/types `BotPublicationSettings`). */
+    publication: text('publication').notNull().default('{}'),
     last_active_at: ts('last_active_at'),
     created_at: ts('created_at').notNull(),
     updated_at: ts('updated_at').notNull(),
   },
   (table) => [
     index('idx_bots_user').on(table.user_id, table.status),
+    index('idx_bots_public')
+      .on(table.visibility)
+      .where(sql`${table.visibility} = 'public'`),
     uniqueIndex('uq_bots_user_name_active')
       .on(table.user_id, table.name_key)
       .where(sql`${table.status} = 'active'`),
@@ -194,9 +208,10 @@ export const botConversations = pgTable(
   },
   (table) => [
     index('idx_bot_conversations_user').on(table.user_id, table.last_activity_at),
-    // One DM per Bot; task chats are unlimited.
+    // One DM per (member, Bot): a Bot's owner has one, and so has each member using a public Bot
+    // (spec 20261011-agent-first-class D34); task chats are unlimited.
     uniqueIndex('uq_bot_conversations_owner_bot')
-      .on(table.owner_bot_id)
+      .on(table.user_id, table.owner_bot_id)
       .where(sql`${table.kind} = 'direct'`),
   ],
 );
@@ -454,6 +469,40 @@ export const botComputerBackups = pgTable(
   ],
 );
 
+// ─── bot_feedback ─────────────────────────────────────────
+
+/**
+ * A member's rating of one reply of an Agent (spec 20261011-agent-first-class D38): what the
+ * owner of a public Agent sees instead of the conversation. `comment` is only what the member
+ * chose to write; no message text is copied here.
+ */
+export const botFeedback = pgTable(
+  'bot_feedback',
+  {
+    id: serial('id').primaryKey(),
+    bot_id: text('bot_id')
+      .notNull()
+      .references(() => bots.id, { onDelete: 'cascade' }),
+    /** The member who rated (the conversation's member). */
+    user_id: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    session_id: text('session_id').notNull(),
+    message_id: text('message_id').notNull(),
+    /** 1 = helpful, -1 = not. */
+    rating: integer('rating').notNull(),
+    comment: text('comment').notNull().default(''),
+    /** The published version the reply came from (null = the owner's own conversation). */
+    version: integer('version'),
+    created_at: ts('created_at').notNull(),
+    updated_at: ts('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_bot_feedback_message').on(table.user_id, table.message_id),
+    index('idx_bot_feedback_bot').on(table.bot_id, table.created_at),
+  ],
+);
+
 // ─── vault_items ──────────────────────────────────────────
 
 export const vaultItems = pgTable(
@@ -533,3 +582,4 @@ export type BotComputerBackupRow = typeof botComputerBackups.$inferSelect;
 export type BotComputerBackupStatus = BotComputerBackupRow['status'];
 export type VaultItemRow = typeof vaultItems.$inferSelect;
 export type VaultAccessLogRow = typeof vaultAccessLog.$inferSelect;
+export type BotFeedbackRow = typeof botFeedback.$inferSelect;

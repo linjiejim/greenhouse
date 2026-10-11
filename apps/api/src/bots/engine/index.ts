@@ -24,6 +24,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { startRequestExpiryLoop, stopRequestExpiryLoop } from './approvals.js';
 import { runBotsRun } from './chain.js';
+import { publicBotFor } from '../public.js';
 import {
   deliverToConversation as deliver,
   setInboxToolRegistry,
@@ -180,8 +181,13 @@ export async function conversationReplyState(
   ]);
   if (!conversation) return 'ok'; // the run reports a missing conversation itself
   if (conversation.kind === 'group') return 'group_closed';
+  const ownerBotId = conversation.owner_bot_id;
+  // Someone else's public Agent (P4): answerable while it is still offered to this member.
+  if (ownerBotId && !bots.some((bot) => bot.id === ownerBotId)) {
+    return (await publicBotFor(db, userId, ownerBotId)) ? 'ok' : 'agent_unavailable';
+  }
   const active = new Set(bots.filter((bot) => bot.status === 'active').map((bot) => bot.id));
-  return conversation.owner_bot_id && active.has(conversation.owner_bot_id) ? 'ok' : 'bot_archived';
+  return ownerBotId && active.has(ownerBotId) ? 'ok' : 'bot_archived';
 }
 
 /** Single-writer delivery into a Bots conversation (see inbox-types.ts). */

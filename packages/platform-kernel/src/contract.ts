@@ -33,6 +33,8 @@ export interface ActorContext {
    */
   agentId?: string;
   sessionId?: string;
+  /** Who asked, when that is not `onBehalfOfUserId` (a public Agent serving a colleague, P4). */
+  requestedByUserId?: string;
 }
 
 /** Return the workspace user whose authorization policy should be evaluated. */
@@ -82,6 +84,7 @@ export interface PlatformAuditEvent {
   clientId?: string;
   agentId?: string;
   sessionId?: string;
+  requestedByUserId?: string;
   requestId: string;
   resource: ResourceRef;
   actionId: string;

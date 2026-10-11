@@ -33,6 +33,7 @@ vi.mock('@greenhouse/db', () => ({
     users: { getById: async (id: string) => ({ id, auth_version: 4 }) },
     // u1's Agents: Sprouty (the main computer) and Quill (its own).
     bots: {
+      getBotById: async () => undefined,
       getBot: async (userId: string, id: string) =>
         userId === 'u1' && id === 'bot_sprouty'
           ? { id, template_key: 'sprouty' }

@@ -46,7 +46,7 @@ export { SecureLoginError } from '../vault/fill.js';
 export { releaseTurnLeases } from './browser-session.js';
 
 export function computerTurnFrom(ctx: BotTurnContext, deps: ComputerDeps = defaultComputerDeps): ComputerTurn {
-  const withVault = !ctx.background && isVaultAvailable();
+  const withVault = !ctx.background && !ctx.publicUse && isVaultAvailable();
   const implicitTakeover = implicitTakeoverFor(ctx, deps);
   // A site asking for human verification raises the verification card (tools/takeover.ts).
   const humanCheck = humanCheckFor(ctx);
@@ -93,7 +93,8 @@ export function buildComputerTools(
     computer: createComputerTool(turn, deps, host),
     request_takeover: createTakeoverTool(ctx, deps),
   };
-  if (isVaultAvailable()) tools.vault = createVaultTool(ctx, deps);
+  // A public Agent has no password vault: the member's entries are theirs (P4, D35).
+  if (isVaultAvailable() && !ctx.publicUse) tools.vault = createVaultTool(ctx, deps);
   return tools;
 }
 

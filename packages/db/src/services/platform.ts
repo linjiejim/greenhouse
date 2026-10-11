@@ -831,6 +831,7 @@ export function createPlatformService(db: Db) {
           client_id: event.clientId ?? null,
           agent_id: event.agentId ?? null,
           session_id: event.sessionId ?? null,
+          requested_by_user_id: event.requestedByUserId ?? null,
           request_id: event.requestId,
           app_id: event.resource.appId,
           module_id: event.resource.moduleId ?? null,

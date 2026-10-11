@@ -42,19 +42,33 @@ export async function greetingFacts(db: DatabaseProvider, userId: string): Promi
   return { locale: botsLocale(user?.locale), computerReady: getComputerRuntime().state === 'ready' };
 }
 
-/** Append the greeting as the Bot's first DM message (idempotent per Bot). */
+/**
+ * Append the greeting as the Bot's first DM message (idempotent per DM). The owner's DM keeps the
+ * per-Bot id it always had; another member's DM with a public Bot (P4) has its own, in that
+ * member's language, and does not call the Bot theirs.
+ */
 export async function writeGreeting(
   db: DatabaseProvider,
   dmSessionId: string,
   bot: Pick<BotRow, 'id' | 'name' | 'role' | 'template_key' | 'user_id'>,
   facts?: GreetingFacts,
+  memberId: string = bot.user_id,
 ): Promise<MessageRow> {
-  const resolved = facts ?? (await greetingFacts(db, bot.user_id));
-  return db.sessions.addMessageOnce(`bot-greeting:${bot.id}`, {
+  const owned = memberId === bot.user_id;
+  const resolved = facts ?? (await greetingFacts(db, memberId));
+  return db.sessions.addMessageOnce(owned ? `bot-greeting:${bot.id}` : `bot-greeting:${bot.id}:${dmSessionId}`, {
     session_id: dmSessionId,
     role: 'assistant',
-    content: buildGreeting(bot, resolved),
+    content: owned ? buildGreeting(bot, resolved) : buildPublicGreeting(bot, resolved),
     bot_id: bot.id,
     bot_event: JSON.stringify({ kind: 'greeting', bot_id: bot.id }),
   });
+}
+
+/** A public Agent greeting someone other than its owner: its job, not "your …". */
+export function buildPublicGreeting(bot: Pick<BotRow, 'name' | 'role'>, facts: GreetingFacts): string {
+  const role = bot.role.trim();
+  return facts.locale === 'zh'
+    ? `你好，我是 **${bot.name}**${role ? `（${role}）` : ''}。有什么我能帮你的？`
+    : `Hi, I'm **${bot.name}**${role ? ` (${role})` : ''}. How can I help?`;
 }

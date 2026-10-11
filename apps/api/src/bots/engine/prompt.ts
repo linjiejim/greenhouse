@@ -25,7 +25,11 @@ import { DEFAULT_CLIENT_BLOCKS } from '@greenhouse/types/rich-output';
 import type { BotRow } from '@greenhouse/db';
 import type { BotMemberRole } from '@greenhouse/types/bots';
 import { sanitizeForPrompt } from '../../security/security.js';
-import { buildIdentitySection, buildMemberNotesSection } from '../../profiles/identity-prompt.js';
+import {
+  buildIdentitySection,
+  buildMemberNotesSection,
+  buildPublicIdentitySection,
+} from '../../profiles/identity-prompt.js';
 import { SPEAKER_TAGS, type BotsLocale } from './copy.js';
 
 /** Tools whose calls the engine gates behind an approval card (see tools-assembly.ts). */
@@ -195,6 +199,15 @@ export function buildStaticRules(
  */
 export function buildIdentity(bot: Pick<BotRow, 'name' | 'role' | 'instructions'>, nickname: string): string {
   return buildIdentitySection(bot, nickname);
+}
+
+/** S2 for someone else's public Agent (P4). */
+export function buildPublicIdentity(
+  bot: Pick<BotRow, 'name' | 'role' | 'instructions'>,
+  ownerNickname: string,
+  memberNickname: string,
+): string {
+  return buildPublicIdentitySection(bot, ownerNickname, memberNickname);
 }
 
 /** S3 — the member's standing preferences (users.notes); shared with the Chat path. */

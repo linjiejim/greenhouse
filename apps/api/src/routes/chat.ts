@@ -280,6 +280,12 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                   409,
                 );
               }
+              if (replyState === 'agent_unavailable') {
+                return c.json(
+                  { error: 'This Agent is no longer available to you — its owner unpublished it', code: replyState },
+                  409,
+                );
+              }
               if (replyState === 'bot_archived') {
                 return c.json(
                   { error: 'This Agent was archived — its conversation is read-only', code: replyState },
