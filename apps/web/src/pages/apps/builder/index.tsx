@@ -23,7 +23,7 @@ import type { AppSpecError } from '@greenhouse/types/apps';
 import { useAgentContext } from '../../../components/agent-context';
 import { AppBadge } from '../../../components/apps';
 import { ContextMenu, useContextMenu } from '../../../components/app/context-menu';
-import { Button, Dialog, EmptyState, Spinner, Tabs, Tag, toast } from '../../../components/ui';
+import { Button, ConfirmDialog, Dialog, EmptyState, Spinner, Tabs, Tag, toast } from '../../../components/ui';
 import { APP_CENTER_HREF, appPreviewHref } from '../../../lib/app-routes';
 import { useT } from '../../../lib/i18n';
 import { AlertTriangle, ArrowLeft, Eye, History, Lock, RefreshCw, Send, Wrench } from '../../../lib/icons';
@@ -118,7 +118,15 @@ export function AppBuilderPage({ appId }: { appId: number }) {
   const [versions, setVersions] = useState(false);
   const [problems, setProblems] = useState(false);
   const [focusRole, setFocusRole] = useState<string | undefined>(undefined);
+  /** Sharing has edits not saved yet (it saves by hand): leaving its tab asks first. */
+  const [sharingDirty, setSharingDirty] = useState(false);
+  const [leavingFor, setLeavingFor] = useState<BuilderTab | null>(null);
   const { menu, openMenu, closeMenu } = useContextMenu();
+
+  const switchTab = (next: BuilderTab) => {
+    if (tab === 'audiences' && next !== 'audiences' && sharingDirty) setLeavingFor(next);
+    else setTab(next);
+  };
 
   // The selection follows the spec: a deleted page or card falls back to the first page.
   const current: BuilderSelection | null = useMemo(() => {
@@ -198,11 +206,11 @@ export function AppBuilderPage({ appId }: { appId: number }) {
   const showProblem = (error: AppSpecError) => {
     setProblems(false);
     if (error.pageId) {
-      setTab('pages');
+      switchTab('pages');
       setSelection({ pageId: error.pageId, cardId: error.cardId ?? null });
     } else if (error.roleKey) {
       setFocusRole(error.roleKey);
-      setTab('roles');
+      switchTab('roles');
     }
   };
 
@@ -323,7 +331,7 @@ export function AppBuilderPage({ appId }: { appId: number }) {
         <Tabs
           tabs={tabs}
           active={tab}
-          onChange={(key) => setTab(key as BuilderTab)}
+          onChange={(key) => switchTab(key as BuilderTab)}
           ariaLabel={t('apps.builder.tabs.label')}
         />
       </div>
@@ -371,6 +379,7 @@ export function AppBuilderPage({ appId }: { appId: number }) {
                 spec={spec}
                 canPublish={app.canPublish}
                 published={app.publishedVersion !== null}
+                onDirtyChange={setSharingDirty}
               />
             )}
             {tab === 'settings' && (
@@ -387,6 +396,19 @@ export function AppBuilderPage({ appId }: { appId: number }) {
       </div>
 
       {menu && <ContextMenu {...menu} onClose={closeMenu} />}
+      <ConfirmDialog
+        open={leavingFor !== null}
+        onClose={() => setLeavingFor(null)}
+        onConfirm={() => {
+          if (leavingFor) setTab(leavingFor);
+          setSharingDirty(false);
+          setLeavingFor(null);
+        }}
+        title={t('common.unsavedTitle')}
+        description={t('apps.builder.audiences.unsavedLeave')}
+        confirmLabel={t('common.discardChanges')}
+        confirmVariant="destructive"
+      />
       <ProblemsDialog
         open={problems}
         onClose={() => setProblems(false)}

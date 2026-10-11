@@ -349,6 +349,7 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       conflict: '分发已在别处被修改——这里是最新内容。',
       loadFailed: '无法加载应用的分发对象',
       unsaved: '有未保存的修改',
+      unsavedLeave: '你对分发的修改还没有保存。离开这个页签会丢弃它们。',
     },
     settings: {
       identity: '名称与外观',

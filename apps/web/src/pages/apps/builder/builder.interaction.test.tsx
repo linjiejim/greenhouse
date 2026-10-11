@@ -69,6 +69,16 @@ vi.mock('../../../lib/api/apps', async (importOriginal) => ({
   getAppPins: vi.fn(async () => []),
 }));
 
+// The sharing tab's pickers (people and groups) — no directory here.
+vi.mock('../../../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/api')>()),
+  fetchShareableUsers: vi.fn(async () => []),
+}));
+vi.mock('../../../lib/api/groups', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/api/groups')>()),
+  listGroups: vi.fn(async () => []),
+}));
+
 // The grid measures its container; draw the cells, and let a test report a drag.
 vi.mock('../../../components/workbench/widget-grid', () => ({
   WIDGET_DRAG_HANDLE_CLASS: 'widget-drag-handle',
@@ -516,6 +526,30 @@ describe('roles, sharing', () => {
     await click(button('Some pages'));
     const pages = q('[data-testid="app-role-pages"]')!;
     expect(pages.querySelectorAll('input:checked')).toHaveLength(2);
+  });
+
+  it('asks before another tab drops sharing changes that are not saved', async () => {
+    await mount();
+    await click(q('[data-testid="app-tab-audiences"]'));
+    const role = q<HTMLSelectElement>('select[aria-label="Role of Everyone"]')!;
+    await setValue(role, 'approver');
+    expect(q('[data-testid="app-audiences-tab"]')?.textContent).toContain('Unsaved changes');
+
+    await click(q('[data-testid="app-tab-roles"]'));
+    expect(document.body.textContent).toContain('The sharing changes you made are not saved yet.');
+    // Staying keeps the edit.
+    await click(button('Cancel'));
+    expect(q('[data-testid="app-roles-tab"]')).toBeNull();
+    expect(q<HTMLSelectElement>('select[aria-label="Role of Everyone"]')?.value).toBe('approver');
+
+    await click(q('[data-testid="app-tab-roles"]'));
+    await click(button('Discard changes'));
+    expect(q('[data-testid="app-roles-tab"]')).not.toBeNull();
+    expect(appsApi.setAppAudiences).not.toHaveBeenCalled();
+    // Nothing unsaved any more: tabs switch freely.
+    await click(q('[data-testid="app-tab-audiences"]'));
+    await click(q('[data-testid="app-tab-pages"]'));
+    expect(q('[data-testid="app-canvas"]')).not.toBeNull();
   });
 
   it('shows sharing read-only to a builder who is not the Base owner', async () => {

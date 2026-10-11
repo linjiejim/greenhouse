@@ -354,6 +354,7 @@ export const appsBuilderEn = {
       conflict: 'Sharing changed somewhere else — here is the latest.',
       loadFailed: 'Unable to load who the app is shared with',
       unsaved: 'Unsaved changes',
+      unsavedLeave: 'The sharing changes you made are not saved yet. Leaving this tab discards them.',
     },
     settings: {
       identity: 'Name and look',

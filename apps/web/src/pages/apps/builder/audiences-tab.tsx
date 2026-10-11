@@ -8,9 +8,14 @@
  * people access to the Base's data through it. Everyone else sees the list
  * read-only, with that reason. An entry whose role is not in the published
  * version grants nothing today (D4) and says so.
+ *
+ * Unlike the draft, sharing is saved by hand ("Save sharing"), so unsaved
+ * changes are guarded: the builder asks before another tab replaces this one
+ * (`onDirtyChange`), the router before leaving the page, the browser before
+ * a reload.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppAudienceEntry, AppAudienceEntryView, AppAudiencesView, AppSpec } from '@greenhouse/types/apps';
 import type { ShareableUser, UserGroup } from '@greenhouse/types/api';
 import { Button, EmptyState, IconButton, Select, Spinner, Tag, toast } from '../../../components/ui';
@@ -21,6 +26,7 @@ import { listGroups } from '../../../lib/api/groups';
 import { getAppAudiences, isRevisionConflict, setAppAudiences } from '../../../lib/api/apps-builder';
 import { useT } from '../../../lib/i18n';
 import { Globe, Lock, Plus, Trash2, User, Users } from '../../../lib/icons';
+import { registerNavigationGuard } from '../../../lib/navigation-guard';
 
 function principalKey(entry: Pick<AppAudienceEntry, 'principal'>): string {
   const principal = entry.principal;
@@ -72,6 +78,7 @@ export function AudiencesTab({
   spec,
   canPublish,
   published,
+  onDirtyChange,
 }: {
   appId: number;
   /** The draft: its roles may be shared before they are published (they grant nothing until then). */
@@ -79,6 +86,8 @@ export function AudiencesTab({
   canPublish: boolean;
   /** A version is live: entries grant access now (else only once the first version is published). */
   published: boolean;
+  /** Told when the list has (or no longer has) changes that are not saved yet. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const t = useT();
   const [view, setView] = useState<AppAudiencesView | null>(null);
@@ -90,6 +99,32 @@ export function AudiencesTab({
   const [pickRole, setPickRole] = useState('');
   const [users, setUsers] = useState<ShareableUser[] | null>(null);
   const [groups, setGroups] = useState<UserGroup[] | null>(null);
+
+  // Unsaved sharing: the builder's tabs ask first; so do the router (it reads the ref inside
+  // its `hashchange` listener, before React re-renders) and the browser on a reload.
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const reportDirty = useRef(onDirtyChange);
+  reportDirty.current = onDirtyChange;
+  useEffect(() => {
+    reportDirty.current?.(dirty);
+  }, [dirty]);
+  useEffect(() => {
+    const release = registerNavigationGuard(() => dirtyRef.current);
+    return () => {
+      release();
+      reportDirty.current?.(false);
+    };
+  }, []);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
 
   const load = useCallback(async () => {
     setFailed(false);
