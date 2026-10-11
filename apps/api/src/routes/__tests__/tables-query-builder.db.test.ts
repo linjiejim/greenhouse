@@ -175,7 +175,7 @@ describe('tables_query builder reads', () => {
       shared: [],
     });
 
-    const read = (await query(builder.id, { action: 'apps.get', app_id: appId })) as AppDraftView & {
+    const read = (await query(builder.id, { action: 'apps.get', app_id: appId })) as unknown as AppDraftView & {
       audiences: AppAudiencesView | null;
     };
     expect(read.app.id).toBe(appId);
