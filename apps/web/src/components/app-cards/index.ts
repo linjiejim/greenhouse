@@ -33,6 +33,7 @@ export {
   refsUsers,
   usersByIdOf,
   viewTable,
+  writableFields,
   type AppAggregateCard,
   type AppRecordsLikeCard,
   type AppViewTable,

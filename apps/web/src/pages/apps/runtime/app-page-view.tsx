@@ -30,6 +30,7 @@ import {
   isRecordsLikeCard,
   pickFields,
   viewTable,
+  writableFields,
   type AppCardHost,
   type AppRecordsLikeCard,
 } from '../../../components/app-cards';
@@ -240,7 +241,7 @@ export function AppPageView({
         const requestId = newAppRequestId();
         setForm({
           title: action.label,
-          fields: pickFields(tableFields(card.source.tableId), inputs),
+          fields: writableFields(viewTable(view, card.source.tableId), inputs),
           requiredFieldIds: new Set(action.do.requiredInputFieldIds ?? []),
           mode: 'create',
           submitLabel: action.label,
@@ -274,7 +275,7 @@ export function AppPageView({
       }
       void go();
     },
-    [describe, execute, optionsFor, page.id, t, tableFields, uploadFor],
+    [describe, execute, optionsFor, page.id, t, uploadFor, view],
   );
 
   const openCreate = useCallback(
@@ -296,7 +297,7 @@ export function AppPageView({
         title: button
           ? button.label
           : t('apps.runtime.actions.createTitle', { table: table?.name ?? spec.label ?? '' }),
-        fields: pickFields(tableFields(spec.tableId), spec.fieldIds),
+        fields: writableFields(table, spec.fieldIds),
         mode: 'create',
         submitLabel: t('apps.runtime.actions.create'),
         loadOptions: optionsFor(card.id, button?.id),
@@ -317,7 +318,7 @@ export function AppPageView({
         testId: 'app-create-dialog',
       });
     },
-    [afterWrite, appId, optionsFor, page.id, preview, t, tableFields, uploadFor, view],
+    [afterWrite, appId, optionsFor, page.id, preview, t, uploadFor, view],
   );
 
   const host = useMemo<AppCardHost>(

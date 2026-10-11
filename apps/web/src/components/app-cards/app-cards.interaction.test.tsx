@@ -17,7 +17,7 @@ import { I18nProvider } from '../../lib/i18n';
 import { dragTo, flush } from '../../pages/tables/views/view-test-fixtures';
 import { resetRecordCoverCacheForTest } from '../../pages/tables/views/record-cover';
 import { AppCardView } from './app-card-view';
-import { CARDS, CHAIR, LAPTOP, mockHost, recordsResult, runtimeView, stateOf } from './test-fixtures';
+import { CARDS, CHAIR, FIELDS, LAPTOP, mockHost, recordsResult, runtimeView, stateOf, TABLE_ID } from './test-fixtures';
 import type { AppCardHost } from './types';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -228,6 +228,21 @@ describe('form card', () => {
     expect(byTestId('app-form-apply-done')?.textContent).toContain('Finance will look at it.');
     await click(buttonNamed('Submit another'));
     expect(byTestId('app-form-apply-submit')?.textContent).toBe('Send request');
+  });
+
+  it('offers only the fields the role may write, so a read-only one never travels', async () => {
+    // A checkbox the role reads but may not edit would otherwise always send `false` — and be refused.
+    const urgent = { id: 7, name: 'Urgent', type: 'boolean', isPrimary: false, config: {}, editable: false };
+    const host = mockHost({
+      view: runtimeView({ tables: [{ id: TABLE_ID, name: 'Requests', fields: [...FIELDS, urgent] }] }),
+    });
+    const card = { ...CARDS.apply, fieldIds: [1, 6, 7] };
+    await mount(card, host);
+    expect(container.textContent).not.toContain('Due');
+    expect(container.textContent).not.toContain('Urgent');
+    await type(container.querySelector('input'), 'Monitor');
+    await click(byTestId('app-form-apply-submit'));
+    expect(host.submitForm).toHaveBeenCalledWith(card, [{ fieldId: 1, value: 'Monitor' }]);
   });
 
   it('shows a refusal in the form', async () => {

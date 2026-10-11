@@ -121,6 +121,18 @@ export function editableFieldIds(table: AppViewTable | undefined): Set<number> {
   return new Set((table?.fields ?? []).filter((field) => field.editable).map((field) => field.id));
 }
 
+/**
+ * The inputs of a write the role makes on this table (a form card, a records
+ * card's create, a `create_record` button, an action's inputs): the listed
+ * fields, in their order, that the role may write. The gateway refuses any
+ * other key, so a field the role may only read is never offered as an input
+ * (the spec's defaults are applied by the server, never shown).
+ */
+export function writableFields(table: AppViewTable | undefined, ids: readonly number[] | undefined): TableField[] {
+  const editable = editableFieldIds(table);
+  return pickFields(appTableFields(table), ids).filter((field) => editable.has(field.id));
+}
+
 // ─── Records and labels ───────────────────────────────────
 
 /** A gateway row as the Tables renderers read a record (computed values arrive merged into `values`). */

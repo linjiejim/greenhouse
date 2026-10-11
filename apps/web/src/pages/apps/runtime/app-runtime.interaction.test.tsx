@@ -512,6 +512,17 @@ describe('a page in use', () => {
     expect(api.runAppAction.mock.calls[1]![1].requestId).not.toBe(firstRequest);
   });
 
+  it('leaves fields the role may only read out of the create dialog', async () => {
+    // Field 6 (Due) is readable but not editable for this role; the gateway refuses it on a create.
+    api.getApp.mockResolvedValue(viewWith([{ ...CARDS.mine, create: { fieldIds: [1, 6, 3] } }]));
+    await mount('5');
+    await click(byTestId('app-card-mine-new'));
+    const create = byTestId('app-create-dialog')!;
+    expect(create.textContent).toContain('Title');
+    expect(create.textContent).toContain('Amount');
+    expect(create.textContent).not.toContain('Due');
+  });
+
   it('acts on a linked record through the page its card is on', async () => {
     const view = runtimeView();
     api.getApp.mockResolvedValue({

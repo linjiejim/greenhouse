@@ -1,7 +1,7 @@
 /**
- * Form card (`kind: 'form'`): the card's fields of its table, filled in place
- * and sent as `$submit` (the spec's `defaults` are applied by the server, never
- * shown). Attachments upload through the app; after a submit the card says so
+ * Form card (`kind: 'form'`): the card's fields of its table that the role may
+ * write, filled in place and sent as `$submit` (the spec's `defaults` are
+ * applied by the server, never shown). Attachments upload through the app; after a submit the card says so
  * — the builder's message, else ours — and offers another response.
  */
 
@@ -10,7 +10,7 @@ import { isComputedField } from '../tables/field-types';
 import { Button } from '../ui';
 import { useT } from '../../lib/i18n';
 import { CheckCircle2 } from '../../lib/icons';
-import { appTableFields, pickFields, viewTable } from './model';
+import { viewTable, writableFields } from './model';
 import { AppRecordForm } from './record-form';
 import type { AppCardRendererProps } from './types';
 
@@ -18,7 +18,7 @@ export function AppFormCard({ card, host }: AppCardRendererProps<'form'>) {
   const t = useT();
   const table = viewTable(host.view, card.tableId);
   const fields = useMemo(
-    () => pickFields(appTableFields(table), card.fieldIds).filter((field) => !isComputedField(field)),
+    () => writableFields(table, card.fieldIds).filter((field) => !isComputedField(field)),
     [card.fieldIds, table],
   );
   const [done, setDone] = useState(false);
