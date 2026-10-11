@@ -135,14 +135,15 @@ function DetailEditor({
               label={t('apps.builder.props.detailFields')}
               fields={fields}
               value={detail.fieldIds}
+              // A field taken out of the details is no longer editable there either.
               onChange={(fieldIds) =>
-                setDetail({
-                  ...detail,
-                  fieldIds,
-                  ...(detail.editableFieldIds
-                    ? { editableFieldIds: detail.editableFieldIds.filter((id) => fieldIds.includes(id)) }
-                    : {}),
-                })
+                setDetail(
+                  withList(
+                    { ...detail, fieldIds },
+                    'editableFieldIds',
+                    (detail.editableFieldIds ?? []).filter((id) => fieldIds.includes(id)),
+                  ),
+                )
               }
               systemFields={detail.systemFields ?? []}
               onSystemFieldsChange={(systemFields) => setDetail(withList(detail, 'systemFields', systemFields))}
