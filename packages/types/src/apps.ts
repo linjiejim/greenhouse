@@ -424,13 +424,18 @@ export interface AppIssue {
   pageId: string;
   cardId?: string;
   actionId?: string;
+  /** A page filter control that no longer works (added in F1; additive). */
+  filterId?: string;
   message: string;
 }
 
 /** What a viewer receives: the published spec trimmed to their role, plus field metadata to render it. */
 export interface AppRuntimeView {
   app: AppSummary;
+  /** The published version shown; 0 for a manager's draft preview (`draft: true`). */
   version: number;
+  /** Set when a manager previews the draft instead of the published version (added in F1; additive). */
+  draft?: boolean;
   role: { key: string; name: string } | { key: '__manager__'; name: string };
   spec: AppSpec;
   /** Fields referenced by the visible cards and readable by the role, keyed by table. */
@@ -469,4 +474,64 @@ export interface AppActionInput {
   /** Input field values for set_fields actions, create values for create actions. */
   values?: TableFieldValueEntry[];
   requestId: string;
+}
+
+// ─── Management wire views (F1; additive) ─────────────────
+
+/**
+ * A spec problem the server found, with where it is. Saving a draft reports
+ * these without refusing (a draft may be mid-edit); publishing refuses while
+ * any remain.
+ */
+export interface AppSpecError {
+  /** `pages[0].cards[2].actions[1].do.values[0]` style. */
+  path: string;
+  message: string;
+  pageId?: string;
+  cardId?: string;
+  actionId?: string;
+  filterId?: string;
+  roleKey?: string;
+}
+
+/** `GET /api/apps`: what the caller manages, what is shared with them, what is recommended to them. */
+export interface AppListView {
+  managed: AppSummary[];
+  shared: AppSummary[];
+  featured: AppSummary[];
+}
+
+/** The builder's draft: spec, revision for CAS, and the problems against today's schema. */
+export interface AppDraftView {
+  app: AppSummary;
+  spec: AppSpec;
+  draftRevision: number;
+  errors: AppSpecError[];
+}
+
+export interface AppVersionSummary {
+  version: number;
+  notes: string | null;
+  publishedBy: { id: string; name: string };
+  publishedAt: string;
+  /** The draft revision it was published from. */
+  draftRevision: number;
+  specHash: string;
+}
+
+/** One audience entry with what the owner's editor shows next to it. */
+export interface AppAudienceEntryView extends AppAudienceEntry {
+  /** Person nickname, group name, or "everyone". */
+  name: string;
+  /** Groups: who controls membership (sharing with a group delegates "who gets in" to them). */
+  managedBy?: { id: string; name: string };
+  /** The role key is not in the live version (or the app is unpublished): the entry grants nothing today. */
+  dangling?: boolean;
+}
+
+export interface AppAudiencesView {
+  entries: AppAudienceEntryView[];
+  audiencesRevision: number;
+  /** The roles of the live version (else the draft) — what an entry may point at. */
+  roles: Array<{ key: string; name: string }>;
 }

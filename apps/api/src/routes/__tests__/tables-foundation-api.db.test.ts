@@ -227,7 +227,7 @@ describe('Tables foundation — API access', () => {
     expect(await submitted.json()).toEqual({ submitted: true, successMessage: 'Thanks!' });
   });
 
-  it('places every audited action back in its own Base', async () => {
+  it("places every audited write in its own Base's feed — reads stay out", async () => {
     const app = createHttpApp([owner]);
     const created = await createBase(app);
     const other = await createBase(app);
@@ -235,8 +235,12 @@ describe('Tables foundation — API access', () => {
     const primaryId = created.schema.fields[0]!.id;
     const record = (await (
       await send(app, owner, `/api/tables/tables/${tableId}/records`, 'POST', { values: { [primaryId]: 'Row' } })
-    ).json()) as { record: { id: number } };
+    ).json()) as { record: { id: number; revision: number } };
     await send(app, owner, `/api/tables/tables/${tableId}/records/${record.record.id}`);
+    await send(app, owner, `/api/tables/tables/${tableId}/records/${record.record.id}`, 'PATCH', {
+      revision: record.record.revision,
+      values: { [primaryId]: 'Edited' },
+    });
     await send(app, owner, `/api/tables/fields/${primaryId}`, 'PATCH', { name: 'Title' });
     await send(app, owner, `/api/tables/tables/${other.schema.table.id}/records`, 'POST', {
       values: { [other.schema.fields[0]!.id]: 'Elsewhere' },
@@ -244,13 +248,23 @@ describe('Tables foundation — API access', () => {
 
     const audit = await send(app, owner, `/api/tables/bases/${created.base.id}/audit`);
     expect(audit.status).toBe(200);
-    const events = ((await audit.json()) as { events: Array<{ action_id: string; record_id: string | null }> }).events;
+    const events = (
+      (await audit.json()) as {
+        events: Array<{ action_id: string; record_id: string | null; scope_type: string; scope_id: string }>;
+      }
+    ).events;
     expect(events.map((event) => event.action_id)).toEqual(
-      expect.arrayContaining(['createRecord', 'getRecord', 'updateField']),
+      expect.arrayContaining(['createRecord', 'updateRecord', 'updateField']),
     );
     expect(events).toContainEqual(
-      expect.objectContaining({ action_id: 'getRecord', record_id: String(record.record.id) }),
+      expect.objectContaining({ action_id: 'updateRecord', record_id: String(record.record.id) }),
     );
+    expect(events.every((event) => event.scope_type === 'base' && event.scope_id === String(created.base.id))).toBe(
+      true,
+    );
+    // Reads (getRecord, getBase, the audit read itself) are not in the feed.
+    expect(events.map((event) => event.action_id)).not.toContain('getRecord');
+    expect(events.map((event) => event.action_id)).not.toContain('listBaseAudit');
     expect(events).not.toContainEqual(
       expect.objectContaining({ action_id: 'createRecord', record_id: String(other.schema.table.id) }),
     );

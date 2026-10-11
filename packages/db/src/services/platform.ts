@@ -885,15 +885,6 @@ export function createPlatformService(db: Db) {
         .orderBy(desc(platformAuditEvents.created_at))
         .limit(Math.min(Math.max(input.limit ?? 100, 1), 500));
     },
-
-    async listAuditEventsForApp(orgId: string, appId: string, limit = 100): Promise<PlatformAuditEventRow[]> {
-      return db
-        .select()
-        .from(platformAuditEvents)
-        .where(and(eq(platformAuditEvents.org_id, orgId), eq(platformAuditEvents.app_id, appId)))
-        .orderBy(desc(platformAuditEvents.created_at))
-        .limit(Math.min(Math.max(limit, 1), 500));
-    },
   };
   return service;
 }

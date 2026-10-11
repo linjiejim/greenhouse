@@ -65,6 +65,14 @@ export const FEATURE_FLAGS = [
     defaultEnabled: true,
   },
   {
+    key: 'apps',
+    label: 'Apps',
+    description: 'Apps built on Tables: open the apps shared with you, and build and share your own',
+    // On for everyone like `tables`; independent of it — an app's audience need not use
+    // Tables (docs/specs/20261011-tables-apps.md D1).
+    defaultEnabled: true,
+  },
+  {
     key: 'cloud-agent',
     label: 'Missions',
     description: 'Long-running missions in disposable sandboxes with a persistent workspace',

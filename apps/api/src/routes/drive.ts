@@ -37,19 +37,11 @@ import type { DriveFileRow, DriveFolderRow, DriveScope } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { getAuthUser } from '../auth/middleware.js';
-import { contentDisposition } from '../http/content-disposition.js';
 import { resolveDriveAccessAsync, isKnownDriveScope, canReadDrive, canWriteDrive } from '../drive/access.js';
 import type { DriveAccessNode } from '../drive/access.js';
+import { serveDriveFileContent } from '../drive/serve-file.js';
 import { validateDriveUpload, safeDriveContentType, MAX_DRIVE_FILE_SIZE } from '../drive/upload-policy.js';
-import {
-  driveKeyFor,
-  presignPutUrl,
-  presignGetUrl,
-  headObjectSize,
-  putObjectAtKey,
-  getObjectAtKey,
-  deleteObjectAtKey,
-} from '../storage/uploads.js';
+import { driveKeyFor, presignPutUrl, headObjectSize, putObjectAtKey, deleteObjectAtKey } from '../storage/uploads.js';
 import type { AppEnv } from '../app-env.js';
 import { humanActor } from '../platform/actor.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
@@ -495,23 +487,8 @@ const drive = new Hono<AppEnv>()
     const file = await getDb().drive.getFile(id);
     if (!file || file.status !== 'active') return c.json({ error: 'not found' }, 404);
     if (!(await fileAllowed(c, file, 'read'))) return c.json({ error: 'forbidden' }, 403);
-
-    // Never cache authed customer bytes — and never the signed-URL redirect either:
-    // a shared browser could otherwise replay one user's download (or the still-valid
-    // presigned URL) to the next within the TTL, bypassing the per-request auth check.
-    c.header('Cache-Control', 'no-store');
-
-    const contentType = safeDriveContentType(file.name);
-    const signed = await presignGetUrl(file.cos_key, 120, { filename: file.name, contentType });
-    if (signed) return c.redirect(signed, 302);
-
-    // Local: stream the bytes ourselves (still behind auth).
-    const obj = await getObjectAtKey(file.cos_key);
-    if (!obj) return c.json({ error: 'not found' }, 404);
-    c.header('Content-Type', contentType);
-    c.header('X-Content-Type-Options', 'nosniff');
-    c.header('Content-Disposition', contentDisposition(file.name));
-    return c.body(Uint8Array.from(obj.buffer).buffer);
+    // no-store, then a presigned redirect (COS) or the bytes behind auth (local).
+    return serveDriveFileContent(c, file);
   })
   .delete('/files/:id', async (c) => {
     const id = Number(c.req.param('id'));

@@ -2,14 +2,21 @@
  * Tables audit resources — one map, both directions.
  *
  * `TABLES_ACTION_RESOURCES` says which resource every action is audited
- * against. `tablesResource()` (forward, at dispatch) stamps that id into the
- * platform audit event; `listBaseAudit` (reverse) reads it back and asks the db
- * which Base owns it. Both read the same map, and the map is keyed by
- * `TablesActionId`, so a new action that is not placed here fails typecheck —
- * it can no longer silently vanish from the Base audit feed.
+ * against. `tablesResource()` stamps that id into the dispatch's resource;
+ * before the handler runs, `tablesAuditScope()` (the registration's
+ * `auditScope`, called by `runtime.dispatch`) resolves the Base that resource
+ * belongs to and files the event under `scope_type = 'base'` / `scope_id` —
+ * before, because a delete leaves nothing to resolve afterwards. App actions
+ * are audited against the app (`entity_id = 'app'`, `record_id` = the app id)
+ * and filed under its Base. `listBaseAudit` is then one indexed read of the
+ * Base's write events. The map is keyed by `TablesActionId`, so a new action
+ * that is not placed here fails typecheck.
  */
 
-import type { TablesResourceKind } from '@greenhouse/db';
+import type { PlatformActionRequest } from '@greenhouse/platform-kernel';
+import type { DatabaseProvider, TablesResourceKind } from '@greenhouse/db';
+import { toErrorMessage } from '@greenhouse/utils/error';
+import { logger } from '@greenhouse/utils/logger';
 import { tablesManifest, type TablesActionId } from '../manifests/tables.js';
 import { requireBase } from './access.js';
 import { fail, ok, payloadOf, positiveInt, type Handler } from './handlers/shared.js';
@@ -90,6 +97,34 @@ export const TABLES_ACTION_RESOURCES: Readonly<Record<TablesActionId, TablesReso
   updateDashboardWidget: 'widget',
   deleteDashboardWidget: 'widget',
   queryDashboardWidget: 'widget',
+  // Apps — every app action is audited against the app (usage counts read it back)
+  listApps: null,
+  createApp: 'base',
+  getApp: 'app',
+  updateApp: 'app',
+  getAppDraft: 'app',
+  saveAppDraft: 'app',
+  publishApp: 'app',
+  listAppVersions: 'app',
+  restoreAppVersion: 'app',
+  listAppAudiences: 'app',
+  setAppAudiences: 'app',
+  transferApp: 'app',
+  archiveApp: 'app',
+  featureApp: 'app',
+  queryAppCard: 'app',
+  getAppRecord: 'app',
+  runAppAction: 'app',
+  listAppActivity: 'app',
+  createAppComment: 'app',
+  updateAppComment: 'app',
+  deleteAppComment: 'app',
+  listAppFieldOptions: 'app',
+  uploadAppFile: 'app',
+  getAppFile: 'app',
+  getAppUsage: 'app',
+  listAppPins: null,
+  setAppPins: null,
 };
 
 /** The ids a caller can name; each action reads only the one its resource kind points at. */
@@ -141,9 +176,36 @@ function resourceKindOf(actionId: string): TablesResourceKind | null {
 }
 
 /**
- * The Base owner's audit feed: the newest platform audit events of the Tables
- * app whose resource belongs to this Base. Scans `limit × 4` (≤ 500) events and
- * resolves each kind's ids to Bases in one query per kind.
+ * The Base a dispatch's resource belongs to — `runtime.dispatch` calls this
+ * before the handler and files the audit event under it. Undefined for
+ * actions not tied to one Base, unknown ids, or when the lookup fails (the
+ * action still runs; it just stays out of the Base feed).
+ */
+export async function tablesAuditScope(
+  db: DatabaseProvider,
+  request: Pick<PlatformActionRequest, 'actionId' | 'resource'>,
+): Promise<{ scopeType: 'base'; scopeId: string } | undefined> {
+  const kind = resourceKindOf(request.actionId);
+  const id = Number(request.resource?.recordId);
+  if (!kind || !Number.isInteger(id) || id <= 0) return undefined;
+  try {
+    const baseId = (await db.tables.baseIdsForResources(kind, [id])).get(id);
+    return baseId ? { scopeType: 'base', scopeId: String(baseId) } : undefined;
+  } catch (error) {
+    logger.warn('[tables] audit scope lookup failed', { actionId: request.actionId, error: toErrorMessage(error) });
+    return undefined;
+  }
+}
+
+/** The write actions — what a Base's audit feed lists (reads would drown them: an app reads constantly). */
+const WRITE_ACTION_IDS: readonly string[] = Object.values(tablesManifest.actions)
+  .filter((action) => action.kind === 'command')
+  .map((action) => action.id);
+
+/**
+ * The Base owner's audit feed: the newest write events filed under this Base
+ * (`scope_type = 'base'`), one indexed read — reads are excluded, so no amount
+ * of app traffic can push a write out of the window.
  */
 export const listBaseAudit: Handler = async (request, context) => {
   const payload = payloadOf(request);
@@ -152,33 +214,13 @@ export const listBaseAudit: Handler = async (request, context) => {
   if (!(await requireBase(context, request.actor, baseId, 'base', 'owner'))) {
     return fail('NOT_FOUND', 'Base not found');
   }
-  const limit = Math.min(positiveInt(payload, 'limit') ?? 100, 200);
-  const candidates = await context.db.platform.listAuditEventsForApp(
-    request.actor.orgId,
-    tablesManifest.id,
-    Math.min(limit * 4, 500),
-  );
-
-  const idsByKind = new Map<TablesResourceKind, number[]>();
-  const located = candidates.map((event) => {
-    const kind = resourceKindOf(event.action_id);
-    const id = Number(event.record_id);
-    if (!kind || !Number.isInteger(id) || id <= 0) return undefined;
-    idsByKind.set(kind, [...(idsByKind.get(kind) ?? []), id]);
-    return { kind, id };
+  const events = await context.db.platform.listAuditEventsByScope({
+    orgId: request.actor.orgId,
+    appId: tablesManifest.id,
+    scopeType: 'base',
+    scopeId: String(baseId),
+    actionIds: WRITE_ACTION_IDS,
+    limit: Math.min(positiveInt(payload, 'limit') ?? 100, 200),
   });
-  const baseByKind = new Map<TablesResourceKind, Map<number, number>>();
-  await Promise.all(
-    [...idsByKind].map(async ([kind, ids]) => {
-      baseByKind.set(kind, await context.db.tables.baseIdsForResources(kind, ids));
-    }),
-  );
-
-  const events = candidates
-    .filter((_event, index) => {
-      const at = located[index];
-      return at !== undefined && baseByKind.get(at.kind)?.get(at.id) === baseId;
-    })
-    .slice(0, limit);
   return ok({ events });
 };

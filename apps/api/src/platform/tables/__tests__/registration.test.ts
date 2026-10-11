@@ -24,9 +24,9 @@ function request(actionId: string, payload: unknown = {}): PlatformActionRequest
   };
 }
 
-describe('Tables registration (manifest 1.3.0)', () => {
+describe('Tables registration (manifest 1.4.0)', () => {
   it('declares the action table of the foundation spec', () => {
-    expect(tablesManifest.version).toBe('1.3.0');
+    expect(tablesManifest.version).toBe('1.4.0');
     expect(Object.keys(tablesManifest.entities)).toEqual(expect.arrayContaining(['role', 'comment']));
     expect(tablesManifest.entities).not.toHaveProperty('notification');
     expect(tablesManifest.actions).not.toHaveProperty('listNotifications');
@@ -42,6 +42,39 @@ describe('Tables registration (manifest 1.3.0)', () => {
       capability: 'tables.data.comment',
     });
     expect(tablesManifest.actions.updateRole).toMatchObject({ entity: 'role', module: 'structure' });
+  });
+
+  it('declares the apps module of Phase 1 (apps spec §4)', () => {
+    expect(tablesManifest.modules).toHaveProperty('apps');
+    expect(tablesManifest.entities.app).toMatchObject({ module: 'apps', table: 'table_apps' });
+    expect(tablesManifest.capabilities).toEqual(
+      expect.arrayContaining(['tables.apps.use', 'tables.apps.manage', 'tables.apps.publish']),
+    );
+    const apps = Object.values(tablesManifest.actions).filter((action) => action.module === 'apps');
+    expect(apps.every((action) => action.entity === 'app')).toBe(true);
+    // Granting access to people outside the Base is the owner's: publish, audiences and featuring need `publish`.
+    for (const id of ['publishApp', 'setAppAudiences', 'featureApp']) {
+      expect(tablesManifest.actions[id]?.capability).toBe('tables.apps.publish');
+    }
+    for (const id of ['createApp', 'saveAppDraft', 'restoreAppVersion', 'getAppDraft']) {
+      expect(tablesManifest.actions[id]?.capability).toBe('tables.apps.manage');
+    }
+    for (const id of ['listApps', 'getApp', 'queryAppCard', 'runAppAction', 'getAppFile', 'setAppPins']) {
+      expect(tablesManifest.actions[id]?.capability).toBe('tables.apps.use');
+    }
+  });
+
+  it('answers not_implemented on the gateway actions until slice G', async () => {
+    for (const id of ['queryAppCard', 'getAppRecord', 'runAppAction', 'getAppFile', 'getAppUsage']) {
+      expect(await tablesRegistration.handlers[id]!(request(id, { appId: 1 }), { db: {} as DatabaseProvider })).toEqual(
+        {
+          ok: false,
+          code: 'INVALID_INPUT',
+          message: 'not_implemented',
+          details: { notImplemented: true },
+        },
+      );
+    }
   });
 
   it('has exactly one handler and one audit resource per action', () => {
@@ -60,6 +93,9 @@ describe('Tables registration (manifest 1.3.0)', () => {
     expect(tablesResource('updateComment', { recordId: 9, commentId: 12 }).recordId).toBe('12');
     expect(tablesResource('updateRole', { baseId: 1, roleId: 5 }).recordId).toBe('5');
     expect(tablesResource('listBases', { baseId: 1 }).recordId).toBeUndefined();
+    expect(tablesResource('publishApp', { baseId: 1, appId: 7 })).toMatchObject({ entityId: 'app', recordId: '7' });
+    expect(tablesResource('createApp', { baseId: 3 }).recordId).toBe('3');
+    expect(tablesResource('listAppPins', { appId: 7 }).recordId).toBeUndefined();
   });
 
   it('maps write-rights errors to FORBIDDEN and other validation errors to INVALID_INPUT', async () => {

@@ -9,12 +9,12 @@
  * kernel registry refuses it at boot).
  */
 
-import type { ApplicationRegistration } from '@greenhouse/platform-kernel';
 import { isTablesForbiddenError, TablesValidationError } from '@greenhouse/db';
 import { isUniqueViolation } from '@greenhouse/utils/error';
 import { tablesManifest, type TablesActionId } from '../manifests/tables.js';
-import type { PlatformHandlerContext } from '../runtime.js';
-import { listBaseAudit } from './audit.js';
+import type { PlatformRegistration } from '../runtime.js';
+import { listBaseAudit, tablesAuditScope } from './audit.js';
+import { appHandlers } from './handlers/apps.js';
 import { activityHandlers } from './handlers/activity.js';
 import { automationHandlers } from './handlers/automations.js';
 import { baseHandlers } from './handlers/bases.js';
@@ -64,9 +64,12 @@ export const TABLES_HANDLERS: Readonly<Record<TablesActionId, Handler>> = {
   ...importHandlers,
   ...automationHandlers,
   ...dashboardHandlers,
+  ...appHandlers,
 };
 
-export const tablesRegistration: ApplicationRegistration<PlatformHandlerContext> = {
+export const tablesRegistration: PlatformRegistration = {
   manifest: tablesManifest,
   handlers: Object.fromEntries(Object.entries(TABLES_HANDLERS).map(([id, handler]) => [id, wrap(handler)])),
+  // Every Tables event is filed under its Base (resolved before the handler runs).
+  auditScope: tablesAuditScope,
 };

@@ -64,7 +64,7 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
     key: 'tables',
     title: 'Tables',
     description:
-      'Internal multidimensional tables. Enabling this turns Tables on everywhere — app, REST, MCP, and chat.',
+      'Internal multidimensional tables. Enabling this turns Tables on everywhere — the module, REST, MCP, and chat.',
     icon: 'Table2',
     kind: 'app',
     group: 'basic',
@@ -73,6 +73,17 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
     // tables_schema_plan rides the flag but declares no proxy/MCP surface —
     // schema editing is chat-only, where a human can press Confirm (spec D3).
     toolIds: ['tables_query', 'tables_mutation', 'tables_schema_plan'],
+  },
+  {
+    key: 'apps',
+    title: 'Apps',
+    description:
+      'Apps built on Tables bases: the app center, the apps shared with this user, and building and sharing apps. Independent of the Tables switch.',
+    icon: 'LayoutGrid',
+    kind: 'flag',
+    group: 'basic',
+    flag: 'apps',
+    toolIds: [],
   },
   {
     key: 'cloud-agent',
@@ -131,7 +142,7 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
   {
     key: 'tools',
     title: 'Advanced tools',
-    description: 'Opt-in tools not owned by an application — grant individually.',
+    description: 'Opt-in tools not owned by a module — grant individually.',
     icon: 'Wrench',
     kind: 'toolset',
     group: 'advanced',

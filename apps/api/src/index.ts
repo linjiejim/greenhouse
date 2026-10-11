@@ -124,6 +124,7 @@ import artifactActionRoutes from './routes/artifact-actions.js';
 import skillRoutes from './routes/skills.js';
 import tablesRoutes from './routes/tables/index.js';
 import formRoutes from './routes/forms.js';
+import appRoutes from './routes/apps.js';
 import { createWorkbenchRoutes } from './routes/workbench.js';
 import { getSkillStore } from './skills/store.js';
 import { seedSkillhub } from './skills/boot-seed.js';
@@ -345,6 +346,14 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Audience and capability checks run in the openForm / submitForm handlers.
       .use('/api/forms/*', requireInternal())
       .route('/api/forms', formRoutes)
+      // Apps built on a Base — internal users with the `apps` flag, deliberately NOT behind
+      // `tables` (an app's audience need not use Tables; apps spec D1). Who may manage,
+      // publish or open an app is decided per app in the handlers (platform/tables/handlers/apps.ts).
+      .use('/api/apps', requireInternal())
+      .use('/api/apps/*', requireInternal())
+      .use('/api/apps', requireFeature('apps'))
+      .use('/api/apps/*', requireFeature('apps'))
+      .route('/api/apps', appRoutes)
       // Email accounts — every internal user (mailbox binding is per-user and
       // self-service; the shared mailbox stays super-only inside the service).
       .use('/api/email/*', requireInternal())

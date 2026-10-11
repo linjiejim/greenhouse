@@ -83,6 +83,8 @@ describe('flag-owned tool sets', () => {
     const byKey = Object.fromEntries(FEATURE_POINTS.map((p) => [p.key, [...p.toolIds]]));
 
     expect(byKey.tables).toEqual(['tables_query', 'tables_mutation', 'tables_schema_plan']);
+    // Apps ride no tool of their own yet (app-as-tool is Phase 2); the Tables tools stay with `tables`.
+    expect(byKey.apps).toEqual([]);
     expect(byKey['cloud-agent']).toEqual(['mission_dispatch']);
     expect(byKey.memory).toEqual(['memory']);
     expect(byKey.knowledge).toEqual(['knowledge_query', 'knowledge_mutation']);

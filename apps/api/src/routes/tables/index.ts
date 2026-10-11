@@ -13,7 +13,7 @@
  * PATCH  /bases/:baseId                              — 更新 Base
  * POST   /bases/:baseId/archive                      — 归档 Base
  * GET    /bases/:baseId/members                      — 成员列表
- * GET    /bases/:baseId/audit                        — Base 操作审计（仅 owner）
+ * GET    /bases/:baseId/audit                        — Base 写操作审计（仅 owner；按 Base 一次索引读取，读动作不列）
  * PUT    /bases/:baseId/members/:userId              — 添加/更新成员（builder/editor/viewer/custom + customRoleId）
  * DELETE /bases/:baseId/members/:userId              — 移除成员
  *

@@ -531,8 +531,9 @@ Fine-grained gating beyond roles: open a module/feature to specific internal use
 per-user by a super in Settings → Users → (user) → Permissions.
 
 - **Registry (single source)**: `FEATURE_FLAGS` in `packages/types/src/features.ts`
-  (`{ key, label, description, defaultEnabled? }`). Today: `memory`, `tables`, `cloud-agent`,
-  `bots` (all `defaultEnabled: true` = opt-out).
+  (`{ key, label, description, defaultEnabled? }`). Today: `memory`, `tables`, `apps`,
+  `cloud-agent`, `bots` (all `defaultEnabled: true` = opt-out). `apps` is independent of `tables`:
+  an app's audience need not use the Tables module.
 - **Storage**: `user_features` table (`user_id × feature`, `enabled` boolean).
 - **Resolution** (`resolveUserFeatures` in `apps/api/src/auth/features.ts`): `super → all on`;
   explicit row → `row.enabled`; no row → `flag.defaultEnabled`.
