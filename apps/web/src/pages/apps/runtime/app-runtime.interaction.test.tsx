@@ -571,7 +571,7 @@ describe('a page in use', () => {
         expect.objectContaining({ cardId: 'due', range: { from: '2026-11-01', to: '2026-12-12' } }),
       );
       // A refresh (a write, someone else's change) keeps the month on screen.
-      const page = realtime.listeners.findLast((listener) => listener.filter.baseId === 3)!;
+      const page = [...realtime.listeners].reverse().find((listener) => listener.filter.baseId === 3)!;
       await act(async () => {
         await page.onChange();
       });
@@ -655,7 +655,7 @@ describe('a page in use', () => {
     api.getApp.mockResolvedValue(viewWith([CARDS.mine, CARDS.total, CARDS.intro]));
     await mount('5');
     const before = api.queryAppCard.mock.calls.length;
-    const page = realtime.listeners.findLast((listener) => listener.filter.baseId === 3)!;
+    const page = [...realtime.listeners].reverse().find((listener) => listener.filter.baseId === 3)!;
     await act(async () => {
       await page.onChange();
     });
