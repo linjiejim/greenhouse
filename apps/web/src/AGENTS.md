@@ -274,6 +274,7 @@ stores/
 - **Base 角色比较**只用 `@greenhouse/types/table-access` 的 `tableRoleAtLeast` / `TABLE_BASE_ROLE_RANK`，组件里不要再写 rank 表。
 - **API 客户端**按域拆在 `lib/api/tables/<domain>.ts`（bases / members / schema / views / records / forms / automations / dashboards / plan，以及给后续切片预留的空模块 access / activity / imports），调用方只 import `lib/api/tables`（barrel）。新增客户端函数写进自己域的文件，不改 barrel。
 - **文案按切片拆**在 `lib/i18n/tables/<slice>.{en,zh}.ts`（access / views / forms / automations / dashboards / imports / activity / formula / plan），由 `lib/i18n/tables/en.ts|zh.ts` 一次并入 `tables.*`（plan 并入 `tablesSchemaPlan`）。每个模块独占自己的命名空间（`tables.forms.*`、`tables.automations.*`…），`lib/i18n/tables/slices.test.ts` 钉住不重名、不被核心键遮住；跨切片共享的键（字段类型、筛选操作符与令牌、记录元信息）留在 `en.ts` / `zh.ts` 的 `tables` 下。zh 模块用 `lib/i18n/types.ts` 的 `DeepRecord` 对齐英文。
+- **导入向导**（`pages/tables/import/`，切片 I）：工具栏「导入 CSV 或 Excel」（editor+）打开 `size="workspace"` 的向导：上传 → 映射列（`mapping-step.tsx`；每列 跳过 / 已有字段 / 新建字段 + 名称与类型，建议来自服务端，新建只给 builder，附件与计算字段不出现在下拉里）→ 预检（服务端 dry run，列出会被跳过的行与未映射的必填字段）→ 导入（`commitTableImportAll` 反复调用短提交，进度条按 `processedRows/totalRows`，**导入中不能关闭对话框**）→ 结果（新建数、跳过的行、新字段数）。纯映射逻辑在 `mapping-model.ts`（初始目标、冲突检查、请求体）；可新建的字段类型只认 `@greenhouse/types/tables` 的 `TABLE_IMPORT_CREATABLE_FIELD_TYPES`（服务端同一份）。没写时区的日期时间按浏览器时区读（请求带 `timezone`）。
 - Tables 没有自己的通知收件箱：自动化通知与 @ 提及走平台通知中心（`tables_automation` / `tables_mention`），原「数据表通知」对话框已删。
 
 ### 页面上下文注入

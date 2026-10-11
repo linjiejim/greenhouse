@@ -590,6 +590,26 @@ export interface TableRecordButton {
 
 // ─── Import ───────────────────────────────────────────────
 
+/**
+ * Types an import may give a field it creates for a column. Relations need a
+ * target table and attachments are never imported; computed types are derived.
+ */
+export const TABLE_IMPORT_CREATABLE_FIELD_TYPES = [
+  'text',
+  'long_text',
+  'number',
+  'boolean',
+  'date',
+  'datetime',
+  'single_select',
+  'multi_select',
+  'user',
+  'multi_user',
+  'url',
+  'email',
+  'phone',
+] as const satisfies readonly TableFieldType[];
+
 export interface TableImportColumn {
   index: number;
   header: string;

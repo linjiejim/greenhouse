@@ -30,29 +30,13 @@ import type { PlatformActionRequest } from '@greenhouse/platform-kernel';
 import type { TableAccessScope } from '@greenhouse/types/table-access';
 import {
   isComputedFieldType,
+  TABLE_IMPORT_CREATABLE_FIELD_TYPES,
   type TableFieldType,
   type TableImportColumn,
   type TableImportMapping,
 } from '@greenhouse/types/tables';
 import type { PlatformHandlerContext } from '../runtime.js';
 import { requireTableData } from './access.js';
-
-/** Types a column may become when the import creates its field (relations need a target, attachments cannot be imported). */
-export const IMPORT_CREATABLE_TYPES: readonly TableFieldType[] = [
-  'text',
-  'long_text',
-  'number',
-  'boolean',
-  'date',
-  'datetime',
-  'single_select',
-  'multi_select',
-  'user',
-  'multi_user',
-  'url',
-  'email',
-  'phone',
-];
 
 const SAMPLE_ROWS = 5;
 const INFERENCE_ROWS = 500;
@@ -176,7 +160,7 @@ export function planColumns(input: {
     if (taken.has(name.toLowerCase())) throw new ImportMappingError(`A field named "${name}" already exists`);
     taken.add(name.toLowerCase());
     const type = create.type as TableFieldType;
-    if (!IMPORT_CREATABLE_TYPES.includes(type)) {
+    if (!TABLE_IMPORT_CREATABLE_FIELD_TYPES.some((creatable) => creatable === type)) {
       throw new ImportMappingError(`New fields cannot be of type "${String(create.type)}"`);
     }
     plan.push({ column, create: { name, type } });
