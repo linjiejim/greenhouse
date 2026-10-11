@@ -345,6 +345,62 @@ describe('access facts', () => {
     const customersScope = compileTableAccessScope(w.rules, w.customers, facts, sales.id)!;
     expect(customersScope.readableFieldIds).toEqual([w.fields.customerName.id, w.fields.rep.id]);
   });
+
+  it('keeps a hidden source’s readers hidden after it is archived, and stops computing from it', async () => {
+    const w = await crm();
+    const order = await db.tables.createRecord(
+      { table_id: w.orders, values: { [w.fields.orderNo.id]: 'O-1', [w.fields.customer.id]: w.theirs.id } },
+      fullTableAccess(owner.id),
+      meta(owner.id),
+    );
+    expect(order.computed_values[String(w.fields.total.id)]).toBe(9_000_000);
+    expect(w.theirs.computed_values[String(w.fields.commission.id)]).toBe(900_000);
+    // The formula and the rollup are visible only while Amount is: read them explicitly.
+    const rules: TableAccessRules = {
+      ...w.rules,
+      tables: w.rules.tables.map((rule) => ({
+        ...rule,
+        rows: { type: 'all' },
+        fields: [
+          ...rule.fields,
+          { fieldId: w.fields.commission.id, access: 'read' },
+          { fieldId: w.fields.total.id, access: 'read' },
+        ],
+      })),
+    };
+
+    await db.tables.archiveField(w.fields.amount.id, owner.id);
+
+    const facts = await db.tables.loadAccessFacts(w.base.id);
+    expect(facts.dependencies).toEqual(
+      expect.arrayContaining([
+        { fieldId: w.fields.commission.id, dependsOnFieldId: w.fields.amount.id },
+        { fieldId: w.fields.total.id, dependsOnFieldId: w.fields.amount.id },
+      ]),
+    );
+    const customersScope = compileTableAccessScope(rules, w.customers, facts, sales.id)!;
+    expect(customersScope.readableFieldIds).not.toContain(w.fields.commission.id);
+    const ordersScope = compileTableAccessScope(rules, w.orders, facts, sales.id)!;
+    expect(ordersScope.readableFieldIds).not.toContain(w.fields.total.id);
+
+    // The archived column's stored values no longer feed the formula or the rollup.
+    const theirs = await db.tables.getRecordById(w.theirs.id);
+    expect(theirs!.values[String(w.fields.amount.id)]).toBe(9_000_000);
+    expect(theirs!.computed_values[String(w.fields.commission.id)]).toBe(0);
+    expect((await db.tables.getRecordById(order.id))!.computed_values[String(w.fields.total.id)]).toBe(0);
+  });
+
+  it('empties a rollup whose relation is archived', async () => {
+    const w = await crm();
+    const order = await db.tables.createRecord(
+      { table_id: w.orders, values: { [w.fields.orderNo.id]: 'O-1', [w.fields.customer.id]: w.mine.id } },
+      fullTableAccess(owner.id),
+      meta(owner.id),
+    );
+    expect(order.computed_values[String(w.fields.total.id)]).toBe(100);
+    await db.tables.archiveField(w.fields.customer.id, owner.id);
+    expect((await db.tables.getRecordById(order.id))!.computed_values[String(w.fields.total.id)]).toBe(0);
+  });
 });
 
 describe('scoped writes — relation targets (D14)', () => {
