@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { getNavModule, settingsAllModules } from './nav-registry';
+import { translate } from './i18n';
+import { getNavModule, localizeNavModule, settingsAllModules } from './nav-registry';
 
 describe('desktop settings module', () => {
   it('settings.desktop is visible everywhere: browsers get the installer download', () => {
@@ -24,5 +25,14 @@ describe('personal AI tool navigation', () => {
   it('keeps Chat utility workspaces out of the Settings registry', () => {
     expect(settingsAllModules.find((module) => module.id === 'settings.automations')).toBeUndefined();
     expect(settingsAllModules.find((module) => module.id === 'settings.prompts')).toBeUndefined();
+  });
+});
+
+describe('apps workspace', () => {
+  it('registers the app center as a standalone page behind the apps flag, localized in both catalogs', () => {
+    const module = getNavModule('workspace.apps');
+    expect(module).toMatchObject({ path: '#/apps', parent: 'standalone', requireFeature: 'apps', pinnable: false });
+    expect(localizeNavModule(module!, (key) => translate('en', key)).label).toBe('Apps');
+    expect(localizeNavModule(module!, (key) => translate('zh', key)).label).toBe('应用');
   });
 });

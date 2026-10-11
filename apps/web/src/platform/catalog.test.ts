@@ -49,6 +49,8 @@ describe('Platform web catalog', () => {
     expect(platformApplicationHref(application('projects'))).toBe('#/projects');
     expect(platformApplicationHref(application('tables'))).toBe('#/tables');
     expect(platformApplicationHref(application('pulse'))).toBeNull();
+    // Member-built apps are a host destination (platform/navigation.ts), never a catalog entry.
+    expect(platformApplicationHref(application('apps'))).toBeNull();
     expect(platformApplicationHref(application('analytics', 'https://example.test'))).toBeNull();
   });
 

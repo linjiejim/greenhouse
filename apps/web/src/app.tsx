@@ -1,6 +1,6 @@
 /**
  * Greenhouse — Web UI entry point.
- * Hash-based routing for Chat, Knowledge, Projects, Tables, and Settings.
+ * Hash-based routing for Chat, Knowledge, Projects, Tables, Apps, and Settings.
  *
  * LAYOUT: Full-height global/contextual sidebar + right-side top bar and content.
  * UI 子组件拆分到 components/app/ 目录下。
@@ -28,6 +28,7 @@ const ExecutionCenterPage = lazy(() => import('./pages/executions').then((m) => 
 const BotsPage = lazy(() => import('./pages/bots').then((m) => ({ default: m.BotsPage })));
 const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
 const TablesFormRoute = lazy(() => import('./pages/tables/form-route').then((m) => ({ default: m.TablesFormRoute })));
+const AppsPage = lazy(() => import('./pages/apps').then((m) => ({ default: m.AppsPage })));
 const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => ({ default: m.OAuthConsentPage })));
 const AccountPasswordPage = lazy(() =>
   import('./pages/account-password').then((m) => ({ default: m.AccountPasswordPage })),
@@ -65,6 +66,7 @@ import { DesktopKnowledgeSearchBridge } from './components/app/desktop-knowledge
 import {
   ChatHistoryPanel,
   KnowledgeNavPanel,
+  MobileAppsSection,
   MobilePinnedSection,
   SettingsNavPanel,
   AdministrationNavPanel,
@@ -89,6 +91,7 @@ import { legacyExecutionRedirect } from './lib/execution-route';
 import { canUseFeature } from './lib/features';
 import { useBotsSync } from './components/bots/use-bots-sync';
 import { useBotsStore } from './components/bots/bots-store';
+import { useAppsStore } from './stores/apps-store';
 import { BotsSidebarPanel } from './components/bots/bots-sidebar-panel';
 import { botsConversationHash } from './components/bots/navigation';
 
@@ -126,6 +129,7 @@ type Route =
   | 'design'
   | 'knowledge'
   | 'tables'
+  | 'apps'
   | 'forms'
   | 'skillhub'
   | 'tasks'
@@ -224,6 +228,7 @@ const CORE_ROUTES: ReadonlySet<string> = new Set([
   'design',
   'knowledge',
   'tables',
+  'apps',
   'forms',
   'skillhub',
   'tasks',
@@ -406,6 +411,7 @@ function App() {
     clearToken();
     logout();
     useProfileStore.getState().clear();
+    useAppsStore.getState().clear();
   }, [logout]);
 
   // Tell the desktop shell we mounted, so it keeps (rather than rolls back) the web
@@ -562,6 +568,8 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
   // Bots: one shell-level sync feeds the nav badge, the tab title and the
   // `#/chat?session=` redirect below, whichever page is open.
   const botsEnabled = canUseFeature(currentUser, 'bots');
+  // Member-built apps: their own flag, not `tables` — the people an app is shared with need not use Tables.
+  const appsEnabled = canUseFeature(currentUser, 'apps');
   useBotsSync(botsEnabled);
   const botsPending = useBotsStore((state) => state.pending);
   const botsSessionIds = useBotsStore((state) => state.knownSessionIds);
@@ -630,6 +638,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
     logout();
     setNavOpen(false);
     useProfileStore.getState().clear();
+    useAppsStore.getState().clear();
   }, [logout, setNavOpen]);
 
   const handleBackFromPage = useCallback(() => {
@@ -671,6 +680,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
     chatLabel: t('app.chat'),
     skillhubLabel: t('app.skillhub'),
     bots: botsEnabled ? { label: t('bots.title'), badge: botsPending } : null,
+    apps: appsEnabled ? { label: t('apps.title') } : null,
   });
   return (
     <>
@@ -799,6 +809,10 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                         currentHash={`#/${route}${subPath ? '/' + subPath : ''}`}
                         onNavigate={() => setNavOpen(false)}
                       />
+                      <MobileAppsSection
+                        currentHash={`#/${route}${subPath ? '/' + subPath : ''}`}
+                        onNavigate={() => setNavOpen(false)}
+                      />
                     </div>
                   )}
                 </div>
@@ -859,18 +873,21 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                 {route === 'tables' && hasApplication('tables') && <TablesPage subPath={subPath} params={params} />}
                 {/* Not behind the Tables gate: a form's audience need not use Tables (the API still authorizes). */}
                 {route === 'forms' && <TablesFormRoute subPath={subPath} />}
+                {/* Apps ride their own flag for the same reason (spec 20261011-tables-apps D1). */}
+                {route === 'apps' && appsEnabled && <AppsPage subPath={subPath} params={params} />}
                 {route === 'executions' && <ExecutionCenterPage subPath={subPath} params={params} />}
                 {route === 'extension' && (
                   <ExtensionPageHost route={extensionRoute ?? ''} subPath={subPath} params={params} />
                 )}
-                {!catalogLoading &&
+                {((!catalogLoading &&
                   ((route === 'projects' && !hasApplication('projects')) ||
                     (route === 'knowledge' && !hasApplication('knowledge')) ||
-                    (route === 'tables' && !hasApplication('tables'))) && (
-                    <div className="flex h-full items-center justify-center text-sm text-fg-faint">
-                      {t('app.noPermission')}
-                    </div>
-                  )}
+                    (route === 'tables' && !hasApplication('tables')))) ||
+                  (route === 'apps' && !appsEnabled)) && (
+                  <div className="flex h-full items-center justify-center text-sm text-fg-faint">
+                    {t('app.noPermission')}
+                  </div>
+                )}
               </main>
             </Suspense>
           </ErrorBoundary>

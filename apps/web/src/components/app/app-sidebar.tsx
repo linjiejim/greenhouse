@@ -32,6 +32,8 @@ import {
   ProjectsListPanel,
   PinnedSection,
   PinnedSectionCollapsed,
+  AppsSection,
+  AppsSectionCollapsed,
   KnowledgeNavPanel,
   SkillHubNavPanel,
   TablesNavPanel,
@@ -52,6 +54,7 @@ type Route =
   | 'design'
   | 'knowledge'
   | 'tables'
+  | 'apps'
   | 'forms'
   | 'skillhub'
   | 'tasks'
@@ -296,6 +299,9 @@ export function AppSidebar({
             {!isOverlayRoute && route !== 'chat' && route !== 'executions' && (
               <PinnedSectionCollapsed currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />
             )}
+            {!isOverlayRoute && route !== 'executions' && (
+              <AppsSectionCollapsed currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />
+            )}
 
             <div className="flex-1" />
 
@@ -370,6 +376,10 @@ export function AppSidebar({
                   global utility and deliberately omits unrelated pinned links. */}
               {route !== 'tables' && route !== 'executions' && (
                 <PinnedSection currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />
+              )}
+              {/* Member-built apps: pinned + featured (renders nothing when empty). */}
+              {route !== 'tables' && route !== 'executions' && (
+                <AppsSection currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />
               )}
 
               {/* Contextual Panel */}

@@ -6,3 +6,4 @@ export { KnowledgeNavPanel } from './knowledge-nav-panel';
 export { SkillHubNavPanel } from './skillhub-nav-panel';
 export { TablesNavPanel } from './tables-nav-panel';
 export { PinnedSection, PinnedSectionCollapsed, MobilePinnedSection } from './pinned-section';
+export { AppsSection, AppsSectionCollapsed, MobileAppsSection } from './apps-section';
