@@ -333,3 +333,47 @@ describe('a task chat (spec 20261011-agent-first-class §5a)', () => {
     });
   });
 });
+
+describe('a room (spec 20261011-agent-first-class §5d P5)', () => {
+  const person = (user_id: string, nickname: string) => ({
+    user_id,
+    nickname,
+    role: 'member' as const,
+    joined_at: '2026-10-12T00:00:00.000Z',
+  });
+  const room = (partial: Partial<BotConversationDetail> = {}) =>
+    conversation({
+      kind: 'room',
+      owner_bot_id: null,
+      lead_bot_id: null,
+      members: [],
+      participants: [person('u_me', 'Me'), person('u_ana', 'Ana')],
+      ...partial,
+    });
+  const at = (convo: BotConversationDetail, snap: Partial<StatusInput['snap']> = {}): StatusInput => ({
+    snap: { ...input().snap, conversation: convo, ...snap },
+    byId: BY_ID,
+    kind: 'room',
+  });
+  const sage = { bot_id: SAGE.id, role: 'member' as const, position: 0, owner_user_id: 'u_me', addressable: true };
+  const fern = { bot_id: FERN.id, role: 'member' as const, position: 1, owner_user_id: 'u_ana', addressable: false };
+
+  it('at rest says who is in it: a private chat, else how many people and Agents (the web’s words)', () => {
+    expect(statusLine(at(room()))).toEqual({ key: 'bots.room.privateChat' });
+    expect(statusLine(at(room({ title: 'Launch' })))).toEqual({ key: 'bots.room.statusPeople', vars: { n: 2 } });
+    expect(statusLine(at(room({ title: 'Launch', participants: [person('u_me', 'Me')] })))).toEqual({
+      key: 'bots.room.statusAlone',
+    });
+    expect(statusLine(at(room({ members: [sage] })))).toEqual({ key: 'bots.room.statusOneAgent', vars: { n: 2 } });
+    expect(statusLine(at(room({ members: [sage, fern] })))).toEqual({
+      key: 'bots.room.statusAgents',
+      vars: { n: 2, m: 2 },
+    });
+  });
+
+  it('names every Agent that speaks — a room has no Agent of its own — and is never read-only', () => {
+    const live = at(room({ members: [sage] }), { run: run([segment({ text: 'On it' })]), runActive: true });
+    expect(statusLine(live)).toEqual({ key: 'bots.status.replying', vars: { name: 'Sage' } });
+    expect(threadReadOnly({ conversation: room(), readOnly: null }, BY_ID)).toBeNull();
+  });
+});

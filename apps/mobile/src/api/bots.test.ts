@@ -354,6 +354,76 @@ describe('task chats', () => {
   });
 });
 
+describe('rooms (P5)', () => {
+  const jsonBody = (method: string, body: unknown) => ({
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  it('lists who the member can talk with; a server without rooms answers 404', async () => {
+    const people = [{ id: 'u_ana', nickname: 'Ana', email: 'ana@x.test' }];
+    apiMock.mockResolvedValueOnce(json(200, { people }));
+    expect(await bots.listRoomPeople()).toEqual({ ok: true, value: people });
+    expect(apiMock).toHaveBeenLastCalledWith('/api/rooms/people', {});
+    apiMock.mockResolvedValueOnce(new Response('Not found', { status: 404 }));
+    expect(await bots.listRoomPeople()).toEqual({ ok: false, status: 404, code: null });
+  });
+
+  it('creates one (201, or the pair’s private chat again — 200) with its timestamps in ISO', async () => {
+    const conversation = { session_id: 'r1', kind: 'room', last_activity_at: '2026-10-12 04:00:00.5+00' };
+    apiMock.mockResolvedValueOnce(json(201, { conversation }));
+    expect(await bots.createRoom({ user_ids: ['u_ana'], title: 'Launch', bot_ids: ['b_sage'] })).toEqual({
+      ok: true,
+      value: { ...conversation, last_activity_at: '2026-10-12T04:00:00.500+00:00' },
+    });
+    expect(apiMock.mock.calls.at(-1)).toEqual([
+      '/api/rooms',
+      jsonBody('POST', { user_ids: ['u_ana'], title: 'Launch', bot_ids: ['b_sage'] }),
+    ]);
+    apiMock.mockResolvedValueOnce(json(200, { conversation: { session_id: 'r0', kind: 'room' } }));
+    expect(await bots.createRoom({ user_ids: ['u_ana'] })).toMatchObject({ ok: true, value: { session_id: 'r0' } });
+    apiMock.mockResolvedValueOnce(json(409, { error: 'At most 20 people in a room', code: 'room_full' }));
+    expect(await bots.createRoom({ user_ids: ['u_ana'] })).toEqual({
+      ok: false,
+      status: 409,
+      code: 'room_full',
+      message: 'At most 20 people in a room',
+    });
+  });
+
+  it('renames, adds and removes people (leaving is removing yourself), brings and removes Agents', async () => {
+    const detail = { conversation: { session_id: 'r 1', kind: 'room' } };
+    apiMock.mockResolvedValueOnce(json(200, detail));
+    expect(await bots.renameRoom('r 1', 'Launch')).toMatchObject({ ok: true, value: { session_id: 'r 1' } });
+    expect(apiMock.mock.calls.at(-1)).toEqual(['/api/rooms/r%201', jsonBody('PATCH', { title: 'Launch' })]);
+
+    apiMock.mockResolvedValueOnce(json(200, detail));
+    expect(await bots.addRoomPerson('r 1', 'u_bo')).toMatchObject({ ok: true });
+    expect(apiMock.mock.calls.at(-1)).toEqual(['/api/rooms/r%201/participants', jsonBody('POST', { user_id: 'u_bo' })]);
+
+    apiMock.mockResolvedValueOnce(json(200, { ok: true, deleted: false }));
+    expect(await bots.removeRoomPerson('r 1', 'u_bo')).toEqual({ ok: true, value: { deleted: false } });
+    expect(apiMock.mock.calls.at(-1)).toEqual(['/api/rooms/r%201/participants/u_bo', { method: 'DELETE' }]);
+
+    apiMock.mockResolvedValueOnce(json(200, { ok: true, deleted: true }));
+    expect(await bots.leaveRoom('r 1', 'u_me')).toEqual({ ok: true, value: { deleted: true } });
+    expect(apiMock.mock.calls.at(-1)).toEqual(['/api/rooms/r%201/participants/u_me', { method: 'DELETE' }]);
+    apiMock.mockResolvedValueOnce(json(409, { error: 'Their Agent is answering right now', code: 'busy' }));
+    expect(await bots.leaveRoom('r 1', 'u_me')).toMatchObject({ ok: false, status: 409, code: 'busy' });
+
+    apiMock.mockResolvedValueOnce(json(200, detail));
+    expect(await bots.addRoomAgent('r 1', 'b_sage')).toMatchObject({ ok: true });
+    expect(apiMock.mock.calls.at(-1)).toEqual(['/api/rooms/r%201/agents', jsonBody('POST', { bot_id: 'b_sage' })]);
+    apiMock.mockResolvedValueOnce(json(409, { error: 'That Agent is not shared with everyone in this conversation' }));
+    expect(await bots.addRoomAgent('r 1', 'b_pub')).toMatchObject({ ok: false, status: 409, code: null });
+
+    apiMock.mockResolvedValueOnce(json(200, { ok: true }));
+    expect(await bots.removeRoomAgent('r 1', 'b_sage')).toEqual({ ok: true, value: undefined });
+    expect(apiMock.mock.calls.at(-1)).toEqual(['/api/rooms/r%201/agents/b_sage', { method: 'DELETE' }]);
+  });
+});
+
 describe('openBotsRewind', () => {
   it('posts the message (and an edit’s text) with the rich blocks, and streams the run like a send', async () => {
     expoFetchMock.mockResolvedValue(new Response(`${JSON.stringify({ type: 'finish' })}\n`));

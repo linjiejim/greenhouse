@@ -11,8 +11,9 @@
  * Agent started a task in a new chat — opens that chat, `chat_origin` — the
  * first line of such a chat — the conversation it came from. Text comes from
  * the server (its `content`, in the account's language); the icon from the
- * event's kind. A public Agent's per-member daily cap (`unavailable` ·
- * `daily_cap`, P4) wears an hourglass.
+ * event's kind (a room's people coming and going, P5, included). A public
+ * Agent's per-member daily cap (`unavailable` · `daily_cap`, P4) wears an
+ * hourglass.
  */
 
 import React, { memo } from 'react';
@@ -40,6 +41,8 @@ const EVENT_ICON: Partial<Record<BotEvent['kind'], IconName>> = {
   turn_error: 'alert',
   chat_opened: 'compose',
   chat_origin: 'branch',
+  person_joined: 'userPlus',
+  person_left: 'personMinus',
 };
 
 /** A later line about a card wears the card's icon. */

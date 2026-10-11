@@ -148,6 +148,10 @@ describe('file-verbatim copies', () => {
     expectFileVendored(`${WEB_BOTS}/mentions.ts`, `${MOBILE}/bots/vendor/mentions.ts`);
     expectFileVendored(`${WEB_BOTS}/bot-name.ts`, `${MOBILE}/bots/vendor/bot-name.ts`);
   });
+
+  it('room helpers (who is in a room, what it is called, which Agents are whose)', () => {
+    expectFileVendored(`${WEB_BOTS}/room.ts`, `${MOBILE}/bots/vendor/room.ts`);
+  });
 });
 
 // ─── 2. Declarations ─────────────────────────────────────
@@ -280,7 +284,7 @@ describe('pinned tripwires', () => {
     expectPinnedText(
       `${WEB_BOTS}/conversation-header.tsx`,
       (sf) => [declaration(sf, 'useStatusLine')],
-      '4e9d01254813e746ccee170f136fccf7bd8ba8cbc6d5ed80c6bd237fe5b6c93e',
+      '10863f6db853a4c1c4fc40c14ef587177ac7e777d27079ec1f6c70087d443894',
       'apps/mobile/src/bots/thread/status-line.ts',
     );
   });

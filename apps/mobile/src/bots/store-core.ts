@@ -19,8 +19,14 @@
  * (./public-agents.ts `sharedAsBot`) so names and plants render everywhere; they are never in
  * `bots` (pickers, mentions, Settings → My Agents, new chats are the member's own). The directory
  * of public Agents offered to the member (`GET /api/agents`, "Browse Agents") is `directory`.
+ *
+ * Rooms (spec 20261011-agent-first-class P5): conversations with other people come back with the
+ * threads (`kind: 'room'`) and are drawn in their own section (`drawerRows().rooms`); who the member
+ * is (`viewerId` — rooms name "the other people") is set by ./store.ts from the signed-in account.
+ * Who the member can start one with (`GET /api/rooms/people`) is `people`.
  */
 
+import type { RoomPerson } from '../api/bots';
 import type {
   BotConversationSummary,
   BotMessage,
@@ -43,6 +49,7 @@ import {
   withPageRatings,
 } from './public-agents';
 import { classifyDecision } from './requests';
+import { learnableIds, roomSearchText } from './rooms';
 import { conversationCanReply } from './task-chats';
 import { botsById, conversationBotIds, mergeArchived } from './vendor/web-helpers';
 
@@ -96,6 +103,14 @@ export interface BotsData {
   requestOverrides: Record<string, BotRequestView>;
   /** The thread on screen (focused + foreground), maintained by the thread engine. */
   visibleThread: string | null;
+  /** The signed-in member (./store.ts keeps it): a room is named after everyone else. Kept across `reset()`. */
+  viewerId: string | null;
+  /**
+   * Who the member can start a room with (`GET /api/rooms/people`, P5). `peopleState`: `idle` until
+   * the first answer, `missing` on a server without rooms (404) — the ways in stay away.
+   */
+  people: RoomPerson[];
+  peopleState: 'idle' | 'loaded' | 'failed' | 'missing';
   /**
    * `forbidden` — a Bots route answered 403 (feature off / not internal): the
    * surfaces close for this app session; `missing` — `GET /api/bots` 404 (an
@@ -148,6 +163,24 @@ export interface BotsState extends BotsData {
   noteRead(sessionId: string): void;
   /** A task chat deleted here: gone from the signals and the badge at once. */
   dropTaskChat(sessionId: string): void;
+  /** The signed-in member's id (./store.ts, on sign-in and account changes). */
+  setViewer(userId: string | null): void;
+  /** `GET /api/rooms/people` — who the member can talk with (a room's sheet, the drawer's way in). */
+  loadPeople(): Promise<void>;
+  /**
+   * A new room (`POST /api/rooms`) — or the pair's private chat, when it exists already. Listed at
+   * once (the drawer, the thread's title), then the list is re-read.
+   */
+  createRoom(input: {
+    user_ids: string[];
+    title?: string;
+    bot_ids?: string[];
+  }): Promise<
+    | { ok: true; conversation: BotConversationSummary }
+    | { ok: false; status: number; code: string | null; message: string }
+  >;
+  /** A conversation the member is no longer in (they left a room): gone from the lists at once. */
+  dropConversation(sessionId: string): void;
   setVisibleThread(sessionId: string | null): void;
   /** `POST /api/bots/requests/:id`, classified; `ok` is remembered in `requestOverrides`. */
   decide(request: BotRequestView, body: BotRequestDecision): Promise<DecideOutcome>;
@@ -175,6 +208,9 @@ export function initialBotsData(generation = 0): BotsData {
     running: {},
     requestOverrides: {},
     visibleThread: null,
+    viewerId: null,
+    people: [],
+    peopleState: 'idle',
     error: null,
   };
 }
@@ -197,6 +233,8 @@ export interface BotsStoreDeps {
     | 'startAgentConversation'
     | 'rateReply'
     | 'unrateReply'
+    | 'listRoomPeople'
+    | 'createRoom'
   > &
     Pick<typeof import('../api/chat'), 'listChatRuns'>;
   clock: { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(handle: unknown): void };
@@ -324,8 +362,11 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
     // The task chats are a secondary list: a blip keeps the last answer (an older server has none).
     const taskChats = tasks.ok ? tasks.value.filter((row) => row.kind === 'task') : get().taskChats;
     const rows = [...result.value, ...taskChats];
-    // Learn Bots made elsewhere before publishing, so no row flashes as "Deleted Bot".
-    const speakers = rows.flatMap((row) => (row.last_message?.bot_id ? [row.last_message.bot_id] : []));
+    // Learn Bots made elsewhere before publishing, so no row flashes as "Deleted Bot" — never another
+    // person's own Agent in a room (it is never in the member's list).
+    const speakers = rows.flatMap((row) =>
+      row.last_message?.bot_id ? learnableIds(row, [row.last_message.bot_id]) : [],
+    );
     await get().ensureBotsKnown([...rows.flatMap(conversationBotIds), ...speakers]);
     if (get().generation !== asked) return;
     set({
@@ -361,6 +402,18 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
     else if (result.status === 404) set({ directory: [], directoryState: 'missing' });
     // A blip keeps the last answer; a 403 is the threads' verdict too (they say it themselves).
     else if (get().directoryState === 'idle') set({ directoryState: 'failed' });
+  });
+
+  const people = coalesced(async () => {
+    if (closed() || get().peopleState === 'missing') return;
+    const asked = get().generation;
+    const result = await api.listRoomPeople();
+    if (get().generation !== asked) return;
+    if (result.ok) set({ people: result.value, peopleState: 'loaded' });
+    // A server without rooms: the ways in stay away for this app session.
+    else if (result.status === 404) set({ people: [], peopleState: 'missing' });
+    // A blip keeps the last answer.
+    else if (get().peopleState === 'idle') set({ peopleState: 'failed' });
   });
 
   const reloadPendingSoon = () => {
@@ -400,6 +453,37 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
     loadConversations: () => conversations.run(),
     loadPending: () => pending.run(),
     loadDirectory: () => directory.run(),
+    loadPeople: () => people.run(),
+
+    async createRoom(input) {
+      const asked = get().generation;
+      const result = await api.createRoom(input);
+      if (!result.ok) return { ok: false, status: result.status, code: result.code, message: result.message };
+      const row = result.value;
+      if (get().generation === asked) {
+        set((state) => ({
+          conversations: [row, ...state.conversations.filter((other) => other.session_id !== row.session_id)],
+        }));
+        void get().loadConversations();
+      }
+      return { ok: true, conversation: row };
+    },
+
+    dropConversation(sessionId) {
+      set((state) =>
+        state.conversations.some((row) => row.session_id === sessionId) ||
+        state.taskChats.some((row) => row.session_id === sessionId)
+          ? {
+              conversations: state.conversations.filter((row) => row.session_id !== sessionId),
+              taskChats: state.taskChats.filter((row) => row.session_id !== sessionId),
+            }
+          : {},
+      );
+    },
+
+    setViewer(userId) {
+      if (get().viewerId !== userId) set({ viewerId: userId });
+    },
 
     async startAgentChat(agent) {
       const asked = get().generation;
@@ -597,12 +681,14 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
       conversations.reset();
       pending.reset();
       directory.reset();
+      people.reset();
       refreshedForIds.clear();
       ratedHere.clear();
       sproutyOnce = null;
       if (pendingTimer !== null) clock.clearTimeout(pendingTimer);
       pendingTimer = null;
-      set(initialBotsData(get().generation + 1));
+      // Who the member is outlives the cache (./store.ts sets it again when the account changes).
+      set({ ...initialBotsData(get().generation + 1), viewerId: get().viewerId });
     },
   };
 }
@@ -631,6 +717,13 @@ export interface DrawerRows {
   moreCount: number;
   /** Conversations nobody can reply in any more (an archived DM Bot, every old group chat). */
   archived: BotConversationSummary[];
+  /**
+   * Conversations with other people (rooms, P5), server order — their own section; open for as
+   * long as the member is in one, so never archived. Collapsed like `recent`.
+   */
+  rooms: BotConversationSummary[];
+  /** Rooms hidden behind "Show All" (0 when expanded or searching). */
+  moreRooms: number;
 }
 
 /**
@@ -641,7 +734,8 @@ export interface DrawerRows {
  * filters every part by title, member names and the last preview, and never
  * collapses. Before the Bot list arrives every DM counts as replyable; an old
  * group chat is a closed record (group chats were retired) whatever the list says.
- * Task chats are never threads here — they are the chats section's rows.
+ * Task chats are never threads here — they are the chats section's rows; rooms (conversations
+ * with other people) are their own list, searched by their title and people.
  */
 export function drawerRows(
   s: Pick<BotsData, 'bots' | 'byId' | 'botsLoaded' | 'conversations'> & Partial<Pick<BotsData, 'shared'>>,
@@ -655,7 +749,9 @@ export function drawerRows(
   const activeIds = replyableIds(s.bots, s.shared);
   const replyable = (row: BotConversationSummary) =>
     row.kind === 'direct' && (!s.botsLoaded || conversationCanReply(row, activeIds));
-  const threads = s.conversations.filter((row) => row.kind !== 'task');
+  const threads = s.conversations.filter((row) => row.kind !== 'task' && row.kind !== 'room');
+  const rooms = s.conversations.filter((row) => row.kind === 'room' && matches(row));
+  const collapseRooms = !query && !o.expanded && rooms.length > limit;
 
   const pinnedRow = pinnedSid ? (threads.find((row) => row.session_id === pinnedSid) ?? null) : null;
   const rest = threads.filter((row) => row.session_id !== pinnedSid && matches(row));
@@ -666,11 +762,14 @@ export function drawerRows(
     recent: collapse ? open.slice(0, limit) : open,
     moreCount: collapse ? open.length - limit : 0,
     archived: rest.filter((row) => !replyable(row)),
+    rooms: collapseRooms ? rooms.slice(0, limit) : rooms,
+    moreRooms: collapseRooms ? rooms.length - limit : 0,
   };
 }
 
-/** What a drawer search looks at: the group title, every member's name, the last preview. */
+/** What a drawer search looks at: the group title, every member's name, the last preview (a room: its people). */
 function searchText(byId: Record<string, BotView>, row: BotConversationSummary): string {
+  if (row.kind === 'room') return roomSearchText(row);
   const names = [...conversationBotIds(row)].map((id) => byId[id]?.name ?? '');
   return [row.title ?? '', ...names, row.last_message?.preview ?? ''].join('\n').toLocaleLowerCase();
 }

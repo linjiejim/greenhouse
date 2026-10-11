@@ -23,7 +23,9 @@
  *     profile, one tap away); a task chat's title is its own, so its line
  *     says who answers there ("Chat with Sage" — the web's header too); a DM
  *     with someone else's public Agent says whose it is ("by Jim" — the web
- *     adds the role, the phone keeps that in the profile).
+ *     adds the role, the phone keeps that in the profile); a room (several
+ *     people, P5) says who is in it ("Private chat", "3 people · 2 Agents",
+ *     "Only you" — the web's words).
  *
  * "Busy" only ever comes from real signals (`snap.runActive` — D14); the web
  * header's computer-phase branch ("you're in control") has no phone
@@ -33,6 +35,7 @@
 import type { TranslationKey } from '../../lib/i18n';
 import type { BotRequestView, BotView } from '../../shared/bots';
 import { sharedOwnerOf, sharedReadOnly, type SharedBots } from '../public-agents';
+import { roomStatus } from '../rooms';
 import type { BotStreamSegment } from '../../shared/bots-wire';
 import type { PlantState } from '../../ui/plant-avatar/plant-ids';
 import type { BotsReadOnly, ThreadSnapshot } from '../contract';
@@ -145,6 +148,14 @@ export function statusLine({ snap, byId, kind, shared }: StatusInput): StatusLin
   }
 
   if (snap.runActive) return { key: 'bots.status.working' };
+  if (kind === 'room' && conversation) {
+    const room = roomStatus(conversation);
+    if (room.privateChat) return { key: 'bots.room.privateChat' };
+    if (room.people <= 1) return { key: 'bots.room.statusAlone' };
+    if (room.agents === 0) return { key: 'bots.room.statusPeople', vars: { n: room.people } };
+    if (room.agents === 1) return { key: 'bots.room.statusOneAgent', vars: { n: room.people } };
+    return { key: 'bots.room.statusAgents', vars: { n: room.people, m: room.agents } };
+  }
   const owner = conversation?.owner_bot_id ? byId[conversation.owner_bot_id] : undefined;
   if (kind === 'task' && owner) return { key: 'bots.status.taskWith', vars: { name: owner.name } };
   const publishedBy = kind === 'direct' ? sharedOwnerOf(conversation, shared)?.owner.nickname : undefined;

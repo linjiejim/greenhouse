@@ -11,7 +11,9 @@
  *
  * VoiceOver hears what a tap would do. While a soft stop is on its way the
  * accessory slot shows `StopHint` ("Stopping after this step · Tap again to
- * stop now"). Haptics live here — the composer stays a pure view.
+ * stop now"). Haptics live here — the composer stays a pure view. In a room
+ * (several people, P5) a run is its asker's: no Stop for anyone else's
+ * (`snap.runMine`).
  */
 
 import React, { memo, useMemo } from 'react';
@@ -25,8 +27,11 @@ import { Glass } from '../../ui/glass';
 import { tapLight, tapMedium } from '../../ui/haptics';
 import type { ThreadController, ThreadSnapshot } from '../contract';
 
-export function stopPhase(snap: Pick<ThreadSnapshot, 'runActive' | 'stopPhase' | 'run'>): ComposerStop['phase'] | null {
+export function stopPhase(
+  snap: Pick<ThreadSnapshot, 'runActive' | 'stopPhase' | 'run' | 'runMine'>,
+): ComposerStop['phase'] | null {
   if (!snap.runActive && !snap.stopPhase) return null;
+  if (!snap.runMine) return null;
   if (snap.stopPhase === 'hard') return 'hard';
   if (snap.stopPhase === 'soft' || snap.run?.interrupting) return 'soft';
   return 'running';
@@ -34,7 +39,7 @@ export function stopPhase(snap: Pick<ThreadSnapshot, 'runActive' | 'stopPhase' |
 
 /** The composer's `stop` prop (undefined = no run, no Stop). Stable while the phase holds. */
 export function useComposerStop(
-  snap: Pick<ThreadSnapshot, 'runActive' | 'stopPhase' | 'run'>,
+  snap: Pick<ThreadSnapshot, 'runActive' | 'stopPhase' | 'run' | 'runMine'>,
   ctl: ThreadController,
 ): ComposerStop | undefined {
   const t = useT();

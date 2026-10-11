@@ -69,7 +69,14 @@ export class ChatHttpError extends Error {
 /** Shape of `GET /api/chat/runs/:sessionId` (vendored `ChatRunInfo`). */
 export interface ChatRunProbe {
   active: boolean;
-  run?: { run_id: string; status: 'running' | 'completed' | 'error'; started_at: number; next_seq: number };
+  run?: {
+    run_id: string;
+    status: 'running' | 'completed' | 'error';
+    started_at: number;
+    next_seq: number;
+    /** Whose run it is, when the server says (a room's run is its asker's — only they may stop it). */
+    user_id?: string;
+  };
 }
 
 /**

@@ -160,6 +160,11 @@ export interface ThreadSnapshot {
   /** The server is busy but this device cannot attach (another API slot): a static "Working…". */
   remoteBusy: boolean;
   stopPhase: 'soft' | 'hard' | null;
+  /**
+   * The member may stop the live run (and "Handle Now" into it). Always outside a room; in a room
+   * only their own (a run is its asker's — src/bots/rooms.ts `roomRunMine`). True while idle.
+   */
+  runMine: boolean;
   pending: MobilePending[];
   /** Merged from three sources, only ever forward (`mergeRequests`). */
   requests: ReadonlyMap<string, BotRequestView>;

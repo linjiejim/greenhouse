@@ -1,5 +1,5 @@
 /**
- * The drawer's first two sections — 主线 and Agent (spec
+ * The drawer's first sections — 主线, 同事 and Agent (spec
  * docs/specs/20261008-mobile-bots.md §2.5.1, D1; docs/specs/20261011-agent-first-class.md
  * §3.1: one list — 主线 · Agent · 会话, the third being the chat history in
  * ../../chat/home-drawer.tsx). The product calls a Bot an Agent; the code keeps
@@ -18,6 +18,13 @@
  *    in its thread, or in Settings → My Agents (examples, by hand) — the
  *    drawer's ＋ menu was retired 2026-10. No groups either: Agents bring each
  *    other into a conversation themselves (retired 2026-10-09);
+ *  - 同事 / "People" (rooms, spec 20261011-agent-first-class §5d P5 — the web's
+ *    sidebar puts them in the same place): the member's conversations with other
+ *    people — private chats and rooms, server order, five then "Show All" like
+ *    the Agents — ending in "New Conversation With People ›" (`/bots/new-room`)
+ *    while there is anyone to talk with (`GET /api/rooms/people`, read the first
+ *    time the drawer opens — the sheet reads it again; a server without rooms
+ *    answers 404 and the way in stays away). That row alone shows the section; a search hides it;
  *  - a section with nothing in it is left out (a member with Sprouty alone has
  *    no Agent section), and so is one a search empties — the chats below carry
  *    the results;
@@ -89,6 +96,9 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
 
   const bots = useBots((s) => s.bots);
   const byId = useBots((s) => s.byId);
+  const viewerId = useBots((s) => s.viewerId);
+  // Someone to start a conversation with (a server without rooms: never).
+  const canMeet = useBots((s) => s.peopleState === 'loaded' && s.people.length > 0);
   const shared = useBots((s) => s.shared);
   const browsable = useBots((s) => s.directory.length > 0);
   const botsLoaded = useBots((s) => s.botsLoaded);
@@ -110,6 +120,8 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
       if (after.botsLoaded && after.conversationsLoaded) void after.ensureSprouty();
       // The public Agents offered to the member: whether "Browse Agents" shows.
       void after.loadDirectory();
+      // Anyone to talk with: whether "New Conversation With People" shows (once — the sheet re-reads it).
+      if (after.peopleState !== 'loaded') void after.loadPeople();
     })();
   }, [status]);
 
@@ -117,7 +129,7 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
     () => drawerRows({ bots, byId, botsLoaded, conversations, shared }, { query, expanded }),
     [bots, byId, botsLoaded, conversations, shared, query, expanded],
   );
-  const dir = useMemo(() => ({ byId, botsLoaded }), [byId, botsLoaded]);
+  const dir = useMemo(() => ({ byId, botsLoaded, viewerId }), [byId, botsLoaded, viewerId]);
 
   // Sprouty before its DM row is listed (still loading, or not bootstrapped yet): a stand-in row.
   const sprouty = sproutyBot({ bots });
@@ -177,6 +189,7 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
   }, []);
   const openArchived = useCallback(() => later(() => router.push('/bots/archived')), [later, router]);
   const openBrowse = useCallback(() => later(() => router.push('/bots/agents')), [later, router]);
+  const openNewRoom = useCallback(() => later(() => router.push('/bots/new-room')), [later, router]);
   const retry = useCallback(() => {
     lastLoadAt = Date.now();
     void (async () => {
@@ -191,7 +204,9 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
   // An empty section is left out — and one a search empties: the chats below carry the results.
   const browse = browsable && !searching;
   const agentsShown = rows.recent.length > 0 || rows.archived.length > 0 || browse || (loadFailed && !searching);
-  if (!pinned && !agentsShown) return null;
+  const meet = canMeet && !searching;
+  const peopleShown = rows.rooms.length > 0 || meet;
+  if (!pinned && !agentsShown && !peopleShown) return null;
   // Hairlines run between rows — not after the last, and not against the highlighted current row.
   const separated = (current: boolean, next: BotConversationSummary | undefined) =>
     !!next && !current && next.session_id !== currentSid;
@@ -209,6 +224,49 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
             // the stand-in has no conversation to act on yet
             onMenu={pinned.session_id && rows.pinned ? onRowMenu : undefined}
           />
+        </View>
+      ) : null}
+      {peopleShown ? (
+        <View style={styles.section}>
+          <SectionHead title={t('bots.room.section')} />
+          {rows.rooms.map((row, index) => (
+            <DrawerRow
+              key={row.session_id}
+              row={row}
+              current={row.session_id === currentSid}
+              separator={separated(row.session_id === currentSid, rows.rooms[index + 1])}
+              onOpen={open}
+              onMenu={onRowMenu}
+            />
+          ))}
+          {rows.moreRooms > 0 ? (
+            <Animated.View layout={ROW_LAYOUT}>
+              <Pressable
+                key={fontKey}
+                onPress={expand}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.textRow, pressed && { backgroundColor: c.fill }]}
+              >
+                <Text style={styles.moreText}>{t('bots.nav.showAll', { n: rows.rooms.length + rows.moreRooms })}</Text>
+              </Pressable>
+            </Animated.View>
+          ) : null}
+          {meet ? (
+            <Animated.View layout={ROW_LAYOUT} entering={ROW_ENTER}>
+              <Pressable
+                key={fontKey}
+                onPress={openNewRoom}
+                accessibilityRole="button"
+                accessibilityHint={t('bots.room.newRoomHint')}
+                style={({ pressed }) => [styles.textRow, pressed && { backgroundColor: c.fill }]}
+              >
+                <Text style={styles.moreText} numberOfLines={1}>
+                  {t('bots.room.newRoom')}
+                </Text>
+                <Icon name="chevR" size={13} color={c.accent} weight="semibold" />
+              </Pressable>
+            </Animated.View>
+          ) : null}
         </View>
       ) : null}
       {agentsShown ? (

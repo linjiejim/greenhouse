@@ -8,7 +8,7 @@
  *    conversations that need the member (cards + unread) — VoiceOver hears
  *    the count in the button's label ("Open sidebar, 3 need your attention").
  *  - Title view (`ThreadTitle`): the Bot's plant (a group: up to three, the
- *    one speaking first) + the name and a live status line, each truncating
+ *    one speaking first; a room: the other people's initials) + the name and a live status line, each truncating
  *    on its own; capped at 1.3× Dynamic Type (the bar has the system's large
  *    content viewer). Tap → the Bot's profile (a DM — its tabs hold everything
  *    about it: overview, memory, notes, schedules, separate chats); an old
@@ -26,7 +26,10 @@
  *    session), no share (the server refuses to share Bots conversations), no
  *    delete. A task chat (a separate chat, spec 20261011-agent-first-class
  *    §5a) is a chat in the chats list: it adds Tags, Rename and Delete — still
- *    no share (D26).
+ *    no share (D26). A room (several people, spec 20261011-agent-first-class
+ *    §5d P5) has no Agent of its own: no New Chat, no 🖥 (each Agent's
+ *    computer is reached from its cards); its menu is who is in it, Add
+ *    People…, Bring an Agent ›, Remove an Agent ›, Rename, Show ›, Leave.
  *
  * The title view reads a tiny store the screen publishes to
  * (`publishThreadHeader`, only when a field changed) instead of taking props:
@@ -53,6 +56,7 @@ import type { PlantState } from '../../ui/plant-avatar/plant-ids';
 import { toolbarIcon } from '../../ui/toolbar-icon';
 import { AvatarStack } from '../ui/avatar-stack';
 import { BotAvatar, type AvatarSource } from '../ui/bot-avatar';
+import { PeopleAvatar, type PersonFace } from '../ui/people-avatar';
 import { drawerButtonLabel, menuBadge } from './thread-screen-model';
 
 /** Navigation-bar text never grows past this Dynamic Type multiple (the system's large content viewer covers it). */
@@ -71,6 +75,8 @@ export interface ThreadHeaderState {
   group: boolean;
   /** A DM's Bot — the title opens its profile. */
   ownerBotId: string | null;
+  /** A room: the people its title shows instead of a plant (a private chat: the other one). */
+  people?: readonly PersonFace[];
 }
 
 const useHeaders = create<{ bySid: Record<string, ThreadHeaderState> }>(() => ({ bySid: {} }));
@@ -84,7 +90,8 @@ function sameHeader(a: ThreadHeaderState | undefined, b: ThreadHeaderState): boo
     a.group === b.group &&
     a.ownerBotId === b.ownerBotId &&
     a.bots.length === b.bots.length &&
-    a.bots.every((bot, i) => bot === b.bots[i])
+    a.bots.every((bot, i) => bot === b.bots[i]) &&
+    a.people === b.people
   );
 }
 
@@ -132,7 +139,9 @@ export function ThreadTitle({ sessionId, fallbackTitle }: { sessionId: string; f
       style={({ pressed }) => [styles.title, { maxWidth: width - BAR_BUTTONS_W }, pressed && styles.pressed]}
     >
       {/* the Bot this thread is with (a group: the one speaking, first) shows how it's doing, and moves */}
-      {header?.group ? (
+      {header?.people ? (
+        <PeopleAvatar people={header.people} size={26} max={2} ring={null} />
+      ) : header?.group ? (
         <AvatarStack bots={header.bots} size={20} max={3} lead={header.pose} />
       ) : (
         <BotAvatar bot={header?.bots[0] ?? null} size={26} state={header?.pose} animate />
@@ -169,6 +178,24 @@ export interface ThreadHeaderActions {
   openTags: () => void;
   rename: () => void;
   remove: () => void;
+  /** A room's own (P5). */
+  renameRoom: () => void;
+  addPeople: () => void;
+  bringAgent: (botId: string) => void;
+  removeAgent: (botId: string) => void;
+  leave: () => void;
+}
+
+/** A room's ⋯ menu entries (P5): who is in it, and the Agents the member may bring or take out. */
+export interface RoomMenu {
+  /** Everyone in it — the member first — `detail` a short note ("You", "Created it"). */
+  people: Array<{ id: string; name: string; detail?: string }>;
+  /** Its Agents, `detail` whose ("Your Agent", "Ana's Agent"). */
+  agents: Array<{ id: string; name: string; detail?: string }>;
+  /** The member's own active Agents not in it yet. */
+  bringable: Array<{ id: string; name: string }>;
+  /** The Agents the member may take out (theirs; any when the room is theirs). */
+  removable: Array<{ id: string; name: string }>;
 }
 
 /**
@@ -186,6 +213,7 @@ export const ThreadHeader = memo(function ThreadHeader({
   computerTone,
   computerLabel,
   taskChat,
+  room = null,
   actions,
 }: {
   sessionId: string;
@@ -205,6 +233,8 @@ export const ThreadHeader = memo(function ThreadHeader({
   computerLabel: string;
   /** A task chat (not a thread): Tags / Rename / Delete join the menu. */
   taskChat: boolean;
+  /** A room (P5): its menu instead of New Chat (keep it stable — see above). */
+  room?: RoomMenu | null;
   actions: ThreadHeaderActions;
 }) {
   const t = useT();
@@ -260,10 +290,70 @@ export const ThreadHeader = memo(function ThreadHeader({
               {t('chat.actionRename')}
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
+          {/* a room's: who is in it, people, Agents */}
+          <Stack.Toolbar.Menu inline hidden={!room}>
+            <Stack.Toolbar.Menu title={t('bots.room.inRoom')} icon={toolbarIcon('users')}>
+              {(room?.people ?? []).map((person) => (
+                <Stack.Toolbar.MenuAction
+                  key={`p:${person.id}`}
+                  icon={toolbarIcon('person')}
+                  subtitle={person.detail}
+                  disabled
+                >
+                  {person.name}
+                </Stack.Toolbar.MenuAction>
+              ))}
+              {(room?.agents ?? []).map((agent) => (
+                <Stack.Toolbar.MenuAction
+                  key={`a:${agent.id}`}
+                  icon={toolbarIcon('sparkle')}
+                  subtitle={agent.detail}
+                  disabled
+                >
+                  {agent.name}
+                </Stack.Toolbar.MenuAction>
+              ))}
+            </Stack.Toolbar.Menu>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('userPlus')} onPress={actions.addPeople}>
+              {t('bots.room.addPeople')}
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.Menu
+              hidden={!room?.bringable.length}
+              title={t('bots.room.bringAgent')}
+              icon={toolbarIcon('plusCircle')}
+            >
+              {(room?.bringable ?? []).map((agent) => (
+                <Stack.Toolbar.MenuAction key={agent.id} onPress={() => actions.bringAgent(agent.id)}>
+                  {agent.name}
+                </Stack.Toolbar.MenuAction>
+              ))}
+            </Stack.Toolbar.Menu>
+            <Stack.Toolbar.Menu
+              hidden={!room?.removable.length}
+              title={t('bots.room.removeAgent')}
+              icon={toolbarIcon('personMinus')}
+            >
+              {(room?.removable ?? []).map((agent) => (
+                <Stack.Toolbar.MenuAction key={agent.id} destructive onPress={() => actions.removeAgent(agent.id)}>
+                  {agent.name}
+                </Stack.Toolbar.MenuAction>
+              ))}
+            </Stack.Toolbar.Menu>
+          </Stack.Toolbar.Menu>
+          <Stack.Toolbar.Menu inline hidden={!room}>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('pen')} onPress={actions.renameRoom}>
+              {t('bots.room.rename')}
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
           <Stack.Toolbar.Menu inline>{replyDetailsMenu(t, details, setDetail)}</Stack.Toolbar.Menu>
           <Stack.Toolbar.Menu inline hidden={!taskChat}>
             <Stack.Toolbar.MenuAction icon={toolbarIcon('trash')} destructive onPress={actions.remove}>
               {t('chat.actionDelete')}
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
+          <Stack.Toolbar.Menu inline hidden={!room}>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('logout')} destructive onPress={actions.leave}>
+              {t('bots.room.leave')}
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
         </Stack.Toolbar.Menu>

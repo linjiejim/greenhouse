@@ -20,13 +20,15 @@
  *    screen. A task chat's last reply offers Regenerate (answer the last
  *    member message again). A persisted reply of someone else's public Agent
  *    offers 👍 / 👎 in its menu (`rating`, spec 20261011-agent-first-class D38).
+ *  - `PersonRow` — another person's message in a room (P5): on the left, their
+ *    initial and name over the first of their messages in a row.
  *  - `PendingRow` — a send in flight with its Messages-style caption.
  *  - `RequestRow` — a "needs you" card (`RequestCard`); one the thread holds
  *    no state for (an old card past the detail window) reads as its line.
  */
 
 import React, { memo, useCallback, useMemo } from 'react';
-import { View } from 'react-native';
+import { View, type ColorValue } from 'react-native';
 import { space } from '../../../theme';
 import { AiMessage, UserMessage, type MessageAction } from '../../../chat/message';
 import type { ChatMessage } from '../../../chat/model';
@@ -79,6 +81,24 @@ export const UserRow = memo(function UserRow({
   onAction: (msg: ChatMessage, action: MessageAction) => void;
 }) {
   return <UserMessage msg={fromBotMessage(message)} readOnly={readOnly} onAction={onAction} allowEdit={editable} />;
+});
+
+/** Another person's message in a room: theirs, on the left; `header` = their name over it. */
+export const PersonRow = memo(function PersonRow({
+  message,
+  name,
+  tint,
+  header,
+  onAction,
+}: {
+  message: BotMessage;
+  name: string;
+  tint: ColorValue;
+  header: boolean;
+  onAction: (msg: ChatMessage, action: MessageAction) => void;
+}) {
+  const author = useMemo(() => ({ name, tint, header }), [name, tint, header]);
+  return <UserMessage msg={fromBotMessage(message)} readOnly onAction={onAction} allowEdit={false} author={author} />;
 });
 
 /**

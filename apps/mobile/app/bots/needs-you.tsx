@@ -186,6 +186,7 @@ function GroupHeader({
   const styles = useStyles(c);
   const byId = useBots((s) => s.byId);
   const botsLoaded = useBots((s) => s.botsLoaded);
+  const viewerId = useBots((s) => s.viewerId);
   const lookup = useMemo(() => botsById(Object.values(byId)), [byId]);
 
   const fallbackName = (fallbackBotId && byId[fallbackBotId]?.name) || '';
@@ -196,9 +197,16 @@ function GroupHeader({
         group: t('bots.needs.group'),
         archived: (name) => t('bots.needs.archivedName', { name }),
         chat: t('chat.newConversation'),
+        room: { me: viewerId, untitled: t('bots.room.untitled') },
       })
     : fallbackName;
-  const memberIds = row ? (row.kind !== 'group' ? [row.owner_bot_id] : conversationBotIds(row)) : [fallbackBotId];
+  // A room has no Agent of its own: the card's Agent stands for it.
+  const memberIds =
+    row && row.kind !== 'room'
+      ? row.kind !== 'group'
+        ? [row.owner_bot_id]
+        : conversationBotIds(row)
+      : [fallbackBotId];
   const faces = memberIds.map((id) => (id ? (byId[id] ?? null) : null));
 
   return (

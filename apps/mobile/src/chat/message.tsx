@@ -33,11 +33,13 @@
  * `thinkingAvatar` (the speaking Bot's plant instead of Sprouty, or none),
  * `allowRegenerate={false}` (Bots replies can't be regenerated),
  * `allowEdit={false}` (nor sent messages edited) and a `footer` under a
- * bubble (a pending send's "Delivered · …" caption).
+ * bubble (a pending send's "Delivered · …" caption). In a room (several
+ * people) another person's message is a `UserMessage` with an `author`: on the
+ * left, their initial and name over the first of their messages in a row.
  */
 
 import React, { memo, useEffect, useMemo } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, type ColorValue } from 'react-native';
 import { Image } from 'expo-image';
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { uploadUrl } from '../api/upload';
@@ -46,7 +48,8 @@ import { translate, useT } from '../lib/i18n';
 import { openLink } from '../lib/links';
 import { splitAttachments } from '../shared/rich-output';
 import { usePrefs } from '../store/prefs';
-import { makeStyles, radius, space, squircle, typo, useTheme } from '../theme';
+import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
+import { InitialAvatar } from '../ui/avatar';
 import { NativeButton } from '../ui/button';
 import { Icon, type IconName, Spinner, Touchable } from '../ui/core';
 import { useFontScaleKey } from '../ui/font-scale';
@@ -421,6 +424,7 @@ export const UserMessage = memo(function UserMessage({
   onAction,
   allowEdit = true,
   footer,
+  author,
 }: {
   msg: ChatMessage;
   readOnly: boolean;
@@ -429,6 +433,11 @@ export const UserMessage = memo(function UserMessage({
   allowEdit?: boolean;
   /** Under the bubble, outside its menu (a pending send's status caption). Keep it stable — the row is memoised. */
   footer?: React.ReactNode;
+  /**
+   * Someone else wrote it (a room): it sits on the left, and `header` puts their initial (in their
+   * `tint`) and name over it — the first of their messages in a row. Copy is all its menu offers.
+   */
+  author?: { name: string; tint: ColorValue; header: boolean };
 }) {
   const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
@@ -440,18 +449,19 @@ export const UserMessage = memo(function UserMessage({
   const items = useMemo<MenuItem[]>(
     () => [
       ...(text ? [{ id: 'copy', title: translate(lang, 'chat.actionCopy'), icon: 'copy' as const }] : []),
-      ...(readOnly || !text || !allowEdit
+      ...(readOnly || !text || !allowEdit || author
         ? []
         : [{ id: 'edit', title: translate(lang, 'chat.actionEditResend'), icon: 'pen' as const }]),
     ],
-    [lang, readOnly, text, allowEdit],
+    [lang, readOnly, text, allowEdit, author],
   );
   const images = msg.images ?? [];
+  const theirs = !!author;
 
   const content = (
-    <View style={styles.userCol}>
+    <View style={[styles.userCol, theirs && styles.theirCol]}>
       {images.length ? (
-        <View style={styles.userImages}>
+        <View style={[styles.userImages, theirs && styles.theirWrap]}>
           {images.map((im, i) =>
             im.url ? (
               <Touchable
@@ -484,7 +494,7 @@ export const UserMessage = memo(function UserMessage({
         </View>
       ) : null}
       {text ? (
-        <View style={styles.bubble}>
+        <View style={[styles.bubble, theirs && styles.theirBubble]}>
           {/* inline marks like the web's bubble (an ask_user answer's **labels**, links, `code`) */}
           <Text style={styles.userText}>
             <Inline text={text} />
@@ -492,7 +502,7 @@ export const UserMessage = memo(function UserMessage({
         </View>
       ) : null}
       {attachments.length ? (
-        <View style={styles.userFiles}>
+        <View style={[styles.userFiles, theirs && styles.theirWrap]}>
           {attachments.map((f) => (
             <AttachmentChip
               key={f.id ?? f.key}
@@ -511,13 +521,25 @@ export const UserMessage = memo(function UserMessage({
   );
 
   return (
-    <Animated.View key={fontKey} entering={msg.fresh ? FadeIn.duration(200) : undefined} style={styles.userRow}>
+    <Animated.View
+      key={fontKey}
+      entering={msg.fresh ? FadeIn.duration(200) : undefined}
+      style={[styles.userRow, theirs && styles.theirRow, theirs && !author.header && styles.theirFollow]}
+    >
+      {author?.header ? (
+        <View style={styles.authorLine} accessibilityRole="header">
+          <InitialAvatar name={author.name} size={22} tint={author.tint} />
+          <Text style={styles.authorName} numberOfLines={1}>
+            {author.name}
+          </Text>
+        </View>
+      ) : null}
       {items.length ? (
         <NativeMenu
           trigger="longPress"
           items={items}
           onSelect={(id) => onAction(msg, id as MessageAction)}
-          style={styles.userMenu}
+          style={[styles.userMenu, theirs && styles.theirMenu]}
         >
           {content}
         </NativeMenu>
@@ -585,4 +607,14 @@ const useStyles = makeStyles((c) => ({
     ...squircle,
   },
   userText: { ...typo.body, color: c.label },
+  /* someone else's message (a room) */
+  theirRow: { alignItems: 'flex-start' },
+  // the next of their messages in a row sits closer under the one before
+  theirFollow: { paddingTop: 0 },
+  theirMenu: { alignSelf: 'flex-start' },
+  theirCol: { alignItems: 'flex-start' },
+  theirWrap: { justifyContent: 'flex-start' },
+  theirBubble: { backgroundColor: c.tertiaryFill },
+  authorLine: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingTop: space.sm, paddingBottom: space.xs },
+  authorName: { flexShrink: 1, ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
 }));

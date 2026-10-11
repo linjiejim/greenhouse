@@ -443,6 +443,8 @@ export function makeStore(api: Partial<BotsStoreDeps['api']> = {}, clock?: Threa
       startAgentConversation: async () => ({ ok: false as const, status: 404, code: null, message: '' }),
       rateReply: async () => ({ ok: false as const, status: 500, code: null, message: '' }),
       unrateReply: async () => ({ ok: false as const, status: 500, code: null, message: '' }),
+      listRoomPeople: async () => ({ ok: true as const, value: [] }),
+      createRoom: async () => ({ ok: false as const, status: 500, code: null, message: '' }),
       ...api,
     },
     clock: clock ?? { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: () => {} },

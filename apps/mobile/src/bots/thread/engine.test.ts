@@ -1517,3 +1517,164 @@ describe('rewind', () => {
     expect(t.fake.calls.rewind).toEqual([]);
   });
 });
+
+// ─── Rooms: several people (spec 20261011-agent-first-class §5d P5) ─
+
+describe('a room', () => {
+  const person = (user_id: string, nickname: string) => ({
+    user_id,
+    nickname,
+    role: 'member' as const,
+    joined_at: '2026-10-12T00:00:00.000Z',
+  });
+  /** The member is `u1` (the fixture Bots' owner): bot_a is theirs; bot_x is Ana's own, not theirs to ask. */
+  const asRoom = (fake: FakeThreadApi) => {
+    fake.server.conversation = {
+      ...fake.server.conversation,
+      kind: 'room',
+      owner_bot_id: null,
+      lead_bot_id: null,
+      members: [
+        { bot_id: 'bot_a', role: 'member', position: 0, owner_user_id: 'u1', addressable: true },
+        { bot_id: 'bot_x', role: 'member', position: 1, owner_user_id: 'u_ana', addressable: false },
+      ],
+      participants: [person('u1', 'Me'), person('u_ana', 'Ana')],
+    };
+    fake.server.messages = [];
+  };
+  async function roomSetup() {
+    const t = await setup({ prepare: asRoom });
+    t.store.getState().setViewer('u1');
+    return t;
+  }
+  const said = (seq: number, content: string, author: string) =>
+    message(seq, { id: `u${seq}`, role: 'user', bot_id: null, content, author_user_id: author });
+  /** Another run starts server-side and this device reads it. */
+  async function serverRun(t: Awaited<ReturnType<typeof roomSetup>>, runId: string) {
+    const stream = new FakeStream();
+    t.fake.attaches.push(stream);
+    t.fake.probe = live(runId);
+    t.rt.emit({ type: 'chat:run', sessionId: SID, runId, status: 'running' });
+    await t.time.advance(0);
+    return stream;
+  }
+  async function endRun(t: Awaited<ReturnType<typeof roomSetup>>, stream: FakeStream) {
+    stream.push(FINISH).end();
+    t.fake.probe = { active: false };
+    await t.time.advance(1_000);
+  }
+
+  it('a message that asks no one is just sent — no "after this reply", no busy — and only its own copy settles it', async () => {
+    const t = await roomSetup();
+    t.fake.posts.push({ kind: 'queued' });
+    expect(await t.engine.send({ text: 'ok', images: [], mentions: [] })).toEqual({ ok: true, startedRun: false });
+    await t.time.advance(0);
+    expect(t.snap().pending.map((p) => p.status)).toEqual(['sent']);
+    expect([t.snap().runActive, t.snap().remoteBusy]).toEqual([false, false]);
+
+    // Ana says the same words: hers, not this send's copy.
+    t.fake.server.messages.push(said(0, 'ok', 'u_ana'));
+    t.rt.emit({ type: 'bots:conversation', sessionId: SID });
+    await t.time.advance(CONVERSATION_RELOAD_MS);
+    expect(t.snap().pending).toHaveLength(1);
+
+    // The push for the member's own copy is missed: the look after a beat finds it.
+    t.fake.server.messages.push(said(1, 'ok', 'u1'));
+    await t.time.advance(REMOTE_BUSY_FIRST_MS);
+    expect(t.snap().pending).toEqual([]);
+  });
+
+  it('asking an Agent while nothing runs: the run that starts is the member’s (Stop), and it answers the ask', async () => {
+    const t = await roomSetup();
+    t.fake.posts.push({ kind: 'queued' });
+    await t.engine.send({ text: '@bot_a sum it up', images: [], mentions: ['bot_a'] });
+    await t.time.advance(0);
+    expect(t.snap().pending.map((p) => p.status)).toEqual(['sent']);
+    // Nothing to read yet: busy until the run shows up (the member may stop it).
+    expect([t.snap().remoteBusy, t.snap().runMine]).toEqual([true, true]);
+
+    const stream = await serverRun(t, 'r1');
+    expect(t.snap().runMine).toBe(true);
+    stream.push(turnStart('bot_a'), text('Sure'));
+    await t.time.advance(100);
+    expect(t.snap().runMine).toBe(true);
+    await endRun(t, stream);
+
+    // Ana asks her own Agent next: not the member's (their ask was answered).
+    const theirs = await serverRun(t, 'r2');
+    expect([t.snap().runActive, t.snap().runMine]).toEqual([true, false]);
+    t.engine.stop();
+    await t.time.advance(0);
+    expect([t.fake.calls.interrupt, t.fake.calls.stop]).toEqual([0, 0]);
+    expect(await t.engine.handleNow('nope')).toBe('refused');
+    expect(t.fake.calls.interrupt).toBe(0);
+    theirs.push(turnStart('bot_x'), text('Hi Ana'));
+    await t.time.advance(100);
+    expect(t.snap().runMine).toBe(false);
+  });
+
+  it('a run already going when the member asked is someone else’s: their ask waits (after this reply), the next run is theirs', async () => {
+    const t = await roomSetup();
+    const first = await serverRun(t, 'r1');
+    expect(t.snap().runMine).toBe(false);
+
+    t.fake.posts.push({ kind: 'queued' });
+    await t.engine.send({ text: '@bot_a and you?', images: [], mentions: ['bot_a'] });
+    await t.time.advance(0);
+    expect(t.snap().pending.map((p) => p.status)).toEqual(['queued']);
+    expect(t.snap().runMine).toBe(false);
+    // Someone else's interjection turn never reads the member's queued message.
+    first.push(turnStart('bot_x', 'interjection'), text('…'));
+    await t.time.advance(100);
+    expect(t.snap().pending.map((p) => p.status)).toEqual(['queued']);
+    await endRun(t, first);
+
+    await serverRun(t, 'r2');
+    expect(t.snap().runMine).toBe(true);
+  });
+
+  it('another person’s own Agent speaking is never the member’s run, whatever they asked', async () => {
+    const t = await roomSetup();
+    t.fake.posts.push({ kind: 'queued' });
+    await t.engine.send({ text: '@bot_a hi', images: [], mentions: ['bot_a'] });
+    await t.time.advance(0);
+    const stream = await serverRun(t, 'r1');
+    stream.push(turnStart('bot_x'), text('Ana asked me'));
+    await t.time.advance(100);
+    expect(t.snap().runMine).toBe(false);
+  });
+
+  it('when the probe says whose run it is, that decides', async () => {
+    const t = await roomSetup();
+    const whose = (runId: string, user_id: string) => ({
+      active: true,
+      run: { run_id: runId, status: 'running' as const, started_at: 0, next_seq: 0, user_id },
+    });
+    const stream = new FakeStream();
+    t.fake.attaches.push(stream);
+    t.fake.probe = whose('r1', 'u1');
+    t.rt.emit({ type: 'chat:run', sessionId: SID, runId: 'r1', status: 'running' });
+    await t.time.advance(0);
+    // no ask from this device, a public-or-not Agent unknown yet: the server's word is enough
+    expect(t.snap().runMine).toBe(true);
+    await endRun(t, stream);
+
+    const theirs = new FakeStream();
+    t.fake.attaches.push(theirs);
+    t.fake.probe = whose('r2', 'u_ana');
+    t.rt.emit({ type: 'chat:run', sessionId: SID, runId: 'r2', status: 'running' });
+    await t.time.advance(0);
+    // the member's own Agent speaking — but Ana asked (a public Agent of theirs, offered to her)
+    theirs.push(turnStart('bot_a'), text('For Ana'));
+    await t.time.advance(100);
+    expect(t.snap().runMine).toBe(false);
+  });
+
+  it('outside a room every run may be stopped', async () => {
+    const t = await setup();
+    const { stream } = await startRun(t);
+    stream.push(turnStart('bot_a'), text('Hi'));
+    await t.time.advance(100);
+    expect(t.snap().runMine).toBe(true);
+  });
+});

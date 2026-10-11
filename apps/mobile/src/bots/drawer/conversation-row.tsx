@@ -18,6 +18,10 @@
  * keeps XCUITest from ever going idle). The row is one VoiceOver element —
  * "Dandy, needs you, last message: …, 3 min ago".
  *
+ * A room (several people, P5) leads with the other people's initials instead of
+ * a plant, is named after them unless it has a title, and its preview names who
+ * wrote last ("You: …", "Ana: …", "Sage: …" — ./row-text.ts).
+ *
  * Rows are separated by a hairline from the text column on (the section draws
  * it, ./bots-section.tsx); the preview is a size under the title.
  *
@@ -36,8 +40,10 @@ import { useFontScaleKey } from '../../ui/font-scale';
 import { Badge } from '../../ui/list';
 import { NativeMenu, menuSections, type MenuItem } from '../../ui/menu';
 import { rowReplyable, rowSharedAgent, rowSignal, useBots } from '../store';
+import { roomFaces } from '../rooms';
 import { AvatarStack } from '../ui/avatar-stack';
 import { BotAvatar } from '../ui/bot-avatar';
+import { PeopleAvatar } from '../ui/people-avatar';
 import { rowPose, rowPreview, rowTime, rowTitle, type RowCopy } from './row-text';
 
 /**
@@ -73,6 +79,9 @@ export function useRowCopy(): RowCopy {
       youSaid: (text) => t('bots.common.youSaid', { text }),
       botSaid: (name, text) => t('bots.nav.botSaid', { name, text }),
       noMessages: t('bots.common.noMessages'),
+      roomUntitled: t('bots.room.untitled'),
+      agentOf: (name) => t('bots.room.agentOf', { name }),
+      someAgent: t('bots.room.someAgent'),
     }),
     [t],
   );
@@ -106,13 +115,14 @@ export const ConversationRow = memo(function ConversationRow({
   const { fontScale } = useWindowDimensions();
   const byId = useBots((s) => s.byId);
   const botsLoaded = useBots((s) => s.botsLoaded);
+  const viewerId = useBots((s) => s.viewerId);
   const running = useBots((s) => s.running);
   // Before the Bot list is in, every row counts as replyable (a sleeping plant would be a guess).
   const replyable = useBots((s) => rowReplyable(s, row));
   // Someone else's public Agent: whose it is, beside the name.
   const sharedBy = useBots((s) => rowSharedAgent(s, row)?.owner.nickname ?? null);
 
-  const dir = useMemo(() => ({ byId, botsLoaded }), [byId, botsLoaded]);
+  const dir = useMemo(() => ({ byId, botsLoaded, viewerId }), [byId, botsLoaded, viewerId]);
   const title = rowTitle(row, dir, copy);
   const signal = rowSignal({ running }, row, current ? row.session_id : null);
   const preview = signal.working ? t('bots.common.replying') : rowPreview(row, dir, copy);
@@ -157,6 +167,13 @@ export const ConversationRow = memo(function ConversationRow({
   );
 
   const members = useMemo(() => [...row.members].sort((a, b) => a.position - b.position).slice(0, 2), [row.members]);
+  const people = useMemo(
+    () =>
+      row.kind === 'room'
+        ? roomFaces(row, viewerId).map((person) => ({ id: person.user_id, name: person.nickname }))
+        : null,
+    [row, viewerId],
+  );
   const avatarScale = Math.min(Math.max(fontScale, 1), AVATAR_SCALE_MAX);
   const avatarSize = Math.round(DM_AVATAR * avatarScale);
 
@@ -173,7 +190,9 @@ export const ConversationRow = memo(function ConversationRow({
       ]}
     >
       <View style={[styles.lead, { width: leadWidth(fontScale) }]}>
-        {row.kind !== 'group' ? (
+        {people ? (
+          <PeopleAvatar people={people} size={avatarSize} max={2} />
+        ) : row.kind !== 'group' ? (
           <BotAvatar bot={owner} size={avatarSize} state={pose.state} animate={pose.animate} />
         ) : (
           <AvatarStack

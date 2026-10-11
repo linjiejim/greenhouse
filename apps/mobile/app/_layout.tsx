@@ -211,6 +211,9 @@ export default function RootLayout() {
                 <Stack.Screen name="bots/archived" options={sheetScreen([0.6, 1], { header: true })} />
                 {/* other members' public Agents offered to this one (P4) — "Browse Agents" in the drawer */}
                 <Stack.Screen name="bots/agents" options={sheetScreen([0.6, 1], { header: true })} />
+                {/* a conversation with other people (P5) — new, or ?room= to add people; full height: the
+                  title, the people and the member's Agents all show */}
+                <Stack.Screen name="bots/new-room" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="bots/relay" options={sheetScreen([0.6, 1], { header: true })} />
                 {/* an Agent's computer: full screen, no swipe-down (fingers on the screen are the computer's) */}
                 <Stack.Screen

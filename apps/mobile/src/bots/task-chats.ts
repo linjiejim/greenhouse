@@ -38,19 +38,27 @@ export function conversationCanReply(
   return conversationReplyable(conversation, activeIds);
 }
 
-/** How the vendored transcript reads a conversation: a task chat's Agent speaks under the title, like a DM's. */
-export function transcriptKind(kind: ConversationKind): 'direct' | 'group' {
-  return kind === 'group' ? 'group' : 'direct';
+/**
+ * How the vendored transcript reads a conversation: a task chat's Agent speaks under the title, like
+ * a DM's; a room (P5) names every speaker and puts other people's messages on their side.
+ */
+export function transcriptKind(kind: ConversationKind): 'direct' | 'group' | 'room' {
+  return kind === 'group' || kind === 'room' ? kind : 'direct';
 }
 
 export interface ThreadTitleCopy extends ConversationTitleCopy {
   /** A task chat with no title yet (the server names it after its first reply) — the web's `chat`. */
   chat: string;
+  /** A room (P5) is named after everyone but the reader (`me`); `untitled` once everyone else left. */
+  room: { me: string | null; untitled: string };
 }
 
-/** A thread's name: a task chat's own title (else "New chat"); a DM's Agent; an old group's title or roster. */
+/**
+ * A thread's name: a task chat's own title (else "New chat"); a DM's Agent; a room's title or the
+ * other people's names; an old group's title or roster.
+ */
 export function threadTitle(
-  conversation: Pick<BotConversationSummary, 'kind' | 'title' | 'owner_bot_id' | 'members'>,
+  conversation: Pick<BotConversationSummary, 'kind' | 'title' | 'owner_bot_id' | 'members' | 'participants'>,
   bots: ReadonlyMap<string, BotView>,
   copy: ThreadTitleCopy,
 ): string {

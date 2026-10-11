@@ -1,6 +1,6 @@
 /**
  * Bots API — the member's Bots, their conversations, background tasks and the
- * "needs you" requests (`/api/bots*`; endpoint table in
+ * "needs you" requests (`/api/bots*`), and rooms with other people (`/api/rooms*`; endpoint table in
  * apps/api/src/bots/AGENTS.md → HTTP contract). Function names follow the web
  * client (apps/web/src/lib/api/bots.ts); sending a message is `POST /api/chat`
  * (`openBotsChat` in ./chat.ts), not this module.
@@ -307,10 +307,82 @@ export function unrateReply(sessionId: string, messageId: string): Promise<BotsW
   );
 }
 
+// ─── Rooms: conversations with other people (spec 20261011-agent-first-class P5) ─
+//
+// A room is a Bots conversation of kind `room`: it comes back in `listConversations` for every
+// participant (with `participants`, and each Agent's `owner_user_id` / `addressable` for this
+// reader), its transcript is `getConversation`, and a message is `POST /api/chat` like any thread —
+// always 202 there (nobody answers unless someone allowed @-mentions an Agent). These are the
+// routes only a room has. A server without rooms answers 404.
+
+/** Someone who can be in a conversation with the member: active, internal, Agents on (never the member). */
+export interface RoomPerson {
+  id: string;
+  nickname: string;
+  email: string;
+}
+
+/** Who the member can start a conversation with, or add to one (sorted by name, ≤ 500). */
+export function listRoomPeople(): Promise<BotsRead<RoomPerson[]>> {
+  return read('/api/rooms/people', (body) => (body as { people: RoomPerson[] }).people);
+}
+
+/**
+ * A new room with these people (the member is in it anyway), an optional title and some of the
+ * member's own Agents. One other person, no title, no Agents = the pair's private chat: the existing
+ * one comes back (200) instead of a new one (201). Refusals: 400 (someone who can't join), 404 (an
+ * Agent that isn't the member's), 409 (a public Agent not offered to everyone; `room_full`).
+ */
+export function createRoom(input: {
+  user_ids: string[];
+  title?: string;
+  bot_ids?: string[];
+}): Promise<BotsWrite<BotConversationDetail>> {
+  return call('/api/rooms', jsonInit('POST', input), conversationOf);
+}
+
+/** Its title (anyone in it); null clears it — the room is named after its people again. */
+export function renameRoom(sessionId: string, title: string | null): Promise<BotsWrite<BotConversationDetail>> {
+  return call(`/api/rooms/${enc(sessionId)}`, jsonInit('PATCH', { title }), conversationOf);
+}
+
+/** Add someone (anyone in it may). A public Agent the newcomer isn't offered leaves, with a line. */
+export function addRoomPerson(sessionId: string, userId: string): Promise<BotsWrite<BotConversationDetail>> {
+  return call(`/api/rooms/${enc(sessionId)}/participants`, jsonInit('POST', { user_id: userId }), conversationOf);
+}
+
+/**
+ * Take someone out — the member themself (leaving: their Agents go with them), or, as its owner,
+ * anyone. `deleted` = they were the last one: the room is gone. 409 `busy`: their Agent is answering.
+ */
+export function removeRoomPerson(sessionId: string, userId: string): Promise<BotsWrite<{ deleted: boolean }>> {
+  return call(`/api/rooms/${enc(sessionId)}/participants/${enc(userId)}`, jsonInit('DELETE'), (body) => ({
+    deleted: (body as { deleted?: unknown } | null)?.deleted === true,
+  }));
+}
+
+/** Leave: `removeRoomPerson` with the member's own id. A room can't be deleted — the last one out deletes it. */
+export function leaveRoom(sessionId: string, me: string): Promise<BotsWrite<{ deleted: boolean }>> {
+  return removeRoomPerson(sessionId, me);
+}
+
+/** Bring an Agent in: one of the member's own, or a public one offered to everyone in the room (else 409). */
+export function addRoomAgent(sessionId: string, botId: string): Promise<BotsWrite<BotConversationDetail>> {
+  return call(`/api/rooms/${enc(sessionId)}/agents`, jsonInit('POST', { bot_id: botId }), conversationOf);
+}
+
+/** Take an Agent out — whoever brought it, its owner or the room's owner may (else 403). */
+export function removeRoomAgent(sessionId: string, botId: string): Promise<BotsWrite<void>> {
+  return call(`/api/rooms/${enc(sessionId)}/agents/${enc(botId)}`, jsonInit('DELETE'), nothing);
+}
+
 // ─── Shared notes (a conversation's) ─────────────────────
 
 /** Add a note (title ≤ 80, body ≤ 2000) — the member's own (no author Bot). */
-export function addNote(sessionId: string, note: { title: string; body?: string }): Promise<BotsWrite<BotSharedNoteView>> {
+export function addNote(
+  sessionId: string,
+  note: { title: string; body?: string },
+): Promise<BotsWrite<BotSharedNoteView>> {
   return call(`/api/bots/conversations/${enc(sessionId)}/notes`, jsonInit('POST', note), noteOf);
 }
 
@@ -485,8 +557,15 @@ export function listComputerProcesses(bot?: string | null): Promise<BotsRead<Com
 }
 
 /** The tail of a job's log (redacted by the server). */
-export function computerProcessLog(id: string, lines = 200, bot?: string | null): Promise<BotsRead<ComputerProcessLog>> {
-  return read(computerPath(`/api/bots/computer/processes/${enc(id)}/log?lines=${lines}`, bot), whole<ComputerProcessLog>);
+export function computerProcessLog(
+  id: string,
+  lines = 200,
+  bot?: string | null,
+): Promise<BotsRead<ComputerProcessLog>> {
+  return read(
+    computerPath(`/api/bots/computer/processes/${enc(id)}/log?lines=${lines}`, bot),
+    whole<ComputerProcessLog>,
+  );
 }
 
 export function stopComputerProcess(id: string, bot?: string | null): Promise<BotsWrite<void>> {

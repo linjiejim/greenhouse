@@ -140,6 +140,8 @@ function makeStore(api: Partial<BotsStoreDeps['api']> = {}) {
       listRequests: vi.fn(async () => ({ ok: true as const, value: [] })),
       decideRequest: vi.fn(),
       listChatRuns: vi.fn(async () => []),
+      listRoomPeople: vi.fn(async () => ({ ok: true as const, value: [] })),
+      createRoom: vi.fn(async () => ({ ok: false as const, status: 500, code: null, message: '' })),
       ...api,
     } as BotsStoreDeps['api'],
     clock: {
@@ -807,5 +809,127 @@ describe('public Agents (P4)', () => {
     store.get().reset();
     store.get().seedRatings([reply('m2'), reply('m3')], { m3: 1 });
     expect(store.get().ratings).toEqual({ m3: 1 });
+  });
+});
+
+// ─── Rooms (spec 20261011-agent-first-class P5) ──────────
+
+describe('rooms (P5)', () => {
+  const person = (user_id: string, nickname: string) => ({
+    user_id,
+    nickname,
+    role: 'member' as const,
+    joined_at: '2026-10-12T00:00:00.000Z',
+  });
+  function room(sessionId: string, partial: Partial<BotConversationSummary> = {}): BotConversationSummary {
+    return {
+      ...dm(sessionId, 'bot_x'),
+      kind: 'room',
+      owner_bot_id: null,
+      lead_bot_id: null,
+      members: [],
+      participants: [person('u_me', 'Me'), person('u_ana', 'Ana')],
+      ...partial,
+    };
+  }
+
+  it('are their own list in the drawer — never an Agent thread, never archived — searched by their people', () => {
+    const s = data({
+      bots: [SPROUTY, bot('bot_a')],
+      conversations: [dm('s_sprouty', 'bot_sprouty'), room('r1'), dm('s_a', 'bot_a'), room('r2', { title: 'Launch' })],
+    });
+    const out = drawerRows(s, { query: '', expanded: false });
+    expect(out.rooms.map((r) => r.session_id)).toEqual(['r1', 'r2']);
+    expect(out.recent.map((r) => r.session_id)).toEqual(['s_a']);
+    expect(out.archived).toEqual([]);
+    expect(drawerRows(s, { query: 'ana', expanded: false }).rooms.map((r) => r.session_id)).toEqual(['r1', 'r2']);
+    expect(drawerRows(s, { query: 'launch', expanded: false }).rooms.map((r) => r.session_id)).toEqual(['r2']);
+    expect(drawerRows(s, { query: 'launch', expanded: false }).recent).toEqual([]);
+    const many = data({ conversations: ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((n) => room(`r_${n}`)) });
+    const collapsed = drawerRows(many, { query: '', expanded: false });
+    expect([collapsed.rooms.length, collapsed.moreRooms]).toEqual([5, 2]);
+    expect(drawerRows(many, { query: '', expanded: true }).rooms).toHaveLength(7);
+    // a room with something new counts for ☰ like any thread
+    expect(attentionCount(data({ conversations: [room('r1', { attention: 'unread' })] }), null)).toBe(1);
+  });
+
+  it('never re-read the Bot list for another person’s own Agent', async () => {
+    const listBots = vi.fn(async () => ({ ok: true as const, value: overview([SPROUTY]) }));
+    const theirs = room('r1', {
+      members: [{ bot_id: 'bot_ana', role: 'member', position: 0, owner_user_id: 'u_ana', addressable: false }],
+      last_message: { preview: 'hi', bot_id: 'bot_ana', role: 'assistant', created_at: '' },
+    });
+    const store = makeStore({
+      listBots,
+      listConversations: vi.fn(async () => ({ ok: true as const, value: [theirs] })),
+    });
+    await store.get().loadBots();
+    await store.get().loadConversations();
+    expect(listBots).toHaveBeenCalledTimes(1);
+    expect(store.get().conversations).toEqual([theirs]);
+  });
+
+  it('who the member can talk with: loaded, a server without rooms (404) asked once, a blip keeps the answer', async () => {
+    const people = [{ id: 'u_ana', nickname: 'Ana', email: 'ana@x.test' }];
+    const listRoomPeople = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, value: people })
+      .mockResolvedValueOnce({ ok: false, status: 500, code: null });
+    const store = makeStore({ listRoomPeople });
+    await store.get().loadPeople();
+    expect([store.get().peopleState, store.get().people]).toEqual(['loaded', people]);
+    await store.get().loadPeople();
+    expect([store.get().peopleState, store.get().people]).toEqual(['loaded', people]);
+
+    const missing = makeStore({ listRoomPeople: vi.fn(async () => ({ ok: false as const, status: 404, code: null })) });
+    await missing.get().loadPeople();
+    await missing.get().loadPeople();
+    expect(missing.get().peopleState).toBe('missing');
+    expect(missing.api.listRoomPeople).toHaveBeenCalledTimes(1);
+
+    const failed = makeStore({ listRoomPeople: vi.fn(async () => ({ ok: false as const, status: 500, code: null })) });
+    await failed.get().loadPeople();
+    expect(failed.get().peopleState).toBe('failed');
+  });
+
+  it('a new one is listed at once, then the list is re-read; a refusal keeps the server’s code', async () => {
+    const created = { ...room('r_new', { title: 'Launch' }), description: '' } as BotConversationSummary;
+    const listConversations = vi.fn(async () => ({ ok: true as const, value: [created] }));
+    const createRoom = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, value: created })
+      .mockResolvedValueOnce({ ok: false, status: 409, code: 'room_full', message: 'At most 20 people in a room' });
+    const store = makeStore({ createRoom, listConversations });
+    store.set({ conversations: [room('r1')] });
+    const outcome = await store.get().createRoom({ user_ids: ['u_ana'], title: 'Launch' });
+    expect(outcome).toEqual({ ok: true, conversation: created });
+    expect(createRoom).toHaveBeenCalledWith({ user_ids: ['u_ana'], title: 'Launch' });
+    expect(store.get().conversations[0].session_id).toBe('r_new');
+    expect(listConversations).toHaveBeenCalled();
+    expect(await store.get().createRoom({ user_ids: ['u_ana'] })).toEqual({
+      ok: false,
+      status: 409,
+      code: 'room_full',
+      message: 'At most 20 people in a room',
+    });
+  });
+
+  it('a room the member left is gone from the lists at once', () => {
+    const store = makeStore();
+    store.set({ conversations: [room('r1'), dm('s_a', 'bot_a')] });
+    store.get().dropConversation('r1');
+    expect(store.get().conversations.map((r) => r.session_id)).toEqual(['s_a']);
+    const before = store.get().conversations;
+    store.get().dropConversation('nope');
+    expect(store.get().conversations).toBe(before);
+  });
+
+  it('who the member is outlives reset() (the account sets it again when it changes)', () => {
+    const store = makeStore();
+    store.get().setViewer('u_me');
+    store.set({ people: [{ id: 'u_ana', nickname: 'Ana', email: '' }], peopleState: 'loaded' });
+    store.get().reset();
+    expect(store.get().viewerId).toBe('u_me');
+    expect([store.get().people, store.get().peopleState]).toEqual([[], 'idle']);
   });
 });

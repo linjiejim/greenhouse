@@ -7,7 +7,11 @@
  *
  *  - top: a search field (filters every section; the history by its loaded
  *    titles — see use-sessions; there is no server-side title search) + the
- *    新会话 / New chat button,
+ *    新会话 / New chat button (with Agents on and anyone to talk with, its
+ *    long press is a menu: New Chat / With People… → `/bots/new-room`, a
+ *    conversation with other people — spec 20261011-agent-first-class P5; the
+ *    同事 section's last row is the same way in, and VoiceOver gets it as an
+ *    action on the button),
  *  - 会话: the member's own conversations (`scope=mine` — never anyone else's: a
  *    super used to get every member's history mixed in, read-only rows without
  *    a menu). Only the live part shows by default — 置顶 and 今天; everything
@@ -148,6 +152,9 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
   const query = search.trim();
   // With Agents on, the member's task chats are chats too (they open as threads).
   const botsOn = useBotsEnabled();
+  // Anyone to start a conversation with (rooms, P5 — the 同事 section reads it as the drawer opens).
+  const canMeet = useBots((s) => s.peopleState === 'loaded' && s.people.length > 0);
+  const meet = botsOn && canMeet;
   const mine = useSessions(true, 30, filterId, query, 'mine', botsOn);
   const shared = useSessions(true, 30, null, query, 'shared');
   const [earlierOpen, setEarlierOpen] = useState(false);
@@ -235,6 +242,23 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
     close();
     if (activeId || activeThread || activeProfile) openNewChat(router);
   }, [close, router, activeId, activeThread, activeProfile]);
+
+  // A conversation with other people: the drawer closes, then the sheet comes up.
+  const withPeople = useCallback(() => {
+    close();
+    setTimeout(() => router.push('/bots/new-room'), 160);
+  }, [close, router]);
+  const composeItems = useMemo<MenuItem[]>(
+    () => [
+      { id: 'new', title: t('bots.room.newChat'), icon: 'compose' },
+      { id: 'people', title: t('bots.room.newRoomShort'), icon: 'users' },
+    ],
+    [t],
+  );
+  const onComposeMenu = useCallback(
+    (id: string) => (id === 'people' ? withPeople() : newChat()),
+    [withPeople, newChat],
+  );
 
   // Close first, then push — the panel settles under the incoming page.
   const go = useCallback(
@@ -433,14 +457,31 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
             style={styles.searchInput}
           />
         </View>
-        <Touchable
-          onPress={newChat}
-          style={styles.topBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t('drawer.newChat')}
-        >
-          <Icon name="compose" size={22} color={c.label} />
-        </Touchable>
+        {meet ? (
+          <NativeMenu trigger="longPress" fill={false} items={composeItems} onSelect={onComposeMenu}>
+            <Pressable
+              onPress={newChat}
+              accessibilityRole="button"
+              accessibilityLabel={t('drawer.newChat')}
+              accessibilityActions={[{ name: 'people', label: t('bots.room.newRoomShort') }]}
+              onAccessibilityAction={(e) => {
+                if (e.nativeEvent.actionName === 'people') withPeople();
+              }}
+              style={({ pressed }) => [styles.topBtn, pressed && styles.pressedDim]}
+            >
+              <Icon name="compose" size={22} color={c.label} />
+            </Pressable>
+          </NativeMenu>
+        ) : (
+          <Touchable
+            onPress={newChat}
+            style={styles.topBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t('drawer.newChat')}
+          >
+            <Icon name="compose" size={22} color={c.label} />
+          </Touchable>
+        )}
       </View>
 
       <SectionList<Row, Section>
@@ -570,6 +611,8 @@ const useStyles = makeStyles((c) => ({
   },
   searchInput: { flex: 1, ...typo.body, color: c.label, paddingVertical: 0 },
   topBtn: { width: HIT, height: HIT, alignItems: 'center', justifyContent: 'center' },
+  // (the Touchable's pressed look, for the button that also has a menu)
+  pressedDim: { opacity: 0.55 },
   navBlock: { paddingHorizontal: space.sm },
   historyHead: { flexDirection: 'row', alignItems: 'center', marginTop: space.xs, paddingLeft: space.sm + 2 },
   historyTitle: { ...typo.footnote, fontWeight: weight.semibold, color: c.secondaryLabel, flex: 1 },

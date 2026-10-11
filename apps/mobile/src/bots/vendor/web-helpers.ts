@@ -8,6 +8,7 @@
 
 import type { BotConversationSummary, BotMessage, BotRequestDecision, BotTaskView, BotView } from '../../shared/bots';
 import type { PlantState } from '../../ui/plant-avatar/plant-ids';
+import { roomTitle } from './room';
 import type { PendingSend } from './transcript';
 
 // ─── apps/web/src/components/bots/use-bot-conversation.ts ─
@@ -31,8 +32,15 @@ export function mergeLatest(loaded: readonly BotMessage[], latest: readonly BotM
   return [...loaded.filter((message) => message.seq < floor), ...latest].sort((a, b) => a.seq - b.seq);
 }
 
-/** Drop sends whose persisted copy has arrived (matched one-to-one, oldest first). */
-export function settlePending(pending: readonly PendingWithBase[], messages: readonly BotMessage[]): PendingWithBase[] {
+/**
+ * Drop sends whose persisted copy has arrived (matched one-to-one, oldest first). In a room only
+ * the member's own messages count (`me`): someone else saying the same "ok" is not this send.
+ */
+export function settlePending(
+  pending: readonly PendingWithBase[],
+  messages: readonly BotMessage[],
+  me: string | null = null,
+): PendingWithBase[] {
   const used = new Set<string>();
   // Matching includes `sending`: the API persists the message before it answers,
   // so a reload racing the POST may already contain it.
@@ -41,6 +49,7 @@ export function settlePending(pending: readonly PendingWithBase[], messages: rea
       (message) =>
         message.role === 'user' &&
         !message.bot_event &&
+        (!message.author_user_id || !me || message.author_user_id === me) &&
         message.seq > send.baseSeq &&
         !used.has(message.id) &&
         message.content.trim() === send.content.trim(),
@@ -58,9 +67,17 @@ export function botsById(bots: readonly BotView[]): Map<string, BotView> {
   return new Map(bots.map((bot) => [bot.id, bot]));
 }
 
-/** Every Bot a conversation row names: its DM owner and its members. */
-export function conversationBotIds(conversation: Pick<BotConversationSummary, 'owner_bot_id' | 'members'>): string[] {
-  const ids = conversation.members.map((member) => member.bot_id);
+/**
+ * Every Bot a conversation row names that the member's Bot list should know: its DM owner and its
+ * members. In a room (P5) only the Agents the member may address — another person's own Agent is
+ * never in the member's list, so asking for it again would only re-read the list for nothing.
+ */
+export function conversationBotIds(
+  conversation: Pick<BotConversationSummary, 'owner_bot_id' | 'members'> & { kind?: BotConversationSummary['kind'] },
+): string[] {
+  const members =
+    conversation.kind === 'room' ? conversation.members.filter((m) => m.addressable) : conversation.members;
+  const ids = members.map((member) => member.bot_id);
   if (conversation.owner_bot_id) ids.push(conversation.owner_bot_id);
   return ids;
 }
@@ -75,16 +92,19 @@ export function mergeArchived(current: BotView[], incoming: readonly BotView[]):
 
 /**
  * Whether anyone in a conversation can still reply: a DM or a separate (task)
- * chat whose answering Bot is still active. One whose Bot was archived is
- * read-only, and so is every group — group chats were retired (a Bot brings
+ * chat whose answering Bot is still active (`activeIds`: `useReplyableBotIds`
+ * — someone else's public Agent counts while it is offered). One whose Bot was
+ * archived (or a public Agent no longer offered) is read-only, and so is every group — group chats were retired (a Bot brings
  * another into its own conversation when it needs one), and the old ones stay
  * as records. The API refuses a message to either (409), so the composer gives
  * way to an explanation instead. Only meaningful once the Bot list is loaded.
+ * A room (P5) is people talking: it stays open for as long as the member is in it.
  */
 export function conversationReplyable(
   conversation: Pick<BotConversationSummary, 'kind' | 'owner_bot_id'>,
   activeIds: ReadonlySet<string>,
 ): boolean {
+  if (conversation.kind === 'room') return true;
   return conversation.kind !== 'group' && !!conversation.owner_bot_id && activeIds.has(conversation.owner_bot_id);
 }
 
@@ -104,20 +124,28 @@ export interface ConversationTitleCopy {
   chat: string;
   /** "Sage (archived)": the Bot no longer replies; its conversation stays readable. */
   archived: (name: string) => string;
+  /**
+   * A room (P5) is named after the other people in it: who the reader is, and what to call one
+   * everyone else left. Without it a room reads as its title or all its people.
+   */
+  room?: { me: string | null; untitled: string };
 }
 
 /**
  * A conversation's display name: the Bot's name for a DM (marked when that
  * Bot is archived), its own title for a separate chat ("New chat" until one is
  * generated — the header names the answering Agent beside it), the title or
- * the roster for a group. `bots` is the full directory — active and archived Bots.
+ * the other people's names for a room, the title or the roster for a group.
+ * `bots` is the full directory — active and archived Bots.
  */
 export function conversationTitle(
-  conversation: Pick<BotConversationSummary, 'kind' | 'title' | 'owner_bot_id' | 'members'>,
+  conversation: Pick<BotConversationSummary, 'kind' | 'title' | 'owner_bot_id' | 'members' | 'participants'>,
   bots: ReadonlyMap<string, BotView>,
   copy: ConversationTitleCopy,
 ): string {
   if (conversation.kind === 'task') return conversation.title?.trim() || copy.chat;
+  if (conversation.kind === 'room')
+    return roomTitle(conversation, copy.room?.me ?? null, copy.room?.untitled ?? copy.group);
   if (conversation.kind === 'direct') {
     const owner = bots.get(conversation.owner_bot_id ?? '');
     if (!owner) return copy.unknownBot;

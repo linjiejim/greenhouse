@@ -8,10 +8,14 @@
  * Before the Bot list has answered, a name we have not heard about yet is not a
  * deleted Bot (web invariant 17): the title is '' (the row draws a skeleton bar)
  * and a group speaker goes unnamed.
+ *
+ * A room (several people, P5) is named after everyone but the member (`viewerId`), and its
+ * preview names who wrote last — "You", another person, or the Agent (../rooms.ts).
  */
 
 import type { BotConversationSummary, BotView } from '../../shared/bots';
 import type { PlantState } from '../../ui/plant-avatar/plant-ids';
+import { roomDirectory, roomPreview } from '../rooms';
 import { threadTitle } from '../task-chats';
 import { conversationBotIds } from '../vendor/web-helpers';
 
@@ -25,15 +29,25 @@ export interface RowCopy {
   youSaid(text: string): string;
   botSaid(name: string, text: string): string;
   noMessages: string;
+  /** A room everyone else left (no title of its own). */
+  roomUntitled: string;
+  /** Another person's Agent the member's list doesn't know: "Ana's Agent". */
+  agentOf(name: string): string;
+  someAgent: string;
 }
 
 /** The Bot directory slice a row reads (`useBots`). */
 export interface RowDirectory {
   byId: Record<string, BotView>;
   botsLoaded: boolean;
+  /** The signed-in member — a room is named after everyone else (`useBots` `viewerId`). */
+  viewerId?: string | null;
 }
 
-type Row = Pick<BotConversationSummary, 'kind' | 'title' | 'owner_bot_id' | 'members' | 'last_message'>;
+type Row = Pick<
+  BotConversationSummary,
+  'kind' | 'title' | 'owner_bot_id' | 'members' | 'last_message' | 'participants'
+>;
 
 /** The row's title ('' while the Bot list has not answered); a task chat's own title, else "New chat". */
 export function rowTitle(row: Row, dir: RowDirectory, copy: RowCopy): string {
@@ -47,11 +61,16 @@ export function rowTitle(row: Row, dir: RowDirectory, copy: RowCopy): string {
     group: dir.botsLoaded ? copy.untitledGroup : '',
     archived: copy.archivedName,
     chat: copy.newChat,
+    room: { me: dir.viewerId ?? null, untitled: copy.roomUntitled },
   });
 }
 
 /** The one-line preview of the last message, whitespace collapsed (the web truncates the same way). */
 export function rowPreview(row: Row, dir: RowDirectory, copy: RowCopy): string {
+  if (row.kind === 'room') {
+    const names = roomDirectory({ byId: dir.byId, room: row, offered: [], copy }).byId;
+    return roomPreview(row, dir.viewerId ?? null, (id) => names[id]?.name ?? null, copy);
+  }
   const last = row.last_message;
   if (!last) return copy.noMessages;
   const text = last.preview.replace(/\s+/g, ' ').trim();

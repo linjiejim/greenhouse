@@ -32,6 +32,7 @@ const COPY = {
   group: 'Group',
   archived: (name: string) => `${name} (archived)`,
   chat: 'New chat',
+  room: { me: 'u_me', untitled: 'Just You' },
 };
 
 const summary = (partial: Partial<BotConversationSummary>): BotConversationSummary => conversation('s1', partial);
@@ -45,6 +46,8 @@ describe('replying and titles', () => {
     expect(conversationCanReply(summary({ kind: 'task', owner_bot_id: null }), active)).toBe(false);
     expect(conversationCanReply(summary({ kind: 'direct', owner_bot_id: 'bot_a' }), active)).toBe(true);
     expect(conversationCanReply(summary({ kind: 'group', owner_bot_id: 'bot_a' }), active)).toBe(false);
+    // a room (P5) is people talking: open for as long as the member is in it
+    expect(conversationCanReply(summary({ kind: 'room', owner_bot_id: null }), active)).toBe(true);
     expect(isTaskChat(summary({ kind: 'task' }))).toBe(true);
     expect(isTaskChat(null)).toBe(false);
   });
@@ -53,6 +56,8 @@ describe('replying and titles', () => {
     expect(transcriptKind('task')).toBe('direct');
     expect(transcriptKind('direct')).toBe('direct');
     expect(transcriptKind('group')).toBe('group');
+    // a room names every speaker and puts other people on their side
+    expect(transcriptKind('room')).toBe('room');
   });
 
   it('is called by its own title, else "New chat" — never by its Agent’s name', () => {
@@ -62,6 +67,15 @@ describe('replying and titles', () => {
     expect(threadTitle(summary({ kind: 'task', title: '   ' }), bots, COPY)).toBe('New chat');
     // a DM still goes by its Agent
     expect(threadTitle(summary({ kind: 'direct', title: null }), bots, COPY)).toBe('Sage');
+    // a room: its title, else everyone but the reader
+    const people = [
+      { user_id: 'u_me', nickname: 'Me', role: 'owner' as const, joined_at: '' },
+      { user_id: 'u_ana', nickname: 'Ana', role: 'member' as const, joined_at: '' },
+    ];
+    const room = summary({ kind: 'room', owner_bot_id: null, members: [], participants: people });
+    expect(threadTitle(room, bots, COPY)).toBe('Ana');
+    expect(threadTitle({ ...room, title: 'Launch' }, bots, COPY)).toBe('Launch');
+    expect(threadTitle({ ...room, participants: people.slice(0, 1) }, bots, COPY)).toBe('Just You');
   });
 });
 

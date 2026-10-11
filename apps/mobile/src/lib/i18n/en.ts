@@ -9,6 +9,7 @@ import { botsCardsEn } from './bots/cards.en';
 import { botsNavEn } from './bots/nav.en';
 import { botsManageEn } from './bots/manage.en';
 import { botsComputerEn } from './bots/computer.en';
+import { botsRoomsEn } from './bots/rooms.en';
 
 export const en = {
   common: {
@@ -657,6 +658,7 @@ export const en = {
     ...botsNavEn,
     ...botsManageEn,
     ...botsComputerEn,
+    ...botsRoomsEn,
   },
 };
 
