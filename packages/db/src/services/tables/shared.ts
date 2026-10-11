@@ -395,6 +395,7 @@ export function validateTableFieldValue(
     case 'formula':
     case 'rollup':
     case 'lookup':
+    case 'ai':
       return invalid('a computed value');
   }
 }

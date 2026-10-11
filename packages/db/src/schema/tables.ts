@@ -239,6 +239,7 @@ export const tableFields = pgTable(
         'formula',
         'rollup',
         'lookup',
+        'ai',
       ],
     })
       .$type<TableFieldType>()
@@ -270,7 +271,8 @@ export const tableFieldDependencies = pgTable(
     depends_on_field_id: integer('depends_on_field_id')
       .notNull()
       .references(() => tableFields.id, { onDelete: 'cascade' }),
-    dependency_type: text('dependency_type', { enum: ['formula', 'lookup', 'rollup'] }).notNull(),
+    /** `ai`: an AI field's input fields (Phase 2) — a change to one re-queues the record. */
+    dependency_type: text('dependency_type', { enum: ['formula', 'lookup', 'rollup', 'ai'] }).notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.field_id, table.depends_on_field_id] }),
@@ -450,6 +452,14 @@ export const tableRecordAttachments = pgTable(
   ],
 );
 
+/**
+ * Durable recompute work. `rollup` rows are the inline rollup refresh's
+ * bookkeeping (Phase 0); `ai` rows (Phase 2, docs/specs/20261011-tables-apps-advanced.md
+ * §2) are the AI field queue: the record write only enqueues (idempotency key
+ * `ai:<field>:<record>:<input_hash>`), the API worker claims with a lease
+ * (`lease_owner` / `lease_expires_at`, `FOR UPDATE SKIP LOCKED`), generates, and
+ * writes the value only while the record is still at `source_revision`.
+ */
 export const tableRecomputeJobs = pgTable(
   'table_recompute_jobs',
   {
@@ -459,12 +469,25 @@ export const tableRecomputeJobs = pgTable(
       .references(() => tableTables.id, { onDelete: 'cascade' }),
     field_id: integer('field_id').references(() => tableFields.id, { onDelete: 'cascade' }),
     record_id: integer('record_id').references(() => tableRecords.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['rollup', 'ai'] })
+      .notNull()
+      .default('rollup'),
     status: text('status', { enum: ['queued', 'running', 'succeeded', 'failed'] })
       .notNull()
       .default('queued'),
     idempotency_key: text('idempotency_key').notNull(),
     attempt: integer('attempt').notNull().default(0),
     error: text('error'),
+    /** The worker holding the job, until `lease_expires_at` (a later claim may take an expired lease). */
+    lease_owner: text('lease_owner'),
+    lease_expires_at: timestamp('lease_expires_at', { withTimezone: true, mode: 'string' }),
+    /** `ai`: hash of the input values the job was queued for. */
+    input_hash: text('input_hash'),
+    /** `ai`: the record revision those inputs were read at — the result is written only if it still is (CAS). */
+    source_revision: integer('source_revision'),
+    /** `ai`: tokens spent and the model used. */
+    tokens: integer('tokens'),
+    model: text('model'),
     created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
     started_at: timestamp('started_at', { withTimezone: true, mode: 'string' }),
     finished_at: timestamp('finished_at', { withTimezone: true, mode: 'string' }),
@@ -472,6 +495,8 @@ export const tableRecomputeJobs = pgTable(
   (table) => [
     uniqueIndex('uq_table_recompute_jobs_idempotency').on(table.idempotency_key),
     index('idx_table_recompute_jobs_status').on(table.status, table.created_at),
+    index('idx_table_recompute_jobs_claim').on(table.kind, table.status, table.created_at),
+    index('idx_table_recompute_jobs_field').on(table.field_id, table.status),
   ],
 );
 

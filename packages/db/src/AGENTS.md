@@ -239,6 +239,12 @@
   - **置顶**：`setAppPins(userId, appIds)` 整体替换（去重、按顺序、≤ 50），随应用级联删除；能不能置顶某个应用（看不看得见）是 API 的判断。
   - **网关的存取（`services/tables/app-gateway.ts`，迁移 0026）**：`matchRecordIds(tableId, ids, scope, {purpose, condition})` 一次查询告诉网关一页记录里哪些在 scope 的读行（或读 ∧ 编辑行）内、且满足构建者写的条件（动作的 `when`）——条件按**行范围**编译（不限可读字段、编译不了即 FALSE、`$me` = scope 的人），空条件 = 无条件；`matchRecordIdsEach(tableId, ids, scope, conditions, {purpose})` 是同一判定的批量版（一张卡片的全部动作：一个编译上下文、一条查询，每个条件一列布尔，NULL 当不满足），`matchRecordIds` 就是它的单条件特例；`listRecordsByIds` 按 scope 取记录（关联标签只给读范围内的行）；`listDriveFileMeta` 给附件标签。应用上传：`pending` 的 tables 作用域文件、键段 `appUploadKeySegment(baseId, appId)` = `tables/<base>/apps/<app>/`，写前 `claimAppUploads`（pending → active，只认本人、本应用）+ `appUploadsAttachable`（本人经本应用上传、没挂在别的记录上），写失败 `releaseAppUploads`，`expireStaleAppUploads` 由每小时的上传清理调用。动作账本 `table_app_action_requests`：`claimAppActionRequest`（插入即认领，唯一键冲突 → 返回已有行；卡住 2 分钟的 running 可接管）、`completeAppActionRequest`（存结果）、`releaseAppActionRequest`（被拒 / 出错时删掉认领）、`pruneAppActionRequests(before, limit)`（upkeep：删掉早于用量窗口 `APP_USAGE_WINDOW_DAYS` = 30 天的行，任何状态，每批 `limit` 行）。`appUsageSummary` 读应用审计（`idx_platform_audit_resource_created`）与账本。编译器仍只在包内：网关从不自己拼 SQL。
 
+- **应用阶段 2 地基（迁移 0027 `tables_apps_advanced`，F2）**：方案见 [阶段 2 spec](../../../docs/specs/20261011-tables-apps-advanced.md) §2 / §6 / D10。只落了表与列，**还没有 service**——切片 AI / T / S 各自在 `services/tables/` 里加存取（不再生成迁移，D5：编号与快照链只由地基出）。
+  - `table_recompute_jobs` 加 `kind`（`rollup` 默认 / `ai`）、租约 `lease_owner` / `lease_expires_at`、`input_hash`、`source_revision`、`tokens`、`model`（`error` 原有），索引 `(kind, status, created_at)`（领取）与 `(field_id, status)`（按字段计数 / 单元格状态）。存量行不受影响。AI 结果仍存在 `table_records.computed_values`（D6）——`computeRecordValues` 会从头重建这一列，切片 AI 必须把已有 AI 结果带过去。
+  - `table_app_templates` / `table_app_template_versions`（semver 版本、`content` 原样文本 + `content_hash`、扫描、审核、出处）；版本外键名手写（`foreignKey({name})`）——drizzle 自动生成的名字会超过 Postgres 63 字符而被截断，下一次 generate 就会对不上。
+  - `table_app_versions.custom_review` 沿用阶段 1 已有的 jsonb 列，类型收紧为 `TableAppCustomReviewRecord`（只是 TS，无迁移）。
+  - 只改 TS 的枚举：字段类型 `ai`（`table_fields.type`）、依赖类型 `ai`（`table_field_dependencies.dependency_type`）、额度主体 `tables_field`（`usage_budget_accounts.scope_type`）——文本列没有 CHECK，第二次 `drizzle-kit generate` 报告无变更。
+
 ### Tables 的软删与恢复
 
 - `table_bases.archived_at` / `table_tables.archived_at` / `table_records.deleted_at` 是三层软删；`listBasesForUser`/`listTables`/`getSchema`/`queryRecords` 都已过滤，新增读路径别漏。

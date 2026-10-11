@@ -186,6 +186,8 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
         'agent_run_events',
         'agent_runs',
         'agent_workspaces',
+        'table_app_template_versions',
+        'table_app_templates',
         'table_app_action_requests',
         'table_app_pins',
         'table_app_audiences',

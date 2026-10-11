@@ -60,7 +60,8 @@ export const usageBudgetAccounts = pgTable(
   {
     id: text('id').primaryKey(),
     scope_type: text('scope_type', {
-      enum: ['user', 'organization', 'agent', 'run', 'eval', 'provider'],
+      // `tables_field`: an AI field's monthly cap (Phase 2; scope_id = the field id).
+      enum: ['user', 'organization', 'agent', 'run', 'eval', 'provider', 'tables_field'],
     }).notNull(),
     scope_id: text('scope_id').notNull(),
     unit: text('unit', { enum: ['tokens', 'requests', 'usd_micros'] })

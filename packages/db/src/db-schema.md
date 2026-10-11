@@ -131,7 +131,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `usage_budget_accounts` | PK `id`；UK `(scope_type, scope_id, unit, period_start, period_end)` | `user/organization/agent/run/eval/provider` 多态额度账户；支持 `tokens/requests/usd_micros`，period 为 `[start,end)`；保存 hard limit、reserved/spent 和 legacy usage 投影。scope 是逻辑关联、无 FK，账户永久保留 |
+| `usage_budget_accounts` | PK `id`；UK `(scope_type, scope_id, unit, period_start, period_end)` | `user/organization/agent/run/eval/provider/tables_field` 多态额度账户（`tables_field` = AI 字段的月度上限，`scope_id` 为字段 id，阶段 2）；支持 `tokens/requests/usd_micros`，period 为 `[start,end)`；保存 hard limit、reserved/spent 和 legacy usage 投影。scope 是逻辑关联、无 FK，账户永久保留 |
 | `usage_budget_reservations` | PK `id`；UK `(account_id, idempotency_key)`；索引 key/status+expiry/user/run | 一次模型调用对每个账户一行；同 key 组成原子预留组，`request_hash` 防参数漂移。状态 `reserved/settled/released/expired`；`expired` 表示 provider 结果未知并已按估算量计费，不是免费释放 |
 | `usage_budget_ledger` | BIGSERIAL PK `id`；UK `(account_id, operation_key)`；索引 account+created/reservation | 永久 append-only 账本；记录 bootstrap/reconcile/reserve/settle/release/expire/adjustment/status 的 reserved/spent delta 与变更后余额。账户、预留、主体都为逻辑关联，避免审计随业务记录删除 |
 
@@ -173,7 +173,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_tables` | PK `id`；UK `(base_id, name)` | Base 内的用户 Table 元数据；固定物理表，不做 runtime DDL；`schema_revision` 标识当前结构版本；`archived_at` = 软删（列表与 schema 查询已过滤，记录/字段/链接一律保留，恢复走 `pnpm cli tables restore-table`） |
 | `table_schema_versions` | PK `id`；UK `(table_id, version)` | Table 结构的不可变 JSONB 快照；字段创建/修改/归档时同事务递增，记录变更类型与操作者 |
 | `table_fields` | PK `id`；UK `(table_id, name)`；每 Table 一条 active primary 部分 UK | 稳定字段 ID、常用字段类型、required/primary、JSON 文本 config 与位置；支持 Relation/Formula/Rollup/Lookup |
-| `table_field_dependencies` | 复合 PK `(field_id, depends_on_field_id)` | Formula/Rollup/Lookup 字段依赖边（`dependency_type`），支持反向影响分析、计算字段可见性闭包和级联重算 |
+| `table_field_dependencies` | 复合 PK `(field_id, depends_on_field_id)` | Formula/Rollup/Lookup/AI 字段依赖边（`dependency_type`；`ai` = AI 字段的输入字段，阶段 2），支持反向影响分析、计算字段可见性闭包和级联重算 |
 | `table_views` | PK `id` | shared/personal 视图，`type` = grid / kanban / calendar / gallery；config 是 JSON 文本，经 `normalizeViewConfig` 按类型校验（显示字段与系统列、宽度、冻结列、筛选排序、`groupBy` / `kanban` / `calendar` / `gallery` / `rowHeight`）；revision 乐观并发 |
 | `table_forms` | PK `id`；UK `(table_id, name)` | 内部认证表单；draft/published、字段白名单、文案 config（含隐藏锁定的 `defaults [{fieldId,value}]` 与 `allowMultiple`）与 revision；`audience JSONB`（`base/team/principals`，默认 base） |
 | `table_form_submissions` | PK `id`；部分 UK `(form_id, user_id) WHERE single_submit` | 每次提交一行，与记录同事务插入；`allowMultiple=false` 的表单写 `single_submit=true`，并发双击只成功一次 |
@@ -182,7 +182,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_record_comments` | PK `id`；IDX `(record_id, created_at, id)` | 记录评论（Markdown ≤10k 字符，`[@名字](user:<id>)` 提及；`mentions JSONB` = 解析出的有效内部用户 id），软删 `deleted_at`；`updated_at ≠ created_at` 即「已编辑」。读写都经 `services/tables/comments.ts`（行范围必填） |
 | `table_record_links` | PK `id`；UK `(field_id, source_record_id, target_record_id)` | Relation canonical 边；保持顺序并支持 target 反查 |
 | `table_record_attachments` | PK `id`；UK `(record_id, field_id, drive_file_id)` | Record/Field 到 Tables-scope Drive 文件的规范化附件边 |
-| `table_recompute_jobs` | PK `id`；UK `idempotency_key` | Rollup 持久重算状态；queued/running/succeeded/failed、attempt/error 与时间戳 |
+| `table_recompute_jobs` | PK `id`；UK `idempotency_key`；IDX `(status, created_at)` / `(kind, status, created_at)` / `(field_id, status)` | 持久重算状态；`kind` = `rollup`（阶段 0，内联汇总刷新的记录）或 `ai`（阶段 2 的 AI 字段队列，0027：记录写入只入队，键 `ai:<field>:<record>:<input_hash>`；API worker 以租约 `lease_owner` / `lease_expires_at` + SKIP LOCKED 领取，结果只在记录仍是 `source_revision` 时写入，`tokens` / `model` 记花费，`error` 记失败）；queued/running/succeeded/failed、attempt 与时间戳。0027 前的行 `kind` 默认 `rollup` |
 | `table_automation_rules` | PK `id`；UK `(base_id, name)` | 自动化规则：触发器（记录新建 / 更新 / 满足条件 / 定时 / 日期到达 / 按钮）、条件、确定性动作（带稳定 id，0024 回填 `a<序号>`）、执行用户（= 最后保存行为的人，服务端设定）与 revision；`next_fire_at`（schedule）/ `swept_until`（date_reached 游标，创建 / 启用 / 改触发配置时置为 now） |
 | `table_automation_secrets` | 复合 PK `(rule_id, action_id)` | Webhook 签名密钥密文；与规则行分离，任何读路径只返回 `hasSecret` |
 | `table_automation_outbox` | PK `id`；UK `idempotency_key` | 自动化运行队列（记录写事务内、分钟扫描、按钮入队，API worker 执行）；`pending/claimed/succeeded/failed/dead_letter`（`processing` 为旧同步执行器的遗留状态，0024 置为 failed）、租约 / 重试 / 版本 CAS 列、`cursor`（下一个动作 id，delay 与重试都从这里续）、`rule_revision` + `actions` 快照（规则改了 revision 就取消）；`record_id` 可空（定时 `once`）；**worker 只领取 `rule_revision IS NOT NULL` 的行** |
@@ -192,10 +192,12 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_dashboard_widgets` | PK `id` | 仪表盘组件；`config` 是 JSON 文本 `{version: 2, card: TableCardSpec}`（统一卡片规格，与阶段 1 应用卡片共用；旧的扁平配置读写时经 `legacyWidgetToCard` 映射），`type`（kpi/bar/line/pie/area/pivot/records/text）与 `table_id` 始终跟随 card；布局是 JSON 文本；revision 乐观并发 |
 | `table_imports` | PK `id`（text） | CSV / Excel 导入暂存：表头与解析后的行（≤10,000×100，JSONB，无 NUL）、`status`（previewed/committing/committed/failed）、`committed_rows` 续传游标（按块 CAS）、`lease_expires_at` 租约、`result`（运行中的结果 + 认领时存下的计划 `plan` / 失败原因 `error`）；最后一次活动后 1 小时过期，由 upkeep 清理，完成后清空 `rows` |
 | `table_apps` | PK `id`；IDX `base_id` / `owner_id`；部分 IDX `id WHERE featured` | 应用（阶段 1）：属于一个 Base；`name`（≤60）/ `description` / `icon` / `accent`（固定名单）/ `owner_id`（负责人，逻辑）；`status`（draft/published/archived）；草稿 `draft_spec`（`AppSpec` 的 JSON 文本）+ `draft_revision`（CAS）；`published_version`（当前生效版本号，首次发布前为空）；`audiences_revision`（受众整体替换的 CAS）；`featured`（super 推荐）；`archived_at` |
-| `table_app_versions` | PK `id`；UK `(app_id, version)` | 不可变的发布版本：`spec` 存**原样文本**（jsonb 会重排键，哈希会对不上，D7），`spec_hash` = sha256(spec)，读时校验；`draft_revision`（发布自哪个草稿修订）、`notes`、`published_by/at`；`custom_review`（阶段 2 自定义组件的审核记录，目前恒为空）。回滚 = 把旧版本复制回草稿再发布，版本号只增 |
+| `table_app_versions` | PK `id`；UK `(app_id, version)` | 不可变的发布版本：`spec` 存**原样文本**（jsonb 会重排键，哈希会对不上，D7），`spec_hash` = sha256(spec)，读时校验；`draft_revision`（发布自哪个草稿修订）、`notes`、`published_by/at`；`custom_review`（阶段 2 自定义组件的 super 审核 `{status: pending|approved|rejected, hash, reviewed_by?, reviewed_at?, note?}`，`hash` = 该版本的 `spec_hash`，规格变了审核自动失效，D10；没有自定义组件或还没人送审时为空）。回滚 = 把旧版本复制回草稿再发布，版本号只增 |
 | `table_app_audiences` | PK `id`；部分 UK `(app_id, user_id) WHERE user` / `(app_id, group_id) WHERE group` / `(app_id) WHERE team`；部分 IDX `user_id WHERE user` / `group_id WHERE group` | 应用受众：人 / 群组 / 全员 → 规格里的一个角色 key（`role_key`）；CHECK 约束保证 `principal_type` 与 `user_id`/`group_id` 成对；「分发给我的」查询走两个部分索引（全员行走 team 的部分 UK）；群组只认 `group_members` 行 |
 | `table_app_pins` | 复合 PK `(user_id, app_id)`；IDX `app_id` | 每人置顶的应用与顺序（服务端存，D9），随应用级联删除 |
 | `table_app_action_requests` | PK `id`；UK `(app_id, user_id, request_id)`；IDX `(app_id, created_at)` | 应用网关的动作账本（0026）：每个人每次经应用的写（`action_id` = 规格动作 id 或 `$submit / $create / $move / $edit`）按客户端 `request_id` 认领；`status` running → done，`result` 存首次回给客户端的 `AppActionResult`，重复请求原样重放；被拒 / 出错的请求删掉认领（可重试），卡住超过 2 分钟的 running 可被接管。管理者用量摘要按它数 30 天内每个动作 id 的成功次数；**只留 30 天**（`APP_USAGE_WINDOW_DAYS`）：每小时的上传清理顺带 `pruneAppActionRequests` 删掉更早的行（之后同一 `request_id` 会重新执行） |
+| `table_app_templates` | PK `id`；UK `key`；IDX `(status, updated_at)` / `owner_id` | 应用模板（阶段 2，0027）：`source` = `builtin`（仓库内置、启动同步、无 `owner_id`）/ `published`（成员从应用「另存为模板」）；`name` / `description` / `icon` / `accent`；`status` active/archived；`latest_version`（最新 semver，列表用）；出处 `source_app_id` / `source_base_id`（应用或 Base 删除后置空） |
+| `table_app_template_versions` | PK `id`；UK `(template_id, version)`；IDX `(review_status, published_at)` | 不可变的模板版本：严格 semver、`changelog`、`content`（模板 JSON 原样文本）+ `content_hash`（sha256）；`custom_cards` / `automations` 计数（任一非零 → 需要 super 审核）；`scan_status` pending/clean/suspicious/blocked + `scan_findings`；`review_status` not_required/pending/approved/rejected + `reviewed_by` / `reviewed_at` / `review_note`（super 的一次决定同时覆盖扫描结论与必需的审核）；`source_app_version`；`published_by`（内置为空）/ `published_at`。外键名手写为 `table_app_template_versions_template_fk`（自动生成的会超过 63 字符） |
 
 ### 评测与工单智能化
 
@@ -351,6 +353,8 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_imports.table_id` | `table_tables.id` | CASCADE |
 | `table_apps.base_id` | `table_bases.id` | CASCADE |
 | `table_app_versions.app_id` / `table_app_audiences.app_id` / `table_app_pins.app_id` / `table_app_action_requests.app_id` | `table_apps.id` | CASCADE |
+| `table_app_template_versions.template_id` | `table_app_templates.id` | CASCADE |
+| `table_app_templates.source_app_id` / `.source_base_id` | `table_apps.id` / `table_bases.id` | SET NULL |
 | `table_app_audiences.group_id` | `user_groups.id` | CASCADE |
 | `table_tables.base_id` | `table_bases.id` | CASCADE |
 | `table_schema_versions.table_id` | `table_tables.id` | CASCADE |
@@ -397,7 +401,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `session_groups.user_id` / `session_group_members.user_id` | `users.id` | 文件夹与归档均为逐用户私有 |
 | `llm_usage.session_id` / `llm_usage.user_id` | `sessions.id` / `users.id` | 用量统计独立保留 |
 | `llm_usage.budget_idempotency_key` | `usage_budget_reservations.idempotency_key` | budget-aware 调用的逻辑结算键；NULL 为 legacy/unbudgeted 行 |
-| `usage_budget_accounts.(scope_type, scope_id)` | user/org/agent/run/eval/provider 对应主体 | 多态额度主体；无 FK，账户与账本永久保留 |
+| `usage_budget_accounts.(scope_type, scope_id)` | user/org/agent/run/eval/provider/tables_field 对应主体 | 多态额度主体；无 FK，账户与账本永久保留 |
 | `usage_budget_reservations.account_id` | `usage_budget_accounts.id` | 逻辑归属；预留审计不随账户或主体生命周期删除 |
 | `usage_budget_reservations.user_id/run_id/provider_id` | `users.id` / runtime run id / provider id | 调用上下文逻辑引用 |
 | `usage_budget_ledger.account_id/reservation_id` | `usage_budget_accounts.id` / `usage_budget_reservations.id` | append-only 永久账本逻辑引用 |
@@ -442,7 +446,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_record_events.table_id` / `table_record_comments.table_id` | `table_tables.id` | 冗余的表 id（随记录级联删除，读侧按表过滤用） |
 | `table_record_events.actor_id` / `table_record_comments.author_id` / `table_form_submissions.user_id` / `table_imports.user_id` | `users.id` | 历史、评论、提交与导入的主体；审计独立于账号生命周期 |
 | `table_automation_runs.record_id` | `table_records.id` | 运行历史比记录活得久，故无 FK |
-| `table_apps.owner_id` / `created_by`、`table_app_versions.published_by`、`table_app_audiences.user_id` / `created_by`、`table_app_pins.user_id`、`table_app_action_requests.user_id` | `users.id` | 应用负责人、发布人、受众、置顶与应用动作的主体（跨域松散关联） |
+| `table_apps.owner_id` / `created_by`、`table_app_versions.published_by`、`table_app_audiences.user_id` / `created_by`、`table_app_pins.user_id`、`table_app_action_requests.user_id`、`table_app_versions.custom_review.reviewed_by`、`table_app_templates.owner_id`、`table_app_template_versions.published_by` / `reviewed_by` | `users.id` | 应用负责人、发布人、受众、置顶与应用动作的主体（跨域松散关联） |
 | `table_app_action_requests.record_id` | `table_records.id` | 动作写到的记录；账本比记录活得久，故无 FK |
 | `table_app_audiences.role_key` | `table_app_versions.spec` 里的 `roles[].key` | 受众指向规格里的角色；新版本删了该角色 → 这条受众不再授予任何东西 |
 | `platform_audit_events.scope_id`（`scope_type='base'`） | `table_bases.id` | Tables 动作所在的 Base；审计独立于 Base 生命周期 |
@@ -579,6 +583,9 @@ erDiagram
     user_groups ||--o{ table_app_audiences : "FK CASCADE"
     table_apps ||--o{ table_app_pins : "FK CASCADE"
     table_apps ||--o{ table_app_action_requests : "FK CASCADE"
+    table_app_templates ||--o{ table_app_template_versions : "FK CASCADE"
+    table_apps |o--o{ table_app_templates : "FK SET NULL (source_app_id)"
+    table_bases |o--o{ table_app_templates : "FK SET NULL (source_base_id)"
     eval_runs ||--o{ eval_results : "FK CASCADE"
     eval_datasets ||--o{ eval_results : "FK NO ACTION"
     messages ||--o| chat_eval_results : "逻辑 message_id"

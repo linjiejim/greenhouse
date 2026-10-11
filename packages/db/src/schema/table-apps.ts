@@ -3,7 +3,7 @@
  * docs/specs/20261011-tables-apps.md §1).
  *
  * Tables: table_apps, table_app_versions, table_app_audiences, table_app_pins,
- *         table_app_action_requests
+ *         table_app_action_requests, table_app_templates, table_app_template_versions
  *
  * An app belongs to one Base. Its draft spec is edited in place
  * (`draft_revision` CAS); publishing appends an immutable version whose spec is
@@ -16,6 +16,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -26,7 +27,16 @@ import {
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import type { AppAccent, AppIconName, AppStatus } from '@greenhouse/types/apps';
+import type {
+  AppAccent,
+  AppCustomReviewStatus,
+  AppIconName,
+  AppStatus,
+  AppTemplateReviewStatus,
+  AppTemplateScanStatus,
+  AppTemplateSource,
+  AppTemplateStatus,
+} from '@greenhouse/types/apps';
 import { userGroups } from './groups.js';
 import { tableBases } from './tables.js';
 
@@ -85,8 +95,12 @@ export const tableAppVersions = pgTable(
     notes: text('notes'),
     published_by: text('published_by').notNull(),
     published_at: timestamp('published_at', { withTimezone: true, mode: 'string' }).notNull(),
-    /** Phase 2 (custom components): the reviewer's sign-off on the version's sandboxed code. Null until then. */
-    custom_review: jsonb('custom_review').$type<Record<string, unknown>>(),
+    /**
+     * Phase 2 (custom components, D10): the super's review of this version's
+     * sandboxed code, for exactly `hash` (= `spec_hash`). Null = the version has
+     * no custom cards, or nobody asked yet.
+     */
+    custom_review: jsonb('custom_review').$type<TableAppCustomReviewRecord>(),
   },
   (table) => [uniqueIndex('uq_table_app_versions_app_version').on(table.app_id, table.version)],
 );
@@ -187,8 +201,115 @@ export const tableAppActionRequests = pgTable(
   ],
 );
 
+/** `table_app_versions.custom_review` (stored with snake_case keys, as the rest of the row). */
+export interface TableAppCustomReviewRecord {
+  status: AppCustomReviewStatus;
+  /** The `spec_hash` the review is for; a different hash is not reviewed. */
+  hash: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  note?: string;
+}
+
+/**
+ * App templates (Phase 2, docs/specs/20261011-tables-apps-advanced.md §6, D9):
+ * built-in templates synced from the repo at boot (`source = 'builtin'`, no
+ * owner) and templates members publish from an app they manage. Modelled on
+ * the skill center's lifecycle without reusing it. `latest_version` is the
+ * newest version, denormalized for lists; `source_app_id` / `source_base_id`
+ * say where a published template was saved from (null once those are gone).
+ */
+export const tableAppTemplates = pgTable(
+  'table_app_templates',
+  {
+    id: serial('id').primaryKey(),
+    /** Stable slug (`APP_ID_PATTERN`); built-ins keep their file key (`procurement`, `it-tickets`…). */
+    key: text('key').notNull(),
+    source: text('source', { enum: ['builtin', 'published'] })
+      .$type<AppTemplateSource>()
+      .notNull(),
+    /** As published (built-ins: English; the localized words live in the version content). */
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    icon: text('icon').$type<AppIconName>().notNull().default('app'),
+    accent: text('accent').$type<AppAccent>().notNull().default('brand'),
+    /** The publisher (logical → users); null for built-ins. */
+    owner_id: text('owner_id'),
+    status: text('status', { enum: ['active', 'archived'] })
+      .$type<AppTemplateStatus>()
+      .notNull()
+      .default('active'),
+    latest_version: text('latest_version'),
+    source_app_id: integer('source_app_id').references(() => tableApps.id, { onDelete: 'set null' }),
+    source_base_id: integer('source_base_id').references(() => tableBases.id, { onDelete: 'set null' }),
+    created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
+    archived_at: timestamp('archived_at', { withTimezone: true, mode: 'string' }),
+  },
+  (table) => [
+    uniqueIndex('uq_table_app_templates_key').on(table.key),
+    index('idx_table_app_templates_status').on(table.status, table.updated_at),
+    index('idx_table_app_templates_owner').on(table.owner_id),
+  ],
+);
+
+/**
+ * Immutable template versions: strict semver per template, a changelog,
+ * `content` = the template JSON (a fixed schema plan + app spec, sample rows
+ * only as hand-written in the template editor) stored as the exact text
+ * `content_hash` (sha256 hex) was computed over. `custom_cards` /
+ * `automations` say what it carries — either one makes `review_status`
+ * `pending` until a super approves; `scan_status` is the content scan's verdict
+ * (`blocked` sticks). `reviewed_by` / `reviewed_at` / `review_note` record the
+ * super's one decision on both.
+ */
+export const tableAppTemplateVersions = pgTable(
+  'table_app_template_versions',
+  {
+    id: serial('id').primaryKey(),
+    template_id: integer('template_id').notNull(),
+    version: text('version').notNull(),
+    changelog: text('changelog').notNull().default(''),
+    content: text('content').notNull(),
+    content_hash: text('content_hash').notNull(),
+    custom_cards: integer('custom_cards').notNull().default(0),
+    automations: integer('automations').notNull().default(0),
+    scan_status: text('scan_status', { enum: ['pending', 'clean', 'suspicious', 'blocked'] })
+      .$type<AppTemplateScanStatus>()
+      .notNull()
+      .default('pending'),
+    scan_findings: jsonb('scan_findings').$type<unknown[]>(),
+    scanned_at: timestamp('scanned_at', { withTimezone: true, mode: 'string' }),
+    review_status: text('review_status', { enum: ['not_required', 'pending', 'approved', 'rejected'] })
+      .$type<AppTemplateReviewStatus>()
+      .notNull()
+      .default('pending'),
+    /** The super who ruled (logical → users). */
+    reviewed_by: text('reviewed_by'),
+    reviewed_at: timestamp('reviewed_at', { withTimezone: true, mode: 'string' }),
+    review_note: text('review_note'),
+    /** The app version it was generated from (published templates). */
+    source_app_version: integer('source_app_version'),
+    /** Null for built-ins (logical → users). */
+    published_by: text('published_by'),
+    published_at: timestamp('published_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    // Named by hand: the generated name would pass Postgres' 63-character limit.
+    foreignKey({
+      name: 'table_app_template_versions_template_fk',
+      columns: [table.template_id],
+      foreignColumns: [tableAppTemplates.id],
+    }).onDelete('cascade'),
+    uniqueIndex('uq_table_app_template_versions_version').on(table.template_id, table.version),
+    index('idx_table_app_template_versions_review').on(table.review_status, table.published_at),
+  ],
+);
+
 export type TableAppRow = typeof tableApps.$inferSelect;
 export type TableAppVersionRow = typeof tableAppVersions.$inferSelect;
 export type TableAppAudienceRow = typeof tableAppAudiences.$inferSelect;
 export type TableAppPinRow = typeof tableAppPins.$inferSelect;
 export type TableAppActionRequestRow = typeof tableAppActionRequests.$inferSelect;
+export type TableAppTemplateRow = typeof tableAppTemplates.$inferSelect;
+export type TableAppTemplateVersionRow = typeof tableAppTemplateVersions.$inferSelect;
