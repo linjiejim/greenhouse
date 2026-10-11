@@ -31,15 +31,18 @@ export function RolesTab({
   base,
   errors,
   edit,
+  initialRole,
 }: {
   spec: AppSpec;
   base: BuilderBase;
   errors: readonly AppSpecError[];
   edit: (change: (spec: AppSpec) => AppSpec) => void;
+  /** Open on this role (from the problems list). */
+  initialRole?: string;
 }) {
   const t = useT();
   const incompleteMessage = useIncompleteScopeMessage();
-  const [selected, setSelected] = useState(spec.roles[0]?.key ?? '');
+  const [selected, setSelected] = useState(initialRole ?? spec.roles[0]?.key ?? '');
   const [deleting, setDeleting] = useState(false);
   const role = spec.roles.find((entry) => entry.key === selected) ?? spec.roles[0];
   useEffect(() => {

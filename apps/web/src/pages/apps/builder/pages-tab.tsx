@@ -35,21 +35,22 @@ import type { BuilderBase } from './use-builder-schema';
 /** Tailwind's `lg`: three columns from here. */
 const WIDE_QUERY = '(min-width: 1024px)';
 
-function useWide(): boolean {
-  const [wide, setWide] = useState(() =>
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia(WIDE_QUERY).matches
-      : true,
+/** Tailwind's `md`: below it the canvas is one column (the shared grid's own breakpoint). */
+const GRID_QUERY = '(min-width: 768px)';
+
+function useMinWidth(query: string): boolean {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : true,
   );
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
-    const query = window.matchMedia(WIDE_QUERY);
-    const update = () => setWide(query.matches);
+    const media = window.matchMedia(query);
+    const update = () => setMatches(media.matches);
     update();
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
-  }, []);
-  return wide;
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, [query]);
+  return matches;
 }
 
 export interface BuilderSelection {
@@ -73,7 +74,8 @@ export function PagesTab({
   onSelect: (next: BuilderSelection) => void;
 }) {
   const t = useT();
-  const wide = useWide();
+  const wide = useMinWidth(WIDE_QUERY);
+  const grid = useMinWidth(GRID_QUERY);
   const [catalog, setCatalog] = useState(false);
   const [pageSettings, setPageSettings] = useState(false);
   const page = spec.pages.find((entry) => entry.id === selection.pageId) ?? spec.pages[0]!;
@@ -173,6 +175,7 @@ export function PagesTab({
           if (selection.cardId === cardId) onSelect({ pageId: page.id, cardId: null });
         }}
         onAdd={() => setCatalog(true)}
+        narrow={!grid}
       />
     </div>
   );

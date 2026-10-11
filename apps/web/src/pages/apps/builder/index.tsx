@@ -122,6 +122,7 @@ export function AppBuilderPage({ appId }: { appId: number }) {
   const [publishing, setPublishing] = useState(false);
   const [versions, setVersions] = useState(false);
   const [problems, setProblems] = useState(false);
+  const [focusRole, setFocusRole] = useState<string | undefined>(undefined);
   const { menu, openMenu, closeMenu } = useContextMenu();
 
   // The selection follows the spec: a deleted page or card falls back to the first page.
@@ -202,6 +203,7 @@ export function AppBuilderPage({ appId }: { appId: number }) {
       setTab('pages');
       setSelection({ pageId: error.pageId, cardId: error.cardId ?? null });
     } else if (error.roleKey) {
+      setFocusRole(error.roleKey);
       setTab('roles');
     }
   };
@@ -354,7 +356,16 @@ export function AppBuilderPage({ appId }: { appId: number }) {
           />
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {tab === 'roles' && <RolesTab spec={spec} base={base.load.base} errors={draft.errors} edit={draft.edit} />}
+            {tab === 'roles' && (
+              <RolesTab
+                key={focusRole ?? ''}
+                spec={spec}
+                base={base.load.base}
+                errors={draft.errors}
+                edit={draft.edit}
+                initialRole={focusRole}
+              />
+            )}
             {tab === 'audiences' && (
               <AudiencesTab
                 appId={appId}

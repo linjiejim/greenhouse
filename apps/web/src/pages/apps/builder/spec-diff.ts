@@ -54,7 +54,8 @@ interface RoleRef {
 export type PermissionChange =
   | ({ kind: 'roleAdded' } & RoleRef)
   | ({ kind: 'roleRemoved' } & RoleRef)
-  | ({ kind: 'pages'; before: 'all' | string[]; after: 'all' | string[] } & RoleRef)
+  /** `before` is absent for a new role (it had no pages to lose). */
+  | ({ kind: 'pages'; before?: 'all' | string[]; after: 'all' | string[] } & RoleRef)
   | ({ kind: 'comment'; before: boolean; after: boolean } & RoleRef)
   | ({
       kind: 'table';
@@ -196,7 +197,8 @@ function roleChanges(before: AppRole | undefined, after: AppRole, fieldIds: Tabl
   const ref = { roleKey: after.key, roleName: after.name };
   const out: PermissionChange[] = before ? [] : [{ ...ref, kind: 'roleAdded' }];
   const was = before ?? { ...NO_ACCESS_ROLE, key: after.key, name: after.name };
-  if (!same(was.pages, after.pages)) out.push({ ...ref, kind: 'pages', before: was.pages, after: after.pages });
+  if (!before) out.push({ ...ref, kind: 'pages', after: after.pages });
+  else if (!same(was.pages, after.pages)) out.push({ ...ref, kind: 'pages', before: was.pages, after: after.pages });
   if (Boolean(was.canComment) !== Boolean(after.canComment)) {
     out.push({ ...ref, kind: 'comment', before: Boolean(was.canComment), after: Boolean(after.canComment) });
   }

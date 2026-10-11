@@ -83,6 +83,7 @@ export const appsBuilderEn = {
     },
     canvas: {
       hint: 'Select a card to set it up. Drag a card by its title to move it, and its corner to resize it.',
+      hintNarrow: 'Select a card to set it up. Its menu moves it earlier or later.',
       addCard: 'Add card',
       cardActions: 'Actions for {title}',
       select: 'Set up {title}',

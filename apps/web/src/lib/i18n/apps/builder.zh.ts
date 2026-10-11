@@ -85,6 +85,7 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
     },
     canvas: {
       hint: '选中卡片进行设置。拖动卡片标题可以移动，拖动右下角可以调整大小。',
+      hintNarrow: '选中卡片进行设置。卡片菜单可以把它往前或往后移。',
       addCard: '添加卡片',
       cardActions: '{title} 的操作',
       select: '设置 {title}',

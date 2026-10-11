@@ -93,6 +93,7 @@ export function PageCanvas({
   onLayout,
   onRemove,
   onAdd,
+  narrow = false,
 }: {
   page: AppPage;
   schema: BuilderSchema;
@@ -102,6 +103,8 @@ export function PageCanvas({
   onLayout: (layouts: Array<{ id: string; x: number; y: number; w: number; h: number }>) => void;
   onRemove: (cardId: string) => void;
   onAdd: () => void;
+  /** One column (below 768px): nothing drags, the card menu moves cards. */
+  narrow?: boolean;
 }) {
   const t = useT();
   const { menu, openMenu, closeMenu } = useContextMenu();
@@ -190,7 +193,9 @@ export function PageCanvas({
   return (
     <div className="space-y-3" data-testid="app-canvas">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-fg-faint">{t('apps.builder.canvas.hint')}</p>
+        <p className="text-xs text-fg-faint">
+          {narrow ? t('apps.builder.canvas.hintNarrow') : t('apps.builder.canvas.hint')}
+        </p>
         <Button size="sm" onClick={onAdd} data-testid="app-add-card">
           <Plus size={13} className="mr-1.5" />
           {t('apps.builder.canvas.addCard')}

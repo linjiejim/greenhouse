@@ -58,11 +58,13 @@ function useChangeText(schema: BuilderSchema, draft: AppSpec, live: AppSpec | nu
       case 'roleRemoved':
         return { subject: t('apps.builder.publish.roleRemoved') };
       case 'pages':
-        return {
-          subject: t('apps.builder.publish.pages'),
-          before: pagesText(change.before),
-          after: pagesText(change.after),
-        };
+        return change.before === undefined
+          ? { subject: t('apps.builder.publish.pages'), after: pagesText(change.after) }
+          : {
+              subject: t('apps.builder.publish.pages'),
+              before: pagesText(change.before),
+              after: pagesText(change.after),
+            };
       case 'comment':
         return { subject: t('apps.builder.publish.comment'), before: yesNo(change.before), after: yesNo(change.after) };
       case 'table':
@@ -297,12 +299,14 @@ export function PublishDialog({
                             return (
                               <li key={index} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3 py-1.5">
                                 <span className="text-fg-secondary">{text.subject}</span>
-                                {text.before !== undefined && (
+                                {text.before !== undefined ? (
                                   <span className="text-fg-muted">
                                     {text.before} <span aria-hidden="true">→</span>
                                     <span className="sr-only">{t('apps.builder.publish.becomes')}</span>{' '}
                                     <span className="font-medium text-fg">{text.after}</span>
                                   </span>
+                                ) : (
+                                  text.after !== undefined && <span className="font-medium text-fg">{text.after}</span>
                                 )}
                                 {text.note && <span className="text-fg-faint">{text.note}</span>}
                               </li>
