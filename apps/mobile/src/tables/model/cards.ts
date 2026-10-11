@@ -41,7 +41,6 @@ export interface CardCopy {
   quarter: (year: string, quarter: number) => string;
   /** "Records" / "Sum of Amount". */
   valueCaption: (operation: TableAggregation, field: string) => string;
-  systemField: (field: TableSystemField) => string;
 }
 
 export interface CardLabelContext {
@@ -97,13 +96,6 @@ function arrayKey(key: string): unknown[] | null {
   } catch {
     return null;
   }
-}
-
-/** The name of a dimension itself (the field, or the system column). */
-export function dimensionTitle(dim: CardDimension | undefined, ctx: CardLabelContext): string {
-  if (!dim) return '';
-  if (dim.systemField) return ctx.copy.systemField(dim.systemField);
-  return (dim.fieldId === undefined ? undefined : ctx.fieldsById.get(dim.fieldId)?.name) ?? '';
 }
 
 /** One group / series key as a person reads it. */

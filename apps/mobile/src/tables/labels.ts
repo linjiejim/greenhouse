@@ -43,7 +43,6 @@ export function useCardCopy(): CardCopy {
       weekOf: (date) => t('tables.card.weekOf', { date }),
       quarter: (year, quarter) => t('tables.card.quarter', { year, quarter }),
       valueCaption: (operation, field) => t(`tables.card.${operation}`, { field }),
-      systemField: (field) => t(`tables.system.${field}`),
     }),
     [t],
   );

@@ -38,7 +38,6 @@ import {
   APP_BUILTIN_ACTIONS,
   type AppActionRefusal,
   type AppActionResult,
-  type AppCard,
   type AppRecordAction,
   type AppRecordRow,
 } from '@greenhouse/types/apps';
@@ -680,11 +679,6 @@ export async function runSessionAction(
       await context.db.tables.releaseAppActionRequest(claim.id);
     }
   }
-}
-
-/** Card kinds an action may target — the handler answers 400 for the rest before opening a ledger row. */
-export function cardTakesActions(card: AppCard): boolean {
-  return card.kind === 'form' || card.kind === 'buttons' || isRecordsCard(card);
 }
 
 const LEDGER_PRUNE_BATCH = 1000;
