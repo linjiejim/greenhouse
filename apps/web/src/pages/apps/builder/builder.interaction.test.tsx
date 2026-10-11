@@ -570,7 +570,7 @@ describe('publishing and versions', () => {
     expect(q('[data-testid="app-builder-status"]')?.textContent).toBe('v1 is live');
     await click(button('Publish'));
     const dialog = q('[data-testid="app-publish-dialog"]')!;
-    expect(dialog.textContent).toContain('New page “Stats” (1 cards)');
+    expect(dialog.textContent).toContain('New page “Stats” (cards: 1)');
     const permissions = q('[data-testid="app-publish-permissions"]')!.textContent!;
     expect(permissions).toContain('Applicant');
     expect(permissions).toContain('No access');

@@ -119,6 +119,7 @@ export function FieldValuesEditor({
   copy,
   emptyLabel,
   disabled = false,
+  stacked = false,
 }: {
   rows: readonly FieldValueRow[];
   onChange: (rows: FieldValueRow[]) => void;
@@ -129,6 +130,8 @@ export function FieldValuesEditor({
   /** The empty choice of single-value pickers. */
   emptyLabel?: string;
   disabled?: boolean;
+  /** One control per line — for narrow hosts such as a side panel (default: a row from `sm`). */
+  stacked?: boolean;
 }) {
   const byId = useMemo(() => new Map(fields.map((field) => [field.id, field])), [fields]);
   const used = new Set(rows.map((row) => row.fieldId));
@@ -150,62 +153,78 @@ export function FieldValuesEditor({
         const field = byId.get(row.fieldId);
         if (!field) return null;
         const token = FIELD_VALUE_TOKEN_FOR[field.type];
+        const fieldSelect = (
+          <Select
+            aria-label={copy.field}
+            value={String(row.fieldId)}
+            disabled={disabled}
+            onChange={(event) => {
+              const next = byId.get(Number(event.target.value));
+              if (next) update(index, newFieldValueRow(next));
+            }}
+          >
+            {candidates(row.fieldId).map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name}
+              </option>
+            ))}
+          </Select>
+        );
+        const tokenSelect = token ? (
+          <Select
+            aria-label={copy.value}
+            value={row.mode}
+            disabled={disabled}
+            onChange={(event) => update(index, { mode: event.target.value as FieldValueRow['mode'] })}
+          >
+            <option value="token">{copy.tokens[token]}</option>
+            <option value="fixed">{copy.fixed}</option>
+          </Select>
+        ) : null;
+        const editor =
+          row.mode === 'fixed' || !token ? (
+            <FieldEditor
+              field={field}
+              value={row.draft}
+              onChange={(draft) => update(index, { draft })}
+              users={users}
+              emptyLabel={emptyLabel}
+              disabled={disabled}
+            />
+          ) : null;
+        const remove = (
+          <IconButton
+            variant="destructive"
+            size="compact"
+            label={copy.remove}
+            disabled={disabled}
+            onClick={() => onChange(rows.filter((_, at) => at !== index))}
+          >
+            <Trash2 size={13} />
+          </IconButton>
+        );
+        if (stacked) {
+          // A narrow host (a side panel): one control per line, whatever the viewport.
+          return (
+            <div key={`${row.fieldId}-${index}`} className="space-y-2 rounded-md border border-edge p-2">
+              <div className="flex items-center gap-1">
+                <div className="min-w-0 flex-1">{fieldSelect}</div>
+                {remove}
+              </div>
+              {tokenSelect}
+              {editor}
+            </div>
+          );
+        }
         return (
           <div
             key={`${row.fieldId}-${index}`}
             className="flex flex-col gap-2 rounded-md border border-edge p-2 sm:flex-row sm:items-start"
           >
-            <div className="sm:w-48 sm:shrink-0">
-              <Select
-                aria-label={copy.field}
-                value={String(row.fieldId)}
-                disabled={disabled}
-                onChange={(event) => {
-                  const next = byId.get(Number(event.target.value));
-                  if (next) update(index, newFieldValueRow(next));
-                }}
-              >
-                {candidates(row.fieldId).map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            {token && (
-              <div className="sm:w-48 sm:shrink-0">
-                <Select
-                  aria-label={copy.value}
-                  value={row.mode}
-                  disabled={disabled}
-                  onChange={(event) => update(index, { mode: event.target.value as FieldValueRow['mode'] })}
-                >
-                  <option value="token">{copy.tokens[token]}</option>
-                  <option value="fixed">{copy.fixed}</option>
-                </Select>
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              {(row.mode === 'fixed' || !token) && (
-                <FieldEditor
-                  field={field}
-                  value={row.draft}
-                  onChange={(draft) => update(index, { draft })}
-                  users={users}
-                  emptyLabel={emptyLabel}
-                  disabled={disabled}
-                />
-              )}
-            </div>
-            <IconButton
-              variant="destructive"
-              size="compact"
-              label={copy.remove}
-              disabled={disabled}
-              onClick={() => onChange(rows.filter((_, at) => at !== index))}
-            >
-              <Trash2 size={13} />
-            </IconButton>
+            <div className="sm:w-48 sm:shrink-0">{fieldSelect}</div>
+            {tokenSelect && <div className="sm:w-48 sm:shrink-0">{tokenSelect}</div>}
+            <div className="min-w-0 flex-1">{editor}</div>
+            {remove}
           </div>
         );
       })}

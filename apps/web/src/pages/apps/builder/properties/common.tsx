@@ -385,6 +385,7 @@ export function SpecValuesEditor({
           noFields: t('apps.builder.values.noFields'),
         }}
         emptyLabel={t('apps.builder.values.empty')}
+        stacked
       />
       {someEmpty && <p className="text-[11px] text-fg-faint">{t('apps.builder.values.emptyClears')}</p>}
     </div>
