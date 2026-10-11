@@ -3,56 +3,19 @@
  */
 
 import type {
-  TableCardSpec,
   TableDashboardConfig,
   TableDashboardWidgetConfig,
   TableDashboardWidgetLayout,
   TableDashboardWidgetType,
   TableFilterValue,
 } from '@greenhouse/types/tables';
-import type { TableCardPoint, TableCardResult } from '@greenhouse/types/table-cards';
+import type { TableCardPoint } from '@greenhouse/types/table-cards';
+import type { TableDashboard, TableDashboardWidget, TableDashboardWidgetResult } from '@greenhouse/types/tables-wire';
 import { rpc } from '../client';
 import { responseError } from './shared';
-import type { TableRecordPage } from './records';
 
-export interface TableDashboard {
-  id: number;
-  base_id: number;
-  name: string;
-  description: string | null;
-  /** `{version, filters}` — rows written before filters existed hold `{}`. */
-  config: TableDashboardConfig;
-  revision: number;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TableDashboardWidget {
-  id: number;
-  dashboard_id: number;
-  table_id: number | null;
-  type: TableDashboardWidgetType;
-  title: string;
-  /** JSON-encoded `TableDashboardWidgetConfig`. */
-  config: string;
-  /** JSON-encoded `TableDashboardWidgetLayout`. */
-  layout: string;
-  position: number;
-  revision: number;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-  /** Set for a restricted reader when the widget's table or query is out of reach (config withheld). */
-  access?: 'no_access';
-}
-
-/** One evaluated widget: the card as the caller may see it and its result (records are projected). */
-export interface TableDashboardWidgetResult {
-  widget: TableDashboardWidget;
-  card: TableCardSpec | null;
-  result: TableCardResult<TableRecordPage>;
-}
+// The response shapes live in `@greenhouse/types/tables-wire` (one copy for web and mobile).
+export type { TableDashboard, TableDashboardWidget, TableDashboardWidgetResult } from '@greenhouse/types/tables-wire';
 
 /** What a widget query carries besides the widget: the viewer's filter values, zone, a drill point, a page. */
 export interface TableWidgetQueryInput {

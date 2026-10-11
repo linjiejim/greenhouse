@@ -40,6 +40,10 @@
       "import": "./src/tables.ts",
       "types": "./src/tables.ts"
     },
+    "./tables-wire": {
+      "import": "./src/tables-wire.ts",
+      "types": "./src/tables-wire.ts"
+    },
     "./email": {
       "import": "./src/email.ts",
       "types": "./src/email.ts"

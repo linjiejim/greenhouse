@@ -2,56 +2,13 @@
  * Tables client · table definitions, fields and schema versions.
  */
 
-import type { TableFieldConfig, TableFieldType, TableSchemaSnapshot } from '@greenhouse/types/tables';
+import type { TableFieldConfig, TableFieldType } from '@greenhouse/types/tables';
+import type { TableDefinition, TableField, TableSchema, TableSchemaVersion } from '@greenhouse/types/tables-wire';
 import { rpc } from '../client';
 import { responseError } from './shared';
-import type { TableView } from './views';
 
-export interface TableDefinition {
-  id: number;
-  base_id: number;
-  name: string;
-  description: string | null;
-  position: number;
-  schema_revision: number;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
-}
-
-export interface TableField {
-  id: number;
-  table_id: number;
-  name: string;
-  type: TableFieldType;
-  required: boolean;
-  is_primary: boolean;
-  /** JSON-encoded `TableFieldConfig`. */
-  config: string;
-  position: number;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
-}
-
-export interface TableSchema {
-  table: TableDefinition;
-  fields: TableField[];
-  views: TableView[];
-}
-
-export interface TableSchemaVersion {
-  id: number;
-  table_id: number;
-  version: number;
-  schema_snapshot: TableSchemaSnapshot;
-  change_type: 'created' | 'field_created' | 'field_updated' | 'field_archived';
-  changed_by: string;
-  request_id: string | null;
-  created_at: string;
-}
+// The response shapes live in `@greenhouse/types/tables-wire` (one copy for web and mobile).
+export type { TableDefinition, TableField, TableSchema, TableSchemaVersion } from '@greenhouse/types/tables-wire';
 
 export async function createTableDefinition(
   baseId: number,

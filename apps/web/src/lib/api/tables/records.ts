@@ -6,39 +6,16 @@ import type { TableAggregateInput, TableAggregateRow, TableQuery, TableRecordVal
 import { authFetch } from '../../auth';
 import { rpc } from '../client';
 import { isTablesConflict, responseError } from './shared';
+import type { TableBatchValidation, TableRecord, TableRecordPage } from '@greenhouse/types/tables-wire';
 
-export interface TableRecord {
-  id: number;
-  table_id: number;
-  values: TableRecordValues;
-  computed_values: TableRecordValues;
-  revision: number;
-  created_by: string;
-  updated_by: string;
-  created_at: string;
-  updated_at: string;
-  deleted_at: string | null;
-}
-
-export interface TableRecordPage {
-  records: TableRecord[];
-  total: number;
-  nextCursor: string | null;
-}
+// The response shapes live in `@greenhouse/types/tables-wire` (one copy for web and mobile).
+export type { TableBatchValidation, TableRecord, TableRecordPage } from '@greenhouse/types/tables-wire';
 
 export interface TableBatchRecordItem {
   record_id?: number;
   revision?: number;
   values: TableRecordValues;
 }
-
-export type TableBatchValidation = {
-  index: number;
-  ok: boolean;
-  reason?: 'not_found' | 'conflict' | 'invalid';
-  message?: string;
-  current?: number;
-};
 
 /** `timezone`: the viewer's IANA zone — date tokens and day comparisons resolve there (else UTC). */
 export async function queryTableRecords(

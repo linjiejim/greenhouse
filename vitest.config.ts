@@ -38,6 +38,7 @@ export default defineConfig({
       '@greenhouse/types/table-cell-text': resolve(__dirname, 'packages/types/src/table-cell-text.ts'),
       '@greenhouse/types/date-tokens': resolve(__dirname, 'packages/types/src/date-tokens.ts'),
       '@greenhouse/types/apps': resolve(__dirname, 'packages/types/src/apps.ts'),
+      '@greenhouse/types/tables-wire': resolve(__dirname, 'packages/types/src/tables-wire.ts'),
       '@greenhouse/types/tables': resolve(__dirname, 'packages/types/src/tables.ts'),
       '@greenhouse/types/workflow': resolve(__dirname, 'packages/types/src/workflow.ts'),
       '@greenhouse/types/rich-output': resolve(__dirname, 'packages/types/src/rich-output.ts'),

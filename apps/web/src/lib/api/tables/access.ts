@@ -7,35 +7,19 @@
 
 import type {
   TableAccessRules,
-  TableAccessSchemaFacts,
   TableBaseGroupMemberView,
   TableBaseMemberRole,
   TableBaseRoleView,
   TableGroupMemberRole,
-  TableRoleReferences,
   TableTeamRole,
 } from '@greenhouse/types/table-access';
 import type { TableBaseRole } from '@greenhouse/types/tables';
+import type { TableBase, TableBaseAccessList, TableBaseRoleList } from '@greenhouse/types/tables-wire';
 import { rpc } from '../client';
 import { responseError } from './shared';
-import type { TableBase, TableBaseMember } from './bases';
 
-/** A person's grant with their display name. */
-export type TableBaseMemberGrant = TableBaseMember & { name: string };
-
-export interface TableBaseAccessList {
-  members: TableBaseMemberGrant[];
-  groups: TableBaseGroupMemberView[];
-  /** Owner / super only. */
-  roles?: TableBaseRoleView[];
-}
-
-export interface TableBaseRoleList {
-  roles: TableBaseRoleView[];
-  references: Array<TableRoleReferences & { roleId: number }>;
-  /** Tables, fields and dependency edges — what `computeFieldAccess` needs in the rule editor. */
-  facts: TableAccessSchemaFacts;
-}
+// The response shapes live in `@greenhouse/types/tables-wire` (one copy for web and mobile).
+export type { TableBaseAccessList, TableBaseMemberGrant, TableBaseRoleList } from '@greenhouse/types/tables-wire';
 
 /** A role a person can be given here. Owner is not assignable (it is transferred). */
 export type TableAssignableRole = Exclude<TableBaseMemberRole, 'owner'>;

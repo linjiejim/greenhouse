@@ -12,23 +12,13 @@ import type {
   TableFormUploadView,
   TableRecordValues,
 } from '@greenhouse/types/tables';
+import type { TableForm } from '@greenhouse/types/tables-wire';
 import { authFetch } from '../../auth';
 import { rpc } from '../client';
 import { responseError } from './shared';
 
-export interface TableForm {
-  id: number;
-  table_id: number;
-  name: string;
-  status: 'draft' | 'published';
-  config: TableFormConfig;
-  audience: TableFormAudience;
-  revision: number;
-  created_by: string;
-  updated_by: string;
-  created_at: string;
-  updated_at: string;
-}
+// The response shape lives in `@greenhouse/types/tables-wire` (one copy for web and mobile).
+export type { TableForm } from '@greenhouse/types/tables-wire';
 
 export interface TableFormInput {
   name: string;

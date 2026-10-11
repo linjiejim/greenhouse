@@ -3,24 +3,12 @@
  */
 
 import type { TableViewConfig, TableViewScope, TableViewType } from '@greenhouse/types/tables';
+import type { TableView } from '@greenhouse/types/tables-wire';
 import { rpc } from '../client';
 import { responseError } from './shared';
 
-export interface TableView {
-  id: number;
-  table_id: number;
-  name: string;
-  type: TableViewType;
-  scope: TableViewScope;
-  owner_id: string | null;
-  /** JSON-encoded `TableViewConfig`. */
-  config: string;
-  position: number;
-  revision: number;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-}
+// The response shape lives in `@greenhouse/types/tables-wire` (one copy for web and mobile).
+export type { TableView } from '@greenhouse/types/tables-wire';
 
 export async function createTableView(
   tableId: number,

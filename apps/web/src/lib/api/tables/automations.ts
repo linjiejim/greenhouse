@@ -9,47 +9,15 @@
 import type {
   TableAutomationActionInput,
   TableAutomationConfig,
-  TableAutomationRunStatus,
-  TableAutomationRunStep,
   TableAutomationTrigger,
   TableRecordButton,
 } from '@greenhouse/types/tables';
+import type { TableAutomation, TableAutomationRun } from '@greenhouse/types/tables-wire';
 import { rpc } from '../client';
 import { responseError } from './shared';
 
-export interface TableAutomation {
-  id: number;
-  base_id: number;
-  table_id: number;
-  name: string;
-  status: 'disabled' | 'enabled';
-  trigger: TableAutomationTrigger;
-  config: TableAutomationConfig;
-  /** Who the rule runs as: whoever last saved what it does. */
-  execution_user_id: string;
-  revision: number;
-  next_fire_at: string | null;
-  swept_until: string | null;
-  created_by: string;
-  updated_by: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TableAutomationRun {
-  id: number;
-  rule_id: number;
-  outbox_id: number | null;
-  status: TableAutomationRunStatus;
-  actions_completed: number;
-  /** A `TableAutomationRunError` code, or a raw message. */
-  error: string | null;
-  steps: TableAutomationRunStep[];
-  trigger_kind: TableAutomationTrigger | null;
-  record_id: number | null;
-  started_at: string;
-  finished_at: string | null;
-}
+// The response shapes live in `@greenhouse/types/tables-wire` (one copy for web and mobile).
+export type { TableAutomation, TableAutomationRun } from '@greenhouse/types/tables-wire';
 
 /** What a client sends: action ids are optional — the server assigns them and never regenerates one. */
 export type TableAutomationConfigInput = Omit<TableAutomationConfig, 'actions'> & {
