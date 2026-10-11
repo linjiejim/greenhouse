@@ -422,6 +422,43 @@ describe('the worker', () => {
     expect((await db.notifications.listForUser({ user_id: owner.id })).items).toHaveLength(1);
   });
 
+  it('never starts a batched row on a lease its turn has run down — it goes back unstarted, then runs once', async () => {
+    const t = await workspace();
+    const urls: string[] = [];
+    // Each webhook "takes" 50 s; the batch was claimed on one 120 s lease.
+    const postWebhook = vi.fn().mockImplementation(async (url: string) => {
+      urls.push(url);
+      clock = new Date(clock.getTime() + 50_000);
+      return { ok: true, status: 200, retryable: false };
+    });
+    const hook = (n: number) =>
+      rule(t, 'record_created', { actions: [{ type: 'webhook', url: `https://hooks.example.com/${n}` }] });
+    const rules = [await hook(1), await hook(2), await hook(3)];
+    await create(t, { [t.primary.id]: 'Batched' });
+    catchUp();
+    const worker = runner({ postWebhook });
+
+    await worker.runOnce();
+    // The third row's turn came with 20 s of the claim's lease left: handed back, its claim undone.
+    expect(urls).toEqual(['https://hooks.example.com/1', 'https://hooks.example.com/2']);
+    expect((await db.tables.listAutomationOutbox(rules[1]!.id))[0]).toMatchObject({ status: 'succeeded' });
+    expect((await db.tables.listAutomationOutbox(rules[2]!.id))[0]).toMatchObject({
+      status: 'pending',
+      attempts: 0,
+      lease_owner: null,
+    });
+
+    for (let pass = 0; pass < 3; pass++) {
+      await worker.runOnce();
+      clock = new Date(clock.getTime() + 10 * 60_000);
+    }
+    // Every action ran exactly once.
+    expect(urls).toEqual(['https://hooks.example.com/1', 'https://hooks.example.com/2', 'https://hooks.example.com/3']);
+    for (const automation of rules) {
+      expect((await db.tables.listAutomationOutbox(automation.id))[0]).toMatchObject({ status: 'succeeded' });
+    }
+  });
+
   it('renders notify per recipient, writing "—" for fields the recipient may not read, and skips those who cannot read the record', async () => {
     const t = await workspace();
     const outsider = await createInternalTestUser(db, { email: `tables-au-out-${Date.now()}@test.local` });
