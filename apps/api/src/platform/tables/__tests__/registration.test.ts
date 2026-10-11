@@ -75,10 +75,6 @@ describe('Tables registration (manifest 1.3.0)', () => {
     'listRecordButtons',
     'previewImport',
     'commitImport',
-    'listRecordActivity',
-    'createComment',
-    'updateComment',
-    'deleteComment',
   ])('%s is an explicit placeholder until its slice lands', async (actionId) => {
     const handler = tablesRegistration.handlers[actionId]!;
     const result = await handler(request(actionId), { db: {} as DatabaseProvider });
