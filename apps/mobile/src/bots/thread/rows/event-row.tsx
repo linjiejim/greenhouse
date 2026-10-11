@@ -43,6 +43,7 @@ const REQUEST_ICON: Record<BotRequestKind, IconName> = {
   bot_create: 'sparkle',
   task_start: 'hourglass',
   instructions_update: 'file',
+  tables_plan: 'table',
 };
 
 const REPORT_ICON: Record<'succeeded' | 'failed' | 'canceled', IconName> = {

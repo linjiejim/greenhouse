@@ -258,7 +258,8 @@ export const botRequests = pgTable(
       .references(() => botConversations.session_id, { onDelete: 'cascade' }),
     bot_id: text('bot_id').references(() => bots.id, { onDelete: 'set null' }),
     kind: text('kind', {
-      enum: ['takeover', 'login', 'approval', 'bot_create', 'task_start', 'instructions_update'],
+      // A TS-only enum (no CHECK constraint): a new kind needs no migration.
+      enum: ['takeover', 'login', 'approval', 'bot_create', 'task_start', 'instructions_update', 'tables_plan'],
     }).notNull(),
     status: text('status', { enum: ['pending', 'resolved', 'denied', 'expired', 'canceled'] })
       .notNull()

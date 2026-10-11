@@ -27,6 +27,7 @@ import {
   refusalCopy,
   settledReceipt,
   statusBadge,
+  tablesPlanLines,
 } from './decision';
 
 const T0 = Date.parse('2026-10-08T10:00:00.000Z');
@@ -80,6 +81,20 @@ const login = (kind: 'login' | 'otp' = 'login', over: Partial<BotRequestView> = 
     { reason: 'Sign in', kind, origin: 'https://github.com', url: 'https://github.com/login', vault_matches: [] },
     over,
   );
+const plan = (over: Partial<BotRequestView> = {}, access = true) =>
+  req(
+    'tables_plan',
+    {
+      summary: 'Purchase requests app',
+      lines: [
+        { op: 'base.create', label: 'Create Base', target: 'Purchasing' },
+        { op: 'app.publish', label: 'Publish app', target: 'Purchasing' },
+      ],
+      access: access ? [{ subject: 'Publish the app Purchasing', before: 'not published', after: 'v1 live for everyone' }] : [],
+      operations: [],
+    },
+    over,
+  );
 const handback = (reason: 'interrupted' | 'waiting' = 'interrupted', over: Partial<BotRequestView> = {}) =>
   req('takeover', { implicit: true, reason, host: 'docs.example.com', title: 'Doc' }, over);
 const captcha = (over: Partial<BotRequestView> = {}) =>
@@ -97,7 +112,7 @@ describe('cardKind', () => {
     // An implicit card that also says captcha is the computer's own — hand back, never "skip".
     expect(cardKind(req('takeover', { implicit: true, kind: 'captcha', reason: 'waiting' }))).toBe('handback');
     expect(cardKind(req('mystery' as BotRequestView['kind'], {}))).toBe('unknown');
-    for (const kind of ['approval', 'task_start', 'bot_create', 'instructions_update', 'login'] as const) {
+    for (const kind of ['approval', 'task_start', 'bot_create', 'instructions_update', 'tables_plan', 'login'] as const) {
       expect(cardKind(req(kind, {}))).toBe(kind);
     }
     expect(Object.keys(CARD_ICON).sort()).toEqual([
@@ -107,6 +122,7 @@ describe('cardKind', () => {
       'handback',
       'instructions_update',
       'login',
+      'tables_plan',
       'takeover',
       'task_start',
       'unknown',
@@ -121,6 +137,7 @@ describe('cardButtons (computer cards open the computer page, 20261011 §2.4)', 
     expect(ids(task())).toEqual(['deny', 'approve*']);
     expect(ids(create())).toEqual(['deny', 'edit', 'approve*']);
     expect(ids(instructions())).toEqual(['deny', 'approve*']);
+    expect(ids(plan())).toEqual(['deny', 'approve*']);
     expect(ids(login('login'))).toEqual(['deny', 'signIn*']);
     expect(ids(login('otp'))).toEqual(['deny', 'signIn*']);
     expect(ids(handback('interrupted'))).toEqual(['computer', 'approve*']);
@@ -159,6 +176,8 @@ describe('cardButtons (computer cards open the computer page, 20261011 §2.4)', 
     expect(buttonLabel(create(), 'approve').key).toBe('bots.card.create');
     expect(buttonLabel(instructions(), 'approve').key).toBe('bots.card.accept');
     expect(buttonLabel(instructions(), 'deny').key).toBe('bots.card.decline');
+    expect(buttonLabel(plan(), 'approve').key).toBe('bots.card.apply');
+    expect(buttonLabel(plan(), 'deny').key).toBe('bots.card.notNow');
     expect(buttonLabel(login(), 'deny').key).toBe('bots.card.loginNotNow');
     expect(buttonLabel(login(), 'signIn').key).toBe('bots.card.signIn');
     expect(buttonLabel(handback(), 'approve')).toEqual({ key: 'bots.card.handBack' });
@@ -274,6 +293,45 @@ describe('status badge and receipts', () => {
     expect(askAgainOffered(other({ status: 'expired' }))).toBe(false);
     expect(askAgainOffered(task({ status: 'denied' }))).toBe(false);
     expect(askAgainOffered(task({ status: 'expired', bot_id: null }))).toBe(false);
+  });
+});
+
+describe('Tables plan cards (tables_plan)', () => {
+  it('titles the card, says what it is about and how much changes — access first', () => {
+    expect(cardTitle(plan(), 'Sage')).toEqual({ key: 'bots.card.tablesTitle', vars: { name: 'Sage' } });
+    expect(cardSubject(plan())).toBe('Purchase requests app');
+    expect(cardGist(plan())).toEqual({
+      what: 'Purchase requests app',
+      detail: { key: 'bots.card.tablesGistAccess', vars: { count: '2', access: '1' } },
+    });
+    expect(cardGist(plan({}, false)).detail).toEqual({ key: 'bots.card.tablesGist', vars: { count: '2' } });
+  });
+
+  it('reads how the apply came out, line by line and as a whole', () => {
+    const applied = plan({
+      status: 'resolved',
+      result: { decision: 'approve', state: 'partial', lines: [{ status: 'applied' }, { status: 'failed', message: 'owner only' }] },
+    });
+    expect(statusBadge(applied)).toEqual({ key: 'bots.card.tablesPartial', tone: 'orange' });
+    expect(settledReceipt(applied)).toEqual({
+      key: 'bots.card.receipt.tablesPartial',
+      vars: { title: 'Purchase requests app' },
+    });
+    expect(tablesPlanLines(applied.payload as never, applied.result as never)).toEqual([
+      { op: 'base.create', label: 'Create Base', target: 'Purchasing', status: 'applied', message: null },
+      { op: 'app.publish', label: 'Publish app', target: 'Purchasing', status: 'failed', message: 'owner only' },
+    ]);
+    expect(statusBadge(plan({ status: 'resolved', result: { decision: 'approve', state: 'applied' } }))).toEqual({
+      key: 'bots.card.tablesApplied',
+      tone: 'green',
+    });
+    expect(statusBadge(plan({ status: 'denied', result: { decision: 'deny' } }))).toEqual({
+      key: 'bots.card.declined',
+      tone: 'red',
+    });
+    // Not run yet: no marks.
+    expect(tablesPlanLines(plan().payload as never, null).map((line) => line.status)).toEqual([null, null]);
+    expect(askAgainOffered(plan({ status: 'expired' }))).toBe(true);
   });
 });
 

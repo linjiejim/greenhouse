@@ -35,6 +35,7 @@ import type { BotStreamSegment } from '../../shared/bots-wire';
 import * as mobileBotName from './bot-name';
 import * as mobileMentions from './mentions';
 import * as mobileTranscript from './transcript';
+import { cardKind } from '../cards/decision';
 
 const ROOT = resolve(__dirname, '../../../../..');
 const at = (path: string) => resolve(ROOT, path);
@@ -587,5 +588,27 @@ describe.each([
     expect(impl.pickUpQueued([send('late', 'queued', 3)], [2]).map((item) => item.status)).toEqual(['queued']);
     expect(impl.speakingSegment([segment({ status: 'completed' }), segment({ botId: 'bot_b' })])?.botId).toBe('bot_b');
     expect(impl.stripHandoffPrefix('Sage → @Fern: tighten it')).toBe('tighten it');
+  });
+});
+
+// ─── 5. Request kinds ────────────────────────────────────
+
+describe('request kinds', () => {
+  it('keeps the Bots contract free of the Tables types (the tables_plan card is self-contained)', () => {
+    const imports = parse('packages/types/src/bots.ts')
+      .statements.filter(ts.isImportDeclaration)
+      .map((statement) => (statement.moduleSpecifier as ts.StringLiteral).text)
+      .sort();
+    expect(imports).toEqual(['./plant-avatar.js', './profile-manifest.js']);
+  });
+
+  it('draws every kind the server raises natively — only an unknown future kind falls back', () => {
+    const alias = declaration(parse('packages/types/src/bots.ts'), 'BotRequestKind') as ts.TypeAliasDeclaration;
+    if (!ts.isUnionTypeNode(alias.type)) throw new Error('BotRequestKind is not a union');
+    const kinds = alias.type.types.map((member) => ((member as ts.LiteralTypeNode).literal as ts.StringLiteral).text);
+    expect(kinds).toContain('tables_plan');
+    for (const kind of kinds) {
+      expect(cardKind({ kind, payload: {} } as Pick<BotRequestView, 'kind' | 'payload'>), kind).not.toBe('unknown');
+    }
   });
 });

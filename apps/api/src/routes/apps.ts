@@ -14,6 +14,8 @@
  * POST   /api/apps                                  — 新建应用 {baseId, name, description?, icon?, accent?, spec?}（AppDraftView）
  * GET    /api/apps/pins                             — 我置顶的应用（按顺序，只含仍能打开的）
  * PUT    /api/apps/pins                             — 整体替换置顶 {appIds}
+ * GET    /api/apps/templates                        — 内置模板目录 {templates}（./app-templates.ts）
+ * POST   /api/apps/templates/:key/install           — 安装模板：新 Base + 草稿应用（AppTemplateInstallResult）
  * GET    /api/apps/:appId                           — 打开应用（管理者：已发布版本或 ?draft=1 的草稿，?previewRole= 以角色预览；
  *                                                     查看者：已发布版本按其角色裁剪，看不到的字段 / 谓词不下发）（AppRuntimeView）
  * PATCH  /api/apps/:appId                           — 改名称 / 描述 / 图标 / 颜色
@@ -62,6 +64,7 @@ import type { TableRecordActivityPage, TableRecordCommentView } from '@greenhous
 import type { AppEnv } from '../app-env.js';
 import { MAX_DRIVE_FILE_SIZE } from '../drive/upload-policy.js';
 import { serveDriveFileContent } from '../drive/serve-file.js';
+import { appTemplateRoutes } from './app-templates.js';
 import { actionError, dispatch, jsonBody, numberParam } from './tables/shared.js';
 
 /** Multipart framing (boundary + part headers) on top of the Drive file cap. */
@@ -101,6 +104,8 @@ const appRoutes = new Hono<AppEnv>()
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { apps: AppSummary[] });
   })
+  // Before `/:appId` too: built-in templates (./app-templates.ts).
+  .route('/templates', appTemplateRoutes)
   .get('/:appId', async (c) => {
     const appId = appIdOf(c);
     const payload = {

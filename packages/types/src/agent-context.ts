@@ -84,6 +84,12 @@ export interface AppPageContext {
   pageTitle?: string;
   /** The viewer's app role, by its display name. */
   roleName?: string;
+  /**
+   * The pages this role may open (`use`), or every page of the draft (`build`),
+   * in the app's order — so the Assistant can point at "the Approvals page"
+   * instead of guessing. Additive (slice AG); the runtime / builder fills it.
+   */
+  pages?: Array<{ id: string; title: string }>;
   /** The published version on screen (`use` mode). */
   version?: number;
   /** Page filters the viewer has set, as shown (`Status: Pending`). */

@@ -170,6 +170,63 @@ describe('SchemaPlanCard', () => {
     expect(html).not.toContain('tablesSchemaPlan.');
   });
 
+  it('lists app operations and puts who gets the app, and what goes live, before Confirm', () => {
+    const operations: SchemaPlanOperation[] = [
+      {
+        op: 'app.create',
+        ref: 'a',
+        baseId: 1,
+        name: 'Purchase requests',
+        spec: { version: 1, pages: [{}, {}, {}], roles: [{}, {}] },
+      },
+      {
+        op: 'app.audience',
+        appRef: 'a',
+        entries: [
+          { principal: { type: 'team' }, roleKey: 'applicant' },
+          { principal: { type: 'group', groupId: 7 }, roleKey: 'approver' },
+        ],
+      },
+      { op: 'app.publish', appRef: 'a', notes: 'v1' },
+    ];
+    const changes: SchemaPlanAccessChange[] = [
+      {
+        index: 1,
+        kind: 'app_audience',
+        app: 'Purchase requests',
+        before: null,
+        after: [
+          { principal: 'team', name: '', role: 'Applicant' },
+          { principal: 'group', name: 'Finance', role: 'Approver', managedBy: 'Ann' },
+        ],
+      },
+      {
+        index: 2,
+        kind: 'app_publish',
+        app: 'Purchase requests',
+        version: 1,
+        audience: [{ principal: 'team', name: '', role: 'Applicant' }],
+      },
+    ];
+    const html = render('en', operations, changes, { 1: 'Purchase requests', 2: 'Purchase requests' });
+    expect(html).toContain('Apps');
+    expect(html).toContain('Create app');
+    expect(html).toContain('3 pages · 2 roles');
+    expect(html).toContain('Share app');
+    expect(html).toContain('Publish app');
+    expect(html).toContain('Who uses the app Purchase requests');
+    expect(html).toContain('shared with nobody');
+    expect(html).toContain('everyone in the team as Applicant; group Finance (managed by Ann) as Approver');
+    expect(html).toContain('Publish the app Purchase requests');
+    expect(html).toContain('v1 live for everyone in the team as Applicant');
+    expect(html.indexOf('Who uses the app')).toBeLessThan(html.indexOf('Create app'));
+
+    const zh = render('zh', operations, changes);
+    expect(zh).toContain('新建应用');
+    expect(zh).toContain('群组 Finance（由 Ann 管理）为「Approver」');
+    expect(zh).not.toContain('apps.agent.');
+  });
+
   it('is registered as a body artifact only for a validated plan', () => {
     expect(isArtifactCall({ name: 'tables_schema_plan', output: { type: 'tables_schema_plan' } })).toBe(true);
     // A refusal stays a readable trace row rather than becoming a broken card.

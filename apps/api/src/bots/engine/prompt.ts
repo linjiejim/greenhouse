@@ -39,6 +39,8 @@ export interface ToolFaceFlags {
   tasks: boolean;
   memory: boolean;
   self: boolean;
+  /** `tables_schema_plan` (Bots face): Tables changes proposed as a card the member applies. */
+  tablesPlan: boolean;
   approvalGated: boolean;
 }
 
@@ -54,6 +56,7 @@ export function toolFaceFlags(toolIds: readonly string[], approvalGated: boolean
     tasks: has('bot_tasks'),
     memory: has('memory'),
     self: has('self'),
+    tablesPlan: has('tables_schema_plan'),
     approvalGated,
   };
 }
@@ -168,6 +171,11 @@ export function buildStaticRules(
   if (flags.self) {
     lines.push(
       `- Your instructions are the member's: when you learn a lasting lesson about how to do your job, propose the change with the self tool and say in one line what you proposed; it takes effect only after they accept the card. Never use it to loosen a rule they wrote.`,
+    );
+  }
+  if (flags.tablesPlan) {
+    lines.push(
+      `- Changes to Tables — Bases, fields, views, forms, automations, dashboards, roles, who has access, apps — are proposed with tables_schema_plan: the member applies the card when they choose, and you are told the outcome then. Until then nothing exists: never say it does or cite an id.`,
     );
   }
   if (flags.approvalGated) {

@@ -6,7 +6,9 @@
  * - interactive face = the member's own effective tools (a Bot never exceeds
  *   its owner) + the Bot tools; minus the card-only dispatch tools and
  *   `spawn_session` (background work is `bot_tasks`); `memory` is rebuilt
- *   Bot-scoped. Every tool that WRITES Greenhouse data is wrapped so that its
+ *   Bot-scoped. The one dispatch tool with a Bots face is `tables_schema_plan`:
+ *   when the member holds it, the Bot gets the version that raises a
+ *   `tables_plan` request (../tools/tables-plan.ts) instead of a chat card. Every tool that WRITES Greenhouse data is wrapped so that its
  *   execute first raises an approval card and runs only on the member's
  *   "Allow" — a model-set `confirm: true` is not consent;
  * - background face = see background.ts (read-only).
@@ -35,6 +37,7 @@ import { createTeamTool } from '../tools/team.js';
 import { createSelfTool } from '../tools/self.js';
 import { createConversationTool } from '../tools/conversation.js';
 import { createBotTasksTool } from '../tools/bot-tasks.js';
+import { createBotTablesPlanTool } from '../tools/tables-plan.js';
 import type { BotTurnContext } from './context.js';
 import type { ConversationPort, TeamPort } from './ports.js';
 import { approvalFieldLabel, approvalFieldValue, copy, toolActionPhrase, type BotsLocale } from './copy.js';
@@ -333,6 +336,8 @@ export function assembleInteractiveTools(input: InteractiveToolsInput): Interact
   registry.team = createTeamTool(ctx, input.team);
   registry.conversation = createConversationTool(ctx, input.conversation);
   registry.self = createSelfTool(ctx);
+  // A card-only tool in chat; here a durable request the member applies (never the chat artifact).
+  if (input.effectiveTools.includes('tables_schema_plan')) registry.tables_schema_plan = createBotTablesPlanTool(ctx);
   // Offered only where background tasks can actually run (same check as the
   // greeting): otherwise S1 would promise them and every Start would fail.
   if (runtimeDriverEnabled('subagent')) registry.bot_tasks = createBotTasksTool(ctx);

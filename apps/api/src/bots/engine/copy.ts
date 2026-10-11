@@ -424,6 +424,7 @@ export const copy = {
       bot_create: `${bot} 提议新建 Bot「${subject}」`,
       task_start: `${bot} 提议后台任务「${subject}」`,
       instructions_update: `${bot} 提议修改自己的守则：${subject}`,
+      tables_plan: `${bot} 提议修改表格：${subject}`,
     };
     const en: Record<BotRequestKind, string> = {
       approval: `${bot} asks you to approve: ${subject}`,
@@ -432,6 +433,7 @@ export const copy = {
       bot_create: `${bot} proposes a new Bot “${subject}”`,
       task_start: `${bot} proposes the background task “${subject}”`,
       instructions_update: `${bot} proposes a change to its own instructions: ${subject}`,
+      tables_plan: `${bot} proposes a Tables change: ${subject}`,
     };
     return (l === 'zh' ? zh : en)[kind];
   },
@@ -472,6 +474,8 @@ export const copy = {
       return l === 'zh' ? `你没有开始后台任务「${subject}」` : `You declined the background task “${subject}”`;
     if (kind === 'instructions_update')
       return l === 'zh' ? `你没有采纳守则修改：${subject}` : `You declined the instructions change: ${subject}`;
+    if (kind === 'tables_plan')
+      return l === 'zh' ? `你没有应用表格变更：${subject}` : `You declined the Tables change: ${subject}`;
     return l === 'zh' ? `你拒绝了：${subject}` : `You declined: ${subject}`;
   },
 
@@ -541,6 +545,70 @@ export const copy = {
     l === 'zh'
       ? `已停止：${name} 不会自动继续，需要时说一声“继续”。`
       : `Stopped: ${name} won't pick this up on its own — say "continue" when you want it to.`,
+
+  /** The transcript line of an applied Tables plan (the card shows each line). */
+  tablesPlanApplied: (l: BotsLocale, summary: string, counts: { applied: number; failed: number; skipped: number }) => {
+    const open = counts.failed + counts.skipped;
+    if (l === 'zh') {
+      return open === 0
+        ? `已应用表格变更：${summary}`
+        : `表格变更部分应用（成功 ${counts.applied}，未完成 ${open}）：${summary}`;
+    }
+    return open === 0
+      ? `Applied the Tables change: ${summary}`
+      : `Applied part of the Tables change (${counts.applied} done, ${open} not): ${summary}`;
+  },
+  tablesPlanFailed: (l: BotsLocale, summary: string) =>
+    l === 'zh' ? `表格变更没有应用：${summary}` : `The Tables change was not applied: ${summary}`,
+  tablesPlanUnavailable: (l: BotsLocale, summary: string) =>
+    l === 'zh'
+      ? `你已无法使用表格或应用，「${summary}」没有应用。`
+      : `Tables or Apps are turned off for you, so “${summary}” was not applied.`,
+
+  /**
+   * Wakes the Bot that proposed a Tables plan with the outcome: what applied,
+   * the ids of what now exists (so it can refer to them), and why anything did not.
+   */
+  continueAfterTablesPlan: (
+    l: BotsLocale,
+    outcome: {
+      summary: string;
+      applied: number;
+      failed: number;
+      skipped: number;
+      error?: string;
+      /** `kind "ref" = id` pairs. */
+      created: string;
+      /** `n (op): reason` per operation that did not apply. */
+      problems: string[];
+    },
+  ) => {
+    if (outcome.error !== undefined) {
+      return l === 'zh'
+        ? `成员确认了你的表格计划「${outcome.summary}」，但应用失败了：${outcome.error}。用一句话告诉成员，需要的话重新起草。`
+        : `The member approved your Tables plan “${outcome.summary}”, but applying it failed: ${outcome.error}. Tell them in one line; draft it again if it still helps.`;
+    }
+    const head =
+      l === 'zh'
+        ? `成员应用了你的表格计划「${outcome.summary}」：成功 ${outcome.applied}，失败 ${outcome.failed}，跳过 ${outcome.skipped}。`
+        : `The member applied your Tables plan “${outcome.summary}”: ${outcome.applied} applied, ${outcome.failed} failed, ${outcome.skipped} skipped.`;
+    const made = outcome.created
+      ? l === 'zh'
+        ? `\n已存在：${outcome.created}。`
+        : `\nNow exists: ${outcome.created}.`
+      : '';
+    const open =
+      outcome.problems.length > 0
+        ? l === 'zh'
+          ? `\n未完成：${outcome.problems.join('；')}。`
+          : `\nNot done: ${outcome.problems.join('; ')}.`
+        : '';
+    const tail =
+      l === 'zh'
+        ? '\n用一句话告诉成员哪些已经可以用、哪些没成以及原因；不要重复卡片上的内容。'
+        : '\nTell the member in one line what is ready and, if anything did not apply, why — do not repeat the card.';
+    return `${head}${made}${open}${tail}`;
+  },
 
   continueAfterCreate: (l: BotsLocale, name: string) =>
     l === 'zh'

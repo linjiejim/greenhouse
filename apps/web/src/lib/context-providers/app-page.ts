@@ -10,6 +10,7 @@ const tr = (key: Parameters<typeof translate>[1], params?: Record<string, string
 /** App, page and filter names are member-written: one line each, bounded. */
 const MAX_NAME = 120;
 const MAX_FILTERS = 6;
+const MAX_PAGES = 20;
 
 function clip(text: string, max = MAX_NAME): string {
   const single = text.replace(/\s+/g, ' ').trim();
@@ -72,6 +73,14 @@ const provider: ContextProviderDescriptor<'app-page'> = {
       );
     }
     if (context.roleName) parts.push(`Viewer's app role: ${clip(context.roleName)}`);
+    const pages = (context.pages ?? []).slice(0, MAX_PAGES);
+    if (pages.length > 0) {
+      parts.push(
+        `${context.mode === 'build' ? 'Pages of the draft' : 'Pages this role can open'}: ${pages
+          .map((entry) => `${clip(entry.title, 60)} (id ${clip(entry.id, 40)})`)
+          .join(', ')}`,
+      );
+    }
     const filters = (context.filters ?? []).slice(0, MAX_FILTERS);
     if (filters.length > 0) {
       parts.push(
@@ -81,6 +90,11 @@ const provider: ContextProviderDescriptor<'app-page'> = {
     parts.push(
       'An app grants access through its own roles: what the page shows is evaluated for this viewer, and Tables tools reach the underlying Base only if the viewer has Tables access to it',
     );
+    if (context.mode === 'build') {
+      parts.push(
+        'Changes to this app are drafted with tables_schema_plan app.update (read tables_query apps.get and builder.reference topic=app first)',
+      );
+    }
     return parts.join('. ').slice(0, AMBIENT_CONTEXT_LIMITS.hint);
   },
 };

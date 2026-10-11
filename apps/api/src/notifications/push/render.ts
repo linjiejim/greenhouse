@@ -42,6 +42,7 @@ const NEEDS_YOU: Record<BotsLocale, Record<BotRequestKind, string>> = {
     bot_create: '提议新建一个 Bot',
     task_start: '提议一个后台任务',
     instructions_update: '提议修改工作说明',
+    tables_plan: '提议修改表格',
   },
   en: {
     approval: 'Needs your approval',
@@ -50,6 +51,7 @@ const NEEDS_YOU: Record<BotsLocale, Record<BotRequestKind, string>> = {
     bot_create: 'Proposes a new Bot',
     task_start: 'Proposes a background task',
     instructions_update: 'Proposes a change to its instructions',
+    tables_plan: 'Proposes a Tables change',
   },
 };
 
@@ -68,6 +70,8 @@ function needsYouPreview(l: BotsLocale, kind: BotRequestKind, subject: string): 
         return `提议后台任务「${subject}」`;
       case 'instructions_update':
         return `提议修改工作说明：${subject}`;
+      case 'tables_plan':
+        return `提议修改表格：${subject}`;
     }
   }
   switch (kind) {
@@ -83,6 +87,8 @@ function needsYouPreview(l: BotsLocale, kind: BotRequestKind, subject: string): 
       return `Proposes the background task “${subject}”`;
     case 'instructions_update':
       return `Proposes a change to its instructions: ${subject}`;
+    case 'tables_plan':
+      return `Proposes a Tables change: ${subject}`;
   }
 }
 

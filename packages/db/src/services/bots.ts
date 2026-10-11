@@ -949,6 +949,25 @@ export function createBotsService(db: Db) {
       return row;
     },
 
+    /**
+     * Write the outcome of a decision that takes a while into a request that is
+     * ALREADY settled as `resolved` — a Tables plan is claimed by settling it,
+     * then applied, then its outcome lands here. Never reopens or re-settles a
+     * row: undefined when the request is not resolved (or not the member's).
+     */
+    async updateRequestResult(
+      userId: string,
+      requestId: string,
+      result: Record<string, unknown>,
+    ): Promise<BotRequestRow | undefined> {
+      const [row] = await db
+        .update(botRequests)
+        .set({ result: JSON.stringify(result), updated_at: nowIso() })
+        .where(and(eq(botRequests.id, requestId), eq(botRequests.user_id, userId), eq(botRequests.status, 'resolved')))
+        .returning();
+      return row;
+    },
+
     /** Expire pending requests whose deadline passed; returns the expired rows. */
     async expireDueRequests(now = nowIso()): Promise<BotRequestRow[]> {
       return await db

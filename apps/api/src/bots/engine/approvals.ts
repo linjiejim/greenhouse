@@ -61,6 +61,8 @@ export function requestSubject(kind: BotRequestKind, payload: BotRequestPayload)
       return pick('title');
     case 'instructions_update':
       return pick('reason');
+    case 'tables_plan':
+      return pick('summary');
   }
 }
 

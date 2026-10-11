@@ -16,7 +16,13 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import type { AppEnv } from '../../app-env.js';
 import { getAuthUser } from '../../auth/middleware.js';
 import { artifactReceiptResult, artifactRequestHash, claimArtifactAction } from '../../chat/artifact-actions.js';
-import { analyzeSchemaPlan, applySchemaPlan, schemaPlanApplySchema } from '../../platform/tables/schema-plan.js';
+import {
+  analyzeSchemaPlan,
+  applySchemaPlan,
+  planTouchesApps,
+  schemaPlanApplySchema,
+} from '../../platform/tables/schema-plan.js';
+import { userHasFeature } from '../../auth/features.js';
 import { actionError, dispatch, jsonBody, numberParam } from './shared.js';
 
 export const schemaRoutes = new Hono<AppEnv>()
@@ -108,6 +114,10 @@ export const schemaRoutes = new Hono<AppEnv>()
     const shape = analyzeSchemaPlan(operations);
     if ('error' in shape) return c.json({ error: shape.error }, 400);
     const user = getAuthUser(c);
+    // App operations are the Apps module's: this route sits behind the `tables` switch only.
+    if (planTouchesApps(operations) && !(await userHasFeature(user.id, user.role, 'apps'))) {
+      return c.json({ error: 'Apps are turned off for you — the plan was not applied' }, 403);
+    }
     // A retry needs an applied plan; never claim a fresh id for one (that would strand the real apply).
     if (retry && !(await getDb().chatArtifactReceipts.getForUser(actionId, user.id))) {
       return c.json({ error: 'This plan has not been applied yet' }, 409);

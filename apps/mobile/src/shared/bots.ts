@@ -467,7 +467,14 @@ export interface BotConversationDetail extends BotConversationSummary {
 
 // ─── "Needs you" requests ────────────────────────────────
 
-export type BotRequestKind = 'takeover' | 'login' | 'approval' | 'bot_create' | 'task_start' | 'instructions_update';
+export type BotRequestKind =
+  | 'takeover'
+  | 'login'
+  | 'approval'
+  | 'bot_create'
+  | 'task_start'
+  | 'instructions_update'
+  | 'tables_plan';
 export type BotRequestStatus = 'pending' | 'resolved' | 'denied' | 'expired' | 'canceled';
 
 export interface BotTakeoverPayload {
@@ -545,6 +552,44 @@ export interface BotImplicitTakeoverPayload {
   title?: string;
 }
 
+/**
+ * A Bot's proposed change to Tables — structure, views, forms, automations,
+ * dashboards, roles, access and apps (`tables_schema_plan` in a Bots turn). The
+ * member applies it on the card, as themselves; nothing exists until then.
+ * Self-contained, so every client draws it without the Tables types: `lines`
+ * and `access` are written by the server in the member's language when the
+ * card is raised, and `operations` is the plan applied verbatim (opaque here).
+ */
+export interface BotTablesPlanPayload {
+  /** The Bot's one-line summary of the change. */
+  summary: string;
+  /** One per operation, in order: its kind (`field.create`), what it does ("Add field") and what it names. */
+  lines: Array<{ op: string; label: string; target: string }>;
+  /** Who gains or loses access and what gets published, before → after — read before applying. Empty when none. */
+  access: Array<{ subject: string; before: string; after: string }>;
+  operations: unknown[];
+  /** The one existing Base the plan changes, when there is exactly one. */
+  base_id?: number;
+}
+
+/** The `result` of a decided `tables_plan` request. */
+export interface BotTablesPlanResult {
+  decision: 'approve' | 'deny';
+  /** `applying` from the click until the outcome is written. */
+  state?: 'applying' | 'applied' | 'partial' | 'failed';
+  /** Per line of the payload, in order. */
+  lines?: Array<{ status: 'applied' | 'failed' | 'skipped'; message?: string }>;
+  applied?: number;
+  failed?: number;
+  skipped?: number;
+  /** The Base the plan touched, when it is one. */
+  base_id?: number;
+  /** Apps the plan created, in order. */
+  app_ids?: number[];
+  /** Why nothing could be applied (`failed` before any line ran). */
+  error?: string;
+}
+
 export type BotRequestPayload =
   | BotTakeoverPayload
   | BotImplicitTakeoverPayload
@@ -552,7 +597,8 @@ export type BotRequestPayload =
   | BotApprovalPayload
   | BotCreatePayload
   | BotTaskStartPayload
-  | BotInstructionsUpdatePayload;
+  | BotInstructionsUpdatePayload
+  | BotTablesPlanPayload;
 
 export interface BotRequestView {
   id: string;

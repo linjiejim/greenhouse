@@ -23,8 +23,9 @@ import {
   type SchemaPlanOperation,
 } from '@greenhouse/types/tables';
 import { TABLE_CARD_KINDS } from '@greenhouse/types/table-cards';
+import { APP_ACCENTS, APP_CARD_KINDS, APP_ICONS, APP_LIMITS } from '@greenhouse/types/apps';
 
-export const BUILDER_REFERENCE_TOPICS = ['plan', 'view', 'form', 'automation', 'dashboard', 'role'] as const;
+export const BUILDER_REFERENCE_TOPICS = ['plan', 'view', 'form', 'automation', 'dashboard', 'role', 'app'] as const;
 export type BuilderReferenceTopic = (typeof BUILDER_REFERENCE_TOPICS)[number];
 
 /** Ids an example uses for existing people / groups — in a real plan they come from directory.search. */
@@ -40,6 +41,8 @@ export const PLAN_EXAMPLE: SchemaPlanOperation[] = [
     description: 'Deals and their follow-ups. One row per deal; Stage drives the pipeline board.',
     defaultTableRef: 'deals',
     defaultTableName: 'Deals',
+    primaryFieldRef: 'deal',
+    primaryFieldName: 'Deal',
   },
   {
     op: 'field.create',
@@ -336,6 +339,203 @@ const TOPIC_OPERATIONS: Readonly<Record<Exclude<BuilderReferenceTopic, 'plan'>, 
     { op: 'member.set', baseRef: 'crm', principal: 'user', userId: EXAMPLE_USER_ID, role: 'editor' },
     { op: 'base.update', baseRef: 'crm', visibility: 'team', teamRole: 'viewer' },
   ],
+  app: [
+    // A one-step approval needs a status, who decided, when, and why not.
+    {
+      op: 'field.create',
+      ref: 'approval',
+      tableRef: 'deals',
+      name: 'Discount approval',
+      type: 'single_select',
+      config: {
+        options: [
+          { id: 'pending', label: 'Pending' },
+          { id: 'approved', label: 'Approved' },
+          { id: 'rejected', label: 'Rejected' },
+        ],
+      },
+    },
+    { op: 'field.create', ref: 'approver', tableRef: 'deals', name: 'Approved by', type: 'user' },
+    { op: 'field.create', ref: 'approved_at', tableRef: 'deals', name: 'Decided at', type: 'datetime' },
+    { op: 'field.create', ref: 'reason', tableRef: 'deals', name: 'Reject reason', type: 'long_text' },
+    {
+      op: 'app.create',
+      ref: 'desk',
+      baseRef: 'crm',
+      name: 'Discount desk',
+      icon: 'check',
+      accent: 'teal',
+      spec: {
+        version: 1,
+        home: 'mine',
+        pages: [
+          {
+            id: 'mine',
+            title: 'My requests',
+            icon: 'inbox',
+            cards: [
+              {
+                id: 'list',
+                kind: 'records',
+                title: 'My requests',
+                layout: { x: 0, y: 0, w: 8, h: 6 },
+                source: {
+                  tableId: '$table:deals',
+                  query: {
+                    where: {
+                      combinator: 'and',
+                      clauses: [{ systemField: 'created_by', operator: 'eq', value: '$me' }],
+                    },
+                  },
+                },
+                fieldIds: ['$field:deal', '$field:amount', '$field:approval'],
+                detail: {
+                  fieldIds: ['$field:deal', '$field:amount', '$field:notes', '$field:approval', '$field:reason'],
+                  comments: true,
+                },
+              },
+              {
+                id: 'ask',
+                kind: 'form',
+                title: 'Ask for a discount',
+                layout: { x: 8, y: 0, w: 4, h: 6 },
+                tableId: '$table:deals',
+                fieldIds: ['$field:deal', '$field:amount', '$field:notes'],
+                defaults: [
+                  { fieldId: '$field:approval', value: 'pending' },
+                  { fieldId: '$field:owner', value: '$me' },
+                ],
+              },
+            ],
+          },
+          {
+            id: 'review',
+            title: 'To review',
+            icon: 'check',
+            cards: [
+              {
+                id: 'board',
+                kind: 'kanban',
+                layout: { x: 0, y: 0, w: 12, h: 8 },
+                source: { tableId: '$table:deals' },
+                groupFieldId: '$field:approval',
+                fieldIds: ['$field:deal', '$field:amount', '$field:owner'],
+                actions: [
+                  {
+                    id: 'approve',
+                    label: 'Approve',
+                    roles: ['manager'],
+                    when: {
+                      combinator: 'and',
+                      clauses: [
+                        { fieldId: '$field:approval', operator: 'eq', value: 'pending' },
+                        { systemField: 'created_by', operator: 'neq', value: '$me' },
+                      ],
+                    },
+                    do: {
+                      type: 'set_fields',
+                      values: [
+                        { fieldId: '$field:approval', value: 'approved' },
+                        { fieldId: '$field:approver', value: '$me' },
+                        { fieldId: '$field:approved_at', value: '$now' },
+                      ],
+                    },
+                  },
+                  {
+                    id: 'reject',
+                    label: 'Reject',
+                    roles: ['manager'],
+                    when: {
+                      combinator: 'and',
+                      clauses: [{ fieldId: '$field:approval', operator: 'eq', value: 'pending' }],
+                    },
+                    do: {
+                      type: 'set_fields',
+                      values: [{ fieldId: '$field:approval', value: 'rejected' }],
+                      inputFieldIds: ['$field:reason'],
+                      requiredInputFieldIds: ['$field:reason'],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            id: 'stats',
+            title: 'Stats',
+            icon: 'chart',
+            cards: [
+              {
+                id: 'approved',
+                kind: 'kpi',
+                title: 'Approved amount',
+                layout: { x: 0, y: 0, w: 4, h: 3 },
+                card: {
+                  kind: 'kpi',
+                  source: {
+                    tableId: '$table:deals',
+                    query: {
+                      where: {
+                        combinator: 'and',
+                        clauses: [{ fieldId: '$field:approval', operator: 'eq', value: 'approved' }],
+                      },
+                    },
+                  },
+                  aggregate: { operation: 'sum', valueFieldId: '$field:amount' },
+                },
+              },
+            ],
+          },
+        ],
+        roles: [
+          {
+            key: 'rep',
+            name: 'Sales rep',
+            pages: ['mine'],
+            canComment: true,
+            tables: [
+              {
+                tableId: '$table:deals',
+                access: 'edit',
+                rows: { type: 'related', creator: true, fieldIds: [] },
+                editRows: {
+                  type: 'where',
+                  where: {
+                    combinator: 'and',
+                    clauses: [{ fieldId: '$field:approval', operator: 'eq', value: 'pending' }],
+                  },
+                },
+                fields: [
+                  { fieldId: '$field:approval', access: 'read' },
+                  { fieldId: '$field:approver', access: 'read' },
+                  { fieldId: '$field:approved_at', access: 'read' },
+                  { fieldId: '$field:reason', access: 'read' },
+                ],
+                fieldDefault: 'visible',
+                create: true,
+              },
+            ],
+          },
+          {
+            key: 'manager',
+            name: 'Manager',
+            pages: 'all',
+            canComment: true,
+            tables: [{ tableId: '$table:deals', access: 'edit', fields: [], fieldDefault: 'visible' }],
+          },
+        ],
+      },
+    },
+    {
+      op: 'app.audience',
+      appRef: 'desk',
+      entries: [
+        { principal: { type: 'team' }, roleKey: 'rep' },
+        { principal: { type: 'group', groupId: EXAMPLE_GROUP_ID }, roleKey: 'manager' },
+      ],
+    },
+    { op: 'app.publish', appRef: 'desk', notes: 'First version' },
+  ],
 };
 
 const SHARED_NOTES = [
@@ -371,6 +571,14 @@ const TOPIC_NOTES: Readonly<Record<Exclude<BuilderReferenceTopic, 'plan'>, strin
     'member.set: principal user (userId) or group (groupId), role builder|editor|viewer|custom (roleRef or customRoleId)|none (removes). Groups are never builder. Ids from directory.search; roles.list shows existing roles.',
     'base.update sets visibility private|team and teamRole viewer|editor|custom (roleRef). Roles and access need the Base owner.',
   ],
+  app: [
+    `spec {version:1, pages (1-${APP_LIMITS.pages}), roles (1-${APP_LIMITS.roles}), home?, nav? {layout tabs|sidebar}} over ONE Base. Ids: lowercase a-z 0-9 _ - (≤40), unique in scope; no page "edit".`,
+    `page {id, title, icon?, filters? (dashboard filter controls), cards}. card {id, title?, layout {x, y, w, h 1-24}, kind ${APP_CARD_KINDS.join('|')}}: records {source {tableId, query?}, fieldIds, detail?, create? {fieldIds, defaults?}, actions?}; kanban {source, groupFieldId, fieldIds, actions?, move?}; calendar {source, startFieldId, fieldIds}; gallery {source, coverFieldId?, fieldIds}; form {tableId, fieldIds, defaults?}; kpi|chart|pivot {card: topic=dashboard}; text {markdown}; buttons {buttons [{id, label, type open_page|open_url|create_record}]}.`,
+    'detail {fieldIds, editableFieldIds?, actions?, comments?}. action {id, label, roles?, when? (re-checked in the write), confirm?, do: set_fields {values ($me/$now/$today), inputFieldIds?, requiredInputFieldIds?} | run_automation {ruleId: a button rule} | delete}. set_fields keys must be editable for every role the action applies to.',
+    'Approval = one step per action (when pending AND created_by ≠ $me). Multi-level, parallel or routed approvals are NOT supported — never promise them. "Mine": {systemField:"created_by", operator:"eq", value:"$me"}; a page filter is "$page.<filterId>" in a clause value.',
+    'role {key, name, pages "all"|[ids], tables [rules as topic=role], canComment?} — all a viewer gets; they need not be Base members.',
+    `icon ${APP_ICONS.join('|')}; accent ${APP_ACCENTS.join('|')}. app.create makes a DRAFT; app.update {appId|appRef, draftRevision, spec?, name?} replaces it; app.audience / app.publish need the Base owner. Existing apps: tables_query apps.list / apps.get.`,
+  ],
 };
 
 const PLAN_NOTES = [
@@ -378,7 +586,8 @@ const PLAN_NOTES = [
   'Point at a ref with tableRef / baseRef / dashboardRef / roleRef, or anywhere in a config (value or object key) with the string "$<kind>:<ref>".',
   `ref kinds in configs: ${SCHEMA_PLAN_REF_KINDS.join(', ')}.`,
   'Updates name the existing id and the revision you read (field/table/base updates have no revision). Nothing is deleted except widgets (widget.delete) and grants (member.set role none).',
-  'Ops: base.create|update, table.create|update, field.create|update|archive, view.create|update, form.create|update, automation.create|update, dashboard.create|update, widget.create|update|delete, role.create|update, member.set.',
+  'Ops: base.create|update, table.create|update, field.create|update|archive, view.create|update, form.create|update, automation.create|update, dashboard.create|update, widget.create|update|delete, role.create|update, member.set, app.create|update|audience|publish (topic=app).',
+  'Every new table has a required primary text field "Name": rename it with primaryFieldName and point at it with primaryFieldRef (base.create / table.create) — forms and app cards usually need it.',
   `formula AST: {type:"literal",value} | {type:"field",fieldId} | {type:"binary",operator,left,right} | {type:"function",name,args}. operators: ${TABLE_FORMULA_BINARY_OPERATORS.join(', ')}. functions: ${TABLE_FORMULA_FUNCTIONS.join(', ')}.`,
 ];
 

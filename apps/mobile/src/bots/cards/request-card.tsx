@@ -1,6 +1,6 @@
 /**
  * `RequestCard` — a "needs you" card (approval, background task, proposed Bot,
- * instructions change, sign-in, take-over) in a transcript or the needs-you
+ * instructions change, Tables change, sign-in, take-over) in a transcript or the needs-you
  * sheet (props: ../contract.ts `RequestCardProps`).
  *
  * In a list a card is only a SUMMARY (2026-10): the kind's tile, the headline
@@ -47,6 +47,7 @@ import {
 import { InstructionsBody } from './instructions';
 import { LoginBody } from './login-card';
 import { Receipt } from './receipt';
+import { TablesPlanBody } from './tables-plan';
 import { TakeoverBody } from './takeover';
 import { TaskStartBody } from './task-start';
 import { UnknownBody } from './unknown';
@@ -73,6 +74,8 @@ export function RequestBody({
       return <BotCreateBody request={request} />;
     case 'instructions_update':
       return <InstructionsBody request={request} />;
+    case 'tables_plan':
+      return <TablesPlanBody request={request} />;
     case 'login':
       return <LoginBody request={request} onAskAgain={onAskAgain} />;
     case 'handback':

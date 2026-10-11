@@ -1,7 +1,8 @@
 /**
  * "Needs you" cards in the transcript — approvals, sign-in, take-over (a
  * human check embeds the screen: human-check-card.tsx), a Bot proposing a new
- * Bot, a background task waiting for "Start".
+ * Bot, a background task waiting for "Start", a proposed Tables change
+ * (tables-plan-card.tsx).
  *
  * All on the shared ArtifactCard skeleton: pending cards are open with their
  * actions; settled ones collapse to a one-line receipt (expandable), and an
@@ -25,6 +26,7 @@ import type { BotMessage } from '../../lib/api/bots';
 import { LoginRequestCard } from './login-request-card';
 import { BotCreateCard } from './bot-create-card';
 import { InstructionsUpdateCard } from './instructions-update-card';
+import { TablesPlanCard } from './tables-plan-card';
 import { HumanCheckCard, type RequestCardComputer } from './human-check-card';
 import {
   humanCheckTakeover,
@@ -70,6 +72,7 @@ export function RequestCard(props: RequestCardProps) {
       {request.kind === 'takeover' && <TakeoverCard {...props} request={request} />}
       {request.kind === 'task_start' && <TaskStartCard {...props} request={request} />}
       {request.kind === 'instructions_update' && <InstructionsUpdateCard {...props} request={request} />}
+      {request.kind === 'tables_plan' && <TablesPlanCard {...props} request={request} />}
     </div>
   );
 }

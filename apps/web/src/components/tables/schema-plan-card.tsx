@@ -24,6 +24,7 @@ import { TABLE_CARD_KINDS, type TableCardKind } from '@greenhouse/types/table-ca
 import type {
   SchemaPlanAccessChange,
   SchemaPlanAccessLevel,
+  SchemaPlanAppAudienceView,
   SchemaPlanApplyResult,
   SchemaPlanAudienceView,
   SchemaPlanOperation,
@@ -39,6 +40,7 @@ import { TRIGGER_LABEL_KEYS } from '../../pages/tables/automations/rule-draft';
 import { TABLE_VIEW_TYPE_LABEL_KEYS } from '../../pages/tables/views/view-type-meta';
 import { FIELD_TYPE_LABEL_KEYS } from './field-types';
 import { useArtifactReceipt } from '../../hooks/use-artifact-receipt';
+import { appBuilderHref } from '../../lib/app-routes';
 import { ArtifactCard, ArtifactCardActions } from '../chat/artifact-card';
 
 export type { TablesSchemaPlanArtifact };
@@ -68,9 +70,13 @@ const OP_LABEL_KEYS = {
   'role.create': 'tablesSchemaPlan.opRoleCreate',
   'role.update': 'tablesSchemaPlan.opRoleUpdate',
   'member.set': 'tablesSchemaPlan.opMemberSet',
+  'app.create': 'apps.agent.plan.opAppCreate',
+  'app.update': 'apps.agent.plan.opAppUpdate',
+  'app.audience': 'apps.agent.plan.opAppAudience',
+  'app.publish': 'apps.agent.plan.opAppPublish',
 } as const satisfies Record<OperationKind, string>;
 
-type OperationGroup = 'structure' | 'fields' | 'views' | 'forms' | 'automations' | 'dashboards' | 'access';
+type OperationGroup = 'structure' | 'fields' | 'views' | 'forms' | 'automations' | 'dashboards' | 'access' | 'apps';
 
 const GROUP_ORDER: readonly OperationGroup[] = [
   'structure',
@@ -80,6 +86,7 @@ const GROUP_ORDER: readonly OperationGroup[] = [
   'automations',
   'dashboards',
   'access',
+  'apps',
 ];
 
 const GROUP_LABEL_KEYS = {
@@ -90,6 +97,7 @@ const GROUP_LABEL_KEYS = {
   automations: 'tablesSchemaPlan.groupAutomations',
   dashboards: 'tablesSchemaPlan.groupDashboards',
   access: 'tablesSchemaPlan.groupAccess',
+  apps: 'apps.agent.plan.groupApps',
 } as const satisfies Record<OperationGroup, string>;
 
 const OP_GROUP = {
@@ -114,6 +122,10 @@ const OP_GROUP = {
   'role.create': 'access',
   'role.update': 'access',
   'member.set': 'access',
+  'app.create': 'apps',
+  'app.update': 'apps',
+  'app.audience': 'apps',
+  'app.publish': 'apps',
 } as const satisfies Record<OperationKind, OperationGroup>;
 
 /**
@@ -131,6 +143,7 @@ function operationTarget(operation: SchemaPlanOperation, current: string | undef
     case 'automation.create':
     case 'dashboard.create':
     case 'role.create':
+    case 'app.create':
       return operation.name;
     case 'widget.create':
       return operation.title;
@@ -158,6 +171,11 @@ function operationTarget(operation: SchemaPlanOperation, current: string | undef
       return operation.name ?? current ?? `#${operation.roleId}`;
     case 'member.set':
       return current ?? (operation.principal === 'group' ? `#${operation.groupId}` : (operation.userId ?? ''));
+    case 'app.update':
+      return operation.name ?? current ?? `#${operation.appId ?? operation.appRef}`;
+    case 'app.audience':
+    case 'app.publish':
+      return current ?? `#${operation.appId ?? operation.appRef}`;
   }
 }
 
@@ -177,6 +195,11 @@ function operationDetail(operation: SchemaPlanOperation, t: T): string | undefin
       return t(TRIGGER_LABEL_KEYS[operation.trigger]);
     case 'widget.create':
       return isCardKind(operation.card.kind) ? t(`tables.dashboard.editor.kind.${operation.card.kind}`) : undefined;
+    case 'app.create': {
+      const pages = Array.isArray(operation.spec.pages) ? operation.spec.pages.length : 0;
+      const roles = Array.isArray(operation.spec.roles) ? operation.spec.roles.length : 0;
+      return t('apps.agent.plan.appShape', { pages, roles });
+    }
     default:
       return undefined;
   }
@@ -221,6 +244,24 @@ function rulesLabel(summary: SchemaPlanRuleSummary | null, t: T): string {
   return [...parts, ...(summary.dashboards ? [t('tablesSchemaPlan.ruleDashboards')] : [])].join('; ');
 }
 
+function appAudienceEntry(entry: SchemaPlanAppAudienceView, t: T): string {
+  const who =
+    entry.principal === 'team'
+      ? t('apps.agent.plan.audienceTeam')
+      : entry.principal === 'group'
+        ? entry.managedBy
+          ? t('apps.agent.plan.audienceGroupManaged', { name: entry.name, manager: entry.managedBy })
+          : t('apps.agent.plan.audienceGroup', { name: entry.name })
+        : entry.name;
+  return t('apps.agent.plan.audienceEntry', { who, role: entry.role });
+}
+
+function appAudienceLabel(entries: SchemaPlanAppAudienceView[] | null, t: T): string {
+  return entries && entries.length > 0
+    ? entries.map((entry) => appAudienceEntry(entry, t)).join('; ')
+    : t('apps.agent.plan.audienceNobody');
+}
+
 /** Subject, before and after of one access change, in the user's language. */
 function describeChange(change: SchemaPlanAccessChange, t: T): { subject: string; before: string; after: string } {
   switch (change.kind) {
@@ -253,10 +294,33 @@ function describeChange(change: SchemaPlanAccessChange, t: T): { subject: string
           change.published ? 'tablesSchemaPlan.formPublished' : 'tablesSchemaPlan.formDraft',
         )}`,
       };
+    case 'app_audience':
+      return {
+        subject: t('apps.agent.plan.accessAudience', { app: change.app }),
+        before: appAudienceLabel(change.before, t),
+        after: appAudienceLabel(change.after, t),
+      };
+    case 'app_publish':
+      return {
+        subject: t('apps.agent.plan.accessPublish', { app: change.app }),
+        before:
+          change.version > 1
+            ? t('apps.agent.plan.publishLive', { version: change.version - 1 })
+            : t('apps.agent.plan.publishFirst'),
+        after: t('apps.agent.plan.publishAfter', {
+          version: change.version,
+          audience: appAudienceLabel(change.audience, t),
+        }),
+      };
   }
 }
 
-function AccessChanges({ changes }: { changes: SchemaPlanAccessChange[] }) {
+/**
+ * The permission and outbound section of a plan, already in words — the chat
+ * card words its artifact here; the Bots card (`components/bots/tables-plan-card.tsx`)
+ * gets the lines from the server, which wrote them for every client.
+ */
+export function AccessChangeList({ lines }: { lines: Array<{ subject: string; before: string; after: string }> }) {
   const t = useT();
   return (
     <div
@@ -269,26 +333,29 @@ function AccessChanges({ changes }: { changes: SchemaPlanAccessChange[] }) {
       </p>
       <p className="mt-0.5 text-[10px] text-fg-muted">{t('tablesSchemaPlan.accessHint')}</p>
       <ul className="mt-1.5 space-y-1">
-        {changes.map((change, position) => {
-          const { subject, before, after } = describeChange(change, t);
-          return (
-            <li key={`${change.index}-${position}`} className="text-xs leading-snug">
-              <span className="font-medium text-fg">{subject}</span>
-              <span className="text-fg-muted">
-                {': '}
-                {before}
-                {' → '}
-              </span>
-              <span className="font-medium text-fg">{after}</span>
-            </li>
-          );
-        })}
+        {lines.map(({ subject, before, after }, position) => (
+          <li key={`${position}:${subject}`} className="text-xs leading-snug">
+            <span className="font-medium text-fg">{subject}</span>
+            <span className="text-fg-muted">
+              {': '}
+              {before}
+              {' → '}
+            </span>
+            <span className="font-medium text-fg">{after}</span>
+          </li>
+        ))}
       </ul>
     </div>
   );
 }
 
-function StatusIcon({ status }: { status: SchemaPlanOperationResult['status'] }) {
+function AccessChanges({ changes }: { changes: SchemaPlanAccessChange[] }) {
+  const t = useT();
+  return <AccessChangeList lines={changes.map((change) => describeChange(change, t))} />;
+}
+
+/** How one operation came out (the Bots card shows the same marks). */
+export function StatusIcon({ status }: { status: SchemaPlanOperationResult['status'] }) {
   if (status === 'applied') return <Check size={12} className="flex-shrink-0 text-success" />;
   if (status === 'failed') return <X size={12} className="flex-shrink-0 text-danger" />;
   return <Minus size={12} className="flex-shrink-0 text-fg-faint" />;
@@ -360,6 +427,8 @@ export function SchemaPlanCard({
   );
 
   const allApplied = !!outcome && outcome.results.every((entry) => entry.status === 'applied');
+  // The app the plan created (its builder is where it is reviewed, shared and published).
+  const createdAppId = outcome?.results.find((entry) => entry.op === 'app.create' && entry.status === 'applied')?.id;
   // Receipts written before retries existed carry no ref map; they cannot be retried safely.
   const retryable = !!outcome && !allApplied && !!outcome.refs;
   const processing = applying || receipt?.status === 'processing';
@@ -407,6 +476,11 @@ export function SchemaPlanCard({
                   : t('tablesSchemaPlan.hint')
           }
         >
+          {createdAppId !== undefined && (
+            <Button size="sm" variant="outline" onClick={() => (window.location.hash = appBuilderHref(createdAppId))}>
+              {t('apps.agent.plan.openApp')} →
+            </Button>
+          )}
           {outcome?.baseId !== undefined && (
             <Button size="sm" variant="outline" onClick={() => (window.location.hash = `#/tables/${outcome.baseId}`)}>
               {t('tablesSchemaPlan.openBase')} →
@@ -477,7 +551,11 @@ export function SchemaPlanCard({
                           {detail}
                         </span>
                       )}
-                      {result?.message && <p className="text-[10px] text-danger">{result.message}</p>}
+                      {result?.message && (
+                        <p className={`text-[10px] ${result.status === 'applied' ? 'text-fg-muted' : 'text-danger'}`}>
+                          {result.message}
+                        </p>
+                      )}
                     </div>
                   </li>
                 );

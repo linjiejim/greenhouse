@@ -50,6 +50,17 @@ export const botsCardsEn = {
     diffRemoved: 'Removed: {text}',
     current: 'Current',
     proposed: 'Proposed',
+    /** A proposed Tables change (structure, access, apps) — the web's tables-plan-card. */
+    tablesTitle: '{name} suggests a Tables change',
+    tablesGist: '{count} changes',
+    tablesGistAccess: '{count} changes · {access} access changes',
+    tablesAccess: 'Who gains access',
+    tablesHint: 'Nothing changes until you apply it — every step then runs as you, with your permissions.',
+    apply: 'Apply',
+    tablesApplying: 'Applying',
+    tablesApplied: 'Applied',
+    tablesPartial: 'Partly Applied',
+    tablesFailed: 'Not Applied',
     /** The site is the card's first line (the lock row). No hyphenated words: they split at the hyphen when wrapped. */
     loginTitle: '{name} needs you to sign in',
     otpTitle: '{name} needs a code',
@@ -95,6 +106,10 @@ export const botsCardsEn = {
       expiredTitle: 'Expired · {title}',
       canceled: 'Canceled',
       canceledTitle: 'Canceled · {title}',
+      tablesApplied: 'Applied · {title}',
+      tablesPartial: 'Partly applied · {title}',
+      tablesFailed: 'Not applied · {title}',
+      tablesApplying: 'Applying · {title}',
       done: 'Done',
     },
     /** A refused decision, by the server's code (BotRequestErrorCode); the card stays pending. */

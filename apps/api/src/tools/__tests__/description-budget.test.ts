@@ -230,6 +230,14 @@ import { TOOL_DEFINITIONS } from '../registry.js';
  * and costs nothing until asked for; `tables_query` 645 → 799 is the one line
  * that points there and at `directory.search`. Measured total is 34_290; the
  * ceiling follows it down with the usual ~200 of headroom.
+ *
+ * 2026-10-11 (Tables → Apps, slice AG) spent that headroom without a raise:
+ * `tables_schema_plan` 1_790 → 1_944 now drafts apps too, and the +154 is the
+ * two things a schema cannot say — read builder.reference topic=app first,
+ * publishing / sharing is the Base owner's — plus "multi-level approvals" in
+ * CANNOT (spec D8: the model must never promise them). The app grammar itself
+ * lives behind `builder.reference`. Measured total is 34_489; the next tool
+ * that grows pays for itself or argues for a raise here.
  */
 const TOTAL_DESCRIPTION_BUDGET = 34_500;
 

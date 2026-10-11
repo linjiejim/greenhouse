@@ -4,13 +4,16 @@
  * Besides data it reads what `tables_schema_plan` needs to draft against:
  * forms, automations (webhook targets reduced to their host, never secrets),
  * runs, roles (Base owner only — the handler decides), record activity, the
- * people and groups the caller may share with, and `builder.reference` — the
- * config grammar as compact examples, so it costs no description budget.
+ * people and groups the caller may share with, `builder.reference` — the
+ * config grammar as compact examples, so it costs no description budget — and
+ * the apps built on a Base (`apps.list`; `apps.get` = a manager's draft, with
+ * who it is shared with: what `app.update` / `app.audience` revise).
  */
 
 import { tool } from 'ai';
 import { z } from 'zod';
 import { getDb } from '@greenhouse/db';
+import type { AppListView, AppSummary } from '@greenhouse/types/apps';
 import { defineTool, type ToolMeta } from './define.js';
 import { dispatchTablesAgentAction } from '../platform/tables/agent-adapter.js';
 import { BUILDER_REFERENCE_TOPICS, builderReference } from '../platform/tables/builder-reference.js';
@@ -68,6 +71,8 @@ const tablesQuerySchema = z.object({
       'records.activity',
       'directory.search',
       'builder.reference',
+      'apps.list',
+      'apps.get',
     ])
     .describe('Read action to execute.'),
   base_id: z.number().int().positive().optional().describe('Base ID for base/tables/dashboards actions.'),
@@ -75,6 +80,7 @@ const tablesQuerySchema = z.object({
   record_id: z.number().int().positive().optional().describe('Record ID for records.get / records.activity.'),
   dashboard_id: z.number().int().positive().optional().describe('Dashboard ID for dashboard.get.'),
   automation_id: z.number().int().positive().optional().describe('Automation ID for automations.runs.'),
+  app_id: z.number().int().positive().optional().describe('App ID for apps.get (apps.list, optional base_id).'),
   search: z.string().max(200).optional().describe('Name search for bases.list and directory.search.'),
   topic: z
     .enum(BUILDER_REFERENCE_TOPICS)
@@ -140,6 +146,16 @@ function redactWebhooks(data: unknown): unknown {
 function rolesOnly(data: unknown): unknown {
   const { roles, references } = (data ?? {}) as { roles?: unknown; references?: unknown };
   return { roles, references };
+}
+
+/** `listApps` narrowed to one Base: the apps the caller manages there and the ones shared with them. */
+function appsOfBase(baseId: number | undefined) {
+  return (data: unknown) => {
+    const view = data as AppListView;
+    const keep = (apps: AppSummary[] | undefined) =>
+      (apps ?? []).filter((app) => baseId === undefined || app.baseId === baseId);
+    return { managed: keep(view.managed), shared: keep(view.shared) };
+  };
 }
 
 /** Active internal people and the groups the caller may grant, matching `search` (name / email). */
@@ -247,6 +263,17 @@ export function createTablesQueryTool(ctx: TablesQueryContext) {
           return searchDirectory(ctx.userId, input.search);
         case 'builder.reference':
           return builderReference(input.topic ?? 'plan');
+        case 'apps.list':
+          return run('listApps', {}, {}, appsOfBase(baseId));
+        case 'apps.get': {
+          const appId = input.app_id;
+          if (!appId) return { error: 'app_id is required' };
+          // Managers only: the draft (with today's schema problems) and who the app is shared with.
+          const draft = await dispatchTablesAgentAction(context, 'getAppDraft', { appId }, { appId });
+          if (!draft.ok) return { error: draft.message };
+          const audiences = await dispatchTablesAgentAction(context, 'listAppAudiences', { appId }, { appId });
+          return { ...(draft.data as object), audiences: audiences.ok ? audiences.data : null };
+        }
       }
     },
   });
