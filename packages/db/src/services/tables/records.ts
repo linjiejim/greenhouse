@@ -13,7 +13,7 @@
  * computed values, and `onRecordWritten` (history + automation enqueue).
  */
 
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 import type {
   TableBatchValidationResult,
@@ -317,6 +317,112 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
     if (attachments.length > 0) await tx.insert(tableRecordAttachments).values(attachments);
   };
 
+  /**
+   * What a scoped writer may put into relation and attachment fields, beyond
+   * "exists in this Base" (which `validateValuesWithContext` already checks
+   * for everyone). Only values new to the field count — ids already in the
+   * record's current value of the same field (`previous`) stay accepted, so
+   * editing an unrelated field never trips over a link someone else made.
+   *
+   * - D14: a new relation id must be a live record inside the writer's read
+   *   rows on the target table (`scope.relationTargets`); a target table the
+   *   role cannot see accepts nothing. Otherwise "change the link, then read
+   *   the lookup" would read hidden rows.
+   * - D15: a new attachment id must be the writer's own upload that is not on
+   *   any other record. Otherwise copying another record's file id onto an
+   *   own record would make it downloadable.
+   *
+   * Refusals read exactly like the generic "unavailable" ones, so they cannot
+   * tell a hidden record or file from a missing one. Full scopes (built-in
+   * roles, automations, imports) skip this: they read every row and file.
+   */
+  const assertScopedWriteTargets = async (
+    executor: TablesExecutor,
+    input: {
+      scope: TableAccessScope;
+      context: TableValidationContext;
+      recordId: number | null;
+      values: TableRecordValues;
+      previous: TableRecordValues | null;
+    },
+  ): Promise<void> => {
+    const { scope, context, recordId, values, previous } = input;
+    if (scope.kind !== 'scoped') return;
+    const asIds = (value: unknown): number[] =>
+      (Array.isArray(value) ? value : value === null || value === undefined ? [] : [value]).filter(
+        (entry): entry is number => typeof entry === 'number',
+      );
+    for (const [key, value] of Object.entries(values)) {
+      const field = context.byId.get(key);
+      if (!field || (field.type !== 'relation' && field.type !== 'attachment')) continue;
+      const before = new Set(asIds(previous?.[key]));
+      const added = [...new Set(asIds(value))].filter((id) => !before.has(id));
+      if (added.length === 0) continue;
+
+      if (field.type === 'relation') {
+        const targetTableId = parseTableFieldConfig(field).relation?.targetTableId;
+        const target = scope.relationTargets?.find((entry) => entry.tableId === targetTableId);
+        const unavailable = new TablesValidationError(`Field "${field.name}" references an unavailable record`);
+        if (!targetTableId || !target) throw unavailable;
+        const targetScope: TableAccessScope = {
+          kind: 'scoped',
+          userId: scope.userId,
+          tableId: targetTableId,
+          rows: target.rows,
+          editRows: [],
+          readableFieldIds: [],
+          editableFieldIds: [],
+          canCreate: false,
+          canDelete: false,
+        };
+        const predicate = scopeRowPredicate(
+          targetScope,
+          await loadCompileContext(executor, targetTableId, targetScope),
+          'read',
+        );
+        const reachable = await executor
+          .select({ id: tableRecords.id })
+          .from(tableRecords)
+          .where(
+            and(
+              eq(tableRecords.table_id, targetTableId),
+              inArray(tableRecords.id, added),
+              isNull(tableRecords.deleted_at),
+              predicate,
+            ),
+          );
+        if (reachable.length !== added.length) throw unavailable;
+        continue;
+      }
+
+      const unavailable = new TablesValidationError(`Field "${field.name}" references an unavailable Base file`);
+      const [own, attachedElsewhere] = await Promise.all([
+        executor
+          .select({ id: driveFiles.id })
+          .from(driveFiles)
+          .where(
+            and(
+              inArray(driveFiles.id, added),
+              eq(driveFiles.scope, 'tables'),
+              eq(driveFiles.status, 'active'),
+              eq(driveFiles.uploaded_by, scope.userId),
+            ),
+          ),
+        executor
+          .select({ id: tableRecordAttachments.drive_file_id })
+          .from(tableRecordAttachments)
+          .where(
+            and(
+              inArray(tableRecordAttachments.drive_file_id, added),
+              recordId === null ? undefined : ne(tableRecordAttachments.record_id, recordId),
+            ),
+          )
+          .limit(1),
+      ]);
+      if (own.length !== added.length || attachedElsewhere.length > 0) throw unavailable;
+    }
+  };
+
   /** The scope's row predicate on `tableId` (undefined = unrestricted). */
   const rowPredicate = async (
     tableId: number,
@@ -347,6 +453,7 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
     assertEditableKeys(scope, input.values);
     const values = validateValuesWithContext(context, input.values, { requireAll: true, scope });
     return db.transaction(async (tx) => {
+      await assertScopedWriteTargets(tx, { scope, context, recordId: null, values, previous: null });
       const now = nowIso();
       const computed = await compute.computeRecordValues(tx, input.table_id, values);
       const [created] = await tx
@@ -406,6 +513,13 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
       if (current.revision !== input.revision) return { ok: false, reason: 'conflict', current: current.revision };
       const patch = validateValuesWithContext(context, input.values, { requireAll: false, scope });
       const values = validateValuesWithContext(context, { ...current.values, ...patch }, { requireAll: true, scope });
+      await assertScopedWriteTargets(tx, {
+        scope,
+        context,
+        recordId: current.id,
+        values: patch,
+        previous: current.values,
+      });
       const now = nowIso();
       const computed = await compute.computeRecordValues(tx, input.table_id, values);
       const [updated] = await tx
@@ -717,37 +831,74 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
                 ),
               );
       const byRecordId = new Map(existing.map((record) => [record.id, record]));
-      return input.items.map((item, index): TableBatchValidationResult => {
+      const results: TableBatchValidationResult[] = [];
+      for (const [index, item] of input.items.entries()) {
         try {
           if (item.record_id == null) {
             if (scope.kind === 'scoped' && !scope.canCreate) {
               throw new TablesValidationError('Creating records is not allowed', 'create_forbidden');
             }
             assertEditableKeys(scope, item.values);
-            validateValuesWithContext(context, item.values, { requireAll: true, scope });
-            return { index, ok: true };
+            const values = validateValuesWithContext(context, item.values, { requireAll: true, scope });
+            await assertScopedWriteTargets(db, { scope, context, recordId: null, values, previous: null });
+            results.push({ index, ok: true });
+            continue;
           }
           const current = byRecordId.get(item.record_id);
-          if (!current) return { index, ok: false, reason: 'not_found' };
+          if (!current) {
+            results.push({ index, ok: false, reason: 'not_found' });
+            continue;
+          }
           if (!item.revision) {
-            return { index, ok: false, reason: 'invalid', message: 'revision is required' };
+            results.push({ index, ok: false, reason: 'invalid', message: 'revision is required' });
+            continue;
           }
           if (current.revision !== item.revision) {
-            return { index, ok: false, reason: 'conflict', current: current.revision };
+            results.push({ index, ok: false, reason: 'conflict', current: current.revision });
+            continue;
           }
           assertEditableKeys(scope, item.values);
           const patch = validateValuesWithContext(context, item.values, { requireAll: false, scope });
           validateValuesWithContext(context, { ...current.values, ...patch }, { requireAll: true, scope });
-          return { index, ok: true };
+          await assertScopedWriteTargets(db, {
+            scope,
+            context,
+            recordId: current.id,
+            values: patch,
+            previous: current.values,
+          });
+          results.push({ index, ok: true });
         } catch (error) {
-          return {
+          results.push({
             index,
             ok: false,
             reason: 'invalid',
             message: error instanceof Error ? error.message : 'Invalid record',
-          };
+          });
         }
-      });
+      }
+      return results;
+    },
+
+    /**
+     * Where a Drive file is attached: one row per (record, field), with the
+     * record's table and whether it is in the recycle bin. Drive's per-file
+     * checks (`canReadTablesFile`, deleting an unattached upload) read this.
+     */
+    async listFileAttachments(
+      driveFileId: number,
+    ): Promise<Array<{ record_id: number; field_id: number; table_id: number; deleted: boolean }>> {
+      const rows = await db
+        .select({
+          record_id: tableRecordAttachments.record_id,
+          field_id: tableRecordAttachments.field_id,
+          table_id: tableRecords.table_id,
+          deleted_at: tableRecords.deleted_at,
+        })
+        .from(tableRecordAttachments)
+        .innerJoin(tableRecords, eq(tableRecords.id, tableRecordAttachments.record_id))
+        .where(eq(tableRecordAttachments.drive_file_id, driveFileId));
+      return rows.map(({ deleted_at, ...row }) => ({ ...row, deleted: deleted_at !== null }));
     },
 
     async batchUpsertRecords(
