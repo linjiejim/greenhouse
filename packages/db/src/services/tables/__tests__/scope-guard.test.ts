@@ -43,6 +43,10 @@ const SCOPE_PARAM = {
   validateBatchRecords: 1,
   batchUpsertRecords: 1,
   submitForm: 2,
+  listRecordActivity: 3,
+  createComment: 1,
+  updateComment: 2,
+  deleteComment: 1,
 } as const satisfies Partial<Record<keyof TablesService, number>>;
 
 /** Write method → index of its meta parameter. */
@@ -69,6 +73,12 @@ type ScopeGuards = [
   Expect<RequiredParam<S['validateBatchRecords'], 1, TableAccessScope>>,
   Expect<RequiredParam<S['batchUpsertRecords'], 1, TableAccessScope>>,
   Expect<RequiredParam<S['submitForm'], 2, TableAccessScope>>,
+  // Activity: the row scope and the (kernel-capped) read scope for field changes.
+  Expect<RequiredParam<S['listRecordActivity'], 2, TableAccessScope>>,
+  Expect<RequiredParam<S['listRecordActivity'], 3, TableAccessScope>>,
+  Expect<RequiredParam<S['createComment'], 1, TableAccessScope>>,
+  Expect<RequiredParam<S['updateComment'], 2, TableAccessScope>>,
+  Expect<RequiredParam<S['deleteComment'], 1, TableAccessScope>>,
 ];
 type MetaGuards = [
   Expect<RequiredParam<S['createRecord'], 2, TableRecordWriteMeta>>,

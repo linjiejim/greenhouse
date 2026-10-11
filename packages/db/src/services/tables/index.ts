@@ -15,6 +15,7 @@
  *   records.ts      record reads / writes (scope + write meta required)
  *   aggregate.ts    aggregates (date buckets, series)
  *   activity.ts     record history + `onRecordWritten`
+ *   comments.ts     record comments + the merged activity feed (comments + history)
  *   forms.ts        forms and submissions
  *   automations.ts  rules, runs, enqueue entry point, legacy executor
  *   dashboards.ts   dashboards and widgets
@@ -25,6 +26,7 @@ import type { Db } from '../../client.js';
 import { createTablesActivity } from './activity.js';
 import { createTablesAggregates } from './aggregate.js';
 import { createTablesAutomations } from './automations.js';
+import { createTablesComments } from './comments.js';
 import { createTablesCompute } from './compute.js';
 import { createTablesDashboards } from './dashboards.js';
 import { createTablesForms } from './forms.js';
@@ -73,6 +75,13 @@ export type {
 export type { CreateTableViewInput, UpdateTableViewInput } from './views.js';
 export { TABLES_RESOURCE_KINDS, type TablesResourceKind } from './resources.js';
 export type { CreateTableFormInput, UpdateTableFormInput } from './forms.js';
+export {
+  normalizeCommentBody,
+  tableCommentView,
+  type CreateTableCommentInput,
+  type ListTableActivityOptions,
+  type UpdateTableCommentInput,
+} from './comments.js';
 export type {
   BatchUpsertTableRecordItem,
   CreateTableRecordInput,
@@ -117,6 +126,7 @@ export function createTablesService(db: Db) {
     ...records.service,
     ...createTablesAggregates(db),
     ...createTablesActivity(db),
+    ...createTablesComments(db, { getRecord: records.service.getRecord }),
     ...createTablesForms(db, { records: records.internal }),
     ...automations.service,
     ...createTablesDashboards(db),

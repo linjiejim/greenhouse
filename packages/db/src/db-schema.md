@@ -179,7 +179,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_form_submissions` | PK `id`；部分 UK `(form_id, user_id) WHERE single_submit` | 每次提交一行，与记录同事务插入；`allowMultiple=false` 的表单写 `single_submit=true`，并发双击只成功一次 |
 | `table_records` | PK `id` | 动态记录；用户值在 `values JSONB`，计算字段（Formula/Rollup/Lookup）在 `computed_values JSONB`（写事务内计算）；用户 revision 与计算 revision 分离；`deleted_at` = 软删，表内回收站可自助恢复（恢复同样 bump revision） |
 | `table_record_events` | PK `id`；IDX `(record_id, created_at DESC, id DESC)` | 记录历史：created/updated/deleted/restored，字段级 `changes [{fieldId,before,after}]`（值截断）、`actor_kind`（user/agent/automation/form/import/app/system）与 `meta`（formId/importId/ruleId/appId/executorId）；只由 `onRecordWritten` 在写事务内追加，重算 / 汇总级联不写 |
-| `table_record_comments` | PK `id`；IDX `(record_id, created_at, id)` | 记录评论（Markdown，`mentions JSONB` 用户 id），软删 `deleted_at` |
+| `table_record_comments` | PK `id`；IDX `(record_id, created_at, id)` | 记录评论（Markdown ≤10k 字符，`[@名字](user:<id>)` 提及；`mentions JSONB` = 解析出的有效内部用户 id），软删 `deleted_at`；`updated_at ≠ created_at` 即「已编辑」。读写都经 `services/tables/comments.ts`（行范围必填） |
 | `table_record_links` | PK `id`；UK `(field_id, source_record_id, target_record_id)` | Relation canonical 边；保持顺序并支持 target 反查 |
 | `table_record_attachments` | PK `id`；UK `(record_id, field_id, drive_file_id)` | Record/Field 到 Tables-scope Drive 文件的规范化附件边 |
 | `table_recompute_jobs` | PK `id`；UK `idempotency_key` | Rollup 持久重算状态；queued/running/succeeded/failed、attempt/error 与时间戳 |

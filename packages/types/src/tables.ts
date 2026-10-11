@@ -580,6 +580,23 @@ export type TableRecordActivityItem = TableRecordEventView | TableRecordCommentV
 export interface TableRecordActivityPage {
   items: TableRecordActivityItem[];
   nextCursor: string | null;
+  /** What the caller may do on this record's activity (set by `listRecordActivity`). */
+  viewer?: TableRecordActivityViewer;
+}
+
+/** Comment bodies are Markdown, at most this many characters (mention links included). */
+export const TABLE_COMMENT_MAX_LENGTH = 10_000;
+/** `listRecordActivity` page size: default and ceiling. */
+export const TABLE_ACTIVITY_PAGE_SIZE = 30;
+export const TABLE_ACTIVITY_MAX_PAGE_SIZE = 50;
+
+export interface TableRecordActivityViewer {
+  /** The effective user — the author id a client compares to offer "edit / delete my comment". */
+  userId: string;
+  /** May post (and, as author, edit / delete) comments here. */
+  canComment: boolean;
+  /** May delete anyone's comment (Base builder+). */
+  canModerate: boolean;
 }
 
 /** A record's automation buttons the caller may press (no rule configuration exposed). */
