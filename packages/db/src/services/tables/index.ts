@@ -17,7 +17,8 @@
  *   aggregate.ts    aggregates (date buckets, series)
  *   activity.ts     record history + `onRecordWritten`
  *   forms.ts        forms and submissions
- *   automations.ts  rules, runs, enqueue entry point, legacy executor
+ *   automations.ts  rules (validation, executor, secrets), buttons, the in-transaction enqueue
+ *   automation-queue.ts  outbox leases / checkpoints, run rows, sweep queries (the API runs rules)
  *   dashboards.ts   dashboards and widgets
  *   imports.ts      CSV / Excel import lifecycle (stage, claim, chunked commit, sweep)
  *   import-values.ts  cell text → field value, column inference (pure)
@@ -27,6 +28,7 @@
 import type { Db } from '../../client.js';
 import { createTablesActivity } from './activity.js';
 import { createTablesAggregates } from './aggregate.js';
+import { createTablesAutomationQueue } from './automation-queue.js';
 import { createTablesAutomations } from './automations.js';
 import { createTablesCompute } from './compute.js';
 import { createTablesDashboards } from './dashboards.js';
@@ -63,10 +65,17 @@ export {
 } from './query.js';
 export {
   assignAutomationActionIds,
+  automationSecretAad,
+  normalizeStoredAutomationConfig,
+  ruleTimeZone,
+  type AutomationScheduling,
+  type AutomationSecretSealer,
   type CreateTableAutomationInput,
   type TableAutomationConfigInput,
+  type TableAutomationRuleView,
   type UpdateTableAutomationInput,
 } from './automations.js';
+export { TablesAutomationLeaseLostError, type TablesAutomationQueue } from './automation-queue.js';
 export type {
   CreateTableBaseInput,
   CreateTableDefinitionInput,
@@ -148,22 +157,10 @@ export type {
 
 export function createTablesService(db: Db) {
   const compute = createTablesCompute(db);
-  const { canUserEditBase, ...members } = createTablesMembers(db);
+  const members = createTablesMembers(db);
   const views = createTablesViews(db);
-  // The legacy executor and the record writes reference each other; the
-  // executor is bound after both exist (it only runs after a write commits).
-  const legacy: { run?: ReturnType<typeof createTablesAutomations>['runLegacyAutomations'] } = {};
-  const records = createTablesRecords(db, {
-    compute,
-    afterCommit: async (trigger, record, meta) => {
-      await legacy.run?.(trigger, record, meta);
-    },
-  });
-  const automations = createTablesAutomations(db, {
-    records: records.internal,
-    canUserEditBase,
-  });
-  legacy.run = automations.runLegacyAutomations;
+  const records = createTablesRecords(db, { compute });
+  const automations = createTablesAutomations(db, { records: records.internal });
 
   return {
     ...createTablesSchema(db, { compute, listViews: views.listViews }),
@@ -175,6 +172,7 @@ export function createTablesService(db: Db) {
     ...createTablesActivity(db),
     ...createTablesForms(db, { records: records.internal }),
     ...automations.service,
+    ...createTablesAutomationQueue(db),
     ...createTablesDashboards(db),
     ...createTablesImports(db, { records: records.internal }),
     ...createTablesResources(db),

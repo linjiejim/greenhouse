@@ -48,6 +48,7 @@ vi.mock('../upkeep-jobs.js', () => ({
   stopUpkeepJobs: mocks.stopUpkeepJobs,
   startTablesFormUploadSweepJob: vi.fn(),
   startExtensionJobs: vi.fn(),
+  startTablesAutomationSweep: vi.fn(),
 }));
 
 import { TaskScheduler } from '../index.js';

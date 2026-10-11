@@ -10,6 +10,9 @@ import { _resetProvider, initDatabase, TablesValidationError, type DatabaseProvi
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { fullTableAccess } from '@greenhouse/types/table-access';
 import { createInternalTestUser } from '../helpers/internal-user.js';
+import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../apps/api/src/platform/runtime.js';
+import { tablesRegistration } from '../../apps/api/src/platform/tables/application.js';
+import { createTablesAutomationRunner } from '../../apps/api/src/platform/tables/automation-worker.js';
 
 let db: DatabaseProvider;
 let ownerId: string;
@@ -26,6 +29,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  resetPlatformRuntimeForTests();
   await db.close();
   _resetProvider();
 });
@@ -529,7 +533,7 @@ describe('Tables domain service', () => {
     ).rejects.toThrow(/Unsupported dashboard widget type/);
   });
 
-  it('publishes internal forms and executes idempotent notification automations', async () => {
+  it('publishes internal forms and runs notification automations once, through the worker', async () => {
     const { base, schema, primary } = await fixture();
     const status = await createStatusField(schema.table.id);
     const form = await db.tables.createForm({
@@ -559,6 +563,8 @@ describe('Tables domain service', () => {
       ),
     ).rejects.toThrow(/not published/);
 
+    // Recipients must be able to read the record: the teammate views the Base.
+    await db.tables.upsertBaseMember({ base_id: base.id, user_id: teammateId, role: 'viewer', added_by: ownerId });
     const automation = await db.tables.createAutomationRule({
       base_id: base.id,
       table_id: schema.table.id,
@@ -571,11 +577,10 @@ describe('Tables domain service', () => {
             type: 'notify',
             userIds: [teammateId],
             title: 'New launch item',
-            message: 'A launch item was created.',
+            message: 'A launch item was created: {{field:' + String(primary.id) + '}}.',
           },
         ],
-      },
-      execution_user_id: ownerId,
+      } as never,
       user_id: ownerId,
     });
     const created = await db.tables.createRecord(
@@ -586,20 +591,38 @@ describe('Tables domain service', () => {
       full(ownerId),
       meta(ownerId),
     );
+    // Nothing runs inside the write; the worker drains the queue.
+    expect(await db.tables.listAutomationRuns(automation.id)).toEqual([]);
+    initializePlatformRuntime(db, [tablesRegistration]);
+    const worker = createTablesAutomationRunner({
+      db,
+      workerId: 'tables-service-test',
+      publishOptions: { pushEnabled: false },
+    });
+    await worker.runOnce();
+    await worker.runOnce();
+
     expect(await db.tables.listAutomationRuns(automation.id)).toEqual([
-      expect.objectContaining({ rule_id: automation.id, status: 'succeeded', actions_completed: 1 }),
-    ]);
-    expect(await db.tables.listNotifications(teammateId)).toEqual([
       expect.objectContaining({
-        base_id: base.id,
+        rule_id: automation.id,
+        status: 'succeeded',
+        actions_completed: 1,
         record_id: created.id,
+      }),
+    ]);
+    const inbox = await db.notifications.listForUser({ user_id: teammateId });
+    expect(inbox.items).toEqual([
+      expect.objectContaining({
+        kind: 'tables_automation',
         title: 'New launch item',
+        body: 'A launch item was created: Automated item.',
         read_at: null,
       }),
     ]);
-    const notification = (await db.tables.listNotifications(teammateId))[0]!;
-    expect((await db.tables.markNotificationRead(notification.id, teammateId))?.read_at).toEqual(expect.any(String));
-    expect(await db.tables.markNotificationRead(notification.id, ownerId)).toBeUndefined();
+    expect(JSON.parse(inbox.items[0]!.payload)).toMatchObject({
+      href: `#/tables/${base.id}/table/${schema.table.id}?record=${created.id}`,
+      recordId: created.id,
+    });
   });
 
   it('accepts only active Drive files from the same Base and persists attachment edges', async () => {

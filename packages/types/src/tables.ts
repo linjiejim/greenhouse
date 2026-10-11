@@ -529,8 +529,95 @@ export interface TableAutomationRunStep {
   actionId: string;
   type: TableAutomationActionType;
   status: 'succeeded' | 'failed' | 'skipped';
+  /** What happened, as a stable code the client words (`params` fill it in). */
+  code?: TableAutomationStepCode;
+  params?: Record<string, string | number>;
+  /** Raw detail (an HTTP status line, a validation error) shown as-is. */
   message?: string;
   at: string;
+}
+
+export type TableAutomationStepCode =
+  | 'record_updated'
+  | 'record_created'
+  | 'notified'
+  | 'webhook_sent'
+  | 'webhook_retrying'
+  | 'delayed'
+  | 'failed';
+
+/**
+ * Why a run did not finish, stored in `table_automation_runs.error` (anything
+ * else there is a raw message): the rule changed while the run waited, its
+ * executor is no longer a builder, its record or table is gone, or 0024 closed
+ * a run of the old synchronous executor.
+ */
+export const TABLE_AUTOMATION_RUN_ERRORS = [
+  'rule_changed',
+  'executor_not_builder',
+  'record_unavailable',
+  'table_unavailable',
+  'legacy_sync_executor',
+] as const;
+export type TableAutomationRunError = (typeof TABLE_AUTOMATION_RUN_ERRORS)[number];
+
+export type TableAutomationSchedule = NonNullable<TableAutomationConfig['schedule']>;
+export type TableAutomationDateTrigger = NonNullable<TableAutomationConfig['dateTrigger']>;
+
+/** A run is `running` while it waits on a delay or a retry; `canceled` = the rule changed, or its executor lost builder access. */
+export const TABLE_AUTOMATION_RUN_STATUSES = ['running', 'succeeded', 'failed', 'canceled'] as const;
+export type TableAutomationRunStatus = (typeof TABLE_AUTOMATION_RUN_STATUSES)[number];
+
+/** Limits the server enforces and the editor quotes. */
+export const TABLE_AUTOMATION_LIMITS = {
+  actions: 10,
+  /** schedule: nothing fires more often than this. */
+  minScheduleIntervalMinutes: 15,
+  /** schedule scope `records`: at most this many records per occurrence. */
+  scheduleRecords: 200,
+  delayMinutes: 1440,
+  dateOffsetDays: 365,
+  buttonLabel: 40,
+  notifyTitle: 120,
+  notifyMessage: 2_000,
+  webhookUrl: 2_000,
+  webhookSecretMin: 16,
+  webhookSecretMax: 256,
+} as const;
+
+/**
+ * Value tokens an `update_record` / `create_record` value may be, whole:
+ * `$now` (the run's instant), `$today` (its date in the rule's time zone),
+ * `$actor` (the member whose write or click triggered the run).
+ */
+export const TABLE_AUTOMATION_VALUE_TOKENS = ['$now', '$today', '$actor'] as const;
+export type TableAutomationValueToken = (typeof TABLE_AUTOMATION_VALUE_TOKENS)[number];
+
+/** `{{field:<id>}}` — a field of the triggering record, in action values and notify / webhook text. */
+export const TABLE_AUTOMATION_FIELD_TEMPLATE = /\{\{field:(\d+)\}\}/g;
+
+/** The field ids a template string references, in order of first use. */
+export function automationTemplateFieldIds(text: string): number[] {
+  const ids: number[] = [];
+  for (const match of text.matchAll(TABLE_AUTOMATION_FIELD_TEMPLATE)) {
+    const id = Number(match[1]);
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+/** Which triggers run with a record, and which with the member who caused them. */
+export function automationTriggerHasRecord(
+  trigger: TableAutomationTrigger,
+  schedule?: TableAutomationConfig['schedule'],
+): boolean {
+  return trigger !== 'schedule' || schedule?.scope === 'records';
+}
+
+export function automationTriggerHasActor(trigger: TableAutomationTrigger): boolean {
+  return (
+    trigger === 'record_created' || trigger === 'record_updated' || trigger === 'record_matched' || trigger === 'button'
+  );
 }
 
 export interface TableAggregateInput {

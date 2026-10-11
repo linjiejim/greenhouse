@@ -2,6 +2,12 @@
  * Durable optional-channel delivery for permanent platform notifications: the
  * automation channels (WeCom / Feishu / email) one attempt at a time, mobile
  * pushes as one batch per pass (push/deliver.ts — Expo takes ≤100 per request).
+ *
+ * Two payload shapes reach the WeCom / Feishu / email channels: a scheduled
+ * task's `automation_result`, and the generic `message` ({title, markdown,
+ * href?}) that Tables automations write. A recipient who has not connected the
+ * channel (no WeCom / Feishu binding, no email address) is settled
+ * `suppressed` — rechecked and not worth sending — never retried to dead letter.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -13,6 +19,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { sendWeComMarkdown } from '@greenhouse/utils/wecom';
 import { sendFeishuMarkdown } from '@greenhouse/utils/feishu';
 
+import { botsLocale } from '../bots/engine/copy.js';
 import { sendFromSharedMailbox } from '../email/service.js';
 import { WECOM_PROVIDER } from '../routes/wecom-oauth.js';
 import {
@@ -26,6 +33,7 @@ import { sendCardMarkdown } from '../feishu/client.js';
 import { FEISHU_PROVIDER } from '../routes/feishu-oauth.js';
 import { deliverPushAttempts } from './push/deliver.js';
 import type { FetchLike } from './push/expo.js';
+import { flattenForDelivery, renderNotificationEmail } from './render.js';
 
 const DEFAULT_INTERVAL_MS = 1_000;
 const DEFAULT_LEASE_MS = 120_000;
@@ -37,6 +45,46 @@ export const AUTOMATION_DELIVERY_CHANNELS: readonly NotificationDeliveryChannel[
 interface DeliveryResult {
   ok: boolean;
   error?: string;
+  /** Rechecked and not worth sending (the recipient has no binding / address): settle `suppressed`, no retry. */
+  suppressed?: string;
+}
+
+/** The generic delivery payload (Tables automations): a title, Markdown, and an in-app `#/` link. */
+export interface MessageNotificationPayload {
+  schema: 1;
+  type: 'message';
+  title: string;
+  markdown: string;
+  href?: string;
+}
+
+export function parseMessageNotificationPayload(value: unknown): MessageNotificationPayload | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const payload = value as Partial<MessageNotificationPayload>;
+  if (
+    payload.schema !== 1 ||
+    payload.type !== 'message' ||
+    typeof payload.title !== 'string' ||
+    !payload.title.trim() ||
+    typeof payload.markdown !== 'string'
+  ) {
+    return null;
+  }
+  const href = typeof payload.href === 'string' && payload.href.startsWith('#/') ? payload.href : undefined;
+  return { schema: 1, type: 'message', title: payload.title, markdown: payload.markdown, ...(href ? { href } : {}) };
+}
+
+/** An absolute link for a `#/` route, when the deployment knows its public URL. */
+function absoluteLink(href: string | undefined): string | null {
+  const base = process.env.PUBLIC_BASE_URL?.replace(/\/$/, '');
+  return href && base ? `${base}/${href}` : null;
+}
+
+const OPEN_LABEL = { en: 'Open', zh: '打开' } as const;
+
+function messageMarkdown(message: MessageNotificationPayload, link: string | null, label: string): string {
+  const body = flattenForDelivery(message.markdown).trim();
+  return `**${message.title}**${body ? `\n\n${body}` : ''}${link ? `\n\n[${label}](${link})` : ''}`;
 }
 
 export interface NotificationDeliveryWorkerOptions {
@@ -69,12 +117,55 @@ export function retryAt(attempts: number, now: Date): string {
 }
 
 /**
+ * The member-owned channels (DM / own email) share one shape: the envelope
+ * names the notification's owner, and the binding is resolved at send time.
+ * No binding = `suppressed`: connecting later does not resend old notices.
+ */
+async function deliverToOwner(
+  db: DatabaseProvider,
+  attempt: NotificationDeliveryAttemptRow,
+  owner: string,
+  recipient: NonNullable<ReturnType<typeof automationDeliveryRecipient.parse>>,
+  content: {
+    markdown: string;
+    email: { subject: string; body_text: string; body_html: string };
+    emailContext: { sessionId?: string; taskId?: number };
+  },
+): Promise<DeliveryResult> {
+  if (attempt.channel === 'feishu' && recipient.kind === 'feishu_user') {
+    if (recipient.userId !== owner) return { ok: false, error: 'Feishu recipient is not the notification owner' };
+    const binding = await db.providerTokens.get(recipient.userId, FEISHU_PROVIDER, null);
+    if (!binding?.provider_user_id) return { ok: false, suppressed: 'Notification owner has not connected Feishu' };
+    return sendCardMarkdown(binding.provider_user_id, content.markdown);
+  }
+
+  if (attempt.channel === 'wecom' && recipient.kind === 'wecom_user') {
+    if (recipient.userId !== owner) return { ok: false, error: 'WeCom recipient is not the notification owner' };
+    const binding = await db.providerTokens.get(recipient.userId, WECOM_PROVIDER, null);
+    if (!binding?.provider_user_id) return { ok: false, suppressed: 'Notification owner has not connected WeCom' };
+    return sendAppMarkdown(binding.provider_user_id, content.markdown);
+  }
+
+  if (attempt.channel === 'email' && recipient.kind === 'email_user') {
+    if (recipient.userId !== owner) return { ok: false, error: 'Email recipient is not the notification owner' };
+    const user = await db.users.getById(recipient.userId);
+    if (!user?.email) return { ok: false, suppressed: 'Notification owner has no usable email address' };
+    return sendFromSharedMailbox(db, { address: user.email, name: user.nickname ?? undefined }, content.email, {
+      userId: owner,
+      origin: 'automation',
+      ...content.emailContext,
+    });
+  }
+
+  return { ok: false, error: `Channel ${attempt.channel} does not match its recipient envelope` };
+}
+
+/**
  * Execute exactly one already-leased attempt.
  *
  * Recipient envelopes are server-generated and deliberately absent from the
- * user-visible notification payload. The user/WeCom binding is resolved at
- * send time so an account connected after the first failure can still make a
- * later retry succeed.
+ * user-visible notification payload; DM and email recipients are always the
+ * notification's owner, resolved to an address only at send time.
  */
 export async function deliverNotificationAttempt(
   db: DatabaseProvider,
@@ -82,11 +173,33 @@ export async function deliverNotificationAttempt(
 ): Promise<DeliveryResult> {
   const notification = await db.notifications.get(attempt.notification_id);
   if (!notification) return { ok: false, error: 'Permanent notification no longer exists' };
-
-  const payload = parseAutomationResultNotificationPayload(safeJsonParse(notification.payload, null));
-  if (!payload) return { ok: false, error: 'Notification has no supported durable delivery payload' };
   const recipient = automationDeliveryRecipient.parse(attempt.recipient);
   if (!recipient) return { ok: false, error: 'Notification delivery recipient envelope is invalid' };
+  const stored = safeJsonParse(notification.payload, null);
+
+  const message = parseMessageNotificationPayload(stored);
+  if (message) {
+    if (recipient.kind === 'wecom_webhook' || recipient.kind === 'feishu_webhook') {
+      return { ok: false, error: 'Message notifications go to their owner only, never to a group webhook' };
+    }
+    const owner = await db.users.getById(notification.user_id);
+    const label = OPEN_LABEL[botsLocale(owner?.locale)];
+    const link = absoluteLink(message.href);
+    const markdown = messageMarkdown(message, link, label);
+    const body = flattenForDelivery(message.markdown);
+    return deliverToOwner(db, attempt, notification.user_id, recipient, {
+      markdown,
+      email: {
+        subject: message.title,
+        body_text: [message.title, '', body, ...(link ? ['', `${label}: ${link}`] : [])].join('\n'),
+        body_html: renderNotificationEmail({ heading: message.title, body, link: link ? { url: link, label } : null }),
+      },
+      emailContext: {},
+    });
+  }
+
+  const payload = parseAutomationResultNotificationPayload(stored);
+  if (!payload) return { ok: false, error: 'Notification has no supported durable delivery payload' };
   const task = { name: payload.task_name };
   const outcome = {
     status: payload.status,
@@ -111,44 +224,11 @@ export async function deliverNotificationAttempt(
       : { ok: false, error: result.error ?? `Feishu webhook returned HTTP ${result.status ?? 'unknown'}` };
   }
 
-  if (attempt.channel === 'feishu' && recipient.kind === 'feishu_user') {
-    if (recipient.userId !== notification.user_id) {
-      return { ok: false, error: 'Feishu recipient is not the notification owner' };
-    }
-    const binding = await db.providerTokens.get(recipient.userId, FEISHU_PROVIDER, null);
-    if (!binding?.provider_user_id) return { ok: false, error: 'Notification owner has not connected Feishu' };
-    return sendCardMarkdown(binding.provider_user_id, buildTaskNotification(task, outcome, writes));
-  }
-
-  if (attempt.channel === 'wecom' && recipient.kind === 'wecom_user') {
-    if (recipient.userId !== notification.user_id) {
-      return { ok: false, error: 'WeCom recipient is not the notification owner' };
-    }
-    const binding = await db.providerTokens.get(recipient.userId, WECOM_PROVIDER, null);
-    if (!binding?.provider_user_id) return { ok: false, error: 'Notification owner has not connected WeCom' };
-    return sendAppMarkdown(binding.provider_user_id, buildTaskNotification(task, outcome, writes));
-  }
-
-  if (attempt.channel === 'email' && recipient.kind === 'email_user') {
-    if (recipient.userId !== notification.user_id) {
-      return { ok: false, error: 'Email recipient is not the notification owner' };
-    }
-    const owner = await db.users.getById(recipient.userId);
-    if (!owner?.email) return { ok: false, error: 'Notification owner has no usable email address' };
-    return sendFromSharedMailbox(
-      db,
-      { address: owner.email, name: owner.nickname ?? undefined },
-      buildTaskEmail(task, outcome, writes),
-      {
-        userId: notification.user_id,
-        origin: 'automation',
-        sessionId: payload.session_id,
-        taskId: payload.task_id,
-      },
-    );
-  }
-
-  return { ok: false, error: `Channel ${attempt.channel} does not match its recipient envelope` };
+  return deliverToOwner(db, attempt, notification.user_id, recipient, {
+    markdown: buildTaskNotification(task, outcome, writes),
+    email: buildTaskEmail(task, outcome, writes),
+    emailContext: { sessionId: payload.session_id, taskId: payload.task_id },
+  });
 }
 
 export async function startNotificationDeliveryWorker(
@@ -166,6 +246,17 @@ export async function startNotificationDeliveryWorker(
   const processAttempt = async (attempt: NotificationDeliveryAttemptRow): Promise<void> => {
     try {
       const result = await deliverNotificationAttempt(db, attempt);
+      if (result.suppressed) {
+        await db.notifications.settleDelivery({
+          id: attempt.id,
+          expected_version: attempt.version,
+          worker_id: workerId,
+          status: 'suppressed',
+          reason: result.suppressed,
+          at: now(),
+        });
+        return;
+      }
       if (result.ok) {
         await db.notifications.acknowledgeDelivery({
           id: attempt.id,

@@ -90,6 +90,12 @@ export interface TableRecordWrittenEvent {
   before: TableRecordValues | null;
   after: TableRecordValues | null;
   meta: TableRecordWriteMeta;
+  /**
+   * Updates only: the row's `updated_at` / `updated_by` before this write, so a
+   * condition on those system fields can be evaluated against the before image
+   * (`record_matched`).
+   */
+  previous?: { updatedAt: string; updatedBy: string };
 }
 
 export function trimmed(value: string, field: string, max: number): string {

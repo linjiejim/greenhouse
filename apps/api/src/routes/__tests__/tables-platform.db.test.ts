@@ -15,6 +15,7 @@ import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../p
 import { createTablesMutationTool } from '../../tools/tables-mutation.js';
 import { createTablesQueryTool } from '../../tools/tables-query.js';
 import { createExportDataTool } from '../../tools/export-data.js';
+import { createTablesAutomationRunner } from '../../platform/tables/automation-worker.js';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { fullTableAccess } from '@greenhouse/types/table-access';
 import { deleteObjectAtKey, getObjectAtKey } from '../../storage/uploads.js';
@@ -449,6 +450,13 @@ describe('Tables Platform application', () => {
       body: JSON.stringify({ values: { [primaryId]: 'Triggers notification' } }),
     });
     expect(recordResponse.status).toBe(201);
+    // The write only queued the rule; the worker runs it.
+    const worker = createTablesAutomationRunner({
+      db,
+      workerId: 'tables-platform-test',
+      publishOptions: { pushEnabled: false },
+    });
+    await worker.runOnce();
 
     const runs = await app.request(`/api/tables/automations/${rule.id}/runs`, {
       headers: { 'x-test-user': owner.id },
@@ -457,10 +465,10 @@ describe('Tables Platform application', () => {
     expect((await runs.json()).runs).toEqual([
       expect.objectContaining({ rule_id: rule.id, status: 'succeeded', actions_completed: 1 }),
     ]);
-    // The legacy inbox is still written until slice Au moves `notify` onto the
-    // platform notification center; its HTTP routes are gone (manifest 1.3.0).
-    expect(await db.tables.listNotifications(editor.id, 10)).toEqual([
-      expect.objectContaining({ user_id: editor.id, title: 'New item', read_at: null }),
+    // `notify` lands in the platform notification center; the legacy Tables
+    // inbox routes are gone (manifest 1.3.0).
+    expect((await db.notifications.listForUser({ user_id: editor.id })).items).toEqual([
+      expect.objectContaining({ kind: 'tables_automation', title: 'New item', read_at: null }),
     ]);
     const retired = await app.request('/api/tables/notifications', { headers: { 'x-test-user': editor.id } });
     expect(retired.status).toBe(404);

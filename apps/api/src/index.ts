@@ -144,6 +144,8 @@ import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './runtime/subagent-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
 import { AUTOMATION_DELIVERY_CHANNELS, startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
+import { tablesAutomationWorkerEnabled } from './platform/tables/automation-config.js';
+import { startTablesAutomationWorker } from './platform/tables/automation-worker.js';
 import { mobilePushEnabled } from './notifications/push/config.js';
 import { createRuntimeDomainProjector } from './runtime/domain-projector.js';
 import {
@@ -569,6 +571,7 @@ async function main() {
   if (trustedExecutionPlan.evalDriver) await reconcileEvalRuntimeRuns(dbProvider);
   let runtimeWorker: Awaited<ReturnType<typeof startRuntimeWorker>> | null = null;
   let notificationDeliveryWorker: Awaited<ReturnType<typeof startNotificationDeliveryWorker>> | null = null;
+  let tablesAutomationWorker: Awaited<ReturnType<typeof startTablesAutomationWorker>> | null = null;
 
   // Mount everything (single typed chain — see mountRoutes/AppType above)
   mountRoutes(toolRegistry);
@@ -598,6 +601,7 @@ async function main() {
     runtimeReconciler?.stop();
     runtimeWorker?.stop();
     notificationDeliveryWorker?.stop();
+    tablesAutomationWorker?.stop();
     stopFeishuBot();
     await runExtensionShutdownHooks();
     await chatRunRegistry.shutdown(5000);
@@ -632,15 +636,22 @@ async function main() {
   // terminal Runtime transaction. Drain their permanent per-channel queue on
   // every boot and keep retrying independently until delivered/dead-lettered.
   // Mobile pushes ride the same queue under their own switch (MOBILE_PUSH_ENABLED):
-  // off, the worker never claims one and nothing is sent to exp.host.
+  // off, the worker never claims one and nothing is sent to exp.host. Tables
+  // automation `notify` writes IM / email rows to the same channels, so they are
+  // claimed while either producer is on.
+  const tablesAutomations = tablesAutomationWorkerEnabled();
   const deliveryChannels = [
-    ...(trustedExecutionPlan.notificationProjector ? AUTOMATION_DELIVERY_CHANNELS : []),
+    ...(trustedExecutionPlan.notificationProjector || tablesAutomations ? AUTOMATION_DELIVERY_CHANNELS : []),
     ...(mobilePushEnabled() ? (['mobile_push'] as const) : []),
   ];
   notificationDeliveryWorker =
     deliveryChannels.length > 0
       ? await startNotificationDeliveryWorker({ db: dbProvider, channels: deliveryChannels })
       : null;
+
+  // Tables automations: record writes, the minute sweep (scheduler upkeep) and
+  // button presses queue rule runs; this worker runs them (TABLES_AUTOMATION_WORKER).
+  tablesAutomationWorker = tablesAutomations ? await startTablesAutomationWorker({ db: dbProvider }) : null;
 
   // Eval calls the authenticated local HTTP surface, so no Runtime driver may
   // claim work until the socket above is actually listening. The boot pass is

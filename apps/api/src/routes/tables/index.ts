@@ -68,11 +68,14 @@
  * POST   /tables/:tableId/imports/:importId/validate — 按映射预检全部行（不写入）
  * POST   /tables/:tableId/imports/:importId/commit   — 提交（每次写几秒；committing 时再调一次续写）
  *
- * 自动化（./automations.ts）
- * GET    /bases/:baseId/automations                  — 自动化规则列表（builder）
- * POST   /bases/:baseId/automations                  — 创建规则
+ * 自动化（./automations.ts；Webhook 动作与密钥只能经这里由人设置）
+ * GET    /bases/:baseId/automations                  — 自动化规则列表（builder，Webhook 只带 hasSecret）
+ * POST   /bases/:baseId/automations                  — 创建规则（执行者 = 保存者）
  * PATCH  /automations/:automationId                  — revision 更新规则
- * GET    /automations/:automationId/runs             — 运行记录
+ * DELETE /automations/:automationId                  — 删除规则（builder，连带运行记录）
+ * GET    /automations/:automationId/runs             — 运行记录（逐步日志）
+ * POST   /automations/:automationId/trigger          — 按下记录上的按钮（{recordId, requestId}，排队异步执行）
+ * GET    /tables/:tableId/records/:recordId/buttons  — 该记录上当前用户能按的按钮
  *
  * 仪表盘（./dashboards.ts）
  * GET    /bases/:baseId/dashboards                   — Dashboard 列表
