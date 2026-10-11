@@ -253,6 +253,9 @@ const appRoutes = new Hono<AppEnv>()
         cardId: field('cardId'),
         fieldId: Number(field('fieldId')) || undefined,
         file,
+        // Managers only (the session ignores them for anyone else): a draft preview uploads to its own cards.
+        previewRole: field('previewRole'),
+        draft: field('draft') === '1' || field('draft') === 'true',
       };
       const result = await dispatch(c, 'uploadAppFile', payload, { appId });
       if (!result.ok) return actionError(c, result);
@@ -268,6 +271,8 @@ const appRoutes = new Hono<AppEnv>()
       cardId: c.req.query('cardId') || undefined,
       recordId: queryInt(c, 'recordId'),
       fieldId: queryInt(c, 'fieldId'),
+      previewRole: c.req.query('previewRole') || undefined,
+      draft: c.req.query('draft') === '1' || c.req.query('draft') === 'true',
     };
     const result = await dispatch(c, 'getAppFile', payload, { appId });
     if (!result.ok) return actionError(c, result);

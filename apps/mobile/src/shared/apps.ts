@@ -472,7 +472,8 @@ export interface AppRuntimeView {
 export interface AppCardQueryInput {
   pageId: string;
   cardId: string;
-  filterValues?: Record<string, TableFilterValue>;
+  /** `null` = the viewer cleared that filter (its default no longer applies), as on dashboards. */
+  filterValues?: Record<string, TableFilterValue | null>;
   timezone?: string;
   cursor?: string;
   search?: string;

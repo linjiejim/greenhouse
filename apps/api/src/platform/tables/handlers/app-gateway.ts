@@ -129,6 +129,13 @@ async function openCard(
   return { ok: true, session: opened.session, located, payload };
 }
 
+/** `YYYY-MM-DD` → the following day (calendar arithmetic in UTC, no time zone involved). */
+function nextDay(day: string): string {
+  const date = new Date(`${day}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
 function viewerTimezone(payload: Record<string, unknown>): string | undefined {
   const value = stringValue(payload, 'timezone');
   return value && value.length <= 64 ? value : undefined;
@@ -275,15 +282,24 @@ const queryAppCard: Handler = async (request, context) => {
   const range = objectValue<{ from?: unknown; to?: unknown }>(payload, 'range');
   const extra: TableFilterGroup[] = [];
   if (range && recordsCard.kind === 'calendar') {
-    const clauses = [
-      ...(typeof range.from === 'string' && DAY.test(range.from)
-        ? [{ fieldId: recordsCard.startFieldId, operator: 'gte' as const, value: range.from }]
-        : []),
-      ...(typeof range.to === 'string' && DAY.test(range.to)
-        ? [{ fieldId: recordsCard.startFieldId, operator: 'lte' as const, value: range.to }]
-        : []),
-    ];
-    if (clauses.length > 0) extra.push({ combinator: 'and', clauses });
+    // Records that overlap the window: they start before it ends, and they end
+    // (or, with no end, start) after it begins — so a multi-day record that
+    // started before the visible weeks still shows. `to` is inclusive; compare
+    // with the next day so a datetime later on that day is kept.
+    const start = recordsCard.startFieldId;
+    const end = recordsCard.endFieldId;
+    if (typeof range.to === 'string' && DAY.test(range.to)) {
+      extra.push({ combinator: 'and', clauses: [{ fieldId: start, operator: 'lt', value: nextDay(range.to) }] });
+    }
+    if (typeof range.from === 'string' && DAY.test(range.from)) {
+      extra.push({
+        combinator: 'or',
+        clauses: [
+          { fieldId: start, operator: 'gte', value: range.from },
+          ...(end !== undefined ? [{ fieldId: end, operator: 'gte' as const, value: range.from }] : []),
+        ],
+      });
+    }
   }
   const spec: TableCardSpec = {
     kind: 'records',

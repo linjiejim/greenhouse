@@ -1107,6 +1107,86 @@ describe('attachments, options and page filters', () => {
 
 // ─── Managers ─────────────────────────────────────────────
 
+describe('calendar cards', () => {
+  it('load the records that overlap the visible window, including multi-day ones that began before it', async () => {
+    const created = await json<{
+      base: { id: number };
+      schema: { table: { id: number }; fields: Array<{ id: number }> };
+    }>(await send(owner, '/api/tables/bases', 'POST', { name: 'Leave', defaultTableName: 'Days off' }), 201);
+    const tableId = created.schema.table.id;
+    const title = created.schema.fields[0]!.id;
+    const field = async (name: string) =>
+      (
+        await json<{ field: { id: number } }>(
+          await send(owner, `/api/tables/tables/${tableId}/fields`, 'POST', { name, type: 'date' }),
+          201,
+        )
+      ).field.id;
+    const start = await field('Start');
+    const end = await field('End');
+    const add = async (name: string, from: string, to?: string) =>
+      json(
+        await send(owner, `/api/tables/tables/${tableId}/records`, 'POST', {
+          values: { [title]: name, [start]: from, ...(to ? { [end]: to } : {}) },
+        }),
+        201,
+      );
+    await add('spans in', '2026-09-25', '2026-10-03');
+    await add('inside', '2026-10-15');
+    await add('last day', '2026-11-01');
+    await add('before', '2026-09-01', '2026-09-10');
+    await add('after', '2026-11-02');
+    const spec: AppSpec = {
+      version: 1,
+      pages: [
+        {
+          id: 'cal',
+          title: 'Calendar',
+          cards: [
+            {
+              id: 'days',
+              kind: 'calendar',
+              layout: { x: 0, y: 0, w: 12, h: 6 },
+              source: { tableId },
+              startFieldId: start,
+              endFieldId: end,
+              fieldIds: [title, start, end],
+            },
+          ],
+        },
+      ],
+      roles: [
+        {
+          key: 'all',
+          name: 'All',
+          pages: 'all',
+          tables: [{ tableId, access: 'read', fields: [], fieldDefault: 'visible' }],
+        },
+      ],
+    };
+    const draft = await json<AppDraftView>(
+      await send(owner, '/api/apps', 'POST', { baseId: created.base.id, name: 'Leave', spec }),
+      201,
+    );
+    expect(draft.errors).toEqual([]);
+    const query = async (range: { from: string; to: string }) => {
+      const result = await json<AppCardQueryResult>(
+        await send(owner, `/api/apps/${draft.app.id}/cards/query`, 'POST', {
+          pageId: 'cal',
+          cardId: 'days',
+          draft: true,
+          range,
+        }),
+      );
+      if (result.kind !== 'records') throw new Error(`expected records, got ${result.kind}`);
+      return result.records.map((record) => record.values[String(title)]).sort();
+    };
+
+    expect(await query({ from: '2026-09-28', to: '2026-11-01' })).toEqual(['inside', 'last day', 'spans in']);
+    expect(await query({ from: '2026-10-04', to: '2026-10-31' })).toEqual(['inside']);
+  });
+});
+
 describe('managers (D2)', () => {
   it('preview as a role, act with full access, and only the owner publishes', async () => {
     const p = await procurement();
