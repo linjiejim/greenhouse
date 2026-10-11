@@ -107,6 +107,70 @@ function spec(): AppSpec {
           },
         ],
       },
+      {
+        // Every other place a field can be held: a calendar's start / end, a gallery cover, a chart's and a
+        // pivot's groupBy / series, a drawer action.
+        id: 'p2',
+        title: 'More',
+        cards: [
+          {
+            id: 'leave',
+            title: 'Leave',
+            kind: 'calendar',
+            layout,
+            source: { tableId: T },
+            startFieldId: 120,
+            endFieldId: 121,
+            fieldIds: [101],
+          },
+          {
+            id: 'pictures',
+            title: 'Pictures',
+            kind: 'gallery',
+            layout,
+            source: { tableId: T },
+            coverFieldId: 122,
+            fieldIds: [101],
+          },
+          {
+            id: 'by-type',
+            title: 'By type',
+            kind: 'chart',
+            layout,
+            card: {
+              kind: 'chart',
+              source: { tableId: T },
+              aggregate: { operation: 'count', groupBy: { fieldId: 123 }, series: { fieldId: 124 } },
+              chart: { type: 'bar' },
+            },
+          },
+          {
+            id: 'pivot',
+            title: 'Pivot',
+            kind: 'pivot',
+            layout,
+            card: {
+              kind: 'pivot',
+              source: { tableId: T },
+              aggregate: { operation: 'count', groupBy: { fieldId: 125 }, series: { fieldId: 126 } },
+            },
+          },
+          {
+            id: 'open',
+            title: 'Open items',
+            kind: 'records',
+            layout,
+            source: { tableId: T },
+            fieldIds: [101],
+            detail: {
+              fieldIds: [101],
+              actions: [
+                { id: 'close', label: 'Close', do: { type: 'set_fields', values: [{ fieldId: 127, value: 'x' }] } },
+              ],
+            },
+          },
+        ],
+      },
     ],
     roles: [
       {
@@ -288,28 +352,58 @@ describe('card queries as scope', () => {
 });
 
 describe('where apps use structure (D6)', () => {
+  const wheres = (target: Parameters<typeof specReferences>[1], version: number | 'draft') =>
+    specReferences(spec(), target, version).map((place) => place.where);
+
   it('names the places a field, option, rule or table is used', () => {
-    const s = spec();
-    expect(specReferences(s, { fieldIds: [105] }, 'v2')).toEqual([
+    expect(wheres({ fieldIds: [105] }, 2)).toEqual([
       'v2 › “Requests” › filter “Department”',
       'v2 › “Requests” › “All”',
     ]);
-    expect(specReferences(s, { ruleIds: [77] }, 'draft')).toEqual(['draft › “Requests” › “All” › “Escalate”']);
-    expect(specReferences(s, { options: { fieldId: 102, optionIds: ['approved'] } }, 'v1')).toEqual([
+    expect(wheres({ ruleIds: [77] }, 'draft')).toEqual(['draft › “Requests” › “All” › “Escalate”']);
+    expect(wheres({ options: { fieldId: 102, optionIds: ['approved'] } }, 1)).toEqual([
       'v1 › “Requests” › “All” › “Approve”',
     ]);
-    expect(specReferences(s, { options: { fieldId: 105, optionIds: ['ops'] } }, 'v1')).toEqual([
+    expect(wheres({ options: { fieldId: 105, optionIds: ['ops'] } }, 1)).toEqual([
       'v1 › “Requests” › filter “Department”',
     ]);
-    expect(specReferences(s, { fieldIds: [111] }, 'v1')).toEqual(['v1 › role “Reader”']);
-    expect(specReferences(s, { tableIds: [V] }, 'v1')).toEqual(['v1 › “Requests” › “buttons” › “Add”']);
-    expect(specReferences(s, { fieldIds: [999] }, 'v1')).toEqual([]);
+    expect(wheres({ fieldIds: [111] }, 1)).toEqual(['v1 › role “Reader”']);
+    expect(wheres({ tableIds: [V] }, 1)).toEqual(['v1 › “Requests” › “buttons” › “Add”']);
+    expect(wheres({ fieldIds: [999] }, 1)).toEqual([]);
+  });
+
+  it('says where without words, for a client to word in its own language', () => {
+    const locations = (target: Parameters<typeof specReferences>[1], version: number | 'draft') =>
+      specReferences(spec(), target, version).map((place) => place.location);
+    const page = { id: 'p1', title: 'Requests' };
+    expect(locations({ fieldIds: [105] }, 2)).toEqual([
+      { version: 2, page, filter: { id: 'dept', label: 'Department' } },
+      { version: 2, page, card: { id: 'list', kind: 'records', title: 'All' } },
+    ]);
+    expect(locations({ ruleIds: [77] }, 'draft')).toEqual([
+      {
+        version: 'draft',
+        page,
+        card: { id: 'list', kind: 'records', title: 'All' },
+        action: { id: 'escalate', label: 'Escalate' },
+      },
+    ]);
+    // An untitled card carries its kind (no raw id in place of a name); a button is an action of its card.
+    expect(locations({ tableIds: [V] }, 1)).toEqual([
+      { version: 1, page, card: { id: 'buttons', kind: 'buttons' }, action: { id: 'add', label: 'Add' } },
+    ]);
+    expect(locations({ fieldIds: [110] }, 1)).toEqual([
+      { version: 1, page, card: { id: 'board', kind: 'kanban' }, move: true },
+    ]);
+    expect(locations({ fieldIds: [111] }, 1)).toEqual([{ version: 1, role: { key: 'r', name: 'Reader' } }]);
   });
 
   it('covers everything appSpecDependencies lists', () => {
     const s = spec();
     const deps = appSpecDependencies(s);
-    const places = specPlaces(s, 'v1');
+    // The fixture uses every kind of reference the dependency list carries.
+    expect(deps.fieldIds).toEqual(expect.arrayContaining([120, 121, 122, 123, 124, 125, 126, 127]));
+    const places = specPlaces(s, 1);
     const held = (pick: (holds: (typeof places)[number]['holds']) => Set<number>) =>
       new Set(places.flatMap((place) => [...pick(place.holds)]));
     const fields = held((holds) => holds.fields);
@@ -318,6 +412,13 @@ describe('where apps use structure (D6)', () => {
     expect(deps.fieldIds.filter((id) => !fields.has(id))).toEqual([]);
     expect(deps.tableIds.filter((id) => !tables.has(id))).toEqual([]);
     expect(deps.ruleIds.filter((id) => !rules.has(id))).toEqual([]);
+    // Each of those is found at its own place.
+    const at = (fieldId: number) => specReferences(s, { fieldIds: [fieldId] }, 1).map((place) => place.where);
+    expect(at(121)).toEqual(['v1 › “More” › “Leave”']);
+    expect(at(122)).toEqual(['v1 › “More” › “Pictures”']);
+    expect(at(124)).toEqual(['v1 › “More” › “By type”']);
+    expect(at(126)).toEqual(['v1 › “More” › “Pivot”']);
+    expect(at(127)).toEqual(['v1 › “More” › “Open items” › “Close”']);
   });
 });
 
