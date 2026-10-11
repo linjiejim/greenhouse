@@ -462,6 +462,8 @@ export interface AppRuntimeView {
       isPrimary: boolean;
       config: unknown;
       editable: boolean;
+      /** Required when the role creates a record (a form, a create dialog); absent = not known, the write still checks (slice R; additive). */
+      required?: boolean;
     }>;
   }>;
   issues: AppIssue[];
@@ -476,6 +478,16 @@ export interface AppCardQueryInput {
   search?: string;
   /** Managers only: evaluate as this role. */
   previewRole?: string;
+  /**
+   * Managers only: evaluate the draft instead of the published version (also the
+   * default before the first publish). Added by the gateway (slice G; additive).
+   */
+  draft?: boolean;
+  /**
+   * Calendar cards: only records whose start date falls in `from`…`to`
+   * (YYYY-MM-DD, inclusive, the viewer's `timezone`). Added by the gateway (slice G; additive).
+   */
+  range?: { from: string; to: string };
 }
 
 export interface AppActionInput {
@@ -491,6 +503,10 @@ export interface AppActionInput {
   buttonId?: string;
   /** Managers only: act as this role (writes still run as the manager). */
   previewRole?: string;
+  /** Managers only: act through the draft (slice G; additive). */
+  draft?: boolean;
+  /** The viewer's IANA zone: `$today` / `$now` in values (default UTC; slice G; additive). */
+  timezone?: string;
 }
 
 // ─── Management wire views (F1; additive) ─────────────────
@@ -587,6 +603,8 @@ export interface AppRecordRow {
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Who wrote it last — the `updated_by` system column (slice R; additive, absent from older gateways). */
+  updatedBy?: string | null;
   /** Declared card-face actions this viewer may run on this record now (`when` checked at read time; the write re-checks). */
   actionIds: string[];
 }
@@ -617,6 +635,8 @@ export interface AppRecordGetInput {
   cardId: string;
   recordId: number;
   previewRole?: string;
+  /** Managers only: through the draft (slice G; additive). */
+  draft?: boolean;
 }
 
 /** The record drawer: `detail.fieldIds` ∩ readable, what may be edited, and what the drawer may show. */
@@ -658,6 +678,9 @@ export interface AppActivityInput {
   cardId: string;
   recordId: number;
   cursor?: string;
+  /** Managers only (slice G; additive). */
+  previewRole?: string;
+  draft?: boolean;
 }
 
 /** `POST /api/apps/:id/comments` → `{ comment: TableRecordCommentView }`; `PATCH|DELETE /comments/:commentId` with `{pageId, cardId}`. */
@@ -666,6 +689,9 @@ export interface AppCommentInput {
   cardId: string;
   recordId: number;
   body: string;
+  /** Managers only (slice G; additive). */
+  previewRole?: string;
+  draft?: boolean;
 }
 
 /** `POST /api/apps/:id/options`: choices for a user or relation field the card lets this role write. */
@@ -676,6 +702,9 @@ export interface AppFieldOptionsInput {
   search?: string;
   /** `create_record` buttons. */
   buttonId?: string;
+  /** Managers only (slice G; additive). */
+  previewRole?: string;
+  draft?: boolean;
 }
 
 export interface AppFieldOptionsView {

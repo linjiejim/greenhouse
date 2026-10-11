@@ -869,8 +869,8 @@ export type SchemaPlanRef = string;
 export const SCHEMA_PLAN_REF_KINDS = ['field', 'table', 'view', 'form', 'automation', 'dashboard', 'role'] as const;
 export type SchemaPlanRefKind = (typeof SCHEMA_PLAN_REF_KINDS)[number];
 
-/** Everything a plan can create (a Base and a widget can be named by ref, but not by `$` token). */
-export type SchemaPlanObjectKind = SchemaPlanRefKind | 'base' | 'widget';
+/** Everything a plan can create (a Base, a widget and an app can be named by ref, but not by `$` token). */
+export type SchemaPlanObjectKind = SchemaPlanRefKind | 'base' | 'widget' | 'app';
 
 /** An op's config: plain JSON that may hold `$<kind>:<ref>` tokens; the real handler validates it. */
 export type SchemaPlanConfig = Record<string, unknown>;
@@ -892,6 +892,16 @@ export type SchemaPlanFormAudience =
 /** `none` removes the grant. Groups never get `builder` (D12). `custom` names a role of the same Base. */
 export type SchemaPlanMemberRole = 'builder' | 'editor' | 'viewer' | 'custom' | 'none';
 
+/**
+ * Who an app is shared with, in a plan — the same shape as `AppAudienceEntry`
+ * (`@greenhouse/types/apps`): a person, a group or everyone, each with one of
+ * the app's role keys. Ids come from `tables_query directory.search`.
+ */
+export interface SchemaPlanAppAudienceEntry {
+  principal: { type: 'user'; userId: string } | { type: 'group'; groupId: number } | { type: 'team' };
+  roleKey: string;
+}
+
 export type SchemaPlanOperation =
   | {
       op: 'base.create';
@@ -906,6 +916,13 @@ export type SchemaPlanOperation =
        */
       defaultTableRef?: SchemaPlanRef;
       defaultTableName?: string;
+      /**
+       * Every new table starts with a required primary text field "Name". A ref
+       * lets later operations point at it (a form or an app card usually needs
+       * it); a name renames it (`申请事项`, `Title`). Additive, 2026-10 (apps).
+       */
+      primaryFieldRef?: SchemaPlanRef;
+      primaryFieldName?: string;
     }
   | {
       op: 'base.update';
@@ -929,6 +946,9 @@ export type SchemaPlanOperation =
       baseId?: number;
       name: string;
       description?: string;
+      /** The new table's primary "Name" field: a ref to point at it, a name to rename it (as on base.create). */
+      primaryFieldRef?: SchemaPlanRef;
+      primaryFieldName?: string;
     }
   | { op: 'table.update'; tableId: number; name?: string; description?: string | null }
   | {
@@ -1081,6 +1101,53 @@ export type SchemaPlanOperation =
       /** role=custom: exactly one of roleRef / customRoleId. */
       roleRef?: SchemaPlanRef;
       customRoleId?: number;
+    }
+  /*
+   * Apps (spec 20261011-tables-apps §7). `spec` is an `AppSpec` whose ids may be
+   * `$field:` / `$table:` / `$automation:` … tokens, as keys or values; it is
+   * checked against the virtual schema when the plan is drafted. Publishing and
+   * changing who an app is shared with are the Base owner's (D2).
+   */
+  | {
+      op: 'app.create';
+      ref?: SchemaPlanRef;
+      /** Exactly one of baseRef / baseId. */
+      baseRef?: SchemaPlanRef;
+      baseId?: number;
+      name: string;
+      description?: string;
+      /** One of `APP_ICONS`. */
+      icon?: string;
+      /** One of `APP_ACCENTS`. */
+      accent?: string;
+      spec: SchemaPlanConfig;
+    }
+  | {
+      op: 'app.update';
+      /** Exactly one of appId / appRef. */
+      appId?: number;
+      appRef?: SchemaPlanRef;
+      /** The draft revision you read (apps.get); without it the draft is replaced whatever it holds now. */
+      draftRevision?: number;
+      name?: string;
+      /** Replaces the whole draft. */
+      spec?: SchemaPlanConfig;
+    }
+  | {
+      op: 'app.audience';
+      appId?: number;
+      appRef?: SchemaPlanRef;
+      /** Replaces who the app is shared with. */
+      entries: SchemaPlanAppAudienceEntry[];
+      audiencesRevision?: number;
+    }
+  | {
+      op: 'app.publish';
+      appId?: number;
+      appRef?: SchemaPlanRef;
+      notes: string;
+      /** Required for an existing app unless this plan wrote its draft (app.update) earlier. */
+      draftRevision?: number;
     };
 
 export type SchemaPlanOperationKind = SchemaPlanOperation['op'];
@@ -1129,7 +1196,28 @@ export type SchemaPlanAccessChange =
       before: SchemaPlanAudienceView | null;
       after: SchemaPlanAudienceView;
       published: boolean;
-    };
+    }
+  /** `app.audience`: who the app is shared with, before (null = nobody yet) → after. */
+  | {
+      index: number;
+      kind: 'app_audience';
+      app: string;
+      before: SchemaPlanAppAudienceView[] | null;
+      after: SchemaPlanAppAudienceView[];
+    }
+  /** `app.publish`: version `version` goes live for everyone the app is shared with at that point. */
+  | { index: number; kind: 'app_publish'; app: string; version: number; audience: SchemaPlanAppAudienceView[] };
+
+/** One app audience entry as the card words it: who, through which app role. */
+export interface SchemaPlanAppAudienceView {
+  principal: 'user' | 'group' | 'team';
+  /** Person or group name (empty for the team). */
+  name: string;
+  /** The app role's display name. */
+  role: string;
+  /** Groups: who controls the membership — sharing with a group delegates "who gets in" to them. */
+  managedBy?: string;
+}
 
 /** Tool output rendered by the web plan card. Contains no ids of its own — the plan was never persisted. */
 export interface TablesSchemaPlanArtifact {
@@ -1156,7 +1244,7 @@ export interface SchemaPlanOperationResult {
   status: SchemaPlanResultStatus;
   /** Id of the created or touched object, when one exists. */
   id?: number;
-  /** Failure reason, or which ref's failure caused this one to be skipped. */
+  /** Failure reason, or which ref's failure caused this one to be skipped — or a note on an applied one. */
   message?: string;
 }
 
