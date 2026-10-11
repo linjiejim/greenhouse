@@ -5,7 +5,7 @@
 import type { TableQuery, TableRecordValues } from '@greenhouse/types/tables';
 import { authFetch } from '../../auth';
 import { rpc } from '../client';
-import { responseError } from './shared';
+import { isTablesConflict, responseError } from './shared';
 
 export interface TableRecord {
   id: number;
@@ -127,4 +127,33 @@ export async function restoreTableRecord(tableId: number, recordId: number): Pro
   const response = await rpc.api.tables.tables[':tableId'].records[':recordId'].restore.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to restore record');
   return (await response.json()).record;
+}
+
+/**
+ * Update a record, recovering from a stale revision when it is safe to.
+ *
+ * Automations now run asynchronously and can bump a record's revision seconds
+ * after a person edits it, so a follow-up edit (a kanban drag, an inline cell)
+ * would otherwise fail with 409. On a conflict the record is re-read: if none
+ * of the fields this patch writes changed on the server since `base` (the
+ * snapshot the user was looking at), the patch is replayed on the new revision;
+ * otherwise the conflict is rethrown for the caller to report.
+ */
+export async function updateTableRecordWithReplay(
+  tableId: number,
+  base: Pick<TableRecord, 'id' | 'revision' | 'values'>,
+  values: TableRecordValues,
+): Promise<TableRecord> {
+  try {
+    return await updateTableRecord(tableId, base.id, base.revision, values);
+  } catch (error) {
+    if (!isTablesConflict(error)) throw error;
+    const current = await getTableRecord(tableId, base.id);
+    const touched = Object.keys(values);
+    const unchanged = touched.every(
+      (key) => JSON.stringify(current.values[key] ?? null) === JSON.stringify(base.values[key] ?? null),
+    );
+    if (!unchanged) throw error;
+    return updateTableRecord(tableId, base.id, current.revision, values);
+  }
 }

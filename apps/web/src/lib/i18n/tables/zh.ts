@@ -7,6 +7,7 @@ import { tablesDashboardsZh } from './dashboards.zh';
 import { tablesFormsZh } from './forms.zh';
 import { tablesFormulaZh } from './formula.zh';
 import { tablesImportsZh } from './imports.zh';
+import { tablesPrincipalsZh } from './principals.zh';
 import { tablesViewsZh } from './views.zh';
 
 export const TABLES_SLICES_ZH = {
@@ -17,6 +18,7 @@ export const TABLES_SLICES_ZH = {
   ...tablesFormsZh,
   ...tablesFormulaZh,
   ...tablesImportsZh,
+  ...tablesPrincipalsZh,
   ...tablesViewsZh,
 };
 

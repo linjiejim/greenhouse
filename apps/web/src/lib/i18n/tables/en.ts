@@ -13,6 +13,7 @@ import { tablesDashboardsEn } from './dashboards.en';
 import { tablesFormsEn } from './forms.en';
 import { tablesFormulaEn } from './formula.en';
 import { tablesImportsEn } from './imports.en';
+import { tablesPrincipalsEn } from './principals.en';
 import { tablesViewsEn } from './views.en';
 
 export const TABLES_SLICE_MODULES_EN = {
@@ -23,6 +24,7 @@ export const TABLES_SLICE_MODULES_EN = {
   forms: tablesFormsEn,
   formula: tablesFormulaEn,
   imports: tablesImportsEn,
+  principals: tablesPrincipalsEn,
   views: tablesViewsEn,
 } as const;
 
@@ -34,6 +36,7 @@ export const TABLES_SLICES_EN = {
   ...tablesFormsEn,
   ...tablesFormulaEn,
   ...tablesImportsEn,
+  ...tablesPrincipalsEn,
   ...tablesViewsEn,
 } as const;
 

@@ -18,3 +18,4 @@ export * from './plan';
 export * from './records';
 export * from './schema';
 export * from './views';
+export { TablesRequestError, isTablesConflict } from './shared';
