@@ -3,11 +3,13 @@
  * §3) — who the caller is to the app, through which spec and role, and the
  * scope every data step starts from.
  *
- * - **Managers** (Base owner / builder, D2) always open it: full access
- *   (`role` undefined, the `__manager__` view) or, with `previewRole`, as one
- *   of its roles. They work on the published version, or on the draft with
- *   `draft: true` (and before the first publish). Writes run as the manager.
- * - **Viewers** open only a live published app on a live Base, as their one
+ * - **Managers** (Base owner / builder with the kernel's `tables.apps.manage`,
+ *   D2 — `requireAppManager`) always open it: full access (`role` undefined,
+ *   the `__manager__` view) or, with `previewRole`, as one of its roles. They
+ *   work on the published version, or on the draft with `draft: true` (and
+ *   before the first publish). Writes run as the manager.
+ * - **Viewers** — everyone else, a Base builder without the manage capability
+ *   included — open only a live published app on a live Base, as their one
  *   role (D3, `app-audience.ts`); no role → 404. `previewRole` / `draft` are
  *   ignored for them.
  * - **Data steps** ask `tableAccess(op)`: the kernel ceiling first
@@ -39,7 +41,13 @@ import {
 import type { TableAccessSchemaFacts, TableDataScope } from '@greenhouse/types/table-access';
 import { trimFilterControlsForReader } from '@greenhouse/types/table-cards';
 import { isComputedFieldType, type TableFilterControl } from '@greenhouse/types/tables';
-import { appDataCeilings, requireLoadedBase, type AppDataCeiling, type TableDataOp } from './access.js';
+import {
+  appDataCeilings,
+  capabilitySnapshot,
+  requireAppManager,
+  type AppDataCeiling,
+  type TableDataOp,
+} from './access.js';
 import { compileAppRole, liveAppOf, viewerRoleIn, type CompiledAppRole } from './app-audience.js';
 import { loadAppSpecSchema, parseStoredAppSpec, revalidateSpec, type AppSpecSchema } from './app-spec.js';
 import { fail, type Handler, type HandlerRequest } from './handlers/shared.js';
@@ -56,7 +64,7 @@ export interface AppSession {
   draft: boolean;
   actor: ActorContext;
   userId: string;
-  /** The caller manages the Base (owner / builder): full access unless previewing a role. */
+  /** The caller manages the app (Base owner / builder + `tables.apps.manage`): full access unless previewing a role. */
   manager: boolean;
   /** Owner level on the Base (owner / super). */
   owner: boolean;
@@ -102,7 +110,9 @@ export async function openAppSession(
   if (!base || base.archived_at) return { ok: false, result: NOT_FOUND() };
   const actor = request.actor;
   const userId = effectiveUserId(actor);
-  const grant = await requireLoadedBase(context, actor, base, 'app', 'builder');
+  // One capability snapshot per request: the manage check and the data ceilings share it.
+  const capabilities = capabilitySnapshot(actor);
+  const grant = await requireAppManager(context, actor, base, capabilities);
 
   let spec: AppSpec | undefined;
   let version = 0;
@@ -151,7 +161,7 @@ export async function openAppSession(
     facts,
     schema,
     fields: (tableId) => schema().then((loaded) => loaded.source.fields(tableId)),
-    ceiling: appDataCeilings(context, actor, base),
+    ceiling: appDataCeilings(context, actor, base, capabilities),
     pageIssues: (pageId) => {
       let found = issues.get(pageId);
       if (!found) {

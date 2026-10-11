@@ -1225,6 +1225,107 @@ describe('managers (D2)', () => {
     expect((await records(p, owner, 'review', 'queue')).kind).toBe('records');
     await json(await send(builder, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: draft.draftRevision }));
   });
+
+  it('treats a Base builder without tables.apps.manage as a viewer: no draft, no preview, no full access', async () => {
+    const p = await procurement();
+    await submit(p, applicant, [{ fieldId: p.f.title, value: 'Someone else’s' }]);
+    // v2 in the draft only: a page the live version does not have.
+    const draft = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    const spec = structuredClone(draft.spec);
+    spec.pages[0]!.title = 'Draft title';
+    await json(await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec, draftRevision: draft.draftRevision }));
+    await db.platform.setUserCapabilityOverride({
+      org_id: 'default',
+      user_id: builder.id,
+      capability: 'tables.apps.manage',
+      effect: 'deny',
+      granted_by: owner.id,
+    });
+
+    // The team audience makes the builder an applicant — and that is all they get.
+    for (const query of ['', '?draft=1', '?previewRole=approver', '?previewRole=approver&draft=1']) {
+      const view = await json<AppRuntimeView>(await send(builder, `/api/apps/${p.appId}${query}`));
+      expect(view.version, query).toBe(1);
+      expect(view.draft, query).toBeFalsy();
+      expect(view.role, query).toEqual({ key: 'applicant', name: 'Applicant' });
+      expect(view.spec.pages.map((page) => [page.id, page.title])).toEqual([['mine', 'My requests']]);
+      expect(view.app.canManage, query).toBe(false);
+    }
+    expect((await send(builder, `/api/apps/${p.appId}/draft`)).status).toBe(403);
+    for (const extra of [{}, { previewRole: 'approver' }, { draft: true }]) {
+      expect((await cardQuery(p, builder, 'review', 'queue', extra)).status).toBe(404);
+    }
+    // Their own rows only (the applicant's request is not theirs).
+    expect((await records(p, builder, 'mine', 'my-requests', { draft: true })).total).toBe(0);
+    const list = await json<{ managed: Array<{ id: number }>; shared: Array<{ id: number; canManage: boolean }> }>(
+      await send(builder, '/api/apps'),
+    );
+    expect(list.managed).toEqual([]);
+    expect(list.shared.find((app) => app.id === p.appId)?.canManage).toBe(false);
+
+    // Outside every audience, the same builder opens nothing.
+    await json(
+      await send(owner, `/api/apps/${p.appId}/audiences`, 'PUT', {
+        entries: [{ principal: { type: 'group', groupId: p.groupId }, roleKey: 'approver' }],
+        audiencesRevision: 2,
+      }),
+    );
+    expect((await send(builder, `/api/apps/${p.appId}?draft=1`)).status).toBe(404);
+    expect((await cardQuery(p, builder, 'mine', 'my-requests', { draft: true })).status).toBe(404);
+    expect((await json<{ shared: unknown[] }>(await send(builder, '/api/apps'))).shared).toEqual([]);
+  });
+
+  it('ignores a viewer’s previewRole and draft (acceptance 4)', async () => {
+    const p = await procurement();
+    await submit(p, colleague, [{ fieldId: p.f.title, value: 'Colleague’s' }]);
+    // An applicant asking for the approver's card, or the draft, gets nothing more than their role.
+    expect((await cardQuery(p, applicant, 'review', 'queue', { previewRole: 'approver' })).status).toBe(404);
+    expect((await cardQuery(p, applicant, 'review', 'queue', { previewRole: 'approver', draft: true })).status).toBe(
+      404,
+    );
+    const mine = await records(p, applicant, 'mine', 'my-requests', { previewRole: 'approver', draft: true });
+    expect(mine.total).toBe(0);
+    const view = await json<AppRuntimeView>(await send(applicant, `/api/apps/${p.appId}?previewRole=approver&draft=1`));
+    expect(view.role.key).toBe('applicant');
+    expect(view.version).toBe(1);
+    expect(view.draft).toBeFalsy();
+    expect(view.spec.pages.map((page) => page.id)).toEqual(['mine']);
+  });
+
+  it('keeps a draft edit away from viewers until it is published (acceptance 4)', async () => {
+    const p = await procurement();
+    const draft = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    const spec = structuredClone(draft.spec);
+    const minePage = spec.pages.find((page) => page.id === 'mine')!;
+    minePage.title = 'Requests v2';
+    minePage.cards.push({ id: 'note', kind: 'text', layout: { x: 0, y: 6, w: 12, h: 2 }, markdown: 'New in v2' });
+    const saved = await json<AppDraftView>(
+      await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec, draftRevision: draft.draftRevision }),
+    );
+    expect(saved.errors).toEqual([]);
+
+    // Saved but not published: the applicant still runs v1.
+    const before = await json<AppRuntimeView>(await send(applicant, `/api/apps/${p.appId}`));
+    expect(before.version).toBe(1);
+    expect(before.spec.pages[0]!.title).toBe('My requests');
+    expect(before.spec.pages[0]!.cards.map((card) => card.id)).not.toContain('note');
+    expect((await cardQuery(p, applicant, 'mine', 'note')).status).toBe(404);
+    expect((await cardQuery(p, applicant, 'mine', 'note', { draft: true })).status).toBe(404);
+    // The manager sees the draft only when asking for it.
+    expect((await json<AppRuntimeView>(await send(owner, `/api/apps/${p.appId}`))).version).toBe(1);
+    expect((await json<AppRuntimeView>(await send(owner, `/api/apps/${p.appId}?draft=1`))).spec.pages[0]!.title).toBe(
+      'Requests v2',
+    );
+
+    await json(await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: saved.draftRevision }));
+    const after = await json<AppRuntimeView>(await send(applicant, `/api/apps/${p.appId}`));
+    expect(after.version).toBe(2);
+    expect(after.spec.pages[0]!.title).toBe('Requests v2');
+    expect(await json<AppCardQueryResult>(await cardQuery(p, applicant, 'mine', 'note'))).toEqual({
+      kind: 'text',
+      markdown: 'New in v2',
+    });
+  });
 });
 
 // ─── Acceptance 5: structure changes (D6) ────────────────
