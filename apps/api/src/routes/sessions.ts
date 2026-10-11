@@ -39,6 +39,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { chatRunRegistry } from '../chat/runs.js';
 import { withOwnerNicknames } from '../user-display.js';
+import { connectionManager } from '../ws/connection-manager.js';
 
 // ─── Visibility Helpers ──────────────────────────────────
 
@@ -473,7 +474,9 @@ const sessions = new Hono<AppEnv>()
     if (!session) return c.json({ error: 'Session not found' }, 404);
     // A task chat's title lives on its conversation too (the thread header reads it there).
     if (body.title !== undefined && existing.channel === BOTS_SESSION_CHANNEL && existing.user_id) {
-      await getDb().bots.updateTaskConversation(existing.user_id, id, { title: body.title });
+      const chat = await getDb().bots.updateTaskConversation(existing.user_id, id, { title: body.title });
+      // Open views of the chat (its header, other tabs) re-read it.
+      if (chat) connectionManager.sendToUser(existing.user_id, { type: 'bots:conversation', sessionId: id });
     }
     return c.json(session);
   })

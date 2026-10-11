@@ -517,7 +517,7 @@ export function createBotsService(db: Db) {
       opts: { title?: string | null; modelId?: string | null } = {},
     ): Promise<ConversationWithMembers> {
       return db.transaction(async (tx) => {
-        await assertOwnedBots(tx, userId, [botId]);
+        const [bot] = await assertOwnedBots(tx, userId, [botId]);
         const now = nowIso();
         const sessionId = randomBytes(16).toString('hex');
         const title = opts.title?.trim() ? opts.title.trim().slice(0, 200) : null;
@@ -525,7 +525,8 @@ export function createBotsService(db: Db) {
           id: sessionId,
           title: title ?? '',
           status: 'active',
-          profile_id: 'sprouty',
+          // The Agent's own handle, so `?profile=bot:<id>` (its Chats tab) lists the chat.
+          profile_id: bot!.template_key === 'sprouty' ? 'sprouty' : `bot:${bot!.id}`,
           user_id: userId,
           channel: 'bots',
           metadata: '{}',

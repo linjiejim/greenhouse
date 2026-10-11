@@ -188,6 +188,11 @@ export interface Session {
   pinned?: boolean;
   /** Sort order within the current user's Pinned group. */
   pin_sort?: number;
+  /**
+   * An Agent task chat in the chats list (`GET /api/sessions?include=agent_chats`, channel `bots`):
+   * the Agent that answers there. Opened at `#/bots?c=<id>`, not as an ordinary chat.
+   */
+  agent_chat?: { bot_id: string | null };
 }
 
 /**
