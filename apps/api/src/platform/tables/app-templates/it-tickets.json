@@ -1,0 +1,334 @@
+{
+  "key": "it-tickets",
+  "name": { "zh": "IT 工单", "en": "IT tickets" },
+  "description": {
+    "zh": "员工提交 IT 问题（可附截图），IT 支持在看板上接单、处理并填写解决说明，解决后通知提单人；附待处理数与分类统计。",
+    "en": "Staff raise IT issues (with screenshots); IT support picks them up on a board, resolves them with a note, and the requester is told; with open counts and per-category totals."
+  },
+  "icon": "ticket",
+  "accent": "blue",
+  "summary": "IT 工单：提单、工单台、统计三个页面，提单人 / IT 支持两个角色",
+  "operations": [
+    {
+      "op": "base.create",
+      "ref": "base",
+      "name": "IT 工单",
+      "description": "每行一张 IT 工单。提单后为「待处理」，IT 支持接单（处理人自动写入）后为「处理中」，解决时必须填写解决说明。",
+      "visibility": "private",
+      "defaultTableRef": "tickets",
+      "defaultTableName": "工单",
+      "primaryFieldRef": "title",
+      "primaryFieldName": "问题摘要"
+    },
+    {
+      "op": "field.create",
+      "ref": "category",
+      "tableRef": "tickets",
+      "name": "类别",
+      "type": "single_select",
+      "config": {
+        "options": [
+          { "id": "account", "label": "账号与权限" },
+          { "id": "hardware", "label": "电脑与硬件" },
+          { "id": "software", "label": "软件安装" },
+          { "id": "network", "label": "网络" },
+          { "id": "other", "label": "其他" }
+        ]
+      }
+    },
+    {
+      "op": "field.create",
+      "ref": "priority",
+      "tableRef": "tickets",
+      "name": "优先级",
+      "type": "single_select",
+      "config": {
+        "options": [
+          { "id": "low", "label": "低" },
+          { "id": "normal", "label": "中" },
+          { "id": "high", "label": "高" },
+          { "id": "urgent", "label": "紧急" }
+        ]
+      }
+    },
+    { "op": "field.create", "ref": "details", "tableRef": "tickets", "name": "问题描述", "type": "long_text" },
+    { "op": "field.create", "ref": "shots", "tableRef": "tickets", "name": "截图", "type": "attachment" },
+    {
+      "op": "field.create",
+      "ref": "status",
+      "tableRef": "tickets",
+      "name": "状态",
+      "type": "single_select",
+      "config": {
+        "options": [
+          { "id": "new", "label": "待处理" },
+          { "id": "doing", "label": "处理中" },
+          { "id": "done", "label": "已解决" }
+        ]
+      }
+    },
+    { "op": "field.create", "ref": "assignee", "tableRef": "tickets", "name": "处理人", "type": "user" },
+    { "op": "field.create", "ref": "resolution", "tableRef": "tickets", "name": "解决说明", "type": "long_text" },
+    { "op": "field.create", "ref": "resolved_at", "tableRef": "tickets", "name": "解决时间", "type": "datetime" },
+    {
+      "op": "automation.create",
+      "ref": "notify",
+      "tableRef": "tickets",
+      "name": "工单解决后通知提单人",
+      "trigger": "record_updated",
+      "status": "disabled",
+      "config": {
+        "watchFieldIds": ["$field:status"],
+        "condition": {
+          "combinator": "and",
+          "clauses": [{ "fieldId": "$field:status", "operator": "eq", "value": "done" }]
+        },
+        "actions": [
+          {
+            "type": "notify",
+            "recipients": { "creator": true },
+            "title": "你的 IT 工单已解决",
+            "message": "「{{field:$field:title}}」：{{field:$field:resolution}}",
+            "channels": ["inbox"]
+          }
+        ]
+      }
+    },
+    {
+      "op": "app.create",
+      "ref": "app",
+      "baseRef": "base",
+      "name": "IT 工单",
+      "description": "提交与处理 IT 问题",
+      "icon": "ticket",
+      "accent": "blue",
+      "spec": {
+        "version": 1,
+        "home": "submit",
+        "nav": { "layout": "tabs" },
+        "pages": [
+          {
+            "id": "submit",
+            "title": "我的工单",
+            "icon": "inbox",
+            "cards": [
+              {
+                "id": "mine",
+                "kind": "records",
+                "title": "我提交的工单",
+                "layout": { "x": 0, "y": 0, "w": 8, "h": 8 },
+                "source": {
+                  "tableId": "$table:tickets",
+                  "query": {
+                    "where": {
+                      "combinator": "and",
+                      "clauses": [{ "systemField": "created_by", "operator": "eq", "value": "$me" }]
+                    },
+                    "sort": [{ "systemField": "created_at", "direction": "desc" }]
+                  }
+                },
+                "fieldIds": ["$field:title", "$field:category", "$field:status", "$field:assignee"],
+                "systemFields": ["created_at"],
+                "detail": {
+                  "fieldIds": [
+                    "$field:title",
+                    "$field:category",
+                    "$field:priority",
+                    "$field:details",
+                    "$field:shots",
+                    "$field:status",
+                    "$field:assignee",
+                    "$field:resolution",
+                    "$field:resolved_at"
+                  ],
+                  "comments": true
+                }
+              },
+              {
+                "id": "new",
+                "kind": "form",
+                "title": "提交工单",
+                "layout": { "x": 8, "y": 0, "w": 4, "h": 8 },
+                "tableId": "$table:tickets",
+                "fieldIds": ["$field:title", "$field:category", "$field:priority", "$field:details", "$field:shots"],
+                "defaults": [{ "fieldId": "$field:status", "value": "new" }],
+                "submitLabel": "提交",
+                "successMessage": "已提交，IT 支持会尽快处理"
+              }
+            ]
+          },
+          {
+            "id": "desk",
+            "title": "工单台",
+            "icon": "wrench",
+            "cards": [
+              {
+                "id": "board",
+                "kind": "kanban",
+                "title": "全部工单",
+                "layout": { "x": 0, "y": 0, "w": 12, "h": 10 },
+                "source": { "tableId": "$table:tickets" },
+                "groupFieldId": "$field:status",
+                "fieldIds": ["$field:title", "$field:category", "$field:priority", "$field:assignee"],
+                "detail": {
+                  "fieldIds": [
+                    "$field:title",
+                    "$field:category",
+                    "$field:priority",
+                    "$field:details",
+                    "$field:shots",
+                    "$field:status",
+                    "$field:assignee",
+                    "$field:resolution",
+                    "$field:resolved_at"
+                  ],
+                  "systemFields": ["created_by", "created_at"],
+                  "editableFieldIds": ["$field:category", "$field:priority", "$field:assignee"],
+                  "comments": true
+                },
+                "actions": [
+                  {
+                    "id": "take",
+                    "label": "接单",
+                    "when": {
+                      "combinator": "and",
+                      "clauses": [{ "fieldId": "$field:status", "operator": "eq", "value": "new" }]
+                    },
+                    "do": {
+                      "type": "set_fields",
+                      "values": [
+                        { "fieldId": "$field:status", "value": "doing" },
+                        { "fieldId": "$field:assignee", "value": "$me" }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "resolve",
+                    "label": "标记解决",
+                    "when": {
+                      "combinator": "and",
+                      "clauses": [{ "fieldId": "$field:status", "operator": "eq", "value": "doing" }]
+                    },
+                    "do": {
+                      "type": "set_fields",
+                      "values": [
+                        { "fieldId": "$field:status", "value": "done" },
+                        { "fieldId": "$field:resolved_at", "value": "$now" }
+                      ],
+                      "inputFieldIds": ["$field:resolution"],
+                      "requiredInputFieldIds": ["$field:resolution"]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "stats",
+            "title": "统计",
+            "icon": "chart",
+            "cards": [
+              {
+                "id": "open",
+                "kind": "kpi",
+                "title": "未解决",
+                "layout": { "x": 0, "y": 0, "w": 4, "h": 3 },
+                "card": {
+                  "kind": "kpi",
+                  "source": {
+                    "tableId": "$table:tickets",
+                    "query": {
+                      "where": {
+                        "combinator": "and",
+                        "clauses": [{ "fieldId": "$field:status", "operator": "neq", "value": "done" }]
+                      }
+                    }
+                  },
+                  "aggregate": { "operation": "count" }
+                }
+              },
+              {
+                "id": "by_category",
+                "kind": "chart",
+                "title": "按类别",
+                "layout": { "x": 4, "y": 0, "w": 8, "h": 6 },
+                "card": {
+                  "kind": "chart",
+                  "source": { "tableId": "$table:tickets" },
+                  "aggregate": {
+                    "operation": "count",
+                    "groupBy": { "fieldId": "$field:category" },
+                    "series": { "fieldId": "$field:status" }
+                  },
+                  "chart": { "type": "bar", "stacked": true }
+                }
+              },
+              {
+                "id": "monthly",
+                "kind": "chart",
+                "title": "每月新工单",
+                "layout": { "x": 0, "y": 6, "w": 12, "h": 6 },
+                "card": {
+                  "kind": "chart",
+                  "source": { "tableId": "$table:tickets" },
+                  "aggregate": {
+                    "operation": "count",
+                    "groupBy": { "systemField": "created_at", "dateBucket": "month" }
+                  },
+                  "chart": { "type": "line" }
+                }
+              }
+            ]
+          }
+        ],
+        "roles": [
+          {
+            "key": "requester",
+            "name": "提单人",
+            "pages": ["submit"],
+            "canComment": true,
+            "tables": [
+              {
+                "tableId": "$table:tickets",
+                "access": "edit",
+                "rows": { "type": "related", "creator": true, "fieldIds": [] },
+                "editRows": {
+                  "type": "where",
+                  "where": {
+                    "combinator": "and",
+                    "clauses": [{ "fieldId": "$field:status", "operator": "eq", "value": "new" }]
+                  }
+                },
+                "fields": [
+                  { "fieldId": "$field:status", "access": "read" },
+                  { "fieldId": "$field:assignee", "access": "read" },
+                  { "fieldId": "$field:resolution", "access": "read" },
+                  { "fieldId": "$field:resolved_at", "access": "read" }
+                ],
+                "fieldDefault": "visible",
+                "create": true,
+                "delete": false
+              }
+            ]
+          },
+          {
+            "key": "agent",
+            "name": "IT 支持",
+            "pages": "all",
+            "canComment": true,
+            "tables": [
+              {
+                "tableId": "$table:tickets",
+                "access": "edit",
+                "fields": [],
+                "fieldDefault": "visible",
+                "create": true,
+                "delete": false
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
