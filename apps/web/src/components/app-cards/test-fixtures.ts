@@ -202,6 +202,7 @@ export function mockHost(patch: Partial<AppCardHost> = {}): AppCardHost {
     preview: {},
     users: [{ id: 'u1', nickname: 'Mia', email: '' }],
     setParams: vi.fn(),
+    pagingKey: '',
     retry: vi.fn(),
     openRecord: vi.fn(),
     runAction: vi.fn(),

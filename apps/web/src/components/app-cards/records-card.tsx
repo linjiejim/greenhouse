@@ -36,6 +36,14 @@ export function AppRecordsCard({ card, host, state }: AppCardRendererProps<'reco
   /** The search the card was last evaluated with. */
   const searched = useRef('');
 
+  // New page filters: the host dropped our cursor and re-queried the first page.
+  const pagedFor = useRef(host.pagingKey);
+  useEffect(() => {
+    if (pagedFor.current === host.pagingKey) return;
+    pagedFor.current = host.pagingKey;
+    setPages([FIRST_PAGE]);
+  }, [host.pagingKey]);
+
   // A new search starts over at the first page.
   useEffect(() => {
     const text = search.trim();

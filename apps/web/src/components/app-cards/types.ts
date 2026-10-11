@@ -42,6 +42,12 @@ export interface AppCardHost {
   users: readonly TableUserOption[];
   /** Re-evaluate a card with new parameters (and remember them for later refreshes). */
   setParams(card: AppCard, params: AppCardParams): void;
+  /**
+   * Changes when the page's filter values do. The host has then dropped every
+   * card's `cursor` (it belongs to the query it was read with), so a paged card
+   * starts over at its first page.
+   */
+  pagingKey: string;
   /** Re-evaluate a card as it is. */
   retry(card: AppCard): void;
   /** Open a record's detail (cards with `detail`). */

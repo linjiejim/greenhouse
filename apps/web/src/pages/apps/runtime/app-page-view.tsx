@@ -328,6 +328,7 @@ export function AppPageView({
       preview,
       users: cards.users,
       setParams: cards.setParams,
+      pagingKey: cards.pagingKey,
       retry: cards.retry,
       openRecord: (card, row) => {
         if (card.detail) setDrawer({ pageId: page.id, card, recordId: row.id });

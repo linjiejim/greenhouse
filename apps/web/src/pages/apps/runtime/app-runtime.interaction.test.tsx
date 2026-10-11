@@ -23,6 +23,7 @@ import type {
 } from '@greenhouse/types/apps';
 import {
   CARDS,
+  CHAIR,
   LAPTOP,
   appSpec,
   appSummary,
@@ -570,6 +571,73 @@ describe('a page in use', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('starts a paged records card over at its first page when the page filters change', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const view = viewWith([CARDS.mine]);
+      view.spec.pages[0]!.filters = [
+        { id: 'q', label: 'Title', kind: 'search', targets: [{ tableId: 7, fieldId: 1 }] },
+      ];
+      api.getApp.mockResolvedValue(view);
+      // A cursor is only good for the query it was read with (the server refuses it under other filters).
+      api.queryAppCard.mockImplementation(async (_appId, input) =>
+        input.cursor ? recordsResult([CHAIR], null) : recordsResult([LAPTOP], 'cursor-2'),
+      );
+      await mount('5');
+      const next = [...document.querySelectorAll('button')].find((entry) => entry.textContent?.trim() === 'Next');
+      await click(next);
+      expect(api.queryAppCard).toHaveBeenLastCalledWith(
+        5,
+        expect.objectContaining({ cardId: 'mine', cursor: 'cursor-2' }),
+      );
+      expect(byTestId('app-card-mine')?.textContent).toContain('Chair');
+
+      await type(document.querySelector('input[placeholder="Search Title"]'), 'Desk');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400);
+      });
+      await flush();
+      const [, input] = api.queryAppCard.mock.calls.at(-1)!;
+      expect(input).toMatchObject({ cardId: 'mine', filterValues: { q: { kind: 'search', text: 'Desk' } } });
+      expect(input).not.toHaveProperty('cursor');
+      // The card is back on its first page.
+      const card = byTestId('app-card-mine')!;
+      expect(card.textContent).toContain('Laptop');
+      expect(card.textContent).toContain('1–1 of 1');
+      const previous = [...card.querySelectorAll('button')].find((entry) => entry.textContent?.trim() === 'Prev');
+      expect((previous as HTMLButtonElement).disabled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('loads a gallery card past its first page and says when the view limit cut it off', async () => {
+    api.getApp.mockResolvedValue(viewWith([CARDS.photos]));
+    // The gateway pages a gallery by 50; this table has 520 records the role can read.
+    let served = 0;
+    api.queryAppCard.mockImplementation(async () => {
+      const rows = Array.from({ length: 50 }, (_, index) => ({ ...CHAIR, id: 1000 + served + index }));
+      served += rows.length;
+      return { ...recordsResult(rows, `c-${served / 50}`), total: 520 };
+    });
+    await mount('5');
+    // Up to the view limit (500) in one answer, like the Tables gallery container.
+    expect(api.queryAppCard.mock.calls.map(([, input]) => input.cursor)).toEqual([
+      undefined,
+      'c-1',
+      'c-2',
+      'c-3',
+      'c-4',
+      'c-5',
+      'c-6',
+      'c-7',
+      'c-8',
+      'c-9',
+    ]);
+    expect(document.querySelectorAll('[data-testid^="gallery-card-"]')).toHaveLength(500);
+    expect(byTestId('app-view-card-photos')?.textContent).toContain('Showing the first 500 of 520 records');
   });
 
   it('re-evaluates the cards of a table when its records change elsewhere', async () => {

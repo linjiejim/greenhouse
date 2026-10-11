@@ -6,10 +6,13 @@
  * keeps the previous result, only a card's latest request lands).
  *
  * - Records cards carry their own search and page (`setParams`), remembered
- *   for later refreshes; kanban and calendar cards load up to the view limit
- *   in one go (they do not page), like their Tables views. A calendar asks
- *   only for the days on screen (`range`): this month's grid until the card
- *   moves to another month (`setParams({range})`).
+ *   for later refreshes. New filter values start them over at their first
+ *   page: a cursor belongs to the query it was read with (the server refuses
+ *   it under other filters), so it is dropped and `pagingKey` tells the card.
+ * - Kanban, calendar and gallery cards load up to the view limit in one go
+ *   (they do not page), like their Tables views. A calendar asks only for the
+ *   days on screen (`range`): this month's grid until the card moves to
+ *   another month (`setParams({range})`).
  * - `tables:records_changed` refreshes the cards reading a changed table
  *   (coalesced and single-flight in `useTablesRecordsChanged`).
  * - `users`: the people the page's cards named — labels for aggregates and
@@ -41,7 +44,7 @@ import type { AppPreviewScope } from '../../../lib/app-routes';
 import { useI18n } from '../../../lib/i18n';
 import { monthOf, VIEW_RECORD_LIMIT, weekStartFor } from '../../tables/views/view-query';
 
-/** Every page of a records card up to the view limit, as one answer (kanban and calendar do not page). */
+/** Every page of a records card up to the view limit, as one answer (kanban, calendar and gallery do not page). */
 export async function queryRecordsUpToLimit(
   appId: number,
   request: AppCardQueryRequest,
@@ -98,7 +101,7 @@ export function useAppPageCards({
                 ...request,
                 range: params.current.get(cardId)?.range ?? calendarCardRange(monthOf(new Date()), weekStart),
               })
-            : card.kind === 'kanban'
+            : card.kind === 'kanban' || card.kind === 'gallery'
               ? await queryRecordsUpToLimit(appId, request)
               : await queryAppCard(appId, { ...request, ...params.current.get(cardId) });
         return { card: isAggregateCard(card) ? card.card : null, result };
@@ -110,9 +113,20 @@ export function useAppPageCards({
   const { states, query, queryMany } = useTableCardResults(provider, filterValues);
 
   // First load, a new view (another role previewed) and new filter values re-evaluate every card.
+  // New filter values also drop every card's cursor (search and calendar days stay).
   const queriedKey = queried.map((card) => card.id).join('\n');
   const filterKey = JSON.stringify(filterValues);
+  const pagedFor = useRef(filterKey);
   useEffect(() => {
+    if (pagedFor.current !== filterKey) {
+      pagedFor.current = filterKey;
+      for (const [cardId, entry] of params.current) {
+        if (entry.cursor === undefined) continue;
+        const next = { ...entry };
+        delete next.cursor;
+        params.current.set(cardId, next);
+      }
+    }
     if (queriedKey) void queryMany(queriedKey.split('\n'));
   }, [queryMany, queriedKey, filterKey]);
 
@@ -145,7 +159,7 @@ export function useAppPageCards({
   );
 
   return useMemo(
-    () => ({ states, query, refreshTable, setParams, retry, users }),
-    [query, refreshTable, retry, setParams, states, users],
+    () => ({ states, query, refreshTable, setParams, retry, users, pagingKey: filterKey }),
+    [filterKey, query, refreshTable, retry, setParams, states, users],
   );
 }
