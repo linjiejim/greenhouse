@@ -131,6 +131,10 @@
     "./date-tokens": {
       "import": "./src/date-tokens.ts",
       "types": "./src/date-tokens.ts"
+    },
+    "./apps": {
+      "import": "./src/apps.ts",
+      "types": "./src/apps.ts"
     }
   },
   "scripts": {
