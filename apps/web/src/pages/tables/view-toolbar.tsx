@@ -21,7 +21,7 @@ interface TablesViewToolbarProps {
   onOpenForms: () => void;
   onAddField: () => void;
   onAddRecord: () => void;
-  /** Open the CSV / Excel import wizard (shown to editors when given). */
+  /** Open the CSV / Excel import wizard (shown when given to people who may create records — what the server checks). */
   onImport?: () => void;
 }
 
@@ -69,7 +69,7 @@ export function TablesViewToolbar({
             <Trash2 size={14} />
           </IconButton>
         )}
-        {canEdit && onImport && (
+        {canCreate && onImport && (
           <IconButton
             label={t('tables.imports.action')}
             tooltip="top"

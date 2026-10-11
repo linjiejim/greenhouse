@@ -515,7 +515,8 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
           <TablesImportWizard
             open={importDialog}
             table={table}
-            fields={schema.fields}
+            // A custom role imports into the fields it may write (the server refuses the others).
+            fields={dialogFields}
             canBuild={canBuild}
             onClose={() => setImportDialog(false)}
             onImported={() => {

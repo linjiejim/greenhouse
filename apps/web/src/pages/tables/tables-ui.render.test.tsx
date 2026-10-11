@@ -127,6 +127,31 @@ describe('Tables compact grid controls', () => {
     expect(html).toContain('bg-primary-500');
   });
 
+  it('offers import to whoever may create records, which is what the server checks', () => {
+    const toolbar = (rights: { canEdit: boolean; canCreate: boolean }) =>
+      renderToStaticMarkup(
+        <TablesViewToolbar
+          viewControls={null}
+          search=""
+          filterCount={0}
+          canBuild={false}
+          pasting={false}
+          onSearch={vi.fn()}
+          onOpenFilters={vi.fn()}
+          onOpenRecycleBin={vi.fn()}
+          onOpenForms={vi.fn()}
+          onAddField={vi.fn()}
+          onAddRecord={vi.fn()}
+          onImport={vi.fn()}
+          {...rights}
+        />,
+      );
+    // A custom role that edits but may not create gets no import (the server would refuse it)…
+    expect(toolbar({ canEdit: true, canCreate: false })).not.toContain('data-testid="tables-import-open"');
+    // …and one that creates without editing any existing record does.
+    expect(toolbar({ canEdit: false, canCreate: true })).toContain('data-testid="tables-import-open"');
+  });
+
   it('always exposes View while keeping edit and delete behind record edit permission', () => {
     const viewerHtml = renderToStaticMarkup(
       <RecordRowActions record={record} canEdit={false} onView={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />,
