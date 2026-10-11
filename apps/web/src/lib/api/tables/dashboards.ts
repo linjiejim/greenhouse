@@ -3,11 +3,14 @@
  */
 
 import type {
-  TableAggregateRow,
+  TableCardSpec,
+  TableDashboardConfig,
   TableDashboardWidgetConfig,
   TableDashboardWidgetLayout,
   TableDashboardWidgetType,
+  TableFilterValue,
 } from '@greenhouse/types/tables';
+import type { TableCardPoint, TableCardResult } from '@greenhouse/types/table-cards';
 import { rpc } from '../client';
 import { responseError } from './shared';
 import type { TableRecordPage } from './records';
@@ -17,6 +20,8 @@ export interface TableDashboard {
   base_id: number;
   name: string;
   description: string | null;
+  /** `{version, filters}` — rows written before filters existed hold `{}`. */
+  config: TableDashboardConfig;
   revision: number;
   created_by: string;
   created_at: string;
@@ -38,13 +43,25 @@ export interface TableDashboardWidget {
   created_by: string;
   created_at: string;
   updated_at: string;
+  /** Set for a restricted reader when the widget's table or query is out of reach (config withheld). */
+  access?: 'no_access';
 }
 
+/** One evaluated widget: the card as the caller may see it and its result (records are projected). */
 export interface TableDashboardWidgetResult {
   widget: TableDashboardWidget;
-  text?: string;
-  rows?: TableAggregateRow[];
-  records?: TableRecordPage;
+  card: TableCardSpec | null;
+  result: TableCardResult<TableRecordPage>;
+}
+
+/** What a widget query carries besides the widget: the viewer's filter values, zone, a drill point, a page. */
+export interface TableWidgetQueryInput {
+  /** By control id; `null` clears a control's default. */
+  filterValues?: Record<string, TableFilterValue | null>;
+  /** IANA zone for date buckets and presets — the viewer's. */
+  timezone?: string;
+  drilldown?: TableCardPoint;
+  cursor?: string;
 }
 
 export async function createTableDashboard(baseId: number, name: string): Promise<TableDashboard> {
@@ -56,7 +73,7 @@ export async function createTableDashboard(baseId: number, name: string): Promis
 
 export async function updateTableDashboard(
   dashboardId: number,
-  input: { revision: number; name?: string; description?: string | null },
+  input: { revision: number; name?: string; description?: string | null; config?: TableDashboardConfig },
 ): Promise<TableDashboard> {
   const args = { param: { dashboardId: String(dashboardId) }, json: input };
   const response = await rpc.api.tables.dashboards[':dashboardId'].$patch(args);
@@ -86,7 +103,8 @@ export async function createTableDashboardWidget(
   dashboardId: number,
   input: {
     tableId?: number;
-    type: TableDashboardWidgetType;
+    /** Optional with `config.card` (the card decides the stored type). */
+    type?: TableDashboardWidgetType;
     title: string;
     config?: TableDashboardWidgetConfig;
     layout?: TableDashboardWidgetLayout;
@@ -122,10 +140,12 @@ export async function deleteTableDashboardWidget(widgetId: number): Promise<void
   if (!response.ok) throw await responseError(response, 'Unable to delete widget');
 }
 
-export async function queryTableDashboardWidget(widgetId: number): Promise<TableDashboardWidgetResult> {
-  const response = await rpc.api.tables['dashboard-widgets'][':widgetId'].query.$post({
-    param: { widgetId: String(widgetId) },
-  });
+export async function queryTableDashboardWidget(
+  widgetId: number,
+  input: TableWidgetQueryInput = {},
+): Promise<TableDashboardWidgetResult> {
+  const args = { param: { widgetId: String(widgetId) }, json: input };
+  const response = await rpc.api.tables['dashboard-widgets'][':widgetId'].query.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to query widget');
-  return response.json();
+  return (await response.json()) as unknown as TableDashboardWidgetResult;
 }
