@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { TableField, TableRecord, TableView } from '../../lib/api/tables';
-import { TablesGridToolbar } from './grid-toolbar';
-import { RecordDetailContent } from './record-detail-drawer';
+import type { TableDefinition, TableField, TableRecord, TableView } from '../../lib/api/tables';
+import { TablesViewToolbar } from './view-toolbar';
+import { RecordDetailContent } from './record-drawer/record-detail-drawer';
 import { RecordRowActions } from './record-row-actions';
 
 const record: TableRecord = {
@@ -63,6 +63,9 @@ const fields: TableField[] = [
   },
 ];
 
+const table: Pick<TableDefinition, 'id' | 'base_id' | 'name'> = { id: 7, base_id: 3, name: 'Launch table' };
+const jim = { id: 'user-1', nickname: 'Jim', email: 'jim@example.com' };
+
 const views: TableView[] = [
   {
     id: 9,
@@ -83,7 +86,7 @@ const views: TableView[] = [
 describe('Tables compact grid controls', () => {
   it('renders crowded toolbar operations as accessible icon buttons with upward tooltips', () => {
     const html = renderToStaticMarkup(
-      <TablesGridToolbar
+      <TablesViewToolbar
         views={views}
         selectedViewId="9"
         search=""
@@ -131,13 +134,15 @@ describe('Tables compact grid controls', () => {
   it('renders stored, select and computed values in the read-only record detail content', () => {
     const html = renderToStaticMarkup(
       <RecordDetailContent
-        tableName="Launch table"
+        table={table}
         record={record}
         fields={fields}
-        users={[{ id: 'user-1', nickname: 'Jim', email: 'jim@example.com' }]}
+        users={[jim]}
+        usersById={new Map([[jim.id, jim]])}
         canEdit
         onClose={vi.fn()}
         onEdit={vi.fn()}
+        onRecordChanged={vi.fn()}
       />,
     );
 

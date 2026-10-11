@@ -21,6 +21,13 @@ export interface InlineEditOption {
   label: string;
 }
 
+/** What a custom editor (`renderEditor`) gets: save a parsed value, or give up. */
+export interface InlineEditorControls<T> {
+  commit: (value: T) => void;
+  cancel: () => void;
+  saving: boolean;
+}
+
 interface InlineEditCellProps<T> {
   label: string;
   value: T;
@@ -36,6 +43,12 @@ interface InlineEditCellProps<T> {
   parseDraft?: (draft: string) => T;
   onPaste?: (event: React.ClipboardEvent<HTMLDivElement>) => void;
   className?: string;
+  /**
+   * Replaces the built-in controls while editing (Tables renders its one
+   * `FieldEditor` here). The cell keeps the view state, the pencil, saving and
+   * the error line; the editor owns its draft and decides when to commit.
+   */
+  renderEditor?: (controls: InlineEditorControls<T>) => React.ReactNode;
 }
 
 function defaultDraftValue(value: unknown): string {
@@ -70,6 +83,7 @@ export function InlineEditCell<T>({
   parseDraft = (draft) => draft as T,
   onPaste,
   className = '',
+  renderEditor,
 }: InlineEditCellProps<T>) {
   const t = useT();
   const [editing, setEditing] = useState(false);
@@ -192,6 +206,27 @@ export function InlineEditCell<T>({
         >
           <Pencil size={11} />
         </button>
+      </div>
+    );
+  }
+
+  if (renderEditor) {
+    return (
+      <div
+        className={`relative min-w-36 ${className}`}
+        title={error || undefined}
+        aria-busy={saving}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {renderEditor({
+          commit: (nextValue) => void commitValue(nextValue),
+          // A blur that lands while the save is in flight is not a cancel.
+          cancel: () => {
+            if (!savingRef.current) cancelEditing();
+          },
+          saving,
+        })}
+        {error && <p className="mt-1 whitespace-normal text-[10px] text-danger">{error}</p>}
       </div>
     );
   }

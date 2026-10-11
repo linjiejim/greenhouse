@@ -83,7 +83,9 @@ export function TablesAutomationDialog({
         trigger,
         config: {
           version: 1,
-          actions: [{ type: 'notify', userIds: recipientIds, title: title.trim(), message: message.trim() }],
+          actions: [
+            { type: 'notify', recipients: { userIds: recipientIds }, title: title.trim(), message: message.trim() },
+          ],
         },
       });
       setCreating(false);

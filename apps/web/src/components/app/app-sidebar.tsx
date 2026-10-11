@@ -52,6 +52,7 @@ type Route =
   | 'design'
   | 'knowledge'
   | 'tables'
+  | 'forms'
   | 'skillhub'
   | 'tasks'
   | 'executions';

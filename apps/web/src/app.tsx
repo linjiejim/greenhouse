@@ -27,6 +27,7 @@ const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ defaul
 const ExecutionCenterPage = lazy(() => import('./pages/executions').then((m) => ({ default: m.ExecutionsPage })));
 const BotsPage = lazy(() => import('./pages/bots').then((m) => ({ default: m.BotsPage })));
 const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
+const TablesFormRoute = lazy(() => import('./pages/tables/form-route').then((m) => ({ default: m.TablesFormRoute })));
 const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => ({ default: m.OAuthConsentPage })));
 const AccountPasswordPage = lazy(() =>
   import('./pages/account-password').then((m) => ({ default: m.AccountPasswordPage })),
@@ -125,6 +126,7 @@ type Route =
   | 'design'
   | 'knowledge'
   | 'tables'
+  | 'forms'
   | 'skillhub'
   | 'tasks'
   | 'executions';
@@ -222,6 +224,7 @@ const CORE_ROUTES: ReadonlySet<string> = new Set([
   'design',
   'knowledge',
   'tables',
+  'forms',
   'skillhub',
   'tasks',
   'executions',
@@ -256,6 +259,14 @@ function parseRoute(hash: string): ParsedRoute {
       window.location.hash = destination;
       return parseRoute(destination);
     }
+  }
+
+  // Forms left the Tables gate (spec 20261011-tables-foundation §3): people a
+  // form is sent to need not use Tables. Old links keep working.
+  if (topLevel === 'tables' && segments[1] === 'form') {
+    const destination = `#/forms/${segments[2] ?? ''}`;
+    window.location.hash = destination;
+    return parseRoute(destination);
   }
 
   // Custom Agents folded into Bots (spec 20261007): a member manages their Bots under Settings.
@@ -845,7 +856,9 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                 {route === 'knowledge' && hasApplication('knowledge') && (
                   <KnowledgePage subPath={subPath} basePath="#/knowledge" />
                 )}
-                {route === 'tables' && hasApplication('tables') && <TablesPage subPath={subPath} />}
+                {route === 'tables' && hasApplication('tables') && <TablesPage subPath={subPath} params={params} />}
+                {/* Not behind the Tables gate: a form's audience need not use Tables (the API still authorizes). */}
+                {route === 'forms' && <TablesFormRoute subPath={subPath} />}
                 {route === 'executions' && <ExecutionCenterPage subPath={subPath} params={params} />}
                 {route === 'extension' && (
                   <ExtensionPageHost route={extensionRoute ?? ''} subPath={subPath} params={params} />

@@ -202,6 +202,16 @@ import {
   FileIcon,
   SquareTerminal,
   Activity,
+  // Tables views, automations, import, formula (Phase 0 slices)
+  Kanban,
+  CalendarDays,
+  CalendarClock,
+  GalleryHorizontal,
+  Webhook,
+  MousePointerClick,
+  FileSpreadsheet,
+  SquareFunction,
+  Sigma,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -402,6 +412,15 @@ export {
   FileIcon,
   SquareTerminal,
   Activity,
+  Kanban,
+  CalendarDays,
+  CalendarClock,
+  GalleryHorizontal,
+  Webhook,
+  MousePointerClick,
+  FileSpreadsheet,
+  SquareFunction,
+  Sigma,
 };
 export type { LucideIcon };
 

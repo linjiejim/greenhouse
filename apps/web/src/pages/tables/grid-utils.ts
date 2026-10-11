@@ -1,12 +1,6 @@
-import type { TableFieldConfig, TableRecordValues } from '@greenhouse/types/tables';
-import type { TableBatchRecordItem, TableField, TableRecord } from '../../lib/api/tables';
+import { isComputedFieldType, type TableFieldConfig, type TableRecordValues } from '@greenhouse/types/tables';
+import type { TableBatchRecordItem, TableField, TableRecord, TableUserOption } from '../../lib/api/tables';
 import { safeParse } from '../../lib/utils';
-
-export interface TablePasteUser {
-  id: string;
-  nickname: string;
-  email: string;
-}
 
 export function parseClipboardMatrix(text: string): string[][] {
   const normalized = text.replace(/\r\n?/g, '\n');
@@ -22,7 +16,7 @@ function splitList(raw: string): string[] {
     .filter(Boolean);
 }
 
-function findUser(raw: string, users: TablePasteUser[]): string {
+function findUser(raw: string, users: TableUserOption[]): string {
   const needle = raw.trim().toLocaleLowerCase();
   const user = users.find(
     (candidate) =>
@@ -43,7 +37,7 @@ function findOption(raw: string, config: TableFieldConfig): string {
   return option.id;
 }
 
-export function parsePastedCell(field: TableField, raw: string, users: TablePasteUser[]): unknown {
+export function parsePastedCell(field: TableField, raw: string, users: TableUserOption[]): unknown {
   const value = raw.trim();
   if (!value) return null;
   const config = safeParse<TableFieldConfig>(field.config, {});
@@ -73,7 +67,7 @@ export function parsePastedCell(field: TableField, raw: string, users: TablePast
     if (ids.some((id) => !Number.isInteger(id) || id <= 0)) throw new Error(`"${raw}" is not a record id`);
     return config.relation?.multiple ? ids : ids[0];
   }
-  if (field.type === 'formula' || field.type === 'rollup') {
+  if (isComputedFieldType(field.type)) {
     throw new Error(`"${field.name}" is computed and cannot be pasted`);
   }
   return value;
@@ -85,7 +79,7 @@ export function buildPasteBatch(input: {
   startColumn: number;
   records: TableRecord[];
   fields: TableField[];
-  users: TablePasteUser[];
+  users: TableUserOption[];
 }): TableBatchRecordItem[] {
   return input.matrix.map((row, rowOffset) => {
     const values: TableRecordValues = {};
