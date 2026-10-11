@@ -121,7 +121,7 @@ export function RecordsTable({
 export function RecordsCard(props: Parameters<typeof RecordsTable>[0]) {
   const t = useT();
   return (
-    <div className="h-full min-h-0 overflow-auto rounded-md border border-edge">
+    <div className="h-full min-h-0 overflow-auto rounded-md border border-edge bg-surface-raised">
       <RecordsTable {...props} />
       {props.records.length === 0 && (
         <div className="px-3 py-6 text-center text-xs text-fg-faint">{t('tables.dashboard.card.noData')}</div>

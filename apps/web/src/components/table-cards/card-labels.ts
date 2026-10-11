@@ -81,8 +81,9 @@ export function dimensionTitle(dim: CardDimension | undefined, ctx: CardLabelCon
 
 /** One group / series key as a person reads it. */
 export function dimensionLabel(dim: CardDimension | undefined, key: CardKey, ctx: CardLabelContext): string {
-  if (key === null || key === undefined || key === '') return ctx.t('tables.dashboard.card.empty');
+  // An ungrouped card has one point standing for every record it counts.
   if (!dim) return ctx.t('tables.dashboard.allRecords');
+  if (key === null || key === undefined || key === '') return ctx.t('tables.dashboard.card.empty');
   const text = String(key);
   const bucket = bucketOf(dim);
   if (bucket) return bucketLabel(bucket, text, ctx);

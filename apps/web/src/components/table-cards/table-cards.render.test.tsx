@@ -75,6 +75,7 @@ describe('card models', () => {
     expect(dimensionLabel({ fieldId: 2 }, 'won', labels)).toBe('Won');
     expect(dimensionLabel({ fieldId: 5 }, 'u1', labels)).toBe('Jim');
     expect(dimensionLabel({ fieldId: 2 }, null, labels)).toBe('(Empty)');
+    expect(dimensionLabel(undefined, null, labels)).toBe('All records');
   });
 
   it('builds a stacked chart whose series keep their option colour and map clicks back to points', () => {

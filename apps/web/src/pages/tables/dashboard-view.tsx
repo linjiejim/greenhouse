@@ -85,7 +85,8 @@ export function TablesDashboardView({ dashboardId, tables, role }: TablesDashboa
       widgets.map((widget) => {
         const compact = widget.type === 'kpi' || widget.type === 'text';
         const minW = compact ? 3 : 6;
-        const minH = compact ? 2 : 4;
+        // A KPI needs its number and caption row below the title; text can be a one-liner.
+        const minH = widget.type === 'kpi' ? 3 : compact ? 2 : 4;
         const layout = safeParse<Partial<TableDashboardWidgetLayout>>(widget.layout, {});
         const w = Math.min(Math.max(typeof layout.w === 'number' ? layout.w : minW, minW), DASHBOARD_COLUMNS);
         return {

@@ -60,7 +60,7 @@ export const tablesDashboardsEn = {
     },
     drilldown: {
       title: '{widget}: {label}',
-      count: '{count} records',
+      count: 'Records: {count}',
       empty: 'No records match.',
       loadMore: 'Load more',
       failed: 'Unable to load these records',

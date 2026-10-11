@@ -31,7 +31,7 @@ import {
   type TableField,
   type TableUserOption,
 } from '../../../lib/api/tables';
-import { Checkbox, Dialog, Input, Select, Textarea, Toggle, Button } from '../../../components/ui';
+import { Button, Checkbox, Dialog, Input, Select, Textarea } from '../../../components/ui';
 import { FormActions, FormError, FormField, FormGrid, FormGroup, FormSection } from '../../../components/form';
 import { FilterEditor, completedFilterGroup } from '../../../components/tables';
 import { filterValueType } from '../../../components/tables/filter-model';
@@ -180,7 +180,7 @@ export function WidgetDialog({
           title: draft.title.trim(),
           ...(tableId ? { tableId } : {}),
           config: { card },
-          layout: { x: 0, y: 0, w: compact ? 3 : 6, h: compact ? 2 : 4 },
+          layout: { x: 0, y: 0, w: compact ? 3 : 6, h: card.kind === 'kpi' ? 3 : compact ? 2 : 4 },
         });
       }
       onSaved();
@@ -353,34 +353,30 @@ export function WidgetDialog({
             {draft.kind === 'chart' && (
               <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
                 {!isPie && draft.series && (
-                  <Toggle
+                  <Checkbox
                     checked={draft.stacked}
-                    onChange={(stacked) => patch({ stacked })}
+                    onChange={(event) => patch({ stacked: event.target.checked })}
                     label={t('tables.dashboard.editor.stacked')}
-                    size="sm"
                   />
                 )}
                 {draft.chartType === 'bar' && (
-                  <Toggle
+                  <Checkbox
                     checked={draft.horizontal}
-                    onChange={(horizontal) => patch({ horizontal })}
+                    onChange={(event) => patch({ horizontal: event.target.checked })}
                     label={t('tables.dashboard.editor.horizontal')}
-                    size="sm"
                   />
                 )}
                 {isPie && (
-                  <Toggle
+                  <Checkbox
                     checked={draft.donut}
-                    onChange={(donut) => patch({ donut })}
+                    onChange={(event) => patch({ donut: event.target.checked })}
                     label={t('tables.dashboard.editor.donut')}
-                    size="sm"
                   />
                 )}
-                <Toggle
+                <Checkbox
                   checked={draft.showValues}
-                  onChange={(showValues) => patch({ showValues })}
+                  onChange={(event) => patch({ showValues: event.target.checked })}
                   label={t('tables.dashboard.editor.showValues')}
-                  size="sm"
                 />
               </div>
             )}

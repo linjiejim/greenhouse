@@ -7,12 +7,6 @@
 
 import type { TableCardPoint } from '@greenhouse/types/table-cards';
 import type { TableAggregateRow, TableCardSpec } from '@greenhouse/types/tables';
-import {
-  STICKY_CELL_SURFACE,
-  STICKY_HEADER_SURFACE,
-  STICKY_LEFT_CELL,
-  STICKY_LEFT_HEADER,
-} from '../../lib/sticky-columns';
 import { useT } from '../../lib/i18n';
 import { Button } from '../ui';
 import {
@@ -119,13 +113,11 @@ export function PivotCard({
   const hasColumns = model.columns.length > 0;
 
   return (
-    <div className="h-full min-h-0 overflow-auto rounded-md border border-edge">
+    <div className="h-full min-h-0 overflow-auto rounded-md border border-edge bg-surface-raised">
       <table className="min-w-full text-xs [&_td]:whitespace-nowrap">
         <thead className="sticky top-0 z-10 bg-surface-sunken [&_th]:whitespace-nowrap">
           <tr>
-            <th
-              className={`${CELL} ${STICKY_LEFT_HEADER} ${STICKY_HEADER_SURFACE} text-left font-medium text-fg-muted`}
-            >
+            <th className={`${CELL} text-left font-medium text-fg-muted`}>
               {dimensionTitle(card.aggregate?.groupBy, labels)}
             </th>
             {hasColumns ? (
@@ -148,11 +140,8 @@ export function PivotCard({
         </thead>
         <tbody>
           {model.rows.map((row) => (
-            <tr key={keyOf(row.key)} className="group">
-              <th
-                scope="row"
-                className={`${CELL} ${STICKY_LEFT_CELL} ${STICKY_CELL_SURFACE} text-left font-medium text-fg-secondary`}
-              >
+            <tr key={keyOf(row.key)}>
+              <th scope="row" className={`${CELL} text-left font-medium text-fg-secondary`}>
                 <span className="block max-w-48 truncate" title={row.label}>
                   {row.label}
                 </span>

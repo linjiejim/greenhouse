@@ -21,8 +21,11 @@ export function KpiCard({
   const rounded = Math.round(value * 100) / 100;
   const formatted = formatKpi(rounded) ?? '—';
   return (
-    <div className="flex h-full min-h-0 flex-col justify-center gap-2">
-      <div className="text-4xl font-semibold tracking-tight text-fg tabular-nums" data-testid="table-card-kpi">
+    <div className="flex h-full min-h-0 flex-col justify-between gap-2">
+      <div
+        className="text-3xl leading-none font-semibold tracking-tight text-fg tabular-nums"
+        data-testid="table-card-kpi"
+      >
         {formatted}
       </div>
       <div className="flex min-w-0 items-center justify-between gap-2">
