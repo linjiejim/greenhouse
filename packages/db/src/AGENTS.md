@@ -215,6 +215,7 @@
 - **`table_notifications` 保留到下个版本**（扩展—收缩）：0024 把旧行迁入 `notifications`，本版之后不再写；回滚到旧镜像时它还要读写这张表，所以**本版不删表**，下个版本的迁移再 drop。
 - 自定义角色引用（成员 / 群组 / 团队默认）都是 `SET NULL`，悬空的 custom 一律解析为「无访问」，绝不回落 viewer；引用必须同 Base（`uq_table_base_roles_base_id` 供复合校验，处理器负责检查）。
 - **生效角色只有一张决策表**：`decideTableBaseAccess`（`@greenhouse/types/table-access`，纯函数：super / owner → 本人成员行 → 群组 → 团队默认）。db 层只存 / 读授权行，不自己排序角色；API 的 `platform/tables/access.ts` 加载事实后调用它。唯一的 db 侧调用是过渡期同步执行器的 `canUserEditBase`（执行在写路径里，API 没法逐条规则传入解析结果）——它只加载事实、用同一张表判定，切片 Au 把执行移进 API worker 后删除。
+- **视图配置只有一个校验器 `normalizeViewConfig(type, config, ctx)`**（`services/tables/views.ts`，切片 V）：`createView` / `updateView`（改类型或配置时）都过它，参数里的 `scope` 决定作者能引用哪些字段（自定义角色只认可读字段）。规则：配置按已知键重建、未知键丢弃；展示列表（`fieldIds` / `systemFields` / `widths` / 看板 `hiddenGroups`）里失效的 id 静默丢弃（字段归档后视图仍可保存）；**本类型必需的键**（看板 `kanban.groupFieldId` = 单选 / 人员、日历 `calendar.startFieldId` = 日期 / 日期时间、表格 `groupBy` 的字段类型、封面 = 附件）缺失或不可用就拒绝；**其它类型的键**只在仍有效时保留（看板 → 表格 → 看板不丢列设置）；保存的 `query` 用唯一编译器干编译一次，写进 query 的 `groupBy` 移到 `config.groupBy`。分组 / 看板「无值」的键是 `TABLE_VIEW_NO_VALUE_GROUP`（空串）。`deleteView` 是硬删（视图只是配置），别人的个人视图对它不可见。
 - **资源 → Base 的反查只有 `baseIdsForResources(kind, ids)`**（`services/tables/resources.ts`，每种资源一条查询）：Base 审计按它把 `resource.recordId` 放回所属 Base；新增一种可审计的资源就在这里加一个 `kind`（同时进 API `platform/tables/audit.ts` 的映射）。
 
 ### Tables 的软删与恢复

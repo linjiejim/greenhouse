@@ -244,6 +244,16 @@ export interface TableViewConfig {
   rowHeight?: 'short' | 'medium' | 'tall';
 }
 
+export const TABLE_VIEW_ROW_HEIGHTS = ['short', 'medium', 'tall'] as const satisfies ReadonlyArray<
+  NonNullable<TableViewConfig['rowHeight']>
+>;
+
+/**
+ * The lane (kanban `hiddenGroups`) / group key of records with no value in the
+ * grouping field. Every other key is the value as text: an option id, a user id.
+ */
+export const TABLE_VIEW_NO_VALUE_GROUP = '';
+
 /** Stored widget `type` values. New widgets mirror their `TableCardSpec` (see `./table-cards`). */
 export const TABLE_DASHBOARD_WIDGET_TYPES = ['kpi', 'bar', 'line', 'pie', 'area', 'pivot', 'records', 'text'] as const;
 export type TableDashboardWidgetType = (typeof TABLE_DASHBOARD_WIDGET_TYPES)[number];

@@ -129,12 +129,17 @@ describe('Tables domain service', () => {
     expect((await db.tables.getTable(schema.table.id))?.schema_revision).toBe(4);
 
     const view = schema.views[0]!;
-    const viewUpdated = await db.tables.updateView(view.id, {
-      revision: view.revision,
-      name: 'Main grid',
-    });
+    const viewUpdated = await db.tables.updateView(
+      view.id,
+      {
+        revision: view.revision,
+        name: 'Main grid',
+      },
+      undefined,
+      full(),
+    );
     expect(viewUpdated).toMatchObject({ ok: true, value: { revision: 2, name: 'Main grid' } });
-    expect(await db.tables.updateView(view.id, { revision: view.revision, name: 'Stale' })).toEqual({
+    expect(await db.tables.updateView(view.id, { revision: view.revision, name: 'Stale' }, undefined, full())).toEqual({
       ok: false,
       reason: 'conflict',
       current: 2,
@@ -482,17 +487,20 @@ describe('Tables domain service', () => {
     });
     expect(member.role).toBe('editor');
 
-    const personal = await db.tables.createView({
-      table_id: schema.table.id,
-      name: 'My open work',
-      scope: 'personal',
-      owner_id: teammateId,
-      config: {
-        fieldIds: [primary.id, status.id],
-        query: { where: { combinator: 'and', clauses: [{ fieldId: status.id, operator: 'eq', value: 'todo' }] } },
+    const personal = await db.tables.createView(
+      {
+        table_id: schema.table.id,
+        name: 'My open work',
+        scope: 'personal',
+        owner_id: teammateId,
+        config: {
+          fieldIds: [primary.id, status.id],
+          query: { where: { combinator: 'and', clauses: [{ fieldId: status.id, operator: 'eq', value: 'todo' }] } },
+        },
+        created_by: teammateId,
       },
-      created_by: teammateId,
-    });
+      full(teammateId),
+    );
     expect((await db.tables.listViews(schema.table.id, teammateId)).map((view) => view.id)).toContain(personal.id);
     expect((await db.tables.listViews(schema.table.id, ownerId)).map((view) => view.id)).not.toContain(personal.id);
 
