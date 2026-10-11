@@ -19,44 +19,31 @@ import {
   queryTableDashboardWidget,
   type TableDashboard,
   type TableDashboardWidget,
-  type TableDashboardWidgetResult,
   type TableField,
 } from '../../../lib/api/tables';
-import type { DashboardFilterValues } from '../../../components/table-cards';
+import {
+  useTableCardResults,
+  type DashboardFilterValues,
+  type TableCardDataProvider,
+  type TableCardState,
+} from '../../../components/table-cards';
 import { useTablesRecordsChanged } from '../../../hooks/use-tables-records-changed';
 import { safeParse } from '../../../lib/utils';
 
-export interface WidgetState {
-  /** The card as this viewer may see it (null = withheld). */
-  card: TableCardSpec | null;
-  result?: TableDashboardWidgetResult['result'];
-  error?: string | null;
-}
+/** A widget's evaluated card on the client — the shared card state (`components/table-cards`). */
+export type WidgetState = TableCardState;
 
 /** The card a widget row describes (legacy flat configs mapped), as stored. */
 export function storedWidgetCard(widget: TableDashboardWidget): TableCardSpec {
   return legacyWidgetToCard(widget.type, safeParse<TableDashboardWidgetConfig>(widget.config, {}), widget.table_id);
 }
 
-/** The viewer's IANA zone: date buckets and date presets are calendar days here. */
-export function viewerTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
-
 export function useDashboardData(dashboardId: number, filterValues: DashboardFilterValues) {
   const [dashboard, setDashboard] = useState<TableDashboard | null>(null);
   const [widgets, setWidgets] = useState<TableDashboardWidget[]>([]);
-  const [states, setStates] = useState<Record<number, WidgetState>>({});
   const [fieldsByTable, setFieldsByTable] = useState<ReadonlyMap<number, TableField[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const timezone = useMemo(viewerTimeZone, []);
-  const filtersRef = useRef(filterValues);
-  filtersRef.current = filterValues;
   const schemaCache = useRef(new Map<number, Promise<TableField[]>>());
 
   /** One table's fields as the viewer may read them; cached per dashboard. */
@@ -70,39 +57,23 @@ export function useDashboardData(dashboardId: number, filterValues: DashboardFil
     return pending;
   }, []);
 
-  /** Per widget, the latest request: an older one (an earlier filter value) must not land over it. */
-  const latestRequest = useRef(new Map<number, number>());
-
-  const queryWidget = useCallback(
-    async (widget: TableDashboardWidget) => {
-      const requestId = (latestRequest.current.get(widget.id) ?? 0) + 1;
-      latestRequest.current.set(widget.id, requestId);
-      const isLatest = () => latestRequest.current.get(widget.id) === requestId;
-      try {
-        const response = await queryTableDashboardWidget(widget.id, { filterValues: filtersRef.current, timezone });
-        if (!isLatest()) return;
-        setStates((previous) => ({
-          ...previous,
-          [widget.id]: { card: response.card, result: response.result, error: null },
-        }));
-      } catch (queryError) {
-        if (!isLatest()) return;
-        setStates((previous) => ({
-          ...previous,
-          [widget.id]: {
-            card: previous[widget.id]?.card ?? null,
-            result: previous[widget.id]?.result,
-            error: queryError instanceof Error ? queryError.message : String(queryError),
-          },
-        }));
-      }
-    },
-    [timezone],
+  /** The dashboard's card source: each widget is evaluated by its own query route. */
+  const provider = useMemo<TableCardDataProvider<number>>(
+    () => ({
+      query: async (widgetId, input) => {
+        const { card, result } = await queryTableDashboardWidget(widgetId, input);
+        return { card, result };
+      },
+      loadFields,
+    }),
+    [loadFields],
   );
+  const { states, timezone, query, queryMany } = useTableCardResults(provider, filterValues);
 
+  const queryWidget = useCallback((widget: TableDashboardWidget) => query(widget.id), [query]);
   const queryWidgets = useCallback(
-    (list: readonly TableDashboardWidget[]) => Promise.all(list.map((widget) => queryWidget(widget))),
-    [queryWidget],
+    (list: readonly TableDashboardWidget[]) => queryMany(list.map((widget) => widget.id)),
+    [queryMany],
   );
 
   const load = useCallback(async () => {
