@@ -172,11 +172,18 @@ describe('kanban, calendar and gallery cards (the Tables view bodies)', () => {
     expect(host.move).not.toHaveBeenCalled();
   });
 
-  it('places rows on the calendar by the start field', async () => {
+  it('places rows on the calendar by the start field, and asks for the weeks of another month', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-11T12:00:00'));
-    await mount(CARDS.due, mockHost(), recordsResult());
+    const host = mockHost();
+    await mount(CARDS.due, host, recordsResult());
     expect(byTestId('calendar-day-2026-10-15')?.textContent).toContain('Laptop');
+    // The host loads this month first; moving on asks for the six weeks of the new grid.
+    expect(host.setParams).not.toHaveBeenCalled();
+    await click(container.querySelector('button[aria-label="Next month"]'));
+    expect(host.setParams).toHaveBeenLastCalledWith(CARDS.due, { range: { from: '2026-11-01', to: '2026-12-12' } });
+    await click(container.querySelector('button[aria-label="Previous month"]'));
+    expect(host.setParams).toHaveBeenLastCalledWith(CARDS.due, { range: { from: '2026-09-27', to: '2026-11-07' } });
   });
 
   it('reads gallery covers through the app’s file route', async () => {

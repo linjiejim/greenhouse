@@ -16,6 +16,7 @@ export {
   appTableDefinition,
   appTableFields,
   brokenActionIds,
+  calendarCardRange,
   cardIssue,
   cardTableId,
   cardTitle,

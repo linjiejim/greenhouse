@@ -16,6 +16,7 @@ import type {
 } from '@greenhouse/types/apps';
 import type { TableFieldType } from '@greenhouse/types/tables';
 import type { TableDefinition, TableField, TableRecord, TableUserOption } from '../../lib/api/tables';
+import { monthGridDays } from '../../pages/tables/views/view-query';
 
 export type AppRecordsLikeCard = Extract<AppCard, { kind: 'records' | 'kanban' | 'calendar' | 'gallery' }>;
 export type AppAggregateCard = Extract<AppCard, { kind: 'kpi' | 'chart' | 'pivot' }>;
@@ -192,4 +193,14 @@ export function actionInputFieldIds(action: AppRecordAction): number[] {
 /** `open_url` targets the spec allows (the validator's rule): http(s) or an in-app `#/` link. */
 export function isSafeAppUrl(url: string): boolean {
   return /^(https?:\/\/[^\s]+|#\/[^\s]*)$/i.test(url.trim());
+}
+
+/**
+ * The days a calendar card asks the gateway for when it shows `month`
+ * (`YYYY-MM`): the six weeks of the month grid, as the Phase 0 calendar view
+ * loads them (`AppCardQueryInput.range`, inclusive local days).
+ */
+export function calendarCardRange(month: string, weekStart: 0 | 1): { from: string; to: string } {
+  const days = monthGridDays(month, weekStart);
+  return { from: days[0]!, to: days[days.length - 1]! };
 }

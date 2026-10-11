@@ -534,6 +534,35 @@ describe('a page in use', () => {
     expect(api.queryAppCard).not.toHaveBeenCalled();
   });
 
+  it('loads a calendar card for the weeks on screen, and again for another month', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-11T12:00:00'));
+    try {
+      api.getApp.mockResolvedValue(viewWith([CARDS.due]));
+      await mount('5');
+      expect(api.queryAppCard).toHaveBeenCalledWith(
+        5,
+        expect.objectContaining({ cardId: 'due', range: { from: '2026-09-27', to: '2026-11-07' } }),
+      );
+      await click(document.querySelector('button[aria-label="Next month"]'));
+      expect(api.queryAppCard).toHaveBeenLastCalledWith(
+        5,
+        expect.objectContaining({ cardId: 'due', range: { from: '2026-11-01', to: '2026-12-12' } }),
+      );
+      // A refresh (a write, someone else's change) keeps the month on screen.
+      const page = realtime.listeners.findLast((listener) => listener.filter.baseId === 3)!;
+      await act(async () => {
+        await page.onChange();
+      });
+      expect(api.queryAppCard).toHaveBeenLastCalledWith(
+        5,
+        expect.objectContaining({ cardId: 'due', range: { from: '2026-11-01', to: '2026-12-12' } }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('re-evaluates the cards of a table when its records change elsewhere', async () => {
     api.getApp.mockResolvedValue(viewWith([CARDS.mine, CARDS.total, CARDS.intro]));
     await mount('5');

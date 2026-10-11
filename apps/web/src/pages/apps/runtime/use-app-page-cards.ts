@@ -7,7 +7,9 @@
  *
  * - Records cards carry their own search and page (`setParams`), remembered
  *   for later refreshes; kanban and calendar cards load up to the view limit
- *   in one go (they do not page), like their Tables views.
+ *   in one go (they do not page), like their Tables views. A calendar asks
+ *   only for the days on screen (`range`): this month's grid until the card
+ *   moves to another month (`setParams({range})`).
  * - `tables:records_changed` refreshes the cards reading a changed table
  *   (coalesced and single-flight in `useTablesRecordsChanged`).
  * - `users`: the people the page's cards named — labels for aggregates and
@@ -18,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { AppCard, AppCardQueryResult, AppPage, AppRecordRefs, AppRuntimeView } from '@greenhouse/types/apps';
 import {
   appTableFields,
+  calendarCardRange,
   cardTableId,
   isAggregateCard,
   isQueriedCard,
@@ -35,7 +38,8 @@ import {
 import { useTablesRecordsChanged } from '../../../hooks/use-tables-records-changed';
 import { queryAppCard, type AppCardQueryRequest } from '../../../lib/api/apps';
 import type { AppPreviewScope } from '../../../lib/app-routes';
-import { VIEW_RECORD_LIMIT } from '../../tables/views/view-query';
+import { useI18n } from '../../../lib/i18n';
+import { monthOf, VIEW_RECORD_LIMIT, weekStartFor } from '../../tables/views/view-query';
 
 /** Every page of a records card up to the view limit, as one answer (kanban and calendar do not page). */
 export async function queryRecordsUpToLimit(
@@ -72,6 +76,7 @@ export function useAppPageCards({
   filterValues: TableCardFilterValues;
 }) {
   const params = useRef(new Map<string, AppCardParams>());
+  const weekStart = weekStartFor(useI18n().locale);
   const cardsById = useMemo(() => new Map(page.cards.map((card) => [card.id, card])), [page]);
   const queried = useMemo(() => page.cards.filter(isQueriedCard), [page]);
 
@@ -88,14 +93,19 @@ export function useAppPageCards({
           ...preview,
         };
         const result =
-          card.kind === 'kanban' || card.kind === 'calendar'
-            ? await queryRecordsUpToLimit(appId, request)
-            : await queryAppCard(appId, { ...request, ...params.current.get(cardId) });
+          card.kind === 'calendar'
+            ? await queryRecordsUpToLimit(appId, {
+                ...request,
+                range: params.current.get(cardId)?.range ?? calendarCardRange(monthOf(new Date()), weekStart),
+              })
+            : card.kind === 'kanban'
+              ? await queryRecordsUpToLimit(appId, request)
+              : await queryAppCard(appId, { ...request, ...params.current.get(cardId) });
         return { card: isAggregateCard(card) ? card.card : null, result };
       },
       loadFields: async (tableId) => appTableFields(viewTable(view, tableId)),
     }),
-    [appId, cardsById, page.id, preview, view],
+    [appId, cardsById, page.id, preview, view, weekStart],
   );
   const { states, query, queryMany } = useTableCardResults(provider, filterValues);
 

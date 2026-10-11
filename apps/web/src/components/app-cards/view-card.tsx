@@ -11,16 +11,19 @@
  *   (`TableViewHost.cardFooter`); a calendar's chips are too small, so its
  *   actions live in the record's detail;
  * - nothing reads `/api/tables` or Drive: lane counts come from the loaded
- *   records (`aggregate: null`) and covers through the app's file route.
+ *   records (`aggregate: null`) and covers through the app's file route;
+ * - a calendar loads the six weeks on screen (`range`), like the Tables
+ *   calendar view: moving to another month re-queries through the host.
  *
  * Creating, editing structure, sorting and pasting are not offered here.
  */
 
 import { useMemo, useState } from 'react';
+import { useI18n } from '../../lib/i18n';
 import type { TableViewConfig } from '@greenhouse/types/tables';
 import { viewBodyFor, type TableViewHost, type TableViewPermissions } from '../../pages/tables/views';
-import { monthOf } from '../../pages/tables/views/view-query';
-import { brokenActionIds, editableFieldIds, offeredActions, appTableDefinition } from './model';
+import { monthOf, weekStartFor } from '../../pages/tables/views/view-query';
+import { brokenActionIds, calendarCardRange, editableFieldIds, offeredActions, appTableDefinition } from './model';
 import { AppRecordActionButtons } from './record-actions';
 import { useAppRecordsResult } from './records-data';
 import type { AppCardRendererProps } from './types';
@@ -43,8 +46,14 @@ function viewConfig(card: AppCardRendererProps<ViewCardKind>['card']): TableView
 }
 
 export function AppViewCard({ card, host, state }: AppCardRendererProps<ViewCardKind>) {
+  const { locale } = useI18n();
   const data = useAppRecordsResult(card, host, state);
   const [calendarMonth, setCalendarMonth] = useState(() => monthOf(new Date()));
+  // A calendar loads only the weeks on screen (the host starts on this month): another month asks again.
+  const changeMonth = (month: string) => {
+    setCalendarMonth(month);
+    if (card.kind === 'calendar') host.setParams(card, { range: calendarCardRange(month, weekStartFor(locale)) });
+  };
   const Body = viewBodyFor(card.kind);
   const config = useMemo(() => viewConfig(card), [card]);
   const editable = useMemo(() => editableFieldIds(data.table), [data.table]);
@@ -97,7 +106,7 @@ export function AppViewCard({ card, host, state }: AppCardRendererProps<ViewCard
         sort={undefined}
         permissions={permissions}
         calendarMonth={calendarMonth}
-        onCalendarMonthChange={setCalendarMonth}
+        onCalendarMonthChange={changeMonth}
         onToggleSort={noop}
         onOpenRecord={(record) => {
           const row = data.rowsById.get(record.id);

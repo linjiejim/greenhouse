@@ -24,10 +24,12 @@ import type { TableUserOption } from '../../lib/api/tables';
 import type { AppPreviewScope } from '../../lib/app-routes';
 import type { AppRecordsLikeCard } from './model';
 
-/** Per-card query parameters a card controls itself (records search and paging). */
+/** Per-card query parameters a card controls itself (records search and paging; the calendar's days). */
 export interface AppCardParams {
   search?: string;
   cursor?: string;
+  /** Calendar cards: the days on screen (`calendarCardRange`); the host defaults to this month's. */
+  range?: { from: string; to: string };
 }
 
 export interface AppCardHost {
