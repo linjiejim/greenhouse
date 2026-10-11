@@ -94,7 +94,9 @@ export function CommentComposer({ users, initial, submitLabel, onSubmit, onCance
               event.preventDefault();
               void send();
             } else if (event.key === 'Escape' && onCancel && !mention.isActive) {
+              // Cancel the edit, not the drawer / peek around it (its Escape listens on window).
               event.preventDefault();
+              event.stopPropagation();
               onCancel();
             }
           }}
