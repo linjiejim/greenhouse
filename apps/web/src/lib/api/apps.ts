@@ -69,8 +69,11 @@ export async function getApp(appId: number): Promise<AppRuntimeView> {
 export async function getAppPins(): Promise<number[]> {
   const response = await authFetch('/api/apps/pins');
   if (!response.ok) throw await responseError(response, 'Unable to load pinned apps');
-  const body = (await response.json()) as { appIds?: unknown };
-  return Array.isArray(body.appIds) ? body.appIds.filter((id): id is number => Number.isInteger(id)) : [];
+  // The server answers with the pinned summaries (only apps the caller may still open), in order.
+  const body = (await response.json()) as { apps?: unknown };
+  return summaries(body.apps)
+    .map((app) => app.id)
+    .filter((id) => Number.isInteger(id));
 }
 
 /** Replace the caller's pinned apps, in sidebar order (`PUT /api/apps/pins`, spec D9). */

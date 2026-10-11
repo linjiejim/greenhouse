@@ -8,8 +8,10 @@
  *   #/apps/<id>/edit             the builder (the app's draft)
  */
 
-/** The sub-path segment that turns an app address into its builder. */
-export const APP_BUILDER_SEGMENT = 'edit';
+import { APP_BUILDER_SEGMENT } from '@greenhouse/types/apps';
+
+/** The sub-path segment that turns an app address into its builder (the validator reserves it as a page id). */
+export { APP_BUILDER_SEGMENT };
 
 export type AppRoute =
   | { kind: 'center' }

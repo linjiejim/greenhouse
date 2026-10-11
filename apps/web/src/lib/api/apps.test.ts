@@ -60,9 +60,9 @@ describe('apps client', () => {
       const url = String(input);
       if (url === '/api/apps') return Response.json({ managed: [], shared: [summary(5)], featured: [] });
       if (url === '/api/apps/pins' && (!init?.method || init.method === 'GET')) {
-        return Response.json({ appIds: [5, 'x', 2] });
+        return Response.json({ apps: [summary(5), { id: 'x' }, summary(2)] });
       }
-      return Response.json({ appIds: [2, 5] });
+      return Response.json({ apps: [summary(2), summary(5)] });
     });
     globalThis.fetch = fetchMock as typeof globalThis.fetch;
 

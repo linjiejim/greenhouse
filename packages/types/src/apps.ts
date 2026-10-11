@@ -39,6 +39,9 @@ export const APP_LIMITS = Object.freeze({
 /** Page / card / role / action ids: short slugs, unique within their scope. */
 export const APP_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 
+/** The address segment of an app's builder (`#/apps/:id/edit`) — so no page may use it as its id. */
+export const APP_BUILDER_SEGMENT = 'edit';
+
 /** Icons an app or a page may use — a fixed list so every client can draw them. */
 export const APP_ICONS = [
   'app',

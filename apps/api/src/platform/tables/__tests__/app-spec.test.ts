@@ -335,6 +335,19 @@ describe('parseAppSpec — shape and pure checks', () => {
       ]),
     );
   });
+
+  it('reserves the builder segment, which would shadow #/apps/:id/edit', () => {
+    const spec = procurement();
+    const renamed = {
+      ...spec,
+      pages: spec.pages.map((entry, index) => (index === 0 ? { ...entry, id: 'edit' } : entry)),
+    };
+    const result = parseAppSpec(renamed);
+    expect(result.ok).toBe(false);
+    expect(result.ok ? [] : result.errors.map((error) => `${error.path}: ${error.message}`)).toContain(
+      'pages[0].id: "edit" is reserved for the builder\'s address',
+    );
+  });
 });
 
 describe('validateAppSpec — against the Base', () => {

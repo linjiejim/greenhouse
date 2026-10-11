@@ -37,6 +37,7 @@ import {
   type TablesSchemaSource,
 } from '@greenhouse/db';
 import {
+  APP_BUILDER_SEGMENT,
   APP_ICONS,
   APP_ID_PATTERN,
   APP_LIMITS,
@@ -401,6 +402,9 @@ function pureChecks(spec: AppSpec, problems: Problems): void {
   for (const [pageIndex, entry] of spec.pages.entries()) {
     const pageWhere: Where = { path: `pages[${pageIndex}]`, pageId: entry.id };
     if (pageIds.has(entry.id)) problems.add(within(pageWhere, 'id'), `Page "${entry.id}" is defined twice`);
+    if (entry.id === APP_BUILDER_SEGMENT) {
+      problems.add(within(pageWhere, 'id'), `"${APP_BUILDER_SEGMENT}" is reserved for the builder's address`);
+    }
     pageIds.add(entry.id);
     const filterIds = new Set<string>();
     for (const [filterIndex, control] of (entry.filters ?? []).entries()) {
