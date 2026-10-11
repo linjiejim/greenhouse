@@ -82,7 +82,16 @@ export type {
   TableUserGroupGrantRow,
   UpdateTableBaseRoleInput,
 } from './roles.js';
-export type { CreateTableFormInput, UpdateTableFormInput } from './forms.js';
+export {
+  formDefaultEntries,
+  formUploadKeySegment,
+  formWritableFieldIds,
+  normalizeFormAudience,
+  type CreateTableFormInput,
+  type ExpiredFormUpload,
+  type SubmitTableFormOptions,
+  type UpdateTableFormInput,
+} from './forms.js';
 export type {
   BatchUpsertTableRecordItem,
   CreateTableRecordInput,

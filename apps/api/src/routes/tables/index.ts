@@ -50,7 +50,6 @@
  * POST   /tables/:tableId/forms                      — 创建表单
  * GET    /forms/:formId                              — 读取表单 + 字段
  * PATCH  /forms/:formId                              — revision 更新表单
- * POST   /forms/:formId/submit                       — 提交表单（Base 成员，返回记录）
  *
  * 记录（./records.ts；/records/deleted 必须注册在 /records/:recordId 之前）
  * POST   /tables/:tableId/records/query              — 查询记录

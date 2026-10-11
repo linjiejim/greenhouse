@@ -198,7 +198,7 @@ describe('Tables foundation — API access', () => {
     expect(listed.bases.map((base) => base.id)).not.toContain(created.base.id);
   });
 
-  it('serves the forms router outside the Tables routes, with explicit placeholders', async () => {
+  it('serves the forms router outside the Tables routes', async () => {
     const app = createHttpApp([owner, editor]);
     const created = await createBase(app);
     const tableId = created.schema.table.id;
@@ -213,9 +213,12 @@ describe('Tables foundation — API access', () => {
     ).json()) as { form: { id: number } };
 
     const open = await send(app, editor, `/api/forms/${form.form.id}`);
-    expect(open.status).toBe(400);
-    expect(await open.json()).toEqual({ error: 'not_implemented', details: { notImplemented: true } });
-    expect((await send(app, editor, `/api/forms/${form.form.id}/uploads`, 'POST')).status).toBe(501);
+    expect(open.status).toBe(200);
+    expect(((await open.json()) as { form: { fields: Array<{ id: number }> } }).form.fields).toEqual([
+      expect.objectContaining({ id: primaryId }),
+    ]);
+    // Multipart only; the slice Fm suite covers real uploads.
+    expect((await send(app, editor, `/api/forms/${form.form.id}/uploads`, 'POST')).status).toBe(400);
 
     const submitted = await send(app, editor, `/api/forms/${form.form.id}/submit`, 'POST', {
       values: { [primaryId]: 'Via forms router' },

@@ -673,14 +673,23 @@ describe('Tables domain service', () => {
       ),
     ).rejects.toThrow(/expects Drive file ids/);
 
+    // Forms take attachment fields since slice Fm, but only through form-staged
+    // uploads (apps/api/src/routes/__tests__/tables-forms.db.test.ts): an
+    // existing Base file is never bindable by a submission.
+    const form = await db.tables.createForm({
+      table_id: schema.table.id,
+      name: 'Upload form',
+      status: 'published',
+      config: { fieldIds: [primary.id, attachments.id] },
+      user_id: ownerId,
+    });
     await expect(
-      db.tables.createForm({
-        table_id: schema.table.id,
-        name: 'Unsafe upload form',
-        status: 'published',
-        config: { fieldIds: [primary.id, attachments.id] },
-        user_id: ownerId,
-      }),
-    ).rejects.toThrow(/non-attachment/);
+      db.tables.submitForm(
+        form.id,
+        { [primary.id]: 'Reuses a Base file', [attachments.id]: [pending.id] },
+        full(ownerId),
+        meta(ownerId, 'form'),
+      ),
+    ).rejects.toThrow(/not available/);
   });
 });

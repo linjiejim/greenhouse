@@ -63,8 +63,7 @@ describe('Tables registration (manifest 1.3.0)', () => {
   });
 
   it.each([
-    // Landed and covered by their own suites: roles / owner transfer (tables-access), deleteView (tables-views).
-    'openForm',
+    // Landed and covered by their own suites: roles / owner transfer (tables-access), deleteView (tables-views), forms (tables-forms).
     'deleteAutomation',
     'triggerAutomation',
     'listRecordButtons',

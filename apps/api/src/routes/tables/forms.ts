@@ -1,11 +1,12 @@
 /**
- * Tables · forms as Base members build and submit them — mounted at /api/tables
- * (endpoint list in ./index.ts). The submit-only surface for audiences outside
- * the Base is `/api/forms` (routes/forms.ts), not behind the `tables` flag.
+ * Tables · forms as builders configure them — mounted at /api/tables (endpoint
+ * list in ./index.ts). Opening and submitting, for every audience including the
+ * Base's own members, is `/api/forms` (routes/forms.ts), not behind the
+ * `tables` flag.
  */
 
 import { Hono } from 'hono';
-import type { TableFieldRow, TableFormRow, TableRecordRow } from '@greenhouse/db';
+import type { TableFieldRow, TableFormRow } from '@greenhouse/db';
 import type { AppEnv } from '../../app-env.js';
 import { actionError, dispatch, jsonBody, numberParam } from './shared.js';
 
@@ -33,10 +34,4 @@ export const formRoutes = new Hono<AppEnv>()
     const result = await dispatch(c, 'updateForm', { ...(await jsonBody(c)), formId }, { formId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { form: TableFormRow });
-  })
-  .post('/forms/:formId/submit', async (c) => {
-    const formId = numberParam(c, 'formId');
-    const result = await dispatch(c, 'submitForm', { ...(await jsonBody(c)), formId }, { formId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { record: TableRecordRow }, 201);
   });
