@@ -6,9 +6,11 @@
  * 路径（applySchemaPlan，每一步都是以安装人身份 runtime.dispatch 的 Tables 动作），所以模板
  * 做不到安装人手动做不到的事。安装建一个安装人拥有的新 Base、表与字段、停用状态的自动化和一个
  * **草稿**应用；不授权、不分发、不发布、无 webhook。还要求 `tables` 开关（建的是 Tables Base）。
+ * 列表与安装用同一种语言（账号语言，`templateLocale`）：英文账号看到英文模板，装出来的 Base、
+ * 字段、选项、页面、角色、按钮与自动化也都是英文。
  *
  * GET  /api/apps/templates               — 模板目录 {templates: AppTemplateSummary[]}（按账号语言）
- * POST /api/apps/templates/:key/install  — 安装 → 201 AppTemplateInstallResult {app, baseId}；
+ * POST /api/apps/templates/:key/install  — 按账号语言安装 → 201 AppTemplateInstallResult {app, baseId}；
  *                                          未知模板 404；Tables 关闭 403；任一步失败 500 并带逐项结果
  */
 
@@ -19,14 +21,14 @@ import { logger } from '@greenhouse/utils/logger';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
 import { userHasFeature } from '../auth/features.js';
-import { appTemplateSummaries, findAppTemplate } from '../platform/tables/app-templates/index.js';
+import { appTemplateSummaries, findAppTemplate, templateLocale } from '../platform/tables/app-templates/index.js';
 import { applySchemaPlan } from '../platform/tables/schema-plan.js';
 import { actionError, dispatch } from './tables/shared.js';
 
 export const appTemplateRoutes = new Hono<AppEnv>()
   .get('/', async (c) => {
     const user = await getDb().users.getById(getAuthUser(c).id);
-    return c.json({ templates: appTemplateSummaries(user?.locale === 'zh' ? 'zh' : 'en') } satisfies {
+    return c.json({ templates: appTemplateSummaries(templateLocale(user?.locale)) } satisfies {
       templates: AppTemplateSummary[];
     });
   })
@@ -37,7 +39,9 @@ export const appTemplateRoutes = new Hono<AppEnv>()
     if (!(await userHasFeature(user.id, user.role, 'tables'))) {
       return c.json({ error: 'Installing a template creates a Tables Base, and Tables is turned off for you' }, 403);
     }
-    const applied = await applySchemaPlan(template.operations, (actionId, payload, ids) =>
+    // Installed in the language the center listed it in.
+    const plan = template.plans[templateLocale((await getDb().users.getById(user.id))?.locale)];
+    const applied = await applySchemaPlan(plan.operations, (actionId, payload, ids) =>
       dispatch(c, actionId, payload, ids),
     );
     const unfinished = applied.results.filter((result) => result.status !== 'applied');
