@@ -20,7 +20,8 @@ import { RecordActionsSlot } from './actions-slot';
 import type { RecordDrawerSlotProps, RecordDrawerTab } from './slots';
 
 interface RecordDetailContentProps extends RecordDrawerSlotProps {
-  onClose: () => void;
+  /** Absent when the host frame has its own close (the entity peek). */
+  onClose?: () => void;
   onEdit: () => void;
 }
 
@@ -105,9 +106,11 @@ export function RecordDetailContent({ onClose, onEdit, ...slot }: RecordDetailCo
                   <Edit3 size={15} />
                 </IconButton>
               )}
-              <IconButton label={t('tables.closeRecordDetails')} tooltip="top" tooltipMode="portal" onClick={onClose}>
-                <X size={15} />
-              </IconButton>
+              {onClose && (
+                <IconButton label={t('tables.closeRecordDetails')} tooltip="top" tooltipMode="portal" onClick={onClose}>
+                  <X size={15} />
+                </IconButton>
+              )}
             </>
           }
         />
@@ -123,8 +126,9 @@ export function RecordDetailContent({ onClose, onEdit, ...slot }: RecordDetailCo
   );
 }
 
-interface RecordDetailDrawerProps extends Omit<RecordDetailContentProps, 'record'> {
+interface RecordDetailDrawerProps extends Omit<RecordDetailContentProps, 'record' | 'onClose'> {
   record: RecordDetailContentProps['record'] | null;
+  onClose: () => void;
 }
 
 export function RecordDetailDrawer({ record, ...props }: RecordDetailDrawerProps) {
