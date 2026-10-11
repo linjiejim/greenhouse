@@ -454,6 +454,8 @@ export interface AppRuntimeView {
       isPrimary: boolean;
       config: unknown;
       editable: boolean;
+      /** Required when the role creates a record (a form, a create dialog); absent = not known, the write still checks (slice R; additive). */
+      required?: boolean;
     }>;
   }>;
   issues: AppIssue[];
@@ -579,6 +581,8 @@ export interface AppRecordRow {
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Who wrote it last — the `updated_by` system column (slice R; additive, absent from older gateways). */
+  updatedBy?: string | null;
   /** Declared card-face actions this viewer may run on this record now (`when` checked at read time; the write re-checks). */
   actionIds: string[];
 }
