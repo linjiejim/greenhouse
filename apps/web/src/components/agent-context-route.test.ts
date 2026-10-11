@@ -23,3 +23,25 @@ describe('Agent Execution Center route context', () => {
     });
   });
 });
+
+describe('Agent app-page route context', () => {
+  it('gives the app center no page context', () => {
+    expect(resolveUrlContext('#/apps')).toBeNull();
+  });
+
+  it('resolves an app page, its home, and the builder', () => {
+    expect(resolveUrlContext('#/apps/12')).toEqual({ type: 'app-page', appId: 12, mode: 'use', pageId: undefined });
+    expect(resolveUrlContext('#/apps/12/approvals?record=4')).toEqual({
+      type: 'app-page',
+      appId: 12,
+      mode: 'use',
+      pageId: 'approvals',
+    });
+    expect(resolveUrlContext('#/apps/12/edit')).toEqual({ type: 'app-page', appId: 12, mode: 'build' });
+  });
+
+  it('gives a malformed app address no context instead of a broken one', () => {
+    expect(resolveUrlContext('#/apps/abc')).toBeNull();
+    expect(resolveUrlContext('#/apps/0/edit')).toBeNull();
+  });
+});
