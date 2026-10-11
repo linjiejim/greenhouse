@@ -21,6 +21,7 @@ import {
   ArrowRight,
   CheckCircle2,
   CornerDownRight,
+  Gauge,
   Info,
   MessageSquare,
   Lock,
@@ -207,8 +208,11 @@ export function EventRow({
   }
 
   const danger = event?.kind === 'turn_error' || (event?.kind === 'task_report' && event.status === 'failed');
-  const Icon =
-    event?.kind === 'task_report'
+  // A public Agent's per-person daily allowance ran out (P4): a meter, not an archive box.
+  const dailyCap = event?.kind === 'unavailable' && event.reason === 'daily_cap';
+  const Icon = dailyCap
+    ? Gauge
+    : event?.kind === 'task_report'
       ? event.status === 'succeeded'
         ? CheckCircle2
         : XCircle
@@ -220,7 +224,11 @@ export function EventRow({
   const failedBot = event?.kind === 'turn_error' ? lookup(event.bot_id) : undefined;
   const text =
     message.content ||
-    (event?.kind === 'turn_error' ? t('bots.transcript.turnFailed', { name: failedBot?.name ?? '' }) : '');
+    (event?.kind === 'turn_error'
+      ? t('bots.transcript.turnFailed', { name: failedBot?.name ?? '' })
+      : dailyCap
+        ? t('bots.transcript.dailyCap', { name: lookup(event.bot_id)?.name ?? '' })
+        : '');
 
   return (
     <div className="flex justify-center px-2" data-testid="bots-event" data-event-kind={event?.kind ?? 'system'}>

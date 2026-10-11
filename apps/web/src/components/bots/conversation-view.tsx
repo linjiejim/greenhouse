@@ -10,9 +10,16 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isSproutyBot, type BotConversationSummary, type BotRequestView, type BotView } from '@greenhouse/types/bots';
+import {
+  isSproutyBot,
+  type BotConversationReadOnlyCode,
+  type BotConversationSummary,
+  type BotRequestView,
+  type BotView,
+  type SharedBotView,
+} from '@greenhouse/types/bots';
 import { EmptyState, Skeleton, Button, toast } from '../ui';
-import { AlertTriangle, Archive, MessageCircle, Paperclip, Plus } from '../../lib/icons';
+import { AlertTriangle, Archive, MessageCircle, Paperclip, Plus, Users } from '../../lib/icons';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { copyForCode, isBotsApiError, updateTaskChat } from '../../lib/api/bots';
 import { useProfileStore, useUIStore } from '../../stores';
@@ -37,14 +44,31 @@ const drafts = new Map<string, string>();
 
 /**
  * 409 codes the API answers a message with when nobody in the conversation
- * can reply any more — its Bot was archived (`bot_archived`), or it is a
- * retired group chat (`group_closed`, kept as a record). Nothing was persisted.
- * (`BotConversationReadOnlyCode` in @greenhouse/types/bots.)
+ * can reply any more — its Bot was archived (`bot_archived`), it is a retired
+ * group chat (`group_closed`, kept as a record), or it is someone else's public
+ * Agent that is no longer offered (`agent_unavailable`, P4). Nothing was
+ * persisted. (`BotConversationReadOnlyCode` in @greenhouse/types/bots.)
  */
-const READ_ONLY_CODES: ReadonlySet<string> = new Set(['bot_archived', 'group_closed']);
+const READ_ONLY_CODES: ReadonlySet<BotConversationReadOnlyCode> = new Set<BotConversationReadOnlyCode>([
+  'bot_archived',
+  'group_closed',
+  'agent_unavailable',
+]);
+
+const READ_ONLY_TOAST = {
+  bot_archived: 'bots.readOnly.sendRefused',
+  group_closed: 'bots.readOnly.groupClosedTitle',
+  agent_unavailable: 'bots.shared.sendRefused',
+} satisfies Record<BotConversationReadOnlyCode, TranslationKey>;
 
 export function isReadOnlySendError(err: unknown): boolean {
-  return isBotsApiError(err) && err.status === 409 && err.code !== null && READ_ONLY_CODES.has(err.code);
+  return readOnlyCode(err) !== null;
+}
+
+function readOnlyCode(err: unknown): BotConversationReadOnlyCode | null {
+  if (!isBotsApiError(err) || err.status !== 409 || err.code === null) return null;
+  const code = err.code as BotConversationReadOnlyCode;
+  return READ_ONLY_CODES.has(code) ? code : null;
 }
 
 /** Why "edit" / "answer again" was refused (POST …/rewind), in the member's words. */
@@ -86,6 +110,13 @@ export interface ConversationViewProps {
    * Without it a card opens the page's computer pane.
    */
   onOpenAgentComputer?: (botId: string | null) => void;
+  /**
+   * The DM is with someone else's public Agent (P4): its owner is named, nobody can be invited in,
+   * its replies can be rated, and once it is no longer offered the conversation is read-only.
+   */
+  shared?: SharedBotView;
+  /** The computer door (a public Agent has one only when its owner granted it). Default: shown. */
+  showComputer?: boolean;
   onInvite: () => void;
   onNewBot: () => void;
   onOpenProfile: (botId: string) => void;
@@ -150,12 +181,11 @@ export function ConversationView(props: ConversationViewProps) {
    */
   const reportSendFailure = useCallback(
     (err: unknown) => {
-      if (isReadOnlySendError(err)) {
-        // Read-only for good: an archived Bot's DM (a new Bot is the way on) or a retired group chat.
-        toast(
-          t(isBotsApiError(err, 'group_closed') ? 'bots.readOnly.groupClosedTitle' : 'bots.readOnly.sendRefused'),
-          'info',
-        );
+      const code = readOnlyCode(err);
+      if (code) {
+        // Read-only for good: an archived Bot's DM (a new Bot is the way on), a retired group chat,
+        // or someone else's public Agent no longer offered.
+        toast(t(READ_ONLY_TOAST[code]), 'info');
         setRefusedFor(sessionId);
         onReadOnly();
         return;
@@ -403,6 +433,8 @@ function ConversationColumn({
   activePane,
   onPane,
   onOpenAgentComputer,
+  shared,
+  showComputer = true,
   onInvite,
   onNewBot,
   onOpenProfile,
@@ -434,11 +466,20 @@ function ConversationColumn({
   taskChat: TaskChatControls | null;
 }) {
   const t = useT();
-  const status = useStatusLine({ conversation, members, speaking, pendingRequests, computerPhase, readOnly });
+  const status = useStatusLine({
+    conversation,
+    members,
+    speaking,
+    pendingRequests,
+    computerPhase,
+    readOnly,
+    publishedBy: shared?.owner.nickname,
+  });
   // A DM and a separate chat belong to one Agent; only a retired group had a roster.
   const single = conversation.kind !== 'group';
-  // Guests join a live DM only: an archived Bot's DM has nobody to host them, and a group chat is a record.
-  const canInvite = !readOnly && conversation.members.length < MAX_MEMBERS;
+  // Guests join a live DM only: an archived Bot's DM has nobody to host them, a group chat is a
+  // record, and someone else's public Agent talks with this member alone (P4).
+  const canInvite = !readOnly && !shared && conversation.members.length < MAX_MEMBERS;
   const segments = controller.managed?.botSegments ?? [];
   const liveRequests = controller.managed?.botRequests ?? [];
   const placeholder = owner
@@ -511,6 +552,7 @@ function ConversationColumn({
         canInvite={canInvite}
         onInvite={onInvite}
         onOpenComputer={() => onPane(activePane === 'computer' ? null : 'computer')}
+        showComputer={showComputer}
         onOpenInfo={() => onPane(activePane === 'info' ? null : 'info')}
         onOpenProfile={onOpenProfile}
         onRename={taskChat && !readOnly ? taskChat.onRename : undefined}
@@ -552,12 +594,19 @@ function ConversationColumn({
         readOnly={readOnly}
         onEditLast={taskChat?.onEditLast}
         onRegenerateLast={taskChat?.onRegenerateLast}
+        replyFeedback={!!shared}
       />
       {!readOnly && owner && isSproutyBot(owner) && owner.name === 'Sprouty' && owner.current_version === 1 && (
         <SproutyNamingNudge bot={owner} onOpenProfile={onOpenProfile} />
       )}
       {readOnly ? (
-        <ReadOnlyNotice kind={conversation.kind} name={owner?.name ?? null} onNewBot={onNewBot} />
+        <ReadOnlyNotice
+          kind={conversation.kind}
+          name={owner?.name ?? null}
+          onNewBot={onNewBot}
+          // Someone else's public Agent is read-only only once it is no longer offered.
+          unavailable={!!shared}
+        />
       ) : (
         <BotsComposer
           // Remount per conversation: attachments belong to the draft they were added to.
@@ -598,12 +647,40 @@ function ReadOnlyNotice({
   kind,
   name,
   onNewBot,
+  unavailable = false,
 }: {
   kind: BotConversationSummary['kind'];
   name: string | null;
   onNewBot: () => void;
+  /** Someone else's public Agent its owner stopped offering (or an administrator paused). */
+  unavailable?: boolean;
 }) {
   const t = useT();
+  const openDialog = useBotsStore((state) => state.openDialog);
+  if (unavailable) {
+    return (
+      <div
+        className="flex-shrink-0 border-t border-edge bg-surface-raised px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 md:px-6"
+        data-testid="bots-read-only"
+        data-reason="agent_unavailable"
+        role="status"
+      >
+        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-3 rounded-xl border border-edge bg-surface-sunken px-3 py-2.5">
+          <Archive size={16} className="flex-shrink-0 text-fg-muted" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-fg">
+              {name ? t('bots.shared.unavailableTitle', { name }) : t('bots.shared.unavailableTitleUnknown')}
+            </p>
+            <p className="text-xs text-fg-muted">{t('bots.shared.unavailableDescription')}</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => openDialog({ kind: 'directory' })}>
+            <Users size={14} className="mr-1" />
+            {t('bots.shared.browse')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
   // A DM or a separate chat whose Agent was archived: the way on is a new Agent.
   const direct = kind !== 'group';
   return (

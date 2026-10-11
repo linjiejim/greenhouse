@@ -2,7 +2,7 @@
  * An Agent's usage and activity — the profile drawer's Usage and Activity tabs
  * (spec 20261011-agent-first-class P3d). Owner-only reads:
  * - Usage: `GET /api/bots/:id/usage?days=30` — totals and one bar per active day
- *   (calls and tokens of the Agent's work for its owner).
+ *   (calls and tokens of the Agent's work — for a public Agent, everyone's use of it).
  * - Activity: `GET /api/bots/:id/activity` — platform actions it took, password
  *   uses and background tasks, newest first; never message content. A row that
  *   happened in a conversation opens it.
@@ -47,12 +47,16 @@ function usageDay(day: string): string {
   return formatDay(`${day}T12:00:00Z`);
 }
 
-export function BotUsagePanel({ botId, name }: { botId: string; name: string }) {
+export function BotUsagePanel({ botId, name, isPublic = false }: { botId: string; name: string; isPublic?: boolean }) {
   const t = useT();
   const usage = useBotResource<BotUsageView>(botId, loadUsage);
 
   return (
-    <PanelSection title={t('bots.profile.usageTitle')} hint={t('bots.profile.usageHint', { name })}>
+    <PanelSection
+      title={t('bots.profile.usageTitle')}
+      // A public Agent's usage counts everyone who talks to it (P4, D38).
+      hint={t(isPublic ? 'bots.profile.usageHintPublic' : 'bots.profile.usageHint', { name })}
+    >
       {usage.state === 'loading' ? (
         <Spinner className="h-4 w-4 text-fg-faint" />
       ) : usage.state === 'failed' ? (

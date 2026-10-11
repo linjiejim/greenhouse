@@ -98,6 +98,11 @@ interface MessageProps {
   canActOnArtifacts?: boolean;
   /** Durable Mission outcome rendered as a continuation of its dispatch turn. */
   missionOutcome?: { messageId: string; content: string; createdAt: string };
+  /**
+   * Extra controls at the start of a reply's action row (e.g. rating a public Agent's reply).
+   * A render function so a stable callback keeps the memoized bubble from re-rendering per token.
+   */
+  renderFooterActions?: (messageId: string) => React.ReactNode;
 }
 
 // ─── Message Bubble (completed message) ──────────────────
@@ -144,6 +149,7 @@ function MessageBubbleImpl(props: MessageProps) {
     canViewMetrics = false,
     canActOnArtifacts = true,
     missionOutcome,
+    renderFooterActions,
   } = props;
 
   const [showReasoning, setShowReasoning] = useState(false);
@@ -558,6 +564,7 @@ function MessageBubbleImpl(props: MessageProps) {
             )}
           </div>
           <div className="ml-auto flex items-center">
+            {renderFooterActions && messageId && !isStreaming && renderFooterActions(messageId)}
             {SHOW_MESSAGE_EVAL && !compact && messageId && onEval && (
               <button
                 onClick={() => onEval(messageId)}

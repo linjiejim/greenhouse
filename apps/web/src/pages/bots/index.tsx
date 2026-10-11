@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isSproutyBot, type BotView } from '@greenhouse/types/bots';
+import { isSproutyBot, type BotView, type SharedBotView } from '@greenhouse/types/bots';
 import { Button, EmptyState, Spinner } from '../../components/ui';
 import { AlertTriangle, Bot } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
@@ -41,6 +41,8 @@ import {
   useBotDirectory,
   useBotsLoadState,
   useBotsStore,
+  useReplyableBotIds,
+  useSharedBots,
   useSplitCapable,
 } from '../../components/bots';
 
@@ -142,6 +144,11 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
   const botsState = useBotsLoadState();
   const conversation = controller.conversation;
   const botOf = useCallback((id: string) => directory.get(id), [directory]);
+  // Someone else's public Agent answering here (spec 20261011-agent-first-class P4): its DM is the
+  // member's own, but the Agent — its settings, its grants — is its owner's.
+  const sharedBots = useSharedBots();
+  const ownerShared = conversation?.owner_bot_id ? sharedBots.get(conversation.owner_bot_id) : undefined;
+  const sharedComputer = useSharedComputerProbe(ownerShared);
   // Each Agent has its own computer (spec 20261011-agent-first-class P3a). The page's is the
   // conversation's Agent's (Sprouty's = the main one; a DM with an archived owner's too) — not known
   // until the conversation and, for its owner, the Agent list are in.
@@ -157,7 +164,9 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
   // The one computer status of this page: the header's dot, the pane and the
   // human-check cards raised on it read the same copy (no second poller, and an
   // action's result shows everywhere at once).
-  const computer = useComputerStatus(computerBot !== undefined, computerBot ?? null);
+  // A public Agent may only have a computer when its owner granted one (each user gets their own copy).
+  const computerOff = !!ownerShared && !sharedComputer;
+  const computer = useComputerStatus(computerBot !== undefined && !computerOff, computerBot ?? null);
   // The computer keeps the member's clock (stored once per page load when it differs; it applies to
   // all of the member's computers).
   useComputerTimezoneSync(computer);
@@ -200,7 +209,8 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
     void loadBots().catch(() => {});
   }, [botsState, conversation, directory, loadBots]);
 
-  const activeIds = useMemo(() => new Set(bots.map((bot) => bot.id)), [bots]);
+  // Who still answers: the member's own active Agents and the public Agents still offered to them.
+  const activeIds = useReplyableBotIds();
   const members = useMemo(
     () =>
       (conversation?.members ?? [])
@@ -347,6 +357,8 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
           activePane={pane}
           onPane={changePane}
           onOpenAgentComputer={openAgentComputer}
+          shared={ownerShared}
+          showComputer={!computerOff}
           onInvite={() => openDialog({ kind: 'invite', sessionId })}
           onNewBot={() => openDialog({ kind: 'new-bot' })}
           onOpenProfile={(botId) => openProfile(botId)}
@@ -404,4 +416,27 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
       />
     </div>
   );
+}
+
+/**
+ * Whether someone else's public Agent has a computer for this member: only when its owner granted
+ * one (`grants.computer` — not part of what a member sees), so the computer door asks once, per
+ * Agent, before it shows. An unavailable Agent has none.
+ */
+function useSharedComputerProbe(shared: SharedBotView | undefined): boolean {
+  const [probed, setProbed] = useState<{ botId: string; ok: boolean } | null>(null);
+  const botId = shared?.available ? shared.id : null;
+  useEffect(() => {
+    if (!botId) return;
+    let cancelled = false;
+    botsApi.fetchComputerStatus(botId).then(
+      () => !cancelled && setProbed({ botId, ok: true }),
+      // `agent_not_found` = no computer granted; anything else (a blip) is tried again on the next visit.
+      () => !cancelled && setProbed({ botId, ok: false }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [botId]);
+  return !!botId && probed?.botId === botId && probed.ok;
 }

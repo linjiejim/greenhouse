@@ -13,6 +13,7 @@ import type {
   BotConversationSummary,
   BotView,
   ComputerStatusView,
+  SharedBotView,
 } from '@greenhouse/types/bots';
 import { I18nProvider } from '../../lib/i18n';
 import { BotsApiError } from '../../lib/api/bots';
@@ -504,5 +505,70 @@ describe('the computer keeps the member’s clock', () => {
     await renderPage('c=dm-sage');
     expect(api.updateComputerSettings).toHaveBeenCalledTimes(1);
     expect(document.body.textContent).not.toContain('nope');
+  });
+});
+
+describe("a DM with someone else's public Agent (P4)", () => {
+  const ORACLE: SharedBotView = {
+    id: 'bot_oracle',
+    name: 'Oracle',
+    role: 'Analyst',
+    description: '',
+    avatar: { color: 'ocean' },
+    template_key: null,
+    owner: { id: 'u2', nickname: 'Alice' },
+    dm_session_id: 'dm-oracle',
+    available: true,
+  };
+  const oracleAsBot = { ...SAGE, id: ORACLE.id, name: ORACLE.name, user_id: 'u2' };
+
+  function withShared(shared: SharedBotView) {
+    api.listBots.mockResolvedValue({
+      bots: [SAGE],
+      archived_bots: [],
+      shared_bots: [shared],
+      computer: { state: 'ready', reason: null, hardened: false },
+      vault_available: false,
+      pending_requests: 0,
+    });
+    api.listConversations.mockResolvedValue({ conversations: [summary('dm-oracle', oracleAsBot)] });
+    api.getConversation.mockResolvedValue({
+      conversation: detail('dm-oracle', oracleAsBot),
+      messages: [],
+      has_more: false,
+    });
+  }
+
+  it('names it, answers in it, and shows no computer its owner did not grant', async () => {
+    withShared(ORACLE);
+    api.fetchComputerStatus.mockRejectedValue(new BotsApiError('Agent not found', 404, 'agent_not_found'));
+    await renderPage('c=dm-oracle');
+
+    const header = document.querySelector('[data-testid="bots-conversation-header"]')!;
+    expect(header.textContent).toContain('Oracle');
+    expect(header.textContent).toContain('Analyst · by Alice');
+    expect(document.body.textContent).not.toContain('Deleted Agent');
+    expect(document.querySelector('[data-testid="chat-input"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="bots-computer-button"]')).toBeNull();
+    // Asked once for this Agent's computer; no polling after the refusal.
+    expect(api.fetchComputerStatus).toHaveBeenCalledTimes(1);
+    expect(api.fetchComputerStatus).toHaveBeenCalledWith('bot_oracle');
+  });
+
+  it('shows the computer door when its owner granted one', async () => {
+    withShared(ORACLE);
+    api.fetchComputerStatus.mockResolvedValue(computer({ state: 'absent' }));
+    await renderPage('c=dm-oracle');
+    expect(document.querySelector('[data-testid="bots-computer-button"]')).not.toBeNull();
+  });
+
+  it('is read-only once it is no longer offered', async () => {
+    withShared({ ...ORACLE, available: false });
+    await renderPage('c=dm-oracle');
+    expect(document.querySelector('[data-testid="chat-input"]')).toBeNull();
+    expect(document.querySelector('[data-testid="bots-read-only"]')?.textContent).toContain(
+      'Oracle is no longer available',
+    );
+    expect(api.fetchComputerStatus).not.toHaveBeenCalled();
   });
 });

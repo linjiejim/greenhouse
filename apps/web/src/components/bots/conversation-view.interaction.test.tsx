@@ -10,13 +10,15 @@
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BotConversationDetail, BotView } from '@greenhouse/types/bots';
+import type { BotConversationDetail, BotView, SharedBotView } from '@greenhouse/types/bots';
 import { I18nProvider } from '../../lib/i18n';
 import { BotsApiError } from '../../lib/api/bots';
 import { ToastContainer } from '../ui';
 import { useProfileStore } from '../../stores';
 import { ConversationView, isReadOnlySendError, type ConversationViewProps } from './conversation-view';
 import { queueFirstSend, takeFirstSend } from './first-send';
+import { resetReplyRatings } from './reply-feedback';
+import { sharedBotAsView, useBotsStore } from './bots-store';
 import type { BotConversationController } from './use-bot-conversation';
 
 const api = vi.hoisted(() => ({
@@ -24,6 +26,7 @@ const api = vi.hoisted(() => ({
   listRequests: vi.fn(),
   listBots: vi.fn(),
   updateTaskChat: vi.fn(),
+  rateReply: vi.fn(),
 }));
 vi.mock('../../lib/api/bots', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api/bots')>()),
@@ -591,5 +594,147 @@ describe('a separate chat (kind "task")', () => {
     expect(document.querySelector('button[aria-haspopup="listbox"]')).toBeNull();
     expect(document.querySelector('button[aria-label="Regenerate response"]')).toBeNull();
     expect(button('Rename chat')).toBeUndefined();
+  });
+});
+
+describe("a DM with someone else's public Agent (P4)", () => {
+  const ORACLE: SharedBotView = {
+    id: 'bot_oracle',
+    name: 'Oracle',
+    role: 'Analyst',
+    description: 'Answers revenue questions',
+    avatar: { color: 'ocean' },
+    template_key: null,
+    owner: { id: 'u2', nickname: 'Alice' },
+    dm_session_id: 'dm-oracle',
+    available: true,
+  };
+  const oracle = sharedBotAsView(ORACLE);
+  const DM_ORACLE: BotConversationDetail = {
+    ...DM,
+    session_id: 'dm-oracle',
+    owner_bot_id: ORACLE.id,
+    lead_bot_id: ORACLE.id,
+    members: [{ bot_id: ORACLE.id, role: 'owner', position: 0 }],
+  };
+  const reply = {
+    id: 'm-reply',
+    role: 'assistant' as const,
+    content: 'Q3 revenue was up 12%.',
+    bot_id: ORACLE.id,
+    bot_event: null,
+    pipeline: [],
+    references: [],
+    reasoning: null,
+    model: null,
+    images: [],
+    created_at: '2026-10-05T00:00:00.000Z',
+    seq: 2,
+  };
+  const sharedProps = (overrides: Partial<ConversationViewProps> = {}) =>
+    props({
+      sessionId: 'dm-oracle',
+      controller: controller({ conversation: DM_ORACLE, messages: [reply] }),
+      members: [oracle],
+      owner: oracle,
+      lookup: (key) => (key === ORACLE.id ? oracle : undefined),
+      title: 'Oracle',
+      shared: ORACLE,
+      ...overrides,
+    });
+
+  beforeEach(() => {
+    api.rateReply.mockReset();
+    api.rateReply.mockResolvedValue({ ok: true, rating: 1 });
+    resetReplyRatings();
+  });
+
+  afterEach(() => useBotsStore.getState().reset());
+
+  it('names its owner, invites nobody in and hides a computer it was not granted', async () => {
+    await render(sharedProps({ showComputer: false }));
+    expect(document.querySelector('[data-testid="bots-status-line"]')?.textContent).toBe('Analyst · by Alice');
+    expect(document.querySelector('button[aria-label="Invite an Agent"]')).toBeNull();
+    expect(document.querySelector('button[aria-label="Invite another Agent"]')).toBeNull();
+    expect(document.querySelector('[data-testid="bots-computer-button"]')).toBeNull();
+    expect(document.querySelector('[data-testid="chat-input"]')).not.toBeNull();
+  });
+
+  it('rates a reply: 👍 at once, 👎 with an optional line', async () => {
+    await render(sharedProps());
+    const feedback = document.querySelector('[data-testid="bots-reply-feedback"]')!;
+    const [up, down] = [...feedback.querySelectorAll('button')];
+    await act(async () => up!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await flush();
+    expect(api.rateReply).toHaveBeenCalledWith('dm-oracle', 'm-reply', 1, undefined);
+    expect(feedback.getAttribute('data-rating')).toBe('1');
+
+    await act(async () => down!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await flush();
+    // The rating is saved first; the line is optional.
+    expect(api.rateReply).toHaveBeenLastCalledWith('dm-oracle', 'm-reply', -1, undefined);
+    const comment = document.querySelector<HTMLTextAreaElement>('[data-testid="bots-reply-feedback-comment"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(comment, 'Missed Q4');
+      comment.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () =>
+      document
+        .querySelector('[data-testid="bots-reply-feedback-send"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    );
+    await flush();
+    expect(api.rateReply).toHaveBeenLastCalledWith('dm-oracle', 'm-reply', -1, 'Missed Q4');
+    expect(document.querySelector('[data-testid="bots-reply-feedback-comment"]')).toBeNull();
+  });
+
+  it("offers no rating on the member's own Agents' replies", async () => {
+    await render(props({ controller: controller({ messages: [{ ...reply, bot_id: SAGE.id }] }) }));
+    expect(document.querySelector('[data-testid="bots-reply-feedback"]')).toBeNull();
+  });
+
+  it('turns a 409 agent_unavailable into a read-only notice that points to other Agents', async () => {
+    const onReadOnly = vi.fn();
+    const send = vi.fn(async () => {
+      throw new BotsApiError('This Agent is no longer available', 409, 'agent_unavailable');
+    });
+    expect(isReadOnlySendError(new BotsApiError('x', 409, 'agent_unavailable'))).toBe(true);
+    await render(
+      sharedProps({ controller: controller({ conversation: DM_ORACLE, messages: [reply], send }), onReadOnly }),
+    );
+
+    const input = document.querySelector<HTMLTextAreaElement>('[data-testid="chat-input"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'hello?');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    });
+    await flush();
+
+    expect(onReadOnly).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain('This Agent is no longer available — the conversation is read-only.');
+    const notice = document.querySelector('[data-testid="bots-read-only"]')!;
+    expect(notice.getAttribute('data-reason')).toBe('agent_unavailable');
+    expect(notice.textContent).toContain('Oracle is no longer available');
+    // No "New Agent" here — the way on is someone else's Agent.
+    expect(document.querySelector('[data-testid="bots-read-only-new-bot"]')).toBeNull();
+    await act(async () => notice.querySelector('button')?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(useBotsStore.getState().dialog).toEqual({ kind: 'directory' });
+  });
+
+  it('shows a reached daily allowance as a line, not an archive', async () => {
+    const capped = {
+      ...reply,
+      id: 'm-cap',
+      role: 'system' as const,
+      content: '',
+      bot_event: { kind: 'unavailable' as const, bot_id: ORACLE.id, reason: 'daily_cap' as const },
+      seq: 3,
+    };
+    await render(sharedProps({ controller: controller({ conversation: DM_ORACLE, messages: [reply, capped] }) }));
+    const row = document.querySelector('[data-event-kind="unavailable"]');
+    expect(row?.textContent).toContain("You've used today's allowance with Oracle.");
   });
 });

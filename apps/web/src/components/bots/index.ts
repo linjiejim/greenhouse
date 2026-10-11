@@ -12,6 +12,9 @@ export {
   ensureSprouty,
   useBotDirectory,
   useBotsLoadState,
+  useReplyableBotIds,
+  useSharedBots,
+  sharedBotAsView,
   type BotsDialog,
 } from './bots-store';
 export { BotsBareHeader, BotsMobileNavButton } from './conversation-header';
@@ -25,6 +28,7 @@ export { BotProfileDrawer } from './bot-profile-drawer';
 export { NewBotDialog } from './new-bot-dialog';
 export { BotsDialogs } from './bots-dialogs';
 export { InviteDialog } from './invite-dialog';
+export { AgentDirectoryDialog } from './agent-directory-dialog';
 export { BotAvatar, BotAvatarStack } from './bot-avatar';
 export {
   conversationTitle,

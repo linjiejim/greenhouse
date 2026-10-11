@@ -1,6 +1,7 @@
 /**
- * The create dialog and the profile drawer, driven by the Bots store so the
- * sidebar, the Bots page and Settings → My Bots all open the same things.
+ * The create dialog, the profile drawer and "Browse Agents" (other members'
+ * public Agents), driven by the Bots store so the sidebar, the Bots page and
+ * Settings → My Bots all open the same things.
  * Mounted wherever Bots are managed: a dialog left open when the member
  * navigated away must not reappear on the next visit (the store outlives the
  * page), so the drawer is reset on unmount.
@@ -11,6 +12,7 @@ import type { BotView } from '@greenhouse/types/bots';
 import * as botsApi from '../../lib/api/bots';
 import { BotProfileDrawer } from './bot-profile-drawer';
 import { NewBotDialog } from './new-bot-dialog';
+import { AgentDirectoryDialog } from './agent-directory-dialog';
 import { useBotsStore } from './bots-store';
 import { openBotsConversation } from './navigation';
 
@@ -58,6 +60,7 @@ export function BotsDialogs({
           else if (dmSessionId && threadsEnabled) openBotsConversation(dmSessionId);
         }}
       />
+      {threadsEnabled && <AgentDirectoryDialog open={dialog?.kind === 'directory'} onClose={() => openDialog(null)} />}
     </>
   );
 }

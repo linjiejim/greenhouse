@@ -14,7 +14,7 @@
  */
 
 import { useState } from 'react';
-import { Plus } from '../../../lib/icons';
+import { Plus, Users } from '../../../lib/icons';
 import { useT } from '../../../lib/i18n';
 import { canUseFeature } from '../../../lib/features';
 import { useAuthStore } from '../../../stores';
@@ -59,6 +59,8 @@ export function ConversationsSidebarPanel({
               searchPlaceholder: t('bots.sidebar.searchAll'),
               extraActions: [
                 { label: t('bots.sidebar.newBot'), icon: Plus, onClick: () => openDialog({ kind: 'new-bot' }) },
+                // Other members' public Agents (spec 20261011-agent-first-class P4).
+                { label: t('bots.shared.browse'), icon: Users, onClick: () => openDialog({ kind: 'directory' }) },
               ],
               leading: (
                 <>

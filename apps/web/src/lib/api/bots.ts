@@ -6,7 +6,9 @@
  * - `/api/bots/computer/*`   an Agent's own computer (status, take over, type…);
  *                            every call takes the Agent (`bot`, see `ComputerBot`)
  * - `/api/bots/vault/*`      the password vault
+ * - `/api/agents*`           other members' public Agents (the directory, my DM with one)
  * - `/api/admin/bot-computers/*`  everyone's computers (super)
+ * - `/api/admin/agents/*`    every public Agent, pause / resume (super)
  *
  * Typed RPC over `rpc` (hc<AppType>): response types flow from the routes'
  * `c.json(...)` and are checked structurally against the declared return types
@@ -53,6 +55,10 @@ import type {
   BotVersionView,
   BotUsageView,
   BotActivityItem,
+  BotFeedbackView,
+  BotPublicationView,
+  BotPublicationWrite,
+  SharedBotView,
 } from '@greenhouse/types/bots';
 import { apiWebSocketUrl } from '../api-base';
 import { authFetch } from '../auth';
@@ -128,6 +134,11 @@ export interface BotsOverview {
    * audit rows still show its real name and face (read-only).
    */
   archived_bots: BotView[];
+  /**
+   * Other members' public Agents this member talks to (spec 20261011-agent-first-class P4) —
+   * names and faces for those DMs; `available: false` once unpublished, paused or no longer offered.
+   */
+  shared_bots: SharedBotView[];
   computer: ComputerRuntimeView;
   vault_available: boolean;
   pending_requests: number;
@@ -160,7 +171,6 @@ export interface BotWriteInput {
   change_log?: string;
 }
 
-/** A shared Bot as listed to other members (published manifest + owner). */
 export interface ConversationPage {
   conversation: BotConversationDetail;
   messages: BotMessage[];
@@ -221,7 +231,7 @@ export async function listBotVersions(botId: string): Promise<{
   return res.json();
 }
 
-/** The Agent's model use per day over the last `days` (its owner's calls only). */
+/** The Agent's model use per day over the last `days` (everyone's, for a public Agent). */
 export async function fetchBotUsage(botId: string, days = 30): Promise<BotUsageView> {
   const args = { param: { id: enc(botId) }, query: { days: String(days) } };
   const res = await rpc.api.bots[':id'].usage.$get(args);
@@ -235,6 +245,62 @@ export async function fetchBotActivity(botId: string, limit = 50): Promise<BotAc
   const res = await rpc.api.bots[':id'].activity.$get(args);
   if (!res.ok) throw await failure(res);
   return (await res.json()).activity;
+}
+
+// ─── Publishing (spec 20261011-agent-first-class P4) ────
+
+/** An Agent's publication: visibility, audience, grants, budget, published vs current version. */
+export async function fetchBotPublication(botId: string): Promise<BotPublicationView> {
+  const res = await rpc.api.bots[':id'].publication.$get({ param: { id: enc(botId) } });
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/**
+ * Change it. Only the fields given change; `publish: true` publishes the current version.
+ * 400 `bot_protected` for Sprouty, 400 `invalid` (with a message) for anything the server refuses.
+ */
+export async function updateBotPublication(botId: string, write: BotPublicationWrite): Promise<BotPublicationView> {
+  const args = { param: { id: enc(botId) }, json: write };
+  const res = await rpc.api.bots[':id'].publication.$put(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** What its users said about its replies — ratings and their one line, never the conversations. */
+export async function fetchBotFeedback(botId: string): Promise<BotFeedbackView[]> {
+  const res = await rpc.api.bots[':id'].feedback.$get({ param: { id: enc(botId) } });
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).feedback;
+}
+
+/** 👍 / 👎 an Agent's reply (one rating per member and reply; rating again replaces it). */
+export async function rateReply(
+  sessionId: string,
+  messageId: string,
+  rating: 1 | -1,
+  comment?: string,
+): Promise<{ rating: number }> {
+  const json: { rating: 1 | -1; comment?: string } = { rating };
+  if (comment) json.comment = comment;
+  const args = { param: { id: enc(sessionId), messageId: enc(messageId) }, json };
+  const res = await rpc.api.bots.conversations[':id'].messages[':messageId'].feedback.$post(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** Other members' public Agents this member may talk to (never their own). */
+export async function listPublicAgents(): Promise<SharedBotView[]> {
+  const res = await rpc.api.agents.$get();
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).agents;
+}
+
+/** My DM with someone else's public Agent — created (with its greeting) on first use. */
+export async function openPublicAgent(botId: string): Promise<{ conversation_id: string }> {
+  const res = await rpc.api.agents[':id'].conversation.$post({ param: { id: enc(botId) } });
+  if (!res.ok) throw await failure(res);
+  return res.json();
 }
 
 export interface BotFolderView {
@@ -832,6 +898,36 @@ export async function adminBackupComputer(computerId: string): Promise<void> {
 export async function adminResetComputer(computerId: string, wipeData: boolean): Promise<void> {
   const args = { param: { computerId: enc(computerId) }, json: { wipe_data: wipeData } };
   const res = await rpc.api.admin['bot-computers'][':computerId'].reset.$post(args);
+  if (!res.ok) throw await failure(res);
+}
+
+/** One public Agent as an administrator sees it (`GET /api/admin/agents`) — never its conversations. */
+export interface AdminPublicAgentRow {
+  id: string;
+  name: string;
+  owner: { id: string; nickname: string };
+  published_version: number | null;
+  /** Published, not paused and active. */
+  available: boolean;
+  paused: boolean;
+  /** `everyone`, or the server's `N people, M groups` summary. */
+  audience: string;
+  /** Members who have a conversation with it. */
+  users: number;
+}
+
+export async function fetchAdminPublicAgents(): Promise<AdminPublicAgentRow[]> {
+  const res = await rpc.api.admin.agents.$get();
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).agents;
+}
+
+/** Pause (nobody but its owner can use it) or resume a public Agent. */
+export async function setAdminPublicAgentPaused(botId: string, paused: boolean): Promise<void> {
+  const route = rpc.api.admin.agents[':id'];
+  const res = paused
+    ? await route.pause.$post({ param: { id: enc(botId) } })
+    : await route.resume.$post({ param: { id: enc(botId) } });
   if (!res.ok) throw await failure(res);
 }
 

@@ -15,7 +15,7 @@
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BotConversationSummary, BotView } from '@greenhouse/types/bots';
+import type { BotConversationSummary, BotView, SharedBotView } from '@greenhouse/types/bots';
 import { I18nProvider } from '../../lib/i18n';
 import { useBotsStore } from './bots-store';
 import { BotsThreadsSection } from './bots-sidebar-panel';
@@ -234,5 +234,52 @@ describe('<BotsThreadsSection/> list', () => {
     mount('#/bots');
     await act(async () => {});
     expect(api.bootstrapBots).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("<BotsThreadsSection/> other members' public Agents (P4)", () => {
+  const oracle: SharedBotView = {
+    id: 'bot_oracle',
+    name: 'Oracle',
+    role: 'Analyst',
+    description: '',
+    avatar: { color: 'ocean' },
+    template_key: null,
+    owner: { id: 'u2', nickname: 'Alice' },
+    dm_session_id: 'dm-bot_oracle',
+    available: true,
+  };
+  const order = () =>
+    [...host.querySelectorAll<HTMLElement>('[data-testid="bots-conversation-row"]')].map((el) => el.dataset.sessionId);
+
+  beforeEach(() => {
+    useBotsStore.setState({
+      sharedBots: [oracle],
+      conversations: [
+        conversation('dm-bot_oracle', 'direct', [oracle.id], { last_activity_at: '2026-10-06T00:00:00.000Z' }),
+        ...useBotsStore.getState().conversations,
+      ],
+    });
+  });
+
+  it("lists its DM with the member's Agents, by name, saying whose it is", () => {
+    mount('#/bots');
+    expect(order()).toEqual(['dm-bot_sprouty', 'dm-bot_oracle', 'dm-bot_sage', GROUP, 'dm-bot_moss']);
+    const oracleRow = row('dm-bot_oracle');
+    expect(oracleRow.textContent).toContain('Oracle');
+    expect(oracleRow.querySelector('[data-testid="bots-conversation-row-owner"]')?.textContent).toBe('by Alice');
+    expect(oracleRow.className).not.toContain('opacity-70');
+    // Its publisher's name finds it too.
+    mount('#/bots', 'alice');
+    expect(order()).toEqual(['dm-bot_oracle']);
+  });
+
+  it('files it under Archived, asleep, once it is no longer offered', () => {
+    useBotsStore.setState({ sharedBots: [{ ...oracle, available: false }] });
+    mount('#/bots');
+    // Archived keeps the list's activity order: Oracle's DM is the most recent record.
+    expect(order()).toEqual(['dm-bot_sprouty', 'dm-bot_sage', 'dm-bot_oracle', GROUP, 'dm-bot_moss']);
+    expect(row('dm-bot_oracle').className).toContain('opacity-70');
+    expect(row('dm-bot_oracle').querySelector('svg')!.getAttribute('class')).toContain('pa-s-sleep');
   });
 });

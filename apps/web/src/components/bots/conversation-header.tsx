@@ -26,6 +26,7 @@ export function useStatusLine({
   pendingRequests,
   computerPhase = null,
   readOnly = false,
+  publishedBy,
 }: {
   conversation: BotConversationDetail;
   members: BotView[];
@@ -35,11 +36,14 @@ export function useStatusLine({
   computerPhase?: ComputerPhase | null;
   /** Nobody here can reply any more (the DM's Bot was archived). */
   readOnly?: boolean;
+  /** The DM's Agent is someone else's public one, published by this member (P4). */
+  publishedBy?: string;
 }): { text: string; tone: 'idle' | 'active' | 'waiting' } {
   const t = useT();
   // A group chat is a closed record (group chats were retired): nothing in it is live any more.
   if (conversation.kind === 'group') return { text: t('bots.header.groupClosed'), tone: 'idle' };
-  if (readOnly) return { text: t('bots.header.readOnly'), tone: 'idle' };
+  if (readOnly)
+    return { text: t(publishedBy ? 'bots.shared.headerUnavailable' : 'bots.header.readOnly'), tone: 'idle' };
   const latestPending = pendingRequests[pendingRequests.length - 1];
   if (latestPending?.kind === 'takeover' && computerPhase?.kind === 'running' && computerPhase.controller === 'user') {
     return { text: t('bots.header.inControl'), tone: 'active' };
@@ -82,6 +86,14 @@ export function useStatusLine({
   // A separate chat's header carries its own title, so the line says who answers there.
   if (conversation.kind === 'task' && owner)
     return { text: t('bots.header.taskWith', { name: owner.name }), tone: 'idle' };
+  if (publishedBy) {
+    return {
+      text: owner?.role
+        ? t('bots.shared.roleBy', { role: owner.role, owner: publishedBy })
+        : t('bots.shared.by', { name: publishedBy }),
+      tone: 'idle',
+    };
+  }
   return { text: owner?.role || t('bots.header.idle'), tone: 'idle' };
 }
 
@@ -137,6 +149,7 @@ export function ConversationHeader({
   canInvite,
   onInvite,
   onOpenComputer,
+  showComputer = true,
   onOpenInfo,
   onOpenProfile,
   onRename,
@@ -154,6 +167,8 @@ export function ConversationHeader({
   canInvite: boolean;
   onInvite: () => void;
   onOpenComputer: () => void;
+  /** Whether this conversation's Agent has a computer for the member (a public Agent: when granted). */
+  showComputer?: boolean;
   onOpenInfo: () => void;
   /** The DM's Bot face + name open its profile; a retired group's open the info panel (its members). */
   onOpenProfile: (botId: string) => void;
@@ -253,23 +268,25 @@ export function ConversationHeader({
             <UserPlus size={16} />
           </IconButton>
         )}
-        <IconButton
-          label={computerLabel}
-          onClick={onOpenComputer}
-          className={activePane === 'computer' ? 'bg-surface-muted text-fg' : ''}
-          aria-pressed={activePane === 'computer'}
-          data-testid="bots-computer-button"
-        >
-          <span className="relative inline-flex">
-            <Monitor size={16} />
-            {computerPhase && (
-              <ComputerStatusDot
-                phase={computerPhase}
-                className="absolute -bottom-0.5 -right-0.5 ring-2 ring-surface-raised"
-              />
-            )}
-          </span>
-        </IconButton>
+        {showComputer && (
+          <IconButton
+            label={computerLabel}
+            onClick={onOpenComputer}
+            className={activePane === 'computer' ? 'bg-surface-muted text-fg' : ''}
+            aria-pressed={activePane === 'computer'}
+            data-testid="bots-computer-button"
+          >
+            <span className="relative inline-flex">
+              <Monitor size={16} />
+              {computerPhase && (
+                <ComputerStatusDot
+                  phase={computerPhase}
+                  className="absolute -bottom-0.5 -right-0.5 ring-2 ring-surface-raised"
+                />
+              )}
+            </span>
+          </IconButton>
+        )}
         <IconButton
           label={t('bots.header.info')}
           onClick={onOpenInfo}

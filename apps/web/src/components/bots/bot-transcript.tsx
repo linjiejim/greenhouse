@@ -17,6 +17,7 @@ import type { BotMessage } from '../../lib/api/bots';
 import { MemoryReceipts, memoryReceiptsFromCalls } from './memory-receipts';
 import { RequestCard, type RequestCardComputer } from './request-card';
 import { LiveSegment } from './live-segment';
+import { ReplyFeedback } from './reply-feedback';
 import { buildTranscript, rewindTargets, type PendingSend, type TranscriptItem } from './transcript';
 import {
   ConversationIntro,
@@ -85,6 +86,8 @@ export interface BotTranscriptProps {
   onEditLast?: (messageId: string, content: string) => void;
   /** …or answer it again (`lastUserId`: the member message it answers): offered on the last reply after it. */
   onRegenerateLast?: (lastUserId: string) => void;
+  /** 👍 / 👎 on each reply — a DM with someone else's public Agent (P4). */
+  replyFeedback?: boolean;
 }
 
 export function BotTranscript(props: BotTranscriptProps) {
@@ -124,7 +127,14 @@ export function BotTranscript(props: BotTranscriptProps) {
     onOpenProfile,
     onEditLast,
     onRegenerateLast,
+    replyFeedback = false,
   } = props;
+
+  // Stable, so the memoized reply bubbles do not re-render on every streamed token.
+  const renderFeedback = useCallback(
+    (messageId: string) => <ReplyFeedback sessionId={sessionId} messageId={messageId} />,
+    [sessionId],
+  );
 
   const items = useMemo(
     () =>
@@ -234,6 +244,7 @@ export function BotTranscript(props: BotTranscriptProps) {
                   ? regenerateLast
                   : undefined
               }
+              renderFooterActions={replyFeedback ? renderFeedback : undefined}
               hasFollowUpUserMessage={next?.kind === 'user' || next?.kind === 'pending'}
               submittedUserMessage={next?.kind === 'user' ? next.message.content : undefined}
               confirmedActionValue={next?.kind === 'user' ? next.message.content : undefined}

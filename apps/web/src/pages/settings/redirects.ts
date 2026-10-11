@@ -30,6 +30,7 @@ export const ADMIN_REDIRECTS: Record<string, string> = {
   'runtime-config': 'runtime-config',
   branding: 'branding',
   'bot-computers': 'bot-computers',
+  'public-agents': 'public-agents',
   permissions: 'users',
 };
 

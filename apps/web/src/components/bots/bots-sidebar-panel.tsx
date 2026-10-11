@@ -2,20 +2,29 @@
  * The Agent threads of the conversations sidebar (spec 20261011-agent-first-class §3.1): the
  * member's main thread — their DM with Sprouty, the built-in main Agent — under "Main thread",
  * then every other Agent's DM by activity under "Agents". Each row shows that Agent's face and
- * carries at most one signal, by priority: needs you > unread > working. What nobody can answer
- * in any more — an archived Agent's DM, a retired group chat (a stacked roster) — stays readable
- * under "Archived". The search box and "new Agent" live in the sidebar's one toolbar
+ * carries at most one signal, by priority: needs you > unread > working. Someone else's public Agent
+ * (spec P4) is listed with the member's own, marked "by {owner}". What nobody can answer in any
+ * more — an archived Agent's DM, a public Agent no longer offered, a retired group chat (a stacked
+ * roster) — stays readable under "Archived". The search box and "new Agent" live in the sidebar's one toolbar
  * (`ConversationsSidebarPanel`); the member's chats follow in the same list.
  */
 
 import { useCallback, useEffect, useMemo } from 'react';
-import { isSproutyBot, type BotConversationSummary, type BotView } from '@greenhouse/types/bots';
+import { isSproutyBot, type BotConversationSummary, type BotView, type SharedBotView } from '@greenhouse/types/bots';
 import { Button, Skeleton, StatusDot, Tag } from '../ui';
 import { Pin } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { relativeTime } from '../../lib/utils';
 import { SidebarSectionLabel } from '../app/sidebar-section-label';
-import { conversationReplyable, ensureSprouty, useBotDirectory, useBotsLoadState, useBotsStore } from './bots-store';
+import {
+  conversationReplyable,
+  ensureSprouty,
+  useBotDirectory,
+  useBotsLoadState,
+  useBotsStore,
+  useReplyableBotIds,
+  useSharedBots,
+} from './bots-store';
 import { BotAvatar, BotAvatarStack } from './bot-avatar';
 import { conversationTitle, openBotsConversation, useCurrentBotsConversation } from './navigation';
 
@@ -31,6 +40,8 @@ export function BotsThreadsSection({ query, onNavigate }: { query: string; onNav
   const loadConversations = useBotsStore((state) => state.loadConversations);
   const current = useCurrentBotsConversation();
   const lookup = useBotDirectory();
+  const shared = useSharedBots();
+  const activeIds = useReplyableBotIds();
 
   useEffect(() => {
     void loadBots().catch(() => {});
@@ -61,15 +72,19 @@ export function BotsThreadsSection({ query, onNavigate }: { query: string; onNav
   // those nobody can answer any more (an archived Agent's DM, a retired group chat) stay
   // readable under their own label.
   const { pinned, live, archived } = useMemo(() => {
-    const activeIds = new Set(bots.map((bot) => bot.id));
     const needle = query.trim().toLocaleLowerCase();
     const matches = (conversation: BotConversationSummary) => {
       if (!needle) return true;
       const names = conversation.members.map((member) => lookup.get(member.bot_id)?.name ?? '');
       const owner = conversation.owner_bot_id ? lookup.get(conversation.owner_bot_id)?.name : undefined;
-      return [titleOf(conversation), owner ?? '', ...names, conversation.last_message?.preview ?? ''].some((text) =>
-        text.toLocaleLowerCase().includes(needle),
-      );
+      const publisher = conversation.owner_bot_id ? shared.get(conversation.owner_bot_id)?.owner.nickname : undefined;
+      return [
+        titleOf(conversation),
+        owner ?? '',
+        publisher ?? '',
+        ...names,
+        conversation.last_message?.preview ?? '',
+      ].some((text) => text.toLocaleLowerCase().includes(needle));
     };
     let pinnedRow: BotConversationSummary | undefined;
     const open: BotConversationSummary[] = [];
@@ -86,7 +101,7 @@ export function BotsThreadsSection({ query, onNavigate }: { query: string; onNav
       (conversationReplyable(conversation, activeIds) ? open : closed).push(conversation);
     }
     return { pinned: pinnedRow, live: open, archived: closed };
-  }, [bots, conversations, lookup, query, sprouty, titleOf]);
+  }, [activeIds, conversations, lookup, query, shared, sprouty, titleOf]);
 
   const go = (sessionId: string) => {
     openBotsConversation(sessionId);
@@ -99,6 +114,9 @@ export function BotsThreadsSection({ query, onNavigate }: { query: string; onNav
       conversation={conversation}
       title={titleOf(conversation)}
       lookup={lookup}
+      publishedBy={
+        conversation.kind === 'direct' && conversation.owner_bot_id ? shared.get(conversation.owner_bot_id) : undefined
+      }
       active={conversation.session_id === current}
       readOnly={readOnly}
       pinned={isPinned}
@@ -154,6 +172,7 @@ function ConversationRow({
   conversation,
   title,
   lookup,
+  publishedBy,
   active,
   readOnly,
   pinned,
@@ -162,6 +181,8 @@ function ConversationRow({
   conversation: BotConversationSummary;
   title: string;
   lookup: ReadonlyMap<string, BotView>;
+  /** Someone else's public Agent: the row says whose it is. */
+  publishedBy?: SharedBotView;
   active: boolean;
   /** Nobody here can reply any more — dimmed, history only. */
   readOnly: boolean;
@@ -223,6 +244,15 @@ function ConversationRow({
           >
             {title}
           </span>
+          {publishedBy && (
+            <span
+              className="min-w-0 max-w-[45%] flex-shrink truncate text-[10px] text-fg-faint"
+              title={t('bots.shared.by', { name: publishedBy.owner.nickname })}
+              data-testid="bots-conversation-row-owner"
+            >
+              {t('bots.shared.by', { name: publishedBy.owner.nickname })}
+            </span>
+          )}
           {pinned && (
             <span className="flex-shrink-0 text-fg-faint" title={t('bots.sidebar.pinned')}>
               <Pin size={10} aria-label={t('bots.sidebar.pinned')} />
