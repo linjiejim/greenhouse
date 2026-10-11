@@ -249,10 +249,15 @@ describe('TablesViewContainer', () => {
         handler(otherTable);
         handler(changed);
       }
-      await new Promise((resolve) => setTimeout(resolve, 450));
     });
-    await flush();
-    expect(api.queryTableRecords.mock.calls.length).toBe(calls + 1);
+    // Coalesced (400 ms): one refetch for the matching event, none for the other table.
+    await vi.waitFor(
+      async () => {
+        await flush();
+        expect(api.queryTableRecords.mock.calls.length).toBe(calls + 1);
+      },
+      { timeout: 3000, interval: 100 },
+    );
   });
 
   it('reloads and reports a conflicting edit instead of overwriting it', async () => {

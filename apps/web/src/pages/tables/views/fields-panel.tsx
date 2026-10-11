@@ -104,7 +104,10 @@ export function FieldsPanel({
             </Button>
           </div>
         </div>
-        <ul className="divide-y divide-edge rounded-lg border border-edge" data-testid="fields-panel-list">
+        <ul
+          className="divide-y divide-edge overflow-hidden rounded-lg border border-edge"
+          data-testid="fields-panel-list"
+        >
           {reorder.order.map((id) => {
             const field = byId.get(id);
             if (!field) return null;

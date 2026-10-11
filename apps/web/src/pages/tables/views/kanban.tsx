@@ -217,7 +217,7 @@ export function KanbanViewBody({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full justify-start"
+                    className="w-full justify-start gap-1.5"
                     onClick={() => onCreateRecord(lane.value === null ? {} : { [String(laneField.id)]: lane.value })}
                   >
                     <Plus size={14} />

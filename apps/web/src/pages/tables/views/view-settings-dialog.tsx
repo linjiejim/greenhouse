@@ -102,7 +102,7 @@ export function ViewSettingsDialog({
           <FormActions
             className="border-t border-edge pt-4"
             leading={
-              <Button variant="ghost" className="text-danger" onClick={() => setConfirmDelete(true)}>
+              <Button variant="ghost" className="gap-1.5 text-danger" onClick={() => setConfirmDelete(true)}>
                 <Trash2 size={14} />
                 {t('tables.views.deleteView')}
               </Button>
