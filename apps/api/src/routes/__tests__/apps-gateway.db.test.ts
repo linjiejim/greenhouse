@@ -475,6 +475,10 @@ describe('a non-member applicant (acceptance 2)', () => {
     expect(text).not.toContain(`"fieldId":${p.f.note}`);
     const requests = view.tables.find((table) => table.id === p.tableId)!;
     expect(requests.fields.map((field) => field.id)).not.toContain(p.f.note);
+    // Each field says whether it is required (the primary "Name" is; Amount is not) — the form marks it.
+    const metaOf = (id: number) => requests.fields.find((field) => field.id === id);
+    expect(metaOf(p.f.title)).toMatchObject({ required: true, editable: true });
+    expect(metaOf(p.f.amount)).toMatchObject({ required: false });
     const drawer = view.spec.pages[0]!.cards.find((card) => card.id === 'my-requests');
     expect(drawer?.kind === 'records' && drawer.detail?.fieldIds).not.toContain(p.f.note);
     // The form keeps the fields the role writes; the status default stays visible (the role reads status).

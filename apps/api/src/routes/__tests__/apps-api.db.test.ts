@@ -348,7 +348,11 @@ describe('opening, archiving and handing over', () => {
     const draft = await json<AppRuntimeView>(await send(builder, `/api/apps/${app.id}`));
     expect(draft).toMatchObject({ version: 0, draft: true, role: { key: '__manager__' }, issues: [] });
     expect(draft.tables).toEqual([
-      expect.objectContaining({ id: tableId, fields: [expect.objectContaining({ id: primaryId, editable: true })] }),
+      expect.objectContaining({
+        id: tableId,
+        // The primary field is required: a form or create dialog can say so before the write refuses.
+        fields: [expect.objectContaining({ id: primaryId, editable: true, required: true })],
+      }),
     ]);
 
     await json(await publish(app.id, 1));
@@ -362,14 +366,37 @@ describe('opening, archiving and handing over', () => {
     expect(preview.role).toEqual({ key: 'applicant', name: 'Applicant' });
     expect(preview.spec.pages.map((page) => page.id)).toEqual(['mine']);
     expect(preview.spec.roles.map((role) => role.key)).toEqual(['applicant']);
-    expect(preview.tables[0]!.fields[0]).toMatchObject({ id: primaryId, editable: false });
+    expect(preview.tables[0]!.fields[0]).toMatchObject({ id: primaryId, editable: false, required: true });
     expect((await send(owner, `/api/apps/${app.id}?previewRole=ghost`)).status).toBe(400);
 
     // The audience opens the live version as its role (slice G); everyone else gets 404.
     const viewer = await json<AppRuntimeView>(await send(member, `/api/apps/${app.id}`));
     expect(viewer.role).toEqual({ key: 'applicant', name: 'Applicant' });
     expect(viewer.app).toMatchObject({ canManage: false, canPublish: false });
+    expect(viewer.tables[0]!.fields[0]).toMatchObject({ id: primaryId, required: true });
     expect((await send(outsider, `/api/apps/${app.id}`)).status).toBe(404);
+  });
+
+  it('accepts the phone’s ?cards= list on GET /api/apps/:id and ignores it', async () => {
+    const { baseId, tableId, primaryId } = await base();
+    const { app } = await createApp(owner, baseId, specFor(tableId, primaryId));
+    await json(await publish(app.id, 1));
+    await json(
+      await send(owner, `/api/apps/${app.id}/audiences`, 'PUT', {
+        entries: [{ principal: { type: 'user', userId: member.id }, roleKey: 'applicant' }],
+        audiencesRevision: 1,
+      }),
+    );
+    // iOS sends the card kinds it renders (MOBILE_APP_CARDS); the server answers the same view.
+    const cards = 'records,kanban,calendar,gallery,form,kpi,chart,pivot,text,buttons';
+    const plain = await json<AppRuntimeView>(await send(member, `/api/apps/${app.id}`));
+    expect(await json<AppRuntimeView>(await send(member, `/api/apps/${app.id}?cards=${cards}`))).toEqual(plain);
+    expect(await json<AppRuntimeView>(await send(member, `/api/apps/${app.id}?cards=`))).toEqual(plain);
+    const managerPlain = await json<AppRuntimeView>(await send(owner, `/api/apps/${app.id}?draft=1`));
+    expect(await json<AppRuntimeView>(await send(owner, `/api/apps/${app.id}?draft=1&cards=${cards}`))).toEqual(
+      managerPlain,
+    );
+    expect((await send(outsider, `/api/apps/${app.id}?cards=${cards}`)).status).toBe(404);
   });
 
   it('archives a published app only as the owner, and hands an app only to a Base manager', async () => {
