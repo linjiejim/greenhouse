@@ -48,6 +48,10 @@
       "import": "./src/html.ts",
       "types": "./src/html.ts"
     },
+    "./mentions": {
+      "import": "./src/mentions.ts",
+      "types": "./src/mentions.ts"
+    },
     "./brand": {
       "import": "./src/brand.ts",
       "types": "./src/brand.ts"

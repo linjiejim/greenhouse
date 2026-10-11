@@ -64,6 +64,7 @@ export default defineConfig({
       '@greenhouse/utils/semver': resolve(__dirname, 'packages/utils/src/semver.ts'),
       '@greenhouse/utils/html': resolve(__dirname, 'packages/utils/src/html.ts'),
       '@greenhouse/utils/csv': resolve(__dirname, 'packages/utils/src/csv.ts'),
+      '@greenhouse/utils/mentions': resolve(__dirname, 'packages/utils/src/mentions.ts'),
       '@greenhouse/db/seeds/eval-seed': resolve(__dirname, 'packages/db/src/seeds/eval-seed.ts'),
       '@greenhouse/db/test-config': resolve(__dirname, 'packages/db/src/test-config.ts'),
       '@greenhouse/db': resolve(__dirname, 'packages/db/src/index.ts'),

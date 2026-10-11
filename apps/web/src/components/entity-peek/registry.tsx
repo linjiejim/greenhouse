@@ -21,6 +21,7 @@ const ProjectDetailPage = lazy(() =>
   import('../../pages/project-detail').then((m) => ({ default: m.ProjectDetailPage })),
 );
 const KnowledgeDocPeek = lazy(() => import('./knowledge-doc-peek').then((m) => ({ default: m.KnowledgeDocPeek })));
+const TablesRecordPeek = lazy(() => import('./tables-record-peek').then((m) => ({ default: m.TablesRecordPeek })));
 
 /** Header chrome for every core kind, including the ones with no peek body yet. */
 export const ENTITY_PEEK_META: Record<CoreEntityKind, { icon: LucideIcon; fallbackTitleKey: TranslationKey }> = {
@@ -45,8 +46,8 @@ export function entityPeekMeta(kind: EntityKind): { icon: LucideIcon; fallbackTi
 
 /**
  * The peek body for a record, or null when this kind has no peek yet — the host
- * then offers "open full page" instead of showing an empty panel. Tables records
- * are the one such kind today (their deeplink lands in a later phase).
+ * then offers "open full page" instead of showing an empty panel (an extension
+ * kind without a `render`).
  */
 export function renderEntityPeekBody(ref: EntityRef): React.ReactNode | null {
   switch (ref.kind) {
@@ -55,7 +56,7 @@ export function renderEntityPeekBody(ref: EntityRef): React.ReactNode | null {
     case 'kb_doc':
       return <KnowledgeDocPeek id={ref.id} />;
     case 'tables_record':
-      return null;
+      return <TablesRecordPeek tableId={ref.tableId} id={ref.id} />;
     default:
       return registeredEntityKind(ref.kind)?.render?.(ref) ?? null;
   }

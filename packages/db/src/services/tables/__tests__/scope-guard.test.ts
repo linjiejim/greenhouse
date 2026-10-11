@@ -45,6 +45,10 @@ const SCOPE_PARAM = {
   submitForm: 2,
   commitImportChunk: 1,
   matchImportRelationLabels: 3,
+  listRecordActivity: 3,
+  createComment: 1,
+  updateComment: 2,
+  deleteComment: 1,
 } as const satisfies Partial<Record<keyof TablesService, number>>;
 
 /** Write method → index of its meta parameter. */
@@ -74,6 +78,12 @@ type ScopeGuards = [
   Expect<RequiredParam<S['submitForm'], 2, TableAccessScope>>,
   Expect<RequiredParam<S['commitImportChunk'], 1, TableAccessScope>>,
   Expect<RequiredParam<S['matchImportRelationLabels'], 3, TableAccessScope>>,
+  // Activity: the row scope and the (kernel-capped) read scope for field changes.
+  Expect<RequiredParam<S['listRecordActivity'], 2, TableAccessScope>>,
+  Expect<RequiredParam<S['listRecordActivity'], 3, TableAccessScope>>,
+  Expect<RequiredParam<S['createComment'], 1, TableAccessScope>>,
+  Expect<RequiredParam<S['updateComment'], 2, TableAccessScope>>,
+  Expect<RequiredParam<S['deleteComment'], 1, TableAccessScope>>,
 ];
 type MetaGuards = [
   Expect<RequiredParam<S['createRecord'], 2, TableRecordWriteMeta>>,

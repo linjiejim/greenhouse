@@ -62,24 +62,6 @@ describe('Tables registration (manifest 1.3.0)', () => {
     expect(tablesResource('listBases', { baseId: 1 }).recordId).toBeUndefined();
   });
 
-  it.each([
-    // Landed and covered by their own suites: roles / owner transfer (tables-access), deleteView (tables-views),
-    // forms (tables-forms), imports (tables-imports), automations (tables-automations).
-    'listRecordActivity',
-    'createComment',
-    'updateComment',
-    'deleteComment',
-  ])('%s is an explicit placeholder until its slice lands', async (actionId) => {
-    const handler = tablesRegistration.handlers[actionId]!;
-    const result = await handler(request(actionId), { db: {} as DatabaseProvider });
-    expect(result).toEqual({
-      ok: false,
-      code: 'INVALID_INPUT',
-      message: 'not_implemented',
-      details: { notImplemented: true },
-    });
-  });
-
   it('maps write-rights errors to FORBIDDEN and other validation errors to INVALID_INPUT', async () => {
     const throwing = (error: Error): PlatformHandlerContext => ({
       db: {

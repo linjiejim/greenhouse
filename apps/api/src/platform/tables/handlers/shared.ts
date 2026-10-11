@@ -29,12 +29,6 @@ export function fail(code: FailureCode, message: string, details?: Record<string
   return { ok: false, code, message, ...(details ? { details } : {}) };
 }
 
-/**
- * A declared action whose slice has not landed yet. Explicit, never a silent
- * success (P5): the owning slice replaces the handler.
- */
-export const notImplemented: Handler = async () => fail('INVALID_INPUT', 'not_implemented', { notImplemented: true });
-
 export function payloadOf(request: HandlerRequest): Record<string, unknown> {
   return request.payload && typeof request.payload === 'object' && !Array.isArray(request.payload)
     ? (request.payload as Record<string, unknown>)

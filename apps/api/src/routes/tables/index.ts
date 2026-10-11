@@ -2,6 +2,7 @@
  * Tables 路由 — /api/tables（Platform Kernel 适配层，每个端点都经 runtime.dispatch）
  *
  * 按领域拆成子路由（./bases ./schema ./views ./forms ./records ./imports
+ * 按领域拆成子路由（./bases ./schema ./views ./forms ./records ./activity
  * ./automations ./dashboards），在这里用 `.route('/', …)` 组合成一条链，AppType 因此仍带全部端点。
  * 新端点加进所属领域的子路由；新领域在这里追加一个 `.route()`。
  *
@@ -71,6 +72,15 @@
  * 自动化（./automations.ts；Webhook 动作与密钥只能经这里由人设置）
  * GET    /bases/:baseId/automations                  — 自动化规则列表（builder，Webhook 只带 hasSecret）
  * POST   /bases/:baseId/automations                  — 创建规则（执行者 = 保存者）
+ * 动态与评论（./activity.ts；能读记录就能看动态、发评论，字段变更按读者可读字段裁剪）
+ * GET    /tables/:tableId/records/:recordId/activity  — 评论 + 历史合并，新的在前（?cursor=&limit=≤50）
+ * POST   /tables/:tableId/records/:recordId/comments  — 发评论（Markdown ≤10k，`[@名字](user:<id>)` 提及并通知）
+ * PATCH  /comments/:commentId                        — 改评论（仅作者；新增的提及才通知）
+ * DELETE /comments/:commentId                        — 删评论（作者或 Base builder+，软删）
+ *
+ * 自动化（./automations.ts）
+ * GET    /bases/:baseId/automations                  — 自动化规则列表（builder）
+ * POST   /bases/:baseId/automations                  — 创建规则
  * PATCH  /automations/:automationId                  — revision 更新规则
  * DELETE /automations/:automationId                  — 删除规则（builder，连带运行记录）
  * GET    /automations/:automationId/runs             — 运行记录（逐步日志）
@@ -95,6 +105,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../../app-env.js';
 import { accessRoutes } from './access.js';
+import { activityRoutes } from './activity.js';
 import { automationRoutes } from './automations.js';
 import { baseRoutes } from './bases.js';
 import { dashboardRoutes } from './dashboards.js';
@@ -112,6 +123,7 @@ const tablesRoutes = new Hono<AppEnv>()
   .route('/', formRoutes)
   .route('/', recordRoutes)
   .route('/', importRoutes)
+  .route('/', activityRoutes)
   .route('/', automationRoutes)
   .route('/', dashboardRoutes);
 

@@ -16,6 +16,7 @@
  *   records.ts      record reads / writes (scope + write meta required)
  *   aggregate.ts    aggregates (date buckets, series)
  *   activity.ts     record history + `onRecordWritten`
+ *   comments.ts     record comments + the merged activity feed (comments + history)
  *   forms.ts        forms and submissions
  *   automations.ts  rules (validation, executor, secrets), buttons, the in-transaction enqueue
  *   automation-queue.ts  outbox leases / checkpoints, run rows, sweep queries (the API runs rules)
@@ -30,6 +31,7 @@ import { createTablesActivity } from './activity.js';
 import { createTablesAggregates } from './aggregate.js';
 import { createTablesAutomationQueue } from './automation-queue.js';
 import { createTablesAutomations } from './automations.js';
+import { createTablesComments } from './comments.js';
 import { createTablesCompute } from './compute.js';
 import { createTablesDashboards } from './dashboards.js';
 import { createTablesForms } from './forms.js';
@@ -104,6 +106,13 @@ export {
   type SubmitTableFormOptions,
   type UpdateTableFormInput,
 } from './forms.js';
+export {
+  normalizeCommentBody,
+  tableCommentView,
+  type CreateTableCommentInput,
+  type ListTableActivityOptions,
+  type UpdateTableCommentInput,
+} from './comments.js';
 export type {
   BatchUpsertTableRecordItem,
   CreateTableRecordInput,
@@ -170,6 +179,7 @@ export function createTablesService(db: Db) {
     ...records.service,
     ...createTablesAggregates(db),
     ...createTablesActivity(db),
+    ...createTablesComments(db, { getRecord: records.service.getRecord }),
     ...createTablesForms(db, { records: records.internal }),
     ...automations.service,
     ...createTablesAutomationQueue(db),

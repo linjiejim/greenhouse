@@ -883,7 +883,11 @@ export function Select({ size = 'md', inline = false, className = '', ...props }
 
 // ─── Textarea ────────────────────────────────────────────
 
-export function Textarea({ className = '', ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+/** `ref` reaches the `<textarea>` (React 19 ref-as-prop) — composers read the caret for `@` pickers. */
+export function Textarea({
+  className = '',
+  ...props
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { ref?: React.Ref<HTMLTextAreaElement> }) {
   return (
     <textarea
       className={`w-full bg-surface-raised border border-edge-strong rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-faint shadow-sm shadow-primary-900/5 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 resize-none ${className}`}
