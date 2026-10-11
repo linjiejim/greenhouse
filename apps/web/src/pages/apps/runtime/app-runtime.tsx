@@ -290,6 +290,7 @@ export function AppRuntimePage({
               issues={state.view.issues}
               pages={spec.pages}
               version={version}
+              draft={state.view.draft === true}
               builderHref={appBuilderHref(app.id)}
             />
           )}

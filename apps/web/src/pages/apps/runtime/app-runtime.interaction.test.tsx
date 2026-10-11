@@ -364,7 +364,16 @@ describe('what managers get', () => {
     });
 
     it('opens the draft with full access, telling the Assistant no published version is on screen', async () => {
+      api.getApp.mockResolvedValue(
+        draftView({
+          role: { key: '__manager__', name: 'Manager' },
+          issues: [{ pageId: 'apply', cardId: 'mine', message: 'Field 9 was deleted' }],
+        }),
+      );
       await mount('5', 'draft=1');
+      // The draft's problems are the draft's, not a "v0" that stopped working.
+      expect(byTestId('app-issues-bar')?.textContent).toContain('The draft has problems with the Base');
+      expect(byTestId('app-issues-bar')?.textContent).not.toContain('v0');
       expect(api.getApp).toHaveBeenCalledWith(5, { draft: true });
       expect(byTestId('app-preview-bar')?.textContent).toContain('Previewing the draft with full access');
       expect(api.queryAppCard).toHaveBeenCalledWith(5, expect.objectContaining({ draft: true }));

@@ -96,11 +96,14 @@ export function IssuesBar({
   issues,
   pages,
   version,
+  draft = false,
   builderHref,
 }: {
   issues: readonly AppIssue[];
   pages: readonly AppPage[];
   version: number;
+  /** The draft is on screen: its problems, not a published version's. */
+  draft?: boolean;
   builderHref: string;
 }) {
   const t = useT();
@@ -119,7 +122,9 @@ export function IssuesBar({
       <div className="flex flex-wrap items-center gap-2">
         <AlertTriangle size={14} aria-hidden="true" className="flex-shrink-0" />
         <span className="min-w-0 flex-1 font-medium">
-          {t('apps.runtime.issues.title', { version, count: issues.length })}
+          {draft
+            ? t('apps.runtime.issues.draftTitle', { count: issues.length })
+            : t('apps.runtime.issues.title', { version, count: issues.length })}
         </span>
         <a href={builderHref} className="inline-flex min-h-11 items-center font-medium underline md:min-h-0">
           {t('apps.runtime.issues.fix')}

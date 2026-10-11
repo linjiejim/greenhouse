@@ -39,6 +39,7 @@ export const appsRuntimeEn = {
     },
     issues: {
       title: 'Parts of v{version} stopped working after Base changes ({count}) — people see them as unavailable.',
+      draftTitle: 'The draft has problems with the Base as it is now ({count}) — fix them before publishing.',
       fix: 'Fix in the builder',
       more: '…and {count} more',
     },

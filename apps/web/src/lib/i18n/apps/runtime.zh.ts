@@ -37,6 +37,7 @@ export const appsRuntimeZh: DeepRecord<typeof appsRuntimeEn> = {
     },
     issues: {
       title: 'Base 结构变更后，v{version} 有 {count} 处失效——使用者会看到它们不可用。',
+      draftTitle: '草稿与 Base 当前的结构有 {count} 处不符——发布前请先修复。',
       fix: '去构建器修复',
       more: '……还有 {count} 处',
     },
