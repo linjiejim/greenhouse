@@ -7,8 +7,7 @@
  * - `RoomAgentsDialog` — the Agents in a room (take out the ones the member may) and the ones they
  *   may bring: their own, and public Agents offered to them (the server checks the rest, D45).
  *
- * Every refusal is explained in the member's words (`roomErrorMessage`): the room routes answer
- * with a status, not a code.
+ * Every refusal is explained in the member's words (`roomErrorMessage`, by the routes' `code`).
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -27,10 +26,20 @@ import type { RoomView } from './use-room';
 
 type Translate = ReturnType<typeof useT>;
 
-/** A room route's refusal in the member's words (the routes answer with a status; `busy` is the one code). */
+const ROOM_ERROR_COPY: Partial<Record<string, TranslationKey>> = {
+  busy: 'bots.room.errors.busy',
+  person_not_eligible: 'bots.room.errors.people',
+  room_full: 'bots.room.errors.people',
+  not_allowed: 'bots.room.errors.notAllowed',
+  agent_not_found: 'bots.room.errors.agentGone',
+  agent_not_shared: 'bots.room.errors.notForEveryone',
+};
+
+/** A room route's refusal in the member's words, by its `code` (an older server: by status). */
 export function roomErrorMessage(err: unknown, t: Translate, fallback: TranslationKey): string {
-  if (botsApi.isBotsApiError(err, 'busy')) return t('bots.room.errors.busy');
   if (botsApi.isBotsApiError(err)) {
+    const byCode = botsApi.copyForCode(ROOM_ERROR_COPY, err.code);
+    if (byCode) return t(byCode);
     if (err.status === 400) return t('bots.room.errors.people');
     if (err.status === 403) return t('bots.room.errors.notAllowed');
     if (err.status === 404) return t('bots.room.errors.agentGone');
