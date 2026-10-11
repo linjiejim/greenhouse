@@ -1,7 +1,8 @@
 /**
  * Who reaches a published app, and as which role (docs/specs/20261011-tables-apps.md
  * §3, D3) — the one place the gateway, notification recipients
- * (`canRecipientRead`'s app branch) and the realtime fan-out read app audiences.
+ * (`canRecipientRead`'s app branch), the realtime fan-out and the shelves
+ * (`listApps` / pins, `viewerRolesForApps`) read app audiences.
  *
  * - **Live app**: published, not archived, on a live Base; its spec is the
  *   published version's verified text.
@@ -89,6 +90,39 @@ export function pickViewerRole(
 /** The person's role in a live app, or undefined (not in the audience, or their entry names a gone role). */
 export async function viewerRoleIn(db: DatabaseProvider, live: LiveApp, userId: string): Promise<AppRole | undefined> {
   return pickViewerRole(live.spec, await db.tables.listAudienceMatches(live.app.id, userId));
+}
+
+/**
+ * The role each of `appIds` gives the person, for the shelves ("shared with
+ * me", "recommended", pins): their live versions and the audience rows that
+ * reach them in two queries, then the same `pickViewerRole` the gateway opens
+ * an app with — so a shelf never lists an app whose matching tier names a role
+ * the live version dropped (D4), which would answer 404 when opened. Apps not
+ * in the map give no role (never published, or no matching role). Liveness of
+ * the app and its Base is the shelf queries' own filter.
+ */
+export async function viewerRolesForApps(
+  db: DatabaseProvider,
+  appIds: readonly number[],
+  userId: string,
+): Promise<Map<number, AppRole>> {
+  const roles = new Map<number, AppRole>();
+  if (appIds.length === 0) return roles;
+  const [versions, matches] = await Promise.all([
+    db.tables.listPublishedAppVersions(appIds),
+    db.tables.listAudienceMatchesForApps(appIds, userId),
+  ]);
+  for (const version of versions) {
+    const spec = parseStoredAppSpec(version.spec);
+    const role = spec
+      ? pickViewerRole(
+          spec,
+          matches.filter((row) => row.app_id === version.app_id),
+        )
+      : undefined;
+    if (role) roles.set(version.app_id, role);
+  }
+  return roles;
 }
 
 /** A role's table rules as the compiler takes them; a malformed set grants nothing. */

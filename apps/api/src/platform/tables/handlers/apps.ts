@@ -35,6 +35,7 @@ import {
 } from '@greenhouse/types/apps';
 import { tableRoleAtLeast } from '@greenhouse/types/table-access';
 import { requireBase, resolveBaseAccess, type BaseAccessGrant } from '../access.js';
+import { viewerRolesForApps } from '../app-audience.js';
 import { loadAppSpecSchema, parseStoredAppSpec, revalidateSpec, validateAppSpec } from '../app-spec.js';
 import { appRuntimeView, appSummary } from '../app-view.js';
 import { appGatewayHandlers, roleAppView, viewerSummary } from './app-gateway.js';
@@ -120,7 +121,14 @@ async function summaryFor(ctx: Context, actor: ActorContext, access: AppGrant): 
   return appSummary(access.app, { canManage: true, canPublish: access.canPublish, pinned: pins.has(access.app.id) });
 }
 
-/** What the caller can open: apps they manage plus published apps shared with them (live only). */
+/**
+ * What the caller can open: apps they manage, plus live published apps shared
+ * with them — only those where a role resolves for them (D3 through
+ * `viewerRolesForApps`, the gateway's own rule): an audience tier that names a
+ * role the live version dropped grants nothing (D4), so the app is not on
+ * their shelves either. Recommendations follow the same rule (managers always
+ * see theirs).
+ */
 async function visibleApps(ctx: Context, actor: ActorContext) {
   const userId = effectiveUserId(actor);
   const manager = managerLookup(ctx, actor);
@@ -142,10 +150,14 @@ async function visibleApps(ctx: Context, actor: ActorContext) {
     Promise.all(rows.map(async (row) => appSummary(row, await flags(row))));
   const managed = (await summarize(candidates)).filter((app) => app.canManage);
   const managedIds = new Set(managed.map((app) => app.id));
+  const [sharedViews, featuredViews] = await Promise.all([summarize(shared), summarize(featured)]);
+  const viewerApps = [...sharedViews, ...featuredViews].filter((app) => !app.canManage).map((app) => app.id);
+  const roles = await viewerRolesForApps(ctx.db, [...new Set(viewerApps)], userId);
   return {
     managed,
-    shared: (await summarize(shared)).filter((app) => !managedIds.has(app.id)),
-    featured: await summarize(featured),
+    // A manager opens every app on their Base (a super in the audience is not a managed-list candidate).
+    shared: sharedViews.filter((app) => !managedIds.has(app.id) && (app.canManage || roles.has(app.id))),
+    featured: featuredViews.filter((app) => app.canManage || roles.has(app.id)),
     pins,
   };
 }
