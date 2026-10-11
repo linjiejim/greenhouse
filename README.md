@@ -113,6 +113,16 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   anyone read the table. Automations run in the background (on create / change / matching a
   condition, on a schedule, on a date, or a button on the record → update or create records,
   notify people in the inbox, IM or email, call a webhook, wait).
+- **Apps** — turn a base into an app for people who never open Tables (`#/apps`). The builder
+  lays out pages of cards (record lists, boards, calendars, galleries, forms, numbers, charts,
+  pivots, text, buttons) with record details, approve / reject style actions (preconditions,
+  required input, `$me` / `$now`), app roles that decide pages, rows and fields, and who gets
+  which role; managers preview the draft as any role, and only the base owner publishes —
+  versions are immutable and an old one can be restored into the draft. People open what was
+  shared with them from the app center or the sidebar (pinned and featured apps), and every read
+  and write goes through the app's own gateway, so an app never shows more than its role allows.
+  Archiving a table or field, removing options or deleting an automation an app uses asks first
+  and lists the apps.
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent.
 - **Execution center** — one surface for every durable run: automations (cron), missions,
