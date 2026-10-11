@@ -24,9 +24,9 @@ function request(actionId: string, payload: unknown = {}): PlatformActionRequest
   };
 }
 
-describe('Tables registration (manifest 1.4.0)', () => {
+describe('Tables registration (manifest 1.5.0)', () => {
   it('declares the action table of the foundation spec', () => {
-    expect(tablesManifest.version).toBe('1.4.0');
+    expect(tablesManifest.version).toBe('1.5.0');
     expect(Object.keys(tablesManifest.entities)).toEqual(expect.arrayContaining(['role', 'comment']));
     expect(tablesManifest.entities).not.toHaveProperty('notification');
     expect(tablesManifest.actions).not.toHaveProperty('listNotifications');
@@ -51,7 +51,8 @@ describe('Tables registration (manifest 1.4.0)', () => {
       expect.arrayContaining(['tables.apps.use', 'tables.apps.manage', 'tables.apps.publish']),
     );
     const apps = Object.values(tablesManifest.actions).filter((action) => action.module === 'apps');
-    expect(apps.every((action) => action.entity === 'app')).toBe(true);
+    // Phase 2 adds templates (`appTemplate`) to the module; everything else acts on an app.
+    expect(apps.every((action) => action.entity === 'app' || action.entity === 'appTemplate')).toBe(true);
     // Granting access to people outside the Base is the owner's: publish, audiences and featuring need `publish`.
     for (const id of ['publishApp', 'setAppAudiences', 'featureApp']) {
       expect(tablesManifest.actions[id]?.capability).toBe('tables.apps.publish');
@@ -87,6 +88,62 @@ describe('Tables registration (manifest 1.4.0)', () => {
     expect(
       await tablesRegistration.handlers.getAppUsage!(request('getAppUsage', {}), { db: {} as DatabaseProvider }),
     ).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+  });
+
+  it('declares the Phase 2 actions (advanced spec §8, F2)', () => {
+    expect(tablesManifest.entities.appTemplate).toMatchObject({ module: 'apps', table: 'table_app_templates' });
+    expect(tablesManifest.capabilities).toEqual(
+      expect.arrayContaining([
+        'tables.apps.review',
+        'tables.apps.templates.use',
+        'tables.apps.templates.publish',
+        'tables.apps.templates.review',
+      ]),
+    );
+    const expected: Record<string, { entity: string; kind: 'query' | 'command'; capability: string }> = {
+      listAppCustomReviews: { entity: 'app', kind: 'query', capability: 'tables.apps.review' },
+      reviewAppCustomCode: { entity: 'app', kind: 'command', capability: 'tables.apps.review' },
+      listAppTemplates: { entity: 'appTemplate', kind: 'query', capability: 'tables.apps.templates.use' },
+      getAppTemplate: { entity: 'appTemplate', kind: 'query', capability: 'tables.apps.templates.use' },
+      publishAppTemplate: { entity: 'appTemplate', kind: 'command', capability: 'tables.apps.templates.publish' },
+      reviewAppTemplate: { entity: 'appTemplate', kind: 'command', capability: 'tables.apps.templates.review' },
+      installAppTemplate: { entity: 'appTemplate', kind: 'command', capability: 'tables.apps.templates.use' },
+      archiveAppTemplate: { entity: 'appTemplate', kind: 'command', capability: 'tables.apps.templates.publish' },
+      fillAiField: { entity: 'field', kind: 'command', capability: 'tables.structure.update' },
+      regenerateAiField: { entity: 'field', kind: 'command', capability: 'tables.structure.update' },
+      getAiFieldStatus: { entity: 'field', kind: 'query', capability: 'tables.structure.read' },
+    };
+    for (const [id, shape] of Object.entries(expected)) {
+      expect(tablesManifest.actions[id], id).toMatchObject(shape);
+    }
+    // AI-field work is audited against the field (and so filed under its Base); templates belong to no Base.
+    expect(tablesResource('fillAiField', { fieldId: 12 })).toMatchObject({ entityId: 'field', recordId: '12' });
+    expect(tablesResource('reviewAppCustomCode', { appId: 7 })).toMatchObject({ entityId: 'app', recordId: '7' });
+    expect(tablesResource('installAppTemplate', { appId: 7 }).recordId).toBeUndefined();
+  });
+
+  it('answers not_implemented from every Phase 2 placeholder until its slice lands', async () => {
+    const placeholders = [
+      'listAppCustomReviews',
+      'reviewAppCustomCode',
+      'listAppTemplates',
+      'getAppTemplate',
+      'publishAppTemplate',
+      'reviewAppTemplate',
+      'installAppTemplate',
+      'archiveAppTemplate',
+      'fillAiField',
+      'regenerateAiField',
+      'getAiFieldStatus',
+    ];
+    for (const id of placeholders) {
+      expect(await tablesRegistration.handlers[id]!(request(id, {}), { db: {} as DatabaseProvider }), id).toEqual({
+        ok: false,
+        code: 'INVALID_INPUT',
+        message: 'not_implemented',
+        details: { notImplemented: true },
+      });
+    }
   });
 
   it('has exactly one handler and one audit resource per action', () => {

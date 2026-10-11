@@ -195,6 +195,11 @@ const queryAppCard: Handler = async (request, context) => {
     return fail('INVALID_INPUT', 'filterValues must be an object');
   }
   if (card.kind === 'text') return ok({ kind: 'text', markdown: card.markdown } satisfies AppCardQueryResult);
+  // Phase 2: a custom card's bindings (`payload.bindingId`, slice S) and external sources (slice SRC)
+  // are evaluated by the slices that own them; until then they answer the foundation placeholder.
+  if (card.kind === 'custom' || card.kind === 'external') {
+    return fail('INVALID_INPUT', 'not_implemented', { notImplemented: true });
+  }
   if (!isRecordsCard(card) && !isAggregateCard(card)) return fail('INVALID_INPUT', 'This card has no data to query');
   if (located.unavailable) {
     return ok({ kind: 'unavailable', message: unavailableMessage(session, located) } satisfies AppCardQueryResult);

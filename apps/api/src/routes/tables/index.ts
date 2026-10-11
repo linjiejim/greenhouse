@@ -37,6 +37,9 @@
  * POST   /tables/:tableId/fields                     — 创建字段
  * PATCH  /fields/:fieldId                            — 更新字段（删掉被应用引用的选项 → 409 used_by_apps，confirm: true 继续）
  * POST   /fields/:fieldId/archive                    — 归档字段（被应用引用 → 409 used_by_apps，{confirm:true} 继续）
+ * POST   /fields/:fieldId/ai/fill                    — AI 字段：为空白单元格入队（TableAiFieldRunResult；阶段 2 占位，切片 AI）
+ * POST   /fields/:fieldId/ai/regenerate              — AI 字段：全部或 {recordIds} 重新生成（受字段月度上限；同上）
+ * GET    /fields/:fieldId/ai/status                  — AI 字段：进度、本月用量、?recordIds= 的单元格状态（TableAiFieldStatusView；同上）
  * POST   /schema-plan/apply                          — 应用一份已确认的搭建计划（retry: true = 只重试未完成项）
  *
  * 视图（./views.ts）

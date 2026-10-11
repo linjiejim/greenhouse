@@ -23,15 +23,16 @@
  * the detailed issue messages.
  */
 
-import type {
-  AppButton,
-  AppCard,
-  AppIssue,
-  AppPage,
-  AppRecordAction,
-  AppRuntimeView,
-  AppSpec,
-  AppSummary,
+import {
+  aggregateBindingCard,
+  type AppButton,
+  type AppCard,
+  type AppIssue,
+  type AppPage,
+  type AppRecordAction,
+  type AppRuntimeView,
+  type AppSpec,
+  type AppSummary,
 } from '@greenhouse/types/apps';
 import { trimCardForReader, trimFilterControlsForReader } from '@greenhouse/types/table-cards';
 import type { TableFieldValueEntry, TableFilterGroup } from '@greenhouse/types/tables';
@@ -161,9 +162,57 @@ function trimCard(
           .filter((button) => button.type !== 'create_record' || canCreateFor(button.tableId))
           .map((button) => trimButton(button, readableFor, editableFor)),
       };
+    case 'custom':
+      return trimCustomCard(card, readableFor, editableFor, canCreateFor);
+    // External data is the viewer's own (D4): nothing in an external card is role-scoped.
     case 'text':
+    case 'external':
       return card;
   }
+}
+
+/**
+ * A custom card as a role sees it (Phase 2 foundation; slice S owns the real
+ * rules): the component's code, its bindings by id with only readable columns
+ * and no query a hidden field could be read through, actions without an
+ * unreadable precondition, the create only when the role may create. The
+ * gateway always evaluates the stored spec, never this copy.
+ */
+function trimCustomCard(
+  card: Extract<AppCard, { kind: 'custom' }>,
+  readableFor: ReadableFor,
+  editableFor: EditableFor,
+  canCreateFor: CanCreateFor,
+): AppCard {
+  const tableOf = (bindingId: string) => card.bindings.find((binding) => binding.id === bindingId)?.source.tableId;
+  const bindings = card.bindings.map((binding) => {
+    const readable = readableFor(binding.source.tableId);
+    const out = { ...binding, source: { tableId: binding.source.tableId } };
+    if (binding.fieldIds) out.fieldIds = keep(binding.fieldIds, readable);
+    if (binding.aggregate && !trimCardForReader(aggregateBindingCard(binding), readable)) delete out.aggregate;
+    return out;
+  });
+  const out: Extract<AppCard, { kind: 'custom' }> = { ...card, bindings };
+  if (card.actions) {
+    out.actions = card.actions.map((action) => {
+      const tableId = tableOf(action.bindingId);
+      return {
+        ...trimAction(action, tableId === undefined ? undefined : readableFor(tableId)),
+        bindingId: action.bindingId,
+      };
+    });
+  }
+  const createTable = card.create ? tableOf(card.create.bindingId) : undefined;
+  if (card.create && createTable !== undefined && canCreateFor(createTable)) {
+    const create = { ...card.create, fieldIds: keep(card.create.fieldIds, editableFor(createTable)) };
+    const defaults = trimDefaults(create.defaults, readableFor(createTable));
+    if (defaults) create.defaults = defaults;
+    else delete create.defaults;
+    out.create = create;
+  } else {
+    delete out.create;
+  }
+  return out;
 }
 
 /** The role-trimmed spec with everything the role cannot read removed (see the module comment). */

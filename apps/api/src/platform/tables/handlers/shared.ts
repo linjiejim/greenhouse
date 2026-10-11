@@ -29,6 +29,13 @@ export function fail(code: FailureCode, message: string, details?: Record<string
   return { ok: false, code, message, ...(details ? { details } : {}) };
 }
 
+/**
+ * The answer of an action whose behaviour has not landed yet (a foundation
+ * placeholder): 400 `not_implemented` with `details.notImplemented`. Phase 2's
+ * F2 declared every action its slices need; each slice replaces its handlers.
+ */
+export const notImplemented: Handler = async () => fail('INVALID_INPUT', 'not_implemented', { notImplemented: true });
+
 export function payloadOf(request: HandlerRequest): Record<string, unknown> {
   return request.payload && typeof request.payload === 'object' && !Array.isArray(request.payload)
     ? (request.payload as Record<string, unknown>)

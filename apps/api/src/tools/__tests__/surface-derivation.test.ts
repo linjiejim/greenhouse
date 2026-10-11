@@ -112,6 +112,13 @@ describe('surface-derived exposure sets', () => {
     expect(sorted(grouped)).toEqual(sorted(MCP_EXPOSED_TOOL_IDS));
   });
 
+  it('registers the apps resource group before any tool joins it (Phase 2 F2)', () => {
+    // Its own consent group, never folded into `tables` — a token granted `mcp:tables`
+    // must not quietly reach apps. Slice AGT puts apps_query / apps_action in it.
+    expect(allMcpResourceGroups()).toContain('apps');
+    expect([...(MCP_TOOL_IDS_BY_GROUP.get('apps') ?? [])]).toEqual([]);
+  });
+
   it('every resource group is reachable with read-only scope', () => {
     // resolveProxyToolIds narrows reads by group and writes by group ∩ mcp:write.
     // A group holding only write tools would resolve to an empty read set, and

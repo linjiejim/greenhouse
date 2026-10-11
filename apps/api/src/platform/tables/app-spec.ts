@@ -39,12 +39,17 @@ import {
   type TablesSchemaSource,
 } from '@greenhouse/db';
 import {
+  aggregateBindingCard,
   APP_BUILDER_SEGMENT,
   APP_ICONS,
   APP_ID_PATTERN,
   APP_LIMITS,
+  APP_SOURCE_COLUMN_TYPES,
+  APP_SOURCE_LIMITS,
+  isJsonPointer,
   rolesForPage,
   type AppCard,
+  type AppCustomBinding,
   type AppDataSource,
   type AppIssue,
   type AppPage,
@@ -53,6 +58,8 @@ import {
   type AppSpec,
   type AppSpecError,
 } from '@greenhouse/types/apps';
+import { APP_SANDBOX_LIMITS, utf8ByteLength } from '@greenhouse/types/app-sandbox';
+import { MCP_SERVER_SLUG_PATTERN } from '@greenhouse/types/mcp-servers';
 import {
   compileTableAccessScope,
   computeFieldAccess,
@@ -61,7 +68,7 @@ import {
   type TableAccessRules,
   type TableAccessSchemaFacts,
 } from '@greenhouse/types/table-access';
-import { normalizeTableCardSpec, widgetTypeForCard } from '@greenhouse/types/table-cards';
+import { normalizeTableCardSpec, TABLE_CARD_CHART_TYPES, widgetTypeForCard } from '@greenhouse/types/table-cards';
 import {
   isComputedFieldType,
   TABLE_SYSTEM_FIELDS,
@@ -234,6 +241,79 @@ const button = z.discriminatedUnion('type', [
     .strict(),
 ]);
 
+// Phase 2: custom components (§1) and external data (§5).
+
+const customBinding = z
+  .object({
+    id,
+    source: dataSource,
+    kind: z.enum(['records', 'aggregate']),
+    fieldIds: fieldIds.optional(),
+    aggregate: objectOf<NonNullable<TableCardSpec['aggregate']>>('aggregate').optional(),
+  })
+  .strict();
+const customAction = recordAction.extend({ bindingId: id }).strict();
+const customCreate = createSpec.extend({ bindingId: id }).strict();
+
+const jsonPointer = z.string().refine(isJsonPointer, {
+  message: `must be a JSON Pointer ("" or "/items/0/name", ≤ ${APP_SOURCE_LIMITS.pointerLength} characters)`,
+});
+const sourceMap = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('kpi'), value: jsonPointer }).strict(),
+  z
+    .object({
+      kind: z.literal('chart'),
+      rows: jsonPointer,
+      group: jsonPointer,
+      value: jsonPointer,
+      series: jsonPointer.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('table'),
+      rows: jsonPointer,
+      columns: z
+        .array(
+          z
+            .object({ key: id, label: name, path: jsonPointer, type: z.enum(APP_SOURCE_COLUMN_TYPES).optional() })
+            .strict(),
+        )
+        .min(1)
+        .max(APP_SOURCE_LIMITS.columns),
+    })
+    .strict(),
+]);
+const sourceInput = z.record(z.string(), z.unknown());
+const externalSource = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('tool'),
+      toolId: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/, 'must be a tool id'),
+      input: sourceInput,
+      map: sourceMap,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('connector'),
+      server: z.string().regex(MCP_SERVER_SLUG_PATTERN, 'must be a connector slug'),
+      tool: z.string().regex(/^[A-Za-z0-9_.\-/]{1,128}$/, 'must be a tool name'),
+      input: sourceInput,
+      map: sourceMap,
+    })
+    .strict(),
+]);
+const chartOptions = z
+  .object({
+    type: z.enum(TABLE_CARD_CHART_TYPES),
+    stacked: z.boolean().optional(),
+    horizontal: z.boolean().optional(),
+    donut: z.boolean().optional(),
+    showValues: z.boolean().optional(),
+  })
+  .strict();
+
 const cardBase = { id, title: name.optional(), layout };
 const embeddedCard = (kind: 'kpi' | 'chart' | 'pivot') =>
   z.object({ ...cardBase, kind: z.literal(kind), card: objectOf<TableCardSpec>('card') }).strict();
@@ -307,6 +387,21 @@ const card = z.discriminatedUnion('kind', [
   z
     .object({ ...cardBase, kind: z.literal('buttons'), buttons: z.array(button).min(1).max(APP_LIMITS.buttonsPerCard) })
     .strict(),
+  z
+    .object({
+      ...cardBase,
+      kind: z.literal('custom'),
+      // Characters ≤ bytes; the byte limit itself is a pure check.
+      html: z.string().max(APP_SANDBOX_LIMITS.htmlBytes),
+      bindings: z.array(customBinding).max(APP_SANDBOX_LIMITS.bindings),
+      actions: z.array(customAction).max(APP_LIMITS.actionsPerCard).optional(),
+      create: customCreate.optional(),
+      height: z.number().int().min(APP_SANDBOX_LIMITS.minHeight).max(APP_SANDBOX_LIMITS.maxHeight).optional(),
+    })
+    .strict(),
+  z
+    .object({ ...cardBase, kind: z.literal('external'), source: externalSource, chart: chartOptions.optional() })
+    .strict(),
 ]);
 
 const page = z
@@ -355,6 +450,7 @@ interface Where {
   actionId?: string;
   filterId?: string;
   roleKey?: string;
+  bindingId?: string;
 }
 
 class Problems {
@@ -437,6 +533,7 @@ function withoutPageRefs(query: AppDataSource['query'] | undefined): AppDataSour
 // ─── Pure checks (no schema) ──────────────────────────────
 
 function cardActions(card: AppCard): Array<{ list: AppRecordAction[]; suffix: string }> {
+  if (card.kind === 'custom') return [{ list: card.actions ?? [], suffix: 'actions' }];
   if (card.kind !== 'records' && card.kind !== 'kanban' && card.kind !== 'calendar' && card.kind !== 'gallery') {
     return [];
   }
@@ -444,6 +541,125 @@ function cardActions(card: AppCard): Array<{ list: AppRecordAction[]; suffix: st
     { list: card.actions ?? [], suffix: 'actions' },
     { list: card.detail?.actions ?? [], suffix: 'detail.actions' },
   ];
+}
+
+type KnownRoles = (roles: readonly string[] | undefined, where: Where) => void;
+
+/**
+ * A custom card (Phase 2 §1): its code within `APP_SANDBOX_LIMITS.htmlBytes`,
+ * unique binding ids, records bindings with columns and aggregate bindings
+ * with an aggregate, actions and create naming a records binding, and never a
+ * `delete` action — the component asks, the host confirms, and deleting is
+ * not something a component may ask for.
+ */
+function customPureChecks(
+  card: Extract<AppCard, { kind: 'custom' }>,
+  where: Where,
+  problems: Problems,
+  knownRoles: KnownRoles,
+): void {
+  if (utf8ByteLength(card.html) > APP_SANDBOX_LIMITS.htmlBytes) {
+    problems.add(within(where, 'html'), `The component exceeds ${APP_SANDBOX_LIMITS.htmlBytes / 1024} KB`);
+  }
+  const bindings = new Map<string, AppCustomBinding>();
+  for (const [index, binding] of card.bindings.entries()) {
+    const at = within(where, `bindings[${index}]`, { bindingId: binding.id });
+    if (bindings.has(binding.id))
+      problems.add(within(at, 'id'), `Binding "${binding.id}" is defined twice on this card`);
+    bindings.set(binding.id, binding);
+    if (binding.kind === 'records') {
+      if (!binding.fieldIds || binding.fieldIds.length === 0) {
+        problems.add(within(at, 'fieldIds'), 'A records binding needs the fields it reads');
+      }
+      if (binding.aggregate) problems.add(within(at, 'aggregate'), 'A records binding has no aggregate');
+    } else {
+      if (!binding.aggregate) problems.add(within(at, 'aggregate'), 'An aggregate binding needs an aggregate');
+      if (binding.fieldIds) problems.add(within(at, 'fieldIds'), 'An aggregate binding has no columns');
+    }
+  }
+  const recordsBinding = (bindingId: string, at: Where): void => {
+    const binding = bindings.get(bindingId);
+    if (!binding) problems.add(within(at, 'bindingId'), `Binding "${bindingId}" does not exist on this card`);
+    else if (binding.kind !== 'records') {
+      problems.add(within(at, 'bindingId'), `Binding "${bindingId}" is an aggregate; actions need a records binding`);
+    }
+  };
+  for (const [index, action] of (card.actions ?? []).entries()) {
+    const at = within(where, `actions[${index}]`, { actionId: action.id });
+    if (action.do.type === 'delete') problems.add(within(at, 'do'), 'A custom card cannot delete records');
+    recordsBinding(action.bindingId, at);
+  }
+  if (card.create) {
+    const at = within(where, 'create');
+    knownRoles(card.create.roles, at);
+    recordsBinding(card.create.bindingId, at);
+  }
+}
+
+/** An external-data card (Phase 2 §5): a bounded input, unique column keys, chart options only on a chart. */
+function externalPureChecks(card: Extract<AppCard, { kind: 'external' }>, where: Where, problems: Problems): void {
+  if (utf8ByteLength(JSON.stringify(card.source.input)) > APP_SOURCE_LIMITS.inputBytes) {
+    problems.add(within(where, 'source.input'), `The input exceeds ${APP_SOURCE_LIMITS.inputBytes / 1024} KB`);
+  }
+  const map = card.source.map;
+  if (map.kind === 'table') {
+    const keys = new Set<string>();
+    for (const [index, column] of map.columns.entries()) {
+      if (keys.has(column.key)) {
+        problems.add(within(where, `source.map.columns[${index}].key`), `Column "${column.key}" is defined twice`);
+      }
+      keys.add(column.key);
+    }
+  }
+  if (card.chart && map.kind !== 'chart') problems.add(within(where, 'chart'), 'Chart options need a chart map');
+}
+
+/**
+ * Tool / connector sources belong on external cards only — never on a
+ * records-like card, and never in a custom card's bindings (those read this
+ * Base, for the viewer's role; external data is the viewer's own, D4). The
+ * shape check would refuse them anyway; this says why.
+ */
+function misplacedSources(raw: unknown): AppSpecError[] {
+  const errors: AppSpecError[] = [];
+  const isExternal = (source: unknown) =>
+    typeof source === 'object' &&
+    source !== null &&
+    ((source as { kind?: unknown }).kind === 'tool' || (source as { kind?: unknown }).kind === 'connector');
+  const pages = (raw as { pages?: unknown })?.pages;
+  if (!Array.isArray(pages)) return errors;
+  for (const [pageIndex, page] of pages.entries()) {
+    const cards = (page as { cards?: unknown })?.cards;
+    if (!Array.isArray(cards)) continue;
+    for (const [cardIndex, card] of cards.entries()) {
+      if (typeof card !== 'object' || card === null) continue;
+      const entry = card as { kind?: unknown; id?: unknown; source?: unknown; bindings?: unknown };
+      const at = {
+        path: `pages[${pageIndex}].cards[${cardIndex}]`,
+        ...(typeof (page as { id?: unknown }).id === 'string' ? { pageId: (page as { id: string }).id } : {}),
+        ...(typeof entry.id === 'string' ? { cardId: entry.id } : {}),
+      };
+      if (entry.kind !== 'external' && isExternal(entry.source)) {
+        errors.push({
+          ...at,
+          path: `${at.path}.source`,
+          message: 'Tool and connector sources are only for external cards',
+        });
+      }
+      if (entry.kind === 'custom' && Array.isArray(entry.bindings)) {
+        for (const [index, binding] of entry.bindings.entries()) {
+          if (isExternal((binding as { source?: unknown })?.source)) {
+            errors.push({
+              ...at,
+              path: `${at.path}.bindings[${index}].source`,
+              message: 'A custom card reads this Base only — no tool or connector sources in its bindings',
+            });
+          }
+        }
+      }
+    }
+  }
+  return errors;
 }
 
 function pureChecks(spec: AppSpec, problems: Problems): void {
@@ -533,6 +749,8 @@ function pureChecks(spec: AppSpec, problems: Problems): void {
         }
       }
       if (item.kind === 'form') knownRoles(item.roles, cardWhere);
+      if (item.kind === 'custom') customPureChecks(item, cardWhere, problems, knownRoles);
+      if (item.kind === 'external') externalPureChecks(item, cardWhere, problems);
       if (item.kind === 'buttons') {
         const buttonIds = new Set<string>();
         for (const [buttonIndex, entryButton] of item.buttons.entries()) {
@@ -552,7 +770,12 @@ function pureChecks(spec: AppSpec, problems: Problems): void {
           ? [{ query: item.source.query, suffix: 'source.query' }]
           : item.kind === 'kpi' || item.kind === 'chart' || item.kind === 'pivot'
             ? [{ query: item.card.source?.query, suffix: 'card.source.query' }]
-            : [];
+            : item.kind === 'custom'
+              ? item.bindings.map((binding, index) => ({
+                  query: binding.source.query,
+                  suffix: `bindings[${index}].source.query`,
+                }))
+              : [];
       for (const { query, suffix } of queries) {
         for (const ref of pageRefs(query)) {
           if (!filterIds.has(ref)) {
@@ -765,9 +988,11 @@ function schemaChecker(schema: AppSpecSchema, problems: Problems): SchemaChecker
     tableId: number,
     list: readonly AppRecordAction[],
     where: Where,
+    /** The first action's index in its spec list (a custom card checks its actions one at a time). */
+    firstIndex = 0,
   ) => {
     for (const [index, action] of list.entries()) {
-      const at = within(where, `[${index}]`, { actionId: action.id });
+      const at = within(where, `[${firstIndex + index}]`, { actionId: action.id });
       await condition(tableId, action.when, within(at, 'when'));
       if (action.do.type === 'run_automation') {
         const ruleId = action.do.ruleId;
@@ -849,6 +1074,63 @@ function schemaChecker(schema: AppSpecSchema, problems: Problems): SchemaChecker
     if (item.kind === 'records' && item.create) {
       await fieldList(tableId, item.create.fieldIds, within(where, 'create.fieldIds'), true);
       await values(tableId, item.create.defaults ?? [], within(where, 'create.defaults'));
+    }
+  };
+
+  /**
+   * A custom card against the Base: each binding reads a live table with
+   * readable columns / a valid aggregate (the dashboards' own card check),
+   * `$page` clauses as on any card; actions and create are checked like a
+   * records card's, on their binding's table.
+   */
+  const customCard = async (
+    spec: AppSpec,
+    pageId: string,
+    item: Extract<AppCard, { kind: 'custom' }>,
+    controls: readonly TableFilterControl[],
+    where: Where,
+  ) => {
+    const tables = new Map<string, number>();
+    for (const [index, binding] of item.bindings.entries()) {
+      const at = within(where, `bindings[${index}]`, { bindingId: binding.id });
+      const tableId = binding.source.tableId;
+      if (!tableOk(tableId, within(at, 'source.tableId'))) continue;
+      tables.set(binding.id, tableId);
+      if (binding.kind === 'records') {
+        await query(tableId, binding.source.query, within(at, 'source.query'), { fieldIds: binding.fieldIds ?? [] });
+      } else if (binding.aggregate) {
+        const shaped = normalizeTableCardSpec(aggregateBindingCard(binding));
+        if (!shaped.ok) {
+          problems.add(within(at, 'aggregate'), shaped.error);
+          continue;
+        }
+        const embedded = { ...shaped.card, source: shaped.card.source && { ...shaped.card.source } };
+        if (embedded.source?.query) embedded.source.query = withoutPageRefs(embedded.source.query);
+        try {
+          await checkWidgetCard(
+            schema.source,
+            schema.baseId,
+            widgetTypeForCard(embedded),
+            { card: embedded },
+            undefined,
+          );
+        } catch (error) {
+          problems.add(within(at, 'aggregate'), messageOf(error));
+        }
+      }
+      await pageRefClauses(tableId, binding.source.query, controls, within(at, 'source.query'));
+    }
+    for (const [index, action] of (item.actions ?? []).entries()) {
+      const tableId = tables.get(action.bindingId);
+      if (tableId === undefined) continue;
+      await actionList(spec, pageId, tableId, [action], within(where, 'actions'), index);
+    }
+    if (item.create) {
+      const tableId = tables.get(item.create.bindingId);
+      if (tableId !== undefined) {
+        await fieldList(tableId, item.create.fieldIds, within(where, 'create.fieldIds'), true);
+        await values(tableId, item.create.defaults ?? [], within(where, 'create.defaults'));
+      }
     }
   };
 
@@ -944,7 +1226,13 @@ function schemaChecker(schema: AppSpecSchema, problems: Problems): SchemaChecker
                 await values(entryButton.tableId, entryButton.defaults ?? [], within(at, 'defaults'));
               }
               break;
+            case 'custom':
+              await customCard(spec, entry.id, item, controls, where);
+              break;
+            // External sources are checked where they run (the viewer's own tools and
+            // connections, at evaluation time — slice SRC); the shape is layer 1's.
             case 'text':
+            case 'external':
               break;
           }
         }
@@ -960,6 +1248,8 @@ export type AppSpecShapeResult = { ok: true; spec: AppSpec } | { ok: false; erro
 
 /** Layer 1 only: the shape and the pure checks. No schema needed. */
 export function parseAppSpec(raw: unknown): AppSpecShapeResult {
+  const misplaced = misplacedSources(raw);
+  if (misplaced.length > 0) return { ok: false, errors: misplaced };
   const parsed = appSpecSchema.safeParse(raw);
   if (!parsed.success) {
     return {

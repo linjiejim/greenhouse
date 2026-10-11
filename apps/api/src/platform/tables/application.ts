@@ -14,6 +14,9 @@ import { isUniqueViolation } from '@greenhouse/utils/error';
 import { tablesManifest, type TablesActionId } from '../manifests/tables.js';
 import type { PlatformRegistration } from '../runtime.js';
 import { listBaseAudit, tablesAuditScope } from './audit.js';
+import { aiFieldHandlers } from './handlers/ai-fields.js';
+import { appReviewHandlers } from './handlers/app-reviews.js';
+import { appTemplateHandlers } from './handlers/app-templates.js';
 import { appHandlers } from './handlers/apps.js';
 import { activityHandlers } from './handlers/activity.js';
 import { automationHandlers } from './handlers/automations.js';
@@ -65,6 +68,9 @@ export const TABLES_HANDLERS: Readonly<Record<TablesActionId, Handler>> = {
   ...automationHandlers,
   ...dashboardHandlers,
   ...appHandlers,
+  ...appReviewHandlers,
+  ...appTemplateHandlers,
+  ...aiFieldHandlers,
 };
 
 export const tablesRegistration: PlatformRegistration = {

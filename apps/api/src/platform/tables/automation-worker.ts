@@ -479,6 +479,10 @@ export function createTablesAutomationRunner(options: TablesAutomationWorkerOpti
               step: step(action, { status: 'succeeded', code: 'delayed', params: { until: until.toISOString() } }),
             };
           }
+          // Phase 2 slice AGT runs agent steps; until then the rule normalizer refuses them, so a
+          // stored one can only be a hand-edited row — fail it rather than skip it.
+          case 'agent':
+            return failed(action, 'not_implemented');
         }
       } catch (error) {
         if (error instanceof TablesValidationError) return failed(action, error.message);

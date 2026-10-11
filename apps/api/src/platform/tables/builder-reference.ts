@@ -25,6 +25,13 @@ import {
 import { TABLE_CARD_KINDS } from '@greenhouse/types/table-cards';
 import { APP_ACCENTS, APP_CARD_KINDS, APP_ICONS, APP_LIMITS } from '@greenhouse/types/apps';
 
+/**
+ * The card kinds this reference documents. Phase 2's `custom` (slice S) and
+ * `external` (slice SRC) join with their own lines — never name a kind the
+ * model is not told how to fill.
+ */
+const REFERENCED_CARD_KINDS = APP_CARD_KINDS.filter((kind) => kind !== 'custom' && kind !== 'external');
+
 export const BUILDER_REFERENCE_TOPICS = ['plan', 'view', 'form', 'automation', 'dashboard', 'role', 'app'] as const;
 export type BuilderReferenceTopic = (typeof BUILDER_REFERENCE_TOPICS)[number];
 
@@ -573,7 +580,7 @@ const TOPIC_NOTES: Readonly<Record<Exclude<BuilderReferenceTopic, 'plan'>, strin
   ],
   app: [
     `spec {version:1, pages (1-${APP_LIMITS.pages}), roles (1-${APP_LIMITS.roles}), home?, nav? {layout tabs|sidebar}} over ONE Base. Ids: lowercase a-z 0-9 _ - (≤40), unique in scope; no page "edit".`,
-    `page {id, title, icon?, filters? (dashboard filter controls), cards}. card {id, title?, layout {x, y, w, h 1-24}, kind ${APP_CARD_KINDS.join('|')}}: records {source {tableId, query?}, fieldIds, detail?, create? {fieldIds, defaults?}, actions?}; kanban {source, groupFieldId, fieldIds, actions?, move?}; calendar {source, startFieldId, fieldIds}; gallery {source, coverFieldId?, fieldIds}; form {tableId, fieldIds, defaults?}; kpi|chart|pivot {card: topic=dashboard}; text {markdown}; buttons {buttons [{id, label, type open_page|open_url|create_record}]}.`,
+    `page {id, title, icon?, filters? (dashboard filter controls), cards}. card {id, title?, layout {x, y, w, h 1-24}, kind ${REFERENCED_CARD_KINDS.join('|')}}: records {source {tableId, query?}, fieldIds, detail?, create? {fieldIds, defaults?}, actions?}; kanban {source, groupFieldId, fieldIds, actions?, move?}; calendar {source, startFieldId, fieldIds}; gallery {source, coverFieldId?, fieldIds}; form {tableId, fieldIds, defaults?}; kpi|chart|pivot {card: topic=dashboard}; text {markdown}; buttons {buttons [{id, label, type open_page|open_url|create_record}]}.`,
     'detail {fieldIds, editableFieldIds?, actions?, comments?}. action {id, label, roles?, when? (re-checked in the write), confirm?, do: set_fields {values ($me/$now/$today), inputFieldIds?, requiredInputFieldIds?} | run_automation {ruleId: a button rule} | delete}. set_fields keys must be editable for every role the action applies to.',
     'Approval = one step per action (when pending AND created_by ≠ $me). Multi-level, parallel or routed approvals are NOT supported — never promise them. "Mine": {systemField:"created_by", operator:"eq", value:"$me"}; a page filter is "$page.<filterId>" in a clause value: eq/in = what the viewer picked, neq = anything else, dates also gte/lte (from start/to end), gt/lt (after/before).',
     'role {key, name, pages "all"|[ids], tables [rules as topic=role], canComment?} — all a viewer gets; they need not be Base members.',

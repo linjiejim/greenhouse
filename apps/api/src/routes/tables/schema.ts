@@ -11,7 +11,7 @@ import {
   type TableSchemaResult,
   type TableSchemaVersionRow,
 } from '@greenhouse/db';
-import type { SchemaPlanApplyResult } from '@greenhouse/types/tables';
+import type { SchemaPlanApplyResult, TableAiFieldRunResult, TableAiFieldStatusView } from '@greenhouse/types/tables';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { AppEnv } from '../../app-env.js';
 import { getAuthUser } from '../../auth/middleware.js';
@@ -88,6 +88,29 @@ export const schemaRoutes = new Hono<AppEnv>()
     const result = await dispatch(c, 'archiveField', { fieldId, confirm }, { fieldId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { field: TableFieldRow });
+  })
+  // ─── AI fields (Phase 2 §2; placeholders until slice AI) ───
+  .post('/fields/:fieldId/ai/fill', async (c) => {
+    const fieldId = numberParam(c, 'fieldId');
+    const result = await dispatch(c, 'fillAiField', { fieldId }, { fieldId });
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as TableAiFieldRunResult);
+  })
+  .post('/fields/:fieldId/ai/regenerate', async (c) => {
+    const fieldId = numberParam(c, 'fieldId');
+    const result = await dispatch(c, 'regenerateAiField', { ...(await jsonBody(c)), fieldId }, { fieldId });
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as TableAiFieldRunResult);
+  })
+  .get('/fields/:fieldId/ai/status', async (c) => {
+    const fieldId = numberParam(c, 'fieldId');
+    const recordIds = (c.req.query('recordIds') ?? '')
+      .split(',')
+      .map(Number)
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const result = await dispatch(c, 'getAiFieldStatus', { fieldId, recordIds }, { fieldId });
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as TableAiFieldStatusView);
   })
   /**
    * The confirm gate behind `tables_schema_plan`. The tool only drafts; this is

@@ -25,10 +25,17 @@
  */
 
 import { effectiveUserId, type ActorContext } from '@greenhouse/platform-kernel';
-import type { DatabaseProvider, TableAppAudienceInput, TableAppRow, TableAppSummaryRow } from '@greenhouse/db';
+import type {
+  DatabaseProvider,
+  TableAppAudienceInput,
+  TableAppCustomReviewRecord,
+  TableAppRow,
+  TableAppSummaryRow,
+} from '@greenhouse/db';
 import {
   APP_ID_PATTERN,
   type AppAudienceEntry,
+  type AppCustomReview,
   type AppAudienceEntryView,
   type AppAudiencesView,
   type AppDraftView,
@@ -38,6 +45,7 @@ import {
   type AppVersionSummary,
 } from '@greenhouse/types/apps';
 import { tableRoleAtLeast } from '@greenhouse/types/table-access';
+import { activeUserHasFeature } from '../../../auth/features.js';
 import {
   capabilitySnapshot,
   requireAppManager,
@@ -270,6 +278,23 @@ async function audiencesView(db: DatabaseProvider, app: TableAppRow): Promise<Ap
   };
 }
 
+/** A stored custom-code review as the wire shows it (`AppVersionSummary.customReview`). */
+export function customReviewView(
+  review: TableAppCustomReviewRecord | null | undefined,
+  names: Map<string, string>,
+): AppCustomReview | undefined {
+  if (!review) return undefined;
+  return {
+    status: review.status,
+    hash: review.hash,
+    ...(review.reviewed_by
+      ? { reviewedBy: { id: review.reviewed_by, name: names.get(review.reviewed_by) ?? review.reviewed_by } }
+      : {}),
+    ...(review.reviewed_at ? { reviewedAt: review.reviewed_at } : {}),
+    ...(review.note ? { note: review.note } : {}),
+  };
+}
+
 function versionSummary(
   row: {
     version: number;
@@ -278,9 +303,11 @@ function versionSummary(
     published_at: string;
     draft_revision: number;
     spec_hash: string;
+    custom_review?: TableAppCustomReviewRecord | null;
   },
   names: Map<string, string>,
 ): AppVersionSummary {
+  const customReview = customReviewView(row.custom_review, names);
   return {
     version: row.version,
     notes: row.notes,
@@ -288,7 +315,56 @@ function versionSummary(
     publishedAt: row.published_at,
     draftRevision: row.draft_revision,
     specHash: row.spec_hash,
+    ...(customReview ? { customReview } : {}),
   };
+}
+
+// ─── Custom code (Phase 2 §1) ─────────────────────────────
+
+/** A spec's custom cards by `pageId/cardId`, each as what the component is: code, bindings, actions, create. */
+function customCardCode(spec: AppSpec | undefined): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const page of spec?.pages ?? []) {
+    for (const card of page.cards) {
+      if (card.kind !== 'custom') continue;
+      out.set(
+        `${page.id}/${card.id}`,
+        JSON.stringify([card.html, card.bindings, card.actions ?? [], card.create ?? null]),
+      );
+    }
+  }
+  return out;
+}
+
+/**
+ * Writing custom code is opt-in (feature flag `apps_custom_code`, default off;
+ * a super always has it): a draft may keep the custom cards it already has —
+ * a colleague without the flag can still edit the rest of the app — but adding
+ * or changing one needs the flag. Opening an app never does.
+ */
+async function customCodeRefusal(
+  context: Context,
+  actor: ActorContext,
+  previous: AppSpec | undefined,
+  next: AppSpec,
+): Promise<ReturnType<typeof fail> | undefined> {
+  const before = customCardCode(previous);
+  const changed = [...customCardCode(next)].some(([key, code]) => before.get(key) !== code);
+  if (!changed || (await activeUserHasFeature(effectiveUserId(actor), 'apps_custom_code', context.db)))
+    return undefined;
+  return fail('FORBIDDEN', 'Writing custom components is not enabled for you', {
+    reason: 'feature_disabled',
+    feature: 'apps_custom_code',
+  });
+}
+
+/**
+ * Phase 2 foundation: a spec with custom cards cannot be published until the
+ * super review gate (D10, slice S) exists — the version would reach its
+ * audience unreviewed. Slice S replaces this with the `custom_review` check.
+ */
+export function customCardsBlockPublish(spec: AppSpec): boolean {
+  return spec.pages.some((page) => page.cards.some((card) => card.kind === 'custom'));
 }
 
 // ─── Management handlers ──────────────────────────────────
@@ -344,8 +420,11 @@ const createApp: Handler = async (request, context) => {
   const grant = await requireBase(context, request.actor, baseId, 'app', 'builder');
   if (!grant) return fail('NOT_FOUND', 'Base not found');
   const checked = await validateAppSpec(payload.spec ?? starterSpec(), await loadAppSpecSchema(context.db, baseId));
-  if (!checked.ok && !checked.spec)
-    return fail('INVALID_INPUT', 'spec_invalid', { reason: 'spec_invalid', errors: checked.errors });
+  if (!checked.spec) {
+    return fail('INVALID_INPUT', 'spec_invalid', { reason: 'spec_invalid', errors: checked.ok ? [] : checked.errors });
+  }
+  const refused = await customCodeRefusal(context, request.actor, undefined, checked.spec);
+  if (refused) return refused;
   const userId = effectiveUserId(request.actor);
   const app = await context.db.tables.createApp({
     base_id: baseId,
@@ -392,6 +471,13 @@ const saveAppDraft: Handler = async (request, context) => {
   if (!checked.spec) {
     return fail('INVALID_INPUT', 'spec_invalid', { reason: 'spec_invalid', errors: checked.ok ? [] : checked.errors });
   }
+  const refused = await customCodeRefusal(
+    context,
+    request.actor,
+    parseStoredAppSpec(access.app.draft_spec),
+    checked.spec,
+  );
+  if (refused) return refused;
   const saved = await context.db.tables.saveAppDraft(access.app.id, {
     spec: JSON.stringify(checked.spec),
     draftRevision,
@@ -436,6 +522,9 @@ const publishApp: Handler = async (request, context) => {
       errors:
         checked && !checked.ok ? checked.errors : [{ path: '', message: 'The stored draft is not a valid app spec' }],
     });
+  }
+  if (customCardsBlockPublish(checked.spec)) {
+    return fail('INVALID_INPUT', 'not_implemented', { notImplemented: true, reason: 'custom_review' });
   }
   const published = await context.db.tables.publishApp(access.app.id, {
     draftRevision,

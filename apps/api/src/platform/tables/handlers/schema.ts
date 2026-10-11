@@ -148,6 +148,8 @@ const createField: Handler = async (request, context) => {
   const type = stringValue(payload, 'type') as TableFieldType | undefined;
   if (!tableId || !name || !type) return fail('INVALID_INPUT', 'tableId, name, and type are required');
   if (!TABLE_FIELD_TYPES.includes(type)) return fail('INVALID_INPUT', `Unsupported field type "${type}"`);
+  // Phase 2 foundation: AI fields need their worker, budget and editor (slice AI) before anyone can make one.
+  if (type === 'ai') return fail('INVALID_INPUT', 'not_implemented', { notImplemented: true });
   const base = await baseForTable(context.db, tableId);
   if (!base || !(await requireBase(context, request.actor, base.id, 'field', 'builder'))) {
     return fail('NOT_FOUND', 'Table not found');

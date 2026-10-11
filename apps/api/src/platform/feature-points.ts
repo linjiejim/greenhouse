@@ -86,6 +86,17 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
     toolIds: [],
   },
   {
+    key: 'tables_ai_fields',
+    title: 'Tables AI fields',
+    description:
+      'Create AI fields and fill / regenerate them. Each field is charged to its creator, capped per month per field.',
+    icon: 'Sparkles',
+    kind: 'flag',
+    group: 'basic',
+    flag: 'tables_ai_fields',
+    toolIds: [],
+  },
+  {
     key: 'cloud-agent',
     title: 'Missions',
     description:
@@ -138,6 +149,17 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
     appId: 'projects',
     capabilityPrefix: 'projects.*',
     toolIds: ['project_query', 'project_mutation'],
+  },
+  {
+    key: 'apps_custom_code',
+    title: 'App custom components',
+    description:
+      'Write sandboxed custom components into apps (opt-in). Publishing one beyond the Base’s managers also needs a super’s review.',
+    icon: 'Code2',
+    kind: 'flag',
+    group: 'advanced',
+    flag: 'apps_custom_code',
+    toolIds: [],
   },
   {
     key: 'tools',

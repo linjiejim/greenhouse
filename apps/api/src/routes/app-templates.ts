@@ -12,18 +12,33 @@
  * GET  /api/apps/templates               — 模板目录 {templates: AppTemplateSummary[]}（按账号语言）
  * POST /api/apps/templates/:key/install  — 按账号语言安装 → 201 AppTemplateInstallResult {app, baseId}；
  *                                          未知模板 404；Tables 关闭 403；任一步失败 500 并带逐项结果
+ *
+ * 阶段 2 模板生命周期（spec 20261011-tables-apps-advanced §6，清单 1.5.0；处理器是
+ * platform/tables/handlers/app-templates.ts 的占位，切片 T 实现，届时上面两条也改走生命周期动作
+ * listAppTemplates / installAppTemplate，响应形状不变、只追加 source / version / reviewStatus）：
+ * POST /api/apps/templates                                — 另存为模板（新模板）AppTemplatePublishInput → 201 AppTemplateDetailView
+ * GET  /api/apps/templates/:key                           — 模板详情 AppTemplateDetailView（版本、审核状态、会建出什么）
+ * POST /api/apps/templates/:key/versions                  — 发布新版本 AppTemplatePublishInput（semver 递增 + changelog）→ 201 AppTemplateDetailView
+ * POST /api/apps/templates/:key/versions/:version/review  — 审核 AppTemplateReviewInput {decision, note?}（super）→ AppTemplateVersionView
+ * POST /api/apps/templates/:key/archive                   — 归档（发布人 / super）→ AppTemplateDetailView
  */
 
 import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
-import type { AppDraftView, AppTemplateInstallResult, AppTemplateSummary } from '@greenhouse/types/apps';
+import type {
+  AppDraftView,
+  AppTemplateDetailView,
+  AppTemplateInstallResult,
+  AppTemplateSummary,
+  AppTemplateVersionView,
+} from '@greenhouse/types/apps';
 import { logger } from '@greenhouse/utils/logger';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
 import { userHasFeature } from '../auth/features.js';
 import { appTemplateSummaries, findAppTemplate, templateLocale } from '../platform/tables/app-templates/index.js';
 import { applySchemaPlan } from '../platform/tables/schema-plan.js';
-import { actionError, dispatch } from './tables/shared.js';
+import { actionError, dispatch, jsonBody } from './tables/shared.js';
 
 export const appTemplateRoutes = new Hono<AppEnv>()
   .get('/', async (c) => {
@@ -31,6 +46,33 @@ export const appTemplateRoutes = new Hono<AppEnv>()
     return c.json({ templates: appTemplateSummaries(templateLocale(user?.locale)) } satisfies {
       templates: AppTemplateSummary[];
     });
+  })
+  // ─── Phase 2 lifecycle (slice T; placeholders answer 400 not_implemented) ───
+  .post('/', async (c) => {
+    const result = await dispatch(c, 'publishAppTemplate', await jsonBody(c));
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as AppTemplateDetailView, 201);
+  })
+  .get('/:key', async (c) => {
+    const result = await dispatch(c, 'getAppTemplate', { key: c.req.param('key') });
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as AppTemplateDetailView);
+  })
+  .post('/:key/versions', async (c) => {
+    const result = await dispatch(c, 'publishAppTemplate', { ...(await jsonBody(c)), key: c.req.param('key') });
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as AppTemplateDetailView, 201);
+  })
+  .post('/:key/versions/:version/review', async (c) => {
+    const payload = { ...(await jsonBody(c)), key: c.req.param('key'), version: c.req.param('version') };
+    const result = await dispatch(c, 'reviewAppTemplate', payload);
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as AppTemplateVersionView);
+  })
+  .post('/:key/archive', async (c) => {
+    const result = await dispatch(c, 'archiveAppTemplate', { key: c.req.param('key') });
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as AppTemplateDetailView);
   })
   .post('/:key/install', async (c) => {
     const template = findAppTemplate(c.req.param('key'));

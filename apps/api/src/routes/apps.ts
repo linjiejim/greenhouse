@@ -1,9 +1,11 @@
 /**
- * 应用路由 — /api/apps（Tables → Apps 阶段 1，spec 20261011-tables-apps §4）
+ * 应用路由 — /api/apps（Tables → Apps 阶段 1，spec 20261011-tables-apps §4；阶段 2 见
+ * 20261011-tables-apps-advanced）
  *
  * 挂 requireInternal() + requireFeature('apps')，**不受** `tables` 开关限制（D1：被分发者不需要
- * Tables 模块）。每个端点经 runtime.dispatch（Tables 清单 1.4.0 的 apps 模块，能力
- * tables.apps.use / manage / publish），审计记在应用所在的 Base 下（scope）、资源是应用。
+ * Tables 模块）。每个端点经 runtime.dispatch（Tables 清单 1.5.0 的 apps 模块，能力
+ * tables.apps.use / manage / publish / review、tables.apps.templates.*），审计记在应用所在的
+ * Base 下（scope）、资源是应用。
  * 管理（Base owner / builder）：草稿、版本、受众只读、转交、归档；发布与改受众只有 Base owner /
  * super（D2，builder → 403）；推荐只有 super。网关端点（cards / records / actions / activity /
  * comments / options / uploads / files / usage）按查看者的应用角色实时求值（D3：本人 > 群组按规格
@@ -14,8 +16,9 @@
  * POST   /api/apps                                  — 新建应用 {baseId, name, description?, icon?, accent?, spec?}（AppDraftView）
  * GET    /api/apps/pins                             — 我置顶的应用（按顺序，只含仍能打开的）
  * PUT    /api/apps/pins                             — 整体替换置顶 {appIds}
- * GET    /api/apps/templates                        — 内置模板目录 {templates}（./app-templates.ts）
+ * GET    /api/apps/templates                        — 内置模板目录 {templates}（./app-templates.ts；阶段 2 模板生命周期的其余端点也在那里）
  * POST   /api/apps/templates/:key/install           — 安装模板：新 Base + 草稿应用（AppTemplateInstallResult）
+ * GET    /api/apps/reviews                          — 自定义代码审核队列（super；{items: AppCustomReviewItem[]}；阶段 2 占位，切片 S）
  * GET    /api/apps/:appId                           — 打开应用（管理者：已发布版本或 ?draft=1 的草稿，?previewRole= 以角色预览；
  *                                                     查看者：已发布版本按其角色裁剪，看不到的字段 / 谓词不下发）（AppRuntimeView）
  * PATCH  /api/apps/:appId                           — 改名称 / 描述 / 图标 / 颜色
@@ -24,13 +27,17 @@
  * POST   /api/apps/:appId/publish                   — 发布 {notes?, draftRevision}（owner / super；草稿已变 409；仍有问题 400 spec_invalid）
  * GET    /api/apps/:appId/versions                  — 版本列表（不含规格）
  * POST   /api/apps/:appId/versions/:version/restore — 把旧版本复制回草稿 {draftRevision}
+ * POST   /api/apps/:appId/versions/:version/review  — 审核该版本的自定义代码 AppCustomReviewInput {hash, decision, note?}
+ *                                                     （super；hash 须等于版本的 specHash；AppVersionSummary；阶段 2 占位，切片 S）
  * GET    /api/apps/:appId/audiences                 — 受众（AppAudiencesView）
  * PUT    /api/apps/:appId/audiences                 — 整体替换受众 {entries, audiencesRevision}（owner / super；群组须授权人可见）
  * POST   /api/apps/:appId/transfer                  — 转交负责人 {userId}（新负责人须是 Base owner / builder）
  * POST   /api/apps/:appId/archive                   — 归档
  * POST   /api/apps/:appId/feature                   — 推荐 / 取消 {featured}（super）
  * POST   /api/apps/:appId/cards/query               — 卡片查询（AppCardQueryInput → AppCardQueryResult：records 卡分页 + refs，
- *                                                     kpi / chart / pivot 卡的聚合，no_access / unavailable）
+ *                                                     kpi / chart / pivot 卡的聚合，no_access / unavailable；阶段 2：custom 卡带
+ *                                                     `bindingId` 求值一个绑定（切片 S）、external 卡求值工具 / 连接器数据源
+ *                                                     （切片 SRC），落地前回 400 not_implemented）
  * POST   /api/apps/:appId/records/get               — 记录详情 {pageId, cardId, recordId}（AppRecordView）
  * POST   /api/apps/:appId/actions                   — 执行动作（AppActionInput → AppActionResult；同一 requestId 重放首个结果）
  * POST   /api/apps/:appId/activity                  — 记录动态 {pageId, cardId, recordId, cursor?}（TableRecordActivityPage）
@@ -50,6 +57,7 @@ import type {
   AppActionResult,
   AppAudiencesView,
   AppCardQueryResult,
+  AppCustomReviewItem,
   AppDraftView,
   AppFieldOptionsView,
   AppListView,
@@ -106,6 +114,12 @@ const appRoutes = new Hono<AppEnv>()
   })
   // Before `/:appId` too: built-in templates (./app-templates.ts).
   .route('/templates', appTemplateRoutes)
+  // Before `/:appId` too: the custom-code review queue (super; slice S).
+  .get('/reviews', async (c) => {
+    const result = await dispatch(c, 'listAppCustomReviews', {});
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as { items: AppCustomReviewItem[] });
+  })
   .get('/:appId', async (c) => {
     const appId = appIdOf(c);
     const payload = {
@@ -153,6 +167,13 @@ const appRoutes = new Hono<AppEnv>()
     const result = await dispatch(c, 'restoreAppVersion', { ...(await jsonBody(c)), appId, version }, { appId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as AppDraftView);
+  })
+  .post('/:appId/versions/:version/review', async (c) => {
+    const appId = appIdOf(c);
+    const version = numberParam(c, 'version');
+    const result = await dispatch(c, 'reviewAppCustomCode', { ...(await jsonBody(c)), appId, version }, { appId });
+    if (!result.ok) return actionError(c, result);
+    return c.json(result.data as AppVersionSummary);
   })
   .get('/:appId/audiences', async (c) => {
     const appId = appIdOf(c);

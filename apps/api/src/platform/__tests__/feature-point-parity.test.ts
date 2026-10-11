@@ -85,6 +85,9 @@ describe('flag-owned tool sets', () => {
     expect(byKey.tables).toEqual(['tables_query', 'tables_mutation', 'tables_schema_plan']);
     // Apps ride no tool of their own yet (app-as-tool is Phase 2); the Tables tools stay with `tables`.
     expect(byKey.apps).toEqual([]);
+    // Phase 2 rollout switches: no tool of their own (apps_query / apps_action ride `apps`, slice AGT).
+    expect(byKey.apps_custom_code).toEqual([]);
+    expect(byKey.tables_ai_fields).toEqual([]);
     expect(byKey['cloud-agent']).toEqual(['mission_dispatch']);
     expect(byKey.memory).toEqual(['memory']);
     expect(byKey.knowledge).toEqual(['knowledge_query', 'knowledge_mutation']);

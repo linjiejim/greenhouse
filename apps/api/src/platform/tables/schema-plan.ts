@@ -25,6 +25,7 @@ import {
   TABLE_FIELD_TYPES,
   TABLE_VIEW_TYPES,
   type SchemaPlanApplyResult,
+  type SchemaPlanFieldType,
   type SchemaPlanObjectKind,
   type SchemaPlanOperation,
   type SchemaPlanOperationResult,
@@ -61,6 +62,12 @@ const selectOptionSchema = z.object({
   label: z.string().min(1).max(100).describe('Display label. Any language.'),
   color: z.string().max(32).optional(),
 });
+
+/** Field types a plan may create (`SchemaPlanFieldType`: everything but `ai` until slice AI adds it). */
+const PLAN_FIELD_TYPES = TABLE_FIELD_TYPES.filter((type): type is SchemaPlanFieldType => type !== 'ai') as [
+  SchemaPlanFieldType,
+  ...SchemaPlanFieldType[],
+];
 
 const fieldConfigSchema = z.object({
   options: z.array(selectOptionSchema).max(100).optional().describe('Choices for single_select / multi_select.'),
@@ -186,7 +193,7 @@ export const schemaPlanOperationSchema = z.discriminatedUnion('op', [
     tableRef: refSchema.optional(),
     tableId: idSchema.optional(),
     name: z.string().min(1).max(200),
-    type: z.enum(TABLE_FIELD_TYPES),
+    type: z.enum(PLAN_FIELD_TYPES),
     required: z.boolean().optional(),
     config: fieldConfigSchema
       .optional()

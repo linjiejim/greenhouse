@@ -125,6 +125,19 @@ export const TABLES_ACTION_RESOURCES: Readonly<Record<TablesActionId, TablesReso
   getAppUsage: 'app',
   listAppPins: null,
   setAppPins: null,
+  // Phase 2 (manifest 1.5.0)
+  listAppCustomReviews: null,
+  reviewAppCustomCode: 'app',
+  // Templates are not tied to one Base (install creates a new one).
+  listAppTemplates: null,
+  getAppTemplate: null,
+  publishAppTemplate: null,
+  reviewAppTemplate: null,
+  installAppTemplate: null,
+  archiveAppTemplate: null,
+  fillAiField: 'field',
+  regenerateAiField: 'field',
+  getAiFieldStatus: 'field',
 };
 
 /** The ids a caller can name; each action reads only the one its resource kind points at. */
