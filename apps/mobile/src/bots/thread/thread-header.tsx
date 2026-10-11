@@ -194,7 +194,7 @@ export interface RoomMenu {
   agents: Array<{ id: string; name: string; detail?: string }>;
   /** The member's own active Agents not in it yet. */
   bringable: Array<{ id: string; name: string }>;
-  /** The Agents the member may take out (theirs; any when the room is theirs). */
+  /** The Agents the member may take out (ones they brought, theirs; any when the room is theirs). */
   removable: Array<{ id: string; name: string }>;
 }
 

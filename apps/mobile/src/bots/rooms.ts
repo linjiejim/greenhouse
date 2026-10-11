@@ -8,14 +8,15 @@
  *
  *  - the drawer row: the preview names who spoke ("You: …", "Ana: …", "Sage: …"), the search text,
  *    the people's initials and the colour each person's initial wears;
- *  - names for Agents the member's directory doesn't know (another person's own Agent is never in
- *    the member's Bot list): a public one offered to the member from "Browse Agents", else its
- *    owner's name stands in ("Ana's Agent") — `roomDirectory`;
+ *  - how another person's Agent reads (their own Agent is never in the member's Bot list): as the
+ *    room describes it (`members[].profile` — name, role, plant); an older server doesn't, so then a
+ *    public one offered to the member from "Browse Agents", else its owner's name stands in ("Ana's
+ *    Agent") — `roomDirectory`;
  *  - the composer: only Agents the member may address (`addressable`) can be @-mentioned;
  *  - whose live run it is (`roomRunMine`) when the server doesn't say: a run is its asker's and only
  *    they may stop it (see the module's last section);
- *  - the ⋯ menu's Agents (bring one of the member's own, take out one they may) and the
- *    new-conversation sheet's people list and request.
+ *  - the ⋯ menu's Agents (bring one of the member's own, take out one they may — `mayRemoveAgent`)
+ *    and the new-conversation sheet's people list and request.
  */
 
 import type { RoomPerson } from '../api/bots';
@@ -116,18 +117,34 @@ export interface RoomAgentCopy {
 }
 
 /**
- * The member's directory (`byId`) plus a card for every Agent of the room it doesn't know — its
- * members and the Agents that wrote in it (`speakers`, some gone since): a public Agent offered to
- * the member (`offered`, "Browse Agents") as itself, else a stand-in its owner names ("Ana's
- * Agent", the vendored `roomAgentStandIn`; its plant comes from its id). `guessed` = the stand-ins:
- * they are named after their owner, not themselves — never offered for an @-mention. `byId` itself
- * comes back when nothing is missing.
+ * The member's directory (`byId`) with every Agent of the room — its members and the Agents that
+ * wrote in it (`speakers`, some gone since) — as the member should see it:
+ *  - another person's Agent the room describes (`member.profile`, newer servers): as the room shows
+ *    it to this member — its name, role and plant (a public one's published version) — laid over
+ *    the directory's copy when there is one (a public Agent the member also talks to);
+ *  - the member's own, or one the room doesn't describe, that the directory knows: as it is;
+ *  - otherwise a public Agent offered to the member (`offered`, "Browse Agents") as itself, else a
+ *    stand-in its owner names ("Ana's Agent", the vendored `roomAgentStandIn`; its plant comes from
+ *    its id).
+ * `guessed` = the stand-ins: they are named after their owner, not themselves — never offered for
+ * an @-mention. `byId` itself comes back when nothing changed. (The web's rule — apps/web
+ * `roomAgentCard` — kept here until the vendored room helpers are re-copied.)
+ *
+ * Why here and not in the store's `byId` (where P4 puts shared Agents, `sharedAsBot`): a shared
+ * Agent is one the member talks to in their own DM, so everything keyed on the store's directory —
+ * its profile sheet, "New Chat" with it, its computer, the Bot list's learn-once — is right for it.
+ * Another person's Agent in a room is none of those: the member may only see who it is, there. The
+ * profile also comes with the room (its list row and its detail) and is this reader's view of this
+ * room, so it lives with the room: the thread and the drawer row each lay it over the store's
+ * directory through this one function.
  */
 export function roomDirectory(o: {
   byId: Record<string, BotView>;
   room: Pick<BotConversationSummary, 'members' | 'participants'>;
   offered: readonly SharedBotView[];
   speakers?: readonly string[];
+  /** The signed-in member: their own Agents come from their directory (it has their latest edits). */
+  viewerId: string | null;
   copy: RoomAgentCopy;
 }): { byId: Record<string, BotView>; guessed: ReadonlySet<string> } {
   const guessed = new Set<string>();
@@ -140,13 +157,18 @@ export function roomDirectory(o: {
   const members = new Map(o.room.members.map((member) => [member.bot_id, member]));
   const ids = new Set([...members.keys(), ...(o.speakers ?? [])]);
   for (const id of ids) {
-    if (out[id]) continue;
+    const known = o.byId[id];
+    const member = members.get(id);
+    if (member?.profile && !(known && !!o.viewerId && member.owner_user_id === o.viewerId)) {
+      add(profileCard(known ?? roomAgentStandIn(member, member.profile.name), member.profile));
+      continue;
+    }
+    if (known) continue;
     const view = offered.get(id);
     if (view) {
       add(sharedAsBot(view));
       continue;
     }
-    const member = members.get(id);
     const owner = member?.owner_user_id ? personName(o.room, member.owner_user_id) : null;
     add(
       roomAgentStandIn(
@@ -159,9 +181,21 @@ export function roomDirectory(o: {
   return { byId: out, guessed };
 }
 
+/** A room's `profile` laid over a card: its own name, role and plant — nothing of its definition. */
+function profileCard(base: BotView, profile: NonNullable<BotMemberView['profile']>): BotView {
+  return {
+    ...base,
+    name: profile.name,
+    role: profile.role,
+    avatar: profile.avatar,
+    template_key: profile.template_key,
+  };
+}
+
 /**
  * An Agent the member may address here that no list names yet (a public one offered to them they
- * never talked to): "Browse Agents" (`GET /api/agents`) has it — read it once.
+ * never talked to) and the room doesn't describe (an older server): "Browse Agents"
+ * (`GET /api/agents`) has it — read it once.
  */
 export function needsOffered(
   room: Pick<BotConversationSummary, 'members'>,
@@ -169,7 +203,9 @@ export function needsOffered(
   offered: readonly SharedBotView[],
 ): boolean {
   const known = new Set(offered.map((view) => view.id));
-  return room.members.some((member) => member.addressable && !byId[member.bot_id] && !known.has(member.bot_id));
+  return room.members.some(
+    (member) => member.addressable && !member.profile && !byId[member.bot_id] && !known.has(member.bot_id),
+  );
 }
 
 /**
@@ -192,16 +228,20 @@ export function mentionableAgents(
 
 /**
  * Ids worth learning through the member's Bot list (`ensureBotsKnown`): in a room, never an Agent
- * the room says the member may not address — another person's own Agent is never in their list.
- * Anything else (another kind, an Agent no longer in the room) as given.
+ * the room describes itself (`profile`) or says the member may not address — another person's own
+ * Agent is never in their list, so asking for it would only re-read the list for nothing. Anything
+ * else (another kind, an Agent no longer in the room) as given. (The web's `conversationBotIds` reads
+ * a room's members the same way.)
  */
 export function learnableIds(
   conversation: Pick<BotConversationSummary, 'kind' | 'members'> | null | undefined,
   ids: readonly string[],
 ): string[] {
   if (conversation?.kind !== 'room') return [...ids];
-  const foreign = new Set(conversation.members.filter((m) => m.addressable === false).map((m) => m.bot_id));
-  return ids.filter((id) => !foreign.has(id));
+  const skip = new Set(
+    conversation.members.filter((m) => m.addressable === false || m.profile).map((m) => m.bot_id),
+  );
+  return ids.filter((id) => !skip.has(id));
 }
 
 /** The member's own active Agents not in the room yet — "Bring an Agent". */
@@ -210,7 +250,20 @@ export function bringableAgents(room: Pick<BotConversationSummary, 'members'>, o
   return own.filter((bot) => bot.status === 'active' && !here.has(bot.id));
 }
 
-/** The Agents in the room the member may take out (theirs, or any when the room is theirs) — "Remove an Agent". */
+/**
+ * May the member take this Agent out? The server's rule (`DELETE /api/rooms/:id/agents/:botId`):
+ * whoever brought it (`brought_by_user_id`), its owner, or the room's owner. An older server doesn't
+ * say who brought it: then its owner or the room's (the vendored `canRemoveRoomAgent`).
+ */
+export function mayRemoveAgent(member: BotMemberView, viewerId: string | null, roomOwner: string | null): boolean {
+  // The vendored web rule now covers who brought it too (the server's: bringer, owner, room owner).
+  return canRemoveRoomAgent(member, viewerId, roomOwner);
+}
+
+/**
+ * The Agents in the room the member may take out (ones they brought, theirs, or any when the room is
+ * theirs) — "Remove an Agent".
+ */
 export function removableAgents(
   room: Pick<BotConversationSummary, 'members' | 'participants'>,
   viewerId: string | null,
@@ -218,7 +271,7 @@ export function removableAgents(
   const owner = roomOwnerId(room);
   return [...room.members]
     .sort((a, b) => a.position - b.position)
-    .filter((member) => canRemoveRoomAgent(member, viewerId, owner));
+    .filter((member) => mayRemoveAgent(member, viewerId, owner));
 }
 
 /** What the title's status line says about a room at rest: a private chat, else how many people and Agents. */
@@ -272,9 +325,9 @@ export function createRoomInput(o: { people: readonly string[]; title: string; a
 // ─── Whose run it is ─────────────────────────────────────
 //
 // In a room a run is its asker's: their Agent answers with their access, and only they may stop it
-// (the server refuses anyone else's interrupt and stop with a 404). When the run probe
-// (`GET /api/chat/runs/:id`) names whose it is (`run.user_id`), the engine takes that outright; the
-// `chat:run` push never says, and neither does an older server — then the phone reads it from what it
+// (the server refuses anyone else's interrupt and stop with a 404). When the server names whose it is
+// — the run probe (`GET /api/chat/runs/:id`, `run.user_id`) or the `chat:run` push (`userId`) — the
+// engine takes that outright. An older server says neither — then the phone reads it from what it
 // does know:
 //   1. the Agent speaking first in the run — one the member may not address can't be answering
 //      them; one of their own private Agents can only be answering them;

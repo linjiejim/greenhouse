@@ -14,6 +14,7 @@ import {
   createRoomInput,
   lastOneIn,
   learnableIds,
+  mayRemoveAgent,
   mentionableAgents,
   needsOffered,
   peopleRows,
@@ -131,6 +132,7 @@ describe('who the Agents are', () => {
       room: withAgents,
       offered: [offered('b_pub', 'Pixel')],
       speakers: ['b_old'],
+      viewerId: ME,
       copy: AGENT_COPY,
     });
     expect(out.byId.b_sage).toBe(SAGE);
@@ -143,12 +145,68 @@ describe('who the Agents are', () => {
     expect([...out.guessed].sort()).toEqual(['b_ana', 'b_gone', 'b_old']);
   });
 
+  it('names every Agent as the room shows it (`profile`): its own name, role and plant — not after its owner', () => {
+    const profile = (name: string, template_key: string | null = null) => ({
+      name,
+      role: `${name} role`,
+      avatar: { plant: 'fern' },
+      template_key,
+    });
+    const described = room({
+      members: [
+        { ...member('b_sage', ME, true, 0), profile: profile('Sage (as the room says)') },
+        { ...member('b_pub', 'u_bo', true, 1), profile: profile('Pixel') },
+        { ...member('b_ana', 'u_ana', false, 2), profile: profile('Ivy', 'sprouty') },
+        // an older server says nothing: the owner stands in
+        member('b_gone', 'u_left', false, 3),
+      ],
+    });
+    // a public Agent the member also talks to, as their directory last heard of it
+    const PIXEL = bot('b_pub', { name: 'Pixel (old)', user_id: 'u_bo', dm_session_id: 's_dm' });
+    const out = roomDirectory({
+      byId: { b_sage: SAGE, b_pub: PIXEL },
+      room: described,
+      offered: [offered('b_pub', 'Pixel (older)')],
+      speakers: ['b_old'],
+      viewerId: ME,
+      copy: AGENT_COPY,
+    });
+    // the member's own Agent: their directory (their latest edits)
+    expect(out.byId.b_sage).toBe(SAGE);
+    // someone else's: the room's word, laid over what the directory knows of it
+    expect(out.byId.b_pub).toMatchObject({
+      name: 'Pixel',
+      role: 'Pixel role',
+      user_id: 'u_bo',
+      status: 'active',
+      dm_session_id: 's_dm',
+    });
+    expect(out.byId.b_ana).toMatchObject({
+      name: 'Ivy',
+      role: 'Ivy role',
+      avatar: { plant: 'fern' },
+      template_key: 'sprouty',
+      user_id: 'u_ana',
+    });
+    expect(out.byId.b_gone.name).toBe('An Agent');
+    expect(out.byId.b_old.name).toBe('An Agent');
+    // only the stand-ins are guessed
+    expect([...out.guessed].sort()).toEqual(['b_gone', 'b_old']);
+    // @: an Agent the member may address the room names is offered by its own name — no "Browse Agents" read
+    expect(mentionableAgents(described, out.byId, out.guessed).map((b) => [b.id, b.name])).toEqual([
+      ['b_sage', 'Sage'],
+      ['b_pub', 'Pixel'],
+    ]);
+    expect(needsOffered(described, { b_sage: SAGE }, [])).toBe(false);
+  });
+
   it('leaves the directory alone when nothing is missing', () => {
     const byId = { b_sage: SAGE };
     const out = roomDirectory({
       byId,
       room: room({ members: [member('b_sage', ME, true)] }),
       offered: [],
+      viewerId: ME,
       copy: AGENT_COPY,
     });
     expect(out.byId).toBe(byId);
@@ -160,6 +218,7 @@ describe('who the Agents are', () => {
       byId: { b_sage: SAGE },
       room: withAgents,
       offered: [],
+      viewerId: ME,
       copy: AGENT_COPY,
     });
     // b_pub is addressable but unknown (a stand-in named after its owner): not offered yet
@@ -170,6 +229,7 @@ describe('who the Agents are', () => {
       byId: { b_sage: SAGE },
       room: withAgents,
       offered: [offered('b_pub', 'Pixel')],
+      viewerId: ME,
       copy: AGENT_COPY,
     });
     expect(mentionableAgents(withAgents, known.byId, known.guessed).map((b) => b.id)).toEqual(['b_sage', 'b_pub']);
@@ -183,6 +243,14 @@ describe('who the Agents are', () => {
       'b_pub',
       'b_left_room',
     ]);
+    // nor for one the room describes itself
+    const described = room({
+      members: [
+        { ...member('b_pub', 'u_bo', true), profile: { name: 'Pixel', role: '', avatar: {}, template_key: null } },
+        member('b_sage', ME, true, 1),
+      ],
+    });
+    expect(learnableIds(described, ['b_pub', 'b_sage'])).toEqual(['b_sage']);
     expect(learnableIds(conversation('s1'), ['b_ana'])).toEqual(['b_ana']);
     expect(learnableIds(null, ['b_x'])).toEqual(['b_x']);
   });
@@ -199,6 +267,35 @@ describe('who the Agents are', () => {
     });
     expect(removableAgents(theirs, ME).map((m) => m.bot_id)).toEqual(['b_sage']);
     expect(removableAgents(theirs, null)).toEqual([]);
+  });
+
+  it('⋯: takes out what the member brought too — the server’s rule (who brought it, its owner, the room’s owner)', () => {
+    const brought = (bot_id: string, owner: string, by: string, position: number): BotMemberView => ({
+      ...member(bot_id, owner, owner === ME, position),
+      brought_by_user_id: by,
+    });
+    const anasRoom = room({
+      members: [
+        brought('b_sage', ME, ME, 0),
+        // Bo's public Agent the member brought
+        brought('b_pub', 'u_bo', ME, 1),
+        // the member's own public Agent Ana brought
+        brought('b_mine', ME, 'u_ana', 2),
+        // Bo's public Agent Ana brought
+        brought('b_bo', 'u_bo', 'u_ana', 3),
+      ],
+      participants: [person('u_ana', 'Ana', 'owner'), person(ME, 'Me'), person('u_bo', 'Bo')],
+    });
+    expect(removableAgents(anasRoom, ME).map((m) => m.bot_id)).toEqual(['b_sage', 'b_pub', 'b_mine']);
+    // Bo: his own two, wherever they came from
+    expect(removableAgents(anasRoom, 'u_bo').map((m) => m.bot_id)).toEqual(['b_pub', 'b_bo']);
+    // Ana owns the room: all of them
+    expect(removableAgents(anasRoom, 'u_ana')).toHaveLength(4);
+    expect(mayRemoveAgent(anasRoom.members[1]!, null, 'u_ana')).toBe(false);
+    // an older server doesn't say who brought it: its owner or the room's only
+    const older = { ...anasRoom.members[1]!, brought_by_user_id: undefined };
+    expect(mayRemoveAgent(older, ME, 'u_ana')).toBe(false);
+    expect(mayRemoveAgent(older, ME, ME)).toBe(true);
   });
 });
 

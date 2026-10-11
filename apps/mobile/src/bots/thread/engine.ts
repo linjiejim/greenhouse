@@ -60,9 +60,9 @@
  *   message that asked no one is just sent; one that asked an Agent waits for
  *   the run (`queued` while someone else's is going, else `sent`) and is this
  *   device's open ask until a run answers it. Only the asker may stop a run:
- *   `runMine` — the probe's `run.user_id` when the server names it, else
- *   ../rooms.ts `roomRunMine`. Another person's message never settles this
- *   device's send.
+ *   `runMine` — whose the server says it is (the probe's `run.user_id`, the
+ *   `chat:run` push's `userId`), else ../rooms.ts `roomRunMine`. Another
+ *   person's message never settles this device's send.
  *
  * Privacy: the transcript lives in memory only (./cache.ts LRU, never on disk),
  * nothing here logs.
@@ -106,6 +106,8 @@ import { applyRunEvent, emptyRunState, settleRun, type RunState } from './run-st
 
 /** Re-attach attempts after a transport drop before the run is treated as gone (the transcript is reloaded). */
 export const MAX_RESUMES = 5;
+/** Runs whose asker a push named, remembered per thread (a room: whose run it is). */
+const MAX_PUSHED_ASKERS = 8;
 /** Back in the foreground with no event (not even the server's 15 s ping) for this long = a dead socket. */
 export const STALE_MS = 20_000;
 /** `bots:conversation` pushes for the open thread collapse into one reload. */
@@ -267,6 +269,8 @@ export class ThreadEngine implements ThreadController {
   private roomAsk: RoomAsk | null = null;
   /** Orders a room's asks and runs: the clock can read the same for both. */
   private stamps = 0;
+  /** Whose each recently announced run is, from its `chat:run` push (`userId`, newer servers) — run id → asker. */
+  private readonly pushedAskers = new Map<string, string>();
 
   // The run
   private run: LiveRun | null = null;
@@ -939,8 +943,9 @@ export class ThreadEngine implements ThreadController {
 
   /**
    * May the member stop the run on screen? Always outside a room; in one, only when it is theirs —
-   * the server says whose (the probe's `run.user_id`), else the first Agent to speak tells, else
-   * this device's open ask (../rooms.ts `roomRunMine`).
+   * the server says whose (the probe's `run.user_id`, the push's `userId`; for the run being read,
+   * else the run the session is marked busy with), else the first Agent to speak tells, else this
+   * device's open ask (../rooms.ts `roomRunMine`).
    */
   private runIsMine(): boolean {
     const conversation = this.conversation;
@@ -949,7 +954,8 @@ export class ThreadEngine implements ThreadController {
     const store = this.deps.store.getState();
     const viewerId = store.viewerId;
     // The server said whose run it is: that decides.
-    if (run?.askerId) return run.askerId === viewerId;
+    const asker = this.knownAsker(run ?? this.mark());
+    if (asker) return asker === viewerId;
     const ask = this.roomAsk && (!run || run.beganAt >= this.roomAsk.at) ? this.roomAsk : null;
     return roomRunMine({
       viewerId,
@@ -961,6 +967,13 @@ export class ThreadEngine implements ThreadController {
       },
       ask,
     });
+  }
+
+  /** Whose a run is, when the server said (its probe, else its push) — the live run, or a run id. */
+  private knownAsker(run: LiveRun | string | null): string | null {
+    if (run === null) return null;
+    if (typeof run === 'string') return this.pushedAskers.get(run) ?? null;
+    return run.askerId ?? (run.runId ? (this.pushedAskers.get(run.runId) ?? null) : null);
   }
 
   /**
@@ -1559,9 +1572,15 @@ export class ThreadEngine implements ThreadController {
   private async settle(): Promise<void> {
     const run = this.run;
     // A room: the run that answered this device's open ask is over — the ask with it (once its rows are in).
+    // Whose run it was, when the server said; else the Agent that spoke first was one the ask named.
     const ask = this.roomAsk;
     const answerer = run?.state.segments[0]?.botId;
-    const answered = !!ask && !!run && run.beganAt >= ask.at && !!answerer && ask.bots.has(answerer);
+    const asker = this.knownAsker(run);
+    const answered =
+      !!ask &&
+      !!run &&
+      run.beganAt >= ask.at &&
+      (asker ? asker === this.deps.store.getState().viewerId : !!answerer && ask.bots.has(answerer));
     const reloaded = await this.reloadLatest({ quiet: true });
     if (answered && this.roomAsk === ask) this.roomAsk = null;
     if (this.disposed) return;
@@ -1687,6 +1706,7 @@ export class ThreadEngine implements ThreadController {
     switch (e.type) {
       case 'chat:run':
         if (e.sessionId !== this.sessionId) return;
+        if (e.userId) this.noteAsker(e.runId, e.userId);
         if (e.status === 'running') {
           // Announced before the POST that started it answers: that POST's stream will read it.
           if (this.sendsInFlight > 0) {
@@ -1728,6 +1748,19 @@ export class ThreadEngine implements ThreadController {
       default:
         return;
     }
+  }
+
+  /** A push named whose run it is (a room: decides `runMine` before, or without, a probe). */
+  private noteAsker(runId: string, userId: string): void {
+    if (this.pushedAskers.get(runId) === userId) return;
+    this.pushedAskers.delete(runId);
+    this.pushedAskers.set(runId, userId);
+    // only the last few runs matter (the one on screen, the one announced next)
+    for (const old of this.pushedAskers.keys()) {
+      if (this.pushedAskers.size <= MAX_PUSHED_ASKERS) break;
+      this.pushedAskers.delete(old);
+    }
+    this.publish();
   }
 
   private onStore(): void {

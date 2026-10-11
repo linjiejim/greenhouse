@@ -69,14 +69,17 @@ export function botsById(bots: readonly BotView[]): Map<string, BotView> {
 
 /**
  * Every Bot a conversation row names that the member's Bot list should know: its DM owner and its
- * members. In a room (P5) only the Agents the member may address — another person's own Agent is
- * never in the member's list, so asking for it again would only re-read the list for nothing.
+ * members. A room (P5) describes its own Agents (`profile`); only an older server's room leaves the
+ * ones the member may address to the list — another person's own Agent is never in it, so asking
+ * for it again would only re-read the list for nothing.
  */
 export function conversationBotIds(
   conversation: Pick<BotConversationSummary, 'owner_bot_id' | 'members'> & { kind?: BotConversationSummary['kind'] },
 ): string[] {
   const members =
-    conversation.kind === 'room' ? conversation.members.filter((m) => m.addressable) : conversation.members;
+    conversation.kind === 'room'
+      ? conversation.members.filter((m) => m.addressable && !m.profile)
+      : conversation.members;
   const ids = members.map((member) => member.bot_id);
   if (conversation.owner_bot_id) ids.push(conversation.owner_bot_id);
   return ids;

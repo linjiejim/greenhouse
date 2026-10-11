@@ -352,7 +352,8 @@ export function BotThreadScreen({
     () => ({ agentOf: (name: string) => t('bots.room.agentOf', { name }), someAgent: t('bots.room.someAgent') }),
     [t],
   );
-  // In a room, the Agents the member's directory doesn't know get a card too ("Ana's Agent").
+  // In a room, another person's Agent shows as the room describes it (`members[].profile`); one nothing
+  // describes (an older server) gets a card too — "Ana's Agent" (../rooms.ts `roomDirectory`).
   const roomDir = useMemo(
     () =>
       room
@@ -361,13 +362,15 @@ export function BotThreadScreen({
             room,
             offered,
             speakers: speakerKey ? speakerKey.split(',') : NO_IDS,
+            viewerId,
             copy: agentCopy,
           })
         : null,
-    [room, storeById, offered, speakerKey, agentCopy],
+    [room, storeById, offered, speakerKey, viewerId, agentCopy],
   );
   const byId = roomDir?.byId ?? storeById;
-  // A public Agent the member may @ here but no list names yet: "Browse Agents" has it (once per thread).
+  // A public Agent the member may @ here but neither a list nor the room names (an older server):
+  // "Browse Agents" has it (once per thread).
   const askedOffered = useRef(false);
   useEffect(() => {
     if (!room || askedOffered.current || !needsOffered(room, storeById, offered)) return;

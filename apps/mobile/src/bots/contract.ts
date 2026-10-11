@@ -53,7 +53,8 @@ export type ServerWsWire =
     };
 
 export type RealtimeEvent =
-  | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error' }
+  /** `userId` = whose run it is (its asker — in a room only they may stop it); older servers don't say. */
+  | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error'; userId?: string }
   | { type: 'bots:conversation'; sessionId: string }
   | { type: 'bots:attention'; pending: number }
   /**

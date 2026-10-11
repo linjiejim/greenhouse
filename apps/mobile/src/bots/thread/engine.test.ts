@@ -1670,6 +1670,63 @@ describe('a room', () => {
     expect(t.snap().runMine).toBe(false);
   });
 
+  it('when the push says whose run it is, that decides — whoever speaks, and before any probe says', async () => {
+    const t = await roomSetup();
+    // The member asks their own Agent; Ana's run starts first (the push names her, the probe doesn't).
+    t.fake.posts.push({ kind: 'queued' });
+    await t.engine.send({ text: '@bot_a hi', images: [], mentions: ['bot_a'] });
+    await t.time.advance(0);
+    const theirs = new FakeStream();
+    t.fake.attaches.push(theirs);
+    t.fake.probe = live('r1');
+    t.rt.emit({ type: 'chat:run', sessionId: SID, runId: 'r1', status: 'running', userId: 'u_ana' });
+    await t.time.advance(0);
+    expect([t.snap().runActive, t.snap().runMine]).toEqual([true, false]);
+    // the member's own Agent answers in it (a public one Ana may ask, too): still hers — no Stop, no cards
+    theirs.push(turnStart('bot_a'), text('For Ana'));
+    await t.time.advance(100);
+    expect(t.snap().runMine).toBe(false);
+    t.engine.stop();
+    await t.time.advance(0);
+    expect([t.fake.calls.interrupt, t.fake.calls.stop]).toEqual([0, 0]);
+    await endRun(t, theirs);
+
+    // The member's run: theirs from the push alone (the probe doesn't say) — before anyone speaks…
+    const mine = new FakeStream();
+    t.fake.attaches.push(mine);
+    t.fake.probe = live('r2');
+    t.rt.emit({ type: 'chat:run', sessionId: SID, runId: 'r2', status: 'running', userId: 'u1' });
+    await t.time.advance(0);
+    expect([t.snap().runActive, t.snap().runMine]).toEqual([true, true]);
+    // …and even when the first Agent to speak is one the member may not address
+    mine.push(turnStart('bot_x'), text('…'));
+    await t.time.advance(100);
+    expect(t.snap().runMine).toBe(true);
+    t.engine.stop();
+    await t.time.advance(0);
+    expect(t.fake.calls.interrupt).toBe(1);
+  });
+
+  it('a run the push names as someone else’s never answers this device’s ask', async () => {
+    const t = await roomSetup();
+    t.fake.posts.push({ kind: 'queued' });
+    await t.engine.send({ text: '@bot_a hi', images: [], mentions: ['bot_a'] });
+    await t.time.advance(0);
+    // Ana's run, answered by the very Agent the member asked
+    const theirs = new FakeStream();
+    t.fake.attaches.push(theirs);
+    t.fake.probe = live('r1');
+    t.rt.emit({ type: 'chat:run', sessionId: SID, runId: 'r1', status: 'running', userId: 'u_ana' });
+    await t.time.advance(0);
+    theirs.push(turnStart('bot_a'), text('For Ana'));
+    await t.time.advance(100);
+    await endRun(t, theirs);
+    // The next run doesn't say whose it is (an older server again): the member's ask is still open,
+    // so it reads as theirs.
+    await serverRun(t, 'r2');
+    expect(t.snap().runMine).toBe(true);
+  });
+
   it('outside a room every run may be stopped', async () => {
     const t = await setup();
     const { stream } = await startRun(t);

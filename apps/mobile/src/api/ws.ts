@@ -89,7 +89,14 @@ export function parseFrame(data: unknown): ServerWsWire | null {
     case 'chat:run':
       if (!text('sessionId') || !text('runId')) return null;
       if (f.status !== 'running' && f.status !== 'completed' && f.status !== 'error') return null;
-      return { type: 'chat:run', sessionId: f.sessionId as string, runId: f.runId as string, status: f.status };
+      return {
+        type: 'chat:run',
+        sessionId: f.sessionId as string,
+        runId: f.runId as string,
+        status: f.status,
+        // whose run (its asker): kept when well-formed; older servers don't say
+        ...(text('userId') ? { userId: f.userId as string } : {}),
+      };
     case 'bots:conversation':
       return text('sessionId') ? { type: 'bots:conversation', sessionId: f.sessionId as string } : null;
     case 'bots:attention':

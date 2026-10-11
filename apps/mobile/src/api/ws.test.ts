@@ -91,6 +91,20 @@ describe('realtimeUrl / parseFrame', () => {
       runId: 'r',
       status: 'completed',
     });
+    // whose run it is (its asker), when the server says
+    expect(parseFrame('{"type":"chat:run","sessionId":"s","runId":"r","status":"running","userId":"u_ana"}')).toEqual({
+      type: 'chat:run',
+      sessionId: 's',
+      runId: 'r',
+      status: 'running',
+      userId: 'u_ana',
+    });
+    expect(parseFrame('{"type":"chat:run","sessionId":"s","runId":"r","status":"running","userId":7}')).toEqual({
+      type: 'chat:run',
+      sessionId: 's',
+      runId: 'r',
+      status: 'running',
+    });
     expect(parseFrame('{"type":"bots:conversation","sessionId":"s"}')).toEqual({ type: 'bots:conversation', sessionId: 's' });
     expect(parseFrame('{"type":"bots:attention","pending":3}')).toEqual({ type: 'bots:attention', pending: 3 });
     expect(parseFrame('{"type":"bots:computer","state":"running","controller":"user"}')).toEqual({

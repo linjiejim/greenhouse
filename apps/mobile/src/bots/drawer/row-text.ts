@@ -68,7 +68,7 @@ export function rowTitle(row: Row, dir: RowDirectory, copy: RowCopy): string {
 /** The one-line preview of the last message, whitespace collapsed (the web truncates the same way). */
 export function rowPreview(row: Row, dir: RowDirectory, copy: RowCopy): string {
   if (row.kind === 'room') {
-    const names = roomDirectory({ byId: dir.byId, room: row, offered: [], copy }).byId;
+    const names = roomDirectory({ byId: dir.byId, room: row, offered: [], viewerId: dir.viewerId ?? null, copy }).byId;
     return roomPreview(row, dir.viewerId ?? null, (id) => names[id]?.name ?? null, copy);
   }
   const last = row.last_message;

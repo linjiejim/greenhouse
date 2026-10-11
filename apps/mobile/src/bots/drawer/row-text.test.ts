@@ -220,4 +220,22 @@ describe('a room (several people, P5)', () => {
     expect(rowPreview(theirs, ME, COPY)).toBe('Bo’s Agent: Hi');
     expect(rowPreview(room({ last_message: null }), ME, COPY)).toBe('No messages yet');
   });
+
+  it('names another person’s Agent as the room shows it (`profile`), when the server says', () => {
+    const theirs = room({
+      members: [
+        {
+          bot_id: 'b_x',
+          role: 'member',
+          position: 0,
+          owner_user_id: 'u_bo',
+          brought_by_user_id: 'u_bo',
+          addressable: false,
+          profile: { name: 'Ivy', role: 'Researcher', avatar: {}, template_key: null },
+        },
+      ],
+      last_message: last({ role: 'assistant', bot_id: 'b_x', preview: 'Hi' }),
+    });
+    expect(rowPreview(theirs, ME, COPY)).toBe('Ivy: Hi');
+  });
 });
