@@ -110,6 +110,7 @@ import {
 import { useRowCopy } from '../../../src/bots/drawer/conversation-row';
 import { rowTitle } from '../../../src/bots/drawer/row-text';
 import { useBotsWarm, useProfileBot } from '../../../src/bots/home/home-bridge';
+import { useStartupContent } from '../../../src/startup/context';
 import { initialSurface } from '../../../src/bots/home/initial-surface';
 import { launchedByPush } from '../../../src/push/handler';
 import { useHomeSurface } from '../../../src/bots/home/surface';
@@ -242,6 +243,7 @@ function Conversation() {
     [router],
   );
   const convo = useConversation({ initialId: params.id || undefined, onCreated, profile, leave });
+  useStartupContent(!convo.loading);
   // Destructure the stable callbacks — `convo` itself changes on every drain tick.
   const { sessionId, messages, streaming, rerun, stop, setTitle, send: convoSend, reload } = convo;
   const readOnly = params.ro === '1' || convo.isOwner === false;
@@ -910,6 +912,7 @@ export default function Home() {
 
 /** The plain surface a cold start shows while it waits (≤ 400 ms) for prefs — no hero to flash away. */
 function RestoreWait() {
+  useStartupContent(false);
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   return (
