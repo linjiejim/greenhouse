@@ -6,6 +6,7 @@
  */
 import type en from './en';
 import type { DeepRecord } from './types';
+import { APPS_SLICES_ZH } from './apps/zh';
 import { TABLES_PLAN_ZH, TABLES_SLICES_ZH } from './tables/zh';
 
 type Messages = DeepRecord<typeof en>;
@@ -3357,6 +3358,28 @@ const zh: Messages = {
   },
 
   tablesSchemaPlan: TABLES_PLAN_ZH,
+
+  // 用户搭建的应用（阶段 1，spec 20261011-tables-apps）。平台模块（知识库 / 项目 / 表格）
+  // 在用户可见文案里叫「模块」。
+  apps: {
+    // Per-slice modules (lib/i18n/apps/*): a Phase 1 slice edits only its own file.
+    // Spread first, so a core key of the same name would win (and fail the slice test).
+    ...APPS_SLICES_ZH,
+    title: '应用',
+    description: '基于表格搭建、分发给使用者的应用',
+    status: {
+      draft: '草稿',
+      published: '已发布',
+      archived: '已归档',
+    },
+    sidebar: {
+      section: '应用',
+      pinned: '置顶',
+      featured: '推荐',
+      allApps: '全部应用',
+    },
+  },
+
   // Mission（长时沙箱执行）
   cloudAgent: {
     newTask: '新建 Mission',

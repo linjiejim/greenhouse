@@ -1,6 +1,7 @@
 /**
  * English locale — default language
  */
+import { APPS_SLICES_EN } from './apps/en';
 import { TABLES_PLAN_EN, TABLES_SLICES_EN } from './tables/en';
 
 export default {
@@ -3429,6 +3430,28 @@ export default {
   },
 
   tablesSchemaPlan: TABLES_PLAN_EN,
+
+  // User-built apps (Phase 1, spec 20261011-tables-apps). Not the platform modules
+  // (Knowledge / Projects / Tables), which user-visible copy calls "modules".
+  apps: {
+    // Per-slice modules (lib/i18n/apps/*): a Phase 1 slice edits only its own file.
+    // Spread first, so a core key of the same name would win (and fail the slice test).
+    ...APPS_SLICES_EN,
+    title: 'Apps',
+    description: 'Apps built on your Tables and shared with the people who use them',
+    status: {
+      draft: 'Draft',
+      published: 'Published',
+      archived: 'Archived',
+    },
+    sidebar: {
+      section: 'Apps',
+      pinned: 'Pinned',
+      featured: 'Featured',
+      allApps: 'All apps',
+    },
+  },
+
   // Missions (long-running sandboxed work)
   cloudAgent: {
     newTask: 'New mission',
