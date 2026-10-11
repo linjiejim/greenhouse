@@ -3,8 +3,8 @@
  *
  * The list (table + toolbar + delete-confirm), the add/edit Dialog,
  * enable/disable, and the Run-now row action all come from
- * `defineCrud`. The only bespoke piece is the friendly cron builder, embedded
- * as a `custom` form field. Data source adapts the existing tasks client —
+ * `defineCrud`. The only bespoke piece is the friendly cron builder
+ * (`components/schedule-builder.tsx`), embedded as a `custom` form field. Data source adapts the existing tasks client —
  * no server change.
  */
 
@@ -17,7 +17,6 @@ import {
   Dialog,
   EmptyState,
   FilterPills,
-  Input,
   Select,
   Spinner,
   Tag,
@@ -42,208 +41,18 @@ import { fetchFeishuBinding } from '../lib/api/feishu';
 import { useAuthStore } from '../stores';
 import { assetScopeItems, DEFAULT_ASSET_SCOPE, filterAutomationsByScope, type AssetScope } from '../lib/asset-scopes';
 import { ModulePage } from '../components/app/module-page';
+import { ScheduleBuilder } from '../components/schedule-builder';
 
 type Task = ScheduledTask & { schedule_desc?: string };
 
 // ─── Schedule builder ────────────────────────────────────
 //
-// Friendly schedule editor: frequency + time (+ weekdays / day of
-// month) that compiles to a standard 5-field cron expression.
-// Expressions that don't fit these shapes fall back to raw cron.
-// Embedded as a `custom` CRUD field below.
+// The friendly cron builder lives in components/schedule-builder.tsx (shared
+// with Tables automations; the cron logic in lib/cron.ts), embedded here as a
+// `custom` CRUD field: the value is the cron string.
 
-type Frequency = 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'cron';
-
-interface ScheduleState {
-  freq: Frequency;
-  time: string; // "HH:MM"
-  weekdays: number[]; // 0 (Sun) – 6 (Sat), for freq=weekly
-  monthDay: number; // 1–31, for freq=monthly
-  raw: string; // for freq=cron
-}
-
-const WEEKDAY_KEYS = [
-  'weekdaySun',
-  'weekdayMon',
-  'weekdayTue',
-  'weekdayWed',
-  'weekdayThu',
-  'weekdayFri',
-  'weekdaySat',
-] as const;
-
-function buildCron(s: ScheduleState): string {
-  if (s.freq === 'cron') return s.raw;
-  const [h, m] = s.time.split(':').map((n) => parseInt(n, 10));
-  const min = isNaN(m) ? 0 : m;
-  const hr = isNaN(h) ? 0 : h;
-  switch (s.freq) {
-    case 'daily':
-      return `${min} ${hr} * * *`;
-    case 'weekdays':
-      return `${min} ${hr} * * 1-5`;
-    case 'weekly': {
-      const days = [...s.weekdays].sort((a, b) => a - b);
-      return `${min} ${hr} * * ${days.length ? days.join(',') : '1'}`;
-    }
-    case 'monthly':
-      return `${min} ${hr} ${s.monthDay} * *`;
-  }
-}
-
-function parseCron(cron: string): ScheduleState {
-  const fallback: ScheduleState = { freq: 'cron', time: '09:00', weekdays: [1], monthDay: 1, raw: cron };
-  const parts = cron.trim().split(/\s+/);
-  if (parts.length !== 5) return fallback;
-  const [min, hr, dom, mon, dow] = parts;
-  if (!/^\d{1,2}$/.test(min) || !/^\d{1,2}$/.test(hr) || mon !== '*') return fallback;
-  const time = `${hr.padStart(2, '0')}:${min.padStart(2, '0')}`;
-  const base = { time, weekdays: [1], monthDay: 1, raw: cron };
-  if (dom === '*' && dow === '*') return { ...base, freq: 'daily' };
-  if (dom === '*' && dow === '1-5') return { ...base, freq: 'weekdays' };
-  if (dom === '*' && /^[0-7](,[0-7])*$/.test(dow)) {
-    const weekdays = [...new Set(dow.split(',').map((d) => parseInt(d, 10) % 7))].sort((a, b) => a - b);
-    return { ...base, freq: 'weekly', weekdays };
-  }
-  if (dow === '*' && /^\d{1,2}$/.test(dom)) {
-    const day = parseInt(dom, 10);
-    if (day >= 1 && day <= 31) return { ...base, freq: 'monthly', monthDay: day };
-  }
-  return fallback;
-}
-
-function describeSchedule(s: ScheduleState, t: (key: any, vars?: any) => string): string {
-  switch (s.freq) {
-    case 'daily':
-      return t('automations.descDaily', { time: s.time });
-    case 'weekdays':
-      return t('automations.descWeekdays', { time: s.time });
-    case 'weekly': {
-      const days = (s.weekdays.length ? s.weekdays : [1]).map((d) => t(`automations.${WEEKDAY_KEYS[d]}`)).join(', ');
-      return t('automations.descWeekly', { days, time: s.time });
-    }
-    case 'monthly':
-      return t('automations.descMonthly', { day: s.monthDay, time: s.time });
-    case 'cron':
-      return '';
-  }
-}
-
-/** Cron builder wired as a `custom` CRUD field: value is the cron string. */
 function ScheduleField({ value, onChange }: CrudFieldRenderProps) {
-  const t = useT();
-  const [sched, setSched] = useState<ScheduleState>(() => parseCron(String(value ?? '0 22 * * *')));
-  const schedule = buildCron(sched);
-
-  // Keep the form value in sync with the builder (initial + every change).
-  useEffect(() => {
-    onChange(schedule);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schedule]);
-
-  const patch = (p: Partial<ScheduleState>) => setSched((s) => ({ ...s, ...p }));
-
-  const FREQ_OPTIONS: { value: Frequency; labelKey: string }[] = [
-    { value: 'daily', labelKey: 'automations.freqDaily' },
-    { value: 'weekdays', labelKey: 'automations.freqWeekdays' },
-    { value: 'weekly', labelKey: 'automations.freqWeekly' },
-    { value: 'monthly', labelKey: 'automations.freqMonthly' },
-    { value: 'cron', labelKey: 'automations.freqCron' },
-  ];
-
-  return (
-    <div>
-      {/* Selection is announced, not just tinted: `aria-pressed` matches what these
-          buttons actually do (Tab to reach, Space/Enter to activate). Declaring
-          role="radio" would promise arrow-key roving these don't implement. */}
-      <div className="flex flex-wrap gap-1.5 mb-3" role="group" aria-label={t('automations.freqGroupLabel')}>
-        {FREQ_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            type="button"
-            aria-pressed={sched.freq === opt.value}
-            onClick={() => patch({ freq: opt.value, raw: opt.value === 'cron' ? schedule : sched.raw })}
-            className={`px-2.5 py-1 rounded-md text-xs transition-colors ${
-              sched.freq === opt.value
-                ? 'bg-primary-subtle text-primary-fg-strong border border-primary-edge font-medium'
-                : 'bg-surface-sunken text-fg-muted border border-edge hover:text-fg-secondary'
-            }`}
-          >
-            {t(opt.labelKey as any)}
-          </button>
-        ))}
-      </div>
-      {sched.freq === 'cron' ? (
-        <div>
-          <Input
-            value={sched.raw}
-            onChange={(e) => patch({ raw: e.target.value })}
-            placeholder="0 22 * * *"
-            className="font-mono"
-          />
-          <p className="text-xs text-fg-muted mt-1">{t('automations.cronHint')}</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {sched.freq === 'weekly' && (
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('automations.weekdayGroupLabel')}>
-              {[1, 2, 3, 4, 5, 6, 0].map((d) => {
-                const active = sched.weekdays.includes(d);
-                return (
-                  <button
-                    key={d}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() =>
-                      patch({ weekdays: active ? sched.weekdays.filter((w) => w !== d) : [...sched.weekdays, d] })
-                    }
-                    className={`w-10 py-1.5 rounded-md text-xs transition-colors ${
-                      active
-                        ? 'bg-primary-subtle text-primary-fg-strong border border-primary-edge font-medium'
-                        : 'bg-surface-sunken text-fg-muted border border-edge hover:text-fg-secondary'
-                    }`}
-                  >
-                    {t(`automations.${WEEKDAY_KEYS[d]}` as any)}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          <div className="flex flex-wrap items-start gap-4">
-            {sched.freq === 'monthly' && (
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-fg-secondary">{t('automations.monthDayLabel')}</div>
-                <Select
-                  value={String(sched.monthDay)}
-                  onChange={(e) => patch({ monthDay: parseInt(e.target.value, 10) })}
-                  className="w-24"
-                >
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                    <option key={d} value={d}>
-                      {t('automations.monthDayOption', { day: d })}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
-            <div className="space-y-1">
-              <div className="text-xs font-medium text-fg-secondary">{t('automations.timeLabel')}</div>
-              <Input
-                type="time"
-                value={sched.time}
-                onChange={(e) => e.target.value && patch({ time: e.target.value })}
-                className="w-32"
-              />
-            </div>
-          </div>
-          <p className="text-xs text-fg-muted">
-            {describeSchedule(sched, t)}
-            <span className="ml-2 font-mono text-fg-faint">{schedule}</span>
-          </p>
-        </div>
-      )}
-    </div>
-  );
+  return <ScheduleBuilder value={value ? String(value) : null} onChange={onChange} defaultCron="0 22 * * *" />;
 }
 
 // ─── Run history dialog ──────────────────────────────────

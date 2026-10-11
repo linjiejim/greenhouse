@@ -37,7 +37,7 @@
   - 浏览类**详情/辅助面板**（任务详情、成员列表、活动流、只读预览、CRUD 工作区抽屉）→ 右侧 `<Drawer>`
   - Drawer 内触发创建/编辑时打开居中 Dialog，Drawer 保留为只读上下文；禁止把整套编辑表单直接切换进 Drawer（Project Task 是基准实现）
   - Drawer 背景只压暗**不加 backdrop-blur**（保持页面上下文可读）；Dialog 背景保留 blur
-  - 定时排程不要让用户裸写 cron——用频率+时间的可视化构建器（见 `pages/automations.tsx` 的 buildCron/parseCron），cron 表达式仅作高级逃生口
+  - 定时排程不要让用户裸写 cron——用频率+时间的可视化构建器 `components/schedule-builder.tsx`（`ScheduleBuilder`，换算在 `lib/cron.ts` 的 `buildCron` / `parseCron`；定时任务表单与 Tables 自动化共用，别写第二份），cron 表达式仅作高级逃生口
 - **弹层底座 `<OverlayFrame>`（`components/overlay-frame.tsx`）是安全区、高度上限、遮罩、Escape/滚动锁/焦点恢复、关闭动画的唯一实现**。`Dialog`/`ConfirmDialog`/`ActionConfirmDialog` 都是它的 variant（`center`/`alert`），调用方用的仍是原来的组件签名。新增弹层一律经底座接入，**不要**再手写 `fixed inset-0` + backdrop + `env(safe-area-inset-*)` + 高度上限那一套；需要新形态就给底座加 variant。`Drawer`/`OverlayPanel` 是第二批（当前行为正确，等第一批在 dev 跑过一个版本再切，见 [spec](../../../docs/specs/20260801-overlay-foundation-and-history-modal-split.md) D2）
 - 浮层面板 → `<OverlayPanel>`（`components/app/overlay-panel.tsx`），不要手写 backdrop + fixed inset-0
   - `variant="side"`（右侧面板）或 `variant="bottom"`（底部抽屉）
@@ -140,6 +140,7 @@ components/
 ├── tables/             # Tables：FieldValue / FieldEditor / FilterEditor、内联编辑单元格、附件选择、Base/资源对话框
 ├── agent-panel/        # Agent 助手面板
 ├── chat/               # 聊天：消息气泡、输入框、profile 选择器、流式消息、标注
+├── schedule-builder.tsx # 频率 + 时间的 cron 构建器（定时任务、Tables 自动化共用；逻辑在 lib/cron.ts）
 ├── agent-context.tsx   # 全局上下文 Provider
 ├── markdown.tsx        # 共享 Markdown 渲染器
 ├── rich-markdown.tsx   # 增强版 Markdown（按共享块注册表渲染所有富块）
@@ -274,6 +275,7 @@ stores/
 - **Base 角色比较**只用 `@greenhouse/types/table-access` 的 `tableRoleAtLeast` / `TABLE_BASE_ROLE_RANK`，组件里不要再写 rank 表。
 - **API 客户端**按域拆在 `lib/api/tables/<domain>.ts`（bases / members / schema / views / records / forms / automations / dashboards / plan，以及给后续切片预留的空模块 access / activity / imports），调用方只 import `lib/api/tables`（barrel）。新增客户端函数写进自己域的文件，不改 barrel。
 - **文案按切片拆**在 `lib/i18n/tables/<slice>.{en,zh}.ts`（access / views / forms / automations / dashboards / imports / activity / formula / plan），由 `lib/i18n/tables/en.ts|zh.ts` 一次并入 `tables.*`（plan 并入 `tablesSchemaPlan`）。每个模块独占自己的命名空间（`tables.forms.*`、`tables.automations.*`…），`lib/i18n/tables/slices.test.ts` 钉住不重名、不被核心键遮住；跨切片共享的键（字段类型、筛选操作符与令牌、记录元信息）留在 `en.ts` / `zh.ts` 的 `tables` 下。zh 模块用 `lib/i18n/types.ts` 的 `DeepRecord` 对齐英文。
+- **自动化**（slice Au）：`automation-dialog.tsx` 是 builder 的入口（`size="workspace"`，列表 / 编辑器 / 运行日志三选一），部件在 `pages/tables/automations/`：`rule-draft.ts`（纯函数：存储的规则 ⇄ 编辑草稿 ⇄ 提交载荷、保存前检查——服务端照样复核）、`rule-editor.tsx`（当 / 仅当 / 就：触发器设置、`FilterEditor` 条件、有序动作列表）、`action-editors.tsx`（每种动作一个表单；值行复用 `FieldEditor`，令牌 `$now` / `$today` / `$actor` 只给类型匹配的字段；收件人用 `PrincipalPicker`）、`run-log.tsx`（步骤按 `code` + `params` 本地化，`message` 原样）。Webhook 密钥**只写不读**：草稿只有 `hasSecret` 与「保留 / 设置 / 移除」，载荷里不提就是保留。记录抽屉的 `RecordActionsSlot`（`record-drawer/actions-slot.tsx`）显示能按的按钮（`listTableRecordButtons`，能改这行的人才有），按下只排队、结果经 `tables:records_changed` 回来。
 - Tables 没有自己的通知收件箱：自动化通知与 @ 提及走平台通知中心（`tables_automation` / `tables_mention`），原「数据表通知」对话框已删。
 
 ### 页面上下文注入
