@@ -232,7 +232,7 @@ describe('apps gateway client', () => {
     await expect(installAppTemplate('it')).rejects.toMatchObject({ status: 403, message: 'Tables is off' });
   });
 
-  it('asks for the draft and the previewed role in the query', async () => {
+  it('asks for the draft and the previewed role in the query, and runs actions in the viewer’s zone', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
       String(input).includes('/actions') ? Response.json({ outcome: 'updated', recordId: 9 }) : Response.json({}),
     );
@@ -241,6 +241,10 @@ describe('apps gateway client', () => {
     expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/apps/5?previewRole=approver&draft=1');
     await getApp(5);
     expect(String(fetchMock.mock.calls[1]![0])).toBe('/api/apps/5');
+
+    await runAppActionWithReplay(5, { pageId: 'p', cardId: 'c', actionId: 'approve', recordId: 9, requestId: 'r' });
+    const body = JSON.parse(String(fetchMock.mock.calls[2]![1]?.body)) as Record<string, unknown>;
+    expect(body.timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
   });
 
   it('uploads attachments as multipart for one card field, and addresses downloads by card, record and field', async () => {

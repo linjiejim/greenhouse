@@ -41,6 +41,7 @@ import type {
 import type { TableFilterValue, TableRecordActivityPage, TableRecordCommentView } from '@greenhouse/types/tables';
 import type { AppPreviewScope } from '../app-routes';
 import { authFetch } from '../auth';
+import { localTimeZone } from '../cron';
 import { rpc } from './client';
 import { TablesRequestError, responseError } from './tables/shared';
 
@@ -181,9 +182,13 @@ export async function getAppRecord(appId: number, input: AppRecordGetInput): Pro
   return response.json();
 }
 
-/** Run a declared action or a built-in write (`$submit` / `$create` / `$move` / `$edit`). */
+/**
+ * Run a declared action or a built-in write (`$submit` / `$create` / `$move` /
+ * `$edit`). `$today` / `$now` in the action's values resolve in the viewer's
+ * zone unless the input names one (the gateway defaults to UTC).
+ */
 export async function runAppAction(appId: number, input: AppActionInput): Promise<AppActionResult> {
-  const args = { param: appParam(appId), json: input };
+  const args = { param: appParam(appId), json: { ...input, timezone: input.timezone ?? localTimeZone() } };
   const response = await rpc.api.apps[':appId'].actions.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to run the action');
   return response.json();
