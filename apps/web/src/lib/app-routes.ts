@@ -52,3 +52,13 @@ export function appBuilderHref(appId: number): string {
 export function appRecordHref(appId: number, recordId: number, pageId?: string): string {
   return `${appHref(appId, pageId)}?record=${recordId}`;
 }
+
+/**
+ * The published app as a manager previews it in one of its roles
+ * (`?previewRole=<key>`; the gateway trims and evaluates for that role). No
+ * role = the manager's full view.
+ */
+export function appPreviewHref(appId: number, roleKey: string | undefined, pageId?: string): string {
+  const href = appHref(appId, pageId);
+  return roleKey ? `${href}?previewRole=${encodeURIComponent(roleKey)}` : href;
+}

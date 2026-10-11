@@ -1,6 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppSummary } from '@greenhouse/types/apps';
-import { getAppPins, listApps, normalizeAppCatalog, setAppPins } from './apps';
+import {
+  appActionRefusal,
+  appFilePath,
+  getAppPins,
+  listApps,
+  listAppTemplates,
+  normalizeAppCatalog,
+  queryAppCard,
+  runAppActionWithReplay,
+  setAppPins,
+  uploadAppFile,
+} from './apps';
 import { TablesRequestError } from './tables';
 
 function summary(id: number, patch: Partial<AppSummary> = {}): AppSummary {
@@ -79,5 +90,154 @@ describe('apps client', () => {
     const error = await listApps().catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(TablesRequestError);
     expect(error).toMatchObject({ status: 403, message: 'apps are off' });
+  });
+});
+
+describe('apps gateway client', () => {
+  function recordView(revision: number, values: Record<string, unknown>, actionIds: string[] = []) {
+    return {
+      record: {
+        id: 9,
+        revision,
+        values,
+        createdBy: 'u1',
+        createdAt: '2026-10-11T00:00:00.000Z',
+        updatedAt: '2026-10-11T00:00:00.000Z',
+        actionIds,
+      },
+      refs: { users: {}, records: {}, files: {} },
+      fieldIds: [1, 2],
+      systemFields: [],
+      editableFieldIds: [],
+      canComment: false,
+    };
+  }
+
+  it('posts card queries to the app’s gateway as JSON, a cleared filter as null', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ kind: 'kpi', value: 3 }),
+    );
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+
+    expect(await queryAppCard(5, { pageId: 'home', cardId: 'total', filterValues: { status: null } })).toEqual({
+      kind: 'kpi',
+      value: 3,
+    });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toBe('/api/apps/5/cards/query');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({ pageId: 'home', cardId: 'total', filterValues: { status: null } });
+  });
+
+  it('replays a stale $edit when the fields it writes did not change meanwhile', async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      calls.push({ url, body });
+      if (url.endsWith('/records/get')) return Response.json(recordView(4, { '1': 'old', '2': 'changed by someone' }));
+      if (calls.filter((call) => call.url.endsWith('/actions')).length === 1) {
+        return Response.json({ error: 'stale', details: { reason: 'conflict', currentRevision: 4 } }, { status: 409 });
+      }
+      return Response.json({ outcome: 'updated', recordId: 9 });
+    }) as typeof fetch;
+
+    const result = await runAppActionWithReplay(
+      5,
+      {
+        pageId: 'p',
+        cardId: 'c',
+        actionId: '$edit',
+        recordId: 9,
+        revision: 3,
+        values: [{ fieldId: 1, value: 'new' }],
+        requestId: 'first-request',
+      },
+      { values: { '1': 'old', '2': 'before' } },
+    );
+    expect(result.outcome).toBe('updated');
+    const actions = calls.filter((call) => call.url.endsWith('/actions'));
+    expect(actions.map((call) => call.body.revision)).toEqual([3, 4]);
+    expect(actions[0]!.body.requestId).toBe('first-request');
+    expect(actions[1]!.body.requestId).not.toBe('first-request');
+  });
+
+  it('does not replay over a change to the same field, nor an action no longer offered', async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith('/records/get')
+        ? Response.json(recordView(4, { '1': 'theirs' }, []))
+        : Response.json({ error: 'stale', details: { reason: 'conflict' } }, { status: 409 }),
+    ) as typeof fetch;
+
+    const edit = await runAppActionWithReplay(
+      5,
+      {
+        pageId: 'p',
+        cardId: 'c',
+        actionId: '$edit',
+        recordId: 9,
+        revision: 3,
+        values: [{ fieldId: 1, value: 'mine' }],
+        requestId: 'r-1',
+      },
+      { values: { '1': 'old' } },
+    ).catch((error: unknown) => error);
+    expect(edit).toMatchObject({ status: 409 });
+    const approve = await runAppActionWithReplay(5, {
+      pageId: 'p',
+      cardId: 'c',
+      actionId: 'approve',
+      recordId: 9,
+      revision: 3,
+      requestId: 'r-2',
+    }).catch((error: unknown) => error);
+    expect(approve).toMatchObject({ status: 409 });
+    expect(appActionRefusal(approve)).toBe('conflict');
+  });
+
+  it('never replays a refused precondition', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ error: 'no', details: { reason: 'precondition' } }, { status: 409 }),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+    const error = await runAppActionWithReplay(5, {
+      pageId: 'p',
+      cardId: 'c',
+      actionId: 'approve',
+      recordId: 9,
+      revision: 3,
+      requestId: 'r-3',
+    }).catch((caught: unknown) => caught);
+    expect(appActionRefusal(error)).toBe('precondition');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides templates when the server has no templates route, and reads the list when it has one', async () => {
+    globalThis.fetch = vi.fn(async () => Response.json({ error: 'App not found' }, { status: 404 })) as typeof fetch;
+    expect(await listAppTemplates()).toBeNull();
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({ templates: [{ key: 'it', name: 'IT', description: 'd', icon: 'ticket', accent: 'blue' }] }),
+    ) as typeof fetch;
+    expect((await listAppTemplates())?.map((template) => template.key)).toEqual(['it']);
+  });
+
+  it('uploads attachments as multipart for one card field, and addresses downloads by card, record and field', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ file: { id: 31, name: 'a.pdf', size: 3 } }, { status: 201 }),
+    );
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    const file = new File(['abc'], 'a.pdf', { type: 'application/pdf' });
+    expect(await uploadAppFile(5, { pageId: 'p', cardId: 'apply', fieldId: 4, file })).toEqual({
+      id: 31,
+      name: 'a.pdf',
+      size: 3,
+    });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toBe('/api/apps/5/uploads');
+    const form = init?.body as FormData;
+    expect([form.get('pageId'), form.get('cardId'), form.get('fieldId')]).toEqual(['p', 'apply', '4']);
+    expect(appFilePath(5, 31, { pageId: 'p', cardId: 'mine', recordId: 9, fieldId: 4 })).toBe(
+      '/api/apps/5/files/31?pageId=p&cardId=mine&recordId=9&fieldId=4',
+    );
   });
 });

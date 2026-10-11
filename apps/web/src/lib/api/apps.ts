@@ -1,19 +1,43 @@
 /**
- * Apps client (`/api/apps`, spec 20261011-tables-apps §4) — the routes the
- * web shell needs: the caller's shelves, one app as its viewer sees it, and
- * server-side pins (D9).
+ * Apps client (`/api/apps`, spec 20261011-tables-apps §4) — what the app
+ * center and the runtime call: the caller's shelves, pins, creating an app,
+ * the built-in templates, one app as its viewer sees it, and the gateway
+ * (card queries, record detail, actions, activity, comments, field options,
+ * uploads, file downloads). The builder's draft / publish / versions /
+ * audiences calls live in `./apps-builder.ts`.
  *
- * Raw `authFetch`, typed with the shared views in `@greenhouse/types/apps`,
- * because this tree's `AppType` does not carry `/api/apps` yet. Once the
- * chained gateway router is in `AppType` these calls move to `rpc` and the
- * response types are inferred from the server instead of declared here.
- * Failures throw the Tables client's `TablesRequestError` (status + details):
- * apps live in the Tables domain (spec D1), so callers keep one error type.
+ * Typed `rpc` over `AppType`: response types are inferred from the routes,
+ * which answer the wire contract of `@greenhouse/types/apps`. Two exceptions
+ * stay on raw `authFetch`: the multipart upload (FormData, like every upload)
+ * and the templates routes, which are not in this tree's `AppType` yet.
+ * Failures throw the Tables client's `TablesRequestError` (status + details,
+ * `details.reason` for action refusals): apps live in the Tables domain
+ * (spec D1), so callers keep one error type.
  */
 
-import type { AppRuntimeView, AppSummary } from '@greenhouse/types/apps';
+import type {
+  AppAccent,
+  AppActionInput,
+  AppActionResult,
+  AppActivityInput,
+  AppCardQueryInput,
+  AppCardQueryResult,
+  AppDraftView,
+  AppFieldOptionsInput,
+  AppFieldOptionsView,
+  AppIconName,
+  AppRecordGetInput,
+  AppRecordView,
+  AppRuntimeView,
+  AppSummary,
+  AppTemplateInstallResult,
+  AppTemplateSummary,
+  AppUploadView,
+} from '@greenhouse/types/apps';
+import type { TableFilterValue, TableRecordActivityPage, TableRecordCommentView } from '@greenhouse/types/tables';
 import { authFetch } from '../auth';
-import { responseError } from './tables/shared';
+import { rpc } from './client';
+import { TablesRequestError, responseError } from './tables/shared';
 
 /** `GET /api/apps`: the caller's three shelves. One app may sit on several. */
 export interface AppCatalog {
@@ -52,36 +76,243 @@ export function normalizeAppCatalog(body: unknown): AppCatalog {
   };
 }
 
+const appParam = (appId: number) => ({ appId: String(appId) });
+
+// ─── Center ───────────────────────────────────────────────
+
 export async function listApps(): Promise<AppCatalog> {
-  const response = await authFetch('/api/apps');
+  const response = await rpc.api.apps.$get();
   if (!response.ok) throw await responseError(response, 'Unable to load apps');
   return normalizeAppCatalog(await response.json());
 }
 
-/** The published app trimmed to the caller's role, with the field metadata to render it. */
-export async function getApp(appId: number): Promise<AppRuntimeView> {
-  const response = await authFetch(`/api/apps/${appId}`);
-  if (!response.ok) throw await responseError(response, 'Unable to load app');
-  return (await response.json()) as AppRuntimeView;
-}
-
-/** The caller's pinned apps in sidebar order (`GET /api/apps/pins`, spec D9 — pins live on the server). */
+/** The caller's pinned apps in sidebar order (spec D9 — pins live on the server, only apps still open to them). */
 export async function getAppPins(): Promise<number[]> {
-  const response = await authFetch('/api/apps/pins');
+  const response = await rpc.api.apps.pins.$get();
   if (!response.ok) throw await responseError(response, 'Unable to load pinned apps');
-  // The server answers with the pinned summaries (only apps the caller may still open), in order.
-  const body = (await response.json()) as { apps?: unknown };
-  return summaries(body.apps)
-    .map((app) => app.id)
-    .filter((id) => Number.isInteger(id));
+  return (await response.json()).apps.map((app) => app.id).filter((id) => Number.isInteger(id));
 }
 
-/** Replace the caller's pinned apps, in sidebar order (`PUT /api/apps/pins`, spec D9). */
+/** Replace the caller's pinned apps, in sidebar order (spec D9). */
 export async function setAppPins(appIds: readonly number[]): Promise<void> {
-  const response = await authFetch('/api/apps/pins', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ appIds }),
-  });
+  const args = { json: { appIds } };
+  const response = await rpc.api.apps.pins.$put(args);
   if (!response.ok) throw await responseError(response, 'Unable to save pinned apps');
+}
+
+export interface CreateAppInput {
+  baseId: number;
+  name: string;
+  description?: string;
+  icon?: AppIconName;
+  accent?: AppAccent;
+}
+
+/** A new app on a Base the caller builds: a draft with the starter spec, opened in the builder next. */
+export async function createApp(input: CreateAppInput): Promise<AppDraftView> {
+  const args = { json: input };
+  const response = await rpc.api.apps.$post(args);
+  if (!response.ok) throw await responseError(response, 'Unable to create the app');
+  return response.json();
+}
+
+/**
+ * The built-in templates (`GET /api/apps/templates` → `{templates}`), or
+ * `null` when this server has none to offer (the route is missing or refuses)
+ * — the center then hides "from a template" instead of showing a dead entry.
+ * Raw `authFetch`: the templates routes are not in this tree's `AppType`.
+ */
+export async function listAppTemplates(): Promise<AppTemplateSummary[] | null> {
+  const response = await authFetch('/api/apps/templates');
+  if (!response.ok) {
+    if (response.status >= 400 && response.status < 500) return null;
+    throw await responseError(response, 'Unable to load templates');
+  }
+  const body = (await response.json()) as { templates?: unknown };
+  return Array.isArray(body.templates) ? (body.templates as AppTemplateSummary[]) : null;
+}
+
+/** Install a template: a new Base owned by the caller plus a draft app on it (`AppTemplateInstallResult`). */
+export async function installAppTemplate(key: string): Promise<AppTemplateInstallResult> {
+  const response = await authFetch(`/api/apps/templates/${encodeURIComponent(key)}/install`, { method: 'POST' });
+  if (!response.ok) throw await responseError(response, 'Unable to install the template');
+  return (await response.json()) as AppTemplateInstallResult;
+}
+
+// ─── Runtime ──────────────────────────────────────────────
+
+/**
+ * One app as the caller uses it: the published spec trimmed to their role
+ * with the field metadata to render it (a manager gets full access, or the
+ * trim of `previewRole`).
+ */
+export async function getApp(appId: number, options: { previewRole?: string } = {}): Promise<AppRuntimeView> {
+  const args = { param: appParam(appId), query: options.previewRole ? { previewRole: options.previewRole } : {} };
+  const response = await rpc.api.apps[':appId'].$get(args);
+  if (!response.ok) throw await responseError(response, 'Unable to load app');
+  return response.json();
+}
+
+/**
+ * A card query as the runtime sends it. Filter values follow the dashboard's
+ * convention: a control the viewer cleared is sent as `null` (its default no
+ * longer applies), an untouched one is absent.
+ */
+export type AppCardQueryRequest = Omit<AppCardQueryInput, 'filterValues'> & {
+  filterValues?: Record<string, TableFilterValue | null>;
+};
+
+export async function queryAppCard(appId: number, input: AppCardQueryRequest): Promise<AppCardQueryResult> {
+  const args = { param: appParam(appId), json: input };
+  const response = await rpc.api.apps[':appId'].cards.query.$post(args);
+  if (!response.ok) throw await responseError(response, 'Unable to load this card');
+  return response.json();
+}
+
+export async function getAppRecord(appId: number, input: AppRecordGetInput): Promise<AppRecordView> {
+  const args = { param: appParam(appId), json: input };
+  const response = await rpc.api.apps[':appId'].records.get.$post(args);
+  if (!response.ok) throw await responseError(response, 'Unable to load the record');
+  return response.json();
+}
+
+/** Run a declared action or a built-in write (`$submit` / `$create` / `$move` / `$edit`). */
+export async function runAppAction(appId: number, input: AppActionInput): Promise<AppActionResult> {
+  const args = { param: appParam(appId), json: input };
+  const response = await rpc.api.apps[':appId'].actions.$post(args);
+  if (!response.ok) throw await responseError(response, 'Unable to run the action');
+  return response.json();
+}
+
+/** A fresh idempotency key for one write (the gateway answers a repeat with its first result). */
+export function newAppRequestId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/** Why `/actions` refused (`AppActionRefusal`), when it said. */
+export function appActionRefusal(error: unknown): string | undefined {
+  if (!(error instanceof TablesRequestError)) return undefined;
+  const reason = error.details?.reason;
+  return typeof reason === 'string' ? reason : undefined;
+}
+
+function isStaleRevision(error: unknown): boolean {
+  return error instanceof TablesRequestError && error.status === 409 && appActionRefusal(error) !== 'precondition';
+}
+
+/**
+ * A record write that survives an unrelated concurrent change (the app
+ * counterpart of `updateTableRecordWithReplay`). On a stale revision the record
+ * is re-read through the same card:
+ * - `$edit` / `$move` replay when none of the fields they write changed since
+ *   `base` (the values the viewer was looking at);
+ * - a declared action replays when it is still offered for the record now
+ *   (`actionIds`) — its `when` is re-checked by the server inside the write.
+ * Anything else rethrows the conflict for the caller to report. The first
+ * attempt carries the caller's `requestId` (one per intent, so a retry after a
+ * lost answer is answered once); a replay is a new write with a new id.
+ */
+export async function runAppActionWithReplay(
+  appId: number,
+  input: AppActionInput,
+  base?: { values: Record<string, unknown> },
+): Promise<AppActionResult> {
+  try {
+    return await runAppAction(appId, input);
+  } catch (error) {
+    if (!isStaleRevision(error) || input.recordId === undefined) throw error;
+    const current = await getAppRecord(appId, {
+      pageId: input.pageId,
+      cardId: input.cardId,
+      recordId: input.recordId,
+      ...(input.previewRole ? { previewRole: input.previewRole } : {}),
+    }).catch(() => null);
+    if (!current) throw error;
+    const builtin = input.actionId === '$edit' || input.actionId === '$move';
+    const safe = builtin
+      ? (input.values ?? []).every(
+          (entry) =>
+            JSON.stringify(current.record.values[String(entry.fieldId)] ?? null) ===
+            JSON.stringify(base?.values[String(entry.fieldId)] ?? null),
+        )
+      : current.record.actionIds.includes(input.actionId);
+    if (!safe) throw error;
+    return runAppAction(appId, { ...input, revision: current.record.revision, requestId: newAppRequestId() });
+  }
+}
+
+export async function listAppActivity(appId: number, input: AppActivityInput): Promise<TableRecordActivityPage> {
+  const args = { param: appParam(appId), json: input };
+  const response = await rpc.api.apps[':appId'].activity.$post(args);
+  if (!response.ok) throw await responseError(response, 'Unable to load the activity');
+  return response.json();
+}
+
+export async function createAppComment(
+  appId: number,
+  input: { pageId: string; cardId: string; recordId: number; body: string },
+): Promise<TableRecordCommentView> {
+  const args = { param: appParam(appId), json: input };
+  const response = await rpc.api.apps[':appId'].comments.$post(args);
+  if (!response.ok) throw await responseError(response, 'Unable to post the comment');
+  return (await response.json()).comment;
+}
+
+export async function updateAppComment(
+  appId: number,
+  commentId: number,
+  input: { pageId: string; cardId: string; body: string },
+): Promise<TableRecordCommentView> {
+  const args = { param: { ...appParam(appId), commentId: String(commentId) }, json: input };
+  const response = await rpc.api.apps[':appId'].comments[':commentId'].$patch(args);
+  if (!response.ok) throw await responseError(response, 'Unable to update the comment');
+  return (await response.json()).comment;
+}
+
+export async function deleteAppComment(
+  appId: number,
+  commentId: number,
+  input: { pageId: string; cardId: string },
+): Promise<void> {
+  const args = { param: { ...appParam(appId), commentId: String(commentId) }, json: input };
+  const response = await rpc.api.apps[':appId'].comments[':commentId'].$delete(args);
+  if (!response.ok) throw await responseError(response, 'Unable to delete the comment');
+}
+
+/** Choices for a user or relation field this card lets the viewer write (people; records in their read scope). */
+export async function listAppFieldOptions(appId: number, input: AppFieldOptionsInput): Promise<AppFieldOptionsView> {
+  const args = { param: appParam(appId), json: input };
+  const response = await rpc.api.apps[':appId'].options.$post(args);
+  if (!response.ok) throw await responseError(response, 'Unable to load the choices');
+  return response.json();
+}
+
+/** Upload an attachment for a card's form or edit (bound to the record on the next write). Multipart → raw `authFetch`. */
+export async function uploadAppFile(
+  appId: number,
+  input: { pageId: string; cardId: string; fieldId: number; file: File },
+): Promise<AppUploadView> {
+  const form = new FormData();
+  form.append('file', input.file);
+  form.append('pageId', input.pageId);
+  form.append('cardId', input.cardId);
+  form.append('fieldId', String(input.fieldId));
+  const response = await authFetch(`/api/apps/${appId}/uploads`, { method: 'POST', body: form });
+  if (!response.ok) throw await responseError(response, 'Unable to upload the file');
+  return ((await response.json()) as { file: AppUploadView }).file;
+}
+
+/** Where one attachment of a record is read — only when the record and the field are readable by the viewer's role. */
+export function appFilePath(
+  appId: number,
+  fileId: number,
+  context: { pageId: string; cardId: string; recordId: number; fieldId: number },
+): string {
+  const query = new URLSearchParams({
+    pageId: context.pageId,
+    cardId: context.cardId,
+    recordId: String(context.recordId),
+    fieldId: String(context.fieldId),
+  });
+  return `/api/apps/${appId}/files/${fileId}?${query.toString()}`;
 }
