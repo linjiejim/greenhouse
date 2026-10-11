@@ -266,8 +266,10 @@ export async function checkFormConfig(
     title: text(input.title, '', 120),
     description: text(input.description, '', 2_000),
     fieldIds,
-    submitLabel: text(input.submitLabel, 'Submit', 60),
-    successMessage: text(input.successMessage, 'Submitted successfully.', 500),
+    // Unset = '' (served as null): each respondent then sees their own language's
+    // button and confirmation, never the builder's (or this file's English).
+    submitLabel: text(input.submitLabel, '', 60),
+    successMessage: text(input.successMessage, '', 500),
     defaults,
     allowMultiple: input.allowMultiple !== false,
   };

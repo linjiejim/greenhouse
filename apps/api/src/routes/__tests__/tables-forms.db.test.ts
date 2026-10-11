@@ -187,6 +187,16 @@ describe('Tables forms (slice Fm)', () => {
     expect((await send(app, outsider, `/api/tables/forms/${id}`)).status).toBe(404);
   });
 
+  it('serves no submit label or success message when the builder left them empty (each respondent’s own language)', async () => {
+    const app = createHttpApp([owner, outsider]);
+    const { tableId, primaryId } = await createBase(app);
+    const id = await formId(app, tableId, { fieldIds: [primaryId], successMessage: undefined }, { type: 'team' });
+    const view = ((await (await send(app, outsider, `/api/forms/${id}`)).json()) as { form: TableFormSubmitView }).form;
+    expect(view).toMatchObject({ submitLabel: null, successMessage: null });
+    const submitted = await send(app, outsider, `/api/forms/${id}/submit`, 'POST', { values: { [primaryId]: 'x' } });
+    expect(await submitted.json()).toEqual({ submitted: true, successMessage: null });
+  });
+
   it('admits listed people and group members, never a group creator who is not in the group', async () => {
     const lead = await createInternalTestUser(db, { email: 'tables-fm-lead@test.com' });
     const listed = await createInternalTestUser(db, { email: 'tables-fm-listed@test.com' });
