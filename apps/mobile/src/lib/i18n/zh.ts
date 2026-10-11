@@ -5,6 +5,9 @@ import { botsCardsZh } from './bots/cards.zh';
 import { botsNavZh } from './bots/nav.zh';
 import { botsManageZh } from './bots/manage.zh';
 import { botsComputerZh } from './bots/computer.zh';
+import { tablesZh } from './tables/tables.zh';
+import { appsZh } from './tables/apps.zh';
+import { inboxZh } from './tables/inbox.zh';
 
 export const zh: Catalog = {
   common: {
@@ -270,6 +273,8 @@ export const zh: Catalog = {
     chats: '对话',
     knowledge: '知识库',
     projects: '项目',
+    tables: '表格',
+    inbox: '通知',
     history: '最近',
     settings: '设置',
     search: '搜索',
@@ -634,4 +639,8 @@ export const zh: Catalog = {
     ...botsManageZh,
     ...botsComputerZh,
   },
+  /** Tables, Apps and the inbox (spec 20261011-mobile-tables-apps) — split under ./tables, mounted here once. */
+  tables: tablesZh,
+  apps: appsZh,
+  inbox: inboxZh,
 };

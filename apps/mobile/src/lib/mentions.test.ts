@@ -1,11 +1,21 @@
 /**
- * The mention picker's pure pieces (./mention-query.ts): which `@` token the caret sits
- * in, who matches it, and what a pick writes (and where the caret lands).
+ * The mention pieces every composer shares (./mentions.ts): which `@` token the caret
+ * sits in, who matches it, what a pick writes (and where the caret lands), and how a
+ * comment's picked people become `[@Name](user:<id>)` links and read back.
  */
 
 import { describe, expect, it } from 'vitest';
-import { parseMentions } from '../vendor/mentions';
-import { applyMention, mentionCandidates, mentionQuery, type MentionMember } from './mention-query';
+import { parseMentions } from '../bots/vendor/mentions';
+import { extractMentionIds } from '../shared/mentions';
+import {
+  applyMention,
+  encodeMentions,
+  mentionCandidates,
+  mentionQuery,
+  mentionsForDisplay,
+  personToken,
+  type MentionMember,
+} from './mentions';
 
 const SAGE: MentionMember = { id: 'b_sage', name: 'Sage', role: 'Researcher' };
 const FERN: MentionMember = { id: 'b_fern', name: 'Fern', role: 'Writer' };
@@ -58,17 +68,38 @@ describe('mentionCandidates', () => {
 
 describe('applyMention', () => {
   it('replaces the token with "@Name " and puts the caret after it', () => {
-    expect(applyMention('@Sa', 0, 3, 'Sage')).toEqual({ text: '@Sage ', caret: 6 });
-    expect(applyMention('hi @fe', 3, 6, 'Fern')).toEqual({ text: 'hi @Fern ', caret: 9 });
+    expect(applyMention('@Sa', 0, 3, personToken('Sage'))).toEqual({ text: '@Sage ', caret: 6 });
+    expect(applyMention('hi @fe', 3, 6, personToken('Fern'))).toEqual({ text: 'hi @Fern ', caret: 9 });
   });
 
   it('mid-text: keeps what follows, without doubling a space', () => {
-    expect(applyMention('@Sa please look', 0, 3, 'Sage')).toEqual({ text: '@Sage please look', caret: 6 });
-    expect(applyMention('ask @卷 to', 4, 6, '卷卷')).toEqual({ text: 'ask @卷卷 to', caret: 8 });
+    expect(applyMention('@Sa please look', 0, 3, personToken('Sage'))).toEqual({ text: '@Sage please look', caret: 6 });
+    expect(applyMention('ask @卷 to', 4, 6, personToken('卷卷'))).toEqual({ text: 'ask @卷卷 to', caret: 8 });
   });
 
   it('what a pick writes parses back to the member', () => {
-    const { text } = applyMention('@', 0, 1, '卷卷');
+    const { text } = applyMention('@', 0, 1, personToken('卷卷'));
     expect(parseMentions(`${text}写一句诗`, MEMBERS)).toEqual(['b_juan']);
+  });
+});
+
+describe('comment mentions', () => {
+  const ADA: MentionMember = { id: 'u_ada', name: 'Ada' };
+  const ADA_LEE: MentionMember = { id: 'u_lee', name: 'Ada Lee' };
+  const LIN: MentionMember = { id: 'u_lin', name: '林小' };
+
+  it('turns picked people still in the text into links, longest name first', () => {
+    const sent = encodeMentions('@Ada Lee and @Ada, see @林小。 mail a@b.c', [ADA, ADA_LEE, LIN]);
+    expect(sent).toBe('[@Ada Lee](user:u_lee) and [@Ada](user:u_ada), see [@林小](user:u_lin)。 mail a@b.c');
+    expect(extractMentionIds(sent)).toEqual(['u_lee', 'u_ada', 'u_lin']);
+  });
+
+  it('leaves a typed @ alone when nobody was picked for it', () => {
+    expect(encodeMentions('@Adam hi', [ADA])).toBe('@Adam hi');
+    expect(encodeMentions('no mentions', [])).toBe('no mentions');
+  });
+
+  it('reads stored links back as bold names', () => {
+    expect(mentionsForDisplay('hi [@Ada](user:u_ada)!')).toBe('hi **@Ada**!');
   });
 });

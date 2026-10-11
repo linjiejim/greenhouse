@@ -61,6 +61,7 @@ import { botsLocale } from '../../bots/engine/copy.js';
 import { isFeishuConfigured } from '../../feishu/client.js';
 import { retryAt } from '../../notifications/delivery-worker.js';
 import { publishNotification, type PublishOptions } from '../../notifications/publish.js';
+import { tablesPushEnvelope } from '../../notifications/push/policy.js';
 import { automationDeliveryRecipient } from '../../scheduler/notify.js';
 import { postPublicWebhook } from '../../security/network.js';
 import { isWeComConfigured } from '../../wecom/client.js';
@@ -324,12 +325,14 @@ export function createTablesAutomationRunner(options: TablesAutomationWorkerOpti
         const recipient = (await user(userId))!;
         let readable: ReadonlySet<number> | null = null;
         let href: string | undefined;
+        let viaAppId: number | null = null;
         if (record) {
           const access = await recipientAccess(ctx, userId, record);
           if (!access) {
             skipped += 1;
             continue;
           }
+          if (access.via === 'app') viaAppId = access.appId;
           readable = access.scope.kind === 'full' ? null : new Set(access.scope.readableFieldIds);
           href =
             access.via === 'app'
@@ -368,6 +371,15 @@ export function createTablesAutomationRunner(options: TablesAutomationWorkerOpti
               ...(record ? { recordId: record.id } : {}),
             },
             dedupe_key: `tables-automation:${row.id}:${action.id}`,
+            // the phone (spec 20261011-mobile-tables-apps §3): urgent → "needs you", else "done"
+            push: tablesPushEnvelope({
+              source: 'automation',
+              urgent: action.urgent === true,
+              baseId: base.id,
+              tableId: rule.table_id,
+              recordId: record?.id ?? null,
+              appId: viaAppId,
+            }),
           },
           options.publishOptions,
         );

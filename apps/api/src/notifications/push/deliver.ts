@@ -4,9 +4,12 @@
  * For each leased attempt (one fact × one device):
  * 1. re-check the device — gone, disabled, now another account's, registered before
  *    a password reset / suspension, or not seen for 90 days → `suppressed`;
- * 2. re-check the event — its switch is off now, the account lost Bots, the card was
- *    decided or expired, the reply was read (or a card is waiting in that
- *    conversation) → `suppressed`;
+ * 2. re-check the event — its switch is off now, the account lost Bots (Tables / Apps
+ *    for a Tables push), the card was decided or expired, the reply was read (or a card
+ *    is waiting in that conversation) → `suppressed`. A Tables push (an automation's
+ *    notice, a comment mention — `open: 'record' | 'app'`) names its target in `data`
+ *    (`open` / `base` / `table` / `record` / `app`) and is titled by the mention's author;
+ *    its preview is the fact itself, already rendered for this reader;
  * 3. render in the account's language and send everything to Expo in one pass
  *    (grouped by project, ≤100 per request). A Bot task's "done" push also names the
  *    run and how it ended (`run` / `st`) and, for a device that shows tasks as Live
@@ -37,7 +40,7 @@ import { userHasFeature } from '../../auth/features.js';
 import { requestSubject } from '../../bots/engine/approvals.js';
 import { botsLocale } from '../../bots/engine/copy.js';
 import { sendExpoPush, type ExpoMessage, type ExpoOutcome, type FetchLike } from './expo.js';
-import { isBotTaskEnd, parsePushEnvelope, pushPolicy, pushUrl, type PushEnvelope } from './policy.js';
+import { isBotTaskEnd, isTablesPush, parsePushEnvelope, pushPolicy, pushUrl, type PushEnvelope } from './policy.js';
 import { renderPush, renderTestPush } from './render.js';
 
 /** How long a test push may wait for the phone. */
@@ -72,6 +75,8 @@ async function staleReason(
   envelope: PushEnvelope,
   now: number,
 ): Promise<string | null> {
+  // A Tables notice / mention was rendered for this reader when it was written; nothing to settle.
+  if (isTablesPush(envelope)) return null;
   if (envelope.k === 'needs_you') {
     const request = await db.bots.getRequest(userId, envelope.rid ?? '');
     if (!request || request.status !== 'pending') return 'request_settled';
@@ -79,12 +84,13 @@ async function staleReason(
     return null;
   }
   if (envelope.k === 'replies') {
+    const sid = envelope.sid ?? '';
     const [conversation, message, pending] = await Promise.all([
-      db.bots.getConversation(userId, envelope.sid),
+      db.bots.getConversation(userId, sid),
       db.sessions.getMessageById(envelope.message_id ?? ''),
-      db.bots.listRequests(userId, { sessionId: envelope.sid, status: 'pending' }),
+      db.bots.listRequests(userId, { sessionId: sid, status: 'pending' }),
     ]);
-    if (!conversation || !message || message.session_id !== envelope.sid) return 'reply_gone';
+    if (!conversation || !message || message.session_id !== sid) return 'reply_gone';
     if (conversation.last_read_at && Date.parse(conversation.last_read_at) >= Date.parse(message.created_at)) {
       return 'reply_read';
     }
@@ -103,6 +109,11 @@ async function previewContent(
 ): Promise<{ subject: string | null; excerpt: string | null }> {
   const payload = safeJsonParse(notification.payload, {}) as Record<string, unknown>;
   const text = (key: string) => (typeof payload[key] === 'string' ? (payload[key] as string) : null);
+  // Tables: the fact itself was rendered for this reader (hidden fields as "—"); a mention's title names
+  // the table, so only its words (the comment) go into a preview.
+  if (isTablesPush(envelope)) {
+    return { subject: envelope.source === 'automation' ? notification.title : null, excerpt: notification.body };
+  }
   if (envelope.k === 'needs_you' && envelope.rid) {
     const request = await db.bots.getRequest(notification.user_id, envelope.rid);
     if (!request) return { subject: null, excerpt: null };
@@ -115,6 +126,28 @@ async function previewContent(
   }
   if (envelope.open === 'chat') return { subject: text('task_name'), excerpt: text('summary') };
   return { subject: text('task_title'), excerpt: null };
+}
+
+/** A Tables push's target in the phone's terms (`PushData.open` …); empty for a conversation. */
+function tablesTarget(envelope: PushEnvelope): Partial<PushData> {
+  if (envelope.open === 'record') {
+    return {
+      open: 'record',
+      base: envelope.base_id,
+      table: envelope.table_id,
+      ...(envelope.record_id ? { record: envelope.record_id } : {}),
+    };
+  }
+  if (envelope.open === 'app') {
+    return {
+      open: 'app',
+      app: envelope.app_id,
+      ...(envelope.table_id ? { table: envelope.table_id } : {}),
+      ...(envelope.record_id ? { record: envelope.record_id } : {}),
+      ...(envelope.page_id ? { page: envelope.page_id } : {}),
+    };
+  }
+  return {};
 }
 
 /** A Bot task's run and how it ended, from its terminal fact (runtime-projector.ts: `run_id`, `payload.status`). */
@@ -144,6 +177,9 @@ async function prepare(db: DatabaseProvider, attempt: NotificationDeliveryAttemp
   const decision = pushPolicy({ envelope, prefs, createdAt: notification.created_at, now });
   if (!decision.push) return skip(decision.reason);
   if (envelope.open === 'bots' && !(await userHasFeature(user.id, user.role, 'bots', db))) return skip('bots_off');
+  if (envelope.open === 'record' && !(await userHasFeature(user.id, user.role, 'tables', db)))
+    return skip('tables_off');
+  if (envelope.open === 'app' && !(await userHasFeature(user.id, user.role, 'apps', db))) return skip('apps_off');
   const stale = await staleReason(db, user.id, envelope, now);
   if (stale) return skip(stale);
 
@@ -153,11 +189,12 @@ async function prepare(db: DatabaseProvider, attempt: NotificationDeliveryAttemp
     s: device.client_ref,
     u: user.id,
     k: envelope.k,
-    sid: envelope.sid,
+    ...(envelope.sid ? { sid: envelope.sid } : {}),
     ...(envelope.rid ? { rid: envelope.rid } : {}),
     nid: notification.id,
     url: pushUrl(envelope),
     ...(task ? { run: task.run, st: task.st } : {}),
+    ...tablesTarget(envelope),
   };
   if (decision.silent) {
     // Only there to end a Live Activity: nothing to end without the run.
@@ -176,8 +213,9 @@ async function prepare(db: DatabaseProvider, attempt: NotificationDeliveryAttemp
     };
   }
 
-  const [bot, content, badge] = await Promise.all([
+  const [bot, sender, content, badge] = await Promise.all([
     envelope.bot_id ? db.bots.getBot(user.id, envelope.bot_id) : Promise.resolve(undefined),
+    envelope.actor_id ? db.users.getById(envelope.actor_id) : Promise.resolve(undefined),
     prefs.preview ? previewContent(db, notification, envelope) : Promise.resolve({ subject: null, excerpt: null }),
     db.bots.attentionCount(user.id),
   ]);
@@ -186,6 +224,7 @@ async function prepare(db: DatabaseProvider, attempt: NotificationDeliveryAttemp
     envelope,
     preview: prefs.preview,
     botName: bot?.name ?? null,
+    senderName: sender ? sender.nickname || sender.email || null : null,
     fallbackTitle: getProductName(),
     subject: content.subject,
     excerpt: content.excerpt,

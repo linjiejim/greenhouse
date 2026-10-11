@@ -117,6 +117,14 @@ const SOURCES: Record<IconName, ImageSourcePropType> = {
   chevL: require('../../assets/icons/android/chevron_left.xml'),
   zoomIn: require('../../assets/icons/android/zoom_in.xml'),
   zoomOut: require('../../assets/icons/android/zoom_out.xml'),
+  bell: require('../../assets/icons/android/notifications.xml'),
+  apps: require('../../assets/icons/android/apps.xml'),
+  tray: require('../../assets/icons/android/inbox.xml'),
+  cart: require('../../assets/icons/android/shopping_cart.xml'),
+  briefcase: require('../../assets/icons/android/work.xml'),
+  ticket: require('../../assets/icons/android/confirmation_number.xml'),
+  star: require('../../assets/icons/android/star.xml'),
+  house: require('../../assets/icons/android/home.xml'),
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 

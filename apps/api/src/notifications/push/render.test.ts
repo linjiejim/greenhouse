@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PushEnvelope } from './policy.js';
+import { tablesPushEnvelope, type PushEnvelope } from './policy.js';
 import { excerptOf, PUSH_EXCERPT_CHARS, renderPush, renderTestPush } from './render.js';
 
 const card = (request_kind: NonNullable<PushEnvelope['request_kind']>): PushEnvelope => ({
@@ -68,6 +68,57 @@ describe('push words', () => {
       'Greenhouse',
     );
     expect(renderTestPush('zh', 'Greenhouse').body).toContain('测试');
+  });
+});
+
+describe('Tables push words', () => {
+  const notice = tablesPushEnvelope({ source: 'automation', baseId: 1, tableId: 2, recordId: 3 });
+  const viaApp = tablesPushEnvelope({
+    source: 'automation',
+    urgent: true,
+    baseId: 1,
+    tableId: 2,
+    recordId: 3,
+    appId: 9,
+  });
+  const mention = tablesPushEnvelope({ source: 'mention', baseId: 1, tableId: 2, recordId: 3, actorId: 'u_7' });
+  const words = { botName: null, fallbackTitle: 'Greenhouse' };
+
+  it('says only what kind of thing by default — never the notice or the comment', () => {
+    const secret = { subject: '采购单 #12 金额 80 万', excerpt: '王总已审批' };
+    expect(renderPush({ ...words, ...secret, locale: 'zh', envelope: notice, preview: false })).toEqual({
+      title: 'Greenhouse',
+      body: '表格自动化发来一条通知',
+    });
+    expect(renderPush({ ...words, ...secret, locale: 'en', envelope: viaApp, preview: false }).body).toBe(
+      'A new notice from an app',
+    );
+    // a mention is titled by who wrote it
+    expect(
+      renderPush({ ...words, ...secret, senderName: '林小', locale: 'zh', envelope: mention, preview: false }),
+    ).toEqual({ title: '林小', body: '在一条记录的评论里提到了你' });
+    for (const envelope of [notice, viaApp, mention]) {
+      const text = JSON.stringify(renderPush({ ...words, ...secret, locale: 'zh', envelope, preview: false }));
+      expect(text).not.toContain('80 万');
+      expect(text).not.toContain('王总');
+    }
+  });
+
+  it('shows the notice and the comment with previews on', () => {
+    expect(
+      renderPush({ ...words, locale: 'zh', envelope: notice, preview: true, subject: '采购已批准', excerpt: '金额 —' })
+        .body,
+    ).toBe('采购已批准：金额 —');
+    expect(
+      renderPush({
+        ...words,
+        senderName: 'Lin',
+        locale: 'en',
+        envelope: mention,
+        preview: true,
+        excerpt: '@Ada can you check the **amount**?',
+      }),
+    ).toEqual({ title: 'Lin', body: '@Ada can you check the amount?' });
   });
 });
 

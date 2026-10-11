@@ -7,7 +7,8 @@
  *   sign-in when nobody is signed in there; a push for someone else (the phone
  *   changed hands) or a removed station just opens the app.
  * - `routeOf` / `hrefOf`: only the app's existing deep links (`/bots?c=&request=`,
- *   `/chat/<id>`), rebuilt from validated ids — never a URL taken as given.
+ *   `/chat/<id>`, and for a Tables push `/tables/record/<id>`, `/tables/table/<id>`,
+ *   `/apps/<id>?record=`), rebuilt from validated ids — never a URL taken as given.
  * - `shouldPresent`: in the foreground, the thread on screen stays quiet.
  * - `forThread` / `staleIds`: which banners to clear — a thread's own when it opens,
  *   a card decided elsewhere or a reply read elsewhere when the app comes back.
@@ -20,12 +21,29 @@ import { parsePushData, type PushData } from '../shared/push';
 export type PushRoute =
   | { kind: 'thread'; c: string; request: string }
   | { kind: 'chat'; id: string }
+  /** A Tables record (Tables → Apps Phase 1); without a record, its table. */
+  | { kind: 'record'; baseId: number; tableId: number; recordId: number | null }
+  /** An app: a record of it (`tableId` helps pick the card that shows it), or a page. */
+  | { kind: 'app'; appId: number; pageId: string | null; recordId: number | null; tableId: number | null }
   | { kind: 'home' };
 
 const ID = /^[A-Za-z0-9._:-]{1,200}$/;
 
 /** Where a push's tap goes, from its `url` (validated against its own ids) or its kind. */
 export function routeOf(data: PushData): PushRoute {
+  // A Tables push names its target in typed fields (parsePushData validated them).
+  if (data.open === 'record' && data.base && data.table) {
+    return { kind: 'record', baseId: data.base, tableId: data.table, recordId: data.record ?? null };
+  }
+  if (data.open === 'app' && data.app) {
+    return {
+      kind: 'app',
+      appId: data.app,
+      pageId: data.page ?? null,
+      recordId: data.record ?? null,
+      tableId: data.table ?? null,
+    };
+  }
   const url = data.url ?? '';
   const bots = /^\/bots\?c=([^&]+)(?:&request=([^&]+))?$/.exec(url);
   if (bots) {
@@ -52,6 +70,19 @@ export function hrefOf(route: PushRoute): string {
     return `/bots?c=${encodeURIComponent(route.c)}${route.request ? `&request=${encodeURIComponent(route.request)}` : ''}`;
   }
   if (route.kind === 'chat') return `/chat/${encodeURIComponent(route.id)}`;
+  if (route.kind === 'record') {
+    return route.recordId
+      ? `/tables/record/${route.recordId}?tableId=${route.tableId}&baseId=${route.baseId}`
+      : `/tables/table/${route.tableId}?baseId=${route.baseId}`;
+  }
+  if (route.kind === 'app') {
+    const query = [
+      ...(route.recordId ? [`record=${route.recordId}`] : []),
+      ...(route.recordId && route.tableId ? [`table=${route.tableId}`] : []),
+      ...(route.pageId ? [`page=${encodeURIComponent(route.pageId)}`] : []),
+    ].join('&');
+    return `/apps/${route.appId}${query ? `?${query}` : ''}`;
+  }
   return '/';
 }
 

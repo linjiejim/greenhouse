@@ -13,6 +13,7 @@
  */
 
 import type { Href } from 'expo-router';
+import { tablesEnabledNow } from '../tables/availability';
 
 export type EntityRef =
   | { kind: 'project'; id: number }
@@ -77,7 +78,10 @@ export function parseEntityUrl(href: string): EntityRef | null {
 
 /**
  * The native preview route for a record, or null when the mobile app has no
- * surface for that kind (Tables records, extension records — web only).
+ * surface for that kind (extension records — web only; a Tables record while
+ * Tables is off here — Android, the switch off — so the link says "open it on
+ * the web" instead of bouncing). A Tables record opens the record peek
+ * (`app/peek/record.tsx`).
  */
 export function entityRoute(ref: EntityRef): Href | null {
   switch (ref.kind) {
@@ -86,6 +90,12 @@ export function entityRoute(ref: EntityRef): Href | null {
       return { pathname: '/peek/doc/[slug]', params: { slug: ref.slug, id: String(ref.id) } };
     case 'project':
       return { pathname: '/peek/project/[id]', params: { id: String(ref.id) } };
+    case 'tables_record':
+      if (!tablesEnabledNow()) return null;
+      return {
+        pathname: '/peek/record',
+        params: { baseId: String(ref.baseId), tableId: String(ref.tableId), recordId: String(ref.id) },
+      };
     default:
       return null;
   }

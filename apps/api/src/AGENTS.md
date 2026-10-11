@@ -255,6 +255,13 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
   不该推就 `suppressed`；按账号语言渲染（`push/render.ts`，默认只有「谁 + 什么事」，设备开了预览才带主题与前 80 字）；
   ticket：`DeviceNotRegistered` → 停用设备 + `failed`；429 / 5xx / 网络 / `MessageRateExceeded` → 现有退避；`MessageTooBig`、
   整包被拒 → 死信 + error 日志。`data` 只放路由字段（`PushData`，`@greenhouse/types/push`，≤1 KB，无内容）。
+- **表格推送（Tables → Apps 阶段 1，spec `docs/specs/20261011-mobile-tables-apps.md` §3）**：`policy.ts` `tablesPushEnvelope()`
+  是唯一的信封构造（`platform/tables/automation-worker.ts` 的 `notify` 与 `platform/tables/mentions.ts` 各一行 `push:`）：
+  自动化通知 `urgent` → `needs_you`（time-sensitive）、否则 `done`；评论 @提及 → `replies`（标题 = 评论作者 `actor_id` 的昵称）。
+  信封 `open: 'record' | 'app'`（按收件人的 `canRecipientRead.via`：Tables 路由或他能看到这条记录的应用）+ `base_id` / `table_id` /
+  `record_id` / `app_id` / `page_id`，没有 `sid`；`threadId` = `record:<表>:<记录>` / `app:<应用>:…`，不折叠。worker：没有 `tables`
+  （`app` 推送：`apps`）开关的账号 `suppressed`；预览 = 事实本身（发布时已按收件人的可读字段渲染；@提及只给评论文字，不给带表名的标题）；
+  `PushData` 带 `open` + 类型化 id，手机按 id 重建路由（`pushUrl` 同形：`/tables/record/<id>?tableId=&baseId=`、`/apps/<id>?record=&table=`）。
 - **部署开关 `MOBILE_PUSH_ENABLED`**（默认开，非法值视为关，`/health` 的 `mobile_push`）：关掉后 PUT 不存设备（`enabled:false`）、
   不建投递行、worker 不认领 `mobile_push`——一个请求都不发到 `exp.host`。
 - **设备路由**挂在 `/api/auth/me/push-devices`（`requireInternal()`，裸路径单独挂守卫）：token 只进不出；测试推送每台 10 s 一次

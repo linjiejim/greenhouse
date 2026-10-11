@@ -385,13 +385,28 @@ export function Chart({ spec }: { spec: string }) {
   const styles = useStyles(c);
   const segment = richSegment('chart', spec);
   if (segment?.type !== 'chart') return <CodeBlock lang="chart" code={spec} />;
-  const parsed = toSpec(segment.data);
+  return (
+    <ChatCard style={styles.chartWrap}>
+      <ChartView data={segment.data} />
+    </ChatCard>
+  );
+}
+
+/**
+ * A validated chart's body (title + plot), without the chat card around it —
+ * the data-taking view other surfaces reuse instead of forking a renderer
+ * (Tables dashboard widgets and app chart cards draw their aggregate through it).
+ */
+export function ChartView({ data }: { data: ChartData }) {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  const parsed = toSpec(data);
   // A radar needs ≥3 axes to read as a polygon; degenerate cases fall back to bars.
   const radar = parsed.type === 'radar' && parsed.labels.length >= 3;
   const pie = parsed.type === 'pie' || parsed.type === 'doughnut';
   const native = !radar && nativeChartSupports(parsed.type === 'radar' ? 'bar' : parsed.type);
   return (
-    <ChatCard style={styles.chartWrap}>
+    <>
       {parsed.title ? <Text style={styles.chartTitle}>{parsed.title}</Text> : null}
       {native ? (
         <SwiftChart spec={parsed} />
@@ -402,7 +417,7 @@ export function Chart({ spec }: { spec: string }) {
       ) : (
         <CartesianChart spec={parsed} />
       )}
-    </ChatCard>
+    </>
   );
 }
 

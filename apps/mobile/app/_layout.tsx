@@ -6,8 +6,14 @@
  *  - `(drawer)`            the conversation surface behind the left drawer (home;
  *                          a Bots thread is the same route with `?c=`)
  *  - `knowledge/*`, `projects/*`  pushed pages with large titles
+ *  - `tables/*`, `forms/*`, `apps/*`, `inbox`  Tables, submit-only forms, the app
+ *                          center / app pages and the notification list — pushed
+ *                          pages; `tables/{record-form,view-options,pick}` and
+ *                          `apps/form` are sheets (spec docs/specs/20261011-mobile-
+ *                          tables-apps.md §2; iOS only, each route checks its gate)
  *  - `settings`            a page-sheet modal with its own stack
- *  - `peek/*`, `sheets/*`  form sheets (detail previews, pickers, short forms)
+ *  - `peek/*`, `sheets/*`  form sheets (detail previews, pickers, short forms;
+ *                          `peek/record` = a Tables record cited in chat)
  *  - `bots/*`              Bots sheets (needs-you, cards, sign-in, management);
  *                          `bots/index` only forwards a deep link to home
  *  - `table`, `peek/diagram`, `peek/html`  full-screen viewers (modal pages);
@@ -182,7 +188,27 @@ export default function RootLayout() {
                 <Stack.Screen name="projects/members" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="projects/activity" options={sheetScreen([0.6, 1], { header: true })} />
 
+                {/* ── Tables · forms · Apps · inbox (spec docs/specs/20261011-mobile-tables-apps.md §2) ── */}
+                <Stack.Screen name="tables/index" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="tables/[baseId]" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="tables/table/[tableId]" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="tables/record/[recordId]" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="tables/dashboard/[dashboardId]" options={detailScreen(c, { grouped: true })} />
+                {/* create / edit a record: full height, every field without a drag */}
+                <Stack.Screen name="tables/record-form" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="tables/view-options" options={sheetScreen([0.6, 1], { header: true })} />
+                {/* the choice sheet of multi-select / people / related-row fields */}
+                <Stack.Screen name="tables/pick" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="forms/[formId]" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="apps/index" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="apps/[appId]" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="apps/record" options={detailScreen(c, { grouped: true })} />
+                {/* an app's write form: a form card, a new record, an action's inputs, an edit */}
+                <Stack.Screen name="apps/form" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="inbox" options={pageScreen(c, { grouped: true })} />
+
                 {/* ── detail previews (web "peek" drawers → bottom sheets) ── */}
+                <Stack.Screen name="peek/record" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="peek/doc/[slug]" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="peek/project/[id]" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="peek/source" options={sheetScreen([0.6, 1], { header: true })} />

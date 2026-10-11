@@ -100,6 +100,15 @@ export type PushTestErrorCode =
   | 'device_not_registered'
   | 'send_failed';
 
+/**
+ * A tap that opens something other than a conversation (Tables → Apps Phase 1, spec
+ * docs/specs/20261011-mobile-tables-apps.md §3): a Tables record, or a record / page of
+ * an app the member reaches it through. An older app ignores the value (it opens home).
+ */
+export type PushOpen = 'record' | 'app';
+
+const PUSH_OPENS: ReadonlySet<string> = new Set<PushOpen>(['record', 'app']);
+
 /** Every push's `data`: what the phone needs to route a tap. Never content; ≤ 1 KB. */
 export interface PushData {
   v: 1;
@@ -120,12 +129,58 @@ export interface PushData {
   run?: string;
   /** done, a Bot's background task: how it ended. */
   st?: PushTaskOutcome;
+  /**
+   * Not a conversation: a Tables record (`base`, `table`, `record?` — without a record, the
+   * table) or an app (`app`, `page?`, `record?` + the record's `table`).
+   */
+  open?: PushOpen;
+  /** open = record: the record's Base. */
+  base?: number;
+  /** open = record (required) / app: the record's table. */
+  table?: number;
+  /** The record (optional: a scheduled automation that ran without one names only the table). */
+  record?: number;
+  /** open = app: the app. */
+  app?: number;
+  /** open = app: the page to show (an app page id). */
+  page?: string;
 }
 
 /** Ids the server writes into `data` (session / request / notification / station / user ids). */
 const ID = /^[A-Za-z0-9._:-]{1,200}$/;
 
 const isId = (value: unknown): value is string => typeof value === 'string' && ID.test(value);
+
+/** Tables / app numeric ids. */
+const isRowId = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+
+/** An app page id (`APP_ID_PATTERN` in ./apps). */
+const PAGE_ID = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+
+/**
+ * The non-conversation target of a push, or null when it has none. An `open` this
+ * build does not know is ignored (the tap opens home); a known one with malformed ids
+ * makes the whole push invalid.
+ */
+function parseOpen(
+  data: Record<string, unknown>,
+): Pick<PushData, 'open' | 'base' | 'table' | 'record' | 'app' | 'page'> | null | false {
+  if (data.open === undefined || typeof data.open !== 'string' || !PUSH_OPENS.has(data.open)) return null;
+  const optionalRow = (key: string) => data[key] === undefined || isRowId(data[key]);
+  if (!optionalRow('base') || !optionalRow('table') || !optionalRow('record') || !optionalRow('app')) return false;
+  if (data.page !== undefined && (typeof data.page !== 'string' || !PAGE_ID.test(data.page))) return false;
+  if (data.open === 'record' && !(isRowId(data.base) && isRowId(data.table))) return false;
+  if (data.open === 'app' && !isRowId(data.app)) return false;
+  return {
+    open: data.open as PushOpen,
+    ...(isRowId(data.base) ? { base: data.base } : {}),
+    ...(isRowId(data.table) ? { table: data.table } : {}),
+    ...(isRowId(data.record) ? { record: data.record } : {}),
+    ...(isRowId(data.app) ? { app: data.app } : {}),
+    ...(typeof data.page === 'string' ? { page: data.page } : {}),
+  };
+}
 
 /** A received `data` object → `PushData`, or null when it is not one of ours. */
 export function parsePushData(value: unknown): PushData | null {
@@ -141,6 +196,8 @@ export function parsePushData(value: unknown): PushData | null {
   if (data.url !== undefined && (typeof data.url !== 'string' || data.url.length > 512)) return null;
   if (data.run !== undefined && !isId(data.run)) return null;
   if (data.st !== undefined && (typeof data.st !== 'string' || !TASK_OUTCOMES.has(data.st))) return null;
+  const target = parseOpen(data);
+  if (target === false) return null;
   return {
     v: 1,
     s: isId(data.s) ? data.s : null,
@@ -152,5 +209,6 @@ export function parsePushData(value: unknown): PushData | null {
     ...(typeof data.url === 'string' ? { url: data.url } : {}),
     ...(isId(data.run) ? { run: data.run } : {}),
     ...(typeof data.st === 'string' && TASK_OUTCOMES.has(data.st) ? { st: data.st as PushTaskOutcome } : {}),
+    ...(target ?? {}),
   };
 }

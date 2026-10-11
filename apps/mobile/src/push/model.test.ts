@@ -171,3 +171,68 @@ describe('tap ledger', () => {
     expect(ledger.first('a')).toBe(true); // forgotten beyond the window
   });
 });
+
+describe('Tables pushes (Tables → Apps Phase 1)', () => {
+  const mention = {
+    v: 1,
+    s: 'st-home',
+    u: 'user-1',
+    k: 'replies',
+    nid: 'ntf_t1',
+    url: '/tables/record/42?tableId=8&baseId=7',
+    open: 'record',
+    base: 7,
+    table: 8,
+    record: 42,
+  };
+  const appNotice = {
+    v: 1,
+    s: 'st-home',
+    u: 'user-1',
+    k: 'needs_you',
+    nid: 'ntf_t2',
+    url: '/apps/9?record=42&table=8',
+    open: 'app',
+    app: 9,
+    table: 8,
+    record: 42,
+  };
+  const signedIn = { activeStationId: 'st-home', knownStationIds: ['st-home'], userId: 'user-1' };
+  const routeIn = (plan: ReturnType<typeof planTap>) => (plan as Extract<typeof plan, { action: 'open' }>).route;
+
+  it('opens the record page, the table, or the app record — rebuilt from the typed ids', () => {
+    const record = planTap({ ...signedIn, data: mention });
+    expect(record).toEqual({ action: 'open', route: { kind: 'record', baseId: 7, tableId: 8, recordId: 42 } });
+    expect(hrefOf(routeIn(record))).toBe('/tables/record/42?tableId=8&baseId=7');
+    const table = planTap({ ...signedIn, data: { ...mention, record: undefined } });
+    expect(hrefOf(routeIn(table))).toBe('/tables/table/8?baseId=7');
+    const app = planTap({ ...signedIn, data: appNotice });
+    expect(app).toEqual({
+      action: 'open',
+      route: { kind: 'app', appId: 9, pageId: null, recordId: 42, tableId: 8 },
+    });
+    expect(hrefOf(routeIn(app))).toBe('/apps/9?record=42&table=8');
+    expect(hrefOf({ kind: 'app', appId: 9, pageId: 'approve', recordId: null, tableId: null })).toBe(
+      '/apps/9?page=approve',
+    );
+  });
+
+  it('never follows the url of a Tables push: a malformed target is not ours, an unknown one opens home', () => {
+    // a known target with a bad id → not a push of ours
+    expect(planTap({ ...signedIn, data: { ...mention, table: 'x' } })).toEqual({ action: 'ignore' });
+    expect(planTap({ ...signedIn, data: { ...appNotice, app: -1 } })).toEqual({ action: 'ignore' });
+    expect(planTap({ ...signedIn, data: { ...appNotice, page: '../settings' } })).toEqual({ action: 'ignore' });
+    // a target this build does not know → home, whatever the url says
+    expect(planTap({ ...signedIn, data: { ...mention, open: 'dashboard' } })).toEqual({
+      action: 'open',
+      route: { kind: 'home' },
+    });
+    // another account's push on this station → home (the phone changed hands)
+    expect(planTap({ ...signedIn, data: { ...mention, u: 'user-2' } })).toEqual({
+      action: 'open',
+      route: { kind: 'home' },
+    });
+    // a Tables push has no conversation to stay quiet for in the foreground
+    expect(shouldPresent({ data: mention, activeStationId: 'st-home', visibleThread: 'bots-dm-1' })).toBe(true);
+  });
+});

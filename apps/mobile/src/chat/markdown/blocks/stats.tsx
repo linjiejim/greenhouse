@@ -16,7 +16,7 @@ import { CodeBlock } from './code';
 export function StatsBlock({ raw }: { raw: string }) {
   const seg = useMemo(() => richSegment('stats', raw), [raw]);
   if (seg?.type !== 'stats') return <CodeBlock lang="stats" code={raw} />;
-  return <Stats data={seg.data} />;
+  return <StatsView data={seg.data} />;
 }
 
 /** Same rule as the web KPI: thousands grouped, small numbers as written. */
@@ -25,11 +25,16 @@ function formatValue(value: number | string): string {
   return Math.abs(value) >= 1000 ? value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : String(value);
 }
 
-function Stats({ data }: { data: StatsData }) {
+/**
+ * Validated stats as tiles — the data-taking view other surfaces reuse instead
+ * of forking (an app's / dashboard's KPI card passes its value as one tile;
+ * `bare` drops the block's own border when the host already frames it).
+ */
+export function StatsView({ data, bare = false }: { data: StatsData; bare?: boolean }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   return (
-    <View style={styles.card}>
+    <View style={bare ? styles.bare : styles.card}>
       {data.title ? <Text style={styles.title}>{data.title}</Text> : null}
       <View style={styles.grid}>
         {data.items.map((item, i) => (
@@ -87,6 +92,7 @@ const useStyles = makeStyles((c) => ({
     borderColor: c.separator,
     ...squircle,
   },
+  bare: { gap: space.md },
   title: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   tile: {

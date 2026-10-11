@@ -17,6 +17,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { extractMentionIds, mentionsToPlainText } from '@greenhouse/utils/mentions';
 import { botsLocale, type BotsLocale } from '../../bots/engine/copy.js';
 import { publishNotification } from '../../notifications/publish.js';
+import { tablesPushEnvelope } from '../../notifications/push/policy.js';
 import type { PlatformHandlerContext } from '../runtime.js';
 import { canRecipientRead, type RecipientReadAccess } from './access.js';
 
@@ -96,6 +97,15 @@ export async function notifyCommentMentions(ctx: MentionContext, input: NotifyMe
           commentId: input.comment.id,
         },
         dedupe_key: `tables-mention:${input.comment.id}:${userId}`,
+        // the phone: a mention is a reply (spec 20261011-mobile-tables-apps §3)
+        push: tablesPushEnvelope({
+          source: 'mention',
+          baseId: input.base.id,
+          tableId: input.tableId,
+          recordId: input.recordId,
+          appId: access.via === 'app' ? access.appId : null,
+          actorId: input.authorId,
+        }),
       });
       notified.push(userId);
     } catch (error) {

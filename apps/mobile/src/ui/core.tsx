@@ -145,6 +145,15 @@ const ICONS = {
   chevL: ['chevron.left', 'chevron_left'],
   zoomIn: ['plus.magnifyingglass', 'zoom_in'],
   zoomOut: ['minus.magnifyingglass', 'zoom_out'],
+  // ── Tables & Apps (the inbox, the app center, the app catalog's icons) ──
+  bell: ['bell', 'notifications'],
+  apps: ['square.grid.2x2', 'apps'],
+  tray: ['tray', 'inbox'],
+  cart: ['cart', 'shopping_cart'],
+  briefcase: ['briefcase', 'work'],
+  ticket: ['ticket', 'confirmation_number'],
+  star: ['star', 'star'],
+  house: ['house', 'home'],
 } as const satisfies Record<string, readonly [SFSymbol, AndroidSymbolName]>;
 
 export type IconName = keyof typeof ICONS;

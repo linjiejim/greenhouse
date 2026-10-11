@@ -26,9 +26,11 @@ export interface PushRenderInput {
   /** The device's "show preview" switch. */
   preview: boolean;
   botName: string | null;
+  /** A Tables mention: who wrote the comment (titles the push when no Bot speaks). */
+  senderName?: string | null;
   /** Title when no Bot speaks (the workspace's product name). */
   fallbackTitle: string;
-  /** needs_you: the card's subject · done: the task's title / the scheduled task's name. */
+  /** needs_you: the card's subject · done: the task's title / the scheduled task's name · a Tables notice: its title. */
   subject?: string | null;
   /** done (scheduled task): the result summary · replies: the reply. Raw chat markdown is fine. */
   excerpt?: string | null;
@@ -122,14 +124,35 @@ function clip(text: string, max: number): string {
     : text;
 }
 
+/**
+ * A Tables notification (Tables → Apps Phase 1): an automation's notice or a comment
+ * mention. By default only what kind of thing it is; with previews, the notice's title
+ * and first words, or the comment's first words.
+ */
+function tablesBody(l: BotsLocale, envelope: PushEnvelope, subject: string, excerpt: string): string {
+  if (envelope.source === 'mention') {
+    if (excerpt) return excerpt;
+    return l === 'zh' ? '在一条记录的评论里提到了你' : 'Mentioned you in a comment on a record';
+  }
+  if (subject) {
+    const sep = l === 'zh' ? '：' : ': ';
+    return excerpt && excerpt !== subject ? `${subject}${sep}${excerpt}` : subject;
+  }
+  if (excerpt) return excerpt;
+  if (envelope.open === 'app') return l === 'zh' ? '应用发来一条通知' : 'A new notice from an app';
+  return l === 'zh' ? '表格自动化发来一条通知' : 'A new notice from a Tables automation';
+}
+
 export function renderPush(input: PushRenderInput): { title: string; body: string } {
   const { locale: l, envelope, preview } = input;
-  const title = clip((input.botName ?? '').trim() || input.fallbackTitle, TITLE_MAX);
+  const title = clip((input.botName ?? '').trim() || (input.senderName ?? '').trim() || input.fallbackTitle, TITLE_MAX);
   const subject = preview ? (input.subject ?? '').replace(/\s+/g, ' ').trim() : '';
   const excerpt = preview && input.excerpt ? excerptOf(input.excerpt) : '';
   let body: string;
 
-  if (envelope.k === 'needs_you') {
+  if (envelope.open === 'record' || envelope.open === 'app') {
+    body = tablesBody(l, envelope, subject, excerpt);
+  } else if (envelope.k === 'needs_you') {
     const kind = envelope.request_kind ?? 'approval';
     body = subject ? needsYouPreview(l, kind, subject) : NEEDS_YOU[l][kind];
   } else if (envelope.k === 'replies') {
