@@ -140,6 +140,8 @@ vi.mock('../store/stations', () => ({
 vi.mock('../api/client', () => ({ setOnUnauthorized: vi.fn() }));
 vi.mock('../widget/snapshot', () => ({ useWidgetSnapshot: () => {} }));
 vi.mock('../settings/account-language', () => ({ useAccountLanguage: () => {} }));
+vi.mock('../push/use-push', () => ({ usePushBridge: () => {} }));
+vi.mock('../live-activity/use-live-activities', () => ({ useLiveActivities: () => {} }));
 vi.mock('../widget/art-host', () => ({ WidgetArtHost: () => null }));
 vi.mock('../ui/dialogs', () => ({ DialogHost: () => null }));
 vi.mock('../ui/menu', () => ({ MenuHost: () => null }));
