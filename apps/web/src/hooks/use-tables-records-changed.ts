@@ -4,8 +4,10 @@
  * The API publishes `tables:records_changed {baseId, tableId, recordIds}` after
  * every committed record write — people, forms, imports and the asynchronous
  * automation worker alike — to the online users who can open that Base. Views,
- * dashboards and the record drawer subscribe here and refetch; events arrive
- * in bursts (a batch, an automation chain), so they are coalesced.
+ * dashboards and the record drawer subscribe here and refetch. Events arrive
+ * in bursts (an import commits a chunk at a time, a batch, an automation
+ * chain), so they are coalesced (`createRefetchCoalescer`): one refetch once
+ * the burst goes quiet or at most every `maxWaitMs`, never two at once.
  */
 
 import { useEffect, useRef } from 'react';
@@ -28,16 +30,79 @@ export function matchesRecordsChanged(event: TablesRecordsChangedEvent, filter: 
   return true;
 }
 
+export interface RefetchCoalescer<T> {
+  push(event: T): void;
+  dispose(): void;
+}
+
 /**
- * Calls `onChange` (at most once per `delayMs`) after matching events.
+ * Debounce with a ceiling, single-flight with one trailing run. A run starts
+ * `delayMs` after the last event, or `maxWaitMs` after the first one still
+ * waiting, whichever is sooner. While a run is in flight (`run` returned a
+ * promise) nothing else starts; events that arrive meanwhile are kept and run
+ * once more as soon as it settles. So a burst of any length costs one refetch
+ * per `maxWaitMs` at most, and refetches never overlap.
+ */
+export function createRefetchCoalescer<T>(
+  run: (events: T[]) => void | Promise<unknown>,
+  { delayMs, maxWaitMs }: { delayMs: number; maxWaitMs: number },
+): RefetchCoalescer<T> {
+  let pending: T[] = [];
+  let firstPendingAt = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let inFlight = false;
+  let disposed = false;
+
+  const fire = () => {
+    timer = null;
+    if (inFlight || disposed || pending.length === 0) return;
+    const batch = pending;
+    pending = [];
+    inFlight = true;
+    let result: void | Promise<unknown>;
+    try {
+      result = run(batch);
+    } catch {
+      result = undefined;
+    }
+    void Promise.resolve(result)
+      .catch(() => undefined)
+      .finally(() => {
+        inFlight = false;
+        // The trailing run: whatever arrived while this one was in flight.
+        if (!disposed && pending.length > 0 && !timer) fire();
+      });
+  };
+
+  return {
+    push(event) {
+      if (disposed) return;
+      if (pending.length === 0) firstPendingAt = Date.now();
+      pending.push(event);
+      if (timer) clearTimeout(timer);
+      const ceiling = firstPendingAt + maxWaitMs - Date.now();
+      timer = setTimeout(fire, Math.max(0, Math.min(delayMs, ceiling)));
+    },
+    dispose() {
+      disposed = true;
+      pending = [];
+      if (timer) clearTimeout(timer);
+      timer = null;
+    },
+  };
+}
+
+/**
+ * Calls `onChange` with the coalesced events (see `createRefetchCoalescer`;
+ * return the refetch's promise so a burst never runs two at once).
  * Pass `enabled: false` to pause, e.g. while a drag is in progress.
  */
 export function useTablesRecordsChanged(
   filter: TablesRecordsChangedFilter,
-  onChange: (events: TablesRecordsChangedEvent[]) => void,
-  options: { enabled?: boolean; delayMs?: number } = {},
+  onChange: (events: TablesRecordsChangedEvent[]) => void | Promise<unknown>,
+  options: { enabled?: boolean; delayMs?: number; maxWaitMs?: number } = {},
 ): void {
-  const { enabled = true, delayMs = 400 } = options;
+  const { enabled = true, delayMs = 1000, maxWaitMs = 3000 } = options;
   const callback = useRef(onChange);
   callback.current = onChange;
   const { baseId, tableId } = filter;
@@ -46,23 +111,18 @@ export function useTablesRecordsChanged(
   useEffect(() => {
     if (!enabled) return;
     const recordIds = recordKey ? recordKey.split(',').map(Number) : undefined;
-    let pending: TablesRecordsChangedEvent[] = [];
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    const coalescer = createRefetchCoalescer<TablesRecordsChangedEvent>((batch) => callback.current(batch), {
+      delayMs,
+      maxWaitMs,
+    });
     const unsubscribe = wsClient.onEvent((event) => {
       if (event.type !== 'tables:records_changed') return;
       if (!matchesRecordsChanged(event, { baseId, tableId, recordIds })) return;
-      pending.push(event);
-      if (timer) return;
-      timer = setTimeout(() => {
-        timer = null;
-        const batch = pending;
-        pending = [];
-        callback.current(batch);
-      }, delayMs);
+      coalescer.push(event);
     });
     return () => {
       unsubscribe();
-      if (timer) clearTimeout(timer);
+      coalescer.dispose();
     };
-  }, [enabled, delayMs, baseId, tableId, recordKey]);
+  }, [enabled, delayMs, maxWaitMs, baseId, tableId, recordKey]);
 }

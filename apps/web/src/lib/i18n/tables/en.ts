@@ -10,6 +10,7 @@ import { tablesAccessEn } from './access.en';
 import { tablesActivityEn } from './activity.en';
 import { tablesAutomationsEn } from './automations.en';
 import { tablesDashboardsEn } from './dashboards.en';
+import { tablesFieldsEn } from './fields.en';
 import { tablesFormsEn } from './forms.en';
 import { tablesFormulaEn } from './formula.en';
 import { tablesImportsEn } from './imports.en';
@@ -21,6 +22,7 @@ export const TABLES_SLICE_MODULES_EN = {
   activity: tablesActivityEn,
   automations: tablesAutomationsEn,
   dashboards: tablesDashboardsEn,
+  fields: tablesFieldsEn,
   forms: tablesFormsEn,
   formula: tablesFormulaEn,
   imports: tablesImportsEn,
@@ -33,6 +35,7 @@ export const TABLES_SLICES_EN = {
   ...tablesActivityEn,
   ...tablesAutomationsEn,
   ...tablesDashboardsEn,
+  ...tablesFieldsEn,
   ...tablesFormsEn,
   ...tablesFormulaEn,
   ...tablesImportsEn,

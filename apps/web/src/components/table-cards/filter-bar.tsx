@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { ME_TOKEN } from '@greenhouse/types/date-tokens';
-import { TABLE_DATE_RANGE_PRESETS } from '@greenhouse/types/table-cards';
+import { dateRangeBounds, TABLE_DATE_RANGE_PRESETS } from '@greenhouse/types/table-cards';
 import type {
   TableDateRangePreset,
   TableFilterControl,
@@ -24,6 +24,14 @@ import { Button, DateRangeInput, SearchInput, Select } from '../ui';
 import { fieldConfig } from '../tables/field-types';
 
 export type DashboardFilterValues = Record<string, TableFilterValue | null>;
+
+function viewerTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
 
 /** The value a control currently has: the viewer's choice, else its default. */
 export function effectiveFilterValue(
@@ -103,7 +111,10 @@ function DateRangeControl({
           const next = event.target.value;
           setCustomOpen(next === 'custom');
           if (next === '') onChange(null);
-          else if (next !== 'custom') onChange({ kind: 'date_range', preset: next as TableDateRangePreset });
+          // From a preset, Custom starts at the preset's days (otherwise the preset would still be the value).
+          else if (next === 'custom' && range?.preset) {
+            onChange({ kind: 'date_range', ...dateRangeBounds(range, viewerTimeZone()) });
+          } else if (next !== 'custom') onChange({ kind: 'date_range', preset: next as TableDateRangePreset });
         }}
       >
         <option value="">{t('tables.dashboard.filters.allTime')}</option>

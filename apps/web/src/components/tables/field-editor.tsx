@@ -34,6 +34,8 @@ export interface FieldEditorProps {
    * Takes precedence over `baseId`.
    */
   uploadAttachment?: AttachmentUpload;
+  /** Attachment fields: an upload started / finished. Hosts disable their submit while one is in flight. */
+  onBusyChange?: (busy: boolean) => void;
   density?: 'form' | 'inline';
   /** Shown as the empty choice of single-value pickers. Default `—`. */
   emptyLabel?: string;
@@ -75,6 +77,7 @@ export function FieldEditor({
   users,
   baseId,
   uploadAttachment,
+  onBusyChange,
   density = 'form',
   emptyLabel = '—',
   disabled = false,
@@ -222,11 +225,19 @@ export function FieldEditor({
           onChange={(next) => onChange(next)}
           upload={uploadAttachment}
           disabled={disabled}
+          onBusyChange={onBusyChange}
         />
       );
     }
     if (baseId === undefined) return null;
-    return <AttachmentPicker baseId={baseId} value={attachments} onChange={(next) => onChange(next)} />;
+    return (
+      <AttachmentPicker
+        baseId={baseId}
+        value={attachments}
+        onChange={(next) => onChange(next)}
+        onBusyChange={onBusyChange}
+      />
+    );
   }
 
   if (field.type === 'long_text' && !inline) {

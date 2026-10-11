@@ -20,6 +20,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { TABLE_CARD_KINDS, type TableCardKind } from '@greenhouse/types/table-cards';
 import type {
   SchemaPlanAccessChange,
   SchemaPlanAccessLevel,
@@ -34,6 +35,9 @@ import { Columns3, Check, X, Minus, ShieldAlert } from '../../lib/icons';
 import { Button, toast } from '../ui';
 import { useT } from '../../lib/i18n';
 import { applyTableSchemaPlan } from '../../lib/api/tables';
+import { TRIGGER_LABEL_KEYS } from '../../pages/tables/automations/rule-draft';
+import { TABLE_VIEW_TYPE_LABEL_KEYS } from '../../pages/tables/views/view-type-meta';
+import { FIELD_TYPE_LABEL_KEYS } from './field-types';
 import { useArtifactReceipt } from '../../hooks/use-artifact-receipt';
 import { ArtifactCard, ArtifactCardActions } from '../chat/artifact-card';
 
@@ -112,8 +116,12 @@ const OP_GROUP = {
   'member.set': 'access',
 } as const satisfies Record<OperationKind, OperationGroup>;
 
-/** What the operation is about, in the user's words rather than ids where possible. */
-function operationTarget(operation: SchemaPlanOperation): string {
+/**
+ * What the operation is about, in the user's words: the name it sets, else the
+ * existing object's current name (`targetNames`, from the server's draft) —
+ * an id only when neither is known.
+ */
+function operationTarget(operation: SchemaPlanOperation, current: string | undefined): string {
   switch (operation.op) {
     case 'base.create':
     case 'table.create':
@@ -127,43 +135,48 @@ function operationTarget(operation: SchemaPlanOperation): string {
     case 'widget.create':
       return operation.title;
     case 'base.update':
-      return operation.name ?? `#${operation.baseId ?? operation.baseRef}`;
+      return operation.name ?? current ?? `#${operation.baseId ?? operation.baseRef}`;
     case 'table.update':
-      return operation.name ?? `#${operation.tableId}`;
+      return operation.name ?? current ?? `#${operation.tableId}`;
     case 'field.update':
-      return operation.name ?? `#${operation.fieldId}`;
+      return operation.name ?? current ?? `#${operation.fieldId}`;
     case 'field.archive':
-      return `#${operation.fieldId}`;
+      return current ?? `#${operation.fieldId}`;
     case 'view.update':
-      return operation.name ?? `#${operation.viewId}`;
+      return operation.name ?? current ?? `#${operation.viewId}`;
     case 'form.update':
-      return operation.name ?? `#${operation.formId}`;
+      return operation.name ?? current ?? `#${operation.formId}`;
     case 'automation.update':
-      return operation.name ?? `#${operation.automationId}`;
+      return operation.name ?? current ?? `#${operation.automationId}`;
     case 'dashboard.update':
-      return operation.name ?? `#${operation.dashboardId}`;
+      return operation.name ?? current ?? `#${operation.dashboardId}`;
     case 'widget.update':
-      return operation.title ?? `#${operation.widgetId}`;
+      return operation.title ?? current ?? `#${operation.widgetId}`;
     case 'widget.delete':
-      return `#${operation.widgetId}`;
+      return current ?? `#${operation.widgetId}`;
     case 'role.update':
-      return operation.name ?? `#${operation.roleId}`;
+      return operation.name ?? current ?? `#${operation.roleId}`;
     case 'member.set':
-      return operation.principal === 'group' ? `#${operation.groupId}` : (operation.userId ?? '');
+      return current ?? (operation.principal === 'group' ? `#${operation.groupId}` : (operation.userId ?? ''));
   }
 }
 
-/** The one technical detail worth a glance (a type, a trigger), shown faint after the target. */
+const isCardKind = (kind: unknown): kind is TableCardKind =>
+  typeof kind === 'string' && (TABLE_CARD_KINDS as readonly string[]).includes(kind);
+
+/** The one technical detail worth a glance (a type, a trigger), shown faint after the target — in words. */
 function operationDetail(operation: SchemaPlanOperation, t: T): string | undefined {
   switch (operation.op) {
-    case 'field.create':
-      return `${operation.type}${operation.required ? ` · ${t('tablesSchemaPlan.required')}` : ''}`;
+    case 'field.create': {
+      const key = FIELD_TYPE_LABEL_KEYS[operation.type];
+      return `${key ? t(key) : operation.type}${operation.required ? ` · ${t('tablesSchemaPlan.required')}` : ''}`;
+    }
     case 'view.create':
-      return operation.type ?? 'grid';
+      return t(TABLE_VIEW_TYPE_LABEL_KEYS[operation.type ?? 'grid']);
     case 'automation.create':
-      return operation.trigger;
+      return t(TRIGGER_LABEL_KEYS[operation.trigger]);
     case 'widget.create':
-      return typeof operation.card.kind === 'string' ? operation.card.kind : undefined;
+      return isCardKind(operation.card.kind) ? t(`tables.dashboard.editor.kind.${operation.card.kind}`) : undefined;
     default:
       return undefined;
   }
@@ -455,7 +468,9 @@ export function SchemaPlanCard({
                     )}
                     <div className="min-w-0 flex-1">
                       <span className="text-fg-muted">{t(OP_LABEL_KEYS[operation.op])}</span>{' '}
-                      <span className="font-medium text-fg">{operationTarget(operation)}</span>
+                      <span className="font-medium text-fg">
+                        {operationTarget(operation, artifact.targetNames?.[index])}
+                      </span>
                       {detail && (
                         <span className="text-fg-faint">
                           {' · '}

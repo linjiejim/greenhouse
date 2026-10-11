@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import type { TableFieldConfig } from '@greenhouse/types/tables';
 import { TagList } from '../ui';
 import type { TableField, TableRecord } from '../../lib/api/tables';
-import { useT } from '../../lib/i18n';
+import { useI18n } from '../../lib/i18n';
 import { formatDate, formatDay } from '../../lib/utils';
 import { fieldConfig } from './field-types';
 
@@ -32,6 +32,19 @@ function scalarText(value: unknown, yes: string, no: string): string {
   return String(value);
 }
 
+/**
+ * A stored number as people read it: grouped the way the UI language groups
+ * (760,000), with every decimal it was stored with — never rounded for show.
+ * Editing keeps the raw value (`FieldEditor`).
+ */
+export function formatFieldNumber(value: number, locale: string): string {
+  const text = String(value);
+  // Infinity / NaN / exponent notation (1e21) stay as they are.
+  if (!Number.isFinite(value) || /e/i.test(text)) return text;
+  const decimals = Math.min(text.split('.')[1]?.length ?? 0, 20);
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: decimals }).format(value);
+}
+
 interface FieldValueProps {
   field: Pick<TableField, 'type' | 'config'>;
   value: unknown;
@@ -39,7 +52,7 @@ interface FieldValueProps {
 }
 
 export function FieldValue({ field, value, usersById }: FieldValueProps): ReactNode {
-  const t = useT();
+  const { t, locale } = useI18n();
   if (isEmpty(value)) return <span className="text-fg-faint">—</span>;
   const yes = t('common.yes');
   const no = t('common.no');
@@ -47,6 +60,8 @@ export function FieldValue({ field, value, usersById }: FieldValueProps): ReactN
   const type = field.type === 'formula' ? (config.formula?.resultType ?? 'text') : field.type;
 
   if (type === 'boolean') return value === true ? yes : no;
+  // Numbers, number formulas and rollup results (count / sum / avg / min / max).
+  if ((type === 'number' || type === 'rollup') && typeof value === 'number') return formatFieldNumber(value, locale);
   if (type === 'date' && typeof value === 'string') return formatDay(value);
   if (type === 'datetime' && typeof value === 'string') return formatDate(value);
   if (type === 'single_select' && typeof value === 'string') {

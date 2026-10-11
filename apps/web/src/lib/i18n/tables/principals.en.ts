@@ -14,6 +14,8 @@ export const tablesPrincipalsEn = {
     noGroups: 'You are not in any group yet',
     memberCount: '{count} members',
     managedBy: 'Members managed by {name}',
+    managedByYou: 'Members managed by you',
+    managedByUnknown: 'Members managed by an unknown member',
     selectedCount: '{count} selected',
     remove: 'Remove {name}',
     loadFailed: 'Unable to load people and groups',

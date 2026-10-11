@@ -16,7 +16,7 @@ import type { TableFilterGroup, TableGroupBy, TableQuery } from '@greenhouse/typ
 import { queryTableRecords, type TableRecord } from '../../lib/api/tables';
 import { usePersistedPageSize } from '../../hooks/use-persisted-page-size';
 import { useT } from '../../lib/i18n';
-import { viewerTimeZone } from './views/view-query';
+import { combinedFilters, viewerTimeZone } from './views/view-query';
 
 export const DEFAULT_RECORD_SORT: TableQuery['sort'] = [{ systemField: 'updated_at', direction: 'desc' }];
 
@@ -24,6 +24,8 @@ export interface RecordQueryInput {
   search: string;
   sort: TableQuery['sort'];
   where: TableFilterGroup | undefined;
+  /** A saved view's extra filter groups the flat `where` cannot hold (`foldSavedFilters`). */
+  filters?: TableFilterGroup[];
 }
 
 /** The query parts a view type adds on top of search / sort / filter. */
@@ -48,6 +50,7 @@ export function useRecordQuery(
     search: '',
     sort: DEFAULT_RECORD_SORT,
     where: undefined,
+    filters: undefined,
   });
   const [page, setPage] = useState(0);
   const [pageSize, setStoredPageSize] = usePersistedPageSize(`tables.${tableId}`, 20);
@@ -74,13 +77,14 @@ export function useRecordQuery(
     setLoading(true);
     onError('');
     try {
+      const filters = combinedFilters(query.filters, current.filters);
       const request: TableQuery = {
         where: query.where,
         search: query.search || undefined,
         sort: query.sort,
         limit: current.limit ?? pageSize,
         ...(current.groupBy ? { groupBy: current.groupBy } : {}),
-        ...(current.filters?.length ? { filters: current.filters } : {}),
+        ...(filters ? { filters } : {}),
       };
       // Same zone as the view's group counts, so `$today` and day filters agree with them.
       const timezone = viewerTimeZone();

@@ -53,6 +53,9 @@ export const tablesImportsZh: DeepRecord<typeof tablesImportsEn> = {
     rowLabel: '第 {row} 行',
     firstFailures: '有问题的 {count} 行中的前 {shown} 行',
     start: '导入 {count} 行',
+    resume: '继续导入',
+    resumeHint:
+      '导入中断前已处理 {total} 行中的 {done} 行。继续导入会接着导入剩下的行；重新选择文件会把已导入的行再导入一遍。',
     importing: '正在导入… {done} / {total} 行',
     importingHint: '导入完成前请保持此窗口打开。',
     importFailed: '导入已停止：{error}',

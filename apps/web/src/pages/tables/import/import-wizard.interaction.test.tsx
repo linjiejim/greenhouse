@@ -260,6 +260,34 @@ describe('TablesImportWizard — mapping', () => {
     });
   });
 
+  it('after an import stopped part-way, only offers to resume it', async () => {
+    api.commitTableImportAll.mockImplementationOnce(async (_tableId, importId, _input, onProgress) => {
+      onProgress({ importId, status: 'committing', totalRows: 1000, processedRows: 300 });
+      throw new Error('Network error');
+    });
+    await mount();
+    await chooseFile();
+    await act(async () => q<HTMLButtonElement>('tables-import-check-button').click());
+    await flush();
+    const backLabel = () => [...document.querySelectorAll('button')].find((button) => button.textContent === 'Back');
+    expect(backLabel()).toBeDefined();
+    await act(async () => q<HTMLButtonElement>('tables-import-start').click());
+    await flush();
+
+    // Back to the check step, but the mapping (and a new file) would re-import the 300 rows.
+    expect(document.body.textContent).toContain('Network error');
+    expect(backLabel()).toBeUndefined();
+    expect(q('tables-import-resume-hint').textContent).toContain('300 of 1000 rows were processed');
+    expect(q<HTMLButtonElement>('tables-import-start').textContent).toBe('Resume import');
+
+    await act(async () => q<HTMLButtonElement>('tables-import-start').click());
+    await flush();
+    expect(api.commitTableImportAll).toHaveBeenCalledTimes(2);
+    expect(api.commitTableImportAll).toHaveBeenLastCalledWith(7, 'imp_1', expect.any(Object), expect.any(Function));
+    expect(api.validateTableImport).toHaveBeenCalledTimes(1);
+    expect(q('tables-import-result').textContent).toContain('1 records created');
+  });
+
   it('shows a server refusal instead of a mapping', async () => {
     api.uploadTableImport.mockRejectedValueOnce(new Error('The file has more than 10,000 rows'));
     await mount();

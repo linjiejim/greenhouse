@@ -193,7 +193,8 @@ export async function loadReleaseNotes(): Promise<void> {
   const load = async (filename: string): Promise<unknown | null> => {
     try {
       const response = await fetch(publicAssetUrl(filename), { cache: 'no-store' });
-      return response.ok ? response.json() : null;
+      // 204: this deployment publishes no release notes (only release-pipeline bundles carry them).
+      return response.ok && response.status !== 204 ? response.json() : null;
     } catch {
       return null;
     }
@@ -207,7 +208,7 @@ export async function loadReleaseNotes(): Promise<void> {
   const store = useDesktopUpdateStore.getState();
   if (current) store.setCurrentReleaseNotes(current);
   if (history.length > 0) store.setReleaseNotesHistory(history);
-  // Older bundles have neither file. Updates still work without release notes.
+  // Older bundles and dev / plain builds have neither file. Updates still work without release notes.
 }
 
 /** Begin background update checking for this window. Safe to call more than once. */

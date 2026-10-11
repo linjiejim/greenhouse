@@ -23,6 +23,7 @@ export const tablesDashboardsEn = {
     saveWidget: 'Save widget',
     deleteTitle: 'Delete {name}?',
     deleteDescription: 'This removes the widget but does not modify source records.',
+    deleteFailed: 'Unable to delete this widget',
     editWidgetLabel: 'Edit {name}',
     deleteWidgetLabel: 'Delete {name}',
     allRecords: 'All records',
@@ -85,6 +86,9 @@ export const tablesDashboardsEn = {
       incomplete: 'Finish or remove the incomplete condition.',
       needsGroup: 'A pivot table needs Group by.',
       needsValueField: 'Pick a number field for this calculation.',
+      limitRange: '“Show at most” must be a whole number from 1 to {max}.',
+      rowsRange: '“Rows” must be a whole number from 1 to {max}.',
+      invalid: 'This widget cannot be saved. Check its settings and try again.',
       pivotHint: 'Rows come from Group by, columns from Split by.',
       kind: {
         kpi: 'KPI',

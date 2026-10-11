@@ -23,6 +23,7 @@ import {
   MoreHorizontal,
   Pin,
   PinOff,
+  Search,
 } from '../../../lib/icons';
 import {
   STICKY_LEFT_CELL,
@@ -74,6 +75,7 @@ export function GridViewBody({
   schemaFields,
   records,
   query,
+  loading,
   users,
   usersById,
   sort,
@@ -181,6 +183,9 @@ export function GridViewBody({
     return <EmptyState icon={LayoutGrid} title={t('tables.noFields')} description={t('tables.noFieldsDescription')} />;
   }
 
+  const hasColumnMenu = canBuild || canChangeView;
+  const filtered = Boolean(query.where?.clauses.length || query.search || query.filters?.length);
+
   const sortIcon = (active: boolean, direction: 'asc' | 'desc' | undefined) =>
     active ? direction === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} /> : null;
   const columnCount = fields.length + systemFields.length + 2;
@@ -275,7 +280,8 @@ export function GridViewBody({
                   className={`min-w-40 border-b border-r border-edge px-3 py-2 text-xs font-medium text-fg-secondary ${
                     frozen ? 'sticky z-20 bg-surface-sunken' : ''
                   }`}
-                  onContextMenu={(event) => openMenu(event, columnMenu(field, columnIndex))}
+                  // A viewer on a shared view has no column options: no menu, no button that does nothing.
+                  onContextMenu={hasColumnMenu ? (event) => openMenu(event, columnMenu(field, columnIndex)) : undefined}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <button
@@ -294,15 +300,17 @@ export function GridViewBody({
                       here would paint this button of a scrolled-under
                       column on top of the frozen ones.
                     */}
-                    <IconButton
-                      label={t('tables.columnOptions', { name: field.name })}
-                      tooltip="top"
-                      tooltipMode="portal"
-                      onClick={(event) => openMenu(event, columnMenu(field, columnIndex))}
-                      className="h-6 w-6 sm:h-6 sm:w-6"
-                    >
-                      <MoreHorizontal size={12} />
-                    </IconButton>
+                    {hasColumnMenu && (
+                      <IconButton
+                        label={t('tables.columnOptions', { name: field.name })}
+                        tooltip="top"
+                        tooltipMode="portal"
+                        onClick={(event) => openMenu(event, columnMenu(field, columnIndex))}
+                        className="h-6 w-6 sm:h-6 sm:w-6"
+                      >
+                        <MoreHorizontal size={12} />
+                      </IconButton>
+                    )}
                   </div>
                 </th>
               );
@@ -343,10 +351,10 @@ export function GridViewBody({
                   <React.Fragment key={`group-${run.key}-${run.rows[0]!.rowIndex}`}>
                     <tr data-testid={`group-header-${run.key || 'none'}`} className="bg-surface-muted">
                       <td colSpan={columnCount} className="border-b border-edge px-3 py-1.5">
+                        {/* Named by its visible label and count; aria-expanded says whether it is open. */}
                         <button
                           type="button"
                           aria-expanded={!isCollapsed}
-                          aria-label={t(isCollapsed ? 'tables.views.expandGroup' : 'tables.views.collapseGroup')}
                           onClick={() => toggleGroup(run.key)}
                           className="sticky left-3 flex max-w-full items-center gap-2 text-xs font-medium text-fg-secondary hover:text-fg"
                         >
@@ -365,6 +373,14 @@ export function GridViewBody({
             : records.map((record, rowIndex) => renderRow(record, rowIndex))}
         </tbody>
       </table>
+      {records.length === 0 && !loading && (
+        <EmptyState
+          icon={filtered ? Search : LayoutGrid}
+          tone="neutral"
+          title={filtered ? t('tables.views.noMatchTitle') : t('tables.views.emptyTableTitle')}
+          description={filtered ? t('tables.views.noMatchDescription') : t('tables.views.emptyTableDescription')}
+        />
+      )}
       {menu && <ContextMenu {...menu} onClose={closeMenu} />}
     </>
   );

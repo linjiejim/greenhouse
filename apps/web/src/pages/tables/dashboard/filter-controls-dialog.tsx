@@ -130,7 +130,6 @@ export function FilterControlsDialog({
     <Dialog open={open} onClose={onClose} title={t('tables.dashboard.filters.editTitle')} size="xl">
       <div className="space-y-4">
         <p className="text-xs text-fg-muted">{t('tables.dashboard.filters.intro')}</p>
-        <FormError>{error}</FormError>
         {controls.length === 0 && <p className="text-xs text-fg-faint">{t('tables.dashboard.filters.empty')}</p>}
         {controls.map((control, index) => (
           <section key={control.id} className="space-y-3 rounded-lg border border-edge p-3">
@@ -253,6 +252,8 @@ export function FilterControlsDialog({
             {t('tables.dashboard.filters.add')}
           </Button>
         )}
+        {/* Next to Save: the dialog scrolls, and an error at the top would be out of view. */}
+        <FormError>{error}</FormError>
         <FormActions>
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}

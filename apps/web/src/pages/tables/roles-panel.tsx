@@ -95,7 +95,9 @@ export function RolesPanel({
     const incomplete = incompleteRowScope(draft.rules, fieldsByTable);
     if (incomplete) return setProblem(incompleteMessage(incomplete, list.facts));
     const normalized = normalizeAccessRules(draft.rules, list.facts);
-    if (!normalized.ok) return setProblem(normalized.error);
+    // The editor pre-checks every case it can produce; the contract's own text (paths like
+    // `tables[0].rows`) is for the API, not for the owner.
+    if (!normalized.ok) return setProblem(t('tables.access.invalidRules'));
     setProblem('');
     void run(async () => {
       const input = { name: draft.name, description: draft.description || null, rules: normalized.rules };

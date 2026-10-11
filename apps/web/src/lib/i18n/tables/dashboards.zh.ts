@@ -26,6 +26,7 @@ export const tablesDashboardsZh: DeepRecord<typeof tablesDashboardsEn> = {
     saveWidget: '保存组件',
     deleteTitle: '删除 {name}？',
     deleteDescription: '这只会移除组件，不会修改源记录。',
+    deleteFailed: '无法删除这个组件',
     editWidgetLabel: '编辑 {name}',
     deleteWidgetLabel: '删除 {name}',
     allRecords: '全部记录',
@@ -88,6 +89,9 @@ export const tablesDashboardsZh: DeepRecord<typeof tablesDashboardsEn> = {
       incomplete: '请补全或删除未填写完的条件。',
       needsGroup: '透视表需要设置分组依据。',
       needsValueField: '请为这种计算选择一个数字字段。',
+      limitRange: '「最多显示」必须是 1 到 {max} 之间的整数。',
+      rowsRange: '「行数」必须是 1 到 {max} 之间的整数。',
+      invalid: '这个组件无法保存，请检查设置后重试。',
       pivotHint: '行来自「分组依据」，列来自「再按此拆分」。',
       kind: {
         kpi: 'KPI',

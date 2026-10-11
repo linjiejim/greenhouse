@@ -77,7 +77,7 @@ describe('GalleryViewBody', () => {
     expect(cover.className).toContain('object-contain');
     expect(acme.textContent).toContain('Acme');
     expect(acme.textContent).toContain('Amount');
-    expect(acme.textContent).toContain('1200');
+    expect(acme.textContent).toContain('1,200');
 
     // No title value: the record still has a name; no files: the slot keeps the grid aligned.
     const untitled = mounted.container.querySelector('[data-testid="gallery-card-6"]')!;

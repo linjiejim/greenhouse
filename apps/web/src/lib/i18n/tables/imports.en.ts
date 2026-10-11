@@ -50,6 +50,9 @@ export const tablesImportsEn = {
     rowLabel: 'Row {row}',
     firstFailures: 'The first {shown} of {count} rows with problems',
     start: 'Import {count} rows',
+    resume: 'Resume import',
+    resumeHint:
+      '{done} of {total} rows were processed before the import stopped. Resume to import the rest; choosing the file again would import those rows twice.',
     importing: 'Importing… {done} of {total} rows',
     importingHint: 'Keep this window open until the import finishes.',
     importFailed: 'The import stopped: {error}',

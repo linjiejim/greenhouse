@@ -17,8 +17,8 @@ import {
   type TableFormulaResultType,
   type TableRollupAggregation,
 } from '@greenhouse/types/tables';
-import { Button, Checkbox, Dialog, Input, Select, Textarea } from '../../components/ui';
-import { FormField } from '../../components/form';
+import { Button, Checkbox, Dialog, Input, Select } from '../../components/ui';
+import { FormField, FormGroup } from '../../components/form';
 import { CREATABLE_FIELD_TYPES, FIELD_TYPE_LABEL_KEYS, fieldConfig } from '../../components/tables/field-types';
 import { Archive } from '../../lib/icons';
 import {
@@ -30,26 +30,8 @@ import {
 } from '../../lib/api/tables';
 import { useT } from '../../lib/i18n';
 import { FormulaEditor, useFormulaErrorText } from './formula-editor';
-
-function optionConfig(text: string, current: TableFieldConfig = {}): TableFieldConfig {
-  const labels = text
-    .split('\n')
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  return {
-    options: labels.map((label, index) => ({
-      id:
-        current.options?.[index]?.id ??
-        `${
-          label
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '') || 'option'
-        }-${index + 1}`,
-      label,
-    })),
-  };
-}
+import { optionRows, optionsFromRows, type OptionRow } from './option-list';
+import { OptionListEditor } from './option-list-editor';
 
 const LOOKUP_TARGETS: readonly string[] = TABLE_LOOKUP_TARGET_TYPES;
 
@@ -78,7 +60,7 @@ export function FieldSettingsDialog({
   const [name, setName] = useState('');
   const [type, setType] = useState<TableFieldType>('text');
   const [required, setRequired] = useState(false);
-  const [options, setOptions] = useState('');
+  const [options, setOptions] = useState<OptionRow[]>([]);
   const [relationTargetTableId, setRelationTargetTableId] = useState<number | ''>('');
   const [relationMultiple, setRelationMultiple] = useState(false);
   const [formulaText, setFormulaText] = useState('');
@@ -112,7 +94,7 @@ export function FieldSettingsDialog({
     setName(field === 'new' ? '' : field.name);
     setType(field === 'new' ? 'text' : field.type);
     setRequired(field === 'new' ? false : field.required);
-    setOptions((config.options ?? []).map((option) => option.label).join('\n'));
+    setOptions(optionRows(config.options));
     setRelationTargetTableId(config.relation?.targetTableId ?? '');
     setRelationMultiple(config.relation?.multiple === true);
     const storedText = config.formula ? formatTableFormula(config.formula.expression, fields) : '';
@@ -175,7 +157,8 @@ export function FieldSettingsDialog({
 
   const buildConfig = (): TableFieldConfig | undefined => {
     if (type === 'single_select' || type === 'multi_select') {
-      return optionConfig(options, field && field !== 'new' ? fieldConfig(field) : {});
+      // Rows carry their stored option: ids follow options, never line positions.
+      return { options: optionsFromRows(options, field && field !== 'new' ? fieldConfig(field).options : []) };
     }
     if (type === 'relation' && relationTargetTableId !== '') {
       return { relation: { targetTableId: relationTargetTableId, multiple: relationMultiple } };
@@ -289,9 +272,9 @@ export function FieldSettingsDialog({
           onChange={(event) => setRequired(event.target.checked)}
         />
         {(type === 'single_select' || type === 'multi_select') && (
-          <FormField label={t('tables.optionsPerLine')}>
-            <Textarea rows={6} value={options} onChange={(event) => setOptions(event.target.value)} />
-          </FormField>
+          <FormGroup label={t('tables.fieldOptions.title')} help={t('tables.fieldOptions.hint')}>
+            <OptionListEditor rows={options} onChange={setOptions} />
+          </FormGroup>
         )}
         {type === 'relation' && (
           <div className="space-y-3 rounded-md border border-edge bg-surface-sunken p-3">

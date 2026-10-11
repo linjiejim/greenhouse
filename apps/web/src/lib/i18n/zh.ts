@@ -3269,7 +3269,6 @@ const zh: Messages = {
     field: '字段',
     type: '类型',
     required: '必填',
-    optionsPerLine: '选项 · 每行一个',
     relatedTable: '关联表',
     chooseTable: '选择表',
     allowMultipleRelations: '允许关联多条记录',

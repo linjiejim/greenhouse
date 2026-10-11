@@ -33,7 +33,7 @@ import {
   type TableSchema,
   type TableUserOption,
 } from '../../lib/api/tables';
-import { ConfirmDialog, Pagination, Spinner } from '../../components/ui';
+import { ConfirmDialog, Pagination, Spinner, toast } from '../../components/ui';
 import { useTablesRecordsChanged } from '../../hooks/use-tables-records-changed';
 import { safeParse } from '../../lib/utils';
 import { useAuthStore } from '../../stores';
@@ -51,7 +51,7 @@ import { CreateViewDialog, type CreateViewInput } from './views/create-view-dial
 import { FieldsPanel } from './views/fields-panel';
 import { ViewSettingsDialog } from './views/view-settings-dialog';
 import { ViewSwitcher } from './views/view-switcher';
-import { monthOf, viewQueryShape, weekStartFor } from './views/view-query';
+import { combinedFilters, foldSavedFilters, monthOf, viewQueryShape, weekStartFor } from './views/view-query';
 import { orderedViewFields } from './view-fields';
 import { DEFAULT_RECORD_SORT, useRecordQuery } from './use-record-query';
 import { tableCapabilities } from './capabilities';
@@ -98,7 +98,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
   });
 
   const query = useRecordQuery(table.id, setError, shape);
-  const { records, search, sort, where, setQuery } = query;
+  const { records, search, sort, where, filters: savedFilters, setQuery } = query;
   const [detailRecord, setDetailRecord] = useState<TableRecord | null>(null);
   const [recordDialog, setRecordDialog] = useState<TableRecord | 'new' | null>(null);
   /** A new record's starting values (a kanban lane, a calendar day). */
@@ -107,6 +107,8 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
   const [deleteRecord, setDeleteRecord] = useState<TableRecord | null>(null);
   const [fieldDialog, setFieldDialog] = useState<TableField | 'new' | null>(null);
   const [archiveField, setArchiveField] = useState<TableField | null>(null);
+  /** A confirmed delete / archive is in flight. */
+  const [confirming, setConfirming] = useState(false);
   const [viewPanel, setViewPanel] = useState<ViewPanel>(null);
   /** A view-only change made on the unsaved default view, carried into Save view. */
   const [pendingConfig, setPendingConfig] = useState<Partial<TableViewConfig> | null>(null);
@@ -133,7 +135,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
 
   // People, forms, imports and the automation worker all write records; the
   // server says which table changed and the page refetches (coalesced).
-  useTablesRecordsChanged({ tableId: table.id }, () => void query.reload());
+  useTablesRecordsChanged({ tableId: table.id }, () => query.reload());
 
   // `#/tables/<base>/table/<table>?record=<id>` (entity links, notifications,
   // drill-down) opens that record, whether or not it is on the current page.
@@ -199,15 +201,60 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
     }
   };
 
+  /**
+   * Run a confirmed delete / archive. The confirm closes either way; a failure
+   * (a row-level scope the client does not mirror, a stale revision) is said
+   * in a toast, and a conflict reloads the latest records.
+   */
+  const runConfirmed = async (action: () => Promise<void>, close: () => void, fallback: string) => {
+    if (confirming) return;
+    setConfirming(true);
+    try {
+      await action();
+      close();
+    } catch (actionError) {
+      close();
+      if (isTablesConflict(actionError)) {
+        void query.reload();
+        toast(t('tables.views.recordChanged'), 'error');
+      } else {
+        toast(actionError instanceof Error && actionError.message ? actionError.message : fallback, 'error');
+      }
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const confirmDeleteRecord = (record: TableRecord) =>
+    runConfirmed(
+      async () => {
+        await deleteTableRecord(table.id, record.id, record.revision);
+        void query.reload();
+      },
+      () => setDeleteRecord(null),
+      t('tables.views.deleteRecordFailed'),
+    );
+
+  const confirmArchiveField = (field: TableField) =>
+    runConfirmed(
+      async () => {
+        await archiveTableField(field.id);
+        void loadSchema();
+      },
+      () => setArchiveField(null),
+      t('tables.views.archiveFieldFailed'),
+    );
+
   const selectView = (viewId: string, views = schema?.views) => {
     setSelectedViewId(viewId);
     const view = views?.find((entry) => String(entry.id) === viewId);
-    if (!view) return setQuery({ search: '', sort: DEFAULT_RECORD_SORT, where: undefined });
+    if (!view) return setQuery({ search: '', sort: DEFAULT_RECORD_SORT, where: undefined, filters: undefined });
     const config = safeParse<TableViewConfig>(view.config, {});
     setQuery({
       search: config.query?.search ?? '',
       sort: config.query?.sort ?? DEFAULT_RECORD_SORT,
-      where: config.query?.where,
+      // An Agent plan may save the filter as `query.filters`; it applies like `where`.
+      ...foldSavedFilters(config.query?.where, config.query?.filters),
     });
   };
 
@@ -326,7 +373,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
       config: {
         fieldIds: visibleFields.map((field) => field.id),
         ...config,
-        ...(keepQuery ? { query: { where, search: search || undefined, sort } } : {}),
+        ...(keepQuery ? { query: { where, filters: savedFilters, search: search || undefined, sort } } : {}),
       },
     });
     setViewPanel(null);
@@ -360,7 +407,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
           />
         }
         search={search}
-        filterCount={where?.clauses.length ?? 0}
+        filterCount={[where, ...(savedFilters ?? [])].reduce((count, group) => count + (group?.clauses.length ?? 0), 0)}
         canEdit={canEdit}
         canBuild={canBuild}
         canCreate={capabilities.canCreate}
@@ -395,7 +442,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
             schemaFields={schema.fields}
             records={records}
             total={query.total}
-            query={{ where, search: search || undefined, filters: shape.filters }}
+            query={{ where, search: search || undefined, filters: combinedFilters(savedFilters, shape.filters) }}
             loading={query.loading}
             users={users}
             usersById={usersById}
@@ -468,7 +515,8 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
           <TablesImportWizard
             open={importDialog}
             table={table}
-            fields={schema.fields}
+            // A custom role imports into the fields it may write (the server refuses the others).
+            fields={dialogFields}
             canBuild={canBuild}
             onClose={() => setImportDialog(false)}
             onImported={() => {
@@ -551,12 +599,9 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
         open={deleteRecord !== null}
         onClose={() => setDeleteRecord(null)}
         onConfirm={() => {
-          if (!deleteRecord) return;
-          void deleteTableRecord(table.id, deleteRecord.id, deleteRecord.revision).then(async () => {
-            setDeleteRecord(null);
-            await query.reload();
-          });
+          if (deleteRecord) void confirmDeleteRecord(deleteRecord);
         }}
+        busy={confirming}
         title={t('tables.deleteRecordTitle')}
         description={t('tables.deleteRecordDescription')}
         confirmLabel={t('common.delete')}
@@ -566,12 +611,9 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
         open={archiveField !== null}
         onClose={() => setArchiveField(null)}
         onConfirm={() => {
-          if (!archiveField) return;
-          void archiveTableField(archiveField.id).then(async () => {
-            setArchiveField(null);
-            await loadSchema();
-          });
+          if (archiveField) void confirmArchiveField(archiveField);
         }}
+        busy={confirming}
         title={t('tables.archiveFieldTitle', { name: archiveField?.name ?? t('tables.field') })}
         description={t('tables.archiveFieldDescription')}
         confirmLabel={t('common.archive')}

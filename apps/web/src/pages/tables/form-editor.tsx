@@ -176,8 +176,9 @@ export function TablesFormEditor({
       title: title.trim() || name.trim(),
       description: description.trim(),
       fieldIds,
-      submitLabel: form?.config.submitLabel || t('tables.forms.submit'),
-      successMessage: successMessage.trim() || t('tables.forms.responseRecorded'),
+      // Only what the builder typed: left empty, each respondent gets their own language's copy.
+      submitLabel: form?.config.submitLabel || '',
+      successMessage: successMessage.trim(),
       defaults: prefilled,
       allowMultiple,
     };

@@ -80,6 +80,8 @@ export const tablesAccessEn = {
     relationTargetHidden: 'Read only: its linked table is hidden from this role',
     computedReadOnly: 'Computed — never editable',
     incompleteCondition: 'Finish or remove condition {index} on {table}',
+    relatedNeedsPerson: 'On {table}, “Related to them” needs “Records they created” or a person field',
+    invalidRules: 'These rules cannot be saved. Check each table’s settings and try again.',
     // Team
     visibility: 'Who can open this Base',
     visibilityPrivate: 'Only the people and groups added here',

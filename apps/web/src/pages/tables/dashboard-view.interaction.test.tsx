@@ -19,6 +19,7 @@ import type {
   TableField,
   TableRecord,
 } from '../../lib/api/tables';
+import { ToastContainer } from '../../components/ui';
 import { TablesDashboardView } from './dashboard-view';
 
 const api = vi.hoisted(() => ({
@@ -198,11 +199,12 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-async function mount() {
+async function mount(role: 'viewer' | 'builder' = 'viewer') {
   await act(async () => {
     root.render(
       <I18nProvider initialLocale="en">
-        <TablesDashboardView dashboardId={11} tables={[table]} role="viewer" />
+        <TablesDashboardView dashboardId={11} tables={[table]} role={role} />
+        <ToastContainer />
       </I18nProvider>,
     );
   });
@@ -240,6 +242,35 @@ describe('TablesDashboardView', () => {
     });
   });
 
+  it('keeps the answer for the current filter when an older request lands last', async () => {
+    await mount();
+    // The first filter change is slow, the second fast: the slow answer must not win.
+    let releaseSlow: () => void = () => undefined;
+    api.queryTableDashboardWidget.mockImplementation(async (widgetId: number, input: { filterValues: object }) => {
+      if (widgetId !== 21) return { widget: {}, card: pivotCard, result: { kind: 'pivot', rows: [] } };
+      const forMe = JSON.stringify(input.filterValues).includes('$me');
+      if (forMe) {
+        await new Promise<void>((resolve) => (releaseSlow = resolve));
+        return { widget: {}, card: kpiCard, result: { kind: 'kpi', value: 7 } };
+      }
+      return { widget: {}, card: kpiCard, result: { kind: 'kpi', value: 30 } };
+    });
+    const select = container.querySelector('select[aria-label="Rep"]') as HTMLSelectElement;
+    await act(async () => {
+      select.value = '$me';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(async () => {
+      select.value = '';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    expect(container.querySelector('[data-testid="table-card-kpi"]')?.textContent).toBe('30');
+    await act(async () => releaseSlow());
+    await flush();
+    expect(container.querySelector('[data-testid="table-card-kpi"]')?.textContent).toBe('30');
+  });
+
   it('drills from a pivot cell into a drawer of records and opens one', async () => {
     await mount();
     await clickButton('Show records for Won · Jim');
@@ -253,6 +284,19 @@ describe('TablesDashboardView', () => {
     expect(document.body.textContent).toContain('By stage: Won · Jim');
     await clickButton('Open Acme');
     expect(window.location.hash).toBe('#/tables/3/table/7?record=42');
+  });
+
+  it('closes the delete confirm and says why when the delete fails', async () => {
+    api.deleteTableDashboardWidget.mockRejectedValue(new Error('Dashboard widget revision conflict'));
+    await mount('builder');
+    await clickButton('Delete Deals');
+    await act(async () =>
+      (document.querySelector('[data-testid="confirm-dialog-confirm"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+    expect(api.deleteTableDashboardWidget).toHaveBeenCalledWith(21);
+    expect(document.querySelector('[data-testid="confirm-dialog"]')).toBeNull();
+    expect(document.body.textContent).toContain('Dashboard widget revision conflict');
   });
 
   it('refreshes widgets when records of their table change', async () => {

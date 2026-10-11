@@ -287,6 +287,21 @@ describe('Record activity tab', () => {
     expect(container.textContent).not.toContain('please review now');
   });
 
+  it('cancels a comment edit on Escape without closing the drawer around it', async () => {
+    await mount();
+    // The drawer / peek closes on a window keydown Escape (useOverlayBehavior).
+    const drawerEscape = vi.fn();
+    window.addEventListener('keydown', drawerEscape);
+    try {
+      await click(button('Edit comment'));
+      await press(container.querySelector('ol textarea') as HTMLTextAreaElement, 'Escape');
+      expect(container.querySelector('ol textarea')).toBeNull();
+      expect(drawerEscape).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('keydown', drawerEscape);
+    }
+  });
+
   it('offers a moderator delete on everyone’s comments', async () => {
     api.listTableRecordActivity.mockResolvedValue(
       page(FEED, { viewer: { userId: 'u1', canComment: true, canModerate: true } }),

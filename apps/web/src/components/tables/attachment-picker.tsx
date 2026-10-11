@@ -16,9 +16,11 @@ interface AttachmentPickerProps {
   baseId: number;
   value: Array<number | string>;
   onChange: (value: Array<number | string>) => void;
+  /** Uploads started / all finished: the host holds its submit meanwhile, or the record lands without the file. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerProps) {
+export function AttachmentPicker({ baseId, value, onChange, onBusyChange }: AttachmentPickerProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [folderId, setFolderId] = useState<number | null>(null);
@@ -75,6 +77,7 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
   const upload = async (list: FileList | null) => {
     if (!list?.length) return;
     setUploading(true);
+    onBusyChange?.(true);
     setError('');
     try {
       // A fresh upload is selected right away — it is what the person meant to attach.
@@ -90,6 +93,7 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
       setError(uploadError instanceof Error ? uploadError.message : t('tables.attachments.uploadFailed'));
     } finally {
       setUploading(false);
+      onBusyChange?.(false);
       if (fileInput.current) fileInput.current.value = '';
     }
   };

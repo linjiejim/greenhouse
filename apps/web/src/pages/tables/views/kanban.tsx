@@ -12,7 +12,7 @@
  *   of `kanban.coverFieldId`.
  */
 
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Button, Card, EmptyState, IconButton, Tag, toast } from '../../../components/ui';
 import { isComputedField } from '../../../components/tables/field-types';
 import { recordFieldValue } from '../../../components/tables/field-value';
@@ -55,6 +55,8 @@ export function KanbanViewBody({
   onConfigureView,
 }: TableViewBodyProps) {
   const t = useT();
+  /** Each card is named by its title element (screen readers hear the record, not "Record #12"). */
+  const cardIdPrefix = useId();
   const kanban = config.kanban;
   const laneField = laneFieldOf(schemaFields, kanban?.groupFieldId);
   const coverField = fieldById(schemaFields, kanban?.coverFieldId);
@@ -67,8 +69,12 @@ export function KanbanViewBody({
     [laneField, records, counts, usersById],
   );
   const hidden = new Set(kanban?.hiddenGroups ?? []);
-  const canDrag = Boolean(laneField) && permissions.canEdit && !isComputedField(laneField!);
-  const canCreateInLane = Boolean(laneField) && permissions.canCreate && !isComputedField(laneField!);
+  // A drag writes the lane field and a lane's "+" prefills it: both need that field writable
+  // (a custom role may edit some fields only; the record dialog leaves the rest out).
+  const laneWritable =
+    Boolean(laneField) && !isComputedField(laneField!) && (permissions.canEditField?.(laneField!.id) ?? true);
+  const canDrag = laneWritable && permissions.canEdit;
+  const canCreateInLane = laneWritable && permissions.canCreate;
 
   const laneOf = (record: TableRecord) => moves.get(record.id) ?? recordLaneKey(record, laneField!, lanes);
 
@@ -177,7 +183,7 @@ export function KanbanViewBody({
                     role="button"
                     tabIndex={0}
                     data-testid={`kanban-card-${record.id}`}
-                    aria-label={t('tables.recordNumber', { id: record.id })}
+                    aria-labelledby={`${cardIdPrefix}-${record.id}`}
                     onPointerDown={canDrag ? (event) => drag.start(event, record) : undefined}
                     onClick={() => {
                       if (drag.didDrag()) return;
@@ -196,7 +202,7 @@ export function KanbanViewBody({
                       <RecordCover value={recordFieldValue(record, coverField.id)} alt="" className="h-32" />
                     )}
                     <div className="space-y-2 p-3">
-                      <p className="truncate text-sm font-medium text-fg">
+                      <p id={`${cardIdPrefix}-${record.id}`} className="truncate text-sm font-medium text-fg">
                         <RecordTitle record={record} primary={primary} usersById={usersById} />
                       </p>
                       <RecordCardFields

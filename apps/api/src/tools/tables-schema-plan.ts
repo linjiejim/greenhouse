@@ -103,6 +103,7 @@ export function createTablesSchemaPlanTool(ctx: TablesSchemaPlanContext) {
           summary: input.summary.trim(),
           operations: input.operations,
           ...(draft.accessChanges.length > 0 ? { accessChanges: draft.accessChanges } : {}),
+          ...(Object.keys(draft.targetNames).length > 0 ? { targetNames: draft.targetNames } : {}),
         };
         return artifact;
       } catch (err) {

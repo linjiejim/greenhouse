@@ -6,8 +6,10 @@
  *
  * The import itself is a loop of short commit calls (`commitTableImportAll`);
  * the dialog cannot be closed while it runs. A commit that fails part-way
- * returns to the check step, and pressing Import again resumes it (the server
- * keeps the plan of the first call).
+ * returns to the check step, which then only offers Resume import (the server
+ * keeps the plan of the first call and refuses a new check of a started
+ * import): going back to the mapping or choosing the file again would import
+ * the rows already written a second time.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -72,6 +74,8 @@ export function TablesImportWizard({ open, table, fields, canBuild, onClose, onI
   const [createOptions, setCreateOptions] = useState(false);
   const [validation, setValidation] = useState<TableImportValidation | null>(null);
   const [progress, setProgress] = useState<TableImportProgress | null>(null);
+  /** The commit has run at least once: the import can only be resumed now. */
+  const [started, setStarted] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -82,6 +86,7 @@ export function TablesImportWizard({ open, table, fields, canBuild, onClose, onI
     setCreateOptions(false);
     setValidation(null);
     setProgress(null);
+    setStarted(false);
     setError('');
   }, [open]);
 
@@ -139,6 +144,7 @@ export function TablesImportWizard({ open, table, fields, canBuild, onClose, onI
   const runImport = async () => {
     if (!preview) return;
     setStep('importing');
+    setStarted(true);
     setError('');
     try {
       setProgress(await commitTableImportAll(table.id, preview.importId, request(), setProgress));
@@ -203,6 +209,14 @@ export function TablesImportWizard({ open, table, fields, canBuild, onClose, onI
           />
         )}
         {step === 'check' && validation && <ImportCheckSummary validation={validation} />}
+        {step === 'check' && started && (
+          <p className="text-sm text-fg-secondary" data-testid="tables-import-resume-hint">
+            {t('tables.imports.resumeHint', {
+              done: progress?.processedRows ?? 0,
+              total: progress?.totalRows ?? validation?.totalRows ?? 0,
+            })}
+          </p>
+        )}
         {step === 'importing' && (
           <ImportProgressView
             processed={progress?.processedRows ?? 0}
@@ -221,7 +235,7 @@ export function TablesImportWizard({ open, table, fields, canBuild, onClose, onI
                 <Button variant="ghost" size="sm" onClick={() => setStep('upload')}>
                   {t('tables.imports.chooseAnother')}
                 </Button>
-              ) : step === 'check' ? (
+              ) : step === 'check' && !started ? (
                 <Button variant="ghost" size="sm" onClick={() => setStep('mapping')}>
                   {t('tables.imports.back')}
                 </Button>
@@ -245,7 +259,7 @@ export function TablesImportWizard({ open, table, fields, canBuild, onClose, onI
                 disabled={validation.missingRequired.length > 0 || validation.validRows === 0}
                 onClick={() => void runImport()}
               >
-                {t('tables.imports.start', { count: validation.validRows })}
+                {started ? t('tables.imports.resume') : t('tables.imports.start', { count: validation.validRows })}
               </Button>
             )}
             {step === 'done' && (

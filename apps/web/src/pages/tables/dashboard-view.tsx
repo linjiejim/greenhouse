@@ -22,7 +22,7 @@ import {
   type TableRecord,
   type TableUser,
 } from '../../lib/api/tables';
-import { Button, ConfirmDialog, EmptyState, Spinner } from '../../components/ui';
+import { Button, ConfirmDialog, EmptyState, Spinner, toast } from '../../components/ui';
 import { WidgetGrid, type WidgetGridItem } from '../../components/workbench/widget-grid';
 import {
   DrilldownDrawer,
@@ -62,6 +62,7 @@ export function TablesDashboardView({ dashboardId, tables, role }: TablesDashboa
   >(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [deleteWidget, setDeleteWidget] = useState<TableDashboardWidget | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [drill, setDrill] = useState<(DrilldownRequest & { tableId: number; card: TableCardSpec | null }) | null>(null);
 
   useEffect(() => {
@@ -151,6 +152,26 @@ export function TablesDashboardView({ dashboardId, tables, role }: TablesDashboa
         return response.result.page;
       },
     });
+  };
+
+  /** The confirm closes either way; a refusal or a stale revision is said instead of leaving it open and silent. */
+  const confirmDeleteWidget = async (widget: TableDashboardWidget) => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await deleteTableDashboardWidget(widget.id);
+      setDeleteWidget(null);
+      void data.load();
+    } catch (deleteError) {
+      setDeleteWidget(null);
+      toast(
+        deleteError instanceof Error && deleteError.message ? deleteError.message : t('tables.dashboard.deleteFailed'),
+        'error',
+      );
+      void data.load();
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const openRecord = (record: TableRecord) => {
@@ -282,12 +303,9 @@ export function TablesDashboardView({ dashboardId, tables, role }: TablesDashboa
         open={deleteWidget !== null}
         onClose={() => setDeleteWidget(null)}
         onConfirm={() => {
-          if (!deleteWidget) return;
-          void deleteTableDashboardWidget(deleteWidget.id).then(async () => {
-            setDeleteWidget(null);
-            await data.load();
-          });
+          if (deleteWidget) void confirmDeleteWidget(deleteWidget);
         }}
+        busy={deleting}
         title={t('tables.dashboard.deleteTitle', { name: deleteWidget?.title ?? t('tables.dashboard.widget') })}
         description={t('tables.dashboard.deleteDescription')}
         confirmLabel={t('common.delete')}

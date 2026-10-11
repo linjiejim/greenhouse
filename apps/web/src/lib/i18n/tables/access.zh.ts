@@ -81,6 +81,8 @@ export const tablesAccessZh: DeepRecord<typeof tablesAccessEn> = {
     relationTargetHidden: '只读：它关联的表对该角色不可见',
     computedReadOnly: '计算字段，始终不可编辑',
     incompleteCondition: '请补全或删除「{table}」的第 {index} 个条件',
+    relatedNeedsPerson: '「{table}」的「与本人相关」需要勾选「本人创建的记录」或至少一个人员字段',
+    invalidRules: '这些规则无法保存，请检查各表的设置后重试。',
     visibility: '谁能打开这个 Base',
     visibilityPrivate: '只有这里添加的人员和群组',
     visibilityTeam: '团队全员',
