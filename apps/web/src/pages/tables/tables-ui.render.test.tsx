@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { TableDefinition, TableField, TableRecord, TableView } from '../../lib/api/tables';
 import { TablesViewToolbar } from './view-toolbar';
+import { ViewSwitcher } from './views/view-switcher';
 import { RecordDetailContent } from './record-drawer/record-detail-drawer';
 import { RecordRowActions } from './record-row-actions';
 
@@ -87,17 +88,25 @@ describe('Tables compact grid controls', () => {
   it('renders crowded toolbar operations as accessible icon buttons with upward tooltips', () => {
     const html = renderToStaticMarkup(
       <TablesViewToolbar
-        views={views}
-        selectedViewId="9"
+        viewControls={
+          <ViewSwitcher
+            views={views}
+            selectedView={views[0]!}
+            canCreateView
+            canChangeView
+            onSelectView={vi.fn()}
+            onNewView={vi.fn()}
+            onOpenFields={vi.fn()}
+            onOpenSettings={vi.fn()}
+          />
+        }
         search=""
         filterCount={2}
         canEdit
         canBuild
         pasting={false}
-        onSelectView={vi.fn()}
         onSearch={vi.fn()}
         onOpenFilters={vi.fn()}
-        onSaveView={vi.fn()}
         onOpenRecycleBin={vi.fn()}
         onOpenForms={vi.fn()}
         onAddField={vi.fn()}
@@ -106,12 +115,15 @@ describe('Tables compact grid controls', () => {
     );
 
     expect(html).toContain('aria-label="Filter records · 2"');
-    expect(html).toContain('aria-label="Save view"');
+    expect(html).toContain('aria-label="New view"');
+    expect(html).toContain('aria-label="Fields"');
+    expect(html).toContain('aria-label="View settings"');
+    expect(html).toContain('aria-label="View"');
     expect(html).toContain('aria-label="Recycle bin"');
     expect(html).toContain('aria-label="Manage forms"');
     expect(html).toContain('aria-label="Add field"');
     expect(html).toContain('aria-label="Add record"');
-    expect(html.match(/bottom-full mb-1\.5/g)).toHaveLength(6);
+    expect(html.match(/bottom-full mb-1\.5/g)).toHaveLength(8);
     expect(html).toContain('bg-primary-500');
   });
 

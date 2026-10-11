@@ -14,13 +14,25 @@ interface RecordDialogProps {
   baseId: number;
   fields: TableField[];
   record?: TableRecord | null;
+  /** A new record's starting values (a kanban lane, a calendar day). Ignored when editing. */
+  initialValues?: TableRecordValues;
   users: TableUserOption[];
   saving: boolean;
   onClose: () => void;
   onSave: (values: TableRecordValues) => Promise<void>;
 }
 
-export function RecordDialog({ open, baseId, fields, record, users, saving, onClose, onSave }: RecordDialogProps) {
+export function RecordDialog({
+  open,
+  baseId,
+  fields,
+  record,
+  initialValues,
+  users,
+  saving,
+  onClose,
+  onSave,
+}: RecordDialogProps) {
   const t = useT();
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>({});
   const [error, setError] = useState('');
@@ -28,9 +40,9 @@ export function RecordDialog({ open, baseId, fields, record, users, saving, onCl
 
   useEffect(() => {
     if (!open) return;
-    setDrafts(recordDrafts(fields, record ?? null));
+    setDrafts(recordDrafts(fields, record ?? (initialValues ? { values: initialValues } : null)));
     setError('');
-  }, [fields, open, record]);
+  }, [fields, open, record, initialValues]);
 
   const submit = async () => {
     setError('');

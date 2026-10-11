@@ -20,7 +20,8 @@
  *
  * This hook knows nothing about lists, trees or drop targets — it reports
  * "a drag started / the pointer is here / it ended here". Layer the meaning on
- * top: `useListReorder` for flat lists, `useTreeDrag` for the knowledge tree.
+ * top: `useListReorder` for flat lists, `useTreeDrag` for the knowledge tree,
+ * `useDropZoneDrag` for dropping onto a value (a kanban lane, a calendar day).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';

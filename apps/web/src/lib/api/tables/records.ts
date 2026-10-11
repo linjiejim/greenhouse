@@ -2,7 +2,7 @@
  * Tables client · records: query, read one, write, paste batches, the recycle bin.
  */
 
-import type { TableQuery, TableRecordValues } from '@greenhouse/types/tables';
+import type { TableAggregateInput, TableAggregateRow, TableQuery, TableRecordValues } from '@greenhouse/types/tables';
 import { authFetch } from '../../auth';
 import { rpc } from '../client';
 import { isTablesConflict, responseError } from './shared';
@@ -156,4 +156,16 @@ export async function updateTableRecordWithReplay(
     if (!unchanged) throw error;
     return updateTableRecord(tableId, base.id, current.revision, values);
   }
+}
+
+/**
+ * One aggregate over the records a query matches (`count` per group for the
+ * grid's group headers and the kanban lane counts). Same readable-field rules
+ * as a record query.
+ */
+export async function aggregateTableRecords(tableId: number, input: TableAggregateInput): Promise<TableAggregateRow[]> {
+  const args = { param: { tableId: String(tableId) }, json: input };
+  const response = await rpc.api.tables.tables[':tableId'].records.aggregate.$post(args);
+  if (!response.ok) throw await responseError(response, 'Unable to count records');
+  return (await response.json()).rows;
 }
