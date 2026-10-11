@@ -74,6 +74,8 @@ export interface ChatRunInfo {
   status: ChatRunStatus;
   started_at: number;
   next_seq: number;
+  /** Whose run it is (in a room only the asker may stop it). Absent from older servers. */
+  user_id?: string;
 }
 
 // ─── apps/web/src/lib/api/bots.ts ────────────────────────

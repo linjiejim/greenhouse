@@ -10,24 +10,50 @@
  */
 
 import type { BotConversationMemberRow, BotRow, ConversationWithMembers, DatabaseProvider } from '@greenhouse/db';
-import type { RoomViewExtras } from './views.js';
+import type { AvatarConfig } from '@greenhouse/types/profile-manifest';
+import { safeJsonParse } from '@greenhouse/utils/json';
+import type { RoomAgentProfile, RoomViewExtras } from './views.js';
 import { publicBotFor } from './public.js';
 
-/** Each Agent in the room → its owner, and the ones this reader may address. */
+/**
+ * Each Agent in the room → its owner, how to show it (a public one as its published version, so
+ * nobody sees an owner's unpublished edits), and the ones this reader may address.
+ */
 export async function roomAgentAccess(
   db: DatabaseProvider,
   readerId: string,
   members: readonly BotConversationMemberRow[],
-): Promise<{ agentOwners: Map<string, string>; addressable: Set<string> }> {
+): Promise<Pick<RoomViewExtras, 'agentOwners' | 'addressable' | 'profiles'>> {
   const agentOwners = new Map<string, string>();
   const addressable = new Set<string>();
+  const profiles = new Map<string, RoomAgentProfile>();
   for (const member of members) {
     const bot = await db.bots.getBotById(member.bot_id);
     if (!bot) continue;
     agentOwners.set(bot.id, bot.user_id);
-    if (await mayAddress(db, readerId, bot)) addressable.add(bot.id);
+    const offered = bot.user_id === readerId ? null : await publicBotFor(db, readerId, bot.id);
+    if (bot.user_id === readerId ? bot.status === 'active' : offered !== null) addressable.add(bot.id);
+    const shown = bot.user_id === readerId ? bot : (offered ?? (await publishedFace(db, bot)));
+    profiles.set(bot.id, {
+      name: shown.name,
+      role: shown.role,
+      avatar: safeJsonParse(shown.avatar, {}) as AvatarConfig,
+      template_key: shown.template_key,
+    });
   }
-  return { agentOwners, addressable };
+  return { agentOwners, addressable, profiles };
+}
+
+/** Someone else's Agent this reader may not address: its published version if any, else its row. */
+async function publishedFace(
+  db: DatabaseProvider,
+  bot: BotRow,
+): Promise<Pick<BotRow, 'name' | 'role' | 'avatar' | 'template_key'>> {
+  if (bot.visibility !== 'public' || bot.published_version === null) return bot;
+  const version = await db.bots.getVersion(bot.id, bot.published_version);
+  return version
+    ? { name: version.name, role: version.role, avatar: version.avatar, template_key: bot.template_key }
+    : bot;
 }
 
 /** May this person @ this Agent: their own (active), or a public one offered to them. */

@@ -493,6 +493,13 @@ export interface BotMemberView {
   position: number;
   /** In a room: whose Agent it is (`bots.user_id`). Absent elsewhere — there it is the member's. */
   owner_user_id?: string;
+  /** In a room: who brought it in (it leaves with them; they may take it out). Absent elsewhere. */
+  brought_by_user_id?: string;
+  /**
+   * In a room: how to show an Agent the reader may not otherwise know (another person's) — its
+   * name, role, avatar and template (a public one's published version). Absent elsewhere.
+   */
+  profile?: { name: string; role: string; avatar: AvatarConfig; template_key: string | null };
   /**
    * In a room: may the person reading @ it (their own Agent, or a public one offered to them)?
    * Only those answer them (spec 20261011-agent-first-class D44). Absent elsewhere.

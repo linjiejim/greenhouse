@@ -253,8 +253,10 @@ bots/
   别人的回合正在跑时，你的消息照常写进去，你的 @ 变成 `mention` 收件项、在那一轮结束后以你为 `rc.user` 另起一轮
   （`drainIdleConversation` 的 `roomRunUser` 按队首作者认领）；别人的消息不会软停你的 Agent（`memberMessageQueued(…, author)`）。
   投影：发问者是 `[名字 (user)]`，其他人是 `[名字 (participant)]`——只是信息；S1 有 room 版说明，S3（成员私人备注）不放；
-  room 里没有 `team` 和 `bot_tasks`。推送（`bots:conversation`、`chat:run`）经 `engine/fanout.ts` 发给全部参与者，参与者能探测 /
-  接上正在跑的回合（`canPostToSession`），只有发问者能停。公开 Agent 由非负责人带进来时，必须对房间里每个人开放（D45：新人
+  room 里没有 `team` 和 `bot_tasks`。推送（`bots:conversation`、`chat:run`，后者带 `userId` = 发问者）经 `engine/fanout.ts` 发给全部
+  参与者，参与者能探测 / 接上正在跑的回合（`canPostToSession`；探测结果带 `run.user_id`），只有发问者能停。room 的成员视图按读者算：
+  `owner_user_id`、`brought_by_user_id`、`addressable`，以及 `profile`（名字 / 岗位 / 头像 / 模板——别人的公开 Agent 用发布版本，读者不认识的
+  Agent 也能显示）。公开 Agent 由非负责人带进来时，必须对房间里每个人开放（D45：新人
   不在受众里就把它移出并写一行）。两个人、没标题、没 Agent 的 room 就是私聊，一对人只有一个（`findPrivateRoom`）。
 - **对外找 Agent（P6，2026-10-12，[spec](../../../../docs/specs/20261011-agent-first-class.md) §5e / D48–D55）**：MCP 客户端、
   命令行、飞书都走 `external/agents.ts` 一个服务——能找到的 = 自己的 Agent（含主 Agent）+ `publicBotFor` 放行的公开 Agent；

@@ -569,7 +569,7 @@ async function finishRun(
     void pushToConversation(
       run.sessionId,
       userId,
-      { type: 'chat:run', sessionId: run.sessionId, runId: run.runId, status },
+      { type: 'chat:run', sessionId: run.sessionId, runId: run.runId, status, userId },
       db,
     );
   }
@@ -721,7 +721,12 @@ async function drainAfterStop(rc: RunContext): Promise<void> {
 export async function runBotsRun(args: BotsRunArgs): Promise<BotsRunOutcome> {
   const db = args.db ?? getDb();
   const { run, userId, sessionId } = args;
-  void pushToConversation(sessionId, userId, { type: 'chat:run', sessionId, runId: run.runId, status: 'running' }, db);
+  void pushToConversation(
+    sessionId,
+    userId,
+    { type: 'chat:run', sessionId, runId: run.runId, status: 'running', userId },
+    db,
+  );
   let rc: RunContext | null = null;
   let status: 'completed' | 'error' = 'completed';
   try {

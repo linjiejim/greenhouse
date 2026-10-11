@@ -552,6 +552,11 @@ export interface AuthenticatedUser {
   locale_chosen?: boolean;
   /** Feature flags enabled for this user (e.g. { memory: true }). */
   features?: Record<string, boolean>;
+  /**
+   * May this account list and open other members' chats — a super, where the deployment sets
+   * SUPER_READS_CHATS (spec 20261011-agent-first-class D46). Absent from older servers.
+   */
+  reads_team_chats?: boolean;
 }
 
 // ─── Client Action Types ─────────────────────────────────
@@ -840,6 +845,8 @@ export interface ChatRunInfo {
   status: ChatRunStatus;
   started_at: number;
   next_seq: number;
+  /** Whose run it is (in a room only the asker may stop it). Absent from older servers. */
+  user_id?: string;
 }
 
 // ─── Stream Event Callbacks ──────────────────────────────

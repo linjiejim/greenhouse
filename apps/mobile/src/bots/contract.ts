@@ -36,7 +36,7 @@ export type BotsReadOnly = BotConversationReadOnlyCode;
 export type ServerWsWire =
   | { type: 'connected'; userId: string }
   | { type: 'ping' }
-  | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error' }
+  | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error'; userId?: string }
   | { type: 'bots:conversation'; sessionId: string }
   | { type: 'bots:attention'; pending: number }
   /**

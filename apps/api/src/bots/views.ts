@@ -154,7 +154,11 @@ export interface RoomViewExtras {
   agentOwners: ReadonlyMap<string, string>;
   /** Agents this reader may address: their own, or public ones offered to them. */
   addressable: ReadonlySet<string>;
+  /** How to show each Agent to this reader (name, role, avatar, template). */
+  profiles: ReadonlyMap<string, RoomAgentProfile>;
 }
+
+export type RoomAgentProfile = NonNullable<BotMemberView['profile']>;
 
 export function toRoomParticipantView(row: RoomParticipant): RoomParticipantView {
   return { user_id: row.user_id, nickname: row.nickname, role: row.role, joined_at: row.joined_at };
@@ -197,7 +201,9 @@ export function toConversationSummary(
         ? {
             ...toMemberView(member),
             owner_user_id: room.agentOwners.get(member.bot_id) ?? member.user_id,
+            brought_by_user_id: member.user_id,
             addressable: room.addressable.has(member.bot_id),
+            ...(room.profiles.has(member.bot_id) ? { profile: room.profiles.get(member.bot_id)! } : {}),
           }
         : toMemberView(member),
     ),

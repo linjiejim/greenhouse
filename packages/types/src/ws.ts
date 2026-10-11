@@ -65,6 +65,8 @@ export type ServerWsEvent =
       sessionId: string;
       runId: string;
       status: ChatRunStatus;
+      /** Whose run it is — in a room (several people) every participant hears it; only the asker may stop it. */
+      userId?: string;
     }
   // Cloud Agent mission lifecycle: a sandbox run of the owner's changed state.
   // Third sibling of chat:run / workflow:progress and deliberately the same

@@ -181,8 +181,15 @@ describe('rooms: who answers', () => {
     useScript({ Ivy: [[{ text: 'Here is the summary.' }]], Sage: [[{ text: 'Numbers look fine.' }]] }, captured);
     const id = await roomWithAgents();
     const room = (await db.bots.getConversation(ana.id, id))!;
-    // Ana may @ her Sage, never Jim's private Ivy.
+    // Ana may @ her Sage, never Jim's private Ivy — but she sees who Ivy is and who brought it.
     expect(await addressableMentions(db, ana.id, room, [ivy.id, sage.id, 'nope'])).toEqual([sage.id]);
+    const anasView = (await call(ana, 'GET', `/api/bots/conversations/${id}`)).json.conversation;
+    expect(anasView.members.find((m: any) => m.bot_id === ivy.id)).toMatchObject({
+      owner_user_id: jim.id,
+      brought_by_user_id: jim.id,
+      addressable: false,
+      profile: { name: 'Ivy', role: 'Researcher' },
+    });
     expect(await addressableMentions(db, jim.id, room, [ivy.id, sage.id])).toEqual([ivy.id]);
 
     // Ana talks (no allowed mention): nobody answers, and no "unavailable" line either.
@@ -209,6 +216,12 @@ describe('rooms: who answers', () => {
       ['assistant', ivy.id, 'Here is the summary.'],
     ]);
     expect(captured.map((t) => t.bot)).toEqual(['Ivy']);
+    // Both people heard Jim's run, and whose it is.
+    const { connectionManager } = await import('../../ws/connection-manager.js');
+    const runPushes = vi
+      .mocked(connectionManager.sendToUser)
+      .mock.calls.filter(([, event]) => event.type === 'chat:run' && event.sessionId === id && event.userId === jim.id);
+    expect(new Set(runPushes.map(([to]) => to))).toEqual(new Set([jim.id, ana.id]));
     const ivyTurn = captured[0]!.input;
     // Jim is the member; Ana's line is a participant's, and the room rules are in.
     const history = JSON.stringify(ivyTurn.messages);
