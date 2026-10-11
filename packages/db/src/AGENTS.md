@@ -173,7 +173,7 @@
   `createGroupConversation` / `updateConversation` / 负责人接替），`addMember` 只加 guest，对 `kind = 'group'` 的对话
   `addMember` / `removeMember` 抛 `BotsDomainError('group_closed')`；迁移把群里仍待处理的 `bot_requests` 置 `canceled`
   （`result = {"decision":"group_closed"}`）、`allow_bot_chat` 全置 true（列保留，无人读取）。
-- `bot_requests` 只经 `settleRequest` 从 pending 单次 CAS 结算（双击、两个槽位竞争都只有一个赢家）；`payload` 只放服务端派生的展示/执行数据，**永不放秘密**（安全登录卡的输入值只经过一次请求体，不落库）。
+- `bot_requests` 只经 `settleRequest` 从 pending 单次 CAS 结算（双击、两个槽位竞争都只有一个赢家）；`payload` 只放服务端派生的展示/执行数据，**永不放秘密**（安全登录卡的输入值只经过一次请求体，不落库）。效果要跑一阵的决定（`tables_plan`：先结算成 `resolved` 领取、再应用计划）用 `updateRequestResult` 把结果写回——它只改**已是 `resolved`** 的行的 `result`，绝不重开或改判。`kind` 是只在 TS 里的枚举（无 CHECK 约束），加种类不需要迁移。
 - **Bot 私有参考资料夹**（`drive_folders.bot_id`，2026-10-07）：每 Bot 至多一个根文件夹，CHECK 约束要求它是 `scope='kb'` + `visibility='private'` + 有 owner 的个人文件夹；随 Bot 级联删除。读侧只新增**排除**：`KnowledgeListOpts` / `KnowledgeSearchOpts` 的 `excludeFolderIds`（`AND (folder_id IS NULL OR folder_id NOT IN …)`，四个 SQL 变体与 `kbTree` 同步），空数组 = 不排除。排除集由 `apps/api/src/bots/folder.ts` 按身份算，HTTP 路由（主人自己）不传。
 
 ### 邮箱绑定与发信审计

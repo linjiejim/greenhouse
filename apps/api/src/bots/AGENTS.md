@@ -68,6 +68,17 @@ bots/
   HTTP 面什么都不排除。写入仍过审批卡。
 - **守则由成员说了算**：`self` 工具只能**提议**（`instructions_update` 卡带理由与 diff，有效 7 天），成员接受才
   追加一版；污染回合也能提议，因为提议本身没有效果。
+- **表格与应用的改动也只能提议**（`tables_plan`，2026-10-11，spec 20261011-tables-apps §7）：成员有
+  `tables_schema_plan` 时，Bot 拿到它的 Bots 面（`tools/tables-plan.ts`）——起草检查与聊天卡同一份
+  （`draftTablesSchemaPlan`，问题一次性回模型），成功后**不出聊天 artifact**，而是建一张 7 天有效的 `tables_plan`
+  卡，工具返回 `{status:'proposed', request_id}`。payload 自包含 `{summary, lines:[{op,label,target}], access:[{subject,before,after}], operations, base_id?}`：
+  行与「权限与外发变更」段由服务端按成员语言写好（`platform/tables/schema-plan-words.ts`），客户端从不解析
+  `operations`——移动端 vendor 的 `bots.ts` 因此不依赖 Tables 类型（vendor parity 测试钉住）。成员按「应用」：先
+  **领取**（`settleRequest` → `resolved` + `{state:'applying'}`，这个 CAS 让双击 / 两个槽位只执行一次），再以**成员本人**
+  （`dispatchTablesMemberAction`，人类 actor）跑与聊天确认同一个 `applySchemaPlan`，逐项授权（builder 确认的发布 /
+  改受众那一步失败并写明原因），结果经 `db.bots.updateRequestResult` 写回 `{state: applied|partial|failed, lines,
+  applied, failed, skipped, base_id, app_ids}`，再用 `continue` 唤醒提议的 Bot（note 带成败与新建对象的 id）。拒绝只写一行
+  事件；过期卡 409；成员已没有 `tables`（或计划含应用而没有 `apps`）开关时卡片 `canceled` + 503 `unavailable`，不半途执行。
 - **头像是一株植物**：`bots.avatar` 每次写入（创建 / PATCH / 确认 `bot_create` 卡）都过 `avatarConfigSchema`，
   未知键被剥掉，超长值返回 400。服务端统一用 `plantAvatarConfig()` 写：`plant`（物种 id）加最近的旧
   `color`（给不认识 `plant` 的老客户端），静息眼神存成旧的 `faceStyle`。这和 Web 编辑器是同一条规则，都不写
@@ -343,7 +354,8 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 **卡片种类**：`instructions_update`（Bot 用 `self` 工具提议改自己的守则：payload `{ instructions, reason, current }`，接受可带编辑后的 `instructions`，接受 = 追加一版 + 事件 `instructions_updated`，7 天过期）、`approval`（`always` = 此站点以后自动代填）、`login`（安全登录，值服务端代填不落库；
 两步登录会继续跟到密码页或再出一张卡）、`takeover`（`payload.implicit` = 成员在 Bot 干活时自己接管 /
 Bot 等着用电脑，交还即唤醒它；`payload.kind:'captcha'` = 人机验证卡，由浏览器工具自己出，成员完成后
-交还）、`bot_create`、`task_start`。登录 / 接管卡 60 分钟过期（`expired`）。
+交还）、`bot_create`、`task_start`、`tables_plan`（Bot 提议的表格 / 应用改动，见上面铁律；结果见
+`BotTablesPlanResult`，7 天过期）。登录 / 接管卡 60 分钟过期（`expired`）。
 
 **电脑**（`computer/routes.ts`）
 
