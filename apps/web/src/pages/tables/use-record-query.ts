@@ -16,6 +16,7 @@ import type { TableFilterGroup, TableGroupBy, TableQuery } from '@greenhouse/typ
 import { queryTableRecords, type TableRecord } from '../../lib/api/tables';
 import { usePersistedPageSize } from '../../hooks/use-persisted-page-size';
 import { useT } from '../../lib/i18n';
+import { viewerTimeZone } from './views/view-query';
 
 export const DEFAULT_RECORD_SORT: TableQuery['sort'] = [{ systemField: 'updated_at', direction: 'desc' }];
 
@@ -81,8 +82,10 @@ export function useRecordQuery(
         ...(current.groupBy ? { groupBy: current.groupBy } : {}),
         ...(current.filters?.length ? { filters: current.filters } : {}),
       };
+      // Same zone as the view's group counts, so `$today` and day filters agree with them.
+      const timezone = viewerTimeZone();
       let cursor = cursorByPage.current.get(0);
-      let result = await queryTableRecords(tableId, { ...request, cursor });
+      let result = await queryTableRecords(tableId, { ...request, cursor }, timezone);
       cursorByPage.current.set(1, result.nextCursor ?? undefined);
       for (let currentPage = 1; currentPage <= lastPage; currentPage += 1) {
         cursor = cursorByPage.current.get(currentPage);
@@ -90,7 +93,7 @@ export function useRecordQuery(
           result = { ...result, records: [] };
           break;
         }
-        result = await queryTableRecords(tableId, { ...request, cursor });
+        result = await queryTableRecords(tableId, { ...request, cursor }, timezone);
         cursorByPage.current.set(currentPage + 1, result.nextCursor ?? undefined);
       }
       if (requestId !== latestRequest.current) return;

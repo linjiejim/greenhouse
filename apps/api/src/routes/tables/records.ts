@@ -14,7 +14,9 @@ import { actionError, dispatch, jsonBody, numberParam } from './shared.js';
 export const recordRoutes = new Hono<AppEnv>()
   .post('/tables/:tableId/records/query', async (c) => {
     const tableId = numberParam(c, 'tableId');
-    const result = await dispatch(c, 'queryRecords', { tableId, query: await jsonBody(c) }, { tableId });
+    // The body is the query plus the viewer's `timezone` (date tokens and days resolve there).
+    const { timezone, ...query } = await jsonBody(c);
+    const result = await dispatch(c, 'queryRecords', { tableId, query, timezone }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as TableRecordQueryResult);
   })

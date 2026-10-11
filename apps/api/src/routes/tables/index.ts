@@ -53,7 +53,7 @@
  * PATCH  /forms/:formId                              — revision 更新表单
  *
  * 记录（./records.ts；/records/deleted 必须注册在 /records/:recordId 之前）
- * POST   /tables/:tableId/records/query              — 查询记录
+ * POST   /tables/:tableId/records/query              — 查询记录（body = TableQuery + 可选 `timezone`：日期令牌与按天比较用查看者时区）
  * POST   /tables/:tableId/records/aggregate          — 聚合（视图的分组 / 看板列计数）
  * POST   /tables/:tableId/records                    — 创建记录
  * GET    /tables/:tableId/records/deleted            — 回收站（已软删记录）

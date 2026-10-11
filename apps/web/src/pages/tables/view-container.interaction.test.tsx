@@ -237,7 +237,12 @@ describe('TablesViewContainer', () => {
     });
     await flush();
     expect(container.querySelector('[data-testid="kanban-board"]')).not.toBeNull();
-    expect(api.queryTableRecords).toHaveBeenLastCalledWith(7, expect.objectContaining({ limit: 500 }));
+    // The viewer's zone goes along, so `$today` and day filters resolve where the group counts do.
+    expect(api.queryTableRecords).toHaveBeenLastCalledWith(
+      7,
+      expect.objectContaining({ limit: 500 }),
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
     // One capped page: no pager.
     expect(container.querySelector('select[aria-label="Rows per page"]')).toBeNull();
 
