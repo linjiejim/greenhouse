@@ -79,9 +79,17 @@ export function getAppRecord(appId: number, input: AppRecordGetInput): Promise<F
   return post(`/api/apps/${appId}/records/get`, input, (body) => body as AppRecordView);
 }
 
-/** Run a declared action or a built-in write (`$submit` / `$create` / `$move` / `$edit`). */
+/**
+ * Run a declared action or a built-in write (`$submit` / `$create` / `$move` /
+ * `$edit`). Carries my time zone, as the web does: `$today` / `$now` in the
+ * spec's values and defaults are my day, not UTC's.
+ */
 export function runAction(appId: number, input: AppActionInput): Promise<Write<AppActionResult>> {
-  return write(`/api/apps/${appId}/actions`, { method: 'POST', json: input }, (body) => body as AppActionResult);
+  return write(
+    `/api/apps/${appId}/actions`,
+    { method: 'POST', json: { timezone: viewerTimeZone(), ...input } },
+    (body) => body as AppActionResult,
+  );
 }
 
 export function listAppActivity(appId: number, input: AppActivityInput): Promise<Fetch<TableRecordActivityPage>> {
