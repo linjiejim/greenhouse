@@ -2,14 +2,18 @@
  * The `tables_query` reads a builder needs before drafting a plan (slice P):
  * forms, automations (webhook targets reduced to their origin), runs, roles
  * (owner only, no rule-editor facts), record activity, the people and groups
- * the caller may share with, and `builder.reference`. Real PostgreSQL and the
- * real Platform runtime: every read goes through dispatch as the caller.
+ * the caller may share with, `builder.reference`, and the apps on a Base
+ * (`apps.list`; `apps.get` = a manager's draft + audiences — both behind the
+ * per-user `apps` switch, like `/api/apps`). Real PostgreSQL and the real
+ * Platform runtime: every read goes through dispatch as the caller.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { fullTableAccess } from '@greenhouse/types/table-access';
+import type { AppAudiencesView, AppDraftView } from '@greenhouse/types/apps';
+import { dispatchTablesAgentAction } from '../../platform/tables/agent-adapter.js';
 import { tablesRegistration } from '../../platform/tables/application.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
 import { createTablesQueryTool } from '../../tools/tables-query.js';
@@ -18,6 +22,7 @@ import { createInternalTestUser } from '../../../../../tests/helpers/internal-us
 let db: DatabaseProvider;
 let owner: UserRow;
 let builder: UserRow;
+let stranger: UserRow;
 
 async function query(userId: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
   const tool = createTablesQueryTool({ userId }) as unknown as {
@@ -71,6 +76,7 @@ describe('tables_query builder reads', () => {
     db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
     owner = await createInternalTestUser(db, { email: 'tq-p-owner@test.com', nickname: 'Olivia Owner' });
     builder = await createInternalTestUser(db, { email: 'tq-p-builder@test.com', nickname: 'Bruno Builder' });
+    stranger = await createInternalTestUser(db, { email: 'tq-p-stranger@test.com', nickname: 'Sam Stranger' });
     initializePlatformRuntime(db, [tablesRegistration]);
   });
 
@@ -147,5 +153,54 @@ describe('tables_query builder reads', () => {
     const plan = (await query(builder.id, { action: 'builder.reference' })) as { topic: string; example: unknown[] };
     expect(plan.topic).toBe('plan');
     expect(plan.example.length).toBeGreaterThan(3);
+  });
+
+  it('lists the apps of a Base and reads a manager’s draft with its audiences', async () => {
+    const { base } = await seed();
+    const created = await dispatchTablesAgentAction({ userId: owner.id }, 'createApp', {
+      baseId: base.id,
+      name: 'Requests app',
+    });
+    if (!created.ok) throw new Error(created.message);
+    const appId = (created.data as AppDraftView).app.id;
+
+    const listed = (await query(builder.id, { action: 'apps.list', base_id: base.id })) as {
+      managed: Array<{ id: number; canManage: boolean }>;
+      shared: unknown[];
+    };
+    expect(listed.managed.map((app) => [app.id, app.canManage])).toEqual([[appId, true]]);
+    expect(listed.shared).toEqual([]);
+    expect(await query(builder.id, { action: 'apps.list', base_id: base.id + 1000 })).toEqual({
+      managed: [],
+      shared: [],
+    });
+
+    const read = (await query(builder.id, { action: 'apps.get', app_id: appId })) as AppDraftView & {
+      audiences: AppAudiencesView | null;
+    };
+    expect(read.app.id).toBe(appId);
+    expect(read.draftRevision).toBe(1);
+    expect(read.spec.pages.map((page) => page.id)).toEqual(['home']);
+    expect(read.audiences).toEqual({ entries: [], audiencesRevision: 1, roles: [{ key: 'member', name: 'Member' }] });
+    // Not a manager of the Base: no draft.
+    expect(await query(stranger.id, { action: 'apps.get', app_id: appId })).toEqual({ error: expect.any(String) });
+    expect(await query(stranger.id, { action: 'apps.list' })).toEqual({ managed: [], shared: [] });
+  });
+
+  it('answers apps.list and apps.get only while the apps switch is on', async () => {
+    const { base } = await seed();
+    const created = await dispatchTablesAgentAction({ userId: owner.id }, 'createApp', {
+      baseId: base.id,
+      name: 'Requests app',
+    });
+    if (!created.ok) throw new Error(created.message);
+    const appId = (created.data as AppDraftView).app.id;
+    await db.userFeatures.upsert({ user_id: builder.id, feature: 'apps', enabled: false });
+
+    const off = { error: 'Apps are turned off for you' };
+    expect(await query(builder.id, { action: 'apps.list', base_id: base.id })).toEqual(off);
+    expect(await query(builder.id, { action: 'apps.get', app_id: appId })).toEqual(off);
+    // Tables reads are unaffected: the two switches are independent.
+    expect(await query(builder.id, { action: 'base.get', base_id: base.id })).not.toHaveProperty('error');
   });
 });

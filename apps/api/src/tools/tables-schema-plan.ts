@@ -30,7 +30,7 @@ import { z } from 'zod';
 import { getDb } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { TablesSchemaPlanArtifact } from '@greenhouse/types/tables';
-import { userHasFeature } from '../auth/features.js';
+import { activeUserHasFeature } from '../auth/features.js';
 import { defineTool, type ToolMeta } from './define.js';
 import { dispatchTablesAgentAction } from '../platform/tables/agent-adapter.js';
 import { appReferencesTo } from '../platform/tables/app-references.js';
@@ -55,10 +55,7 @@ function schemaPlanReader(userId: string): SchemaPlanReader {
     userId,
     dispatch: (actionId, payload, ids) => dispatchTablesAgentAction({ userId }, actionId, payload, ids),
     grantableGroups: () => grantableGroups(getDb(), userId),
-    appsEnabled: async () => {
-      const user = await getDb().users.getById(userId);
-      return !!user && user.status === 'active' && (await userHasFeature(userId, user.role, 'apps'));
-    },
+    appsEnabled: () => activeUserHasFeature(userId, 'apps'),
     // Only asked for Bases the drafter builds on (field.archive / field.update need builder first).
     appReferences: (baseId, target) => appReferencesTo(getDb(), baseId, target),
   };

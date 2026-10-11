@@ -14,6 +14,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { getDb } from '@greenhouse/db';
 import type { AppListView, AppSummary } from '@greenhouse/types/apps';
+import { activeUserHasFeature } from '../auth/features.js';
 import { defineTool, type ToolMeta } from './define.js';
 import { dispatchTablesAgentAction } from '../platform/tables/agent-adapter.js';
 import { BUILDER_REFERENCE_TOPICS, builderReference } from '../platform/tables/builder-reference.js';
@@ -101,6 +102,9 @@ export interface TablesQueryContext {
 }
 
 const DIRECTORY_LIMIT = 20;
+
+/** The `apps` switch is per user and independent of Tables: `/api/apps` answers 403 behind it, and so do these reads. */
+const APPS_OFF = { error: 'Apps are turned off for you' } as const;
 
 const meta: ToolMeta = {
   id: 'tables_query',
@@ -264,10 +268,12 @@ export function createTablesQueryTool(ctx: TablesQueryContext) {
         case 'builder.reference':
           return builderReference(input.topic ?? 'plan');
         case 'apps.list':
+          if (!(await activeUserHasFeature(ctx.userId, 'apps'))) return APPS_OFF;
           return run('listApps', {}, {}, appsOfBase(baseId));
         case 'apps.get': {
           const appId = input.app_id;
           if (!appId) return { error: 'app_id is required' };
+          if (!(await activeUserHasFeature(ctx.userId, 'apps'))) return APPS_OFF;
           // Managers only: the draft (with today's schema problems) and who the app is shared with.
           const draft = await dispatchTablesAgentAction(context, 'getAppDraft', { appId }, { appId });
           if (!draft.ok) return { error: draft.message };
