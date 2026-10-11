@@ -17,9 +17,11 @@ import type {
   TableFilterGroup,
   TableFilterValue,
   TableQuery,
+  TableFormUploadView,
   TableSystemField,
 } from './tables.js';
 import type { TableAccessRule } from './table-access.js';
+import type { TableCardResult } from './table-cards.js';
 
 // ─── Limits ───────────────────────────────────────────────
 
@@ -477,6 +479,10 @@ export interface AppActionInput {
   /** Input field values for set_fields actions, create values for create actions. */
   values?: TableFieldValueEntry[];
   requestId: string;
+  /** `$create` from a `create_record` button. */
+  buttonId?: string;
+  /** Managers only: act as this role (writes still run as the manager). */
+  previewRole?: string;
 }
 
 // ─── Management wire views (F1; additive) ─────────────────
@@ -537,4 +543,166 @@ export interface AppAudiencesView {
   audiencesRevision: number;
   /** The roles of the live version (else the draft) — what an entry may point at. */
   roles: Array<{ key: string; name: string }>;
+}
+
+// ─── Gateway wire contract (integration, before the Phase 1 wave; additive) ──
+//
+// What `/api/apps/:id/{cards/query,records/get,actions,activity,comments,options,
+// uploads,usage}` and `/api/apps/templates` answer. The web runtime, the iOS
+// runtime and the gateway all build against these; nothing here is a runtime value
+// except the reserved action ids.
+
+/**
+ * Writes that are not a declared `AppRecordAction` go through `/actions` too,
+ * under these reserved ids (`APP_ID_PATTERN` cannot produce a `$`, so they never
+ * collide with a spec id):
+ * - `$submit` — a `form` card's submit (`values` = the form's fields);
+ * - `$create` — a records card's `create` spec, or a `create_record` button
+ *   (`buttonId` names the button; `values` = its fields);
+ * - `$move`   — a kanban card's lane change (`values` = the group field only);
+ * - `$edit`   — the record drawer's inline edit (`values` ⊆ detail editable fields).
+ */
+export const APP_BUILTIN_ACTIONS = Object.freeze({
+  submit: '$submit',
+  create: '$create',
+  move: '$move',
+  edit: '$edit',
+} as const);
+export type AppBuiltinActionId = (typeof APP_BUILTIN_ACTIONS)[keyof typeof APP_BUILTIN_ACTIONS];
+
+/** A record as an app card or the drawer delivers it: only role-readable ∩ card fields (computed values merged in). */
+export interface AppRecordRow {
+  id: number;
+  revision: number;
+  /** Keyed by field id; fields the viewer may not read are absent, never null-filled. */
+  values: Record<string, unknown>;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Declared card-face actions this viewer may run on this record now (`when` checked at read time; the write re-checks). */
+  actionIds: string[];
+}
+
+/** Labels for what the rows point at — app viewers cannot call `/api/tables`, so the gateway resolves them. */
+export interface AppRecordRefs {
+  /** People named by user fields and `created_by`. */
+  users: Record<string, { nickname: string; avatar?: string | null }>;
+  /** Relation targets keyed `<tableId>:<recordId>`: the label, or `null` when the row is outside the role's read scope. */
+  records: Record<string, string | null>;
+  /** Attachments keyed by file id (download via `GET /api/apps/:id/files/:fileId`). */
+  files: Record<string, { name: string; size: number; mimeType: string | null }>;
+}
+
+/**
+ * `POST /api/apps/:id/cards/query` (input `AppCardQueryInput`). Records-like
+ * cards page their records; aggregate cards answer like a dashboard card;
+ * `unavailable` = the runtime revalidation found the card broken (D6).
+ */
+export type AppCardQueryResult =
+  | { kind: 'records'; records: AppRecordRow[]; total: number; nextCursor: string | null; refs: AppRecordRefs }
+  | Exclude<TableCardResult, { kind: 'records' }>
+  | { kind: 'unavailable'; message: string };
+
+/** `POST /api/apps/:id/records/get`. */
+export interface AppRecordGetInput {
+  pageId: string;
+  cardId: string;
+  recordId: number;
+  previewRole?: string;
+}
+
+/** The record drawer: `detail.fieldIds` ∩ readable, what may be edited, and what the drawer may show. */
+export interface AppRecordView {
+  record: AppRecordRow;
+  refs: AppRecordRefs;
+  /** In display order. */
+  fieldIds: number[];
+  systemFields: TableSystemField[];
+  /** `detail.editableFieldIds` ∩ role editable, empty outside `editRows` (write with `$edit`). */
+  editableFieldIds: number[];
+  /** `detail.comments && role.canComment`. */
+  canComment: boolean;
+}
+
+/** `POST /api/apps/:id/actions` (input `AppActionInput`, plus `buttonId` for a `create_record` button). */
+export interface AppActionResult {
+  outcome: 'updated' | 'created' | 'deleted' | 'queued';
+  recordId: number;
+  /** The record as the viewer now reads it; absent when it left their scope (or was deleted). */
+  record?: AppRecordRow;
+  /** `run_automation`: the queued run. */
+  runId?: number;
+  /** The same `requestId` already ran; this is its first result. */
+  replayed?: boolean;
+}
+
+/**
+ * Why `/actions` refused, in `details.reason` (status in brackets):
+ * `precondition` (409, `when` no longer holds), `conflict` (409, stale revision —
+ * `details.currentRevision`), `required_input` (400, `details.fieldIds`),
+ * `not_allowed` (403, role / capability), `not_found` (404, outside scope).
+ */
+export type AppActionRefusal = 'precondition' | 'conflict' | 'required_input' | 'not_allowed' | 'not_found';
+
+/** `POST /api/apps/:id/activity` → `TableRecordActivityPage` (role-readable ∩ detail fields only). */
+export interface AppActivityInput {
+  pageId: string;
+  cardId: string;
+  recordId: number;
+  cursor?: string;
+}
+
+/** `POST /api/apps/:id/comments` → `{ comment: TableRecordCommentView }`; `PATCH|DELETE /comments/:commentId` with `{pageId, cardId}`. */
+export interface AppCommentInput {
+  pageId: string;
+  cardId: string;
+  recordId: number;
+  body: string;
+}
+
+/** `POST /api/apps/:id/options`: choices for a user or relation field the card lets this role write. */
+export interface AppFieldOptionsInput {
+  pageId: string;
+  cardId: string;
+  fieldId: number;
+  search?: string;
+  /** `create_record` buttons. */
+  buttonId?: string;
+}
+
+export interface AppFieldOptionsView {
+  /** User fields: `value` = user id; relation fields: `value` = record id. */
+  options: Array<{ value: string | number; label: string; detail?: string }>;
+}
+
+/** `POST /api/apps/:id/uploads` (multipart `file`, `pageId`, `cardId`, `fieldId`) → `{ file }`, bound on the next write. */
+export type AppUploadView = TableFormUploadView;
+
+/** `GET /api/apps/:id/usage` (managers): counted from the app-scoped audit. */
+export interface AppUsageView {
+  users7d: number;
+  users30d: number;
+  /** Action id (incl. `$submit` / `$create` / `$move` / `$edit`) → runs in the last 30 days. */
+  actions30d: Record<string, number>;
+  lastUsedAt: string | null;
+}
+
+/** `GET /api/apps/templates` → `{ templates }`; `POST /api/apps/templates/:key/install` → `AppTemplateInstallResult`. */
+export interface AppTemplateSummary {
+  key: string;
+  name: string;
+  description: string;
+  icon: AppIconName;
+  accent: AppAccent;
+}
+
+export interface AppTemplateInstallResult {
+  app: AppSummary;
+  baseId: number;
+}
+
+/** 409 `details` when a schema change would break apps (D6); resend with `confirm: true` to proceed. */
+export interface AppReferencesConflict {
+  reason: 'used_by_apps';
+  references: Array<{ appId: number; name: string; where: string }>;
 }
