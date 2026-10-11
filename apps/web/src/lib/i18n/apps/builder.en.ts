@@ -519,6 +519,14 @@ export const appsBuilderEn = {
       title: 'Apps use this:',
       consequence:
         'If you go ahead, the cards and buttons that use it stop working in the published versions until their builders fix the draft and publish again.',
+      tableTitle: 'Apps use the table “{name}”',
+      fieldTitle: 'Apps use the field “{name}”',
+      optionsTitle: 'Apps use options you removed from “{name}”',
+      automationTitle: 'Apps run the automation “{name}”',
+      archiveAnyway: 'Archive anyway',
+      deleteAnyway: 'Delete anyway',
+      saveAnyway: 'Save anyway',
+      failed: 'That did not go through. Try again.',
     },
     baseSection: {
       button: 'Apps',

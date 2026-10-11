@@ -4,14 +4,21 @@
  * The automations dialog under real interaction: build a rule in the editor
  * (trigger, watched field, a webhook with a write-only secret) and save it as
  * one create call; edit a stored rule without touching its secret; read a run
- * log worded from step codes.
+ * log worded from step codes; delete a rule an app's button runs only after
+ * seeing where (D6, resent with `confirm`).
  */
 
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../../lib/i18n';
-import type { TableAutomation, TableDefinition, TableField, TableSchema } from '../../lib/api/tables';
+import {
+  TablesRequestError,
+  type TableAutomation,
+  type TableDefinition,
+  type TableField,
+  type TableSchema,
+} from '../../lib/api/tables';
 import { TablesAutomationDialog } from './automation-dialog';
 
 const api = vi.hoisted(() => ({
@@ -264,5 +271,59 @@ describe('TablesAutomationDialog', () => {
     expect(log.textContent).toContain('Webhook answered 204');
     expect(log.textContent).toContain('Canceled: the rule was changed while this run waited.');
     expect(log.textContent).toContain('Record #9');
+  });
+
+  it('deletes a rule an app runs only after showing where, resending with confirm', async () => {
+    api.listTableAutomations.mockResolvedValue([stored]);
+    api.deleteTableAutomation
+      .mockRejectedValueOnce(
+        new TablesRequestError('Apps run this automation', 409, {
+          reason: 'used_by_apps',
+          references: [{ appId: 12, name: 'Deal desk', where: 'Pipeline · Records card · action Notify' }],
+        }),
+      )
+      .mockResolvedValueOnce(undefined);
+    await mount();
+    await click(buttonNamed('Delete'));
+    await click(byTestId('confirm-dialog-confirm'));
+
+    expect(api.deleteTableAutomation).toHaveBeenCalledWith(11);
+    expect(document.querySelector('[data-testid="confirm-dialog"]')).toBeNull();
+    const dialog = byTestId('app-references-dialog');
+    expect(document.body.textContent).toContain('Apps run the automation “Ping CRM”');
+    expect(dialog.querySelector('a')?.getAttribute('href')).toBe('#/apps/12/edit');
+    expect(dialog.textContent).toContain('action Notify');
+    // The 409 is not reported as a failure.
+    expect(document.body.textContent).not.toContain('Apps run this automation');
+
+    api.listTableAutomations.mockResolvedValue([]);
+    await click(byTestId('app-references-proceed'));
+    expect(api.deleteTableAutomation).toHaveBeenLastCalledWith(11, { confirm: true });
+    expect(document.querySelector('[data-testid="app-references-dialog"]')).toBeNull();
+    expect(document.body.textContent).toContain('No automations yet');
+  });
+
+  it('shows a refused confirmed delete in the references dialog, and other failures as before', async () => {
+    api.listTableAutomations.mockResolvedValue([stored]);
+    api.deleteTableAutomation
+      .mockRejectedValueOnce(
+        new TablesRequestError('Apps run this automation', 409, {
+          reason: 'used_by_apps',
+          references: [{ appId: 12, name: 'Deal desk', where: 'Pipeline' }],
+        }),
+      )
+      .mockRejectedValueOnce(new TablesRequestError('Only builders delete automations', 403, undefined))
+      .mockRejectedValueOnce(new TablesRequestError('Automation not found', 404, undefined));
+    await mount();
+    await click(buttonNamed('Delete'));
+    await click(byTestId('confirm-dialog-confirm'));
+    await click(byTestId('app-references-proceed'));
+    expect(byTestId('app-references-dialog').textContent).toContain('Only builders delete automations');
+
+    await click(buttonNamed('Cancel'));
+    await click(buttonNamed('Delete'));
+    await click(byTestId('confirm-dialog-confirm'));
+    expect(document.querySelector('[data-testid="app-references-dialog"]')).toBeNull();
+    expect(document.body.textContent).toContain('Automation not found');
   });
 });

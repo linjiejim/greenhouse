@@ -3,14 +3,15 @@
 /**
  * Field settings for a select: removing an option row keeps every other
  * option's id, so records that pointed at "Doing" still read "Doing" (the old
- * one-per-line textarea re-assigned ids by line position).
+ * one-per-line textarea re-assigned ids by line position); removing one an app
+ * uses shows where, and "Save anyway" resends with `confirm` (D6).
  */
 
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../../lib/i18n';
-import type { TableDefinition, TableField } from '../../lib/api/tables';
+import { TablesRequestError, type TableDefinition, type TableField } from '../../lib/api/tables';
 import { FieldSettingsDialog } from './field-settings-dialog';
 
 const api = vi.hoisted(() => ({
@@ -124,5 +125,80 @@ describe('FieldSettingsDialog — select options', () => {
         ],
       },
     });
+  });
+
+  it('shows the apps that use a removed option, and saves anyway with confirm', async () => {
+    const onSaved = vi.fn(async () => undefined);
+    api.updateTableField.mockRejectedValueOnce(
+      new TablesRequestError('Used by apps', 409, {
+        reason: 'used_by_apps',
+        references: [{ appId: 12, name: 'Task board', where: 'Board · lane field' }],
+      }),
+    );
+    await act(async () => {
+      root.render(
+        <I18nProvider initialLocale="en">
+          <FieldSettingsDialog
+            field={status}
+            table={table}
+            tables={[table]}
+            fields={[status]}
+            onClose={vi.fn()}
+            onSaved={onSaved}
+            onArchive={vi.fn()}
+          />
+        </I18nProvider>,
+      );
+    });
+    await act(async () => button('Remove Doing').click());
+    await act(async () => button('Save field').click());
+
+    const dialog = document.querySelector('[data-testid="app-references-dialog"]')!;
+    expect(document.body.textContent).toContain('Apps use options you removed from “Status”');
+    expect(dialog.querySelector('a[href="#/apps/12/edit"]')?.textContent).toBe('Task board');
+    expect(dialog.textContent).toContain('Board · lane field');
+    expect(onSaved).not.toHaveBeenCalled();
+    // Nothing else went wrong: the settings show no error of their own.
+    expect(document.body.textContent).not.toContain('Used by apps');
+
+    await act(async () => button('Save anyway').click());
+    const input = {
+      name: 'Status',
+      required: false,
+      config: {
+        options: [
+          { id: 'todo', label: 'To do' },
+          { id: 'done', label: 'Done' },
+        ],
+      },
+    };
+    expect(api.updateTableField.mock.calls).toEqual([
+      [2, input],
+      [2, input, { confirm: true }],
+    ]);
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[data-testid="app-references-dialog"]')).toBeNull();
+  });
+
+  it('keeps other failures in the dialog as before', async () => {
+    api.updateTableField.mockRejectedValueOnce(new TablesRequestError('Field name taken', 409, { reason: 'other' }));
+    await act(async () => {
+      root.render(
+        <I18nProvider initialLocale="en">
+          <FieldSettingsDialog
+            field={status}
+            table={table}
+            tables={[table]}
+            fields={[status]}
+            onClose={vi.fn()}
+            onSaved={vi.fn(async () => undefined)}
+            onArchive={vi.fn()}
+          />
+        </I18nProvider>,
+      );
+    });
+    await act(async () => button('Save field').click());
+    expect(document.body.textContent).toContain('Field name taken');
+    expect(document.querySelector('[data-testid="app-references-dialog"]')).toBeNull();
   });
 });

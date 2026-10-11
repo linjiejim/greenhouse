@@ -34,6 +34,7 @@ import {
   type TableUserOption,
 } from '../../lib/api/tables';
 import { ConfirmDialog, Pagination, Spinner, toast } from '../../components/ui';
+import { AppReferencesDialog, useAppReferencesGuard } from '../../components/tables/app-references';
 import { useTablesRecordsChanged } from '../../hooks/use-tables-records-changed';
 import { safeParse } from '../../lib/utils';
 import { useAuthStore } from '../../stores';
@@ -114,6 +115,8 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
   const [deleteRecord, setDeleteRecord] = useState<TableRecord | null>(null);
   const [fieldDialog, setFieldDialog] = useState<TableField | 'new' | null>(null);
   const [archiveField, setArchiveField] = useState<TableField | null>(null);
+  /** Archiving a field apps use asks again with where they use it (D6). */
+  const appReferences = useAppReferencesGuard();
   /** A confirmed delete / archive is in flight. */
   const [confirming, setConfirming] = useState(false);
   const [viewPanel, setViewPanel] = useState<ViewPanel>(null);
@@ -245,8 +248,16 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
   const confirmArchiveField = (field: TableField) =>
     runConfirmed(
       async () => {
-        await archiveTableField(field.id);
-        void loadSchema();
+        await appReferences.guard(
+          async (confirm) => {
+            await (confirm ? archiveTableField(field.id, { confirm: true }) : archiveTableField(field.id));
+            void loadSchema();
+          },
+          {
+            title: t('apps.builder.references.fieldTitle', { name: field.name }),
+            confirmLabel: t('apps.builder.references.archiveAnyway'),
+          },
+        );
       },
       () => setArchiveField(null),
       t('tables.views.archiveFieldFailed'),
@@ -627,6 +638,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
         confirmLabel={t('common.archive')}
         confirmVariant="destructive"
       />
+      <AppReferencesDialog request={appReferences.request} onClose={appReferences.close} />
     </div>
   );
 }

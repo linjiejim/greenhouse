@@ -5,7 +5,8 @@
  * a saved view's columns follow its `fieldIds`, an inline edit goes through
  * the shared FieldEditor into one record write, a kanban view loads one capped
  * page, records refetch on `tables:records_changed`, a conflicting edit
- * reloads instead of overwriting, and the fields panel writes the view.
+ * reloads instead of overwriting, the fields panel writes the view, and
+ * archiving a field apps use asks again with where they use it (D6).
  */
 
 import { act } from 'react';
@@ -32,6 +33,7 @@ const api = vi.hoisted(() => ({
   updateTableView: vi.fn(),
   aggregateTableRecords: vi.fn(),
   deleteTableRecord: vi.fn(),
+  archiveTableField: vi.fn(),
 }));
 vi.mock('../../lib/api/tables', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api/tables')>()),
@@ -360,5 +362,95 @@ describe('TablesViewContainer', () => {
       revision: 1,
       config: { fieldIds: [2], systemFields: ['created_by'] },
     });
+  });
+
+  it('archives a field apps use only after showing where, resending with confirm', async () => {
+    api.archiveTableField
+      .mockRejectedValueOnce(
+        new TablesRequestError('Apps use this field', 409, {
+          reason: 'used_by_apps',
+          references: [
+            { appId: 12, name: 'Deal desk', where: 'Pipeline · Board card' },
+            { appId: 14, name: 'Sales stats', where: 'Role Manager · rules' },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(field(2, 'Amount', 'number'));
+    await mount();
+    const schemaLoads = api.getTableSchema.mock.calls.length;
+    await act(async () =>
+      (container.querySelector('button[aria-label="Amount column options"]') as HTMLButtonElement).click(),
+    );
+    await act(async () =>
+      (
+        [...document.querySelectorAll('button')].find((entry) => entry.textContent === 'Edit field…') as HTMLElement
+      ).click(),
+    );
+    await flush();
+    await act(async () =>
+      (
+        [...document.querySelectorAll('button')].find((entry) => entry.textContent?.trim() === 'Archive') as HTMLElement
+      ).click(),
+    );
+    await act(async () =>
+      (document.querySelector('[data-testid="confirm-dialog-confirm"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+
+    expect(api.archiveTableField).toHaveBeenCalledWith(2);
+    // The confirm closed; the references took over, each app linking to its builder.
+    expect(document.querySelector('[data-testid="confirm-dialog"]')).toBeNull();
+    const dialog = document.querySelector('[data-testid="app-references-dialog"]')!;
+    expect(document.body.textContent).toContain('Apps use the field “Amount”');
+    expect([...dialog.querySelectorAll('a')].map((link) => link.getAttribute('href'))).toEqual([
+      '#/apps/12/edit',
+      '#/apps/14/edit',
+    ]);
+    expect(dialog.textContent).toContain('Pipeline · Board card');
+    expect(document.body.textContent).not.toContain('Apps use this field');
+    expect(api.getTableSchema.mock.calls.length).toBe(schemaLoads);
+
+    await act(async () =>
+      (document.querySelector('[data-testid="app-references-proceed"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+    expect(api.archiveTableField).toHaveBeenLastCalledWith(2, { confirm: true });
+    expect(document.querySelector('[data-testid="app-references-dialog"]')).toBeNull();
+    expect(api.getTableSchema.mock.calls.length).toBeGreaterThan(schemaLoads);
+  });
+
+  it('leaves a field apps use alone when the person backs off', async () => {
+    api.archiveTableField.mockRejectedValueOnce(
+      new TablesRequestError('Apps use this field', 409, {
+        reason: 'used_by_apps',
+        references: [{ appId: 12, name: 'Deal desk', where: 'Pipeline' }],
+      }),
+    );
+    await mount();
+    await act(async () =>
+      (container.querySelector('button[aria-label="Amount column options"]') as HTMLButtonElement).click(),
+    );
+    await act(async () =>
+      (
+        [...document.querySelectorAll('button')].find((entry) => entry.textContent === 'Edit field…') as HTMLElement
+      ).click(),
+    );
+    await flush();
+    await act(async () =>
+      (
+        [...document.querySelectorAll('button')].find((entry) => entry.textContent?.trim() === 'Archive') as HTMLElement
+      ).click(),
+    );
+    await act(async () =>
+      (document.querySelector('[data-testid="confirm-dialog-confirm"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+    const dialog = document.querySelector('[data-testid="app-references-dialog"]')!;
+    await act(async () =>
+      ([...dialog.querySelectorAll('button')].find((entry) => entry.textContent === 'Cancel') as HTMLElement).click(),
+    );
+    await flush();
+    expect(api.archiveTableField).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[data-testid="app-references-dialog"]')).toBeNull();
   });
 });

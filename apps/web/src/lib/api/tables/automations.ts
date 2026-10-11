@@ -62,10 +62,13 @@ export async function updateTableAutomation(
   return (await response.json()).automation;
 }
 
-export async function deleteTableAutomation(automationId: number): Promise<void> {
-  const response = await rpc.api.tables.automations[':automationId'].$delete({
+/** A rule an app's button runs answers 409 `used_by_apps` (Phase 1 D6) until resent with `{confirm: true}`. */
+export async function deleteTableAutomation(automationId: number, options: { confirm?: boolean } = {}): Promise<void> {
+  const args = {
     param: { automationId: String(automationId) },
-  });
+    ...(options.confirm ? { query: { confirm: '1' } } : {}),
+  };
+  const response = await rpc.api.tables.automations[':automationId'].$delete(args);
   if (!response.ok) throw await responseError(response, 'Unable to delete automation');
 }
 

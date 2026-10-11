@@ -512,6 +512,14 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
     references: {
       title: '这些应用在使用它：',
       consequence: '继续的话，已发布版本中用到它的卡片和按钮会显示为不可用，直到搭建者修改草稿并重新发布。',
+      tableTitle: '有应用在使用表「{name}」',
+      fieldTitle: '有应用在使用字段「{name}」',
+      optionsTitle: '有应用在使用你从「{name}」删掉的选项',
+      automationTitle: '有应用在运行自动化「{name}」',
+      archiveAnyway: '仍然归档',
+      deleteAnyway: '仍然删除',
+      saveAnyway: '仍然保存',
+      failed: '没有完成，请重试。',
     },
     baseSection: {
       button: '应用',

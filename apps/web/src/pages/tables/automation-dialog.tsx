@@ -16,6 +16,7 @@ import {
   type TableUserOption,
 } from '../../lib/api/tables';
 import { useT } from '../../lib/i18n';
+import { AppReferencesDialog, useAppReferencesGuard } from '../../components/tables/app-references';
 import { RuleEditor } from './automations/rule-editor';
 import { RunLog } from './automations/run-log';
 import { TRIGGER_LABEL_KEYS } from './automations/rule-draft';
@@ -42,6 +43,8 @@ export function TablesAutomationDialog({
   const [busyId, setBusyId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<TableAutomation | null>(null);
   const [error, setError] = useState('');
+  /** Deleting a rule an app's button runs asks again with where (D6). */
+  const appReferences = useAppReferencesGuard();
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
 
   const load = useCallback(async () => {
@@ -79,10 +82,19 @@ export function TablesAutomationDialog({
 
   const remove = async () => {
     if (!deleting) return;
+    const rule = deleting;
     try {
-      await deleteTableAutomation(deleting.id);
+      await appReferences.guard(
+        async (confirm) => {
+          await (confirm ? deleteTableAutomation(rule.id, { confirm: true }) : deleteTableAutomation(rule.id));
+          await load();
+        },
+        {
+          title: t('apps.builder.references.automationTitle', { name: rule.name }),
+          confirmLabel: t('apps.builder.references.deleteAnyway'),
+        },
+      );
       setDeleting(null);
-      await load();
     } catch (deleteError) {
       setDeleting(null);
       setError(deleteError instanceof Error ? deleteError.message : t('tables.automations.deleteFailed'));
@@ -203,6 +215,7 @@ export function TablesAutomationDialog({
         onConfirm={() => void remove()}
         onClose={() => setDeleting(null)}
       />
+      <AppReferencesDialog request={appReferences.request} onClose={appReferences.close} />
     </Dialog>
   );
 }

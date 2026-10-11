@@ -31,12 +31,30 @@ export async function updateTableDefinition(
 }
 
 /**
+ * A structure change apps depend on (archiving a table or field, removing
+ * select options) answers 409 `used_by_apps` (Phase 1 D6) until it is resent
+ * with `{confirm: true}` — see `components/tables/app-references.tsx`.
+ */
+export interface AppReferenceConfirm {
+  confirm?: boolean;
+}
+
+/** Only `confirm: true` travels; an unconfirmed write sends no body field. */
+function confirmBody(options: AppReferenceConfirm): { confirm?: true } {
+  return options.confirm ? { confirm: true } : {};
+}
+
+/**
  * Deleting a table archives it: records, links and fields stay untouched and an
  * administrator can bring it back with `pnpm cli tables restore-table <id>`.
  * Only the Base creator may do this (spec D3).
  */
-export async function archiveTableDefinition(tableId: number): Promise<TableDefinition> {
-  const response = await rpc.api.tables.tables[':tableId'].archive.$post({ param: { tableId: String(tableId) } });
+export async function archiveTableDefinition(
+  tableId: number,
+  options: AppReferenceConfirm = {},
+): Promise<TableDefinition> {
+  const args = { param: { tableId: String(tableId) }, json: confirmBody(options) };
+  const response = await rpc.api.tables.tables[':tableId'].archive.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to delete Table');
   return (await response.json()).table;
 }
@@ -73,15 +91,17 @@ export async function createTableField(
 export async function updateTableField(
   fieldId: number,
   input: { name?: string; required?: boolean; config?: TableFieldConfig; position?: number },
+  options: AppReferenceConfirm = {},
 ): Promise<TableField> {
-  const args = { param: { fieldId: String(fieldId) }, json: input };
+  const args = { param: { fieldId: String(fieldId) }, json: { ...input, ...confirmBody(options) } };
   const response = await rpc.api.tables.fields[':fieldId'].$patch(args);
   if (!response.ok) throw await responseError(response, 'Unable to update field');
   return (await response.json()).field;
 }
 
-export async function archiveTableField(fieldId: number): Promise<TableField> {
-  const response = await rpc.api.tables.fields[':fieldId'].archive.$post({ param: { fieldId: String(fieldId) } });
+export async function archiveTableField(fieldId: number, options: AppReferenceConfirm = {}): Promise<TableField> {
+  const args = { param: { fieldId: String(fieldId) }, json: confirmBody(options) };
+  const response = await rpc.api.tables.fields[':fieldId'].archive.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to archive field');
   return (await response.json()).field;
 }

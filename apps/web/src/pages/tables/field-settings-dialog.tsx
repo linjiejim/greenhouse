@@ -1,6 +1,8 @@
 /**
  * Field settings: create a field or change one (name, required, options,
- * relation target, formula text, rollup, lookup).
+ * relation target, formula text, rollup, lookup). Removing select options an
+ * app uses answers 409 `used_by_apps` (D6): the references open over the
+ * dialog, and "Save anyway" resends the change with `confirm`.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -19,6 +21,7 @@ import {
 } from '@greenhouse/types/tables';
 import { Button, Checkbox, Dialog, Input, Select } from '../../components/ui';
 import { FormField, FormGroup } from '../../components/form';
+import { AppReferencesDialog, useAppReferencesGuard } from '../../components/tables/app-references';
 import { CREATABLE_FIELD_TYPES, FIELD_TYPE_LABEL_KEYS, fieldConfig } from '../../components/tables/field-types';
 import { Archive } from '../../lib/icons';
 import {
@@ -77,6 +80,7 @@ export function FieldSettingsDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const formulaErrorText = useFormulaErrorText();
+  const appReferences = useAppReferencesGuard();
 
   // What a formula may name: this table's fields, never the one being edited.
   const formulaFields = useMemo(
@@ -207,10 +211,24 @@ export function FieldSettingsDialog({
           required: isComputedFieldType(type) ? false : required,
           config,
         });
+        await onSaved();
       } else {
-        await updateTableField(field.id, { name: name.trim(), required, config });
+        const input = { name: name.trim(), required, config };
+        const editing = field;
+        // Dropping options an app uses asks first; this dialog stays open until it is settled.
+        await appReferences.guard(
+          async (confirm) => {
+            await (confirm
+              ? updateTableField(editing.id, input, { confirm: true })
+              : updateTableField(editing.id, input));
+            await onSaved();
+          },
+          {
+            title: t('apps.builder.references.optionsTitle', { name: editing.name }),
+            confirmLabel: t('apps.builder.references.saveAnyway'),
+          },
+        );
       }
-      await onSaved();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : t('tables.saveFieldFailed'));
     } finally {
@@ -240,143 +258,146 @@ export function FieldSettingsDialog({
   );
 
   return (
-    <Dialog
-      open={field !== null}
-      onClose={onClose}
-      title={field === 'new' ? t('tables.newField') : t('tables.fieldSettings')}
-    >
-      <div className="space-y-4">
-        <FormField label={t('common.name')}>
-          <Input value={name} onChange={(event) => setName(event.target.value)} />
-        </FormField>
-        <FormField label={t('tables.type')}>
-          <Select
-            value={type}
-            disabled={field !== 'new'}
-            onChange={(event) => setType(event.target.value as TableFieldType)}
-          >
-            {/* An existing field keeps showing its own type even when it is not creatable here. */}
-            {(CREATABLE_FIELD_TYPES.includes(type) ? CREATABLE_FIELD_TYPES : [type, ...CREATABLE_FIELD_TYPES]).map(
-              (entry) => (
-                <option key={entry} value={entry}>
-                  {t(FIELD_TYPE_LABEL_KEYS[entry])}
-                </option>
-              ),
-            )}
-          </Select>
-        </FormField>
-        <Checkbox
-          label={t('tables.required')}
-          checked={required}
-          disabled={isComputedFieldType(type)}
-          onChange={(event) => setRequired(event.target.checked)}
-        />
-        {(type === 'single_select' || type === 'multi_select') && (
-          <FormGroup label={t('tables.fieldOptions.title')} help={t('tables.fieldOptions.hint')}>
-            <OptionListEditor rows={options} onChange={setOptions} />
-          </FormGroup>
-        )}
-        {type === 'relation' && (
-          <div className="space-y-3 rounded-md border border-edge bg-surface-sunken p-3">
-            <FormField label={t('tables.relatedTable')}>
-              {idSelect(relationTargetTableId, setRelationTargetTableId, t('tables.chooseTable'), tables)}
-            </FormField>
-            <Checkbox
-              label={t('tables.allowMultipleRelations')}
-              checked={relationMultiple}
-              onChange={(event) => setRelationMultiple(event.target.checked)}
-            />
-          </div>
-        )}
-        {type === 'formula' && parsedFormula && (
-          <div className="space-y-3 rounded-md border border-edge bg-surface-sunken p-3">
-            <FormField label={t('tables.formula.editorLabel')}>
-              <FormulaEditor
-                value={formulaText}
-                onChange={setFormulaText}
-                fields={formulaFields}
-                result={parsedFormula}
+    <>
+      <Dialog
+        open={field !== null}
+        onClose={onClose}
+        title={field === 'new' ? t('tables.newField') : t('tables.fieldSettings')}
+      >
+        <div className="space-y-4">
+          <FormField label={t('common.name')}>
+            <Input value={name} onChange={(event) => setName(event.target.value)} />
+          </FormField>
+          <FormField label={t('tables.type')}>
+            <Select
+              value={type}
+              disabled={field !== 'new'}
+              onChange={(event) => setType(event.target.value as TableFieldType)}
+            >
+              {/* An existing field keeps showing its own type even when it is not creatable here. */}
+              {(CREATABLE_FIELD_TYPES.includes(type) ? CREATABLE_FIELD_TYPES : [type, ...CREATABLE_FIELD_TYPES]).map(
+                (entry) => (
+                  <option key={entry} value={entry}>
+                    {t(FIELD_TYPE_LABEL_KEYS[entry])}
+                  </option>
+                ),
+              )}
+            </Select>
+          </FormField>
+          <Checkbox
+            label={t('tables.required')}
+            checked={required}
+            disabled={isComputedFieldType(type)}
+            onChange={(event) => setRequired(event.target.checked)}
+          />
+          {(type === 'single_select' || type === 'multi_select') && (
+            <FormGroup label={t('tables.fieldOptions.title')} help={t('tables.fieldOptions.hint')}>
+              <OptionListEditor rows={options} onChange={setOptions} />
+            </FormGroup>
+          )}
+          {type === 'relation' && (
+            <div className="space-y-3 rounded-md border border-edge bg-surface-sunken p-3">
+              <FormField label={t('tables.relatedTable')}>
+                {idSelect(relationTargetTableId, setRelationTargetTableId, t('tables.chooseTable'), tables)}
+              </FormField>
+              <Checkbox
+                label={t('tables.allowMultipleRelations')}
+                checked={relationMultiple}
+                onChange={(event) => setRelationMultiple(event.target.checked)}
               />
-            </FormField>
-            <FormField label={t('tables.resultType')}>
-              <Select
-                value={formulaResultType}
-                onChange={(event) => {
-                  setResultTypeChosen(true);
-                  setFormulaResultType(event.target.value as TableFormulaResultType);
-                }}
-              >
-                <option value="text">{t('tables.fieldType.text')}</option>
-                <option value="number">{t('tables.fieldType.number')}</option>
-                <option value="boolean">{t('tables.fieldType.booleanValue')}</option>
-                <option value="date">{t('tables.fieldType.date')}</option>
-                <option value="datetime">{t('tables.fieldType.datetime')}</option>
-              </Select>
-            </FormField>
-            <p className="text-[11px] text-fg-faint">{t('tables.formulaSafety')}</p>
-          </div>
-        )}
-        {(type === 'rollup' || type === 'lookup') && (
-          <div className="grid grid-cols-1 gap-3 rounded-md border border-edge bg-surface-sunken p-3 sm:grid-cols-2">
-            <FormField label={t('tables.relationField')}>
-              {idSelect(
-                linkRelationFieldId,
-                (next) => {
-                  setLinkRelationFieldId(next);
-                  setLinkTargetFieldId('');
-                },
-                t('tables.chooseRelation'),
-                relationFields,
-              )}
-            </FormField>
-            <FormField label={t('tables.targetField')}>
-              {idSelect(
-                linkTargetFieldId,
-                setLinkTargetFieldId,
-                t('tables.chooseTargetField'),
-                linkTargetChoices,
-                !linkTargetTableId,
-              )}
-            </FormField>
-            {type === 'rollup' ? (
-              <FormField label={t('tables.aggregation')} className="sm:col-span-2">
+            </div>
+          )}
+          {type === 'formula' && parsedFormula && (
+            <div className="space-y-3 rounded-md border border-edge bg-surface-sunken p-3">
+              <FormField label={t('tables.formula.editorLabel')}>
+                <FormulaEditor
+                  value={formulaText}
+                  onChange={setFormulaText}
+                  fields={formulaFields}
+                  result={parsedFormula}
+                />
+              </FormField>
+              <FormField label={t('tables.resultType')}>
                 <Select
-                  value={rollupAggregation}
-                  onChange={(event) => setRollupAggregation(event.target.value as TableRollupAggregation)}
+                  value={formulaResultType}
+                  onChange={(event) => {
+                    setResultTypeChosen(true);
+                    setFormulaResultType(event.target.value as TableFormulaResultType);
+                  }}
                 >
-                  <option value="count">{t('tables.aggregationType.count')}</option>
-                  <option value="sum">{t('tables.aggregationType.sum')}</option>
-                  <option value="avg">{t('tables.aggregationType.avg')}</option>
-                  <option value="min">{t('tables.aggregationType.min')}</option>
-                  <option value="max">{t('tables.aggregationType.max')}</option>
-                  <option value="join">{t('tables.aggregationType.join')}</option>
+                  <option value="text">{t('tables.fieldType.text')}</option>
+                  <option value="number">{t('tables.fieldType.number')}</option>
+                  <option value="boolean">{t('tables.fieldType.booleanValue')}</option>
+                  <option value="date">{t('tables.fieldType.date')}</option>
+                  <option value="datetime">{t('tables.fieldType.datetime')}</option>
                 </Select>
               </FormField>
-            ) : (
-              <p className="text-[11px] text-fg-faint sm:col-span-2">{t('tables.formula.lookupHint')}</p>
-            )}
-          </div>
-        )}
-        {error && <p className="text-xs text-danger">{error}</p>}
-        <div className="flex items-center justify-between border-t border-edge pt-4">
-          {field && field !== 'new' && !field.is_primary ? (
-            <Button variant="ghost" className="text-danger" onClick={() => onArchive(field)}>
-              <Archive size={13} className="mr-1.5" />
-              {t('common.archive')}
-            </Button>
-          ) : (
-            <span />
+              <p className="text-[11px] text-fg-faint">{t('tables.formulaSafety')}</p>
+            </div>
           )}
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={onClose}>
-              {t('common.cancel')}
-            </Button>
-            <Button onClick={() => void save()} disabled={saving || !name.trim()}>
-              {saving ? t('common.saving') : t('tables.saveField')}
-            </Button>
+          {(type === 'rollup' || type === 'lookup') && (
+            <div className="grid grid-cols-1 gap-3 rounded-md border border-edge bg-surface-sunken p-3 sm:grid-cols-2">
+              <FormField label={t('tables.relationField')}>
+                {idSelect(
+                  linkRelationFieldId,
+                  (next) => {
+                    setLinkRelationFieldId(next);
+                    setLinkTargetFieldId('');
+                  },
+                  t('tables.chooseRelation'),
+                  relationFields,
+                )}
+              </FormField>
+              <FormField label={t('tables.targetField')}>
+                {idSelect(
+                  linkTargetFieldId,
+                  setLinkTargetFieldId,
+                  t('tables.chooseTargetField'),
+                  linkTargetChoices,
+                  !linkTargetTableId,
+                )}
+              </FormField>
+              {type === 'rollup' ? (
+                <FormField label={t('tables.aggregation')} className="sm:col-span-2">
+                  <Select
+                    value={rollupAggregation}
+                    onChange={(event) => setRollupAggregation(event.target.value as TableRollupAggregation)}
+                  >
+                    <option value="count">{t('tables.aggregationType.count')}</option>
+                    <option value="sum">{t('tables.aggregationType.sum')}</option>
+                    <option value="avg">{t('tables.aggregationType.avg')}</option>
+                    <option value="min">{t('tables.aggregationType.min')}</option>
+                    <option value="max">{t('tables.aggregationType.max')}</option>
+                    <option value="join">{t('tables.aggregationType.join')}</option>
+                  </Select>
+                </FormField>
+              ) : (
+                <p className="text-[11px] text-fg-faint sm:col-span-2">{t('tables.formula.lookupHint')}</p>
+              )}
+            </div>
+          )}
+          {error && <p className="text-xs text-danger">{error}</p>}
+          <div className="flex items-center justify-between border-t border-edge pt-4">
+            {field && field !== 'new' && !field.is_primary ? (
+              <Button variant="ghost" className="text-danger" onClick={() => onArchive(field)}>
+                <Archive size={13} className="mr-1.5" />
+                {t('common.archive')}
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={onClose}>
+                {t('common.cancel')}
+              </Button>
+              <Button onClick={() => void save()} disabled={saving || !name.trim()}>
+                {saving ? t('common.saving') : t('tables.saveField')}
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
-    </Dialog>
+      </Dialog>
+      <AppReferencesDialog request={appReferences.request} onClose={appReferences.close} />
+    </>
   );
 }
