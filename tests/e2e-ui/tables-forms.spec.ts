@@ -113,7 +113,8 @@ test.describe('tables forms', () => {
           });
         const first = await submit('Member entry');
         expect(first.status()).toBe(201);
-        expect(await first.json()).toEqual({ submitted: true, successMessage: 'Your response has been recorded.' });
+        // The builder left the confirmation empty: none is stored, each respondent's page shows its own language.
+        expect(await first.json()).toEqual({ submitted: true, successMessage: null });
         const second = await submit('Second try');
         expect(second.status()).toBe(409);
 
