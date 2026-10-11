@@ -143,6 +143,10 @@
     "./apps": {
       "import": "./src/apps.ts",
       "types": "./src/apps.ts"
+    },
+    "./app-sandbox": {
+      "import": "./src/app-sandbox.ts",
+      "types": "./src/app-sandbox.ts"
     }
   },
   "scripts": {

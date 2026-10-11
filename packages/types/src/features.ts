@@ -73,6 +73,26 @@ export const FEATURE_FLAGS = [
     defaultEnabled: true,
   },
   {
+    key: 'apps_custom_code',
+    label: 'App custom components',
+    description:
+      'Write sandboxed custom components (your own HTML and script) into apps. Viewing apps that contain them needs nothing.',
+    // Opt-in (docs/specs/20261011-tables-apps-advanced.md §1): a new code-execution
+    // surface whose containment is the sandbox, so writing code into an app is a
+    // deliberate grant. Publishing to anyone beyond the Base's managers additionally
+    // needs a super's review of the exact version (D10).
+    defaultEnabled: false,
+  },
+  {
+    key: 'tables_ai_fields',
+    label: 'Tables AI fields',
+    description:
+      'Create AI fields that fill each record from its other fields, charged to the field’s creator under a monthly cap per field',
+    // On for everyone like `tables` (§2, D2): spend is already bounded by the
+    // per-field monthly cap and the creator's own budget; this is the per-person off switch.
+    defaultEnabled: true,
+  },
+  {
     key: 'cloud-agent',
     label: 'Missions',
     description: 'Long-running missions in disposable sandboxes with a persistent workspace',

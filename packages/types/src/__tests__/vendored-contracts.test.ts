@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const VENDORED_TYPE_ONLY = ['tables-wire.ts', 'apps.ts'];
+const VENDORED_TYPE_ONLY = ['tables-wire.ts', 'apps.ts', 'app-sandbox.ts'];
 
 function importLines(file: string): string[] {
   const text = readFileSync(resolve(__dirname, '..', file), 'utf8');

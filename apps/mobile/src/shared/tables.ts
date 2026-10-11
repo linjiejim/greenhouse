@@ -33,6 +33,8 @@ export const TABLE_FIELD_TYPES = [
   'formula',
   'rollup',
   'lookup',
+  /** Generated per record by a model from other fields (Phase 2, `config.ai`); read-only to writers. */
+  'ai',
 ] as const;
 
 export type TableFieldType = (typeof TABLE_FIELD_TYPES)[number];
@@ -40,9 +42,10 @@ export type TableFieldType = (typeof TABLE_FIELD_TYPES)[number];
 /**
  * Field types whose value is derived, never written. Every "is this writable /
  * may a form or import target it / render read-only" decision references this
- * one list (Phase 2 adds `ai`).
+ * one list. `ai` values are produced by the Tables AI worker, never by a
+ * writer (docs/specs/20261011-tables-apps-advanced.md §2).
  */
-export const COMPUTED_FIELD_TYPES = ['formula', 'rollup', 'lookup'] as const;
+export const COMPUTED_FIELD_TYPES = ['formula', 'rollup', 'lookup', 'ai'] as const;
 export type TableComputedFieldType = (typeof COMPUTED_FIELD_TYPES)[number];
 
 export function isComputedFieldType(type: TableFieldType): type is TableComputedFieldType {
@@ -165,6 +168,70 @@ export interface TableFieldConfig {
     relationFieldId: number;
     targetFieldId: number;
   };
+  /** `ai` fields: what the model is asked per record and how its answer is stored. */
+  ai?: TableAiFieldConfig;
+}
+
+// ─── AI fields (Phase 2, docs/specs/20261011-tables-apps-advanced.md §2) ──
+
+/** What an AI field stores: text, a number, or option ids of its own `options`. */
+export const TABLE_AI_RESULT_TYPES = ['text', 'number', 'single_select', 'multi_select'] as const;
+export type TableAiResultType = (typeof TABLE_AI_RESULT_TYPES)[number];
+
+/**
+ * An AI field's configuration. The value is generated per record by the Tables
+ * AI worker and charged to the field's creator (the payer, re-checked on every
+ * job) under a per-field monthly token cap (D2). Writers never set it; a change
+ * to one of `inputFieldIds` re-queues the record when `autoUpdate` is on.
+ */
+export interface TableAiFieldConfig {
+  /** The instruction; may reference input fields as `{{field:<id>}}` (`TABLE_AUTOMATION_FIELD_TEMPLATE`). */
+  prompt: string;
+  /** Fields of the same table the model reads (every `{{field:<id>}}` in the prompt must be one of them). */
+  inputFieldIds: number[];
+  resultType: TableAiResultType;
+  /** `single_select` / `multi_select` results: the options the model may choose from (stored by id). */
+  options?: TableSelectOption[];
+  /** Re-generate when an input field changes; off = only on "fill" / "regenerate". */
+  autoUpdate: boolean;
+  /** A chat model id the creator may use; absent = the workspace default. */
+  model?: string;
+  /** Tokens per calendar month this field may spend (absent = `TABLE_AI_FIELD_LIMITS.defaultMonthlyTokenCap`). */
+  monthlyTokenCap?: number;
+}
+
+/** Limits the server enforces on AI fields and the editor quotes. */
+export const TABLE_AI_FIELD_LIMITS = Object.freeze({
+  prompt: 4_000,
+  inputFields: 20,
+  options: 50,
+  defaultMonthlyTokenCap: 200_000,
+  maxMonthlyTokenCap: 10_000_000,
+});
+
+/** Where one record's AI value stands (absent from a status view = settled, nothing queued). */
+export type TableAiCellState = 'queued' | 'running' | 'failed';
+
+/**
+ * `POST /api/tables/fields/:fieldId/ai/fill` (empty cells) and `…/ai/regenerate`
+ * (every record, or `recordIds`): how many records were queued, and how many
+ * were left out because the field's monthly cap would be exceeded.
+ */
+export interface TableAiFieldRunResult {
+  queued: number;
+  skipped: number;
+  /** Set when the cap stopped the run (`skipped > 0`). */
+  capReached?: boolean;
+}
+
+/** `GET /api/tables/fields/:fieldId/ai/status[?recordIds=1,2]`: progress, spend, and the visible cells' states. */
+export interface TableAiFieldStatusView {
+  fieldId: number;
+  counts: { queued: number; running: number; failed: number };
+  /** This calendar month, against the cap. */
+  usage: { tokens: number; cap: number };
+  /** For the asked records only: those not settled. */
+  records: Record<string, { state: TableAiCellState; error?: string }>;
 }
 
 /**
@@ -524,7 +591,32 @@ export type TableAutomationAction =
       urgent?: boolean;
     }
   | { id: string; type: 'webhook'; url: string; fieldIds?: number[]; hasSecret?: boolean }
-  | { id: string; type: 'delay'; minutes: number };
+  | { id: string; type: 'delay'; minutes: number }
+  /**
+   * An agent step (Phase 2, docs/specs/20261011-tables-apps-advanced.md §3, D3, D7):
+   * a deterministic agent session run by the automation worker as the rule's
+   * execution user. Read-only: its only write is `outputFieldId` of the
+   * triggering record (CAS, marked AI-generated). `botId` must be one of the
+   * executor's Bots (its version is pinned when the rule is saved); `tools`
+   * defaults to `none`; `same_base_read` reads the triggering record and the
+   * same Base's tables within the executor's scope — never the web, connectors,
+   * the knowledge base or other Bases. Runs once, never replayed.
+   */
+  | {
+      id: string;
+      type: 'agent';
+      /** Supports `{{field:<id>}}` (the record's values are handed over as untrusted data). */
+      prompt: string;
+      botId?: string;
+      outputFieldId?: number;
+      /** 1–`TABLE_AUTOMATION_LIMITS.agentMaxSteps`. */
+      maxSteps: number;
+      tools: TableAutomationAgentTools;
+    };
+
+/** What an agent step may read: nothing (default) or the triggering record + its Base's tables. */
+export const TABLE_AUTOMATION_AGENT_TOOLS = ['none', 'same_base_read'] as const;
+export type TableAutomationAgentTools = (typeof TABLE_AUTOMATION_AGENT_TOOLS)[number];
 
 export type TableAutomationActionType = TableAutomationAction['type'];
 
@@ -537,7 +629,8 @@ export type TableAutomationActionInput =
   | (Omit<Extract<TableAutomationAction, { type: 'update_record' }>, 'id'> & { id?: string })
   | (Omit<Extract<TableAutomationAction, { type: 'create_record' }>, 'id'> & { id?: string })
   | (Omit<Extract<TableAutomationAction, { type: 'notify' }>, 'id'> & { id?: string })
-  | (Omit<Extract<TableAutomationAction, { type: 'delay' }>, 'id'> & { id?: string });
+  | (Omit<Extract<TableAutomationAction, { type: 'delay' }>, 'id'> & { id?: string })
+  | (Omit<Extract<TableAutomationAction, { type: 'agent' }>, 'id'> & { id?: string });
 
 export interface TableAutomationConfig {
   version?: number;
@@ -611,6 +704,9 @@ export const TABLE_AUTOMATION_LIMITS = {
   webhookUrl: 2_000,
   webhookSecretMin: 16,
   webhookSecretMax: 256,
+  /** agent steps (Phase 2). */
+  agentPrompt: 4_000,
+  agentMaxSteps: 20,
 } as const;
 
 /**
@@ -902,6 +998,13 @@ export interface SchemaPlanAppAudienceEntry {
   roleKey: string;
 }
 
+/**
+ * Field types a plan may create: every type but `ai` — AI fields join plans
+ * when they can be configured there (Phase 2 slice AI), so the model is never
+ * offered a type every apply would refuse.
+ */
+export type SchemaPlanFieldType = Exclude<TableFieldType, 'ai'>;
+
 export type SchemaPlanOperation =
   | {
       op: 'base.create';
@@ -958,7 +1061,7 @@ export type SchemaPlanOperation =
       tableRef?: SchemaPlanRef;
       tableId?: number;
       name: string;
-      type: TableFieldType;
+      type: SchemaPlanFieldType;
       required?: boolean;
       config?: SchemaPlanFieldConfig;
     }

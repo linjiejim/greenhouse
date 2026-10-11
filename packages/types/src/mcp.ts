@@ -40,6 +40,10 @@ export const MCP_RESOURCE_GROUP_IDS = [
   'knowledge',
   'projects',
   'tables',
+  // Apps built on Tables (Phase 2, docs/specs/20261011-tables-apps-advanced.md §4): its own
+  // group so a token's existing `mcp:tables` never quietly widens to apps (apps_query /
+  // apps_action, slice AGT).
+  'apps',
   'skills',
   'chat',
   'automation',

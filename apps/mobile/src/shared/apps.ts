@@ -226,6 +226,37 @@ export type AppCard = AppCardBase &
     | { kind: 'kpi' | 'chart' | 'pivot'; card: TableCardSpec }
     | { kind: 'text'; markdown: string }
     | { kind: 'buttons'; buttons: AppButton[] }
+    /**
+     * A sandboxed custom component (Phase 2, docs/specs/20261011-tables-apps-advanced.md §1, D1).
+     * The platform assembles the document around `html` (`@greenhouse/types/app-sandbox`);
+     * the component reads its `bindings` and runs its declared `actions` / `create`
+     * over the bridge — every action confirmed by the host, never `delete`.
+     */
+    | {
+        kind: 'custom';
+        /** The component's body and scripts (≤ `APP_SANDBOX_LIMITS.htmlBytes` UTF-8 bytes). */
+        html: string;
+        /** What the component may read: records or an aggregate of this Base's tables, evaluated for the viewer's role. */
+        bindings: AppCustomBinding[];
+        /** Declared record actions, each on the records of one `records` binding (never `delete`). */
+        actions?: AppCustomAction[];
+        /** Creating a record in the table of one `records` binding. */
+        create?: AppCustomCreate;
+        /** Starting height in CSS pixels before the component reports its size (hosts without a grid row). */
+        height?: number;
+      }
+    /**
+     * Data from outside the Base (Phase 2, §5, D4, D11): a read tool or a
+     * connector tool, evaluated as the viewer with their own access (app roles do
+     * not apply), drawn as plain data — a KPI, a chart or a table, as the source's
+     * `map` says (`externalDisplay`).
+     */
+    | {
+        kind: 'external';
+        source: AppExternalSource;
+        /** Chart maps: how to draw it (the Tables chart options). */
+        chart?: NonNullable<TableCardSpec['chart']>;
+      }
   );
 
 export type AppCardKind = AppCard['kind'];
@@ -241,14 +272,176 @@ export const APP_CARD_KINDS = [
   'pivot',
   'text',
   'buttons',
+  'custom',
+  'external',
 ] as const satisfies readonly AppCardKind[];
 
 /**
  * Card kinds the mobile app draws natively. Requests from mobile declare this
  * list; an older build meeting a newer kind shows "open on the web" instead of
- * crashing.
+ * crashing. An explicit list (not `APP_CARD_KINDS`): a kind joins it when the
+ * phone draws it (Phase 2 slice M adds `custom` / `external`).
  */
-export const MOBILE_APP_CARDS: readonly AppCardKind[] = APP_CARD_KINDS;
+export const MOBILE_APP_CARDS: readonly AppCardKind[] = [
+  'records',
+  'kanban',
+  'calendar',
+  'gallery',
+  'form',
+  'kpi',
+  'chart',
+  'pivot',
+  'text',
+  'buttons',
+];
+
+// ─── Custom cards (Phase 2 §1) ─────────────────────────────
+
+/**
+ * One thing a custom component may read, by id (`tools/call` name
+ * `query.<id>`): a page of records (`fieldIds` are its columns) or an
+ * aggregate (`aggregateBindingCard`), from a table of this Base — never a tool
+ * or connector source. Evaluated exactly like a records / aggregate card for
+ * the viewer's role; `source.query` may use `$page.<filterId>`.
+ */
+export interface AppCustomBinding {
+  id: string;
+  source: AppDataSource;
+  kind: 'records' | 'aggregate';
+  /** `records`: the fields delivered (∩ the role's readable fields). Required for records, absent for aggregates. */
+  fieldIds?: number[];
+  /** `aggregate`: no `groupBy` = one number (a KPI); with `groupBy` = rows (pivot-shaped, `series` allowed). */
+  aggregate?: NonNullable<TableCardSpec['aggregate']>;
+}
+
+/** A custom card's record action: a Phase 1 action (never `delete`) on the records of `bindingId` (a `records` binding). */
+export type AppCustomAction = AppRecordAction & { bindingId: string };
+
+/** A custom card's create: in the table of `bindingId` (a `records` binding). */
+export type AppCustomCreate = AppCreateSpec & { bindingId: string };
+
+/**
+ * The `TableCardSpec` an aggregate binding is evaluated as — one shape for the
+ * validator and the gateway: no `groupBy` → `kpi`, else `pivot` (rows of
+ * group × optional series).
+ */
+export function aggregateBindingCard(binding: AppCustomBinding): TableCardSpec {
+  const aggregate = binding.aggregate ?? { operation: 'count' };
+  return {
+    kind: aggregate.groupBy ? 'pivot' : 'kpi',
+    source: binding.source,
+    aggregate,
+  };
+}
+
+/** The binding a custom card's action or create writes through. */
+export function customBinding(
+  card: Extract<AppCard, { kind: 'custom' }>,
+  bindingId: string,
+): AppCustomBinding | undefined {
+  return card.bindings.find((binding) => binding.id === bindingId);
+}
+
+// ─── External data sources (Phase 2 §5) ────────────────────
+
+/** RFC 6901 JSON Pointer into a source's JSON result: `''` = the whole value, `/items/0/name`. */
+export type AppJsonPointer = string;
+
+export const APP_SOURCE_COLUMN_TYPES = ['text', 'number', 'date', 'datetime', 'boolean', 'url'] as const;
+export type AppSourceColumnType = (typeof APP_SOURCE_COLUMN_TYPES)[number];
+
+/** One column of a table map: `path` is read from each row element. */
+export interface AppSourceColumn {
+  /** Unique within the map (`APP_ID_PATTERN`); the row's cell key. */
+  key: string;
+  label: string;
+  path: AppJsonPointer;
+  /** How the cell is coerced and drawn; default `text`. */
+  type?: AppSourceColumnType;
+}
+
+/**
+ * How a source's JSON result becomes card data — declarative, no code. The
+ * result is a tool's JSON answer, or a connector's `structuredContent` (else its
+ * text parsed as JSON). Its `kind` is the card's display:
+ * - `kpi`: the number at `value` (a number or a numeric string; an array counts its items);
+ * - `chart`: each element of the array at `rows` is a point — `group` (label),
+ *   `value` (number), optional `series` (paths relative to the element);
+ * - `table`: each element of the array at `rows` is a row; `columns` pick its cells.
+ */
+export type AppSourceMap =
+  | { kind: 'kpi'; value: AppJsonPointer }
+  | { kind: 'chart'; rows: AppJsonPointer; group: AppJsonPointer; value: AppJsonPointer; series?: AppJsonPointer }
+  | { kind: 'table'; rows: AppJsonPointer; columns: AppSourceColumn[] };
+
+export type AppExternalDisplay = AppSourceMap['kind'];
+
+/** A read tool of the viewer's own tool set (the workbench's bindable read tools). */
+export interface AppToolSource {
+  kind: 'tool';
+  toolId: string;
+  input: Record<string, unknown>;
+  map: AppSourceMap;
+}
+
+/** A connector tool (`mcp_call`'s `server` slug + tool name) the directory reports read-only, called with the viewer's own connection. */
+export interface AppConnectorSource {
+  kind: 'connector';
+  server: string;
+  tool: string;
+  input: Record<string, unknown>;
+  map: AppSourceMap;
+}
+
+export type AppExternalSource = AppToolSource | AppConnectorSource;
+
+export const APP_SOURCE_LIMITS = Object.freeze({
+  /** Rows a table / chart map keeps (the rest is dropped, `truncated: true`). */
+  rows: 200,
+  columns: 20,
+  /** `JSON.stringify(input)` bytes. */
+  inputBytes: 8 * 1024,
+  pointerLength: 200,
+  /** The source's raw result is refused above this. */
+  resultBytes: 512 * 1024,
+  /** One evaluation's wall clock. */
+  timeoutMs: 15_000,
+  /** Characters a text cell keeps. */
+  cellText: 2_000,
+});
+
+/** What a card of this source shows. */
+export function externalDisplay(source: AppExternalSource): AppExternalDisplay {
+  return source.map.kind;
+}
+
+/** Whether `pointer` is an RFC 6901 JSON Pointer (`''` or `/`-prefixed, `~` only as `~0` / `~1`). */
+export function isJsonPointer(pointer: unknown): pointer is AppJsonPointer {
+  return (
+    typeof pointer === 'string' &&
+    pointer.length <= APP_SOURCE_LIMITS.pointerLength &&
+    (pointer === '' || (pointer.startsWith('/') && !/~[^01]|~$/.test(pointer)))
+  );
+}
+
+/** The value `pointer` names in `document`, or undefined (array indexes are decimal, `-` names nothing). */
+export function readJsonPointer(document: unknown, pointer: AppJsonPointer): unknown {
+  if (!isJsonPointer(pointer)) return undefined;
+  if (pointer === '') return document;
+  let current: unknown = document;
+  for (const raw of pointer.slice(1).split('/')) {
+    const token = raw.replace(/~1/g, '/').replace(/~0/g, '~');
+    if (Array.isArray(current)) {
+      if (!/^(0|[1-9][0-9]*)$/.test(token)) return undefined;
+      current = current[Number(token)];
+    } else if (current !== null && typeof current === 'object' && Object.hasOwn(current, token)) {
+      current = (current as Record<string, unknown>)[token];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
+}
 
 // ─── Pure helpers ─────────────────────────────────────────
 
@@ -382,7 +575,22 @@ export function appSpecDependencies(spec: AppSpec): AppSpecDependencies {
             }
           }
           break;
+        case 'custom':
+          for (const binding of card.bindings) {
+            tables.add(binding.source.tableId);
+            collectQueryFields(binding.source.query, fields);
+            for (const id of binding.fieldIds ?? []) fields.add(id);
+            const aggregate = binding.aggregate;
+            if (aggregate?.valueFieldId !== undefined) fields.add(aggregate.valueFieldId);
+            if (aggregate?.groupBy?.fieldId !== undefined) fields.add(aggregate.groupBy.fieldId);
+            if (aggregate?.series?.fieldId !== undefined) fields.add(aggregate.series.fieldId);
+          }
+          collectActions(card.actions, fields, rules);
+          for (const id of card.create?.fieldIds ?? []) fields.add(id);
+          for (const entry of card.create?.defaults ?? []) fields.add(entry.fieldId);
+          break;
         case 'text':
+        case 'external':
           break;
       }
     }
@@ -491,6 +699,12 @@ export interface AppCardQueryInput {
    * (YYYY-MM-DD, inclusive, the viewer's `timezone`). Added by the gateway (slice G; additive).
    */
   range?: { from: string; to: string };
+  /**
+   * Custom cards: the binding to evaluate (`tools/call` `query.<bindingId>`),
+   * answered like a records card (records bindings) or a KPI / pivot card
+   * (aggregate bindings). Phase 2; additive.
+   */
+  bindingId?: string;
 }
 
 export interface AppActionInput {
@@ -528,6 +742,8 @@ export interface AppSpecError {
   actionId?: string;
   filterId?: string;
   roleKey?: string;
+  /** A custom card's binding (Phase 2; additive). */
+  bindingId?: string;
 }
 
 /** `GET /api/apps`: what the caller manages, what is shared with them, what is recommended to them. */
@@ -553,7 +769,24 @@ export interface AppVersionSummary {
   /** The draft revision it was published from. */
   draftRevision: number;
   specHash: string;
+  /** Versions with custom cards: the super's review of exactly this `specHash` (D10). Phase 2; additive. */
+  customReview?: AppCustomReview;
 }
+
+/**
+ * A super's review of a version's custom code (D10), stored on the version
+ * (`table_app_versions.custom_review`). `hash` is the version's `specHash` it
+ * was given for — a different spec is a different review.
+ */
+export interface AppCustomReview {
+  status: AppCustomReviewStatus;
+  hash: string;
+  reviewedBy?: { id: string; name: string };
+  reviewedAt?: string;
+  note?: string;
+}
+
+export type AppCustomReviewStatus = 'pending' | 'approved' | 'rejected';
 
 /** One audience entry with what the owner's editor shows next to it. */
 export interface AppAudienceEntryView extends AppAudienceEntry {
@@ -630,7 +863,49 @@ export interface AppRecordRefs {
 export type AppCardQueryResult =
   | { kind: 'records'; records: AppRecordRow[]; total: number; nextCursor: string | null; refs: AppRecordRefs }
   | Exclude<TableCardResult, { kind: 'records' }>
-  | { kind: 'unavailable'; message: string };
+  | { kind: 'unavailable'; message: string }
+  /** External cards with a `table` map (Phase 2; additive): plain data, never HTML. */
+  | AppSourceTableResult
+  /** External connector cards: the viewer has to connect first (the client draws a connect card). */
+  | { kind: 'needs_connection'; connection: AppSourceNeedsConnection }
+  /** External cards: the source failed this time (try again later), or its answer did not fit the map. */
+  | { kind: 'source_error'; reason: AppSourceErrorReason; message: string };
+
+/** One cell of an external table: coerced by the column's type (objects arrive as JSON text). */
+export type AppSourceCell = string | number | boolean | null;
+
+export interface AppSourceTableResult {
+  kind: 'table';
+  columns: Array<{ key: string; label: string; type: AppSourceColumnType }>;
+  /** Keyed by column key. */
+  rows: Array<Record<string, AppSourceCell>>;
+  /** More rows than `APP_SOURCE_LIMITS.rows` came back; the rest were dropped. */
+  truncated: boolean;
+}
+
+/**
+ * The same shape as `McpNeedsConnection` (`@greenhouse/types/mcp-servers`),
+ * repeated here so this contract stays vendorable on its own; a type test pins
+ * the two to each other.
+ */
+export interface AppSourceNeedsConnection {
+  needs_connection: true;
+  server: string;
+  server_name: string;
+  server_id: number;
+  auth: 'per_user' | 'oauth';
+  reason: 'not_connected' | 'expired';
+  error: string;
+}
+
+/**
+ * Why an external card has no data this time: `failed` (the tool answered an
+ * error), `timeout`, `too_large` (over `APP_SOURCE_LIMITS.resultBytes`),
+ * `not_read_only` (the connector no longer reports the tool read-only),
+ * `not_allowed` (not in the viewer's own tools / connectors), `map` (the answer
+ * does not have what the map points at).
+ */
+export type AppSourceErrorReason = 'failed' | 'timeout' | 'too_large' | 'not_read_only' | 'not_allowed' | 'map';
 
 /** `POST /api/apps/:id/records/get`. */
 export interface AppRecordGetInput {
@@ -734,6 +1009,130 @@ export interface AppTemplateSummary {
   description: string;
   icon: AppIconName;
   accent: AppAccent;
+  /** Where it comes from (Phase 2 lifecycle; additive — absent from Phase 1 servers = built-in). */
+  source?: AppTemplateSource;
+  /** The version an install gets (semver). */
+  version?: string;
+  /** That version's review state (installs by anyone but its publisher need `approved` or `not_required`). */
+  reviewStatus?: AppTemplateReviewStatus;
+}
+
+// ─── Template lifecycle (Phase 2 §6; additive) ─────────────
+//
+// `table_app_templates` + `table_app_template_versions`: built-in templates
+// (`source: 'builtin'`, synced from the repo at boot) and templates members
+// publish from an app ("save as template"). Versions are immutable semver with a
+// changelog; content is hashed; a scan runs before a version is stored; versions
+// carrying custom cards or automations need a super's review before anyone else
+// installs them. Installing creates a NEW Base + a draft app through the plan
+// path (D9), automations disabled, executor = the installer; never idempotent (D12).
+
+export type AppTemplateSource = 'builtin' | 'published';
+export type AppTemplateStatus = 'active' | 'archived';
+/** `not_required` = no custom cards and no automations. */
+export type AppTemplateReviewStatus = 'not_required' | 'pending' | 'approved' | 'rejected';
+/** The content scan's verdict (as the skill center's); `blocked` is sticky until a super lifts it. */
+export type AppTemplateScanStatus = 'pending' | 'clean' | 'suspicious' | 'blocked';
+
+export interface AppTemplateVersionView {
+  version: string;
+  changelog: string;
+  contentHash: string;
+  scanStatus: AppTemplateScanStatus;
+  reviewStatus: AppTemplateReviewStatus;
+  /** Why review is required: what the version carries. */
+  carries: { customCards: number; automations: number };
+  /** Null for built-in versions. */
+  publishedBy: { id: string; name: string } | null;
+  publishedAt: string;
+  reviewedBy?: { id: string; name: string };
+  reviewedAt?: string;
+  reviewNote?: string;
+}
+
+/** `GET /api/apps/templates/:key`. */
+export interface AppTemplateDetailView {
+  template: AppTemplateSummary & {
+    source: AppTemplateSource;
+    status: AppTemplateStatus;
+    /** Null for built-in templates. */
+    owner: { id: string; name: string } | null;
+    /** The caller may publish a new version / archive it (its owner, or a super). */
+    canManage: boolean;
+    /** The caller is a super (may review). */
+    canReview: boolean;
+  };
+  /** Newest first. */
+  versions: AppTemplateVersionView[];
+  /** What installing the current version creates, in the reader's language. */
+  creates?: { tables: Array<{ name: string; fields: number }>; automations: number; dashboards: number; pages: number };
+}
+
+/**
+ * `POST /api/apps/templates` (a new template, `version` = its first) and
+ * `POST /api/apps/templates/:key/versions` (a new version of a template the
+ * caller owns): "save as template" from an app they manage. Structure and spec
+ * only — sample records are the ones written here, never exported from the Base.
+ */
+export interface AppTemplatePublishInput {
+  appId: number;
+  /** New template only. */
+  key?: string;
+  name?: string;
+  description?: string;
+  icon?: AppIconName;
+  accent?: AppAccent;
+  /** Strict semver, greater than the latest. */
+  version: string;
+  /** Required for every version after the first. */
+  changelog?: string;
+  /** Hand-written sample records, by the source Base's table ids (≤ `APP_TEMPLATE_LIMITS.sampleRecords`). */
+  sampleRecords?: Array<{ tableId: number; values: TableFieldValueEntry[] }>;
+}
+
+/** `POST /api/apps/templates/:key/versions/:version/review` (super). */
+export interface AppTemplateReviewInput {
+  decision: 'approve' | 'reject';
+  note?: string;
+}
+
+export const APP_TEMPLATE_LIMITS = Object.freeze({
+  keyLength: 40,
+  changelogLength: 2_000,
+  sampleRecords: 50,
+  /** The stored template content (JSON text). */
+  contentBytes: 1024 * 1024,
+});
+
+// ─── Custom-code review (Phase 2 §1, D10; additive) ────────
+
+/** `POST /api/apps/:id/versions/:version/review` (super): approve / reject exactly `hash` (the version's `specHash`). */
+export interface AppCustomReviewInput {
+  hash: string;
+  decision: 'approve' | 'reject';
+  note?: string;
+}
+
+/** `GET /api/apps/reviews` (super): one version waiting for (or given) a custom-code review. */
+export interface AppCustomReviewItem {
+  app: { id: number; name: string; baseId: number; ownerId: string };
+  version: number;
+  specHash: string;
+  review: AppCustomReview;
+  publishedBy: { id: string; name: string };
+  publishedAt: string;
+  /** The version's custom cards, as a reviewer reads them. */
+  cards: Array<{
+    pageId: string;
+    cardId: string;
+    title?: string;
+    html: string;
+    bindings: AppCustomBinding[];
+    actions: AppCustomAction[];
+    create?: AppCustomCreate;
+  }>;
+  /** The last approved version of the same app, for a diff (absent = none). */
+  previous?: { version: number; cards: Array<{ pageId: string; cardId: string; html: string }> };
 }
 
 export interface AppTemplateInstallResult {

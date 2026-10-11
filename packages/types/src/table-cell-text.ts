@@ -468,6 +468,7 @@ export function coerceTableCellText(
     case 'formula':
     case 'rollup':
     case 'lookup':
+    case 'ai':
       return tableCellTextFailure(field, 'computed fields cannot be written');
   }
 }
