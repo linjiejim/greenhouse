@@ -1,15 +1,19 @@
 /**
  * Field settings: create a field or change one (name, required, options,
- * relation target, formula, rollup). Slice Fx replaces the formula section
- * with the text formula editor and adds the lookup configuration.
+ * relation target, formula text, rollup, lookup).
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  formatTableFormula,
+  parseTableFormula,
+  suggestedTableFormulaResultType,
+} from '@greenhouse/types/table-formula';
+import {
   isComputedFieldType,
+  TABLE_LOOKUP_TARGET_TYPES,
   type TableFieldConfig,
   type TableFieldType,
-  type TableFormulaBinaryOperator,
   type TableFormulaResultType,
   type TableRollupAggregation,
 } from '@greenhouse/types/tables';
@@ -25,6 +29,7 @@ import {
   type TableField,
 } from '../../lib/api/tables';
 import { useT } from '../../lib/i18n';
+import { FormulaEditor, useFormulaErrorText } from './formula-editor';
 
 function optionConfig(text: string, current: TableFieldConfig = {}): TableFieldConfig {
   const labels = text
@@ -46,21 +51,7 @@ function optionConfig(text: string, current: TableFieldConfig = {}): TableFieldC
   };
 }
 
-const FORMULA_OPERATORS: TableFormulaBinaryOperator[] = [
-  'concat',
-  'add',
-  'subtract',
-  'multiply',
-  'divide',
-  'eq',
-  'neq',
-  'gt',
-  'gte',
-  'lt',
-  'lte',
-  'and',
-  'or',
-];
+const LOOKUP_TARGETS: readonly string[] = TABLE_LOOKUP_TARGET_TYPES;
 
 interface FieldSettingsDialogProps {
   /** `'new'` to create, a field to edit, `null` when closed. */
@@ -90,47 +81,81 @@ export function FieldSettingsDialog({
   const [options, setOptions] = useState('');
   const [relationTargetTableId, setRelationTargetTableId] = useState<number | ''>('');
   const [relationMultiple, setRelationMultiple] = useState(false);
-  const [formulaLeftFieldId, setFormulaLeftFieldId] = useState<number | ''>('');
-  const [formulaOperator, setFormulaOperator] = useState<TableFormulaBinaryOperator>('concat');
-  const [formulaRightFieldId, setFormulaRightFieldId] = useState<number | ''>('');
+  const [formulaText, setFormulaText] = useState('');
   const [formulaResultType, setFormulaResultType] = useState<TableFormulaResultType>('text');
-  const [rollupRelationFieldId, setRollupRelationFieldId] = useState<number | ''>('');
-  const [rollupTargetFieldId, setRollupTargetFieldId] = useState<number | ''>('');
+  // A new formula's result type follows what the formula returns until the builder picks one.
+  const [resultTypeChosen, setResultTypeChosen] = useState(false);
+  // The stored formula as the dialog opened on it (null for new fields).
+  const [storedFormula, setStoredFormula] = useState<{ text: string; resultType: TableFormulaResultType } | null>(null);
+  // Rollups and lookups both read one field of the records linked through a relation.
+  const [linkRelationFieldId, setLinkRelationFieldId] = useState<number | ''>('');
+  const [linkTargetFieldId, setLinkTargetFieldId] = useState<number | ''>('');
   const [rollupAggregation, setRollupAggregation] = useState<TableRollupAggregation>('count');
   const [targetFields, setTargetFields] = useState<TableField[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const formulaErrorText = useFormulaErrorText();
+
+  // What a formula may name: this table's fields, never the one being edited.
+  const formulaFields = useMemo(
+    () =>
+      fields
+        .filter((entry) => field === 'new' || field === null || entry.id !== field.id)
+        .map(({ id, name, type: fieldType }) => ({ id, name, type: fieldType })),
+    [field, fields],
+  );
 
   useEffect(() => {
     if (!field) return;
     const config = field === 'new' ? {} : fieldConfig(field);
-    const formula = config.formula?.expression;
+    const link = config.rollup ?? config.lookup;
     setName(field === 'new' ? '' : field.name);
     setType(field === 'new' ? 'text' : field.type);
     setRequired(field === 'new' ? false : field.required);
     setOptions((config.options ?? []).map((option) => option.label).join('\n'));
     setRelationTargetTableId(config.relation?.targetTableId ?? '');
     setRelationMultiple(config.relation?.multiple === true);
-    setFormulaLeftFieldId(formula?.type === 'binary' && formula.left.type === 'field' ? formula.left.fieldId : '');
-    setFormulaOperator(formula?.type === 'binary' ? formula.operator : 'concat');
-    setFormulaRightFieldId(formula?.type === 'binary' && formula.right.type === 'field' ? formula.right.fieldId : '');
+    const storedText = config.formula ? formatTableFormula(config.formula.expression, fields) : '';
+    setFormulaText(storedText);
     setFormulaResultType(config.formula?.resultType ?? 'text');
-    setRollupRelationFieldId(config.rollup?.relationFieldId ?? '');
-    setRollupTargetFieldId(config.rollup?.targetFieldId ?? '');
+    setResultTypeChosen(config.formula !== undefined);
+    setStoredFormula(config.formula ? { text: storedText, resultType: config.formula.resultType } : null);
+    setLinkRelationFieldId(link?.relationFieldId ?? '');
+    setLinkTargetFieldId(link?.targetFieldId ?? '');
     setRollupAggregation(config.rollup?.aggregation ?? 'count');
     setError('');
+    // Only when the dialog opens on a field: re-formatting on every schema refresh would undo typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [field]);
 
+  const parsedFormula = useMemo(
+    () => (type === 'formula' ? parseTableFormula(formulaText, formulaFields) : null),
+    [formulaFields, formulaText, type],
+  );
+
+  useEffect(() => {
+    if (resultTypeChosen || !parsedFormula?.ok) return;
+    const suggested = suggestedTableFormulaResultType(parsedFormula.type);
+    if (suggested) setFormulaResultType(suggested);
+  }, [parsedFormula, resultTypeChosen]);
+
   const relationFields = useMemo(() => fields.filter((entry) => entry.type === 'relation'), [fields]);
-  const formulaFields = useMemo(() => fields.filter((entry) => !isComputedFieldType(entry.type)), [fields]);
-  const rollupTargetTableId = useMemo(() => {
-    const relationField = relationFields.find((entry) => entry.id === rollupRelationFieldId);
+  const linkTargetTableId = useMemo(() => {
+    const relationField = relationFields.find((entry) => entry.id === linkRelationFieldId);
     return relationField ? fieldConfig(relationField).relation?.targetTableId : undefined;
-  }, [relationFields, rollupRelationFieldId]);
+  }, [relationFields, linkRelationFieldId]);
+  const linkTargetChoices = useMemo(
+    () => (type === 'lookup' ? targetFields.filter((entry) => LOOKUP_TARGETS.includes(entry.type)) : targetFields),
+    [targetFields, type],
+  );
 
   useEffect(() => {
     const targetTableId =
-      type === 'relation' ? relationTargetTableId || undefined : type === 'rollup' ? rollupTargetTableId : undefined;
+      type === 'relation'
+        ? relationTargetTableId || undefined
+        : type === 'rollup' || type === 'lookup'
+          ? linkTargetTableId
+          : undefined;
     if (!targetTableId) {
       setTargetFields([]);
       return;
@@ -146,7 +171,7 @@ export function FieldSettingsDialog({
     return () => {
       cancelled = true;
     };
-  }, [type, relationTargetTableId, rollupTargetTableId]);
+  }, [type, relationTargetTableId, linkTargetTableId]);
 
   const buildConfig = (): TableFieldConfig | undefined => {
     if (type === 'single_select' || type === 'multi_select') {
@@ -155,27 +180,20 @@ export function FieldSettingsDialog({
     if (type === 'relation' && relationTargetTableId !== '') {
       return { relation: { targetTableId: relationTargetTableId, multiple: relationMultiple } };
     }
-    if (type === 'formula' && formulaLeftFieldId !== '' && formulaRightFieldId !== '') {
-      return {
-        formula: {
-          resultType: formulaResultType,
-          expression: {
-            type: 'binary',
-            operator: formulaOperator,
-            left: { type: 'field', fieldId: formulaLeftFieldId },
-            right: { type: 'field', fieldId: formulaRightFieldId },
-          },
-        },
-      };
+    if (type === 'formula' && parsedFormula?.ok) {
+      return { formula: { resultType: formulaResultType, expression: parsedFormula.expression } };
     }
-    if (type === 'rollup' && rollupRelationFieldId !== '' && rollupTargetFieldId !== '') {
+    if (type === 'rollup' && linkRelationFieldId !== '' && linkTargetFieldId !== '') {
       return {
         rollup: {
-          relationFieldId: rollupRelationFieldId,
-          targetFieldId: rollupTargetFieldId,
+          relationFieldId: linkRelationFieldId,
+          targetFieldId: linkTargetFieldId,
           aggregation: rollupAggregation,
         },
       };
+    }
+    if (type === 'lookup' && linkRelationFieldId !== '' && linkTargetFieldId !== '') {
+      return { lookup: { relationFieldId: linkRelationFieldId, targetFieldId: linkTargetFieldId } };
     }
     return undefined;
   };
@@ -185,8 +203,18 @@ export function FieldSettingsDialog({
     setSaving(true);
     setError('');
     try {
-      const config = buildConfig();
-      if ((type === 'relation' || isComputedFieldType(type)) && !config) {
+      // A stored formula left as it was is not sent again, so renaming a field
+      // whose older formula fails today's checks still works.
+      const formulaUntouched =
+        type === 'formula' &&
+        storedFormula !== null &&
+        formulaText === storedFormula.text &&
+        formulaResultType === storedFormula.resultType;
+      if (type === 'formula' && !formulaUntouched && parsedFormula && !parsedFormula.ok && formulaText.trim()) {
+        throw new Error(t('tables.formula.fixBeforeSaving', { message: formulaErrorText(parsedFormula.error) }));
+      }
+      const config = formulaUntouched ? undefined : buildConfig();
+      if (!formulaUntouched && (type === 'relation' || isComputedFieldType(type)) && !config) {
         throw new Error(t('tables.completeFieldConfiguration', { type: t(FIELD_TYPE_LABEL_KEYS[type]) }));
       }
       if (field === 'new') {
@@ -277,30 +305,23 @@ export function FieldSettingsDialog({
             />
           </div>
         )}
-        {type === 'formula' && (
-          <div className="grid grid-cols-1 gap-3 rounded-md border border-edge bg-surface-sunken p-3 sm:grid-cols-2">
-            <FormField label={t('tables.leftField')}>
-              {idSelect(formulaLeftFieldId, setFormulaLeftFieldId, t('tables.chooseField'), formulaFields)}
-            </FormField>
-            <FormField label={t('tables.operator')}>
-              <Select
-                value={formulaOperator}
-                onChange={(event) => setFormulaOperator(event.target.value as TableFormulaBinaryOperator)}
-              >
-                {FORMULA_OPERATORS.map((operator) => (
-                  <option key={operator} value={operator}>
-                    {t(`tables.formula.${operator}`)}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
-            <FormField label={t('tables.rightField')}>
-              {idSelect(formulaRightFieldId, setFormulaRightFieldId, t('tables.chooseField'), formulaFields)}
+        {type === 'formula' && parsedFormula && (
+          <div className="space-y-3 rounded-md border border-edge bg-surface-sunken p-3">
+            <FormField label={t('tables.formula.editorLabel')}>
+              <FormulaEditor
+                value={formulaText}
+                onChange={setFormulaText}
+                fields={formulaFields}
+                result={parsedFormula}
+              />
             </FormField>
             <FormField label={t('tables.resultType')}>
               <Select
                 value={formulaResultType}
-                onChange={(event) => setFormulaResultType(event.target.value as TableFormulaResultType)}
+                onChange={(event) => {
+                  setResultTypeChosen(true);
+                  setFormulaResultType(event.target.value as TableFormulaResultType);
+                }}
               >
                 <option value="text">{t('tables.fieldType.text')}</option>
                 <option value="number">{t('tables.fieldType.number')}</option>
@@ -309,17 +330,17 @@ export function FieldSettingsDialog({
                 <option value="datetime">{t('tables.fieldType.datetime')}</option>
               </Select>
             </FormField>
-            <p className="text-[11px] text-fg-faint sm:col-span-2">{t('tables.formulaSafety')}</p>
+            <p className="text-[11px] text-fg-faint">{t('tables.formulaSafety')}</p>
           </div>
         )}
-        {type === 'rollup' && (
+        {(type === 'rollup' || type === 'lookup') && (
           <div className="grid grid-cols-1 gap-3 rounded-md border border-edge bg-surface-sunken p-3 sm:grid-cols-2">
             <FormField label={t('tables.relationField')}>
               {idSelect(
-                rollupRelationFieldId,
+                linkRelationFieldId,
                 (next) => {
-                  setRollupRelationFieldId(next);
-                  setRollupTargetFieldId('');
+                  setLinkRelationFieldId(next);
+                  setLinkTargetFieldId('');
                 },
                 t('tables.chooseRelation'),
                 relationFields,
@@ -327,26 +348,30 @@ export function FieldSettingsDialog({
             </FormField>
             <FormField label={t('tables.targetField')}>
               {idSelect(
-                rollupTargetFieldId,
-                setRollupTargetFieldId,
+                linkTargetFieldId,
+                setLinkTargetFieldId,
                 t('tables.chooseTargetField'),
-                targetFields,
-                !rollupTargetTableId,
+                linkTargetChoices,
+                !linkTargetTableId,
               )}
             </FormField>
-            <FormField label={t('tables.aggregation')} className="sm:col-span-2">
-              <Select
-                value={rollupAggregation}
-                onChange={(event) => setRollupAggregation(event.target.value as TableRollupAggregation)}
-              >
-                <option value="count">{t('tables.aggregationType.count')}</option>
-                <option value="sum">{t('tables.aggregationType.sum')}</option>
-                <option value="avg">{t('tables.aggregationType.avg')}</option>
-                <option value="min">{t('tables.aggregationType.min')}</option>
-                <option value="max">{t('tables.aggregationType.max')}</option>
-                <option value="join">{t('tables.aggregationType.join')}</option>
-              </Select>
-            </FormField>
+            {type === 'rollup' ? (
+              <FormField label={t('tables.aggregation')} className="sm:col-span-2">
+                <Select
+                  value={rollupAggregation}
+                  onChange={(event) => setRollupAggregation(event.target.value as TableRollupAggregation)}
+                >
+                  <option value="count">{t('tables.aggregationType.count')}</option>
+                  <option value="sum">{t('tables.aggregationType.sum')}</option>
+                  <option value="avg">{t('tables.aggregationType.avg')}</option>
+                  <option value="min">{t('tables.aggregationType.min')}</option>
+                  <option value="max">{t('tables.aggregationType.max')}</option>
+                  <option value="join">{t('tables.aggregationType.join')}</option>
+                </Select>
+              </FormField>
+            ) : (
+              <p className="text-[11px] text-fg-faint sm:col-span-2">{t('tables.formula.lookupHint')}</p>
+            )}
           </div>
         )}
         {error && <p className="text-xs text-danger">{error}</p>}
