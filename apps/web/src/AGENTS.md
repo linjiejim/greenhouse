@@ -274,6 +274,7 @@ stores/
 - **Base 角色比较**只用 `@greenhouse/types/table-access` 的 `tableRoleAtLeast` / `TABLE_BASE_ROLE_RANK`，组件里不要再写 rank 表。
 - **API 客户端**按域拆在 `lib/api/tables/<domain>.ts`（bases / members / schema / views / records / forms / automations / dashboards / plan，以及给后续切片预留的空模块 access / activity / imports），调用方只 import `lib/api/tables`（barrel）。新增客户端函数写进自己域的文件，不改 barrel。
 - **文案按切片拆**在 `lib/i18n/tables/<slice>.{en,zh}.ts`（access / views / forms / automations / dashboards / imports / activity / formula / plan），由 `lib/i18n/tables/en.ts|zh.ts` 一次并入 `tables.*`（plan 并入 `tablesSchemaPlan`）。每个模块独占自己的命名空间（`tables.forms.*`、`tables.automations.*`…），`lib/i18n/tables/slices.test.ts` 钉住不重名、不被核心键遮住；跨切片共享的键（字段类型、筛选操作符与令牌、记录元信息）留在 `en.ts` / `zh.ts` 的 `tables` 下。zh 模块用 `lib/i18n/types.ts` 的 `DeepRecord` 对齐英文。
+- **表单（切片 Fm）**：表单页 `form-page.tsx` 只走 `/api/forms`（`openTableForm` / `uploadTableFormFile` / `submitTableForm`），**不调 `listTableUsers`**——受众多半不是 Base 成员，人员选项来自提交视图的 `userOptions`；预填值不下发也不渲染。字段照样走 `FieldEditor`：附件经 `uploadAttachment` 渲染成只上传、不浏览 Drive 的 `AttachmentUploader`（`components/tables/attachment-uploader.tsx`，阶段 1 的应用表单复用）。`already_submitted`（打开时或并发提交输掉时的 409）显示「已提交」态。表单对话框 = 列表（状态、受众摘要、发布、复制 `#/forms/:id` 链接）+ `form-editor.tsx`（受众用共享 `PrincipalPicker`；非 Base 受众自动去掉并禁用关联字段；预填值按字段类型给 `$me` / `$today` / `$now` 或固定值；单次提交开关）。
 - Tables 没有自己的通知收件箱：自动化通知与 @ 提及走平台通知中心（`tables_automation` / `tables_mention`），原「数据表通知」对话框已删。
 
 ### 页面上下文注入

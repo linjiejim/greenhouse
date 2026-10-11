@@ -1,12 +1,20 @@
 /**
- * Tables client · forms (builder side and the submit page).
- * Slice Fm moves the submit side onto `/api/forms`.
+ * Tables client · forms. Builders configure them under `/api/tables`; everyone
+ * in a form's audience opens, uploads to and submits it under `/api/forms`
+ * (not behind the Tables feature flag — the audience need not use Tables).
  */
 
-import type { TableFormConfig, TableRecordValues } from '@greenhouse/types/tables';
+import type {
+  TableFormAudience,
+  TableFormConfig,
+  TableFormSubmitResult,
+  TableFormSubmitView,
+  TableFormUploadView,
+  TableRecordValues,
+} from '@greenhouse/types/tables';
 import { authFetch } from '../../auth';
+import { rpc } from '../client';
 import { responseError } from './shared';
-import type { TableRecord } from './records';
 import type { TableField } from './schema';
 
 export interface TableForm {
@@ -15,6 +23,7 @@ export interface TableForm {
   name: string;
   status: 'draft' | 'published';
   config: TableFormConfig;
+  audience: TableFormAudience;
   revision: number;
   created_by: string;
   updated_by: string;
@@ -22,50 +31,63 @@ export interface TableForm {
   updated_at: string;
 }
 
+export interface TableFormInput {
+  name: string;
+  status?: 'draft' | 'published';
+  config: TableFormConfig;
+  audience?: TableFormAudience;
+}
+
 export async function listTableForms(tableId: number): Promise<TableForm[]> {
-  const response = await authFetch(`/api/tables/tables/${tableId}/forms`);
+  const response = await rpc.api.tables.tables[':tableId'].forms.$get({ param: { tableId: String(tableId) } });
   if (!response.ok) throw await responseError(response, 'Unable to load forms');
-  return ((await response.json()) as { forms: TableForm[] }).forms;
+  return (await response.json()).forms;
 }
 
 export async function getTableForm(formId: number): Promise<{ form: TableForm; fields: TableField[] }> {
-  const response = await authFetch(`/api/tables/forms/${formId}`);
+  const response = await rpc.api.tables.forms[':formId'].$get({ param: { formId: String(formId) } });
   if (!response.ok) throw await responseError(response, 'Unable to load form');
-  return response.json() as Promise<{ form: TableForm; fields: TableField[] }>;
+  return response.json();
 }
 
-export async function createTableForm(
-  tableId: number,
-  input: { name: string; status?: 'draft' | 'published'; config: TableFormConfig },
-): Promise<TableForm> {
-  const response = await authFetch(`/api/tables/tables/${tableId}/forms`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+export async function createTableForm(tableId: number, input: TableFormInput): Promise<TableForm> {
+  const args = { param: { tableId: String(tableId) }, json: input };
+  const response = await rpc.api.tables.tables[':tableId'].forms.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to create form');
-  return ((await response.json()) as { form: TableForm }).form;
+  return (await response.json()).form;
 }
 
 export async function updateTableForm(
   formId: number,
-  input: { revision: number; name?: string; status?: 'draft' | 'published'; config?: TableFormConfig },
+  input: Partial<TableFormInput> & { revision: number },
 ): Promise<TableForm> {
-  const response = await authFetch(`/api/tables/forms/${formId}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  const args = { param: { formId: String(formId) }, json: input };
+  const response = await rpc.api.tables.forms[':formId'].$patch(args);
   if (!response.ok) throw await responseError(response, 'Unable to update form');
-  return ((await response.json()) as { form: TableForm }).form;
+  return (await response.json()).form;
 }
 
-export async function submitTableForm(formId: number, values: TableRecordValues): Promise<TableRecord> {
-  const response = await authFetch(`/api/tables/forms/${formId}/submit`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ values }),
-  });
+/** The submit view for the signed-in person; 404 `details.reason = 'not_published'` for a draft they could submit to. */
+export async function openTableForm(formId: number): Promise<TableFormSubmitView> {
+  const response = await rpc.api.forms[':formId'].$get({ param: { formId: String(formId) } });
+  if (!response.ok) throw await responseError(response, 'Unable to load form');
+  return (await response.json()).form;
+}
+
+/** Stage one attachment for this form; it is bound when the same person submits. */
+export async function uploadTableFormFile(formId: number, file: File): Promise<TableFormUploadView> {
+  const body = new FormData();
+  body.append('file', file);
+  const response = await authFetch(`/api/forms/${formId}/uploads`, { method: 'POST', body });
+  if (!response.ok) throw await responseError(response, 'Unable to upload file');
+  return ((await response.json()) as { file: TableFormUploadView }).file;
+}
+
+/** Submit; the server answers only with the success copy (409 `already_submitted` for a used single-submit form). */
+export async function submitTableForm(formId: number, values: TableRecordValues): Promise<TableFormSubmitResult> {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const args = { param: { formId: String(formId) }, json: { values, timeZone } };
+  const response = await rpc.api.forms[':formId'].submit.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to submit form');
-  return ((await response.json()) as { record: TableRecord }).record;
+  return response.json();
 }

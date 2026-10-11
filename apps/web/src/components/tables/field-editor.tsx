@@ -15,17 +15,25 @@ import { Checkbox, Input, Select, Textarea } from '../ui';
 import type { TableField, TableUserOption } from '../../lib/api/tables';
 import { useT } from '../../lib/i18n';
 import { AttachmentPicker } from './attachment-picker';
+import { AttachmentUploader, type AttachmentUpload } from './attachment-uploader';
 import { fieldConfig, isComputedField } from './field-types';
 import { fromFieldDraft, toFieldDraft, type FieldDraft } from './field-draft';
 import { InlineMultiSelectEditor } from './inline-multi-select-editor';
 
 export interface FieldEditorProps {
-  field: TableField;
+  /** A schema field, or a form's submit-view field shaped like one (only these four are read). */
+  field: Pick<TableField, 'id' | 'name' | 'type' | 'config'>;
   value: FieldDraft;
   onChange: (value: FieldDraft) => void;
   users: TableUserOption[];
-  /** Attachment fields pick from this Base's files; without it they are not editable here. */
+  /** Attachment fields pick from this Base's files; without it (or `uploadAttachment`) they are not editable here. */
   baseId?: number;
+  /**
+   * Upload-only attachments for people who cannot browse the Base's Drive (a
+   * form's audience): files go through this and their ids become the value.
+   * Takes precedence over `baseId`.
+   */
+  uploadAttachment?: AttachmentUpload;
   density?: 'form' | 'inline';
   /** Shown as the empty choice of single-value pickers. Default `—`. */
   emptyLabel?: string;
@@ -66,6 +74,7 @@ export function FieldEditor({
   onChange,
   users,
   baseId,
+  uploadAttachment,
   density = 'form',
   emptyLabel = '—',
   disabled = false,
@@ -202,7 +211,21 @@ export function FieldEditor({
 
   if (field.type === 'attachment') {
     const attachments = Array.isArray(value) ? (value as Array<number | string>) : [];
-    if (inline || baseId === undefined) return null;
+    if (inline) return null;
+    if (uploadAttachment) {
+      return (
+        <AttachmentUploader
+          id={id}
+          aria-describedby={describedBy}
+          label={field.name}
+          value={attachments}
+          onChange={(next) => onChange(next)}
+          upload={uploadAttachment}
+          disabled={disabled}
+        />
+      );
+    }
+    if (baseId === undefined) return null;
     return <AttachmentPicker baseId={baseId} value={attachments} onChange={(next) => onChange(next)} />;
   }
 

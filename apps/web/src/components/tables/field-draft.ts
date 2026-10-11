@@ -105,7 +105,7 @@ export function recordDrafts(
  * Booleans and multi-value fields are always sent: unchecked is a value.
  */
 export function valuesFromDrafts(
-  fields: TableField[],
+  fields: ReadonlyArray<Pick<TableField, 'id' | 'type' | 'config'>>,
   drafts: Record<string, FieldDraft>,
   mode: 'create' | 'update',
 ): TableRecordValues {
