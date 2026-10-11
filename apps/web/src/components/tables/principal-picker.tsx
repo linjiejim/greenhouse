@@ -16,6 +16,7 @@ import { Users, X } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { fetchShareableUsers } from '../../lib/api';
 import { listGroups } from '../../lib/api/groups';
+import { useAuthStore } from '../../stores';
 
 export interface PrincipalSelection {
   userIds: string[];
@@ -54,6 +55,8 @@ export function PrincipalPicker({
   disabled = false,
 }: PrincipalPickerProps) {
   const t = useT();
+  // The directory leaves the viewer out, so a group they created needs its own label.
+  const currentUserId = useAuthStore((state) => state.currentUser?.id);
   const [users, setUsers] = useState<readonly ShareableUser[]>(providedUsers ?? []);
   const [groups, setGroups] = useState<readonly UserGroup[]>(providedGroups ?? []);
   const [loading, setLoading] = useState(!providedUsers || (allowGroups && !providedGroups));
@@ -176,7 +179,13 @@ export function PrincipalPicker({
           ) : (
             <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-edge divide-y divide-edge">
               {visibleGroups.map((group) => {
-                const manager = usersById.get(group.created_by)?.nickname ?? group.created_by;
+                const managerName = usersById.get(group.created_by)?.nickname;
+                const managedBy =
+                  group.created_by === currentUserId
+                    ? t('tables.principals.managedByYou')
+                    : managerName
+                      ? t('tables.principals.managedBy', { name: managerName })
+                      : t('tables.principals.managedByUnknown');
                 return (
                   <li key={group.id} className="px-3 py-2">
                     <Checkbox
@@ -193,9 +202,7 @@ export function PrincipalPicker({
                               </span>
                             )}
                           </span>
-                          <span className="truncate text-xs text-fg-muted">
-                            {t('tables.principals.managedBy', { name: manager })}
-                          </span>
+                          <span className="truncate text-xs text-fg-muted">{managedBy}</span>
                         </span>
                       }
                     />

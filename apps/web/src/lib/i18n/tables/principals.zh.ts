@@ -14,6 +14,8 @@ export const tablesPrincipalsZh: DeepRecord<typeof tablesPrincipalsEn> = {
     noGroups: '你还不在任何群组里',
     memberCount: '{count} 人',
     managedBy: '成员由 {name} 管理',
+    managedByYou: '成员由你管理',
+    managedByUnknown: '成员由一位未知成员管理',
     selectedCount: '已选 {count} 项',
     remove: '移除 {name}',
     loadFailed: '无法加载成员和群组',
