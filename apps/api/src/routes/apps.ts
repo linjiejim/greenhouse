@@ -42,13 +42,20 @@ import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getDb } from '@greenhouse/db';
 import type {
+  AppActionResult,
   AppAudiencesView,
+  AppCardQueryResult,
   AppDraftView,
+  AppFieldOptionsView,
   AppListView,
+  AppRecordView,
   AppRuntimeView,
   AppSummary,
+  AppUploadView,
+  AppUsageView,
   AppVersionSummary,
 } from '@greenhouse/types/apps';
+import type { TableRecordActivityPage, TableRecordCommentView } from '@greenhouse/types/tables';
 import type { AppEnv } from '../app-env.js';
 import { MAX_DRIVE_FILE_SIZE } from '../drive/upload-policy.js';
 import { serveDriveFileContent } from '../drive/serve-file.js';
@@ -174,38 +181,38 @@ const appRoutes = new Hono<AppEnv>()
     const appId = appIdOf(c);
     const result = await dispatch(c, 'queryAppCard', { ...(await jsonBody(c)), appId }, { appId });
     if (!result.ok) return actionError(c, result);
-    return c.json(result.data as Record<string, unknown>);
+    return c.json(result.data as AppCardQueryResult);
   })
   .post('/:appId/records/get', async (c) => {
     const appId = appIdOf(c);
     const result = await dispatch(c, 'getAppRecord', { ...(await jsonBody(c)), appId }, { appId });
     if (!result.ok) return actionError(c, result);
-    return c.json(result.data as Record<string, unknown>);
+    return c.json(result.data as AppRecordView);
   })
   .post('/:appId/actions', async (c) => {
     const appId = appIdOf(c);
     const result = await dispatch(c, 'runAppAction', { ...(await jsonBody(c)), appId }, { appId });
     if (!result.ok) return actionError(c, result);
-    return c.json(result.data as Record<string, unknown>);
+    return c.json(result.data as AppActionResult);
   })
   .post('/:appId/activity', async (c) => {
     const appId = appIdOf(c);
     const result = await dispatch(c, 'listAppActivity', { ...(await jsonBody(c)), appId }, { appId });
     if (!result.ok) return actionError(c, result);
-    return c.json(result.data as Record<string, unknown>);
+    return c.json(result.data as TableRecordActivityPage);
   })
   .post('/:appId/comments', async (c) => {
     const appId = appIdOf(c);
     const result = await dispatch(c, 'createAppComment', { ...(await jsonBody(c)), appId }, { appId });
     if (!result.ok) return actionError(c, result);
-    return c.json(result.data as Record<string, unknown>, 201);
+    return c.json(result.data as { comment: TableRecordCommentView }, 201);
   })
   .patch('/:appId/comments/:commentId', async (c) => {
     const appId = appIdOf(c);
     const commentId = numberParam(c, 'commentId');
     const result = await dispatch(c, 'updateAppComment', { ...(await jsonBody(c)), appId, commentId }, { appId });
     if (!result.ok) return actionError(c, result);
-    return c.json(result.data as Record<string, unknown>);
+    return c.json(result.data as { comment: TableRecordCommentView });
   })
   .delete('/:appId/comments/:commentId', async (c) => {
     const appId = appIdOf(c);
@@ -218,7 +225,7 @@ const appRoutes = new Hono<AppEnv>()
     const appId = appIdOf(c);
     const result = await dispatch(c, 'listAppFieldOptions', { ...(await jsonBody(c)), appId }, { appId });
     if (!result.ok) return actionError(c, result);
-    return c.json(result.data as Record<string, unknown>);
+    return c.json(result.data as AppFieldOptionsView);
   })
   .post(
     '/:appId/uploads',
@@ -241,7 +248,7 @@ const appRoutes = new Hono<AppEnv>()
       };
       const result = await dispatch(c, 'uploadAppFile', payload, { appId });
       if (!result.ok) return actionError(c, result);
-      return c.json(result.data as Record<string, unknown>, 201);
+      return c.json(result.data as { file: AppUploadView }, 201);
     },
   )
   .get('/:appId/files/:fileId', async (c) => {
@@ -266,7 +273,7 @@ const appRoutes = new Hono<AppEnv>()
     const appId = appIdOf(c);
     const result = await dispatch(c, 'getAppUsage', { appId }, { appId });
     if (!result.ok) return actionError(c, result);
-    return c.json(result.data as Record<string, unknown>);
+    return c.json(result.data as AppUsageView);
   });
 
 export default appRoutes;
