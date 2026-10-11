@@ -1440,6 +1440,15 @@ describe('structure changes that break apps (acceptance 5, D6)', () => {
     expect(places).toEqual(
       expect.arrayContaining(['v1 › “Review” › “Pending”', 'draft › “Review” › filter “Department”']),
     );
+    // The same places without words, for the client to name in its own language.
+    const review = { id: 'review', title: 'Review' };
+    expect(body.details.references).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ version: 1, page: review, card: { id: 'queue', kind: 'records', title: 'Pending' } }),
+        expect.objectContaining({ version: 'draft', page: review, filter: { id: 'dept', label: 'Department' } }),
+        expect.objectContaining({ version: 1, page: review, card: { id: 'by-dept', kind: 'records' } }),
+      ]),
+    );
 
     await json(await send(owner, `/api/tables/fields/${p.f.dept}/archive`, 'POST', { confirm: true }));
     const queue = await json<AppCardQueryResult>(await cardQuery(p, approver, 'review', 'queue'));
@@ -1453,6 +1462,42 @@ describe('structure changes that break apps (acceptance 5, D6)', () => {
     expect(
       (await act(p, applicant, { pageId: 'mine', cardId: 'new-request', actionId: '$submit', values: [] })).status,
     ).toBe(403);
+  });
+
+  it('refuses to archive a table apps use until confirmed, then serves its cards as unavailable', async () => {
+    const p = await procurement();
+    const refused = await send(owner, `/api/tables/tables/${p.tableId}/archive`, 'POST', {});
+    expect(refused.status).toBe(409);
+    const body = (await refused.json()) as {
+      details: { reason: string; references: Array<{ appId: number; where: string; role?: { key: string } }> };
+    };
+    expect(body.details.reason).toBe('used_by_apps');
+    expect(body.details.references.map((ref) => ref.where)).toEqual(
+      expect.arrayContaining([
+        'v1 › “My requests” › “my-requests”',
+        'v1 › “Review” › “Pending”',
+        'v1 › “Stats” › “total”',
+        'v1 › role “Approver”',
+      ]),
+    );
+    expect(body.details.references).toContainEqual(
+      expect.objectContaining({ version: 1, role: { key: 'approver', name: 'Approver' } }),
+    );
+    // The vendors table only sits in the applicant's rules.
+    const vendors = await send(owner, `/api/tables/tables/${p.vendors.tableId}/archive`, 'POST', {});
+    expect(vendors.status).toBe(409);
+    expect(
+      ((await vendors.json()) as { details: { references: Array<{ where: string }> } }).details.references.map(
+        (ref) => ref.where,
+      ),
+    ).toEqual(['draft › role “Applicant”', 'v1 › role “Applicant”']);
+
+    await json(await send(owner, `/api/tables/tables/${p.tableId}/archive`, 'POST', { confirm: true }));
+    expect(await json<AppCardQueryResult>(await cardQuery(p, approver, 'review', 'queue'))).toEqual({
+      kind: 'unavailable',
+      message: 'This card is unavailable',
+    });
+    expect((await json<AppCardQueryResult>(await cardQuery(p, owner, 'stats', 'total'))).kind).toBe('unavailable');
   });
 
   it('guards select options used in predicates and values, and button rules used by actions', async () => {
