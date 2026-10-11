@@ -2,7 +2,8 @@
  * The app center (`#/apps`, spec 20261011-tables-apps §6): the member's three
  * shelves — managed by me, shared with me, featured — from `GET /api/apps`,
  * with server-side pins (D9), and the ways to make an app:
- * - **New app** — on a Base the member builds, or a new Base (needs Tables);
+ * - **New app** — on a Base the member builds, or a new Base (needs Tables) —
+ *   the builder's `CreateAppDialog`, the one way to create an app by hand;
  * - **Ask a Bot** — Chat opens with a request naming the Base (needs Tables);
  * - **From a template** — a new Base + draft app (needs Tables), when the server lists templates.
  */
@@ -12,14 +13,15 @@ import type { AppTemplateSummary } from '@greenhouse/types/apps';
 import { ModulePage } from '../../../components/app/module-page';
 import { Button, EmptyState, Spinner } from '../../../components/ui';
 import { listAppTemplates } from '../../../lib/api/apps';
+import { appBuilderHref } from '../../../lib/app-routes';
 import { canUseFeature } from '../../../lib/features';
 import { useT } from '../../../lib/i18n';
 import { Bot, LayoutGrid, LayoutTemplate, Plus } from '../../../lib/icons';
 import { useAuthStore } from '../../../stores';
 import { useAppsStore } from '../../../stores/apps-store';
 import { AppTile } from './app-tile';
+import { CreateAppDialog } from '../builder/create-app-dialog';
 import { AskBotDialog } from './ask-bot-dialog';
-import { NewAppDialog } from './new-app-dialog';
 import { TemplateDialog } from './template-dialog';
 
 const SHELVES = ['managed', 'shared', 'featured'] as const;
@@ -152,7 +154,17 @@ export function AppCenterPage() {
           ))}
         </div>
       )}
-      {dialog === 'new' && <NewAppDialog open onClose={close} />}
+      {dialog === 'new' && (
+        <CreateAppDialog
+          open
+          onClose={close}
+          onCreated={(view) => {
+            void load(true);
+            close();
+            window.location.hash = appBuilderHref(view.app.id);
+          }}
+        />
+      )}
       {dialog === 'bot' && <AskBotDialog open onClose={close} />}
       {dialog === 'template' && <TemplateDialog open templates={templates} onClose={close} />}
     </ModulePage>

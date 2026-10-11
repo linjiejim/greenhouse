@@ -9,7 +9,13 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AppDraftView, AppSummary, AppTemplateInstallResult, AppTemplateSummary } from '@greenhouse/types/apps';
+import type {
+  AppDraftView,
+  AppSpec,
+  AppSummary,
+  AppTemplateInstallResult,
+  AppTemplateSummary,
+} from '@greenhouse/types/apps';
 import type { TableBaseWithRole } from '@greenhouse/types/tables-wire';
 import { I18nProvider } from '../../../lib/i18n';
 import { useAuthStore } from '../../../stores';
@@ -25,11 +31,17 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../../../lib/api/apps', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../lib/api/apps')>()),
-  ...api,
+  listAppTemplates: api.listAppTemplates,
+  installAppTemplate: api.installAppTemplate,
+}));
+// "New app" is the builder's create dialog — one way to create an app, here and on a Base's page.
+vi.mock('../../../lib/api/apps-builder', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/api/apps-builder')>()),
+  createApp: api.createApp,
 }));
 const tables = vi.hoisted(() => ({
   listTableBases: vi.fn<() => Promise<TableBaseWithRole[]>>(),
-  createTableBase: vi.fn<(input: unknown) => Promise<{ base: { id: number } }>>(),
+  createTableBase: vi.fn<(input: unknown) => Promise<{ base: { id: number; name: string } }>>(),
 }));
 vi.mock('../../../lib/api/tables', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../lib/api/tables')>()),
@@ -58,6 +70,15 @@ function summary(id: number, patch: Partial<AppSummary> = {}): AppSummary {
     canPublish: false,
     pinned: false,
     ...patch,
+  };
+}
+
+function draft(id: number): AppDraftView {
+  return {
+    app: summary(id, { canManage: true }),
+    spec: { version: 1, pages: [], roles: [] },
+    draftRevision: 1,
+    errors: [],
   };
 }
 
@@ -104,13 +125,13 @@ function signIn(features: Record<string, boolean>) {
 let root: Root | null = null;
 let container: HTMLDivElement;
 
-async function mount() {
+async function mount(locale: 'en' | 'zh' = 'en') {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () =>
     root!.render(
-      <I18nProvider initialLocale="en">
+      <I18nProvider initialLocale={locale}>
         <AppCenterPage />
       </I18nProvider>,
     ),
@@ -218,17 +239,12 @@ describe('making an app', () => {
 
   it('creates an app on a Base the member builds and opens the builder', async () => {
     tables.listTableBases.mockResolvedValue([base(4, 'Purchasing', 'builder'), base(5, 'Read only', 'viewer')]);
-    api.createApp.mockResolvedValue({
-      app: summary(12, { canManage: true }),
-      spec: { version: 1, pages: [], roles: [] },
-      draftRevision: 1,
-      errors: [],
-    });
+    api.createApp.mockResolvedValue(draft(12));
     seed({});
     await mount();
     await act(async () => button('New app')!.click());
 
-    const select = document.querySelector('[data-testid="new-app-base"]') as HTMLSelectElement;
+    const select = document.querySelector('[data-testid="app-create-base"]') as HTMLSelectElement;
     // Only Bases the member builds, then "a new Base".
     expect([...select.options].map((option) => option.textContent)).toEqual([
       'Choose a Base you build',
@@ -236,41 +252,76 @@ describe('making an app', () => {
       'A new Base…',
     ]);
     await change(select, '4');
-    await change(document.querySelector('[data-testid="new-app-name"]') as HTMLInputElement, 'Purchase requests');
+    await change(document.querySelector('[data-testid="app-create-name"]') as HTMLInputElement, 'Purchase requests');
     await act(async () => (document.querySelector('button[aria-label="Ticket"]') as HTMLButtonElement).click());
     await act(async () => (document.querySelector('button[aria-label="Violet"]') as HTMLButtonElement).click());
-    await act(async () => (document.querySelector('[data-testid="new-app-create"]') as HTMLButtonElement).click());
+    await act(async () => (document.querySelector('[data-testid="app-create-submit"]') as HTMLButtonElement).click());
 
     expect(tables.createTableBase).not.toHaveBeenCalled();
     expect(api.createApp).toHaveBeenCalledWith({
       baseId: 4,
       name: 'Purchase requests',
+      description: null,
       icon: 'ticket',
       accent: 'violet',
+      spec: expect.objectContaining({
+        pages: [expect.objectContaining({ title: 'Home' })],
+        roles: [expect.objectContaining({ name: 'Member' })],
+      }),
     });
+    expect(load).toHaveBeenCalledWith(true);
     expect(window.location.hash).toBe('#/apps/12/edit');
   });
 
+  it('names the starter page and role in the member’s language', async () => {
+    tables.listTableBases.mockResolvedValue([base(4, 'Purchasing', 'builder')]);
+    api.createApp.mockResolvedValue(draft(12));
+    seed({});
+    await mount('zh');
+    await act(async () => button('新建应用')!.click());
+    await change(document.querySelector('[data-testid="app-create-base"]') as HTMLSelectElement, '4');
+    await change(document.querySelector('[data-testid="app-create-name"]') as HTMLInputElement, '采购申请');
+    await act(async () => (document.querySelector('[data-testid="app-create-submit"]') as HTMLButtonElement).click());
+    const { spec } = api.createApp.mock.calls[0]![0] as { spec: AppSpec };
+    expect(spec.pages[0]!.title).toBe('首页');
+    expect(spec.roles[0]!.name).toBe('成员');
+  });
+
   it('creates the Base first when the member has none to build on', async () => {
-    tables.createTableBase.mockResolvedValue({ base: { id: 30 } });
-    api.createApp.mockResolvedValue({
-      app: summary(13, { canManage: true }),
-      spec: { version: 1, pages: [], roles: [] },
-      draftRevision: 1,
-      errors: [],
-    });
+    tables.createTableBase.mockResolvedValue({ base: { id: 30, name: 'Leave' } });
+    api.createApp.mockResolvedValue(draft(13));
     seed({});
     await mount();
     await act(async () => button('New app')!.click());
     expect(document.body.textContent).toContain('the app gets a new Base of its own');
 
-    const inputs = [...document.querySelectorAll('[data-testid="new-app-dialog"] input')] as HTMLInputElement[];
-    await change(inputs[0]!, 'Leave');
-    await change(document.querySelector('[data-testid="new-app-name"]') as HTMLInputElement, 'Leave requests');
-    await act(async () => (document.querySelector('[data-testid="new-app-create"]') as HTMLButtonElement).click());
+    await change(document.querySelector('[data-testid="app-create-base-name"]') as HTMLInputElement, 'Leave');
+    await change(document.querySelector('[data-testid="app-create-name"]') as HTMLInputElement, 'Leave requests');
+    await act(async () => (document.querySelector('[data-testid="app-create-submit"]') as HTMLButtonElement).click());
 
     expect(tables.createTableBase).toHaveBeenCalledWith({ name: 'Leave', visibility: 'private' });
     expect(api.createApp).toHaveBeenCalledWith(expect.objectContaining({ baseId: 30, name: 'Leave requests' }));
+  });
+
+  it('builds the new Base once: trying again after the app failed reuses it', async () => {
+    tables.createTableBase.mockResolvedValue({ base: { id: 30, name: 'Leave' } });
+    api.createApp.mockRejectedValueOnce(new Error('Network is down')).mockResolvedValueOnce(draft(13));
+    seed({});
+    await mount();
+    await act(async () => button('New app')!.click());
+    await change(document.querySelector('[data-testid="app-create-base-name"]') as HTMLInputElement, 'Leave');
+    await change(document.querySelector('[data-testid="app-create-name"]') as HTMLInputElement, 'Leave requests');
+    const submit = () => document.querySelector('[data-testid="app-create-submit"]') as HTMLButtonElement;
+    await act(async () => submit().click());
+    expect(document.querySelector('[data-testid="app-create-dialog"]')?.textContent).toContain('Network is down');
+    // The new Base is now the chosen one.
+    expect((document.querySelector('[data-testid="app-create-base"]') as HTMLSelectElement).value).toBe('30');
+
+    await act(async () => submit().click());
+    expect(tables.createTableBase).toHaveBeenCalledTimes(1);
+    expect(api.createApp).toHaveBeenCalledTimes(2);
+    expect(api.createApp).toHaveBeenLastCalledWith(expect.objectContaining({ baseId: 30, name: 'Leave requests' }));
+    expect(window.location.hash).toBe('#/apps/13/edit');
   });
 
   it('installs a template and opens the new app’s builder', async () => {

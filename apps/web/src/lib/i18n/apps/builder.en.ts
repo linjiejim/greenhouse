@@ -516,6 +516,13 @@ export const appsBuilderEn = {
       failed: 'Unable to create the app',
       starterPage: 'Home',
       starterRole: 'Member',
+      base: 'Base',
+      basePlaceholder: 'Choose a Base you build',
+      newBase: 'A new Base…',
+      baseName: 'Name of the new Base',
+      basesFailed: 'Unable to load your Bases — you can still create a new one.',
+      noBases: 'You do not build any Base yet; the app gets a new Base of its own.',
+      publishNote: 'The app starts as a draft. Only the Base owner publishes it and chooses who may use it.',
     },
     references: {
       title: 'Apps use this:',

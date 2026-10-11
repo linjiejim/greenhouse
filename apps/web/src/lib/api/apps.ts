@@ -1,9 +1,9 @@
 /**
  * Apps client (`/api/apps`, spec 20261011-tables-apps §4) — what the app
- * center and the runtime call: the caller's shelves, pins, creating an app,
- * the built-in templates, one app as its viewer sees it, and the gateway
- * (card queries, record detail, actions, activity, comments, field options,
- * uploads, file downloads). The builder's draft / publish / versions /
+ * center and the runtime call: the caller's shelves, pins, the built-in
+ * templates, one app as its viewer sees it, and the gateway (card queries,
+ * record detail, actions, activity, comments, field options, uploads, file
+ * downloads). Creating an app and the builder's draft / publish / versions /
  * audiences calls live in `./apps-builder.ts`.
  *
  * Typed `rpc` over `AppType`: response types are inferred from the routes,
@@ -19,17 +19,14 @@
  */
 
 import type {
-  AppAccent,
   AppActionInput,
   AppActionResult,
   AppActivityInput,
   AppCardQueryInput,
   AppCardQueryResult,
   AppCommentInput,
-  AppDraftView,
   AppFieldOptionsInput,
   AppFieldOptionsView,
-  AppIconName,
   AppRecordGetInput,
   AppRecordView,
   AppRuntimeView,
@@ -104,22 +101,6 @@ export async function setAppPins(appIds: readonly number[]): Promise<void> {
   const args = { json: { appIds } };
   const response = await rpc.api.apps.pins.$put(args);
   if (!response.ok) throw await responseError(response, 'Unable to save pinned apps');
-}
-
-export interface CreateAppInput {
-  baseId: number;
-  name: string;
-  description?: string;
-  icon?: AppIconName;
-  accent?: AppAccent;
-}
-
-/** A new app on a Base the caller builds: a draft with the starter spec, opened in the builder next. */
-export async function createApp(input: CreateAppInput): Promise<AppDraftView> {
-  const args = { json: input };
-  const response = await rpc.api.apps.$post(args);
-  if (!response.ok) throw await responseError(response, 'Unable to create the app');
-  return response.json();
 }
 
 /** The built-in templates (`GET /api/apps/templates` → `{templates}`), in the caller's language. */

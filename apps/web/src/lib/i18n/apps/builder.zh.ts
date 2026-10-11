@@ -510,6 +510,13 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       failed: '无法创建应用',
       starterPage: '首页',
       starterRole: '成员',
+      base: 'Base',
+      basePlaceholder: '选择一个你参与搭建的 Base',
+      newBase: '新建一个 Base…',
+      baseName: '新 Base 的名称',
+      basesFailed: '无法加载你的 Base——仍可新建一个。',
+      noBases: '你还没有参与搭建任何 Base，应用会带一个新的 Base。',
+      publishNote: '应用从草稿开始。只有 Base 的所有者能发布它并决定谁可以使用。',
     },
     references: {
       title: '这些应用在使用它：',
