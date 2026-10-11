@@ -207,7 +207,12 @@ describe('TablesViewContainer', () => {
     });
     await flush();
     // Folded into the where the filter dialog edits, so the toolbar counts it too.
-    expect(api.queryTableRecords).toHaveBeenLastCalledWith(7, expect.objectContaining({ where: open }));
+    // (the third argument is the viewer's time zone, see useRecordQuery)
+    expect(api.queryTableRecords).toHaveBeenLastCalledWith(
+      7,
+      expect.objectContaining({ where: open }),
+      expect.any(String),
+    );
     expect(container.querySelector('button[aria-label="Filter records · 1"]')).not.toBeNull();
   });
 
