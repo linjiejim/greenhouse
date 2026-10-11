@@ -174,6 +174,18 @@ export interface LazyServerToolContext {
 }
 
 /**
+ * What a resolved profile lends its lazy server tools: the Bot it runs as and
+ * that Bot's connector list. Every surface that runs a profile (Chat, scheduled
+ * runs, Feishu) spreads this, so the memory tool's Bot scope, the knowledge
+ * identity and the connector narrowing match the prompt's memory index.
+ */
+export function profileToolIdentity(
+  profile: Pick<AgentProfile, 'identity' | 'mcp_connectors'>,
+): Pick<LazyServerToolContext, 'botId' | 'mcpConnectors'> {
+  return { botId: profile.identity?.botId ?? null, mcpConnectors: profile.mcp_connectors ?? null };
+}
+
+/**
  * Assemble the per-request lazy *server* tools that both the chat route and the
  * agent proxy share (feature_request, knowledge_query, session_query, …).
  *

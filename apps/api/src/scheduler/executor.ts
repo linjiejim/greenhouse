@@ -22,6 +22,7 @@ import {
   buildLazyServerTools,
   filterUnattendedToolIds,
   LAZY_TOOL_IDS,
+  profileToolIdentity,
   resolveEffectiveTools,
 } from '../agent-runtime/tool-resolution.js';
 import { assertPinnedProfileExecutionAccess, resolveProfileAsync } from '../profiles/profile.js';
@@ -246,6 +247,8 @@ export async function executeTaskInSession(
         userRole: owner.role,
         sessionId,
         profileId: profile.id,
+        // The memory index below reads this Bot's private notes; the tools must see them too.
+        ...profileToolIdentity(profile),
         toolRegistry,
         unattended: true,
         runtimeRunId: options.runtimeRunId ?? null,

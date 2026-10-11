@@ -26,6 +26,7 @@ import {
   filterBrowserSessionToolIds,
   filterUnattendedToolIds,
   LAZY_TOOL_IDS,
+  profileToolIdentity,
   resolveEffectiveTools,
 } from '../agent-runtime/tool-resolution.js';
 import { createClientActionBridge } from '../tools/client-action-bridge.js';
@@ -577,8 +578,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               sessionId,
               workspaceId: body.workspace_id,
               profileId: profile.id,
-              botId: profile.identity?.botId ?? null,
-              mcpConnectors: profile.mcp_connectors ?? null,
+              ...profileToolIdentity(profile),
               runtimeRunId: runtimeTrace?.runId ?? null,
               toolRegistry,
               unattended: unattendedExecution,

@@ -16,7 +16,7 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { buildSystemPrompt, selectTools, type ToolRegistry } from '../../agent.js';
 import { resolveProfileAsync } from '../../profiles/profile.js';
 import { resolveEffectiveTools } from '../../agent-runtime/tool-resolution.js';
-import { buildLazyServerTools, LAZY_TOOL_IDS } from '../../agent-runtime/tool-resolution.js';
+import { buildLazyServerTools, LAZY_TOOL_IDS, profileToolIdentity } from '../../agent-runtime/tool-resolution.js';
 import { runAgentInSession, type AgentGenerate, type HeadlessMessage } from '../../agent-runtime/run-agent.js';
 import { resolveMemoryContext } from '../../llm/memory.js';
 import { sanitizeChatMessagesForPrompt, sanitizeUserMessageForPrompt } from '../../chat/user-message.js';
@@ -181,6 +181,8 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
       userRole: owner.role,
       sessionId,
       profileId: profile.id,
+      // 与下面的记忆索引同一个身份：Sprouty 的私有记忆、它的资料夹、它的连接器清单。
+      ...profileToolIdentity(profile),
       toolRegistry: deps.toolRegistry,
       // 对面有真人在等回答——这不是无人值守（spec D6）。
       unattended: false,

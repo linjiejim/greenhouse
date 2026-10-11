@@ -165,7 +165,7 @@
 
 方案见 [Bots spec](../../../docs/specs/20261005-personal-assistant-bots.md)。
 
-- **记忆作用域是必填参数**：`user_memories.bot_id` 为 null 是用户级、非空是某个 Bot 私有。`listForIndex` / `search` / `getOwnedInScope` 都**必须**传 `MemoryScope`——`{ botId: null }` 只读用户级（普通对话、定时任务、subagent、workflow、飞书都这么传），`{ botId }` 读用户级 + 该 Bot，`{ botId, exact: true }` 只读一个分区（整理、管理）。把 scope 做成可选会让每个旧调用方把所有 Bot 的私有记忆注入进普通对话；按 id 查一定走 `getOwnedInScope`，否则 Bot A 能凭递增 id 打开 Bot B 的私有记忆。consolidation 按 `(user_id, bot_id)` 分区跑，替换行继承 `bot_id`。
+- **记忆作用域是必填参数**：`user_memories.bot_id` 为 null 是用户级、非空是某个 Bot 私有。`listForIndex` / `search` / `getOwnedInScope` 都**必须**传 `MemoryScope`——`{ botId: null }` 只读用户级（subagent、workflow 这么传），`{ botId }` 读用户级 + 该 Bot（跑在某个 Bot 身份上的入口都这么传：Chat、定时任务、飞书、Bots 引擎——记忆索引与记忆工具用同一个身份，`profileToolIdentity`），`{ botId, exact: true }` 只读一个分区（整理、管理）。把 scope 做成可选会让每个旧调用方把所有 Bot 的私有记忆注入进普通对话；按 id 查一定走 `getOwnedInScope`，否则 Bot A 能凭递增 id 打开 Bot B 的私有记忆。consolidation 按 `(user_id, bot_id)` 分区跑，替换行继承 `bot_id`。
 - **Bots 对话只有一个写者**：持有该会话 ChatRun 的引擎。服务端在对话进行中产生的东西（交还事件、续跑、后台汇报、忙时插话）一律进 `bot_inbox`，不要直接 `addMessage`——任何半路插入的行都会让进行中回合的 tail-CAS 失败、它刚流式展示的回答在刷新后消失。引擎自己的多行写入用 `sessions.appendIfTail`（角色通用的尾 CAS），每写一行推进 expected tail。
 - **`bot_computers` 的每次状态迁移都是 `version` CAS**，单用户的 start/stop/evict 在 `withUserLock`、容量判断在 `withCapacityLock` 里做——蓝绿两个 API 槽位共享同一个 Docker daemon 和这张表，进程内状态不能当事实。接管租约的 `lease_epoch` 单调递增：观察（快照/截图）返回前要复核 epoch，变了就丢弃。
 - **密码库只存密文、只回元数据**：service 原样存取 `*_enc` 列，加解密（AAD=`vault:<user_id>:<item_id>:<field>`）在 API 的 vault 模块里做；HTTP 与工具的读路径只返回 `VaultItemView`。新 id 先用 `newVaultItemId()` 生成再加密（id 是 AAD 的一部分）。
