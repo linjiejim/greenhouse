@@ -507,6 +507,11 @@ export const appsBuilderEn = {
       starterPage: 'Home',
       starterRole: 'Member',
     },
+    references: {
+      title: 'Apps use this:',
+      consequence:
+        'If you go ahead, the cards and buttons that use it stop working in the published versions until their builders fix the draft and publish again.',
+    },
     baseSection: {
       button: 'Apps',
       title: 'Apps on {base}',

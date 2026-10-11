@@ -501,6 +501,10 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       starterPage: '首页',
       starterRole: '成员',
     },
+    references: {
+      title: '这些应用在使用它：',
+      consequence: '继续的话，已发布版本中用到它的卡片和按钮会显示为不可用，直到搭建者修改草稿并重新发布。',
+    },
     baseSection: {
       button: '应用',
       title: '{base} 上的应用',
