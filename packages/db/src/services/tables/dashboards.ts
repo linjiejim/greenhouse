@@ -91,12 +91,6 @@ export function widgetCard(widget: Pick<TableDashboardWidgetRow, 'type' | 'confi
   );
 }
 
-/** A dashboard row's filter controls (rows written before slice D hold `{}`). */
-export function dashboardFilterControls(dashboard: Pick<TableDashboardRow, 'config'>): TableFilterControl[] {
-  const result = normalizeDashboardConfig(dashboard.config);
-  return result.ok ? result.config.filters : [];
-}
-
 function normalizeWidgetLayout(input?: TableDashboardWidgetLayout): TableDashboardWidgetLayout {
   const layout = input ?? { version: 1, x: 0, y: 0, w: 6, h: 4 };
   if (

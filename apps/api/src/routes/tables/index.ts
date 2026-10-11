@@ -1,9 +1,8 @@
 /**
  * Tables 路由 — /api/tables（Platform Kernel 适配层，每个端点都经 runtime.dispatch）
  *
- * 按领域拆成子路由（./bases ./schema ./views ./forms ./records ./imports
- * 按领域拆成子路由（./bases ./schema ./views ./forms ./records ./activity
- * ./automations ./dashboards），在这里用 `.route('/', …)` 组合成一条链，AppType 因此仍带全部端点。
+ * 按领域拆成子路由（./bases ./access ./schema ./views ./forms ./records ./imports
+ * ./activity ./automations ./dashboards），在这里用 `.route('/', …)` 组合成一条链，AppType 因此仍带全部端点。
  * 新端点加进所属领域的子路由；新领域在这里追加一个 `.route()`。
  *
  * Base 与成员（./bases.ts）
@@ -69,19 +68,16 @@
  * POST   /tables/:tableId/imports/:importId/validate — 按映射预检全部行（不写入）
  * POST   /tables/:tableId/imports/:importId/commit   — 提交（每次写几秒；committing 时再调一次续写）
  *
- * 自动化（./automations.ts；Webhook 动作与密钥只能经这里由人设置）
- * GET    /bases/:baseId/automations                  — 自动化规则列表（builder，Webhook 只带 hasSecret）
- * POST   /bases/:baseId/automations                  — 创建规则（执行者 = 保存者）
  * 动态与评论（./activity.ts；能读记录就能看动态、发评论，字段变更按读者可读字段裁剪）
  * GET    /tables/:tableId/records/:recordId/activity  — 评论 + 历史合并，新的在前（?cursor=&limit=≤50）
  * POST   /tables/:tableId/records/:recordId/comments  — 发评论（Markdown ≤10k，`[@名字](user:<id>)` 提及并通知）
  * PATCH  /comments/:commentId                        — 改评论（仅作者；新增的提及才通知）
  * DELETE /comments/:commentId                        — 删评论（作者或 Base builder+，软删）
  *
- * 自动化（./automations.ts）
- * GET    /bases/:baseId/automations                  — 自动化规则列表（builder）
- * POST   /bases/:baseId/automations                  — 创建规则
- * PATCH  /automations/:automationId                  — revision 更新规则
+ * 自动化（./automations.ts；Webhook 动作与密钥只能经这里由人设置）
+ * GET    /bases/:baseId/automations                  — 自动化规则列表（builder，Webhook 只带 hasSecret）
+ * POST   /bases/:baseId/automations                  — 创建规则（执行者 = 保存者）
+ * PATCH  /automations/:automationId                  — revision 更新规则（改触发 / 条件 / 动作时执行者改为保存者）
  * DELETE /automations/:automationId                  — 删除规则（builder，连带运行记录）
  * GET    /automations/:automationId/runs             — 运行记录（逐步日志）
  * POST   /automations/:automationId/trigger          — 按下记录上的按钮（{recordId, requestId}，排队异步执行）

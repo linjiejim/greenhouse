@@ -248,10 +248,6 @@ export function fullTableAccess(userId: string | null): TableFullScope {
   return { kind: 'full', userId };
 }
 
-export function isFullTableAccess(scope: TableAccessScope): scope is TableFullScope {
-  return scope.kind === 'full';
-}
-
 // ─── Wire views ───────────────────────────────────────────
 
 export interface TableBaseAccessView {

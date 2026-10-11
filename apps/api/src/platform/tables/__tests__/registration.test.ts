@@ -1,8 +1,8 @@
 /**
- * The composed Tables registration against the 1.3.0 manifest: every action
- * has exactly one handler and one audit resource, the placeholders of the
- * slices still to land answer `not_implemented` explicitly, and domain errors
- * map to the right action failures.
+ * The composed Tables registration against the manifest: every action has
+ * exactly one handler and one audit resource, and domain errors map to the
+ * right action failures (write-rights errors → FORBIDDEN, other validation
+ * errors → INVALID_INPUT).
  */
 
 import { describe, expect, it } from 'vitest';

@@ -174,7 +174,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_schema_versions` | PK `id`；UK `(table_id, version)` | Table 结构的不可变 JSONB 快照；字段创建/修改/归档时同事务递增，记录变更类型与操作者 |
 | `table_fields` | PK `id`；UK `(table_id, name)`；每 Table 一条 active primary 部分 UK | 稳定字段 ID、常用字段类型、required/primary、JSON 文本 config 与位置；支持 Relation/Formula/Rollup/Lookup |
 | `table_field_dependencies` | 复合 PK `(field_id, depends_on_field_id)` | Formula/Rollup/Lookup 字段依赖边（`dependency_type`），支持反向影响分析、计算字段可见性闭包和级联重算 |
-| `table_views` | PK `id` | shared/personal Grid 视图；筛选、排序、显示字段和宽度存 config JSON 文本；revision 乐观并发 |
+| `table_views` | PK `id` | shared/personal 视图，`type` = grid / kanban / calendar / gallery；config 是 JSON 文本，经 `normalizeViewConfig` 按类型校验（显示字段与系统列、宽度、冻结列、筛选排序、`groupBy` / `kanban` / `calendar` / `gallery` / `rowHeight`）；revision 乐观并发 |
 | `table_forms` | PK `id`；UK `(table_id, name)` | 内部认证表单；draft/published、字段白名单、文案 config（含隐藏锁定的 `defaults [{fieldId,value}]` 与 `allowMultiple`）与 revision；`audience JSONB`（`base/team/principals`，默认 base） |
 | `table_form_submissions` | PK `id`；部分 UK `(form_id, user_id) WHERE single_submit` | 每次提交一行，与记录同事务插入；`allowMultiple=false` 的表单写 `single_submit=true`，并发双击只成功一次 |
 | `table_records` | PK `id` | 动态记录；用户值在 `values JSONB`，计算字段（Formula/Rollup/Lookup）在 `computed_values JSONB`（写事务内计算）；用户 revision 与计算 revision 分离；`deleted_at` = 软删，表内回收站可自助恢复（恢复同样 bump revision） |
@@ -190,8 +190,6 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_notifications` | PK `id` | 旧版自动化站内通知（**仅保留到下个版本**：扩展—收缩，0024 已迁入 `notifications`（kind `tables_automation`）并停用，代码不再读写；回滚的旧镜像仍读写它） |
 | `table_dashboards` | PK `id`；UK `(base_id, name)` | Base 自定义仪表盘；`config JSONB`（`{version, filters: TableFilterControl[]}`）；revision 乐观并发 |
 | `table_dashboard_widgets` | PK `id` | 仪表盘组件；`config` 是 JSON 文本 `{version: 2, card: TableCardSpec}`（统一卡片规格，与阶段 1 应用卡片共用；旧的扁平配置读写时经 `legacyWidgetToCard` 映射），`type`（kpi/bar/line/pie/area/pivot/records/text）与 `table_id` 始终跟随 card；布局是 JSON 文本；revision 乐观并发 |
-| `table_imports` | PK `id`（text） | CSV / Excel 导入暂存：表头与解析后的行（≤10,000×100，JSONB）、`status`（previewed/committing/committed/failed）、`committed_rows` 续传游标、租约、结果；1 小时过期，由 upkeep 清理 |
-| `table_dashboard_widgets` | PK `id` | KPI/Chart/records/text 组件；配置与布局是 JSON 文本，单组件最多绑定一张 Table；revision 乐观并发 |
 | `table_imports` | PK `id`（text） | CSV / Excel 导入暂存：表头与解析后的行（≤10,000×100，JSONB，无 NUL）、`status`（previewed/committing/committed/failed）、`committed_rows` 续传游标（按块 CAS）、`lease_expires_at` 租约、`result`（运行中的结果 + 认领时存下的计划 `plan` / 失败原因 `error`）；最后一次活动后 1 小时过期，由 upkeep 清理，完成后清空 `rows` |
 
 ### 评测与工单智能化
@@ -430,7 +428,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `tasks.assignee_id` / `task_comments.user_id` / `project_activities.user_id` | `users.id` | 项目协作主体 |
 | `tasks.dependencies` | `tasks.id[]` | JSON 文本中的任务依赖 |
 | `table_bases.owner_id` / `table_base_members.user_id` | `users.id` | Base owner 与显式成员；team 可见性还会给全体 active 内部用户 viewer |
-| `table_views.owner_id` | `users.id` | personal Grid 视图所有者 |
+| `table_views.owner_id` | `users.id` | personal 视图（任一类型）的所有者 |
 | Tables 各表的 `created_by/updated_by/added_by/execution_user_id/user_id` | `users.id` | Base 协作、自动化执行与通知主体，跨域松散关联；运行前校验 active internal user |
 | `table_records.values` 中 user/multi_user 值 | `users.id` | 动态用户字段；写入时校验 active internal user |
 | `table_record_events.table_id` / `table_record_comments.table_id` | `table_tables.id` | 冗余的表 id（随记录级联删除，读侧按表过滤用） |

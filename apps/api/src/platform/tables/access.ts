@@ -85,11 +85,6 @@ export async function baseForField(db: DatabaseProvider, fieldId: number): Promi
   return field ? baseForTable(db, field.table_id) : undefined;
 }
 
-export async function baseForView(db: DatabaseProvider, viewId: number): Promise<TableBaseRow | undefined> {
-  const view = await db.tables.getView(viewId);
-  return view ? baseForTable(db, view.table_id) : undefined;
-}
-
 export async function baseForForm(db: DatabaseProvider, formId: number): Promise<TableBaseRow | undefined> {
   const form = await db.tables.getForm(formId);
   return form ? baseForTable(db, form.table_id) : undefined;

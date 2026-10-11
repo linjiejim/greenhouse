@@ -15,7 +15,6 @@ import type {
 import { authFetch } from '../../auth';
 import { rpc } from '../client';
 import { responseError } from './shared';
-import type { TableField } from './schema';
 
 export interface TableForm {
   id: number;
@@ -42,12 +41,6 @@ export async function listTableForms(tableId: number): Promise<TableForm[]> {
   const response = await rpc.api.tables.tables[':tableId'].forms.$get({ param: { tableId: String(tableId) } });
   if (!response.ok) throw await responseError(response, 'Unable to load forms');
   return (await response.json()).forms;
-}
-
-export async function getTableForm(formId: number): Promise<{ form: TableForm; fields: TableField[] }> {
-  const response = await rpc.api.tables.forms[':formId'].$get({ param: { formId: String(formId) } });
-  if (!response.ok) throw await responseError(response, 'Unable to load form');
-  return response.json();
 }
 
 export async function createTableForm(tableId: number, input: TableFormInput): Promise<TableForm> {
